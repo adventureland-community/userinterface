@@ -1,3 +1,10 @@
+/**
+ * Changes the wish list to be searchable by overriding the render_wishlist function
+ * Load the following code to override the original render_wishlist function
+ * @param num
+ * @param page
+ * @param search
+ */
 parent.render_wishlist = function render_wishlist(num, page, search) {
   if (!search) {
     search = "";
@@ -36,7 +43,7 @@ parent.render_wishlist = function render_wishlist(num, page, search) {
         );
       else if (i == 3 && j == 4 && last < items.length - 1)
         html += item_container(
-          { skin: "right", onclick: "render_wishlist(" + num + "," + (page + 1) + ");" },
+          { skin: "right", onclick: `render_wishlist(${num},${page + 1},${search});` },
           { q: page + 2, left: true }
         );
       else if (last < items.length && items[last++]) {
@@ -46,7 +53,7 @@ parent.render_wishlist = function render_wishlist(num, page, search) {
         html += item_container(
           {
             skin: item.skin,
-            onclick: "wishlist_item_click('" + name + "'," + num + ")",
+            onclick: `wishlist_item_click('${name}',${num})`,
             def: item,
             id: id,
             draggable: false,
