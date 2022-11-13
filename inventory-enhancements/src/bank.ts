@@ -300,8 +300,16 @@ class EnhancedBankUI {
               )
             );
 
+            // level container 
+            const levelElement = itemContainer.find(".iuui");
+            levelElement.css({
+              fontSize: '16px'
+            })
             // find quantity in item container and make it pretty
             const countElement = itemContainer.find(".iqui");
+            countElement.css({
+              fontSize: '16px'
+            })
             const count = Number(countElement.text());
             const prettyCount = abbreviateNumber(count);
             if (prettyCount) {
