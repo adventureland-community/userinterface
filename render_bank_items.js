@@ -1,6 +1,7 @@
 /** 
  * Originally shared by drippy on discord https://discord.com/channels/238332476743745536/243707345887166465/1041087432055066744
  * we do not know who originally made it.
+ * number_e#1635 on discord wrote the initial snippet
  * modified by thmsn to use more with and float item categories
  * usage: load theese functions into your parent window and execute the following command while in the bank
  * `parent.render_bank_items()`
