@@ -27,6 +27,10 @@ import { abbreviateNumber } from "./utils";
 //TODO: a button to open the overview visible when inside the bank
 //TODO: perhaps an ability to group it by npc teller instead of item types
 
+// TODO: render shiny / glitched differently
+// https://blog.bitsrc.io/pure-css-to-make-a-button-shine-and-gently-change-colors-over-time-5b685d9c6a7e
+// https://codepen.io/kieranfivestars/pen/MwmWQb
+
 // TODO: differnt modes
 //  all in one inventory, show each bank slot with the ability to drag and drop around
 // group items by type, collapse same kind
@@ -72,6 +76,7 @@ type GroupedItems = {
     items: {
       [itemKey in ItemKey]?: {
         amount: number;
+        // TODO: how do we group items by .p seperating out shiny for example `items` as a subgroup, this could work for weapons as well?
         levels: {
           [level: number]: {
             amount: number;
@@ -120,6 +125,10 @@ class EnhancedBankUI {
       `<input placeholder='press enter to search' onchange='enhanced_bank_ui.renderBankItems(this.value)' value='${""}' />`
     );
     title.append(searchButton);
+
+    title.append(
+      `<span>${totalUnusedBankSlots} / ${totalBankSlots} free slots</span>`
+    );
 
     const bankItemsContainer = $("<div>", { id: "bank-items-container" });
     container.append(bankItemsContainer);
@@ -178,7 +187,7 @@ class EnhancedBankUI {
     let packName: BankPackType;
     for (packName in character.bank) {
       const packItems = character.bank[packName];
-      totalBankSlots += packItems.length;
+      totalBankSlots += packItems.length ?? 0;
 
       for (let index = 0; index < packItems.length; index++) {
         const itemInfo = packItems[index];
@@ -300,16 +309,16 @@ class EnhancedBankUI {
               )
             );
 
-            // level container 
+            // level container
             const levelElement = itemContainer.find(".iuui");
             levelElement.css({
-              fontSize: '16px'
-            })
+              fontSize: "16px",
+            });
             // find quantity in item container and make it pretty
             const countElement = itemContainer.find(".iqui");
             countElement.css({
-              fontSize: '16px'
-            })
+              fontSize: "16px",
+            });
             const count = Number(countElement.text());
             const prettyCount = abbreviateNumber(count);
             if (prettyCount) {
