@@ -89,6 +89,7 @@ type GroupedItems = {
 };
 class EnhancedBankUI {
   groups: GroupedItems;
+  search?: string;
   /**
    *
    */
@@ -238,26 +239,72 @@ class EnhancedBankUI {
     return { totalBankSlots, totalUsedBankSlots, totalUnusedBankSlots, groups };
   }
 
-  public renderBankItems(search = "", bankItemsContainer: JQuery<HTMLElement>) {
-    console.log(search);
+  public onMouseDownBankItem(
+    e: JQuery.Event<HTMLElement, null>,
+    itemKey: ItemKey,
+    level: number
+  ) {
+    e.preventDefault();
+
+    switch (e.which) {
+      case 3: // right click
+        for (const key in this.groups) {
+          const group = this.groups[key];
+          const item = group.items[itemKey];
+          if (!item) continue;
+          const itemByLevel = item.levels[level];
+          if (itemByLevel && itemByLevel.indexes.length > 0) {
+            const [pack, index] = itemByLevel.indexes.splice(0, 1)[0];
+            // if (itemByLevel.indexes.length <= 0) {
+            //   delete item.levels[level];
+            // }
+            // bank_retrieve is not defined for some reason? seems like we don't have access to the code functions when we paste the code into dev console
+            // bank_retrieve(pack, index);
+            (<any>parent).socket.emit("bank", {
+              operation: "swap",
+              pack: pack,
+              str: index,
+              inv: -1, // the server interprets -1 as first slot available
+            });
+            break;
+          }
+        }
+
+        // TODO: if the item is a quantity item, we can't just reduce the count by one.. we gotta loop everything again or keep that data available.
+        // TODO: groupBankByItem should be called / updated
+        // TODO: title should be updated with free slot count
+        setTimeout(() => {
+          // delay to let the emit finish
+          const {
+            totalBankSlots,
+            totalUsedBankSlots,
+            totalUnusedBankSlots,
+            groups,
+          } = this.groupBankByItem();
+
+          this.groups = groups;
+          this.renderBankItems(this.search);
+        }, 250);
+
+        break;
+
+      default:
+        (<any>parent).render_item_info(itemKey);
+        break;
+    }
+  }
+
+  public renderBankItems(
+    search = "",
+    bankItemsContainer?: JQuery<HTMLElement>
+  ) {
+    this.search = search;
     bankItemsContainer = bankItemsContainer ?? $("#bank-items-container");
     if (bankItemsContainer) {
-      // // reset modal margin
-      // bankItemsContainer.parent().parent().css({
-      //   marginTop: "5px",
-      // });
       // clear contents
       bankItemsContainer.html("");
 
       const groups = this.filter(search);
-
-      // console.log(
-      //   "bank slots",
-      //   totalBankSlots,
-      //   totalUsedBankSlots,
-      //   totalUnusedBankSlots
-      // );
-      // console.log(groups);
 
       const sortedGroupKeys = [...new Set(Object.values(types))]; //.sort((a, b) => a.localeCompare(b));
 
@@ -270,9 +317,11 @@ class EnhancedBankUI {
         const itemTypeContainer = $(
           "<div style='float:left; margin-left:5px;'>"
         );
+
         itemTypeContainer.append(
           `<div class='gamebutton gamebutton-small' style='margin-bottom: 5px'>${itemType}</div>`
         );
+
         bankItemsContainer.append(itemTypeContainer);
 
         const itemsContainer = $("<div style='margin-bottom: 10px'>");
@@ -303,10 +352,16 @@ class EnhancedBankUI {
               (<any>parent).item_container(
                 {
                   skin: gItem.skin,
-                  onclick: "render_item_info('" + itemKey + "')",
+                  // onclick: "render_item_info('" + itemKey + "')",
                 },
                 fakeItemInfo
               )
+            );
+
+            // handle left and right click
+            itemContainer.attr(
+              "onmousedown",
+              `enhanced_bank_ui.onMouseDownBankItem(event, '${itemKey}', ${level})`
             );
 
             // level container
@@ -314,6 +369,7 @@ class EnhancedBankUI {
             levelElement.css({
               fontSize: "16px",
             });
+
             // find quantity in item container and make it pretty
             const countElement = itemContainer.find(".iqui");
             countElement.css({

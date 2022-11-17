@@ -1,8 +1,3 @@
-
-// export const inventoryEnhancements = new InventoryEnhancements();
-// // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-// (<any>parent).inventoryEnhancements = inventoryEnhancements;
-
 // function npc_right_click(event){ seems interesting
 
 // UI seems to just be added to body.
@@ -264,3 +259,18 @@
 // 		}
 // 	}
 // }
+
+// function on_rclick(current)
+// {
+// 	var $current=$(current),inum=$current.data("inum"),snum=$current.data("snum"),sname=$current.data("sname"),on=$current.data("onrclick");
+// 	if(on) smart_eval(on);
+// 	else if(sname!==undefined) { socket.emit('unequip',{slot:sname}); push_deferred("unequip"); }
+// 	else if(snum!==undefined) { socket.emit('bank',{operation:"swap",inv:-1,str:snum,pack:last_rendered_items,reopen:false}); push_deferred("bank"); }
+// 	else if(inum!==undefined)
+// 	{
+// 		if(topleft_npc=="items")
+// 		{
+// 			tut("store");
+// 			socket.emit('bank',{operation:"swap",inv:inum,str:-1,pack:last_rendered_items,reopen:false});
+// 			push_deferred("bank");
+// 		}

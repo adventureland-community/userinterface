@@ -6,14 +6,17 @@
 - Show item info with left click
 
 [INSERT SCREENSHOT/ GIF OF UI]
-# Installation 
+# Installation  / Usage
+
+## Paste into chrome dev console
+- Paste the contents of inventory-enhancements.js into the chrome developer console and press enter
+- Run the following command on your character via the `X` button 
+- `parent.enhanced_bank_ui.show()`
 
 ## Load directly from github
 
 ## Load from code slot
 
-
-# Usage
 
 
 
