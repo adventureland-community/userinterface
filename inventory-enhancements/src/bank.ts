@@ -121,27 +121,6 @@ class EnhancedBankUI {
         }
       }
     }, 1000);
-
-    //   function add_bank_button(){
-    //     let $ = parent.$;
-    //     let trc = $("#toprightcorner");
-    //     $('#bankbutton').remove();
-    //     let bankButton = $('<div id="bankbutton" class="gamebutton" onclick="parent.$(`#maincode`)[0].contentWindow.render_bank_items()">BANK</div>');
-    //     trc.children().first().after(bankButton);
-    // }
-
-    // add_bank_button();
-
-    // add_top_button(id,value,fn)
-    // if(!buttons[id])
-    // 	{
-    // 		buttons[id]={value:value,fn:function(){},place:"top"};
-    // 		parent.$(".codebuttons").append("<div class='gamebutton codebutton"+id+"' data-id='"+id+"' onclick='code_button_click(this)'>BUTTON</div> ")
-    // 	}
-    // 	if(fn) set_button_onclick(id,fn)
-    // 	if(value) set_button_value(id,value);
-
-    // add_bottom_button
   }
 
   public show() {
@@ -207,6 +186,7 @@ class EnhancedBankUI {
         } else {
           shouldAdd = true;
         }
+
         if (shouldAdd) {
           if (!result[groupName]) {
             result[groupName] = { amount: 0, items: {} };
@@ -281,7 +261,7 @@ class EnhancedBankUI {
     return { totalBankSlots, totalUsedBankSlots, totalUnusedBankSlots, groups };
   }
 
-  public onMouseDownBankItem(
+  public async onMouseDownBankItem(
     e: JQuery.Event<HTMLElement, null>,
     itemKey: ItemKey,
     level: number
@@ -305,7 +285,7 @@ class EnhancedBankUI {
             // }
 
             if (bank_retrieve) {
-              bank_retrieve(pack, index);
+              await bank_retrieve(pack, index);
             } else {
               // bank_retrieve is not defined, seems like we don't have access to the code functions when we paste the code into dev console
               (<any>parent).socket.emit("bank", {
@@ -321,23 +301,23 @@ class EnhancedBankUI {
 
         // TODO: groupBankByItem should be called / updated
         // TODO: title should be updated with free slot count
-        setTimeout(() => {
-          console.log("groupBankByItem timeout with render started");
-          // delay to let the emit finish
-          const {
-            totalBankSlots,
-            totalUsedBankSlots,
-            totalUnusedBankSlots,
-            groups,
-          } = this.groupBankByItem();
+        // setTimeout(() => {
+        // console.log("groupBankByItem timeout with render started");
+        // // delay to let the emit finish
+        // const {
+        //   totalBankSlots,
+        //   totalUsedBankSlots,
+        //   totalUnusedBankSlots,
+        //   groups,
+        // } = this.groupBankByItem();
 
-          this.groups = groups;
-          this.renderBankItems(this.search);
-          console.log(
-            "groupBankByItem timeout with render finished",
-            this.groups
-          );
-        }, 250);
+        // this.groups = groups;
+        this.renderBankItems(this.search);
+        // console.log(
+        //   "groupBankByItem timeout with render finished",
+        //   this.groups
+        // );
+        // }, 250);
 
         break;
 
@@ -352,8 +332,17 @@ class EnhancedBankUI {
     bankItemsContainer?: JQuery<HTMLElement>
   ) {
     this.search = search;
-    bankItemsContainer = bankItemsContainer ?? $("#bank-items-container");
-    if (bankItemsContainer) {
+
+    bankItemsContainer =
+      bankItemsContainer ?? (<any>parent).$("#bank-items-container");
+
+    if (bankItemsContainer && bankItemsContainer.length === 0) {
+      console.warn(
+        "#bank-items-container could not be found, can't rerender data"
+      );
+    }
+
+    if (bankItemsContainer && bankItemsContainer.length === 1) {
       // clear contents
       bankItemsContainer.html("");
 
