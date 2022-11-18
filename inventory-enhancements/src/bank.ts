@@ -280,9 +280,9 @@ class EnhancedBankUI {
             const [pack, index] = itemByLevel.indexes.splice(0, 1)[0];
             // TODO: look up item and determine if it has a quantity to substract instead of 1
             itemByLevel.amount -= 1;
-            // if (itemByLevel.indexes.length <= 0) {
-            //   delete item.levels[level];
-            // }
+            if (itemByLevel.indexes.length <= 0) {
+              delete item.levels[level];
+            }
 
             if (bank_retrieve) {
               await bank_retrieve(pack, index);
@@ -432,5 +432,5 @@ class EnhancedBankUI {
     }
   }
 }
-
+// TODO: handle reloading code, we might need to destroy the previous UI
 (<any>parent).enhanced_bank_ui = new EnhancedBankUI();
