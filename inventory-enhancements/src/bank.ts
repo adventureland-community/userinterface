@@ -107,19 +107,15 @@ class EnhancedBankUI {
 
       const id = "bankbutton";
       const button = trc.find("#" + id);
-      console.log(button, trc);
       if (character.bank) {
         // inside bank
-        console.log("inside bank");
         if (!button || button.length === 0) {
-          console.log("adding button");
           trc.prepend(
             `<div id='${id}' class='gamebutton' onclick='parent.enhanced_bank_ui.show()' title='open enhanced bank overview'>BANK</div>`
           );
         }
       } else {
         // outside bank
-        console.log("outside bank");
         if (button && button.length > 0) {
           button.remove();
         }
