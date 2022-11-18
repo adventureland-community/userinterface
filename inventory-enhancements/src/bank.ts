@@ -100,6 +100,52 @@ class EnhancedBankUI {
     // TODO: start inside / outside bank check to enable / disable button
     // TODO: cache bank when we enter it.
     this.groups = {};
+
+    setInterval(() => {
+      const $ = (<any>parent).$;
+      const trc = $("#toprightcorner");
+
+      const id = "bankbutton";
+      const button = trc.find("#" + id);
+      console.log(button, trc);
+      if (character.bank) {
+        // inside bank
+        console.log("inside bank");
+        if (!button || button.length === 0) {
+          console.log("adding button");
+          trc.prepend(
+            `<div id='${id}' class='gamebutton' onclick='parent.enhanced_bank_ui.show()' title='open enhanced bank overview'>BANK</div>`
+          );
+        }
+      } else {
+        // outside bank
+        console.log("outside bank");
+        if (button && button.length > 0) {
+          button.remove();
+        }
+      }
+    }, 1000);
+
+    //   function add_bank_button(){
+    //     let $ = parent.$;
+    //     let trc = $("#toprightcorner");
+    //     $('#bankbutton').remove();
+    //     let bankButton = $('<div id="bankbutton" class="gamebutton" onclick="parent.$(`#maincode`)[0].contentWindow.render_bank_items()">BANK</div>');
+    //     trc.children().first().after(bankButton);
+    // }
+
+    // add_bank_button();
+
+    // add_top_button(id,value,fn)
+    // if(!buttons[id])
+    // 	{
+    // 		buttons[id]={value:value,fn:function(){},place:"top"};
+    // 		parent.$(".codebuttons").append("<div class='gamebutton codebutton"+id+"' data-id='"+id+"' onclick='code_button_click(this)'>BUTTON</div> ")
+    // 	}
+    // 	if(fn) set_button_onclick(id,fn)
+    // 	if(value) set_button_value(id,value);
+
+    // add_bottom_button
   }
 
   public show() {
@@ -253,27 +299,34 @@ class EnhancedBankUI {
           const item = group.items[itemKey];
           if (!item) continue;
           const itemByLevel = item.levels[level];
+
           if (itemByLevel && itemByLevel.indexes.length > 0) {
             const [pack, index] = itemByLevel.indexes.splice(0, 1)[0];
+            // TODO: look up item and determine if it has a quantity to substract instead of 1
+            itemByLevel.amount -= 1;
             // if (itemByLevel.indexes.length <= 0) {
             //   delete item.levels[level];
             // }
-            // bank_retrieve is not defined for some reason? seems like we don't have access to the code functions when we paste the code into dev console
-            // bank_retrieve(pack, index);
-            (<any>parent).socket.emit("bank", {
-              operation: "swap",
-              pack: pack,
-              str: index,
-              inv: -1, // the server interprets -1 as first slot available
-            });
+
+            if (bank_retrieve) {
+              bank_retrieve(pack, index);
+            } else {
+              // bank_retrieve is not defined, seems like we don't have access to the code functions when we paste the code into dev console
+              (<any>parent).socket.emit("bank", {
+                operation: "swap",
+                pack: pack,
+                str: index,
+                inv: -1, // the server interprets -1 as first slot available
+              });
+            }
             break;
           }
         }
 
-        // TODO: if the item is a quantity item, we can't just reduce the count by one.. we gotta loop everything again or keep that data available.
         // TODO: groupBankByItem should be called / updated
         // TODO: title should be updated with free slot count
         setTimeout(() => {
+          console.log("groupBankByItem timeout with render started");
           // delay to let the emit finish
           const {
             totalBankSlots,
@@ -284,6 +337,10 @@ class EnhancedBankUI {
 
           this.groups = groups;
           this.renderBankItems(this.search);
+          console.log(
+            "groupBankByItem timeout with render finished",
+            this.groups
+          );
         }, 250);
 
         break;
