@@ -43,7 +43,7 @@ import { abbreviateNumber } from "./utils";
 //     };
 //   };
 
-const types: { [key in ItemType | "exchange"]?: string } = {
+const types: { [key in ItemType | "exchange" | "other"]?: string } = {
   helmet: "Helmets",
   chest: "Armors",
   pants: "Pants",
@@ -68,6 +68,9 @@ const types: { [key in ItemType | "exchange"]?: string } = {
   offering: "Scrolls",
   material: "Crafting and Collecting",
   exchange: "Exchangeables",
+  dungeon_key: 'Keys',
+  token: 'Tokens',
+  other: 'Others',
 };
 
 type GroupedItems = {
