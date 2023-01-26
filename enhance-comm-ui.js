@@ -3,10 +3,11 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  enhance https://adventure.land/comm
-// @author       You
+// @author       kevinsandow
 // @match        https://adventure.land/comm
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
+// @downloadUrl  https://raw.githubusercontent.com/adventureland-community/userinterface/main/enhance-comm-ui.js 
 // ==/UserScript==
 
 (function() {
