@@ -68,9 +68,9 @@ const types: { [key in ItemType | "exchange" | "other"]?: string } = {
   offering: "Scrolls",
   material: "Crafting and Collecting",
   exchange: "Exchangeables",
-  dungeon_key: 'Keys',
-  token: 'Tokens',
-  other: 'Others',
+  dungeon_key: "Keys",
+  token: "Tokens",
+  other: "Others",
 };
 
 type GroupedItems = {
@@ -401,6 +401,17 @@ class EnhancedBankUI {
                 },
                 fakeItemInfo
               )
+            );
+
+            const stackSize = Number(gItem.s);
+            const stackCount = data.indexes.length;
+            const optimalStackCount = data.amount / stackSize;
+            const optimaStackCountMessage =
+              stackCount > optimalStackCount ? `⚠️${optimalStackCount}` : "";
+
+            itemContainer.attr(
+              "title",
+              `${stackCount} stacks ${optimaStackCountMessage}`
             );
 
             // handle left and right click
