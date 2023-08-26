@@ -288,6 +288,12 @@ class EnhancedBankUI {
             }
 
             if (bank_retrieve) {
+              const [packMap] = bank_packs[pack]
+              if(character.map !== packMap){
+                game_log(`Moving to ${packMap} from ${character.map} `);
+                await smart_move(packMap)
+              }
+
               await bank_retrieve(pack, index);
             } else {
               // bank_retrieve is not defined, seems like we don't have access to the code functions when we paste the code into dev console
@@ -384,6 +390,7 @@ class EnhancedBankUI {
             const data = levels[Number(level)];
 
             const fakeItemInfo: ItemInfo = { name: itemKey as ItemKey };
+
             if (Number(level) > 0) {
               fakeItemInfo.level = Number(level);
             }
@@ -405,13 +412,15 @@ class EnhancedBankUI {
 
             const stackSize = Number(gItem.s);
             const stackCount = data.indexes.length;
-            const optimalStackCount = data.amount / stackSize;
-            const optimaStackCountMessage =
+            const optimalStackCount = Math.ceil(data.amount / stackSize);
+            const optimalStackCountMessage =
               stackCount > optimalStackCount ? `⚠️${optimalStackCount}` : "";
 
             itemContainer.attr(
               "title",
-              `${stackCount} stacks ${optimaStackCountMessage}`
+              `${gItem.name}${
+                Number(level) > 0 ? `+${level}` : ""
+              }\n${stackCount} stacks ${optimalStackCountMessage}`
             );
 
             // handle left and right click
