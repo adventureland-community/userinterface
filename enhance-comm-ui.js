@@ -1,50 +1,49 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.1
-// @description  enhance https://adventure.land/comm
+// @version      0.2
+// @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
-// @match        https://adventure.land/comm
+// @contributors vett0
+// @match        https://adventure.land/comm/
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
-// @downloadUrl  https://raw.githubusercontent.com/adventureland-community/userinterface/main/enhance-comm-ui.js 
+// @downloadUrl  https://raw.githubusercontent.com/adventureland-community/userinterface/main/enhance-comm-ui.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    function formatTime(time) {
-        if (!time) {
+    function formatTime(timeSeconds) {
+        if (!timeSeconds) {
             return '?'
         }
 
         return [
-            {unit: 's', n: 1},
-            {unit: 'min', n: 60},
-            {unit: 'h', n: 3600},
-            {unit: 'd', n: 86400},
+            {unit: 's', n: 1, resolution: 0, minMultiplier: 0},
+            // Adding 'min' takes much space, so resolution is chosen 0 for minutes
+            {unit: 'min', n: 60, resolution: 0, minMultiplier: 99.5 / 60},
+            {unit: 'h', n: 3600, resolution: 1, minMultiplier: 99.5 / 60},
+            {unit: 'd', n: 86400, resolution: 1, minMultiplier: 99.5 / 24},
         ]
             .reduceRight((memo, prefix, index) => {
             if (memo) {
                 return memo
             }
-            if (index === 0) {
-                return `${time.toFixed(0)}${prefix.unit}`
-            }
-            if (time >= prefix.n) {
-                return `${(time / prefix.n).toFixed(1)}${prefix.unit}`
+            if (timeSeconds >= prefix.minMultiplier * prefix.n) {
+                return `${(timeSeconds / prefix.n).toFixed(prefix.resolution)}${prefix.unit}`
             }
         }, undefined)
     }
 
-    function getPercent(value) {
-        return `${Math.max(0, Math.min(100, value * 100)).toFixed(1)}%`
+    function getPercent(value, precision) {
+        return `${Math.max(0, Math.min(100, value * 100)).toFixed(precision)}%`
     }
 
     function onLoad() {
         const React = window.React
         const ReactDOM = window.ReactDOM
-        const e = window.React.createElement
+        const e = React.createElement
 
         const classColors = {
             merchant: "#7f7f7f",
@@ -56,12 +55,32 @@
             rogue: "#44b75c",
         }
 
+        // NOTE: There is difference with AL servers, they don't have DST,
+        //       their timezones are UTC-5/+1/+7.
+        /*
         const timeZones = {
             '0': 'UTC', // Fallback
             '-5': 'America/New_York', // US
-            '1': 'Europe/Berlin', // EU
+            '1': 'West Central Africa', // EU
             '7': 'Asia/Bangkok', // ASIA
         }
+        */
+
+        const intervalTimeMs = 500
+
+        const CRYPT_BOSSES_MTYPES = [
+            'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8',
+        ]
+
+        const CRYPT_IMPORTANT_MOBS_MTYPES = [
+            ...CRYPT_BOSSES_MTYPES,
+            'vbat',
+            'nerfedbat',
+        ]
+        let CRYPT_MOBS_STATES_AND_STATS = {}
+
+        let idToMobData = new Map()
+        let lastSocketId = null
 
         const getTimeUntil = (dateString) => {
             if (!dateString) {
@@ -80,7 +99,7 @@
             React.useEffect(() => {
                 const interval = setInterval(() => {
                     setEntities(Object.values(window.entities))
-                }, 1000)
+                }, intervalTimeMs)
 
                 return () => clearInterval(interval)
             }, [])
@@ -98,7 +117,7 @@
                         serverRegion: window.server_region,
                         serverIdentifier: window.server_identifier,
                     })
-                }, 1000)
+                }, intervalTimeMs)
 
                 return () => clearInterval(interval)
             }, [])
@@ -112,7 +131,7 @@
             React.useEffect(() => {
                 const interval = setInterval(() => {
                     setObservingCharacterId(window.observing?.id)
-                }, 1000)
+                }, intervalTimeMs)
 
                 return () => clearInterval(interval)
             }, [])
@@ -217,7 +236,7 @@
                                     position: 'absolute',
                                     top: 0,
                                     bottom: 0,
-                                    width: getPercent(player.hp / player.max_hp),
+                                    width: getPercent(player.hp / player.max_hp, 1),
                                     background: classColors[player.ctype],
                                 } },
                             ),
@@ -241,12 +260,298 @@
                                 style: {
                                     background: 'blue',
                                     height: '4px',
-                                    width: getPercent(player.mp / player.max_mp),
+                                    width: getPercent(player.mp / player.max_mp, 1),
                                 },
                             },
                         ),
                     ))
                 ))
+            )
+        }
+
+        const GetMap = (props) => {
+            const entities = useEntities()
+
+            let mapData = {map: window.map?.map_name}
+            if (entities.length > 0) {
+                mapData.in = entities[0].in
+            }
+
+            return mapData
+        }
+
+        const copyOnClick = (text, popupId) => {
+            return function() {
+                const showPopup = function(id, message) {
+                    let popup = document.getElementById(id)
+                    popup.innerHTML = message
+                    popup.classList.toggle('show')
+
+                    setTimeout(function() {
+                        popup.classList.toggle('show')
+                    }, 1000)
+                }
+
+                navigator.clipboard.writeText(text).then(
+                    function() {
+                        const messageSuccess = 'Copied instance ID!'
+                        console.log(messageSuccess)
+                        showPopup(popupId, messageSuccess)
+                    },
+                    function(err) {
+                        console.error('Could not copy instance ID:', err)
+                        showPopup(popupId, 'Copy failure, look into console.')
+                    },
+                );
+            }
+        }
+
+        const copyInstanceIdPopupId = 'copyInstanceIdPopup'
+
+        const MapInfo = (props) => {
+            const mapNameData = GetMap()
+
+            let instanceIdElement = undefined
+            if (mapNameData && mapNameData.map && mapNameData.map !== mapNameData.in) {
+                if (mapNameData.in) {
+                    const firstAndLastSymbolsCount = 5
+                    let instanceIdToShow = null
+                    if (firstAndLastSymbolsCount < mapNameData.in.length / 2) {
+                        instanceIdToShow = `${mapNameData.in.slice(0, firstAndLastSymbolsCount)}`
+                            + '*'.repeat(mapNameData.in.length - 2 * firstAndLastSymbolsCount)
+                            +`${mapNameData.in.slice(mapNameData.in.length - firstAndLastSymbolsCount)}`
+                    } else {
+                        instanceIdToShow = mapNameData.in
+                    }
+
+                    instanceIdElement = e(
+                        'div',
+                        {},
+                        e(
+                            'div',
+                            { onClick: copyOnClick(mapNameData.in, copyInstanceIdPopupId) },
+                            `in : ${instanceIdToShow}`,
+                        ),
+                        e(
+                            'div',
+                            { className: 'popup' },
+                            e(
+                                'span',
+                                { id: copyInstanceIdPopupId, className: 'popuptext' },
+                            ),
+                        ),
+                    )
+                } else {
+                    instanceIdElement = 'in: unknown'
+                }
+            }
+
+            return [
+                e(
+                    'div',
+                    { key: 'mapName', style: {
+                        background: 'black',
+                        border: '2px double gray',
+                        padding: '4px',
+                    } },
+                    e(
+                        'div',
+                        { style: {
+                            display: 'flex',
+                            gap: '4px',
+                        } },
+                        `Map: ${mapNameData && mapNameData.map ? mapNameData.map : 'loading'}`
+                    ),
+                    instanceIdElement,
+                )
+            ]
+        }
+
+        const updateCryptMobs = (instanceId, entities) => {
+            if (!(instanceId in CRYPT_MOBS_STATES_AND_STATS)) {
+                CRYPT_MOBS_STATES_AND_STATS[instanceId] = {}
+            }
+
+            const now = Date.now()
+
+            for (let id in entities) {
+                const entity = entities[id]
+                if (!entity) continue
+                if (!entity.visible || entity.dead) continue
+
+                if (!CRYPT_IMPORTANT_MOBS_MTYPES.includes(entity.mtype)) continue
+                let instanceData = CRYPT_MOBS_STATES_AND_STATS[instanceId]
+
+                if (CRYPT_BOSSES_MTYPES.includes(entity.mtype)) {
+                    if (!(entity.mtype in instanceData)) {
+                        instanceData[entity.mtype] = {
+                            deadCount: 0,
+                            firstSeen: now,
+                            lastSeen: now,
+                            lastSeenLevel: entity.level,
+                            lastSeenFocus: entity.focus,
+                        }
+                    } else {
+                        instanceData[entity.mtype].lastSeen = now
+                        instanceData[entity.mtype].lastSeenLevel = entity.level
+                    }
+                } else {
+                    if (!(entity.mtype in instanceData)) {
+                        instanceData[entity.mtype] = {
+                            deadCount: 0,
+                        }
+                    }
+                }
+
+                idToMobData.set(entity.id, {
+                    mtype: entity.mtype,
+                    in: entity.in,
+                })
+            }
+        }
+
+        function maybeResubscribeToSocketEvents() {
+            if (!window.socket) return
+
+            let socket = window.socket
+
+            // 2 websockets are connecting via /comm (o_O), one with .id, another without .id
+            // so subscribing only for socket that has .id
+            if (!socket.id) return
+            if (socket.id === lastSocketId) return
+
+            lastSocketId = socket.id
+
+            socket.on('death', function(data) {
+                let mobData = idToMobData.get(data.id)
+                if (mobData === undefined) return
+
+                if (!(mobData.in in CRYPT_MOBS_STATES_AND_STATS)) return
+
+                let instanceData = CRYPT_MOBS_STATES_AND_STATS[mobData.in]
+                if (!(mobData.mtype in instanceData)) return
+
+                ++instanceData[mobData.mtype].deadCount
+
+                if (CRYPT_BOSSES_MTYPES.includes(mobData.mtype)) {
+                    let mobRichData = instanceData[mobData.mtype]
+                    mobRichData.luckm = data.luckm
+                    mobRichData.deathEventTimestamp = Date.now()
+                }
+            })
+        }
+        maybeResubscribeToSocketEvents()
+
+        const CryptProgressInfo = (props) => {
+            maybeResubscribeToSocketEvents()
+
+            const mapName = GetMap()
+            if (!mapName || mapName.map !== 'crypt') {
+                return []
+            }
+
+            let entities = window.entities ?? []
+            updateCryptMobs(mapName.in, entities)
+
+            let currentlySeeMtypes = new Set()
+            let aggroedMtypes = new Set()
+
+            for (let id in entities) {
+                const entity = entities[id]
+                if (!entity) continue
+                if (entity.type !== 'monster' || !entity.visible || entity.dead) continue
+
+                if (!CRYPT_IMPORTANT_MOBS_MTYPES.includes(entity.mtype)) continue
+
+                currentlySeeMtypes.add(entity.mtype)
+                if (entity.target) {
+                    aggroedMtypes.add(entity.mtype)
+                }
+            }
+
+            const instanceData = CRYPT_MOBS_STATES_AND_STATS[mapName.in] ?? {}
+
+            let elems = []
+            for (let mtype of CRYPT_IMPORTANT_MOBS_MTYPES) {
+                const mobRichData = instanceData[mtype]
+
+                let borderColor = 'gray'
+
+                if (aggroedMtypes.has(mtype)) {
+                    borderColor = 'red'
+                } else if (currentlySeeMtypes.has(mtype)) {
+                    borderColor = 'yellow'
+                }
+
+                let status = '??'
+                let lastSeenComponent = null
+                let levelComponent = ''
+                let focusComponent = null
+                let luckmComponent = null
+
+                if (mobRichData) {
+                    if (CRYPT_BOSSES_MTYPES.includes(mtype)) {
+                        if (mobRichData.deadCount > 0) {
+                            status = `Died ${formatTime((Date.now() - mobRichData.deathEventTimestamp) / 1000)} ago`
+                            luckmComponent = `luckm: ${mobRichData.luckm.toFixed(3)}`
+                        } else {
+                            status = 'Alive'
+
+                            if (aggroedMtypes.has(mtype)) {
+                                lastSeenComponent = 'Aggroed!'
+                            } else if (currentlySeeMtypes.has(mtype)) {
+                                lastSeenComponent = 'We see!'
+                            } else {
+                                lastSeenComponent = `Seen ${formatTime((Date.now() - mobRichData.lastSeen) / 1000)} ago`
+                            }
+
+                            if (mobRichData.lastSeenFocus) {
+                                const mobData = idToMobData.get(mobRichData.lastSeenFocus)
+                                if (mobData) {
+                                    focusComponent = `Focus: ${mobData.mtype}`
+                                }
+                            }
+                        }
+                        levelComponent = ` (${mobRichData.lastSeenLevel} lvl)`
+                    } else {
+                        status = `Died: ${mobRichData.deadCount}`
+                    }
+                }
+
+                elems.push(e(
+                    'div',
+                    { key: mtype, style: {
+                        background: 'black',
+                        border: `2px double ${borderColor}`,
+                        padding: '4px',
+                    } },
+                    [
+                        e('div', {key: 'mtype'}, `${mtype}${levelComponent}`),
+                        e('div', {key: 'state'}, status),
+                        lastSeenComponent ? e('div', {key: 'lastSeen'}, lastSeenComponent) : undefined,
+                        focusComponent ? e('div', {key: 'focus'}, focusComponent) : undefined,
+                        luckmComponent ? e('div', {key: 'luckm'}, luckmComponent) : undefined,
+                    ],
+                ))
+            }
+
+            return e(
+                'div',
+                { key: 'content', style: {
+                    display: 'flex',
+                    gap: '4px',
+                } },
+                ...elems,
+            )
+        }
+
+        // NOTE: AL servers' timezones are UTC-5/+1/+7.
+        function getALServerTime(timeOffset) {
+            const dt = new Date(Date.now() + parseInt(timeOffset) * 3600 * 1000)
+            return (
+                dt.getUTCHours().toString().padStart(2, 0)
+                + ':'
+                + dt.getUTCMinutes().toString().padStart(2, 0)
             )
         }
 
@@ -274,8 +579,9 @@
                         e('br'),
                         // `UTC${timeOffset >= 0 ? '+' : ''}${timeOffset}`,
                         // e('br'),
-                        new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: timeZones[timeOffset]}),
-                        // serverInfo.S?.schedule?.night ? '🌛' : '☀️',
+                        // NOTE: Look at NOTE near timeZones object.
+                        // new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: timeZones[timeOffset] })
+                        getALServerTime(timeOffset) + (serverInfo.S?.schedule?.night ? '🌛' : '☀️'),
                     ),
                     spawns.map((spawn) => e(
                         'div',
@@ -291,6 +597,27 @@
                 ),
                 // e('pre', { key: 'raw' }, JSON.stringify(serverInfo, null, 2)),
             ]
+        }
+
+        const createElementFromEntityState = (state) => {
+            return e(
+                'div',
+                { style: {
+                    display: 'flex',
+                    marginBottom: '4px',
+                    gap: '2px',
+                } },
+                Object.entries(state).map((s) => e(
+                    'div',
+                    { key: s[0], style: {
+                        background: 'black',
+                        padding: '2px',
+                    } },
+                    s[0],
+                    s[0] === 'stack' ? ` ${s[1].s}` : undefined,
+                    s[1].ms ? ` (${formatTime(s[1].ms / 1000)})` : undefined,
+                )),
+            )
         }
 
         const BossInfo = (props) => {
@@ -323,7 +650,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent(boss.hp / boss.max_hp),
+                            width: getPercent(boss.hp / boss.max_hp, 1),
                             background: 'red',
                         } },
                     ),
@@ -339,7 +666,7 @@
                             textShadow: '0 0 2px black',
                             cursor: 'pointer',
                         }, onClick: () => props.setSelectedEntity(boss.id) },
-                        `${boss.level ?? 1} ${boss.name} #${boss.id}`,
+                        `${boss.name} (lvl ${boss.level ?? 1}) #${boss.id}`,
                     ),
                 ),
                 e(
@@ -352,29 +679,18 @@
                         { style: {
                             background: 'blue',
                             height: '4px',
-                            width: getPercent(boss.mp / boss.max_mp),
+                            width: getPercent(boss.mp / boss.max_mp, 1),
                         } },
                     ),
                 ),
-                e(
-                    'div',
-                    { style: {
-                        display: 'flex',
-                        marginBottom: '4px',
-                        gap: '2px',
-                    } },
-                    Object.entries(boss.s ?? {}).map((s) => e(
-                        'div',
-                        { key: s[0], style: {
-                            background: 'black',
-                            padding: '2px',
-                        } },
-                        s[0],
-                        s[1].ms ? ` (${formatTime(s[1].ms / 1000)})` : undefined,
-                    )),
-                ),
+                createElementFromEntityState(boss.s),
             ))
         }
+
+        const mtypesToSquash = [
+            'nerfedbat', 'nerfedmummy', 'zapper0',
+            'crab',
+        ]
 
         const Enemies = (props) => {
             const entities = useEntities()
@@ -385,6 +701,20 @@
                     .filter((e) => e.target)
             }, [entities])
 
+            const enemiesToSquash = enemies.filter((e) => mtypesToSquash.includes(e.mtype))
+            const importantEnemies = enemies.filter((e) => !mtypesToSquash.includes(e.mtype))
+
+            let squashEnemiesCounts = {}
+            for (let enemy of enemiesToSquash) {
+                if (!(enemy.mtype in squashEnemiesCounts)) {
+                    squashEnemiesCounts[enemy.mtype] = 0
+                }
+                ++squashEnemiesCounts[enemy.mtype]
+            }
+
+            const maxEnemiesToShow = 10
+            const moreEnemiesCount = Math.max(0, importantEnemies.length - maxEnemiesToShow)
+
             return e(
                 'div',
                 { style: {
@@ -393,7 +723,7 @@
                     gap: '4px',
                     paddingTop: '4px',
                 } },
-                enemies.map((enemy) => e(
+                importantEnemies.slice(0, maxEnemiesToShow).map((enemy) => e(
                     'div',
                     {
                         key: enemy.id,
@@ -416,7 +746,7 @@
                                 position: 'absolute',
                                 top: 0,
                                 bottom: 0,
-                                width: getPercent(enemy.hp / enemy.max_hp),
+                                width: getPercent(enemy.hp / enemy.max_hp, 1),
                                 background: 'red',
                             } },
                         ),
@@ -431,7 +761,7 @@
                                 textShadow: '0 0 2px black',
                                 cursor: 'pointer',
                             }, onClick: () => props.setSelectedEntity(enemy.id) },
-                            `${enemy.level ?? 1} ${enemy.name} #${enemy.id}`,
+                            `${enemy.level ?? 1} ${enemy.name} #${enemy.id} (${getPercent(enemy.hp / enemy.max_hp, 1)})`,
                         ),
                     ),
                     e(
@@ -444,28 +774,26 @@
                             { style: {
                                 background: 'blue',
                                 height: '4px',
-                                width: getPercent(enemy.mp / enemy.max_mp),
+                                width: getPercent(enemy.mp / enemy.max_mp, 1),
                             } },
                         ),
                     ),
-                    /*e(
+                    // createElementFromEntityState(enemy.s),
+                )),
+                Object.keys(squashEnemiesCounts).map((enemyMtype) => e(
                     'div',
                     { style: {
-                        display: 'flex',
-                        marginBottom: '4px',
-                        gap: '2px',
+                        background: 'black',
                     } },
-                    Object.entries(enemy.s ?? {}).map((s) => e(
-                        'div',
-                        { style: {
-                            background: 'black',
-                            padding: '2px',
-                        } },
-                        s[0],
-                        s[1].ms ? ` (${formatTime(s[1].ms / 1000)})` : undefined,
-                    )),
-                ),*/
+                    `${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`,
                 )),
+                moreEnemiesCount ? e(
+                    'div',
+                    { style: {
+                        background: 'black',
+                    } },
+                    `${moreEnemiesCount} aggroed enemies`,
+                ) : undefined,
             )
         }
 
@@ -489,16 +817,23 @@
                     gap: '2px',
                     padding: '4px',
                 } },
-                e('div', {}, `${entity.level ?? 1} ${entity.name}${entity.type === 'monster' ? ` #${entity.id}` : ''}`),
+                e('div', {}, `${entity.name}${entity?.mtype ? ` (${entity.mtype})` : ''}, lvl ${entity.level ?? 1}${entity.type === 'monster' ? ` #${entity.id}` : ''}`),
+                entity.ctype ? e('div', {}, `Class: ${entity.ctype}`) : undefined,
                 entity.age ? e('div', {}, `Age: ${entity.age}`) : undefined,
                 entity.party ? e('div', {}, `Party: ${entity.party}`) : undefined,
                 e('br'),
+                e('div', {}, `HP: ${entity.hp} / ${entity.max_hp}`),
+                e('div', {}, `MP: ${entity.mp} / ${entity.max_mp}`),
                 entity.heal ? e('div', {}, `Heal: ${entity.heal}`) : undefined,
                 entity.attack ? e('div', {}, `Attack: ${entity.attack} ${entity?.damage_type ?? ''}`) : undefined,
                 e('div', {}, `Armor: ${entity.armor ?? 0}`),
                 e('div', {}, `Resistance: ${entity.resistance ?? 0}`),
+                // NOTE: .evasion and .reflection are probably private fields for characters,
+                //       but for monsters they are public.
+                entity.evasion ? e('div', {}, `Evasion: ${getPercent(entity.evasion / 100, 2)}`) : undefined,
+                entity.reflection ? e('div', {}, `Reflection: ${getPercent(entity.reflection / 100, 2)}`) : undefined,
                 e('br'),
-                entity.speed ? e('div', {}, `Speed: ${entity.speed}`) : undefined,
+                entity.speed ? e('div', {}, `Speed: ${entity.speed.toFixed(2)}`) : undefined,
                 entity.frequency ? e('div', {}, `Frequency: ${entity.frequency.toFixed(2)}`) : undefined,
             )
         }
@@ -516,7 +851,7 @@
                 e(
                     'div',
                     { style: {
-                        width: '60%',
+                        width: '55%',
                     } },
                     character
                     ? e(
@@ -540,7 +875,7 @@
                                     position: 'absolute',
                                     top: 0,
                                     bottom: 0,
-                                    width: getPercent(character.hp / character.max_hp),
+                                    width: getPercent(character.hp / character.max_hp, 1),
                                     background: classColors[character.ctype],
                                 } },
                             ),
@@ -569,17 +904,18 @@
                                 { style: {
                                     background: 'blue',
                                     height: '4px',
-                                    width: getPercent(character.mp / character.max_mp),
+                                    width: getPercent(character.mp / character.max_mp, 1),
                                 } },
                             ),
                         ),
+                        createElementFromEntityState(character.s),
                     )
                     : undefined,
                 ),
                 e(
                     'div',
                     { style: {
-                        width: '40%',
+                        width: '45%',
                     } },
                     target
                     ? e(
@@ -603,7 +939,7 @@
                                     position: 'absolute',
                                     top: 0,
                                     bottom: 0,
-                                    width: getPercent(target.hp / target.max_hp),
+                                    width: getPercent(target.hp / target.max_hp, 1),
                                     background: classColors[target.ctype] ?? 'red',
                                 } },
                             ),
@@ -632,17 +968,18 @@
                                 { style: {
                                     background: 'blue',
                                     height: '4px',
-                                    width: getPercent(target.mp / target.max_mp),
+                                    width: getPercent(target.mp / target.max_mp, 1),
                                 } },
                             ),
                         ),
+                        createElementFromEntityState(target.s),
                     )
                     : undefined,
                 ),
             )
         }
 
-        const DamageMeter = (props) => {
+        const PdpsMeter = (props) => {
             const entities = useEntities()
 
             const players = React.useMemo(() => {
@@ -684,7 +1021,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent(player.pdps / maxPdps),
+                            width: getPercent(player.pdps / maxPdps, 1),
                             background: classColors[player.ctype],
                         } },
                     ),
@@ -710,7 +1047,7 @@
                         } },
                         `${(player.pdps).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
-                ))
+                )),
             )
         }
 
@@ -749,6 +1086,8 @@
                             padding: '4px 16px',
                         } },
                         e(ServerInfo),
+                        e(MapInfo),
+                        e(CryptProgressInfo),
                         e(BossInfo, { setSelectedEntity }),
                     ),
                     e(
@@ -790,7 +1129,7 @@
                             width: '376px',
                             paddingBottom: '36px',
                         } },
-                        e(DamageMeter),
+                        e(PdpsMeter),
                     ),
                 ),
             )
@@ -828,10 +1167,70 @@
         document.head.append(reactDomScript)
     }
 
+    if (!document.querySelector('#comm-copy-popup-css')) {
+        const style = document.createElement('style')
+        style.id = 'comm-copy-popup-css'
+        style.innerText = `
+/* Popup container */
+.popup {
+  position: relative;
+  display: inline;
+  cursor: pointer;
+}
+
+/* The actual popup (appears on top) */
+.popup .popuptext {
+  visibility: hidden;
+  width: 160px;
+  background-color: #555;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 8px 0;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -80px;
+}
+
+/* Popup arrow */
+.popup .popuptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #555 transparent transparent transparent;
+}
+
+/* Toggle this class when clicking on the popup container (hide and show the popup) */
+.popup .show {
+  visibility: visible;
+  -webkit-animation: fadeIn 1s;
+  animation: fadeIn 1s
+}
+
+/* Add animation (fade in the popup) */
+@-webkit-keyframes fadeIn {
+  from {opacity: 0;}
+  to {opacity: 1;}
+}
+
+@keyframes fadeIn {
+  from {opacity: 0;}
+  to {opacity:1 ;}
+}
+`
+        document.head.append(style)
+    }
+
     /*
     if (!document.querySelector('#comm-ui-css')) {
         const style = document.createElement('style')
-        style.id = 'react-dom'
+        style.id = 'comm-ui-css'
         style.innerText = `
 progress.comm-ui-hp-bar {
   border-radius: 0;
