@@ -4,7 +4,14 @@
 // TODO: a bagnon / all in one inventory for the bank
 // TODO: also extend the player inventory
 
-import { BankPackType, ItemInfo, ItemKey, ItemType } from "adventureland";
+import {
+  AchievementKey,
+  BankPackType,
+  ItemInfo,
+  ItemKey,
+  ItemType,
+  TitleKey,
+} from "adventureland";
 import { abbreviateNumber } from "./utils";
 
 // TODO: render ALL items from the bank when in the bank
@@ -78,12 +85,14 @@ type GroupedItems = {
     amount: number;
     items: {
       [itemKey in ItemKey]?: {
-        amount: number;
-        // TODO: how do we group items by .p seperating out shiny for example `items` as a subgroup, this could work for weapons as well?
-        levels: {
-          [level: number]: {
-            amount: number;
-            indexes: [[BankPackType, number]];
+        [title in TitleKey]?: {
+          amount: number;
+          // TODO: how do we group items by .p seperating out shiny for example `items` as a subgroup, this could work for weapons as well?
+          levels: {
+            [level: number]: {
+              amount: number;
+              indexes: [[BankPackType, number]];
+            };
           };
         };
       };
@@ -244,16 +253,24 @@ class EnhancedBankUI {
 
         let itemData = itemByType.items[itemInfo.name];
         if (!itemData) {
-          itemData = { amount: 0, levels: {} };
+          itemData = {};
           itemByType.items[itemInfo.name] = itemData;
         }
 
-        let levels = itemData.levels[level];
+        let itemTitleData = itemData[(itemInfo.p as TitleKey) ?? ""];
+        if (!itemTitleData) {
+          itemTitleData = { amount: 0, levels: {} };
+          itemData[(itemInfo.p as TitleKey) ?? ""] = itemTitleData;
+        } else {
+          itemTitleData.amount += itemInfo.q || 1;
+        }
+
+        let levels = itemTitleData.levels[level];
         if (!levels) {
           levels = { amount: itemInfo.q || 1, indexes: [[packName, index]] };
-          itemData.levels[level] = levels;
+          itemTitleData.levels[level] = levels;
         } else {
-          itemData.amount += itemInfo.q || 1;
+          itemTitleData.amount += itemInfo.q || 1;
           levels.amount += itemInfo.q || 1;
           levels.indexes.push([packName, index]);
         }
@@ -267,7 +284,8 @@ class EnhancedBankUI {
   public async onMouseDownBankItem(
     e: JQuery.Event<HTMLElement, null>,
     itemKey: ItemKey,
-    level: number
+    level: number,
+    title: TitleKey
   ) {
     e.preventDefault();
 
@@ -276,22 +294,26 @@ class EnhancedBankUI {
         for (const key in this.groups) {
           const group = this.groups[key];
           const item = group.items[itemKey];
+
           if (!item) continue;
-          const itemByLevel = item.levels[level];
+          const itemByTitle = item[title];
+
+          if (!itemByTitle) continue;
+          const itemByLevel = itemByTitle.levels[level];
 
           if (itemByLevel && itemByLevel.indexes.length > 0) {
             const [pack, index] = itemByLevel.indexes.splice(0, 1)[0];
             // TODO: look up item and determine if it has a quantity to substract instead of 1
             itemByLevel.amount -= 1;
             if (itemByLevel.indexes.length <= 0) {
-              delete item.levels[level];
+              delete itemByTitle.levels[level];
             }
 
             if (bank_retrieve) {
-              const [packMap] = bank_packs[pack]
-              if(character.map !== packMap){
+              const [packMap] = bank_packs[pack];
+              if (character.map !== packMap) {
                 game_log(`Moving to ${packMap} from ${character.map} `);
-                await smart_move(packMap)
+                await smart_move(packMap);
               }
 
               await bank_retrieve(pack, index);
@@ -382,71 +404,121 @@ class EnhancedBankUI {
         let itemKey: ItemKey;
         for (itemKey in itemsByType.items) {
           const gItem = G.items[itemKey as ItemKey];
-          const { amount, levels } = itemsByType.items[itemKey] ?? {};
+          const itemsByTitle = itemsByType.items[itemKey] ?? {};
 
           // TODO: iterate backwards?
+          let titleKey: TitleKey;
+          for (titleKey in itemsByTitle) {
+            const { amount, levels } = itemsByTitle[titleKey] ?? {};
+            for (const level in levels) {
+              const data = levels[Number(level)];
 
-          for (const level in levels) {
-            const data = levels[Number(level)];
+              const fakeItemInfo: ItemInfo = { name: itemKey as ItemKey };
 
-            const fakeItemInfo: ItemInfo = { name: itemKey as ItemKey };
+              if (Number(level) > 0) {
+                fakeItemInfo.level = Number(level);
+              }
 
-            if (Number(level) > 0) {
-              fakeItemInfo.level = Number(level);
+              if (data.amount) {
+                fakeItemInfo.q = data.amount;
+              }
+
+              // TODO: add item_container to types
+              const itemContainer = $(
+                (<any>parent).item_container(
+                  {
+                    skin: gItem.skin,
+                    // onclick: "render_item_info('" + itemKey + "')",
+                  },
+                  fakeItemInfo
+                )
+              );
+
+              const stackSize = Number(gItem.s);
+              const stackCount = data.indexes.length;
+              const optimalStackCount = Math.ceil(data.amount / stackSize);
+              const optimalStackCountMessage =
+                stackCount > optimalStackCount ? `⚠️${optimalStackCount}` : "";
+
+              const titleName =
+                titleKey && G.titles[titleKey]
+                  ? `${G.titles[titleKey].title} `
+                  : "";
+
+              itemContainer.attr(
+                "title",
+                `${titleName}${gItem.name}${
+                  Number(level) > 0 ? `+${level}` : ""
+                }\n${stackCount} stacks ${optimalStackCountMessage}`
+              );
+
+              // style depending on titleKey
+
+              let titleBorderColor;
+              switch (titleKey) {
+                case "festive":
+                  titleBorderColor = "#79ff7e";
+                  break;
+                case "firehazard":
+                  titleBorderColor = "#f79b11";
+                case "glitched":
+                  titleBorderColor = "grey";
+                case "gooped":
+                  titleBorderColor = "#64B867";
+                  break;
+                case "legacy":
+                  titleBorderColor = "white";
+                  break;
+                case "lucky":
+                  titleBorderColor = "#00f3ff";
+                  break;
+                case "shiny":
+                  titleBorderColor = "#99b2d8";
+                  break;
+                case "superfast":
+                  titleBorderColor = "#c681dc";
+                  break;
+              }
+
+              if (titleBorderColor) {
+                itemContainer.css({
+                  borderColor: titleBorderColor,
+                });
+
+                const itemSubContainer = itemContainer.find("div:first-child");
+
+                itemSubContainer.css({
+                  border: "None",
+                  left: "",
+                  bottom: "",
+                });
+              }
+
+              // handle left and right click
+              itemContainer.attr(
+                "onmousedown",
+                `enhanced_bank_ui.onMouseDownBankItem(event, '${itemKey}', ${level})`
+              );
+
+              // level container
+              const levelElement = itemContainer.find(".iuui");
+              levelElement.css({
+                fontSize: "16px",
+              });
+
+              // find quantity in item container and make it pretty
+              const countElement = itemContainer.find(".iqui");
+              countElement.css({
+                fontSize: "16px",
+              });
+              const count = Number(countElement.text());
+              const prettyCount = abbreviateNumber(count);
+              if (prettyCount) {
+                countElement.html(prettyCount.toString());
+              }
+
+              itemsContainer.append(itemContainer);
             }
-
-            if (data.amount) {
-              fakeItemInfo.q = data.amount;
-            }
-
-            // TODO: add item_container to types
-            const itemContainer = $(
-              (<any>parent).item_container(
-                {
-                  skin: gItem.skin,
-                  // onclick: "render_item_info('" + itemKey + "')",
-                },
-                fakeItemInfo
-              )
-            );
-
-            const stackSize = Number(gItem.s);
-            const stackCount = data.indexes.length;
-            const optimalStackCount = Math.ceil(data.amount / stackSize);
-            const optimalStackCountMessage =
-              stackCount > optimalStackCount ? `⚠️${optimalStackCount}` : "";
-
-            itemContainer.attr(
-              "title",
-              `${gItem.name}${
-                Number(level) > 0 ? `+${level}` : ""
-              }\n${stackCount} stacks ${optimalStackCountMessage}`
-            );
-
-            // handle left and right click
-            itemContainer.attr(
-              "onmousedown",
-              `enhanced_bank_ui.onMouseDownBankItem(event, '${itemKey}', ${level})`
-            );
-
-            // level container
-            const levelElement = itemContainer.find(".iuui");
-            levelElement.css({
-              fontSize: "16px",
-            });
-
-            // find quantity in item container and make it pretty
-            const countElement = itemContainer.find(".iqui");
-            countElement.css({
-              fontSize: "16px",
-            });
-            const count = Number(countElement.text());
-            const prettyCount = abbreviateNumber(count);
-            if (prettyCount) {
-              countElement.html(prettyCount.toString());
-            }
-
-            itemsContainer.append(itemContainer);
           }
         }
       }
