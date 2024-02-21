@@ -290,6 +290,7 @@ class EnhancedBankUI {
     e.preventDefault();
 
     switch (e.which) {
+      // TODO: middle click to show quantity selector ?
       case 3: // right click
         for (const key in this.groups) {
           const group = this.groups[key];
@@ -304,6 +305,7 @@ class EnhancedBankUI {
           if (itemByLevel && itemByLevel.indexes.length > 0) {
             const [pack, index] = itemByLevel.indexes.splice(0, 1)[0];
             // TODO: look up item and determine if it has a quantity to substract instead of 1
+            itemByTitle.amount -= 1;
             itemByLevel.amount -= 1;
             if (itemByLevel.indexes.length <= 0) {
               delete itemByTitle.levels[level];
@@ -497,7 +499,7 @@ class EnhancedBankUI {
               // handle left and right click
               itemContainer.attr(
                 "onmousedown",
-                `enhanced_bank_ui.onMouseDownBankItem(event, '${itemKey}', ${level})`
+                `enhanced_bank_ui.onMouseDownBankItem(event, '${itemKey}', ${level}, '${titleKey}')`
               );
 
               // level container
