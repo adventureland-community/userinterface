@@ -50,6 +50,16 @@ import { abbreviateNumber } from "./utils";
 //     };
 //   };
 
+const tshirtNames: { [key in ItemKey]?: string } = {
+  tshirt88: "Lucky", // Luck and all
+  tshirt9: "Manasteal", // Manasteal
+  tshirt3: "XP", // XP
+  tshirt8: "Attack MP", // Attack MP cost
+  tshirt7: "Armor piercing", // Armor piercing
+  tshirt6: "Res. piercing", // Res. piercing
+  tshirt4: "Speed", // Speed
+};
+
 const types: { [key in ItemType | "exchange" | "other"]?: string } = {
   helmet: "Helmets",
   chest: "Armors",
@@ -447,11 +457,14 @@ class EnhancedBankUI {
                   ? `${G.titles[titleKey].title} `
                   : "";
 
+              const itemName =
+                itemKey in tshirtNames ? tshirtNames[itemKey] : gItem.name;
+
               itemContainer.attr(
                 "title",
-                `${titleName}${gItem.name}${
+                `${titleName}${itemName}${
                   Number(level) > 0 ? `+${level}` : ""
-                }\n${stackCount} stacks ${optimalStackCountMessage}`
+                }\n${itemKey}\n${stackCount} stacks ${optimalStackCountMessage}`
               );
 
               // style depending on titleKey
@@ -463,8 +476,10 @@ class EnhancedBankUI {
                   break;
                 case "firehazard":
                   titleBorderColor = "#f79b11";
+                  break;
                 case "glitched":
                   titleBorderColor = "grey";
+                  break;
                 case "gooped":
                   titleBorderColor = "#64B867";
                   break;
