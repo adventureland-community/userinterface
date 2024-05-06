@@ -1,14 +1,13 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.2
+// @version      0.3
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
-// @contributors vett0
-// @match        https://adventure.land/comm/
+// @contributors vett0, thmsn
+// @match        https://adventure.land/comm
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
-// @downloadUrl  https://raw.githubusercontent.com/adventureland-community/userinterface/main/enhance-comm-ui.js
 // ==/UserScript==
 
 (function() {
@@ -979,6 +978,89 @@
             )
         }
 
+        const CoopContributionMeter = (props) => {
+            const entities = useEntities()
+
+            const players = React.useMemo(() => {
+                return entities
+                    .filter((e) => e.player && e.type === 'character'
+                            && e.ctype !== 'merchant'
+                            && e.s?.coop?.p > 0
+                    )
+                    .sort((a, b) => b.s.coop.p - a.s.coop.p)
+            }, [entities])
+
+            const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop.p)), [players])
+
+            if (!maxContribution || players.length === 0) {
+                return
+            }
+
+            return e(
+                'div',
+                { style: {
+                    display: 'flex',
+                    overflow: 'auto',
+                    flexDirection: 'column',
+                    margin: '4px',
+                    border: '2px double gray',
+                    background: 'black',
+                    gap: '2px',
+                } },
+                 e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `s.coop`
+                    ),
+                players.map((player) => e(
+                    'div',
+                    { key: player.id, style: {
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                    } },
+                    e(
+                        'div',
+                        { style: {
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            width: getPercent(player.s.coop.p / maxContribution, 1),
+                            background: classColors[player.ctype],
+                        } },
+                    ),
+                    e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `${player.name}`
+                    ),
+                    e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `${(player.s.coop.p).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    ),
+                )),
+            )
+        }
+
         const PdpsMeter = (props) => {
             const entities = useEntities()
 
@@ -1007,6 +1089,16 @@
                     background: 'black',
                     gap: '2px',
                 } },
+                e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `PDPS`
+                    ),
                 players.map((player) => e(
                     'div',
                     { key: player.id, style: {
@@ -1126,10 +1218,18 @@
                     e(
                         'div',
                         { style: {
-                            width: '376px',
+                            width: '200px',
                             paddingBottom: '36px',
                         } },
                         e(PdpsMeter),
+                    ),
+                    e(
+                        'div',
+                        { style: {
+                            width: '200px',
+                            paddingBottom: '36px',
+                        } },
+                        e(CoopContributionMeter),
                     ),
                 ),
             )
