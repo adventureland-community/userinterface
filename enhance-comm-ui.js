@@ -1,11 +1,14 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
 // @match        https://adventure.land/comm
+// @match        https://adventure.land/comm?borders=1
+// @match        https://thmsn.adventureland.community/comm
+// @match        https://thmsn.adventureland.community/comm?borders=1
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
 // ==/UserScript==
@@ -992,6 +995,8 @@
 
             const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop.p)), [players])
 
+            const totalContribution = React.useMemo(() => players.map((p) => p.s.coop.p).reduce((acc,a) => acc + a, 0), [players])
+
             if (!maxContribution || players.length === 0) {
                 return
             }
@@ -1055,7 +1060,7 @@
                             textShadow: '0 0 2px black',
                             position: 'relative',
                         } },
-                        `${(player.s.coop.p).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        `${getPercent(player.s.coop.p / totalContribution, 1)} | ${(player.s.coop.p).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
                 )),
             )
