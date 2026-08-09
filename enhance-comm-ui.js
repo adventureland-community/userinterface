@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -68,7 +68,7 @@
         }
         */
 
-        const intervalTimeMs = 500
+        const intervalTimeMs = 100
 
         const CRYPT_BOSSES_MTYPES = [
             'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8',
@@ -175,7 +175,7 @@
             const players = React.useMemo(() => {
                 return entities
                     .filter((e) => e.player && e.type === 'character')
-                    .filter((e) => e.ctype !== 'merchant')
+                    //.filter((e) => e.ctype !== 'merchant')
                 //                    .sort((a, b) => b.pdps - a.pdps)
             }, [entities])
 
@@ -304,7 +304,7 @@
                         console.error('Could not copy instance ID:', err)
                         showPopup(popupId, 'Copy failure, look into console.')
                     },
-                );
+                )
             }
         }
 
@@ -561,7 +561,9 @@
             const serverInfo = useServerInfo()
 
             const timeOffset = serverInfo.S?.schedule?.time_offset ?? 0
-            const spawns = Object.entries(serverInfo.S ?? {}).filter((entry) => entry[1]?.live || entry[1]?.spawn)
+            const events = Object.entries(serverInfo.S ?? {})
+                .filter((entry) => entry[0] !== 'schedule')
+                //.filter((entry) => entry[1]?.live || entry[1]?.spawn)
 
             return [
                 e(
@@ -585,16 +587,16 @@
                         // new Date().toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", timeZone: timeZones[timeOffset] })
                         getALServerTime(timeOffset) + (serverInfo.S?.schedule?.night ? '🌛' : '☀️'),
                     ),
-                    spawns.map((spawn) => e(
+                    events.map((event) => e(
                         'div',
-                        { key: spawn[0], style: {
+                        { key: event[0], style: {
                             background: 'black',
                             border: '2px double gray',
                             padding: '4px',
                         } },
-                        spawn[0],
+                        event[0],
                         e('br'),
-                        spawn[1].live ? 'live' : getTimeUntil(spawn[1].spawn),
+                        event[1].live ? 'live' : (event[1].event ? getTimeUntil(event[1].event) : ''),
                     )),
                 ),
                 // e('pre', { key: 'raw' }, JSON.stringify(serverInfo, null, 2)),
@@ -701,6 +703,13 @@
                 return entities
                     .filter((e) => e.type === 'monster' && e.cooperative !== true)
                     .filter((e) => e.target)
+                    .sort((a, b) => {
+                        const cmp_mtypes = a.mtype.localeCompare(b.mtype)
+                        if (cmp_mtypes !== 0) {
+                            return cmp_mtypes
+                        }
+                        return a.id < b.id ? -1 : 1
+                    })
             }, [entities])
 
             const enemiesToSquash = enemies.filter((e) => mtypesToSquash.includes(e.mtype))
@@ -787,14 +796,14 @@
                     { style: {
                         background: 'black',
                     } },
-                    `${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`,
+                    `also ${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`,
                 )),
                 moreEnemiesCount ? e(
                     'div',
                     { style: {
                         background: 'black',
                     } },
-                    `${moreEnemiesCount} aggroed enemies`,
+                    `...and ${moreEnemiesCount} more aggroed enemies`,
                 ) : undefined,
             )
         }
@@ -981,21 +990,23 @@
             )
         }
 
-        const CoopContributionMeter = (props) => {
+        const CoopContributionMeterV1 = (props) => {
             const entities = useEntities()
+            const entitiesIds = entities.map((e) => e.id)
 
             const players = React.useMemo(() => {
                 return entities
                     .filter((e) => e.player && e.type === 'character'
-                            && e.ctype !== 'merchant'
-                            && e.s?.coop?.p > 0
+                        //&& e.ctype !== 'merchant'
+                        && e.s?.coop?.p > 0
+                        && entitiesIds.includes(e.s.coop?.id)
                     )
                     .sort((a, b) => b.s.coop.p - a.s.coop.p)
             }, [entities])
 
-            const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop.p)), [players])
+            const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop?.p ?? 0)), [players])
 
-            const totalContribution = React.useMemo(() => players.map((p) => p.s.coop.p).reduce((acc,a) => acc + a, 0), [players])
+            const totalContribution = React.useMemo(() => players.map((p) => (p.s.coop?.p ?? 0)).reduce((acc,a) => acc + a, 0), [players])
 
             if (!maxContribution || players.length === 0) {
                 return
@@ -1019,8 +1030,9 @@
                             whiteSpace: 'nowrap',
                             textShadow: '0 0 2px black',
                             position: 'relative',
-                        } },
-                        `s.coop`
+                        },
+                        },
+                     `s.coop v1`
                     ),
                 players.map((player) => e(
                     'div',
@@ -1036,7 +1048,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent(player.s.coop.p / maxContribution, 1),
+                            width: getPercent((player.s.coop?.p ?? 0) / maxContribution, 3),
                             background: classColors[player.ctype],
                         } },
                     ),
@@ -1060,7 +1072,107 @@
                             textShadow: '0 0 2px black',
                             position: 'relative',
                         } },
-                        `${getPercent(player.s.coop.p / totalContribution, 1)} | ${(player.s.coop.p).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        `${getPercent((player.s.coop?.p ?? 0) / totalContribution, 3)} | ${player.s.coop?.p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                    ),
+                )),
+            )
+        }
+
+        function getShareV1ToPow065(player, totalContributionV1) {
+            return Math.pow((player.s.coop?.p ?? 0) / totalContributionV1, 0.65)
+        }
+
+        const CoopContributionMeterV2 = (props) => {
+            const entities = useEntities()
+            const entitiesIds = entities.map((e) => e.id)
+
+            const players = React.useMemo(() => {
+                return entities
+                    .filter((e) => e.player && e.type === 'character'
+                        //&& e.ctype !== 'merchant'
+                        && e.s?.coop?.p > 0
+                        && entitiesIds.includes(e.s.coop?.id)
+                    )
+                    .sort((a, b) => b.s.coop.p - a.s.coop.p)
+            }, [entities])
+
+            //const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop?.p ?? 0)), [players])
+
+            const totalContributionV1 = React.useMemo(() => players.map((p) => p.s.coop?.p ?? 0).reduce((acc,a) => acc + a, 0), [players])
+
+            const contributionShares = React.useMemo(() => players.map((p) => (p.s.coop?.p ?? 0) / totalContributionV1), [players])
+            const contributionSharesPow065 = React.useMemo(() => contributionShares.map((share) => Math.pow(share, 0.65)), [contributionShares])
+            const maxContributionSharePow065 = React.useMemo(() => Math.max(...contributionSharesPow065), [contributionSharesPow065])
+            // NOTE: initial value 0.1 is what is used on server
+            const totalContributionSharesPow065 = React.useMemo(() => contributionSharesPow065.reduce((acc,a) => acc + a, 0.1), [contributionSharesPow065])
+
+            if (!maxContributionSharePow065 || players.length === 0) {
+                return
+            }
+
+            return e(
+                'div',
+                {
+                    style: {
+                    display: 'flex',
+                    overflow: 'auto',
+                    flexDirection: 'column',
+                    margin: '4px',
+                    border: '2px double gray',
+                    background: 'black',
+                    gap: '2px',
+                },
+                 className: 'CoopContributionMeterV2',
+                },
+                 e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `s.coop v2`
+                    ),
+                players.map((player) => e(
+                    'div',
+                    { key: player.id, style: {
+                        position: 'relative',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                    } },
+                    e(
+                        'div',
+                        { style: {
+                            position: 'absolute',
+                            top: 0,
+                            bottom: 0,
+                            width: getPercent(getShareV1ToPow065(player, totalContributionV1) / maxContributionSharePow065, 3),
+                            background: classColors[player.ctype],
+                        } },
+                    ),
+                    e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textOverflow: 'ellipsis',
+                            overflow: 'hidden',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `${player.name}`
+                    ),
+                    e(
+                        'div',
+                        { style: {
+                            padding: '2px',
+                            whiteSpace: 'nowrap',
+                            textShadow: '0 0 2px black',
+                            position: 'relative',
+                        } },
+                        `${getPercent(getShareV1ToPow065(player, totalContributionV1) / totalContributionSharesPow065, 3)} | ${(player.s.coop?.p ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
                 )),
             )
@@ -1072,12 +1184,12 @@
             const players = React.useMemo(() => {
                 return entities
                     .filter((e) => e.player && e.type === 'character')
-                    .filter((e) => e.ctype !== 'merchant')
+                    //.filter((e) => e.ctype !== 'merchant')
                     .filter((e) => e.pdps > 0)
                     .sort((a, b) => b.pdps - a.pdps)
             }, [entities])
 
-            const maxPdps = React.useMemo(() => Math.max(...players.map((p) => p.pdps)), [players])
+            const maxPdps = React.useMemo(() => Math.max(...players.map((p) => p?.pdps ?? 0)), [players])
 
             if (!maxPdps || players.length === 0) {
                 return
@@ -1093,17 +1205,19 @@
                     border: '2px double gray',
                     background: 'black',
                     gap: '2px',
-                } },
+                },
+                 className: 'PdpsMeter',
+                },
                 e(
-                        'div',
-                        { style: {
-                            padding: '2px',
-                            whiteSpace: 'nowrap',
-                            textShadow: '0 0 2px black',
-                            position: 'relative',
-                        } },
-                        `PDPS`
-                    ),
+                    'div',
+                    { style: {
+                        padding: '2px',
+                        whiteSpace: 'nowrap',
+                        textShadow: '0 0 2px black',
+                        position: 'relative',
+                    } },
+                    `PDPS`
+                ),
                 players.map((player) => e(
                     'div',
                     { key: player.id, style: {
@@ -1118,7 +1232,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent(player.pdps / maxPdps, 1),
+                            width: getPercent((player?.pdps ?? 0) / maxPdps, 1),
                             background: classColors[player.ctype],
                         } },
                     ),
@@ -1142,13 +1256,17 @@
                             textShadow: '0 0 2px black',
                             position: 'relative',
                         } },
-                        `${(player.pdps).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        `${(player?.pdps ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
                 )),
             )
         }
 
         const CommUI = (props) => {
+            const [isVisiblePdps, setIsVisiblePdps] = React.useState(true)
+            const [isVisibleCoopV1, setIsVisibleCoopV1] = React.useState(true)
+            const [isVisibleCoopV2, setIsVisibleCoopV2] = React.useState(true)
+
             const [selectedEntity, setSelectedEntity] = React.useState(undefined)
 
             return e(
@@ -1156,7 +1274,6 @@
                 { style: {
                     display: 'flex',
                     flexDirection: 'column',
-                    justifyContent: 'space-between',
                     height: '100%',
                 } },
                 e(
@@ -1164,6 +1281,7 @@
                     { style: {
                         display: 'flex',
                         justifyContent: 'space-between',
+                        flexGrow: 1,
                     } },
                     e(
                         'div',
@@ -1203,6 +1321,7 @@
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'flex-end',
+                        flexGrow: 1,
                     } },
                     e(
                         'div',
@@ -1220,21 +1339,73 @@
                         } },
                         e(Player, { setSelectedEntity }),
                     ),
-                    e(
+                    isVisiblePdps && e(
                         'div',
                         { style: {
                             width: '200px',
-                            paddingBottom: '36px',
+                            paddingBottom: '12px',
                         } },
                         e(PdpsMeter),
                     ),
-                    e(
+                    isVisibleCoopV1 && e(
                         'div',
                         { style: {
                             width: '200px',
-                            paddingBottom: '36px',
+                            paddingBottom: '12px',
                         } },
-                        e(CoopContributionMeter),
+                        e(CoopContributionMeterV1),
+                    ),
+                    isVisibleCoopV2 && e(
+                        'div',
+                        { style: {
+                            width: '200px',
+                            paddingBottom: '12px',
+                        } },
+                        e(CoopContributionMeterV2),
+                    ),
+                ),
+                e(
+                    'div',
+                    { style: {
+                        height: '30px',
+                        flexShrink: 0,
+                        flexGrow: 0,
+                        width: '100%',
+                        flexDirection: 'row',
+                        justifyContent: 'flex-end',
+                        display: 'flex',
+                        gap: '8px',
+                        width: '100%',
+                    } },
+                    e(
+                        'button',
+                        { style: {
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            fontSize: '12px',
+                            margin: '0 0 5px 0',
+                        }, onClick: () => setIsVisiblePdps(!isVisiblePdps) },
+                        'Pdps: ' + (isVisiblePdps ? 'HIDE' : 'SHOW')
+                    ),
+                    e(
+                        'button',
+                        { style: {
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            fontSize: '12px',
+                            margin: '0 0 5px 0',
+                        }, onClick: () => setIsVisibleCoopV1(!isVisibleCoopV1) },
+                        'Coop V1: ' + (isVisibleCoopV1 ? 'HIDE' : 'SHOW')
+                    ),
+                    e(
+                        'button',
+                        { style: {
+                            cursor: 'pointer',
+                            padding: '2px 4px',
+                            fontSize: '12px',
+                            margin: '0 10px 5px 0',
+                        }, onClick: () => setIsVisibleCoopV2(!isVisibleCoopV2) },
+                        'Coop V2: ' + (isVisibleCoopV2 ? 'HIDE' : 'SHOW')
                     ),
                 ),
             )
@@ -1253,6 +1424,10 @@
 
         const root = ReactDOM.createRoot(domContainer)
         root.render(e(CommUI))
+
+        const bottom = document.getElementById('bottom')
+        // NOTE: We need this so can click on show/hide buttons
+        bottom.style.pointerEvents = 'none'
     }
 
     if (!document.querySelector('#react')) {
