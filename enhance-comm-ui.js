@@ -999,14 +999,14 @@
                     .filter((e) => e.player && e.type === 'character'
                         //&& e.ctype !== 'merchant'
                         && e.s?.coop?.p > 0
-                        && entitiesIds.includes(e.s.coop?.id)
+                        && entitiesIds.includes(e.s.coop.id)
                     )
                     .sort((a, b) => b.s.coop.p - a.s.coop.p)
             }, [entities])
 
-            const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop?.p ?? 0)), [players])
+            const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p?.s?.coop?.p ?? 0)), [players])
 
-            const totalContribution = React.useMemo(() => players.map((p) => (p.s.coop?.p ?? 0)).reduce((acc,a) => acc + a, 0), [players])
+            const totalContribution = React.useMemo(() => players.map((p) => (p?.s?.coop?.p ?? 0)).reduce((acc,a) => acc + a, 0), [players])
 
             if (!maxContribution || players.length === 0) {
                 return
@@ -1048,7 +1048,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent((player.s.coop?.p ?? 0) / maxContribution, 3),
+                            width: getPercent((player?.s?.coop?.p ?? 0) / maxContribution, 3),
                             background: classColors[player.ctype],
                         } },
                     ),
@@ -1072,14 +1072,14 @@
                             textShadow: '0 0 2px black',
                             position: 'relative',
                         } },
-                        `${getPercent((player.s.coop?.p ?? 0) / totalContribution, 3)} | ${player.s.coop?.p.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        `${getPercent((player?.s?.coop?.p ?? 0) / totalContribution, 3)} | ${(player?.s?.coop?.p ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
                 )),
             )
         }
 
-        function getShareV1ToPow065(player, totalContributionV1) {
-            return Math.pow((player.s.coop?.p ?? 0) / totalContributionV1, 0.65)
+        function getPointsToPow065(player) {
+            return Math.pow(Math.max(0, player?.s?.coop?.p ?? 0), 0.65)
         }
 
         const CoopContributionMeterV2 = (props) => {
@@ -1091,22 +1091,17 @@
                     .filter((e) => e.player && e.type === 'character'
                         //&& e.ctype !== 'merchant'
                         && e.s?.coop?.p > 0
-                        && entitiesIds.includes(e.s.coop?.id)
+                        && entitiesIds.includes(e.s.coop.id)
                     )
                     .sort((a, b) => b.s.coop.p - a.s.coop.p)
             }, [entities])
 
-            //const maxContribution = React.useMemo(() => Math.max(...players.map((p) => p.s.coop?.p ?? 0)), [players])
-
-            const totalContributionV1 = React.useMemo(() => players.map((p) => p.s.coop?.p ?? 0).reduce((acc,a) => acc + a, 0), [players])
-
-            const contributionShares = React.useMemo(() => players.map((p) => (p.s.coop?.p ?? 0) / totalContributionV1), [players])
-            const contributionSharesPow065 = React.useMemo(() => contributionShares.map((share) => Math.pow(share, 0.65)), [contributionShares])
-            const maxContributionSharePow065 = React.useMemo(() => Math.max(...contributionSharesPow065), [contributionSharesPow065])
+            const contributionPointsPow065 = React.useMemo(() => players.map((p) => Math.pow(Math.max(0, p?.s?.coop?.p ?? 0), 0.65)), [players])
+            const maxContributionPointsPow065 = React.useMemo(() => Math.max(...contributionPointsPow065), [contributionPointsPow065])
             // NOTE: initial value 0.1 is what is used on server
-            const totalContributionSharesPow065 = React.useMemo(() => contributionSharesPow065.reduce((acc,a) => acc + a, 0.1), [contributionSharesPow065])
+            const totalContributionPointsPow065 = React.useMemo(() => contributionPointsPow065.reduce((acc,a) => acc + a, 0.1), [contributionPointsPow065])
 
-            if (!maxContributionSharePow065 || players.length === 0) {
+            if (players.length === 0) {
                 return
             }
 
@@ -1148,7 +1143,7 @@
                             position: 'absolute',
                             top: 0,
                             bottom: 0,
-                            width: getPercent(getShareV1ToPow065(player, totalContributionV1) / maxContributionSharePow065, 3),
+                            width: getPercent(getPointsToPow065(player) / maxContributionPointsPow065, 3),
                             background: classColors[player.ctype],
                         } },
                     ),
@@ -1172,7 +1167,7 @@
                             textShadow: '0 0 2px black',
                             position: 'relative',
                         } },
-                        `${getPercent(getShareV1ToPow065(player, totalContributionV1) / totalContributionSharesPow065, 3)} | ${(player.s.coop?.p ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                        `${getPercent(getPointsToPow065(player) / totalContributionPointsPow065, 3)} | ${getPointsToPow065(player).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
                     ),
                 )),
             )
@@ -1375,7 +1370,6 @@
                         justifyContent: 'flex-end',
                         display: 'flex',
                         gap: '8px',
-                        width: '100%',
                     } },
                     e(
                         'button',
@@ -1426,7 +1420,7 @@
         root.render(e(CommUI))
 
         const bottom = document.getElementById('bottom')
-        // NOTE: We need this so can click on show/hide buttons
+        // HACK(comm-ui): #bottom pointer-events none so meter toggles receive clicks
         bottom.style.pointerEvents = 'none'
     }
 
