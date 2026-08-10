@@ -1,9 +1,9 @@
 import { e } from "../../../host/react";
 
 /** Viewport % step for minor guide lines (matches percent layout coords). */
-const MINOR_STEP = 10;
-/** Stronger lines at snap anchors used by `snapPercent` (edges + mid). */
-const MAJOR_PCTS = [0, 50, 100];
+const MINOR_STEP = 5;
+/** Stronger lines at quarter / half / edge snap anchors. */
+const MAJOR_PCTS = [0, 25, 50, 75, 100];
 
 function isMajor(pct: number): boolean {
   return MAJOR_PCTS.indexOf(pct) >= 0;
@@ -14,9 +14,10 @@ function lineStyle(
   pct: number,
 ): Record<string, string | number> {
   const major = isMajor(pct);
+  // Bright warm dashes: opaque enough on light sand, luminous on dark water.
   const color = major
-    ? "rgba(255, 224, 138, 0.32)"
-    : "rgba(255, 224, 138, 0.11)";
+    ? "rgba(255, 245, 200, 0.62)"
+    : "rgba(255, 245, 200, 0.34)";
   const border = `1px dashed ${color}`;
   if (axis === "v") {
     return {
@@ -43,9 +44,9 @@ function lineStyle(
 }
 
 /**
- * Subtle viewport-% grid shown only in layout edit mode.
+ * Viewport-% grid shown only in layout edit mode.
  * pointer-events: none so panel drag headers stay interactive.
- * Major lines mark 0 / 50 / 100 (same anchors as snapPercent).
+ * Minor lines every 5%; majors at 0 / 25 / 50 / 75 / 100.
  */
 export function LayoutEditGrid(): any {
   const kids: any[] = [];

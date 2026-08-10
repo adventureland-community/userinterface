@@ -862,7 +862,8 @@ var EnhanceCommUI = (() => {
     "enemies",
     "topCenter",
     "paperdoll",
-    "infoDialog",
+    "buffInfo",
+    "itemInfo",
     "kills",
     "combat",
     "playerFrame",
@@ -882,7 +883,8 @@ var EnhanceCommUI = (() => {
     enemies: "Enemies",
     topCenter: "Server / Map",
     paperdoll: "Paperdoll",
-    infoDialog: "Buff / item info",
+    buffInfo: "Buff info",
+    itemInfo: "Item info",
     kills: "Kills",
     combat: "Combat",
     playerFrame: "Player frame",
@@ -902,8 +904,8 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.6, y: 0.4, anchor: "tr" },
     topCenter: { x: 50, y: 0.4, anchor: "tc" },
     paperdoll: { x: 0.5, y: 30, anchor: "tl" },
-    // Stock AL `#topleftcornerdialog` — just under party chips.
-    infoDialog: { x: 0.8, y: 10, anchor: "tl" },
+    buffInfo: { x: 0.8, y: 10, anchor: "tl" },
+    itemInfo: { x: 16.8, y: 10, anchor: "tl" },
     kills: { x: 27, y: 99.2, anchor: "br" },
     combat: { x: 95, y: 99.2, anchor: "br" },
     playerFrame: { x: 40.5, y: 86, anchor: "bc" },
@@ -923,7 +925,8 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
     topCenter: { x: 50, y: 0.5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
-    infoDialog: { x: 1, y: 12, anchor: "tl" },
+    buffInfo: { x: 1, y: 12, anchor: "tl" },
+    itemInfo: { x: 17, y: 12, anchor: "tl" },
     combat: { x: 99.2, y: 52, anchor: "tr" },
     kills: { x: 99.2, y: 72, anchor: "tr" },
     playerFrame: { x: 32, y: 78, anchor: "bc" },
@@ -943,7 +946,8 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
     topCenter: { x: 50, y: 0.4, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
-    infoDialog: { x: 2, y: 14, anchor: "tl" },
+    buffInfo: { x: 2, y: 14, anchor: "tl" },
+    itemInfo: { x: 2, y: 36, anchor: "tl" },
     combat: { x: 50, y: 72, anchor: "bc" },
     kills: { x: 98, y: 58, anchor: "br" },
     playerFrame: { x: 28, y: 62, anchor: "bc" },
@@ -2782,7 +2786,21 @@ var EnhanceCommUI = (() => {
   var STYLE_ID2 = "comm-ui-dialog-host-css";
   var CLOSE_CLASS = "ecu-dialog-close";
   var BOUND = "__ecuDialogDismissBound";
+  var PATCHED = "__ecuDialogRendersPatched";
+  var JQ_PATCHED = "__ecuDialogJqueryPatched";
   var ADOPTED_CLASS = "ecu-info-dialog-adopted";
+  var BUFF_DIALOG_ID = "ecu-buff-dialog";
+  var ITEM_DIALOG_ID = "ecu-item-dialog";
+  var STOCK_DIALOG_ID = "topleftcornerdialog";
+  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
+  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
+  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
+  function dialogIdFor(kind) {
+    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
+  }
+  function panelAttrFor(kind) {
+    return kind === "buff" ? "buffInfo" : "itemInfo";
+  }
   function injectDialogHostCss() {
     if (document.getElementById(STYLE_ID2)) return;
     const style = document.createElement("style");
@@ -2804,21 +2822,26 @@ var EnhanceCommUI = (() => {
   vertical-align: top;
   display: inline-block;
 }
-#topleftcornerdialog {
+/* Stub: stock clears still target this id; real content lives in ecu-* hosts. */
+#${STOCK_DIALOG_ID} {
+  display: none !important;
+}
+#${BUFF_DIALOG_ID},
+#${ITEM_DIALOG_ID} {
   pointer-events: auto !important;
   vertical-align: top;
   display: inline-block;
-  margin-left: 5px;
   position: relative;
 }
-#topleftcornerdialog.${ADOPTED_CLASS} {
-  margin-left: 0;
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS},
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS} {
   display: block;
   max-width: min(96vw, 520px);
   max-height: min(80vh, calc(100vh - 96px));
   overflow: auto;
 }
-#topleftcornerdialog .${CLOSE_CLASS} {
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -2835,36 +2858,70 @@ var EnhanceCommUI = (() => {
   text-align: center;
   box-sizing: border-box;
 }
-#topleftcornerdialog .${CLOSE_CLASS}:hover {
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
   border-color: #888;
   color: #fff;
 }
 `;
     document.head.append(style);
   }
-  function isTopLeftDialogOpen() {
-    const el = document.getElementById("topleftcornerdialog");
+  function dialogEl(kind) {
+    return document.getElementById(dialogIdFor(kind));
+  }
+  function hasContent(el) {
     return !!(el && String(el.innerHTML || "").trim());
   }
-  function closeTopLeftDialog() {
-    const el = document.getElementById("topleftcornerdialog");
-    if (!el || !String(el.innerHTML || "").trim()) return false;
-    el.innerHTML = "";
-    try {
-      window.dialogs_target = null;
-    } catch (e2) {
-    }
+  function isBuffDialogOpen() {
+    return hasContent(dialogEl("buff"));
+  }
+  function isItemDialogOpen() {
+    return hasContent(dialogEl("item"));
+  }
+  function isTopLeftDialogOpen() {
+    return isBuffDialogOpen() || isItemDialogOpen();
+  }
+  function clearDialogOnlyXTarget() {
     if (window.__ecuDialogOnlyXTarget) {
       window.__ecuDialogOnlyXTarget = false;
       window.xtarget = null;
     }
+  }
+  function clearDialogsTarget() {
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+  }
+  function closeBuffDialog() {
+    const el = dialogEl("buff");
+    if (!hasContent(el)) return false;
+    el.innerHTML = "";
+    clearDialogsTarget();
+    clearDialogOnlyXTarget();
     return true;
+  }
+  function closeItemDialog() {
+    const el = dialogEl("item");
+    if (!hasContent(el)) return false;
+    el.innerHTML = "";
+    clearDialogsTarget();
+    return true;
+  }
+  function closeTopLeftDialog() {
+    if (closeBuffDialog()) return true;
+    return closeItemDialog();
+  }
+  function closeAllInfoDialogs() {
+    const a = closeBuffDialog();
+    const b = closeItemDialog();
+    return a || b;
   }
   function setInfoDialogLayoutEditing(editing) {
     window.__ecuInfoDialogLayoutEdit = !!editing;
   }
-  function ensureCloseButton(dialog) {
-    if (!String(dialog.innerHTML || "").trim()) return;
+  function ensureCloseButton(dialog, kind) {
+    if (!hasContent(dialog)) return;
     if (dialog.querySelector("." + CLOSE_CLASS)) return;
     const btn = document.createElement("button");
     btn.type = "button";
@@ -2875,7 +2932,8 @@ var EnhanceCommUI = (() => {
     btn.addEventListener("click", (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      closeTopLeftDialog();
+      if (kind === "buff") closeBuffDialog();
+      else closeItemDialog();
     });
     const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
     if (panel) {
@@ -2886,32 +2944,49 @@ var EnhanceCommUI = (() => {
       dialog.appendChild(btn);
     }
   }
+  function observeCloseButton(dialog, kind) {
+    if (typeof MutationObserver !== "function") {
+      ensureCloseButton(dialog, kind);
+      return;
+    }
+    const key = "__ecuCloseObs";
+    if (dialog[key]) {
+      ensureCloseButton(dialog, kind);
+      return;
+    }
+    dialog[key] = true;
+    const obs = new MutationObserver(() => {
+      ensureCloseButton(dialog, kind);
+    });
+    obs.observe(dialog, { childList: true, subtree: true, characterData: true });
+    ensureCloseButton(dialog, kind);
+  }
   function installDialogDismiss() {
     if (window[BOUND]) return;
     window[BOUND] = true;
-    const dialog = document.getElementById("topleftcornerdialog");
-    if (dialog && typeof MutationObserver === "function") {
-      const obs = new MutationObserver(() => {
-        ensureCloseButton(dialog);
-      });
-      obs.observe(dialog, { childList: true, subtree: true, characterData: true });
-      ensureCloseButton(dialog);
-    }
     document.addEventListener("mousedown", (ev) => {
       if (window.__ecuInfoDialogLayoutEdit) return;
       if (!isTopLeftDialogOpen()) return;
       const t = ev.target;
-      const host = document.getElementById("topleftcornerdialog");
-      if (!host || !t) return;
-      if (host.contains(t)) return;
+      if (!t) return;
       const el = t;
-      if (el.closest && el.closest('[data-panel="infoDialog"]')) {
-        return;
-      }
-      closeTopLeftDialog();
+      const inBuff = !!(el.closest && (el.closest("#" + BUFF_DIALOG_ID) || el.closest('[data-panel="buffInfo"]')));
+      const inItem = !!(el.closest && (el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="itemInfo"]')));
+      if (inBuff || inItem) return;
+      closeAllInfoDialogs();
     });
   }
-  function ensureDialogElement() {
+  function ensureNamedDialog(id, parent) {
+    let dialog = document.getElementById(id);
+    if (!dialog) {
+      dialog = document.createElement("div");
+      dialog.id = id;
+      dialog.className = "bpclicks enableclicks";
+      parent.append(dialog);
+    }
+    return dialog;
+  }
+  function ensureDialogElements() {
     injectDialogHostCss();
     let corner = document.getElementById("topleftcorner");
     if (!corner) {
@@ -2926,30 +3001,127 @@ var EnhanceCommUI = (() => {
       ui.className = "bpclicks";
       corner.append(ui);
     }
-    let dialog = document.getElementById("topleftcornerdialog");
-    if (!dialog) {
-      dialog = document.createElement("div");
-      dialog.id = "topleftcornerdialog";
-      dialog.className = "bpclicks enableclicks";
-      corner.append(dialog);
-    }
-    return dialog;
+    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
+    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
+    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
+    return { buff, item, stock };
   }
-  function adoptTopLeftDialog(slot) {
-    const dialog = ensureDialogElement();
+  function remapStockSelector(selector, kind) {
+    if (selector === STOCK_SEL || selector === STOCK_DIALOG_ID) {
+      return kind === "buff" ? BUFF_SEL : ITEM_SEL;
+    }
+    return selector;
+  }
+  function installRenderPatches() {
+    const w = window;
+    const done = w[PATCHED] || (w[PATCHED] = {});
+    if (!done.condition && typeof w.render_condition === "function") {
+      const orig = w.render_condition;
+      w.render_condition = function(selector, name) {
+        return orig.call(
+          this,
+          remapStockSelector(selector, "buff"),
+          name
+        );
+      };
+      done.condition = true;
+    }
+    if (!done.skill && typeof w.render_skill === "function") {
+      const orig = w.render_skill;
+      w.render_skill = function(selector, skill, args) {
+        return orig.call(
+          this,
+          remapStockSelector(selector, "buff"),
+          skill,
+          args
+        );
+      };
+      done.skill = true;
+    }
+    if (!done.item && typeof w.render_item === "function") {
+      const orig = w.render_item;
+      w.render_item = function(selector, args) {
+        return orig.call(
+          this,
+          remapStockSelector(selector, "item"),
+          args
+        );
+      };
+      done.item = true;
+    }
+    if (!done.slot && typeof w.slot_click === "function") {
+      w.slot_click = function(name) {
+        const target = w.xtarget || w.ctarget;
+        const itemHost = document.getElementById(ITEM_DIALOG_ID);
+        if (w.last_sclick && w.last_sclick === name && itemHost && String(itemHost.innerHTML || "").trim()) {
+          itemHost.innerHTML = "";
+          return;
+        }
+        if (target && target.slots && target.slots[name]) {
+          w.last_sclick = name;
+          w.dialogs_target = target;
+          const slot = target.slots[name];
+          const G = w.G;
+          if (typeof w.render_item === "function" && G && G.items && slot.name) {
+            w.render_item(ITEM_SEL, {
+              id: "item" + name,
+              item: G.items[slot.name],
+              name: slot.name,
+              actual: slot,
+              slot: name,
+              from_player: target.id
+            });
+          }
+        }
+      };
+      done.slot = true;
+    }
+  }
+  function installJqueryClearHook() {
+    const $ = window.$;
+    if (!$ || !$.fn || $.fn[JQ_PATCHED]) return;
+    const orig = $.fn.html;
+    if (typeof orig !== "function") return;
+    $.fn[JQ_PATCHED] = true;
+    $.fn.html = function() {
+      if (arguments.length > 0 && arguments[0] === "" && this && this.length) {
+        let hitStock = false;
+        for (let i = 0; i < this.length; i++) {
+          const node = this[i];
+          if (node && node.id === STOCK_DIALOG_ID) {
+            hitStock = true;
+            break;
+          }
+        }
+        if (hitStock) closeAllInfoDialogs();
+      }
+      return orig.apply(this, arguments);
+    };
+  }
+  function adoptInfoDialog(kind, slot) {
+    const { buff, item } = ensureDialogElements();
+    const dialog = kind === "buff" ? buff : item;
     if (dialog.parentElement !== slot) {
       slot.appendChild(dialog);
     }
     dialog.classList.add(ADOPTED_CLASS);
+    dialog.setAttribute("data-ecu-kind", kind);
+    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
     const corner = document.getElementById("topleftcorner");
     if (corner) corner.classList.add("ecu-info-slot-host");
+    installRenderPatches();
+    installJqueryClearHook();
     installDialogDismiss();
-    ensureCloseButton(dialog);
+    observeCloseButton(dialog, kind);
     return dialog;
   }
   function ensureDialogHost() {
-    ensureDialogElement();
+    const { buff, item } = ensureDialogElements();
+    installRenderPatches();
+    installJqueryClearHook();
     installDialogDismiss();
+    observeCloseButton(buff, "buff");
+    observeCloseButton(item, "item");
   }
 
   // src/host/keyboardPolicy.ts
@@ -6059,10 +6231,18 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/InfoDialogPanel.ts
-  function InfoDialogPanel(props) {
+  function isOpen(kind) {
+    return kind === "buff" ? isBuffDialogOpen() : isItemDialogOpen();
+  }
+  var LABELS = {
+    buff: { label: "Buff info", hint: "Click a buff / condition" },
+    item: { label: "Item info", hint: "Click a gear slot" }
+  };
+  function StockInfoPanel(props) {
     const React = getReact();
+    const kind = props.kind;
     const slotRef = React.useRef(null);
-    const [open, setOpen] = React.useState(isTopLeftDialogOpen());
+    const [open, setOpen] = React.useState(isOpen(kind));
     const onOpenChange = props.onOpenChange;
     React.useEffect(() => {
       if (onOpenChange) onOpenChange(open);
@@ -6070,11 +6250,11 @@ var EnhanceCommUI = (() => {
     React.useEffect(() => {
       const slot = slotRef.current;
       if (!slot) return;
-      const dialog = adoptTopLeftDialog(slot);
-      setOpen(isTopLeftDialogOpen());
+      const dialog = adoptInfoDialog(kind, slot);
+      setOpen(isOpen(kind));
       if (typeof MutationObserver !== "function") return;
       const obs = new MutationObserver(() => {
-        setOpen(isTopLeftDialogOpen());
+        setOpen(isOpen(kind));
       });
       obs.observe(dialog, {
         childList: true,
@@ -6082,27 +6262,27 @@ var EnhanceCommUI = (() => {
         characterData: true
       });
       return () => obs.disconnect();
-    }, []);
+    }, [kind]);
+    const meta = LABELS[kind];
     const showDummy = !!props.layoutEdit && !open;
     const visible = open || !!props.layoutEdit;
     return e(
       "div",
       {
-        className: "comm-info-dialog-panel",
+        className: `comm-info-dialog-panel comm-${kind}-info-panel`,
         style: {
           width: "fit-content",
           maxWidth: "min(96vw, 520px)",
           boxSizing: "border-box",
-          // Collapse completely when idle in play mode.
           minWidth: showDummy ? "200px" : void 0,
           minHeight: showDummy ? "120px" : void 0,
           pointerEvents: visible ? "auto" : "none"
         }
       },
       showDummy ? e(PanelShellDummy, {
-        label: "Buff / item info",
-        hint: "Click a buff or gear slot",
-        accent: "#5a7a5a",
+        label: meta.label,
+        hint: meta.hint,
+        accent: kind === "buff" ? "#5a7a5a" : "#5a6a8a",
         rows: 4,
         style: {
           minWidth: "200px",
@@ -6112,8 +6292,8 @@ var EnhanceCommUI = (() => {
       }) : null,
       e("div", {
         ref: slotRef,
-        className: "comm-info-dialog-slot",
-        // Always mounted so stock `condition_click` / `slot_click` can write.
+        className: `comm-info-dialog-slot comm-${kind}-info-slot`,
+        // Always mounted so stock writers can target the adopted host.
         style: {
           display: "block",
           height: open || props.layoutEdit ? void 0 : 0,
@@ -6122,6 +6302,13 @@ var EnhanceCommUI = (() => {
         }
       })
     );
+  }
+  function InfoDialogPanel(props) {
+    return StockInfoPanel({
+      kind: "buff",
+      layoutEdit: props.layoutEdit,
+      onOpenChange: props.onOpenChange
+    });
   }
 
   // src/ui/chrome/FrameDummy.ts
@@ -8567,14 +8754,14 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/comm/LayoutEditGrid.ts
-  var MINOR_STEP = 10;
-  var MAJOR_PCTS = [0, 50, 100];
+  var MINOR_STEP = 5;
+  var MAJOR_PCTS = [0, 25, 50, 75, 100];
   function isMajor(pct) {
     return MAJOR_PCTS.indexOf(pct) >= 0;
   }
   function lineStyle(axis, pct) {
     const major = isMajor(pct);
-    const color = major ? "rgba(255, 224, 138, 0.32)" : "rgba(255, 224, 138, 0.11)";
+    const color = major ? "rgba(255, 245, 200, 0.62)" : "rgba(255, 245, 200, 0.34)";
     const border = `1px dashed ${color}`;
     if (axis === "v") {
       return {
