@@ -493,6 +493,7 @@ var EnhanceCommUI = (() => {
   var playerMeta = {};
   var watchedPartyIds = /* @__PURE__ */ new Set();
   var watchedPartyKey = "";
+  var visiblePlayerIds = /* @__PURE__ */ new Set();
   function soloKey(id, name) {
     return `solo:${name || id}`;
   }
@@ -731,10 +732,12 @@ var EnhanceCommUI = (() => {
       watchedPartyKey = "";
     }
     watchedPartyIds = nextWatched;
+    const nextVisible = /* @__PURE__ */ new Set();
     for (let i = 0; i < entities.length; i++) {
       const ent = entities[i];
       if (!ent.player || !ent.id) continue;
       const id = String(ent.id);
+      nextVisible.add(id);
       nextMeta[id] = {
         name: ent.name || id,
         ctype: ent.ctype,
@@ -747,6 +750,7 @@ var EnhanceCommUI = (() => {
         players[id].partyKey = nextMeta[id].partyKey;
       }
     }
+    visiblePlayerIds = nextVisible;
     playerMeta = nextMeta;
   }
   function startPartyCombat() {
@@ -768,6 +772,7 @@ var EnhanceCommUI = (() => {
   }
   function includePlayer(id, scope) {
     if (scope === "all") return true;
+    if (scope === "visible") return visiblePlayerIds.has(id);
     if (!watchedPartyIds.size) return false;
     return watchedPartyIds.has(id);
   }
@@ -1006,11 +1011,22 @@ var EnhanceCommUI = (() => {
     if (focus === "all") {
       return { scope: "all", partyFilter: null, historyKey: null };
     }
+    if (focus === "visible") {
+      return { scope: "visible", partyFilter: null, historyKey: null };
+    }
     if (focus === "watched") {
       const key = watchedPartyKey3 || null;
       return { scope: "watched", partyFilter: key, historyKey: key };
     }
     return { scope: "all", partyFilter: focus, historyKey: focus };
+  }
+  function effectivePartyFocus(focus, hasObserver) {
+    if (!hasObserver && focus === "watched") return "visible";
+    return focus;
+  }
+  function effectiveKillScope(scope, hasObserver) {
+    if (!hasObserver && scope === "watched") return "all";
+    return scope;
   }
   var CLOSABLE_PANEL_IDS = [
     "bossBar",
@@ -1265,9 +1281,18 @@ var EnhanceCommUI = (() => {
     if (focus === "watched") {
       return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
     }
+    if (focus === "visible") return "Visible parties";
     if (focus === "all") return "All parties";
     if (focus.indexOf("solo:") === 0) return focus.slice(5);
     return focus;
+  }
+  function killScopeLabel(scope, watchedName) {
+    if (scope === "watched") {
+      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
+    }
+    if (scope === "visible" || scope === "all") return "Visible parties";
+    const _exhaustive = scope;
+    return _exhaustive;
   }
 
   // src/kpi/sessionKills.ts
@@ -1307,7 +1332,10 @@ var EnhanceCommUI = (() => {
     }
   }
   function killScope() {
-    return loadSettings().killScope || "watched";
+    const stored = loadSettings().killScope || "watched";
+    const observingId = getObservingId();
+    const hasObserver = observingId != null && observingId !== "";
+    return effectiveKillScope(stored, hasObserver);
   }
   function isWatchedActor(actorId) {
     if (!actorId || !trackingId) return false;
@@ -1503,7 +1531,8 @@ var EnhanceCommUI = (() => {
     byParty.sort((a, b) => b.count - a.count);
     const scope = killScope();
     const observingId = getObservingId();
-    const active = scope === "all" || !!observingId;
+    const hasObserver = observingId != null && observingId !== "";
+    const active = scope === "all" || hasObserver;
     let killsPerMinute = null;
     let killsPerHour = null;
     let killsPerDay = null;
@@ -5699,13 +5728,15 @@ var EnhanceCommUI = (() => {
   };
   function KillKpiPanel() {
     const React = getReact();
-    const [scope, setScope] = React.useState(
+    const [storedScope, setStoredScope] = React.useState(
       () => loadSettings().killScope
     );
     const stats = getStats();
+    const hasObserver = getObservingId() != null && getObservingId() !== "";
+    const scope = effectiveKillScope(storedScope, hasObserver);
     const setKillScope = (next) => {
       saveSettings({ killScope: next });
-      setScope(next);
+      setStoredScope(next);
     };
     const selectStyle = {
       fontSize: "16px",
@@ -5771,9 +5802,9 @@ var EnhanceCommUI = (() => {
         e(
           "option",
           { value: "watched" },
-          stats.trackingName ? `Watched \xB7 ${stats.trackingName}` : "Watched party"
+          killScopeLabel("watched", stats.trackingName)
         ),
-        e("option", { value: "all" }, "All parties")
+        e("option", { value: "all" }, "Visible parties")
       )
     );
     const shell = (children) => e(
@@ -5804,7 +5835,7 @@ var EnhanceCommUI = (() => {
         e(
           "div",
           { style: { fontSize: "15px", color: "#999", ...softText } },
-          "Select a character to track, or switch to all parties."
+          "Select a character to track, or switch to visible parties."
         )
       ]);
     }
@@ -6133,14 +6164,16 @@ var EnhanceCommUI = (() => {
       setSettings(saveSettings(partial));
     };
     const view = settings.combatView || "table";
-    const focus = settings.partyFocus || "watched";
+    const storedFocus = settings.partyFocus || "watched";
     const compact = !!settings.combatCompact;
     const channels = compact ? ["dps", "hps"] : settings.combatChannels.length ? settings.combatChannels : ["dps"];
     const barChannel = compact ? settings.barChannel === "hps" ? "hps" : "dps" : settings.barChannel || "dps";
     const watchedId = getObservingId();
     const watchedKey = getWatchedPartyKey();
     const watching = ((_a = getObserving()) == null ? void 0 : _a.name) || ((_b = getObserving()) == null ? void 0 : _b.id) || "";
-    const partyKeys = listPartyKeys("all");
+    const hasObserver = watchedId != null && watchedId !== "";
+    const focus = effectivePartyFocus(storedFocus, hasObserver);
+    const partyKeys = listPartyKeys("visible");
     const resolved = resolvePartyFocus(focus, watchedKey || "");
     const { scope, partyFilter, historyKey } = resolved;
     const rows = getCombatRows(scope, partyFilter);
@@ -6153,11 +6186,14 @@ var EnhanceCommUI = (() => {
       label: CHANNEL_LABELS[ch],
       color: CHANNEL_COLORS[ch],
       values: history2.map((h) => {
-        if (focus === "all") {
+        if (focus === "all" || focus === "visible") {
+          const visibleKeys = focus === "visible" ? new Set(listPartyKeys("visible")) : null;
           let sum = 0;
           const keys = Object.keys(h.parties);
           for (let i = 0; i < keys.length; i++) {
-            sum += h.parties[keys[i]] && h.parties[keys[i]][ch] || 0;
+            const key = keys[i];
+            if (visibleKeys && !visibleKeys.has(key)) continue;
+            sum += h.parties[key] && h.parties[key][ch] || 0;
           }
           return sum;
         }
@@ -6344,6 +6380,7 @@ var EnhanceCommUI = (() => {
               }
             },
             e("option", { value: "watched" }, partyFocusLabel("watched", watching)),
+            e("option", { value: "visible" }, "Visible parties"),
             e("option", { value: "all" }, "All parties"),
             partyKeys.length ? e("option", { value: "__sep__", disabled: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500") : null,
             ...partyKeys.map(

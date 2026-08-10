@@ -5,7 +5,7 @@ import {
   simpleDistance,
 } from "../host/al";
 import type { EntityLike } from "../host/globals";
-import { loadSettings, type PartyScope } from "../lib/settings";
+import { loadSettings, effectiveKillScope, type PartyScope } from "../lib/settings";
 import { onDamage, onKill, type DamageEvent, type KillEvent } from "../sockets/hub";
 
 /** How long a hit/target link still counts toward kill credit. */
@@ -65,7 +65,10 @@ function ensureSession(observingId: string, name: string): void {
 }
 
 function killScope(): PartyScope {
-  return loadSettings().killScope || "watched";
+  const stored = loadSettings().killScope || "watched";
+  const observingId = getObservingId();
+  const hasObserver = observingId != null && observingId !== "";
+  return effectiveKillScope(stored, hasObserver);
 }
 
 function isWatchedActor(actorId: string | undefined): boolean {
@@ -312,7 +315,8 @@ export function getStats(): {
 
   const scope = killScope();
   const observingId = getObservingId();
-  const active = scope === "all" || !!observingId;
+  const hasObserver = observingId != null && observingId !== "";
+  const active = scope === "all" || hasObserver;
 
   let killsPerMinute: number | null = null;
   let killsPerHour: number | null = null;

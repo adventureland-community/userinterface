@@ -75,6 +75,8 @@ let playerMeta: Record<
 > = {};
 let watchedPartyIds = new Set<string>();
 let watchedPartyKey = "";
+/** Player ids currently present in the comm entity snapshot (vision range). */
+let visiblePlayerIds = new Set<string>();
 
 function soloKey(id: string, name?: string): string {
   return `solo:${name || id}`;
@@ -373,10 +375,12 @@ export function updateCombatContext(entities: EntityLike[]): void {
   }
   watchedPartyIds = nextWatched;
 
+  const nextVisible = new Set<string>();
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
     if (!ent.player || !ent.id) continue;
     const id = String(ent.id);
+    nextVisible.add(id);
     nextMeta[id] = {
       name: ent.name || id,
       ctype: ent.ctype,
@@ -389,6 +393,7 @@ export function updateCombatContext(entities: EntityLike[]): void {
       players[id].partyKey = nextMeta[id].partyKey;
     }
   }
+  visiblePlayerIds = nextVisible;
   playerMeta = nextMeta;
 }
 
@@ -414,6 +419,7 @@ export function resetPartyCombat(): void {
 
 function includePlayer(id: string, scope: PartyScope): boolean {
   if (scope === "all") return true;
+  if (scope === "visible") return visiblePlayerIds.has(id);
   if (!watchedPartyIds.size) return false;
   return watchedPartyIds.has(id);
 }

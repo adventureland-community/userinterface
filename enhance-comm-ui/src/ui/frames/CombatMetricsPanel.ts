@@ -4,6 +4,7 @@ import {
   loadSettings,
   partyFocusLabel,
   resolvePartyFocus,
+  effectivePartyFocus,
   saveSettings,
   type CombatViewMode,
   type CommUiSettings,
@@ -208,7 +209,7 @@ export function CombatMetricsPanel(): any {
   };
 
   const view = (settings.combatView || "table") as CombatViewMode;
-  const focus: PartyFocus = settings.partyFocus || "watched";
+  const storedFocus: PartyFocus = settings.partyFocus || "watched";
   const compact = !!settings.combatCompact;
   const channels: CombatChannel[] = compact
     ? ["dps", "hps"]
@@ -223,8 +224,10 @@ export function CombatMetricsPanel(): any {
   const watchedId = getObservingId();
   const watchedKey = getWatchedPartyKey();
   const watching = getObserving()?.name || getObserving()?.id || "";
-  // listPartyKeys("all") so the dropdown always lists every known party
-  const partyKeys = listPartyKeys("all");
+  const hasObserver = watchedId != null && watchedId !== "";
+  const focus = effectivePartyFocus(storedFocus, hasObserver);
+  // Individual party keys: visible snapshot only (not whole session)
+  const partyKeys = listPartyKeys("visible");
 
   const resolved = resolvePartyFocus(focus, watchedKey || "");
   const { scope, partyFilter, historyKey } = resolved;
@@ -240,12 +243,15 @@ export function CombatMetricsPanel(): any {
     label: CHANNEL_LABELS[ch],
     color: CHANNEL_COLORS[ch],
     values: history.map((h) => {
-      if (focus === "all") {
-        // Sum all parties for overview graph
+      if (focus === "all" || focus === "visible") {
+        const visibleKeys =
+          focus === "visible" ? new Set(listPartyKeys("visible")) : null;
         let sum = 0;
         const keys = Object.keys(h.parties);
         for (let i = 0; i < keys.length; i++) {
-          sum += (h.parties[keys[i]] && h.parties[keys[i]][ch]) || 0;
+          const key = keys[i];
+          if (visibleKeys && !visibleKeys.has(key)) continue;
+          sum += (h.parties[key] && h.parties[key][ch]) || 0;
         }
         return sum;
       }
@@ -440,6 +446,7 @@ export function CombatMetricsPanel(): any {
             },
           },
           e("option", { value: "watched" }, partyFocusLabel("watched", watching)),
+          e("option", { value: "visible" }, "Visible parties"),
           e("option", { value: "all" }, "All parties"),
           partyKeys.length
             ? e("option", { value: "__sep__", disabled: true }, "────────")

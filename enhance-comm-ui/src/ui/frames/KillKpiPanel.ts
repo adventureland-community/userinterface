@@ -1,8 +1,8 @@
 import { getReact, e } from "../../host/react";
 import { formatTime } from "../../lib/format";
-import { loadSettings, saveSettings, type PartyScope } from "../../lib/settings";
+import { loadSettings, saveSettings, effectiveKillScope, killScopeLabel, type PartyScope } from "../../lib/settings";
 import { getStats, resetKillSession } from "../../kpi/sessionKills";
-
+import { getObservingId } from "../../host/al";
 function partyLabel(key: string): string {
   return key.indexOf("solo:") === 0 ? key.slice(5) : key;
 }
@@ -18,16 +18,17 @@ const softText = {
 
 export function KillKpiPanel(): any {
   const React = getReact();
-  const [scope, setScope] = React.useState(
+  const [storedScope, setStoredScope] = React.useState(
     () => loadSettings().killScope as PartyScope,
   );
   const stats = getStats();
+  const hasObserver = getObservingId() != null && getObservingId() !== "";
+  const scope = effectiveKillScope(storedScope, hasObserver);
 
   const setKillScope = (next: PartyScope) => {
     saveSettings({ killScope: next });
-    setScope(next);
+    setStoredScope(next);
   };
-
   const selectStyle = {
     fontSize: "16px",
     padding: "6px 10px",
@@ -96,12 +97,9 @@ export function KillKpiPanel(): any {
       e(
         "option",
         { value: "watched" },
-        stats.trackingName
-          ? `Watched · ${stats.trackingName}`
-          : "Watched party",
+        killScopeLabel("watched", stats.trackingName),
       ),
-      e("option", { value: "all" }, "All parties"),
-    ),
+      e("option", { value: "all" }, "Visible parties"),    ),
   );
 
   const shell = (children: any[]) =>
@@ -134,11 +132,10 @@ export function KillKpiPanel(): any {
       e(
         "div",
         { style: { fontSize: "15px", color: "#999", ...softText } },
-        "Select a character to track, or switch to all parties.",
+        "Select a character to track, or switch to visible parties.",
       ),
     ]);
   }
-
   const elapsedSec = stats.sessionStartedAt
     ? (Date.now() - stats.sessionStartedAt) / 1000
     : 0;
