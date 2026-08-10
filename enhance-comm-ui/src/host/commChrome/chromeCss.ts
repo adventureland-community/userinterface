@@ -430,6 +430,52 @@ export function injectChromeCss(): void {
     max-width: min(62vw, 640px);
   }
 }
+
+/* Tablet / phone — larger hit targets (Edge/Firefox Android, Safari iOS) */
+@media (pointer: coarse), (max-width: 1100px) {
+  .ecu-btn {
+    min-width: 88px !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 16px !important;
+  }
+  .ecu-actions {
+    min-height: 56px;
+    height: auto;
+    padding: 6px 8px;
+    gap: 8px;
+  }
+  .ecu-chrome {
+    min-height: 76px;
+    height: 76px;
+  }
+  .ecu-char {
+    padding: 0 14px 0 8px;
+    gap: 12px;
+  }
+  .ecu-char-sprite {
+    width: 52px;
+    height: 52px;
+  }
+  .ecu-char-name {
+    font-size: 18px;
+  }
+  .ecu-server-dd-trigger {
+    min-width: 200px;
+    padding: 0 18px;
+  }
+}
+#comm-ui.comm-ui-touch .comm-pos-panel button,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button {
+  min-height: 32px;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-combat,
+#comm-ui[data-viewport="phone"] .comm-pos-bag,
+#comm-ui[data-viewport="phone"] .comm-pos-command {
+  max-width: 96vw;
+}
 `;
   document.head.append(style);
 }

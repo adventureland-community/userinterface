@@ -390,7 +390,8 @@ export function CombatMetricsPanel(): any {
             cursor: "pointer",
             fontSize: "12px",
             lineHeight: "1.2",
-            padding: "2px 8px",
+            padding: "6px 12px",
+            minHeight: "32px",
             border: compact ? "1px solid #85c76b" : "1px solid #444",
             background: compact ? "#1a2a1a" : "#161616",
             color: compact ? "#85c76b" : "#aaa",
@@ -401,6 +402,32 @@ export function CombatMetricsPanel(): any {
         },
         compact ? "Compact" : "Full",
       ),
+      hasObserver
+        ? e(
+            "button",
+            {
+              type: "button",
+              title: "Focus the watched character's party",
+              onClick: () => patch({ partyFocus: "watched" }),
+              style: {
+                cursor: "pointer",
+                fontSize: "12px",
+                lineHeight: "1.2",
+                padding: "6px 10px",
+                minHeight: "32px",
+                border:
+                  focus === "watched" ? "1px solid #e13758" : "1px solid #444",
+                background:
+                  focus === "watched" ? "rgba(225,55,88,0.18)" : "#161616",
+                color: focus === "watched" ? "#ffe0e8" : "#aaa",
+                textShadow: "none",
+                fontWeight: "normal",
+                flex: "0 0 auto",
+              },
+            },
+            "My party",
+          )
+        : null,
     ),
     // Party + view tabs on one compact toolbar
     e(

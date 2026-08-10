@@ -4,9 +4,11 @@ import {
   deltaToPercent,
   panelStyle,
   snapPercent,
+  softAvoidOverlap,
   type PanelId,
   type PanelPos,
 } from "../../lib/layout";
+import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 
 export type PositionedPanelProps = {
   id: PanelId;
@@ -26,12 +28,17 @@ export type PositionedPanelProps = {
   opacity?: number;
   /** Optional footprint for the hidden/closed edit body (e.g. bag size). */
   hiddenBodyStyle?: Record<string, any>;
+  /** Other panel positions for edge snap + soft avoid-overlap. */
+  peerLayout?: Partial<Record<PanelId, PanelPos>>;
+  /** Active viewport profile — enlarges handles on tablet/phone. */
+  viewportProfile?: ViewportProfile;
 };
 
 /**
  * Absolutely places children at viewport-% coords.
  * In edit mode: drag the header bar to reposition (persisted by parent).
- * While dragging, snaps to edges / mid (0 / 50 / 100).
+ * While dragging, snaps to edges / mid / peer panel axes (0 / 50 / 100 + peers).
+ * On drop, soft-nudges away from nearly identical peer anchors.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
   const React = getReact();
@@ -45,6 +52,28 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     posX: 0,
     posY: 0,
   });
+  const lastPos = React.useRef(pos);
+  lastPos.current = pos;
+
+  const touchish = isTouchishProfile(props.viewportProfile || "desktop");
+  const closeSize = touchish ? 36 : 22;
+  const headerPad = touchish ? "8px 12px" : "3px 8px";
+  const headerFont = touchish ? "15px" : "13px";
+
+  const peerAxes = (): { xs: number[]; ys: number[] } => {
+    const peers = props.peerLayout || {};
+    const ids = Object.keys(peers) as PanelId[];
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] === id) continue;
+      const p = peers[ids[i]];
+      if (!p) continue;
+      xs.push(p.x);
+      ys.push(p.y);
+    }
+    return { xs, ys };
+  };
 
   const onPointerDown = (ev: any) => {
     if (!editing) return;
@@ -80,8 +109,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     let nextY = start.current.posY + dyPct;
     nextX = Math.max(0, Math.min(100, nextX));
     nextY = Math.max(0, Math.min(100, nextY));
-    nextX = snapPercent(nextX);
-    nextY = snapPercent(nextY);
+    const { xs, ys } = peerAxes();
+    nextX = snapPercent(nextX, 2.2, xs);
+    nextY = snapPercent(nextY, 2.2, ys);
     onMove(id, { ...pos, x: nextX, y: nextY });
   };
 
@@ -93,9 +123,14 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     } catch {
       // ignore
     }
+    const peers = props.peerLayout || {};
+    const nudged = softAvoidOverlap(id, lastPos.current, peers);
+    if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
+      onMove(id, nudged);
+    }
   };
 
-  const showClose = !!onClose && !hidden && (editing || hover);
+  const showClose = !!onClose && !hidden && (editing || hover || touchish);
   const opacity =
     typeof props.opacity === "number" && Number.isFinite(props.opacity)
       ? Math.max(0.25, Math.min(1, props.opacity))
@@ -138,15 +173,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             top: editing ? "2px" : "0",
             right: "0",
             zIndex: 2,
-            width: "22px",
-            height: "22px",
+            width: `${closeSize}px`,
+            height: `${closeSize}px`,
             padding: 0,
             margin: 0,
             border: "1px solid #555",
             background: "rgba(20,20,20,0.9)",
             color: "#ccc",
-            fontSize: "14px",
-            lineHeight: "20px",
+            fontSize: touchish ? "18px" : "14px",
+            lineHeight: `${closeSize - 2}px`,
             cursor: "pointer",
             pointerEvents: "auto",
           },
@@ -163,8 +198,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             display: "flex",
             alignItems: "center",
             gap: "6px",
-            padding: "3px 8px",
-            paddingRight: onClose && !hidden ? "28px" : "8px",
+            padding: headerPad,
+            paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
             marginBottom: 0,
             background: hidden
               ? "rgba(30,30,30,0.92)"
@@ -172,10 +207,11 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             border: hidden ? "1px solid #666" : "1px solid #886",
             cursor: "grab",
             userSelect: "none",
-            fontSize: "13px",
+            fontSize: headerFont,
             color: hidden ? "#bbb" : "#ffe08a",
             whiteSpace: "nowrap",
             touchAction: "none",
+            minHeight: touchish ? "40px" : undefined,
           },
           onPointerDown,
           onPointerMove,
@@ -197,8 +233,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
                 style: {
                   marginLeft: "auto",
                   cursor: "pointer",
-                  fontSize: "12px",
-                  padding: "2px 8px",
+                  fontSize: touchish ? "14px" : "12px",
+                  padding: touchish ? "6px 12px" : "2px 8px",
+                  minHeight: touchish ? "36px" : undefined,
                   border: "1px solid #7a7",
                   background: "#1a2a1a",
                   color: "#9e9",

@@ -1,16 +1,28 @@
 import { e } from "../../host/react";
 import { aggroByTarget, findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
+import { PanelShellDummy } from "../chrome/PanelShellDummy";
+import { THREAT_PANEL_STYLE } from "../../lib/frameSizes";
 
 export type ThreatTableProps = {
   entities: EntityLike[];
   observingId?: string;
+  layoutEdit?: boolean;
 };
 
 export function ThreatTable(props: ThreatTableProps): any {
   const byTarget = aggroByTarget(props.entities);
   const targetIds = Object.keys(byTarget);
-  if (targetIds.length === 0) return null;
+  if (targetIds.length === 0) {
+    if (!props.layoutEdit) return null;
+    return e(PanelShellDummy, {
+      label: "Threat",
+      hint: "Aggro by target",
+      accent: "#844",
+      rows: 4,
+      style: THREAT_PANEL_STYLE,
+    });
+  }
 
   targetIds.sort((a, b) => {
     if (a === props.observingId) return -1;
