@@ -9,7 +9,38 @@ export function clearObserve(): void {
   window.init_socket({});
 }
 
-/** Click chip: observe that character, or clear if already observing them. */
+/**
+ * Current realm key (`SR_EUI`, …) from `X.servers` + `server_region` /
+ * `server_identifier`. Empty when not connected / unknown.
+ */
+export function currentServerKey(): string {
+  const region = window.server_region;
+  const ident = window.server_identifier;
+  if (!region || !ident) return "";
+  const servers = (window.X && window.X.servers) || [];
+  for (let i = 0; i < servers.length; i++) {
+    const s = servers[i];
+    if (s.region === region && s.name === ident) {
+      return s.key != null ? String(s.key) : "";
+    }
+  }
+  return "";
+}
+
+/** True when `char.server` matches the realm we're currently on. */
+export function isCharOnCurrentServer(char: {
+  server?: string;
+}): boolean {
+  const key = currentServerKey();
+  if (!key || char.server == null || char.server === "") return true;
+  return String(char.server) === key;
+}
+
+/**
+ * Switch to the character's realm (if needed) then observe — mirrors stock
+ * `observe_character` (`server_address`/`path` + `init_socket({secret})`).
+ * Clicking the active chip again clears watch (deselect).
+ */
 export function toggleObserve(name: string): void {
   const n = String(name || "");
   if (!n) return;
@@ -18,8 +49,36 @@ export function toggleObserve(name: string): void {
     clearObserve();
     return;
   }
+
+  const chars = (window.X && window.X.characters) || [];
+  let ch: (typeof chars)[number] | null = null;
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i].name === n) {
+      ch = chars[i];
+      break;
+    }
+  }
+
+  // Stock path: finds server by key, sets address/path, init_socket({secret}).
   if (typeof window.observe_character === "function") {
-    window.observe_character(n);
+    const ok = window.observe_character(n);
+    if (ok !== false) return;
+  }
+
+  // Fallback when stock is missing or returned false (no secret / no server).
+  if (!ch || !ch.secret || ch.server == null) return;
+  const servers = (window.X && window.X.servers) || [];
+  for (let j = 0; j < servers.length; j++) {
+    const server = servers[j];
+    if (server.key != null && String(server.key) === String(ch.server)) {
+      if (!server.address) return;
+      (window as any).server_address = server.address;
+      (window as any).server_path = server.path;
+      if (typeof window.init_socket === "function") {
+        window.init_socket({ secret: ch.secret });
+      }
+      return;
+    }
   }
 }
 

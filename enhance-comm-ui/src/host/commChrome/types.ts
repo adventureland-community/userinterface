@@ -1,7 +1,10 @@
 export type CommChar = {
   name: string;
   level?: number;
+  /** Server key, e.g. `SR_EUI` — matches `CommServer.key`. */
   server?: string;
+  /** Observer secret used by stock `observe_character` / `init_socket`. */
+  secret?: string;
   rip?: boolean;
   skin?: string;
   cx?: any;
@@ -13,6 +16,8 @@ export type CommServer = {
   region: string;
   name: string;
   players: number;
+  /** Stable id matching `CommChar.server` (e.g. `SR_EUI`). */
+  key?: string;
   address?: string;
   path?: string;
 };
@@ -27,7 +32,7 @@ declare global {
     pings?: number[];
     sprite?: (skin: string, opts?: any) => string;
     server_to_ui?: (server: any) => string;
-    observe_character?: (name: string) => void;
+    observe_character?: (name: string) => boolean | void;
     /** Connect spectator/observer socket; omit secret to leave observe mode. */
     init_socket?: (args?: { secret?: string }) => void;
     /** Toggle observe: same chip again clears watch (spectator reconnect). */

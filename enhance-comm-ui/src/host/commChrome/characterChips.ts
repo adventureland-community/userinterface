@@ -1,4 +1,9 @@
-import { ensureChromeShell, syncActionsEnabled } from "./chromeActions";
+import {
+  currentServerKey,
+  ensureChromeShell,
+  isCharOnCurrentServer,
+  syncActionsEnabled,
+} from "./chromeActions";
 import { esc } from "./types";
 
 let rcCache = "-1";
@@ -12,8 +17,9 @@ export function invalidateCharacterCache(): void {
 export function renderCharactersHud(): void {
   ensureChromeShell();
   const chars = (window.X && window.X.characters) || [];
-  let key = "";
-  let listKey = "";
+  const curKey = currentServerKey();
+  let key = "cur:" + curKey + "|";
+  let listKey = "cur:" + curKey + "|";
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
     key +=
@@ -29,7 +35,7 @@ export function renderCharactersHud(): void {
       " " +
       c.online +
       "|";
-    listKey += c.name + " " + c.online + "|";
+    listKey += c.name + " " + c.online + " " + c.server + "|";
   }
   const obsName = window.observing && window.observing.name;
   if (obsName) key += "obs:" + obsName;
@@ -82,6 +88,7 @@ export function renderCharactersHud(): void {
       typeof serverUi === "function"
         ? serverUi(char.server)
         : String(char.server || "");
+    const offServer = !isCharOnCurrentServer(char) && !!serverLabel;
     // Show fuller names; chip max-width handles overflow.
     const shortName =
       char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "…";
@@ -95,10 +102,12 @@ export function renderCharactersHud(): void {
       esc(String(char.level ?? "")) +
       " · " +
       esc(serverLabel) +
-      (active ? " · Click again to stop observing" : "");
+      (active ? " · Click again to stop observing" : "") +
+      (offServer && !active ? " · Click to switch server & observe" : "");
     html +=
       "<button type='button' class='ecu-char" +
       (active ? " is-active" : "") +
+      (offServer ? " is-off-server" : "") +
       "' title='" +
       title +
       "' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)(\"" +
@@ -107,10 +116,13 @@ export function renderCharactersHud(): void {
     html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
     html += "<span class='ecu-char-meta'>";
     html += "<span class='ecu-char-name'>" + esc(shortName) + "</span>";
-    html +=
-      "<span class='ecu-char-sub'>Lv." +
-      esc(String(char.level ?? "")) +
-      "</span>";
+    html += "<span class='ecu-char-sub'>";
+    html += "Lv." + esc(String(char.level ?? ""));
+    if (offServer) {
+      html +=
+        "<span class='ecu-char-server'>" + esc(serverLabel) + "</span>";
+    }
+    html += "</span>";
     html += "</span></button>";
   }
   if (!html) html = "<div class='ecu-empty'>No characters online</div>";

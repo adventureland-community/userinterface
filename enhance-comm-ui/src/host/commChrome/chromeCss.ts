@@ -204,10 +204,23 @@ export function injectChromeCss(): void {
 }
 .ecu-char-sub {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
+  font-weight: 400 !important;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-shadow: none !important;
+}
+/* Off-realm hint — only when char.server !== current (stock orange accent) */
+.ecu-char-server {
+  flex: 0 0 auto;
+  color: #f3a05d;
+  font-size: 14px;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
   text-shadow: none !important;
 }
 .ecu-empty {

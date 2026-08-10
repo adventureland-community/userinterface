@@ -33,7 +33,12 @@ import {
 import { installCommKeyboardPolicy } from "./keyboardPolicy";
 import { subscribeTick } from "../tick";
 
-export { clearObserve, toggleObserve };
+export {
+  clearObserve,
+  currentServerKey,
+  isCharOnCurrentServer,
+  toggleObserve,
+};
 
 function suppressObserveUi(): void {
   const el = document.getElementById("observeui");
@@ -98,14 +103,18 @@ export function installCommChrome(): void {
   const stopObserveWatch = watchObserveUiHidden();
 
   let lastObs = "";
+  let lastServer = "";
   let lastPingAt = 0;
   const unsubTick = subscribeTick((snap) => {
     const name =
       (snap.observing && snap.observing.name) ||
       (window.observing && window.observing.name) ||
       "";
-    if (name !== lastObs) {
+    const server =
+      (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
+    if (name !== lastObs || server !== lastServer) {
       lastObs = name;
+      lastServer = server;
       invalidateCharacterCache();
       renderCharactersHud();
     } else {

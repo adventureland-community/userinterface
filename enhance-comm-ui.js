@@ -2230,10 +2230,23 @@ var EnhanceCommUI = (() => {
 }
 .ecu-char-sub {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   color: rgba(255, 255, 255, 0.6);
   font-size: 14px;
+  font-weight: 400 !important;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-shadow: none !important;
+}
+/* Off-realm hint \u2014 only when char.server !== current (stock orange accent) */
+.ecu-char-server {
+  flex: 0 0 auto;
+  color: #f3a05d;
+  font-size: 14px;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em;
   text-shadow: none !important;
 }
 .ecu-empty {
@@ -2607,6 +2620,24 @@ var EnhanceCommUI = (() => {
     if (typeof window.init_socket !== "function") return;
     window.init_socket({});
   }
+  function currentServerKey2() {
+    const region = window.server_region;
+    const ident = window.server_identifier;
+    if (!region || !ident) return "";
+    const servers = window.X && window.X.servers || [];
+    for (let i = 0; i < servers.length; i++) {
+      const s = servers[i];
+      if (s.region === region && s.name === ident) {
+        return s.key != null ? String(s.key) : "";
+      }
+    }
+    return "";
+  }
+  function isCharOnCurrentServer2(char) {
+    const key = currentServerKey2();
+    if (!key || char.server == null || char.server === "") return true;
+    return String(char.server) === key;
+  }
   function toggleObserve(name) {
     const n = String(name || "");
     if (!n) return;
@@ -2615,8 +2646,31 @@ var EnhanceCommUI = (() => {
       clearObserve();
       return;
     }
+    const chars = window.X && window.X.characters || [];
+    let ch = null;
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i].name === n) {
+        ch = chars[i];
+        break;
+      }
+    }
     if (typeof window.observe_character === "function") {
-      window.observe_character(n);
+      const ok = window.observe_character(n);
+      if (ok !== false) return;
+    }
+    if (!ch || !ch.secret || ch.server == null) return;
+    const servers = window.X && window.X.servers || [];
+    for (let j = 0; j < servers.length; j++) {
+      const server = servers[j];
+      if (server.key != null && String(server.key) === String(ch.server)) {
+        if (!server.address) return;
+        window.server_address = server.address;
+        window.server_path = server.path;
+        if (typeof window.init_socket === "function") {
+          window.init_socket({ secret: ch.secret });
+        }
+        return;
+      }
     }
   }
   function onFollowClick(ev) {
@@ -2759,12 +2813,13 @@ var EnhanceCommUI = (() => {
     var _a, _b;
     ensureChromeShell();
     const chars = window.X && window.X.characters || [];
-    let key = "";
-    let listKey = "";
+    const curKey = currentServerKey2();
+    let key = "cur:" + curKey + "|";
+    let listKey = "cur:" + curKey + "|";
     for (let i = 0; i < chars.length; i++) {
       const c = chars[i];
       key += c.name + " " + c.level + " " + c.server + " " + c.rip + " " + c.skin + " " + c.online + "|";
-      listKey += c.name + " " + c.online + "|";
+      listKey += c.name + " " + c.online + " " + c.server + "|";
     }
     const obsName = window.observing && window.observing.name;
     if (obsName) key += "obs:" + obsName;
@@ -2805,14 +2860,20 @@ var EnhanceCommUI = (() => {
       if (!char.online) continue;
       const active = !!(obsName && obsName === char.name);
       const serverLabel = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
+      const offServer = !isCharOnCurrentServer2(char) && !!serverLabel;
       const shortName = char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "\u2026";
       const spriteHtml = typeof spriteFn === "function" ? spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) : "";
-      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel) + (active ? " \xB7 Click again to stop observing" : "");
-      html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
+      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
+      html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + (offServer ? " is-off-server" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
       html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
       html += "<span class='ecu-char-meta'>";
       html += "<span class='ecu-char-name'>" + esc(shortName) + "</span>";
-      html += "<span class='ecu-char-sub'>Lv." + esc(String((_b = char.level) != null ? _b : "")) + "</span>";
+      html += "<span class='ecu-char-sub'>";
+      html += "Lv." + esc(String((_b = char.level) != null ? _b : ""));
+      if (offServer) {
+        html += "<span class='ecu-char-server'>" + esc(serverLabel) + "</span>";
+      }
+      html += "</span>";
       html += "</span></button>";
     }
     if (!html) html = "<div class='ecu-empty'>No characters online</div>";
@@ -3701,11 +3762,14 @@ var EnhanceCommUI = (() => {
     }
     const stopObserveWatch = watchObserveUiHidden();
     let lastObs = "";
+    let lastServer = "";
     let lastPingAt = 0;
     const unsubTick = subscribeTick((snap) => {
       const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
-      if (name !== lastObs) {
+      const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
+      if (name !== lastObs || server !== lastServer) {
         lastObs = name;
+        lastServer = server;
         invalidateCharacterCache();
         renderCharactersHud();
       } else {
