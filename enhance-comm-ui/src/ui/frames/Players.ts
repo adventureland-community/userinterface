@@ -26,6 +26,14 @@ function mpPct(entity: EntityLike): number {
   return Math.max(0, Math.min(100, Math.round(((entity.mp || 0) / max) * 100)));
 }
 
+/** Party-chip aggro count badge (pixel UI — no bold, no text-shadow). */
+const CHIP_AGGRO_BADGE = {
+  minWidth: "20px",
+  height: "20px",
+  fontSize: "14px",
+  padX: "4px",
+} as const;
+
 /** Soft dim without wiping HP/MP meter fills. */
 function chipOpacity(dead: boolean, oor: boolean): number {
   if (dead) return 0.42;
@@ -194,7 +202,7 @@ export function Players(props: PlayersProps): any {
                     style: {
                       position: "absolute",
                       left: 0,
-                      right: hasAggro ? 18 : 0,
+                      right: 0,
                       top: 0,
                       bottom: 0,
                       display: "flex",
@@ -214,37 +222,38 @@ export function Players(props: PlayersProps): any {
                   },
                   `${player.level ?? ""} ${player.id}`,
                 ),
-                hasAggro
-                  ? e(
-                      "div",
-                      {
-                        className: "ecu-chip-aggro",
-                        title: aggroTitle,
-                        style: {
-                          position: "absolute",
-                          top: 2,
-                          right: 2,
-                          minWidth: "14px",
-                          height: "14px",
-                          padding: "0 3px",
-                          boxSizing: "border-box",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: "#8a1e1e",
-                          border: "1px solid #e05555",
-                          color: "#ffd0d0",
-                          fontSize: "11px",
-                          lineHeight: 1,
-                          fontWeight: "normal",
-                          textShadow: "none",
-                          pointerEvents: "none",
-                        },
-                      },
-                      String(aggroMobs.length),
-                    )
-                  : null,
               ),
+              hasAggro
+                ? e(
+                    "div",
+                    {
+                      className: "ecu-chip-aggro",
+                      title: aggroTitle,
+                      style: {
+                        position: "absolute",
+                        top: "-3px",
+                        right: "-3px",
+                        zIndex: 2,
+                        minWidth: CHIP_AGGRO_BADGE.minWidth,
+                        height: CHIP_AGGRO_BADGE.height,
+                        padding: `0 ${CHIP_AGGRO_BADGE.padX}`,
+                        boxSizing: "border-box",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#8a1e1e",
+                        border: "1px solid #e05555",
+                        color: "#ffd0d0",
+                        fontSize: CHIP_AGGRO_BADGE.fontSize,
+                        lineHeight: 1,
+                        fontWeight: "normal",
+                        textShadow: "none",
+                        pointerEvents: "none",
+                      },
+                    },
+                    String(aggroMobs.length),
+                  )
+                : null,
               e(
                 "div",
                 {
