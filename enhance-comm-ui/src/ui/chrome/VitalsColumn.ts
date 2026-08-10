@@ -36,6 +36,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
         display: "flex",
         width: "100%",
         flexDirection: "column",
+        minWidth: 0,
       },
     },
     e(
@@ -44,6 +45,9 @@ export function VitalsColumn(props: VitalsColumnProps): any {
         style: {
           background: "black",
           position: "relative",
+          width: "100%",
+          minHeight: "30px",
+          boxSizing: "border-box",
         },
       },
       e("div", {
@@ -51,6 +55,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
           position: "absolute",
           top: 0,
           bottom: 0,
+          left: 0,
           width: getPercent(hpPct, 1),
           background: hpColor,
         },
@@ -60,13 +65,17 @@ export function VitalsColumn(props: VitalsColumnProps): any {
         {
           style: Object.assign(
             {
-              padding: "4px",
+              padding: "5px 10px",
               whiteSpace: "nowrap",
               textOverflow: "ellipsis",
               overflow: "hidden",
               position: "relative",
-              textShadow: "0 0 2px black",
+              textShadow: "none",
+              fontWeight: "normal",
               cursor: onClick ? "pointer" : undefined,
+              width: "100%",
+              boxSizing: "border-box",
+              lineHeight: "1.25",
             },
             nameStyle || {},
           ),
@@ -78,11 +87,18 @@ export function VitalsColumn(props: VitalsColumnProps): any {
     showMp
       ? e(
           "div",
-          { style: { background: "black" } },
+          {
+            style: {
+              background: "black",
+              width: "100%",
+              height: "5px",
+              boxSizing: "border-box",
+            },
+          },
           e("div", {
             style: {
-              background: "blue",
-              height: "4px",
+              background: "#3a5fd4",
+              height: "100%",
               width: getPercent(mpPct, 1),
             },
           }),

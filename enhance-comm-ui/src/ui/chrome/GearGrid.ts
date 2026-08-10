@@ -2,24 +2,38 @@ import { itemContainer, slotSkin } from "../../host/icons";
 import { e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
 
-const GEAR_SLOTS = [
-  "helmet",
-  "earring1",
-  "earring2",
-  "amulet",
-  "chest",
-  "cape",
-  "pants",
-  "shoes",
-  "gloves",
-  "belt",
-  "ring1",
-  "ring2",
-  "orb",
-  "mainhand",
-  "offhand",
-  "elixir",
+/** Classic AL `render_slots` body layout (4 cols × 4 rows). */
+const GEAR_ROWS: string[][] = [
+  ["earring1", "helmet", "earring2", "amulet"],
+  ["mainhand", "chest", "offhand", "cape"],
+  ["ring1", "pants", "ring2", "orb"],
+  ["belt", "shoes", "gloves", "elixir"],
 ];
+
+/** Host shade skins from `render_slots` in adventureland `js/html.js`. */
+const SLOT_SHADE: Record<string, { shade: string; s_op: number }> = {
+  earring1: { shade: "shade_earring", s_op: 0.4 },
+  helmet: { shade: "shade_helmet", s_op: 0.5 },
+  earring2: { shade: "shade_earring", s_op: 0.4 },
+  amulet: { shade: "shade_amulet", s_op: 0.4 },
+  mainhand: { shade: "shade_mainhand", s_op: 0.36 },
+  chest: { shade: "shade_chest", s_op: 0.4 },
+  offhand: { shade: "shade_offhand", s_op: 0.4 },
+  cape: { shade: "shade20_cape", s_op: 0.4 },
+  ring1: { shade: "shade_ring", s_op: 0.4 },
+  pants: { shade: "shade_pants", s_op: 0.5 },
+  ring2: { shade: "shade_ring", s_op: 0.4 },
+  orb: { shade: "shade20_orb", s_op: 0.4 },
+  belt: { shade: "shade_belt", s_op: 0.4 },
+  shoes: { shade: "shade_shoes", s_op: 0.5 },
+  gloves: { shade: "shade_gloves", s_op: 0.4 },
+  elixir: { shade: "shade20_elixir", s_op: 0.4 },
+};
+
+const TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
+const SLOT_SIZE = 40;
+/** AL empty-slot border when `mode.empty_borders_darker`. */
+const EMPTY_BCOLOR = "#292929";
 
 function tradeSlotNames(slots: Record<string, SlotLike | null | undefined>): string[] {
   const names: string[] = [];
@@ -37,6 +51,23 @@ function tradeSlotNames(slots: Record<string, SlotLike | null | undefined>): str
   return names;
 }
 
+function shadeFor(slotName: string): { shade: string; s_op: number } {
+  if (slotName.indexOf("trade") === 0) return TRADE_SHADE;
+  return SLOT_SHADE[slotName] || { shade: "placeholder", s_op: 0.4 };
+}
+
+function wrapContainerHtml(html: string): any {
+  return e("div", {
+    style: { display: "inline-block", lineHeight: 0, fontSize: 0 },
+    dangerouslySetInnerHTML: { __html: html },
+    ref: (node: HTMLElement | null) => {
+      if (!node) return;
+      const root = node.firstElementChild as HTMLElement | null;
+      if (root) root.style.margin = "0";
+    },
+  });
+}
+
 function SlotCell(props: {
   slotName: string;
   slot: SlotLike | null | undefined;
@@ -44,38 +75,30 @@ function SlotCell(props: {
 }): any {
   const { slotName, slot, showPrice } = props;
   const skin = slotSkin(slot);
-  let content: any = e(
-    "div",
-    {
-      style: {
-        width: "40px",
-        height: "40px",
-        background: "#222",
-        border: "1px solid #444",
-        fontSize: "9px",
-        color: "#666",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      },
-    },
-    slotName.replace("trade", "t"),
-  );
+  const { shade, s_op } = shadeFor(slotName);
+  let content: any = null;
 
   if (slot && skin) {
-    const html = itemContainer({ skin, size: 40, slot: slotName }, slot);
+    const html = itemContainer(
+      {
+        skin,
+        size: SLOT_SIZE,
+        slot: slotName,
+        shade,
+        s_op,
+        draggable: false,
+      },
+      slot,
+    );
     if (html) {
-      content = e("div", {
-        style: { display: "inline-block" },
-        dangerouslySetInnerHTML: { __html: html },
-      });
+      content = wrapContainerHtml(html);
     } else {
       content = e(
         "div",
         {
           style: {
-            width: "40px",
-            height: "40px",
+            width: `${SLOT_SIZE}px`,
+            height: `${SLOT_SIZE}px`,
             background: "#333",
             border: "1px solid #666",
             fontSize: "9px",
@@ -86,6 +109,30 @@ function SlotCell(props: {
         slot.name,
         slot.level != null ? ` +${slot.level}` : "",
       );
+    }
+  } else {
+    // Empty: AL shade silhouette via item_container (no skin).
+    const html = itemContainer({
+      size: SLOT_SIZE,
+      shade,
+      s_op,
+      slot: slotName,
+      bcolor: EMPTY_BCOLOR,
+      draggable: false,
+    });
+    if (html) {
+      content = wrapContainerHtml(html);
+    } else {
+      content = e("div", {
+        style: {
+          width: `${SLOT_SIZE + 6}px`,
+          height: `${SLOT_SIZE + 6}px`,
+          background: "#000",
+          border: `2px solid ${EMPTY_BCOLOR}`,
+          boxSizing: "border-box",
+        },
+        title: slotName,
+      });
     }
   }
 
@@ -123,18 +170,33 @@ export function GearGrid(props: GearGridProps): any {
 
   return e(
     "div",
-    { style: { display: "flex", flexDirection: "column", gap: "6px" } },
+    { style: { display: "flex", flexDirection: "column", gap: "2px" } },
     e(
       "div",
       {
         style: {
           display: "flex",
-          flexWrap: "wrap",
-          gap: "4px",
+          flexDirection: "column",
+          gap: "2px",
+          width: "fit-content",
         },
       },
-      ...GEAR_SLOTS.map((name) =>
-        e(SlotCell, { key: name, slotName: name, slot: slots[name] }),
+      ...GEAR_ROWS.map((row, ri) =>
+        e(
+          "div",
+          {
+            key: `row${ri}`,
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              gap: "2px",
+            },
+          },
+          ...row.map((name) =>
+            e(SlotCell, { key: name, slotName: name, slot: slots[name] }),
+          ),
+        ),
       ),
     ),
     tradeNames.length
@@ -144,11 +206,25 @@ export function GearGrid(props: GearGridProps): any {
             style: {
               display: "flex",
               flexWrap: "wrap",
-              gap: "4px",
-              borderTop: "1px solid #444",
+              gap: "2px",
+              borderTop: "1px solid #333",
               paddingTop: "4px",
+              marginTop: "4px",
             },
           },
+          e(
+            "div",
+            {
+              style: {
+                flex: "0 0 100%",
+                fontSize: "10px",
+                color: "#888",
+                marginBottom: "2px",
+                letterSpacing: "0.04em",
+              },
+            },
+            "TRADE",
+          ),
           ...tradeNames.map((name) =>
             e(SlotCell, {
               key: name,
