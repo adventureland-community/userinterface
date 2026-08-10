@@ -5,6 +5,12 @@ import {
   stringifyLayoutExport,
 } from "../../../lib/layoutExport";
 import {
+  getLayoutFreePlacement,
+  setLayoutFreePlacement,
+  subscribeLayoutEditPrefs,
+} from "../../../lib/layoutEditPrefs";
+import { LAYOUT_GRID_STEP } from "../../../lib/layoutGrid";
+import {
   type LayoutProfileMode,
   type PanelLayoutsByProfile,
 } from "../../../lib/settings";
@@ -42,7 +48,18 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const [status, setStatus] = React.useState("");
   const [pasteOpen, setPasteOpen] = React.useState(false);
   const [pasteText, setPasteText] = React.useState("");
+  const [freePlacement, setFreePlacement] = React.useState(() =>
+    getLayoutFreePlacement(),
+  );
   const fileRef = React.useRef(null as HTMLInputElement | null);
+
+  React.useEffect(
+    () =>
+      subscribeLayoutEditPrefs(() => {
+        setFreePlacement(getLayoutFreePlacement());
+      }),
+    [],
+  );
 
   const onExport = async () => {
     const json = stringifyLayoutExport(props.exportLayouts());
@@ -89,6 +106,11 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     ev.target.value = "";
   };
 
+  const toggleFree = () => {
+    const next = setLayoutFreePlacement(!freePlacement);
+    setFreePlacement(next.freePlacement);
+  };
+
   const modes: LayoutProfileMode[] = ["auto", "desktop", "tablet", "phone"];
 
   return e(
@@ -131,6 +153,18 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         "button",
         { type: "button", onClick: props.onReset, style: btnStyle() },
         "Reset positions",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: toggleFree,
+          style: btnStyle(freePlacement),
+          title: freePlacement
+            ? "Free placement: no grid snap (peer edges still magnetize)"
+            : `Snap to ${LAYOUT_GRID_STEP}% grid while dragging (peer edges still magnetize)`,
+        },
+        freePlacement ? "Free: ON" : "Free",
       ),
       e(
         "button",
@@ -205,7 +239,9 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       e(
         "span",
         { style: { color: "#888", fontSize: "12px" } },
-        "10% grid · snap 0/50/100 + peers · soft avoid · Ctrl+Shift+L",
+        freePlacement
+          ? "Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L"
+          : `${LAYOUT_GRID_STEP}% grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
       ),
     ),
     status

@@ -8,6 +8,11 @@ import {
   type PanelId,
   type PanelPos,
 } from "../../lib/layout";
+import {
+  getLayoutFreePlacement,
+  subscribeLayoutEditPrefs,
+} from "../../lib/layoutEditPrefs";
+import { snapToGridPercent } from "../../lib/layoutGrid";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 
 export type PositionedPanelProps = {
@@ -37,14 +42,26 @@ export type PositionedPanelProps = {
 /**
  * Absolutely places children at viewport-% coords.
  * In edit mode: drag the header bar to reposition (persisted by parent).
- * While dragging, snaps to edges / mid / peer panel axes (0 / 50 / 100 + peers).
- * On drop, soft-nudges away from nearly identical peer anchors.
+ * While dragging: grid snap (5%) unless Free placement is on; peer-edge snap
+ * always (0 / 50 / 100 + peers). On drop, soft-nudges away from near peers.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
   const React = getReact();
   const { id, pos, editing, onMove, children, onClose, hidden, onShow } =
     props;
   const [hover, setHover] = React.useState(false);
+  const [freePlacement, setFreePlacement] = React.useState(() =>
+    getLayoutFreePlacement(),
+  );
+  const freePlacementRef = React.useRef(freePlacement);
+  freePlacementRef.current = freePlacement;
+  React.useEffect(
+    () =>
+      subscribeLayoutEditPrefs(() => {
+        setFreePlacement(getLayoutFreePlacement());
+      }),
+    [],
+  );
   const dragging = React.useRef(false);
   const start = React.useRef({
     x: 0,
@@ -109,6 +126,11 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     let nextY = start.current.posY + dyPct;
     nextX = Math.max(0, Math.min(100, nextX));
     nextY = Math.max(0, Math.min(100, nextY));
+    // Grid is primary when Free is off; peer-edge magnet still applies after.
+    if (!freePlacementRef.current) {
+      nextX = snapToGridPercent(nextX);
+      nextY = snapToGridPercent(nextY);
+    }
     const { xs, ys } = peerAxes();
     nextX = snapPercent(nextX, 2.2, xs);
     nextY = snapPercent(nextY, 2.2, ys);

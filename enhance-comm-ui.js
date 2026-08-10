@@ -3861,11 +3861,88 @@ var EnhanceCommUI = (() => {
     return rows;
   }
 
+  // src/lib/layoutEditPrefs.ts
+  var KEY2 = "al-comm-ui-layout-edit-prefs-v1";
+  var DEFAULTS2 = {
+    freePlacement: false
+  };
+  var cache = null;
+  var listeners4 = [];
+  function read() {
+    var _a;
+    try {
+      const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY2);
+      if (!raw) return { ...DEFAULTS2 };
+      const parsed = JSON.parse(raw);
+      return {
+        freePlacement: !!parsed.freePlacement
+      };
+    } catch (e2) {
+      return { ...DEFAULTS2 };
+    }
+  }
+  function write(prefs) {
+    var _a;
+    try {
+      (_a = window.localStorage) == null ? void 0 : _a.setItem(KEY2, JSON.stringify(prefs));
+    } catch (e2) {
+    }
+  }
+  function notify() {
+    for (let i = 0; i < listeners4.length; i++) {
+      listeners4[i]();
+    }
+  }
+  function getLayoutEditPrefs() {
+    if (!cache) cache = read();
+    return cache;
+  }
+  function getLayoutFreePlacement() {
+    return getLayoutEditPrefs().freePlacement;
+  }
+  function setLayoutFreePlacement(free) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      freePlacement: !!free
+    };
+    cache = next;
+    write(next);
+    notify();
+    return next;
+  }
+  function subscribeLayoutEditPrefs(listener) {
+    listeners4.push(listener);
+    return () => {
+      const idx = listeners4.indexOf(listener);
+      if (idx >= 0) listeners4.splice(idx, 1);
+    };
+  }
+
+  // src/lib/layoutGrid.ts
+  var LAYOUT_GRID_STEP = 5;
+  var LAYOUT_GRID_MAJOR_PCTS = [0, 25, 50, 75, 100];
+  function snapToGridPercent(n, step = LAYOUT_GRID_STEP) {
+    if (!(step > 0) || !Number.isFinite(n)) return n;
+    const snapped = Math.round(n / step) * step;
+    return Math.max(0, Math.min(100, snapped));
+  }
+
   // src/ui/chrome/PositionedPanel.ts
   function PositionedPanel(props) {
     const React = getReact();
     const { id, pos, editing, onMove, children, onClose, hidden, onShow } = props;
     const [hover, setHover] = React.useState(false);
+    const [freePlacement, setFreePlacement] = React.useState(
+      () => getLayoutFreePlacement()
+    );
+    const freePlacementRef = React.useRef(freePlacement);
+    freePlacementRef.current = freePlacement;
+    React.useEffect(
+      () => subscribeLayoutEditPrefs(() => {
+        setFreePlacement(getLayoutFreePlacement());
+      }),
+      []
+    );
     const dragging = React.useRef(false);
     const start = React.useRef({
       x: 0,
@@ -3923,6 +4000,10 @@ var EnhanceCommUI = (() => {
       let nextY = start.current.posY + dyPct;
       nextX = Math.max(0, Math.min(100, nextX));
       nextY = Math.max(0, Math.min(100, nextY));
+      if (!freePlacementRef.current) {
+        nextX = snapToGridPercent(nextX);
+        nextY = snapToGridPercent(nextY);
+      }
       const { xs, ys } = peerAxes();
       nextX = snapPercent(nextX, 2.2, xs);
       nextY = snapPercent(nextY, 2.2, ys);
@@ -8594,7 +8675,16 @@ var EnhanceCommUI = (() => {
     const [status, setStatus] = React.useState("");
     const [pasteOpen, setPasteOpen] = React.useState(false);
     const [pasteText, setPasteText] = React.useState("");
+    const [freePlacement, setFreePlacement] = React.useState(
+      () => getLayoutFreePlacement()
+    );
     const fileRef = React.useRef(null);
+    React.useEffect(
+      () => subscribeLayoutEditPrefs(() => {
+        setFreePlacement(getLayoutFreePlacement());
+      }),
+      []
+    );
     const onExport = async () => {
       const json = stringifyLayoutExport(props.exportLayouts());
       try {
@@ -8636,6 +8726,10 @@ var EnhanceCommUI = (() => {
       reader.readAsText(file);
       ev.target.value = "";
     };
+    const toggleFree = () => {
+      const next = setLayoutFreePlacement(!freePlacement);
+      setFreePlacement(next.freePlacement);
+    };
     const modes = ["auto", "desktop", "tablet", "phone"];
     return e(
       "div",
@@ -8676,6 +8770,16 @@ var EnhanceCommUI = (() => {
           "button",
           { type: "button", onClick: props.onReset, style: btnStyle2() },
           "Reset positions"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: toggleFree,
+            style: btnStyle2(freePlacement),
+            title: freePlacement ? "Free placement: no grid snap (peer edges still magnetize)" : `Snap to ${LAYOUT_GRID_STEP}% grid while dragging (peer edges still magnetize)`
+          },
+          freePlacement ? "Free: ON" : "Free"
         ),
         e(
           "button",
@@ -8750,7 +8854,7 @@ var EnhanceCommUI = (() => {
         e(
           "span",
           { style: { color: "#888", fontSize: "12px" } },
-          "10% grid \xB7 snap 0/50/100 + peers \xB7 soft avoid \xB7 Ctrl+Shift+L"
+          freePlacement ? "Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L" : `${LAYOUT_GRID_STEP}% grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
         )
       ),
       status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,
@@ -8795,10 +8899,8 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/comm/LayoutEditGrid.ts
-  var MINOR_STEP = 5;
-  var MAJOR_PCTS = [0, 25, 50, 75, 100];
   function isMajor(pct) {
-    return MAJOR_PCTS.indexOf(pct) >= 0;
+    return LAYOUT_GRID_MAJOR_PCTS.indexOf(pct) >= 0;
   }
   function lineStyle(axis, pct) {
     const major = isMajor(pct);
@@ -8829,7 +8931,7 @@ var EnhanceCommUI = (() => {
   }
   function LayoutEditGrid() {
     const kids = [];
-    for (let pct = 0; pct <= 100; pct += MINOR_STEP) {
+    for (let pct = 0; pct <= 100; pct += LAYOUT_GRID_STEP) {
       kids.push(
         e("div", {
           key: `v-${pct}`,

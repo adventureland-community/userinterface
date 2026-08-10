@@ -1,12 +1,11 @@
 import { e } from "../../../host/react";
-
-/** Viewport % step for minor guide lines (matches percent layout coords). */
-const MINOR_STEP = 5;
-/** Stronger lines at quarter / half / edge snap anchors. */
-const MAJOR_PCTS = [0, 25, 50, 75, 100];
+import {
+  LAYOUT_GRID_MAJOR_PCTS,
+  LAYOUT_GRID_STEP,
+} from "../../../lib/layoutGrid";
 
 function isMajor(pct: number): boolean {
-  return MAJOR_PCTS.indexOf(pct) >= 0;
+  return LAYOUT_GRID_MAJOR_PCTS.indexOf(pct) >= 0;
 }
 
 function lineStyle(
@@ -46,11 +45,11 @@ function lineStyle(
 /**
  * Viewport-% grid shown only in layout edit mode.
  * pointer-events: none so panel drag headers stay interactive.
- * Minor lines every 5%; majors at 0 / 25 / 50 / 75 / 100.
+ * Minor lines every LAYOUT_GRID_STEP%; majors at 0 / 25 / 50 / 75 / 100.
  */
 export function LayoutEditGrid(): any {
   const kids: any[] = [];
-  for (let pct = 0; pct <= 100; pct += MINOR_STEP) {
+  for (let pct = 0; pct <= 100; pct += LAYOUT_GRID_STEP) {
     kids.push(
       e("div", {
         key: `v-${pct}`,
