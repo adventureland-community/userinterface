@@ -10,7 +10,7 @@ import { updateKillContext } from "../../kpi/sessionKills";
 import { type PanelId } from "../../lib/layout";
 import { subscribeCommanderOpen } from "../../host/commander";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
-import { setInfoDialogLayoutEditing } from "../../host/dialogHost";
+import { info } from "../../host/dialogHost";
 import { aggroByTarget, aggroedMonsters, activeBosses } from "../../queries/entities";
 import { PositionedPanel } from "../chrome/PositionedPanel";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
@@ -158,8 +158,8 @@ export function CommUI(props: CommUIProps): any {
   }, [selectedEntity, closePaperdoll, setLayoutEdit]);
 
   React.useEffect(() => {
-    setInfoDialogLayoutEditing(layoutEdit);
-    return () => setInfoDialogLayoutEditing(false);
+    info.setLayoutEditing(layoutEdit);
+    return () => info.setLayoutEditing(false);
   }, [layoutEdit]);
 
   React.useEffect(() => {

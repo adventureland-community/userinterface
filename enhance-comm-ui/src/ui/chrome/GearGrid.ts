@@ -1,7 +1,8 @@
-import { openItemSlotInfo } from "../../host/dialogHost";
+import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
 import { itemContainer, setXTarget, slotSkin } from "../../host/icons";
 import { e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Classic AL `render_slots` body layout (4 cols × 4 rows). */
 const GEAR_ROWS: string[][] = [
@@ -121,8 +122,9 @@ function SlotCell(props: {
             height: `${SLOT_SIZE}px`,
             background: "#333",
             border: "1px solid #666",
-            fontSize: "9px",
+            fontSize: TYPE.microMin,
             padding: "2px",
+            ...PIXEL_TEXT,
           },
           title: slot.name,
         },
@@ -164,7 +166,7 @@ function SlotCell(props: {
         if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
         setXTarget(entity);
-        openItemSlotInfo(entity, slotName, slot);
+        info.openItem(entity, slotName, slot);
       }
     : undefined;
 
@@ -174,6 +176,7 @@ function SlotCell(props: {
       key: slotName,
       className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
       "data-slot": slotName,
+      [INFO_SOURCE_ATTR]: clickable ? "" : undefined,
       title: clickable ? slot!.name : slotName,
       onPointerDown: onSlotPress,
       onMouseDown: clickable
@@ -202,18 +205,17 @@ function SlotCell(props: {
               position: "absolute",
               top: "-2px",
               right: "-2px",
-              minWidth: "14px",
-              height: "14px",
-              padding: "0 3px",
+              minWidth: "18px",
+              height: "18px",
+              padding: "0 4px",
               boxSizing: "border-box",
               background: "#3a2a10",
               border: "1px solid #c9a227",
               color: "#ffe08a",
-              fontSize: "10px",
-              lineHeight: "12px",
+              fontSize: TYPE.microMin,
+              lineHeight: "16px",
               textAlign: "center",
-              fontWeight: "normal",
-              textShadow: "none",
+              ...PIXEL_TEXT,
               pointerEvents: "none",
             },
           },
@@ -223,7 +225,7 @@ function SlotCell(props: {
     showPrice && slot?.price != null
       ? e(
           "div",
-          { style: { fontSize: "10px", color: "#ffd700" } },
+          { style: { fontSize: TYPE.micro, color: "#ffd700", ...PIXEL_TEXT } },
           String(slot.price),
         )
       : null,
@@ -305,10 +307,11 @@ export function GearGrid(props: GearGridProps): any {
             {
               style: {
                 flex: "0 0 100%",
-                fontSize: "10px",
+                fontSize: TYPE.micro,
                 color: "#888",
                 marginBottom: "2px",
                 letterSpacing: "0.04em",
+                ...PIXEL_TEXT,
               },
             },
             "TRADE",

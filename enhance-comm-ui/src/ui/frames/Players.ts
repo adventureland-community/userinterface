@@ -4,7 +4,8 @@ import { outOfRange } from "../../geometry/combat";
 import { aggroByTarget, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
-import { EffectsRow, SharedPartyEffects } from "../chrome/EffectsRow";
+import { EffectsRow } from "../chrome/EffectsRow";
+import { SharedPartyEffects } from "../chrome/SharedPartyEffects";
 import {
   getSettings,
   patchSettings,
@@ -242,7 +243,7 @@ export function Players(props: PlayersProps): any {
                 {
                   style: {
                     position: "relative",
-                    height: "22px",
+                    height: "26px",
                     overflow: "hidden",
                     background: "rgba(0,0,0,0.45)",
                     outline,
