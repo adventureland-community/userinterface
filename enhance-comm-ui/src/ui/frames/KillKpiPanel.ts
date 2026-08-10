@@ -1,51 +1,268 @@
-import { e } from "../../host/react";
-import { getStats } from "../../kpi/sessionKills";
+import { getReact, e } from "../../host/react";
+import { formatTime } from "../../lib/format";
+import { loadSettings, saveSettings, type PartyScope } from "../../lib/settings";
+import { getStats, resetKillSession } from "../../kpi/sessionKills";
+
+function partyLabel(key: string): string {
+  return key.indexOf("solo:") === 0 ? key.slice(5) : key;
+}
+
+function killWord(n: number): string {
+  return n === 1 ? "kill" : "kills";
+}
+
+const softText = {
+  textShadow: "none",
+  fontWeight: "normal" as const,
+};
 
 export function KillKpiPanel(): any {
+  const React = getReact();
+  const [scope, setScope] = React.useState(
+    () => loadSettings().killScope as PartyScope,
+  );
   const stats = getStats();
-  if (stats.total === 0) return null;
 
-  return e(
-    "div",
+  const setKillScope = (next: PartyScope) => {
+    saveSettings({ killScope: next });
+    setScope(next);
+  };
+
+  const selectStyle = {
+    fontSize: "16px",
+    padding: "6px 10px",
+    background: "#141414",
+    color: "#eee",
+    border: "1px solid #555",
+    maxWidth: "260px",
+    flex: "1 1 auto",
+    ...softText,
+  };
+
+  const resetBtn = e(
+    "button",
     {
+      type: "button",
+      onClick: () => resetKillSession(),
       style: {
-        display: "flex",
-        overflow: "auto",
-        flexDirection: "column",
-        margin: "4px",
-        border: "2px double gray",
-        background: "black",
-        gap: "2px",
-        maxHeight: "140px",
-        minWidth: "140px",
+        cursor: "pointer",
+        fontSize: "14px",
+        padding: "4px 12px",
+        border: "1px solid #555",
+        background: "#1a1a1a",
+        color: "#ccc",
+        ...softText,
       },
     },
+    "Reset",
+  );
+
+  const header = (showReset: boolean) =>
     e(
       "div",
       {
         style: {
-          padding: "2px",
-          whiteSpace: "nowrap",
-          textShadow: "0 0 2px black",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "8px",
         },
       },
-      `Kills: ${stats.total}`,
+      e("div", { style: { fontSize: "18px", ...softText } }, "Kills"),
+      showReset ? resetBtn : null,
+    );
+
+  const scopeRow = e(
+    "div",
+    {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+      },
+    },
+    e(
+      "span",
+      { style: { fontSize: "16px", color: "#bbb", ...softText } },
+      "Scope",
     ),
-    ...stats.byMtype.slice(0, 12).map((row) =>
+    e(
+      "select",
+      {
+        value: scope,
+        style: selectStyle,
+        onChange: (ev: any) => setKillScope(ev.target.value),
+      },
+      e(
+        "option",
+        { value: "watched" },
+        stats.trackingName
+          ? `Watched · ${stats.trackingName}`
+          : "Watched party",
+      ),
+      e("option", { value: "all" }, "All parties"),
+    ),
+  );
+
+  const shell = (children: any[]) =>
+    e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          overflow: "auto",
+          flexDirection: "column",
+          margin: "4px",
+          border: "2px solid #555",
+          background: "rgba(0,0,0,0.94)",
+          gap: "10px",
+          padding: "10px",
+          maxHeight: "280px",
+          minWidth: "240px",
+          fontSize: "16px",
+          color: "#eee",
+          ...softText,
+        },
+      },
+      ...children,
+    );
+
+  if (!stats.active && scope === "watched") {
+    return shell([
+      header(false),
+      scopeRow,
+      e(
+        "div",
+        { style: { fontSize: "15px", color: "#999", ...softText } },
+        "Select a character to track, or switch to all parties.",
+      ),
+    ]);
+  }
+
+  const elapsedSec = stats.sessionStartedAt
+    ? (Date.now() - stats.sessionStartedAt) / 1000
+    : 0;
+  const kpm =
+    stats.killsPerMinute != null ? Math.round(stats.killsPerMinute) : null;
+  const kph =
+    stats.killsPerHour != null ? Math.round(stats.killsPerHour) : null;
+  const kpd =
+    stats.killsPerDay != null ? Math.round(stats.killsPerDay) : null;
+
+  const rateCell = (value: number | null, unit: string) =>
+    e(
+      "span",
+      {
+        style: {
+          display: "inline-flex",
+          gap: "2px",
+          alignItems: "baseline",
+          ...softText,
+        },
+      },
+      e("span", { style: { color: "#eee" } }, value != null ? String(value) : "—"),
+      e("span", { style: { color: "#888", fontSize: "14px" } }, `/${unit}`),
+    );
+
+  const listSection = (rows: any[]) =>
+    e(
+      "div",
+      {
+        style: {
+          borderTop: "1px solid #333",
+          paddingTop: "8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+        },
+      },
+      ...rows,
+    );
+
+  const listRow = (key: string, label: string, count: number) =>
+    e(
+      "div",
+      {
+        key,
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: "12px",
+          fontSize: "15px",
+          padding: "4px 0",
+          ...softText,
+        },
+      },
+      e("span", { style: { color: "#ddd" } }, label),
+      e("span", { style: { color: "#eee", minWidth: "2ch", textAlign: "right" } }, String(count)),
+    );
+
+  return shell([
+    header(true),
+    scopeRow,
+    e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+        },
+      },
+      e(
+        "div",
+        { style: { fontSize: "22px", lineHeight: "1.2", ...softText } },
+        `${stats.total} ${killWord(stats.total)}`,
+      ),
       e(
         "div",
         {
-          key: row.mtype,
           style: {
-            padding: "2px 4px",
             display: "flex",
-            justifyContent: "space-between",
-            fontSize: "12px",
+            flexWrap: "wrap",
+            gap: "10px 14px",
+            fontSize: "16px",
+            ...softText,
           },
         },
-        e("span", {}, row.mtype),
-        e("span", {}, String(row.count)),
+        ...(kph != null
+          ? [rateCell(kpm, "m"), rateCell(kph, "h"), rateCell(kpd, "d")]
+          : [e("span", { style: { color: "#888" } }, "—")]),
+      ),
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "baseline",
+            gap: "6px",
+            fontSize: "15px",
+            color: "#aaa",
+            ...softText,
+          },
+        },
+        e("span", { style: { color: "#888" } }, "Session"),
+        e(
+          "span",
+          {},
+          stats.sessionStartedAt ? formatTime(elapsedSec) : "—",
+        ),
       ),
     ),
-  );
+    scope === "all" && stats.byParty.length > 1
+      ? listSection(
+          stats.byParty.slice(0, 8).map((row) =>
+            listRow(row.party, partyLabel(row.party), row.count),
+          ),
+        )
+      : null,
+    stats.byMtype.length
+      ? listSection(
+          stats.byMtype
+            .slice(0, 12)
+            .map((row) => listRow(row.mtype, row.mtype, row.count)),
+        )
+      : null,
+  ]);
 }

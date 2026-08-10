@@ -1,3 +1,12 @@
+/**
+ * Sliding 10s hit-window meter (combatMeter.ts) for the Hit DPS panel.
+ *
+ * Intentionally separate from partyCombat session aggregation:
+ * - combatMeter: short rolling window by actor (Hit DPS / TTK helpers)
+ * - partyCombat: session rates + channels for the Combat metrics panel
+ *
+ * RankMeter is shared presentation only; do not merge these pipelines.
+ */
 import { onDamage, type DamageEvent } from "../sockets/hub";
 
 const WINDOW_MS = 10_000;

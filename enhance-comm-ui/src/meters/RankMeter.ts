@@ -15,10 +15,14 @@ export type RankMeterProps = {
   title: string;
   className?: string;
   rows: RankRow[];
+  /** Nested inside another panel — no outer margin/border. */
+  embedded?: boolean;
+  /** Highlight this row id (watched character). */
+  highlightId?: string;
 };
 
 export function RankMeter(props: RankMeterProps): any {
-  const { title, className, rows } = props;
+  const { title, className, rows, embedded, highlightId } = props;
   if (!rows || rows.length === 0) return null;
 
   return e(
@@ -29,26 +33,32 @@ export function RankMeter(props: RankMeterProps): any {
         display: "flex",
         overflow: "auto",
         flexDirection: "column",
-        margin: "4px",
-        border: "2px double gray",
+        margin: embedded ? 0 : "4px",
+        border: embedded ? "none" : "2px solid #555",
         background: "black",
         gap: "2px",
+        fontSize: "17px",
+        textShadow: "none",
       },
     },
     e(
       "div",
       {
         style: {
-          padding: "2px",
+          padding: "3px 8px",
           whiteSpace: "nowrap",
-          textShadow: "0 0 2px black",
           position: "relative",
+          fontSize: "14px",
+          color: "#ccc",
+          textShadow: "none",
         },
       },
       title,
     ),
-    ...rows.map((row) =>
-      e(
+    ...rows.map((row) => {
+      const isYou =
+        highlightId != null && String(row.id) === String(highlightId);
+      return e(
         "div",
         {
           key: row.id,
@@ -57,6 +67,10 @@ export function RankMeter(props: RankMeterProps): any {
             display: "flex",
             flexDirection: "row",
             justifyContent: "space-between",
+            minHeight: "22px",
+            alignItems: "center",
+            background: isYou ? "rgba(225,55,88,0.16)" : undefined,
+            boxShadow: isYou ? "inset 3px 0 0 #e13758" : undefined,
           },
         },
         e("div", {
@@ -65,9 +79,7 @@ export function RankMeter(props: RankMeterProps): any {
             top: 0,
             bottom: 0,
             width:
-              row.barMax > 0
-                ? getPercent(row.value / row.barMax, 3)
-                : "0%",
+              row.barMax > 0 ? getPercent(row.value / row.barMax, 3) : "0%",
             background: classColors[row.ctype || ""] || "#666",
           },
         }),
@@ -75,12 +87,14 @@ export function RankMeter(props: RankMeterProps): any {
           "div",
           {
             style: {
-              padding: "2px",
+              padding: "2px 8px",
               whiteSpace: "nowrap",
               textOverflow: "ellipsis",
               overflow: "hidden",
-              textShadow: "0 0 2px black",
               position: "relative",
+              fontSize: "17px",
+              textShadow: "none",
+              color: isYou ? "#ffe0e8" : undefined,
             },
           },
           row.name,
@@ -89,15 +103,17 @@ export function RankMeter(props: RankMeterProps): any {
           "div",
           {
             style: {
-              padding: "2px",
+              padding: "2px 8px",
               whiteSpace: "nowrap",
-              textShadow: "0 0 2px black",
               position: "relative",
+              fontVariantNumeric: "tabular-nums",
+              fontSize: "17px",
+              textShadow: "none",
             },
           },
           row.label,
         ),
-      ),
-    ),
+      );
+    }),
   );
 }

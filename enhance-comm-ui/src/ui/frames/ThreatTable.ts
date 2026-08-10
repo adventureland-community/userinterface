@@ -28,18 +28,20 @@ export function ThreatTable(props: ThreatTableProps): any {
         margin: "4px",
         border: "2px double gray",
         background: "black",
-        gap: "2px",
-        maxHeight: "160px",
-        minWidth: "160px",
+        gap: "3px",
+        maxHeight: "200px",
+        minWidth: "200px",
+        fontSize: "15px",
       },
     },
     e(
       "div",
       {
         style: {
-          padding: "2px",
+          padding: "6px 8px",
           whiteSpace: "nowrap",
-          textShadow: "0 0 2px black",
+          fontSize: "16px",
+          textShadow: "none",
         },
       },
       "Threat",
@@ -61,17 +63,19 @@ export function ThreatTable(props: ThreatTableProps): any {
         {
           key: tid,
           style: {
-            padding: "2px 4px",
+            padding: "5px 8px",
             display: "flex",
             justifyContent: "space-between",
-            gap: "8px",
-            fontSize: "12px",
+            gap: "10px",
+            fontSize: "15px",
+            textShadow: "none",
+            fontWeight: "normal",
             background:
               tid === props.observingId ? "rgba(80,0,0,0.5)" : undefined,
           },
         },
         e("span", {}, name),
-        e("span", { style: { color: "#ccc" } }, `${mobs.length} (${summary})`),
+        e("span", { style: { color: "#ddd" } }, `${mobs.length} (${summary})`),
       );
     }),
   );
