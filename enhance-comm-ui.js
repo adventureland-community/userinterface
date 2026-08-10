@@ -1257,9 +1257,7 @@ var EnhanceCommUI = (() => {
     }
   }
 
-  // src/lib/settings.ts
-  var KEY = "al-comm-ui-settings-v1";
-  var PANEL_IDS_SET = new Set(PANEL_IDS);
+  // src/lib/settingsFocus.ts
   function resolvePartyFocus(focus, watchedPartyKey3) {
     if (focus === "all") {
       return { scope: "all", partyFilter: null, historyKey: null };
@@ -1281,6 +1279,27 @@ var EnhanceCommUI = (() => {
     if (!hasObserver && scope === "watched") return "all";
     return scope;
   }
+  function partyFocusLabel(focus, watchedName) {
+    if (focus === "watched") {
+      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
+    }
+    if (focus === "visible") return "Visible parties";
+    if (focus === "all") return "All parties";
+    if (focus.indexOf("solo:") === 0) return focus.slice(5);
+    return focus;
+  }
+  function killScopeLabel(scope, watchedName) {
+    if (scope === "watched") {
+      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
+    }
+    if (scope === "visible" || scope === "all") return "Visible parties";
+    const _exhaustive = scope;
+    return _exhaustive;
+  }
+
+  // src/lib/settings.ts
+  var KEY = "al-comm-ui-settings-v1";
+  var PANEL_IDS_SET = new Set(PANEL_IDS);
   var CLOSABLE_PANEL_IDS = [
     "bossBar",
     "combat",
@@ -1660,23 +1679,6 @@ var EnhanceCommUI = (() => {
         ...merged
       }
     });
-  }
-  function partyFocusLabel(focus, watchedName) {
-    if (focus === "watched") {
-      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
-    }
-    if (focus === "visible") return "Visible parties";
-    if (focus === "all") return "All parties";
-    if (focus.indexOf("solo:") === 0) return focus.slice(5);
-    return focus;
-  }
-  function killScopeLabel(scope, watchedName) {
-    if (scope === "watched") {
-      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
-    }
-    if (scope === "visible" || scope === "all") return "Visible parties";
-    const _exhaustive = scope;
-    return _exhaustive;
   }
 
   // src/kpi/sessionKills.ts
@@ -2177,7 +2179,7 @@ var EnhanceCommUI = (() => {
   overflow: hidden;
 }
 .ecu-char-name {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 500 !important;
   letter-spacing: 0.02em;
   color: #f5f5f5;
@@ -2190,7 +2192,7 @@ var EnhanceCommUI = (() => {
 .ecu-char-sub {
   flex: 0 0 auto;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-shadow: none !important;
@@ -2201,7 +2203,7 @@ var EnhanceCommUI = (() => {
   height: 100%;
   padding: 0 16px;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400 !important;
   text-shadow: none !important;
 }
@@ -2296,7 +2298,7 @@ var EnhanceCommUI = (() => {
   opacity: 0.92;
 }
 .ecu-server-dd-ping-ms {
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   color: #8ab4c9;
   white-space: nowrap;
@@ -2404,7 +2406,7 @@ var EnhanceCommUI = (() => {
     min-height: 28px;
     height: 28px;
     padding: 0 10px;
-    font-size: 13px;
+    font-size: 14px;
   }
   .ecu-chrome {
     flex: 1 1 auto;
@@ -3007,16 +3009,27 @@ var EnhanceCommUI = (() => {
     }
   }
 
-  // src/host/dialogHost.ts
-  var STYLE_ID2 = "comm-ui-dialog-host-css";
-  var CLOSE_CLASS = "ecu-dialog-close";
-  var BOUND = "__ecuDialogDismissBound";
-  var PATCHED = "__ecuDialogRendersPatched";
-  var JQ_PATCHED = "__ecuDialogJqueryPatched";
-  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
+  // src/host/infoDialog/bindings.ts
+  var openItemFn = null;
+  var openConditionFn = null;
+  function bindOpenHandlers(openItem2, openCondition2) {
+    openItemFn = openItem2;
+    openConditionFn = openCondition2;
+  }
+  function callOpenItem(entity, slotName, slotOverride) {
+    if (openItemFn) openItemFn(entity, slotName, slotOverride);
+  }
+  function callOpenCondition(entity, conditionName) {
+    if (openConditionFn) openConditionFn(entity, conditionName);
+  }
+
+  // src/host/infoDialog/types.ts
   var BUFF_DIALOG_ID = "ecu-buff-dialog";
   var ITEM_DIALOG_ID = "ecu-item-dialog";
   var STOCK_DIALOG_ID = "topleftcornerdialog";
+  var INFO_SOURCE_ATTR = "data-ecu-info-source";
+  var CLOSE_CLASS = "ecu-dialog-close";
+  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
   var BUFF_SEL = "#" + BUFF_DIALOG_ID;
   var ITEM_SEL = "#" + ITEM_DIALOG_ID;
   var STOCK_SEL = "#" + STOCK_DIALOG_ID;
@@ -3026,6 +3039,9 @@ var EnhanceCommUI = (() => {
   function panelAttrFor(kind) {
     return kind === "buff" ? "buffInfo" : "itemInfo";
   }
+
+  // src/host/infoDialog/css.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
   function injectDialogHostCss() {
     if (document.getElementById(STYLE_ID2)) return;
     const style = document.createElement("style");
@@ -3047,7 +3063,7 @@ var EnhanceCommUI = (() => {
   vertical-align: top;
   display: inline-block;
 }
-/* Stub: stock clears still target this id; real content lives in ecu-* hosts. */
+/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
 #${STOCK_DIALOG_ID} {
   display: none !important;
 }
@@ -3091,123 +3107,13 @@ var EnhanceCommUI = (() => {
 `;
     document.head.append(style);
   }
+
+  // src/host/infoDialog/hosts.ts
   function dialogEl(kind) {
     return document.getElementById(dialogIdFor(kind));
   }
   function hasContent(el) {
     return !!(el && String(el.innerHTML || "").trim());
-  }
-  function isBuffDialogOpen() {
-    return hasContent(dialogEl("buff"));
-  }
-  function isItemDialogOpen() {
-    return hasContent(dialogEl("item"));
-  }
-  function isTopLeftDialogOpen() {
-    return isBuffDialogOpen() || isItemDialogOpen();
-  }
-  function clearDialogOnlyXTarget() {
-    if (window.__ecuDialogOnlyXTarget) {
-      window.__ecuDialogOnlyXTarget = false;
-      window.xtarget = null;
-    }
-  }
-  function clearDialogsTarget() {
-    try {
-      window.dialogs_target = null;
-    } catch (e2) {
-    }
-  }
-  function closeBuffDialog() {
-    const el = dialogEl("buff");
-    if (!hasContent(el)) return false;
-    el.innerHTML = "";
-    clearDialogsTarget();
-    clearDialogOnlyXTarget();
-    emitInfoDialogChange("buff", false);
-    return true;
-  }
-  function closeItemDialog() {
-    const el = dialogEl("item");
-    if (!hasContent(el)) return false;
-    el.innerHTML = "";
-    clearDialogsTarget();
-    emitInfoDialogChange("item", false);
-    return true;
-  }
-  function closeTopLeftDialog() {
-    if (closeBuffDialog()) return true;
-    return closeItemDialog();
-  }
-  function closeAllInfoDialogs() {
-    const a = closeBuffDialog();
-    const b = closeItemDialog();
-    return a || b;
-  }
-  function setInfoDialogLayoutEditing(editing) {
-    window.__ecuInfoDialogLayoutEdit = !!editing;
-  }
-  function ensureCloseButton(dialog, kind) {
-    if (!hasContent(dialog)) return;
-    if (dialog.querySelector("." + CLOSE_CLASS)) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = CLOSE_CLASS;
-    btn.title = "Close";
-    btn.setAttribute("aria-label", "Close");
-    btn.textContent = "\xD7";
-    btn.addEventListener("click", (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      if (kind === "buff") closeBuffDialog();
-      else closeItemDialog();
-    });
-    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
-    if (panel) {
-      const pos = window.getComputedStyle(panel).position;
-      if (!pos || pos === "static") panel.style.position = "relative";
-      panel.appendChild(btn);
-    } else {
-      dialog.appendChild(btn);
-    }
-  }
-  function observeCloseButton(dialog, kind) {
-    if (typeof MutationObserver !== "function") {
-      ensureCloseButton(dialog, kind);
-      return;
-    }
-    const key = "__ecuCloseObs";
-    if (dialog[key]) {
-      ensureCloseButton(dialog, kind);
-      return;
-    }
-    dialog[key] = true;
-    const obs = new MutationObserver(() => {
-      ensureCloseButton(dialog, kind);
-    });
-    obs.observe(dialog, { childList: true, subtree: true, characterData: true });
-    ensureCloseButton(dialog, kind);
-  }
-  function isInfoDialogChrome(el) {
-    if (!el.closest) return false;
-    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
-  }
-  function isInfoSourceClick(el) {
-    if (!el.closest) return false;
-    return !!(el.closest(".comm-gear-slot") || el.closest(".comm-paperdoll") || el.closest('[data-panel="paperdoll"]') || el.closest(".comm-fx-icon") || el.closest('[data-panel="playerFrame"]') || el.closest('[data-panel="targetFrame"]'));
-  }
-  function installDialogDismiss() {
-    if (window[BOUND]) return;
-    window[BOUND] = true;
-    document.addEventListener("mousedown", (ev) => {
-      if (window.__ecuInfoDialogLayoutEdit) return;
-      if (!isTopLeftDialogOpen()) return;
-      const t = ev.target;
-      if (!t) return;
-      const el = t;
-      if (isInfoDialogChrome(el) || isInfoSourceClick(el)) return;
-      closeAllInfoDialogs();
-    });
   }
   function ensureNamedDialog(id, parent) {
     let dialog = document.getElementById(id);
@@ -3239,147 +3145,87 @@ var EnhanceCommUI = (() => {
     const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
     return { buff, item, stock };
   }
-  function remapStockSelector(selector, kind) {
-    if (selector === STOCK_SEL || selector === STOCK_DIALOG_ID) {
-      return kind === "buff" ? BUFF_SEL : ITEM_SEL;
+  function adoptInfoDialog(kind, slot) {
+    const { buff, item } = ensureDialogElements();
+    const dialog = kind === "buff" ? buff : item;
+    if (dialog.parentElement !== slot) {
+      slot.appendChild(dialog);
     }
-    return selector;
+    dialog.classList.add(ADOPTED_CLASS);
+    dialog.setAttribute("data-ecu-kind", kind);
+    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
+    const corner = document.getElementById("topleftcorner");
+    if (corner) corner.classList.add("ecu-info-slot-host");
+    return dialog;
   }
-  var FN_MARK = "__ecuInfoPatched";
-  var FN_ORIG = "__ecuInfoOrig";
-  var lastInfoWriteKind = "item";
-  function markPatched(patched, orig) {
-    patched[FN_MARK] = true;
-    patched[FN_ORIG] = orig;
-    return patched;
+  function ensureAdoptedHost(kind) {
+    const { buff, item } = ensureDialogElements();
+    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
+    const slot = document.querySelector(slotSel);
+    if (slot) return adoptInfoDialog(kind, slot);
+    return kind === "buff" ? buff : item;
   }
-  function isOurPatch(fn) {
-    return !!(fn && fn[FN_MARK]);
+
+  // src/host/infoDialog/write.ts
+  var listeners3 = /* @__PURE__ */ new Set();
+  var pendingWriteKind = "item";
+  function setPendingWriteKind(kind) {
+    pendingWriteKind = kind;
   }
-  function rescueStockContent() {
-    const stock = document.getElementById(STOCK_DIALOG_ID);
-    if (!hasContent(stock)) return;
-    const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
-    if (!host || host === stock) return;
-    host.innerHTML = stock.innerHTML;
-    stock.innerHTML = "";
+  function getPendingWriteKind() {
+    return pendingWriteKind;
   }
-  function installStockRescueObserver() {
-    const stock = document.getElementById(STOCK_DIALOG_ID);
-    if (!stock || typeof MutationObserver !== "function") return;
-    const key = "__ecuStockRescueObs";
-    if (stock[key]) return;
-    stock[key] = true;
-    const obs = new MutationObserver(() => {
-      rescueStockContent();
-    });
-    obs.observe(stock, { childList: true, subtree: true, characterData: true });
-  }
-  function installRenderPatches() {
-    const w = window;
-    const done = w[PATCHED] || (w[PATCHED] = {});
-    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
-      const orig = w.render_condition[FN_ORIG] || w.render_condition;
-      w.render_condition = markPatched(function(selector, name) {
-        lastInfoWriteKind = "buff";
-        return orig.call(
-          this,
-          remapStockSelector(selector, "buff"),
-          name
-        );
-      }, orig);
-      done.condition = true;
-    }
-    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
-      const orig = w.render_skill[FN_ORIG] || w.render_skill;
-      w.render_skill = markPatched(function(selector, skill, args) {
-        lastInfoWriteKind = "buff";
-        return orig.call(
-          this,
-          remapStockSelector(selector, "buff"),
-          skill,
-          args
-        );
-      }, orig);
-      done.skill = true;
-    }
-    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
-      const orig = w.render_item[FN_ORIG] || w.render_item;
-      w.render_item = markPatched(function(selector, args) {
-        const fromBuff = selector === BUFF_SEL || selector === BUFF_DIALOG_ID;
-        if (fromBuff) lastInfoWriteKind = "buff";
-        else lastInfoWriteKind = "item";
-        return orig.call(
-          this,
-          fromBuff ? selector : remapStockSelector(selector, "item"),
-          args
-        );
-      }, orig);
-      done.item = true;
-    }
-    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
-      const origSlot = w.slot_click[FN_ORIG] || w.slot_click;
-      w.slot_click = markPatched(function(name) {
-        const target = w.xtarget || w.ctarget;
-        if (target) openItemSlotInfo(target, name);
-      }, origSlot);
-      done.slot = true;
-    }
-  }
-  function installJqueryClearHook() {
-    const $ = window.$;
-    if (!$ || !$.fn || $.fn[JQ_PATCHED]) return;
-    const orig = $.fn.html;
-    if (typeof orig !== "function") return;
-    $.fn[JQ_PATCHED] = true;
-    $.fn.html = function() {
-      if (arguments.length > 0 && this && this.length) {
-        let hitStock = false;
-        for (let i = 0; i < this.length; i++) {
-          const node = this[i];
-          if (node && node.id === STOCK_DIALOG_ID) {
-            hitStock = true;
-            break;
-          }
-        }
-        if (hitStock) {
-          const value = arguments[0];
-          if (value === "") {
-            return orig.apply(this, arguments);
-          }
-          const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
-          if (host) {
-            return orig.apply($(host), arguments);
-          }
-        }
-      }
-      return orig.apply(this, arguments);
-    };
-  }
-  var infoDialogListeners = /* @__PURE__ */ new Set();
   function subscribeInfoDialogChange(listener) {
-    infoDialogListeners.add(listener);
+    listeners3.add(listener);
     return () => {
-      infoDialogListeners.delete(listener);
+      listeners3.delete(listener);
     };
   }
   function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(infoDialogListeners)) {
+    for (const listener of Array.from(listeners3)) {
       try {
         listener(kind, open);
       } catch (e2) {
       }
     }
   }
-  function ensureItemDialogAdopted() {
-    const { item } = ensureDialogElements();
-    const slot = document.querySelector(
-      ".comm-item-info-slot"
-    );
-    if (slot) return adoptInfoDialog("item", slot);
-    return item;
+  function clearDialogOnlyXTarget() {
+    if (window.__ecuDialogOnlyXTarget) {
+      window.__ecuDialogOnlyXTarget = false;
+      window.xtarget = null;
+    }
   }
-  function buildItemInfoHtml(args) {
+  function clearDialogsTarget() {
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+  }
+  function ensureCloseButton(dialog, kind, closeFn) {
+    if (!hasContent(dialog)) return;
+    if (dialog.querySelector("." + CLOSE_CLASS)) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = CLOSE_CLASS;
+    btn.title = "Close";
+    btn.setAttribute("aria-label", "Close");
+    btn.textContent = "\xD7";
+    btn.addEventListener("click", (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      closeFn(kind);
+    });
+    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
+    if (panel) {
+      const pos = window.getComputedStyle(panel).position;
+      if (!pos || pos === "static") panel.style.position = "relative";
+      panel.appendChild(btn);
+    } else {
+      dialog.appendChild(btn);
+    }
+  }
+  var FN_ORIG = "__ecuInfoOrig";
+  function buildItemHtml(args) {
     const w = window;
     const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
     if (typeof renderItem !== "function") return "";
@@ -3390,7 +3236,190 @@ var EnhanceCommUI = (() => {
       return "";
     }
   }
-  var itemInfoWriteLock = false;
+  function buildConditionHtml(name) {
+    const w = window;
+    const G = w.G;
+    if (!G || !G.conditions) return "";
+    let def = G.conditions[name];
+    let minutes = 0;
+    let condition;
+    const target = w.xtarget || w.ctarget;
+    if (target && target.s && target.s[name] && target.s[name].ms) {
+      minutes = target.s[name].ms / 6e3 / 10;
+    }
+    if (target && target.s && target.s[name]) {
+      const clone = typeof w.clone === "function" ? w.clone : null;
+      def = !def ? {} : clone ? clone(def) : { ...def };
+      condition = target.s[name];
+      const keys = Object.keys(condition);
+      for (let i = 0; i < keys.length; i++) {
+        def[keys[i]] = condition[keys[i]];
+      }
+    }
+    return buildItemHtml({
+      skin: condition && condition.skin || def && def.skin,
+      item: def,
+      prop: def,
+      minutes,
+      condition
+    });
+  }
+  var closeKindImpl = () => false;
+  function bindCloseImpl(fn) {
+    closeKindImpl = fn;
+  }
+  function writeInfoHtml(kind, html) {
+    const host = ensureAdoptedHost(kind);
+    host.innerHTML = html || "";
+    if (hasContent(host)) {
+      ensureCloseButton(host, kind, (k) => {
+        closeKindImpl(k);
+      });
+    }
+    emitInfoDialogChange(kind, hasContent(host));
+  }
+  function clearInfoHost(kind) {
+    const el = dialogEl(kind);
+    if (!hasContent(el)) return false;
+    el.innerHTML = "";
+    if (kind === "buff") clearDialogOnlyXTarget();
+    clearDialogsTarget();
+    emitInfoDialogChange(kind, false);
+    return true;
+  }
+
+  // src/host/infoDialog/dismiss.ts
+  var BOUND = "__ecuDialogDismissBound";
+  var layoutEditing = false;
+  function setInfoDialogLayoutEditing(editing) {
+    layoutEditing = !!editing;
+  }
+  function isOpen(kind) {
+    return hasContent(dialogEl(kind));
+  }
+  function isInfoDialogChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
+  }
+  function isInfoSource(el) {
+    if (!el.closest) return false;
+    return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
+  }
+  function installDialogDismiss() {
+    if (window[BOUND]) return;
+    window[BOUND] = true;
+    document.addEventListener(
+      "pointerdown",
+      (ev) => {
+        if (layoutEditing) return;
+        if (!isOpen("buff") && !isOpen("item")) return;
+        const t = ev.target;
+        if (!t) return;
+        const el = t;
+        if (isInfoDialogChrome(el) || isInfoSource(el)) return;
+        clearInfoHost("buff");
+        clearInfoHost("item");
+      },
+      true
+    );
+  }
+
+  // src/host/infoDialog/patches.ts
+  var PATCHED = "__ecuDialogRendersPatched";
+  var FN_MARK = "__ecuInfoPatched";
+  var FN_ORIG2 = "__ecuInfoOrig";
+  function markPatched(patched, orig) {
+    patched[FN_MARK] = true;
+    patched[FN_ORIG2] = orig;
+    return patched;
+  }
+  function isOurPatch(fn) {
+    return !!(fn && fn[FN_MARK]);
+  }
+  function isStockOrEcuSelector(selector) {
+    return selector === STOCK_SEL || selector === STOCK_DIALOG_ID || selector === BUFF_SEL || selector === ITEM_SEL || selector === "#" + STOCK_DIALOG_ID;
+  }
+  function kindFromSelector(selector) {
+    if (selector === BUFF_SEL) return "buff";
+    if (selector === ITEM_SEL) return "item";
+    return getPendingWriteKind();
+  }
+  function installRenderPatches() {
+    const w = window;
+    const done = w[PATCHED] || (w[PATCHED] = {});
+    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
+      const orig = w.render_condition[FN_ORIG2] || w.render_condition;
+      w.render_condition = markPatched(function(selector, name) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, name);
+      }, orig);
+      done.condition = true;
+    }
+    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
+      const orig = w.render_skill[FN_ORIG2] || w.render_skill;
+      w.render_skill = markPatched(function(selector, skill, args) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, skill, args);
+      }, orig);
+      done.skill = true;
+    }
+    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
+      const orig = w.render_item[FN_ORIG2] || w.render_item;
+      w.render_item = markPatched(function(selector, args) {
+        if (selector === "html") {
+          return orig.call(this, "html", args);
+        }
+        if (isStockOrEcuSelector(selector)) {
+          const kind = kindFromSelector(selector);
+          setPendingWriteKind(kind);
+          const html = orig.call(this, "html", args);
+          if (typeof html === "string") writeInfoHtml(kind, html);
+          return html;
+        }
+        return orig.call(this, selector, args);
+      }, orig);
+      done.item = true;
+    }
+    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
+      const origSlot = w.slot_click[FN_ORIG2] || w.slot_click;
+      w.slot_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenItem(target, name);
+      }, origSlot);
+      done.slot = true;
+    }
+    if (typeof w.condition_click === "function" && !isOurPatch(w.condition_click)) {
+      const origCond = w.condition_click[FN_ORIG2] || w.condition_click;
+      w.condition_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenCondition(target, name);
+        else origCond.call(this, name);
+      }, origCond);
+      done.conditionClick = true;
+    }
+  }
+  function installInfoDialogLifecycle() {
+    ensureDialogElements();
+    installRenderPatches();
+    installDialogDismiss();
+    if (!window.__ecuDialogPatchRetry) {
+      window.__ecuDialogPatchRetry = true;
+      let tries = 0;
+      const timer = window.setInterval(() => {
+        tries += 1;
+        installRenderPatches();
+        const w = window;
+        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
+        if (ready || tries >= 80) {
+          window.clearInterval(timer);
+        }
+      }, 250);
+    }
+  }
+
+  // src/host/infoDialog/api.ts
+  var lastConditionId = "";
+  var lastSlotName = "";
   function resolvePaperdollEntity(entity) {
     if (!entity) return entity;
     const id = entity.id;
@@ -3409,20 +3438,55 @@ var EnhanceCommUI = (() => {
     }
     return entity;
   }
-  function openItemSlotInfo(entity, slotName, slotOverride) {
+  function setDialogOnlyXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = !!entity;
+  }
+  function setSelectionXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = false;
+  }
+  function isBuffDialogOpen() {
+    return hasContent(dialogEl("buff"));
+  }
+  function isItemDialogOpen() {
+    return hasContent(dialogEl("item"));
+  }
+  function isTopLeftDialogOpen() {
+    return isBuffDialogOpen() || isItemDialogOpen();
+  }
+  function closeBuffDialog() {
+    lastConditionId = "";
+    return clearInfoHost("buff");
+  }
+  function closeItemDialog() {
+    lastSlotName = "";
+    return clearInfoHost("item");
+  }
+  function closeInfo(kind) {
+    if (kind === "buff") return closeBuffDialog();
+    if (kind === "item") return closeItemDialog();
+    if (closeBuffDialog()) return true;
+    return closeItemDialog();
+  }
+  function closeTopLeftDialog() {
+    return closeInfo();
+  }
+  function closeAllInfoDialogs() {
+    const a = closeBuffDialog();
+    const b = closeItemDialog();
+    return a || b;
+  }
+  bindCloseImpl((kind) => closeInfo(kind));
+  function openItem(entity, slotName, slotOverride) {
     if (!entity || !slotName) return;
-    if (itemInfoWriteLock) return;
-    ensureDialogElements();
-    installRenderPatches();
-    installJqueryClearHook();
-    installStockRescueObserver();
-    installDialogDismiss();
+    installInfoDialogLifecycle();
     const target = resolvePaperdollEntity(entity);
     const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
     if (!slot || !slot.name) return;
     const w = window;
-    const itemHost = ensureItemDialogAdopted();
-    if (w.last_sclick && w.last_sclick === slotName && String(itemHost.innerHTML || "").trim()) {
+    const itemHost = ensureAdoptedHost("item");
+    if (lastSlotName === slotName && String(itemHost.innerHTML || "").trim()) {
       closeItemDialog();
       w.last_sclick = "";
       return;
@@ -3430,76 +3494,65 @@ var EnhanceCommUI = (() => {
     const G = w.G;
     const def = G && G.items && G.items[slot.name];
     if (!def) return;
-    itemInfoWriteLock = true;
-    try {
-      w.last_sclick = slotName;
-      w.dialogs_target = target;
-      w.xtarget = target;
-      lastInfoWriteKind = "item";
-      const args = {
-        id: "item" + slotName,
-        item: def,
-        name: slot.name,
-        actual: slot,
-        slot: slotName,
-        from_player: target.id
-      };
-      const html = buildItemInfoHtml(args);
-      if (html) {
-        itemHost.innerHTML = html;
-      } else if (typeof w.render_item === "function") {
-        w.render_item(ITEM_SEL, args);
-      }
-      ensureCloseButton(itemHost, "item");
-      emitInfoDialogChange("item", hasContent(itemHost));
-    } finally {
-      window.setTimeout(() => {
-        itemInfoWriteLock = false;
-      }, 0);
-    }
+    setPendingWriteKind("item");
+    lastSlotName = slotName;
+    w.last_sclick = slotName;
+    w.dialogs_target = target;
+    setSelectionXTarget(target);
+    const html = buildItemHtml({
+      id: "item" + slotName,
+      item: def,
+      name: slot.name,
+      actual: slot,
+      slot: slotName,
+      from_player: target.id
+    });
+    writeInfoHtml("item", html);
   }
-  function adoptInfoDialog(kind, slot) {
-    const { buff, item } = ensureDialogElements();
-    const dialog = kind === "buff" ? buff : item;
-    if (dialog.parentElement !== slot) {
-      slot.appendChild(dialog);
+  function openCondition(entity, conditionName) {
+    if (!entity || !conditionName) return;
+    installInfoDialogLifecycle();
+    const host = ensureAdoptedHost("buff");
+    if (lastConditionId === conditionName && hasContent(host)) {
+      closeBuffDialog();
+      return;
     }
-    dialog.classList.add(ADOPTED_CLASS);
-    dialog.setAttribute("data-ecu-kind", kind);
-    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
-    const corner = document.getElementById("topleftcorner");
-    if (corner) corner.classList.add("ecu-info-slot-host");
-    installRenderPatches();
-    installJqueryClearHook();
-    installStockRescueObserver();
-    installDialogDismiss();
-    observeCloseButton(dialog, kind);
-    return dialog;
+    const w = window;
+    setPendingWriteKind("buff");
+    lastConditionId = conditionName;
+    w.dialogs_target = entity;
+    setDialogOnlyXTarget(entity);
+    const html = buildConditionHtml(conditionName);
+    writeInfoHtml("buff", html);
+  }
+  bindOpenHandlers(openItem, openCondition);
+  function adoptInfoDialog2(kind, slot) {
+    installInfoDialogLifecycle();
+    return adoptInfoDialog(kind, slot);
   }
   function ensureDialogHost() {
-    const { buff, item } = ensureDialogElements();
+    ensureDialogElements();
+    installInfoDialogLifecycle();
     installRenderPatches();
-    installJqueryClearHook();
-    installStockRescueObserver();
     installDialogDismiss();
-    observeCloseButton(buff, "buff");
-    observeCloseButton(item, "item");
-    if (!window.__ecuDialogPatchRetry) {
-      window.__ecuDialogPatchRetry = true;
-      let tries = 0;
-      const timer = window.setInterval(() => {
-        tries += 1;
-        installRenderPatches();
-        installJqueryClearHook();
-        installStockRescueObserver();
-        const w = window;
-        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
-        if (ready || tries >= 80) {
-          window.clearInterval(timer);
-        }
-      }, 250);
-    }
   }
+  var info = {
+    openItem,
+    openBuff: openCondition,
+    openCondition,
+    close: closeInfo,
+    closeAll: closeAllInfoDialogs,
+    isOpen: (kind) => {
+      if (kind === "buff") return isBuffDialogOpen();
+      if (kind === "item") return isItemDialogOpen();
+      return isTopLeftDialogOpen();
+    },
+    adopt: adoptInfoDialog2,
+    ensure: ensureDialogHost,
+    subscribe: subscribeInfoDialogChange,
+    setLayoutEditing: setInfoDialogLayoutEditing,
+    sourceAttr: INFO_SOURCE_ATTR
+  };
 
   // src/host/keyboardPolicy.ts
   var BOUND2 = "__ecuCommKeyboardBound";
@@ -3619,7 +3672,7 @@ var EnhanceCommUI = (() => {
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
-  var listeners3 = [];
+  var listeners4 = [];
   function injectHostCss() {
     if (document.getElementById(STYLE_ID3)) return;
     const style = document.createElement("style");
@@ -3650,18 +3703,18 @@ var EnhanceCommUI = (() => {
     document.head.append(style);
   }
   function notifyInventory(open) {
-    for (let i = 0; i < listeners3.length; i++) {
+    for (let i = 0; i < listeners4.length; i++) {
       try {
-        listeners3[i](open);
+        listeners4[i](open);
       } catch (e2) {
       }
     }
   }
   function subscribeInventory(listener) {
-    listeners3.push(listener);
+    listeners4.push(listener);
     return () => {
-      const idx = listeners3.indexOf(listener);
-      if (idx >= 0) listeners3.splice(idx, 1);
+      const idx = listeners4.indexOf(listener);
+      if (idx >= 0) listeners4.splice(idx, 1);
     };
   }
   function isInventoryOpen() {
@@ -3865,6 +3918,46 @@ var EnhanceCommUI = (() => {
     return dt.getUTCHours().toString().padStart(2, "0") + ":" + dt.getUTCMinutes().toString().padStart(2, "0");
   }
 
+  // src/lib/typeScale.ts
+  var TYPE = {
+    /** Party chip / compact names */
+    name: "16px",
+    /** Unit-frame / threat / aggro bar names */
+    nameLg: "18px",
+    /** General body / panel content */
+    body: "15px",
+    /** Secondary chrome / meta labels */
+    secondary: "14px",
+    /** Absolute floor for secondary text */
+    secondaryMin: "13px",
+    /** Counts, ×N, overflow +N */
+    count: "16px",
+    /** Badge digits (aggro, threat spark, stacks) */
+    badge: "15px",
+    /** Alias — prefer TYPE.badge */
+    countBadge: "15px",
+    /** Compact chrome labels (gear TRADE, layout hints) */
+    micro: "13px",
+    /** Absolute floor — never go below for readable UI text */
+    microMin: "13px",
+    /** Panel titles */
+    title: "17px",
+    /** topCenter map/server body */
+    chrome: "16px",
+    /** topCenter secondary line (time / until) */
+    chromeMeta: "14px"
+  };
+  var AGGRO_BADGE = {
+    minWidth: "22px",
+    height: "22px",
+    fontSize: TYPE.badge,
+    padX: "5px"
+  };
+  var PIXEL_TEXT = {
+    fontWeight: "normal",
+    textShadow: "none"
+  };
+
   // src/meters/RankMeter.ts
   function RankMeter(props) {
     const { title, className, rows, embedded, highlightId } = props;
@@ -3881,8 +3974,8 @@ var EnhanceCommUI = (() => {
           border: embedded ? "none" : "2px solid #555",
           background: "black",
           gap: "2px",
-          fontSize: "17px",
-          textShadow: "none"
+          fontSize: TYPE.nameLg,
+          ...PIXEL_TEXT
         }
       },
       e(
@@ -3892,9 +3985,9 @@ var EnhanceCommUI = (() => {
             padding: "3px 8px",
             whiteSpace: "nowrap",
             position: "relative",
-            fontSize: "14px",
+            fontSize: TYPE.body,
             color: "#ccc",
-            textShadow: "none"
+            ...PIXEL_TEXT
           }
         },
         title
@@ -3910,7 +4003,7 @@ var EnhanceCommUI = (() => {
               display: "flex",
               flexDirection: "row",
               justifyContent: "space-between",
-              minHeight: "22px",
+              minHeight: "26px",
               alignItems: "center",
               background: isYou ? "rgba(225,55,88,0.16)" : void 0,
               boxShadow: isYou ? "inset 3px 0 0 #e13758" : void 0
@@ -3934,8 +4027,8 @@ var EnhanceCommUI = (() => {
                 textOverflow: "ellipsis",
                 overflow: "hidden",
                 position: "relative",
-                fontSize: "17px",
-                textShadow: "none",
+                fontSize: TYPE.nameLg,
+                ...PIXEL_TEXT,
                 color: isYou ? "#ffe0e8" : void 0
               }
             },
@@ -3949,8 +4042,8 @@ var EnhanceCommUI = (() => {
                 whiteSpace: "nowrap",
                 position: "relative",
                 fontVariantNumeric: "tabular-nums",
-                fontSize: "17px",
-                textShadow: "none"
+                fontSize: TYPE.nameLg,
+                ...PIXEL_TEXT
               }
             },
             row.label
@@ -4261,7 +4354,7 @@ var EnhanceCommUI = (() => {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache = null;
-  var listeners4 = [];
+  var listeners5 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -4298,8 +4391,8 @@ var EnhanceCommUI = (() => {
     }
   }
   function notify() {
-    for (let i = 0; i < listeners4.length; i++) {
-      listeners4[i]();
+    for (let i = 0; i < listeners5.length; i++) {
+      listeners5[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -4346,11 +4439,45 @@ var EnhanceCommUI = (() => {
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners4.push(listener);
+    listeners5.push(listener);
     return () => {
-      const idx = listeners4.indexOf(listener);
-      if (idx >= 0) listeners4.splice(idx, 1);
+      const idx = listeners5.indexOf(listener);
+      if (idx >= 0) listeners5.splice(idx, 1);
     };
+  }
+
+  // src/lib/percentDrag.ts
+  function layoutDragRoot() {
+    return document.getElementById("comm-ui") || document.documentElement;
+  }
+  function percentFromPointerDrag(clientX, clientY, start, root = layoutDragRoot()) {
+    const rect = root.getBoundingClientRect();
+    const { dxPct, dyPct } = deltaToPercent(
+      clientX - start.clientX,
+      clientY - start.clientY,
+      rect.width,
+      rect.height
+    );
+    return {
+      x: Math.max(0, Math.min(100, start.posX + dxPct)),
+      y: Math.max(0, Math.min(100, start.posY + dyPct))
+    };
+  }
+  function trySetPointerCapture(target, pointerId) {
+    const el = target;
+    if (!el || typeof el.setPointerCapture !== "function") return;
+    try {
+      el.setPointerCapture(pointerId);
+    } catch (e2) {
+    }
+  }
+  function tryReleasePointerCapture(target, pointerId) {
+    const el = target;
+    if (!el || typeof el.releasePointerCapture !== "function") return;
+    try {
+      el.releasePointerCapture(pointerId);
+    } catch (e2) {
+    }
   }
 
   // src/ui/chrome/PositionedPanel.ts
@@ -4373,8 +4500,8 @@ var EnhanceCommUI = (() => {
     );
     const dragging = React.useRef(false);
     const start = React.useRef({
-      x: 0,
-      y: 0,
+      clientX: 0,
+      clientY: 0,
       posX: 0,
       posY: 0
     });
@@ -4404,30 +4531,20 @@ var EnhanceCommUI = (() => {
       ev.stopPropagation();
       dragging.current = true;
       start.current = {
-        x: ev.clientX,
-        y: ev.clientY,
+        clientX: ev.clientX,
+        clientY: ev.clientY,
         posX: pos.x,
         posY: pos.y
       };
-      try {
-        ev.currentTarget.setPointerCapture(ev.pointerId);
-      } catch (e2) {
-      }
+      trySetPointerCapture(ev.currentTarget, ev.pointerId);
     };
     const onPointerMove = (ev) => {
       if (!dragging.current) return;
-      const root = document.getElementById("comm-ui") || document.documentElement;
-      const rect = root.getBoundingClientRect();
-      const { dxPct, dyPct } = deltaToPercent(
-        ev.clientX - start.current.x,
-        ev.clientY - start.current.y,
-        rect.width,
-        rect.height
+      let { x: nextX, y: nextY } = percentFromPointerDrag(
+        ev.clientX,
+        ev.clientY,
+        start.current
       );
-      let nextX = start.current.posX + dxPct;
-      let nextY = start.current.posY + dyPct;
-      nextX = Math.max(0, Math.min(100, nextX));
-      nextY = Math.max(0, Math.min(100, nextY));
       if (!freePlacementRef.current) {
         nextX = snapToGridPercent(nextX, gridStepRef.current);
         nextY = snapToGridPercent(nextY, gridStepRef.current);
@@ -4440,10 +4557,7 @@ var EnhanceCommUI = (() => {
     const onPointerUp = (ev) => {
       if (!dragging.current) return;
       dragging.current = false;
-      try {
-        ev.currentTarget.releasePointerCapture(ev.pointerId);
-      } catch (e2) {
-      }
+      tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
       const peers = props.peerLayout || {};
       const nudged = softAvoidOverlap(id, lastPos.current, peers);
       if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
@@ -4551,7 +4665,7 @@ var EnhanceCommUI = (() => {
       {
         padding: "8px 10px",
         color: "#888",
-        fontSize: "13px",
+        fontSize: TYPE.secondary,
         minWidth: "120px",
         boxSizing: "border-box"
       },
@@ -4661,7 +4775,7 @@ var EnhanceCommUI = (() => {
         },
         props.hint ? e(
           "div",
-          { style: { fontSize: "13px", color: "#777", marginBottom: "4px" } },
+          { style: { fontSize: TYPE.secondary, color: "#777", marginBottom: "4px" } },
           props.hint
         ) : null,
         ...rowEls
@@ -4711,11 +4825,6 @@ var EnhanceCommUI = (() => {
     window.xtarget = entity || null;
     window.__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
   }
-  function conditionClick(name) {
-    if (typeof window.condition_click === "function") {
-      window.condition_click(name);
-    }
-  }
   function slotSkin(slot) {
     var _a, _b;
     if (!slot || !slot.name) return void 0;
@@ -4734,40 +4843,7 @@ var EnhanceCommUI = (() => {
     }) || "";
   }
 
-  // src/lib/typeScale.ts
-  var TYPE = {
-    /** Secondary chrome / meta labels */
-    secondary: "13px",
-    /** Absolute floor for secondary text */
-    secondaryMin: "12px",
-    /** Counts, ×N, overflow +N */
-    count: "15px",
-    /** Badge digits (aggro, threat spark) */
-    countBadge: "14px",
-    /** Party chip / compact names */
-    name: "15px",
-    /** Unit-frame / threat row names */
-    nameLg: "16px",
-    /** Panel titles */
-    title: "16px",
-    /** topCenter map/server body */
-    chrome: "15px",
-    /** topCenter secondary line (time / until) */
-    chromeMeta: "13px"
-  };
-  var AGGRO_BADGE = {
-    minWidth: "20px",
-    height: "20px",
-    fontSize: TYPE.countBadge,
-    padX: "4px"
-  };
-  var PIXEL_TEXT = {
-    fontWeight: "normal",
-    textShadow: "none"
-  };
-
   // src/ui/chrome/EffectsRow.ts
-  var lastConditionClick = "";
   var ICON_SIZE = 36;
   function buildEntityEffects(entity) {
     var _a, _b, _c;
@@ -4917,20 +4993,14 @@ var EnhanceCommUI = (() => {
     const onClick = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      if (lastConditionClick === effect.id && isBuffDialogOpen()) {
-        closeBuffDialog();
-        lastConditionClick = "";
-        return;
-      }
-      lastConditionClick = effect.id;
-      setXTarget(entity, { dialogOnly: true });
-      conditionClick(effect.id);
+      info.openCondition(entity, effect.id);
     } : void 0;
     return e("div", {
       ref,
       className: `comm-fx-icon ${hostClass}`,
       "data-condition": effect.id,
       "data-entity": entityId,
+      [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
       title: tooltip,
       onClick,
       onMouseDown: clickable ? (ev) => {
@@ -5020,7 +5090,7 @@ var EnhanceCommUI = (() => {
             background: "rgba(20,20,20,0.9)",
             border: "1px solid #555",
             color: "#ccc",
-            fontSize: compact ? TYPE.countBadge : TYPE.secondary,
+            fontSize: compact ? TYPE.badge : TYPE.secondary,
             lineHeight: 1,
             ...PIXEL_TEXT,
             cursor: "default",
@@ -5031,6 +5101,8 @@ var EnhanceCommUI = (() => {
       ) : null
     );
   }
+
+  // src/ui/chrome/SharedPartyEffects.ts
   function collectUniquePartyEffects(members) {
     const byId = {};
     for (let i = 0; i < members.length; i++) {
@@ -5303,7 +5375,7 @@ var EnhanceCommUI = (() => {
                   {
                     style: {
                       position: "relative",
-                      height: "22px",
+                      height: "26px",
                       overflow: "hidden",
                       background: "rgba(0,0,0,0.45)",
                       outline,
@@ -5475,11 +5547,10 @@ var EnhanceCommUI = (() => {
           background: "rgba(0, 0, 0, 0.82)",
           border: "1px solid #555",
           padding: "4px 8px",
-          fontSize: "15px",
+          fontSize: TYPE.chrome,
           lineHeight: 1.25,
           color: "#eee",
-          fontWeight: "normal",
-          textShadow: "none"
+          ...PIXEL_TEXT
         }
       },
       e(
@@ -5592,12 +5663,11 @@ var EnhanceCommUI = (() => {
     background: "rgba(0, 0, 0, 0.82)",
     border: "1px solid #555",
     padding: "4px 8px",
-    fontSize: "15px",
+    fontSize: TYPE.chrome,
     lineHeight: 1.25,
     color: "#eee",
     whiteSpace: "nowrap",
-    fontWeight: "normal",
-    textShadow: "none"
+    ...PIXEL_TEXT
   };
   function ServerInfo(props) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -5629,7 +5699,7 @@ var EnhanceCommUI = (() => {
           "div",
           {
             style: {
-              fontSize: "14px",
+              fontSize: TYPE.chromeMeta,
               color: "#f2f2f2",
               letterSpacing: "0.02em"
             }
@@ -5640,7 +5710,7 @@ var EnhanceCommUI = (() => {
           "div",
           {
             style: {
-              fontSize: "13px",
+              fontSize: TYPE.chromeMeta,
               color: "#85c76b",
               fontVariantNumeric: "tabular-nums"
             }
@@ -5665,7 +5735,7 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "14px",
+                fontSize: TYPE.chromeMeta,
                 color: live ? "#b6e3a4" : "#eee"
               }
             },
@@ -5675,7 +5745,7 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "13px",
+                fontSize: TYPE.chromeMeta,
                 color: live ? "#85c76b" : "rgba(255,255,255,0.55)",
                 fontVariantNumeric: "tabular-nums"
               }
@@ -5729,12 +5799,13 @@ var EnhanceCommUI = (() => {
         "div",
         {
           style: {
-            fontSize: "12px",
+            fontSize: TYPE.secondary,
             color: "#ccc",
             background: "rgba(0,0,0,0.55)",
             display: "inline-block",
-            padding: "2px 6px",
-            alignSelf: "flex-end"
+            padding: "3px 8px",
+            alignSelf: "flex-end",
+            ...PIXEL_TEXT
           }
         },
         "Aggro"
@@ -5774,7 +5845,7 @@ var EnhanceCommUI = (() => {
               {
                 style: {
                   position: "relative",
-                  height: "22px",
+                  height: "26px",
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.45)",
                   outline: selected ? "1px solid #fff" : void 0
@@ -5803,11 +5874,12 @@ var EnhanceCommUI = (() => {
                     whiteSpace: "nowrap",
                     textOverflow: "ellipsis",
                     overflow: "hidden",
-                    fontSize: "15px",
+                    fontSize: TYPE.name,
                     letterSpacing: "0.04em",
                     lineHeight: 1,
                     color: "#ffd0d0",
-                    pointerEvents: "none"
+                    pointerEvents: "none",
+                    ...PIXEL_TEXT
                   }
                 },
                 enemy.name || enemy.mtype || enemy.id
@@ -5823,9 +5895,10 @@ var EnhanceCommUI = (() => {
             key: enemyMtype,
             style: {
               background: "rgba(0,0,0,0.55)",
-              padding: "2px 6px",
-              fontSize: "12px",
-              color: "#aaa"
+              padding: "3px 8px",
+              fontSize: TYPE.secondaryMin,
+              color: "#aaa",
+              ...PIXEL_TEXT
             }
           },
           `also ${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`
@@ -5836,9 +5909,10 @@ var EnhanceCommUI = (() => {
         {
           style: {
             background: "rgba(0,0,0,0.55)",
-            padding: "2px 6px",
-            fontSize: "12px",
-            color: "#aaa"
+            padding: "3px 8px",
+            fontSize: TYPE.secondaryMin,
+            color: "#aaa",
+            ...PIXEL_TEXT
           }
         },
         `...and ${moreEnemiesCount} more aggroed enemies`
@@ -5942,8 +6016,9 @@ var EnhanceCommUI = (() => {
               height: `${SLOT_SIZE}px`,
               background: "#333",
               border: "1px solid #666",
-              fontSize: "9px",
-              padding: "2px"
+              fontSize: TYPE.microMin,
+              padding: "2px",
+              ...PIXEL_TEXT
             },
             title: slot.name
           },
@@ -5979,7 +6054,7 @@ var EnhanceCommUI = (() => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       setXTarget(entity);
-      openItemSlotInfo(entity, slotName, slot);
+      info.openItem(entity, slotName, slot);
     } : void 0;
     return e(
       "div",
@@ -5987,6 +6062,7 @@ var EnhanceCommUI = (() => {
         key: slotName,
         className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
         "data-slot": slotName,
+        [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
         title: clickable ? slot.name : slotName,
         onPointerDown: onSlotPress,
         onMouseDown: clickable ? (ev) => {
@@ -6011,18 +6087,17 @@ var EnhanceCommUI = (() => {
             position: "absolute",
             top: "-2px",
             right: "-2px",
-            minWidth: "14px",
-            height: "14px",
-            padding: "0 3px",
+            minWidth: "18px",
+            height: "18px",
+            padding: "0 4px",
             boxSizing: "border-box",
             background: "#3a2a10",
             border: "1px solid #c9a227",
             color: "#ffe08a",
-            fontSize: "10px",
-            lineHeight: "12px",
+            fontSize: TYPE.microMin,
+            lineHeight: "16px",
             textAlign: "center",
-            fontWeight: "normal",
-            textShadow: "none",
+            ...PIXEL_TEXT,
             pointerEvents: "none"
           }
         },
@@ -6030,7 +6105,7 @@ var EnhanceCommUI = (() => {
       ) : null,
       showPrice && (slot == null ? void 0 : slot.price) != null ? e(
         "div",
-        { style: { fontSize: "10px", color: "#ffd700" } },
+        { style: { fontSize: TYPE.micro, color: "#ffd700", ...PIXEL_TEXT } },
         String(slot.price)
       ) : null
     );
@@ -6106,10 +6181,11 @@ var EnhanceCommUI = (() => {
           {
             style: {
               flex: "0 0 100%",
-              fontSize: "10px",
+              fontSize: TYPE.micro,
               color: "#888",
               marginBottom: "2px",
-              letterSpacing: "0.04em"
+              letterSpacing: "0.04em",
+              ...PIXEL_TEXT
             }
           },
           "TRADE"
@@ -6142,7 +6218,7 @@ var EnhanceCommUI = (() => {
           display: "flex",
           justifyContent: "space-between",
           gap: "8px",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           lineHeight: "18px"
         }
       },
@@ -6175,7 +6251,7 @@ var EnhanceCommUI = (() => {
         "div",
         {
           style: {
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             color: "#888",
             marginBottom: "6px",
             letterSpacing: "0.04em"
@@ -6320,7 +6396,7 @@ var EnhanceCommUI = (() => {
           display: "flex",
           justifyContent: "space-between",
           gap: "10px",
-          fontSize: "15px",
+          fontSize: TYPE.body,
           lineHeight: "20px"
         }
       },
@@ -6345,7 +6421,7 @@ var EnhanceCommUI = (() => {
           style: {
             display: "flex",
             justifyContent: "space-between",
-            fontSize: "14px",
+            fontSize: TYPE.body,
             marginBottom: "3px",
             color: "#cfcfcf"
           }
@@ -6444,7 +6520,7 @@ var EnhanceCommUI = (() => {
         },
         e(
           "div",
-          { style: { fontSize: "13px", color: "#666" } },
+          { style: { fontSize: TYPE.secondary, color: "#666" } },
           "Select a unit to preview gear"
         ),
         e(
@@ -6474,7 +6550,7 @@ var EnhanceCommUI = (() => {
               background: "#0d0d0d",
               border: "1px solid #2a2a2a",
               color: "#555",
-              fontSize: "15px",
+              fontSize: TYPE.body,
               lineHeight: "20px"
             }
           },
@@ -6495,7 +6571,7 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "14px",
+                fontSize: TYPE.body,
                 color: "#555",
                 marginBottom: "6px",
                 letterSpacing: "0.04em"
@@ -6575,11 +6651,11 @@ var EnhanceCommUI = (() => {
             style: {
               flex: 1,
               minWidth: 0,
-              fontSize: "17px",
+              fontSize: TYPE.title,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              textShadow: "none"
+              ...PIXEL_TEXT
             },
             title
           },
@@ -6604,7 +6680,8 @@ var EnhanceCommUI = (() => {
               lineHeight: "28px",
               padding: 0,
               flexShrink: 0,
-              fontSize: "18px"
+              fontSize: "18px",
+              ...PIXEL_TEXT
             }
           },
           "\xD7"
@@ -6627,8 +6704,9 @@ var EnhanceCommUI = (() => {
               display: "flex",
               flexWrap: "wrap",
               gap: "4px 12px",
-              fontSize: "14px",
-              color: "#bdbdbd"
+              fontSize: TYPE.body,
+              color: "#bdbdbd",
+              ...PIXEL_TEXT
             }
           },
           entity.ctype ? e("span", { style: { color: accent } }, entity.ctype) : null,
@@ -6698,10 +6776,11 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "14px",
+                fontSize: TYPE.body,
                 color: "#888",
                 marginBottom: "6px",
-                letterSpacing: "0.04em"
+                letterSpacing: "0.04em",
+                ...PIXEL_TEXT
               }
             },
             compare ? "GEAR \xB7 \u0394 vs watched" : "GEAR"
@@ -6716,7 +6795,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/InfoDialogPanel.ts
-  function isOpen(kind) {
+  function isOpen2(kind) {
     return kind === "buff" ? isBuffDialogOpen() : isItemDialogOpen();
   }
   var LABELS = {
@@ -6727,7 +6806,7 @@ var EnhanceCommUI = (() => {
     const React = getReact();
     const kind = props.kind;
     const slotRef = React.useRef(null);
-    const [open, setOpen] = React.useState(isOpen(kind));
+    const [open, setOpen] = React.useState(isOpen2(kind));
     const onOpenChange = props.onOpenChange;
     React.useEffect(() => {
       if (onOpenChange) onOpenChange(open);
@@ -6735,8 +6814,8 @@ var EnhanceCommUI = (() => {
     React.useEffect(() => {
       const slot = slotRef.current;
       if (!slot) return;
-      const dialog = adoptInfoDialog(kind, slot);
-      setOpen(isOpen(kind));
+      const dialog = adoptInfoDialog2(kind, slot);
+      setOpen(isOpen2(kind));
       const unsub3 = subscribeInfoDialogChange((k, next) => {
         if (k === kind) setOpen(next);
       });
@@ -6744,7 +6823,7 @@ var EnhanceCommUI = (() => {
         return () => unsub3();
       }
       const obs = new MutationObserver(() => {
-        setOpen(isOpen(kind));
+        setOpen(isOpen2(kind));
       });
       obs.observe(dialog, {
         childList: true,
@@ -7328,10 +7407,9 @@ var EnhanceCommUI = (() => {
                 background: onMe ? "rgba(138,30,30,0.85)" : "rgba(30,30,30,0.9)",
                 border: onMe ? "1px solid #e05555" : "1px solid #555",
                 color: onMe ? "#ffd0d0" : "#bbb",
-                fontSize: "14px",
+                fontSize: TYPE.body,
                 lineHeight: "1.2",
-                fontWeight: "normal",
-                textShadow: "none",
+                ...PIXEL_TEXT,
                 maxWidth: "100%",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -7351,9 +7429,8 @@ var EnhanceCommUI = (() => {
                 background: "rgba(20,20,20,0.8)",
                 border: "1px solid #444",
                 color: "#888",
-                fontSize: "14px",
-                fontWeight: "normal",
-                textShadow: "none"
+                fontSize: TYPE.body,
+                ...PIXEL_TEXT
               }
             },
             "Aggro \xB7 \u2014"
@@ -7438,7 +7515,7 @@ var EnhanceCommUI = (() => {
             background: "rgba(40,20,20,0.9)",
             border: "1px solid #633",
             color: "#eee",
-            fontSize: TYPE.countBadge,
+            fontSize: TYPE.badge,
             lineHeight: 1.2,
             ...PIXEL_TEXT,
             whiteSpace: "nowrap"
@@ -7580,7 +7657,7 @@ var EnhanceCommUI = (() => {
         "span",
         {
           style: {
-            fontSize: TYPE.countBadge,
+            fontSize: TYPE.badge,
             color: "#bbb",
             ...PIXEL_TEXT
           },
@@ -7730,7 +7807,7 @@ var EnhanceCommUI = (() => {
       setStoredScope(next);
     };
     const selectStyle = {
-      fontSize: "16px",
+      fontSize: TYPE.name,
       padding: "6px 10px",
       background: "#141414",
       color: "#eee",
@@ -7746,7 +7823,7 @@ var EnhanceCommUI = (() => {
         onClick: () => resetKillSession(),
         style: {
           cursor: "pointer",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           padding: "4px 12px",
           border: "1px solid #555",
           background: "#1a1a1a",
@@ -7766,7 +7843,7 @@ var EnhanceCommUI = (() => {
           gap: "8px"
         }
       },
-      e("div", { style: { fontSize: "18px", ...softText } }, "Kills"),
+      e("div", { style: { fontSize: TYPE.title, ...softText } }, "Kills"),
       showReset ? resetBtn : null
     );
     const scopeRow = e(
@@ -7780,7 +7857,7 @@ var EnhanceCommUI = (() => {
       },
       e(
         "span",
-        { style: { fontSize: "16px", color: "#bbb", ...softText } },
+        { style: { fontSize: TYPE.name, color: "#bbb", ...softText } },
         "Scope"
       ),
       e(
@@ -7812,7 +7889,7 @@ var EnhanceCommUI = (() => {
           padding: "10px",
           maxHeight: "280px",
           minWidth: "240px",
-          fontSize: "16px",
+          fontSize: TYPE.name,
           color: "#eee",
           ...softText
         }
@@ -7825,7 +7902,7 @@ var EnhanceCommUI = (() => {
         scopeRow,
         e(
           "div",
-          { style: { fontSize: "15px", color: "#999", ...softText } },
+          { style: { fontSize: TYPE.body, color: "#999", ...softText } },
           "Select a character to track, or switch to visible parties."
         )
       ]);
@@ -7845,7 +7922,7 @@ var EnhanceCommUI = (() => {
         }
       },
       e("span", { style: { color: "#eee" } }, value != null ? String(value) : "\u2014"),
-      e("span", { style: { color: "#888", fontSize: "14px" } }, `/${unit}`)
+      e("span", { style: { color: "#888", fontSize: TYPE.body } }, `/${unit}`)
     );
     const listSection = (rows) => e(
       "div",
@@ -7869,7 +7946,7 @@ var EnhanceCommUI = (() => {
           justifyContent: "space-between",
           alignItems: "baseline",
           gap: "12px",
-          fontSize: "15px",
+          fontSize: TYPE.body,
           padding: "4px 0",
           ...softText
         }
@@ -7901,7 +7978,7 @@ var EnhanceCommUI = (() => {
               display: "flex",
               flexWrap: "wrap",
               gap: "10px 14px",
-              fontSize: "16px",
+              fontSize: TYPE.name,
               ...softText
             }
           },
@@ -7914,7 +7991,7 @@ var EnhanceCommUI = (() => {
               display: "flex",
               alignItems: "baseline",
               gap: "6px",
-              fontSize: "15px",
+              fontSize: TYPE.body,
               color: "#aaa",
               ...softText
             }
@@ -8043,17 +8120,17 @@ var EnhanceCommUI = (() => {
         onClick,
         style: {
           cursor: "pointer",
-          fontSize: "13px",
+          fontSize: TYPE.secondary,
           lineHeight: "1.2",
-          padding: "3px 9px",
+          padding: "4px 10px",
+          minHeight: "28px",
           margin: 0,
           border: "none",
           borderLeft: first ? "none" : "1px solid #3a3a3a",
           borderRadius: 0,
           background: active ? "#2e2e2e" : "transparent",
           color: active ? "#eee" : "#888",
-          textShadow: "none",
-          fontWeight: "normal",
+          ...PIXEL_TEXT,
           outline: "none"
         }
       },
@@ -8070,15 +8147,15 @@ var EnhanceCommUI = (() => {
         title: CHANNEL_LABELS[ch],
         style: {
           cursor: "pointer",
-          fontSize: "13px",
-          padding: "2px 6px",
+          fontSize: TYPE.secondary,
+          padding: "3px 8px",
+          minHeight: "26px",
           lineHeight: "1.2",
           margin: 0,
           border: active ? `1px solid ${color}` : "1px solid #2a2a2a",
           background: active ? `${color}18` : "transparent",
           color: active ? color : "#666",
-          textShadow: "none",
-          fontWeight: "normal"
+          ...PIXEL_TEXT
         }
       },
       CHANNEL_LABELS[ch]
@@ -8094,15 +8171,15 @@ var EnhanceCommUI = (() => {
         title: expanded ? "Hide secondary channels" : "Show more channels",
         style: {
           cursor: "pointer",
-          fontSize: "12px",
-          padding: "2px 6px",
+          fontSize: TYPE.secondaryMin,
+          padding: "3px 8px",
+          minHeight: "26px",
           lineHeight: "1.2",
           margin: 0,
           border: "1px solid #333",
           background: expanded ? "#1c1c1c" : "transparent",
           color: "#888",
-          textShadow: "none",
-          fontWeight: "normal"
+          ...PIXEL_TEXT
         }
       },
       label
@@ -8216,15 +8293,17 @@ var EnhanceCommUI = (() => {
     ).length;
     const chipChannels = PRIMARY_CHANNELS.concat(visibleSecondary);
     const selectStyle = {
-      fontSize: "13px",
+      fontSize: TYPE.secondary,
       lineHeight: "1.2",
-      padding: "2px 6px",
+      padding: "4px 8px",
+      minHeight: "28px",
       background: "#141414",
       color: "#ddd",
       border: "1px solid #444",
       maxWidth: "180px",
       minWidth: "0",
-      flex: "1 1 auto"
+      flex: "1 1 auto",
+      ...PIXEL_TEXT
     };
     return e(
       "div",
@@ -8240,10 +8319,9 @@ var EnhanceCommUI = (() => {
           width: "420px",
           maxHeight: "520px",
           overflow: "auto",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           color: "#eee",
-          textShadow: "none",
-          fontWeight: "normal"
+          ...PIXEL_TEXT
         }
       },
       // Header — title / elapsed+dps / Reset
@@ -8254,16 +8332,16 @@ var EnhanceCommUI = (() => {
             display: "flex",
             alignItems: "center",
             gap: "8px",
-            minHeight: "22px"
+            minHeight: "28px"
           }
         },
         e(
           "div",
           {
             style: {
-              fontSize: "16px",
+              fontSize: TYPE.title,
               color: "#eee",
-              textShadow: "none",
+              ...PIXEL_TEXT,
               flex: "0 0 auto"
             }
           },
@@ -8273,9 +8351,9 @@ var EnhanceCommUI = (() => {
           "div",
           {
             style: {
-              fontSize: "13px",
+              fontSize: TYPE.secondary,
               color: "#999",
-              textShadow: "none",
+              ...PIXEL_TEXT,
               flex: "1 1 auto",
               minWidth: 0,
               overflow: "hidden",
@@ -8292,14 +8370,14 @@ var EnhanceCommUI = (() => {
             onClick: () => resetPartyCombat(),
             style: {
               cursor: "pointer",
-              fontSize: "13px",
+              fontSize: TYPE.secondary,
               lineHeight: "1.2",
-              padding: "2px 8px",
+              padding: "4px 10px",
+              minHeight: "28px",
               border: "1px solid #444",
               background: "#161616",
               color: "#aaa",
-              textShadow: "none",
-              fontWeight: "normal",
+              ...PIXEL_TEXT,
               flex: "0 0 auto"
             }
           },
@@ -8313,15 +8391,14 @@ var EnhanceCommUI = (() => {
             onClick: () => patch({ combatCompact: !compact }),
             style: {
               cursor: "pointer",
-              fontSize: "13px",
+              fontSize: TYPE.secondary,
               lineHeight: "1.2",
               padding: "6px 12px",
               minHeight: "32px",
               border: compact ? "1px solid #85c76b" : "1px solid #444",
               background: compact ? "#1a2a1a" : "#161616",
               color: compact ? "#85c76b" : "#aaa",
-              textShadow: "none",
-              fontWeight: "normal",
+              ...PIXEL_TEXT,
               flex: "0 0 auto"
             }
           },
@@ -8335,15 +8412,14 @@ var EnhanceCommUI = (() => {
             onClick: () => patch({ partyFocus: "watched" }),
             style: {
               cursor: "pointer",
-              fontSize: "13px",
+              fontSize: TYPE.secondary,
               lineHeight: "1.2",
               padding: "6px 10px",
               minHeight: "32px",
               border: focus === "watched" ? "1px solid #e13758" : "1px solid #444",
               background: focus === "watched" ? "rgba(225,55,88,0.18)" : "#161616",
               color: focus === "watched" ? "#ffe0e8" : "#aaa",
-              textShadow: "none",
-              fontWeight: "normal",
+              ...PIXEL_TEXT,
               flex: "0 0 auto"
             }
           },
@@ -8376,9 +8452,9 @@ var EnhanceCommUI = (() => {
             "span",
             {
               style: {
-                fontSize: "12px",
+                fontSize: TYPE.secondaryMin,
                 color: "#888",
-                textShadow: "none",
+                ...PIXEL_TEXT,
                 flex: "0 0 auto"
               }
             },
@@ -8432,10 +8508,10 @@ var EnhanceCommUI = (() => {
           "span",
           {
             style: {
-              fontSize: "12px",
+              fontSize: TYPE.secondaryMin,
               color: "#888",
               marginRight: "2px",
-              textShadow: "none"
+              ...PIXEL_TEXT
             }
           },
           view === "bars" ? "Metric" : "Columns"
@@ -8465,10 +8541,9 @@ var EnhanceCommUI = (() => {
             style: {
               borderCollapse: "collapse",
               width: "100%",
-              fontSize: "17px",
+              fontSize: TYPE.nameLg,
               lineHeight: "1.25",
-              textShadow: "none",
-              fontWeight: "normal"
+              ...PIXEL_TEXT
             }
           },
           e(
@@ -8480,8 +8555,8 @@ var EnhanceCommUI = (() => {
                 style: {
                   borderBottom: "1px solid #333",
                   color: "#999",
-                  fontSize: "17px",
-                  fontWeight: "normal"
+                  fontSize: TYPE.nameLg,
+                  ...PIXEL_TEXT
                 }
               },
               thCell("Name"),
@@ -8551,7 +8626,7 @@ var EnhanceCommUI = (() => {
         )
       ) : e(
         "div",
-        { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+        { style: { color: "#777", padding: "10px 2px", fontSize: TYPE.body } },
         "No combat data yet for this focus."
       ) : null,
       view === "bars" ? barRows.length ? e(RankMeter, {
@@ -8562,7 +8637,7 @@ var EnhanceCommUI = (() => {
         highlightId: watchedId
       }) : e(
         "div",
-        { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+        { style: { color: "#777", padding: "10px 2px", fontSize: TYPE.body } },
         "No combat data yet for this focus."
       ) : null
     );
@@ -8623,7 +8698,7 @@ var EnhanceCommUI = (() => {
     const danger = (opts == null ? void 0 : opts.danger) === true;
     return {
       cursor: "pointer",
-      fontSize: "15px",
+      fontSize: TYPE.body,
       padding: "5px 11px",
       border: danger ? "1px solid #844" : accent ? "1px solid #a86" : "1px solid #555",
       background: danger ? "#2a1515" : accent ? "#2a2410" : "#1a1a1a",
@@ -8803,7 +8878,7 @@ var EnhanceCommUI = (() => {
       }
     };
     const inputStyle = {
-      fontSize: "16px",
+      fontSize: TYPE.name,
       padding: "6px 9px",
       background: "#141414",
       color: "#eee",
@@ -8866,7 +8941,7 @@ var EnhanceCommUI = (() => {
                 background: "transparent",
                 color: "#eee",
                 padding: 0,
-                fontSize: "16px",
+                fontSize: TYPE.name,
                 lineHeight: "1.3",
                 textShadow: "none",
                 fontWeight: "normal"
@@ -8900,7 +8975,7 @@ var EnhanceCommUI = (() => {
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                   color: "#999",
-                  fontSize: "14px",
+                  fontSize: TYPE.body,
                   marginTop: "2px"
                 }
               },
@@ -8971,7 +9046,7 @@ var EnhanceCommUI = (() => {
           width: "min(560px, 94vw)",
           maxHeight: "78vh",
           overflow: "auto",
-          fontSize: "16px",
+          fontSize: TYPE.name,
           color: "#eee",
           textShadow: "none",
           fontWeight: "normal"
@@ -8990,7 +9065,7 @@ var EnhanceCommUI = (() => {
         e("div", { style: { fontSize: "20px", color: "#ffe08a" } }, "Command"),
         e(
           "div",
-          { style: { fontSize: "14px", color: "#aaa" } },
+          { style: { fontSize: TYPE.body, color: "#aaa" } },
           "observer \u2192 code_eval \xB7 Ctrl+Enter"
         )
       ),
@@ -9052,14 +9127,14 @@ var EnhanceCommUI = (() => {
       ),
       status ? e(
         "div",
-        { style: { fontSize: "14px", color: "#9a9" } },
+        { style: { fontSize: TYPE.body, color: "#9a9" } },
         status
       ) : null,
       e(
         "div",
         {
           style: {
-            fontSize: "16px",
+            fontSize: TYPE.name,
             color: "#ccc",
             borderTop: "1px solid #333",
             paddingTop: "8px",
@@ -9078,7 +9153,7 @@ var EnhanceCommUI = (() => {
           style: Object.assign({}, inputStyle, {
             flex: "1 1 140px",
             minWidth: "120px",
-            fontSize: "14px",
+            fontSize: TYPE.body,
             padding: "4px 8px"
           })
         }),
@@ -9089,7 +9164,7 @@ var EnhanceCommUI = (() => {
             onChange: (ev) => setFolderFilter(ev.target.value),
             style: Object.assign({}, inputStyle, {
               flex: "0 1 140px",
-              fontSize: "14px",
+              fontSize: TYPE.body,
               padding: "4px 8px"
             })
           },
@@ -9111,7 +9186,7 @@ var EnhanceCommUI = (() => {
         ...snippetRows
       ) : e(
         "div",
-        { style: { fontSize: "15px", color: "#777" } },
+        { style: { fontSize: TYPE.body, color: "#777" } },
         snippets.length ? "No snippets match this search/folder." : "No snippets yet \u2014 write a command and Save snippet."
       )
     );
@@ -9515,7 +9590,7 @@ var EnhanceCommUI = (() => {
   function btnStyle2(active) {
     return {
       cursor: "pointer",
-      fontSize: "13px",
+      fontSize: TYPE.secondary,
       padding: "6px 10px",
       minHeight: "36px",
       border: active ? "1px solid #ffe08a" : "1px solid #886",
@@ -9540,8 +9615,8 @@ var EnhanceCommUI = (() => {
     const fileRef = React.useRef(null);
     const dragging = React.useRef(false);
     const dragStart = React.useRef({
-      x: 0,
-      y: 0,
+      clientX: 0,
+      clientY: 0,
       posX: 0,
       posY: 0
     });
@@ -9611,40 +9686,27 @@ var EnhanceCommUI = (() => {
       ev.stopPropagation();
       dragging.current = true;
       dragStart.current = {
-        x: ev.clientX,
-        y: ev.clientY,
+        clientX: ev.clientX,
+        clientY: ev.clientY,
         posX: chromePosRef.current.x,
         posY: chromePosRef.current.y
       };
-      try {
-        ev.currentTarget.setPointerCapture(ev.pointerId);
-      } catch (e2) {
-      }
+      trySetPointerCapture(ev.currentTarget, ev.pointerId);
     };
     const onChromePointerMove = (ev) => {
       if (!dragging.current) return;
-      const root = document.getElementById("comm-ui") || document.documentElement;
-      const rect = root.getBoundingClientRect();
-      const { dxPct, dyPct } = deltaToPercent(
-        ev.clientX - dragStart.current.x,
-        ev.clientY - dragStart.current.y,
-        rect.width,
-        rect.height
+      const next = percentFromPointerDrag(
+        ev.clientX,
+        ev.clientY,
+        dragStart.current
       );
-      const next = {
-        x: Math.max(0, Math.min(100, dragStart.current.posX + dxPct)),
-        y: Math.max(0, Math.min(100, dragStart.current.posY + dyPct))
-      };
       chromePosRef.current = next;
       setChromePos(next);
     };
     const onChromePointerUp = (ev) => {
       if (!dragging.current) return;
       dragging.current = false;
-      try {
-        ev.currentTarget.releasePointerCapture(ev.pointerId);
-      } catch (e2) {
-      }
+      tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
       const next = setLayoutChromePos(chromePosRef.current);
       setChromePos(next.chromePos);
     };
@@ -9669,7 +9731,7 @@ var EnhanceCommUI = (() => {
           background: "rgba(30,28,10,0.95)",
           border: "1px solid #aa8",
           color: "#ffe08a",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           maxWidth: "min(960px, 96vw)",
           textShadow: "none",
           fontWeight: "normal"
@@ -9691,7 +9753,7 @@ var EnhanceCommUI = (() => {
             userSelect: "none",
             touchAction: "none",
             color: "#ffe08a",
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             minHeight: "28px"
           },
           onPointerDown: onChromePointerDown,
@@ -9707,7 +9769,7 @@ var EnhanceCommUI = (() => {
         ),
         e(
           "span",
-          { style: { color: "#886", fontSize: "12px", whiteSpace: "nowrap" } },
+          { style: { color: "#886", fontSize: TYPE.microMin, whiteSpace: "nowrap" } },
           "drag to move"
         )
       ),
@@ -9736,7 +9798,7 @@ var EnhanceCommUI = (() => {
           },
           freePlacement ? "Free: ON" : "Free"
         ),
-        e("span", { style: { color: "#aa8", fontSize: "13px" } }, "Grid"),
+        e("span", { style: { color: "#aa8", fontSize: TYPE.secondary } }, "Grid"),
         ...LAYOUT_GRID_STEP_PRESETS.map(
           (step) => e(
             "button",
@@ -9803,7 +9865,7 @@ var EnhanceCommUI = (() => {
             flexWrap: "wrap",
             gap: "6px",
             alignItems: "center",
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             color: "#ddd"
           }
         },
@@ -9822,11 +9884,11 @@ var EnhanceCommUI = (() => {
         ),
         e(
           "span",
-          { style: { color: "#888", fontSize: "12px" } },
+          { style: { color: "#888", fontSize: TYPE.microMin } },
           freePlacement ? `Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L (grid ${stepLabel} hidden snap)` : `${stepLabel} grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
         )
       ),
-      status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,
+      status ? e("div", { style: { fontSize: TYPE.secondary, color: "#9a9" } }, status) : null,
       pasteOpen ? e(
         "div",
         {
@@ -9847,7 +9909,7 @@ var EnhanceCommUI = (() => {
             background: "#141410",
             color: "#eee",
             border: "1px solid #665",
-            fontSize: "12px",
+            fontSize: TYPE.microMin,
             fontFamily: "Consolas, Monaco, monospace",
             textShadow: "none",
             fontWeight: "normal",
@@ -10105,8 +10167,8 @@ var EnhanceCommUI = (() => {
       return () => updateCommKeyboardHandlers({});
     }, [selectedEntity, closePaperdoll, setLayoutEdit]);
     React.useEffect(() => {
-      setInfoDialogLayoutEditing(layoutEdit);
-      return () => setInfoDialogLayoutEditing(false);
+      info.setLayoutEditing(layoutEdit);
+      return () => info.setLayoutEditing(false);
     }, [layoutEdit]);
     React.useEffect(() => {
       return subscribeCommanderOpen((payload) => {
