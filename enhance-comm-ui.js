@@ -140,11 +140,11 @@ var EnhanceCommUI = (() => {
   var INTERVAL_MS = 100;
   var listeners = /* @__PURE__ */ new Set();
   var intervalId = null;
-  function resolveTarget(observing) {
-    if (observing == null || observing.target == null || observing.target === "") {
+  function resolveTarget(source) {
+    if (source == null || source.target == null || source.target === "") {
       return void 0;
     }
-    const ent = findEntityById(observing.target);
+    const ent = findEntityById(source.target);
     if (!ent || ent.dead) return void 0;
     return ent;
   }
@@ -4189,6 +4189,9 @@ var EnhanceCommUI = (() => {
       if (ent.player && ent.type === "character") out.push(ent);
     }
     return out;
+  }
+  function isFocusablePlayer(entity) {
+    return !!(entity && entity.player && entity.type === "character");
   }
   function partyGroups(entities) {
     const players2 = playersList(entities);
@@ -9993,29 +9996,59 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/hooks/useSelectionFromXTarget.ts
+  function maybeFocusPlayerId(id) {
+    if (id == null || id === "") return void 0;
+    const ent = findEntityById(id);
+    if (!isFocusablePlayer(ent)) return void 0;
+    return String(id);
+  }
   function useSelectionFromXTarget(snap) {
     const React = getReact();
-    const [selectedEntity, setSelectedEntity] = React.useState(
+    const [selectedEntity, setSelectedEntityState] = React.useState(
+      void 0
+    );
+    const [focusUnitId, setFocusUnitId] = React.useState(
       void 0
     );
     const lastXTargetId = React.useRef(void 0);
+    const setSelectedEntity = (id) => {
+      setSelectedEntityState(id);
+      if (id == null || id === "") {
+        setFocusUnitId(void 0);
+        return;
+      }
+      const focusId = maybeFocusPlayerId(id);
+      if (focusId) setFocusUnitId(focusId);
+    };
     React.useEffect(() => {
       if (window.__ecuDialogOnlyXTarget) return;
       const xt = window.xtarget;
       const id = xt && xt.id != null ? String(xt.id) : void 0;
       if (id && id !== lastXTargetId.current) {
         lastXTargetId.current = id;
-        setSelectedEntity(id);
+        setSelectedEntityState(id);
+        const focusId = maybeFocusPlayerId(id);
+        if (focusId) setFocusUnitId(focusId);
       } else if (!id && lastXTargetId.current) {
         lastXTargetId.current = void 0;
       }
     }, [snap.now, snap.entities]);
+    const clearFocus = () => {
+      setFocusUnitId(void 0);
+    };
     const closePaperdoll = () => {
-      setSelectedEntity(void 0);
+      setSelectedEntityState(void 0);
       lastXTargetId.current = void 0;
+      setFocusUnitId(void 0);
       setXTarget(null);
     };
-    return { selectedEntity, setSelectedEntity, closePaperdoll };
+    return {
+      selectedEntity,
+      setSelectedEntity,
+      closePaperdoll,
+      focusUnitId,
+      clearFocus
+    };
   }
 
   // src/lib/layoutExport.ts
@@ -10666,7 +10699,12 @@ var EnhanceCommUI = (() => {
       opacityFor
     } = layoutState;
     const { bagOpen } = useBagBridge(setPanelVisible);
-    const { selectedEntity, setSelectedEntity, closePaperdoll } = useSelectionFromXTarget(snap);
+    const {
+      selectedEntity,
+      setSelectedEntity,
+      closePaperdoll,
+      focusUnitId
+    } = useSelectionFromXTarget(snap);
     const [commandSeed, setCommandSeed] = React.useState(
       null
     );
@@ -10680,14 +10718,14 @@ var EnhanceCommUI = (() => {
     React.useEffect(() => {
       updateCommKeyboardHandlers({
         clearPaperdoll: () => {
-          if (!selectedEntity) return false;
+          if (!selectedEntity && !focusUnitId) return false;
           closePaperdoll();
           return true;
         },
         toggleLayoutEdit: () => setLayoutEdit((v) => !v)
       });
       return () => updateCommKeyboardHandlers({});
-    }, [selectedEntity, closePaperdoll, setLayoutEdit]);
+    }, [selectedEntity, focusUnitId, closePaperdoll, setLayoutEdit]);
     React.useEffect(() => {
       info.setLayoutEditing(layoutEdit);
       return () => info.setLayoutEditing(false);
@@ -10719,6 +10757,9 @@ var EnhanceCommUI = (() => {
     const hasEnemies = aggroedMonsters(snap.entities).length > 0;
     const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
     const hasBosses = activeBosses(snap.entities).length > 0;
+    const focusEntity = !snap.observing && focusUnitId ? findEntity(snap.entities, focusUnitId) : void 0;
+    const framePlayer = snap.observing || focusEntity;
+    const frameTarget = snap.observing ? snap.target : resolveTarget(focusEntity);
     const panel = (id, child, opts) => {
       const isClosablePanel = (opts == null ? void 0 : opts.closable) === true;
       const isHidden = isClosablePanel && !visible(id);
@@ -10905,20 +10946,20 @@ var EnhanceCommUI = (() => {
           })
         }
       ) : null,
-      snap.observing || layoutEdit ? panel(
+      framePlayer || layoutEdit ? panel(
         "playerFrame",
         e(PlayerFrame, {
-          observing: snap.observing,
+          observing: framePlayer,
           setSelectedEntity,
           layoutEdit
         }),
         { style: UNIT_FRAME_STYLE }
       ) : null,
-      snap.target || layoutEdit ? panel(
+      frameTarget || layoutEdit ? panel(
         "targetFrame",
         e(TargetFrame, {
-          observing: snap.observing,
-          target: snap.target,
+          observing: framePlayer,
+          target: frameTarget,
           entities: snap.entities,
           setSelectedEntity,
           layoutEdit

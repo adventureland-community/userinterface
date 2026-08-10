@@ -21,6 +21,13 @@ export function playersList(entities: EntityLike[]): EntityLike[] {
   return out;
 }
 
+/** Party / world player clicks that drive spectator player+target frames. */
+export function isFocusablePlayer(
+  entity: EntityLike | null | undefined,
+): boolean {
+  return !!(entity && entity.player && entity.type === "character");
+}
+
 export function partyGroups(
   entities: EntityLike[],
 ): Array<[string, EntityLike[]]> {

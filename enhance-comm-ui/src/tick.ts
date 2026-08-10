@@ -27,18 +27,17 @@ const INTERVAL_MS = 100;
 const listeners = new Set<(snap: GameSnapshot) => void>();
 let intervalId: number | null = null;
 
-/** Combat target of the watched character (`observing.target`), not `xtarget`. */
-function resolveTarget(
-  observing: EntityLike | null | undefined,
+/**
+ * Combat target of a unit (`entity.target`), not `xtarget`.
+ * Used for observing and spectator focus frames.
+ */
+export function resolveTarget(
+  source: EntityLike | null | undefined,
 ): EntityLike | undefined {
-  if (
-    observing == null ||
-    observing.target == null ||
-    observing.target === ""
-  ) {
+  if (source == null || source.target == null || source.target === "") {
     return undefined;
   }
-  const ent = findEntityById(observing.target);
+  const ent = findEntityById(source.target);
   // Prefer a living entity; corpses stay under DEAD* briefly after kill.
   if (!ent || ent.dead) return undefined;
   return ent;

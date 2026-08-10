@@ -63,6 +63,7 @@ function threatOnTarget(
 /**
  * Combat-target unit frame. Hidden in play when there is no target;
  * in layout edit mode shows a dummy so the panel can be positioned.
+ * Source unit is observing (characterui) or spectator focus.
  */
 export function TargetFrame(props: TargetFrameProps): any {
   const { observing, target, layoutEdit, entities } = props;

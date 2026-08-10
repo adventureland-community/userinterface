@@ -15,6 +15,7 @@ export const UNIT_FRAME_STYLE: Record<string, any> = {
 };
 
 export type PlayerFrameProps = {
+  /** Observed character, or spectator focus unit when not observing. */
   observing?: EntityLike | null;
   setSelectedEntity: (id: string) => void;
   /** When true and nothing to show, render a layout placeholder. */
@@ -44,6 +45,6 @@ export function PlayerFrame(props: PlayerFrameProps): any {
     });
   }
 
-  // No observed character — chips/chrome already cover picking who to watch.
+  // No observe / no spectator focus — party chips or world click set focus.
   return null;
 }

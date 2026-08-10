@@ -2,7 +2,7 @@ import { closeTopLeftDialog, isTopLeftDialogOpen } from "./dialogHost";
 import { closeServerDd, isServerDdOpen } from "./commChrome/serverDropdown";
 
 export type CommKeyboardHandlers = {
-  /** Clear paperdoll / xtarget selection. Return true if handled. */
+  /** Clear paperdoll / xtarget / spectator focus. Return true if handled. */
   clearPaperdoll?: () => boolean;
   /** Toggle layout edit (Ctrl+Shift+L). */
   toggleLayoutEdit?: () => void;
@@ -12,7 +12,7 @@ const BOUND = "__ecuCommKeyboardBound";
 
 /**
  * One Esc / shortcut policy for /comm UI:
- *   Esc → close buff/item info → close server dropdown → clear paperdoll → leave observe
+ *   Esc → close buff/item info → close server dropdown → clear paperdoll/focus → leave observe
  *   Ctrl+Shift+L → toggle layout edit (when registered)
  *
  * Handlers may be updated after install (React mounts later than chrome).

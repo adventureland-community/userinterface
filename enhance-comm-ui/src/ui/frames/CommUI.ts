@@ -11,7 +11,12 @@ import { type PanelId } from "../../lib/layout";
 import { subscribeCommanderOpen } from "../../host/commander";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { info } from "../../host/dialogHost";
-import { aggroByTarget, aggroedMonsters, activeBosses } from "../../queries/entities";
+import {
+  aggroByTarget,
+  aggroedMonsters,
+  activeBosses,
+  findEntity,
+} from "../../queries/entities";
 import { PositionedPanel } from "../chrome/PositionedPanel";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { Players } from "./Players";
@@ -47,6 +52,7 @@ import { LayoutEditChrome } from "./comm/LayoutEditChrome";
 import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { OpacityEditor } from "./comm/OpacityEditor";
 import { isTouchishProfile } from "../../lib/viewport";
+import { resolveTarget } from "../../tick";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -129,8 +135,12 @@ export function CommUI(props: CommUIProps): any {
   } = layoutState;
 
   const { bagOpen } = useBagBridge(setPanelVisible);
-  const { selectedEntity, setSelectedEntity, closePaperdoll } =
-    useSelectionFromXTarget(snap);
+  const {
+    selectedEntity,
+    setSelectedEntity,
+    closePaperdoll,
+    focusUnitId,
+  } = useSelectionFromXTarget(snap);
 
   const [commandSeed, setCommandSeed] = React.useState(
     null as string | null,
@@ -144,18 +154,18 @@ export function CommUI(props: CommUIProps): any {
     updateCombatContext(snap.entities);
   }, [snap.entities]);
 
-  // Shared Esc / Ctrl+Shift+L policy (info dialog → server dd → paperdoll).
+  // Shared Esc / Ctrl+Shift+L policy (info dialog → server dd → paperdoll/focus).
   React.useEffect(() => {
     updateCommKeyboardHandlers({
       clearPaperdoll: () => {
-        if (!selectedEntity) return false;
+        if (!selectedEntity && !focusUnitId) return false;
         closePaperdoll();
         return true;
       },
       toggleLayoutEdit: () => setLayoutEdit((v: boolean) => !v),
     });
     return () => updateCommKeyboardHandlers({});
-  }, [selectedEntity, closePaperdoll, setLayoutEdit]);
+  }, [selectedEntity, focusUnitId, closePaperdoll, setLayoutEdit]);
 
   React.useEffect(() => {
     info.setLayoutEditing(layoutEdit);
@@ -192,6 +202,16 @@ export function CommUI(props: CommUIProps): any {
   const hasEnemies = aggroedMonsters(snap.entities).length > 0;
   const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
   const hasBosses = activeBosses(snap.entities).length > 0;
+
+  // Observing (characterui) wins; otherwise spectator focus from party/xtarget player clicks.
+  const focusEntity =
+    !snap.observing && focusUnitId
+      ? findEntity(snap.entities, focusUnitId)
+      : undefined;
+  const framePlayer = snap.observing || focusEntity;
+  const frameTarget = snap.observing
+    ? snap.target
+    : resolveTarget(focusEntity);
 
   const panel = (id: PanelId, child: any, opts?: PanelOpts) => {
     const isClosablePanel = opts?.closable === true;
@@ -405,11 +425,11 @@ export function CommUI(props: CommUIProps): any {
         )
       : null,
 
-    snap.observing || layoutEdit
+    framePlayer || layoutEdit
       ? panel(
           "playerFrame",
           e(PlayerFrame, {
-            observing: snap.observing,
+            observing: framePlayer,
             setSelectedEntity,
             layoutEdit,
           }),
@@ -417,12 +437,12 @@ export function CommUI(props: CommUIProps): any {
         )
       : null,
 
-    snap.target || layoutEdit
+    frameTarget || layoutEdit
       ? panel(
           "targetFrame",
           e(TargetFrame, {
-            observing: snap.observing,
-            target: snap.target,
+            observing: framePlayer,
+            target: frameTarget,
             entities: snap.entities,
             setSelectedEntity,
             layoutEdit,
