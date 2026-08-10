@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -57,18 +57,54 @@ var EnhanceCommUI = (() => {
     if (Array.isArray(raw)) return raw.filter(Boolean);
     return Object.values(raw);
   }
+  function findEntityById(id) {
+    if (id == null || id === "") return void 0;
+    const tid = String(id);
+    const raw = window.entities;
+    if (!raw) return void 0;
+    const list = Array.isArray(raw) ? raw.filter(Boolean) : Object.values(raw);
+    let deadMatch;
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (!ent || String(ent.id) !== tid) continue;
+      if (!ent.dead) return ent;
+      if (!deadMatch) deadMatch = ent;
+    }
+    if (!Array.isArray(raw)) {
+      const byKey = raw[tid];
+      if (byKey && String(byKey.id) === tid) {
+        if (!byKey.dead) return byKey;
+        if (!deadMatch) deadMatch = byKey;
+      }
+    }
+    return deadMatch;
+  }
   function getObserving() {
-    return window.observing;
+    const snap = window.observing;
+    if (snap == null) return snap;
+    if (snap.id != null) {
+      const live = findEntityById(snap.id);
+      if (live) return live;
+    }
+    return snap;
   }
   function getObservingId() {
-    var _a;
-    return (_a = window.observing) == null ? void 0 : _a.id;
+    const obs = getObserving();
+    return (obs == null ? void 0 : obs.id) != null ? String(obs.id) : void 0;
   }
   function getS() {
     return window.S;
   }
   function getSocket() {
     return window.socket;
+  }
+  function emitObserverCommand(code) {
+    const sock = getSocket();
+    if (!sock || typeof sock.emit !== "function") return false;
+    const trimmed = String(code || "").trim();
+    if (!trimmed) return false;
+    sock.emit("o:command", trimmed);
+    return true;
   }
   function getServerRegion() {
     return window.server_region;
@@ -102,37 +138,61 @@ var EnhanceCommUI = (() => {
 
   // src/tick.ts
   var INTERVAL_MS = 100;
+  var listeners = /* @__PURE__ */ new Set();
+  var intervalId = null;
+  function resolveTarget(observing) {
+    if (observing == null || observing.target == null || observing.target === "") {
+      return void 0;
+    }
+    const ent = findEntityById(observing.target);
+    if (!ent || ent.dead) return void 0;
+    return ent;
+  }
   function buildSnapshot() {
     const entities = getEntitiesList();
-    const observingId = getObservingId();
     const observing = getObserving();
-    let target;
-    if (observing == null ? void 0 : observing.target) {
-      for (let i = 0; i < entities.length; i++) {
-        if (entities[i].id === observing.target) {
-          target = entities[i];
-          break;
-        }
-      }
-    }
+    const observingId = (observing == null ? void 0 : observing.id) != null ? String(observing.id) : getObservingId();
     return {
       entities,
       observingId,
       observing,
-      target,
+      target: resolveTarget(observing),
       S: getS(),
       serverRegion: getServerRegion(),
       serverIdentifier: getServerIdentifier(),
       now: Date.now()
     };
   }
-  function startTick(cb) {
+  function ensureInterval() {
+    if (intervalId != null) return;
     const tick = () => {
-      cb(buildSnapshot());
+      const snap = buildSnapshot();
+      const cbs = Array.from(listeners);
+      for (let i = 0; i < cbs.length; i++) {
+        try {
+          cbs[i](snap);
+        } catch (e2) {
+        }
+      }
     };
     tick();
-    const id = window.setInterval(tick, INTERVAL_MS);
-    return () => window.clearInterval(id);
+    intervalId = window.setInterval(tick, INTERVAL_MS);
+  }
+  function maybeStopInterval() {
+    if (listeners.size > 0 || intervalId == null) return;
+    window.clearInterval(intervalId);
+    intervalId = null;
+  }
+  function subscribeTick(cb) {
+    listeners.add(cb);
+    ensureInterval();
+    return () => {
+      listeners.delete(cb);
+      maybeStopInterval();
+    };
+  }
+  function startTick(cb) {
+    return subscribeTick(cb);
   }
 
   // src/sockets/hub.ts
@@ -165,15 +225,25 @@ var EnhanceCommUI = (() => {
     const ev = {
       actor: data.hid != null ? String(data.hid) : data.actor != null ? String(data.actor) : void 0,
       target: data.id != null ? String(data.id) : data.target != null ? String(data.target) : void 0,
+      source: data.source != null ? String(data.source) : void 0,
+      splash: !!data.splash,
+      damageType: data.damage_type != null ? String(data.damage_type) : void 0,
+      evade: !!data.evade,
+      miss: !!data.miss,
       at,
       raw: data
     };
     if (data.heal !== void 0) {
       ev.heal = Math.abs(Number(data.heal) || 0);
-    } else if (data.damage !== void 0) {
+    }
+    if (data.damage !== void 0) {
       ev.damage = Math.abs(Number(data.damage) || 0);
     }
-    if (data.evade || data.miss || data.reflect) {
+    if (data.lifesteal) ev.lifesteal = Math.abs(Number(data.lifesteal) || 0);
+    if (data.manasteal) ev.manasteal = Math.abs(Number(data.manasteal) || 0);
+    if (data.dreturn) ev.dreturn = Math.abs(Number(data.dreturn) || 0);
+    if (data.reflect && typeof data.reflect === "number") {
+      ev.reflect = Math.abs(data.reflect);
     }
     emitDamage(ev);
   }
@@ -374,29 +444,313 @@ var EnhanceCommUI = (() => {
     return hp / dps;
   }
 
-  // src/kpi/sessionKills.ts
-  var mtypeCounts = {};
-  var lastSeenMtype = /* @__PURE__ */ new Map();
-  var totalKills = 0;
+  // src/meters/combatChannels.ts
+  var COMBAT_CHANNELS = [
+    "dps",
+    "base",
+    "blast",
+    "burn",
+    "cleave",
+    "hps",
+    "mps",
+    "dr",
+    "reflect"
+  ];
+  var CHANNEL_LABELS = {
+    dps: "DPS",
+    base: "Base",
+    blast: "Blast",
+    burn: "Burn",
+    cleave: "Cleave",
+    hps: "HPS",
+    mps: "MPS",
+    dr: "DR",
+    reflect: "RF"
+  };
+  var CHANNEL_COLORS = {
+    dps: "#E53935",
+    base: "#6D1B7B",
+    blast: "#FB8C00",
+    burn: "#FDD835",
+    cleave: "#8D6E63",
+    hps: "#43A047",
+    mps: "#1E88E5",
+    dr: "#546E7A",
+    reflect: "#26A69A"
+  };
+
+  // src/meters/partyCombat.ts
+  var COMBAT_BREAK_MS = 12e3;
+  var HISTORY_MS = 5e3;
+  var MAX_HISTORY = 60;
+  var players = {};
+  var vitalsShadow = {};
+  var history = [];
+  var lastHistoryAt = 0;
+  var sessionStartedAt = 0;
+  var lastCombatAt = 0;
   var unsub2 = null;
-  function handleKill2(ev) {
-    var _a;
-    const mtype = lastSeenMtype.get(ev.id) || ((_a = getEntitiesRecord()[ev.id]) == null ? void 0 : _a.mtype) || "?";
-    mtypeCounts[mtype] = (mtypeCounts[mtype] || 0) + 1;
-    totalKills += 1;
+  var playerMeta = {};
+  var watchedPartyIds = /* @__PURE__ */ new Set();
+  var watchedPartyKey = "";
+  function soloKey(id, name) {
+    return `solo:${name || id}`;
   }
-  function updateSeenMtypes(entities) {
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (ent.type === "monster" && ent.mtype) {
-        lastSeenMtype.set(ent.id, ent.mtype);
+  function partyKeyFor(ent, id) {
+    if (!ent) return soloKey(id);
+    if (ent.party) return ent.party;
+    return soloKey(id, ent.name);
+  }
+  function rate(sum, now) {
+    if (!sessionStartedAt) return 0;
+    const elapsed = Math.max(now - sessionStartedAt, 1e3);
+    return sum * 1e3 / elapsed;
+  }
+  function channelRate(p, ch, now) {
+    switch (ch) {
+      case "dps":
+        return rate(p.dealt, now);
+      case "base":
+        return rate(p.base, now);
+      case "blast":
+        return rate(p.blast, now);
+      case "burn":
+        return rate(p.burn, now);
+      case "cleave":
+        return rate(p.cleave, now);
+      case "hps":
+        return rate(p.heal, now);
+      case "mps":
+        return rate(p.mana, now);
+      case "dr":
+        return rate(p.dr, now);
+      case "reflect":
+        return rate(p.reflect, now);
+      default: {
+        const _exhaustive = ch;
+        return _exhaustive;
       }
     }
   }
-  function startSessionKills() {
-    if (!unsub2) {
-      unsub2 = onKill(handleKill2);
+  function ensurePlayer(id) {
+    let p = players[id];
+    if (!p) {
+      const meta = playerMeta[id];
+      p = {
+        dealt: 0,
+        base: 0,
+        blast: 0,
+        burn: 0,
+        cleave: 0,
+        heal: 0,
+        mana: 0,
+        dr: 0,
+        reflect: 0,
+        name: (meta == null ? void 0 : meta.name) || id,
+        ctype: meta == null ? void 0 : meta.ctype,
+        partyKey: (meta == null ? void 0 : meta.partyKey) || soloKey(id)
+      };
+      players[id] = p;
     }
+    return p;
+  }
+  function isPlayerId(id) {
+    if (!id) return false;
+    if (playerMeta[id]) return true;
+    const ent = getEntitiesRecord()[id];
+    if (ent) {
+      return !!(ent.player || ent.type === "character");
+    }
+    return !/^\d+$/.test(id);
+  }
+  function syncShadowFromEntity(id, ent) {
+    if (!ent) return;
+    const maxHp = ent.max_hp || 0;
+    const maxMp = ent.max_mp || 0;
+    if (!(maxHp > 0) && !(maxMp > 0)) return;
+    vitalsShadow[id] = {
+      hp: ent.hp != null ? ent.hp : maxHp,
+      maxHp,
+      mp: ent.mp != null ? ent.mp : maxMp,
+      maxMp
+    };
+  }
+  function ensureShadow(id) {
+    let s = vitalsShadow[id];
+    if (s) return s;
+    const ent = getEntitiesRecord()[id];
+    if (!ent) return null;
+    syncShadowFromEntity(id, ent);
+    return vitalsShadow[id] || null;
+  }
+  function effectiveGain(id, amount, kind) {
+    if (!(amount > 0)) return 0;
+    const live = getEntitiesRecord()[id];
+    const s = ensureShadow(id);
+    if (kind === "hp") {
+      const maxHp = s && s.maxHp || (live == null ? void 0 : live.max_hp) || 0;
+      if (!(maxHp > 0)) return amount;
+      const liveHp = live == null ? void 0 : live.hp;
+      const shadowHp = s ? s.hp : void 0;
+      let hp;
+      if (liveHp != null && shadowHp != null) hp = Math.min(liveHp, shadowHp);
+      else if (shadowHp != null) hp = shadowHp;
+      else if (liveHp != null) hp = liveHp;
+      else return amount;
+      const missing2 = Math.max(0, maxHp - hp);
+      const gained2 = Math.min(amount, missing2);
+      const next2 = Math.min(maxHp, hp + gained2);
+      if (s) {
+        s.hp = next2;
+        s.maxHp = maxHp;
+      } else {
+        vitalsShadow[id] = {
+          hp: next2,
+          maxHp,
+          mp: (live == null ? void 0 : live.mp) || 0,
+          maxMp: (live == null ? void 0 : live.max_mp) || 0
+        };
+      }
+      return gained2;
+    }
+    const maxMp = s && s.maxMp || (live == null ? void 0 : live.max_mp) || 0;
+    if (!(maxMp > 0)) return amount;
+    const liveMp = live == null ? void 0 : live.mp;
+    const shadowMp = s ? s.mp : void 0;
+    let mp;
+    if (liveMp != null && shadowMp != null) mp = Math.min(liveMp, shadowMp);
+    else if (shadowMp != null) mp = shadowMp;
+    else if (liveMp != null) mp = liveMp;
+    else return amount;
+    const missing = Math.max(0, maxMp - mp);
+    const gained = Math.min(amount, missing);
+    const next = Math.min(maxMp, mp + gained);
+    if (s) {
+      s.mp = next;
+      s.maxMp = maxMp;
+    } else {
+      vitalsShadow[id] = {
+        hp: (live == null ? void 0 : live.hp) || 0,
+        maxHp: (live == null ? void 0 : live.max_hp) || 0,
+        mp: next,
+        maxMp
+      };
+    }
+    return gained;
+  }
+  function applyDamageToShadow(id, damage) {
+    if (!(damage > 0)) return;
+    const s = ensureShadow(id);
+    if (!s || !(s.maxHp > 0)) return;
+    s.hp = Math.max(0, s.hp - damage);
+  }
+  function noteCombatActivity(now) {
+    if (sessionStartedAt && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
+      resetPartyCombat();
+    }
+    lastCombatAt = now;
+    if (!sessionStartedAt) sessionStartedAt = now;
+  }
+  function onEvent2(ev) {
+    const now = ev.at;
+    const actorIsPlayer = isPlayerId(ev.actor);
+    const targetIsPlayer = isPlayerId(ev.target);
+    const hasCombatSignal = !!(ev.damage && ev.damage > 0) || !!(ev.heal && ev.heal > 0) || !!(ev.lifesteal && ev.lifesteal > 0) || !!(ev.manasteal && ev.manasteal > 0) || !!(ev.dreturn && ev.dreturn > 0) || !!(ev.reflect && ev.reflect > 0);
+    if (!hasCombatSignal) return;
+    const relevant = actorIsPlayer && !!ev.actor || targetIsPlayer && (!!ev.dreturn || !!ev.reflect);
+    if (relevant) noteCombatActivity(now);
+    if (ev.dreturn && targetIsPlayer && ev.target && !actorIsPlayer) {
+      ensurePlayer(ev.target).dr += ev.dreturn;
+    }
+    if (ev.reflect && targetIsPlayer && ev.target && !actorIsPlayer) {
+      ensurePlayer(ev.target).reflect += ev.reflect;
+    }
+    if (ev.damage && ev.damage > 0 && ev.target && targetIsPlayer) {
+      applyDamageToShadow(ev.target, ev.damage);
+    }
+    if (!ev.actor || !actorIsPlayer) return;
+    const p = ensurePlayer(ev.actor);
+    if (ev.heal && ev.heal > 0 && ev.target) {
+      p.heal += effectiveGain(ev.target, ev.heal, "hp");
+    }
+    if (ev.lifesteal && ev.lifesteal > 0) {
+      p.heal += effectiveGain(ev.actor, ev.lifesteal, "hp");
+    }
+    if (ev.manasteal && ev.manasteal > 0) {
+      p.mana += effectiveGain(ev.actor, ev.manasteal, "mp");
+    }
+    if (ev.damage && ev.damage > 0) {
+      p.dealt += ev.damage;
+      if (ev.source === "burn") p.burn += ev.damage;
+      else if (ev.splash) p.blast += ev.damage;
+      else if (ev.source === "cleave") p.cleave += ev.damage;
+      else p.base += ev.damage;
+    }
+    maybeSampleHistory(now);
+  }
+  function maybeSampleHistory(now) {
+    if (now - lastHistoryAt < HISTORY_MS) return;
+    lastHistoryAt = now;
+    const parties = {};
+    const ids = Object.keys(players);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const p = players[id];
+      const key = p.partyKey;
+      if (!parties[key]) parties[key] = {};
+      const bucket = parties[key];
+      for (let c = 0; c < COMBAT_CHANNELS.length; c++) {
+        const ch = COMBAT_CHANNELS[c];
+        bucket[ch] = (bucket[ch] || 0) + channelRate(p, ch, now);
+      }
+    }
+    history.push({ at: now, parties });
+    while (history.length > MAX_HISTORY) history.shift();
+  }
+  function updateCombatContext(entities) {
+    const observing = getObserving();
+    const observingId = getObservingId();
+    const nextMeta = {};
+    const nextWatched = /* @__PURE__ */ new Set();
+    const now = Date.now();
+    if (sessionStartedAt && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
+      resetPartyCombat();
+    }
+    if (observingId && observing) {
+      nextWatched.add(String(observingId));
+      watchedPartyKey = observing.party || soloKey(String(observingId), observing.name);
+      if (observing.party) {
+        for (let i = 0; i < entities.length; i++) {
+          const ent = entities[i];
+          if (ent.player && ent.party === observing.party) {
+            nextWatched.add(String(ent.id));
+          }
+        }
+      }
+    } else {
+      watchedPartyKey = "";
+    }
+    watchedPartyIds = nextWatched;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent.player || !ent.id) continue;
+      const id = String(ent.id);
+      nextMeta[id] = {
+        name: ent.name || id,
+        ctype: ent.ctype,
+        partyKey: partyKeyFor(ent, id)
+      };
+      syncShadowFromEntity(id, ent);
+      if (players[id]) {
+        players[id].name = nextMeta[id].name;
+        players[id].ctype = nextMeta[id].ctype;
+        players[id].partyKey = nextMeta[id].partyKey;
+      }
+    }
+    playerMeta = nextMeta;
+  }
+  function startPartyCombat() {
+    if (!unsub2) unsub2 = onDamage(onEvent2);
     return () => {
       if (unsub2) {
         unsub2();
@@ -404,14 +758,2031 @@ var EnhanceCommUI = (() => {
       }
     };
   }
+  function resetPartyCombat() {
+    const keys = Object.keys(players);
+    for (let i = 0; i < keys.length; i++) delete players[keys[i]];
+    history.length = 0;
+    lastHistoryAt = 0;
+    sessionStartedAt = 0;
+    lastCombatAt = 0;
+  }
+  function includePlayer(id, scope) {
+    if (scope === "all") return true;
+    if (!watchedPartyIds.size) return false;
+    return watchedPartyIds.has(id);
+  }
+  function listPartyKeys(scope) {
+    const set = /* @__PURE__ */ new Set();
+    const ids = Object.keys(players);
+    for (let i = 0; i < ids.length; i++) {
+      if (!includePlayer(ids[i], scope)) continue;
+      set.add(players[ids[i]].partyKey);
+    }
+    if (watchedPartyKey) set.add(watchedPartyKey);
+    const out = Array.from(set);
+    out.sort((a, b) => {
+      if (a === watchedPartyKey) return -1;
+      if (b === watchedPartyKey) return 1;
+      return a.localeCompare(b);
+    });
+    return out;
+  }
+  function getWatchedPartyKey() {
+    return watchedPartyKey;
+  }
+  function getCombatRows(scope, partyFilter) {
+    const now = Date.now();
+    const rows = [];
+    const ids = Object.keys(players);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (!includePlayer(id, scope)) continue;
+      const p = players[id];
+      if (partyFilter && p.partyKey !== partyFilter) continue;
+      const rates = {};
+      for (let c = 0; c < COMBAT_CHANNELS.length; c++) {
+        const ch = COMBAT_CHANNELS[c];
+        rates[ch] = channelRate(p, ch, now);
+      }
+      rows.push({
+        id,
+        name: p.name,
+        ctype: p.ctype,
+        partyKey: p.partyKey,
+        rates
+      });
+    }
+    rows.sort((a, b) => b.rates.dps - a.rates.dps);
+    return rows;
+  }
+  function buildCombatBarRows(scope, channel, partyFilter) {
+    const rows = getCombatRows(scope, partyFilter);
+    let max = 0;
+    for (let i = 0; i < rows.length; i++) {
+      max = Math.max(max, rows[i].rates[channel] || 0);
+    }
+    return rows.filter((r) => (r.rates[channel] || 0) > 0).map((r) => ({
+      id: r.id,
+      name: r.name,
+      ctype: r.ctype,
+      value: r.rates[channel] || 0,
+      barMax: max || 1,
+      label: Math.round(r.rates[channel] || 0).toLocaleString()
+    }));
+  }
+  function getCombatHistory() {
+    return history;
+  }
+  function getCombatSessionStartedAt() {
+    return sessionStartedAt;
+  }
+  function getPartyTotals(scope, partyFilter) {
+    const rows = getCombatRows(scope, partyFilter);
+    const out = {};
+    for (let c = 0; c < COMBAT_CHANNELS.length; c++) {
+      out[COMBAT_CHANNELS[c]] = 0;
+    }
+    for (let i = 0; i < rows.length; i++) {
+      for (let c = 0; c < COMBAT_CHANNELS.length; c++) {
+        const ch = COMBAT_CHANNELS[c];
+        out[ch] += rows[i].rates[ch] || 0;
+      }
+    }
+    return out;
+  }
+
+  // src/lib/layout.ts
+  var PANEL_IDS = [
+    "players",
+    "enemies",
+    "topCenter",
+    "paperdoll",
+    "kills",
+    "combat",
+    "playerFrame",
+    "targetFrame",
+    "bossBar",
+    "threat",
+    "pdps",
+    "hitDps",
+    "coopV1",
+    "coopV2",
+    "command",
+    "bag",
+    "toggles"
+  ];
+  var PANEL_LABELS = {
+    players: "Players",
+    enemies: "Enemies",
+    topCenter: "Server / Map",
+    paperdoll: "Paperdoll",
+    kills: "Kills",
+    combat: "Combat",
+    playerFrame: "Player frame",
+    targetFrame: "Target frame",
+    bossBar: "Boss bar",
+    threat: "Threat",
+    pdps: "PDPS",
+    hitDps: "Hit DPS",
+    coopV1: "Coop V1",
+    coopV2: "Coop V2",
+    command: "Command",
+    bag: "Bag",
+    toggles: "Layout"
+  };
+  var DEFAULT_LAYOUT = {
+    players: { x: 0.4, y: 0.4, anchor: "tl" },
+    enemies: { x: 99.6, y: 0.4, anchor: "tr" },
+    topCenter: { x: 50, y: 0.4, anchor: "tc" },
+    paperdoll: { x: 0.5, y: 38, anchor: "tl" },
+    // Deep bottom-right — clear of bottom chrome; inboard of meter column.
+    combat: { x: 92, y: 84, anchor: "br" },
+    kills: { x: 92, y: 95, anchor: "br" },
+    // Sit clearly above stacked observe chrome (actions + chips strip).
+    playerFrame: { x: 35, y: 80, anchor: "bc" },
+    targetFrame: { x: 65, y: 80, anchor: "bc" },
+    // Below topCenter server/map/crypt chrome (tc anchor, ~8% from top).
+    bossBar: { x: 50, y: 8, anchor: "tc" },
+    pdps: { x: 99.5, y: 18, anchor: "tr" },
+    hitDps: { x: 99.5, y: 36, anchor: "tr" },
+    coopV1: { x: 99.5, y: 54, anchor: "tr" },
+    coopV2: { x: 99.5, y: 70, anchor: "tr" },
+    threat: { x: 92, y: 64, anchor: "br" },
+    command: { x: 50, y: 42, anchor: "center" },
+    // Traditional inventory corner — above Follow/Bag/Command chrome.
+    bag: { x: 0.8, y: 86, anchor: "bl" },
+    toggles: { x: 99.5, y: 99.2, anchor: "br" }
+  };
+  function clamp(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+  }
+  function normalizePos(raw, fallback) {
+    if (!raw || typeof raw !== "object") return { ...fallback };
+    const anchor = raw.anchor || fallback.anchor;
+    const valid = [
+      "tl",
+      "tr",
+      "bl",
+      "br",
+      "tc",
+      "bc",
+      "center"
+    ];
+    return {
+      x: clamp(Number(raw.x), 0, 100) || 0,
+      y: clamp(Number(raw.y), 0, 100) || 0,
+      anchor: valid.indexOf(anchor) >= 0 ? anchor : fallback.anchor
+    };
+  }
+  function mergeLayout(partial) {
+    const out = {};
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      const id = PANEL_IDS[i];
+      out[id] = normalizePos(partial && partial[id], DEFAULT_LAYOUT[id]);
+    }
+    return out;
+  }
+  function anchorTransform(anchor) {
+    switch (anchor) {
+      case "tl":
+        return "translate(0, 0)";
+      case "tr":
+        return "translate(-100%, 0)";
+      case "bl":
+        return "translate(0, -100%)";
+      case "br":
+        return "translate(-100%, -100%)";
+      case "tc":
+        return "translate(-50%, 0)";
+      case "bc":
+        return "translate(-50%, -100%)";
+      case "center":
+        return "translate(-50%, -50%)";
+      default: {
+        const _exhaustive = anchor;
+        return _exhaustive;
+      }
+    }
+  }
+  function panelStyle(pos, editing) {
+    return {
+      position: "absolute",
+      left: `${pos.x}%`,
+      top: `${pos.y}%`,
+      transform: anchorTransform(pos.anchor),
+      pointerEvents: "auto",
+      zIndex: editing ? 40 : 20,
+      // Hug children so layout chrome matches real frame footprints.
+      width: "fit-content",
+      height: "fit-content",
+      maxWidth: "96vw",
+      maxHeight: "96vh",
+      boxSizing: "border-box"
+    };
+  }
+  function deltaToPercent(dx, dy, containerW, containerH) {
+    return {
+      dxPct: containerW > 0 ? dx / containerW * 100 : 0,
+      dyPct: containerH > 0 ? dy / containerH * 100 : 0
+    };
+  }
+  function snapPercent(n, threshold = 2.2) {
+    const targets = [0, 50, 100];
+    let best = n;
+    let bestDist = threshold + 1;
+    for (let i = 0; i < targets.length; i++) {
+      const d = Math.abs(n - targets[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = targets[i];
+      }
+    }
+    return bestDist <= threshold ? best : n;
+  }
+
+  // src/lib/settings.ts
+  var KEY = "al-comm-ui-settings-v1";
+  function resolvePartyFocus(focus, watchedPartyKey3) {
+    if (focus === "all") {
+      return { scope: "all", partyFilter: null, historyKey: null };
+    }
+    if (focus === "watched") {
+      const key = watchedPartyKey3 || null;
+      return { scope: "watched", partyFilter: key, historyKey: key };
+    }
+    return { scope: "all", partyFilter: focus, historyKey: focus };
+  }
+  var CLOSABLE_PANEL_IDS = [
+    "bossBar",
+    "combat",
+    "kills",
+    "threat",
+    "pdps",
+    "hitDps",
+    "coopV1",
+    "coopV2",
+    "command",
+    "bag"
+  ];
+  var DEFAULT_PANEL_VISIBLE = {
+    bossBar: true,
+    combat: true,
+    kills: true,
+    threat: true,
+    pdps: true,
+    hitDps: false,
+    coopV1: true,
+    coopV2: true,
+    command: false,
+    /** Bag panel shell is always allowed; open/close follows inventory. */
+    bag: true
+  };
+  var DEFAULT_COMMAND_SNIPPETS = [
+    { id: "loot", name: "Loot", code: "loot()" },
+    { id: "stop", name: "Stop move", code: "stop('move')" },
+    {
+      id: "say-hi",
+      name: "Say hi",
+      code: "say('hi')"
+    }
+  ];
+  var DEFAULTS = {
+    partyScope: "watched",
+    killScope: "watched",
+    combatView: "table",
+    combatChannels: ["dps", "base", "blast", "burn", "hps"],
+    barChannel: "dps",
+    partyFocus: "watched",
+    panelLayout: {},
+    panelVisible: { ...DEFAULT_PANEL_VISIBLE },
+    commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
+    commandDraft: "",
+    combatCompact: false,
+    bagOpenPreferred: false,
+    panelOpacity: {}
+  };
+  function clampOpacity(n) {
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(0.25, Math.min(1, n));
+  }
+  var CHANNEL_SET = new Set(COMBAT_CHANNELS);
+  function isCombatChannel(v) {
+    return typeof v === "string" && CHANNEL_SET.has(v);
+  }
+  function normalizeChannels(raw) {
+    if (!Array.isArray(raw)) return DEFAULTS.combatChannels.slice();
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const v = raw[i];
+      if (isCombatChannel(v) && out.indexOf(v) < 0) out.push(v);
+    }
+    return out.length ? out : DEFAULTS.combatChannels.slice();
+  }
+  function normalizeBarChannel(raw) {
+    return isCombatChannel(raw) ? raw : DEFAULTS.barChannel;
+  }
+  function mergePanelOpacity(partial) {
+    const out = {};
+    if (!partial || typeof partial !== "object") return out;
+    const keys = Object.keys(partial);
+    for (let i = 0; i < keys.length; i++) {
+      const id = keys[i];
+      const v = partial[id];
+      if (typeof v === "number") out[id] = clampOpacity(v);
+    }
+    return out;
+  }
+  function panelOpacityOf(settings, id) {
+    var _a;
+    const v = (_a = settings.panelOpacity) == null ? void 0 : _a[id];
+    return typeof v === "number" ? clampOpacity(v) : 1;
+  }
+  function mergePanelVisible(partial, legacyCombatVisible) {
+    const out = { ...DEFAULT_PANEL_VISIBLE };
+    if (typeof legacyCombatVisible === "boolean" && (partial == null ? void 0 : partial.combat) == null) {
+      out.combat = legacyCombatVisible;
+    }
+    if (partial && typeof partial === "object") {
+      for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
+        const id = CLOSABLE_PANEL_IDS[i];
+        if (typeof partial[id] === "boolean") {
+          out[id] = partial[id];
+        }
+      }
+    }
+    return out;
+  }
+  function normalizeSnippets(raw) {
+    if (!Array.isArray(raw)) return DEFAULT_COMMAND_SNIPPETS.slice();
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const row = raw[i];
+      if (!row || typeof row !== "object") continue;
+      const name = String(row.name || "").trim();
+      const code = String(row.code || "");
+      if (!name && !code.trim()) continue;
+      const id = typeof row.id === "string" && row.id ? row.id : `snip-${i}-${Date.now()}`;
+      out.push({
+        id,
+        name: name || `Snippet ${out.length + 1}`,
+        code
+      });
+    }
+    return out;
+  }
+  function migrate(parsed) {
+    const next = {
+      ...DEFAULTS,
+      ...parsed,
+      combatChannels: normalizeChannels(parsed.combatChannels),
+      barChannel: normalizeBarChannel(parsed.barChannel),
+      panelLayout: mergeLayout(parsed.panelLayout),
+      panelVisible: mergePanelVisible(
+        parsed.panelVisible,
+        parsed.combatVisible
+      ),
+      commandSnippets: normalizeSnippets(parsed.commandSnippets),
+      commandDraft: typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
+      combatCompact: !!parsed.combatCompact,
+      bagOpenPreferred: !!parsed.bagOpenPreferred,
+      panelOpacity: mergePanelOpacity(parsed.panelOpacity)
+    };
+    if (!parsed.combatView && parsed.combatViews) {
+      if (parsed.combatViews.table) next.combatView = "table";
+      else if (parsed.combatViews.bars) next.combatView = "bars";
+      else if (parsed.combatViews.graph) next.combatView = "graph";
+    }
+    if (!parsed.partyFocus) {
+      if (parsed.partyScope === "all" && parsed.graphPartyKey) {
+        next.partyFocus = parsed.graphPartyKey;
+      } else if (parsed.partyScope === "all") {
+        next.partyFocus = "all";
+      } else {
+        next.partyFocus = "watched";
+      }
+    }
+    delete next.combatVisible;
+    return next;
+  }
+  function freshDefaults() {
+    return {
+      ...DEFAULTS,
+      combatChannels: DEFAULTS.combatChannels.slice(),
+      panelLayout: mergeLayout(null),
+      panelVisible: mergePanelVisible(null),
+      commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
+      commandDraft: "",
+      combatCompact: false,
+      bagOpenPreferred: false,
+      panelOpacity: {}
+    };
+  }
+  var settingsCache = null;
+  function readSettingsFromStorage() {
+    var _a;
+    try {
+      const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY);
+      if (!raw) return freshDefaults();
+      return migrate(JSON.parse(raw));
+    } catch (e2) {
+      return freshDefaults();
+    }
+  }
+  function writeSettingsToStorage(next) {
+    var _a;
+    try {
+      (_a = window.localStorage) == null ? void 0 : _a.setItem(KEY, JSON.stringify(next));
+    } catch (e2) {
+    }
+  }
+  function getSettings() {
+    if (!settingsCache) settingsCache = readSettingsFromStorage();
+    return settingsCache;
+  }
+  function loadSettings() {
+    return getSettings();
+  }
+  function patchSettings(partial) {
+    const current = getSettings();
+    const next = {
+      ...current,
+      ...partial
+    };
+    if (partial.combatChannels) {
+      next.combatChannels = normalizeChannels(partial.combatChannels);
+    }
+    if (partial.barChannel != null) {
+      next.barChannel = normalizeBarChannel(partial.barChannel);
+    }
+    if (partial.panelLayout) {
+      next.panelLayout = mergeLayout({
+        ...current.panelLayout,
+        ...partial.panelLayout
+      });
+    }
+    if (partial.panelVisible) {
+      next.panelVisible = mergePanelVisible({
+        ...current.panelVisible,
+        ...partial.panelVisible
+      });
+    }
+    if (partial.commandSnippets) {
+      next.commandSnippets = normalizeSnippets(partial.commandSnippets);
+    }
+    if (typeof partial.commandDraft === "string") {
+      next.commandDraft = partial.commandDraft;
+    }
+    if (typeof partial.combatCompact === "boolean") {
+      next.combatCompact = partial.combatCompact;
+    }
+    if (typeof partial.bagOpenPreferred === "boolean") {
+      next.bagOpenPreferred = partial.bagOpenPreferred;
+    }
+    if (partial.panelOpacity) {
+      next.panelOpacity = mergePanelOpacity({
+        ...current.panelOpacity,
+        ...partial.panelOpacity
+      });
+    }
+    delete next.combatVisible;
+    settingsCache = next;
+    writeSettingsToStorage(next);
+    return next;
+  }
+  function saveSettings(partial) {
+    return patchSettings(partial);
+  }
+  function savePanelPos(id, pos) {
+    return saveSettings({ panelLayout: { [id]: pos } });
+  }
+  function savePanelVisible(id, visible) {
+    return saveSettings({ panelVisible: { [id]: visible } });
+  }
+  function resetPanelLayout() {
+    return saveSettings({ panelLayout: mergeLayout(null) });
+  }
+  function partyFocusLabel(focus, watchedName) {
+    if (focus === "watched") {
+      return watchedName ? `Watched \xB7 ${watchedName}` : "Watched party";
+    }
+    if (focus === "all") return "All parties";
+    if (focus.indexOf("solo:") === 0) return focus.slice(5);
+    return focus;
+  }
+
+  // src/kpi/sessionKills.ts
+  var ATTRIBUTION_MS = 8e3;
+  var NEAR_RANGE = 400;
+  var mtypeCounts = {};
+  var partyKillCounts = {};
+  var lastSeen = /* @__PURE__ */ new Map();
+  var blameByTarget = /* @__PURE__ */ new Map();
+  var totalKills = 0;
+  var sessionStartedAt2 = 0;
+  var trackingId;
+  var trackingName = "";
+  var watchedPartyIds2 = /* @__PURE__ */ new Set();
+  var watchedPartyKey2 = "";
+  var playerParty = /* @__PURE__ */ new Map();
+  var unsubKill2 = null;
+  var unsubDmg = null;
+  function soloKey2(id, name) {
+    return `solo:${name || id}`;
+  }
+  function clearCounts() {
+    const keys = Object.keys(mtypeCounts);
+    for (let i = 0; i < keys.length; i++) delete mtypeCounts[keys[i]];
+    const pkeys = Object.keys(partyKillCounts);
+    for (let i = 0; i < pkeys.length; i++) delete partyKillCounts[pkeys[i]];
+    totalKills = 0;
+    sessionStartedAt2 = 0;
+  }
+  function ensureSession(observingId, name) {
+    if (trackingId !== observingId) {
+      trackingId = observingId;
+      trackingName = name || observingId;
+      clearCounts();
+    } else if (name) {
+      trackingName = name;
+    }
+  }
+  function killScope() {
+    return loadSettings().killScope || "watched";
+  }
+  function isWatchedActor(actorId) {
+    if (!actorId || !trackingId) return false;
+    if (actorId === trackingId) return true;
+    return watchedPartyIds2.has(actorId);
+  }
+  function creditedPartyKey(actorId) {
+    if (killScope() === "watched") {
+      if (!isWatchedActor(actorId)) return void 0;
+      return watchedPartyKey2 || soloKey2(actorId);
+    }
+    return playerParty.get(actorId);
+  }
+  function pruneBlame(now) {
+    const cutoff = now - ATTRIBUTION_MS;
+    const ids = Array.from(blameByTarget.keys());
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const row = blameByTarget.get(id);
+      if (!row || row.at < cutoff) blameByTarget.delete(id);
+    }
+  }
+  function recordDamage(ev) {
+    if (!ev.target || !ev.damage || ev.damage <= 0) return;
+    if (!ev.actor) return;
+    const now = ev.at;
+    pruneBlame(now);
+    let row = blameByTarget.get(ev.target);
+    if (!row) {
+      row = { at: now, actors: /* @__PURE__ */ new Set() };
+      blameByTarget.set(ev.target, row);
+    }
+    row.at = now;
+    row.actors.add(ev.actor);
+    const seen = lastSeen.get(ev.target);
+    if (seen == null ? void 0 : seen.mtype) row.mtype = seen.mtype;
+  }
+  function attributionPartyKey(monsterId, now) {
+    const observing = getObserving();
+    if ((observing == null ? void 0 : observing.target) && String(observing.target) === monsterId) {
+      return watchedPartyKey2 || (trackingId ? soloKey2(trackingId) : void 0);
+    }
+    pruneBlame(now);
+    const blame = blameByTarget.get(monsterId);
+    if (blame && blame.at >= now - ATTRIBUTION_MS) {
+      const actors = Array.from(blame.actors);
+      for (let i = 0; i < actors.length; i++) {
+        const key = creditedPartyKey(actors[i]);
+        if (key) return key;
+      }
+    }
+    const seen = lastSeen.get(monsterId);
+    if ((seen == null ? void 0 : seen.nearAt) != null && now - seen.nearAt <= ATTRIBUTION_MS) {
+      if (killScope() === "all" && seen.nearPartyKey) return seen.nearPartyKey;
+      if (killScope() === "watched" && trackingId) {
+        return watchedPartyKey2 || soloKey2(trackingId);
+      }
+    }
+    return void 0;
+  }
+  function handleKill2(ev) {
+    var _a, _b, _c;
+    const scope = killScope();
+    const observingId = getObservingId();
+    if (scope === "watched") {
+      if (!observingId) return;
+      const observing = getObserving();
+      ensureSession(observingId, (observing == null ? void 0 : observing.name) || observingId);
+    } else if (observingId) {
+      const observing = getObserving();
+      ensureSession(observingId, (observing == null ? void 0 : observing.name) || observingId);
+    } else if (!sessionStartedAt2) {
+      sessionStartedAt2 = ev.at;
+    }
+    const partyKey = attributionPartyKey(ev.id, ev.at);
+    if (!partyKey) return;
+    const mtype = ((_a = lastSeen.get(ev.id)) == null ? void 0 : _a.mtype) || ((_b = blameByTarget.get(ev.id)) == null ? void 0 : _b.mtype) || ((_c = getEntitiesRecord()[ev.id]) == null ? void 0 : _c.mtype);
+    if (!mtype) return;
+    mtypeCounts[mtype] = (mtypeCounts[mtype] || 0) + 1;
+    partyKillCounts[partyKey] = (partyKillCounts[partyKey] || 0) + 1;
+    totalKills += 1;
+    if (!sessionStartedAt2) sessionStartedAt2 = ev.at;
+    blameByTarget.delete(ev.id);
+    lastSeen.delete(ev.id);
+  }
+  function updateKillContext(entities) {
+    const observingId = getObservingId();
+    const observing = getObserving();
+    const now = Date.now();
+    const nextParty = /* @__PURE__ */ new Map();
+    const nextWatched = /* @__PURE__ */ new Set();
+    if (observingId && observing) {
+      ensureSession(observingId, observing.name || observingId);
+      nextWatched.add(observingId);
+      watchedPartyKey2 = observing.party || soloKey2(observingId, observing.name);
+      if (observing.party) {
+        for (let i = 0; i < entities.length; i++) {
+          const ent = entities[i];
+          if (ent.player && ent.party === observing.party && ent.id) {
+            nextWatched.add(String(ent.id));
+          }
+        }
+      }
+    } else {
+      watchedPartyKey2 = "";
+    }
+    watchedPartyIds2 = nextWatched;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.player && ent.id) {
+        nextParty.set(
+          String(ent.id),
+          ent.party || soloKey2(String(ent.id), ent.name)
+        );
+      }
+    }
+    playerParty = nextParty;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.type !== "monster" || !ent.mtype || ent.id == null) continue;
+      const id = String(ent.id);
+      const prev = lastSeen.get(id);
+      const row = {
+        mtype: ent.mtype,
+        nearAt: prev == null ? void 0 : prev.nearAt,
+        nearPartyKey: prev == null ? void 0 : prev.nearPartyKey
+      };
+      if (observing) {
+        const dist = simpleDistance(observing, ent);
+        if (Number.isFinite(dist) && dist <= NEAR_RANGE) {
+          row.nearAt = now;
+          row.nearPartyKey = watchedPartyKey2 || soloKey2(observing.id, observing.name);
+        }
+      }
+      if (ent.target) {
+        const tid = String(ent.target);
+        if (killScope() === "watched" && watchedPartyIds2.has(tid)) {
+          row.nearAt = now;
+          row.nearPartyKey = watchedPartyKey2;
+        } else if (killScope() === "all" && playerParty.has(tid)) {
+          row.nearAt = now;
+          row.nearPartyKey = playerParty.get(tid);
+        }
+      }
+      if (killScope() === "all") {
+        for (let p = 0; p < entities.length; p++) {
+          const pl = entities[p];
+          if (!pl.player) continue;
+          const dist = simpleDistance(pl, ent);
+          if (Number.isFinite(dist) && dist <= NEAR_RANGE) {
+            row.nearAt = now;
+            row.nearPartyKey = pl.party || soloKey2(String(pl.id), pl.name);
+            break;
+          }
+        }
+      }
+      lastSeen.set(id, row);
+      const blame = blameByTarget.get(id);
+      if (blame) blame.mtype = ent.mtype;
+    }
+  }
+  function startSessionKills() {
+    if (!unsubKill2) unsubKill2 = onKill(handleKill2);
+    if (!unsubDmg) unsubDmg = onDamage(recordDamage);
+    return () => {
+      if (unsubKill2) {
+        unsubKill2();
+        unsubKill2 = null;
+      }
+      if (unsubDmg) {
+        unsubDmg();
+        unsubDmg = null;
+      }
+    };
+  }
+  function resetKillSession() {
+    clearCounts();
+    blameByTarget.clear();
+  }
   function getStats() {
+    var _a;
     const byMtype = [];
     const keys = Object.keys(mtypeCounts);
     for (let i = 0; i < keys.length; i++) {
       byMtype.push({ mtype: keys[i], count: mtypeCounts[keys[i]] });
     }
     byMtype.sort((a, b) => b.count - a.count);
-    return { total: totalKills, byMtype };
+    const byParty = [];
+    const pkeys = Object.keys(partyKillCounts);
+    for (let i = 0; i < pkeys.length; i++) {
+      byParty.push({ party: pkeys[i], count: partyKillCounts[pkeys[i]] });
+    }
+    byParty.sort((a, b) => b.count - a.count);
+    const scope = killScope();
+    const observingId = getObservingId();
+    const active = scope === "all" || !!observingId;
+    let killsPerMinute = null;
+    let killsPerHour = null;
+    let killsPerDay = null;
+    if (sessionStartedAt2 && totalKills > 0) {
+      const elapsedSec = Math.max(Date.now() - sessionStartedAt2, 1e3) / 1e3;
+      const perSec = totalKills / elapsedSec;
+      killsPerMinute = perSec * 60;
+      killsPerHour = perSec * 3600;
+      killsPerDay = perSec * 86400;
+    }
+    return {
+      total: totalKills,
+      byMtype,
+      byParty,
+      trackingId: observingId || trackingId,
+      trackingName: ((_a = getObserving()) == null ? void 0 : _a.name) || trackingName,
+      sessionStartedAt: sessionStartedAt2,
+      killsPerMinute,
+      killsPerHour,
+      killsPerDay,
+      active,
+      scope
+    };
+  }
+
+  // src/host/commander.ts
+  var listeners2 = [];
+  function subscribeCommanderOpen(fn) {
+    listeners2.push(fn);
+    return () => {
+      const idx = listeners2.indexOf(fn);
+      if (idx >= 0) listeners2.splice(idx, 1);
+    };
+  }
+  function openCommander(draft) {
+    const payload = {};
+    if (typeof draft === "string") payload.draft = draft;
+    for (let i = 0; i < listeners2.length; i++) {
+      listeners2[i](payload);
+    }
+  }
+  function ourShowCommander(fvalue) {
+    openCommander(typeof fvalue === "string" ? fvalue : void 0);
+  }
+  function installCommanderHook() {
+    const w = window;
+    const apply = () => {
+      if (w.show_commander === ourShowCommander) return;
+      if (typeof w.show_commander === "function" && w.show_commander !== ourShowCommander && !w.__alCommShowCommander) {
+        w.__alCommShowCommander = w.show_commander;
+      }
+      w.show_commander = ourShowCommander;
+    };
+    apply();
+    let ticks = 0;
+    const timer = window.setInterval(() => {
+      apply();
+      ticks += 1;
+      if (ticks >= 40) window.clearInterval(timer);
+    }, 500);
+  }
+
+  // src/host/commChrome/types.ts
+  function esc(text) {
+    return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // src/host/commChrome/chromeCss.ts
+  var STYLE_ID = "comm-ui-chrome-css";
+  function injectChromeCss() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+/* Hide stock observe gamebuttons \u2014 never restyle .gamebutton.block into the strip */
+#observeui {
+  display: none !important;
+}
+
+#bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 260;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  text-align: center;
+  pointer-events: none;
+  background: none !important;
+  background-image: none !important;
+}
+#bottom .ecu-chrome-stack,
+#bottom .ecu-chrome-stack * {
+  pointer-events: auto;
+}
+
+/* Vertical stack: action bar above character/server strip */
+.ecu-chrome-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  width: auto;
+  max-width: min(96vw, 1200px);
+  margin: 0 auto;
+  pointer-events: auto;
+}
+
+/* Secondary control cluster \u2014 same visual language, larger hit targets */
+.ecu-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(14, 14, 14, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-sizing: border-box;
+  align-self: center;
+}
+
+.ecu-btn {
+  appearance: none;
+  border: 1px solid #7a7a7a;
+  border-radius: 0;
+  background: #252525;
+  color: #f5f5f5;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em;
+  text-shadow: none !important;
+  box-shadow: none !important;
+  text-transform: none;
+  box-sizing: border-box;
+  padding: 0 18px;
+  min-width: 88px;
+  min-height: 40px;
+  height: 40px;
+  margin: 0;
+  cursor: pointer;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+.ecu-btn:hover {
+  background: #343434;
+  border-color: #a0a0a0;
+  color: #fff;
+}
+.ecu-btn:active {
+  background: #3d3d3d;
+}
+.ecu-btn:disabled,
+.ecu-btn.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Primary strip: character chips + server only */
+.ecu-chrome {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  pointer-events: auto;
+  background: rgba(14, 14, 14, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-sizing: border-box;
+  min-height: 68px;
+  height: 68px;
+  overflow: visible;
+}
+
+.ecu-strip-sep {
+  flex: 0 0 1px;
+  width: 1px;
+  align-self: stretch;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.charactersui.charactersuic {
+  display: flex !important;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px;
+  max-width: min(78vw, 920px);
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: thin;
+  text-align: left;
+}
+
+.ecu-char {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 240px;
+  height: 100%;
+  padding: 0 12px 0 6px;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.15;
+  overflow: hidden;
+}
+.ecu-char:hover { background: rgba(255, 255, 255, 0.07); }
+.ecu-char.is-active {
+  background: rgba(225, 55, 88, 0.2);
+  box-shadow: inset 0 -3px 0 #e13758;
+}
+.ecu-char.is-active:hover {
+  background: rgba(225, 55, 88, 0.28);
+}
+.ecu-char-sprite {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+}
+.ecu-char-sprite > * {
+  transform: scale(1.2);
+  transform-origin: center center;
+}
+.ecu-char-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+.ecu-char-name {
+  font-size: 17px;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em;
+  color: #f5f5f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+  text-shadow: none !important;
+}
+.ecu-char-sub {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: none !important;
+}
+.ecu-empty {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 16px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 15px;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+}
+
+.serversui.serversuic,
+.serversuic {
+  display: flex !important;
+  position: relative;
+  flex: 0 0 auto;
+  align-items: stretch;
+  margin: 0 !important;
+  overflow: visible;
+}
+.ecu-server-dd {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  text-align: left;
+  height: 100%;
+  overflow: visible;
+}
+.ecu-server-dd-trigger {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.15;
+  min-width: 188px;
+  box-sizing: border-box;
+}
+.ecu-server-dd-trigger:hover { background: rgba(255, 255, 255, 0.07); }
+.ecu-server-dd.is-open .ecu-server-dd-trigger {
+  background: rgba(133, 199, 107, 0.16);
+  box-shadow: inset 0 -3px 0 #85c76b;
+}
+.ecu-server-dd-meta {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+.ecu-server-dd-name {
+  font-size: 21px;
+  font-weight: 400 !important;
+  color: #f2f2f2;
+  white-space: nowrap;
+  text-shadow: none !important;
+}
+.ecu-server-dd-sub {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: #85c76b;
+  white-space: nowrap;
+  text-shadow: none !important;
+}
+/* Current connection RTT from host globals pings[] / ping_ack */
+.ecu-server-dd-ping {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  min-width: 52px;
+}
+.ecu-server-dd-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 18px;
+}
+.ecu-server-dd-bar {
+  display: block;
+  width: 3px;
+  min-height: 2px;
+  background: #8ab4c9;
+  opacity: 0.92;
+}
+.ecu-server-dd-ping-ms {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: #8ab4c9;
+  white-space: nowrap;
+  text-shadow: none !important;
+  font-weight: 400 !important;
+}
+.ecu-server-dd-chevron {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid rgba(255, 255, 255, 0.5);
+}
+.ecu-server-dd.is-open .ecu-server-dd-chevron {
+  transform: rotate(180deg);
+  border-top-color: #85c76b;
+}
+.ecu-server-dd-menu {
+  display: none;
+  position: absolute;
+  left: auto;
+  right: 0;
+  bottom: calc(100% + 6px);
+  min-width: 100%;
+  width: max(100%, 240px);
+  z-index: 270;
+  max-height: min(42vh, 320px);
+  overflow: auto;
+  padding: 4px;
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+}
+.ecu-server-dd.is-open .ecu-server-dd-menu { display: block; }
+.ecu-server-dd-option {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+.ecu-server-dd-option:hover { background: rgba(255, 255, 255, 0.08); }
+.ecu-server-dd-option.is-active {
+  background: rgba(133, 199, 107, 0.14);
+  box-shadow: inset 3px 0 0 #85c76b;
+}
+.ecu-server-dd-option-name {
+  font-weight: 400 !important;
+  text-shadow: none !important;
+}
+.ecu-server-dd-option-players {
+  color: #85c76b;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+}
+.ecu-server-dd-empty {
+  padding: 14px;
+  color: #888;
+  font-size: 15px;
+  text-align: center;
+}
+
+/* Hide stock TOGGLE \u2014 strip shows chars + servers together */
+#bottom > .gamebutton {
+  display: none !important;
+}
+
+/* Narrow viewport: fold Follow/Bag/Command into the chip strip row */
+@media (max-width: 900px) {
+  .ecu-chrome-stack {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .ecu-actions {
+    flex: 0 0 auto;
+    align-self: stretch;
+    padding: 4px;
+    gap: 4px;
+    height: 68px;
+    min-height: 68px;
+    box-sizing: border-box;
+  }
+  .ecu-btn {
+    min-width: 64px;
+    min-height: 28px;
+    height: 28px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .ecu-chrome {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .charactersui.charactersuic {
+    max-width: min(62vw, 640px);
+  }
+}
+`;
+    document.head.append(style);
+  }
+
+  // src/host/commChrome/chromeActions.ts
+  function clearObserve() {
+    if (typeof window.init_socket !== "function") return;
+    window.init_socket({});
+  }
+  function toggleObserve(name) {
+    const n = String(name || "");
+    if (!n) return;
+    const obs = window.observing;
+    if (obs && obs.name === n) {
+      clearObserve();
+      return;
+    }
+    if (typeof window.observe_character === "function") {
+      window.observe_character(n);
+    }
+  }
+  function onFollowClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const sock = window.socket;
+    if (sock && typeof sock.emit === "function") sock.emit("o:home");
+  }
+  function onBagClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const render = window.render_inventory;
+    if (typeof render !== "function") return;
+    if (typeof window.draw_trigger === "function") {
+      window.draw_trigger(() => render());
+    } else {
+      render();
+    }
+  }
+  function onCommandClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (typeof window.show_commander === "function") {
+      window.show_commander();
+    }
+  }
+  function buildActionsEl() {
+    const actions = document.createElement("div");
+    actions.className = "ecu-actions";
+    actions.setAttribute("data-ecu-actions", "1");
+    const mk = (label, title, onClick) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-btn";
+      btn.textContent = label;
+      btn.title = title;
+      btn.addEventListener("click", onClick);
+      return btn;
+    };
+    actions.append(
+      mk("Follow", "Center on observed character", onFollowClick),
+      mk("Bag", "Observed inventory", onBagClick),
+      mk("Command", "Send a command to the observed character", onCommandClick)
+    );
+    return actions;
+  }
+  function syncActionsEnabled() {
+    const watching = !!(window.observing && window.observing.name);
+    const actions = document.querySelector(".ecu-actions");
+    if (!actions) return;
+    const buttons = actions.querySelectorAll(".ecu-btn");
+    for (let i = 0; i < buttons.length; i++) {
+      const btn = buttons[i];
+      const label = (btn.textContent || "").trim();
+      const needsObs = label === "Follow" || label === "Bag" || label === "Command";
+      if (needsObs) {
+        btn.disabled = !watching;
+        btn.classList.toggle("is-disabled", !watching);
+      }
+    }
+  }
+  function ensureChromeShell() {
+    const bottom = document.getElementById("bottom");
+    if (!bottom) return;
+    const observe = document.getElementById("observeui");
+    if (observe) {
+      observe.classList.add("hidden");
+      observe.style.display = "none";
+    }
+    const existingStack = bottom.querySelector(
+      ".ecu-chrome-stack"
+    );
+    if (existingStack) {
+      const chromeEl = existingStack.querySelector(
+        ".ecu-chrome"
+      );
+      const charsEl = bottom.querySelector(".charactersuic");
+      const serversEl = bottom.querySelector(".serversuic") || bottom.querySelector(".serversui");
+      if (chromeEl && charsEl && !chromeEl.contains(charsEl)) {
+        chromeEl.insertBefore(charsEl, chromeEl.firstChild);
+      }
+      if (chromeEl && serversEl && !chromeEl.contains(serversEl)) {
+        chromeEl.append(serversEl);
+      }
+      let actionsEl = null;
+      for (let i = 0; i < existingStack.children.length; i++) {
+        const child = existingStack.children[i];
+        if (child.classList && child.classList.contains("ecu-actions")) {
+          actionsEl = child;
+          break;
+        }
+      }
+      const nestedActions = chromeEl ? chromeEl.querySelector(".ecu-actions") : null;
+      if (nestedActions) nestedActions.remove();
+      if (!actionsEl) {
+        actionsEl = buildActionsEl();
+        existingStack.insertBefore(actionsEl, existingStack.firstChild);
+      }
+      syncActionsEnabled();
+      return;
+    }
+    const chars = bottom.querySelector(".charactersuic");
+    const servers = bottom.querySelector(".serversuic") || bottom.querySelector(".serversui");
+    const legacyChrome = bottom.querySelector(".ecu-chrome");
+    const legacyActions = bottom.querySelector(".ecu-actions");
+    const stack = document.createElement("div");
+    stack.className = "ecu-chrome-stack";
+    const chrome = document.createElement("div");
+    chrome.className = "ecu-chrome";
+    if (chars) {
+      chars.classList.remove("hidden");
+      chars.style.display = "flex";
+      chrome.append(chars);
+    }
+    if (servers) {
+      servers.classList.remove("hidden");
+      servers.style.display = "flex";
+      if (chars) {
+        const sep = document.createElement("div");
+        sep.className = "ecu-strip-sep";
+        sep.setAttribute("aria-hidden", "true");
+        chrome.append(sep);
+      }
+      chrome.append(servers);
+    }
+    if (legacyChrome) legacyChrome.remove();
+    if (legacyActions) legacyActions.remove();
+    stack.append(buildActionsEl(), chrome);
+    bottom.insertBefore(stack, bottom.firstChild);
+    syncActionsEnabled();
+  }
+
+  // src/host/commChrome/characterChips.ts
+  var rcCache = "-1";
+  var rcListCache = "-1";
+  function invalidateCharacterCache() {
+    rcCache = "-1";
+  }
+  function renderCharactersHud() {
+    var _a, _b;
+    ensureChromeShell();
+    const chars = window.X && window.X.characters || [];
+    let key = "";
+    let listKey = "";
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      key += c.name + " " + c.level + " " + c.server + " " + c.rip + " " + c.skin + " " + c.online + "|";
+      listKey += c.name + " " + c.online + "|";
+    }
+    const obsName = window.observing && window.observing.name;
+    if (obsName) key += "obs:" + obsName;
+    if (key === rcCache) {
+      syncActionsEnabled();
+      return;
+    }
+    const root = document.querySelector(".charactersuic");
+    if (root && listKey === rcListCache && root.querySelectorAll(".ecu-char").length) {
+      rcCache = key;
+      const nodes = root.querySelectorAll(".ecu-char");
+      for (let i = 0; i < nodes.length; i++) {
+        const onclick = nodes[i].getAttribute("onclick") || "";
+        const m = onclick.match(/__ecuToggleObserve\("([^"]+)"\)/) || onclick.match(/observe_character\("([^"]+)"\)/);
+        const fullName = m ? m[1] : "";
+        const active = !!(obsName && obsName === fullName);
+        nodes[i].classList.toggle("is-active", active);
+        const prevTitle = nodes[i].getAttribute("title") || "";
+        const baseTitle = prevTitle.replace(
+          /\s*·\s*Click again to stop observing$/,
+          ""
+        );
+        nodes[i].setAttribute(
+          "title",
+          active ? baseTitle + " \xB7 Click again to stop observing" : baseTitle
+        );
+      }
+      syncActionsEnabled();
+      return;
+    }
+    rcCache = key;
+    rcListCache = listKey;
+    let html = "";
+    const spriteFn = window.sprite;
+    const serverUi = window.server_to_ui;
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+      if (!char.online) continue;
+      const active = !!(obsName && obsName === char.name);
+      const serverLabel = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
+      const shortName = char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "\u2026";
+      const spriteHtml = typeof spriteFn === "function" ? spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) : "";
+      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel) + (active ? " \xB7 Click again to stop observing" : "");
+      html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
+      html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
+      html += "<span class='ecu-char-meta'>";
+      html += "<span class='ecu-char-name'>" + esc(shortName) + "</span>";
+      html += "<span class='ecu-char-sub'>Lv." + esc(String((_b = char.level) != null ? _b : "")) + "</span>";
+      html += "</span></button>";
+    }
+    if (!html) html = "<div class='ecu-empty'>No characters online</div>";
+    const targets = document.querySelectorAll(".charactersuic");
+    for (let i = 0; i < targets.length; i++) {
+      targets[i].innerHTML = html;
+    }
+    syncActionsEnabled();
+  }
+
+  // src/host/commChrome/pingHud.ts
+  var PING_SPARK_BARS = 12;
+  function readCommPings() {
+    const raw = window.pings;
+    if (!Array.isArray(raw) || !raw.length) return [];
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const n = Number(raw[i]);
+      if (Number.isFinite(n) && n >= 0) out.push(n);
+    }
+    return out;
+  }
+  function averagePingMs(samples2) {
+    if (!samples2.length) return null;
+    let sum = 0;
+    for (let i = 0; i < samples2.length; i++) sum += samples2[i];
+    return sum / samples2.length;
+  }
+  function pingColor(ms) {
+    if (ms < 100) return "#85c76b";
+    if (ms < 200) return "#d4a84b";
+    return "#e05555";
+  }
+  function pingBarsHtml(samples2) {
+    if (!samples2.length) return "";
+    const start = Math.max(0, samples2.length - PING_SPARK_BARS);
+    let max = 1;
+    for (let i = start; i < samples2.length; i++) {
+      max = Math.max(max, samples2[i]);
+    }
+    let html = "<span class='ecu-server-dd-bars' aria-hidden='true'>";
+    for (let i = start; i < samples2.length; i++) {
+      const pct = Math.max(10, Math.round(samples2[i] / max * 100));
+      const color = pingColor(samples2[i]);
+      html += "<span class='ecu-server-dd-bar' style='height:" + pct + "%;background:" + color + "'></span>";
+    }
+    html += "</span>";
+    return html;
+  }
+  function pingBlockHtml(samples2) {
+    const avg = averagePingMs(samples2);
+    const label = avg == null ? "\u2014" : Math.round(avg) + "ms";
+    const color = avg == null ? "#8ab4c9" : pingColor(avg);
+    const title = avg == null ? "Ping unavailable (no samples yet)" : "Avg ping " + Math.round(avg) + "ms over last " + samples2.length + " sample" + (samples2.length === 1 ? "" : "s") + " \xB7 green <100 \xB7 amber <200 \xB7 red \u2265200";
+    return "<span class='ecu-server-dd-ping' title='" + esc(title) + "'>" + pingBarsHtml(samples2) + "<span class='ecu-server-dd-ping-ms' style='color:" + color + "'>" + esc(label) + "</span></span>";
+  }
+  function readPingSamples() {
+    return readCommPings();
+  }
+  var lastPingHudKey = "";
+  function syncServerPingHud() {
+    const roots = document.querySelectorAll(".ecu-server-dd");
+    if (!roots.length) return;
+    const samples2 = readCommPings();
+    const avg = averagePingMs(samples2);
+    const key = String(samples2.length) + ":" + (samples2.length ? samples2[samples2.length - 1] : "") + ":" + (avg == null ? "" : Math.round(avg));
+    const hasPing = !!document.querySelector(".ecu-server-dd-ping");
+    if (key === lastPingHudKey && hasPing) return;
+    lastPingHudKey = key;
+    const html = pingBlockHtml(samples2);
+    for (let i = 0; i < roots.length; i++) {
+      const root = roots[i];
+      const existing = root.querySelector(".ecu-server-dd-ping");
+      if (existing) {
+        const wrap = document.createElement("div");
+        wrap.innerHTML = html;
+        const next = wrap.firstElementChild;
+        if (next) existing.replaceWith(next);
+      } else {
+        const trigger = root.querySelector(".ecu-server-dd-trigger");
+        const chevron = root.querySelector(".ecu-server-dd-chevron");
+        if (!trigger) continue;
+        const wrap = document.createElement("div");
+        wrap.innerHTML = html;
+        const next = wrap.firstElementChild;
+        if (!next) continue;
+        if (chevron) trigger.insertBefore(next, chevron);
+        else trigger.append(next);
+      }
+    }
+  }
+
+  // src/host/commChrome/serverDropdown.ts
+  var DOC_BOUND = "__ecuCommServerDdDocBound";
+  var slCache = "-1";
+  var slListCache = "-1";
+  function closeServerDd() {
+    const nodes = document.querySelectorAll(".ecu-server-dd");
+    for (let i = 0; i < nodes.length; i++) {
+      nodes[i].classList.remove("is-open");
+      nodes[i].setAttribute("aria-expanded", "false");
+    }
+  }
+  function isServerDdOpen() {
+    return !!document.querySelector(".ecu-server-dd.is-open");
+  }
+  function toggleServerDd(event) {
+    if (event) {
+      if (event.preventDefault) event.preventDefault();
+      if (event.stopPropagation) event.stopPropagation();
+      if (typeof window.btc === "function") window.btc(event);
+    }
+    const root = event && event.currentTarget && event.currentTarget.closest && event.currentTarget.closest(".ecu-server-dd") || document.querySelector(".ecu-server-dd");
+    if (!root) return;
+    const open = root.classList.contains("is-open");
+    closeServerDd();
+    if (!open) {
+      root.classList.add("is-open");
+      root.setAttribute("aria-expanded", "true");
+    }
+  }
+  function selectServer(index) {
+    closeServerDd();
+    const i = parseInt(String(index), 10);
+    const servers = window.X && window.X.servers || [];
+    if (!(i >= 0) || i >= servers.length) return;
+    const server = servers[i];
+    if (!server || !server.address) return;
+    window.server_address = server.address;
+    window.server_path = server.path;
+    if (typeof window.init_socket === "function") {
+      window.init_socket();
+    }
+  }
+  function bindServerDdDoc() {
+    if (window[DOC_BOUND]) return;
+    window[DOC_BOUND] = true;
+    document.addEventListener("click", (event) => {
+      let t = event.target;
+      if (t && t.nodeType === 3) t = t.parentNode;
+      if (t && t.closest && t.closest(".ecu-server-dd")) return;
+      closeServerDd();
+    });
+  }
+  function onServerOptionClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const btn = ev.currentTarget;
+    if (!btn) return;
+    const idx = btn.getAttribute("data-server-index");
+    if (idx == null) return;
+    selectServer(idx);
+  }
+  function onServerTriggerClick(ev) {
+    toggleServerDd(ev);
+  }
+  function wireServerDdHandlers(root) {
+    const trigger = root.querySelector(".ecu-server-dd-trigger");
+    if (trigger) {
+      trigger.addEventListener("click", onServerTriggerClick);
+    }
+    const opts = root.querySelectorAll(".ecu-server-dd-option");
+    for (let i = 0; i < opts.length; i++) {
+      opts[i].addEventListener("click", onServerOptionClick);
+    }
+  }
+  function renderServersHud() {
+    ensureChromeShell();
+    const servers = window.X && window.X.servers || [];
+    let key = "";
+    let listKey = "";
+    let currentIndex = -1;
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i];
+      key += server.region + " " + server.name + " " + server.players + "|";
+      listKey += server.region + " " + server.name + "|";
+      if (window.server_region === server.region && window.server_identifier === server.name) {
+        currentIndex = i;
+      }
+    }
+    if (window.socket && currentIndex < 0) {
+      key += "conn:" + window.server_region + " " + window.server_identifier;
+    } else {
+      key += "cur:" + currentIndex;
+    }
+    if (key === slCache) return;
+    let triggerName = "Select server\u2026";
+    let triggerPlayers = "";
+    let triggerPlayersTitle = "Players online";
+    if (currentIndex >= 0 && servers[currentIndex]) {
+      triggerName = servers[currentIndex].region + " " + servers[currentIndex].name;
+      triggerPlayers = String(servers[currentIndex].players);
+      triggerPlayersTitle = triggerPlayers + " player" + (servers[currentIndex].players === 1 ? "" : "s") + " online";
+    } else if (window.socket && window.server_region) {
+      triggerName = window.server_region + " " + (window.server_identifier || "");
+    }
+    const pingSamples = readPingSamples();
+    const existing = document.querySelector(".ecu-server-dd");
+    if (existing && listKey === slListCache && existing.querySelectorAll(".ecu-server-dd-option").length === servers.length) {
+      slCache = key;
+      const nameEl = existing.querySelector(".ecu-server-dd-name");
+      const subEl = existing.querySelector(".ecu-server-dd-sub");
+      if (nameEl) nameEl.textContent = triggerName;
+      if (subEl) {
+        subEl.textContent = triggerPlayers !== "" ? triggerPlayers : "\u2014";
+        subEl.setAttribute("title", triggerPlayersTitle);
+      }
+      const opts = existing.querySelectorAll(".ecu-server-dd-option");
+      for (let i = 0; i < opts.length && i < servers.length; i++) {
+        opts[i].classList.toggle("is-active", i === currentIndex);
+        const p = opts[i].querySelector(".ecu-server-dd-option-players");
+        if (p) {
+          p.textContent = String(servers[i].players);
+          p.setAttribute(
+            "title",
+            String(servers[i].players) + " player" + (servers[i].players === 1 ? "" : "s") + " online"
+          );
+        }
+      }
+      syncServerPingHud();
+      return;
+    }
+    slCache = key;
+    slListCache = listKey;
+    const wasOpen = !!document.querySelector(".ecu-server-dd.is-open");
+    let menuHtml = "";
+    if (!servers.length) {
+      menuHtml = "<div class='ecu-server-dd-empty'>No servers online</div>";
+    } else {
+      for (let i = 0; i < servers.length; i++) {
+        const server = servers[i];
+        const playersTitle = String(server.players) + " player" + (server.players === 1 ? "" : "s") + " online";
+        menuHtml += "<button type='button' class='ecu-server-dd-option" + (i === currentIndex ? " is-active" : "") + "' data-server-index='" + i + "'>";
+        menuHtml += "<span class='ecu-server-dd-option-name'>" + esc(server.region + " " + server.name) + "</span>";
+        menuHtml += "<span class='ecu-server-dd-option-players' title='" + esc(playersTitle) + "'>" + esc(String(server.players)) + "</span>";
+        menuHtml += "</button>";
+      }
+    }
+    const html = "<div class='ecu-server-dd" + (wasOpen ? " is-open" : "") + "' aria-expanded='" + (wasOpen ? "true" : "false") + "'><button type='button' class='ecu-server-dd-trigger' aria-haspopup='listbox'><span class='ecu-server-dd-meta'><span class='ecu-server-dd-name'>" + esc(triggerName) + "</span><span class='ecu-server-dd-sub' title='" + esc(triggerPlayersTitle) + "'>" + esc(triggerPlayers !== "" ? triggerPlayers : "\u2014") + "</span></span>" + pingBlockHtml(pingSamples) + "<span class='ecu-server-dd-chevron' aria-hidden='true'></span></button><div class='ecu-server-dd-menu' role='listbox'>" + menuHtml + "</div></div>";
+    const targets = document.querySelectorAll(
+      ".serversuic, .serversui.serversuic"
+    );
+    const applyTo = targets.length ? targets : document.querySelectorAll(".serversui");
+    for (let i = 0; i < applyTo.length; i++) {
+      applyTo[i].innerHTML = html;
+      applyTo[i].style.display = "flex";
+      applyTo[i].classList.remove("hidden");
+      const dd = applyTo[i].querySelector(".ecu-server-dd");
+      if (dd) wireServerDdHandlers(dd);
+    }
+  }
+
+  // src/host/keyboardPolicy.ts
+  var BOUND = "__ecuCommKeyboardBound";
+  function installCommKeyboardPolicy(handlers) {
+    window.__ecuCommKeyHandlers = handlers;
+    if (window[BOUND]) return;
+    window[BOUND] = true;
+    document.addEventListener("keydown", (ev) => {
+      const key = ev.key || "";
+      const code = ev.keyCode;
+      const h = window.__ecuCommKeyHandlers || {};
+      if (key === "Escape" || code === 27) {
+        if (isServerDdOpen()) {
+          closeServerDd();
+          return;
+        }
+        if (h.clearPaperdoll && h.clearPaperdoll()) return;
+        if (window.observing && window.__ecuClearObserve) {
+          window.__ecuClearObserve();
+        }
+        return;
+      }
+      if ((key === "l" || key === "L") && ev.ctrlKey && ev.shiftKey && !ev.altKey) {
+        const t = ev.target;
+        const tag = t && t.tagName ? t.tagName.toLowerCase() : "";
+        if (tag === "input" || tag === "textarea" || tag === "select" || t && t.isContentEditable) {
+          return;
+        }
+        if (!h.toggleLayoutEdit) return;
+        ev.preventDefault();
+        h.toggleLayoutEdit();
+      }
+    });
+  }
+  function updateCommKeyboardHandlers(handlers) {
+    window.__ecuCommKeyHandlers = handlers;
+  }
+
+  // src/host/commChrome.ts
+  function suppressObserveUi() {
+    const el = document.getElementById("observeui");
+    if (el && el.style.display !== "none") {
+      el.style.display = "none";
+      el.classList.add("hidden");
+    }
+  }
+  function watchObserveUiHidden() {
+    const bottom = document.getElementById("bottom") || document.body;
+    const mo = new MutationObserver(() => suppressObserveUi());
+    mo.observe(bottom, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class"]
+    });
+    suppressObserveUi();
+    return () => mo.disconnect();
+  }
+  function installCommChrome() {
+    if (window.__ecuCommChromePatched) return;
+    window.__ecuCommChromePatched = true;
+    injectChromeCss();
+    bindServerDdDoc();
+    installCommKeyboardPolicy({});
+    window.__ecuToggleObserve = toggleObserve;
+    window.__ecuClearObserve = clearObserve;
+    window.close_comm_server_dd = closeServerDd;
+    window.toggle_comm_server_dd = toggleServerDd;
+    window.select_comm_server = selectServer;
+    window.hide_nav = function() {
+    };
+    window.toggle_ui = function() {
+      const trigger = document.querySelector(
+        ".ecu-server-dd-trigger"
+      );
+      if (trigger) trigger.click();
+    };
+    window.render_characters = renderCharactersHud;
+    window.render_servers = renderServersHud;
+    const boot = () => {
+      ensureChromeShell();
+      renderCharactersHud();
+      renderServersHud();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+    const stopObserveWatch = watchObserveUiHidden();
+    let lastObs = "";
+    let lastPingAt = 0;
+    const unsubTick = subscribeTick((snap) => {
+      const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
+      if (name !== lastObs) {
+        lastObs = name;
+        invalidateCharacterCache();
+        renderCharactersHud();
+      } else {
+        syncActionsEnabled();
+      }
+      if (snap.now - lastPingAt >= 1e3) {
+        lastPingAt = snap.now;
+        syncServerPingHud();
+      }
+    });
+    window.addEventListener("unload", () => {
+      stopObserveWatch();
+      unsubTick();
+    });
+  }
+
+  // src/host/inventory.ts
+  var HOST_ID = "bottomleftcorner";
+  var STYLE_ID2 = "comm-ui-inventory-host-css";
+  var MOUNT_ID = "comm-bag-mount";
+  var SAVED_CHAR = "__ecuInvSavedChar";
+  var HOLD_CHAR = "__ecuInvHoldChar";
+  var listeners3 = [];
+  function injectHostCss() {
+    if (document.getElementById(STYLE_ID2)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID2;
+    style.textContent = `
+#${HOST_ID} {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  pointer-events: auto;
+  max-width: min(96vw, 420px);
+  max-height: min(70vh, calc(100vh - 72px));
+  overflow: auto;
+}
+#${HOST_ID} .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.imodal .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+#${MOUNT_ID} {
+  pointer-events: auto;
+}
+`;
+    document.head.append(style);
+  }
+  function notifyInventory(open) {
+    for (let i = 0; i < listeners3.length; i++) {
+      try {
+        listeners3[i](open);
+      } catch (e2) {
+      }
+    }
+  }
+  function subscribeInventory(listener) {
+    listeners3.push(listener);
+    return () => {
+      const idx = listeners3.indexOf(listener);
+      if (idx >= 0) listeners3.splice(idx, 1);
+    };
+  }
+  function isInventoryOpen() {
+    return !!window.inventory;
+  }
+  function applyBagLayoutPos(pos) {
+    const host = document.getElementById(HOST_ID);
+    if (!host) return;
+    if (host.parentElement && host.parentElement.id === MOUNT_ID) {
+      host.style.position = "relative";
+      host.style.left = "";
+      host.style.top = "";
+      host.style.transform = "";
+      host.style.zIndex = "";
+      return;
+    }
+    const layout = mergeLayout(getSettings().panelLayout);
+    const p = pos || layout.bag;
+    const style = panelStyle(p, false);
+    host.style.position = "fixed";
+    host.style.left = String(style.left);
+    host.style.top = String(style.top);
+    host.style.transform = String(style.transform);
+    host.style.zIndex = "240";
+    host.style.pointerEvents = "auto";
+    host.style.maxWidth = "min(96vw, 420px)";
+    host.style.maxHeight = "min(70vh, calc(100vh - 72px))";
+    host.style.overflow = "auto";
+  }
+  function ensureInventoryHost() {
+    injectHostCss();
+    let el = document.getElementById(HOST_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = HOST_ID;
+      el.className = "bpclicks enableclicks";
+      document.body.append(el);
+    }
+    applyBagLayoutPos();
+    return el;
+  }
+  function attachInventoryToMount(mount) {
+    if (!mount) return;
+    mount.id = MOUNT_ID;
+    const host = ensureInventoryHost();
+    if (host.parentElement !== mount) {
+      mount.append(host);
+    }
+    applyBagLayoutPos();
+  }
+  function callThroughDraw(fn) {
+    if (typeof window.draw_trigger === "function") {
+      window.draw_trigger(fn);
+    } else {
+      fn();
+    }
+  }
+  function restoreCharacter() {
+    if (!window[HOLD_CHAR]) return;
+    window.character = window[SAVED_CHAR];
+    delete window[SAVED_CHAR];
+    window[HOLD_CHAR] = false;
+  }
+  function prepareObservingCharacter() {
+    const obs = window.observing;
+    if (!window[HOLD_CHAR]) {
+      window[SAVED_CHAR] = window.character;
+      window[HOLD_CHAR] = true;
+    }
+    if (obs) {
+      window.character = obs;
+    }
+    const ch = window.character;
+    if (!ch) return false;
+    if (!ch.items) ch.items = [];
+    if (ch.isize == null) ch.isize = 42;
+    if (!ch.q) ch.q = {};
+    return true;
+  }
+  function openInventory() {
+    callThroughDraw(() => {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory();
+      }
+    });
+  }
+  function restorePreferredBagOpen() {
+    const preferOpen = !!getSettings().bagOpenPreferred;
+    if (!preferOpen) return;
+    if (isInventoryOpen()) return;
+    window.setTimeout(() => {
+      if (isInventoryOpen()) return;
+      if (typeof window.render_inventory === "function") {
+        openInventory();
+      }
+    }, 600);
+  }
+  function installInventoryFix() {
+    if (window.__ecuInventoryPatched) return;
+    const tryPatch = () => {
+      const original = window.render_inventory;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInventoryPatched) return true;
+      window.__ecuInventoryPatched = true;
+      ensureInventoryHost();
+      window.render_inventory = function patchedRenderInventory(reset) {
+        ensureInventoryHost();
+        if (window.inventory && !reset) {
+          const host = document.getElementById(HOST_ID);
+          if (host) host.innerHTML = "";
+          window.inventory = false;
+          restoreCharacter();
+          notifyInventory(false);
+          return;
+        }
+        const savedComm = window.is_comm;
+        if (!prepareObservingCharacter()) {
+          restoreCharacter();
+          return;
+        }
+        window.is_comm = false;
+        let opened = false;
+        try {
+          if (typeof window.hide_modal === "function") {
+            try {
+              window.hide_modal();
+            } catch (e2) {
+            }
+          }
+          const result = original.call(this, reset);
+          opened = !!window.inventory;
+          return result;
+        } finally {
+          window.is_comm = savedComm;
+          restoreCharacter();
+          if (opened) {
+            applyBagLayoutPos();
+            notifyInventory(true);
+          } else if (!window.inventory) {
+            notifyInventory(false);
+          }
+        }
+      };
+      restorePreferredBagOpen();
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) {
+        window.clearInterval(timer);
+      }
+    }, 250);
   }
 
   // src/lib/colors.ts
@@ -463,7 +2834,7 @@ var EnhanceCommUI = (() => {
 
   // src/meters/RankMeter.ts
   function RankMeter(props) {
-    const { title, className, rows } = props;
+    const { title, className, rows, embedded, highlightId } = props;
     if (!rows || rows.length === 0) return null;
     return e(
       "div",
@@ -473,26 +2844,31 @@ var EnhanceCommUI = (() => {
           display: "flex",
           overflow: "auto",
           flexDirection: "column",
-          margin: "4px",
-          border: "2px double gray",
+          margin: embedded ? 0 : "4px",
+          border: embedded ? "none" : "2px solid #555",
           background: "black",
-          gap: "2px"
+          gap: "2px",
+          fontSize: "17px",
+          textShadow: "none"
         }
       },
       e(
         "div",
         {
           style: {
-            padding: "2px",
+            padding: "3px 8px",
             whiteSpace: "nowrap",
-            textShadow: "0 0 2px black",
-            position: "relative"
+            position: "relative",
+            fontSize: "14px",
+            color: "#ccc",
+            textShadow: "none"
           }
         },
         title
       ),
-      ...rows.map(
-        (row) => e(
+      ...rows.map((row) => {
+        const isYou = highlightId != null && String(row.id) === String(highlightId);
+        return e(
           "div",
           {
             key: row.id,
@@ -500,7 +2876,11 @@ var EnhanceCommUI = (() => {
               position: "relative",
               display: "flex",
               flexDirection: "row",
-              justifyContent: "space-between"
+              justifyContent: "space-between",
+              minHeight: "22px",
+              alignItems: "center",
+              background: isYou ? "rgba(225,55,88,0.16)" : void 0,
+              boxShadow: isYou ? "inset 3px 0 0 #e13758" : void 0
             }
           },
           e("div", {
@@ -516,12 +2896,14 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                padding: "2px",
+                padding: "2px 8px",
                 whiteSpace: "nowrap",
                 textOverflow: "ellipsis",
                 overflow: "hidden",
-                textShadow: "0 0 2px black",
-                position: "relative"
+                position: "relative",
+                fontSize: "17px",
+                textShadow: "none",
+                color: isYou ? "#ffe0e8" : void 0
               }
             },
             row.name
@@ -530,16 +2912,18 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                padding: "2px",
+                padding: "2px 8px",
                 whiteSpace: "nowrap",
-                textShadow: "0 0 2px black",
-                position: "relative"
+                position: "relative",
+                fontVariantNumeric: "tabular-nums",
+                fontSize: "17px",
+                textShadow: "none"
               }
             },
             row.label
           )
-        )
-      )
+        );
+      })
     );
   }
 
@@ -561,10 +2945,10 @@ var EnhanceCommUI = (() => {
     return out;
   }
   function partyGroups(entities) {
-    const players = playersList(entities);
+    const players2 = playersList(entities);
     const result = {};
-    for (let i = 0; i < players.length; i++) {
-      const player = players[i];
+    for (let i = 0; i < players2.length; i++) {
+      const player = players2[i];
       const key = player.party || "";
       if (!result[key]) result[key] = [];
       result[key].push(player);
@@ -608,23 +2992,58 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
-  function findEntity(entities, id) {
-    if (!id) return void 0;
+  function isCryptBossEntity(entity) {
+    if (entity.type !== "monster" || !entity.mtype) return false;
+    return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
+  }
+  function isAliveMonster(entity) {
+    if (entity.type !== "monster") return false;
+    if (entity.dead) return false;
+    if (entity.hp != null && entity.hp <= 0) return false;
+    return true;
+  }
+  function activeBosses(entities) {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
     for (let i = 0; i < entities.length; i++) {
-      if (entities[i].id === id) return entities[i];
+      const ent = entities[i];
+      if (!isAliveMonster(ent)) continue;
+      if (!isCoopBoss(ent) && !isCryptBossEntity(ent)) continue;
+      const id = String(ent.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(ent);
+    }
+    out.sort((a, b) => {
+      const lb = b.level || 0;
+      const la = a.level || 0;
+      if (lb !== la) return lb - la;
+      const cmp = String(a.name || a.mtype || a.id).localeCompare(
+        String(b.name || b.mtype || b.id)
+      );
+      if (cmp !== 0) return cmp;
+      return a.id < b.id ? -1 : 1;
+    });
+    return out;
+  }
+  function findEntity(entities, id) {
+    if (id == null || id === "") return void 0;
+    const tid = String(id);
+    for (let i = 0; i < entities.length; i++) {
+      if (String(entities[i].id) === tid) return entities[i];
     }
     return void 0;
   }
 
   // src/meters/strategies/pdps.ts
   function buildPdpsRows(entities) {
-    const players = playersList(entities).filter((p) => (p.pdps || 0) > 0).sort((a, b) => (b.pdps || 0) - (a.pdps || 0));
+    const players2 = playersList(entities).filter((p) => (p.pdps || 0) > 0).sort((a, b) => (b.pdps || 0) - (a.pdps || 0));
     let maxPdps = 0;
-    for (let i = 0; i < players.length; i++) {
-      maxPdps = Math.max(maxPdps, players[i].pdps || 0);
+    for (let i = 0; i < players2.length; i++) {
+      maxPdps = Math.max(maxPdps, players2[i].pdps || 0);
     }
-    if (!maxPdps || players.length === 0) return [];
-    return players.map((player) => {
+    if (!maxPdps || players2.length === 0) return [];
+    return players2.map((player) => {
       const value = player.pdps || 0;
       return {
         id: player.id,
@@ -652,16 +3071,16 @@ var EnhanceCommUI = (() => {
   }
   function buildCoopV1Rows(entities) {
     var _a, _b;
-    const players = coopPlayers(entities);
+    const players2 = coopPlayers(entities);
     let maxContribution = 0;
     let totalContribution = 0;
-    for (let i = 0; i < players.length; i++) {
-      const p = ((_b = (_a = players[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
+    for (let i = 0; i < players2.length; i++) {
+      const p = ((_b = (_a = players2[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
       maxContribution = Math.max(maxContribution, p);
       totalContribution += p;
     }
-    if (!maxContribution || players.length === 0) return [];
-    return players.map((player) => {
+    if (!maxContribution || players2.length === 0) return [];
+    return players2.map((player) => {
       var _a2, _b2;
       const value = ((_b2 = (_a2 = player.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0;
       return {
@@ -693,18 +3112,18 @@ var EnhanceCommUI = (() => {
     return Math.pow(Math.max(0, (_c = (_b = (_a = player == null ? void 0 : player.s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) != null ? _c : 0), 0.65);
   }
   function buildCoopV2Rows(entities) {
-    const players = coopPlayers2(entities);
-    if (players.length === 0) return [];
+    const players2 = coopPlayers2(entities);
+    if (players2.length === 0) return [];
     const powers = [];
     let maxPower = 0;
     let totalPower = 0.1;
-    for (let i = 0; i < players.length; i++) {
-      const p = pointsPow065(players[i]);
+    for (let i = 0; i < players2.length; i++) {
+      const p = pointsPow065(players2[i]);
       powers.push(p);
       maxPower = Math.max(maxPower, p);
       totalPower += p;
     }
-    return players.map((player, i) => {
+    return players2.map((player, i) => {
       const value = powers[i];
       return {
         id: player.id,
@@ -749,6 +3168,207 @@ var EnhanceCommUI = (() => {
     return rows;
   }
 
+  // src/ui/chrome/PositionedPanel.ts
+  function PositionedPanel(props) {
+    const React = getReact();
+    const { id, pos, editing, onMove, children, onClose, hidden, onShow } = props;
+    const [hover, setHover] = React.useState(false);
+    const dragging = React.useRef(false);
+    const start = React.useRef({
+      x: 0,
+      y: 0,
+      posX: 0,
+      posY: 0
+    });
+    const onPointerDown = (ev) => {
+      if (!editing) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      dragging.current = true;
+      start.current = {
+        x: ev.clientX,
+        y: ev.clientY,
+        posX: pos.x,
+        posY: pos.y
+      };
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId);
+      } catch (e2) {
+      }
+    };
+    const onPointerMove = (ev) => {
+      if (!dragging.current) return;
+      const root = document.getElementById("comm-ui") || document.documentElement;
+      const rect = root.getBoundingClientRect();
+      const { dxPct, dyPct } = deltaToPercent(
+        ev.clientX - start.current.x,
+        ev.clientY - start.current.y,
+        rect.width,
+        rect.height
+      );
+      let nextX = start.current.posX + dxPct;
+      let nextY = start.current.posY + dyPct;
+      nextX = Math.max(0, Math.min(100, nextX));
+      nextY = Math.max(0, Math.min(100, nextY));
+      nextX = snapPercent(nextX);
+      nextY = snapPercent(nextY);
+      onMove(id, { ...pos, x: nextX, y: nextY });
+    };
+    const onPointerUp = (ev) => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      try {
+        ev.currentTarget.releasePointerCapture(ev.pointerId);
+      } catch (e2) {
+      }
+    };
+    const showClose = !!onClose && !hidden && (editing || hover);
+    const opacity = typeof props.opacity === "number" && Number.isFinite(props.opacity) ? Math.max(0.25, Math.min(1, props.opacity)) : 1;
+    const shellStyle = Object.assign(
+      {},
+      panelStyle(pos, editing),
+      props.style || {},
+      {
+        opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity
+      },
+      editing ? {
+        outline: hidden ? "1px dashed rgba(140,140,140,0.7)" : "1px dashed rgba(255,220,100,0.85)",
+        outlineOffset: "0px",
+        background: hidden ? "rgba(20,20,20,0.55)" : "transparent"
+      } : null
+    );
+    const closeBtn = showClose ? e(
+      "button",
+      {
+        type: "button",
+        title: `Hide ${PANEL_LABELS[id]}`,
+        "aria-label": `Hide ${PANEL_LABELS[id]}`,
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onClose();
+        },
+        onPointerDown: (ev) => ev.stopPropagation(),
+        style: {
+          position: "absolute",
+          top: editing ? "2px" : "0",
+          right: "0",
+          zIndex: 2,
+          width: "22px",
+          height: "22px",
+          padding: 0,
+          margin: 0,
+          border: "1px solid #555",
+          background: "rgba(20,20,20,0.9)",
+          color: "#ccc",
+          fontSize: "14px",
+          lineHeight: "20px",
+          cursor: "pointer",
+          pointerEvents: "auto"
+        }
+      },
+      "\xD7"
+    ) : null;
+    const editHeader = editing ? e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "3px 8px",
+          paddingRight: onClose && !hidden ? "28px" : "8px",
+          marginBottom: 0,
+          background: hidden ? "rgba(30,30,30,0.92)" : "rgba(40,40,20,0.92)",
+          border: hidden ? "1px solid #666" : "1px solid #886",
+          cursor: "grab",
+          userSelect: "none",
+          fontSize: "13px",
+          color: hidden ? "#bbb" : "#ffe08a",
+          whiteSpace: "nowrap",
+          touchAction: "none"
+        },
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel: onPointerUp
+      },
+      `\u283F ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
+      hidden && onShow ? e(
+        "button",
+        {
+          type: "button",
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            onShow();
+          },
+          onPointerDown: (ev) => ev.stopPropagation(),
+          style: {
+            marginLeft: "auto",
+            cursor: "pointer",
+            fontSize: "12px",
+            padding: "2px 8px",
+            border: "1px solid #7a7",
+            background: "#1a2a1a",
+            color: "#9e9"
+          }
+        },
+        "Show"
+      ) : null
+    ) : null;
+    const hiddenBodyStyle = Object.assign(
+      {
+        padding: "8px 10px",
+        color: "#888",
+        fontSize: "13px",
+        minWidth: "120px",
+        boxSizing: "border-box"
+      },
+      props.hiddenBodyStyle || {}
+    );
+    return e(
+      "div",
+      {
+        className: `comm-pos-panel comm-pos-${id}`,
+        "data-panel": id,
+        style: shellStyle,
+        onMouseEnter: onClose ? () => setHover(true) : void 0,
+        onMouseLeave: onClose ? () => setHover(false) : void 0
+      },
+      editHeader,
+      closeBtn,
+      hidden && editing ? e(
+        "div",
+        {
+          style: hiddenBodyStyle
+        },
+        `${PANEL_LABELS[id]} \u2014 closed`
+      ) : children
+    );
+  }
+
+  // src/geometry/combat.ts
+  function distance(a, b) {
+    if (!a || !b) return void 0;
+    return simpleDistance(a, b);
+  }
+  function outOfRange(observer, target) {
+    if (!observer || !target) return void 0;
+    const range = observer.range;
+    if (range == null) return void 0;
+    const d = distance(observer, target);
+    if (d == null) return void 0;
+    return d > range;
+  }
+  function difficultyBadge(monster) {
+    if (!monster || monster.type !== "monster") return void 0;
+    const level = calculateDifficulty(monster);
+    if (level >= 2) return { level, label: "Hard", color: "#ff4444" };
+    if (level === 1) return { level, label: "Med", color: "#ffaa00" };
+    return { level, label: "Easy", color: "#66cc66" };
+  }
+
   // src/host/icons.ts
   function itemContainer(item, actual) {
     if (typeof window.item_container !== "function") {
@@ -761,8 +3381,18 @@ var EnhanceCommUI = (() => {
       window.add_tint(selector, args);
     }
   }
+  function rebindTint(selector) {
+    if (typeof window.get_tint !== "function") return;
+    const tint = window.get_tint(selector);
+    if (tint) tint.added = false;
+  }
   function setXTarget(entity) {
     window.xtarget = entity || null;
+  }
+  function conditionClick(name) {
+    if (typeof window.condition_click === "function") {
+      window.condition_click(name);
+    }
   }
   function slotSkin(slot) {
     var _a, _b;
@@ -771,98 +3401,488 @@ var EnhanceCommUI = (() => {
     return slot.skin || (def == null ? void 0 : def.skin);
   }
 
-  // src/ui/frames/Players.ts
-  function Players(props) {
-    const parties = partyGroups(props.entities);
+  // src/ui/chrome/EffectsRow.ts
+  var ICON_SIZE = 36;
+  function buildEntityEffects(entity) {
+    var _a, _b, _c;
+    const G = getG();
+    const state = entity.s || {};
+    const out = [];
+    const keys = Object.keys(state);
+    for (let i = 0; i < keys.length; i++) {
+      const condition = keys[i];
+      const actual = state[condition];
+      if (!actual) continue;
+      if ((_b = (_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[condition]) == null ? void 0 : _b.ui) {
+        const def = G.skills[condition];
+        if (def == null ? void 0 : def.skin) {
+          out.push({
+            id: condition,
+            skin: def.skin,
+            ms: actual.ms,
+            stacks: typeof actual.s === "number" ? actual.s : void 0,
+            debuff: false,
+            type: "skill",
+            name: typeof def.name === "string" ? def.name : void 0
+          });
+        }
+        continue;
+      }
+      const prop = (_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[condition];
+      if (!actual.skin && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
+        continue;
+      }
+      if (entity.type === "monster" && condition === "poisonous") continue;
+      const skin = actual.skin || (prop == null ? void 0 : prop.skin);
+      if (!skin) continue;
+      out.push({
+        id: condition,
+        skin,
+        ms: actual.ms,
+        stacks: typeof actual.s === "number" ? actual.s : void 0,
+        debuff: !!(prop && prop.debuff),
+        type: "condition",
+        name: typeof (prop == null ? void 0 : prop.name) === "string" ? prop.name : void 0
+      });
+    }
+    return out;
+  }
+  function effectsKey(effects) {
+    return effects.map((ef) => ef.id).join("|");
+  }
+  function loaderId(hostClass) {
+    return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
+  }
+  function effectTooltip(effect) {
+    const parts = [];
+    const label = effect.name || effect.id;
+    const kind = effect.type === "skill" ? "Skill" : effect.debuff ? "Debuff" : "Buff";
+    parts.push(`${label} (${kind})`);
+    if (effect.ms != null && effect.ms > 0) {
+      parts.push(`Remaining: ${formatTime(effect.ms / 1e3)}`);
+    }
+    if (effect.stacks != null && effect.stacks > 0) {
+      parts.push(`Stacks: ${effect.stacks}`);
+    }
+    if (effect.name && effect.name !== effect.id) {
+      parts.push(`id: ${effect.id}`);
+    }
+    return parts.join("\n");
+  }
+  function applyEffectTint(wrap, rid, ms) {
+    if (!(ms != null && ms > 0)) return;
+    const root = wrap.firstElementChild;
+    const host = wrap.querySelector("div[style*='position: absolute']") || wrap.querySelector("div[style*='overflow']") || root;
+    if (!host) return;
+    const selector = ".skidloader" + rid;
+    let loader = wrap.querySelector(selector);
+    if (!loader) {
+      loader = document.createElement("div");
+      loader.className = "skidloader" + rid;
+      loader.setAttribute(
+        "style",
+        "position: absolute; bottom: 0px; right: 0px; width: 4px; height: 1px; background-color: yellow"
+      );
+      host.appendChild(loader);
+    }
+    const until = Date.now() + ms;
+    const prevUntil = Number(loader.getAttribute("data-until") || 0);
+    if (prevUntil && until <= prevUntil + 400) return;
+    loader.setAttribute("data-until", String(until));
+    rebindTint(selector);
+    loader.style.height = "1px";
+    const img = host.querySelector("img");
+    if (img) img.style.opacity = "0.5";
+    addTint(selector, {
+      ms,
+      type: "skill",
+      skid: rid
+    });
+  }
+  function EffectIcon(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const { effect, hostClass, entity, iconSize } = props;
+    const entityId = String(entity.id);
+    const rid = loaderId(hostClass);
+    const tooltip = effectTooltip(effect);
+    const clickable = effect.type !== "skill";
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const opts = {
+        skin: effect.skin,
+        size: iconSize,
+        draggable: false
+      };
+      const actual = typeof effect.stacks === "number" && effect.stacks ? { s: effect.stacks } : null;
+      const html = itemContainer(opts, actual);
+      if (html) {
+        el.innerHTML = html;
+        const root = el.firstElementChild;
+        if (root) {
+          root.style.margin = "0";
+          root.removeAttribute("onmousedown");
+          root.removeAttribute("ontouchstart");
+          root.removeAttribute("onclick");
+        }
+        applyEffectTint(el, rid, effect.ms);
+      } else {
+        el.textContent = effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "") + (effect.ms != null ? ` (${formatTime(effect.ms / 1e3)})` : "");
+      }
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [
+      entityId,
+      effect.id,
+      effect.skin,
+      effect.type,
+      effect.stacks,
+      hostClass,
+      rid,
+      iconSize
+    ]);
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el || !el.firstElementChild) return;
+      applyEffectTint(el, rid, effect.ms);
+    }, [entityId, effect.ms, rid]);
+    const onClick = clickable ? (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      setXTarget(entity);
+      conditionClick(effect.id);
+    } : void 0;
+    return e("div", {
+      ref,
+      className: `comm-fx-icon ${hostClass}`,
+      "data-condition": effect.id,
+      "data-entity": entityId,
+      title: tooltip,
+      onClick,
+      onMouseDown: clickable ? (ev) => {
+        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      } : void 0,
+      style: {
+        position: "relative",
+        display: "inline-block",
+        verticalAlign: "top",
+        // Allow .iqui / border overhang (right/bottom: -2px) to paint.
+        overflow: "visible",
+        flex: "0 0 auto",
+        cursor: clickable ? "pointer" : "default",
+        pointerEvents: "auto"
+      }
+    });
+  }
+  function EffectsRow(props) {
+    const entityId = String(props.entity.id);
+    const effects = buildEntityEffects(props.entity);
+    const key = effectsKey(effects);
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : ICON_SIZE;
+    const compact = !!props.compact;
+    const gap = compact ? "3px" : "6px";
+    const marginTop = compact ? "3px" : "6px";
+    const padBottom = effects.length ? compact ? "2px" : "4px" : 0;
+    const minHeight = effects.length ? iconSize + (compact ? 8 : 14) : 0;
+    const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : compact ? 4 : 0;
+    const overflow = maxVisible > 0 && effects.length > maxVisible ? effects.length - maxVisible : 0;
+    const shown = overflow > 0 ? effects.slice(0, maxVisible) : effects;
+    const hidden = overflow > 0 ? effects.slice(maxVisible) : [];
+    const overflowTitle = hidden.map((ef) => {
+      const label = ef.name || ef.id;
+      const kind = ef.type === "skill" ? "skill" : ef.debuff ? "debuff" : "buff";
+      return `${label} (${kind})`;
+    }).join("\n");
     return e(
       "div",
       {
+        key: `${entityId}:${key}`,
+        className: "comm-fx-row" + (compact ? " is-compact" : ""),
+        style: {
+          display: "flex",
+          flexDirection: "row",
+          // Gap under MP bar so icons / quantity badges are not flush.
+          marginTop,
+          gap,
+          flexWrap: compact && maxVisible > 0 ? "nowrap" : "wrap",
+          alignItems: "flex-start",
+          width: "100%",
+          // Room for item_container chrome + .iqui (bottom:-2px overhang).
+          minHeight,
+          paddingBottom: padBottom,
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+          overflow: compact && maxVisible > 0 ? "hidden" : "visible"
+        }
+      },
+      ...shown.map((ef) => {
+        const hostClass = `comm-fx-${entityId}-${ef.id}`.replace(
+          /[^a-zA-Z0-9_\-]/g,
+          "_"
+        );
+        return e(EffectIcon, {
+          key: `${entityId}-${ef.id}`,
+          effect: ef,
+          hostClass,
+          entity: props.entity,
+          iconSize
+        });
+      }),
+      overflow > 0 ? e(
+        "div",
+        {
+          className: "comm-fx-overflow",
+          title: overflowTitle,
+          style: {
+            flex: "0 0 auto",
+            minWidth: `${Math.max(22, iconSize - 4)}px`,
+            height: `${iconSize}px`,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(20,20,20,0.9)",
+            border: "1px solid #555",
+            color: "#ccc",
+            fontSize: compact ? "11px" : "13px",
+            lineHeight: 1,
+            fontWeight: "normal",
+            textShadow: "none",
+            cursor: "default",
+            boxSizing: "border-box"
+          }
+        },
+        `+${overflow}`
+      ) : null
+    );
+  }
+
+  // src/ui/frames/Players.ts
+  function hpPct(entity) {
+    const max = entity.max_hp || 1;
+    return Math.max(0, Math.min(100, Math.round((entity.hp || 0) / max * 100)));
+  }
+  function mpPct(entity) {
+    const max = entity.max_mp || 1;
+    return Math.max(0, Math.min(100, Math.round((entity.mp || 0) / max * 100)));
+  }
+  function chipOpacity(dead, oor) {
+    if (dead) return 0.42;
+    if (oor) return 0.62;
+    return 1;
+  }
+  function Players(props) {
+    const parties = partyGroups(props.entities);
+    const byTarget = aggroByTarget(props.entities);
+    const observing = props.observing;
+    return e(
+      "div",
+      {
+        className: "ecu-roster",
         style: {
           padding: "4px",
           display: "flex",
-          gap: "4px",
-          flexDirection: "column"
+          gap: "6px",
+          flexDirection: "column",
+          maxWidth: "min(560px, 78vw)"
         }
       },
+      parties.length ? null : e(
+        "div",
+        {
+          style: {
+            color: "#aaa",
+            padding: "4px 2px",
+            fontSize: "14px"
+          }
+        },
+        "No parties in vision"
+      ),
       ...parties.map(
         (party) => e(
           "div",
           {
-            key: party[0],
-            style: {
-              display: "flex",
-              gap: "4px",
-              flexWrap: "wrap"
-            }
+            key: party[0] || "solo",
+            className: "ecu-roster-party",
+            style: { marginBottom: "2px" }
           },
           e(
             "div",
-            { style: { flex: "0 0 100%" } },
-            e(
-              "span",
-              { style: { color: "white", padding: "4px", background: "black" } },
-              party[0] || "(no party)"
-            )
+            {
+              style: {
+                fontSize: "12px",
+                color: "#ccc",
+                background: "rgba(0,0,0,0.55)",
+                display: "inline-block",
+                padding: "2px 6px",
+                marginBottom: "4px"
+              }
+            },
+            party[0] || "(no party)"
           ),
-          ...party[1].map(
-            (player) => e(
-              "div",
-              {
-                key: player.id,
-                className: "player",
-                style: {
-                  display: "flex",
-                  width: "120px",
-                  background: "black",
-                  flexDirection: "column"
-                }
-              },
-              e(
+          e(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "wrap",
+                alignItems: "stretch",
+                gap: "5px"
+              }
+            },
+            ...party[1].map((player) => {
+              var _a;
+              const pid = String(player.id);
+              const selected = props.selectedEntity != null && String(props.selectedEntity) === pid;
+              const observed = props.observingId != null && String(props.observingId) === pid;
+              const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
+              const hasAggro = aggroMobs.length > 0;
+              const color = classColors[player.ctype || ""] || "#888";
+              const dead = !!player.dead;
+              const oor = !dead && !observed && !!observing && outOfRange(observing, player) === true;
+              const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
+              const nameTitle = [
+                `${player.name || player.id}`,
+                observed ? "Observing" : "",
+                oor ? "Out of range" : "",
+                dead ? "Dead" : "",
+                aggroTitle
+              ].filter(Boolean).join(" \xB7 ");
+              let outline;
+              if (hasAggro) outline = "1px solid #e05555";
+              else if (observed) outline = "1px solid #e13758";
+              else if (selected) outline = "1px solid #fff";
+              return e(
                 "div",
-                { style: { position: "relative" } },
-                e("div", {
+                {
+                  key: player.id,
+                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (dead ? " is-rip" : "") + (oor ? " is-oor" : ""),
+                  title: nameTitle,
                   style: {
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    width: getPercent(
-                      (player.hp || 0) / (player.max_hp || 1),
-                      1
-                    ),
-                    background: classColors[player.ctype || ""] || "#666"
+                    position: "relative",
+                    flex: "0 0 auto",
+                    width: "168px",
+                    background: "transparent",
+                    cursor: "pointer",
+                    overflow: "visible",
+                    boxSizing: "border-box",
+                    opacity: chipOpacity(dead, oor)
+                  },
+                  onClick: () => {
+                    if (selected) {
+                      setXTarget(null);
+                      props.setSelectedEntity(void 0);
+                      return;
+                    }
+                    setXTarget(player);
+                    props.setSelectedEntity(player.id);
                   }
-                }),
+                },
                 e(
                   "div",
                   {
                     style: {
-                      padding: "2px",
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
                       position: "relative",
-                      textShadow: "0 0 2px black",
-                      cursor: "pointer"
-                    },
-                    onClick: () => {
-                      setXTarget(player);
-                      props.setSelectedEntity(player.id);
+                      height: "22px",
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.45)",
+                      outline,
+                      boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
                     }
                   },
-                  `${player.level} ${player.id}`
-                )
-              ),
-              e("div", {
-                style: {
-                  background: "blue",
-                  height: "4px",
-                  width: getPercent(
-                    (player.mp || 0) / (player.max_mp || 1),
-                    1
-                  )
-                }
-              })
-            )
+                  e("div", {
+                    style: {
+                      display: "block",
+                      height: "100%",
+                      width: `${hpPct(player)}%`,
+                      background: color
+                    }
+                  }),
+                  e(
+                    "div",
+                    {
+                      style: {
+                        position: "absolute",
+                        left: 0,
+                        right: hasAggro ? 18 : 0,
+                        top: 0,
+                        bottom: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 7px",
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                        fontSize: "15px",
+                        letterSpacing: "0.04em",
+                        lineHeight: 1,
+                        color: "#fff",
+                        pointerEvents: "none",
+                        fontWeight: "normal",
+                        textShadow: "none"
+                      }
+                    },
+                    `${(_a = player.level) != null ? _a : ""} ${player.id}`
+                  ),
+                  hasAggro ? e(
+                    "div",
+                    {
+                      className: "ecu-chip-aggro",
+                      title: aggroTitle,
+                      style: {
+                        position: "absolute",
+                        top: 2,
+                        right: 2,
+                        minWidth: "14px",
+                        height: "14px",
+                        padding: "0 3px",
+                        boxSizing: "border-box",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "#8a1e1e",
+                        border: "1px solid #e05555",
+                        color: "#ffd0d0",
+                        fontSize: "11px",
+                        lineHeight: 1,
+                        fontWeight: "normal",
+                        textShadow: "none",
+                        pointerEvents: "none"
+                      }
+                    },
+                    String(aggroMobs.length)
+                  ) : null
+                ),
+                e(
+                  "div",
+                  {
+                    style: {
+                      marginTop: "2px",
+                      height: "5px",
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.45)"
+                    }
+                  },
+                  e("div", {
+                    style: {
+                      display: "block",
+                      height: "100%",
+                      width: `${mpPct(player)}%`,
+                      background: "#3a6fd8"
+                    }
+                  })
+                ),
+                e(EffectsRow, {
+                  key: `fx-${pid}`,
+                  entity: player,
+                  iconSize: 22,
+                  compact: true,
+                  maxVisible: 4
+                })
+              );
+            })
           )
         )
       )
@@ -935,9 +3955,12 @@ var EnhanceCommUI = (() => {
       {
         key: "mapName",
         style: {
-          background: "black",
-          border: "2px double gray",
-          padding: "4px"
+          background: "rgba(0, 0, 0, 0.82)",
+          border: "1px solid #555",
+          padding: "4px 8px",
+          fontSize: "14px",
+          lineHeight: 1.25,
+          color: "#eee"
         }
       },
       e(
@@ -1046,168 +4069,99 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/ServerInfo.ts
+  var chipStyle = {
+    background: "rgba(0, 0, 0, 0.82)",
+    border: "1px solid #555",
+    padding: "4px 8px",
+    fontSize: "14px",
+    lineHeight: 1.25,
+    color: "#eee",
+    whiteSpace: "nowrap"
+  };
   function ServerInfo(props) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
     const timeOffset = (_c = (_b = (_a = props.S) == null ? void 0 : _a.schedule) == null ? void 0 : _b.time_offset) != null ? _c : 0;
-    const events = Object.entries((_d = props.S) != null ? _d : {}).filter(
+    const night = !!((_e = (_d = props.S) == null ? void 0 : _d.schedule) == null ? void 0 : _e.night);
+    const events = Object.entries((_f = props.S) != null ? _f : {}).filter(
       (entry) => entry[0] !== "schedule"
     );
+    const region = (_g = props.serverRegion) != null ? _g : "";
+    const ident = (_h = props.serverIdentifier) != null ? _h : "";
+    const serverLabel = `${region} ${ident}`.trim() || "\u2014";
     return e(
       "div",
       {
         key: "content",
+        className: "ecu-server-info",
         style: {
           display: "flex",
-          gap: "4px"
+          flexWrap: "wrap",
+          gap: "4px",
+          justifyContent: "center",
+          alignItems: "stretch"
         }
       },
       e(
         "div",
-        {
-          style: {
-            background: "black",
-            border: "2px double gray",
-            padding: "4px"
-          }
-        },
-        `${(_e = props.serverRegion) != null ? _e : ""} ${(_f = props.serverIdentifier) != null ? _f : ""}`,
-        e("br"),
-        getALServerTime(timeOffset) + (((_h = (_g = props.S) == null ? void 0 : _g.schedule) == null ? void 0 : _h.night) ? "\u{1F31B}" : "\u2600\uFE0F")
+        { style: chipStyle },
+        e(
+          "div",
+          {
+            style: {
+              fontSize: "13px",
+              color: "#f2f2f2",
+              letterSpacing: "0.02em"
+            }
+          },
+          serverLabel
+        ),
+        e(
+          "div",
+          {
+            style: {
+              fontSize: "12px",
+              color: "#85c76b",
+              fontVariantNumeric: "tabular-nums"
+            }
+          },
+          getALServerTime(timeOffset) + (night ? " night" : " day")
+        )
       ),
-      ...events.map(
-        (event) => {
-          var _a2, _b2;
-          return e(
+      ...events.map((event) => {
+        var _a2, _b2;
+        const live = !!((_a2 = event[1]) == null ? void 0 : _a2.live);
+        const until = ((_b2 = event[1]) == null ? void 0 : _b2.event) ? getTimeUntil(event[1].event) : "";
+        return e(
+          "div",
+          {
+            key: event[0],
+            style: {
+              ...chipStyle,
+              borderColor: live ? "#85c76b" : "#555"
+            }
+          },
+          e(
             "div",
             {
-              key: event[0],
               style: {
-                background: "black",
-                border: "2px double gray",
-                padding: "4px"
+                fontSize: "13px",
+                color: live ? "#b6e3a4" : "#eee"
               }
             },
-            event[0],
-            e("br"),
-            ((_a2 = event[1]) == null ? void 0 : _a2.live) ? "live" : ((_b2 = event[1]) == null ? void 0 : _b2.event) ? getTimeUntil(event[1].event) : ""
-          );
-        }
-      )
-    );
-  }
-
-  // src/ui/chrome/EffectsRow.ts
-  function buildEntityEffects(entity) {
-    var _a, _b, _c;
-    const G = getG();
-    const state = entity.s || {};
-    const out = [];
-    const keys = Object.keys(state);
-    for (let i = 0; i < keys.length; i++) {
-      const condition = keys[i];
-      const actual = state[condition];
-      if (!actual) continue;
-      if ((_b = (_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[condition]) == null ? void 0 : _b.ui) {
-        const def = G.skills[condition];
-        if (def == null ? void 0 : def.skin) {
-          out.push({
-            id: condition,
-            skin: def.skin,
-            ms: actual.ms,
-            stacks: actual.s,
-            actual
-          });
-        }
-        continue;
-      }
-      const prop = (_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[condition];
-      if (!actual.skin && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
-        continue;
-      }
-      if (entity.type === "monster" && condition === "poisonous") continue;
-      const skin = actual.skin || (prop == null ? void 0 : prop.skin);
-      if (!skin) continue;
-      out.push({
-        id: condition,
-        skin,
-        ms: actual.ms,
-        stacks: actual.s,
-        actual
-      });
-    }
-    return out;
-  }
-  function effectsKey(effects) {
-    return effects.map((ef) => ef.id).join("|");
-  }
-  function EffectIcon(props) {
-    const React = getReact();
-    const ref = React.useRef(null);
-    const { effect, hostClass } = props;
-    React.useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      const html = itemContainer(
-        { skin: effect.skin, onclick: `condition_click('${effect.id}')` },
-        effect.actual
-      );
-      if (html) {
-        el.innerHTML = html;
-        const selector = `.${hostClass}`;
-        if (effect.ms != null && effect.ms > 0) {
-          addTint(selector, { ms: effect.ms, type: "progress" });
-        }
-      } else {
-        el.textContent = effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "") + (effect.ms != null ? ` (${formatTime(effect.ms / 1e3)})` : "");
-      }
-      return () => {
-        if (el) el.innerHTML = "";
-      };
-    }, [effect.id, effect.skin, hostClass]);
-    React.useEffect(() => {
-      if (effect.ms == null) return;
-      addTint(`.${hostClass}`, { ms: effect.ms, type: "progress" });
-    }, [effect.ms, hostClass]);
-    return e("div", {
-      ref,
-      className: hostClass,
-      title: effect.id,
-      style: {
-        display: "inline-block",
-        background: "black",
-        padding: "1px",
-        minWidth: "20px",
-        minHeight: "20px",
-        fontSize: "10px"
-      }
-    });
-  }
-  function EffectsRow(props) {
-    const React = getReact();
-    const effects = buildEntityEffects(props.entity);
-    const key = effectsKey(effects);
-    if (effects.length === 0) return null;
-    return e(
-      "div",
-      {
-        key,
-        style: {
-          display: "flex",
-          marginBottom: "4px",
-          gap: "2px",
-          flexWrap: "wrap"
-        }
-      },
-      ...effects.map((ef) => {
-        const hostClass = `comm-fx-${props.entity.id}-${ef.id}`.replace(
-          /[^a-zA-Z0-9_-]/g,
-          "_"
+            event[0]
+          ),
+          e(
+            "div",
+            {
+              style: {
+                fontSize: "12px",
+                color: live ? "#85c76b" : "rgba(255,255,255,0.55)",
+                fontVariantNumeric: "tabular-nums"
+              }
+            },
+            live ? "live" : until
+          )
         );
-        return e(EffectIcon, {
-          key: ef.id,
-          effect: ef,
-          hostClass
-        });
       })
     );
   }
@@ -1225,15 +4179,16 @@ var EnhanceCommUI = (() => {
       onClick,
       nameStyle
     } = props;
-    const hpPct = maxHp > 0 ? hp / maxHp : 0;
-    const mpPct = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
+    const hpPct3 = maxHp > 0 ? hp / maxHp : 0;
+    const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
     return e(
       "div",
       {
         style: {
           display: "flex",
           width: "100%",
-          flexDirection: "column"
+          flexDirection: "column",
+          minWidth: 0
         }
       },
       e(
@@ -1241,7 +4196,10 @@ var EnhanceCommUI = (() => {
         {
           style: {
             background: "black",
-            position: "relative"
+            position: "relative",
+            width: "100%",
+            minHeight: "30px",
+            boxSizing: "border-box"
           }
         },
         e("div", {
@@ -1249,7 +4207,8 @@ var EnhanceCommUI = (() => {
             position: "absolute",
             top: 0,
             bottom: 0,
-            width: getPercent(hpPct, 1),
+            left: 0,
+            width: getPercent(hpPct3, 1),
             background: hpColor
           }
         }),
@@ -1258,13 +4217,17 @@ var EnhanceCommUI = (() => {
           {
             style: Object.assign(
               {
-                padding: "4px",
+                padding: "5px 10px",
                 whiteSpace: "nowrap",
                 textOverflow: "ellipsis",
                 overflow: "hidden",
                 position: "relative",
-                textShadow: "0 0 2px black",
-                cursor: onClick ? "pointer" : void 0
+                textShadow: "none",
+                fontWeight: "normal",
+                cursor: onClick ? "pointer" : void 0,
+                width: "100%",
+                boxSizing: "border-box",
+                lineHeight: "1.25"
               },
               nameStyle || {}
             ),
@@ -1275,12 +4238,19 @@ var EnhanceCommUI = (() => {
       ),
       showMp ? e(
         "div",
-        { style: { background: "black" } },
+        {
+          style: {
+            background: "black",
+            width: "100%",
+            height: "5px",
+            boxSizing: "border-box"
+          }
+        },
         e("div", {
           style: {
-            background: "blue",
-            height: "4px",
-            width: getPercent(mpPct, 1)
+            background: "#3a5fd4",
+            height: "100%",
+            width: getPercent(mpPct2, 1)
           }
         })
       ) : null
@@ -1297,33 +4267,95 @@ var EnhanceCommUI = (() => {
       trailing,
       onSelect,
       showEffects = true,
-      showMp = true
+      showMp = true,
+      threatCount = 0
     } = props;
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
+    const threatSpark = threatCount > 0 ? e(
+      "span",
+      {
+        className: "comm-threat-spark",
+        title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
+        style: {
+          flexShrink: 0,
+          minWidth: "18px",
+          height: "18px",
+          padding: "0 4px",
+          boxSizing: "border-box",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#8a1e1e",
+          border: "1px solid #e05555",
+          color: "#ffd0d0",
+          fontSize: "12px",
+          lineHeight: 1,
+          fontWeight: "normal",
+          textShadow: "none"
+        }
+      },
+      String(threatCount)
+    ) : null;
+    const nameBlock = e(
+      "span",
+      {
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          minWidth: 0,
+          overflow: "hidden"
+        }
+      },
+      threatSpark,
+      e(
+        "span",
+        {
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0
+          }
+        },
+        name
+      )
+    );
     const label = trailing ? e(
       "span",
       {
         style: {
           display: "flex",
           justifyContent: "space-between",
-          gap: "8px",
-          width: "100%"
+          gap: "10px",
+          width: "100%",
+          alignItems: "center"
         }
       },
-      e("span", {}, name),
+      nameBlock,
       e(
         "span",
-        { style: { fontSize: "14px", opacity: 0.95, flexShrink: 0 } },
+        {
+          style: {
+            fontSize: "17px",
+            opacity: 0.95,
+            flexShrink: 0,
+            fontWeight: "normal"
+          }
+        },
         trailing
       )
-    ) : name;
+    ) : nameBlock;
     return e(
       "div",
       {
+        className: "comm-unit",
         style: {
           display: "flex",
           width: "100%",
-          flexDirection: "column"
+          flexDirection: "column",
+          minWidth: 0,
+          gap: "6px"
         }
       },
       e(
@@ -1335,12 +4367,18 @@ var EnhanceCommUI = (() => {
           maxMp: entity.max_mp,
           hpColor,
           showMp,
-          nameStyle: fontSize != null ? { fontSize } : void 0,
+          nameStyle: {
+            fontSize: fontSize != null ? fontSize : "21px",
+            fontWeight: "normal"
+          },
           onClick: onSelect ? () => onSelect(entity.id) : void 0
         },
         label
       ),
-      showEffects ? e(EffectsRow, { entity }) : null
+      showEffects ? e(EffectsRow, {
+        key: `fx-${String(entity.id)}`,
+        entity
+      }) : null
     );
   }
 
@@ -1366,6 +4404,10 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/Enemies.ts
+  function hpPct2(entity) {
+    const max = entity.max_hp || 1;
+    return Math.max(0, Math.min(100, Math.round((entity.hp || 0) / max * 100)));
+  }
   function Enemies(props) {
     const enemies = aggroedMonsters(props.entities);
     const enemiesToSquash = [];
@@ -1380,112 +4422,174 @@ var EnhanceCommUI = (() => {
       squashEnemiesCounts[mtype] = (squashEnemiesCounts[mtype] || 0) + 1;
     }
     const maxEnemiesToShow = 10;
-    const moreEnemiesCount = Math.max(0, importantEnemies.length - maxEnemiesToShow);
+    const moreEnemiesCount = Math.max(
+      0,
+      importantEnemies.length - maxEnemiesToShow
+    );
     const squashKeys = Object.keys(squashEnemiesCounts);
+    const shown = importantEnemies.slice(0, maxEnemiesToShow);
+    if (!shown.length && !squashKeys.length) return null;
     return e(
       "div",
       {
+        className: "ecu-aggro",
         style: {
           display: "flex",
           flexDirection: "column",
           gap: "4px",
-          paddingTop: "4px"
+          paddingTop: "4px",
+          alignItems: "flex-end"
         }
       },
-      ...importantEnemies.slice(0, maxEnemiesToShow).map(
-        (enemy) => {
-          var _a;
+      e(
+        "div",
+        {
+          style: {
+            fontSize: "12px",
+            color: "#ccc",
+            background: "rgba(0,0,0,0.55)",
+            display: "inline-block",
+            padding: "2px 6px",
+            alignSelf: "flex-end"
+          }
+        },
+        "Aggro"
+      ),
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: "5px"
+          }
+        },
+        ...shown.map((enemy) => {
+          const selected = props.selectedEntity != null && String(props.selectedEntity) === String(enemy.id);
           return e(
             "div",
             {
               key: enemy.id,
               style: {
-                display: "flex",
-                width: "100%",
-                flexDirection: "column",
-                textAlign: "left"
+                position: "relative",
+                flex: "0 0 auto",
+                width: "168px",
+                cursor: "pointer",
+                overflow: "hidden",
+                boxSizing: "border-box"
+              },
+              onClick: () => {
+                setXTarget(enemy);
+                props.setSelectedEntity(enemy.id);
               }
             },
             e(
               "div",
-              { style: { background: "black", position: "relative" } },
+              {
+                style: {
+                  position: "relative",
+                  height: "22px",
+                  overflow: "hidden",
+                  background: "rgba(0,0,0,0.45)",
+                  outline: selected ? "1px solid #fff" : void 0
+                }
+              },
               e("div", {
                 style: {
-                  position: "absolute",
-                  top: 0,
-                  bottom: 0,
-                  width: getPercent((enemy.hp || 0) / (enemy.max_hp || 1), 1),
-                  background: "red"
+                  display: "block",
+                  height: "100%",
+                  width: `${hpPct2(enemy)}%`,
+                  background: "#c44"
                 }
               }),
               e(
                 "div",
                 {
                   style: {
-                    padding: "4px",
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 7px",
                     whiteSpace: "nowrap",
                     textOverflow: "ellipsis",
                     overflow: "hidden",
-                    position: "relative",
-                    textShadow: "0 0 2px black",
-                    cursor: "pointer"
-                  },
-                  onClick: () => {
-                    setXTarget(enemy);
-                    props.setSelectedEntity(enemy.id);
+                    fontSize: "15px",
+                    letterSpacing: "0.04em",
+                    lineHeight: 1,
+                    color: "#ffd0d0",
+                    pointerEvents: "none"
                   }
                 },
-                `${(_a = enemy.level) != null ? _a : 1} ${enemy.name} #${enemy.id} (${getPercent((enemy.hp || 0) / (enemy.max_hp || 1), 1)})`
+                enemy.name || enemy.mtype || enemy.id
               )
-            ),
-            e(
-              "div",
-              { style: { background: "black" } },
-              e("div", {
-                style: {
-                  background: "blue",
-                  height: "4px",
-                  width: getPercent((enemy.mp || 0) / (enemy.max_mp || 1), 1)
-                }
-              })
             )
           );
-        }
+        })
       ),
       ...squashKeys.map(
         (enemyMtype) => e(
           "div",
-          { key: enemyMtype, style: { background: "black" } },
+          {
+            key: enemyMtype,
+            style: {
+              background: "rgba(0,0,0,0.55)",
+              padding: "2px 6px",
+              fontSize: "12px",
+              color: "#aaa"
+            }
+          },
           `also ${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`
         )
       ),
       moreEnemiesCount ? e(
         "div",
-        { style: { background: "black" } },
+        {
+          style: {
+            background: "rgba(0,0,0,0.55)",
+            padding: "2px 6px",
+            fontSize: "12px",
+            color: "#aaa"
+          }
+        },
         `...and ${moreEnemiesCount} more aggroed enemies`
       ) : void 0
     );
   }
 
   // src/ui/chrome/GearGrid.ts
-  var GEAR_SLOTS = [
-    "helmet",
-    "earring1",
-    "earring2",
-    "amulet",
-    "chest",
-    "cape",
-    "pants",
-    "shoes",
-    "gloves",
-    "belt",
-    "ring1",
-    "ring2",
-    "orb",
-    "mainhand",
-    "offhand",
-    "elixir"
+  var GEAR_ROWS = [
+    ["earring1", "helmet", "earring2", "amulet"],
+    ["mainhand", "chest", "offhand", "cape"],
+    ["ring1", "pants", "ring2", "orb"],
+    ["belt", "shoes", "gloves", "elixir"]
   ];
+  var SLOT_SHADE = {
+    earring1: { shade: "shade_earring", s_op: 0.4 },
+    helmet: { shade: "shade_helmet", s_op: 0.5 },
+    earring2: { shade: "shade_earring", s_op: 0.4 },
+    amulet: { shade: "shade_amulet", s_op: 0.4 },
+    mainhand: { shade: "shade_mainhand", s_op: 0.36 },
+    chest: { shade: "shade_chest", s_op: 0.4 },
+    offhand: { shade: "shade_offhand", s_op: 0.4 },
+    cape: { shade: "shade20_cape", s_op: 0.4 },
+    ring1: { shade: "shade_ring", s_op: 0.4 },
+    pants: { shade: "shade_pants", s_op: 0.5 },
+    ring2: { shade: "shade_ring", s_op: 0.4 },
+    orb: { shade: "shade20_orb", s_op: 0.4 },
+    belt: { shade: "shade_belt", s_op: 0.4 },
+    shoes: { shade: "shade_shoes", s_op: 0.5 },
+    gloves: { shade: "shade_gloves", s_op: 0.4 },
+    elixir: { shade: "shade20_elixir", s_op: 0.4 }
+  };
+  var TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
+  var SLOT_SIZE = 40;
+  var EMPTY_BCOLOR = "#292929";
   function tradeSlotNames(slots) {
     const names = [];
     const keys = Object.keys(slots);
@@ -1501,40 +4605,47 @@ var EnhanceCommUI = (() => {
     });
     return names;
   }
+  function shadeFor(slotName) {
+    if (slotName.indexOf("trade") === 0) return TRADE_SHADE;
+    return SLOT_SHADE[slotName] || { shade: "placeholder", s_op: 0.4 };
+  }
+  function wrapContainerHtml(html) {
+    return e("div", {
+      style: { display: "inline-block", lineHeight: 0, fontSize: 0 },
+      dangerouslySetInnerHTML: { __html: html },
+      ref: (node) => {
+        if (!node) return;
+        const root = node.firstElementChild;
+        if (root) root.style.margin = "0";
+      }
+    });
+  }
   function SlotCell(props) {
     const { slotName, slot, showPrice } = props;
     const skin = slotSkin(slot);
-    let content = e(
-      "div",
-      {
-        style: {
-          width: "40px",
-          height: "40px",
-          background: "#222",
-          border: "1px solid #444",
-          fontSize: "9px",
-          color: "#666",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center"
-        }
-      },
-      slotName.replace("trade", "t")
-    );
+    const { shade, s_op } = shadeFor(slotName);
+    let content = null;
     if (slot && skin) {
-      const html = itemContainer({ skin, size: 40, slot: slotName }, slot);
+      const html = itemContainer(
+        {
+          skin,
+          size: SLOT_SIZE,
+          slot: slotName,
+          shade,
+          s_op,
+          draggable: false
+        },
+        slot
+      );
       if (html) {
-        content = e("div", {
-          style: { display: "inline-block" },
-          dangerouslySetInnerHTML: { __html: html }
-        });
+        content = wrapContainerHtml(html);
       } else {
         content = e(
           "div",
           {
             style: {
-              width: "40px",
-              height: "40px",
+              width: `${SLOT_SIZE}px`,
+              height: `${SLOT_SIZE}px`,
               background: "#333",
               border: "1px solid #666",
               fontSize: "9px",
@@ -1545,6 +4656,29 @@ var EnhanceCommUI = (() => {
           slot.name,
           slot.level != null ? ` +${slot.level}` : ""
         );
+      }
+    } else {
+      const html = itemContainer({
+        size: SLOT_SIZE,
+        shade,
+        s_op,
+        slot: slotName,
+        bcolor: EMPTY_BCOLOR,
+        draggable: false
+      });
+      if (html) {
+        content = wrapContainerHtml(html);
+      } else {
+        content = e("div", {
+          style: {
+            width: `${SLOT_SIZE + 6}px`,
+            height: `${SLOT_SIZE + 6}px`,
+            background: "#000",
+            border: `2px solid ${EMPTY_BCOLOR}`,
+            boxSizing: "border-box"
+          },
+          title: slotName
+        });
       }
     }
     return e(
@@ -1572,18 +4706,33 @@ var EnhanceCommUI = (() => {
     const tradeNames = tradeSlotNames(slots);
     return e(
       "div",
-      { style: { display: "flex", flexDirection: "column", gap: "6px" } },
+      { style: { display: "flex", flexDirection: "column", gap: "2px" } },
       e(
         "div",
         {
           style: {
             display: "flex",
-            flexWrap: "wrap",
-            gap: "4px"
+            flexDirection: "column",
+            gap: "2px",
+            width: "fit-content"
           }
         },
-        ...GEAR_SLOTS.map(
-          (name) => e(SlotCell, { key: name, slotName: name, slot: slots[name] })
+        ...GEAR_ROWS.map(
+          (row, ri) => e(
+            "div",
+            {
+              key: `row${ri}`,
+              style: {
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                gap: "2px"
+              }
+            },
+            ...row.map(
+              (name) => e(SlotCell, { key: name, slotName: name, slot: slots[name] })
+            )
+          )
         )
       ),
       tradeNames.length ? e(
@@ -1592,11 +4741,25 @@ var EnhanceCommUI = (() => {
           style: {
             display: "flex",
             flexWrap: "wrap",
-            gap: "4px",
-            borderTop: "1px solid #444",
-            paddingTop: "4px"
+            gap: "2px",
+            borderTop: "1px solid #333",
+            paddingTop: "4px",
+            marginTop: "4px"
           }
         },
+        e(
+          "div",
+          {
+            style: {
+              flex: "0 0 100%",
+              fontSize: "10px",
+              color: "#888",
+              marginBottom: "2px",
+              letterSpacing: "0.04em"
+            }
+          },
+          "TRADE"
+        ),
         ...tradeNames.map(
           (name) => e(SlotCell, {
             key: name,
@@ -1609,132 +4772,846 @@ var EnhanceCommUI = (() => {
     );
   }
 
-  // src/ui/frames/EntityInfo.ts
-  function EntityInfo(props) {
-    var _a, _b, _c, _d;
-    const entity = findEntity(props.entities, props.selectedEntity);
-    if (!entity) return null;
-    return e(
-      "span",
-      {
-        style: {
-          display: "inline-flex",
-          overflow: "auto",
-          flexDirection: "column",
-          margin: "4px",
-          border: "2px double gray",
-          background: "black",
-          gap: "2px",
-          padding: "4px",
-          maxHeight: "280px"
-        },
-        onClick: () => setXTarget(entity)
-      },
-      e(
-        "div",
-        {},
-        `${entity.name}${(entity == null ? void 0 : entity.mtype) ? ` (${entity.mtype})` : ""}, lvl ${(_a = entity.level) != null ? _a : 1}${entity.type === "monster" ? ` #${entity.id}` : ""}`
-      ),
-      entity.ctype ? e("div", {}, `Class: ${entity.ctype}`) : void 0,
-      entity.age ? e("div", {}, `Age: ${entity.age}`) : void 0,
-      entity.party ? e("div", {}, `Party: ${entity.party}`) : void 0,
-      e("br"),
-      e("div", {}, `HP: ${entity.hp} / ${entity.max_hp}`),
-      e("div", {}, `MP: ${entity.mp} / ${entity.max_mp}`),
-      entity.heal ? e("div", {}, `Heal: ${entity.heal}`) : void 0,
-      entity.attack ? e(
-        "div",
-        {},
-        `Attack: ${entity.attack} ${(_b = entity == null ? void 0 : entity.damage_type) != null ? _b : ""}`
-      ) : void 0,
-      e("div", {}, `Armor: ${(_c = entity.armor) != null ? _c : 0}`),
-      e("div", {}, `Resistance: ${(_d = entity.resistance) != null ? _d : 0}`),
-      entity.evasion ? e("div", {}, `Evasion: ${getPercent(entity.evasion / 100, 2)}`) : void 0,
-      entity.reflection ? e(
-        "div",
-        {},
-        `Reflection: ${getPercent(entity.reflection / 100, 2)}`
-      ) : void 0,
-      e("br"),
-      entity.speed != null ? e("div", {}, `Speed: ${entity.speed.toFixed(2)}`) : void 0,
-      entity.frequency != null ? e("div", {}, `Frequency: ${entity.frequency.toFixed(2)}`) : void 0,
-      entity.slots ? e(GearGrid, { entity }) : null
-    );
-  }
-
-  // src/geometry/combat.ts
-  function distance(a, b) {
-    if (!a || !b) return void 0;
-    return simpleDistance(a, b);
-  }
-  function outOfRange(observer, target) {
-    if (!observer || !target) return void 0;
-    const range = observer.range;
-    if (range == null) return void 0;
-    const d = distance(observer, target);
-    if (d == null) return void 0;
-    return d > range;
-  }
-  function difficultyBadge(monster) {
-    if (!monster || monster.type !== "monster") return void 0;
-    const level = calculateDifficulty(monster);
-    if (level >= 2) return { level, label: "Hard", color: "#ff4444" };
-    if (level === 1) return { level, label: "Med", color: "#ffaa00" };
-    return { level, label: "Easy", color: "#66cc66" };
-  }
-
-  // src/ui/frames/PlayerRow.ts
-  function PlayerRow(props) {
-    const { observing, target } = props;
-    const dps = getDps();
-    let targetTrailing = null;
-    if (target) {
-      const hpPct = getPercent((target.hp || 0) / (target.max_hp || 1), 1);
-      const ttk = estimateTtk(target.hp, dps);
-      const dist = distance(observing, target);
-      const oor = outOfRange(observing, target);
-      const diff = difficultyBadge(target);
-      const parts = [hpPct];
-      if (ttk != null) parts.push(`TTK ${formatTime(ttk)}`);
-      if (dist != null) parts.push(`${Math.round(dist)}`);
-      if (oor) parts.push("OOR");
-      if (diff) parts.push(diff.label);
-      targetTrailing = parts.join(" \xB7 ");
-    }
+  // src/ui/paperdoll/CompareToWatched.ts
+  function DeltaStat(props) {
+    if (props.theirs == null || props.ours == null) return null;
+    const d = props.theirs - props.ours;
+    if (!Number.isFinite(d) || Math.abs(d) < 1e-4) return null;
+    const positive = d > 0;
+    const text = props.pct ? `${positive ? "+" : ""}${d.toFixed(1)}%` : `${positive ? "+" : ""}${Number.isInteger(d) ? d : d.toFixed(1)}`;
     return e(
       "div",
       {
         style: {
           display: "flex",
-          gap: "16px"
+          justifyContent: "space-between",
+          gap: "8px",
+          fontSize: "14px",
+          lineHeight: "18px"
+        }
+      },
+      e("span", { style: { color: "#888" } }, props.label),
+      e(
+        "span",
+        {
+          style: {
+            color: positive ? "#85c76b" : "#e07070",
+            fontVariantNumeric: "tabular-nums"
+          }
+        },
+        text
+      )
+    );
+  }
+  function CompareToWatched(props) {
+    var _a, _b, _c, _d;
+    const { entity, watching } = props;
+    const watchName = watching.name || watching.id;
+    return e(
+      "div",
+      {
+        style: {
+          borderTop: "1px solid #2a2a2a",
+          paddingTop: "8px"
         }
       },
       e(
         "div",
-        { style: { width: "55%" } },
-        observing ? e(ObservedUnit, {
-          entity: observing,
-          hpColor: classColors[observing.ctype || ""] || "#666",
-          fontSize: "24px",
-          onSelect: (id) => {
-            setXTarget(observing);
-            props.setSelectedEntity(id);
+        {
+          style: {
+            fontSize: "13px",
+            color: "#888",
+            marginBottom: "6px",
+            letterSpacing: "0.04em"
           }
-        }) : void 0
+        },
+        `VS ${watchName}`
       ),
       e(
         "div",
-        { style: { width: "45%" } },
-        target ? e(ObservedUnit, {
-          entity: target,
-          hpColor: classColors[target.ctype || ""] || "red",
-          fontSize: "24px",
-          trailing: targetTrailing,
+        {
+          style: {
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "2px 12px",
+            padding: "6px 8px",
+            background: "#0a0a0a",
+            border: "1px solid #2a2a2a"
+          }
+        },
+        e(DeltaStat, {
+          label: "ATK",
+          theirs: entity.attack,
+          ours: watching.attack
+        }),
+        e(DeltaStat, {
+          label: "Heal",
+          theirs: entity.heal,
+          ours: watching.heal
+        }),
+        e(DeltaStat, {
+          label: "Armor",
+          theirs: (_a = entity.armor) != null ? _a : 0,
+          ours: (_b = watching.armor) != null ? _b : 0
+        }),
+        e(DeltaStat, {
+          label: "Res",
+          theirs: (_c = entity.resistance) != null ? _c : 0,
+          ours: (_d = watching.resistance) != null ? _d : 0
+        }),
+        e(DeltaStat, {
+          label: "Eva",
+          theirs: entity.evasion,
+          ours: watching.evasion,
+          pct: true
+        }),
+        e(DeltaStat, {
+          label: "Refl",
+          theirs: entity.reflection,
+          ours: watching.reflection,
+          pct: true
+        }),
+        e(DeltaStat, {
+          label: "Speed",
+          theirs: entity.speed,
+          ours: watching.speed
+        }),
+        e(DeltaStat, {
+          label: "Freq",
+          theirs: entity.frequency,
+          ours: watching.frequency
+        }),
+        e(DeltaStat, {
+          label: "HP",
+          theirs: entity.max_hp,
+          ours: watching.max_hp
+        }),
+        e(DeltaStat, {
+          label: "MP",
+          theirs: entity.max_mp,
+          ours: watching.max_mp
+        })
+      )
+    );
+  }
+
+  // src/lib/frameSizes.ts
+  var BAG_FRAME_WIDTH = 385;
+  var BAG_FRAME_HEIGHT = 395;
+  var BAG_PANEL_STYLE = {
+    width: BAG_FRAME_WIDTH,
+    minWidth: BAG_FRAME_WIDTH,
+    minHeight: BAG_FRAME_HEIGHT,
+    boxSizing: "border-box"
+  };
+  var PAPERDOLL_FRAME_WIDTH = 268;
+  var PAPERDOLL_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "340px",
+    boxSizing: "border-box"
+  };
+  var BOSS_BAR_PANEL_STYLE = {
+    width: "min(520px, 72vw)",
+    minWidth: "360px",
+    boxSizing: "border-box"
+  };
+
+  // src/ui/chrome/LayoutPlaceholder.ts
+  function LayoutPlaceholder(props) {
+    const accent = props.accent || "#555";
+    return e(
+      "div",
+      {
+        className: props.className,
+        style: props.style
+      },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 10px",
+            background: `linear-gradient(90deg, ${accent}33, transparent)`,
+            borderBottom: `1px solid ${accent}66`,
+            color: "#888",
+            fontSize: "17px"
+          }
+        },
+        e("div", {
+          style: {
+            width: "8px",
+            height: "8px",
+            background: accent,
+            flexShrink: 0
+          }
+        }),
+        props.label
+      ),
+      props.children
+    );
+  }
+
+  // src/ui/paperdoll/Stat.ts
+  function Stat(props) {
+    if (props.value == null || props.value === "") return null;
+    return e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "10px",
+          fontSize: "15px",
+          lineHeight: "20px"
+        }
+      },
+      e("span", { style: { color: "#9a9a9a" } }, props.label),
+      e(
+        "span",
+        { style: { color: props.accent || "#f0f0f0", textAlign: "right" } },
+        props.value
+      )
+    );
+  }
+
+  // src/ui/paperdoll/VitalsBar.ts
+  function VitalsBar(props) {
+    const pct = props.max > 0 ? props.current / props.max : 0;
+    return e(
+      "div",
+      { style: { marginBottom: "6px" } },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: "14px",
+            marginBottom: "3px",
+            color: "#cfcfcf"
+          }
+        },
+        e("span", {}, props.label),
+        e("span", {}, `${props.current} / ${props.max}`)
+      ),
+      e(
+        "div",
+        {
+          style: {
+            height: "8px",
+            background: "#1a1a1a",
+            border: "1px solid #333",
+            position: "relative",
+            overflow: "hidden"
+          }
+        },
+        e("div", {
+          style: {
+            width: getPercent(pct, 1),
+            height: "100%",
+            background: props.color
+          }
+        })
+      )
+    );
+  }
+
+  // src/ui/paperdoll/PaperdollDummy.ts
+  var DUMMY_SLOT = 46;
+  var PAPERDOLL_SHELL = {
+    display: "flex",
+    flexDirection: "column",
+    margin: 0,
+    background: "rgba(0,0,0,0.92)",
+    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+    width: PAPERDOLL_FRAME_WIDTH,
+    minWidth: PAPERDOLL_FRAME_WIDTH,
+    maxWidth: "340px",
+    boxSizing: "border-box",
+    overflow: "visible"
+  };
+  function PaperdollDummy() {
+    const slots = [];
+    for (let r = 0; r < 4; r++) {
+      const cells = [];
+      for (let c = 0; c < 4; c++) {
+        cells.push(
+          e("div", {
+            key: `s${r}-${c}`,
+            style: {
+              width: DUMMY_SLOT,
+              height: DUMMY_SLOT,
+              background: "#0a0a0a",
+              border: "2px solid #292929",
+              boxSizing: "border-box"
+            }
+          })
+        );
+      }
+      slots.push(
+        e(
+          "div",
+          {
+            key: `r${r}`,
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              gap: "2px"
+            }
+          },
+          ...cells
+        )
+      );
+    }
+    return e(
+      LayoutPlaceholder,
+      {
+        className: "comm-paperdoll comm-paperdoll-dummy",
+        label: "Paperdoll",
+        style: Object.assign({}, PAPERDOLL_SHELL, {
+          border: "2px dashed #555",
+          opacity: 0.85
+        })
+      },
+      e(
+        "div",
+        {
+          style: {
+            padding: "10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px"
+          }
+        },
+        e(
+          "div",
+          { style: { fontSize: "13px", color: "#666" } },
+          "Select a unit to preview gear"
+        ),
+        e(
+          "div",
+          {},
+          e(VitalsBar, {
+            label: "HP",
+            current: 0,
+            max: 1,
+            color: "#444"
+          }),
+          e(VitalsBar, {
+            label: "MP",
+            current: 0,
+            max: 1,
+            color: "#2a3a6a"
+          })
+        ),
+        e(
+          "div",
+          {
+            style: {
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "4px 14px",
+              padding: "8px",
+              background: "#0d0d0d",
+              border: "1px solid #2a2a2a",
+              color: "#555",
+              fontSize: "15px",
+              lineHeight: "20px"
+            }
+          },
+          e(Stat, { label: "ATK", value: "\u2014" }),
+          e(Stat, { label: "Armor", value: "\u2014" }),
+          e(Stat, { label: "Res", value: "\u2014" }),
+          e(Stat, { label: "Speed", value: "\u2014" })
+        ),
+        e(
+          "div",
+          {
+            style: {
+              borderTop: "1px solid #2a2a2a",
+              paddingTop: "8px"
+            }
+          },
+          e(
+            "div",
+            {
+              style: {
+                fontSize: "14px",
+                color: "#555",
+                marginBottom: "6px",
+                letterSpacing: "0.04em"
+              }
+            },
+            "GEAR"
+          ),
+          e(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                gap: "2px",
+                width: "fit-content"
+              }
+            },
+            ...slots
+          )
+        )
+      )
+    );
+  }
+
+  // src/ui/frames/EntityInfo.ts
+  function EntityInfo(props) {
+    var _a, _b, _c;
+    const entity = findEntity(props.entities, props.selectedEntity);
+    if (!entity) {
+      if (!props.layoutEdit) return null;
+      return e(PaperdollDummy);
+    }
+    const accent = classColors[entity.ctype || ""] || (entity.type === "monster" ? "#c44" : "#888");
+    const isPlayer = !!(entity.player || entity.type === "character");
+    const title = `${entity.name || entity.id}` + (entity.mtype ? ` (${entity.mtype})` : "") + ` \xB7 ${(_a = entity.level) != null ? _a : 1}` + (entity.type === "monster" ? ` #${entity.id}` : "");
+    const watching = props.observing;
+    const compare = isPlayer && watching && String(watching.id) !== String(entity.id) && !!(watching.player || watching.type === "character");
+    const close = () => {
+      if (props.onClose) props.onClose();
+      else setXTarget(null);
+    };
+    return e(
+      "div",
+      {
+        className: "comm-paperdoll",
+        style: Object.assign({}, PAPERDOLL_SHELL, {
+          border: `2px solid ${accent}`
+        }),
+        onClick: (ev) => {
+          ev.stopPropagation();
+          setXTarget(entity);
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 10px",
+            background: `linear-gradient(90deg, ${accent}33, transparent)`,
+            borderBottom: `1px solid ${accent}66`
+          }
+        },
+        e("div", {
+          style: {
+            width: "8px",
+            height: "8px",
+            background: accent,
+            flexShrink: 0
+          }
+        }),
+        e(
+          "div",
+          {
+            style: {
+              flex: 1,
+              minWidth: 0,
+              fontSize: "17px",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              textShadow: "none"
+            },
+            title
+          },
+          title
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            title: "Close",
+            onClick: (ev) => {
+              ev.stopPropagation();
+              close();
+            },
+            style: {
+              cursor: "pointer",
+              border: "1px solid #555",
+              background: "#1c1c1c",
+              color: "#ddd",
+              width: "24px",
+              height: "24px",
+              lineHeight: "20px",
+              padding: 0,
+              flexShrink: 0,
+              fontSize: "16px"
+            }
+          },
+          "\xD7"
+        )
+      ),
+      e(
+        "div",
+        {
+          style: {
+            padding: "10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px"
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "4px 12px",
+              fontSize: "14px",
+              color: "#bdbdbd"
+            }
+          },
+          entity.ctype ? e("span", { style: { color: accent } }, entity.ctype) : null,
+          entity.party ? e("span", {}, `party ${entity.party}`) : null,
+          entity.age != null ? e("span", {}, `age ${entity.age}`) : null,
+          !isPlayer && entity.mtype ? e("span", {}, entity.mtype) : null
+        ),
+        e(
+          "div",
+          {},
+          e(VitalsBar, {
+            label: "HP",
+            current: entity.hp || 0,
+            max: entity.max_hp || 1,
+            color: isPlayer ? accent : "#c33"
+          }),
+          e(VitalsBar, {
+            label: "MP",
+            current: entity.mp || 0,
+            max: entity.max_mp || 1,
+            color: "#3a5fd4"
+          })
+        ),
+        e(
+          "div",
+          {
+            style: {
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "4px 14px",
+              padding: "8px",
+              background: "#0d0d0d",
+              border: "1px solid #2a2a2a"
+            }
+          },
+          entity.attack ? e(Stat, {
+            label: "ATK",
+            value: `${entity.attack}${entity.damage_type ? ` ${entity.damage_type}` : ""}`
+          }) : null,
+          entity.heal ? e(Stat, { label: "Heal", value: entity.heal }) : null,
+          e(Stat, { label: "Armor", value: (_b = entity.armor) != null ? _b : 0 }),
+          e(Stat, { label: "Res", value: (_c = entity.resistance) != null ? _c : 0 }),
+          entity.evasion ? e(Stat, {
+            label: "Eva",
+            value: getPercent(entity.evasion / 100, 1)
+          }) : null,
+          entity.reflection ? e(Stat, {
+            label: "Refl",
+            value: getPercent(entity.reflection / 100, 1)
+          }) : null,
+          entity.speed != null ? e(Stat, { label: "Speed", value: entity.speed.toFixed(1) }) : null,
+          entity.frequency != null ? e(Stat, {
+            label: "Freq",
+            value: entity.frequency.toFixed(2)
+          }) : null
+        ),
+        compare ? e(CompareToWatched, { entity, watching }) : null,
+        entity.slots ? e(
+          "div",
+          {
+            style: {
+              borderTop: "1px solid #2a2a2a",
+              paddingTop: "8px"
+            }
+          },
+          e(
+            "div",
+            {
+              style: {
+                fontSize: "14px",
+                color: "#888",
+                marginBottom: "6px",
+                letterSpacing: "0.04em"
+              }
+            },
+            "GEAR"
+          ),
+          e(GearGrid, { entity })
+        ) : null
+      )
+    );
+  }
+
+  // src/ui/chrome/FrameDummy.ts
+  function FrameDummy(props) {
+    const name = props.sampleName || props.label;
+    const hpColor = props.hpColor || "#555";
+    return e(
+      "div",
+      {
+        className: "comm-unit comm-unit-dummy",
+        style: {
+          display: "flex",
+          width: "100%",
+          flexDirection: "column",
+          minWidth: 0,
+          gap: "6px",
+          opacity: 0.72
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            width: "100%",
+            flexDirection: "column",
+            minWidth: 0
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              background: "black",
+              position: "relative",
+              width: "100%",
+              minHeight: "30px",
+              boxSizing: "border-box"
+            }
+          },
+          e("div", {
+            style: {
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: "62%",
+              background: hpColor
+            }
+          }),
+          e(
+            "div",
+            {
+              style: {
+                padding: "5px 10px",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+                position: "relative",
+                fontSize: "21px",
+                fontWeight: "normal",
+                width: "100%",
+                boxSizing: "border-box",
+                lineHeight: "1.25",
+                color: "#ccc"
+              }
+            },
+            e(
+              "span",
+              {
+                style: {
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "10px",
+                  width: "100%",
+                  alignItems: "center"
+                }
+              },
+              e(
+                "span",
+                {
+                  style: {
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0
+                  }
+                },
+                `1 ${name}`
+              ),
+              e(
+                "span",
+                {
+                  style: {
+                    fontSize: "14px",
+                    opacity: 0.75,
+                    flexShrink: 0,
+                    color: "#aaa"
+                  }
+                },
+                props.label
+              )
+            )
+          )
+        ),
+        e(
+          "div",
+          {
+            style: {
+              background: "black",
+              width: "100%",
+              height: "5px",
+              boxSizing: "border-box"
+            }
+          },
+          e("div", {
+            style: {
+              background: "#2a3a6a",
+              height: "100%",
+              width: "40%"
+            }
+          })
+        )
+      )
+    );
+  }
+
+  // src/ui/frames/PlayerRow.ts
+  var UNIT_FRAME_STYLE = {
+    width: "min(360px, 45vw)",
+    minWidth: "280px",
+    // Extra clearance so buffs/debuffs don't kiss the observe chrome.
+    paddingBottom: "18px",
+    boxSizing: "border-box"
+  };
+  function PlayerFrame(props) {
+    const { observing, layoutEdit } = props;
+    if (observing) {
+      return e(ObservedUnit, {
+        key: `obs-${String(observing.id)}`,
+        entity: observing,
+        hpColor: classColors[observing.ctype || ""] || "#666",
+        fontSize: "21px",
+        onSelect: (id) => {
+          setXTarget(observing);
+          props.setSelectedEntity(id);
+        }
+      });
+    }
+    if (layoutEdit) {
+      return e(FrameDummy, {
+        label: "Player",
+        hpColor: "#5a4a6a"
+      });
+    }
+    return null;
+  }
+
+  // src/ui/frames/TargetFrame.ts
+  function targetTrailing(observing, target) {
+    const dps = getDps();
+    const hpPct3 = getPercent((target.hp || 0) / (target.max_hp || 1), 1);
+    const ttk = estimateTtk(target.hp, dps);
+    const dist = distance(observing, target);
+    const oor = outOfRange(observing, target);
+    const diff = difficultyBadge(target);
+    const parts = [hpPct3];
+    if (ttk != null) parts.push(`TTK ${formatTime(ttk)}`);
+    if (dist != null) parts.push(`${Math.round(dist)}`);
+    if (oor) parts.push("OOR");
+    if (diff) parts.push(diff.label);
+    return parts.join(" \xB7 ");
+  }
+  function threatOnTarget(entities, target, observingId) {
+    if (!entities) return { count: 0, youHaveAggro: false };
+    const byTarget = aggroByTarget(entities);
+    const onYou = observingId != null ? byTarget[observingId] || [] : [];
+    const youHaveAggro = !!observingId && target.type === "monster" && target.target != null && String(target.target) === String(observingId);
+    return { count: onYou.length, youHaveAggro };
+  }
+  function TargetFrame(props) {
+    const { observing, target, layoutEdit, entities } = props;
+    const obsId = observing && observing.id != null ? String(observing.id) : void 0;
+    if (target) {
+      const threat = threatOnTarget(entities, target, obsId);
+      const spark = threat.youHaveAggro || threat.count > 0 ? threat.count || 1 : 0;
+      return e(ObservedUnit, {
+        key: `tgt-${String(target.id)}`,
+        entity: target,
+        hpColor: classColors[target.ctype || ""] || "red",
+        fontSize: "21px",
+        trailing: targetTrailing(observing, target),
+        threatCount: spark,
+        onSelect: (id) => {
+          setXTarget(target);
+          props.setSelectedEntity(id);
+        }
+      });
+    }
+    if (layoutEdit) {
+      return e(FrameDummy, {
+        label: "Target",
+        sampleName: "Sample Target",
+        hpColor: "#6a3a3a"
+      });
+    }
+    return null;
+  }
+
+  // src/ui/frames/BossBarPanel.ts
+  function bossThreat(entity, observingId) {
+    if (!observingId || entity.type !== "monster") return 0;
+    if (entity.target != null && String(entity.target) === observingId) return 1;
+    return 0;
+  }
+  var STACK_STYLE = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    width: "100%"
+  };
+  function BossBarPanel(props) {
+    const bosses = activeBosses(props.entities);
+    const obsId = props.observing && props.observing.id != null ? String(props.observing.id) : void 0;
+    if (!bosses.length) {
+      if (!props.layoutEdit) return null;
+      return e(
+        "div",
+        { style: STACK_STYLE },
+        e(FrameDummy, {
+          label: "Boss",
+          sampleName: "Cooperative Boss",
+          hpColor: "#8a2a2a"
+        }),
+        e(FrameDummy, {
+          label: "Boss",
+          sampleName: "Crypt Boss",
+          hpColor: "#6a2a6a"
+        })
+      );
+    }
+    return e(
+      "div",
+      { style: STACK_STYLE },
+      ...bosses.map(
+        (boss) => e(ObservedUnit, {
+          key: `boss-${String(boss.id)}`,
+          entity: boss,
+          hpColor: "#c42a2a",
+          fontSize: "22px",
+          showMp: false,
+          showEffects: false,
+          trailing: getPercent((boss.hp || 0) / (boss.max_hp || 1), 1),
+          threatCount: bossThreat(boss, obsId),
           onSelect: (id) => {
-            setXTarget(target);
+            setXTarget(boss);
             props.setSelectedEntity(id);
           }
-        }) : void 0
+        })
       )
     );
   }
@@ -1759,18 +5636,20 @@ var EnhanceCommUI = (() => {
           margin: "4px",
           border: "2px double gray",
           background: "black",
-          gap: "2px",
-          maxHeight: "160px",
-          minWidth: "160px"
+          gap: "3px",
+          maxHeight: "200px",
+          minWidth: "200px",
+          fontSize: "15px"
         }
       },
       e(
         "div",
         {
           style: {
-            padding: "2px",
+            padding: "6px 8px",
             whiteSpace: "nowrap",
-            textShadow: "0 0 2px black"
+            fontSize: "16px",
+            textShadow: "none"
           }
         },
         "Threat"
@@ -1790,26 +5669,114 @@ var EnhanceCommUI = (() => {
           {
             key: tid,
             style: {
-              padding: "2px 4px",
+              padding: "5px 8px",
               display: "flex",
               justifyContent: "space-between",
-              gap: "8px",
-              fontSize: "12px",
+              gap: "10px",
+              fontSize: "15px",
+              textShadow: "none",
+              fontWeight: "normal",
               background: tid === props.observingId ? "rgba(80,0,0,0.5)" : void 0
             }
           },
           e("span", {}, name),
-          e("span", { style: { color: "#ccc" } }, `${mobs.length} (${summary})`)
+          e("span", { style: { color: "#ddd" } }, `${mobs.length} (${summary})`)
         );
       })
     );
   }
 
   // src/ui/frames/KillKpiPanel.ts
+  function partyLabel(key) {
+    return key.indexOf("solo:") === 0 ? key.slice(5) : key;
+  }
+  function killWord(n) {
+    return n === 1 ? "kill" : "kills";
+  }
+  var softText = {
+    textShadow: "none",
+    fontWeight: "normal"
+  };
   function KillKpiPanel() {
+    const React = getReact();
+    const [scope, setScope] = React.useState(
+      () => loadSettings().killScope
+    );
     const stats = getStats();
-    if (stats.total === 0) return null;
-    return e(
+    const setKillScope = (next) => {
+      saveSettings({ killScope: next });
+      setScope(next);
+    };
+    const selectStyle = {
+      fontSize: "16px",
+      padding: "6px 10px",
+      background: "#141414",
+      color: "#eee",
+      border: "1px solid #555",
+      maxWidth: "260px",
+      flex: "1 1 auto",
+      ...softText
+    };
+    const resetBtn = e(
+      "button",
+      {
+        type: "button",
+        onClick: () => resetKillSession(),
+        style: {
+          cursor: "pointer",
+          fontSize: "14px",
+          padding: "4px 12px",
+          border: "1px solid #555",
+          background: "#1a1a1a",
+          color: "#ccc",
+          ...softText
+        }
+      },
+      "Reset"
+    );
+    const header = (showReset) => e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "8px"
+        }
+      },
+      e("div", { style: { fontSize: "18px", ...softText } }, "Kills"),
+      showReset ? resetBtn : null
+    );
+    const scopeRow = e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }
+      },
+      e(
+        "span",
+        { style: { fontSize: "16px", color: "#bbb", ...softText } },
+        "Scope"
+      ),
+      e(
+        "select",
+        {
+          value: scope,
+          style: selectStyle,
+          onChange: (ev) => setKillScope(ev.target.value)
+        },
+        e(
+          "option",
+          { value: "watched" },
+          stats.trackingName ? `Watched \xB7 ${stats.trackingName}` : "Watched party"
+        ),
+        e("option", { value: "all" }, "All parties")
+      )
+    );
+    const shell = (children) => e(
       "div",
       {
         style: {
@@ -1817,83 +5784,1111 @@ var EnhanceCommUI = (() => {
           overflow: "auto",
           flexDirection: "column",
           margin: "4px",
-          border: "2px double gray",
-          background: "black",
-          gap: "2px",
-          maxHeight: "140px",
-          minWidth: "140px"
+          border: "2px solid #555",
+          background: "rgba(0,0,0,0.94)",
+          gap: "10px",
+          padding: "10px",
+          maxHeight: "280px",
+          minWidth: "240px",
+          fontSize: "16px",
+          color: "#eee",
+          ...softText
         }
       },
+      ...children
+    );
+    if (!stats.active && scope === "watched") {
+      return shell([
+        header(false),
+        scopeRow,
+        e(
+          "div",
+          { style: { fontSize: "15px", color: "#999", ...softText } },
+          "Select a character to track, or switch to all parties."
+        )
+      ]);
+    }
+    const elapsedSec = stats.sessionStartedAt ? (Date.now() - stats.sessionStartedAt) / 1e3 : 0;
+    const kpm = stats.killsPerMinute != null ? Math.round(stats.killsPerMinute) : null;
+    const kph = stats.killsPerHour != null ? Math.round(stats.killsPerHour) : null;
+    const kpd = stats.killsPerDay != null ? Math.round(stats.killsPerDay) : null;
+    const rateCell = (value, unit) => e(
+      "span",
+      {
+        style: {
+          display: "inline-flex",
+          gap: "2px",
+          alignItems: "baseline",
+          ...softText
+        }
+      },
+      e("span", { style: { color: "#eee" } }, value != null ? String(value) : "\u2014"),
+      e("span", { style: { color: "#888", fontSize: "14px" } }, `/${unit}`)
+    );
+    const listSection = (rows) => e(
+      "div",
+      {
+        style: {
+          borderTop: "1px solid #333",
+          paddingTop: "8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px"
+        }
+      },
+      ...rows
+    );
+    const listRow = (key, label, count) => e(
+      "div",
+      {
+        key,
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          gap: "12px",
+          fontSize: "15px",
+          padding: "4px 0",
+          ...softText
+        }
+      },
+      e("span", { style: { color: "#ddd" } }, label),
+      e("span", { style: { color: "#eee", minWidth: "2ch", textAlign: "right" } }, String(count))
+    );
+    return shell([
+      header(true),
+      scopeRow,
       e(
         "div",
         {
           style: {
-            padding: "2px",
-            whiteSpace: "nowrap",
-            textShadow: "0 0 2px black"
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px"
           }
         },
-        `Kills: ${stats.total}`
-      ),
-      ...stats.byMtype.slice(0, 12).map(
-        (row) => e(
+        e(
+          "div",
+          { style: { fontSize: "22px", lineHeight: "1.2", ...softText } },
+          `${stats.total} ${killWord(stats.total)}`
+        ),
+        e(
           "div",
           {
-            key: row.mtype,
             style: {
-              padding: "2px 4px",
               display: "flex",
-              justifyContent: "space-between",
-              fontSize: "12px"
+              flexWrap: "wrap",
+              gap: "10px 14px",
+              fontSize: "16px",
+              ...softText
             }
           },
-          e("span", {}, row.mtype),
-          e("span", {}, String(row.count))
+          ...kph != null ? [rateCell(kpm, "m"), rateCell(kph, "h"), rateCell(kpd, "d")] : [e("span", { style: { color: "#888" } }, "\u2014")]
+        ),
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              alignItems: "baseline",
+              gap: "6px",
+              fontSize: "15px",
+              color: "#aaa",
+              ...softText
+            }
+          },
+          e("span", { style: { color: "#888" } }, "Session"),
+          e(
+            "span",
+            {},
+            stats.sessionStartedAt ? formatTime(elapsedSec) : "\u2014"
+          )
         )
-      )
-    );
+      ),
+      scope === "all" && stats.byParty.length > 1 ? listSection(
+        stats.byParty.slice(0, 8).map(
+          (row) => listRow(row.party, partyLabel(row.party), row.count)
+        )
+      ) : null,
+      stats.byMtype.length ? listSection(
+        stats.byMtype.slice(0, 12).map((row) => listRow(row.mtype, row.mtype, row.count))
+      ) : null
+    ]);
   }
 
-  // src/ui/frames/CommUI.ts
-  function toggleButton(label, visible, onClick, last) {
+  // src/ui/chrome/MetricChart.ts
+  function MetricChart(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const width = props.width || 280;
+    const height = props.height || 100;
+    const series = props.series || [];
+    const emptyText = props.emptyText || "No samples yet";
+    React.useEffect(() => {
+      const canvas = ref.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + "px";
+      canvas.style.height = height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, 0, width, height);
+      let maxPoints = 0;
+      let maxVal = 0;
+      for (let s = 0; s < series.length; s++) {
+        const vals = series[s].values;
+        maxPoints = Math.max(maxPoints, vals.length);
+        for (let i = 0; i < vals.length; i++) {
+          maxVal = Math.max(maxVal, vals[i] || 0);
+        }
+      }
+      if (maxPoints < 2 || maxVal <= 0) {
+        ctx.fillStyle = "#888";
+        ctx.font = "13px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(emptyText, width / 2, height / 2);
+        return;
+      }
+      const padL = 6;
+      const padR = 6;
+      const padT = 8;
+      const padB = 16;
+      const plotW = width - padL - padR;
+      const plotH = height - padT - padB;
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.beginPath();
+      for (let g = 0; g < 3; g++) {
+        const y = padT + plotH * g / 2;
+        ctx.moveTo(padL, y);
+        ctx.lineTo(width - padR, y);
+      }
+      ctx.stroke();
+      for (let s = 0; s < series.length; s++) {
+        const vals = series[s].values;
+        if (vals.length < 2) continue;
+        ctx.strokeStyle = series[s].color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < vals.length; i++) {
+          const x = padL + plotW * i / Math.max(vals.length - 1, 1);
+          const y = padT + plotH - plotH * (vals[i] || 0) / maxVal;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle = "#ccc";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(Math.round(maxVal).toLocaleString(), padL, 12);
+    }, [series, width, height, emptyText]);
+    return e("canvas", {
+      ref,
+      style: {
+        display: "block",
+        width,
+        height,
+        border: "1px solid #333",
+        background: "#111"
+      }
+    });
+  }
+
+  // src/ui/frames/CombatMetricsPanel.ts
+  var PRIMARY_CHANNELS = ["dps", "base", "hps"];
+  var SECONDARY_CHANNELS = COMBAT_CHANNELS.filter(
+    (ch) => PRIMARY_CHANNELS.indexOf(ch) < 0
+  );
+  function fmt(n) {
+    return Math.round(n).toLocaleString();
+  }
+  function partyDisplay(key) {
+    return key.indexOf("solo:") === 0 ? key.slice(5) : key;
+  }
+  function isChannelActive(ch, view, channels, barChannel) {
+    return view === "bars" ? barChannel === ch : channels.indexOf(ch) >= 0;
+  }
+  function segBtn(label, active, onClick, first) {
     return e(
       "button",
       {
+        type: "button",
+        onClick,
         style: {
           cursor: "pointer",
-          padding: "2px 4px",
-          fontSize: "12px",
-          margin: last ? "0 10px 5px 0" : "0 0 5px 0"
-        },
-        onClick
+          fontSize: "13px",
+          lineHeight: "1.2",
+          padding: "3px 9px",
+          margin: 0,
+          border: "none",
+          borderLeft: first ? "none" : "1px solid #3a3a3a",
+          borderRadius: 0,
+          background: active ? "#2e2e2e" : "transparent",
+          color: active ? "#eee" : "#888",
+          textShadow: "none",
+          fontWeight: "normal",
+          outline: "none"
+        }
       },
-      `${label}: ${visible ? "HIDE" : "SHOW"}`
+      label
     );
   }
-  function CommUI(props) {
+  function channelChip(ch, active, onClick) {
+    const color = CHANNEL_COLORS[ch];
+    return e(
+      "button",
+      {
+        type: "button",
+        onClick,
+        title: CHANNEL_LABELS[ch],
+        style: {
+          cursor: "pointer",
+          fontSize: "12px",
+          padding: "1px 5px",
+          lineHeight: "1.2",
+          margin: 0,
+          border: active ? `1px solid ${color}` : "1px solid #2a2a2a",
+          background: active ? `${color}18` : "transparent",
+          color: active ? color : "#666",
+          textShadow: "none",
+          fontWeight: "normal"
+        }
+      },
+      CHANNEL_LABELS[ch]
+    );
+  }
+  function moreChip(expanded, hiddenActive, onClick) {
+    const label = expanded ? "less" : hiddenActive > 0 ? `+${hiddenActive}` : "more";
+    return e(
+      "button",
+      {
+        type: "button",
+        onClick,
+        title: expanded ? "Hide secondary channels" : "Show more channels",
+        style: {
+          cursor: "pointer",
+          fontSize: "11px",
+          padding: "1px 5px",
+          lineHeight: "1.2",
+          margin: 0,
+          border: "1px solid #333",
+          background: expanded ? "#1c1c1c" : "transparent",
+          color: "#888",
+          textShadow: "none",
+          fontWeight: "normal"
+        }
+      },
+      label
+    );
+  }
+  var cellPad = "2px 6px";
+  function thCell(content, opts) {
+    return e(
+      "th",
+      {
+        key: opts && opts.key,
+        style: {
+          textAlign: opts && opts.textAlign || "left",
+          padding: cellPad,
+          fontWeight: "normal",
+          textShadow: "none",
+          color: opts && opts.color
+        }
+      },
+      content
+    );
+  }
+  function tdCell(content, opts) {
+    return e(
+      "td",
+      {
+        key: opts && opts.key,
+        style: {
+          padding: cellPad,
+          fontWeight: "normal",
+          textShadow: "none",
+          textAlign: opts && opts.textAlign,
+          color: opts && opts.color,
+          maxWidth: opts && opts.maxWidth,
+          overflow: opts && opts.overflow,
+          textOverflow: opts && opts.textOverflow,
+          whiteSpace: opts && opts.whiteSpace,
+          fontVariantNumeric: opts && opts.fontVariantNumeric
+        }
+      },
+      content
+    );
+  }
+  function CombatMetricsPanel() {
+    var _a, _b;
     const React = getReact();
-    const snap = props.snap;
-    const [isVisiblePdps, setIsVisiblePdps] = React.useState(true);
-    const [isVisibleCoopV1, setIsVisibleCoopV1] = React.useState(true);
-    const [isVisibleCoopV2, setIsVisibleCoopV2] = React.useState(true);
-    const [isVisibleHitDps, setIsVisibleHitDps] = React.useState(true);
-    const [isVisibleThreat, setIsVisibleThreat] = React.useState(true);
-    const [isVisibleKills, setIsVisibleKills] = React.useState(true);
-    const [selectedEntity, setSelectedEntity] = React.useState(void 0);
-    React.useEffect(() => {
-      updateSeenMtypes(snap.entities);
-    }, [snap.entities]);
-    const pdpsRows = buildPdpsRows(snap.entities);
-    const coopV1Rows = buildCoopV1Rows(snap.entities);
-    const coopV2Rows = buildCoopV2Rows(snap.entities);
-    const hitDpsRows = buildHitDpsRows(snap.entities, snap.now);
+    const [settings, setSettings] = React.useState(() => loadSettings());
+    const [moreOpen, setMoreOpen] = React.useState(false);
+    const patch = (partial) => {
+      setSettings(saveSettings(partial));
+    };
+    const view = settings.combatView || "table";
+    const focus = settings.partyFocus || "watched";
+    const compact = !!settings.combatCompact;
+    const channels = compact ? ["dps", "hps"] : settings.combatChannels.length ? settings.combatChannels : ["dps"];
+    const barChannel = compact ? settings.barChannel === "hps" ? "hps" : "dps" : settings.barChannel || "dps";
+    const watchedId = getObservingId();
+    const watchedKey = getWatchedPartyKey();
+    const watching = ((_a = getObserving()) == null ? void 0 : _a.name) || ((_b = getObserving()) == null ? void 0 : _b.id) || "";
+    const partyKeys = listPartyKeys("all");
+    const resolved = resolvePartyFocus(focus, watchedKey || "");
+    const { scope, partyFilter, historyKey } = resolved;
+    const rows = getCombatRows(scope, partyFilter);
+    const totals = getPartyTotals(scope, partyFilter);
+    const barRows = buildCombatBarRows(scope, barChannel, partyFilter);
+    const history2 = getCombatHistory();
+    const started = getCombatSessionStartedAt();
+    const elapsed = started ? (Date.now() - started) / 1e3 : 0;
+    const series = channels.slice(0, 4).map((ch) => ({
+      label: CHANNEL_LABELS[ch],
+      color: CHANNEL_COLORS[ch],
+      values: history2.map((h) => {
+        if (focus === "all") {
+          let sum = 0;
+          const keys = Object.keys(h.parties);
+          for (let i = 0; i < keys.length; i++) {
+            sum += h.parties[keys[i]] && h.parties[keys[i]][ch] || 0;
+          }
+          return sum;
+        }
+        if (!historyKey) return 0;
+        const bucket = h.parties[historyKey];
+        return bucket && bucket[ch] || 0;
+      })
+    }));
+    const onChannelClick = (ch) => {
+      if (view === "bars") {
+        patch({ barChannel: ch });
+        return;
+      }
+      const next = channels.slice();
+      const idx = next.indexOf(ch);
+      if (idx >= 0) {
+        if (next.length <= 1) return;
+        next.splice(idx, 1);
+      } else {
+        next.push(ch);
+      }
+      patch({ combatChannels: next });
+    };
+    const visibleSecondary = SECONDARY_CHANNELS.filter(
+      (ch) => moreOpen || isChannelActive(ch, view, channels, barChannel)
+    );
+    const hiddenInactive = SECONDARY_CHANNELS.filter(
+      (ch) => !moreOpen && !isChannelActive(ch, view, channels, barChannel)
+    ).length;
+    const chipChannels = PRIMARY_CHANNELS.concat(visibleSecondary);
+    const selectStyle = {
+      fontSize: "13px",
+      lineHeight: "1.2",
+      padding: "2px 6px",
+      background: "#141414",
+      color: "#ddd",
+      border: "1px solid #444",
+      maxWidth: "180px",
+      minWidth: "0",
+      flex: "1 1 auto"
+    };
     return e(
       "div",
       {
         style: {
           display: "flex",
           flexDirection: "column",
-          height: "100%"
+          margin: "4px",
+          border: "2px solid #555",
+          background: "rgba(0,0,0,0.94)",
+          gap: "6px",
+          padding: "8px",
+          width: "420px",
+          maxHeight: "520px",
+          overflow: "auto",
+          fontSize: "14px",
+          color: "#eee",
+          textShadow: "none",
+          fontWeight: "normal"
+        }
+      },
+      // Header — title / elapsed+dps / Reset
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            minHeight: "22px"
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              fontSize: "16px",
+              color: "#eee",
+              textShadow: "none",
+              flex: "0 0 auto"
+            }
+          },
+          "Combat"
+        ),
+        e(
+          "div",
+          {
+            style: {
+              fontSize: "13px",
+              color: "#999",
+              textShadow: "none",
+              flex: "1 1 auto",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            }
+          },
+          started ? `${formatTime(elapsed)} \xB7 ${fmt(totals.dps)} dps` : "waiting\u2026"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: () => resetPartyCombat(),
+            style: {
+              cursor: "pointer",
+              fontSize: "12px",
+              lineHeight: "1.2",
+              padding: "2px 8px",
+              border: "1px solid #444",
+              background: "#161616",
+              color: "#aaa",
+              textShadow: "none",
+              fontWeight: "normal",
+              flex: "0 0 auto"
+            }
+          },
+          "Reset"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            title: compact ? "Compact on \u2014 DPS + HPS only" : "Compact off \u2014 show all channels",
+            onClick: () => patch({ combatCompact: !compact }),
+            style: {
+              cursor: "pointer",
+              fontSize: "12px",
+              lineHeight: "1.2",
+              padding: "2px 8px",
+              border: compact ? "1px solid #85c76b" : "1px solid #444",
+              background: compact ? "#1a2a1a" : "#161616",
+              color: compact ? "#85c76b" : "#aaa",
+              textShadow: "none",
+              fontWeight: "normal",
+              flex: "0 0 auto"
+            }
+          },
+          compact ? "Compact" : "Full"
+        )
+      ),
+      // Party + view tabs on one compact toolbar
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            flexWrap: "wrap"
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              flex: "1 1 140px",
+              minWidth: 0
+            }
+          },
+          e(
+            "span",
+            {
+              style: {
+                fontSize: "12px",
+                color: "#888",
+                textShadow: "none",
+                flex: "0 0 auto"
+              }
+            },
+            "Party"
+          ),
+          e(
+            "select",
+            {
+              value: focus,
+              style: selectStyle,
+              onChange: (ev) => {
+                patch({ partyFocus: ev.target.value });
+              }
+            },
+            e("option", { value: "watched" }, partyFocusLabel("watched", watching)),
+            e("option", { value: "all" }, "All parties"),
+            partyKeys.length ? e("option", { value: "__sep__", disabled: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500") : null,
+            ...partyKeys.map(
+              (key) => e("option", { key, value: key }, partyDisplay(key))
+            )
+          )
+        ),
+        e(
+          "div",
+          {
+            style: {
+              display: "inline-flex",
+              flex: "0 0 auto",
+              border: "1px solid #444",
+              background: "#111"
+            }
+          },
+          segBtn("Table", view === "table", () => patch({ combatView: "table" }), true),
+          segBtn("Bars", view === "bars", () => patch({ combatView: "bars" })),
+          segBtn("Graph", view === "graph", () => patch({ combatView: "graph" }))
+        )
+      ),
+      // Channel chips — hidden in compact (DPS+HPS forced)
+      compact ? null : e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "3px",
+            alignItems: "center"
+          }
+        },
+        e(
+          "span",
+          {
+            style: {
+              fontSize: "12px",
+              color: "#888",
+              marginRight: "2px",
+              textShadow: "none"
+            }
+          },
+          view === "bars" ? "Metric" : "Columns"
+        ),
+        ...chipChannels.map(
+          (ch) => channelChip(
+            ch,
+            isChannelActive(ch, view, channels, barChannel),
+            () => onChannelClick(ch)
+          )
+        ),
+        SECONDARY_CHANNELS.length ? moreChip(moreOpen, hiddenInactive, () => setMoreOpen(!moreOpen)) : null
+      ),
+      // Content
+      view === "graph" ? e(MetricChart, {
+        width: 400,
+        height: 140,
+        series,
+        emptyText: "Collecting samples\u2026"
+      }) : null,
+      view === "table" ? rows.length ? e(
+        "div",
+        { style: { overflowX: "auto" } },
+        e(
+          "table",
+          {
+            style: {
+              borderCollapse: "collapse",
+              width: "100%",
+              fontSize: "17px",
+              lineHeight: "1.25",
+              textShadow: "none",
+              fontWeight: "normal"
+            }
+          },
+          e(
+            "thead",
+            {},
+            e(
+              "tr",
+              {
+                style: {
+                  borderBottom: "1px solid #333",
+                  color: "#999",
+                  fontSize: "17px",
+                  fontWeight: "normal"
+                }
+              },
+              thCell("Name"),
+              ...channels.map(
+                (ch) => thCell(CHANNEL_LABELS[ch], {
+                  key: ch,
+                  textAlign: "right",
+                  color: CHANNEL_COLORS[ch]
+                })
+              )
+            )
+          ),
+          e(
+            "tbody",
+            {},
+            ...rows.map((row) => {
+              const isYou = watchedId != null && String(row.id) === String(watchedId);
+              return e(
+                "tr",
+                {
+                  key: row.id,
+                  style: {
+                    borderBottom: "1px solid #1a1a1a",
+                    background: isYou ? "rgba(225,55,88,0.16)" : void 0,
+                    boxShadow: isYou ? "inset 3px 0 0 #e13758" : void 0
+                  }
+                },
+                tdCell(row.name, {
+                  maxWidth: "130px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: isYou ? "#ffe0e8" : "#e8e8e8"
+                }),
+                ...channels.map(
+                  (ch) => tdCell(fmt(row.rates[ch] || 0), {
+                    key: ch,
+                    textAlign: "right",
+                    fontVariantNumeric: "tabular-nums",
+                    color: "#ddd"
+                  })
+                )
+              );
+            }),
+            e(
+              "tr",
+              {
+                key: "_total",
+                style: {
+                  background: "rgba(255,255,255,0.04)",
+                  borderTop: "1px solid #3a3a3a",
+                  color: "#cfcfcf",
+                  fontWeight: "normal",
+                  textShadow: "none"
+                }
+              },
+              tdCell("Total", { color: "#bbb" }),
+              ...channels.map(
+                (ch) => tdCell(fmt(totals[ch] || 0), {
+                  key: ch,
+                  textAlign: "right",
+                  fontVariantNumeric: "tabular-nums"
+                })
+              )
+            )
+          )
+        )
+      ) : e(
+        "div",
+        { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+        "No combat data yet for this focus."
+      ) : null,
+      view === "bars" ? barRows.length ? e(RankMeter, {
+        title: `${CHANNEL_LABELS[barChannel]} \xB7 ${partyFocusLabel(focus, watching)}`,
+        className: "PartyCombatBars",
+        rows: barRows,
+        embedded: true,
+        highlightId: watchedId
+      }) : e(
+        "div",
+        { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+        "No combat data yet for this focus."
+      ) : null
+    );
+  }
+
+  // src/host/codemirror.ts
+  function getHostCodeMirror() {
+    const CM = window.CodeMirror;
+    return typeof CM === "function" ? CM : null;
+  }
+  function mountCommandCodeMirror(host, opts) {
+    const CodeMirror = getHostCodeMirror();
+    if (!CodeMirror) return null;
+    while (host.firstChild) {
+      host.removeChild(host.firstChild);
+    }
+    const cm = CodeMirror(host, {
+      value: opts.value || "",
+      mode: "javascript",
+      indentUnit: 4,
+      indentWithTabs: true,
+      lineWrapping: true,
+      lineNumbers: true,
+      gutters: ["CodeMirror-linenumbers", "lspacer"],
+      theme: "pixel",
+      cursorHeight: 0.75,
+      extraKeys: {
+        "Ctrl-Enter": () => {
+          opts.onCtrlEnter();
+        },
+        "Cmd-Enter": () => {
+          opts.onCtrlEnter();
+        }
+      }
+    });
+    const wrap = cm.getWrapperElement();
+    wrap.style.border = "1px solid #555";
+    wrap.style.fontSize = "16px";
+    wrap.style.lineHeight = "1.4";
+    wrap.style.boxSizing = "border-box";
+    wrap.style.width = "100%";
+    cm.setSize("100%", "220px");
+    cm.on("change", () => {
+      opts.onChange(cm.getValue());
+    });
+    return cm;
+  }
+  function disposeCodeMirror(host) {
+    if (!host) return;
+    while (host.firstChild) {
+      host.removeChild(host.firstChild);
+    }
+  }
+
+  // src/ui/frames/CommandPanel.ts
+  function btnStyle(opts) {
+    const accent = (opts == null ? void 0 : opts.accent) === true;
+    const danger = (opts == null ? void 0 : opts.danger) === true;
+    return {
+      cursor: "pointer",
+      fontSize: "15px",
+      padding: "5px 11px",
+      border: danger ? "1px solid #844" : accent ? "1px solid #a86" : "1px solid #555",
+      background: danger ? "#2a1515" : accent ? "#2a2410" : "#1a1a1a",
+      color: danger ? "#eaa" : accent ? "#ffe08a" : "#ccc",
+      textShadow: "none",
+      fontWeight: "normal"
+    };
+  }
+  function newId() {
+    return `snip-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6)}`;
+  }
+  function CommandPanel(props) {
+    const React = getReact();
+    const seedDraft = props.seedDraft;
+    const openSeq = props.openSeq || 0;
+    const [draft, setDraft] = React.useState(
+      () => loadSettings().commandDraft || ""
+    );
+    const [snippets, setSnippets] = React.useState(
+      () => loadSettings().commandSnippets.slice()
+    );
+    const [newName, setNewName] = React.useState("");
+    const [status, setStatus] = React.useState("");
+    const [selectedId, setSelectedId] = React.useState(
+      null
+    );
+    const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
+    const editorHostRef = React.useRef(null);
+    const textareaRef = React.useRef(null);
+    const cmRef = React.useRef(null);
+    const skipCmSyncRef = React.useRef(false);
+    const draftRef = React.useRef(draft);
+    const persistDraftRef = React.useRef((value) => {
+      setDraft(value);
+      saveSettings({ commandDraft: value });
+    });
+    const runCodeRef = React.useRef((_code) => {
+    });
+    draftRef.current = draft;
+    const persistDraft = (value) => {
+      setDraft(value);
+      saveSettings({ commandDraft: value });
+    };
+    persistDraftRef.current = persistDraft;
+    const persistSnippets = (next) => {
+      setSnippets(next);
+      saveSettings({ commandSnippets: next });
+    };
+    const runCode = (code) => {
+      const ok = emitObserverCommand(code);
+      if (ok) {
+        setStatus("Sent to observed character");
+      } else {
+        setStatus("No socket or empty command");
+      }
+    };
+    runCodeRef.current = runCode;
+    const readEditorCode = () => {
+      const cm = cmRef.current;
+      if (cm) return cm.getValue();
+      const el = textareaRef.current;
+      if (el) return el.value;
+      return draftRef.current;
+    };
+    const onRun = () => {
+      runCode(readEditorCode());
+    };
+    React.useEffect(() => {
+      if (!cmAvailable) return;
+      const host = editorHostRef.current;
+      if (!host) return;
+      const cm = mountCommandCodeMirror(host, {
+        value: draftRef.current,
+        onChange: (value) => {
+          skipCmSyncRef.current = true;
+          persistDraftRef.current(value);
+        },
+        onCtrlEnter: () => {
+          runCodeRef.current(readEditorCode());
+        }
+      });
+      cmRef.current = cm;
+      if (cm) {
+        try {
+          cm.focus();
+          cm.refresh();
+        } catch (e2) {
+        }
+      }
+      return () => {
+        disposeCodeMirror(host);
+        cmRef.current = null;
+      };
+    }, [cmAvailable]);
+    React.useEffect(() => {
+      if (typeof seedDraft === "string") {
+        persistDraft(seedDraft);
+      }
+      const cm = cmRef.current;
+      if (cm) {
+        try {
+          if (typeof seedDraft === "string" && cm.getValue() !== seedDraft) {
+            skipCmSyncRef.current = true;
+            cm.setValue(seedDraft);
+          }
+          cm.focus();
+          cm.refresh();
+        } catch (e2) {
+        }
+        return;
+      }
+      const el = textareaRef.current;
+      if (el && typeof el.focus === "function") {
+        try {
+          el.focus();
+        } catch (e2) {
+        }
+      }
+    }, [openSeq, seedDraft]);
+    React.useEffect(() => {
+      const cm = cmRef.current;
+      if (!cm) return;
+      if (skipCmSyncRef.current) {
+        skipCmSyncRef.current = false;
+        if (cm.getValue() === draft) return;
+      }
+      if (cm.getValue() !== draft) {
+        skipCmSyncRef.current = true;
+        cm.setValue(draft);
+      }
+    }, [draft]);
+    const onSaveSnippet = () => {
+      const name = String(newName || "").trim() || "Snippet";
+      const code = String(readEditorCode() || "");
+      if (!code.trim()) {
+        setStatus("Write a command before saving");
+        return;
+      }
+      if (code !== draft) persistDraft(code);
+      const next = snippets.slice();
+      next.push({ id: newId(), name, code });
+      persistSnippets(next);
+      setNewName("");
+      setStatus(`Saved \u201C${name}\u201D`);
+    };
+    const onDelete = (id) => {
+      const next = [];
+      for (let i = 0; i < snippets.length; i++) {
+        if (snippets[i].id !== id) next.push(snippets[i]);
+      }
+      persistSnippets(next);
+      if (selectedId === id) setSelectedId(null);
+      setStatus("Snippet removed");
+    };
+    const onPick = (snip) => {
+      setSelectedId(snip.id);
+      const cm = cmRef.current;
+      if (cm && cm.getValue() !== snip.code) {
+        skipCmSyncRef.current = true;
+        try {
+          cm.setValue(snip.code);
+        } catch (e2) {
+        }
+      }
+      persistDraft(snip.code);
+    };
+    const onKeyDown = (ev) => {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
+        ev.preventDefault();
+        onRun();
+      }
+    };
+    const inputStyle = {
+      fontSize: "16px",
+      padding: "6px 9px",
+      background: "#141414",
+      color: "#eee",
+      border: "1px solid #555",
+      boxSizing: "border-box",
+      textShadow: "none",
+      fontWeight: "normal"
+    };
+    const snippetRows = [];
+    for (let i = 0; i < snippets.length; i++) {
+      const snip = snippets[i];
+      const active = selectedId === snip.id;
+      const preview = snip.code.replace(/\s+/g, " ").trim();
+      snippetRows.push(
+        e(
+          "div",
+          {
+            key: snip.id,
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "5px 7px",
+              border: active ? "1px solid #a86" : "1px solid #3a3a3a",
+              background: active ? "rgba(60,50,20,0.55)" : "rgba(18,18,18,0.9)"
+            }
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: () => onPick(snip),
+              title: snip.code,
+              style: {
+                flex: 1,
+                minWidth: 0,
+                textAlign: "left",
+                cursor: "pointer",
+                border: "none",
+                background: "transparent",
+                color: "#eee",
+                padding: 0,
+                fontSize: "16px",
+                lineHeight: "1.3",
+                textShadow: "none",
+                fontWeight: "normal"
+              }
+            },
+            e(
+              "div",
+              {
+                style: {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }
+              },
+              snip.name
+            ),
+            e(
+              "div",
+              {
+                style: {
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "#999",
+                  fontSize: "14px",
+                  marginTop: "2px"
+                }
+              },
+              preview || "(empty)"
+            )
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              title: "Run snippet",
+              onClick: () => {
+                onPick(snip);
+                runCode(snip.code);
+              },
+              style: btnStyle({ accent: true })
+            },
+            "Run"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              title: "Delete snippet",
+              onClick: () => onDelete(snip.id),
+              style: btnStyle({ danger: true })
+            },
+            "\xD7"
+          )
+        )
+      );
+    }
+    const editor = cmAvailable ? e("div", {
+      ref: editorHostRef,
+      className: "CommandPanel-editor",
+      style: {
+        width: "100%",
+        minHeight: "220px"
+      }
+    }) : e("textarea", {
+      ref: textareaRef,
+      value: draft,
+      rows: 10,
+      spellCheck: false,
+      onChange: (ev) => persistDraft(ev.target.value),
+      onKeyDown,
+      placeholder: "loot()\n// or any CODE for the watched character",
+      style: Object.assign({}, inputStyle, {
+        width: "100%",
+        resize: "vertical",
+        minHeight: "180px",
+        fontFamily: "Consolas, Monaco, monospace",
+        lineHeight: "1.4"
+      })
+    });
+    return e(
+      "div",
+      {
+        className: "CommandPanel",
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          margin: "4px",
+          border: "2px solid #555",
+          background: "rgba(0,0,0,0.88)",
+          gap: "10px",
+          padding: "12px",
+          width: "min(560px, 94vw)",
+          maxHeight: "78vh",
+          overflow: "auto",
+          fontSize: "16px",
+          color: "#eee",
+          textShadow: "none",
+          fontWeight: "normal"
         }
       },
       e(
@@ -1902,17 +6897,636 @@ var EnhanceCommUI = (() => {
           style: {
             display: "flex",
             justifyContent: "space-between",
-            flexGrow: 1
+            alignItems: "baseline",
+            gap: "8px"
+          }
+        },
+        e("div", { style: { fontSize: "20px", color: "#ffe08a" } }, "Command"),
+        e(
+          "div",
+          { style: { fontSize: "14px", color: "#aaa" } },
+          "observer \u2192 code_eval \xB7 Ctrl+Enter"
+        )
+      ),
+      editor,
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            gap: "8px",
+            flexWrap: "wrap",
+            alignItems: "center"
           }
         },
         e(
-          "div",
-          { style: { width: "376px" } },
-          e(Players, {
-            entities: snap.entities,
-            setSelectedEntity
-          })
+          "button",
+          {
+            type: "button",
+            onClick: onRun,
+            style: btnStyle({ accent: true })
+          },
+          "Run"
         ),
+        e(
+          "input",
+          {
+            type: "text",
+            value: newName,
+            placeholder: "Snippet name",
+            onChange: (ev) => setNewName(ev.target.value),
+            style: Object.assign({}, inputStyle, {
+              flex: "1 1 140px",
+              minWidth: "120px"
+            })
+          }
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: onSaveSnippet,
+            style: btnStyle()
+          },
+          "Save snippet"
+        )
+      ),
+      status ? e(
+        "div",
+        { style: { fontSize: "14px", color: "#9a9" } },
+        status
+      ) : null,
+      e(
+        "div",
+        {
+          style: {
+            fontSize: "16px",
+            color: "#ccc",
+            borderTop: "1px solid #333",
+            paddingTop: "8px"
+          }
+        },
+        "Snippets"
+      ),
+      snippetRows.length ? e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "5px",
+            minHeight: "120px"
+          }
+        },
+        ...snippetRows
+      ) : e(
+        "div",
+        { style: { fontSize: "15px", color: "#777" } },
+        "No snippets yet \u2014 write a command and Save snippet."
+      )
+    );
+  }
+
+  // src/ui/frames/BagPanel.ts
+  var HOST_ID2 = "bottomleftcorner";
+  var BAG_SLOT_BOX = 50;
+  var BAG_SLOT_MARGIN = 2;
+  var BAG_COLS = 7;
+  var BAG_ROWS = 6;
+  function BagDummy() {
+    const rows = [];
+    for (let r = 0; r < BAG_ROWS; r++) {
+      const cells = [];
+      for (let c = 0; c < BAG_COLS; c++) {
+        cells.push(
+          e("div", {
+            key: `b${r}-${c}`,
+            style: {
+              width: BAG_SLOT_BOX,
+              height: BAG_SLOT_BOX,
+              background: "#000",
+              border: "2px solid #444",
+              boxSizing: "border-box",
+              margin: BAG_SLOT_MARGIN
+            }
+          })
+        );
+      }
+      rows.push(
+        e(
+          "div",
+          {
+            key: `br${r}`,
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              lineHeight: 0
+            }
+          },
+          ...cells
+        )
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "comm-bag-dummy",
+        style: {
+          width: BAG_FRAME_WIDTH,
+          height: BAG_FRAME_HEIGHT,
+          minWidth: BAG_FRAME_WIDTH,
+          minHeight: BAG_FRAME_HEIGHT,
+          boxSizing: "border-box",
+          background: "black",
+          border: "5px solid gray",
+          padding: "2px",
+          opacity: 0.78,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            padding: "4px",
+            fontSize: "15px",
+            color: "gold",
+            flexShrink: 0
+          }
+        },
+        "GOLD: \u2014"
+      ),
+      e("div", {
+        style: {
+          borderBottom: "5px solid gray",
+          marginBottom: "2px",
+          marginLeft: "-5px",
+          marginRight: "-5px",
+          flexShrink: 0
+        }
+      }),
+      e(
+        "div",
+        {
+          style: {
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-start"
+          }
+        },
+        ...rows
+      )
+    );
+  }
+  function BagPanel(props) {
+    const React = getReact();
+    const mountRef = React.useRef(null);
+    const [open, setOpen] = React.useState(() => isInventoryOpen());
+    const layoutEdit = !!props.layoutEdit;
+    const showDummy = layoutEdit && !open;
+    React.useEffect(() => {
+      attachInventoryToMount(mountRef.current);
+      const unsub3 = subscribeInventory((next) => setOpen(next));
+      return () => {
+        unsub3();
+        const host = document.getElementById(HOST_ID2);
+        if (host) document.body.appendChild(host);
+      };
+    }, []);
+    React.useLayoutEffect(() => {
+      attachInventoryToMount(mountRef.current);
+    });
+    return e(
+      "div",
+      {
+        className: "comm-bag-panel",
+        style: {
+          pointerEvents: "auto",
+          width: showDummy ? BAG_FRAME_WIDTH : void 0,
+          minWidth: showDummy ? BAG_FRAME_WIDTH : open ? BAG_FRAME_WIDTH : "120px",
+          minHeight: showDummy ? BAG_FRAME_HEIGHT : open ? void 0 : "8px",
+          height: showDummy ? BAG_FRAME_HEIGHT : void 0,
+          boxSizing: "border-box"
+        }
+      },
+      showDummy ? e(BagDummy) : null,
+      e("div", {
+        ref: mountRef,
+        className: "comm-bag-mount",
+        id: "comm-bag-mount",
+        style: {
+          // Keep mount in DOM for reparenting; hide while silhouette shows.
+          display: showDummy ? "none" : "block",
+          pointerEvents: "auto"
+        }
+      })
+    );
+  }
+
+  // src/ui/hooks/usePanelLayoutState.ts
+  function isClosable(id) {
+    return CLOSABLE_PANEL_IDS.indexOf(id) >= 0;
+  }
+  function usePanelLayoutState() {
+    const React = getReact();
+    const settings0 = getSettings();
+    const [panelVisible, setPanelVisible] = React.useState(
+      () => mergePanelVisible(settings0.panelVisible)
+    );
+    const [panelOpacity, setPanelOpacity] = React.useState(
+      () => mergePanelOpacity(settings0.panelOpacity)
+    );
+    const [opacityEdit, setOpacityEdit] = React.useState(false);
+    const [layoutEdit, setLayoutEdit] = React.useState(false);
+    const [layout, setLayout] = React.useState(
+      () => mergeLayout(settings0.panelLayout)
+    );
+    const onMove = (id, pos) => {
+      setLayout((prev) => {
+        const next = { ...prev, [id]: pos };
+        return next;
+      });
+      savePanelPos(id, pos);
+      if (id === "bag") applyBagLayoutPos(pos);
+    };
+    const resetLayout = () => {
+      const settings = resetPanelLayout();
+      const next = mergeLayout(settings.panelLayout);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
+    const setVisible = (id, visible2) => {
+      if (!isClosable(id)) return;
+      setPanelVisible((prev) => {
+        const next = { ...prev, [id]: visible2 };
+        return next;
+      });
+      savePanelVisible(id, visible2);
+      if (id === "bag" && !visible2 && isInventoryOpen()) {
+        openInventory();
+      }
+    };
+    const setOpacity = (id, value) => {
+      setPanelOpacity((prev) => {
+        const next = { ...prev, [id]: value };
+        saveSettings({ panelOpacity: { [id]: value } });
+        return next;
+      });
+    };
+    const visible = (id) => panelVisible[id] !== false;
+    const opacityFor = (id) => {
+      const v = panelOpacity[id];
+      if (typeof v === "number") return v;
+      return panelOpacityOf(getSettings(), id);
+    };
+    return {
+      panelVisible,
+      setPanelVisible,
+      panelOpacity,
+      opacityEdit,
+      setOpacityEdit,
+      layoutEdit,
+      setLayoutEdit,
+      layout,
+      onMove,
+      resetLayout,
+      setVisible,
+      setOpacity,
+      visible,
+      opacityFor
+    };
+  }
+
+  // src/ui/hooks/useBagBridge.ts
+  function useBagBridge(setPanelVisible) {
+    const React = getReact();
+    const [bagOpen, setBagOpen] = React.useState(() => isInventoryOpen());
+    React.useEffect(() => {
+      return subscribeInventory((open) => {
+        setBagOpen(open);
+        saveSettings({ bagOpenPreferred: open });
+        if (open) {
+          setPanelVisible((prev) => {
+            if (prev.bag !== false) return prev;
+            savePanelVisible("bag", true);
+            return { ...prev, bag: true };
+          });
+        }
+      });
+    }, [setPanelVisible]);
+    return { bagOpen };
+  }
+
+  // src/ui/hooks/useSelectionFromXTarget.ts
+  function useSelectionFromXTarget(snap) {
+    const React = getReact();
+    const [selectedEntity, setSelectedEntity] = React.useState(
+      void 0
+    );
+    const lastXTargetId = React.useRef(void 0);
+    React.useEffect(() => {
+      const xt = window.xtarget;
+      const id = xt && xt.id != null ? String(xt.id) : void 0;
+      if (id && id !== lastXTargetId.current) {
+        lastXTargetId.current = id;
+        setSelectedEntity(id);
+      } else if (!id && lastXTargetId.current) {
+        lastXTargetId.current = void 0;
+      }
+    }, [snap.now, snap.entities]);
+    const closePaperdoll = () => {
+      setSelectedEntity(void 0);
+      lastXTargetId.current = void 0;
+      setXTarget(null);
+    };
+    return { selectedEntity, setSelectedEntity, closePaperdoll };
+  }
+
+  // src/ui/frames/comm/LayoutEditChrome.ts
+  function LayoutEditChrome(props) {
+    return e(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          left: "50%",
+          top: "8px",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+          pointerEvents: "auto",
+          display: "flex",
+          gap: "8px",
+          alignItems: "center",
+          padding: "6px 12px",
+          background: "rgba(30,28,10,0.95)",
+          border: "1px solid #aa8",
+          color: "#ffe08a",
+          fontSize: "14px"
+        }
+      },
+      "Layout edit \u2014 drag snaps to edges \xB7 Ctrl+Shift+L \xB7 Show restores",
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: props.onReset,
+          style: {
+            cursor: "pointer",
+            fontSize: "13px",
+            padding: "3px 10px",
+            border: "1px solid #886",
+            background: "#222",
+            color: "#eee"
+          }
+        },
+        "Reset positions"
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: props.onDone,
+          style: {
+            cursor: "pointer",
+            fontSize: "13px",
+            padding: "3px 10px",
+            border: "1px solid #886",
+            background: "#333",
+            color: "#ffe08a"
+          }
+        },
+        "Done"
+      )
+    );
+  }
+
+  // src/ui/frames/comm/OpacityEditor.ts
+  function OpacityEditor(props) {
+    return e(
+      "div",
+      {
+        style: {
+          position: "absolute",
+          right: "12px",
+          bottom: "72px",
+          zIndex: 55,
+          pointerEvents: "auto",
+          width: "220px",
+          maxHeight: "50vh",
+          overflow: "auto",
+          padding: "8px 10px",
+          background: "rgba(16,16,16,0.96)",
+          border: "1px solid #555",
+          color: "#ddd",
+          fontSize: "13px"
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: "8px",
+            color: "#ccc"
+          }
+        },
+        "Panel opacity",
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: props.onClose,
+            style: {
+              cursor: "pointer",
+              border: "1px solid #555",
+              background: "#222",
+              color: "#ddd",
+              fontSize: "12px",
+              padding: "1px 6px"
+            }
+          },
+          "\xD7"
+        )
+      ),
+      ...props.panelIds.map(
+        (id) => e(
+          "label",
+          {
+            key: id,
+            style: {
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
+              marginBottom: "6px"
+            }
+          },
+          e(
+            "span",
+            { style: { color: "#999" } },
+            `${PANEL_LABELS[id]} \xB7 ${Math.round(props.opacityFor(id) * 100)}%`
+          ),
+          e("input", {
+            type: "range",
+            min: 25,
+            max: 100,
+            step: 5,
+            value: Math.round(props.opacityFor(id) * 100),
+            onChange: (ev) => {
+              const pct = Number(ev.target.value);
+              props.onChange(id, pct / 100);
+            }
+          })
+        )
+      )
+    );
+  }
+
+  // src/ui/frames/CommUI.ts
+  var OPACITY_PANEL_IDS = [
+    "bossBar",
+    "combat",
+    "kills",
+    "threat",
+    "pdps",
+    "hitDps",
+    "coopV1",
+    "coopV2",
+    "command",
+    "bag",
+    "paperdoll",
+    "playerFrame",
+    "targetFrame"
+  ];
+  function CommUI(props) {
+    const React = getReact();
+    const snap = props.snap;
+    const layoutState = usePanelLayoutState();
+    const {
+      setPanelVisible,
+      opacityEdit,
+      setOpacityEdit,
+      layoutEdit,
+      setLayoutEdit,
+      layout,
+      onMove,
+      resetLayout,
+      setVisible,
+      setOpacity,
+      visible,
+      opacityFor
+    } = layoutState;
+    const { bagOpen } = useBagBridge(setPanelVisible);
+    const { selectedEntity, setSelectedEntity, closePaperdoll } = useSelectionFromXTarget(snap);
+    const [commandSeed, setCommandSeed] = React.useState(
+      null
+    );
+    const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+    React.useEffect(() => {
+      updateKillContext(snap.entities);
+      updateCombatContext(snap.entities);
+    }, [snap.entities]);
+    React.useEffect(() => {
+      updateCommKeyboardHandlers({
+        clearPaperdoll: () => {
+          if (!selectedEntity) return false;
+          closePaperdoll();
+          return true;
+        },
+        toggleLayoutEdit: () => setLayoutEdit((v) => !v)
+      });
+      return () => updateCommKeyboardHandlers({});
+    }, [selectedEntity, closePaperdoll, setLayoutEdit]);
+    React.useEffect(() => {
+      return subscribeCommanderOpen((payload) => {
+        if (typeof payload.draft === "string") {
+          setCommandSeed(payload.draft);
+        } else {
+          setCommandSeed(null);
+        }
+        setCommandOpenSeq((n) => n + 1);
+        setVisible("command", true);
+      });
+    }, [setVisible]);
+    const pdpsRows = buildPdpsRows(snap.entities);
+    const coopV1Rows = buildCoopV1Rows(snap.entities);
+    const coopV2Rows = buildCoopV2Rows(snap.entities);
+    const hitDpsRows = buildHitDpsRows(snap.entities, snap.now);
+    const hasEnemies = aggroedMonsters(snap.entities).length > 0;
+    const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
+    const hasBosses = activeBosses(snap.entities).length > 0;
+    const panel = (id, child, opts) => {
+      const isClosablePanel = (opts == null ? void 0 : opts.closable) === true;
+      const isHidden = isClosablePanel && !visible(id);
+      if (isHidden && !layoutEdit) return null;
+      if ((opts == null ? void 0 : opts.empty) && !layoutEdit) return null;
+      return e(
+        PositionedPanel,
+        {
+          id,
+          pos: layout[id],
+          editing: layoutEdit,
+          onMove,
+          style: opts == null ? void 0 : opts.style,
+          hidden: isHidden,
+          hiddenBodyStyle: opts == null ? void 0 : opts.hiddenBodyStyle,
+          opacity: opacityFor(id),
+          onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
+          onShow: isClosablePanel ? () => setVisible(id, true) : void 0
+        },
+        child
+      );
+    };
+    return e(
+      "div",
+      {
+        style: {
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          overflow: "hidden"
+        }
+      },
+      layoutEdit ? e(LayoutEditChrome, {
+        onReset: resetLayout,
+        onDone: () => setLayoutEdit(false)
+      }) : null,
+      opacityEdit ? e(OpacityEditor, {
+        panelIds: OPACITY_PANEL_IDS,
+        opacityFor,
+        onChange: setOpacity,
+        onClose: () => setOpacityEdit(false)
+      }) : null,
+      panel(
+        "players",
+        e(Players, {
+          entities: snap.entities,
+          setSelectedEntity,
+          selectedEntity,
+          observingId: snap.observingId,
+          observing: snap.observing
+        }),
+        { style: { width: "auto", maxWidth: "min(560px, 78vw)" } }
+      ),
+      panel(
+        "enemies",
+        e(Enemies, {
+          entities: snap.entities,
+          setSelectedEntity,
+          selectedEntity
+        }),
+        {
+          style: { width: "auto", maxWidth: "min(420px, 78vw)", textAlign: "right" },
+          empty: !hasEnemies
+        }
+      ),
+      panel(
+        "topCenter",
         e(
           "div",
           {
@@ -1920,9 +7534,7 @@ var EnhanceCommUI = (() => {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "4px",
-              flex: 1,
-              padding: "4px 16px"
+              gap: "4px"
             }
           },
           e(ServerInfo, {
@@ -1936,148 +7548,172 @@ var EnhanceCommUI = (() => {
             entities: snap.entities,
             setSelectedEntity
           })
-        ),
-        e(
-          "div",
-          {
-            style: {
-              width: "calc(376px - 134px)",
-              textAlign: "right",
-              paddingRight: "134px"
-            }
-          },
-          e(Enemies, {
-            entities: snap.entities,
-            setSelectedEntity
-          })
         )
       ),
-      e(
-        "div",
+      panel(
+        "bossBar",
+        e(BossBarPanel, {
+          entities: snap.entities,
+          observing: snap.observing,
+          setSelectedEntity,
+          layoutEdit
+        }),
         {
-          style: {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            flexGrow: 1
-          }
-        },
-        e(
-          "div",
-          {
-            style: {
-              width: "376px",
-              paddingBottom: "28px"
-            }
-          },
-          e(EntityInfo, {
-            entities: snap.entities,
-            selectedEntity
-          }),
-          isVisibleKills ? e(KillKpiPanel) : null
-        ),
-        e(
-          "div",
-          {
-            style: {
-              flex: "1 1 0%",
-              padding: "4px 16px 168px"
-            }
-          },
-          e(PlayerRow, {
-            observing: snap.observing,
-            target: snap.target,
-            setSelectedEntity
-          })
-        ),
-        isVisibleThreat ? e(
-          "div",
-          { style: { width: "200px", paddingBottom: "12px" } },
-          e(ThreatTable, {
-            entities: snap.entities,
-            observingId: snap.observingId
-          })
-        ) : null,
-        isVisiblePdps ? e(
-          "div",
-          { style: { width: "200px", paddingBottom: "12px" } },
-          e(RankMeter, {
-            title: "PDPS",
-            className: "PdpsMeter",
-            rows: pdpsRows
-          })
-        ) : null,
-        isVisibleHitDps ? e(
-          "div",
-          { style: { width: "200px", paddingBottom: "12px" } },
-          e(RankMeter, {
-            title: "Hit DPS",
-            className: "HitDpsMeter",
-            rows: hitDpsRows
-          })
-        ) : null,
-        isVisibleCoopV1 ? e(
-          "div",
-          { style: { width: "200px", paddingBottom: "12px" } },
-          e(RankMeter, {
-            title: "s.coop v1",
-            rows: coopV1Rows
-          })
-        ) : null,
-        isVisibleCoopV2 ? e(
-          "div",
-          { style: { width: "200px", paddingBottom: "12px" } },
-          e(RankMeter, {
-            title: "s.coop v2",
-            className: "CoopContributionMeterV2",
-            rows: coopV2Rows
-          })
-        ) : null
+          closable: true,
+          style: BOSS_BAR_PANEL_STYLE,
+          empty: !hasBosses
+        }
       ),
-      e(
-        "div",
+      selectedEntity || layoutEdit ? panel(
+        "paperdoll",
+        e(EntityInfo, {
+          entities: snap.entities,
+          selectedEntity,
+          onClose: closePaperdoll,
+          layoutEdit,
+          observing: snap.observing
+        }),
+        { style: PAPERDOLL_PANEL_STYLE }
+      ) : null,
+      panel("kills", e(KillKpiPanel), { closable: true }),
+      panel("combat", e(CombatMetricsPanel), { closable: true }),
+      panel(
+        "command",
+        e(CommandPanel, {
+          seedDraft: commandSeed,
+          openSeq: commandOpenSeq
+        }),
+        { closable: true }
+      ),
+      bagOpen || layoutEdit ? panel(
+        "bag",
+        e(BagPanel, { layoutEdit }),
         {
-          style: {
-            height: "30px",
-            flexShrink: 0,
-            flexGrow: 0,
-            width: "100%",
-            flexDirection: "row",
-            justifyContent: "flex-end",
+          closable: true,
+          style: layoutEdit ? BAG_PANEL_STYLE : void 0,
+          hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
             display: "flex",
-            gap: "8px"
-          }
-        },
-        toggleButton(
-          "Pdps",
-          isVisiblePdps,
-          () => setIsVisiblePdps(!isVisiblePdps)
-        ),
-        toggleButton(
-          "Hit DPS",
-          isVisibleHitDps,
-          () => setIsVisibleHitDps(!isVisibleHitDps)
-        ),
-        toggleButton(
-          "Threat",
-          isVisibleThreat,
-          () => setIsVisibleThreat(!isVisibleThreat)
-        ),
-        toggleButton(
-          "Kills",
-          isVisibleKills,
-          () => setIsVisibleKills(!isVisibleKills)
-        ),
-        toggleButton(
-          "Coop V1",
-          isVisibleCoopV1,
-          () => setIsVisibleCoopV1(!isVisibleCoopV1)
-        ),
-        toggleButton(
-          "Coop V2",
-          isVisibleCoopV2,
-          () => setIsVisibleCoopV2(!isVisibleCoopV2),
-          true
+            alignItems: "flex-start"
+          })
+        }
+      ) : null,
+      snap.observing || layoutEdit ? panel(
+        "playerFrame",
+        e(PlayerFrame, {
+          observing: snap.observing,
+          setSelectedEntity,
+          layoutEdit
+        }),
+        { style: UNIT_FRAME_STYLE }
+      ) : null,
+      snap.target || layoutEdit ? panel(
+        "targetFrame",
+        e(TargetFrame, {
+          observing: snap.observing,
+          target: snap.target,
+          entities: snap.entities,
+          setSelectedEntity,
+          layoutEdit
+        }),
+        { style: UNIT_FRAME_STYLE }
+      ) : null,
+      panel(
+        "threat",
+        e(ThreatTable, {
+          entities: snap.entities,
+          observingId: snap.observingId
+        }),
+        {
+          closable: true,
+          style: { minWidth: "160px" },
+          empty: !hasThreat
+        }
+      ),
+      panel(
+        "pdps",
+        e(RankMeter, {
+          title: "PDPS",
+          className: "PdpsMeter",
+          rows: pdpsRows,
+          highlightId: snap.observingId
+        }),
+        { closable: true, style: { width: "200px" }, empty: !pdpsRows.length }
+      ),
+      panel(
+        "hitDps",
+        e(RankMeter, {
+          title: "Hit DPS (10s)",
+          className: "HitDpsMeter",
+          rows: hitDpsRows,
+          highlightId: snap.observingId
+        }),
+        { closable: true, style: { width: "200px" }, empty: !hitDpsRows.length }
+      ),
+      panel(
+        "coopV1",
+        e(RankMeter, {
+          title: "s.coop v1",
+          rows: coopV1Rows,
+          highlightId: snap.observingId
+        }),
+        { closable: true, style: { width: "200px" }, empty: !coopV1Rows.length }
+      ),
+      panel(
+        "coopV2",
+        e(RankMeter, {
+          title: "s.coop v2",
+          className: "CoopContributionMeterV2",
+          rows: coopV2Rows,
+          highlightId: snap.observingId
+        }),
+        { closable: true, style: { width: "200px" }, empty: !coopV2Rows.length }
+      ),
+      panel(
+        "toggles",
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              flexDirection: "column",
+              gap: "4px",
+              pointerEvents: "auto"
+            }
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              title: "Toggle layout edit (Ctrl+Shift+L)",
+              style: {
+                cursor: "pointer",
+                padding: "5px 12px",
+                fontSize: "14px",
+                border: layoutEdit ? "1px solid #ffe08a" : "1px solid #555",
+                background: layoutEdit ? "#3a3510" : "#1a1a1a",
+                color: layoutEdit ? "#ffe08a" : "#eee"
+              },
+              onClick: () => setLayoutEdit(!layoutEdit)
+            },
+            layoutEdit ? "Layout: ON" : "Layout"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              title: "Per-panel overlay opacity",
+              style: {
+                cursor: "pointer",
+                padding: "5px 12px",
+                fontSize: "14px",
+                border: opacityEdit ? "1px solid #8ab" : "1px solid #555",
+                background: opacityEdit ? "#1a2830" : "#1a1a1a",
+                color: opacityEdit ? "#9cf" : "#eee"
+              },
+              onClick: () => setOpacityEdit(!opacityEdit)
+            },
+            opacityEdit ? "Opacity: ON" : "Opacity"
+          )
         )
       )
     );
@@ -2159,6 +7795,12 @@ progress.comm-ui-mp-bar::-webkit-progress-bar {
 progress.comm-ui-mp-bar::-webkit-progress-value {
   background-color: blue;
 }
+
+/* Defeat Adventure Land global pixel-font thickening inside our overlay */
+#comm-ui, #comm-ui * {
+  text-shadow: none !important;
+  font-weight: normal !important;
+}
 `;
   function injectCss(id, css) {
     if (document.querySelector(`#${id}`)) return;
@@ -2204,27 +7846,28 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   function onLoad() {
     injectCss("comm-copy-popup-css", POPUP_CSS);
     injectCss("comm-ui-css", PROGRESS_CSS);
+    installCommChrome();
+    installInventoryFix();
+    installCommanderHook();
     startSocketHub();
     startCryptTracker();
     startCombatMeter();
+    startPartyCombat();
     startSessionKills();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");
       domContainer.id = "comm-ui";
-      domContainer.style.zIndex = "10";
-      domContainer.style.position = "fixed";
-      domContainer.style.width = "100%";
-      domContainer.style.height = "100%";
       document.body.append(domContainer);
     }
+    domContainer.style.zIndex = "220";
+    domContainer.style.position = "fixed";
+    domContainer.style.width = "100%";
+    domContainer.style.height = "100%";
+    domContainer.style.pointerEvents = "none";
     const ReactDOM = getReactDOM();
     const root = ReactDOM.createRoot(domContainer);
     root.render(e(Root));
-    const bottom = document.getElementById("bottom");
-    if (bottom) {
-      bottom.style.pointerEvents = "none";
-    }
   }
   (function bootstrap() {
     "use strict";
