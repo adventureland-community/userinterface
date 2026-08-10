@@ -417,9 +417,14 @@ export function resetPartyCombat(): void {
   // Keep vitalsShadow — still useful for the next fight's first heal clamp.
 }
 
+/** Player currently in the comm entity snapshot (Combat "Visible parties"). */
+export function isVisiblePlayer(id: string): boolean {
+  return visiblePlayerIds.has(id);
+}
+
 function includePlayer(id: string, scope: PartyScope): boolean {
   if (scope === "all") return true;
-  if (scope === "visible") return visiblePlayerIds.has(id);
+  if (scope === "visible") return isVisiblePlayer(id);
   if (!watchedPartyIds.size) return false;
   return watchedPartyIds.has(id);
 }

@@ -786,9 +786,12 @@ var EnhanceCommUI = (() => {
     sessionStartedAt = 0;
     lastCombatAt = 0;
   }
+  function isVisiblePlayer(id) {
+    return visiblePlayerIds.has(id);
+  }
   function includePlayer(id, scope) {
     if (scope === "all") return true;
-    if (scope === "visible") return visiblePlayerIds.has(id);
+    if (scope === "visible") return isVisiblePlayer(id);
     if (!watchedPartyIds.size) return false;
     return watchedPartyIds.has(id);
   }
@@ -4386,6 +4389,7 @@ var EnhanceCommUI = (() => {
     const ids = Object.keys(actorDamage);
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
+      if (!isVisiblePlayer(id)) continue;
       const total = actorDamage[id];
       const dps = total / WINDOW_SEC;
       if (dps <= 0) continue;

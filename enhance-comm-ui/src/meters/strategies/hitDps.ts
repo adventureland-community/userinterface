@@ -1,10 +1,16 @@
 import type { EntityLike } from "../../host/globals";
 import { findEntity } from "../../queries/entities";
 import { getActorDamage } from "../combatMeter";
+import { isVisiblePlayer } from "../partyCombat";
 import type { RankRow } from "../RankMeter";
 
 const WINDOW_SEC = 10;
 
+/**
+ * Rank rows for Hit DPS (10s window).
+ * Only includes actors currently visible — same vision set as Combat
+ * "Visible parties" (`isVisiblePlayer` / players in the entity snapshot).
+ */
 export function buildHitDpsRows(
   entities: EntityLike[],
   now = Date.now(),
@@ -14,6 +20,7 @@ export function buildHitDpsRows(
   const ids = Object.keys(actorDamage);
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
+    if (!isVisiblePlayer(id)) continue;
     const total = actorDamage[id];
     const dps = total / WINDOW_SEC;
     if (dps <= 0) continue;
