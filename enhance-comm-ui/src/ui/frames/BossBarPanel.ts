@@ -8,6 +8,7 @@ import {
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type BossBarPanelProps = {
   entities: EntityLike[];
@@ -151,10 +152,9 @@ export function BossBarPanel(props: BossBarPanelProps): any {
                     : "rgba(30,30,30,0.9)",
                   border: onMe ? "1px solid #e05555" : "1px solid #555",
                   color: onMe ? "#ffd0d0" : "#bbb",
-                  fontSize: "14px",
+                  fontSize: TYPE.body,
                   lineHeight: "1.2",
-                  fontWeight: "normal",
-                  textShadow: "none",
+                  ...PIXEL_TEXT,
                   maxWidth: "100%",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -175,9 +175,8 @@ export function BossBarPanel(props: BossBarPanelProps): any {
                   background: "rgba(20,20,20,0.8)",
                   border: "1px solid #444",
                   color: "#888",
-                  fontSize: "14px",
-                  fontWeight: "normal",
-                  textShadow: "none",
+                  fontSize: TYPE.body,
+                  ...PIXEL_TEXT,
                 },
               },
               "Aggro · —",

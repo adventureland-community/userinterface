@@ -1,4 +1,5 @@
 import { e } from "../../host/react";
+import { TYPE } from "../../lib/typeScale";
 
 export type StatProps = {
   label: string;
@@ -15,7 +16,7 @@ export function Stat(props: StatProps): any {
         display: "flex",
         justifyContent: "space-between",
         gap: "10px",
-        fontSize: "15px",
+        fontSize: TYPE.body,
         lineHeight: "20px",
       },
     },

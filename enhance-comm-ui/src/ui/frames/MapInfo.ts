@@ -1,6 +1,7 @@
 import { getMapName } from "../../host/al";
 import { e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 function getMapData(entities: EntityLike[]): { map?: string; in?: string } {
   const mapData: { map?: string; in?: string } = { map: getMapName() };
@@ -84,11 +85,10 @@ export function MapInfo(props: MapInfoProps): any {
         background: "rgba(0, 0, 0, 0.82)",
         border: "1px solid #555",
         padding: "4px 8px",
-        fontSize: "15px",
+        fontSize: TYPE.chrome,
         lineHeight: 1.25,
         color: "#eee",
-        fontWeight: "normal",
-        textShadow: "none",
+        ...PIXEL_TEXT,
       },
     },
     e(

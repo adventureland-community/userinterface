@@ -1,5 +1,6 @@
 import { e } from "../../host/react";
 import { getPercent } from "../../lib/format";
+import { TYPE } from "../../lib/typeScale";
 
 export type VitalsBarProps = {
   current: number;
@@ -19,7 +20,7 @@ export function VitalsBar(props: VitalsBarProps): any {
         style: {
           display: "flex",
           justifyContent: "space-between",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           marginBottom: "3px",
           color: "#cfcfcf",
         },

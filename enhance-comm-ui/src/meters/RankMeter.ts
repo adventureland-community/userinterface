@@ -1,6 +1,7 @@
 import { e } from "../host/react";
 import { classColors } from "../lib/colors";
 import { getPercent } from "../lib/format";
+import { PIXEL_TEXT, TYPE } from "../lib/typeScale";
 
 export type RankRow = {
   id: string;
@@ -37,8 +38,8 @@ export function RankMeter(props: RankMeterProps): any {
         border: embedded ? "none" : "2px solid #555",
         background: "black",
         gap: "2px",
-        fontSize: "17px",
-        textShadow: "none",
+        fontSize: TYPE.nameLg,
+        ...PIXEL_TEXT,
       },
     },
     e(
@@ -48,9 +49,9 @@ export function RankMeter(props: RankMeterProps): any {
           padding: "3px 8px",
           whiteSpace: "nowrap",
           position: "relative",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           color: "#ccc",
-          textShadow: "none",
+          ...PIXEL_TEXT,
         },
       },
       title,
@@ -67,7 +68,7 @@ export function RankMeter(props: RankMeterProps): any {
             display: "flex",
             flexDirection: "row",
             justifyContent: "space-between",
-            minHeight: "22px",
+            minHeight: "26px",
             alignItems: "center",
             background: isYou ? "rgba(225,55,88,0.16)" : undefined,
             boxShadow: isYou ? "inset 3px 0 0 #e13758" : undefined,
@@ -92,8 +93,8 @@ export function RankMeter(props: RankMeterProps): any {
               textOverflow: "ellipsis",
               overflow: "hidden",
               position: "relative",
-              fontSize: "17px",
-              textShadow: "none",
+              fontSize: TYPE.nameLg,
+              ...PIXEL_TEXT,
               color: isYou ? "#ffe0e8" : undefined,
             },
           },
@@ -107,8 +108,8 @@ export function RankMeter(props: RankMeterProps): any {
               whiteSpace: "nowrap",
               position: "relative",
               fontVariantNumeric: "tabular-nums",
-              fontSize: "17px",
-              textShadow: "none",
+              fontSize: TYPE.nameLg,
+              ...PIXEL_TEXT,
             },
           },
           row.label,

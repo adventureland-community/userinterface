@@ -1,5 +1,6 @@
 import { e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
+import { TYPE } from "../../lib/typeScale";
 
 function DeltaStat(props: {
   label: string;
@@ -21,7 +22,7 @@ function DeltaStat(props: {
         display: "flex",
         justifyContent: "space-between",
         gap: "8px",
-        fontSize: "14px",
+        fontSize: TYPE.body,
         lineHeight: "18px",
       },
     },
@@ -59,7 +60,7 @@ export function CompareToWatched(props: CompareToWatchedProps): any {
       "div",
       {
         style: {
-          fontSize: "13px",
+          fontSize: TYPE.secondary,
           color: "#888",
           marginBottom: "6px",
           letterSpacing: "0.04em",

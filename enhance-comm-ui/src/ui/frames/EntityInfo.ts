@@ -9,6 +9,7 @@ import { CompareToWatched } from "../paperdoll/CompareToWatched";
 import { PaperdollDummy, PAPERDOLL_SHELL } from "../paperdoll/PaperdollDummy";
 import { Stat } from "../paperdoll/Stat";
 import { VitalsBar } from "../paperdoll/VitalsBar";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type EntityInfoProps = {
   entities: EntityLike[];
@@ -86,11 +87,11 @@ export function EntityInfo(props: EntityInfoProps): any {
           style: {
             flex: 1,
             minWidth: 0,
-            fontSize: "17px",
+            fontSize: TYPE.title,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-            textShadow: "none",
+            ...PIXEL_TEXT,
           },
           title,
         },
@@ -116,6 +117,7 @@ export function EntityInfo(props: EntityInfoProps): any {
             padding: 0,
             flexShrink: 0,
             fontSize: "18px",
+            ...PIXEL_TEXT,
           },
         },
         "×",
@@ -138,8 +140,9 @@ export function EntityInfo(props: EntityInfoProps): any {
             display: "flex",
             flexWrap: "wrap",
             gap: "4px 12px",
-            fontSize: "14px",
+            fontSize: TYPE.body,
             color: "#bdbdbd",
+            ...PIXEL_TEXT,
           },
         },
         entity.ctype
@@ -222,10 +225,11 @@ export function EntityInfo(props: EntityInfoProps): any {
               "div",
               {
                 style: {
-                  fontSize: "14px",
+                  fontSize: TYPE.body,
                   color: "#888",
                   marginBottom: "6px",
                   letterSpacing: "0.04em",
+                  ...PIXEL_TEXT,
                 },
               },
               compare ? "GEAR · Δ vs watched" : "GEAR",

@@ -27,6 +27,7 @@ import {
 import { RankMeter } from "../../meters/RankMeter";
 import { MetricChart } from "../chrome/MetricChart";
 import { getObserving, getObservingId } from "../../host/al";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Always-visible channel chips. */
 const PRIMARY_CHANNELS: CombatChannel[] = ["dps", "base", "hps"];
@@ -66,17 +67,17 @@ function segBtn(
       onClick,
       style: {
         cursor: "pointer",
-        fontSize: "13px",
+        fontSize: TYPE.secondary,
         lineHeight: "1.2",
-        padding: "3px 9px",
+        padding: "4px 10px",
+        minHeight: "28px",
         margin: 0,
         border: "none",
         borderLeft: first ? "none" : "1px solid #3a3a3a",
         borderRadius: 0,
         background: active ? "#2e2e2e" : "transparent",
         color: active ? "#eee" : "#888",
-        textShadow: "none",
-        fontWeight: "normal",
+        ...PIXEL_TEXT,
         outline: "none",
       },
     },
@@ -98,15 +99,15 @@ function channelChip(
       title: CHANNEL_LABELS[ch],
       style: {
         cursor: "pointer",
-        fontSize: "13px",
-        padding: "2px 6px",
+        fontSize: TYPE.secondary,
+        padding: "3px 8px",
+        minHeight: "26px",
         lineHeight: "1.2",
         margin: 0,
         border: active ? `1px solid ${color}` : "1px solid #2a2a2a",
         background: active ? `${color}18` : "transparent",
         color: active ? color : "#666",
-        textShadow: "none",
-        fontWeight: "normal",
+        ...PIXEL_TEXT,
       },
     },
     CHANNEL_LABELS[ch],
@@ -128,15 +129,15 @@ function moreChip(expanded: boolean, hiddenActive: number, onClick: () => void):
       title: expanded ? "Hide secondary channels" : "Show more channels",
       style: {
         cursor: "pointer",
-        fontSize: "12px",
-        padding: "2px 6px",
+        fontSize: TYPE.secondaryMin,
+        padding: "3px 8px",
+        minHeight: "26px",
         lineHeight: "1.2",
         margin: 0,
         border: "1px solid #333",
         background: expanded ? "#1c1c1c" : "transparent",
         color: "#888",
-        textShadow: "none",
-        fontWeight: "normal",
+        ...PIXEL_TEXT,
       },
     },
     label,
@@ -288,15 +289,17 @@ export function CombatMetricsPanel(): any {
   const chipChannels = PRIMARY_CHANNELS.concat(visibleSecondary);
 
   const selectStyle = {
-    fontSize: "13px",
+    fontSize: TYPE.secondary,
     lineHeight: "1.2",
-    padding: "2px 6px",
+    padding: "4px 8px",
+    minHeight: "28px",
     background: "#141414",
     color: "#ddd",
     border: "1px solid #444",
     maxWidth: "180px",
     minWidth: "0",
     flex: "1 1 auto",
+    ...PIXEL_TEXT,
   };
 
   return e(
@@ -313,10 +316,9 @@ export function CombatMetricsPanel(): any {
         width: "420px",
         maxHeight: "520px",
         overflow: "auto",
-        fontSize: "14px",
+        fontSize: TYPE.body,
         color: "#eee",
-        textShadow: "none",
-        fontWeight: "normal",
+        ...PIXEL_TEXT,
       },
     },
     // Header — title / elapsed+dps / Reset
@@ -327,16 +329,16 @@ export function CombatMetricsPanel(): any {
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          minHeight: "22px",
+          minHeight: "28px",
         },
       },
       e(
         "div",
         {
           style: {
-            fontSize: "16px",
+            fontSize: TYPE.title,
             color: "#eee",
-            textShadow: "none",
+            ...PIXEL_TEXT,
             flex: "0 0 auto",
           },
         },
@@ -346,9 +348,9 @@ export function CombatMetricsPanel(): any {
         "div",
         {
           style: {
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             color: "#999",
-            textShadow: "none",
+            ...PIXEL_TEXT,
             flex: "1 1 auto",
             minWidth: 0,
             overflow: "hidden",
@@ -365,14 +367,14 @@ export function CombatMetricsPanel(): any {
           onClick: () => resetPartyCombat(),
           style: {
             cursor: "pointer",
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             lineHeight: "1.2",
-            padding: "2px 8px",
+            padding: "4px 10px",
+            minHeight: "28px",
             border: "1px solid #444",
             background: "#161616",
             color: "#aaa",
-            textShadow: "none",
-            fontWeight: "normal",
+            ...PIXEL_TEXT,
             flex: "0 0 auto",
           },
         },
@@ -388,15 +390,14 @@ export function CombatMetricsPanel(): any {
           onClick: () => patch({ combatCompact: !compact }),
           style: {
             cursor: "pointer",
-            fontSize: "13px",
+            fontSize: TYPE.secondary,
             lineHeight: "1.2",
             padding: "6px 12px",
             minHeight: "32px",
             border: compact ? "1px solid #85c76b" : "1px solid #444",
             background: compact ? "#1a2a1a" : "#161616",
             color: compact ? "#85c76b" : "#aaa",
-            textShadow: "none",
-            fontWeight: "normal",
+            ...PIXEL_TEXT,
             flex: "0 0 auto",
           },
         },
@@ -411,7 +412,7 @@ export function CombatMetricsPanel(): any {
               onClick: () => patch({ partyFocus: "watched" }),
               style: {
                 cursor: "pointer",
-                fontSize: "13px",
+                fontSize: TYPE.secondary,
                 lineHeight: "1.2",
                 padding: "6px 10px",
                 minHeight: "32px",
@@ -420,8 +421,7 @@ export function CombatMetricsPanel(): any {
                 background:
                   focus === "watched" ? "rgba(225,55,88,0.18)" : "#161616",
                 color: focus === "watched" ? "#ffe0e8" : "#aaa",
-                textShadow: "none",
-                fontWeight: "normal",
+                ...PIXEL_TEXT,
                 flex: "0 0 auto",
               },
             },
@@ -455,9 +455,9 @@ export function CombatMetricsPanel(): any {
           "span",
           {
             style: {
-              fontSize: "12px",
+              fontSize: TYPE.secondaryMin,
               color: "#888",
-              textShadow: "none",
+              ...PIXEL_TEXT,
               flex: "0 0 auto",
             },
           },
@@ -515,10 +515,10 @@ export function CombatMetricsPanel(): any {
             "span",
             {
               style: {
-                fontSize: "12px",
+                fontSize: TYPE.secondaryMin,
                 color: "#888",
                 marginRight: "2px",
-                textShadow: "none",
+                ...PIXEL_TEXT,
               },
             },
             view === "bars" ? "Metric" : "Columns",
@@ -554,10 +554,9 @@ export function CombatMetricsPanel(): any {
                 style: {
                   borderCollapse: "collapse",
                   width: "100%",
-                  fontSize: "17px",
+                  fontSize: TYPE.nameLg,
                   lineHeight: "1.25",
-                  textShadow: "none",
-                  fontWeight: "normal",
+                  ...PIXEL_TEXT,
                 },
               },
               e(
@@ -569,8 +568,8 @@ export function CombatMetricsPanel(): any {
                     style: {
                       borderBottom: "1px solid #333",
                       color: "#999",
-                      fontSize: "17px",
-                      fontWeight: "normal",
+                      fontSize: TYPE.nameLg,
+                      ...PIXEL_TEXT,
                     },
                   },
                   thCell("Name"),
@@ -646,7 +645,7 @@ export function CombatMetricsPanel(): any {
           )
         : e(
             "div",
-            { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+            { style: { color: "#777", padding: "10px 2px", fontSize: TYPE.body } },
             "No combat data yet for this focus.",
           )
       : null,
@@ -661,7 +660,7 @@ export function CombatMetricsPanel(): any {
           })
         : e(
             "div",
-            { style: { color: "#777", padding: "10px 2px", fontSize: "14px" } },
+            { style: { color: "#777", padding: "10px 2px", fontSize: TYPE.body } },
             "No combat data yet for this focus.",
           )
       : null,

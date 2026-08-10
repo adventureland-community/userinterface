@@ -11,6 +11,7 @@ import {
   saveSettings,
   type CommandSnippet,
 } from "../../lib/settings";
+import { TYPE } from "../../lib/typeScale";
 
 export type CommandPanelProps = {
   /** External prefill (stock show_commander / open hook). */
@@ -24,7 +25,7 @@ function btnStyle(opts?: { accent?: boolean; danger?: boolean }): Record<string,
   const danger = opts?.danger === true;
   return {
     cursor: "pointer",
-    fontSize: "15px",
+    fontSize: TYPE.body,
     padding: "5px 11px",
     border: danger
       ? "1px solid #844"
@@ -233,7 +234,7 @@ export function CommandPanel(props: CommandPanelProps): any {
   };
 
   const inputStyle = {
-    fontSize: "16px",
+    fontSize: TYPE.name,
     padding: "6px 9px",
     background: "#141414",
     color: "#eee",
@@ -303,7 +304,7 @@ export function CommandPanel(props: CommandPanelProps): any {
               background: "transparent",
               color: "#eee",
               padding: 0,
-              fontSize: "16px",
+              fontSize: TYPE.name,
               lineHeight: "1.3",
               textShadow: "none",
               fontWeight: "normal",
@@ -339,7 +340,7 @@ export function CommandPanel(props: CommandPanelProps): any {
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
                 color: "#999",
-                fontSize: "14px",
+                fontSize: TYPE.body,
                 marginTop: "2px",
               },
             },
@@ -414,7 +415,7 @@ export function CommandPanel(props: CommandPanelProps): any {
         width: "min(560px, 94vw)",
         maxHeight: "78vh",
         overflow: "auto",
-        fontSize: "16px",
+        fontSize: TYPE.name,
         color: "#eee",
         textShadow: "none",
         fontWeight: "normal",
@@ -433,7 +434,7 @@ export function CommandPanel(props: CommandPanelProps): any {
       e("div", { style: { fontSize: "20px", color: "#ffe08a" } }, "Command"),
       e(
         "div",
-        { style: { fontSize: "14px", color: "#aaa" } },
+        { style: { fontSize: TYPE.body, color: "#aaa" } },
         "observer → code_eval · Ctrl+Enter",
       ),
     ),
@@ -496,7 +497,7 @@ export function CommandPanel(props: CommandPanelProps): any {
     status
       ? e(
           "div",
-          { style: { fontSize: "14px", color: "#9a9" } },
+          { style: { fontSize: TYPE.body, color: "#9a9" } },
           status,
         )
       : null,
@@ -504,7 +505,7 @@ export function CommandPanel(props: CommandPanelProps): any {
       "div",
       {
         style: {
-          fontSize: "16px",
+          fontSize: TYPE.name,
           color: "#ccc",
           borderTop: "1px solid #333",
           paddingTop: "8px",
@@ -523,7 +524,7 @@ export function CommandPanel(props: CommandPanelProps): any {
         style: Object.assign({}, inputStyle, {
           flex: "1 1 140px",
           minWidth: "120px",
-          fontSize: "14px",
+          fontSize: TYPE.body,
           padding: "4px 8px",
         }),
       }),
@@ -534,7 +535,7 @@ export function CommandPanel(props: CommandPanelProps): any {
           onChange: (ev: any) => setFolderFilter(ev.target.value),
           style: Object.assign({}, inputStyle, {
             flex: "0 1 140px",
-            fontSize: "14px",
+            fontSize: TYPE.body,
             padding: "4px 8px",
           }),
         },
@@ -558,7 +559,7 @@ export function CommandPanel(props: CommandPanelProps): any {
         )
       : e(
           "div",
-          { style: { fontSize: "15px", color: "#777" } },
+          { style: { fontSize: TYPE.body, color: "#777" } },
           snippets.length
             ? "No snippets match this search/folder."
             : "No snippets yet — write a command and Save snippet.",

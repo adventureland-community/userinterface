@@ -98,7 +98,7 @@ function MobChip(props: { mtype: string; count: number }): any {
           background: "rgba(40,20,20,0.9)",
           border: "1px solid #633",
           color: "#eee",
-          fontSize: TYPE.countBadge,
+          fontSize: TYPE.badge,
           lineHeight: 1.2,
           ...PIXEL_TEXT,
           whiteSpace: "nowrap",
@@ -258,7 +258,7 @@ function ThreatRow(props: {
           "span",
           {
             style: {
-              fontSize: TYPE.countBadge,
+              fontSize: TYPE.badge,
               color: "#bbb",
               ...PIXEL_TEXT,
             },
