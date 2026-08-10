@@ -7184,7 +7184,7 @@ var EnhanceCommUI = (() => {
                 "span",
                 {
                   style: {
-                    fontSize: "14px",
+                    fontSize: TYPE.body,
                     opacity: 0.75,
                     flexShrink: 0,
                     color: "#aaa"
@@ -8048,7 +8048,7 @@ var EnhanceCommUI = (() => {
       }
       if (maxPoints < 2 || maxVal <= 0) {
         ctx.fillStyle = "#888";
-        ctx.font = "13px sans-serif";
+        ctx.font = "15px sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(emptyText, width / 2, height / 2);
         return;
@@ -8082,7 +8082,7 @@ var EnhanceCommUI = (() => {
         ctx.stroke();
       }
       ctx.fillStyle = "#ccc";
-      ctx.font = "12px sans-serif";
+      ctx.font = "14px sans-serif";
       ctx.textAlign = "left";
       ctx.fillText(Math.round(maxVal).toLocaleString(), padL, 12);
     }, [series, width, height, emptyText]);
