@@ -21,6 +21,8 @@ export const PAPERDOLL_PANEL_STYLE: Record<string, any> = {
   width: "fit-content",
   maxWidth: "340px",
   boxSizing: "border-box",
+  // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
+  zIndex: 36,
 };
 
 /** Wide stacked boss HP rows (top-center boss bar). */

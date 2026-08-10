@@ -224,6 +224,34 @@ function observeCloseButton(dialog: HTMLElement, kind: InfoDialogKind): void {
   ensureCloseButton(dialog, kind);
 }
 
+function isInfoDialogChrome(el: HTMLElement): boolean {
+  if (!el.closest) return false;
+  return !!(
+    el.closest("#" + BUFF_DIALOG_ID) ||
+    el.closest("#" + ITEM_DIALOG_ID) ||
+    el.closest('[data-panel="buffInfo"]') ||
+    el.closest('[data-panel="itemInfo"]')
+  );
+}
+
+/**
+ * Gear / buff icon presses must not count as "outside" dismiss.
+ * Dismiss runs on document mousedown (bubble); SlotCell / EffectsRow open on
+ * the same press. Closing first wiped itemInfo and often dropped the click
+ * after a React re-render — first gear click worked, later ones looked dead.
+ */
+function isInfoSourceClick(el: HTMLElement): boolean {
+  if (!el.closest) return false;
+  return !!(
+    el.closest(".comm-gear-slot") ||
+    el.closest(".comm-paperdoll") ||
+    el.closest('[data-panel="paperdoll"]') ||
+    el.closest(".comm-fx-icon") ||
+    el.closest('[data-panel="playerFrame"]') ||
+    el.closest('[data-panel="targetFrame"]')
+  );
+}
+
 function installDialogDismiss(): void {
   if ((window as any)[BOUND]) return;
   (window as any)[BOUND] = true;
@@ -234,17 +262,7 @@ function installDialogDismiss(): void {
     const t = ev.target as Node | null;
     if (!t) return;
     const el = t as HTMLElement;
-    const inBuff = !!(
-      el.closest &&
-      (el.closest("#" + BUFF_DIALOG_ID) ||
-        el.closest('[data-panel="buffInfo"]'))
-    );
-    const inItem = !!(
-      el.closest &&
-      (el.closest("#" + ITEM_DIALOG_ID) ||
-        el.closest('[data-panel="itemInfo"]'))
-    );
-    if (inBuff || inItem) return;
+    if (isInfoDialogChrome(el) || isInfoSourceClick(el)) return;
 
     // Outside both — close whichever are open (one Esc-style pass closes both).
     closeAllInfoDialogs();
@@ -497,12 +515,44 @@ function buildItemInfoHtml(args: Record<string, any>): string {
 let itemInfoWriteLock = false;
 
 /**
+ * Prefer the live `entities[id]` row (same source EntityInfo renders) so
+ * paperdoll clicks do not read a stale observing snapshot or wrong xtarget.
+ */
+function resolvePaperdollEntity(entity: any): any {
+  if (!entity) return entity;
+  const id = entity.id;
+  if (id == null || id === "") return entity;
+  const tid = String(id);
+  const raw = (window as any).entities;
+  if (!raw) return entity;
+  if (!Array.isArray(raw)) {
+    const byKey = raw[tid] || raw[id];
+    if (byKey && byKey.slots) return byKey;
+  }
+  const list: any[] = Array.isArray(raw)
+    ? raw
+    : Object.values(raw as Record<string, any>);
+  for (let i = 0; i < list.length; i++) {
+    const ent = list[i];
+    if (ent && String(ent.id) === tid && ent.slots) return ent;
+  }
+  return entity;
+}
+
+/**
  * Show gear/item details in `#ecu-item-dialog` (itemInfo panel).
  * Owns toggle + write so paperdoll clicks do not depend on stock slot_click
  * checking the hidden `#topleftcornerdialog` stub, and do not depend on
  * `render_item(selector)` (which becomes show_modal when modal_count > 0).
+ *
+ * `slotOverride` is the slot object GearGrid already rendered — avoids a
+ * second lookup on a mismatched entity.
  */
-export function openItemSlotInfo(entity: any, slotName: string): void {
+export function openItemSlotInfo(
+  entity: any,
+  slotName: string,
+  slotOverride?: any,
+): void {
   if (!entity || !slotName) return;
   if (itemInfoWriteLock) return;
 
@@ -512,7 +562,11 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
   installStockRescueObserver();
   installDialogDismiss();
 
-  const slot = entity.slots && entity.slots[slotName];
+  const target = resolvePaperdollEntity(entity);
+  const slot =
+    slotOverride && slotOverride.name
+      ? slotOverride
+      : target && target.slots && target.slots[slotName];
   if (!slot || !slot.name) return;
 
   const w = window as any;
@@ -535,8 +589,8 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
   itemInfoWriteLock = true;
   try {
     w.last_sclick = slotName;
-    w.dialogs_target = entity;
-    w.xtarget = entity;
+    w.dialogs_target = target;
+    w.xtarget = target;
     lastInfoWriteKind = "item";
 
     const args = {
@@ -545,7 +599,7 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
       name: slot.name,
       actual: slot,
       slot: slotName,
-      from_player: entity.id,
+      from_player: target.id,
     };
 
     const html = buildItemInfoHtml(args);
@@ -559,7 +613,7 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
     ensureCloseButton(itemHost, "item");
     emitInfoDialogChange("item", hasContent(itemHost));
   } finally {
-    // Release after this task so a paired click in the same turn cannot toggle-close.
+    // Release after this task so a paired pointerdown+mousedown cannot toggle-close.
     window.setTimeout(() => {
       itemInfoWriteLock = false;
     }, 0);

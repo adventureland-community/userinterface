@@ -33,6 +33,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
 - [ ] **Buff info panel** — Layout edit shows “Buff info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.
 - [ ] **Item info panel** — paperdoll gear *and trade* clicks open item details in Item info (works even if Bag modal left `modal_count > 0`); content stays in `#ecu-item-dialog`; × / Esc / click-outside / same-slot toggle closes.
+- [ ] **Item info switch slots** — with Item info already open, click a *different* filled gear/trade slot; details replace (do not stay stuck on the first item / empty).
 
 ## Nice-to-haves
 

@@ -156,14 +156,15 @@ function SlotCell(props: {
     }
   }
 
-  const onSlotClick = clickable
+  // Stock AL uses onmousedown for non-draggable slots. Open on pointerdown
+  // (before document outside-dismiss) and pass the rendered slot object so we
+  // never re-read a mismatched entity.slots key.
+  const onSlotPress = clickable
     ? (ev: any) => {
         if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-        // Keep paperdoll selection in sync, then write itemInfo directly
-        // (do not rely on stock slot_click + hidden #topleftcornerdialog).
         setXTarget(entity);
-        openItemSlotInfo(entity, slotName);
+        openItemSlotInfo(entity, slotName, slot);
       }
     : undefined;
 
@@ -174,14 +175,10 @@ function SlotCell(props: {
       className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
       "data-slot": slotName,
       title: clickable ? slot!.name : slotName,
-      onClick: onSlotClick,
+      onPointerDown: onSlotPress,
       onMouseDown: clickable
         ? (ev: any) => {
-            if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-          }
-        : undefined,
-      onPointerDown: clickable
-        ? (ev: any) => {
+            // Keep bubble from reaching document dismiss if pointer events differ.
             if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
           }
         : undefined,

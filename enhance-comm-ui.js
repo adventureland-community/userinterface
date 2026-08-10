@@ -3082,6 +3082,14 @@ var EnhanceCommUI = (() => {
     obs.observe(dialog, { childList: true, subtree: true, characterData: true });
     ensureCloseButton(dialog, kind);
   }
+  function isInfoDialogChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
+  }
+  function isInfoSourceClick(el) {
+    if (!el.closest) return false;
+    return !!(el.closest(".comm-gear-slot") || el.closest(".comm-paperdoll") || el.closest('[data-panel="paperdoll"]') || el.closest(".comm-fx-icon") || el.closest('[data-panel="playerFrame"]') || el.closest('[data-panel="targetFrame"]'));
+  }
   function installDialogDismiss() {
     if (window[BOUND]) return;
     window[BOUND] = true;
@@ -3091,9 +3099,7 @@ var EnhanceCommUI = (() => {
       const t = ev.target;
       if (!t) return;
       const el = t;
-      const inBuff = !!(el.closest && (el.closest("#" + BUFF_DIALOG_ID) || el.closest('[data-panel="buffInfo"]')));
-      const inItem = !!(el.closest && (el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="itemInfo"]')));
-      if (inBuff || inItem) return;
+      if (isInfoDialogChrome(el) || isInfoSourceClick(el)) return;
       closeAllInfoDialogs();
     });
   }
@@ -3279,7 +3285,25 @@ var EnhanceCommUI = (() => {
     }
   }
   var itemInfoWriteLock = false;
-  function openItemSlotInfo(entity, slotName) {
+  function resolvePaperdollEntity(entity) {
+    if (!entity) return entity;
+    const id = entity.id;
+    if (id == null || id === "") return entity;
+    const tid = String(id);
+    const raw = window.entities;
+    if (!raw) return entity;
+    if (!Array.isArray(raw)) {
+      const byKey = raw[tid] || raw[id];
+      if (byKey && byKey.slots) return byKey;
+    }
+    const list = Array.isArray(raw) ? raw : Object.values(raw);
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (ent && String(ent.id) === tid && ent.slots) return ent;
+    }
+    return entity;
+  }
+  function openItemSlotInfo(entity, slotName, slotOverride) {
     if (!entity || !slotName) return;
     if (itemInfoWriteLock) return;
     ensureDialogElements();
@@ -3287,7 +3311,8 @@ var EnhanceCommUI = (() => {
     installJqueryClearHook();
     installStockRescueObserver();
     installDialogDismiss();
-    const slot = entity.slots && entity.slots[slotName];
+    const target = resolvePaperdollEntity(entity);
+    const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
     if (!slot || !slot.name) return;
     const w = window;
     const itemHost = ensureItemDialogAdopted();
@@ -3302,8 +3327,8 @@ var EnhanceCommUI = (() => {
     itemInfoWriteLock = true;
     try {
       w.last_sclick = slotName;
-      w.dialogs_target = entity;
-      w.xtarget = entity;
+      w.dialogs_target = target;
+      w.xtarget = target;
       lastInfoWriteKind = "item";
       const args = {
         id: "item" + slotName,
@@ -3311,7 +3336,7 @@ var EnhanceCommUI = (() => {
         name: slot.name,
         actual: slot,
         slot: slotName,
-        from_player: entity.id
+        from_player: target.id
       };
       const html = buildItemInfoHtml(args);
       if (html) {
@@ -5673,11 +5698,11 @@ var EnhanceCommUI = (() => {
         });
       }
     }
-    const onSlotClick = clickable ? (ev) => {
+    const onSlotPress = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       setXTarget(entity);
-      openItemSlotInfo(entity, slotName);
+      openItemSlotInfo(entity, slotName, slot);
     } : void 0;
     return e(
       "div",
@@ -5686,11 +5711,8 @@ var EnhanceCommUI = (() => {
         className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
         "data-slot": slotName,
         title: clickable ? slot.name : slotName,
-        onClick: onSlotClick,
+        onPointerDown: onSlotPress,
         onMouseDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-        } : void 0,
-        onPointerDown: clickable ? (ev) => {
           if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
         } : void 0,
         style: {
@@ -5965,7 +5987,9 @@ var EnhanceCommUI = (() => {
   var PAPERDOLL_PANEL_STYLE = {
     width: "fit-content",
     maxWidth: "340px",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
+    zIndex: 36
   };
   var BOSS_BAR_PANEL_STYLE = {
     width: "min(520px, 72vw)",
