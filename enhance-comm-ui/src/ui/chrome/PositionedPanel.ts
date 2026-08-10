@@ -10,6 +10,7 @@ import {
 } from "../../lib/layout";
 import {
   getLayoutFreePlacement,
+  getLayoutGridStep,
   subscribeLayoutEditPrefs,
 } from "../../lib/layoutEditPrefs";
 import { snapToGridPercent } from "../../lib/layoutGrid";
@@ -42,7 +43,7 @@ export type PositionedPanelProps = {
 /**
  * Absolutely places children at viewport-% coords.
  * In edit mode: drag the header bar to reposition (persisted by parent).
- * While dragging: grid snap (5%) unless Free placement is on; peer-edge snap
+ * While dragging: grid snap (chosen step) unless Free placement is on; peer-edge snap
  * always (0 / 50 / 100 + peers). On drop, soft-nudges away from near peers.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
@@ -55,10 +56,12 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   );
   const freePlacementRef = React.useRef(freePlacement);
   freePlacementRef.current = freePlacement;
+  const gridStepRef = React.useRef(getLayoutGridStep());
   React.useEffect(
     () =>
       subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
+        gridStepRef.current = getLayoutGridStep();
       }),
     [],
   );
@@ -128,8 +131,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     nextY = Math.max(0, Math.min(100, nextY));
     // Grid is primary when Free is off; peer-edge magnet still applies after.
     if (!freePlacementRef.current) {
-      nextX = snapToGridPercent(nextX);
-      nextY = snapToGridPercent(nextY);
+      nextX = snapToGridPercent(nextX, gridStepRef.current);
+      nextY = snapToGridPercent(nextY, gridStepRef.current);
     }
     const { xs, ys } = peerAxes();
     nextX = snapPercent(nextX, 2.2, xs);

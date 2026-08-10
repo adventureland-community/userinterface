@@ -27,6 +27,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 
 - [ ] On tablet/phone: Layout drag handles, Close, Compact, party chips are comfortably tappable.
 - [ ] Drag snap hits 0 / 50 / 100 and nearby peer panel edges; soft nudge on near-overlap drop.
+- [ ] Layout edit **Grid** presets (1 / 2.5 / 5 / 10 / 25%) redraw guides and change snap step; Free still disables snap only.
 - [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/bag/paperdoll/buff info/item info).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
 - [ ] **Buff info panel** — Layout edit shows “Buff info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.

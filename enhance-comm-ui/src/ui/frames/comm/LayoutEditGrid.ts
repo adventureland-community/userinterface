@@ -1,18 +1,18 @@
-import { e } from "../../../host/react";
+import { getReact, e } from "../../../host/react";
 import {
-  LAYOUT_GRID_MAJOR_PCTS,
-  LAYOUT_GRID_STEP,
+  getLayoutGridStep,
+  subscribeLayoutEditPrefs,
+} from "../../../lib/layoutEditPrefs";
+import {
+  isLayoutGridMajor,
+  layoutGridLinePercents,
 } from "../../../lib/layoutGrid";
-
-function isMajor(pct: number): boolean {
-  return LAYOUT_GRID_MAJOR_PCTS.indexOf(pct) >= 0;
-}
 
 function lineStyle(
   axis: "v" | "h",
   pct: number,
+  major: boolean,
 ): Record<string, string | number> {
-  const major = isMajor(pct);
   // Bright warm dashes: opaque enough on light sand, luminous on dark water.
   const color = major
     ? "rgba(255, 245, 200, 0.62)"
@@ -45,27 +45,41 @@ function lineStyle(
 /**
  * Viewport-% grid shown only in layout edit mode.
  * pointer-events: none so panel drag headers stay interactive.
- * Minor lines every LAYOUT_GRID_STEP%; majors at 0 / 25 / 50 / 75 / 100.
+ * Line spacing follows the user's layout-edit grid step pref.
  */
 export function LayoutEditGrid(): any {
+  const React = getReact();
+  const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
+
+  React.useEffect(
+    () =>
+      subscribeLayoutEditPrefs(() => {
+        setGridStep(getLayoutGridStep());
+      }),
+    [],
+  );
+
+  const lines = layoutGridLinePercents(gridStep);
   const kids: any[] = [];
-  for (let pct = 0; pct <= 100; pct += LAYOUT_GRID_STEP) {
+  for (let i = 0; i < lines.length; i++) {
+    const pct = lines[i];
+    const major = isLayoutGridMajor(pct, gridStep);
     kids.push(
       e("div", {
         key: `v-${pct}`,
-        className: isMajor(pct)
+        className: major
           ? "comm-layout-grid-line major"
           : "comm-layout-grid-line",
-        style: lineStyle("v", pct),
+        style: lineStyle("v", pct, major),
       }),
     );
     kids.push(
       e("div", {
         key: `h-${pct}`,
-        className: isMajor(pct)
+        className: major
           ? "comm-layout-grid-line major"
           : "comm-layout-grid-line",
-        style: lineStyle("h", pct),
+        style: lineStyle("h", pct, major),
       }),
     );
   }

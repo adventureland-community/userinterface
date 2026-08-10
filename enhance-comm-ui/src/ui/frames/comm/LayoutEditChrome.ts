@@ -6,10 +6,12 @@ import {
 } from "../../../lib/layoutExport";
 import {
   getLayoutFreePlacement,
+  getLayoutGridStep,
   setLayoutFreePlacement,
+  setLayoutGridStep,
   subscribeLayoutEditPrefs,
 } from "../../../lib/layoutEditPrefs";
-import { LAYOUT_GRID_STEP } from "../../../lib/layoutGrid";
+import { LAYOUT_GRID_STEP_PRESETS } from "../../../lib/layoutGrid";
 import {
   type LayoutProfileMode,
   type PanelLayoutsByProfile,
@@ -51,12 +53,14 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const [freePlacement, setFreePlacement] = React.useState(() =>
     getLayoutFreePlacement(),
   );
+  const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
   const fileRef = React.useRef(null as HTMLInputElement | null);
 
   React.useEffect(
     () =>
       subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
+        setGridStep(getLayoutGridStep());
       }),
     [],
   );
@@ -111,7 +115,13 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     setFreePlacement(next.freePlacement);
   };
 
+  const onGridStep = (step: number) => {
+    const next = setLayoutGridStep(step);
+    setGridStep(next.gridStep);
+  };
+
   const modes: LayoutProfileMode[] = ["auto", "desktop", "tablet", "phone"];
+  const stepLabel = `${gridStep}%`;
 
   return e(
     "div",
@@ -162,9 +172,25 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           style: btnStyle(freePlacement),
           title: freePlacement
             ? "Free placement: no grid snap (peer edges still magnetize)"
-            : `Snap to ${LAYOUT_GRID_STEP}% grid while dragging (peer edges still magnetize)`,
+            : `Snap to ${stepLabel} grid while dragging (peer edges still magnetize)`,
         },
         freePlacement ? "Free: ON" : "Free",
+      ),
+      e("span", { style: { color: "#aa8", fontSize: "12px" } }, "Grid"),
+      ...LAYOUT_GRID_STEP_PRESETS.map((step) =>
+        e(
+          "button",
+          {
+            key: `grid-${step}`,
+            type: "button",
+            onClick: () => onGridStep(step),
+            style: btnStyle(Math.abs(gridStep - step) < 1e-6),
+            title: freePlacement
+              ? `Grid lines every ${step}% (snap off while Free is on)`
+              : `Grid + snap every ${step}%`,
+          },
+          `${step}%`,
+        ),
       ),
       e(
         "button",
@@ -241,7 +267,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         { style: { color: "#888", fontSize: "12px" } },
         freePlacement
           ? "Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L"
-          : `${LAYOUT_GRID_STEP}% grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
+          : `${stepLabel} grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
       ),
     ),
     status

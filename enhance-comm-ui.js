@@ -3994,10 +3994,66 @@ var EnhanceCommUI = (() => {
     return rows;
   }
 
+  // src/lib/layoutGrid.ts
+  var LAYOUT_GRID_STEP = 5;
+  var LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25];
+  var EPS = 1e-6;
+  function normalizeGridStep(raw) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || n > 50) return LAYOUT_GRID_STEP;
+    for (let i = 0; i < LAYOUT_GRID_STEP_PRESETS.length; i++) {
+      if (Math.abs(LAYOUT_GRID_STEP_PRESETS[i] - n) < EPS) {
+        return LAYOUT_GRID_STEP_PRESETS[i];
+      }
+    }
+    const rounded = Math.round(n * 2) / 2;
+    return Math.max(0.5, Math.min(50, rounded));
+  }
+  function layoutGridMajorPercents(step = LAYOUT_GRID_STEP) {
+    const s = normalizeGridStep(step);
+    const majors = [0, 50, 100];
+    const landsOn = (pct) => {
+      const snapped = Math.round(pct / s) * s;
+      return Math.abs(snapped - pct) < EPS;
+    };
+    if (landsOn(25)) {
+      majors.splice(1, 0, 25);
+      majors.splice(3, 0, 75);
+    }
+    return majors;
+  }
+  function layoutGridLinePercents(step = LAYOUT_GRID_STEP) {
+    const s = normalizeGridStep(step);
+    const out = [];
+    const count = Math.round(100 / s);
+    for (let i = 0; i <= count; i++) {
+      let pct = Math.round(i * s * 1e3) / 1e3;
+      if (pct > 100 - EPS) pct = 100;
+      if (pct <= 100) out.push(pct);
+    }
+    if (!out.length || Math.abs(out[out.length - 1] - 100) > EPS) out.push(100);
+    return out;
+  }
+  function isLayoutGridMajor(pct, step = LAYOUT_GRID_STEP) {
+    const majors = layoutGridMajorPercents(step);
+    for (let i = 0; i < majors.length; i++) {
+      if (Math.abs(majors[i] - pct) < EPS) return true;
+    }
+    return false;
+  }
+  function snapToGridPercent(n, step = LAYOUT_GRID_STEP) {
+    const s = normalizeGridStep(step);
+    if (!(s > 0) || !Number.isFinite(n)) return n;
+    const snapped = Math.round(n / s) * s;
+    const cleaned = Math.round(snapped * 1e3) / 1e3;
+    return Math.max(0, Math.min(100, cleaned));
+  }
+
   // src/lib/layoutEditPrefs.ts
   var KEY2 = "al-comm-ui-layout-edit-prefs-v1";
   var DEFAULTS2 = {
-    freePlacement: false
+    freePlacement: false,
+    gridStep: LAYOUT_GRID_STEP
   };
   var cache = null;
   var listeners4 = [];
@@ -4008,7 +4064,8 @@ var EnhanceCommUI = (() => {
       if (!raw) return { ...DEFAULTS2 };
       const parsed = JSON.parse(raw);
       return {
-        freePlacement: !!parsed.freePlacement
+        freePlacement: !!parsed.freePlacement,
+        gridStep: parsed.gridStep != null ? normalizeGridStep(parsed.gridStep) : LAYOUT_GRID_STEP
       };
     } catch (e2) {
       return { ...DEFAULTS2 };
@@ -4043,21 +4100,25 @@ var EnhanceCommUI = (() => {
     notify();
     return next;
   }
+  function getLayoutGridStep() {
+    return getLayoutEditPrefs().gridStep;
+  }
+  function setLayoutGridStep(step) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      gridStep: normalizeGridStep(step)
+    };
+    cache = next;
+    write(next);
+    notify();
+    return next;
+  }
   function subscribeLayoutEditPrefs(listener) {
     listeners4.push(listener);
     return () => {
       const idx = listeners4.indexOf(listener);
       if (idx >= 0) listeners4.splice(idx, 1);
     };
-  }
-
-  // src/lib/layoutGrid.ts
-  var LAYOUT_GRID_STEP = 5;
-  var LAYOUT_GRID_MAJOR_PCTS = [0, 25, 50, 75, 100];
-  function snapToGridPercent(n, step = LAYOUT_GRID_STEP) {
-    if (!(step > 0) || !Number.isFinite(n)) return n;
-    const snapped = Math.round(n / step) * step;
-    return Math.max(0, Math.min(100, snapped));
   }
 
   // src/ui/chrome/PositionedPanel.ts
@@ -4070,9 +4131,11 @@ var EnhanceCommUI = (() => {
     );
     const freePlacementRef = React.useRef(freePlacement);
     freePlacementRef.current = freePlacement;
+    const gridStepRef = React.useRef(getLayoutGridStep());
     React.useEffect(
       () => subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
+        gridStepRef.current = getLayoutGridStep();
       }),
       []
     );
@@ -4134,8 +4197,8 @@ var EnhanceCommUI = (() => {
       nextX = Math.max(0, Math.min(100, nextX));
       nextY = Math.max(0, Math.min(100, nextY));
       if (!freePlacementRef.current) {
-        nextX = snapToGridPercent(nextX);
-        nextY = snapToGridPercent(nextY);
+        nextX = snapToGridPercent(nextX, gridStepRef.current);
+        nextY = snapToGridPercent(nextY, gridStepRef.current);
       }
       const { xs, ys } = peerAxes();
       nextX = snapPercent(nextX, 2.2, xs);
@@ -8786,10 +8849,12 @@ var EnhanceCommUI = (() => {
     const [freePlacement, setFreePlacement] = React.useState(
       () => getLayoutFreePlacement()
     );
+    const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
     const fileRef = React.useRef(null);
     React.useEffect(
       () => subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
+        setGridStep(getLayoutGridStep());
       }),
       []
     );
@@ -8838,7 +8903,12 @@ var EnhanceCommUI = (() => {
       const next = setLayoutFreePlacement(!freePlacement);
       setFreePlacement(next.freePlacement);
     };
+    const onGridStep = (step) => {
+      const next = setLayoutGridStep(step);
+      setGridStep(next.gridStep);
+    };
     const modes = ["auto", "desktop", "tablet", "phone"];
+    const stepLabel = `${gridStep}%`;
     return e(
       "div",
       {
@@ -8885,9 +8955,23 @@ var EnhanceCommUI = (() => {
             type: "button",
             onClick: toggleFree,
             style: btnStyle2(freePlacement),
-            title: freePlacement ? "Free placement: no grid snap (peer edges still magnetize)" : `Snap to ${LAYOUT_GRID_STEP}% grid while dragging (peer edges still magnetize)`
+            title: freePlacement ? "Free placement: no grid snap (peer edges still magnetize)" : `Snap to ${stepLabel} grid while dragging (peer edges still magnetize)`
           },
           freePlacement ? "Free: ON" : "Free"
+        ),
+        e("span", { style: { color: "#aa8", fontSize: "12px" } }, "Grid"),
+        ...LAYOUT_GRID_STEP_PRESETS.map(
+          (step) => e(
+            "button",
+            {
+              key: `grid-${step}`,
+              type: "button",
+              onClick: () => onGridStep(step),
+              style: btnStyle2(Math.abs(gridStep - step) < 1e-6),
+              title: freePlacement ? `Grid lines every ${step}% (snap off while Free is on)` : `Grid + snap every ${step}%`
+            },
+            `${step}%`
+          )
         ),
         e(
           "button",
@@ -8962,7 +9046,7 @@ var EnhanceCommUI = (() => {
         e(
           "span",
           { style: { color: "#888", fontSize: "12px" } },
-          freePlacement ? "Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L" : `${LAYOUT_GRID_STEP}% grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
+          freePlacement ? "Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L" : `${stepLabel} grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
         )
       ),
       status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,
@@ -9007,11 +9091,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/comm/LayoutEditGrid.ts
-  function isMajor(pct) {
-    return LAYOUT_GRID_MAJOR_PCTS.indexOf(pct) >= 0;
-  }
-  function lineStyle(axis, pct) {
-    const major = isMajor(pct);
+  function lineStyle(axis, pct, major) {
     const color = major ? "rgba(255, 245, 200, 0.62)" : "rgba(255, 245, 200, 0.34)";
     const border = `1px dashed ${color}`;
     if (axis === "v") {
@@ -9038,20 +9118,31 @@ var EnhanceCommUI = (() => {
     };
   }
   function LayoutEditGrid() {
+    const React = getReact();
+    const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
+    React.useEffect(
+      () => subscribeLayoutEditPrefs(() => {
+        setGridStep(getLayoutGridStep());
+      }),
+      []
+    );
+    const lines = layoutGridLinePercents(gridStep);
     const kids = [];
-    for (let pct = 0; pct <= 100; pct += LAYOUT_GRID_STEP) {
+    for (let i = 0; i < lines.length; i++) {
+      const pct = lines[i];
+      const major = isLayoutGridMajor(pct, gridStep);
       kids.push(
         e("div", {
           key: `v-${pct}`,
-          className: isMajor(pct) ? "comm-layout-grid-line major" : "comm-layout-grid-line",
-          style: lineStyle("v", pct)
+          className: major ? "comm-layout-grid-line major" : "comm-layout-grid-line",
+          style: lineStyle("v", pct, major)
         })
       );
       kids.push(
         e("div", {
           key: `h-${pct}`,
-          className: isMajor(pct) ? "comm-layout-grid-line major" : "comm-layout-grid-line",
-          style: lineStyle("h", pct)
+          className: major ? "comm-layout-grid-line major" : "comm-layout-grid-line",
+          style: lineStyle("h", pct, major)
         })
       );
     }
