@@ -8,7 +8,6 @@ import {
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
-import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type BossBarPanelProps = {
   entities: EntityLike[];
@@ -66,8 +65,8 @@ const STACK_STYLE: Record<string, any> = {
 /**
  * Dedicated multi-boss HP bar stack. Auto-hides when empty in play mode;
  * shows sample rows in layout edit so the panel can be positioned.
- * Sorted: targeting observer first, then lowest HP%. Shows aggro chip.
- * Compact EffectsRow under each bar (all buffs/debuffs; soft-wraps if many).
+ * Sorted: targeting observer first, then lowest HP%.
+ * Aggro sits inside the HP bar (name · Aggro · tank · HP%); effects stay under.
  */
 export function BossBarPanel(props: BossBarPanelProps): any {
   const bosses = sortBosses(
@@ -92,6 +91,7 @@ export function BossBarPanel(props: BossBarPanelProps): any {
         hpColor: "#8a2a2a",
         showMp: false,
         showEffectsPlaceholder: true,
+        showAggroInBar: true,
       }),
       e(FrameDummy, {
         label: "Boss",
@@ -99,6 +99,7 @@ export function BossBarPanel(props: BossBarPanelProps): any {
         hpColor: "#6a2a6a",
         showMp: false,
         showEffectsPlaceholder: true,
+        showAggroInBar: true,
       }),
     );
   }
@@ -110,6 +111,11 @@ export function BossBarPanel(props: BossBarPanelProps): any {
       const onMe = bossThreat(boss, obsId) > 0;
       const aggro = aggroName(boss, props.entities);
       const pct = getPercent(hpRatio(boss), 1);
+      const aggroLabel = onMe
+        ? "Aggro · you"
+        : aggro
+          ? `Aggro · ${aggro}`
+          : "Aggro · —";
       return e(
         "div",
         {
@@ -117,7 +123,6 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: "3px",
             cursor: "pointer",
             outline: onMe ? "1px solid rgba(224,85,85,0.55)" : undefined,
             outlineOffset: "1px",
@@ -140,56 +145,13 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           effectsMaxVisible: 0,
           trailing: pct,
           threatCount: onMe ? 1 : 0,
+          aggroLabel,
+          aggroHot: onMe,
           onSelect: (id: string) => {
             setXTarget(boss);
             props.setSelectedEntity(id);
           },
         }),
-        aggro
-          ? e(
-              "div",
-              {
-                style: {
-                  display: "inline-flex",
-                  alignSelf: "flex-start",
-                  alignItems: "center",
-                  gap: "6px",
-                  padding: "2px 8px",
-                  marginLeft: "2px",
-                  background: onMe
-                    ? "rgba(138,30,30,0.85)"
-                    : "rgba(30,30,30,0.9)",
-                  border: onMe ? "1px solid #e05555" : "1px solid #555",
-                  color: onMe ? "#ffd0d0" : "#bbb",
-                  fontSize: TYPE.body,
-                  lineHeight: "1.2",
-                  ...PIXEL_TEXT,
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                },
-                title: onMe ? "Aggro on you" : `Aggro: ${aggro}`,
-              },
-              onMe ? "Aggro · you" : `Aggro · ${aggro}`,
-            )
-          : e(
-              "div",
-              {
-                style: {
-                  display: "inline-flex",
-                  alignSelf: "flex-start",
-                  padding: "2px 8px",
-                  marginLeft: "2px",
-                  background: "rgba(20,20,20,0.8)",
-                  border: "1px solid #444",
-                  color: "#888",
-                  fontSize: TYPE.body,
-                  ...PIXEL_TEXT,
-                },
-              },
-              "Aggro · —",
-            ),
       );
     }),
   );

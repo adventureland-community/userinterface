@@ -7194,7 +7194,9 @@ var EnhanceCommUI = (() => {
       effectsMaxVisible,
       effectsIconSize,
       showMp = true,
-      threatCount = 0
+      threatCount = 0,
+      aggroLabel,
+      aggroHot = false
     } = props;
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const threatSpark = threatCount > 0 ? e(
@@ -7229,7 +7231,8 @@ var EnhanceCommUI = (() => {
           alignItems: "center",
           gap: "6px",
           minWidth: 0,
-          overflow: "hidden"
+          overflow: "hidden",
+          flex: "1 1 auto"
         }
       },
       threatSpark,
@@ -7246,30 +7249,57 @@ var EnhanceCommUI = (() => {
         name
       )
     );
-    const label = trailing ? e(
+    const aggroChip = aggroLabel != null && aggroLabel !== "" ? e(
+      "span",
+      {
+        className: "comm-boss-aggro",
+        title: aggroHot ? "Aggro on you" : aggroLabel,
+        style: {
+          flex: "0 1 auto",
+          minWidth: 0,
+          maxWidth: "42%",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          padding: "1px 6px",
+          boxSizing: "border-box",
+          background: aggroHot ? "rgba(138,30,30,0.85)" : "rgba(0,0,0,0.45)",
+          border: aggroHot ? "1px solid #e05555" : "1px solid #555",
+          color: aggroHot ? "#ffd0d0" : "#bbb",
+          fontSize: TYPE.secondary,
+          lineHeight: "1.2",
+          ...PIXEL_TEXT
+        }
+      },
+      aggroLabel
+    ) : null;
+    const trailingEl = trailing != null ? e(
+      "span",
+      {
+        style: {
+          fontSize: TYPE.nameLg,
+          opacity: 0.95,
+          flexShrink: 0,
+          ...PIXEL_TEXT
+        }
+      },
+      trailing
+    ) : null;
+    const label = trailingEl || aggroChip ? e(
       "span",
       {
         style: {
           display: "flex",
           justifyContent: "space-between",
-          gap: "10px",
+          gap: "8px",
           width: "100%",
-          alignItems: "center"
+          alignItems: "center",
+          minWidth: 0
         }
       },
       nameBlock,
-      e(
-        "span",
-        {
-          style: {
-            fontSize: TYPE.nameLg,
-            opacity: 0.95,
-            flexShrink: 0,
-            ...PIXEL_TEXT
-          }
-        },
-        trailing
-      )
+      aggroChip,
+      trailingEl
     ) : nameBlock;
     return e(
       "div",
@@ -7394,11 +7424,35 @@ var EnhanceCommUI = (() => {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    minWidth: 0
+                    minWidth: 0,
+                    flex: "1 1 auto"
                   }
                 },
                 `1 ${name}`
               ),
+              props.showAggroInBar ? e(
+                "span",
+                {
+                  className: "comm-boss-aggro",
+                  style: {
+                    flex: "0 1 auto",
+                    minWidth: 0,
+                    maxWidth: "42%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    padding: "1px 6px",
+                    boxSizing: "border-box",
+                    background: "rgba(0,0,0,0.45)",
+                    border: "1px solid #555",
+                    color: "#bbb",
+                    fontSize: TYPE.secondary,
+                    lineHeight: "1.2",
+                    ...PIXEL_TEXT
+                  }
+                },
+                "Aggro \xB7 Tank"
+              ) : null,
               e(
                 "span",
                 {
@@ -7406,7 +7460,8 @@ var EnhanceCommUI = (() => {
                     fontSize: TYPE.body,
                     opacity: 0.75,
                     flexShrink: 0,
-                    color: "#aaa"
+                    color: "#aaa",
+                    ...PIXEL_TEXT
                   }
                 },
                 props.label
@@ -7622,14 +7677,16 @@ var EnhanceCommUI = (() => {
           sampleName: "Cooperative Boss",
           hpColor: "#8a2a2a",
           showMp: false,
-          showEffectsPlaceholder: true
+          showEffectsPlaceholder: true,
+          showAggroInBar: true
         }),
         e(FrameDummy, {
           label: "Boss",
           sampleName: "Crypt Boss",
           hpColor: "#6a2a6a",
           showMp: false,
-          showEffectsPlaceholder: true
+          showEffectsPlaceholder: true,
+          showAggroInBar: true
         })
       );
     }
@@ -7640,6 +7697,7 @@ var EnhanceCommUI = (() => {
         const onMe = bossThreat(boss, obsId) > 0;
         const aggro = aggroName(boss, props.entities);
         const pct = getPercent(hpRatio(boss), 1);
+        const aggroLabel = onMe ? "Aggro \xB7 you" : aggro ? `Aggro \xB7 ${aggro}` : "Aggro \xB7 \u2014";
         return e(
           "div",
           {
@@ -7647,7 +7705,6 @@ var EnhanceCommUI = (() => {
             style: {
               display: "flex",
               flexDirection: "column",
-              gap: "3px",
               cursor: "pointer",
               outline: onMe ? "1px solid rgba(224,85,85,0.55)" : void 0,
               outlineOffset: "1px"
@@ -7670,52 +7727,13 @@ var EnhanceCommUI = (() => {
             effectsMaxVisible: 0,
             trailing: pct,
             threatCount: onMe ? 1 : 0,
+            aggroLabel,
+            aggroHot: onMe,
             onSelect: (id) => {
               setXTarget(boss);
               props.setSelectedEntity(id);
             }
-          }),
-          aggro ? e(
-            "div",
-            {
-              style: {
-                display: "inline-flex",
-                alignSelf: "flex-start",
-                alignItems: "center",
-                gap: "6px",
-                padding: "2px 8px",
-                marginLeft: "2px",
-                background: onMe ? "rgba(138,30,30,0.85)" : "rgba(30,30,30,0.9)",
-                border: onMe ? "1px solid #e05555" : "1px solid #555",
-                color: onMe ? "#ffd0d0" : "#bbb",
-                fontSize: TYPE.body,
-                lineHeight: "1.2",
-                ...PIXEL_TEXT,
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              },
-              title: onMe ? "Aggro on you" : `Aggro: ${aggro}`
-            },
-            onMe ? "Aggro \xB7 you" : `Aggro \xB7 ${aggro}`
-          ) : e(
-            "div",
-            {
-              style: {
-                display: "inline-flex",
-                alignSelf: "flex-start",
-                padding: "2px 8px",
-                marginLeft: "2px",
-                background: "rgba(20,20,20,0.8)",
-                border: "1px solid #444",
-                color: "#888",
-                fontSize: TYPE.body,
-                ...PIXEL_TEXT
-              }
-            },
-            "Aggro \xB7 \u2014"
-          )
+          })
         );
       })
     );

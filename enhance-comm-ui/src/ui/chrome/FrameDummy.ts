@@ -12,6 +12,8 @@ export type FrameDummyProps = {
   showMp?: boolean;
   /** Compact fake effect chips for layout sizing (boss bars). */
   showEffectsPlaceholder?: boolean;
+  /** In-bar aggro chip placeholder (boss bars). */
+  showAggroInBar?: boolean;
 };
 
 const DUMMY_FX_COLORS = ["#4a7a4a", "#7a4a4a", "#4a5a7a", "#7a6a3a"];
@@ -105,10 +107,36 @@ export function FrameDummy(props: FrameDummyProps): any {
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
                   minWidth: 0,
+                  flex: "1 1 auto",
                 },
               },
               `1 ${name}`,
             ),
+            props.showAggroInBar
+              ? e(
+                  "span",
+                  {
+                    className: "comm-boss-aggro",
+                    style: {
+                      flex: "0 1 auto",
+                      minWidth: 0,
+                      maxWidth: "42%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      padding: "1px 6px",
+                      boxSizing: "border-box",
+                      background: "rgba(0,0,0,0.45)",
+                      border: "1px solid #555",
+                      color: "#bbb",
+                      fontSize: TYPE.secondary,
+                      lineHeight: "1.2",
+                      ...PIXEL_TEXT,
+                    },
+                  },
+                  "Aggro · Tank",
+                )
+              : null,
             e(
               "span",
               {
@@ -117,6 +145,7 @@ export function FrameDummy(props: FrameDummyProps): any {
                   opacity: 0.75,
                   flexShrink: 0,
                   color: "#aaa",
+                  ...PIXEL_TEXT,
                 },
               },
               props.label,

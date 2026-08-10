@@ -19,6 +19,13 @@ export type ObservedUnitProps = {
   showMp?: boolean;
   /** Mobs currently aggroed on the watched character (target-frame threat spark). */
   threatCount?: number;
+  /**
+   * Compact aggro text inside the HP bar (boss bars), between name and HP%.
+   * Pass a full label like `Aggro · Tank`; omit to hide.
+   */
+  aggroLabel?: string;
+  /** Highlight in-bar aggro when this unit is on the observer. */
+  aggroHot?: boolean;
 };
 
 export function ObservedUnit(props: ObservedUnitProps): any {
@@ -34,6 +41,8 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     effectsIconSize,
     showMp = true,
     threatCount = 0,
+    aggroLabel,
+    aggroHot = false,
   } = props;
 
   const name =
@@ -77,6 +86,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         gap: "6px",
         minWidth: 0,
         overflow: "hidden",
+        flex: "1 1 auto",
       },
     },
     threatSpark,
@@ -94,20 +104,39 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     ),
   );
 
-  const label = trailing
-    ? e(
-        "span",
-        {
-          style: {
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "10px",
-            width: "100%",
-            alignItems: "center",
+  const aggroChip =
+    aggroLabel != null && aggroLabel !== ""
+      ? e(
+          "span",
+          {
+            className: "comm-boss-aggro",
+            title: aggroHot ? "Aggro on you" : aggroLabel,
+            style: {
+              flex: "0 1 auto",
+              minWidth: 0,
+              maxWidth: "42%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              padding: "1px 6px",
+              boxSizing: "border-box",
+              background: aggroHot
+                ? "rgba(138,30,30,0.85)"
+                : "rgba(0,0,0,0.45)",
+              border: aggroHot ? "1px solid #e05555" : "1px solid #555",
+              color: aggroHot ? "#ffd0d0" : "#bbb",
+              fontSize: TYPE.secondary,
+              lineHeight: "1.2",
+              ...PIXEL_TEXT,
+            },
           },
-        },
-        nameBlock,
-        e(
+          aggroLabel,
+        )
+      : null;
+
+  const trailingEl =
+    trailing != null
+      ? e(
           "span",
           {
             style: {
@@ -118,9 +147,28 @@ export function ObservedUnit(props: ObservedUnitProps): any {
             },
           },
           trailing,
-        ),
-      )
-    : nameBlock;
+        )
+      : null;
+
+  const label =
+    trailingEl || aggroChip
+      ? e(
+          "span",
+          {
+            style: {
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "8px",
+              width: "100%",
+              alignItems: "center",
+              minWidth: 0,
+            },
+          },
+          nameBlock,
+          aggroChip,
+          trailingEl,
+        )
+      : nameBlock;
 
   return e(
     "div",
