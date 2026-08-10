@@ -1,5 +1,7 @@
 /** Viewport-relative panel placement (percent of #comm-ui / screen). */
 
+import type { ViewportProfile } from "./viewport";
+
 export type LayoutAnchor = "tl" | "tr" | "bl" | "br" | "tc" | "bc" | "center";
 
 export type PanelPos = {
@@ -78,7 +80,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
  * threat above combat/kills, Layout small BR.
  * Reset positions reloads these via mergeLayout(null).
  */
-export const DEFAULT_LAYOUT: Record<PanelId, PanelPos> = {
+export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   players: { x: 0.4, y: 0.4, anchor: "tl" },
   enemies: { x: 99.6, y: 0.4, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
@@ -101,6 +103,74 @@ export const DEFAULT_LAYOUT: Record<PanelId, PanelPos> = {
   bag: { x: 0.8, y: 86, anchor: "bl" },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
 };
+
+/**
+ * Landscape tablet: combat/threat as right drawer, bag as left drawer,
+ * command as centered sheet, meters tucked TR.
+ */
+export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
+  players: { x: 0.5, y: 0.5, anchor: "tl" },
+  enemies: { x: 99.5, y: 0.5, anchor: "tr" },
+  topCenter: { x: 50, y: 0.5, anchor: "tc" },
+  paperdoll: { x: 1, y: 28, anchor: "tl" },
+  combat: { x: 99.2, y: 52, anchor: "tr" },
+  kills: { x: 99.2, y: 72, anchor: "tr" },
+  playerFrame: { x: 32, y: 78, anchor: "bc" },
+  targetFrame: { x: 68, y: 78, anchor: "bc" },
+  bossBar: { x: 50, y: 9, anchor: "tc" },
+  pdps: { x: 99.2, y: 14, anchor: "tr" },
+  hitDps: { x: 99.2, y: 28, anchor: "tr" },
+  coopV1: { x: 0.8, y: 14, anchor: "tl" },
+  coopV2: { x: 0.8, y: 28, anchor: "tl" },
+  threat: { x: 99.2, y: 40, anchor: "tr" },
+  command: { x: 50, y: 44, anchor: "center" },
+  bag: { x: 0.8, y: 78, anchor: "bl" },
+  toggles: { x: 99.2, y: 98.5, anchor: "br" },
+};
+
+/**
+ * Portrait phone: sheets for combat/bag/command; frames above chrome;
+ * meters mostly off-canvas edge so core frames stay usable.
+ */
+export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
+  players: { x: 0.5, y: 0.5, anchor: "tl" },
+  enemies: { x: 99.5, y: 0.5, anchor: "tr" },
+  topCenter: { x: 50, y: 0.4, anchor: "tc" },
+  paperdoll: { x: 50, y: 36, anchor: "center" },
+  combat: { x: 50, y: 72, anchor: "bc" },
+  kills: { x: 98, y: 58, anchor: "br" },
+  playerFrame: { x: 28, y: 62, anchor: "bc" },
+  targetFrame: { x: 72, y: 62, anchor: "bc" },
+  bossBar: { x: 50, y: 10, anchor: "tc" },
+  pdps: { x: 99, y: 16, anchor: "tr" },
+  hitDps: { x: 99, y: 28, anchor: "tr" },
+  coopV1: { x: 1, y: 16, anchor: "tl" },
+  coopV2: { x: 1, y: 28, anchor: "tl" },
+  threat: { x: 50, y: 48, anchor: "tc" },
+  command: { x: 50, y: 42, anchor: "center" },
+  bag: { x: 50, y: 88, anchor: "bc" },
+  toggles: { x: 98, y: 98, anchor: "br" },
+};
+
+/** @deprecated alias — prefer DEFAULT_LAYOUT_DESKTOP / defaultLayoutFor */
+export const DEFAULT_LAYOUT = DEFAULT_LAYOUT_DESKTOP;
+
+export function defaultLayoutFor(
+  profile: ViewportProfile,
+): Record<PanelId, PanelPos> {
+  switch (profile) {
+    case "desktop":
+      return DEFAULT_LAYOUT_DESKTOP;
+    case "tablet":
+      return DEFAULT_LAYOUT_TABLET;
+    case "phone":
+      return DEFAULT_LAYOUT_PHONE;
+    default: {
+      const _exhaustive: never = profile;
+      return _exhaustive;
+    }
+  }
+}
 
 export type PanelLayoutMap = Partial<Record<PanelId, PanelPos>>;
 
@@ -127,11 +197,15 @@ export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   };
 }
 
-export function mergeLayout(partial?: PanelLayoutMap | null): Record<PanelId, PanelPos> {
+export function mergeLayout(
+  partial?: PanelLayoutMap | null,
+  profile: ViewportProfile = "desktop",
+): Record<PanelId, PanelPos> {
+  const defaults = defaultLayoutFor(profile);
   const out = {} as Record<PanelId, PanelPos>;
   for (let i = 0; i < PANEL_IDS.length; i++) {
     const id = PANEL_IDS[i];
-    out[id] = normalizePos(partial && partial[id], DEFAULT_LAYOUT[id]);
+    out[id] = normalizePos(partial && partial[id], defaults[id]);
   }
   return out;
 }
@@ -190,9 +264,19 @@ export function deltaToPercent(
   };
 }
 
-/** Snap axis percent to edges / mid when within threshold (layout edit). */
-export function snapPercent(n: number, threshold = 2.2): number {
+/** Snap axis percent to edges / mid / peer panel edges when within threshold. */
+export function snapPercent(
+  n: number,
+  threshold = 2.2,
+  peerValues?: number[],
+): number {
   const targets = [0, 50, 100];
+  if (peerValues && peerValues.length) {
+    for (let i = 0; i < peerValues.length; i++) {
+      const v = peerValues[i];
+      if (Number.isFinite(v)) targets.push(v);
+    }
+  }
   let best = n;
   let bestDist = threshold + 1;
   for (let i = 0; i < targets.length; i++) {
@@ -203,4 +287,37 @@ export function snapPercent(n: number, threshold = 2.2): number {
     }
   }
   return bestDist <= threshold ? best : n;
+}
+
+/**
+ * Soft nudge when a dropped panel lands nearly on top of another
+ * (same anchor family). Keeps layouts readable without hard collision.
+ */
+export function softAvoidOverlap(
+  id: PanelId,
+  pos: PanelPos,
+  others: Partial<Record<PanelId, PanelPos>>,
+  nudge = 3.2,
+): PanelPos {
+  const ids = Object.keys(others) as PanelId[];
+  let x = pos.x;
+  let y = pos.y;
+  for (let i = 0; i < ids.length; i++) {
+    const otherId = ids[i];
+    if (otherId === id) continue;
+    const o = others[otherId];
+    if (!o || o.anchor !== pos.anchor) continue;
+    const dx = Math.abs(o.x - x);
+    const dy = Math.abs(o.y - y);
+    if (dx < nudge && dy < nudge) {
+      // Prefer sliding along the axis with more room.
+      if (dx <= dy) {
+        x = clamp(o.x + (x >= o.x ? nudge : -nudge), 0, 100);
+      } else {
+        y = clamp(o.y + (y >= o.y ? nudge : -nudge), 0, 100);
+      }
+    }
+  }
+  if (x === pos.x && y === pos.y) return pos;
+  return { ...pos, x, y };
 }

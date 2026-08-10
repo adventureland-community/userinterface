@@ -8,8 +8,19 @@ import {
   COMBAT_CHANNELS,
   type CombatChannel,
 } from "../meters/combatChannels";
+import {
+  VIEWPORT_PROFILES,
+  detectViewportProfile,
+  type ViewportProfile,
+} from "./viewport";
 
 const KEY = "al-comm-ui-settings-v1";
+
+export type { ViewportProfile };
+export type LayoutProfileMode = "auto" | ViewportProfile;
+export type PanelLayoutsByProfile = Partial<
+  Record<ViewportProfile, PanelLayoutMap>
+>;
 
 export type PartyScope = "watched" | "visible" | "all";
 
@@ -100,6 +111,8 @@ export type CommandSnippet = {
   id: string;
   name: string;
   code: string;
+  /** Optional folder/group label for filtering long lists. */
+  folder?: string;
 };
 
 /** Per-panel overlay opacity (0.25–1). Unset → 1. */
@@ -120,8 +133,15 @@ export type CommUiSettings = {
   partyFocus: PartyFocus;
   /** @deprecated use partyFocus */
   graphPartyKey?: string | null;
-  /** Viewport-% positions for each panel */
+  /**
+   * @deprecated Prefer panelLayoutsByProfile[active]. Kept in sync with the
+   * active/auto profile for older readers.
+   */
   panelLayout: PanelLayoutMap;
+  /** Per-viewport layout maps (desktop / tablet / phone). */
+  panelLayoutsByProfile: PanelLayoutsByProfile;
+  /** auto = detect from window size; otherwise force a profile's layout. */
+  layoutProfileMode: LayoutProfileMode;
   /** Per-panel show/hide; unset keys use defaults */
   panelVisible: PanelVisibleMap;
   /** Saved COMMAND code snippets */
@@ -174,6 +194,8 @@ const DEFAULTS: CommUiSettings = {
   barChannel: "dps",
   partyFocus: "watched",
   panelLayout: {},
+  panelLayoutsByProfile: {},
+  layoutProfileMode: "auto",
   panelVisible: { ...DEFAULT_PANEL_VISIBLE },
   commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
   commandDraft: "",
@@ -181,6 +203,59 @@ const DEFAULTS: CommUiSettings = {
   bagOpenPreferred: false,
   panelOpacity: {},
 };
+
+export function resolveLayoutProfile(
+  mode: LayoutProfileMode | undefined,
+  detected?: ViewportProfile,
+): ViewportProfile {
+  if (mode && mode !== "auto") return mode;
+  return detected || detectViewportProfile();
+}
+
+export function mergeLayoutsByProfile(
+  partial?: PanelLayoutsByProfile | null,
+  legacyFlat?: PanelLayoutMap | null,
+): PanelLayoutsByProfile {
+  const out: PanelLayoutsByProfile = {};
+  if (partial && typeof partial === "object") {
+    for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
+      const profile = VIEWPORT_PROFILES[i];
+      const chunk = partial[profile];
+      if (chunk && typeof chunk === "object") {
+        out[profile] = mergeLayout(chunk, profile);
+      }
+    }
+  }
+  // Migrate pre-profile flat layout into desktop (and only desktop).
+  if (
+    legacyFlat &&
+    typeof legacyFlat === "object" &&
+    Object.keys(legacyFlat).length &&
+    !out.desktop
+  ) {
+    out.desktop = mergeLayout(legacyFlat, "desktop");
+  }
+  return out;
+}
+
+/** Resolved positions for the active viewport profile. */
+export function layoutForProfile(
+  settings: CommUiSettings,
+  profile?: ViewportProfile,
+): Record<PanelId, PanelPos> {
+  const resolved =
+    profile ||
+    resolveLayoutProfile(settings.layoutProfileMode, detectViewportProfile());
+  const stored = settings.panelLayoutsByProfile?.[resolved];
+  if (stored && Object.keys(stored).length) {
+    return mergeLayout(stored, resolved);
+  }
+  // Fall back to legacy flat only on desktop; other profiles use defaults.
+  if (resolved === "desktop" && settings.panelLayout) {
+    return mergeLayout(settings.panelLayout, "desktop");
+  }
+  return mergeLayout(null, resolved);
+}
 
 function clampOpacity(n: number): number {
   if (!Number.isFinite(n)) return 1;
@@ -261,22 +336,58 @@ function normalizeSnippets(raw: any): CommandSnippet[] {
       typeof row.id === "string" && row.id
         ? row.id
         : `snip-${i}-${Date.now()}`;
-    out.push({
+    const folderRaw =
+      typeof row.folder === "string" ? row.folder.trim() : "";
+    const snip: CommandSnippet = {
       id,
       name: name || `Snippet ${out.length + 1}`,
       code,
-    });
+    };
+    if (folderRaw) snip.folder = folderRaw;
+    out.push(snip);
   }
   return out;
 }
 
+function normalizeLayoutProfileMode(raw: unknown): LayoutProfileMode {
+  if (
+    raw === "desktop" ||
+    raw === "tablet" ||
+    raw === "phone" ||
+    raw === "auto"
+  ) {
+    return raw;
+  }
+  return "auto";
+}
+
 function migrate(parsed: any): CommUiSettings {
+  const panelLayoutsByProfile = mergeLayoutsByProfile(
+    parsed.panelLayoutsByProfile,
+    parsed.panelLayout,
+  );
+  const layoutProfileMode = normalizeLayoutProfileMode(
+    parsed.layoutProfileMode,
+  );
+  const activeProfile = resolveLayoutProfile(layoutProfileMode);
+  const panelLayout = layoutForProfile(
+    {
+      ...DEFAULTS,
+      panelLayout: parsed.panelLayout || {},
+      panelLayoutsByProfile,
+      layoutProfileMode,
+    },
+    activeProfile,
+  );
+
   const next: CommUiSettings = {
     ...DEFAULTS,
     ...parsed,
     combatChannels: normalizeChannels(parsed.combatChannels),
     barChannel: normalizeBarChannel(parsed.barChannel),
-    panelLayout: mergeLayout(parsed.panelLayout),
+    panelLayout,
+    panelLayoutsByProfile,
+    layoutProfileMode,
     panelVisible: mergePanelVisible(
       parsed.panelVisible,
       parsed.combatVisible,
@@ -315,7 +426,9 @@ function freshDefaults(): CommUiSettings {
   return {
     ...DEFAULTS,
     combatChannels: DEFAULTS.combatChannels.slice(),
-    panelLayout: mergeLayout(null),
+    panelLayout: mergeLayout(null, "desktop"),
+    panelLayoutsByProfile: {},
+    layoutProfileMode: "auto",
     panelVisible: mergePanelVisible(null),
     commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
     commandDraft: "",
@@ -375,11 +488,35 @@ export function patchSettings(
   if (partial.barChannel != null) {
     next.barChannel = normalizeBarChannel(partial.barChannel);
   }
-  if (partial.panelLayout) {
-    next.panelLayout = mergeLayout({
-      ...current.panelLayout,
-      ...partial.panelLayout,
+  if (partial.layoutProfileMode != null) {
+    next.layoutProfileMode = normalizeLayoutProfileMode(
+      partial.layoutProfileMode,
+    );
+  }
+  if (partial.panelLayoutsByProfile) {
+    next.panelLayoutsByProfile = mergeLayoutsByProfile({
+      ...current.panelLayoutsByProfile,
+      ...partial.panelLayoutsByProfile,
     });
+  }
+  if (partial.panelLayout) {
+    const profile = resolveLayoutProfile(next.layoutProfileMode);
+    const merged = mergeLayout(
+      {
+        ...(current.panelLayoutsByProfile?.[profile] || current.panelLayout),
+        ...partial.panelLayout,
+      },
+      profile,
+    );
+    next.panelLayout = merged;
+    next.panelLayoutsByProfile = {
+      ...next.panelLayoutsByProfile,
+      [profile]: merged,
+    };
+  }
+  // Keep flat panelLayout mirrored to the active profile.
+  if (!partial.panelLayout && (partial.panelLayoutsByProfile || partial.layoutProfileMode != null)) {
+    next.panelLayout = layoutForProfile(next);
   }
   if (partial.panelVisible) {
     next.panelVisible = mergePanelVisible({
@@ -416,8 +553,23 @@ export function saveSettings(partial: Partial<CommUiSettings>): CommUiSettings {
   return patchSettings(partial);
 }
 
-export function savePanelPos(id: PanelId, pos: PanelPos): CommUiSettings {
-  return saveSettings({ panelLayout: { [id]: pos } });
+export function savePanelPos(
+  id: PanelId,
+  pos: PanelPos,
+  profile?: ViewportProfile,
+): CommUiSettings {
+  const settings = getSettings();
+  const resolved =
+    profile || resolveLayoutProfile(settings.layoutProfileMode);
+  return saveSettings({
+    panelLayoutsByProfile: {
+      [resolved]: {
+        ...(settings.panelLayoutsByProfile?.[resolved] || {}),
+        [id]: pos,
+      },
+    },
+    panelLayout: { [id]: pos },
+  });
 }
 
 export function savePanelVisible(
@@ -427,8 +579,34 @@ export function savePanelVisible(
   return saveSettings({ panelVisible: { [id]: visible } });
 }
 
-export function resetPanelLayout(): CommUiSettings {
-  return saveSettings({ panelLayout: mergeLayout(null) });
+/** Reset the active (or given) profile back to its built-in defaults. */
+export function resetPanelLayout(
+  profile?: ViewportProfile,
+): CommUiSettings {
+  const settings = getSettings();
+  const resolved =
+    profile || resolveLayoutProfile(settings.layoutProfileMode);
+  const defaults = mergeLayout(null, resolved);
+  return saveSettings({
+    panelLayoutsByProfile: {
+      ...settings.panelLayoutsByProfile,
+      [resolved]: defaults,
+    },
+    panelLayout: defaults,
+  });
+}
+
+/** Replace profile layouts from an import payload. */
+export function importPanelLayouts(
+  layoutsByProfile: PanelLayoutsByProfile,
+): CommUiSettings {
+  const merged = mergeLayoutsByProfile(layoutsByProfile, null);
+  return saveSettings({
+    panelLayoutsByProfile: {
+      ...getSettings().panelLayoutsByProfile,
+      ...merged,
+    },
+  });
 }
 
 export function isPanelVisible(

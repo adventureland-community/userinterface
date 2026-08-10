@@ -2,21 +2,27 @@ import { getReact } from "../../host/react";
 import {
   CLOSABLE_PANEL_IDS,
   getSettings,
+  importPanelLayouts,
+  layoutForProfile,
   mergePanelOpacity,
   mergePanelVisible,
   panelOpacityOf,
   resetPanelLayout,
+  resolveLayoutProfile,
   savePanelPos,
   savePanelVisible,
   saveSettings,
+  type LayoutProfileMode,
+  type PanelLayoutsByProfile,
   type PanelOpacityMap,
   type PanelVisibleMap,
+  type ViewportProfile,
 } from "../../lib/settings";
 import {
-  mergeLayout,
   type PanelId,
   type PanelPos,
 } from "../../lib/layout";
+import { detectViewportProfile } from "../../lib/viewport";
 import { applyBagLayoutPos, isInventoryOpen, openInventory } from "../../host/inventory";
 
 function isClosable(id: PanelId): boolean {
@@ -34,8 +40,13 @@ export type PanelLayoutState = {
   layoutEdit: boolean;
   setLayoutEdit: (v: boolean | ((prev: boolean) => boolean)) => void;
   layout: Record<PanelId, PanelPos>;
+  viewportProfile: ViewportProfile;
+  layoutProfileMode: LayoutProfileMode;
+  setLayoutProfileMode: (mode: LayoutProfileMode) => void;
   onMove: (id: PanelId, pos: PanelPos) => void;
   resetLayout: () => void;
+  importLayouts: (layouts: PanelLayoutsByProfile) => void;
+  exportLayouts: () => PanelLayoutsByProfile;
   setVisible: (id: PanelId, visible: boolean) => void;
   setOpacity: (id: PanelId, value: number) => void;
   visible: (id: PanelId) => boolean;
@@ -54,24 +65,71 @@ export function usePanelLayoutState(): PanelLayoutState {
   );
   const [opacityEdit, setOpacityEdit] = React.useState(false);
   const [layoutEdit, setLayoutEdit] = React.useState(false);
-  const [layout, setLayout] = React.useState(() =>
-    mergeLayout(settings0.panelLayout),
+  const [detectedProfile, setDetectedProfile] = React.useState(() =>
+    detectViewportProfile(),
   );
+  const [layoutProfileMode, setLayoutProfileModeState] = React.useState(
+    () => (settings0.layoutProfileMode || "auto") as LayoutProfileMode,
+  );
+  const viewportProfile = resolveLayoutProfile(
+    layoutProfileMode,
+    detectedProfile,
+  );
+  const [layout, setLayout] = React.useState(() =>
+    layoutForProfile(settings0, viewportProfile),
+  );
+
+  // Track viewport size for auto profile switching.
+  React.useEffect(() => {
+    const onResize = () => {
+      setDetectedProfile(detectViewportProfile());
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Reload layout when the active profile changes.
+  React.useEffect(() => {
+    const settings = getSettings();
+    const next = layoutForProfile(settings, viewportProfile);
+    setLayout(next);
+    applyBagLayoutPos(next.bag);
+  }, [viewportProfile]);
+
+  const setLayoutProfileMode = (mode: LayoutProfileMode) => {
+    setLayoutProfileModeState(mode);
+    const settings = saveSettings({ layoutProfileMode: mode });
+    const profile = resolveLayoutProfile(mode, detectViewportProfile());
+    const next = layoutForProfile(settings, profile);
+    setLayout(next);
+    applyBagLayoutPos(next.bag);
+  };
 
   const onMove = (id: PanelId, pos: PanelPos) => {
     setLayout((prev: Record<PanelId, PanelPos>) => {
       const next = { ...prev, [id]: pos };
       return next;
     });
-    savePanelPos(id, pos);
+    savePanelPos(id, pos, viewportProfile);
     if (id === "bag") applyBagLayoutPos(pos);
   };
 
   const resetLayout = () => {
-    const settings = resetPanelLayout();
-    const next = mergeLayout(settings.panelLayout);
+    const settings = resetPanelLayout(viewportProfile);
+    const next = layoutForProfile(settings, viewportProfile);
     setLayout(next);
     applyBagLayoutPos(next.bag);
+  };
+
+  const importLayouts = (layouts: PanelLayoutsByProfile) => {
+    const settings = importPanelLayouts(layouts);
+    const next = layoutForProfile(settings, viewportProfile);
+    setLayout(next);
+    applyBagLayoutPos(next.bag);
+  };
+
+  const exportLayouts = (): PanelLayoutsByProfile => {
+    return { ...getSettings().panelLayoutsByProfile };
   };
 
   const setVisible = (id: PanelId, visible: boolean) => {
@@ -111,8 +169,13 @@ export function usePanelLayoutState(): PanelLayoutState {
     layoutEdit,
     setLayoutEdit,
     layout,
+    viewportProfile,
+    layoutProfileMode,
+    setLayoutProfileMode,
     onMove,
     resetLayout,
+    importLayouts,
+    exportLayouts,
     setVisible,
     setOpacity,
     visible,

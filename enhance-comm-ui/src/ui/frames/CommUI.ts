@@ -12,6 +12,7 @@ import { subscribeCommanderOpen } from "../../host/commander";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { aggroByTarget, aggroedMonsters, activeBosses } from "../../queries/entities";
 import { PositionedPanel } from "../chrome/PositionedPanel";
+import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { Players } from "./Players";
 import { MapInfo } from "./MapInfo";
 import { CryptProgress } from "./CryptProgress";
@@ -30,13 +31,19 @@ import { BagPanel } from "./BagPanel";
 import {
   BAG_PANEL_STYLE,
   BOSS_BAR_PANEL_STYLE,
+  COMBAT_PANEL_STYLE,
+  COMMAND_PANEL_STYLE,
+  KILLS_PANEL_STYLE,
+  METER_PANEL_STYLE,
   PAPERDOLL_PANEL_STYLE,
+  THREAT_PANEL_STYLE,
 } from "../../lib/frameSizes";
 import { usePanelLayoutState } from "../hooks/usePanelLayoutState";
 import { useBagBridge } from "../hooks/useBagBridge";
 import { useSelectionFromXTarget } from "../hooks/useSelectionFromXTarget";
 import { LayoutEditChrome } from "./comm/LayoutEditChrome";
 import { OpacityEditor } from "./comm/OpacityEditor";
+import { isTouchishProfile } from "../../lib/viewport";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -66,6 +73,31 @@ type PanelOpts = {
   hiddenBodyStyle?: Record<string, any>;
 };
 
+function meterOrDummy(
+  title: string,
+  rows: any[],
+  layoutEdit: boolean,
+  highlightId?: string,
+  className?: string,
+): any {
+  if (rows && rows.length) {
+    return e(RankMeter, {
+      title,
+      className,
+      rows,
+      highlightId,
+    });
+  }
+  if (!layoutEdit) return null;
+  return e(PanelShellDummy, {
+    label: title,
+    hint: "No contributors yet",
+    accent: "#555",
+    rows: 3,
+    style: METER_PANEL_STYLE,
+  });
+}
+
 export function CommUI(props: CommUIProps): any {
   const React = getReact();
   const snap = props.snap;
@@ -78,8 +110,13 @@ export function CommUI(props: CommUIProps): any {
     layoutEdit,
     setLayoutEdit,
     layout,
+    viewportProfile,
+    layoutProfileMode,
+    setLayoutProfileMode,
     onMove,
     resetLayout,
+    importLayouts,
+    exportLayouts,
     setVisible,
     setOpacity,
     visible,
@@ -125,6 +162,17 @@ export function CommUI(props: CommUIProps): any {
     });
   }, [setVisible]);
 
+  // Mark #comm-ui with viewport profile for CSS touch targets.
+  React.useEffect(() => {
+    const root = document.getElementById("comm-ui");
+    if (!root) return;
+    root.setAttribute("data-viewport", viewportProfile);
+    root.classList.toggle(
+      "comm-ui-touch",
+      isTouchishProfile(viewportProfile),
+    );
+  }, [viewportProfile]);
+
   const pdpsRows = buildPdpsRows(snap.entities);
   const coopV1Rows = buildCoopV1Rows(snap.entities);
   const coopV2Rows = buildCoopV2Rows(snap.entities);
@@ -149,12 +197,18 @@ export function CommUI(props: CommUIProps): any {
         hidden: isHidden,
         hiddenBodyStyle: opts?.hiddenBodyStyle,
         opacity: opacityFor(id),
+        peerLayout: layout,
+        viewportProfile,
         onClose: isClosablePanel ? () => setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => setVisible(id, true) : undefined,
       },
       child,
     );
   };
+
+  const touchPad = isTouchishProfile(viewportProfile);
+  const toggleBtnPad = touchPad ? "10px 16px" : "5px 12px";
+  const toggleFont = touchPad ? "16px" : "14px";
 
   return e(
     "div",
@@ -171,6 +225,11 @@ export function CommUI(props: CommUIProps): any {
       ? e(LayoutEditChrome, {
           onReset: resetLayout,
           onDone: () => setLayoutEdit(false),
+          viewportProfile,
+          layoutProfileMode,
+          onProfileMode: setLayoutProfileMode,
+          exportLayouts,
+          importLayouts,
         })
       : null,
 
@@ -263,9 +322,17 @@ export function CommUI(props: CommUIProps): any {
         )
       : null,
 
-    panel("kills", e(KillKpiPanel), { closable: true }),
+    panel("kills", e(KillKpiPanel), {
+      closable: true,
+      style: KILLS_PANEL_STYLE,
+      hiddenBodyStyle: KILLS_PANEL_STYLE,
+    }),
 
-    panel("combat", e(CombatMetricsPanel), { closable: true }),
+    panel("combat", e(CombatMetricsPanel), {
+      closable: true,
+      style: COMBAT_PANEL_STYLE,
+      hiddenBodyStyle: COMBAT_PANEL_STYLE,
+    }),
 
     panel(
       "command",
@@ -273,7 +340,11 @@ export function CommUI(props: CommUIProps): any {
         seedDraft: commandSeed,
         openSeq: commandOpenSeq,
       }),
-      { closable: true },
+      {
+        closable: true,
+        style: COMMAND_PANEL_STYLE,
+        hiddenBodyStyle: COMMAND_PANEL_STYLE,
+      },
     ),
 
     bagOpen || layoutEdit
@@ -322,55 +393,70 @@ export function CommUI(props: CommUIProps): any {
       e(ThreatTable, {
         entities: snap.entities,
         observingId: snap.observingId,
+        layoutEdit,
       }),
       {
         closable: true,
-        style: { minWidth: "160px" },
+        style: THREAT_PANEL_STYLE,
         empty: !hasThreat,
+        hiddenBodyStyle: THREAT_PANEL_STYLE,
       },
     ),
 
     panel(
       "pdps",
-      e(RankMeter, {
-        title: "PDPS",
-        className: "PdpsMeter",
-        rows: pdpsRows,
-        highlightId: snap.observingId,
-      }),
-      { closable: true, style: { width: "200px" }, empty: !pdpsRows.length },
+      meterOrDummy("PDPS", pdpsRows, layoutEdit, snap.observingId, "PdpsMeter"),
+      {
+        closable: true,
+        style: METER_PANEL_STYLE,
+        empty: !pdpsRows.length,
+        hiddenBodyStyle: METER_PANEL_STYLE,
+      },
     ),
 
     panel(
       "hitDps",
-      e(RankMeter, {
-        title: "Hit DPS (10s)",
-        className: "HitDpsMeter",
-        rows: hitDpsRows,
-        highlightId: snap.observingId,
-      }),
-      { closable: true, style: { width: "200px" }, empty: !hitDpsRows.length },
+      meterOrDummy(
+        "Hit DPS (10s)",
+        hitDpsRows,
+        layoutEdit,
+        snap.observingId,
+        "HitDpsMeter",
+      ),
+      {
+        closable: true,
+        style: METER_PANEL_STYLE,
+        empty: !hitDpsRows.length,
+        hiddenBodyStyle: METER_PANEL_STYLE,
+      },
     ),
 
     panel(
       "coopV1",
-      e(RankMeter, {
-        title: "s.coop v1",
-        rows: coopV1Rows,
-        highlightId: snap.observingId,
-      }),
-      { closable: true, style: { width: "200px" }, empty: !coopV1Rows.length },
+      meterOrDummy("s.coop v1", coopV1Rows, layoutEdit, snap.observingId),
+      {
+        closable: true,
+        style: METER_PANEL_STYLE,
+        empty: !coopV1Rows.length,
+        hiddenBodyStyle: METER_PANEL_STYLE,
+      },
     ),
 
     panel(
       "coopV2",
-      e(RankMeter, {
-        title: "s.coop v2",
-        className: "CoopContributionMeterV2",
-        rows: coopV2Rows,
-        highlightId: snap.observingId,
-      }),
-      { closable: true, style: { width: "200px" }, empty: !coopV2Rows.length },
+      meterOrDummy(
+        "s.coop v2",
+        coopV2Rows,
+        layoutEdit,
+        snap.observingId,
+        "CoopContributionMeterV2",
+      ),
+      {
+        closable: true,
+        style: METER_PANEL_STYLE,
+        empty: !coopV2Rows.length,
+        hiddenBodyStyle: METER_PANEL_STYLE,
+      },
     ),
 
     panel(
@@ -392,11 +478,14 @@ export function CommUI(props: CommUIProps): any {
             title: "Toggle layout edit (Ctrl+Shift+L)",
             style: {
               cursor: "pointer",
-              padding: "5px 12px",
-              fontSize: "14px",
+              padding: toggleBtnPad,
+              fontSize: toggleFont,
+              minHeight: touchPad ? "40px" : undefined,
               border: layoutEdit ? "1px solid #ffe08a" : "1px solid #555",
               background: layoutEdit ? "#3a3510" : "#1a1a1a",
               color: layoutEdit ? "#ffe08a" : "#eee",
+              textShadow: "none",
+              fontWeight: "normal",
             },
             onClick: () => setLayoutEdit(!layoutEdit),
           },
@@ -409,11 +498,14 @@ export function CommUI(props: CommUIProps): any {
             title: "Per-panel overlay opacity",
             style: {
               cursor: "pointer",
-              padding: "5px 12px",
-              fontSize: "14px",
+              padding: toggleBtnPad,
+              fontSize: toggleFont,
+              minHeight: touchPad ? "40px" : undefined,
               border: opacityEdit ? "1px solid #8ab" : "1px solid #555",
               background: opacityEdit ? "#1a2830" : "#1a1a1a",
               color: opacityEdit ? "#9cf" : "#eee",
+              textShadow: "none",
+              fontWeight: "normal",
             },
             onClick: () => setOpacityEdit(!opacityEdit),
           },

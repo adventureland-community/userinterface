@@ -1,11 +1,96 @@
-import { e } from "../../../host/react";
+import { getReact, e } from "../../../host/react";
+import {
+  downloadLayoutJson,
+  parseLayoutExport,
+  stringifyLayoutExport,
+} from "../../../lib/layoutExport";
+import {
+  type LayoutProfileMode,
+  type PanelLayoutsByProfile,
+} from "../../../lib/settings";
+import {
+  profileLabel,
+  type ViewportProfile,
+} from "../../../lib/viewport";
 
 export type LayoutEditChromeProps = {
   onReset: () => void;
   onDone: () => void;
+  viewportProfile: ViewportProfile;
+  layoutProfileMode: LayoutProfileMode;
+  onProfileMode: (mode: LayoutProfileMode) => void;
+  exportLayouts: () => PanelLayoutsByProfile;
+  importLayouts: (layouts: PanelLayoutsByProfile) => void;
 };
 
+function btnStyle(active?: boolean): Record<string, any> {
+  return {
+    cursor: "pointer",
+    fontSize: "13px",
+    padding: "6px 10px",
+    minHeight: "36px",
+    border: active ? "1px solid #ffe08a" : "1px solid #886",
+    background: active ? "#3a3510" : "#222",
+    color: active ? "#ffe08a" : "#eee",
+    textShadow: "none",
+    fontWeight: "normal",
+  };
+}
+
 export function LayoutEditChrome(props: LayoutEditChromeProps): any {
+  const React = getReact();
+  const [status, setStatus] = React.useState("");
+  const [pasteOpen, setPasteOpen] = React.useState(false);
+  const [pasteText, setPasteText] = React.useState("");
+  const fileRef = React.useRef(null as HTMLInputElement | null);
+
+  const onExport = async () => {
+    const json = stringifyLayoutExport(props.exportLayouts());
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(json);
+        setStatus("Layout JSON copied");
+      } else {
+        downloadLayoutJson(json);
+        setStatus("Layout JSON downloaded");
+      }
+    } catch {
+      downloadLayoutJson(json);
+      setStatus("Layout JSON downloaded");
+    }
+  };
+
+  const onDownload = () => {
+    downloadLayoutJson(stringifyLayoutExport(props.exportLayouts()));
+    setStatus("Layout JSON downloaded");
+  };
+
+  const applyImportText = (raw: string) => {
+    const parsed = parseLayoutExport(raw);
+    if (parsed.ok === false) {
+      setStatus(parsed.error);
+      return;
+    }
+    props.importLayouts(parsed.layoutsByProfile);
+    setStatus("Layout imported");
+    setPasteOpen(false);
+    setPasteText("");
+  };
+
+  const onFile = (ev: any) => {
+    const file = ev.target && ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      applyImportText(String(reader.result || ""));
+    };
+    reader.onerror = () => setStatus("Failed to read file");
+    reader.readAsText(file);
+    ev.target.value = "";
+  };
+
+  const modes: LayoutProfileMode[] = ["auto", "desktop", "tablet", "phone"];
+
   return e(
     "div",
     {
@@ -17,47 +102,153 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         zIndex: 50,
         pointerEvents: "auto",
         display: "flex",
-        gap: "8px",
-        alignItems: "center",
-        padding: "6px 12px",
+        flexDirection: "column",
+        gap: "6px",
+        alignItems: "stretch",
+        padding: "8px 12px",
         background: "rgba(30,28,10,0.95)",
         border: "1px solid #aa8",
         color: "#ffe08a",
         fontSize: "14px",
+        maxWidth: "min(960px, 96vw)",
+        textShadow: "none",
+        fontWeight: "normal",
       },
     },
-    "Layout edit — drag snaps to edges · Ctrl+Shift+L · Show restores",
     e(
-      "button",
+      "div",
       {
-        type: "button",
-        onClick: props.onReset,
         style: {
-          cursor: "pointer",
-          fontSize: "13px",
-          padding: "3px 10px",
-          border: "1px solid #886",
-          background: "#222",
-          color: "#eee",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          alignItems: "center",
         },
       },
-      "Reset positions",
+      `Layout edit · ${profileLabel(props.viewportProfile)}` +
+        (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
+      e(
+        "button",
+        { type: "button", onClick: props.onReset, style: btnStyle() },
+        "Reset positions",
+      ),
+      e(
+        "button",
+        { type: "button", onClick: onExport, style: btnStyle() },
+        "Copy layout",
+      ),
+      e(
+        "button",
+        { type: "button", onClick: onDownload, style: btnStyle() },
+        "Download",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: () => setPasteOpen((v: boolean) => !v),
+          style: btnStyle(pasteOpen),
+        },
+        pasteOpen ? "Cancel paste" : "Paste / import",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: () => fileRef.current && fileRef.current.click(),
+          style: btnStyle(),
+        },
+        "Upload JSON",
+      ),
+      e("input", {
+        ref: fileRef,
+        type: "file",
+        accept: "application/json,.json",
+        style: { display: "none" },
+        onChange: onFile,
+      }),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: props.onDone,
+          style: btnStyle(true),
+        },
+        "Done",
+      ),
     ),
     e(
-      "button",
+      "div",
       {
-        type: "button",
-        onClick: props.onDone,
         style: {
-          cursor: "pointer",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "6px",
+          alignItems: "center",
           fontSize: "13px",
-          padding: "3px 10px",
-          border: "1px solid #886",
-          background: "#333",
-          color: "#ffe08a",
+          color: "#ddd",
         },
       },
-      "Done",
+      e("span", { style: { color: "#aa8" } }, "Profile"),
+      ...modes.map((mode) =>
+        e(
+          "button",
+          {
+            key: mode,
+            type: "button",
+            onClick: () => props.onProfileMode(mode),
+            style: btnStyle(props.layoutProfileMode === mode),
+          },
+          mode === "auto" ? "Auto" : profileLabel(mode),
+        ),
+      ),
+      e(
+        "span",
+        { style: { color: "#888", fontSize: "12px" } },
+        "snap peers · soft avoid overlap · Ctrl+Shift+L",
+      ),
     ),
+    status
+      ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status)
+      : null,
+    pasteOpen
+      ? e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+            },
+          },
+          e("textarea", {
+            value: pasteText,
+            rows: 5,
+            placeholder: "Paste enhance-comm-ui layout JSON…",
+            onChange: (ev: any) => setPasteText(ev.target.value),
+            style: {
+              width: "100%",
+              minHeight: "100px",
+              background: "#141410",
+              color: "#eee",
+              border: "1px solid #665",
+              fontSize: "12px",
+              fontFamily: "Consolas, Monaco, monospace",
+              textShadow: "none",
+              fontWeight: "normal",
+              boxSizing: "border-box",
+            },
+          }),
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: () => applyImportText(pasteText),
+              style: btnStyle(true),
+            },
+            "Apply import",
+          ),
+        )
+      : null,
   );
 }
