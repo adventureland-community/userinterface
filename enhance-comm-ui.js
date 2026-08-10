@@ -4051,24 +4051,43 @@ var EnhanceCommUI = (() => {
 
   // src/lib/layoutEditPrefs.ts
   var KEY2 = "al-comm-ui-layout-edit-prefs-v1";
+  var DEFAULT_LAYOUT_CHROME_POS = {
+    x: 50,
+    y: 0.8
+  };
   var DEFAULTS2 = {
     freePlacement: false,
-    gridStep: LAYOUT_GRID_STEP
+    gridStep: LAYOUT_GRID_STEP,
+    chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache = null;
   var listeners4 = [];
+  function clampPct(n) {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+  }
+  function normalizeChromePos(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { ...DEFAULT_LAYOUT_CHROME_POS };
+    }
+    const obj = raw;
+    const x = typeof obj.x === "number" && Number.isFinite(obj.x) ? clampPct(obj.x) : DEFAULT_LAYOUT_CHROME_POS.x;
+    const y = typeof obj.y === "number" && Number.isFinite(obj.y) ? clampPct(obj.y) : DEFAULT_LAYOUT_CHROME_POS.y;
+    return { x, y };
+  }
   function read() {
     var _a;
     try {
       const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY2);
-      if (!raw) return { ...DEFAULTS2 };
+      if (!raw) return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
       const parsed = JSON.parse(raw);
       return {
         freePlacement: !!parsed.freePlacement,
-        gridStep: parsed.gridStep != null ? normalizeGridStep(parsed.gridStep) : LAYOUT_GRID_STEP
+        gridStep: parsed.gridStep != null ? normalizeGridStep(parsed.gridStep) : LAYOUT_GRID_STEP,
+        chromePos: normalizeChromePos(parsed.chromePos)
       };
     } catch (e2) {
-      return { ...DEFAULTS2 };
+      return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
     }
   }
   function write(prefs) {
@@ -4107,6 +4126,19 @@ var EnhanceCommUI = (() => {
     const next = {
       ...getLayoutEditPrefs(),
       gridStep: normalizeGridStep(step)
+    };
+    cache = next;
+    write(next);
+    notify();
+    return next;
+  }
+  function getLayoutChromePos() {
+    return getLayoutEditPrefs().chromePos;
+  }
+  function setLayoutChromePos(pos) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      chromePos: normalizeChromePos(pos)
     };
     cache = next;
     write(next);
@@ -8850,11 +8882,26 @@ var EnhanceCommUI = (() => {
       () => getLayoutFreePlacement()
     );
     const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
+    const [chromePos, setChromePos] = React.useState(
+      () => getLayoutChromePos()
+    );
     const fileRef = React.useRef(null);
+    const dragging = React.useRef(false);
+    const dragStart = React.useRef({
+      x: 0,
+      y: 0,
+      posX: 0,
+      posY: 0
+    });
+    const chromePosRef = React.useRef(chromePos);
+    chromePosRef.current = chromePos;
     React.useEffect(
       () => subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
         setGridStep(getLayoutGridStep());
+        if (!dragging.current) {
+          setChromePos(getLayoutChromePos());
+        }
       }),
       []
     );
@@ -8907,15 +8954,58 @@ var EnhanceCommUI = (() => {
       const next = setLayoutGridStep(step);
       setGridStep(next.gridStep);
     };
+    const onChromePointerDown = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      dragging.current = true;
+      dragStart.current = {
+        x: ev.clientX,
+        y: ev.clientY,
+        posX: chromePosRef.current.x,
+        posY: chromePosRef.current.y
+      };
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId);
+      } catch (e2) {
+      }
+    };
+    const onChromePointerMove = (ev) => {
+      if (!dragging.current) return;
+      const root = document.getElementById("comm-ui") || document.documentElement;
+      const rect = root.getBoundingClientRect();
+      const { dxPct, dyPct } = deltaToPercent(
+        ev.clientX - dragStart.current.x,
+        ev.clientY - dragStart.current.y,
+        rect.width,
+        rect.height
+      );
+      const next = {
+        x: Math.max(0, Math.min(100, dragStart.current.posX + dxPct)),
+        y: Math.max(0, Math.min(100, dragStart.current.posY + dyPct))
+      };
+      chromePosRef.current = next;
+      setChromePos(next);
+    };
+    const onChromePointerUp = (ev) => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      try {
+        ev.currentTarget.releasePointerCapture(ev.pointerId);
+      } catch (e2) {
+      }
+      const next = setLayoutChromePos(chromePosRef.current);
+      setChromePos(next.chromePos);
+    };
     const modes = ["auto", "desktop", "tablet", "phone"];
     const stepLabel = `${gridStep}%`;
     return e(
       "div",
       {
+        className: "comm-layout-edit-chrome",
         style: {
           position: "absolute",
-          left: "50%",
-          top: "8px",
+          left: `${chromePos.x}%`,
+          top: `${chromePos.y}%`,
           transform: "translateX(-50%)",
           zIndex: 50,
           pointerEvents: "auto",
@@ -8923,7 +9013,7 @@ var EnhanceCommUI = (() => {
           flexDirection: "column",
           gap: "6px",
           alignItems: "stretch",
-          padding: "8px 12px",
+          padding: "6px 12px 8px",
           background: "rgba(30,28,10,0.95)",
           border: "1px solid #aa8",
           color: "#ffe08a",
@@ -8936,6 +9026,42 @@ var EnhanceCommUI = (() => {
       e(
         "div",
         {
+          className: "comm-layout-edit-chrome-handle",
+          title: "Drag to move this toolbar",
+          "aria-label": "Drag Layout edit toolbar",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "4px 2px 2px",
+            margin: "0 -4px 2px",
+            cursor: "grab",
+            userSelect: "none",
+            touchAction: "none",
+            color: "#ffe08a",
+            fontSize: "13px",
+            minHeight: "28px"
+          },
+          onPointerDown: onChromePointerDown,
+          onPointerMove: onChromePointerMove,
+          onPointerUp: onChromePointerUp,
+          onPointerCancel: onChromePointerUp
+        },
+        e("span", { "aria-hidden": true }, "\u283F"),
+        e(
+          "span",
+          { style: { flex: "1 1 auto", whiteSpace: "nowrap" } },
+          `Layout edit \xB7 ${profileLabel(props.viewportProfile)}` + (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)")
+        ),
+        e(
+          "span",
+          { style: { color: "#886", fontSize: "11px", whiteSpace: "nowrap" } },
+          "drag to move"
+        )
+      ),
+      e(
+        "div",
+        {
           style: {
             display: "flex",
             flexWrap: "wrap",
@@ -8943,7 +9069,6 @@ var EnhanceCommUI = (() => {
             alignItems: "center"
           }
         },
-        `Layout edit \xB7 ${profileLabel(props.viewportProfile)}` + (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
         e(
           "button",
           { type: "button", onClick: props.onReset, style: btnStyle2() },
@@ -8968,7 +9093,7 @@ var EnhanceCommUI = (() => {
               type: "button",
               onClick: () => onGridStep(step),
               style: btnStyle2(Math.abs(gridStep - step) < 1e-6),
-              title: freePlacement ? `Grid lines every ${step}% (snap off while Free is on)` : `Grid + snap every ${step}%`
+              title: `Grid + snap every ${step}% (ignored while Free is on)`
             },
             `${step}%`
           )
@@ -9046,7 +9171,7 @@ var EnhanceCommUI = (() => {
         e(
           "span",
           { style: { color: "#888", fontSize: "12px" } },
-          freePlacement ? "Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L" : `${stepLabel} grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
+          freePlacement ? `Free drag \xB7 peer snap 0/50/100 \xB7 soft avoid \xB7 Ctrl+Shift+L (grid ${stepLabel} hidden snap)` : `${stepLabel} grid snap \xB7 peer snap \xB7 soft avoid \xB7 Ctrl+Shift+L`
         )
       ),
       status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,

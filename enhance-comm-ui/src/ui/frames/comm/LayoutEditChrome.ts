@@ -1,15 +1,19 @@
 import { getReact, e } from "../../../host/react";
+import { deltaToPercent } from "../../../lib/layout";
 import {
   downloadLayoutJson,
   parseLayoutExport,
   stringifyLayoutExport,
 } from "../../../lib/layoutExport";
 import {
+  getLayoutChromePos,
   getLayoutFreePlacement,
   getLayoutGridStep,
+  setLayoutChromePos,
   setLayoutFreePlacement,
   setLayoutGridStep,
   subscribeLayoutEditPrefs,
+  type LayoutChromePos,
 } from "../../../lib/layoutEditPrefs";
 import { LAYOUT_GRID_STEP_PRESETS } from "../../../lib/layoutGrid";
 import {
@@ -45,6 +49,10 @@ function btnStyle(active?: boolean): Record<string, any> {
   };
 }
 
+/**
+ * Floating Layout-edit toolbar. Draggable via the grab row so it can be moved
+ * off topCenter (server/map); position persists in layout-edit prefs.
+ */
 export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const React = getReact();
   const [status, setStatus] = React.useState("");
@@ -54,13 +62,29 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     getLayoutFreePlacement(),
   );
   const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
+  const [chromePos, setChromePos] = React.useState(
+    (): LayoutChromePos => getLayoutChromePos(),
+  );
   const fileRef = React.useRef(null as HTMLInputElement | null);
+  const dragging = React.useRef(false);
+  const dragStart = React.useRef({
+    x: 0,
+    y: 0,
+    posX: 0,
+    posY: 0,
+  });
+  const chromePosRef = React.useRef(chromePos);
+  chromePosRef.current = chromePos;
 
   React.useEffect(
     () =>
       subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
         setGridStep(getLayoutGridStep());
+        // Avoid fighting an in-progress drag with a prefs echo from ourselves.
+        if (!dragging.current) {
+          setChromePos(getLayoutChromePos());
+        }
       }),
     [],
   );
@@ -120,16 +144,66 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     setGridStep(next.gridStep);
   };
 
+  const onChromePointerDown = (ev: any) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    dragging.current = true;
+    dragStart.current = {
+      x: ev.clientX,
+      y: ev.clientY,
+      posX: chromePosRef.current.x,
+      posY: chromePosRef.current.y,
+    };
+    try {
+      ev.currentTarget.setPointerCapture(ev.pointerId);
+    } catch {
+      // ignore
+    }
+  };
+
+  const onChromePointerMove = (ev: any) => {
+    if (!dragging.current) return;
+    const root =
+      (document.getElementById("comm-ui") as HTMLElement | null) ||
+      document.documentElement;
+    const rect = root.getBoundingClientRect();
+    const { dxPct, dyPct } = deltaToPercent(
+      ev.clientX - dragStart.current.x,
+      ev.clientY - dragStart.current.y,
+      rect.width,
+      rect.height,
+    );
+    const next: LayoutChromePos = {
+      x: Math.max(0, Math.min(100, dragStart.current.posX + dxPct)),
+      y: Math.max(0, Math.min(100, dragStart.current.posY + dyPct)),
+    };
+    chromePosRef.current = next;
+    setChromePos(next);
+  };
+
+  const onChromePointerUp = (ev: any) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    try {
+      ev.currentTarget.releasePointerCapture(ev.pointerId);
+    } catch {
+      // ignore
+    }
+    const next = setLayoutChromePos(chromePosRef.current);
+    setChromePos(next.chromePos);
+  };
+
   const modes: LayoutProfileMode[] = ["auto", "desktop", "tablet", "phone"];
   const stepLabel = `${gridStep}%`;
 
   return e(
     "div",
     {
+      className: "comm-layout-edit-chrome",
       style: {
         position: "absolute",
-        left: "50%",
-        top: "8px",
+        left: `${chromePos.x}%`,
+        top: `${chromePos.y}%`,
         transform: "translateX(-50%)",
         zIndex: 50,
         pointerEvents: "auto",
@@ -137,7 +211,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         flexDirection: "column",
         gap: "6px",
         alignItems: "stretch",
-        padding: "8px 12px",
+        padding: "6px 12px 8px",
         background: "rgba(30,28,10,0.95)",
         border: "1px solid #aa8",
         color: "#ffe08a",
@@ -150,6 +224,43 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     e(
       "div",
       {
+        className: "comm-layout-edit-chrome-handle",
+        title: "Drag to move this toolbar",
+        "aria-label": "Drag Layout edit toolbar",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "4px 2px 2px",
+          margin: "0 -4px 2px",
+          cursor: "grab",
+          userSelect: "none",
+          touchAction: "none",
+          color: "#ffe08a",
+          fontSize: "13px",
+          minHeight: "28px",
+        },
+        onPointerDown: onChromePointerDown,
+        onPointerMove: onChromePointerMove,
+        onPointerUp: onChromePointerUp,
+        onPointerCancel: onChromePointerUp,
+      },
+      e("span", { "aria-hidden": true }, "⠿"),
+      e(
+        "span",
+        { style: { flex: "1 1 auto", whiteSpace: "nowrap" } },
+        `Layout edit · ${profileLabel(props.viewportProfile)}` +
+          (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
+      ),
+      e(
+        "span",
+        { style: { color: "#886", fontSize: "11px", whiteSpace: "nowrap" } },
+        "drag to move",
+      ),
+    ),
+    e(
+      "div",
+      {
         style: {
           display: "flex",
           flexWrap: "wrap",
@@ -157,8 +268,6 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           alignItems: "center",
         },
       },
-      `Layout edit · ${profileLabel(props.viewportProfile)}` +
-        (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
       e(
         "button",
         { type: "button", onClick: props.onReset, style: btnStyle() },
@@ -185,9 +294,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
             type: "button",
             onClick: () => onGridStep(step),
             style: btnStyle(Math.abs(gridStep - step) < 1e-6),
-            title: freePlacement
-              ? `Grid lines every ${step}% (snap off while Free is on)`
-              : `Grid + snap every ${step}%`,
+            title: `Grid + snap every ${step}% (ignored while Free is on)`,
           },
           `${step}%`,
         ),
@@ -266,7 +373,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         "span",
         { style: { color: "#888", fontSize: "12px" } },
         freePlacement
-          ? "Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L"
+          ? `Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L (grid ${stepLabel} hidden snap)`
           : `${stepLabel} grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
       ),
     ),
