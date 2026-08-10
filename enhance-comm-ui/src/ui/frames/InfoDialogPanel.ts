@@ -92,10 +92,11 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
       ref: slotRef,
       className: `comm-info-dialog-slot comm-${kind}-info-slot`,
       // Always mounted so stock writers can target the adopted host.
+      // Do not collapse to height:0 — jQuery injects HTML before React's
+      // open-state update; clipping hid gear/buff info after the split.
       style: {
         display: "block",
-        height: open || props.layoutEdit ? undefined : 0,
-        overflow: open ? "visible" : "hidden",
+        overflow: "visible",
         minHeight: 0,
       },
     }),

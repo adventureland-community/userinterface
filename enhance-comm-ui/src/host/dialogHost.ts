@@ -298,51 +298,121 @@ function remapStockSelector(
   return selector;
 }
 
+const FN_MARK = "__ecuInfoPatched";
+const FN_ORIG = "__ecuInfoOrig";
+
+/** Last intentional info write — used to rescue content that still lands on stock. */
+let lastInfoWriteKind: InfoDialogKind = "item";
+
+function markPatched<T extends (...args: any[]) => any>(
+  patched: T,
+  orig: T,
+): T {
+  (patched as any)[FN_MARK] = true;
+  (patched as any)[FN_ORIG] = orig;
+  return patched;
+}
+
+function isOurPatch(fn: any): boolean {
+  return !!(fn && fn[FN_MARK]);
+}
+
+function sameInspectId(a: any, b: any): boolean {
+  if (!a || !b || a.id == null || b.id == null) return false;
+  return String(a.id) === String(b.id);
+}
+
+/**
+ * `reset_topleft` clears `#topleftcornerdialog` when `dialogs_target != ctarget`
+ * by object identity. On /comm, entity objects churn while ids stay stable, so
+ * that clear is often spurious — ignore those when mirroring to ecu hosts.
+ */
+function shouldMirrorStockClear(): boolean {
+  const w = window as any;
+  const dt = w.dialogs_target;
+  if (!dt) return true;
+  const inspect = w.xtarget || w.ctarget;
+  if (sameInspectId(dt, inspect)) return false;
+  return true;
+}
+
+function rescueStockContent(): void {
+  const stock = document.getElementById(STOCK_DIALOG_ID);
+  if (!hasContent(stock)) return;
+  const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+  if (!host || host === stock) return;
+  host.innerHTML = stock!.innerHTML;
+  stock!.innerHTML = "";
+}
+
+function installStockRescueObserver(): void {
+  const stock = document.getElementById(STOCK_DIALOG_ID);
+  if (!stock || typeof MutationObserver !== "function") return;
+  const key = "__ecuStockRescueObs";
+  if ((stock as any)[key]) return;
+  (stock as any)[key] = true;
+  const obs = new MutationObserver(() => {
+    rescueStockContent();
+  });
+  obs.observe(stock, { childList: true, subtree: true, characterData: true });
+}
+
 function installRenderPatches(): void {
   const w = window as any;
   const done: Record<string, boolean> = w[PATCHED] || (w[PATCHED] = {});
 
-  if (!done.condition && typeof w.render_condition === "function") {
-    const orig = w.render_condition;
-    w.render_condition = function (selector: any, name: any) {
+  if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
+    const orig = w.render_condition[FN_ORIG] || w.render_condition;
+    w.render_condition = markPatched(function (selector: any, name: any) {
+      lastInfoWriteKind = "buff";
       return orig.call(
         this,
         remapStockSelector(selector, "buff"),
         name,
       );
-    };
+    }, orig);
     done.condition = true;
   }
 
-  if (!done.skill && typeof w.render_skill === "function") {
-    const orig = w.render_skill;
-    w.render_skill = function (selector: any, skill: any, args: any) {
+  if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
+    const orig = w.render_skill[FN_ORIG] || w.render_skill;
+    w.render_skill = markPatched(function (
+      selector: any,
+      skill: any,
+      args: any,
+    ) {
+      lastInfoWriteKind = "buff";
       return orig.call(
         this,
         remapStockSelector(selector, "buff"),
         skill,
         args,
       );
-    };
+    }, orig);
     done.skill = true;
   }
 
-  if (!done.item && typeof w.render_item === "function") {
-    const orig = w.render_item;
-    w.render_item = function (selector: any, args: any) {
-      // render_condition already remaps to BUFF_SEL before calling us.
+  if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
+    const orig = w.render_item[FN_ORIG] || w.render_item;
+    w.render_item = markPatched(function (selector: any, args: any) {
+      // render_condition / render_skill already remap to BUFF_SEL before calling us.
+      const fromBuff =
+        selector === BUFF_SEL || selector === BUFF_DIALOG_ID;
+      if (fromBuff) lastInfoWriteKind = "buff";
+      else lastInfoWriteKind = "item";
       return orig.call(
         this,
-        remapStockSelector(selector, "item"),
+        fromBuff ? selector : remapStockSelector(selector, "item"),
         args,
       );
-    };
+    }, orig);
     done.item = true;
   }
 
   // slot_click toggles by checking `#topleftcornerdialog` — point at item host.
-  if (!done.slot && typeof w.slot_click === "function") {
-    w.slot_click = function (name: string) {
+  if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
+    const origSlot = w.slot_click[FN_ORIG] || w.slot_click;
+    w.slot_click = markPatched(function (name: string) {
       const target = w.xtarget || w.ctarget;
       const itemHost = document.getElementById(ITEM_DIALOG_ID);
       if (
@@ -357,6 +427,7 @@ function installRenderPatches(): void {
       if (target && target.slots && target.slots[name]) {
         w.last_sclick = name;
         w.dialogs_target = target;
+        lastInfoWriteKind = "item";
         const slot = target.slots[name];
         const G = w.G;
         if (typeof w.render_item === "function" && G && G.items && slot.name) {
@@ -370,12 +441,16 @@ function installRenderPatches(): void {
           });
         }
       }
-    };
+    }, origSlot);
     done.slot = true;
   }
 }
 
-/** When stock clears `#topleftcornerdialog`, clear both real hosts. */
+/**
+ * When stock clears `#topleftcornerdialog`, mirror to real hosts — unless the
+ * clear is entity-identity churn while the inspect id is unchanged.
+ * Non-empty writes to the hidden stub are redirected to the last info host.
+ */
 function installJqueryClearHook(): void {
   const $ = (window as any).$;
   if (!$ || !$.fn || ($.fn as any)[JQ_PATCHED]) return;
@@ -383,12 +458,7 @@ function installJqueryClearHook(): void {
   if (typeof orig !== "function") return;
   ($.fn as any)[JQ_PATCHED] = true;
   $.fn.html = function (this: any) {
-    if (
-      arguments.length > 0 &&
-      arguments[0] === "" &&
-      this &&
-      this.length
-    ) {
+    if (arguments.length > 0 && this && this.length) {
       let hitStock = false;
       for (let i = 0; i < this.length; i++) {
         const node = this[i];
@@ -397,7 +467,17 @@ function installJqueryClearHook(): void {
           break;
         }
       }
-      if (hitStock) closeAllInfoDialogs();
+      if (hitStock) {
+        const value = arguments[0];
+        if (value === "") {
+          if (shouldMirrorStockClear()) closeAllInfoDialogs();
+        } else {
+          const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+          if (host) {
+            return orig.apply($(host), arguments as any);
+          }
+        }
+      }
     }
     return orig.apply(this, arguments as any);
   };
@@ -423,6 +503,7 @@ export function adoptInfoDialog(
   if (corner) corner.classList.add("ecu-info-slot-host");
   installRenderPatches();
   installJqueryClearHook();
+  installStockRescueObserver();
   installDialogDismiss();
   observeCloseButton(dialog, kind);
   return dialog;
@@ -438,11 +519,13 @@ export function ensureDialogHost(): void {
   const { buff, item } = ensureDialogElements();
   installRenderPatches();
   installJqueryClearHook();
+  installStockRescueObserver();
   installDialogDismiss();
   observeCloseButton(buff, "buff");
   observeCloseButton(item, "item");
 
   // Game scripts may load after the userscript — retry patches briefly.
+  // Keep re-checking markers so late game redefines still get wrapped.
   if (!(window as any).__ecuDialogPatchRetry) {
     (window as any).__ecuDialogPatchRetry = true;
     let tries = 0;
@@ -450,11 +533,14 @@ export function ensureDialogHost(): void {
       tries += 1;
       installRenderPatches();
       installJqueryClearHook();
-      const done = (window as any).__ecuDialogRendersPatched || {};
-      if (
-        (done.condition && done.item && done.slot && done.skill) ||
-        tries >= 40
-      ) {
+      installStockRescueObserver();
+      const w = window as any;
+      const ready =
+        isOurPatch(w.render_condition) &&
+        isOurPatch(w.render_item) &&
+        isOurPatch(w.slot_click) &&
+        isOurPatch(w.render_skill);
+      if (ready || tries >= 80) {
         window.clearInterval(timer);
       }
     }, 250);

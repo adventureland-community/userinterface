@@ -29,7 +29,8 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Drag snap hits 0 / 50 / 100 and nearby peer panel edges; soft nudge on near-overlap drop.
 - [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/bag/paperdoll/buff info/item info).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
-- [ ] **Buff info panel** — Layout edit shows “Buff / item info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.
+- [ ] **Buff info panel** — Layout edit shows “Buff info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.
+- [ ] **Item info panel** — paperdoll gear click opens item details in Item info (paperdoll may already be open); × / Esc / click-outside closes.
 
 ## Nice-to-haves
 

@@ -3115,45 +3115,93 @@ var EnhanceCommUI = (() => {
     }
     return selector;
   }
+  var FN_MARK = "__ecuInfoPatched";
+  var FN_ORIG = "__ecuInfoOrig";
+  var lastInfoWriteKind = "item";
+  function markPatched(patched, orig) {
+    patched[FN_MARK] = true;
+    patched[FN_ORIG] = orig;
+    return patched;
+  }
+  function isOurPatch(fn) {
+    return !!(fn && fn[FN_MARK]);
+  }
+  function sameInspectId(a, b) {
+    if (!a || !b || a.id == null || b.id == null) return false;
+    return String(a.id) === String(b.id);
+  }
+  function shouldMirrorStockClear() {
+    const w = window;
+    const dt = w.dialogs_target;
+    if (!dt) return true;
+    const inspect = w.xtarget || w.ctarget;
+    if (sameInspectId(dt, inspect)) return false;
+    return true;
+  }
+  function rescueStockContent() {
+    const stock = document.getElementById(STOCK_DIALOG_ID);
+    if (!hasContent(stock)) return;
+    const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+    if (!host || host === stock) return;
+    host.innerHTML = stock.innerHTML;
+    stock.innerHTML = "";
+  }
+  function installStockRescueObserver() {
+    const stock = document.getElementById(STOCK_DIALOG_ID);
+    if (!stock || typeof MutationObserver !== "function") return;
+    const key = "__ecuStockRescueObs";
+    if (stock[key]) return;
+    stock[key] = true;
+    const obs = new MutationObserver(() => {
+      rescueStockContent();
+    });
+    obs.observe(stock, { childList: true, subtree: true, characterData: true });
+  }
   function installRenderPatches() {
     const w = window;
     const done = w[PATCHED] || (w[PATCHED] = {});
-    if (!done.condition && typeof w.render_condition === "function") {
-      const orig = w.render_condition;
-      w.render_condition = function(selector, name) {
+    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
+      const orig = w.render_condition[FN_ORIG] || w.render_condition;
+      w.render_condition = markPatched(function(selector, name) {
+        lastInfoWriteKind = "buff";
         return orig.call(
           this,
           remapStockSelector(selector, "buff"),
           name
         );
-      };
+      }, orig);
       done.condition = true;
     }
-    if (!done.skill && typeof w.render_skill === "function") {
-      const orig = w.render_skill;
-      w.render_skill = function(selector, skill, args) {
+    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
+      const orig = w.render_skill[FN_ORIG] || w.render_skill;
+      w.render_skill = markPatched(function(selector, skill, args) {
+        lastInfoWriteKind = "buff";
         return orig.call(
           this,
           remapStockSelector(selector, "buff"),
           skill,
           args
         );
-      };
+      }, orig);
       done.skill = true;
     }
-    if (!done.item && typeof w.render_item === "function") {
-      const orig = w.render_item;
-      w.render_item = function(selector, args) {
+    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
+      const orig = w.render_item[FN_ORIG] || w.render_item;
+      w.render_item = markPatched(function(selector, args) {
+        const fromBuff = selector === BUFF_SEL || selector === BUFF_DIALOG_ID;
+        if (fromBuff) lastInfoWriteKind = "buff";
+        else lastInfoWriteKind = "item";
         return orig.call(
           this,
-          remapStockSelector(selector, "item"),
+          fromBuff ? selector : remapStockSelector(selector, "item"),
           args
         );
-      };
+      }, orig);
       done.item = true;
     }
-    if (!done.slot && typeof w.slot_click === "function") {
-      w.slot_click = function(name) {
+    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
+      const origSlot = w.slot_click[FN_ORIG] || w.slot_click;
+      w.slot_click = markPatched(function(name) {
         const target = w.xtarget || w.ctarget;
         const itemHost = document.getElementById(ITEM_DIALOG_ID);
         if (w.last_sclick && w.last_sclick === name && itemHost && String(itemHost.innerHTML || "").trim()) {
@@ -3163,6 +3211,7 @@ var EnhanceCommUI = (() => {
         if (target && target.slots && target.slots[name]) {
           w.last_sclick = name;
           w.dialogs_target = target;
+          lastInfoWriteKind = "item";
           const slot = target.slots[name];
           const G = w.G;
           if (typeof w.render_item === "function" && G && G.items && slot.name) {
@@ -3176,7 +3225,7 @@ var EnhanceCommUI = (() => {
             });
           }
         }
-      };
+      }, origSlot);
       done.slot = true;
     }
   }
@@ -3187,7 +3236,7 @@ var EnhanceCommUI = (() => {
     if (typeof orig !== "function") return;
     $.fn[JQ_PATCHED] = true;
     $.fn.html = function() {
-      if (arguments.length > 0 && arguments[0] === "" && this && this.length) {
+      if (arguments.length > 0 && this && this.length) {
         let hitStock = false;
         for (let i = 0; i < this.length; i++) {
           const node = this[i];
@@ -3196,7 +3245,17 @@ var EnhanceCommUI = (() => {
             break;
           }
         }
-        if (hitStock) closeAllInfoDialogs();
+        if (hitStock) {
+          const value = arguments[0];
+          if (value === "") {
+            if (shouldMirrorStockClear()) closeAllInfoDialogs();
+          } else {
+            const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+            if (host) {
+              return orig.apply($(host), arguments);
+            }
+          }
+        }
       }
       return orig.apply(this, arguments);
     };
@@ -3214,6 +3273,7 @@ var EnhanceCommUI = (() => {
     if (corner) corner.classList.add("ecu-info-slot-host");
     installRenderPatches();
     installJqueryClearHook();
+    installStockRescueObserver();
     installDialogDismiss();
     observeCloseButton(dialog, kind);
     return dialog;
@@ -3222,6 +3282,7 @@ var EnhanceCommUI = (() => {
     const { buff, item } = ensureDialogElements();
     installRenderPatches();
     installJqueryClearHook();
+    installStockRescueObserver();
     installDialogDismiss();
     observeCloseButton(buff, "buff");
     observeCloseButton(item, "item");
@@ -3232,8 +3293,10 @@ var EnhanceCommUI = (() => {
         tries += 1;
         installRenderPatches();
         installJqueryClearHook();
-        const done = window.__ecuDialogRendersPatched || {};
-        if (done.condition && done.item && done.slot && done.skill || tries >= 40) {
+        installStockRescueObserver();
+        const w = window;
+        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
+        if (ready || tries >= 80) {
           window.clearInterval(timer);
         }
       }, 250);
@@ -6491,10 +6554,11 @@ var EnhanceCommUI = (() => {
         ref: slotRef,
         className: `comm-info-dialog-slot comm-${kind}-info-slot`,
         // Always mounted so stock writers can target the adopted host.
+        // Do not collapse to height:0 — jQuery injects HTML before React's
+        // open-state update; clipping hid gear/buff info after the split.
         style: {
           display: "block",
-          height: open || props.layoutEdit ? void 0 : 0,
-          overflow: open ? "visible" : "hidden",
+          overflow: "visible",
           minHeight: 0
         }
       })
