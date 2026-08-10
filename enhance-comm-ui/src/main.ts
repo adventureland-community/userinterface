@@ -3,7 +3,11 @@ import { startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
 import { startCombatMeter } from "./meters/combatMeter";
+import { startPartyCombat } from "./meters/partyCombat";
 import { startSessionKills } from "./kpi/sessionKills";
+import { installCommanderHook } from "./host/commander";
+import { installCommChrome } from "./host/commChrome";
+import { installInventoryFix } from "./host/inventory";
 import { CommUI } from "./ui/frames/CommUI";
 
 const POPUP_CSS = `
@@ -82,6 +86,12 @@ progress.comm-ui-mp-bar::-webkit-progress-bar {
 progress.comm-ui-mp-bar::-webkit-progress-value {
   background-color: blue;
 }
+
+/* Defeat Adventure Land global pixel-font thickening inside our overlay */
+#comm-ui, #comm-ui * {
+  text-shadow: none !important;
+  font-weight: normal !important;
+}
 `;
 
 function injectCss(id: string, css: string): void {
@@ -137,31 +147,33 @@ function onLoad(): void {
   injectCss("comm-copy-popup-css", POPUP_CSS);
   injectCss("comm-ui-css", PROGRESS_CSS);
 
+  // Stock /comm chrome + inventory — prefer in-game / observe-hud patterns.
+  installCommChrome();
+  installInventoryFix();
+  installCommanderHook();
   startSocketHub();
   startCryptTracker();
   startCombatMeter();
+  startPartyCombat();
   startSessionKills();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {
     domContainer = document.createElement("div");
     domContainer.id = "comm-ui";
-    domContainer.style.zIndex = "10";
-    domContainer.style.position = "fixed";
-    domContainer.style.width = "100%";
-    domContainer.style.height = "100%";
     document.body.append(domContainer);
   }
+  // HACK(comm-ui): above /comm #bottom (z-index 201) so panels receive clicks;
+  // empty overlay stays pointer-events:none so map + #bottom buttons still work.
+  domContainer.style.zIndex = "220";
+  domContainer.style.position = "fixed";
+  domContainer.style.width = "100%";
+  domContainer.style.height = "100%";
+  domContainer.style.pointerEvents = "none";
 
   const ReactDOM = getReactDOM();
   const root = ReactDOM.createRoot(domContainer);
   root.render(e(Root));
-
-  const bottom = document.getElementById("bottom");
-  // HACK(comm-ui): #bottom pointer-events none so meter toggles receive clicks
-  if (bottom) {
-    bottom.style.pointerEvents = "none";
-  }
 }
 
 (function bootstrap() {

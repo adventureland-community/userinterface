@@ -11,7 +11,16 @@ export type DamageEvent = {
   target?: string;
   damage?: number;
   heal?: number;
+  lifesteal?: number;
+  manasteal?: number;
+  dreturn?: number;
+  /** Reflect announce amount (damage:0 packet). Not the same as landed reflect hit. */
+  reflect?: number;
+  splash?: boolean;
   source?: string;
+  damageType?: string;
+  evade?: boolean;
+  miss?: boolean;
   at: number;
   raw?: any;
 };
@@ -51,25 +60,46 @@ function onHit(data: any): void {
   if (!data) return;
   const at = Date.now();
   const ev: DamageEvent = {
-    actor: data.hid != null ? String(data.hid) : data.actor != null ? String(data.actor) : undefined,
-    target: data.id != null ? String(data.id) : data.target != null ? String(data.target) : undefined,
+    actor:
+      data.hid != null
+        ? String(data.hid)
+        : data.actor != null
+          ? String(data.actor)
+          : undefined,
+    target:
+      data.id != null
+        ? String(data.id)
+        : data.target != null
+          ? String(data.target)
+          : undefined,
+    source: data.source != null ? String(data.source) : undefined,
+    splash: !!data.splash,
+    damageType: data.damage_type != null ? String(data.damage_type) : undefined,
+    evade: !!data.evade,
+    miss: !!data.miss,
     at,
     raw: data,
   };
+
   if (data.heal !== undefined) {
     ev.heal = Math.abs(Number(data.heal) || 0);
-  } else if (data.damage !== undefined) {
+  }
+  if (data.damage !== undefined) {
     ev.damage = Math.abs(Number(data.damage) || 0);
   }
-  if (data.evade || data.miss || data.reflect) {
-    // still emit for completeness; combatMeter can ignore zero damage
+  if (data.lifesteal) ev.lifesteal = Math.abs(Number(data.lifesteal) || 0);
+  if (data.manasteal) ev.manasteal = Math.abs(Number(data.manasteal) || 0);
+  if (data.dreturn) ev.dreturn = Math.abs(Number(data.dreturn) || 0);
+  // Reflect announce packets use numeric reflect amount with damage:0
+  if (data.reflect && typeof data.reflect === "number") {
+    ev.reflect = Math.abs(data.reflect);
   }
+
   emitDamage(ev);
 }
 
 function onAction(data: any): void {
   if (!data) return;
-  // action is intent; hit carries resolved damage — keep for potential future use
   void data;
 }
 

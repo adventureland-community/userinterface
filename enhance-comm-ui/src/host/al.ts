@@ -26,12 +26,60 @@ export function getEntitiesList(): EntityLike[] {
   return Object.values(raw);
 }
 
+/**
+ * Lookup by id with string coercion. Scans values so `DEAD${id}` bucket
+ * entries (same `.id`) and number/string id mismatches still resolve.
+ * Prefers a non-dead match when both exist.
+ */
+export function findEntityById(
+  id: string | number | null | undefined,
+): EntityLike | undefined {
+  if (id == null || id === "") return undefined;
+  const tid = String(id);
+  const raw = window.entities;
+  if (!raw) return undefined;
+
+  const list: EntityLike[] = Array.isArray(raw)
+    ? (raw.filter(Boolean) as EntityLike[])
+    : Object.values(raw as Record<string, EntityLike>);
+
+  let deadMatch: EntityLike | undefined;
+  for (let i = 0; i < list.length; i++) {
+    const ent = list[i];
+    if (!ent || String(ent.id) !== tid) continue;
+    if (!ent.dead) return ent;
+    if (!deadMatch) deadMatch = ent;
+  }
+
+  if (!Array.isArray(raw)) {
+    const byKey = (raw as Record<string, EntityLike>)[tid];
+    if (byKey && String(byKey.id) === tid) {
+      if (!byKey.dead) return byKey;
+      if (!deadMatch) deadMatch = byKey;
+    }
+  }
+
+  return deadMatch;
+}
+
+/**
+ * Watched character for /comm. `window.observing` is set once on welcome and
+ * is not refreshed by `player` packets (those only update `character`, which
+ * is null while observing). Live hp/target/etc. live on `entities[id]`.
+ */
 export function getObserving(): EntityLike | null | undefined {
-  return window.observing;
+  const snap = window.observing;
+  if (snap == null) return snap;
+  if (snap.id != null) {
+    const live = findEntityById(snap.id);
+    if (live) return live;
+  }
+  return snap;
 }
 
 export function getObservingId(): string | undefined {
-  return window.observing?.id;
+  const obs = getObserving();
+  return obs?.id != null ? String(obs.id) : undefined;
 }
 
 export function getS(): ServerInfoLike | undefined {
@@ -40,6 +88,19 @@ export function getS(): ServerInfoLike | undefined {
 
 export function getSocket(): SocketLike | undefined {
   return window.socket;
+}
+
+/**
+ * Observer COMMAND path: `/comm` → `o:command` → observed player's `code_eval`.
+ * Returns false if socket missing / empty code.
+ */
+export function emitObserverCommand(code: string): boolean {
+  const sock = getSocket();
+  if (!sock || typeof sock.emit !== "function") return false;
+  const trimmed = String(code || "").trim();
+  if (!trimmed) return false;
+  sock.emit("o:command", trimmed);
+  return true;
 }
 
 export function getServerRegion(): string | undefined {

@@ -13,7 +13,8 @@ export type EntityLike = {
   max_mp?: number;
   mtype?: string;
   cooperative?: boolean;
-  target?: string;
+  /** Player combat target id (monster id / player id); may be number from server. */
+  target?: string | number | null;
   party?: string;
   pdps?: number;
   range?: number;
@@ -77,6 +78,8 @@ export type SocketLike = {
   id?: string;
   on: (event: string, cb: (...args: any[]) => void) => void;
   off?: (event: string, cb?: (...args: any[]) => void) => void;
+  /** Socket.IO client emit (observer commands use `o:command`). */
+  emit?: (event: string, ...args: any[]) => void;
 };
 
 declare global {
@@ -90,12 +93,38 @@ declare global {
     socket?: SocketLike;
     server_region?: string;
     server_identifier?: string;
+    server_address?: string;
+    server_path?: string;
     map?: { map_name?: string };
     xtarget?: EntityLike | null;
     item_container?: (item: any, actual?: any) => string;
+    condition_click?: (name: string) => void;
     add_tint?: (selector: string, args?: any) => void;
+    get_tint?: (selector: string) => { added?: boolean; [key: string]: any } | null;
     simple_distance?: (a: any, b: any) => number;
     calculate_difficulty?: (monster: any) => number;
+    /** Stock /comm COMMAND modal; hooked by enhance-comm-ui. */
+    show_commander?: (fvalue?: string) => void;
+    /**
+     * CodeMirror 5 from `/js/codemirror/...` on `/comm`
+     * (javascript mode + pixel theme CSS already loaded).
+     */
+    CodeMirror?: (
+      place: HTMLElement | ((el: HTMLElement) => void),
+      options?: Record<string, any>,
+    ) => {
+      getValue: () => string;
+      setValue: (value: string) => void;
+      focus: () => void;
+      refresh: () => void;
+      on: (event: string, handler: (...args: any[]) => void) => void;
+      off?: (event: string, handler: (...args: any[]) => void) => void;
+      getWrapperElement: () => HTMLElement;
+      setSize: (
+        width: string | number | null,
+        height: string | number | null,
+      ) => void;
+    };
   }
 }
 
