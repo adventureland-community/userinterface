@@ -1,4 +1,5 @@
 import { e } from "../../host/react";
+import { TYPE } from "../../lib/typeScale";
 
 export type FrameDummyProps = {
   /** Short role label (e.g. "Target", "Player"). */
@@ -106,7 +107,7 @@ export function FrameDummy(props: FrameDummyProps): any {
               "span",
               {
                 style: {
-                  fontSize: "14px",
+                  fontSize: TYPE.body,
                   opacity: 0.75,
                   flexShrink: 0,
                   color: "#aaa",
