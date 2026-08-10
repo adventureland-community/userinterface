@@ -20,3 +20,14 @@ Tampermonkey userscript that enhances Adventure.land `/comm` with party roster, 
 - Threat table from aggro-by-target
 - Gear + trade slots on EntityInfo; `setXTarget` on select
 - Session kill KPI panel
+- Observer **Command** panel (replaces stock CodeMirror COMMAND): run `o:command` / remote `code_eval`, saved named snippets in localStorage
+- Party chips: compact buffs/debuffs (+N overflow), aggro badge, soft dim for dead/OOR
+- Deselect observe: click active character chip again, or Esc (paperdoll clears first)
+- Combat: sticky highlight for watched row; Compact mode (DPS+HPS); Full/Compact toggle persisted
+- Target frame threat spark; paperdoll “VS watched” delta stats
+- Layout: Ctrl+Shift+L, drag snap to edges; Opacity button for per-panel overlay alpha
+- Bag open/closed remembered across reloads; empty enemies/threat/meters auto-hide outside layout edit
+
+## Command snippets
+
+On `/comm`, click stock **COMMAND** (or restore the Command panel in Layout edit). Write CODE for the watched character, **Run** (or Ctrl+Enter). Click a snippet to load it, **Run** on the row to send immediately, **Save snippet** / **×** to add/remove. Persisted under `al-comm-ui-settings-v1`.

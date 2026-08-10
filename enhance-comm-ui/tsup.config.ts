@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 const banner = `// ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
