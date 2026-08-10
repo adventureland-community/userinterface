@@ -1,4 +1,5 @@
 import { getG } from "../../host/al";
+import { closeTopLeftDialog, isTopLeftDialogOpen } from "../../host/dialogHost";
 import {
   addTint,
   conditionClick,
@@ -9,6 +10,9 @@ import {
 import { getReact, e } from "../../host/react";
 import type { EntityLike, StatusLike } from "../../host/globals";
 import { formatTime } from "../../lib/format";
+
+/** Mirror stock `slot_click` toggle for condition info on /comm. */
+let lastConditionClick = "";
 
 /** Match observe-hud default; item_container outer box is size + 2*3 padding. */
 const ICON_SIZE = 36;
@@ -232,7 +236,17 @@ function EffectIcon(props: {
     ? (ev: any) => {
         if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-        setXTarget(entity);
+        // Info only — do not open CommUI paperdoll via xtarget selection sync.
+        if (
+          lastConditionClick === effect.id &&
+          isTopLeftDialogOpen()
+        ) {
+          closeTopLeftDialog();
+          lastConditionClick = "";
+          return;
+        }
+        lastConditionClick = effect.id;
+        setXTarget(entity, { dialogOnly: true });
         conditionClick(effect.id);
       }
     : undefined;

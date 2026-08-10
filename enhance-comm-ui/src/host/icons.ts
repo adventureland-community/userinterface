@@ -1,6 +1,14 @@
 import "./globals";
 import type { EntityLike, SlotLike } from "./globals";
 
+export type SetXTargetOpts = {
+  /**
+   * Set xtarget for stock dialogs (`condition_click` / `render_condition`)
+   * without syncing CommUI paperdoll selection via `useSelectionFromXTarget`.
+   */
+  dialogOnly?: boolean;
+};
+
 export function itemContainer(item: any, actual?: any): string {
   if (typeof window.item_container !== "function") {
     return "";
@@ -21,8 +29,12 @@ export function rebindTint(selector: string): void {
   if (tint) tint.added = false;
 }
 
-export function setXTarget(entity: EntityLike | null | undefined): void {
+export function setXTarget(
+  entity: EntityLike | null | undefined,
+  opts?: SetXTargetOpts,
+): void {
   window.xtarget = entity || null;
+  (window as any).__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
 }
 
 /** Open the host condition dialog (same as game UI `condition_click`). */

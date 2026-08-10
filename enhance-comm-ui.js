@@ -2776,17 +2776,157 @@ var EnhanceCommUI = (() => {
     }
   }
 
-  // src/host/keyboardPolicy.ts
-  var BOUND = "__ecuCommKeyboardBound";
-  function installCommKeyboardPolicy(handlers) {
-    window.__ecuCommKeyHandlers = handlers;
+  // src/host/dialogHost.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
+  var CLOSE_CLASS = "ecu-dialog-close";
+  var BOUND = "__ecuDialogDismissBound";
+  function injectDialogHostCss() {
+    if (document.getElementById(STYLE_ID2)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID2;
+    style.textContent = `
+/* Above #comm-ui (220); below #bottom chrome strip (260). */
+#topleftcorner {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 230 !important;
+  pointer-events: none !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#topleftcornerui,
+#topleftcornerdialog {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+}
+#topleftcornerdialog {
+  margin-left: 5px;
+  position: relative;
+}
+#topleftcornerdialog .${CLOSE_CLASS} {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #1c1c1c;
+  color: #ddd;
+  width: 28px;
+  height: 28px;
+  line-height: 24px;
+  padding: 0;
+  font-size: 18px;
+  text-align: center;
+  box-sizing: border-box;
+}
+#topleftcornerdialog .${CLOSE_CLASS}:hover {
+  border-color: #888;
+  color: #fff;
+}
+`;
+    document.head.append(style);
+  }
+  function isTopLeftDialogOpen() {
+    const el = document.getElementById("topleftcornerdialog");
+    return !!(el && String(el.innerHTML || "").trim());
+  }
+  function closeTopLeftDialog() {
+    const el = document.getElementById("topleftcornerdialog");
+    if (!el || !String(el.innerHTML || "").trim()) return false;
+    el.innerHTML = "";
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+    if (window.__ecuDialogOnlyXTarget) {
+      window.__ecuDialogOnlyXTarget = false;
+      window.xtarget = null;
+    }
+    return true;
+  }
+  function ensureCloseButton(dialog) {
+    if (!String(dialog.innerHTML || "").trim()) return;
+    if (dialog.querySelector("." + CLOSE_CLASS)) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = CLOSE_CLASS;
+    btn.title = "Close";
+    btn.setAttribute("aria-label", "Close");
+    btn.textContent = "\xD7";
+    btn.addEventListener("click", (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      closeTopLeftDialog();
+    });
+    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
+    if (panel) {
+      const pos = window.getComputedStyle(panel).position;
+      if (!pos || pos === "static") panel.style.position = "relative";
+      panel.appendChild(btn);
+    } else {
+      dialog.appendChild(btn);
+    }
+  }
+  function installDialogDismiss() {
     if (window[BOUND]) return;
     window[BOUND] = true;
+    const dialog = document.getElementById("topleftcornerdialog");
+    if (dialog && typeof MutationObserver === "function") {
+      const obs = new MutationObserver(() => {
+        ensureCloseButton(dialog);
+      });
+      obs.observe(dialog, { childList: true, subtree: true, characterData: true });
+      ensureCloseButton(dialog);
+    }
+    document.addEventListener("mousedown", (ev) => {
+      if (!isTopLeftDialogOpen()) return;
+      const t = ev.target;
+      const host = document.getElementById("topleftcornerdialog");
+      if (!host || !t) return;
+      if (host.contains(t)) return;
+      closeTopLeftDialog();
+    });
+  }
+  function ensureDialogHost() {
+    injectDialogHostCss();
+    let corner = document.getElementById("topleftcorner");
+    if (!corner) {
+      corner = document.createElement("div");
+      corner.id = "topleftcorner";
+      corner.className = "bpclicks";
+      document.body.append(corner);
+    }
+    if (!document.getElementById("topleftcornerui")) {
+      const ui = document.createElement("div");
+      ui.id = "topleftcornerui";
+      ui.className = "bpclicks";
+      corner.append(ui);
+    }
+    if (!document.getElementById("topleftcornerdialog")) {
+      const dialog = document.createElement("div");
+      dialog.id = "topleftcornerdialog";
+      dialog.className = "bpclicks enableclicks";
+      corner.append(dialog);
+    }
+    installDialogDismiss();
+  }
+
+  // src/host/keyboardPolicy.ts
+  var BOUND2 = "__ecuCommKeyboardBound";
+  function installCommKeyboardPolicy(handlers) {
+    window.__ecuCommKeyHandlers = handlers;
+    if (window[BOUND2]) return;
+    window[BOUND2] = true;
     document.addEventListener("keydown", (ev) => {
       const key = ev.key || "";
       const code = ev.keyCode;
       const h = window.__ecuCommKeyHandlers || {};
       if (key === "Escape" || code === 27) {
+        if (isTopLeftDialogOpen() && closeTopLeftDialog()) return;
         if (isServerDdOpen()) {
           closeServerDd();
           return;
@@ -2885,59 +3025,6 @@ var EnhanceCommUI = (() => {
       stopObserveWatch();
       unsubTick();
     });
-  }
-
-  // src/host/dialogHost.ts
-  var STYLE_ID2 = "comm-ui-dialog-host-css";
-  function injectDialogHostCss() {
-    if (document.getElementById(STYLE_ID2)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID2;
-    style.textContent = `
-/* Above #comm-ui (220); below #bottom chrome strip (260). */
-#topleftcorner {
-  position: fixed !important;
-  top: 8px !important;
-  left: 8px !important;
-  z-index: 230 !important;
-  pointer-events: none !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#topleftcornerui,
-#topleftcornerdialog {
-  pointer-events: auto !important;
-  vertical-align: top;
-  display: inline-block;
-}
-#topleftcornerdialog {
-  margin-left: 5px;
-}
-`;
-    document.head.append(style);
-  }
-  function ensureDialogHost() {
-    injectDialogHostCss();
-    let corner = document.getElementById("topleftcorner");
-    if (!corner) {
-      corner = document.createElement("div");
-      corner.id = "topleftcorner";
-      corner.className = "bpclicks";
-      document.body.append(corner);
-    }
-    if (!document.getElementById("topleftcornerui")) {
-      const ui = document.createElement("div");
-      ui.id = "topleftcornerui";
-      ui.className = "bpclicks";
-      corner.append(ui);
-    }
-    if (!document.getElementById("topleftcornerdialog")) {
-      const dialog = document.createElement("div");
-      dialog.id = "topleftcornerdialog";
-      dialog.className = "bpclicks enableclicks";
-      corner.append(dialog);
-    }
   }
 
   // src/host/inventory.ts
@@ -3865,8 +3952,9 @@ var EnhanceCommUI = (() => {
     const tint = window.get_tint(selector);
     if (tint) tint.added = false;
   }
-  function setXTarget(entity) {
+  function setXTarget(entity, opts) {
     window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
   }
   function conditionClick(name) {
     if (typeof window.condition_click === "function") {
@@ -3886,6 +3974,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/chrome/EffectsRow.ts
+  var lastConditionClick = "";
   var ICON_SIZE = 36;
   function buildEntityEffects(entity) {
     var _a, _b, _c;
@@ -4035,7 +4124,13 @@ var EnhanceCommUI = (() => {
     const onClick = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      setXTarget(entity);
+      if (lastConditionClick === effect.id && isTopLeftDialogOpen()) {
+        closeTopLeftDialog();
+        lastConditionClick = "";
+        return;
+      }
+      lastConditionClick = effect.id;
+      setXTarget(entity, { dialogOnly: true });
       conditionClick(effect.id);
     } : void 0;
     return e("div", {
@@ -8046,6 +8141,7 @@ var EnhanceCommUI = (() => {
     );
     const lastXTargetId = React.useRef(void 0);
     React.useEffect(() => {
+      if (window.__ecuDialogOnlyXTarget) return;
       const xt = window.xtarget;
       const id = xt && xt.id != null ? String(xt.id) : void 0;
       if (id && id !== lastXTargetId.current) {

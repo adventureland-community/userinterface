@@ -137,7 +137,7 @@ export function CommUI(props: CommUIProps): any {
     updateCombatContext(snap.entities);
   }, [snap.entities]);
 
-  // Shared Esc / Ctrl+Shift+L policy (also closes server dropdown in host).
+  // Shared Esc / Ctrl+Shift+L policy (info dialog → server dd → paperdoll).
   React.useEffect(() => {
     updateCommKeyboardHandlers({
       clearPaperdoll: () => {

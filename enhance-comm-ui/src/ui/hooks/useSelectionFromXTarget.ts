@@ -17,6 +17,10 @@ export function useSelectionFromXTarget(snap: GameSnapshot): SelectionState {
   const lastXTargetId = React.useRef(undefined as string | undefined);
 
   React.useEffect(() => {
+    // Buff/condition info sets xtarget for stock `render_condition` but must
+    // not open the CommUI paperdoll (see setXTarget(..., { dialogOnly: true })).
+    if ((window as any).__ecuDialogOnlyXTarget) return;
+
     const xt = (window as any).xtarget;
     const id = xt && xt.id != null ? String(xt.id) : undefined;
     if (id && id !== lastXTargetId.current) {
