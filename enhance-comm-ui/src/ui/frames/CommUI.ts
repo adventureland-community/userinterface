@@ -436,6 +436,7 @@ export function CommUI(props: CommUIProps): any {
         entities: snap.entities,
         observingId: snap.observingId,
         layoutEdit,
+        setSelectedEntity,
       }),
       {
         closable: true,

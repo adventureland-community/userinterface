@@ -14,6 +14,7 @@ const WINDOW_MS = 10_000;
 type Sample = {
   at: number;
   actor?: string;
+  target?: string;
   damage: number;
   heal: number;
 };
@@ -35,6 +36,7 @@ function onEvent(ev: DamageEvent): void {
   samples.push({
     at: ev.at,
     actor: ev.actor,
+    target: ev.target,
     damage,
     heal,
   });
@@ -80,6 +82,30 @@ export function getActorDamage(now = Date.now()): Record<string, number> {
     out[s.actor] = (out[s.actor] || 0) + s.damage;
   }
   return out;
+}
+
+/**
+ * Rolling incoming DPS for a specific target (10s hit window).
+ * Returns 0 when no recent damage landed on that id.
+ */
+export function getIncomingDps(
+  targetId: string | number | undefined,
+  now = Date.now(),
+): number {
+  if (targetId == null || targetId === "") return 0;
+  prune(now);
+  const tid = String(targetId);
+  let total = 0;
+  let hits = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i];
+    if (!s.damage || !s.target || String(s.target) !== tid) continue;
+    total += s.damage;
+    hits += 1;
+  }
+  // Single tiny hit over a full window is too noisy for TTK.
+  if (hits < 2 && total < 100) return 0;
+  return total / (WINDOW_MS / 1000);
 }
 
 export function estimateTtk(

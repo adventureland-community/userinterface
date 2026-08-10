@@ -38,11 +38,11 @@ export const COMBAT_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
-/** Threat table footprint. */
+/** Threat table footprint (HP rows + mob icon chips). */
 export const THREAT_PANEL_STYLE: Record<string, any> = {
-  minWidth: "200px",
-  width: "min(280px, 90vw)",
-  minHeight: "96px",
+  minWidth: "240px",
+  width: "min(320px, 92vw)",
+  minHeight: "120px",
   boxSizing: "border-box",
 };
 

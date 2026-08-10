@@ -56,3 +56,11 @@ export function slotSkin(slot: SlotLike | null | undefined): string | undefined 
   const def = window.G?.items?.[slot.name];
   return slot.skin || def?.skin;
 }
+
+/** Monster portrait skin from `G.monsters[mtype]` (for item_container icons). */
+export function monsterSkin(mtype: string | undefined): string | undefined {
+  if (!mtype) return undefined;
+  const def = window.G?.monsters?.[mtype];
+  if (!def) return undefined;
+  return typeof def.skin === "string" ? def.skin : undefined;
+}
