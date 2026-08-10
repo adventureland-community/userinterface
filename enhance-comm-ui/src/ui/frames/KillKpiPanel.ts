@@ -7,7 +7,10 @@ import { getObservingId } from "../../host/al";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 const MOB_ICON_SIZE = 20;
-const LIST_ROW_HEIGHT = 28;
+const LIST_ROW_HEIGHT = 30;
+/** Rate-chip unit labels — brighter than body meta so /min /h /d stay readable. */
+const UNIT_COLOR = "#c8c8c8";
+const META_COLOR = "#b0b0b0";
 
 function partyLabel(key: string): string {
   return key.indexOf("solo:") === 0 ? key.slice(5) : key;
@@ -27,6 +30,13 @@ function fmtCompact(n: number): string {
   return String(Math.round(n));
 }
 
+/** Per-row kills/min: one decimal under 100, compact above. */
+function fmtRate(n: number): string {
+  if (n >= 1000) return fmtCompact(n);
+  if (n >= 100) return String(Math.round(n));
+  return n.toFixed(1).replace(/\.0$/, "");
+}
+
 function wrapIconHtml(html: string): any {
   return e("div", {
     style: { display: "inline-block", lineHeight: 0, fontSize: 0, flexShrink: 0 },
@@ -41,6 +51,57 @@ function wrapIconHtml(html: string): any {
       root.removeAttribute("onclick");
     },
   });
+}
+
+function metricCell(opts: {
+  key?: string;
+  value: string;
+  unit?: string;
+  title?: string;
+  minWidth?: string;
+}): any {
+  return e(
+    "span",
+    {
+      key: opts.key,
+      title: opts.title,
+      style: {
+        position: "relative",
+        flexShrink: 0,
+        display: "inline-flex",
+        alignItems: "baseline",
+        gap: "2px",
+        minWidth: opts.minWidth || "4.5ch",
+        justifyContent: "flex-end",
+        fontVariantNumeric: "tabular-nums",
+        ...PIXEL_TEXT,
+      },
+    },
+    e(
+      "span",
+      {
+        style: {
+          fontSize: TYPE.count,
+          color: "#eee",
+          ...PIXEL_TEXT,
+        },
+      },
+      opts.value,
+    ),
+    opts.unit
+      ? e(
+          "span",
+          {
+            style: {
+              fontSize: TYPE.secondaryMin,
+              color: UNIT_COLOR,
+              ...PIXEL_TEXT,
+            },
+          },
+          opts.unit,
+        )
+      : null,
+  );
 }
 
 export function KillKpiPanel(): any {
@@ -147,7 +208,7 @@ export function KillKpiPanel(): any {
           gap: "10px",
           padding: "10px",
           maxHeight: "300px",
-          minWidth: "260px",
+          minWidth: "300px",
           fontSize: TYPE.name,
           color: "#eee",
           ...PIXEL_TEXT,
@@ -212,9 +273,9 @@ export function KillKpiPanel(): any {
         {
           style: {
             fontSize: TYPE.body,
-            color: "#999",
+            color: UNIT_COLOR,
             lineHeight: 1.1,
-            letterSpacing: "0.02em",
+            letterSpacing: "0.04em",
             ...PIXEL_TEXT,
           },
         },
@@ -289,7 +350,7 @@ export function KillKpiPanel(): any {
     sessionLine,
   );
 
-  const listSection = (heading: string, rows: any[]) =>
+  const listSection = (heading: string, colHint: string | null, rows: any[]) =>
     e(
       "div",
       {
@@ -305,13 +366,37 @@ export function KillKpiPanel(): any {
         "div",
         {
           style: {
-            fontSize: TYPE.body,
-            color: "#888",
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "8px",
             marginBottom: "4px",
-            ...PIXEL_TEXT,
           },
         },
-        heading,
+        e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.body,
+              color: "#888",
+              ...PIXEL_TEXT,
+            },
+          },
+          heading,
+        ),
+        colHint
+          ? e(
+              "div",
+              {
+                style: {
+                  fontSize: TYPE.secondaryMin,
+                  color: META_COLOR,
+                  ...PIXEL_TEXT,
+                },
+              },
+              colHint,
+            )
+          : null,
       ),
       ...rows,
     );
@@ -322,6 +407,9 @@ export function KillKpiPanel(): any {
     count: number;
     max: number;
     mtype?: string;
+    killsPerMinute?: number | null;
+    avgIntervalSec?: number | null;
+    showPace?: boolean;
   }) => {
     const share = opts.max > 0 ? Math.max(0, Math.min(1, opts.count / opts.max)) : 0;
     let icon: any = null;
@@ -329,6 +417,38 @@ export function KillKpiPanel(): any {
       const html = monsterSprite(opts.mtype, { size: MOB_ICON_SIZE });
       if (html) icon = wrapIconHtml(html);
     }
+
+    const rate =
+      opts.killsPerMinute != null
+        ? metricCell({
+            value: fmtRate(opts.killsPerMinute),
+            unit: "/min",
+            title: "Kills per minute (session)",
+            minWidth: "5.5ch",
+          })
+        : metricCell({
+            value: "—",
+            unit: "/min",
+            title: "Kills per minute (session)",
+            minWidth: "5.5ch",
+          });
+
+    const pace =
+      opts.showPace !== false
+        ? opts.avgIntervalSec != null
+          ? metricCell({
+              value: formatTime(opts.avgIntervalSec),
+              unit: "avg",
+              title: "Average interval between kills of this type (pace, not HP TTK)",
+              minWidth: "5ch",
+            })
+          : metricCell({
+              value: "—",
+              unit: "avg",
+              title: "Average interval between kills (needs 2+ kills)",
+              minWidth: "5ch",
+            })
+        : null;
 
     return e(
       "div",
@@ -338,7 +458,7 @@ export function KillKpiPanel(): any {
           position: "relative",
           display: "flex",
           alignItems: "center",
-          gap: "8px",
+          gap: "6px",
           minHeight: `${LIST_ROW_HEIGHT}px`,
           height: `${LIST_ROW_HEIGHT}px`,
           padding: "0 6px",
@@ -375,6 +495,8 @@ export function KillKpiPanel(): any {
         },
         opts.label,
       ),
+      rate,
+      pace,
       e(
         "span",
         {
@@ -388,6 +510,7 @@ export function KillKpiPanel(): any {
             textAlign: "right",
             ...PIXEL_TEXT,
           },
+          title: "Kill count",
         },
         String(opts.count),
       ),
@@ -407,12 +530,15 @@ export function KillKpiPanel(): any {
     scope === "all" && stats.byParty.length > 1
       ? listSection(
           "Parties",
+          "/min · count",
           stats.byParty.slice(0, 8).map((row) =>
             listRow({
               key: row.party,
               label: partyLabel(row.party),
               count: row.count,
               max: partyMax,
+              killsPerMinute: row.killsPerMinute,
+              showPace: false,
             }),
           ),
         )
@@ -420,6 +546,7 @@ export function KillKpiPanel(): any {
     stats.byMtype.length
       ? listSection(
           "Monsters",
+          "/min · avg · count",
           stats.byMtype.slice(0, 12).map((row) =>
             listRow({
               key: row.mtype,
@@ -427,6 +554,9 @@ export function KillKpiPanel(): any {
               count: row.count,
               max: mtypeMax,
               mtype: row.mtype,
+              killsPerMinute: row.killsPerMinute,
+              avgIntervalSec: row.avgIntervalSec,
+              showPace: true,
             }),
           ),
         )

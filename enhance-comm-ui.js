@@ -1686,6 +1686,8 @@ var EnhanceCommUI = (() => {
   var NEAR_RANGE = 400;
   var mtypeCounts = {};
   var partyKillCounts = {};
+  var mtypeTiming = {};
+  var partyTiming = {};
   var lastSeen = /* @__PURE__ */ new Map();
   var blameByTarget = /* @__PURE__ */ new Map();
   var totalKills = 0;
@@ -1700,13 +1702,34 @@ var EnhanceCommUI = (() => {
   function soloKey2(id, name) {
     return `solo:${name || id}`;
   }
+  function clearRecord(rec) {
+    const keys = Object.keys(rec);
+    for (let i = 0; i < keys.length; i++) delete rec[keys[i]];
+  }
   function clearCounts() {
-    const keys = Object.keys(mtypeCounts);
-    for (let i = 0; i < keys.length; i++) delete mtypeCounts[keys[i]];
-    const pkeys = Object.keys(partyKillCounts);
-    for (let i = 0; i < pkeys.length; i++) delete partyKillCounts[pkeys[i]];
+    clearRecord(mtypeCounts);
+    clearRecord(partyKillCounts);
+    clearRecord(mtypeTiming);
+    clearRecord(partyTiming);
     totalKills = 0;
     sessionStartedAt2 = 0;
+  }
+  function noteTiming(rec, key, at) {
+    const prev = rec[key];
+    if (!prev) {
+      rec[key] = { firstAt: at, lastAt: at };
+      return;
+    }
+    prev.lastAt = at;
+  }
+  function ratePerMinute(count, startedAt, now) {
+    if (!startedAt || count <= 0) return null;
+    const elapsedSec = Math.max(now - startedAt, 1e3) / 1e3;
+    return count / elapsedSec * 60;
+  }
+  function meanIntervalSec(timing, count) {
+    if (!timing || count < 2) return null;
+    return (timing.lastAt - timing.firstAt) / (count - 1) / 1e3;
   }
   function ensureSession(observingId, name) {
     if (trackingId !== observingId) {
@@ -1802,6 +1825,8 @@ var EnhanceCommUI = (() => {
     if (!mtype) return;
     mtypeCounts[mtype] = (mtypeCounts[mtype] || 0) + 1;
     partyKillCounts[partyKey] = (partyKillCounts[partyKey] || 0) + 1;
+    noteTiming(mtypeTiming, mtype, ev.at);
+    noteTiming(partyTiming, partyKey, ev.at);
     totalKills += 1;
     if (!sessionStartedAt2) sessionStartedAt2 = ev.at;
     blameByTarget.delete(ev.id);
@@ -1903,16 +1928,30 @@ var EnhanceCommUI = (() => {
   }
   function getStats() {
     var _a;
+    const now = Date.now();
     const byMtype = [];
     const keys = Object.keys(mtypeCounts);
     for (let i = 0; i < keys.length; i++) {
-      byMtype.push({ mtype: keys[i], count: mtypeCounts[keys[i]] });
+      const mtype = keys[i];
+      const count = mtypeCounts[mtype];
+      byMtype.push({
+        mtype,
+        count,
+        killsPerMinute: ratePerMinute(count, sessionStartedAt2, now),
+        avgIntervalSec: meanIntervalSec(mtypeTiming[mtype], count)
+      });
     }
     byMtype.sort((a, b) => b.count - a.count);
     const byParty = [];
     const pkeys = Object.keys(partyKillCounts);
     for (let i = 0; i < pkeys.length; i++) {
-      byParty.push({ party: pkeys[i], count: partyKillCounts[pkeys[i]] });
+      const party = pkeys[i];
+      const count = partyKillCounts[party];
+      byParty.push({
+        party,
+        count,
+        killsPerMinute: ratePerMinute(count, sessionStartedAt2, now)
+      });
     }
     byParty.sort((a, b) => b.count - a.count);
     const scope = killScope();
@@ -1923,7 +1962,7 @@ var EnhanceCommUI = (() => {
     let killsPerHour = null;
     let killsPerDay = null;
     if (sessionStartedAt2 && totalKills > 0) {
-      const elapsedSec = Math.max(Date.now() - sessionStartedAt2, 1e3) / 1e3;
+      const elapsedSec = Math.max(now - sessionStartedAt2, 1e3) / 1e3;
       const perSec = totalKills / elapsedSec;
       killsPerMinute = perSec * 60;
       killsPerHour = perSec * 3600;
@@ -7858,7 +7897,9 @@ var EnhanceCommUI = (() => {
 
   // src/ui/frames/KillKpiPanel.ts
   var MOB_ICON_SIZE2 = 20;
-  var LIST_ROW_HEIGHT = 28;
+  var LIST_ROW_HEIGHT = 30;
+  var UNIT_COLOR = "#c8c8c8";
+  var META_COLOR = "#b0b0b0";
   function partyLabel(key) {
     return key.indexOf("solo:") === 0 ? key.slice(5) : key;
   }
@@ -7872,6 +7913,11 @@ var EnhanceCommUI = (() => {
       return `${fixed.replace(/\.0$/, "")}k`;
     }
     return String(Math.round(n));
+  }
+  function fmtRate2(n) {
+    if (n >= 1e3) return fmtCompact(n);
+    if (n >= 100) return String(Math.round(n));
+    return n.toFixed(1).replace(/\.0$/, "");
   }
   function wrapIconHtml2(html) {
     return e("div", {
@@ -7887,6 +7933,48 @@ var EnhanceCommUI = (() => {
         root.removeAttribute("onclick");
       }
     });
+  }
+  function metricCell(opts) {
+    return e(
+      "span",
+      {
+        key: opts.key,
+        title: opts.title,
+        style: {
+          position: "relative",
+          flexShrink: 0,
+          display: "inline-flex",
+          alignItems: "baseline",
+          gap: "2px",
+          minWidth: opts.minWidth || "4.5ch",
+          justifyContent: "flex-end",
+          fontVariantNumeric: "tabular-nums",
+          ...PIXEL_TEXT
+        }
+      },
+      e(
+        "span",
+        {
+          style: {
+            fontSize: TYPE.count,
+            color: "#eee",
+            ...PIXEL_TEXT
+          }
+        },
+        opts.value
+      ),
+      opts.unit ? e(
+        "span",
+        {
+          style: {
+            fontSize: TYPE.secondaryMin,
+            color: UNIT_COLOR,
+            ...PIXEL_TEXT
+          }
+        },
+        opts.unit
+      ) : null
+    );
   }
   function KillKpiPanel() {
     const React = getReact();
@@ -7984,7 +8072,7 @@ var EnhanceCommUI = (() => {
           gap: "10px",
           padding: "10px",
           maxHeight: "300px",
-          minWidth: "260px",
+          minWidth: "300px",
           fontSize: TYPE.name,
           color: "#eee",
           ...PIXEL_TEXT
@@ -8043,9 +8131,9 @@ var EnhanceCommUI = (() => {
         {
           style: {
             fontSize: TYPE.body,
-            color: "#999",
+            color: UNIT_COLOR,
             lineHeight: 1.1,
-            letterSpacing: "0.02em",
+            letterSpacing: "0.04em",
             ...PIXEL_TEXT
           }
         },
@@ -8114,7 +8202,7 @@ var EnhanceCommUI = (() => {
       rateStrip,
       sessionLine
     );
-    const listSection = (heading, rows) => e(
+    const listSection = (heading, colHint, rows) => e(
       "div",
       {
         style: {
@@ -8129,13 +8217,35 @@ var EnhanceCommUI = (() => {
         "div",
         {
           style: {
-            fontSize: TYPE.body,
-            color: "#888",
-            marginBottom: "4px",
-            ...PIXEL_TEXT
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: "8px",
+            marginBottom: "4px"
           }
         },
-        heading
+        e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.body,
+              color: "#888",
+              ...PIXEL_TEXT
+            }
+          },
+          heading
+        ),
+        colHint ? e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.secondaryMin,
+              color: META_COLOR,
+              ...PIXEL_TEXT
+            }
+          },
+          colHint
+        ) : null
       ),
       ...rows
     );
@@ -8146,6 +8256,28 @@ var EnhanceCommUI = (() => {
         const html = monsterSprite(opts.mtype, { size: MOB_ICON_SIZE2 });
         if (html) icon = wrapIconHtml2(html);
       }
+      const rate2 = opts.killsPerMinute != null ? metricCell({
+        value: fmtRate2(opts.killsPerMinute),
+        unit: "/min",
+        title: "Kills per minute (session)",
+        minWidth: "5.5ch"
+      }) : metricCell({
+        value: "\u2014",
+        unit: "/min",
+        title: "Kills per minute (session)",
+        minWidth: "5.5ch"
+      });
+      const pace = opts.showPace !== false ? opts.avgIntervalSec != null ? metricCell({
+        value: formatTime(opts.avgIntervalSec),
+        unit: "avg",
+        title: "Average interval between kills of this type (pace, not HP TTK)",
+        minWidth: "5ch"
+      }) : metricCell({
+        value: "\u2014",
+        unit: "avg",
+        title: "Average interval between kills (needs 2+ kills)",
+        minWidth: "5ch"
+      }) : null;
       return e(
         "div",
         {
@@ -8154,7 +8286,7 @@ var EnhanceCommUI = (() => {
             position: "relative",
             display: "flex",
             alignItems: "center",
-            gap: "8px",
+            gap: "6px",
             minHeight: `${LIST_ROW_HEIGHT}px`,
             height: `${LIST_ROW_HEIGHT}px`,
             padding: "0 6px",
@@ -8191,6 +8323,8 @@ var EnhanceCommUI = (() => {
           },
           opts.label
         ),
+        rate2,
+        pace,
         e(
           "span",
           {
@@ -8203,7 +8337,8 @@ var EnhanceCommUI = (() => {
               minWidth: "2.5ch",
               textAlign: "right",
               ...PIXEL_TEXT
-            }
+            },
+            title: "Kill count"
           },
           String(opts.count)
         )
@@ -8217,24 +8352,31 @@ var EnhanceCommUI = (() => {
       hero,
       scope === "all" && stats.byParty.length > 1 ? listSection(
         "Parties",
+        "/min \xB7 count",
         stats.byParty.slice(0, 8).map(
           (row) => listRow({
             key: row.party,
             label: partyLabel(row.party),
             count: row.count,
-            max: partyMax
+            max: partyMax,
+            killsPerMinute: row.killsPerMinute,
+            showPace: false
           })
         )
       ) : null,
       stats.byMtype.length ? listSection(
         "Monsters",
+        "/min \xB7 avg \xB7 count",
         stats.byMtype.slice(0, 12).map(
           (row) => listRow({
             key: row.mtype,
             label: row.mtype,
             count: row.count,
             max: mtypeMax,
-            mtype: row.mtype
+            mtype: row.mtype,
+            killsPerMinute: row.killsPerMinute,
+            avgIntervalSec: row.avgIntervalSec,
+            showPace: true
           })
         )
       ) : null

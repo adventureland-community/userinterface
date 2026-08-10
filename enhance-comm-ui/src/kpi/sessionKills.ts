@@ -25,8 +25,15 @@ type SeenMonster = {
   nearPartyKey?: string;
 };
 
+type KillTiming = {
+  firstAt: number;
+  lastAt: number;
+};
+
 const mtypeCounts: Record<string, number> = {};
 const partyKillCounts: Record<string, number> = {};
+const mtypeTiming: Record<string, KillTiming> = {};
+const partyTiming: Record<string, KillTiming> = {};
 const lastSeen = new Map<string, SeenMonster>();
 const blameByTarget = new Map<string, TargetBlame>();
 
@@ -41,17 +48,61 @@ let playerParty = new Map<string, string>();
 let unsubKill: (() => void) | null = null;
 let unsubDmg: (() => void) | null = null;
 
+export type MtypeKillRow = {
+  mtype: string;
+  count: number;
+  /** Session kills/min for this mtype (null before first kill / no session). */
+  killsPerMinute: number | null;
+  /**
+   * Mean seconds between consecutive kills of this mtype (needs ≥2 kills).
+   * Kill pace from timestamps — not HP-based TTK.
+   */
+  avgIntervalSec: number | null;
+};
+
+export type PartyKillRow = {
+  party: string;
+  count: number;
+  killsPerMinute: number | null;
+};
+
 function soloKey(id: string, name?: string): string {
   return `solo:${name || id}`;
 }
 
+function clearRecord(rec: Record<string, number> | Record<string, KillTiming>): void {
+  const keys = Object.keys(rec);
+  for (let i = 0; i < keys.length; i++) delete rec[keys[i]];
+}
+
 function clearCounts(): void {
-  const keys = Object.keys(mtypeCounts);
-  for (let i = 0; i < keys.length; i++) delete mtypeCounts[keys[i]];
-  const pkeys = Object.keys(partyKillCounts);
-  for (let i = 0; i < pkeys.length; i++) delete partyKillCounts[pkeys[i]];
+  clearRecord(mtypeCounts);
+  clearRecord(partyKillCounts);
+  clearRecord(mtypeTiming);
+  clearRecord(partyTiming);
   totalKills = 0;
   sessionStartedAt = 0;
+}
+
+function noteTiming(rec: Record<string, KillTiming>, key: string, at: number): void {
+  const prev = rec[key];
+  if (!prev) {
+    rec[key] = { firstAt: at, lastAt: at };
+    return;
+  }
+  prev.lastAt = at;
+}
+
+function ratePerMinute(count: number, startedAt: number, now: number): number | null {
+  if (!startedAt || count <= 0) return null;
+  const elapsedSec = Math.max(now - startedAt, 1_000) / 1000;
+  return (count / elapsedSec) * 60;
+}
+
+/** Mean inter-kill interval in seconds when ≥2 kills were timed. */
+function meanIntervalSec(timing: KillTiming | undefined, count: number): number | null {
+  if (!timing || count < 2) return null;
+  return (timing.lastAt - timing.firstAt) / (count - 1) / 1000;
 }
 
 function ensureSession(observingId: string, name: string): void {
@@ -164,6 +215,8 @@ function handleKill(ev: KillEvent): void {
 
   mtypeCounts[mtype] = (mtypeCounts[mtype] || 0) + 1;
   partyKillCounts[partyKey] = (partyKillCounts[partyKey] || 0) + 1;
+  noteTiming(mtypeTiming, mtype, ev.at);
+  noteTiming(partyTiming, partyKey, ev.at);
   totalKills += 1;
   if (!sessionStartedAt) sessionStartedAt = ev.at;
   blameByTarget.delete(ev.id);
@@ -288,8 +341,8 @@ export function resetKillSession(): void {
 
 export function getStats(): {
   total: number;
-  byMtype: Array<{ mtype: string; count: number }>;
-  byParty: Array<{ party: string; count: number }>;
+  byMtype: MtypeKillRow[];
+  byParty: PartyKillRow[];
   trackingId?: string;
   trackingName: string;
   sessionStartedAt: number;
@@ -299,17 +352,31 @@ export function getStats(): {
   active: boolean;
   scope: PartyScope;
 } {
-  const byMtype: Array<{ mtype: string; count: number }> = [];
+  const now = Date.now();
+  const byMtype: MtypeKillRow[] = [];
   const keys = Object.keys(mtypeCounts);
   for (let i = 0; i < keys.length; i++) {
-    byMtype.push({ mtype: keys[i], count: mtypeCounts[keys[i]] });
+    const mtype = keys[i];
+    const count = mtypeCounts[mtype];
+    byMtype.push({
+      mtype,
+      count,
+      killsPerMinute: ratePerMinute(count, sessionStartedAt, now),
+      avgIntervalSec: meanIntervalSec(mtypeTiming[mtype], count),
+    });
   }
   byMtype.sort((a, b) => b.count - a.count);
 
-  const byParty: Array<{ party: string; count: number }> = [];
+  const byParty: PartyKillRow[] = [];
   const pkeys = Object.keys(partyKillCounts);
   for (let i = 0; i < pkeys.length; i++) {
-    byParty.push({ party: pkeys[i], count: partyKillCounts[pkeys[i]] });
+    const party = pkeys[i];
+    const count = partyKillCounts[party];
+    byParty.push({
+      party,
+      count,
+      killsPerMinute: ratePerMinute(count, sessionStartedAt, now),
+    });
   }
   byParty.sort((a, b) => b.count - a.count);
 
@@ -322,7 +389,7 @@ export function getStats(): {
   let killsPerHour: number | null = null;
   let killsPerDay: number | null = null;
   if (sessionStartedAt && totalKills > 0) {
-    const elapsedSec = Math.max(Date.now() - sessionStartedAt, 1_000) / 1000;
+    const elapsedSec = Math.max(now - sessionStartedAt, 1_000) / 1000;
     const perSec = totalKills / elapsedSec;
     killsPerMinute = perSec * 60;
     killsPerHour = perSec * 3600;
