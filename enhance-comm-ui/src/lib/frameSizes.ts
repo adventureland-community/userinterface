@@ -68,3 +68,12 @@ export const KILLS_PANEL_STYLE: Record<string, any> = {
   minHeight: "80px",
   boxSizing: "border-box",
 };
+
+/** Stock condition / item info (`#topleftcornerdialog`) footprint. */
+export const INFO_DIALOG_PANEL_STYLE: Record<string, any> = {
+  width: "fit-content",
+  maxWidth: "min(96vw, 520px)",
+  // Above other play panels so buff/item tooltips stay readable.
+  zIndex: 35,
+  boxSizing: "border-box",
+};

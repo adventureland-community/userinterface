@@ -10,6 +10,7 @@ import { updateKillContext } from "../../kpi/sessionKills";
 import { type PanelId } from "../../lib/layout";
 import { subscribeCommanderOpen } from "../../host/commander";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
+import { setInfoDialogLayoutEditing } from "../../host/dialogHost";
 import { aggroByTarget, aggroedMonsters, activeBosses } from "../../queries/entities";
 import { PositionedPanel } from "../chrome/PositionedPanel";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
@@ -20,6 +21,7 @@ import { ServerInfo } from "./ServerInfo";
 import { BossInfo } from "./BossInfo";
 import { Enemies } from "./Enemies";
 import { EntityInfo } from "./EntityInfo";
+import { InfoDialogPanel } from "./InfoDialogPanel";
 import { PlayerFrame, UNIT_FRAME_STYLE } from "./PlayerRow";
 import { TargetFrame } from "./TargetFrame";
 import { BossBarPanel } from "./BossBarPanel";
@@ -33,6 +35,7 @@ import {
   BOSS_BAR_PANEL_STYLE,
   COMBAT_PANEL_STYLE,
   COMMAND_PANEL_STYLE,
+  INFO_DIALOG_PANEL_STYLE,
   KILLS_PANEL_STYLE,
   METER_PANEL_STYLE,
   PAPERDOLL_PANEL_STYLE,
@@ -62,6 +65,7 @@ const OPACITY_PANEL_IDS: PanelId[] = [
   "command",
   "bag",
   "paperdoll",
+  "infoDialog",
   "playerFrame",
   "targetFrame",
 ];
@@ -132,6 +136,7 @@ export function CommUI(props: CommUIProps): any {
     null as string | null,
   );
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+  const [infoDialogOpen, setInfoDialogOpen] = React.useState(false);
 
   React.useEffect(() => {
     updateKillContext(snap.entities);
@@ -150,6 +155,11 @@ export function CommUI(props: CommUIProps): any {
     });
     return () => updateCommKeyboardHandlers({});
   }, [selectedEntity, closePaperdoll, setLayoutEdit]);
+
+  React.useEffect(() => {
+    setInfoDialogLayoutEditing(layoutEdit);
+    return () => setInfoDialogLayoutEditing(false);
+  }, [layoutEdit]);
 
   React.useEffect(() => {
     return subscribeCommanderOpen((payload) => {
@@ -324,6 +334,21 @@ export function CommUI(props: CommUIProps): any {
           { style: PAPERDOLL_PANEL_STYLE },
         )
       : null,
+
+    panel(
+      "infoDialog",
+      e(InfoDialogPanel, {
+        layoutEdit,
+        onOpenChange: setInfoDialogOpen,
+      }),
+      {
+        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
+          zIndex: layoutEdit ? 45 : 35,
+          pointerEvents:
+            layoutEdit || infoDialogOpen ? "auto" : "none",
+        }),
+      },
+    ),
 
     panel("kills", e(KillKpiPanel), {
       closable: true,

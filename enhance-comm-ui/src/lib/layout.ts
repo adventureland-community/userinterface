@@ -18,6 +18,7 @@ export type PanelId =
   | "enemies"
   | "topCenter"
   | "paperdoll"
+  | "infoDialog"
   | "kills"
   | "combat"
   | "playerFrame"
@@ -37,6 +38,7 @@ export const PANEL_IDS: PanelId[] = [
   "enemies",
   "topCenter",
   "paperdoll",
+  "infoDialog",
   "kills",
   "combat",
   "playerFrame",
@@ -57,6 +59,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   enemies: "Enemies",
   topCenter: "Server / Map",
   paperdoll: "Paperdoll",
+  infoDialog: "Buff / item info",
   kills: "Kills",
   combat: "Combat",
   playerFrame: "Player frame",
@@ -85,6 +88,8 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   enemies: { x: 99.6, y: 0.4, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
   paperdoll: { x: 0.5, y: 38, anchor: "tl" },
+  // Stock AL `#topleftcornerdialog` — just under party chips.
+  infoDialog: { x: 0.8, y: 10, anchor: "tl" },
   // Deep bottom-right — clear of bottom chrome; inboard of meter column.
   combat: { x: 92, y: 84, anchor: "br" },
   kills: { x: 92, y: 95, anchor: "br" },
@@ -113,6 +118,7 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   enemies: { x: 99.5, y: 0.5, anchor: "tr" },
   topCenter: { x: 50, y: 0.5, anchor: "tc" },
   paperdoll: { x: 1, y: 28, anchor: "tl" },
+  infoDialog: { x: 1, y: 12, anchor: "tl" },
   combat: { x: 99.2, y: 52, anchor: "tr" },
   kills: { x: 99.2, y: 72, anchor: "tr" },
   playerFrame: { x: 32, y: 78, anchor: "bc" },
@@ -137,6 +143,7 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   enemies: { x: 99.5, y: 0.5, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
   paperdoll: { x: 50, y: 36, anchor: "center" },
+  infoDialog: { x: 2, y: 14, anchor: "tl" },
   combat: { x: 50, y: 72, anchor: "bc" },
   kills: { x: 98, y: 58, anchor: "br" },
   playerFrame: { x: 28, y: 62, anchor: "bc" },

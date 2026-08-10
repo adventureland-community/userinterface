@@ -862,6 +862,7 @@ var EnhanceCommUI = (() => {
     "enemies",
     "topCenter",
     "paperdoll",
+    "infoDialog",
     "kills",
     "combat",
     "playerFrame",
@@ -881,6 +882,7 @@ var EnhanceCommUI = (() => {
     enemies: "Enemies",
     topCenter: "Server / Map",
     paperdoll: "Paperdoll",
+    infoDialog: "Buff / item info",
     kills: "Kills",
     combat: "Combat",
     playerFrame: "Player frame",
@@ -900,6 +902,8 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.6, y: 0.4, anchor: "tr" },
     topCenter: { x: 50, y: 0.4, anchor: "tc" },
     paperdoll: { x: 0.5, y: 38, anchor: "tl" },
+    // Stock AL `#topleftcornerdialog` — just under party chips.
+    infoDialog: { x: 0.8, y: 10, anchor: "tl" },
     // Deep bottom-right — clear of bottom chrome; inboard of meter column.
     combat: { x: 92, y: 84, anchor: "br" },
     kills: { x: 92, y: 95, anchor: "br" },
@@ -923,6 +927,7 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
     topCenter: { x: 50, y: 0.5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
+    infoDialog: { x: 1, y: 12, anchor: "tl" },
     combat: { x: 99.2, y: 52, anchor: "tr" },
     kills: { x: 99.2, y: 72, anchor: "tr" },
     playerFrame: { x: 32, y: 78, anchor: "bc" },
@@ -942,6 +947,7 @@ var EnhanceCommUI = (() => {
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
     topCenter: { x: 50, y: 0.4, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
+    infoDialog: { x: 2, y: 14, anchor: "tl" },
     combat: { x: 50, y: 72, anchor: "bc" },
     kills: { x: 98, y: 58, anchor: "br" },
     playerFrame: { x: 28, y: 62, anchor: "bc" },
@@ -2780,13 +2786,14 @@ var EnhanceCommUI = (() => {
   var STYLE_ID2 = "comm-ui-dialog-host-css";
   var CLOSE_CLASS = "ecu-dialog-close";
   var BOUND = "__ecuDialogDismissBound";
+  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
   function injectDialogHostCss() {
     if (document.getElementById(STYLE_ID2)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID2;
     style.textContent = `
-/* Above #comm-ui (220); below #bottom chrome strip (260). */
-#topleftcorner {
+/* Fallback host when not yet adopted into CommUI layout panel. */
+#topleftcorner:not(.ecu-info-slot-host) {
   position: fixed !important;
   top: 8px !important;
   left: 8px !important;
@@ -2796,15 +2803,24 @@ var EnhanceCommUI = (() => {
   max-height: min(80vh, calc(100vh - 96px));
   overflow: auto;
 }
-#topleftcornerui,
-#topleftcornerdialog {
+#topleftcornerui {
   pointer-events: auto !important;
   vertical-align: top;
   display: inline-block;
 }
 #topleftcornerdialog {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
   margin-left: 5px;
   position: relative;
+}
+#topleftcornerdialog.${ADOPTED_CLASS} {
+  margin-left: 0;
+  display: block;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
 }
 #topleftcornerdialog .${CLOSE_CLASS} {
   position: absolute;
@@ -2848,6 +2864,9 @@ var EnhanceCommUI = (() => {
     }
     return true;
   }
+  function setInfoDialogLayoutEditing(editing) {
+    window.__ecuInfoDialogLayoutEdit = !!editing;
+  }
   function ensureCloseButton(dialog) {
     if (!String(dialog.innerHTML || "").trim()) return;
     if (dialog.querySelector("." + CLOSE_CLASS)) return;
@@ -2883,15 +2902,20 @@ var EnhanceCommUI = (() => {
       ensureCloseButton(dialog);
     }
     document.addEventListener("mousedown", (ev) => {
+      if (window.__ecuInfoDialogLayoutEdit) return;
       if (!isTopLeftDialogOpen()) return;
       const t = ev.target;
       const host = document.getElementById("topleftcornerdialog");
       if (!host || !t) return;
       if (host.contains(t)) return;
+      const el = t;
+      if (el.closest && el.closest('[data-panel="infoDialog"]')) {
+        return;
+      }
       closeTopLeftDialog();
     });
   }
-  function ensureDialogHost() {
+  function ensureDialogElement() {
     injectDialogHostCss();
     let corner = document.getElementById("topleftcorner");
     if (!corner) {
@@ -2906,12 +2930,29 @@ var EnhanceCommUI = (() => {
       ui.className = "bpclicks";
       corner.append(ui);
     }
-    if (!document.getElementById("topleftcornerdialog")) {
-      const dialog = document.createElement("div");
+    let dialog = document.getElementById("topleftcornerdialog");
+    if (!dialog) {
+      dialog = document.createElement("div");
       dialog.id = "topleftcornerdialog";
       dialog.className = "bpclicks enableclicks";
       corner.append(dialog);
     }
+    return dialog;
+  }
+  function adoptTopLeftDialog(slot) {
+    const dialog = ensureDialogElement();
+    if (dialog.parentElement !== slot) {
+      slot.appendChild(dialog);
+    }
+    dialog.classList.add(ADOPTED_CLASS);
+    const corner = document.getElementById("topleftcorner");
+    if (corner) corner.classList.add("ecu-info-slot-host");
+    installDialogDismiss();
+    ensureCloseButton(dialog);
+    return dialog;
+  }
+  function ensureDialogHost() {
+    ensureDialogElement();
     installDialogDismiss();
   }
 
@@ -5608,6 +5649,13 @@ var EnhanceCommUI = (() => {
     minHeight: "80px",
     boxSizing: "border-box"
   };
+  var INFO_DIALOG_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(96vw, 520px)",
+    // Above other play panels so buff/item tooltips stay readable.
+    zIndex: 35,
+    boxSizing: "border-box"
+  };
 
   // src/ui/paperdoll/Stat.ts
   function Stat(props) {
@@ -6011,6 +6059,72 @@ var EnhanceCommUI = (() => {
           })
         ) : null
       )
+    );
+  }
+
+  // src/ui/frames/InfoDialogPanel.ts
+  function InfoDialogPanel(props) {
+    const React = getReact();
+    const slotRef = React.useRef(null);
+    const [open, setOpen] = React.useState(isTopLeftDialogOpen());
+    const onOpenChange = props.onOpenChange;
+    React.useEffect(() => {
+      if (onOpenChange) onOpenChange(open);
+    }, [open, onOpenChange]);
+    React.useEffect(() => {
+      const slot = slotRef.current;
+      if (!slot) return;
+      const dialog = adoptTopLeftDialog(slot);
+      setOpen(isTopLeftDialogOpen());
+      if (typeof MutationObserver !== "function") return;
+      const obs = new MutationObserver(() => {
+        setOpen(isTopLeftDialogOpen());
+      });
+      obs.observe(dialog, {
+        childList: true,
+        subtree: true,
+        characterData: true
+      });
+      return () => obs.disconnect();
+    }, []);
+    const showDummy = !!props.layoutEdit && !open;
+    const visible = open || !!props.layoutEdit;
+    return e(
+      "div",
+      {
+        className: "comm-info-dialog-panel",
+        style: {
+          width: "fit-content",
+          maxWidth: "min(96vw, 520px)",
+          boxSizing: "border-box",
+          // Collapse completely when idle in play mode.
+          minWidth: showDummy ? "200px" : void 0,
+          minHeight: showDummy ? "120px" : void 0,
+          pointerEvents: visible ? "auto" : "none"
+        }
+      },
+      showDummy ? e(PanelShellDummy, {
+        label: "Buff / item info",
+        hint: "Click a buff or gear slot",
+        accent: "#5a7a5a",
+        rows: 4,
+        style: {
+          minWidth: "200px",
+          minHeight: "120px",
+          boxSizing: "border-box"
+        }
+      }) : null,
+      e("div", {
+        ref: slotRef,
+        className: "comm-info-dialog-slot",
+        // Always mounted so stock `condition_click` / `slot_click` can write.
+        style: {
+          display: "block",
+          height: open || props.layoutEdit ? void 0 : 0,
+          overflow: open ? "visible" : "hidden",
+          minHeight: 0
+        }
+      })
     );
   }
 
@@ -8619,6 +8733,7 @@ var EnhanceCommUI = (() => {
     "command",
     "bag",
     "paperdoll",
+    "infoDialog",
     "playerFrame",
     "targetFrame"
   ];
@@ -8669,6 +8784,7 @@ var EnhanceCommUI = (() => {
       null
     );
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+    const [infoDialogOpen, setInfoDialogOpen] = React.useState(false);
     React.useEffect(() => {
       updateKillContext(snap.entities);
       updateCombatContext(snap.entities);
@@ -8684,6 +8800,10 @@ var EnhanceCommUI = (() => {
       });
       return () => updateCommKeyboardHandlers({});
     }, [selectedEntity, closePaperdoll, setLayoutEdit]);
+    React.useEffect(() => {
+      setInfoDialogLayoutEditing(layoutEdit);
+      return () => setInfoDialogLayoutEditing(false);
+    }, [layoutEdit]);
     React.useEffect(() => {
       return subscribeCommanderOpen((payload) => {
         if (typeof payload.draft === "string") {
@@ -8838,6 +8958,19 @@ var EnhanceCommUI = (() => {
         }),
         { style: PAPERDOLL_PANEL_STYLE }
       ) : null,
+      panel(
+        "infoDialog",
+        e(InfoDialogPanel, {
+          layoutEdit,
+          onOpenChange: setInfoDialogOpen
+        }),
+        {
+          style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
+            zIndex: layoutEdit ? 45 : 35,
+            pointerEvents: layoutEdit || infoDialogOpen ? "auto" : "none"
+          })
+        }
+      ),
       panel("kills", e(KillKpiPanel), {
         closable: true,
         style: KILLS_PANEL_STYLE,

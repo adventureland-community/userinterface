@@ -2,24 +2,26 @@
  * Stock AL item/condition info renders into `#topleftcornerdialog`.
  * `/comm` (comm.html) does not mount `#topleftcorner` at all — so
  * `condition_click` / `slot_click` were no-ops. Ensure the host exists
- * above `#comm-ui` (z-index 220) so dialogs are visible and clickable.
+ * and can be adopted into the CommUI `infoDialog` PositionedPanel so
+ * layout edit can place it.
  *
  * Stock AL rarely exposes a close control on condition tooltips (they
  * clear when the inspect target changes). On /comm that path is weak, so
- * we add ×, click-outside, and Esc dismiss.
+ * we add ×, click-outside, and Esc dismiss (skipped while layout editing).
  */
 
 const STYLE_ID = "comm-ui-dialog-host-css";
 const CLOSE_CLASS = "ecu-dialog-close";
 const BOUND = "__ecuDialogDismissBound";
+const ADOPTED_CLASS = "ecu-info-dialog-adopted";
 
 function injectDialogHostCss(): void {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
-/* Above #comm-ui (220); below #bottom chrome strip (260). */
-#topleftcorner {
+/* Fallback host when not yet adopted into CommUI layout panel. */
+#topleftcorner:not(.ecu-info-slot-host) {
   position: fixed !important;
   top: 8px !important;
   left: 8px !important;
@@ -29,15 +31,24 @@ function injectDialogHostCss(): void {
   max-height: min(80vh, calc(100vh - 96px));
   overflow: auto;
 }
-#topleftcornerui,
-#topleftcornerdialog {
+#topleftcornerui {
   pointer-events: auto !important;
   vertical-align: top;
   display: inline-block;
 }
 #topleftcornerdialog {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
   margin-left: 5px;
   position: relative;
+}
+#topleftcornerdialog.${ADOPTED_CLASS} {
+  margin-left: 0;
+  display: block;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
 }
 #topleftcornerdialog .${CLOSE_CLASS} {
   position: absolute;
@@ -87,6 +98,11 @@ export function closeTopLeftDialog(): boolean {
   return true;
 }
 
+/** Layout edit sets this so click-outside / Esc-adjacent dismiss stays out of the way. */
+export function setInfoDialogLayoutEditing(editing: boolean): void {
+  (window as any).__ecuInfoDialogLayoutEdit = !!editing;
+}
+
 function ensureCloseButton(dialog: HTMLElement): void {
   if (!String(dialog.innerHTML || "").trim()) return;
   if (dialog.querySelector("." + CLOSE_CLASS)) return;
@@ -131,19 +147,27 @@ function installDialogDismiss(): void {
   }
 
   // Bubble phase: icon/slot handlers stopPropagation, so opening clicks
-  // do not immediately dismiss.
+  // do not immediately dismiss. Skip while layout-editing the panel.
   document.addEventListener("mousedown", (ev: MouseEvent) => {
+    if ((window as any).__ecuInfoDialogLayoutEdit) return;
     if (!isTopLeftDialogOpen()) return;
     const t = ev.target as Node | null;
     const host = document.getElementById("topleftcornerdialog");
     if (!host || !t) return;
     if (host.contains(t)) return;
+    // Layout drag header / panel chrome for infoDialog — don't dismiss.
+    const el = t as HTMLElement;
+    if (
+      el.closest &&
+      el.closest('[data-panel="infoDialog"]')
+    ) {
+      return;
+    }
     closeTopLeftDialog();
   });
 }
 
-/** Create stock dialog mount if missing (needed on /comm). */
-export function ensureDialogHost(): void {
+function ensureDialogElement(): HTMLElement {
   injectDialogHostCss();
 
   let corner = document.getElementById("topleftcorner");
@@ -161,12 +185,37 @@ export function ensureDialogHost(): void {
     corner.append(ui);
   }
 
-  if (!document.getElementById("topleftcornerdialog")) {
-    const dialog = document.createElement("div");
+  let dialog = document.getElementById("topleftcornerdialog");
+  if (!dialog) {
+    dialog = document.createElement("div");
     dialog.id = "topleftcornerdialog";
     dialog.className = "bpclicks enableclicks";
     corner.append(dialog);
   }
 
+  return dialog;
+}
+
+/**
+ * Move `#topleftcornerdialog` into a CommUI layout slot so PositionedPanel
+ * owns placement. Safe to call repeatedly.
+ */
+export function adoptTopLeftDialog(slot: HTMLElement): HTMLElement {
+  const dialog = ensureDialogElement();
+  if (dialog.parentElement !== slot) {
+    slot.appendChild(dialog);
+  }
+  dialog.classList.add(ADOPTED_CLASS);
+  // Mark former fixed corner so fallback CSS no longer fights the panel.
+  const corner = document.getElementById("topleftcorner");
+  if (corner) corner.classList.add("ecu-info-slot-host");
+  installDialogDismiss();
+  ensureCloseButton(dialog);
+  return dialog;
+}
+
+/** Create stock dialog mount if missing (needed on /comm before React mounts). */
+export function ensureDialogHost(): void {
+  ensureDialogElement();
   installDialogDismiss();
 }
