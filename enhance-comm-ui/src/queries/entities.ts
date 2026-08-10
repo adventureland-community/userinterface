@@ -1,3 +1,4 @@
+import { CRYPT_BOSSES_MTYPES } from "../crypt/tracker";
 import type { EntityLike } from "../host/globals";
 
 const MTYPES_TO_SQUASH = ["nerfedbat", "nerfedmummy", "zapper0", "crab"];
@@ -77,13 +78,52 @@ export function coopBosses(entities: EntityLike[]): EntityLike[] {
   return out;
 }
 
+export function isCryptBossEntity(entity: EntityLike): boolean {
+  if (entity.type !== "monster" || !entity.mtype) return false;
+  return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
+}
+
+function isAliveMonster(entity: EntityLike): boolean {
+  if (entity.type !== "monster") return false;
+  if (entity.dead) return false;
+  if (entity.hp != null && entity.hp <= 0) return false;
+  return true;
+}
+
+/** Live cooperative or crypt bosses visible in entity snapshot. */
+export function activeBosses(entities: EntityLike[]): EntityLike[] {
+  const out: EntityLike[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < entities.length; i++) {
+    const ent = entities[i];
+    if (!isAliveMonster(ent)) continue;
+    if (!isCoopBoss(ent) && !isCryptBossEntity(ent)) continue;
+    const id = String(ent.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(ent);
+  }
+  out.sort((a, b) => {
+    const lb = b.level || 0;
+    const la = a.level || 0;
+    if (lb !== la) return lb - la;
+    const cmp = String(a.name || a.mtype || a.id).localeCompare(
+      String(b.name || b.mtype || b.id),
+    );
+    if (cmp !== 0) return cmp;
+    return a.id < b.id ? -1 : 1;
+  });
+  return out;
+}
+
 export function findEntity(
   entities: EntityLike[],
-  id: string | undefined,
+  id: string | number | undefined,
 ): EntityLike | undefined {
-  if (!id) return undefined;
+  if (id == null || id === "") return undefined;
+  const tid = String(id);
   for (let i = 0; i < entities.length; i++) {
-    if (entities[i].id === id) return entities[i];
+    if (String(entities[i].id) === tid) return entities[i];
   }
   return undefined;
 }
