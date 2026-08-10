@@ -895,7 +895,7 @@ var EnhanceCommUI = (() => {
     bag: "Bag",
     toggles: "Layout"
   };
-  var DEFAULT_LAYOUT = {
+  var DEFAULT_LAYOUT_DESKTOP = {
     players: { x: 0.4, y: 0.4, anchor: "tl" },
     enemies: { x: 99.6, y: 0.4, anchor: "tr" },
     topCenter: { x: 50, y: 0.4, anchor: "tc" },
@@ -918,6 +918,58 @@ var EnhanceCommUI = (() => {
     bag: { x: 0.8, y: 86, anchor: "bl" },
     toggles: { x: 99.5, y: 99.2, anchor: "br" }
   };
+  var DEFAULT_LAYOUT_TABLET = {
+    players: { x: 0.5, y: 0.5, anchor: "tl" },
+    enemies: { x: 99.5, y: 0.5, anchor: "tr" },
+    topCenter: { x: 50, y: 0.5, anchor: "tc" },
+    paperdoll: { x: 1, y: 28, anchor: "tl" },
+    combat: { x: 99.2, y: 52, anchor: "tr" },
+    kills: { x: 99.2, y: 72, anchor: "tr" },
+    playerFrame: { x: 32, y: 78, anchor: "bc" },
+    targetFrame: { x: 68, y: 78, anchor: "bc" },
+    bossBar: { x: 50, y: 9, anchor: "tc" },
+    pdps: { x: 99.2, y: 14, anchor: "tr" },
+    hitDps: { x: 99.2, y: 28, anchor: "tr" },
+    coopV1: { x: 0.8, y: 14, anchor: "tl" },
+    coopV2: { x: 0.8, y: 28, anchor: "tl" },
+    threat: { x: 99.2, y: 40, anchor: "tr" },
+    command: { x: 50, y: 44, anchor: "center" },
+    bag: { x: 0.8, y: 78, anchor: "bl" },
+    toggles: { x: 99.2, y: 98.5, anchor: "br" }
+  };
+  var DEFAULT_LAYOUT_PHONE = {
+    players: { x: 0.5, y: 0.5, anchor: "tl" },
+    enemies: { x: 99.5, y: 0.5, anchor: "tr" },
+    topCenter: { x: 50, y: 0.4, anchor: "tc" },
+    paperdoll: { x: 50, y: 36, anchor: "center" },
+    combat: { x: 50, y: 72, anchor: "bc" },
+    kills: { x: 98, y: 58, anchor: "br" },
+    playerFrame: { x: 28, y: 62, anchor: "bc" },
+    targetFrame: { x: 72, y: 62, anchor: "bc" },
+    bossBar: { x: 50, y: 10, anchor: "tc" },
+    pdps: { x: 99, y: 16, anchor: "tr" },
+    hitDps: { x: 99, y: 28, anchor: "tr" },
+    coopV1: { x: 1, y: 16, anchor: "tl" },
+    coopV2: { x: 1, y: 28, anchor: "tl" },
+    threat: { x: 50, y: 48, anchor: "tc" },
+    command: { x: 50, y: 42, anchor: "center" },
+    bag: { x: 50, y: 88, anchor: "bc" },
+    toggles: { x: 98, y: 98, anchor: "br" }
+  };
+  function defaultLayoutFor(profile) {
+    switch (profile) {
+      case "desktop":
+        return DEFAULT_LAYOUT_DESKTOP;
+      case "tablet":
+        return DEFAULT_LAYOUT_TABLET;
+      case "phone":
+        return DEFAULT_LAYOUT_PHONE;
+      default: {
+        const _exhaustive = profile;
+        return _exhaustive;
+      }
+    }
+  }
   function clamp(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
   }
@@ -939,11 +991,12 @@ var EnhanceCommUI = (() => {
       anchor: valid.indexOf(anchor) >= 0 ? anchor : fallback.anchor
     };
   }
-  function mergeLayout(partial) {
+  function mergeLayout(partial, profile = "desktop") {
+    const defaults = defaultLayoutFor(profile);
     const out = {};
     for (let i = 0; i < PANEL_IDS.length; i++) {
       const id = PANEL_IDS[i];
-      out[id] = normalizePos(partial && partial[id], DEFAULT_LAYOUT[id]);
+      out[id] = normalizePos(partial && partial[id], defaults[id]);
     }
     return out;
   }
@@ -991,8 +1044,14 @@ var EnhanceCommUI = (() => {
       dyPct: containerH > 0 ? dy / containerH * 100 : 0
     };
   }
-  function snapPercent(n, threshold = 2.2) {
+  function snapPercent(n, threshold = 2.2, peerValues) {
     const targets = [0, 50, 100];
+    if (peerValues && peerValues.length) {
+      for (let i = 0; i < peerValues.length; i++) {
+        const v = peerValues[i];
+        if (Number.isFinite(v)) targets.push(v);
+      }
+    }
     let best = n;
     let bestDist = threshold + 1;
     for (let i = 0; i < targets.length; i++) {
@@ -1003,6 +1062,62 @@ var EnhanceCommUI = (() => {
       }
     }
     return bestDist <= threshold ? best : n;
+  }
+  function softAvoidOverlap(id, pos, others, nudge = 3.2) {
+    const ids = Object.keys(others);
+    let x = pos.x;
+    let y = pos.y;
+    for (let i = 0; i < ids.length; i++) {
+      const otherId = ids[i];
+      if (otherId === id) continue;
+      const o = others[otherId];
+      if (!o || o.anchor !== pos.anchor) continue;
+      const dx = Math.abs(o.x - x);
+      const dy = Math.abs(o.y - y);
+      if (dx < nudge && dy < nudge) {
+        if (dx <= dy) {
+          x = clamp(o.x + (x >= o.x ? nudge : -nudge), 0, 100);
+        } else {
+          y = clamp(o.y + (y >= o.y ? nudge : -nudge), 0, 100);
+        }
+      }
+    }
+    if (x === pos.x && y === pos.y) return pos;
+    return { ...pos, x, y };
+  }
+
+  // src/lib/viewport.ts
+  var PHONE_MAX_WIDTH = 700;
+  var TABLET_MAX_WIDTH = 1100;
+  function detectViewportProfile(width, height) {
+    const w = typeof width === "number" && width > 0 ? width : typeof window !== "undefined" ? window.innerWidth : 1280;
+    const h = typeof height === "number" && height > 0 ? height : typeof window !== "undefined" ? window.innerHeight : 800;
+    const short = Math.min(w, h);
+    if (w <= PHONE_MAX_WIDTH || short <= 480 && w < 980) return "phone";
+    if (w <= TABLET_MAX_WIDTH || short <= 820 && w < 1280) return "tablet";
+    return "desktop";
+  }
+  function isTouchishProfile(profile) {
+    return profile === "tablet" || profile === "phone";
+  }
+  var VIEWPORT_PROFILES = [
+    "desktop",
+    "tablet",
+    "phone"
+  ];
+  function profileLabel(profile) {
+    switch (profile) {
+      case "desktop":
+        return "Desktop";
+      case "tablet":
+        return "Tablet";
+      case "phone":
+        return "Phone";
+      default: {
+        const _exhaustive = profile;
+        return _exhaustive;
+      }
+    }
   }
 
   // src/lib/settings.ts
@@ -1070,6 +1185,8 @@ var EnhanceCommUI = (() => {
     barChannel: "dps",
     partyFocus: "watched",
     panelLayout: {},
+    panelLayoutsByProfile: {},
+    layoutProfileMode: "auto",
     panelVisible: { ...DEFAULT_PANEL_VISIBLE },
     commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
     commandDraft: "",
@@ -1077,6 +1194,38 @@ var EnhanceCommUI = (() => {
     bagOpenPreferred: false,
     panelOpacity: {}
   };
+  function resolveLayoutProfile(mode, detected) {
+    if (mode && mode !== "auto") return mode;
+    return detected || detectViewportProfile();
+  }
+  function mergeLayoutsByProfile(partial, legacyFlat) {
+    const out = {};
+    if (partial && typeof partial === "object") {
+      for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
+        const profile = VIEWPORT_PROFILES[i];
+        const chunk = partial[profile];
+        if (chunk && typeof chunk === "object") {
+          out[profile] = mergeLayout(chunk, profile);
+        }
+      }
+    }
+    if (legacyFlat && typeof legacyFlat === "object" && Object.keys(legacyFlat).length && !out.desktop) {
+      out.desktop = mergeLayout(legacyFlat, "desktop");
+    }
+    return out;
+  }
+  function layoutForProfile(settings, profile) {
+    var _a;
+    const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode, detectViewportProfile());
+    const stored = (_a = settings.panelLayoutsByProfile) == null ? void 0 : _a[resolved];
+    if (stored && Object.keys(stored).length) {
+      return mergeLayout(stored, resolved);
+    }
+    if (resolved === "desktop" && settings.panelLayout) {
+      return mergeLayout(settings.panelLayout, "desktop");
+    }
+    return mergeLayout(null, resolved);
+  }
   function clampOpacity(n) {
     if (!Number.isFinite(n)) return 1;
     return Math.max(0.25, Math.min(1, n));
@@ -1138,21 +1287,49 @@ var EnhanceCommUI = (() => {
       const code = String(row.code || "");
       if (!name && !code.trim()) continue;
       const id = typeof row.id === "string" && row.id ? row.id : `snip-${i}-${Date.now()}`;
-      out.push({
+      const folderRaw = typeof row.folder === "string" ? row.folder.trim() : "";
+      const snip = {
         id,
         name: name || `Snippet ${out.length + 1}`,
         code
-      });
+      };
+      if (folderRaw) snip.folder = folderRaw;
+      out.push(snip);
     }
     return out;
   }
+  function normalizeLayoutProfileMode(raw) {
+    if (raw === "desktop" || raw === "tablet" || raw === "phone" || raw === "auto") {
+      return raw;
+    }
+    return "auto";
+  }
   function migrate(parsed) {
+    const panelLayoutsByProfile = mergeLayoutsByProfile(
+      parsed.panelLayoutsByProfile,
+      parsed.panelLayout
+    );
+    const layoutProfileMode = normalizeLayoutProfileMode(
+      parsed.layoutProfileMode
+    );
+    const activeProfile = resolveLayoutProfile(layoutProfileMode);
+    const panelLayout = layoutForProfile(
+      {
+        ...DEFAULTS,
+        panelLayout: parsed.panelLayout || {},
+        panelLayoutsByProfile,
+        layoutProfileMode
+      },
+      activeProfile
+    );
     const next = {
       ...DEFAULTS,
       ...parsed,
       combatChannels: normalizeChannels(parsed.combatChannels),
       barChannel: normalizeBarChannel(parsed.barChannel),
-      panelLayout: mergeLayout(parsed.panelLayout),
+      panelLayout,
+      panelLayoutsByProfile,
+      layoutProfileMode,
       panelVisible: mergePanelVisible(
         parsed.panelVisible,
         parsed.combatVisible
@@ -1184,7 +1361,9 @@ var EnhanceCommUI = (() => {
     return {
       ...DEFAULTS,
       combatChannels: DEFAULTS.combatChannels.slice(),
-      panelLayout: mergeLayout(null),
+      panelLayout: mergeLayout(null, "desktop"),
+      panelLayoutsByProfile: {},
+      layoutProfileMode: "auto",
       panelVisible: mergePanelVisible(null),
       commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
       commandDraft: "",
@@ -1219,6 +1398,7 @@ var EnhanceCommUI = (() => {
     return getSettings();
   }
   function patchSettings(partial) {
+    var _a;
     const current = getSettings();
     const next = {
       ...current,
@@ -1230,11 +1410,34 @@ var EnhanceCommUI = (() => {
     if (partial.barChannel != null) {
       next.barChannel = normalizeBarChannel(partial.barChannel);
     }
-    if (partial.panelLayout) {
-      next.panelLayout = mergeLayout({
-        ...current.panelLayout,
-        ...partial.panelLayout
+    if (partial.layoutProfileMode != null) {
+      next.layoutProfileMode = normalizeLayoutProfileMode(
+        partial.layoutProfileMode
+      );
+    }
+    if (partial.panelLayoutsByProfile) {
+      next.panelLayoutsByProfile = mergeLayoutsByProfile({
+        ...current.panelLayoutsByProfile,
+        ...partial.panelLayoutsByProfile
       });
+    }
+    if (partial.panelLayout) {
+      const profile = resolveLayoutProfile(next.layoutProfileMode);
+      const merged = mergeLayout(
+        {
+          ...((_a = current.panelLayoutsByProfile) == null ? void 0 : _a[profile]) || current.panelLayout,
+          ...partial.panelLayout
+        },
+        profile
+      );
+      next.panelLayout = merged;
+      next.panelLayoutsByProfile = {
+        ...next.panelLayoutsByProfile,
+        [profile]: merged
+      };
+    }
+    if (!partial.panelLayout && (partial.panelLayoutsByProfile || partial.layoutProfileMode != null)) {
+      next.panelLayout = layoutForProfile(next);
     }
     if (partial.panelVisible) {
       next.panelVisible = mergePanelVisible({
@@ -1268,14 +1471,43 @@ var EnhanceCommUI = (() => {
   function saveSettings(partial) {
     return patchSettings(partial);
   }
-  function savePanelPos(id, pos) {
-    return saveSettings({ panelLayout: { [id]: pos } });
+  function savePanelPos(id, pos, profile) {
+    var _a;
+    const settings = getSettings();
+    const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
+    return saveSettings({
+      panelLayoutsByProfile: {
+        [resolved]: {
+          ...((_a = settings.panelLayoutsByProfile) == null ? void 0 : _a[resolved]) || {},
+          [id]: pos
+        }
+      },
+      panelLayout: { [id]: pos }
+    });
   }
   function savePanelVisible(id, visible) {
     return saveSettings({ panelVisible: { [id]: visible } });
   }
-  function resetPanelLayout() {
-    return saveSettings({ panelLayout: mergeLayout(null) });
+  function resetPanelLayout(profile) {
+    const settings = getSettings();
+    const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
+    const defaults = mergeLayout(null, resolved);
+    return saveSettings({
+      panelLayoutsByProfile: {
+        ...settings.panelLayoutsByProfile,
+        [resolved]: defaults
+      },
+      panelLayout: defaults
+    });
+  }
+  function importPanelLayouts(layoutsByProfile) {
+    const merged = mergeLayoutsByProfile(layoutsByProfile, null);
+    return saveSettings({
+      panelLayoutsByProfile: {
+        ...getSettings().panelLayoutsByProfile,
+        ...merged
+      }
+    });
   }
   function partyFocusLabel(focus, watchedName) {
     if (focus === "watched") {
@@ -2030,6 +2262,52 @@ var EnhanceCommUI = (() => {
   .charactersui.charactersuic {
     max-width: min(62vw, 640px);
   }
+}
+
+/* Tablet / phone \u2014 larger hit targets (Edge/Firefox Android, Safari iOS) */
+@media (pointer: coarse), (max-width: 1100px) {
+  .ecu-btn {
+    min-width: 88px !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 16px !important;
+    font-size: 16px !important;
+  }
+  .ecu-actions {
+    min-height: 56px;
+    height: auto;
+    padding: 6px 8px;
+    gap: 8px;
+  }
+  .ecu-chrome {
+    min-height: 76px;
+    height: 76px;
+  }
+  .ecu-char {
+    padding: 0 14px 0 8px;
+    gap: 12px;
+  }
+  .ecu-char-sprite {
+    width: 52px;
+    height: 52px;
+  }
+  .ecu-char-name {
+    font-size: 18px;
+  }
+  .ecu-server-dd-trigger {
+    min-width: 200px;
+    padding: 0 18px;
+  }
+}
+#comm-ui.comm-ui-touch .comm-pos-panel button,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button {
+  min-height: 32px;
+}
+#comm-ui[data-viewport="phone"] .comm-pos-combat,
+#comm-ui[data-viewport="phone"] .comm-pos-bag,
+#comm-ui[data-viewport="phone"] .comm-pos-command {
+  max-width: 96vw;
 }
 `;
     document.head.append(style);
@@ -3209,6 +3487,26 @@ var EnhanceCommUI = (() => {
       posX: 0,
       posY: 0
     });
+    const lastPos = React.useRef(pos);
+    lastPos.current = pos;
+    const touchish = isTouchishProfile(props.viewportProfile || "desktop");
+    const closeSize = touchish ? 36 : 22;
+    const headerPad = touchish ? "8px 12px" : "3px 8px";
+    const headerFont = touchish ? "15px" : "13px";
+    const peerAxes = () => {
+      const peers = props.peerLayout || {};
+      const ids = Object.keys(peers);
+      const xs = [];
+      const ys = [];
+      for (let i = 0; i < ids.length; i++) {
+        if (ids[i] === id) continue;
+        const p = peers[ids[i]];
+        if (!p) continue;
+        xs.push(p.x);
+        ys.push(p.y);
+      }
+      return { xs, ys };
+    };
     const onPointerDown = (ev) => {
       if (!editing) return;
       ev.preventDefault();
@@ -3239,8 +3537,9 @@ var EnhanceCommUI = (() => {
       let nextY = start.current.posY + dyPct;
       nextX = Math.max(0, Math.min(100, nextX));
       nextY = Math.max(0, Math.min(100, nextY));
-      nextX = snapPercent(nextX);
-      nextY = snapPercent(nextY);
+      const { xs, ys } = peerAxes();
+      nextX = snapPercent(nextX, 2.2, xs);
+      nextY = snapPercent(nextY, 2.2, ys);
       onMove(id, { ...pos, x: nextX, y: nextY });
     };
     const onPointerUp = (ev) => {
@@ -3250,8 +3549,13 @@ var EnhanceCommUI = (() => {
         ev.currentTarget.releasePointerCapture(ev.pointerId);
       } catch (e2) {
       }
+      const peers = props.peerLayout || {};
+      const nudged = softAvoidOverlap(id, lastPos.current, peers);
+      if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
+        onMove(id, nudged);
+      }
     };
-    const showClose = !!onClose && !hidden && (editing || hover);
+    const showClose = !!onClose && !hidden && (editing || hover || touchish);
     const opacity = typeof props.opacity === "number" && Number.isFinite(props.opacity) ? Math.max(0.25, Math.min(1, props.opacity)) : 1;
     const shellStyle = Object.assign(
       {},
@@ -3283,15 +3587,15 @@ var EnhanceCommUI = (() => {
           top: editing ? "2px" : "0",
           right: "0",
           zIndex: 2,
-          width: "22px",
-          height: "22px",
+          width: `${closeSize}px`,
+          height: `${closeSize}px`,
           padding: 0,
           margin: 0,
           border: "1px solid #555",
           background: "rgba(20,20,20,0.9)",
           color: "#ccc",
-          fontSize: "14px",
-          lineHeight: "20px",
+          fontSize: touchish ? "18px" : "14px",
+          lineHeight: `${closeSize - 2}px`,
           cursor: "pointer",
           pointerEvents: "auto"
         }
@@ -3305,17 +3609,18 @@ var EnhanceCommUI = (() => {
           display: "flex",
           alignItems: "center",
           gap: "6px",
-          padding: "3px 8px",
-          paddingRight: onClose && !hidden ? "28px" : "8px",
+          padding: headerPad,
+          paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
           marginBottom: 0,
           background: hidden ? "rgba(30,30,30,0.92)" : "rgba(40,40,20,0.92)",
           border: hidden ? "1px solid #666" : "1px solid #886",
           cursor: "grab",
           userSelect: "none",
-          fontSize: "13px",
+          fontSize: headerFont,
           color: hidden ? "#bbb" : "#ffe08a",
           whiteSpace: "nowrap",
-          touchAction: "none"
+          touchAction: "none",
+          minHeight: touchish ? "40px" : void 0
         },
         onPointerDown,
         onPointerMove,
@@ -3336,8 +3641,9 @@ var EnhanceCommUI = (() => {
           style: {
             marginLeft: "auto",
             cursor: "pointer",
-            fontSize: "12px",
-            padding: "2px 8px",
+            fontSize: touchish ? "14px" : "12px",
+            padding: touchish ? "6px 12px" : "2px 8px",
+            minHeight: touchish ? "36px" : void 0,
             border: "1px solid #7a7",
             background: "#1a2a1a",
             color: "#9e9"
@@ -3374,6 +3680,97 @@ var EnhanceCommUI = (() => {
         },
         `${PANEL_LABELS[id]} \u2014 closed`
       ) : children
+    );
+  }
+
+  // src/ui/chrome/LayoutPlaceholder.ts
+  function LayoutPlaceholder(props) {
+    const accent = props.accent || "#555";
+    return e(
+      "div",
+      {
+        className: props.className,
+        style: props.style
+      },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "8px 10px",
+            background: `linear-gradient(90deg, ${accent}33, transparent)`,
+            borderBottom: `1px solid ${accent}66`,
+            color: "#888",
+            fontSize: "17px"
+          }
+        },
+        e("div", {
+          style: {
+            width: "8px",
+            height: "8px",
+            background: accent,
+            flexShrink: 0
+          }
+        }),
+        props.label
+      ),
+      props.children
+    );
+  }
+
+  // src/ui/chrome/PanelShellDummy.ts
+  function PanelShellDummy(props) {
+    const rows = Math.max(1, props.rows || 3);
+    const rowEls = [];
+    for (let i = 0; i < rows; i++) {
+      rowEls.push(
+        e("div", {
+          key: `r${i}`,
+          style: {
+            height: i === 0 ? "18px" : "14px",
+            width: i === 0 ? "72%" : `${58 - i * 6}%`,
+            background: i === 0 ? "#3a3a3a" : "#2a2a2a",
+            opacity: 0.85
+          }
+        })
+      );
+    }
+    return e(
+      LayoutPlaceholder,
+      {
+        label: props.label,
+        accent: props.accent || "#666",
+        className: "comm-panel-shell-dummy",
+        style: Object.assign(
+          {
+            opacity: 0.78,
+            border: "2px solid #444",
+            background: "rgba(0,0,0,0.88)",
+            boxSizing: "border-box",
+            minWidth: "160px"
+          },
+          props.style || {}
+        )
+      },
+      e(
+        "div",
+        {
+          style: {
+            padding: "10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px"
+          }
+        },
+        props.hint ? e(
+          "div",
+          { style: { fontSize: "13px", color: "#777", marginBottom: "4px" } },
+          props.hint
+        ) : null,
+        ...rowEls
+      )
     );
   }
 
@@ -4656,8 +5053,13 @@ var EnhanceCommUI = (() => {
       }
     });
   }
+  function slotKey(slot) {
+    var _a, _b;
+    if (!slot || !slot.name) return "";
+    return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.q) != null ? _b : ""}`;
+  }
   function SlotCell(props) {
-    const { slotName, slot, showPrice } = props;
+    const { slotName, slot, showPrice, diff } = props;
     const skin = slotSkin(slot);
     const { shade, s_op } = shadeFor(slotName);
     let content = null;
@@ -4725,10 +5127,36 @@ var EnhanceCommUI = (() => {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: "2px"
+          gap: "2px",
+          position: "relative"
         }
       },
       content,
+      diff ? e(
+        "div",
+        {
+          title: "Equip differs from watched",
+          style: {
+            position: "absolute",
+            top: "-2px",
+            right: "-2px",
+            minWidth: "14px",
+            height: "14px",
+            padding: "0 3px",
+            boxSizing: "border-box",
+            background: "#3a2a10",
+            border: "1px solid #c9a227",
+            color: "#ffe08a",
+            fontSize: "10px",
+            lineHeight: "12px",
+            textAlign: "center",
+            fontWeight: "normal",
+            textShadow: "none",
+            pointerEvents: "none"
+          }
+        },
+        "\u0394"
+      ) : null,
       showPrice && (slot == null ? void 0 : slot.price) != null ? e(
         "div",
         { style: { fontSize: "10px", color: "#ffd700" } },
@@ -4739,7 +5167,12 @@ var EnhanceCommUI = (() => {
   function GearGrid(props) {
     const slots = props.entity.slots;
     if (!slots) return null;
+    const compareSlots = props.compareTo && props.compareTo.slots;
     const tradeNames = tradeSlotNames(slots);
+    const isDiff = (name) => {
+      if (!compareSlots) return false;
+      return slotKey(slots[name]) !== slotKey(compareSlots[name]);
+    };
     return e(
       "div",
       { style: { display: "flex", flexDirection: "column", gap: "2px" } },
@@ -4766,7 +5199,12 @@ var EnhanceCommUI = (() => {
               }
             },
             ...row.map(
-              (name) => e(SlotCell, { key: name, slotName: name, slot: slots[name] })
+              (name) => e(SlotCell, {
+                key: name,
+                slotName: name,
+                slot: slots[name],
+                diff: isDiff(name)
+              })
             )
           )
         )
@@ -4801,7 +5239,8 @@ var EnhanceCommUI = (() => {
             key: name,
             slotName: name,
             slot: slots[name],
-            showPrice: true
+            showPrice: true,
+            diff: isDiff(name)
           })
         )
       ) : null
@@ -4948,46 +5387,38 @@ var EnhanceCommUI = (() => {
   };
   var BOSS_BAR_PANEL_STYLE = {
     width: "min(520px, 72vw)",
-    minWidth: "360px",
+    minWidth: "min(360px, 92vw)",
     boxSizing: "border-box"
   };
-
-  // src/ui/chrome/LayoutPlaceholder.ts
-  function LayoutPlaceholder(props) {
-    const accent = props.accent || "#555";
-    return e(
-      "div",
-      {
-        className: props.className,
-        style: props.style
-      },
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "8px 10px",
-            background: `linear-gradient(90deg, ${accent}33, transparent)`,
-            borderBottom: `1px solid ${accent}66`,
-            color: "#888",
-            fontSize: "17px"
-          }
-        },
-        e("div", {
-          style: {
-            width: "8px",
-            height: "8px",
-            background: accent,
-            flexShrink: 0
-          }
-        }),
-        props.label
-      ),
-      props.children
-    );
-  }
+  var COMBAT_PANEL_STYLE = {
+    width: "min(420px, 94vw)",
+    minWidth: "min(280px, 92vw)",
+    minHeight: "180px",
+    boxSizing: "border-box"
+  };
+  var THREAT_PANEL_STYLE = {
+    minWidth: "200px",
+    width: "min(280px, 90vw)",
+    minHeight: "96px",
+    boxSizing: "border-box"
+  };
+  var COMMAND_PANEL_STYLE = {
+    width: "min(560px, 94vw)",
+    minHeight: "220px",
+    boxSizing: "border-box"
+  };
+  var METER_PANEL_STYLE = {
+    width: "200px",
+    minWidth: "160px",
+    minHeight: "72px",
+    boxSizing: "border-box"
+  };
+  var KILLS_PANEL_STYLE = {
+    width: "min(280px, 90vw)",
+    minWidth: "180px",
+    minHeight: "80px",
+    boxSizing: "border-box"
+  };
 
   // src/ui/paperdoll/Stat.ts
   function Stat(props) {
@@ -5278,12 +5709,12 @@ var EnhanceCommUI = (() => {
               border: "1px solid #555",
               background: "#1c1c1c",
               color: "#ddd",
-              width: "24px",
-              height: "24px",
-              lineHeight: "20px",
+              width: "32px",
+              height: "32px",
+              lineHeight: "28px",
               padding: 0,
               flexShrink: 0,
-              fontSize: "16px"
+              fontSize: "18px"
             }
           },
           "\xD7"
@@ -5383,9 +5814,12 @@ var EnhanceCommUI = (() => {
                 letterSpacing: "0.04em"
               }
             },
-            "GEAR"
+            compare ? "GEAR \xB7 \u0394 vs watched" : "GEAR"
           ),
-          e(GearGrid, { entity })
+          e(GearGrid, {
+            entity,
+            compareTo: compare ? watching : null
+          })
         ) : null
       )
     );
@@ -5604,6 +6038,28 @@ var EnhanceCommUI = (() => {
     if (entity.target != null && String(entity.target) === observingId) return 1;
     return 0;
   }
+  function hpRatio(entity) {
+    const max = entity.max_hp || 1;
+    return (entity.hp || 0) / max;
+  }
+  function sortBosses(bosses, observingId) {
+    const copy = bosses.slice();
+    copy.sort((a, b) => {
+      const aOnMe = bossThreat(a, observingId);
+      const bOnMe = bossThreat(b, observingId);
+      if (aOnMe !== bOnMe) return bOnMe - aOnMe;
+      const hpCmp = hpRatio(a) - hpRatio(b);
+      if (Math.abs(hpCmp) > 1e-4) return hpCmp;
+      return String(a.id).localeCompare(String(b.id));
+    });
+    return copy;
+  }
+  function aggroName(boss, entities) {
+    if (boss.target == null || boss.target === "") return null;
+    const target = findEntity(entities, boss.target);
+    if (target) return target.name || String(target.id);
+    return String(boss.target);
+  }
   var STACK_STYLE = {
     display: "flex",
     flexDirection: "column",
@@ -5611,7 +6067,10 @@ var EnhanceCommUI = (() => {
     width: "100%"
   };
   function BossBarPanel(props) {
-    const bosses = activeBosses(props.entities);
+    const bosses = sortBosses(
+      activeBosses(props.entities),
+      props.observing && props.observing.id != null ? String(props.observing.id) : void 0
+    );
     const obsId = props.observing && props.observing.id != null ? String(props.observing.id) : void 0;
     if (!bosses.length) {
       if (!props.layoutEdit) return null;
@@ -5633,22 +6092,86 @@ var EnhanceCommUI = (() => {
     return e(
       "div",
       { style: STACK_STYLE },
-      ...bosses.map(
-        (boss) => e(ObservedUnit, {
-          key: `boss-${String(boss.id)}`,
-          entity: boss,
-          hpColor: "#c42a2a",
-          fontSize: "22px",
-          showMp: false,
-          showEffects: false,
-          trailing: getPercent((boss.hp || 0) / (boss.max_hp || 1), 1),
-          threatCount: bossThreat(boss, obsId),
-          onSelect: (id) => {
-            setXTarget(boss);
-            props.setSelectedEntity(id);
-          }
-        })
-      )
+      ...bosses.map((boss) => {
+        const onMe = bossThreat(boss, obsId) > 0;
+        const aggro = aggroName(boss, props.entities);
+        const pct = getPercent(hpRatio(boss), 1);
+        return e(
+          "div",
+          {
+            key: `boss-${String(boss.id)}`,
+            style: {
+              display: "flex",
+              flexDirection: "column",
+              gap: "3px",
+              cursor: "pointer",
+              outline: onMe ? "1px solid rgba(224,85,85,0.55)" : void 0,
+              outlineOffset: "1px"
+            },
+            title: "Click to target",
+            onClick: () => {
+              setXTarget(boss);
+              props.setSelectedEntity(String(boss.id));
+            }
+          },
+          e(ObservedUnit, {
+            entity: boss,
+            hpColor: onMe ? "#d43838" : "#c42a2a",
+            fontSize: "22px",
+            showMp: false,
+            showEffects: false,
+            trailing: pct,
+            threatCount: onMe ? 1 : 0,
+            onSelect: (id) => {
+              setXTarget(boss);
+              props.setSelectedEntity(id);
+            }
+          }),
+          aggro ? e(
+            "div",
+            {
+              style: {
+                display: "inline-flex",
+                alignSelf: "flex-start",
+                alignItems: "center",
+                gap: "6px",
+                padding: "2px 8px",
+                marginLeft: "2px",
+                background: onMe ? "rgba(138,30,30,0.85)" : "rgba(30,30,30,0.9)",
+                border: onMe ? "1px solid #e05555" : "1px solid #555",
+                color: onMe ? "#ffd0d0" : "#bbb",
+                fontSize: "13px",
+                lineHeight: "1.2",
+                fontWeight: "normal",
+                textShadow: "none",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap"
+              },
+              title: onMe ? "Aggro on you" : `Aggro: ${aggro}`
+            },
+            onMe ? "Aggro \xB7 you" : `Aggro \xB7 ${aggro}`
+          ) : e(
+            "div",
+            {
+              style: {
+                display: "inline-flex",
+                alignSelf: "flex-start",
+                padding: "2px 8px",
+                marginLeft: "2px",
+                background: "rgba(20,20,20,0.8)",
+                border: "1px solid #444",
+                color: "#888",
+                fontSize: "13px",
+                fontWeight: "normal",
+                textShadow: "none"
+              }
+            },
+            "Aggro \xB7 \u2014"
+          )
+        );
+      })
     );
   }
 
@@ -5656,7 +6179,16 @@ var EnhanceCommUI = (() => {
   function ThreatTable(props) {
     const byTarget = aggroByTarget(props.entities);
     const targetIds = Object.keys(byTarget);
-    if (targetIds.length === 0) return null;
+    if (targetIds.length === 0) {
+      if (!props.layoutEdit) return null;
+      return e(PanelShellDummy, {
+        label: "Threat",
+        hint: "Aggro by target",
+        accent: "#844",
+        rows: 4,
+        style: THREAT_PANEL_STYLE
+      });
+    }
     targetIds.sort((a, b) => {
       if (a === props.observingId) return -1;
       if (b === props.observingId) return 1;
@@ -6331,7 +6863,8 @@ var EnhanceCommUI = (() => {
               cursor: "pointer",
               fontSize: "12px",
               lineHeight: "1.2",
-              padding: "2px 8px",
+              padding: "6px 12px",
+              minHeight: "32px",
               border: compact ? "1px solid #85c76b" : "1px solid #444",
               background: compact ? "#1a2a1a" : "#161616",
               color: compact ? "#85c76b" : "#aaa",
@@ -6341,7 +6874,29 @@ var EnhanceCommUI = (() => {
             }
           },
           compact ? "Compact" : "Full"
-        )
+        ),
+        hasObserver ? e(
+          "button",
+          {
+            type: "button",
+            title: "Focus the watched character's party",
+            onClick: () => patch({ partyFocus: "watched" }),
+            style: {
+              cursor: "pointer",
+              fontSize: "12px",
+              lineHeight: "1.2",
+              padding: "6px 10px",
+              minHeight: "32px",
+              border: focus === "watched" ? "1px solid #e13758" : "1px solid #444",
+              background: focus === "watched" ? "rgba(225,55,88,0.18)" : "#161616",
+              color: focus === "watched" ? "#ffe0e8" : "#aaa",
+              textShadow: "none",
+              fontWeight: "normal",
+              flex: "0 0 auto"
+            }
+          },
+          "My party"
+        ) : null
       ),
       // Party + view tabs on one compact toolbar
       e(
@@ -6639,6 +7194,9 @@ var EnhanceCommUI = (() => {
       () => loadSettings().commandSnippets.slice()
     );
     const [newName, setNewName] = React.useState("");
+    const [newFolder, setNewFolder] = React.useState("");
+    const [snippetQuery, setSnippetQuery] = React.useState("");
+    const [folderFilter, setFolderFilter] = React.useState("all");
     const [status, setStatus] = React.useState("");
     const [selectedId, setSelectedId] = React.useState(
       null
@@ -6756,11 +7314,14 @@ var EnhanceCommUI = (() => {
         return;
       }
       if (code !== draft) persistDraft(code);
+      const folder = String(newFolder || "").trim();
+      const snip = { id: newId(), name, code };
+      if (folder) snip.folder = folder;
       const next = snippets.slice();
-      next.push({ id: newId(), name, code });
+      next.push(snip);
       persistSnippets(next);
       setNewName("");
-      setStatus(`Saved \u201C${name}\u201D`);
+      setStatus(folder ? `Saved \u201C${name}\u201D in ${folder}` : `Saved \u201C${name}\u201D`);
     };
     const onDelete = (id) => {
       const next = [];
@@ -6799,9 +7360,29 @@ var EnhanceCommUI = (() => {
       textShadow: "none",
       fontWeight: "normal"
     };
-    const snippetRows = [];
+    const folders = [];
+    for (let i = 0; i < snippets.length; i++) {
+      const f = snippets[i].folder;
+      if (f && folders.indexOf(f) < 0) folders.push(f);
+    }
+    folders.sort((a, b) => a.localeCompare(b));
+    const q = snippetQuery.trim().toLowerCase();
+    const filtered = [];
     for (let i = 0; i < snippets.length; i++) {
       const snip = snippets[i];
+      if (folderFilter === "__none__" && snip.folder) continue;
+      if (folderFilter !== "all" && folderFilter !== "__none__" && (snip.folder || "") !== folderFilter) {
+        continue;
+      }
+      if (q) {
+        const hay = `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
+        if (hay.indexOf(q) < 0) continue;
+      }
+      filtered.push(snip);
+    }
+    const snippetRows = [];
+    for (let i = 0; i < filtered.length; i++) {
+      const snip = filtered[i];
       const active = selectedId === snip.id;
       const preview = snip.code.replace(/\s+/g, " ").trim();
       snippetRows.push(
@@ -6848,7 +7429,16 @@ var EnhanceCommUI = (() => {
                   whiteSpace: "nowrap"
                 }
               },
-              snip.name
+              snip.folder ? e(
+                "span",
+                {},
+                e(
+                  "span",
+                  { style: { color: "#a86", marginRight: "6px" } },
+                  snip.folder
+                ),
+                snip.name
+              ) : snip.name
             ),
             e(
               "div",
@@ -6986,6 +7576,19 @@ var EnhanceCommUI = (() => {
           }
         ),
         e(
+          "input",
+          {
+            type: "text",
+            value: newFolder,
+            placeholder: "Folder (optional)",
+            onChange: (ev) => setNewFolder(ev.target.value),
+            style: Object.assign({}, inputStyle, {
+              flex: "0 1 120px",
+              minWidth: "100px"
+            })
+          }
+        ),
+        e(
           "button",
           {
             type: "button",
@@ -7007,10 +7610,41 @@ var EnhanceCommUI = (() => {
             fontSize: "16px",
             color: "#ccc",
             borderTop: "1px solid #333",
-            paddingTop: "8px"
+            paddingTop: "8px",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            alignItems: "center"
           }
         },
-        "Snippets"
+        e("span", {}, "Snippets"),
+        e("input", {
+          type: "search",
+          value: snippetQuery,
+          placeholder: "Search\u2026",
+          onChange: (ev) => setSnippetQuery(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "1 1 140px",
+            minWidth: "120px",
+            fontSize: "14px",
+            padding: "4px 8px"
+          })
+        }),
+        e(
+          "select",
+          {
+            value: folderFilter,
+            onChange: (ev) => setFolderFilter(ev.target.value),
+            style: Object.assign({}, inputStyle, {
+              flex: "0 1 140px",
+              fontSize: "14px",
+              padding: "4px 8px"
+            })
+          },
+          e("option", { value: "all" }, "All folders"),
+          e("option", { value: "__none__" }, "No folder"),
+          ...folders.map((f) => e("option", { key: f, value: f }, f))
+        )
       ),
       snippetRows.length ? e(
         "div",
@@ -7026,7 +7660,7 @@ var EnhanceCommUI = (() => {
       ) : e(
         "div",
         { style: { fontSize: "15px", color: "#777" } },
-        "No snippets yet \u2014 write a command and Save snippet."
+        snippets.length ? "No snippets match this search/folder." : "No snippets yet \u2014 write a command and Save snippet."
       )
     );
   }
@@ -7186,22 +7820,62 @@ var EnhanceCommUI = (() => {
     );
     const [opacityEdit, setOpacityEdit] = React.useState(false);
     const [layoutEdit, setLayoutEdit] = React.useState(false);
-    const [layout, setLayout] = React.useState(
-      () => mergeLayout(settings0.panelLayout)
+    const [detectedProfile, setDetectedProfile] = React.useState(
+      () => detectViewportProfile()
     );
+    const [layoutProfileMode, setLayoutProfileModeState] = React.useState(
+      () => settings0.layoutProfileMode || "auto"
+    );
+    const viewportProfile = resolveLayoutProfile(
+      layoutProfileMode,
+      detectedProfile
+    );
+    const [layout, setLayout] = React.useState(
+      () => layoutForProfile(settings0, viewportProfile)
+    );
+    React.useEffect(() => {
+      const onResize = () => {
+        setDetectedProfile(detectViewportProfile());
+      };
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }, []);
+    React.useEffect(() => {
+      const settings = getSettings();
+      const next = layoutForProfile(settings, viewportProfile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    }, [viewportProfile]);
+    const setLayoutProfileMode = (mode) => {
+      setLayoutProfileModeState(mode);
+      const settings = saveSettings({ layoutProfileMode: mode });
+      const profile = resolveLayoutProfile(mode, detectViewportProfile());
+      const next = layoutForProfile(settings, profile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
     const onMove = (id, pos) => {
       setLayout((prev) => {
         const next = { ...prev, [id]: pos };
         return next;
       });
-      savePanelPos(id, pos);
+      savePanelPos(id, pos, viewportProfile);
       if (id === "bag") applyBagLayoutPos(pos);
     };
     const resetLayout = () => {
-      const settings = resetPanelLayout();
-      const next = mergeLayout(settings.panelLayout);
+      const settings = resetPanelLayout(viewportProfile);
+      const next = layoutForProfile(settings, viewportProfile);
       setLayout(next);
       applyBagLayoutPos(next.bag);
+    };
+    const importLayouts = (layouts) => {
+      const settings = importPanelLayouts(layouts);
+      const next = layoutForProfile(settings, viewportProfile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
+    const exportLayouts = () => {
+      return { ...getSettings().panelLayoutsByProfile };
     };
     const setVisible = (id, visible2) => {
       if (!isClosable(id)) return;
@@ -7236,8 +7910,13 @@ var EnhanceCommUI = (() => {
       layoutEdit,
       setLayoutEdit,
       layout,
+      viewportProfile,
+      layoutProfileMode,
+      setLayoutProfileMode,
       onMove,
       resetLayout,
+      importLayouts,
+      exportLayouts,
       setVisible,
       setOpacity,
       visible,
@@ -7290,8 +7969,146 @@ var EnhanceCommUI = (() => {
     return { selectedEntity, setSelectedEntity, closePaperdoll };
   }
 
+  // src/lib/layoutExport.ts
+  var LAYOUT_EXPORT_VERSION = 1;
+  function isPanelPos(raw) {
+    if (!raw || typeof raw !== "object") return false;
+    const o = raw;
+    return typeof o.x === "number" && typeof o.y === "number";
+  }
+  function sanitizeProfileMap(raw) {
+    const out = {};
+    if (!raw || typeof raw !== "object") return out;
+    const src = raw;
+    for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
+      const profile = VIEWPORT_PROFILES[i];
+      const chunk = src[profile];
+      if (!chunk || typeof chunk !== "object") continue;
+      const map = {};
+      const panelSrc = chunk;
+      for (let j = 0; j < PANEL_IDS.length; j++) {
+        const id = PANEL_IDS[j];
+        if (isPanelPos(panelSrc[id])) map[id] = panelSrc[id];
+      }
+      if (Object.keys(map).length) out[profile] = map;
+    }
+    return out;
+  }
+  function buildLayoutExport(layoutsByProfile) {
+    const layouts = {};
+    for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
+      const profile = VIEWPORT_PROFILES[i];
+      const partial = layoutsByProfile[profile];
+      if (!partial) continue;
+      layouts[profile] = mergeLayout(partial);
+    }
+    return {
+      version: LAYOUT_EXPORT_VERSION,
+      kind: "enhance-comm-ui-layout",
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      layoutsByProfile: layouts
+    };
+  }
+  function stringifyLayoutExport(layoutsByProfile) {
+    return JSON.stringify(buildLayoutExport(layoutsByProfile), null, 2);
+  }
+  function parseLayoutExport(raw) {
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e2) {
+      return { ok: false, error: "Invalid JSON" };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { ok: false, error: "Expected a JSON object" };
+    }
+    const obj = parsed;
+    if (obj.kind != null && obj.kind !== "enhance-comm-ui-layout") {
+      return { ok: false, error: "Not an enhance-comm-ui layout export" };
+    }
+    const layoutsRaw = obj.layoutsByProfile || obj.panelLayoutsByProfile || (obj.panelLayout ? { desktop: obj.panelLayout } : null);
+    const layoutsByProfile = sanitizeProfileMap(layoutsRaw);
+    if (!Object.keys(layoutsByProfile).length) {
+      return { ok: false, error: "No panel layouts found in export" };
+    }
+    return { ok: true, layoutsByProfile };
+  }
+  function downloadLayoutJson(json, filename) {
+    const name = filename || `enhance-comm-ui-layout-${Date.now()}.json`;
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+
   // src/ui/frames/comm/LayoutEditChrome.ts
+  function btnStyle2(active) {
+    return {
+      cursor: "pointer",
+      fontSize: "13px",
+      padding: "6px 10px",
+      minHeight: "36px",
+      border: active ? "1px solid #ffe08a" : "1px solid #886",
+      background: active ? "#3a3510" : "#222",
+      color: active ? "#ffe08a" : "#eee",
+      textShadow: "none",
+      fontWeight: "normal"
+    };
+  }
   function LayoutEditChrome(props) {
+    const React = getReact();
+    const [status, setStatus] = React.useState("");
+    const [pasteOpen, setPasteOpen] = React.useState(false);
+    const [pasteText, setPasteText] = React.useState("");
+    const fileRef = React.useRef(null);
+    const onExport = async () => {
+      const json = stringifyLayoutExport(props.exportLayouts());
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(json);
+          setStatus("Layout JSON copied");
+        } else {
+          downloadLayoutJson(json);
+          setStatus("Layout JSON downloaded");
+        }
+      } catch (e2) {
+        downloadLayoutJson(json);
+        setStatus("Layout JSON downloaded");
+      }
+    };
+    const onDownload = () => {
+      downloadLayoutJson(stringifyLayoutExport(props.exportLayouts()));
+      setStatus("Layout JSON downloaded");
+    };
+    const applyImportText = (raw) => {
+      const parsed = parseLayoutExport(raw);
+      if (parsed.ok === false) {
+        setStatus(parsed.error);
+        return;
+      }
+      props.importLayouts(parsed.layoutsByProfile);
+      setStatus("Layout imported");
+      setPasteOpen(false);
+      setPasteText("");
+    };
+    const onFile = (ev) => {
+      const file = ev.target && ev.target.files && ev.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        applyImportText(String(reader.result || ""));
+      };
+      reader.onerror = () => setStatus("Failed to read file");
+      reader.readAsText(file);
+      ev.target.value = "";
+    };
+    const modes = ["auto", "desktop", "tablet", "phone"];
     return e(
       "div",
       {
@@ -7303,48 +8120,149 @@ var EnhanceCommUI = (() => {
           zIndex: 50,
           pointerEvents: "auto",
           display: "flex",
-          gap: "8px",
-          alignItems: "center",
-          padding: "6px 12px",
+          flexDirection: "column",
+          gap: "6px",
+          alignItems: "stretch",
+          padding: "8px 12px",
           background: "rgba(30,28,10,0.95)",
           border: "1px solid #aa8",
           color: "#ffe08a",
-          fontSize: "14px"
+          fontSize: "14px",
+          maxWidth: "min(960px, 96vw)",
+          textShadow: "none",
+          fontWeight: "normal"
         }
       },
-      "Layout edit \u2014 drag snaps to edges \xB7 Ctrl+Shift+L \xB7 Show restores",
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          onClick: props.onReset,
           style: {
-            cursor: "pointer",
-            fontSize: "13px",
-            padding: "3px 10px",
-            border: "1px solid #886",
-            background: "#222",
-            color: "#eee"
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "8px",
+            alignItems: "center"
           }
         },
-        "Reset positions"
+        `Layout edit \xB7 ${profileLabel(props.viewportProfile)}` + (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
+        e(
+          "button",
+          { type: "button", onClick: props.onReset, style: btnStyle2() },
+          "Reset positions"
+        ),
+        e(
+          "button",
+          { type: "button", onClick: onExport, style: btnStyle2() },
+          "Copy layout"
+        ),
+        e(
+          "button",
+          { type: "button", onClick: onDownload, style: btnStyle2() },
+          "Download"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: () => setPasteOpen((v) => !v),
+            style: btnStyle2(pasteOpen)
+          },
+          pasteOpen ? "Cancel paste" : "Paste / import"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: () => fileRef.current && fileRef.current.click(),
+            style: btnStyle2()
+          },
+          "Upload JSON"
+        ),
+        e("input", {
+          ref: fileRef,
+          type: "file",
+          accept: "application/json,.json",
+          style: { display: "none" },
+          onChange: onFile
+        }),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: props.onDone,
+            style: btnStyle2(true)
+          },
+          "Done"
+        )
       ),
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          onClick: props.onDone,
           style: {
-            cursor: "pointer",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "6px",
+            alignItems: "center",
             fontSize: "13px",
-            padding: "3px 10px",
-            border: "1px solid #886",
-            background: "#333",
-            color: "#ffe08a"
+            color: "#ddd"
           }
         },
-        "Done"
-      )
+        e("span", { style: { color: "#aa8" } }, "Profile"),
+        ...modes.map(
+          (mode) => e(
+            "button",
+            {
+              key: mode,
+              type: "button",
+              onClick: () => props.onProfileMode(mode),
+              style: btnStyle2(props.layoutProfileMode === mode)
+            },
+            mode === "auto" ? "Auto" : profileLabel(mode)
+          )
+        ),
+        e(
+          "span",
+          { style: { color: "#888", fontSize: "12px" } },
+          "snap peers \xB7 soft avoid overlap \xB7 Ctrl+Shift+L"
+        )
+      ),
+      status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,
+      pasteOpen ? e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px"
+          }
+        },
+        e("textarea", {
+          value: pasteText,
+          rows: 5,
+          placeholder: "Paste enhance-comm-ui layout JSON\u2026",
+          onChange: (ev) => setPasteText(ev.target.value),
+          style: {
+            width: "100%",
+            minHeight: "100px",
+            background: "#141410",
+            color: "#eee",
+            border: "1px solid #665",
+            fontSize: "12px",
+            fontFamily: "Consolas, Monaco, monospace",
+            textShadow: "none",
+            fontWeight: "normal",
+            boxSizing: "border-box"
+          }
+        }),
+        e(
+          "button",
+          {
+            type: "button",
+            onClick: () => applyImportText(pasteText),
+            style: btnStyle2(true)
+          },
+          "Apply import"
+        )
+      ) : null
     );
   }
 
@@ -7446,6 +8364,24 @@ var EnhanceCommUI = (() => {
     "playerFrame",
     "targetFrame"
   ];
+  function meterOrDummy(title, rows, layoutEdit, highlightId, className) {
+    if (rows && rows.length) {
+      return e(RankMeter, {
+        title,
+        className,
+        rows,
+        highlightId
+      });
+    }
+    if (!layoutEdit) return null;
+    return e(PanelShellDummy, {
+      label: title,
+      hint: "No contributors yet",
+      accent: "#555",
+      rows: 3,
+      style: METER_PANEL_STYLE
+    });
+  }
   function CommUI(props) {
     const React = getReact();
     const snap = props.snap;
@@ -7457,8 +8393,13 @@ var EnhanceCommUI = (() => {
       layoutEdit,
       setLayoutEdit,
       layout,
+      viewportProfile,
+      layoutProfileMode,
+      setLayoutProfileMode,
       onMove,
       resetLayout,
+      importLayouts,
+      exportLayouts,
       setVisible,
       setOpacity,
       visible,
@@ -7496,6 +8437,15 @@ var EnhanceCommUI = (() => {
         setVisible("command", true);
       });
     }, [setVisible]);
+    React.useEffect(() => {
+      const root = document.getElementById("comm-ui");
+      if (!root) return;
+      root.setAttribute("data-viewport", viewportProfile);
+      root.classList.toggle(
+        "comm-ui-touch",
+        isTouchishProfile(viewportProfile)
+      );
+    }, [viewportProfile]);
     const pdpsRows = buildPdpsRows(snap.entities);
     const coopV1Rows = buildCoopV1Rows(snap.entities);
     const coopV2Rows = buildCoopV2Rows(snap.entities);
@@ -7519,12 +8469,17 @@ var EnhanceCommUI = (() => {
           hidden: isHidden,
           hiddenBodyStyle: opts == null ? void 0 : opts.hiddenBodyStyle,
           opacity: opacityFor(id),
+          peerLayout: layout,
+          viewportProfile,
           onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
           onShow: isClosablePanel ? () => setVisible(id, true) : void 0
         },
         child
       );
     };
+    const touchPad = isTouchishProfile(viewportProfile);
+    const toggleBtnPad = touchPad ? "10px 16px" : "5px 12px";
+    const toggleFont = touchPad ? "16px" : "14px";
     return e(
       "div",
       {
@@ -7538,7 +8493,12 @@ var EnhanceCommUI = (() => {
       },
       layoutEdit ? e(LayoutEditChrome, {
         onReset: resetLayout,
-        onDone: () => setLayoutEdit(false)
+        onDone: () => setLayoutEdit(false),
+        viewportProfile,
+        layoutProfileMode,
+        onProfileMode: setLayoutProfileMode,
+        exportLayouts,
+        importLayouts
       }) : null,
       opacityEdit ? e(OpacityEditor, {
         panelIds: OPACITY_PANEL_IDS,
@@ -7619,15 +8579,27 @@ var EnhanceCommUI = (() => {
         }),
         { style: PAPERDOLL_PANEL_STYLE }
       ) : null,
-      panel("kills", e(KillKpiPanel), { closable: true }),
-      panel("combat", e(CombatMetricsPanel), { closable: true }),
+      panel("kills", e(KillKpiPanel), {
+        closable: true,
+        style: KILLS_PANEL_STYLE,
+        hiddenBodyStyle: KILLS_PANEL_STYLE
+      }),
+      panel("combat", e(CombatMetricsPanel), {
+        closable: true,
+        style: COMBAT_PANEL_STYLE,
+        hiddenBodyStyle: COMBAT_PANEL_STYLE
+      }),
       panel(
         "command",
         e(CommandPanel, {
           seedDraft: commandSeed,
           openSeq: commandOpenSeq
         }),
-        { closable: true }
+        {
+          closable: true,
+          style: COMMAND_PANEL_STYLE,
+          hiddenBodyStyle: COMMAND_PANEL_STYLE
+        }
       ),
       bagOpen || layoutEdit ? panel(
         "bag",
@@ -7665,52 +8637,67 @@ var EnhanceCommUI = (() => {
         "threat",
         e(ThreatTable, {
           entities: snap.entities,
-          observingId: snap.observingId
+          observingId: snap.observingId,
+          layoutEdit
         }),
         {
           closable: true,
-          style: { minWidth: "160px" },
-          empty: !hasThreat
+          style: THREAT_PANEL_STYLE,
+          empty: !hasThreat,
+          hiddenBodyStyle: THREAT_PANEL_STYLE
         }
       ),
       panel(
         "pdps",
-        e(RankMeter, {
-          title: "PDPS",
-          className: "PdpsMeter",
-          rows: pdpsRows,
-          highlightId: snap.observingId
-        }),
-        { closable: true, style: { width: "200px" }, empty: !pdpsRows.length }
+        meterOrDummy("PDPS", pdpsRows, layoutEdit, snap.observingId, "PdpsMeter"),
+        {
+          closable: true,
+          style: METER_PANEL_STYLE,
+          empty: !pdpsRows.length,
+          hiddenBodyStyle: METER_PANEL_STYLE
+        }
       ),
       panel(
         "hitDps",
-        e(RankMeter, {
-          title: "Hit DPS (10s)",
-          className: "HitDpsMeter",
-          rows: hitDpsRows,
-          highlightId: snap.observingId
-        }),
-        { closable: true, style: { width: "200px" }, empty: !hitDpsRows.length }
+        meterOrDummy(
+          "Hit DPS (10s)",
+          hitDpsRows,
+          layoutEdit,
+          snap.observingId,
+          "HitDpsMeter"
+        ),
+        {
+          closable: true,
+          style: METER_PANEL_STYLE,
+          empty: !hitDpsRows.length,
+          hiddenBodyStyle: METER_PANEL_STYLE
+        }
       ),
       panel(
         "coopV1",
-        e(RankMeter, {
-          title: "s.coop v1",
-          rows: coopV1Rows,
-          highlightId: snap.observingId
-        }),
-        { closable: true, style: { width: "200px" }, empty: !coopV1Rows.length }
+        meterOrDummy("s.coop v1", coopV1Rows, layoutEdit, snap.observingId),
+        {
+          closable: true,
+          style: METER_PANEL_STYLE,
+          empty: !coopV1Rows.length,
+          hiddenBodyStyle: METER_PANEL_STYLE
+        }
       ),
       panel(
         "coopV2",
-        e(RankMeter, {
-          title: "s.coop v2",
-          className: "CoopContributionMeterV2",
-          rows: coopV2Rows,
-          highlightId: snap.observingId
-        }),
-        { closable: true, style: { width: "200px" }, empty: !coopV2Rows.length }
+        meterOrDummy(
+          "s.coop v2",
+          coopV2Rows,
+          layoutEdit,
+          snap.observingId,
+          "CoopContributionMeterV2"
+        ),
+        {
+          closable: true,
+          style: METER_PANEL_STYLE,
+          empty: !coopV2Rows.length,
+          hiddenBodyStyle: METER_PANEL_STYLE
+        }
       ),
       panel(
         "toggles",
@@ -7731,11 +8718,14 @@ var EnhanceCommUI = (() => {
               title: "Toggle layout edit (Ctrl+Shift+L)",
               style: {
                 cursor: "pointer",
-                padding: "5px 12px",
-                fontSize: "14px",
+                padding: toggleBtnPad,
+                fontSize: toggleFont,
+                minHeight: touchPad ? "40px" : void 0,
                 border: layoutEdit ? "1px solid #ffe08a" : "1px solid #555",
                 background: layoutEdit ? "#3a3510" : "#1a1a1a",
-                color: layoutEdit ? "#ffe08a" : "#eee"
+                color: layoutEdit ? "#ffe08a" : "#eee",
+                textShadow: "none",
+                fontWeight: "normal"
               },
               onClick: () => setLayoutEdit(!layoutEdit)
             },
@@ -7748,11 +8738,14 @@ var EnhanceCommUI = (() => {
               title: "Per-panel overlay opacity",
               style: {
                 cursor: "pointer",
-                padding: "5px 12px",
-                fontSize: "14px",
+                padding: toggleBtnPad,
+                fontSize: toggleFont,
+                minHeight: touchPad ? "40px" : void 0,
                 border: opacityEdit ? "1px solid #8ab" : "1px solid #555",
                 background: opacityEdit ? "#1a2830" : "#1a1a1a",
-                color: opacityEdit ? "#9cf" : "#eee"
+                color: opacityEdit ? "#9cf" : "#eee",
+                textShadow: "none",
+                fontWeight: "normal"
               },
               onClick: () => setOpacityEdit(!opacityEdit)
             },
