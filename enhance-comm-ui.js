@@ -7566,7 +7566,8 @@ var EnhanceCommUI = (() => {
             showEffects: true,
             effectsCompact: true,
             effectsIconSize: 22,
-            effectsMaxVisible: 6,
+            // 0 = show all (EffectsRow wraps; no +N overflow chip).
+            effectsMaxVisible: 0,
             trailing: pct,
             threatCount: onMe ? 1 : 0,
             onSelect: (id) => {

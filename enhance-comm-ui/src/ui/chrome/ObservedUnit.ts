@@ -11,8 +11,9 @@ export type ObservedUnitProps = {
   trailing?: any;
   onSelect?: (id: string) => void;
   showEffects?: boolean;
-  /** Compact EffectsRow (party-chip density / +N overflow). */
+  /** Compact EffectsRow (party-chip density). */
   effectsCompact?: boolean;
+  /** Cap visible icons (+N overflow). 0 / omit with non-compact = unlimited. */
   effectsMaxVisible?: number;
   effectsIconSize?: number;
   showMp?: boolean;

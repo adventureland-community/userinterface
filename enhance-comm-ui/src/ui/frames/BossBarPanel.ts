@@ -67,7 +67,7 @@ const STACK_STYLE: Record<string, any> = {
  * Dedicated multi-boss HP bar stack. Auto-hides when empty in play mode;
  * shows sample rows in layout edit so the panel can be positioned.
  * Sorted: targeting observer first, then lowest HP%. Shows aggro chip.
- * Compact EffectsRow under each bar (buffs/debuffs, +N overflow).
+ * Compact EffectsRow under each bar (all buffs/debuffs; soft-wraps if many).
  */
 export function BossBarPanel(props: BossBarPanelProps): any {
   const bosses = sortBosses(
@@ -136,7 +136,8 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           showEffects: true,
           effectsCompact: true,
           effectsIconSize: 22,
-          effectsMaxVisible: 6,
+          // 0 = show all (EffectsRow wraps; no +N overflow chip).
+          effectsMaxVisible: 0,
           trailing: pct,
           threatCount: onMe ? 1 : 0,
           onSelect: (id: string) => {
