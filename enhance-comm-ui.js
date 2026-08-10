@@ -2268,7 +2268,7 @@ var EnhanceCommUI = (() => {
 }
 .ecu-server-dd-sub {
   flex: 0 0 auto;
-  font-size: 15px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   color: #85c76b;
   white-space: nowrap;
@@ -2374,7 +2374,7 @@ var EnhanceCommUI = (() => {
 .ecu-server-dd-empty {
   padding: 14px;
   color: #888;
-  font-size: 15px;
+  font-size: 16px;
   text-align: center;
 }
 
@@ -10020,7 +10020,7 @@ var EnhanceCommUI = (() => {
           background: "rgba(16,16,16,0.96)",
           border: "1px solid #555",
           color: "#ddd",
-          fontSize: "13px"
+          fontSize: TYPE.secondary
         }
       },
       e(
@@ -10044,8 +10044,9 @@ var EnhanceCommUI = (() => {
               border: "1px solid #555",
               background: "#222",
               color: "#ddd",
-              fontSize: "12px",
-              padding: "1px 6px"
+              fontSize: TYPE.secondaryMin,
+              padding: "4px 8px",
+              minHeight: "26px"
             }
           },
           "\xD7"
