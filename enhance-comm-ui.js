@@ -7181,7 +7181,7 @@ var EnhanceCommUI = (() => {
   var BAG_FRAME_HEIGHT = 395;
   var BAG_SYNC_CHROME_HEIGHT = 30;
   var BAG_PANEL_STYLE = {
-    width: BAG_FRAME_WIDTH,
+    // minWidth floor only — fixed width + inventory host borders wraps slots.
     minWidth: BAG_FRAME_WIDTH,
     minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
     boxSizing: "border-box"
@@ -10426,16 +10426,10 @@ var EnhanceCommUI = (() => {
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
   var BAG_ROWS = 6;
-  function pad2(n) {
-    return n < 10 ? `0${n}` : String(n);
-  }
   function formatBagSyncedLabel(syncedAt, now) {
-    const ageMs = Math.max(0, now - syncedAt);
-    if (ageMs < 6e4) {
-      const d = new Date(syncedAt);
-      return `Synced ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-    }
-    const ageSec = Math.floor(ageMs / 1e3);
+    const ageSec = Math.floor(Math.max(0, now - syncedAt) / 1e3);
+    if (ageSec < 15) return "Synced just now";
+    if (ageSec < 60) return `Synced ${ageSec}s ago`;
     if (ageSec < 3600) {
       const m = Math.max(1, Math.floor(ageSec / 60));
       return `Synced ${m}m ago`;
@@ -10563,7 +10557,10 @@ var EnhanceCommUI = (() => {
           marginBottom: "2px",
           background: "rgba(12,12,12,0.92)",
           border: "1px solid #444",
-          maxWidth: BAG_FRAME_WIDTH
+          // Stretch with the inventory host — do not lock to BAG_FRAME_WIDTH
+          // (fixed width + #bottomleftcorner borders wraps floats into 6+1 rows).
+          width: "100%",
+          minWidth: BAG_FRAME_WIDTH
         }
       },
       e(
@@ -10654,7 +10651,9 @@ var EnhanceCommUI = (() => {
         className: "comm-bag-panel",
         style: {
           pointerEvents: "auto",
-          width: showDummy || showChrome ? BAG_FRAME_WIDTH : void 0,
+          // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
+          // under its gray border/padding and breaks the 7-col float grid.
+          width: showDummy ? BAG_FRAME_WIDTH : void 0,
           minWidth: showDummy ? BAG_FRAME_WIDTH : showChrome ? BAG_FRAME_WIDTH : "120px",
           minHeight: showDummy ? BAG_FRAME_HEIGHT : showChrome ? void 0 : "8px",
           height: showDummy ? BAG_FRAME_HEIGHT : void 0,

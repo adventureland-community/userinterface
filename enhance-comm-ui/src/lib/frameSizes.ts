@@ -11,7 +11,7 @@ export const BAG_FRAME_HEIGHT = 395;
 export const BAG_SYNC_CHROME_HEIGHT = 30;
 
 export const BAG_PANEL_STYLE: Record<string, any> = {
-  width: BAG_FRAME_WIDTH,
+  // minWidth floor only — fixed width + inventory host borders wraps slots.
   minWidth: BAG_FRAME_WIDTH,
   minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
   boxSizing: "border-box",

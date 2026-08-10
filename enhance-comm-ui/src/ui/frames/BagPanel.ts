@@ -32,18 +32,11 @@ export type BagPanelProps = {
   layoutEdit?: boolean;
 };
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-/** Clock time for recent sync; relative age once ≥ 60s. */
+/** Live relative age from bagSyncedAt (ticked while bag chrome is open). */
 export function formatBagSyncedLabel(syncedAt: number, now: number): string {
-  const ageMs = Math.max(0, now - syncedAt);
-  if (ageMs < 60_000) {
-    const d = new Date(syncedAt);
-    return `Synced ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-  }
-  const ageSec = Math.floor(ageMs / 1000);
+  const ageSec = Math.floor(Math.max(0, now - syncedAt) / 1000);
+  if (ageSec < 15) return "Synced just now";
+  if (ageSec < 60) return `Synced ${ageSec}s ago`;
   if (ageSec < 3600) {
     const m = Math.max(1, Math.floor(ageSec / 60));
     return `Synced ${m}m ago`;
@@ -184,7 +177,10 @@ function BagSyncChrome(props: {
         marginBottom: "2px",
         background: "rgba(12,12,12,0.92)",
         border: "1px solid #444",
-        maxWidth: BAG_FRAME_WIDTH,
+        // Stretch with the inventory host — do not lock to BAG_FRAME_WIDTH
+        // (fixed width + #bottomleftcorner borders wraps floats into 6+1 rows).
+        width: "100%",
+        minWidth: BAG_FRAME_WIDTH,
       },
     },
     e(
@@ -289,7 +285,9 @@ export function BagPanel(props: BagPanelProps): any {
       className: "comm-bag-panel",
       style: {
         pointerEvents: "auto",
-        width: showDummy || showChrome ? BAG_FRAME_WIDTH : undefined,
+        // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
+        // under its gray border/padding and breaks the 7-col float grid.
+        width: showDummy ? BAG_FRAME_WIDTH : undefined,
         minWidth: showDummy
           ? BAG_FRAME_WIDTH
           : showChrome

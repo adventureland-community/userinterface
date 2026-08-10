@@ -5,7 +5,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 ## Core stability
 
 - [ ] **Bag open/close** — open Bag while observing; close via × or stock Bag; entity snapshot / paperdoll still works (no wipe).
-- [ ] **Bag sync chrome** — open Bag shows `Synced HH:MM:SS` (then `Synced Nm ago`); Refresh reconnects observer for a fresh snapshot (tooltip documents local fallback).
+- [ ] **Bag sync chrome** — open Bag shows live relative age (`Synced just now` → `Synced 30s ago` → `Synced 2m ago`); 7-col inventory grid stays uniform; Refresh reconnects observer for a fresh snapshot (tooltip documents local fallback).
 - [ ] **Observe deselect** — click active party chip again, or Esc (paperdoll clears first, then observe).
 - [ ] **Layout reset** — Layout edit → Reset positions; active profile returns to built-in defaults.
 - [ ] **Boss bar show/hide** — hide via ×; restore via Layout edit → Show on Boss bar.
