@@ -99,6 +99,7 @@ declare global {
     xtarget?: EntityLike | null;
     item_container?: (item: any, actual?: any) => string;
     condition_click?: (name: string) => void;
+    slot_click?: (name: string) => void;
     add_tint?: (selector: string, args?: any) => void;
     get_tint?: (selector: string) => { added?: boolean; [key: string]: any } | null;
     simple_distance?: (a: any, b: any) => number;

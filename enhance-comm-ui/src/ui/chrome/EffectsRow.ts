@@ -250,6 +250,11 @@ function EffectIcon(props: {
           if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
         }
       : undefined,
+    onPointerDown: clickable
+      ? (ev: any) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        }
+      : undefined,
     style: {
       position: "relative",
       display: "inline-block",

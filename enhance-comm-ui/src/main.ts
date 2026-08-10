@@ -7,6 +7,7 @@ import { startPartyCombat } from "./meters/partyCombat";
 import { startSessionKills } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
+import { ensureDialogHost } from "./host/dialogHost";
 import { installInventoryFix } from "./host/inventory";
 import { CommUI } from "./ui/frames/CommUI";
 
@@ -148,6 +149,7 @@ function onLoad(): void {
   injectCss("comm-ui-css", PROGRESS_CSS);
 
   // Stock /comm chrome + inventory — prefer in-game / observe-hud patterns.
+  ensureDialogHost();
   installCommChrome();
   installInventoryFix();
   installCommanderHook();

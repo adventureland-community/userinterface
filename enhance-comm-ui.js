@@ -2887,17 +2887,70 @@ var EnhanceCommUI = (() => {
     });
   }
 
+  // src/host/dialogHost.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
+  function injectDialogHostCss() {
+    if (document.getElementById(STYLE_ID2)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID2;
+    style.textContent = `
+/* Above #comm-ui (220); below #bottom chrome strip (260). */
+#topleftcorner {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 230 !important;
+  pointer-events: none !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#topleftcornerui,
+#topleftcornerdialog {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+}
+#topleftcornerdialog {
+  margin-left: 5px;
+}
+`;
+    document.head.append(style);
+  }
+  function ensureDialogHost() {
+    injectDialogHostCss();
+    let corner = document.getElementById("topleftcorner");
+    if (!corner) {
+      corner = document.createElement("div");
+      corner.id = "topleftcorner";
+      corner.className = "bpclicks";
+      document.body.append(corner);
+    }
+    if (!document.getElementById("topleftcornerui")) {
+      const ui = document.createElement("div");
+      ui.id = "topleftcornerui";
+      ui.className = "bpclicks";
+      corner.append(ui);
+    }
+    if (!document.getElementById("topleftcornerdialog")) {
+      const dialog = document.createElement("div");
+      dialog.id = "topleftcornerdialog";
+      dialog.className = "bpclicks enableclicks";
+      corner.append(dialog);
+    }
+  }
+
   // src/host/inventory.ts
   var HOST_ID = "bottomleftcorner";
-  var STYLE_ID2 = "comm-ui-inventory-host-css";
+  var STYLE_ID3 = "comm-ui-inventory-host-css";
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
   var listeners3 = [];
   function injectHostCss() {
-    if (document.getElementById(STYLE_ID2)) return;
+    if (document.getElementById(STYLE_ID3)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID2;
+    style.id = STYLE_ID3;
     style.textContent = `
 #${HOST_ID} {
   position: relative;
@@ -3820,6 +3873,11 @@ var EnhanceCommUI = (() => {
       window.condition_click(name);
     }
   }
+  function slotClick(name) {
+    if (typeof window.slot_click === "function") {
+      window.slot_click(name);
+    }
+  }
   function slotSkin(slot) {
     var _a, _b;
     if (!slot || !slot.name) return void 0;
@@ -3988,6 +4046,9 @@ var EnhanceCommUI = (() => {
       title: tooltip,
       onClick,
       onMouseDown: clickable ? (ev) => {
+        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      } : void 0,
+      onPointerDown: clickable ? (ev) => {
         if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       } : void 0,
       style: {
@@ -5049,7 +5110,11 @@ var EnhanceCommUI = (() => {
       ref: (node) => {
         if (!node) return;
         const root = node.firstElementChild;
-        if (root) root.style.margin = "0";
+        if (!root) return;
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
       }
     });
   }
@@ -5059,10 +5124,11 @@ var EnhanceCommUI = (() => {
     return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.q) != null ? _b : ""}`;
   }
   function SlotCell(props) {
-    const { slotName, slot, showPrice, diff } = props;
+    const { entity, slotName, slot, showPrice, diff } = props;
     const skin = slotSkin(slot);
     const { shade, s_op } = shadeFor(slotName);
     let content = null;
+    const clickable = !!(slot && slot.name);
     if (slot && skin) {
       const html = itemContainer(
         {
@@ -5119,16 +5185,34 @@ var EnhanceCommUI = (() => {
         });
       }
     }
+    const onSlotClick = clickable ? (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      setXTarget(entity);
+      slotClick(slotName);
+    } : void 0;
     return e(
       "div",
       {
         key: slotName,
+        className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
+        "data-slot": slotName,
+        title: clickable ? slot.name : slotName,
+        onClick: onSlotClick,
+        onMouseDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        } : void 0,
+        onPointerDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        } : void 0,
         style: {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           gap: "2px",
-          position: "relative"
+          position: "relative",
+          cursor: clickable ? "pointer" : "default",
+          pointerEvents: "auto"
         }
       },
       content,
@@ -5175,7 +5259,15 @@ var EnhanceCommUI = (() => {
     };
     return e(
       "div",
-      { style: { display: "flex", flexDirection: "column", gap: "2px" } },
+      {
+        className: "comm-gear-grid",
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px",
+          pointerEvents: "auto"
+        }
+      },
       e(
         "div",
         {
@@ -5201,6 +5293,7 @@ var EnhanceCommUI = (() => {
             ...row.map(
               (name) => e(SlotCell, {
                 key: name,
+                entity: props.entity,
                 slotName: name,
                 slot: slots[name],
                 diff: isDiff(name)
@@ -5237,6 +5330,7 @@ var EnhanceCommUI = (() => {
         ...tradeNames.map(
           (name) => e(SlotCell, {
             key: name,
+            entity: props.entity,
             slotName: name,
             slot: slots[name],
             showPrice: true,
@@ -8883,6 +8977,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   function onLoad() {
     injectCss("comm-copy-popup-css", POPUP_CSS);
     injectCss("comm-ui-css", PROGRESS_CSS);
+    ensureDialogHost();
     installCommChrome();
     installInventoryFix();
     installCommanderHook();

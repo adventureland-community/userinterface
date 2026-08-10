@@ -32,6 +32,13 @@ export function conditionClick(name: string): void {
   }
 }
 
+/** Open the host gear-slot dialog (same as game UI `slot_click`). */
+export function slotClick(name: string): void {
+  if (typeof window.slot_click === "function") {
+    window.slot_click(name);
+  }
+}
+
 export function slotSkin(slot: SlotLike | null | undefined): string | undefined {
   if (!slot || !slot.name) return undefined;
   const def = window.G?.items?.[slot.name];
