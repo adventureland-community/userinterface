@@ -98,8 +98,8 @@ function channelChip(
       title: CHANNEL_LABELS[ch],
       style: {
         cursor: "pointer",
-        fontSize: "12px",
-        padding: "1px 5px",
+        fontSize: "13px",
+        padding: "2px 6px",
         lineHeight: "1.2",
         margin: 0,
         border: active ? `1px solid ${color}` : "1px solid #2a2a2a",
@@ -128,8 +128,8 @@ function moreChip(expanded: boolean, hiddenActive: number, onClick: () => void):
       title: expanded ? "Hide secondary channels" : "Show more channels",
       style: {
         cursor: "pointer",
-        fontSize: "11px",
-        padding: "1px 5px",
+        fontSize: "12px",
+        padding: "2px 6px",
         lineHeight: "1.2",
         margin: 0,
         border: "1px solid #333",
@@ -365,7 +365,7 @@ export function CombatMetricsPanel(): any {
           onClick: () => resetPartyCombat(),
           style: {
             cursor: "pointer",
-            fontSize: "12px",
+            fontSize: "13px",
             lineHeight: "1.2",
             padding: "2px 8px",
             border: "1px solid #444",
@@ -388,7 +388,7 @@ export function CombatMetricsPanel(): any {
           onClick: () => patch({ combatCompact: !compact }),
           style: {
             cursor: "pointer",
-            fontSize: "12px",
+            fontSize: "13px",
             lineHeight: "1.2",
             padding: "6px 12px",
             minHeight: "32px",
@@ -411,7 +411,7 @@ export function CombatMetricsPanel(): any {
               onClick: () => patch({ partyFocus: "watched" }),
               style: {
                 cursor: "pointer",
-                fontSize: "12px",
+                fontSize: "13px",
                 lineHeight: "1.2",
                 padding: "6px 10px",
                 minHeight: "32px",

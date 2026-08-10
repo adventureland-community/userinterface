@@ -8,6 +8,7 @@ import { THREAT_PANEL_STYLE } from "../../lib/frameSizes";
 import { classColors } from "../../lib/colors";
 import { formatTime, getPercent } from "../../lib/format";
 import { estimateTtk, getIncomingDps } from "../../meters/combatMeter";
+import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 const MOB_ICON_SIZE = 22;
 const MAX_MOB_CHIPS = 6;
@@ -62,6 +63,28 @@ function MobChip(props: { mtype: string; count: number }): any {
   const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
   if (html) icon = wrapIconHtml(html);
 
+  const countBadge = e(
+    "span",
+    {
+      style: {
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minWidth: "22px",
+        height: "20px",
+        padding: "0 5px",
+        boxSizing: "border-box",
+        background: "rgba(80,20,20,0.95)",
+        border: "1px solid #a44",
+        color: "#ffe8e8",
+        fontSize: TYPE.count,
+        lineHeight: 1,
+        ...PIXEL_TEXT,
+      },
+    },
+    `×${count}`,
+  );
+
   if (!icon) {
     return e(
       "span",
@@ -70,15 +93,14 @@ function MobChip(props: { mtype: string; count: number }): any {
         style: {
           display: "inline-flex",
           alignItems: "center",
-          gap: "2px",
-          padding: "1px 5px",
+          gap: "4px",
+          padding: "2px 6px",
           background: "rgba(40,20,20,0.9)",
           border: "1px solid #633",
-          color: "#ddd",
-          fontSize: "12px",
+          color: "#eee",
+          fontSize: TYPE.countBadge,
           lineHeight: 1.2,
-          fontWeight: "normal",
-          textShadow: "none",
+          ...PIXEL_TEXT,
           whiteSpace: "nowrap",
         },
       },
@@ -93,26 +115,13 @@ function MobChip(props: { mtype: string; count: number }): any {
       style: {
         display: "inline-flex",
         alignItems: "flex-end",
-        gap: "2px",
+        gap: "3px",
         position: "relative",
         flexShrink: 0,
       },
     },
     icon,
-    e(
-      "span",
-      {
-        style: {
-          fontSize: "12px",
-          color: "#ffd0d0",
-          fontWeight: "normal",
-          textShadow: "none",
-          lineHeight: 1,
-          marginBottom: "1px",
-        },
-      },
-      `×${count}`,
-    ),
+    countBadge,
   );
 }
 
@@ -161,9 +170,9 @@ function ThreatRow(props: {
       title: `${mobs.length} mob${mobs.length === 1 ? "" : "s"} aggroed`,
       style: {
         flexShrink: 0,
-        minWidth: "18px",
-        height: "18px",
-        padding: "0 4px",
+        minWidth: AGGRO_BADGE.minWidth,
+        height: AGGRO_BADGE.height,
+        padding: `0 ${AGGRO_BADGE.padX}`,
         boxSizing: "border-box",
         display: "inline-flex",
         alignItems: "center",
@@ -171,10 +180,9 @@ function ThreatRow(props: {
         background: "#8a1e1e",
         border: "1px solid #e05555",
         color: "#ffd0d0",
-        fontSize: "12px",
+        fontSize: AGGRO_BADGE.fontSize,
         lineHeight: 1,
-        fontWeight: "normal",
-        textShadow: "none",
+        ...PIXEL_TEXT,
       },
     },
     String(mobs.length),
@@ -206,6 +214,14 @@ function ThreatRow(props: {
     ),
   );
 
+  const trailingStyle = {
+    fontSize: TYPE.secondary,
+    opacity: 0.95,
+    flexShrink: 0,
+    ...PIXEL_TEXT,
+    color: "#ddd",
+  };
+
   const label = trailing
     ? e(
         "span",
@@ -219,20 +235,7 @@ function ThreatRow(props: {
           },
         },
         nameBlock,
-        e(
-          "span",
-          {
-            style: {
-              fontSize: "13px",
-              opacity: 0.95,
-              flexShrink: 0,
-              fontWeight: "normal",
-              textShadow: "none",
-              color: "#ddd",
-            },
-          },
-          trailing,
-        ),
+        e("span", { style: trailingStyle }, trailing),
       )
     : nameBlock;
 
@@ -243,7 +246,7 @@ function ThreatRow(props: {
         display: "flex",
         flexWrap: "wrap",
         alignItems: "center",
-        gap: "4px",
+        gap: "5px",
         padding: "0 2px",
       },
     },
@@ -255,10 +258,9 @@ function ThreatRow(props: {
           "span",
           {
             style: {
-              fontSize: "12px",
-              color: "#999",
-              fontWeight: "normal",
-              textShadow: "none",
+              fontSize: TYPE.countBadge,
+              color: "#bbb",
+              ...PIXEL_TEXT,
             },
             title: mtypes
               .slice(MAX_MOB_CHIPS)
@@ -289,7 +291,7 @@ function ThreatRow(props: {
           hpColor,
           showMp: true,
           nameStyle: {
-            fontSize: "15px",
+            fontSize: TYPE.name,
             fontWeight: "normal",
           },
           onClick: onSelect,
@@ -304,17 +306,14 @@ function ThreatRow(props: {
             justifyContent: "space-between",
             gap: "8px",
             padding: "4px 6px",
-            fontSize: "15px",
-            fontWeight: "normal",
-            textShadow: "none",
+            fontSize: TYPE.name,
+            ...PIXEL_TEXT,
             cursor: onSelect ? "pointer" : undefined,
           },
           onClick: onSelect,
         },
         nameBlock,
-        trailing
-          ? e("span", { style: { color: "#ddd", fontSize: "13px" } }, trailing)
-          : null,
+        trailing ? e("span", { style: trailingStyle }, trailing) : null,
       );
 
   return e(
@@ -370,9 +369,8 @@ export function ThreatTable(props: ThreatTableProps): any {
         gap: "2px",
         maxHeight: "280px",
         minWidth: "220px",
-        fontSize: "15px",
-        fontWeight: "normal",
-        textShadow: "none",
+        fontSize: TYPE.name,
+        ...PIXEL_TEXT,
       },
     },
     e(
@@ -381,9 +379,8 @@ export function ThreatTable(props: ThreatTableProps): any {
         style: {
           padding: "5px 8px 2px",
           whiteSpace: "nowrap",
-          fontSize: "16px",
-          textShadow: "none",
-          fontWeight: "normal",
+          fontSize: TYPE.title,
+          ...PIXEL_TEXT,
           color: "#ccc",
         },
       },

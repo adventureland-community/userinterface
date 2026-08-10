@@ -1,10 +1,23 @@
-import { e } from "../../host/react";
+import { getReact, e } from "../../host/react";
 import { classColors } from "../../lib/colors";
 import { outOfRange } from "../../geometry/combat";
-import { aggroByTarget, partyGroups } from "../../queries/entities";
+import { aggroByTarget, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
-import { EffectsRow } from "../chrome/EffectsRow";
+import { EffectsRow, SharedPartyEffects } from "../chrome/EffectsRow";
+import {
+  getSettings,
+  patchSettings,
+  type PartyBuffMode,
+} from "../../lib/settings";
+import {
+  nextPartyBuffMode,
+  partyBuffModeLabel,
+  partyBuffModeTitle,
+  showUnderChipBuffs,
+  underChipBuffMaxVisible,
+} from "../../lib/partyBuffMode";
+import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type PlayersProps = {
   entities: EntityLike[];
@@ -26,14 +39,6 @@ function mpPct(entity: EntityLike): number {
   return Math.max(0, Math.min(100, Math.round(((entity.mp || 0) / max) * 100)));
 }
 
-/** Party-chip aggro count badge (pixel UI — no bold, no text-shadow). */
-const CHIP_AGGRO_BADGE = {
-  minWidth: "20px",
-  height: "20px",
-  fontSize: "14px",
-  padX: "4px",
-} as const;
-
 /** Soft dim without wiping HP/MP meter fills. */
 function chipOpacity(dead: boolean, oor: boolean): number {
   if (dead) return 0.42;
@@ -43,9 +48,21 @@ function chipOpacity(dead: boolean, oor: boolean): number {
 
 /** observe-hud style party chips: name inside HP bar, thin MP underlay, effects + aggro. */
 export function Players(props: PlayersProps): any {
+  const React = getReact();
+  const [buffMode, setBuffMode] = React.useState<PartyBuffMode>(
+    () => getSettings().partyBuffMode || "auto",
+  );
+
   const parties = partyGroups(props.entities);
   const byTarget = aggroByTarget(props.entities);
   const observing = props.observing;
+  const visibleChipCount = playersList(props.entities).length;
+  const sharedMode = buffMode === "shared";
+
+  const cycleBuffMode = () => {
+    const next = nextPartyBuffMode(buffMode);
+    setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
+  };
 
   return e(
     "div",
@@ -59,19 +76,52 @@ export function Players(props: PlayersProps): any {
         maxWidth: "min(560px, 78vw)",
       },
     },
-    parties.length
-      ? null
-      : e(
-          "div",
-          {
-            style: {
-              color: "#aaa",
-              padding: "4px 2px",
-              fontSize: "14px",
-            },
+    e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+          marginBottom: "2px",
+        },
+      },
+      e(
+        "div",
+        {
+          style: {
+            color: "#aaa",
+            fontSize: TYPE.secondary,
+            ...PIXEL_TEXT,
           },
-          "No parties in vision",
-        ),
+        },
+        parties.length ? "Party" : "No parties in vision",
+      ),
+      parties.length
+        ? e(
+            "button",
+            {
+              type: "button",
+              title: partyBuffModeTitle(buffMode),
+              onClick: cycleBuffMode,
+              style: {
+                cursor: "pointer",
+                fontSize: TYPE.secondaryMin,
+                lineHeight: "1.2",
+                padding: "3px 8px",
+                minHeight: "26px",
+                border: "1px solid #444",
+                background: "#161616",
+                color: "#ccc",
+                ...PIXEL_TEXT,
+                flex: "0 0 auto",
+              },
+            },
+            `Buffs: ${partyBuffModeLabel(buffMode)}`,
+          )
+        : null,
+    ),
     ...parties.map((party) =>
       e(
         "div",
@@ -84,16 +134,25 @@ export function Players(props: PlayersProps): any {
           "div",
           {
             style: {
-              fontSize: "12px",
+              fontSize: TYPE.secondary,
               color: "#ccc",
               background: "rgba(0,0,0,0.55)",
               display: "inline-block",
               padding: "2px 6px",
               marginBottom: "4px",
+              ...PIXEL_TEXT,
             },
           },
           party[0] || "(no party)",
         ),
+        sharedMode
+          ? e(SharedPartyEffects, {
+              key: `shared-${party[0] || "solo"}`,
+              members: party[1],
+              iconSize: 22,
+              maxVisible: 8,
+            })
+          : null,
         e(
           "div",
           {
@@ -139,6 +198,13 @@ export function Players(props: PlayersProps): any {
             else if (observed) outline = "1px solid #e13758";
             else if (selected) outline = "1px solid #fff";
 
+            const showBuffs = showUnderChipBuffs(
+              buffMode,
+              visibleChipCount,
+              observed,
+            );
+            const maxVisible = underChipBuffMaxVisible(buffMode);
+
             return e(
               "div",
               {
@@ -162,7 +228,6 @@ export function Players(props: PlayersProps): any {
                   opacity: chipOpacity(dead, oor),
                 },
                 onClick: () => {
-                  // Toggle paperdoll clear when clicking the same chip again.
                   if (selected) {
                     setXTarget(null);
                     props.setSelectedEntity(undefined);
@@ -211,13 +276,12 @@ export function Players(props: PlayersProps): any {
                       whiteSpace: "nowrap",
                       textOverflow: "ellipsis",
                       overflow: "hidden",
-                      fontSize: "15px",
+                      fontSize: TYPE.name,
                       letterSpacing: "0.04em",
                       lineHeight: 1,
                       color: "#fff",
                       pointerEvents: "none",
-                      fontWeight: "normal",
-                      textShadow: "none",
+                      ...PIXEL_TEXT,
                     },
                   },
                   `${player.level ?? ""} ${player.id}`,
@@ -234,9 +298,9 @@ export function Players(props: PlayersProps): any {
                         top: "-3px",
                         right: "-3px",
                         zIndex: 2,
-                        minWidth: CHIP_AGGRO_BADGE.minWidth,
-                        height: CHIP_AGGRO_BADGE.height,
-                        padding: `0 ${CHIP_AGGRO_BADGE.padX}`,
+                        minWidth: AGGRO_BADGE.minWidth,
+                        height: AGGRO_BADGE.height,
+                        padding: `0 ${AGGRO_BADGE.padX}`,
                         boxSizing: "border-box",
                         display: "flex",
                         alignItems: "center",
@@ -244,10 +308,9 @@ export function Players(props: PlayersProps): any {
                         background: "#8a1e1e",
                         border: "1px solid #e05555",
                         color: "#ffd0d0",
-                        fontSize: CHIP_AGGRO_BADGE.fontSize,
+                        fontSize: AGGRO_BADGE.fontSize,
                         lineHeight: 1,
-                        fontWeight: "normal",
-                        textShadow: "none",
+                        ...PIXEL_TEXT,
                         pointerEvents: "none",
                       },
                     },
@@ -273,13 +336,15 @@ export function Players(props: PlayersProps): any {
                   },
                 }),
               ),
-              e(EffectsRow, {
-                key: `fx-${pid}`,
-                entity: player,
-                iconSize: 22,
-                compact: true,
-                maxVisible: 4,
-              }),
+              showBuffs
+                ? e(EffectsRow, {
+                    key: `fx-${pid}`,
+                    entity: player,
+                    iconSize: 22,
+                    compact: true,
+                    maxVisible,
+                  })
+                : null,
             );
           }),
         ),

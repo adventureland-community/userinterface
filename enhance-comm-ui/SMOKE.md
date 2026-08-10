@@ -35,6 +35,9 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] **Item info panel** — paperdoll gear *and trade* clicks open item details in Item info (works even if Bag modal left `modal_count > 0`); content stays in `#ecu-item-dialog`; × / Esc / click-outside / same-slot toggle closes.
 - [ ] **Item info switch slots** — with Item info already open, click a *different* filled gear/trade slot; details replace (do not stay stuck on the first item / empty).
 
+- [ ] **Party buff modes** — cycle **Buffs:** on Party panel through Auto / All / Obs / Compact / Shared / Off; persists across reload; Auto hides non-observed under-chip buffs when roster > 8 (Franky-sized).
+- [ ] Threat ×counts / aggro badges readable (~14–15px); topCenter map/server not cramped.
+
 ## Nice-to-haves
 
 - [ ] Paperdoll VS watched shows gear Δ badges on differing slots.

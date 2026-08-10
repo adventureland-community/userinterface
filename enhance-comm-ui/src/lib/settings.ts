@@ -14,11 +14,16 @@ import {
   detectViewportProfile,
   type ViewportProfile,
 } from "./viewport";
+import {
+  normalizePartyBuffMode,
+  type PartyBuffMode,
+} from "./partyBuffMode";
 
 const KEY = "al-comm-ui-settings-v1";
 const PANEL_IDS_SET = new Set<string>(PANEL_IDS);
 
 export type { ViewportProfile };
+export type { PartyBuffMode };
 export type LayoutProfileMode = "auto" | ViewportProfile;
 export type PanelLayoutsByProfile = Partial<
   Record<ViewportProfile, PanelLayoutMap>
@@ -162,6 +167,11 @@ export type CommUiSettings = {
   bagOpenPreferred: boolean;
   /** Per-panel overlay opacity (layout + play). */
   panelOpacity: PanelOpacityMap;
+  /**
+   * Party roster buff density:
+   * all | auto | observed | compact | shared | off
+   */
+  partyBuffMode: PartyBuffMode;
 };
 
 const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
@@ -204,6 +214,7 @@ const DEFAULTS: CommUiSettings = {
   combatCompact: false,
   bagOpenPreferred: false,
   panelOpacity: {},
+  partyBuffMode: "auto",
 };
 
 export function resolveLayoutProfile(
@@ -409,6 +420,7 @@ function migrate(parsed: any): CommUiSettings {
     combatCompact: !!parsed.combatCompact,
     bagOpenPreferred: !!parsed.bagOpenPreferred,
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
+    partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode),
   };
 
   if (!parsed.combatView && parsed.combatViews) {
@@ -446,6 +458,7 @@ function freshDefaults(): CommUiSettings {
     combatCompact: false,
     bagOpenPreferred: false,
     panelOpacity: {},
+    partyBuffMode: "auto",
   };
 }
 
@@ -552,6 +565,9 @@ export function patchSettings(
       ...current.panelOpacity,
       ...partial.panelOpacity,
     });
+  }
+  if (partial.partyBuffMode != null) {
+    next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
   }
   delete next.combatVisible;
   settingsCache = next;

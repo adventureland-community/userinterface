@@ -84,9 +84,11 @@ export function MapInfo(props: MapInfoProps): any {
         background: "rgba(0, 0, 0, 0.82)",
         border: "1px solid #555",
         padding: "4px 8px",
-        fontSize: "14px",
+        fontSize: "15px",
         lineHeight: 1.25,
         color: "#eee",
+        fontWeight: "normal",
+        textShadow: "none",
       },
     },
     e(

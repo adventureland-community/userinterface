@@ -254,7 +254,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       ),
       e(
         "span",
-        { style: { color: "#886", fontSize: "11px", whiteSpace: "nowrap" } },
+        { style: { color: "#886", fontSize: "12px", whiteSpace: "nowrap" } },
         "drag to move",
       ),
     ),
@@ -285,7 +285,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         },
         freePlacement ? "Free: ON" : "Free",
       ),
-      e("span", { style: { color: "#aa8", fontSize: "12px" } }, "Grid"),
+      e("span", { style: { color: "#aa8", fontSize: "13px" } }, "Grid"),
       ...LAYOUT_GRID_STEP_PRESETS.map((step) =>
         e(
           "button",

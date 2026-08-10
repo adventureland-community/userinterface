@@ -2,6 +2,7 @@ import { e } from "../../host/react";
 import { EffectsRow } from "./EffectsRow";
 import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
+import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type ObservedUnitProps = {
   entity: EntityLike;
@@ -40,9 +41,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
             title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
             style: {
               flexShrink: 0,
-              minWidth: "18px",
-              height: "18px",
-              padding: "0 4px",
+              minWidth: AGGRO_BADGE.minWidth,
+              height: AGGRO_BADGE.height,
+              padding: `0 ${AGGRO_BADGE.padX}`,
               boxSizing: "border-box",
               display: "inline-flex",
               alignItems: "center",
@@ -50,10 +51,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
               background: "#8a1e1e",
               border: "1px solid #e05555",
               color: "#ffd0d0",
-              fontSize: "12px",
+              fontSize: AGGRO_BADGE.fontSize,
               lineHeight: 1,
-              fontWeight: "normal",
-              textShadow: "none",
+              ...PIXEL_TEXT,
             },
           },
           String(threatCount),
@@ -103,10 +103,10 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           "span",
           {
             style: {
-              fontSize: "17px",
+              fontSize: TYPE.nameLg,
               opacity: 0.95,
               flexShrink: 0,
-              fontWeight: "normal",
+              ...PIXEL_TEXT,
             },
           },
           trailing,

@@ -1157,6 +1157,106 @@ var EnhanceCommUI = (() => {
     }
   }
 
+  // src/lib/partyBuffMode.ts
+  var PARTY_BUFF_MODES = [
+    "auto",
+    "all",
+    "observed",
+    "compact",
+    "shared",
+    "off"
+  ];
+  var PARTY_BUFF_AUTO_THRESHOLD = 8;
+  var PARTY_BUFF_COMPACT_MAX = 2;
+  var PARTY_BUFF_DEFAULT_MAX = 4;
+  function normalizePartyBuffMode(raw) {
+    if (raw === "all" || raw === "auto" || raw === "observed" || raw === "compact" || raw === "shared" || raw === "off") {
+      return raw;
+    }
+    return "auto";
+  }
+  function partyBuffModeLabel(mode) {
+    switch (mode) {
+      case "all":
+        return "All";
+      case "auto":
+        return "Auto";
+      case "observed":
+        return "Obs";
+      case "compact":
+        return "Compact";
+      case "shared":
+        return "Shared";
+      case "off":
+        return "Off";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function partyBuffModeTitle(mode) {
+    switch (mode) {
+      case "all":
+        return "Party buffs: under every chip";
+      case "auto":
+        return `Party buffs: all when \u2264${PARTY_BUFF_AUTO_THRESHOLD} chips; observed-only when larger`;
+      case "observed":
+        return "Party buffs: observed chip only";
+      case "compact":
+        return `Party buffs: max ${PARTY_BUFF_COMPACT_MAX} icons + overflow per chip`;
+      case "shared":
+        return "Party buffs: one shared strip per party (unique buffs)";
+      case "off":
+        return "Party buffs: hidden";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function nextPartyBuffMode(mode) {
+    const idx = PARTY_BUFF_MODES.indexOf(mode);
+    const next = idx < 0 ? 0 : (idx + 1) % PARTY_BUFF_MODES.length;
+    return PARTY_BUFF_MODES[next];
+  }
+  function showUnderChipBuffs(mode, visibleChipCount, isObserved, threshold = PARTY_BUFF_AUTO_THRESHOLD) {
+    switch (mode) {
+      case "all":
+      case "compact":
+        return true;
+      case "off":
+      case "shared":
+        return false;
+      case "observed":
+        return isObserved;
+      case "auto":
+        if (visibleChipCount <= threshold) return true;
+        return isObserved;
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function underChipBuffMaxVisible(mode) {
+    switch (mode) {
+      case "compact":
+        return PARTY_BUFF_COMPACT_MAX;
+      case "all":
+      case "auto":
+      case "observed":
+        return PARTY_BUFF_DEFAULT_MAX;
+      case "shared":
+      case "off":
+        return 0;
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
@@ -1230,7 +1330,8 @@ var EnhanceCommUI = (() => {
     commandDraft: "",
     combatCompact: false,
     bagOpenPreferred: false,
-    panelOpacity: {}
+    panelOpacity: {},
+    partyBuffMode: "auto"
   };
   function resolveLayoutProfile(mode, detected) {
     if (mode && mode !== "auto") return mode;
@@ -1384,7 +1485,8 @@ var EnhanceCommUI = (() => {
       commandDraft: typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
       combatCompact: !!parsed.combatCompact,
       bagOpenPreferred: !!parsed.bagOpenPreferred,
-      panelOpacity: mergePanelOpacity(parsed.panelOpacity)
+      panelOpacity: mergePanelOpacity(parsed.panelOpacity),
+      partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode)
     };
     if (!parsed.combatView && parsed.combatViews) {
       if (parsed.combatViews.table) next.combatView = "table";
@@ -1415,7 +1517,8 @@ var EnhanceCommUI = (() => {
       commandDraft: "",
       combatCompact: false,
       bagOpenPreferred: false,
-      panelOpacity: {}
+      panelOpacity: {},
+      partyBuffMode: "auto"
     };
   }
   var settingsCache = null;
@@ -1508,6 +1611,9 @@ var EnhanceCommUI = (() => {
         ...current.panelOpacity,
         ...partial.panelOpacity
       });
+    }
+    if (partial.partyBuffMode != null) {
+      next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
     }
     delete next.combatVisible;
     settingsCache = next;
@@ -4628,6 +4734,38 @@ var EnhanceCommUI = (() => {
     }) || "";
   }
 
+  // src/lib/typeScale.ts
+  var TYPE = {
+    /** Secondary chrome / meta labels */
+    secondary: "13px",
+    /** Absolute floor for secondary text */
+    secondaryMin: "12px",
+    /** Counts, ×N, overflow +N */
+    count: "15px",
+    /** Badge digits (aggro, threat spark) */
+    countBadge: "14px",
+    /** Party chip / compact names */
+    name: "15px",
+    /** Unit-frame / threat row names */
+    nameLg: "16px",
+    /** Panel titles */
+    title: "16px",
+    /** topCenter map/server body */
+    chrome: "15px",
+    /** topCenter secondary line (time / until) */
+    chromeMeta: "13px"
+  };
+  var AGGRO_BADGE = {
+    minWidth: "20px",
+    height: "20px",
+    fontSize: TYPE.countBadge,
+    padX: "4px"
+  };
+  var PIXEL_TEXT = {
+    fontWeight: "normal",
+    textShadow: "none"
+  };
+
   // src/ui/chrome/EffectsRow.ts
   var lastConditionClick = "";
   var ICON_SIZE = 36;
@@ -4882,10 +5020,97 @@ var EnhanceCommUI = (() => {
             background: "rgba(20,20,20,0.9)",
             border: "1px solid #555",
             color: "#ccc",
-            fontSize: compact ? "11px" : "13px",
+            fontSize: compact ? TYPE.countBadge : TYPE.secondary,
             lineHeight: 1,
-            fontWeight: "normal",
-            textShadow: "none",
+            ...PIXEL_TEXT,
+            cursor: "default",
+            boxSizing: "border-box"
+          }
+        },
+        `+${overflow}`
+      ) : null
+    );
+  }
+  function collectUniquePartyEffects(members) {
+    const byId = {};
+    for (let i = 0; i < members.length; i++) {
+      const member = members[i];
+      const effects = buildEntityEffects(member);
+      for (let j = 0; j < effects.length; j++) {
+        const ef = effects[j];
+        const prev = byId[ef.id];
+        if (!prev || (ef.ms || 0) > (prev.ms || 0)) {
+          byId[ef.id] = { ...ef, entity: member };
+        }
+      }
+    }
+    const ids = Object.keys(byId);
+    const out = [];
+    for (let i = 0; i < ids.length; i++) out.push(byId[ids[i]]);
+    return out;
+  }
+  function SharedPartyEffects(props) {
+    const entries = collectUniquePartyEffects(props.members);
+    if (!entries.length) return null;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : 22;
+    const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : 8;
+    const overflow = maxVisible > 0 && entries.length > maxVisible ? entries.length - maxVisible : 0;
+    const shown = overflow > 0 ? entries.slice(0, maxVisible) : entries;
+    const hidden = overflow > 0 ? entries.slice(maxVisible) : [];
+    const overflowTitle = hidden.map((ef) => {
+      const label = ef.name || ef.id;
+      const who = ef.entity.name || ef.entity.id;
+      return `${label} \xB7 ${who}`;
+    }).join("\n");
+    return e(
+      "div",
+      {
+        className: "comm-fx-row is-shared",
+        style: {
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          gap: "3px",
+          marginTop: "4px",
+          marginBottom: "2px",
+          alignItems: "flex-start",
+          width: "100%",
+          boxSizing: "border-box",
+          pointerEvents: "auto"
+        }
+      },
+      ...shown.map((ef) => {
+        const entityId = String(ef.entity.id);
+        const hostClass = `comm-fx-shared-${entityId}-${ef.id}`.replace(
+          /[^a-zA-Z0-9_\-]/g,
+          "_"
+        );
+        return e(EffectIcon, {
+          key: `shared-${ef.id}`,
+          effect: ef,
+          hostClass,
+          entity: ef.entity,
+          iconSize
+        });
+      }),
+      overflow > 0 ? e(
+        "div",
+        {
+          className: "comm-fx-overflow",
+          title: overflowTitle,
+          style: {
+            flex: "0 0 auto",
+            minWidth: `${Math.max(22, iconSize - 4)}px`,
+            height: `${iconSize}px`,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(20,20,20,0.9)",
+            border: "1px solid #555",
+            color: "#ccc",
+            fontSize: TYPE.countBadge,
+            lineHeight: 1,
+            ...PIXEL_TEXT,
             cursor: "default",
             boxSizing: "border-box"
           }
@@ -4904,21 +5129,25 @@ var EnhanceCommUI = (() => {
     const max = entity.max_mp || 1;
     return Math.max(0, Math.min(100, Math.round((entity.mp || 0) / max * 100)));
   }
-  var CHIP_AGGRO_BADGE = {
-    minWidth: "20px",
-    height: "20px",
-    fontSize: "14px",
-    padX: "4px"
-  };
   function chipOpacity(dead, oor) {
     if (dead) return 0.42;
     if (oor) return 0.62;
     return 1;
   }
   function Players(props) {
+    const React = getReact();
+    const [buffMode, setBuffMode] = React.useState(
+      () => getSettings().partyBuffMode || "auto"
+    );
     const parties = partyGroups(props.entities);
     const byTarget = aggroByTarget(props.entities);
     const observing = props.observing;
+    const visibleChipCount = playersList(props.entities).length;
+    const sharedMode = buffMode === "shared";
+    const cycleBuffMode = () => {
+      const next = nextPartyBuffMode(buffMode);
+      setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
+    };
     return e(
       "div",
       {
@@ -4931,16 +5160,49 @@ var EnhanceCommUI = (() => {
           maxWidth: "min(560px, 78vw)"
         }
       },
-      parties.length ? null : e(
+      e(
         "div",
         {
           style: {
-            color: "#aaa",
-            padding: "4px 2px",
-            fontSize: "14px"
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "8px",
+            marginBottom: "2px"
           }
         },
-        "No parties in vision"
+        e(
+          "div",
+          {
+            style: {
+              color: "#aaa",
+              fontSize: TYPE.secondary,
+              ...PIXEL_TEXT
+            }
+          },
+          parties.length ? "Party" : "No parties in vision"
+        ),
+        parties.length ? e(
+          "button",
+          {
+            type: "button",
+            title: partyBuffModeTitle(buffMode),
+            onClick: cycleBuffMode,
+            style: {
+              cursor: "pointer",
+              fontSize: TYPE.secondaryMin,
+              lineHeight: "1.2",
+              padding: "3px 8px",
+              minHeight: "26px",
+              border: "1px solid #444",
+              background: "#161616",
+              color: "#ccc",
+              ...PIXEL_TEXT,
+              flex: "0 0 auto"
+            }
+          },
+          `Buffs: ${partyBuffModeLabel(buffMode)}`
+        ) : null
       ),
       ...parties.map(
         (party) => e(
@@ -4954,16 +5216,23 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "12px",
+                fontSize: TYPE.secondary,
                 color: "#ccc",
                 background: "rgba(0,0,0,0.55)",
                 display: "inline-block",
                 padding: "2px 6px",
-                marginBottom: "4px"
+                marginBottom: "4px",
+                ...PIXEL_TEXT
               }
             },
             party[0] || "(no party)"
           ),
+          sharedMode ? e(SharedPartyEffects, {
+            key: `shared-${party[0] || "solo"}`,
+            members: party[1],
+            iconSize: 22,
+            maxVisible: 8
+          }) : null,
           e(
             "div",
             {
@@ -4997,6 +5266,12 @@ var EnhanceCommUI = (() => {
               if (hasAggro) outline = "1px solid #e05555";
               else if (observed) outline = "1px solid #e13758";
               else if (selected) outline = "1px solid #fff";
+              const showBuffs = showUnderChipBuffs(
+                buffMode,
+                visibleChipCount,
+                observed
+              );
+              const maxVisible = underChipBuffMaxVisible(buffMode);
               return e(
                 "div",
                 {
@@ -5058,13 +5333,12 @@ var EnhanceCommUI = (() => {
                         whiteSpace: "nowrap",
                         textOverflow: "ellipsis",
                         overflow: "hidden",
-                        fontSize: "15px",
+                        fontSize: TYPE.name,
                         letterSpacing: "0.04em",
                         lineHeight: 1,
                         color: "#fff",
                         pointerEvents: "none",
-                        fontWeight: "normal",
-                        textShadow: "none"
+                        ...PIXEL_TEXT
                       }
                     },
                     `${(_a = player.level) != null ? _a : ""} ${player.id}`
@@ -5080,9 +5354,9 @@ var EnhanceCommUI = (() => {
                       top: "-3px",
                       right: "-3px",
                       zIndex: 2,
-                      minWidth: CHIP_AGGRO_BADGE.minWidth,
-                      height: CHIP_AGGRO_BADGE.height,
-                      padding: `0 ${CHIP_AGGRO_BADGE.padX}`,
+                      minWidth: AGGRO_BADGE.minWidth,
+                      height: AGGRO_BADGE.height,
+                      padding: `0 ${AGGRO_BADGE.padX}`,
                       boxSizing: "border-box",
                       display: "flex",
                       alignItems: "center",
@@ -5090,10 +5364,9 @@ var EnhanceCommUI = (() => {
                       background: "#8a1e1e",
                       border: "1px solid #e05555",
                       color: "#ffd0d0",
-                      fontSize: CHIP_AGGRO_BADGE.fontSize,
+                      fontSize: AGGRO_BADGE.fontSize,
                       lineHeight: 1,
-                      fontWeight: "normal",
-                      textShadow: "none",
+                      ...PIXEL_TEXT,
                       pointerEvents: "none"
                     }
                   },
@@ -5118,13 +5391,13 @@ var EnhanceCommUI = (() => {
                     }
                   })
                 ),
-                e(EffectsRow, {
+                showBuffs ? e(EffectsRow, {
                   key: `fx-${pid}`,
                   entity: player,
                   iconSize: 22,
                   compact: true,
-                  maxVisible: 4
-                })
+                  maxVisible
+                }) : null
               );
             })
           )
@@ -5202,9 +5475,11 @@ var EnhanceCommUI = (() => {
           background: "rgba(0, 0, 0, 0.82)",
           border: "1px solid #555",
           padding: "4px 8px",
-          fontSize: "14px",
+          fontSize: "15px",
           lineHeight: 1.25,
-          color: "#eee"
+          color: "#eee",
+          fontWeight: "normal",
+          textShadow: "none"
         }
       },
       e(
@@ -5317,10 +5592,12 @@ var EnhanceCommUI = (() => {
     background: "rgba(0, 0, 0, 0.82)",
     border: "1px solid #555",
     padding: "4px 8px",
-    fontSize: "14px",
+    fontSize: "15px",
     lineHeight: 1.25,
     color: "#eee",
-    whiteSpace: "nowrap"
+    whiteSpace: "nowrap",
+    fontWeight: "normal",
+    textShadow: "none"
   };
   function ServerInfo(props) {
     var _a, _b, _c, _d, _e, _f, _g, _h;
@@ -5352,7 +5629,7 @@ var EnhanceCommUI = (() => {
           "div",
           {
             style: {
-              fontSize: "13px",
+              fontSize: "14px",
               color: "#f2f2f2",
               letterSpacing: "0.02em"
             }
@@ -5363,7 +5640,7 @@ var EnhanceCommUI = (() => {
           "div",
           {
             style: {
-              fontSize: "12px",
+              fontSize: "13px",
               color: "#85c76b",
               fontVariantNumeric: "tabular-nums"
             }
@@ -5388,7 +5665,7 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "13px",
+                fontSize: "14px",
                 color: live ? "#b6e3a4" : "#eee"
               }
             },
@@ -5398,7 +5675,7 @@ var EnhanceCommUI = (() => {
             "div",
             {
               style: {
-                fontSize: "12px",
+                fontSize: "13px",
                 color: live ? "#85c76b" : "rgba(255,255,255,0.55)",
                 fontVariantNumeric: "tabular-nums"
               }
@@ -6633,9 +6910,9 @@ var EnhanceCommUI = (() => {
         title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
         style: {
           flexShrink: 0,
-          minWidth: "18px",
-          height: "18px",
-          padding: "0 4px",
+          minWidth: AGGRO_BADGE.minWidth,
+          height: AGGRO_BADGE.height,
+          padding: `0 ${AGGRO_BADGE.padX}`,
           boxSizing: "border-box",
           display: "inline-flex",
           alignItems: "center",
@@ -6643,10 +6920,9 @@ var EnhanceCommUI = (() => {
           background: "#8a1e1e",
           border: "1px solid #e05555",
           color: "#ffd0d0",
-          fontSize: "12px",
+          fontSize: AGGRO_BADGE.fontSize,
           lineHeight: 1,
-          fontWeight: "normal",
-          textShadow: "none"
+          ...PIXEL_TEXT
         }
       },
       String(threatCount)
@@ -6692,10 +6968,10 @@ var EnhanceCommUI = (() => {
         "span",
         {
           style: {
-            fontSize: "17px",
+            fontSize: TYPE.nameLg,
             opacity: 0.95,
             flexShrink: 0,
-            fontWeight: "normal"
+            ...PIXEL_TEXT
           }
         },
         trailing
@@ -7052,7 +7328,7 @@ var EnhanceCommUI = (() => {
                 background: onMe ? "rgba(138,30,30,0.85)" : "rgba(30,30,30,0.9)",
                 border: onMe ? "1px solid #e05555" : "1px solid #555",
                 color: onMe ? "#ffd0d0" : "#bbb",
-                fontSize: "13px",
+                fontSize: "14px",
                 lineHeight: "1.2",
                 fontWeight: "normal",
                 textShadow: "none",
@@ -7075,7 +7351,7 @@ var EnhanceCommUI = (() => {
                 background: "rgba(20,20,20,0.8)",
                 border: "1px solid #444",
                 color: "#888",
-                fontSize: "13px",
+                fontSize: "14px",
                 fontWeight: "normal",
                 textShadow: "none"
               }
@@ -7128,6 +7404,27 @@ var EnhanceCommUI = (() => {
     let icon = null;
     const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
     if (html) icon = wrapIconHtml(html);
+    const countBadge = e(
+      "span",
+      {
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: "22px",
+          height: "20px",
+          padding: "0 5px",
+          boxSizing: "border-box",
+          background: "rgba(80,20,20,0.95)",
+          border: "1px solid #a44",
+          color: "#ffe8e8",
+          fontSize: TYPE.count,
+          lineHeight: 1,
+          ...PIXEL_TEXT
+        }
+      },
+      `\xD7${count}`
+    );
     if (!icon) {
       return e(
         "span",
@@ -7136,15 +7433,14 @@ var EnhanceCommUI = (() => {
           style: {
             display: "inline-flex",
             alignItems: "center",
-            gap: "2px",
-            padding: "1px 5px",
+            gap: "4px",
+            padding: "2px 6px",
             background: "rgba(40,20,20,0.9)",
             border: "1px solid #633",
-            color: "#ddd",
-            fontSize: "12px",
+            color: "#eee",
+            fontSize: TYPE.countBadge,
             lineHeight: 1.2,
-            fontWeight: "normal",
-            textShadow: "none",
+            ...PIXEL_TEXT,
             whiteSpace: "nowrap"
           }
         },
@@ -7158,26 +7454,13 @@ var EnhanceCommUI = (() => {
         style: {
           display: "inline-flex",
           alignItems: "flex-end",
-          gap: "2px",
+          gap: "3px",
           position: "relative",
           flexShrink: 0
         }
       },
       icon,
-      e(
-        "span",
-        {
-          style: {
-            fontSize: "12px",
-            color: "#ffd0d0",
-            fontWeight: "normal",
-            textShadow: "none",
-            lineHeight: 1,
-            marginBottom: "1px"
-          }
-        },
-        `\xD7${count}`
-      )
+      countBadge
     );
   }
   function fmtRate(n) {
@@ -7216,9 +7499,9 @@ var EnhanceCommUI = (() => {
         title: `${mobs.length} mob${mobs.length === 1 ? "" : "s"} aggroed`,
         style: {
           flexShrink: 0,
-          minWidth: "18px",
-          height: "18px",
-          padding: "0 4px",
+          minWidth: AGGRO_BADGE.minWidth,
+          height: AGGRO_BADGE.height,
+          padding: `0 ${AGGRO_BADGE.padX}`,
           boxSizing: "border-box",
           display: "inline-flex",
           alignItems: "center",
@@ -7226,10 +7509,9 @@ var EnhanceCommUI = (() => {
           background: "#8a1e1e",
           border: "1px solid #e05555",
           color: "#ffd0d0",
-          fontSize: "12px",
+          fontSize: AGGRO_BADGE.fontSize,
           lineHeight: 1,
-          fontWeight: "normal",
-          textShadow: "none"
+          ...PIXEL_TEXT
         }
       },
       String(mobs.length)
@@ -7259,6 +7541,13 @@ var EnhanceCommUI = (() => {
         name
       )
     );
+    const trailingStyle = {
+      fontSize: TYPE.secondary,
+      opacity: 0.95,
+      flexShrink: 0,
+      ...PIXEL_TEXT,
+      color: "#ddd"
+    };
     const label = trailing ? e(
       "span",
       {
@@ -7271,20 +7560,7 @@ var EnhanceCommUI = (() => {
         }
       },
       nameBlock,
-      e(
-        "span",
-        {
-          style: {
-            fontSize: "13px",
-            opacity: 0.95,
-            flexShrink: 0,
-            fontWeight: "normal",
-            textShadow: "none",
-            color: "#ddd"
-          }
-        },
-        trailing
-      )
+      e("span", { style: trailingStyle }, trailing)
     ) : nameBlock;
     const chips = e(
       "div",
@@ -7293,7 +7569,7 @@ var EnhanceCommUI = (() => {
           display: "flex",
           flexWrap: "wrap",
           alignItems: "center",
-          gap: "4px",
+          gap: "5px",
           padding: "0 2px"
         }
       },
@@ -7304,10 +7580,9 @@ var EnhanceCommUI = (() => {
         "span",
         {
           style: {
-            fontSize: "12px",
-            color: "#999",
-            fontWeight: "normal",
-            textShadow: "none"
+            fontSize: TYPE.countBadge,
+            color: "#bbb",
+            ...PIXEL_TEXT
           },
           title: mtypes.slice(MAX_MOB_CHIPS).map((r) => `${r.count}\xD7${r.mtype}`).join(", ")
         },
@@ -7328,7 +7603,7 @@ var EnhanceCommUI = (() => {
         hpColor,
         showMp: true,
         nameStyle: {
-          fontSize: "15px",
+          fontSize: TYPE.name,
           fontWeight: "normal"
         },
         onClick: onSelect
@@ -7342,15 +7617,14 @@ var EnhanceCommUI = (() => {
           justifyContent: "space-between",
           gap: "8px",
           padding: "4px 6px",
-          fontSize: "15px",
-          fontWeight: "normal",
-          textShadow: "none",
+          fontSize: TYPE.name,
+          ...PIXEL_TEXT,
           cursor: onSelect ? "pointer" : void 0
         },
         onClick: onSelect
       },
       nameBlock,
-      trailing ? e("span", { style: { color: "#ddd", fontSize: "13px" } }, trailing) : null
+      trailing ? e("span", { style: trailingStyle }, trailing) : null
     );
     return e(
       "div",
@@ -7402,9 +7676,8 @@ var EnhanceCommUI = (() => {
           gap: "2px",
           maxHeight: "280px",
           minWidth: "220px",
-          fontSize: "15px",
-          fontWeight: "normal",
-          textShadow: "none"
+          fontSize: TYPE.name,
+          ...PIXEL_TEXT
         }
       },
       e(
@@ -7413,9 +7686,8 @@ var EnhanceCommUI = (() => {
           style: {
             padding: "5px 8px 2px",
             whiteSpace: "nowrap",
-            fontSize: "16px",
-            textShadow: "none",
-            fontWeight: "normal",
+            fontSize: TYPE.title,
+            ...PIXEL_TEXT,
             color: "#ccc"
           }
         },
@@ -7798,8 +8070,8 @@ var EnhanceCommUI = (() => {
         title: CHANNEL_LABELS[ch],
         style: {
           cursor: "pointer",
-          fontSize: "12px",
-          padding: "1px 5px",
+          fontSize: "13px",
+          padding: "2px 6px",
           lineHeight: "1.2",
           margin: 0,
           border: active ? `1px solid ${color}` : "1px solid #2a2a2a",
@@ -7822,8 +8094,8 @@ var EnhanceCommUI = (() => {
         title: expanded ? "Hide secondary channels" : "Show more channels",
         style: {
           cursor: "pointer",
-          fontSize: "11px",
-          padding: "1px 5px",
+          fontSize: "12px",
+          padding: "2px 6px",
           lineHeight: "1.2",
           margin: 0,
           border: "1px solid #333",
@@ -8020,7 +8292,7 @@ var EnhanceCommUI = (() => {
             onClick: () => resetPartyCombat(),
             style: {
               cursor: "pointer",
-              fontSize: "12px",
+              fontSize: "13px",
               lineHeight: "1.2",
               padding: "2px 8px",
               border: "1px solid #444",
@@ -8041,7 +8313,7 @@ var EnhanceCommUI = (() => {
             onClick: () => patch({ combatCompact: !compact }),
             style: {
               cursor: "pointer",
-              fontSize: "12px",
+              fontSize: "13px",
               lineHeight: "1.2",
               padding: "6px 12px",
               minHeight: "32px",
@@ -8063,7 +8335,7 @@ var EnhanceCommUI = (() => {
             onClick: () => patch({ partyFocus: "watched" }),
             style: {
               cursor: "pointer",
-              fontSize: "12px",
+              fontSize: "13px",
               lineHeight: "1.2",
               padding: "6px 10px",
               minHeight: "32px",
@@ -9435,7 +9707,7 @@ var EnhanceCommUI = (() => {
         ),
         e(
           "span",
-          { style: { color: "#886", fontSize: "11px", whiteSpace: "nowrap" } },
+          { style: { color: "#886", fontSize: "12px", whiteSpace: "nowrap" } },
           "drag to move"
         )
       ),
@@ -9464,7 +9736,7 @@ var EnhanceCommUI = (() => {
           },
           freePlacement ? "Free: ON" : "Free"
         ),
-        e("span", { style: { color: "#aa8", fontSize: "12px" } }, "Grid"),
+        e("span", { style: { color: "#aa8", fontSize: "13px" } }, "Grid"),
         ...LAYOUT_GRID_STEP_PRESETS.map(
           (step) => e(
             "button",
