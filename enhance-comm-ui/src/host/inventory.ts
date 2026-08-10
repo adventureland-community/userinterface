@@ -8,7 +8,7 @@
  * the target frame until Bag closes and character is restored.
  */
 import { mergeLayout, panelStyle, type PanelPos } from "../lib/layout";
-import { getSettings } from "../lib/settings";
+import { getSettings, saveSettings } from "../lib/settings";
 
 const HOST_ID = "bottomleftcorner";
 const STYLE_ID = "comm-ui-inventory-host-css";
@@ -17,8 +17,24 @@ const SAVED_CHAR = "__ecuInvSavedChar";
 const HOLD_CHAR = "__ecuInvHoldChar";
 
 type InventoryListener = (open: boolean) => void;
+type BagSyncListener = () => void;
 
 const listeners: InventoryListener[] = [];
+const syncListeners: BagSyncListener[] = [];
+
+/** Wall-clock ms when the bag last rendered an observing inventory snapshot. */
+let bagSyncedAt: number | null = null;
+/** True while Refresh is reconnecting the observer for a fresh welcome. */
+let bagRefreshing = false;
+/** Observed name we expect after Refresh reconnect. */
+let refreshPendingName: string | null = null;
+let refreshPollTimer: number | null = null;
+/**
+ * Last refresh outcome for UI honesty:
+ * - server: observe reconnect completed (fresh welcome items)
+ * - local: re-drew current observing snapshot (no server round-trip)
+ */
+let bagRefreshKind: "server" | "local" | null = null;
 
 declare global {
   interface Window {
@@ -77,6 +93,34 @@ function notifyInventory(open: boolean): void {
   }
 }
 
+function notifyBagSync(): void {
+  for (let i = 0; i < syncListeners.length; i++) {
+    try {
+      syncListeners[i]();
+    } catch {
+      // ignore listener errors
+    }
+  }
+}
+
+function setBagSyncedAt(ts: number | null): void {
+  bagSyncedAt = ts;
+  notifyBagSync();
+}
+
+function setBagRefreshing(next: boolean): void {
+  if (bagRefreshing === next) return;
+  bagRefreshing = next;
+  notifyBagSync();
+}
+
+function clearRefreshPoll(): void {
+  if (refreshPollTimer != null) {
+    window.clearInterval(refreshPollTimer);
+    refreshPollTimer = null;
+  }
+}
+
 /** Subscribe to bag open/close (inventory flag). Returns unsubscribe. */
 
 export function subscribeInventory(listener: InventoryListener): () => void {
@@ -87,8 +131,131 @@ export function subscribeInventory(listener: InventoryListener): () => void {
   };
 }
 
+/** Subscribe to bagSyncedAt / refreshing / refresh-kind changes. */
+
+export function subscribeBagSync(listener: BagSyncListener): () => void {
+  syncListeners.push(listener);
+  return () => {
+    const idx = syncListeners.indexOf(listener);
+    if (idx >= 0) syncListeners.splice(idx, 1);
+  };
+}
+
 export function isInventoryOpen(): boolean {
   return !!window.inventory;
+}
+
+export function getBagSyncedAt(): number | null {
+  return bagSyncedAt;
+}
+
+export function isBagRefreshing(): boolean {
+  return bagRefreshing;
+}
+
+export function getBagRefreshKind(): "server" | "local" | null {
+  return bagRefreshKind;
+}
+
+function findObserveSecret(name: string): string | null {
+  const chars =
+    ((window as any).X && (window as any).X.characters) || [];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch && ch.name === name && ch.secret) return String(ch.secret);
+  }
+  return null;
+}
+
+/** Close bag DOM without leaving window.character set. */
+function closeInventoryHost(): void {
+  const host = document.getElementById(HOST_ID);
+  if (host) host.innerHTML = "";
+  window.inventory = false;
+  restoreCharacter();
+  notifyInventory(false);
+}
+
+/**
+ * Re-render open bag from the current observing snapshot (no server fetch).
+ * Stock AL has no light inventory pull for observers — items arrive on welcome.
+ */
+function reRenderLocalSnapshot(): void {
+  bagRefreshKind = "local";
+  callThroughDraw(() => {
+    if (typeof window.render_inventory !== "function") return;
+    if (window.inventory) {
+      // reset=true → update_inventory() while character is borrowed.
+      window.render_inventory(true);
+      // Do not bump bagSyncedAt — snapshot age is unchanged.
+      notifyBagSync();
+    } else {
+      window.render_inventory();
+    }
+  });
+}
+
+/**
+ * Best-effort refresh of observed inventory.
+ * Prefer observe reconnect (`init_socket({secret})`) — the only stock path that
+ * replaces `observing.items`. Falls back to local re-render when secret/socket
+ * is unavailable.
+ */
+export function refreshObservedInventory(): void {
+  const obs = window.observing;
+  const name = obs && obs.name != null ? String(obs.name) : "";
+  const secret = name ? findObserveSecret(name) : null;
+
+  if (!name || !secret || typeof (window as any).init_socket !== "function") {
+    reRenderLocalSnapshot();
+    return;
+  }
+
+  clearRefreshPoll();
+  bagRefreshKind = null;
+  refreshPendingName = name;
+  setBagRefreshing(true);
+
+  if (window.inventory) closeInventoryHost();
+  // After close: useBagBridge skips preferred-open while refreshing; stamp true here.
+  saveSettings({ bagOpenPreferred: true });
+
+  const initSocket = (window as any).init_socket as
+    | ((args?: { secret?: string }) => void)
+    | undefined;
+  if (typeof initSocket !== "function") {
+    setBagRefreshing(false);
+    refreshPendingName = null;
+    reRenderLocalSnapshot();
+    return;
+  }
+  initSocket({ secret });
+
+  let attempts = 0;
+  refreshPollTimer = window.setInterval(() => {
+    attempts += 1;
+    const next = window.observing;
+    if (next && next.name === refreshPendingName && next.items) {
+      clearRefreshPoll();
+      bagRefreshKind = "server";
+      refreshPendingName = null;
+      // Re-open before clearing refreshing so the Bag panel stays mounted.
+      openInventory();
+      setBagRefreshing(false);
+      return;
+    }
+    if (attempts > 40) {
+      clearRefreshPoll();
+      refreshPendingName = null;
+      if (window.observing) {
+        bagRefreshKind = "server";
+        openInventory();
+      } else {
+        bagRefreshKind = "local";
+      }
+      setBagRefreshing(false);
+    }
+  }, 250);
 }
 
 /** Apply saved/default bag panel position onto a free-floating host (pre-mount). */
@@ -268,6 +435,8 @@ export function installInventoryFix(): void {
         // ALWAYS restore — never leave character set across draw frames.
         restoreCharacter();
         if (opened) {
+          // Full open (not reset/update_inventory-only): stamp snapshot age.
+          if (!reset) setBagSyncedAt(Date.now());
           applyBagLayoutPos();
           notifyInventory(true);
         } else if (!window.inventory) {

@@ -1,13 +1,20 @@
 import { getReact, e } from "../../host/react";
 import {
   attachInventoryToMount,
+  getBagRefreshKind,
+  getBagSyncedAt,
+  isBagRefreshing,
   isInventoryOpen,
+  refreshObservedInventory,
+  subscribeBagSync,
   subscribeInventory,
 } from "../../host/inventory";
 import {
   BAG_FRAME_HEIGHT,
   BAG_FRAME_WIDTH,
+  BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 const HOST_ID = "bottomleftcorner";
 
@@ -24,6 +31,26 @@ export type BagPanelProps = {
   /** When true and inventory is closed, reserve open-bag footprint. */
   layoutEdit?: boolean;
 };
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Clock time for recent sync; relative age once ≥ 60s. */
+export function formatBagSyncedLabel(syncedAt: number, now: number): string {
+  const ageMs = Math.max(0, now - syncedAt);
+  if (ageMs < 60_000) {
+    const d = new Date(syncedAt);
+    return `Synced ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  }
+  const ageSec = Math.floor(ageMs / 1000);
+  if (ageSec < 3600) {
+    const m = Math.max(1, Math.floor(ageSec / 60));
+    return `Synced ${m}m ago`;
+  }
+  const h = Math.floor(ageSec / 3600);
+  return `Synced ${h}h ago`;
+}
 
 function BagDummy(): any {
   const rows: any[] = [];
@@ -85,9 +112,10 @@ function BagDummy(): any {
       {
         style: {
           padding: "4px",
-          fontSize: "15px",
+          fontSize: TYPE.body,
           color: "gold",
           flexShrink: 0,
+          ...PIXEL_TEXT,
         },
       },
       "GOLD: —",
@@ -116,6 +144,97 @@ function BagDummy(): any {
   );
 }
 
+function BagSyncChrome(props: {
+  syncedAt: number | null;
+  refreshing: boolean;
+  refreshKind: "server" | "local" | null;
+  now: number;
+}): any {
+  const { syncedAt, refreshing, refreshKind, now } = props;
+  let label = "Synced —";
+  let title =
+    "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
+  if (refreshing) {
+    label = "Refreshing…";
+    title =
+      "Reconnecting observer for a fresh inventory snapshot from the server.";
+  } else if (syncedAt != null) {
+    label = formatBagSyncedLabel(syncedAt, now);
+    title = `Inventory snapshot time (${new Date(syncedAt).toLocaleTimeString()}). Refresh reconnects the observer — stock AL has no lighter inventory pull.`;
+  }
+  if (!refreshing && refreshKind === "local") {
+    title =
+      "Last Refresh re-drew the local observing snapshot (no server round-trip).";
+  } else if (!refreshing && refreshKind === "server") {
+    title =
+      "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
+  }
+
+  return e(
+    "div",
+    {
+      className: "comm-bag-sync-chrome",
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        height: `${BAG_SYNC_CHROME_HEIGHT}px`,
+        boxSizing: "border-box",
+        padding: "2px 4px",
+        marginBottom: "2px",
+        background: "rgba(12,12,12,0.92)",
+        border: "1px solid #444",
+        maxWidth: BAG_FRAME_WIDTH,
+      },
+    },
+    e(
+      "span",
+      {
+        title,
+        style: {
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontSize: TYPE.secondary,
+          color: refreshing ? "#c9a227" : "#aaa",
+          ...PIXEL_TEXT,
+        },
+      },
+      label,
+    ),
+    e(
+      "button",
+      {
+        type: "button",
+        disabled: refreshing,
+        title:
+          "Reconnect observer for a fresh inventory snapshot. Stock /comm has no lighter inventory refresh — falls back to re-drawing the local snapshot if reconnect is unavailable.",
+        onClick: (ev: any) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          refreshObservedInventory();
+        },
+        style: {
+          flexShrink: 0,
+          cursor: refreshing ? "wait" : "pointer",
+          fontSize: TYPE.secondary,
+          lineHeight: "1.2",
+          padding: "3px 8px",
+          minHeight: "26px",
+          margin: 0,
+          border: "1px solid #666",
+          background: refreshing ? "#1a1a1a" : "#222",
+          color: refreshing ? "#777" : "#ddd",
+          ...PIXEL_TEXT,
+        },
+      },
+      "Refresh",
+    ),
+  );
+}
+
 /**
  * Layout host for the game inventory (#bottomleftcorner).
  * Content is filled by the patched render_inventory; this panel only
@@ -127,19 +246,38 @@ export function BagPanel(props: BagPanelProps): any {
   const React = getReact();
   const mountRef = React.useRef(null as HTMLDivElement | null);
   const [open, setOpen] = React.useState(() => isInventoryOpen());
+  const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
+  const [refreshing, setRefreshing] = React.useState(() => isBagRefreshing());
+  const [refreshKind, setRefreshKind] = React.useState(() =>
+    getBagRefreshKind(),
+  );
+  const [now, setNow] = React.useState(() => Date.now());
   const layoutEdit = !!props.layoutEdit;
-  const showDummy = layoutEdit && !open;
+  const showDummy = layoutEdit && !open && !refreshing;
+  const showChrome = open || refreshing;
 
   React.useEffect(() => {
     attachInventoryToMount(mountRef.current);
-    const unsub = subscribeInventory((next) => setOpen(next));
+    const unsubInv = subscribeInventory((next) => setOpen(next));
+    const unsubSync = subscribeBagSync(() => {
+      setSyncedAt(getBagSyncedAt());
+      setRefreshing(isBagRefreshing());
+      setRefreshKind(getBagRefreshKind());
+    });
     return () => {
-      unsub();
+      unsubInv();
+      unsubSync();
       // Keep #bottomleftcorner alive across panel unmount (Bag close).
       const host = document.getElementById(HOST_ID);
       if (host) document.body.appendChild(host);
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!showChrome || refreshing) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [showChrome, refreshing]);
 
   React.useLayoutEffect(() => {
     attachInventoryToMount(mountRef.current);
@@ -151,21 +289,24 @@ export function BagPanel(props: BagPanelProps): any {
       className: "comm-bag-panel",
       style: {
         pointerEvents: "auto",
-        width: showDummy ? BAG_FRAME_WIDTH : undefined,
+        width: showDummy || showChrome ? BAG_FRAME_WIDTH : undefined,
         minWidth: showDummy
           ? BAG_FRAME_WIDTH
-          : open
+          : showChrome
             ? BAG_FRAME_WIDTH
             : "120px",
         minHeight: showDummy
           ? BAG_FRAME_HEIGHT
-          : open
+          : showChrome
             ? undefined
             : "8px",
         height: showDummy ? BAG_FRAME_HEIGHT : undefined,
         boxSizing: "border-box",
       },
     },
+    showChrome
+      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, now })
+      : null,
     showDummy ? e(BagDummy) : null,
     e("div", {
       ref: mountRef,

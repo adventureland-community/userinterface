@@ -4048,6 +4048,12 @@ var EnhanceCommUI = (() => {
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
   var listeners4 = [];
+  var syncListeners = [];
+  var bagSyncedAt = null;
+  var bagRefreshing = false;
+  var refreshPendingName = null;
+  var refreshPollTimer = null;
+  var bagRefreshKind = null;
   function injectHostCss() {
     if (document.getElementById(STYLE_ID3)) return;
     const style = document.createElement("style");
@@ -4085,6 +4091,29 @@ var EnhanceCommUI = (() => {
       }
     }
   }
+  function notifyBagSync() {
+    for (let i = 0; i < syncListeners.length; i++) {
+      try {
+        syncListeners[i]();
+      } catch (e2) {
+      }
+    }
+  }
+  function setBagSyncedAt(ts) {
+    bagSyncedAt = ts;
+    notifyBagSync();
+  }
+  function setBagRefreshing(next) {
+    if (bagRefreshing === next) return;
+    bagRefreshing = next;
+    notifyBagSync();
+  }
+  function clearRefreshPoll() {
+    if (refreshPollTimer != null) {
+      window.clearInterval(refreshPollTimer);
+      refreshPollTimer = null;
+    }
+  }
   function subscribeInventory(listener) {
     listeners4.push(listener);
     return () => {
@@ -4092,8 +4121,98 @@ var EnhanceCommUI = (() => {
       if (idx >= 0) listeners4.splice(idx, 1);
     };
   }
+  function subscribeBagSync(listener) {
+    syncListeners.push(listener);
+    return () => {
+      const idx = syncListeners.indexOf(listener);
+      if (idx >= 0) syncListeners.splice(idx, 1);
+    };
+  }
   function isInventoryOpen() {
     return !!window.inventory;
+  }
+  function getBagSyncedAt() {
+    return bagSyncedAt;
+  }
+  function isBagRefreshing() {
+    return bagRefreshing;
+  }
+  function getBagRefreshKind() {
+    return bagRefreshKind;
+  }
+  function findObserveSecret(name) {
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch && ch.name === name && ch.secret) return String(ch.secret);
+    }
+    return null;
+  }
+  function closeInventoryHost() {
+    const host = document.getElementById(HOST_ID);
+    if (host) host.innerHTML = "";
+    window.inventory = false;
+    restoreCharacter();
+    notifyInventory(false);
+  }
+  function reRenderLocalSnapshot() {
+    bagRefreshKind = "local";
+    callThroughDraw(() => {
+      if (typeof window.render_inventory !== "function") return;
+      if (window.inventory) {
+        window.render_inventory(true);
+        notifyBagSync();
+      } else {
+        window.render_inventory();
+      }
+    });
+  }
+  function refreshObservedInventory() {
+    const obs = window.observing;
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    const secret = name ? findObserveSecret(name) : null;
+    if (!name || !secret || typeof window.init_socket !== "function") {
+      reRenderLocalSnapshot();
+      return;
+    }
+    clearRefreshPoll();
+    bagRefreshKind = null;
+    refreshPendingName = name;
+    setBagRefreshing(true);
+    if (window.inventory) closeInventoryHost();
+    saveSettings({ bagOpenPreferred: true });
+    const initSocket = window.init_socket;
+    if (typeof initSocket !== "function") {
+      setBagRefreshing(false);
+      refreshPendingName = null;
+      reRenderLocalSnapshot();
+      return;
+    }
+    initSocket({ secret });
+    let attempts = 0;
+    refreshPollTimer = window.setInterval(() => {
+      attempts += 1;
+      const next = window.observing;
+      if (next && next.name === refreshPendingName && next.items) {
+        clearRefreshPoll();
+        bagRefreshKind = "server";
+        refreshPendingName = null;
+        openInventory();
+        setBagRefreshing(false);
+        return;
+      }
+      if (attempts > 40) {
+        clearRefreshPoll();
+        refreshPendingName = null;
+        if (window.observing) {
+          bagRefreshKind = "server";
+          openInventory();
+        } else {
+          bagRefreshKind = "local";
+        }
+        setBagRefreshing(false);
+      }
+    }, 250);
   }
   function applyBagLayoutPos(pos) {
     const host = document.getElementById(HOST_ID);
@@ -4226,6 +4345,7 @@ var EnhanceCommUI = (() => {
           window.is_comm = savedComm;
           restoreCharacter();
           if (opened) {
+            if (!reset) setBagSyncedAt(Date.now());
             applyBagLayoutPos();
             notifyInventory(true);
           } else if (!window.inventory) {
@@ -6787,10 +6907,11 @@ var EnhanceCommUI = (() => {
   // src/lib/frameSizes.ts
   var BAG_FRAME_WIDTH = 385;
   var BAG_FRAME_HEIGHT = 395;
+  var BAG_SYNC_CHROME_HEIGHT = 30;
   var BAG_PANEL_STYLE = {
     width: BAG_FRAME_WIDTH,
     minWidth: BAG_FRAME_WIDTH,
-    minHeight: BAG_FRAME_HEIGHT,
+    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
     boxSizing: "border-box"
   };
   var PAPERDOLL_FRAME_WIDTH = 268;
@@ -10023,6 +10144,23 @@ var EnhanceCommUI = (() => {
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
   var BAG_ROWS = 6;
+  function pad2(n) {
+    return n < 10 ? `0${n}` : String(n);
+  }
+  function formatBagSyncedLabel(syncedAt, now) {
+    const ageMs = Math.max(0, now - syncedAt);
+    if (ageMs < 6e4) {
+      const d = new Date(syncedAt);
+      return `Synced ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+    }
+    const ageSec = Math.floor(ageMs / 1e3);
+    if (ageSec < 3600) {
+      const m = Math.max(1, Math.floor(ageSec / 60));
+      return `Synced ${m}m ago`;
+    }
+    const h = Math.floor(ageSec / 3600);
+    return `Synced ${h}h ago`;
+  }
   function BagDummy() {
     const rows = [];
     for (let r = 0; r < BAG_ROWS; r++) {
@@ -10082,9 +10220,10 @@ var EnhanceCommUI = (() => {
         {
           style: {
             padding: "4px",
-            fontSize: "15px",
+            fontSize: TYPE.body,
             color: "gold",
-            flexShrink: 0
+            flexShrink: 0,
+            ...PIXEL_TEXT
           }
         },
         "GOLD: \u2014"
@@ -10112,21 +10251,118 @@ var EnhanceCommUI = (() => {
       )
     );
   }
+  function BagSyncChrome(props) {
+    const { syncedAt, refreshing, refreshKind, now } = props;
+    let label = "Synced \u2014";
+    let title = "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
+    if (refreshing) {
+      label = "Refreshing\u2026";
+      title = "Reconnecting observer for a fresh inventory snapshot from the server.";
+    } else if (syncedAt != null) {
+      label = formatBagSyncedLabel(syncedAt, now);
+      title = `Inventory snapshot time (${new Date(syncedAt).toLocaleTimeString()}). Refresh reconnects the observer \u2014 stock AL has no lighter inventory pull.`;
+    }
+    if (!refreshing && refreshKind === "local") {
+      title = "Last Refresh re-drew the local observing snapshot (no server round-trip).";
+    } else if (!refreshing && refreshKind === "server") {
+      title = "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
+    }
+    return e(
+      "div",
+      {
+        className: "comm-bag-sync-chrome",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          height: `${BAG_SYNC_CHROME_HEIGHT}px`,
+          boxSizing: "border-box",
+          padding: "2px 4px",
+          marginBottom: "2px",
+          background: "rgba(12,12,12,0.92)",
+          border: "1px solid #444",
+          maxWidth: BAG_FRAME_WIDTH
+        }
+      },
+      e(
+        "span",
+        {
+          title,
+          style: {
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            fontSize: TYPE.secondary,
+            color: refreshing ? "#c9a227" : "#aaa",
+            ...PIXEL_TEXT
+          }
+        },
+        label
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          disabled: refreshing,
+          title: "Reconnect observer for a fresh inventory snapshot. Stock /comm has no lighter inventory refresh \u2014 falls back to re-drawing the local snapshot if reconnect is unavailable.",
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            refreshObservedInventory();
+          },
+          style: {
+            flexShrink: 0,
+            cursor: refreshing ? "wait" : "pointer",
+            fontSize: TYPE.secondary,
+            lineHeight: "1.2",
+            padding: "3px 8px",
+            minHeight: "26px",
+            margin: 0,
+            border: "1px solid #666",
+            background: refreshing ? "#1a1a1a" : "#222",
+            color: refreshing ? "#777" : "#ddd",
+            ...PIXEL_TEXT
+          }
+        },
+        "Refresh"
+      )
+    );
+  }
   function BagPanel(props) {
     const React = getReact();
     const mountRef = React.useRef(null);
     const [open, setOpen] = React.useState(() => isInventoryOpen());
+    const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
+    const [refreshing, setRefreshing] = React.useState(() => isBagRefreshing());
+    const [refreshKind, setRefreshKind] = React.useState(
+      () => getBagRefreshKind()
+    );
+    const [now, setNow] = React.useState(() => Date.now());
     const layoutEdit = !!props.layoutEdit;
-    const showDummy = layoutEdit && !open;
+    const showDummy = layoutEdit && !open && !refreshing;
+    const showChrome = open || refreshing;
     React.useEffect(() => {
       attachInventoryToMount(mountRef.current);
-      const unsub3 = subscribeInventory((next) => setOpen(next));
+      const unsubInv = subscribeInventory((next) => setOpen(next));
+      const unsubSync = subscribeBagSync(() => {
+        setSyncedAt(getBagSyncedAt());
+        setRefreshing(isBagRefreshing());
+        setRefreshKind(getBagRefreshKind());
+      });
       return () => {
-        unsub3();
+        unsubInv();
+        unsubSync();
         const host = document.getElementById(HOST_ID2);
         if (host) document.body.appendChild(host);
       };
     }, []);
+    React.useEffect(() => {
+      if (!showChrome || refreshing) return;
+      const id = window.setInterval(() => setNow(Date.now()), 1e3);
+      return () => window.clearInterval(id);
+    }, [showChrome, refreshing]);
     React.useLayoutEffect(() => {
       attachInventoryToMount(mountRef.current);
     });
@@ -10136,13 +10372,14 @@ var EnhanceCommUI = (() => {
         className: "comm-bag-panel",
         style: {
           pointerEvents: "auto",
-          width: showDummy ? BAG_FRAME_WIDTH : void 0,
-          minWidth: showDummy ? BAG_FRAME_WIDTH : open ? BAG_FRAME_WIDTH : "120px",
-          minHeight: showDummy ? BAG_FRAME_HEIGHT : open ? void 0 : "8px",
+          width: showDummy || showChrome ? BAG_FRAME_WIDTH : void 0,
+          minWidth: showDummy ? BAG_FRAME_WIDTH : showChrome ? BAG_FRAME_WIDTH : "120px",
+          minHeight: showDummy ? BAG_FRAME_HEIGHT : showChrome ? void 0 : "8px",
           height: showDummy ? BAG_FRAME_HEIGHT : void 0,
           boxSizing: "border-box"
         }
       },
+      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, now }) : null,
       showDummy ? e(BagDummy) : null,
       e("div", {
         ref: mountRef,
@@ -10280,10 +10517,15 @@ var EnhanceCommUI = (() => {
   function useBagBridge(setPanelVisible) {
     const React = getReact();
     const [bagOpen, setBagOpen] = React.useState(() => isInventoryOpen());
+    const [bagRefreshing2, setBagRefreshing2] = React.useState(
+      () => isBagRefreshing()
+    );
     React.useEffect(() => {
-      return subscribeInventory((open) => {
+      const unsubInv = subscribeInventory((open) => {
         setBagOpen(open);
-        saveSettings({ bagOpenPreferred: open });
+        if (!isBagRefreshing()) {
+          saveSettings({ bagOpenPreferred: open });
+        }
         if (open) {
           setPanelVisible((prev) => {
             if (prev.bag !== false) return prev;
@@ -10292,8 +10534,15 @@ var EnhanceCommUI = (() => {
           });
         }
       });
+      const unsubSync = subscribeBagSync(() => {
+        setBagRefreshing2(isBagRefreshing());
+      });
+      return () => {
+        unsubInv();
+        unsubSync();
+      };
     }, [setPanelVisible]);
-    return { bagOpen };
+    return { bagOpen, bagRefreshing: bagRefreshing2 };
   }
 
   // src/ui/hooks/useSelectionFromXTarget.ts
@@ -11007,7 +11256,7 @@ var EnhanceCommUI = (() => {
       visible,
       opacityFor
     } = layoutState;
-    const { bagOpen } = useBagBridge(setPanelVisible);
+    const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const {
       selectedEntity,
       setSelectedEntity,
@@ -11248,7 +11497,7 @@ var EnhanceCommUI = (() => {
           hiddenBodyStyle: COMMAND_PANEL_STYLE
         }
       ),
-      bagOpen || layoutEdit ? panel(
+      bagOpen || bagRefreshing2 || layoutEdit ? panel(
         "bag",
         e(BagPanel, { layoutEdit }),
         {

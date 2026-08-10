@@ -7,10 +7,13 @@
 export const BAG_FRAME_WIDTH = 385;
 export const BAG_FRAME_HEIGHT = 395;
 
+/** Compact sync timestamp + Refresh row above the inventory host. */
+export const BAG_SYNC_CHROME_HEIGHT = 30;
+
 export const BAG_PANEL_STYLE: Record<string, any> = {
   width: BAG_FRAME_WIDTH,
   minWidth: BAG_FRAME_WIDTH,
-  minHeight: BAG_FRAME_HEIGHT,
+  minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
   boxSizing: "border-box",
 };
 

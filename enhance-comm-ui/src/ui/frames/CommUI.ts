@@ -134,7 +134,7 @@ export function CommUI(props: CommUIProps): any {
     opacityFor,
   } = layoutState;
 
-  const { bagOpen } = useBagBridge(setPanelVisible);
+  const { bagOpen, bagRefreshing } = useBagBridge(setPanelVisible);
   const {
     selectedEntity,
     setSelectedEntity,
@@ -414,7 +414,7 @@ export function CommUI(props: CommUIProps): any {
       },
     ),
 
-    bagOpen || layoutEdit
+    bagOpen || bagRefreshing || layoutEdit
       ? panel(
           "bag",
           e(BagPanel, { layoutEdit }),
