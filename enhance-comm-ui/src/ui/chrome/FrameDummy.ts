@@ -1,5 +1,5 @@
 import { e } from "../../host/react";
-import { TYPE } from "../../lib/typeScale";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type FrameDummyProps = {
   /** Short role label (e.g. "Target", "Player"). */
@@ -8,7 +8,13 @@ export type FrameDummyProps = {
   sampleName?: string;
   /** Muted fill color for the dummy HP bar. */
   hpColor?: string;
+  /** When false, omit the dummy MP strip (boss bars). Default true. */
+  showMp?: boolean;
+  /** Compact fake effect chips for layout sizing (boss bars). */
+  showEffectsPlaceholder?: boolean;
 };
+
+const DUMMY_FX_COLORS = ["#4a7a4a", "#7a4a4a", "#4a5a7a", "#7a6a3a"];
 
 /**
  * Layout-edit placeholder that mimics ObservedUnit chrome so empty
@@ -118,24 +124,82 @@ export function FrameDummy(props: FrameDummyProps): any {
           ),
         ),
       ),
-      e(
-        "div",
-        {
-          style: {
-            background: "black",
-            width: "100%",
-            height: "5px",
-            boxSizing: "border-box",
-          },
-        },
-        e("div", {
-          style: {
-            background: "#2a3a6a",
-            height: "100%",
-            width: "40%",
-          },
-        }),
-      ),
+      props.showMp !== false
+        ? e(
+            "div",
+            {
+              style: {
+                background: "black",
+                width: "100%",
+                height: "5px",
+                boxSizing: "border-box",
+              },
+            },
+            e("div", {
+              style: {
+                background: "#2a3a6a",
+                height: "100%",
+                width: "40%",
+              },
+            }),
+          )
+        : null,
     ),
+    props.showEffectsPlaceholder
+      ? e(
+          "div",
+          {
+            className: "comm-fx-row is-compact",
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              flexWrap: "nowrap",
+              alignItems: "flex-start",
+              gap: "3px",
+              marginTop: "3px",
+              width: "100%",
+              minHeight: "30px",
+              paddingBottom: "2px",
+              boxSizing: "border-box",
+              overflow: "hidden",
+            },
+          },
+          ...DUMMY_FX_COLORS.map((bg, i) =>
+            e("div", {
+              key: `dummy-fx-${i}`,
+              style: {
+                flex: "0 0 auto",
+                width: "22px",
+                height: "22px",
+                background: bg,
+                border: "1px solid #555",
+                boxSizing: "border-box",
+              },
+            }),
+          ),
+          e(
+            "div",
+            {
+              className: "comm-fx-overflow",
+              style: {
+                flex: "0 0 auto",
+                minWidth: "18px",
+                height: "22px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(20,20,20,0.9)",
+                border: "1px solid #555",
+                color: "#ccc",
+                fontSize: TYPE.badge,
+                lineHeight: 1,
+                ...PIXEL_TEXT,
+                boxSizing: "border-box",
+              },
+            },
+            "+2",
+          ),
+        )
+      : null,
   );
 }

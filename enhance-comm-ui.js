@@ -7090,6 +7090,9 @@ var EnhanceCommUI = (() => {
       trailing,
       onSelect,
       showEffects = true,
+      effectsCompact,
+      effectsMaxVisible,
+      effectsIconSize,
       showMp = true,
       threatCount = 0
     } = props;
@@ -7199,12 +7202,16 @@ var EnhanceCommUI = (() => {
       ),
       showEffects ? e(EffectsRow, {
         key: `fx-${String(entity.id)}`,
-        entity
+        entity,
+        compact: !!effectsCompact,
+        maxVisible: effectsMaxVisible,
+        iconSize: effectsIconSize
       }) : null
     );
   }
 
   // src/ui/chrome/FrameDummy.ts
+  var DUMMY_FX_COLORS = ["#4a7a4a", "#7a4a4a", "#4a5a7a", "#7a6a3a"];
   function FrameDummy(props) {
     const name = props.sampleName || props.label;
     const hpColor = props.hpColor || "#555";
@@ -7307,7 +7314,7 @@ var EnhanceCommUI = (() => {
             )
           )
         ),
-        e(
+        props.showMp !== false ? e(
           "div",
           {
             style: {
@@ -7324,8 +7331,62 @@ var EnhanceCommUI = (() => {
               width: "40%"
             }
           })
+        ) : null
+      ),
+      props.showEffectsPlaceholder ? e(
+        "div",
+        {
+          className: "comm-fx-row is-compact",
+          style: {
+            display: "flex",
+            flexDirection: "row",
+            flexWrap: "nowrap",
+            alignItems: "flex-start",
+            gap: "3px",
+            marginTop: "3px",
+            width: "100%",
+            minHeight: "30px",
+            paddingBottom: "2px",
+            boxSizing: "border-box",
+            overflow: "hidden"
+          }
+        },
+        ...DUMMY_FX_COLORS.map(
+          (bg, i) => e("div", {
+            key: `dummy-fx-${i}`,
+            style: {
+              flex: "0 0 auto",
+              width: "22px",
+              height: "22px",
+              background: bg,
+              border: "1px solid #555",
+              boxSizing: "border-box"
+            }
+          })
+        ),
+        e(
+          "div",
+          {
+            className: "comm-fx-overflow",
+            style: {
+              flex: "0 0 auto",
+              minWidth: "18px",
+              height: "22px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(20,20,20,0.9)",
+              border: "1px solid #555",
+              color: "#ccc",
+              fontSize: TYPE.badge,
+              lineHeight: 1,
+              ...PIXEL_TEXT,
+              boxSizing: "border-box"
+            }
+          },
+          "+2"
         )
-      )
+      ) : null
     );
   }
 
@@ -7459,12 +7520,16 @@ var EnhanceCommUI = (() => {
         e(FrameDummy, {
           label: "Boss",
           sampleName: "Cooperative Boss",
-          hpColor: "#8a2a2a"
+          hpColor: "#8a2a2a",
+          showMp: false,
+          showEffectsPlaceholder: true
         }),
         e(FrameDummy, {
           label: "Boss",
           sampleName: "Crypt Boss",
-          hpColor: "#6a2a6a"
+          hpColor: "#6a2a6a",
+          showMp: false,
+          showEffectsPlaceholder: true
         })
       );
     }
@@ -7498,7 +7563,10 @@ var EnhanceCommUI = (() => {
             hpColor: onMe ? "#d43838" : "#c42a2a",
             fontSize: "22px",
             showMp: false,
-            showEffects: false,
+            showEffects: true,
+            effectsCompact: true,
+            effectsIconSize: 22,
+            effectsMaxVisible: 6,
             trailing: pct,
             threatCount: onMe ? 1 : 0,
             onSelect: (id) => {

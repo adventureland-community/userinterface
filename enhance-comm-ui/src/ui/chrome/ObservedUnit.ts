@@ -11,6 +11,10 @@ export type ObservedUnitProps = {
   trailing?: any;
   onSelect?: (id: string) => void;
   showEffects?: boolean;
+  /** Compact EffectsRow (party-chip density / +N overflow). */
+  effectsCompact?: boolean;
+  effectsMaxVisible?: number;
+  effectsIconSize?: number;
   showMp?: boolean;
   /** Mobs currently aggroed on the watched character (target-frame threat spark). */
   threatCount?: number;
@@ -24,6 +28,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     trailing,
     onSelect,
     showEffects = true,
+    effectsCompact,
+    effectsMaxVisible,
+    effectsIconSize,
     showMp = true,
     threatCount = 0,
   } = props;
@@ -147,6 +154,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       ? e(EffectsRow, {
           key: `fx-${String(entity.id)}`,
           entity,
+          compact: !!effectsCompact,
+          maxVisible: effectsMaxVisible,
+          iconSize: effectsIconSize,
         })
       : null,
   );
