@@ -20,6 +20,7 @@ import {
   type PercentDragStart,
 } from "../../lib/percentDrag";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
+import { TYPE } from "../../lib/typeScale";
 
 export type PositionedPanelProps = {
   id: PanelId;
@@ -264,7 +265,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     {
       padding: "8px 10px",
       color: "#888",
-      fontSize: "13px",
+      fontSize: TYPE.secondary,
       minWidth: "120px",
       boxSizing: "border-box",
     },

@@ -3,6 +3,7 @@ import { PAPERDOLL_FRAME_WIDTH } from "../../lib/frameSizes";
 import { LayoutPlaceholder } from "../chrome/LayoutPlaceholder";
 import { Stat } from "./Stat";
 import { VitalsBar } from "./VitalsBar";
+import { TYPE } from "../../lib/typeScale";
 
 /** Matches GearGrid SLOT_SIZE + AL item_container border/space (~46 content). */
 const DUMMY_SLOT = 46;
@@ -77,7 +78,7 @@ export function PaperdollDummy(): any {
       },
       e(
         "div",
-        { style: { fontSize: "13px", color: "#666" } },
+        { style: { fontSize: TYPE.secondary, color: "#666" } },
         "Select a unit to preview gear",
       ),
       e(
@@ -107,7 +108,7 @@ export function PaperdollDummy(): any {
             background: "#0d0d0d",
             border: "1px solid #2a2a2a",
             color: "#555",
-            fontSize: "15px",
+            fontSize: TYPE.body,
             lineHeight: "20px",
           },
         },
@@ -128,7 +129,7 @@ export function PaperdollDummy(): any {
           "div",
           {
             style: {
-              fontSize: "14px",
+              fontSize: TYPE.body,
               color: "#555",
               marginBottom: "6px",
               letterSpacing: "0.04em",

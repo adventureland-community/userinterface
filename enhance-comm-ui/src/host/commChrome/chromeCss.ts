@@ -192,7 +192,7 @@ export function injectChromeCss(): void {
   overflow: hidden;
 }
 .ecu-char-name {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 500 !important;
   letter-spacing: 0.02em;
   color: #f5f5f5;
@@ -205,7 +205,7 @@ export function injectChromeCss(): void {
 .ecu-char-sub {
   flex: 0 0 auto;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-shadow: none !important;
@@ -216,7 +216,7 @@ export function injectChromeCss(): void {
   height: 100%;
   padding: 0 16px;
   color: rgba(255, 255, 255, 0.45);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 400 !important;
   text-shadow: none !important;
 }
@@ -281,7 +281,7 @@ export function injectChromeCss(): void {
 }
 .ecu-server-dd-sub {
   flex: 0 0 auto;
-  font-size: 15px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
   color: #85c76b;
   white-space: nowrap;
@@ -311,7 +311,7 @@ export function injectChromeCss(): void {
   opacity: 0.92;
 }
 .ecu-server-dd-ping-ms {
-  font-size: 13px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   color: #8ab4c9;
   white-space: nowrap;
@@ -387,7 +387,7 @@ export function injectChromeCss(): void {
 .ecu-server-dd-empty {
   padding: 14px;
   color: #888;
-  font-size: 15px;
+  font-size: 16px;
   text-align: center;
 }
 
@@ -419,7 +419,7 @@ export function injectChromeCss(): void {
     min-height: 28px;
     height: 28px;
     padding: 0 10px;
-    font-size: 13px;
+    font-size: 14px;
   }
   .ecu-chrome {
     flex: 1 1 auto;

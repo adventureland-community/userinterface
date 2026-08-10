@@ -3,6 +3,7 @@ import { formatTime } from "../../lib/format";
 import { loadSettings, saveSettings, effectiveKillScope, killScopeLabel, type PartyScope } from "../../lib/settings";
 import { getStats, resetKillSession } from "../../kpi/sessionKills";
 import { getObservingId } from "../../host/al";
+import { TYPE } from "../../lib/typeScale";
 function partyLabel(key: string): string {
   return key.indexOf("solo:") === 0 ? key.slice(5) : key;
 }
@@ -30,7 +31,7 @@ export function KillKpiPanel(): any {
     setStoredScope(next);
   };
   const selectStyle = {
-    fontSize: "16px",
+    fontSize: TYPE.name,
     padding: "6px 10px",
     background: "#141414",
     color: "#eee",
@@ -47,7 +48,7 @@ export function KillKpiPanel(): any {
       onClick: () => resetKillSession(),
       style: {
         cursor: "pointer",
-        fontSize: "14px",
+        fontSize: TYPE.body,
         padding: "4px 12px",
         border: "1px solid #555",
         background: "#1a1a1a",
@@ -69,7 +70,7 @@ export function KillKpiPanel(): any {
           gap: "8px",
         },
       },
-      e("div", { style: { fontSize: "18px", ...softText } }, "Kills"),
+      e("div", { style: { fontSize: TYPE.title, ...softText } }, "Kills"),
       showReset ? resetBtn : null,
     );
 
@@ -84,7 +85,7 @@ export function KillKpiPanel(): any {
     },
     e(
       "span",
-      { style: { fontSize: "16px", color: "#bbb", ...softText } },
+      { style: { fontSize: TYPE.name, color: "#bbb", ...softText } },
       "Scope",
     ),
     e(
@@ -117,7 +118,7 @@ export function KillKpiPanel(): any {
           padding: "10px",
           maxHeight: "280px",
           minWidth: "240px",
-          fontSize: "16px",
+          fontSize: TYPE.name,
           color: "#eee",
           ...softText,
         },
@@ -131,7 +132,7 @@ export function KillKpiPanel(): any {
       scopeRow,
       e(
         "div",
-        { style: { fontSize: "15px", color: "#999", ...softText } },
+        { style: { fontSize: TYPE.body, color: "#999", ...softText } },
         "Select a character to track, or switch to visible parties.",
       ),
     ]);
@@ -158,7 +159,7 @@ export function KillKpiPanel(): any {
         },
       },
       e("span", { style: { color: "#eee" } }, value != null ? String(value) : "—"),
-      e("span", { style: { color: "#888", fontSize: "14px" } }, `/${unit}`),
+      e("span", { style: { color: "#888", fontSize: TYPE.body } }, `/${unit}`),
     );
 
   const listSection = (rows: any[]) =>
@@ -186,7 +187,7 @@ export function KillKpiPanel(): any {
           justifyContent: "space-between",
           alignItems: "baseline",
           gap: "12px",
-          fontSize: "15px",
+          fontSize: TYPE.body,
           padding: "4px 0",
           ...softText,
         },
@@ -219,7 +220,7 @@ export function KillKpiPanel(): any {
             display: "flex",
             flexWrap: "wrap",
             gap: "10px 14px",
-            fontSize: "16px",
+            fontSize: TYPE.name,
             ...softText,
           },
         },
@@ -234,7 +235,7 @@ export function KillKpiPanel(): any {
             display: "flex",
             alignItems: "baseline",
             gap: "6px",
-            fontSize: "15px",
+            fontSize: TYPE.body,
             color: "#aaa",
             ...softText,
           },

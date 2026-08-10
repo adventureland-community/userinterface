@@ -29,6 +29,7 @@ import {
   profileLabel,
   type ViewportProfile,
 } from "../../../lib/viewport";
+import { TYPE } from "../../../lib/typeScale";
 
 export type LayoutEditChromeProps = {
   onReset: () => void;
@@ -43,7 +44,7 @@ export type LayoutEditChromeProps = {
 function btnStyle(active?: boolean): Record<string, any> {
   return {
     cursor: "pointer",
-    fontSize: "13px",
+    fontSize: TYPE.secondary,
     padding: "6px 10px",
     minHeight: "36px",
     border: active ? "1px solid #ffe08a" : "1px solid #886",
@@ -203,7 +204,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         background: "rgba(30,28,10,0.95)",
         border: "1px solid #aa8",
         color: "#ffe08a",
-        fontSize: "14px",
+        fontSize: TYPE.body,
         maxWidth: "min(960px, 96vw)",
         textShadow: "none",
         fontWeight: "normal",
@@ -225,7 +226,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           userSelect: "none",
           touchAction: "none",
           color: "#ffe08a",
-          fontSize: "13px",
+          fontSize: TYPE.secondary,
           minHeight: "28px",
         },
         onPointerDown: onChromePointerDown,
@@ -242,7 +243,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       ),
       e(
         "span",
-        { style: { color: "#886", fontSize: "12px", whiteSpace: "nowrap" } },
+        { style: { color: "#886", fontSize: TYPE.microMin, whiteSpace: "nowrap" } },
         "drag to move",
       ),
     ),
@@ -273,7 +274,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         },
         freePlacement ? "Free: ON" : "Free",
       ),
-      e("span", { style: { color: "#aa8", fontSize: "13px" } }, "Grid"),
+      e("span", { style: { color: "#aa8", fontSize: TYPE.secondary } }, "Grid"),
       ...LAYOUT_GRID_STEP_PRESETS.map((step) =>
         e(
           "button",
@@ -340,7 +341,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           flexWrap: "wrap",
           gap: "6px",
           alignItems: "center",
-          fontSize: "13px",
+          fontSize: TYPE.secondary,
           color: "#ddd",
         },
       },
@@ -359,14 +360,14 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       ),
       e(
         "span",
-        { style: { color: "#888", fontSize: "12px" } },
+        { style: { color: "#888", fontSize: TYPE.microMin } },
         freePlacement
           ? `Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L (grid ${stepLabel} hidden snap)`
           : `${stepLabel} grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
       ),
     ),
     status
-      ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status)
+      ? e("div", { style: { fontSize: TYPE.secondary, color: "#9a9" } }, status)
       : null,
     pasteOpen
       ? e(
@@ -389,7 +390,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
               background: "#141410",
               color: "#eee",
               border: "1px solid #665",
-              fontSize: "12px",
+              fontSize: TYPE.microMin,
               fontFamily: "Consolas, Monaco, monospace",
               textShadow: "none",
               fontWeight: "normal",

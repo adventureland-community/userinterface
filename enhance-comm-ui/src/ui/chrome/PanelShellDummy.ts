@@ -1,5 +1,6 @@
 import { e } from "../../host/react";
 import { LayoutPlaceholder } from "./LayoutPlaceholder";
+import { TYPE } from "../../lib/typeScale";
 
 export type PanelShellDummyProps = {
   /** Panel title shown in the header. */
@@ -65,7 +66,7 @@ export function PanelShellDummy(props: PanelShellDummyProps): any {
       props.hint
         ? e(
             "div",
-            { style: { fontSize: "13px", color: "#777", marginBottom: "4px" } },
+            { style: { fontSize: TYPE.secondary, color: "#777", marginBottom: "4px" } },
             props.hint,
           )
         : null,
