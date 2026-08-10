@@ -68,12 +68,24 @@ function wrapContainerHtml(html: string): any {
   });
 }
 
+export type GearGridProps = {
+  entity: EntityLike;
+  /** When set, slots that differ from this entity show a Δ badge. */
+  compareTo?: EntityLike | null;
+};
+
+function slotKey(slot: SlotLike | null | undefined): string {
+  if (!slot || !slot.name) return "";
+  return `${slot.name}|${slot.level ?? ""}|${slot.q ?? ""}`;
+}
+
 function SlotCell(props: {
   slotName: string;
   slot: SlotLike | null | undefined;
   showPrice?: boolean;
+  diff?: boolean;
 }): any {
-  const { slotName, slot, showPrice } = props;
+  const { slotName, slot, showPrice, diff } = props;
   const skin = slotSkin(slot);
   const { shade, s_op } = shadeFor(slotName);
   let content: any = null;
@@ -145,9 +157,37 @@ function SlotCell(props: {
         flexDirection: "column",
         alignItems: "center",
         gap: "2px",
+        position: "relative",
       },
     },
     content,
+    diff
+      ? e(
+          "div",
+          {
+            title: "Equip differs from watched",
+            style: {
+              position: "absolute",
+              top: "-2px",
+              right: "-2px",
+              minWidth: "14px",
+              height: "14px",
+              padding: "0 3px",
+              boxSizing: "border-box",
+              background: "#3a2a10",
+              border: "1px solid #c9a227",
+              color: "#ffe08a",
+              fontSize: "10px",
+              lineHeight: "12px",
+              textAlign: "center",
+              fontWeight: "normal",
+              textShadow: "none",
+              pointerEvents: "none",
+            },
+          },
+          "Δ",
+        )
+      : null,
     showPrice && slot?.price != null
       ? e(
           "div",
@@ -158,15 +198,17 @@ function SlotCell(props: {
   );
 }
 
-export type GearGridProps = {
-  entity: EntityLike;
-};
-
 export function GearGrid(props: GearGridProps): any {
   const slots = props.entity.slots;
   if (!slots) return null;
 
+  const compareSlots = props.compareTo && props.compareTo.slots;
   const tradeNames = tradeSlotNames(slots);
+
+  const isDiff = (name: string): boolean => {
+    if (!compareSlots) return false;
+    return slotKey(slots[name]) !== slotKey(compareSlots[name]);
+  };
 
   return e(
     "div",
@@ -194,7 +236,12 @@ export function GearGrid(props: GearGridProps): any {
             },
           },
           ...row.map((name) =>
-            e(SlotCell, { key: name, slotName: name, slot: slots[name] }),
+            e(SlotCell, {
+              key: name,
+              slotName: name,
+              slot: slots[name],
+              diff: isDiff(name),
+            }),
           ),
         ),
       ),
@@ -231,6 +278,7 @@ export function GearGrid(props: GearGridProps): any {
               slotName: name,
               slot: slots[name],
               showPrice: true,
+              diff: isDiff(name),
             }),
           ),
         )

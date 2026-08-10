@@ -54,6 +54,9 @@ export function CommandPanel(props: CommandPanelProps): any {
     () => loadSettings().commandSnippets.slice() as CommandSnippet[],
   );
   const [newName, setNewName] = React.useState("");
+  const [newFolder, setNewFolder] = React.useState("");
+  const [snippetQuery, setSnippetQuery] = React.useState("");
+  const [folderFilter, setFolderFilter] = React.useState("all");
   const [status, setStatus] = React.useState("");
   const [selectedId, setSelectedId] = React.useState(
     null as string | null,
@@ -188,11 +191,14 @@ export function CommandPanel(props: CommandPanelProps): any {
       return;
     }
     if (code !== draft) persistDraft(code);
+    const folder = String(newFolder || "").trim();
+    const snip: CommandSnippet = { id: newId(), name, code };
+    if (folder) snip.folder = folder;
     const next = snippets.slice();
-    next.push({ id: newId(), name, code });
+    next.push(snip);
     persistSnippets(next);
     setNewName("");
-    setStatus(`Saved “${name}”`);
+    setStatus(folder ? `Saved “${name}” in ${folder}` : `Saved “${name}”`);
   };
 
   const onDelete = (id: string) => {
@@ -237,9 +243,35 @@ export function CommandPanel(props: CommandPanelProps): any {
     fontWeight: "normal",
   };
 
-  const snippetRows: any[] = [];
+  const folders: string[] = [];
+  for (let i = 0; i < snippets.length; i++) {
+    const f = snippets[i].folder;
+    if (f && folders.indexOf(f) < 0) folders.push(f);
+  }
+  folders.sort((a, b) => a.localeCompare(b));
+
+  const q = snippetQuery.trim().toLowerCase();
+  const filtered: CommandSnippet[] = [];
   for (let i = 0; i < snippets.length; i++) {
     const snip = snippets[i];
+    if (folderFilter === "__none__" && snip.folder) continue;
+    if (
+      folderFilter !== "all" &&
+      folderFilter !== "__none__" &&
+      (snip.folder || "") !== folderFilter
+    ) {
+      continue;
+    }
+    if (q) {
+      const hay = `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
+      if (hay.indexOf(q) < 0) continue;
+    }
+    filtered.push(snip);
+  }
+
+  const snippetRows: any[] = [];
+  for (let i = 0; i < filtered.length; i++) {
+    const snip = filtered[i];
     const active = selectedId === snip.id;
     const preview = snip.code.replace(/\s+/g, " ").trim();
     snippetRows.push(
@@ -286,7 +318,18 @@ export function CommandPanel(props: CommandPanelProps): any {
                 whiteSpace: "nowrap",
               },
             },
-            snip.name,
+            snip.folder
+              ? e(
+                  "span",
+                  {},
+                  e(
+                    "span",
+                    { style: { color: "#a86", marginRight: "6px" } },
+                    snip.folder,
+                  ),
+                  snip.name,
+                )
+              : snip.name,
           ),
           e(
             "div",
@@ -428,6 +471,19 @@ export function CommandPanel(props: CommandPanelProps): any {
         },
       ),
       e(
+        "input",
+        {
+          type: "text",
+          value: newFolder,
+          placeholder: "Folder (optional)",
+          onChange: (ev: any) => setNewFolder(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "0 1 120px",
+            minWidth: "100px",
+          }),
+        },
+      ),
+      e(
         "button",
         {
           type: "button",
@@ -452,9 +508,40 @@ export function CommandPanel(props: CommandPanelProps): any {
           color: "#ccc",
           borderTop: "1px solid #333",
           paddingTop: "8px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          alignItems: "center",
         },
       },
-      "Snippets",
+      e("span", {}, "Snippets"),
+      e("input", {
+        type: "search",
+        value: snippetQuery,
+        placeholder: "Search…",
+        onChange: (ev: any) => setSnippetQuery(ev.target.value),
+        style: Object.assign({}, inputStyle, {
+          flex: "1 1 140px",
+          minWidth: "120px",
+          fontSize: "14px",
+          padding: "4px 8px",
+        }),
+      }),
+      e(
+        "select",
+        {
+          value: folderFilter,
+          onChange: (ev: any) => setFolderFilter(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "0 1 140px",
+            fontSize: "14px",
+            padding: "4px 8px",
+          }),
+        },
+        e("option", { value: "all" }, "All folders"),
+        e("option", { value: "__none__" }, "No folder"),
+        ...folders.map((f) => e("option", { key: f, value: f }, f)),
+      ),
     ),
     snippetRows.length
       ? e(
@@ -472,7 +559,9 @@ export function CommandPanel(props: CommandPanelProps): any {
       : e(
           "div",
           { style: { fontSize: "15px", color: "#777" } },
-          "No snippets yet — write a command and Save snippet.",
+          snippets.length
+            ? "No snippets match this search/folder."
+            : "No snippets yet — write a command and Save snippet.",
         ),
   );
 }
