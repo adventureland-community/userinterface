@@ -145,6 +145,7 @@ export function closeBuffDialog(): boolean {
   el!.innerHTML = "";
   clearDialogsTarget();
   clearDialogOnlyXTarget();
+  emitInfoDialogChange("buff", false);
   return true;
 }
 
@@ -153,6 +154,7 @@ export function closeItemDialog(): boolean {
   if (!hasContent(el)) return false;
   el!.innerHTML = "";
   clearDialogsTarget();
+  emitInfoDialogChange("item", false);
   return true;
 }
 
@@ -439,13 +441,71 @@ function installJqueryClearHook(): void {
   };
 }
 
+type InfoDialogListener = (kind: InfoDialogKind, open: boolean) => void;
+const infoDialogListeners = new Set<InfoDialogListener>();
+
+/** React panels subscribe so open state does not depend only on MutationObserver. */
+export function subscribeInfoDialogChange(
+  listener: InfoDialogListener,
+): () => void {
+  infoDialogListeners.add(listener);
+  return () => {
+    infoDialogListeners.delete(listener);
+  };
+}
+
+function emitInfoDialogChange(kind: InfoDialogKind, open: boolean): void {
+  for (const listener of Array.from(infoDialogListeners)) {
+    try {
+      listener(kind, open);
+    } catch {
+      /* ignore subscriber errors */
+    }
+  }
+}
+
+/** Keep `#ecu-item-dialog` inside the layout slot (visible host), not body stub. */
+function ensureItemDialogAdopted(): HTMLElement {
+  const { item } = ensureDialogElements();
+  const slot = document.querySelector(
+    ".comm-item-info-slot",
+  ) as HTMLElement | null;
+  if (slot) return adoptInfoDialog("item", slot);
+  return item;
+}
+
+/**
+ * Build item HTML without stock selector / modal_count side effects.
+ * `render_item("html", …)` returns a string; selector writes can redirect to
+ * `show_modal` when `modal_count > 0` (common on /comm after Bag).
+ */
+function buildItemInfoHtml(args: Record<string, any>): string {
+  const w = window as any;
+  const renderItem =
+    (typeof w.render_item === "function" && w.render_item[FN_ORIG]) ||
+    w.render_item;
+  if (typeof renderItem !== "function") return "";
+  try {
+    const html = renderItem.call(w, "html", args);
+    return typeof html === "string" ? html : "";
+  } catch {
+    return "";
+  }
+}
+
+/** Guard against mousedown+click (or stock+React) opening then toggle-closing. */
+let itemInfoWriteLock = false;
+
 /**
  * Show gear/item details in `#ecu-item-dialog` (itemInfo panel).
  * Owns toggle + write so paperdoll clicks do not depend on stock slot_click
- * checking the hidden `#topleftcornerdialog` stub.
+ * checking the hidden `#topleftcornerdialog` stub, and do not depend on
+ * `render_item(selector)` (which becomes show_modal when modal_count > 0).
  */
 export function openItemSlotInfo(entity: any, slotName: string): void {
   if (!entity || !slotName) return;
+  if (itemInfoWriteLock) return;
+
   ensureDialogElements();
   installRenderPatches();
   installJqueryClearHook();
@@ -456,11 +516,11 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
   if (!slot || !slot.name) return;
 
   const w = window as any;
-  const itemHost = document.getElementById(ITEM_DIALOG_ID);
+  const itemHost = ensureItemDialogAdopted();
+
   if (
     w.last_sclick &&
     w.last_sclick === slotName &&
-    itemHost &&
     String(itemHost.innerHTML || "").trim()
   ) {
     closeItemDialog();
@@ -468,21 +528,41 @@ export function openItemSlotInfo(entity: any, slotName: string): void {
     return;
   }
 
-  w.last_sclick = slotName;
-  w.dialogs_target = entity;
-  w.xtarget = entity;
-  lastInfoWriteKind = "item";
-
   const G = w.G;
-  if (typeof w.render_item === "function" && G && G.items && G.items[slot.name]) {
-    w.render_item(ITEM_SEL, {
+  const def = G && G.items && G.items[slot.name];
+  if (!def) return;
+
+  itemInfoWriteLock = true;
+  try {
+    w.last_sclick = slotName;
+    w.dialogs_target = entity;
+    w.xtarget = entity;
+    lastInfoWriteKind = "item";
+
+    const args = {
       id: "item" + slotName,
-      item: G.items[slot.name],
+      item: def,
       name: slot.name,
       actual: slot,
       slot: slotName,
       from_player: entity.id,
-    });
+    };
+
+    const html = buildItemInfoHtml(args);
+    if (html) {
+      itemHost.innerHTML = html;
+    } else if (typeof w.render_item === "function") {
+      // Last resort: selector path (may modal if modal_count > 0).
+      w.render_item(ITEM_SEL, args);
+    }
+
+    ensureCloseButton(itemHost, "item");
+    emitInfoDialogChange("item", hasContent(itemHost));
+  } finally {
+    // Release after this task so a paired click in the same turn cannot toggle-close.
+    window.setTimeout(() => {
+      itemInfoWriteLock = false;
+    }, 0);
   }
 }
 

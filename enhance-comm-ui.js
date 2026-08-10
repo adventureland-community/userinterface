@@ -3018,6 +3018,7 @@ var EnhanceCommUI = (() => {
     el.innerHTML = "";
     clearDialogsTarget();
     clearDialogOnlyXTarget();
+    emitInfoDialogChange("buff", false);
     return true;
   }
   function closeItemDialog() {
@@ -3025,6 +3026,7 @@ var EnhanceCommUI = (() => {
     if (!hasContent(el)) return false;
     el.innerHTML = "";
     clearDialogsTarget();
+    emitInfoDialogChange("item", false);
     return true;
   }
   function closeTopLeftDialog() {
@@ -3242,8 +3244,44 @@ var EnhanceCommUI = (() => {
       return orig.apply(this, arguments);
     };
   }
+  var infoDialogListeners = /* @__PURE__ */ new Set();
+  function subscribeInfoDialogChange(listener) {
+    infoDialogListeners.add(listener);
+    return () => {
+      infoDialogListeners.delete(listener);
+    };
+  }
+  function emitInfoDialogChange(kind, open) {
+    for (const listener of Array.from(infoDialogListeners)) {
+      try {
+        listener(kind, open);
+      } catch (e2) {
+      }
+    }
+  }
+  function ensureItemDialogAdopted() {
+    const { item } = ensureDialogElements();
+    const slot = document.querySelector(
+      ".comm-item-info-slot"
+    );
+    if (slot) return adoptInfoDialog("item", slot);
+    return item;
+  }
+  function buildItemInfoHtml(args) {
+    const w = window;
+    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
+    if (typeof renderItem !== "function") return "";
+    try {
+      const html = renderItem.call(w, "html", args);
+      return typeof html === "string" ? html : "";
+    } catch (e2) {
+      return "";
+    }
+  }
+  var itemInfoWriteLock = false;
   function openItemSlotInfo(entity, slotName) {
     if (!entity || !slotName) return;
+    if (itemInfoWriteLock) return;
     ensureDialogElements();
     installRenderPatches();
     installJqueryClearHook();
@@ -3252,26 +3290,41 @@ var EnhanceCommUI = (() => {
     const slot = entity.slots && entity.slots[slotName];
     if (!slot || !slot.name) return;
     const w = window;
-    const itemHost = document.getElementById(ITEM_DIALOG_ID);
-    if (w.last_sclick && w.last_sclick === slotName && itemHost && String(itemHost.innerHTML || "").trim()) {
+    const itemHost = ensureItemDialogAdopted();
+    if (w.last_sclick && w.last_sclick === slotName && String(itemHost.innerHTML || "").trim()) {
       closeItemDialog();
       w.last_sclick = "";
       return;
     }
-    w.last_sclick = slotName;
-    w.dialogs_target = entity;
-    w.xtarget = entity;
-    lastInfoWriteKind = "item";
     const G = w.G;
-    if (typeof w.render_item === "function" && G && G.items && G.items[slot.name]) {
-      w.render_item(ITEM_SEL, {
+    const def = G && G.items && G.items[slot.name];
+    if (!def) return;
+    itemInfoWriteLock = true;
+    try {
+      w.last_sclick = slotName;
+      w.dialogs_target = entity;
+      w.xtarget = entity;
+      lastInfoWriteKind = "item";
+      const args = {
         id: "item" + slotName,
-        item: G.items[slot.name],
+        item: def,
         name: slot.name,
         actual: slot,
         slot: slotName,
         from_player: entity.id
-      });
+      };
+      const html = buildItemInfoHtml(args);
+      if (html) {
+        itemHost.innerHTML = html;
+      } else if (typeof w.render_item === "function") {
+        w.render_item(ITEM_SEL, args);
+      }
+      ensureCloseButton(itemHost, "item");
+      emitInfoDialogChange("item", hasContent(itemHost));
+    } finally {
+      window.setTimeout(() => {
+        itemInfoWriteLock = false;
+      }, 0);
     }
   }
   function adoptInfoDialog(kind, slot) {
@@ -6383,7 +6436,12 @@ var EnhanceCommUI = (() => {
       if (!slot) return;
       const dialog = adoptInfoDialog(kind, slot);
       setOpen(isOpen(kind));
-      if (typeof MutationObserver !== "function") return;
+      const unsub3 = subscribeInfoDialogChange((k, next) => {
+        if (k === kind) setOpen(next);
+      });
+      if (typeof MutationObserver !== "function") {
+        return () => unsub3();
+      }
       const obs = new MutationObserver(() => {
         setOpen(isOpen(kind));
       });
@@ -6392,7 +6450,10 @@ var EnhanceCommUI = (() => {
         subtree: true,
         characterData: true
       });
-      return () => obs.disconnect();
+      return () => {
+        obs.disconnect();
+        unsub3();
+      };
     }, [kind]);
     const meta = LABELS[kind];
     const showDummy = !!props.layoutEdit && !open;

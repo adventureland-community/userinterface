@@ -2,6 +2,7 @@ import {
   adoptInfoDialog,
   isBuffDialogOpen,
   isItemDialogOpen,
+  subscribeInfoDialogChange,
   type InfoDialogKind,
 } from "../../host/dialogHost";
 import { getReact, e } from "../../host/react";
@@ -46,7 +47,14 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
     const dialog = adoptInfoDialog(kind, slot);
     setOpen(isOpen(kind));
 
-    if (typeof MutationObserver !== "function") return;
+    // Explicit open/close signals (item gear path) — do not rely only on MO.
+    const unsub = subscribeInfoDialogChange((k, next) => {
+      if (k === kind) setOpen(next);
+    });
+
+    if (typeof MutationObserver !== "function") {
+      return () => unsub();
+    }
     const obs = new MutationObserver(() => {
       setOpen(isOpen(kind));
     });
@@ -55,7 +63,10 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
       subtree: true,
       characterData: true,
     });
-    return () => obs.disconnect();
+    return () => {
+      obs.disconnect();
+      unsub();
+    };
   }, [kind]);
 
   const meta = LABELS[kind];
