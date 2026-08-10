@@ -14,8 +14,22 @@ export function addTint(selector: string, args?: any): void {
   }
 }
 
+/** Force skill/progress tints to re-bind after DOM remount (stale tint.added leaves height:0). */
+export function rebindTint(selector: string): void {
+  if (typeof window.get_tint !== "function") return;
+  const tint = window.get_tint(selector);
+  if (tint) tint.added = false;
+}
+
 export function setXTarget(entity: EntityLike | null | undefined): void {
   window.xtarget = entity || null;
+}
+
+/** Open the host condition dialog (same as game UI `condition_click`). */
+export function conditionClick(name: string): void {
+  if (typeof window.condition_click === "function") {
+    window.condition_click(name);
+  }
 }
 
 export function slotSkin(slot: SlotLike | null | undefined): string | undefined {

@@ -1,0 +1,184 @@
+/**
+ * Leave observe mode: reconnect as pure spectator on the current server.
+ * Stock observe_character(same name) only emits o:home — it does not clear watching.
+ * Never assign window.character (Bag borrow must stay sync-only).
+ */
+export function clearObserve(): void {
+  if (typeof window.init_socket !== "function") return;
+  // Destroy+reconnect without secret → welcome has no data.character → observing stays null.
+  window.init_socket({});
+}
+
+/** Click chip: observe that character, or clear if already observing them. */
+export function toggleObserve(name: string): void {
+  const n = String(name || "");
+  if (!n) return;
+  const obs = window.observing;
+  if (obs && obs.name === n) {
+    clearObserve();
+    return;
+  }
+  if (typeof window.observe_character === "function") {
+    window.observe_character(n);
+  }
+}
+
+function onFollowClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const sock = window.socket as { emit?: (e: string) => void } | undefined;
+  if (sock && typeof sock.emit === "function") sock.emit("o:home");
+}
+
+function onBagClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const render = window.render_inventory;
+  if (typeof render !== "function") return;
+  if (typeof window.draw_trigger === "function") {
+    window.draw_trigger(() => render());
+  } else {
+    render();
+  }
+}
+
+function onCommandClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (typeof window.show_commander === "function") {
+    window.show_commander();
+  }
+}
+
+export function buildActionsEl(): HTMLElement {
+  const actions = document.createElement("div");
+  actions.className = "ecu-actions";
+  actions.setAttribute("data-ecu-actions", "1");
+
+  const mk = (label: string, title: string, onClick: (ev: Event) => void) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ecu-btn";
+    btn.textContent = label;
+    btn.title = title;
+    btn.addEventListener("click", onClick);
+    return btn;
+  };
+
+  actions.append(
+    mk("Follow", "Center on observed character", onFollowClick),
+    mk("Bag", "Observed inventory", onBagClick),
+    mk("Command", "Send a command to the observed character", onCommandClick),
+  );
+  return actions;
+}
+
+export function syncActionsEnabled(): void {
+  const watching = !!(window.observing && window.observing.name);
+  const actions = document.querySelector(".ecu-actions") as HTMLElement | null;
+  if (!actions) return;
+  const buttons = actions.querySelectorAll(".ecu-btn");
+  for (let i = 0; i < buttons.length; i++) {
+    const btn = buttons[i] as HTMLButtonElement;
+    const label = (btn.textContent || "").trim();
+    // Bag/Command/Follow need an observed character
+    const needsObs =
+      label === "Follow" || label === "Bag" || label === "Command";
+    if (needsObs) {
+      btn.disabled = !watching;
+      btn.classList.toggle("is-disabled", !watching);
+    }
+  }
+}
+
+export function ensureChromeShell(): void {
+  const bottom = document.getElementById("bottom");
+  if (!bottom) return;
+
+  // Always keep stock observeui out of the way (game may .show() it).
+  const observe = document.getElementById("observeui");
+  if (observe) {
+    observe.classList.add("hidden");
+    observe.style.display = "none";
+  }
+
+  // Already on the stacked layout: [actions] over [chips | server].
+  const existingStack = bottom.querySelector(
+    ".ecu-chrome-stack",
+  ) as HTMLElement | null;
+  if (existingStack) {
+    const chromeEl = existingStack.querySelector(
+      ".ecu-chrome",
+    ) as HTMLElement | null;
+    const charsEl = bottom.querySelector(".charactersuic") as HTMLElement | null;
+    const serversEl =
+      (bottom.querySelector(".serversuic") as HTMLElement | null) ||
+      (bottom.querySelector(".serversui") as HTMLElement | null);
+    if (chromeEl && charsEl && !chromeEl.contains(charsEl)) {
+      chromeEl.insertBefore(charsEl, chromeEl.firstChild);
+    }
+    if (chromeEl && serversEl && !chromeEl.contains(serversEl)) {
+      chromeEl.append(serversEl);
+    }
+    // Actions must sit above the strip, never inside it.
+    let actionsEl: HTMLElement | null = null;
+    for (let i = 0; i < existingStack.children.length; i++) {
+      const child = existingStack.children[i] as HTMLElement;
+      if (child.classList && child.classList.contains("ecu-actions")) {
+        actionsEl = child;
+        break;
+      }
+    }
+    const nestedActions = chromeEl
+      ? (chromeEl.querySelector(".ecu-actions") as HTMLElement | null)
+      : null;
+    if (nestedActions) nestedActions.remove();
+    if (!actionsEl) {
+      actionsEl = buildActionsEl();
+      existingStack.insertBefore(actionsEl, existingStack.firstChild);
+    }
+    syncActionsEnabled();
+    return;
+  }
+
+  const chars = bottom.querySelector(".charactersuic") as HTMLElement | null;
+  const servers =
+    (bottom.querySelector(".serversuic") as HTMLElement | null) ||
+    (bottom.querySelector(".serversui") as HTMLElement | null);
+
+  // Tear down legacy single-row chrome (actions were inlined in the strip).
+  const legacyChrome = bottom.querySelector(".ecu-chrome");
+  const legacyActions = bottom.querySelector(".ecu-actions");
+
+  const stack = document.createElement("div");
+  stack.className = "ecu-chrome-stack";
+
+  const chrome = document.createElement("div");
+  chrome.className = "ecu-chrome";
+
+  // Primary strip: character chips | server▾ (actions live in the bar above).
+  if (chars) {
+    chars.classList.remove("hidden");
+    chars.style.display = "flex";
+    chrome.append(chars);
+  }
+
+  if (servers) {
+    servers.classList.remove("hidden");
+    servers.style.display = "flex";
+    if (chars) {
+      const sep = document.createElement("div");
+      sep.className = "ecu-strip-sep";
+      sep.setAttribute("aria-hidden", "true");
+      chrome.append(sep);
+    }
+    chrome.append(servers);
+  }
+
+  if (legacyChrome) legacyChrome.remove();
+  if (legacyActions) legacyActions.remove();
+
+  stack.append(buildActionsEl(), chrome);
+  bottom.insertBefore(stack, bottom.firstChild);
+  syncActionsEnabled();
+}
