@@ -42,6 +42,7 @@ import { usePanelLayoutState } from "../hooks/usePanelLayoutState";
 import { useBagBridge } from "../hooks/useBagBridge";
 import { useSelectionFromXTarget } from "../hooks/useSelectionFromXTarget";
 import { LayoutEditChrome } from "./comm/LayoutEditChrome";
+import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { OpacityEditor } from "./comm/OpacityEditor";
 import { isTouchishProfile } from "../../lib/viewport";
 
@@ -221,6 +222,8 @@ export function CommUI(props: CommUIProps): any {
         overflow: "hidden",
       },
     },
+    layoutEdit ? e(LayoutEditGrid) : null,
+
     layoutEdit
       ? e(LayoutEditChrome, {
           onReset: resetLayout,

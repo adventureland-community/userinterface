@@ -205,7 +205,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       e(
         "span",
         { style: { color: "#888", fontSize: "12px" } },
-        "snap peers · soft avoid overlap · Ctrl+Shift+L",
+        "10% grid · snap 0/50/100 + peers · soft avoid · Ctrl+Shift+L",
       ),
     ),
     status

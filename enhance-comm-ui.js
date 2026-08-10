@@ -8412,7 +8412,7 @@ var EnhanceCommUI = (() => {
         e(
           "span",
           { style: { color: "#888", fontSize: "12px" } },
-          "snap peers \xB7 soft avoid overlap \xB7 Ctrl+Shift+L"
+          "10% grid \xB7 snap 0/50/100 + peers \xB7 soft avoid \xB7 Ctrl+Shift+L"
         )
       ),
       status ? e("div", { style: { fontSize: "13px", color: "#9a9" } }, status) : null,
@@ -8453,6 +8453,74 @@ var EnhanceCommUI = (() => {
           "Apply import"
         )
       ) : null
+    );
+  }
+
+  // src/ui/frames/comm/LayoutEditGrid.ts
+  var MINOR_STEP = 10;
+  var MAJOR_PCTS = [0, 50, 100];
+  function isMajor(pct) {
+    return MAJOR_PCTS.indexOf(pct) >= 0;
+  }
+  function lineStyle(axis, pct) {
+    const major = isMajor(pct);
+    const color = major ? "rgba(255, 224, 138, 0.32)" : "rgba(255, 224, 138, 0.11)";
+    const border = `1px dashed ${color}`;
+    if (axis === "v") {
+      return {
+        position: "absolute",
+        left: `${pct}%`,
+        top: 0,
+        bottom: 0,
+        width: 0,
+        borderLeft: border,
+        boxSizing: "border-box",
+        pointerEvents: "none"
+      };
+    }
+    return {
+      position: "absolute",
+      top: `${pct}%`,
+      left: 0,
+      right: 0,
+      height: 0,
+      borderTop: border,
+      boxSizing: "border-box",
+      pointerEvents: "none"
+    };
+  }
+  function LayoutEditGrid() {
+    const kids = [];
+    for (let pct = 0; pct <= 100; pct += MINOR_STEP) {
+      kids.push(
+        e("div", {
+          key: `v-${pct}`,
+          className: isMajor(pct) ? "comm-layout-grid-line major" : "comm-layout-grid-line",
+          style: lineStyle("v", pct)
+        })
+      );
+      kids.push(
+        e("div", {
+          key: `h-${pct}`,
+          className: isMajor(pct) ? "comm-layout-grid-line major" : "comm-layout-grid-line",
+          style: lineStyle("h", pct)
+        })
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "comm-layout-edit-grid",
+        "aria-hidden": true,
+        style: {
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
+          pointerEvents: "none",
+          overflow: "hidden"
+        }
+      },
+      ...kids
     );
   }
 
@@ -8681,6 +8749,7 @@ var EnhanceCommUI = (() => {
           overflow: "hidden"
         }
       },
+      layoutEdit ? e(LayoutEditGrid) : null,
       layoutEdit ? e(LayoutEditChrome, {
         onReset: resetLayout,
         onDone: () => setLayoutEdit(false),
