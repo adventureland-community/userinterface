@@ -5758,9 +5758,55 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/Enemies.ts
-  function hpPct2(entity) {
+  function hpPctRaw(entity) {
     const max = entity.max_hp || 1;
-    return Math.max(0, Math.min(100, Math.round((entity.hp || 0) / max * 100)));
+    return Math.max(0, Math.min(100, (entity.hp || 0) / max * 100));
+  }
+  function hpBucket(entity) {
+    return Math.round(hpPctRaw(entity) / 5) * 5;
+  }
+  function groupIdenticalEnemies(enemies) {
+    const buckets = {};
+    const order = [];
+    for (let i = 0; i < enemies.length; i++) {
+      const enemy = enemies[i];
+      const mtype = enemy.mtype || "?";
+      const key = `${mtype}@${hpBucket(enemy)}`;
+      if (!buckets[key]) {
+        buckets[key] = [];
+        order.push(key);
+      }
+      buckets[key].push(enemy);
+    }
+    const groups = [];
+    for (let i = 0; i < order.length; i++) {
+      const key = order[i];
+      const members = buckets[key];
+      let focus = members[0];
+      let lowest = hpPctRaw(focus);
+      for (let j = 1; j < members.length; j++) {
+        const pct = hpPctRaw(members[j]);
+        if (pct < lowest) {
+          lowest = pct;
+          focus = members[j];
+        }
+      }
+      groups.push({
+        key,
+        members,
+        focus,
+        hpPct: Math.round(lowest)
+      });
+    }
+    return groups;
+  }
+  function groupContainsId(group, id) {
+    if (id == null) return false;
+    const tid = String(id);
+    for (let i = 0; i < group.members.length; i++) {
+      if (String(group.members[i].id) === tid) return true;
+    }
+    return false;
   }
   function Enemies(props) {
     const enemies = aggroedMonsters(props.entities);
@@ -5775,13 +5821,14 @@ var EnhanceCommUI = (() => {
       const mtype = enemiesToSquash[i].mtype || "?";
       squashEnemiesCounts[mtype] = (squashEnemiesCounts[mtype] || 0) + 1;
     }
-    const maxEnemiesToShow = 10;
-    const moreEnemiesCount = Math.max(
-      0,
-      importantEnemies.length - maxEnemiesToShow
-    );
+    const groups = groupIdenticalEnemies(importantEnemies);
+    const maxGroupsToShow = 10;
+    const shown = groups.slice(0, maxGroupsToShow);
+    let moreEnemiesCount = 0;
+    for (let i = maxGroupsToShow; i < groups.length; i++) {
+      moreEnemiesCount += groups[i].members.length;
+    }
     const squashKeys = Object.keys(squashEnemiesCounts);
-    const shown = importantEnemies.slice(0, maxEnemiesToShow);
     if (!shown.length && !squashKeys.length) return null;
     return e(
       "div",
@@ -5821,12 +5868,15 @@ var EnhanceCommUI = (() => {
             gap: "5px"
           }
         },
-        ...shown.map((enemy) => {
-          const selected = props.selectedEntity != null && String(props.selectedEntity) === String(enemy.id);
+        ...shown.map((group) => {
+          const focus = group.focus;
+          const count = group.members.length;
+          const selected = groupContainsId(group, props.selectedEntity);
+          const label = focus.name || focus.mtype || focus.id;
           return e(
             "div",
             {
-              key: enemy.id,
+              key: group.key,
               style: {
                 position: "relative",
                 flex: "0 0 auto",
@@ -5836,8 +5886,8 @@ var EnhanceCommUI = (() => {
                 boxSizing: "border-box"
               },
               onClick: () => {
-                setXTarget(enemy);
-                props.setSelectedEntity(enemy.id);
+                setXTarget(focus);
+                props.setSelectedEntity(focus.id);
               }
             },
             e(
@@ -5855,7 +5905,7 @@ var EnhanceCommUI = (() => {
                 style: {
                   display: "block",
                   height: "100%",
-                  width: `${hpPct2(enemy)}%`,
+                  width: `${group.hpPct}%`,
                   background: "#c44"
                 }
               }),
@@ -5870,6 +5920,7 @@ var EnhanceCommUI = (() => {
                     bottom: 0,
                     display: "flex",
                     alignItems: "center",
+                    gap: "4px",
                     padding: "0 7px",
                     whiteSpace: "nowrap",
                     textOverflow: "ellipsis",
@@ -5882,7 +5933,29 @@ var EnhanceCommUI = (() => {
                     ...PIXEL_TEXT
                   }
                 },
-                enemy.name || enemy.mtype || enemy.id
+                e(
+                  "span",
+                  {
+                    style: {
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      ...PIXEL_TEXT
+                    }
+                  },
+                  label
+                ),
+                count > 1 ? e(
+                  "span",
+                  {
+                    style: {
+                      flexShrink: 0,
+                      fontSize: TYPE.count,
+                      color: "#ffe8e8",
+                      ...PIXEL_TEXT
+                    }
+                  },
+                  `\xD7${count}`
+                ) : void 0
               )
             )
           );
@@ -6890,7 +6963,7 @@ var EnhanceCommUI = (() => {
       onClick,
       nameStyle
     } = props;
-    const hpPct3 = maxHp > 0 ? hp / maxHp : 0;
+    const hpPct2 = maxHp > 0 ? hp / maxHp : 0;
     const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
     return e(
       "div",
@@ -6919,7 +6992,7 @@ var EnhanceCommUI = (() => {
             top: 0,
             bottom: 0,
             left: 0,
-            width: getPercent(hpPct3, 1),
+            width: getPercent(hpPct2, 1),
             background: hpColor
           }
         }),
@@ -7251,12 +7324,12 @@ var EnhanceCommUI = (() => {
   // src/ui/frames/TargetFrame.ts
   function targetTrailing(observing, target) {
     const dps = getDps();
-    const hpPct3 = getPercent((target.hp || 0) / (target.max_hp || 1), 1);
+    const hpPct2 = getPercent((target.hp || 0) / (target.max_hp || 1), 1);
     const ttk = estimateTtk(target.hp, dps);
     const dist = distance(observing, target);
     const oor = outOfRange(observing, target);
     const diff = difficultyBadge(target);
-    const parts = [hpPct3];
+    const parts = [hpPct2];
     if (ttk != null) parts.push(`TTK ${formatTime(ttk)}`);
     if (dist != null) parts.push(`${Math.round(dist)}`);
     if (oor) parts.push("OOR");
