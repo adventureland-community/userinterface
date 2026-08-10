@@ -81,6 +81,7 @@ export function TargetFrame(props: TargetFrameProps): any {
       fontSize: "21px",
       trailing: targetTrailing(observing, target),
       threatCount: spark,
+      effectsOverlay: true,
       onSelect: (id: string) => {
         setXTarget(target);
         props.setSelectedEntity(id);

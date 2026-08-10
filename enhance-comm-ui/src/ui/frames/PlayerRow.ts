@@ -9,8 +9,9 @@ import type { EntityLike } from "../../host/globals";
 export const UNIT_FRAME_STYLE: Record<string, any> = {
   width: "min(360px, 45vw)",
   minWidth: "280px",
-  // Extra clearance so buffs/debuffs don't kiss the observe chrome.
-  paddingBottom: "18px",
+  // Effects overlay hangs below vitals — do not clip, and do not pad a
+  // permanent empty strip (that would shift bc-anchored HP bars upward).
+  overflow: "visible",
   boxSizing: "border-box",
 };
 
@@ -31,6 +32,7 @@ export function PlayerFrame(props: PlayerFrameProps): any {
       entity: observing,
       hpColor: classColors[observing.ctype || ""] || "#666",
       fontSize: "21px",
+      effectsOverlay: true,
       onSelect: (id: string) => {
         setXTarget(observing);
         props.setSelectedEntity(id);

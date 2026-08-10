@@ -16,6 +16,12 @@ export type ObservedUnitProps = {
   /** Cap visible icons (+N overflow). 0 / omit with non-compact = unlimited. */
   effectsMaxVisible?: number;
   effectsIconSize?: number;
+  /**
+   * Paint EffectsRow absolutely under vitals so it does not grow unit chrome height.
+   * Used by bc-anchored player/target frames so HP/MP stay put when buffs appear/clear.
+   * Boss bars / party chips leave this off (in-flow growth is fine).
+   */
+  effectsOverlay?: boolean;
   showMp?: boolean;
   /** Mobs currently aggroed on the watched character (target-frame threat spark). */
   threatCount?: number;
@@ -39,6 +45,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     effectsCompact,
     effectsMaxVisible,
     effectsIconSize,
+    effectsOverlay = false,
     showMp = true,
     threatCount = 0,
     aggroLabel,
@@ -170,16 +177,54 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         )
       : nameBlock;
 
+  const effectsRow = showEffects
+    ? e(EffectsRow, {
+        key: `fx-${String(entity.id)}`,
+        entity,
+        compact: !!effectsCompact,
+        maxVisible: effectsMaxVisible,
+        iconSize: effectsIconSize,
+      })
+    : null;
+
+  // Overlay keeps PositionedPanel height = vitals only (bc anchors stay put).
+  // EffectsRow still collapses to null when empty — no reserved empty strip.
+  const effectsSlot =
+    effectsRow == null
+      ? null
+      : effectsOverlay
+        ? e(
+            "div",
+            {
+              className: "comm-fx-overlay",
+              style: {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: "100%",
+                width: "100%",
+                boxSizing: "border-box",
+                pointerEvents: "auto",
+                zIndex: 1,
+              },
+            },
+            effectsRow,
+          )
+        : effectsRow;
+
   return e(
     "div",
     {
-      className: "comm-unit",
+      className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : ""),
       style: {
         display: "flex",
         width: "100%",
         flexDirection: "column",
         minWidth: 0,
-        gap: "6px",
+        // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
+        gap: effectsOverlay ? 0 : "6px",
+        position: effectsOverlay ? "relative" : undefined,
+        overflow: effectsOverlay ? "visible" : undefined,
       },
     },
     e(
@@ -199,14 +244,6 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       },
       label,
     ),
-    showEffects
-      ? e(EffectsRow, {
-          key: `fx-${String(entity.id)}`,
-          entity,
-          compact: !!effectsCompact,
-          maxVisible: effectsMaxVisible,
-          iconSize: effectsIconSize,
-        })
-      : null,
+    effectsSlot,
   );
 }

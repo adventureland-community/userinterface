@@ -7438,6 +7438,7 @@ var EnhanceCommUI = (() => {
       effectsCompact,
       effectsMaxVisible,
       effectsIconSize,
+      effectsOverlay = false,
       showMp = true,
       threatCount = 0,
       aggroLabel,
@@ -7546,16 +7547,43 @@ var EnhanceCommUI = (() => {
       aggroChip,
       trailingEl
     ) : nameBlock;
+    const effectsRow = showEffects ? e(EffectsRow, {
+      key: `fx-${String(entity.id)}`,
+      entity,
+      compact: !!effectsCompact,
+      maxVisible: effectsMaxVisible,
+      iconSize: effectsIconSize
+    }) : null;
+    const effectsSlot = effectsRow == null ? null : effectsOverlay ? e(
+      "div",
+      {
+        className: "comm-fx-overlay",
+        style: {
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "100%",
+          width: "100%",
+          boxSizing: "border-box",
+          pointerEvents: "auto",
+          zIndex: 1
+        }
+      },
+      effectsRow
+    ) : effectsRow;
     return e(
       "div",
       {
-        className: "comm-unit",
+        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : ""),
         style: {
           display: "flex",
           width: "100%",
           flexDirection: "column",
           minWidth: 0,
-          gap: "6px"
+          // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
+          gap: effectsOverlay ? 0 : "6px",
+          position: effectsOverlay ? "relative" : void 0,
+          overflow: effectsOverlay ? "visible" : void 0
         }
       },
       e(
@@ -7575,13 +7603,7 @@ var EnhanceCommUI = (() => {
         },
         label
       ),
-      showEffects ? e(EffectsRow, {
-        key: `fx-${String(entity.id)}`,
-        entity,
-        compact: !!effectsCompact,
-        maxVisible: effectsMaxVisible,
-        iconSize: effectsIconSize
-      }) : null
+      effectsSlot
     );
   }
 
@@ -7794,8 +7816,9 @@ var EnhanceCommUI = (() => {
   var UNIT_FRAME_STYLE = {
     width: "min(360px, 45vw)",
     minWidth: "280px",
-    // Extra clearance so buffs/debuffs don't kiss the observe chrome.
-    paddingBottom: "18px",
+    // Effects overlay hangs below vitals — do not clip, and do not pad a
+    // permanent empty strip (that would shift bc-anchored HP bars upward).
+    overflow: "visible",
     boxSizing: "border-box"
   };
   function PlayerFrame(props) {
@@ -7806,6 +7829,7 @@ var EnhanceCommUI = (() => {
         entity: observing,
         hpColor: classColors[observing.ctype || ""] || "#666",
         fontSize: "21px",
+        effectsOverlay: true,
         onSelect: (id) => {
           setXTarget(observing);
           props.setSelectedEntity(id);
@@ -7856,6 +7880,7 @@ var EnhanceCommUI = (() => {
         fontSize: "21px",
         trailing: targetTrailing(observing, target),
         threatCount: spark,
+        effectsOverlay: true,
         onSelect: (id) => {
           setXTarget(target);
           props.setSelectedEntity(id);
