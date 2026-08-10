@@ -1999,7 +1999,6 @@ var EnhanceCommUI = (() => {
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x;
-  scrollbar-width: thin;
   text-align: left;
 }
 
@@ -2338,6 +2337,86 @@ var EnhanceCommUI = (() => {
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {
   max-width: 96vw;
+}
+
+/* Thin dark scrollbars \u2014 #comm-ui panels + enhancer chrome outside it.
+   Touch scrolling is unchanged (overflow / -webkit-overflow-scrolling stay). */
+#comm-ui,
+#comm-ui *,
+.ecu-chrome-stack,
+.ecu-chrome-stack *,
+.charactersui.charactersuic,
+.ecu-server-dd-menu,
+#bottomleftcorner,
+#ecu-buff-dialog,
+#ecu-item-dialog,
+#topleftcorner {
+  scrollbar-width: thin;
+  scrollbar-color: #7a7048 #161616;
+}
+#comm-ui::-webkit-scrollbar,
+#comm-ui *::-webkit-scrollbar,
+.ecu-chrome-stack::-webkit-scrollbar,
+.ecu-chrome-stack *::-webkit-scrollbar,
+.charactersui.charactersuic::-webkit-scrollbar,
+.ecu-server-dd-menu::-webkit-scrollbar,
+#bottomleftcorner::-webkit-scrollbar,
+#ecu-buff-dialog::-webkit-scrollbar,
+#ecu-item-dialog::-webkit-scrollbar,
+#topleftcorner::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+#comm-ui::-webkit-scrollbar-track,
+#comm-ui *::-webkit-scrollbar-track,
+.ecu-chrome-stack::-webkit-scrollbar-track,
+.ecu-chrome-stack *::-webkit-scrollbar-track,
+.charactersui.charactersuic::-webkit-scrollbar-track,
+.ecu-server-dd-menu::-webkit-scrollbar-track,
+#bottomleftcorner::-webkit-scrollbar-track,
+#ecu-buff-dialog::-webkit-scrollbar-track,
+#ecu-item-dialog::-webkit-scrollbar-track,
+#topleftcorner::-webkit-scrollbar-track {
+  background: #161616;
+  border-radius: 0;
+}
+#comm-ui::-webkit-scrollbar-thumb,
+#comm-ui *::-webkit-scrollbar-thumb,
+.ecu-chrome-stack::-webkit-scrollbar-thumb,
+.ecu-chrome-stack *::-webkit-scrollbar-thumb,
+.charactersui.charactersuic::-webkit-scrollbar-thumb,
+.ecu-server-dd-menu::-webkit-scrollbar-thumb,
+#bottomleftcorner::-webkit-scrollbar-thumb,
+#ecu-buff-dialog::-webkit-scrollbar-thumb,
+#ecu-item-dialog::-webkit-scrollbar-thumb,
+#topleftcorner::-webkit-scrollbar-thumb {
+  background: #6e6640;
+  border: 1px solid #3a3828;
+  border-radius: 0;
+}
+#comm-ui::-webkit-scrollbar-thumb:hover,
+#comm-ui *::-webkit-scrollbar-thumb:hover,
+.ecu-chrome-stack::-webkit-scrollbar-thumb:hover,
+.ecu-chrome-stack *::-webkit-scrollbar-thumb:hover,
+.charactersui.charactersuic::-webkit-scrollbar-thumb:hover,
+.ecu-server-dd-menu::-webkit-scrollbar-thumb:hover,
+#bottomleftcorner::-webkit-scrollbar-thumb:hover,
+#ecu-buff-dialog::-webkit-scrollbar-thumb:hover,
+#ecu-item-dialog::-webkit-scrollbar-thumb:hover,
+#topleftcorner::-webkit-scrollbar-thumb:hover {
+  background: #9a8840;
+}
+#comm-ui::-webkit-scrollbar-corner,
+#comm-ui *::-webkit-scrollbar-corner,
+.ecu-chrome-stack::-webkit-scrollbar-corner,
+.ecu-chrome-stack *::-webkit-scrollbar-corner,
+.charactersui.charactersuic::-webkit-scrollbar-corner,
+.ecu-server-dd-menu::-webkit-scrollbar-corner,
+#bottomleftcorner::-webkit-scrollbar-corner,
+#ecu-buff-dialog::-webkit-scrollbar-corner,
+#ecu-item-dialog::-webkit-scrollbar-corner,
+#topleftcorner::-webkit-scrollbar-corner {
+  background: #161616;
 }
 `;
     document.head.append(style);
