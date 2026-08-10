@@ -18,7 +18,6 @@ import { Players } from "./Players";
 import { MapInfo } from "./MapInfo";
 import { CryptProgress } from "./CryptProgress";
 import { ServerInfo } from "./ServerInfo";
-import { BossInfo } from "./BossInfo";
 import { Enemies } from "./Enemies";
 import { EntityInfo } from "./EntityInfo";
 import { StockInfoPanel } from "./InfoDialogPanel";
@@ -301,10 +300,6 @@ export function CommUI(props: CommUIProps): any {
         }),
         e(MapInfo, { entities: snap.entities }),
         e(CryptProgress, { entities: snap.entities }),
-        e(BossInfo, {
-          entities: snap.entities,
-          setSelectedEntity,
-        }),
       ),
     ),
 

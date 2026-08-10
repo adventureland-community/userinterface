@@ -70,14 +70,6 @@ export function aggroedMonsters(entities: EntityLike[]): EntityLike[] {
   return out;
 }
 
-export function coopBosses(entities: EntityLike[]): EntityLike[] {
-  const out: EntityLike[] = [];
-  for (let i = 0; i < entities.length; i++) {
-    if (isCoopBoss(entities[i])) out.push(entities[i]);
-  }
-  return out;
-}
-
 export function isCryptBossEntity(entity: EntityLike): boolean {
   if (entity.type !== "monster" || !entity.mtype) return false;
   return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;

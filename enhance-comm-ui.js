@@ -3820,13 +3820,6 @@ var EnhanceCommUI = (() => {
     });
     return out;
   }
-  function coopBosses(entities) {
-    const out = [];
-    for (let i = 0; i < entities.length; i++) {
-      if (isCoopBoss(entities[i])) out.push(entities[i]);
-    }
-    return out;
-  }
   function isCryptBossEntity(entity) {
     if (entity.type !== "monster" || !entity.mtype) return false;
     return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
@@ -5224,243 +5217,6 @@ var EnhanceCommUI = (() => {
     );
   }
 
-  // src/ui/chrome/VitalsColumn.ts
-  function VitalsColumn(props) {
-    const {
-      hp,
-      maxHp,
-      mp,
-      maxMp,
-      hpColor = "red",
-      showMp = true,
-      children,
-      onClick,
-      nameStyle
-    } = props;
-    const hpPct3 = maxHp > 0 ? hp / maxHp : 0;
-    const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
-    return e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          width: "100%",
-          flexDirection: "column",
-          minWidth: 0
-        }
-      },
-      e(
-        "div",
-        {
-          style: {
-            background: "black",
-            position: "relative",
-            width: "100%",
-            minHeight: "30px",
-            boxSizing: "border-box"
-          }
-        },
-        e("div", {
-          style: {
-            position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: 0,
-            width: getPercent(hpPct3, 1),
-            background: hpColor
-          }
-        }),
-        e(
-          "div",
-          {
-            style: Object.assign(
-              {
-                padding: "5px 10px",
-                whiteSpace: "nowrap",
-                textOverflow: "ellipsis",
-                overflow: "hidden",
-                position: "relative",
-                textShadow: "none",
-                fontWeight: "normal",
-                cursor: onClick ? "pointer" : void 0,
-                width: "100%",
-                boxSizing: "border-box",
-                lineHeight: "1.25"
-              },
-              nameStyle || {}
-            ),
-            onClick
-          },
-          children
-        )
-      ),
-      showMp ? e(
-        "div",
-        {
-          style: {
-            background: "black",
-            width: "100%",
-            height: "5px",
-            boxSizing: "border-box"
-          }
-        },
-        e("div", {
-          style: {
-            background: "#3a5fd4",
-            height: "100%",
-            width: getPercent(mpPct2, 1)
-          }
-        })
-      ) : null
-    );
-  }
-
-  // src/ui/chrome/ObservedUnit.ts
-  function ObservedUnit(props) {
-    var _a;
-    const {
-      entity,
-      hpColor,
-      fontSize,
-      trailing,
-      onSelect,
-      showEffects = true,
-      showMp = true,
-      threatCount = 0
-    } = props;
-    const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
-    const threatSpark = threatCount > 0 ? e(
-      "span",
-      {
-        className: "comm-threat-spark",
-        title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
-        style: {
-          flexShrink: 0,
-          minWidth: "18px",
-          height: "18px",
-          padding: "0 4px",
-          boxSizing: "border-box",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#8a1e1e",
-          border: "1px solid #e05555",
-          color: "#ffd0d0",
-          fontSize: "12px",
-          lineHeight: 1,
-          fontWeight: "normal",
-          textShadow: "none"
-        }
-      },
-      String(threatCount)
-    ) : null;
-    const nameBlock = e(
-      "span",
-      {
-        style: {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          minWidth: 0,
-          overflow: "hidden"
-        }
-      },
-      threatSpark,
-      e(
-        "span",
-        {
-          style: {
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            minWidth: 0
-          }
-        },
-        name
-      )
-    );
-    const label = trailing ? e(
-      "span",
-      {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          gap: "10px",
-          width: "100%",
-          alignItems: "center"
-        }
-      },
-      nameBlock,
-      e(
-        "span",
-        {
-          style: {
-            fontSize: "17px",
-            opacity: 0.95,
-            flexShrink: 0,
-            fontWeight: "normal"
-          }
-        },
-        trailing
-      )
-    ) : nameBlock;
-    return e(
-      "div",
-      {
-        className: "comm-unit",
-        style: {
-          display: "flex",
-          width: "100%",
-          flexDirection: "column",
-          minWidth: 0,
-          gap: "6px"
-        }
-      },
-      e(
-        VitalsColumn,
-        {
-          hp: entity.hp || 0,
-          maxHp: entity.max_hp || 1,
-          mp: entity.mp,
-          maxMp: entity.max_mp,
-          hpColor,
-          showMp,
-          nameStyle: {
-            fontSize: fontSize != null ? fontSize : "21px",
-            fontWeight: "normal"
-          },
-          onClick: onSelect ? () => onSelect(entity.id) : void 0
-        },
-        label
-      ),
-      showEffects ? e(EffectsRow, {
-        key: `fx-${String(entity.id)}`,
-        entity
-      }) : null
-    );
-  }
-
-  // src/ui/frames/BossInfo.ts
-  function BossInfo(props) {
-    const bosses = coopBosses(props.entities);
-    return e(
-      "div",
-      { style: { display: "flex", flexDirection: "column", gap: "4px", width: "100%" } },
-      ...bosses.map(
-        (boss) => e(ObservedUnit, {
-          key: boss.id,
-          entity: boss,
-          hpColor: "red",
-          fontSize: "24px",
-          onSelect: (id) => {
-            setXTarget(boss);
-            props.setSelectedEntity(id);
-          }
-        })
-      )
-    );
-  }
-
   // src/ui/frames/Enemies.ts
   function hpPct2(entity) {
     const max = entity.max_hp || 1;
@@ -6562,6 +6318,222 @@ var EnhanceCommUI = (() => {
           minHeight: 0
         }
       })
+    );
+  }
+
+  // src/ui/chrome/VitalsColumn.ts
+  function VitalsColumn(props) {
+    const {
+      hp,
+      maxHp,
+      mp,
+      maxMp,
+      hpColor = "red",
+      showMp = true,
+      children,
+      onClick,
+      nameStyle
+    } = props;
+    const hpPct3 = maxHp > 0 ? hp / maxHp : 0;
+    const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
+    return e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          width: "100%",
+          flexDirection: "column",
+          minWidth: 0
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            background: "black",
+            position: "relative",
+            width: "100%",
+            minHeight: "30px",
+            boxSizing: "border-box"
+          }
+        },
+        e("div", {
+          style: {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            width: getPercent(hpPct3, 1),
+            background: hpColor
+          }
+        }),
+        e(
+          "div",
+          {
+            style: Object.assign(
+              {
+                padding: "5px 10px",
+                whiteSpace: "nowrap",
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+                position: "relative",
+                textShadow: "none",
+                fontWeight: "normal",
+                cursor: onClick ? "pointer" : void 0,
+                width: "100%",
+                boxSizing: "border-box",
+                lineHeight: "1.25"
+              },
+              nameStyle || {}
+            ),
+            onClick
+          },
+          children
+        )
+      ),
+      showMp ? e(
+        "div",
+        {
+          style: {
+            background: "black",
+            width: "100%",
+            height: "5px",
+            boxSizing: "border-box"
+          }
+        },
+        e("div", {
+          style: {
+            background: "#3a5fd4",
+            height: "100%",
+            width: getPercent(mpPct2, 1)
+          }
+        })
+      ) : null
+    );
+  }
+
+  // src/ui/chrome/ObservedUnit.ts
+  function ObservedUnit(props) {
+    var _a;
+    const {
+      entity,
+      hpColor,
+      fontSize,
+      trailing,
+      onSelect,
+      showEffects = true,
+      showMp = true,
+      threatCount = 0
+    } = props;
+    const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
+    const threatSpark = threatCount > 0 ? e(
+      "span",
+      {
+        className: "comm-threat-spark",
+        title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
+        style: {
+          flexShrink: 0,
+          minWidth: "18px",
+          height: "18px",
+          padding: "0 4px",
+          boxSizing: "border-box",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#8a1e1e",
+          border: "1px solid #e05555",
+          color: "#ffd0d0",
+          fontSize: "12px",
+          lineHeight: 1,
+          fontWeight: "normal",
+          textShadow: "none"
+        }
+      },
+      String(threatCount)
+    ) : null;
+    const nameBlock = e(
+      "span",
+      {
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          minWidth: 0,
+          overflow: "hidden"
+        }
+      },
+      threatSpark,
+      e(
+        "span",
+        {
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0
+          }
+        },
+        name
+      )
+    );
+    const label = trailing ? e(
+      "span",
+      {
+        style: {
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "10px",
+          width: "100%",
+          alignItems: "center"
+        }
+      },
+      nameBlock,
+      e(
+        "span",
+        {
+          style: {
+            fontSize: "17px",
+            opacity: 0.95,
+            flexShrink: 0,
+            fontWeight: "normal"
+          }
+        },
+        trailing
+      )
+    ) : nameBlock;
+    return e(
+      "div",
+      {
+        className: "comm-unit",
+        style: {
+          display: "flex",
+          width: "100%",
+          flexDirection: "column",
+          minWidth: 0,
+          gap: "6px"
+        }
+      },
+      e(
+        VitalsColumn,
+        {
+          hp: entity.hp || 0,
+          maxHp: entity.max_hp || 1,
+          mp: entity.mp,
+          maxMp: entity.max_mp,
+          hpColor,
+          showMp,
+          nameStyle: {
+            fontSize: fontSize != null ? fontSize : "21px",
+            fontWeight: "normal"
+          },
+          onClick: onSelect ? () => onSelect(entity.id) : void 0
+        },
+        label
+      ),
+      showEffects ? e(EffectsRow, {
+        key: `fx-${String(entity.id)}`,
+        entity
+      }) : null
     );
   }
 
@@ -9397,11 +9369,7 @@ var EnhanceCommUI = (() => {
             serverIdentifier: snap.serverIdentifier
           }),
           e(MapInfo, { entities: snap.entities }),
-          e(CryptProgress, { entities: snap.entities }),
-          e(BossInfo, {
-            entities: snap.entities,
-            setSelectedEntity
-          })
+          e(CryptProgress, { entities: snap.entities })
         )
       ),
       panel(
