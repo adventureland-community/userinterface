@@ -2456,6 +2456,23 @@ var EnhanceCommUI = (() => {
   }
 }
 
+/* Party roster: Buffs mode control \u2014 hover / layout-edit / touch */
+.ecu-roster-buffs {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.ecu-roster:hover .ecu-roster-buffs,
+.ecu-roster.is-layout-edit .ecu-roster-buffs,
+#comm-ui.comm-ui-touch .ecu-roster-buffs,
+#comm-ui[data-viewport="tablet"] .ecu-roster-buffs,
+#comm-ui[data-viewport="phone"] .ecu-roster-buffs {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
 /* Tablet / phone \u2014 larger hit targets (Edge/Firefox Android, Safari iOS) */
 @media (pointer: coarse), (max-width: 1100px) {
   .ecu-btn {
@@ -5262,7 +5279,7 @@ var EnhanceCommUI = (() => {
     return e(
       "div",
       {
-        className: "ecu-roster",
+        className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
         style: {
           padding: "4px",
           display: "flex",
@@ -5274,15 +5291,17 @@ var EnhanceCommUI = (() => {
       e(
         "div",
         {
+          className: "ecu-roster-header",
           style: {
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: parties.length ? "flex-end" : "space-between",
             gap: "8px",
-            marginBottom: "2px"
+            marginBottom: "2px",
+            minHeight: parties.length ? "26px" : void 0
           }
         },
-        e(
+        !parties.length ? e(
           "div",
           {
             style: {
@@ -5291,12 +5310,13 @@ var EnhanceCommUI = (() => {
               ...PIXEL_TEXT
             }
           },
-          parties.length ? "Party" : "No parties in vision"
-        ),
+          "No parties in vision"
+        ) : null,
         parties.length ? e(
           "button",
           {
             type: "button",
+            className: "ecu-roster-buffs",
             title: partyBuffModeTitle(buffMode),
             onClick: cycleBuffMode,
             style: {
@@ -10696,7 +10716,8 @@ var EnhanceCommUI = (() => {
           setSelectedEntity,
           selectedEntity,
           observingId: snap.observingId,
-          observing: snap.observing
+          observing: snap.observing,
+          layoutEdit
         }),
         { style: { width: "auto", maxWidth: "min(560px, 78vw)" } }
       ),

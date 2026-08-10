@@ -28,6 +28,8 @@ export type PlayersProps = {
   observingId?: string;
   /** Watched entity for out-of-range dimming. */
   observing?: EntityLike | null;
+  /** Keep Buffs control visible while repositioning panels. */
+  layoutEdit?: boolean;
 };
 
 function hpPct(entity: EntityLike): number {
@@ -68,7 +70,8 @@ export function Players(props: PlayersProps): any {
   return e(
     "div",
     {
-      className: "ecu-roster",
+      className:
+        "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
       style: {
         padding: "4px",
         display: "flex",
@@ -80,30 +83,35 @@ export function Players(props: PlayersProps): any {
     e(
       "div",
       {
+        className: "ecu-roster-header",
         style: {
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: parties.length ? "flex-end" : "space-between",
           gap: "8px",
           marginBottom: "2px",
+          minHeight: parties.length ? "26px" : undefined,
         },
       },
-      e(
-        "div",
-        {
-          style: {
-            color: "#aaa",
-            fontSize: TYPE.secondary,
-            ...PIXEL_TEXT,
-          },
-        },
-        parties.length ? "Party" : "No parties in vision",
-      ),
+      !parties.length
+        ? e(
+            "div",
+            {
+              style: {
+                color: "#aaa",
+                fontSize: TYPE.secondary,
+                ...PIXEL_TEXT,
+              },
+            },
+            "No parties in vision",
+          )
+        : null,
       parties.length
         ? e(
             "button",
             {
               type: "button",
+              className: "ecu-roster-buffs",
               title: partyBuffModeTitle(buffMode),
               onClick: cycleBuffMode,
               style: {

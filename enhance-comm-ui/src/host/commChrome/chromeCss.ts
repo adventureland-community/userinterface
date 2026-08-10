@@ -430,6 +430,23 @@ export function injectChromeCss(): void {
   }
 }
 
+/* Party roster: Buffs mode control — hover / layout-edit / touch */
+.ecu-roster-buffs {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.ecu-roster:hover .ecu-roster-buffs,
+.ecu-roster.is-layout-edit .ecu-roster-buffs,
+#comm-ui.comm-ui-touch .ecu-roster-buffs,
+#comm-ui[data-viewport="tablet"] .ecu-roster-buffs,
+#comm-ui[data-viewport="phone"] .ecu-roster-buffs {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
 /* Tablet / phone — larger hit targets (Edge/Firefox Android, Safari iOS) */
 @media (pointer: coarse), (max-width: 1100px) {
   .ecu-btn {

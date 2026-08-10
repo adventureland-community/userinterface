@@ -264,6 +264,7 @@ export function CommUI(props: CommUIProps): any {
         selectedEntity,
         observingId: snap.observingId,
         observing: snap.observing,
+        layoutEdit,
       }),
       { style: { width: "auto", maxWidth: "min(560px, 78vw)" } },
     ),
