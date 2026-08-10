@@ -76,36 +76,29 @@ export const PANEL_LABELS: Record<PanelId, string> = {
 };
 
 /**
- * Clean default: players TL, enemies TR, topCenter TC,
- * playerFrame + targetFrame side-by-side above observe chrome,
- * paperdoll mid-left (left column kept clear),
- * bag lower-left above chrome, combat+kills deep BR (inboard of meters),
- * threat above combat/kills, Layout small BR.
- * Reset positions reloads these via mergeLayout(null).
+ * Desktop default from playtested export (floats rounded to clean %).
+ * infoDialog kept TL under party chips (not in export).
+ * Saved layouts need Layout → Reset positions (desktop profile) to pick these up.
  */
 export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   players: { x: 0.4, y: 0.4, anchor: "tl" },
   enemies: { x: 99.6, y: 0.4, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
-  paperdoll: { x: 0.5, y: 38, anchor: "tl" },
+  paperdoll: { x: 0.5, y: 30, anchor: "tl" },
   // Stock AL `#topleftcornerdialog` — just under party chips.
   infoDialog: { x: 0.8, y: 10, anchor: "tl" },
-  // Deep bottom-right — clear of bottom chrome; inboard of meter column.
-  combat: { x: 92, y: 84, anchor: "br" },
-  kills: { x: 92, y: 95, anchor: "br" },
-  // Sit clearly above stacked observe chrome (actions + chips strip).
-  playerFrame: { x: 35, y: 80, anchor: "bc" },
-  targetFrame: { x: 65, y: 80, anchor: "bc" },
-  // Below topCenter server/map/crypt chrome (tc anchor, ~8% from top).
+  kills: { x: 27, y: 99.2, anchor: "br" },
+  combat: { x: 95, y: 99.2, anchor: "br" },
+  playerFrame: { x: 40.5, y: 86, anchor: "bc" },
+  targetFrame: { x: 60, y: 86, anchor: "bc" },
   bossBar: { x: 50, y: 8, anchor: "tc" },
-  pdps: { x: 99.5, y: 18, anchor: "tr" },
-  hitDps: { x: 99.5, y: 36, anchor: "tr" },
-  coopV1: { x: 99.5, y: 54, anchor: "tr" },
-  coopV2: { x: 99.5, y: 70, anchor: "tr" },
-  threat: { x: 92, y: 64, anchor: "br" },
+  threat: { x: 82, y: 75, anchor: "br" },
+  pdps: { x: 78, y: 90, anchor: "tr" },
+  hitDps: { x: 99.5, y: 50, anchor: "tr" },
+  coopV1: { x: 91, y: 63, anchor: "tr" },
+  coopV2: { x: 99.5, y: 63, anchor: "tr" },
   command: { x: 50, y: 42, anchor: "center" },
-  // Traditional inventory corner — above Follow/Bag/Command chrome.
-  bag: { x: 0.8, y: 86, anchor: "bl" },
+  bag: { x: 0.5, y: 99.2, anchor: "bl" },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
 };
 

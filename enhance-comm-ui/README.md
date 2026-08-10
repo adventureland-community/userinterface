@@ -41,7 +41,7 @@ Layouts are stored per profile under `al-comm-ui-settings-v1` (`panelLayoutsByPr
 | Tablet | width ≲ 1100 | Combat/threat right drawer, bag left |
 | Phone | width ≲ 700 | Combat/bag/command as sheets |
 
-In Layout edit: **Auto** follows the viewport; **Desktop / Tablet / Phone** forces that map. **Reset positions** resets only the active profile. **Copy layout** / **Download** / **Paste / import** / **Upload JSON** share presets between devices.
+In Layout edit: **Auto** follows the viewport; **Desktop / Tablet / Phone** forces that map. **Reset positions** resets only the active profile (needed after built-in default changes, e.g. desktop). **Copy layout** / **Download** / **Paste / import** / **Upload JSON** share presets between devices.
 
 ## Command snippets
 
