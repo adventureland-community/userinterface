@@ -1,7 +1,6 @@
 import { getReact, e } from "../../host/react";
 import {
   PANEL_LABELS,
-  deltaToPercent,
   panelStyle,
   snapPercent,
   softAvoidOverlap,
@@ -14,6 +13,12 @@ import {
   subscribeLayoutEditPrefs,
 } from "../../lib/layoutEditPrefs";
 import { snapToGridPercent } from "../../lib/layoutGrid";
+import {
+  percentFromPointerDrag,
+  tryReleasePointerCapture,
+  trySetPointerCapture,
+  type PercentDragStart,
+} from "../../lib/percentDrag";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 
 export type PositionedPanelProps = {
@@ -67,11 +72,11 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   );
   const dragging = React.useRef(false);
   const start = React.useRef({
-    x: 0,
-    y: 0,
+    clientX: 0,
+    clientY: 0,
     posX: 0,
     posY: 0,
-  });
+  } as PercentDragStart);
   const lastPos = React.useRef(pos);
   lastPos.current = pos;
 
@@ -101,34 +106,21 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     ev.stopPropagation();
     dragging.current = true;
     start.current = {
-      x: ev.clientX,
-      y: ev.clientY,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
       posX: pos.x,
       posY: pos.y,
     };
-    try {
-      ev.currentTarget.setPointerCapture(ev.pointerId);
-    } catch {
-      // ignore
-    }
+    trySetPointerCapture(ev.currentTarget, ev.pointerId);
   };
 
   const onPointerMove = (ev: any) => {
     if (!dragging.current) return;
-    const root =
-      (document.getElementById("comm-ui") as HTMLElement | null) ||
-      document.documentElement;
-    const rect = root.getBoundingClientRect();
-    const { dxPct, dyPct } = deltaToPercent(
-      ev.clientX - start.current.x,
-      ev.clientY - start.current.y,
-      rect.width,
-      rect.height,
+    let { x: nextX, y: nextY } = percentFromPointerDrag(
+      ev.clientX,
+      ev.clientY,
+      start.current,
     );
-    let nextX = start.current.posX + dxPct;
-    let nextY = start.current.posY + dyPct;
-    nextX = Math.max(0, Math.min(100, nextX));
-    nextY = Math.max(0, Math.min(100, nextY));
     // Grid is primary when Free is off; peer-edge magnet still applies after.
     if (!freePlacementRef.current) {
       nextX = snapToGridPercent(nextX, gridStepRef.current);
@@ -143,11 +135,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   const onPointerUp = (ev: any) => {
     if (!dragging.current) return;
     dragging.current = false;
-    try {
-      ev.currentTarget.releasePointerCapture(ev.pointerId);
-    } catch {
-      // ignore
-    }
+    tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
     const peers = props.peerLayout || {};
     const nudged = softAvoidOverlap(id, lastPos.current, peers);
     if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {

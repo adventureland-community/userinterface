@@ -1,5 +1,4 @@
 import { getReact, e } from "../../../host/react";
-import { deltaToPercent } from "../../../lib/layout";
 import {
   downloadLayoutJson,
   parseLayoutExport,
@@ -16,6 +15,12 @@ import {
   type LayoutChromePos,
 } from "../../../lib/layoutEditPrefs";
 import { LAYOUT_GRID_STEP_PRESETS } from "../../../lib/layoutGrid";
+import {
+  percentFromPointerDrag,
+  tryReleasePointerCapture,
+  trySetPointerCapture,
+  type PercentDragStart,
+} from "../../../lib/percentDrag";
 import {
   type LayoutProfileMode,
   type PanelLayoutsByProfile,
@@ -68,11 +73,11 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const fileRef = React.useRef(null as HTMLInputElement | null);
   const dragging = React.useRef(false);
   const dragStart = React.useRef({
-    x: 0,
-    y: 0,
+    clientX: 0,
+    clientY: 0,
     posX: 0,
     posY: 0,
-  });
+  } as PercentDragStart);
   const chromePosRef = React.useRef(chromePos);
   chromePosRef.current = chromePos;
 
@@ -149,34 +154,21 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     ev.stopPropagation();
     dragging.current = true;
     dragStart.current = {
-      x: ev.clientX,
-      y: ev.clientY,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
       posX: chromePosRef.current.x,
       posY: chromePosRef.current.y,
     };
-    try {
-      ev.currentTarget.setPointerCapture(ev.pointerId);
-    } catch {
-      // ignore
-    }
+    trySetPointerCapture(ev.currentTarget, ev.pointerId);
   };
 
   const onChromePointerMove = (ev: any) => {
     if (!dragging.current) return;
-    const root =
-      (document.getElementById("comm-ui") as HTMLElement | null) ||
-      document.documentElement;
-    const rect = root.getBoundingClientRect();
-    const { dxPct, dyPct } = deltaToPercent(
-      ev.clientX - dragStart.current.x,
-      ev.clientY - dragStart.current.y,
-      rect.width,
-      rect.height,
-    );
-    const next: LayoutChromePos = {
-      x: Math.max(0, Math.min(100, dragStart.current.posX + dxPct)),
-      y: Math.max(0, Math.min(100, dragStart.current.posY + dyPct)),
-    };
+    const next = percentFromPointerDrag(
+      ev.clientX,
+      ev.clientY,
+      dragStart.current,
+    ) as LayoutChromePos;
     chromePosRef.current = next;
     setChromePos(next);
   };
@@ -184,11 +176,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const onChromePointerUp = (ev: any) => {
     if (!dragging.current) return;
     dragging.current = false;
-    try {
-      ev.currentTarget.releasePointerCapture(ev.pointerId);
-    } catch {
-      // ignore
-    }
+    tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
     const next = setLayoutChromePos(chromePosRef.current);
     setChromePos(next.chromePos);
   };
