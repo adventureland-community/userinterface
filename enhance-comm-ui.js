@@ -4538,12 +4538,16 @@ var EnhanceCommUI = (() => {
     const def = (_b = (_a = window.G) == null ? void 0 : _a.items) == null ? void 0 : _b[slot.name];
     return slot.skin || (def == null ? void 0 : def.skin);
   }
-  function monsterSkin(mtype) {
-    var _a, _b;
-    if (!mtype) return void 0;
-    const def = (_b = (_a = window.G) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
-    if (!def) return void 0;
-    return typeof def.skin === "string" ? def.skin : void 0;
+  function monsterSprite(mtype, opts) {
+    var _a;
+    if (!mtype || typeof window.sprite !== "function") return "";
+    const size = (_a = opts == null ? void 0 : opts.size) != null ? _a : 22;
+    return window.sprite(mtype, {
+      scale: size / 40,
+      width: size,
+      height: size,
+      overflow: true
+    }) || "";
   }
 
   // src/ui/chrome/EffectsRow.ts
@@ -7035,20 +7039,10 @@ var EnhanceCommUI = (() => {
   }
   function MobChip(props) {
     const { mtype, count } = props;
-    const skin = monsterSkin(mtype);
     const title = `${count}\xD7${mtype}`;
     let icon = null;
-    if (skin) {
-      const html = itemContainer(
-        {
-          skin,
-          size: MOB_ICON_SIZE,
-          draggable: false
-        },
-        null
-      );
-      if (html) icon = wrapIconHtml(html);
-    }
+    const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
+    if (html) icon = wrapIconHtml(html);
     if (!icon) {
       return e(
         "span",

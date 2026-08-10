@@ -57,10 +57,23 @@ export function slotSkin(slot: SlotLike | null | undefined): string | undefined 
   return slot.skin || def?.skin;
 }
 
-/** Monster portrait skin from `G.monsters[mtype]` (for item_container icons). */
-export function monsterSkin(mtype: string | undefined): string | undefined {
-  if (!mtype) return undefined;
-  const def = window.G?.monsters?.[mtype];
-  if (!def) return undefined;
-  return typeof def.skin === "string" ? def.skin : undefined;
+/**
+ * Monster portrait HTML via stock `sprite()` (entity/IID packs).
+ * Do not use `item_container` — monster skins are not in `G.positions`.
+ */
+export function monsterSprite(
+  mtype: string | undefined,
+  opts?: { size?: number },
+): string {
+  if (!mtype || typeof window.sprite !== "function") return "";
+  const size = opts?.size ?? 22;
+  // `sprite` resolves `G.monsters[mtype].skin` (defaults to mtype at G build).
+  return (
+    window.sprite(mtype, {
+      scale: size / 40,
+      width: size,
+      height: size,
+      overflow: true,
+    }) || ""
+  );
 }

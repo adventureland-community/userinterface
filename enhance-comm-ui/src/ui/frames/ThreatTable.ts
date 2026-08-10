@@ -1,5 +1,5 @@
 import { e } from "../../host/react";
-import { itemContainer, monsterSkin, setXTarget } from "../../host/icons";
+import { monsterSprite, setXTarget } from "../../host/icons";
 import { aggroByTarget, findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
@@ -57,20 +57,10 @@ function wrapIconHtml(html: string): any {
 
 function MobChip(props: { mtype: string; count: number }): any {
   const { mtype, count } = props;
-  const skin = monsterSkin(mtype);
   const title = `${count}×${mtype}`;
   let icon: any = null;
-  if (skin) {
-    const html = itemContainer(
-      {
-        skin,
-        size: MOB_ICON_SIZE,
-        draggable: false,
-      },
-      null,
-    );
-    if (html) icon = wrapIconHtml(html);
-  }
+  const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
+  if (html) icon = wrapIconHtml(html);
 
   if (!icon) {
     return e(
