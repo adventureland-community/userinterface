@@ -10042,15 +10042,21 @@ var EnhanceCommUI = (() => {
       void 0
     );
     const lastXTargetId = React.useRef(void 0);
+    const isObserving = snap.observingId != null && snap.observingId !== "";
     const setSelectedEntity = (id) => {
       setSelectedEntityState(id);
       if (id == null || id === "") {
         setFocusUnitId(void 0);
         return;
       }
+      if (isObserving) return;
       const focusId = maybeFocusPlayerId(id);
       if (focusId) setFocusUnitId(focusId);
     };
+    React.useEffect(() => {
+      if (!isObserving) return;
+      setFocusUnitId(void 0);
+    }, [isObserving]);
     React.useEffect(() => {
       if (window.__ecuDialogOnlyXTarget) return;
       const xt = window.xtarget;
@@ -10058,12 +10064,14 @@ var EnhanceCommUI = (() => {
       if (id && id !== lastXTargetId.current) {
         lastXTargetId.current = id;
         setSelectedEntityState(id);
-        const focusId = maybeFocusPlayerId(id);
-        if (focusId) setFocusUnitId(focusId);
+        if (!isObserving) {
+          const focusId = maybeFocusPlayerId(id);
+          if (focusId) setFocusUnitId(focusId);
+        }
       } else if (!id && lastXTargetId.current) {
         lastXTargetId.current = void 0;
       }
-    }, [snap.now, snap.entities]);
+    }, [snap.now, snap.entities, isObserving]);
     const clearFocus = () => {
       setFocusUnitId(void 0);
     };
@@ -10788,9 +10796,14 @@ var EnhanceCommUI = (() => {
     const hasEnemies = aggroedMonsters(snap.entities).length > 0;
     const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
     const hasBosses = activeBosses(snap.entities).length > 0;
-    const focusEntity = !snap.observing && focusUnitId ? findEntity(snap.entities, focusUnitId) : void 0;
-    const framePlayer = snap.observing || focusEntity;
-    const frameTarget = snap.observing ? snap.target : resolveTarget(focusEntity);
+    const isObserving = snap.observingId != null && snap.observingId !== "" || !!snap.observing;
+    let framePlayer = snap.observing;
+    let frameTarget = snap.target;
+    if (!isObserving) {
+      const focusEntity = focusUnitId ? findEntity(snap.entities, focusUnitId) : void 0;
+      framePlayer = focusEntity;
+      frameTarget = resolveTarget(focusEntity);
+    }
     const panel = (id, child, opts) => {
       const isClosablePanel = (opts == null ? void 0 : opts.closable) === true;
       const isHidden = isClosablePanel && !visible(id);

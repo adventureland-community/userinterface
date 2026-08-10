@@ -10,7 +10,8 @@ export type SelectionState = {
   closePaperdoll: () => void;
   /**
    * Spectator focus unit id (party chip / xtarget player).
-   * Used for playerFrame + targetFrame when not observing.
+   * Used for playerFrame + targetFrame only when not observing.
+   * Cleared / ignored while `snap.observingId` is set.
    */
   focusUnitId: string | undefined;
   clearFocus: () => void;
@@ -34,6 +35,10 @@ export function useSelectionFromXTarget(snap: GameSnapshot): SelectionState {
   );
   const lastXTargetId = React.useRef(undefined as string | undefined);
 
+  // Characterui observe owns player/target frames — never bind spectator focus then.
+  const isObserving =
+    snap.observingId != null && snap.observingId !== "";
+
   const setSelectedEntity = (id: string | undefined) => {
     setSelectedEntityState(id);
     if (id == null || id === "") {
@@ -41,9 +46,16 @@ export function useSelectionFromXTarget(snap: GameSnapshot): SelectionState {
       setFocusUnitId(undefined);
       return;
     }
+    // Paperdoll/xtarget still update while observing; frames stay on observing.
+    if (isObserving) return;
     const focusId = maybeFocusPlayerId(id);
     if (focusId) setFocusUnitId(focusId);
   };
+
+  React.useEffect(() => {
+    if (!isObserving) return;
+    setFocusUnitId(undefined);
+  }, [isObserving]);
 
   React.useEffect(() => {
     // Buff/condition info sets xtarget for stock `render_condition` but must
@@ -55,13 +67,15 @@ export function useSelectionFromXTarget(snap: GameSnapshot): SelectionState {
     if (id && id !== lastXTargetId.current) {
       lastXTargetId.current = id;
       setSelectedEntityState(id);
-      const focusId = maybeFocusPlayerId(id);
-      if (focusId) setFocusUnitId(focusId);
+      if (!isObserving) {
+        const focusId = maybeFocusPlayerId(id);
+        if (focusId) setFocusUnitId(focusId);
+      }
     } else if (!id && lastXTargetId.current) {
       lastXTargetId.current = undefined;
       // Keep local selection unless Esc/clear handled elsewhere.
     }
-  }, [snap.now, snap.entities]);
+  }, [snap.now, snap.entities, isObserving]);
 
   const clearFocus = () => {
     setFocusUnitId(undefined);

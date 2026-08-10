@@ -203,15 +203,19 @@ export function CommUI(props: CommUIProps): any {
   const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
   const hasBosses = activeBosses(snap.entities).length > 0;
 
-  // Observing (characterui) wins; otherwise spectator focus from party/xtarget player clicks.
-  const focusEntity =
-    !snap.observing && focusUnitId
+  // Observing owns player/target frames absolutely. Spectator focusUnitId only
+  // applies when not observing — party/world clicks must not steal frames.
+  const isObserving =
+    (snap.observingId != null && snap.observingId !== "") || !!snap.observing;
+  let framePlayer = snap.observing;
+  let frameTarget = snap.target;
+  if (!isObserving) {
+    const focusEntity = focusUnitId
       ? findEntity(snap.entities, focusUnitId)
       : undefined;
-  const framePlayer = snap.observing || focusEntity;
-  const frameTarget = snap.observing
-    ? snap.target
-    : resolveTarget(focusEntity);
+    framePlayer = focusEntity;
+    frameTarget = resolveTarget(focusEntity);
+  }
 
   const panel = (id: PanelId, child: any, opts?: PanelOpts) => {
     const isClosablePanel = opts?.closable === true;
