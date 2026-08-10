@@ -7,6 +7,10 @@ import {
 } from "../../host/icons";
 import { getReact, e } from "../../host/react";
 import type { EntityLike, StatusLike } from "../../host/globals";
+import {
+  hardCcFallbackSkin,
+  PROMOTED_HARD_CC_IDS,
+} from "../../lib/controlState";
 import { formatTime } from "../../lib/format";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
@@ -50,18 +54,25 @@ export function buildEntityEffects(entity: EntityLike): BuiltEffect[] {
     }
 
     const prop = G?.conditions?.[condition];
-    if (!actual.skin && (!prop || (!prop.ui && (!actual.s || actual.s < 20)))) {
+    const promoted =
+      PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
+    if (
+      !actual.skin &&
+      !promoted &&
+      (!prop || (!prop.ui && (!actual.s || actual.s < 20)))
+    ) {
       continue;
     }
     if (entity.type === "monster" && condition === "poisonous") continue;
-    const skin = actual.skin || prop?.skin;
+    const skin =
+      actual.skin || prop?.skin || hardCcFallbackSkin(condition);
     if (!skin) continue;
     out.push({
       id: condition,
       skin,
       ms: actual.ms,
       stacks: typeof actual.s === "number" ? actual.s : undefined,
-      debuff: !!(prop && prop.debuff),
+      debuff: !!(prop && prop.debuff) || promoted,
       type: "condition",
       name: typeof prop?.name === "string" ? prop.name : undefined,
     });

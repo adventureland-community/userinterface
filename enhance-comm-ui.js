@@ -5342,6 +5342,264 @@ var EnhanceCommUI = (() => {
     }) || "";
   }
 
+  // src/ui/chrome/ControlBadge.ts
+  function ControlIcon(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const { state, iconSize } = props;
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      const html = itemContainer(
+        { skin: state.skin, size: iconSize, draggable: false },
+        null
+      );
+      if (html) {
+        el.innerHTML = html;
+        const root = el.firstElementChild;
+        if (root) {
+          root.style.margin = "0";
+          root.removeAttribute("onmousedown");
+          root.removeAttribute("ontouchstart");
+          root.removeAttribute("onclick");
+        }
+      } else {
+        el.textContent = state.label.slice(0, 1);
+      }
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [state.skin, state.label, iconSize]);
+    return e("div", {
+      ref,
+      className: "comm-ctrl-icon",
+      style: {
+        position: "relative",
+        display: "inline-block",
+        flex: "0 0 auto",
+        overflow: "visible",
+        pointerEvents: "none"
+      }
+    });
+  }
+  function badgeTitle(state) {
+    if (state.kind === "fear") {
+      return `${state.label} (fear ${state.fear})`;
+    }
+    return state.label;
+  }
+  function ControlBadge(props) {
+    const { states, compact = false } = props;
+    if (!states.length) return null;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 18 : 22;
+    return e(
+      "div",
+      {
+        className: "comm-ctrl-badges" + (compact ? " is-compact" : ""),
+        style: {
+          position: "absolute",
+          top: compact ? "-3px" : "2px",
+          left: compact ? "-3px" : "2px",
+          zIndex: 3,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: compact ? "2px" : "3px",
+          pointerEvents: "none"
+        }
+      },
+      ...states.map((state) => {
+        const key = state.kind === "fear" ? `fear-${state.level}` : `cc-${state.id}`;
+        return e(
+          "div",
+          {
+            key,
+            className: "comm-ctrl-badge" + (state.kind === "fear" ? ` is-fear is-${state.level}` : ` is-hardcc is-${state.id}`),
+            title: badgeTitle(state),
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: compact ? "0" : "4px",
+              maxWidth: compact ? void 0 : "100%",
+              padding: compact ? "1px" : "1px 5px 1px 1px",
+              boxSizing: "border-box",
+              background: state.background,
+              border: `1px solid ${state.border}`,
+              color: state.color,
+              fontSize: TYPE.badge,
+              lineHeight: 1,
+              ...PIXEL_TEXT
+            }
+          },
+          e(ControlIcon, { state, iconSize }),
+          compact ? null : e(
+            "span",
+            {
+              style: {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: "7.5em"
+              }
+            },
+            state.label
+          )
+        );
+      })
+    );
+  }
+
+  // src/lib/controlState.ts
+  var HARD_CC = [
+    {
+      id: "stoned",
+      severity: 5,
+      fallbackSkin: "condition_neutral",
+      fallbackLabel: "Stoned",
+      color: "#d8d0c0",
+      border: "#a09070",
+      background: "rgba(60,50,30,0.9)"
+    },
+    {
+      id: "deepfreezed",
+      severity: 5,
+      fallbackSkin: "condition_bad",
+      fallbackLabel: "Deepfreezed",
+      color: "#b8e0ff",
+      border: "#5a9ec8",
+      background: "rgba(20,40,70,0.9)"
+    },
+    {
+      id: "stunned",
+      severity: 4,
+      fallbackSkin: "condition_bad",
+      fallbackLabel: "Stunned",
+      color: "#ffd0a0",
+      border: "#c87830",
+      background: "rgba(70,40,10,0.9)"
+    },
+    {
+      id: "fingered",
+      severity: 4,
+      fallbackSkin: "condition_neutral",
+      fallbackLabel: "Deep Meditation",
+      color: "#e0d0ff",
+      border: "#8860b0",
+      background: "rgba(40,20,60,0.9)"
+    },
+    {
+      id: "sleeping",
+      severity: 3,
+      fallbackSkin: "condition_bad",
+      fallbackLabel: "Sleeping",
+      color: "#d0d8e8",
+      border: "#7080a0",
+      background: "rgba(30,35,50,0.9)"
+    }
+  ];
+  var FEAR_SKIN = "skill_scare";
+  var FEAR_STYLE = {
+    // Colors from stock fear logs (#B03736 / #B04157 / gray).
+    scared: {
+      severity: 1,
+      label: "Scared",
+      color: "#c8c8c8",
+      border: "#888",
+      background: "rgba(40,40,40,0.92)"
+    },
+    terrified: {
+      severity: 2,
+      label: "Terrified",
+      color: "#ffc0c8",
+      border: "#B04157",
+      background: "rgba(80,20,35,0.92)"
+    },
+    petrified: {
+      severity: 3,
+      label: "Petrified",
+      color: "#ffb0a8",
+      border: "#B03736",
+      background: "rgba(90,20,20,0.92)"
+    }
+  };
+  function fearLevelFromValue(fear) {
+    if (!(fear > 0)) return null;
+    if (fear > 3) return "petrified";
+    if (fear > 1) return "terrified";
+    return "scared";
+  }
+  function getFearState(entity) {
+    if (!entity) return null;
+    const raw = entity.fear;
+    const fear = typeof raw === "number" ? raw : 0;
+    const level = fearLevelFromValue(fear);
+    if (!level) return null;
+    const style = FEAR_STYLE[level];
+    return {
+      kind: "fear",
+      level,
+      fear,
+      label: style.label,
+      severity: style.severity,
+      color: style.color,
+      border: style.border,
+      background: style.background,
+      skin: FEAR_SKIN
+    };
+  }
+  function getHardCcState(entity) {
+    var _a;
+    if (!entity || !entity.s) return null;
+    const G = getG();
+    let best = null;
+    for (let i = 0; i < HARD_CC.length; i++) {
+      const def = HARD_CC[i];
+      const actual = entity.s[def.id];
+      if (!actual) continue;
+      const prop = (_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[def.id];
+      const skin = typeof actual.skin === "string" && actual.skin || typeof (prop == null ? void 0 : prop.skin) === "string" && prop.skin || def.fallbackSkin;
+      const label = typeof (prop == null ? void 0 : prop.name) === "string" && prop.name || def.fallbackLabel;
+      const next = {
+        kind: "hardcc",
+        id: def.id,
+        label,
+        severity: def.severity,
+        color: def.color,
+        border: def.border,
+        background: def.background,
+        skin
+      };
+      if (!best || next.severity > best.severity) best = next;
+    }
+    return best;
+  }
+  function getControlStates(entity) {
+    const out = [];
+    const hard = getHardCcState(entity);
+    const fear = getFearState(entity);
+    if (hard) out.push(hard);
+    if (fear) out.push(fear);
+    return out;
+  }
+  function controlBorderTint(states) {
+    if (!states.length) return void 0;
+    let best = states[0];
+    for (let i = 1; i < states.length; i++) {
+      const s = states[i];
+      const bestRank = best.kind === "fear" ? best.severity + 10 : best.severity;
+      const rank = s.kind === "fear" ? s.severity + 10 : s.severity;
+      if (rank > bestRank) best = s;
+    }
+    return best.border;
+  }
+  var PROMOTED_HARD_CC_IDS = HARD_CC.map((d) => d.id);
+  function hardCcFallbackSkin(id) {
+    for (let i = 0; i < HARD_CC.length; i++) {
+      if (HARD_CC[i].id === id) return HARD_CC[i].fallbackSkin;
+    }
+    return void 0;
+  }
+
   // src/ui/chrome/EffectsRow.ts
   var ICON_SIZE = 36;
   function buildEntityEffects(entity) {
@@ -5370,18 +5628,19 @@ var EnhanceCommUI = (() => {
         continue;
       }
       const prop = (_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[condition];
-      if (!actual.skin && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
+      const promoted = PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
+      if (!actual.skin && !promoted && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
         continue;
       }
       if (entity.type === "monster" && condition === "poisonous") continue;
-      const skin = actual.skin || (prop == null ? void 0 : prop.skin);
+      const skin = actual.skin || (prop == null ? void 0 : prop.skin) || hardCcFallbackSkin(condition);
       if (!skin) continue;
       out.push({
         id: condition,
         skin,
         ms: actual.ms,
         stacks: typeof actual.s === "number" ? actual.s : void 0,
-        debuff: !!(prop && prop.debuff),
+        debuff: !!(prop && prop.debuff) || promoted,
         type: "condition",
         name: typeof (prop == null ? void 0 : prop.name) === "string" ? prop.name : void 0
       });
@@ -5831,15 +6090,23 @@ var EnhanceCommUI = (() => {
               const dead = !!player.dead;
               const oor = !dead && !observed && !!observing && outOfRange(observing, player) === true;
               const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
+              const controlEntity = observed && observing && typeof observing.fear === "number" ? { ...player, fear: observing.fear } : player;
+              const controlStates = getControlStates(controlEntity);
+              const controlTint = controlBorderTint(controlStates);
+              const controlTitle = controlStates.map(
+                (s) => s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
+              ).join(" \xB7 ");
               const nameTitle = [
                 `${player.name || player.id}`,
                 observed ? "Observing" : "",
                 oor ? "Out of range" : "",
                 dead ? "Dead" : "",
+                controlTitle,
                 aggroTitle
               ].filter(Boolean).join(" \xB7 ");
               let outline;
               if (hasAggro) outline = "1px solid #e05555";
+              else if (controlTint) outline = `1px solid ${controlTint}`;
               else if (observed) outline = "1px solid #e13758";
               else if (selected) outline = "1px solid #fff";
               const showBuffs = showUnderChipBuffs(
@@ -5852,7 +6119,7 @@ var EnhanceCommUI = (() => {
                 "div",
                 {
                   key: player.id,
-                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (dead ? " is-rip" : "") + (oor ? " is-oor" : ""),
+                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : "") + (oor ? " is-oor" : ""),
                   title: nameTitle,
                   style: {
                     position: "relative",
@@ -5874,6 +6141,11 @@ var EnhanceCommUI = (() => {
                     props.setSelectedEntity(player.id);
                   }
                 },
+                e(ControlBadge, {
+                  states: controlStates,
+                  compact: true,
+                  iconSize: 16
+                }),
                 e(
                   "div",
                   {
@@ -7565,6 +7837,8 @@ var EnhanceCommUI = (() => {
       aggroLabel,
       aggroHot = false
     } = props;
+    const controlStates = getControlStates(entity);
+    const controlTint = controlBorderTint(controlStates);
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const threatSpark = threatCount > 0 ? e(
       "span",
@@ -7692,10 +7966,15 @@ var EnhanceCommUI = (() => {
       },
       effectsRow
     ) : effectsRow;
+    const controlBadge = e(ControlBadge, {
+      states: controlStates,
+      compact: false,
+      iconSize: 20
+    });
     return e(
       "div",
       {
-        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : ""),
+        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : "") + (controlStates.length ? " has-control" : ""),
         style: {
           display: "flex",
           width: "100%",
@@ -7703,8 +7982,10 @@ var EnhanceCommUI = (() => {
           minWidth: 0,
           // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
           gap: effectsOverlay ? 0 : "6px",
-          position: effectsOverlay ? "relative" : void 0,
-          overflow: effectsOverlay ? "visible" : void 0
+          position: "relative",
+          overflow: effectsOverlay ? "visible" : void 0,
+          outline: controlTint ? `1px solid ${controlTint}` : void 0,
+          outlineOffset: controlTint ? "1px" : void 0
         }
       },
       e(
@@ -7724,6 +8005,7 @@ var EnhanceCommUI = (() => {
         },
         label
       ),
+      controlBadge,
       effectsSlot
     );
   }

@@ -4,8 +4,13 @@ import { outOfRange } from "../../geometry/combat";
 import { aggroByTarget, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
+import { ControlBadge } from "../chrome/ControlBadge";
 import { EffectsRow } from "../chrome/EffectsRow";
 import { SharedPartyEffects } from "../chrome/SharedPartyEffects";
+import {
+  controlBorderTint,
+  getControlStates,
+} from "../../lib/controlState";
 import {
   getSettings,
   patchSettings,
@@ -194,11 +199,27 @@ export function Players(props: PlayersProps): any {
             const aggroTitle = hasAggro
               ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}`
               : "";
+            const controlEntity =
+              observed &&
+              observing &&
+              typeof observing.fear === "number"
+                ? { ...player, fear: observing.fear }
+                : player;
+            const controlStates = getControlStates(controlEntity);
+            const controlTint = controlBorderTint(controlStates);
+            const controlTitle = controlStates
+              .map((s) =>
+                s.kind === "fear"
+                  ? `${s.label} (fear ${s.fear})`
+                  : s.label,
+              )
+              .join(" · ");
             const nameTitle = [
               `${player.name || player.id}`,
               observed ? "Observing" : "",
               oor ? "Out of range" : "",
               dead ? "Dead" : "",
+              controlTitle,
               aggroTitle,
             ]
               .filter(Boolean)
@@ -206,6 +227,7 @@ export function Players(props: PlayersProps): any {
 
             let outline: string | undefined;
             if (hasAggro) outline = "1px solid #e05555";
+            else if (controlTint) outline = `1px solid ${controlTint}`;
             else if (observed) outline = "1px solid #e13758";
             else if (selected) outline = "1px solid #fff";
 
@@ -225,6 +247,7 @@ export function Players(props: PlayersProps): any {
                   (selected ? " is-selected" : "") +
                   (observed ? " is-observed" : "") +
                   (hasAggro ? " has-aggro" : "") +
+                  (controlStates.length ? " has-control" : "") +
                   (dead ? " is-rip" : "") +
                   (oor ? " is-oor" : ""),
                 title: nameTitle,
@@ -248,6 +271,11 @@ export function Players(props: PlayersProps): any {
                   props.setSelectedEntity(player.id);
                 },
               },
+              e(ControlBadge, {
+                states: controlStates,
+                compact: true,
+                iconSize: 16,
+              }),
               e(
                 "div",
                 {

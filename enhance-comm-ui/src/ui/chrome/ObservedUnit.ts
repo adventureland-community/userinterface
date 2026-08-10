@@ -1,7 +1,12 @@
 import { e } from "../../host/react";
 import { EffectsRow } from "./EffectsRow";
+import { ControlBadge } from "./ControlBadge";
 import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
+import {
+  controlBorderTint,
+  getControlStates,
+} from "../../lib/controlState";
 import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type ObservedUnitProps = {
@@ -51,6 +56,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     aggroLabel,
     aggroHot = false,
   } = props;
+
+  const controlStates = getControlStates(entity);
+  const controlTint = controlBorderTint(controlStates);
 
   const name =
     `${entity.level ?? 1} ${entity.name || entity.id}` +
@@ -212,10 +220,19 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           )
         : effectsRow;
 
+  const controlBadge = e(ControlBadge, {
+    states: controlStates,
+    compact: false,
+    iconSize: 20,
+  });
+
   return e(
     "div",
     {
-      className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : ""),
+      className:
+        "comm-unit" +
+        (effectsOverlay ? " has-fx-overlay" : "") +
+        (controlStates.length ? " has-control" : ""),
       style: {
         display: "flex",
         width: "100%",
@@ -223,8 +240,10 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         minWidth: 0,
         // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
         gap: effectsOverlay ? 0 : "6px",
-        position: effectsOverlay ? "relative" : undefined,
+        position: "relative",
         overflow: effectsOverlay ? "visible" : undefined,
+        outline: controlTint ? `1px solid ${controlTint}` : undefined,
+        outlineOffset: controlTint ? "1px" : undefined,
       },
     },
     e(
@@ -244,6 +263,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       },
       label,
     ),
+    controlBadge,
     effectsSlot,
   );
 }

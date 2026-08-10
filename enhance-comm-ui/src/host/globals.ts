@@ -40,6 +40,12 @@ export type EntityLike = {
   slots?: Record<string, SlotLike | null | undefined>;
   s?: Record<string, StatusLike | undefined>;
   q?: Record<string, any>;
+  /**
+   * Courage overflow (targets beyond courage / mcourage / pcourage).
+   * Only on full player packets (observing / self) — not stranger entities.
+   * Tiers: 1 scared, 2–3 terrified, 4+ petrified (stock client logs).
+   */
+  fear?: number;
 };
 
 export type SlotLike = {
