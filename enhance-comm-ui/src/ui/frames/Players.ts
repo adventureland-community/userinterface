@@ -67,6 +67,30 @@ export function Players(props: PlayersProps): any {
     setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
   };
 
+  const buffsButton = parties.length
+    ? e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-roster-buffs",
+          title: partyBuffModeTitle(buffMode),
+          onClick: cycleBuffMode,
+          style: {
+            cursor: "pointer",
+            fontSize: TYPE.secondaryMin,
+            lineHeight: "1.2",
+            padding: "3px 8px",
+            minHeight: "26px",
+            border: "1px solid #444",
+            background: "#161616",
+            color: "#ccc",
+            ...PIXEL_TEXT,
+          },
+        },
+        `Buffs: ${partyBuffModeLabel(buffMode)}`,
+      )
+    : null;
+
   return e(
     "div",
     {
@@ -78,23 +102,24 @@ export function Players(props: PlayersProps): any {
         gap: "6px",
         flexDirection: "column",
         maxWidth: "min(560px, 78vw)",
+        position: "relative",
       },
     },
-    e(
-      "div",
-      {
-        className: "ecu-roster-header",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: parties.length ? "flex-end" : "space-between",
-          gap: "8px",
-          marginBottom: "2px",
-          minHeight: parties.length ? "26px" : undefined,
-        },
-      },
-      !parties.length
-        ? e(
+    // Absolute overlay — must not reserve header row height when idle.
+    buffsButton,
+    !parties.length
+      ? e(
+          "div",
+          {
+            className: "ecu-roster-header",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "2px",
+            },
+          },
+          e(
             "div",
             {
               style: {
@@ -104,33 +129,9 @@ export function Players(props: PlayersProps): any {
               },
             },
             "No parties in vision",
-          )
-        : null,
-      parties.length
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-roster-buffs",
-              title: partyBuffModeTitle(buffMode),
-              onClick: cycleBuffMode,
-              style: {
-                cursor: "pointer",
-                fontSize: TYPE.secondaryMin,
-                lineHeight: "1.2",
-                padding: "3px 8px",
-                minHeight: "26px",
-                border: "1px solid #444",
-                background: "#161616",
-                color: "#ccc",
-                ...PIXEL_TEXT,
-                flex: "0 0 auto",
-              },
-            },
-            `Buffs: ${partyBuffModeLabel(buffMode)}`,
-          )
-        : null,
-    ),
+          ),
+        )
+      : null,
     ...parties.map((party) =>
       e(
         "div",
@@ -169,7 +170,8 @@ export function Players(props: PlayersProps): any {
               display: "flex",
               flexDirection: "row",
               flexWrap: "wrap",
-              alignItems: "stretch",
+              // flex-start: chips without EffectsRow must not stretch to match buffs.
+              alignItems: "flex-start",
               gap: "5px",
             },
           },

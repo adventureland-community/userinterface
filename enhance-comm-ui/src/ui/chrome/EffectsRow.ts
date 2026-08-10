@@ -272,6 +272,8 @@ export function EffectIcon(props: {
 export function EffectsRow(props: EffectsRowProps): any {
   const entityId = String(props.entity.id);
   const effects = buildEntityEffects(props.entity);
+  // Collapse entirely when empty so party chips leave no under-chip gap.
+  if (!effects.length) return null;
   const key = effectsKey(effects);
   const iconSize =
     typeof props.iconSize === "number" && props.iconSize > 0
@@ -280,8 +282,8 @@ export function EffectsRow(props: EffectsRowProps): any {
   const compact = !!props.compact;
   const gap = compact ? "3px" : "6px";
   const marginTop = compact ? "3px" : "6px";
-  const padBottom = effects.length ? (compact ? "2px" : "4px") : 0;
-  const minHeight = effects.length ? iconSize + (compact ? 8 : 14) : 0;
+  const padBottom = compact ? "2px" : "4px";
+  const minHeight = iconSize + (compact ? 8 : 14);
   // Compact party chips default to 4 visible; full unit frames show all.
   const maxVisible =
     typeof props.maxVisible === "number"

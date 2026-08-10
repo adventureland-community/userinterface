@@ -443,8 +443,15 @@ export function injectChromeCss(): void {
   }
 }
 
-/* Party roster: Buffs mode control — hover / layout-edit / touch */
+/* Party roster: Buffs control overlays top-right — no flow space when hidden */
+.ecu-roster {
+  position: relative;
+}
 .ecu-roster-buffs {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
