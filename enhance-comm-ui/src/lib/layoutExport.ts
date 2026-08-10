@@ -37,6 +37,18 @@ function sanitizeProfileMap(
     if (!chunk || typeof chunk !== "object") continue;
     const map: PanelLayoutMap = {};
     const panelSrc = chunk as Record<string, unknown>;
+    // Accept legacy infoDialog in imports; mergeLayout also migrates.
+    if (isPanelPos(panelSrc.infoDialog)) {
+      map.buffInfo = panelSrc.infoDialog as PanelPos;
+      if (!isPanelPos(panelSrc.itemInfo)) {
+        const legacy = panelSrc.infoDialog as PanelPos;
+        map.itemInfo = {
+          x: Math.min(100, legacy.x + 16),
+          y: legacy.y,
+          anchor: legacy.anchor,
+        };
+      }
+    }
     for (let j = 0; j < PANEL_IDS.length; j++) {
       const id = PANEL_IDS[j];
       if (isPanelPos(panelSrc[id])) map[id] = panelSrc[id] as PanelPos;

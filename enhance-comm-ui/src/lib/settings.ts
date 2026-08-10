@@ -1,5 +1,6 @@
 import {
   mergeLayout,
+  PANEL_IDS,
   type PanelId,
   type PanelLayoutMap,
   type PanelPos,
@@ -15,6 +16,7 @@ import {
 } from "./viewport";
 
 const KEY = "al-comm-ui-settings-v1";
+const PANEL_IDS_SET = new Set<string>(PANEL_IDS);
 
 export type { ViewportProfile };
 export type LayoutProfileMode = "auto" | ViewportProfile;
@@ -287,11 +289,20 @@ export function mergePanelOpacity(
 ): PanelOpacityMap {
   const out: PanelOpacityMap = {};
   if (!partial || typeof partial !== "object") return out;
-  const keys = Object.keys(partial) as PanelId[];
+  const raw = partial as Record<string, unknown>;
+  // Legacy shared infoDialog opacity → both new panels.
+  if (typeof raw.infoDialog === "number") {
+    if (typeof raw.buffInfo !== "number") out.buffInfo = clampOpacity(raw.infoDialog);
+    if (typeof raw.itemInfo !== "number") out.itemInfo = clampOpacity(raw.infoDialog);
+  }
+  const keys = Object.keys(partial) as string[];
   for (let i = 0; i < keys.length; i++) {
     const id = keys[i];
-    const v = partial[id];
-    if (typeof v === "number") out[id] = clampOpacity(v);
+    if (id === "infoDialog") continue;
+    const v = raw[id];
+    if (typeof v === "number" && PANEL_IDS_SET.has(id)) {
+      out[id as PanelId] = clampOpacity(v);
+    }
   }
   return out;
 }

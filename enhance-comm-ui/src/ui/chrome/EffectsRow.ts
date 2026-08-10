@@ -1,5 +1,5 @@
 import { getG } from "../../host/al";
-import { closeTopLeftDialog, isTopLeftDialogOpen } from "../../host/dialogHost";
+import { closeBuffDialog, isBuffDialogOpen } from "../../host/dialogHost";
 import {
   addTint,
   conditionClick,
@@ -11,7 +11,7 @@ import { getReact, e } from "../../host/react";
 import type { EntityLike, StatusLike } from "../../host/globals";
 import { formatTime } from "../../lib/format";
 
-/** Mirror stock `slot_click` toggle for condition info on /comm. */
+/** Mirror stock toggle for condition info on /comm. */
 let lastConditionClick = "";
 
 /** Match observe-hud default; item_container outer box is size + 2*3 padding. */
@@ -239,9 +239,9 @@ function EffectIcon(props: {
         // Info only — do not open CommUI paperdoll via xtarget selection sync.
         if (
           lastConditionClick === effect.id &&
-          isTopLeftDialogOpen()
+          isBuffDialogOpen()
         ) {
-          closeTopLeftDialog();
+          closeBuffDialog();
           lastConditionClick = "";
           return;
         }

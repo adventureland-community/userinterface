@@ -12,7 +12,7 @@ const BOUND = "__ecuCommKeyboardBound";
 
 /**
  * One Esc / shortcut policy for /comm UI:
- *   Esc → close info dialog → close server dropdown → clear paperdoll → leave observe
+ *   Esc → close buff/item info → close server dropdown → clear paperdoll → leave observe
  *   Ctrl+Shift+L → toggle layout edit (when registered)
  *
  * Handlers may be updated after install (React mounts later than chrome).

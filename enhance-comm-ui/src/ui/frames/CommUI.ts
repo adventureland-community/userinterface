@@ -21,7 +21,7 @@ import { ServerInfo } from "./ServerInfo";
 import { BossInfo } from "./BossInfo";
 import { Enemies } from "./Enemies";
 import { EntityInfo } from "./EntityInfo";
-import { InfoDialogPanel } from "./InfoDialogPanel";
+import { StockInfoPanel } from "./InfoDialogPanel";
 import { PlayerFrame, UNIT_FRAME_STYLE } from "./PlayerRow";
 import { TargetFrame } from "./TargetFrame";
 import { BossBarPanel } from "./BossBarPanel";
@@ -65,7 +65,8 @@ const OPACITY_PANEL_IDS: PanelId[] = [
   "command",
   "bag",
   "paperdoll",
-  "infoDialog",
+  "buffInfo",
+  "itemInfo",
   "playerFrame",
   "targetFrame",
 ];
@@ -136,7 +137,8 @@ export function CommUI(props: CommUIProps): any {
     null as string | null,
   );
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
-  const [infoDialogOpen, setInfoDialogOpen] = React.useState(false);
+  const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
+  const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
 
   React.useEffect(() => {
     updateKillContext(snap.entities);
@@ -336,16 +338,33 @@ export function CommUI(props: CommUIProps): any {
       : null,
 
     panel(
-      "infoDialog",
-      e(InfoDialogPanel, {
+      "buffInfo",
+      e(StockInfoPanel, {
+        kind: "buff",
         layoutEdit,
-        onOpenChange: setInfoDialogOpen,
+        onOpenChange: setBuffInfoOpen,
       }),
       {
         style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
           zIndex: layoutEdit ? 45 : 35,
           pointerEvents:
-            layoutEdit || infoDialogOpen ? "auto" : "none",
+            layoutEdit || buffInfoOpen ? "auto" : "none",
+        }),
+      },
+    ),
+
+    panel(
+      "itemInfo",
+      e(StockInfoPanel, {
+        kind: "item",
+        layoutEdit,
+        onOpenChange: setItemInfoOpen,
+      }),
+      {
+        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
+          zIndex: layoutEdit ? 45 : 35,
+          pointerEvents:
+            layoutEdit || itemInfoOpen ? "auto" : "none",
         }),
       },
     ),

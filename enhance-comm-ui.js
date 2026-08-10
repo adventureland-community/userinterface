@@ -976,6 +976,20 @@ var EnhanceCommUI = (() => {
       }
     }
   }
+  function migrateLegacyInfoDialog(partial) {
+    if (!partial || typeof partial !== "object") return partial;
+    const raw = partial;
+    if (!raw.infoDialog) return partial;
+    const legacy = raw.infoDialog;
+    const out = { ...partial };
+    delete out.infoDialog;
+    if (!out.buffInfo) out.buffInfo = { ...legacy };
+    if (!out.itemInfo) {
+      const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+      out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
+    }
+    return out;
+  }
   function clamp(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
   }
@@ -998,11 +1012,12 @@ var EnhanceCommUI = (() => {
     };
   }
   function mergeLayout(partial, profile = "desktop") {
+    const migrated = migrateLegacyInfoDialog(partial);
     const defaults = defaultLayoutFor(profile);
     const out = {};
     for (let i = 0; i < PANEL_IDS.length; i++) {
       const id = PANEL_IDS[i];
-      out[id] = normalizePos(partial && partial[id], defaults[id]);
+      out[id] = normalizePos(migrated && migrated[id], defaults[id]);
     }
     return out;
   }
@@ -1128,6 +1143,7 @@ var EnhanceCommUI = (() => {
 
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
+  var PANEL_IDS_SET = new Set(PANEL_IDS);
   function resolvePartyFocus(focus, watchedPartyKey3) {
     if (focus === "all") {
       return { scope: "all", partyFilter: null, historyKey: null };
@@ -1255,11 +1271,19 @@ var EnhanceCommUI = (() => {
   function mergePanelOpacity(partial) {
     const out = {};
     if (!partial || typeof partial !== "object") return out;
+    const raw = partial;
+    if (typeof raw.infoDialog === "number") {
+      if (typeof raw.buffInfo !== "number") out.buffInfo = clampOpacity(raw.infoDialog);
+      if (typeof raw.itemInfo !== "number") out.itemInfo = clampOpacity(raw.infoDialog);
+    }
     const keys = Object.keys(partial);
     for (let i = 0; i < keys.length; i++) {
       const id = keys[i];
-      const v = partial[id];
-      if (typeof v === "number") out[id] = clampOpacity(v);
+      if (id === "infoDialog") continue;
+      const v = raw[id];
+      if (typeof v === "number" && PANEL_IDS_SET.has(id)) {
+        out[id] = clampOpacity(v);
+      }
     }
     return out;
   }
@@ -3122,6 +3146,19 @@ var EnhanceCommUI = (() => {
     installDialogDismiss();
     observeCloseButton(buff, "buff");
     observeCloseButton(item, "item");
+    if (!window.__ecuDialogPatchRetry) {
+      window.__ecuDialogPatchRetry = true;
+      let tries = 0;
+      const timer = window.setInterval(() => {
+        tries += 1;
+        installRenderPatches();
+        installJqueryClearHook();
+        const done = window.__ecuDialogRendersPatched || {};
+        if (done.condition && done.item && done.slot && done.skill || tries >= 40) {
+          window.clearInterval(timer);
+        }
+      }, 250);
+    }
   }
 
   // src/host/keyboardPolicy.ts
@@ -4333,8 +4370,8 @@ var EnhanceCommUI = (() => {
     const onClick = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      if (lastConditionClick === effect.id && isTopLeftDialogOpen()) {
-        closeTopLeftDialog();
+      if (lastConditionClick === effect.id && isBuffDialogOpen()) {
+        closeBuffDialog();
         lastConditionClick = "";
         return;
       }
@@ -6302,13 +6339,6 @@ var EnhanceCommUI = (() => {
         }
       })
     );
-  }
-  function InfoDialogPanel(props) {
-    return StockInfoPanel({
-      kind: "buff",
-      layoutEdit: props.layoutEdit,
-      onOpenChange: props.onOpenChange
-    });
   }
 
   // src/ui/chrome/FrameDummy.ts
@@ -8473,6 +8503,17 @@ var EnhanceCommUI = (() => {
       if (!chunk || typeof chunk !== "object") continue;
       const map = {};
       const panelSrc = chunk;
+      if (isPanelPos(panelSrc.infoDialog)) {
+        map.buffInfo = panelSrc.infoDialog;
+        if (!isPanelPos(panelSrc.itemInfo)) {
+          const legacy = panelSrc.infoDialog;
+          map.itemInfo = {
+            x: Math.min(100, legacy.x + 16),
+            y: legacy.y,
+            anchor: legacy.anchor
+          };
+        }
+      }
       for (let j = 0; j < PANEL_IDS.length; j++) {
         const id = PANEL_IDS[j];
         if (isPanelPos(panelSrc[id])) map[id] = panelSrc[id];
@@ -8916,7 +8957,8 @@ var EnhanceCommUI = (() => {
     "command",
     "bag",
     "paperdoll",
-    "infoDialog",
+    "buffInfo",
+    "itemInfo",
     "playerFrame",
     "targetFrame"
   ];
@@ -8967,7 +9009,8 @@ var EnhanceCommUI = (() => {
       null
     );
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
-    const [infoDialogOpen, setInfoDialogOpen] = React.useState(false);
+    const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
+    const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
     React.useEffect(() => {
       updateKillContext(snap.entities);
       updateCombatContext(snap.entities);
@@ -9142,15 +9185,30 @@ var EnhanceCommUI = (() => {
         { style: PAPERDOLL_PANEL_STYLE }
       ) : null,
       panel(
-        "infoDialog",
-        e(InfoDialogPanel, {
+        "buffInfo",
+        e(StockInfoPanel, {
+          kind: "buff",
           layoutEdit,
-          onOpenChange: setInfoDialogOpen
+          onOpenChange: setBuffInfoOpen
         }),
         {
           style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
             zIndex: layoutEdit ? 45 : 35,
-            pointerEvents: layoutEdit || infoDialogOpen ? "auto" : "none"
+            pointerEvents: layoutEdit || buffInfoOpen ? "auto" : "none"
+          })
+        }
+      ),
+      panel(
+        "itemInfo",
+        e(StockInfoPanel, {
+          kind: "item",
+          layoutEdit,
+          onOpenChange: setItemInfoOpen
+        }),
+        {
+          style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
+            zIndex: layoutEdit ? 45 : 35,
+            pointerEvents: layoutEdit || itemInfoOpen ? "auto" : "none"
           })
         }
       ),

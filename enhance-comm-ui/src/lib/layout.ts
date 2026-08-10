@@ -18,7 +18,8 @@ export type PanelId =
   | "enemies"
   | "topCenter"
   | "paperdoll"
-  | "infoDialog"
+  | "buffInfo"
+  | "itemInfo"
   | "kills"
   | "combat"
   | "playerFrame"
@@ -38,7 +39,8 @@ export const PANEL_IDS: PanelId[] = [
   "enemies",
   "topCenter",
   "paperdoll",
-  "infoDialog",
+  "buffInfo",
+  "itemInfo",
   "kills",
   "combat",
   "playerFrame",
@@ -59,7 +61,8 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   enemies: "Enemies",
   topCenter: "Server / Map",
   paperdoll: "Paperdoll",
-  infoDialog: "Buff / item info",
+  buffInfo: "Buff info",
+  itemInfo: "Item info",
   kills: "Kills",
   combat: "Combat",
   playerFrame: "Player frame",
@@ -77,7 +80,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
 
 /**
  * Desktop default from playtested export (floats rounded to clean %).
- * infoDialog kept TL under party chips (not in export).
+ * buffInfo / itemInfo: TL under party chips (not in export), offset apart.
  * Saved layouts need Layout → Reset positions (desktop profile) to pick these up.
  */
 export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
@@ -85,8 +88,8 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   enemies: { x: 99.6, y: 0.4, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
   paperdoll: { x: 0.5, y: 30, anchor: "tl" },
-  // Stock AL `#topleftcornerdialog` — just under party chips.
-  infoDialog: { x: 0.8, y: 10, anchor: "tl" },
+  buffInfo: { x: 0.8, y: 10, anchor: "tl" },
+  itemInfo: { x: 16.8, y: 10, anchor: "tl" },
   kills: { x: 27, y: 99.2, anchor: "br" },
   combat: { x: 95, y: 99.2, anchor: "br" },
   playerFrame: { x: 40.5, y: 86, anchor: "bc" },
@@ -111,7 +114,8 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   enemies: { x: 99.5, y: 0.5, anchor: "tr" },
   topCenter: { x: 50, y: 0.5, anchor: "tc" },
   paperdoll: { x: 1, y: 28, anchor: "tl" },
-  infoDialog: { x: 1, y: 12, anchor: "tl" },
+  buffInfo: { x: 1, y: 12, anchor: "tl" },
+  itemInfo: { x: 17, y: 12, anchor: "tl" },
   combat: { x: 99.2, y: 52, anchor: "tr" },
   kills: { x: 99.2, y: 72, anchor: "tr" },
   playerFrame: { x: 32, y: 78, anchor: "bc" },
@@ -136,7 +140,8 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   enemies: { x: 99.5, y: 0.5, anchor: "tr" },
   topCenter: { x: 50, y: 0.4, anchor: "tc" },
   paperdoll: { x: 50, y: 36, anchor: "center" },
-  infoDialog: { x: 2, y: 14, anchor: "tl" },
+  buffInfo: { x: 2, y: 14, anchor: "tl" },
+  itemInfo: { x: 2, y: 36, anchor: "tl" },
   combat: { x: 50, y: 72, anchor: "bc" },
   kills: { x: 98, y: 58, anchor: "br" },
   playerFrame: { x: 28, y: 62, anchor: "bc" },
@@ -174,6 +179,28 @@ export function defaultLayoutFor(
 
 export type PanelLayoutMap = Partial<Record<PanelId, PanelPos>>;
 
+/**
+ * Migrate legacy shared `infoDialog` into `buffInfo` + `itemInfo`
+ * (item offset so the two frames do not stack).
+ */
+export function migrateLegacyInfoDialog(
+  partial?: PanelLayoutMap | null,
+): PanelLayoutMap | null | undefined {
+  if (!partial || typeof partial !== "object") return partial;
+  const raw = partial as Record<string, PanelPos | undefined>;
+  if (!raw.infoDialog) return partial;
+  const legacy = raw.infoDialog;
+  const out: PanelLayoutMap = { ...partial };
+  delete (out as Record<string, unknown>).infoDialog;
+  if (!out.buffInfo) out.buffInfo = { ...legacy };
+  if (!out.itemInfo) {
+    const x =
+      typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+    out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
+  }
+  return out;
+}
+
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -201,11 +228,12 @@ export function mergeLayout(
   partial?: PanelLayoutMap | null,
   profile: ViewportProfile = "desktop",
 ): Record<PanelId, PanelPos> {
+  const migrated = migrateLegacyInfoDialog(partial);
   const defaults = defaultLayoutFor(profile);
   const out = {} as Record<PanelId, PanelPos>;
   for (let i = 0; i < PANEL_IDS.length; i++) {
     const id = PANEL_IDS[i];
-    out[id] = normalizePos(partial && partial[id], defaults[id]);
+    out[id] = normalizePos(migrated && migrated[id], defaults[id]);
   }
   return out;
 }

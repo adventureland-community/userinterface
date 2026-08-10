@@ -1,26 +1,39 @@
 import {
-  adoptTopLeftDialog,
-  isTopLeftDialogOpen,
+  adoptInfoDialog,
+  isBuffDialogOpen,
+  isItemDialogOpen,
+  type InfoDialogKind,
 } from "../../host/dialogHost";
 import { getReact, e } from "../../host/react";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 
-export type InfoDialogPanelProps = {
+export type StockInfoPanelProps = {
+  kind: InfoDialogKind;
   /** When true, show a footprint dummy if the stock dialog is empty. */
   layoutEdit?: boolean;
   /** Notify parent so PositionedPanel can release pointer-events when idle. */
   onOpenChange?: (open: boolean) => void;
 };
 
+function isOpen(kind: InfoDialogKind): boolean {
+  return kind === "buff" ? isBuffDialogOpen() : isItemDialogOpen();
+}
+
+const LABELS: Record<InfoDialogKind, { label: string; hint: string }> = {
+  buff: { label: "Buff info", hint: "Click a buff / condition" },
+  item: { label: "Item info", hint: "Click a gear slot" },
+};
+
 /**
- * Host for stock `#topleftcornerdialog` (condition / item info).
- * Always keeps the dialog node mounted so `condition_click` works; shows a
+ * Host for one stock info dialog (`buff` or `item`).
+ * Always keeps the dialog node mounted so stock clicks can write; shows a
  * layout dummy when empty in edit mode.
  */
-export function InfoDialogPanel(props: InfoDialogPanelProps): any {
+export function StockInfoPanel(props: StockInfoPanelProps): any {
   const React = getReact();
+  const kind = props.kind;
   const slotRef = React.useRef(null as HTMLElement | null);
-  const [open, setOpen] = React.useState(isTopLeftDialogOpen());
+  const [open, setOpen] = React.useState(isOpen(kind));
   const onOpenChange = props.onOpenChange;
 
   React.useEffect(() => {
@@ -30,12 +43,12 @@ export function InfoDialogPanel(props: InfoDialogPanelProps): any {
   React.useEffect(() => {
     const slot = slotRef.current;
     if (!slot) return;
-    const dialog = adoptTopLeftDialog(slot);
-    setOpen(isTopLeftDialogOpen());
+    const dialog = adoptInfoDialog(kind, slot);
+    setOpen(isOpen(kind));
 
     if (typeof MutationObserver !== "function") return;
     const obs = new MutationObserver(() => {
-      setOpen(isTopLeftDialogOpen());
+      setOpen(isOpen(kind));
     });
     obs.observe(dialog, {
       childList: true,
@@ -43,20 +56,20 @@ export function InfoDialogPanel(props: InfoDialogPanelProps): any {
       characterData: true,
     });
     return () => obs.disconnect();
-  }, []);
+  }, [kind]);
 
+  const meta = LABELS[kind];
   const showDummy = !!props.layoutEdit && !open;
   const visible = open || !!props.layoutEdit;
 
   return e(
     "div",
     {
-      className: "comm-info-dialog-panel",
+      className: `comm-info-dialog-panel comm-${kind}-info-panel`,
       style: {
         width: "fit-content",
         maxWidth: "min(96vw, 520px)",
         boxSizing: "border-box",
-        // Collapse completely when idle in play mode.
         minWidth: showDummy ? "200px" : undefined,
         minHeight: showDummy ? "120px" : undefined,
         pointerEvents: visible ? "auto" : "none",
@@ -64,9 +77,9 @@ export function InfoDialogPanel(props: InfoDialogPanelProps): any {
     },
     showDummy
       ? e(PanelShellDummy, {
-          label: "Buff / item info",
-          hint: "Click a buff or gear slot",
-          accent: "#5a7a5a",
+          label: meta.label,
+          hint: meta.hint,
+          accent: kind === "buff" ? "#5a7a5a" : "#5a6a8a",
           rows: 4,
           style: {
             minWidth: "200px",
@@ -77,8 +90,8 @@ export function InfoDialogPanel(props: InfoDialogPanelProps): any {
       : null,
     e("div", {
       ref: slotRef,
-      className: "comm-info-dialog-slot",
-      // Always mounted so stock `condition_click` / `slot_click` can write.
+      className: `comm-info-dialog-slot comm-${kind}-info-slot`,
+      // Always mounted so stock writers can target the adopted host.
       style: {
         display: "block",
         height: open || props.layoutEdit ? undefined : 0,
@@ -87,4 +100,16 @@ export function InfoDialogPanel(props: InfoDialogPanelProps): any {
       },
     }),
   );
+}
+
+/** @deprecated use StockInfoPanel with kind="buff" | "item" */
+export function InfoDialogPanel(props: {
+  layoutEdit?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}): any {
+  return StockInfoPanel({
+    kind: "buff",
+    layoutEdit: props.layoutEdit,
+    onOpenChange: props.onOpenChange,
+  });
 }
