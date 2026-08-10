@@ -1,5 +1,6 @@
 import { e } from "../../../host/react";
 import { PANEL_LABELS, type PanelId } from "../../../lib/layout";
+import { TYPE } from "../../../lib/typeScale";
 
 export type OpacityEditorProps = {
   panelIds: PanelId[];
@@ -25,7 +26,7 @@ export function OpacityEditor(props: OpacityEditorProps): any {
         background: "rgba(16,16,16,0.96)",
         border: "1px solid #555",
         color: "#ddd",
-        fontSize: "13px",
+        fontSize: TYPE.secondary,
       },
     },
     e(
@@ -49,8 +50,9 @@ export function OpacityEditor(props: OpacityEditorProps): any {
             border: "1px solid #555",
             background: "#222",
             color: "#ddd",
-            fontSize: "12px",
-            padding: "1px 6px",
+            fontSize: TYPE.secondaryMin,
+            padding: "4px 8px",
+            minHeight: "26px",
           },
         },
         "×",
