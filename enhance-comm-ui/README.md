@@ -24,6 +24,7 @@ Tampermonkey userscript that enhances Adventure.land `/comm` with party roster, 
 - Party chips: compact buffs/debuffs (+N overflow), aggro badge, soft dim for dead/OOR
 - **Party buff modes** (`partyBuffMode`, default `auto`): cycle via **Buffs:** on the Party panel — `auto` (all ≤8 chips, else observed-only) · `all` · `observed` · `compact` (max 2+N) · `shared` (one unique strip per party) · `off`
 - Readable type floor via shared `typeScale` (counts/badges ~14–15px; chrome ~13–15px; no bold / no text-shadow)
+- Server dropdown: live event badges per realm (special monsters) via [ALData](https://github.com/earthiverse/ALData) `GET https://aldata.earthiverse.ca/monsters/:types` (~45s poll, cached by region|identifier); stock `X.servers` has no events — connected realm also merges `window.S` live keys. Fails soft if ALData is unreachable.
 - Deselect observe: click active character chip again, or Esc (paperdoll clears first)
 - Combat: sticky highlight for watched row; Compact mode (DPS+HPS); Full/Compact + columns persisted; **My party** focus button
 - Boss bar: HP%, click-to-target, sort on-me / lowest HP, aggro chip

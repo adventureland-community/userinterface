@@ -350,7 +350,7 @@ export function injectChromeCss(): void {
   right: 0;
   bottom: calc(100% + 6px);
   min-width: 100%;
-  width: max(100%, 240px);
+  width: max(100%, 280px);
   z-index: 270;
   max-height: min(42vh, 320px);
   overflow: auto;
@@ -366,7 +366,7 @@ export function injectChromeCss(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
   padding: 12px 14px;
   margin: 0;
@@ -387,10 +387,48 @@ export function injectChromeCss(): void {
   box-shadow: inset 3px 0 0 #85c76b;
 }
 .ecu-server-dd-option-name {
+  flex: 0 1 auto;
+  min-width: 0;
   font-weight: 400 !important;
   text-shadow: none !important;
+  white-space: nowrap;
+}
+.ecu-server-dd-option-events {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.ecu-server-dd-event {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(133, 199, 107, 0.45);
+  background: rgba(133, 199, 107, 0.12);
+  color: #b6e3a4;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+  white-space: nowrap;
+  max-width: 7.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-server-dd-event.is-live {
+  border-color: #85c76b;
+  color: #b6e3a4;
+}
+.ecu-server-dd-event-more {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.65);
+  font-variant-numeric: tabular-nums;
 }
 .ecu-server-dd-option-players {
+  flex: 0 0 auto;
   color: #85c76b;
   font-variant-numeric: tabular-nums;
   font-size: 16px;

@@ -2379,7 +2379,7 @@ var EnhanceCommUI = (() => {
   right: 0;
   bottom: calc(100% + 6px);
   min-width: 100%;
-  width: max(100%, 240px);
+  width: max(100%, 280px);
   z-index: 270;
   max-height: min(42vh, 320px);
   overflow: auto;
@@ -2395,7 +2395,7 @@ var EnhanceCommUI = (() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
   padding: 12px 14px;
   margin: 0;
@@ -2416,10 +2416,48 @@ var EnhanceCommUI = (() => {
   box-shadow: inset 3px 0 0 #85c76b;
 }
 .ecu-server-dd-option-name {
+  flex: 0 1 auto;
+  min-width: 0;
   font-weight: 400 !important;
   text-shadow: none !important;
+  white-space: nowrap;
+}
+.ecu-server-dd-option-events {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+.ecu-server-dd-event {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid rgba(133, 199, 107, 0.45);
+  background: rgba(133, 199, 107, 0.12);
+  color: #b6e3a4;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 400 !important;
+  text-shadow: none !important;
+  white-space: nowrap;
+  max-width: 7.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-server-dd-event.is-live {
+  border-color: #85c76b;
+  color: #b6e3a4;
+}
+.ecu-server-dd-event-more {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.65);
+  font-variant-numeric: tabular-nums;
 }
 .ecu-server-dd-option-players {
+  flex: 0 0 auto;
   color: #85c76b;
   font-variant-numeric: tabular-nums;
   font-size: 16px;
@@ -2976,6 +3014,199 @@ var EnhanceCommUI = (() => {
     }
   }
 
+  // src/host/commChrome/serverEvents.ts
+  var ALDATA_BASE = "https://aldata.earthiverse.ca";
+  var EVENT_MONSTER_TYPES = [
+    "franky",
+    "snowman",
+    "icegolem",
+    "grinch",
+    "gooblob",
+    "pinkgoo",
+    "wabbit",
+    "dragold",
+    "tiger",
+    "mrpumpkin",
+    "mrgreen"
+  ];
+  var POLL_MS = 45e3;
+  var LIVE_MAX_AGE_MS = 5 * 60 * 1e3;
+  var MAX_BADGES = 3;
+  var cache = {
+    fetchedAt: 0,
+    byServer: {},
+    failed: false
+  };
+  var pollTimer2 = null;
+  var inFlight = null;
+  var onUpdate = null;
+  var lastNotifyKey = "";
+  function serverKey(region, name) {
+    return String(region || "") + "|" + String(name || "");
+  }
+  function isLiveRow(row, now) {
+    if (row.hp != null && Number.isFinite(Number(row.hp))) {
+      if (!row.lastSeen) return true;
+    }
+    if (!row.lastSeen) return false;
+    const t = Date.parse(row.lastSeen);
+    if (!Number.isFinite(t)) return false;
+    return now - t <= LIVE_MAX_AGE_MS;
+  }
+  function uniqueTypes(types) {
+    const seen = {};
+    const out = [];
+    for (let i = 0; i < types.length; i++) {
+      const t = types[i];
+      if (!t || seen[t]) continue;
+      seen[t] = true;
+      out.push(t);
+    }
+    return out;
+  }
+  function liveTypesFromLocalS() {
+    const S = window.S;
+    if (!S || typeof S !== "object") return [];
+    const keys = Object.keys(S);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key === "schedule") continue;
+      const entry = S[key];
+      if (entry && entry.live) out.push(key);
+    }
+    return out;
+  }
+  function buildByServer(rows) {
+    const now = Date.now();
+    const acc = {};
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || !row.type || !row.serverRegion || !row.serverIdentifier) continue;
+      if (!isLiveRow(row, now)) continue;
+      const key = serverKey(row.serverRegion, row.serverIdentifier);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(row.type);
+    }
+    const keys = Object.keys(acc);
+    for (let i = 0; i < keys.length; i++) {
+      acc[keys[i]] = uniqueTypes(acc[keys[i]]);
+    }
+    return acc;
+  }
+  async function fetchAlDataEvents() {
+    if (inFlight) return inFlight;
+    inFlight = (async () => {
+      try {
+        const url = ALDATA_BASE + "/monsters/" + encodeURIComponent(EVENT_MONSTER_TYPES.join(","));
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("ALData HTTP " + res.status);
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error("ALData bad payload");
+        cache = {
+          fetchedAt: Date.now(),
+          byServer: buildByServer(data),
+          failed: false
+        };
+      } catch (_err) {
+        cache = {
+          fetchedAt: Date.now(),
+          byServer: cache.byServer,
+          failed: true
+        };
+      } finally {
+        inFlight = null;
+        notifyIfChanged();
+      }
+    })();
+    return inFlight;
+  }
+  function notifyIfChanged() {
+    const key = eventsCacheFingerprint();
+    if (key === lastNotifyKey) return;
+    lastNotifyKey = key;
+    if (onUpdate) onUpdate();
+  }
+  function eventsCacheFingerprint() {
+    const parts = [];
+    const keys = Object.keys(cache.byServer).sort();
+    for (let i = 0; i < keys.length; i++) {
+      parts.push(keys[i] + "=" + cache.byServer[keys[i]].join(","));
+    }
+    const region = window.server_region || "";
+    const ident = window.server_identifier || "";
+    if (region && ident) {
+      parts.push("local:" + serverKey(region, ident) + "=" + liveTypesFromLocalS().join(","));
+    }
+    return parts.join("|");
+  }
+  function getServerEventBadges(region, name) {
+    const key = serverKey(region, name);
+    let types = cache.byServer[key] ? cache.byServer[key].slice() : [];
+    if (region && name && window.server_region === region && window.server_identifier === name) {
+      types = uniqueTypes(types.concat(liveTypesFromLocalS()));
+    }
+    const badges = [];
+    for (let i = 0; i < types.length; i++) {
+      badges.push({ type: types[i], live: true });
+    }
+    return badges;
+  }
+  function eventsBadgesHtml(badges) {
+    if (!badges.length) return "";
+    const shown = badges.slice(0, MAX_BADGES);
+    const extra = badges.length - shown.length;
+    let html = "<span class='ecu-server-dd-option-events'>";
+    for (let i = 0; i < shown.length; i++) {
+      const b = shown[i];
+      html += "<span class='ecu-server-dd-event" + (b.live ? " is-live" : "") + "' title='" + esc(b.type + (b.live ? " live" : "")) + "'>" + esc(b.type) + "</span>";
+    }
+    if (extra > 0) {
+      html += "<span class='ecu-server-dd-event ecu-server-dd-event-more' title='" + esc(
+        badges.slice(MAX_BADGES).map((b) => b.type).join(", ")
+      ) + "'>+" + extra + "</span>";
+    }
+    html += "</span>";
+    return html;
+  }
+  function syncServerEventBadges() {
+    const servers = window.X && window.X.servers || [];
+    const opts = document.querySelectorAll(".ecu-server-dd-option");
+    for (let i = 0; i < opts.length && i < servers.length; i++) {
+      const server = servers[i];
+      const badges = getServerEventBadges(server.region, server.name);
+      const html = eventsBadgesHtml(badges);
+      const existing = opts[i].querySelector(".ecu-server-dd-option-events");
+      if (!html) {
+        if (existing) existing.remove();
+        continue;
+      }
+      const wrap = document.createElement("div");
+      wrap.innerHTML = html;
+      const next = wrap.firstElementChild;
+      if (!next) continue;
+      if (existing) existing.replaceWith(next);
+      else {
+        const nameEl = opts[i].querySelector(".ecu-server-dd-option-name");
+        if (nameEl && nameEl.parentElement === opts[i]) {
+          const players2 = opts[i].querySelector(".ecu-server-dd-option-players");
+          if (players2) opts[i].insertBefore(next, players2);
+          else opts[i].append(next);
+        } else {
+          opts[i].append(next);
+        }
+      }
+    }
+  }
+  function ensureServerEventsPolling(cb) {
+    if (cb) onUpdate = cb;
+    if (pollTimer2 != null) return;
+    void fetchAlDataEvents();
+    pollTimer2 = setInterval(() => {
+      void fetchAlDataEvents();
+    }, POLL_MS);
+  }
+
   // src/host/commChrome/serverDropdown.ts
   var DOC_BOUND = "__ecuCommServerDdDocBound";
   var slCache = "-1";
@@ -3052,6 +3283,10 @@ var EnhanceCommUI = (() => {
   }
   function renderServersHud() {
     ensureChromeShell();
+    ensureServerEventsPolling(() => {
+      slCache = "-1";
+      renderServersHud();
+    });
     const servers = window.X && window.X.servers || [];
     let key = "";
     let listKey = "";
@@ -3069,6 +3304,7 @@ var EnhanceCommUI = (() => {
     } else {
       key += "cur:" + currentIndex;
     }
+    key += "|ev:" + eventsCacheFingerprint();
     if (key === slCache) return;
     let triggerName = "Select server\u2026";
     let triggerPlayers = "";
@@ -3103,6 +3339,7 @@ var EnhanceCommUI = (() => {
           );
         }
       }
+      syncServerEventBadges();
       syncServerPingHud();
       return;
     }
@@ -3116,8 +3353,10 @@ var EnhanceCommUI = (() => {
       for (let i = 0; i < servers.length; i++) {
         const server = servers[i];
         const playersTitle = String(server.players) + " player" + (server.players === 1 ? "" : "s") + " online";
+        const eventBadges = getServerEventBadges(server.region, server.name);
         menuHtml += "<button type='button' class='ecu-server-dd-option" + (i === currentIndex ? " is-active" : "") + "' data-server-index='" + i + "'>";
         menuHtml += "<span class='ecu-server-dd-option-name'>" + esc(server.region + " " + server.name) + "</span>";
+        menuHtml += eventsBadgesHtml(eventBadges);
         menuHtml += "<span class='ecu-server-dd-option-players' title='" + esc(playersTitle) + "'>" + esc(String(server.players)) + "</span>";
         menuHtml += "</button>";
       }
@@ -3774,6 +4013,7 @@ var EnhanceCommUI = (() => {
     let lastObs = "";
     let lastServer = "";
     let lastPingAt = 0;
+    let lastEventsFp = "";
     const unsubTick = subscribeTick((snap) => {
       const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
       const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
@@ -3788,6 +4028,11 @@ var EnhanceCommUI = (() => {
       if (snap.now - lastPingAt >= 1e3) {
         lastPingAt = snap.now;
         syncServerPingHud();
+        const evFp = eventsCacheFingerprint();
+        if (evFp !== lastEventsFp) {
+          lastEventsFp = evFp;
+          renderServersHud();
+        }
       }
     });
     window.addEventListener("unload", () => {
@@ -4487,7 +4732,7 @@ var EnhanceCommUI = (() => {
     gridStep: LAYOUT_GRID_STEP,
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
-  var cache = null;
+  var cache2 = null;
   var listeners5 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
@@ -4530,8 +4775,8 @@ var EnhanceCommUI = (() => {
     }
   }
   function getLayoutEditPrefs() {
-    if (!cache) cache = read();
-    return cache;
+    if (!cache2) cache2 = read();
+    return cache2;
   }
   function getLayoutFreePlacement() {
     return getLayoutEditPrefs().freePlacement;
@@ -4541,7 +4786,7 @@ var EnhanceCommUI = (() => {
       ...getLayoutEditPrefs(),
       freePlacement: !!free
     };
-    cache = next;
+    cache2 = next;
     write(next);
     notify();
     return next;
@@ -4554,7 +4799,7 @@ var EnhanceCommUI = (() => {
       ...getLayoutEditPrefs(),
       gridStep: normalizeGridStep(step)
     };
-    cache = next;
+    cache2 = next;
     write(next);
     notify();
     return next;
@@ -4567,7 +4812,7 @@ var EnhanceCommUI = (() => {
       ...getLayoutEditPrefs(),
       chromePos: normalizeChromePos(pos)
     };
-    cache = next;
+    cache2 = next;
     write(next);
     notify();
     return next;

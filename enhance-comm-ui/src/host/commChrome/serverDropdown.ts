@@ -1,5 +1,12 @@
 import { ensureChromeShell } from "./chromeActions";
 import { pingBlockHtml, readPingSamples, syncServerPingHud } from "./pingHud";
+import {
+  ensureServerEventsPolling,
+  eventsBadgesHtml,
+  eventsCacheFingerprint,
+  getServerEventBadges,
+  syncServerEventBadges,
+} from "./serverEvents";
 import { esc } from "./types";
 
 const DOC_BOUND = "__ecuCommServerDdDocBound";
@@ -103,6 +110,11 @@ function wireServerDdHandlers(root: Element): void {
 
 export function renderServersHud(): void {
   ensureChromeShell();
+  ensureServerEventsPolling(() => {
+    // ALData/local S changed — force a pass so badges refresh.
+    slCache = "-1";
+    renderServersHud();
+  });
   const servers = (window.X && window.X.servers) || [];
   let key = "";
   let listKey = "";
@@ -123,6 +135,7 @@ export function renderServersHud(): void {
   } else {
     key += "cur:" + currentIndex;
   }
+  key += "|ev:" + eventsCacheFingerprint();
   if (key === slCache) return;
 
   let triggerName = "Select server…";
@@ -172,6 +185,7 @@ export function renderServersHud(): void {
         );
       }
     }
+    syncServerEventBadges();
     syncServerPingHud();
     return;
   }
@@ -191,6 +205,7 @@ export function renderServersHud(): void {
         " player" +
         (server.players === 1 ? "" : "s") +
         " online";
+      const eventBadges = getServerEventBadges(server.region, server.name);
       menuHtml +=
         "<button type='button' class='ecu-server-dd-option" +
         (i === currentIndex ? " is-active" : "") +
@@ -201,6 +216,7 @@ export function renderServersHud(): void {
         "<span class='ecu-server-dd-option-name'>" +
         esc(server.region + " " + server.name) +
         "</span>";
+      menuHtml += eventsBadgesHtml(eventBadges);
       menuHtml +=
         "<span class='ecu-server-dd-option-players' title='" +
         esc(playersTitle) +

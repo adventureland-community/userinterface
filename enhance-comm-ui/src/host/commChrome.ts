@@ -30,6 +30,7 @@ import {
   selectServer,
   toggleServerDd,
 } from "./commChrome/serverDropdown";
+import { eventsCacheFingerprint } from "./commChrome/serverEvents";
 import { installCommKeyboardPolicy } from "./keyboardPolicy";
 import { subscribeTick } from "../tick";
 
@@ -105,6 +106,7 @@ export function installCommChrome(): void {
   let lastObs = "";
   let lastServer = "";
   let lastPingAt = 0;
+  let lastEventsFp = "";
   const unsubTick = subscribeTick((snap) => {
     const name =
       (snap.observing && snap.observing.name) ||
@@ -124,6 +126,11 @@ export function installCommChrome(): void {
     if (snap.now - lastPingAt >= 1000) {
       lastPingAt = snap.now;
       syncServerPingHud();
+      const evFp = eventsCacheFingerprint();
+      if (evFp !== lastEventsFp) {
+        lastEventsFp = evFp;
+        renderServersHud();
+      }
     }
   });
 
