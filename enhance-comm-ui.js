@@ -3126,18 +3126,6 @@ var EnhanceCommUI = (() => {
   function isOurPatch(fn) {
     return !!(fn && fn[FN_MARK]);
   }
-  function sameInspectId(a, b) {
-    if (!a || !b || a.id == null || b.id == null) return false;
-    return String(a.id) === String(b.id);
-  }
-  function shouldMirrorStockClear() {
-    const w = window;
-    const dt = w.dialogs_target;
-    if (!dt) return true;
-    const inspect = w.xtarget || w.ctarget;
-    if (sameInspectId(dt, inspect)) return false;
-    return true;
-  }
   function rescueStockContent() {
     const stock = document.getElementById(STOCK_DIALOG_ID);
     if (!hasContent(stock)) return;
@@ -3203,28 +3191,7 @@ var EnhanceCommUI = (() => {
       const origSlot = w.slot_click[FN_ORIG] || w.slot_click;
       w.slot_click = markPatched(function(name) {
         const target = w.xtarget || w.ctarget;
-        const itemHost = document.getElementById(ITEM_DIALOG_ID);
-        if (w.last_sclick && w.last_sclick === name && itemHost && String(itemHost.innerHTML || "").trim()) {
-          itemHost.innerHTML = "";
-          return;
-        }
-        if (target && target.slots && target.slots[name]) {
-          w.last_sclick = name;
-          w.dialogs_target = target;
-          lastInfoWriteKind = "item";
-          const slot = target.slots[name];
-          const G = w.G;
-          if (typeof w.render_item === "function" && G && G.items && slot.name) {
-            w.render_item(ITEM_SEL, {
-              id: "item" + name,
-              item: G.items[slot.name],
-              name: slot.name,
-              actual: slot,
-              slot: name,
-              from_player: target.id
-            });
-          }
-        }
+        if (target) openItemSlotInfo(target, name);
       }, origSlot);
       done.slot = true;
     }
@@ -3248,17 +3215,48 @@ var EnhanceCommUI = (() => {
         if (hitStock) {
           const value = arguments[0];
           if (value === "") {
-            if (shouldMirrorStockClear()) closeAllInfoDialogs();
-          } else {
-            const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
-            if (host) {
-              return orig.apply($(host), arguments);
-            }
+            return orig.apply(this, arguments);
+          }
+          const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+          if (host) {
+            return orig.apply($(host), arguments);
           }
         }
       }
       return orig.apply(this, arguments);
     };
+  }
+  function openItemSlotInfo(entity, slotName) {
+    if (!entity || !slotName) return;
+    ensureDialogElements();
+    installRenderPatches();
+    installJqueryClearHook();
+    installStockRescueObserver();
+    installDialogDismiss();
+    const slot = entity.slots && entity.slots[slotName];
+    if (!slot || !slot.name) return;
+    const w = window;
+    const itemHost = document.getElementById(ITEM_DIALOG_ID);
+    if (w.last_sclick && w.last_sclick === slotName && itemHost && String(itemHost.innerHTML || "").trim()) {
+      closeItemDialog();
+      w.last_sclick = "";
+      return;
+    }
+    w.last_sclick = slotName;
+    w.dialogs_target = entity;
+    w.xtarget = entity;
+    lastInfoWriteKind = "item";
+    const G = w.G;
+    if (typeof w.render_item === "function" && G && G.items && G.items[slot.name]) {
+      w.render_item(ITEM_SEL, {
+        id: "item" + slotName,
+        item: G.items[slot.name],
+        name: slot.name,
+        actual: slot,
+        slot: slotName,
+        from_player: entity.id
+      });
+    }
   }
   function adoptInfoDialog(kind, slot) {
     const { buff, item } = ensureDialogElements();
@@ -4423,11 +4421,6 @@ var EnhanceCommUI = (() => {
       window.condition_click(name);
     }
   }
-  function slotClick(name) {
-    if (typeof window.slot_click === "function") {
-      window.slot_click(name);
-    }
-  }
   function slotSkin(slot) {
     var _a, _b;
     if (!slot || !slot.name) return void 0;
@@ -5509,7 +5502,7 @@ var EnhanceCommUI = (() => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       setXTarget(entity);
-      slotClick(slotName);
+      openItemSlotInfo(entity, slotName);
     } : void 0;
     return e(
       "div",

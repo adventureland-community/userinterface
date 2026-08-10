@@ -317,25 +317,6 @@ function isOurPatch(fn: any): boolean {
   return !!(fn && fn[FN_MARK]);
 }
 
-function sameInspectId(a: any, b: any): boolean {
-  if (!a || !b || a.id == null || b.id == null) return false;
-  return String(a.id) === String(b.id);
-}
-
-/**
- * `reset_topleft` clears `#topleftcornerdialog` when `dialogs_target != ctarget`
- * by object identity. On /comm, entity objects churn while ids stay stable, so
- * that clear is often spurious — ignore those when mirroring to ecu hosts.
- */
-function shouldMirrorStockClear(): boolean {
-  const w = window as any;
-  const dt = w.dialogs_target;
-  if (!dt) return true;
-  const inspect = w.xtarget || w.ctarget;
-  if (sameInspectId(dt, inspect)) return false;
-  return true;
-}
-
 function rescueStockContent(): void {
   const stock = document.getElementById(STOCK_DIALOG_ID);
   if (!hasContent(stock)) return;
@@ -409,47 +390,22 @@ function installRenderPatches(): void {
     done.item = true;
   }
 
-  // slot_click toggles by checking `#topleftcornerdialog` — point at item host.
+  // Stock slot_click checks `#topleftcornerdialog` — route through openItemSlotInfo.
   if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
     const origSlot = w.slot_click[FN_ORIG] || w.slot_click;
     w.slot_click = markPatched(function (name: string) {
       const target = w.xtarget || w.ctarget;
-      const itemHost = document.getElementById(ITEM_DIALOG_ID);
-      if (
-        w.last_sclick &&
-        w.last_sclick === name &&
-        itemHost &&
-        String(itemHost.innerHTML || "").trim()
-      ) {
-        itemHost.innerHTML = "";
-        return;
-      }
-      if (target && target.slots && target.slots[name]) {
-        w.last_sclick = name;
-        w.dialogs_target = target;
-        lastInfoWriteKind = "item";
-        const slot = target.slots[name];
-        const G = w.G;
-        if (typeof w.render_item === "function" && G && G.items && slot.name) {
-          w.render_item(ITEM_SEL, {
-            id: "item" + name,
-            item: G.items[slot.name],
-            name: slot.name,
-            actual: slot,
-            slot: name,
-            from_player: target.id,
-          });
-        }
-      }
+      if (target) openItemSlotInfo(target, name);
     }, origSlot);
     done.slot = true;
   }
 }
 
 /**
- * When stock clears `#topleftcornerdialog`, mirror to real hosts — unless the
- * clear is entity-identity churn while the inspect id is unchanged.
- * Non-empty writes to the hidden stub are redirected to the last info host.
+ * Stock `#topleftcornerdialog` is a hidden stub on /comm. Empty clears must NOT
+ * wipe `#ecu-*-dialog` hosts — `reset_topleft` clears the stub constantly via
+ * entity object-identity churn, which is what kept itemInfo empty after 69ea436.
+ * Non-empty stub writes are still redirected to the last info host.
  */
 function installJqueryClearHook(): void {
   const $ = (window as any).$;
@@ -469,18 +425,65 @@ function installJqueryClearHook(): void {
       }
       if (hitStock) {
         const value = arguments[0];
+        // Ignore stub clears — ecu hosts close via × / Esc / click-outside / toggle.
         if (value === "") {
-          if (shouldMirrorStockClear()) closeAllInfoDialogs();
-        } else {
-          const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
-          if (host) {
-            return orig.apply($(host), arguments as any);
-          }
+          return orig.apply(this, arguments as any);
+        }
+        const host = dialogEl(lastInfoWriteKind) || dialogEl("item");
+        if (host) {
+          return orig.apply($(host), arguments as any);
         }
       }
     }
     return orig.apply(this, arguments as any);
   };
+}
+
+/**
+ * Show gear/item details in `#ecu-item-dialog` (itemInfo panel).
+ * Owns toggle + write so paperdoll clicks do not depend on stock slot_click
+ * checking the hidden `#topleftcornerdialog` stub.
+ */
+export function openItemSlotInfo(entity: any, slotName: string): void {
+  if (!entity || !slotName) return;
+  ensureDialogElements();
+  installRenderPatches();
+  installJqueryClearHook();
+  installStockRescueObserver();
+  installDialogDismiss();
+
+  const slot = entity.slots && entity.slots[slotName];
+  if (!slot || !slot.name) return;
+
+  const w = window as any;
+  const itemHost = document.getElementById(ITEM_DIALOG_ID);
+  if (
+    w.last_sclick &&
+    w.last_sclick === slotName &&
+    itemHost &&
+    String(itemHost.innerHTML || "").trim()
+  ) {
+    closeItemDialog();
+    w.last_sclick = "";
+    return;
+  }
+
+  w.last_sclick = slotName;
+  w.dialogs_target = entity;
+  w.xtarget = entity;
+  lastInfoWriteKind = "item";
+
+  const G = w.G;
+  if (typeof w.render_item === "function" && G && G.items && G.items[slot.name]) {
+    w.render_item(ITEM_SEL, {
+      id: "item" + slotName,
+      item: G.items[slot.name],
+      name: slot.name,
+      actual: slot,
+      slot: slotName,
+      from_player: entity.id,
+    });
+  }
 }
 
 /**
