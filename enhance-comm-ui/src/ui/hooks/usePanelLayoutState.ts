@@ -51,9 +51,6 @@ export type PanelLayoutState = {
   setOpacity: (id: PanelId, value: number) => void;
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
-  /** Per-panel z boost while layout edit is active (bring-to-front). */
-  layoutEditZ: Partial<Record<PanelId, number>>;
-  bringPanelToFront: (id: PanelId) => void;
 };
 
 export function usePanelLayoutState(): PanelLayoutState {
@@ -68,10 +65,6 @@ export function usePanelLayoutState(): PanelLayoutState {
   );
   const [opacityEdit, setOpacityEdit] = React.useState(false);
   const [layoutEdit, setLayoutEdit] = React.useState(false);
-  const [layoutEditZ, setLayoutEditZ] = React.useState(
-    {} as Partial<Record<PanelId, number>>,
-  );
-  const layoutEditZCounter = React.useRef(0);
   const [detectedProfile, setDetectedProfile] = React.useState(() =>
     detectViewportProfile(),
   );
@@ -94,21 +87,6 @@ export function usePanelLayoutState(): PanelLayoutState {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  React.useEffect(() => {
-    if (layoutEdit) return;
-    setLayoutEditZ({});
-    layoutEditZCounter.current = 0;
-  }, [layoutEdit]);
-
-  const bringPanelToFront = (id: PanelId) => {
-    layoutEditZCounter.current += 1;
-    const boost = layoutEditZCounter.current;
-    setLayoutEditZ((prev: Partial<Record<PanelId, number>>) => ({
-      ...prev,
-      [id]: boost,
-    }));
-  };
 
   // Reload layout when the active profile changes.
   React.useEffect(() => {
@@ -202,7 +180,5 @@ export function usePanelLayoutState(): PanelLayoutState {
     setOpacity,
     visible,
     opacityFor,
-    layoutEditZ,
-    bringPanelToFront,
   };
 }

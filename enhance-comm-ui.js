@@ -2737,6 +2737,20 @@ var EnhanceCommUI = (() => {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
+/* Layout edit: click through panel content to reach overlapping drag chrome. */
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body *,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body * {
+  pointer-events: none;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header *,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-close,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button {
+  pointer-events: auto;
+}
 #comm-ui[data-viewport="phone"] .comm-pos-combat,
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {
@@ -5382,11 +5396,9 @@ var EnhanceCommUI = (() => {
       return { xs, ys };
     };
     const onPointerDown = (ev) => {
-      var _a;
       if (!editing) return;
       ev.preventDefault();
       ev.stopPropagation();
-      (_a = props.onEditFocus) == null ? void 0 : _a.call(props);
       dragging.current = true;
       start.current = {
         clientX: ev.clientX,
@@ -5460,17 +5472,16 @@ var EnhanceCommUI = (() => {
       editing ? {
         outline: hidden ? "1px dashed rgba(140,140,140,0.7)" : "1px dashed rgba(255,220,100,0.85)",
         outlineOffset: "0px",
-        background: hidden ? "rgba(20,20,20,0.55)" : "transparent"
+        background: hidden ? "rgba(20,20,20,0.55)" : "transparent",
+        // Shell click-through in edit mode; header/close/anchor re-enable below.
+        pointerEvents: "none"
       } : null
     );
-    if (editing && typeof props.editZIndex === "number" && props.editZIndex > 0) {
-      const baseZ = Number(shellStyle.zIndex);
-      shellStyle.zIndex = (Number.isFinite(baseZ) ? baseZ : 40) + props.editZIndex;
-    }
     const closeBtn = showClose ? e(
       "button",
       {
         type: "button",
+        className: "comm-pos-panel-close",
         title: `Hide ${PANEL_LABELS[id]}`,
         "aria-label": `Hide ${PANEL_LABELS[id]}`,
         onClick: (ev) => {
@@ -5568,6 +5579,7 @@ var EnhanceCommUI = (() => {
     const editHeader = editing ? e(
       "div",
       {
+        className: "comm-pos-edit-header",
         style: {
           display: "flex",
           alignItems: "center",
@@ -5583,7 +5595,8 @@ var EnhanceCommUI = (() => {
           color: hidden ? "#bbb" : "#ffe08a",
           whiteSpace: "nowrap",
           touchAction: "none",
-          minHeight: touchish ? "40px" : void 0
+          minHeight: touchish ? "40px" : void 0,
+          pointerEvents: "auto"
         },
         onPointerDown,
         onPointerMove,
@@ -5639,7 +5652,7 @@ var EnhanceCommUI = (() => {
       "div",
       {
         ref: shellRef,
-        className: `comm-pos-panel comm-pos-${id}`,
+        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}`,
         "data-panel": id,
         style: shellStyle,
         onMouseEnter: onClose ? () => setHover(true) : void 0,
@@ -5650,14 +5663,14 @@ var EnhanceCommUI = (() => {
       hidden && editing ? e(
         "div",
         {
+          className: "comm-pos-hidden-body",
           style: hiddenBodyStyle
         },
         `${PANEL_LABELS[id]} \u2014 closed`
       ) : editing && !hidden ? e(
         "div",
         {
-          className: "comm-pos-panel-body",
-          style: { pointerEvents: "none" }
+          className: "comm-pos-panel-body"
         },
         children
       ) : children
@@ -11442,10 +11455,6 @@ var EnhanceCommUI = (() => {
     );
     const [opacityEdit, setOpacityEdit] = React.useState(false);
     const [layoutEdit, setLayoutEdit] = React.useState(false);
-    const [layoutEditZ, setLayoutEditZ] = React.useState(
-      {}
-    );
-    const layoutEditZCounter = React.useRef(0);
     const [detectedProfile, setDetectedProfile] = React.useState(
       () => detectViewportProfile()
     );
@@ -11466,19 +11475,6 @@ var EnhanceCommUI = (() => {
       window.addEventListener("resize", onResize);
       return () => window.removeEventListener("resize", onResize);
     }, []);
-    React.useEffect(() => {
-      if (layoutEdit) return;
-      setLayoutEditZ({});
-      layoutEditZCounter.current = 0;
-    }, [layoutEdit]);
-    const bringPanelToFront = (id) => {
-      layoutEditZCounter.current += 1;
-      const boost = layoutEditZCounter.current;
-      setLayoutEditZ((prev) => ({
-        ...prev,
-        [id]: boost
-      }));
-    };
     React.useEffect(() => {
       const settings = getSettings();
       const next = layoutForProfile(settings, viewportProfile);
@@ -11559,9 +11555,7 @@ var EnhanceCommUI = (() => {
       setVisible,
       setOpacity,
       visible,
-      opacityFor,
-      layoutEditZ,
-      bringPanelToFront
+      opacityFor
     };
   }
 
@@ -12379,9 +12373,7 @@ var EnhanceCommUI = (() => {
       setVisible,
       setOpacity,
       visible,
-      opacityFor,
-      layoutEditZ,
-      bringPanelToFront
+      opacityFor
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const {
@@ -12470,9 +12462,7 @@ var EnhanceCommUI = (() => {
           peerLayout: layout,
           viewportProfile,
           onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
-          onShow: isClosablePanel ? () => setVisible(id, true) : void 0,
-          editZIndex: layoutEdit ? layoutEditZ[id] : void 0,
-          onEditFocus: layoutEdit ? () => bringPanelToFront(id) : void 0
+          onShow: isClosablePanel ? () => setVisible(id, true) : void 0
         },
         child
       );

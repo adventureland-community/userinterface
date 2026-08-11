@@ -64,10 +64,6 @@ export type PositionedPanelProps = {
   peerLayout?: Partial<Record<PanelId, PanelPos>>;
   /** Active viewport profile — enlarges handles on tablet/phone. */
   viewportProfile?: ViewportProfile;
-  /** Layout-edit z-order boost (bring-to-front on interact). */
-  editZIndex?: number;
-  /** Layout-edit: raise this panel above overlapping peers. */
-  onEditFocus?: () => void;
 };
 
 /**
@@ -150,7 +146,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     if (!editing) return;
     ev.preventDefault();
     ev.stopPropagation();
-    props.onEditFocus?.();
     dragging.current = true;
     start.current = {
       clientX: ev.clientX,
@@ -240,19 +235,18 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           background: hidden
             ? "rgba(20,20,20,0.55)"
             : "transparent",
+          // Shell click-through in edit mode; header/close/anchor re-enable below.
+          pointerEvents: "none",
         }
       : null,
   );
-  if (editing && typeof props.editZIndex === "number" && props.editZIndex > 0) {
-    const baseZ = Number(shellStyle.zIndex);
-    shellStyle.zIndex = (Number.isFinite(baseZ) ? baseZ : 40) + props.editZIndex;
-  }
 
   const closeBtn = showClose
     ? e(
         "button",
         {
           type: "button",
+          className: "comm-pos-panel-close",
           title: `Hide ${PANEL_LABELS[id]}`,
           "aria-label": `Hide ${PANEL_LABELS[id]}`,
           onClick: (ev: any) => {
@@ -358,6 +352,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     ? e(
         "div",
         {
+          className: "comm-pos-edit-header",
           style: {
             display: "flex",
             alignItems: "center",
@@ -376,6 +371,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             whiteSpace: "nowrap",
             touchAction: "none",
             minHeight: touchish ? "40px" : undefined,
+            pointerEvents: "auto",
           },
           onPointerDown,
           onPointerMove,
@@ -436,7 +432,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     "div",
     {
       ref: shellRef,
-      className: `comm-pos-panel comm-pos-${id}`,
+      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}`,
       "data-panel": id,
       style: shellStyle,
       onMouseEnter: onClose ? () => setHover(true) : undefined,
@@ -448,6 +444,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       ? e(
           "div",
           {
+            className: "comm-pos-hidden-body",
             style: hiddenBodyStyle,
           },
           `${PANEL_LABELS[id]} — closed`,
@@ -457,7 +454,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             "div",
             {
               className: "comm-pos-panel-body",
-              style: { pointerEvents: "none" },
             },
             children,
           )

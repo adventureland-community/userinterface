@@ -580,6 +580,20 @@ export function injectChromeCss(): void {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
+/* Layout edit: click through panel content to reach overlapping drag chrome. */
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body *,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body * {
+  pointer-events: none;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header *,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-close,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button {
+  pointer-events: auto;
+}
 #comm-ui[data-viewport="phone"] .comm-pos-combat,
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {
