@@ -69,6 +69,12 @@ export type PositionedPanelProps = {
    * clickable. Default is click-through so overlapping panels can be grabbed.
    */
   interactiveBody?: boolean;
+  /**
+   * Layout-edit drag chrome. `full` = labeled header + anchors (default).
+   * `grip` = compact ⠿ only — for panels whose body is the real control
+   * (Layout / Opacity toggles) so the header does not steal the click.
+   */
+  editChrome?: "full" | "grip";
 };
 
 /**
@@ -225,6 +231,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       ? Math.max(0.25, Math.min(1, props.opacity))
       : 1;
   const interactiveBody = !!props.interactiveBody;
+  const editChrome = props.editChrome === "grip" ? "grip" : "full";
   const shellStyle = Object.assign(
     {},
     panelStyle(pos, editing),
@@ -355,74 +362,104 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       )
     : null;
 
-  const editHeader = editing
-    ? e(
-        "div",
-        {
-          className: "comm-pos-edit-header",
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            padding: headerPad,
-            paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
-            marginBottom: 0,
-            background: hidden
-              ? "rgba(30,30,30,0.92)"
-              : "rgba(40,40,20,0.92)",
-            border: hidden ? "1px solid #666" : "1px solid #886",
-            cursor: "grab",
-            userSelect: "none",
-            fontSize: headerFont,
-            color: hidden ? "#bbb" : "#ffe08a",
-            whiteSpace: "nowrap",
-            touchAction: "none",
-            minHeight: touchish ? "40px" : undefined,
-            pointerEvents: "auto",
-          },
-          onPointerDown,
-          onPointerMove,
-          onPointerUp,
-          onPointerCancel: onPointerUp,
-        },
-        e(
-          "span",
+  const editHeader = !editing
+    ? null
+    : editChrome === "grip"
+      ? e(
+          "div",
           {
+            className: "comm-pos-edit-grip",
+            title: "Drag to move",
+            "aria-label": "Drag to move",
             style: {
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: touchish ? "6px 8px" : "2px 4px",
+              marginBottom: "2px",
+              background: "rgba(40,40,20,0.92)",
+              border: "1px solid #886",
+              cursor: "grab",
+              userSelect: "none",
+              color: "#ffe08a",
+              fontSize: headerFont,
+              lineHeight: 1,
+              touchAction: "none",
+              pointerEvents: "auto",
             },
+            onPointerDown,
+            onPointerMove,
+            onPointerUp,
+            onPointerCancel: onPointerUp,
           },
-          `⠿ ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
-        ),
-        hidden && onShow
-          ? e(
-              "button",
-              {
-                type: "button",
-                onClick: (ev: any) => {
-                  ev.preventDefault();
-                  ev.stopPropagation();
-                  onShow();
-                },
-                onPointerDown: (ev: any) => ev.stopPropagation(),
-                style: {
-                  cursor: "pointer",
-                  fontSize: touchish ? "14px" : "12px",
-                  padding: touchish ? "6px 12px" : "2px 8px",
-                  minHeight: touchish ? "36px" : undefined,
-                  border: "1px solid #7a7",
-                  background: "#1a2a1a",
-                  color: "#9e9",
-                },
+          e("span", { "aria-hidden": true }, "⠿"),
+        )
+      : e(
+          "div",
+          {
+            className: "comm-pos-edit-header",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: headerPad,
+              paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
+              marginBottom: 0,
+              background: hidden
+                ? "rgba(30,30,30,0.92)"
+                : "rgba(40,40,20,0.92)",
+              border: hidden ? "1px solid #666" : "1px solid #886",
+              cursor: "grab",
+              userSelect: "none",
+              fontSize: headerFont,
+              color: hidden ? "#bbb" : "#ffe08a",
+              whiteSpace: "nowrap",
+              touchAction: "none",
+              minHeight: touchish ? "40px" : undefined,
+              pointerEvents: "auto",
+            },
+            onPointerDown,
+            onPointerMove,
+            onPointerUp,
+            onPointerCancel: onPointerUp,
+          },
+          e(
+            "span",
+            {
+              style: {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                minWidth: 0,
               },
-              "Show",
-            )
-          : null,
-        anchorPad,
-      )
-    : null;
+            },
+            `⠿ ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
+          ),
+          hidden && onShow
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  onClick: (ev: any) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    onShow();
+                  },
+                  onPointerDown: (ev: any) => ev.stopPropagation(),
+                  style: {
+                    cursor: "pointer",
+                    fontSize: touchish ? "14px" : "12px",
+                    padding: touchish ? "6px 12px" : "2px 8px",
+                    minHeight: touchish ? "36px" : undefined,
+                    border: "1px solid #7a7",
+                    background: "#1a2a1a",
+                    color: "#9e9",
+                  },
+                },
+                "Show",
+              )
+            : null,
+          anchorPad,
+        );
 
   const hiddenBodyStyle: Record<string, any> = Object.assign(
     {

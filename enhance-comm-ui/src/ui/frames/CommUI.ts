@@ -86,6 +86,8 @@ type PanelOpts = {
   hiddenBodyStyle?: Record<string, any>;
   /** Keep body clickable in layout edit (Layout / Opacity toggles). */
   interactiveBody?: boolean;
+  /** Compact ⠿ grip instead of full labeled edit header. */
+  editChrome?: "full" | "grip";
 };
 
 function meterOrDummy(
@@ -241,6 +243,7 @@ export function CommUI(props: CommUIProps): any {
         peerLayout: layout,
         viewportProfile,
         interactiveBody: opts?.interactiveBody,
+        editChrome: opts?.editChrome,
         onClose: isClosablePanel ? () => setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => setVisible(id, true) : undefined,
       },
@@ -574,8 +577,21 @@ export function CommUI(props: CommUIProps): any {
               color: layoutEdit ? "#ffe08a" : "#eee",
               textShadow: "none",
               fontWeight: "normal",
+              pointerEvents: "auto",
+              position: "relative",
+              zIndex: 1,
             },
-            onClick: () => setLayoutEdit((v: boolean) => !v),
+            onPointerDown: (ev: any) => {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+            },
+            onClick: (ev: any) => {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+              setLayoutEdit((v: boolean) => !v);
+            },
           },
           layoutEdit ? "Layout: ON" : "Layout",
         ),
@@ -594,18 +610,31 @@ export function CommUI(props: CommUIProps): any {
               color: opacityEdit ? "#9cf" : "#eee",
               textShadow: "none",
               fontWeight: "normal",
+              pointerEvents: "auto",
+              position: "relative",
+              zIndex: 1,
             },
-            onClick: () => setOpacityEdit((v: boolean) => !v),
+            onPointerDown: (ev: any) => {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+            },
+            onClick: (ev: any) => {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+              setOpacityEdit((v: boolean) => !v);
+            },
           },
           opacityEdit ? "Opacity: ON" : "Opacity",
         ),
       ),
       {
-        // Above layout-edit panels (40) / info (45) / toolbar (50).
-        // interactiveBody: edit shell stays hittable so Layout ON/OFF works
-        // while the ⠿ header still drags the block.
+        // Compact ⠿ grip (not a "Layout" header) + hittable body + above
+        // every other layout-edit chrome so ON/OFF and drag both work.
         interactiveBody: true,
-        style: { zIndex: 60 },
+        editChrome: "grip",
+        style: { zIndex: 100 },
       },
     ),
   );

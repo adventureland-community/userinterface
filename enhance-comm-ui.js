@@ -5598,6 +5598,7 @@ var EnhanceCommUI = (() => {
     const showClose = !!onClose && !hidden && (editing || hover || touchish);
     const opacity = typeof props.opacity === "number" && Number.isFinite(props.opacity) ? Math.max(0.25, Math.min(1, props.opacity)) : 1;
     const interactiveBody = !!props.interactiveBody;
+    const editChrome = props.editChrome === "grip" ? "grip" : "full";
     const shellStyle = Object.assign(
       {},
       panelStyle(pos, editing),
@@ -5713,7 +5714,35 @@ var EnhanceCommUI = (() => {
         return cells;
       }, [])
     ) : null;
-    const editHeader = editing ? e(
+    const editHeader = !editing ? null : editChrome === "grip" ? e(
+      "div",
+      {
+        className: "comm-pos-edit-grip",
+        title: "Drag to move",
+        "aria-label": "Drag to move",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: touchish ? "6px 8px" : "2px 4px",
+          marginBottom: "2px",
+          background: "rgba(40,40,20,0.92)",
+          border: "1px solid #886",
+          cursor: "grab",
+          userSelect: "none",
+          color: "#ffe08a",
+          fontSize: headerFont,
+          lineHeight: 1,
+          touchAction: "none",
+          pointerEvents: "auto"
+        },
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel: onPointerUp
+      },
+      e("span", { "aria-hidden": true }, "\u283F")
+    ) : e(
       "div",
       {
         className: "comm-pos-edit-header",
@@ -5774,7 +5803,7 @@ var EnhanceCommUI = (() => {
         "Show"
       ) : null,
       anchorPad
-    ) : null;
+    );
     const hiddenBodyStyle = Object.assign(
       {
         padding: "8px 10px",
@@ -13092,6 +13121,7 @@ var EnhanceCommUI = (() => {
           peerLayout: layout,
           viewportProfile,
           interactiveBody: opts == null ? void 0 : opts.interactiveBody,
+          editChrome: opts == null ? void 0 : opts.editChrome,
           onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
           onShow: isClosablePanel ? () => setVisible(id, true) : void 0
         },
@@ -13386,9 +13416,22 @@ var EnhanceCommUI = (() => {
                 background: layoutEdit ? "#3a3510" : "#1a1a1a",
                 color: layoutEdit ? "#ffe08a" : "#eee",
                 textShadow: "none",
-                fontWeight: "normal"
+                fontWeight: "normal",
+                pointerEvents: "auto",
+                position: "relative",
+                zIndex: 1
               },
-              onClick: () => setLayoutEdit((v) => !v)
+              onPointerDown: (ev) => {
+                if (ev && typeof ev.stopPropagation === "function") {
+                  ev.stopPropagation();
+                }
+              },
+              onClick: (ev) => {
+                if (ev && typeof ev.stopPropagation === "function") {
+                  ev.stopPropagation();
+                }
+                setLayoutEdit((v) => !v);
+              }
             },
             layoutEdit ? "Layout: ON" : "Layout"
           ),
@@ -13406,19 +13449,32 @@ var EnhanceCommUI = (() => {
                 background: opacityEdit ? "#1a2830" : "#1a1a1a",
                 color: opacityEdit ? "#9cf" : "#eee",
                 textShadow: "none",
-                fontWeight: "normal"
+                fontWeight: "normal",
+                pointerEvents: "auto",
+                position: "relative",
+                zIndex: 1
               },
-              onClick: () => setOpacityEdit((v) => !v)
+              onPointerDown: (ev) => {
+                if (ev && typeof ev.stopPropagation === "function") {
+                  ev.stopPropagation();
+                }
+              },
+              onClick: (ev) => {
+                if (ev && typeof ev.stopPropagation === "function") {
+                  ev.stopPropagation();
+                }
+                setOpacityEdit((v) => !v);
+              }
             },
             opacityEdit ? "Opacity: ON" : "Opacity"
           )
         ),
         {
-          // Above layout-edit panels (40) / info (45) / toolbar (50).
-          // interactiveBody: edit shell stays hittable so Layout ON/OFF works
-          // while the ⠿ header still drags the block.
+          // Compact ⠿ grip (not a "Layout" header) + hittable body + above
+          // every other layout-edit chrome so ON/OFF and drag both work.
           interactiveBody: true,
-          style: { zIndex: 60 }
+          editChrome: "grip",
+          style: { zIndex: 100 }
         }
       )
     );
