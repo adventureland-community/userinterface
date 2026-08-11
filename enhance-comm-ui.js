@@ -6125,6 +6125,15 @@ var EnhanceCommUI = (() => {
 
   // src/ui/chrome/EffectsRow.ts
   var ICON_SIZE = 36;
+  var SKILL_UI_SPAN_MS = 24e3;
+  function buffStartedAt(effect, endsAt, now, mode, prevStartedAt) {
+    if (effect.type === "skill") {
+      const spanMs = Math.max(SKILL_UI_SPAN_MS, endsAt - now);
+      return endsAt - spanMs;
+    }
+    if (mode === "restart") return now;
+    return prevStartedAt;
+  }
   function buildEntityEffects(entity) {
     var _a, _b, _c;
     const G = getG();
@@ -6222,10 +6231,12 @@ var EnhanceCommUI = (() => {
     const existing = getTint(selector);
     if (mode === "sync") {
       if (existing) {
+        existing.start = new Date(startedAt);
         existing.end = new Date(endsAt);
         existing.ms = remaining;
+        return;
       }
-      return;
+      mode = "rebind";
     }
     rebindTint(selector);
     loader.style.height = "1px";
@@ -6238,7 +6249,10 @@ var EnhanceCommUI = (() => {
       start: new Date(startedAt)
     });
     const tint = getTint(selector);
-    if (tint) tint.end = new Date(endsAt);
+    if (tint) {
+      tint.start = new Date(startedAt);
+      tint.end = new Date(endsAt);
+    }
   }
   function EffectIcon(props) {
     const React = getReact();
@@ -6310,11 +6324,26 @@ var EnhanceCommUI = (() => {
         return;
       }
       if (!prev || next > prev + 750) {
-        startedAtRef.current = now;
+        startedAtRef.current = buffStartedAt(
+          effect,
+          next,
+          now,
+          "restart",
+          startedAtRef.current
+        );
         pushTint("restart");
         return;
       }
       if (next < prev - 250) {
+        if (effect.type === "skill") {
+          startedAtRef.current = buffStartedAt(
+            effect,
+            next,
+            now,
+            "sync",
+            startedAtRef.current
+          );
+        }
         pushTint("sync");
         return;
       }

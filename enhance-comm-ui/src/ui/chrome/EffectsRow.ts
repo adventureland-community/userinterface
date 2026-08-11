@@ -22,6 +22,24 @@ import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 /** Match observe-hud default; item_container outer box is size + 2*3 padding. */
 const ICON_SIZE = 36;
 
+/** Stock skill UI (`render_conditions`) uses a fixed 24s skidloader/progress span. */
+const SKILL_UI_SPAN_MS = 24000;
+
+function buffStartedAt(
+  effect: BuiltEffect,
+  endsAt: number,
+  now: number,
+  mode: "restart" | "sync" | "rebind",
+  prevStartedAt: number,
+): number {
+  if (effect.type === "skill") {
+    const spanMs = Math.max(SKILL_UI_SPAN_MS, endsAt - now);
+    return endsAt - spanMs;
+  }
+  if (mode === "restart") return now;
+  return prevStartedAt;
+}
+
 export type BuiltEffect = {
   id: string;
   skin: string;
@@ -171,10 +189,12 @@ function applyEffectTint(
 
   if (mode === "sync") {
     if (existing) {
+      existing.start = new Date(startedAt);
       existing.end = new Date(endsAt);
       existing.ms = remaining;
+      return;
     }
-    return;
+    mode = "rebind";
   }
 
   rebindTint(selector);
@@ -189,9 +209,12 @@ function applyEffectTint(
     start: new Date(startedAt),
   });
 
-  // add_tint sets end = call-time + ms; pin to sticky endsAt for overlay parity.
+  // add_tint sets end = call-time + ms; pin epoch for overlay parity.
   const tint = getTint(selector);
-  if (tint) tint.end = new Date(endsAt);
+  if (tint) {
+    tint.start = new Date(startedAt);
+    tint.end = new Date(endsAt);
+  }
 }
 
 type EffectsRowProps = {
@@ -297,13 +320,28 @@ export function EffectIcon(props: {
     }
 
     if (!prev || next > prev + 750) {
-      // New buff or clear refresh — new tint epoch from current remaining.
-      startedAtRef.current = now;
+      // New buff or clear refresh — anchor bar span to stock skill window or local epoch.
+      startedAtRef.current = buffStartedAt(
+        effect,
+        next,
+        now,
+        "restart",
+        startedAtRef.current,
+      );
       pushTint("restart");
       return;
     }
     if (next < prev - 250) {
-      // Shortened — keep startedAt, move end only.
+      // Shortened — skill bars re-anchor to the 24s window; conditions keep start.
+      if (effect.type === "skill") {
+        startedAtRef.current = buffStartedAt(
+          effect,
+          next,
+          now,
+          "sync",
+          startedAtRef.current,
+        );
+      }
       pushTint("sync");
       return;
     }

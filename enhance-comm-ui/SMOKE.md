@@ -45,7 +45,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] **Item info switch slots** — with Item info already open, click a *different* filled gear/trade slot; details replace (do not stay stuck on the first item / empty).
 
 - [ ] **Party buff modes** — cycle **Buffs:** on Party panel through Auto / All / Obs / Compact / Shared / Off; persists across reload; Auto hides non-observed under-chip buffs when roster > 8 (Franky-sized).
-- [ ] **Buff remaining times** — party / unit / shared buff icons keep the yellow skidloader tint *and* a `45s`/`3m` overlay; tint must not restart every few seconds on observe ms rebroadcasts; orange→green bar must not hit "done" while the overlay still shows time (especially after a shorten or icon repaint).
+- [ ] **Buff remaining times** — party / unit / shared buff icons keep the yellow skidloader tint *and* a `45s`/`3m` overlay; tint must not restart every few seconds on observe ms rebroadcasts; orange→green bar must track the same remaining time as the overlay (skill buffs use the stock 24s window; bar must not hit "done" while overlay still shows time).
 - [ ] Threat ×counts / aggro badges readable (~14–15px); topCenter map/server not cramped.
 
 ## Nice-to-haves
