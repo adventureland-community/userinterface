@@ -42,10 +42,14 @@ export type EntityLike = {
   q?: Record<string, any>;
   /**
    * Courage overflow (targets beyond courage / mcourage / pcourage).
-   * Only on full player packets (observing / self) — not stranger entities.
+   * Full character packets only (observe welcome / self) — stranger soft-sync
+   * omits it. getObserving() re-resolves from courage + aggro for /comm.
    * Tiers: 1 scared, 2–3 terrified, 4+ petrified (stock client logs).
    */
   fear?: number;
+  courage?: number;
+  mcourage?: number;
+  pcourage?: number;
 };
 
 export type SlotLike = {

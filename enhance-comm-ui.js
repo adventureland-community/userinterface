@@ -34,6 +34,45 @@ var EnhanceCommUI = (() => {
     return React.createElement(type, props, ...children);
   }
 
+  // src/lib/fear.ts
+  function estimateFearFromAggro(courageSource, aggroCount) {
+    const c = courageSource.courage;
+    const mc = courageSource.mcourage;
+    const pc = courageSource.pcourage;
+    const vals = [];
+    if (typeof c === "number") vals.push(c);
+    if (typeof mc === "number") vals.push(mc);
+    if (typeof pc === "number") vals.push(pc);
+    if (!vals.length) return null;
+    let minC = vals[0];
+    for (let i = 1; i < vals.length; i++) {
+      if (vals[i] < minC) minC = vals[i];
+    }
+    return Math.max(0, aggroCount - minC);
+  }
+  function countMonsterAggroOn(entities, targetId) {
+    let n = 0;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.type !== "monster" || ent.target == null) continue;
+      if (String(ent.target) === targetId) n++;
+    }
+    return n;
+  }
+  function resolveObserverFear(live, snap, entities) {
+    const liveFear = live.fear;
+    if (typeof liveFear === "number") return liveFear;
+    const id = live.id != null ? String(live.id) : "";
+    const aggro = id ? countMonsterAggroOn(entities, id) : 0;
+    const courageSrc = snap && snap.id != null && String(snap.id) === id ? snap : live;
+    const estimated = estimateFearFromAggro(courageSrc, aggro);
+    if (estimated != null) return estimated;
+    if (snap && typeof snap.fear === "number") {
+      return snap.fear;
+    }
+    return void 0;
+  }
+
   // src/host/al.ts
   function getG() {
     return window.G;
@@ -84,7 +123,16 @@ var EnhanceCommUI = (() => {
     if (snap == null) return snap;
     if (snap.id != null) {
       const live = findEntityById(snap.id);
-      if (live) return live;
+      if (live) {
+        const fear = resolveObserverFear(live, snap, getEntitiesList());
+        if (typeof fear === "number") {
+          const liveFear = live.fear;
+          if (liveFear === fear) return live;
+          if (fear === 0 && typeof liveFear !== "number") return live;
+          return { ...live, fear };
+        }
+        return live;
+      }
     }
     return snap;
   }

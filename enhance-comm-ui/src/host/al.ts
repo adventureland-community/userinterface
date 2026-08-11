@@ -1,5 +1,6 @@
 import "./globals";
 import type { EntityLike, GLike, ServerInfoLike, SocketLike } from "./globals";
+import { resolveObserverFear } from "../lib/fear";
 
 export function getG(): GLike | undefined {
   return window.G;
@@ -63,16 +64,27 @@ export function findEntityById(
 }
 
 /**
- * Watched character for /comm. `window.observing` is set once on welcome and
- * is not refreshed by `player` packets (those only update `character`, which
- * is null while observing). Live hp/target/etc. live on `entities[id]`.
+ * Watched character for /comm. `window.observing` is set on welcome (full
+ * character, includes fear/courage) and is not refreshed by soft `player`
+ * packets. Live hp/target/etc. live on `entities[id]` from stranger soft-sync,
+ * which omits fear — merge/estimate so Petrified stays visible while watching.
  */
 export function getObserving(): EntityLike | null | undefined {
   const snap = window.observing;
   if (snap == null) return snap;
   if (snap.id != null) {
     const live = findEntityById(snap.id);
-    if (live) return live;
+    if (live) {
+      const fear = resolveObserverFear(live, snap, getEntitiesList());
+      if (typeof fear === "number") {
+        const liveFear = (live as { fear?: number }).fear;
+        if (liveFear === fear) return live;
+        // Omit needless copies when soft entity never had fear and estimate is 0.
+        if (fear === 0 && typeof liveFear !== "number") return live;
+        return { ...live, fear };
+      }
+      return live;
+    }
   }
   return snap;
 }

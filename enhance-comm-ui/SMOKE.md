@@ -29,7 +29,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Compact ↔ Full persists across reload; channel columns persist in Full.
 - [ ] **My party** one-click sets party focus to watched (when observing).
 - [ ] Boss bars sort “on me” first, then lowest HP%; HP% text visible; click targets; Aggro chip shows who has aggro.
-- [ ] **Mob debuffs on boss bar** — curse a boss (Priest Curse / curse aura); `condition_bad` icon appears under the boss HP bar with remaining time; same for poisoned / other duration debuffs without `ui: true`.
+- [ ] **Petrified / fear badge** — pull enough monster aggro on the watched character to overflow courage; player frame + observed party chip show Scared / Terrified / Petrified and stay up while aggro lasts (not a one-tick flash only on observe switch).
 
 ## Touch / layout edit
 
