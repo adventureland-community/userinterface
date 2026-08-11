@@ -30,6 +30,10 @@ const syncListeners: BagSyncListener[] = [];
  * Opening the bag must not bump this — stock AL only refreshes items on welcome.
  */
 let bagSyncedAt: number | null = null;
+/** Observed character name the bagSyncedAt stamp belongs to. */
+let bagSyncedForName: string | null = null;
+/** Observed character name last drawn into the open bag grid. */
+let bagRenderedForName: string | null = null;
 /** True while Refresh is reconnecting the observer for a fresh welcome. */
 let bagRefreshing = false;
 /** Observed name we expect after Refresh reconnect. */
@@ -37,7 +41,7 @@ let refreshPendingName: string | null = null;
 let refreshPollTimer: number | null = null;
 /** Socket.id we last bound the welcome listener to (tracks reconnects). */
 let bagSyncSocketId: string | null = null;
-let bagSyncWelcomePoll: number | null = null;
+let bagSyncSocketPoll: number | null = null;
 /**
  * Last refresh outcome for UI honesty:
  * - server: observe reconnect completed (fresh welcome items)
@@ -116,8 +120,19 @@ function notifyBagSync(): void {
   }
 }
 
-function setBagSyncedAt(ts: number | null): void {
+function observingSnapshotName(obs: any = window.observing): string | null {
+  if (!obs || obs.name == null) return null;
+  return String(obs.name);
+}
+
+function hasItemsSnapshot(obs: any = window.observing): boolean {
+  return !!(obs && Array.isArray(obs.items));
+}
+
+function setBagSyncedAt(ts: number | null, name?: string | null): void {
   bagSyncedAt = ts;
+  if (ts == null) bagSyncedForName = null;
+  else if (name !== undefined) bagSyncedForName = name;
   notifyBagSync();
 }
 
@@ -142,7 +157,9 @@ function onObserveWelcome(data: any): void {
   if (data && data.character) {
     const ts = Date.now();
     data.character[BAG_SYNC_STAMP_KEY] = ts;
-    setBagSyncedAt(ts);
+    const name =
+      data.character.name != null ? String(data.character.name) : null;
+    setBagSyncedAt(ts, name);
     return;
   }
   // Spectator reconnect / clearObserve — inventory snapshot is gone.
@@ -153,28 +170,49 @@ function onObserveWelcome(data: any): void {
 function backfillBagSyncedAt(): void {
   if (bagSyncedAt != null) return;
   const obs = window.observing;
-  if (!obs || !Array.isArray(obs.items)) return;
-  const stamped = obs[BAG_SYNC_STAMP_KEY];
-  if (typeof stamped === "number" && stamped > 0) {
-    setBagSyncedAt(stamped);
-  }
+  if (!hasItemsSnapshot(obs)) return;
+  stampBagSyncedFromObserving(obs);
 }
 
-function maybeBindBagSyncWelcome(): void {
+/**
+ * Bind welcome on new sockets; recover stamp after racey welcome; redraw open
+ * bag when the observed character changes.
+ */
+function syncBagStateForSocket(): void {
   const socket = window.socket;
   if (!socket || !socket.id || typeof socket.on !== "function") return;
-  if (socket.id !== bagSyncSocketId) {
+
+  const socketChanged = socket.id !== bagSyncSocketId;
+  if (socketChanged) {
     bagSyncSocketId = socket.id;
     socket.on("welcome", onObserveWelcome);
   }
-  backfillBagSyncedAt();
+
+  const obs = window.observing;
+  if (hasItemsSnapshot(obs)) {
+    // Race: welcome often arrives before we re-bind on the new socket.
+    if (socketChanged || bagSyncedAt == null) {
+      stampBagSyncedFromObserving(obs);
+    }
+    const name = observingSnapshotName(obs);
+    if (window.inventory && name != null && name !== bagRenderedForName) {
+      reRenderLocalSnapshot();
+    }
+  } else if (socketChanged && bagSyncedAt != null) {
+    setBagSyncedAt(null);
+  }
 }
 
 /** Re-bind welcome after init_socket reconnects (same pattern as sockets/hub). */
+export function installBagSyncSocketWatch(): void {
+  syncBagStateForSocket();
+  if (bagSyncSocketPoll != null) return;
+  bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
+}
+
+/** @deprecated Use installBagSyncSocketWatch. */
 export function installBagSyncWelcomeWatch(): void {
-  maybeBindBagSyncWelcome();
-  if (bagSyncWelcomePoll != null) return;
-  bagSyncWelcomePoll = window.setInterval(maybeBindBagSyncWelcome, 500);
+  installBagSyncSocketWatch();
 }
 
 /** Subscribe to bag open/close (inventory flag). Returns unsubscribe. */
@@ -205,6 +243,22 @@ export function getBagSyncedAt(): number | null {
   return bagSyncedAt;
 }
 
+/** Observed name the current bagSyncedAt stamp belongs to. */
+export function getBagSyncedName(): string | null {
+  return bagSyncedForName;
+}
+
+/**
+ * True when the open bag grid was drawn for a different character than
+ * `window.observing` (briefly true while switching observe targets).
+ */
+export function isBagGridStale(): boolean {
+  if (!window.inventory) return false;
+  const name = observingSnapshotName();
+  if (!name || bagRenderedForName == null) return false;
+  return name !== bagRenderedForName;
+}
+
 export function isBagRefreshing(): boolean {
   return bagRefreshing;
 }
@@ -215,19 +269,20 @@ export function getBagRefreshKind(): "server" | "local" | null {
 
 /** True when observe welcome has delivered an items array (snapshot present). */
 export function hasObservingInventorySnapshot(): boolean {
-  const obs = window.observing;
-  return !!(obs && Array.isArray(obs.items));
+  return hasItemsSnapshot();
 }
 
 function stampBagSyncedFromObserving(obs: any): void {
   if (!obs) return;
+  const name = observingSnapshotName(obs);
   const stamped = obs[BAG_SYNC_STAMP_KEY];
   if (typeof stamped === "number" && stamped > 0) {
-    setBagSyncedAt(stamped);
+    setBagSyncedAt(stamped, name);
     return;
   }
-  setBagSyncedAt(Date.now());
-  obs[BAG_SYNC_STAMP_KEY] = bagSyncedAt;
+  const ts = Date.now();
+  obs[BAG_SYNC_STAMP_KEY] = ts;
+  setBagSyncedAt(ts, name);
 }
 
 function findObserveSecret(name: string): string | null {
@@ -245,8 +300,10 @@ function closeInventoryHost(): void {
   const host = document.getElementById(HOST_ID);
   if (host) host.innerHTML = "";
   window.inventory = false;
+  bagRenderedForName = null;
   restoreCharacter();
   notifyInventory(false);
+  notifyBagSync();
 }
 
 /**
@@ -260,6 +317,7 @@ function reRenderLocalSnapshot(): void {
     if (window.inventory) {
       // reset=true → update_inventory() while character is borrowed.
       window.render_inventory(true);
+      bagRenderedForName = observingSnapshotName();
       // Do not bump bagSyncedAt — snapshot age is unchanged.
       notifyBagSync();
     } else {
@@ -503,7 +561,7 @@ function installInventoryClickBridge(): void {
  */
 export function installInventoryFix(): void {
   installInventoryClickBridge();
-  installBagSyncWelcomeWatch();
+  installBagSyncSocketWatch();
 
   if (window.__ecuInventoryPatched) return;
 
@@ -523,8 +581,10 @@ export function installInventoryFix(): void {
         const host = document.getElementById(HOST_ID);
         if (host) host.innerHTML = "";
         window.inventory = false;
+        bagRenderedForName = null;
         restoreCharacter();
         notifyInventory(false);
+        notifyBagSync();
         return;
       }
 
@@ -554,11 +614,14 @@ export function installInventoryFix(): void {
         // ALWAYS restore — never leave character set across draw frames.
         restoreCharacter();
         if (opened) {
+          bagRenderedForName = observingSnapshotName();
           // Do not bump bagSyncedAt on open — backfill if welcome was missed.
           backfillBagSyncedAt();
           applyBagLayoutPos();
           notifyInventory(true);
+          notifyBagSync();
         } else if (!window.inventory) {
+          bagRenderedForName = null;
           notifyInventory(false);
         }
       }
@@ -580,5 +643,5 @@ export function installInventoryFix(): void {
 }
 
 if (typeof window !== "undefined") {
-  installBagSyncWelcomeWatch();
+  installBagSyncSocketWatch();
 }

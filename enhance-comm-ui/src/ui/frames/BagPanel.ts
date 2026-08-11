@@ -3,7 +3,9 @@ import {
   attachInventoryToMount,
   getBagRefreshKind,
   getBagSyncedAt,
+  getBagSyncedName,
   hasObservingInventorySnapshot,
+  isBagGridStale,
   isBagRefreshing,
   isInventoryOpen,
   refreshObservedInventory,
@@ -140,12 +142,21 @@ function BagDummy(): any {
 
 function BagSyncChrome(props: {
   syncedAt: number | null;
+  syncedName: string | null;
+  gridStale: boolean;
   refreshing: boolean;
   refreshKind: "server" | "local" | null;
   hasSnapshot: boolean;
 }): any {
   const React = getReact();
-  const { syncedAt, refreshing, refreshKind, hasSnapshot } = props;
+  const {
+    syncedAt,
+    syncedName,
+    gridStale,
+    refreshing,
+    refreshKind,
+    hasSnapshot,
+  } = props;
   const [now, setNow] = React.useState(() => Date.now());
 
   React.useEffect(() => {
@@ -161,18 +172,23 @@ function BagSyncChrome(props: {
     label = "Refreshing…";
     title =
       "Reconnecting observer for a fresh inventory snapshot from the server.";
+  } else if (gridStale) {
+    label = "Character changed";
+    title =
+      "Observed character changed; bag grid may still show the previous inventory until it redraws. Use Refresh if it stays stale.";
   } else if (syncedAt != null) {
     label = formatBagSyncedLabel(syncedAt, now);
-    title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
+    const who = syncedName ? ` for ${syncedName}` : "";
+    title = `Observe welcome snapshot${who} (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
   } else if (hasSnapshot) {
     label = "Synced (age unknown)";
     title =
       "Inventory snapshot is loaded, but welcome time was not recorded (CommUI loaded after connect). Refresh for a fresh timestamp.";
   }
-  if (!refreshing && refreshKind === "local") {
+  if (!refreshing && !gridStale && refreshKind === "local") {
     title =
       "Last Refresh re-drew the local observing snapshot (no server round-trip).";
-  } else if (!refreshing && refreshKind === "server") {
+  } else if (!refreshing && !gridStale && refreshKind === "server") {
     title =
       "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
   }
@@ -208,7 +224,7 @@ function BagSyncChrome(props: {
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           fontSize: TYPE.secondary,
-          color: refreshing ? "#c9a227" : "#aaa",
+          color: refreshing || gridStale ? "#c9a227" : "#aaa",
           ...PIXEL_TEXT,
         },
       },
@@ -257,6 +273,8 @@ export function BagPanel(props: BagPanelProps): any {
   const mountRef = React.useRef(null as HTMLDivElement | null);
   const [open, setOpen] = React.useState(() => isInventoryOpen());
   const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
+  const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());
+  const [gridStale, setGridStale] = React.useState(() => isBagGridStale());
   const [refreshing, setRefreshing] = React.useState(() => isBagRefreshing());
   const [refreshKind, setRefreshKind] = React.useState(() =>
     getBagRefreshKind(),
@@ -273,6 +291,8 @@ export function BagPanel(props: BagPanelProps): any {
     const unsubInv = subscribeInventory((next) => setOpen(next));
     const unsubSync = subscribeBagSync(() => {
       setSyncedAt(getBagSyncedAt());
+      setSyncedName(getBagSyncedName());
+      setGridStale(isBagGridStale());
       setRefreshing(isBagRefreshing());
       setRefreshKind(getBagRefreshKind());
       setHasSnapshot(hasObservingInventorySnapshot());
@@ -314,7 +334,14 @@ export function BagPanel(props: BagPanelProps): any {
       },
     },
     showChrome
-      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, hasSnapshot })
+      ? e(BagSyncChrome, {
+          syncedAt,
+          syncedName,
+          gridStale,
+          refreshing,
+          refreshKind,
+          hasSnapshot,
+        })
       : null,
     showDummy ? e(BagDummy) : null,
     e("div", {

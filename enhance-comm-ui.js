@@ -4300,11 +4300,13 @@ var EnhanceCommUI = (() => {
   var listeners4 = [];
   var syncListeners = [];
   var bagSyncedAt = null;
+  var bagSyncedForName = null;
+  var bagRenderedForName = null;
   var bagRefreshing = false;
   var refreshPendingName = null;
   var refreshPollTimer = null;
   var bagSyncSocketId = null;
-  var bagSyncWelcomePoll = null;
+  var bagSyncSocketPoll = null;
   var bagRefreshKind = null;
   function injectHostCss() {
     if (document.getElementById(STYLE_ID3)) return;
@@ -4351,8 +4353,17 @@ var EnhanceCommUI = (() => {
       }
     }
   }
-  function setBagSyncedAt(ts) {
+  function observingSnapshotName(obs = window.observing) {
+    if (!obs || obs.name == null) return null;
+    return String(obs.name);
+  }
+  function hasItemsSnapshot(obs = window.observing) {
+    return !!(obs && Array.isArray(obs.items));
+  }
+  function setBagSyncedAt(ts, name) {
     bagSyncedAt = ts;
+    if (ts == null) bagSyncedForName = null;
+    else if (name !== void 0) bagSyncedForName = name;
     notifyBagSync();
   }
   function setBagRefreshing(next) {
@@ -4370,7 +4381,8 @@ var EnhanceCommUI = (() => {
     if (data && data.character) {
       const ts = Date.now();
       data.character[BAG_SYNC_STAMP_KEY] = ts;
-      setBagSyncedAt(ts);
+      const name = data.character.name != null ? String(data.character.name) : null;
+      setBagSyncedAt(ts, name);
       return;
     }
     if (bagSyncedAt != null) setBagSyncedAt(null);
@@ -4378,25 +4390,34 @@ var EnhanceCommUI = (() => {
   function backfillBagSyncedAt() {
     if (bagSyncedAt != null) return;
     const obs = window.observing;
-    if (!obs || !Array.isArray(obs.items)) return;
-    const stamped = obs[BAG_SYNC_STAMP_KEY];
-    if (typeof stamped === "number" && stamped > 0) {
-      setBagSyncedAt(stamped);
-    }
+    if (!hasItemsSnapshot(obs)) return;
+    stampBagSyncedFromObserving(obs);
   }
-  function maybeBindBagSyncWelcome() {
+  function syncBagStateForSocket() {
     const socket = window.socket;
     if (!socket || !socket.id || typeof socket.on !== "function") return;
-    if (socket.id !== bagSyncSocketId) {
+    const socketChanged = socket.id !== bagSyncSocketId;
+    if (socketChanged) {
       bagSyncSocketId = socket.id;
       socket.on("welcome", onObserveWelcome);
     }
-    backfillBagSyncedAt();
+    const obs = window.observing;
+    if (hasItemsSnapshot(obs)) {
+      if (socketChanged || bagSyncedAt == null) {
+        stampBagSyncedFromObserving(obs);
+      }
+      const name = observingSnapshotName(obs);
+      if (window.inventory && name != null && name !== bagRenderedForName) {
+        reRenderLocalSnapshot();
+      }
+    } else if (socketChanged && bagSyncedAt != null) {
+      setBagSyncedAt(null);
+    }
   }
-  function installBagSyncWelcomeWatch() {
-    maybeBindBagSyncWelcome();
-    if (bagSyncWelcomePoll != null) return;
-    bagSyncWelcomePoll = window.setInterval(maybeBindBagSyncWelcome, 500);
+  function installBagSyncSocketWatch() {
+    syncBagStateForSocket();
+    if (bagSyncSocketPoll != null) return;
+    bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
   }
   function subscribeInventory(listener) {
     listeners4.push(listener);
@@ -4418,6 +4439,15 @@ var EnhanceCommUI = (() => {
   function getBagSyncedAt() {
     return bagSyncedAt;
   }
+  function getBagSyncedName() {
+    return bagSyncedForName;
+  }
+  function isBagGridStale() {
+    if (!window.inventory) return false;
+    const name = observingSnapshotName();
+    if (!name || bagRenderedForName == null) return false;
+    return name !== bagRenderedForName;
+  }
   function isBagRefreshing() {
     return bagRefreshing;
   }
@@ -4425,18 +4455,19 @@ var EnhanceCommUI = (() => {
     return bagRefreshKind;
   }
   function hasObservingInventorySnapshot() {
-    const obs = window.observing;
-    return !!(obs && Array.isArray(obs.items));
+    return hasItemsSnapshot();
   }
   function stampBagSyncedFromObserving(obs) {
     if (!obs) return;
+    const name = observingSnapshotName(obs);
     const stamped = obs[BAG_SYNC_STAMP_KEY];
     if (typeof stamped === "number" && stamped > 0) {
-      setBagSyncedAt(stamped);
+      setBagSyncedAt(stamped, name);
       return;
     }
-    setBagSyncedAt(Date.now());
-    obs[BAG_SYNC_STAMP_KEY] = bagSyncedAt;
+    const ts = Date.now();
+    obs[BAG_SYNC_STAMP_KEY] = ts;
+    setBagSyncedAt(ts, name);
   }
   function findObserveSecret(name) {
     const chars = window.X && window.X.characters || [];
@@ -4450,8 +4481,10 @@ var EnhanceCommUI = (() => {
     const host = document.getElementById(HOST_ID);
     if (host) host.innerHTML = "";
     window.inventory = false;
+    bagRenderedForName = null;
     restoreCharacter();
     notifyInventory(false);
+    notifyBagSync();
   }
   function reRenderLocalSnapshot() {
     bagRefreshKind = "local";
@@ -4459,6 +4492,7 @@ var EnhanceCommUI = (() => {
       if (typeof window.render_inventory !== "function") return;
       if (window.inventory) {
         window.render_inventory(true);
+        bagRenderedForName = observingSnapshotName();
         notifyBagSync();
       } else {
         window.render_inventory();
@@ -4637,7 +4671,7 @@ var EnhanceCommUI = (() => {
   }
   function installInventoryFix() {
     installInventoryClickBridge();
-    installBagSyncWelcomeWatch();
+    installBagSyncSocketWatch();
     if (window.__ecuInventoryPatched) return;
     const tryPatch = () => {
       const original = window.render_inventory;
@@ -4651,8 +4685,10 @@ var EnhanceCommUI = (() => {
           const host = document.getElementById(HOST_ID);
           if (host) host.innerHTML = "";
           window.inventory = false;
+          bagRenderedForName = null;
           restoreCharacter();
           notifyInventory(false);
+          notifyBagSync();
           return;
         }
         const savedComm = window.is_comm;
@@ -4676,10 +4712,13 @@ var EnhanceCommUI = (() => {
           window.is_comm = savedComm;
           restoreCharacter();
           if (opened) {
+            bagRenderedForName = observingSnapshotName();
             backfillBagSyncedAt();
             applyBagLayoutPos();
             notifyInventory(true);
+            notifyBagSync();
           } else if (!window.inventory) {
+            bagRenderedForName = null;
             notifyInventory(false);
           }
         }
@@ -4697,7 +4736,7 @@ var EnhanceCommUI = (() => {
     }, 250);
   }
   if (typeof window !== "undefined") {
-    installBagSyncWelcomeWatch();
+    installBagSyncSocketWatch();
   }
 
   // src/lib/colors.ts
@@ -11592,7 +11631,14 @@ var EnhanceCommUI = (() => {
   }
   function BagSyncChrome(props) {
     const React = getReact();
-    const { syncedAt, refreshing, refreshKind, hasSnapshot } = props;
+    const {
+      syncedAt,
+      syncedName,
+      gridStale,
+      refreshing,
+      refreshKind,
+      hasSnapshot
+    } = props;
     const [now, setNow] = React.useState(() => Date.now());
     React.useEffect(() => {
       if (refreshing) return;
@@ -11604,16 +11650,20 @@ var EnhanceCommUI = (() => {
     if (refreshing) {
       label = "Refreshing\u2026";
       title = "Reconnecting observer for a fresh inventory snapshot from the server.";
+    } else if (gridStale) {
+      label = "Character changed";
+      title = "Observed character changed; bag grid may still show the previous inventory until it redraws. Use Refresh if it stays stale.";
     } else if (syncedAt != null) {
       label = formatBagSyncedLabel(syncedAt, now);
-      title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
+      const who = syncedName ? ` for ${syncedName}` : "";
+      title = `Observe welcome snapshot${who} (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
     } else if (hasSnapshot) {
       label = "Synced (age unknown)";
       title = "Inventory snapshot is loaded, but welcome time was not recorded (CommUI loaded after connect). Refresh for a fresh timestamp.";
     }
-    if (!refreshing && refreshKind === "local") {
+    if (!refreshing && !gridStale && refreshKind === "local") {
       title = "Last Refresh re-drew the local observing snapshot (no server round-trip).";
-    } else if (!refreshing && refreshKind === "server") {
+    } else if (!refreshing && !gridStale && refreshKind === "server") {
       title = "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
     }
     return e(
@@ -11647,7 +11697,7 @@ var EnhanceCommUI = (() => {
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             fontSize: TYPE.secondary,
-            color: refreshing ? "#c9a227" : "#aaa",
+            color: refreshing || gridStale ? "#c9a227" : "#aaa",
             ...PIXEL_TEXT
           }
         },
@@ -11687,6 +11737,8 @@ var EnhanceCommUI = (() => {
     const mountRef = React.useRef(null);
     const [open, setOpen] = React.useState(() => isInventoryOpen());
     const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
+    const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());
+    const [gridStale, setGridStale] = React.useState(() => isBagGridStale());
     const [refreshing, setRefreshing] = React.useState(() => isBagRefreshing());
     const [refreshKind, setRefreshKind] = React.useState(
       () => getBagRefreshKind()
@@ -11702,6 +11754,8 @@ var EnhanceCommUI = (() => {
       const unsubInv = subscribeInventory((next) => setOpen(next));
       const unsubSync = subscribeBagSync(() => {
         setSyncedAt(getBagSyncedAt());
+        setSyncedName(getBagSyncedName());
+        setGridStale(isBagGridStale());
         setRefreshing(isBagRefreshing());
         setRefreshKind(getBagRefreshKind());
         setHasSnapshot(hasObservingInventorySnapshot());
@@ -11731,7 +11785,14 @@ var EnhanceCommUI = (() => {
           boxSizing: "border-box"
         }
       },
-      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, hasSnapshot }) : null,
+      showChrome ? e(BagSyncChrome, {
+        syncedAt,
+        syncedName,
+        gridStale,
+        refreshing,
+        refreshKind,
+        hasSnapshot
+      }) : null,
       showDummy ? e(BagDummy) : null,
       e("div", {
         ref: mountRef,

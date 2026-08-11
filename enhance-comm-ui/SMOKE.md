@@ -5,7 +5,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 ## Core stability
 
 - [ ] **Bag open/close** — open Bag while observing; close via × or stock Bag; entity snapshot / paperdoll still works (no wipe).
-- [ ] **Bag sync chrome** — age is observe/connect welcome time (not bag-open); opening Bag later shows e.g. `Synced 2m ago` and keeps ticking; Refresh reconnects for a fresh welcome stamp; 7-col grid stays uniform; bag item clicks open item info.
+- [ ] **Bag sync chrome** — age is observe/connect welcome time (not bag-open); opening Bag later shows e.g. `Synced 2m ago` and keeps ticking; switching observe target with Bag open redraws the grid (brief `Character changed` if needed) and restamps; Refresh reconnects for a fresh welcome stamp; 7-col grid stays uniform; bag item clicks open item info.
 - [ ] **Party chip dimming** — RIP chips are soft-dimmed; living chips stay full opacity (no attack-range dim — skill ranges differ).
 - [ ] **Layout edge snap** — flush sticks when the painted box is ~8px from the edge; does not jump back up/in after snapping to bottom or left.
 - [ ] **Panel stretch / anchor** — in Layout edit, each panel header has a 3×3 pad (⌜ ⌃ ⌝ / ◆ / ⌞ ⌄ ⌟); picking bottom anchors grows up (Threat-style), top grows down; panel stays put when switching.
