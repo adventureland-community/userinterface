@@ -3152,11 +3152,11 @@ var EnhanceCommUI = (() => {
       const char = chars[i];
       if (!char.online) continue;
       const active = !!(obsName && obsName === char.name);
-      const serverLabel = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
-      const offServer = !isCharOnCurrentServer2(char) && !!serverLabel;
+      const serverLabel2 = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
+      const offServer = !isCharOnCurrentServer2(char) && !!serverLabel2;
       const shortName = char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "\u2026";
       const spriteHtml = typeof spriteFn === "function" ? spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) : "";
-      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
+      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel2) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
       html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + (offServer ? " is-off-server" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
       html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
       html += "<span class='ecu-char-meta'>";
@@ -3164,7 +3164,7 @@ var EnhanceCommUI = (() => {
       html += "<span class='ecu-char-sub'>";
       html += "Lv." + esc(String((_b = char.level) != null ? _b : ""));
       if (offServer) {
-        html += "<span class='ecu-char-server'>" + esc(serverLabel) + "</span>";
+        html += "<span class='ecu-char-server'>" + esc(serverLabel2) + "</span>";
       }
       html += "</span>";
       html += "</span></button>";
@@ -4737,6 +4737,44 @@ var EnhanceCommUI = (() => {
   }
   if (typeof window !== "undefined") {
     installBagSyncSocketWatch();
+  }
+
+  // src/host/pageTitle.ts
+  var BRAND = "Adventure Land";
+  var installed = false;
+  var lastTitle = null;
+  function serverLabel() {
+    const region = getServerRegion() || "";
+    const ident = getServerIdentifier() || "";
+    return `${region} ${ident}`.trim();
+  }
+  function formatCommPageTitle() {
+    const parts = [];
+    const obs = getObserving();
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    if (name) {
+      const dead = !!(obs && obs.dead);
+      parts.push(dead ? `${name} (RIP)` : name);
+    } else {
+      parts.push("Comm");
+    }
+    const map = getMapName();
+    if (map) parts.push(map);
+    const server = serverLabel();
+    if (server) parts.push(server);
+    return `${parts.join(" \xB7 ")} | ${BRAND}`;
+  }
+  function applyPageTitle() {
+    const next = formatCommPageTitle();
+    if (next === lastTitle) return;
+    lastTitle = next;
+    if (document.title !== next) document.title = next;
+  }
+  function installPageTitle() {
+    if (installed) return;
+    installed = true;
+    applyPageTitle();
+    subscribeTick(() => applyPageTitle());
   }
 
   // src/lib/colors.ts
@@ -7576,7 +7614,7 @@ var EnhanceCommUI = (() => {
     );
     const region = (_g = props.serverRegion) != null ? _g : "";
     const ident = (_h = props.serverIdentifier) != null ? _h : "";
-    const serverLabel = `${region} ${ident}`.trim() || "\u2014";
+    const serverLabel2 = `${region} ${ident}`.trim() || "\u2014";
     return e(
       "div",
       {
@@ -7602,7 +7640,7 @@ var EnhanceCommUI = (() => {
               letterSpacing: "0.02em"
             }
           },
-          serverLabel
+          serverLabel2
         ),
         e(
           "div",
@@ -13283,6 +13321,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     ensureDialogHost();
     installCommChrome();
     installInventoryFix();
+    installPageTitle();
     installCommanderHook();
     startSocketHub();
     startCryptTracker();

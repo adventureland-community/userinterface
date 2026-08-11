@@ -9,6 +9,7 @@ import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
 import { installInventoryFix } from "./host/inventory";
+import { installPageTitle } from "./host/pageTitle";
 import { CommUI } from "./ui/frames/CommUI";
 
 const POPUP_CSS = `
@@ -152,6 +153,7 @@ function onLoad(): void {
   ensureDialogHost();
   installCommChrome();
   installInventoryFix();
+  installPageTitle();
   installCommanderHook();
   startSocketHub();
   startCryptTracker();

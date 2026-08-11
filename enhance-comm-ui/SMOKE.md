@@ -4,6 +4,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 
 ## Core stability
 
+- [ ] **Tab title** — observing shows `Name · map · EU I | Adventure Land` (RIP when dead); clear-observe falls back to `Comm · … | Adventure Land`.
 - [ ] **Bag open/close** — open Bag while observing; close via × or stock Bag; entity snapshot / paperdoll still works (no wipe).
 - [ ] **Bag sync chrome** — age is observe/connect welcome time (not bag-open); opening Bag later shows e.g. `Synced 2m ago` and keeps ticking; switching observe target with Bag open redraws the grid (brief `Character changed` if needed) and restamps; Refresh reconnects for a fresh welcome stamp; 7-col grid stays uniform; bag item clicks open item info.
 - [ ] **Party chip dimming** — RIP chips are soft-dimmed; living chips stay full opacity (no attack-range dim — skill ranges differ).
