@@ -1,9 +1,13 @@
 const STYLE_ID = "comm-ui-chrome-css";
 
 export function injectChromeCss(): void {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.append(style);
+  }
+  // Always rewrite so Tampermonkey reloads pick up CSS without a hard refresh.
   // Above #comm-ui (220) so strip + dropdown receive clicks.
   style.textContent = `
 /* Hide stock observe gamebuttons — never restyle .gamebutton.block into the strip */
@@ -41,14 +45,14 @@ export function injectChromeCss(): void {
   pointer-events: auto;
 }
 
-/* Secondary control cluster — same visual language, larger hit targets */
+/* Secondary control cluster — compact icon buttons */
 .ecu-actions {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: stretch;
   justify-content: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
   background: rgba(14, 14, 14, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-sizing: border-box;
@@ -80,6 +84,19 @@ export function injectChromeCss(): void {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+.ecu-btn-icon-only {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+.ecu-btn-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
 }
 .ecu-btn:hover {
   background: #343434;
@@ -472,6 +489,13 @@ export function injectChromeCss(): void {
     padding: 0 10px;
     font-size: 14px;
   }
+  .ecu-btn-icon-only {
+    min-width: 32px !important;
+    width: 32px;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+  }
   .ecu-chrome {
     flex: 1 1 auto;
     min-width: 0;
@@ -513,6 +537,17 @@ export function injectChromeCss(): void {
     height: 44px !important;
     padding: 0 16px !important;
     font-size: 16px !important;
+  }
+  .ecu-btn-icon-only {
+    min-width: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+  }
+  .ecu-btn-icon {
+    width: 22px;
+    height: 22px;
   }
   .ecu-actions {
     min-height: 56px;

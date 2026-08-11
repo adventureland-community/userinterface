@@ -109,25 +109,46 @@ function onCommandClick(ev: Event): void {
   }
 }
 
+/** Compact SVG icons for Follow / Bag / Command (title text stays on the button). */
+const ACTION_ICONS: Record<"follow" | "bag" | "command", string> = {
+  follow:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+  bag:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  command:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
+};
+
 export function buildActionsEl(): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "ecu-actions";
   actions.setAttribute("data-ecu-actions", "1");
 
-  const mk = (label: string, title: string, onClick: (ev: Event) => void) => {
+  const mk = (
+    kind: "follow" | "bag" | "command",
+    label: string,
+    title: string,
+    onClick: (ev: Event) => void,
+  ) => {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "ecu-btn";
-    btn.textContent = label;
+    btn.className = "ecu-btn ecu-btn-icon-only";
     btn.title = title;
+    btn.setAttribute("aria-label", label);
+    btn.innerHTML = ACTION_ICONS[kind];
     btn.addEventListener("click", onClick);
     return btn;
   };
 
   actions.append(
-    mk("Follow", "Center on observed character", onFollowClick),
-    mk("Bag", "Observed inventory", onBagClick),
-    mk("Command", "Send a command to the observed character", onCommandClick),
+    mk("follow", "Follow", "Center on observed character", onFollowClick),
+    mk("bag", "Bag", "Observed inventory", onBagClick),
+    mk(
+      "command",
+      "Command",
+      "Send a command to the observed character",
+      onCommandClick,
+    ),
   );
   return actions;
 }
@@ -139,7 +160,11 @@ export function syncActionsEnabled(): void {
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
     const btn = buttons[i] as HTMLButtonElement;
-    const label = (btn.textContent || "").trim();
+    const label = (
+      btn.getAttribute("aria-label") ||
+      btn.textContent ||
+      ""
+    ).trim();
     // Bag/Command/Follow need an observed character
     const needsObs =
       label === "Follow" || label === "Bag" || label === "Command";
@@ -195,6 +220,10 @@ export function ensureChromeShell(): void {
     if (!actionsEl) {
       actionsEl = buildActionsEl();
       existingStack.insertBefore(actionsEl, existingStack.firstChild);
+    } else if (!actionsEl.querySelector(".ecu-btn-icon-only")) {
+      const next = buildActionsEl();
+      actionsEl.replaceWith(next);
+      actionsEl = next;
     }
     syncActionsEnabled();
     return;
