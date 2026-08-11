@@ -5,7 +5,11 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 ## Core stability
 
 - [ ] **Bag open/close** — open Bag while observing; close via × or stock Bag; entity snapshot / paperdoll still works (no wipe).
-- [ ] **Bag sync chrome** — open Bag shows live relative age (`Synced just now` → `Synced 30s ago` → `Synced 2m ago`); 7-col inventory grid stays uniform; Refresh reconnects observer for a fresh snapshot (tooltip documents local fallback).
+- [ ] **Bag sync chrome** — age is observe/connect welcome time (not bag-open); opening Bag later shows e.g. `Synced 2m ago` and keeps ticking; Refresh reconnects for a fresh welcome stamp; 7-col grid stays uniform; bag item clicks open item info.
+- [ ] **Party chip dimming** — RIP chips are soft-dimmed; living chips stay full opacity (no attack-range dim — skill ranges differ).
+- [ ] **Layout edge snap** — flush sticks when the painted box is ~8px from the edge; does not jump back up/in after snapping to bottom or left.
+- [ ] **Panel stretch / anchor** — in Layout edit, each panel header has a 3×3 pad (⌜ ⌃ ⌝ / ◆ / ⌞ ⌄ ⌟); picking bottom anchors grows up (Threat-style), top grows down; panel stays put when switching.
+- [ ] Layout edit **Grid** presets (1 / 2.5 / 5 / 10 / 25%) draw **square** cells with nested fine / 2× / 4× guides (brighter on coarser + center/edges); snap uses the selected fine step. Free still disables snap only.
 - [ ] **Observe deselect** — click active party chip again, or Esc (paperdoll clears first, then observe).
 - [ ] **Layout reset** — Layout edit → Reset positions; active profile returns to built-in defaults.
 - [ ] **Boss bar show/hide** — hide via ×; restore via Layout edit → Show on Boss bar.
@@ -28,8 +32,8 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 
 - [ ] On tablet/phone: Layout drag handles, Close, Compact, party chips are comfortably tappable.
 - [ ] **Layout edit toolbar** — drag the ⠿ / “drag to move” row to relocate the bar (clears topCenter); position persists across reload.
-- [ ] Drag snap hits 0 / 50 / 100 and nearby peer panel edges; soft nudge on near-overlap drop.
-- [ ] Layout edit **Grid** presets (1 / 2.5 / 5 / 10 / 25%) redraw guides and change snap step; Free still disables snap only.
+- [ ] Drag snap hits mid / peer anchors; soft nudge on near-overlap drop.
+- [ ] Layout edit **Grid** presets redraw nested fine/2×/4× square guides and change snap step; Free still disables snap only.
 - [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/bag/paperdoll/buff info/item info).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
 - [ ] **Buff info panel** — Layout edit shows “Buff info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.
@@ -37,6 +41,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] **Item info switch slots** — with Item info already open, click a *different* filled gear/trade slot; details replace (do not stay stuck on the first item / empty).
 
 - [ ] **Party buff modes** — cycle **Buffs:** on Party panel through Auto / All / Obs / Compact / Shared / Off; persists across reload; Auto hides non-observed under-chip buffs when roster > 8 (Franky-sized).
+- [ ] **Buff remaining times** — party / unit / shared buff icons keep the yellow skidloader tint *and* a `45s`/`3m` overlay; tint must not restart every few seconds on observe ms rebroadcasts (all EffectIcon consumers).
 - [ ] Threat ×counts / aggro badges readable (~14–15px); topCenter map/server not cramped.
 
 ## Nice-to-haves
