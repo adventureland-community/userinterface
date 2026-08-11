@@ -25,6 +25,7 @@ export type PanelId =
   | "playerFrame"
   | "targetFrame"
   | "bossBar"
+  | "crypt"
   | "threat"
   | "pdps"
   | "hitDps"
@@ -46,6 +47,7 @@ export const PANEL_IDS: PanelId[] = [
   "playerFrame",
   "targetFrame",
   "bossBar",
+  "crypt",
   "threat",
   "pdps",
   "hitDps",
@@ -68,6 +70,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   playerFrame: "Player frame",
   targetFrame: "Target frame",
   bossBar: "Boss bar",
+  crypt: "Crypt progress",
   threat: "Threat",
   pdps: "PDPS",
   hitDps: "Hit DPS",
@@ -95,6 +98,7 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   playerFrame: { x: 40.5, y: 86, anchor: "bc" },
   targetFrame: { x: 60, y: 86, anchor: "bc" },
   bossBar: { x: 50, y: 8, anchor: "tc" },
+  crypt: { x: 50, y: 14, anchor: "tc" },
   threat: { x: 82, y: 75, anchor: "br" },
   pdps: { x: 78, y: 90, anchor: "tr" },
   hitDps: { x: 99.5, y: 50, anchor: "tr" },
@@ -121,6 +125,7 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   playerFrame: { x: 32, y: 78, anchor: "bc" },
   targetFrame: { x: 68, y: 78, anchor: "bc" },
   bossBar: { x: 50, y: 9, anchor: "tc" },
+  crypt: { x: 50, y: 15, anchor: "tc" },
   pdps: { x: 99.2, y: 14, anchor: "tr" },
   hitDps: { x: 99.2, y: 28, anchor: "tr" },
   coopV1: { x: 0.8, y: 14, anchor: "tl" },
@@ -147,6 +152,7 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   playerFrame: { x: 28, y: 62, anchor: "bc" },
   targetFrame: { x: 72, y: 62, anchor: "bc" },
   bossBar: { x: 50, y: 10, anchor: "tc" },
+  crypt: { x: 50, y: 18, anchor: "tc" },
   pdps: { x: 99, y: 16, anchor: "tr" },
   hitDps: { x: 99, y: 28, anchor: "tr" },
   coopV1: { x: 1, y: 16, anchor: "tl" },

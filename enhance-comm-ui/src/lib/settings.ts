@@ -47,6 +47,7 @@ export type CombatViewMode = "table" | "bars" | "graph";
 /** Panels the user can hide via × (not core chrome). */
 export const CLOSABLE_PANEL_IDS = [
   "bossBar",
+  "crypt",
   "combat",
   "kills",
   "threat",
@@ -125,6 +126,7 @@ export type CommUiSettings = {
 
 const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
   bossBar: true,
+  crypt: true,
   combat: true,
   kills: true,
   threat: true,

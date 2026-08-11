@@ -20,7 +20,7 @@ import {
 import { PositionedPanel } from "../chrome/PositionedPanel";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { Players } from "./Players";
-import { MapInfo } from "./MapInfo";
+import { MapInfo, getMapData } from "./MapInfo";
 import { CryptProgress } from "./CryptProgress";
 import { ServerInfo } from "./ServerInfo";
 import { Enemies } from "./Enemies";
@@ -39,6 +39,7 @@ import {
   BOSS_BAR_PANEL_STYLE,
   COMBAT_PANEL_STYLE,
   COMMAND_PANEL_STYLE,
+  CRYPT_PANEL_STYLE,
   INFO_DIALOG_PANEL_STYLE,
   KILLS_PANEL_STYLE,
   METER_PANEL_STYLE,
@@ -60,6 +61,7 @@ export type CommUIProps = {
 
 const OPACITY_PANEL_IDS: PanelId[] = [
   "bossBar",
+  "crypt",
   "combat",
   "kills",
   "threat",
@@ -202,6 +204,7 @@ export function CommUI(props: CommUIProps): any {
   const hasEnemies = aggroedMonsters(snap.entities).length > 0;
   const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
   const hasBosses = activeBosses(snap.entities).length > 0;
+  const onCrypt = getMapData(snap.entities).map === "crypt";
 
   // Observing owns player/target frames absolutely. Spectator focusUnitId only
   // applies when not observing — party/world clicks must not steal frames.
@@ -324,8 +327,22 @@ export function CommUI(props: CommUIProps): any {
           serverIdentifier: snap.serverIdentifier,
         }),
         e(MapInfo, { entities: snap.entities }),
-        e(CryptProgress, { entities: snap.entities }),
       ),
+    ),
+
+    panel(
+      "crypt",
+      e(CryptProgress, {
+        entities: snap.entities,
+        layoutEdit,
+        setSelectedEntity,
+      }),
+      {
+        closable: true,
+        style: CRYPT_PANEL_STYLE,
+        empty: !onCrypt,
+        hiddenBodyStyle: CRYPT_PANEL_STYLE,
+      },
     ),
 
     panel(

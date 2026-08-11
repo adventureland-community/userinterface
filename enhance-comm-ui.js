@@ -888,6 +888,7 @@ var EnhanceCommUI = (() => {
     "playerFrame",
     "targetFrame",
     "bossBar",
+    "crypt",
     "threat",
     "pdps",
     "hitDps",
@@ -909,6 +910,7 @@ var EnhanceCommUI = (() => {
     playerFrame: "Player frame",
     targetFrame: "Target frame",
     bossBar: "Boss bar",
+    crypt: "Crypt progress",
     threat: "Threat",
     pdps: "PDPS",
     hitDps: "Hit DPS",
@@ -930,6 +932,7 @@ var EnhanceCommUI = (() => {
     playerFrame: { x: 40.5, y: 86, anchor: "bc" },
     targetFrame: { x: 60, y: 86, anchor: "bc" },
     bossBar: { x: 50, y: 8, anchor: "tc" },
+    crypt: { x: 50, y: 14, anchor: "tc" },
     threat: { x: 82, y: 75, anchor: "br" },
     pdps: { x: 78, y: 90, anchor: "tr" },
     hitDps: { x: 99.5, y: 50, anchor: "tr" },
@@ -951,6 +954,7 @@ var EnhanceCommUI = (() => {
     playerFrame: { x: 32, y: 78, anchor: "bc" },
     targetFrame: { x: 68, y: 78, anchor: "bc" },
     bossBar: { x: 50, y: 9, anchor: "tc" },
+    crypt: { x: 50, y: 15, anchor: "tc" },
     pdps: { x: 99.2, y: 14, anchor: "tr" },
     hitDps: { x: 99.2, y: 28, anchor: "tr" },
     coopV1: { x: 0.8, y: 14, anchor: "tl" },
@@ -972,6 +976,7 @@ var EnhanceCommUI = (() => {
     playerFrame: { x: 28, y: 62, anchor: "bc" },
     targetFrame: { x: 72, y: 62, anchor: "bc" },
     bossBar: { x: 50, y: 10, anchor: "tc" },
+    crypt: { x: 50, y: 18, anchor: "tc" },
     pdps: { x: 99, y: 16, anchor: "tr" },
     hitDps: { x: 99, y: 28, anchor: "tr" },
     coopV1: { x: 1, y: 16, anchor: "tl" },
@@ -1427,6 +1432,7 @@ var EnhanceCommUI = (() => {
   var PANEL_IDS_SET = new Set(PANEL_IDS);
   var CLOSABLE_PANEL_IDS = [
     "bossBar",
+    "crypt",
     "combat",
     "kills",
     "threat",
@@ -1439,6 +1445,7 @@ var EnhanceCommUI = (() => {
   ];
   var DEFAULT_PANEL_VISIBLE = {
     bossBar: true,
+    crypt: true,
     combat: true,
     kills: true,
     threat: true,
@@ -6933,11 +6940,129 @@ var EnhanceCommUI = (() => {
     );
   }
 
+  // src/lib/frameSizes.ts
+  var BAG_FRAME_WIDTH = 385;
+  var BAG_FRAME_HEIGHT = 395;
+  var BAG_SYNC_CHROME_HEIGHT = 30;
+  var BAG_PANEL_STYLE = {
+    // minWidth floor only — fixed width + inventory host borders wraps slots.
+    minWidth: BAG_FRAME_WIDTH,
+    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
+    boxSizing: "border-box"
+  };
+  var PAPERDOLL_FRAME_WIDTH = 268;
+  var PAPERDOLL_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "340px",
+    boxSizing: "border-box",
+    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
+    zIndex: 36
+  };
+  var BOSS_BAR_PANEL_STYLE = {
+    width: "min(520px, 72vw)",
+    minWidth: "min(360px, 92vw)",
+    boxSizing: "border-box"
+  };
+  var COMBAT_PANEL_STYLE = {
+    width: "min(420px, 94vw)",
+    minWidth: "min(280px, 92vw)",
+    minHeight: "180px",
+    boxSizing: "border-box"
+  };
+  var CRYPT_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(720px, 96vw)",
+    minWidth: "200px",
+    boxSizing: "border-box"
+  };
+  var THREAT_PANEL_STYLE = {
+    minWidth: "240px",
+    width: "min(320px, 92vw)",
+    minHeight: "120px",
+    boxSizing: "border-box"
+  };
+  var COMMAND_PANEL_STYLE = {
+    width: "min(560px, 94vw)",
+    minHeight: "220px",
+    boxSizing: "border-box"
+  };
+  var METER_PANEL_STYLE = {
+    width: "200px",
+    minWidth: "160px",
+    minHeight: "72px",
+    boxSizing: "border-box"
+  };
+  var KILLS_PANEL_STYLE = {
+    width: "min(280px, 90vw)",
+    minWidth: "180px",
+    minHeight: "80px",
+    boxSizing: "border-box"
+  };
+  var INFO_DIALOG_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(96vw, 520px)",
+    // Above other play panels so buff/item tooltips stay readable.
+    zIndex: 35,
+    boxSizing: "border-box"
+  };
+
   // src/ui/frames/CryptProgress.ts
+  function findVisibleMob(entities, mtype) {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!entity) continue;
+      if (entity.type !== "monster" || !entity.visible || entity.dead) continue;
+      if (entity.mtype === mtype) return entity;
+    }
+    return void 0;
+  }
+  var CARD_STYLE_BASE = {
+    background: "black",
+    padding: "4px 6px",
+    minWidth: "72px",
+    boxSizing: "border-box",
+    fontSize: TYPE.chrome,
+    lineHeight: 1.25,
+    color: "#eee",
+    ...PIXEL_TEXT
+  };
+  var META_STYLE = {
+    fontSize: TYPE.secondary,
+    color: "#ccc",
+    ...PIXEL_TEXT
+  };
+  function CryptCard(props) {
+    const clickable = !!props.onClick;
+    return e(
+      "div",
+      {
+        key: props.mtype,
+        style: Object.assign({}, CARD_STYLE_BASE, {
+          border: `2px double ${props.borderColor}`,
+          cursor: clickable ? "pointer" : void 0
+        }),
+        title: clickable ? "Click to target" : void 0,
+        onClick: props.onClick
+      },
+      e("div", { key: "mtype" }, `${props.mtype}${props.levelComponent}`),
+      e("div", { key: "state", style: META_STYLE }, props.status),
+      props.lastSeenComponent ? e("div", { key: "lastSeen", style: META_STYLE }, props.lastSeenComponent) : void 0,
+      props.focusComponent ? e("div", { key: "focus", style: META_STYLE }, props.focusComponent) : void 0,
+      props.luckmComponent ? e("div", { key: "luckm", style: META_STYLE }, props.luckmComponent) : void 0
+    );
+  }
   function CryptProgress(props) {
     const mapName = getMapData(props.entities);
-    if (!mapName || mapName.map !== "crypt") {
-      return null;
+    const onCrypt = !!(mapName && mapName.map === "crypt");
+    if (!onCrypt) {
+      if (!props.layoutEdit) return null;
+      return e(PanelShellDummy, {
+        label: "Crypt progress",
+        hint: "Boss / bat status on crypt map",
+        accent: "#6a4a8a",
+        rows: 2,
+        style: CRYPT_PANEL_STYLE
+      });
     }
     updateFromEntities(mapName.in, props.entities);
     const currentlySeeMtypes = /* @__PURE__ */ new Set();
@@ -6992,35 +7117,71 @@ var EnhanceCommUI = (() => {
           status = `Died: ${mobRichData.deadCount}`;
         }
       }
+      let onClick;
+      if (props.setSelectedEntity && currentlySeeMtypes.has(mtype)) {
+        const visibleMob = findVisibleMob(props.entities, mtype);
+        if (visibleMob) {
+          onClick = () => {
+            setXTarget(visibleMob);
+            props.setSelectedEntity(String(visibleMob.id));
+          };
+        }
+      }
       elems.push(
-        e(
-          "div",
-          {
-            key: mtype,
-            style: {
-              background: "black",
-              border: `2px double ${borderColor}`,
-              padding: "4px"
-            }
-          },
-          e("div", { key: "mtype" }, `${mtype}${levelComponent}`),
-          e("div", { key: "state" }, status),
-          lastSeenComponent ? e("div", { key: "lastSeen" }, lastSeenComponent) : void 0,
-          focusComponent ? e("div", { key: "focus" }, focusComponent) : void 0,
-          luckmComponent ? e("div", { key: "luckm" }, luckmComponent) : void 0
-        )
+        e(CryptCard, {
+          key: mtype,
+          mtype,
+          borderColor,
+          levelComponent,
+          status,
+          lastSeenComponent,
+          focusComponent,
+          luckmComponent,
+          onClick
+        })
       );
     }
     return e(
       "div",
       {
-        key: "content",
+        className: "comm-crypt-progress",
         style: {
           display: "flex",
-          gap: "4px"
+          flexDirection: "column",
+          margin: "4px",
+          border: "2px double gray",
+          background: "black",
+          gap: "4px",
+          fontSize: TYPE.chrome,
+          ...PIXEL_TEXT
         }
       },
-      ...elems
+      e(
+        "div",
+        {
+          style: {
+            padding: "5px 8px 0",
+            whiteSpace: "nowrap",
+            fontSize: TYPE.title,
+            color: "#ccc",
+            ...PIXEL_TEXT
+          }
+        },
+        "Crypt"
+      ),
+      e(
+        "div",
+        {
+          key: "content",
+          style: {
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "4px",
+            padding: "0 4px 4px"
+          }
+        },
+        ...elems
+      )
     );
   }
 
@@ -7782,66 +7943,6 @@ var EnhanceCommUI = (() => {
       )
     );
   }
-
-  // src/lib/frameSizes.ts
-  var BAG_FRAME_WIDTH = 385;
-  var BAG_FRAME_HEIGHT = 395;
-  var BAG_SYNC_CHROME_HEIGHT = 30;
-  var BAG_PANEL_STYLE = {
-    // minWidth floor only — fixed width + inventory host borders wraps slots.
-    minWidth: BAG_FRAME_WIDTH,
-    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
-    boxSizing: "border-box"
-  };
-  var PAPERDOLL_FRAME_WIDTH = 268;
-  var PAPERDOLL_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "340px",
-    boxSizing: "border-box",
-    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
-    zIndex: 36
-  };
-  var BOSS_BAR_PANEL_STYLE = {
-    width: "min(520px, 72vw)",
-    minWidth: "min(360px, 92vw)",
-    boxSizing: "border-box"
-  };
-  var COMBAT_PANEL_STYLE = {
-    width: "min(420px, 94vw)",
-    minWidth: "min(280px, 92vw)",
-    minHeight: "180px",
-    boxSizing: "border-box"
-  };
-  var THREAT_PANEL_STYLE = {
-    minWidth: "240px",
-    width: "min(320px, 92vw)",
-    minHeight: "120px",
-    boxSizing: "border-box"
-  };
-  var COMMAND_PANEL_STYLE = {
-    width: "min(560px, 94vw)",
-    minHeight: "220px",
-    boxSizing: "border-box"
-  };
-  var METER_PANEL_STYLE = {
-    width: "200px",
-    minWidth: "160px",
-    minHeight: "72px",
-    boxSizing: "border-box"
-  };
-  var KILLS_PANEL_STYLE = {
-    width: "min(280px, 90vw)",
-    minWidth: "180px",
-    minHeight: "80px",
-    boxSizing: "border-box"
-  };
-  var INFO_DIALOG_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(96vw, 520px)",
-    // Above other play panels so buff/item tooltips stay readable.
-    zIndex: 35,
-    boxSizing: "border-box"
-  };
 
   // src/ui/paperdoll/Stat.ts
   function Stat(props) {
@@ -12199,6 +12300,7 @@ var EnhanceCommUI = (() => {
   // src/ui/frames/CommUI.ts
   var OPACITY_PANEL_IDS = [
     "bossBar",
+    "crypt",
     "combat",
     "kills",
     "threat",
@@ -12314,6 +12416,7 @@ var EnhanceCommUI = (() => {
     const hasEnemies = aggroedMonsters(snap.entities).length > 0;
     const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
     const hasBosses = activeBosses(snap.entities).length > 0;
+    const onCrypt = getMapData(snap.entities).map === "crypt";
     const isObserving = snap.observingId != null && snap.observingId !== "" || !!snap.observing;
     let framePlayer = snap.observing;
     let frameTarget = snap.target;
@@ -12417,9 +12520,22 @@ var EnhanceCommUI = (() => {
             serverRegion: snap.serverRegion,
             serverIdentifier: snap.serverIdentifier
           }),
-          e(MapInfo, { entities: snap.entities }),
-          e(CryptProgress, { entities: snap.entities })
+          e(MapInfo, { entities: snap.entities })
         )
+      ),
+      panel(
+        "crypt",
+        e(CryptProgress, {
+          entities: snap.entities,
+          layoutEdit,
+          setSelectedEntity
+        }),
+        {
+          closable: true,
+          style: CRYPT_PANEL_STYLE,
+          empty: !onCrypt,
+          hiddenBodyStyle: CRYPT_PANEL_STYLE
+        }
       ),
       panel(
         "bossBar",

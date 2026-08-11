@@ -34,7 +34,9 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] **Layout edit toolbar** — drag the ⠿ / “drag to move” row to relocate the bar (clears topCenter); position persists across reload.
 - [ ] Drag snap hits mid / peer anchors; soft nudge on near-overlap drop.
 - [ ] Layout edit **Grid** presets redraw nested fine/2×/4× square guides and change snap step; Free still disables snap only.
-- [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/bag/paperdoll/buff info/item info).
+- [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/crypt/bag/paperdoll/buff info/item info).
+- [ ] **Crypt panel** — off crypt map panel hides in play; Layout edit shows Crypt progress dummy; on crypt map shows boss/bat cards; drag / × hide / opacity persist; click visible boss card targets mob.
+- [ ] **topCenter** — server + map only (crypt moved to Crypt panel).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
 - [ ] **Buff info panel** — Layout edit shows “Buff info”; drag persists; play mode: buff click opens info without paperdoll; × / Esc / click-outside closes.
 - [ ] **Item info panel** — paperdoll gear *and trade* clicks open item details in Item info (works even if Bag modal left `modal_count > 0`); content stays in `#ecu-item-dialog`; × / Esc / click-outside / same-slot toggle closes.

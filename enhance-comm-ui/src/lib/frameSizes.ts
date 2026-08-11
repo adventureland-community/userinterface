@@ -43,6 +43,14 @@ export const COMBAT_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
+/** Crypt boss progress row (horizontal mob cards). */
+export const CRYPT_PANEL_STYLE: Record<string, any> = {
+  width: "fit-content",
+  maxWidth: "min(720px, 96vw)",
+  minWidth: "200px",
+  boxSizing: "border-box",
+};
+
 /** Threat table footprint (HP rows + mob icon chips). */
 export const THREAT_PANEL_STYLE: Record<string, any> = {
   minWidth: "240px",
