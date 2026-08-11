@@ -25,7 +25,7 @@ export function collectUniquePartyEffects(
       }
     }
   }
-  const ids = Object.keys(byId);
+  const ids = Object.keys(byId).sort();
   const out: SharedEffectEntry[] = [];
   for (let i = 0; i < ids.length; i++) out.push(byId[ids[i]]);
   return out;
@@ -77,8 +77,9 @@ export function SharedPartyEffects(props: {
       },
     },
     ...shown.map((ef) => {
-      const entityId = String(ef.entity.id);
-      const hostClass = `comm-fx-shared-${entityId}-${ef.id}`.replace(
+      // Host class is effect-id only — switching which member "owns" the
+      // longest remaining must not change rid/hostClass (that would wipe paint).
+      const hostClass = `comm-fx-shared-${ef.id}`.replace(
         /[^a-zA-Z0-9_\-]/g,
         "_",
       );

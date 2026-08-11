@@ -234,7 +234,7 @@ export function Players(props: PlayersProps): any {
             return e(
               "div",
               {
-                key: player.id,
+                key: pid,
                 className:
                   "ecu-chip" +
                   (selected ? " is-selected" : "") +

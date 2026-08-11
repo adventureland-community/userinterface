@@ -38,17 +38,37 @@ export function formatDurationCompact(
 /**
  * Sticky absolute end time for buff/CD remaining displays.
  * Avoids restarting a progress animation every time `ms` is re-broadcast
- * with a similar remaining value (common on observe sockets).
+ * with a similar remaining value (common on observe / party soft-sync).
+ *
+ * @param lastMs Previous raw `ms` reading. Identical rebroadcasts must not
+ *   push the sticky end forward (that makes labels jump 17s→16s→17s).
  */
 export function syncEndsAt(
   prevEndsAt: number,
   ms: number | undefined,
   now: number = Date.now(),
+  lastMs?: number,
 ): number {
   if (!(ms != null && ms > 0)) return 0;
   const next = now + ms;
-  if (!prevEndsAt || next > prevEndsAt + 750) return next;
-  if (next < prevEndsAt - 250) return next;
+  if (!prevEndsAt) return next;
+
+  const stickyRemain = prevEndsAt - now;
+
+  // Same remaining reading rebroadcast while we still have a live sticky end —
+  // keep counting down locally instead of jumping the label back up.
+  if (
+    lastMs != null &&
+    lastMs > 0 &&
+    Math.abs(ms - lastMs) <= 750 &&
+    prevEndsAt > now + 200 &&
+    ms <= stickyRemain + 750
+  ) {
+    return prevEndsAt;
+  }
+
+  if (ms > stickyRemain + 750) return next;
+  if (ms < stickyRemain - 250) return next;
   return prevEndsAt;
 }
 

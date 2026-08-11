@@ -4816,11 +4816,16 @@ var EnhanceCommUI = (() => {
     if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
     return `${Math.round(timeSeconds / 86400)}d`;
   }
-  function syncEndsAt(prevEndsAt, ms, now = Date.now()) {
+  function syncEndsAt(prevEndsAt, ms, now = Date.now(), lastMs) {
     if (!(ms != null && ms > 0)) return 0;
     const next = now + ms;
-    if (!prevEndsAt || next > prevEndsAt + 750) return next;
-    if (next < prevEndsAt - 250) return next;
+    if (!prevEndsAt) return next;
+    const stickyRemain = prevEndsAt - now;
+    if (lastMs != null && lastMs > 0 && Math.abs(ms - lastMs) <= 750 && prevEndsAt > now + 200 && ms <= stickyRemain + 750) {
+      return prevEndsAt;
+    }
+    if (ms > stickyRemain + 750) return next;
+    if (ms < stickyRemain - 250) return next;
     return prevEndsAt;
   }
   function getPercent(value, precision) {
@@ -6257,9 +6262,6 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
-  function effectsKey(effects) {
-    return effects.map((ef) => ef.id).join("|");
-  }
   function loaderId(hostClass) {
     return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
   }
@@ -6372,6 +6374,11 @@ var EnhanceCommUI = (() => {
     const existing = getTint(selector);
     if (mode === "sync") {
       if (existing) {
+        const prevStart = existing.start ? existing.start.getTime() : 0;
+        const prevEnd = existing.end ? existing.end.getTime() : 0;
+        if (Math.abs(prevStart - startedAt) < 50 && Math.abs(prevEnd - endsAt) < 50) {
+          return;
+        }
         existing.start = new Date(startedAt);
         existing.end = new Date(endsAt);
         existing.ms = remaining;
@@ -6403,6 +6410,7 @@ var EnhanceCommUI = (() => {
     const tintShownRef = React.useRef(false);
     const peakRemainRef = React.useRef(0);
     const lastExtendAtRef = React.useRef(0);
+    const lastMsRef = React.useRef(0);
     const { effect, hostClass, entity, iconSize } = props;
     const entityId = String(entity.id);
     const rid = loaderId(hostClass);
@@ -6487,15 +6495,7 @@ var EnhanceCommUI = (() => {
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [
-      entityId,
-      effect.id,
-      effect.skin,
-      effect.type,
-      hostClass,
-      rid,
-      iconSize
-    ]);
+    }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
     React.useEffect(() => {
       const el = iconRef.current;
       if (!el || !el.firstElementChild) return;
@@ -6504,7 +6504,9 @@ var EnhanceCommUI = (() => {
     React.useEffect(() => {
       const now = Date.now();
       const prev = endsAtRef.current;
-      const next = syncEndsAt(prev, effect.ms, now);
+      const rawMs = effect.ms;
+      const next = syncEndsAt(prev, rawMs, now, lastMsRef.current);
+      if (rawMs != null && rawMs > 0) lastMsRef.current = rawMs;
       endsAtRef.current = next;
       const remaining = Math.max(0, next - now);
       setRemainingMs(remaining);
@@ -6512,6 +6514,7 @@ var EnhanceCommUI = (() => {
         startedAtRef.current = 0;
         peakRemainRef.current = 0;
         lastExtendAtRef.current = 0;
+        lastMsRef.current = 0;
         hideTint();
         setShowRemainLabel(false);
         return;
@@ -6644,7 +6647,8 @@ var EnhanceCommUI = (() => {
           verticalAlign: "top"
         }
       }),
-      msLabel ? e(
+      // Always reserve label height so show/hide does not reflow the row.
+      e(
         "div",
         {
           className: "comm-fx-ms",
@@ -6652,25 +6656,45 @@ var EnhanceCommUI = (() => {
             marginTop: "1px",
             zIndex: 2,
             padding: "0 3px",
-            background: "rgba(0,0,0,0.82)",
-            border: "1px solid #444",
+            background: msLabel ? "rgba(0,0,0,0.82)" : "transparent",
+            border: msLabel ? "1px solid #444" : "1px solid transparent",
             color: remainingMs <= 5e3 ? "#ffcc66" : "#e8e8e8",
             fontSize: TYPE.microMin,
             lineHeight: "14px",
+            minHeight: "14px",
             whiteSpace: "nowrap",
             pointerEvents: "none",
+            visibility: msLabel ? "visible" : "hidden",
             ...PIXEL_TEXT
           }
         },
-        msLabel
-      ) : null
+        msLabel || "\xA0"
+      )
     );
   }
   function EffectsRow(props) {
-    const entityId = String(props.entity.id);
-    const effects = buildEntityEffects(props.entity);
+    const React = getReact();
+    const lastEffectsRef = React.useRef([]);
+    const emptySinceRef = React.useRef(0);
+    let effects = buildEntityEffects(props.entity);
+    effects = effects.slice().sort((a, b) => {
+      if (a.id < b.id) return -1;
+      if (a.id > b.id) return 1;
+      return 0;
+    });
+    if (effects.length) {
+      lastEffectsRef.current = effects;
+      emptySinceRef.current = 0;
+    } else if (lastEffectsRef.current.length) {
+      if (!emptySinceRef.current) emptySinceRef.current = Date.now();
+      if (Date.now() - emptySinceRef.current < 500) {
+        effects = lastEffectsRef.current;
+      } else {
+        lastEffectsRef.current = [];
+      }
+    }
     if (!effects.length) return null;
-    const key = effectsKey(effects);
+    const entityId = String(props.entity.id);
     const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : ICON_SIZE;
     const compact = !!props.compact;
     const gap = compact ? "3px" : "6px";
@@ -6689,7 +6713,8 @@ var EnhanceCommUI = (() => {
     return e(
       "div",
       {
-        key: `${entityId}:${key}`,
+        // Do NOT key by effects list — that remounts every icon when one buff
+        // is added/removed. EffectIcon keys already identity each buff.
         className: "comm-fx-row" + (compact ? " is-compact" : ""),
         style: {
           display: "flex",
@@ -6722,6 +6747,7 @@ var EnhanceCommUI = (() => {
       overflow > 0 ? e(
         "div",
         {
+          key: `${entityId}-overflow`,
           className: "comm-fx-overflow",
           title: overflowTitle,
           style: {
@@ -6760,7 +6786,7 @@ var EnhanceCommUI = (() => {
         }
       }
     }
-    const ids = Object.keys(byId);
+    const ids = Object.keys(byId).sort();
     const out = [];
     for (let i = 0; i < ids.length; i++) out.push(byId[ids[i]]);
     return out;
@@ -6796,8 +6822,7 @@ var EnhanceCommUI = (() => {
         }
       },
       ...shown.map((ef) => {
-        const entityId = String(ef.entity.id);
-        const hostClass = `comm-fx-shared-${entityId}-${ef.id}`.replace(
+        const hostClass = `comm-fx-shared-${ef.id}`.replace(
           /[^a-zA-Z0-9_\-]/g,
           "_"
         );
@@ -7066,7 +7091,7 @@ var EnhanceCommUI = (() => {
               return e(
                 "div",
                 {
-                  key: player.id,
+                  key: pid,
                   className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : ""),
                   title: nameTitle,
                   style: {
