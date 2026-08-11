@@ -1,6 +1,6 @@
 import { getReact, e } from "../../host/react";
 import { monsterSprite, setXTarget } from "../../host/icons";
-import { aggroByTarget, findEntity } from "../../queries/entities";
+import { findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { VitalsColumn } from "../chrome/VitalsColumn";
@@ -19,6 +19,8 @@ const MAX_MOB_CHIPS = 6;
 
 export type ThreatTableProps = {
   entities: EntityLike[];
+  /** Shared aggro index from CommUI (string target ids). */
+  byTarget: Record<string, EntityLike[]>;
   observingId?: string;
   layoutEdit?: boolean;
   setSelectedEntity?: (id: string) => void;
@@ -169,7 +171,8 @@ function ThreatRow(props: {
   const shown = mtypes.slice(0, MAX_MOB_CHIPS);
   const overflow = mtypes.length - shown.length;
   const trailing = pressureTrailing(target, tid);
-  const hpColor = classColors[target?.ctype || ""] || (isYou ? "#8a1e1e" : "#666");
+  const hpColor =
+    classColors[target?.ctype || ""] || (isYou ? "#8a1e1e" : "#666");
 
   const aggroBadge = e(
     "span",
@@ -348,10 +351,7 @@ export function ThreatTable(props: ThreatTableProps): any {
     const ent = findEntity(props.entities, tid);
     return (ent && ent.name) || tid;
   };
-  const byTarget = stickyAggroByTarget(
-    aggroByTarget(props.entities),
-    nameOf,
-  );
+  const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
   const targetIds = sortThreatTargetIds(
     Object.keys(byTarget),
     props.observingId,

@@ -13,6 +13,7 @@ import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { info } from "../../host/dialogHost";
 import {
   aggroByTarget,
+  aggroOn,
   aggroedMonsters,
   activeBosses,
   findEntity,
@@ -218,7 +219,8 @@ export function CommUI(props: CommUIProps): any {
   const coopV2Rows = buildCoopV2Rows(snap.entities);
   const hitDpsRows = buildHitDpsRows(snap.entities, snap.now);
   const hasEnemies = aggroedMonsters(snap.entities).length > 0;
-  const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
+  const byTarget = aggroByTarget(snap.entities);
+  const hasThreat = Object.keys(byTarget).length > 0;
   const hasBosses = activeBosses(snap.entities).length > 0;
   const onCrypt = getMapData(snap.entities).map === "crypt";
 
@@ -305,6 +307,7 @@ export function CommUI(props: CommUIProps): any {
       "players",
       e(Players, {
         entities: snap.entities,
+        byTarget,
         setSelectedEntity,
         selectedEntity,
         observingId: snap.observingId,
@@ -469,6 +472,7 @@ export function CommUI(props: CommUIProps): any {
           "playerFrame",
           e(PlayerFrame, {
             observing: framePlayer,
+            aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
             setSelectedEntity,
             layoutEdit,
           }),
@@ -482,7 +486,7 @@ export function CommUI(props: CommUIProps): any {
           e(TargetFrame, {
             observing: framePlayer,
             target: frameTarget,
-            entities: snap.entities,
+            byTarget,
             setSelectedEntity,
             layoutEdit,
           }),
@@ -494,6 +498,7 @@ export function CommUI(props: CommUIProps): any {
       "threat",
       e(ThreatTable, {
         entities: snap.entities,
+        byTarget,
         observingId: snap.observingId,
         layoutEdit,
         setSelectedEntity,

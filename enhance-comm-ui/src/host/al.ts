@@ -1,6 +1,5 @@
 import "./globals";
 import type { EntityLike, GLike, ServerInfoLike, SocketLike } from "./globals";
-import { resolveObserverFear } from "../lib/fear";
 
 export function getG(): GLike | undefined {
   return window.G;
@@ -64,25 +63,15 @@ export function findEntityById(
 }
 
 /**
- * Watched character for /comm. Soft stranger sync omits fear; we never trust
- * welcome `fear` either. Courage pools are noted from welcome, then fear is
- * estimated each tick from live monster aggro on the watched id.
+ * Watched character for /comm. Prefer live soft entity over welcome snap.
+ * Fear badges use simulated courage + caller-supplied aggro mobs.
  */
 export function getObserving(): EntityLike | null | undefined {
   const snap = window.observing;
   if (snap == null) return snap;
   if (snap.id != null) {
     const live = findEntityById(snap.id);
-    if (live) {
-      const fear = resolveObserverFear(live, snap, getEntitiesList());
-      if (typeof fear === "number") {
-        const liveFear = (live as { fear?: number }).fear;
-        if (liveFear === fear) return live;
-        if (fear === 0 && typeof liveFear !== "number") return live;
-        return { ...live, fear };
-      }
-      return live;
-    }
+    if (live) return live;
   }
   return snap;
 }

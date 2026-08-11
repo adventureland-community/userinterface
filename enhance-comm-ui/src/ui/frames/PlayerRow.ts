@@ -18,13 +18,15 @@ export const UNIT_FRAME_STYLE: Record<string, any> = {
 export type PlayerFrameProps = {
   /** Observed character, or spectator focus unit when not observing. */
   observing?: EntityLike | null;
+  /** Monsters targeting the observed player (from shared byTarget). */
+  aggroMobs?: EntityLike[];
   setSelectedEntity: (id: string) => void;
   /** When true and nothing to show, render a layout placeholder. */
   layoutEdit?: boolean;
 };
 
 export function PlayerFrame(props: PlayerFrameProps): any {
-  const { observing, layoutEdit } = props;
+  const { observing, aggroMobs = [], layoutEdit } = props;
 
   if (observing) {
     return e(ObservedUnit, {
@@ -33,6 +35,7 @@ export function PlayerFrame(props: PlayerFrameProps): any {
       hpColor: classColors[observing.ctype || ""] || "#666",
       fontSize: "21px",
       effectsOverlay: true,
+      aggroMobs,
       onSelect: (id: string) => {
         setXTarget(observing);
         props.setSelectedEntity(id);

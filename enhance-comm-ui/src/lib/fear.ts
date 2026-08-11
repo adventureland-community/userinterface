@@ -1,87 +1,61 @@
+import { getG } from "../host/al";
 import type { EntityLike } from "../host/globals";
+import { estimateCouragePoolsCached, type CouragePools } from "./courage";
 
-type CouragePools = {
-  courage: number;
-  mcourage: number;
-  pcourage: number;
+export type AggroByDamage = {
+  physical: number;
+  magical: number;
+  pure: number;
 };
 
 /**
- * Soft xy sync omits courage/fear. Cache courage pools whenever we see a full
- * character glimpse (observe welcome) so we can estimate fear from live aggro
- * without trusting stale welcome `fear`.
- */
-const courageById: Record<string, CouragePools> = {};
-
-function readPool(
-  ent: EntityLike,
-  key: "courage" | "mcourage" | "pcourage",
-): number | undefined {
-  const v = (ent as Record<string, unknown>)[key];
-  return typeof v === "number" ? v : undefined;
-}
-
-/** Remember courage pools from a full character packet (welcome / self). */
-export function noteCouragePools(ent: EntityLike | null | undefined): void {
-  if (!ent || ent.id == null) return;
-  const c = readPool(ent, "courage");
-  const mc = readPool(ent, "mcourage");
-  const pc = readPool(ent, "pcourage");
-  if (c == null && mc == null && pc == null) return;
-  const id = String(ent.id);
-  const prev = courageById[id];
-  courageById[id] = {
-    courage: c != null ? c : prev ? prev.courage : 0,
-    mcourage: mc != null ? mc : prev ? prev.mcourage : 0,
-    pcourage: pc != null ? pc : prev ? prev.pcourage : 0,
-  };
-}
-
-/**
- * Server: fear = max(0, targets_p - courage, targets_m - mcourage,
- * targets_u - pcourage). Without the p/m/u split we bound fear by treating
- * all aggro as hitting the weakest courage pool:
- *   fear ≤ max(0, N - min(courage, mcourage, pcourage)).
+ * Server fear = max(0, targets_p - courage, targets_m - mcourage,
+ * targets_u - pcourage). Monster damage_type selects the pool.
  */
 export function estimateFearFromAggro(
   pools: CouragePools,
-  aggroCount: number,
+  aggro: AggroByDamage,
 ): number {
-  const minC = Math.min(pools.courage, pools.mcourage, pools.pcourage);
-  return Math.max(0, aggroCount - minC);
+  return Math.max(
+    0,
+    aggro.physical - pools.courage,
+    aggro.magical - pools.mcourage,
+    aggro.pure - pools.pcourage,
+  );
 }
 
-export function countMonsterAggroOn(
-  entities: EntityLike[],
-  targetId: string,
-): number {
-  let n = 0;
-  for (let i = 0; i < entities.length; i++) {
-    const ent = entities[i];
-    if (ent.type !== "monster" || ent.target == null) continue;
-    if (String(ent.target) === targetId) n++;
+function monsterDamageType(ent: EntityLike): "physical" | "magical" | "pure" {
+  const live = ent.damage_type;
+  if (live === "magical" || live === "pure" || live === "physical") return live;
+  const G = getG();
+  const key = String(ent.mtype || "");
+  const def = G && G.monsters && key ? G.monsters[key] : undefined;
+  const dt = def && def.damage_type;
+  if (dt === "magical" || dt === "pure" || dt === "physical") return dt;
+  return "physical";
+}
+
+/** Split already-filtered aggro mobs by damage type (p / m / u). */
+export function aggroByDamageFromMobs(mobs: EntityLike[]): AggroByDamage {
+  const out: AggroByDamage = { physical: 0, magical: 0, pure: 0 };
+  for (let i = 0; i < mobs.length; i++) {
+    const dt = monsterDamageType(mobs[i]);
+    if (dt === "magical") out.magical++;
+    else if (dt === "pure") out.pure++;
+    else out.physical++;
   }
-  return n;
+  return out;
 }
 
 /**
- * Fear for the watched character: estimate only.
- * Soft sync never refreshes `fear`, so welcome/live fear values are not used.
+ * Simulated fear for a soft-synced player: cached courage + typed aggro mobs.
+ * Packet `fear` is not used (stranger sync omits it).
  */
-export function resolveObserverFear(
-  live: EntityLike,
-  snap: EntityLike | null | undefined,
-  entities: EntityLike[],
+export function estimatePlayerFear(
+  player: EntityLike,
+  aggroMobs: EntityLike[],
 ): number | undefined {
-  // Refresh courage cache from any full-character fields we still hold.
-  noteCouragePools(snap);
-  noteCouragePools(live);
-
-  const id = live.id != null ? String(live.id) : "";
-  if (!id) return undefined;
-  const pools = courageById[id];
+  const pools = estimateCouragePoolsCached(player);
   if (!pools) return undefined;
-
-  const aggro = countMonsterAggroOn(entities, id);
-  return estimateFearFromAggro(pools, aggro);
+  return estimateFearFromAggro(pools, aggroByDamageFromMobs(aggroMobs));
 }

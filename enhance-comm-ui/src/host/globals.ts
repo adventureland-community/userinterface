@@ -34,16 +34,15 @@ export type EntityLike = {
   reflection?: number;
   speed?: number;
   heal?: number;
-  damage_type?: string;
+  damage_type?: "physical" | "magical" | "pure" | string;
   age?: number;
   stand?: boolean | string;
   slots?: Record<string, SlotLike | null | undefined>;
   s?: Record<string, StatusLike | undefined>;
   q?: Record<string, any>;
   /**
-   * Courage overflow (targets beyond courage / mcourage / pcourage).
-   * Full character packets only (observe welcome / self) — stranger soft-sync
-   * omits it. getObserving() re-resolves from courage + aggro for /comm.
+   * Courage overflow. Soft stranger sync omits fear/courage; /comm estimates
+   * from G + gear + conditions + live aggro.
    * Tiers: 1 scared, 2–3 terrified, 4+ petrified (stock client logs).
    */
   fear?: number;
@@ -61,6 +60,9 @@ export type SlotLike = {
   giveaway?: boolean;
   rid?: string;
   skin?: string;
+  /** Title / shiny / etc. — used by calculate_item_properties. */
+  p?: string;
+  stat_type?: string;
 };
 
 export type StatusLike = {
@@ -73,10 +75,18 @@ export type StatusLike = {
 };
 
 export type GLike = {
-  conditions?: Record<string, { skin?: string; ui?: boolean; [key: string]: any }>;
+  conditions?: Record<
+    string,
+    { skin?: string; ui?: boolean; [key: string]: any }
+  >;
   skills?: Record<string, { skin?: string; ui?: boolean; [key: string]: any }>;
-  items?: Record<string, { skin?: string; [key: string]: any }>;
+  items?: Record<
+    string,
+    { skin?: string; wtype?: string; type?: string; [key: string]: any }
+  >;
   monsters?: Record<string, any>;
+  classes?: Record<string, any>;
+  sets?: Record<string, Record<string | number, any>>;
 };
 
 export type ServerInfoLike = {
@@ -111,9 +121,16 @@ declare global {
     condition_click?: (name: string) => void;
     slot_click?: (name: string) => void;
     add_tint?: (selector: string, args?: any) => void;
-    get_tint?: (selector: string) => { added?: boolean; [key: string]: any } | null;
+    get_tint?: (
+      selector: string,
+    ) => { added?: boolean; [key: string]: any } | null;
     simple_distance?: (a: any, b: any) => number;
     calculate_difficulty?: (monster: any) => number;
+    /** Stock item stat calc from `/js/old_common_functions.js` on `/comm`. */
+    calculate_item_properties?: (
+      item: SlotLike & { name: string },
+      args?: { class?: string; map?: string; def?: unknown },
+    ) => Record<string, unknown>;
     /** Stock /comm COMMAND modal; hooked by enhance-comm-ui. */
     show_commander?: (fvalue?: string) => void;
     /**

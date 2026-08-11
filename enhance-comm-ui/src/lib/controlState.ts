@@ -1,8 +1,11 @@
 import { getG } from "../host/al";
 import type { EntityLike } from "../host/globals";
+import { isFocusablePlayer } from "../queries/entities";
+import { estimatePlayerFear } from "./fear";
 
 /**
- * Courage overflow (`entity.fear`) — not a G.condition.
+ * Courage overflow — not a G.condition.
+ * Soft stranger sync omits `fear`; for players we simulate from gear + aggro.
  * Labels match stock client logs in js/game.js:
  *   fear > 3 → petrified, fear > 1 → terrified, else scared.
  */
@@ -138,19 +141,24 @@ export function fearLevelFromValue(fear: number): FearLevel | null {
   return "scared";
 }
 
+/**
+ * Map simulated fear → badge style.
+ * Callers must pass monsters already targeting this player (`aggroOn(byTarget, id)`).
+ */
 export function getFearState(
   entity: EntityLike | null | undefined,
+  aggroMobs: EntityLike[],
 ): FearState | null {
-  if (!entity) return null;
-  const raw = (entity as EntityLike & { fear?: number }).fear;
-  const fear = typeof raw === "number" ? raw : 0;
-  const level = fearLevelFromValue(fear);
+  if (!entity || !isFocusablePlayer(entity)) return null;
+  const estimated = estimatePlayerFear(entity, aggroMobs);
+  if (typeof estimated !== "number") return null;
+  const level = fearLevelFromValue(estimated);
   if (!level) return null;
   const style = FEAR_STYLE[level];
   return {
     kind: "fear",
     level,
-    fear,
+    fear: estimated,
     label: style.label,
     severity: style.severity,
     color: style.color,
@@ -199,25 +207,23 @@ export function getHardCcState(
  */
 export function getControlStates(
   entity: EntityLike | null | undefined,
+  aggroMobs: EntityLike[],
 ): ControlState[] {
   const out: ControlState[] = [];
   const hard = getHardCcState(entity);
-  const fear = getFearState(entity);
+  const fear = getFearState(entity, aggroMobs);
   if (hard) out.push(hard);
   if (fear) out.push(fear);
   return out;
 }
 
 /** Strongest border tint for the unit chrome (fear or hard-CC). */
-export function controlBorderTint(
-  states: ControlState[],
-): string | undefined {
+export function controlBorderTint(states: ControlState[]): string | undefined {
   if (!states.length) return undefined;
   let best = states[0];
   for (let i = 1; i < states.length; i++) {
     const s = states[i];
-    const bestRank =
-      best.kind === "fear" ? best.severity + 10 : best.severity;
+    const bestRank = best.kind === "fear" ? best.severity + 10 : best.severity;
     const rank = s.kind === "fear" ? s.severity + 10 : s.severity;
     // Prefer higher hard-CC severity; fear ranks above soft labels via +10.
     if (rank > bestRank) best = s;

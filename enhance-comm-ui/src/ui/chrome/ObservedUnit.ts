@@ -3,10 +3,7 @@ import { EffectsRow } from "./EffectsRow";
 import { ControlBadge } from "./ControlBadge";
 import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
-import {
-  controlBorderTint,
-  getControlStates,
-} from "../../lib/controlState";
+import { controlBorderTint, getControlStates } from "../../lib/controlState";
 import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type ObservedUnitProps = {
@@ -37,6 +34,8 @@ export type ObservedUnitProps = {
   aggroLabel?: string;
   /** Highlight in-bar aggro when this unit is on the observer. */
   aggroHot?: boolean;
+  /** Monsters targeting this unit (for simulated fear on players). */
+  aggroMobs?: EntityLike[];
 };
 
 export function ObservedUnit(props: ObservedUnitProps): any {
@@ -55,9 +54,10 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     threatCount = 0,
     aggroLabel,
     aggroHot = false,
+    aggroMobs = [],
   } = props;
 
-  const controlStates = getControlStates(entity);
+  const controlStates = getControlStates(entity, aggroMobs);
   const controlTint = controlBorderTint(controlStates);
 
   const name =

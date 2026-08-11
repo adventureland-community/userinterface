@@ -34,50 +34,6 @@ var EnhanceCommUI = (() => {
     return React.createElement(type, props, ...children);
   }
 
-  // src/lib/fear.ts
-  var courageById = {};
-  function readPool(ent, key) {
-    const v = ent[key];
-    return typeof v === "number" ? v : void 0;
-  }
-  function noteCouragePools(ent) {
-    if (!ent || ent.id == null) return;
-    const c = readPool(ent, "courage");
-    const mc = readPool(ent, "mcourage");
-    const pc = readPool(ent, "pcourage");
-    if (c == null && mc == null && pc == null) return;
-    const id = String(ent.id);
-    const prev = courageById[id];
-    courageById[id] = {
-      courage: c != null ? c : prev ? prev.courage : 0,
-      mcourage: mc != null ? mc : prev ? prev.mcourage : 0,
-      pcourage: pc != null ? pc : prev ? prev.pcourage : 0
-    };
-  }
-  function estimateFearFromAggro(pools, aggroCount) {
-    const minC = Math.min(pools.courage, pools.mcourage, pools.pcourage);
-    return Math.max(0, aggroCount - minC);
-  }
-  function countMonsterAggroOn(entities, targetId) {
-    let n = 0;
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (ent.type !== "monster" || ent.target == null) continue;
-      if (String(ent.target) === targetId) n++;
-    }
-    return n;
-  }
-  function resolveObserverFear(live, snap, entities) {
-    noteCouragePools(snap);
-    noteCouragePools(live);
-    const id = live.id != null ? String(live.id) : "";
-    if (!id) return void 0;
-    const pools = courageById[id];
-    if (!pools) return void 0;
-    const aggro = countMonsterAggroOn(entities, id);
-    return estimateFearFromAggro(pools, aggro);
-  }
-
   // src/host/al.ts
   function getG() {
     return window.G;
@@ -128,16 +84,7 @@ var EnhanceCommUI = (() => {
     if (snap == null) return snap;
     if (snap.id != null) {
       const live = findEntityById(snap.id);
-      if (live) {
-        const fear = resolveObserverFear(live, snap, getEntitiesList());
-        if (typeof fear === "number") {
-          const liveFear = live.fear;
-          if (liveFear === fear) return live;
-          if (fear === 0 && typeof liveFear !== "number") return live;
-          return { ...live, fear };
-        }
-        return live;
-      }
+      if (live) return live;
     }
     return snap;
   }
@@ -5071,11 +5018,18 @@ var EnhanceCommUI = (() => {
     const out = {};
     for (let i = 0; i < entities.length; i++) {
       const ent = entities[i];
-      if (ent.type !== "monster" || !ent.target) continue;
-      if (!out[ent.target]) out[ent.target] = [];
-      out[ent.target].push(ent);
+      if (ent.type !== "monster" || ent.target == null || ent.target === "") {
+        continue;
+      }
+      const tid = String(ent.target);
+      if (!out[tid]) out[tid] = [];
+      out[tid].push(ent);
     }
     return out;
+  }
+  function aggroOn(byTarget, id) {
+    if (id == null || id === "") return [];
+    return byTarget[String(id)] || [];
   }
   function aggroedMonsters(entities) {
     const out = [];
@@ -6139,6 +6093,219 @@ var EnhanceCommUI = (() => {
     );
   }
 
+  // src/lib/courage.ts
+  var CHARACTER_SLOTS = [
+    "ring1",
+    "ring2",
+    "earring1",
+    "earring2",
+    "belt",
+    "mainhand",
+    "offhand",
+    "helmet",
+    "chest",
+    "pants",
+    "shoes",
+    "gloves",
+    "amulet",
+    "orb",
+    "elixir",
+    "cape"
+  ];
+  var MAX_POOL_CACHE = 64;
+  var poolCache = /* @__PURE__ */ new Map();
+  function hostCalc(item, args) {
+    const fn = window.calculate_item_properties;
+    if (typeof fn !== "function") return null;
+    try {
+      return fn(item, args);
+    } catch (e2) {
+      return null;
+    }
+  }
+  function applyCourageProp(pools, attrs, prop) {
+    if (!prop) return;
+    if (typeof prop.courage === "number") pools.courage += prop.courage;
+    if (typeof prop.mcourage === "number") pools.mcourage += prop.mcourage;
+    if (typeof prop.pcourage === "number") pools.pcourage += prop.pcourage;
+    if (typeof prop.str === "number") attrs.str += prop.str;
+    if (typeof prop.int === "number") attrs.int += prop.int;
+  }
+  function levelStat(base, per, level) {
+    let v = base + level * per;
+    if (level > 40) v += (level - 40) * per;
+    if (level > 55) v += (level - 55) * per;
+    if (level > 65) v += (level - 65) * per;
+    if (level > 80) v -= (level - 80) * per;
+    return Math.floor(v);
+  }
+  function baseStrInt(classDef, level) {
+    const stats = classDef.stats || {};
+    const lstats = classDef.lstats || {};
+    return {
+      str: levelStat(stats.str || 0, lstats.str || 0, level),
+      int: levelStat(stats.int || 0, lstats.int || 0, level)
+    };
+  }
+  function mapName() {
+    const m = window.map;
+    if (m && typeof m.map_name === "string" && m.map_name) return m.map_name;
+    return "";
+  }
+  function slotCourageKey(slot) {
+    var _a, _b, _c;
+    if (!slot || !slot.name) return "";
+    return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.p) != null ? _b : ""}|${(_c = slot.stat_type) != null ? _c : ""}`;
+  }
+  function courageFingerprint(entity) {
+    var _a, _b, _c, _d, _e;
+    const ctype = String(entity.ctype || "");
+    const level = typeof entity.level === "number" ? entity.level : 1;
+    const slots = entity.slots || {};
+    const slotParts = [];
+    for (let i = 0; i < CHARACTER_SLOTS.length; i++) {
+      const name = CHARACTER_SLOTS[i];
+      slotParts.push(`${name}:${slotCourageKey(slots[name])}`);
+    }
+    const statuses = entity.s || {};
+    const sKeys = Object.keys(statuses);
+    sKeys.sort();
+    const sParts = [];
+    for (let i = 0; i < sKeys.length; i++) {
+      const key = sKeys[i];
+      const st = statuses[key];
+      if (!st) continue;
+      sParts.push(
+        `${key}:${(_a = st.courage) != null ? _a : ""}|${(_b = st.mcourage) != null ? _b : ""}|${(_c = st.pcourage) != null ? _c : ""}|${(_d = st.str) != null ? _d : ""}|${(_e = st.int) != null ? _e : ""}`
+      );
+    }
+    return `${ctype}|${level}|${mapName()}|${slotParts.join(";")}|${sParts.join(";")}`;
+  }
+  function cachePut(id, fp, pools) {
+    if (poolCache.size >= MAX_POOL_CACHE && !poolCache.has(id)) {
+      const oldest = poolCache.keys().next().value;
+      if (oldest != null) poolCache.delete(oldest);
+    }
+    poolCache.set(id, { fp, pools });
+  }
+  function estimateCouragePools(entity, G = getG()) {
+    if (!G || !G.classes || !G.items) return null;
+    const ctype = String(entity.ctype || "");
+    if (!ctype) return null;
+    const classDef = G.classes[ctype];
+    if (!classDef) return null;
+    if (typeof window.calculate_item_properties !== "function") return null;
+    const level = typeof entity.level === "number" ? entity.level : 1;
+    const pools = {
+      courage: classDef.courage || 0,
+      mcourage: classDef.mcourage || 0,
+      pcourage: classDef.pcourage || 0
+    };
+    const attrs = baseStrInt(classDef, level);
+    const sets = {};
+    const slots = entity.slots || {};
+    const map = mapName() || void 0;
+    for (let i = 0; i < CHARACTER_SLOTS.length; i++) {
+      const slotName = CHARACTER_SLOTS[i];
+      const current = slots[slotName];
+      if (!current || !current.name) continue;
+      const def = G.items[current.name];
+      if (!def) continue;
+      const prop = hostCalc(current, {
+        class: ctype,
+        map
+      });
+      if (!prop) continue;
+      if (prop.class && Array.isArray(prop.class) && prop.class.indexOf(ctype) < 0) {
+        continue;
+      }
+      applyCourageProp(pools, attrs, prop);
+      if (slotName === "mainhand" && def.wtype) {
+        const dh = classDef.doublehand && classDef.doublehand[def.wtype];
+        const mh = classDef.mainhand && classDef.mainhand[def.wtype];
+        applyCourageProp(pools, attrs, dh || mh || void 0);
+      }
+      if (slotName === "offhand") {
+        const key = def.wtype || def.type;
+        const oh = key && classDef.offhand && classDef.offhand[key];
+        applyCourageProp(pools, attrs, oh);
+      }
+      if (prop.set) {
+        sets[prop.set] = (sets[prop.set] || 0) + 1;
+      }
+    }
+    if (G.sets) {
+      const setNames = Object.keys(sets);
+      for (let i = 0; i < setNames.length; i++) {
+        const name = setNames[i];
+        const setDef = G.sets[name];
+        const pieceProp = setDef && setDef[sets[name]];
+        applyCourageProp(pools, attrs, pieceProp);
+      }
+    }
+    const statuses = entity.s || {};
+    const condNames = Object.keys(statuses);
+    for (let i = 0; i < condNames.length; i++) {
+      const name = condNames[i];
+      if (!statuses[name]) continue;
+      applyCourageProp(pools, attrs, statuses[name]);
+      const cond = G.conditions && G.conditions[name];
+      applyCourageProp(pools, attrs, cond);
+    }
+    if (ctype === "warrior") pools.courage += Math.round(attrs.str / 30);
+    if (ctype === "priest") pools.mcourage += Math.round(attrs.int / 30);
+    if (ctype === "paladin") {
+      pools.pcourage += Math.round(attrs.str / 30 + attrs.int / 30);
+    }
+    return pools;
+  }
+  function estimateCouragePoolsCached(entity) {
+    const id = entity.id != null ? String(entity.id) : "";
+    if (!id) return estimateCouragePools(entity);
+    const fp = courageFingerprint(entity);
+    const hit = poolCache.get(id);
+    if (hit && hit.fp === fp) return hit.pools;
+    const pools = estimateCouragePools(entity);
+    if (pools) cachePut(id, fp, pools);
+    else poolCache.delete(id);
+    return pools;
+  }
+
+  // src/lib/fear.ts
+  function estimateFearFromAggro(pools, aggro) {
+    return Math.max(
+      0,
+      aggro.physical - pools.courage,
+      aggro.magical - pools.mcourage,
+      aggro.pure - pools.pcourage
+    );
+  }
+  function monsterDamageType(ent) {
+    const live = ent.damage_type;
+    if (live === "magical" || live === "pure" || live === "physical") return live;
+    const G = getG();
+    const key = String(ent.mtype || "");
+    const def = G && G.monsters && key ? G.monsters[key] : void 0;
+    const dt = def && def.damage_type;
+    if (dt === "magical" || dt === "pure" || dt === "physical") return dt;
+    return "physical";
+  }
+  function aggroByDamageFromMobs(mobs) {
+    const out = { physical: 0, magical: 0, pure: 0 };
+    for (let i = 0; i < mobs.length; i++) {
+      const dt = monsterDamageType(mobs[i]);
+      if (dt === "magical") out.magical++;
+      else if (dt === "pure") out.pure++;
+      else out.physical++;
+    }
+    return out;
+  }
+  function estimatePlayerFear(player, aggroMobs) {
+    const pools = estimateCouragePoolsCached(player);
+    if (!pools) return void 0;
+    return estimateFearFromAggro(pools, aggroByDamageFromMobs(aggroMobs));
+  }
+
   // src/lib/controlState.ts
   var HARD_CC = [
     {
@@ -6218,17 +6385,17 @@ var EnhanceCommUI = (() => {
     if (fear > 1) return "terrified";
     return "scared";
   }
-  function getFearState(entity) {
-    if (!entity) return null;
-    const raw = entity.fear;
-    const fear = typeof raw === "number" ? raw : 0;
-    const level = fearLevelFromValue(fear);
+  function getFearState(entity, aggroMobs) {
+    if (!entity || !isFocusablePlayer(entity)) return null;
+    const estimated = estimatePlayerFear(entity, aggroMobs);
+    if (typeof estimated !== "number") return null;
+    const level = fearLevelFromValue(estimated);
     if (!level) return null;
     const style = FEAR_STYLE[level];
     return {
       kind: "fear",
       level,
-      fear,
+      fear: estimated,
       label: style.label,
       severity: style.severity,
       color: style.color,
@@ -6263,10 +6430,10 @@ var EnhanceCommUI = (() => {
     }
     return best;
   }
-  function getControlStates(entity) {
+  function getControlStates(entity, aggroMobs) {
     const out = [];
     const hard = getHardCcState(entity);
-    const fear = getFearState(entity);
+    const fear = getFearState(entity, aggroMobs);
     if (hard) out.push(hard);
     if (fear) out.push(fear);
     return out;
@@ -7067,7 +7234,7 @@ var EnhanceCommUI = (() => {
       () => getSettings().partyBuffMode || "auto"
     );
     const parties = partyGroups(props.entities);
-    const byTarget = aggroByTarget(props.entities);
+    const byTarget = props.byTarget;
     const observing = props.observing;
     const visibleChipCount = playersList(props.entities).length;
     const sharedMode = buffMode === "shared";
@@ -7180,13 +7347,12 @@ var EnhanceCommUI = (() => {
               const pid = String(player.id);
               const selected = props.selectedEntity != null && String(props.selectedEntity) === pid;
               const observed = props.observingId != null && String(props.observingId) === pid;
-              const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
+              const aggroMobs = aggroOn(byTarget, pid);
               const hasAggro = aggroMobs.length > 0;
               const color = classColors[player.ctype || ""] || "#888";
               const dead = isActuallyDead(player);
               const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
-              const controlEntity = observed && observing && typeof observing.fear === "number" ? { ...player, fear: observing.fear } : player;
-              const controlStates = getControlStates(controlEntity);
+              const controlStates = getControlStates(player, aggroMobs);
               const controlTint = controlBorderTint(controlStates);
               const controlTitle = controlStates.map(
                 (s) => s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
@@ -7822,13 +7988,13 @@ var EnhanceCommUI = (() => {
     ];
   }
   function CryptProgress(props) {
-    const mapName = getMapData(props.entities);
-    const onCrypt = !!(mapName && mapName.map === "crypt");
+    const mapName2 = getMapData(props.entities);
+    const onCrypt = !!(mapName2 && mapName2.map === "crypt");
     if (!onCrypt) {
       if (!props.layoutEdit) return null;
       return e(CryptProgressLayoutDummy);
     }
-    updateFromEntities(mapName.in, props.entities);
+    updateFromEntities(mapName2.in, props.entities);
     const currentlySeeMtypes = /* @__PURE__ */ new Set();
     const aggroedMtypes = /* @__PURE__ */ new Set();
     for (let i = 0; i < props.entities.length; i++) {
@@ -7841,7 +8007,7 @@ var EnhanceCommUI = (() => {
       currentlySeeMtypes.add(entity.mtype);
       if (entity.target) aggroedMtypes.add(entity.mtype);
     }
-    const instanceData = getInstanceData(mapName.in);
+    const instanceData = getInstanceData(mapName2.in);
     return e(
       "div",
       {
@@ -9258,9 +9424,10 @@ var EnhanceCommUI = (() => {
       showMp = true,
       threatCount = 0,
       aggroLabel,
-      aggroHot = false
+      aggroHot = false,
+      aggroMobs = []
     } = props;
-    const controlStates = getControlStates(entity);
+    const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const threatSpark = threatCount > 0 ? e(
@@ -9648,7 +9815,7 @@ var EnhanceCommUI = (() => {
     boxSizing: "border-box"
   };
   function PlayerFrame(props) {
-    const { observing, layoutEdit } = props;
+    const { observing, aggroMobs = [], layoutEdit } = props;
     if (observing) {
       return e(ObservedUnit, {
         key: `obs-${String(observing.id)}`,
@@ -9656,6 +9823,7 @@ var EnhanceCommUI = (() => {
         hpColor: classColors[observing.ctype || ""] || "#666",
         fontSize: "21px",
         effectsOverlay: true,
+        aggroMobs,
         onSelect: (id) => {
           setXTarget(observing);
           props.setSelectedEntity(id);
@@ -9707,27 +9875,28 @@ var EnhanceCommUI = (() => {
     if (diff) parts.push(diff.label);
     return parts.join(" \xB7 ");
   }
-  function threatOnTarget(entities, target, observingId) {
-    if (!entities) return { count: 0, youHaveAggro: false };
-    const byTarget = aggroByTarget(entities);
-    const onYou = observingId != null ? byTarget[observingId] || [] : [];
+  function threatOnTarget(byTarget, target, observingId) {
+    const onYou = aggroOn(byTarget, observingId);
     const youHaveAggro = !!observingId && target.type === "monster" && target.target != null && String(target.target) === String(observingId);
     return { count: onYou.length, youHaveAggro };
   }
   function TargetFrame(props) {
-    const { observing, target, layoutEdit, entities } = props;
+    const { observing, target, layoutEdit, byTarget = {} } = props;
     const obsId = observing && observing.id != null ? String(observing.id) : void 0;
     if (target) {
-      const threat = threatOnTarget(entities, target, obsId);
+      const threat = threatOnTarget(byTarget, target, obsId);
       const spark = threat.youHaveAggro || threat.count > 0 ? threat.count || 1 : 0;
+      const tid = String(target.id);
+      const aggroMobs = isFocusablePlayer(target) ? aggroOn(byTarget, tid) : [];
       return e(ObservedUnit, {
-        key: `tgt-${String(target.id)}`,
+        key: `tgt-${tid}`,
         entity: target,
         hpColor: classColors[target.ctype || ""] || "red",
         fontSize: "21px",
         trailing: targetTrailing(observing, target),
         threatCount: spark,
         effectsOverlay: true,
+        aggroMobs,
         onSelect: (id) => {
           setXTarget(target);
           props.setSelectedEntity(id);
@@ -10138,10 +10307,7 @@ var EnhanceCommUI = (() => {
       const ent = findEntity(props.entities, tid);
       return ent && ent.name || tid;
     };
-    const byTarget = stickyAggroByTarget(
-      aggroByTarget(props.entities),
-      nameOf
-    );
+    const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
     const targetIds = sortThreatTargetIds(
       Object.keys(byTarget),
       props.observingId,
@@ -13153,7 +13319,8 @@ var EnhanceCommUI = (() => {
     const coopV2Rows = buildCoopV2Rows(snap.entities);
     const hitDpsRows = buildHitDpsRows(snap.entities, snap.now);
     const hasEnemies = aggroedMonsters(snap.entities).length > 0;
-    const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
+    const byTarget = aggroByTarget(snap.entities);
+    const hasThreat = Object.keys(byTarget).length > 0;
     const hasBosses = activeBosses(snap.entities).length > 0;
     const onCrypt = getMapData(snap.entities).map === "crypt";
     const isObserving = snap.observingId != null && snap.observingId !== "" || !!snap.observing;
@@ -13224,6 +13391,7 @@ var EnhanceCommUI = (() => {
         "players",
         e(Players, {
           entities: snap.entities,
+          byTarget,
           setSelectedEntity,
           selectedEntity,
           observingId: snap.observingId,
@@ -13369,6 +13537,7 @@ var EnhanceCommUI = (() => {
         "playerFrame",
         e(PlayerFrame, {
           observing: framePlayer,
+          aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
           setSelectedEntity,
           layoutEdit
         }),
@@ -13379,7 +13548,7 @@ var EnhanceCommUI = (() => {
         e(TargetFrame, {
           observing: framePlayer,
           target: frameTarget,
-          entities: snap.entities,
+          byTarget,
           setSelectedEntity,
           layoutEdit
         }),
@@ -13389,6 +13558,7 @@ var EnhanceCommUI = (() => {
         "threat",
         e(ThreatTable, {
           entities: snap.entities,
+          byTarget,
           observingId: snap.observingId,
           layoutEdit,
           setSelectedEntity

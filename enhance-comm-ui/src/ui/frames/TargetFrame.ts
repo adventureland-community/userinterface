@@ -2,13 +2,9 @@ import { e } from "../../host/react";
 import { setXTarget } from "../../host/icons";
 import { classColors } from "../../lib/colors";
 import { formatTime, getPercent } from "../../lib/format";
-import {
-  difficultyBadge,
-  distance,
-  outOfRange,
-} from "../../geometry/combat";
+import { difficultyBadge, distance, outOfRange } from "../../geometry/combat";
 import { estimateTtk, getDps } from "../../meters/combatMeter";
-import { aggroByTarget } from "../../queries/entities";
+import { aggroOn, isFocusablePlayer } from "../../queries/entities";
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
@@ -16,7 +12,8 @@ import type { EntityLike } from "../../host/globals";
 export type TargetFrameProps = {
   observing?: EntityLike | null;
   target?: EntityLike;
-  entities?: EntityLike[];
+  /** Shared aggro index from CommUI (string target ids). */
+  byTarget?: Record<string, EntityLike[]>;
   setSelectedEntity: (id: string) => void;
   /** When true and there is no target, render a layout placeholder. */
   layoutEdit?: boolean;
@@ -41,17 +38,11 @@ function targetTrailing(
 }
 
 function threatOnTarget(
-  entities: EntityLike[] | undefined,
+  byTarget: Record<string, EntityLike[]>,
   target: EntityLike,
   observingId: string | undefined,
 ): { count: number; youHaveAggro: boolean } {
-  if (!entities) return { count: 0, youHaveAggro: false };
-  const byTarget = aggroByTarget(entities);
-  // Mobs targeting the watched character (overall threat).
-  const onYou =
-    observingId != null
-      ? byTarget[observingId] || []
-      : [];
+  const onYou = aggroOn(byTarget, observingId);
   const youHaveAggro =
     !!observingId &&
     target.type === "monster" &&
@@ -66,22 +57,25 @@ function threatOnTarget(
  * Source unit is observing (characterui) or spectator focus.
  */
 export function TargetFrame(props: TargetFrameProps): any {
-  const { observing, target, layoutEdit, entities } = props;
+  const { observing, target, layoutEdit, byTarget = {} } = props;
   const obsId =
     observing && observing.id != null ? String(observing.id) : undefined;
 
   if (target) {
-    const threat = threatOnTarget(entities, target, obsId);
+    const threat = threatOnTarget(byTarget, target, obsId);
     const spark =
       threat.youHaveAggro || threat.count > 0 ? threat.count || 1 : 0;
+    const tid = String(target.id);
+    const aggroMobs = isFocusablePlayer(target) ? aggroOn(byTarget, tid) : [];
     return e(ObservedUnit, {
-      key: `tgt-${String(target.id)}`,
+      key: `tgt-${tid}`,
       entity: target,
       hpColor: classColors[target.ctype || ""] || "red",
       fontSize: "21px",
       trailing: targetTrailing(observing, target),
       threatCount: spark,
       effectsOverlay: true,
+      aggroMobs,
       onSelect: (id: string) => {
         setXTarget(target);
         props.setSelectedEntity(id);

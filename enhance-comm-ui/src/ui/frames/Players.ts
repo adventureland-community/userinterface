@@ -1,15 +1,12 @@
 import { getReact, e } from "../../host/react";
 import { classColors } from "../../lib/colors";
-import { aggroByTarget, partyGroups, playersList } from "../../queries/entities";
+import { aggroOn, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
 import { ControlBadge } from "../chrome/ControlBadge";
 import { EffectsRow } from "../chrome/EffectsRow";
 import { SharedPartyEffects } from "../chrome/SharedPartyEffects";
-import {
-  controlBorderTint,
-  getControlStates,
-} from "../../lib/controlState";
+import { controlBorderTint, getControlStates } from "../../lib/controlState";
 import {
   getSettings,
   patchSettings,
@@ -27,6 +24,8 @@ import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type PlayersProps = {
   entities: EntityLike[];
+  /** Shared aggro index from CommUI (string target ids). */
+  byTarget: Record<string, EntityLike[]>;
   setSelectedEntity: (id: string | undefined) => void;
   selectedEntity?: string;
   /** Watched /comm character id — pink observe chrome, not paperdoll select. */
@@ -61,7 +60,7 @@ export function Players(props: PlayersProps): any {
   );
 
   const parties = partyGroups(props.entities);
-  const byTarget = aggroByTarget(props.entities);
+  const byTarget = props.byTarget;
   const observing = props.observing;
   const visibleChipCount = playersList(props.entities).length;
   const sharedMode = buffMode === "shared";
@@ -98,8 +97,7 @@ export function Players(props: PlayersProps): any {
   return e(
     "div",
     {
-      className:
-        "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
+      className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
       style: {
         padding: "4px",
         display: "flex",
@@ -186,26 +184,18 @@ export function Players(props: PlayersProps): any {
               String(props.selectedEntity) === pid;
             const observed =
               props.observingId != null && String(props.observingId) === pid;
-            const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
+            const aggroMobs = aggroOn(byTarget, pid);
             const hasAggro = aggroMobs.length > 0;
             const color = classColors[player.ctype || ""] || "#888";
             const dead = isActuallyDead(player);
             const aggroTitle = hasAggro
               ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}`
               : "";
-            const controlEntity =
-              observed &&
-              observing &&
-              typeof observing.fear === "number"
-                ? { ...player, fear: observing.fear }
-                : player;
-            const controlStates = getControlStates(controlEntity);
+            const controlStates = getControlStates(player, aggroMobs);
             const controlTint = controlBorderTint(controlStates);
             const controlTitle = controlStates
               .map((s) =>
-                s.kind === "fear"
-                  ? `${s.label} (fear ${s.fear})`
-                  : s.label,
+                s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label,
               )
               .join(" · ");
             const nameTitle = [

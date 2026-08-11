@@ -47,18 +47,30 @@ export function partyGroups(
   return entries;
 }
 
-/** Map targetId -> monsters currently targeting them. */
+/** Map targetId (string) -> monsters currently targeting them. */
 export function aggroByTarget(
   entities: EntityLike[],
 ): Record<string, EntityLike[]> {
   const out: Record<string, EntityLike[]> = {};
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
-    if (ent.type !== "monster" || !ent.target) continue;
-    if (!out[ent.target]) out[ent.target] = [];
-    out[ent.target].push(ent);
+    if (ent.type !== "monster" || ent.target == null || ent.target === "") {
+      continue;
+    }
+    const tid = String(ent.target);
+    if (!out[tid]) out[tid] = [];
+    out[tid].push(ent);
   }
   return out;
+}
+
+/** Lookup aggro list for an id; keys are always stringified. */
+export function aggroOn(
+  byTarget: Record<string, EntityLike[]>,
+  id: string | number | null | undefined,
+): EntityLike[] {
+  if (id == null || id === "") return [];
+  return byTarget[String(id)] || [];
 }
 
 export function aggroedMonsters(entities: EntityLike[]): EntityLike[] {
