@@ -932,7 +932,7 @@ var EnhanceCommUI = (() => {
     playerFrame: { x: 40.5, y: 86, anchor: "bc" },
     targetFrame: { x: 60, y: 86, anchor: "bc" },
     bossBar: { x: 50, y: 8, anchor: "tc" },
-    crypt: { x: 50, y: 14, anchor: "tc" },
+    crypt: { x: 50, y: 18, anchor: "tc" },
     threat: { x: 82, y: 75, anchor: "br" },
     pdps: { x: 78, y: 90, anchor: "tr" },
     hitDps: { x: 99.5, y: 50, anchor: "tr" },
@@ -954,7 +954,7 @@ var EnhanceCommUI = (() => {
     playerFrame: { x: 32, y: 78, anchor: "bc" },
     targetFrame: { x: 68, y: 78, anchor: "bc" },
     bossBar: { x: 50, y: 9, anchor: "tc" },
-    crypt: { x: 50, y: 15, anchor: "tc" },
+    crypt: { x: 50, y: 19, anchor: "tc" },
     pdps: { x: 99.2, y: 14, anchor: "tr" },
     hitDps: { x: 99.2, y: 28, anchor: "tr" },
     coopV1: { x: 0.8, y: 14, anchor: "tl" },
@@ -5382,9 +5382,11 @@ var EnhanceCommUI = (() => {
       return { xs, ys };
     };
     const onPointerDown = (ev) => {
+      var _a;
       if (!editing) return;
       ev.preventDefault();
       ev.stopPropagation();
+      (_a = props.onEditFocus) == null ? void 0 : _a.call(props);
       dragging.current = true;
       start.current = {
         clientX: ev.clientX,
@@ -5461,6 +5463,10 @@ var EnhanceCommUI = (() => {
         background: hidden ? "rgba(20,20,20,0.55)" : "transparent"
       } : null
     );
+    if (editing && typeof props.editZIndex === "number" && props.editZIndex > 0) {
+      const baseZ = Number(shellStyle.zIndex);
+      shellStyle.zIndex = (Number.isFinite(baseZ) ? baseZ : 40) + props.editZIndex;
+    }
     const closeBtn = showClose ? e(
       "button",
       {
@@ -5647,6 +5653,13 @@ var EnhanceCommUI = (() => {
           style: hiddenBodyStyle
         },
         `${PANEL_LABELS[id]} \u2014 closed`
+      ) : editing && !hidden ? e(
+        "div",
+        {
+          className: "comm-pos-panel-body",
+          style: { pointerEvents: "none" }
+        },
+        children
       ) : children
     );
   }
@@ -9081,14 +9094,6 @@ var EnhanceCommUI = (() => {
           showMp: false,
           showEffectsPlaceholder: true,
           showAggroInBar: true
-        }),
-        e(FrameDummy, {
-          label: "Boss",
-          sampleName: "Crypt Boss",
-          hpColor: "#6a2a6a",
-          showMp: false,
-          showEffectsPlaceholder: true,
-          showAggroInBar: true
         })
       );
     }
@@ -11437,6 +11442,10 @@ var EnhanceCommUI = (() => {
     );
     const [opacityEdit, setOpacityEdit] = React.useState(false);
     const [layoutEdit, setLayoutEdit] = React.useState(false);
+    const [layoutEditZ, setLayoutEditZ] = React.useState(
+      {}
+    );
+    const layoutEditZCounter = React.useRef(0);
     const [detectedProfile, setDetectedProfile] = React.useState(
       () => detectViewportProfile()
     );
@@ -11457,6 +11466,19 @@ var EnhanceCommUI = (() => {
       window.addEventListener("resize", onResize);
       return () => window.removeEventListener("resize", onResize);
     }, []);
+    React.useEffect(() => {
+      if (layoutEdit) return;
+      setLayoutEditZ({});
+      layoutEditZCounter.current = 0;
+    }, [layoutEdit]);
+    const bringPanelToFront = (id) => {
+      layoutEditZCounter.current += 1;
+      const boost = layoutEditZCounter.current;
+      setLayoutEditZ((prev) => ({
+        ...prev,
+        [id]: boost
+      }));
+    };
     React.useEffect(() => {
       const settings = getSettings();
       const next = layoutForProfile(settings, viewportProfile);
@@ -11537,7 +11559,9 @@ var EnhanceCommUI = (() => {
       setVisible,
       setOpacity,
       visible,
-      opacityFor
+      opacityFor,
+      layoutEditZ,
+      bringPanelToFront
     };
   }
 
@@ -12355,7 +12379,9 @@ var EnhanceCommUI = (() => {
       setVisible,
       setOpacity,
       visible,
-      opacityFor
+      opacityFor,
+      layoutEditZ,
+      bringPanelToFront
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const {
@@ -12444,7 +12470,9 @@ var EnhanceCommUI = (() => {
           peerLayout: layout,
           viewportProfile,
           onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
-          onShow: isClosablePanel ? () => setVisible(id, true) : void 0
+          onShow: isClosablePanel ? () => setVisible(id, true) : void 0,
+          editZIndex: layoutEdit ? layoutEditZ[id] : void 0,
+          onEditFocus: layoutEdit ? () => bringPanelToFront(id) : void 0
         },
         child
       );

@@ -93,14 +93,6 @@ export function BossBarPanel(props: BossBarPanelProps): any {
         showEffectsPlaceholder: true,
         showAggroInBar: true,
       }),
-      e(FrameDummy, {
-        label: "Boss",
-        sampleName: "Crypt Boss",
-        hpColor: "#6a2a6a",
-        showMp: false,
-        showEffectsPlaceholder: true,
-        showAggroInBar: true,
-      }),
     );
   }
 

@@ -64,6 +64,10 @@ export type PositionedPanelProps = {
   peerLayout?: Partial<Record<PanelId, PanelPos>>;
   /** Active viewport profile — enlarges handles on tablet/phone. */
   viewportProfile?: ViewportProfile;
+  /** Layout-edit z-order boost (bring-to-front on interact). */
+  editZIndex?: number;
+  /** Layout-edit: raise this panel above overlapping peers. */
+  onEditFocus?: () => void;
 };
 
 /**
@@ -146,6 +150,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     if (!editing) return;
     ev.preventDefault();
     ev.stopPropagation();
+    props.onEditFocus?.();
     dragging.current = true;
     start.current = {
       clientX: ev.clientX,
@@ -238,6 +243,10 @@ export function PositionedPanel(props: PositionedPanelProps): any {
         }
       : null,
   );
+  if (editing && typeof props.editZIndex === "number" && props.editZIndex > 0) {
+    const baseZ = Number(shellStyle.zIndex);
+    shellStyle.zIndex = (Number.isFinite(baseZ) ? baseZ : 40) + props.editZIndex;
+  }
 
   const closeBtn = showClose
     ? e(
@@ -443,6 +452,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           },
           `${PANEL_LABELS[id]} — closed`,
         )
-      : children,
+      : editing && !hidden
+        ? e(
+            "div",
+            {
+              className: "comm-pos-panel-body",
+              style: { pointerEvents: "none" },
+            },
+            children,
+          )
+        : children,
   );
 }

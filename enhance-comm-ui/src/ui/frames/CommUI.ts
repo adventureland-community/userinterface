@@ -134,6 +134,8 @@ export function CommUI(props: CommUIProps): any {
     setOpacity,
     visible,
     opacityFor,
+    layoutEditZ,
+    bringPanelToFront,
   } = layoutState;
 
   const { bagOpen, bagRefreshing } = useBagBridge(setPanelVisible);
@@ -240,6 +242,8 @@ export function CommUI(props: CommUIProps): any {
         viewportProfile,
         onClose: isClosablePanel ? () => setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => setVisible(id, true) : undefined,
+        editZIndex: layoutEdit ? layoutEditZ[id] : undefined,
+        onEditFocus: layoutEdit ? () => bringPanelToFront(id) : undefined,
       },
       child,
     );
