@@ -5597,6 +5597,7 @@ var EnhanceCommUI = (() => {
     };
     const showClose = !!onClose && !hidden && (editing || hover || touchish);
     const opacity = typeof props.opacity === "number" && Number.isFinite(props.opacity) ? Math.max(0.25, Math.min(1, props.opacity)) : 1;
+    const interactiveBody = !!props.interactiveBody;
     const shellStyle = Object.assign(
       {},
       panelStyle(pos, editing),
@@ -5608,8 +5609,9 @@ var EnhanceCommUI = (() => {
         outline: hidden ? "1px dashed rgba(140,140,140,0.7)" : "1px dashed rgba(255,220,100,0.85)",
         outlineOffset: "0px",
         background: hidden ? "rgba(20,20,20,0.55)" : "transparent",
-        // Shell click-through in edit mode; header/close/anchor re-enable below.
-        pointerEvents: "none"
+        // Default: click-through so overlapping panels can be grabbed.
+        // interactiveBody (Layout toggles): keep hits so buttons work.
+        pointerEvents: interactiveBody ? "auto" : "none"
       } : null
     );
     const closeBtn = showClose ? e(
@@ -5805,7 +5807,8 @@ var EnhanceCommUI = (() => {
       ) : editing && !hidden ? e(
         "div",
         {
-          className: "comm-pos-panel-body"
+          className: "comm-pos-panel-body",
+          style: interactiveBody ? { pointerEvents: "auto" } : void 0
         },
         children
       ) : children
@@ -13088,6 +13091,7 @@ var EnhanceCommUI = (() => {
           opacity: opacityFor(id),
           peerLayout: layout,
           viewportProfile,
+          interactiveBody: opts == null ? void 0 : opts.interactiveBody,
           onClose: isClosablePanel ? () => setVisible(id, false) : void 0,
           onShow: isClosablePanel ? () => setVisible(id, true) : void 0
         },
@@ -13410,9 +13414,10 @@ var EnhanceCommUI = (() => {
           )
         ),
         {
-          // Stay above other layout-edit panels (40), info (45), and the
-          // edit toolbar (50) so Layout ON/OFF stays clickable — keep edit
-          // chrome so the block can still be dragged.
+          // Above layout-edit panels (40) / info (45) / toolbar (50).
+          // interactiveBody: edit shell stays hittable so Layout ON/OFF works
+          // while the ⠿ header still drags the block.
+          interactiveBody: true,
           style: { zIndex: 60 }
         }
       )

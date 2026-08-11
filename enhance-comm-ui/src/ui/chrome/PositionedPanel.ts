@@ -64,6 +64,11 @@ export type PositionedPanelProps = {
   peerLayout?: Partial<Record<PanelId, PanelPos>>;
   /** Active viewport profile — enlarges handles on tablet/phone. */
   viewportProfile?: ViewportProfile;
+  /**
+   * Keep body (and shell) pointer-events in layout edit so controls stay
+   * clickable. Default is click-through so overlapping panels can be grabbed.
+   */
+  interactiveBody?: boolean;
 };
 
 /**
@@ -219,6 +224,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     typeof props.opacity === "number" && Number.isFinite(props.opacity)
       ? Math.max(0.25, Math.min(1, props.opacity))
       : 1;
+  const interactiveBody = !!props.interactiveBody;
   const shellStyle = Object.assign(
     {},
     panelStyle(pos, editing),
@@ -235,8 +241,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           background: hidden
             ? "rgba(20,20,20,0.55)"
             : "transparent",
-          // Shell click-through in edit mode; header/close/anchor re-enable below.
-          pointerEvents: "none",
+          // Default: click-through so overlapping panels can be grabbed.
+          // interactiveBody (Layout toggles): keep hits so buttons work.
+          pointerEvents: interactiveBody ? "auto" : "none",
         }
       : null,
   );
@@ -454,6 +461,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             "div",
             {
               className: "comm-pos-panel-body",
+              style: interactiveBody
+                ? { pointerEvents: "auto" }
+                : undefined,
             },
             children,
           )

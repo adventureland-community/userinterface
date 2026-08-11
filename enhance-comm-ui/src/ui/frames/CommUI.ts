@@ -84,6 +84,8 @@ type PanelOpts = {
   empty?: boolean;
   /** Extra style for the hidden/closed edit body (e.g. bag footprint). */
   hiddenBodyStyle?: Record<string, any>;
+  /** Keep body clickable in layout edit (Layout / Opacity toggles). */
+  interactiveBody?: boolean;
 };
 
 function meterOrDummy(
@@ -238,6 +240,7 @@ export function CommUI(props: CommUIProps): any {
         opacity: opacityFor(id),
         peerLayout: layout,
         viewportProfile,
+        interactiveBody: opts?.interactiveBody,
         onClose: isClosablePanel ? () => setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => setVisible(id, true) : undefined,
       },
@@ -598,9 +601,10 @@ export function CommUI(props: CommUIProps): any {
         ),
       ),
       {
-        // Stay above other layout-edit panels (40), info (45), and the
-        // edit toolbar (50) so Layout ON/OFF stays clickable — keep edit
-        // chrome so the block can still be dragged.
+        // Above layout-edit panels (40) / info (45) / toolbar (50).
+        // interactiveBody: edit shell stays hittable so Layout ON/OFF works
+        // while the ⠿ header still drags the block.
+        interactiveBody: true,
         style: { zIndex: 60 },
       },
     ),
