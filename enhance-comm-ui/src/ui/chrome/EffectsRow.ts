@@ -155,12 +155,13 @@ function applyEffectTint(
   wrap: HTMLElement,
   rid: string,
   endsAt: number,
-  durationMs: number,
+  startedAt: number,
   mode: "restart" | "sync" | "rebind",
 ): void {
   const now = Date.now();
   const remaining = endsAt - now;
-  if (!(remaining > 0) || !(durationMs > 0)) return;
+  const spanMs = endsAt - startedAt;
+  if (!(remaining > 0) || !(startedAt > 0) || !(spanMs > 0)) return;
 
   const loader = ensureSkidLoader(wrap, rid);
   if (!loader) return;
@@ -168,10 +169,11 @@ function applyEffectTint(
   const selector = ".skidloader" + rid;
   const existing = getTint(selector);
 
-  if (mode === "sync" && existing) {
-    // Shorten/extend end without resetting start (no visual restart).
-    existing.end = new Date(endsAt);
-    existing.ms = remaining;
+  if (mode === "sync") {
+    if (existing) {
+      existing.end = new Date(endsAt);
+      existing.ms = remaining;
+    }
     return;
   }
 
@@ -180,18 +182,16 @@ function applyEffectTint(
   const img = loader.parentElement?.querySelector("img") as HTMLElement | null;
   if (img) img.style.opacity = "0.5";
 
-  // Past start keeps mid-buff progress after DOM remount; fresh restart uses now.
-  const start =
-    mode === "restart"
-      ? new Date(now)
-      : new Date(Math.min(now, endsAt - durationMs));
-
   addTint(selector, {
     ms: remaining,
     type: "skill",
     skid: rid,
-    start,
+    start: new Date(startedAt),
   });
+
+  // add_tint sets end = call-time + ms; pin to sticky endsAt for overlay parity.
+  const tint = getTint(selector);
+  if (tint) tint.end = new Date(endsAt);
 }
 
 type EffectsRowProps = {
@@ -216,7 +216,7 @@ export function EffectIcon(props: {
   const React = getReact();
   const iconRef = React.useRef(null);
   const endsAtRef = React.useRef(0);
-  const durationRef = React.useRef(0);
+  const startedAtRef = React.useRef(0);
   const { effect, hostClass, entity, iconSize } = props;
   const entityId = String(entity.id);
   const rid = loaderId(hostClass);
@@ -258,9 +258,9 @@ export function EffectIcon(props: {
     const el = iconRef.current as HTMLElement | null;
     if (!el || !el.firstElementChild) return;
     const endsAt = endsAtRef.current;
-    const durationMs = durationRef.current;
-    if (!(endsAt > Date.now()) || !(durationMs > 0)) return;
-    applyEffectTint(el, rid, endsAt, durationMs, mode);
+    const startedAt = startedAtRef.current;
+    if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
+    applyEffectTint(el, rid, endsAt, startedAt, mode);
   };
 
   // Paint stock item_container; rebind tint onto the new DOM without resetting epoch.
@@ -268,7 +268,7 @@ export function EffectIcon(props: {
     const el = iconRef.current as HTMLElement | null;
     if (!el) return;
     paintIcon();
-    pushTint(durationRef.current > 0 ? "rebind" : "restart");
+    pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
     return () => {
       if (el) el.innerHTML = "";
     };
@@ -292,23 +292,23 @@ export function EffectIcon(props: {
     setRemainingMs(Math.max(0, next - now));
 
     if (!(next > now)) {
-      durationRef.current = 0;
+      startedAtRef.current = 0;
       return;
     }
 
     if (!prev || next > prev + 750) {
       // New buff or clear refresh — new tint epoch from current remaining.
-      durationRef.current = next - now;
+      startedAtRef.current = now;
       pushTint("restart");
       return;
     }
     if (next < prev - 250) {
-      // Shortened — keep start, move end.
-      durationRef.current = Math.max(durationRef.current, next - now);
+      // Shortened — keep startedAt, move end only.
       pushTint("sync");
       return;
     }
-    // Similar ms rebroadcast: leave tint alone.
+    // Similar ms rebroadcast: align end without resetting start (heals DOM rebind drift).
+    pushTint("sync");
   }, [entityId, effect.id, effect.ms, rid]);
 
   // Local countdown for the text overlay / tooltip.

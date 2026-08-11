@@ -6157,37 +6157,41 @@ var EnhanceCommUI = (() => {
     }
     return loader;
   }
-  function applyEffectTint(wrap, rid, endsAt, durationMs, mode) {
+  function applyEffectTint(wrap, rid, endsAt, startedAt, mode) {
     var _a;
     const now = Date.now();
     const remaining = endsAt - now;
-    if (!(remaining > 0) || !(durationMs > 0)) return;
+    const spanMs = endsAt - startedAt;
+    if (!(remaining > 0) || !(startedAt > 0) || !(spanMs > 0)) return;
     const loader = ensureSkidLoader(wrap, rid);
     if (!loader) return;
     const selector = ".skidloader" + rid;
     const existing = getTint(selector);
-    if (mode === "sync" && existing) {
-      existing.end = new Date(endsAt);
-      existing.ms = remaining;
+    if (mode === "sync") {
+      if (existing) {
+        existing.end = new Date(endsAt);
+        existing.ms = remaining;
+      }
       return;
     }
     rebindTint(selector);
     loader.style.height = "1px";
     const img = (_a = loader.parentElement) == null ? void 0 : _a.querySelector("img");
     if (img) img.style.opacity = "0.5";
-    const start = mode === "restart" ? new Date(now) : new Date(Math.min(now, endsAt - durationMs));
     addTint(selector, {
       ms: remaining,
       type: "skill",
       skid: rid,
-      start
+      start: new Date(startedAt)
     });
+    const tint = getTint(selector);
+    if (tint) tint.end = new Date(endsAt);
   }
   function EffectIcon(props) {
     const React = getReact();
     const iconRef = React.useRef(null);
     const endsAtRef = React.useRef(0);
-    const durationRef = React.useRef(0);
+    const startedAtRef = React.useRef(0);
     const { effect, hostClass, entity, iconSize } = props;
     const entityId = String(entity.id);
     const rid = loaderId(hostClass);
@@ -6220,15 +6224,15 @@ var EnhanceCommUI = (() => {
       const el = iconRef.current;
       if (!el || !el.firstElementChild) return;
       const endsAt = endsAtRef.current;
-      const durationMs = durationRef.current;
-      if (!(endsAt > Date.now()) || !(durationMs > 0)) return;
-      applyEffectTint(el, rid, endsAt, durationMs, mode);
+      const startedAt = startedAtRef.current;
+      if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
+      applyEffectTint(el, rid, endsAt, startedAt, mode);
     };
     React.useEffect(() => {
       const el = iconRef.current;
       if (!el) return;
       paintIcon();
-      pushTint(durationRef.current > 0 ? "rebind" : "restart");
+      pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
       return () => {
         if (el) el.innerHTML = "";
       };
@@ -6249,19 +6253,19 @@ var EnhanceCommUI = (() => {
       endsAtRef.current = next;
       setRemainingMs(Math.max(0, next - now));
       if (!(next > now)) {
-        durationRef.current = 0;
+        startedAtRef.current = 0;
         return;
       }
       if (!prev || next > prev + 750) {
-        durationRef.current = next - now;
+        startedAtRef.current = now;
         pushTint("restart");
         return;
       }
       if (next < prev - 250) {
-        durationRef.current = Math.max(durationRef.current, next - now);
         pushTint("sync");
         return;
       }
+      pushTint("sync");
     }, [entityId, effect.id, effect.ms, rid]);
     React.useEffect(() => {
       const tick = () => {
