@@ -13075,13 +13075,12 @@ var EnhanceCommUI = (() => {
       const isHidden = isClosablePanel && !visible(id);
       if (isHidden && !layoutEdit) return null;
       if ((opts == null ? void 0 : opts.empty) && !layoutEdit) return null;
-      const editing = (opts == null ? void 0 : opts.skipEditChrome) ? false : layoutEdit;
       return e(
         PositionedPanel,
         {
           id,
           pos: layout[id],
-          editing,
+          editing: layoutEdit,
           onMove,
           style: opts == null ? void 0 : opts.style,
           hidden: isHidden,
@@ -13411,8 +13410,9 @@ var EnhanceCommUI = (() => {
           )
         ),
         {
-          // Above layout-edit panels (40), info (45), and the edit toolbar (50).
-          skipEditChrome: true,
+          // Stay above other layout-edit panels (40), info (45), and the
+          // edit toolbar (50) so Layout ON/OFF stays clickable — keep edit
+          // chrome so the block can still be dragged.
           style: { zIndex: 60 }
         }
       )

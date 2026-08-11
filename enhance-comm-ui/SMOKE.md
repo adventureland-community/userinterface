@@ -39,7 +39,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/crypt/bag/paperdoll/buff info/item info).
 - [ ] **Crypt panel** — off crypt map panel hides in play; Layout edit shows crypt-shaped dummy (Bosses + Bats rows, sample cards with icons); on crypt map shows **Bosses** (Spike…Angel) and **Bats** (Vampireling, Bat) sections; dead boss shows `Died · #N · … ago` when killed more than once; drag / × hide / opacity persist; click visible boss card targets mob.
 - [ ] **Layout edit overlap** — with Boss bar overlapping Crypt progress, click through boss bar *content* to grab Crypt progress drag header underneath; boss bar header/× still draggable; play mode content stays fully clickable.
-- [ ] **Layout ON → OFF** — Layout toggle can turn edit mode off (button stays clickable above combat/meters/info dummies); toolbar **Done** also exits.
+- [ ] **Layout ON → OFF** — Layout toggle can turn edit mode off (button stays clickable above combat/meters/info dummies); drag header still moves the toggle block; toolbar **Done** also exits.
 - [ ] **Layout edit hover** — in Layout edit only, hovering a panel drag header (or × / anchor pad) shows a subtle gold glow on the panel shell; play mode has no hover highlight.
 - [ ] **topCenter** — server + map only (crypt moved to Crypt panel).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
