@@ -16,6 +16,8 @@ const STYLE_ID = "comm-ui-inventory-host-css";
 const MOUNT_ID = "comm-bag-mount";
 const SAVED_CHAR = "__ecuInvSavedChar";
 const HOLD_CHAR = "__ecuInvHoldChar";
+/** Persisted on observe welcome snapshot for backfill when the listener binds late. */
+const BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
 
 type InventoryListener = (open: boolean) => void;
 type BagSyncListener = () => void;
@@ -138,23 +140,38 @@ function clearRefreshPoll(): void {
  */
 function onObserveWelcome(data: any): void {
   if (data && data.character) {
-    setBagSyncedAt(Date.now());
+    const ts = Date.now();
+    data.character[BAG_SYNC_STAMP_KEY] = ts;
+    setBagSyncedAt(ts);
     return;
   }
   // Spectator reconnect / clearObserve — inventory snapshot is gone.
   if (bagSyncedAt != null) setBagSyncedAt(null);
 }
 
+/** Recover bagSyncedAt from an existing observe snapshot (welcome fired before bind). */
+function backfillBagSyncedAt(): void {
+  if (bagSyncedAt != null) return;
+  const obs = window.observing;
+  if (!obs || !Array.isArray(obs.items)) return;
+  const stamped = obs[BAG_SYNC_STAMP_KEY];
+  if (typeof stamped === "number" && stamped > 0) {
+    setBagSyncedAt(stamped);
+  }
+}
+
 function maybeBindBagSyncWelcome(): void {
   const socket = window.socket;
   if (!socket || !socket.id || typeof socket.on !== "function") return;
-  if (socket.id === bagSyncSocketId) return;
-  bagSyncSocketId = socket.id;
-  socket.on("welcome", onObserveWelcome);
+  if (socket.id !== bagSyncSocketId) {
+    bagSyncSocketId = socket.id;
+    socket.on("welcome", onObserveWelcome);
+  }
+  backfillBagSyncedAt();
 }
 
 /** Re-bind welcome after init_socket reconnects (same pattern as sockets/hub). */
-function installBagSyncWelcomeWatch(): void {
+export function installBagSyncWelcomeWatch(): void {
   maybeBindBagSyncWelcome();
   if (bagSyncWelcomePoll != null) return;
   bagSyncWelcomePoll = window.setInterval(maybeBindBagSyncWelcome, 500);
@@ -194,6 +211,23 @@ export function isBagRefreshing(): boolean {
 
 export function getBagRefreshKind(): "server" | "local" | null {
   return bagRefreshKind;
+}
+
+/** True when observe welcome has delivered an items array (snapshot present). */
+export function hasObservingInventorySnapshot(): boolean {
+  const obs = window.observing;
+  return !!(obs && Array.isArray(obs.items));
+}
+
+function stampBagSyncedFromObserving(obs: any): void {
+  if (!obs) return;
+  const stamped = obs[BAG_SYNC_STAMP_KEY];
+  if (typeof stamped === "number" && stamped > 0) {
+    setBagSyncedAt(stamped);
+    return;
+  }
+  setBagSyncedAt(Date.now());
+  obs[BAG_SYNC_STAMP_KEY] = bagSyncedAt;
 }
 
 function findObserveSecret(name: string): string | null {
@@ -278,6 +312,8 @@ export function refreshObservedInventory(): void {
       clearRefreshPoll();
       bagRefreshKind = "server";
       refreshPendingName = null;
+      backfillBagSyncedAt();
+      if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
       // Re-open before clearing refreshing so the Bag panel stays mounted.
       openInventory();
       setBagRefreshing(false);
@@ -288,6 +324,8 @@ export function refreshObservedInventory(): void {
       refreshPendingName = null;
       if (window.observing) {
         bagRefreshKind = "server";
+        backfillBagSyncedAt();
+        if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
         openInventory();
       } else {
         bagRefreshKind = "local";
@@ -464,10 +502,10 @@ function installInventoryClickBridge(): void {
  * always restored — even while inventory stays open.
  */
 export function installInventoryFix(): void {
-  if (window.__ecuInventoryPatched) return;
-
   installInventoryClickBridge();
   installBagSyncWelcomeWatch();
+
+  if (window.__ecuInventoryPatched) return;
 
   const tryPatch = () => {
     const original = window.render_inventory;
@@ -516,7 +554,8 @@ export function installInventoryFix(): void {
         // ALWAYS restore — never leave character set across draw frames.
         restoreCharacter();
         if (opened) {
-          // Do not stamp bagSyncedAt here — age is observe-welcome time.
+          // Do not bump bagSyncedAt on open — backfill if welcome was missed.
+          backfillBagSyncedAt();
           applyBagLayoutPos();
           notifyInventory(true);
         } else if (!window.inventory) {
@@ -538,4 +577,8 @@ export function installInventoryFix(): void {
       window.clearInterval(timer);
     }
   }, 250);
+}
+
+if (typeof window !== "undefined") {
+  installBagSyncWelcomeWatch();
 }

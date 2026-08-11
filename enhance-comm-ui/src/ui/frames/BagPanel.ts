@@ -3,6 +3,7 @@ import {
   attachInventoryToMount,
   getBagRefreshKind,
   getBagSyncedAt,
+  hasObservingInventorySnapshot,
   isBagRefreshing,
   isInventoryOpen,
   refreshObservedInventory,
@@ -141,9 +142,10 @@ function BagSyncChrome(props: {
   syncedAt: number | null;
   refreshing: boolean;
   refreshKind: "server" | "local" | null;
+  hasSnapshot: boolean;
 }): any {
   const React = getReact();
-  const { syncedAt, refreshing, refreshKind } = props;
+  const { syncedAt, refreshing, refreshKind, hasSnapshot } = props;
   const [now, setNow] = React.useState(() => Date.now());
 
   React.useEffect(() => {
@@ -152,9 +154,9 @@ function BagSyncChrome(props: {
     return () => window.clearInterval(id);
   }, [refreshing]);
 
-  let label = "Synced —";
+  let label = "No snapshot yet";
   let title =
-    "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
+    "Observer inventory arrives on observe welcome; none is loaded yet.";
   if (refreshing) {
     label = "Refreshing…";
     title =
@@ -162,6 +164,10 @@ function BagSyncChrome(props: {
   } else if (syncedAt != null) {
     label = formatBagSyncedLabel(syncedAt, now);
     title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
+  } else if (hasSnapshot) {
+    label = "Synced (age unknown)";
+    title =
+      "Inventory snapshot is loaded, but welcome time was not recorded (CommUI loaded after connect). Refresh for a fresh timestamp.";
   }
   if (!refreshing && refreshKind === "local") {
     title =
@@ -255,6 +261,9 @@ export function BagPanel(props: BagPanelProps): any {
   const [refreshKind, setRefreshKind] = React.useState(() =>
     getBagRefreshKind(),
   );
+  const [hasSnapshot, setHasSnapshot] = React.useState(() =>
+    hasObservingInventorySnapshot(),
+  );
   const layoutEdit = !!props.layoutEdit;
   const showDummy = layoutEdit && !open && !refreshing;
   const showChrome = open || refreshing;
@@ -266,6 +275,7 @@ export function BagPanel(props: BagPanelProps): any {
       setSyncedAt(getBagSyncedAt());
       setRefreshing(isBagRefreshing());
       setRefreshKind(getBagRefreshKind());
+      setHasSnapshot(hasObservingInventorySnapshot());
     });
     return () => {
       unsubInv();
@@ -304,7 +314,7 @@ export function BagPanel(props: BagPanelProps): any {
       },
     },
     showChrome
-      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind })
+      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, hasSnapshot })
       : null,
     showDummy ? e(BagDummy) : null,
     e("div", {
