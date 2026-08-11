@@ -594,6 +594,59 @@ export function injectChromeCss(): void {
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button {
   pointer-events: auto;
 }
+/* Layout edit: subtle hover highlight on interactive chrome (header / × / anchor). */
+#comm-ui .comm-pos-panel.comm-pos-editing {
+  transition: box-shadow 0.12s ease;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing:has(
+  .comm-pos-edit-header:hover,
+  .comm-pos-edit-header:active,
+  .comm-pos-panel-close:hover,
+  .comm-pos-anchor-pad:hover
+) {
+  box-shadow:
+    0 0 0 1px rgba(255, 224, 138, 0.48),
+    0 0 14px rgba(255, 220, 100, 0.13);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing.comm-pos-hidden:has(
+  .comm-pos-edit-header:hover,
+  .comm-pos-edit-header:active
+) {
+  box-shadow:
+    0 0 0 1px rgba(170, 170, 170, 0.42),
+    0 0 12px rgba(130, 130, 130, 0.1);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header {
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-hidden) .comm-pos-edit-header:hover,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-hidden) .comm-pos-edit-header:active {
+  background: rgba(52, 48, 24, 0.96) !important;
+  border-color: #bba86a !important;
+  box-shadow: inset 0 1px 0 rgba(255, 245, 200, 0.08);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing.comm-pos-hidden .comm-pos-edit-header:hover,
+#comm-ui .comm-pos-panel.comm-pos-editing.comm-pos-hidden .comm-pos-edit-header:active {
+  background: rgba(42, 42, 42, 0.96) !important;
+  border-color: #888 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-close {
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-close:hover {
+  border-color: #baa !important;
+  background: rgba(35, 32, 18, 0.95) !important;
+  color: #ffe08a !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button {
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button:not([aria-pressed="true"]):hover {
+  border-color: #998 !important;
+  background: rgba(35, 32, 18, 0.95) !important;
+  color: #ddd !important;
+}
 #comm-ui[data-viewport="phone"] .comm-pos-combat,
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {

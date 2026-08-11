@@ -432,7 +432,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     "div",
     {
       ref: shellRef,
-      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}`,
+      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${hidden ? " comm-pos-hidden" : ""}`,
       "data-panel": id,
       style: shellStyle,
       onMouseEnter: onClose ? () => setHover(true) : undefined,
