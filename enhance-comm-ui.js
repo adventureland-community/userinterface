@@ -35,19 +35,27 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/fear.ts
-  function estimateFearFromAggro(courageSource, aggroCount) {
-    const c = courageSource.courage;
-    const mc = courageSource.mcourage;
-    const pc = courageSource.pcourage;
-    const vals = [];
-    if (typeof c === "number") vals.push(c);
-    if (typeof mc === "number") vals.push(mc);
-    if (typeof pc === "number") vals.push(pc);
-    if (!vals.length) return null;
-    let minC = vals[0];
-    for (let i = 1; i < vals.length; i++) {
-      if (vals[i] < minC) minC = vals[i];
-    }
+  var courageById = {};
+  function readPool(ent, key) {
+    const v = ent[key];
+    return typeof v === "number" ? v : void 0;
+  }
+  function noteCouragePools(ent) {
+    if (!ent || ent.id == null) return;
+    const c = readPool(ent, "courage");
+    const mc = readPool(ent, "mcourage");
+    const pc = readPool(ent, "pcourage");
+    if (c == null && mc == null && pc == null) return;
+    const id = String(ent.id);
+    const prev = courageById[id];
+    courageById[id] = {
+      courage: c != null ? c : prev ? prev.courage : 0,
+      mcourage: mc != null ? mc : prev ? prev.mcourage : 0,
+      pcourage: pc != null ? pc : prev ? prev.pcourage : 0
+    };
+  }
+  function estimateFearFromAggro(pools, aggroCount) {
+    const minC = Math.min(pools.courage, pools.mcourage, pools.pcourage);
     return Math.max(0, aggroCount - minC);
   }
   function countMonsterAggroOn(entities, targetId) {
@@ -60,17 +68,14 @@ var EnhanceCommUI = (() => {
     return n;
   }
   function resolveObserverFear(live, snap, entities) {
-    const liveFear = live.fear;
-    if (typeof liveFear === "number") return liveFear;
+    noteCouragePools(snap);
+    noteCouragePools(live);
     const id = live.id != null ? String(live.id) : "";
-    const aggro = id ? countMonsterAggroOn(entities, id) : 0;
-    const courageSrc = snap && snap.id != null && String(snap.id) === id ? snap : live;
-    const estimated = estimateFearFromAggro(courageSrc, aggro);
-    if (estimated != null) return estimated;
-    if (snap && typeof snap.fear === "number") {
-      return snap.fear;
-    }
-    return void 0;
+    if (!id) return void 0;
+    const pools = courageById[id];
+    if (!pools) return void 0;
+    const aggro = countMonsterAggroOn(entities, id);
+    return estimateFearFromAggro(pools, aggro);
   }
 
   // src/host/al.ts

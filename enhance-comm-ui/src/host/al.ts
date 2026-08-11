@@ -64,10 +64,9 @@ export function findEntityById(
 }
 
 /**
- * Watched character for /comm. `window.observing` is set on welcome (full
- * character, includes fear/courage) and is not refreshed by soft `player`
- * packets. Live hp/target/etc. live on `entities[id]` from stranger soft-sync,
- * which omits fear — merge/estimate so Petrified stays visible while watching.
+ * Watched character for /comm. Soft stranger sync omits fear; we never trust
+ * welcome `fear` either. Courage pools are noted from welcome, then fear is
+ * estimated each tick from live monster aggro on the watched id.
  */
 export function getObserving(): EntityLike | null | undefined {
   const snap = window.observing;
@@ -79,7 +78,6 @@ export function getObserving(): EntityLike | null | undefined {
       if (typeof fear === "number") {
         const liveFear = (live as { fear?: number }).fear;
         if (liveFear === fear) return live;
-        // Omit needless copies when soft entity never had fear and estimate is 0.
         if (fear === 0 && typeof liveFear !== "number") return live;
         return { ...live, fear };
       }

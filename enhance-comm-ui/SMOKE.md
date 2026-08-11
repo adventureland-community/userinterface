@@ -29,7 +29,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Compact ↔ Full persists across reload; channel columns persist in Full.
 - [ ] **My party** one-click sets party focus to watched (when observing).
 - [ ] Boss bars sort “on me” first, then lowest HP%; HP% text visible; click targets; Aggro chip shows who has aggro.
-- [ ] **Petrified / fear badge** — pull enough monster aggro on the watched character to overflow courage; player frame + observed party chip show Scared / Terrified / Petrified and stay up while aggro lasts (not a one-tick flash only on observe switch).
+- [ ] **Petrified / fear badge** — pull enough monster aggro on the watched character to overflow courage; player frame + observed party chip show Scared / Terrified / Petrified from **estimated** fear (aggro − courage), updating live as aggro changes — not a one-tick welcome flash.
 
 ## Touch / layout edit
 
