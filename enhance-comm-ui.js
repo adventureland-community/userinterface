@@ -13066,13 +13066,22 @@ var EnhanceCommUI = (() => {
       info.setLayoutEditing(layoutEdit);
       return () => info.setLayoutEditing(false);
     }, [layoutEdit]);
+    const commandOpenRef = React.useRef(false);
+    commandOpenRef.current = visible("command");
     React.useEffect(() => {
       return subscribeCommanderOpen((payload) => {
-        if (typeof payload.draft === "string") {
+        const hasDraft = typeof payload.draft === "string";
+        if (hasDraft) {
           setCommandSeed(payload.draft);
-        } else {
-          setCommandSeed(null);
+          setCommandOpenSeq((n) => n + 1);
+          setVisible("command", true);
+          return;
         }
+        if (commandOpenRef.current) {
+          setVisible("command", false);
+          return;
+        }
+        setCommandSeed(null);
         setCommandOpenSeq((n) => n + 1);
         setVisible("command", true);
       });

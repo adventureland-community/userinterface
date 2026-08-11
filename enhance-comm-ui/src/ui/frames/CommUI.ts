@@ -178,13 +178,25 @@ export function CommUI(props: CommUIProps): any {
     return () => info.setLayoutEditing(false);
   }, [layoutEdit]);
 
+  const commandOpenRef = React.useRef(false);
+  commandOpenRef.current = visible("command");
+
   React.useEffect(() => {
     return subscribeCommanderOpen((payload) => {
-      if (typeof payload.draft === "string") {
-        setCommandSeed(payload.draft);
-      } else {
-        setCommandSeed(null);
+      const hasDraft = typeof payload.draft === "string";
+      // Prefill path (stock show_commander(code)): always open / refresh.
+      if (hasDraft) {
+        setCommandSeed(payload.draft as string);
+        setCommandOpenSeq((n: number) => n + 1);
+        setVisible("command", true);
+        return;
       }
+      // Bare Code chrome button: toggle like Bag (second click closes).
+      if (commandOpenRef.current) {
+        setVisible("command", false);
+        return;
+      }
+      setCommandSeed(null);
       setCommandOpenSeq((n: number) => n + 1);
       setVisible("command", true);
     });
