@@ -1062,6 +1062,61 @@ var EnhanceCommUI = (() => {
       }
     }
   }
+  function anchorToTopLeftOffset(anchor, widthPx, heightPx) {
+    switch (anchor) {
+      case "tl":
+        return { ox: 0, oy: 0 };
+      case "tr":
+        return { ox: -widthPx, oy: 0 };
+      case "bl":
+        return { ox: 0, oy: -heightPx };
+      case "br":
+        return { ox: -widthPx, oy: -heightPx };
+      case "tc":
+        return { ox: -widthPx / 2, oy: 0 };
+      case "bc":
+        return { ox: -widthPx / 2, oy: -heightPx };
+      case "center":
+        return { ox: -widthPx / 2, oy: -heightPx / 2 };
+      default: {
+        const _exhaustive = anchor;
+        return _exhaustive;
+      }
+    }
+  }
+  function reanchorKeepingVisual(pos, nextAnchor, panelW, panelH, rootW, rootH) {
+    if (pos.anchor === nextAnchor) return pos;
+    if (!(panelW > 0 && panelH > 0 && rootW > 0 && rootH > 0)) {
+      return { ...pos, anchor: nextAnchor };
+    }
+    const ax = pos.x / 100 * rootW;
+    const ay = pos.y / 100 * rootH;
+    const cur = anchorToTopLeftOffset(pos.anchor, panelW, panelH);
+    const left = ax + cur.ox;
+    const top = ay + cur.oy;
+    const next = anchorToTopLeftOffset(nextAnchor, panelW, panelH);
+    const newAx = left - next.ox;
+    const newAy = top - next.oy;
+    return {
+      x: clamp(newAx / rootW * 100, 0, 100),
+      y: clamp(newAy / rootH * 100, 0, 100),
+      anchor: nextAnchor
+    };
+  }
+  var LAYOUT_ANCHOR_OPTIONS = [
+    { id: "tl", glyph: "\u231C", title: "Top-left \u2014 grows down & right" },
+    { id: "tc", glyph: "\u2303", title: "Top-center \u2014 grows down" },
+    { id: "tr", glyph: "\u231D", title: "Top-right \u2014 grows down & left" },
+    { id: "center", glyph: "\u25C6", title: "Center \u2014 grows both ways" },
+    { id: "bl", glyph: "\u231E", title: "Bottom-left \u2014 grows up & right" },
+    { id: "bc", glyph: "\u2304", title: "Bottom-center \u2014 grows up" },
+    { id: "br", glyph: "\u231F", title: "Bottom-right \u2014 grows up & left" }
+  ];
+  var LAYOUT_ANCHOR_PAD = [
+    ["tl", "tc", "tr"],
+    [null, "center", null],
+    ["bl", "bc", "br"]
+  ];
   function panelStyle(pos, editing) {
     return {
       position: "absolute",
@@ -1084,8 +1139,8 @@ var EnhanceCommUI = (() => {
       dyPct: containerH > 0 ? dy / containerH * 100 : 0
     };
   }
-  function snapPercent(n, threshold = 2.2, peerValues) {
-    const targets = [0, 50, 100];
+  function snapPercent(n, threshold = 1, peerValues) {
+    const targets = [50];
     if (peerValues && peerValues.length) {
       for (let i = 0; i < peerValues.length; i++) {
         const v = peerValues[i];
@@ -1102,6 +1157,73 @@ var EnhanceCommUI = (() => {
       }
     }
     return bestDist <= threshold ? best : n;
+  }
+  function captureVisualSnapStart(panelEl, rootEl, pos) {
+    if (!panelEl || !rootEl) return null;
+    const p = panelEl.getBoundingClientRect();
+    const c = rootEl.getBoundingClientRect();
+    if (c.width <= 0 || c.height <= 0) return null;
+    return {
+      panelLeft: p.left,
+      panelTop: p.top,
+      panelRight: p.right,
+      panelBottom: p.bottom,
+      rootLeft: c.left,
+      rootTop: c.top,
+      rootW: c.width,
+      rootH: c.height,
+      posX: pos.x,
+      posY: pos.y
+    };
+  }
+  function snapDragToVisualEdges(clientX, clientY, pointerStart, visual, thresholdPx = 8) {
+    const dx = clientX - pointerStart.clientX;
+    const dy = clientY - pointerStart.clientY;
+    let left = visual.panelLeft + dx;
+    let right = visual.panelRight + dx;
+    let top = visual.panelTop + dy;
+    let bottom = visual.panelBottom + dy;
+    const cLeft = visual.rootLeft;
+    const cRight = visual.rootLeft + visual.rootW;
+    const cTop = visual.rootTop;
+    const cBottom = visual.rootTop + visual.rootH;
+    const distL = left - cLeft;
+    const distR = cRight - right;
+    const distT = top - cTop;
+    const distB = cBottom - bottom;
+    let shiftX = 0;
+    let shiftY = 0;
+    let snapX = false;
+    let snapY = false;
+    if (Math.abs(distL) <= thresholdPx || Math.abs(distR) <= thresholdPx) {
+      if (Math.abs(distL) <= Math.abs(distR) && Math.abs(distL) <= thresholdPx) {
+        shiftX = -distL;
+        snapX = true;
+      } else if (Math.abs(distR) <= thresholdPx) {
+        shiftX = distR;
+        snapX = true;
+      }
+    }
+    if (Math.abs(distT) <= thresholdPx || Math.abs(distB) <= thresholdPx) {
+      if (Math.abs(distT) <= Math.abs(distB) && Math.abs(distT) <= thresholdPx) {
+        shiftY = -distT;
+        snapY = true;
+      } else if (Math.abs(distB) <= thresholdPx) {
+        shiftY = distB;
+        snapY = true;
+      }
+    }
+    const x = clamp(
+      visual.posX + (dx + shiftX) / visual.rootW * 100,
+      0,
+      100
+    );
+    const y = clamp(
+      visual.posY + (dy + shiftY) / visual.rootH * 100,
+      0,
+      100
+    );
+    return { x, y, snapX, snapY };
   }
   function softAvoidOverlap(id, pos, others, nudge = 3.2) {
     const ids = Object.keys(others);
@@ -2031,9 +2153,12 @@ var EnhanceCommUI = (() => {
   // src/host/commChrome/chromeCss.ts
   var STYLE_ID = "comm-ui-chrome-css";
   function injectChromeCss() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID;
+    let style = document.getElementById(STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID;
+      document.head.append(style);
+    }
     style.textContent = `
 /* Hide stock observe gamebuttons \u2014 never restyle .gamebutton.block into the strip */
 #observeui {
@@ -2070,14 +2195,14 @@ var EnhanceCommUI = (() => {
   pointer-events: auto;
 }
 
-/* Secondary control cluster \u2014 same visual language, larger hit targets */
+/* Secondary control cluster \u2014 compact icon buttons */
 .ecu-actions {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: stretch;
   justify-content: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 4px 6px;
   background: rgba(14, 14, 14, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-sizing: border-box;
@@ -2109,6 +2234,19 @@ var EnhanceCommUI = (() => {
   align-items: center;
   justify-content: center;
   white-space: nowrap;
+}
+.ecu-btn-icon-only {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+.ecu-btn-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
 }
 .ecu-btn:hover {
   background: #343434;
@@ -2501,6 +2639,13 @@ var EnhanceCommUI = (() => {
     padding: 0 10px;
     font-size: 14px;
   }
+  .ecu-btn-icon-only {
+    min-width: 32px !important;
+    width: 32px;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 !important;
+  }
   .ecu-chrome {
     flex: 1 1 auto;
     min-width: 0;
@@ -2542,6 +2687,17 @@ var EnhanceCommUI = (() => {
     height: 44px !important;
     padding: 0 16px !important;
     font-size: 16px !important;
+  }
+  .ecu-btn-icon-only {
+    min-width: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+  }
+  .ecu-btn-icon {
+    width: 22px;
+    height: 22px;
   }
   .ecu-actions {
     min-height: 56px;
@@ -2745,23 +2901,34 @@ var EnhanceCommUI = (() => {
       window.show_commander();
     }
   }
+  var ACTION_ICONS = {
+    follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+    bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+    command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>'
+  };
   function buildActionsEl() {
     const actions = document.createElement("div");
     actions.className = "ecu-actions";
     actions.setAttribute("data-ecu-actions", "1");
-    const mk = (label, title, onClick) => {
+    const mk = (kind, label, title, onClick) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ecu-btn";
-      btn.textContent = label;
+      btn.className = "ecu-btn ecu-btn-icon-only";
       btn.title = title;
+      btn.setAttribute("aria-label", label);
+      btn.innerHTML = ACTION_ICONS[kind];
       btn.addEventListener("click", onClick);
       return btn;
     };
     actions.append(
-      mk("Follow", "Center on observed character", onFollowClick),
-      mk("Bag", "Observed inventory", onBagClick),
-      mk("Command", "Send a command to the observed character", onCommandClick)
+      mk("follow", "Follow", "Center on observed character", onFollowClick),
+      mk("bag", "Bag", "Observed inventory", onBagClick),
+      mk(
+        "command",
+        "Command",
+        "Send a command to the observed character",
+        onCommandClick
+      )
     );
     return actions;
   }
@@ -2772,7 +2939,7 @@ var EnhanceCommUI = (() => {
     const buttons = actions.querySelectorAll(".ecu-btn");
     for (let i = 0; i < buttons.length; i++) {
       const btn = buttons[i];
-      const label = (btn.textContent || "").trim();
+      const label = (btn.getAttribute("aria-label") || btn.textContent || "").trim();
       const needsObs = label === "Follow" || label === "Bag" || label === "Command";
       if (needsObs) {
         btn.disabled = !watching;
@@ -2816,6 +2983,10 @@ var EnhanceCommUI = (() => {
       if (!actionsEl) {
         actionsEl = buildActionsEl();
         existingStack.insertBefore(actionsEl, existingStack.firstChild);
+      } else if (!actionsEl.querySelector(".ecu-btn-icon-only")) {
+        const next = buildActionsEl();
+        actionsEl.replaceWith(next);
+        actionsEl = next;
       }
       syncActionsEnabled();
       return;
@@ -4053,6 +4224,8 @@ var EnhanceCommUI = (() => {
   var bagRefreshing = false;
   var refreshPendingName = null;
   var refreshPollTimer = null;
+  var bagSyncSocketId = null;
+  var bagSyncWelcomePoll = null;
   var bagRefreshKind = null;
   function injectHostCss() {
     if (document.getElementById(STYLE_ID3)) return;
@@ -4113,6 +4286,25 @@ var EnhanceCommUI = (() => {
       window.clearInterval(refreshPollTimer);
       refreshPollTimer = null;
     }
+  }
+  function onObserveWelcome(data) {
+    if (data && data.character) {
+      setBagSyncedAt(Date.now());
+      return;
+    }
+    if (bagSyncedAt != null) setBagSyncedAt(null);
+  }
+  function maybeBindBagSyncWelcome() {
+    const socket = window.socket;
+    if (!socket || !socket.id || typeof socket.on !== "function") return;
+    if (socket.id === bagSyncSocketId) return;
+    bagSyncSocketId = socket.id;
+    socket.on("welcome", onObserveWelcome);
+  }
+  function installBagSyncWelcomeWatch() {
+    maybeBindBagSyncWelcome();
+    if (bagSyncWelcomePoll != null) return;
+    bagSyncWelcomePoll = window.setInterval(maybeBindBagSyncWelcome, 500);
   }
   function subscribeInventory(listener) {
     listeners4.push(listener);
@@ -4306,8 +4498,37 @@ var EnhanceCommUI = (() => {
       }
     }, 600);
   }
+  function installInventoryClickBridge() {
+    if (window.__ecuInvClickPatched) return;
+    const tryPatch = () => {
+      const original = window.inventory_click;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInvClickPatched) return true;
+      window.__ecuInvClickPatched = true;
+      window.inventory_click = function patchedInventoryClick(num, event) {
+        if (window.is_comm) {
+          if (event && typeof window.stpr === "function") window.stpr(event);
+          const obs = window.observing;
+          const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
+          if (!item || !item.name || item.name === "placeholder") return;
+          openItem(obs, `inv${num}`, item);
+          return;
+        }
+        return original.call(this, num, event);
+      };
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) window.clearInterval(timer);
+    }, 250);
+  }
   function installInventoryFix() {
     if (window.__ecuInventoryPatched) return;
+    installInventoryClickBridge();
+    installBagSyncWelcomeWatch();
     const tryPatch = () => {
       const original = window.render_inventory;
       if (typeof original !== "function") return false;
@@ -4345,7 +4566,6 @@ var EnhanceCommUI = (() => {
           window.is_comm = savedComm;
           restoreCharacter();
           if (opened) {
-            if (!reset) setBagSyncedAt(Date.now());
             applyBagLayoutPos();
             notifyInventory(true);
           } else if (!window.inventory) {
@@ -4397,6 +4617,20 @@ var EnhanceCommUI = (() => {
       }
     }
     return result != null ? result : "?";
+  }
+  function formatDurationCompact(timeSeconds) {
+    if (timeSeconds == null || !(timeSeconds > 0)) return "";
+    if (timeSeconds < 60) return `${Math.max(1, Math.ceil(timeSeconds))}s`;
+    if (timeSeconds < 60 * 60) return `${Math.round(timeSeconds / 60)}m`;
+    if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
+    return `${Math.round(timeSeconds / 86400)}d`;
+  }
+  function syncEndsAt(prevEndsAt, ms, now = Date.now()) {
+    if (!(ms != null && ms > 0)) return 0;
+    const next = now + ms;
+    if (!prevEndsAt || next > prevEndsAt + 750) return next;
+    if (next < prevEndsAt - 250) return next;
+    return prevEndsAt;
   }
   function getPercent(value, precision) {
     return `${Math.max(0, Math.min(100, value * 100)).toFixed(precision)}%`;
@@ -4790,6 +5024,12 @@ var EnhanceCommUI = (() => {
   var LAYOUT_GRID_STEP = 5;
   var LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25];
   var EPS = 1e-6;
+  var TIER_RANK = {
+    fine: 1,
+    medium: 2,
+    coarse: 3,
+    edge: 4
+  };
   function normalizeGridStep(raw) {
     const n = typeof raw === "number" ? raw : Number(raw);
     if (!Number.isFinite(n) || n <= 0 || n > 50) return LAYOUT_GRID_STEP;
@@ -4801,44 +5041,88 @@ var EnhanceCommUI = (() => {
     const rounded = Math.round(n * 2) / 2;
     return Math.max(0.5, Math.min(50, rounded));
   }
-  function layoutGridMajorPercents(step = LAYOUT_GRID_STEP) {
+  function squareGridCellPx(step, widthPx, heightPx) {
     const s = normalizeGridStep(step);
-    const majors = [0, 50, 100];
-    const landsOn = (pct) => {
-      const snapped = Math.round(pct / s) * s;
-      return Math.abs(snapped - pct) < EPS;
-    };
-    if (landsOn(25)) {
-      majors.splice(1, 0, 25);
-      majors.splice(3, 0, 75);
-    }
-    return majors;
+    const minSide = Math.min(Math.max(1, widthPx), Math.max(1, heightPx));
+    return Math.max(1, minSide * s / 100);
   }
-  function layoutGridLinePercents(step = LAYOUT_GRID_STEP) {
-    const s = normalizeGridStep(step);
+  function squareGridAxisPercents(lengthPx, cellPx) {
+    const len = Math.max(1, lengthPx);
+    const cell = Math.max(1, cellPx);
     const out = [];
-    const count = Math.round(100 / s);
+    const count = Math.ceil(len / cell);
     for (let i = 0; i <= count; i++) {
-      let pct = Math.round(i * s * 1e3) / 1e3;
-      if (pct > 100 - EPS) pct = 100;
-      if (pct <= 100) out.push(pct);
+      const px = Math.min(len, i * cell);
+      const pct = Math.round(px / len * 1e5) / 1e3;
+      if (!out.length || Math.abs(out[out.length - 1] - pct) > EPS) {
+        out.push(pct > 100 - EPS ? 100 : pct);
+      }
     }
     if (!out.length || Math.abs(out[out.length - 1] - 100) > EPS) out.push(100);
     return out;
   }
-  function isLayoutGridMajor(pct, step = LAYOUT_GRID_STEP) {
-    const majors = layoutGridMajorPercents(step);
-    for (let i = 0; i < majors.length; i++) {
-      if (Math.abs(majors[i] - pct) < EPS) return true;
-    }
-    return false;
+  function squareGridMetrics(step, widthPx, heightPx) {
+    const cellPx = squareGridCellPx(step, widthPx, heightPx);
+    return {
+      cellPx,
+      xPercents: squareGridAxisPercents(widthPx, cellPx),
+      yPercents: squareGridAxisPercents(heightPx, cellPx)
+    };
   }
-  function snapToGridPercent(n, step = LAYOUT_GRID_STEP) {
-    const s = normalizeGridStep(step);
-    if (!(s > 0) || !Number.isFinite(n)) return n;
-    const snapped = Math.round(n / s) * s;
-    const cleaned = Math.round(snapped * 1e3) / 1e3;
-    return Math.max(0, Math.min(100, cleaned));
+  function bumpTier(into, percents, tier) {
+    for (let i = 0; i < percents.length; i++) {
+      const pct = percents[i];
+      const key = Math.round(pct * 1e3) / 1e3;
+      const prev = into.get(key);
+      if (!prev || TIER_RANK[tier] > TIER_RANK[prev]) into.set(key, tier);
+    }
+  }
+  function mapToSortedLines(map) {
+    const keys = Array.from(map.keys());
+    keys.sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const pct = keys[i];
+      out.push({ pct, tier: map.get(pct) || "fine" });
+    }
+    return out;
+  }
+  function squareGridTieredLines(step, widthPx, heightPx) {
+    const cellPx = squareGridCellPx(step, widthPx, heightPx);
+    const xMap = /* @__PURE__ */ new Map();
+    const yMap = /* @__PURE__ */ new Map();
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx), "fine");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx), "fine");
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 2), "medium");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 2), "medium");
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 4), "coarse");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 4), "coarse");
+    bumpTier(xMap, [0, 50, 100], "edge");
+    bumpTier(yMap, [0, 50, 100], "edge");
+    return {
+      cellPx,
+      x: mapToSortedLines(xMap),
+      y: mapToSortedLines(yMap)
+    };
+  }
+  function snapToAxisPercents(n, percents, skipScreenEdges = false) {
+    if (!percents.length || !Number.isFinite(n)) return n;
+    let best = percents[0];
+    let bestDist = Math.abs(n - best);
+    for (let i = 1; i < percents.length; i++) {
+      const d = Math.abs(n - percents[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        best = percents[i];
+      }
+    }
+    const clamped = Math.max(0, Math.min(100, best));
+    if (skipScreenEdges) {
+      const atEdge = clamped <= EPS || clamped >= 100 - EPS;
+      const wasAtEdge = n <= EPS || n >= 100 - EPS;
+      if (atEdge && !wasAtEdge) return n;
+    }
+    return clamped;
   }
 
   // src/lib/layoutEditPrefs.ts
@@ -4980,6 +5264,14 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/chrome/PositionedPanel.ts
+  var PEER_SNAP_PCT = 1;
+  var VISUAL_EDGE_SNAP_PX = 8;
+  function anchorMeta(id) {
+    for (let i = 0; i < LAYOUT_ANCHOR_OPTIONS.length; i++) {
+      if (LAYOUT_ANCHOR_OPTIONS[i].id === id) return LAYOUT_ANCHOR_OPTIONS[i];
+    }
+    return { glyph: "\xB7", title: id };
+  }
   function PositionedPanel(props) {
     const React = getReact();
     const { id, pos, editing, onMove, children, onClose, hidden, onShow } = props;
@@ -4997,6 +5289,7 @@ var EnhanceCommUI = (() => {
       }),
       []
     );
+    const shellRef = React.useRef(null);
     const dragging = React.useRef(false);
     const start = React.useRef({
       clientX: 0,
@@ -5004,12 +5297,29 @@ var EnhanceCommUI = (() => {
       posX: 0,
       posY: 0
     });
+    const visualStart = React.useRef(null);
     const lastPos = React.useRef(pos);
     lastPos.current = pos;
     const touchish = isTouchishProfile(props.viewportProfile || "desktop");
     const closeSize = touchish ? 36 : 22;
     const headerPad = touchish ? "8px 12px" : "3px 8px";
     const headerFont = touchish ? "15px" : "13px";
+    const anchorBtn = touchish ? 28 : 20;
+    const setAnchor = (next) => {
+      if (next === pos.anchor) return;
+      const panelEl = shellRef.current;
+      const rootEl = layoutDragRoot();
+      if (!panelEl) {
+        onMove(id, { ...pos, anchor: next });
+        return;
+      }
+      const p = panelEl.getBoundingClientRect();
+      const c = rootEl.getBoundingClientRect();
+      onMove(
+        id,
+        reanchorKeepingVisual(pos, next, p.width, p.height, c.width, c.height)
+      );
+    };
     const peerAxes = () => {
       const peers = props.peerLayout || {};
       const ids = Object.keys(peers);
@@ -5035,27 +5345,53 @@ var EnhanceCommUI = (() => {
         posX: pos.x,
         posY: pos.y
       };
+      visualStart.current = captureVisualSnapStart(
+        shellRef.current,
+        layoutDragRoot(),
+        pos
+      );
       trySetPointerCapture(ev.currentTarget, ev.pointerId);
     };
     const onPointerMove = (ev) => {
       if (!dragging.current) return;
-      let { x: nextX, y: nextY } = percentFromPointerDrag(
+      const raw = percentFromPointerDrag(
         ev.clientX,
         ev.clientY,
         start.current
       );
+      let nextX = raw.x;
+      let nextY = raw.y;
       if (!freePlacementRef.current) {
-        nextX = snapToGridPercent(nextX, gridStepRef.current);
-        nextY = snapToGridPercent(nextY, gridStepRef.current);
+        const root = layoutDragRoot().getBoundingClientRect();
+        const metrics = squareGridMetrics(
+          gridStepRef.current,
+          root.width,
+          root.height
+        );
+        nextX = snapToAxisPercents(nextX, metrics.xPercents, true);
+        nextY = snapToAxisPercents(nextY, metrics.yPercents, true);
       }
       const { xs, ys } = peerAxes();
-      nextX = snapPercent(nextX, 2.2, xs);
-      nextY = snapPercent(nextY, 2.2, ys);
+      nextX = snapPercent(nextX, PEER_SNAP_PCT, xs);
+      nextY = snapPercent(nextY, PEER_SNAP_PCT, ys);
+      const visual = visualStart.current;
+      if (visual) {
+        const edge = snapDragToVisualEdges(
+          ev.clientX,
+          ev.clientY,
+          start.current,
+          visual,
+          VISUAL_EDGE_SNAP_PX
+        );
+        if (edge.snapX) nextX = edge.x;
+        if (edge.snapY) nextY = edge.y;
+      }
       onMove(id, { ...pos, x: nextX, y: nextY });
     };
     const onPointerUp = (ev) => {
       if (!dragging.current) return;
       dragging.current = false;
+      visualStart.current = null;
       tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
       const peers = props.peerLayout || {};
       const nudged = softAvoidOverlap(id, lastPos.current, peers);
@@ -5110,6 +5446,72 @@ var EnhanceCommUI = (() => {
       },
       "\xD7"
     ) : null;
+    const anchorPad = editing ? e(
+      "div",
+      {
+        className: "comm-pos-anchor-pad",
+        title: "Stretch / anchor point",
+        onPointerDown: (ev) => ev.stopPropagation(),
+        style: {
+          display: "grid",
+          gridTemplateColumns: `repeat(3, ${anchorBtn}px)`,
+          gridTemplateRows: `repeat(3, ${anchorBtn}px)`,
+          gap: "2px",
+          marginLeft: "auto",
+          flexShrink: 0,
+          cursor: "default"
+        }
+      },
+      ...LAYOUT_ANCHOR_PAD.reduce((cells, row) => {
+        for (let c = 0; c < row.length; c++) {
+          const a = row[c];
+          if (!a) {
+            cells.push(
+              e("div", {
+                key: `empty-${cells.length}`,
+                style: { width: anchorBtn, height: anchorBtn }
+              })
+            );
+            continue;
+          }
+          const meta = anchorMeta(a);
+          const active = pos.anchor === a;
+          cells.push(
+            e(
+              "button",
+              {
+                key: a,
+                type: "button",
+                title: meta.title,
+                "aria-label": meta.title,
+                "aria-pressed": active,
+                onClick: (ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  setAnchor(a);
+                },
+                onPointerDown: (ev) => ev.stopPropagation(),
+                style: {
+                  width: `${anchorBtn}px`,
+                  height: `${anchorBtn}px`,
+                  padding: 0,
+                  margin: 0,
+                  border: active ? "1px solid #ffe08a" : "1px solid #666",
+                  background: active ? "rgba(80,70,20,0.95)" : "rgba(20,20,20,0.9)",
+                  color: active ? "#ffe08a" : "#bbb",
+                  fontSize: touchish ? "14px" : "12px",
+                  lineHeight: `${anchorBtn - 2}px`,
+                  cursor: "pointer",
+                  boxSizing: "border-box"
+                }
+              },
+              meta.glyph
+            )
+          );
+        }
+        return cells;
+      }, [])
+    ) : null;
     const editHeader = editing ? e(
       "div",
       {
@@ -5135,7 +5537,17 @@ var EnhanceCommUI = (() => {
         onPointerUp,
         onPointerCancel: onPointerUp
       },
-      `\u283F ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
+      e(
+        "span",
+        {
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            minWidth: 0
+          }
+        },
+        `\u283F ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`
+      ),
       hidden && onShow ? e(
         "button",
         {
@@ -5147,7 +5559,6 @@ var EnhanceCommUI = (() => {
           },
           onPointerDown: (ev) => ev.stopPropagation(),
           style: {
-            marginLeft: "auto",
             cursor: "pointer",
             fontSize: touchish ? "14px" : "12px",
             padding: touchish ? "6px 12px" : "2px 8px",
@@ -5158,7 +5569,8 @@ var EnhanceCommUI = (() => {
           }
         },
         "Show"
-      ) : null
+      ) : null,
+      anchorPad
     ) : null;
     const hiddenBodyStyle = Object.assign(
       {
@@ -5173,6 +5585,7 @@ var EnhanceCommUI = (() => {
     return e(
       "div",
       {
+        ref: shellRef,
         className: `comm-pos-panel comm-pos-${id}`,
         "data-panel": id,
         style: shellStyle,
@@ -5282,27 +5695,6 @@ var EnhanceCommUI = (() => {
     );
   }
 
-  // src/geometry/combat.ts
-  function distance(a, b) {
-    if (!a || !b) return void 0;
-    return simpleDistance(a, b);
-  }
-  function outOfRange(observer, target) {
-    if (!observer || !target) return void 0;
-    const range = observer.range;
-    if (range == null) return void 0;
-    const d = distance(observer, target);
-    if (d == null) return void 0;
-    return d > range;
-  }
-  function difficultyBadge(monster) {
-    if (!monster || monster.type !== "monster") return void 0;
-    const level = calculateDifficulty(monster);
-    if (level >= 2) return { level, label: "Hard", color: "#ff4444" };
-    if (level === 1) return { level, label: "Med", color: "#ffaa00" };
-    return { level, label: "Easy", color: "#66cc66" };
-  }
-
   // src/host/icons.ts
   function itemContainer(item, actual) {
     if (typeof window.item_container !== "function") {
@@ -5315,9 +5707,14 @@ var EnhanceCommUI = (() => {
       window.add_tint(selector, args);
     }
   }
+  function getTint(selector) {
+    if (typeof window.get_tint === "function") {
+      return window.get_tint(selector) || null;
+    }
+    return null;
+  }
   function rebindTint(selector) {
-    if (typeof window.get_tint !== "function") return;
-    const tint = window.get_tint(selector);
+    const tint = getTint(selector);
     if (tint) tint.added = false;
   }
   function setXTarget(entity, opts) {
@@ -5653,13 +6050,14 @@ var EnhanceCommUI = (() => {
   function loaderId(hostClass) {
     return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
   }
-  function effectTooltip(effect) {
+  function effectTooltip(effect, remainingMs) {
     const parts = [];
     const label = effect.name || effect.id;
     const kind = effect.type === "skill" ? "Skill" : effect.debuff ? "Debuff" : "Buff";
     parts.push(`${label} (${kind})`);
-    if (effect.ms != null && effect.ms > 0) {
-      parts.push(`Remaining: ${formatTime(effect.ms / 1e3)}`);
+    const ms = remainingMs != null && remainingMs > 0 ? remainingMs : effect.ms != null && effect.ms > 0 ? effect.ms : 0;
+    if (ms > 0) {
+      parts.push(`Remaining: ${formatTime(ms / 1e3)}`);
     }
     if (effect.stacks != null && effect.stacks > 0) {
       parts.push(`Stacks: ${effect.stacks}`);
@@ -5669,11 +6067,10 @@ var EnhanceCommUI = (() => {
     }
     return parts.join("\n");
   }
-  function applyEffectTint(wrap, rid, ms) {
-    if (!(ms != null && ms > 0)) return;
+  function ensureSkidLoader(wrap, rid) {
     const root = wrap.firstElementChild;
     const host = wrap.querySelector("div[style*='position: absolute']") || wrap.querySelector("div[style*='overflow']") || root;
-    if (!host) return;
+    if (!host) return null;
     const selector = ".skidloader" + rid;
     let loader = wrap.querySelector(selector);
     if (!loader) {
@@ -5685,30 +6082,46 @@ var EnhanceCommUI = (() => {
       );
       host.appendChild(loader);
     }
-    const until = Date.now() + ms;
-    const prevUntil = Number(loader.getAttribute("data-until") || 0);
-    if (prevUntil && until <= prevUntil + 400) return;
-    loader.setAttribute("data-until", String(until));
+    return loader;
+  }
+  function applyEffectTint(wrap, rid, endsAt, durationMs, mode) {
+    var _a;
+    const now = Date.now();
+    const remaining = endsAt - now;
+    if (!(remaining > 0) || !(durationMs > 0)) return;
+    const loader = ensureSkidLoader(wrap, rid);
+    if (!loader) return;
+    const selector = ".skidloader" + rid;
+    const existing = getTint(selector);
+    if (mode === "sync" && existing) {
+      existing.end = new Date(endsAt);
+      existing.ms = remaining;
+      return;
+    }
     rebindTint(selector);
     loader.style.height = "1px";
-    const img = host.querySelector("img");
+    const img = (_a = loader.parentElement) == null ? void 0 : _a.querySelector("img");
     if (img) img.style.opacity = "0.5";
+    const start = mode === "restart" ? new Date(now) : new Date(Math.min(now, endsAt - durationMs));
     addTint(selector, {
-      ms,
+      ms: remaining,
       type: "skill",
-      skid: rid
+      skid: rid,
+      start
     });
   }
   function EffectIcon(props) {
     const React = getReact();
-    const ref = React.useRef(null);
+    const iconRef = React.useRef(null);
+    const endsAtRef = React.useRef(0);
+    const durationRef = React.useRef(0);
     const { effect, hostClass, entity, iconSize } = props;
     const entityId = String(entity.id);
     const rid = loaderId(hostClass);
-    const tooltip = effectTooltip(effect);
     const clickable = effect.type !== "skill";
-    React.useEffect(() => {
-      const el = ref.current;
+    const [remainingMs, setRemainingMs] = React.useState(0);
+    const paintIcon = () => {
+      const el = iconRef.current;
       if (!el) return;
       const opts = {
         skin: effect.skin,
@@ -5726,10 +6139,23 @@ var EnhanceCommUI = (() => {
           root.removeAttribute("ontouchstart");
           root.removeAttribute("onclick");
         }
-        applyEffectTint(el, rid, effect.ms);
       } else {
-        el.textContent = effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "") + (effect.ms != null ? ` (${formatTime(effect.ms / 1e3)})` : "");
+        el.textContent = effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "");
       }
+    };
+    const pushTint = (mode) => {
+      const el = iconRef.current;
+      if (!el || !el.firstElementChild) return;
+      const endsAt = endsAtRef.current;
+      const durationMs = durationRef.current;
+      if (!(endsAt > Date.now()) || !(durationMs > 0)) return;
+      applyEffectTint(el, rid, endsAt, durationMs, mode);
+    };
+    React.useEffect(() => {
+      const el = iconRef.current;
+      if (!el) return;
+      paintIcon();
+      pushTint(durationRef.current > 0 ? "rebind" : "restart");
       return () => {
         if (el) el.innerHTML = "";
       };
@@ -5744,40 +6170,103 @@ var EnhanceCommUI = (() => {
       iconSize
     ]);
     React.useEffect(() => {
-      const el = ref.current;
-      if (!el || !el.firstElementChild) return;
-      applyEffectTint(el, rid, effect.ms);
-    }, [entityId, effect.ms, rid]);
+      const now = Date.now();
+      const prev = endsAtRef.current;
+      const next = syncEndsAt(prev, effect.ms, now);
+      endsAtRef.current = next;
+      setRemainingMs(Math.max(0, next - now));
+      if (!(next > now)) {
+        durationRef.current = 0;
+        return;
+      }
+      if (!prev || next > prev + 750) {
+        durationRef.current = next - now;
+        pushTint("restart");
+        return;
+      }
+      if (next < prev - 250) {
+        durationRef.current = Math.max(durationRef.current, next - now);
+        pushTint("sync");
+        return;
+      }
+    }, [entityId, effect.id, effect.ms, rid]);
+    React.useEffect(() => {
+      const tick = () => {
+        const ends = endsAtRef.current;
+        if (!ends) {
+          setRemainingMs(0);
+          return;
+        }
+        setRemainingMs(Math.max(0, ends - Date.now()));
+      };
+      tick();
+      const id = window.setInterval(tick, 500);
+      return () => window.clearInterval(id);
+    }, [entityId, effect.id]);
+    const msLabel = formatDurationCompact(remainingMs / 1e3);
+    const tooltip = effectTooltip(effect, remainingMs);
     const onClick = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       info.openCondition(entity, effect.id);
     } : void 0;
-    return e("div", {
-      ref,
-      className: `comm-fx-icon ${hostClass}`,
-      "data-condition": effect.id,
-      "data-entity": entityId,
-      [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
-      title: tooltip,
-      onClick,
-      onMouseDown: clickable ? (ev) => {
-        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      } : void 0,
-      onPointerDown: clickable ? (ev) => {
-        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      } : void 0,
-      style: {
-        position: "relative",
-        display: "inline-block",
-        verticalAlign: "top",
-        // Allow .iqui / border overhang (right/bottom: -2px) to paint.
-        overflow: "visible",
-        flex: "0 0 auto",
-        cursor: clickable ? "pointer" : "default",
-        pointerEvents: "auto"
-      }
-    });
+    return e(
+      "div",
+      {
+        className: `comm-fx-icon ${hostClass}`,
+        "data-condition": effect.id,
+        "data-entity": entityId,
+        [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
+        title: tooltip,
+        onClick,
+        onMouseDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        } : void 0,
+        onPointerDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        } : void 0,
+        style: {
+          position: "relative",
+          display: "inline-block",
+          verticalAlign: "top",
+          overflow: "visible",
+          flex: "0 0 auto",
+          cursor: clickable ? "pointer" : "default",
+          pointerEvents: "auto"
+        }
+      },
+      e("div", {
+        ref: iconRef,
+        style: {
+          position: "relative",
+          display: "inline-block",
+          verticalAlign: "top"
+        }
+      }),
+      msLabel ? e(
+        "div",
+        {
+          className: "comm-fx-ms",
+          style: {
+            position: "absolute",
+            left: "50%",
+            bottom: "1px",
+            transform: "translateX(-50%)",
+            zIndex: 2,
+            padding: "0 3px",
+            background: "rgba(0,0,0,0.82)",
+            border: "1px solid #444",
+            color: remainingMs <= 5e3 ? "#ffcc66" : "#e8e8e8",
+            fontSize: TYPE.microMin,
+            lineHeight: "14px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            ...PIXEL_TEXT
+          }
+        },
+        msLabel
+      ) : null
+    );
   }
   function EffectsRow(props) {
     const entityId = String(props.entity.id);
@@ -5807,13 +6296,11 @@ var EnhanceCommUI = (() => {
         style: {
           display: "flex",
           flexDirection: "row",
-          // Gap under MP bar so icons / quantity badges are not flush.
           marginTop,
           gap,
           flexWrap: compact && maxVisible > 0 ? "nowrap" : "wrap",
           alignItems: "flex-start",
           width: "100%",
-          // Room for item_container chrome + .iqui (bottom:-2px overhang).
           minHeight,
           paddingBottom: padBottom,
           boxSizing: "border-box",
@@ -5951,6 +6438,72 @@ var EnhanceCommUI = (() => {
     );
   }
 
+  // src/lib/stickyPresence.ts
+  function isActuallyDead(entity) {
+    return !!entity && entity.dead === true;
+  }
+  var THREAT_STICKY_MS = 1400;
+  var threatStickyById = /* @__PURE__ */ new Map();
+  function isLiveAggroMob(ent) {
+    if (ent.dead) return false;
+    return ent.type === "monster" && !!ent.target;
+  }
+  function stickyAggroByTarget(liveByTarget, resolveName, now = Date.now()) {
+    const liveIds = Object.keys(liveByTarget);
+    for (let i = 0; i < liveIds.length; i++) {
+      const tid = liveIds[i];
+      const raw = liveByTarget[tid] || [];
+      const mobs = [];
+      for (let j = 0; j < raw.length; j++) {
+        if (isLiveAggroMob(raw[j])) mobs.push(raw[j]);
+      }
+      if (mobs.length === 0) {
+        delete liveByTarget[tid];
+        continue;
+      }
+      liveByTarget[tid] = mobs;
+      threatStickyById.set(tid, {
+        until: now + THREAT_STICKY_MS,
+        mobs,
+        name: resolveName(tid)
+      });
+    }
+    const out = {};
+    const liveKeys = Object.keys(liveByTarget);
+    for (let i = 0; i < liveKeys.length; i++) {
+      out[liveKeys[i]] = liveByTarget[liveKeys[i]];
+    }
+    const stickyIds = Array.from(threatStickyById.keys());
+    for (let i = 0; i < stickyIds.length; i++) {
+      const tid = stickyIds[i];
+      const sticky = threatStickyById.get(tid);
+      if (!sticky) continue;
+      if (now > sticky.until) {
+        threatStickyById.delete(tid);
+        continue;
+      }
+      if (!out[tid]) {
+        out[tid] = sticky.mobs;
+      }
+    }
+    return out;
+  }
+  function sortThreatTargetIds(targetIds, observingId, nameOf) {
+    const ids = targetIds.slice();
+    ids.sort((a, b) => {
+      if (observingId) {
+        if (a === observingId) return -1;
+        if (b === observingId) return 1;
+      }
+      const na = nameOf(a);
+      const nb = nameOf(b);
+      const cmp = na.localeCompare(nb);
+      if (cmp !== 0) return cmp;
+      return a.localeCompare(b);
+    });
+    return ids;
+  }
+
   // src/ui/frames/Players.ts
   function hpPct(entity) {
     const max = entity.max_hp || 1;
@@ -5960,9 +6513,8 @@ var EnhanceCommUI = (() => {
     const max = entity.max_mp || 1;
     return Math.max(0, Math.min(100, Math.round((entity.mp || 0) / max * 100)));
   }
-  function chipOpacity(dead, oor) {
+  function chipOpacity(dead) {
     if (dead) return 0.42;
-    if (oor) return 0.62;
     return 1;
   }
   function Players(props) {
@@ -6087,8 +6639,7 @@ var EnhanceCommUI = (() => {
               const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
               const hasAggro = aggroMobs.length > 0;
               const color = classColors[player.ctype || ""] || "#888";
-              const dead = !!player.dead;
-              const oor = !dead && !observed && !!observing && outOfRange(observing, player) === true;
+              const dead = isActuallyDead(player);
               const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
               const controlEntity = observed && observing && typeof observing.fear === "number" ? { ...player, fear: observing.fear } : player;
               const controlStates = getControlStates(controlEntity);
@@ -6099,7 +6650,6 @@ var EnhanceCommUI = (() => {
               const nameTitle = [
                 `${player.name || player.id}`,
                 observed ? "Observing" : "",
-                oor ? "Out of range" : "",
                 dead ? "Dead" : "",
                 controlTitle,
                 aggroTitle
@@ -6119,7 +6669,7 @@ var EnhanceCommUI = (() => {
                 "div",
                 {
                   key: player.id,
-                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : "") + (oor ? " is-oor" : ""),
+                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : ""),
                   title: nameTitle,
                   style: {
                     position: "relative",
@@ -6129,7 +6679,7 @@ var EnhanceCommUI = (() => {
                     cursor: "pointer",
                     overflow: "visible",
                     boxSizing: "border-box",
-                    opacity: chipOpacity(dead, oor)
+                    opacity: chipOpacity(dead)
                   },
                   onClick: () => {
                     if (selected) {
@@ -6832,9 +7382,20 @@ var EnhanceCommUI = (() => {
     });
   }
   function slotKey(slot) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     if (!slot || !slot.name) return "";
-    return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.q) != null ? _b : ""}`;
+    return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.q) != null ? _b : ""}|${(_c = slot.price) != null ? _c : ""}|${(_d = slot.skin) != null ? _d : ""}`;
+  }
+  function slotsFingerprint(slots) {
+    if (!slots) return "";
+    const keys = Object.keys(slots);
+    keys.sort();
+    const parts = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      parts.push(`${k}:${slotKey(slots[k])}`);
+    }
+    return parts.join(";");
   }
   function SlotCell(props) {
     const { entity, slotName, slot, showPrice, diff } = props;
@@ -6960,97 +7521,103 @@ var EnhanceCommUI = (() => {
     );
   }
   function GearGrid(props) {
+    const React = getReact();
     const slots = props.entity.slots;
     if (!slots) return null;
-    const compareSlots = props.compareTo && props.compareTo.slots;
-    const tradeNames = tradeSlotNames(slots);
-    const isDiff = (name) => {
-      if (!compareSlots) return false;
-      return slotKey(slots[name]) !== slotKey(compareSlots[name]);
-    };
-    return e(
-      "div",
-      {
-        className: "comm-gear-grid",
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px",
-          pointerEvents: "auto"
-        }
-      },
-      e(
+    const entityId = props.entity.id != null ? String(props.entity.id) : "";
+    const compareId = props.compareTo && props.compareTo.id != null ? String(props.compareTo.id) : "";
+    const fp = entityId + "|" + compareId + "|" + slotsFingerprint(slots) + "|" + slotsFingerprint(props.compareTo && props.compareTo.slots);
+    return React.useMemo(() => {
+      const compareSlots = props.compareTo && props.compareTo.slots;
+      const tradeNames = tradeSlotNames(slots);
+      const isDiff = (name) => {
+        if (!compareSlots) return false;
+        return slotKey(slots[name]) !== slotKey(compareSlots[name]);
+      };
+      return e(
         "div",
         {
+          className: "comm-gear-grid",
           style: {
             display: "flex",
             flexDirection: "column",
             gap: "2px",
-            width: "fit-content"
-          }
-        },
-        ...GEAR_ROWS.map(
-          (row, ri) => e(
-            "div",
-            {
-              key: `row${ri}`,
-              style: {
-                display: "flex",
-                flexDirection: "row",
-                flexWrap: "nowrap",
-                gap: "2px"
-              }
-            },
-            ...row.map(
-              (name) => e(SlotCell, {
-                key: name,
-                entity: props.entity,
-                slotName: name,
-                slot: slots[name],
-                diff: isDiff(name)
-              })
-            )
-          )
-        )
-      ),
-      tradeNames.length ? e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "2px",
-            borderTop: "1px solid #333",
-            paddingTop: "4px",
-            marginTop: "4px"
+            pointerEvents: "auto"
           }
         },
         e(
           "div",
           {
             style: {
-              flex: "0 0 100%",
-              fontSize: TYPE.micro,
-              color: "#888",
-              marginBottom: "2px",
-              letterSpacing: "0.04em",
-              ...PIXEL_TEXT
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px",
+              width: "fit-content"
             }
           },
-          "TRADE"
+          ...GEAR_ROWS.map(
+            (row, ri) => e(
+              "div",
+              {
+                key: `row${ri}`,
+                style: {
+                  display: "flex",
+                  flexDirection: "row",
+                  flexWrap: "nowrap",
+                  gap: "2px"
+                }
+              },
+              ...row.map(
+                (name) => e(SlotCell, {
+                  key: name,
+                  entity: props.entity,
+                  slotName: name,
+                  slot: slots[name],
+                  diff: isDiff(name)
+                })
+              )
+            )
+          )
         ),
-        ...tradeNames.map(
-          (name) => e(SlotCell, {
-            key: name,
-            entity: props.entity,
-            slotName: name,
-            slot: slots[name],
-            showPrice: true,
-            diff: isDiff(name)
-          })
-        )
-      ) : null
-    );
+        tradeNames.length ? e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "2px",
+              borderTop: "1px solid #333",
+              paddingTop: "4px",
+              marginTop: "4px"
+            }
+          },
+          e(
+            "div",
+            {
+              style: {
+                flex: "0 0 100%",
+                fontSize: TYPE.micro,
+                color: "#888",
+                marginBottom: "2px",
+                letterSpacing: "0.04em",
+                ...PIXEL_TEXT
+              }
+            },
+            "TRADE"
+          ),
+          ...tradeNames.map(
+            (name) => e(SlotCell, {
+              key: name,
+              entity: props.entity,
+              slotName: name,
+              slot: slots[name],
+              showPrice: true,
+              diff: isDiff(name)
+            })
+          )
+        ) : null
+      );
+    }, [fp]);
   }
 
   // src/ui/paperdoll/CompareToWatched.ts
@@ -8248,6 +8815,27 @@ var EnhanceCommUI = (() => {
     return null;
   }
 
+  // src/geometry/combat.ts
+  function distance(a, b) {
+    if (!a || !b) return void 0;
+    return simpleDistance(a, b);
+  }
+  function outOfRange(observer, target) {
+    if (!observer || !target) return void 0;
+    const range = observer.range;
+    if (range == null) return void 0;
+    const d = distance(observer, target);
+    if (d == null) return void 0;
+    return d > range;
+  }
+  function difficultyBadge(monster) {
+    if (!monster || monster.type !== "monster") return void 0;
+    const level = calculateDifficulty(monster);
+    if (level >= 2) return { level, label: "Hard", color: "#ff4444" };
+    if (level === 1) return { level, label: "Med", color: "#ffaa00" };
+    return { level, label: "Easy", color: "#66cc66" };
+  }
+
   // src/ui/frames/TargetFrame.ts
   function targetTrailing(observing, target) {
     const dps = getDps();
@@ -8448,10 +9036,14 @@ var EnhanceCommUI = (() => {
     });
   }
   function MobChip(props) {
+    const React = getReact();
     const { mtype, count } = props;
     const title = `${count}\xD7${mtype}`;
+    const html = React.useMemo(
+      () => monsterSprite(mtype, { size: MOB_ICON_SIZE }),
+      [mtype]
+    );
     let icon = null;
-    const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
     if (html) icon = wrapIconHtml(html);
     const countBadge = e(
       "span",
@@ -8694,8 +9286,19 @@ var EnhanceCommUI = (() => {
     );
   }
   function ThreatTable(props) {
-    const byTarget = aggroByTarget(props.entities);
-    const targetIds = Object.keys(byTarget);
+    const nameOf = (tid) => {
+      const ent = findEntity(props.entities, tid);
+      return ent && ent.name || tid;
+    };
+    const byTarget = stickyAggroByTarget(
+      aggroByTarget(props.entities),
+      nameOf
+    );
+    const targetIds = sortThreatTargetIds(
+      Object.keys(byTarget),
+      props.observingId,
+      nameOf
+    );
     if (targetIds.length === 0) {
       if (!props.layoutEdit) return null;
       return e(PanelShellDummy, {
@@ -8706,11 +9309,6 @@ var EnhanceCommUI = (() => {
         style: THREAT_PANEL_STYLE
       });
     }
-    targetIds.sort((a, b) => {
-      if (a === props.observingId) return -1;
-      if (b === props.observingId) return 1;
-      return byTarget[b].length - byTarget[a].length;
-    });
     return e(
       "div",
       {
@@ -10528,7 +11126,14 @@ var EnhanceCommUI = (() => {
     );
   }
   function BagSyncChrome(props) {
-    const { syncedAt, refreshing, refreshKind, now } = props;
+    const React = getReact();
+    const { syncedAt, refreshing, refreshKind } = props;
+    const [now, setNow] = React.useState(() => Date.now());
+    React.useEffect(() => {
+      if (refreshing) return;
+      const id = window.setInterval(() => setNow(Date.now()), 1e3);
+      return () => window.clearInterval(id);
+    }, [refreshing]);
     let label = "Synced \u2014";
     let title = "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
     if (refreshing) {
@@ -10536,7 +11141,7 @@ var EnhanceCommUI = (() => {
       title = "Reconnecting observer for a fresh inventory snapshot from the server.";
     } else if (syncedAt != null) {
       label = formatBagSyncedLabel(syncedAt, now);
-      title = `Inventory snapshot time (${new Date(syncedAt).toLocaleTimeString()}). Refresh reconnects the observer \u2014 stock AL has no lighter inventory pull.`;
+      title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
     }
     if (!refreshing && refreshKind === "local") {
       title = "Last Refresh re-drew the local observing snapshot (no server round-trip).";
@@ -10618,7 +11223,6 @@ var EnhanceCommUI = (() => {
     const [refreshKind, setRefreshKind] = React.useState(
       () => getBagRefreshKind()
     );
-    const [now, setNow] = React.useState(() => Date.now());
     const layoutEdit = !!props.layoutEdit;
     const showDummy = layoutEdit && !open && !refreshing;
     const showChrome = open || refreshing;
@@ -10637,14 +11241,9 @@ var EnhanceCommUI = (() => {
         if (host) document.body.appendChild(host);
       };
     }, []);
-    React.useEffect(() => {
-      if (!showChrome || refreshing) return;
-      const id = window.setInterval(() => setNow(Date.now()), 1e3);
-      return () => window.clearInterval(id);
-    }, [showChrome, refreshing]);
     React.useLayoutEffect(() => {
       attachInventoryToMount(mountRef.current);
-    });
+    }, [open, refreshing, showDummy]);
     return e(
       "div",
       {
@@ -10660,7 +11259,7 @@ var EnhanceCommUI = (() => {
           boxSizing: "border-box"
         }
       },
-      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, now }) : null,
+      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind }) : null,
       showDummy ? e(BagDummy) : null,
       e("div", {
         ref: mountRef,
@@ -11187,7 +11786,7 @@ var EnhanceCommUI = (() => {
             type: "button",
             onClick: toggleFree,
             style: btnStyle2(freePlacement),
-            title: freePlacement ? "Free placement: no grid snap (peer edges still magnetize)" : `Snap to ${stepLabel} grid while dragging (peer edges still magnetize)`
+            title: freePlacement ? "Free placement: no grid snap (peer edges still magnetize)" : `Snap to square ${stepLabel} grid while dragging (peer edges still magnetize)`
           },
           freePlacement ? "Free: ON" : "Free"
         ),
@@ -11200,7 +11799,7 @@ var EnhanceCommUI = (() => {
               type: "button",
               onClick: () => onGridStep(step),
               style: btnStyle2(Math.abs(gridStep - step) < 1e-6),
-              title: `Grid + snap every ${step}% (ignored while Free is on)`
+              title: `Snap every ${step}% of the shorter side; also draws 2\xD7 and 4\xD7 overlay guides (Align/eAlign-style)`
             },
             `${step}%`
           )
@@ -11323,13 +11922,44 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/comm/LayoutEditGrid.ts
-  function lineStyle(axis, pct, major) {
-    const color = major ? "rgba(255, 245, 200, 0.62)" : "rgba(255, 245, 200, 0.34)";
-    const border = `1px dashed ${color}`;
+  function tierLook(tier) {
+    switch (tier) {
+      case "fine":
+        return {
+          dark: "rgba(0, 0, 0, 0.42)",
+          light: "rgba(255, 255, 255, 0.5)",
+          dashed: true
+        };
+      case "medium":
+        return {
+          dark: "rgba(0, 0, 0, 0.55)",
+          light: "rgba(255, 250, 220, 0.7)",
+          dashed: true
+        };
+      case "coarse":
+        return {
+          dark: "rgba(0, 0, 0, 0.7)",
+          light: "rgba(255, 245, 200, 0.88)",
+          dashed: false
+        };
+      case "edge":
+        return {
+          dark: "rgba(0, 0, 0, 0.82)",
+          light: "rgba(255, 255, 255, 0.95)",
+          dashed: false
+        };
+      default: {
+        const _exhaustive = tier;
+        return _exhaustive;
+      }
+    }
+  }
+  function strokeStyle(axis, color, dashed, offsetPx) {
+    const border = `${dashed ? "1px dashed" : "1px solid"} ${color}`;
     if (axis === "v") {
       return {
         position: "absolute",
-        left: `${pct}%`,
+        left: `${offsetPx}px`,
         top: 0,
         bottom: 0,
         width: 0,
@@ -11340,7 +11970,7 @@ var EnhanceCommUI = (() => {
     }
     return {
       position: "absolute",
-      top: `${pct}%`,
+      top: `${offsetPx}px`,
       left: 0,
       right: 0,
       height: 0,
@@ -11349,38 +11979,79 @@ var EnhanceCommUI = (() => {
       pointerEvents: "none"
     };
   }
+  function gridLine(axis, pct, tier) {
+    const look = tierLook(tier);
+    const host = axis === "v" ? {
+      position: "absolute",
+      left: `${pct}%`,
+      top: 0,
+      bottom: 0,
+      width: "2px",
+      pointerEvents: "none"
+    } : {
+      position: "absolute",
+      top: `${pct}%`,
+      left: 0,
+      right: 0,
+      height: "2px",
+      pointerEvents: "none"
+    };
+    return e(
+      "div",
+      {
+        key: `${axis}-${tier}-${pct}`,
+        className: `comm-layout-grid-line is-${tier}`,
+        style: host
+      },
+      e("div", {
+        style: strokeStyle(axis, look.dark, look.dashed, 0)
+      }),
+      e("div", {
+        style: strokeStyle(axis, look.light, look.dashed, 1)
+      })
+    );
+  }
   function LayoutEditGrid() {
     const React = getReact();
+    const wrapRef = React.useRef(null);
     const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
+    const [size, setSize] = React.useState(() => {
+      const r = layoutDragRoot().getBoundingClientRect();
+      return { w: r.width || 1, h: r.height || 1 };
+    });
     React.useEffect(
       () => subscribeLayoutEditPrefs(() => {
         setGridStep(getLayoutGridStep());
       }),
       []
     );
-    const lines = layoutGridLinePercents(gridStep);
+    React.useEffect(() => {
+      const root = layoutDragRoot();
+      const measure = () => {
+        const r = root.getBoundingClientRect();
+        setSize({ w: Math.max(1, r.width), h: Math.max(1, r.height) });
+      };
+      measure();
+      if (typeof ResizeObserver === "undefined") {
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+      }
+      const ro = new ResizeObserver(measure);
+      ro.observe(root);
+      return () => ro.disconnect();
+    }, []);
+    const tiers = squareGridTieredLines(gridStep, size.w, size.h);
     const kids = [];
-    for (let i = 0; i < lines.length; i++) {
-      const pct = lines[i];
-      const major = isLayoutGridMajor(pct, gridStep);
-      kids.push(
-        e("div", {
-          key: `v-${pct}`,
-          className: major ? "comm-layout-grid-line major" : "comm-layout-grid-line",
-          style: lineStyle("v", pct, major)
-        })
-      );
-      kids.push(
-        e("div", {
-          key: `h-${pct}`,
-          className: major ? "comm-layout-grid-line major" : "comm-layout-grid-line",
-          style: lineStyle("h", pct, major)
-        })
-      );
+    for (let i = 0; i < tiers.x.length; i++) {
+      kids.push(gridLine("v", tiers.x[i].pct, tiers.x[i].tier));
+    }
+    for (let j = 0; j < tiers.y.length; j++) {
+      kids.push(gridLine("h", tiers.y[j].pct, tiers.y[j].tier));
     }
     return e(
       "div",
       {
+        ref: wrapRef,
         className: "comm-layout-edit-grid",
         "aria-hidden": true,
         style: {
