@@ -478,7 +478,7 @@ function installInventoryClickBridge(): void {
         const item =
           obs && Array.isArray(obs.items) ? obs.items[num] : null;
         if (!item || !item.name || item.name === "placeholder") return;
-        openItem(obs, `inv${num}`, item);
+        openItem(obs, `inv${num}`, item, { dialogOnly: true });
         return;
       }
       return original.call(this, num, event);

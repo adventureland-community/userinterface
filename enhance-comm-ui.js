@@ -4015,7 +4015,7 @@ var EnhanceCommUI = (() => {
     return a || b;
   }
   bindCloseImpl((kind) => closeInfo(kind));
-  function openItem(entity, slotName, slotOverride) {
+  function openItem(entity, slotName, slotOverride, opts) {
     if (!entity || !slotName) return;
     installInfoDialogLifecycle();
     const target = resolvePaperdollEntity(entity);
@@ -4035,7 +4035,11 @@ var EnhanceCommUI = (() => {
     lastSlotName = slotName;
     w.last_sclick = slotName;
     w.dialogs_target = target;
-    setSelectionXTarget(target);
+    if (opts && opts.dialogOnly) {
+      setDialogOnlyXTarget(target);
+    } else {
+      setSelectionXTarget(target);
+    }
     const html = buildItemHtml({
       id: "item" + slotName,
       item: def,
@@ -4218,6 +4222,7 @@ var EnhanceCommUI = (() => {
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
+  var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
   var listeners4 = [];
   var syncListeners = [];
   var bagSyncedAt = null;
@@ -4289,17 +4294,30 @@ var EnhanceCommUI = (() => {
   }
   function onObserveWelcome(data) {
     if (data && data.character) {
-      setBagSyncedAt(Date.now());
+      const ts = Date.now();
+      data.character[BAG_SYNC_STAMP_KEY] = ts;
+      setBagSyncedAt(ts);
       return;
     }
     if (bagSyncedAt != null) setBagSyncedAt(null);
   }
+  function backfillBagSyncedAt() {
+    if (bagSyncedAt != null) return;
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return;
+    const stamped = obs[BAG_SYNC_STAMP_KEY];
+    if (typeof stamped === "number" && stamped > 0) {
+      setBagSyncedAt(stamped);
+    }
+  }
   function maybeBindBagSyncWelcome() {
     const socket = window.socket;
     if (!socket || !socket.id || typeof socket.on !== "function") return;
-    if (socket.id === bagSyncSocketId) return;
-    bagSyncSocketId = socket.id;
-    socket.on("welcome", onObserveWelcome);
+    if (socket.id !== bagSyncSocketId) {
+      bagSyncSocketId = socket.id;
+      socket.on("welcome", onObserveWelcome);
+    }
+    backfillBagSyncedAt();
   }
   function installBagSyncWelcomeWatch() {
     maybeBindBagSyncWelcome();
@@ -4331,6 +4349,20 @@ var EnhanceCommUI = (() => {
   }
   function getBagRefreshKind() {
     return bagRefreshKind;
+  }
+  function hasObservingInventorySnapshot() {
+    const obs = window.observing;
+    return !!(obs && Array.isArray(obs.items));
+  }
+  function stampBagSyncedFromObserving(obs) {
+    if (!obs) return;
+    const stamped = obs[BAG_SYNC_STAMP_KEY];
+    if (typeof stamped === "number" && stamped > 0) {
+      setBagSyncedAt(stamped);
+      return;
+    }
+    setBagSyncedAt(Date.now());
+    obs[BAG_SYNC_STAMP_KEY] = bagSyncedAt;
   }
   function findObserveSecret(name) {
     const chars = window.X && window.X.characters || [];
@@ -4389,6 +4421,8 @@ var EnhanceCommUI = (() => {
         clearRefreshPoll();
         bagRefreshKind = "server";
         refreshPendingName = null;
+        backfillBagSyncedAt();
+        if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
         openInventory();
         setBagRefreshing(false);
         return;
@@ -4398,6 +4432,8 @@ var EnhanceCommUI = (() => {
         refreshPendingName = null;
         if (window.observing) {
           bagRefreshKind = "server";
+          backfillBagSyncedAt();
+          if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
           openInventory();
         } else {
           bagRefreshKind = "local";
@@ -4511,7 +4547,7 @@ var EnhanceCommUI = (() => {
           const obs = window.observing;
           const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
           if (!item || !item.name || item.name === "placeholder") return;
-          openItem(obs, `inv${num}`, item);
+          openItem(obs, `inv${num}`, item, { dialogOnly: true });
           return;
         }
         return original.call(this, num, event);
@@ -4526,9 +4562,9 @@ var EnhanceCommUI = (() => {
     }, 250);
   }
   function installInventoryFix() {
-    if (window.__ecuInventoryPatched) return;
     installInventoryClickBridge();
     installBagSyncWelcomeWatch();
+    if (window.__ecuInventoryPatched) return;
     const tryPatch = () => {
       const original = window.render_inventory;
       if (typeof original !== "function") return false;
@@ -4566,6 +4602,7 @@ var EnhanceCommUI = (() => {
           window.is_comm = savedComm;
           restoreCharacter();
           if (opened) {
+            backfillBagSyncedAt();
             applyBagLayoutPos();
             notifyInventory(true);
           } else if (!window.inventory) {
@@ -4584,6 +4621,9 @@ var EnhanceCommUI = (() => {
         window.clearInterval(timer);
       }
     }, 250);
+  }
+  if (typeof window !== "undefined") {
+    installBagSyncWelcomeWatch();
   }
 
   // src/lib/colors.ts
@@ -11127,21 +11167,24 @@ var EnhanceCommUI = (() => {
   }
   function BagSyncChrome(props) {
     const React = getReact();
-    const { syncedAt, refreshing, refreshKind } = props;
+    const { syncedAt, refreshing, refreshKind, hasSnapshot } = props;
     const [now, setNow] = React.useState(() => Date.now());
     React.useEffect(() => {
       if (refreshing) return;
       const id = window.setInterval(() => setNow(Date.now()), 1e3);
       return () => window.clearInterval(id);
     }, [refreshing]);
-    let label = "Synced \u2014";
-    let title = "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
+    let label = "No snapshot yet";
+    let title = "Observer inventory arrives on observe welcome; none is loaded yet.";
     if (refreshing) {
       label = "Refreshing\u2026";
       title = "Reconnecting observer for a fresh inventory snapshot from the server.";
     } else if (syncedAt != null) {
       label = formatBagSyncedLabel(syncedAt, now);
       title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
+    } else if (hasSnapshot) {
+      label = "Synced (age unknown)";
+      title = "Inventory snapshot is loaded, but welcome time was not recorded (CommUI loaded after connect). Refresh for a fresh timestamp.";
     }
     if (!refreshing && refreshKind === "local") {
       title = "Last Refresh re-drew the local observing snapshot (no server round-trip).";
@@ -11223,6 +11266,9 @@ var EnhanceCommUI = (() => {
     const [refreshKind, setRefreshKind] = React.useState(
       () => getBagRefreshKind()
     );
+    const [hasSnapshot, setHasSnapshot] = React.useState(
+      () => hasObservingInventorySnapshot()
+    );
     const layoutEdit = !!props.layoutEdit;
     const showDummy = layoutEdit && !open && !refreshing;
     const showChrome = open || refreshing;
@@ -11233,6 +11279,7 @@ var EnhanceCommUI = (() => {
         setSyncedAt(getBagSyncedAt());
         setRefreshing(isBagRefreshing());
         setRefreshKind(getBagRefreshKind());
+        setHasSnapshot(hasObservingInventorySnapshot());
       });
       return () => {
         unsubInv();
@@ -11259,7 +11306,7 @@ var EnhanceCommUI = (() => {
           boxSizing: "border-box"
         }
       },
-      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind }) : null,
+      showChrome ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, hasSnapshot }) : null,
       showDummy ? e(BagDummy) : null,
       e("div", {
         ref: mountRef,

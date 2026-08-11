@@ -96,6 +96,11 @@ export function closeAllInfoDialogs(): boolean {
 
 bindCloseImpl((kind) => closeInfo(kind));
 
+export type OpenItemOpts = {
+  /** Set xtarget for item render without syncing CommUI paperdoll selection. */
+  dialogOnly?: boolean;
+};
+
 /**
  * Show gear/item details in `#ecu-item-dialog`.
  * Always `render_item("html")` → innerHTML (never selector / modal_count path).
@@ -104,6 +109,7 @@ export function openItem(
   entity: any,
   slotName: string,
   slotOverride?: any,
+  opts?: OpenItemOpts,
 ): void {
   if (!entity || !slotName) return;
   installInfoDialogLifecycle();
@@ -135,7 +141,11 @@ export function openItem(
   lastSlotName = slotName;
   w.last_sclick = slotName;
   w.dialogs_target = target;
-  setSelectionXTarget(target);
+  if (opts && opts.dialogOnly) {
+    setDialogOnlyXTarget(target);
+  } else {
+    setSelectionXTarget(target);
+  }
 
   const html = buildItemHtml({
     id: "item" + slotName,
