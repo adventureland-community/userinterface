@@ -6263,6 +6263,24 @@ var EnhanceCommUI = (() => {
   function loaderId(hostClass) {
     return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
   }
+  function syncStackBadge(wrap, stacks) {
+    const root = wrap.firstElementChild;
+    if (!root) return;
+    let badge = root.querySelector(".iqui");
+    if (stacks != null && stacks > 0) {
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "iqui";
+        const host = root.querySelector(
+          "div[style*='overflow']"
+        ) || root;
+        host.appendChild(badge);
+      }
+      badge.textContent = String(stacks);
+    } else if (badge) {
+      badge.remove();
+    }
+  }
   function effectTooltip(effect, remainingMs) {
     const parts = [];
     const label = effect.name || effect.id;
@@ -6280,6 +6298,39 @@ var EnhanceCommUI = (() => {
     }
     return parts.join("\n");
   }
+  var EXTEND_ENDS_MS = 750;
+  var EXTEND_REMAIN_MS = 500;
+  function durationWasExtended(prevEndsAt, nextEndsAt, now) {
+    if (!(prevEndsAt > 0)) return false;
+    if (!(nextEndsAt > prevEndsAt + EXTEND_ENDS_MS)) return false;
+    const prevRemain = Math.max(0, prevEndsAt - now);
+    const nextRemain = Math.max(0, nextEndsAt - now);
+    return nextRemain > prevRemain + EXTEND_REMAIN_MS;
+  }
+  function stackedTintWarnMs(effect, remainingMs) {
+    const hint = Math.max(effect.ms || 0, remainingMs, 1e3);
+    return Math.min(4e3, Math.max(2500, Math.floor(hint * 0.4)));
+  }
+  function wantsStackedSoftTint(effect) {
+    return effect.stacks != null;
+  }
+  function shouldShowEffectTint(effect, remainingMs) {
+    if (!(remainingMs > 0)) return false;
+    if (!wantsStackedSoftTint(effect)) return true;
+    return remainingMs <= stackedTintWarnMs(effect, remainingMs);
+  }
+  var STACKED_LABEL_SETTLE_MS = 1250;
+  var STACKED_LABEL_DROP_MS = 1e3;
+  function shouldShowRemainingLabel(effect, remainingMs, peakRemainMs, lastExtendAt, now) {
+    if (!(remainingMs > 0)) return false;
+    if (!wantsStackedSoftTint(effect)) return true;
+    if (remainingMs <= stackedTintWarnMs(effect, remainingMs)) return true;
+    if (!(lastExtendAt > 0) || now - lastExtendAt < STACKED_LABEL_SETTLE_MS) {
+      return false;
+    }
+    const peak = Math.max(peakRemainMs, remainingMs);
+    return remainingMs <= peak - STACKED_LABEL_DROP_MS;
+  }
   function ensureSkidLoader(wrap, rid) {
     const root = wrap.firstElementChild;
     const host = wrap.querySelector("div[style*='position: absolute']") || wrap.querySelector("div[style*='overflow']") || root;
@@ -6296,6 +6347,18 @@ var EnhanceCommUI = (() => {
       host.appendChild(loader);
     }
     return loader;
+  }
+  function clearEffectTint(wrap, rid) {
+    const selector = ".skidloader" + rid;
+    const existing = getTint(selector);
+    if (existing) {
+      existing.end = /* @__PURE__ */ new Date(0);
+      existing.ms = 0;
+    }
+    const loader = wrap.querySelector(selector);
+    if (loader && loader.parentElement) loader.parentElement.removeChild(loader);
+    const img = wrap.querySelector("img");
+    if (img) img.style.opacity = "1";
   }
   function applyEffectTint(wrap, rid, endsAt, startedAt, mode) {
     var _a;
@@ -6337,11 +6400,36 @@ var EnhanceCommUI = (() => {
     const iconRef = React.useRef(null);
     const endsAtRef = React.useRef(0);
     const startedAtRef = React.useRef(0);
+    const tintShownRef = React.useRef(false);
+    const peakRemainRef = React.useRef(0);
+    const lastExtendAtRef = React.useRef(0);
     const { effect, hostClass, entity, iconSize } = props;
     const entityId = String(entity.id);
     const rid = loaderId(hostClass);
     const clickable = effect.type !== "skill";
     const [remainingMs, setRemainingMs] = React.useState(0);
+    const [showRemainLabel, setShowRemainLabel] = React.useState(false);
+    const noteDurationPeak = (remaining, extended) => {
+      if (extended || !(peakRemainRef.current > 0)) {
+        peakRemainRef.current = Math.max(
+          effect.ms || 0,
+          remaining,
+          peakRemainRef.current
+        );
+        lastExtendAtRef.current = Date.now();
+      }
+    };
+    const refreshRemainLabel = (remaining) => {
+      setShowRemainLabel(
+        shouldShowRemainingLabel(
+          effect,
+          remaining,
+          peakRemainRef.current,
+          lastExtendAtRef.current,
+          Date.now()
+        )
+      );
+    };
     const paintIcon = () => {
       const el = iconRef.current;
       if (!el) return;
@@ -6350,8 +6438,7 @@ var EnhanceCommUI = (() => {
         size: iconSize,
         draggable: false
       };
-      const actual = typeof effect.stacks === "number" && effect.stacks ? { s: effect.stacks } : null;
-      const html = itemContainer(opts, actual);
+      const html = itemContainer(opts, null);
       if (html) {
         el.innerHTML = html;
         const root = el.firstElementChild;
@@ -6362,21 +6449,40 @@ var EnhanceCommUI = (() => {
           root.removeAttribute("onclick");
         }
       } else {
-        el.textContent = effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "");
+        el.textContent = effect.id;
       }
+    };
+    const hideTint = () => {
+      const el = iconRef.current;
+      if (el) clearEffectTint(el, rid);
+      tintShownRef.current = false;
+      if (wantsStackedSoftTint(effect)) startedAtRef.current = 0;
     };
     const pushTint = (mode) => {
       const el = iconRef.current;
       if (!el || !el.firstElementChild) return;
       const endsAt = endsAtRef.current;
-      const startedAt = startedAtRef.current;
+      const remaining = endsAt - Date.now();
+      if (!shouldShowEffectTint(effect, remaining)) {
+        hideTint();
+        return;
+      }
+      let startedAt = startedAtRef.current;
+      if (wantsStackedSoftTint(effect) && !tintShownRef.current) {
+        startedAt = Date.now();
+        startedAtRef.current = startedAt;
+        mode = "restart";
+      }
       if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
       applyEffectTint(el, rid, endsAt, startedAt, mode);
+      tintShownRef.current = true;
     };
     React.useEffect(() => {
       const el = iconRef.current;
       if (!el) return;
       paintIcon();
+      syncStackBadge(el, effect.stacks);
+      tintShownRef.current = false;
       pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
       return () => {
         if (el) el.innerHTML = "";
@@ -6386,22 +6492,33 @@ var EnhanceCommUI = (() => {
       effect.id,
       effect.skin,
       effect.type,
-      effect.stacks,
       hostClass,
       rid,
       iconSize
     ]);
     React.useEffect(() => {
+      const el = iconRef.current;
+      if (!el || !el.firstElementChild) return;
+      syncStackBadge(el, effect.stacks);
+    }, [entityId, effect.id, effect.stacks]);
+    React.useEffect(() => {
       const now = Date.now();
       const prev = endsAtRef.current;
       const next = syncEndsAt(prev, effect.ms, now);
       endsAtRef.current = next;
-      setRemainingMs(Math.max(0, next - now));
+      const remaining = Math.max(0, next - now);
+      setRemainingMs(remaining);
       if (!(next > now)) {
         startedAtRef.current = 0;
+        peakRemainRef.current = 0;
+        lastExtendAtRef.current = 0;
+        hideTint();
+        setShowRemainLabel(false);
         return;
       }
-      if (!prev || next > prev + 750) {
+      if (!prev) {
+        noteDurationPeak(remaining, true);
+        refreshRemainLabel(remaining);
         startedAtRef.current = buffStartedAt(
           effect,
           next,
@@ -6410,6 +6527,39 @@ var EnhanceCommUI = (() => {
           startedAtRef.current
         );
         pushTint("restart");
+        return;
+      }
+      if (durationWasExtended(prev, next, now)) {
+        noteDurationPeak(remaining, true);
+        refreshRemainLabel(remaining);
+        if (wantsStackedSoftTint(effect)) {
+          hideTint();
+          return;
+        }
+        if (!(startedAtRef.current > 0)) {
+          startedAtRef.current = buffStartedAt(
+            effect,
+            next,
+            now,
+            "restart",
+            0
+          );
+        } else {
+          const maxSpan = Math.max(
+            SKILL_UI_SPAN_MS,
+            effect.ms || 0,
+            next - now
+          );
+          if (next - startedAtRef.current > maxSpan) {
+            startedAtRef.current = next - maxSpan;
+          }
+        }
+        pushTint("sync");
+        return;
+      }
+      refreshRemainLabel(remaining);
+      if (!shouldShowEffectTint(effect, remaining)) {
+        hideTint();
         return;
       }
       if (next < prev - 250) {
@@ -6425,23 +6575,35 @@ var EnhanceCommUI = (() => {
         pushTint("sync");
         return;
       }
-      pushTint("sync");
-    }, [entityId, effect.id, effect.ms, rid]);
+      pushTint(tintShownRef.current ? "sync" : "restart");
+    }, [entityId, effect.id, effect.ms, effect.stacks, rid]);
     React.useEffect(() => {
       const tick = () => {
         const ends = endsAtRef.current;
         if (!ends) {
           setRemainingMs(0);
+          setShowRemainLabel(false);
+          hideTint();
           return;
         }
-        setRemainingMs(Math.max(0, ends - Date.now()));
+        const remaining = Math.max(0, ends - Date.now());
+        setRemainingMs(remaining);
+        refreshRemainLabel(remaining);
+        if (!shouldShowEffectTint(effect, remaining)) {
+          if (tintShownRef.current) hideTint();
+          return;
+        }
+        if (!tintShownRef.current) pushTint("restart");
       };
       tick();
-      const id = window.setInterval(tick, 500);
+      const id = window.setInterval(tick, 250);
       return () => window.clearInterval(id);
-    }, [entityId, effect.id]);
-    const msLabel = formatDurationCompact(remainingMs / 1e3);
-    const tooltip = effectTooltip(effect, remainingMs);
+    }, [entityId, effect.id, effect.stacks, effect.ms, rid]);
+    const msLabel = showRemainLabel && remainingMs > 0 ? formatDurationCompact(remainingMs / 1e3) : "";
+    const tooltip = effectTooltip(
+      effect,
+      showRemainLabel ? remainingMs : void 0
+    );
     const onClick = clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
@@ -6464,7 +6626,9 @@ var EnhanceCommUI = (() => {
         } : void 0,
         style: {
           position: "relative",
-          display: "inline-block",
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "center",
           verticalAlign: "top",
           overflow: "visible",
           flex: "0 0 auto",
@@ -6485,10 +6649,7 @@ var EnhanceCommUI = (() => {
         {
           className: "comm-fx-ms",
           style: {
-            position: "absolute",
-            left: "50%",
-            bottom: "1px",
-            transform: "translateX(-50%)",
+            marginTop: "1px",
             zIndex: 2,
             padding: "0 3px",
             background: "rgba(0,0,0,0.82)",
@@ -6515,7 +6676,7 @@ var EnhanceCommUI = (() => {
     const gap = compact ? "3px" : "6px";
     const marginTop = compact ? "3px" : "6px";
     const padBottom = compact ? "2px" : "4px";
-    const minHeight = iconSize + (compact ? 8 : 14);
+    const minHeight = iconSize + (compact ? 8 : 14) + 16;
     const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : compact ? 4 : 0;
     const overflow = maxVisible > 0 && effects.length > maxVisible ? effects.length - maxVisible : 0;
     const shown = overflow > 0 ? effects.slice(0, maxVisible) : effects;

@@ -7,7 +7,7 @@ import {
   rebindTint,
 } from "../../host/icons";
 import { getReact, e } from "../../host/react";
-import type { EntityLike, StatusLike } from "../../host/globals";
+import type { EntityLike } from "../../host/globals";
 import {
   hardCcFallbackSkin,
   PROMOTED_HARD_CC_IDS,
@@ -114,6 +114,31 @@ function loaderId(hostClass: string): string {
   return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
 }
 
+/** Update stock `.iqui` stack digit without rebuilding the icon (preserves skidloader). */
+function syncStackBadge(
+  wrap: HTMLElement,
+  stacks: number | undefined,
+): void {
+  const root = wrap.firstElementChild as HTMLElement | null;
+  if (!root) return;
+  let badge = root.querySelector(".iqui") as HTMLElement | null;
+  if (stacks != null && stacks > 0) {
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.className = "iqui";
+      // Stock places `.iqui` on the absolute overflow host that holds the art.
+      const host =
+        (root.querySelector(
+          "div[style*='overflow']",
+        ) as HTMLElement | null) || root;
+      host.appendChild(badge);
+    }
+    badge.textContent = String(stacks);
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
 function effectTooltip(effect: BuiltEffect, remainingMs?: number): string {
   const parts: string[] = [];
   const label = effect.name || effect.id;
@@ -142,13 +167,84 @@ function effectTooltip(effect: BuiltEffect, remainingMs?: number): string {
   return parts.join("\n");
 }
 
+/** Ends-at must jump at least this far to count as a duration refresh. */
+const EXTEND_ENDS_MS = 750;
+/** Remaining must also grow by this much — filters clock-skew / observe noise. */
+const EXTEND_REMAIN_MS = 500;
+
+/**
+ * True when absolute end moved forward *and* remaining time clearly grew
+ * (full re-apply / refresh), not a tiny rebroadcast wobble.
+ */
+function durationWasExtended(
+  prevEndsAt: number,
+  nextEndsAt: number,
+  now: number,
+): boolean {
+  if (!(prevEndsAt > 0)) return false;
+  if (!(nextEndsAt > prevEndsAt + EXTEND_ENDS_MS)) return false;
+  const prevRemain = Math.max(0, prevEndsAt - now);
+  const nextRemain = Math.max(0, nextEndsAt - now);
+  return nextRemain > prevRemain + EXTEND_REMAIN_MS;
+}
+
+/**
+ * Stack digits (`.iqui`) sit on the icon. While a stacked effect is kept fresh
+ * (ms re-applied every hit), a full-time skidloader just covers the count and
+ * seizes on every refresh. Show the bar only in the late window so expiry is
+ * still visible. Non-stacked effects keep the normal always-on bar.
+ */
+function stackedTintWarnMs(effect: BuiltEffect, remainingMs: number): number {
+  const hint = Math.max(effect.ms || 0, remainingMs, 1000);
+  return Math.min(4000, Math.max(2500, Math.floor(hint * 0.4)));
+}
+
+function wantsStackedSoftTint(effect: BuiltEffect): boolean {
+  return effect.stacks != null;
+}
+
+function shouldShowEffectTint(
+  effect: BuiltEffect,
+  remainingMs: number,
+): boolean {
+  if (!(remainingMs > 0)) return false;
+  if (!wantsStackedSoftTint(effect)) return true;
+  return remainingMs <= stackedTintWarnMs(effect, remainingMs);
+}
+
+/** Must sit this long without a duration refresh before a stacked timer may show. */
+const STACKED_LABEL_SETTLE_MS = 1250;
+/** Remaining must fall this far below the post-refresh peak (kills 10s↔9s flicker). */
+const STACKED_LABEL_DROP_MS = 1000;
+
+/**
+ * Stacked effects re-apply full ms every hit, so a live `10s` label is noise.
+ * Only show remaining once time is actually counting down (settled + dropped
+ * from the last refresh peak), or when inside the expiry warn window.
+ */
+function shouldShowRemainingLabel(
+  effect: BuiltEffect,
+  remainingMs: number,
+  peakRemainMs: number,
+  lastExtendAt: number,
+  now: number,
+): boolean {
+  if (!(remainingMs > 0)) return false;
+  if (!wantsStackedSoftTint(effect)) return true;
+  if (remainingMs <= stackedTintWarnMs(effect, remainingMs)) return true;
+  if (!(lastExtendAt > 0) || now - lastExtendAt < STACKED_LABEL_SETTLE_MS) {
+    return false;
+  }
+  const peak = Math.max(peakRemainMs, remainingMs);
+  return remainingMs <= peak - STACKED_LABEL_DROP_MS;
+}
+
 /**
  * Duration tint via classic skill skidloader (1px bar + scaleY).
  * Never call add_tint type skill/progress on the icon host itself — that stretches the whole tile.
  *
- * Restart only when the sticky endsAt epoch changes (true refresh). Observe
- * rebroadcasts of a similar `ms` must not call add_tint again — that resets
- * tint.start to now and makes the bar "seize".
+ * Duration refreshes extend end and keep start (with span clamp). Stacked effects
+ * gate the bar behind an expiry window — see shouldShowEffectTint.
  */
 function ensureSkidLoader(wrap: HTMLElement, rid: string): HTMLElement | null {
   const root = wrap.firstElementChild as HTMLElement | null;
@@ -170,6 +266,19 @@ function ensureSkidLoader(wrap: HTMLElement, rid: string): HTMLElement | null {
     host.appendChild(loader);
   }
   return loader;
+}
+
+function clearEffectTint(wrap: HTMLElement, rid: string): void {
+  const selector = ".skidloader" + rid;
+  const existing = getTint(selector);
+  if (existing) {
+    existing.end = new Date(0);
+    existing.ms = 0;
+  }
+  const loader = wrap.querySelector(selector);
+  if (loader && loader.parentElement) loader.parentElement.removeChild(loader);
+  const img = wrap.querySelector("img") as HTMLElement | null;
+  if (img) img.style.opacity = "1";
 }
 
 function applyEffectTint(
@@ -243,12 +352,39 @@ export function EffectIcon(props: {
   const iconRef = React.useRef(null);
   const endsAtRef = React.useRef(0);
   const startedAtRef = React.useRef(0);
+  const tintShownRef = React.useRef(false);
+  const peakRemainRef = React.useRef(0);
+  const lastExtendAtRef = React.useRef(0);
   const { effect, hostClass, entity, iconSize } = props;
   const entityId = String(entity.id);
   const rid = loaderId(hostClass);
   const clickable = effect.type !== "skill";
 
   const [remainingMs, setRemainingMs] = React.useState(0);
+  const [showRemainLabel, setShowRemainLabel] = React.useState(false);
+
+  const noteDurationPeak = (remaining: number, extended: boolean) => {
+    if (extended || !(peakRemainRef.current > 0)) {
+      peakRemainRef.current = Math.max(
+        effect.ms || 0,
+        remaining,
+        peakRemainRef.current,
+      );
+      lastExtendAtRef.current = Date.now();
+    }
+  };
+
+  const refreshRemainLabel = (remaining: number) => {
+    setShowRemainLabel(
+      shouldShowRemainingLabel(
+        effect,
+        remaining,
+        peakRemainRef.current,
+        lastExtendAtRef.current,
+        Date.now(),
+      ),
+    );
+  };
 
   const paintIcon = () => {
     const el = iconRef.current as HTMLElement | null;
@@ -259,11 +395,8 @@ export function EffectIcon(props: {
       size: iconSize,
       draggable: false,
     };
-    const actual =
-      typeof effect.stacks === "number" && effect.stacks
-        ? ({ s: effect.stacks } as StatusLike)
-        : null;
-    const html = itemContainer(opts, actual);
+    // Stacks are applied via syncStackBadge so count updates do not wipe skidloader.
+    const html = itemContainer(opts, null);
 
     if (html) {
       el.innerHTML = html;
@@ -275,25 +408,45 @@ export function EffectIcon(props: {
         root.removeAttribute("onclick");
       }
     } else {
-      el.textContent =
-        effect.id + (effect.stacks != null ? ` ${effect.stacks}` : "");
+      el.textContent = effect.id;
     }
+  };
+
+  const hideTint = () => {
+    const el = iconRef.current as HTMLElement | null;
+    if (el) clearEffectTint(el, rid);
+    tintShownRef.current = false;
+    if (wantsStackedSoftTint(effect)) startedAtRef.current = 0;
   };
 
   const pushTint = (mode: "restart" | "sync" | "rebind") => {
     const el = iconRef.current as HTMLElement | null;
     if (!el || !el.firstElementChild) return;
     const endsAt = endsAtRef.current;
-    const startedAt = startedAtRef.current;
+    const remaining = endsAt - Date.now();
+    if (!shouldShowEffectTint(effect, remaining)) {
+      hideTint();
+      return;
+    }
+    let startedAt = startedAtRef.current;
+    // Entering the stacked expiry window: anchor a clean short span once.
+    if (wantsStackedSoftTint(effect) && !tintShownRef.current) {
+      startedAt = Date.now();
+      startedAtRef.current = startedAt;
+      mode = "restart";
+    }
     if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
     applyEffectTint(el, rid, endsAt, startedAt, mode);
+    tintShownRef.current = true;
   };
 
-  // Paint stock item_container; rebind tint onto the new DOM without resetting epoch.
+  // Paint stock item_container; stacks update separately so skidloader survives.
   React.useEffect(() => {
     const el = iconRef.current as HTMLElement | null;
     if (!el) return;
     paintIcon();
+    syncStackBadge(el, effect.stacks);
+    tintShownRef.current = false;
     pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
     return () => {
       if (el) el.innerHTML = "";
@@ -303,27 +456,39 @@ export function EffectIcon(props: {
     effect.id,
     effect.skin,
     effect.type,
-    effect.stacks,
     hostClass,
     rid,
     iconSize,
   ]);
 
-  // Sticky absolute end — only restart tint when endsAt clearly refreshes.
+  // Stack digit only — do not wipe the icon DOM (that resets tint / opacity).
+  React.useEffect(() => {
+    const el = iconRef.current as HTMLElement | null;
+    if (!el || !el.firstElementChild) return;
+    syncStackBadge(el, effect.stacks);
+  }, [entityId, effect.id, effect.stacks]);
+
+  // Sticky absolute end + stacked expiry-window gating for the skidloader.
   React.useEffect(() => {
     const now = Date.now();
     const prev = endsAtRef.current;
     const next = syncEndsAt(prev, effect.ms, now);
     endsAtRef.current = next;
-    setRemainingMs(Math.max(0, next - now));
+    const remaining = Math.max(0, next - now);
+    setRemainingMs(remaining);
 
     if (!(next > now)) {
       startedAtRef.current = 0;
+      peakRemainRef.current = 0;
+      lastExtendAtRef.current = 0;
+      hideTint();
+      setShowRemainLabel(false);
       return;
     }
 
-    if (!prev || next > prev + 750) {
-      // New buff or clear refresh — anchor bar span to stock skill window or local epoch.
+    if (!prev) {
+      noteDurationPeak(remaining, true);
+      refreshRemainLabel(remaining);
       startedAtRef.current = buffStartedAt(
         effect,
         next,
@@ -334,8 +499,46 @@ export function EffectIcon(props: {
       pushTint("restart");
       return;
     }
+
+    if (durationWasExtended(prev, next, now)) {
+      noteDurationPeak(remaining, true);
+      refreshRemainLabel(remaining);
+      if (wantsStackedSoftTint(effect)) {
+        // Refresh pushed remaining back up — drop bar until expiry window again.
+        hideTint();
+        return;
+      }
+      if (!(startedAtRef.current > 0)) {
+        startedAtRef.current = buffStartedAt(
+          effect,
+          next,
+          now,
+          "restart",
+          0,
+        );
+      } else {
+        const maxSpan = Math.max(
+          SKILL_UI_SPAN_MS,
+          effect.ms || 0,
+          next - now,
+        );
+        if (next - startedAtRef.current > maxSpan) {
+          startedAtRef.current = next - maxSpan;
+        }
+      }
+      pushTint("sync");
+      return;
+    }
+
+    refreshRemainLabel(remaining);
+
+    if (!shouldShowEffectTint(effect, remaining)) {
+      // Keep endsAt for countdown detection; hide the intrusive bar while fresh.
+      hideTint();
+      return;
+    }
+
     if (next < prev - 250) {
-      // Shortened — skill bars re-anchor to the 24s window; conditions keep start.
       if (effect.type === "skill") {
         startedAtRef.current = buffStartedAt(
           effect,
@@ -348,27 +551,41 @@ export function EffectIcon(props: {
       pushTint("sync");
       return;
     }
-    // Similar ms rebroadcast: align end without resetting start (heals DOM rebind drift).
-    pushTint("sync");
-  }, [entityId, effect.id, effect.ms, rid]);
+    pushTint(tintShownRef.current ? "sync" : "restart");
+  }, [entityId, effect.id, effect.ms, effect.stacks, rid]);
 
-  // Local countdown for the text overlay / tooltip.
+  // Local countdown for the text label / tooltip; also crosses stacked warn threshold.
   React.useEffect(() => {
     const tick = () => {
       const ends = endsAtRef.current;
       if (!ends) {
         setRemainingMs(0);
+        setShowRemainLabel(false);
+        hideTint();
         return;
       }
-      setRemainingMs(Math.max(0, ends - Date.now()));
+      const remaining = Math.max(0, ends - Date.now());
+      setRemainingMs(remaining);
+      refreshRemainLabel(remaining);
+      if (!shouldShowEffectTint(effect, remaining)) {
+        if (tintShownRef.current) hideTint();
+        return;
+      }
+      if (!tintShownRef.current) pushTint("restart");
     };
     tick();
-    const id = window.setInterval(tick, 500);
+    const id = window.setInterval(tick, 250);
     return () => window.clearInterval(id);
-  }, [entityId, effect.id]);
+  }, [entityId, effect.id, effect.stacks, effect.ms, rid]);
 
-  const msLabel = formatDurationCompact(remainingMs / 1000);
-  const tooltip = effectTooltip(effect, remainingMs);
+  const msLabel =
+    showRemainLabel && remainingMs > 0
+      ? formatDurationCompact(remainingMs / 1000)
+      : "";
+  const tooltip = effectTooltip(
+    effect,
+    showRemainLabel ? remainingMs : undefined,
+  );
 
   const onClick = clickable
     ? (ev: any) => {
@@ -399,7 +616,9 @@ export function EffectIcon(props: {
         : undefined,
       style: {
         position: "relative",
-        display: "inline-block",
+        display: "inline-flex",
+        flexDirection: "column",
+        alignItems: "center",
         verticalAlign: "top",
         overflow: "visible",
         flex: "0 0 auto",
@@ -421,10 +640,7 @@ export function EffectIcon(props: {
           {
             className: "comm-fx-ms",
             style: {
-              position: "absolute",
-              left: "50%",
-              bottom: "1px",
-              transform: "translateX(-50%)",
+              marginTop: "1px",
               zIndex: 2,
               padding: "0 3px",
               background: "rgba(0,0,0,0.82)",
@@ -456,7 +672,7 @@ export function EffectsRow(props: EffectsRowProps): any {
   const gap = compact ? "3px" : "6px";
   const marginTop = compact ? "3px" : "6px";
   const padBottom = compact ? "2px" : "4px";
-  const minHeight = iconSize + (compact ? 8 : 14);
+  const minHeight = iconSize + (compact ? 8 : 14) + 16;
   const maxVisible =
     typeof props.maxVisible === "number"
       ? props.maxVisible
