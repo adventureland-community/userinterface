@@ -1,9 +1,10 @@
-import { e } from "../../host/react";
+import { e, getReact } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import {
   EffectIcon,
   buildEntityEffects,
+  stabilizeEffectOrder,
   type BuiltEffect,
 } from "./EffectsRow";
 
@@ -14,20 +15,21 @@ export function collectUniquePartyEffects(
   members: EntityLike[],
 ): SharedEffectEntry[] {
   const byId: Record<string, SharedEffectEntry> = {};
+  const discovery: string[] = [];
   for (let i = 0; i < members.length; i++) {
     const member = members[i];
     const effects = buildEntityEffects(member);
     for (let j = 0; j < effects.length; j++) {
       const ef = effects[j];
       const prev = byId[ef.id];
+      if (!prev) discovery.push(ef.id);
       if (!prev || (ef.ms || 0) > (prev.ms || 0)) {
         byId[ef.id] = { ...ef, entity: member };
       }
     }
   }
-  const ids = Object.keys(byId).sort();
   const out: SharedEffectEntry[] = [];
-  for (let i = 0; i < ids.length; i++) out.push(byId[ids[i]]);
+  for (let i = 0; i < discovery.length; i++) out.push(byId[discovery[i]]);
   return out;
 }
 
@@ -37,8 +39,16 @@ export function SharedPartyEffects(props: {
   iconSize?: number;
   maxVisible?: number;
 }): any {
-  const entries = collectUniquePartyEffects(props.members);
-  if (!entries.length) return null;
+  const React = getReact();
+  const orderIdsRef = React.useRef([] as string[]);
+  const collected = collectUniquePartyEffects(props.members);
+  const stabilized = stabilizeEffectOrder(collected, orderIdsRef.current);
+  orderIdsRef.current = stabilized.orderIds;
+  const entries = stabilized.effects;
+  if (!entries.length) {
+    orderIdsRef.current = [];
+    return null;
+  }
   const iconSize =
     typeof props.iconSize === "number" && props.iconSize > 0
       ? props.iconSize

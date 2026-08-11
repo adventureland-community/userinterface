@@ -47,7 +47,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] **Item info switch slots** — with Item info already open, click a *different* filled gear/trade slot; details replace (do not stay stuck on the first item / empty).
 
 - [ ] **Party buff modes** — cycle **Buffs:** on Party panel through Auto / All / Obs / Compact / Shared / Off; persists across reload; Auto hides non-observed under-chip buffs when roster > 8 (Franky-sized).
-- [ ] **Buff remaining times** — stacked effects hide timer/skidloader while ms keeps refreshing; label + bar appear once counting down / last ~2.5–4s; party rows must not blink-remount when one buff is added (stable EffectIcon keys, no effects-list key on the row); non-stacked buffs keep always-on bar + label.
+- [ ] **Buff remaining times** — stacked effects hide timer/skidloader while ms keeps refreshing; label + bar appear once counting down / last ~2.5–4s; party rows must not blink-remount when one buff is added (stable EffectIcon keys, no effects-list key on the row); new buffs append at the end (existing icons keep their slot); non-stacked buffs keep always-on bar + label.
 - [ ] Threat ×counts / aggro badges readable (~14–15px); topCenter map/server not cramped.
 
 ## Nice-to-haves

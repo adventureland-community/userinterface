@@ -6262,6 +6262,33 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
+  function stabilizeEffectOrder(effects, orderIds) {
+    const byId = {};
+    for (let i = 0; i < effects.length; i++) {
+      byId[effects[i].id] = effects[i];
+    }
+    const nextOrder = [];
+    const placed = {};
+    for (let i = 0; i < orderIds.length; i++) {
+      const id = orderIds[i];
+      if (byId[id] && !placed[id]) {
+        nextOrder.push(id);
+        placed[id] = true;
+      }
+    }
+    for (let i = 0; i < effects.length; i++) {
+      const id = effects[i].id;
+      if (!placed[id]) {
+        nextOrder.push(id);
+        placed[id] = true;
+      }
+    }
+    const ordered = [];
+    for (let i = 0; i < nextOrder.length; i++) {
+      ordered.push(byId[nextOrder[i]]);
+    }
+    return { effects: ordered, orderIds: nextOrder };
+  }
   function loaderId(hostClass) {
     return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
   }
@@ -6676,13 +6703,12 @@ var EnhanceCommUI = (() => {
     const React = getReact();
     const lastEffectsRef = React.useRef([]);
     const emptySinceRef = React.useRef(0);
+    const orderIdsRef = React.useRef([]);
     let effects = buildEntityEffects(props.entity);
-    effects = effects.slice().sort((a, b) => {
-      if (a.id < b.id) return -1;
-      if (a.id > b.id) return 1;
-      return 0;
-    });
     if (effects.length) {
+      const stabilized = stabilizeEffectOrder(effects, orderIdsRef.current);
+      effects = stabilized.effects;
+      orderIdsRef.current = stabilized.orderIds;
       lastEffectsRef.current = effects;
       emptySinceRef.current = 0;
     } else if (lastEffectsRef.current.length) {
@@ -6691,6 +6717,7 @@ var EnhanceCommUI = (() => {
         effects = lastEffectsRef.current;
       } else {
         lastEffectsRef.current = [];
+        orderIdsRef.current = [];
       }
     }
     if (!effects.length) return null;
@@ -6775,25 +6802,34 @@ var EnhanceCommUI = (() => {
   // src/ui/chrome/SharedPartyEffects.ts
   function collectUniquePartyEffects(members) {
     const byId = {};
+    const discovery = [];
     for (let i = 0; i < members.length; i++) {
       const member = members[i];
       const effects = buildEntityEffects(member);
       for (let j = 0; j < effects.length; j++) {
         const ef = effects[j];
         const prev = byId[ef.id];
+        if (!prev) discovery.push(ef.id);
         if (!prev || (ef.ms || 0) > (prev.ms || 0)) {
           byId[ef.id] = { ...ef, entity: member };
         }
       }
     }
-    const ids = Object.keys(byId).sort();
     const out = [];
-    for (let i = 0; i < ids.length; i++) out.push(byId[ids[i]]);
+    for (let i = 0; i < discovery.length; i++) out.push(byId[discovery[i]]);
     return out;
   }
   function SharedPartyEffects(props) {
-    const entries = collectUniquePartyEffects(props.members);
-    if (!entries.length) return null;
+    const React = getReact();
+    const orderIdsRef = React.useRef([]);
+    const collected = collectUniquePartyEffects(props.members);
+    const stabilized = stabilizeEffectOrder(collected, orderIdsRef.current);
+    orderIdsRef.current = stabilized.orderIds;
+    const entries = stabilized.effects;
+    if (!entries.length) {
+      orderIdsRef.current = [];
+      return null;
+    }
     const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : 22;
     const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : 8;
     const overflow = maxVisible > 0 && entries.length > maxVisible ? entries.length - maxVisible : 0;

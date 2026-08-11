@@ -114,6 +114,41 @@ export function effectsKey(effects: BuiltEffect[]): string {
     .join("|");
 }
 
+/**
+ * Keep previously seen effect ids in place; append newcomers at the end.
+ * Survives Object.keys(entity.s) reshuffles without inserting mid-row.
+ */
+export function stabilizeEffectOrder<T extends { id: string }>(
+  effects: T[],
+  orderIds: string[],
+): { effects: T[]; orderIds: string[] } {
+  const byId: Record<string, T> = {};
+  for (let i = 0; i < effects.length; i++) {
+    byId[effects[i].id] = effects[i];
+  }
+  const nextOrder: string[] = [];
+  const placed: Record<string, true> = {};
+  for (let i = 0; i < orderIds.length; i++) {
+    const id = orderIds[i];
+    if (byId[id] && !placed[id]) {
+      nextOrder.push(id);
+      placed[id] = true;
+    }
+  }
+  for (let i = 0; i < effects.length; i++) {
+    const id = effects[i].id;
+    if (!placed[id]) {
+      nextOrder.push(id);
+      placed[id] = true;
+    }
+  }
+  const ordered: T[] = [];
+  for (let i = 0; i < nextOrder.length; i++) {
+    ordered.push(byId[nextOrder[i]]);
+  }
+  return { effects: ordered, orderIds: nextOrder };
+}
+
 function loaderId(hostClass: string): string {
   return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
 }
@@ -675,17 +710,16 @@ export function EffectsRow(props: EffectsRowProps): any {
   const React = getReact();
   const lastEffectsRef = React.useRef([] as BuiltEffect[]);
   const emptySinceRef = React.useRef(0);
+  const orderIdsRef = React.useRef([] as string[]);
 
   let effects = buildEntityEffects(props.entity);
-  // Stable order — Object.keys(entity.s) can reshuffle across soft-sync packets
-  // and would otherwise reorder/remount icons.
-  effects = effects.slice().sort((a, b) => {
-    if (a.id < b.id) return -1;
-    if (a.id > b.id) return 1;
-    return 0;
-  });
 
   if (effects.length) {
+    // First-seen order: existing icons keep their slot; new buffs append at the end.
+    // (Sorting by id would insert mid-row when a new id sorts between neighbors.)
+    const stabilized = stabilizeEffectOrder(effects, orderIdsRef.current);
+    effects = stabilized.effects;
+    orderIdsRef.current = stabilized.orderIds;
     lastEffectsRef.current = effects;
     emptySinceRef.current = 0;
   } else if (lastEffectsRef.current.length) {
@@ -695,6 +729,7 @@ export function EffectsRow(props: EffectsRowProps): any {
       effects = lastEffectsRef.current;
     } else {
       lastEffectsRef.current = [];
+      orderIdsRef.current = [];
     }
   }
 
