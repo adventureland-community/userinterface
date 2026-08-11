@@ -6161,7 +6161,8 @@ var EnhanceCommUI = (() => {
       }
       const prop = (_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[condition];
       const promoted = PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
-      if (!actual.skin && !promoted && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
+      const debuffIcon = !!(prop && prop.debuff && prop.skin);
+      if (!actual.skin && !promoted && !debuffIcon && (!prop || !prop.ui && (!actual.s || actual.s < 20))) {
         continue;
       }
       if (entity.type === "monster" && condition === "poisonous") continue;

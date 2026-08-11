@@ -79,9 +79,12 @@ export function buildEntityEffects(entity: EntityLike): BuiltEffect[] {
     const prop = G?.conditions?.[condition];
     const promoted =
       PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
+    // Duration debuffs (cursed, poisoned, …) have prop.skin but no ui flag — show on unit frames.
+    const debuffIcon = !!(prop && prop.debuff && prop.skin);
     if (
       !actual.skin &&
       !promoted &&
+      !debuffIcon &&
       (!prop || (!prop.ui && (!actual.s || actual.s < 20)))
     ) {
       continue;
