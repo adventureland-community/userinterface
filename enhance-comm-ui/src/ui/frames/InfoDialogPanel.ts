@@ -71,7 +71,8 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
 
   const meta = LABELS[kind];
   const showDummy = !!props.layoutEdit && !open;
-  const visible = open || !!props.layoutEdit;
+  // Layout-edit dummy must stay click-through so overlapping panels (and the
+  // Layout toggle) remain reachable; the PositionedPanel header owns drag.
 
   return e(
     "div",
@@ -83,7 +84,7 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
         boxSizing: "border-box",
         minWidth: showDummy ? "200px" : undefined,
         minHeight: showDummy ? "120px" : undefined,
-        pointerEvents: visible ? "auto" : "none",
+        pointerEvents: open ? "auto" : "none",
       },
     },
     showDummy

@@ -9026,7 +9026,6 @@ var EnhanceCommUI = (() => {
     }, [kind]);
     const meta = LABELS[kind];
     const showDummy = !!props.layoutEdit && !open;
-    const visible = open || !!props.layoutEdit;
     return e(
       "div",
       {
@@ -9037,7 +9036,7 @@ var EnhanceCommUI = (() => {
           boxSizing: "border-box",
           minWidth: showDummy ? "200px" : void 0,
           minHeight: showDummy ? "120px" : void 0,
-          pointerEvents: visible ? "auto" : "none"
+          pointerEvents: open ? "auto" : "none"
         }
       },
       showDummy ? e(PanelShellDummy, {
@@ -12035,7 +12034,8 @@ var EnhanceCommUI = (() => {
       {
         className: "comm-bag-panel",
         style: {
-          pointerEvents: "auto",
+          // Dummy silhouette is click-through in layout edit (header drags).
+          pointerEvents: showDummy ? "none" : "auto",
           // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
           // under its gray border/padding and breaks the 7-col float grid.
           width: showDummy ? BAG_FRAME_WIDTH : void 0,
@@ -13075,12 +13075,13 @@ var EnhanceCommUI = (() => {
       const isHidden = isClosablePanel && !visible(id);
       if (isHidden && !layoutEdit) return null;
       if ((opts == null ? void 0 : opts.empty) && !layoutEdit) return null;
+      const editing = (opts == null ? void 0 : opts.skipEditChrome) ? false : layoutEdit;
       return e(
         PositionedPanel,
         {
           id,
           pos: layout[id],
-          editing: layoutEdit,
+          editing,
           onMove,
           style: opts == null ? void 0 : opts.style,
           hidden: isHidden,
@@ -13384,7 +13385,7 @@ var EnhanceCommUI = (() => {
                 textShadow: "none",
                 fontWeight: "normal"
               },
-              onClick: () => setLayoutEdit(!layoutEdit)
+              onClick: () => setLayoutEdit((v) => !v)
             },
             layoutEdit ? "Layout: ON" : "Layout"
           ),
@@ -13404,11 +13405,16 @@ var EnhanceCommUI = (() => {
                 textShadow: "none",
                 fontWeight: "normal"
               },
-              onClick: () => setOpacityEdit(!opacityEdit)
+              onClick: () => setOpacityEdit((v) => !v)
             },
             opacityEdit ? "Opacity: ON" : "Opacity"
           )
-        )
+        ),
+        {
+          // Above layout-edit panels (40), info (45), and the edit toolbar (50).
+          skipEditChrome: true,
+          style: { zIndex: 60 }
+        }
       )
     );
   }

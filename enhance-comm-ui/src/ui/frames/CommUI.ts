@@ -220,17 +220,29 @@ export function CommUI(props: CommUIProps): any {
     frameTarget = resolveTarget(focusEntity);
   }
 
-  const panel = (id: PanelId, child: any, opts?: PanelOpts) => {
+  const panel = (
+    id: PanelId,
+    child: any,
+    opts?: PanelOpts & {
+      /**
+       * Skip drag/anchor chrome (Layout / Opacity toggles).
+       * Must pair with a high zIndex — without editing, panelStyle stays at
+       * z=20 while other panels rise to z=40 and would eat the clicks.
+       */
+      skipEditChrome?: boolean;
+    },
+  ) => {
     const isClosablePanel = opts?.closable === true;
     const isHidden = isClosablePanel && !visible(id);
     if (isHidden && !layoutEdit) return null;
     if (opts?.empty && !layoutEdit) return null;
+    const editing = opts?.skipEditChrome ? false : layoutEdit;
     return e(
       PositionedPanel,
       {
         id,
         pos: layout[id],
-        editing: layoutEdit,
+        editing,
         onMove,
         style: opts?.style,
         hidden: isHidden,
@@ -572,7 +584,7 @@ export function CommUI(props: CommUIProps): any {
               textShadow: "none",
               fontWeight: "normal",
             },
-            onClick: () => setLayoutEdit(!layoutEdit),
+            onClick: () => setLayoutEdit((v: boolean) => !v),
           },
           layoutEdit ? "Layout: ON" : "Layout",
         ),
@@ -592,11 +604,16 @@ export function CommUI(props: CommUIProps): any {
               textShadow: "none",
               fontWeight: "normal",
             },
-            onClick: () => setOpacityEdit(!opacityEdit),
+            onClick: () => setOpacityEdit((v: boolean) => !v),
           },
           opacityEdit ? "Opacity: ON" : "Opacity",
         ),
       ),
+      {
+        // Above layout-edit panels (40), info (45), and the edit toolbar (50).
+        skipEditChrome: true,
+        style: { zIndex: 60 },
+      },
     ),
   );
 }

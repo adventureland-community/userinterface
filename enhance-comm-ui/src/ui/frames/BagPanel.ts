@@ -315,7 +315,8 @@ export function BagPanel(props: BagPanelProps): any {
     {
       className: "comm-bag-panel",
       style: {
-        pointerEvents: "auto",
+        // Dummy silhouette is click-through in layout edit (header drags).
+        pointerEvents: showDummy ? "none" : "auto",
         // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
         // under its gray border/padding and breaks the 7-col float grid.
         width: showDummy ? BAG_FRAME_WIDTH : undefined,
