@@ -21,6 +21,37 @@ export function formatTime(timeSeconds: number | null | undefined): string {
   return result ?? "?";
 }
 
+/**
+ * Compact remaining-time label for buff icons (fits ~22px tiles).
+ * Prefer short units: 45s / 3m / 2h / 1d.
+ */
+export function formatDurationCompact(
+  timeSeconds: number | null | undefined,
+): string {
+  if (timeSeconds == null || !(timeSeconds > 0)) return "";
+  if (timeSeconds < 60) return `${Math.max(1, Math.ceil(timeSeconds))}s`;
+  if (timeSeconds < 60 * 60) return `${Math.round(timeSeconds / 60)}m`;
+  if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
+  return `${Math.round(timeSeconds / 86400)}d`;
+}
+
+/**
+ * Sticky absolute end time for buff/CD remaining displays.
+ * Avoids restarting a progress animation every time `ms` is re-broadcast
+ * with a similar remaining value (common on observe sockets).
+ */
+export function syncEndsAt(
+  prevEndsAt: number,
+  ms: number | undefined,
+  now: number = Date.now(),
+): number {
+  if (!(ms != null && ms > 0)) return 0;
+  const next = now + ms;
+  if (!prevEndsAt || next > prevEndsAt + 750) return next;
+  if (next < prevEndsAt - 250) return next;
+  return prevEndsAt;
+}
+
 export function getPercent(value: number, precision: number): string {
   return `${Math.max(0, Math.min(100, value * 100)).toFixed(precision)}%`;
 }

@@ -22,10 +22,16 @@ export function addTint(selector: string, args?: any): void {
   }
 }
 
+export function getTint(selector: string): { added?: boolean; [key: string]: any } | null {
+  if (typeof window.get_tint === "function") {
+    return window.get_tint(selector) || null;
+  }
+  return null;
+}
+
 /** Force skill/progress tints to re-bind after DOM remount (stale tint.added leaves height:0). */
 export function rebindTint(selector: string): void {
-  if (typeof window.get_tint !== "function") return;
-  const tint = window.get_tint(selector);
+  const tint = getTint(selector);
   if (tint) tint.added = false;
 }
 
