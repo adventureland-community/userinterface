@@ -1,19 +1,27 @@
 import { getReact, e } from "../../host/react";
 import {
+  LAYOUT_ANCHOR_OPTIONS,
+  LAYOUT_ANCHOR_PAD,
   PANEL_LABELS,
+  captureVisualSnapStart,
   panelStyle,
+  reanchorKeepingVisual,
+  snapDragToVisualEdges,
   snapPercent,
   softAvoidOverlap,
+  type LayoutAnchor,
   type PanelId,
   type PanelPos,
+  type VisualSnapStart,
 } from "../../lib/layout";
 import {
   getLayoutFreePlacement,
   getLayoutGridStep,
   subscribeLayoutEditPrefs,
 } from "../../lib/layoutEditPrefs";
-import { snapToGridPercent } from "../../lib/layoutGrid";
+import { snapToAxisPercents, squareGridMetrics } from "../../lib/layoutGrid";
 import {
+  layoutDragRoot,
   percentFromPointerDrag,
   tryReleasePointerCapture,
   trySetPointerCapture,
@@ -21,6 +29,18 @@ import {
 } from "../../lib/percentDrag";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 import { TYPE } from "../../lib/typeScale";
+
+/** Peer / mid magnet — tighter than old 2.2% so near-edge stays placeable. */
+const PEER_SNAP_PCT = 1.0;
+/** Only snap painted box to screen when this close (px). */
+const VISUAL_EDGE_SNAP_PX = 8;
+
+function anchorMeta(id: LayoutAnchor): { glyph: string; title: string } {
+  for (let i = 0; i < LAYOUT_ANCHOR_OPTIONS.length; i++) {
+    if (LAYOUT_ANCHOR_OPTIONS[i].id === id) return LAYOUT_ANCHOR_OPTIONS[i];
+  }
+  return { glyph: "·", title: id };
+}
 
 export type PositionedPanelProps = {
   id: PanelId;
@@ -48,9 +68,11 @@ export type PositionedPanelProps = {
 
 /**
  * Absolutely places children at viewport-% coords.
- * In edit mode: drag the header bar to reposition (persisted by parent).
- * While dragging: grid snap (chosen step) unless Free placement is on; peer-edge snap
- * always (0 / 50 / 100 + peers). On drop, soft-nudges away from near peers.
+ * In edit mode: drag the header bar to reposition (persisted by parent);
+ * 3×3 anchor pad sets stretch direction (keeps painted box put).
+ * While dragging: grid snap (chosen step) unless Free placement is on; peer
+ * mid snap; visual screen-edge snap (painted box, tight px threshold).
+ * On drop, soft-nudges away from near peers.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
   const React = getReact();
@@ -71,6 +93,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       }),
     [],
   );
+  const shellRef = React.useRef(null as HTMLDivElement | null);
   const dragging = React.useRef(false);
   const start = React.useRef({
     clientX: 0,
@@ -78,6 +101,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     posX: 0,
     posY: 0,
   } as PercentDragStart);
+  const visualStart = React.useRef(null as VisualSnapStart | null);
   const lastPos = React.useRef(pos);
   lastPos.current = pos;
 
@@ -85,6 +109,23 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   const closeSize = touchish ? 36 : 22;
   const headerPad = touchish ? "8px 12px" : "3px 8px";
   const headerFont = touchish ? "15px" : "13px";
+  const anchorBtn = touchish ? 28 : 20;
+
+  const setAnchor = (next: LayoutAnchor) => {
+    if (next === pos.anchor) return;
+    const panelEl = shellRef.current;
+    const rootEl = layoutDragRoot();
+    if (!panelEl) {
+      onMove(id, { ...pos, anchor: next });
+      return;
+    }
+    const p = panelEl.getBoundingClientRect();
+    const c = rootEl.getBoundingClientRect();
+    onMove(
+      id,
+      reanchorKeepingVisual(pos, next, p.width, p.height, c.width, c.height),
+    );
+  };
 
   const peerAxes = (): { xs: number[]; ys: number[] } => {
     const peers = props.peerLayout || {};
@@ -112,30 +153,59 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       posX: pos.x,
       posY: pos.y,
     };
+    visualStart.current = captureVisualSnapStart(
+      shellRef.current,
+      layoutDragRoot(),
+      pos,
+    );
     trySetPointerCapture(ev.currentTarget, ev.pointerId);
   };
 
   const onPointerMove = (ev: any) => {
     if (!dragging.current) return;
-    let { x: nextX, y: nextY } = percentFromPointerDrag(
+    const raw = percentFromPointerDrag(
       ev.clientX,
       ev.clientY,
       start.current,
     );
-    // Grid is primary when Free is off; peer-edge magnet still applies after.
+    let nextX = raw.x;
+    let nextY = raw.y;
+    // Square grid (skip 0/100 — visual snap owns screen edges).
     if (!freePlacementRef.current) {
-      nextX = snapToGridPercent(nextX, gridStepRef.current);
-      nextY = snapToGridPercent(nextY, gridStepRef.current);
+      const root = layoutDragRoot().getBoundingClientRect();
+      const metrics = squareGridMetrics(
+        gridStepRef.current,
+        root.width,
+        root.height,
+      );
+      nextX = snapToAxisPercents(nextX, metrics.xPercents, true);
+      nextY = snapToAxisPercents(nextY, metrics.yPercents, true);
     }
+    // Peer / mid magnets only (no 0/100).
     const { xs, ys } = peerAxes();
-    nextX = snapPercent(nextX, 2.2, xs);
-    nextY = snapPercent(nextY, 2.2, ys);
+    nextX = snapPercent(nextX, PEER_SNAP_PCT, xs);
+    nextY = snapPercent(nextY, PEER_SNAP_PCT, ys);
+    // Painted-box flush last — wins over grid while within threshold
+    // (including already flush, so grid cannot yank off the edge).
+    const visual = visualStart.current;
+    if (visual) {
+      const edge = snapDragToVisualEdges(
+        ev.clientX,
+        ev.clientY,
+        start.current,
+        visual,
+        VISUAL_EDGE_SNAP_PX,
+      );
+      if (edge.snapX) nextX = edge.x;
+      if (edge.snapY) nextY = edge.y;
+    }
     onMove(id, { ...pos, x: nextX, y: nextY });
   };
 
   const onPointerUp = (ev: any) => {
     if (!dragging.current) return;
     dragging.current = false;
+    visualStart.current = null;
     tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
     const peers = props.peerLayout || {};
     const nudged = softAvoidOverlap(id, lastPos.current, peers);
@@ -204,6 +274,77 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       )
     : null;
 
+  const anchorPad = editing
+    ? e(
+        "div",
+        {
+          className: "comm-pos-anchor-pad",
+          title: "Stretch / anchor point",
+          onPointerDown: (ev: any) => ev.stopPropagation(),
+          style: {
+            display: "grid",
+            gridTemplateColumns: `repeat(3, ${anchorBtn}px)`,
+            gridTemplateRows: `repeat(3, ${anchorBtn}px)`,
+            gap: "2px",
+            marginLeft: "auto",
+            flexShrink: 0,
+            cursor: "default",
+          },
+        },
+        ...LAYOUT_ANCHOR_PAD.reduce((cells: any[], row) => {
+          for (let c = 0; c < row.length; c++) {
+            const a = row[c];
+            if (!a) {
+              cells.push(
+                e("div", {
+                  key: `empty-${cells.length}`,
+                  style: { width: anchorBtn, height: anchorBtn },
+                }),
+              );
+              continue;
+            }
+            const meta = anchorMeta(a);
+            const active = pos.anchor === a;
+            cells.push(
+              e(
+                "button",
+                {
+                  key: a,
+                  type: "button",
+                  title: meta.title,
+                  "aria-label": meta.title,
+                  "aria-pressed": active,
+                  onClick: (ev: any) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    setAnchor(a);
+                  },
+                  onPointerDown: (ev: any) => ev.stopPropagation(),
+                  style: {
+                    width: `${anchorBtn}px`,
+                    height: `${anchorBtn}px`,
+                    padding: 0,
+                    margin: 0,
+                    border: active ? "1px solid #ffe08a" : "1px solid #666",
+                    background: active
+                      ? "rgba(80,70,20,0.95)"
+                      : "rgba(20,20,20,0.9)",
+                    color: active ? "#ffe08a" : "#bbb",
+                    fontSize: touchish ? "14px" : "12px",
+                    lineHeight: `${anchorBtn - 2}px`,
+                    cursor: "pointer",
+                    boxSizing: "border-box",
+                  },
+                },
+                meta.glyph,
+              ),
+            );
+          }
+          return cells;
+        }, []),
+      )
+    : null;
+
   const editHeader = editing
     ? e(
         "div",
@@ -232,7 +373,17 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           onPointerUp,
           onPointerCancel: onPointerUp,
         },
-        `⠿ ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
+        e(
+          "span",
+          {
+            style: {
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              minWidth: 0,
+            },
+          },
+          `⠿ ${PANEL_LABELS[id]}${hidden ? " (hidden)" : ""}`,
+        ),
         hidden && onShow
           ? e(
               "button",
@@ -245,7 +396,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
                 },
                 onPointerDown: (ev: any) => ev.stopPropagation(),
                 style: {
-                  marginLeft: "auto",
                   cursor: "pointer",
                   fontSize: touchish ? "14px" : "12px",
                   padding: touchish ? "6px 12px" : "2px 8px",
@@ -258,6 +408,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
               "Show",
             )
           : null,
+        anchorPad,
       )
     : null;
 
@@ -275,6 +426,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   return e(
     "div",
     {
+      ref: shellRef,
       className: `comm-pos-panel comm-pos-${id}`,
       "data-panel": id,
       style: shellStyle,

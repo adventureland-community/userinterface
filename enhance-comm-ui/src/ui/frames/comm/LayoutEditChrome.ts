@@ -270,7 +270,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           style: btnStyle(freePlacement),
           title: freePlacement
             ? "Free placement: no grid snap (peer edges still magnetize)"
-            : `Snap to ${stepLabel} grid while dragging (peer edges still magnetize)`,
+            : `Snap to square ${stepLabel} grid while dragging (peer edges still magnetize)`,
         },
         freePlacement ? "Free: ON" : "Free",
       ),
@@ -283,7 +283,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
             type: "button",
             onClick: () => onGridStep(step),
             style: btnStyle(Math.abs(gridStep - step) < 1e-6),
-            title: `Grid + snap every ${step}% (ignored while Free is on)`,
+            title: `Snap every ${step}% of the shorter side; also draws 2× and 4× overlay guides (Align/eAlign-style)`,
           },
           `${step}%`,
         ),

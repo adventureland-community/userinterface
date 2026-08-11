@@ -1,15 +1,30 @@
-/** Default viewport-% step for layout-edit guide lines and drag snap. */
+/** Default cell size: this % of the *shorter* viewport side (square cells). */
 export const LAYOUT_GRID_STEP = 5;
 
-/** Preset steps offered in Layout edit chrome. */
+/** Preset steps offered in Layout edit chrome (%% of min(w,h)). */
 export const LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25] as const;
 
 export type LayoutGridStepPreset = (typeof LAYOUT_GRID_STEP_PRESETS)[number];
 
-/** Stronger guide lines at quarter / half / edges (when step divides them). */
+/** Stronger guide lines near quarter / half / edges of an axis. */
 export const LAYOUT_GRID_MAJOR_PCTS = [0, 25, 50, 75, 100];
 
+/**
+ * Nested guide weight (eAlign-style): fine = snap step, medium = 2×,
+ * coarse = 4×, edge = 0/50/100 emphasis.
+ */
+export type GridLineTier = "fine" | "medium" | "coarse" | "edge";
+
+export type TieredGridLine = { pct: number; tier: GridLineTier };
+
 const EPS = 1e-6;
+
+const TIER_RANK: Record<GridLineTier, number> = {
+  fine: 1,
+  medium: 2,
+  coarse: 3,
+  edge: 4,
+};
 
 /** Clamp / coerce a persisted or UI step into a usable percent. */
 export function normalizeGridStep(raw: unknown): number {
@@ -25,59 +40,172 @@ export function normalizeGridStep(raw: unknown): number {
   return Math.max(0.5, Math.min(50, rounded));
 }
 
-/** Major guide percents for a given step (always 0/50/100; +25/75 when aligned). */
-export function layoutGridMajorPercents(
-  step: number = LAYOUT_GRID_STEP,
-): number[] {
+/** Pixel cell size for a square grid: `step`% of the shorter side. */
+export function squareGridCellPx(
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): number {
   const s = normalizeGridStep(step);
-  const majors = [0, 50, 100];
-  const landsOn = (pct: number) => {
-    const snapped = Math.round(pct / s) * s;
-    return Math.abs(snapped - pct) < EPS;
-  };
-  if (landsOn(25)) {
-    majors.splice(1, 0, 25);
-    majors.splice(3, 0, 75);
-  }
-  return majors;
+  const minSide = Math.min(Math.max(1, widthPx), Math.max(1, heightPx));
+  return Math.max(1, (minSide * s) / 100);
 }
 
-/** All guide-line percents from 0..100 inclusive for a step. */
-export function layoutGridLinePercents(
-  step: number = LAYOUT_GRID_STEP,
+/** Line positions 0..100 inclusive at equal pixel spacing along one axis. */
+export function squareGridAxisPercents(
+  lengthPx: number,
+  cellPx: number,
 ): number[] {
-  const s = normalizeGridStep(step);
+  const len = Math.max(1, lengthPx);
+  const cell = Math.max(1, cellPx);
   const out: number[] = [];
-  const count = Math.round(100 / s);
+  const count = Math.ceil(len / cell);
   for (let i = 0; i <= count; i++) {
-    let pct = Math.round(i * s * 1000) / 1000;
-    if (pct > 100 - EPS) pct = 100;
-    if (pct <= 100) out.push(pct);
+    const px = Math.min(len, i * cell);
+    const pct = Math.round((px / len) * 100000) / 1000;
+    if (!out.length || Math.abs(out[out.length - 1] - pct) > EPS) {
+      out.push(pct > 100 - EPS ? 100 : pct);
+    }
   }
   if (!out.length || Math.abs(out[out.length - 1] - 100) > EPS) out.push(100);
   return out;
 }
 
-export function isLayoutGridMajor(
-  pct: number,
-  step: number = LAYOUT_GRID_STEP,
-): boolean {
-  const majors = layoutGridMajorPercents(step);
-  for (let i = 0; i < majors.length; i++) {
-    if (Math.abs(majors[i] - pct) < EPS) return true;
+export type SquareGridMetrics = {
+  cellPx: number;
+  /** Vertical guide positions (% of width). */
+  xPercents: number[];
+  /** Horizontal guide positions (% of height). */
+  yPercents: number[];
+};
+
+/** Square cells: equal px spacing on both axes (not equal viewport %). */
+export function squareGridMetrics(
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): SquareGridMetrics {
+  const cellPx = squareGridCellPx(step, widthPx, heightPx);
+  return {
+    cellPx,
+    xPercents: squareGridAxisPercents(widthPx, cellPx),
+    yPercents: squareGridAxisPercents(heightPx, cellPx),
+  };
+}
+
+function bumpTier(
+  into: Map<number, GridLineTier>,
+  percents: number[],
+  tier: GridLineTier,
+): void {
+  for (let i = 0; i < percents.length; i++) {
+    const pct = percents[i];
+    const key = Math.round(pct * 1000) / 1000;
+    const prev = into.get(key);
+    if (!prev || TIER_RANK[tier] > TIER_RANK[prev]) into.set(key, tier);
+  }
+}
+
+function mapToSortedLines(map: Map<number, GridLineTier>): TieredGridLine[] {
+  const keys = Array.from(map.keys());
+  keys.sort((a, b) => a - b);
+  const out: TieredGridLine[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    const pct = keys[i];
+    out.push({ pct, tier: map.get(pct) || "fine" });
+  }
+  return out;
+}
+
+/**
+ * Nested fine / medium (2×) / coarse (4×) guides for one viewport.
+ * Snap should still use the fine `step` via `squareGridMetrics`.
+ */
+export function squareGridTieredLines(
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): { x: TieredGridLine[]; y: TieredGridLine[]; cellPx: number } {
+  const cellPx = squareGridCellPx(step, widthPx, heightPx);
+  const xMap = new Map<number, GridLineTier>();
+  const yMap = new Map<number, GridLineTier>();
+
+  bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx), "fine");
+  bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx), "fine");
+  bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 2), "medium");
+  bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 2), "medium");
+  bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 4), "coarse");
+  bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 4), "coarse");
+  // Classic align emphasis on center + screen edges.
+  bumpTier(xMap, [0, 50, 100], "edge");
+  bumpTier(yMap, [0, 50, 100], "edge");
+
+  return {
+    cellPx,
+    x: mapToSortedLines(xMap),
+    y: mapToSortedLines(yMap),
+  };
+}
+
+/** Major when within ~0.6% of a classic quarter/half/edge mark. */
+export function isLayoutGridMajor(pct: number): boolean {
+  for (let i = 0; i < LAYOUT_GRID_MAJOR_PCTS.length; i++) {
+    if (Math.abs(LAYOUT_GRID_MAJOR_PCTS[i] - pct) < 0.6) return true;
   }
   return false;
 }
 
-/** Hard-snap an axis percent onto the layout grid. */
+/**
+ * Snap onto the nearest square-grid line for one axis.
+ * When `skipScreenEdges` is set, do not yank onto 0/100 — visual edge snap
+ * owns flush-to-screen so near-edge free placement still works.
+ */
+export function snapToAxisPercents(
+  n: number,
+  percents: number[],
+  skipScreenEdges = false,
+): number {
+  if (!percents.length || !Number.isFinite(n)) return n;
+  let best = percents[0];
+  let bestDist = Math.abs(n - best);
+  for (let i = 1; i < percents.length; i++) {
+    const d = Math.abs(n - percents[i]);
+    if (d < bestDist) {
+      bestDist = d;
+      best = percents[i];
+    }
+  }
+  const clamped = Math.max(0, Math.min(100, best));
+  if (skipScreenEdges) {
+    const atEdge = clamped <= EPS || clamped >= 100 - EPS;
+    const wasAtEdge = n <= EPS || n >= 100 - EPS;
+    if (atEdge && !wasAtEdge) return n;
+  }
+  return clamped;
+}
+
+/** @deprecated Prefer squareGridMetrics + snapToAxisPercents (square cells). */
+export function layoutGridLinePercents(
+  step: number = LAYOUT_GRID_STEP,
+): number[] {
+  return squareGridAxisPercents(100, normalizeGridStep(step));
+}
+
+/** @deprecated Equal-% snap; use snapToAxisPercents with square metrics. */
 export function snapToGridPercent(
   n: number,
   step: number = LAYOUT_GRID_STEP,
+  skipScreenEdges = false,
 ): number {
   const s = normalizeGridStep(step);
   if (!(s > 0) || !Number.isFinite(n)) return n;
   const snapped = Math.round(n / s) * s;
-  // Avoid float dust (e.g. 7.5000000001).
   const cleaned = Math.round(snapped * 1000) / 1000;
-  return Math.max(0, Math.min(100, cleaned));
+  const clamped = Math.max(0, Math.min(100, cleaned));
+  if (skipScreenEdges) {
+    const atEdge = clamped <= EPS || clamped >= 100 - EPS;
+    const wasAtEdge = n <= EPS || n >= 100 - EPS;
+    if (atEdge && !wasAtEdge) return n;
+  }
+  return clamped;
 }
