@@ -1,4 +1,4 @@
-import { e } from "../../host/react";
+import { getReact, e } from "../../host/react";
 import { monsterSprite, setXTarget } from "../../host/icons";
 import { aggroByTarget, findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
@@ -8,6 +8,10 @@ import { THREAT_PANEL_STYLE } from "../../lib/frameSizes";
 import { classColors } from "../../lib/colors";
 import { formatTime, getPercent } from "../../lib/format";
 import { estimateTtk, getIncomingDps } from "../../meters/combatMeter";
+import {
+  sortThreatTargetIds,
+  stickyAggroByTarget,
+} from "../../lib/stickyPresence";
 import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 const MOB_ICON_SIZE = 22;
@@ -57,10 +61,14 @@ function wrapIconHtml(html: string): any {
 }
 
 function MobChip(props: { mtype: string; count: number }): any {
+  const React = getReact();
   const { mtype, count } = props;
   const title = `${count}×${mtype}`;
+  const html = React.useMemo(
+    () => monsterSprite(mtype, { size: MOB_ICON_SIZE }),
+    [mtype],
+  );
   let icon: any = null;
-  const html = monsterSprite(mtype, { size: MOB_ICON_SIZE });
   if (html) icon = wrapIconHtml(html);
 
   const countBadge = e(
@@ -336,8 +344,19 @@ function ThreatRow(props: {
 }
 
 export function ThreatTable(props: ThreatTableProps): any {
-  const byTarget = aggroByTarget(props.entities);
-  const targetIds = Object.keys(byTarget);
+  const nameOf = (tid: string): string => {
+    const ent = findEntity(props.entities, tid);
+    return (ent && ent.name) || tid;
+  };
+  const byTarget = stickyAggroByTarget(
+    aggroByTarget(props.entities),
+    nameOf,
+  );
+  const targetIds = sortThreatTargetIds(
+    Object.keys(byTarget),
+    props.observingId,
+    nameOf,
+  );
   if (targetIds.length === 0) {
     if (!props.layoutEdit) return null;
     return e(PanelShellDummy, {
@@ -348,12 +367,6 @@ export function ThreatTable(props: ThreatTableProps): any {
       style: THREAT_PANEL_STYLE,
     });
   }
-
-  targetIds.sort((a, b) => {
-    if (a === props.observingId) return -1;
-    if (b === props.observingId) return 1;
-    return byTarget[b].length - byTarget[a].length;
-  });
 
   return e(
     "div",

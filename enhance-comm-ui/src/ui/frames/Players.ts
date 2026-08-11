@@ -1,6 +1,5 @@
 import { getReact, e } from "../../host/react";
 import { classColors } from "../../lib/colors";
-import { outOfRange } from "../../geometry/combat";
 import { aggroByTarget, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
@@ -23,6 +22,7 @@ import {
   showUnderChipBuffs,
   underChipBuffMaxVisible,
 } from "../../lib/partyBuffMode";
+import { isActuallyDead } from "../../lib/stickyPresence";
 import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type PlayersProps = {
@@ -31,7 +31,7 @@ export type PlayersProps = {
   selectedEntity?: string;
   /** Watched /comm character id — pink observe chrome, not paperdoll select. */
   observingId?: string;
-  /** Watched entity for out-of-range dimming. */
+  /** Watched entity (fear overlay on observed chip, etc.). */
   observing?: EntityLike | null;
   /** Keep Buffs control visible while repositioning panels. */
   layoutEdit?: boolean;
@@ -47,10 +47,9 @@ function mpPct(entity: EntityLike): number {
   return Math.max(0, Math.min(100, Math.round(((entity.mp || 0) / max) * 100)));
 }
 
-/** Soft dim without wiping HP/MP meter fills. */
-function chipOpacity(dead: boolean, oor: boolean): number {
+/** Soft dim for RIP only — no attack-range dimming (skill ranges differ). */
+function chipOpacity(dead: boolean): number {
   if (dead) return 0.42;
-  if (oor) return 0.62;
   return 1;
 }
 
@@ -190,12 +189,7 @@ export function Players(props: PlayersProps): any {
             const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
             const hasAggro = aggroMobs.length > 0;
             const color = classColors[player.ctype || ""] || "#888";
-            const dead = !!player.dead;
-            const oor =
-              !dead &&
-              !observed &&
-              !!observing &&
-              outOfRange(observing, player) === true;
+            const dead = isActuallyDead(player);
             const aggroTitle = hasAggro
               ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}`
               : "";
@@ -217,7 +211,6 @@ export function Players(props: PlayersProps): any {
             const nameTitle = [
               `${player.name || player.id}`,
               observed ? "Observing" : "",
-              oor ? "Out of range" : "",
               dead ? "Dead" : "",
               controlTitle,
               aggroTitle,
@@ -248,8 +241,7 @@ export function Players(props: PlayersProps): any {
                   (observed ? " is-observed" : "") +
                   (hasAggro ? " has-aggro" : "") +
                   (controlStates.length ? " has-control" : "") +
-                  (dead ? " is-rip" : "") +
-                  (oor ? " is-oor" : ""),
+                  (dead ? " is-rip" : ""),
                 title: nameTitle,
                 style: {
                   position: "relative",
@@ -259,7 +251,7 @@ export function Players(props: PlayersProps): any {
                   cursor: "pointer",
                   overflow: "visible",
                   boxSizing: "border-box",
-                  opacity: chipOpacity(dead, oor),
+                  opacity: chipOpacity(dead),
                 },
                 onClick: () => {
                   if (selected) {

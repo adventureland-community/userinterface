@@ -23,7 +23,7 @@ export type EntityLike = {
   real_x?: number;
   real_y?: number;
   visible?: boolean;
-  dead?: boolean;
+  dead?: boolean | string;
   in?: string;
   focus?: string;
   attack?: number;
