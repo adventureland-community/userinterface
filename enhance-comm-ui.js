@@ -7032,7 +7032,28 @@ var EnhanceCommUI = (() => {
     boxSizing: "border-box"
   };
 
+  // src/crypt/labels.ts
+  var CRYPT_MOB_LABELS = {
+    a1: "Spike",
+    a2: "Bill",
+    a3: "Lestat",
+    a4: "Orlok",
+    a5: "Elena",
+    a6: "Marceline",
+    a7: "Lucinda",
+    a8: "Angel",
+    vbat: "Vampireling",
+    nerfedbat: "Bat"
+  };
+  function getCryptMobLabel(mtype) {
+    return CRYPT_MOB_LABELS[mtype] || mtype;
+  }
+
   // src/ui/frames/CryptProgress.ts
+  var CRYPT_BAT_MTYPES = CRYPT_IMPORTANT_MOBS_MTYPES.filter(
+    (mtype) => CRYPT_BOSSES_MTYPES.indexOf(mtype) < 0
+  );
+  var CARD_ICON_SIZE = 20;
   function findVisibleMob(entities, mtype) {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
@@ -7041,6 +7062,21 @@ var EnhanceCommUI = (() => {
       if (entity.mtype === mtype) return entity;
     }
     return void 0;
+  }
+  function wrapIconHtml(html) {
+    return e("div", {
+      style: { display: "inline-block", lineHeight: 0, fontSize: 0, flexShrink: 0 },
+      dangerouslySetInnerHTML: { __html: html },
+      ref: (node) => {
+        if (!node) return;
+        const root = node.firstElementChild;
+        if (!root) return;
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
+      }
+    });
   }
   var CARD_STYLE_BASE = {
     background: "black",
@@ -7057,38 +7093,269 @@ var EnhanceCommUI = (() => {
     color: "#ccc",
     ...PIXEL_TEXT
   };
+  var SECTION_LABEL_STYLE = {
+    fontSize: TYPE.secondary,
+    color: "#888",
+    padding: "2px 4px 0",
+    ...PIXEL_TEXT
+  };
+  var PANEL_SHELL = {
+    display: "flex",
+    flexDirection: "column",
+    margin: "4px",
+    border: "2px double gray",
+    background: "black",
+    gap: "4px",
+    fontSize: TYPE.chrome,
+    opacity: 0.78,
+    ...PIXEL_TEXT,
+    ...CRYPT_PANEL_STYLE
+  };
+  function formatBossDeathStatus(boss) {
+    const ago = boss.deathEventTimestamp != null ? formatTime((Date.now() - boss.deathEventTimestamp) / 1e3) : "?";
+    if (boss.deadCount > 1) {
+      return `Died \xB7 #${boss.deadCount} \xB7 ${ago} ago`;
+    }
+    return `Died ${ago} ago`;
+  }
   function CryptCard(props) {
+    const React = getReact();
+    const displayName = getCryptMobLabel(props.mtype);
     const clickable = !!props.onClick;
+    const iconHtml = React.useMemo(
+      () => props.dummy ? "" : monsterSprite(props.mtype, { size: CARD_ICON_SIZE }),
+      [props.mtype, props.dummy]
+    );
+    const icon = iconHtml ? wrapIconHtml(iconHtml) : null;
     return e(
       "div",
       {
         key: props.mtype,
         style: Object.assign({}, CARD_STYLE_BASE, {
           border: `2px double ${props.borderColor}`,
-          cursor: clickable ? "pointer" : void 0
+          cursor: clickable ? "pointer" : void 0,
+          opacity: props.dummy ? 0.85 : void 0
         }),
-        title: clickable ? "Click to target" : void 0,
+        title: clickable ? "Click to target" : props.mtype,
         onClick: props.onClick
       },
-      e("div", { key: "mtype" }, `${props.mtype}${props.levelComponent}`),
+      e(
+        "div",
+        {
+          key: "nameRow",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            minWidth: 0
+          }
+        },
+        icon,
+        e(
+          "span",
+          {
+            style: {
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0
+            }
+          },
+          `${displayName}${props.levelComponent}`
+        )
+      ),
       e("div", { key: "state", style: META_STYLE }, props.status),
       props.lastSeenComponent ? e("div", { key: "lastSeen", style: META_STYLE }, props.lastSeenComponent) : void 0,
       props.focusComponent ? e("div", { key: "focus", style: META_STYLE }, props.focusComponent) : void 0,
       props.luckmComponent ? e("div", { key: "luckm", style: META_STYLE }, props.luckmComponent) : void 0
     );
   }
+  function CryptProgressLayoutDummy() {
+    return e(
+      "div",
+      {
+        className: "comm-crypt-progress comm-crypt-progress-dummy",
+        style: PANEL_SHELL
+      },
+      e(
+        "div",
+        {
+          style: {
+            padding: "5px 8px 0",
+            whiteSpace: "nowrap",
+            fontSize: TYPE.title,
+            color: "#ccc",
+            ...PIXEL_TEXT
+          }
+        },
+        "Crypt"
+      ),
+      e(
+        "div",
+        {
+          key: "content",
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            padding: "0 4px 4px"
+          }
+        },
+        e("div", { key: "bosses-label", style: SECTION_LABEL_STYLE }, "Bosses"),
+        e(
+          "div",
+          {
+            key: "bosses",
+            style: { display: "flex", flexWrap: "wrap", gap: "4px" }
+          },
+          e(CryptCard, {
+            key: "a1",
+            mtype: "a1",
+            borderColor: "yellow",
+            levelComponent: " (10 lvl)",
+            status: "Alive",
+            lastSeenComponent: "We see!",
+            focusComponent: null,
+            luckmComponent: null,
+            dummy: true
+          }),
+          e(CryptCard, {
+            key: "a2",
+            mtype: "a2",
+            borderColor: "gray",
+            levelComponent: "",
+            status: "Died \xB7 #2 \xB7 3m ago",
+            lastSeenComponent: null,
+            focusComponent: null,
+            luckmComponent: "luckm: 0.125",
+            dummy: true
+          })
+        ),
+        e("div", { key: "bats-label", style: SECTION_LABEL_STYLE }, "Bats"),
+        e(
+          "div",
+          {
+            key: "bats",
+            style: { display: "flex", flexWrap: "wrap", gap: "4px" }
+          },
+          e(CryptCard, {
+            key: "vbat",
+            mtype: "vbat",
+            borderColor: "red",
+            levelComponent: "",
+            status: "Died: 1",
+            lastSeenComponent: null,
+            focusComponent: null,
+            luckmComponent: null,
+            dummy: true
+          }),
+          e(CryptCard, {
+            key: "nerfedbat",
+            mtype: "nerfedbat",
+            borderColor: "gray",
+            levelComponent: "",
+            status: "Died: 0",
+            lastSeenComponent: null,
+            focusComponent: null,
+            luckmComponent: null,
+            dummy: true
+          })
+        )
+      )
+    );
+  }
+  function buildCryptCard(mtype, props, currentlySeeMtypes, aggroedMtypes, instanceData) {
+    const mobRichData = instanceData[mtype];
+    let borderColor = "gray";
+    if (aggroedMtypes.has(mtype)) borderColor = "red";
+    else if (currentlySeeMtypes.has(mtype)) borderColor = "yellow";
+    let status = "??";
+    let lastSeenComponent = null;
+    let levelComponent = "";
+    let focusComponent = null;
+    let luckmComponent = null;
+    if (mobRichData) {
+      if (CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0) {
+        const boss = mobRichData;
+        if (boss.deadCount > 0) {
+          status = formatBossDeathStatus(boss);
+          if (boss.luckm != null) {
+            luckmComponent = `luckm: ${boss.luckm.toFixed(3)}`;
+          }
+        } else {
+          status = "Alive";
+          if (aggroedMtypes.has(mtype)) lastSeenComponent = "Aggroed!";
+          else if (currentlySeeMtypes.has(mtype)) lastSeenComponent = "We see!";
+          else if (boss.lastSeen != null) {
+            lastSeenComponent = `Seen ${formatTime((Date.now() - boss.lastSeen) / 1e3)} ago`;
+          }
+          if (boss.lastSeenFocus) {
+            const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
+            if (focusMtype) {
+              focusComponent = `Focus: ${getCryptMobLabel(focusMtype)}`;
+            }
+          }
+        }
+        if (boss.lastSeenLevel != null) {
+          levelComponent = ` (${boss.lastSeenLevel} lvl)`;
+        }
+      } else {
+        status = `Died: ${mobRichData.deadCount}`;
+      }
+    }
+    let onClick;
+    if (props.setSelectedEntity && currentlySeeMtypes.has(mtype)) {
+      const visibleMob = findVisibleMob(props.entities, mtype);
+      if (visibleMob) {
+        onClick = () => {
+          setXTarget(visibleMob);
+          props.setSelectedEntity(String(visibleMob.id));
+        };
+      }
+    }
+    return e(CryptCard, {
+      key: mtype,
+      mtype,
+      borderColor,
+      levelComponent,
+      status,
+      lastSeenComponent,
+      focusComponent,
+      luckmComponent,
+      onClick
+    });
+  }
+  function renderMobSection(label, mtypes, props, currentlySeeMtypes, aggroedMtypes, instanceData) {
+    const cards = [];
+    for (let i = 0; i < mtypes.length; i++) {
+      cards.push(
+        buildCryptCard(
+          mtypes[i],
+          props,
+          currentlySeeMtypes,
+          aggroedMtypes,
+          instanceData
+        )
+      );
+    }
+    return [
+      e("div", { key: `${label}-label`, style: SECTION_LABEL_STYLE }, label),
+      e(
+        "div",
+        {
+          key: label,
+          style: { display: "flex", flexWrap: "wrap", gap: "4px" }
+        },
+        ...cards
+      )
+    ];
+  }
   function CryptProgress(props) {
     const mapName = getMapData(props.entities);
     const onCrypt = !!(mapName && mapName.map === "crypt");
     if (!onCrypt) {
       if (!props.layoutEdit) return null;
-      return e(PanelShellDummy, {
-        label: "Crypt progress",
-        hint: "Boss / bat status on crypt map",
-        accent: "#6a4a8a",
-        rows: 2,
-        style: CRYPT_PANEL_STYLE
-      });
+      return e(CryptProgressLayoutDummy);
     }
     updateFromEntities(mapName.in, props.entities);
     const currentlySeeMtypes = /* @__PURE__ */ new Set();
@@ -7104,69 +7371,6 @@ var EnhanceCommUI = (() => {
       if (entity.target) aggroedMtypes.add(entity.mtype);
     }
     const instanceData = getInstanceData(mapName.in);
-    const elems = [];
-    for (let i = 0; i < CRYPT_IMPORTANT_MOBS_MTYPES.length; i++) {
-      const mtype = CRYPT_IMPORTANT_MOBS_MTYPES[i];
-      const mobRichData = instanceData[mtype];
-      let borderColor = "gray";
-      if (aggroedMtypes.has(mtype)) borderColor = "red";
-      else if (currentlySeeMtypes.has(mtype)) borderColor = "yellow";
-      let status = "??";
-      let lastSeenComponent = null;
-      let levelComponent = "";
-      let focusComponent = null;
-      let luckmComponent = null;
-      if (mobRichData) {
-        if (CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0) {
-          const boss = mobRichData;
-          if (boss.deadCount > 0) {
-            status = `Died ${formatTime((Date.now() - (boss.deathEventTimestamp || 0)) / 1e3)} ago`;
-            if (boss.luckm != null) {
-              luckmComponent = `luckm: ${boss.luckm.toFixed(3)}`;
-            }
-          } else {
-            status = "Alive";
-            if (aggroedMtypes.has(mtype)) lastSeenComponent = "Aggroed!";
-            else if (currentlySeeMtypes.has(mtype)) lastSeenComponent = "We see!";
-            else if (boss.lastSeen != null) {
-              lastSeenComponent = `Seen ${formatTime((Date.now() - boss.lastSeen) / 1e3)} ago`;
-            }
-            if (boss.lastSeenFocus) {
-              const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
-              if (focusMtype) focusComponent = `Focus: ${focusMtype}`;
-            }
-          }
-          if (boss.lastSeenLevel != null) {
-            levelComponent = ` (${boss.lastSeenLevel} lvl)`;
-          }
-        } else {
-          status = `Died: ${mobRichData.deadCount}`;
-        }
-      }
-      let onClick;
-      if (props.setSelectedEntity && currentlySeeMtypes.has(mtype)) {
-        const visibleMob = findVisibleMob(props.entities, mtype);
-        if (visibleMob) {
-          onClick = () => {
-            setXTarget(visibleMob);
-            props.setSelectedEntity(String(visibleMob.id));
-          };
-        }
-      }
-      elems.push(
-        e(CryptCard, {
-          key: mtype,
-          mtype,
-          borderColor,
-          levelComponent,
-          status,
-          lastSeenComponent,
-          focusComponent,
-          luckmComponent,
-          onClick
-        })
-      );
-    }
     return e(
       "div",
       {
@@ -7201,12 +7405,27 @@ var EnhanceCommUI = (() => {
           key: "content",
           style: {
             display: "flex",
-            flexWrap: "wrap",
+            flexDirection: "column",
             gap: "4px",
             padding: "0 4px 4px"
           }
         },
-        ...elems
+        ...renderMobSection(
+          "Bosses",
+          CRYPT_BOSSES_MTYPES,
+          props,
+          currentlySeeMtypes,
+          aggroedMtypes,
+          instanceData
+        ),
+        ...renderMobSection(
+          "Bats",
+          CRYPT_BAT_MTYPES,
+          props,
+          currentlySeeMtypes,
+          aggroedMtypes,
+          instanceData
+        )
       )
     );
   }
@@ -9179,7 +9398,7 @@ var EnhanceCommUI = (() => {
     });
     return rows;
   }
-  function wrapIconHtml(html) {
+  function wrapIconHtml2(html) {
     return e("div", {
       style: { display: "inline-block", lineHeight: 0, fontSize: 0 },
       dangerouslySetInnerHTML: { __html: html },
@@ -9203,7 +9422,7 @@ var EnhanceCommUI = (() => {
       [mtype]
     );
     let icon = null;
-    if (html) icon = wrapIconHtml(html);
+    if (html) icon = wrapIconHtml2(html);
     const countBadge = e(
       "span",
       {
@@ -9536,7 +9755,7 @@ var EnhanceCommUI = (() => {
     if (n >= 100) return String(Math.round(n));
     return n.toFixed(1).replace(/\.0$/, "");
   }
-  function wrapIconHtml2(html) {
+  function wrapIconHtml3(html) {
     return e("div", {
       style: { display: "inline-block", lineHeight: 0, fontSize: 0, flexShrink: 0 },
       dangerouslySetInnerHTML: { __html: html },
@@ -9871,7 +10090,7 @@ var EnhanceCommUI = (() => {
       let icon = null;
       if (opts.mtype) {
         const html = monsterSprite(opts.mtype, { size: MOB_ICON_SIZE2 });
-        if (html) icon = wrapIconHtml2(html);
+        if (html) icon = wrapIconHtml3(html);
       }
       const rate2 = opts.killsPerMinute != null ? metricCell({
         value: fmtRate2(opts.killsPerMinute),

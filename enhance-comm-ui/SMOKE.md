@@ -35,7 +35,7 @@ Quick manual checks after a build / Tampermonkey refresh on `/comm`.
 - [ ] Drag snap hits mid / peer anchors; soft nudge on near-overlap drop.
 - [ ] Layout edit **Grid** presets redraw nested fine/2×/4× square guides and change snap step; Free still disables snap only.
 - [ ] Empty panels in Layout edit show footprint dummies (combat/threat/meters/boss/crypt/bag/paperdoll/buff info/item info).
-- [ ] **Crypt panel** — off crypt map panel hides in play; Layout edit shows Crypt progress dummy; on crypt map shows boss/bat cards; drag / × hide / opacity persist; click visible boss card targets mob.
+- [ ] **Crypt panel** — off crypt map panel hides in play; Layout edit shows crypt-shaped dummy (Bosses + Bats rows, sample cards with icons); on crypt map shows **Bosses** (Spike…Angel) and **Bats** (Vampireling, Bat) sections; dead boss shows `Died · #N · … ago` when killed more than once; drag / × hide / opacity persist; click visible boss card targets mob.
 - [ ] **Layout edit overlap** — with Boss bar overlapping Crypt progress, click through boss bar *content* to grab Crypt progress drag header underneath; boss bar header/× still draggable; play mode content stays fully clickable.
 - [ ] **topCenter** — server + map only (crypt moved to Crypt panel).
 - [ ] Buff info and item info are separate frames; buff click does not open paperdoll; × / Esc / click-outside closes.
