@@ -9,6 +9,7 @@
  */
 import { mergeLayout, panelStyle, type PanelPos } from "../lib/layout";
 import { getSettings, saveSettings } from "../lib/settings";
+import { openItem } from "./infoDialog/api";
 
 const HOST_ID = "bottomleftcorner";
 const STYLE_ID = "comm-ui-inventory-host-css";
@@ -22,13 +23,19 @@ type BagSyncListener = () => void;
 const listeners: InventoryListener[] = [];
 const syncListeners: BagSyncListener[] = [];
 
-/** Wall-clock ms when the bag last rendered an observing inventory snapshot. */
+/**
+ * Wall-clock ms when observe welcome last delivered an inventory snapshot.
+ * Opening the bag must not bump this — stock AL only refreshes items on welcome.
+ */
 let bagSyncedAt: number | null = null;
 /** True while Refresh is reconnecting the observer for a fresh welcome. */
 let bagRefreshing = false;
 /** Observed name we expect after Refresh reconnect. */
 let refreshPendingName: string | null = null;
 let refreshPollTimer: number | null = null;
+/** Socket.id we last bound the welcome listener to (tracks reconnects). */
+let bagSyncSocketId: string | null = null;
+let bagSyncWelcomePoll: number | null = null;
 /**
  * Last refresh outcome for UI honesty:
  * - server: observe reconnect completed (fresh welcome items)
@@ -42,10 +49,14 @@ declare global {
     inventory?: boolean;
     character?: any;
     observing?: any;
+    socket?: { id?: string; on?: (event: string, fn: (...args: any[]) => void) => void };
     render_inventory?: (reset?: any) => void;
+    inventory_click?: (num: number, event?: any) => void;
     hide_modal?: (force?: any) => void;
     draw_trigger?: (fn: () => void) => void;
+    stpr?: (event?: any) => void;
     __ecuInventoryPatched?: boolean;
+    __ecuInvClickPatched?: boolean;
     __ecuInvSavedChar?: any;
     __ecuInvHoldChar?: boolean;
   }
@@ -119,6 +130,34 @@ function clearRefreshPoll(): void {
     window.clearInterval(refreshPollTimer);
     refreshPollTimer = null;
   }
+}
+
+/**
+ * Stamp / clear bagSyncedAt from stock `welcome` (userscript only — no game edits).
+ * `data.character` is the observe snapshot that becomes `window.observing`.
+ */
+function onObserveWelcome(data: any): void {
+  if (data && data.character) {
+    setBagSyncedAt(Date.now());
+    return;
+  }
+  // Spectator reconnect / clearObserve — inventory snapshot is gone.
+  if (bagSyncedAt != null) setBagSyncedAt(null);
+}
+
+function maybeBindBagSyncWelcome(): void {
+  const socket = window.socket;
+  if (!socket || !socket.id || typeof socket.on !== "function") return;
+  if (socket.id === bagSyncSocketId) return;
+  bagSyncSocketId = socket.id;
+  socket.on("welcome", onObserveWelcome);
+}
+
+/** Re-bind welcome after init_socket reconnects (same pattern as sockets/hub). */
+function installBagSyncWelcomeWatch(): void {
+  maybeBindBagSyncWelcome();
+  if (bagSyncWelcomePoll != null) return;
+  bagSyncWelcomePoll = window.setInterval(maybeBindBagSyncWelcome, 500);
 }
 
 /** Subscribe to bag open/close (inventory flag). Returns unsubscribe. */
@@ -379,6 +418,45 @@ function restorePreferredBagOpen(): void {
 }
 
 /**
+ * Stock `inventory_click` early-returns on /comm (`if (is_comm && event) return stpr`).
+ * Bridge clicks to CommUI item info from `observing.items` (character stays null).
+ */
+function installInventoryClickBridge(): void {
+  if (window.__ecuInvClickPatched) return;
+
+  const tryPatch = () => {
+    const original = window.inventory_click;
+    if (typeof original !== "function") return false;
+    if (window.__ecuInvClickPatched) return true;
+    window.__ecuInvClickPatched = true;
+
+    window.inventory_click = function patchedInventoryClick(
+      num: number,
+      event?: any,
+    ) {
+      if (window.is_comm) {
+        if (event && typeof window.stpr === "function") window.stpr(event);
+        const obs = window.observing;
+        const item =
+          obs && Array.isArray(obs.items) ? obs.items[num] : null;
+        if (!item || !item.name || item.name === "placeholder") return;
+        openItem(obs, `inv${num}`, item);
+        return;
+      }
+      return original.call(this, num, event);
+    };
+    return true;
+  };
+
+  if (tryPatch()) return;
+  let attempts = 0;
+  const timer = window.setInterval(() => {
+    attempts += 1;
+    if (tryPatch() || attempts > 40) window.clearInterval(timer);
+  }, 250);
+}
+
+/**
  * Monkey-patch render_inventory so /comm uses the real bottom-left grid
  * instead of show_modal.
  *
@@ -387,6 +465,9 @@ function restorePreferredBagOpen(): void {
  */
 export function installInventoryFix(): void {
   if (window.__ecuInventoryPatched) return;
+
+  installInventoryClickBridge();
+  installBagSyncWelcomeWatch();
 
   const tryPatch = () => {
     const original = window.render_inventory;
@@ -435,8 +516,7 @@ export function installInventoryFix(): void {
         // ALWAYS restore — never leave character set across draw frames.
         restoreCharacter();
         if (opened) {
-          // Full open (not reset/update_inventory-only): stamp snapshot age.
-          if (!reset) setBagSyncedAt(Date.now());
+          // Do not stamp bagSyncedAt here — age is observe-welcome time.
           applyBagLayoutPos();
           notifyInventory(true);
         } else if (!window.inventory) {

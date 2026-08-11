@@ -141,9 +141,17 @@ function BagSyncChrome(props: {
   syncedAt: number | null;
   refreshing: boolean;
   refreshKind: "server" | "local" | null;
-  now: number;
 }): any {
-  const { syncedAt, refreshing, refreshKind, now } = props;
+  const React = getReact();
+  const { syncedAt, refreshing, refreshKind } = props;
+  const [now, setNow] = React.useState(() => Date.now());
+
+  React.useEffect(() => {
+    if (refreshing) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [refreshing]);
+
   let label = "Synced —";
   let title =
     "Observer inventory is a welcome snapshot; it does not live-update on /comm.";
@@ -153,7 +161,7 @@ function BagSyncChrome(props: {
       "Reconnecting observer for a fresh inventory snapshot from the server.";
   } else if (syncedAt != null) {
     label = formatBagSyncedLabel(syncedAt, now);
-    title = `Inventory snapshot time (${new Date(syncedAt).toLocaleTimeString()}). Refresh reconnects the observer — stock AL has no lighter inventory pull.`;
+    title = `Observe welcome snapshot (${new Date(syncedAt).toLocaleTimeString()}). Opening Bag does not refresh stock. Refresh reconnects the observer.`;
   }
   if (!refreshing && refreshKind === "local") {
     title =
@@ -247,7 +255,6 @@ export function BagPanel(props: BagPanelProps): any {
   const [refreshKind, setRefreshKind] = React.useState(() =>
     getBagRefreshKind(),
   );
-  const [now, setNow] = React.useState(() => Date.now());
   const layoutEdit = !!props.layoutEdit;
   const showDummy = layoutEdit && !open && !refreshing;
   const showChrome = open || refreshing;
@@ -269,15 +276,9 @@ export function BagPanel(props: BagPanelProps): any {
     };
   }, []);
 
-  React.useEffect(() => {
-    if (!showChrome || refreshing) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [showChrome, refreshing]);
-
   React.useLayoutEffect(() => {
     attachInventoryToMount(mountRef.current);
-  });
+  }, [open, refreshing, showDummy]);
 
   return e(
     "div",
@@ -303,7 +304,7 @@ export function BagPanel(props: BagPanelProps): any {
       },
     },
     showChrome
-      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind, now })
+      ? e(BagSyncChrome, { syncedAt, refreshing, refreshKind })
       : null,
     showDummy ? e(BagDummy) : null,
     e("div", {
