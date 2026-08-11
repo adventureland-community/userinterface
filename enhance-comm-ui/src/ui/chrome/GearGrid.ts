@@ -1,7 +1,7 @@
+import { getReact, e } from "../../host/react";
+import type { EntityLike, SlotLike } from "../../host/globals";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
 import { itemContainer, setXTarget, slotSkin } from "../../host/icons";
-import { e } from "../../host/react";
-import type { EntityLike, SlotLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Classic AL `render_slots` body layout (4 cols × 4 rows). */
@@ -83,7 +83,21 @@ export type GearGridProps = {
 
 function slotKey(slot: SlotLike | null | undefined): string {
   if (!slot || !slot.name) return "";
-  return `${slot.name}|${slot.level ?? ""}|${slot.q ?? ""}`;
+  return `${slot.name}|${slot.level ?? ""}|${slot.q ?? ""}|${slot.price ?? ""}|${slot.skin ?? ""}`;
+}
+
+function slotsFingerprint(
+  slots: Record<string, SlotLike | null | undefined> | null | undefined,
+): string {
+  if (!slots) return "";
+  const keys = Object.keys(slots);
+  keys.sort();
+  const parts: string[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    parts.push(`${k}:${slotKey(slots[k])}`);
+  }
+  return parts.join(";");
 }
 
 function SlotCell(props: {
@@ -233,101 +247,121 @@ function SlotCell(props: {
 }
 
 export function GearGrid(props: GearGridProps): any {
+  const React = getReact();
   const slots = props.entity.slots;
   if (!slots) return null;
 
-  const compareSlots = props.compareTo && props.compareTo.slots;
-  const tradeNames = tradeSlotNames(slots);
+  const entityId =
+    props.entity.id != null ? String(props.entity.id) : "";
+  const compareId =
+    props.compareTo && props.compareTo.id != null
+      ? String(props.compareTo.id)
+      : "";
+  const fp =
+    entityId +
+    "|" +
+    compareId +
+    "|" +
+    slotsFingerprint(slots) +
+    "|" +
+    slotsFingerprint(props.compareTo && props.compareTo.slots);
 
-  const isDiff = (name: string): boolean => {
-    if (!compareSlots) return false;
-    return slotKey(slots[name]) !== slotKey(compareSlots[name]);
-  };
+  // Vitals/tick updates rewrite entity objects every frame — skip gear DOM
+  // rebuild when equipped/trade slots are unchanged.
+  return React.useMemo(() => {
+    const compareSlots = props.compareTo && props.compareTo.slots;
+    const tradeNames = tradeSlotNames(slots);
 
-  return e(
-    "div",
-    {
-      className: "comm-gear-grid",
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "2px",
-        pointerEvents: "auto",
-      },
-    },
-    e(
+    const isDiff = (name: string): boolean => {
+      if (!compareSlots) return false;
+      return slotKey(slots[name]) !== slotKey(compareSlots[name]);
+    };
+
+    return e(
       "div",
       {
+        className: "comm-gear-grid",
         style: {
           display: "flex",
           flexDirection: "column",
           gap: "2px",
-          width: "fit-content",
+          pointerEvents: "auto",
         },
       },
-      ...GEAR_ROWS.map((row, ri) =>
-        e(
-          "div",
-          {
-            key: `row${ri}`,
-            style: {
-              display: "flex",
-              flexDirection: "row",
-              flexWrap: "nowrap",
-              gap: "2px",
-            },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            width: "fit-content",
           },
-          ...row.map((name) =>
-            e(SlotCell, {
-              key: name,
-              entity: props.entity,
-              slotName: name,
-              slot: slots[name],
-              diff: isDiff(name),
-            }),
-          ),
-        ),
-      ),
-    ),
-    tradeNames.length
-      ? e(
-          "div",
-          {
-            style: {
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "2px",
-              borderTop: "1px solid #333",
-              paddingTop: "4px",
-              marginTop: "4px",
-            },
-          },
+        },
+        ...GEAR_ROWS.map((row, ri) =>
           e(
             "div",
             {
+              key: `row${ri}`,
               style: {
-                flex: "0 0 100%",
-                fontSize: TYPE.micro,
-                color: "#888",
-                marginBottom: "2px",
-                letterSpacing: "0.04em",
-                ...PIXEL_TEXT,
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                gap: "2px",
               },
             },
-            "TRADE",
+            ...row.map((name) =>
+              e(SlotCell, {
+                key: name,
+                entity: props.entity,
+                slotName: name,
+                slot: slots[name],
+                diff: isDiff(name),
+              }),
+            ),
           ),
-          ...tradeNames.map((name) =>
-            e(SlotCell, {
-              key: name,
-              entity: props.entity,
-              slotName: name,
-              slot: slots[name],
-              showPrice: true,
-              diff: isDiff(name),
-            }),
-          ),
-        )
-      : null,
-  );
+        ),
+      ),
+      tradeNames.length
+        ? e(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "2px",
+                borderTop: "1px solid #333",
+                paddingTop: "4px",
+                marginTop: "4px",
+              },
+            },
+            e(
+              "div",
+              {
+                style: {
+                  flex: "0 0 100%",
+                  fontSize: TYPE.micro,
+                  color: "#888",
+                  marginBottom: "2px",
+                  letterSpacing: "0.04em",
+                  ...PIXEL_TEXT,
+                },
+              },
+              "TRADE",
+            ),
+            ...tradeNames.map((name) =>
+              e(SlotCell, {
+                key: name,
+                entity: props.entity,
+                slotName: name,
+                slot: slots[name],
+                showPrice: true,
+                diff: isDiff(name),
+              }),
+            ),
+          )
+        : null,
+    );
+  }, [fp]);
 }
 
