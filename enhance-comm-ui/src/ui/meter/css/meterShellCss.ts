@@ -1,0 +1,185 @@
+/** Meter shell, idle states, frame positioning. */
+export const METER_SHELL_CSS = `
+.ecu-meter-shell {
+  /* Details MainWindow / Minimalistic hybrid */
+  --meter-panel: rgba(12, 12, 14, 0.72);
+  --meter-panel-solid: #1a1518;
+  --meter-panel-2: rgba(0, 0, 0, 0.22);
+  --meter-border: rgba(0, 0, 0, 0.55);
+  --meter-title: #4a2a2c;
+  --meter-text: #ffffff;
+  --meter-muted: rgba(220, 210, 210, 0.78);
+  --meter-accent: #e8c96a;
+  --meter-you: #7ec8ff;
+  --meter-cooltip-bg: rgba(18, 14, 16, 0.96);
+  --meter-toolbar: url(__TOOLBAR__);
+  --meter-attr-icons: url(__ATTR__);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 1px solid rgba(0, 0, 0, 0.65);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--meter-text);
+  box-sizing: border-box;
+  position: relative;
+  pointer-events: auto;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.ecu-meter-shell.is-layout {
+  padding-bottom: 18px; /* room for resize grip while arranging */
+}
+.ecu-meter-shell.is-idle:not(.is-inspector):not(.is-report) .ecu-meter-body {
+  opacity: 0.42;
+  background: var(--meter-panel);
+}
+/* Click-through bars when idle — titlebar still receives hover to wake. */
+.ecu-meter-shell.is-idle:not(.is-inspector):not(.is-report):not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-body {
+  pointer-events: none;
+}
+.ecu-meter-shell.is-idle:not(.is-inspector):not(.is-report).is-interacting .ecu-meter-body,
+.ecu-meter-shell.is-idle:not(.is-inspector):not(.is-report):hover .ecu-meter-body {
+  opacity: 1;
+}
+/* Inspector / Report stay denser / more opaque for reading. */
+.ecu-meter-shell.is-inspector,
+.ecu-meter-shell.is-report {
+  background: var(--meter-panel-solid);
+  border-radius: 2px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+}
+.ecu-meter-shell.is-inspector .ecu-meter-body,
+.ecu-meter-shell.is-report .ecu-meter-body {
+  background: #12141a;
+  border: 1px solid var(--meter-border);
+  border-top: none;
+  border-radius: 0 0 2px 2px;
+}
+.ecu-meter-resize {
+  display: none;
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 8;
+  pointer-events: auto;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),
+    linear-gradient(135deg, transparent 68%, #8b9bb0 68%, #8b9bb0 74%, transparent 74%),
+    linear-gradient(135deg, transparent 84%, #8b9bb0 84%, #8b9bb0 90%, transparent 90%);
+  opacity: 0.9;
+}
+.ecu-meter-resize-left {
+  right: auto;
+  left: 1px;
+  cursor: nesw-resize;
+  transform: scaleX(-1);
+}
+.ecu-meter-shell.is-layout .ecu-meter-resize,
+.ecu-meter-shell.is-interacting .ecu-meter-resize {
+  display: block;
+}
+/* Positioned meter frame — resize while arranging (layout edit, unlocked, or Alt). */
+.comm-pos-panel.ecu-meter-frame {
+  overflow: visible;
+  resize: none;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.comm-pos-panel.ecu-meter-frame > .comm-pos-panel-body {
+  background: transparent !important;
+  padding: 0 !important;
+}
+.comm-pos-panel.ecu-meter-frame.ecu-meter-grouped {
+  outline: 1px solid rgba(201, 162, 39, 0.35);
+  box-shadow: none;
+}
+.comm-pos-panel.ecu-meter-frame.ecu-meter-dragging {
+  outline: 2px solid rgba(120, 200, 255, 0.85);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  z-index: 12;
+}
+.comm-pos-panel.ecu-meter-frame.ecu-meter-snap-target {
+  outline: 2px solid rgba(232, 201, 106, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.65),
+    inset 0 0 0 1px rgba(232, 201, 106, 0.35);
+}
+/* Arrange/edit: overflow for cooltips; resize via meter shell grip only (not CSS resize). */
+.comm-pos-panel.ecu-meter-frame.comm-pos-editing,
+.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange,
+.comm-pos-panel.ecu-meter-frame.comm-pos-movable {
+  overflow: visible;
+  resize: none;
+  min-width: 0;
+  min-height: 0;
+}
+.comm-pos-panel.ecu-meter-frame.comm-pos-editing > .comm-pos-panel-body,
+.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange > .comm-pos-panel-body,
+.comm-pos-panel.ecu-meter-frame.comm-pos-movable > .comm-pos-panel-body {
+  overflow: hidden;
+}
+/* Hide × sits above the frame so it does not cover ↺ / lock / gear. */
+.comm-pos-panel.ecu-meter-frame > .comm-pos-panel-close-above {
+  top: -24px;
+  right: 0;
+  border-radius: 3px;
+}
+/* While arranging, resize needs overflow:hidden — park × on the grip row. */
+.comm-pos-panel.ecu-meter-frame.comm-pos-editing > .comm-pos-panel-close,
+.comm-pos-panel.ecu-meter-frame.comm-pos-movable > .comm-pos-panel-close,
+.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange > .comm-pos-panel-close {
+  top: 2px;
+  right: 2px;
+}
+/* —— Details parity: stretch tab —— */
+.ecu-meter-stretch-tab {
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 9;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #5a4044 0%, #4a2a2c 100%);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-bottom: none;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  touch-action: none;
+}
+.ecu-meter-stretch-tab::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 2px;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.35);
+  border-radius: 1px;
+}
+.ecu-meter-shell.is-interacting .ecu-meter-stretch-tab,
+.ecu-meter-shell.is-layout .ecu-meter-stretch-tab,
+.ecu-meter-shell:hover .ecu-meter-stretch-tab {
+  opacity: 0.95;
+}
+.ecu-meter-stretch-tab:active {
+  opacity: 1;
+  background: linear-gradient(180deg, #6a5054 0%, #5a3a3c 100%);
+}
+`;
