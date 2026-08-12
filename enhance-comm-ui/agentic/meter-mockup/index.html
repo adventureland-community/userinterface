@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AL Meter Mockup v4.8 — split data · one tick · query×presentation</title>
+  <link rel="stylesheet" href="meter-mockup.css?v=4.8" />
+</head>
+<body>
+  <header class="page-chrome">
+    <div class="brand">
+      <h1>AL meters <span class="ver">v4.8</span></h1>
+      <p>fixtures/segments/query · MockUiTick · query×presentation</p>
+    </div>
+    <div class="page-toolbar">
+      <label class="tog"><input type="checkbox" id="opt-fade" /> Idle fade</label>
+      <label class="tog"><input type="checkbox" id="opt-rank" checked /> Rank #</label>
+      <label class="tog"><input type="checkbox" id="opt-pct" checked /> %</label>
+      <label class="tog"><input type="checkbox" id="opt-icons" checked /> Icons</label>
+      <label class="tog" title="Skada find_set: Current falls back to last fight"><input type="checkbox" id="opt-ooc" /> OOC (Current→last)</label>
+      <select id="seg-select" aria-label="Apply fight to all panels" title="AL convenience — apply selectedset to every panel"></select>
+      <select id="party-scope" aria-label="Party scope" title="My party / Visible / You / All seen"></select>
+      <button type="button" id="btn-reset" title="All panels → Current">↻ All→Current</button>
+      <button type="button" id="btn-layout-default">Default layout</button>
+      <button type="button" id="btn-layout-encrt" title="Focus Encounter + Realtime + Timeline">Enc + RT</button>
+      <button type="button" id="btn-layout-clear">Clear</button>
+      <select id="add-preset" aria-label="Add panel preset"></select>
+      <button type="button" id="btn-add">+ Window</button>
+    </div>
+  </header>
+
+  <aside class="legend-bar" id="legend-bar"></aside>
+  <div id="stage" class="stage" aria-label="Meter stage"></div>
+  <div id="tooltip" class="tt" hidden></div>
+
+  <footer class="page-chrome hints">
+    <div><b>Architecture:</b> MockFixtures → MockSegments → MockQuery → MockData · one <b>MockUiTick</b> · panel <b>query×presentation</b></div>
+    <div><b>Segment (Skada):</b> per-panel Seg / right-click · toolbar = apply-all · Encounter footer = that panel · OOC = Current→last</div>
+    <div><b>Full delivery:</b> nothing deferred from the plan · <a href="SKADA-SEGMENTS.md">SKADA-SEGMENTS</a> · <a href="NOTES.md">NOTES</a></div>
+  </footer>
+
+  <script src="js/mock-fixtures.js?v=4.8"></script>
+  <script src="js/mock-segments.js?v=4.8"></script>
+  <script src="js/mock-query.js?v=4.8"></script>
+  <script src="js/mock-data.js?v=4.8"></script>
+  <script src="js/mock-panel-config.js?v=4.8"></script>
+  <script src="js/mock-ui-tick.js?v=4.8"></script>
+  <script src="js/mock-icons.js?v=4.8"></script>
+  <script src="js/mock-charts.js?v=4.8"></script>
+  <script src="js/bar-list.js?v=4.8"></script>
+  <script src="js/view-series.js?v=4.8"></script>
+  <script src="js/view-chart.js?v=4.8"></script>
+  <script src="js/view-timeline.js?v=4.8"></script>
+  <script src="js/views.js?v=4.8"></script>
+  <script src="js/panel-shell.js?v=4.8"></script>
+  <script src="js/mock-app.js?v=4.8"></script>
+</body>
+</html>

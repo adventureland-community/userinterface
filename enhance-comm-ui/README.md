@@ -29,7 +29,7 @@ Tampermonkey userscript that enhances Adventure.land `/comm` with party roster, 
 - Combat: sticky highlight for watched row; Compact mode (DPS+HPS); Full/Compact + columns persisted; **My party** focus button
 - Boss bar: HP%, click-to-target, sort on-me / lowest HP, aggro chip
 - Target frame threat spark; paperdoll “VS watched” delta stats + equip Δ icons
-- Layout: Ctrl+Shift+L; snap to edges + peer panels; soft avoid-overlap; Opacity per panel
+- Layout: Ctrl+Shift+L; snap to edges + peer panels; soft avoid-overlap; opacity slider on each panel in layout edit
 - **Viewport profiles**: Auto Desktop / Tablet / Phone layouts (drawers/sheets on mobile); force profile in Layout edit
 - **Export / import layout**: Copy, Download, Paste, or Upload JSON presets per profile
 - Bag open/closed remembered across reloads; empty enemies/threat/meters auto-hide outside layout edit
