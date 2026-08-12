@@ -3,9 +3,11 @@
  */
 
 import { getReact, e } from "../../../host/react";
+import { FEATURE_OVERVIEW, latestChangelogId } from "../../../lib/changelog";
 import { patchSettings } from "../../../lib/settings";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
 import { patchMeterAppearance } from "../../../meters/meterAppearance";
+import { capabilityCaps } from "./commWizCaps";
 import { injectCommSetupWizardCss } from "./commSetupWizardCss";
 
 const WIZARD_TITLE = "Comm UI";
@@ -36,6 +38,15 @@ function featureList(items: string[]): any {
     { className: "ecu-comm-wiz-list" },
     ...items.map((text, i) => e("li", { key: `li-${i}` }, text)),
   );
+}
+
+function markIntroComplete(): void {
+  patchSettings({
+    setupWizardDone: true,
+    changelogSeenId: latestChangelogId(),
+  });
+  patchMeterAppearance({ testBars: false });
+  clearIntroStep();
 }
 
 export function readIntroStep(): number {
@@ -69,17 +80,15 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
   injectCommSetupWizardCss();
 
   const finish = () => {
-    patchSettings({ setupWizardDone: true });
-    patchMeterAppearance({ testBars: false });
-    clearIntroStep();
+    markIntroComplete();
     props.onDone();
   };
 
   const steps = [
     {
-      title: "Welcome",
-      body: "This overlay replaces the stock /comm panel. Everything is movable — party frames, map info, threat, combat meters, and more. A spotlight tour can walk you through each area when you're ready.",
-      extra: null,
+      title: "Overview",
+      body: "",
+      extra: capabilityCaps(FEATURE_OVERVIEW),
       actions: e(
         "div",
         { className: "ecu-comm-wiz-actions" },
@@ -91,7 +100,7 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
       body: "Spotlight tours dim the screen and highlight one area at a time. You stay in control — Next, Back, or Skip at any point.",
       extra: featureList([
         "Recommended: short intro (~17 steps) — observe chrome, overlay essentials, PDPS",
-        "Deeper tours appear once when you use layout, meters, inspect, and more",
+        "Deeper tours appear once when you use layout, meters, paperdoll, buffs, and more",
         "Replay the intro anytime from the Intro button on the control strip",
       ]),
       actions: e(
@@ -102,8 +111,7 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
         wizBtn(
           "Start spotlight tour",
           () => {
-            clearIntroStep();
-            patchSettings({ setupWizardDone: true });
+            markIntroComplete();
             props.onStartTour();
           },
           true,
@@ -126,7 +134,7 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
       },
       e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
       e("h3", null, cur.title),
-      e("p", null, cur.body),
+      cur.body ? e("p", null, cur.body) : null,
       cur.extra || null,
       cur.actions,
       e(

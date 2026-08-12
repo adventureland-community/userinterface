@@ -10,6 +10,22 @@ Tampermonkey userscript that enhances Adventure.land `/comm` with party roster, 
    - `dist/enhance-comm-ui.js`
 3. Open `/comm` on adventure.land (or the community mirror listed in the UserScript header).
 
+## Local development (refresh to see changes)
+
+Use a tiny committed stub that loads the local build **on every page refresh** (cache-busted fetch — not Tampermonkey `@require` caching).
+
+1. Tampermonkey → **Disable** the full pasted production script
+2. **Reinstall / paste** `dev.user.js` once (needs `GM.xmlHttpRequest`)
+3. In this folder: `npm run dev`  
+   (debounced watch rebuild + `http://127.0.0.1:3927/enhance-comm-ui.js`)
+4. Edit source → wait for `[ecu-watch] build #N ok` → **refresh `/comm`**
+5. Confirm in the browser console: `[ecu-dev] injected { url: ...?t=..., bytes: ... }`
+
+Health check: [http://127.0.0.1:3927/health](http://127.0.0.1:3927/health) should show `"ok": true`.
+
+Debounce default is 1200ms (override: `ECU_WATCH_DEBOUNCE_MS=700 npm run dev`).  
+Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.user.js` to match.
+
 ## Features
 
 - Map / crypt / server chrome with crypt boss progress

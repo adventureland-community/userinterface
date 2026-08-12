@@ -36,13 +36,20 @@ function tourBtn(
   const classes = ["ecu-tour-btn"];
   if (opts?.primary) classes.push("primary");
   if (opts?.hidden) classes.push("is-slot-hidden");
+  const disabled = !!opts?.disabled;
   return e(
     "button",
     {
       type: "button",
       className: classes.join(" "),
-      disabled: !!opts?.disabled,
-      onClick,
+      disabled,
+      onClick: (ev: any) => {
+        if (disabled) return;
+        if (ev && typeof ev.stopPropagation === "function") {
+          ev.stopPropagation();
+        }
+        onClick();
+      },
     },
     label,
   );
@@ -59,12 +66,27 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
     h: typeof window !== "undefined" ? window.innerHeight : 1080,
   }));
   const advancedRef = React.useRef(false);
+  const doneRef = React.useRef(false);
   const step = props.tour.steps[props.stepIndex];
   injectGuidedTourCss();
 
+  const finish = () => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    markTourCompleted(props.tour.id);
+    props.onDone();
+  };
+  const finishRef = React.useRef(finish);
+  finishRef.current = finish;
+
   React.useEffect(() => {
     advancedRef.current = false;
+    // Do not clear doneRef here — finishing mid-step must stay latched.
   }, [props.stepIndex, step?.advanceWhen]);
+
+  React.useEffect(() => {
+    doneRef.current = false;
+  }, [props.tour.id]);
 
   React.useLayoutEffect(() => {
     const el = cardRef.current;
@@ -143,16 +165,16 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
       if (!tourAdvanceReady(step.advanceWhen, props.advanceContext)) return;
       advancedRef.current = true;
       advanceTimer = window.setTimeout(() => {
+        if (doneRef.current) return;
         if (props.stepIndex >= props.tour.steps.length - 1) {
-          markTourCompleted(props.tour.id);
-          props.onDone();
+          finishRef.current();
           return;
         }
         props.onStep(props.stepIndex + 1);
       }, 450);
     };
     tick();
-    // playerFrame (and late panel mounts) need a light poll until ready.
+    // Late panel mounts / observing flips need a light poll until ready.
     const id = window.setInterval(tick, 250);
     return () => {
       window.clearInterval(id);
@@ -164,20 +186,22 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
     props.advanceContext.isObserving,
     props.advanceContext.bagOpen,
     props.advanceContext.commandOpen,
+    props.advanceContext.itemInfoOpen,
   ]);
 
   React.useEffect(() => {
-    if (!step) props.onDone();
+    if (!step) finishRef.current();
   }, [step]);
 
   if (!step) return null;
 
   const isLast = props.stepIndex >= props.tour.steps.length - 1;
+  const waitForAction = !!step.advanceWhen;
 
   const next = () => {
+    if (waitForAction) return;
     if (isLast) {
-      markTourCompleted(props.tour.id);
-      props.onDone();
+      finish();
       return;
     }
     props.onStep(props.stepIndex + 1);
@@ -188,14 +212,16 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
   };
 
   const skip = () => {
-    markTourCompleted(props.tour.id);
-    props.onDone();
+    finish();
   };
 
   const shades = shadePanels(spot, viewport.w, viewport.h);
   const connector =
     spot != null ? tourConnector(cardPos, CARD_W, cardH, spot) : null;
-  const showHint = !!step.missingHint && (!spot || !!step.advanceWhen);
+  const missingOnly = !!step.missingHint && !spot && !waitForAction;
+  const ctaText =
+    step.missingHint ||
+    (waitForAction ? "Complete the highlighted action to continue." : "");
 
   return e(
     "div",
@@ -268,9 +294,16 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
       },
       e("h3", null, step.title),
       e("p", null, step.body),
-      showHint
-        ? e("p", { className: "ecu-tour-hint" }, step.missingHint)
-        : null,
+      waitForAction
+        ? e(
+            "div",
+            { className: "ecu-tour-cta" },
+            e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
+            e("div", { className: "ecu-tour-cta-text" }, ctaText),
+          )
+        : missingOnly
+          ? e("p", { className: "ecu-tour-hint" }, step.missingHint)
+          : null,
       e(
         "div",
         { className: "ecu-tour-actions" },
@@ -286,7 +319,11 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
           "div",
           { className: "ecu-tour-actions-right" },
           tourBtn("Skip tour", skip),
-          tourBtn(isLast ? "Done" : "Next", next, { primary: true }),
+          // Action steps auto-advance — Next stays visible but disabled.
+          tourBtn(isLast ? "Done" : "Next", next, {
+            primary: true,
+            disabled: waitForAction,
+          }),
         ),
       ),
       e(

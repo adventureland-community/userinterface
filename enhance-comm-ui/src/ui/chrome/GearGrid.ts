@@ -37,7 +37,9 @@ const SLOT_SIZE = 40;
 /** AL empty-slot border when `mode.empty_borders_darker`. */
 const EMPTY_BCOLOR = "#292929";
 
-function tradeSlotNames(slots: Record<string, SlotLike | null | undefined>): string[] {
+function tradeSlotNames(
+  slots: Record<string, SlotLike | null | undefined>,
+): string[] {
   const names: string[] = [];
   const keys = Object.keys(slots);
   for (let i = 0; i < keys.length; i++) {
@@ -177,7 +179,8 @@ function SlotCell(props: {
   // never re-read a mismatched entity.slots key.
   const onSlotPress = clickable
     ? (ev: any) => {
-        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        if (ev && typeof ev.stopPropagation === "function")
+          ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
         setXTarget(entity);
         info.openItem(entity, slotName, slot);
@@ -196,7 +199,8 @@ function SlotCell(props: {
       onMouseDown: clickable
         ? (ev: any) => {
             // Keep bubble from reaching document dismiss if pointer events differ.
-            if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+            if (ev && typeof ev.stopPropagation === "function")
+              ev.stopPropagation();
           }
         : undefined,
       style: {
@@ -251,8 +255,7 @@ export function GearGrid(props: GearGridProps): any {
   const slots = props.entity.slots;
   if (!slots) return null;
 
-  const entityId =
-    props.entity.id != null ? String(props.entity.id) : "";
+  const entityId = props.entity.id != null ? String(props.entity.id) : "";
   const compareId =
     props.compareTo && props.compareTo.id != null
       ? String(props.compareTo.id)
@@ -281,6 +284,7 @@ export function GearGrid(props: GearGridProps): any {
       "div",
       {
         className: "comm-gear-grid",
+        "data-ecu-tour": "paperdoll-gear",
         style: {
           display: "flex",
           flexDirection: "column",
@@ -326,6 +330,7 @@ export function GearGrid(props: GearGridProps): any {
         ? e(
             "div",
             {
+              "data-ecu-tour": "paperdoll-trade",
               style: {
                 display: "flex",
                 flexWrap: "wrap",
@@ -364,4 +369,3 @@ export function GearGrid(props: GearGridProps): any {
     );
   }, [fp]);
 }
-

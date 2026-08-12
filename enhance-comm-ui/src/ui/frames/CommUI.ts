@@ -12,6 +12,8 @@ import {
   readIntroStep,
   writeIntroStep,
 } from "./comm/CommUISetupWizard";
+import { CommUIWhatsNew } from "./comm/CommUIWhatsNew";
+import { unseenChangelogEntries } from "../../lib/changelog";
 import { useCommGuidedTours } from "../hooks/useCommGuidedTours";
 import {
   triggerMeterToolbarTour,
@@ -77,6 +79,11 @@ export function CommUI(props: CommUIProps): any {
   const [setupWizardOpen, setSetupWizardOpen] = React.useState(
     () => !getSettings().setupWizardDone,
   );
+  const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
+    const s = getSettings();
+    if (!s.setupWizardDone) return [];
+    return unseenChangelogEntries(s.changelogSeenId);
+  });
   const [introStep, setIntroStep] = React.useState(() => readIntroStep());
 
   const setIntroStepPersist = (step: number) => {
@@ -98,12 +105,13 @@ export function CommUI(props: CommUIProps): any {
     setMeterAddOpen,
     setVisible,
     getPanelVisible: visible,
-    setupWizardOpen,
+    toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
     setSetupWizardOpen,
     isObserving:
       (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
     bagOpen,
     commandOpen: visible("command"),
+    itemInfoOpen,
   });
 
   const { startIntroTour, toggleLayoutEdit, tourOverlay } = guidedTours;
@@ -172,6 +180,7 @@ export function CommUI(props: CommUIProps): any {
 
   useContextualTourTriggers({
     selectedEntity,
+    buffInfoOpen,
     meterCount: meters.meterInstances.length,
     entities: snap.entities,
     meterInstances: meters.meterInstances,
@@ -281,6 +290,13 @@ export function CommUI(props: CommUIProps): any {
           onStep: setIntroStepPersist,
           onDone: () => setSetupWizardOpen(false),
           onStartTour: () => startIntroTour(false),
+        })
+      : null,
+
+    !setupWizardOpen && whatsNewEntries.length > 0
+      ? e(CommUIWhatsNew, {
+          entries: whatsNewEntries,
+          onDone: () => setWhatsNewEntries([]),
         })
       : null,
 

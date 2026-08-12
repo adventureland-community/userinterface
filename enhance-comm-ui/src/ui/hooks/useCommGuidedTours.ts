@@ -11,6 +11,7 @@ import {
 } from "../../meters/meterAppearance";
 import { GuidedTourOverlay } from "../frames/comm/guidedTour/GuidedTourOverlay";
 import {
+  flushContextualTourQueue,
   registerContextualTourHost,
   tryContextualTour,
 } from "../frames/comm/guidedTour/contextualTour";
@@ -40,11 +41,13 @@ export type UseCommGuidedToursOpts = {
   setMeterAddOpen: (open: boolean) => void;
   setVisible: (id: PanelId, visible: boolean) => void;
   getPanelVisible: (id: PanelId) => boolean;
-  setupWizardOpen: boolean;
+  /** True while intro or What's New (or any blocking modal) is open. */
+  toursBlocked: boolean;
   setSetupWizardOpen: (open: boolean) => void;
   isObserving: boolean;
   bagOpen: boolean;
   commandOpen: boolean;
+  itemInfoOpen: boolean;
 };
 
 export type CommGuidedToursApi = {
@@ -62,10 +65,10 @@ export function useCommGuidedTours(
   );
   const sessionRef = React.useRef(null as TourSession | null);
   const activeTourRef = React.useRef(activeTour);
-  const setupWizardOpenRef = React.useRef(opts.setupWizardOpen);
+  const toursBlockedRef = React.useRef(opts.toursBlocked);
   const optsRef = React.useRef(opts);
   activeTourRef.current = activeTour;
-  setupWizardOpenRef.current = opts.setupWizardOpen;
+  toursBlockedRef.current = opts.toursBlocked;
   optsRef.current = opts;
 
   const effectHostRef = React.useRef(null as TourEffectHost | null);
@@ -87,8 +90,9 @@ export function useCommGuidedTours(
     });
   }
 
-  const finishTour = (finishedId: string) => {
+  const finishTour = (finishedId?: string) => {
     const cur = activeTourRef.current;
+    const id = finishedId || cur?.tour.id;
     endTourSession(
       sessionRef.current,
       cur?.tour,
@@ -96,42 +100,59 @@ export function useCommGuidedTours(
       effectHostRef.current,
     );
     sessionRef.current = null;
+    // Clear immediately so Done never leaves a stuck overlay.
+    activeTourRef.current = null;
+    setActiveTour(null);
+
+    if (!id) {
+      flushContextualTourQueue();
+      return;
+    }
 
     let found = false;
     for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
       if (found) {
-        const id = INTRO_TOUR_CHAIN[i];
-        if (isTourCompleted(id)) continue;
-        const tour = tourById(id);
-        if (!tour || !effectHostRef.current) return;
+        const nextId = INTRO_TOUR_CHAIN[i];
+        if (isTourCompleted(nextId)) continue;
+        const tour = tourById(nextId);
+        if (!tour || !effectHostRef.current) {
+          flushContextualTourQueue();
+          return;
+        }
         sessionRef.current = beginTourSession(effectHostRef.current, tour);
         sessionRef.current.applyStep(0, null);
-        setActiveTour({ tour, step: 0 });
+        const next = { tour, step: 0 };
+        activeTourRef.current = next;
+        setActiveTour(next);
         return;
       }
-      if (INTRO_TOUR_CHAIN[i] === finishedId) found = true;
+      if (INTRO_TOUR_CHAIN[i] === id) found = true;
     }
-    setActiveTour(null);
+    flushContextualTourQueue();
   };
 
   const launchTour = (id: string) => {
     const tour = tourById(id);
-    const host = effectHostRef.current;
-    if (!tour || !host) return;
+    const effectHost = effectHostRef.current;
+    if (!tour || !effectHost) return;
     endTourSession(
       sessionRef.current,
       activeTourRef.current?.tour,
       activeTourRef.current?.step,
-      host,
+      effectHost,
     );
-    sessionRef.current = beginTourSession(host, tour);
+    sessionRef.current = beginTourSession(effectHost, tour);
     sessionRef.current.applyStep(0, null);
-    setActiveTour({ tour, step: 0 });
+    const next = { tour, step: 0 };
+    // Sync before setState so isBlocked() sees the active tour immediately.
+    activeTourRef.current = next;
+    setActiveTour(next);
   };
 
-  const launchContextualTour = (id: string) => {
-    if (activeTourRef.current || setupWizardOpenRef.current) return;
+  const launchContextualTour = (id: string): boolean => {
+    if (activeTourRef.current || toursBlockedRef.current) return false;
     launchTour(id);
+    return true;
   };
 
   const startIntroTour = (force?: boolean) => {
@@ -153,7 +174,8 @@ export function useCommGuidedTours(
   React.useEffect(() => {
     migrateLegacyTourFlags();
     registerContextualTourHost({
-      isBlocked: () => !!activeTourRef.current || !!setupWizardOpenRef.current,
+      isBlocked: () =>
+        !!activeTourRef.current || !!toursBlockedRef.current,
       startTour: launchContextualTour,
     });
     return () => {
@@ -166,6 +188,12 @@ export function useCommGuidedTours(
       );
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!opts.toursBlocked && !activeTour) {
+      flushContextualTourQueue();
+    }
+  }, [opts.toursBlocked, activeTour]);
 
   const setActiveTourStep = (step: number) => {
     setActiveTour((prev) => {
@@ -180,11 +208,12 @@ export function useCommGuidedTours(
         tour: activeTour.tour,
         stepIndex: activeTour.step,
         onStep: setActiveTourStep,
-        onDone: () => finishTour(activeTour.tour.id),
+        onDone: () => finishTour(activeTourRef.current?.tour.id),
         advanceContext: {
           isObserving: opts.isObserving,
           bagOpen: opts.bagOpen,
           commandOpen: opts.commandOpen,
+          itemInfoOpen: opts.itemInfoOpen,
         },
       })
     : null;

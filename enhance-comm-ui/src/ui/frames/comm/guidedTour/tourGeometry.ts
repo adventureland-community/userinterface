@@ -23,6 +23,12 @@ export type ConnectorLine = {
 
 type Box = SpotlightRect;
 
+/** Min spotlight when a parked panel exists but content is still empty (0×0). */
+const PANEL_DOCK_FALLBACK: Record<string, { w: number; h: number }> = {
+  itemInfo: { w: 240, h: 160 },
+  buffInfo: { w: 240, h: 160 },
+};
+
 export function measureTarget(
   selector: string,
   kind: TourTargetKind = "region",
@@ -30,32 +36,50 @@ export function measureTarget(
   if (typeof document === "undefined") return null;
   const parts = selector.split(",").map((s) => s.trim());
   const pad = kind === "button" ? 10 : 12;
-  for (let i = 0; i < parts.length; i++) {
-    const sel = parts[i];
-    if (!sel) continue;
-    if (kind === "button") {
+
+  if (kind === "button") {
+    for (let i = 0; i < parts.length; i++) {
+      const sel = parts[i];
+      if (!sel) continue;
       const el = document.querySelector(sel) as HTMLElement | null;
       const rect = el ? rectForElement(el, pad) : null;
       if (rect) return rect;
-      continue;
     }
+    return null;
+  }
+
+  // Panel/region: union every match so related chrome (player + target frames,
+  // including absolute buff overlays) shares one spotlight.
+  let top = Infinity;
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  let found = false;
+
+  for (let i = 0; i < parts.length; i++) {
+    const sel = parts[i];
+    if (!sel) continue;
     const nodes = document.querySelectorAll(sel);
-    let best: SpotlightRect | null = null;
-    let bestArea = 0;
     for (let j = 0; j < nodes.length; j++) {
       const el = nodes[j] as HTMLElement;
       const rect =
         kind === "panel" ? rectForPanelShell(el, pad) : rectForElement(el, pad);
       if (!rect) continue;
-      const area = rect.width * rect.height;
-      if (area > bestArea) {
-        best = rect;
-        bestArea = area;
-      }
+      found = true;
+      top = Math.min(top, rect.top);
+      left = Math.min(left, rect.left);
+      right = Math.max(right, rect.left + rect.width);
+      bottom = Math.max(bottom, rect.top + rect.height);
     }
-    if (best) return best;
   }
-  return null;
+
+  if (!found) return null;
+  return {
+    top,
+    left,
+    width: right - left,
+    height: bottom - top,
+  };
 }
 
 function rectForElement(el: HTMLElement, pad: number): SpotlightRect | null {
@@ -82,17 +106,49 @@ function rectForElement(el: HTMLElement, pad: number): SpotlightRect | null {
   };
 }
 
-/** Panel shell + immediate children + known inventory mount (no full-tree walk). */
+/**
+ * Empty parked panels (item/buff info before first open) still have a layout
+ * anchor — synthesize a dock footprint so tours can spotlight them.
+ */
+function rectForEmptyPanelDock(
+  el: HTMLElement,
+  pad: number,
+): SpotlightRect | null {
+  const r = el.getBoundingClientRect();
+  if (!Number.isFinite(r.top) || !Number.isFinite(r.left)) return null;
+  const panelId = el.getAttribute("data-panel") || "";
+  const dock =
+    PANEL_DOCK_FALLBACK[panelId] ||
+    (el.classList.contains("comm-pos-panel") ? { w: 200, h: 120 } : null);
+  if (!dock) return null;
+  return {
+    top: Math.max(4, r.top - pad),
+    left: Math.max(4, r.left - pad),
+    width: dock.w + pad * 2,
+    height: dock.h + pad * 2,
+  };
+}
+
+/** Panel shell + immediate children + known overflow mounts (no full-tree walk). */
 function rectForPanelShell(el: HTMLElement, pad: number): SpotlightRect | null {
   const base = rectForElement(el, pad);
-  if (!base) return null;
+  if (!base) return rectForEmptyPanelDock(el, pad);
   let top = base.top + pad;
   let left = base.left + pad;
   let right = left + base.width - pad * 2;
   let bottom = top + base.height - pad * 2;
 
+  // Absolute/overflow content that sits outside the shell box-sizing footprint.
   const mounts = el.querySelectorAll(
-    "#bottomleftcorner, .comm-bag-mount, .CodeMirror, .ecu-command-editor",
+    [
+      "#bottomleftcorner",
+      ".comm-bag-mount",
+      ".CodeMirror",
+      ".ecu-command-editor",
+      ".comm-fx-overlay",
+      ".comm-fx-row",
+      ".comm-info-dialog-slot",
+    ].join(", "),
   );
   for (let i = 0; i < mounts.length; i++) {
     const r = (mounts[i] as HTMLElement).getBoundingClientRect();

@@ -1,11 +1,6 @@
 import { getG } from "../../host/al";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
-import {
-  addTint,
-  getTint,
-  itemContainer,
-  rebindTint,
-} from "../../host/icons";
+import { addTint, getTint, itemContainer, rebindTint } from "../../host/icons";
 import { getReact, e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import {
@@ -77,8 +72,7 @@ export function buildEntityEffects(entity: EntityLike): BuiltEffect[] {
     }
 
     const prop = G?.conditions?.[condition];
-    const promoted =
-      PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
+    const promoted = PROMOTED_HARD_CC_IDS.indexOf(condition) !== -1;
     // Duration debuffs (cursed, poisoned, …) have prop.skin but no ui flag — show on unit frames.
     const debuffIcon = !!(prop && prop.debuff && prop.skin);
     if (
@@ -90,8 +84,7 @@ export function buildEntityEffects(entity: EntityLike): BuiltEffect[] {
       continue;
     }
     if (entity.type === "monster" && condition === "poisonous") continue;
-    const skin =
-      actual.skin || prop?.skin || hardCcFallbackSkin(condition);
+    const skin = actual.skin || prop?.skin || hardCcFallbackSkin(condition);
     if (!skin) continue;
     out.push({
       id: condition,
@@ -154,10 +147,7 @@ function loaderId(hostClass: string): string {
 }
 
 /** Update stock `.iqui` stack digit without rebuilding the icon (preserves skidloader). */
-function syncStackBadge(
-  wrap: HTMLElement,
-  stacks: number | undefined,
-): void {
+function syncStackBadge(wrap: HTMLElement, stacks: number | undefined): void {
   const root = wrap.firstElementChild as HTMLElement | null;
   if (!root) return;
   let badge = root.querySelector(".iqui") as HTMLElement | null;
@@ -167,9 +157,8 @@ function syncStackBadge(
       badge.className = "iqui";
       // Stock places `.iqui` on the absolute overflow host that holds the art.
       const host =
-        (root.querySelector(
-          "div[style*='overflow']",
-        ) as HTMLElement | null) || root;
+        (root.querySelector("div[style*='overflow']") as HTMLElement | null) ||
+        root;
       host.appendChild(badge);
     }
     badge.textContent = String(stacks);
@@ -182,11 +171,7 @@ function effectTooltip(effect: BuiltEffect, remainingMs?: number): string {
   const parts: string[] = [];
   const label = effect.name || effect.id;
   const kind =
-    effect.type === "skill"
-      ? "Skill"
-      : effect.debuff
-        ? "Debuff"
-        : "Buff";
+    effect.type === "skill" ? "Skill" : effect.debuff ? "Debuff" : "Buff";
   parts.push(`${label} (${kind})`);
   const ms =
     remainingMs != null && remainingMs > 0
@@ -288,7 +273,9 @@ function shouldShowRemainingLabel(
 function ensureSkidLoader(wrap: HTMLElement, rid: string): HTMLElement | null {
   const root = wrap.firstElementChild as HTMLElement | null;
   const host =
-    (wrap.querySelector("div[style*='position: absolute']") as HTMLElement | null) ||
+    (wrap.querySelector(
+      "div[style*='position: absolute']",
+    ) as HTMLElement | null) ||
     (wrap.querySelector("div[style*='overflow']") as HTMLElement | null) ||
     root;
   if (!host) return null;
@@ -555,19 +542,9 @@ export function EffectIcon(props: {
         return;
       }
       if (!(startedAtRef.current > 0)) {
-        startedAtRef.current = buffStartedAt(
-          effect,
-          next,
-          now,
-          "restart",
-          0,
-        );
+        startedAtRef.current = buffStartedAt(effect, next, now, "restart", 0);
       } else {
-        const maxSpan = Math.max(
-          SKILL_UI_SPAN_MS,
-          effect.ms || 0,
-          next - now,
-        );
+        const maxSpan = Math.max(SKILL_UI_SPAN_MS, effect.ms || 0, next - now);
         if (next - startedAtRef.current > maxSpan) {
           startedAtRef.current = next - maxSpan;
         }
@@ -635,7 +612,8 @@ export function EffectIcon(props: {
 
   const onClick = clickable
     ? (ev: any) => {
-        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        if (ev && typeof ev.stopPropagation === "function")
+          ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
         info.openCondition(entity, effect.id);
       }
@@ -652,12 +630,14 @@ export function EffectIcon(props: {
       onClick,
       onMouseDown: clickable
         ? (ev: any) => {
-            if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+            if (ev && typeof ev.stopPropagation === "function")
+              ev.stopPropagation();
           }
         : undefined,
       onPointerDown: clickable
         ? (ev: any) => {
-            if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+            if (ev && typeof ev.stopPropagation === "function")
+              ev.stopPropagation();
           }
         : undefined,
       style: {
@@ -746,17 +726,12 @@ export function EffectsRow(props: EffectsRowProps): any {
   const padBottom = compact ? "2px" : "4px";
   const minHeight = iconSize + (compact ? 8 : 14) + 16;
   const maxVisible =
-    typeof props.maxVisible === "number"
-      ? props.maxVisible
-      : compact
-        ? 4
-        : 0;
+    typeof props.maxVisible === "number" ? props.maxVisible : compact ? 4 : 0;
   const overflow =
     maxVisible > 0 && effects.length > maxVisible
       ? effects.length - maxVisible
       : 0;
-  const shown =
-    overflow > 0 ? effects.slice(0, maxVisible) : effects;
+  const shown = overflow > 0 ? effects.slice(0, maxVisible) : effects;
   const hidden = overflow > 0 ? effects.slice(maxVisible) : [];
   const overflowTitle = hidden
     .map((ef) => {
@@ -773,6 +748,7 @@ export function EffectsRow(props: EffectsRowProps): any {
       // Do NOT key by effects list — that remounts every icon when one buff
       // is added/removed. EffectIcon keys already identity each buff.
       className: "comm-fx-row" + (compact ? " is-compact" : ""),
+      "data-ecu-tour": "buff-icons",
       style: {
         display: "flex",
         flexDirection: "row",

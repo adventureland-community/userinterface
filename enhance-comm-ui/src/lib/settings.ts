@@ -19,6 +19,7 @@ import {
 } from "./viewport";
 import { normalizePartyBuffMode, type PartyBuffMode } from "./partyBuffMode";
 import type { PartyFocus, PartyScope } from "./settingsFocus";
+import { latestChangelogId } from "./changelog";
 
 export {
   resolvePartyFocus,
@@ -147,6 +148,11 @@ export type CommUiSettings = {
   meterClosedInstances?: MeterInstance[];
   /** First-run Comm UI setup wizard completed. */
   setupWizardDone?: boolean;
+  /**
+   * Last changelog entry id the user dismissed (What's New).
+   * Independent of setupWizardDone — upgrades can resurface What's New.
+   */
+  changelogSeenId?: string | null;
   /** Per-tour completion flags (spotlight tours). */
   toursCompleted?: Record<string, boolean>;
 };
@@ -197,6 +203,7 @@ const DEFAULTS: CommUiSettings = {
   metersHidden: false,
   meterClosedInstances: [],
   setupWizardDone: false,
+  changelogSeenId: null,
   toursCompleted: {},
 };
 
@@ -445,11 +452,21 @@ function migrate(parsed: any): CommUiSettings {
     setupWizardDone:
       !!parsed.setupWizardDone ||
       !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
+    changelogSeenId:
+      typeof parsed.changelogSeenId === "string"
+        ? parsed.changelogSeenId
+        : null,
     toursCompleted:
       parsed.toursCompleted && typeof parsed.toursCompleted === "object"
         ? (parsed.toursCompleted as Record<string, boolean>)
         : {},
   };
+
+  // Legacy: finished/skipped intro before changelog tracking — treat current
+  // as already seen so they only get What's New on the next ship.
+  if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
+    next.changelogSeenId = latestChangelogId();
+  }
 
   if (!parsed.combatView && parsed.combatViews) {
     if (parsed.combatViews.table) next.combatView = "table";

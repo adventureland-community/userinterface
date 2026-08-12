@@ -4,15 +4,19 @@
 
 import { getReact } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
+import { findEntity } from "../../queries/entities";
 import { hasVisibleCoopMeter } from "../../meters/meterCoopSignal";
 import { runMeterQuery } from "../../meters/meterQuery";
 import type { MeterInstance } from "../../meters/meterTypes";
 import { combatSignals } from "../../queries/combatSignals";
-import { isTourCompleted } from "../frames/comm/guidedTour/tourCatalog";
+import { isTourCompleted, PAPERDOLL_TOUR_ID } from "../frames/comm/guidedTour/tourCatalog";
 import { tryContextualTour } from "../frames/comm/guidedTour/contextualTour";
+import { entityHasTradeSlots } from "../frames/comm/guidedTour/paperdollTrade";
 
 export type ContextualTourContext = {
-  selectedEntity: EntityLike | null | undefined;
+  /** Paperdoll selection id (opens EntityInfo). */
+  selectedEntity: string | null | undefined;
+  buffInfoOpen: boolean;
   meterCount: number;
   entities: EntityLike[];
   meterInstances: MeterInstance[];
@@ -29,6 +33,15 @@ type TriggerDef = {
   ) => boolean;
 };
 
+function selectedEntity(ctx: ContextualTourContext): EntityLike | undefined {
+  if (!ctx.selectedEntity) return undefined;
+  return findEntity(ctx.entities, ctx.selectedEntity);
+}
+
+function selectedHasTradeSlots(ctx: ContextualTourContext): boolean {
+  return entityHasTradeSlots(selectedEntity(ctx));
+}
+
 const TRIGGERS: TriggerDef[] = [
   {
     id: "meters",
@@ -36,9 +49,30 @@ const TRIGGERS: TriggerDef[] = [
     when: (ctx, prev) => prev != null && ctx.meterCount > prev.meterCount,
   },
   {
-    id: "inspect",
-    delayMs: 250,
-    when: (ctx, prev) => !!ctx.selectedEntity && !prev?.selectedEntity,
+    // First paperdoll open while the base tour is incomplete.
+    id: PAPERDOLL_TOUR_ID,
+    delayMs: 300,
+    when: (ctx, prev) =>
+      !!ctx.selectedEntity &&
+      !prev?.selectedEntity &&
+      !isTourCompleted(PAPERDOLL_TOUR_ID),
+  },
+  {
+    // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
+    id: "paperdoll-trade",
+    delayMs: 320,
+    when: (ctx, prev) => {
+      if (isTourCompleted("paperdoll-trade")) return false;
+      const now = !!ctx.selectedEntity && selectedHasTradeSlots(ctx);
+      if (!now) return false;
+      const was = !!prev?.selectedEntity && selectedHasTradeSlots(prev);
+      return !was;
+    },
+  },
+  {
+    id: "buff-info",
+    delayMs: 280,
+    when: (ctx, prev) => ctx.buffInfoOpen && !prev?.buffInfoOpen,
   },
   {
     id: "combat",
@@ -105,11 +139,18 @@ export function useContextualTourTriggers(ctx: ContextualTourContext): void {
 
     prevRef.current = {
       selectedEntity: ctx.selectedEntity,
+      buffInfoOpen: ctx.buffInfoOpen,
       meterCount: ctx.meterCount,
       entities: ctx.entities,
       meterInstances: ctx.meterInstances,
     };
-  }, [ctx.selectedEntity, ctx.meterCount, ctx.entities, ctx.meterInstances]);
+  }, [
+    ctx.selectedEntity,
+    ctx.buffInfoOpen,
+    ctx.meterCount,
+    ctx.entities,
+    ctx.meterInstances,
+  ]);
 }
 
 export function triggerMeterToolbarTour(): void {

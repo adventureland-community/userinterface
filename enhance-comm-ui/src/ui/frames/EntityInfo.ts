@@ -1,4 +1,9 @@
-import { e } from "../../host/react";
+/**
+ * Paperdoll / entity inspect panel.
+ * Keeps last-known data when the unit leaves vision instead of closing.
+ */
+
+import { getReact, e } from "../../host/react";
 import { setXTarget } from "../../host/icons";
 import { classColors } from "../../lib/colors";
 import { getPercent } from "../../lib/format";
@@ -21,8 +26,36 @@ export type EntityInfoProps = {
   observing?: EntityLike | null;
 };
 
+/** Shallow snapshot so departing entities do not wipe cached paperdoll fields. */
+function snapshotEntity(ent: EntityLike): EntityLike {
+  const copy: EntityLike = Object.assign({}, ent);
+  if (ent.slots) copy.slots = Object.assign({}, ent.slots);
+  if (ent.s) copy.s = Object.assign({}, ent.s);
+  return copy;
+}
+
 export function EntityInfo(props: EntityInfoProps): any {
-  const entity = findEntity(props.entities, props.selectedEntity);
+  const React = getReact();
+  const selectedId =
+    props.selectedEntity != null && props.selectedEntity !== ""
+      ? String(props.selectedEntity)
+      : "";
+
+  const live = selectedId ? findEntity(props.entities, selectedId) : undefined;
+
+  // Retain last in-vision snapshot so the paperdoll stays open out of range.
+  const cacheRef = React.useRef(null as EntityLike | null);
+  if (!selectedId) {
+    cacheRef.current = null;
+  } else if (live) {
+    cacheRef.current = snapshotEntity(live);
+  } else if (cacheRef.current && String(cacheRef.current.id) !== selectedId) {
+    cacheRef.current = null;
+  }
+
+  const entity = live || cacheRef.current;
+  const stale = !live && !!entity;
+
   if (!entity) {
     if (!props.layoutEdit) return null;
     return e(PaperdollDummy);
@@ -39,6 +72,7 @@ export function EntityInfo(props: EntityInfoProps): any {
     (entity.type === "monster" ? ` #${entity.id}` : "");
   const watching = props.observing;
   const compare =
+    !stale &&
     isPlayer &&
     watching &&
     String(watching.id) !== String(entity.id) &&
@@ -52,13 +86,14 @@ export function EntityInfo(props: EntityInfoProps): any {
   return e(
     "div",
     {
-      className: "comm-paperdoll",
+      className: "comm-paperdoll" + (stale ? " comm-paperdoll-stale" : ""),
       style: Object.assign({}, PAPERDOLL_SHELL, {
-        border: `2px solid ${accent}`,
+        border: stale ? "2px dashed #c9a227" : `2px solid ${accent}`,
+        opacity: stale ? 0.92 : 1,
       }),
       onClick: (ev: any) => {
         ev.stopPropagation();
-        setXTarget(entity);
+        if (!stale) setXTarget(entity);
       },
     },
     e(
@@ -77,7 +112,7 @@ export function EntityInfo(props: EntityInfoProps): any {
         style: {
           width: "8px",
           height: "8px",
-          background: accent,
+          background: stale ? "#c9a227" : accent,
           flexShrink: 0,
         },
       }),
@@ -123,6 +158,23 @@ export function EntityInfo(props: EntityInfoProps): any {
         "×",
       ),
     ),
+    stale
+      ? e(
+          "div",
+          {
+            style: {
+              padding: "6px 10px",
+              background: "rgba(201, 162, 39, 0.14)",
+              borderBottom: "1px solid rgba(201, 162, 39, 0.35)",
+              color: "#e8c96a",
+              fontSize: TYPE.body,
+              lineHeight: 1.35,
+              ...PIXEL_TEXT,
+            },
+          },
+          "Out of vision — last known data. Updates when they return.",
+        )
+      : null,
     e(
       "div",
       {

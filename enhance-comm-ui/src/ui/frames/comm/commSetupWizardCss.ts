@@ -16,45 +16,77 @@ const CSS = `
   pointer-events: auto;
 }
 .ecu-comm-wiz {
-  min-width: min(520px, 94vw);
-  max-width: 560px;
-  padding: 22px 24px 18px;
+  min-width: min(560px, 94vw);
+  max-width: 720px;
+  padding: 26px 28px 22px;
   background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
   border: 1px solid rgba(0, 0, 0, 0.85);
   outline: 1px solid rgba(232, 201, 106, 0.35);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
   color: #eee;
-  font-size: 17px;
+  font-size: 22px;
 }
 .ecu-comm-wiz-logo {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: normal;
   color: #ffd28a;
   letter-spacing: 0.02em;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   text-shadow: none;
 }
 .ecu-comm-wiz h3 {
-  margin: 0 0 10px;
-  font-size: 20px;
+  margin: 0 0 12px;
+  font-size: 28px;
   color: #fff;
   font-weight: normal;
 }
 .ecu-comm-wiz p {
-  margin: 0 0 16px;
-  color: rgba(220, 210, 210, 0.88);
-  font-size: 17px;
-  line-height: 1.5;
+  margin: 0 0 18px;
+  color: rgba(220, 210, 210, 0.92);
+  font-size: 22px;
+  line-height: 1.55;
 }
 .ecu-comm-wiz-list {
-  margin: 0 0 16px;
-  padding-left: 20px;
-  color: rgba(220, 210, 210, 0.88);
-  font-size: 17px;
+  margin: 0 0 18px;
+  padding-left: 22px;
+  color: rgba(220, 210, 210, 0.92);
+  font-size: 22px;
   line-height: 1.55;
 }
 .ecu-comm-wiz-list li {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+.ecu-comm-wiz-caps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+.ecu-comm-wiz-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 2px solid rgba(232, 201, 106, 0.55);
+  box-sizing: border-box;
+  min-height: 0;
+}
+.ecu-comm-wiz-cap-label {
+  color: #ffd28a;
+  font-size: 19px;
+  line-height: 1.25;
+}
+.ecu-comm-wiz-cap-detail {
+  color: rgba(220, 210, 210, 0.9);
+  font-size: 17px;
+  line-height: 1.4;
+}
+@media (max-width: 560px) {
+  .ecu-comm-wiz-caps {
+    grid-template-columns: 1fr;
+  }
 }
 .ecu-comm-wiz-grid {
   display: flex;
@@ -67,12 +99,12 @@ const CSS = `
   align-items: center;
   gap: 10px;
   color: #ddd;
-  font-size: 17px;
+  font-size: 22px;
   cursor: pointer;
 }
 .ecu-comm-wiz-grid label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 .ecu-comm-wiz-btn {
@@ -80,8 +112,8 @@ const CSS = `
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: #eee;
-  padding: 10px 18px;
-  font-size: 17px;
+  padding: 12px 20px;
+  font-size: 22px;
   font-weight: normal;
   border-radius: 2px;
   align-self: flex-start;
@@ -107,18 +139,18 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 18px;
-  padding-top: 14px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(220, 210, 210, 0.72);
-  font-size: 15px;
+  font-size: 20px;
 }
 .ecu-comm-wiz-skip {
   cursor: pointer;
   background: transparent;
   border: none;
   color: rgba(220, 210, 210, 0.85);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: normal;
   padding: 4px 0;
   text-decoration: underline;
@@ -126,13 +158,31 @@ const CSS = `
 .ecu-comm-wiz-skip:hover {
   color: #fff;
 }
+.ecu-comm-wiz-changelog-block {
+  margin: 0 0 4px;
+}
+.ecu-comm-wiz-changelog-ver {
+  color: #ffd28a;
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+.ecu-comm-wiz-changelog-sep {
+  height: 1px;
+  margin: 8px 0 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
 `;
 
 export function injectCommSetupWizardCss(): void {
-  if (injected || typeof document === "undefined") return;
-  const el = document.createElement("style");
-  el.setAttribute("data-ecu-comm-wiz", "1");
+  if (typeof document === "undefined") return;
+  let el = document.querySelector(
+    "style[data-ecu-comm-wiz]",
+  ) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.setAttribute("data-ecu-comm-wiz", "1");
+    document.head.appendChild(el);
+  }
   el.textContent = CSS;
-  document.head.appendChild(el);
   injected = true;
 }

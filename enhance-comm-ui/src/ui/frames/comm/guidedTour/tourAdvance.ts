@@ -3,12 +3,16 @@
  */
 
 export type TourAdvanceWhen =
-  "observing" | "bagOpen" | "commandOpen" | "playerFrame";
+  | "observing"
+  | "bagOpen"
+  | "commandOpen"
+  | "itemInfoOpen";
 
 export type TourAdvanceContext = {
   isObserving: boolean;
   bagOpen: boolean;
   commandOpen: boolean;
+  itemInfoOpen: boolean;
 };
 
 export function tourAdvanceReady(
@@ -23,15 +27,8 @@ export function tourAdvanceReady(
       return ctx.bagOpen;
     case "commandOpen":
       return ctx.commandOpen;
-    case "playerFrame": {
-      if (!ctx.isObserving) return false;
-      const el = document.querySelector(
-        ".comm-pos-panel.comm-pos-playerFrame",
-      ) as HTMLElement | null;
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return r.width > 8 && r.height > 8;
-    }
+    case "itemInfoOpen":
+      return ctx.itemInfoOpen;
     default: {
       const _exhaustive: never = when;
       return _exhaustive;

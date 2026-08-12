@@ -2076,6 +2076,56 @@ var EnhanceCommUI = (() => {
     }
   }
 
+  // src/lib/changelog.ts
+  var FEATURE_OVERVIEW = [
+    {
+      label: "Movable panels",
+      detail: "Drag panels and save layouts."
+    },
+    {
+      label: "Player & target",
+      detail: "HP, resources, and buffs for who you watch and their target."
+    },
+    {
+      label: "Party roster",
+      detail: "Party chips with vitals and buffs."
+    },
+    {
+      label: "Character & server",
+      detail: "Reworked chips, Follow / Bag / Command, richer server picker."
+    },
+    {
+      label: "Command snippets",
+      detail: "Save and rerun CODE presets."
+    },
+    {
+      label: "Damage meters",
+      detail: "Add windows for damage, healing, coop, and more."
+    },
+    {
+      label: "Boss bars",
+      detail: "Large boss HP with click-to-target."
+    }
+  ];
+  var CHANGELOG = [
+    {
+      id: "0.7.0",
+      title: "0.7",
+      items: FEATURE_OVERVIEW
+    }
+  ];
+  function latestChangelogId() {
+    return CHANGELOG[0] ? CHANGELOG[0].id : "";
+  }
+  function unseenChangelogEntries(seenId) {
+    if (!CHANGELOG.length) return [];
+    if (!seenId) return [CHANGELOG[0]];
+    const idx = CHANGELOG.findIndex((entry) => entry.id === seenId);
+    if (idx < 0) return [CHANGELOG[0]];
+    if (idx === 0) return [];
+    return CHANGELOG.slice(0, idx);
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
@@ -2131,6 +2181,7 @@ var EnhanceCommUI = (() => {
     metersHidden: false,
     meterClosedInstances: [],
     setupWizardDone: false,
+    changelogSeenId: null,
     toursCompleted: {}
   };
   function resolveLayoutProfile(mode, detected) {
@@ -2319,8 +2370,12 @@ var EnhanceCommUI = (() => {
       ).slice(0, 10) : [],
       metersHidden: !!parsed.metersHidden,
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
+      changelogSeenId: typeof parsed.changelogSeenId === "string" ? parsed.changelogSeenId : null,
       toursCompleted: parsed.toursCompleted && typeof parsed.toursCompleted === "object" ? parsed.toursCompleted : {}
     };
+    if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
+      next.changelogSeenId = latestChangelogId();
+    }
     if (!parsed.combatView && parsed.combatViews) {
       if (parsed.combatViews.table) next.combatView = "table";
       else if (parsed.combatViews.bars) next.combatView = "bars";
@@ -5145,7 +5200,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/host/infoDialog/dismiss.ts
-  var BOUND = "__ecuDialogDismissBound";
+  var HANDLER = "__ecuDialogDismissHandler";
   var layoutEditing = false;
   function setInfoDialogLayoutEditing(editing) {
     layoutEditing = !!editing;
@@ -5161,23 +5216,29 @@ var EnhanceCommUI = (() => {
     if (!el.closest) return false;
     return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
   }
+  function isTourChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("[data-ecu-tour-portal]") || el.closest(".ecu-tour-root") || el.closest(".ecu-tour-card"));
+  }
+  function onDialogDismissPointerDown(ev) {
+    if (layoutEditing) return;
+    if (!isOpen("buff") && !isOpen("item")) return;
+    const t = ev.target;
+    if (!t) return;
+    const el = t;
+    if (isInfoDialogChrome(el) || isInfoSource(el) || isTourChrome(el)) {
+      return;
+    }
+    clearInfoHost("buff");
+    clearInfoHost("item");
+  }
   function installDialogDismiss() {
-    if (window[BOUND]) return;
-    window[BOUND] = true;
-    document.addEventListener(
-      "pointerdown",
-      (ev) => {
-        if (layoutEditing) return;
-        if (!isOpen("buff") && !isOpen("item")) return;
-        const t = ev.target;
-        if (!t) return;
-        const el = t;
-        if (isInfoDialogChrome(el) || isInfoSource(el)) return;
-        clearInfoHost("buff");
-        clearInfoHost("item");
-      },
-      true
-    );
+    const prev = window[HANDLER];
+    if (prev) {
+      document.removeEventListener("pointerdown", prev, true);
+    }
+    window[HANDLER] = onDialogDismissPointerDown;
+    document.addEventListener("pointerdown", onDialogDismissPointerDown, true);
   }
 
   // src/host/infoDialog/patches.ts
@@ -5415,11 +5476,11 @@ var EnhanceCommUI = (() => {
   };
 
   // src/host/keyboardPolicy.ts
-  var BOUND2 = "__ecuCommKeyboardBound";
+  var BOUND = "__ecuCommKeyboardBound";
   function installCommKeyboardPolicy(handlers) {
     window.__ecuCommKeyHandlers = handlers;
-    if (window[BOUND2]) return;
-    window[BOUND2] = true;
+    if (window[BOUND]) return;
+    window[BOUND] = true;
     document.addEventListener("keydown", (ev) => {
       const key = ev.key || "";
       const code = ev.keyCode;
@@ -6183,6 +6244,22 @@ var EnhanceCommUI = (() => {
     textShadow: "none"
   };
 
+  // src/ui/frames/comm/commWizCaps.ts
+  function capabilityCaps(items) {
+    return e(
+      "div",
+      { className: "ecu-comm-wiz-caps" },
+      ...items.map(
+        (cap, i) => e(
+          "div",
+          { key: `cap-${i}`, className: "ecu-comm-wiz-cap" },
+          e("div", { className: "ecu-comm-wiz-cap-label" }, cap.label),
+          e("div", { className: "ecu-comm-wiz-cap-detail" }, cap.detail)
+        )
+      )
+    );
+  }
+
   // src/ui/frames/comm/commSetupWizardCss.ts
   var injected = false;
   var CSS2 = `
@@ -6197,45 +6274,77 @@ var EnhanceCommUI = (() => {
   pointer-events: auto;
 }
 .ecu-comm-wiz {
-  min-width: min(520px, 94vw);
-  max-width: 560px;
-  padding: 22px 24px 18px;
+  min-width: min(560px, 94vw);
+  max-width: 720px;
+  padding: 26px 28px 22px;
   background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
   border: 1px solid rgba(0, 0, 0, 0.85);
   outline: 1px solid rgba(232, 201, 106, 0.35);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
   color: #eee;
-  font-size: 17px;
+  font-size: 22px;
 }
 .ecu-comm-wiz-logo {
-  font-size: 28px;
+  font-size: 36px;
   font-weight: normal;
   color: #ffd28a;
   letter-spacing: 0.02em;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   text-shadow: none;
 }
 .ecu-comm-wiz h3 {
-  margin: 0 0 10px;
-  font-size: 20px;
+  margin: 0 0 12px;
+  font-size: 28px;
   color: #fff;
   font-weight: normal;
 }
 .ecu-comm-wiz p {
-  margin: 0 0 16px;
-  color: rgba(220, 210, 210, 0.88);
-  font-size: 17px;
-  line-height: 1.5;
+  margin: 0 0 18px;
+  color: rgba(220, 210, 210, 0.92);
+  font-size: 22px;
+  line-height: 1.55;
 }
 .ecu-comm-wiz-list {
-  margin: 0 0 16px;
-  padding-left: 20px;
-  color: rgba(220, 210, 210, 0.88);
-  font-size: 17px;
+  margin: 0 0 18px;
+  padding-left: 22px;
+  color: rgba(220, 210, 210, 0.92);
+  font-size: 22px;
   line-height: 1.55;
 }
 .ecu-comm-wiz-list li {
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+}
+.ecu-comm-wiz-caps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+.ecu-comm-wiz-cap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 2px solid rgba(232, 201, 106, 0.55);
+  box-sizing: border-box;
+  min-height: 0;
+}
+.ecu-comm-wiz-cap-label {
+  color: #ffd28a;
+  font-size: 19px;
+  line-height: 1.25;
+}
+.ecu-comm-wiz-cap-detail {
+  color: rgba(220, 210, 210, 0.9);
+  font-size: 17px;
+  line-height: 1.4;
+}
+@media (max-width: 560px) {
+  .ecu-comm-wiz-caps {
+    grid-template-columns: 1fr;
+  }
 }
 .ecu-comm-wiz-grid {
   display: flex;
@@ -6248,12 +6357,12 @@ var EnhanceCommUI = (() => {
   align-items: center;
   gap: 10px;
   color: #ddd;
-  font-size: 17px;
+  font-size: 22px;
   cursor: pointer;
 }
 .ecu-comm-wiz-grid label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 .ecu-comm-wiz-btn {
@@ -6261,8 +6370,8 @@ var EnhanceCommUI = (() => {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: #eee;
-  padding: 10px 18px;
-  font-size: 17px;
+  padding: 12px 20px;
+  font-size: 22px;
   font-weight: normal;
   border-radius: 2px;
   align-self: flex-start;
@@ -6288,18 +6397,18 @@ var EnhanceCommUI = (() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 18px;
-  padding-top: 14px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(220, 210, 210, 0.72);
-  font-size: 15px;
+  font-size: 20px;
 }
 .ecu-comm-wiz-skip {
   cursor: pointer;
   background: transparent;
   border: none;
   color: rgba(220, 210, 210, 0.85);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: normal;
   padding: 4px 0;
   text-decoration: underline;
@@ -6307,13 +6416,31 @@ var EnhanceCommUI = (() => {
 .ecu-comm-wiz-skip:hover {
   color: #fff;
 }
+.ecu-comm-wiz-changelog-block {
+  margin: 0 0 4px;
+}
+.ecu-comm-wiz-changelog-ver {
+  color: #ffd28a;
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+.ecu-comm-wiz-changelog-sep {
+  height: 1px;
+  margin: 8px 0 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
 `;
   function injectCommSetupWizardCss() {
-    if (injected || typeof document === "undefined") return;
-    const el = document.createElement("style");
-    el.setAttribute("data-ecu-comm-wiz", "1");
+    if (typeof document === "undefined") return;
+    let el = document.querySelector(
+      "style[data-ecu-comm-wiz]"
+    );
+    if (!el) {
+      el = document.createElement("style");
+      el.setAttribute("data-ecu-comm-wiz", "1");
+      document.head.appendChild(el);
+    }
     el.textContent = CSS2;
-    document.head.appendChild(el);
     injected = true;
   }
 
@@ -6337,6 +6464,14 @@ var EnhanceCommUI = (() => {
       { className: "ecu-comm-wiz-list" },
       ...items.map((text, i) => e("li", { key: `li-${i}` }, text))
     );
+  }
+  function markIntroComplete() {
+    patchSettings({
+      setupWizardDone: true,
+      changelogSeenId: latestChangelogId()
+    });
+    patchMeterAppearance({ testBars: false });
+    clearIntroStep();
   }
   function readIntroStep() {
     try {
@@ -6363,16 +6498,14 @@ var EnhanceCommUI = (() => {
   function CommUISetupWizard(props) {
     injectCommSetupWizardCss();
     const finish = () => {
-      patchSettings({ setupWizardDone: true });
-      patchMeterAppearance({ testBars: false });
-      clearIntroStep();
+      markIntroComplete();
       props.onDone();
     };
     const steps = [
       {
-        title: "Welcome",
-        body: "This overlay replaces the stock /comm panel. Everything is movable \u2014 party frames, map info, threat, combat meters, and more. A spotlight tour can walk you through each area when you're ready.",
-        extra: null,
+        title: "Overview",
+        body: "",
+        extra: capabilityCaps(FEATURE_OVERVIEW),
         actions: e(
           "div",
           { className: "ecu-comm-wiz-actions" },
@@ -6384,7 +6517,7 @@ var EnhanceCommUI = (() => {
         body: "Spotlight tours dim the screen and highlight one area at a time. You stay in control \u2014 Next, Back, or Skip at any point.",
         extra: featureList([
           "Recommended: short intro (~17 steps) \u2014 observe chrome, overlay essentials, PDPS",
-          "Deeper tours appear once when you use layout, meters, inspect, and more",
+          "Deeper tours appear once when you use layout, meters, paperdoll, buffs, and more",
           "Replay the intro anytime from the Intro button on the control strip"
         ]),
         actions: e(
@@ -6395,8 +6528,7 @@ var EnhanceCommUI = (() => {
           wizBtn(
             "Start spotlight tour",
             () => {
-              clearIntroStep();
-              patchSettings({ setupWizardDone: true });
+              markIntroComplete();
               props.onStartTour();
             },
             true
@@ -6417,7 +6549,7 @@ var EnhanceCommUI = (() => {
         },
         e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
         e("h3", null, cur.title),
-        e("p", null, cur.body),
+        cur.body ? e("p", null, cur.body) : null,
         cur.extra || null,
         cur.actions,
         e(
@@ -6429,6 +6561,53 @@ var EnhanceCommUI = (() => {
             "Skip intro"
           ),
           `${props.step + 1} / ${steps.length}`
+        )
+      )
+    );
+  }
+
+  // src/ui/frames/comm/CommUIWhatsNew.ts
+  function CommUIWhatsNew(props) {
+    injectCommSetupWizardCss();
+    const dismiss = () => {
+      patchSettings({ changelogSeenId: latestChangelogId() });
+      props.onDone();
+    };
+    const entries = props.entries;
+    const heading = entries.length === 1 ? `What's new in ${entries[0].title}` : "What's new";
+    return e(
+      "div",
+      { className: "ecu-comm-wiz-backdrop" },
+      e(
+        "div",
+        {
+          className: "ecu-comm-wiz",
+          style: PIXEL_TEXT,
+          onMouseDown: (ev) => ev.stopPropagation()
+        },
+        e("div", { className: "ecu-comm-wiz-logo" }, "Comm UI"),
+        e("h3", null, heading),
+        ...entries.map(
+          (entry, ei) => e(
+            "div",
+            { key: entry.id, className: "ecu-comm-wiz-changelog-block" },
+            entries.length > 1 ? e("div", { className: "ecu-comm-wiz-changelog-ver" }, entry.title) : null,
+            capabilityCaps(entry.items),
+            ei < entries.length - 1 ? e("div", { className: "ecu-comm-wiz-changelog-sep" }) : null
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-comm-wiz-actions" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-comm-wiz-btn primary",
+              onClick: dismiss
+            },
+            "Got it"
+          )
         )
       )
     );
@@ -6519,13 +6698,48 @@ var EnhanceCommUI = (() => {
 .ecu-tour-card p {
   margin: 0 0 14px;
   color: rgba(220, 210, 210, 0.92);
+  font-size: 19px;
   line-height: 1.55;
 }
 .ecu-tour-card .ecu-tour-hint {
   color: #e8b86a;
-  font-size: 18px;
-  line-height: 1.45;
+  font-size: 19px;
+  line-height: 1.55;
   margin: 0 0 14px;
+}
+.ecu-tour-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: rgba(232, 201, 106, 0.12);
+  border: 1px solid rgba(232, 201, 106, 0.42);
+  border-left: 4px solid #ffd28a;
+  box-sizing: border-box;
+  animation: ecu-tour-cta-pulse 2.2s ease-in-out infinite;
+}
+.ecu-tour-cta-label {
+  color: #ffd28a;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.ecu-tour-cta-text {
+  color: #ffe8b8;
+  font-size: 20px;
+  line-height: 1.4;
+}
+@keyframes ecu-tour-cta-pulse {
+  0%, 100% {
+    border-left-color: #ffd28a;
+    background: rgba(232, 201, 106, 0.1);
+  }
+  50% {
+    border-left-color: #ffe4aa;
+    background: rgba(232, 201, 106, 0.18);
+  }
 }
 .ecu-tour-actions {
   display: flex;
@@ -6570,6 +6784,15 @@ var EnhanceCommUI = (() => {
 }
 .ecu-tour-btn:disabled {
   cursor: default;
+  opacity: 0.38;
+  color: rgba(220, 210, 210, 0.55);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+.ecu-tour-btn.primary:disabled {
+  color: rgba(232, 201, 106, 0.4);
+  border-color: rgba(232, 201, 106, 0.16);
+  background: rgba(232, 201, 106, 0.05);
 }
 .ecu-tour-foot {
   margin-top: 12px;
@@ -6579,10 +6802,6 @@ var EnhanceCommUI = (() => {
 `;
   function injectGuidedTourCss() {
     if (typeof document === "undefined") return;
-    if (injected2) {
-      const existing = document.querySelector("style[data-ecu-tour]");
-      if (existing) return;
-    }
     let el = document.querySelector(
       "style[data-ecu-tour]"
     );
@@ -6596,35 +6815,51 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/frames/comm/guidedTour/tourGeometry.ts
+  var PANEL_DOCK_FALLBACK = {
+    itemInfo: { w: 240, h: 160 },
+    buffInfo: { w: 240, h: 160 }
+  };
   function measureTarget(selector, kind = "region") {
     if (typeof document === "undefined") return null;
     const parts = selector.split(",").map((s) => s.trim());
     const pad2 = kind === "button" ? 10 : 12;
-    for (let i = 0; i < parts.length; i++) {
-      const sel = parts[i];
-      if (!sel) continue;
-      if (kind === "button") {
+    if (kind === "button") {
+      for (let i = 0; i < parts.length; i++) {
+        const sel = parts[i];
+        if (!sel) continue;
         const el = document.querySelector(sel);
         const rect = el ? rectForElement(el, pad2) : null;
         if (rect) return rect;
-        continue;
       }
+      return null;
+    }
+    let top = Infinity;
+    let left = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+    let found = false;
+    for (let i = 0; i < parts.length; i++) {
+      const sel = parts[i];
+      if (!sel) continue;
       const nodes = document.querySelectorAll(sel);
-      let best = null;
-      let bestArea = 0;
       for (let j = 0; j < nodes.length; j++) {
         const el = nodes[j];
         const rect = kind === "panel" ? rectForPanelShell(el, pad2) : rectForElement(el, pad2);
         if (!rect) continue;
-        const area = rect.width * rect.height;
-        if (area > bestArea) {
-          best = rect;
-          bestArea = area;
-        }
+        found = true;
+        top = Math.min(top, rect.top);
+        left = Math.min(left, rect.left);
+        right = Math.max(right, rect.left + rect.width);
+        bottom = Math.max(bottom, rect.top + rect.height);
       }
-      if (best) return best;
     }
-    return null;
+    if (!found) return null;
+    return {
+      top,
+      left,
+      width: right - left,
+      height: bottom - top
+    };
   }
   function rectForElement(el, pad2) {
     const r = el.getBoundingClientRect();
@@ -6649,15 +6884,36 @@ var EnhanceCommUI = (() => {
       height: bottom - top + pad2 * 2
     };
   }
+  function rectForEmptyPanelDock(el, pad2) {
+    const r = el.getBoundingClientRect();
+    if (!Number.isFinite(r.top) || !Number.isFinite(r.left)) return null;
+    const panelId = el.getAttribute("data-panel") || "";
+    const dock = PANEL_DOCK_FALLBACK[panelId] || (el.classList.contains("comm-pos-panel") ? { w: 200, h: 120 } : null);
+    if (!dock) return null;
+    return {
+      top: Math.max(4, r.top - pad2),
+      left: Math.max(4, r.left - pad2),
+      width: dock.w + pad2 * 2,
+      height: dock.h + pad2 * 2
+    };
+  }
   function rectForPanelShell(el, pad2) {
     const base = rectForElement(el, pad2);
-    if (!base) return null;
+    if (!base) return rectForEmptyPanelDock(el, pad2);
     let top = base.top + pad2;
     let left = base.left + pad2;
     let right = left + base.width - pad2 * 2;
     let bottom = top + base.height - pad2 * 2;
     const mounts = el.querySelectorAll(
-      "#bottomleftcorner, .comm-bag-mount, .CodeMirror, .ecu-command-editor"
+      [
+        "#bottomleftcorner",
+        ".comm-bag-mount",
+        ".CodeMirror",
+        ".ecu-command-editor",
+        ".comm-fx-overlay",
+        ".comm-fx-row",
+        ".comm-info-dialog-slot"
+      ].join(", ")
     );
     for (let i = 0; i < mounts.length; i++) {
       const r = mounts[i].getBoundingClientRect();
@@ -6865,7 +7121,7 @@ var EnhanceCommUI = (() => {
 
   // src/ui/frames/comm/guidedTour/tourCatalog.ts
   var INTRO_TOUR_ID = "intro";
-  var INTRO_ALSO_COMPLETES = ["inspect"];
+  var PAPERDOLL_TOUR_ID = "paperdoll-v2";
   var INTRO_TOUR = {
     id: INTRO_TOUR_ID,
     label: "Comm UI essentials",
@@ -6885,10 +7141,9 @@ var EnhanceCommUI = (() => {
         section: "Observe",
         title: "Player & target frames",
         body: "HP, buffs, and resources for whoever you observe and whoever they are targeting.",
-        target: ".comm-pos-panel.comm-pos-playerFrame",
+        target: ".comm-pos-panel.comm-pos-playerFrame, .comm-pos-panel.comm-pos-targetFrame",
         targetKind: "panel",
-        missingHint: "Frames appear once someone is selected.",
-        advanceWhen: "playerFrame"
+        missingHint: "Frames appear once someone is selected."
       },
       {
         section: "Observe",
@@ -7014,7 +7269,7 @@ var EnhanceCommUI = (() => {
       {
         section: "Overlay",
         title: "You're set",
-        body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, and combat panels \u2014 each only once.",
+        body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, trade slots, buffs, and combat panels \u2014 each only once.",
         target: ".comm-pos-toggles",
         targetKind: "region"
       }
@@ -7147,19 +7402,79 @@ var EnhanceCommUI = (() => {
       }
     ]
   };
-  var INSPECT_TOUR = {
-    id: "inspect",
-    label: "Inspect",
+  var PAPERDOLL_TOUR = {
+    id: PAPERDOLL_TOUR_ID,
+    label: "Paperdoll",
     steps: [
       {
         title: "Paperdoll",
-        body: "Gear, stats, and equipment for whoever you clicked. Close with \xD7 or Esc.",
-        target: ".comm-pos-paperdoll"
+        body: "Vitals, stats, and gear for whoever you clicked. Opens from a unit frame, party chip, or world click. Close with \xD7 or Esc.",
+        target: ".comm-pos-paperdoll",
+        targetKind: "panel",
+        missingHint: "Click a player frame, party member, or entity to open the paperdoll."
       },
       {
-        title: "Buff & item reference",
-        body: "Floating info panels cross-reference buffs and items when you hover icons elsewhere.",
-        target: ".comm-pos-buffInfo"
+        title: "Gear",
+        body: "Equipped slots live here. Click any filled slot to open Item info \u2014 the tour continues when you do.",
+        target: '[data-ecu-tour="paperdoll-gear"]',
+        targetKind: "region",
+        missingHint: "Click a filled gear slot on the paperdoll.",
+        advanceWhen: "itemInfoOpen"
+      },
+      {
+        title: "Item info",
+        body: "Stock item details park in this panel \u2014 stats, lore, grade. It stays here so you can compare while looking at gear.",
+        target: ".comm-pos-itemInfo",
+        targetKind: "panel",
+        missingHint: "Click a filled gear slot if Item info is not open yet."
+      }
+    ]
+  };
+  var PAPERDOLL_TRADE_TOUR = {
+    id: "paperdoll-trade",
+    label: "Paperdoll \xB7 trade slots",
+    steps: [
+      {
+        title: "Trade slots",
+        body: "This paperdoll has a TRADE row under gear \u2014 shop listings with prices (merchants and player stands).",
+        target: '[data-ecu-tour="paperdoll-trade"]',
+        targetKind: "region",
+        missingHint: "Inspect a merchant or player stand that has trade items listed."
+      },
+      {
+        title: "Inspect a listing",
+        body: "Click a trade item to open Item info \u2014 same panel as equipped gear. The tour continues when you do.",
+        target: '[data-ecu-tour="paperdoll-trade"]',
+        targetKind: "region",
+        missingHint: "Click a filled trade slot.",
+        advanceWhen: "itemInfoOpen"
+      },
+      {
+        title: "Item info",
+        body: "Listing details park here so you can compare while browsing the paperdoll.",
+        target: ".comm-pos-itemInfo",
+        targetKind: "panel",
+        missingHint: "Click a filled trade slot if Item info is not open yet."
+      }
+    ]
+  };
+  var BUFF_INFO_TOUR = {
+    id: "buff-info",
+    label: "Buff info",
+    steps: [
+      {
+        title: "Buff info",
+        body: "Stock condition details for the buff you clicked \u2014 what it does and how long it lasts.",
+        target: ".comm-pos-buffInfo",
+        targetKind: "panel",
+        missingHint: "Click a buff icon on a unit or party frame."
+      },
+      {
+        title: "Where to click",
+        body: "Buff and condition icons on player/target frames and party chips open this panel. Click another icon anytime to switch.",
+        target: '[data-ecu-tour="buff-icons"]',
+        targetKind: "region",
+        missingHint: "Buff icons appear under unit frames and on party chips when someone has effects."
       }
     ]
   };
@@ -7170,7 +7485,9 @@ var EnhanceCommUI = (() => {
     METER_TOOLBAR_TOUR,
     COOP_TOUR,
     COMBAT_TOUR,
-    INSPECT_TOUR
+    PAPERDOLL_TOUR,
+    PAPERDOLL_TRADE_TOUR,
+    BUFF_INFO_TOUR
   ];
   var INTRO_TOUR_CHAIN = [INTRO_TOUR_ID];
   function tourById(id) {
@@ -7185,13 +7502,7 @@ var EnhanceCommUI = (() => {
   }
   function markTourCompleted(id) {
     const prev = getSettings().toursCompleted || {};
-    const next = { ...prev, [id]: true };
-    if (id === INTRO_TOUR_ID) {
-      for (let i = 0; i < INTRO_ALSO_COMPLETES.length; i++) {
-        next[INTRO_ALSO_COMPLETES[i]] = true;
-      }
-    }
-    patchSettings({ toursCompleted: next });
+    patchSettings({ toursCompleted: { ...prev, [id]: true } });
   }
   function migrateLegacyTourFlags() {
     const done = getSettings().toursCompleted || {};
@@ -7203,6 +7514,23 @@ var EnhanceCommUI = (() => {
     }
     if (done.toggles && done.party && done.meters && !done[INTRO_TOUR_ID]) {
       next[INTRO_TOUR_ID] = true;
+      changed = true;
+    }
+    if (!done[PAPERDOLL_TOUR_ID] && done["paperdoll-gear-v1"]) {
+      next[PAPERDOLL_TOUR_ID] = true;
+      changed = true;
+    }
+    if (done.paperdoll != null) {
+      delete next.paperdoll;
+      changed = true;
+    }
+    if (done["paperdoll-gear-v1"] != null) {
+      delete next["paperdoll-gear-v1"];
+      changed = true;
+    }
+    if (done.merchant && !done["paperdoll-trade"]) {
+      next["paperdoll-trade"] = true;
+      delete next.merchant;
       changed = true;
     }
     if (changed) patchSettings({ toursCompleted: next });
@@ -7218,15 +7546,8 @@ var EnhanceCommUI = (() => {
         return ctx.bagOpen;
       case "commandOpen":
         return ctx.commandOpen;
-      case "playerFrame": {
-        if (!ctx.isObserving) return false;
-        const el = document.querySelector(
-          ".comm-pos-panel.comm-pos-playerFrame"
-        );
-        if (!el) return false;
-        const r = el.getBoundingClientRect();
-        return r.width > 8 && r.height > 8;
-      }
+      case "itemInfoOpen":
+        return ctx.itemInfoOpen;
       default: {
         const _exhaustive = when;
         return _exhaustive;
@@ -7240,12 +7561,17 @@ var EnhanceCommUI = (() => {
     const ReactDOM = getReactDOM();
     const [host2, setHost] = React.useState(null);
     React.useEffect(() => {
+      const orphans = document.querySelectorAll("[data-ecu-tour-portal]");
+      for (let i = 0; i < orphans.length; i++) {
+        const node = orphans[i];
+        if (node.parentNode) node.parentNode.removeChild(node);
+      }
       const el = document.createElement("div");
       el.setAttribute("data-ecu-tour-portal", "1");
       document.body.appendChild(el);
       setHost(el);
       return () => {
-        document.body.removeChild(el);
+        if (el.parentNode) el.parentNode.removeChild(el);
         setHost(null);
       };
     }, []);
@@ -7260,13 +7586,20 @@ var EnhanceCommUI = (() => {
     const classes = ["ecu-tour-btn"];
     if (opts == null ? void 0 : opts.primary) classes.push("primary");
     if (opts == null ? void 0 : opts.hidden) classes.push("is-slot-hidden");
+    const disabled = !!(opts == null ? void 0 : opts.disabled);
     return e(
       "button",
       {
         type: "button",
         className: classes.join(" "),
-        disabled: !!(opts == null ? void 0 : opts.disabled),
-        onClick
+        disabled,
+        onClick: (ev) => {
+          if (disabled) return;
+          if (ev && typeof ev.stopPropagation === "function") {
+            ev.stopPropagation();
+          }
+          onClick();
+        }
       },
       label
     );
@@ -7282,11 +7615,23 @@ var EnhanceCommUI = (() => {
       h: typeof window !== "undefined" ? window.innerHeight : 1080
     }));
     const advancedRef = React.useRef(false);
+    const doneRef = React.useRef(false);
     const step = props.tour.steps[props.stepIndex];
     injectGuidedTourCss();
+    const finish = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      markTourCompleted(props.tour.id);
+      props.onDone();
+    };
+    const finishRef = React.useRef(finish);
+    finishRef.current = finish;
     React.useEffect(() => {
       advancedRef.current = false;
     }, [props.stepIndex, step == null ? void 0 : step.advanceWhen]);
+    React.useEffect(() => {
+      doneRef.current = false;
+    }, [props.tour.id]);
     React.useLayoutEffect(() => {
       const el = cardRef.current;
       if (!el) return;
@@ -7354,9 +7699,9 @@ var EnhanceCommUI = (() => {
         if (!tourAdvanceReady(step.advanceWhen, props.advanceContext)) return;
         advancedRef.current = true;
         advanceTimer = window.setTimeout(() => {
+          if (doneRef.current) return;
           if (props.stepIndex >= props.tour.steps.length - 1) {
-            markTourCompleted(props.tour.id);
-            props.onDone();
+            finishRef.current();
             return;
           }
           props.onStep(props.stepIndex + 1);
@@ -7373,17 +7718,19 @@ var EnhanceCommUI = (() => {
       props.stepIndex,
       props.advanceContext.isObserving,
       props.advanceContext.bagOpen,
-      props.advanceContext.commandOpen
+      props.advanceContext.commandOpen,
+      props.advanceContext.itemInfoOpen
     ]);
     React.useEffect(() => {
-      if (!step) props.onDone();
+      if (!step) finishRef.current();
     }, [step]);
     if (!step) return null;
     const isLast = props.stepIndex >= props.tour.steps.length - 1;
+    const waitForAction = !!step.advanceWhen;
     const next = () => {
+      if (waitForAction) return;
       if (isLast) {
-        markTourCompleted(props.tour.id);
-        props.onDone();
+        finish();
         return;
       }
       props.onStep(props.stepIndex + 1);
@@ -7392,12 +7739,12 @@ var EnhanceCommUI = (() => {
       if (props.stepIndex > 0) props.onStep(props.stepIndex - 1);
     };
     const skip = () => {
-      markTourCompleted(props.tour.id);
-      props.onDone();
+      finish();
     };
     const shades = shadePanels(spot, viewport.w, viewport.h);
     const connector = spot != null ? tourConnector(cardPos, CARD_W, cardH, spot) : null;
-    const showHint = !!step.missingHint && (!spot || !!step.advanceWhen);
+    const missingOnly = !!step.missingHint && !spot && !waitForAction;
+    const ctaText = step.missingHint || (waitForAction ? "Complete the highlighted action to continue." : "");
     return e(
       "div",
       { className: "ecu-tour-root" },
@@ -7465,7 +7812,12 @@ var EnhanceCommUI = (() => {
         },
         e("h3", null, step.title),
         e("p", null, step.body),
-        showHint ? e("p", { className: "ecu-tour-hint" }, step.missingHint) : null,
+        waitForAction ? e(
+          "div",
+          { className: "ecu-tour-cta" },
+          e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
+          e("div", { className: "ecu-tour-cta-text" }, ctaText)
+        ) : missingOnly ? e("p", { className: "ecu-tour-hint" }, step.missingHint) : null,
         e(
           "div",
           { className: "ecu-tour-actions" },
@@ -7481,7 +7833,11 @@ var EnhanceCommUI = (() => {
             "div",
             { className: "ecu-tour-actions-right" },
             tourBtn("Skip tour", skip),
-            tourBtn(isLast ? "Done" : "Next", next, { primary: true })
+            // Action steps auto-advance — Next stays visible but disabled.
+            tourBtn(isLast ? "Done" : "Next", next, {
+              primary: true,
+              disabled: waitForAction
+            })
           )
         ),
         e(
@@ -7498,19 +7854,40 @@ var EnhanceCommUI = (() => {
 
   // src/ui/frames/comm/guidedTour/contextualTour.ts
   var host = null;
+  var pendingQueue = [];
   function registerContextualTourHost(next) {
     host = next;
   }
   function contextualToursAllowed() {
     return !!getSettings().setupWizardDone;
   }
+  function enqueuePending(id) {
+    for (let i = 0; i < pendingQueue.length; i++) {
+      if (pendingQueue[i] === id) return;
+    }
+    pendingQueue.push(id);
+  }
+  function flushContextualTourQueue() {
+    if (!host || !contextualToursAllowed()) return;
+    if (host.isBlocked()) return;
+    while (pendingQueue.length > 0) {
+      const id = pendingQueue.shift();
+      if (isTourCompleted(id)) continue;
+      if (host.isBlocked() || !host.startTour(id)) {
+        enqueuePending(id);
+        return;
+      }
+      return;
+    }
+  }
   function tryContextualTour(id, delayMs) {
     if (!host || !contextualToursAllowed()) return;
     if (isTourCompleted(id)) return;
     const run = () => {
-      if (!host || host.isBlocked()) return;
-      if (isTourCompleted(id)) return;
-      host.startTour(id);
+      if (!host || isTourCompleted(id)) return;
+      if (host.isBlocked() || !host.startTour(id)) {
+        enqueuePending(id);
+      }
     };
     if (delayMs != null && delayMs > 0) {
       window.setTimeout(run, delayMs);
@@ -7622,10 +7999,10 @@ var EnhanceCommUI = (() => {
     );
     const sessionRef = React.useRef(null);
     const activeTourRef = React.useRef(activeTour);
-    const setupWizardOpenRef = React.useRef(opts.setupWizardOpen);
+    const toursBlockedRef = React.useRef(opts.toursBlocked);
     const optsRef = React.useRef(opts);
     activeTourRef.current = activeTour;
-    setupWizardOpenRef.current = opts.setupWizardOpen;
+    toursBlockedRef.current = opts.toursBlocked;
     optsRef.current = opts;
     const effectHostRef = React.useRef(null);
     if (!effectHostRef.current) {
@@ -7647,6 +8024,7 @@ var EnhanceCommUI = (() => {
     }
     const finishTour = (finishedId) => {
       const cur = activeTourRef.current;
+      const id = finishedId || (cur == null ? void 0 : cur.tour.id);
       endTourSession(
         sessionRef.current,
         cur == null ? void 0 : cur.tour,
@@ -7654,40 +8032,54 @@ var EnhanceCommUI = (() => {
         effectHostRef.current
       );
       sessionRef.current = null;
+      activeTourRef.current = null;
+      setActiveTour(null);
+      if (!id) {
+        flushContextualTourQueue();
+        return;
+      }
       let found = false;
       for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
         if (found) {
-          const id = INTRO_TOUR_CHAIN[i];
-          if (isTourCompleted(id)) continue;
-          const tour = tourById(id);
-          if (!tour || !effectHostRef.current) return;
+          const nextId = INTRO_TOUR_CHAIN[i];
+          if (isTourCompleted(nextId)) continue;
+          const tour = tourById(nextId);
+          if (!tour || !effectHostRef.current) {
+            flushContextualTourQueue();
+            return;
+          }
           sessionRef.current = beginTourSession(effectHostRef.current, tour);
           sessionRef.current.applyStep(0, null);
-          setActiveTour({ tour, step: 0 });
+          const next = { tour, step: 0 };
+          activeTourRef.current = next;
+          setActiveTour(next);
           return;
         }
-        if (INTRO_TOUR_CHAIN[i] === finishedId) found = true;
+        if (INTRO_TOUR_CHAIN[i] === id) found = true;
       }
-      setActiveTour(null);
+      flushContextualTourQueue();
     };
     const launchTour = (id) => {
       var _a, _b;
       const tour = tourById(id);
-      const host2 = effectHostRef.current;
-      if (!tour || !host2) return;
+      const effectHost = effectHostRef.current;
+      if (!tour || !effectHost) return;
       endTourSession(
         sessionRef.current,
         (_a = activeTourRef.current) == null ? void 0 : _a.tour,
         (_b = activeTourRef.current) == null ? void 0 : _b.step,
-        host2
+        effectHost
       );
-      sessionRef.current = beginTourSession(host2, tour);
+      sessionRef.current = beginTourSession(effectHost, tour);
       sessionRef.current.applyStep(0, null);
-      setActiveTour({ tour, step: 0 });
+      const next = { tour, step: 0 };
+      activeTourRef.current = next;
+      setActiveTour(next);
     };
     const launchContextualTour = (id) => {
-      if (activeTourRef.current || setupWizardOpenRef.current) return;
+      if (activeTourRef.current || toursBlockedRef.current) return false;
       launchTour(id);
+      return true;
     };
     const startIntroTour = (force) => {
       optsRef.current.setSetupWizardOpen(false);
@@ -7706,7 +8098,7 @@ var EnhanceCommUI = (() => {
     React.useEffect(() => {
       migrateLegacyTourFlags();
       registerContextualTourHost({
-        isBlocked: () => !!activeTourRef.current || !!setupWizardOpenRef.current,
+        isBlocked: () => !!activeTourRef.current || !!toursBlockedRef.current,
         startTour: launchContextualTour
       });
       return () => {
@@ -7720,6 +8112,11 @@ var EnhanceCommUI = (() => {
         );
       };
     }, []);
+    React.useEffect(() => {
+      if (!opts.toursBlocked && !activeTour) {
+        flushContextualTourQueue();
+      }
+    }, [opts.toursBlocked, activeTour]);
     const setActiveTourStep = (step) => {
       setActiveTour((prev) => {
         if (!prev || !sessionRef.current) return prev;
@@ -7731,11 +8128,15 @@ var EnhanceCommUI = (() => {
       tour: activeTour.tour,
       stepIndex: activeTour.step,
       onStep: setActiveTourStep,
-      onDone: () => finishTour(activeTour.tour.id),
+      onDone: () => {
+        var _a;
+        return finishTour((_a = activeTourRef.current) == null ? void 0 : _a.tour.id);
+      },
       advanceContext: {
         isObserving: opts.isObserving,
         bagOpen: opts.bagOpen,
-        commandOpen: opts.commandOpen
+        commandOpen: opts.commandOpen,
+        itemInfoOpen: opts.itemInfoOpen
       }
     }) : null;
     return {
@@ -8480,7 +8881,27 @@ var EnhanceCommUI = (() => {
     return "Current";
   }
 
+  // src/ui/frames/comm/guidedTour/paperdollTrade.ts
+  function entityHasTradeSlots(entity) {
+    if (!entity || !entity.slots) return false;
+    const slots = entity.slots;
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const name = keys[i];
+      if (name.indexOf("trade") !== 0) continue;
+      if (slots[name]) return true;
+    }
+    return false;
+  }
+
   // src/ui/hooks/useContextualTourTriggers.ts
+  function selectedEntity(ctx) {
+    if (!ctx.selectedEntity) return void 0;
+    return findEntity(ctx.entities, ctx.selectedEntity);
+  }
+  function selectedHasTradeSlots(ctx) {
+    return entityHasTradeSlots(selectedEntity(ctx));
+  }
   var TRIGGERS = [
     {
       id: "meters",
@@ -8488,9 +8909,27 @@ var EnhanceCommUI = (() => {
       when: (ctx, prev) => prev != null && ctx.meterCount > prev.meterCount
     },
     {
-      id: "inspect",
-      delayMs: 250,
-      when: (ctx, prev) => !!ctx.selectedEntity && !(prev == null ? void 0 : prev.selectedEntity)
+      // First paperdoll open while the base tour is incomplete.
+      id: PAPERDOLL_TOUR_ID,
+      delayMs: 300,
+      when: (ctx, prev) => !!ctx.selectedEntity && !(prev == null ? void 0 : prev.selectedEntity) && !isTourCompleted(PAPERDOLL_TOUR_ID)
+    },
+    {
+      // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
+      id: "paperdoll-trade",
+      delayMs: 320,
+      when: (ctx, prev) => {
+        if (isTourCompleted("paperdoll-trade")) return false;
+        const now = !!ctx.selectedEntity && selectedHasTradeSlots(ctx);
+        if (!now) return false;
+        const was = !!(prev == null ? void 0 : prev.selectedEntity) && selectedHasTradeSlots(prev);
+        return !was;
+      }
+    },
+    {
+      id: "buff-info",
+      delayMs: 280,
+      when: (ctx, prev) => ctx.buffInfoOpen && !(prev == null ? void 0 : prev.buffInfoOpen)
     },
     {
       id: "combat",
@@ -8548,11 +8987,18 @@ var EnhanceCommUI = (() => {
       }
       prevRef.current = {
         selectedEntity: ctx.selectedEntity,
+        buffInfoOpen: ctx.buffInfoOpen,
         meterCount: ctx.meterCount,
         entities: ctx.entities,
         meterInstances: ctx.meterInstances
       };
-    }, [ctx.selectedEntity, ctx.meterCount, ctx.entities, ctx.meterInstances]);
+    }, [
+      ctx.selectedEntity,
+      ctx.buffInfoOpen,
+      ctx.meterCount,
+      ctx.entities,
+      ctx.meterInstances
+    ]);
   }
   function triggerMeterToolbarTour() {
     tryContextualTour("meter-toolbar", 200);
@@ -9483,7 +9929,7 @@ var EnhanceCommUI = (() => {
   }
   function useSelectionFromXTarget(snap) {
     const React = getReact();
-    const [selectedEntity, setSelectedEntityState] = React.useState(
+    const [selectedEntity2, setSelectedEntityState] = React.useState(
       void 0
     );
     const [focusUnitId, setFocusUnitId] = React.useState(
@@ -9530,7 +9976,7 @@ var EnhanceCommUI = (() => {
       setXTarget(null);
     };
     return {
-      selectedEntity,
+      selectedEntity: selectedEntity2,
       setSelectedEntity,
       closePaperdoll,
       focusUnitId,
@@ -18268,9 +18714,7 @@ button.ecu-meter-status-micro:hover,
       if (!badge) {
         badge = document.createElement("div");
         badge.className = "iqui";
-        const host2 = root.querySelector(
-          "div[style*='overflow']"
-        ) || root;
+        const host2 = root.querySelector("div[style*='overflow']") || root;
         host2.appendChild(badge);
       }
       badge.textContent = String(stacks);
@@ -18330,7 +18774,9 @@ button.ecu-meter-status-micro:hover,
   }
   function ensureSkidLoader(wrap, rid) {
     const root = wrap.firstElementChild;
-    const host2 = wrap.querySelector("div[style*='position: absolute']") || wrap.querySelector("div[style*='overflow']") || root;
+    const host2 = wrap.querySelector(
+      "div[style*='position: absolute']"
+    ) || wrap.querySelector("div[style*='overflow']") || root;
     if (!host2) return null;
     const selector = ".skidloader" + rid;
     let loader = wrap.querySelector(selector);
@@ -18535,19 +18981,9 @@ button.ecu-meter-status-micro:hover,
           return;
         }
         if (!(startedAtRef.current > 0)) {
-          startedAtRef.current = buffStartedAt(
-            effect,
-            next,
-            now,
-            "restart",
-            0
-          );
+          startedAtRef.current = buffStartedAt(effect, next, now, "restart", 0);
         } else {
-          const maxSpan = Math.max(
-            SKILL_UI_SPAN_MS,
-            effect.ms || 0,
-            next - now
-          );
+          const maxSpan = Math.max(SKILL_UI_SPAN_MS, effect.ms || 0, next - now);
           if (next - startedAtRef.current > maxSpan) {
             startedAtRef.current = next - maxSpan;
           }
@@ -18603,7 +19039,8 @@ button.ecu-meter-status-micro:hover,
       showRemainLabel ? remainingMs : void 0
     );
     const onClick = clickable ? (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.stopPropagation === "function")
+        ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       info.openCondition(entity, effect.id);
     } : void 0;
@@ -18617,10 +19054,12 @@ button.ecu-meter-status-micro:hover,
         title: tooltip,
         onClick,
         onMouseDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
         } : void 0,
         onPointerDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
         } : void 0,
         style: {
           position: "relative",
@@ -18711,6 +19150,7 @@ button.ecu-meter-status-micro:hover,
         // Do NOT key by effects list — that remounts every icon when one buff
         // is added/removed. EffectIcon keys already identity each buff.
         className: "comm-fx-row" + (compact ? " is-compact" : ""),
+        "data-ecu-tour": "buff-icons",
         style: {
           display: "flex",
           flexDirection: "row",
@@ -20195,7 +20635,8 @@ button.ecu-meter-status-micro:hover,
       }
     }
     const onSlotPress = clickable ? (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.stopPropagation === "function")
+        ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
       setXTarget(entity);
       info.openItem(entity, slotName, slot);
@@ -20210,7 +20651,8 @@ button.ecu-meter-status-micro:hover,
         title: clickable ? slot.name : slotName,
         onPointerDown: onSlotPress,
         onMouseDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
         } : void 0,
         style: {
           display: "flex",
@@ -20272,6 +20714,7 @@ button.ecu-meter-status-micro:hover,
         "div",
         {
           className: "comm-gear-grid",
+          "data-ecu-tour": "paperdoll-gear",
           style: {
             display: "flex",
             flexDirection: "column",
@@ -20316,6 +20759,7 @@ button.ecu-meter-status-micro:hover,
         tradeNames.length ? e(
           "div",
           {
+            "data-ecu-tour": "paperdoll-trade",
             style: {
               display: "flex",
               flexWrap: "wrap",
@@ -20725,9 +21169,27 @@ button.ecu-meter-status-micro:hover,
   }
 
   // src/ui/frames/EntityInfo.ts
+  function snapshotEntity(ent) {
+    const copy = Object.assign({}, ent);
+    if (ent.slots) copy.slots = Object.assign({}, ent.slots);
+    if (ent.s) copy.s = Object.assign({}, ent.s);
+    return copy;
+  }
   function EntityInfo(props) {
     var _a, _b, _c;
-    const entity = findEntity(props.entities, props.selectedEntity);
+    const React = getReact();
+    const selectedId = props.selectedEntity != null && props.selectedEntity !== "" ? String(props.selectedEntity) : "";
+    const live2 = selectedId ? findEntity(props.entities, selectedId) : void 0;
+    const cacheRef = React.useRef(null);
+    if (!selectedId) {
+      cacheRef.current = null;
+    } else if (live2) {
+      cacheRef.current = snapshotEntity(live2);
+    } else if (cacheRef.current && String(cacheRef.current.id) !== selectedId) {
+      cacheRef.current = null;
+    }
+    const entity = live2 || cacheRef.current;
+    const stale = !live2 && !!entity;
     if (!entity) {
       if (!props.layoutEdit) return null;
       return e(PaperdollDummy);
@@ -20736,7 +21198,7 @@ button.ecu-meter-status-micro:hover,
     const isPlayer = !!(entity.player || entity.type === "character");
     const title = `${entity.name || entity.id}` + (entity.mtype ? ` (${entity.mtype})` : "") + ` \xB7 ${(_a = entity.level) != null ? _a : 1}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const watching = props.observing;
-    const compare = isPlayer && watching && String(watching.id) !== String(entity.id) && !!(watching.player || watching.type === "character");
+    const compare = !stale && isPlayer && watching && String(watching.id) !== String(entity.id) && !!(watching.player || watching.type === "character");
     const close = () => {
       if (props.onClose) props.onClose();
       else setXTarget(null);
@@ -20744,13 +21206,14 @@ button.ecu-meter-status-micro:hover,
     return e(
       "div",
       {
-        className: "comm-paperdoll",
+        className: "comm-paperdoll" + (stale ? " comm-paperdoll-stale" : ""),
         style: Object.assign({}, PAPERDOLL_SHELL, {
-          border: `2px solid ${accent}`
+          border: stale ? "2px dashed #c9a227" : `2px solid ${accent}`,
+          opacity: stale ? 0.92 : 1
         }),
         onClick: (ev) => {
           ev.stopPropagation();
-          setXTarget(entity);
+          if (!stale) setXTarget(entity);
         }
       },
       e(
@@ -20769,7 +21232,7 @@ button.ecu-meter-status-micro:hover,
           style: {
             width: "8px",
             height: "8px",
-            background: accent,
+            background: stale ? "#c9a227" : accent,
             flexShrink: 0
           }
         }),
@@ -20815,6 +21278,21 @@ button.ecu-meter-status-micro:hover,
           "\xD7"
         )
       ),
+      stale ? e(
+        "div",
+        {
+          style: {
+            padding: "6px 10px",
+            background: "rgba(201, 162, 39, 0.14)",
+            borderBottom: "1px solid rgba(201, 162, 39, 0.35)",
+            color: "#e8c96a",
+            fontSize: TYPE.body,
+            lineHeight: 1.35,
+            ...PIXEL_TEXT
+          }
+        },
+        "Out of vision \u2014 last known data. Updates when they return."
+      ) : null,
       e(
         "div",
         {
@@ -23682,7 +24160,7 @@ button.ecu-meter-status-micro:hover,
       opacityFor
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
-    const { selectedEntity, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
+    const { selectedEntity: selectedEntity2, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
     const meters = useCommMeterInstances(layout);
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
@@ -23695,6 +24173,11 @@ button.ecu-meter-status-micro:hover,
     const [setupWizardOpen, setSetupWizardOpen] = React.useState(
       () => !getSettings().setupWizardDone
     );
+    const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
+      const s = getSettings();
+      if (!s.setupWizardDone) return [];
+      return unseenChangelogEntries(s.changelogSeenId);
+    });
     const [introStep, setIntroStep] = React.useState(() => readIntroStep());
     const setIntroStepPersist = (step) => {
       setIntroStep(step);
@@ -23713,11 +24196,12 @@ button.ecu-meter-status-micro:hover,
       setMeterAddOpen,
       setVisible,
       getPanelVisible: visible,
-      setupWizardOpen,
+      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
       setSetupWizardOpen,
       isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
       bagOpen,
-      commandOpen: visible("command")
+      commandOpen: visible("command"),
+      itemInfoOpen
     });
     const { startIntroTour, toggleLayoutEdit, tourOverlay } = guidedTours;
     React.useEffect(() => {
@@ -23727,7 +24211,7 @@ button.ecu-meter-status-micro:hover,
     React.useEffect(() => {
       updateCommKeyboardHandlers({
         clearPaperdoll: () => {
-          if (!selectedEntity && !focusUnitId) return false;
+          if (!selectedEntity2 && !focusUnitId) return false;
           closePaperdoll();
           return true;
         },
@@ -23742,7 +24226,7 @@ button.ecu-meter-status-micro:hover,
         }
       });
       return () => updateCommKeyboardHandlers({});
-    }, [selectedEntity, focusUnitId, closePaperdoll, toggleLayoutEdit]);
+    }, [selectedEntity2, focusUnitId, closePaperdoll, toggleLayoutEdit]);
     React.useEffect(() => {
       info.setLayoutEditing(layoutEdit);
       return () => info.setLayoutEditing(false);
@@ -23776,7 +24260,8 @@ button.ecu-meter-status-micro:hover,
     const combat = combatSignals(snap.entities);
     const onCrypt = getMapData(snap.entities).map === "crypt";
     useContextualTourTriggers({
-      selectedEntity,
+      selectedEntity: selectedEntity2,
+      buffInfoOpen,
       meterCount: meters.meterInstances.length,
       entities: snap.entities,
       meterInstances: meters.meterInstances
@@ -23792,7 +24277,7 @@ button.ecu-meter-status-micro:hover,
       onMove,
       setVisible,
       setOpacity,
-      selectedEntity,
+      selectedEntity: selectedEntity2,
       setSelectedEntity,
       closePaperdoll,
       focusUnitId,
@@ -23873,6 +24358,10 @@ button.ecu-meter-status-micro:hover,
         onStep: setIntroStepPersist,
         onDone: () => setSetupWizardOpen(false),
         onStartTour: () => startIntroTour(false)
+      }) : null,
+      !setupWizardOpen && whatsNewEntries.length > 0 ? e(CommUIWhatsNew, {
+        entries: whatsNewEntries,
+        onDone: () => setWhatsNewEntries([])
       }) : null,
       renderCommTogglesPanel(
         panelDeps,

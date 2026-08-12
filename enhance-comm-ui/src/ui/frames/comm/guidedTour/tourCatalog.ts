@@ -38,8 +38,8 @@ export type GuidedTourDef = {
 
 export const INTRO_TOUR_ID = "intro";
 
-/** Contextual tours fully covered by the intro — skip duplicate nags. */
-const INTRO_ALSO_COMPLETES = ["inspect"];
+/** Current paperdoll tour id (gear / item-info rewrite). */
+export const PAPERDOLL_TOUR_ID = "paperdoll-v2";
 
 const INTRO_TOUR: GuidedTourDef = {
   id: INTRO_TOUR_ID,
@@ -60,10 +60,10 @@ const INTRO_TOUR: GuidedTourDef = {
       section: "Observe",
       title: "Player & target frames",
       body: "HP, buffs, and resources for whoever you observe and whoever they are targeting.",
-      target: ".comm-pos-panel.comm-pos-playerFrame",
+      target:
+        ".comm-pos-panel.comm-pos-playerFrame, .comm-pos-panel.comm-pos-targetFrame",
       targetKind: "panel",
       missingHint: "Frames appear once someone is selected.",
-      advanceWhen: "playerFrame",
     },
     {
       section: "Observe",
@@ -192,7 +192,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Overlay",
       title: "You're set",
-      body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, and combat panels — each only once.",
+      body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, trade slots, buffs, and combat panels — each only once.",
       target: ".comm-pos-toggles",
       targetKind: "region",
     },
@@ -331,19 +331,91 @@ const COOP_TOUR: GuidedTourDef = {
   ],
 };
 
-const INSPECT_TOUR: GuidedTourDef = {
-  id: "inspect",
-  label: "Inspect",
+/** First open of the paperdoll (gear / stats inspect panel). */
+const PAPERDOLL_TOUR: GuidedTourDef = {
+  id: PAPERDOLL_TOUR_ID,
+  label: "Paperdoll",
   steps: [
     {
       title: "Paperdoll",
-      body: "Gear, stats, and equipment for whoever you clicked. Close with × or Esc.",
+      body: "Vitals, stats, and gear for whoever you clicked. Opens from a unit frame, party chip, or world click. Close with × or Esc.",
       target: ".comm-pos-paperdoll",
+      targetKind: "panel",
+      missingHint:
+        "Click a player frame, party member, or entity to open the paperdoll.",
     },
     {
-      title: "Buff & item reference",
-      body: "Floating info panels cross-reference buffs and items when you hover icons elsewhere.",
+      title: "Gear",
+      body: "Equipped slots live here. Click any filled slot to open Item info — the tour continues when you do.",
+      target: '[data-ecu-tour="paperdoll-gear"]',
+      targetKind: "region",
+      missingHint: "Click a filled gear slot on the paperdoll.",
+      advanceWhen: "itemInfoOpen",
+    },
+    {
+      title: "Item info",
+      body: "Stock item details park in this panel — stats, lore, grade. It stays here so you can compare while looking at gear.",
+      target: ".comm-pos-itemInfo",
+      targetKind: "panel",
+      missingHint: "Click a filled gear slot if Item info is not open yet.",
+    },
+  ],
+};
+
+/**
+ * Trade-slot add-on for the paperdoll — first time you inspect someone
+ * with filled trade listings (merchant or player stand). Independent of
+ * the base paperdoll tour: finishing paperdoll does not skip this.
+ */
+const PAPERDOLL_TRADE_TOUR: GuidedTourDef = {
+  id: "paperdoll-trade",
+  label: "Paperdoll · trade slots",
+  steps: [
+    {
+      title: "Trade slots",
+      body: "This paperdoll has a TRADE row under gear — shop listings with prices (merchants and player stands).",
+      target: '[data-ecu-tour="paperdoll-trade"]',
+      targetKind: "region",
+      missingHint:
+        "Inspect a merchant or player stand that has trade items listed.",
+    },
+    {
+      title: "Inspect a listing",
+      body: "Click a trade item to open Item info — same panel as equipped gear. The tour continues when you do.",
+      target: '[data-ecu-tour="paperdoll-trade"]',
+      targetKind: "region",
+      missingHint: "Click a filled trade slot.",
+      advanceWhen: "itemInfoOpen",
+    },
+    {
+      title: "Item info",
+      body: "Listing details park here so you can compare while browsing the paperdoll.",
+      target: ".comm-pos-itemInfo",
+      targetKind: "panel",
+      missingHint: "Click a filled trade slot if Item info is not open yet.",
+    },
+  ],
+};
+
+/** Buff / condition info — from unit or party frame icons. */
+const BUFF_INFO_TOUR: GuidedTourDef = {
+  id: "buff-info",
+  label: "Buff info",
+  steps: [
+    {
+      title: "Buff info",
+      body: "Stock condition details for the buff you clicked — what it does and how long it lasts.",
       target: ".comm-pos-buffInfo",
+      targetKind: "panel",
+      missingHint: "Click a buff icon on a unit or party frame.",
+    },
+    {
+      title: "Where to click",
+      body: "Buff and condition icons on player/target frames and party chips open this panel. Click another icon anytime to switch.",
+      target: '[data-ecu-tour="buff-icons"]',
+      targetKind: "region",
+      missingHint:
+        "Buff icons appear under unit frames and on party chips when someone has effects.",
     },
   ],
 };
@@ -355,7 +427,9 @@ export const GUIDED_TOURS: GuidedTourDef[] = [
   METER_TOOLBAR_TOUR,
   COOP_TOUR,
   COMBAT_TOUR,
-  INSPECT_TOUR,
+  PAPERDOLL_TOUR,
+  PAPERDOLL_TRADE_TOUR,
+  BUFF_INFO_TOUR,
 ];
 
 /** First-run spotlight from the setup wizard. */
@@ -380,13 +454,7 @@ export function isTourCompleted(id: string): boolean {
 
 export function markTourCompleted(id: string): void {
   const prev = getSettings().toursCompleted || {};
-  const next = { ...prev, [id]: true };
-  if (id === INTRO_TOUR_ID) {
-    for (let i = 0; i < INTRO_ALSO_COMPLETES.length; i++) {
-      next[INTRO_ALSO_COMPLETES[i]] = true;
-    }
-  }
-  patchSettings({ toursCompleted: next });
+  patchSettings({ toursCompleted: { ...prev, [id]: true } });
 }
 
 /** Map old completion flags from earlier tour shapes. */
@@ -400,6 +468,26 @@ export function migrateLegacyTourFlags(): void {
   }
   if (done.toggles && done.party && done.meters && !done[INTRO_TOUR_ID]) {
     next[INTRO_TOUR_ID] = true;
+    changed = true;
+  }
+  // Buff-era `paperdoll` → gear/item rewrite at PAPERDOLL_TOUR_ID.
+  // `paperdoll-gear-v1` meant they already saw the rewrite under the old id.
+  if (!done[PAPERDOLL_TOUR_ID] && done["paperdoll-gear-v1"]) {
+    next[PAPERDOLL_TOUR_ID] = true;
+    changed = true;
+  }
+  if (done.paperdoll != null) {
+    delete next.paperdoll;
+    changed = true;
+  }
+  if (done["paperdoll-gear-v1"] != null) {
+    delete next["paperdoll-gear-v1"];
+    changed = true;
+  }
+  // Renamed merchant tour → paperdoll-trade (trade slots only; not base paperdoll).
+  if (done.merchant && !done["paperdoll-trade"]) {
+    next["paperdoll-trade"] = true;
+    delete next.merchant;
     changed = true;
   }
   if (changed) patchSettings({ toursCompleted: next });

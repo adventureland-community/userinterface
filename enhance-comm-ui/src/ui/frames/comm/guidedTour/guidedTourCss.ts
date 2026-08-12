@@ -87,13 +87,48 @@ const CSS = `
 .ecu-tour-card p {
   margin: 0 0 14px;
   color: rgba(220, 210, 210, 0.92);
+  font-size: 19px;
   line-height: 1.55;
 }
 .ecu-tour-card .ecu-tour-hint {
   color: #e8b86a;
-  font-size: 18px;
-  line-height: 1.45;
+  font-size: 19px;
+  line-height: 1.55;
   margin: 0 0 14px;
+}
+.ecu-tour-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: rgba(232, 201, 106, 0.12);
+  border: 1px solid rgba(232, 201, 106, 0.42);
+  border-left: 4px solid #ffd28a;
+  box-sizing: border-box;
+  animation: ecu-tour-cta-pulse 2.2s ease-in-out infinite;
+}
+.ecu-tour-cta-label {
+  color: #ffd28a;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.ecu-tour-cta-text {
+  color: #ffe8b8;
+  font-size: 20px;
+  line-height: 1.4;
+}
+@keyframes ecu-tour-cta-pulse {
+  0%, 100% {
+    border-left-color: #ffd28a;
+    background: rgba(232, 201, 106, 0.1);
+  }
+  50% {
+    border-left-color: #ffe4aa;
+    background: rgba(232, 201, 106, 0.18);
+  }
 }
 .ecu-tour-actions {
   display: flex;
@@ -138,6 +173,15 @@ const CSS = `
 }
 .ecu-tour-btn:disabled {
   cursor: default;
+  opacity: 0.38;
+  color: rgba(220, 210, 210, 0.55);
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+.ecu-tour-btn.primary:disabled {
+  color: rgba(232, 201, 106, 0.4);
+  border-color: rgba(232, 201, 106, 0.16);
+  background: rgba(232, 201, 106, 0.05);
 }
 .ecu-tour-foot {
   margin-top: 12px;
@@ -148,10 +192,6 @@ const CSS = `
 
 export function injectGuidedTourCss(): void {
   if (typeof document === "undefined") return;
-  if (injected) {
-    const existing = document.querySelector("style[data-ecu-tour]");
-    if (existing) return;
-  }
   let el = document.querySelector(
     "style[data-ecu-tour]",
   ) as HTMLStyleElement | null;
