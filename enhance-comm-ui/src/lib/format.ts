@@ -83,6 +83,26 @@ export function getTimeUntil(dateString: string | undefined): string {
   return formatTime((target.getTime() - now.getTime()) / 1000);
 }
 
+/** Compact number for meter totals and bar labels (1.2k, 3.45M). */
+export function formatCompactNumber(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+  if (a >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  return String(Math.round(n));
+}
+
+/** Compact rate without unit suffix (1.2k, 45.0). */
+export function formatCompactRate(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return n.toFixed(1);
+}
+
+/** Compact rate with /s suffix for meter status readouts. */
+export function formatCompactRatePerSec(n: number): string {
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k/s";
+  return `${Math.round(n)}/s`;
+}
+
 /** AL servers use UTC-5/+1/+7 without DST. */
 export function getALServerTime(timeOffset: number | string | undefined): string {
   const offset = parseInt(String(timeOffset ?? 0), 10) || 0;
