@@ -21,16 +21,11 @@ export type PanelId =
   | "buffInfo"
   | "itemInfo"
   | "kills"
-  | "combat"
   | "playerFrame"
   | "targetFrame"
   | "bossBar"
   | "crypt"
   | "threat"
-  | "pdps"
-  | "hitDps"
-  | "coopV1"
-  | "coopV2"
   | "command"
   | "bag"
   | "toggles";
@@ -43,16 +38,11 @@ export const PANEL_IDS: PanelId[] = [
   "buffInfo",
   "itemInfo",
   "kills",
-  "combat",
   "playerFrame",
   "targetFrame",
   "bossBar",
   "crypt",
   "threat",
-  "pdps",
-  "hitDps",
-  "coopV1",
-  "coopV2",
   "command",
   "bag",
   "toggles",
@@ -66,20 +56,24 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   buffInfo: "Buff info",
   itemInfo: "Item info",
   kills: "Kills",
-  combat: "Combat",
   playerFrame: "Player frame",
   targetFrame: "Target frame",
   bossBar: "Boss bar",
   crypt: "Crypt progress",
   threat: "Threat",
-  pdps: "PDPS",
-  hitDps: "Hit DPS",
-  coopV1: "Coop V1",
-  coopV2: "Coop V2",
   command: "Command",
   bag: "Bag",
   toggles: "Layout",
 };
+
+/** Legacy meter panel ids — migrated into settings.meterInstances. */
+export const LEGACY_METER_PANEL_IDS = [
+  "combat",
+  "pdps",
+  "hitDps",
+  "coopV1",
+  "coopV2",
+] as const;
 
 /**
  * Desktop default from playtested export (floats rounded to clean %).
@@ -94,16 +88,11 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   buffInfo: { x: 0.8, y: 10, anchor: "tl" },
   itemInfo: { x: 16.8, y: 10, anchor: "tl" },
   kills: { x: 27, y: 99.2, anchor: "br" },
-  combat: { x: 95, y: 99.2, anchor: "br" },
   playerFrame: { x: 40.5, y: 86, anchor: "bc" },
   targetFrame: { x: 60, y: 86, anchor: "bc" },
   bossBar: { x: 50, y: 8, anchor: "tc" },
   crypt: { x: 50, y: 18, anchor: "tc" },
   threat: { x: 82, y: 75, anchor: "br" },
-  pdps: { x: 78, y: 90, anchor: "tr" },
-  hitDps: { x: 99.5, y: 50, anchor: "tr" },
-  coopV1: { x: 91, y: 63, anchor: "tr" },
-  coopV2: { x: 99.5, y: 63, anchor: "tr" },
   command: { x: 50, y: 42, anchor: "center" },
   bag: { x: 0.5, y: 99.2, anchor: "bl" },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
@@ -120,16 +109,11 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   paperdoll: { x: 1, y: 28, anchor: "tl" },
   buffInfo: { x: 1, y: 12, anchor: "tl" },
   itemInfo: { x: 17, y: 12, anchor: "tl" },
-  combat: { x: 99.2, y: 52, anchor: "tr" },
   kills: { x: 99.2, y: 72, anchor: "tr" },
   playerFrame: { x: 32, y: 78, anchor: "bc" },
   targetFrame: { x: 68, y: 78, anchor: "bc" },
   bossBar: { x: 50, y: 9, anchor: "tc" },
   crypt: { x: 50, y: 19, anchor: "tc" },
-  pdps: { x: 99.2, y: 14, anchor: "tr" },
-  hitDps: { x: 99.2, y: 28, anchor: "tr" },
-  coopV1: { x: 0.8, y: 14, anchor: "tl" },
-  coopV2: { x: 0.8, y: 28, anchor: "tl" },
   threat: { x: 99.2, y: 40, anchor: "tr" },
   command: { x: 50, y: 44, anchor: "center" },
   bag: { x: 0.8, y: 78, anchor: "bl" },
@@ -147,16 +131,11 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   paperdoll: { x: 50, y: 36, anchor: "center" },
   buffInfo: { x: 2, y: 14, anchor: "tl" },
   itemInfo: { x: 2, y: 36, anchor: "tl" },
-  combat: { x: 50, y: 72, anchor: "bc" },
   kills: { x: 98, y: 58, anchor: "br" },
   playerFrame: { x: 28, y: 62, anchor: "bc" },
   targetFrame: { x: 72, y: 62, anchor: "bc" },
   bossBar: { x: 50, y: 10, anchor: "tc" },
   crypt: { x: 50, y: 18, anchor: "tc" },
-  pdps: { x: 99, y: 16, anchor: "tr" },
-  hitDps: { x: 99, y: 28, anchor: "tr" },
-  coopV1: { x: 1, y: 16, anchor: "tl" },
-  coopV2: { x: 1, y: 28, anchor: "tl" },
   threat: { x: 50, y: 48, anchor: "tc" },
   command: { x: 50, y: 42, anchor: "center" },
   bag: { x: 50, y: 88, anchor: "bc" },
@@ -200,8 +179,7 @@ export function migrateLegacyInfoDialog(
   delete (out as Record<string, unknown>).infoDialog;
   if (!out.buffInfo) out.buffInfo = { ...legacy };
   if (!out.itemInfo) {
-    const x =
-      typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+    const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
     out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
   }
   return out;
@@ -214,15 +192,7 @@ function clamp(n: number, lo: number, hi: number): number {
 export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   if (!raw || typeof raw !== "object") return { ...fallback };
   const anchor = (raw.anchor || fallback.anchor) as LayoutAnchor;
-  const valid: LayoutAnchor[] = [
-    "tl",
-    "tr",
-    "bl",
-    "br",
-    "tc",
-    "bc",
-    "center",
-  ];
+  const valid: LayoutAnchor[] = ["tl", "tr", "bl", "br", "tc", "bc", "center"];
   return {
     x: clamp(Number(raw.x), 0, 100) || 0,
     y: clamp(Number(raw.y), 0, 100) || 0,
@@ -349,7 +319,10 @@ export const LAYOUT_ANCHOR_PAD: (LayoutAnchor | null)[][] = [
 ];
 
 /** Absolute style placing the panel at x%/y% of its offset parent. */
-export function panelStyle(pos: PanelPos, editing?: boolean): Record<string, any> {
+export function panelStyle(
+  pos: PanelPos,
+  editing?: boolean,
+): Record<string, any> {
   return {
     position: "absolute",
     left: `${pos.x}%`,
@@ -503,16 +476,8 @@ export function snapDragToVisualEdges(
     }
   }
 
-  const x = clamp(
-    visual.posX + ((dx + shiftX) / visual.rootW) * 100,
-    0,
-    100,
-  );
-  const y = clamp(
-    visual.posY + ((dy + shiftY) / visual.rootH) * 100,
-    0,
-    100,
-  );
+  const x = clamp(visual.posX + ((dx + shiftX) / visual.rootW) * 100, 0, 100);
+  const y = clamp(visual.posY + ((dy + shiftY) / visual.rootH) * 100, 0, 100);
   return { x, y, snapX, snapY };
 }
 

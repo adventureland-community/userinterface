@@ -35,8 +35,6 @@ export type PanelLayoutState = {
     updater: PanelVisibleMap | ((prev: PanelVisibleMap) => PanelVisibleMap),
   ) => void;
   panelOpacity: PanelOpacityMap;
-  opacityEdit: boolean;
-  setOpacityEdit: (v: boolean | ((prev: boolean) => boolean)) => void;
   layoutEdit: boolean;
   setLayoutEdit: (v: boolean | ((prev: boolean) => boolean)) => void;
   layout: Record<PanelId, PanelPos>;
@@ -63,7 +61,6 @@ export function usePanelLayoutState(): PanelLayoutState {
   const [panelOpacity, setPanelOpacity] = React.useState(
     () => mergePanelOpacity(settings0.panelOpacity) as PanelOpacityMap,
   );
-  const [opacityEdit, setOpacityEdit] = React.useState(false);
   const [layoutEdit, setLayoutEdit] = React.useState(false);
   const [detectedProfile, setDetectedProfile] = React.useState(() =>
     detectViewportProfile(),
@@ -164,8 +161,6 @@ export function usePanelLayoutState(): PanelLayoutState {
     panelVisible,
     setPanelVisible,
     panelOpacity,
-    opacityEdit,
-    setOpacityEdit,
     layoutEdit,
     setLayoutEdit,
     layout,

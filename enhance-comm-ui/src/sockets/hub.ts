@@ -21,15 +21,40 @@ export type DamageEvent = {
   damageType?: string;
   evade?: boolean;
   miss?: boolean;
+  /** Soft avoid / other fail path (damage:0). */
+  avoid?: boolean;
+  /** Crit multiplier from packet (e.g. 2, 2.5) — not a boolean. */
+  crit?: number;
+  /** Lethal blow flag. */
+  kill?: boolean;
+  /** Skill was cleave/shadowstrike-style AoE. */
+  aoe?: boolean;
+  /** Projectile id — join to matching action. */
+  pid?: string | number;
+  at: number;
+  raw?: any;
+};
+
+export type ActionEvent = {
+  actor?: string;
+  target?: string;
+  source?: string;
+  pid?: string | number;
+  projectile?: string;
+  eta?: number;
+  damage?: number;
+  heal?: number;
   at: number;
   raw?: any;
 };
 
 type KillListener = (ev: KillEvent) => void;
 type DamageListener = (ev: DamageEvent) => void;
+type ActionListener = (ev: ActionEvent) => void;
 
 const killListeners: KillListener[] = [];
 const damageListeners: DamageListener[] = [];
+const actionListeners: ActionListener[] = [];
 
 let lastSocketId: string | null = null;
 let hubStarted = false;
@@ -44,6 +69,12 @@ function emitKill(ev: KillEvent): void {
 function emitDamage(ev: DamageEvent): void {
   for (let i = 0; i < damageListeners.length; i++) {
     damageListeners[i](ev);
+  }
+}
+
+function emitAction(ev: ActionEvent): void {
+  for (let i = 0; i < actionListeners.length; i++) {
+    actionListeners[i](ev);
   }
 }
 
@@ -77,6 +108,9 @@ function onHit(data: any): void {
     damageType: data.damage_type != null ? String(data.damage_type) : undefined,
     evade: !!data.evade,
     miss: !!data.miss,
+    avoid: !!data.avoid,
+    aoe: !!data.aoe,
+    kill: !!data.kill,
     at,
     raw: data,
   };
@@ -94,13 +128,51 @@ function onHit(data: any): void {
   if (data.reflect && typeof data.reflect === "number") {
     ev.reflect = Math.abs(data.reflect);
   }
+  if (data.crit != null && Number(data.crit) > 1) {
+    ev.crit = Number(data.crit);
+  }
+  if (data.pid != null) ev.pid = data.pid;
 
   emitDamage(ev);
 }
 
 function onAction(data: any): void {
   if (!data) return;
-  void data;
+  const at = Date.now();
+  const ev: ActionEvent = {
+    actor:
+      data.attacker != null
+        ? String(data.attacker)
+        : data.hid != null
+          ? String(data.hid)
+          : data.actor != null
+            ? String(data.actor)
+            : undefined,
+    target:
+      data.target != null
+        ? String(data.target)
+        : data.id != null
+          ? String(data.id)
+          : undefined,
+    source:
+      data.source != null
+        ? String(data.source)
+        : data.type != null
+          ? String(data.type)
+          : undefined,
+    projectile: data.projectile != null ? String(data.projectile) : undefined,
+    eta: data.eta != null ? Number(data.eta) : undefined,
+    at,
+    raw: data,
+  };
+  if (data.pid != null) ev.pid = data.pid;
+  if (data.damage !== undefined) {
+    ev.damage = Math.abs(Number(data.damage) || 0);
+  }
+  if (data.heal !== undefined) {
+    ev.heal = Math.abs(Number(data.heal) || 0);
+  }
+  emitAction(ev);
 }
 
 function maybeResubscribe(): void {
@@ -126,6 +198,14 @@ export function onDamage(listener: DamageListener): () => void {
   return () => {
     const idx = damageListeners.indexOf(listener);
     if (idx >= 0) damageListeners.splice(idx, 1);
+  };
+}
+
+export function onActionSubscribe(listener: ActionListener): () => void {
+  actionListeners.push(listener);
+  return () => {
+    const idx = actionListeners.indexOf(listener);
+    if (idx >= 0) actionListeners.splice(idx, 1);
   };
 }
 

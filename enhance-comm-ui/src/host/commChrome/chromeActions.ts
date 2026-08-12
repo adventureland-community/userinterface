@@ -123,6 +123,7 @@ export function buildActionsEl(): HTMLElement {
   const actions = document.createElement("div");
   actions.className = "ecu-actions";
   actions.setAttribute("data-ecu-actions", "1");
+  actions.setAttribute("data-ecu-tour", "chrome-actions");
 
   const mk = (
     kind: "follow" | "bag" | "command",
@@ -135,6 +136,7 @@ export function buildActionsEl(): HTMLElement {
     btn.className = "ecu-btn ecu-btn-icon-only";
     btn.title = title;
     btn.setAttribute("aria-label", label);
+    btn.setAttribute("data-ecu-tour", "btn-" + kind);
     btn.innerHTML = ACTION_ICONS[kind];
     btn.addEventListener("click", onClick);
     return btn;
@@ -153,10 +155,26 @@ export function buildActionsEl(): HTMLElement {
   return actions;
 }
 
+function syncActionTourAttrs(actions: HTMLElement): void {
+  const map: Record<string, string> = {
+    Follow: "btn-follow",
+    Bag: "btn-bag",
+    Command: "btn-command",
+  };
+  const buttons = actions.querySelectorAll(".ecu-btn");
+  for (let i = 0; i < buttons.length; i++) {
+    const btn = buttons[i] as HTMLElement;
+    const label = (btn.getAttribute("aria-label") || "").trim();
+    const tourId = map[label];
+    if (tourId) btn.setAttribute("data-ecu-tour", tourId);
+  }
+}
+
 export function syncActionsEnabled(): void {
   const watching = !!(window.observing && window.observing.name);
   const actions = document.querySelector(".ecu-actions") as HTMLElement | null;
   if (!actions) return;
+  syncActionTourAttrs(actions);
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
     const btn = buttons[i] as HTMLButtonElement;
@@ -204,6 +222,8 @@ export function ensureChromeShell(): void {
     if (chromeEl && serversEl && !chromeEl.contains(serversEl)) {
       chromeEl.append(serversEl);
     }
+    if (charsEl) charsEl.setAttribute("data-ecu-tour", "character-ui");
+    if (serversEl) serversEl.setAttribute("data-ecu-tour", "server-picker");
     // Actions must sit above the strip, never inside it.
     let actionsEl: HTMLElement | null = null;
     for (let i = 0; i < existingStack.children.length; i++) {
@@ -248,12 +268,14 @@ export function ensureChromeShell(): void {
   if (chars) {
     chars.classList.remove("hidden");
     chars.style.display = "flex";
+    chars.setAttribute("data-ecu-tour", "character-ui");
     chrome.append(chars);
   }
 
   if (servers) {
     servers.classList.remove("hidden");
     servers.style.display = "flex";
+    servers.setAttribute("data-ecu-tour", "server-picker");
     if (chars) {
       const sep = document.createElement("div");
       sep.className = "ecu-strip-sep";

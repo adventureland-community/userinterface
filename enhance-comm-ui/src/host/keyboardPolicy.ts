@@ -6,13 +6,16 @@ export type CommKeyboardHandlers = {
   clearPaperdoll?: () => boolean;
   /** Toggle layout edit (Ctrl+Shift+L). */
   toggleLayoutEdit?: () => void;
+  /** Exit layout edit on Esc. Return true if it was on (consumed the Esc). */
+  exitLayoutEdit?: () => boolean;
 };
 
 const BOUND = "__ecuCommKeyboardBound";
 
 /**
  * One Esc / shortcut policy for /comm UI:
- *   Esc → close buff/item info → close server dropdown → clear paperdoll/focus → leave observe
+ *   Esc → close buff/item info → close server dropdown → clear paperdoll/focus
+ *        → exit layout edit → leave observe
  *   Ctrl+Shift+L → toggle layout edit (when registered)
  *
  * Handlers may be updated after install (React mounts later than chrome).
@@ -37,6 +40,7 @@ export function installCommKeyboardPolicy(
         return;
       }
       if (h.clearPaperdoll && h.clearPaperdoll()) return;
+      if (h.exitLayoutEdit && h.exitLayoutEdit()) return;
       if (window.observing && window.__ecuClearObserve) {
         window.__ecuClearObserve();
       }

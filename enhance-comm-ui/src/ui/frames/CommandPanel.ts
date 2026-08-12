@@ -395,7 +395,6 @@ export function CommandPanel(props: CommandPanelProps): any {
           width: "100%",
           resize: "vertical",
           minHeight: "180px",
-          fontFamily: "Consolas, Monaco, monospace",
           lineHeight: "1.4",
         }),
       });

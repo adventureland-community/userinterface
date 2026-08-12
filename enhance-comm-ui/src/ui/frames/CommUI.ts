@@ -1,119 +1,41 @@
 import { getReact, e } from "../../host/react";
 import type { GameSnapshot } from "../../tick";
-import { RankMeter } from "../../meters/RankMeter";
-import { buildPdpsRows } from "../../meters/strategies/pdps";
-import { buildCoopV1Rows } from "../../meters/strategies/coopV1";
-import { buildCoopV2Rows } from "../../meters/strategies/coopV2";
-import { buildHitDpsRows } from "../../meters/strategies/hitDps";
-import { updateCombatContext } from "../../meters/partyCombat";
+import { updateMeterContext } from "../../meters/meterEngine";
 import { updateKillContext } from "../../kpi/sessionKills";
-import { type PanelId } from "../../lib/layout";
+import { getSettings, patchSettings } from "../../lib/settings";
 import { subscribeCommanderOpen } from "../../host/commander";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { info } from "../../host/dialogHost";
+import { combatSignals } from "../../queries/combatSignals";
 import {
-  aggroByTarget,
-  aggroedMonsters,
-  activeBosses,
-  findEntity,
-} from "../../queries/entities";
-import { PositionedPanel } from "../chrome/PositionedPanel";
-import { PanelShellDummy } from "../chrome/PanelShellDummy";
-import { Players } from "./Players";
-import { MapInfo, getMapData } from "./MapInfo";
-import { CryptProgress } from "./CryptProgress";
-import { ServerInfo } from "./ServerInfo";
-import { Enemies } from "./Enemies";
-import { EntityInfo } from "./EntityInfo";
-import { StockInfoPanel } from "./InfoDialogPanel";
-import { PlayerFrame, UNIT_FRAME_STYLE } from "./PlayerRow";
-import { TargetFrame } from "./TargetFrame";
-import { BossBarPanel } from "./BossBarPanel";
-import { ThreatTable } from "./ThreatTable";
-import { KillKpiPanel } from "./KillKpiPanel";
-import { CombatMetricsPanel } from "./CombatMetricsPanel";
-import { CommandPanel } from "./CommandPanel";
-import { BagPanel } from "./BagPanel";
+  CommUISetupWizard,
+  readIntroStep,
+  writeIntroStep,
+} from "./comm/CommUISetupWizard";
+import { useCommGuidedTours } from "../hooks/useCommGuidedTours";
 import {
-  BAG_PANEL_STYLE,
-  BOSS_BAR_PANEL_STYLE,
-  COMBAT_PANEL_STYLE,
-  COMMAND_PANEL_STYLE,
-  CRYPT_PANEL_STYLE,
-  INFO_DIALOG_PANEL_STYLE,
-  KILLS_PANEL_STYLE,
-  METER_PANEL_STYLE,
-  PAPERDOLL_PANEL_STYLE,
-  THREAT_PANEL_STYLE,
-} from "../../lib/frameSizes";
+  triggerMeterToolbarTour,
+  useContextualTourTriggers,
+} from "../hooks/useContextualTourTriggers";
+import { useCommMeterInstances } from "../hooks/useCommMeterInstances";
 import { usePanelLayoutState } from "../hooks/usePanelLayoutState";
 import { useBagBridge } from "../hooks/useBagBridge";
 import { useSelectionFromXTarget } from "../hooks/useSelectionFromXTarget";
 import { LayoutEditChrome } from "./comm/LayoutEditChrome";
+import { CommMeterAddDialog } from "./comm/CommMeterAddDialog";
+import { buildCommMeterPanels } from "./comm/CommMeterPanels";
 import { LayoutEditGrid } from "./comm/LayoutEditGrid";
-import { OpacityEditor } from "./comm/OpacityEditor";
+import { CommControlStrip } from "./comm/CommControlStrip";
+import {
+  renderCommPanels,
+  renderCommTogglesPanel,
+} from "./comm/CommPanelLayout";
+import { getMapData } from "./MapInfo";
 import { isTouchishProfile } from "../../lib/viewport";
-import { resolveTarget } from "../../tick";
 
 export type CommUIProps = {
   snap: GameSnapshot;
 };
-
-const OPACITY_PANEL_IDS: PanelId[] = [
-  "bossBar",
-  "crypt",
-  "combat",
-  "kills",
-  "threat",
-  "pdps",
-  "hitDps",
-  "coopV1",
-  "coopV2",
-  "command",
-  "bag",
-  "paperdoll",
-  "buffInfo",
-  "itemInfo",
-  "playerFrame",
-  "targetFrame",
-];
-
-type PanelOpts = {
-  style?: Record<string, any>;
-  closable?: boolean;
-  empty?: boolean;
-  /** Extra style for the hidden/closed edit body (e.g. bag footprint). */
-  hiddenBodyStyle?: Record<string, any>;
-  /** Keep body clickable in layout edit (Layout / Opacity toggles). */
-  interactiveBody?: boolean;
-  /** Compact ⠿ grip instead of full labeled edit header. */
-  editChrome?: "full" | "grip";
-};
-
-function meterOrDummy(
-  title: string,
-  rows: any[],
-  layoutEdit: boolean,
-  highlightId?: string,
-  className?: string,
-): any {
-  if (rows && rows.length) {
-    return e(RankMeter, {
-      title,
-      className,
-      rows,
-      highlightId,
-    });
-  }
-  if (!layoutEdit) return null;
-  return e(PanelShellDummy, {
-    label: title,
-    hint: "No contributors yet",
-    accent: "#555",
-    rows: 3,
-    style: METER_PANEL_STYLE,
-  });
-}
 
 export function CommUI(props: CommUIProps): any {
   const React = getReact();
@@ -122,8 +44,6 @@ export function CommUI(props: CommUIProps): any {
   const layoutState = usePanelLayoutState();
   const {
     setPanelVisible,
-    opacityEdit,
-    setOpacityEdit,
     layoutEdit,
     setLayoutEdit,
     layout,
@@ -141,26 +61,58 @@ export function CommUI(props: CommUIProps): any {
   } = layoutState;
 
   const { bagOpen, bagRefreshing } = useBagBridge(setPanelVisible);
-  const {
-    selectedEntity,
-    setSelectedEntity,
-    closePaperdoll,
-    focusUnitId,
-  } = useSelectionFromXTarget(snap);
+  const { selectedEntity, setSelectedEntity, closePaperdoll, focusUnitId } =
+    useSelectionFromXTarget(snap);
 
-  const [commandSeed, setCommandSeed] = React.useState(
-    null as string | null,
-  );
+  const meters = useCommMeterInstances(layout);
+
+  const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
   const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
   const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
+  const [meterAddOpen, setMeterAddOpen] = React.useState(false);
+  const [metersHidden, setMetersHidden] = React.useState(
+    () => !!getSettings().metersHidden,
+  );
+  const [setupWizardOpen, setSetupWizardOpen] = React.useState(
+    () => !getSettings().setupWizardDone,
+  );
+  const [introStep, setIntroStep] = React.useState(() => readIntroStep());
+
+  const setIntroStepPersist = (step: number) => {
+    setIntroStep(step);
+    writeIntroStep(step);
+  };
+
+  const setMetersHiddenPersist = (hidden: boolean) => {
+    setMetersHidden(hidden);
+    patchSettings({ metersHidden: hidden });
+  };
+
+  const guidedTours = useCommGuidedTours({
+    layoutEdit,
+    setLayoutEdit,
+    metersHidden,
+    setMetersHidden: setMetersHiddenPersist,
+    meterAddOpen,
+    setMeterAddOpen,
+    setVisible,
+    getPanelVisible: visible,
+    setupWizardOpen,
+    setSetupWizardOpen,
+    isObserving:
+      (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
+    bagOpen,
+    commandOpen: visible("command"),
+  });
+
+  const { startIntroTour, toggleLayoutEdit, tourOverlay } = guidedTours;
 
   React.useEffect(() => {
     updateKillContext(snap.entities);
-    updateCombatContext(snap.entities);
+    updateMeterContext(snap.entities);
   }, [snap.entities]);
 
-  // Shared Esc / Ctrl+Shift+L policy (info dialog → server dd → paperdoll/focus).
   React.useEffect(() => {
     updateCommKeyboardHandlers({
       clearPaperdoll: () => {
@@ -168,10 +120,18 @@ export function CommUI(props: CommUIProps): any {
         closePaperdoll();
         return true;
       },
-      toggleLayoutEdit: () => setLayoutEdit((v: boolean) => !v),
+      toggleLayoutEdit,
+      exitLayoutEdit: () => {
+        let wasOn = false;
+        setLayoutEdit((v: boolean) => {
+          wasOn = v;
+          return false;
+        });
+        return wasOn;
+      },
     });
     return () => updateCommKeyboardHandlers({});
-  }, [selectedEntity, focusUnitId, closePaperdoll, setLayoutEdit]);
+  }, [selectedEntity, focusUnitId, closePaperdoll, toggleLayoutEdit]);
 
   React.useEffect(() => {
     info.setLayoutEditing(layoutEdit);
@@ -184,14 +144,12 @@ export function CommUI(props: CommUIProps): any {
   React.useEffect(() => {
     return subscribeCommanderOpen((payload) => {
       const hasDraft = typeof payload.draft === "string";
-      // Prefill path (stock show_commander(code)): always open / refresh.
       if (hasDraft) {
         setCommandSeed(payload.draft as string);
         setCommandOpenSeq((n: number) => n + 1);
         setVisible("command", true);
         return;
       }
-      // Bare Code chrome button: toggle like Bag (second click closes).
       if (commandOpenRef.current) {
         setVisible("command", false);
         return;
@@ -202,70 +160,80 @@ export function CommUI(props: CommUIProps): any {
     });
   }, [setVisible]);
 
-  // Mark #comm-ui with viewport profile for CSS touch targets.
   React.useEffect(() => {
     const root = document.getElementById("comm-ui");
     if (!root) return;
     root.setAttribute("data-viewport", viewportProfile);
-    root.classList.toggle(
-      "comm-ui-touch",
-      isTouchishProfile(viewportProfile),
-    );
+    root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
   }, [viewportProfile]);
 
-  const pdpsRows = buildPdpsRows(snap.entities);
-  const coopV1Rows = buildCoopV1Rows(snap.entities);
-  const coopV2Rows = buildCoopV2Rows(snap.entities);
-  const hitDpsRows = buildHitDpsRows(snap.entities, snap.now);
-  const hasEnemies = aggroedMonsters(snap.entities).length > 0;
-  const hasThreat = Object.keys(aggroByTarget(snap.entities)).length > 0;
-  const hasBosses = activeBosses(snap.entities).length > 0;
+  const combat = combatSignals(snap.entities);
   const onCrypt = getMapData(snap.entities).map === "crypt";
 
-  // Observing owns player/target frames absolutely. Spectator focusUnitId only
-  // applies when not observing — party/world clicks must not steal frames.
-  const isObserving =
-    (snap.observingId != null && snap.observingId !== "") || !!snap.observing;
-  let framePlayer = snap.observing;
-  let frameTarget = snap.target;
-  if (!isObserving) {
-    const focusEntity = focusUnitId
-      ? findEntity(snap.entities, focusUnitId)
-      : undefined;
-    framePlayer = focusEntity;
-    frameTarget = resolveTarget(focusEntity);
-  }
+  useContextualTourTriggers({
+    selectedEntity,
+    meterCount: meters.meterInstances.length,
+    entities: snap.entities,
+    meterInstances: meters.meterInstances,
+  });
 
-  const panel = (id: PanelId, child: any, opts?: PanelOpts) => {
-    const isClosablePanel = opts?.closable === true;
-    const isHidden = isClosablePanel && !visible(id);
-    if (isHidden && !layoutEdit) return null;
-    if (opts?.empty && !layoutEdit) return null;
-    return e(
-      PositionedPanel,
-      {
-        id,
-        pos: layout[id],
-        editing: layoutEdit,
-        onMove,
-        style: opts?.style,
-        hidden: isHidden,
-        hiddenBodyStyle: opts?.hiddenBodyStyle,
-        opacity: opacityFor(id),
-        peerLayout: layout,
-        viewportProfile,
-        interactiveBody: opts?.interactiveBody,
-        editChrome: opts?.editChrome,
-        onClose: isClosablePanel ? () => setVisible(id, false) : undefined,
-        onShow: isClosablePanel ? () => setVisible(id, true) : undefined,
-      },
-      child,
-    );
+  const panelDeps = {
+    snap,
+    layoutEdit,
+    layout,
+    peerLayout: meters.peerLayout,
+    viewportProfile,
+    visible,
+    opacityFor,
+    onMove,
+    setVisible,
+    setOpacity,
+    selectedEntity,
+    setSelectedEntity,
+    closePaperdoll,
+    focusUnitId,
+    combat,
+    onCrypt,
+    commandSeed,
+    commandOpenSeq,
+    bagOpen,
+    bagRefreshing,
+    buffInfoOpen,
+    setBuffInfoOpen,
+    itemInfoOpen,
+    setItemInfoOpen,
   };
 
-  const touchPad = isTouchishProfile(viewportProfile);
-  const toggleBtnPad = touchPad ? "10px 16px" : "5px 12px";
-  const toggleFont = touchPad ? "16px" : "14px";
+  const meterPanels = buildCommMeterPanels({
+    snap,
+    meterInstances: meters.meterInstances,
+    layoutEdit,
+    metersHidden,
+    altHeld: meters.altHeld,
+    meterSnapDragId: meters.meterSnapDragId,
+    meterSnapPeerId: meters.meterSnapPeerId,
+    peerLayout: meters.peerLayout,
+    viewportProfile,
+    closedMeters: meters.closedMeters,
+    meterIsLocked: meters.meterIsLocked,
+    dragRefFor: meters.dragRefFor,
+    moveMeterWithGroup: meters.moveMeterWithGroup,
+    onMeterDragStart: meters.onMeterDragStart,
+    onMeterDragMove: meters.onMeterDragMove,
+    snapMeterAfterMove: meters.snapMeterAfterMove,
+    patchMeter: meters.patchMeter,
+    setMeterInstances: meters.setMeterInstances,
+    setMetersHiddenPersist,
+    reopenClosedMeter: meters.reopenClosedMeter,
+    focusInspector: meters.focusInspector,
+    focusReport: meters.focusReport,
+    duplicateMeter: meters.duplicateMeter,
+    removeMeter: meters.removeMeter,
+    closeMeterRuntime: meters.closeMeterRuntime,
+    ungroupMeterPanel: meters.ungroupMeterPanel,
+    setMeterAddOpen,
+    onToolbarInteract: triggerMeterToolbarTour,
+  });
 
   return e(
     "div",
@@ -289,365 +257,46 @@ export function CommUI(props: CommUIProps): any {
           onProfileMode: setLayoutProfileMode,
           exportLayouts,
           importLayouts,
+          onApplyAllCurrent: () => meters.applyAllSegments("current"),
+          onApplyAllTotal: () => meters.applyAllSegments("total"),
+          onAddMeter: () => setMeterAddOpen(true),
+          onResetMeters: () => meters.resetMetersFromSettings(),
         })
       : null,
 
-    opacityEdit
-      ? e(OpacityEditor, {
-          panelIds: OPACITY_PANEL_IDS,
-          opacityFor,
-          onChange: setOpacity,
-          onClose: () => setOpacityEdit(false),
+    meterAddOpen
+      ? e(CommMeterAddDialog, {
+          onClose: () => setMeterAddOpen(false),
+          onAddPreset: meters.addMeterFromPreset,
         })
       : null,
 
-    panel(
-      "players",
-      e(Players, {
-        entities: snap.entities,
-        setSelectedEntity,
-        selectedEntity,
-        observingId: snap.observingId,
-        observing: snap.observing,
-        layoutEdit,
-      }),
-      { style: { width: "auto", maxWidth: "min(560px, 78vw)" } },
-    ),
+    ...renderCommPanels(panelDeps),
 
-    panel(
-      "enemies",
-      e(Enemies, {
-        entities: snap.entities,
-        setSelectedEntity,
-        selectedEntity,
-      }),
-      {
-        style: { width: "auto", maxWidth: "min(420px, 78vw)", textAlign: "right" },
-        empty: !hasEnemies,
-      },
-    ),
+    ...meterPanels,
 
-    panel(
-      "topCenter",
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "4px",
-          },
-        },
-        e(ServerInfo, {
-          S: snap.S,
-          serverRegion: snap.serverRegion,
-          serverIdentifier: snap.serverIdentifier,
-        }),
-        e(MapInfo, { entities: snap.entities }),
-      ),
-    ),
-
-    panel(
-      "crypt",
-      e(CryptProgress, {
-        entities: snap.entities,
-        layoutEdit,
-        setSelectedEntity,
-      }),
-      {
-        closable: true,
-        style: CRYPT_PANEL_STYLE,
-        empty: !onCrypt,
-        hiddenBodyStyle: CRYPT_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "bossBar",
-      e(BossBarPanel, {
-        entities: snap.entities,
-        observing: snap.observing,
-        setSelectedEntity,
-        layoutEdit,
-      }),
-      {
-        closable: true,
-        style: BOSS_BAR_PANEL_STYLE,
-        empty: !hasBosses,
-      },
-    ),
-
-    selectedEntity || layoutEdit
-      ? panel(
-          "paperdoll",
-          e(EntityInfo, {
-            entities: snap.entities,
-            selectedEntity,
-            onClose: closePaperdoll,
-            layoutEdit,
-            observing: snap.observing,
-          }),
-          { style: PAPERDOLL_PANEL_STYLE },
-        )
+    setupWizardOpen
+      ? e(CommUISetupWizard, {
+          step: introStep,
+          onStep: setIntroStepPersist,
+          onDone: () => setSetupWizardOpen(false),
+          onStartTour: () => startIntroTour(false),
+        })
       : null,
 
-    panel(
-      "buffInfo",
-      e(StockInfoPanel, {
-        kind: "buff",
+    renderCommTogglesPanel(
+      panelDeps,
+      e(CommControlStrip, {
         layoutEdit,
-        onOpenChange: setBuffInfoOpen,
+        toggleLayoutEdit,
+        metersHidden,
+        setMetersHiddenPersist,
+        onAddMeter: () => setMeterAddOpen(true),
+        onReplayIntroTour: () => startIntroTour(true),
+        viewportProfile,
       }),
-      {
-        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-          zIndex: layoutEdit ? 45 : 35,
-          pointerEvents:
-            layoutEdit || buffInfoOpen ? "auto" : "none",
-        }),
-      },
     ),
 
-    panel(
-      "itemInfo",
-      e(StockInfoPanel, {
-        kind: "item",
-        layoutEdit,
-        onOpenChange: setItemInfoOpen,
-      }),
-      {
-        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-          zIndex: layoutEdit ? 45 : 35,
-          pointerEvents:
-            layoutEdit || itemInfoOpen ? "auto" : "none",
-        }),
-      },
-    ),
-
-    panel("kills", e(KillKpiPanel), {
-      closable: true,
-      style: KILLS_PANEL_STYLE,
-      hiddenBodyStyle: KILLS_PANEL_STYLE,
-    }),
-
-    panel("combat", e(CombatMetricsPanel), {
-      closable: true,
-      style: COMBAT_PANEL_STYLE,
-      hiddenBodyStyle: COMBAT_PANEL_STYLE,
-    }),
-
-    panel(
-      "command",
-      e(CommandPanel, {
-        seedDraft: commandSeed,
-        openSeq: commandOpenSeq,
-      }),
-      {
-        closable: true,
-        style: COMMAND_PANEL_STYLE,
-        hiddenBodyStyle: COMMAND_PANEL_STYLE,
-      },
-    ),
-
-    bagOpen || bagRefreshing || layoutEdit
-      ? panel(
-          "bag",
-          e(BagPanel, { layoutEdit }),
-          {
-            closable: true,
-            style: layoutEdit ? BAG_PANEL_STYLE : undefined,
-            hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
-              display: "flex",
-              alignItems: "flex-start",
-            }),
-          },
-        )
-      : null,
-
-    framePlayer || layoutEdit
-      ? panel(
-          "playerFrame",
-          e(PlayerFrame, {
-            observing: framePlayer,
-            setSelectedEntity,
-            layoutEdit,
-          }),
-          { style: UNIT_FRAME_STYLE },
-        )
-      : null,
-
-    frameTarget || layoutEdit
-      ? panel(
-          "targetFrame",
-          e(TargetFrame, {
-            observing: framePlayer,
-            target: frameTarget,
-            entities: snap.entities,
-            setSelectedEntity,
-            layoutEdit,
-          }),
-          { style: UNIT_FRAME_STYLE },
-        )
-      : null,
-
-    panel(
-      "threat",
-      e(ThreatTable, {
-        entities: snap.entities,
-        observingId: snap.observingId,
-        layoutEdit,
-        setSelectedEntity,
-      }),
-      {
-        closable: true,
-        style: THREAT_PANEL_STYLE,
-        empty: !hasThreat,
-        hiddenBodyStyle: THREAT_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "pdps",
-      meterOrDummy("PDPS", pdpsRows, layoutEdit, snap.observingId, "PdpsMeter"),
-      {
-        closable: true,
-        style: METER_PANEL_STYLE,
-        empty: !pdpsRows.length,
-        hiddenBodyStyle: METER_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "hitDps",
-      meterOrDummy(
-        "Hit DPS (10s)",
-        hitDpsRows,
-        layoutEdit,
-        snap.observingId,
-        "HitDpsMeter",
-      ),
-      {
-        closable: true,
-        style: METER_PANEL_STYLE,
-        empty: !hitDpsRows.length,
-        hiddenBodyStyle: METER_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "coopV1",
-      meterOrDummy("s.coop v1", coopV1Rows, layoutEdit, snap.observingId),
-      {
-        closable: true,
-        style: METER_PANEL_STYLE,
-        empty: !coopV1Rows.length,
-        hiddenBodyStyle: METER_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "coopV2",
-      meterOrDummy(
-        "s.coop v2",
-        coopV2Rows,
-        layoutEdit,
-        snap.observingId,
-        "CoopContributionMeterV2",
-      ),
-      {
-        closable: true,
-        style: METER_PANEL_STYLE,
-        empty: !coopV2Rows.length,
-        hiddenBodyStyle: METER_PANEL_STYLE,
-      },
-    ),
-
-    panel(
-      "toggles",
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            pointerEvents: "auto",
-          },
-        },
-        e(
-          "button",
-          {
-            type: "button",
-            title: "Toggle layout edit (Ctrl+Shift+L)",
-            style: {
-              cursor: "pointer",
-              padding: toggleBtnPad,
-              fontSize: toggleFont,
-              minHeight: touchPad ? "40px" : undefined,
-              border: layoutEdit ? "1px solid #ffe08a" : "1px solid #555",
-              background: layoutEdit ? "#3a3510" : "#1a1a1a",
-              color: layoutEdit ? "#ffe08a" : "#eee",
-              textShadow: "none",
-              fontWeight: "normal",
-              pointerEvents: "auto",
-              position: "relative",
-              zIndex: 1,
-            },
-            onPointerDown: (ev: any) => {
-              if (ev && typeof ev.stopPropagation === "function") {
-                ev.stopPropagation();
-              }
-            },
-            onClick: (ev: any) => {
-              if (ev && typeof ev.stopPropagation === "function") {
-                ev.stopPropagation();
-              }
-              setLayoutEdit((v: boolean) => !v);
-            },
-          },
-          layoutEdit ? "Layout: ON" : "Layout",
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            title: "Per-panel overlay opacity",
-            style: {
-              cursor: "pointer",
-              padding: toggleBtnPad,
-              fontSize: toggleFont,
-              minHeight: touchPad ? "40px" : undefined,
-              border: opacityEdit ? "1px solid #8ab" : "1px solid #555",
-              background: opacityEdit ? "#1a2830" : "#1a1a1a",
-              color: opacityEdit ? "#9cf" : "#eee",
-              textShadow: "none",
-              fontWeight: "normal",
-              pointerEvents: "auto",
-              position: "relative",
-              zIndex: 1,
-            },
-            onPointerDown: (ev: any) => {
-              if (ev && typeof ev.stopPropagation === "function") {
-                ev.stopPropagation();
-              }
-            },
-            onClick: (ev: any) => {
-              if (ev && typeof ev.stopPropagation === "function") {
-                ev.stopPropagation();
-              }
-              setOpacityEdit((v: boolean) => !v);
-            },
-          },
-          opacityEdit ? "Opacity: ON" : "Opacity",
-        ),
-      ),
-      {
-        // Compact ⠿ grip (not a "Layout" header) + hittable body + above
-        // every other layout-edit chrome so ON/OFF and drag both work.
-        interactiveBody: true,
-        editChrome: "grip",
-        style: { zIndex: 100 },
-      },
-    ),
+    tourOverlay,
   );
 }

@@ -2,8 +2,7 @@ import { getReact, getReactDOM, e } from "./host/react";
 import { startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
-import { startCombatMeter } from "./meters/combatMeter";
-import { startPartyCombat } from "./meters/partyCombat";
+import { startMeterEngine } from "./meters/meterEngine";
 import { startSessionKills } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
@@ -89,10 +88,17 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   background-color: blue;
 }
 
-/* Defeat Adventure Land global pixel-font thickening inside our overlay */
+/* Defeat Adventure Land global pixel-font thickening inside our overlay.
+ * Form controls must inherit — UA styles otherwise swap in a system font. */
 #comm-ui, #comm-ui * {
   text-shadow: none !important;
   font-weight: normal !important;
+}
+#comm-ui button,
+#comm-ui input,
+#comm-ui select,
+#comm-ui textarea {
+  font-family: inherit;
 }
 `;
 
@@ -118,7 +124,9 @@ function ensureReact(onReady: () => void): void {
     document.head.append(reactScript);
   }
 
-  const existingDom = document.querySelector("#react-dom") as HTMLScriptElement | null;
+  const existingDom = document.querySelector(
+    "#react-dom",
+  ) as HTMLScriptElement | null;
   if (!existingDom) {
     const reactDomScript = document.createElement("script");
     reactDomScript.id = "react-dom";
@@ -157,8 +165,7 @@ function onLoad(): void {
   installCommanderHook();
   startSocketHub();
   startCryptTracker();
-  startCombatMeter();
-  startPartyCombat();
+  startMeterEngine();
   startSessionKills();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;

@@ -66,13 +66,21 @@ export const COMMAND_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
-/** Rank meters (PDPS / coop / hit DPS). */
+/** Rank meters — wide enough for title; size grows via frameW/H / resize. */
 export const METER_PANEL_STYLE: Record<string, any> = {
-  width: "200px",
-  minWidth: "160px",
-  minHeight: "72px",
+  width: "320px",
+  minWidth: "240px",
+  minHeight: "140px",
   boxSizing: "border-box",
 };
+
+export const METER_FRAME_DEFAULT = { w: 320, h: 200 };
+/** Inspector needs room for overview + ability tabs. */
+export const INSPECTOR_FRAME_DEFAULT = { w: 560, h: 400 };
+/** Shared Encounter / Deaths / Timeline report window. */
+export const REPORT_FRAME_DEFAULT = { w: 480, h: 320 };
+export const METER_FRAME_MIN = { w: 240, h: 140 };
+export const METER_FRAME_MAX = { w: 720, h: 560 };
 
 /** Kill KPI panel. */
 export const KILLS_PANEL_STYLE: Record<string, any> = {
