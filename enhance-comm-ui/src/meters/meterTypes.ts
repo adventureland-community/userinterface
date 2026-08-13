@@ -10,11 +10,24 @@ import { canonicalAbilityId } from "../lib/abilityIds";
 
 export type AbilityKey = string;
 
-export type SegmentRef = "current" | "total" | { pastId: string };
+export type SegmentRef =
+  | "current"
+  | "total"
+  | { pastId: string }
+  | { mapIn: string }
+  | { event: string };
+
+export type SegmentCloseReason =
+  | "idle"
+  | "observe_swap"
+  | "observe_cleared"
+  | "map_change"
+  | "server_change"
+  | "reset"
+  | "boss_start";
 
 export type MeterPresentation =
   | "bars"
-  | "table"
   | "pie"
   | "line"
   | "realtime"
@@ -213,6 +226,26 @@ export type CombatSegment = {
   /** kill = success, wipe = party deaths, timeout = idle break. */
   outcome?: "kill" | "wipe" | "timeout";
   seq?: number;
+  observingId?: string;
+  observingName?: string;
+  observingCtype?: string;
+  /** G map key (`crypt`, `goobrawl`, `main`). */
+  map?: string;
+  /** `observing.in` — instance id, or map name on shared maps. */
+  mapIn?: string;
+  /** Joinable live world event (`goobrawl`, `crabxx`, `franky`, …). */
+  event?: string;
+  serverRegion?: string;
+  serverIdentifier?: string;
+  partyKey?: string;
+  closeReason?: SegmentCloseReason;
+  /** Crypt: non-boss pull vs dedicated boss fight. */
+  kind?: "pull" | "boss";
+  /**
+   * Retention favorite — archive/RAM cleanup never deletes this fight.
+   * Distinct from session `pinnedPastIds` (camera resolve pin).
+   */
+  favorite?: boolean;
   actors: Record<string, ActorAgg>;
   deaths: DeathSnapshot[];
   conditions: ConditionInterval[];
@@ -377,6 +410,25 @@ export type MeterPanelConfig = {
   alwaysShowSelf?: boolean;
 };
 
+/**
+ * Details statusbar micro-display plugin ids (left / center / right slots).
+ * `off` clears a slot.
+ */
+export type StatusbarPluginId =
+  | "off"
+  | "segment"
+  | "clock"
+  | "pdps"
+  | "attribute"
+  | "total";
+
+/** Per-window Details-style statusbar plugin layout. */
+export type MeterStatusbarConfig = {
+  left: StatusbarPluginId;
+  center: StatusbarPluginId;
+  right: StatusbarPluginId;
+};
+
 /** Persisted panel instance — pos lives here (not PanelId). */
 export type MeterInstance = MeterPanelConfig & {
   pos: PanelPos;
@@ -404,6 +456,16 @@ export type MeterInstance = MeterPanelConfig & {
   horizontalSnap?: boolean;
   /** Stacked group — share width on resize. */
   verticalSnap?: boolean;
+  /**
+   * When true, titlebar + statusbar (and view tabs) stay hidden until the
+   * window is hovered. Default / omitted = always-visible chrome.
+   */
+  chromeOnHover?: boolean;
+  /**
+   * Details micro displays: left / center / right plugin ids.
+   * Defaults: Segment · Clock · PDPS (attribute-aware rate).
+   */
+  statusbar?: MeterStatusbarConfig;
 };
 
 /** Saved Display×Scope×Segment bookmark (Details-like). */

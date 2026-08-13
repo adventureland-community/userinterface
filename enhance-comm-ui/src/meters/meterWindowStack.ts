@@ -1,7 +1,7 @@
 /**
  * Stacking + open defaults for meter windows (Details-like bring-to-front).
  * Z range sits above HUD panels (paperdoll ~36, panelStyle 20/40) and below
- * layout chrome (~80) / Add dialog (90).
+ * layout chrome (~80) / Add dialog (90) / guide overlay (LAYOUT_GUIDE_OVERLAY_Z).
  */
 
 import type { MeterInstance } from "./meterTypes";
@@ -10,6 +10,11 @@ import type { MeterInstance } from "./meterTypes";
 export const METER_STACK_BASE = 50;
 /** Soft ceiling before renormalize — below layout-edit chrome / add dialog. */
 export const METER_STACK_MAX = 77;
+/**
+ * Snap guide balls + window-id badges. Above meters (≤77) and toggles (100);
+ * pointer-events: none so drag/resize still hit panels underneath.
+ */
+export const LAYOUT_GUIDE_OVERLAY_Z = 110;
 
 export function maxMeterStackZ(peers: MeterInstance[]): number {
   let max = METER_STACK_BASE - 1;

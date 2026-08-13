@@ -70,11 +70,8 @@ export const VIEW_MODES: Array<{
   seriesMode?: "realtime" | "compare";
 }> = [
   { id: "bars", label: "Bars" },
-  { id: "table", label: "Table" },
   { id: "pie", label: "Pie" },
   { id: "line", label: "Graph" },
-  { id: "realtime", label: "Realtime", seriesMode: "realtime" },
-  { id: "compare", label: "Compare", seriesMode: "compare" },
 ];
 
 export function supportsViewModes(query: MeterQuery): boolean {
@@ -297,32 +294,72 @@ export function allDisplayLeaves(): MeterDisplayDef[] {
 export function displayLabelForQuery(query: MeterQuery): string {
   const idx = barModeIndex(query);
   if (idx >= 0) return BAR_MODE_CYCLE[idx].label;
-  return "";
+  switch (query.kind) {
+    case "players":
+      if (query.metric === "heal") return "Healing Done";
+      if (query.metric === "taken") return "Damage Taken";
+      if (query.metric === "healing_required") return "Healing Required";
+      if (query.metric === "avoidance") return "Avoidance";
+      return query.primary === "rate" ? "DPS" : "Damage Done";
+    case "avoidance":
+      return "Avoidance";
+    case "misc":
+      return "Miscellaneous";
+    case "channel":
+      return "Damage";
+    case "snapshot":
+      return query.mode === "pdps" ? "PDPS" : query.mode;
+    case "rolling":
+    case "realtime":
+      return "Hit DPS";
+    case "history":
+      return "DPS graph";
+    case "enemy_damage":
+      return "Adds";
+    case "taken_by_spell":
+      return "Damage Taken by Spell";
+    default:
+      return "";
+  }
 }
 
-/** @deprecated Prefer partyFocusMenuOptions({ hasObserver, watchedName }). */
+/** Attribute-aware rate unit for statusbar PDPS (and similar). */
+export function primaryRateUnit(query: MeterQuery): string {
+  const metric =
+    query.kind === "players" || query.kind === "details"
+      ? query.metric
+      : undefined;
+  if (metric === "heal" || metric === "healing_required") return "HPS";
+  if (metric === "taken") return "DTPS";
+  if (query.kind === "snapshot" && query.mode === "pdps") return "PDPS";
+  return "DPS";
+}
+
+/** @deprecated Prefer partyFocusMenuOptions({ hasObserver, watchedName, roster }). */
 export const PARTY_FOCUS_OPTIONS: Array<{
   id: PartyFocus;
   label: string;
-}> = partyFocusMenuOptions({ hasObserver: true });
+}> = partyFocusMenuOptions({ hasObserver: true, roster: "live" });
 
 export const METER_PRESETS: MeterPresetDef[] = [
   {
     id: "damage",
-    label: "Damage",
-    query: { kind: "players", metric: "damage" },
+    label: "DPS",
+    query: { kind: "players", metric: "damage", primary: "rate" },
     presentation: "bars",
     defaultVisible: true,
-    // Bottom-right cluster; Healing snaps on the left (see heal snap).
-    defaultPos: { x: 1, y: 28, anchor: "br" },
+    // Bottom-right cluster; HPS snaps on the right (see defaultMeterInstances).
+    defaultPos: { x: 82.1004233706721, y: 99, anchor: "br" },
+    defaultFrame: { w: 261, h: 157 },
   },
   {
     id: "heal",
-    label: "Healing",
-    query: { kind: "players", metric: "heal" },
+    label: "HPS",
+    query: { kind: "players", metric: "heal", primary: "rate" },
     presentation: "bars",
     defaultVisible: true,
-    defaultPos: { x: 16, y: 28, anchor: "br" },
+    defaultPos: { x: 95.97476985743381, y: 99, anchor: "br" },
+    defaultFrame: { w: 261, h: 157 },
   },
   {
     id: "taken",
@@ -408,7 +445,7 @@ export const METER_PRESETS: MeterPresetDef[] = [
     id: "summary",
     label: "Summary",
     query: { kind: "summary" },
-    presentation: "table",
+    presentation: "summary",
     catalog: false,
     defaultVisible: false,
     defaultPos: { x: 30, y: 50, anchor: "center" },
@@ -524,6 +561,12 @@ export function instanceFromPreset(
       overrides?.hideWhenEmpty != null
         ? overrides.hideWhenEmpty
         : preset.hideWhenEmpty,
+    chromeOnHover: overrides?.chromeOnHover,
+    statusbar: overrides?.statusbar || {
+      left: "segment",
+      center: "clock",
+      right: "pdps",
+    },
     frameW:
       overrides?.frameW != null ? overrides.frameW : preset.defaultFrame?.w,
     frameH:

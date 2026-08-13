@@ -3,7 +3,13 @@
  */
 
 import type { PanelPos } from "../lib/layout";
-import { instanceFromPreset, METER_PRESETS } from "./meterCatalog";
+import { refreshSnapFlags } from "../lib/panelEdgeGroup";
+import {
+  instanceFromPreset,
+  METER_PRESETS,
+  supportsViewModes,
+} from "./meterCatalog";
+import { normalizeStatusbarConfig } from "./meterStatusbarPlugins";
 import type { MeterInstance, MeterQuery } from "./meterTypes";
 
 const LEGACY_POS_MAP: Record<string, string> = {
@@ -37,17 +43,39 @@ export function defaultMeterInstances(): MeterInstance[] {
       }),
     );
   }
-  // Details-like default: Damage ‖ Healing edge-snapped.
+  // Playtested default: DPS ‖ HPS (rate primary), edge-snapped bottom-right.
   const dmg = out.find((m) => m.id === stableId("damage"));
   const heal = out.find((m) => m.id === stableId("heal"));
   if (dmg && heal) {
-    dmg.snap = { 1: heal.id };
-    heal.snap = { 3: dmg.id };
-    const h = dmg.frameH || heal.frameH;
-    if (h) {
-      dmg.frameH = h;
-      heal.frameH = h;
-    }
+    dmg.label = "DPS";
+    dmg.query = { kind: "players", metric: "damage", primary: "rate" };
+    dmg.pos = { x: 82.1004233706721, y: 99, anchor: "br" };
+    dmg.frameW = 261;
+    dmg.frameH = 157;
+    dmg.locked = true;
+    dmg.zIndex = 63;
+    dmg.stack = false;
+    dmg.integrate = false;
+    dmg.normalize = false;
+    dmg.rtPaused = false;
+    dmg.statusbar = { left: "segment", center: "clock", right: "pdps" };
+    dmg.snap = { 3: heal.id };
+    Object.assign(dmg, refreshSnapFlags(dmg));
+
+    heal.label = "HPS";
+    heal.query = { kind: "players", metric: "heal", primary: "rate" };
+    heal.pos = { x: 95.97476985743381, y: 99, anchor: "br" };
+    heal.frameW = 261;
+    heal.frameH = 157;
+    heal.locked = false;
+    heal.zIndex = 64;
+    heal.stack = false;
+    heal.integrate = false;
+    heal.normalize = false;
+    heal.rtPaused = false;
+    heal.statusbar = { left: "segment", center: "clock", right: "pdps" };
+    heal.snap = { 1: dmg.id };
+    Object.assign(heal, refreshSnapFlags(heal));
   }
   return out;
 }
@@ -69,10 +97,17 @@ function migrateRankedInstance(row: {
   query: MeterQuery;
   presentation?: string;
   label?: string;
-}): { query: MeterQuery; presentation: string; label?: string } {
+  seriesMode?: "realtime" | "compare";
+}): {
+  query: MeterQuery;
+  presentation: string;
+  label?: string;
+  seriesMode?: "realtime" | "compare";
+} {
   let query = row.query;
   let presentation = row.presentation || "bars";
   let label = row.label;
+  let seriesMode = row.seriesMode;
 
   if (query.kind === "channel" && query.channel !== "dps") {
     query = { kind: "players", metric: "damage" };
@@ -80,24 +115,17 @@ function migrateRankedInstance(row: {
     if (!label || COMPOSITION_CHANNEL_LABELS.has(label)) label = undefined;
   }
 
+  // Legacy ranked view modes removed (dedicated realtime/compare queries keep theirs).
+  if (presentation === "table") presentation = "bars";
   if (
-    query.kind === "players" ||
-    query.kind === "avoidance" ||
-    query.kind === "rolling" ||
-    query.kind === "snapshot"
+    (presentation === "realtime" || presentation === "compare") &&
+    supportsViewModes(query)
   ) {
-    if (
-      presentation === "table" ||
-      presentation === "pie" ||
-      presentation === "line" ||
-      presentation === "realtime" ||
-      presentation === "compare"
-    ) {
-      presentation = "bars";
-    }
+    presentation = "bars";
+    seriesMode = undefined;
   }
 
-  return { query, presentation, label };
+  return { query, presentation, label, seriesMode };
 }
 
 export function normalizeMeterInstances(raw: any): MeterInstance[] {
@@ -133,7 +161,12 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
       presentation = "line";
       if (!label || label === "DPS") label = "DPS graph";
     }
-    const migrated = migrateRankedInstance({ query, presentation, label });
+    const migrated = migrateRankedInstance({
+      query,
+      presentation,
+      label,
+      seriesMode: row.seriesMode,
+    });
     query = migrated.query;
     presentation = migrated.presentation;
     label = migrated.label;
@@ -142,7 +175,7 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
       label,
       query,
       presentation,
-      seriesMode: row.seriesMode,
+      seriesMode: migrated.seriesMode,
       stack: !!row.stack,
       integrate: !!row.integrate,
       normalize: !!row.normalize,
@@ -180,6 +213,9 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
         typeof row.alwaysShowSelf === "boolean"
           ? row.alwaysShowSelf
           : undefined,
+      chromeOnHover:
+        typeof row.chromeOnHover === "boolean" ? row.chromeOnHover : undefined,
+      statusbar: normalizeStatusbarConfig(row.statusbar),
       snap:
         row.snap && typeof row.snap === "object"
           ? {
@@ -193,8 +229,9 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
   }
   if (!out.length) return defaultMeterInstances();
 
-  // Backfill only current defaults (Damage / Healing).
+  // Backfill only current defaults (DPS / HPS).
   // Demoted panels are catalog-only — never re-injected onto existing saves.
+  // Existing saves keep their own labels/queries/positions — only missing ids.
   const defaults = defaultMeterInstances();
   for (let i = 0; i < defaults.length; i++) {
     const d = defaults[i];
@@ -208,19 +245,19 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
     }
   }
 
-  // Ensure Damage ‖ Healing snap if both stable defaults exist and neither has snap yet.
+  // Ensure DPS ‖ HPS snap if both stable defaults exist and neither has snap yet.
   const dmg = out.find((m) => m.id === "meter-damage");
   const heal = out.find((m) => m.id === "meter-heal");
   if (
     dmg &&
     heal &&
-    !dmg.snap?.[1] &&
-    !heal.snap?.[3] &&
+    !dmg.snap?.[3] &&
+    !heal.snap?.[1] &&
     !meterHasAnySnap(dmg) &&
     !meterHasAnySnap(heal)
   ) {
-    dmg.snap = { ...(dmg.snap || {}), 1: heal.id };
-    heal.snap = { ...(heal.snap || {}), 3: dmg.id };
+    dmg.snap = { ...(dmg.snap || {}), 3: heal.id };
+    heal.snap = { ...(heal.snap || {}), 1: dmg.id };
   }
 
   // Hide empty-subject Inspectors (not a permanent default); allow multiples.

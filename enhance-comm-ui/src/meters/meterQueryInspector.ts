@@ -4,11 +4,8 @@
 
 import { skillDisplayName } from "../lib/gameIcon";
 import type { PartyFocus } from "../lib/settingsFocus";
-import {
-  getHistoryPoints,
-  getLiveSegment,
-  isWatchedPartyMember,
-} from "./meterEngine";
+import { isWatchedPartyMember } from "./meterEngine";
+import { getHistoryPoints, getLiveSegment } from "./meterSession";
 import {
   abilityMetric,
   actorIdInScope,
@@ -226,7 +223,7 @@ export function queryHistory(
       if (focus) {
         const live = getLiveSegment();
         const actor = live?.actors[id];
-        if (actor && !playerInScope(actor, focus)) continue;
+        if (actor && live && !playerInScope(actor, focus, live)) continue;
         if (!actor && focus !== "all" && focus !== "visible") {
           // keep if visible/all only when we have meta
           if (focus === "watched" && !isWatchedPartyMember(id)) continue;

@@ -290,6 +290,16 @@ function mergeDamageTypes(
   }
 }
 
+export function isSegmentEmpty(seg: CombatSegment): boolean {
+  if (seg.deaths.length > 0) return false;
+  const ids = Object.keys(seg.actors);
+  for (let i = 0; i < ids.length; i++) {
+    const a = seg.actors[ids[i]];
+    if (a.damage > 0 || a.heal > 0 || a.taken > 0) return false;
+  }
+  return true;
+}
+
 /** Merge past segments into a session total (shallow totals + abilities). */
 export function mergeSegments(
   id: string,

@@ -35,27 +35,29 @@ import {
   clearRollingWindow,
   ingestRollingSample,
 } from "./rollingWindow";
-import {
-  applyDamageToSegment,
-  emptySegment,
-  ensureActor,
-  mergeSegments,
-} from "./sessionSegment";
+import { applyDamageToSegment, ensureActor } from "./sessionSegment";
 import { DISPEL_ABILITY_KEYS, INTERRUPT_ABILITY_KEYS } from "./meterAppearance";
-import { autoSegmentLabel, inferSegmentOutcome } from "./meterSegmentMeta";
 import type {
   CombatSegment,
   ConditionInterval,
   GearSwapEvent,
-  SegmentRef,
 } from "./meterTypes";
 import { emptyMisc } from "./meterTypes";
 import { markMeterDirty } from "./meterUiTick";
+import {
+  ensureLive,
+  getLiveSegment,
+  noteLiveDraft,
+  partyKeyFor,
+  resetSessionAll,
+  resetSessionCurrent,
+  resetSessionOverall,
+  sampleHistory,
+  soloKey,
+  startSession,
+  syncSession,
+} from "./meterSession";
 
-const COMBAT_BREAK_MS = 12_000;
-const MAX_PAST = 12;
-const HISTORY_MS = 5_000;
-const MAX_HISTORY = 60;
 const CONDITION_SAMPLE_MS = 500;
 const MAX_GEAR_SWAPS = 4000;
 
@@ -78,20 +80,6 @@ const GEAR_SLOT_NAMES = [
   "gloves",
   "elixir",
 ];
-
-export type HistoryPoint = {
-  at: number;
-  /** actorId -> dps-ish rate for compare/realtime charts */
-  values: Record<string, number>;
-};
-
-let live: CombatSegment | null = null;
-let past: CombatSegment[] = [];
-let history: HistoryPoint[] = [];
-let lastHistoryAt = 0;
-let lastCombatAt = 0;
-let inCombat = false;
-let segSeq = 0;
 
 let playerMeta: Record<
   string,
@@ -128,16 +116,6 @@ let unsubDamage: (() => void) | null = null;
 let unsubKill: (() => void) | null = null;
 let unsubAction: (() => void) | null = null;
 
-function soloKey(id: string, name?: string): string {
-  return `solo:${name || id}`;
-}
-
-function partyKeyFor(ent: EntityLike | undefined, id: string): string {
-  if (!ent) return soloKey(id);
-  if (ent.party) return ent.party;
-  return soloKey(id, ent.name);
-}
-
 function isPlayerEntity(ent: EntityLike | null | undefined): boolean {
   return !!(ent && (ent.player || ent.type === "character"));
 }
@@ -164,45 +142,10 @@ function rememberIdentity(
   if (ent.name) set.add(String(ent.name));
 }
 
-function nextSegId(): string {
-  segSeq += 1;
-  return `fight-${segSeq}-${Date.now()}`;
-}
-
-function ensureLive(now: number): CombatSegment {
-  if (!live) {
-    live = emptySegment(nextSegId(), now);
-    inCombat = true;
-  }
-  return live;
-}
-
-function endLive(now: number): void {
-  if (!live) return;
-  live.endedAt = now;
-  const partyIds: string[] = [];
-  const ids = Object.keys(live.actors);
-  for (let i = 0; i < ids.length; i++) {
-    if (playerMeta[ids[i]]) partyIds.push(ids[i]);
-  }
-  live.seq = segSeq;
-  live.outcome = inferSegmentOutcome(live, partyIds);
-  live.label = autoSegmentLabel(live, segSeq);
-  past.unshift(live);
-  while (past.length > MAX_PAST) past.pop();
-  live = null;
-  inCombat = false;
-  clearGearSnapshots();
-  markMeterDirty();
-}
-
-function noteCombatActivity(now: number): void {
-  if (inCombat && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
-    endLive(now);
-  }
-  lastCombatAt = now;
-  if (!live) ensureLive(now);
-  else inCombat = true;
+function mtypeForId(id: string | undefined): string | undefined {
+  if (!id) return undefined;
+  const ent = getEntitiesRecord()[id] || findEntityById(id);
+  return ent?.mtype;
 }
 
 function metaFor(id: string | undefined) {
@@ -229,26 +172,10 @@ function metaFor(id: string | undefined) {
   };
 }
 
-function sampleHistory(now: number): void {
-  if (now - lastHistoryAt < HISTORY_MS) return;
-  lastHistoryAt = now;
-  const seg = live;
-  if (!seg || !seg.startedAt) return;
-  const elapsed = Math.max(now - seg.startedAt, 1000);
-  const values: Record<string, number> = {};
-  const ids = Object.keys(seg.actors);
-  for (let i = 0; i < ids.length; i++) {
-    const a = seg.actors[ids[i]];
-    values[a.id] = (a.damage * 1000) / elapsed;
-  }
-  history.push({ at: now, values });
-  while (history.length > MAX_HISTORY) history.shift();
-}
-
 function sampleConditions(now: number): void {
   if (now - lastConditionSample < CONDITION_SAMPLE_MS) return;
   lastConditionSample = now;
-  const seg = live;
+  const seg = getLiveSegment();
   if (!seg) return;
   const ents = getEntitiesRecord();
   const ids = Object.keys(playerMeta);
@@ -368,7 +295,7 @@ function pushGearSwap(
  * snapshot-only so current loadout does not flood the Time Line.
  */
 function sampleGearSwaps(now: number): void {
-  const seg = live;
+  const seg = getLiveSegment();
   if (!seg) return;
   const ids = Object.keys(playerMeta);
   let dirty = false;
@@ -421,7 +348,7 @@ function onDamageEvent(ev: DamageEvent): void {
   const relevant =
     (actorIsPlayer && !!ev.actor) ||
     (targetIsPlayer && (!!ev.dreturn || !!ev.reflect || !!ev.damage));
-  if (relevant) noteCombatActivity(ev.at);
+  syncSession(ev.at, mtypeForId(ev.target), relevant);
 
   if (ev.damage && ev.damage > 0 && ev.target && targetIsPlayer) {
     applyDamageToShadow(ev.target, ev.damage);
@@ -471,9 +398,9 @@ function onDamageEvent(ev: DamageEvent): void {
 
 function onKillEvent(ev: KillEvent): void {
   const now = ev.at;
-  if (isPlayerId(ev.id) || playerMeta[ev.id]) {
-    noteCombatActivity(now);
-    const seg = ensureLive(now);
+  const playerDeath = isPlayerId(ev.id) || !!playerMeta[ev.id];
+  const seg = syncSession(now, mtypeForId(ev.id), playerDeath);
+  if (playerDeath && seg) {
     seg.deaths.push(buildDeathSnapshot(ev.id, now));
     const actor = seg.actors[ev.id];
     if (actor) {
@@ -486,8 +413,8 @@ function onKillEvent(ev: KillEvent): void {
 
 function onActionEvent(ev: ActionEvent): void {
   if (!ev.actor || !isPlayerId(ev.actor)) return;
-  noteCombatActivity(ev.at);
-  const seg = ensureLive(ev.at);
+  const seg = syncSession(ev.at, undefined, true);
+  if (!seg) return;
   const src = (ev.source || "attack").toLowerCase();
   seg.casts.push({
     at: ev.at,
@@ -504,49 +431,6 @@ function onActionEvent(ev: ActionEvent): void {
   if (INTERRUPT_ABILITY_KEYS.has(src)) actor.misc.interrupts += 1;
   if (DISPEL_ABILITY_KEYS.has(src)) actor.misc.dispels += 1;
   markMeterDirty();
-}
-
-/**
- * Skada find_set: Current → live if in combat, else last archived.
- * Title stays "Current" in the UI even when resolved to last.
- */
-export function resolveSegment(
-  ref: SegmentRef | undefined,
-): CombatSegment | null {
-  const r = ref || "current";
-  if (r === "total") {
-    const parts: CombatSegment[] = [];
-    if (live) parts.push(live);
-    for (let i = 0; i < past.length; i++) parts.push(past[i]);
-    if (!parts.length) return null;
-    return mergeSegments("total", parts, Date.now());
-  }
-  if (typeof r === "object" && r.pastId) {
-    for (let i = 0; i < past.length; i++) {
-      if (past[i].id === r.pastId) return past[i];
-    }
-    return null;
-  }
-  // current
-  if (inCombat && live) return live;
-  if (past.length) return past[0];
-  return live;
-}
-
-export function listPastSegments(): CombatSegment[] {
-  return past.slice();
-}
-
-export function getLiveSegment(): CombatSegment | null {
-  return live;
-}
-
-export function isMeterInCombat(): boolean {
-  return inCombat;
-}
-
-export function getHistoryPoints(): HistoryPoint[] {
-  return history;
 }
 
 export function getWatchedPartyKey(): string {
@@ -590,6 +474,15 @@ export type VisiblePartyRow = {
   members: string[];
 };
 
+function accumulatePartyMember(
+  byKey: Record<string, string[]>,
+  key: string,
+  name: string,
+): void {
+  if (!byKey[key]) byKey[key] = [];
+  if (byKey[key].indexOf(name) < 0) byKey[key].push(name);
+}
+
 /** Parties that currently have at least one player in vision. */
 export function listVisibleParties(): VisiblePartyRow[] {
   const byKey: Record<string, string[]> = {};
@@ -598,11 +491,34 @@ export function listVisibleParties(): VisiblePartyRow[] {
     const id = ids[i];
     if (!isVisiblePlayer(id)) continue;
     const meta = playerMeta[id];
-    const key = meta?.partyKey || soloKey(id, meta?.name);
-    const name = meta?.name || id;
-    if (!byKey[key]) byKey[key] = [];
-    if (byKey[key].indexOf(name) < 0) byKey[key].push(name);
+    accumulatePartyMember(
+      byKey,
+      meta?.partyKey || soloKey(id, meta?.name),
+      meta?.name || id,
+    );
   }
+  return partyRowsFromMembers(byKey);
+}
+
+/** Parties that appear on a stored fight — never the live vision roster. */
+export function listSegmentParties(seg: CombatSegment): VisiblePartyRow[] {
+  const byKey: Record<string, string[]> = {};
+  const ids = Object.keys(seg.actors);
+  for (let i = 0; i < ids.length; i++) {
+    const a = seg.actors[ids[i]];
+    if (!a.ctype && a.id && /^\d+$/.test(a.id)) continue;
+    accumulatePartyMember(
+      byKey,
+      a.partyKey || soloKey(a.id, a.name),
+      a.name || a.id,
+    );
+  }
+  return partyRowsFromMembers(byKey);
+}
+
+function partyRowsFromMembers(
+  byKey: Record<string, string[]>,
+): VisiblePartyRow[] {
   const keys = Object.keys(byKey);
   const out: VisiblePartyRow[] = [];
   for (let i = 0; i < keys.length; i++) {
@@ -631,10 +547,8 @@ export function updateMeterContext(entities: EntityLike[]): void {
   const nextMeta: typeof playerMeta = {};
   const nextWatched = new Set<string>();
   const now = Date.now();
-
-  if (inCombat && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
-    endLive(now);
-  }
+  syncSession(now);
+  const live = getLiveSegment();
 
   youId = observingId ? String(observingId) : "";
 
@@ -731,15 +645,11 @@ export function updateMeterContext(entities: EntityLike[]): void {
   playerMeta = nextMeta;
   sampleConditions(now);
   sampleGearSwaps(now);
+  noteLiveDraft();
 }
 
 export function resetAllMeters(): void {
-  live = null;
-  past = [];
-  history = [];
-  lastHistoryAt = 0;
-  lastCombatAt = 0;
-  inCombat = false;
+  resetSessionAll();
   clearRollingWindow();
   clearDeathRings();
   const oks = Object.keys(openConditions);
@@ -750,9 +660,7 @@ export function resetAllMeters(): void {
 
 /** Clear the live/current fight only (Details reset current). */
 export function resetCurrentMeterSegment(): void {
-  live = null;
-  lastCombatAt = 0;
-  inCombat = false;
+  resetSessionCurrent();
   clearRollingWindow();
   clearGearSnapshots();
   markMeterDirty();
@@ -763,9 +671,7 @@ export function resetCurrentMeterSegment(): void {
  * Live current fight is kept.
  */
 export function resetOverallMeterSegments(): void {
-  past = [];
-  history = [];
-  lastHistoryAt = 0;
+  resetSessionOverall();
   markMeterDirty();
 }
 
@@ -774,7 +680,9 @@ export function startMeterEngine(): () => void {
   if (!unsubDamage) unsubDamage = onDamage(onDamageEvent);
   if (!unsubKill) unsubKill = onKill(onKillEvent);
   if (!unsubAction) unsubAction = onActionSubscribe(onActionEvent);
+  const stopSession = startSession({ onLiveClosed: clearGearSnapshots });
   return () => {
+    stopSession();
     if (unsubDamage) {
       unsubDamage();
       unsubDamage = null;

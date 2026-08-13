@@ -10,7 +10,11 @@ import {
   getPercent,
 } from "../lib/format";
 import type { PartyFocus } from "../lib/settingsFocus";
-import { effectivePartyFocus, resolvePartyFocus } from "../lib/settingsFocus";
+import {
+  effectivePartyFocus,
+  namedPartyKey,
+  resolvePartyFocus,
+} from "../lib/settingsFocus";
 import { playersList } from "../queries/entities";
 import type { CombatChannel } from "./combatChannels";
 import {
@@ -20,13 +24,11 @@ import {
 } from "./rollingWindow";
 import {
   getPlayerMeta,
-  getWatchedPartyKey,
-  getYouId,
-  isMeterInCombat,
   isVisiblePlayer,
   isWatchedPartyMember,
-  resolveSegment,
 } from "./meterEngine";
+import { isLiveCombatSegment, listSegmentChoices, resolveSegment } from "./meterSession";
+import { runTitle, titleForRef } from "./meterSegmentCatalog";
 import {
   segmentDurationMs,
   type AbilityAgg,
@@ -69,34 +71,68 @@ export type QueryContext = {
   entities?: EntityLike[];
 };
 
-function focusToScope(focus: PartyFocus | undefined): PartyScopeKind {
-  const hasObserver = !!getYouId();
+function partyKeyOnSegment(seg: CombatSegment, key: string): boolean {
+  if (!key) return false;
+  const ids = Object.keys(seg.actors);
+  for (let i = 0; i < ids.length; i++) {
+    if (seg.actors[ids[i]].partyKey === key) return true;
+  }
+  return false;
+}
+
+function storedPartyKey(
+  focus: PartyFocus | undefined,
+  seg: CombatSegment,
+): string {
+  return namedPartyKey(focus) || seg.partyKey || "";
+}
+
+function focusToScope(
+  focus: PartyFocus | undefined,
+  seg: CombatSegment,
+): PartyScopeKind {
+  const liveRoster = isLiveCombatSegment(seg);
+  const hasObserver = !!seg.observingId;
   const eff = effectivePartyFocus(focus || "watched", hasObserver);
+  if (!liveRoster && eff === "visible") return "all";
   if (eff === "all") return "all";
   if (eff === "visible") return "visible";
   if (eff === "you") return "you";
   if (eff === "watched") return "party";
-  // specific party key → treat as party filter via partyKey match
+  if (!liveRoster && !partyKeyOnSegment(seg, eff)) {
+    return "all";
+  }
   return "party";
 }
 
 export function playerInScope(
   actor: ActorAgg,
   focus: PartyFocus | undefined,
+  seg: CombatSegment,
 ): boolean {
-  const scope = focusToScope(focus);
-  const you = getYouId();
+  const scope = focusToScope(focus, seg);
+  const liveRoster = isLiveCombatSegment(seg);
+  const you = seg.observingId || "";
   switch (scope) {
     case "all":
       return true;
     case "visible":
       return isVisiblePlayer(actor.id);
     case "you":
-      return !!you && actor.id === you;
+      return (
+        !!you &&
+        (actor.id === you ||
+          (!!seg.observingName && actor.name === seg.observingName))
+      );
     case "party": {
+      if (!liveRoster) {
+        const key = storedPartyKey(focus, seg);
+        if (key) return actor.partyKey === key;
+        return true;
+      }
       const resolved = resolvePartyFocus(
         effectivePartyFocus(focus || "watched", !!you),
-        getWatchedPartyKey(),
+        seg.partyKey || "",
       );
       if (resolved.partyFilter) {
         return actor.partyKey === resolved.partyFilter;
@@ -118,7 +154,7 @@ export function scopedActors(
   const out: ActorAgg[] = [];
   for (let i = 0; i < ids.length; i++) {
     const a = seg.actors[ids[i]];
-    if (playerInScope(a, focus)) out.push(a);
+    if (playerInScope(a, focus, seg)) out.push(a);
   }
   return out;
 }
@@ -177,22 +213,28 @@ export function actorIdInScope(
   focus: PartyFocus | undefined,
 ): boolean {
   const actor = seg.actors[actorId];
-  if (actor) return playerInScope(actor, focus);
-  const scope = focusToScope(focus);
+  if (actor) return playerInScope(actor, focus, seg);
+  const scope = focusToScope(focus, seg);
+  const liveRoster = isLiveCombatSegment(seg);
   switch (scope) {
     case "all":
       return true;
     case "visible":
       return isVisiblePlayer(actorId);
     case "you": {
-      const you = getYouId();
+      const you = seg.observingId || "";
       return !!you && actorId === you;
     }
     case "party": {
-      const you = getYouId();
+      if (!liveRoster) {
+        const key = storedPartyKey(focus, seg);
+        if (key) return false;
+        return true;
+      }
+      const you = seg.observingId || "";
       const resolved = resolvePartyFocus(
         effectivePartyFocus(focus || "watched", !!you),
-        getWatchedPartyKey(),
+        seg.partyKey || "",
       );
       if (resolved.partyFilter) return false;
       return isWatchedPartyMember(actorId);
@@ -359,7 +401,7 @@ export function rankedPlayers(
   primary: "total" | "rate" = "total",
 ): MeterResult {
   const actors = scopedActors(seg, focus);
-  const you = getYouId();
+  const you = seg.observingId || "";
   const items = actors.map((a) => ({
     id: a.id,
     name: a.name,
@@ -595,14 +637,14 @@ export function runMeterQuery(
 
 export function segmentTitle(ref: SegmentRef | undefined): string {
   const r = ref || "current";
-  if (r === "total") return "Overall";
-  if (typeof r === "object") {
+  if (r === "current" || r === "total") return runTitle(r);
+  const fromList = titleForRef(r, listSegmentChoices());
+  if (fromList) return fromList;
+  if ("pastId" in r) {
     const seg = resolveSegment(r);
     return seg?.label || seg?.id || "Past";
   }
-  // Always label Current even when resolved to last (Skada)
-  void isMeterInCombat();
-  return "Current";
+  return runTitle(r);
 }
 
 /** Heal rolling helper for dual meters. */

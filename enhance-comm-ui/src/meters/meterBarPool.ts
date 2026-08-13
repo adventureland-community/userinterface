@@ -3,7 +3,7 @@
  * Ingest never remounts rows; paint mutates width/text.
  *
  * Bar width follows Details: relative to top actor (`barMax` / max barValue),
- * never relative to the optional Total footer (which is always 100%).
+ * never relative to the optional Total row (which is always 100%).
  */
 
 import { classColors } from "../lib/colors";
@@ -103,7 +103,7 @@ function barAmount(row: BarPoolRow): number {
 /**
  * Details `instance.top`: max among actor rows only.
  * Prefer each row's `barMax` (overall #1) so scrolled/pinned views keep scale.
- * Never let the Total footer become the scale — that made Done bars shrink
+ * Never let the Total row become the scale — that made Done bars shrink
  * as group sum grew (share-of-group instead of relative-to-top).
  */
 function scaleMax(rows: BarPoolRow[]): number {
@@ -118,7 +118,7 @@ function scaleMax(rows: BarPoolRow[]): number {
   return fromMeta || fromVisible || 1;
 }
 
-/** Group sum for share % — exclude Total footer so it does not double-count. */
+/** Group sum for share % — exclude Total row so it does not double-count. */
 function groupSum(rows: BarPoolRow[]): number {
   let sum = 0;
   for (let i = 0; i < rows.length; i++) {
@@ -126,6 +126,17 @@ function groupSum(rows: BarPoolRow[]): number {
     sum += rows[i].value;
   }
   return sum || 1;
+}
+
+/** Details total_bar: no `#.` — actors keep true ranks (1-based among players). */
+function rankText(r: BarPoolRow, paintIndex: number, painted: BarPoolRow[]): string {
+  if (isTotalRow(r)) return "";
+  if (r.rank != null) return `${r.rank}.`;
+  let actorsBefore = 0;
+  for (let j = 0; j < paintIndex; j++) {
+    if (!isTotalRow(painted[j])) actorsBefore++;
+  }
+  return `${actorsBefore + 1}.`;
 }
 
 function barWidthPct(row: BarPoolRow, max: number): number {
@@ -193,6 +204,7 @@ function makeRowEl(
   opts: BarPoolOpts,
   max: number,
   total: number,
+  painted: BarPoolRow[],
 ): HTMLDivElement {
   const el = document.createElement("div");
   const isAbility = r.kind === "ability" || r.kind === "channel";
@@ -208,9 +220,11 @@ function makeRowEl(
   const share = total ? (r.value / total) * 100 : 0;
   const icon = barRowIconHtml(r, opts);
   const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
+  const rankLabel =
+    opts.rank !== false ? rankText(r, i, painted) : "";
   el.innerHTML = `
     <div class="ecu-meter-fill${anim}" style="width:${pct}%;background:${rowColor(r)}"></div>
-    ${opts.rank !== false ? `<span class="ecu-meter-rank">${r.rank != null ? r.rank : i + 1}.</span>` : "<span></span>"}
+    ${opts.rank !== false ? `<span class="ecu-meter-rank">${rankLabel}</span>` : "<span></span>"}
     <span class="ecu-meter-who">${icon}<span class="ecu-meter-label"></span></span>
     <span class="ecu-meter-vals"></span>`;
   const label = el.querySelector(".ecu-meter-label") as HTMLElement | null;
@@ -247,13 +261,19 @@ function bindRow(el: HTMLDivElement, r: BarPoolRow, opts: BarPoolOpts): void {
   }
 }
 
+/** Details: Total is first row; actors keep relative order / value sort. */
 function sortForPaint(rows: BarPoolRow[]): BarPoolRow[] {
-  if (rows.length && rows[0].rank != null) return rows.slice();
-  return rows.slice().sort((a, b) => {
-    if (isTotalRow(a)) return 1;
-    if (isTotalRow(b)) return -1;
-    return barAmount(b) - barAmount(a);
-  });
+  const totals: BarPoolRow[] = [];
+  const actors: BarPoolRow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (isTotalRow(rows[i])) totals.push(rows[i]);
+    else actors.push(rows[i]);
+  }
+  if (actors.length && actors[0].rank != null) {
+    return totals.concat(actors);
+  }
+  actors.sort((a, b) => barAmount(b) - barAmount(a));
+  return totals.concat(actors);
 }
 
 export function renderRankedRows(
@@ -268,7 +288,7 @@ export function renderRankedRows(
   const total = groupSum(sorted);
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
-    const el = makeRowEl(r, i, opts, max, total);
+    const el = makeRowEl(r, i, opts, max, total, sorted);
     bindRow(el, r, opts);
     container.appendChild(el);
   }
@@ -305,7 +325,7 @@ export function patchRankedRows(
   }
   while (kids.length < sorted.length) {
     const r = sorted[kids.length];
-    const el = makeRowEl(r, kids.length, merged, max, total);
+    const el = makeRowEl(r, kids.length, merged, max, total, sorted);
     container.appendChild(el);
     kids.push(el);
   }
@@ -332,9 +352,9 @@ export function patchRankedRows(
       if (fill.style.background !== bg) fill.style.background = bg;
     }
     const rank = el.querySelector(".ecu-meter-rank");
-    const rankText = `${r.rank != null ? r.rank : i + 1}.`;
-    if (rank && merged.rank !== false && rank.textContent !== rankText) {
-      rank.textContent = rankText;
+    const nextRank = merged.rank !== false ? rankText(r, i, sorted) : "";
+    if (rank && rank.textContent !== nextRank) {
+      rank.textContent = nextRank;
     }
     const label = el.querySelector(".ecu-meter-label");
     if (label && label.textContent !== r.name) label.textContent = r.name;
