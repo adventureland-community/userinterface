@@ -1,6 +1,7 @@
 import { getG } from "../../host/al";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
-import { addTint, getTint, itemContainer, rebindTint } from "../../host/icons";
+import { addTint, getTint, rebindTint } from "../../host/icons";
+import { paintItemContainerIcon } from "../../lib/gameIcon";
 import { getReact, e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import {
@@ -425,27 +426,7 @@ export function EffectIcon(props: {
   const paintIcon = () => {
     const el = iconRef.current as HTMLElement | null;
     if (!el) return;
-
-    const opts: Record<string, any> = {
-      skin: effect.skin,
-      size: iconSize,
-      draggable: false,
-    };
-    // Stacks are applied via syncStackBadge so count updates do not wipe skidloader.
-    const html = itemContainer(opts, null);
-
-    if (html) {
-      el.innerHTML = html;
-      const root = el.firstElementChild as HTMLElement | null;
-      if (root) {
-        root.style.margin = "0";
-        root.removeAttribute("onmousedown");
-        root.removeAttribute("ontouchstart");
-        root.removeAttribute("onclick");
-      }
-    } else {
-      el.textContent = effect.id;
-    }
+    paintItemContainerIcon(el, effect.skin, iconSize);
   };
 
   const hideTint = () => {

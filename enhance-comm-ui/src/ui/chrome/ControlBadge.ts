@@ -1,4 +1,4 @@
-import { itemContainer } from "../../host/icons";
+import { paintItemContainerIcon } from "../../lib/gameIcon";
 import { getReact, e } from "../../host/react";
 import type { ControlState } from "../../lib/controlState";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
@@ -14,10 +14,7 @@ export type ControlBadgeProps = {
   iconSize?: number;
 };
 
-function ControlIcon(props: {
-  state: ControlState;
-  iconSize: number;
-}): any {
+function ControlIcon(props: { state: ControlState; iconSize: number }): any {
   const React = getReact();
   const ref = React.useRef(null);
   const { state, iconSize } = props;
@@ -25,22 +22,7 @@ function ControlIcon(props: {
   React.useEffect(() => {
     const el = ref.current as HTMLElement | null;
     if (!el) return;
-    const html = itemContainer(
-      { skin: state.skin, size: iconSize, draggable: false },
-      null,
-    );
-    if (html) {
-      el.innerHTML = html;
-      const root = el.firstElementChild as HTMLElement | null;
-      if (root) {
-        root.style.margin = "0";
-        root.removeAttribute("onmousedown");
-        root.removeAttribute("ontouchstart");
-        root.removeAttribute("onclick");
-      }
-    } else {
-      el.textContent = state.label.slice(0, 1);
-    }
+    paintItemContainerIcon(el, state.skin, iconSize);
     return () => {
       if (el) el.innerHTML = "";
     };
@@ -99,9 +81,7 @@ export function ControlBadge(props: ControlBadgeProps): any {
     },
     ...states.map((state) => {
       const key =
-        state.kind === "fear"
-          ? `fear-${state.level}`
-          : `cc-${state.id}`;
+        state.kind === "fear" ? `fear-${state.level}` : `cc-${state.id}`;
       return e(
         "div",
         {

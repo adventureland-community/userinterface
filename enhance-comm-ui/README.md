@@ -38,7 +38,7 @@ Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.u
 - Session kill KPI panel
 - Observer **Command** panel (replaces stock CodeMirror COMMAND): run `o:command` / remote `code_eval`, saved named snippets (folders + search) in localStorage
 - Party chips: compact buffs/debuffs (+N overflow), aggro badge, soft dim for dead (no range dim)
-- **Party buff modes** (`partyBuffMode`, default `auto`): cycle via **Buffs:** on the Party panel — `auto` (all ≤8 chips, else observed-only) · `all` · `observed` · `compact` (max 2+N) · `shared` (one unique strip per party) · `off`
+- **Party buff modes** (`partyBuffMode`, default `auto`): cycle via **Buffs ·** chip on the Party panel header — `auto` (all ≤8 chips, else observed-only) · `all` · `observed` · `compact` (max 2+N) · `shared` (one unique strip per party) · `off`
 - Readable type floor via shared `typeScale` (counts/badges ~14–15px; chrome ~13–15px; no bold / no text-shadow)
 - Server dropdown: live event badges per realm (special monsters) via [ALData](https://github.com/earthiverse/ALData) `GET https://aldata.earthiverse.ca/monsters/:types` (~45s poll, cached by region|identifier); stock `X.servers` has no events — connected realm also merges `window.S` live keys. Fails soft if ALData is unreachable.
 - Deselect observe: click active character chip again, or Esc (paperdoll clears first)

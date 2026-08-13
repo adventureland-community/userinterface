@@ -46,6 +46,12 @@ export type EntityLike = {
    * Tiers: 1 scared, 2–3 terrified, 4+ petrified (stock client logs).
    */
   fear?: number;
+  /** Base body/armor skin for `sprite(skin, { cx })`. */
+  skin?: string;
+  /** Cosmetic map (head/hair/hat/…) for `sprite()`. */
+  cx?: Record<string, string> | any;
+  /** Dead / rip — `sprite` draws gravestone when set. */
+  rip?: boolean;
 };
 
 export type SlotLike = {
@@ -68,11 +74,33 @@ export type StatusLike = {
   [key: string]: any;
 };
 
+export type GConditionDef = {
+  name?: string;
+  skin?: string;
+  ui?: boolean;
+  buff?: boolean;
+  debuff?: boolean;
+  [key: string]: any;
+};
+
 export type GLike = {
-  conditions?: Record<string, { skin?: string; ui?: boolean; [key: string]: any }>;
-  skills?: Record<string, { skin?: string; ui?: boolean; [key: string]: any }>;
-  items?: Record<string, { skin?: string; [key: string]: any }>;
+  conditions?: Record<string, GConditionDef>;
+  skills?: Record<
+    string,
+    { name?: string; skin?: string; ui?: boolean; [key: string]: any }
+  >;
+  items?: Record<string, { name?: string; skin?: string; [key: string]: any }>;
+  /** Class defs — `looks[0]` is the default character-select sprite. */
+  classes?: Record<
+    string,
+    { looks?: Array<[string, Record<string, string>?]>; [key: string]: any }
+  >;
   monsters?: Record<string, any>;
+  positions?: Record<string, [string, number, number] | any>;
+  imagesets?: Record<
+    string,
+    { file: string; size: number; columns: number; rows: number }
+  >;
 };
 
 export type ServerInfoLike = {
@@ -95,6 +123,24 @@ declare global {
     G?: GLike;
     entities?: Record<string, EntityLike> | EntityLike[];
     observing?: EntityLike | null;
+    /** Active self while playing; null on /comm except bag borrow. */
+    character?: EntityLike | null;
+    X?: {
+      characters?: Array<{
+        name?: string;
+        id?: string;
+        type?: string;
+        skin?: string;
+        level?: number;
+        online?: boolean;
+        server?: string;
+        rip?: boolean;
+        cx?: any;
+        secret?: string;
+      }>;
+      servers?: any[];
+      [key: string]: any;
+    };
     S?: ServerInfoLike;
     socket?: SocketLike;
     server_region?: string;
@@ -103,11 +149,14 @@ declare global {
     server_path?: string;
     map?: { map_name?: string };
     xtarget?: EntityLike | null;
+    sprite?: (skin: string, opts?: any) => string;
     item_container?: (item: any, actual?: any) => string;
     condition_click?: (name: string) => void;
     slot_click?: (name: string) => void;
     add_tint?: (selector: string, args?: any) => void;
-    get_tint?: (selector: string) => { added?: boolean; [key: string]: any } | null;
+    get_tint?: (
+      selector: string,
+    ) => { added?: boolean; [key: string]: any } | null;
     simple_distance?: (a: any, b: any) => number;
     calculate_difficulty?: (monster: any) => number;
     /** Stock /comm COMMAND modal; hooked by enhance-comm-ui. */

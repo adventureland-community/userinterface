@@ -66,13 +66,19 @@ export function findEntityById(
  * Watched character for /comm. `window.observing` is set once on welcome and
  * is not refreshed by `player` packets (those only update `character`, which
  * is null while observing). Live hp/target/etc. live on `entities[id]`.
+ *
+ * Live entity packets can omit `ctype` on later syncs; keep the welcome snap's
+ * class when the live sprite lacks one so meters/frames still resolve class.
  */
 export function getObserving(): EntityLike | null | undefined {
   const snap = window.observing;
   if (snap == null) return snap;
   if (snap.id != null) {
     const live = findEntityById(snap.id);
-    if (live) return live;
+    if (live) {
+      if (!live.ctype && snap.ctype) live.ctype = snap.ctype;
+      return live;
+    }
   }
   return snap;
 }
@@ -80,6 +86,80 @@ export function getObserving(): EntityLike | null | undefined {
 export function getObservingId(): string | undefined {
   const obs = getObserving();
   return obs?.id != null ? String(obs.id) : undefined;
+}
+
+/** Local play / bag-borrowed self — null on /comm unless inventory borrows it. */
+export function getCharacter(): EntityLike | null | undefined {
+  return window.character;
+}
+
+const KNOWN_CTYPES = new Set([
+  "warrior",
+  "mage",
+  "priest",
+  "rogue",
+  "ranger",
+  "paladin",
+  "merchant",
+]);
+
+function asCtype(v: unknown): string | undefined {
+  if (typeof v !== "string" || !v) return undefined;
+  const key = v.toLowerCase();
+  return KNOWN_CTYPES.has(key) ? key : undefined;
+}
+
+/**
+ * Resolve player class for meters when `entities[id].ctype` is missing.
+ * Order: entity → observing/character self → X.characters[].type (own roster).
+ */
+export function resolvePlayerCtype(
+  id: string | undefined,
+  ent?: EntityLike | null,
+): string | undefined {
+  if (!id) return undefined;
+  const tid = String(id);
+  const fromEnt = asCtype(ent?.ctype);
+  if (fromEnt) return fromEnt;
+
+  const live = ent || findEntityById(tid);
+  const fromLive = asCtype(live?.ctype);
+  if (fromLive) return fromLive;
+
+  const observing = window.observing;
+  if (
+    observing &&
+    (String(observing.id) === tid ||
+      (observing.name != null && String(observing.name) === tid))
+  ) {
+    const fromObs = asCtype(observing.ctype);
+    if (fromObs) return fromObs;
+  }
+
+  const character = getCharacter();
+  if (
+    character &&
+    (String(character.id) === tid ||
+      (character.name != null && String(character.name) === tid))
+  ) {
+    const fromChar = asCtype(character.ctype);
+    if (fromChar) return fromChar;
+  }
+
+  const chars = window.X?.characters || [];
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (!c) continue;
+    if (
+      (c.name != null && String(c.name) === tid) ||
+      (c.id != null && String(c.id) === tid)
+    ) {
+      const fromX = asCtype(c.type);
+      if (fromX) return fromX;
+    }
+  }
+
+  return undefined;
 }
 
 export function getS(): ServerInfoLike | undefined {
