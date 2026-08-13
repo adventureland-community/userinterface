@@ -1,5 +1,6 @@
 /**
  * Meter instance state and CRUD — extracted from CommUI.
+ * Move / snap / ungroup live in useCommWindowActions (unified Comm graph).
  */
 
 import { getReact } from "../../host/react";
@@ -18,35 +19,43 @@ import {
   reportTabByKind,
   type ReportKind,
 } from "../../meters/meterCatalog";
-import type { MeterInstance, SegmentRef } from "../../meters/meterTypes";
 import {
-  findMeterSnapPreviewTarget,
-  moveMeterGroup,
-  trySnapMeterOnDrop,
-  ungroupMeter,
-} from "../../meters/meterWindowGroup";
+  bringMeterToFront,
+  nextMeterStackZ,
+  prepareNewMeterWindow,
+} from "../../meters/meterWindowStack";
+import type {
+  MeterInstance,
+  PlayersMetric,
+  PlayersPrimary,
+  SegmentRef,
+} from "../../meters/meterTypes";
 import { REPORT_FRAME_DEFAULT } from "../../lib/frameSizes";
+import { detailsWindowTitle } from "../meter/meterShellHelpers";
+
+export type FocusInspectorOpts = {
+  metric?: PlayersMetric;
+  primary?: PlayersPrimary;
+  selectedset?: SegmentRef;
+  partyFocus?: PartyFocus;
+};
 
 export type CommMeterInstancesApi = {
   meterInstances: MeterInstance[];
   meterInstancesRef: { current: MeterInstance[] };
   closedMeters: MeterInstance[];
-  metersLocked: boolean;
-  altHeld: boolean;
-  meterSnapDragId: string | null;
-  meterSnapPeerId: string | null;
   peerLayout: Record<string, PanelPos>;
   meterIsLocked: (inst: MeterInstance) => boolean;
-  dragRefFor: (id: string) => { current: HTMLElement | null };
   patchMeter: (id: string, partial: Partial<MeterInstance>) => void;
+  /** Details SetToplevel — raise on interact (click / drag). */
+  raiseMeterToFront: (id: string) => void;
   closeMeterRuntime: (id: string) => void;
   reopenClosedMeter: (id: string) => void;
-  moveMeterWithGroup: (id: string, pos: any) => void;
-  snapMeterAfterMove: (id: string) => void;
-  onMeterDragStart: (id: string) => void;
-  onMeterDragMove: (id: string) => void;
-  ungroupMeterPanel: (id: string) => void;
-  focusInspector: (actorId: string, name: string) => void;
+  focusInspector: (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => void;
   focusReport: (
     kind: ReportKind,
     from?: { selectedset?: SegmentRef; partyFocus?: PartyFocus },
@@ -58,7 +67,6 @@ export type CommMeterInstancesApi = {
   setMeterInstances: (
     value: MeterInstance[] | ((prev: MeterInstance[]) => MeterInstance[]),
   ) => void;
-  setMetersLockedPersist: (locked: boolean) => void;
   resetMetersFromSettings: () => void;
 };
 
@@ -70,45 +78,12 @@ export function useCommMeterInstances(
   const [meterInstances, setMeterInstances] = React.useState(
     () => getSettings().meterInstances as MeterInstance[],
   );
-  const [meterSnapDragId, setMeterSnapDragId] = React.useState(
-    null as string | null,
-  );
-  const [meterSnapPeerId, setMeterSnapPeerId] = React.useState(
-    null as string | null,
-  );
-  const [metersLocked, setMetersLocked] = React.useState(
-    () => getSettings().metersLocked !== false,
-  );
   const [closedMeters, setClosedMeters] = React.useState(
     () => (getSettings().meterClosedInstances || []) as MeterInstance[],
   );
-  const [altHeld, setAltHeld] = React.useState(false);
 
   const meterInstancesRef = React.useRef(meterInstances);
   meterInstancesRef.current = meterInstances;
-
-  const setMetersLockedPersist = (locked: boolean) => {
-    setMetersLocked(locked);
-    patchSettings({ metersLocked: locked });
-  };
-
-  React.useEffect(() => {
-    const onDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Alt") setAltHeld(true);
-    };
-    const onUp = (ev: KeyboardEvent) => {
-      if (ev.key === "Alt") setAltHeld(false);
-    };
-    const onBlur = () => setAltHeld(false);
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
-    window.addEventListener("blur", onBlur);
-    return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
-      window.removeEventListener("blur", onBlur);
-    };
-  }, []);
 
   const peerLayout: Record<string, PanelPos> = { ...layout };
   for (let i = 0; i < meterInstances.length; i++) {
@@ -117,7 +92,7 @@ export function useCommMeterInstances(
 
   const meterIsLocked = (inst: MeterInstance): boolean => {
     if (typeof inst.locked === "boolean") return inst.locked;
-    return metersLocked;
+    return getSettings().windowsLocked !== false;
   };
 
   const patchMeter = (id: string, partial: Partial<MeterInstance>) => {
@@ -126,6 +101,15 @@ export function useCommMeterInstances(
       if (partial.selectedset != null && getMeterAppearance().segmentsLocked) {
         next = next.map((m) => ({ ...m, selectedset: partial.selectedset }));
       }
+      patchSettings({ meterInstances: next });
+      return next;
+    });
+  };
+
+  const raiseMeterToFront = (id: string) => {
+    setMeterInstances((prev: MeterInstance[]) => {
+      const next = bringMeterToFront(prev, id);
+      if (next === prev) return prev;
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -156,81 +140,24 @@ export function useCommMeterInstances(
     if (!inst) return;
     setClosedMeters(closed);
     setMeterInstances((prev: MeterInstance[]) => {
-      const next = prev.concat([{ ...inst!, visible: true }]);
+      // Keep prior lock; only raise stack so the window paints on top.
+      const { zIndex, peers } = nextMeterStackZ(prev);
+      const next = peers.concat([{ ...inst!, visible: true, zIndex }]);
       patchSettings({ meterInstances: next, meterClosedInstances: closed });
       return next;
     });
   };
 
-  const moveMeterWithGroup = (id: string, pos: any) => {
-    setMeterInstances((prev: MeterInstance[]) => {
-      const next = moveMeterGroup(prev, id, pos);
-      patchSettings({ meterInstances: next });
-      return next;
-    });
-  };
-
-  /** After drag ends: try Details-style edge attach + align. */
-  const snapMeterAfterMove = (id: string) => {
-    setMeterSnapDragId(null);
-    setMeterSnapPeerId(null);
-    if (getSettings().meterWindowGrouping === false) return;
-    if (getMeterAppearance().disableGrouping) return;
-    setMeterInstances((prev: MeterInstance[]) => {
-      const next = trySnapMeterOnDrop(prev, id);
-      if (next === prev) return prev;
-      // Reference equality may not hold — compare snap/pos of moved id.
-      const a = prev.find((m) => m.id === id);
-      const b = next.find((m) => m.id === id);
-      if (
-        a &&
-        b &&
-        a.pos.x === b.pos.x &&
-        a.pos.y === b.pos.y &&
-        JSON.stringify(a.snap || {}) === JSON.stringify(b.snap || {})
-      ) {
-        return prev;
-      }
-      patchSettings({ meterInstances: next });
-      return next;
-    });
-  };
-
-  const onMeterDragStart = (id: string) => {
-    setMeterSnapDragId(id);
-    setMeterSnapPeerId(null);
-  };
-
-  const onMeterDragMove = (id: string) => {
-    if (getSettings().meterWindowGrouping === false) {
-      setMeterSnapPeerId(null);
-      return;
-    }
-    setMeterSnapPeerId(findMeterSnapPreviewTarget(meterInstances, id));
-  };
-
-  const ungroupMeterPanel = (id: string) => {
-    setMeterInstances((prev: MeterInstance[]) => {
-      const next = ungroupMeter(prev, id);
-      patchSettings({ meterInstances: next });
-      return next;
-    });
-  };
-
-  /** Stable drag refs so meter titlebars can move the PositionedPanel (Details-style). */
-  const meterDragRefs = React.useRef(
-    {} as Record<string, { current: HTMLElement | null }>,
-  );
-  const dragRefFor = (id: string) => {
-    if (!meterDragRefs.current[id]) {
-      meterDragRefs.current[id] = { current: null };
-    }
-    return meterDragRefs.current[id];
-  };
-
   /** Open Inspector for a player — reuses same-actor window, else spawns another. */
-  const focusInspector = (actorId: string, name: string) => {
+  const focusInspector = (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => {
     if (!actorId) return;
+    const metric = opts?.metric || "damage";
+    const primary = opts?.primary === "rate" ? "rate" : "total";
+    const label = detailsWindowTitle(name, metric, primary);
     setMeterInstances((prev: MeterInstance[]) => {
       for (let i = 0; i < prev.length; i++) {
         const m = prev[i];
@@ -239,7 +166,29 @@ export function useCommMeterInstances(
           m.query.actorId === actorId &&
           m.visible !== false
         ) {
-          return prev;
+          const patched = prev.map((row, j) => {
+            if (j !== i) return row;
+            return {
+              ...row,
+              query: {
+                kind: "details" as const,
+                actorId,
+                metric,
+                primary,
+                ability: undefined,
+              },
+              presentation: "details" as const,
+              label,
+              visible: true,
+              selectedset:
+                opts?.selectedset != null ? opts.selectedset : row.selectedset,
+              partyFocus:
+                opts?.partyFocus != null ? opts.partyFocus : row.partyFocus,
+            };
+          });
+          const next = bringMeterToFront(patched, m.id);
+          patchSettings({ meterInstances: next });
+          return next;
         }
       }
       const preset = presetById("inspector");
@@ -253,21 +202,24 @@ export function useCommMeterInstances(
           n += 1;
         }
       }
-      const inst = instanceFromPreset(preset, {
+      const raw = instanceFromPreset(preset, {
         id: `meter-inspector-${Date.now().toString(36)}`,
         pos: {
           x: Math.min(92, 42 + (n % 6) * 5),
           y: Math.min(82, 48 + (n % 5) * 5),
           anchor: "bc",
         },
-        query: { kind: "details", actorId },
+        query: { kind: "details", actorId, metric, primary },
         presentation: "details",
-        label: `Inspector · ${name}`,
+        label,
         visible: true,
-        frameW: preset.defaultFrame?.w || 560,
-        frameH: preset.defaultFrame?.h || 400,
+        frameW: preset.defaultFrame?.w || 640,
+        frameH: preset.defaultFrame?.h || 440,
+        selectedset: opts?.selectedset,
+        partyFocus: opts?.partyFocus,
       });
-      const next = prev.concat([inst]);
+      const opened = prepareNewMeterWindow(raw, prev);
+      const next = opened.peers.concat([opened.inst]);
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -282,7 +234,7 @@ export function useCommMeterInstances(
     setMeterInstances((prev: MeterInstance[]) => {
       for (let i = 0; i < prev.length; i++) {
         if (!isReportPresentation(prev[i].presentation)) continue;
-        const next = prev.map((m, j) => {
+        const patched = prev.map((m, j) => {
           if (j !== i) return m;
           return {
             ...m,
@@ -296,12 +248,13 @@ export function useCommMeterInstances(
               from?.partyFocus != null ? from.partyFocus : m.partyFocus,
           };
         });
+        const next = bringMeterToFront(patched, prev[i].id);
         patchSettings({ meterInstances: next });
         return next;
       }
       const preset = presetById(tab.presetId);
       if (!preset) return prev;
-      const inst = instanceFromPreset(preset, {
+      const raw = instanceFromPreset(preset, {
         id: `meter-report-${Date.now().toString(36)}`,
         pos: { x: 50, y: 88, anchor: "bc" },
         query: { ...tab.query },
@@ -313,7 +266,8 @@ export function useCommMeterInstances(
         frameW: preset.defaultFrame?.w || REPORT_FRAME_DEFAULT.w,
         frameH: preset.defaultFrame?.h || REPORT_FRAME_DEFAULT.h,
       });
-      const next = prev.concat([inst]);
+      const opened = prepareNewMeterWindow(raw, prev);
+      const next = opened.peers.concat([opened.inst]);
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -322,15 +276,16 @@ export function useCommMeterInstances(
   const addMeterFromPreset = (presetId: string) => {
     const preset = presetById(presetId);
     if (!preset) return;
-    const inst = instanceFromPreset(preset, {
-      pos: {
-        x: 40 + Math.random() * 20,
-        y: 40 + Math.random() * 20,
-        anchor: "center",
-      },
-    });
     setMeterInstances((prev: MeterInstance[]) => {
-      const next = prev.concat([inst]);
+      const raw = instanceFromPreset(preset, {
+        pos: {
+          x: 40 + Math.random() * 20,
+          y: 40 + Math.random() * 20,
+          anchor: "center",
+        },
+      });
+      const opened = prepareNewMeterWindow(raw, prev);
+      const next = opened.peers.concat([opened.inst]);
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -346,7 +301,7 @@ export function useCommMeterInstances(
         }
       }
       if (!src) return prev;
-      const copy: MeterInstance = {
+      const raw: MeterInstance = {
         ...src,
         id: `meter-dup-${Date.now().toString(36)}`,
         pos: {
@@ -354,8 +309,12 @@ export function useCommMeterInstances(
           x: Math.min(98, src.pos.x + 3),
           y: Math.min(98, src.pos.y + 3),
         },
+        // New window — do not inherit source lock / stack rank.
+        locked: false,
+        zIndex: undefined,
       };
-      const next = prev.concat([copy]);
+      const opened = prepareNewMeterWindow(raw, prev);
+      const next = opened.peers.concat([opened.inst]);
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -380,28 +339,19 @@ export function useCommMeterInstances(
   const resetMetersFromSettings = () => {
     const next = resetMeterInstances();
     setMeterInstances(next.meterInstances);
-    setMetersLockedPersist(next.metersLocked !== false);
+    setClosedMeters((next.meterClosedInstances || []) as MeterInstance[]);
   };
 
   return {
     meterInstances,
     meterInstancesRef,
     closedMeters,
-    metersLocked,
-    altHeld,
-    meterSnapDragId,
-    meterSnapPeerId,
     peerLayout,
     meterIsLocked,
-    dragRefFor,
     patchMeter,
+    raiseMeterToFront,
     closeMeterRuntime,
     reopenClosedMeter,
-    moveMeterWithGroup,
-    snapMeterAfterMove,
-    onMeterDragStart,
-    onMeterDragMove,
-    ungroupMeterPanel,
     focusInspector,
     focusReport,
     addMeterFromPreset,
@@ -409,7 +359,6 @@ export function useCommMeterInstances(
     removeMeter,
     applyAllSegments,
     setMeterInstances,
-    setMetersLockedPersist,
     resetMetersFromSettings,
   };
 }

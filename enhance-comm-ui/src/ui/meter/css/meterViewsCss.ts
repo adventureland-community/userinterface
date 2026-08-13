@@ -27,6 +27,11 @@ export const METER_VIEWS_CSS = `
   overflow: hidden;
   vertical-align: middle;
 }
+.ecu-meter-icon.ecu-meter-icon-class-sprite {
+  line-height: 0;
+  font-size: 0;
+  text-shadow: none;
+}
 .ecu-meter-fill.ecu-meter-fill-anim {
   transition: width 0.25s ease;
 }
@@ -73,6 +78,11 @@ export const METER_VIEWS_CSS = `
   color: var(--meter-muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+/* Keep statusbar actions clear of corner resize grips while arranging. */
+.ecu-meter-shell.is-layout .ecu-meter-statusbar {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .ecu-meter-status-micro {
   background: transparent;
@@ -198,52 +208,6 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-opt-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-/* —— Inspector vertical tabs rail —— */
-.ecu-meter-inspector-tabs-rail {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 0;
-  background: rgba(0, 0, 0, 0.35);
-  border-left: 1px solid rgba(0, 0, 0, 0.55);
-  z-index: 4;
-}
-.ecu-meter-inspector-tab-rail {
-  flex: 1;
-  min-height: 28px;
-  max-height: 72px;
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 2px;
-  border: none;
-  background: transparent;
-  color: var(--meter-muted);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  line-height: 1;
-}
-.ecu-meter-inspector-tab-rail:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
-}
-.ecu-meter-inspector-tab-rail.active {
-  color: #ffd28a;
-  background: rgba(201, 162, 39, 0.12);
-  box-shadow: inset -2px 0 0 #c9a227;
-}
-.ecu-meter-shell.is-inspector:has(.ecu-meter-inspector-tabs-rail) .ecu-meter-inspector-body {
-  padding-right: 22px;
-}
 /* —— Details parity: encounter dashboard —— */
 .ecu-meter-encounter {
   display: flex;
@@ -346,5 +310,47 @@ button.ecu-meter-status-micro:hover,
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(180, 180, 180, 0.35) transparent;
+}
+.ecu-meter-enc-deathlist {
+  padding: 2px 0;
+}
+.ecu-meter-enc-deathrow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #c5d0e0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.ecu-meter-enc-deathname {
+  color: #ef9a9a;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-enc-deathtime {
+  color: var(--meter-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-enc-deathnum {
+  color: #8b9bb0;
+  font-size: 10px;
+}
+.ecu-meter-enc-empty {
+  padding: 8px;
+  color: #888;
+  font-size: 11px;
+}
+.ecu-meter-report-tab.is-stub {
+  opacity: 0.42;
+  cursor: default;
+  color: var(--meter-muted);
+}
+.ecu-meter-report-tab.is-stub:hover {
+  color: var(--meter-muted);
+  background: transparent;
 }
 `;

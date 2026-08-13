@@ -37,6 +37,8 @@ export function MeterReportDialog(props: MeterReportDialogProps): any {
       name: r.name,
       value: r.value,
       rate: r.rate == null ? undefined : r.rate,
+      barValue: r.barValue,
+      primary: r.primary,
       pct: r.pct,
     })),
     props.segmentLabel,

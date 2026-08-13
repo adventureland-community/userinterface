@@ -46,9 +46,47 @@ Focus: **interaction model + visual UX**, not combat math.
 - **Right-click row**: opens Inspector (same as click) on rank panels
 - **Report cooltip**: removed dead View / Windows / Save bookmark section headers
 
+### 2026-08-13 — Crit / damage hit-stat parity
+
+- Aggregate per-ability (and per-target) **normal vs crit**: count, total, min, max from hub `hit.damage`/`heal` + `crit` (>1)
+- Track AL `damage_type` totals (physical/magical/pure) — shown as type label, not WoW school
+- Inspector Normal/Critical blocks: Count %, Min, Max, Average, contribution DPS/HPS
+- TARGETS label matches Details (`TARGETS:` only); summary type row uses dominant AL type
+- **New fight required** after reload for min/max/crit damage splits on live segments
+
+### 2026-08-13 — Breakdown layout (video / current Details)
+
+Source of truth: Details **Player Details! Breakdown** (YouTube ~4:58 + current screenshots).
+
+- Window title **Player Details! Breakdown**; body sub-header class + **"{Attribute} of {name}"**
+- **Horizontal** Spells / Auras / Compare tabs (top-right, gold underline) — removed vertical right rail
+- Spells: **left** ability list + **TARGETS under abilities**; **right** spell blocks full height
+- Auras: left player picker + Buffs | Debuffs columns (Name / Uptime / % / A / R); Debuffs empty with AL note
+- Compare: same-class columns (AL-limited)
+
+### 2026-08-13 — Player Details full parity pass
+
+- Inspector Spells: Details-shaped spell blocks (Casts/Hits, Damage, Average/DPS, Normal/Critical/Defenses with fill %)
+- Ability click stays on Spells; auto-selects top ability; TARGETS strip follows selection
+- Readable density: larger ability/target bars + icons, bigger block/rail type
+- Auras: Condition / Uptime / % / A table + honest empty state (entity.s, not CLEU)
+- Compare: same-class columns with totals + shared top-spell bars (max 3); empty when no peers
+- Aggregation: per-ability normal/crit count·total·min·max + `damage_type` now stored from hub hits
+
+### 2026-08-13 — Player-click Details parity
+
+- Rank row click → Inspector with **Spells** default: left ability bars + right spell blocks + bottom **TARGETS:**
+- Tabs **Spells / Auras / Compare** (right rail); ability select updates blocks/targets without leaving Spells
+- Title **"{Attribute} of {name}"**; metric/primary carried from Damage/DPS/Heal/HPS source meter
+- Auras/Compare stubbed honestly when AL data is thin (no CLEU aura/crit-split)
+
 ## Still softer than Details
 
 - Report dialog skin depth (polished earlier; minor depth vs retail)
+- Compare is totals + shared ability list (not full Details Compare2 peer spell matrix / target compare)
+- No WoW-style spell schools (AL `damage_type` only); Details hit-rate-scaled bucket DPS formula not copied (we use contribution total/time)
+- Auras: no real buff/debuff split or refreshes (R shows —)
+- Crit multiplier value itself not shown (only crit vs normal amount buckets)
 
 ## Interaction notes (intentional)
 

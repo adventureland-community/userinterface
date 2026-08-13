@@ -30,7 +30,7 @@ export function deriveChannel(ev: DamageEvent): DerivedChannel {
     return "heal";
   }
   if (!(ev.damage && ev.damage > 0)) return null;
-  // DoT (burn condition ticks) — like WoW Ignite
+  // DoT ticks of G.conditions.burned — packet source is "burn"
   if (ev.source === "burn") return "burn";
   // Splash secondaries of explosion/blast — not the primary target
   if (ev.splash) return "blast";

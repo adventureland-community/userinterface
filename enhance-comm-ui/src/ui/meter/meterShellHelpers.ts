@@ -9,6 +9,8 @@ import type {
   MeterInstance,
   MeterPresentation,
   MeterQuery,
+  PlayersMetric,
+  PlayersPrimary,
   SegmentRef,
 } from "../../meters/meterTypes";
 import type { MeterCooltipItem } from "./meterCooltipMenu";
@@ -25,12 +27,34 @@ export function rootQuery(inst: MeterInstance): MeterQuery {
 export function meterShellTourId(query: MeterQuery): string | undefined {
   if (query.kind === "snapshot") {
     if (query.mode === "pdps") return "meter-pdps";
-    if (query.mode === "coop_v1" || query.mode === "coop_v2") return "meter-coop";
+    if (query.mode === "coop_v1" || query.mode === "coop_v2")
+      return "meter-coop";
   }
   return undefined;
 }
 
 export { formatCompactRatePerSec } from "../../lib/format";
+
+export function detailsAttributeLabel(
+  metric?: PlayersMetric,
+  primary?: PlayersPrimary,
+): string {
+  const rate = primary === "rate";
+  if (metric === "heal") return rate ? "HPS" : "Healing Done";
+  if (metric === "taken") return "Damage Taken";
+  if (metric === "healing_required") return "Healing Required";
+  if (metric === "avoidance") return "Avoidance";
+  return rate ? "DPS" : "Damage Done";
+}
+
+/** Details title: "{Attribute} of {player}". */
+export function detailsWindowTitle(
+  actorName: string,
+  metric?: PlayersMetric,
+  primary?: PlayersPrimary,
+): string {
+  return `${detailsAttributeLabel(metric, primary)} of ${actorName}`;
+}
 
 export function modeLabel(q: MeterQuery, label?: string): string {
   const fromCycle = displayLabelForQuery(q);
@@ -61,20 +85,25 @@ export function modeLabel(q: MeterQuery, label?: string): string {
     case "compare":
       return "Compare";
     case "encounter_summary":
-      return "Encounter";
+      return "Encounter Details";
+    case "taken_by_spell":
+      return "Damage Taken by Spell";
+    case "enemy_damage":
+      return "Adds";
     case "timeline":
-      return "Timeline";
+      return "Time Line";
     case "pie":
       return "Pie";
     case "summary":
       return "Summary";
     case "details":
-      return "Inspector";
+      return detailsAttributeLabel(q.metric, q.primary);
     case "abilities":
     case "ability_targets":
     case "targets":
     case "avoidance":
     case "conditions":
+    case "misc":
       return "Meter";
     default: {
       const _exhaustive: never = q;

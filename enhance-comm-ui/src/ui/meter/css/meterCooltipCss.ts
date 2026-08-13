@@ -15,10 +15,10 @@ export const METER_COOLTIP_CSS = `
   border: 1px solid rgba(0,0,0,0.85);
   outline: 1px solid rgba(232, 201, 106, 0.28);
   border-radius: 0;
-  padding: 4px 0;
+  padding: 5px 0;
   box-shadow: 0 10px 28px rgba(0,0,0,0.65);
   color: #eee;
-  font-size: 11px;
+  font-size: 12px;
   max-height: min(360px, 72vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -26,6 +26,7 @@ export const METER_COOLTIP_CSS = `
   z-index: 2147483000;
   scrollbar-width: thin;
   scrollbar-color: #5a5050 #1a1618;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
 .ecu-meter-cooltip::-webkit-scrollbar {
   width: 8px;
@@ -47,9 +48,9 @@ export const METER_COOLTIP_CSS = `
   height: 10px;
 }
 .ecu-meter-cooltip-sec {
-  padding: 4px 10px 2px;
+  padding: 5px 12px 3px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -62,9 +63,9 @@ export const METER_COOLTIP_CSS = `
   background: transparent;
   border: none;
   color: #eee;
-  padding: 4px 12px;
-  font-size: 12px;
-  line-height: 1.35;
+  padding: 5px 14px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .ecu-meter-cooltip-item:hover {
   background: rgba(255,255,255,0.1);

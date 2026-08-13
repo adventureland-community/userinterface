@@ -17,8 +17,14 @@ import {
   resetOverallMeterSegments,
 } from "../../meters/meterEngine";
 import type { PartyFocus } from "../../lib/settingsFocus";
-import type { MeterInstance, RankedRow, SegmentRef, CombatSegment } from "../../meters/meterTypes";
+import type {
+  MeterInstance,
+  RankedRow,
+  SegmentRef,
+  CombatSegment,
+} from "../../meters/meterTypes";
 import { segmentOutcomeClass } from "../../meters/meterSegmentMeta";
+import type { FocusInspectorOpts } from "../hooks/useCommMeterInstances";
 import type { MeterCooltipItem, MeterCooltipKind } from "./meterCooltipMenu";
 import { presentationFor, rootQuery } from "./meterShellHelpers";
 
@@ -49,14 +55,20 @@ export type MeterShellTipItemsCtx = {
   watchedName?: string;
   metersHidden?: boolean;
   onToggleMetersHidden?: () => void;
-  onFocusInspector?: (actorId: string, name: string) => void;
+  onFocusInspector?: (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => void;
   onDuplicate?: () => void;
   onClose?: () => void;
   closedInstances?: MeterInstance[];
   onReopenClosed?: (id: string) => void;
 };
 
-export function meterShellTipItems(ctx: MeterShellTipItemsCtx): MeterCooltipItem[] {
+export function meterShellTipItems(
+  ctx: MeterShellTipItemsCtx,
+): MeterCooltipItem[] {
   const {
     tip,
     partyMenuOpts,
@@ -278,66 +290,91 @@ export function meterShellTipItems(ctx: MeterShellTipItemsCtx): MeterCooltipItem
     return items;
   }
   if (tip.kind === "gear") {
-    const items: MeterCooltipItem[] = [
-      {
-        label: "Standard (Visible party)",
+    // Details Mode menu: Standard / Everything · Plugins · Window Control · Options
+    const items: MeterCooltipItem[] = [];
+    const eff = effectivePartyFocus(partyFocus, hasObserver);
+    for (let i = 0; i < partyMenuOpts.length; i++) {
+      const opt = partyMenuOpts[i];
+      const selected = partyFocus === opt.id || eff === opt.id;
+      items.push({
+        label: opt.label,
+        selected,
         onSelect: () => {
-          onPatchInstance({ partyFocus: "visible" });
+          onPatchInstance({ partyFocus: opt.id });
           closeTip();
         },
+      });
+    }
+    const alwaysOn =
+      instance.alwaysShowSelf != null
+        ? instance.alwaysShowSelf
+        : getSettings().meterAlwaysShowSelf !== false;
+    items.push({
+      label: "Always show me",
+      selected: alwaysOn,
+      onSelect: () => {
+        onPatchInstance({ alwaysShowSelf: !alwaysOn });
+        closeTip();
       },
-      {
-        label: "Everything (All players)",
-        onSelect: () => {
-          onPatchInstance({ partyFocus: "all" });
-          closeTip();
-        },
-      },
-      { label: "—", muted: true, onSelect: () => {} },
-      {
-        label: "Plugins — Encounter / Deaths / Timeline",
-        onSelect: () => {
-          closeTip();
-          onOpenReport?.("encounter");
-        },
-      },
-      { label: "—", muted: true, onSelect: () => {} },
-      {
-        label: "Options panel…",
-        onSelect: () => {
-          closeTip();
-          setOptionsOpen(true);
-        },
-      },
-      {
-        label: "Spell List…",
+    });
+    if (onOpenReport) {
+      items.push({ label: "—", muted: true, onSelect: () => {} });
+      items.push({
+        label: "Plugins",
         muted: true,
-        onSelect: () => {
-          closeTip();
-          onFocusInspector?.(getYouId() || "", watchedName || "You");
-        },
+        onSelect: () => closeTip(),
+      });
+      for (let ti = 0; ti < REPORT_TABS.length; ti++) {
+        const tab = REPORT_TABS[ti];
+        items.push({
+          label: tab.label,
+          onSelect: () => {
+            closeTip();
+            onOpenReport(tab.kind);
+          },
+        });
+      }
+    }
+    items.push({ label: "—", muted: true, onSelect: () => {} });
+    items.push({
+      label: "Options panel…",
+      onSelect: () => {
+        closeTip();
+        setOptionsOpen(true);
       },
-      {
-        label: "Statistics…",
-        onSelect: () => {
-          closeTip();
-          openReportDialog();
-        },
+    });
+    items.push({
+      label: "Spell List…",
+      onSelect: () => {
+        closeTip();
+        onFocusInspector?.(getYouId() || "", watchedName || "You");
       },
-      { label: "—", muted: true, onSelect: () => {} },
-      {
-        label: onDuplicate
-          ? "Window Control — Create new"
-          : "Create new window (layout edit)",
-        onSelect: () => {
-          closeTip();
-          if (onDuplicate) onDuplicate();
-        },
+    });
+    items.push({
+      label: "Statistics…",
+      onSelect: () => {
+        closeTip();
+        openReportDialog();
       },
-    ];
+    });
+    items.push({ label: "—", muted: true, onSelect: () => {} });
+    items.push({
+      label: "Window Control",
+      muted: true,
+      onSelect: () => closeTip(),
+    });
+    items.push({
+      label: onDuplicate
+        ? "Create new window"
+        : "Create new window (layout edit)",
+      onSelect: () => {
+        closeTip();
+        if (onDuplicate) onDuplicate();
+      },
+    });
     if (onClose) {
       items.push({
-        label: "Window Control — Close window",
+        label: "Close window",
         onSelect: () => {
           closeTip();
           onClose!();

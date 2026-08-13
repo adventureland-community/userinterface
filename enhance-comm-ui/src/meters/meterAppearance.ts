@@ -53,7 +53,7 @@ export const DEFAULT_METER_APPEARANCE: MeterAppearanceSettings = {
   barHeight: 18,
   barSpacing: 1,
   windowScale: 1,
-  showSpecIcons: true,
+  showSpecIcons: false,
   showRankNumbers: true,
   segmentsLocked: false,
   disableGrouping: false,

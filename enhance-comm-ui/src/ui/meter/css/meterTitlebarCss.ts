@@ -35,9 +35,19 @@ export const METER_TITLEBAR_CSS = `
   min-width: 0;
   min-height: 20px;
   box-shadow: none;
+  position: relative;
 }
 .ecu-meter-titlebar.is-draggable { cursor: grab; }
 .ecu-meter-titlebar.is-draggable:active { cursor: grabbing; }
+/* Details: Mode · Segment · Attribute · Report · Reset sit right of the title. */
+.ecu-meter-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: opacity 0.12s ease;
+}
 .ecu-meter-tools-left {
   display: flex;
   align-items: center;
@@ -120,7 +130,10 @@ export const METER_TITLEBAR_CSS = `
 .ecu-meter-titlebar .ecu-meter-btn.active {
   color: var(--meter-accent);
 }
-/* Primary icons stay; secondary chrome fades like Details lock/ungroup */
+/* Stretch ↕ (+ layout ⚙/+/Rm on hover) sits after Details tools in flex flow.
+ * Stretch is a plain .ecu-meter-tool (always visible) — no dark plate.
+ * Do not absolute-overlay the Mode·…·Reset hit targets.
+ * Lock / ungroup / hide × belong to PositionedPanel Window Control chrome. */
 .ecu-meter-actions {
   display: flex;
   align-items: center;
@@ -128,20 +141,30 @@ export const METER_TITLEBAR_CSS = `
   flex-shrink: 0;
   position: relative;
   z-index: 5;
+  margin-left: 2px;
 }
+/* Layout-edit only (⚙/+/Rm) — hover chip; stretch lives outside this. */
 .ecu-meter-chrome-hover {
   display: flex;
   align-items: center;
   gap: 0;
+  flex-shrink: 0;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(20, 16, 18, 0.92);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transition: opacity 0.12s ease;
   pointer-events: none;
 }
-.ecu-meter-shell.is-interacting .ecu-meter-chrome-hover,
-.ecu-meter-shell.is-menu-open .ecu-meter-chrome-hover,
-.ecu-meter-shell.is-layout .ecu-meter-chrome-hover {
-  opacity: 1;
-  pointer-events: auto;
+/* Hover / menu only — unlocked (is-layout) must not pin chrome open. */
+@media (hover: hover) and (pointer: fine) {
+  .ecu-meter-shell:hover .ecu-meter-chrome-hover,
+  .ecu-meter-shell.is-interacting .ecu-meter-chrome-hover,
+  .ecu-meter-shell.is-menu-open .ecu-meter-chrome-hover {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .ecu-meter-tool.is-icon {
   width: 16px;
@@ -184,16 +207,21 @@ export const METER_TITLEBAR_CSS = `
 .ecu-meter-attr-ball.attr-heal { background-position: -18px 0; }
 .ecu-meter-attr-ball.attr-taken { background-position: -36px 0; }
 .ecu-meter-attr-ball.attr-other { background-position: -54px 0; }
-/* Primary toolbar stays readable; secondary chrome fades until interact. */
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left {
+/* Primary toolbar + stretch ↕ stay readable; layout chrome is hover-gated. */
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools,
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left,
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
   opacity: 0.9;
 }
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
-  opacity: 0.55;
-}
+.ecu-meter-shell.is-interacting .ecu-meter-tools,
+.ecu-meter-shell.is-menu-open .ecu-meter-tools,
+.ecu-meter-shell.is-layout .ecu-meter-tools,
 .ecu-meter-shell.is-interacting .ecu-meter-tools-left,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools-left,
-.ecu-meter-shell.is-layout .ecu-meter-tools-left {
+.ecu-meter-shell.is-layout .ecu-meter-tools-left,
+.ecu-meter-shell.is-interacting .ecu-meter-actions > .ecu-meter-tool,
+.ecu-meter-shell.is-menu-open .ecu-meter-actions > .ecu-meter-tool,
+.ecu-meter-shell.is-layout .ecu-meter-actions > .ecu-meter-tool {
   opacity: 1;
 }
 .ecu-meter-ttl-text {
@@ -203,6 +231,13 @@ export const METER_TITLEBAR_CSS = `
   min-width: 0;
 }
 /* —— Details parity: encounter titlebar badges —— */
+.ecu-meter-encounter-badges {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
 .ecu-meter-encounter-badge {
   cursor: pointer;
   background: transparent;

@@ -60,6 +60,7 @@ const COMPOSITION_CHANNEL_LABELS = new Set([
   "Explosion",
   "Direct",
   "DoT",
+  "Burned",
   "AoE",
 ]);
 
@@ -167,6 +168,12 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
           ? row.frameH
           : undefined,
       locked: typeof row.locked === "boolean" ? row.locked : undefined,
+      zIndex:
+        typeof row.zIndex === "number" &&
+        Number.isFinite(row.zIndex) &&
+        row.zIndex > 0
+          ? Math.floor(row.zIndex)
+          : undefined,
       hideWhenEmpty:
         typeof row.hideWhenEmpty === "boolean" ? row.hideWhenEmpty : undefined,
       alwaysShowSelf:

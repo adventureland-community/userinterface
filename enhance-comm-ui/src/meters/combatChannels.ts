@@ -5,10 +5,10 @@
  * AL hit tags (engine telemetry, not Details Displays):
  *   base  → direct / untagged hits
  *   blast → explosion splash secondaries
- *   burn  → burn condition ticks
+ *   burn  → G.conditions.burned ticks (packet source "burn")
  *   cleave→ cleave / aoe-flagged multi-target
  *
- * Details shows DoT/AoE as separate spell rows in player breakdown.
+ * Details shows Burned as its own spell row in player breakdown.
  * These tags stay internal for aggregation; Inspector uses Spells / Targets.
  */
 
@@ -35,12 +35,12 @@ export const COMBAT_CHANNELS: CombatChannel[] = [
   "reflect",
 ];
 
-/** UI labels — WoW-style concepts; ids stay AL wire names for persistence. */
+/** UI labels — AL names. Channel ids stay wire names for persistence. */
 export const CHANNEL_LABELS: Record<CombatChannel, string> = {
   dps: "DPS",
   base: "Direct",
   blast: "Explosion",
-  burn: "DoT",
+  burn: "Burned",
   cleave: "AoE",
   hps: "HPS",
   mps: "MPS",

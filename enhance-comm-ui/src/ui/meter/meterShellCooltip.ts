@@ -401,6 +401,22 @@ export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
     }
     for (let i = startIdx; i < items.length; i++) {
       const it = items[i];
+      if (it.muted && it.label === "—") {
+        nodes.push(e("div", { key: `div-${i}`, className: "ecu-meter-cooltip-div" }));
+        continue;
+      }
+      if (
+        tip.kind === "gear" &&
+        it.muted &&
+        (it.label === "Plugins" ||
+          it.label === "Window Control" ||
+          it.label === "View mode")
+      ) {
+        nodes.push(
+          e("div", { key: `sec-${i}`, className: "ecu-meter-cooltip-sec" }, it.label),
+        );
+        continue;
+      }
       if (
         tip.kind === "report" &&
         it.label.startsWith("Recent: ") &&

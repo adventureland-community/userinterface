@@ -1,5 +1,6 @@
 /**
- * Details-like player drill: Spells / Targets / Summary.
+ * Legacy player drill — prefer MeterDetailsView (Inspector / Details layout).
+ * Kept for import stability; mirrors Spells/Targets/Summary tabs only.
  */
 
 import { getReact, e } from "../../host/react";
@@ -64,7 +65,7 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
       partyFocus: props.partyFocus,
       entities: props.entities,
       frameH: props.frameH,
-      live: false,
+      live: props.segmentRef === "current",
       onRowClick: (row: RankedRow) => {
         if (props.onSpellClick) props.onSpellClick(row.id);
       },
@@ -76,11 +77,11 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
       partyFocus: props.partyFocus,
       entities: props.entities,
       frameH: props.frameH,
-      live: false,
+      live: props.segmentRef === "current",
     });
   } else {
     const details = runMeterQuery(
-      { kind: "details", actorId: props.actorId },
+      { kind: "details", actorId: props.actorId, metric },
       {
         segmentRef: props.segmentRef,
         partyFocus: props.partyFocus,
@@ -94,21 +95,37 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
         "No summary",
       );
     } else {
+      const sec = Math.max(details.durationMs / 1000, 1);
       body = e(
         "div",
         { className: "ecu-meter-player-summary", style: { ...PIXEL_TEXT } },
         e(
           "div",
           { className: "stat-grid" },
-          e("div", null, "Damage ", e("b", null, formatCompactNumber(details.totals.damage))),
+          e(
+            "div",
+            null,
+            "Damage ",
+            e("b", null, formatCompactNumber(details.totals.damage)),
+          ),
           e(
             "div",
             null,
             "DPS ",
             e("b", null, formatCompactRatePerSec(details.totals.damage / sec)),
           ),
-          e("div", null, "Taken ", e("b", null, formatCompactNumber(details.totals.taken))),
-          e("div", null, "Heal ", e("b", null, formatCompactNumber(details.totals.heal))),
+          e(
+            "div",
+            null,
+            "Taken ",
+            e("b", null, formatCompactNumber(details.totals.taken)),
+          ),
+          e(
+            "div",
+            null,
+            "Heal ",
+            e("b", null, formatCompactNumber(details.totals.heal)),
+          ),
           e(
             "div",
             null,

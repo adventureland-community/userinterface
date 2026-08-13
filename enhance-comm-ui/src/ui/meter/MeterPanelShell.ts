@@ -6,15 +6,14 @@ import {
   partyFocusMenuOptions,
 } from "../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../lib/typeScale";
-import {
-  METER_FRAME_DEFAULT,
-  METER_FRAME_MAX,
-  METER_FRAME_MIN,
-} from "../../lib/frameSizes";
+import { clampMeterFrame, METER_FRAME_DEFAULT } from "../../lib/frameSizes";
 import {
   getLayoutFreePlacement,
   getLayoutGridStep,
 } from "../../lib/layoutEditPrefs";
+import { beginLayoutGuide, endLayoutGuide } from "../../lib/layoutGuide";
+import type { LayoutAnchor } from "../../lib/layout";
+import { nudgePosByPixels } from "../../lib/panelEdgeGroup";
 import { snapFrameSizeToGrid } from "../../lib/layoutGrid";
 import { layoutDragRoot } from "../../lib/percentDrag";
 import {
@@ -22,6 +21,8 @@ import {
   cycleBarMode,
   formatMeterReportLines,
   isReportPresentation,
+  metricFromModeQuery,
+  REPORT_STUB_TABS,
   REPORT_TABS,
   reportKindForPresentation,
   type ReportKind,
@@ -44,6 +45,8 @@ import type {
   MeterInstance,
   MeterQuery,
   MeterResult,
+  PlayersMetric,
+  PlayersPrimary,
   RankedRow,
   SegmentRef,
 } from "../../meters/meterTypes";
@@ -56,16 +59,19 @@ import {
   type MeterCooltipKind,
 } from "./meterCooltipMenu";
 import { MeterReportDialog } from "./MeterReportDialog";
+import { MeterPluginRail } from "./MeterPluginRail";
 import { MeterStatusbar } from "./MeterStatusbar";
 import { MeterOptionsPanel } from "./MeterOptionsPanel";
 import { getMeterAppearance } from "../../meters/meterAppearance";
 import { renderMeterShellBody } from "./MeterShellBody";
 import {
+  detailsWindowTitle,
   meterShellTourId,
   modeLabel,
   presentationFor,
   rootQuery,
 } from "./meterShellHelpers";
+import type { FocusInspectorOpts } from "../hooks/useCommMeterInstances";
 import { meterShellTipItems } from "./meterShellTipItems";
 import { renderMeterShellCooltip } from "./meterShellCooltip";
 import { renderMeterShellTitlebar } from "./meterShellTitlebar";
@@ -79,15 +85,14 @@ export type MeterPanelShellProps = {
   /** Drag/resize active (unlocked, Alt, or layout edit). */
   arrange?: boolean;
   locked?: boolean;
-  onToggleLock?: () => void;
-  /** Ref filled with the titlebar node so PositionedPanel can drag from it. */
-  titlebarDragRef?: { current: HTMLElement | null };
   /** Drive shared Inspector from a specific player (Damage / Encounter rows). */
-  onFocusInspector?: (actorId: string, name: string) => void;
+  onFocusInspector?: (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => void;
   /** Open shared Encounter / Deaths / Timeline report from a ranked meter. */
   onOpenReport?: (kind: ReportKind) => void;
-  /** Ungroup this meter from its snap cluster. */
-  onUngroup?: () => void;
   /** Peer ids in the same snap group (live resize preview). */
   resizeGroupIds?: string[];
   /** Mass show/hide all meter windows (Details Hide). */
@@ -130,7 +135,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   const [reportOpen, setReportOpen] = React.useState(false);
   const [optionsOpen, setOptionsOpen] = React.useState(false);
   const [interacting, setInteracting] = React.useState(false);
-  const [stretchDrag, setStretchDrag] = React.useState(null as number | null);
   const tipCloseTimer = React.useRef(
     null as ReturnType<typeof setTimeout> | null,
   );
@@ -140,7 +144,12 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   const patchInspectorAbility = (ability: string | null) => {
     const q = rootQuery(instance);
     if (q.kind !== "details") return;
-    const next: MeterQuery = { kind: "details", actorId: q.actorId };
+    const next: MeterQuery = {
+      kind: "details",
+      actorId: q.actorId,
+      metric: q.metric,
+      primary: q.primary,
+    };
     if (ability) next.ability = ability;
     onPatchInstance({ query: next });
   };
@@ -278,15 +287,41 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   const titleSeg = segmentTitle(selectedset);
   const isCurrentSeg = selectedset === "current";
 
+  const inspectorFocusOpts = (): FocusInspectorOpts => {
+    const q = rootQuery(instance);
+    const metricRaw = metricFromModeQuery(q);
+    const metric: PlayersMetric =
+      metricRaw === "heal" ||
+      metricRaw === "taken" ||
+      metricRaw === "healing_required" ||
+      metricRaw === "avoidance"
+        ? metricRaw
+        : "damage";
+    const primary: PlayersPrimary =
+      q.kind === "players" && q.primary === "rate" ? "rate" : "total";
+    return {
+      metric,
+      primary,
+      selectedset: instance.selectedset,
+      partyFocus: instance.partyFocus as PartyFocus | undefined,
+    };
+  };
+
   const openInspectorRow = (row: RankedRow) => {
+    const opts = inspectorFocusOpts();
     if (onFocusInspector) {
-      onFocusInspector(row.id, row.name);
+      onFocusInspector(row.id, row.name, opts);
       return;
     }
     if (presentationFor(instance) === "details") {
       onPatchInstance({
-        query: { kind: "details", actorId: row.id },
-        label: `Inspector · ${row.name}`,
+        query: {
+          kind: "details",
+          actorId: row.id,
+          metric: opts.metric,
+          primary: opts.primary,
+        },
+        label: detailsWindowTitle(row.name, opts.metric, opts.primary),
       });
     }
   };
@@ -383,30 +418,28 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   })();
 
   const setInspectorActor = (actorId: string, name: string) => {
+    const q = rootQuery(instance);
+    const metric =
+      q.kind === "details" && q.metric ? q.metric : ("damage" as PlayersMetric);
+    const primary =
+      q.kind === "details" && q.primary === "rate"
+        ? ("rate" as PlayersPrimary)
+        : ("total" as PlayersPrimary);
     onPatchInstance({
-      query: { kind: "details", actorId },
+      query: { kind: "details", actorId, metric, primary },
       presentation: "details",
-      label: `Inspector · ${name}`,
+      label: detailsWindowTitle(name, metric, primary),
     });
     closeTip();
   };
 
-  const clampFrame = (w: number, h: number) => ({
-    frameW: Math.min(
-      METER_FRAME_MAX.w,
-      Math.max(METER_FRAME_MIN.w, Math.round(w)),
-    ),
-    frameH: Math.min(
-      METER_FRAME_MAX.h,
-      Math.max(METER_FRAME_MIN.h, Math.round(h)),
-    ),
-  });
-
   const sizeFrame = (w: number, h: number, freeForm: boolean) => {
-    if (freeForm || getLayoutFreePlacement()) {
-      return clampFrame(w, h);
-    }
     const root = layoutDragRoot().getBoundingClientRect();
+    const maxW = root.width > 0 ? root.width : window.innerWidth;
+    const maxH = root.height > 0 ? root.height : window.innerHeight;
+    if (freeForm || getLayoutFreePlacement()) {
+      return clampMeterFrame(w, h, maxW, maxH);
+    }
     const snapped = snapFrameSizeToGrid(
       w,
       h,
@@ -414,7 +447,7 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       root.width,
       root.height,
     );
-    return clampFrame(snapped.w, snapped.h);
+    return clampMeterFrame(snapped.w, snapped.h, maxW, maxH);
   };
 
   const onResizePointerDown = (ev: any, corner: "br" | "bl" = "br") => {
@@ -429,7 +462,14 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
     const outer = shell
       ? (shell.closest(".comm-pos-panel") as HTMLElement | null)
       : null;
+    if (!outer) return;
+    const root = layoutDragRoot();
+    const rootRect = root.getBoundingClientRect();
+    const anchor = (instance.pos.anchor || "tl") as LayoutAnchor;
+    // Details StartSizing(bottomleft|bottomright): keep opposite top corner fixed.
+    // Do not clear transform (scale/anchor) — that caused the release jump.
     if (shell) shell.classList.add("is-resizing");
+    beginLayoutGuide();
     const pointerId = ev.pointerId;
     try {
       target.setPointerCapture(pointerId);
@@ -444,11 +484,30 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       !!instance.verticalSnap ||
       !!(instance.snap && (instance.snap[2] || instance.snap[4]));
     const peerIds = props.resizeGroupIds || [];
-    const syncOuter = (w: number, h: number) => {
-      if (outer) {
-        outer.style.width = w + "px";
-        outer.style.height = h + "px";
+    /** Screen-px shift so the fixed corner stays put for this anchor + handle. */
+    const liveShiftX = (w: number): number => {
+      const dw = startW - w; // >0 when shrinking
+      if (corner === "bl") {
+        // Keep right edge fixed.
+        if (anchor === "tr" || anchor === "br") return 0;
+        if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+          return dw / 2;
+        }
+        return dw;
       }
+      // br: keep left edge fixed.
+      if (anchor === "tl" || anchor === "bl") return 0;
+      if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+        return -dw / 2;
+      }
+      // tr / br — width change moves left; push back.
+      return -dw;
+    };
+    const applyLiveBox = (w: number, h: number) => {
+      outer.style.width = w + "px";
+      outer.style.height = h + "px";
+      const sx = liveShiftX(w);
+      outer.style.marginLeft = sx ? sx + "px" : "";
       for (let i = 0; i < peerIds.length; i++) {
         const pid = peerIds[i];
         const sel =
@@ -468,10 +527,11 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       const dy = e.clientY - startY;
       const w = corner === "br" ? startW + dx : startW - dx;
       pending = sizeFrame(w, startH + dy, !!e.shiftKey);
-      syncOuter(pending.frameW, pending.frameH);
+      applyLiveBox(pending.frameW, pending.frameH);
     };
     const onUp = () => {
       if (shell) shell.classList.remove("is-resizing");
+      endLayoutGuide();
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
@@ -480,7 +540,28 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       } catch {
         /* ignore */
       }
-      onPatchInstance(pending);
+      outer.style.marginLeft = "";
+      const rw = Math.max(1, rootRect.width);
+      const rh = Math.max(1, rootRect.height);
+      let nextPos = { ...instance.pos };
+      const shiftX = liveShiftX(pending.frameW);
+      if (shiftX !== 0) {
+        nextPos = nudgePosByPixels(nextPos, shiftX, 0, rw, rh);
+      }
+      // Keep top edge fixed when height changes on bottom / center anchors.
+      const dh = startH - pending.frameH;
+      if (dh !== 0) {
+        if (anchor === "bl" || anchor === "br" || anchor === "bc") {
+          nextPos = nudgePosByPixels(nextPos, 0, dh, rw, rh);
+        } else if (anchor === "center") {
+          nextPos = nudgePosByPixels(nextPos, 0, dh / 2, rw, rh);
+        }
+      }
+      onPatchInstance({
+        frameW: pending.frameW,
+        frameH: pending.frameH,
+        pos: nextPos,
+      });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -521,12 +602,10 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   const cycleable = canCycleBarMode(rootQuery(instance));
   const menuOpen = tip != null;
   const chromeActive = interacting || menuOpen || reportOpen;
-  const reportTabLabel =
-    REPORT_TABS.find((t) => t.kind === activeReportKind)?.label || titleMode;
   const title = isInspector
-    ? instance.label?.replace(/^Inspector · /, "") || "Inspector"
+    ? "Player Breakdown"
     : isReport
-      ? reportTabLabel
+      ? "Encounter Details"
       : titleMode;
 
   const setReportTab = (kind: ReportKind) => {
@@ -697,8 +776,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       },
     },
     renderMeterShellTitlebar({
-      arrange,
-      titlebarDragRef: props.titlebarDragRef,
       isInspector,
       isReport,
       result,
@@ -720,58 +797,84 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       applySegment,
       reportOpen,
       openReportDialog,
-      onOpenReport,
       cycle,
       onPatchInstance,
-      locked,
       layoutEdit: props.layoutEdit,
-      onUngroup: props.onUngroup,
-      onToggleLock: props.onToggleLock,
       onConfigure: props.onConfigure,
       onDuplicate: props.onDuplicate,
       onClose: props.onClose,
+      onOpenReport: props.onOpenReport,
     }),
     isReport
       ? e(
           "div",
-          {
-            className: "ecu-meter-report-tabs",
-            style: { ...PIXEL_TEXT },
-          },
-          ...REPORT_TABS.map((tab) =>
+          { className: "ecu-meter-report-layout" },
+          e(MeterPluginRail, {
+            active: activeReportKind,
+            onSelect: setReportTab,
+          }),
+          e(
+            "div",
+            { className: "ecu-meter-report-main" },
+            activeReportKind === "encounter"
+              ? e(
+                  "div",
+                  {
+                    className: "ecu-meter-report-tabs",
+                    style: { ...PIXEL_TEXT },
+                  },
+                  e(
+                    "button",
+                    {
+                      type: "button",
+                      className: "ecu-meter-report-tab active",
+                    },
+                    "Summary",
+                  ),
+                  ...REPORT_STUB_TABS.map((tab) =>
+                    e(
+                      "button",
+                      {
+                        key: tab.id,
+                        type: "button",
+                        className: "ecu-meter-report-tab is-stub",
+                        title:
+                          "Not available — Adventure Land has no CLEU emotes/phases/raid charts",
+                        disabled: true,
+                      },
+                      tab.label,
+                    ),
+                  ),
+                )
+              : null,
+            encounterFooter,
             e(
-              "button",
+              "div",
               {
-                key: tab.kind,
-                type: "button",
-                className:
-                  "ecu-meter-report-tab" +
-                  (activeReportKind === tab.kind ? " active" : ""),
-                onClick: () => setReportTab(tab.kind),
+                className: "ecu-meter-body",
               },
-              tab.label,
+              body,
             ),
           ),
         )
-      : null,
-    encounterFooter,
-    e(
-      "div",
-      {
-        className: "ecu-meter-body",
-        onContextMenu: (ev: any) => {
-          if (isInspector || isReport) return;
-          const t = ev.target as HTMLElement | null;
-          if (t && t.closest && t.closest("button, a, input, textarea")) return;
-          ev.preventDefault();
-          ev.stopPropagation();
-          const shell = shellRef.current;
-          if (!shell) return;
-          openTipAnchor("bookmarks", rectToAnchor(shell));
-        },
-      },
-      body,
-    ),
+      : e(
+          "div",
+          {
+            className: "ecu-meter-body",
+            onContextMenu: (ev: any) => {
+              if (isInspector) return;
+              const t = ev.target as HTMLElement | null;
+              if (t && t.closest && t.closest("button, a, input, textarea"))
+                return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              const shell = shellRef.current;
+              if (!shell) return;
+              openTipAnchor("bookmarks", rectToAnchor(shell));
+            },
+          },
+          body,
+        ),
     !isInspector && !isReport
       ? MeterStatusbar({
           instance,
@@ -783,67 +886,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
           },
           onEncounterClick: () => props.onOpenReport?.("encounter"),
         })
-      : null,
-    !isInspector && !isReport && arrange
-      ? e("div", {
-          className: "ecu-meter-stretch-tab",
-          title: "Drag to stretch",
-          onPointerDown: (ev: any) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            setStretchDrag(ev.clientY);
-          },
-          onPointerMove: (ev: any) => {
-            if (stretchDrag == null) return;
-            const dy = stretchDrag - ev.clientY;
-            if (Math.abs(dy) < 4) return;
-            const h = instance.frameH || METER_FRAME_DEFAULT.h;
-            onPatchInstance({
-              frameH: clampFrame(
-                instance.frameW || METER_FRAME_DEFAULT.w,
-                h + dy,
-              ).frameH,
-            });
-            setStretchDrag(ev.clientY);
-          },
-          onPointerUp: () => setStretchDrag(null),
-          onPointerCancel: () => setStretchDrag(null),
-        })
-      : null,
-    !isInspector &&
-      !isReport &&
-      resolved &&
-      (resolved.deaths.length > 0 || past.length > 0)
-      ? e(
-          "div",
-          { className: "ecu-meter-encounter-badges" },
-          e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-meter-encounter-badge is-skull",
-              title: "Encounter Details",
-              onClick: (ev: any) => {
-                ev.stopPropagation();
-                props.onOpenReport?.("encounter");
-              },
-            },
-            "💀",
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-meter-encounter-badge is-play",
-              title: "Timeline",
-              onClick: (ev: any) => {
-                ev.stopPropagation();
-                props.onOpenReport?.("timeline");
-              },
-            },
-            "▶",
-          ),
-        )
       : null,
     tip && ReactDOM.createPortal
       ? ReactDOM.createPortal(renderCooltip(), document.body)
@@ -911,7 +953,7 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       ? e("div", {
           className: "ecu-meter-resize ecu-meter-resize-left",
           title:
-            "Drag to resize (left corner · Shift = free size · Alt/Ctrl = group)",
+            "Resize from bottom-left (keeps top-right fixed · Shift = free size)",
           onPointerDown: (ev: any) => onResizePointerDown(ev, "bl"),
         })
       : null,
@@ -919,8 +961,8 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       ? e("div", {
           className: "ecu-meter-resize",
           title: getLayoutFreePlacement()
-            ? "Drag to resize (Free placement — no grid snap)"
-            : "Drag to resize (Shift = free size · Alt/Ctrl = group resize)",
+            ? "Resize from bottom-right (keeps top-left fixed · free size)"
+            : "Resize from bottom-right (keeps top-left fixed · Shift = free size)",
           onPointerDown: (ev: any) => onResizePointerDown(ev, "br"),
         })
       : null,

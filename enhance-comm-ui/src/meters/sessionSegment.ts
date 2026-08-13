@@ -5,10 +5,13 @@
 import type { DamageEvent } from "../sockets/hub";
 import { deriveChannel } from "./channelDerive";
 import {
+  bumpHitAmount,
   damageAbilityKey,
+  emptyHitAmountStats,
   emptyOutcomes,
   emptyMisc,
   healAbilityKey,
+  mergeHitAmountStats,
   type AbilityAgg,
   type ActorAgg,
   type CombatSegment,
@@ -62,27 +65,48 @@ function ensureAbility(actor: ActorAgg, key: string): AbilityAgg {
       splashDamage: 0,
       taken: 0,
       outcomes: emptyOutcomes(),
+      normal: emptyHitAmountStats(),
+      crit: emptyHitAmountStats(),
+      damageTypes: {},
       targets: {},
     };
     actor.abilities[key] = ab;
+  } else {
+    // Hot-reload / older in-memory abilities before hit-stat fields existed.
+    if (!ab.normal) ab.normal = emptyHitAmountStats();
+    if (!ab.crit) ab.crit = emptyHitAmountStats();
+    if (!ab.damageTypes) ab.damageTypes = {};
   }
   return ab;
 }
 
-function ensureTarget(ab: AbilityAgg, id: string, name?: string): TargetAgg {
+function ensureTarget(
+  ab: AbilityAgg,
+  id: string,
+  name?: string,
+  meta?: { mtype?: string; ctype?: string },
+): TargetAgg {
   let t = ab.targets[id];
   if (!t) {
     t = {
       id,
       name: name || id,
+      mtype: meta?.mtype,
+      ctype: meta?.ctype,
       damage: 0,
       heal: 0,
       splashDamage: 0,
       outcomes: emptyOutcomes(),
+      normal: emptyHitAmountStats(),
+      crit: emptyHitAmountStats(),
     };
     ab.targets[id] = t;
-  } else if (name) {
-    t.name = name;
+  } else {
+    if (name) t.name = name;
+    if (meta?.mtype) t.mtype = meta.mtype;
+    if (meta?.ctype) t.ctype = meta.ctype;
+    if (!t.normal) t.normal = emptyHitAmountStats();
+    if (!t.crit) t.crit = emptyHitAmountStats();
   }
   return t;
 }
@@ -107,10 +131,41 @@ function bumpOutcome(o: OutcomeCounts, ev: DamageEvent): void {
   }
 }
 
+function isCritHit(ev: DamageEvent): boolean {
+  return !!(ev.crit && ev.crit > 1);
+}
+
+function bumpLandedAmount(
+  ab: AbilityAgg,
+  tgt: TargetAgg,
+  amount: number,
+  crit: boolean,
+): void {
+  if (!(amount > 0)) return;
+  if (crit) {
+    bumpHitAmount(ab.crit, amount);
+    bumpHitAmount(tgt.crit, amount);
+  } else {
+    bumpHitAmount(ab.normal, amount);
+    bumpHitAmount(tgt.normal, amount);
+  }
+}
+
+function bumpDamageType(
+  ab: AbilityAgg,
+  damageType: string | undefined,
+  amount: number,
+): void {
+  if (!damageType || !(amount > 0)) return;
+  const key = damageType.toLowerCase();
+  ab.damageTypes[key] = (ab.damageTypes[key] || 0) + amount;
+}
+
 export type ActorMeta = {
   name?: string;
   ctype?: string;
   partyKey?: string;
+  mtype?: string;
 };
 
 /**
@@ -142,6 +197,9 @@ export function applyDamageToSegment(
     const tgt = ensureActor(seg, ev.target, opts.targetMeta);
     tgt.taken += ev.damage;
     tgt.healingRequired += ev.damage;
+    // Incoming spell bucket — Details "Damage Taken by Spell" aggregates these.
+    const takenAb = ensureAbility(tgt, damageAbilityKey(ev.source));
+    takenAb.taken += ev.damage;
   }
 
   if (!ev.actor || !actorIsPlayer) return;
@@ -149,16 +207,21 @@ export function applyDamageToSegment(
   const actor = ensureActor(seg, ev.actor, opts.actorMeta);
   const targetId = ev.target || "_";
   const targetName = opts.targetMeta?.name;
+  const targetIconMeta = {
+    mtype: opts.targetMeta?.mtype,
+    ctype: opts.targetMeta?.ctype,
+  };
   const hasDamage = !!(ev.damage && ev.damage > 0);
   const healAmt = opts.effectiveHeal || 0;
   const manaAmt = opts.effectiveMana || 0;
+  const crit = isCritHit(ev);
 
   bumpOutcome(actor.outcomes, ev);
 
   if (hasDamage) {
     const dmgKey = damageAbilityKey(ev.source);
     const ab = ensureAbility(actor, dmgKey);
-    const tgt = ensureTarget(ab, targetId, targetName);
+    const tgt = ensureTarget(ab, targetId, targetName, targetIconMeta);
     bumpOutcome(ab.outcomes, ev);
     bumpOutcome(tgt.outcomes, ev);
     actor.damage += ev.damage!;
@@ -168,6 +231,8 @@ export function applyDamageToSegment(
       ab.splashDamage += ev.damage!;
       tgt.splashDamage += ev.damage!;
     }
+    bumpLandedAmount(ab, tgt, ev.damage!, crit);
+    bumpDamageType(ab, ev.damageType, ev.damage!);
     const ch = deriveChannel(ev);
     if (ch === "burn") actor.burn += ev.damage!;
     else if (ch === "blast") actor.blast += ev.damage!;
@@ -178,7 +243,7 @@ export function applyDamageToSegment(
   if (healAmt > 0) {
     const hKey = healAbilityKey(ev.source, ev.heal, ev.lifesteal);
     const ab = ensureAbility(actor, hKey);
-    const tgt = ensureTarget(ab, targetId, targetName);
+    const tgt = ensureTarget(ab, targetId, targetName, targetIconMeta);
     // Heal-only packets still need outcome counts on the heal ability.
     if (!hasDamage) {
       bumpOutcome(ab.outcomes, ev);
@@ -187,6 +252,8 @@ export function applyDamageToSegment(
     actor.heal += healAmt;
     ab.heal += healAmt;
     tgt.heal += healAmt;
+    // Crit on a heal packet is rare in AL; still bucket honestly when present.
+    bumpLandedAmount(ab, tgt, healAmt, !hasDamage && crit);
   }
 
   if (manaAmt > 0) {
@@ -207,7 +274,20 @@ export function emptySegment(
     deaths: [],
     conditions: [],
     casts: [],
+    gearSwaps: [],
   };
+}
+
+function mergeDamageTypes(
+  dest: Record<string, number>,
+  src: Record<string, number> | undefined,
+): void {
+  if (!src) return;
+  const keys = Object.keys(src);
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    dest[k] = (dest[k] || 0) + (src[k] || 0);
+  }
 }
 
 /** Merge past segments into a session total (shallow totals + abilities). */
@@ -268,10 +348,16 @@ export function mergeSegments(
         dab.outcomes.evade += sab.outcomes.evade;
         dab.outcomes.avoid += sab.outcomes.avoid;
         dab.outcomes.kills += sab.outcomes.kills;
+        mergeHitAmountStats(dab.normal, sab.normal);
+        mergeHitAmountStats(dab.crit, sab.crit);
+        mergeDamageTypes(dab.damageTypes, sab.damageTypes);
         const tKeys = Object.keys(sab.targets);
         for (let t = 0; t < tKeys.length; t++) {
           const st = sab.targets[tKeys[t]];
-          const dt = ensureTarget(dab, st.id, st.name);
+          const dt = ensureTarget(dab, st.id, st.name, {
+            mtype: st.mtype,
+            ctype: st.ctype,
+          });
           dt.damage += st.damage;
           dt.heal += st.heal;
           dt.splashDamage += st.splashDamage;
@@ -281,6 +367,8 @@ export function mergeSegments(
           dt.outcomes.evade += st.outcomes.evade;
           dt.outcomes.avoid += st.outcomes.avoid;
           dt.outcomes.kills += st.outcomes.kills;
+          mergeHitAmountStats(dt.normal, st.normal);
+          mergeHitAmountStats(dt.crit, st.crit);
         }
       }
     }

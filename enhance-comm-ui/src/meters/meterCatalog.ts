@@ -124,7 +124,7 @@ export type ReportTabDef = {
 export const REPORT_TABS: ReportTabDef[] = [
   {
     kind: "encounter",
-    label: "Encounter",
+    label: "Summary",
     presetId: "encounter",
     presentation: "encounter",
     query: { kind: "encounter_summary" },
@@ -138,11 +138,18 @@ export const REPORT_TABS: ReportTabDef[] = [
   },
   {
     kind: "timeline",
-    label: "Timeline",
+    label: "Time Line",
     presetId: "timeline",
     presentation: "timeline",
     query: { kind: "timeline" },
   },
+];
+
+/** Details Encounter Details tabs we cannot fill from AL combat data. */
+export const REPORT_STUB_TABS: Array<{ id: string; label: string }> = [
+  { id: "charts", label: "Charts" },
+  { id: "emotes", label: "Emotes" },
+  { id: "phases", label: "Phases" },
 ];
 
 export function isReportPresentation(p: MeterPresentation): boolean {
@@ -353,7 +360,7 @@ export const METER_PRESETS: MeterPresetDef[] = [
     catalogGroup: "tool",
     defaultVisible: false,
     defaultPos: { x: 50, y: 88, anchor: "bc" },
-    defaultFrame: { w: 480, h: 320 },
+    defaultFrame: { w: 780, h: 520 },
   },
   {
     id: "compare",
@@ -377,25 +384,25 @@ export const METER_PRESETS: MeterPresetDef[] = [
   },
   {
     id: "encounter",
-    label: "Encounter",
+    label: "Encounter Details",
     query: { kind: "encounter_summary" },
     presentation: "encounter",
     catalog: false,
     catalogGroup: "tool",
     defaultVisible: false,
     defaultPos: { x: 50, y: 88, anchor: "bc" },
-    defaultFrame: { w: 480, h: 320 },
+    defaultFrame: { w: 780, h: 520 },
   },
   {
     id: "timeline",
-    label: "Timeline",
+    label: "Time Line",
     query: { kind: "timeline" },
     presentation: "timeline",
     catalog: false,
     catalogGroup: "tool",
     defaultVisible: false,
     defaultPos: { x: 50, y: 88, anchor: "bc" },
-    defaultFrame: { w: 480, h: 320 },
+    defaultFrame: { w: 780, h: 520 },
   },
   {
     id: "summary",
@@ -569,16 +576,31 @@ export function canCycleBarMode(query: MeterQuery): boolean {
 /** Format ranked rows for clipboard / party report. */
 export function formatMeterReportLines(
   title: string,
-  rows: Array<{ name: string; value: number; rate?: number; pct: number }>,
+  rows: Array<{
+    name: string;
+    value: number;
+    rate?: number | null;
+    pct: number;
+    primary?: "total" | "rate";
+    barValue?: number;
+  }>,
   metricLabel?: string,
 ): string {
   const lines = [`[${title}${metricLabel ? ` · ${metricLabel}` : ""}]`];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const rate = r.rate != null ? ` (${Math.round(r.rate)}/s)` : "";
-    lines.push(
-      `${i + 1}. ${r.name} — ${Math.round(r.value)}${rate} · ${Math.round(r.pct * 100)}%`,
-    );
+    const ratePrimary =
+      r.primary === "rate" || (r.primary == null && r.barValue != null);
+    if (ratePrimary && r.rate != null) {
+      lines.push(
+        `${i + 1}. ${r.name} — ${Math.round(r.rate)}/s (${Math.round(r.value)}) · ${Math.round(r.pct * 100)}%`,
+      );
+    } else {
+      const rate = r.rate != null ? ` (${Math.round(r.rate)}/s)` : "";
+      lines.push(
+        `${i + 1}. ${r.name} — ${Math.round(r.value)}${rate} · ${Math.round(r.pct * 100)}%`,
+      );
+    }
   }
   return lines.join("\n");
 }

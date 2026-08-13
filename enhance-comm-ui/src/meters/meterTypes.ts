@@ -5,6 +5,8 @@
 import type { CombatChannel } from "./combatChannels";
 import type { PartyFocus } from "../lib/settingsFocus";
 import type { PanelPos } from "../lib/layout";
+import type { EdgeSnapMap } from "../lib/panelEdgeGroup";
+import { canonicalAbilityId } from "../lib/abilityIds";
 
 export type AbilityKey = string;
 
@@ -45,10 +47,21 @@ export type MeterQuery =
       metric?: PlayersMetric;
     }
   | { kind: "targets"; actorId: string; metric?: PlayersMetric }
-  | { kind: "details"; actorId: string; ability?: AbilityKey }
+  | {
+      kind: "details";
+      actorId: string;
+      ability?: AbilityKey;
+      /** Attribute lens from the rank meter that opened Inspector (Details). */
+      metric?: PlayersMetric;
+      primary?: PlayersPrimary;
+    }
   | { kind: "summary" }
   | { kind: "avoidance" }
   | { kind: "encounter_summary" }
+  /** Segment-wide damage taken rolled up by incoming ability key. */
+  | { kind: "taken_by_spell" }
+  /** Damage dealt to non-player targets (Adds / enemy damage taken). */
+  | { kind: "enemy_damage" }
   | { kind: "channel"; channel: CombatChannel }
   | { kind: "rolling"; windowMs?: number }
   | { kind: "realtime"; windowMs?: number }
@@ -73,6 +86,17 @@ export type OutcomeCounts = {
   kills: number;
 };
 
+/**
+ * Per-bucket landed amount stats (Details n_amt/n_total/n_min/n_max).
+ * Built from hub hit `damage`/`heal` + `crit` multiplier — not CLEU.
+ */
+export type HitAmountStats = {
+  count: number;
+  total: number;
+  min: number;
+  max: number;
+};
+
 /** Misc counters for Details Miscellaneous displays. */
 export type MiscCounts = {
   interrupts: number;
@@ -83,10 +107,16 @@ export type MiscCounts = {
 export type TargetAgg = {
   id: string;
   name: string;
+  /** Monster type key when known (for sprite icons after despawn). */
+  mtype?: string;
+  /** Player class when target is a player. */
+  ctype?: string;
   damage: number;
   heal: number;
   splashDamage: number;
   outcomes: OutcomeCounts;
+  normal: HitAmountStats;
+  crit: HitAmountStats;
 };
 
 export type AbilityAgg = {
@@ -96,6 +126,15 @@ export type AbilityAgg = {
   splashDamage: number;
   taken: number;
   outcomes: OutcomeCounts;
+  /** Non-crit landed amounts (damage or heal on this ability key). */
+  normal: HitAmountStats;
+  /** Crit landed amounts (`hit.crit` > 1). */
+  crit: HitAmountStats;
+  /**
+   * AL `damage_type` totals (physical / magical / pure) — not WoW spell school.
+   * Keyed by lowercase type string from the packet.
+   */
+  damageTypes: Record<string, number>;
   targets: Record<string, TargetAgg>;
 };
 
@@ -135,6 +174,23 @@ export type CastMarker = {
   pid?: string | number;
 };
 
+/**
+ * One equipped-slot change (not a per-tick snapshot).
+ * Diffed from entity/`character`.slots after the server `resend(u+cid)`
+ * that follows equip/unequip — there is no client `equip` packet.
+ */
+export type GearSwapEvent = {
+  at: number;
+  actorId: string;
+  slot: string;
+  oldName?: string;
+  newName?: string;
+  oldLevel?: number;
+  newLevel?: number;
+  /** Slot skin, else G.items[name].skin for GameIcon. */
+  skin?: string;
+};
+
 export type DeathSnapshot = {
   id: string;
   name: string;
@@ -161,6 +217,7 @@ export type CombatSegment = {
   deaths: DeathSnapshot[];
   conditions: ConditionInterval[];
   casts: CastMarker[];
+  gearSwaps: GearSwapEvent[];
 };
 
 export type RankedRow = {
@@ -171,11 +228,18 @@ export type RankedRow = {
   rate: number | null;
   pct: number;
   barMax: number;
-  /** When set (DPS/HPS displays), bar width uses this instead of `value`. */
-  barValue?: number;
+  /**
+   * Amount used for bar width + sort (Details `instance.top` units).
+   * Total displays: segment total. Rate displays (DPS/HPS): per-second rate.
+   */
+  barValue: number;
+  /** Which quantity `barValue` represents — drives label order + ranking. */
+  primary: PlayersPrimary;
   label: string;
   kind?: "player" | "ability" | "target" | "channel";
   you?: boolean;
+  /** Monster type for kind="target" icons (G.monsters / sprite). */
+  mtype?: string;
   /** True 1-based rank when Always-show-me pins below the fold. */
   rank?: number;
   /** Explosion/splash damage on this ability (Inspector spell list). */
@@ -205,9 +269,25 @@ export type MeterResult =
       actorName: string;
       ctype?: string;
       ability?: AbilityKey;
+      /** Attribute lens (damage / heal / taken) driving spell list + blocks. */
+      metric: PlayersMetric;
+      primary: PlayersPrimary;
       /** Splash on the selected ability (0 if none selected). */
       abilitySplash: number;
+      /** Selected ability total in metric units (damage/heal/taken). */
+      abilityTotal: number;
+      /** Approximate cast count from action timeline (AL — not CLEU). */
+      abilityCasts: number;
       outcomes: OutcomeCounts;
+      /** Selected ability normal-hit amount stats (empty if none / legacy segment). */
+      hitNormal: HitAmountStats;
+      /** Selected ability crit-hit amount stats. */
+      hitCrit: HitAmountStats;
+      /**
+       * Dominant AL `damage_type` for the selected ability
+       * (physical / magical / pure), if any damage was typed.
+       */
+      damageType?: string;
       /** Always actor-level overview totals. */
       totals: {
         damage: number;
@@ -253,6 +333,7 @@ export type MeterResult =
       kind: "timeline";
       casts: CastMarker[];
       conditions: ConditionInterval[];
+      gearSwaps: GearSwapEvent[];
       durationMs: number;
     }
   | {
@@ -267,12 +348,7 @@ export type MeterResult =
   | { kind: "empty"; reason?: string };
 
 /** Details-style edge snap: 1 left · 2 bottom · 3 right · 4 top → neighbor id. */
-export type MeterSnapMap = {
-  1?: string;
-  2?: string;
-  3?: string;
-  4?: string;
-};
+export type MeterSnapMap = EdgeSnapMap;
 
 export type MeterPanelConfig = {
   id: string;
@@ -310,10 +386,18 @@ export type MeterInstance = MeterPanelConfig & {
   frameW?: number;
   frameH?: number;
   /**
-   * Per-panel lock. `undefined` follows global `metersLocked`.
+   * Per-panel lock. `undefined` follows global `windowsLocked`.
    * `false` = unlocked (drag/resize without Alt). `true` = locked.
+   * New windows set `false` explicitly so they open arrange-ready.
    */
   locked?: boolean;
+  /**
+   * Paint order among meters (and above HUD panels). Higher = in front.
+   * Assigned on open/create via meterWindowStack; not required for legacy rows.
+   */
+  zIndex?: number;
+  /** Details window_scale (1 = 100%). Shared across edge-snap group when set. */
+  scale?: number;
   /** Edge-snap group links (Details window groups). */
   snap?: MeterSnapMap;
   /** Side-by-side group — share height on resize/stretch. */
@@ -347,9 +431,65 @@ export function emptyOutcomes(): OutcomeCounts {
   };
 }
 
+export function emptyHitAmountStats(): HitAmountStats {
+  return { count: 0, total: 0, min: 0, max: 0 };
+}
+
+/** Merge one landed amount into a normal/crit bucket. */
+export function bumpHitAmount(stats: HitAmountStats, amount: number): void {
+  if (!(amount > 0)) return;
+  if (stats.count === 0) {
+    stats.min = amount;
+    stats.max = amount;
+  } else {
+    if (amount < stats.min) stats.min = amount;
+    if (amount > stats.max) stats.max = amount;
+  }
+  stats.count += 1;
+  stats.total += amount;
+}
+
+/** Merge source hit stats into dest (segment merge / Total). */
+export function mergeHitAmountStats(
+  dest: HitAmountStats,
+  src: HitAmountStats | undefined,
+): void {
+  if (!src || src.count <= 0) return;
+  if (dest.count === 0) {
+    dest.count = src.count;
+    dest.total = src.total;
+    dest.min = src.min;
+    dest.max = src.max;
+    return;
+  }
+  dest.count += src.count;
+  dest.total += src.total;
+  if (src.min < dest.min) dest.min = src.min;
+  if (src.max > dest.max) dest.max = src.max;
+}
+
+/** Pick AL damage_type with the largest amount (not a WoW school). */
+export function dominantDamageType(
+  types: Record<string, number> | undefined,
+): string | undefined {
+  if (!types) return undefined;
+  const keys = Object.keys(types);
+  let best: string | undefined;
+  let bestV = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const v = types[k] || 0;
+    if (v > bestV) {
+      bestV = v;
+      best = k;
+    }
+  }
+  return best;
+}
+
 export function damageAbilityKey(source?: string): AbilityKey {
   if (!source || source === "attack") return "attack";
-  return source;
+  return canonicalAbilityId(source);
 }
 
 /**
@@ -363,11 +503,11 @@ export function healAbilityKey(
 ): AbilityKey {
   if (heal && heal > 0) {
     if (!source || source === "attack") return "heal";
-    return source;
+    return canonicalAbilityId(source);
   }
   if (lifesteal && lifesteal > 0) return "lifesteal";
   if (!source || source === "attack") return "heal";
-  return source;
+  return canonicalAbilityId(source);
 }
 
 /** @deprecated Prefer damageAbilityKey / healAbilityKey — do not mix buckets. */

@@ -3,7 +3,6 @@
  */
 
 import { getReact, e } from "../../host/react";
-import { formatCompactNumber, formatCompactRate } from "../../lib/format";
 import type { PartyFocus } from "../../lib/settingsFocus";
 import { classColors } from "../../lib/colors";
 import {
@@ -11,7 +10,6 @@ import {
   renderRankedRows,
   type BarPoolRow,
 } from "../../meters/meterBarPool";
-import { skillIconHtml } from "../../meters/meterIcons";
 import { getYouId } from "../../meters/meterEngine";
 import { runMeterQuery } from "../../meters/meterQuery";
 import { subscribeMeterTick } from "../../meters/meterUiTick";
@@ -24,7 +22,14 @@ import {
   maxRowsForFrameHeight,
   pinAlwaysShowSelf,
 } from "../../meters/meterWindowGroup";
-import { hideMeterTooltip, showMeterTooltip } from "../../meters/meterTooltip";
+import {
+  abilityBarTooltipHtml,
+  hideMeterTooltip,
+  playerBarTooltipHtml,
+  showMeterTooltip,
+  showMeterTooltipLive,
+  targetBarTooltipHtml,
+} from "../../meters/meterTooltip";
 import { injectMeterChromeCss } from "./meterChromeCss";
 import { getSettings } from "../../lib/settings";
 import {
@@ -46,45 +51,6 @@ function toPoolRows(
     color: classColors[r.ctype || ""] || undefined,
     rank: r.rank,
   }));
-}
-
-function playerTooltipHtml(
-  row: RankedRow,
-  metric?: string,
-  expand?: "spells" | "targets",
-): string {
-  const rate =
-    row.rate != null
-      ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row.rate)}/s</b></div>`
-      : "";
-  const abs =
-    metric === "avoidance"
-      ? `<div class="line"><span>Value</span><b>${(row.value * 100).toFixed(1)}%</b></div>`
-      : `<div class="line"><span>Total</span><b>${formatCompactNumber(row.value)}</b></div>${rate}`;
-  let extra = "";
-  if (expand === "spells" && row.kind === "player") {
-    extra = `<div class="sec">Abilities (Shift)</div><ul><li><span>Tip</span><b>Click row → Inspector spells</b></li></ul>`;
-  }
-  if (expand === "targets") {
-    extra = `<div class="sec">Targets (Ctrl)</div><ul><li><span>Tip</span><b>Inspector → Targets tab</b></li></ul>`;
-  }
-  return `<h4>${row.name}</h4>${abs}
-    <div class="line"><span>Share</span><b>${(row.pct * 100).toFixed(0)}%</b></div>${extra}
-    <div class="sec">Tip</div>
-    <ul><li><span>Click row</span><b>Inspector</b></li></ul>`;
-}
-
-function abilityTooltipHtml(row: RankedRow): string {
-  const splash =
-    row.splashDamage != null && row.splashDamage > 0
-      ? `<div class="line"><span>Explosion</span><b>+${formatCompactNumber(row.splashDamage)}</b></div>`
-      : "";
-  return `<h4>${skillIconHtml(row.id, 14)} ${row.name}</h4>
-    <div class="line"><span>Total</span><b>${formatCompactNumber(row.value)}</b></div>
-    ${splash}
-    ${row.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row.rate)}/s</b></div>` : ""}
-    <div class="sec">Tip</div>
-    <ul><li><span>Click</span><b>targets for spell</b></li></ul>`;
 }
 
 export type MeterBarsViewProps = {
@@ -155,12 +121,18 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
       p.query.kind === "rolling" ||
       p.query.kind === "snapshot" ||
       p.query.kind === "channel";
-    const sorted = result.rows.slice().sort((a, b) => b.value - a.value);
+    const rankedAmt = (r: RankedRow) =>
+      r.barValue != null ? r.barValue : r.value;
+    const sorted = result.rows
+      .slice()
+      .sort((a, b) => rankedAmt(b) - rankedAmt(a));
     let totalVal = 0;
     let totalRate = 0;
+    let ratePrimary = false;
     for (let i = 0; i < sorted.length; i++) {
       totalVal += sorted[i].value;
-      if (sorted[i].rate != null) totalRate += sorted[i].rate;
+      if (sorted[i].rate != null) totalRate += sorted[i].rate!;
+      if (sorted[i].primary === "rate") ratePrimary = true;
     }
     const capped = isPlayerRoot
       ? pinAlwaysShowSelf(
@@ -175,13 +147,17 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
         );
     const rows = toPoolRows(capped, p.highlightId, p.selectedRowId);
     if (app.showTotalBar && isPlayerRoot && rows.length) {
+      const topBarMax =
+        sorted[0]?.barMax || (ratePrimary ? totalRate : totalVal) || 1;
       rows.push({
         id: "__total__",
         name: "Total",
         value: totalVal,
         rate: totalRate || null,
+        barValue: ratePrimary ? totalRate : totalVal,
+        primary: ratePrimary ? "rate" : "total",
         pct: 1,
-        barMax: sorted[0]?.barMax || totalVal,
+        barMax: topBarMax,
         label: "Total",
         kind: "player",
         color: "#888",
@@ -213,16 +189,27 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
             p.onRowContextMenu!(row as RankedRow, ev)
         : undefined,
       tooltipHtml: (ev: MouseEvent, row: BarPoolRow) => {
-        const expand = ev.shiftKey
-          ? "spells"
-          : ev.ctrlKey
-            ? "targets"
-            : undefined;
-        const html =
-          row.kind === "ability"
-            ? abilityTooltipHtml(row)
-            : playerTooltipHtml(row, metric, expand);
-        showMeterTooltip(ev, html);
+        if (row.kind === "ability") {
+          showMeterTooltip(ev, abilityBarTooltipHtml(row as RankedRow));
+          return;
+        }
+        if (row.kind === "target") {
+          showMeterTooltip(ev, targetBarTooltipHtml(row as RankedRow));
+          return;
+        }
+        // Hover preview only — click still opens full Inspector (MeterPanelShell).
+        showMeterTooltipLive(ev, (mods) =>
+          playerBarTooltipHtml(
+            {
+              row: row as RankedRow,
+              metric,
+              segmentRef: p.segmentRef,
+              partyFocus: p.partyFocus,
+              entities: p.entities,
+            },
+            mods,
+          ),
+        );
       },
       onTooltipHide: hideMeterTooltip,
     };

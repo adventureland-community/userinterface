@@ -243,7 +243,7 @@ const METERS_TOUR: GuidedTourDef = {
     },
     {
       title: "Toolbar overview",
-      body: "Titlebar icons control settings, scope, segments, displays, reports, and reset. Hover for menus — a toolbar tour appears when you first open one.",
+      body: "Right-side icons: Mode · Segment · Attribute · Report · Reset. Hover for menus — a toolbar tour appears when you first open one.",
       target: ".ecu-meter-titlebar",
       missingHint: "Add a meter window first.",
     },
@@ -263,8 +263,8 @@ const METER_TOOLBAR_TOUR: GuidedTourDef = {
   prepare: { showMeters: true },
   steps: [
     {
-      title: "Settings",
-      body: "Skins, bar text, animations, auto-hide, window control, and mass hide.",
+      title: "Mode",
+      body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options — the Mode menu.",
       target: '[data-ecu-tour="meter-gear"]',
     },
     {
@@ -273,22 +273,22 @@ const METER_TOOLBAR_TOUR: GuidedTourDef = {
       target: '[data-ecu-tour="meter-segment"]',
     },
     {
-      title: "Display",
-      body: "Switch damage / heal / taken and bars / pie / graph. Right-click for the full list.",
+      title: "Attribute",
+      body: "Switch Damage Done / DPS / Healing / Taken. Right-click for the full display grid.",
       target: '[data-ecu-tour="meter-display"]',
       missingHint: "Rank-based meters only — snapshot meters omit this button.",
     },
     {
-      title: "Report & tools",
-      body: "Report copies fight summaries. ⊞ opens encounter dashboard, deaths, and timeline.",
+      title: "Report",
+      body: "Copy fight summaries or open the report dialog. Reset is the last icon.",
       target: '[data-ecu-tour="meter-report"]',
       missingHint: "Rank-based meters only.",
     },
     {
       title: "Resize",
-      body: "Corner handles and the bottom stretch tab change size. Encounter badges (skull/play) mark kills and segment starts.",
-      target: ".ecu-meter-stretch-tab",
-      missingHint: "Add a meter window first.",
+      body: "Corner grips free-resize the frame. Stretch ↕ on the titlebar toggles taller height. After fights, skull/play badges on the titlebar open Encounter / Timeline.",
+      target: ".ecu-meter-resize",
+      missingHint: "Unlock meters or enter layout edit to see resize grips.",
     },
   ],
 };

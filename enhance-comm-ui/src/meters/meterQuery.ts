@@ -2,7 +2,7 @@
  * Meter query dispatch — config → MeterResult. Party scope is a read filter.
  */
 
-import { getEntitiesRecord } from "../host/al";
+import { getEntitiesRecord, resolvePlayerCtype } from "../host/al";
 import type { EntityLike } from "../host/globals";
 import {
   formatCompactNumber,
@@ -12,6 +12,7 @@ import {
 import type { PartyFocus } from "../lib/settingsFocus";
 import { effectivePartyFocus, resolvePartyFocus } from "../lib/settingsFocus";
 import { classColors } from "../lib/colors";
+import { skillDisplayName } from "../lib/gameIcon";
 import { playersList } from "../queries/entities";
 import type { CombatChannel } from "./combatChannels";
 import { CHANNEL_LABELS } from "./combatChannels";
@@ -24,6 +25,7 @@ import {
 import {
   getHistoryPoints,
   getLiveSegment,
+  getPlayerMeta,
   getWatchedPartyKey,
   getYouId,
   isMeterInCombat,
@@ -32,14 +34,18 @@ import {
   resolveSegment,
 } from "./meterEngine";
 import {
+  dominantDamageType,
+  emptyHitAmountStats,
   segmentDurationMs,
   type AbilityAgg,
   type ActorAgg,
   type CombatSegment,
   type ConditionInterval,
+  type GearSwapEvent,
   type MeterQuery,
   type MeterResult,
   type PlayersMetric,
+  type PlayersPrimary,
   type RankedRow,
   type SegmentRef,
   type UptimeRow,
@@ -106,6 +112,40 @@ function scopedActors(
     if (playerInScope(a, focus)) out.push(a);
   }
   return out;
+}
+
+/** Scope check for timeline/death ids that may lack a full ActorAgg. */
+export function actorIdInScope(
+  actorId: string,
+  seg: CombatSegment,
+  focus: PartyFocus | undefined,
+): boolean {
+  const actor = seg.actors[actorId];
+  if (actor) return playerInScope(actor, focus);
+  const scope = focusToScope(focus);
+  switch (scope) {
+    case "all":
+      return true;
+    case "visible":
+      return isVisiblePlayer(actorId);
+    case "you": {
+      const you = getYouId();
+      return !!you && actorId === you;
+    }
+    case "party": {
+      const you = getYouId();
+      const resolved = resolvePartyFocus(
+        effectivePartyFocus(focus || "watched", !!you),
+        getWatchedPartyKey(),
+      );
+      if (resolved.partyFilter) return false;
+      return isWatchedPartyMember(actorId);
+    }
+    default: {
+      const _exhaustive: never = scope;
+      return _exhaustive;
+    }
+  }
 }
 
 function actorMetric(a: ActorAgg, metric: PlayersMetric): number {
@@ -218,6 +258,7 @@ function toRanked(
     id: string;
     name: string;
     ctype?: string;
+    mtype?: string;
     value: number;
     kind?: RankedRow["kind"];
     you?: boolean;
@@ -260,19 +301,25 @@ function toRanked(
     if (absolute) {
       label = `${(it.value * 100).toFixed(1)}%`;
     } else if (primary === "rate") {
-      label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}) ${getPercent(pct, 3)}`;
+      // Details DPS/HPS: rate first, total + share in parens
+      label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}, ${getPercent(pct, 3)})`;
     } else {
-      label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}) ${getPercent(pct, 3)}`;
+      // Details Damage/Healing Done: total first, rate + share in parens
+      label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}, ${getPercent(pct, 3)})`;
     }
+    const useRate = primary === "rate" && !absolute;
+    const barValue = useRate ? rate || 0 : it.value;
     rows.push({
       id: it.id,
       name: it.name,
       ctype: it.ctype,
+      mtype: it.mtype,
       value: it.value,
       rate,
       pct,
       barMax: barMax || 1,
-      barValue: primary === "rate" && !absolute ? rate || 0 : undefined,
+      barValue,
+      primary: useRate ? "rate" : "total",
       label,
       kind: it.kind,
       you: it.you,
@@ -335,6 +382,8 @@ function snapshotRows(
         rate: null,
         pct: max > 0 ? value / max : 0,
         barMax: max || 1,
+        barValue: value,
+        primary: "total",
         label: value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
       });
     }
@@ -376,6 +425,8 @@ function snapshotRows(
       rate: null,
       pct: total > 0 ? value / total : 0,
       barMax: max || 1,
+      barValue: value,
+      primary: "total",
       label,
     });
   }
@@ -393,13 +444,14 @@ function rollingRanked(now: number): MeterResult {
     value: number;
   }> = [];
   const meta = getEntitiesRecord();
+  const playerMeta = getPlayerMeta();
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
     const ent = meta[id];
     items.push({
       id,
-      name: ent?.name || id,
-      ctype: ent?.ctype,
+      name: playerMeta[id]?.name || ent?.name || id,
+      ctype: playerMeta[id]?.ctype || resolvePlayerCtype(id, ent) || ent?.ctype,
       value: dmg[id] / windowSec,
     });
   }
@@ -424,6 +476,8 @@ function rollingRanked(now: number): MeterResult {
       rate: it.value,
       pct,
       barMax: max || 1,
+      barValue: it.value,
+      primary: "rate",
       label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`,
     });
   }
@@ -473,7 +527,7 @@ export function runMeterQuery(
         const ab = actor.abilities[k];
         return {
           id: k,
-          name: k,
+          name: skillDisplayName(k),
           value: abilityMetric(ab, metric),
           kind: "ability" as const,
           splashDamage: ab.splashDamage,
@@ -506,12 +560,14 @@ export function runMeterQuery(
           name: t.name,
           value,
           kind: "target" as const,
+          mtype: t.mtype,
+          ctype: t.ctype,
         };
       });
       return {
         kind: "ranked",
         rows: toRanked(items, durationMs, metric === "avoidance"),
-        title: `${actor!.name} · ${query.ability}`,
+        title: `${actor!.name} · ${skillDisplayName(query.ability)}`,
       };
     }
 
@@ -521,7 +577,14 @@ export function runMeterQuery(
       const metric = query.metric || "damage";
       const byTarget: Record<
         string,
-        { id: string; name: string; value: number; kind: "target" }
+        {
+          id: string;
+          name: string;
+          value: number;
+          kind: "target";
+          mtype?: string;
+          ctype?: string;
+        }
       > = {};
       const abKeys = Object.keys(actor.abilities);
       for (let i = 0; i < abKeys.length; i++) {
@@ -535,9 +598,14 @@ export function runMeterQuery(
               name: tg.name,
               value: 0,
               kind: "target",
+              mtype: tg.mtype,
+              ctype: tg.ctype,
             };
           }
           byTarget[tg.id].value += metric === "heal" ? tg.heal : tg.damage;
+          if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+          if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
+          if (tg.name) byTarget[tg.id].name = tg.name;
         }
       }
       return {
@@ -550,34 +618,100 @@ export function runMeterQuery(
     case "details": {
       const actor = seg.actors[query.actorId];
       if (!actor) return { kind: "empty", reason: "no actor" };
+      const metric: PlayersMetric =
+        query.metric === "heal" ||
+        query.metric === "taken" ||
+        query.metric === "healing_required" ||
+        query.metric === "avoidance"
+          ? query.metric
+          : "damage";
+      const primary: PlayersPrimary =
+        query.primary === "rate" ? "rate" : "total";
+      const listMetric: PlayersMetric =
+        metric === "heal" ? "heal" : metric === "taken" ? "taken" : "damage";
       const abKeys = Object.keys(actor.abilities);
-      const abilityItems = abKeys.map((k) => ({
-        id: k,
-        name: k,
-        // Prefer each ability's primary contribution (don't hide heals behind 0-damage).
-        value:
-          actor.abilities[k].damage >= actor.abilities[k].heal
-            ? actor.abilities[k].damage
-            : actor.abilities[k].heal,
-        kind: "ability" as const,
-      }));
-      const abilityRows = toRanked(abilityItems, durationMs, false);
+      const abilityItems = abKeys
+        .map((k) => {
+          const ab = actor.abilities[k];
+          return {
+            id: k,
+            name: skillDisplayName(k),
+            value: abilityMetric(ab, listMetric),
+            kind: "ability" as const,
+            splashDamage: ab.splashDamage,
+          };
+        })
+        .filter((it) => it.value > 0 || abKeys.length <= 1);
+      const abilityRows = toRanked(abilityItems, durationMs, false, primary);
       // Keep selection for Outcomes/Targets; overview totals stay actor-level.
       let abilityKey = query.ability;
       if (!abilityKey && abilityRows[0]) abilityKey = abilityRows[0].id;
       const ab = abilityKey ? actor.abilities[abilityKey] : undefined;
       const outcomes = ab ? ab.outcomes : actor.outcomes;
+      const abilityTotal = ab ? abilityMetric(ab, listMetric) : 0;
+      let abilityCasts = 0;
+      if (abilityKey) {
+        const keyLower = abilityKey.toLowerCase();
+        for (let i = 0; i < seg.casts.length; i++) {
+          const c = seg.casts[i];
+          if (c.actorId !== actor.id) continue;
+          if ((c.source || "").toLowerCase() === keyLower) abilityCasts += 1;
+        }
+      }
       const targetItems = ab
         ? Object.keys(ab.targets).map((tid) => {
             const t = ab.targets[tid];
+            let value = 0;
+            if (listMetric === "heal") value = t.heal;
+            else if (listMetric === "taken") value = t.damage;
+            else value = t.damage;
             return {
               id: tid,
               name: t.name,
-              value: t.damage >= t.heal ? t.damage : t.heal,
+              value,
               kind: "target" as const,
+              mtype: t.mtype,
+              ctype: t.ctype,
             };
           })
-        : [];
+        : Object.keys(actor.abilities).length
+          ? (() => {
+              const byTarget: Record<
+                string,
+                {
+                  id: string;
+                  name: string;
+                  value: number;
+                  kind: "target";
+                  mtype?: string;
+                  ctype?: string;
+                }
+              > = {};
+              const keys = Object.keys(actor.abilities);
+              for (let i = 0; i < keys.length; i++) {
+                const ability = actor.abilities[keys[i]];
+                const tKeys = Object.keys(ability.targets);
+                for (let t = 0; t < tKeys.length; t++) {
+                  const tg = ability.targets[tKeys[t]];
+                  if (!byTarget[tg.id]) {
+                    byTarget[tg.id] = {
+                      id: tg.id,
+                      name: tg.name,
+                      value: 0,
+                      kind: "target",
+                      mtype: tg.mtype,
+                      ctype: tg.ctype,
+                    };
+                  }
+                  byTarget[tg.id].value +=
+                    listMetric === "heal" ? tg.heal : tg.damage;
+                  if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+                  if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
+                }
+              }
+              return Object.values(byTarget);
+            })()
+          : [];
       let deathCount = 0;
       for (let i = 0; i < seg.deaths.length; i++) {
         if (seg.deaths[i].id === actor.id) deathCount += 1;
@@ -588,8 +722,15 @@ export function runMeterQuery(
         actorName: actor.name,
         ctype: actor.ctype,
         ability: abilityKey,
+        metric,
+        primary,
         abilitySplash: ab ? ab.splashDamage : 0,
+        abilityTotal,
+        abilityCasts,
         outcomes,
+        hitNormal: ab?.normal ? { ...ab.normal } : emptyHitAmountStats(),
+        hitCrit: ab?.crit ? { ...ab.crit } : emptyHitAmountStats(),
+        damageType: ab ? dominantDamageType(ab.damageTypes) : undefined,
         totals: {
           damage: actor.damage,
           heal: actor.heal,
@@ -599,7 +740,7 @@ export function runMeterQuery(
         durationMs,
         abilityRows,
         uptimeRows: actorUptimeRows(seg.conditions, actor.id, durationMs, now),
-        targetRows: toRanked(targetItems, durationMs, false),
+        targetRows: toRanked(targetItems, durationMs, false, primary),
         deaths: deathCount,
       };
     }
@@ -640,6 +781,77 @@ export function runMeterQuery(
           dpsRows.kind === "ranked" && dpsRows.rows[0]
             ? dpsRows.rows[0]
             : undefined,
+      };
+    }
+
+    case "taken_by_spell": {
+      const actors = scopedActors(seg, focus);
+      const bySpell: Record<string, number> = {};
+      for (let i = 0; i < actors.length; i++) {
+        const abKeys = Object.keys(actors[i].abilities);
+        for (let k = 0; k < abKeys.length; k++) {
+          const ab = actors[i].abilities[abKeys[k]];
+          if (!(ab.taken > 0)) continue;
+          bySpell[ab.key] = (bySpell[ab.key] || 0) + ab.taken;
+        }
+      }
+      const items = Object.keys(bySpell).map((key) => ({
+        id: key,
+        name: skillDisplayName(key),
+        value: bySpell[key],
+        kind: "ability" as const,
+      }));
+      return {
+        kind: "ranked",
+        rows: toRanked(items, durationMs, false),
+        title: "Damage Taken by Spell",
+      };
+    }
+
+    case "enemy_damage": {
+      const actors = scopedActors(seg, focus);
+      const meta = getPlayerMeta();
+      const byTarget: Record<
+        string,
+        {
+          id: string;
+          name: string;
+          value: number;
+          kind: "target";
+          mtype?: string;
+          ctype?: string;
+        }
+      > = {};
+      for (let i = 0; i < actors.length; i++) {
+        const abKeys = Object.keys(actors[i].abilities);
+        for (let k = 0; k < abKeys.length; k++) {
+          const ab = actors[i].abilities[abKeys[k]];
+          const tKeys = Object.keys(ab.targets);
+          for (let t = 0; t < tKeys.length; t++) {
+            const tg = ab.targets[tKeys[t]];
+            if (!(tg.damage > 0)) continue;
+            // Skip player targets — Adds pane is enemy/environment damage taken.
+            if (meta[tg.id] || seg.actors[tg.id]) continue;
+            if (!byTarget[tg.id]) {
+              byTarget[tg.id] = {
+                id: tg.id,
+                name: tg.name || tg.id,
+                value: 0,
+                kind: "target",
+                mtype: tg.mtype,
+                ctype: tg.ctype,
+              };
+            }
+            byTarget[tg.id].value += tg.damage;
+            if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+          }
+        }
+      }
+      const items = Object.keys(byTarget).map((id) => byTarget[id]);
+      return {
+        kind: "ranked",
+        rows: toRanked(items, durationMs, false),
+        title: "Adds",
       };
     }
 
@@ -700,7 +912,7 @@ export function runMeterQuery(
           const ab = actor.abilities[k];
           return {
             id: k,
-            name: k,
+            name: skillDisplayName(k),
             value: abilityMetric(ab, metric),
             color: classColors[actor.ctype || ""] || "#666",
           };
@@ -725,13 +937,34 @@ export function runMeterQuery(
     case "death_log":
       return { kind: "death_log", deaths: seg.deaths.slice() };
 
-    case "timeline":
+    case "timeline": {
+      const casts = [];
+      for (let i = 0; i < seg.casts.length; i++) {
+        if (actorIdInScope(seg.casts[i].actorId, seg, focus)) {
+          casts.push(seg.casts[i]);
+        }
+      }
+      const conditions = [];
+      for (let i = 0; i < seg.conditions.length; i++) {
+        if (actorIdInScope(seg.conditions[i].actorId, seg, focus)) {
+          conditions.push(seg.conditions[i]);
+        }
+      }
+      const gearSwaps: GearSwapEvent[] = [];
+      const swaps = seg.gearSwaps || [];
+      for (let i = 0; i < swaps.length; i++) {
+        if (actorIdInScope(swaps[i].actorId, seg, focus)) {
+          gearSwaps.push(swaps[i]);
+        }
+      }
       return {
         kind: "timeline",
-        casts: seg.casts.slice(),
-        conditions: seg.conditions.slice(),
+        casts,
+        conditions,
+        gearSwaps,
         durationMs,
       };
+    }
 
     case "conditions":
       return {
@@ -739,7 +972,8 @@ export function runMeterQuery(
         casts: [],
         conditions: query.actorId
           ? seg.conditions.filter((c) => c.actorId === query.actorId)
-          : seg.conditions.slice(),
+          : seg.conditions.filter((c) => actorIdInScope(c.actorId, seg, focus)),
+        gearSwaps: [],
         durationMs,
       };
 
@@ -813,13 +1047,14 @@ export function rollingHealRanked(now = Date.now()): MeterResult {
     value: number;
   }> = [];
   const meta = getEntitiesRecord();
+  const playerMeta = getPlayerMeta();
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
     const ent = meta[id];
     items.push({
       id,
-      name: ent?.name || id,
-      ctype: ent?.ctype,
+      name: playerMeta[id]?.name || ent?.name || id,
+      ctype: playerMeta[id]?.ctype || resolvePlayerCtype(id, ent) || ent?.ctype,
       value: heal[id] / windowSec,
     });
   }

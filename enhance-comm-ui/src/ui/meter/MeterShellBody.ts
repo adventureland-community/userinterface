@@ -12,14 +12,15 @@ import type {
   RankedRow,
   SegmentRef,
 } from "../../meters/meterTypes";
+import type { FocusInspectorOpts } from "../hooks/useCommMeterInstances";
 import { MeterBarsView } from "./MeterBarRow";
-import { rootQuery } from "./meterShellHelpers";
+import { detailsWindowTitle, rootQuery } from "./meterShellHelpers";
 import {
   MeterDeathView,
   MeterDetailsView,
   MeterEncounterView,
-  MeterTimelineView,
 } from "./views/MeterMiscViews";
+import { MeterTimelineView } from "./views/MeterTimelineView";
 import {
   MeterHistoryChart,
   MeterPieView,
@@ -50,7 +51,11 @@ export type MeterShellBodyProps = {
   };
   onPatchInstance: (partial: Partial<MeterInstance>) => void;
   patchInspectorAbility: (ability: string | null) => void;
-  onFocusInspector?: (actorId: string, name: string) => void;
+  onFocusInspector?: (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => void;
 };
 
 export function renderMeterShellBody(props: MeterShellBodyProps): any {
@@ -94,26 +99,50 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
           partyFocus: instance.partyFocus,
           entities,
           highlightId,
-          live: false,
+          live: selectedset === "current",
           onRowClick: (row: RankedRow) => {
             onPatchInstance({
-              query: { kind: "details", actorId: row.id },
-              label: `Inspector · ${row.name}`,
+              query: {
+                kind: "details",
+                actorId: row.id,
+                metric: "damage",
+                primary: "total",
+              },
+              label: detailsWindowTitle(row.name, "damage", "total"),
             });
           },
         }),
       );
     }
     const selectedAbility =
-      instance.query.kind === "details"
-        ? instance.query.ability || null
-        : null;
+      instance.query.kind === "details" ? instance.query.ability || null : null;
     return e(MeterDetailsView, {
       result: det,
       segmentRef: selectedset,
       partyFocus: instance.partyFocus,
       selectedAbility,
       onSelectAbility: (ability: string) => patchInspectorAbility(ability),
+      onSelectActor: (actorId: string, name: string) => {
+        const q = instance.query;
+        const metric =
+          q.kind === "details" && (q.metric === "heal" || q.metric === "taken")
+            ? q.metric
+            : "damage";
+        const primary =
+          q.kind === "details" && q.primary === "rate" ? "rate" : "total";
+        onPatchInstance({
+          query: {
+            kind: "details",
+            actorId,
+            metric,
+            primary,
+          },
+          label: detailsWindowTitle(name, metric, primary),
+        });
+      },
+      onSelectSegment: (next: SegmentRef) => {
+        onPatchInstance({ selectedset: next });
+      },
     });
   }
   if (pres === "death_log" || result.kind === "death_log") {
@@ -125,19 +154,34 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
       segmentRef: selectedset,
       partyFocus: instance.partyFocus,
       onOpenPlayer: (id: string, name: string) => {
-        if (onFocusInspector) onFocusInspector(id, name);
-        else {
+        if (onFocusInspector) {
+          onFocusInspector(id, name, {
+            metric: "damage",
+            primary: "total",
+            selectedset: selectedset,
+            partyFocus: instance.partyFocus,
+          });
+        } else {
           onPatchInstance({
-            query: { kind: "details", actorId: id },
+            query: {
+              kind: "details",
+              actorId: id,
+              metric: "damage",
+              primary: "total",
+            },
             presentation: "details",
-            label: `Inspector · ${name}`,
+            label: detailsWindowTitle(name, "damage", "total"),
           });
         }
       },
     });
   }
   if (pres === "timeline" || result.kind === "timeline") {
-    return e(MeterTimelineView, { result, segmentRef: selectedset });
+    return e(MeterTimelineView, {
+      result,
+      segmentRef: selectedset,
+      partyFocus: instance.partyFocus,
+    });
   }
   if (pres === "realtime" || pres === "compare" || pres === "series") {
     const hist =

@@ -1,6 +1,13 @@
 import { getReact, e } from "../../../host/react";
 import { formatCompactNumber, formatCompactRate } from "../../../lib/format";
+import {
+  conditionDisplayName,
+  conditionKind,
+  skillDisplayName,
+  skillIconHtml,
+} from "../../../lib/gameIcon";
 import { MetricChart } from "../../chrome/MetricChart";
+import { GameIcon } from "../../chrome/GameIcon";
 import type { PartyFocus } from "../../../lib/settingsFocus";
 import { PIXEL_TEXT, TYPE } from "../../../lib/typeScale";
 import { getMeterAppearance } from "../../../meters/meterAppearance";
@@ -9,18 +16,27 @@ import {
   getYouId,
   resolveSegment,
 } from "../../../meters/meterEngine";
-import { skillIconHtml } from "../../../meters/meterIcons";
 import { runMeterQuery } from "../../../meters/meterQuery";
 import type {
   ActorAgg,
   DeathSnapshot,
+  HitAmountStats,
   MeterResult,
   OutcomeCounts,
   RankedRow,
   SegmentRef,
+  UptimeRow,
 } from "../../../meters/meterTypes";
 import { injectMeterChromeCss } from "../meterChromeCss";
 import { MeterBarsView } from "../MeterBarRow";
+import { MeterBreakdownSideRail } from "../MeterBreakdownSideRail";
+import { detailsWindowTitle } from "../meterShellHelpers";
+import { classColors } from "../../../lib/colors";
+
+/** Details Compare: peer needs >30% shared spells with primary. */
+const COMPARE_SPELL_MATCH_PCT = 30;
+const COMPARE_SPELL_ROWS = 12;
+const COMPARE_TARGET_ROWS = 9;
 
 const pad = {
   padding: "8px",
@@ -33,39 +49,6 @@ function fmtRelSec(deathAt: number, hitAt: number): string {
   const d = (hitAt - deathAt) / 1000;
   const sign = d <= 0 ? "" : "+";
   return `${sign}${d.toFixed(1)}s`;
-}
-
-const DEBUFF_CONDITION_KEYS = new Set([
-  "cursed",
-  "burned",
-  "poisoned",
-  "weakness",
-  "frozen",
-  "stunned",
-  "slowed",
-]);
-
-function conditionKind(key: string): "buff" | "debuff" {
-  return DEBUFF_CONDITION_KEYS.has(key) ? "debuff" : "buff";
-}
-
-function buildActorNameMap(segmentRef?: SegmentRef): Record<string, string> {
-  const map: Record<string, string> = {};
-  const meta = getPlayerMeta();
-  const metaIds = Object.keys(meta);
-  for (let i = 0; i < metaIds.length; i++) {
-    const id = metaIds[i];
-    map[id] = meta[id].name;
-  }
-  const seg = resolveSegment(segmentRef);
-  if (seg) {
-    const actorIds = Object.keys(seg.actors);
-    for (let i = 0; i < actorIds.length; i++) {
-      const a = seg.actors[actorIds[i]];
-      map[a.id] = a.name || map[a.id] || a.id;
-    }
-  }
-  return map;
 }
 
 function lifePctAtHit(
@@ -115,22 +98,143 @@ function sameCtypePeers(
   return peers;
 }
 
+/** Shared ability overlap % (Details Compare match filter). */
+function sharedAbilityPct(primary: ActorAgg, other: ActorAgg): number {
+  const keys = Object.keys(primary.abilities);
+  if (!keys.length) return 0;
+  let same = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (other.abilities[keys[i]]) same += 1;
+  }
+  return (same / keys.length) * 100;
+}
+
+/**
+ * Details Compare peer pick: same ctype + >30% shared abilities.
+ * Returns primary first, then up to 2 peers (by metric total).
+ */
+function comparePeerActors(
+  segmentRef: SegmentRef,
+  actorId: string,
+  ctype: string | undefined,
+  metric: "damage" | "heal" | "taken",
+): { primary: ActorAgg | null; peers: ActorAgg[] } {
+  const all = sameCtypePeers(segmentRef, actorId, ctype);
+  const primary = all.find((a) => a.id === actorId) || all[0] || null;
+  if (!primary) return { primary: null, peers: [] };
+  const scored: Array<{ a: ActorAgg; total: number }> = [];
+  for (let i = 0; i < all.length; i++) {
+    const a = all[i];
+    if (a.id === primary.id) continue;
+    if (sharedAbilityPct(primary, a) <= COMPARE_SPELL_MATCH_PCT) continue;
+    scored.push({ a, total: actorMetricTotal(a, metric) });
+  }
+  scored.sort((x, y) => y.total - x.total);
+  const peers: ActorAgg[] = [];
+  for (let i = 0; i < scored.length && peers.length < 2; i++) {
+    peers.push(scored[i].a);
+  }
+  return { primary, peers };
+}
+
+function actorTargetTotals(
+  actor: ActorAgg,
+  metric: "damage" | "heal" | "taken",
+): Array<{
+  id: string;
+  name: string;
+  value: number;
+  mtype?: string;
+  ctype?: string;
+}> {
+  const byId: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      value: number;
+      mtype?: string;
+      ctype?: string;
+    }
+  > = {};
+  const abKeys = Object.keys(actor.abilities);
+  for (let i = 0; i < abKeys.length; i++) {
+    const ab = actor.abilities[abKeys[i]];
+    const tKeys = Object.keys(ab.targets);
+    for (let t = 0; t < tKeys.length; t++) {
+      const tg = ab.targets[tKeys[t]];
+      let v = 0;
+      if (metric === "heal") v = tg.heal;
+      else if (metric === "taken") v = 0;
+      else v = tg.damage;
+      if (!(v > 0)) continue;
+      if (!byId[tg.id]) {
+        byId[tg.id] = {
+          id: tg.id,
+          name: tg.name || tg.id,
+          value: 0,
+          mtype: tg.mtype,
+          ctype: tg.ctype,
+        };
+      }
+      byId[tg.id].value += v;
+      if (tg.name) byId[tg.id].name = tg.name;
+      if (tg.mtype) byId[tg.id].mtype = tg.mtype;
+      if (tg.ctype) byId[tg.id].ctype = tg.ctype;
+    }
+  }
+  const rows = Object.keys(byId).map((id) => byId[id]);
+  rows.sort((a, b) => b.value - a.value);
+  return rows;
+}
+
+/** Details peer % vs primary: green + when primary ahead, red − when behind. */
+function comparePctLabel(
+  primaryVal: number,
+  peerVal: number,
+): { text: string; tone: "up" | "down" | "flat" } {
+  if (primaryVal === 0 && peerVal === 0) {
+    return { text: "+0%", tone: "flat" };
+  }
+  if (primaryVal > peerVal) {
+    if (!(peerVal > 0)) return { text: "+999%", tone: "up" };
+    const up = Math.min(
+      999,
+      Math.floor(((primaryVal - peerVal) / peerVal) * 100),
+    );
+    return { text: `+${up}%`, tone: "up" };
+  }
+  if (peerVal > primaryVal) {
+    if (!(primaryVal > 0)) return { text: "−999%", tone: "down" };
+    const down = Math.min(
+      999,
+      Math.floor(((peerVal - primaryVal) / primaryVal) * 100),
+    );
+    return { text: `−${down}%`, tone: "down" };
+  }
+  return { text: "+0%", tone: "flat" };
+}
+
 function DeathSourceBar(props: {
   ability: string;
   amount: number;
   pct: number;
 }): any {
-  const React = getReact();
-  const iconRef = React.useRef(null as HTMLSpanElement | null);
-  React.useEffect(() => {
-    if (!iconRef.current) return;
-    iconRef.current.innerHTML = skillIconHtml(props.ability, 14);
-  }, [props.ability]);
   return e(
     "div",
     { className: "ecu-meter-death-source" },
-    e("span", { ref: iconRef, className: "ecu-meter-death-source-icon" }),
-    e("span", { className: "ecu-meter-death-source-name" }, props.ability),
+    e(GameIcon, {
+      id: props.ability,
+      kind: "auto",
+      size: 14,
+      className: "ecu-meter-death-source-icon",
+      title: skillDisplayName(props.ability),
+    }),
+    e(
+      "span",
+      { className: "ecu-meter-death-source-name" },
+      skillDisplayName(props.ability),
+    ),
     e(
       "span",
       { className: "ecu-meter-death-source-bar" },
@@ -139,7 +243,11 @@ function DeathSourceBar(props: {
         style: { width: `${Math.round(props.pct * 100)}%` },
       }),
     ),
-    e("span", { className: "ecu-meter-death-source-amt" }, formatCompactNumber(props.amount)),
+    e(
+      "span",
+      { className: "ecu-meter-death-source-amt" },
+      formatCompactNumber(props.amount),
+    ),
   );
 }
 
@@ -158,14 +266,14 @@ function DeathHitRow(props: {
   const ref = React.useRef(null as HTMLSpanElement | null);
   const h = props.hit;
   const heal = h.damage < 0 || h.source === "heal";
-  const amt = heal ? `+${formatCompactNumber(Math.abs(h.damage))}` : `−${formatCompactNumber(h.damage)}`;
+  const amt = heal
+    ? `+${formatCompactNumber(Math.abs(h.damage))}`
+    : `−${formatCompactNumber(h.damage)}`;
   const lifePct =
-    props.showLifePct && props.hpLog
-      ? lifePctAtHit(props.hpLog, h.at)
-      : null;
+    props.showLifePct && props.hpLog ? lifePctAtHit(props.hpLog, h.at) : null;
   React.useEffect(() => {
     if (!ref.current) return;
-    ref.current.innerHTML = `${skillIconHtml(h.source || "attack", 14)} ${h.source || "attack"}${h.actor ? ` <span class="ecu-meter-death-hit-actor">${h.actor}</span>` : ""}`;
+    ref.current.innerHTML = `${skillIconHtml(h.source || "attack", 14)} ${skillDisplayName(h.source || "attack")}${h.actor ? ` <span class="ecu-meter-death-hit-actor">${h.actor}</span>` : ""}`;
   }, [h.source, h.actor]);
   return e(
     "div",
@@ -282,7 +390,164 @@ function OutcomeTable(props: {
   );
 }
 
-/** Details Player Breakdown — Spells / Targets / Summary (no hit-tag rollup). */
+function fmtUptimeTimer(ms: number): string {
+  const sec = Math.max(0, ms / 1000);
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+function abilityAmount(
+  actor: ActorAgg,
+  abilityId: string,
+  metric: "damage" | "heal" | "taken",
+): number {
+  const ab = actor.abilities[abilityId];
+  if (!ab) return 0;
+  if (metric === "heal") return ab.heal;
+  if (metric === "taken") return ab.taken;
+  return ab.damage;
+}
+
+function actorMetricTotal(
+  actor: ActorAgg,
+  metric: "damage" | "heal" | "taken",
+): number {
+  if (metric === "heal") return actor.heal;
+  if (metric === "taken") return actor.taken;
+  return actor.damage;
+}
+
+function topAbilityIds(
+  actor: ActorAgg,
+  metric: "damage" | "heal" | "taken",
+  n: number,
+): string[] {
+  const keys = Object.keys(actor.abilities);
+  const scored = keys.map((k) => ({
+    id: k,
+    v: abilityAmount(actor, k, metric),
+  }));
+  scored.sort((a, b) => b.v - a.v);
+  const out: string[] = [];
+  for (let i = 0; i < scored.length && out.length < n; i++) {
+    if (scored[i].v > 0) out.push(scored[i].id);
+  }
+  return out;
+}
+
+function SpellBlock(props: {
+  className?: string;
+  fillPct?: number;
+  children: any;
+}): any {
+  const fill =
+    props.fillPct != null
+      ? Math.max(0, Math.min(100, props.fillPct))
+      : undefined;
+  return e(
+    "div",
+    {
+      className:
+        "ecu-meter-bd-block" + (props.className ? ` ${props.className}` : ""),
+    },
+    fill != null
+      ? e("div", {
+          className: "ecu-meter-bd-block-fill",
+          style: { width: `${fill}%` },
+        })
+      : null,
+    e("div", { className: "ecu-meter-bd-block-body" }, props.children),
+  );
+}
+
+function SpellBlockLine(props: {
+  left: any;
+  right?: any;
+  mutedRight?: boolean;
+}): any {
+  return e(
+    "div",
+    { className: "ecu-meter-bd-block-line" },
+    e("span", { className: "ecu-meter-bd-block-left" }, props.left),
+    props.right != null
+      ? e(
+          "span",
+          {
+            className:
+              "ecu-meter-bd-block-right" +
+              (props.mutedRight ? " ecu-meter-bd-muted" : ""),
+          },
+          props.right,
+        )
+      : null,
+  );
+}
+
+/** AL damage_type label (physical / magical / pure) — not WoW school. */
+function formatAlDamageType(type: string | undefined): string {
+  if (!type) return "";
+  const t = type.toLowerCase();
+  if (t === "physical") return "Physical";
+  if (t === "magical") return "Magical";
+  if (t === "pure") return "Pure";
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+/**
+ * Details-shaped Min / Max / Average / DPS|HPS lines for a hit amount bucket.
+ * DPS = contribution rate (bucket.total / fight seconds) — honest AL math.
+ */
+function hitAmountBlockLines(
+  stats: HitAmountStats,
+  sec: number,
+  rateLabel: string,
+): any[] {
+  if (!(stats.count > 0)) {
+    return [
+      e(
+        "div",
+        { className: "ecu-meter-bd-block-note" },
+        "Min / Max / avg need a new fight (reload after this update)",
+      ),
+    ];
+  }
+  const avg = stats.total / stats.count;
+  const rate = stats.total / Math.max(sec, 1);
+  return [
+    e(SpellBlockLine, {
+      left: e(
+        "span",
+        null,
+        "Min: ",
+        e("b", null, formatCompactNumber(stats.min)),
+      ),
+      right: e(
+        "span",
+        null,
+        "Max: ",
+        e("b", null, formatCompactNumber(stats.max)),
+      ),
+    }),
+    e(SpellBlockLine, {
+      left: e(
+        "span",
+        null,
+        "Average: ",
+        e("b", null, formatCompactNumber(avg)),
+      ),
+      right: e(
+        "span",
+        null,
+        `${rateLabel}: `,
+        e("b", null, formatCompactRate(rate)),
+      ),
+    }),
+  ];
+}
+
+/** Details Player Breakdown — Spells (list + blocks + targets) / Auras / Compare. */
 export function MeterDetailsView(props: {
   result: MeterResult;
   segmentRef: SegmentRef;
@@ -290,6 +555,7 @@ export function MeterDetailsView(props: {
   selectedAbility?: string | null;
   onSelectAbility?: (ability: string) => void;
   onSelectActor?: (actorId: string, name: string) => void;
+  onSelectSegment?: (next: SegmentRef) => void;
 }): any {
   const React = getReact();
   const [tab, setTab] = React.useState("spells");
@@ -300,7 +566,17 @@ export function MeterDetailsView(props: {
 
   const isDetails = props.result.kind === "details";
   const r = isDetails ? props.result : null;
-  const abilityKey = props.selectedAbility || (r ? r.ability : undefined);
+
+  const abilityKey =
+    r && (props.selectedAbility || r.ability || r.abilityRows[0]?.id || null);
+
+  // Persist default top-ability selection like Details (first spell selected).
+  React.useEffect(() => {
+    if (!r) return;
+    if (props.selectedAbility) return;
+    const first = r.ability || r.abilityRows[0]?.id;
+    if (first && props.onSelectAbility) props.onSelectAbility(first);
+  }, [r && r.actorId, r && r.ability, props.selectedAbility]);
 
   if (!r) {
     return e(
@@ -310,194 +586,392 @@ export function MeterDetailsView(props: {
     );
   }
 
+  const metric =
+    r.metric === "heal" || r.metric === "taken" ? r.metric : "damage";
   const sec = Math.max(r.durationMs / 1000, 1);
+  const amountLabel =
+    metric === "heal" ? "Heal" : metric === "taken" ? "Taken" : "Damage";
+  const rateLabel = metric === "heal" ? "HPS" : "DPS";
 
   const tabs = [
     { id: "spells", label: "Spells" },
-    { id: "targets", label: "Targets" },
     { id: "auras", label: "Auras" },
     { id: "compare", label: "Compare" },
-    { id: "summary", label: "Summary" },
   ];
 
   const onSpellClick = (row: RankedRow) => {
+    setTab("spells");
     if (props.onSelectAbility) props.onSelectAbility(row.id);
-    setTab("targets");
   };
+
+  const hits = r.outcomes.hits;
+  const crits = r.outcomes.crits;
+  const normals = Math.max(0, hits - crits);
+  const avg = hits > 0 ? r.abilityTotal / hits : 0;
+  const rate = r.abilityTotal / sec;
+  const castText =
+    r.abilityCasts > 0 ? String(r.abilityCasts) : hits > 0 ? String(hits) : "—";
+  // Prefer amount-bucket counts when present (new fights); fall back to outcomes.
+  const normalCount = r.hitNormal.count > 0 ? r.hitNormal.count : normals;
+  const critCount = r.hitCrit.count > 0 ? r.hitCrit.count : crits;
+  const hitDenom = Math.max(hits, normalCount + critCount, 1);
+  const normalPct = (normalCount / hitDenom) * 100;
+  const critPct = (critCount / hitDenom) * 100;
+  const defenseHits = r.outcomes.miss + r.outcomes.evade + r.outcomes.avoid;
+  const defensePct =
+    hits + defenseHits > 0 ? (defenseHits / (hits + defenseHits)) * 100 : 0;
+  const typeLabel = formatAlDamageType(r.damageType);
+
+  const spellBlocks = abilityKey
+    ? e(
+        "div",
+        { className: "ecu-meter-bd-blocks", style: { ...PIXEL_TEXT } },
+        e(
+          SpellBlock,
+          { className: "is-summary", fillPct: 100 },
+          e(
+            "div",
+            { className: "ecu-meter-bd-block-title" },
+            skillDisplayName(abilityKey),
+          ),
+          e(SpellBlockLine, {
+            left: e("span", null, "Casts: ", e("b", null, castText)),
+            right: e("span", null, "Hits: ", e("b", null, String(hits))),
+          }),
+          e(SpellBlockLine, {
+            left: e(
+              "span",
+              null,
+              `${amountLabel}: `,
+              e("b", null, formatCompactNumber(r.abilityTotal)),
+            ),
+            right: typeLabel || "—",
+            mutedRight: true,
+          }),
+          e(SpellBlockLine, {
+            left: e(
+              "span",
+              null,
+              "Average: ",
+              e("b", null, formatCompactNumber(avg)),
+            ),
+            right: e(
+              "span",
+              null,
+              `${rateLabel}: `,
+              e("b", null, formatCompactRate(rate)),
+            ),
+          }),
+          r.abilitySplash > 0
+            ? e(SpellBlockLine, {
+                left: e(
+                  "span",
+                  null,
+                  "Explosion splash: ",
+                  e("b", null, formatCompactNumber(r.abilitySplash)),
+                ),
+              })
+            : null,
+        ),
+        normalCount > 0
+          ? e(
+              SpellBlock,
+              { fillPct: normalPct },
+              e(SpellBlockLine, {
+                left: e(
+                  "span",
+                  { className: "ecu-meter-bd-block-h" },
+                  "Normal Hits",
+                ),
+                right: e(
+                  "span",
+                  null,
+                  e("b", null, String(normalCount)),
+                  e(
+                    "span",
+                    { className: "ecu-meter-bd-muted" },
+                    ` [${normalPct.toFixed(1)}%]`,
+                  ),
+                ),
+              }),
+              ...hitAmountBlockLines(r.hitNormal, sec, rateLabel),
+            )
+          : null,
+        critCount > 0
+          ? e(
+              SpellBlock,
+              { className: "is-crit", fillPct: critPct },
+              e(SpellBlockLine, {
+                left: e(
+                  "span",
+                  { className: "ecu-meter-bd-block-h" },
+                  "Critical Hits",
+                ),
+                right: e(
+                  "span",
+                  null,
+                  e("b", null, String(critCount)),
+                  e(
+                    "span",
+                    { className: "ecu-meter-bd-muted" },
+                    ` [${critPct.toFixed(1)}%]`,
+                  ),
+                ),
+              }),
+              ...hitAmountBlockLines(r.hitCrit, sec, rateLabel),
+            )
+          : null,
+        defenseHits > 0
+          ? e(
+              SpellBlock,
+              { fillPct: defensePct },
+              e(SpellBlockLine, {
+                left: e(
+                  "span",
+                  { className: "ecu-meter-bd-block-h" },
+                  "Defenses",
+                ),
+                right: e(
+                  "span",
+                  null,
+                  e("b", null, String(defenseHits)),
+                  e(
+                    "span",
+                    { className: "ecu-meter-bd-muted" },
+                    ` [${defensePct.toFixed(1)}%]`,
+                  ),
+                ),
+              }),
+              e(SpellBlockLine, {
+                left:
+                  r.outcomes.miss > 0 ? `Miss: ${r.outcomes.miss}` : "\u00a0",
+                right:
+                  r.outcomes.evade > 0
+                    ? `Evade: ${r.outcomes.evade}`
+                    : r.outcomes.avoid > 0
+                      ? `Avoid: ${r.outcomes.avoid}`
+                      : "\u00a0",
+              }),
+              r.outcomes.evade > 0 && r.outcomes.avoid > 0
+                ? e(SpellBlockLine, {
+                    left: `Avoid: ${r.outcomes.avoid}`,
+                  })
+                : null,
+            )
+          : null,
+      )
+    : e(
+        "div",
+        {
+          className: "ecu-meter-bd-blocks ecu-meter-bd-blocks-empty",
+          style: { ...PIXEL_TEXT },
+        },
+        e(
+          "div",
+          { className: "ecu-meter-bd-stub" },
+          "Select a spell on the left",
+        ),
+      );
+
+  // MeterBarsView only patches on subscribeMeterTick when live (parent React ticks don't).
+  const barsLive = props.segmentRef === "current";
+
+  const spellsBody = e(
+    "div",
+    { className: "ecu-meter-bd-spells" },
+    e(
+      "div",
+      { className: "ecu-meter-bd-left" },
+      e(
+        "div",
+        { className: "ecu-meter-bd-abilities" },
+        e(MeterBarsView, {
+          query: {
+            kind: "abilities",
+            actorId: r.actorId,
+            metric,
+          },
+          segmentRef: props.segmentRef,
+          partyFocus: props.partyFocus,
+          live: barsLive,
+          selectedRowId: abilityKey || undefined,
+          onRowClick: onSpellClick,
+        }),
+      ),
+      e(
+        "div",
+        { className: "ecu-meter-bd-targets" },
+        e(
+          "div",
+          { className: "ecu-meter-bd-targets-h", style: { ...PIXEL_TEXT } },
+          "TARGETS:",
+        ),
+        abilityKey
+          ? e(MeterBarsView, {
+              query: {
+                kind: "ability_targets",
+                actorId: r.actorId,
+                ability: abilityKey,
+                metric,
+              },
+              segmentRef: props.segmentRef,
+              partyFocus: props.partyFocus,
+              live: barsLive,
+            })
+          : e(
+              "div",
+              { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
+              "Select a spell to see its targets",
+            ),
+      ),
+    ),
+    spellBlocks,
+  );
+
+  const aurasBody = (() => {
+    const rows = r.uptimeRows || [];
+    const buffs: UptimeRow[] = [];
+    const debuffs: UptimeRow[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const named = {
+        ...row,
+        name: conditionDisplayName(row.id) || row.name,
+      };
+      if (conditionKind(row.id) === "debuff") debuffs.push(named);
+      else buffs.push(named);
+    }
+    return e(
+      "div",
+      { className: "ecu-meter-bd-auras is-full" },
+      e(
+        "div",
+        { className: "ecu-meter-bd-auras-main", style: { ...PIXEL_TEXT } },
+        e(
+          "div",
+          { className: "ecu-meter-bd-auras-col" },
+          e("div", { className: "ecu-meter-bd-auras-col-h" }, "Buffs"),
+          buffs.length
+            ? e(UptimeTable, { rows: buffs })
+            : e(
+                "div",
+                { className: "ecu-meter-bd-stub" },
+                "No buff samples yet (need entity.s while in combat).",
+              ),
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-bd-auras-col" },
+          e("div", { className: "ecu-meter-bd-auras-col-h" }, "Debuffs"),
+          debuffs.length
+            ? e(UptimeTable, { rows: debuffs })
+            : e(
+                "div",
+                { className: "ecu-meter-bd-stub" },
+                "No debuff samples yet (need entity.s while in combat).",
+              ),
+        ),
+      ),
+    );
+  })();
 
   let body: any = null;
   if (tab === "spells") {
-    body = e(MeterBarsView, {
-      query: { kind: "abilities", actorId: r.actorId, metric: "damage" },
-      segmentRef: props.segmentRef,
-      partyFocus: props.partyFocus,
-      live: false,
-      selectedRowId: props.selectedAbility || undefined,
-      onRowClick: onSpellClick,
-    });
-  } else if (tab === "targets") {
-    const ab = abilityKey || r.abilityRows[0]?.id;
-    body = ab
-      ? e(MeterBarsView, {
-          query: {
-            kind: "ability_targets",
-            actorId: r.actorId,
-            ability: ab,
-            metric: "damage",
-          },
-          segmentRef: props.segmentRef,
-          partyFocus: props.partyFocus,
-          live: false,
-        })
-      : e(MeterBarsView, {
-          query: { kind: "targets", actorId: r.actorId, metric: "damage" },
-          segmentRef: props.segmentRef,
-          partyFocus: props.partyFocus,
-          live: false,
-        });
+    body = spellsBody;
   } else if (tab === "auras") {
-    body = e(
-      "div",
-      { className: "ecu-meter-inspector-summary", style: { ...PIXEL_TEXT } },
-      e("div", { className: "sec-h" }, "Buff / condition uptime"),
-      e(UptimeTable, { rows: r.uptimeRows || [] }),
-    );
-  } else if (tab === "compare") {
-    const peers = sameCtypePeers(props.segmentRef, r.actorId, r.ctype);
-    body =
-      peers.length > 1
-        ? e(
-            "div",
-            { className: "ecu-meter-inspector-compare" },
-            ...peers.map((p) => {
-              const secPeer = Math.max(r.durationMs / 1000, 1);
-              const isSelf = p.id === r.actorId;
-              return e(
-                "div",
-                {
-                  key: p.id,
-                  className:
-                    "ecu-meter-inspector-compare-col" +
-                    (isSelf ? " is-you" : ""),
-                },
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-h" },
-                  p.name,
-                  isSelf ? " (you)" : "",
-                ),
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-stat" },
-                  "Damage",
-                  e("b", null, formatCompactNumber(p.damage)),
-                ),
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-stat" },
-                  "DPS",
-                  e("b", null, formatCompactRate(p.damage / secPeer)),
-                ),
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-stat" },
-                  "Taken",
-                  e("b", null, formatCompactNumber(p.taken)),
-                ),
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-stat" },
-                  "Heal",
-                  e("b", null, formatCompactNumber(p.heal)),
-                ),
-                e(
-                  "div",
-                  { className: "ecu-meter-inspector-compare-stat" },
-                  "HPS",
-                  e("b", null, formatCompactRate(p.heal / secPeer)),
-                ),
-              );
-            }),
-          )
-        : e(
-            "div",
-            { style: { padding: 8, color: "#888", ...PIXEL_TEXT } },
-            r.ctype
-              ? "No other players with the same class in this segment"
-              : "Class unknown — compare needs ctype",
-          );
+    body = aurasBody;
   } else {
-    body = e(
-      "div",
-      { className: "ecu-meter-inspector-summary", style: { ...PIXEL_TEXT } },
-      e(
-        "div",
-        { className: "stat-grid" },
-        e("div", null, "Damage ", e("b", null, formatCompactNumber(r.totals.damage))),
-        e("div", null, "DPS ", e("b", null, formatCompactRate(r.totals.damage / sec))),
-        e("div", null, "Taken ", e("b", null, formatCompactNumber(r.totals.taken))),
-        e("div", null, "Heal ", e("b", null, formatCompactNumber(r.totals.heal))),
-        e("div", null, "HPS ", e("b", null, formatCompactRate(r.totals.heal / sec))),
-        e(
-          "div",
-          null,
-          "Heal Req ",
-          e("b", null, formatCompactNumber(r.totals.healingRequired)),
-        ),
-        e("div", null, "Deaths ", e("b", null, String(r.deaths))),
-      ),
-      e(
-        "div",
-        { className: "sec-h" },
-        props.selectedAbility
-          ? `${props.selectedAbility} — outcomes`
-          : "Outcomes",
-      ),
-      e(OutcomeTable, { outcomes: r.outcomes }),
-      r.uptimeRows && r.uptimeRows.length
-        ? e(
-            "div",
-            null,
-            e("div", { className: "sec-h" }, "Uptime"),
-            e(UptimeTable, { rows: r.uptimeRows }),
-          )
-        : null,
-    );
+    body = e(CompareTabBody, {
+      segmentRef: props.segmentRef,
+      actorId: r.actorId,
+      ctype: r.ctype,
+      metric,
+      amountLabel,
+      rateLabel,
+      sec,
+    });
   }
+
+  const attrTitle = detailsWindowTitle(r.actorName, r.metric, r.primary);
+  const ctype = r.ctype || "";
+  const rateTotal =
+    metric === "heal"
+      ? r.totals.heal
+      : metric === "taken"
+        ? r.totals.taken
+        : r.totals.damage;
 
   return e(
     "div",
-    { className: "ecu-meter-inspector" },
+    { className: "ecu-meter-inspector-layout" },
+    props.onSelectActor
+      ? e(MeterBreakdownSideRail, {
+          segmentRef: props.segmentRef,
+          partyFocus: props.partyFocus,
+          selectedActorId: r.actorId,
+          metric,
+          onSelectActor: props.onSelectActor,
+          onSelectSegment: props.onSelectSegment,
+        })
+      : null,
     e(
       "div",
-      { className: "ecu-meter-inspector-body" },
-      tab === "targets" && props.selectedAbility
-        ? e(
-            "div",
-            { className: "ecu-meter-inspector-spell" },
-            props.selectedAbility,
-            r.abilitySplash > 0
-              ? ` · explosion splash ${formatCompactNumber(r.abilitySplash)}`
-              : "",
-          )
-        : null,
-      body,
-    ),
-    e(
-      "div",
-      { className: "ecu-meter-inspector-tabs-rail", style: { ...PIXEL_TEXT } },
-      ...tabs.map((t) =>
+      { className: "ecu-meter-inspector" },
+      e(
+        "div",
+        { className: "ecu-meter-inspector-top", style: { ...PIXEL_TEXT } },
         e(
-          "button",
-          {
-            key: t.id,
-            type: "button",
-            className: "ecu-meter-player-tab" + (tab === t.id ? " active" : ""),
-            onClick: () => setTab(t.id),
-          },
-          t.label,
+          "div",
+          { className: "ecu-meter-inspector-attr" },
+          e(GameIcon, {
+            id: r.actorId,
+            kind: "character",
+            ctype: ctype || undefined,
+            name: r.actorName,
+            size: 40,
+            title: ctype ? `${r.actorName} · ${ctype}` : r.actorName,
+            className: "ecu-meter-inspector-portrait",
+          }),
+          e(
+            "span",
+            { className: "ecu-meter-inspector-attr-text" },
+            attrTitle,
+            ctype
+              ? e(
+                  "span",
+                  {
+                    className: "ecu-meter-inspector-ctype",
+                    style: { color: classColors[ctype] || "#b0bec5" },
+                  },
+                  ` · ${ctype}`,
+                )
+              : null,
+          ),
+          e(
+            "span",
+            { className: "ecu-meter-inspector-sub" },
+            `${formatCompactRate(rateTotal / sec)} · ${sec.toFixed(0)}s`,
+          ),
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-player-tabs ecu-meter-inspector-tabs" },
+          ...tabs.map((t) =>
+            e(
+              "button",
+              {
+                key: t.id,
+                type: "button",
+                className:
+                  "ecu-meter-player-tab" + (tab === t.id ? " active" : ""),
+                onClick: () => setTab(t.id),
+              },
+              t.label,
+            ),
+          ),
         ),
       ),
+      e("div", { className: "ecu-meter-inspector-body" }, body),
     ),
   );
 }
@@ -514,47 +988,315 @@ function UptimeTable(props: {
   if (!props.rows.length) {
     return e(
       "div",
-      { style: { padding: 8, color: "#888", ...PIXEL_TEXT } },
+      { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
       "No buff / condition samples yet (need entity.s while in combat)",
     );
   }
   return e(
     "div",
-    {
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
-        padding: "4px 0",
-        ...PIXEL_TEXT,
-      },
-    },
-    ...props.rows.map((row) =>
+    { className: "ecu-meter-bd-auras-table", style: { ...PIXEL_TEXT } },
+    e(
+      "div",
+      { className: "ecu-meter-bd-auras-head" },
+      e("span", null, "Name"),
+      e("span", null, "Uptime"),
+      e("span", null, "%"),
+      e("span", { title: "Applications" }, "A"),
+      e("span", { title: "Refreshes (AL: not tracked)" }, "R"),
+    ),
+    ...props.rows.map((row, i) =>
       e(
         "div",
         {
           key: row.id,
-          className: "ecu-meter-uptime-row",
-          style: {
-            display: "grid",
-            gridTemplateColumns: "1fr auto auto",
-            gap: 8,
-            padding: "3px 8px",
-            alignItems: "center",
-            fontSize: 15,
-            color: "#c5d0e0",
-          },
-          title: `${row.name}: ${(row.activeMs / 1000).toFixed(1)}s active`,
+          className: "ecu-meter-uptime-row" + (i % 2 === 0 ? " is-alt" : ""),
+          title: `${row.name}: ${fmtUptimeTimer(row.activeMs)} active`,
         },
-        e("span", null, row.name),
         e(
-          "b",
-          { style: { color: "#fff" } },
+          "span",
+          { className: "ecu-meter-uptime-name" },
+          e(GameIcon, {
+            id: row.id,
+            kind: "condition",
+            size: 16,
+            title: row.name,
+            className: "ecu-meter-uptime-ico",
+          }),
+          e("span", { className: "ecu-meter-uptime-label" }, row.name),
+        ),
+        e(
+          "span",
+          { className: "ecu-meter-uptime-time" },
+          fmtUptimeTimer(row.activeMs),
+        ),
+        e(
+          "span",
+          { className: "ecu-meter-uptime-pct" },
           `${(row.uptime * 100).toFixed(0)}%`,
         ),
-        e("span", { style: { color: "#8b9bb0" } }, `${row.apps}×`),
+        e("span", { className: "ecu-meter-uptime-apps" }, String(row.apps)),
+        e("span", { className: "ecu-meter-uptime-ref" }, "—"),
       ),
     ),
+  );
+}
+
+/** Details Compare: 3 columns — primary spells/targets + up to 2 same-ctype peers. */
+function CompareTabBody(props: {
+  segmentRef: SegmentRef;
+  actorId: string;
+  ctype?: string;
+  metric: "damage" | "heal" | "taken";
+  amountLabel: string;
+  rateLabel: string;
+  sec: number;
+}): any {
+  const { primary, peers } = comparePeerActors(
+    props.segmentRef,
+    props.actorId,
+    props.ctype,
+    props.metric,
+  );
+
+  if (!primary) {
+    return e(
+      "div",
+      { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
+      props.ctype
+        ? `No ${props.ctype} actors in this segment to compare.`
+        : "Compare needs ctype on party members.",
+    );
+  }
+
+  const metric = props.metric;
+  const spellIds = topAbilityIds(primary, metric, COMPARE_SPELL_ROWS);
+  const primaryTargets = actorTargetTotals(primary, metric).slice(
+    0,
+    COMPARE_TARGET_ROWS,
+  );
+  const primaryTopSpell = spellIds.length
+    ? abilityAmount(primary, spellIds[0], metric)
+    : 1;
+  const primaryTopTarget = primaryTargets[0]?.value || 1;
+
+  const emptyPeerMsg =
+    "There's no more players to compare (with the same ctype)";
+
+  const columns: Array<{ actor: ActorAgg | null; isPrimary: boolean }> = [
+    { actor: primary, isPrimary: true },
+    { actor: peers[0] || null, isPrimary: false },
+    { actor: peers[1] || null, isPrimary: false },
+  ];
+
+  return e(
+    "div",
+    {
+      className: "ecu-meter-inspector-compare",
+      style: { ...PIXEL_TEXT },
+    },
+    ...columns.map((col, colIdx) => {
+      if (!col.actor) {
+        return e(
+          "div",
+          {
+            key: `empty-${colIdx}`,
+            className: "ecu-meter-inspector-compare-col is-empty",
+          },
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-empty" },
+            emptyPeerMsg,
+          ),
+        );
+      }
+      const actor = col.actor;
+      const total = actorMetricTotal(actor, metric);
+      const peerTargets = actorTargetTotals(actor, metric);
+      const peerTargetById: Record<
+        string,
+        { id: string; name: string; value: number }
+      > = {};
+      for (let i = 0; i < peerTargets.length; i++) {
+        peerTargetById[peerTargets[i].id] = peerTargets[i];
+      }
+      const peerSpellRank: Record<string, number> = {};
+      const peerSpellOrder = topAbilityIds(actor, metric, 99);
+      for (let i = 0; i < peerSpellOrder.length; i++) {
+        peerSpellRank[peerSpellOrder[i]] = i + 1;
+      }
+      const peerTargetRank: Record<string, number> = {};
+      for (let i = 0; i < peerTargets.length; i++) {
+        peerTargetRank[peerTargets[i].id] = i + 1;
+      }
+
+      return e(
+        "div",
+        {
+          key: actor.id,
+          className:
+            "ecu-meter-inspector-compare-col" +
+            (col.isPrimary ? " is-you" : ""),
+        },
+        e(
+          "div",
+          { className: "ecu-meter-inspector-compare-h" },
+          e(GameIcon, {
+            id: actor.id,
+            kind: "character",
+            ctype: actor.ctype,
+            name: actor.name,
+            size: 28,
+            title: actor.ctype ? `${actor.name} · ${actor.ctype}` : actor.name,
+          }),
+          e("span", null, actor.name),
+          col.isPrimary
+            ? e("span", { className: "ecu-meter-bd-muted" }, " ★")
+            : null,
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-inspector-compare-stat" },
+          props.amountLabel,
+          e("b", null, formatCompactNumber(total)),
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-inspector-compare-stat" },
+          props.rateLabel,
+          e("b", null, formatCompactRate(total / props.sec)),
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-inspector-compare-spells-h" },
+          "Spells",
+        ),
+        spellIds.length === 0
+          ? e("div", { className: "ecu-meter-bd-muted" }, "No ability totals")
+          : null,
+        ...spellIds.map((abId, idx) => {
+          const primaryV = abilityAmount(primary, abId, metric);
+          const v = abilityAmount(actor, abId, metric);
+          const hasSpell = !!actor.abilities[abId];
+          if (!col.isPrimary && !hasSpell) {
+            return e("div", {
+              key: abId,
+              className: "ecu-meter-inspector-compare-spell is-missing",
+            });
+          }
+          const fillPct = col.isPrimary
+            ? Math.min(100, (v / Math.max(primaryTopSpell, 1)) * 100)
+            : 100;
+          const rank = col.isPrimary ? idx + 1 : peerSpellRank[abId] || idx + 1;
+          const pct = !col.isPrimary ? comparePctLabel(primaryV, v) : null;
+          return e(
+            "div",
+            {
+              key: abId,
+              className: "ecu-meter-inspector-compare-spell",
+              title: `${skillDisplayName(abId)} — ${formatCompactNumber(v)}`,
+            },
+            e("div", {
+              className: "ecu-meter-inspector-compare-spell-fill",
+              style: { width: `${fillPct}%` },
+            }),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-compare-spell-n" },
+              e(GameIcon, {
+                id: abId,
+                kind: "auto",
+                size: 14,
+                title: skillDisplayName(abId),
+              }),
+              `${rank}. ${skillDisplayName(abId)}`,
+            ),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-compare-spell-v" },
+              formatCompactNumber(v),
+              pct
+                ? e(
+                    "span",
+                    {
+                      className:
+                        "ecu-meter-inspector-compare-pct is-" + pct.tone,
+                    },
+                    " ",
+                    pct.text,
+                  )
+                : null,
+            ),
+          );
+        }),
+        e(
+          "div",
+          { className: "ecu-meter-inspector-compare-spells-h" },
+          "Targets",
+        ),
+        primaryTargets.length === 0
+          ? e("div", { className: "ecu-meter-bd-muted" }, "No targets")
+          : null,
+        ...primaryTargets.map((pt, idx) => {
+          const peerT = peerTargetById[pt.id];
+          const v = col.isPrimary ? pt.value : peerT ? peerT.value : 0;
+          if (!col.isPrimary && !peerT) {
+            return e("div", {
+              key: pt.id,
+              className: "ecu-meter-inspector-compare-spell is-missing",
+            });
+          }
+          const fillPct = col.isPrimary
+            ? Math.min(100, (v / Math.max(primaryTopTarget, 1)) * 100)
+            : 100;
+          const rank = col.isPrimary
+            ? idx + 1
+            : peerTargetRank[pt.id] || idx + 1;
+          const pct = !col.isPrimary ? comparePctLabel(pt.value, v) : null;
+          return e(
+            "div",
+            {
+              key: pt.id,
+              className: "ecu-meter-inspector-compare-spell is-target",
+              title: `${pt.name} — ${formatCompactNumber(v)}`,
+            },
+            e("div", {
+              className: "ecu-meter-inspector-compare-spell-fill",
+              style: { width: `${fillPct}%` },
+            }),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-compare-spell-n" },
+              e(GameIcon, {
+                id: pt.id,
+                kind: "target",
+                size: 14,
+                mtype: pt.mtype,
+                ctype: pt.ctype,
+                name: pt.name,
+                title: pt.name,
+              }),
+              `${rank}. ${pt.name}`,
+            ),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-compare-spell-v" },
+              formatCompactNumber(v),
+              pct
+                ? e(
+                    "span",
+                    {
+                      className:
+                        "ecu-meter-inspector-compare-pct is-" + pct.tone,
+                    },
+                    " ",
+                    pct.text,
+                  )
+                : null,
+            ),
+          );
+        }),
+      );
+    }),
   );
 }
 
@@ -615,9 +1357,7 @@ export function MeterDeathView(props: { result: MeterResult }): any {
   });
   const logHits = filteredHits
     .slice()
-    .sort((a, b) =>
-      appearance.deathLogInvert ? b.at - a.at : a.at - b.at,
-    );
+    .sort((a, b) => (appearance.deathLogInvert ? b.at - a.at : a.at - b.at));
 
   const killerLabel =
     d.killerId && killerList.length ? killerList[0].key : d.killerId || null;
@@ -754,7 +1494,6 @@ export function MeterEncounterView(props: {
   onOpenPlayer?: (id: string, name: string) => void;
 }): any {
   const React = getReact();
-  const [tab, setTab] = React.useState("summary");
   React.useEffect(() => {
     injectMeterChromeCss();
   }, []);
@@ -764,48 +1503,59 @@ export function MeterEncounterView(props: {
   }
   const r = props.result;
   const sec = Math.max(r.durationMs / 1000, 1);
+  const seg = resolveSegment(props.segmentRef);
+  const fightLabel = seg?.label || "Current fight";
 
-  const tabs = [
-    { id: "summary", label: "Summary" },
-    { id: "deaths", label: "Deaths" },
-    { id: "interrupts", label: "Interrupts" },
-    { id: "dispels", label: "Dispels" },
-  ];
+  const openPlayer = props.onOpenPlayer
+    ? (row: RankedRow) => {
+        if (row.kind === "player" || !row.kind) {
+          props.onOpenPlayer!(row.id, row.name);
+        }
+      }
+    : undefined;
 
-  const widgets: Array<{
+  const panes: Array<{
     key: string;
     title: string;
-    query: any;
+    tone: string;
+    query?: any;
+    deathLog?: boolean;
   }> = [
     {
-      key: "dmg",
-      title: "Damage Done",
-      query: { kind: "players", metric: "damage", primary: "total" },
-    },
-    {
-      key: "dps",
-      title: "DPS",
-      query: { kind: "players", metric: "damage", primary: "rate" },
-    },
-    {
       key: "taken",
-      title: "Damage Taken",
+      title: "Damage Taken per Player",
+      tone: "tone-taken",
       query: { kind: "players", metric: "taken", primary: "total" },
     },
     {
-      key: "heal",
-      title: "Healing Done",
-      query: { kind: "players", metric: "heal", primary: "total" },
+      key: "spell",
+      title: "Damage Taken by Spell",
+      tone: "tone-spell",
+      query: { kind: "taken_by_spell" },
     },
     {
-      key: "hr",
-      title: "Healing Required",
-      query: { kind: "players", metric: "healing_required", primary: "total" },
+      key: "adds",
+      title: "Adds",
+      tone: "tone-dmg",
+      query: { kind: "enemy_damage" },
     },
     {
-      key: "av",
-      title: "Avoidance",
-      query: { kind: "avoidance" },
+      key: "dispels",
+      title: "Dispels",
+      tone: "tone-heal",
+      query: { kind: "misc", metric: "dispels" },
+    },
+    {
+      key: "interrupts",
+      title: "Interrupts",
+      tone: "tone-av",
+      query: { kind: "misc", metric: "interrupts" },
+    },
+    {
+      key: "deaths",
+      title: "Death Log",
+      tone: "tone-death",
+      deathLog: true,
     },
   ];
 
@@ -817,293 +1567,109 @@ export function MeterEncounterView(props: {
     },
   );
 
-  let body: any = null;
-  if (tab === "summary") {
-    body = e(
-      "div",
-      null,
-      e(
-        "div",
-        { className: "ecu-meter-encounter-stats", style: { ...PIXEL_TEXT } },
-        e("span", null, `${sec.toFixed(0)}s`),
-        e("span", null, `${r.deaths} deaths`),
-        e("span", null, "Dmg ", e("b", null, formatCompactNumber(r.totalDamage))),
-        e("span", null, "DPS ", e("b", null, `${formatCompactNumber(r.totalDamage / sec)}/s`)),
-        e("span", null, "Heal ", e("b", null, formatCompactNumber(r.totalHeal))),
-        e("span", null, "HPS ", e("b", null, `${formatCompactNumber(r.totalHeal / sec)}/s`)),
-        r.topDps
-          ? e("span", { style: { color: "#e88" } }, `Top ${r.topDps.name}`)
-          : null,
-      ),
-      e(
-        "div",
-        { className: "ecu-meter-encounter-grid" },
-        ...widgets.map((w) =>
-          e(
-            "div",
-            { key: w.key, className: "ecu-meter-encounter-widget" },
-            e("div", { className: "ecu-meter-encounter-widget-h" }, w.title),
-            e(
-              "div",
-              { className: "ecu-meter-encounter-widget-body" },
-              e(MeterBarsView, {
-                query: w.query,
-                segmentRef: props.segmentRef,
-                partyFocus: props.partyFocus,
-                live: false,
-                onRowContextMenu: props.onOpenPlayer
-                  ? (row: RankedRow) => props.onOpenPlayer!(row.id, row.name)
-                  : undefined,
-                onRowClick: props.onOpenPlayer
-                  ? (row: RankedRow) => props.onOpenPlayer!(row.id, row.name)
-                  : undefined,
-              }),
-            ),
-          ),
-        ),
-        e(
-          "div",
-          { className: "ecu-meter-encounter-widget" },
-          e("div", { className: "ecu-meter-encounter-widget-h" }, "Death Log"),
-          e(
-            "div",
-            { className: "ecu-meter-encounter-widget-body" },
-            deathResult.kind === "death_log" && deathResult.deaths.length
-              ? e(
-                  "div",
-                  { style: { padding: "4px 6px", ...PIXEL_TEXT } },
-                  ...deathResult.deaths.slice(0, 8).map((d, i) =>
-                    e(
-                      "div",
-                      {
-                        key: `${d.id}-${d.at}`,
-                        style: {
-                          padding: "3px 0",
-                          borderBottom: "1px solid rgba(255,255,255,0.04)",
-                          fontSize: 11,
-                          color: "#c5d0e0",
-                        },
-                      },
-                      e("b", { style: { color: "#ef9a9a" } }, d.name),
-                      ` · #${i + 1} · ${new Date(d.at).toLocaleTimeString()}`,
-                    ),
-                  ),
-                )
-              : e(
-                  "div",
-                  { style: { padding: 8, color: "#888", fontSize: 11 } },
-                  "No deaths",
-                ),
-          ),
-        ),
-      ),
-    );
-  } else if (tab === "deaths") {
-    body =
-      deathResult.kind === "death_log"
-        ? e(MeterDeathView, { result: deathResult })
-        : e("div", { style: pad }, "No deaths");
-  } else if (tab === "interrupts") {
-    body = e(MeterBarsView, {
-      query: { kind: "misc", metric: "interrupts" },
-      segmentRef: props.segmentRef,
-      partyFocus: props.partyFocus,
-      live: false,
-      onRowClick: props.onOpenPlayer
-        ? (row: RankedRow) => props.onOpenPlayer!(row.id, row.name)
-        : undefined,
-    });
-  } else {
-    body = e(MeterBarsView, {
-      query: { kind: "misc", metric: "dispels" },
-      segmentRef: props.segmentRef,
-      partyFocus: props.partyFocus,
-      live: false,
-      onRowClick: props.onOpenPlayer
-        ? (row: RankedRow) => props.onOpenPlayer!(row.id, row.name)
-        : undefined,
-    });
-  }
-
   return e(
     "div",
     { className: "ecu-meter-encounter", style: { ...PIXEL_TEXT } },
     e(
       "div",
-      { className: "ecu-meter-encounter-tabs" },
-      ...tabs.map((t) =>
-        e(
-          "button",
-          {
-            key: t.id,
-            type: "button",
-            className:
-              "ecu-meter-encounter-tab" + (tab === t.id ? " active" : ""),
-            onClick: () => setTab(t.id),
-          },
-          t.label,
-        ),
-      ),
-    ),
-    e("div", { className: "ecu-meter-encounter-body" }, body),
-  );
-}
-
-export function MeterTimelineView(props: {
-  result: MeterResult;
-  segmentRef?: SegmentRef;
-}): any {
-  const React = getReact();
-  const [filter, setFilter] = React.useState("all");
-
-  React.useEffect(() => {
-    injectMeterChromeCss();
-  }, []);
-
-  if (props.result.kind !== "timeline") {
-    return e("div", { style: pad }, "No timeline");
-  }
-  const { casts, conditions, durationMs } = props.result;
-  const durSec = Math.max(durationMs / 1000, 1);
-  const nameMap = buildActorNameMap(props.segmentRef);
-  const seg = resolveSegment(props.segmentRef);
-  const deaths = seg ? seg.deaths : [];
-
-  let start = Date.now();
-  for (let i = 0; i < conditions.length; i++) {
-    start = Math.min(start, conditions[i].startedAt);
-  }
-  for (let i = 0; i < casts.length; i++) {
-    start = Math.min(start, casts[i].at);
-  }
-  if (seg && seg.startedAt) start = Math.min(start, seg.startedAt);
-
-  const lanes: Record<
-    string,
-    Array<{
-      left: number;
-      width: number;
-      label: string;
-      color: string;
-      kind: "bar" | "death";
-    }>
-  > = {};
-
-  for (let i = 0; i < conditions.length; i++) {
-    const c = conditions[i];
-    if (filter === "cds") continue;
-    const ck = conditionKind(c.key);
-    if (filter === "buffs" && ck !== "buff") continue;
-    if (filter === "debuffs" && ck !== "debuff") continue;
-    const key = c.actorId;
-    if (!lanes[key]) lanes[key] = [];
-    const t0 = (c.startedAt - start) / 1000;
-    const t1 = ((c.endedAt || Date.now()) - start) / 1000;
-    lanes[key].push({
-      left: (t0 / durSec) * 100,
-      width: Math.max(0.8, ((t1 - t0) / durSec) * 100),
-      label: c.key,
-      color: ck === "debuff" ? "#ab47bc" : "#5c6bc0",
-      kind: "bar",
-    });
-  }
-  for (let i = 0; i < casts.length; i++) {
-    const c = casts[i];
-    if (filter === "buffs" || filter === "debuffs") continue;
-    const key = c.actorId;
-    if (!lanes[key]) lanes[key] = [];
-    const t0 = (c.at - start) / 1000;
-    lanes[key].push({
-      left: (t0 / durSec) * 100,
-      width: 1.2,
-      label: c.source,
-      color: "#ffb74d",
-      kind: "bar",
-    });
-  }
-  for (let i = 0; i < deaths.length; i++) {
-    const d = deaths[i];
-    const key = d.id;
-    if (!lanes[key]) lanes[key] = [];
-    const t0 = (d.at - start) / 1000;
-    lanes[key].push({
-      left: (t0 / durSec) * 100,
-      width: 0,
-      label: `${d.name} died`,
-      color: "#e53935",
-      kind: "death",
-    });
-  }
-  const laneIds = Object.keys(lanes);
-  const filterTabs = ["all", "buffs", "debuffs", "cds"];
-
-  return e(
-    "div",
-    { className: "ecu-meter-timeline", style: { ...PIXEL_TEXT } },
-    e(
-      "div",
-      { className: "ecu-meter-timeline-tools" },
-      ...filterTabs.map((f) =>
-        e(
-          "button",
-          {
-            key: f,
-            type: "button",
-            className: "ecu-meter-tab" + (filter === f ? " active" : ""),
-            onClick: () => setFilter(f),
-          },
-          f,
-        ),
+      { className: "ecu-meter-enc-head" },
+      e(
+        "div",
+        { className: "ecu-meter-enc-title" },
+        e("b", null, "Encounter Details"),
+        " · ",
+        fightLabel,
       ),
       e(
-        "span",
-        { className: "ecu-meter-timeline-meta" },
-        `${durSec.toFixed(0)}s`,
-        deaths.length ? ` · ${deaths.length} deaths` : "",
+        "div",
+        { className: "ecu-meter-enc-stats" },
+        e("span", null, e("b", null, `${sec.toFixed(0)}s`)),
+        e(
+          "span",
+          { className: r.deaths > 0 ? "is-bad" : undefined },
+          e("b", null, String(r.deaths)),
+          " deaths",
+        ),
+        e(
+          "span",
+          null,
+          "Dmg ",
+          e("b", null, formatCompactNumber(r.totalDamage)),
+        ),
+        e(
+          "span",
+          null,
+          "DPS ",
+          e("b", null, `${formatCompactNumber(r.totalDamage / sec)}/s`),
+        ),
+        e(
+          "span",
+          null,
+          "Heal ",
+          e("b", null, formatCompactNumber(r.totalHeal)),
+        ),
+        r.topDps ? e("span", null, "Top ", e("b", null, r.topDps.name)) : null,
       ),
     ),
     e(
       "div",
-      { className: "ecu-meter-timeline-scroll" },
-      ...laneIds.slice(0, 12).map((id) =>
+      { className: "ecu-meter-enc-grid" },
+      ...panes.map((pane) =>
         e(
           "div",
-          { key: id, className: "ecu-meter-timeline-lane" },
+          {
+            key: pane.key,
+            className: `ecu-meter-enc-widget ${pane.tone}`,
+          },
+          e("div", { className: "ecu-meter-enc-widget-hd" }, pane.title),
           e(
             "div",
-            {
-              className: "ecu-meter-timeline-name",
-              title: nameMap[id] || id,
-            },
-            nameMap[id] || id,
-          ),
-          e(
-            "div",
-            { className: "ecu-meter-timeline-track" },
-            ...lanes[id].map((bar, bi) =>
-              bar.kind === "death"
-                ? e("div", {
-                    key: bi,
-                    className: "ecu-meter-timeline-death",
-                    title: bar.label,
-                    style: {
-                      left: `${Math.min(99, Math.max(0, bar.left))}%`,
-                    },
-                  })
-                : e("div", {
-                    key: bi,
-                    className: "ecu-meter-timeline-bar",
-                    title: bar.label,
-                    style: {
-                      left: `${Math.min(99, Math.max(0, bar.left))}%`,
-                      width: `${Math.min(100, bar.width)}%`,
-                      background: bar.color,
-                    },
-                  }),
-            ),
+            { className: "ecu-meter-enc-widget-body" },
+            pane.deathLog
+              ? deathResult.kind === "death_log" && deathResult.deaths.length
+                ? e(
+                    "div",
+                    { className: "ecu-meter-enc-deathlist" },
+                    ...deathResult.deaths.map((d, i) =>
+                      e(
+                        "div",
+                        {
+                          key: `${d.id}-${d.at}`,
+                          className: "ecu-meter-enc-deathrow",
+                        },
+                        e(
+                          "span",
+                          { className: "ecu-meter-enc-deathname" },
+                          d.name,
+                        ),
+                        e(
+                          "span",
+                          { className: "ecu-meter-enc-deathtime" },
+                          new Date(d.at).toLocaleTimeString(),
+                        ),
+                        e(
+                          "span",
+                          { className: "ecu-meter-enc-deathnum" },
+                          `#${i + 1}`,
+                        ),
+                      ),
+                    ),
+                  )
+                : e("div", { className: "ecu-meter-enc-empty" }, "No deaths")
+              : e(MeterBarsView, {
+                  query: pane.query,
+                  segmentRef: props.segmentRef,
+                  partyFocus: props.partyFocus,
+                  live: false,
+                  onRowContextMenu: openPlayer,
+                  onRowClick: openPlayer,
+                }),
           ),
         ),
       ),
     ),
   );
 }
+
+/** @deprecated import from `./MeterTimelineView` — re-exported for callers. */
+export { MeterTimelineView } from "./MeterTimelineView";

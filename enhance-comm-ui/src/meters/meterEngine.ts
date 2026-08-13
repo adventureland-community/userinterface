@@ -1,10 +1,19 @@
 /**
- * Sole hub subscriber for combat meters — segments, rolling, death, casts.
+ * Sole hub subscriber for combat meters — segments, rolling, death, casts,
+ * conditions, gear-slot diffs.
  * UI must not subscribe to hub; paint via meterUiTick after dirty.
  */
 
-import { getEntitiesRecord, getObserving, getObservingId } from "../host/al";
-import type { EntityLike } from "../host/globals";
+import {
+  findEntityById,
+  getCharacter,
+  getEntitiesRecord,
+  getObserving,
+  getObservingId,
+  resolvePlayerCtype,
+} from "../host/al";
+import type { EntityLike, SlotLike } from "../host/globals";
+import { itemSkin } from "../lib/gameIcon";
 import {
   onActionSubscribe,
   onDamage,
@@ -32,17 +41,12 @@ import {
   ensureActor,
   mergeSegments,
 } from "./sessionSegment";
-import {
-  DISPEL_ABILITY_KEYS,
-  INTERRUPT_ABILITY_KEYS,
-} from "./meterAppearance";
-import {
-  autoSegmentLabel,
-  inferSegmentOutcome,
-} from "./meterSegmentMeta";
+import { DISPEL_ABILITY_KEYS, INTERRUPT_ABILITY_KEYS } from "./meterAppearance";
+import { autoSegmentLabel, inferSegmentOutcome } from "./meterSegmentMeta";
 import type {
   CombatSegment,
   ConditionInterval,
+  GearSwapEvent,
   SegmentRef,
 } from "./meterTypes";
 import { emptyMisc } from "./meterTypes";
@@ -53,6 +57,27 @@ const MAX_PAST = 12;
 const HISTORY_MS = 5_000;
 const MAX_HISTORY = 60;
 const CONDITION_SAMPLE_MS = 500;
+const MAX_GEAR_SWAPS = 4000;
+
+/** Classic body slots (not trade*). Matches paperdoll GearGrid. */
+const GEAR_SLOT_NAMES = [
+  "helmet",
+  "earring1",
+  "earring2",
+  "amulet",
+  "mainhand",
+  "chest",
+  "offhand",
+  "cape",
+  "ring1",
+  "pants",
+  "ring2",
+  "orb",
+  "belt",
+  "shoes",
+  "gloves",
+  "elixir",
+];
 
 export type HistoryPoint = {
   at: number;
@@ -72,13 +97,32 @@ let playerMeta: Record<
   string,
   { name: string; ctype?: string; partyKey: string }
 > = {};
+/** Sticky class by actor id — hit events often arrive before / without a live entity. */
+let ctypeById: Record<string, string> = {};
 let watchedPartyIds = new Set<string>();
 let watchedPartyKey = "";
 let visiblePlayerIds = new Set<string>();
 let youId = "";
 
+function rememberCtype(
+  id: string,
+  ctype: string | undefined,
+): string | undefined {
+  if (ctype) {
+    ctypeById[id] = ctype;
+    return ctype;
+  }
+  return ctypeById[id];
+}
+
+function ctypeFor(id: string, ent?: EntityLike | null): string | undefined {
+  return rememberCtype(id, resolvePlayerCtype(id, ent) || ctypeById[id]);
+}
+
 let lastConditionSample = 0;
 const openConditions: Record<string, ConditionInterval> = {};
+/** actorId → slot → name|level|skin. First sight is a snapshot, not an event. */
+const lastGearByActor: Record<string, Record<string, string>> = {};
 
 let unsubDamage: (() => void) | null = null;
 let unsubKill: (() => void) | null = null;
@@ -94,14 +138,30 @@ function partyKeyFor(ent: EntityLike | undefined, id: string): string {
   return soloKey(id, ent.name);
 }
 
+function isPlayerEntity(ent: EntityLike | null | undefined): boolean {
+  return !!(ent && (ent.player || ent.type === "character"));
+}
+
 function isPlayerId(id: string | undefined): boolean {
   if (!id) return false;
   if (playerMeta[id]) return true;
-  const ent = getEntitiesRecord()[id];
-  if (ent) {
-    return !!(ent.player || ent.type === "character");
-  }
+  const rec = getEntitiesRecord();
+  if (isPlayerEntity(rec[id])) return true;
+  const ent = findEntityById(id);
+  if (isPlayerEntity(ent)) return true;
   return !/^\d+$/.test(id);
+}
+
+/** Packet hid / map key / display name all count as the same player. */
+function rememberIdentity(
+  set: Set<string>,
+  ent: EntityLike | null | undefined,
+  extra?: string,
+): void {
+  if (extra) set.add(String(extra));
+  if (!ent) return;
+  if (ent.id != null && String(ent.id) !== "") set.add(String(ent.id));
+  if (ent.name) set.add(String(ent.name));
 }
 
 function nextSegId(): string {
@@ -132,6 +192,7 @@ function endLive(now: number): void {
   while (past.length > MAX_PAST) past.pop();
   live = null;
   inCombat = false;
+  clearGearSnapshots();
   markMeterDirty();
 }
 
@@ -147,12 +208,23 @@ function noteCombatActivity(now: number): void {
 function metaFor(id: string | undefined) {
   if (!id) return undefined;
   const m = playerMeta[id];
-  if (m) return m;
-  const ent = getEntitiesRecord()[id];
-  if (!ent) return { name: id, partyKey: soloKey(id) };
+  if (m) {
+    const ctype = ctypeFor(id) || m.ctype;
+    if (ctype && m.ctype !== ctype) m.ctype = ctype;
+    return m;
+  }
+  const ent = findEntityById(id) || getEntitiesRecord()[id];
+  if (!ent) {
+    return {
+      name: id,
+      ctype: ctypeFor(id),
+      partyKey: soloKey(id),
+    };
+  }
   return {
     name: ent.name || id,
-    ctype: ent.ctype,
+    ctype: ctypeFor(id, ent),
+    mtype: ent.mtype,
     partyKey: partyKeyFor(ent, id),
   };
 }
@@ -182,7 +254,10 @@ function sampleConditions(now: number): void {
   const ids = Object.keys(playerMeta);
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
-    const ent = ents[id];
+    const ent =
+      findEntityById(id) ||
+      ents[id] ||
+      (playerMeta[id]?.name ? ents[playerMeta[id].name] : undefined);
     const s = ent && (ent as any).s;
     if (!s || typeof s !== "object") continue;
     const keys = Object.keys(s);
@@ -211,6 +286,117 @@ function sampleConditions(now: number): void {
       delete openConditions[ok];
     }
   }
+}
+
+function clearGearSnapshots(): void {
+  const ids = Object.keys(lastGearByActor);
+  for (let i = 0; i < ids.length; i++) delete lastGearByActor[ids[i]];
+}
+
+function gearFingerprint(slot: SlotLike | null | undefined): string {
+  if (!slot || !slot.name) return "";
+  return `${slot.name}|${slot.level ?? ""}|${slot.skin ?? ""}`;
+}
+
+function parseGearFp(fp: string): {
+  name?: string;
+  level?: number;
+  skin?: string;
+} {
+  if (!fp) return {};
+  const parts = fp.split("|");
+  const name = parts[0] || undefined;
+  const levelRaw = parts[1] ? Number(parts[1]) : NaN;
+  const skin = parts[2] || undefined;
+  return {
+    name,
+    level: Number.isFinite(levelRaw) ? levelRaw : undefined,
+    skin: skin || undefined,
+  };
+}
+
+/**
+ * Live slots for a player. Local `character` is not updated from entities
+ * packets (`process_entities` skips self) — `player` resend is the source.
+ * Nearby party/strangers get `cslots` on the entities broadcast after `u`.
+ */
+function slotsForActor(
+  id: string,
+): Record<string, SlotLike | null | undefined> | undefined {
+  const character = getCharacter();
+  if (character && String(character.id) === id && character.slots) {
+    return character.slots;
+  }
+  const liveEnt = findEntityById(id) || getEntitiesRecord()[id];
+  if (liveEnt && liveEnt.slots) return liveEnt.slots;
+  const observing = getObserving();
+  if (observing && String(observing.id) === id && observing.slots) {
+    return observing.slots;
+  }
+  return undefined;
+}
+
+function pushGearSwap(
+  seg: CombatSegment,
+  actorId: string,
+  slot: string,
+  oldFp: string,
+  newFp: string,
+  now: number,
+): void {
+  const oldS = parseGearFp(oldFp);
+  const newS = parseGearFp(newFp);
+  const itemName = newS.name || oldS.name;
+  if (!itemName) return;
+  const ev: GearSwapEvent = {
+    at: now,
+    actorId,
+    slot,
+    oldName: oldS.name,
+    newName: newS.name,
+    oldLevel: oldS.level,
+    newLevel: newS.level,
+    skin: newS.skin || oldS.skin || itemSkin(itemName),
+  };
+  if (!seg.gearSwaps) seg.gearSwaps = [];
+  seg.gearSwaps.push(ev);
+  while (seg.gearSwaps.length > MAX_GEAR_SWAPS) seg.gearSwaps.shift();
+}
+
+/**
+ * Diff equipped body slots vs last snapshot. First sight / fight start is
+ * snapshot-only so current loadout does not flood the Time Line.
+ */
+function sampleGearSwaps(now: number): void {
+  const seg = live;
+  if (!seg) return;
+  const ids = Object.keys(playerMeta);
+  let dirty = false;
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const slots = slotsForActor(id);
+    if (!slots) continue;
+    let prev = lastGearByActor[id];
+    const first = !prev;
+    if (!prev) {
+      prev = {};
+      lastGearByActor[id] = prev;
+    }
+    for (let s = 0; s < GEAR_SLOT_NAMES.length; s++) {
+      const slot = GEAR_SLOT_NAMES[s];
+      const nextFp = gearFingerprint(slots[slot]);
+      const oldFp = prev[slot] || "";
+      if (first) {
+        prev[slot] = nextFp;
+        continue;
+      }
+      if (oldFp === nextFp) continue;
+      prev[slot] = nextFp;
+      pushGearSwap(seg, id, slot, oldFp, nextFp, now);
+      dirty = true;
+    }
+  }
+  if (dirty) markMeterDirty();
 }
 
 function onDamageEvent(ev: DamageEvent): void {
@@ -310,7 +496,9 @@ function onActionEvent(ev: ActionEvent): void {
     targetId: ev.target,
     pid: ev.pid,
   });
-  while (seg.casts.length > 200) seg.casts.shift();
+  // Keep a long fight’s cast history for Time Line scroll-back (was 200 —
+  // at party cast rates that only covered ~10–30s and erased early icons).
+  while (seg.casts.length > 8000) seg.casts.shift();
   const actor = ensureActor(seg, ev.actor, metaFor(ev.actor));
   if (!actor.misc) actor.misc = emptyMisc();
   if (INTERRUPT_ABILITY_KEYS.has(src)) actor.misc.interrupts += 1;
@@ -370,11 +558,27 @@ export function getYouId(): string {
 }
 
 export function isVisiblePlayer(id: string): boolean {
-  return visiblePlayerIds.has(id);
+  if (!id) return false;
+  if (visiblePlayerIds.has(id)) return true;
+  const rec = getEntitiesRecord();
+  if (isPlayerEntity(rec[id])) return true;
+  const ent = findEntityById(id);
+  if (!isPlayerEntity(ent)) return false;
+  if (ent.id != null && visiblePlayerIds.has(String(ent.id))) return true;
+  if (ent.name && visiblePlayerIds.has(String(ent.name))) return true;
+  // In the live entity snapshot ⇒ Visible, even when hid ≠ ent.id.
+  return true;
 }
 
 export function isWatchedPartyMember(id: string): boolean {
-  return watchedPartyIds.has(id);
+  if (!id) return false;
+  if (watchedPartyIds.has(id)) return true;
+  const rec = getEntitiesRecord();
+  const ent = rec[id] || findEntityById(id);
+  if (!ent) return false;
+  if (ent.id != null && watchedPartyIds.has(String(ent.id))) return true;
+  if (ent.name && watchedPartyIds.has(String(ent.name))) return true;
+  return false;
 }
 
 export type VisiblePartyRow = {
@@ -389,9 +593,10 @@ export type VisiblePartyRow = {
 /** Parties that currently have at least one player in vision. */
 export function listVisibleParties(): VisiblePartyRow[] {
   const byKey: Record<string, string[]> = {};
-  const ids = Array.from(visiblePlayerIds);
+  const ids = Object.keys(playerMeta);
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i];
+    if (!isVisiblePlayer(id)) continue;
     const meta = playerMeta[id];
     const key = meta?.partyKey || soloKey(id, meta?.name);
     const name = meta?.name || id;
@@ -434,14 +639,14 @@ export function updateMeterContext(entities: EntityLike[]): void {
   youId = observingId ? String(observingId) : "";
 
   if (observingId && observing) {
-    nextWatched.add(String(observingId));
+    rememberIdentity(nextWatched, observing, String(observingId));
     watchedPartyKey =
       observing.party || soloKey(String(observingId), observing.name);
     if (observing.party) {
       for (let i = 0; i < entities.length; i++) {
         const ent = entities[i];
-        if (ent.player && ent.party === observing.party) {
-          nextWatched.add(String(ent.id));
+        if (isPlayerEntity(ent) && ent.party === observing.party) {
+          rememberIdentity(nextWatched, ent);
         }
       }
     }
@@ -453,24 +658,79 @@ export function updateMeterContext(entities: EntityLike[]): void {
   const nextVisible = new Set<string>();
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
-    if (!ent.player || !ent.id) continue;
-    const id = String(ent.id);
-    nextVisible.add(id);
+    if (!isPlayerEntity(ent)) continue;
+    const id =
+      ent.id != null && String(ent.id) !== ""
+        ? String(ent.id)
+        : ent.name
+          ? String(ent.name)
+          : "";
+    if (!id) continue;
+    rememberIdentity(nextVisible, ent, id);
+    const ctype = ctypeFor(id, ent);
     nextMeta[id] = {
       name: ent.name || id,
-      ctype: ent.ctype,
+      ctype,
       partyKey: partyKeyFor(ent, id),
     };
     syncShadowFromEntity(id, ent);
     if (live && live.actors[id]) {
       live.actors[id].name = nextMeta[id].name;
-      live.actors[id].ctype = nextMeta[id].ctype;
+      // Never wipe a known class with undefined from a thin entity packet.
+      if (ctype) live.actors[id].ctype = ctype;
+      else if (!live.actors[id].ctype && ctypeById[id]) {
+        live.actors[id].ctype = ctypeById[id];
+      }
       live.actors[id].partyKey = nextMeta[id].partyKey;
     }
   }
+
+  // Observing / self may be absent from entities (bag borrow skip, vision gap).
+  if (observingId && observing) {
+    const id = String(observingId);
+    rememberIdentity(nextVisible, observing, id);
+    const ctype = ctypeFor(id, observing);
+    const prev = nextMeta[id];
+    nextMeta[id] = {
+      name: observing.name || prev?.name || id,
+      ctype: ctype || prev?.ctype,
+      partyKey: partyKeyFor(observing, id),
+    };
+    if (live && live.actors[id] && nextMeta[id].ctype) {
+      live.actors[id].ctype = nextMeta[id].ctype;
+      live.actors[id].name = nextMeta[id].name;
+      live.actors[id].partyKey = nextMeta[id].partyKey;
+    }
+  }
+
+  // Backfill live actors still missing ctype (hit before vision / own roster).
+  if (live) {
+    const actorIds = Object.keys(live.actors);
+    for (let i = 0; i < actorIds.length; i++) {
+      const id = actorIds[i];
+      const actor = live.actors[id];
+      if (actor.ctype) {
+        rememberCtype(id, actor.ctype);
+        continue;
+      }
+      const ctype = ctypeFor(id);
+      if (ctype) actor.ctype = ctype;
+    }
+  }
+
+  // Map-key aliases (entities["Name"] vs ent.id) so Visible matches hid packets.
+  const rec = getEntitiesRecord();
+  const recKeys = Object.keys(rec);
+  for (let i = 0; i < recKeys.length; i++) {
+    const key = recKeys[i];
+    const ent = rec[key];
+    if (isPlayerEntity(ent)) rememberIdentity(nextVisible, ent, key);
+  }
+
   visiblePlayerIds = nextVisible;
   playerMeta = nextMeta;
   sampleConditions(now);
+  sampleGearSwaps(now);
 }
 
 export function resetAllMeters(): void {
@@ -484,6 +744,7 @@ export function resetAllMeters(): void {
   clearDeathRings();
   const oks = Object.keys(openConditions);
   for (let i = 0; i < oks.length; i++) delete openConditions[oks[i]];
+  clearGearSnapshots();
   markMeterDirty();
 }
 
@@ -493,6 +754,7 @@ export function resetCurrentMeterSegment(): void {
   lastCombatAt = 0;
   inCombat = false;
   clearRollingWindow();
+  clearGearSnapshots();
   markMeterDirty();
 }
 

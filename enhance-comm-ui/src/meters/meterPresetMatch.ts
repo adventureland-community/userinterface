@@ -11,19 +11,45 @@ function queriesMatch(a: MeterQuery, b: MeterQuery): boolean {
     case "snapshot":
       return b.kind === "snapshot" && a.mode === b.mode;
     case "players":
-      return b.kind === "players" && a.metric === b.metric;
+      return (
+        b.kind === "players" &&
+        a.metric === b.metric &&
+        (a.primary || "total") === (b.primary || "total")
+      );
     case "rolling":
     case "realtime":
-      return b.kind === a.kind;
     case "death_log":
     case "history":
     case "encounter_summary":
+    case "taken_by_spell":
+    case "enemy_damage":
     case "timeline":
+    case "summary":
+    case "avoidance":
+    case "compare":
+    case "pie":
+    case "conditions":
       return true;
     case "channel":
       return b.kind === "channel" && a.channel === b.channel;
     case "details":
       return b.kind === "details" && a.actorId === b.actorId;
+    case "abilities":
+      return (
+        b.kind === "abilities" &&
+        a.actorId === b.actorId &&
+        (a.metric || "damage") === (b.metric || "damage")
+      );
+    case "ability_targets":
+      return (
+        b.kind === "ability_targets" &&
+        a.actorId === b.actorId &&
+        a.ability === b.ability
+      );
+    case "targets":
+      return b.kind === "targets" && a.actorId === b.actorId;
+    case "misc":
+      return b.kind === "misc" && a.metric === b.metric;
     default: {
       const _exhaustive: never = a;
       return _exhaustive;
