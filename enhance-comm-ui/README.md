@@ -33,6 +33,7 @@ Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.u
 ## Features
 
 ### HUD
+
 - Map / crypt / server chrome with crypt boss progress
 - Players roster by party; bosses, aggroed enemies, selected entity info
 - Observed player + target vitals with effects icons + ms tint
@@ -45,6 +46,7 @@ Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.u
 - Server dropdown: live event badges via [ALData](https://github.com/earthiverse/ALData)
 
 ### Meters (alpha)
+
 - Ranked DPS / HPS (and related) windows with Details-like chrome
 - Native bar list scroll; **Always show me** pins your row under the list when off-screen
 - Inspector (player breakdown / spells / targets), Time Line, charts / pie / series, reports
@@ -52,6 +54,7 @@ Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.u
 - Statusbar plugins, bookmarks, and segment picker (current / past fights)
 
 ### Layout
+
 - Ctrl+Shift+L layout edit; lock any panel; Alt to nudge while locked
 - Snap to edges + peer panels; Window Control ☰ (lock / ungroup / close / reopen)
 - Viewport profiles: Auto Desktop / Tablet / Phone; export / import JSON layouts
@@ -59,8 +62,19 @@ Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.u
 
 ## What's New
 
-In-game changelog lives in `src/lib/changelog.ts` (see `agentic/CHANGELOG_SHIP.md` for how to ship entries).
+In-game changelog lives in `src/lib/changelog.ts` (`CHANGELOG`, newest first).
 
-## Smoke tests
+1. Prepend an entry whose `id` matches `package.json` `version`, plus a short `title`.
+2. Bump `package.json` and rebuild so the UserScript `@version` banner matches (`tsup.config.ts` reads it).
+3. Users who already finished/skipped the intro still see unseen entries via `settings.changelogSeenId`.
+4. First-run intro uses `FEATURE_OVERVIEW` and marks the latest id seen on finish/skip.
 
-See [SMOKE.md](./SMOKE.md) for a short post-change checklist. Meter-focused notes: `agentic/meter-SMOKE.md`.
+Do not gate What's New on `setupWizardDone` alone.
+
+## Tests
+
+```bash
+npm test
+```
+
+Unit tests under `tests/` import the real `src/` functions (layout grid, frame clamp, edge groups, bar scale). After a build, `injectBundle.test.ts` also checks the Tampermonkey bundle evaluates without `window.React`.

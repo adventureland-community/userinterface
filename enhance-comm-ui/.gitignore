@@ -2,7 +2,3 @@ node_modules/
 dist/
 *.log
 .DS_Store
-agentic/details-ref/
-agentic/.chrome-*-verify/
-agentic/verify_*.html
-agentic/verify_*.png
