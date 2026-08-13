@@ -172,12 +172,20 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
             p.query.kind === "targets"
           ? p.query.metric
           : undefined);
+    const wantSkillIcons =
+      p.query.kind === "abilities" ||
+      p.query.kind === "ability_targets" ||
+      p.query.kind === "targets" ||
+      p.query.kind === "taken_by_spell" ||
+      p.query.kind === "enemy_damage";
     const opts = {
       rank: app.showRankNumbers,
       pct: true,
       metric,
-      icons: true,
-      classIcons: app.showSpecIcons,
+      // Player ranking (DPS/HPS/etc.) must not inherit always-on icons.
+      // Inspector Spells/TARGETS keep ability/monster chips.
+      icons: wantSkillIcons,
+      classIcons: !!app.showSpecIcons,
       animate: app.animateBars,
       detailsFormat: true,
       onClick: p.onRowClick

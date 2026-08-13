@@ -8,7 +8,7 @@
 
 import { classColors } from "../lib/colors";
 import { formatCompactNumber, formatCompactRate } from "../lib/format";
-import { rowIconHtml } from "../lib/gameIcon";
+import { classIconHtml, rowIconHtml } from "../lib/gameIcon";
 import type { RankedRow } from "./meterTypes";
 
 export type BarPoolRow = RankedRow & {
@@ -134,6 +134,59 @@ function barWidthPct(row: BarPoolRow, max: number): number {
   return max ? (barAmount(row) / max) * 100 : 0;
 }
 
+function isSkillOrTargetRow(row: BarPoolRow): boolean {
+  return (
+    row.kind === "ability" || row.kind === "channel" || row.kind === "target"
+  );
+}
+
+/**
+ * Ranking player bars (DPS/HPS/Damage Done, Total): name + numbers + class
+ * color — no ctype/character/"?" chips. Inspector Spells/TARGETS keep icons.
+ * Optional class chips require the appearance toggle *and* a known ctype.
+ */
+function barRowIconHtml(r: BarPoolRow, opts: BarPoolOpts): string {
+  if (isTotalRow(r)) return "";
+  if (isSkillOrTargetRow(r)) {
+    return rowIconHtml(
+      { id: r.id, name: r.name, ctype: r.ctype, mtype: r.mtype, kind: r.kind },
+      { icons: opts.icons !== false, iconSize: 14 },
+    );
+  }
+  if (!opts.classIcons || !r.ctype) return "";
+  return classIconHtml(r.ctype, 14);
+}
+
+function iconCacheKey(r: BarPoolRow, opts: BarPoolOpts): string {
+  if (isTotalRow(r)) return "";
+  if (isSkillOrTargetRow(r)) return `${r.kind}:${r.id}`;
+  if (!opts.classIcons || !r.ctype) return "";
+  return `class:${r.ctype}`;
+}
+
+function syncRowIcon(
+  nameHost: HTMLElement,
+  r: BarPoolRow,
+  opts: BarPoolOpts,
+): void {
+  const want = iconCacheKey(r, opts);
+  const existing = nameHost.querySelector(".ecu-meter-icon");
+  if (want && nameHost.dataset.iconId === want && existing) return;
+  if (!want && !existing) {
+    delete nameHost.dataset.iconId;
+    return;
+  }
+  const html = barRowIconHtml(r, opts);
+  if (!html) {
+    if (existing) existing.remove();
+    delete nameHost.dataset.iconId;
+    return;
+  }
+  if (existing) existing.outerHTML = html;
+  else nameHost.insertAdjacentHTML("afterbegin", html);
+  nameHost.dataset.iconId = want;
+}
+
 function makeRowEl(
   r: BarPoolRow,
   i: number,
@@ -153,14 +206,7 @@ function makeRowEl(
   el.dataset.id = r.id || String(i);
   const pct = barWidthPct(r, max);
   const share = total ? (r.value / total) * 100 : 0;
-  const icon = rowIconHtml(
-    { id: r.id, name: r.name, ctype: r.ctype, mtype: r.mtype, kind: r.kind },
-    {
-      icons: opts.icons !== false,
-      iconSize: 14,
-      classIcons: !!opts.classIcons,
-    },
-  );
+  const icon = barRowIconHtml(r, opts);
   const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
   el.innerHTML = `
     <div class="ecu-meter-fill${anim}" style="width:${pct}%;background:${rowColor(r)}"></div>
@@ -170,8 +216,9 @@ function makeRowEl(
   const label = el.querySelector(".ecu-meter-label") as HTMLElement | null;
   if (label) label.textContent = r.name;
   const who = el.querySelector(".ecu-meter-who") as HTMLElement | null;
-  if (who && (r.kind === "ability" || r.kind === "channel")) {
-    who.dataset.iconId = r.id;
+  if (who) {
+    const key = iconCacheKey(r, opts);
+    if (key) who.dataset.iconId = key;
   }
   const vals = el.querySelector(".ecu-meter-vals") as HTMLElement | null;
   if (vals) vals.innerHTML = formatRowValue(r, share, opts);
@@ -287,18 +334,7 @@ export function patchRankedRows(
     const label = el.querySelector(".ecu-meter-label");
     if (label) label.textContent = r.name;
     const nameHost = el.querySelector(".ecu-meter-who") as HTMLElement | null;
-    if (nameHost && (r.kind === "ability" || r.kind === "channel")) {
-      if (nameHost.dataset.iconId !== r.id) {
-        const iconHtml = rowIconHtml(
-          { id: r.id, kind: "ability" },
-          { icons: merged.icons !== false },
-        );
-        const existing = nameHost.querySelector(".ecu-meter-icon");
-        if (existing) existing.outerHTML = iconHtml;
-        else nameHost.insertAdjacentHTML("afterbegin", iconHtml);
-        nameHost.dataset.iconId = r.id;
-      }
-    }
+    if (nameHost) syncRowIcon(nameHost, r, merged);
     const vals = el.querySelector(".ecu-meter-vals");
     const share = total ? (r.value / total) * 100 : 0;
     if (vals) vals.innerHTML = formatRowValue(r, share, merged);

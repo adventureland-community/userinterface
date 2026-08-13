@@ -370,7 +370,8 @@ export function classIconHtml(
   displaySize = 18,
 ): string {
   const key = (ctype || "").toLowerCase();
-  const title = key || "unknown";
+  if (!key) return "";
+  const title = key;
   const color = classColors[key] || "#607d8b";
   const raw = classSprite(key || undefined, { size: displaySize });
   if (raw) {
@@ -555,6 +556,8 @@ export function rowIconHtml(
 ): string {
   if (opts && opts.icons === false) return "";
   const size = (opts && opts.iconSize) || 18;
+  // Total footer — never a class / character / "?" chip.
+  if (row.id === "__total__") return "";
   if (row.kind === "ability" || row.kind === "channel") {
     return gameIconHtml(row.id, { kind: "auto", size });
   }
@@ -562,20 +565,20 @@ export function rowIconHtml(
   if (row.kind === "target") {
     return targetIconHtml(row, size);
   }
+  // Player ranking (DPS/HPS/Damage Done): no character portraits. Class chips
+  // are opt-in and require a known ctype — never a grey "?".
+  if (row.kind === "player") {
+    if (opts?.classIcons && row.ctype) return classIconHtml(row.ctype, size);
+    return "";
+  }
   // Heuristic: known skill/condition ids get game art (abilities without kind).
   const G = getG();
   if (G?.skills?.[row.id] || G?.conditions?.[row.id]) {
     return gameIconHtml(row.id, { kind: "auto", size });
   }
-  // Player list rows: class chips are opt-in (off by default in meter bars).
-  if (row.kind === "player" || (!row.kind && row.ctype)) {
-    if (opts?.classIcons) {
-      return classIconHtml(row.ctype, size);
-    }
+  if (row.ctype) {
+    if (opts?.classIcons) return classIconHtml(row.ctype, size);
     return "";
-  }
-  if (row.ctype && opts?.classIcons) {
-    return classIconHtml(row.ctype, size);
   }
   return gameIconHtml(row.id, { kind: "auto", size });
 }

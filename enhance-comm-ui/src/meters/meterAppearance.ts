@@ -44,6 +44,11 @@ export type MeterAppearanceSettings = {
   deathLogLifePct: boolean;
   deathLogRelevanceSec: number;
   testBars: boolean;
+  /**
+   * True after the old `showSpecIcons: true` default was migrated off.
+   * Leftover saved `true` from that era must not keep painting ranking chips.
+   */
+  classIconsMigratedOff?: boolean;
 };
 
 export const DEFAULT_METER_APPEARANCE: MeterAppearanceSettings = {
@@ -69,14 +74,26 @@ export const DEFAULT_METER_APPEARANCE: MeterAppearanceSettings = {
 
 export function getMeterAppearance(): MeterAppearanceSettings {
   const s = getSettings();
-  return { ...DEFAULT_METER_APPEARANCE, ...(s.meterAppearance || {}) };
+  const saved = s.meterAppearance || {};
+  // Old default was true and got baked into saved appearance blobs. Until the
+  // user opts in via Options, ranking bars stay chip-free.
+  const optedIn = !!saved.classIconsMigratedOff;
+  return {
+    ...DEFAULT_METER_APPEARANCE,
+    ...saved,
+    showSpecIcons: optedIn ? !!saved.showSpecIcons : false,
+  };
 }
 
 export function patchMeterAppearance(
   partial: Partial<MeterAppearanceSettings>,
 ): void {
   patchSettings({
-    meterAppearance: { ...getMeterAppearance(), ...partial },
+    meterAppearance: {
+      ...getMeterAppearance(),
+      ...partial,
+      classIconsMigratedOff: true,
+    },
   });
   notifyMeterAppearance();
 }

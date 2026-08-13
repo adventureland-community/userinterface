@@ -385,6 +385,7 @@ function snapshotRows(
         barValue: value,
         primary: "total",
         label: value.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+        kind: "player",
       });
     }
     return { kind: "ranked", rows };
@@ -428,6 +429,7 @@ function snapshotRows(
       barValue: value,
       primary: "total",
       label,
+      kind: "player",
     });
   }
   return { kind: "ranked", rows };
@@ -479,6 +481,7 @@ function rollingRanked(now: number): MeterResult {
       barValue: it.value,
       primary: "rate",
       label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`,
+      kind: "player",
     });
   }
   return { kind: "ranked", rows, title: "Hit DPS (10s)" };
@@ -862,6 +865,7 @@ export function runMeterQuery(
         name: a.name,
         ctype: a.ctype,
         value: channelValue(a, query.channel),
+        kind: "player" as const,
       }));
       return {
         kind: "ranked",
@@ -1045,6 +1049,7 @@ export function rollingHealRanked(now = Date.now()): MeterResult {
     name: string;
     ctype?: string;
     value: number;
+    kind: "player";
   }> = [];
   const meta = getEntitiesRecord();
   const playerMeta = getPlayerMeta();
@@ -1056,6 +1061,7 @@ export function rollingHealRanked(now = Date.now()): MeterResult {
       name: playerMeta[id]?.name || ent?.name || id,
       ctype: playerMeta[id]?.ctype || resolvePlayerCtype(id, ent) || ent?.ctype,
       value: heal[id] / windowSec,
+      kind: "player",
     });
   }
   return {
