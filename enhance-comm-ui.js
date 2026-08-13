@@ -886,7 +886,8 @@ var EnhanceCommUI = (() => {
   }
   function classIconHtml(ctype, displaySize = 18) {
     const key = (ctype || "").toLowerCase();
-    const title = key || "unknown";
+    if (!key) return "";
+    const title = key;
     const color = classColors[key] || "#607d8b";
     const raw = classSprite(key || void 0, { size: displaySize });
     if (raw) {
@@ -1002,24 +1003,24 @@ var EnhanceCommUI = (() => {
     var _a, _b;
     if (opts && opts.icons === false) return "";
     const size = opts && opts.iconSize || 18;
+    if (row2.id === "__total__") return "";
     if (row2.kind === "ability" || row2.kind === "channel") {
       return gameIconHtml(row2.id, { kind: "auto", size });
     }
     if (row2.kind === "target") {
       return targetIconHtml(row2, size);
     }
+    if (row2.kind === "player") {
+      if ((opts == null ? void 0 : opts.classIcons) && row2.ctype) return classIconHtml(row2.ctype, size);
+      return "";
+    }
     const G = getG();
     if (((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[row2.id]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[row2.id])) {
       return gameIconHtml(row2.id, { kind: "auto", size });
     }
-    if (row2.kind === "player" || !row2.kind && row2.ctype) {
-      if (opts == null ? void 0 : opts.classIcons) {
-        return classIconHtml(row2.ctype, size);
-      }
+    if (row2.ctype) {
+      if (opts == null ? void 0 : opts.classIcons) return classIconHtml(row2.ctype, size);
       return "";
-    }
-    if (row2.ctype && (opts == null ? void 0 : opts.classIcons)) {
-      return classIconHtml(row2.ctype, size);
     }
     return gameIconHtml(row2.id, { kind: "auto", size });
   }
@@ -3498,11 +3499,21 @@ var EnhanceCommUI = (() => {
   };
   function getMeterAppearance() {
     const s = getSettings();
-    return { ...DEFAULT_METER_APPEARANCE, ...s.meterAppearance || {} };
+    const saved = s.meterAppearance || {};
+    const optedIn = !!saved.classIconsMigratedOff;
+    return {
+      ...DEFAULT_METER_APPEARANCE,
+      ...saved,
+      showSpecIcons: optedIn ? !!saved.showSpecIcons : false
+    };
   }
   function patchMeterAppearance(partial) {
     patchSettings({
-      meterAppearance: { ...getMeterAppearance(), ...partial }
+      meterAppearance: {
+        ...getMeterAppearance(),
+        ...partial,
+        classIconsMigratedOff: true
+      }
     });
     notifyMeterAppearance();
   }
@@ -9742,7 +9753,8 @@ var EnhanceCommUI = (() => {
           barMax: max2 || 1,
           barValue: value,
           primary: "total",
-          label: value.toLocaleString(void 0, { maximumFractionDigits: 0 })
+          label: value.toLocaleString(void 0, { maximumFractionDigits: 0 }),
+          kind: "player"
         });
       }
       return { kind: "ranked", rows: rows2 };
@@ -9779,7 +9791,8 @@ var EnhanceCommUI = (() => {
         barMax: max || 1,
         barValue: value,
         primary: "total",
-        label
+        label,
+        kind: "player"
       });
     }
     return { kind: "ranked", rows };
@@ -9824,7 +9837,8 @@ var EnhanceCommUI = (() => {
         barMax: max || 1,
         barValue: it.value,
         primary: "rate",
-        label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`
+        label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`,
+        kind: "player"
       });
     }
     return { kind: "ranked", rows, title: "Hit DPS (10s)" };
@@ -10137,7 +10151,8 @@ var EnhanceCommUI = (() => {
           id: a.id,
           name: a.name,
           ctype: a.ctype,
-          value: channelValue(a, query.channel)
+          value: channelValue(a, query.channel),
+          kind: "player"
         }));
         return {
           kind: "ranked",
@@ -14498,7 +14513,7 @@ var EnhanceCommUI = (() => {
 }
 .ecu-meter-tt ul { margin: 4px 0 0; padding: 0; list-style: none; }
 .ecu-meter-tt li { display: flex; justify-content: space-between; gap: 14px; }
-/* Time Line cooltip: hovered icon + nearby cluster (on-screen, ~2s).
+/* Time Line cooltip: primary = icon under cursor (else bar), + nearby cluster.
    Compact chrome shared by gear + CD/buff/debuff/death. */
 .ecu-meter-tt.is-tl-cluster,
 .ecu-meter-tt.is-gear-tip,
@@ -15604,6 +15619,9 @@ var EnhanceCommUI = (() => {
   pointer-events: none;
   z-index: 5;
 }
+.ecu-meter-timeline.is-tl-frozen .ecu-meter-tl-now {
+  opacity: 0.5;
+}
 .ecu-meter-tl-ruler {
   display: flex;
   align-items: stretch;
@@ -15630,6 +15648,8 @@ var EnhanceCommUI = (() => {
   min-width: var(--tl-content-w);
   height: 100%;
   min-height: inherit;
+  /* Icons + bar hits share this context so later icons beat earlier bars. */
+  isolation: isolate;
 }
 .ecu-meter-tl-ruler .ecu-meter-tl-axis {
   flex: 1 1 0;
@@ -15756,7 +15776,9 @@ var EnhanceCommUI = (() => {
   top: 3px;
   bottom: 3px;
   height: auto;
-  z-index: 1;
+  /* z-index:auto \u2014 do not create a stacking context. Icons and bar-hits
+     compete in the axis so a later icon beats an earlier 5\u201320s bar. */
+  z-index: auto;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -15776,12 +15798,15 @@ var EnhanceCommUI = (() => {
 }
 .ecu-meter-tl-block-ico {
   position: relative;
-  z-index: 2;
+  /* Icon band (inline z-index adds stackIndex). Beats every bar hit. */
+  z-index: 10000;
   flex-shrink: 0;
   display: inline-flex;
   width: var(--tl-icon);
   height: var(--tl-icon);
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95));
+  pointer-events: auto;
+  cursor: pointer;
 }
 /* Global .ecu-meter-icon is 14px !important (meter bars). Timeline must win. */
 .ecu-meter-timeline .ecu-meter-tl-block-ico .ecu-meter-icon,
@@ -15818,18 +15843,19 @@ var EnhanceCommUI = (() => {
 .ecu-meter-tl-block.is-sub .ecu-meter-tl-block-bar {
   left: calc(var(--tl-icon-sub) / 2);
 }
+/* Bar-only hit (below the icon band). Easy bar hover when not on an icon.
+   \xB12px x-pad only \u2014 empty row gaps still miss. */
 .ecu-meter-tl-block-hit {
   position: absolute;
-  left: 0;
+  left: -2px;
+  right: -2px;
   top: 0;
-  width: var(--tl-icon);
-  height: 100%;
-  z-index: 3;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  z-index: 1;
   pointer-events: auto;
   cursor: pointer;
-}
-.ecu-meter-tl-block.is-sub .ecu-meter-tl-block-hit {
-  width: var(--tl-icon-sub);
 }
 /* AL Time Line: green = buffs, blue = cooldowns, red = debuffs. */
 .ecu-meter-tl-block.is-cast .ecu-meter-tl-block-bar {
@@ -15846,15 +15872,22 @@ var EnhanceCommUI = (() => {
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
     drop-shadow(0 0 2px rgba(255, 176, 32, 0.95));
 }
+.ecu-meter-tl-block.is-gear .ecu-meter-tl-block-ico:hover {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 2px rgba(255, 176, 32, 0.95))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+}
 .ecu-meter-tl-block.is-no-bar .ecu-meter-tl-block-bar {
   display: none;
 }
-.ecu-meter-tl-block:hover {
-  z-index: 10000 !important;
-}
+/* Do not lift the whole block \u2014 that trapped later icons under the first bar. */
 .ecu-meter-tl-block:hover .ecu-meter-tl-block-bar {
   filter: brightness(1.25);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.ecu-meter-tl-block-ico:hover {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.45));
 }
 /* Details PlaceDeathPins: 4\xD714 white pin \u2014 keep thin, not a fat death icon. */
 .ecu-meter-tl-death {
@@ -15869,7 +15902,7 @@ var EnhanceCommUI = (() => {
   box-shadow: 0 0 4px rgba(229, 57, 53, 0.65);
 }
 .ecu-meter-tl-death:hover {
-  z-index: 10000 !important;
+  box-shadow: 0 0 6px rgba(229, 57, 53, 0.9);
 }
 .ecu-meter-tl-empty {
   padding: 20px 14px;
@@ -17747,6 +17780,44 @@ button.ecu-meter-status-micro:hover,
     if (isTotalRow(row2)) return 100;
     return max ? barAmount(row2) / max * 100 : 0;
   }
+  function isSkillOrTargetRow(row2) {
+    return row2.kind === "ability" || row2.kind === "channel" || row2.kind === "target";
+  }
+  function barRowIconHtml(r, opts) {
+    if (isTotalRow(r)) return "";
+    if (isSkillOrTargetRow(r)) {
+      return rowIconHtml(
+        { id: r.id, name: r.name, ctype: r.ctype, mtype: r.mtype, kind: r.kind },
+        { icons: opts.icons !== false, iconSize: 14 }
+      );
+    }
+    if (!opts.classIcons || !r.ctype) return "";
+    return classIconHtml(r.ctype, 14);
+  }
+  function iconCacheKey(r, opts) {
+    if (isTotalRow(r)) return "";
+    if (isSkillOrTargetRow(r)) return `${r.kind}:${r.id}`;
+    if (!opts.classIcons || !r.ctype) return "";
+    return `class:${r.ctype}`;
+  }
+  function syncRowIcon(nameHost, r, opts) {
+    const want = iconCacheKey(r, opts);
+    const existing = nameHost.querySelector(".ecu-meter-icon");
+    if (want && nameHost.dataset.iconId === want && existing) return;
+    if (!want && !existing) {
+      delete nameHost.dataset.iconId;
+      return;
+    }
+    const html = barRowIconHtml(r, opts);
+    if (!html) {
+      if (existing) existing.remove();
+      delete nameHost.dataset.iconId;
+      return;
+    }
+    if (existing) existing.outerHTML = html;
+    else nameHost.insertAdjacentHTML("afterbegin", html);
+    nameHost.dataset.iconId = want;
+  }
   function makeRowEl(r, i, opts, max, total) {
     const el = document.createElement("div");
     const isAbility = r.kind === "ability" || r.kind === "channel";
@@ -17754,14 +17825,7 @@ button.ecu-meter-status-micro:hover,
     el.dataset.id = r.id || String(i);
     const pct = barWidthPct(r, max);
     const share = total ? r.value / total * 100 : 0;
-    const icon = rowIconHtml(
-      { id: r.id, name: r.name, ctype: r.ctype, mtype: r.mtype, kind: r.kind },
-      {
-        icons: opts.icons !== false,
-        iconSize: 14,
-        classIcons: !!opts.classIcons
-      }
-    );
+    const icon = barRowIconHtml(r, opts);
     const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
     el.innerHTML = `
     <div class="ecu-meter-fill${anim}" style="width:${pct}%;background:${rowColor(r)}"></div>
@@ -17771,8 +17835,9 @@ button.ecu-meter-status-micro:hover,
     const label = el.querySelector(".ecu-meter-label");
     if (label) label.textContent = r.name;
     const who = el.querySelector(".ecu-meter-who");
-    if (who && (r.kind === "ability" || r.kind === "channel")) {
-      who.dataset.iconId = r.id;
+    if (who) {
+      const key = iconCacheKey(r, opts);
+      if (key) who.dataset.iconId = key;
     }
     const vals = el.querySelector(".ecu-meter-vals");
     if (vals) vals.innerHTML = formatRowValue(r, share, opts);
@@ -17866,18 +17931,7 @@ button.ecu-meter-status-micro:hover,
       const label = el.querySelector(".ecu-meter-label");
       if (label) label.textContent = r.name;
       const nameHost = el.querySelector(".ecu-meter-who");
-      if (nameHost && (r.kind === "ability" || r.kind === "channel")) {
-        if (nameHost.dataset.iconId !== r.id) {
-          const iconHtml = rowIconHtml(
-            { id: r.id, kind: "ability" },
-            { icons: merged.icons !== false }
-          );
-          const existing = nameHost.querySelector(".ecu-meter-icon");
-          if (existing) existing.outerHTML = iconHtml;
-          else nameHost.insertAdjacentHTML("afterbegin", iconHtml);
-          nameHost.dataset.iconId = r.id;
-        }
-      }
+      if (nameHost) syncRowIcon(nameHost, r, merged);
       const vals = el.querySelector(".ecu-meter-vals");
       const share = total ? r.value / total * 100 : 0;
       if (vals) vals.innerHTML = formatRowValue(r, share, merged);
@@ -18258,12 +18312,15 @@ button.ecu-meter-status-micro:hover,
         });
       }
       const metric = p.metric || (p.query.kind === "players" ? p.query.metric : p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" ? p.query.metric : void 0);
+      const wantSkillIcons = p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" || p.query.kind === "taken_by_spell" || p.query.kind === "enemy_damage";
       const opts = {
         rank: app.showRankNumbers,
         pct: true,
         metric,
-        icons: true,
-        classIcons: app.showSpecIcons,
+        // Player ranking (DPS/HPS/etc.) must not inherit always-on icons.
+        // Inspector Spells/TARGETS keep ability/monster chips.
+        icons: wantSkillIcons,
+        classIcons: !!app.showSpecIcons,
         animate: app.animateBars,
         detailsFormat: true,
         onClick: p.onRowClick ? (ev, row2) => p.onRowClick(row2, ev) : void 0,
@@ -18665,6 +18722,7 @@ button.ecu-meter-status-micro:hover,
   var TL_PPS_MAX = 176;
   var TL_ZOOM_STEP = 1.12;
   var TL_BAR_MIN_PX = 4;
+  var TL_CAST_BAR_GAP_PX = 4;
   var TL_TICK_MIN_PX = 72;
   var TL_FOLLOW_SLACK = 28;
   var TL_VIEW_BUF_PX = 480;
@@ -18674,6 +18732,7 @@ button.ecu-meter-status-micro:hover,
   var TL_COALESCE_SEC = 0.3;
   var TL_VISUAL_DUR_MIN = 5;
   var TL_VISUAL_DUR_MAX = 20;
+  var TL_ICON_Z = 1e4;
   var TL_CAST_EFFECT_SEC = 8;
   var TL_CAT_ORDER = ["cast", "buff", "debuff", "gear"];
   function fmtClock(sec) {
@@ -19069,7 +19128,37 @@ button.ecu-meter-status-micro:hover,
       htmlRef.current = props.html;
       el.innerHTML = props.html;
     }, [props.html]);
-    return e("span", { ref, className: props.className || void 0 });
+    return e("span", {
+      ref,
+      className: props.className || void 0,
+      style: props.style,
+      onMouseEnter: props.onMouseEnter,
+      onMouseMove: props.onMouseMove,
+      onMouseLeave: props.onMouseLeave
+    });
+  }
+  var tlHoverDomKey = "";
+  function isTlHoverTarget(el) {
+    if (!(el instanceof Element)) return false;
+    return !!(el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death"));
+  }
+  function showBlockTip(domKey, ev, html) {
+    tlHoverDomKey = domKey;
+    showMeterTooltip(ev, html);
+  }
+  function hideBlockTip() {
+    tlHoverDomKey = "";
+    hideMeterTooltip();
+  }
+  function fillCastNextSame(blocks) {
+    const nextAt = {};
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i];
+      if (b.kind !== "cast") continue;
+      const k = skillKey(b);
+      if (nextAt[k] != null) b.nextSameAtSec = nextAt[k];
+      nextAt[k] = b.atSec;
+    }
   }
   function visualDurationSec(b) {
     if (b.kind === "death" || b.kind === "gear") return 0;
@@ -19182,6 +19271,15 @@ button.ecu-meter-status-micro:hover,
     }
     return n;
   }
+  function timelineFightKey(segmentRef, seg) {
+    let refKey = "current";
+    if (segmentRef === "total") refKey = "total";
+    else if (segmentRef && typeof segmentRef === "object" && segmentRef.pastId) {
+      refKey = `past:${segmentRef.pastId}`;
+    }
+    if (!seg) return `${refKey}:empty`;
+    return `${refKey}:${seg.id}:${seg.startedAt}`;
+  }
   function timelineOriginMs(seg, casts, conditions, deaths, gearSwaps, now) {
     let start = now;
     if (seg && seg.startedAt) start = seg.startedAt;
@@ -19250,9 +19348,17 @@ button.ecu-meter-status-micro:hover,
     if (b.kind === "gear") {
       return { left, width: iconPx, showBar: false };
     }
-    const visualDur = visualDurationSec(b);
-    const width = Math.max(iconPx, Math.round(visualDur * pps));
-    const barSpan = width - Math.round(iconPx / 2);
+    let visualDur = visualDurationSec(b);
+    if (b.kind === "cast" && b.nextSameAtSec != null) {
+      const gapSec = TL_CAST_BAR_GAP_PX / Math.max(1, pps);
+      visualDur = Math.min(
+        visualDur,
+        Math.max(0, b.nextSameAtSec - b.atSec - gapSec)
+      );
+    }
+    const barPx = Math.round(visualDur * pps);
+    const width = Math.max(iconPx, barPx);
+    const barSpan = barPx - Math.round(iconPx / 2);
     const showBar = b.kind !== "death" && barSpan >= TL_BAR_MIN_PX;
     return { left, width, showBar };
   }
@@ -19272,6 +19378,7 @@ button.ecu-meter-status-micro:hover,
       return false;
     }
     if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
+    if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
     if (pb.isOpen && nb.isOpen) return true;
     return pb.durationSec === nb.durationSec;
   }
@@ -19297,18 +19404,26 @@ button.ecu-meter-status-micro:hover,
       );
     };
     const onEnter = (ev) => {
-      showMeterTooltip(ev, tip(ev));
+      showBlockTip(b.domKey, ev, tip(ev));
     };
     const onMove = (ev) => {
+      if (tlHoverDomKey !== b.domKey) {
+        showBlockTip(b.domKey, ev, tip(ev));
+        return;
+      }
       showMeterTooltip(ev, tip(ev));
     };
-    const onLeave = () => hideMeterTooltip();
-    const z = props.stackIndex + 1;
+    const onLeave = (ev) => {
+      if (isTlHoverTarget(ev.relatedTarget)) return;
+      hideBlockTip();
+    };
+    const iconZ = TL_ICON_Z + props.stackIndex;
+    const barZ = props.stackIndex + 1;
     const split = props.subIndex >= 0 && props.subCount >= 2;
     if (b.kind === "death") {
       return e("div", {
         className: "ecu-meter-tl-death",
-        style: { left: `${layout.left}px`, zIndex: z },
+        style: { left: `${layout.left}px`, zIndex: iconZ },
         onMouseEnter: onEnter,
         onMouseMove: onMove,
         onMouseLeave: onLeave
@@ -19318,10 +19433,10 @@ button.ecu-meter-status-micro:hover,
       "div",
       {
         className: "ecu-meter-tl-block" + (b.kind === "cast" ? " is-cast" : "") + (b.kind === "gear" ? " is-gear" : "") + (b.condKind === "buff" ? " is-buff" : "") + (b.condKind === "debuff" ? " is-debuff" : "") + (layout.showBar ? "" : " is-no-bar") + (split ? " is-sub" : ""),
+        "data-tl-key": b.domKey,
         style: {
           left: `${layout.left}px`,
           width: `${layout.width}px`,
-          zIndex: z,
           ...split ? {
             ["--tl-sub-i"]: String(props.subIndex),
             ["--tl-subs"]: String(props.subCount)
@@ -19330,11 +19445,16 @@ button.ecu-meter-status-micro:hover,
       },
       e(IconHost, {
         html: blockIconHtml(b, props.iconPx),
-        className: "ecu-meter-tl-block-ico"
+        className: "ecu-meter-tl-block-ico",
+        style: { zIndex: iconZ },
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
       }),
       layout.showBar ? e("div", { className: "ecu-meter-tl-block-bar" }) : null,
       e("div", {
         className: "ecu-meter-tl-block-hit",
+        style: { zIndex: barZ },
         onMouseEnter: onEnter,
         onMouseMove: onMove,
         onMouseLeave: onLeave
@@ -19463,12 +19583,14 @@ button.ecu-meter-status-micro:hover,
     for (let i = 0; i < ids.length; i++) {
       const lane = byId[ids[i]];
       lane.blocks.sort((x, y) => x.atSec - y.atSec);
+      fillCastNextSame(lane.blocks);
       lane.cats = laneCatsFromBlocks(lane.blocks);
       lanes.push(lane);
     }
     return lanes;
   }
   function timelineInnerEqual(prev, next) {
+    if (prev.fightKey !== next.fightKey) return false;
     if (prev.segmentRef !== next.segmentRef) return false;
     if (prev.partyFocus !== next.partyFocus) return false;
     if (prev.rosterSig !== next.rosterSig) return false;
@@ -19512,12 +19634,19 @@ button.ecu-meter-status-micro:hover,
     const [zoom, setZoom] = React.useState(1);
     const [rulerTicks, setRulerTicks] = React.useState([]);
     const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
+    const [trackFrozen, setTrackFrozen] = React.useState(false);
     const viewSnapRef = React.useRef("");
     const rootRef = React.useRef(null);
     const scrollRef = React.useRef(null);
     const gutterRef = React.useRef(null);
     const gutterRowsRef = React.useRef(null);
     const followRef = React.useRef(true);
+    const freezePadRef = React.useRef(null);
+    const freezeResumeRef = React.useRef(false);
+    const freezeScrollLeftRef = React.useRef(0);
+    const pointerOnTrackRef = React.useRef(false);
+    const shiftHeldRef = React.useRef(false);
+    const shiftFreezeOkRef = React.useRef(true);
     const applyingScrollRef = React.useRef(false);
     const isLiveRef = React.useRef(false);
     const startRef = React.useRef(0);
@@ -19538,11 +19667,21 @@ button.ecu-meter-status-micro:hover,
     });
     const laneBlocksRef = React.useRef({});
     const originPinRef = React.useRef(null);
+    const fightKeyRef = React.useRef("");
     const pps = TL_PPS_BASE * zoom;
     const ppsRef = React.useRef(pps);
     ppsRef.current = pps;
     const isTimeline = props.result.kind === "timeline";
     const seg = resolveSegment(props.segmentRef);
+    const fightKey = props.fightKey;
+    if (fightKeyRef.current !== fightKey) {
+      fightKeyRef.current = fightKey;
+      originPinRef.current = null;
+      followRef.current = true;
+      freezePadRef.current = null;
+      freezeResumeRef.current = false;
+      shiftFreezeOkRef.current = true;
+    }
     const isLive = !!(isTimeline && props.combatLive);
     const durationMs = props.result.kind === "timeline" ? props.result.durationMs : 0;
     const casts = isTimeline ? eventsInScope(
@@ -19571,9 +19710,6 @@ button.ecu-meter-status-micro:hover,
     ) : [];
     const now = seg && seg.endedAt ? seg.endedAt : Date.now();
     const rawStart = !isTimeline ? now : originPinRef.current != null ? originPinRef.current : timelineOriginMs(seg, casts, conditions, deaths, gearSwaps, now);
-    React.useEffect(() => {
-      originPinRef.current = null;
-    }, [props.segmentRef]);
     if (isTimeline) {
       const hasAnchor = !!(seg && seg.startedAt) || casts.length > 0 || conditions.length > 0 || deaths.length > 0 || gearSwaps.length > 0;
       if (hasAnchor && originPinRef.current == null) {
@@ -19620,7 +19756,7 @@ button.ecu-meter-status-micro:hover,
       const viewTrackW = Math.max(120, scroll.clientWidth);
       const elapsed = isLiveRef.current ? Math.max((Date.now() - startRef.current) / 1e3, 1 / ppsNow) : Math.max(durSecRef.current, 1 / ppsNow);
       const contentWR = Math.ceil(elapsed * ppsNow);
-      const padR = followRef.current ? Math.max(0, viewTrackW - contentWR) : 0;
+      const padR = freezePadRef.current != null ? freezePadRef.current : followRef.current ? Math.max(0, viewTrackW - contentWR) : 0;
       const trackWR = padR + contentWR;
       if (cache3.contentW !== contentWR || cache3.pad !== padR || cache3.trackW !== trackWR) {
         cache3.contentW = contentWR;
@@ -19650,22 +19786,55 @@ button.ecu-meter-status-micro:hover,
         setRulerTicks(buildTicks(ppsNow, elapsed, includeEnd));
       }
       if (followRef.current) {
+        const held = applyingScrollRef.current;
         applyingScrollRef.current = true;
         const target = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
         if (Math.abs(scroll.scrollLeft - target) > 0.5) {
           scroll.scrollLeft = target;
         }
-        applyingScrollRef.current = false;
+        if (!held) applyingScrollRef.current = false;
       }
       syncGutterY();
       publishViewRange();
     }, [publishViewRange, syncGutterY]);
-    React.useEffect(() => {
-      injectMeterChromeCss();
-      return () => hideMeterTooltip();
+    const applyLayoutRef = React.useRef(applyLayout);
+    applyLayoutRef.current = applyLayout;
+    const beginModFreeze = React.useCallback(() => {
+      if (!isLiveRef.current) return;
+      if (!shiftFreezeOkRef.current) return;
+      if (freezePadRef.current != null) return;
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      freezeScrollLeftRef.current = scroll.scrollLeft;
+      freezeResumeRef.current = followRef.current;
+      freezePadRef.current = layoutCacheRef.current.pad >= 0 ? layoutCacheRef.current.pad : 0;
+      followRef.current = false;
+      setTrackFrozen(true);
+    }, []);
+    const endModFreeze = React.useCallback(() => {
+      const scroll = scrollRef.current;
+      const hadFreeze = freezePadRef.current != null;
+      const wantResume = freezeResumeRef.current;
+      const scrolled = !!scroll && Math.abs(scroll.scrollLeft - freezeScrollLeftRef.current) > TL_FOLLOW_SLACK;
+      freezePadRef.current = null;
+      freezeResumeRef.current = false;
+      setTrackFrozen(false);
+      if (!hadFreeze && !wantResume) return;
+      if (wantResume && !scrolled) {
+        followRef.current = true;
+      }
+      applyLayoutRef.current();
     }, []);
     React.useEffect(() => {
+      injectMeterChromeCss();
+      return () => hideBlockTip();
+    }, []);
+    React.useLayoutEffect(() => {
+      applyingScrollRef.current = true;
       followRef.current = true;
+      freezePadRef.current = null;
+      freezeResumeRef.current = false;
+      setTrackFrozen(false);
       layoutCacheRef.current = {
         contentW: -1,
         pad: -1,
@@ -19677,7 +19846,13 @@ button.ecu-meter-status-micro:hover,
       };
       tickSigRef.current = "";
       viewSnapRef.current = "";
-    }, [start]);
+      applyLayoutRef.current();
+      if (shiftHeldRef.current && isLiveRef.current) {
+        shiftFreezeOkRef.current = true;
+        beginModFreeze();
+      }
+      applyingScrollRef.current = false;
+    }, [beginModFreeze, fightKey]);
     React.useEffect(() => {
       const el = scrollRef.current;
       if (!el) return;
@@ -19685,6 +19860,17 @@ button.ecu-meter-status-micro:hover,
         syncGutterY();
         publishViewRange();
         if (applyingScrollRef.current) return;
+        if (freezePadRef.current != null) {
+          const maxNow = Math.max(0, el.scrollWidth - el.clientWidth);
+          if (maxNow > TL_FOLLOW_SLACK && el.scrollLeft < maxNow - TL_FOLLOW_SLACK) {
+            freezeResumeRef.current = false;
+            freezePadRef.current = null;
+            shiftFreezeOkRef.current = false;
+            setTrackFrozen(false);
+          } else {
+            return;
+          }
+        }
         const max = Math.max(0, el.scrollWidth - el.clientWidth);
         if (max <= TL_FOLLOW_SLACK) {
           followRef.current = true;
@@ -19723,6 +19909,63 @@ button.ecu-meter-status-micro:hover,
       scroll.addEventListener("wheel", onWheel, { passive: false });
       return () => scroll.removeEventListener("wheel", onWheel);
     }, [isTimeline]);
+    React.useEffect(() => {
+      const onKeyDown = (ev) => {
+        if (ev.key !== "Shift") return;
+        shiftHeldRef.current = true;
+        if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+        if (ev.repeat && freezePadRef.current != null) return;
+        shiftFreezeOkRef.current = true;
+        const scroll = scrollRef.current;
+        if (scroll && scroll.matches(":hover")) pointerOnTrackRef.current = true;
+        if (!pointerOnTrackRef.current) return;
+        beginModFreeze();
+      };
+      const onKeyUp = (ev) => {
+        if (ev.key !== "Shift") return;
+        shiftHeldRef.current = false;
+        shiftFreezeOkRef.current = true;
+        endModFreeze();
+      };
+      const onBlur = () => {
+        shiftHeldRef.current = false;
+        endModFreeze();
+      };
+      window.addEventListener("keydown", onKeyDown);
+      window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("blur", onBlur);
+      return () => {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+        window.removeEventListener("blur", onBlur);
+      };
+    }, [beginModFreeze, endModFreeze]);
+    React.useEffect(() => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const onPointerEnter = () => {
+        pointerOnTrackRef.current = true;
+        if (shiftHeldRef.current) beginModFreeze();
+      };
+      const onPointerMove = (ev) => {
+        pointerOnTrackRef.current = true;
+        if (ev.shiftKey) shiftHeldRef.current = true;
+        if (ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+          beginModFreeze();
+        }
+      };
+      const onPointerLeave = () => {
+        pointerOnTrackRef.current = false;
+      };
+      scroll.addEventListener("pointerenter", onPointerEnter);
+      scroll.addEventListener("pointermove", onPointerMove);
+      scroll.addEventListener("pointerleave", onPointerLeave);
+      return () => {
+        scroll.removeEventListener("pointerenter", onPointerEnter);
+        scroll.removeEventListener("pointermove", onPointerMove);
+        scroll.removeEventListener("pointerleave", onPointerLeave);
+      };
+    }, [beginModFreeze, isTimeline]);
     React.useLayoutEffect(() => {
       applyLayout();
       const scroll = scrollRef.current;
@@ -19739,7 +19982,7 @@ button.ecu-meter-status-micro:hover,
         window.cancelAnimationFrame(raf2);
         if (ro) ro.disconnect();
       };
-    }, [applyLayout, isLive, isTimeline, start, zoom]);
+    }, [applyLayout, isLive, isTimeline, start, zoom, fightKey]);
     if (!isTimeline) {
       return e(
         "div",
@@ -19900,7 +20143,7 @@ button.ecu-meter-status-micro:hover,
     return e(
       "div",
       {
-        className: "ecu-meter-timeline",
+        className: "ecu-meter-timeline" + (trackFrozen ? " is-tl-frozen" : ""),
         ref: rootRef,
         style: { ...PIXEL_TEXT }
       },
@@ -19947,7 +20190,8 @@ button.ecu-meter-status-micro:hover,
             isLive ? " \xB7 in combat" : "",
             deaths.length ? ` \xB7 ${deaths.length} deaths` : "",
             ` \xB7 ${lanes.length} players`,
-            " \xB7 Ctrl+wheel zoom"
+            " \xB7 Ctrl+wheel zoom",
+            isLive ? " \xB7 Shift hold freeze" : ""
           )
         ),
         e(
@@ -20057,7 +20301,8 @@ button.ecu-meter-status-micro:hover,
       partyFocus: props.partyFocus,
       rosterSig: rosterSigNow(),
       deathCount: seg ? seg.deaths.length : 0,
-      combatLive: !!(seg && seg.endedAt == null)
+      combatLive: !!(seg && seg.endedAt == null),
+      fightKey: timelineFightKey(props.segmentRef, seg)
     });
   }
 
