@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8.0-alpha.1
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -6169,34 +6169,40 @@ ${fightHoverTip(src)}`
   var FEATURE_OVERVIEW = [
     {
       label: "Movable panels",
-      detail: "Drag panels and save layouts."
+      detail: "Drag, lock, snap, and save layouts (desktop / tablet / phone)."
     },
     {
-      label: "Player & target",
-      detail: "HP, resources, and buffs for who you watch and their target."
-    },
-    {
-      label: "Party roster",
-      detail: "Party chips with vitals and buffs."
-    },
-    {
-      label: "Character & server",
-      detail: "Reworked chips, Follow / Bag / Command, richer server picker."
-    },
-    {
-      label: "Command snippets",
-      detail: "Save and rerun CODE presets."
+      label: "Combat HUD",
+      detail: "Player & target frames, party roster, boss bars, threat."
     },
     {
       label: "Damage meters",
-      detail: "Add windows for damage, healing, coop, and more."
+      detail: "DPS / HPS windows, Inspector, Time Line, and report views."
     },
     {
-      label: "Boss bars",
-      detail: "Large boss HP with click-to-target."
+      label: "Command snippets",
+      detail: "Observer COMMAND panel with saved CODE presets."
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.8.0-alpha.1",
+      title: "0.8.0-alpha.1",
+      items: [
+        {
+          label: "Alpha meters",
+          detail: "WoW-style meter shell: native bar scroll, Always-show-me pin, Time Line, and Details-like Inspector."
+        },
+        {
+          label: "Unified window groups",
+          detail: "Edge-snap HUD + meters, flush group resize, and green join guides while arranging."
+        },
+        {
+          label: "Session segments",
+          detail: "Clearer current / past fight binding for meters, bookmarks, and statusbar plugins."
+        }
+      ]
+    },
     {
       id: "0.7.1-windows",
       title: "Unified windows",
@@ -6204,10 +6210,6 @@ ${fightHoverTip(src)}`
         {
           label: "Lock any panel",
           detail: "HUD and meters share the same lock \u2014 unlock to drag; hold Alt to nudge while locked."
-        },
-        {
-          label: "Cross-group snap",
-          detail: "Edge-snap meters to HUD panels (and each other) in one group graph."
         },
         {
           label: "Window Control",
