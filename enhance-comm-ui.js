@@ -20801,8 +20801,14 @@ ${parts.map(cssSlice).join("\n")}
     if (opts.tooltipHtml) {
       el.onmousemove = (e2) => opts.tooltipHtml(e2, r);
       el.onmouseleave = () => {
-        if (opts.onTooltipHide) opts.onTooltipHide();
+        requestAnimationFrame(() => {
+          if (el.isConnected && el.matches(":hover")) return;
+          if (opts.onTooltipHide) opts.onTooltipHide();
+        });
       };
+    } else {
+      el.onmousemove = null;
+      el.onmouseleave = null;
     }
     if (opts.onClick) {
       el.onclick = (e2) => opts.onClick(e2, r);
@@ -20957,41 +20963,42 @@ ${parts.map(cssSlice).join("\n")}
     tip.style.top = "0px";
     placeTip(tip, clientX, clientY);
   }
-  function onModKey(ev) {
-    if (ev.key !== "Shift" && ev.key !== "Control" && ev.key !== "Meta") return;
-    if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
-    const mods = {
-      shift: ev.shiftKey,
-      ctrl: ev.ctrlKey || ev.metaKey
+  function readMods(ev) {
+    return {
+      shift: !!ev.shiftKey,
+      ctrl: !!ev.ctrlKey || !!ev.metaKey
     };
+  }
+  function onModKey(ev) {
+    if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
+    const mods = readMods(ev);
     if (mods.shift === lastMods.shift && mods.ctrl === lastMods.ctrl) return;
     lastMods = mods;
     paintTip(hoverRebuild(mods), hoverX, hoverY);
   }
+  var MOD_KEY_OPTS = { capture: true };
   function bindModKeys() {
     if (keysBound) return;
     keysBound = true;
-    window.addEventListener("keydown", onModKey);
-    window.addEventListener("keyup", onModKey);
+    document.addEventListener("keydown", onModKey, MOD_KEY_OPTS);
+    document.addEventListener("keyup", onModKey, MOD_KEY_OPTS);
   }
   function unbindModKeys() {
     if (!keysBound) return;
     keysBound = false;
-    window.removeEventListener("keydown", onModKey);
-    window.removeEventListener("keyup", onModKey);
+    document.removeEventListener("keydown", onModKey, MOD_KEY_OPTS);
+    document.removeEventListener("keyup", onModKey, MOD_KEY_OPTS);
   }
   function showMeterTooltip(ev, html) {
     hoverRebuild = null;
-    lastMods = { shift: ev.shiftKey, ctrl: ev.ctrlKey || ev.metaKey };
+    unbindModKeys();
+    lastMods = readMods(ev);
     hoverX = ev.clientX;
     hoverY = ev.clientY;
     paintTip(html, ev.clientX, ev.clientY);
   }
   function showMeterTooltipLive(ev, rebuild) {
-    const mods = {
-      shift: ev.shiftKey,
-      ctrl: ev.ctrlKey || ev.metaKey
-    };
+    const mods = readMods(ev);
     hoverRebuild = rebuild;
     lastMods = mods;
     hoverX = ev.clientX;
@@ -21021,10 +21028,12 @@ ${parts.map(cssSlice).join("\n")}
     return `${formatCompactNumber(value)} (${pct.toFixed(1)}%)`;
   }
   function sectionHeader(icon, title, hint, maximized) {
-    const maxCls = maximized ? " is-max" : "";
+    const canExpand = !!hint;
+    const maxCls = canExpand && maximized ? " is-max" : "";
+    const kbd = canExpand ? `<span class="ecu-meter-tt-kbd">${hint}</span>` : "";
     return `<div class="ecu-meter-tt-sec${maxCls}">
     <span class="ecu-meter-tt-sec-l">${icon}<span class="ecu-meter-tt-sec-t">${title}</span></span>
-    <span class="ecu-meter-tt-kbd">${hint}</span>
+    ${kbd}
   </div>`;
   }
   function rankRowsHtml(rows, limit, total, iconFor, avoidance) {
@@ -21096,14 +21105,16 @@ ${parts.map(cssSlice).join("\n")}
       partyFocus,
       entities
     );
-    const spellLimit = mods.shift ? MAX_EXPANDED : MAX_SPELLS;
-    const targetLimit = mods.ctrl ? MAX_EXPANDED : MAX_TARGETS;
+    const spellExpandable = spells.length > MAX_SPELLS;
+    const targetExpandable = targets.length > MAX_TARGETS;
+    const spellLimit = mods.shift && spellExpandable ? MAX_EXPANDED : MAX_SPELLS;
+    const targetLimit = mods.ctrl && targetExpandable ? MAX_EXPANDED : MAX_TARGETS;
     const spellTotal = spells.reduce((s, r) => s + r.value, 0) || row2.value || 1;
     const targetTotal = targets.reduce((s, r) => s + r.value, 0) || row2.value || 1;
     const spellsSec = sectionHeader(
       `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">\u2694</span>`,
       "Spells",
-      "Shift",
+      spellExpandable ? "Shift" : null,
       mods.shift
     ) + rankRowsHtml(
       spells,
@@ -21115,7 +21126,7 @@ ${parts.map(cssSlice).join("\n")}
     const targetsSec = sectionHeader(
       `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">\u2713</span>`,
       "Targets",
-      "Ctrl",
+      targetExpandable ? "Ctrl" : null,
       mods.ctrl
     ) + rankRowsHtml(
       targets,
