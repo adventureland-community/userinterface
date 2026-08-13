@@ -42,26 +42,47 @@ var EnhanceCommUI = (() => {
     const raw = window.entities;
     if (!raw) return {};
     if (Array.isArray(raw)) {
-      const out = {};
+      const out2 = {};
       for (let i = 0; i < raw.length; i++) {
         const ent = raw[i];
-        if (ent && ent.id != null) out[String(ent.id)] = ent;
+        if (ent && ent.id != null) out2[String(ent.id)] = ent;
       }
-      return out;
+      mergeLocalCharacter(out2);
+      return out2;
     }
-    return raw;
+    const out = { ...raw };
+    mergeLocalCharacter(out);
+    return out;
   }
   function getEntitiesList() {
     const raw = window.entities;
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw.filter(Boolean);
-    return Object.values(raw);
+    const list = !raw ? [] : Array.isArray(raw) ? raw.filter(Boolean) : Object.values(raw);
+    return withLocalCharacter(list);
+  }
+  function mergeLocalCharacter(out) {
+    const self = getCharacter();
+    if (!self || self.id == null) return;
+    const id = String(self.id);
+    if (!out[id]) out[id] = self;
+  }
+  function withLocalCharacter(list) {
+    const self = getCharacter();
+    if (!self || self.id == null) return list;
+    const id = String(self.id);
+    for (let i = 0; i < list.length; i++) {
+      if (String(list[i].id) === id) return list;
+    }
+    return [self, ...list];
   }
   function findEntityById(id) {
     if (id == null || id === "") return void 0;
     const tid = String(id);
     const raw = window.entities;
-    if (!raw) return void 0;
+    if (!raw) {
+      const self2 = getCharacter();
+      if (self2 && String(self2.id) === tid) return self2;
+      return void 0;
+    }
     const list = Array.isArray(raw) ? raw.filter(Boolean) : Object.values(raw);
     let deadMatch;
     for (let i = 0; i < list.length; i++) {
@@ -77,7 +98,10 @@ var EnhanceCommUI = (() => {
         if (!deadMatch) deadMatch = byKey;
       }
     }
-    return deadMatch;
+    if (deadMatch) return deadMatch;
+    const self = getCharacter();
+    if (self && String(self.id) === tid) return self;
+    return void 0;
   }
   function getObserving() {
     const snap = window.observing;
@@ -1860,8 +1884,8 @@ var EnhanceCommUI = (() => {
     buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
     itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
     kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
-    playerFrame: { x: 40.5, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
-    targetFrame: { x: 60, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+    playerFrame: { x: 35, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
+    targetFrame: { x: 65, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
     bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
     crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
     threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
@@ -3243,12 +3267,13 @@ var EnhanceCommUI = (() => {
     const out = [];
     for (let i = 0; i < entities.length; i++) {
       const ent = entities[i];
-      if (ent.player && ent.type === "character") out.push(ent);
+      if (isFocusablePlayer(ent)) out.push(ent);
     }
     return out;
   }
   function isFocusablePlayer(entity) {
-    return !!(entity && entity.player && entity.type === "character");
+    if (!entity || entity.type !== "character") return false;
+    return !!(entity.player || entity.me);
   }
   function partyGroups(entities) {
     const players = playersList(entities);
@@ -3282,6 +3307,17 @@ var EnhanceCommUI = (() => {
   function aggroOn(byTarget, id) {
     if (id == null || id === "") return [];
     return byTarget[String(id)] || [];
+  }
+  function aggroMobsForFramedEntity(byTarget, entity) {
+    if (!isFocusablePlayer(entity)) return [];
+    return aggroOn(byTarget, entity.id);
+  }
+  function findLocalSelf(entities) {
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent && ent.me) return ent;
+    }
+    return void 0;
   }
   function aggroedMonsters(entities) {
     const out = [];
@@ -10593,12 +10629,36 @@ ${fightHoverTip(src)}`
     subscribeTick(() => applyPageTitle());
   }
 
+  // src/buildMeta.ts
+  function getEcuBuildInfo() {
+    const version = true ? "0.8.0-alpha.1" : "unknown";
+    const builtAt = true ? "2026-08-13T21:38:45.745Z" : "unknown";
+    const builtAtMs = Date.parse(builtAt);
+    return {
+      version,
+      builtAt,
+      builtAtMs: Number.isFinite(builtAtMs) ? builtAtMs : 0
+    };
+  }
+  function publishEcuBuildInfo() {
+    const info2 = getEcuBuildInfo();
+    const w = window;
+    w.__ECU_BUILD__ = info2;
+    console.info(
+      `[ecu] enhance-comm-ui v${info2.version} built ${info2.builtAt}`,
+      info2
+    );
+    return info2;
+  }
+
   // src/queries/combatSignals.ts
   function combatSignals(entities) {
+    const byTarget = aggroByTarget(entities);
     const hasEnemies = aggroedMonsters(entities).length > 0;
-    const hasThreat = Object.keys(aggroByTarget(entities)).length > 0;
+    const hasThreat = Object.keys(byTarget).length > 0;
     const hasBosses = activeBosses(entities).length > 0;
     return {
+      byTarget,
       hasEnemies,
       hasThreat,
       hasBosses,
@@ -28055,7 +28115,8 @@ ${parts.map(cssSlice).join("\n")}
         position: "relative",
         display: "inline-block",
         flex: "0 0 auto",
-        overflow: "visible",
+        verticalAlign: "top",
+        lineHeight: 0,
         pointerEvents: "none"
       }
     });
@@ -28069,21 +28130,19 @@ ${parts.map(cssSlice).join("\n")}
   function ControlBadge(props) {
     const { states, compact = false } = props;
     if (!states.length) return null;
-    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 18 : 22;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
     return e(
       "div",
       {
-        className: "comm-ctrl-badges" + (compact ? " is-compact" : ""),
+        className: "comm-ctrl-badges is-inline" + (compact ? " is-compact" : ""),
         style: {
-          position: "absolute",
-          top: compact ? "-3px" : "2px",
-          left: compact ? "-3px" : "2px",
-          zIndex: 3,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-start",
-          gap: compact ? "2px" : "3px",
-          pointerEvents: "none"
+          position: "relative",
+          display: "inline-flex",
+          flexDirection: "row",
+          flexWrap: "nowrap",
+          alignItems: "center",
+          gap: compact ? "3px" : "4px",
+          flex: "0 0 auto"
         }
       },
       ...states.map((state) => {
@@ -28097,33 +28156,108 @@ ${parts.map(cssSlice).join("\n")}
             style: {
               display: "inline-flex",
               alignItems: "center",
-              gap: compact ? "0" : "4px",
-              maxWidth: compact ? void 0 : "100%",
-              padding: compact ? "1px" : "1px 5px 1px 1px",
+              gap: compact ? "3px" : "5px",
+              flex: "0 0 auto",
+              padding: compact ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
               boxSizing: "border-box",
               background: state.background,
-              border: `1px solid ${state.border}`,
+              border: `${compact ? 1 : 2}px solid ${state.border}`,
               color: state.color,
-              fontSize: TYPE.badge,
+              fontSize: compact ? TYPE.micro : TYPE.badge,
               lineHeight: 1,
-              ...PIXEL_TEXT
+              ...PIXEL_TEXT,
+              cursor: "help",
+              pointerEvents: "auto"
             }
           },
           e(ControlIcon, { state, iconSize }),
-          compact ? null : e(
+          e(
             "span",
             {
               style: {
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
-                maxWidth: "7.5em"
+                maxWidth: compact ? "5.5em" : "8em"
               }
             },
             state.label
           )
         );
       })
+    );
+  }
+
+  // src/ui/chrome/NameWithControl.ts
+  function NameWithControl(props) {
+    const { name, states, compact = false, className } = props;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
+    return e(
+      "span",
+      {
+        className: className || "comm-unit-namecluster",
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: compact ? "5px" : "6px",
+          flex: "0 1 auto",
+          minWidth: 0,
+          maxWidth: "100%"
+        }
+      },
+      e(
+        "span",
+        {
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: "0 1 auto",
+            minWidth: 0
+          }
+        },
+        name
+      ),
+      e(ControlBadge, {
+        states,
+        compact,
+        iconSize
+      })
+    );
+  }
+
+  // src/ui/chrome/AggroSpark.ts
+  function AggroSpark(props) {
+    const { count, className } = props;
+    if (!(count > 0)) return null;
+    return e(
+      "div",
+      {
+        className: className || "comm-threat-spark",
+        title: `Aggro: ${count} mob${count === 1 ? "" : "s"}`,
+        "data-ecu-aggro": String(count),
+        style: {
+          position: "absolute",
+          top: "-3px",
+          right: "-3px",
+          zIndex: 4,
+          minWidth: AGGRO_BADGE.minWidth,
+          height: AGGRO_BADGE.height,
+          padding: `0 ${AGGRO_BADGE.padX}`,
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#8a1e1e",
+          border: "1px solid #e05555",
+          color: "#ffd0d0",
+          fontSize: AGGRO_BADGE.fontSize,
+          lineHeight: 1,
+          ...PIXEL_TEXT,
+          pointerEvents: "none"
+        }
+      },
+      String(count)
     );
   }
 
@@ -28224,7 +28358,12 @@ ${parts.map(cssSlice).join("\n")}
   }
   function estimateCouragePools(entity, G = getG()) {
     if (!G || !G.classes || !G.items) return null;
-    const ctype = String(entity.ctype || "");
+    const ctype = String(
+      entity.ctype || resolvePlayerCtype(
+        entity.id != null ? String(entity.id) : void 0,
+        entity
+      ) || ""
+    );
     if (!ctype) return null;
     const classDef = G.classes[ctype];
     if (!classDef) return null;
@@ -28390,32 +28529,33 @@ ${parts.map(cssSlice).join("\n")}
   ];
   var FEAR_SKIN = "skill_scare";
   var FEAR_STYLE = {
-    // Colors from stock fear logs (#B03736 / #B04157 / gray).
+    // Colors from stock fear logs (#B03736 / #B04157 / gray) — borders must
+    // stay high-contrast; they are the main severity cue on the name pill.
     scared: {
       severity: 1,
       label: "Scared",
-      color: "#c8c8c8",
-      border: "#888",
-      background: "rgba(40,40,40,0.92)"
+      color: "#e0e0e0",
+      border: "#a0a0a0",
+      background: "rgba(48,48,48,0.95)"
     },
     terrified: {
       severity: 2,
       label: "Terrified",
-      color: "#ffc0c8",
-      border: "#B04157",
-      background: "rgba(80,20,35,0.92)"
+      color: "#ffd0d8",
+      border: "#e05570",
+      background: "rgba(90,22,40,0.95)"
     },
     petrified: {
       severity: 3,
       label: "Petrified",
-      color: "#ffb0a8",
-      border: "#B03736",
-      background: "rgba(90,20,20,0.92)"
+      color: "#ffc8c0",
+      border: "#ff4a3a",
+      background: "rgba(100,18,18,0.95)"
     }
   };
   function fearLevelFromValue(fear) {
     if (!(fear > 0)) return null;
-    if (fear > 3) return "petrified";
+    if (fear > 2) return "petrified";
     if (fear > 1) return "terrified";
     return "scared";
   }
@@ -29240,6 +29380,15 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/lib/chipOutline.ts
+  function chipOutline(opts) {
+    if (opts.hasAggro) return "1px solid #e05555";
+    if (opts.controlTint) return `1px solid ${opts.controlTint}`;
+    if (opts.observed) return "1px solid #e13758";
+    if (opts.selected) return "1px solid #fff";
+    return void 0;
+  }
+
   // src/lib/stickyPresence.ts
   function isActuallyDead(entity) {
     return !!entity && entity.dead === true;
@@ -29251,30 +29400,22 @@ ${parts.map(cssSlice).join("\n")}
     return ent.type === "monster" && !!ent.target;
   }
   function stickyAggroByTarget(liveByTarget, resolveName, now = Date.now()) {
-    const live2 = liveByTarget || {};
-    const liveIds = Object.keys(live2);
+    const out = {};
+    const liveIds = Object.keys(liveByTarget);
     for (let i = 0; i < liveIds.length; i++) {
       const tid = liveIds[i];
-      const raw = live2[tid] || [];
+      const raw = liveByTarget[tid] || [];
       const mobs = [];
       for (let j = 0; j < raw.length; j++) {
         if (isLiveAggroMob(raw[j])) mobs.push(raw[j]);
       }
-      if (mobs.length === 0) {
-        delete live2[tid];
-        continue;
-      }
-      live2[tid] = mobs;
+      if (mobs.length === 0) continue;
+      out[tid] = mobs;
       threatStickyById.set(tid, {
         until: now + THREAT_STICKY_MS,
         mobs,
         name: resolveName(tid)
       });
-    }
-    const out = {};
-    const liveKeys = Object.keys(live2);
-    for (let i = 0; i < liveKeys.length; i++) {
-      out[liveKeys[i]] = live2[liveKeys[i]];
     }
     const stickyIds = Array.from(threatStickyById.keys());
     for (let i = 0; i < stickyIds.length; i++) {
@@ -29298,11 +29439,7 @@ ${parts.map(cssSlice).join("\n")}
         if (a === observingId) return -1;
         if (b === observingId) return 1;
       }
-      const na = nameOf(a);
-      const nb = nameOf(b);
-      const cmp = na.localeCompare(nb);
-      if (cmp !== 0) return cmp;
-      return a.localeCompare(b);
+      return nameOf(a).localeCompare(nameOf(b));
     });
     return ids;
   }
@@ -29326,7 +29463,6 @@ ${parts.map(cssSlice).join("\n")}
       () => getSettings().partyBuffMode || "auto"
     );
     const parties = partyGroups(props.entities);
-    const byTarget = aggroByTarget(props.entities);
     const visibleChipCount = playersList(props.entities).length;
     const sharedMode = buffMode === "shared";
     const cycleBuffMode = () => {
@@ -29451,7 +29587,7 @@ ${parts.map(cssSlice).join("\n")}
               const pid = String(player.id);
               const selected = props.selectedEntity != null && String(props.selectedEntity) === pid;
               const observed = props.observingId != null && String(props.observingId) === pid;
-              const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
+              const aggroMobs = aggroOn(props.byTarget, pid);
               const hasAggro = aggroMobs.length > 0;
               const color = classColors[player.ctype || ""] || "#888";
               const dead = isActuallyDead(player);
@@ -29468,11 +29604,12 @@ ${parts.map(cssSlice).join("\n")}
                 controlTitle,
                 aggroTitle
               ].filter(Boolean).join(" \xB7 ");
-              let outline;
-              if (hasAggro) outline = "1px solid #e05555";
-              else if (controlTint) outline = `1px solid ${controlTint}`;
-              else if (observed) outline = "1px solid #e13758";
-              else if (selected) outline = "1px solid #fff";
+              const outline = chipOutline({
+                hasAggro,
+                controlTint,
+                observed,
+                selected
+              });
               const showBuffs = showUnderChipBuffs(
                 buffMode,
                 visibleChipCount,
@@ -29505,18 +29642,14 @@ ${parts.map(cssSlice).join("\n")}
                     props.setSelectedEntity(player.id);
                   }
                 },
-                e(ControlBadge, {
-                  states: controlStates,
-                  compact: true,
-                  iconSize: 16
-                }),
                 e(
                   "div",
                   {
                     style: {
                       position: "relative",
+                      minHeight: "26px",
                       height: "26px",
-                      overflow: "hidden",
+                      overflow: "visible",
                       background: "rgba(0,0,0,0.45)",
                       outline,
                       boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
@@ -29542,9 +29675,8 @@ ${parts.map(cssSlice).join("\n")}
                         display: "flex",
                         alignItems: "center",
                         padding: "0 7px",
-                        whiteSpace: "nowrap",
-                        textOverflow: "ellipsis",
-                        overflow: "hidden",
+                        minWidth: 0,
+                        overflow: "visible",
                         fontSize: TYPE.name,
                         letterSpacing: "0.04em",
                         lineHeight: 1,
@@ -29553,37 +29685,19 @@ ${parts.map(cssSlice).join("\n")}
                         ...PIXEL_TEXT
                       }
                     },
-                    `${(_a = player.level) != null ? _a : ""} ${player.id}`
+                    e(NameWithControl, {
+                      className: "ecu-chip-namecluster",
+                      name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
+                      states: controlStates,
+                      compact: true,
+                      iconSize: 16
+                    })
                   )
                 ),
-                hasAggro ? e(
-                  "div",
-                  {
-                    className: "ecu-chip-aggro",
-                    title: aggroTitle,
-                    style: {
-                      position: "absolute",
-                      top: "-3px",
-                      right: "-3px",
-                      zIndex: 2,
-                      minWidth: AGGRO_BADGE.minWidth,
-                      height: AGGRO_BADGE.height,
-                      padding: `0 ${AGGRO_BADGE.padX}`,
-                      boxSizing: "border-box",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      background: "#8a1e1e",
-                      border: "1px solid #e05555",
-                      color: "#ffd0d0",
-                      fontSize: AGGRO_BADGE.fontSize,
-                      lineHeight: 1,
-                      ...PIXEL_TEXT,
-                      pointerEvents: "none"
-                    }
-                  },
-                  String(aggroMobs.length)
-                ) : null,
+                e(AggroSpark, {
+                  count: aggroMobs.length,
+                  className: "ecu-chip-aggro"
+                }),
                 e(
                   "div",
                   {
@@ -31554,8 +31668,9 @@ ${parts.map(cssSlice).join("\n")}
               {
                 padding: "5px 10px",
                 whiteSpace: "nowrap",
-                textOverflow: "ellipsis",
-                overflow: "hidden",
+                // Ellipsis lives on the name span; visible overflow so fear
+                // border/background is not clipped to an L-shape.
+                overflow: "visible",
                 position: "relative",
                 textShadow: "none",
                 fontWeight: "normal",
@@ -31607,69 +31722,25 @@ ${parts.map(cssSlice).join("\n")}
       effectsIconSize,
       effectsOverlay = false,
       showMp = true,
-      threatCount = 0,
       aggroLabel,
       aggroHot = false,
       aggroMobs = []
     } = props;
     const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
+    const aggroCount = aggroMobs.length;
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
-    const threatSpark = threatCount > 0 ? e(
-      "span",
-      {
-        className: "comm-threat-spark",
-        title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
-        style: {
-          flexShrink: 0,
-          minWidth: AGGRO_BADGE.minWidth,
-          height: AGGRO_BADGE.height,
-          padding: `0 ${AGGRO_BADGE.padX}`,
-          boxSizing: "border-box",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#8a1e1e",
-          border: "1px solid #e05555",
-          color: "#ffd0d0",
-          fontSize: AGGRO_BADGE.fontSize,
-          lineHeight: 1,
-          ...PIXEL_TEXT
-        }
-      },
-      String(threatCount)
-    ) : null;
-    const nameBlock = e(
-      "span",
-      {
-        style: {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          minWidth: 0,
-          overflow: "hidden",
-          flex: "1 1 auto"
-        }
-      },
-      threatSpark,
-      e(
-        "span",
-        {
-          style: {
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            minWidth: 0
-          }
-        },
-        name
-      )
-    );
+    const nameCluster = e(NameWithControl, {
+      name,
+      states: controlStates,
+      compact: false,
+      iconSize: 26
+    });
     const aggroChip = aggroLabel != null && aggroLabel !== "" ? e(
       "span",
       {
         className: "comm-boss-aggro",
-        title: aggroHot ? "Aggro on you" : aggroLabel,
+        title: aggroHot ? "Aggro on player-frame unit" : aggroLabel,
         style: {
           flex: "0 1 auto",
           minWidth: 0,
@@ -31701,22 +31772,22 @@ ${parts.map(cssSlice).join("\n")}
       },
       trailing
     ) : null;
-    const label = trailingEl || aggroChip ? e(
+    const label = e(
       "span",
       {
         style: {
           display: "flex",
-          justifyContent: "space-between",
-          gap: "8px",
           width: "100%",
           alignItems: "center",
+          gap: "8px",
           minWidth: 0
         }
       },
-      nameBlock,
+      nameCluster,
+      trailingEl || aggroChip ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } }) : null,
       aggroChip,
       trailingEl
-    ) : nameBlock;
+    );
     const effectsRow = showEffects ? e(EffectsRow, {
       key: `fx-${String(entity.id)}`,
       entity,
@@ -31741,28 +31812,25 @@ ${parts.map(cssSlice).join("\n")}
       },
       effectsRow
     ) : effectsRow;
-    const controlBadge = e(ControlBadge, {
-      states: controlStates,
-      compact: false,
-      iconSize: 20
-    });
     return e(
       "div",
       {
-        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : "") + (controlStates.length ? " has-control" : ""),
+        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : "") + (controlStates.length ? " has-control" : "") + (aggroCount > 0 ? " has-aggro" : ""),
+        "data-ecu-entity": entity.id != null ? String(entity.id) : "",
+        "data-ecu-aggro": String(aggroCount),
         style: {
           display: "flex",
           width: "100%",
           flexDirection: "column",
           minWidth: 0,
-          // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
           gap: effectsOverlay ? 0 : "6px",
           position: "relative",
-          overflow: effectsOverlay ? "visible" : void 0,
+          overflow: "visible",
           outline: controlTint ? `1px solid ${controlTint}` : void 0,
           outlineOffset: controlTint ? "1px" : void 0
         }
       },
+      e(AggroSpark, { count: aggroCount }),
       e(
         VitalsColumn,
         {
@@ -31780,7 +31848,6 @@ ${parts.map(cssSlice).join("\n")}
         },
         label
       ),
-      controlBadge,
       effectsSlot
     );
   }
@@ -32060,26 +32127,16 @@ ${parts.map(cssSlice).join("\n")}
     if (diff) parts.push(diff.label);
     return parts.join(" \xB7 ");
   }
-  function threatOnTarget(byTarget, target, observingId) {
-    const onYou = aggroOn(byTarget, observingId);
-    const youHaveAggro = !!observingId && target.type === "monster" && target.target != null && String(target.target) === String(observingId);
-    return { count: onYou.length, youHaveAggro };
-  }
   function TargetFrame(props) {
-    const { observing, target, layoutEdit, byTarget = {} } = props;
-    const obsId = observing && observing.id != null ? String(observing.id) : void 0;
+    const { observing, target, layoutEdit, aggroMobs = [] } = props;
     if (target) {
-      const threat = threatOnTarget(byTarget, target, obsId);
-      const spark = threat.youHaveAggro || threat.count > 0 ? threat.count || 1 : 0;
       const tid = String(target.id);
-      const aggroMobs = isFocusablePlayer(target) ? aggroOn(byTarget, tid) : [];
       return e(ObservedUnit, {
         key: `tgt-${tid}`,
         entity: target,
         hpColor: classColors[target.ctype || ""] || "red",
         fontSize: "21px",
         trailing: targetTrailing(observing, target),
-        threatCount: spark,
         effectsOverlay: true,
         aggroMobs,
         onSelect: (id) => {
@@ -32189,7 +32246,6 @@ ${parts.map(cssSlice).join("\n")}
             // 0 = show all (EffectsRow wraps; no +N overflow chip).
             effectsMaxVisible: 0,
             trailing: pct,
-            threatCount: onMe ? 1 : 0,
             aggroLabel,
             aggroHot: onMe,
             onSelect: (id) => {
@@ -32492,8 +32548,7 @@ ${parts.map(cssSlice).join("\n")}
       const ent = findEntity(props.entities, tid);
       return ent && ent.name || tid;
     };
-    const live2 = props.byTarget != null ? props.byTarget : aggroByTarget(props.entities);
-    const byTarget = stickyAggroByTarget(live2, nameOf);
+    const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
     const targetIds = sortThreatTargetIds(
       Object.keys(byTarget),
       props.observingId,
@@ -33948,20 +34003,19 @@ ${parts.map(cssSlice).join("\n")}
     let framePlayer = snap.observing;
     let frameTarget = snap.target;
     if (!isObserving) {
-      const focusEntity = deps.focusUnitId ? findEntity(snap.entities, deps.focusUnitId) : void 0;
-      framePlayer = focusEntity;
-      frameTarget = resolveTarget(focusEntity);
+      framePlayer = (deps.focusUnitId ? findEntity(snap.entities, deps.focusUnitId) : void 0) || findLocalSelf(snap.entities) || void 0;
+      frameTarget = resolveTarget(framePlayer);
     }
-    const byTarget = aggroByTarget(snap.entities);
+    const byTarget = deps.combat.byTarget;
     return [
       panel(
         "players",
         e(Players, {
           entities: snap.entities,
+          byTarget,
           setSelectedEntity: deps.setSelectedEntity,
           selectedEntity: deps.selectedEntity,
           observingId: snap.observingId,
-          observing: snap.observing,
           layoutEdit: deps.layoutEdit
         }),
         { style: { width: "auto", maxWidth: "min(560px, 78vw)" } }
@@ -34098,7 +34152,7 @@ ${parts.map(cssSlice).join("\n")}
         "playerFrame",
         e(PlayerFrame, {
           observing: framePlayer,
-          aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
+          aggroMobs: aggroMobsForFramedEntity(byTarget, framePlayer),
           setSelectedEntity: deps.setSelectedEntity,
           layoutEdit: deps.layoutEdit
         }),
@@ -34109,8 +34163,7 @@ ${parts.map(cssSlice).join("\n")}
         e(TargetFrame, {
           observing: framePlayer,
           target: frameTarget,
-          entities: snap.entities,
-          byTarget,
+          aggroMobs: aggroMobsForFramedEntity(byTarget, frameTarget),
           setSelectedEntity: deps.setSelectedEntity,
           layoutEdit: deps.layoutEdit
         }),
@@ -34608,6 +34661,7 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/main.ts
+  publishEcuBuildInfo();
   var POPUP_CSS = `
 /* Popup container */
 .popup {
