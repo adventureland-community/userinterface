@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement (DEV)
 // @namespace    http://tampermonkey.net/
-// @version      0.7-dev
+// @version      0.8.0-alpha.1-dev
 // @description  Dev loader — fetches local npm run dev build on every page load (cache-busted).
 // @author       kevinsandow
 // @contributors vett0, thmsn
