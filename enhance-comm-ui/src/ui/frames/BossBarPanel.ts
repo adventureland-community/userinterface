@@ -1,10 +1,7 @@
 import { e } from "../../host/react";
 import { setXTarget } from "../../host/icons";
 import { getPercent } from "../../lib/format";
-import {
-  activeBosses,
-  findEntity,
-} from "../../queries/entities";
+import { activeBosses, findEntity } from "../../queries/entities";
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
@@ -29,10 +26,7 @@ function hpRatio(entity: EntityLike): number {
 }
 
 /** Prefer bosses on the observer, then lowest HP%. */
-function sortBosses(
-  bosses: EntityLike[],
-  observingId?: string,
-): EntityLike[] {
+function sortBosses(bosses: EntityLike[], observingId?: string): EntityLike[] {
   const copy = bosses.slice();
   copy.sort((a, b) => {
     const aOnMe = bossThreat(a, observingId);
@@ -45,10 +39,7 @@ function sortBosses(
   return copy;
 }
 
-function aggroName(
-  boss: EntityLike,
-  entities: EntityLike[],
-): string | null {
+function aggroName(boss: EntityLike, entities: EntityLike[]): string | null {
   if (boss.target == null || boss.target === "") return null;
   const target = findEntity(entities, boss.target);
   if (target) return target.name || String(target.id);
@@ -136,7 +127,6 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           // 0 = show all (EffectsRow wraps; no +N overflow chip).
           effectsMaxVisible: 0,
           trailing: pct,
-          threatCount: onMe ? 1 : 0,
           aggroLabel,
           aggroHot: onMe,
           onSelect: (id: string) => {

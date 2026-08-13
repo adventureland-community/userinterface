@@ -5,7 +5,11 @@
 import { e } from "../../../host/react";
 import type { GameSnapshot } from "../../../tick";
 import { resolveTarget } from "../../../tick";
-import { findEntity, aggroByTarget, aggroOn } from "../../../queries/entities";
+import {
+  findEntity,
+  findLocalSelf,
+  aggroMobsForFramedEntity,
+} from "../../../queries/entities";
 import type { CombatSignals } from "../../../queries/combatSignals";
 import { type PanelId, type PanelPos } from "../../../lib/layout";
 import type { PanelGroupDragOpts } from "../../../lib/panelGroupDrag";
@@ -187,23 +191,26 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
   let framePlayer = snap.observing;
   let frameTarget = snap.target;
   if (!isObserving) {
-    const focusEntity = deps.focusUnitId
-      ? findEntity(snap.entities, deps.focusUnitId)
-      : undefined;
-    framePlayer = focusEntity;
-    frameTarget = resolveTarget(focusEntity);
+    // Self is merged into snap.entities; prefer explicit focus, else local me.
+    framePlayer =
+      (deps.focusUnitId
+        ? findEntity(snap.entities, deps.focusUnitId)
+        : undefined) ||
+      findLocalSelf(snap.entities) ||
+      undefined;
+    frameTarget = resolveTarget(framePlayer);
   }
-  const byTarget = aggroByTarget(snap.entities);
+  const byTarget = deps.combat.byTarget;
 
   return [
     panel(
       "players",
       e(Players, {
         entities: snap.entities,
+        byTarget,
         setSelectedEntity: deps.setSelectedEntity,
         selectedEntity: deps.selectedEntity,
         observingId: snap.observingId,
-        observing: snap.observing,
         layoutEdit: deps.layoutEdit,
       }),
       { style: { width: "auto", maxWidth: "min(560px, 78vw)" } },
@@ -356,7 +363,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           "playerFrame",
           e(PlayerFrame, {
             observing: framePlayer,
-            aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
+            aggroMobs: aggroMobsForFramedEntity(byTarget, framePlayer),
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
           }),
@@ -370,8 +377,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           e(TargetFrame, {
             observing: framePlayer,
             target: frameTarget,
-            entities: snap.entities,
-            byTarget,
+            aggroMobs: aggroMobsForFramedEntity(byTarget, frameTarget),
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
           }),

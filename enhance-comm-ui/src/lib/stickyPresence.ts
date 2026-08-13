@@ -30,37 +30,29 @@ function isLiveAggroMob(ent: EntityLike): boolean {
 /**
  * Live aggro map plus short sticky retention so Franky vision flaps
  * do not add/remove Threat rows every frame.
+ * Does not mutate `liveByTarget`.
  */
 export function stickyAggroByTarget(
-  liveByTarget: Record<string, EntityLike[]> | null | undefined,
+  liveByTarget: Record<string, EntityLike[]>,
   resolveName: (tid: string) => string,
   now: number = Date.now(),
 ): Record<string, EntityLike[]> {
-  const live = liveByTarget || {};
-  const liveIds = Object.keys(live);
+  const out: Record<string, EntityLike[]> = {};
+  const liveIds = Object.keys(liveByTarget);
   for (let i = 0; i < liveIds.length; i++) {
     const tid = liveIds[i];
-    const raw = live[tid] || [];
+    const raw = liveByTarget[tid] || [];
     const mobs: EntityLike[] = [];
     for (let j = 0; j < raw.length; j++) {
       if (isLiveAggroMob(raw[j])) mobs.push(raw[j]);
     }
-    if (mobs.length === 0) {
-      delete live[tid];
-      continue;
-    }
-    live[tid] = mobs;
+    if (mobs.length === 0) continue;
+    out[tid] = mobs;
     threatStickyById.set(tid, {
       until: now + THREAT_STICKY_MS,
       mobs,
       name: resolveName(tid),
     });
-  }
-
-  const out: Record<string, EntityLike[]> = {};
-  const liveKeys = Object.keys(live);
-  for (let i = 0; i < liveKeys.length; i++) {
-    out[liveKeys[i]] = live[liveKeys[i]];
   }
 
   const stickyIds = Array.from(threatStickyById.keys());
@@ -93,11 +85,7 @@ export function sortThreatTargetIds(
       if (a === observingId) return -1;
       if (b === observingId) return 1;
     }
-    const na = nameOf(a);
-    const nb = nameOf(b);
-    const cmp = na.localeCompare(nb);
-    if (cmp !== 0) return cmp;
-    return a.localeCompare(b);
+    return nameOf(a).localeCompare(nameOf(b));
   });
   return ids;
 }

@@ -18,7 +18,7 @@ export const UNIT_FRAME_STYLE: Record<string, any> = {
 export type PlayerFrameProps = {
   /** Observed character, or spectator focus unit when not observing. */
   observing?: EntityLike | null;
-  /** Monsters targeting the observed player (from shared byTarget). */
+  /** Monsters targeting the framed player (`observing.id`). */
   aggroMobs?: EntityLike[];
   setSelectedEntity: (id: string) => void;
   /** When true and nothing to show, render a layout placeholder. */
@@ -50,6 +50,5 @@ export function PlayerFrame(props: PlayerFrameProps): any {
     });
   }
 
-  // No observe / no spectator focus — party chips or world click set focus.
   return null;
 }

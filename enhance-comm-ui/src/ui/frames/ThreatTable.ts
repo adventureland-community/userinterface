@@ -1,6 +1,6 @@
 import { getReact, e } from "../../host/react";
 import { monsterSprite, setXTarget } from "../../host/icons";
-import { aggroByTarget, findEntity } from "../../queries/entities";
+import { findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { VitalsColumn } from "../chrome/VitalsColumn";
@@ -19,8 +19,8 @@ const MAX_MOB_CHIPS = 6;
 
 export type ThreatTableProps = {
   entities: EntityLike[];
-  /** Optional shared aggro index; when omitted, built from `entities`. */
-  byTarget?: Record<string, EntityLike[]>;
+  /** Shared aggro index for this tick (from combatSignals). */
+  byTarget: Record<string, EntityLike[]>;
   observingId?: string;
   layoutEdit?: boolean;
   setSelectedEntity?: (id: string) => void;
@@ -351,9 +351,7 @@ export function ThreatTable(props: ThreatTableProps): any {
     const ent = findEntity(props.entities, tid);
     return (ent && ent.name) || tid;
   };
-  const live =
-    props.byTarget != null ? props.byTarget : aggroByTarget(props.entities);
-  const byTarget = stickyAggroByTarget(live, nameOf);
+  const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
   const targetIds = sortThreatTargetIds(
     Object.keys(byTarget),
     props.observingId,
