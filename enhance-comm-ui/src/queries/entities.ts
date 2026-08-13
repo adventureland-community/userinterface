@@ -16,16 +16,21 @@ export function playersList(entities: EntityLike[]): EntityLike[] {
   const out: EntityLike[] = [];
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
-    if (ent.player && ent.type === "character") out.push(ent);
+    if (isFocusablePlayer(ent)) out.push(ent);
   }
   return out;
 }
 
-/** Party / world player clicks that drive spectator player+target frames. */
+/**
+ * Party / world players + local self.
+ * Soft-synced others get `player:true`; local `character` gets `me` and
+ * `type:"character"` but usually not `player` (game.js skips self in entities).
+ */
 export function isFocusablePlayer(
   entity: EntityLike | null | undefined,
 ): boolean {
-  return !!(entity && entity.player && entity.type === "character");
+  if (!entity || entity.type !== "character") return false;
+  return !!(entity.player || entity.me);
 }
 
 export function partyGroups(
@@ -71,6 +76,29 @@ export function aggroOn(
 ): EntityLike[] {
   if (id == null || id === "") return [];
   return byTarget[String(id)] || [];
+}
+
+/**
+ * Aggro list for a framed unit. Players/characters get mobs targeting them;
+ * monsters (and anything else) get [] — never paint observer aggro on a goo.
+ */
+export function aggroMobsForFramedEntity(
+  byTarget: Record<string, EntityLike[]>,
+  entity: EntityLike | null | undefined,
+): EntityLike[] {
+  if (!isFocusablePlayer(entity)) return [];
+  return aggroOn(byTarget, entity!.id);
+}
+
+/** Local self (`me`) when present in the entity snapshot. */
+export function findLocalSelf(
+  entities: EntityLike[],
+): EntityLike | undefined {
+  for (let i = 0; i < entities.length; i++) {
+    const ent = entities[i];
+    if (ent && ent.me) return ent;
+  }
+  return undefined;
 }
 
 export function aggroedMonsters(entities: EntityLike[]): EntityLike[] {

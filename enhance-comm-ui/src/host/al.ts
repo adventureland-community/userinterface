@@ -14,16 +14,40 @@ export function getEntitiesRecord(): Record<string, EntityLike> {
       const ent = raw[i];
       if (ent && ent.id != null) out[String(ent.id)] = ent;
     }
+    mergeLocalCharacter(out);
     return out;
   }
-  return raw as Record<string, EntityLike>;
+  const out = { ...(raw as Record<string, EntityLike>) };
+  mergeLocalCharacter(out);
+  return out;
 }
 
 export function getEntitiesList(): EntityLike[] {
   const raw = window.entities;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.filter(Boolean) as EntityLike[];
-  return Object.values(raw);
+  const list: EntityLike[] = !raw
+    ? []
+    : Array.isArray(raw)
+      ? (raw.filter(Boolean) as EntityLike[])
+      : Object.values(raw as Record<string, EntityLike>);
+  return withLocalCharacter(list);
+}
+
+/** Self is drawn outside `entities` (game.js skips character.id). */
+function mergeLocalCharacter(out: Record<string, EntityLike>): void {
+  const self = getCharacter();
+  if (!self || self.id == null) return;
+  const id = String(self.id);
+  if (!out[id]) out[id] = self;
+}
+
+function withLocalCharacter(list: EntityLike[]): EntityLike[] {
+  const self = getCharacter();
+  if (!self || self.id == null) return list;
+  const id = String(self.id);
+  for (let i = 0; i < list.length; i++) {
+    if (String(list[i].id) === id) return list;
+  }
+  return [self, ...list];
 }
 
 /**
@@ -37,7 +61,11 @@ export function findEntityById(
   if (id == null || id === "") return undefined;
   const tid = String(id);
   const raw = window.entities;
-  if (!raw) return undefined;
+  if (!raw) {
+    const self = getCharacter();
+    if (self && String(self.id) === tid) return self;
+    return undefined;
+  }
 
   const list: EntityLike[] = Array.isArray(raw)
     ? (raw.filter(Boolean) as EntityLike[])
@@ -59,7 +87,11 @@ export function findEntityById(
     }
   }
 
-  return deadMatch;
+  if (deadMatch) return deadMatch;
+
+  const self = getCharacter();
+  if (self && String(self.id) === tid) return self;
+  return undefined;
 }
 
 /**
