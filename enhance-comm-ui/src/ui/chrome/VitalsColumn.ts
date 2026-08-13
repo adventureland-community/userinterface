@@ -67,8 +67,9 @@ export function VitalsColumn(props: VitalsColumnProps): any {
             {
               padding: "5px 10px",
               whiteSpace: "nowrap",
-              textOverflow: "ellipsis",
-              overflow: "hidden",
+              // Ellipsis lives on the name span; visible overflow so fear
+              // border/background is not clipped to an L-shape.
+              overflow: "visible",
               position: "relative",
               textShadow: "none",
               fontWeight: "normal",

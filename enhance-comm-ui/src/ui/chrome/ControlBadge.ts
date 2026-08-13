@@ -5,16 +5,16 @@ import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type ControlBadgeProps = {
   states: ControlState[];
-  /**
-   * compact: icon-only corner (party chips).
-   * full: icon + label pill (ObservedUnit / boss).
-   */
-  compact?: boolean;
-  /** Absolute icon size for item_container. */
+  /** item_container size (px) — same path as EffectsRow. */
   iconSize?: number;
+  /** Tighter padding + smaller label (party chips). */
+  compact?: boolean;
 };
 
-function ControlIcon(props: { state: ControlState; iconSize: number }): any {
+function ControlIcon(props: {
+  state: ControlState;
+  iconSize: number;
+}): any {
   const React = getReact();
   const ref = React.useRef(null);
   const { state, iconSize } = props;
@@ -35,7 +35,8 @@ function ControlIcon(props: { state: ControlState; iconSize: number }): any {
       position: "relative",
       display: "inline-block",
       flex: "0 0 auto",
-      overflow: "visible",
+      verticalAlign: "top",
+      lineHeight: 0,
       pointerEvents: "none",
     },
   });
@@ -49,9 +50,8 @@ function badgeTitle(state: ControlState): string {
 }
 
 /**
- * Corner badge for fear tiers / hard-CC.
- * Fear is not in EffectsRow — this is the primary cue.
- * Hard-CC stays in EffectsRow; badge amplifies at frame level.
+ * Fear / hard-CC pill immediately after the name.
+ * Icon + state label; background/border encode severity.
  */
 export function ControlBadge(props: ControlBadgeProps): any {
   const { states, compact = false } = props;
@@ -60,23 +60,21 @@ export function ControlBadge(props: ControlBadgeProps): any {
     typeof props.iconSize === "number" && props.iconSize > 0
       ? props.iconSize
       : compact
-        ? 18
-        : 22;
+        ? 16
+        : 26;
 
   return e(
     "div",
     {
-      className: "comm-ctrl-badges" + (compact ? " is-compact" : ""),
+      className: "comm-ctrl-badges is-inline" + (compact ? " is-compact" : ""),
       style: {
-        position: "absolute",
-        top: compact ? "-3px" : "2px",
-        left: compact ? "-3px" : "2px",
-        zIndex: 3,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        gap: compact ? "2px" : "3px",
-        pointerEvents: "none",
+        position: "relative",
+        display: "inline-flex",
+        flexDirection: "row",
+        flexWrap: "nowrap",
+        alignItems: "center",
+        gap: compact ? "3px" : "4px",
+        flex: "0 0 auto",
       },
     },
     ...states.map((state) => {
@@ -95,33 +93,33 @@ export function ControlBadge(props: ControlBadgeProps): any {
           style: {
             display: "inline-flex",
             alignItems: "center",
-            gap: compact ? "0" : "4px",
-            maxWidth: compact ? undefined : "100%",
-            padding: compact ? "1px" : "1px 5px 1px 1px",
+            gap: compact ? "3px" : "5px",
+            flex: "0 0 auto",
+            padding: compact ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
             boxSizing: "border-box",
             background: state.background,
-            border: `1px solid ${state.border}`,
+            border: `${compact ? 1 : 2}px solid ${state.border}`,
             color: state.color,
-            fontSize: TYPE.badge,
+            fontSize: compact ? TYPE.micro : TYPE.badge,
             lineHeight: 1,
             ...PIXEL_TEXT,
+            cursor: "help",
+            pointerEvents: "auto",
           },
         },
         e(ControlIcon, { state, iconSize }),
-        compact
-          ? null
-          : e(
-              "span",
-              {
-                style: {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: "7.5em",
-                },
-              },
-              state.label,
-            ),
+        e(
+          "span",
+          {
+            style: {
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              maxWidth: compact ? "5.5em" : "8em",
+            },
+          },
+          state.label,
+        ),
       );
     }),
   );

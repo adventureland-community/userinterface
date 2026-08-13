@@ -1,16 +1,14 @@
 import { getReact, e } from "../../host/react";
 import { classColors } from "../../lib/colors";
-import {
-  aggroByTarget,
-  partyGroups,
-  playersList,
-} from "../../queries/entities";
+import { aggroOn, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
-import { ControlBadge } from "../chrome/ControlBadge";
+import { NameWithControl } from "../chrome/NameWithControl";
+import { AggroSpark } from "../chrome/AggroSpark";
 import { EffectsRow } from "../chrome/EffectsRow";
 import { SharedPartyEffects } from "../chrome/SharedPartyEffects";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
+import { chipOutline } from "../../lib/chipOutline";
 import {
   getSettings,
   patchSettings,
@@ -24,16 +22,16 @@ import {
   underChipBuffMaxVisible,
 } from "../../lib/partyBuffMode";
 import { isActuallyDead } from "../../lib/stickyPresence";
-import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type PlayersProps = {
   entities: EntityLike[];
+  /** Shared aggro index for this tick (from combatSignals). */
+  byTarget: Record<string, EntityLike[]>;
   setSelectedEntity: (id: string | undefined) => void;
   selectedEntity?: string;
   /** Watched /comm character id — pink observe chrome, not paperdoll select. */
   observingId?: string;
-  /** Watched entity (fear overlay on observed chip, etc.). */
-  observing?: EntityLike | null;
   /**
    * Layout-edit marker on the roster root (panel chrome owns lock/WC above).
    */
@@ -64,7 +62,6 @@ export function Players(props: PlayersProps): any {
   );
 
   const parties = partyGroups(props.entities);
-  const byTarget = aggroByTarget(props.entities);
   const visibleChipCount = playersList(props.entities).length;
   const sharedMode = buffMode === "shared";
 
@@ -199,7 +196,7 @@ export function Players(props: PlayersProps): any {
               String(props.selectedEntity) === pid;
             const observed =
               props.observingId != null && String(props.observingId) === pid;
-            const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
+            const aggroMobs = aggroOn(props.byTarget, pid);
             const hasAggro = aggroMobs.length > 0;
             const color = classColors[player.ctype || ""] || "#888";
             const dead = isActuallyDead(player);
@@ -223,11 +220,12 @@ export function Players(props: PlayersProps): any {
               .filter(Boolean)
               .join(" · ");
 
-            let outline: string | undefined;
-            if (hasAggro) outline = "1px solid #e05555";
-            else if (controlTint) outline = `1px solid ${controlTint}`;
-            else if (observed) outline = "1px solid #e13758";
-            else if (selected) outline = "1px solid #fff";
+            const outline = chipOutline({
+              hasAggro,
+              controlTint,
+              observed,
+              selected,
+            });
 
             const showBuffs = showUnderChipBuffs(
               buffMode,
@@ -268,18 +266,14 @@ export function Players(props: PlayersProps): any {
                   props.setSelectedEntity(player.id);
                 },
               },
-              e(ControlBadge, {
-                states: controlStates,
-                compact: true,
-                iconSize: 16,
-              }),
               e(
                 "div",
                 {
                   style: {
                     position: "relative",
+                    minHeight: "26px",
                     height: "26px",
-                    overflow: "hidden",
+                    overflow: "visible",
                     background: "rgba(0,0,0,0.45)",
                     outline,
                     boxShadow: hasAggro
@@ -309,9 +303,8 @@ export function Players(props: PlayersProps): any {
                       display: "flex",
                       alignItems: "center",
                       padding: "0 7px",
-                      whiteSpace: "nowrap",
-                      textOverflow: "ellipsis",
-                      overflow: "hidden",
+                      minWidth: 0,
+                      overflow: "visible",
                       fontSize: TYPE.name,
                       letterSpacing: "0.04em",
                       lineHeight: 1,
@@ -320,39 +313,19 @@ export function Players(props: PlayersProps): any {
                       ...PIXEL_TEXT,
                     },
                   },
-                  `${player.level ?? ""} ${player.id}`,
+                  e(NameWithControl, {
+                    className: "ecu-chip-namecluster",
+                    name: `${player.level ?? ""} ${player.id}`,
+                    states: controlStates,
+                    compact: true,
+                    iconSize: 16,
+                  }),
                 ),
               ),
-              hasAggro
-                ? e(
-                    "div",
-                    {
-                      className: "ecu-chip-aggro",
-                      title: aggroTitle,
-                      style: {
-                        position: "absolute",
-                        top: "-3px",
-                        right: "-3px",
-                        zIndex: 2,
-                        minWidth: AGGRO_BADGE.minWidth,
-                        height: AGGRO_BADGE.height,
-                        padding: `0 ${AGGRO_BADGE.padX}`,
-                        boxSizing: "border-box",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        background: "#8a1e1e",
-                        border: "1px solid #e05555",
-                        color: "#ffd0d0",
-                        fontSize: AGGRO_BADGE.fontSize,
-                        lineHeight: 1,
-                        ...PIXEL_TEXT,
-                        pointerEvents: "none",
-                      },
-                    },
-                    String(aggroMobs.length),
-                  )
-                : null,
+              e(AggroSpark, {
+                count: aggroMobs.length,
+                className: "ecu-chip-aggro",
+              }),
               e(
                 "div",
                 {

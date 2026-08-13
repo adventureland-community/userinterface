@@ -1,10 +1,11 @@
 import { e } from "../../host/react";
 import { EffectsRow } from "./EffectsRow";
-import { ControlBadge } from "./ControlBadge";
+import { NameWithControl } from "./NameWithControl";
+import { AggroSpark } from "./AggroSpark";
 import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
-import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type ObservedUnitProps = {
   entity: EntityLike;
@@ -25,16 +26,18 @@ export type ObservedUnitProps = {
    */
   effectsOverlay?: boolean;
   showMp?: boolean;
-  /** Mobs currently aggroed on the watched character (target-frame threat spark). */
-  threatCount?: number;
   /**
    * Compact aggro text inside the HP bar (boss bars), between name and HP%.
    * Pass a full label like `Aggro · Tank`; omit to hide.
    */
   aggroLabel?: string;
-  /** Highlight in-bar aggro when this unit is on the observer. */
+  /** Highlight in-bar aggro when this boss is on the player-frame entity. */
   aggroHot?: boolean;
-  /** Monsters targeting this unit (for simulated fear on players). */
+  /**
+   * Monsters targeting **this** entity (the one in `entity`).
+   * Caller must pass aggro for `entity.id` only — never another unit's list.
+   * Drives fear simulation and the numeric aggro spark.
+   */
   aggroMobs?: EntityLike[];
 };
 
@@ -51,7 +54,6 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     effectsIconSize,
     effectsOverlay = false,
     showMp = true,
-    threatCount = 0,
     aggroLabel,
     aggroHot = false,
     aggroMobs = [],
@@ -59,65 +61,18 @@ export function ObservedUnit(props: ObservedUnitProps): any {
 
   const controlStates = getControlStates(entity, aggroMobs);
   const controlTint = controlBorderTint(controlStates);
+  const aggroCount = aggroMobs.length;
 
   const name =
     `${entity.level ?? 1} ${entity.name || entity.id}` +
     (entity.type === "monster" ? ` #${entity.id}` : "");
 
-  const threatSpark =
-    threatCount > 0
-      ? e(
-          "span",
-          {
-            className: "comm-threat-spark",
-            title: `Threat: ${threatCount} mob${threatCount === 1 ? "" : "s"} on you`,
-            style: {
-              flexShrink: 0,
-              minWidth: AGGRO_BADGE.minWidth,
-              height: AGGRO_BADGE.height,
-              padding: `0 ${AGGRO_BADGE.padX}`,
-              boxSizing: "border-box",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "#8a1e1e",
-              border: "1px solid #e05555",
-              color: "#ffd0d0",
-              fontSize: AGGRO_BADGE.fontSize,
-              lineHeight: 1,
-              ...PIXEL_TEXT,
-            },
-          },
-          String(threatCount),
-        )
-      : null;
-
-  const nameBlock = e(
-    "span",
-    {
-      style: {
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
-        minWidth: 0,
-        overflow: "hidden",
-        flex: "1 1 auto",
-      },
-    },
-    threatSpark,
-    e(
-      "span",
-      {
-        style: {
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          minWidth: 0,
-        },
-      },
-      name,
-    ),
-  );
+  const nameCluster = e(NameWithControl, {
+    name,
+    states: controlStates,
+    compact: false,
+    iconSize: 26,
+  });
 
   const aggroChip =
     aggroLabel != null && aggroLabel !== ""
@@ -125,7 +80,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           "span",
           {
             className: "comm-boss-aggro",
-            title: aggroHot ? "Aggro on you" : aggroLabel,
+            title: aggroHot ? "Aggro on player-frame unit" : aggroLabel,
             style: {
               flex: "0 1 auto",
               minWidth: 0,
@@ -165,25 +120,24 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         )
       : null;
 
-  const label =
+  const label = e(
+    "span",
+    {
+      style: {
+        display: "flex",
+        width: "100%",
+        alignItems: "center",
+        gap: "8px",
+        minWidth: 0,
+      },
+    },
+    nameCluster,
     trailingEl || aggroChip
-      ? e(
-          "span",
-          {
-            style: {
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "8px",
-              width: "100%",
-              alignItems: "center",
-              minWidth: 0,
-            },
-          },
-          nameBlock,
-          aggroChip,
-          trailingEl,
-        )
-      : nameBlock;
+      ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } })
+      : null,
+    aggroChip,
+    trailingEl,
+  );
 
   const effectsRow = showEffects
     ? e(EffectsRow, {
@@ -195,8 +149,6 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       })
     : null;
 
-  // Overlay keeps PositionedPanel height = vitals only (bc anchors stay put).
-  // EffectsRow still collapses to null when empty — no reserved empty strip.
   const effectsSlot =
     effectsRow == null
       ? null
@@ -220,32 +172,29 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           )
         : effectsRow;
 
-  const controlBadge = e(ControlBadge, {
-    states: controlStates,
-    compact: false,
-    iconSize: 20,
-  });
-
   return e(
     "div",
     {
       className:
         "comm-unit" +
         (effectsOverlay ? " has-fx-overlay" : "") +
-        (controlStates.length ? " has-control" : ""),
+        (controlStates.length ? " has-control" : "") +
+        (aggroCount > 0 ? " has-aggro" : ""),
+      "data-ecu-entity": entity.id != null ? String(entity.id) : "",
+      "data-ecu-aggro": String(aggroCount),
       style: {
         display: "flex",
         width: "100%",
         flexDirection: "column",
         minWidth: 0,
-        // Overlay row is out of flow; skip flex gap so vitals hug the panel edge.
         gap: effectsOverlay ? 0 : "6px",
         position: "relative",
-        overflow: effectsOverlay ? "visible" : undefined,
+        overflow: "visible",
         outline: controlTint ? `1px solid ${controlTint}` : undefined,
         outlineOffset: controlTint ? "1px" : undefined,
       },
     },
+    e(AggroSpark, { count: aggroCount }),
     e(
       VitalsColumn,
       {
@@ -263,7 +212,6 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       },
       label,
     ),
-    controlBadge,
     effectsSlot,
   );
 }
