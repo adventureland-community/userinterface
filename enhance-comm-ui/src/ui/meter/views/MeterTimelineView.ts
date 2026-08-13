@@ -7,9 +7,12 @@
  * - While following, “now” stays pinned to the right of the visible track;
  *   new time extends the content and the past recedes left (rAF, no snap).
  * - Scroll left unlocks follow; scroll back to the live head re-locks.
+ * - “Now” on the Fight axis strip jumps to the live edge (or stored-fight
+ *   end). Hidden while following or Shift-frozen.
  * - New Current fight (new segment id / startedAt, observer swap onto
  *   another combat) re-locks follow and jumps to now — do not keep the
- *   old scrollLeft on a track that no longer has those events.
+ *   old scrollLeft on a track that no longer has those events. Past fights
+ *   ignore camera hops; follow-relock is Current-only.
  * - Shift held over the track freezes follow (same as scrolling back) so
  *   a hover does not slide out; release resumes if the camera was not
  *   moved. A new fight snaps to now, then freeze again if Shift is still
@@ -46,7 +49,10 @@
 import { getReact, e } from "../../../host/react";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
 import type { PartyFocus } from "../../../lib/settingsFocus";
-import { resolveSegment } from "../../../meters/meterEngine";
+import {
+  isLiveCombatSegment,
+  resolveSegment,
+} from "../../../meters/meterSession";
 import type {
   DeathSnapshot,
   MeterResult,
@@ -69,7 +75,11 @@ import {
   TL_ZOOM_STEP,
 } from "./timeline/timelineModel";
 import { fmtClock, fmtWall } from "./timeline/timelineFormat";
-import { hideBlockTip } from "./timeline/timelineTips";
+import {
+  TimelineEventInner,
+  timelineEventEqual,
+  hideTimelineBlockTip,
+} from "./timeline/TimelineEvent";
 import {
   buildActorMaps,
   buildLanes,
@@ -89,12 +99,9 @@ import {
   type TlTick,
 } from "./timeline/timelineVirtualize";
 import {
-  TimelineEventInner,
-  timelineEventEqual,
-} from "./timeline/TimelineEvent";
-import {
   TL_FILTER_TABS,
   timelineEmptyMsg,
+  timelineGoToNowBtn,
   timelineGutterLane,
   timelineLegend,
   timelineLegendItems,
@@ -169,6 +176,8 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   const [rulerTicks, setRulerTicks] = React.useState([] as TlTick[]);
   const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
   const [trackFrozen, setTrackFrozen] = React.useState(false);
+  /** Hidden while following / Shift-frozen at now — no useless control. */
+  const [showGoToNow, setShowGoToNow] = React.useState(false);
   const viewSnapRef = React.useRef("");
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const scrollRef = React.useRef(null as HTMLDivElement | null);
@@ -372,6 +381,23 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   const applyLayoutRef = React.useRef(applyLayout);
   applyLayoutRef.current = applyLayout;
 
+  const publishShowGoToNow = React.useCallback(() => {
+    const show = !followRef.current && freezePadRef.current == null;
+    setShowGoToNow((prev: boolean) => (prev === show ? prev : show));
+  }, []);
+
+  const goToNow = React.useCallback(() => {
+    if (followRef.current && freezePadRef.current == null) return;
+    freezePadRef.current = null;
+    freezeResumeRef.current = false;
+    followRef.current = true;
+    setTrackFrozen(false);
+    setShowGoToNow(false);
+    applyingScrollRef.current = true;
+    applyLayoutRef.current();
+    applyingScrollRef.current = false;
+  }, []);
+
   const beginModFreeze = React.useCallback(() => {
     if (!isLiveRef.current) return;
     if (!shiftFreezeOkRef.current) return;
@@ -384,7 +410,8 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       layoutCacheRef.current.pad >= 0 ? layoutCacheRef.current.pad : 0;
     followRef.current = false;
     setTrackFrozen(true);
-  }, []);
+    publishShowGoToNow();
+  }, [publishShowGoToNow]);
 
   const endModFreeze = React.useCallback(() => {
     const scroll = scrollRef.current;
@@ -401,12 +428,13 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     if (wantResume && !scrolled) {
       followRef.current = true;
     }
+    publishShowGoToNow();
     applyLayoutRef.current();
-  }, []);
+  }, [publishShowGoToNow]);
 
   React.useEffect(() => {
     injectMeterChromeCss();
-    return () => hideBlockTip();
+    return () => hideTimelineBlockTip();
   }, []);
 
   React.useLayoutEffect(() => {
@@ -415,6 +443,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     freezePadRef.current = null;
     freezeResumeRef.current = false;
     setTrackFrozen(false);
+    setShowGoToNow(false);
     layoutCacheRef.current = {
       contentW: -1,
       pad: -1,
@@ -464,13 +493,15 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
       if (max <= TL_FOLLOW_SLACK) {
         followRef.current = true;
+        publishShowGoToNow();
         return;
       }
       followRef.current = el.scrollLeft >= max - TL_FOLLOW_SLACK;
+      publishShowGoToNow();
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, [isTimeline, publishViewRange, syncGutterY]);
+  }, [isTimeline, publishShowGoToNow, publishViewRange, syncGutterY]);
 
   React.useEffect(() => {
     const gutter = gutterRef.current;
@@ -726,15 +757,19 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
         { className: "ecu-meter-tl-gutter", ref: gutterRef },
         e(
           "div",
-          { className: "ecu-meter-tl-gutter-ruler", "aria-hidden": true },
+          { className: "ecu-meter-tl-gutter-ruler" },
           e(
             "span",
             { className: "ecu-meter-tl-gutter-axis-lab is-fight" },
-            "Fight",
+            e("span", { "aria-hidden": true }, "Fight"),
+            showGoToNow ? timelineGoToNowBtn(goToNow) : null,
           ),
           e(
             "span",
-            { className: "ecu-meter-tl-gutter-axis-lab is-clock" },
+            {
+              className: "ecu-meter-tl-gutter-axis-lab is-clock",
+              "aria-hidden": true,
+            },
             "Clock",
           ),
         ),
@@ -811,13 +846,14 @@ export function MeterTimelineView(props: {
     MeterTimelineMemo = React.memo(MeterTimelineViewInner, timelineInnerEqual);
   }
   const seg = resolveSegment(props.segmentRef);
+  const liveRoster = !!(seg && isLiveCombatSegment(seg));
   return e(MeterTimelineMemo, {
     result: props.result,
     segmentRef: props.segmentRef,
     partyFocus: props.partyFocus,
-    rosterSig: rosterSigNow(),
+    rosterSig: liveRoster ? rosterSigNow() : seg ? `fight:${seg.id}` : "empty",
     deathCount: seg ? seg.deaths.length : 0,
-    combatLive: !!(seg && seg.endedAt == null),
+    combatLive: liveRoster,
     fightKey: timelineFightKey(props.segmentRef, seg),
   });
 }

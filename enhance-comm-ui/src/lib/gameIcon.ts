@@ -3,6 +3,8 @@
  * monsters via G.monsters + stock `sprite()` (not G.positions);
  * characters via entity/roster skin+cx (else class looks[0]).
  * Prefer G.positions + G.imagesets (same crop math as stock item_container).
+ * Items follow market-tracker / data-explorer ItemImage: G.items[name].skin ?? name,
+ * then G.positions[skin] ?? G.positions[name] ?? G.positions.placeholder.
  */
 
 import { classColors } from "./colors";
@@ -77,6 +79,44 @@ type Imageset = {
   rows: number;
 };
 
+/** Additive crop options — skills omit placeholder; items use the tracker chain. */
+export type SkinSheetOpts = {
+  /** Extra G.positions keys after `skin` (typically the item name). */
+  fallbackSkins?: string[];
+  /**
+   * Use G.positions.placeholder when no key hits.
+   * Items: MUST be true (market tracker / data explorer / AL missing-skin tile).
+   * Skills/conditions: leave false — placeholder is a dark empty square that
+   * looks like a broken “burn” icon in ability rows; those fall back to a letter.
+   */
+  placeholder?: boolean;
+  /**
+   * When false, omit the native browser `title` attribute (timeline / cooltip
+   * hosts use a custom flyout — native title double-fires and steals hover).
+   * Default true for paperdoll / standalone chrome.
+   */
+  nativeTitle?: boolean;
+};
+
+function imagesetFileSrc(file: string): string {
+  if (!file) return "";
+  if (/^https?:\/\//i.test(file)) return file;
+  if (file.charAt(0) === "/") return `https://adventure.land${file}`;
+  return file;
+}
+
+function positionsForSkin(
+  G: any,
+  skin: string,
+): { pos: any; pack: Imageset } | null {
+  const pos = G.positions[skin];
+  if (!pos) return null;
+  const setName = pos[0] || "pack_20";
+  const pack = G.imagesets[setName] as Imageset | undefined;
+  if (!pack || !pack.file) return null;
+  return { pos, pack };
+}
+
 function escapeAttr(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -90,6 +130,7 @@ function letterFallbackHtml(
   size: number,
   title: string,
   bg?: string,
+  nativeTitle = true,
 ): string {
   const style = [
     `width:${size}px`,
@@ -99,7 +140,10 @@ function letterFallbackHtml(
   ]
     .filter(Boolean)
     .join(";");
-  return `<span class="ecu-meter-icon ecu-meter-icon-ab" title="${escapeAttr(title)}" style="${style}">${escapeAttr(letter)}</span>`;
+  const tipAttr = nativeTitle
+    ? ` title="${escapeAttr(title)}"`
+    : "";
+  return `<span class="ecu-meter-icon ecu-meter-icon-ab"${tipAttr} style="${style}">${escapeAttr(letter)}</span>`;
 }
 
 /** Crop a skin via G.positions / G.imagesets (item_container core). */
@@ -107,25 +151,44 @@ export function skinSheetHtml(
   skin: string,
   displaySize = 18,
   title?: string,
+  opts?: SkinSheetOpts,
 ): string | null {
   try {
-    const G = (window as any).G;
+    const G = getG() as any;
     if (!G || !G.positions || !G.imagesets) return null;
-    // Missing skins must not crop G.positions.placeholder — that paints a
-    // dark empty square (Inspector "burn" with no icon). Letter fallback
-    // in gameIconHtml is the honest unknown-id path.
-    const pos = G.positions[skin];
-    if (!pos) return null;
-    const setName = pos[0] || "pack_20";
-    const pack = G.imagesets[setName] as Imageset | undefined;
-    if (!pack || !pack.file) return null;
+    const keys: string[] = [];
+    if (skin) keys.push(skin);
+    const extras = opts && opts.fallbackSkins;
+    if (extras) {
+      for (let i = 0; i < extras.length; i++) {
+        const k = extras[i];
+        if (k && keys.indexOf(k) === -1) keys.push(k);
+      }
+    }
+    let found: { pos: any; pack: Imageset } | null = null;
+    for (let i = 0; i < keys.length; i++) {
+      found = positionsForSkin(G, keys[i]);
+      if (found) break;
+    }
+    // Skills/conditions must not crop placeholder (dark empty "burn" square).
+    // Items opt in via opts.placeholder — same as market tracker / explorer.
+    if (!found && opts && opts.placeholder) {
+      found = positionsForSkin(G, "placeholder");
+    }
+    if (!found) return null;
+    const { pos, pack } = found;
     const x = pos[1] as number;
     const y = pos[2] as number;
     const scale = displaySize / pack.size;
     const sheetW = pack.columns * pack.size * scale;
     const sheetH = pack.rows * pack.size * scale;
     const tip = title || skin;
-    return `<span class="ecu-meter-icon ecu-meter-icon-skin" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${pack.file}"/></span></span>`;
+    const src = imagesetFileSrc(pack.file);
+    const nativeTitle = !(opts && opts.nativeTitle === false);
+    const tipAttr = nativeTitle
+      ? ` title="${escapeAttr(tip)}"`
+      : "";
+    return `<span class="ecu-meter-icon ecu-meter-icon-skin"${tipAttr} style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${escapeAttr(src)}"/></span></span>`;
   } catch {
     return null;
   }
@@ -189,11 +252,16 @@ export function skillSkin(key: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Skin key for an item — same as market tracker / data explorer:
+ * `G.items[name].skin ?? name`.
+ */
 export function itemSkin(key: string): string | undefined {
+  if (!key) return undefined;
   const G = getG();
   const def = G?.items?.[key];
   if (def && typeof def.skin === "string" && def.skin) return def.skin;
-  return undefined;
+  return key;
 }
 
 export function itemDisplayName(key: string): string {
@@ -201,6 +269,110 @@ export function itemDisplayName(key: string): string {
   const def = G?.items?.[key];
   if (def && typeof def.name === "string" && def.name) return def.name;
   return key;
+}
+
+/**
+ * Item sheet crop — market tracker / data explorer ItemImage contract:
+ * skin = G.items[name].skin ?? name (or instance/event skin override)
+ * positions = G.positions[skin] ?? G.positions[name] ?? G.positions.placeholder
+ * pack = G.imagesets[pos[0] || "pack_20"]
+ * crop = item_container math (scale = size/pack.size, margin = cell * size)
+ *
+ * Compact (no level/qty/title chrome). Prefer `itemInstanceHtml` in gear
+ * cooltips when stock `item_container` is available.
+ */
+export function itemIconHtml(
+  itemName: string,
+  opts?: {
+    skin?: string;
+    size?: number;
+    title?: string;
+    /** false → no native browser title (timeline / cooltip). Default true. */
+    nativeTitle?: boolean;
+  },
+): string {
+  const size = (opts && opts.size) || 18;
+  const title = (opts && opts.title) || itemDisplayName(itemName) || itemName;
+  const nativeTitle = !(opts && opts.nativeTitle === false);
+  const skinKey = (opts && opts.skin) || itemSkin(itemName) || itemName;
+  const fallbacks: string[] = [];
+  if (itemName && itemName !== skinKey) fallbacks.push(itemName);
+  const sheet = skinSheetHtml(skinKey, size, title, {
+    fallbackSkins: fallbacks.length ? fallbacks : undefined,
+    placeholder: true,
+    nativeTitle,
+  });
+  if (sheet) return sheet;
+  return letterFallbackHtml("?", size, title, undefined, nativeTitle);
+}
+
+function stripItemContainerHandlers(html: string): string {
+  return html
+    .replace(/\s+onmousedown="[^"]*"/gi, "")
+    .replace(/\s+ontouchstart="[^"]*"/gi, "")
+    .replace(/\s+onclick="[^"]*"/gi, "");
+}
+
+function stripNativeTitleAttrs(html: string): string {
+  return html
+    .replace(/\s+title="[^"]*"/gi, "")
+    .replace(/\s+title='[^']*'/gi, "");
+}
+
+/**
+ * Adventure.land item chrome via stock `item_container` (userscript equivalent
+ * of market-tracker / data-explorer React `ItemInstance`): level pip, qty,
+ * title border when `actual` carries them. Falls back to sheet+placeholder
+ * when `item_container` is missing or fails.
+ */
+export function itemInstanceHtml(
+  itemName: string,
+  opts?: {
+    skin?: string;
+    level?: number;
+    size?: number;
+    title?: string;
+    q?: number;
+    p?: string;
+    /** false → no native browser title (timeline / cooltip). Default true. */
+    nativeTitle?: boolean;
+  },
+): string {
+  const size = (opts && opts.size) || 40;
+  const title = (opts && opts.title) || itemDisplayName(itemName) || itemName;
+  const nativeTitle = !(opts && opts.nativeTitle === false);
+  const skinKey = (opts && opts.skin) || itemSkin(itemName) || itemName;
+  const actual: Record<string, unknown> = { name: itemName };
+  if (opts && opts.level != null && opts.level > 0) actual.level = opts.level;
+  if (skinKey) actual.skin = skinKey;
+  if (opts && opts.q != null && opts.q > 1) actual.q = opts.q;
+  if (opts && opts.p) actual.p = opts.p;
+
+  try {
+    const raw = itemContainer(
+      { skin: skinKey, size, draggable: false },
+      actual,
+    );
+    if (raw) {
+      let cleaned = stripItemContainerHandlers(raw).replace(
+        /style="([^"]*)"/i,
+        (_m, style: string) => {
+          const next = /margin\s*:/i.test(style)
+            ? style.replace(/margin\s*:[^;]+;?/i, "margin:0;")
+            : `margin:0;${style}`;
+          return `style="${next}"`;
+        },
+      );
+      if (!nativeTitle) cleaned = stripNativeTitleAttrs(cleaned);
+      const tipAttr = nativeTitle
+        ? ` title="${escapeAttr(title)}"`
+        : "";
+      return `<span class="ecu-item-instance"${tipAttr}>${cleaned}</span>`;
+    }
+  } catch {
+    /* fall through */
+  }
+  return itemIconHtml(itemName, { skin: skinKey, size, title, nativeTitle });
 }
 
 export function monsterDisplayName(mtype: string): string {
@@ -237,7 +409,7 @@ export function resolveMonsterMtype(
 export function resolveGameIcon(
   id: string,
   kind: GameIconKind = "auto",
-  opts?: { ctype?: string; mtype?: string; name?: string },
+  opts?: { ctype?: string; mtype?: string; name?: string; skin?: string },
 ): ResolvedGameIcon {
   const key = id || "";
   if (kind === "death") {
@@ -326,7 +498,7 @@ export function resolveGameIcon(
     return {
       id: gid,
       kind: "item",
-      skin: itemSkin(gid) || itemSkin(key),
+      skin: opts?.skin || itemSkin(gid) || itemSkin(key),
       name: typeof def?.name === "string" ? def.name : key,
     };
   };
@@ -460,6 +632,8 @@ export function gameIconHtml(
     mtype?: string;
     name?: string;
     title?: string;
+    /** Instance / event skin override (gear swaps, slot.skin). */
+    skin?: string;
   },
 ): string {
   const size = (opts && opts.size) || 18;
@@ -479,6 +653,7 @@ export function gameIconHtml(
     ctype: opts?.ctype,
     mtype: opts?.mtype,
     name: opts?.name,
+    skin: opts?.skin,
   });
   const title = opts?.title || resolved.name || id;
 
@@ -502,6 +677,14 @@ export function gameIconHtml(
 
   if (resolved.kind === "class") {
     return classIconHtml(resolved.ctype || id, size);
+  }
+
+  if (resolved.kind === "item") {
+    return itemIconHtml(resolved.id || id, {
+      skin: opts?.skin || resolved.skin,
+      size,
+      title,
+    });
   }
 
   if (resolved.skin) {
@@ -556,7 +739,7 @@ export function rowIconHtml(
 ): string {
   if (opts && opts.icons === false) return "";
   const size = (opts && opts.iconSize) || 18;
-  // Total footer — never a class / character / "?" chip.
+  // Total row — never a class / character / "?" chip.
   if (row.id === "__total__") return "";
   if (row.kind === "ability" || row.kind === "channel") {
     return gameIconHtml(row.id, { kind: "auto", size });
@@ -619,6 +802,7 @@ export function paintGameIcon(
     mtype?: string;
     name?: string;
     title?: string;
+    skin?: string;
     /** Prefer full item_container chrome (EffectsRow / badges). */
     container?: boolean;
   },
@@ -633,7 +817,10 @@ export function paintGameIcon(
     kind !== "actor" &&
     kind !== "class"
   ) {
-    const resolved = resolveGameIcon(id, kind, { ctype: opts?.ctype });
+    const resolved = resolveGameIcon(id, kind, {
+      ctype: opts?.ctype,
+      skin: opts?.skin,
+    });
     const skin = resolved.skin || (kind === "skill" ? id : undefined);
     if (skin && paintItemContainerIcon(el, skin, size)) return;
   }
@@ -644,5 +831,6 @@ export function paintGameIcon(
     mtype: opts?.mtype,
     name: opts?.name,
     title: opts?.title,
+    skin: opts?.skin,
   });
 }

@@ -9,13 +9,19 @@ import { getReact, e } from "../../host/react";
 import { formatCompactNumber } from "../../lib/format";
 import type { PartyFocus } from "../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../lib/typeScale";
-import { listPastSegments, resolveSegment } from "../../meters/meterEngine";
-import { runMeterQuery, segmentTitle } from "../../meters/meterQuery";
+import { listSegmentChoices } from "../../meters/meterSession";
+import { runMeterQuery } from "../../meters/meterQuery";
+import { refsEqual, segmentRefKey } from "../../meters/meterSegmentRef";
 import type {
   PlayersMetric,
   RankedRow,
   SegmentRef,
 } from "../../meters/meterTypes";
+import {
+  hoverDetailPosFromEl,
+  portalHoverDetail,
+  type HoverDetailPos,
+} from "./meterHoverDetail";
 
 export type MeterBreakdownSideRailProps = {
   segmentRef: SegmentRef;
@@ -26,19 +32,15 @@ export type MeterBreakdownSideRailProps = {
   onSelectSegment?: (next: SegmentRef) => void;
 };
 
-function segmentKey(ref: SegmentRef): string {
-  if (ref === "current" || ref === "total") return ref;
-  return `past:${ref.pastId}`;
-}
-
-function refsEqual(a: SegmentRef, b: SegmentRef): boolean {
-  return segmentKey(a) === segmentKey(b);
-}
+type SideHover =
+  | { kind: "player"; id: string; pos: HoverDetailPos }
+  | { kind: "seg"; key: string; pos: HoverDetailPos };
 
 export function MeterBreakdownSideRail(
   props: MeterBreakdownSideRailProps,
 ): any {
-  getReact();
+  const React = getReact();
+  const [hover, setHover] = React.useState(null as SideHover | null);
   const metric: PlayersMetric =
     props.metric === "heal" || props.metric === "taken"
       ? props.metric
@@ -55,17 +57,22 @@ export function MeterBreakdownSideRail(
   const players: RankedRow[] =
     playersResult.kind === "ranked" ? playersResult.rows : [];
 
-  const past = listPastSegments();
-  const segmentOpts: Array<{ ref: SegmentRef; label: string }> = [
-    { ref: "current", label: segmentTitle("current") },
-    { ref: "total", label: segmentTitle("total") },
-  ];
-  for (let i = 0; i < past.length; i++) {
-    const p = past[i];
-    segmentOpts.push({
-      ref: { pastId: p.id },
-      label: p.label || segmentTitle({ pastId: p.id }) || p.id,
-    });
+  const segmentOpts = listSegmentChoices();
+  let hoverText: string | null = null;
+  if (hover && hover.kind === "player") {
+    for (let i = 0; i < players.length; i++) {
+      if (players[i].id === hover.id) {
+        hoverText = `${players[i].name} — ${formatCompactNumber(players[i].value)}`;
+        break;
+      }
+    }
+  } else if (hover && hover.kind === "seg") {
+    for (let i = 0; i < segmentOpts.length; i++) {
+      if (segmentRefKey(segmentOpts[i].ref) === hover.key) {
+        hoverText = segmentOpts[i].tip || segmentOpts[i].title;
+        break;
+      }
+    }
   }
 
   return e(
@@ -91,7 +98,14 @@ export function MeterBreakdownSideRail(
                 className:
                   "ecu-meter-bd-side-item" +
                   (row.id === props.selectedActorId ? " is-active" : ""),
-                title: `${row.name} — ${formatCompactNumber(row.value)}`,
+                onMouseEnter: (ev: any) => {
+                  setHover({
+                    kind: "player",
+                    id: row.id,
+                    pos: hoverDetailPosFromEl(ev.currentTarget as HTMLElement),
+                  });
+                },
+                onMouseLeave: () => setHover(null),
                 onClick: () => {
                   if (row.id !== props.selectedActorId) {
                     props.onSelectActor(row.id, row.name);
@@ -118,29 +132,34 @@ export function MeterBreakdownSideRail(
       { className: "ecu-meter-bd-side-list is-segments", role: "listbox" },
       segmentOpts.map((opt) => {
         const active = refsEqual(opt.ref, props.segmentRef);
-        const resolved =
-          opt.ref === "current" ? resolveSegment("current") : null;
-        const label =
-          opt.ref === "current" && resolved?.label ? `${opt.label}` : opt.label;
+        const key = segmentRefKey(opt.ref);
         return e(
           "button",
           {
-            key: segmentKey(opt.ref),
+            key,
             type: "button",
             role: "option",
             "aria-selected": active,
             className: "ecu-meter-bd-side-item" + (active ? " is-active" : ""),
-            title: label,
             disabled: !props.onSelectSegment,
+            onMouseEnter: (ev: any) => {
+              setHover({
+                kind: "seg",
+                key,
+                pos: hoverDetailPosFromEl(ev.currentTarget as HTMLElement),
+              });
+            },
+            onMouseLeave: () => setHover(null),
             onClick: () => {
               if (props.onSelectSegment && !active) {
                 props.onSelectSegment(opt.ref);
               }
             },
           },
-          e("span", { className: "ecu-meter-bd-side-lab" }, label),
+          e("span", { className: "ecu-meter-bd-side-lab" }, opt.title),
         );
       }),
     ),
+    hoverText && hover ? portalHoverDetail(hoverText, hover.pos) : null,
   );
 }

@@ -1,7 +1,8 @@
 import { getReact, e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
-import { itemContainer, setXTarget, slotSkin } from "../../host/icons";
+import { itemContainer, setXTarget } from "../../host/icons";
+import { itemIconHtml, itemSkin } from "../../lib/gameIcon";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Classic AL `render_slots` body layout (4 cols × 4 rows). */
@@ -110,25 +111,40 @@ function SlotCell(props: {
   diff?: boolean;
 }): any {
   const { entity, slotName, slot, showPrice, diff } = props;
-  const skin = slotSkin(slot);
+  const skin =
+    (slot && slot.skin) || (slot && slot.name ? itemSkin(slot.name) : undefined);
   const { shade, s_op } = shadeFor(slotName);
   let content: any = null;
   const clickable = !!(slot && slot.name);
 
   if (slot && skin) {
-    const html = itemContainer(
-      {
-        skin,
-        size: SLOT_SIZE,
-        slot: slotName,
-        shade,
-        s_op,
-        draggable: false,
-      },
-      slot,
-    );
+    let html = "";
+    try {
+      html =
+        itemContainer(
+          {
+            skin,
+            size: SLOT_SIZE,
+            slot: slotName,
+            shade,
+            s_op,
+            draggable: false,
+          },
+          slot,
+        ) || "";
+    } catch {
+      html = "";
+    }
     if (html) {
       content = wrapContainerHtml(html);
+    } else if (slot.name) {
+      content = wrapContainerHtml(
+        itemIconHtml(slot.name, {
+          skin,
+          size: SLOT_SIZE,
+          title: slot.name,
+        }),
+      );
     } else {
       content = e(
         "div",
@@ -150,14 +166,20 @@ function SlotCell(props: {
     }
   } else {
     // Empty: AL shade silhouette via item_container (no skin).
-    const html = itemContainer({
-      size: SLOT_SIZE,
-      shade,
-      s_op,
-      slot: slotName,
-      bcolor: EMPTY_BCOLOR,
-      draggable: false,
-    });
+    let html = "";
+    try {
+      html =
+        itemContainer({
+          size: SLOT_SIZE,
+          shade,
+          s_op,
+          slot: slotName,
+          bcolor: EMPTY_BCOLOR,
+          draggable: false,
+        }) || "";
+    } catch {
+      html = "";
+    }
     if (html) {
       content = wrapContainerHtml(html);
     } else {

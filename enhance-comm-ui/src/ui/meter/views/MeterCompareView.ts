@@ -3,11 +3,8 @@ import { formatCompactNumber, formatCompactRate } from "../../../lib/format";
 import { skillDisplayName } from "../../../lib/gameIcon";
 import { GameIcon } from "../../chrome/GameIcon";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
-import {
-  getPlayerMeta,
-  getYouId,
-  resolveSegment,
-} from "../../../meters/meterEngine";
+import { getYouId } from "../../../meters/meterEngine";
+import { resolveSegment } from "../../../meters/meterSession";
 import {
   aggregateActorTargets,
   type ActorTargetItem,
@@ -31,7 +28,6 @@ function sameCtypePeers(
   for (let i = 0; i < ids.length; i++) {
     const a = seg.actors[ids[i]];
     if (a.ctype !== ctype) continue;
-    if (!getPlayerMeta()[a.id] && !a.damage && !a.heal && !a.taken) continue;
     peers.push(a);
   }
   peers.sort((a, b) => b.damage - a.damage);

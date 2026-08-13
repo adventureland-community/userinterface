@@ -3,8 +3,11 @@ import {
   BAR_MODE_CYCLE,
   DISPLAY_TREE,
   displayLabelForQuery,
+  supportsViewModes,
 } from "../../meters/meterCatalog";
 import { CHANNEL_LABELS } from "../../meters/combatChannels";
+import { listSegmentChoices } from "../../meters/meterSession";
+import { refsEqual } from "../../meters/meterSegmentRef";
 import type {
   MeterInstance,
   MeterPresentation,
@@ -17,7 +20,16 @@ import type { MeterCooltipItem } from "./meterCooltipMenu";
 import type { ToolbarIconId } from "./meterToolbarIcons";
 
 export function presentationFor(inst: MeterInstance): MeterPresentation {
-  return inst.presentation || "bars";
+  const p = (inst.presentation || "bars") as string;
+  // Legacy ranked view modes removed — paint as bars.
+  if (p === "table") return "bars";
+  if (
+    (p === "realtime" || p === "compare") &&
+    supportsViewModes(inst.query)
+  ) {
+    return "bars";
+  }
+  return p as MeterPresentation;
 }
 
 export function rootQuery(inst: MeterInstance): MeterQuery {
@@ -198,54 +210,113 @@ export function attrBallClass(q: MeterQuery): string {
   return "attr-other";
 }
 
-export function cooltipItemNode(item: MeterCooltipItem): any {
+export function cooltipItemNode(
+  item: MeterCooltipItem,
+  onHoverDetail?: (key: string, text: string | null) => void,
+): any {
   const run = (ev: any) => {
     ev.preventDefault();
     ev.stopPropagation();
     item.onSelect();
   };
+  const itemKey = item.itemKey || item.label;
+  const label = (item.selected ? "● " : "") + item.label;
+  const enter = onHoverDetail
+    ? () => onHoverDetail(itemKey, item.detail || null)
+    : undefined;
+  if (!item.trailing) {
+    return e(
+      "button",
+      {
+        key: itemKey,
+        type: "button",
+        className:
+          "ecu-meter-cooltip-item" +
+          (item.selected ? " is-selected" : "") +
+          (item.muted ? " is-muted" : "") +
+          (item.className ? " " + item.className : ""),
+        onMouseEnter: enter,
+        onMouseDown: run,
+        onClick: (ev: any) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        },
+      },
+      label,
+    );
+  }
+  const trail = item.trailing;
   return e(
-    "button",
+    "div",
     {
-      type: "button",
+      key: itemKey,
       className:
-        "ecu-meter-cooltip-item" +
+        "ecu-meter-cooltip-row" +
         (item.selected ? " is-selected" : "") +
         (item.muted ? " is-muted" : "") +
         (item.className ? " " + item.className : ""),
-      // Prefer mousedown so selection wins the hover-leave race; suppress click.
-      onMouseDown: run,
-      onClick: (ev: any) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-      },
+      onMouseEnter: enter,
     },
-    (item.selected ? "● " : "") + item.label,
+    e(
+      "button",
+      {
+        type: "button",
+        className: "ecu-meter-cooltip-main",
+        onMouseDown: run,
+        onClick: (ev: any) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        },
+      },
+      label,
+    ),
+    e(
+      "button",
+      {
+        type: "button",
+        className:
+          "ecu-meter-cooltip-trail" +
+          (trail.className ? " " + trail.className : ""),
+        title: trail.title,
+        onMouseDown: (ev: any) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          trail.onSelect();
+        },
+        onClick: (ev: any) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        },
+      },
+      trail.label,
+    ),
   );
 }
 
 /** Details segment L/R cycle: +1 older, -1 newer. */
-export function cycleSegmentRef(
-  current: SegmentRef,
-  past: { id: string; label?: string }[],
-  delta: number,
-): SegmentRef {
-  const chain: SegmentRef[] = ["current", "total"];
-  for (let i = 0; i < past.length; i++) {
-    chain.push({ pastId: past[i].id });
-  }
-  const key = (s: SegmentRef) =>
-    typeof s === "string" ? s : `past:${s.pastId}`;
+export function cycleSegmentRef(current: SegmentRef, delta: number): SegmentRef {
+  const chain = listSegmentChoices();
+  if (!chain.length) return current;
   let idx = 0;
-  const curKey = key(current);
   for (let i = 0; i < chain.length; i++) {
-    if (key(chain[i]) === curKey) {
+    if (refsEqual(chain[i].ref, current)) {
       idx = i;
       break;
     }
   }
   const next = idx + delta;
-  if (next < 0) return chain[chain.length - 1];
-  if (next >= chain.length) return chain[0];
-  return chain[next];
+  if (next < 0) return chain[chain.length - 1].ref;
+  if (next >= chain.length) return chain[0].ref;
+  return chain[next].ref;
+}
+
+/** Portal to body when createPortal exists; otherwise render inline. */
+export function portalOrInline(
+  ReactDOM: { createPortal?: (node: any, container: Element) => any },
+  node: any,
+  container: Element = document.body,
+): any {
+  if (!node) return null;
+  if (ReactDOM.createPortal) return ReactDOM.createPortal(node, container);
+  return node;
 }

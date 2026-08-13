@@ -9,8 +9,8 @@ export const METER_TIMELINE_CLUSTER_CSS = `
   line-height: 1.3;
 }
 .ecu-meter-tt.is-gear-tip {
-  min-width: 300px;
-  max-width: 440px;
+  min-width: 360px;
+  max-width: 520px;
 }
 .ecu-meter-tt.is-tl-ev-tip {
   min-width: 260px;
@@ -53,7 +53,7 @@ export const METER_TIMELINE_CLUSTER_CSS = `
   font-size: var(--meter-tt-sec);
 }
 .ecu-meter-tt-gear {
-  --meter-tt-icon: 26px;
+  --meter-tt-icon: 40px;
 }
 .ecu-meter-tt-gear-list,
 .ecu-meter-tt-evs-list {
@@ -62,12 +62,11 @@ export const METER_TIMELINE_CLUSTER_CSS = `
   gap: 0;
 }
 .ecu-meter-tt-gear-row {
-  display: grid;
-  grid-template-columns: 76px 72px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 8px;
-  row-gap: 2px;
-  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .ecu-meter-tt-gear-row:first-child {
@@ -78,62 +77,88 @@ export const METER_TIMELINE_CLUSTER_CSS = `
 .ecu-meter-tt-ev-row.is-muted {
   opacity: 0.78;
 }
+.ecu-meter-tt-gear-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
 .ecu-meter-tt-gear-slot {
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   color: #e8b84a;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ecu-meter-tt-gear-icos {
-  display: inline-flex;
+.ecu-meter-tt-gear-swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
   align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
+  column-gap: 8px;
+  min-width: 0;
 }
-.ecu-meter-tt-gear-icos.is-single {
-  min-width: calc(var(--meter-tt-icon) + 4px);
-  justify-content: center;
+.ecu-meter-tt-gear-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ecu-meter-tt-gear-side.is-empty {
+  opacity: 0.72;
+}
+.ecu-meter-tt-gear-ico {
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.ecu-meter-tt-gear-ico .ecu-item-instance,
+.ecu-meter-tt-gear-ico .ecu-item-instance > * {
+  margin: 0 !important;
+  vertical-align: top;
+}
+.ecu-meter-tt-gear-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ecu-meter-tt-gear-name {
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-gear-key {
+  color: #8b9bb4;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-gear-item {
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .ecu-meter-tt-gear-arrow {
   flex: 0 0 auto;
   color: #e8b84a;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-}
-.ecu-meter-tt-gear-arrow-sm {
-  flex: 0 0 auto;
-  color: #8b9bb4;
-  font-size: 11px;
-  line-height: 1;
-}
-.ecu-meter-tt-gear-names {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  color: #fff;
-  font-size: var(--meter-tt-sec);
-  line-height: 1.2;
-}
-.ecu-meter-tt-gear-names .is-old,
-.ecu-meter-tt-gear-names .is-new {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ecu-meter-tt-gear-verb {
-  color: #e8b84a;
-  font-weight: 600;
-  flex: 0 0 auto;
+  text-align: center;
 }
 .ecu-meter-tt-gear-row-at {
-  grid-column: 1 / -1;
   font-size: 11px;
   color: #8b9bb4;
-  padding-left: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .ecu-meter-tt-gear-empty {
   display: inline-block;
@@ -142,10 +167,10 @@ export const METER_TIMELINE_CLUSTER_CSS = `
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.25);
   vertical-align: middle;
+  flex: 0 0 auto;
 }
 .ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-slot,
-.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-arrow,
-.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-verb {
+.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-arrow {
   color: #c9b878;
 }
 /* Dense CD / buff / debuff / death rows — pill + icon + name, not stacked cards. */
@@ -478,6 +503,9 @@ export const METER_TIMELINE_TRACK_CSS = `
   flex: 1 1 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
   font-size: 9px;
   line-height: 1;
   letter-spacing: 0.05em;
@@ -486,6 +514,26 @@ export const METER_TIMELINE_TRACK_CSS = `
 }
 .ecu-meter-tl-gutter-axis-lab.is-clock {
   color: #6d7a92;
+}
+/* Quiet strip chip — matches Fight/Clock labels, not filter-tab chrome. */
+.ecu-meter-tl-now-btn {
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin: 0;
+  border: none;
+  border-radius: 1px;
+  background: transparent;
+  color: #c9b878;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 1px 3px;
+}
+.ecu-meter-tl-now-btn:hover {
+  color: #ffe08a;
+  background: rgba(201, 162, 39, 0.14);
 }
 .ecu-meter-tl-gutter-rows {
   flex: 1;

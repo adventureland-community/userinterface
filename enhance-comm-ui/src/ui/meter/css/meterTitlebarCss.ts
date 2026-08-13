@@ -33,7 +33,7 @@ export const METER_TITLEBAR_CSS = `
   color: var(--meter-text);
   flex-shrink: 0;
   min-width: 0;
-  min-height: 20px;
+  min-height: 24px;
   box-shadow: none;
   position: relative;
 }
@@ -61,10 +61,10 @@ export const METER_TITLEBAR_CSS = `
   border: none;
   color: var(--meter-muted);
   padding: 0;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-micro);
   flex-shrink: 0;
   border-radius: 0;
   opacity: 0.92;
@@ -92,7 +92,7 @@ export const METER_TITLEBAR_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--meter-fs-title);
   font-weight: 600;
   letter-spacing: 0.01em;
   text-shadow: 1px 1px 0 rgba(0,0,0,0.9);
@@ -111,17 +111,17 @@ export const METER_TITLEBAR_CSS = `
   border: none;
   color: var(--meter-muted);
   padding: 0;
-  width: 20px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 12px;
+  width: 22px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-secondary);
   flex-shrink: 0;
   border-radius: 0;
 }
 .ecu-meter-titlebar .ecu-meter-btn.wide {
   width: auto;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-titlebar .ecu-meter-btn:hover {
   background: rgba(255,255,255,0.08);
@@ -130,8 +130,8 @@ export const METER_TITLEBAR_CSS = `
 .ecu-meter-titlebar .ecu-meter-btn.active {
   color: var(--meter-accent);
 }
-/* Stretch ↕ (+ layout ⚙/+/Rm on hover) sits after Details tools in flex flow.
- * Stretch is a plain .ecu-meter-tool (always visible) — no dark plate.
+/* Stretch ↕ (+ layout ⚙/+/Rm) sit in .ecu-meter-actions after Details tools.
+ * On ranked meters, tools / badges / actions are hover-gated (fine pointer).
  * Do not absolute-overlay the Mode·…·Reset hit targets.
  * Lock / ungroup / hide × belong to PositionedPanel Window Control chrome. */
 .ecu-meter-actions {
@@ -142,6 +142,7 @@ export const METER_TITLEBAR_CSS = `
   position: relative;
   z-index: 5;
   margin-left: 2px;
+  transition: opacity 0.12s ease;
 }
 /* Layout-edit only (⚙/+/Rm) — hover chip; stretch lives outside this. */
 .ecu-meter-chrome-hover {
@@ -207,21 +208,40 @@ export const METER_TITLEBAR_CSS = `
 .ecu-meter-attr-ball.attr-heal { background-position: -18px 0; }
 .ecu-meter-attr-ball.attr-taken { background-position: -36px 0; }
 .ecu-meter-attr-ball.attr-other { background-position: -54px 0; }
-/* Primary toolbar + stretch ↕ stay readable; layout chrome is hover-gated. */
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools,
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left,
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
-  opacity: 0.9;
+/*
+ * Ranked meters: tool icon clusters stay out of the way until hover.
+ * Title (attr ball + label) remains. Touch / coarse pointers keep icons visible.
+ * Inspector + report keep tools always shown. is-menu-open keeps icons up
+ * while a cooltip is open (portaled outside the shell).
+ * Unlocked / arrange (is-layout) must NOT pin tools open — only hover / tip.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-tools,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-tools-left,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-encounter-badges,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-actions {
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    flex: 0 0 0;
+  }
 }
+.ecu-meter-shell:hover .ecu-meter-tools,
 .ecu-meter-shell.is-interacting .ecu-meter-tools,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools,
-.ecu-meter-shell.is-layout .ecu-meter-tools,
+.ecu-meter-shell:hover .ecu-meter-tools-left,
 .ecu-meter-shell.is-interacting .ecu-meter-tools-left,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools-left,
-.ecu-meter-shell.is-layout .ecu-meter-tools-left,
-.ecu-meter-shell.is-interacting .ecu-meter-actions > .ecu-meter-tool,
-.ecu-meter-shell.is-menu-open .ecu-meter-actions > .ecu-meter-tool,
-.ecu-meter-shell.is-layout .ecu-meter-actions > .ecu-meter-tool {
+.ecu-meter-shell:hover .ecu-meter-encounter-badges,
+.ecu-meter-shell.is-interacting .ecu-meter-encounter-badges,
+.ecu-meter-shell.is-menu-open .ecu-meter-encounter-badges,
+.ecu-meter-shell:hover .ecu-meter-actions,
+.ecu-meter-shell.is-interacting .ecu-meter-actions,
+.ecu-meter-shell.is-menu-open .ecu-meter-actions {
   opacity: 1;
 }
 .ecu-meter-ttl-text {
@@ -237,6 +257,7 @@ export const METER_TITLEBAR_CSS = `
   gap: 0;
   flex-shrink: 0;
   margin-left: 2px;
+  transition: opacity 0.12s ease;
 }
 .ecu-meter-encounter-badge {
   cursor: pointer;
@@ -244,10 +265,10 @@ export const METER_TITLEBAR_CSS = `
   border: none;
   color: var(--meter-muted);
   padding: 0 2px;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-micro);
   flex-shrink: 0;
   opacity: 0.88;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);

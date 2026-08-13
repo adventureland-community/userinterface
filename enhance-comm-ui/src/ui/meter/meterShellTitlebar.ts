@@ -7,7 +7,10 @@ import type {
   MeterResult,
   SegmentRef,
 } from "../../meters/meterTypes";
-import type { ReportKind } from "../../meters/meterCatalog";
+import {
+  supportsViewModes,
+  type ReportKind,
+} from "../../meters/meterCatalog";
 import type { MeterCooltipKind } from "./meterCooltipMenu";
 import {
   attrBallClass,
@@ -154,7 +157,7 @@ export function renderMeterShellTitlebar(ctx: MeterShellTitlebarCtx): any {
       )
     : null;
 
-  /** Details toolbar: Mode · Segment · Attribute · Report · Reset (right of title). */
+  /** Details toolbar: Mode · Segment · Attribute · View · Report · Reset. */
   const detailsTools = !isInspector
     ? e(
         "div",
@@ -179,19 +182,19 @@ export function renderMeterShellTitlebar(ctx: MeterShellTitlebarCtx): any {
           onEnter: (el) => openTip("seg", el),
           onLeave: scheduleTipClose,
           onClick: (ev) => {
-            const next = cycleSegmentRef(selectedset, past, 1);
+            const next = cycleSegmentRef(selectedset, 1);
             applySegment(next);
             openTip("seg", ev.currentTarget as HTMLElement, { pin: true });
           },
           onContextMenu: (ev) => {
-            const next = cycleSegmentRef(selectedset, past, -1);
+            const next = cycleSegmentRef(selectedset, -1);
             applySegment(next);
             openTip("seg", ev.currentTarget as HTMLElement, { pin: true });
           },
         }),
         !isReport && cycleable
           ? toolBtn({
-              title: "Attribute / Display — hover menu · right-click all",
+              title: "Attribute — hover menu · right-click all",
               icon: "attribute",
               tourId: "meter-display",
               active: tip?.kind === "display" || tip?.kind === "allDisplays",
@@ -206,6 +209,20 @@ export function renderMeterShellTitlebar(ctx: MeterShellTitlebarCtx): any {
                   pin: true,
                 });
               },
+            })
+          : null,
+        !isReport && supportsViewModes(rootQuery(instance))
+          ? toolBtn({
+              title: "View — Bars · Pie · Graph",
+              glyph: "◫",
+              tourId: "meter-view",
+              active: tip?.kind === "view",
+              onEnter: (el) => openTip("view", el),
+              onLeave: scheduleTipClose,
+              onClick: (ev) =>
+                openTip("view", ev.currentTarget as HTMLElement, {
+                  pin: true,
+                }),
             })
           : null,
         !isReport

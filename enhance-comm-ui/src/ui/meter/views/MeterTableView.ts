@@ -2,6 +2,7 @@ import { e } from "../../../host/react";
 import { PIXEL_TEXT, TYPE } from "../../../lib/typeScale";
 import type { MeterResult } from "../../../meters/meterTypes";
 
+/** Compact HTML-table renderer for the Summary report presentation. */
 export function MeterTableView(props: { result: MeterResult }): any {
   if (props.result.kind === "summary") {
     const rows = props.result.matrix;

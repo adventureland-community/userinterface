@@ -7,6 +7,7 @@ import { getReact, e } from "../../host/react";
 import { formatCompactNumber, formatCompactRatePerSec } from "../../lib/format";
 import type { PartyFocus } from "../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../lib/typeScale";
+import { isLiveCameraRef } from "../../meters/meterSegmentRef";
 import { runMeterQuery } from "../../meters/meterQuery";
 import type {
   MeterQuery,
@@ -32,7 +33,6 @@ export type MeterPlayerBreakdownProps = {
   segmentRef: SegmentRef;
   partyFocus?: PartyFocus;
   entities?: any[];
-  frameH?: number;
   onTab: (tab: PlayerDrillTab) => void;
   onSpellClick?: (abilityId: string) => void;
 };
@@ -57,6 +57,8 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
     metric: metric === "heal" ? "heal" : "damage",
   };
 
+  const barsLive = isLiveCameraRef(props.segmentRef);
+
   let body: any = null;
   if (props.tab === "spells") {
     body = e(MeterBarsView, {
@@ -64,8 +66,7 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
       segmentRef: props.segmentRef,
       partyFocus: props.partyFocus,
       entities: props.entities,
-      frameH: props.frameH,
-      live: props.segmentRef === "current",
+      live: barsLive,
       onRowClick: (row: RankedRow) => {
         if (props.onSpellClick) props.onSpellClick(row.id);
       },
@@ -76,8 +77,7 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
       segmentRef: props.segmentRef,
       partyFocus: props.partyFocus,
       entities: props.entities,
-      frameH: props.frameH,
-      live: props.segmentRef === "current",
+      live: barsLive,
     });
   } else {
     const details = runMeterQuery(

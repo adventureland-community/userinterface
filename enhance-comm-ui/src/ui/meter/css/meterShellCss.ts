@@ -14,6 +14,7 @@ export const METER_SHELL_CSS = `
   --meter-cooltip-bg: rgba(18, 14, 16, 0.96);
   --meter-toolbar: url(__TOOLBAR__);
   --meter-attr-icons: url(__ATTR__);
+  --meter-bar-row-h: 18px;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -26,7 +27,7 @@ export const METER_SHELL_CSS = `
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   color: var(--meter-text);
   box-sizing: border-box;
   position: relative;
@@ -81,7 +82,7 @@ export const METER_SHELL_CSS = `
   height: 18px;
   cursor: nwse-resize;
   z-index: 8;
-  pointer-events: auto;
+  pointer-events: auto !important;
   touch-action: none;
   background:
     linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),

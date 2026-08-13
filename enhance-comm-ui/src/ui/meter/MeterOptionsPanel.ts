@@ -3,16 +3,27 @@
  */
 
 import { getReact, e } from "../../host/react";
+import { TYPE } from "../../lib/typeScale";
 import {
   DEFAULT_METER_APPEARANCE,
   getMeterAppearance,
   patchMeterAppearance,
   type MeterAppearanceSettings,
 } from "../../meters/meterAppearance";
+import {
+  STATUSBAR_PLUGIN_OPTIONS,
+  statusbarForInstance,
+} from "../../meters/meterStatusbarPlugins";
+import type {
+  MeterInstance,
+  StatusbarPluginId,
+} from "../../meters/meterTypes";
 import { injectMeterChromeCss } from "./meterChromeCss";
 
 export type MeterOptionsPanelProps = {
   instanceLabel?: string;
+  instance?: MeterInstance;
+  onPatchInstance?: (partial: Partial<MeterInstance>) => void;
   onClose: () => void;
 };
 
@@ -23,6 +34,10 @@ function row(label: string, control: any): any {
     e("span", { className: "ecu-meter-opt-label" }, label),
     control,
   );
+}
+
+function section(label: string): any {
+  return e("div", { className: "ecu-meter-opt-sec" }, label);
 }
 
 export function MeterOptionsPanel(props: MeterOptionsPanelProps): any {
@@ -45,6 +60,8 @@ export function MeterOptionsPanel(props: MeterOptionsPanelProps): any {
       }),
     );
 
+  const scale = app.windowScale > 0 ? app.windowScale : 1;
+
   return e(
     "div",
     {
@@ -57,6 +74,7 @@ export function MeterOptionsPanel(props: MeterOptionsPanelProps): any {
       "div",
       {
         className: "ecu-meter-options-panel",
+        style: { fontSize: `calc(${TYPE.body} * ${scale})` },
         onMouseDown: (ev: any) => ev.stopPropagation(),
       },
       e(
@@ -83,6 +101,66 @@ export function MeterOptionsPanel(props: MeterOptionsPanelProps): any {
       e(
         "div",
         { className: "ecu-meter-options-body" },
+        props.instance && props.onPatchInstance
+          ? section("This window")
+          : null,
+        props.instance && props.onPatchInstance
+          ? row(
+              "Hide header & footer until hover",
+              e("input", {
+                type: "checkbox",
+                checked: !!props.instance.chromeOnHover,
+                onChange: (ev: any) =>
+                  props.onPatchInstance!({
+                    chromeOnHover: ev.target.checked,
+                  }),
+              }),
+            )
+          : null,
+        props.instance && props.onPatchInstance
+          ? (() => {
+              const sb = statusbarForInstance(props.instance!);
+              const patchSlot = (
+                slot: "left" | "center" | "right",
+                value: StatusbarPluginId,
+              ) => {
+                props.onPatchInstance!({
+                  statusbar: { ...sb, [slot]: value },
+                });
+              };
+              const sel = (
+                slot: "left" | "center" | "right",
+                label: string,
+              ) =>
+                row(
+                  label,
+                  e(
+                    "select",
+                    {
+                      className: "ecu-meter-opt-select",
+                      value: sb[slot],
+                      onChange: (ev: any) =>
+                        patchSlot(slot, ev.target.value as StatusbarPluginId),
+                    },
+                    ...STATUSBAR_PLUGIN_OPTIONS.map((opt) =>
+                      e(
+                        "option",
+                        { key: opt.id, value: opt.id },
+                        opt.label,
+                      ),
+                    ),
+                  ),
+                );
+              return e(
+                React.Fragment,
+                null,
+                sel("left", "Statusbar left"),
+                sel("center", "Statusbar center"),
+                sel("right", "Statusbar right"),
+              );
+            })()
+          : null,
+        section("All meters"),
         chk("showStatusbar", "Show statusbar"),
         chk("showTotalBar", "Total bar"),
         chk("animateBars", "Animate bars"),
@@ -125,6 +203,42 @@ export function MeterOptionsPanel(props: MeterOptionsPanelProps): any {
             value: Math.round(app.idleAlpha * 100),
             onChange: (ev: any) =>
               patch({ idleAlpha: Number(ev.target.value) / 100 }),
+          }),
+        ),
+        row(
+          "RAM fights",
+          e("input", {
+            type: "number",
+            min: 3,
+            max: 50,
+            value: app.maxPastSegments,
+            onChange: (ev: any) =>
+              patch({ maxPastSegments: Number(ev.target.value) }),
+          }),
+        ),
+        row(
+          "Archive fights",
+          e("input", {
+            type: "number",
+            min: 20,
+            max: 250,
+            title:
+              "Oldest non-favorites are removed first. Favorited fights are never deleted and may exceed this cap.",
+            value: app.maxArchivedSegments,
+            onChange: (ev: any) =>
+              patch({ maxArchivedSegments: Number(ev.target.value) }),
+          }),
+        ),
+        row(
+          "Idle close (sec)",
+          e("input", {
+            type: "number",
+            min: 3,
+            max: 120,
+            title: "Skipped on PvP maps and live events",
+            value: app.combatBreakSec,
+            onChange: (ev: any) =>
+              patch({ combatBreakSec: Number(ev.target.value) }),
           }),
         ),
         row(

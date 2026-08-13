@@ -18,6 +18,8 @@ export type GameIconProps = {
   /** Display name hint for tooltips / character look resolve. */
   name?: string;
   title?: string;
+  /** Instance / event skin override (gear swaps, slot.skin). */
+  skin?: string;
   className?: string;
   /**
    * true → stock item_container (party buffs / badges).
@@ -37,6 +39,7 @@ export function GameIcon(props: GameIconProps): any {
     mtype,
     name,
     title,
+    skin,
     className,
     container,
   } = props;
@@ -44,11 +47,20 @@ export function GameIcon(props: GameIconProps): any {
   React.useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    paintGameIcon(el, id, { kind, size, ctype, mtype, name, title, container });
+    paintGameIcon(el, id, {
+      kind,
+      size,
+      ctype,
+      mtype,
+      name,
+      title,
+      skin,
+      container,
+    });
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [id, kind, size, ctype, mtype, name, title, container]);
+  }, [id, kind, size, ctype, mtype, name, title, skin, container]);
 
   return e("span", {
     ref,

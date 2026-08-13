@@ -165,6 +165,16 @@ export function skillKey(b: TimelineBlock): string {
   return `${b.kind}:${b.key}`;
 }
 
+/**
+ * Same-`at` multi-slot gear pins share one X. Boost mainhand so a weapon
+ * swap is not buried under an offhand lollipop drawn later in slot order.
+ */
+export function gearPinZBoost(slot: string | undefined): number {
+  if (slot === "mainhand") return 30;
+  if (slot === "offhand") return 20;
+  return 0;
+}
+
 /** Cooltip elapsed — live open auras tick at hover time, not last render. */
 export function conditionElapsedSec(b: TimelineBlock): number {
   if (b.kind !== "condition") return b.durationSec;

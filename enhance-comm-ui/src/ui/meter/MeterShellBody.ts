@@ -42,7 +42,6 @@ export type MeterShellBodyProps = {
     entities: EntityLike[];
     highlightId?: string;
     live: boolean;
-    frameH?: number;
     alwaysShowSelf?: boolean;
     onRowClick: (row: RankedRow, ev?: any) => void;
     onRowContextMenu: (row: RankedRow, ev: any) => void;
@@ -97,7 +96,7 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
           partyFocus: instance.partyFocus,
           entities,
           highlightId,
-          live: selectedset === "current",
+          live: barsProps.live,
           onRowClick: (row: RankedRow) => {
             onPatchInstance({
               query: {
@@ -211,7 +210,7 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
               partyFocus: instance.partyFocus,
             },
           );
-    return e(MeterHistoryChart, { result: hist, height: 120 });
+    return e(MeterHistoryChart, { result: hist });
   }
   if (pres === "pie" || result.kind === "pie") {
     const metric = metricFromModeQuery(rootQuery(instance));
@@ -233,18 +232,7 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
           );
     return e(MeterPieView, { result: pie });
   }
-  if (pres === "table") {
-    if (result.kind === "summary" || result.kind === "ranked") {
-      return e(MeterTableView, { result });
-    }
-    const ranked = runMeterQuery(rootQuery(instance), {
-      segmentRef: selectedset,
-      partyFocus: instance.partyFocus,
-      entities,
-    });
-    return e(MeterTableView, { result: ranked });
-  }
-  if (result.kind === "summary") {
+  if (pres === "summary" || result.kind === "summary") {
     return e(MeterTableView, { result });
   }
   if (
@@ -261,19 +249,16 @@ export function renderMeterShellBody(props: MeterShellBodyProps): any {
   ) {
     return e(MeterBarsView, barsProps);
   }
-  if (result.kind === "empty") {
-    return e(
-      "div",
-      {
-        style: {
-          padding: "8px",
-          color: "#888",
-          fontSize: TYPE.body,
-          ...PIXEL_TEXT,
-        },
+  return e(
+    "div",
+    {
+      style: {
+        padding: "8px",
+        color: "#888",
+        fontSize: TYPE.body,
+        ...PIXEL_TEXT,
       },
-      props.layoutEdit ? "No contributors yet" : "No data",
-    );
-  }
-  return e(MeterTableView, { result });
+    },
+    props.layoutEdit ? "No contributors yet" : "No data",
+  );
 }

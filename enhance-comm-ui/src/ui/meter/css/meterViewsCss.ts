@@ -8,6 +8,58 @@ export const METER_VIEWS_CSS = `
   flex-wrap: wrap;
   align-items: center;
 }
+/* Chart / pie / series fill the meter body (no dead black space). */
+.ecu-meter-chart-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 4px;
+}
+.ecu-meter-pie {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.ecu-meter-pie-canvas-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-meter-pie canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+.ecu-meter-pie-legend {
+  flex: 0 1 42%;
+  min-width: 96px;
+  max-width: 48%;
+  max-height: 100%;
+  overflow: auto;
+  font-size: var(--meter-fs-body);
+  scrollbar-width: thin;
+}
+.ecu-meter-graph-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+}
 /* —— Details parity: bars & icons —— */
 .ecu-meter-icon.ecu-meter-icon-class {
   display: inline-flex;
@@ -35,10 +87,25 @@ export const METER_VIEWS_CSS = `
 .ecu-meter-fill.ecu-meter-fill-anim {
   transition: width 0.25s ease;
 }
+/* Ranked bars: body is a flex frame; only .ecu-meter-bar-scroll scrolls. */
+.ecu-meter-body:has(.ecu-meter-bar-host) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: none;
+}
+.ecu-meter-bar-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 .ecu-meter-row.is-total {
   background: rgba(0, 0, 0, 0.42);
-  min-height: 18px;
-  height: 18px;
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
   font-weight: 600;
   border-top: 1px solid rgba(0, 0, 0, 0.55);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -52,8 +119,11 @@ export const METER_VIEWS_CSS = `
 .ecu-meter-bar-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(180, 180, 180, 0.35) transparent;
 }
@@ -64,19 +134,30 @@ export const METER_VIEWS_CSS = `
   background: rgba(180, 180, 180, 0.35);
   border-radius: 2px;
 }
+.ecu-meter-bar-pin {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+  border-top: 1px solid rgba(232, 201, 106, 0.35);
+  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.35);
+  background: rgba(12, 12, 14, 0.92);
+}
+.ecu-meter-bar-pin[hidden] {
+  display: none !important;
+}
 /* —— Details parity: statusbar —— */
 .ecu-meter-statusbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
-  padding: 1px 6px;
-  min-height: 18px;
+  padding: 3px 6px;
+  min-height: 22px;
   background: linear-gradient(180deg, rgba(40, 36, 38, 0.95) 0%, rgba(26, 21, 24, 0.98) 100%);
   border-top: 1px solid rgba(0, 0, 0, 0.55);
   color: var(--meter-muted);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
   font-variant-numeric: tabular-nums;
 }
 /* Keep statusbar actions clear of corner resize grips while arranging. */
@@ -91,8 +172,23 @@ export const METER_VIEWS_CSS = `
   font: inherit;
   padding: 0 2px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: default;
   line-height: 1.3;
+  min-width: 0;
+}
+.ecu-meter-status-slot-left {
+  justify-self: start;
+  text-align: left;
+}
+.ecu-meter-status-slot-center {
+  justify-self: center;
+  text-align: center;
+}
+.ecu-meter-status-slot-right {
+  justify-self: end;
+  text-align: right;
 }
 button.ecu-meter-status-micro {
   cursor: pointer;
@@ -103,7 +199,6 @@ button.ecu-meter-status-micro:hover,
 }
 .ecu-meter-status-micro.ecu-meter-status-link {
   cursor: pointer;
-  margin-left: auto;
 }
 /* —— Details parity: options panel —— */
 .ecu-meter-options-backdrop {
@@ -127,7 +222,7 @@ button.ecu-meter-status-micro:hover,
   outline: 1px solid rgba(232, 201, 106, 0.28);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.62);
   color: #eee;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   scrollbar-width: thin;
   scrollbar-color: #5a5050 #1a1618;
 }
@@ -148,7 +243,7 @@ button.ecu-meter-status-micro:hover,
   flex: 1;
   min-width: 0;
   color: rgba(220, 210, 210, 0.72);
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,25 +279,17 @@ button.ecu-meter-status-micro:hover,
 }
 .ecu-meter-opt-label {
   color: #ddd;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   flex: 1;
   min-width: 0;
-}
-.ecu-meter-opt-row input[type="checkbox"] {
-  margin: 0;
-  accent-color: #c9a227;
-}
-.ecu-meter-opt-row input[type="range"] {
-  width: 120px;
-  accent-color: #c9a227;
 }
 .ecu-meter-opt-btn {
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: #eee;
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
 }
 .ecu-meter-opt-btn:hover {

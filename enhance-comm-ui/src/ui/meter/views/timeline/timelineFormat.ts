@@ -6,9 +6,9 @@ import {
   conditionDisplayName,
   gameIconHtml,
   itemDisplayName,
-  itemSkin,
+  itemIconHtml,
+  itemInstanceHtml,
   skillDisplayName,
-  skinSheetHtml,
 } from "../../../../lib/gameIcon";
 import type { TimelineBlock } from "./timelineModel";
 
@@ -55,6 +55,18 @@ export function prettySlot(slot: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+export type GearSwapKind = "swap" | "equip" | "unequip" | "unknown";
+
+export function gearSwapKind(
+  oldName: string | undefined,
+  newName: string | undefined,
+): GearSwapKind {
+  if (oldName && newName) return "swap";
+  if (newName) return "equip";
+  if (oldName) return "unequip";
+  return "unknown";
+}
+
 export function gearItemLabel(
   name: string | undefined,
   level?: number,
@@ -65,20 +77,83 @@ export function gearItemLabel(
   return pretty;
 }
 
-/** Item sprite for tip / pin — prefer event skin, else G.items[name].skin. */
+/** Display name only — level lives on item_container / instance chrome. */
+export function gearItemNameOnly(name: string | undefined): string {
+  if (!name) return "(empty)";
+  return itemDisplayName(name);
+}
+
+/** Compact `old → new` (levels if present). Equip/unequip omit the empty side. */
+export function gearSwapLine(
+  oldName: string | undefined,
+  oldLevel: number | undefined,
+  newName: string | undefined,
+  newLevel: number | undefined,
+): string {
+  const kind = gearSwapKind(oldName, newName);
+  switch (kind) {
+    case "swap":
+      return `${gearItemLabel(oldName, oldLevel)} → ${gearItemLabel(newName, newLevel)}`;
+    case "equip":
+      return gearItemLabel(newName, newLevel);
+    case "unequip":
+      return gearItemLabel(oldName, oldLevel);
+    case "unknown":
+      return "Gear change";
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+export type GearItemIconOpts = {
+  level?: number;
+  /**
+   * true → stock `item_container` instance chrome (level pip / qty / title).
+   * false/omit → compact sheet crop (timeline pin glyphs).
+   */
+  instance?: boolean;
+};
+
+/**
+ * Item sprite for tip / pin.
+ * Tips pass `instance: true` for AL item_container chrome; pins stay compact.
+ * Never sets a native browser `title` — Time Line uses a custom cooltip.
+ */
 export function gearItemIconHtml(
   name: string | undefined,
   skin: string | undefined,
   size: number,
   title: string,
+  opts?: GearItemIconOpts,
 ): string {
-  const resolved = skin || (name ? itemSkin(name) : undefined);
-  if (resolved) {
-    const sheet = skinSheetHtml(resolved, size, title);
-    if (sheet) return sheet;
+  if (!name && !skin) {
+    return `<span class="ecu-meter-tt-gear-empty" style="width:${size}px;height:${size}px"></span>`;
   }
-  if (name) return gameIconHtml(name, { kind: "item", size, title });
-  return `<span class="ecu-meter-tt-gear-empty" style="width:${size}px;height:${size}px" title="empty"></span>`;
+  if (opts && opts.instance && name) {
+    return itemInstanceHtml(name, {
+      skin,
+      level: opts.level,
+      size,
+      title,
+      nativeTitle: false,
+    });
+  }
+  if (name) {
+    return itemIconHtml(name, {
+      skin,
+      size,
+      title,
+      nativeTitle: false,
+    });
+  }
+  return itemIconHtml(skin!, {
+    skin,
+    size,
+    title,
+    nativeTitle: false,
+  });
 }
 
 export function prettyKey(key: string): string {
@@ -102,6 +177,9 @@ export function blockIconHtml(b: TimelineBlock, size: number): string {
     });
   }
   if (b.kind === "gear") {
+    // Pin glyph = newly equipped item when present, else unequipped (old).
+    // Skin prefers event `skin` (new, else old from recorder). Same-`at`
+    // multi-slot pins stack at one X — TimelineEvent boosts mainhand z.
     return gearItemIconHtml(
       b.newName || b.oldName || b.key,
       b.skin,

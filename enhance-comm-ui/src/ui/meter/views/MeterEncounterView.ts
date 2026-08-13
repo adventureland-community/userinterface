@@ -2,7 +2,7 @@ import { getReact, e } from "../../../host/react";
 import { formatCompactNumber } from "../../../lib/format";
 import type { PartyFocus } from "../../../lib/settingsFocus";
 import { PIXEL_TEXT, TYPE } from "../../../lib/typeScale";
-import { resolveSegment } from "../../../meters/meterEngine";
+import { resolveSegment } from "../../../meters/meterSession";
 import { runMeterQuery } from "../../../meters/meterQuery";
 import type {
   MeterResult,

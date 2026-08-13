@@ -2,7 +2,7 @@ import { getReact, e } from "../../../host/react";
 import { MetricChart, type ChartSeries } from "../../chrome/MetricChart";
 import { classColors } from "../../../lib/colors";
 import type { PartyFocus } from "../../../lib/settingsFocus";
-import { PIXEL_TEXT, TYPE } from "../../../lib/typeScale";
+import { PIXEL_TEXT } from "../../../lib/typeScale";
 import { getPlayerMeta } from "../../../meters/meterEngine";
 import { runMeterQuery } from "../../../meters/meterQuery";
 import { subscribeMeterTick } from "../../../meters/meterUiTick";
@@ -61,6 +61,26 @@ export function MeterHistoryChart(props: {
   integrate?: boolean;
   normalize?: boolean;
 }): any {
+  const React = getReact();
+  const wrapRef = React.useRef(null as HTMLDivElement | null);
+  const [box, setBox] = React.useState({ w: 280, h: 120 });
+
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      setBox({
+        w: Math.max(80, el.clientWidth),
+        h: Math.max(60, el.clientHeight),
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   if (props.result.kind !== "history") {
     return e(
       "div",
@@ -69,16 +89,26 @@ export function MeterHistoryChart(props: {
     );
   }
   const series = historyToSeries(props.result, undefined, undefined);
-  return e(MetricChart, {
-    width: props.width || 280,
-    height: props.height || 110,
-    series,
-    emptyText: "No samples yet",
-    fill: props.fill,
-    stack: props.stack,
-    integrate: props.integrate,
-    normalize: props.normalize,
-  });
+  const w = props.width || box.w;
+  const h = props.height || box.h;
+  return e(
+    "div",
+    { className: "ecu-meter-chart-fill", ref: wrapRef },
+    e(
+      "div",
+      { className: "ecu-meter-graph-canvas-wrap" },
+      e(MetricChart, {
+        width: w,
+        height: h,
+        series,
+        emptyText: "No samples yet",
+        fill: props.fill,
+        stack: props.stack,
+        integrate: props.integrate,
+        normalize: props.normalize,
+      }),
+    ),
+  );
 }
 
 export function MeterSeriesView(props: {
@@ -131,9 +161,13 @@ export function MeterSeriesView(props: {
       200,
       (wrapRef.current && wrapRef.current.clientWidth) || 280,
     );
+    const height = Math.max(
+      80,
+      (wrapRef.current && wrapRef.current.clientHeight) || 120,
+    );
     paintMetricCanvas(canvas, {
       width,
-      height: 120,
+      height,
       series,
       emptyText: "No samples yet",
       fill: !isCompare,
@@ -225,6 +259,14 @@ export function MeterSeriesView(props: {
   ]);
 
   React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => paintLive());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [paintLive]);
+
+  React.useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.onmousemove = (ev: MouseEvent) => {
@@ -288,18 +330,14 @@ export function MeterSeriesView(props: {
 
   return e(
     "div",
-    {
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        padding: 4,
-      },
-    },
+    { className: "ecu-meter-chart-fill" },
     isCompare
       ? e(
           "div",
-          { style: { display: "flex", gap: 4, flexWrap: "wrap" } },
+          {
+            className: "chart-tools",
+            style: { flex: "0 0 auto" },
+          },
           toggleBtn("Stack", !!props.instance.stack, () =>
             props.onPatch({ stack: !props.instance.stack }),
           ),
@@ -313,12 +351,8 @@ export function MeterSeriesView(props: {
       : e(
           "div",
           {
-            style: {
-              display: "flex",
-              gap: 4,
-              flexWrap: "wrap",
-              alignItems: "center",
-            },
+            className: "chart-tools",
+            style: { flex: "0 0 auto" },
           },
           tab("DPS", rtMetric === "dps", () =>
             props.onPatch({ rtMetric: "dps" }),
@@ -346,19 +380,26 @@ export function MeterSeriesView(props: {
         ),
     e(
       "div",
-      { ref: wrapRef, style: { width: "100%" } },
+      {
+        ref: wrapRef,
+        className: "ecu-meter-graph-canvas-wrap",
+      },
       e("canvas", {
         ref: canvasRef,
         style: {
           display: "block",
           width: "100%",
-          height: 120,
+          height: "100%",
           border: "1px solid #333",
           background: "#111",
         },
       }),
     ),
-    e("div", { ref: legendRef, "data-leg": "1" }),
+    e("div", {
+      ref: legendRef,
+      "data-leg": "1",
+      style: { flex: "0 0 auto", maxHeight: "30%", overflow: "auto" },
+    }),
   );
 }
 
@@ -376,22 +417,42 @@ function toggleBtn(label: string, on: boolean, onClick: () => void): any {
 
 export function MeterPieView(props: { result: MeterResult }): any {
   const React = getReact();
-  const ref = React.useRef(null);
+  const wrapRef = React.useRef(null as HTMLDivElement | null);
+  const canvasRef = React.useRef(null as HTMLCanvasElement | null);
+  const [box, setBox] = React.useState({ w: 200, h: 160 });
 
   React.useEffect(() => {
-    const canvas = ref.current as HTMLCanvasElement | null;
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      setBox({
+        w: Math.max(80, el.clientWidth),
+        h: Math.max(80, el.clientHeight),
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
     if (!canvas || props.result.kind !== "pie") return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const w = 160;
-    const h = 160;
+    // Leave room for legend (~42% width); chart is square in remaining space.
+    const legendShare = 0.42;
+    const availW = Math.max(60, Math.floor(box.w * (1 - legendShare) - 10));
+    const size = Math.max(64, Math.min(availW, box.h - 8));
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    canvas.style.width = w + "px";
-    canvas.style.height = h + "px";
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    canvas.style.width = size + "px";
+    canvas.style.height = size + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, size, size);
     const slices = props.result.slices;
     let sum = 0;
     for (let i = 0; i < slices.length; i++) sum += slices[i].value;
@@ -399,46 +460,48 @@ export function MeterPieView(props: { result: MeterResult }): any {
       ctx.fillStyle = "#888";
       ctx.font = "12px sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("Empty", w / 2, h / 2);
+      ctx.fillText("Empty", size / 2, size / 2);
       return;
     }
+    const radius = size * 0.38;
     let angle = -Math.PI / 2;
     for (let i = 0; i < slices.length; i++) {
       const slice = slices[i];
       const frac = slice.value / sum;
       const next = angle + frac * Math.PI * 2;
       ctx.beginPath();
-      ctx.moveTo(w / 2, h / 2);
-      ctx.arc(w / 2, h / 2, 60, angle, next);
+      ctx.moveTo(size / 2, size / 2);
+      ctx.arc(size / 2, size / 2, radius, angle, next);
       ctx.closePath();
       ctx.fillStyle = slice.color || "#666";
       ctx.fill();
       angle = next;
     }
-  }, [props.result]);
+  }, [props.result, box]);
 
   if (props.result.kind !== "pie") {
     return e("div", { style: { padding: "8px", color: "#888" } }, "No pie");
   }
   return e(
     "div",
-    { style: { display: "flex", gap: "8px", alignItems: "center" } },
-    e("canvas", { ref }),
+    { className: "ecu-meter-chart-fill", ref: wrapRef },
     e(
       "div",
-      {
-        style: {
-          fontSize: TYPE.body,
-          ...PIXEL_TEXT,
-          maxHeight: "140px",
-          overflow: "auto",
-        },
-      },
-      ...props.result.slices.map((s) =>
-        e(
-          "div",
-          { key: s.id, style: { color: s.color || "#ccc" } },
-          `${s.name} ${Math.round(s.value)}`,
+      { className: "ecu-meter-pie" },
+      e(
+        "div",
+        { className: "ecu-meter-pie-canvas-wrap" },
+        e("canvas", { ref: canvasRef }),
+      ),
+      e(
+        "div",
+        { className: "ecu-meter-pie-legend", style: { ...PIXEL_TEXT } },
+        ...props.result.slices.map((s) =>
+          e(
+            "div",
+            { key: s.id, style: { color: s.color || "#ccc" } },
+            `${s.name} ${Math.round(s.value)}`,
+          ),
         ),
       ),
     ),

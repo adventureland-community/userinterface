@@ -199,6 +199,23 @@ export function timelineTrackLane(
   );
 }
 
+/**
+ * Compact jump-to-now on the Fight axis strip. Hidden by the view while
+ * following / Shift-frozen at the live edge.
+ */
+export function timelineGoToNowBtn(onClick: () => void): any {
+  return e(
+    "button",
+    {
+      type: "button",
+      className: "ecu-meter-tl-now-btn",
+      title: "Go to now — live edge or end of fight",
+      onClick,
+    },
+    "Now",
+  );
+}
+
 export function timelineLegend(
   items: Array<{ cls: string; label: string }>,
 ): any {

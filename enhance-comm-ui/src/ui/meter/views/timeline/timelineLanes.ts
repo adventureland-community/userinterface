@@ -5,7 +5,9 @@
 import { conditionKind, itemSkin } from "../../../../lib/gameIcon";
 import type { PartyFocus } from "../../../../lib/settingsFocus";
 import { actorIdInScope } from "../../../../meters/meterQuery";
-import { getPlayerMeta, resolveSegment } from "../../../../meters/meterEngine";
+import { getPlayerMeta } from "../../../../meters/meterEngine";
+import { isLiveCombatSegment, resolveSegment } from "../../../../meters/meterSession";
+import { segmentRefKey } from "../../../../meters/meterSegmentRef";
 import { resolvePlayerCtype } from "../../../../host/al";
 import type {
   CastMarker,
@@ -28,21 +30,26 @@ export function buildActorMaps(segmentRef?: SegmentRef): {
 } {
   const names: Record<string, string> = {};
   const ctypes: Record<string, string | undefined> = {};
-  const meta = getPlayerMeta();
-  const metaIds = Object.keys(meta);
-  for (let i = 0; i < metaIds.length; i++) {
-    const id = metaIds[i];
-    names[id] = meta[id].name;
-    ctypes[id] = meta[id].ctype;
-  }
   const seg = resolveSegment(segmentRef);
+  const liveRoster = !!(seg && isLiveCombatSegment(seg));
+  if (liveRoster) {
+    const meta = getPlayerMeta();
+    const metaIds = Object.keys(meta);
+    for (let i = 0; i < metaIds.length; i++) {
+      const id = metaIds[i];
+      names[id] = meta[id].name;
+      ctypes[id] = meta[id].ctype;
+    }
+  }
   if (seg) {
+    const meta = liveRoster ? null : getPlayerMeta();
     const actorIds = Object.keys(seg.actors);
     for (let i = 0; i < actorIds.length; i++) {
       const a = seg.actors[actorIds[i]];
-      names[a.id] = a.name || names[a.id] || a.id;
+      const extra = meta ? meta[a.id] : undefined;
+      names[a.id] = a.name || extra?.name || names[a.id] || a.id;
       ctypes[a.id] =
-        a.ctype || ctypes[a.id] || resolvePlayerCtype(a.id) || undefined;
+        a.ctype || extra?.ctype || ctypes[a.id] || resolvePlayerCtype(a.id) || undefined;
       if (!a.ctype && ctypes[a.id]) a.ctype = ctypes[a.id];
     }
   }
@@ -87,8 +94,8 @@ export function laneIdFor(
 }
 
 /**
- * Always seed in-scope party/visible rows, even with zero events.
- * Virtualization must never drop lanes (empty “0 players” regression).
+ * Seed in-scope rows, even with zero events.
+ * Live camera: vision roster. Stored fights: only actors on that fight.
  */
 export function seedScopeLanes(
   byId: Record<string, TimelineLane>,
@@ -96,19 +103,22 @@ export function seedScopeLanes(
   seg: CombatSegment | null | undefined,
   partyFocus: PartyFocus | undefined,
 ): void {
-  const meta = getPlayerMeta();
-  const metaIds = Object.keys(meta);
-  for (let i = 0; i < metaIds.length; i++) {
-    const id = metaIds[i];
-    if (seg && !actorIdInScope(id, seg, partyFocus)) continue;
-    ensure(id, meta[id]?.name);
+  if (seg && isLiveCombatSegment(seg)) {
+    const meta = getPlayerMeta();
+    const metaIds = Object.keys(meta);
+    for (let i = 0; i < metaIds.length; i++) {
+      const id = metaIds[i];
+      if (!actorIdInScope(id, seg, partyFocus)) continue;
+      ensure(id, meta[id]?.name);
+    }
   }
   if (!seg) return;
   const actorIds = Object.keys(seg.actors);
   for (let i = 0; i < actorIds.length; i++) {
     const id = actorIds[i];
-    if (!actorIdInScope(id, seg, partyFocus)) continue;
     const a = seg.actors[id];
+    if (!a.ctype && /^\d+$/.test(a.id)) continue;
+    if (!actorIdInScope(id, seg, partyFocus)) continue;
     ensure(id, a.name);
   }
 }
@@ -160,11 +170,7 @@ export function timelineFightKey(
   segmentRef: SegmentRef | undefined,
   seg: { id: string; startedAt: number } | null | undefined,
 ): string {
-  let refKey = "current";
-  if (segmentRef === "total") refKey = "total";
-  else if (segmentRef && typeof segmentRef === "object" && segmentRef.pastId) {
-    refKey = `past:${segmentRef.pastId}`;
-  }
+  const refKey = segmentRef ? segmentRefKey(segmentRef) : "current";
   if (!seg) return `${refKey}:empty`;
   return `${refKey}:${seg.id}:${seg.startedAt}`;
 }
@@ -287,6 +293,8 @@ export function buildLanes(
         g.newName ? g.newLevel : g.oldLevel,
       );
       const oldSkin = g.oldName ? itemSkin(g.oldName) || undefined : undefined;
+      // Pin: prefer new item (+ its skin); unequip falls back to old.
+      // Simultaneous MH+OH share `g.at` and stack at one X on the track.
       lane.blocks.push({
         kind: "gear",
         domKey: `gear:${g.actorId}:${g.at}:${g.slot}:${itemName}`,

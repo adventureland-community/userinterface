@@ -19,6 +19,7 @@ import {
 } from "./css/meterInspectorCss";
 import { METER_VIEWS_CSS } from "./css/meterViewsCss";
 import { METER_COOLTIP_CSS } from "./css/meterCooltipCss";
+import { METER_CHROME_SCALE_CSS } from "./css/meterChromeScaleCss";
 import { METER_SHELL_CSS } from "./css/meterShellCss";
 import { METER_TITLEBAR_CSS } from "./css/meterTitlebarCss";
 
@@ -41,6 +42,7 @@ function joinBodyCore(...parts: string[]): string {
 }
 
 const CSS = [
+  METER_CHROME_SCALE_CSS,
   METER_SHELL_CSS,
   METER_TITLEBAR_CSS,
   METER_COOLTIP_CSS,

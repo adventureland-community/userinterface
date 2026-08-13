@@ -8,15 +8,31 @@
 
 export type MeterCooltipItem = {
   label: string;
+  /** Hover-detail copy (custom flyout). Never include instance `in`. */
+  detail?: string;
+  /** Stable React key; required when the menu re-renders on meter ticks. */
+  itemKey?: string;
   selected?: boolean;
   muted?: boolean;
   className?: string;
   onSelect: () => void;
+  /** Optional trailing control (e.g. favorite ★) — does not fire onSelect. */
+  trailing?: {
+    label: string;
+    title?: string;
+    className?: string;
+    onSelect: () => void;
+  };
 };
 
 export type MeterCooltipSection = {
   title?: string;
   items: MeterCooltipItem[];
+};
+
+export type MeterCooltipMenu = {
+  header?: MeterCooltipItem;
+  sections: MeterCooltipSection[];
 };
 
 export type MeterCooltipAnchor = {
@@ -30,6 +46,7 @@ export type MeterCooltipKind =
   | "party"
   | "seg"
   | "display"
+  | "view"
   | "report"
   | "reset"
   | "tools"

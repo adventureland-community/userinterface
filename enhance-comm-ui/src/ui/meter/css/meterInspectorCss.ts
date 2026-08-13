@@ -21,7 +21,7 @@ export const METER_INSPECTOR_DRILL_CSS = `
   background: transparent;
   color: #9aa;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-player-tab:hover {
   color: #eee;
@@ -42,10 +42,10 @@ export const METER_INSPECTOR_DRILL_CSS = `
   font-weight: normal;
 }
 .ecu-meter-row .ecu-meter-who {
-  font-size: 11px !important;
+  font-size: var(--meter-fs-secondary) !important;
 }
 .ecu-meter-row .ecu-meter-vals {
-  font-size: 11px !important;
+  font-size: var(--meter-fs-secondary) !important;
 }
 .ecu-meter-icon {
   width: 14px !important;
@@ -70,7 +70,7 @@ export const METER_INSPECTOR_DRILL_CSS = `
   border: none;
   border-radius: 0;
   color: var(--meter-muted);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   background: rgba(40, 44, 50, 0.7);
   flex-shrink: 0;
 }
@@ -87,16 +87,20 @@ export const METER_INSPECTOR_DRILL_CSS = `
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 3px;
-  min-height: 16px;
-  height: 16px;
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
   padding: 0 4px 0 2px;
   cursor: default;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
+  line-height: 1.15;
   color: #fff;
   font-weight: normal;
-  text-shadow: 1px 1px 0 #000, -1px 0 0 rgba(0,0,0,0.55);
+  text-shadow: none;
   background: transparent;
   border: none;
+  overflow: hidden;
+  flex: 0 0 auto;
+  box-sizing: border-box;
 }
 .ecu-meter-row.clickable { cursor: pointer; }
 .ecu-meter-row:nth-child(even) { background: transparent; }
@@ -109,7 +113,10 @@ export const METER_INSPECTOR_DRILL_CSS = `
   font-variant-numeric: tabular-nums;
   opacity: 0.92;
 }
-.ecu-meter-row.has-skill { min-height: 18px; height: 18px; }
+.ecu-meter-row.has-skill {
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
+}
 .ecu-meter-row:last-child {
   border-radius: 0 0 2px 2px;
 }
@@ -128,7 +135,7 @@ export const METER_INSPECTOR_DRILL_CSS = `
   font-variant-numeric: tabular-nums;
   width: 16px;
   z-index: 1;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   opacity: 1;
   background: transparent !important;
   border: none !important;
@@ -173,7 +180,7 @@ export const METER_INSPECTOR_MAIN_CSS = `
   min-height: 0;
 }
 .ecu-meter-bd-side-sec {
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #c9a227;
@@ -205,7 +212,7 @@ export const METER_INSPECTOR_MAIN_CSS = `
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.03);
   color: #c8c2b4;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   padding: 4px 6px;
   line-height: 1.25;
 }
@@ -233,7 +240,7 @@ export const METER_INSPECTOR_MAIN_CSS = `
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   color: #8b9bb0;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-bd-side-item.is-active .ecu-meter-bd-side-amt {
   color: #ffe08a;
@@ -241,7 +248,7 @@ export const METER_INSPECTOR_MAIN_CSS = `
 .ecu-meter-bd-side-empty {
   padding: 6px;
   color: #6a7384;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-bd-side .ecu-game-icon,
 .ecu-meter-bd-side .ecu-meter-icon {
@@ -322,11 +329,15 @@ export const METER_INSPECTOR_MAIN_CSS = `
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .ecu-meter-bd-abilities .ecu-meter-bar-host,
 .ecu-meter-bd-targets .ecu-meter-bar-host,
 .ecu-meter-bd-auras-players .ecu-meter-bar-host {
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
 }
 .ecu-meter-bd-abilities .ecu-meter-row.clickable,

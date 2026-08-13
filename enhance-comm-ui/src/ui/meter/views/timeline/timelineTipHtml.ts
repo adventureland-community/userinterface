@@ -1,12 +1,9 @@
 /**
- * Time Line cluster + gear/event cooltip HTML and hover host.
+ * Time Line cluster + gear/event cooltip HTML builders (pure).
  */
 
-import { getReact, e } from "../../../../host/react";
 import {
-  hideMeterTooltip,
   METER_TT_ICON,
-  showMeterTooltip,
   escapeHtml,
 } from "../../../../meters/meterTooltip";
 import type { TimelineBlock } from "./timelineModel";
@@ -22,6 +19,8 @@ import {
   fmtAt,
   gearItemIconHtml,
   gearItemLabel,
+  gearItemNameOnly,
+  gearSwapKind,
   prettySlot,
   tipAtLabel,
   wallAtElapsed,
@@ -34,7 +33,7 @@ export const NEARBY_WINDOW_SEC = 8;
  */
 export const NEARBY_CLUSTER_SEC = 2;
 
-export const GEAR_TT_ICON = 26;
+export const GEAR_TT_ICON = 40;
 
 export function collectClusterBlocks(
   primary: TimelineBlock,
@@ -54,6 +53,16 @@ export function clusterSameSecond(blocks: TimelineBlock[]): boolean {
   return true;
 }
 
+/** Exact fight-elapsed stamp (same sample tick / identical `at` ms). */
+export function clusterSameAtSec(blocks: TimelineBlock[]): boolean {
+  if (!blocks.length) return true;
+  const t = blocks[0].atSec;
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i].atSec !== t) return false;
+  }
+  return true;
+}
+
 export function clusterWhenLabel(
   blocks: TimelineBlock[],
   originMs: number,
@@ -66,7 +75,9 @@ export function clusterWhenLabel(
     if (t < min) min = t;
     if (t > max) max = t;
   }
-  if (clusterSameSecond(blocks)) return tipAtLabel(originMs, min);
+  if (clusterSameAtSec(blocks) || clusterSameSecond(blocks)) {
+    return tipAtLabel(originMs, min);
+  }
   const wall = wallAtElapsed(originMs, min);
   const span = `${fmtAt(min)} – ${fmtAt(max)}`;
   return wall ? `${span} · ${wall}` : span;
@@ -82,9 +93,44 @@ export function tipClusterMetaHtml(who: string, whenLabel: string): string {
   </div>`;
 }
 
+function gearEmptySideHtml(): string {
+  return `<div class="ecu-meter-tt-gear-side is-empty">
+    <span class="ecu-meter-tt-gear-empty" style="width:${GEAR_TT_ICON}px;height:${GEAR_TT_ICON}px"></span>
+    <span class="ecu-meter-tt-gear-text">
+      <span class="ecu-meter-tt-gear-name">(empty)</span>
+    </span>
+  </div>`;
+}
+
 /**
- * One dense gear row: `[slot]  old→new icons  names` (or Equip/Unequip).
- * At/Source/category live on the cluster header, not here.
+ * One tip column: instance chrome + display name + muted item key.
+ * Level lives on the instance pip (not duplicated in the name).
+ */
+function gearSideHtml(
+  name: string | undefined,
+  level: number | undefined,
+  skin: string | undefined,
+): string {
+  if (!name) return gearEmptySideHtml();
+  const display = gearItemNameOnly(name);
+  const tipTitle = gearItemLabel(name, level);
+  const icon = gearItemIconHtml(name, skin, GEAR_TT_ICON, tipTitle, {
+    level,
+    instance: true,
+  });
+  return `<div class="ecu-meter-tt-gear-side">
+    <span class="ecu-meter-tt-gear-ico">${icon}</span>
+    <span class="ecu-meter-tt-gear-text">
+      <span class="ecu-meter-tt-gear-name">${escapeHtml(display)}</span>
+      <span class="ecu-meter-tt-gear-key">${escapeHtml(name)}</span>
+    </span>
+  </div>`;
+}
+
+/**
+ * One swap row: slot once, then aligned from | → | to columns.
+ * No Equip/Unequip verbs, no mapIn/`in`. Time lives on cluster header
+ * (or a quiet per-row at when the cluster spans seconds).
  */
 export function tipGearRowHtml(
   b: TimelineBlock,
@@ -94,32 +140,34 @@ export function tipGearRowHtml(
 ): string {
   const tone = muted ? " is-muted" : "";
   const slot = b.slot ? prettySlot(b.slot) : "Slot";
-  const hasOld = !!b.oldName;
-  const hasNew = !!b.newName;
-  const oldTitle = hasOld ? gearItemLabel(b.oldName, b.oldLevel) : "(empty)";
-  const newTitle = hasNew ? gearItemLabel(b.newName, b.newLevel) : "(empty)";
-  const oldIcon = gearItemIconHtml(
-    b.oldName,
-    b.oldSkin || (!hasNew ? b.skin : undefined),
-    GEAR_TT_ICON,
-    oldTitle,
-  );
-  const newIcon = gearItemIconHtml(b.newName, b.skin, GEAR_TT_ICON, newTitle);
-
-  let icos: string;
-  let names: string;
-  if (hasOld && hasNew) {
-    icos = `<span class="ecu-meter-tt-gear-icos">${oldIcon}<span class="ecu-meter-tt-gear-arrow" aria-hidden="true">→</span>${newIcon}</span>`;
-    names = `<span class="ecu-meter-tt-gear-names"><span class="is-old">${escapeHtml(oldTitle)}</span><span class="ecu-meter-tt-gear-arrow-sm" aria-hidden="true">→</span><span class="is-new">${escapeHtml(newTitle)}</span></span>`;
-  } else if (hasNew) {
-    icos = `<span class="ecu-meter-tt-gear-icos is-single">${newIcon}</span>`;
-    names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Equip</span> ${escapeHtml(newTitle)}</span>`;
-  } else if (hasOld) {
-    icos = `<span class="ecu-meter-tt-gear-icos is-single">${oldIcon}</span>`;
-    names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Unequip</span> ${escapeHtml(oldTitle)}</span>`;
-  } else {
-    icos = `<span class="ecu-meter-tt-gear-icos is-single"></span>`;
-    names = `<span class="ecu-meter-tt-gear-names">${escapeHtml(b.label || "Gear change")}</span>`;
+  const kind = gearSwapKind(b.oldName, b.newName);
+  let fromHtml: string;
+  let toHtml: string;
+  switch (kind) {
+    case "swap":
+      fromHtml = gearSideHtml(b.oldName, b.oldLevel, b.oldSkin);
+      toHtml = gearSideHtml(b.newName, b.newLevel, b.skin);
+      break;
+    case "equip":
+      fromHtml = gearEmptySideHtml();
+      toHtml = gearSideHtml(b.newName, b.newLevel, b.skin);
+      break;
+    case "unequip":
+      fromHtml = gearSideHtml(
+        b.oldName,
+        b.oldLevel,
+        b.oldSkin || b.skin,
+      );
+      toHtml = gearEmptySideHtml();
+      break;
+    case "unknown":
+      fromHtml = `<div class="ecu-meter-tt-gear-side"><span class="ecu-meter-tt-gear-text"><span class="ecu-meter-tt-gear-name">${escapeHtml(b.label || "Gear change")}</span></span></div>`;
+      toHtml = gearEmptySideHtml();
+      break;
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
   }
 
   let atBit = "";
@@ -128,16 +176,22 @@ export function tipGearRowHtml(
   }
 
   return `<div class="ecu-meter-tt-gear-row${tone}">
-    <span class="ecu-meter-tt-gear-slot">${escapeHtml(slot)}</span>
-    ${icos}
-    ${names}
-    ${atBit}
+    <div class="ecu-meter-tt-gear-row-head">
+      <span class="ecu-meter-tt-gear-slot">${escapeHtml(slot)}</span>
+      ${atBit}
+    </div>
+    <div class="ecu-meter-tt-gear-swap">
+      ${fromHtml}
+      <span class="ecu-meter-tt-gear-arrow" aria-hidden="true">→</span>
+      ${toHtml}
+    </div>
   </div>`;
 }
 
 /**
  * Cooltip for gear: one amber Gear header + player/time once, then
- * stacked lean swap rows (same-tick multi-slot without repeating At/Source).
+ * stacked lean swap rows. Nearby is same-`at` only (one sample tick’s
+ * MH+OH), never ±2s neighbors from a later weapon swap-back.
  */
 export function tipGearClusterHtml(
   primary: TimelineBlock,
@@ -155,7 +209,7 @@ export function tipGearClusterHtml(
     return 0;
   });
 
-  const sameSecond = clusterSameSecond(all);
+  const sameAt = clusterSameAtSec(all);
   const who = primary.source || actorName || "Unknown";
   const whenLabel = clusterWhenLabel(all, originMs);
 
@@ -165,7 +219,7 @@ export function tipGearClusterHtml(
     rows += tipGearRowHtml(
       b,
       b.domKey !== primary.domKey,
-      !sameSecond,
+      !sameAt,
       originMs,
     );
   }
@@ -340,19 +394,38 @@ export function timelineScrollView(from: EventTarget | null): {
  * lane dump). We skip the hovered skill key for every kind so All mode
  * does not dump every repeat of the same cast.
  *
- * Gear pins are swap-only: nearby stacks other gear swaps in the window
- * (one row per slot change), never casts/buffs/debuffs — and never a
- * full current loadout.
+ * Gear pins: cluster **only** other gear swaps with the exact same
+ * `atSec` (one `sampleGearSwaps` tick — e.g. MH+OH from one resend).
+ * Do not pull in ±2s neighbors; a swap-back a fraction of a second later
+ * is a separate pin and a separate tip.
  *
- * Nearby must be on this row, inside the cluster window, and **currently
- * visible in the scroll viewport** — ±8s at 88 px/s is ±704px and would
- * otherwise list Poison that is off-screen.
+ * Non-gear nearby must be on this row, inside the cluster window, and
+ * **currently visible in the scroll viewport**.
  */
 export function nearbyBlocks(
   primary: TimelineBlock,
   laneBlocks: TimelineBlock[],
   view: NearbyView,
 ): TimelineBlock[] {
+  if (primary.kind === "gear") {
+    const nearby: TimelineBlock[] = [];
+    for (let i = 0; i < laneBlocks.length; i++) {
+      const o = laneBlocks[i];
+      if (o.domKey === primary.domKey) continue;
+      if (o.kind !== "gear") continue;
+      if (o.atSec !== primary.atSec) continue;
+      nearby.push(o);
+    }
+    nearby.sort((a, b) => {
+      const sa = a.slot || "";
+      const sb = b.slot || "";
+      if (sa < sb) return -1;
+      if (sa > sb) return 1;
+      return 0;
+    });
+    return nearby;
+  }
+
   const primaryKey = skillKey(primary);
   const windowSec = nearbyWindowSec(view.pps, view.iconPx);
   const bestByKey: Record<string, TimelineBlock> = {};
@@ -361,12 +434,7 @@ export function nearbyBlocks(
     if (o.domKey === primary.domKey) continue;
     if (Math.abs(o.atSec - primary.atSec) > windowSec) continue;
     if (!blockIconInView(o, view)) continue;
-    // Gear tip = swaps only; non-gear tips still skip gear dumps of loadout.
-    if (primary.kind === "gear") {
-      if (o.kind !== "gear") continue;
-    } else if (o.kind === "gear") {
-      continue;
-    }
+    if (o.kind === "gear") continue;
     const k = skillKey(o);
     if (k === primaryKey) continue;
     const prev = bestByKey[k];
@@ -396,55 +464,4 @@ export function blockTooltipHtml(
     return tipGearClusterHtml(b, nearby, actorName, originMs);
   }
   return tipEventClusterHtml(b, nearby, actorName, originMs);
-}
-
-export function IconHost(props: {
-  html: string;
-  className?: string;
-  style?: { zIndex?: number };
-  onMouseEnter?: (ev: MouseEvent) => void;
-  onMouseMove?: (ev: MouseEvent) => void;
-  onMouseLeave?: (ev: MouseEvent) => void;
-}): any {
-  const React = getReact();
-  const ref = React.useRef(null as HTMLSpanElement | null);
-  const htmlRef = React.useRef("");
-  React.useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el || htmlRef.current === props.html) return;
-    htmlRef.current = props.html;
-    el.innerHTML = props.html;
-  }, [props.html]);
-  return e("span", {
-    ref,
-    className: props.className || undefined,
-    style: props.style,
-    onMouseEnter: props.onMouseEnter,
-    onMouseMove: props.onMouseMove,
-    onMouseLeave: props.onMouseLeave,
-  });
-}
-
-/** Last Time Line event whose tip is open — rebuild when this id changes. */
-export let tlHoverDomKey = "";
-
-export function isTlHoverTarget(el: EventTarget | null): boolean {
-  if (!(el instanceof Element)) return false;
-  return !!(
-    el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death")
-  );
-}
-
-export function showBlockTip(
-  domKey: string,
-  ev: MouseEvent,
-  html: string,
-): void {
-  tlHoverDomKey = domKey;
-  showMeterTooltip(ev, html);
-}
-
-export function hideBlockTip(): void {
-  tlHoverDomKey = "";
-  hideMeterTooltip();
 }

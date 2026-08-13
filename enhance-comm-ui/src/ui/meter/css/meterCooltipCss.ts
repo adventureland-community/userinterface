@@ -18,7 +18,7 @@ export const METER_COOLTIP_CSS = `
   padding: 5px 0;
   box-shadow: 0 10px 28px rgba(0,0,0,0.65);
   color: #eee;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   max-height: min(360px, 72vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -50,7 +50,7 @@ export const METER_COOLTIP_CSS = `
 .ecu-meter-cooltip-sec {
   padding: 5px 12px 3px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -64,18 +64,59 @@ export const METER_COOLTIP_CSS = `
   border: none;
   color: #eee;
   padding: 5px 14px;
-  font-size: 13px;
+  font-size: var(--meter-fs-body);
   line-height: 1.4;
 }
-.ecu-meter-cooltip-item:hover {
+.ecu-meter-cooltip-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ecu-meter-cooltip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #eee;
+  padding: 5px 6px 5px 14px;
+  font-size: var(--meter-fs-body);
+  line-height: 1.4;
+}
+.ecu-meter-cooltip-trail {
+  flex: 0 0 auto;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: rgba(220, 210, 210, 0.55);
+  padding: 5px 12px 5px 4px;
+  font-size: var(--meter-fs-body);
+  line-height: 1.4;
+}
+.ecu-meter-cooltip-trail:hover,
+.ecu-meter-cooltip-trail.is-fav {
+  color: #ffd28a;
+}
+.ecu-meter-cooltip-item:hover,
+.ecu-meter-cooltip-row:hover {
   background: rgba(255,255,255,0.1);
   color: #fff;
 }
-.ecu-meter-cooltip-item.is-selected {
+.ecu-meter-cooltip-row:hover .ecu-meter-cooltip-main {
+  color: #fff;
+}
+.ecu-meter-cooltip-item.is-selected,
+.ecu-meter-cooltip-row.is-selected,
+.ecu-meter-cooltip-row.is-selected .ecu-meter-cooltip-main {
   color: #ffd28a;
   background: rgba(232, 201, 106, 0.12);
 }
-.ecu-meter-cooltip-item.is-muted {
+.ecu-meter-cooltip-item.is-muted,
+.ecu-meter-cooltip-row.is-muted,
+.ecu-meter-cooltip-row.is-muted .ecu-meter-cooltip-main {
   color: rgba(220, 210, 210, 0.55);
 }
 .ecu-meter-cooltip-div {
@@ -104,7 +145,7 @@ export const METER_COOLTIP_CSS = `
 .ecu-meter-bookmark-hint {
   padding: 0 2px 4px;
   color: rgba(220, 210, 210, 0.55);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
 }
 .ecu-meter-bookmark-slot {
   cursor: grab;
@@ -113,7 +154,7 @@ export const METER_COOLTIP_CSS = `
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
   min-height: 32px;
   touch-action: none;
@@ -148,7 +189,7 @@ export const METER_COOLTIP_CSS = `
   max-height: min(360px, 70vh);
   overflow: auto;
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   z-index: 2147483000;
   pointer-events: auto;
   scrollbar-width: thin;
@@ -163,7 +204,7 @@ export const METER_COOLTIP_CSS = `
   grid-column: 1 / -1;
   padding: 6px 4px 2px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -174,7 +215,7 @@ export const METER_COOLTIP_CSS = `
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
   min-height: 28px;
 }
@@ -188,20 +229,61 @@ export const METER_COOLTIP_CSS = `
 }
 /* —— Details parity: segment outcome colors —— */
 .ecu-meter-cooltip-item.ecu-seg-wipe,
+.ecu-meter-cooltip-row.ecu-seg-wipe .ecu-meter-cooltip-main,
 .ecu-seg-wipe {
   color: #ef5350;
 }
-.ecu-meter-cooltip-item.ecu-seg-wipe:hover {
+.ecu-meter-cooltip-item.ecu-seg-wipe:hover,
+.ecu-meter-cooltip-row.ecu-seg-wipe:hover {
   color: #ff8a80;
   background: rgba(229, 57, 53, 0.12);
 }
+.ecu-meter-cooltip-row.ecu-seg-wipe:hover .ecu-meter-cooltip-main {
+  color: #ff8a80;
+}
 .ecu-meter-cooltip-item.ecu-seg-kill,
+.ecu-meter-cooltip-row.ecu-seg-kill .ecu-meter-cooltip-main,
 .ecu-seg-kill {
   color: #66bb6a;
 }
-.ecu-meter-cooltip-item.ecu-seg-kill:hover {
+.ecu-meter-cooltip-item.ecu-seg-kill:hover,
+.ecu-meter-cooltip-row.ecu-seg-kill:hover {
   color: #a5d6a7;
   background: rgba(76, 175, 80, 0.12);
+}
+.ecu-meter-cooltip-row.ecu-seg-kill:hover .ecu-meter-cooltip-main {
+  color: #a5d6a7;
+}
+/* Wrap holds the scrolling menu + a sibling flyout (overflow would clip children). */
+.ecu-meter-cooltip-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 6px;
+}
+.ecu-meter-cooltip-wrap.is-flip {
+  flex-direction: row-reverse;
+}
+.ecu-meter-cooltip-wrap > .ecu-meter-cooltip {
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: auto;
+}
+.ecu-meter-cooltip-detail {
+  pointer-events: none;
+  flex: 0 0 auto;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: #141214;
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  outline: 1px solid rgba(232, 201, 106, 0.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  color: #eee;
+  font-size: var(--meter-fs-body);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
 /* —— Details parity: bookmark header —— */
 .ecu-meter-bookmark-hd {
@@ -218,7 +300,7 @@ export const METER_COOLTIP_CSS = `
 .ecu-meter-bookmark-hd-title {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--meter-fs-title);
   font-weight: 600;
   color: #ffd28a;
   overflow: hidden;

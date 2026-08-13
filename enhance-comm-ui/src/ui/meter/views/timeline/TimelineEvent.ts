@@ -2,22 +2,69 @@
  * Time Line event block (icon + bar + hover).
  */
 
-import { e } from "../../../../host/react";
-import { showMeterTooltip } from "../../../../meters/meterTooltip";
+import { getReact, e } from "../../../../host/react";
+import {
+  hideMeterTooltip,
+  showMeterTooltip,
+} from "../../../../meters/meterTooltip";
 import type { TimelineBlock } from "./timelineModel";
-import { TL_ICON_Z } from "./timelineModel";
+import { gearPinZBoost, TL_ICON_Z } from "./timelineModel";
 import { blockIconHtml } from "./timelineFormat";
 import {
   blockTooltipHtml,
-  hideBlockTip,
-  IconHost,
-  isTlHoverTarget,
-  showBlockTip,
   timelineScrollView,
-  tlHoverDomKey,
   type NearbyView,
-} from "./timelineTips";
+} from "./timelineTipHtml";
 import { blockLayoutPx } from "./timelineVirtualize";
+
+/** Hover open-key — owned by this module (not an exported mutable binding). */
+const tlTipHoverRef = { current: "" };
+
+function isTlHoverTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof Element)) return false;
+  return !!(
+    el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death")
+  );
+}
+
+function showBlockTip(domKey: string, ev: MouseEvent, html: string): void {
+  tlTipHoverRef.current = domKey;
+  showMeterTooltip(ev, html);
+}
+
+/** Clear tip when the timeline unmounts or leaves the fight. */
+export function hideTimelineBlockTip(): void {
+  tlTipHoverRef.current = "";
+  hideMeterTooltip();
+}
+
+/** Paint block HTML into a span without React text nodes. */
+function IconHost(props: {
+  html: string;
+  className?: string;
+  style?: { zIndex?: number };
+  onMouseEnter?: (ev: MouseEvent) => void;
+  onMouseMove?: (ev: MouseEvent) => void;
+  onMouseLeave?: (ev: MouseEvent) => void;
+}): any {
+  const React = getReact();
+  const ref = React.useRef(null as HTMLSpanElement | null);
+  const htmlRef = React.useRef("");
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || htmlRef.current === props.html) return;
+    htmlRef.current = props.html;
+    el.innerHTML = props.html;
+  }, [props.html]);
+  return e("span", {
+    ref,
+    className: props.className || undefined,
+    style: props.style,
+    onMouseEnter: props.onMouseEnter,
+    onMouseMove: props.onMouseMove,
+    onMouseLeave: props.onMouseLeave,
+  });
+}
 
 export type TimelineEventProps = {
   block: TimelineBlock;
@@ -99,7 +146,7 @@ export function TimelineEventInner(props: TimelineEventProps): any {
   };
   const onMove = (ev: MouseEvent) => {
     // New event id (icon→icon) rebuilds the tip; same id just follows the cursor.
-    if (tlHoverDomKey !== b.domKey) {
+    if (tlTipHoverRef.current !== b.domKey) {
       showBlockTip(b.domKey, ev, tip(ev));
       return;
     }
@@ -107,9 +154,12 @@ export function TimelineEventInner(props: TimelineEventProps): any {
   };
   const onLeave = (ev: MouseEvent) => {
     if (isTlHoverTarget(ev.relatedTarget)) return;
-    hideBlockTip();
+    hideTimelineBlockTip();
   };
-  const iconZ = TL_ICON_Z + props.stackIndex;
+  const iconZ =
+    TL_ICON_Z +
+    props.stackIndex +
+    (b.kind === "gear" ? gearPinZBoost(b.slot) : 0);
   const barZ = props.stackIndex + 1;
   const split = props.subIndex >= 0 && props.subCount >= 2;
 

@@ -2,7 +2,7 @@
 export const METER_BODY_CORE_CSS = `
 .ecu-meter-report-mark {
   color: var(--meter-accent);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   line-height: 1;
   flex-shrink: 0;
   opacity: 0.95;
@@ -31,7 +31,7 @@ export const METER_BODY_CORE_CSS = `
 .ecu-meter-inspector-sub {
   color: var(--meter-muted);
   font-weight: 400;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -42,7 +42,7 @@ export const METER_BODY_CORE_CSS = `
   padding: 0 4px;
 }
 .ecu-meter-shell.is-inspector .ecu-meter-player-tab {
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   padding: 5px 10px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -87,7 +87,7 @@ export const METER_BODY_CORE_CSS = `
   overflow-x: hidden;
 }
 .ecu-meter-plugin-rail-sec {
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8a7a5a;
@@ -104,7 +104,7 @@ export const METER_BODY_CORE_CSS = `
   border-radius: 2px;
   background: transparent;
   color: #c8c2b4;
-  font-size: 13px;
+  font-size: var(--meter-fs-body);
   padding: 6px 6px;
   line-height: 1.25;
 }
@@ -125,7 +125,7 @@ export const METER_BODY_CORE_CSS = `
   flex-shrink: 0;
   width: 16px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   color: #c9a227;
 }
 .ecu-meter-plugin-rail-lab {
@@ -148,7 +148,7 @@ export const METER_BODY_CORE_CSS = `
   border-bottom: 2px solid transparent;
   color: var(--meter-muted);
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   margin-bottom: -1px;
 }
 .ecu-meter-shell.is-report .ecu-meter-report-tab:hover {
@@ -217,7 +217,7 @@ export const METER_BODY_WHO_CSS = `
   white-space: nowrap;
   text-overflow: ellipsis;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   color: var(--meter-text);
 }
 .ecu-meter-row .ecu-meter-label {
@@ -232,7 +232,9 @@ export const METER_BODY_WHO_CSS = `
   z-index: 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--meter-fs-secondary);
   color: #fff;
 }
 .ecu-meter-row .ecu-meter-pct { color: var(--meter-text); opacity: 0.75; }
