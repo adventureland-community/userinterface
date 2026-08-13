@@ -190,6 +190,7 @@ var EnhanceCommUI = (() => {
   var INTERVAL_MS = 100;
   var listeners = /* @__PURE__ */ new Set();
   var intervalId = null;
+  var visBound = false;
   function resolveTarget(source) {
     if (source == null || source.target == null || source.target === "") {
       return void 0;
@@ -213,20 +214,71 @@ var EnhanceCommUI = (() => {
       now: Date.now()
     };
   }
+  function statusFingerprint(ent, includeMs) {
+    const st = ent.s;
+    if (!st) return "";
+    const keys = Object.keys(st);
+    let out = "";
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const actual = st[key];
+      if (!actual) continue;
+      const stacks = typeof actual.s === "number" ? actual.s : 0;
+      const msBucket = includeMs && actual.ms != null && actual.ms > 0 ? Math.ceil(actual.ms / 2e3) : 0;
+      out += `${key}:${stacks}:${msBucket},`;
+    }
+    return out;
+  }
+  function snapshotUiKey(snap) {
+    const xt = window.xtarget;
+    const xtId = xt && xt.id != null ? String(xt.id) : "";
+    const targetId = snap.target && snap.target.id != null ? String(snap.target.id) : "";
+    const obsId = snap.observingId != null ? String(snap.observingId) : "";
+    const parts = [
+      obsId,
+      targetId,
+      xtId,
+      snap.serverRegion || "",
+      snap.serverIdentifier || "",
+      String(snap.entities.length)
+    ];
+    const ents = snap.entities;
+    for (let i = 0; i < ents.length; i++) {
+      const ent = ents[i];
+      const id = ent.id != null ? String(ent.id) : "";
+      const hud = !!ent.player || id === obsId || id === targetId || !!ent.cooperative;
+      const hp = ent.hp != null ? Math.round(ent.hp) : 0;
+      const mp = hud && ent.mp != null ? Math.round(ent.mp) : 0;
+      parts.push(
+        `${id}|${hp}|${mp}|${ent.dead ? 1 : 0}|${ent.rip ? 1 : 0}|${hud ? ent.fear || 0 : 0}|${ent.in || ""}|${ent.target || ""}|${hud ? statusFingerprint(ent, true) : ""}`
+      );
+    }
+    return parts.join(";");
+  }
+  function publishSnapshot() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    const snap = buildSnapshot();
+    const cbs = Array.from(listeners);
+    for (let i = 0; i < cbs.length; i++) {
+      try {
+        cbs[i](snap);
+      } catch (e2) {
+      }
+    }
+  }
+  function onTickVisibility() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    if (listeners.size === 0) return;
+    publishSnapshot();
+  }
   function ensureInterval() {
     if (intervalId != null) return;
-    const tick = () => {
-      const snap = buildSnapshot();
-      const cbs = Array.from(listeners);
-      for (let i = 0; i < cbs.length; i++) {
-        try {
-          cbs[i](snap);
-        } catch (e2) {
-        }
-      }
-    };
-    tick();
-    intervalId = window.setInterval(tick, INTERVAL_MS);
+    publishSnapshot();
+    intervalId = window.setInterval(publishSnapshot, INTERVAL_MS);
+    if (!visBound && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onTickVisibility);
+      visBound = true;
+    }
   }
   function maybeStopInterval() {
     if (listeners.size > 0 || intervalId == null) return;
@@ -3438,21 +3490,41 @@ var EnhanceCommUI = (() => {
   }
 
   // src/meters/meterUiTick.ts
+  var MIN_FLUSH_MS = 50;
   var listeners2 = [];
   var dirty = false;
   var raf = 0;
-  function flush() {
-    raf = 0;
-    if (!dirty) return;
-    dirty = false;
+  var delay = 0;
+  var lastFlushAt = 0;
+  function notify() {
     for (let i = 0; i < listeners2.length; i++) {
       listeners2[i]();
     }
   }
+  function flush() {
+    raf = 0;
+    if (!dirty) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    dirty = false;
+    lastFlushAt = performance.now();
+    notify();
+  }
+  function schedule() {
+    if (raf || delay) return;
+    const wait = MIN_FLUSH_MS - (performance.now() - lastFlushAt);
+    if (wait > 0) {
+      delay = window.setTimeout(() => {
+        delay = 0;
+        if (!dirty) return;
+        raf = window.requestAnimationFrame(flush);
+      }, wait);
+      return;
+    }
+    raf = window.requestAnimationFrame(flush);
+  }
   function markMeterDirty() {
     dirty = true;
-    if (raf) return;
-    raf = window.requestAnimationFrame(flush);
+    schedule();
   }
   function subscribeMeterTick(listener) {
     listeners2.push(listener);
@@ -3460,6 +3532,11 @@ var EnhanceCommUI = (() => {
       const idx = listeners2.indexOf(listener);
       if (idx >= 0) listeners2.splice(idx, 1);
     };
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && dirty) schedule();
+    });
   }
 
   // src/meters/meterAppearance.ts
@@ -11714,7 +11791,7 @@ var EnhanceCommUI = (() => {
   // src/lib/layoutGuide.ts
   var depth = 0;
   var listeners6 = [];
-  function notify() {
+  function notify2() {
     for (let i = 0; i < listeners6.length; i++) {
       listeners6[i]();
     }
@@ -11724,7 +11801,7 @@ var EnhanceCommUI = (() => {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify();
+    if (depth === 1) notify2();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -11732,7 +11809,7 @@ var EnhanceCommUI = (() => {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify();
+    if (depth === 0) notify2();
   }
   function subscribeLayoutGuide(listener) {
     listeners6.push(listener);
@@ -12263,7 +12340,7 @@ var EnhanceCommUI = (() => {
     } catch (e2) {
     }
   }
-  function notify2() {
+  function notify3() {
     for (let i = 0; i < listeners7.length; i++) {
       listeners7[i]();
     }
@@ -12282,7 +12359,7 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function getLayoutGridStep() {
@@ -12295,7 +12372,7 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function getLayoutChromePos() {
@@ -12308,7 +12385,7 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
@@ -17507,7 +17584,10 @@ button.ecu-meter-status-micro:hover,
     const React = getReact();
     const [, tick] = React.useState(0);
     React.useEffect(() => {
-      const id = window.setInterval(() => tick((n) => n + 1), 1e3);
+      const id = window.setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        tick((n) => n + 1);
+      }, 1e3);
       return () => window.clearInterval(id);
     }, []);
     const app = getMeterAppearance();
@@ -17531,7 +17611,8 @@ button.ecu-meter-status-micro:hover,
         for (let i = 0; i < dmg.rows.length; i++) totalDmg += dmg.rows[i].value;
       }
       if (heal.kind === "ranked") {
-        for (let i = 0; i < heal.rows.length; i++) totalHeal += heal.rows[i].value;
+        for (let i = 0; i < heal.rows.length; i++)
+          totalHeal += heal.rows[i].value;
       }
     }
     const dps = durSec > 0 ? totalDmg / durSec : 0;
@@ -17916,25 +17997,31 @@ button.ecu-meter-status-micro:hover,
     for (let i = 0; i < sorted.length; i++) {
       const r = sorted[i];
       const el = kids[i];
-      el.dataset.id = r.id || String(i);
-      el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") + (merged.onClick || merged.onContextMenu ? " clickable" : "");
+      const nextId = r.id || String(i);
+      if (el.dataset.id !== nextId) el.dataset.id = nextId;
+      const nextClass = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") + (merged.onClick || merged.onContextMenu ? " clickable" : "");
+      if (el.className !== nextClass) el.className = nextClass;
       const fill = el.querySelector(".ecu-meter-fill");
       const pct = barWidthPct(r, max);
       if (fill) {
-        fill.style.width = pct + "%";
-        fill.style.background = rowColor(r);
+        const width = pct + "%";
+        const bg = rowColor(r);
+        if (fill.style.width !== width) fill.style.width = width;
+        if (fill.style.background !== bg) fill.style.background = bg;
       }
       const rank = el.querySelector(".ecu-meter-rank");
-      if (rank && merged.rank !== false) {
-        rank.textContent = `${r.rank != null ? r.rank : i + 1}.`;
+      const rankText = `${r.rank != null ? r.rank : i + 1}.`;
+      if (rank && merged.rank !== false && rank.textContent !== rankText) {
+        rank.textContent = rankText;
       }
       const label = el.querySelector(".ecu-meter-label");
-      if (label) label.textContent = r.name;
+      if (label && label.textContent !== r.name) label.textContent = r.name;
       const nameHost = el.querySelector(".ecu-meter-who");
       if (nameHost) syncRowIcon(nameHost, r, merged);
       const vals = el.querySelector(".ecu-meter-vals");
       const share = total ? r.value / total * 100 : 0;
-      if (vals) vals.innerHTML = formatRowValue(r, share, merged);
+      const nextVals = formatRowValue(r, share, merged);
+      if (vals && vals.innerHTML !== nextVals) vals.innerHTML = nextVals;
       bindRow(el, r, merged);
     }
     container._barOpts = merged;
@@ -19659,7 +19746,10 @@ button.ecu-meter-status-micro:hover,
       pps: -1,
       clock: null,
       wall: null,
-      scale: null
+      scale: null,
+      clockText: "",
+      wallText: "",
+      scaleText: ""
     });
     const laneCacheRef = React.useRef({
       sig: "",
@@ -19762,20 +19852,30 @@ button.ecu-meter-status-micro:hover,
         cache3.contentW = contentWR;
         cache3.pad = padR;
         cache3.trackW = trackWR;
+        root.style.setProperty("--tl-pad", `${padR}px`);
+        root.style.setProperty("--tl-content-w", `${contentWR}px`);
+        root.style.setProperty("--tl-track-w", `${trackWR}px`);
       }
-      root.style.setProperty("--tl-pad", `${padR}px`);
-      root.style.setProperty("--tl-content-w", `${contentWR}px`);
-      root.style.setProperty("--tl-track-w", `${trackWR}px`);
       if (!cache3.clock || !root.contains(cache3.clock)) {
         cache3.clock = root.querySelector("[data-tl-clock]");
         cache3.wall = root.querySelector("[data-tl-wall]");
         cache3.scale = root.querySelector("[data-tl-scale]");
       }
-      if (cache3.clock) cache3.clock.textContent = fmtClock(elapsed);
-      if (cache3.wall) {
-        cache3.wall.textContent = fmtWall(startRef.current + elapsed * 1e3);
+      const clockText = fmtClock(elapsed);
+      if (cache3.clock && cache3.clockText !== clockText) {
+        cache3.clockText = clockText;
+        cache3.clock.textContent = clockText;
       }
-      if (cache3.scale) cache3.scale.textContent = `${Math.round(ppsNow)} px/s`;
+      const wallText = fmtWall(startRef.current + elapsed * 1e3);
+      if (cache3.wall && cache3.wallText !== wallText) {
+        cache3.wallText = wallText;
+        cache3.wall.textContent = wallText;
+      }
+      const scaleText = `${Math.round(ppsNow)} px/s`;
+      if (cache3.scale && cache3.scaleText !== scaleText) {
+        cache3.scaleText = scaleText;
+        cache3.scale.textContent = scaleText;
+      }
       const step = tickStepSec(ppsNow);
       const last = Math.max(0, Math.floor(elapsed + 1e-9));
       const includeEnd = !isLiveRef.current;
@@ -19842,7 +19942,10 @@ button.ecu-meter-status-micro:hover,
         pps: -1,
         clock: null,
         wall: null,
-        scale: null
+        scale: null,
+        clockText: "",
+        wallText: "",
+        scaleText: ""
       };
       tickSigRef.current = "";
       viewSnapRef.current = "";
@@ -19974,7 +20077,9 @@ button.ecu-meter-status-micro:hover,
       if (!isLive) return () => ro && ro.disconnect();
       let raf2 = 0;
       const loop = () => {
-        applyLayout();
+        if (!(typeof document !== "undefined" && document.hidden)) {
+          applyLayout();
+        }
         raf2 = window.requestAnimationFrame(loop);
       };
       raf2 = window.requestAnimationFrame(loop);
@@ -21867,6 +21972,7 @@ button.ecu-meter-status-micro:hover,
       paintLive();
       if (isCompare) return;
       return subscribeMeterTick(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
         if (propsRef.current.instance.rtPaused) return;
         if (propsRef.current.segmentRef !== "current") return;
         paintLive();
@@ -23392,7 +23498,6 @@ button.ecu-meter-status-micro:hover,
     } = props;
     const arrange = !!props.arrange;
     const locked = props.locked === true;
-    const [tick, setTick] = React.useState(0);
     const [tip, setTip] = React.useState(
       null
     );
@@ -23500,7 +23605,6 @@ button.ecu-meter-status-micro:hover,
     }, [tip]);
     React.useEffect(() => {
       injectMeterChromeCss();
-      return subscribeMeterTick(() => setTick((n) => n + 1));
     }, []);
     React.useEffect(() => {
       closeTip();
@@ -23513,7 +23617,6 @@ button.ecu-meter-status-micro:hover,
       entities,
       now: Date.now()
     });
-    void tick;
     const inCombat2 = isMeterInCombat();
     const presNow = presentationFor(instance);
     const isToolPanel = presNow === "details" || isReportPresentation(presNow);
@@ -24894,6 +24997,38 @@ button.ecu-meter-status-micro:hover,
   }
   var STACKED_LABEL_SETTLE_MS = 1250;
   var STACKED_LABEL_DROP_MS = 1e3;
+  var EFFECT_CLOCK_MS = 250;
+  var effectClockListeners = [];
+  var effectClockId = 0;
+  var effectClockVisBound = false;
+  function notifyEffectClock() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    for (let i = 0; i < effectClockListeners.length; i++) {
+      effectClockListeners[i]();
+    }
+  }
+  function onEffectClockVisibility() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    notifyEffectClock();
+  }
+  function subscribeEffectClock(listener) {
+    effectClockListeners.push(listener);
+    if (!effectClockId) {
+      effectClockId = window.setInterval(notifyEffectClock, EFFECT_CLOCK_MS);
+      if (!effectClockVisBound && typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", onEffectClockVisibility);
+        effectClockVisBound = true;
+      }
+    }
+    return () => {
+      const idx = effectClockListeners.indexOf(listener);
+      if (idx >= 0) effectClockListeners.splice(idx, 1);
+      if (effectClockListeners.length === 0 && effectClockId) {
+        window.clearInterval(effectClockId);
+        effectClockId = 0;
+      }
+    };
+  }
   function shouldShowRemainingLabel(effect, remainingMs, peakRemainMs, lastExtendAt, now) {
     if (!(remainingMs > 0)) return false;
     if (!wantsStackedSoftTint(effect)) return true;
@@ -24978,18 +25113,26 @@ button.ecu-meter-status-micro:hover,
   function EffectIcon(props) {
     const React = getReact();
     const iconRef = React.useRef(null);
+    const wrapRef = React.useRef(null);
+    const labelRef = React.useRef(null);
     const endsAtRef = React.useRef(0);
     const startedAtRef = React.useRef(0);
     const tintShownRef = React.useRef(false);
     const peakRemainRef = React.useRef(0);
     const lastExtendAtRef = React.useRef(0);
     const lastMsRef = React.useRef(0);
+    const paintedRef = React.useRef({
+      text: "",
+      color: "",
+      show: false,
+      title: ""
+    });
     const { effect, hostClass, entity, iconSize } = props;
+    const effectRef = React.useRef(effect);
+    effectRef.current = effect;
     const entityId = String(entity.id);
     const rid = loaderId(hostClass);
     const clickable = effect.type !== "skill";
-    const [remainingMs, setRemainingMs] = React.useState(0);
-    const [showRemainLabel, setShowRemainLabel] = React.useState(false);
     const noteDurationPeak = (remaining, extended) => {
       if (extended || !(peakRemainRef.current > 0)) {
         peakRemainRef.current = Math.max(
@@ -25000,16 +25143,44 @@ button.ecu-meter-status-micro:hover,
         lastExtendAtRef.current = Date.now();
       }
     };
-    const refreshRemainLabel = (remaining) => {
-      setShowRemainLabel(
-        shouldShowRemainingLabel(
-          effect,
-          remaining,
-          peakRemainRef.current,
-          lastExtendAtRef.current,
-          Date.now()
-        )
+    const paintRemainUi = () => {
+      const ef = effectRef.current;
+      const ends = endsAtRef.current;
+      const now = Date.now();
+      const remaining = ends > 0 ? Math.max(0, ends - now) : 0;
+      const show = shouldShowRemainingLabel(
+        ef,
+        remaining,
+        peakRemainRef.current,
+        lastExtendAtRef.current,
+        now
       );
+      const text = show && remaining > 0 ? formatDurationCompact(remaining / 1e3) : "";
+      const color = remaining <= 5e3 ? "#ffcc66" : "#e8e8e8";
+      const title = effectTooltip(ef, show ? remaining : void 0);
+      const painted = paintedRef.current;
+      const label = labelRef.current;
+      if (label) {
+        if (painted.text !== text) {
+          painted.text = text;
+          label.textContent = text || "\xA0";
+        }
+        if (painted.show !== !!text) {
+          painted.show = !!text;
+          label.style.visibility = text ? "visible" : "hidden";
+          label.style.background = text ? "rgba(0,0,0,0.82)" : "transparent";
+          label.style.border = text ? "1px solid #444" : "1px solid transparent";
+        }
+        if (painted.color !== color) {
+          painted.color = color;
+          label.style.color = color;
+        }
+      }
+      const wrap = wrapRef.current;
+      if (wrap && painted.title !== title) {
+        painted.title = title;
+        wrap.setAttribute("title", title);
+      }
     };
     const paintIcon = () => {
       const el = iconRef.current;
@@ -25065,19 +25236,19 @@ button.ecu-meter-status-micro:hover,
       if (rawMs != null && rawMs > 0) lastMsRef.current = rawMs;
       endsAtRef.current = next;
       const remaining = Math.max(0, next - now);
-      setRemainingMs(remaining);
+      paintRemainUi();
       if (!(next > now)) {
         startedAtRef.current = 0;
         peakRemainRef.current = 0;
         lastExtendAtRef.current = 0;
         lastMsRef.current = 0;
         hideTint();
-        setShowRemainLabel(false);
+        paintRemainUi();
         return;
       }
       if (!prev) {
         noteDurationPeak(remaining, true);
-        refreshRemainLabel(remaining);
+        paintRemainUi();
         startedAtRef.current = buffStartedAt(
           effect,
           next,
@@ -25090,7 +25261,7 @@ button.ecu-meter-status-micro:hover,
       }
       if (durationWasExtended(prev, next, now)) {
         noteDurationPeak(remaining, true);
-        refreshRemainLabel(remaining);
+        paintRemainUi();
         if (wantsStackedSoftTint(effect)) {
           hideTint();
           return;
@@ -25106,7 +25277,7 @@ button.ecu-meter-status-micro:hover,
         pushTint("sync");
         return;
       }
-      refreshRemainLabel(remaining);
+      paintRemainUi();
       if (!shouldShowEffectTint(effect, remaining)) {
         hideTint();
         return;
@@ -25126,28 +25297,38 @@ button.ecu-meter-status-micro:hover,
       }
       pushTint(tintShownRef.current ? "sync" : "restart");
     }, [entityId, effect.id, effect.ms, effect.stacks, rid]);
+    const onClockRef = React.useRef(() => {
+    });
+    onClockRef.current = () => {
+      const ef = effectRef.current;
+      const ends = endsAtRef.current;
+      if (!ends) {
+        paintRemainUi();
+        hideTint();
+        return;
+      }
+      const remaining = Math.max(0, ends - Date.now());
+      paintRemainUi();
+      if (!shouldShowEffectTint(ef, remaining)) {
+        if (tintShownRef.current) hideTint();
+        return;
+      }
+      if (!tintShownRef.current) pushTint("restart");
+    };
     React.useEffect(() => {
-      const tick = () => {
-        const ends = endsAtRef.current;
-        if (!ends) {
-          setRemainingMs(0);
-          setShowRemainLabel(false);
-          hideTint();
-          return;
-        }
-        const remaining = Math.max(0, ends - Date.now());
-        setRemainingMs(remaining);
-        refreshRemainLabel(remaining);
-        if (!shouldShowEffectTint(effect, remaining)) {
-          if (tintShownRef.current) hideTint();
-          return;
-        }
-        if (!tintShownRef.current) pushTint("restart");
-      };
+      const tick = () => onClockRef.current();
       tick();
-      const id = window.setInterval(tick, 250);
-      return () => window.clearInterval(id);
-    }, [entityId, effect.id, effect.stacks, effect.ms, rid]);
+      return subscribeEffectClock(tick);
+    }, [entityId, effect.id]);
+    const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
+    const showRemainLabel = shouldShowRemainingLabel(
+      effect,
+      remainNow,
+      peakRemainRef.current,
+      lastExtendAtRef.current,
+      Date.now()
+    );
+    const remainingMs = remainNow;
     const msLabel = showRemainLabel && remainingMs > 0 ? formatDurationCompact(remainingMs / 1e3) : "";
     const tooltip = effectTooltip(
       effect,
@@ -25162,6 +25343,7 @@ button.ecu-meter-status-micro:hover,
     return e(
       "div",
       {
+        ref: wrapRef,
         className: `comm-fx-icon ${hostClass}`,
         "data-condition": effect.id,
         "data-entity": entityId,
@@ -25200,6 +25382,7 @@ button.ecu-meter-status-micro:hover,
       e(
         "div",
         {
+          ref: labelRef,
           className: "comm-fx-ms",
           style: {
             marginTop: "1px",
@@ -30827,7 +31010,15 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     const React = getReact();
     const [snap, setSnap] = React.useState(null);
     React.useEffect(() => {
-      const stopTick = startTick((s) => setSnap(s));
+      let lastKey = "";
+      const stopTick = startTick((s) => {
+        updateMeterContext(s.entities);
+        updateKillContext(s.entities);
+        const key = `${snapshotUiKey(s)}|${isMeterInCombat() ? 1 : 0}`;
+        if (key === lastKey) return;
+        lastKey = key;
+        setSnap(s);
+      });
       return () => stopTick();
     }, []);
     if (!snap) return null;
