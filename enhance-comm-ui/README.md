@@ -6,13 +6,30 @@ Tampermonkey userscript that enhances Adventure.land `/comm` with a movable comb
 
 ## Install (Tampermonkey)
 
-1. Build: `npm install && npm run build` in this folder.
-2. Install either:
-   - `../enhance-comm-ui.js` (synced root copy), or
-   - `dist/enhance-comm-ui.js`
-3. Open `/comm` on adventure.land (or the community mirror listed in the UserScript header).
+You do **not** need to clone the repo or build anything. Install the ready userscript from GitHub:
 
-The UserScript `@version` banner is taken from `package.json` at build time.
+**Script URL (copy exactly):**
+
+```
+https://raw.githubusercontent.com/adventureland-community/userinterface/feature/enhance-comm-ui/enhance-comm-ui.js
+```
+
+Also linked in-repo: **[enhance-comm-ui.js](../enhance-comm-ui.js)**
+
+### Steps
+
+1. **Install Tampermonkey** for your browser from [tampermonkey.net](https://www.tampermonkey.net/) (pick your browser tab and follow their instructions).
+2. **Pin the Tampermonkey icon** on the extensions bar so you can see when a script is active (red badge with a count).
+3. Open the Tampermonkey menu → **Dashboard**.
+4. Open the **Utilities** tab.
+5. Under **Import from URL**, paste the script URL above → click **Install**.
+6. On the next page, click **Install** again to confirm.
+7. Under **Installed userscripts**, confirm **Adventure.land COMM UI Enhancement** is listed and enabled (green toggle).
+8. Open (or refresh) `/comm` on adventure.land (or the community mirror listed in the UserScript header).
+
+### Contributors (build from source)
+
+Only needed if you change the TypeScript. In this folder: `npm install && npm run build` (writes `dist/` and syncs `../enhance-comm-ui.js`). The UserScript `@version` banner comes from `package.json` at build time.
 
 ## Local development (refresh to see changes)
 

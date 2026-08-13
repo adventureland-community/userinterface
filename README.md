@@ -6,6 +6,6 @@ Each modification should include a short README (what it does + how to install/b
 
 ## Packages
 
-| Folder | Status | Notes |
-|--------|--------|--------|
-| [`enhance-comm-ui/`](./enhance-comm-ui/) | **0.8.0-alpha.1** | `/comm` HUD + WoW-style meters (alpha). Build with `npm run build`; userscript is synced to [`enhance-comm-ui.js`](./enhance-comm-ui.js). |
+| Folder                                   | Status            | Notes                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`enhance-comm-ui/`](./enhance-comm-ui/) | **0.8.0-alpha.1** | `/comm` HUD + WoW-style meters (alpha). No build — Tampermonkey **Import from URL** using [enhance-comm-ui.js](./enhance-comm-ui.js) ([raw](https://raw.githubusercontent.com/adventureland-community/userinterface/feature/enhance-comm-ui/enhance-comm-ui.js)). Steps in the [package README](./enhance-comm-ui/README.md#install-tampermonkey). |
