@@ -5,7 +5,7 @@
 import { e } from "../../../host/react";
 import type { GameSnapshot } from "../../../tick";
 import { resolveTarget } from "../../../tick";
-import { findEntity } from "../../../queries/entities";
+import { findEntity, aggroByTarget, aggroOn } from "../../../queries/entities";
 import type { CombatSignals } from "../../../queries/combatSignals";
 import { type PanelId, type PanelPos } from "../../../lib/layout";
 import type { PanelGroupDragOpts } from "../../../lib/panelGroupDrag";
@@ -193,6 +193,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
     framePlayer = focusEntity;
     frameTarget = resolveTarget(focusEntity);
   }
+  const byTarget = aggroByTarget(snap.entities);
 
   return [
     panel(
@@ -355,6 +356,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           "playerFrame",
           e(PlayerFrame, {
             observing: framePlayer,
+            aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
           }),
@@ -369,6 +371,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
             observing: framePlayer,
             target: frameTarget,
             entities: snap.entities,
+            byTarget,
             setSelectedEntity: deps.setSelectedEntity,
             layoutEdit: deps.layoutEdit,
           }),
@@ -380,6 +383,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       "threat",
       e(ThreatTable, {
         entities: snap.entities,
+        byTarget,
         observingId: snap.observingId,
         layoutEdit: deps.layoutEdit,
         setSelectedEntity: deps.setSelectedEntity,

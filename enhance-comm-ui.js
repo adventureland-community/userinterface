@@ -29251,19 +29251,20 @@ ${parts.map(cssSlice).join("\n")}
     return ent.type === "monster" && !!ent.target;
   }
   function stickyAggroByTarget(liveByTarget, resolveName, now = Date.now()) {
-    const liveIds = Object.keys(liveByTarget);
+    const live2 = liveByTarget || {};
+    const liveIds = Object.keys(live2);
     for (let i = 0; i < liveIds.length; i++) {
       const tid = liveIds[i];
-      const raw = liveByTarget[tid] || [];
+      const raw = live2[tid] || [];
       const mobs = [];
       for (let j = 0; j < raw.length; j++) {
         if (isLiveAggroMob(raw[j])) mobs.push(raw[j]);
       }
       if (mobs.length === 0) {
-        delete liveByTarget[tid];
+        delete live2[tid];
         continue;
       }
-      liveByTarget[tid] = mobs;
+      live2[tid] = mobs;
       threatStickyById.set(tid, {
         until: now + THREAT_STICKY_MS,
         mobs,
@@ -29271,9 +29272,9 @@ ${parts.map(cssSlice).join("\n")}
       });
     }
     const out = {};
-    const liveKeys = Object.keys(liveByTarget);
+    const liveKeys = Object.keys(live2);
     for (let i = 0; i < liveKeys.length; i++) {
-      out[liveKeys[i]] = liveByTarget[liveKeys[i]];
+      out[liveKeys[i]] = live2[liveKeys[i]];
     }
     const stickyIds = Array.from(threatStickyById.keys());
     for (let i = 0; i < stickyIds.length; i++) {
@@ -32491,7 +32492,8 @@ ${parts.map(cssSlice).join("\n")}
       const ent = findEntity(props.entities, tid);
       return ent && ent.name || tid;
     };
-    const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
+    const live2 = props.byTarget != null ? props.byTarget : aggroByTarget(props.entities);
+    const byTarget = stickyAggroByTarget(live2, nameOf);
     const targetIds = sortThreatTargetIds(
       Object.keys(byTarget),
       props.observingId,
@@ -33950,6 +33952,7 @@ ${parts.map(cssSlice).join("\n")}
       framePlayer = focusEntity;
       frameTarget = resolveTarget(focusEntity);
     }
+    const byTarget = aggroByTarget(snap.entities);
     return [
       panel(
         "players",
@@ -34095,6 +34098,7 @@ ${parts.map(cssSlice).join("\n")}
         "playerFrame",
         e(PlayerFrame, {
           observing: framePlayer,
+          aggroMobs: framePlayer ? aggroOn(byTarget, framePlayer.id) : [],
           setSelectedEntity: deps.setSelectedEntity,
           layoutEdit: deps.layoutEdit
         }),
@@ -34106,6 +34110,7 @@ ${parts.map(cssSlice).join("\n")}
           observing: framePlayer,
           target: frameTarget,
           entities: snap.entities,
+          byTarget,
           setSelectedEntity: deps.setSelectedEntity,
           layoutEdit: deps.layoutEdit
         }),
@@ -34115,6 +34120,7 @@ ${parts.map(cssSlice).join("\n")}
         "threat",
         e(ThreatTable, {
           entities: snap.entities,
+          byTarget,
           observingId: snap.observingId,
           layoutEdit: deps.layoutEdit,
           setSelectedEntity: deps.setSelectedEntity

@@ -6,9 +6,7 @@
 import type { EntityLike } from "../host/globals";
 
 /** True only for real death — stock also sets dead="vision" for cull. */
-export function isActuallyDead(
-  entity: EntityLike | null | undefined,
-): boolean {
+export function isActuallyDead(entity: EntityLike | null | undefined): boolean {
   return !!entity && entity.dead === true;
 }
 
@@ -34,23 +32,24 @@ function isLiveAggroMob(ent: EntityLike): boolean {
  * do not add/remove Threat rows every frame.
  */
 export function stickyAggroByTarget(
-  liveByTarget: Record<string, EntityLike[]>,
+  liveByTarget: Record<string, EntityLike[]> | null | undefined,
   resolveName: (tid: string) => string,
   now: number = Date.now(),
 ): Record<string, EntityLike[]> {
-  const liveIds = Object.keys(liveByTarget);
+  const live = liveByTarget || {};
+  const liveIds = Object.keys(live);
   for (let i = 0; i < liveIds.length; i++) {
     const tid = liveIds[i];
-    const raw = liveByTarget[tid] || [];
+    const raw = live[tid] || [];
     const mobs: EntityLike[] = [];
     for (let j = 0; j < raw.length; j++) {
       if (isLiveAggroMob(raw[j])) mobs.push(raw[j]);
     }
     if (mobs.length === 0) {
-      delete liveByTarget[tid];
+      delete live[tid];
       continue;
     }
-    liveByTarget[tid] = mobs;
+    live[tid] = mobs;
     threatStickyById.set(tid, {
       until: now + THREAT_STICKY_MS,
       mobs,
@@ -59,9 +58,9 @@ export function stickyAggroByTarget(
   }
 
   const out: Record<string, EntityLike[]> = {};
-  const liveKeys = Object.keys(liveByTarget);
+  const liveKeys = Object.keys(live);
   for (let i = 0; i < liveKeys.length; i++) {
-    out[liveKeys[i]] = liveByTarget[liveKeys[i]];
+    out[liveKeys[i]] = live[liveKeys[i]];
   }
 
   const stickyIds = Array.from(threatStickyById.keys());
