@@ -11,8 +11,10 @@ import {
   snapCommWindowAfterMove,
   ungroupCommWindow,
   applyScaleToCommWindows,
+  applyFrameSizeToCommWindows,
   type CommWindowGraphState,
 } from "../../lib/commWindowGroup";
+import type { PanelGroupDragOpts } from "../../lib/panelGroupDrag";
 import {
   getSettings,
   patchSettings,
@@ -72,7 +74,9 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
   const [snapPeerId, setSnapPeerId] = React.useState(null as string | null);
   const [nearPeerId, setNearPeerId] = React.useState(null as string | null);
   const [showWindowIds, setShowWindowIds] = React.useState(false);
-  const showIdsTimer = React.useRef(null as ReturnType<typeof setTimeout> | null);
+  const showIdsTimer = React.useRef(
+    null as ReturnType<typeof setTimeout> | null,
+  );
 
   const clearWindowIds = () => {
     if (showIdsTimer.current != null) {
@@ -115,14 +119,14 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     commit(moveCommWindowWithGroup(stateRef.current, id, pos));
   };
 
-  const snapAfterMove = (id: string) => {
+  const snapAfterMove = (id: string, opts?: PanelGroupDragOpts) => {
     clearWindowIds();
     setSnapDragId(null);
     setSnapPeerId(null);
     setNearPeerId(null);
     endLayoutGuide();
     if (!groupingEnabled()) return;
-    commit(snapCommWindowAfterMove(stateRef.current, id));
+    commit(snapCommWindowAfterMove(stateRef.current, id, opts));
   };
 
   const ungroupWindow = (id: string) => {
@@ -142,19 +146,26 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     if (!groupingEnabled()) return;
   };
 
-  const onDragMove = (id: string) => {
-    if (!groupingEnabled()) {
+  const onDragMove = (id: string, opts?: PanelGroupDragOpts) => {
+    if (!groupingEnabled() || opts?.skipGroupJoin) {
       setSnapPeerId(null);
       setNearPeerId(null);
       return;
     }
-    const guide = findCommSnapGuideTarget(stateRef.current, id);
+    const guide = findCommSnapGuideTarget(stateRef.current, id, opts);
     setSnapPeerId(guide && guide.canSnap ? guide.id : null);
     setNearPeerId(guide ? guide.id : null);
   };
 
   const setWindowScale = (id: string, scale: number) => {
     commit(applyScaleToCommWindows(stateRef.current, id, scale));
+  };
+
+  const resizeWindowFrame = (
+    id: string,
+    size: { frameW?: number; frameH?: number },
+  ) => {
+    commit(applyFrameSizeToCommWindows(stateRef.current, id, size));
   };
 
   const graphState = (): CommWindowGraphState => stateRef.current;
@@ -166,6 +177,7 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     onDragStart,
     onDragMove,
     setWindowScale,
+    resizeWindowFrame,
     snapDragId,
     snapPeerId,
     nearPeerId,

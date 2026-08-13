@@ -1,7 +1,7 @@
 import { getReact } from "../../host/react";
 import {
   getSettings,
-  importPanelLayouts,
+  importLayoutPackage,
   layoutForProfile,
   mergePanelOpacity,
   mergePanelVisible,
@@ -19,6 +19,12 @@ import {
 } from "../../lib/settings";
 import { canCloseWindow } from "../../lib/commWindow";
 import { type PanelId, type PanelPos } from "../../lib/layout";
+import {
+  applyLayoutEditPrefs,
+  getLayoutEditPrefs,
+} from "../../lib/layoutEditPrefs";
+import type { LayoutExportInput } from "../../lib/layoutExport";
+import type { MeterInstance } from "../../meters/meterTypes";
 import { detectViewportProfile } from "../../lib/viewport";
 import {
   applyBagLayoutPos,
@@ -29,6 +35,16 @@ import {
 function isClosable(id: PanelId): boolean {
   return canCloseWindow(id);
 }
+
+export type LayoutImportPackage = {
+  layoutsByProfile: PanelLayoutsByProfile;
+  meterInstances?: MeterInstance[];
+  layoutEditPrefs?: {
+    freePlacement?: boolean;
+    gridStep?: number;
+    chromePos?: { x: number; y: number };
+  };
+};
 
 export type PanelLayoutState = {
   panelVisible: PanelVisibleMap;
@@ -55,8 +71,8 @@ export type PanelLayoutState = {
   setPanelLocked: (id: PanelId, locked: boolean) => void;
   altHeld: boolean;
   resetLayout: () => void;
-  importLayouts: (layouts: PanelLayoutsByProfile) => void;
-  exportLayouts: () => PanelLayoutsByProfile;
+  importLayouts: (pkg: LayoutImportPackage) => MeterInstance[] | undefined;
+  exportLayouts: () => LayoutExportInput;
   setVisible: (id: PanelId, visible: boolean) => void;
   setOpacity: (id: PanelId, value: number) => void;
   visible: (id: PanelId) => boolean;
@@ -157,6 +173,11 @@ export function usePanelLayoutState(): PanelLayoutState {
   const setPanelPos = (id: PanelId, pos: PanelPos) => {
     setLayout((prev: Record<PanelId, PanelPos>) => {
       const nextPos = { ...prev[id], ...pos };
+      // Bag must stay content-sized (7-col float inventory).
+      if (id === "bag") {
+        delete nextPos.frameW;
+        delete nextPos.frameH;
+      }
       const next = { ...prev, [id]: nextPos };
       savePanelPos(id, nextPos, viewportProfile);
       if (id === "bag") applyBagLayoutPos(nextPos);
@@ -171,15 +192,34 @@ export function usePanelLayoutState(): PanelLayoutState {
     applyBagLayoutPos(next.bag);
   };
 
-  const importLayouts = (layouts: PanelLayoutsByProfile) => {
-    const settings = importPanelLayouts(layouts);
+  const importLayouts = (
+    pkg: LayoutImportPackage,
+  ): MeterInstance[] | undefined => {
+    const settings = importLayoutPackage({
+      layoutsByProfile: pkg.layoutsByProfile,
+      meterInstances: pkg.meterInstances,
+    });
     const next = layoutForProfile(settings, viewportProfile);
     setLayout(next);
     applyBagLayoutPos(next.bag);
+    if (pkg.layoutEditPrefs) {
+      applyLayoutEditPrefs(pkg.layoutEditPrefs);
+    }
+    return pkg.meterInstances ? settings.meterInstances : undefined;
   };
 
-  const exportLayouts = (): PanelLayoutsByProfile => {
-    return { ...getSettings().panelLayoutsByProfile };
+  const exportLayouts = (): LayoutExportInput => {
+    const settings = getSettings();
+    // Always export resolved maps so Copy works before any panel has been moved.
+    return {
+      layoutsByProfile: {
+        desktop: layoutForProfile(settings, "desktop"),
+        tablet: layoutForProfile(settings, "tablet"),
+        phone: layoutForProfile(settings, "phone"),
+      },
+      meterInstances: settings.meterInstances,
+      layoutEditPrefs: getLayoutEditPrefs(),
+    };
   };
 
   const setVisible = (id: PanelId, visible: boolean) => {

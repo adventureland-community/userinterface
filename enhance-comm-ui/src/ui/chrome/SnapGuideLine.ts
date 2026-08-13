@@ -1,11 +1,13 @@
 /**
  * Details-style snap guide: dotted ball line from dragging window → peer.
  * Green when within snap range; red when near but not yet attachable.
+ * Window-number badges share this overlay so both paint above the panel stack.
  */
 
 import { getReact, e } from "../../host/react";
-import { cssEscapePanelId } from "../../lib/panelEdgeGroup";
+import { cssEscapePanelId } from "../../lib/panelEdgeSnapDom";
 import { layoutDragRoot } from "../../lib/percentDrag";
+import { LAYOUT_GUIDE_OVERLAY_Z } from "../../meters/meterWindowStack";
 
 export type SnapGuideLineProps = {
   dragId: string | null;
@@ -13,8 +15,13 @@ export type SnapGuideLineProps = {
   snapPeerId: string | null;
   /** Nearest peer for red line when not yet in range. */
   nearPeerId: string | null;
-  /** Delay before showing (Details ~0.95s). */
-  visible: boolean;
+  /**
+   * Details ~0.95s: large window-number badges.
+   * Dotted balls show whenever dragId + a peer are set (not gated on this).
+   */
+  showWindowIds: boolean;
+  /** Layout window numbers — drawn on this overlay (not inside panels). */
+  windowNumberById?: Record<string, number>;
 };
 
 const BALL_STEP_PX = 22;
@@ -29,12 +36,24 @@ function readCenter(id: string): { x: number; y: number } | null {
   return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 };
 }
 
+function readPanelBox(
+  id: string,
+): { left: number; top: number; width: number; height: number } | null {
+  const el = document.querySelector(
+    `.comm-pos-panel.comm-pos-${cssEscapePanelId(id)}`,
+  ) as HTMLElement | null;
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
+}
+
 export function SnapGuideLine(props: SnapGuideLineProps): any {
   const React = getReact();
   const [tick, setTick] = React.useState(0);
+  const dragging = !!props.dragId;
 
   React.useEffect(() => {
-    if (!props.dragId || !props.visible) return;
+    if (!dragging) return;
     let raf = 0;
     const loop = () => {
       setTick((n: number) => n + 1);
@@ -42,52 +61,92 @@ export function SnapGuideLine(props: SnapGuideLineProps): any {
     };
     raf = window.requestAnimationFrame(loop);
     return () => window.cancelAnimationFrame(raf);
-  }, [props.dragId, props.visible]);
+  }, [dragging]);
 
-  if (!props.dragId || !props.visible) return null;
-  const targetId = props.snapPeerId || props.nearPeerId;
-  if (!targetId) return null;
+  if (!dragging) return null;
 
-  const from = readCenter(props.dragId);
-  const to = readCenter(targetId);
-  if (!from || !to) return null;
+  // tick forces re-measure while dragging (panels move under this overlay).
+  void tick;
 
   const root = layoutDragRoot().getBoundingClientRect();
-  const x0 = from.x - root.left;
-  const y0 = from.y - root.top;
-  const x1 = to.x - root.left;
-  const y1 = to.y - root.top;
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (!(dist > 8)) return null;
+  const kids: any[] = [];
 
-  const canSnap = !!props.snapPeerId;
-  const color = canSnap
-    ? "rgba(80, 220, 120, 0.85)"
-    : "rgba(220, 70, 70, 0.75)";
-  const count = Math.max(1, Math.floor(dist / BALL_STEP_PX));
-  const balls: any[] = [];
-  for (let i = 1; i <= count; i++) {
-    const t = i / (count + 1);
-    balls.push(
-      e("div", {
-        key: "b" + i + "-" + (tick % 2),
-        className: "comm-snap-guide-ball",
-        style: {
-          position: "absolute",
-          left: x0 + dx * t - BALL_SIZE / 2,
-          top: y0 + dy * t - BALL_SIZE / 2,
-          width: BALL_SIZE,
-          height: BALL_SIZE,
-          borderRadius: "50%",
-          background: color,
-          boxShadow: `0 0 0 1px rgba(0,0,0,0.45)`,
-          pointerEvents: "none",
-        },
-      }),
-    );
+  const numbers = props.showWindowIds ? props.windowNumberById : undefined;
+  if (numbers) {
+    const ids = Object.keys(numbers);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const n = numbers[id];
+      if (!(typeof n === "number" && n > 0)) continue;
+      const box = readPanelBox(id);
+      if (!box || box.width < 4 || box.height < 4) continue;
+      kids.push(
+        e(
+          "div",
+          {
+            key: "wid-" + id,
+            className: "comm-pos-window-id",
+            "aria-hidden": true,
+            style: {
+              position: "absolute",
+              left: box.left - root.left,
+              top: box.top - root.top,
+              width: box.width,
+              height: box.height,
+            },
+          },
+          String(n),
+        ),
+      );
+    }
   }
+
+  const targetId =
+    props.dragId && (props.snapPeerId || props.nearPeerId)
+      ? props.snapPeerId || props.nearPeerId
+      : null;
+  if (props.dragId && targetId) {
+    const from = readCenter(props.dragId);
+    const to = readCenter(targetId);
+    if (from && to) {
+      const x0 = from.x - root.left;
+      const y0 = from.y - root.top;
+      const x1 = to.x - root.left;
+      const y1 = to.y - root.top;
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 8) {
+        const canSnap = !!props.snapPeerId;
+        const color = canSnap
+          ? "rgba(80, 220, 120, 0.85)"
+          : "rgba(220, 70, 70, 0.75)";
+        const count = Math.max(1, Math.floor(dist / BALL_STEP_PX));
+        for (let i = 1; i <= count; i++) {
+          const t = i / (count + 1);
+          kids.push(
+            e("div", {
+              key: "b" + i,
+              className: "comm-snap-guide-ball",
+              style: {
+                position: "absolute",
+                left: x0 + dx * t - BALL_SIZE / 2,
+                top: y0 + dy * t - BALL_SIZE / 2,
+                width: BALL_SIZE,
+                height: BALL_SIZE,
+                borderRadius: "50%",
+                background: color,
+                boxShadow: `0 0 0 1px rgba(0,0,0,0.45)`,
+                pointerEvents: "none",
+              },
+            }),
+          );
+        }
+      }
+    }
+  }
+
+  if (kids.length === 0) return null;
 
   return e(
     "div",
@@ -97,11 +156,11 @@ export function SnapGuideLine(props: SnapGuideLineProps): any {
       style: {
         position: "absolute",
         inset: 0,
-        zIndex: 50,
+        zIndex: LAYOUT_GUIDE_OVERLAY_Z,
         pointerEvents: "none",
         overflow: "hidden",
       },
     },
-    ...balls,
+    ...kids,
   );
 }

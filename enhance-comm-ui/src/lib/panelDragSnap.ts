@@ -1,6 +1,8 @@
 /**
  * Panel drag snap — grid vs free vs peer vs visual-edge.
  * Thresholds must stay in lockstep with PositionedPanel.
+ * Edge-group join is separate (panelEdgeGroup): hold Ctrl while dragging
+ * to place without grouping. This module does not join groups.
  */
 
 import {
@@ -31,6 +33,8 @@ export type PanelDragSnapInput = {
   rootHeight: number;
   peerXs: number[];
   peerYs: number[];
+  /** Ctrl place-without-grouping: skip peer magnets (grid / screen-edge stay). */
+  skipPeerSnap?: boolean;
 };
 
 /** Grid vs free vs peer vs visual-edge. Body stays intact. */
@@ -46,11 +50,6 @@ export function applyPanelDragMove(input: PanelDragSnapInput): {
   // Free is off. Same 1× square cell as LayoutEditGrid's finest lines.
   const free = input.free;
   if (!free) {
-    const metrics = squareGridMetrics(
-      input.gridStep,
-      input.rootWidth,
-      input.rootHeight,
-    );
     const snapped = snapPosToFineGrid(
       nextX,
       nextY,
@@ -62,19 +61,28 @@ export function applyPanelDragMove(input: PanelDragSnapInput): {
     nextY = snapped.y;
     // Peers may magnetize, but tighter than one fine cell so they don't
     // yank off the chosen grid line onto mid/peer anchors.
-    const cellPctX = (metrics.cellPx / Math.max(1, input.rootWidth)) * 100;
-    const cellPctY = (metrics.cellPx / Math.max(1, input.rootHeight)) * 100;
-    const peerThresh = Math.min(
-      PEER_SNAP_PCT,
-      Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4),
-    );
-    nextX = snapPercent(nextX, peerThresh, input.peerXs);
-    nextY = snapPercent(nextY, peerThresh, input.peerYs);
+    if (!input.skipPeerSnap) {
+      const metrics = squareGridMetrics(
+        input.gridStep,
+        input.rootWidth,
+        input.rootHeight,
+      );
+      const cellPctX = (metrics.cellPx / Math.max(1, input.rootWidth)) * 100;
+      const cellPctY = (metrics.cellPx / Math.max(1, input.rootHeight)) * 100;
+      const peerThresh = Math.min(
+        PEER_SNAP_PCT,
+        Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4),
+      );
+      nextX = snapPercent(nextX, peerThresh, input.peerXs);
+      nextY = snapPercent(nextY, peerThresh, input.peerYs);
+    }
     useVisualEdge = false;
   } else {
     // Free: peer / mid magnets + tight painted-edge flush.
-    nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
-    nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
+    if (!input.skipPeerSnap) {
+      nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
+      nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
+    }
     edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
   }
   const visual = input.visual;

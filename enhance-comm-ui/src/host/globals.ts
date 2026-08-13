@@ -24,6 +24,8 @@ export type EntityLike = {
   real_y?: number;
   visible?: boolean;
   dead?: boolean | string;
+  /** G map key while observing (not observer chrome `window.map`). */
+  map?: string;
   in?: string;
   focus?: string;
   attack?: number;
@@ -100,6 +102,26 @@ export type GLike = {
     { looks?: Array<[string, Record<string, string>?]>; [key: string]: any }
   >;
   monsters?: Record<string, any>;
+  maps?: Record<
+    string,
+    {
+      name?: string;
+      instance?: boolean;
+      event?: string;
+      pvp?: boolean;
+      monsters?: Array<{ type?: string; [key: string]: any }>;
+      [key: string]: any;
+    }
+  >;
+  events?: Record<
+    string,
+    {
+      name?: string;
+      join?: boolean;
+      sprite?: string;
+      [key: string]: any;
+    }
+  >;
   positions?: Record<string, [string, number, number] | any>;
   imagesets?: Record<
     string,
@@ -151,6 +173,10 @@ declare global {
     server_identifier?: string;
     server_address?: string;
     server_path?: string;
+    /** Observer/player camera map key — updated on welcome + new_map. */
+    current_map?: string;
+    /** Observer/player instance id (`in`) — updated on welcome + new_map. */
+    current_in?: string;
     map?: { map_name?: string };
     xtarget?: EntityLike | null;
     sprite?: (skin: string, opts?: any) => string;

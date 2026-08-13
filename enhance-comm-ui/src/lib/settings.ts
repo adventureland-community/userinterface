@@ -677,7 +677,10 @@ export function patchSettings(
   if (partial.windowNumberById) {
     next.windowNumberById = { ...partial.windowNumberById };
   }
-  if (typeof partial.nextWindowNumber === "number" && partial.nextWindowNumber > 0) {
+  if (
+    typeof partial.nextWindowNumber === "number" &&
+    partial.nextWindowNumber > 0
+  ) {
     next.nextWindowNumber = Math.floor(partial.nextWindowNumber);
   }
   if (partial.meterClosedInstances) {
@@ -746,7 +749,7 @@ export function savePanelVisible(
   return saveSettings({ panelVisible: { [id]: visible } });
 }
 
-/** Reset meter windows to the built-in default set (Damage / Healing / coop v2). */
+/** Reset meter windows to the built-in default set (DPS / HPS). */
 export function resetMeterInstances(): CommUiSettings {
   return saveSettings({
     meterInstances: defaultMeterInstances(),
@@ -780,6 +783,23 @@ export function importPanelLayouts(
       ...merged,
     },
   });
+}
+
+/**
+ * Import a layout package: HUD profiles, and optionally meters.
+ * Missing meterInstances leaves existing meters untouched (v1 exports).
+ */
+export function importLayoutPackage(pkg: {
+  layoutsByProfile: PanelLayoutsByProfile;
+  meterInstances?: MeterInstance[];
+}): CommUiSettings {
+  let next = importPanelLayouts(pkg.layoutsByProfile);
+  if (pkg.meterInstances) {
+    next = saveSettings({
+      meterInstances: normalizeMeterInstances(pkg.meterInstances),
+    });
+  }
+  return next;
 }
 
 export function isPanelVisible(settings: CommUiSettings, id: PanelId): boolean {

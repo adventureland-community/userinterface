@@ -1,6 +1,11 @@
 /**
  * Generic Comm UI edge-snap panel groups.
  * snap sides: 1 left · 2 bottom · 3 right · 4 top → neighbor panel id
+ *
+ * Hold Ctrl while dragging to place without joining a group (preview + drop).
+ * Live: releasing Ctrl mid-drag re-enables snap for the rest of the gesture.
+ * Does not ungroup an already-grouped window. Alt is unlock-drag; Shift is
+ * free-size resize — both taken during arrange.
  */
 
 import type { PanelPos } from "./layout";
@@ -79,11 +84,16 @@ export function refreshSnapFlags<T extends EdgeGroupPanel>(panel: T): T {
  * Propagate frame size within a snap group (Details resize rules).
  * Horizontal row: share height; width stays per-window.
  * Vertical stack: share width; height stays per-window.
+ *
+ * When `rootW`/`rootH` are provided, peer positions are nudged so the flush
+ * edge stays put (left for shared width, top for shared height) — required for
+ * br/tr/bc anchors where CSS grows opposite the anchor point.
  */
 export function applyGroupFrameSize<T extends EdgeGroupPanel>(
   panels: T[],
   resizedId: string,
   size: { frameW?: number; frameH?: number },
+  opts?: { rootW?: number; rootH?: number },
 ): T[] {
   const source = panels.find((m) => m.id === resizedId);
   if (!source) return panels;
@@ -95,9 +105,19 @@ export function applyGroupFrameSize<T extends EdgeGroupPanel>(
   const snap = source.snap || {};
   const shareH = !!source.horizontalSnap || !!(snap[1] || snap[3]);
   const shareW = !!source.verticalSnap || !!(snap[2] || snap[4]);
+  const rootW = opts?.rootW;
+  const rootH = opts?.rootH;
+  const canAlign =
+    typeof rootW === "number" &&
+    rootW > 0 &&
+    typeof rootH === "number" &&
+    rootH > 0;
+
   return panels.map((m) => {
     if (!ids.has(m.id)) return m;
     const next = { ...m };
+    const oldW = typeof m.frameW === "number" && m.frameW > 0 ? m.frameW : null;
+    const oldH = typeof m.frameH === "number" && m.frameH > 0 ? m.frameH : null;
     if (size.frameW != null) {
       if (shareW) next.frameW = size.frameW;
       else if (m.id === resizedId) next.frameW = size.frameW;
@@ -106,8 +126,66 @@ export function applyGroupFrameSize<T extends EdgeGroupPanel>(
       if (shareH) next.frameH = size.frameH;
       else if (m.id === resizedId) next.frameH = size.frameH;
     }
+    // Resized panel owns its own pos nudge in the resize handler.
+    if (m.id === resizedId || !canAlign) return next;
+    if (shareW && size.frameW != null && oldW != null && oldW !== size.frameW) {
+      next.pos = shiftPosKeepLeftEdge(
+        next.pos,
+        oldW,
+        size.frameW,
+        rootW!,
+        rootH!,
+      );
+    }
+    if (shareH && size.frameH != null && oldH != null && oldH !== size.frameH) {
+      next.pos = shiftPosKeepTopEdge(
+        next.pos,
+        oldH,
+        size.frameH,
+        rootW!,
+        rootH!,
+      );
+    }
     return next;
   });
+}
+
+/** Keep painted left edge fixed when width changes (tl/bl no-op). */
+export function shiftPosKeepLeftEdge(
+  pos: PanelPos,
+  oldW: number,
+  newW: number,
+  rootW: number,
+  rootH: number,
+): PanelPos {
+  const dW = newW - oldW;
+  if (!dW) return pos;
+  const anchor = pos.anchor || "tl";
+  if (anchor === "tl" || anchor === "bl") return pos;
+  if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+    return nudgePosByPixels(pos, dW / 2, 0, rootW, rootH);
+  }
+  // tr / br — width grows leftward from the anchor; push anchor right by dW.
+  return nudgePosByPixels(pos, dW, 0, rootW, rootH);
+}
+
+/** Keep painted top edge fixed when height changes (tl/tr/tc no-op). */
+export function shiftPosKeepTopEdge(
+  pos: PanelPos,
+  oldH: number,
+  newH: number,
+  rootW: number,
+  rootH: number,
+): PanelPos {
+  const dH = newH - oldH;
+  if (!dH) return pos;
+  const anchor = pos.anchor || "tl";
+  if (anchor === "tl" || anchor === "tr" || anchor === "tc") return pos;
+  if (anchor === "center") {
+    return nudgePosByPixels(pos, 0, dH / 2, rootW, rootH);
+  }
+  // bl / br / bc — height grows upward from the anchor; push anchor down by dH.
+  return nudgePosByPixels(pos, 0, dH, rootW, rootH);
 }
 
 /** BFS collect all panels in the same snap group. */
@@ -168,7 +246,7 @@ export function ungroupPanel<T extends EdgeGroupPanel>(
 
 /**
  * Link A and B on a side of A (B attaches on the opposite edge).
- * Clears any previous occupant of those edges.
+ * Clears any previous occupant of those edges (both directions).
  */
 export function groupPanels<T extends EdgeGroupPanel>(
   panels: T[],
@@ -178,54 +256,48 @@ export function groupPanels<T extends EdgeGroupPanel>(
 ): T[] {
   if (aId === bId) return panels;
   const opp = oppositeSnapSide(sideOnA);
+  const byId: Record<string, T> = {};
+  for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
+  const a = byId[aId];
+  const b = byId[bId];
+  if (!a || !b) return panels;
+  const oldOnA = (a.snap || {})[sideOnA];
+  const oldOnB = (b.snap || {})[opp];
+  const stale = new Set<string>();
+  if (oldOnA && oldOnA !== bId) stale.add(oldOnA);
+  if (oldOnB && oldOnB !== aId) stale.add(oldOnB);
+
   return panels.map((m) => {
     if (m.id === aId) {
       const snap: EdgeSnapMap = { ...(m.snap || {}) };
       snap[sideOnA] = bId;
-      return { ...m, snap };
+      return refreshSnapFlags({ ...m, snap });
     }
     if (m.id === bId) {
       const snap: EdgeSnapMap = { ...(m.snap || {}) };
       snap[opp] = aId;
-      return { ...m, snap };
+      return refreshSnapFlags({ ...m, snap });
     }
-    return m;
+    if (!stale.has(m.id)) return m;
+    const snap: EdgeSnapMap = { ...(m.snap || {}) };
+    let changed = false;
+    const sides: EdgeSnapSide[] = [1, 2, 3, 4];
+    for (let i = 0; i < sides.length; i++) {
+      const side = sides[i];
+      if (snap[side] === aId || snap[side] === bId) {
+        delete snap[side];
+        changed = true;
+      }
+    }
+    return changed ? refreshSnapFlags({ ...m, snap }) : m;
   });
 }
 
 /**
- * Convert a moved panel's % delta into screen-direction % (right/down positive),
- * then apply that screen delta to any peer anchor via the same rules as
- * nudgePosByPixels. Mixed anchors must stay glued when the group moves.
+ * Move a snap group by applying the same % delta to every member.
+ * PanelPos uses left%/top% of the CSS anchor point for all anchors
+ * (`panelStyle` + translate) — do not invert for tr/br/bl.
  */
-function applyScreenPctDelta(pos: PanelPos, dxScreen: number, dyScreen: number): PanelPos {
-  const ax = pos.anchor || "tl";
-  let x = pos.x;
-  let y = pos.y;
-  if (ax === "tr" || ax === "br") x -= dxScreen;
-  else x += dxScreen;
-  if (ax === "bl" || ax === "br" || ax === "bc") y -= dyScreen;
-  else y += dyScreen;
-  return {
-    ...pos,
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
-  };
-}
-
-function screenPctDeltaFromMove(oldPos: PanelPos, newPos: PanelPos): {
-  dx: number;
-  dy: number;
-} {
-  const ax = oldPos.anchor || "tl";
-  const dx = newPos.x - oldPos.x;
-  const dy = newPos.y - oldPos.y;
-  return {
-    dx: ax === "tr" || ax === "br" ? -dx : dx,
-    dy: ax === "bl" || ax === "br" || ax === "bc" ? -dy : dy,
-  };
-}
-
 export function moveEdgeGroup<T extends EdgeGroupPanel>(
   panels: T[],
   movedId: string,
@@ -252,13 +324,16 @@ export function moveEdgeGroup<T extends EdgeGroupPanel>(
     );
   }
   const groupIds = new Set(group.map((g) => g.id));
-  const screen = screenPctDeltaFromMove(old, newPos);
   return panels.map((m) => {
     if (!groupIds.has(m.id)) return m;
     if (m.id === movedId) return { ...m, pos: { ...newPos } };
     return {
       ...m,
-      pos: applyScreenPctDelta(m.pos, screen.dx, screen.dy),
+      pos: {
+        ...m.pos,
+        x: Math.max(0, Math.min(100, m.pos.x + dx)),
+        y: Math.max(0, Math.min(100, m.pos.y + dy)),
+      },
     };
   });
 }
@@ -291,53 +366,94 @@ export function matchGroupWidth<T extends EdgeGroupPanel>(
   return panels.map((m) => (ids.has(m.id) ? { ...m, frameW: width } : m));
 }
 
+type EdgeRect = { left: number; right: number; top: number; bottom: number };
+
+/**
+ * How `panelStyle` grows the painted box when frameW/H change for an anchor.
+ * Used so attach-align math matches the size that will actually paint.
+ */
+function projectRectForSize(
+  rect: EdgeRect,
+  anchor: string | undefined,
+  nextW: number | undefined,
+  nextH: number | undefined,
+): EdgeRect {
+  const ax = anchor || "tl";
+  const oldW = rect.right - rect.left;
+  const oldH = rect.bottom - rect.top;
+  const w = nextW != null && nextW > 0 ? nextW : oldW;
+  const h = nextH != null && nextH > 0 ? nextH : oldH;
+  const dW = w - oldW;
+  const dH = h - oldH;
+  let left = rect.left;
+  let top = rect.top;
+  if (dW) {
+    if (ax === "tr" || ax === "br") left -= dW;
+    else if (ax === "tc" || ax === "bc" || ax === "center") left -= dW / 2;
+  }
+  if (dH) {
+    if (ax === "bl" || ax === "br" || ax === "bc") top -= dH;
+    else if (ax === "center") top -= dH / 2;
+  }
+  return { left, top, right: left + w, bottom: top + h };
+}
+
 /**
  * Pick best edge pairing from DOM rects while dragging `selfId`.
  * Returns null when nothing is within threshold.
+ * Only accepts the geometrically natural side (self left of other → right
+ * attach, etc.) so overlap does not flip to the wrong edge.
  */
 export function findEdgeSnapCandidate(
   selfId: string,
-  selfRect: { left: number; right: number; top: number; bottom: number },
-  others: Array<{
-    id: string;
-    rect: { left: number; right: number; top: number; bottom: number };
-  }>,
+  selfRect: EdgeRect,
+  others: Array<{ id: string; rect: EdgeRect }>,
   thresholdPx = DEFAULT_EDGE_SNAP_PX,
 ): EdgeCandidate | null {
   let best: EdgeCandidate | null = null;
   let bestScore = Infinity;
+  const selfCx = (selfRect.left + selfRect.right) / 2;
+  const selfCy = (selfRect.top + selfRect.bottom) / 2;
   for (let i = 0; i < others.length; i++) {
     const o = others[i];
     if (o.id === selfId) continue;
     const r = o.rect;
+    const oCx = (r.left + r.right) / 2;
+    const oCy = (r.top + r.bottom) / 2;
     const candidates: Array<{
       side: EdgeSnapSide;
       gap: number;
       align: number;
+      natural: boolean;
     }> = [
       {
         side: 3,
         gap: Math.abs(selfRect.right - r.left),
         align: Math.abs(selfRect.top - r.top),
+        natural: selfCx <= oCx,
       },
       {
         side: 1,
         gap: Math.abs(selfRect.left - r.right),
         align: Math.abs(selfRect.top - r.top),
+        natural: selfCx >= oCx,
       },
       {
         side: 2,
         gap: Math.abs(selfRect.bottom - r.top),
         align: Math.abs(selfRect.left - r.left),
+        natural: selfCy <= oCy,
       },
       {
         side: 4,
         gap: Math.abs(selfRect.top - r.bottom),
         align: Math.abs(selfRect.left - r.left),
+        natural: selfCy >= oCy,
       },
     ];
     for (let c = 0; c < candidates.length; c++) {
       const cand = candidates[c];
+      if (!cand.natural) continue;
       if (cand.gap > thresholdPx || cand.align > 80) continue;
       const score = cand.gap + cand.align * 0.25;
       if (score < bestScore) {
@@ -349,7 +465,11 @@ export function findEdgeSnapCandidate(
   return best;
 }
 
-/** Nudge PanelPos by a painted-pixel delta, respecting anchor. */
+/**
+ * Nudge PanelPos by a painted-pixel delta.
+ * `panelStyle` always places the anchor at left%/top%, so +x/+y is always
+ * screen right/down for every LayoutAnchor.
+ */
 export function nudgePosByPixels(
   pos: PanelPos,
   dxPx: number,
@@ -357,64 +477,37 @@ export function nudgePosByPixels(
   rootW: number,
   rootH: number,
 ): PanelPos {
-  const ax = pos.anchor || "tl";
   const dxPct = rootW > 0 ? (dxPx / rootW) * 100 : 0;
   const dyPct = rootH > 0 ? (dyPx / rootH) * 100 : 0;
-  let x = pos.x;
-  let y = pos.y;
-  // Right-anchored: increasing x moves the panel left on screen.
-  if (ax === "tr" || ax === "br") x -= dxPct;
-  else if (ax === "tc" || ax === "bc" || ax === "center") x += dxPct;
-  else x += dxPct;
-  // Bottom-anchored: increasing y moves the panel up on screen.
-  if (ax === "bl" || ax === "br" || ax === "bc") y -= dyPct;
-  else if (ax === "center") y += dyPct;
-  else y += dyPct;
   return {
     ...pos,
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
+    x: Math.max(0, Math.min(100, pos.x + dxPct)),
+    y: Math.max(0, Math.min(100, pos.y + dyPct)),
   };
 }
 
 /**
  * Group + align `selfId` flush against `otherId` on the given side.
  * Uses live DOM rects so the panels actually touch (Details SetPoint).
+ * Size matching is projected into the rect before the nudge so anchors that
+ * grow opposite the attach edge stay flush after frameW/H update.
  */
 export function attachPanelEdge<T extends EdgeGroupPanel>(
   panels: T[],
   selfId: string,
   otherId: string,
   sideOnSelf: EdgeSnapSide,
-  selfRect: { left: number; right: number; top: number; bottom: number },
-  otherRect: { left: number; right: number; top: number; bottom: number },
+  selfRect: EdgeRect,
+  otherRect: EdgeRect,
   rootW: number,
   rootH: number,
 ): T[] {
-  let dx = 0;
-  let dy = 0;
-  if (sideOnSelf === 3) {
-    // self right → other left, top-aligned
-    dx = otherRect.left - GROUP_GAP_PX - selfRect.right;
-    dy = otherRect.top - selfRect.top;
-  } else if (sideOnSelf === 1) {
-    dx = otherRect.right + GROUP_GAP_PX - selfRect.left;
-    dy = otherRect.top - selfRect.top;
-  } else if (sideOnSelf === 2) {
-    dy = otherRect.top - GROUP_GAP_PX - selfRect.bottom;
-    dx = otherRect.left - selfRect.left;
-  } else {
-    dy = otherRect.bottom + GROUP_GAP_PX - selfRect.top;
-    dx = otherRect.left - selfRect.left;
-  }
-
   const byId: Record<string, T> = {};
   for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
   const self = byId[selfId];
   const other = byId[otherId];
   if (!self || !other) return panels;
 
-  const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
   // Details agrupar_janelas: horizontal attach shares height; vertical shares width.
   const matchH = sideOnSelf === 1 || sideOnSelf === 3;
   const matchW = sideOnSelf === 2 || sideOnSelf === 4;
@@ -424,6 +517,31 @@ export function attachPanelEdge<T extends EdgeGroupPanel>(
     other.frameW || Math.round(otherRect.right - otherRect.left) || undefined;
   const h = matchH ? peerH || self.frameH : self.frameH;
   const w = matchW ? peerW || self.frameW : self.frameW;
+  const projected = projectRectForSize(
+    selfRect,
+    self.pos.anchor,
+    matchW ? w : undefined,
+    matchH ? h : undefined,
+  );
+
+  let dx = 0;
+  let dy = 0;
+  if (sideOnSelf === 3) {
+    // self right → other left, top-aligned
+    dx = otherRect.left - GROUP_GAP_PX - projected.right;
+    dy = otherRect.top - projected.top;
+  } else if (sideOnSelf === 1) {
+    dx = otherRect.right + GROUP_GAP_PX - projected.left;
+    dy = otherRect.top - projected.top;
+  } else if (sideOnSelf === 2) {
+    dy = otherRect.top - GROUP_GAP_PX - projected.bottom;
+    dx = otherRect.left - projected.left;
+  } else {
+    dy = otherRect.bottom + GROUP_GAP_PX - projected.top;
+    dx = otherRect.left - projected.left;
+  }
+
+  const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
 
   let next = panels.map((m) => {
     if (m.id !== selfId) return m;
@@ -438,119 +556,4 @@ export function attachPanelEdge<T extends EdgeGroupPanel>(
   if (matchH && h != null) next = matchGroupHeight(next, selfId, h);
   if (matchW && w != null) next = matchGroupWidth(next, selfId, w);
   return next.map(refreshSnapFlags);
-}
-
-export function cssEscapePanelId(id: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(id);
-  }
-  return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
-}
-
-/** Collect live DOM rects for snap peers under the Comm positioned-panel convention. */
-export function collectEdgePeerRects<T extends EdgeGroupPanel>(
-  panels: T[],
-  selfId: string,
-  canSnap: EdgeGroupPeerFilter<T>,
-): Array<{
-  id: string;
-  rect: { left: number; right: number; top: number; bottom: number };
-}> {
-  if (typeof document === "undefined") return [];
-  const others: Array<{
-    id: string;
-    rect: { left: number; right: number; top: number; bottom: number };
-  }> = [];
-  for (let i = 0; i < panels.length; i++) {
-    const m = panels[i];
-    if (m.id === selfId || !canSnap(m, selfId)) continue;
-    const el = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscapePanelId(m.id)}`,
-    ) as HTMLElement | null;
-    if (!el) continue;
-    others.push({ id: m.id, rect: el.getBoundingClientRect() });
-  }
-  return others;
-}
-
-/** Live snap target while dragging (highlights peer before drop). */
-export function findEdgeSnapPreviewTarget<T extends EdgeGroupPanel>(
-  panels: T[],
-  selfId: string,
-  canSnap: EdgeGroupPeerFilter<T>,
-  thresholdPx = DEFAULT_EDGE_SNAP_PX,
-): string | null {
-  if (typeof document === "undefined") return null;
-  const selfEl = document.querySelector(
-    `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`,
-  ) as HTMLElement | null;
-  if (!selfEl) return null;
-  const selfRect = selfEl.getBoundingClientRect();
-  const others = collectEdgePeerRects(panels, selfId, canSnap);
-  const cand = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-  return cand ? cand.otherId : null;
-}
-
-/**
- * Details guide-ball target: nearest attachable peer.
- * `canSnap` is true when within the hard edge-snap threshold (green balls).
- */
-export function findSnapGuideTarget<T extends EdgeGroupPanel>(
-  panels: T[],
-  selfId: string,
-  canSnap: EdgeGroupPeerFilter<T>,
-  nearPx = 140,
-  thresholdPx = DEFAULT_EDGE_SNAP_PX,
-): { id: string; canSnap: boolean } | null {
-  if (typeof document === "undefined") return null;
-  const selfEl = document.querySelector(
-    `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`,
-  ) as HTMLElement | null;
-  if (!selfEl) return null;
-  const selfRect = selfEl.getBoundingClientRect();
-  const others = collectEdgePeerRects(panels, selfId, canSnap);
-  const tight = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-  if (tight) return { id: tight.otherId, canSnap: true };
-  const loose = findEdgeSnapCandidate(selfId, selfRect, others, nearPx);
-  if (loose) return { id: loose.otherId, canSnap: false };
-  return null;
-}
-
-/** Try to snap `selfId` to a nearby panel after a drag ends. */
-export function trySnapOnDrop<T extends EdgeGroupPanel>(
-  panels: T[],
-  selfId: string,
-  canSnap: EdgeGroupPeerFilter<T>,
-  thresholdPx = DEFAULT_EDGE_SNAP_PX,
-): T[] {
-  if (typeof document === "undefined") return panels;
-  const selfEl = document.querySelector(
-    `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`,
-  ) as HTMLElement | null;
-  if (!selfEl) return panels;
-  const selfRect = selfEl.getBoundingClientRect();
-  const others = collectEdgePeerRects(panels, selfId, canSnap);
-  const cand = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-  if (!cand) return panels;
-  const peer = others.find((o) => o.id === cand.otherId);
-  if (!peer) return panels;
-  const rootEl =
-    (typeof document !== "undefined" &&
-      (document.getElementById("comm-ui") ||
-        document.getElementById("game") ||
-        document.body)) ||
-    null;
-  const root = rootEl
-    ? rootEl.getBoundingClientRect()
-    : { width: window.innerWidth, height: window.innerHeight };
-  return attachPanelEdge(
-    panels,
-    selfId,
-    cand.otherId,
-    cand.sideOnSelf,
-    selfRect,
-    peer.rect,
-    root.width || window.innerWidth,
-    root.height || window.innerHeight,
-  );
 }

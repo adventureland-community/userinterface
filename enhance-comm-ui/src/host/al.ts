@@ -191,6 +191,24 @@ export function getServerIdentifier(): string | undefined {
   return window.server_identifier;
 }
 
+/** Live camera map (`welcome` / `new_map`). Not `window.map.map_name`. */
+export function getCurrentMap(): string | undefined {
+  if (window.current_map) return String(window.current_map);
+  const obs = getObserving();
+  if (obs?.map) return String(obs.map);
+  return undefined;
+}
+
+/** Live camera instance id (`welcome` / `new_map`). */
+export function getCurrentIn(): string | undefined {
+  if (window.current_in != null && String(window.current_in) !== "") {
+    return String(window.current_in);
+  }
+  const obs = getObserving();
+  if (obs?.in != null && String(obs.in) !== "") return String(obs.in);
+  return undefined;
+}
+
 export function getMapName(): string | undefined {
   return window.map?.map_name;
 }

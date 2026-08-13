@@ -150,3 +150,31 @@ export function subscribeLayoutEditPrefs(listener: Listener): () => void {
     if (idx >= 0) listeners.splice(idx, 1);
   };
 }
+
+/**
+ * Apply imported layout-edit prefs (snap grid / free placement / chrome pos).
+ * Only overwrites fields present on `partial`.
+ */
+export function applyLayoutEditPrefs(
+  partial: Partial<LayoutEditPrefs>,
+): LayoutEditPrefs {
+  const cur = getLayoutEditPrefs();
+  const next: LayoutEditPrefs = {
+    freePlacement:
+      typeof partial.freePlacement === "boolean"
+        ? partial.freePlacement
+        : cur.freePlacement,
+    gridStep:
+      partial.gridStep != null
+        ? normalizeGridStep(partial.gridStep)
+        : cur.gridStep,
+    chromePos:
+      partial.chromePos != null
+        ? normalizeChromePos(partial.chromePos)
+        : { ...cur.chromePos },
+  };
+  cache = next;
+  write(next);
+  notify();
+  return next;
+}

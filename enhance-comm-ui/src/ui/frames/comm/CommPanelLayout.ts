@@ -8,6 +8,7 @@ import { resolveTarget } from "../../../tick";
 import { findEntity } from "../../../queries/entities";
 import type { CombatSignals } from "../../../queries/combatSignals";
 import { type PanelId, type PanelPos } from "../../../lib/layout";
+import type { PanelGroupDragOpts } from "../../../lib/panelGroupDrag";
 import { canCloseWindow, canGroupWindow } from "../../../lib/commWindow";
 import { commWindowHasSnap } from "../../../lib/commWindowGroup";
 import type { ViewportProfile } from "../../../lib/viewport";
@@ -57,9 +58,11 @@ export type CommPanelLayoutDeps = {
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
   onMove: (id: PanelId, pos: PanelPos) => void;
-  onMoveEnd?: (id: PanelId, pos: PanelPos) => void;
+  onMoveEnd?: (id: PanelId, pos: PanelPos, opts?: PanelGroupDragOpts) => void;
+  /** Persist HUD frame size after corner-grip resize. */
+  onResizeFrame?: (id: PanelId, size: { w: number; h: number }) => void;
   onPanelDragStart?: (id: PanelId) => void;
-  onPanelDragMove?: (id: PanelId) => void;
+  onPanelDragMove?: (id: PanelId, opts?: PanelGroupDragOpts) => void;
   ungroupPanel?: (id: PanelId) => void;
   panelSnapDragId?: string | null;
   panelSnapPeerId?: string | null;
@@ -126,7 +129,10 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         onDragStart:
           playArrange || deps.layoutEdit ? deps.onPanelDragStart : undefined,
         onDragMove:
-          playArrange || deps.layoutEdit ? deps.onPanelDragMove : undefined,
+          playArrange || deps.layoutEdit
+            ? (id: PanelId, _pos: PanelPos, opts?: PanelGroupDragOpts) =>
+                deps.onPanelDragMove?.(id, opts)
+            : undefined,
         softAvoid: groupable ? false : undefined,
         style: opts?.style,
         hidden: isHidden,
@@ -159,6 +165,13 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         onWindowScale: deps.onWindowScale
           ? (scale: number) => deps.onWindowScale!(id, scale)
           : undefined,
+        // Layout toggle is chrome-only. Bag must stay content-sized (7-col
+        // float grid breaks under a locked shell width/height).
+        showResizeHandles: id !== "toggles" && id !== "bag",
+        onResizeFrame:
+          id !== "toggles" && id !== "bag" && deps.onResizeFrame
+            ? (size: { w: number; h: number }) => deps.onResizeFrame!(id, size)
+            : undefined,
       },
       child,
     );

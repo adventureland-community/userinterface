@@ -1,5 +1,5 @@
 /** Default cell size: this % of the *shorter* viewport side (square cells). */
-export const LAYOUT_GRID_STEP = 5;
+export const LAYOUT_GRID_STEP = 1;
 
 /** Preset steps offered in Layout edit chrome (%% of min(w,h)). */
 export const LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25] as const;

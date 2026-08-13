@@ -6,17 +6,46 @@ import {
   type PanelPos,
 } from "./layout";
 import {
-  VIEWPORT_PROFILES,
-  type ViewportProfile,
-} from "./viewport";
+  DEFAULT_LAYOUT_CHROME_POS,
+  getLayoutEditPrefs,
+  type LayoutChromePos,
+  type LayoutEditPrefs,
+} from "./layoutEditPrefs";
+import { normalizeGridStep } from "./layoutGrid";
+import { VIEWPORT_PROFILES, type ViewportProfile } from "./viewport";
+import {
+  defaultMeterInstances,
+  normalizeMeterInstances,
+} from "../meters/meterPresets";
+import type { MeterInstance } from "../meters/meterTypes";
 
-export const LAYOUT_EXPORT_VERSION = 1;
+/** v2 adds meterInstances + layoutEditPrefs (grid snap). v1 panel-only still imports. */
+export const LAYOUT_EXPORT_VERSION = 2;
+
+/** Snap / free-placement prefs included in layout copy (field: `gridStep`). */
+export type LayoutExportEditPrefs = {
+  freePlacement: boolean;
+  /** Viewport-% fine grid step (default 1). */
+  gridStep: number;
+  chromePos?: LayoutChromePos;
+};
 
 export type LayoutExportPayload = {
   version: number;
   kind: "enhance-comm-ui-layout";
   exportedAt: string;
   layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>;
+  /** Meter windows — positions + full MeterInstance config. Absent on v1. */
+  meterInstances?: MeterInstance[];
+  /** Layout-edit prefs (snap grid step, free placement, chrome bar pos). */
+  layoutEditPrefs?: LayoutExportEditPrefs;
+};
+
+/** Inputs for building an export (call sites gather from settings + prefs). */
+export type LayoutExportInput = {
+  layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>;
+  meterInstances?: MeterInstance[];
+  layoutEditPrefs?: LayoutEditPrefs | LayoutExportEditPrefs;
 };
 
 function isPanelPos(raw: unknown): raw is PanelPos {
@@ -58,10 +87,72 @@ function sanitizeProfileMap(
   return out;
 }
 
-/** Build a shareable JSON payload from profile layouts. */
+function sanitizeEditPrefs(raw: unknown): LayoutExportEditPrefs | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const prefs: LayoutExportEditPrefs = {
+    freePlacement: !!o.freePlacement,
+    gridStep:
+      o.gridStep != null ? normalizeGridStep(o.gridStep) : normalizeGridStep(1),
+  };
+  if (o.chromePos && typeof o.chromePos === "object") {
+    const c = o.chromePos as Record<string, unknown>;
+    if (typeof c.x === "number" && typeof c.y === "number") {
+      prefs.chromePos = {
+        x: Math.max(0, Math.min(100, c.x)),
+        y: Math.max(0, Math.min(100, c.y)),
+      };
+    }
+  }
+  return prefs;
+}
+
+function cloneMetersForExport(list: MeterInstance[]): MeterInstance[] {
+  if (!Array.isArray(list) || !list.length) return [];
+  const out: MeterInstance[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i];
+    if (!m || typeof m !== "object" || !m.query) continue;
+    out.push({
+      ...m,
+      pos: { ...m.pos },
+      query: { ...m.query } as MeterInstance["query"],
+      snap: m.snap ? { ...m.snap } : undefined,
+      statusbar: m.statusbar ? { ...m.statusbar } : undefined,
+      seriesEnabled: m.seriesEnabled ? { ...m.seriesEnabled } : undefined,
+    });
+  }
+  return out;
+}
+
+function serializeEditPrefs(
+  prefs: LayoutEditPrefs | LayoutExportEditPrefs,
+): LayoutExportEditPrefs {
+  const out: LayoutExportEditPrefs = {
+    freePlacement: !!prefs.freePlacement,
+    gridStep: normalizeGridStep(prefs.gridStep),
+  };
+  if (prefs.chromePos) {
+    out.chromePos = { x: prefs.chromePos.x, y: prefs.chromePos.y };
+  }
+  return out;
+}
+
+/** Build a shareable JSON payload from profile layouts (+ optional meters / snap prefs). */
 export function buildLayoutExport(
-  layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>,
+  input: LayoutExportInput | Partial<Record<ViewportProfile, PanelLayoutMap>>,
 ): LayoutExportPayload {
+  const isWrapped =
+    input &&
+    typeof input === "object" &&
+    ("layoutsByProfile" in input ||
+      "meterInstances" in input ||
+      "layoutEditPrefs" in input);
+  const wrapped = (isWrapped ? input : null) as LayoutExportInput | null;
+  const layoutsByProfile = wrapped
+    ? wrapped.layoutsByProfile
+    : (input as Partial<Record<ViewportProfile, PanelLayoutMap>>);
+
   const layouts: Partial<Record<ViewportProfile, PanelLayoutMap>> = {};
   for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
     const profile = VIEWPORT_PROFILES[i];
@@ -69,25 +160,59 @@ export function buildLayoutExport(
     if (!partial) continue;
     layouts[profile] = mergeLayout(partial);
   }
-  return {
+
+  const payload: LayoutExportPayload = {
     version: LAYOUT_EXPORT_VERSION,
     kind: "enhance-comm-ui-layout",
     exportedAt: new Date().toISOString(),
     layoutsByProfile: layouts,
   };
+
+  if (wrapped?.meterInstances) {
+    payload.meterInstances = cloneMetersForExport(wrapped.meterInstances);
+  }
+  if (wrapped?.layoutEditPrefs) {
+    payload.layoutEditPrefs = serializeEditPrefs(wrapped.layoutEditPrefs);
+  }
+  return payload;
+}
+
+/**
+ * Built-in default package: HUD positions (desktop/tablet/phone) + DPS‖HPS
+ * meter instances + snap prefs (1% grid). Fresh install / reset packaging.
+ */
+export function buildDefaultLayoutExport(): LayoutExportPayload {
+  return buildLayoutExport({
+    layoutsByProfile: {
+      desktop: mergeLayout(null, "desktop"),
+      tablet: mergeLayout(null, "tablet"),
+      phone: mergeLayout(null, "phone"),
+    },
+    meterInstances: defaultMeterInstances(),
+    layoutEditPrefs: {
+      freePlacement: false,
+      gridStep: normalizeGridStep(1),
+      chromePos: { ...DEFAULT_LAYOUT_CHROME_POS },
+    },
+  });
 }
 
 export function stringifyLayoutExport(
-  layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>,
+  input: LayoutExportInput | Partial<Record<ViewportProfile, PanelLayoutMap>>,
 ): string {
-  return JSON.stringify(buildLayoutExport(layoutsByProfile), null, 2);
+  return JSON.stringify(buildLayoutExport(input), null, 2);
 }
 
 export type ParseLayoutExportResult =
-  | { ok: true; layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>> }
+  | {
+      ok: true;
+      layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>;
+      meterInstances?: MeterInstance[];
+      layoutEditPrefs?: LayoutExportEditPrefs;
+    }
   | { ok: false; error: string };
 
-/** Parse paste/upload JSON into profile layouts. */
+/** Parse paste/upload JSON into profile layouts (+ meters / snap when present). */
 export function parseLayoutExport(raw: string): ParseLayoutExportResult {
   let parsed: unknown;
   try {
@@ -110,7 +235,35 @@ export function parseLayoutExport(raw: string): ParseLayoutExportResult {
   if (!Object.keys(layoutsByProfile).length) {
     return { ok: false, error: "No panel layouts found in export" };
   }
-  return { ok: true, layoutsByProfile };
+
+  const result: {
+    ok: true;
+    layoutsByProfile: Partial<Record<ViewportProfile, PanelLayoutMap>>;
+    meterInstances?: MeterInstance[];
+    layoutEditPrefs?: LayoutExportEditPrefs;
+  } = {
+    ok: true,
+    layoutsByProfile,
+  };
+
+  if (Array.isArray(obj.meterInstances)) {
+    // Normalize on import (same path as settings load); preserves empty→defaults.
+    result.meterInstances = normalizeMeterInstances(obj.meterInstances);
+  }
+
+  // Accept nested layoutEditPrefs, or top-level gridStep / freePlacement aliases.
+  const nestedPrefs = sanitizeEditPrefs(obj.layoutEditPrefs);
+  if (nestedPrefs) {
+    result.layoutEditPrefs = nestedPrefs;
+  } else if (obj.gridStep != null || obj.freePlacement != null) {
+    result.layoutEditPrefs = sanitizeEditPrefs({
+      freePlacement: obj.freePlacement,
+      gridStep: obj.gridStep,
+      chromePos: obj.chromePos,
+    });
+  }
+
+  return result;
 }
 
 /** Download a layout JSON file in the browser. */
@@ -143,4 +296,9 @@ export function panelIdsInExport(
     if (seen.has(PANEL_IDS[i])) out.push(PANEL_IDS[i]);
   }
   return out;
+}
+
+/** Snapshot current layout-edit prefs for export (live values). */
+export function currentLayoutEditPrefsForExport(): LayoutExportEditPrefs {
+  return serializeEditPrefs(getLayoutEditPrefs());
 }

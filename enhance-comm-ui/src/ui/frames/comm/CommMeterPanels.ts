@@ -6,7 +6,8 @@
 
 import { e } from "../../../host/react";
 import type { EntityLike } from "../../../host/globals";
-import type { PanelPos } from "../../../lib/layout";
+import type { LayoutAnchor, PanelPos } from "../../../lib/layout";
+import type { PanelGroupDragOpts } from "../../../lib/panelGroupDrag";
 import {
   METER_PANEL_STYLE,
   METER_FRAME_DEFAULT,
@@ -16,12 +17,13 @@ import {
   meterHidesWhenEmpty,
   type ReportKind,
 } from "../../../meters/meterCatalog";
-import { isMeterInCombat } from "../../../meters/meterEngine";
+import { isMeterInCombat } from "../../../meters/meterSession";
+import { isLiveCameraRef } from "../../../meters/meterSegmentRef";
 import { runMeterQuery } from "../../../meters/meterQuery";
 import {
   applyGroupFrameSize,
-  getMeterGroup,
-} from "../../../meters/meterWindowGroup";
+  getEdgeGroup,
+} from "../../../lib/panelEdgeGroup";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import type { FocusInspectorOpts } from "../../hooks/useCommMeterInstances";
 import { patchSettings } from "../../../lib/settings";
@@ -50,8 +52,8 @@ export type CommMeterPanelsCtx = {
   meterIsLocked: (inst: MeterInstance) => boolean;
   onMove: (id: string, pos: PanelPos) => void;
   onDragStart: (id: string) => void;
-  onDragMove: (id: string) => void;
-  onMoveEnd: (id: string) => void;
+  onDragMove: (id: string, opts?: PanelGroupDragOpts) => void;
+  onMoveEnd: (id: string, opts?: PanelGroupDragOpts) => void;
   /** Details SetToplevel — raise meter on click / drag. */
   onActivate: (id: string) => void;
   onWindowScale: (id: string, scale: number) => void;
@@ -101,6 +103,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     const frameW = inst.frameW || METER_FRAME_DEFAULT.w;
     const frameH = inst.frameH || METER_FRAME_DEFAULT.h;
     const locked = ctx.meterIsLocked(inst);
+    // Alt = unlock-drag on locked meters. Ctrl during drag = place without grouping.
     const playArrange = !ctx.layoutEdit && (!locked || ctx.altHeld);
     const arrange = ctx.layoutEdit || playArrange;
     const hasSnap = ctx.windowHasSnap(inst.id);
@@ -108,14 +111,20 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     const app = getMeterAppearance();
     let meterOpacity = inst.opacity != null ? inst.opacity : 1;
     const inCombat = isMeterInCombat();
-    if (inCombat && app.autoHideCombat) {
+    const followLive = isLiveCameraRef(inst.selectedset);
+    if (followLive && inCombat && app.autoHideCombat) {
       meterOpacity = Math.min(meterOpacity, app.idleAlpha);
     }
-    if (!inCombat && app.autoHideOoc) {
+    if (followLive && !inCombat && app.autoHideOoc) {
       meterOpacity = Math.min(meterOpacity, app.idleAlpha);
     }
     const pos: PanelPos = {
       ...inst.pos,
+      snap: inst.snap,
+      horizontalSnap: inst.horizontalSnap,
+      verticalSnap: inst.verticalSnap,
+      frameW: inst.frameW,
+      frameH: inst.frameH,
       scale: inst.scale != null ? inst.scale : inst.pos.scale,
     };
     out.push(
@@ -133,8 +142,13 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           onMove: (_id: string, nextPos: PanelPos) =>
             ctx.onMove(inst.id, nextPos),
           onDragStart: () => ctx.onDragStart(inst.id),
-          onDragMove: () => ctx.onDragMove(inst.id),
-          onMoveEnd: () => ctx.onMoveEnd(inst.id),
+          onDragMove: (
+            _id: string,
+            _pos: PanelPos,
+            opts?: PanelGroupDragOpts,
+          ) => ctx.onDragMove(inst.id, opts),
+          onMoveEnd: (_id: string, _pos: PanelPos, opts?: PanelGroupDragOpts) =>
+            ctx.onMoveEnd(inst.id, opts),
           onActivate: () => ctx.onActivate(inst.id),
           onWindowScale: (scale: number) => ctx.onWindowScale(inst.id, scale),
           className:
@@ -180,6 +194,8 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           onShow: () => ctx.patchMeter(inst.id, { visible: true }),
           windowNumber,
           showWindowIds: ctx.showWindowIds,
+          // Meter shell owns .ecu-meter-resize (group-aware); skip HUD grips.
+          showResizeHandles: false,
         },
         e(
           "div",
@@ -199,10 +215,13 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             layoutEdit: ctx.layoutEdit,
             arrange,
             locked,
-            resizeGroupIds: hasSnap
-              ? getMeterGroup(ctx.meterInstances, inst.id)
-                  .map((g) => g.id)
-                  .filter((gid) => gid !== inst.id)
+            resizeGroupPeers: hasSnap
+              ? getEdgeGroup(ctx.meterInstances, inst.id)
+                  .filter((g) => g.id !== inst.id)
+                  .map((g) => ({
+                    id: g.id,
+                    anchor: g.pos?.anchor as LayoutAnchor | undefined,
+                  }))
               : undefined,
             onToggleMetersHidden: () =>
               ctx.setMetersHiddenPersist(!ctx.metersHidden),
@@ -212,12 +231,23 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             onPatchInstance: (partial: Partial<MeterInstance>) => {
               if (partial.frameW != null || partial.frameH != null) {
                 ctx.setMeterInstances((prev: MeterInstance[]) => {
-                  let next = applyGroupFrameSize(prev, inst.id, {
-                    frameW: partial.frameW,
-                    frameH: partial.frameH,
-                  });
-                  next = next.map((m) =>
+                  const root = document
+                    .getElementById("comm-ui")
+                    ?.getBoundingClientRect();
+                  let next = prev.map((m) =>
                     m.id === inst.id ? { ...m, ...partial } : m,
+                  );
+                  next = applyGroupFrameSize(
+                    next,
+                    inst.id,
+                    {
+                      frameW: partial.frameW,
+                      frameH: partial.frameH,
+                    },
+                    {
+                      rootW: root?.width,
+                      rootH: root?.height,
+                    },
                   );
                   patchSettings({ meterInstances: next });
                   return next;

@@ -1,5 +1,10 @@
 import { getReact, e } from "../../host/react";
 import { applyPanelDragMove } from "../../lib/panelDragSnap";
+import { panelHasSnap } from "../../lib/panelEdgeGroup";
+import {
+  isPlaceWithoutGroupModifier,
+  type PanelGroupDragOpts,
+} from "../../lib/panelGroupDrag";
 import {
   PANEL_LABELS,
   captureVisualSnapStart,
@@ -25,9 +30,12 @@ import {
   type PercentDragStart,
 } from "../../lib/percentDrag";
 import { clampWindowScale } from "../../lib/commWindowGroup";
+import { beginLayoutGuide, endLayoutGuide } from "../../lib/layoutGuide";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 import { TYPE } from "../../lib/typeScale";
 import { PositionedPanelChrome } from "./PositionedPanelChrome";
+
+const HUD_FRAME_MIN = { w: 80, h: 48 };
 
 export type PositionedPanelProps = {
   /** PanelId or meter instance id (string). */
@@ -39,7 +47,7 @@ export type PositionedPanelProps = {
    * Fired once after a drag ends (final pos already pushed via onMove).
    * Used for meter edge-snap grouping.
    */
-  onMoveEnd?: (id: any, pos: PanelPos) => void;
+  onMoveEnd?: (id: any, pos: PanelPos, opts?: PanelGroupDragOpts) => void;
   /** Fired when a drag begins (movable / layout edit). */
   onDragStart?: (id: any) => void;
   /**
@@ -48,7 +56,7 @@ export type PositionedPanelProps = {
    */
   onActivate?: (id: any) => void;
   /** Fired during drag — meter snap preview, etc. */
-  onDragMove?: (id: any, pos: PanelPos) => void;
+  onDragMove?: (id: any, pos: PanelPos, opts?: PanelGroupDragOpts) => void;
   /** When false, skip softAvoidOverlap on drop (meter snap groups). */
   softAvoid?: boolean;
   children?: any;
@@ -88,6 +96,11 @@ export type PositionedPanelProps = {
   className?: string;
   /** Persist outer box size after CSS / drag resize. */
   onResizeFrame?: (size: { w: number; h: number }) => void;
+  /**
+   * When true (default if onResizeFrame is set), show corner resize grips while
+   * layout-editing or play-arrange (movable). Meters use shell grips instead.
+   */
+  showResizeHandles?: boolean;
   /**
    * When true, hide × only appears on hover even while `editing` — so meter
    * unlock/arrange chrome (lock, Seg, View) stays clickable.
@@ -134,6 +147,7 @@ export type PositionedPanelProps = {
  * 3×3 anchor pad sets stretch direction (keeps painted box put).
  * While dragging (layout edit OR play-arrange / unlocked): fine-grid snap
  * unless Free placement is on; peer mid snap; visual screen-edge (Free only).
+ * Hold Ctrl to skip edge-group join (live: release re-enables snap).
  * On drop, soft-nudges away from near peers then re-snaps to the fine grid.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
@@ -276,6 +290,48 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   const visualStart = React.useRef(null as VisualSnapStart | null);
   const lastPos = React.useRef(pos);
   lastPos.current = pos;
+  const skipGroupRef = React.useRef(false);
+  const dragKeyCleanupRef = React.useRef(null as (() => void) | null);
+
+  const groupDragOpts = (): PanelGroupDragOpts | undefined =>
+    skipGroupRef.current ? { skipGroupJoin: true } : undefined;
+
+  const syncGroupSnapSuppress = (held: boolean) => {
+    skipGroupRef.current = held;
+  };
+
+  const detachDragKeyListeners = () => {
+    if (!dragKeyCleanupRef.current) return;
+    dragKeyCleanupRef.current();
+    dragKeyCleanupRef.current = null;
+  };
+
+  const attachDragKeyListeners = () => {
+    detachDragKeyListeners();
+    const onKey = (e: KeyboardEvent) => {
+      if (!dragging.current) return;
+      if (e.key !== "Control") return;
+      const held = e.ctrlKey;
+      if (held === skipGroupRef.current) return;
+      syncGroupSnapSuppress(held);
+      if (props.onDragMove) {
+        props.onDragMove(id, lastPos.current, groupDragOpts());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    dragKeyCleanupRef.current = () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  };
+
+  React.useEffect(() => {
+    return () => {
+      detachDragKeyListeners();
+      skipGroupRef.current = false;
+    };
+  }, []);
 
   const touchish = isTouchishProfile(props.viewportProfile || "desktop");
   const closeSize = touchish ? 36 : 22;
@@ -330,12 +386,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       layoutDragRoot(),
       pos,
     );
+    syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
+    attachDragKeyListeners();
     if (props.onDragStart) props.onDragStart(id);
     trySetPointerCapture(ev.currentTarget, ev.pointerId);
   };
 
   const onPointerMove = (ev: any) => {
     if (!dragging.current) return;
+    syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
     const raw = percentFromPointerDrag(ev.clientX, ev.clientY, start.current);
     const free = freePlacementRef.current || getLayoutFreePlacement();
     let rootWidth = 0;
@@ -346,6 +405,11 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       rootHeight = root.height;
     }
     const { xs, ys } = peerAxes();
+    // Grouped panels must translate as a rigid body — peer % magnets would
+    // yank only the leader onto another panel's anchor and scramble relatives.
+    const skipPeer =
+      skipGroupRef.current ||
+      panelHasSnap({ id: String(id), pos, snap: pos.snap });
     const snapped = applyPanelDragMove({
       rawX: raw.x,
       rawY: raw.y,
@@ -359,10 +423,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       rootHeight,
       peerXs: xs,
       peerYs: ys,
+      skipPeerSnap: skipPeer,
     });
     onMove(id, { ...pos, x: snapped.x, y: snapped.y });
     if (props.onDragMove) {
-      props.onDragMove(id, { ...pos, x: snapped.x, y: snapped.y });
+      props.onDragMove(
+        id,
+        { ...pos, x: snapped.x, y: snapped.y },
+        groupDragOpts(),
+      );
     }
   };
 
@@ -370,6 +439,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     if (!dragging.current) return;
     dragging.current = false;
     visualStart.current = null;
+    // Sample Ctrl at drop so a last-moment hold still skips group join.
+    syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
+    detachDragKeyListeners();
     tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
     let finalPos = lastPos.current;
     if (props.softAvoid !== false) {
@@ -396,7 +468,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
       onMove(id, finalPos);
     }
-    if (props.onMoveEnd) props.onMoveEnd(id, finalPos);
+    if (props.onMoveEnd) props.onMoveEnd(id, finalPos, groupDragOpts());
+    skipGroupRef.current = false;
+    syncGroupSnapSuppress(false);
   };
 
   // Keep handlers stable for extraDragRef attachment.
@@ -450,6 +524,77 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       ? props.editChrome
       : "full";
   const movable = !!props.movable && !editing;
+  const showResizeHandles =
+    props.showResizeHandles !== false &&
+    !!props.onResizeFrame &&
+    (editing || movable);
+
+  const onResizePointerDown = (ev: any, corner: "br" | "bl") => {
+    if (!props.onResizeFrame) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const el = shellRef.current;
+    if (!el) return;
+    const startX = ev.clientX;
+    const startY = ev.clientY;
+    const startW = Math.round(el.offsetWidth);
+    const startH = Math.round(el.offsetHeight);
+    beginLayoutGuide();
+    const pointerId = ev.pointerId;
+    try {
+      (ev.currentTarget as HTMLElement).setPointerCapture(pointerId);
+    } catch {
+      /* ignore */
+    }
+    let pendingW = startW;
+    let pendingH = startH;
+    const sizeFrame = (w: number, h: number, freeForm: boolean) => {
+      const root = layoutDragRoot().getBoundingClientRect();
+      const maxW = Math.max(HUD_FRAME_MIN.w, Math.round(root.width) || w);
+      const maxH = Math.max(HUD_FRAME_MIN.h, Math.round(root.height) || h);
+      let outW = Math.min(maxW, Math.max(HUD_FRAME_MIN.w, Math.round(w)));
+      let outH = Math.min(maxH, Math.max(HUD_FRAME_MIN.h, Math.round(h)));
+      if (!(freeForm || freePlacementRef.current || getLayoutFreePlacement())) {
+        const snapped = snapFrameSizeToGrid(
+          outW,
+          outH,
+          gridStepRef.current,
+          root.width,
+          root.height,
+        );
+        outW = snapped.w;
+        outH = snapped.h;
+      }
+      return { w: outW, h: outH };
+    };
+    const onMove = (e: PointerEvent) => {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const rawW = corner === "br" ? startW + dx : startW - dx;
+      const next = sizeFrame(rawW, startH + dy, !!e.shiftKey);
+      pendingW = next.w;
+      pendingH = next.h;
+      el.style.width = pendingW + "px";
+      el.style.height = pendingH + "px";
+    };
+    const onUp = () => {
+      endLayoutGuide();
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        (ev.currentTarget as HTMLElement).releasePointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
+      if (props.onResizeFrame)
+        props.onResizeFrame({ w: pendingW, h: pendingH });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+
   const shellStyle = Object.assign(
     {},
     panelStyle(pos, editing || movable),
@@ -457,6 +602,14 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     {
       opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity,
     },
+    // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
+    // the stock 7-col float inventory. Other HUD panels use frameW/H.
+    id !== "bag" && typeof pos.frameW === "number" && pos.frameW > 0
+      ? { width: Math.round(pos.frameW) + "px" }
+      : null,
+    id !== "bag" && typeof pos.frameH === "number" && pos.frameH > 0
+      ? { height: Math.round(pos.frameH) + "px" }
+      : null,
     editing
       ? {
           // Cyan + dark edge — yellow grid uses the same warm dashes as the old outline.
@@ -564,7 +717,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     "div",
     {
       ref: shellRef,
-      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
+      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
       "data-panel": id,
       style: shellStyle,
       onPointerDownCapture: onActivateCapture,
@@ -594,5 +747,22 @@ export function PositionedPanel(props: PositionedPanelProps): any {
             children,
           )
         : children,
+    showResizeHandles
+      ? e("div", {
+          className: "comm-pos-resize comm-pos-resize-left",
+          title:
+            "Resize from bottom-left (keeps top-right fixed · Shift = free size)",
+          onPointerDown: (ev: any) => onResizePointerDown(ev, "bl"),
+        })
+      : null,
+    showResizeHandles
+      ? e("div", {
+          className: "comm-pos-resize",
+          title: getLayoutFreePlacement()
+            ? "Resize from bottom-right (keeps top-left fixed · free size)"
+            : "Resize from bottom-right (keeps top-left fixed · Shift = free size)",
+          onPointerDown: (ev: any) => onResizePointerDown(ev, "br"),
+        })
+      : null,
   );
 }

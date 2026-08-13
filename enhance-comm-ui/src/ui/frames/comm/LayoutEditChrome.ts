@@ -3,6 +3,7 @@ import {
   downloadLayoutJson,
   parseLayoutExport,
   stringifyLayoutExport,
+  type LayoutExportInput,
 } from "../../../lib/layoutExport";
 import {
   getLayoutChromePos,
@@ -22,12 +23,14 @@ import {
   trySetPointerCapture,
   type PercentDragStart,
 } from "../../../lib/percentDrag";
-import {
-  type LayoutProfileMode,
-  type PanelLayoutsByProfile,
-} from "../../../lib/settings";
+import { type LayoutProfileMode } from "../../../lib/settings";
 import { profileLabel, type ViewportProfile } from "../../../lib/viewport";
 import { TYPE, PIXEL_TEXT } from "../../../lib/typeScale";
+import type { LayoutImportPackage } from "../../hooks/usePanelLayoutState";
+import type { MeterInstance } from "../../../meters/meterTypes";
+
+/** Drag-grip / layout-chrome tooltip fragment. */
+const PLACE_WITHOUT_GROUP_HINT = "Ctrl = place without grouping";
 
 export type LayoutEditChromeProps = {
   onReset: () => void;
@@ -35,12 +38,14 @@ export type LayoutEditChromeProps = {
   viewportProfile: ViewportProfile;
   layoutProfileMode: LayoutProfileMode;
   onProfileMode: (mode: LayoutProfileMode) => void;
-  exportLayouts: () => PanelLayoutsByProfile;
-  importLayouts: (layouts: PanelLayoutsByProfile) => void;
+  exportLayouts: () => LayoutExportInput;
+  importLayouts: (pkg: LayoutImportPackage) => MeterInstance[] | undefined;
+  /** When import restores meters, sync React meter state. */
+  onMetersImported?: (meters: MeterInstance[]) => void;
   onApplyAllCurrent?: () => void;
   onApplyAllTotal?: () => void;
   onAddMeter?: () => void;
-  /** Replace meter windows with Damage / Healing / PDPS / coop v2 defaults. */
+  /** Replace meter windows with DPS / HPS defaults. */
   onResetMeters?: () => void;
 };
 
@@ -198,8 +203,22 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       setStatus(parsed.error);
       return;
     }
-    props.importLayouts(parsed.layoutsByProfile);
-    setStatus("Layout imported");
+    const importedMeters = props.importLayouts({
+      layoutsByProfile: parsed.layoutsByProfile,
+      meterInstances: parsed.meterInstances,
+      layoutEditPrefs: parsed.layoutEditPrefs,
+    });
+    if (importedMeters && props.onMetersImported) {
+      props.onMetersImported(importedMeters);
+    }
+    const bits = ["Layout imported"];
+    if (parsed.meterInstances) bits.push("meters");
+    if (parsed.layoutEditPrefs) bits.push("snap prefs");
+    setStatus(
+      bits.length > 1
+        ? `Layout imported (${bits.slice(1).join(" + ")})`
+        : bits[0],
+    );
     setPasteOpen(false);
     setPasteText("");
   };
@@ -413,7 +432,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
               onClick: props.onResetMeters,
               style: btnStyle(false, true),
               title:
-                "Replace meter windows with defaults: Damage, Healing, PDPS, s.coop v2",
+                "Replace meter windows with defaults: DPS ‖ HPS",
             },
             "Meters",
           )
@@ -542,8 +561,8 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         },
       },
       freePlacement
-        ? "Free drag/resize (edit + play) · peer + screen-edge · Ctrl+Shift+L"
-        : `${stepLabel} fine snap (edit + unlocked play) · Shift=free size · Ctrl+Shift+L`,
+        ? `Free drag/resize (edit + play) · peer + screen-edge · ${PLACE_WITHOUT_GROUP_HINT} · Ctrl+Shift+L`
+        : `${stepLabel} fine snap (edit + unlocked play) · Shift=free size · ${PLACE_WITHOUT_GROUP_HINT} · Ctrl+Shift+L`,
     ),
 
     status

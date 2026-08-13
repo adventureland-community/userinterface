@@ -9,6 +9,13 @@ import { TYPE } from "../../lib/typeScale";
 import { WindowControlChrome } from "./WindowControlChrome";
 import type { PositionedPanelProps } from "./PositionedPanel";
 
+const PLACE_WITHOUT_GROUP_HINT = "Ctrl = place without grouping";
+
+function dragMoveTitle(label?: string): string {
+  const base = label ? `Drag to move · ${label}` : "Drag to move";
+  return `${base} · ${PLACE_WITHOUT_GROUP_HINT}`;
+}
+
 function anchorMeta(id: LayoutAnchor): { glyph: string; title: string } {
   for (let i = 0; i < LAYOUT_ANCHOR_OPTIONS.length; i++) {
     if (LAYOUT_ANCHOR_OPTIONS[i].id === id) return LAYOUT_ANCHOR_OPTIONS[i];
@@ -77,10 +84,15 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
   } = args;
 
   const closeAbove = props.closePlacement === "above";
+  // Unlocked (movable): strip stays open (CSS) so hide × + lock remain reachable.
+  // Locked: hover / touch only.
   const showClose =
     !!onClose &&
     !hidden &&
-    (hover || touchish || (editing && !props.closeOnHoverOnly));
+    (hover ||
+      touchish ||
+      movable ||
+      (editing && !props.closeOnHoverOnly));
   // Layout-edit `grip` chrome (Layout toggles) *is* the drag handle — do not
   // let showMoveGrip:false (HUD passes playArrange, which is off in edit)
   // hide the only way to reposition that panel.
@@ -91,8 +103,8 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
           "div",
           {
             className: "comm-pos-edit-grip",
-            title: "Drag to move",
-            "aria-label": "Drag to move",
+            title: dragMoveTitle(),
+            "aria-label": dragMoveTitle(),
             style: {
               display: "flex",
               alignItems: "center",
@@ -122,8 +134,8 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
 
   // Play-arrange chrome: hover bar (HUD + meters). Prefer above the frame;
   // when that would clip off-screen, sit in-flow and push content down.
-  // Meters: keep hide × on WC/arrange chrome so it never stacks on the
-  // maroon titlebar stretch control (↕).
+  // Hide × lives in this strip with lock/WC — same row locked or unlocked.
+  // Unlocked panels keep the strip open via .comm-pos-movable CSS.
   const closeInArrangeOverlay = showClose && closeAbove && showArrangeOverlay;
 
   const closeBtn = showClose
@@ -292,7 +304,7 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
             "comm-pos-arrange-overlay" +
             (moveGrip ? " has-grip" : " is-chrome-only") +
             (arrangePlacement === "inline" ? " is-inline" : " is-above"),
-          title: moveGrip ? `Drag to move · ${panelLabel}` : undefined,
+          title: moveGrip ? dragMoveTitle(panelLabel) : undefined,
         },
         moveGrip,
         props.onToggleLock || props.onUngroup ? windowChrome : null,
@@ -341,8 +353,8 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
             "div",
             {
               className: "comm-pos-edit-header is-anchors-only",
-              title: `Drag to move · ${panelLabel}`,
-              "aria-label": `Drag to move ${panelLabel}`,
+              title: dragMoveTitle(panelLabel),
+              "aria-label": dragMoveTitle(panelLabel),
               style: {
                 ...editHeaderStyle,
                 justifyContent: "space-between",
@@ -374,6 +386,8 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
             "div",
             {
               className: "comm-pos-edit-header",
+              title: dragMoveTitle(panelLabel),
+              "aria-label": dragMoveTitle(panelLabel),
               style: editHeaderStyle,
               onPointerDown,
               onPointerMove,

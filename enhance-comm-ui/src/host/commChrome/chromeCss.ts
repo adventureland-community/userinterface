@@ -607,22 +607,32 @@ export function injectChromeCss(): void {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
-/* Layout edit: click through panel content to reach overlapping drag chrome. */
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body *,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body * {
+/* Layout edit: click through panel content to reach overlapping drag chrome.
+ * .comm-pos-interactive (meters / Layout toggles) keeps body hits so
+ * controls + corner resize grips stay usable while arranging. */
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-panel-body *,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-hidden-body,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-hidden-body * {
   pointer-events: none;
 }
-/* Details: large window numbers while left-hold dragging (~1s). HUD + meters. */
+/* Corner grips always receive hits — even if nested under a click-through body. */
+#comm-ui .comm-pos-panel.comm-pos-editing .ecu-meter-resize,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable .ecu-meter-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable .comm-pos-resize {
+  pointer-events: auto !important;
+}
+/* Details: large window numbers while left-hold dragging (~1s).
+ * Prefer .comm-snap-guide (LAYOUT_GUIDE_OVERLAY_Z) so numbers sit above panels;
+ * in-panel fallback keeps inset:0 for legacy mounts. */
 #comm-ui .comm-pos-window-id {
   position: absolute;
-  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  z-index: 30;
+  z-index: 1;
   font-size: clamp(48px, 55%, 120px);
   font-weight: 800;
   line-height: 1;
@@ -633,6 +643,12 @@ export function injectChromeCss(): void {
     0 0 24px rgba(255, 140, 20, 0.35);
   font-variant-numeric: tabular-nums;
   user-select: none;
+}
+#comm-ui .comm-pos-panel > .comm-pos-window-id {
+  inset: 0;
+}
+#comm-ui .comm-snap-guide .comm-pos-window-id {
+  inset: auto;
 }
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header,
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header *,
@@ -760,20 +776,24 @@ export function injectChromeCss(): void {
 #comm-ui .comm-pos-arrange-overlay > * {
   pointer-events: none;
 }
-/* JS hover class (delayed leave) — survives the gap to above-frame controls. */
+/* JS hover class (delayed leave) — survives the gap to above-frame controls.
+ * Do NOT use :focus-within here: clicking lock/WC leaves focus on the button
+ * and would pin chrome visible after the pointer leaves (stuck after re-lock).
+ * Unlocked (.comm-pos-movable): keep the whole arrange strip open so hide ×
+ * and lock sit in the same row (no detached floating ×). */
 @media (hover: hover) and (pointer: fine) {
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay {
     opacity: 1;
     pointer-events: auto;
   }
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay.is-inline,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay.is-inline {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay.is-inline {
     max-height: 48px;
     overflow: visible;
   }
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay > *,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay > * {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > * {
     pointer-events: auto;
   }
 }
@@ -848,6 +868,39 @@ export function injectChromeCss(): void {
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {
   max-width: 96vw;
+}
+
+/* HUD / generic PositionedPanel corner grips (layout edit + unlocked play). */
+#comm-ui .comm-pos-resize {
+  display: none;
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 12;
+  pointer-events: auto;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),
+    linear-gradient(135deg, transparent 68%, #8b9bb0 68%, #8b9bb0 74%, transparent 74%),
+    linear-gradient(135deg, transparent 84%, #8b9bb0 84%, #8b9bb0 90%, transparent 90%);
+  opacity: 0.9;
+}
+#comm-ui .comm-pos-resize.comm-pos-resize-left {
+  right: auto;
+  left: 1px;
+  cursor: nesw-resize;
+  transform: scaleX(-1);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing > .comm-pos-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-resize {
+  display: block;
+}
+/* Meters own .ecu-meter-resize — hide generic grips on meter frames. */
+#comm-ui .comm-pos-panel.ecu-meter-frame > .comm-pos-resize {
+  display: none !important;
 }
 
 /* Thin dark scrollbars — #comm-ui panels + enhancer chrome outside it.

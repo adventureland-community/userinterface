@@ -113,9 +113,23 @@ export function partyFocusLabel(
   return partyFocusChoiceLabel(eff, watchedName, partyLabels);
 }
 
+export function namedPartyKey(focus: PartyFocus | undefined): string | null {
+  if (!focus) return null;
+  if (
+    focus === "watched" ||
+    focus === "you" ||
+    focus === "visible" ||
+    focus === "all"
+  ) {
+    return null;
+  }
+  return focus;
+}
+
 /**
  * Party menu rows for the current session.
- * Always: Visible + Session + each visible party.
+ * Live roster: Visible + Session + each visible party.
+ * Archived: Session + parties on that fight (no Visible).
  * With a subject: also Party / Only (subject's party key skipped in the list).
  */
 export function partyFocusMenuOptions(ctx: {
@@ -123,8 +137,9 @@ export function partyFocusMenuOptions(ctx: {
   watchedName?: string;
   /** Subject's party key — skip duplicate in the visible-party list. */
   watchedPartyKey?: string;
-  /** Visible parties to offer as specific picks. */
+  /** Parties to offer as specific picks (live vision, or parties in a stored fight). */
   visibleParties?: Array<{ id: string; label: string }>;
+  roster: "live" | "archived";
 }): PartyFocusOption[] {
   const name = ctx.watchedName;
   const out: PartyFocusOption[] = [];
@@ -138,7 +153,9 @@ export function partyFocusMenuOptions(ctx: {
       label: partyFocusChoiceLabel("you", name),
     });
   }
-  out.push({ id: "visible", label: partyFocusChoiceLabel("visible") });
+  if (ctx.roster === "live") {
+    out.push({ id: "visible", label: partyFocusChoiceLabel("visible") });
+  }
   out.push({ id: "all", label: partyFocusChoiceLabel("all") });
   const parties = ctx.visibleParties || [];
   const skipKey = ctx.watchedPartyKey || "";

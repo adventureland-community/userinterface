@@ -53,6 +53,12 @@ export function WindowControlChrome(props: WindowControlChromeProps): any {
             ev.preventDefault();
             ev.stopPropagation();
             props.onToggleLock!();
+            // Drop button focus so chrome does not stay open via focus after lock.
+            try {
+              (ev.currentTarget as HTMLElement).blur();
+            } catch {
+              /* ignore */
+            }
           },
           onPointerDown: (ev: any) => ev.stopPropagation(),
           style: chromeBtnStyle(touchish, !!props.locked),
@@ -95,6 +101,11 @@ export function WindowControlChrome(props: WindowControlChromeProps): any {
             ev.stopPropagation();
             props.onToggleLock!();
             setWcOpen(false);
+            try {
+              (ev.currentTarget as HTMLElement).blur();
+            } catch {
+              /* ignore */
+            }
           },
         },
         props.locked ? "Unlock" : "Lock",

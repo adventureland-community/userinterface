@@ -25,6 +25,9 @@ export type PanelPos = {
   locked?: boolean;
   /** Details window_scale — applied to snap group when changed from options/wheel. */
   scale?: number;
+  /** Persisted outer box size (HUD PositionedPanel resize). */
+  frameW?: number;
+  frameH?: number;
 };
 
 export type PanelId =
@@ -90,24 +93,32 @@ export const LEGACY_METER_PANEL_IDS = [
 ] as const;
 
 /**
- * Desktop default from playtested export (floats rounded to clean %).
- * buffInfo / itemInfo: TL under party chips (not in export), offset apart.
+ * Desktop default from playtested export (2026-08-13 v2).
  * Saved layouts need Layout → Reset positions (desktop profile) to pick these up.
  */
 export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
-  players: { x: 0.4, y: 0.4, anchor: "tl" },
-  enemies: { x: 99.6, y: 0.4, anchor: "tr" },
-  topCenter: { x: 50, y: 0.4, anchor: "tc" },
-  paperdoll: { x: 0.5, y: 30, anchor: "tl" },
-  buffInfo: { x: 0.8, y: 10, anchor: "tl" },
-  itemInfo: { x: 16.8, y: 10, anchor: "tl" },
-  kills: { x: 27, y: 99.2, anchor: "br" },
-  playerFrame: { x: 40.5, y: 86, anchor: "bc" },
-  targetFrame: { x: 60, y: 86, anchor: "bc" },
-  bossBar: { x: 50, y: 8, anchor: "tc" },
-  crypt: { x: 50, y: 18, anchor: "tc" },
-  threat: { x: 82, y: 75, anchor: "br" },
-  command: { x: 50, y: 42, anchor: "center" },
+  players: {
+    x: 0.4,
+    y: 0.4,
+    anchor: "tl",
+    locked: true,
+    frameW: 522,
+    frameH: 65.25,
+  },
+  enemies: { x: 99.6, y: 0.4, anchor: "tr", frameW: 169.65, frameH: 52.2 },
+  topCenter: { x: 50, y: 0.4, anchor: "tc", frameW: 78.3, frameH: 78.3 },
+  paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274.05, frameH: 535.05 },
+  buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+  itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+  kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
+  playerFrame: { x: 40.5, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+  targetFrame: { x: 60, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+  bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
+  crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
+  threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
+  command: { x: 50, y: 42, anchor: "center", frameW: 561.15, frameH: 300.15 },
+  // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
+  // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
   bag: { x: 0.5, y: 99.2, anchor: "bl" },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
 };
@@ -225,6 +236,19 @@ export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   if (raw.horizontalSnap) out.horizontalSnap = true;
   if (raw.verticalSnap) out.verticalSnap = true;
   if (typeof raw.locked === "boolean") out.locked = raw.locked;
+  if (
+    typeof raw.scale === "number" &&
+    Number.isFinite(raw.scale) &&
+    raw.scale > 0
+  ) {
+    out.scale = raw.scale;
+  }
+  if (typeof raw.frameW === "number" && raw.frameW > 0) {
+    out.frameW = raw.frameW;
+  }
+  if (typeof raw.frameH === "number" && raw.frameH > 0) {
+    out.frameH = raw.frameH;
+  }
   return out;
 }
 
@@ -238,6 +262,11 @@ export function mergeLayout(
   for (let i = 0; i < PANEL_IDS.length; i++) {
     const id = PANEL_IDS[i];
     out[id] = normalizePos(migrated && migrated[id], defaults[id]);
+  }
+  // Bag inventory is float-grid content-sized — never lock shell width/height.
+  if (out.bag) {
+    delete out.bag.frameW;
+    delete out.bag.frameH;
   }
   return out;
 }
@@ -410,7 +439,7 @@ export function panelStyle(
       ? pos.scale
       : 1;
   const base = anchorTransform(pos.anchor);
-  return {
+  const style: Record<string, any> = {
     position: "absolute",
     left: `${pos.x}%`,
     top: `${pos.y}%`,
@@ -426,6 +455,13 @@ export function panelStyle(
     maxHeight: "100vh",
     boxSizing: "border-box",
   };
+  if (typeof pos.frameW === "number" && pos.frameW > 0) {
+    style.width = Math.round(pos.frameW) + "px";
+  }
+  if (typeof pos.frameH === "number" && pos.frameH > 0) {
+    style.height = Math.round(pos.frameH) + "px";
+  }
+  return style;
 }
 
 /** Convert a dragged screen delta into % of a container. */

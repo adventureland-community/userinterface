@@ -3,10 +3,10 @@ import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
 import {
-  isMeterInCombat,
   startMeterEngine,
   updateMeterContext,
 } from "./meters/meterEngine";
+import { isMeterInCombat } from "./meters/meterSession";
 import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
