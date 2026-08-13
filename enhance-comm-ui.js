@@ -162,6 +162,20 @@ var EnhanceCommUI = (() => {
   function getServerIdentifier() {
     return window.server_identifier;
   }
+  function getCurrentMap() {
+    if (window.current_map) return String(window.current_map);
+    const obs = getObserving();
+    if (obs == null ? void 0 : obs.map) return String(obs.map);
+    return void 0;
+  }
+  function getCurrentIn() {
+    if (window.current_in != null && String(window.current_in) !== "") {
+      return String(window.current_in);
+    }
+    const obs = getObserving();
+    if ((obs == null ? void 0 : obs.in) != null && String(obs.in) !== "") return String(obs.in);
+    return void 0;
+  }
   function getMapName() {
     var _a;
     return (_a = window.map) == null ? void 0 : _a.map_name;
@@ -564,12 +578,6 @@ var EnhanceCommUI = (() => {
     window.xtarget = entity || null;
     window.__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
   }
-  function slotSkin(slot) {
-    var _a, _b;
-    if (!slot || !slot.name) return void 0;
-    const def = (_b = (_a = window.G) == null ? void 0 : _a.items) == null ? void 0 : _b[slot.name];
-    return slot.skin || (def == null ? void 0 : def.skin);
-  }
   function monsterSprite(mtype, opts) {
     var _a;
     if (!mtype || typeof window.sprite !== "function") return "";
@@ -708,34 +716,66 @@ var EnhanceCommUI = (() => {
     "frozen",
     "scared"
   ]);
+  function imagesetFileSrc(file) {
+    if (!file) return "";
+    if (/^https?:\/\//i.test(file)) return file;
+    if (file.charAt(0) === "/") return `https://adventure.land${file}`;
+    return file;
+  }
+  function positionsForSkin(G, skin) {
+    const pos = G.positions[skin];
+    if (!pos) return null;
+    const setName = pos[0] || "pack_20";
+    const pack = G.imagesets[setName];
+    if (!pack || !pack.file) return null;
+    return { pos, pack };
+  }
   function escapeAttr(s) {
     return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
-  function letterFallbackHtml(letter, size, title, bg) {
+  function letterFallbackHtml(letter, size, title, bg, nativeTitle = true) {
     const style = [
       `width:${size}px`,
       `height:${size}px`,
       `line-height:${size}px`,
       bg ? `background:${bg}` : ""
     ].filter(Boolean).join(";");
-    return `<span class="ecu-meter-icon ecu-meter-icon-ab" title="${escapeAttr(title)}" style="${style}">${escapeAttr(letter)}</span>`;
+    const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
+    return `<span class="ecu-meter-icon ecu-meter-icon-ab"${tipAttr} style="${style}">${escapeAttr(letter)}</span>`;
   }
-  function skinSheetHtml(skin, displaySize = 18, title) {
+  function skinSheetHtml(skin, displaySize = 18, title, opts) {
     try {
-      const G = window.G;
+      const G = getG();
       if (!G || !G.positions || !G.imagesets) return null;
-      const pos = G.positions[skin];
-      if (!pos) return null;
-      const setName = pos[0] || "pack_20";
-      const pack = G.imagesets[setName];
-      if (!pack || !pack.file) return null;
+      const keys = [];
+      if (skin) keys.push(skin);
+      const extras = opts && opts.fallbackSkins;
+      if (extras) {
+        for (let i = 0; i < extras.length; i++) {
+          const k = extras[i];
+          if (k && keys.indexOf(k) === -1) keys.push(k);
+        }
+      }
+      let found = null;
+      for (let i = 0; i < keys.length; i++) {
+        found = positionsForSkin(G, keys[i]);
+        if (found) break;
+      }
+      if (!found && opts && opts.placeholder) {
+        found = positionsForSkin(G, "placeholder");
+      }
+      if (!found) return null;
+      const { pos, pack } = found;
       const x = pos[1];
       const y = pos[2];
       const scale = displaySize / pack.size;
       const sheetW = pack.columns * pack.size * scale;
       const sheetH = pack.rows * pack.size * scale;
       const tip = title || skin;
-      return `<span class="ecu-meter-icon ecu-meter-icon-skin" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${pack.file}"/></span></span>`;
+      const src = imagesetFileSrc(pack.file);
+      const nativeTitle = !(opts && opts.nativeTitle === false);
+      const tipAttr = nativeTitle ? ` title="${escapeAttr(tip)}"` : "";
+      return `<span class="ecu-meter-icon ecu-meter-icon-skin"${tipAttr} style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${escapeAttr(src)}"/></span></span>`;
     } catch (e2) {
       return null;
     }
@@ -795,10 +835,11 @@ var EnhanceCommUI = (() => {
   }
   function itemSkin(key) {
     var _a;
+    if (!key) return void 0;
     const G = getG();
     const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[key];
     if (def && typeof def.skin === "string" && def.skin) return def.skin;
-    return void 0;
+    return key;
   }
   function itemDisplayName(key) {
     var _a;
@@ -806,6 +847,58 @@ var EnhanceCommUI = (() => {
     const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[key];
     if (def && typeof def.name === "string" && def.name) return def.name;
     return key;
+  }
+  function itemIconHtml(itemName, opts) {
+    const size = opts && opts.size || 18;
+    const title = opts && opts.title || itemDisplayName(itemName) || itemName;
+    const nativeTitle = !(opts && opts.nativeTitle === false);
+    const skinKey = opts && opts.skin || itemSkin(itemName) || itemName;
+    const fallbacks = [];
+    if (itemName && itemName !== skinKey) fallbacks.push(itemName);
+    const sheet = skinSheetHtml(skinKey, size, title, {
+      fallbackSkins: fallbacks.length ? fallbacks : void 0,
+      placeholder: true,
+      nativeTitle
+    });
+    if (sheet) return sheet;
+    return letterFallbackHtml("?", size, title, void 0, nativeTitle);
+  }
+  function stripItemContainerHandlers(html) {
+    return html.replace(/\s+onmousedown="[^"]*"/gi, "").replace(/\s+ontouchstart="[^"]*"/gi, "").replace(/\s+onclick="[^"]*"/gi, "");
+  }
+  function stripNativeTitleAttrs(html) {
+    return html.replace(/\s+title="[^"]*"/gi, "").replace(/\s+title='[^']*'/gi, "");
+  }
+  function itemInstanceHtml(itemName, opts) {
+    const size = opts && opts.size || 40;
+    const title = opts && opts.title || itemDisplayName(itemName) || itemName;
+    const nativeTitle = !(opts && opts.nativeTitle === false);
+    const skinKey = opts && opts.skin || itemSkin(itemName) || itemName;
+    const actual = { name: itemName };
+    if (opts && opts.level != null && opts.level > 0) actual.level = opts.level;
+    if (skinKey) actual.skin = skinKey;
+    if (opts && opts.q != null && opts.q > 1) actual.q = opts.q;
+    if (opts && opts.p) actual.p = opts.p;
+    try {
+      const raw = itemContainer(
+        { skin: skinKey, size, draggable: false },
+        actual
+      );
+      if (raw) {
+        let cleaned = stripItemContainerHandlers(raw).replace(
+          /style="([^"]*)"/i,
+          (_m, style) => {
+            const next = /margin\s*:/i.test(style) ? style.replace(/margin\s*:[^;]+;?/i, "margin:0;") : `margin:0;${style}`;
+            return `style="${next}"`;
+          }
+        );
+        if (!nativeTitle) cleaned = stripNativeTitleAttrs(cleaned);
+        const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
+        return `<span class="ecu-item-instance"${tipAttr}>${cleaned}</span>`;
+      }
+    } catch (e2) {
+    }
+    return itemIconHtml(itemName, { skin: skinKey, size, title, nativeTitle });
   }
   function monsterDisplayName(mtype) {
     var _a;
@@ -908,7 +1001,7 @@ var EnhanceCommUI = (() => {
       return {
         id: gid,
         kind: "item",
-        skin: itemSkin(gid) || itemSkin(key),
+        skin: (opts == null ? void 0 : opts.skin) || itemSkin(gid) || itemSkin(key),
         name: typeof (def == null ? void 0 : def.name) === "string" ? def.name : key
       };
     };
@@ -1005,7 +1098,8 @@ var EnhanceCommUI = (() => {
     const resolved = resolveGameIcon(id, kind, {
       ctype: opts == null ? void 0 : opts.ctype,
       mtype: opts == null ? void 0 : opts.mtype,
-      name: opts == null ? void 0 : opts.name
+      name: opts == null ? void 0 : opts.name,
+      skin: opts == null ? void 0 : opts.skin
     });
     const title = (opts == null ? void 0 : opts.title) || resolved.name || id;
     if (resolved.kind === "monster") {
@@ -1026,6 +1120,13 @@ var EnhanceCommUI = (() => {
     }
     if (resolved.kind === "class") {
       return classIconHtml(resolved.ctype || id, size);
+    }
+    if (resolved.kind === "item") {
+      return itemIconHtml(resolved.id || id, {
+        skin: (opts == null ? void 0 : opts.skin) || resolved.skin,
+        size,
+        title
+      });
     }
     if (resolved.skin) {
       const sheet = skinSheetHtml(resolved.skin, size, title);
@@ -1096,7 +1197,10 @@ var EnhanceCommUI = (() => {
     const size = opts && opts.size || 18;
     const kind = opts && opts.kind || "auto";
     if ((opts == null ? void 0 : opts.container) && kind !== "monster" && kind !== "target" && kind !== "character" && kind !== "actor" && kind !== "class") {
-      const resolved = resolveGameIcon(id, kind, { ctype: opts == null ? void 0 : opts.ctype });
+      const resolved = resolveGameIcon(id, kind, {
+        ctype: opts == null ? void 0 : opts.ctype,
+        skin: opts == null ? void 0 : opts.skin
+      });
       const skin = resolved.skin || (kind === "skill" ? id : void 0);
       if (skin && paintItemContainerIcon(el, skin, size)) return;
     }
@@ -1106,7 +1210,8 @@ var EnhanceCommUI = (() => {
       ctype: opts == null ? void 0 : opts.ctype,
       mtype: opts == null ? void 0 : opts.mtype,
       name: opts == null ? void 0 : opts.name,
-      title: opts == null ? void 0 : opts.title
+      title: opts == null ? void 0 : opts.title,
+      skin: opts == null ? void 0 : opts.skin
     });
   }
 
@@ -1408,14 +1513,14 @@ var EnhanceCommUI = (() => {
   }
 
   // src/meters/sessionSegment.ts
-  function ensureActor(seg, id, meta) {
+  function ensureActor(seg, id, meta2) {
     let a = seg.actors[id];
     if (!a) {
       a = {
         id,
-        name: (meta == null ? void 0 : meta.name) || id,
-        ctype: meta == null ? void 0 : meta.ctype,
-        partyKey: (meta == null ? void 0 : meta.partyKey) || `solo:${id}`,
+        name: (meta2 == null ? void 0 : meta2.name) || id,
+        ctype: meta2 == null ? void 0 : meta2.ctype,
+        partyKey: (meta2 == null ? void 0 : meta2.partyKey) || `solo:${id}`,
         damage: 0,
         heal: 0,
         taken: 0,
@@ -1432,10 +1537,10 @@ var EnhanceCommUI = (() => {
         abilities: {}
       };
       seg.actors[id] = a;
-    } else if (meta) {
-      if (meta.name) a.name = meta.name;
-      if (meta.ctype) a.ctype = meta.ctype;
-      if (meta.partyKey) a.partyKey = meta.partyKey;
+    } else if (meta2) {
+      if (meta2.name) a.name = meta2.name;
+      if (meta2.ctype) a.ctype = meta2.ctype;
+      if (meta2.partyKey) a.partyKey = meta2.partyKey;
     }
     return a;
   }
@@ -1462,14 +1567,14 @@ var EnhanceCommUI = (() => {
     }
     return ab;
   }
-  function ensureTarget(ab, id, name, meta) {
+  function ensureTarget(ab, id, name, meta2) {
     let t = ab.targets[id];
     if (!t) {
       t = {
         id,
         name: name || id,
-        mtype: meta == null ? void 0 : meta.mtype,
-        ctype: meta == null ? void 0 : meta.ctype,
+        mtype: meta2 == null ? void 0 : meta2.mtype,
+        ctype: meta2 == null ? void 0 : meta2.ctype,
         damage: 0,
         heal: 0,
         splashDamage: 0,
@@ -1480,8 +1585,8 @@ var EnhanceCommUI = (() => {
       ab.targets[id] = t;
     } else {
       if (name) t.name = name;
-      if (meta == null ? void 0 : meta.mtype) t.mtype = meta.mtype;
-      if (meta == null ? void 0 : meta.ctype) t.ctype = meta.ctype;
+      if (meta2 == null ? void 0 : meta2.mtype) t.mtype = meta2.mtype;
+      if (meta2 == null ? void 0 : meta2.ctype) t.ctype = meta2.ctype;
       if (!t.normal) t.normal = emptyHitAmountStats();
       if (!t.crit) t.crit = emptyHitAmountStats();
     }
@@ -1611,6 +1716,15 @@ var EnhanceCommUI = (() => {
       dest[k] = (dest[k] || 0) + (src[k] || 0);
     }
   }
+  function isSegmentEmpty(seg) {
+    if (seg.deaths.length > 0) return false;
+    const ids = Object.keys(seg.actors);
+    for (let i = 0; i < ids.length; i++) {
+      const a = seg.actors[ids[i]];
+      if (a.damage > 0 || a.heal > 0 || a.taken > 0) return false;
+    }
+    return true;
+  }
   function mergeSegments(id, parts, now) {
     var _a;
     const out = emptySegment(id, ((_a = parts[0]) == null ? void 0 : _a.startedAt) || now, "Total");
@@ -1732,19 +1846,28 @@ var EnhanceCommUI = (() => {
     toggles: "Layout"
   };
   var DEFAULT_LAYOUT_DESKTOP = {
-    players: { x: 0.4, y: 0.4, anchor: "tl" },
-    enemies: { x: 99.6, y: 0.4, anchor: "tr" },
-    topCenter: { x: 50, y: 0.4, anchor: "tc" },
-    paperdoll: { x: 0.5, y: 30, anchor: "tl" },
-    buffInfo: { x: 0.8, y: 10, anchor: "tl" },
-    itemInfo: { x: 16.8, y: 10, anchor: "tl" },
-    kills: { x: 27, y: 99.2, anchor: "br" },
-    playerFrame: { x: 40.5, y: 86, anchor: "bc" },
-    targetFrame: { x: 60, y: 86, anchor: "bc" },
-    bossBar: { x: 50, y: 8, anchor: "tc" },
-    crypt: { x: 50, y: 18, anchor: "tc" },
-    threat: { x: 82, y: 75, anchor: "br" },
-    command: { x: 50, y: 42, anchor: "center" },
+    players: {
+      x: 0.4,
+      y: 0.4,
+      anchor: "tl",
+      locked: true,
+      frameW: 522,
+      frameH: 65.25
+    },
+    enemies: { x: 99.6, y: 0.4, anchor: "tr", frameW: 169.65, frameH: 52.2 },
+    topCenter: { x: 50, y: 0.4, anchor: "tc", frameW: 78.3, frameH: 78.3 },
+    paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274.05, frameH: 535.05 },
+    buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+    itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+    kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
+    playerFrame: { x: 40.5, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+    targetFrame: { x: 60, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+    bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
+    crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
+    threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
+    command: { x: 50, y: 42, anchor: "center", frameW: 561.15, frameH: 300.15 },
+    // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
+    // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
     bag: { x: 0.5, y: 99.2, anchor: "bl" },
     toggles: { x: 99.5, y: 99.2, anchor: "br" }
   };
@@ -1835,6 +1958,15 @@ var EnhanceCommUI = (() => {
     if (raw.horizontalSnap) out.horizontalSnap = true;
     if (raw.verticalSnap) out.verticalSnap = true;
     if (typeof raw.locked === "boolean") out.locked = raw.locked;
+    if (typeof raw.scale === "number" && Number.isFinite(raw.scale) && raw.scale > 0) {
+      out.scale = raw.scale;
+    }
+    if (typeof raw.frameW === "number" && raw.frameW > 0) {
+      out.frameW = raw.frameW;
+    }
+    if (typeof raw.frameH === "number" && raw.frameH > 0) {
+      out.frameH = raw.frameH;
+    }
     return out;
   }
   function mergeLayout(partial, profile = "desktop") {
@@ -1844,6 +1976,10 @@ var EnhanceCommUI = (() => {
     for (let i = 0; i < PANEL_IDS.length; i++) {
       const id = PANEL_IDS[i];
       out[id] = normalizePos(migrated && migrated[id], defaults[id]);
+    }
+    if (out.bag) {
+      delete out.bag.frameW;
+      delete out.bag.frameH;
     }
     return out;
   }
@@ -1949,7 +2085,7 @@ var EnhanceCommUI = (() => {
   function panelStyle(pos, editing) {
     const scale = typeof pos.scale === "number" && Number.isFinite(pos.scale) && pos.scale > 0 ? pos.scale : 1;
     const base = anchorTransform(pos.anchor);
-    return {
+    const style = {
       position: "absolute",
       left: `${pos.x}%`,
       top: `${pos.y}%`,
@@ -1965,6 +2101,13 @@ var EnhanceCommUI = (() => {
       maxHeight: "100vh",
       boxSizing: "border-box"
     };
+    if (typeof pos.frameW === "number" && pos.frameW > 0) {
+      style.width = Math.round(pos.frameW) + "px";
+    }
+    if (typeof pos.frameH === "number" && pos.frameH > 0) {
+      style.height = Math.round(pos.frameH) + "px";
+    }
+    return style;
   }
   function deltaToPercent(dx, dy, containerW, containerH) {
     return {
@@ -2097,6 +2240,371 @@ var EnhanceCommUI = (() => {
     reflect: "RF"
   };
 
+  // src/lib/panelEdgeGroup.ts
+  var DEFAULT_EDGE_SNAP_PX = 36;
+  var GROUP_GAP_PX = 0;
+  function oppositeSnapSide(side) {
+    if (side === 1) return 3;
+    if (side === 3) return 1;
+    if (side === 2) return 4;
+    return 2;
+  }
+  function emptySnap() {
+    return {};
+  }
+  function panelHasSnap(panel) {
+    const s = panel.snap;
+    if (!s) return false;
+    return !!(s[1] || s[2] || s[3] || s[4]);
+  }
+  function refreshSnapFlags(panel) {
+    if (!panelHasSnap(panel)) {
+      const next = { ...panel };
+      delete next.horizontalSnap;
+      delete next.verticalSnap;
+      return next;
+    }
+    const s = panel.snap || {};
+    const horizontal = !!(s[1] || s[3]);
+    const vertical = !!(s[2] || s[4]);
+    return {
+      ...panel,
+      horizontalSnap: horizontal || void 0,
+      verticalSnap: vertical || void 0
+    };
+  }
+  function applyGroupFrameSize(panels, resizedId, size, opts) {
+    const source = panels.find((m) => m.id === resizedId);
+    if (!source) return panels;
+    if (!panelHasSnap(source)) {
+      return panels.map((m) => m.id === resizedId ? { ...m, ...size } : m);
+    }
+    const group = getEdgeGroup(panels, resizedId);
+    const ids = new Set(group.map((g) => g.id));
+    const snap = source.snap || {};
+    const shareH = !!source.horizontalSnap || !!(snap[1] || snap[3]);
+    const shareW = !!source.verticalSnap || !!(snap[2] || snap[4]);
+    const rootW = opts == null ? void 0 : opts.rootW;
+    const rootH = opts == null ? void 0 : opts.rootH;
+    const canAlign = typeof rootW === "number" && rootW > 0 && typeof rootH === "number" && rootH > 0;
+    return panels.map((m) => {
+      if (!ids.has(m.id)) return m;
+      const next = { ...m };
+      const oldW = typeof m.frameW === "number" && m.frameW > 0 ? m.frameW : null;
+      const oldH = typeof m.frameH === "number" && m.frameH > 0 ? m.frameH : null;
+      if (size.frameW != null) {
+        if (shareW) next.frameW = size.frameW;
+        else if (m.id === resizedId) next.frameW = size.frameW;
+      }
+      if (size.frameH != null) {
+        if (shareH) next.frameH = size.frameH;
+        else if (m.id === resizedId) next.frameH = size.frameH;
+      }
+      if (m.id === resizedId || !canAlign) return next;
+      if (shareW && size.frameW != null && oldW != null && oldW !== size.frameW) {
+        next.pos = shiftPosKeepLeftEdge(
+          next.pos,
+          oldW,
+          size.frameW,
+          rootW,
+          rootH
+        );
+      }
+      if (shareH && size.frameH != null && oldH != null && oldH !== size.frameH) {
+        next.pos = shiftPosKeepTopEdge(
+          next.pos,
+          oldH,
+          size.frameH,
+          rootW,
+          rootH
+        );
+      }
+      return next;
+    });
+  }
+  function shiftPosKeepLeftEdge(pos, oldW, newW, rootW, rootH) {
+    const dW = newW - oldW;
+    if (!dW) return pos;
+    const anchor = pos.anchor || "tl";
+    if (anchor === "tl" || anchor === "bl") return pos;
+    if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+      return nudgePosByPixels(pos, dW / 2, 0, rootW, rootH);
+    }
+    return nudgePosByPixels(pos, dW, 0, rootW, rootH);
+  }
+  function shiftPosKeepTopEdge(pos, oldH, newH, rootW, rootH) {
+    const dH = newH - oldH;
+    if (!dH) return pos;
+    const anchor = pos.anchor || "tl";
+    if (anchor === "tl" || anchor === "tr" || anchor === "tc") return pos;
+    if (anchor === "center") {
+      return nudgePosByPixels(pos, 0, dH / 2, rootW, rootH);
+    }
+    return nudgePosByPixels(pos, 0, dH, rootW, rootH);
+  }
+  function getEdgeGroup(panels, startId) {
+    const byId = {};
+    for (let i = 0; i < panels.length; i++) {
+      byId[panels[i].id] = panels[i];
+    }
+    const start = byId[startId];
+    if (!start) return [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const queue = [startId];
+    while (queue.length) {
+      const id = queue.shift();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const inst = byId[id];
+      if (!inst) continue;
+      out.push(inst);
+      const snap = inst.snap || {};
+      const sides = [1, 2, 3, 4];
+      for (let i = 0; i < sides.length; i++) {
+        const nid = snap[sides[i]];
+        if (nid && !seen.has(nid)) queue.push(nid);
+      }
+    }
+    return out;
+  }
+  function ungroupPanel(panels, id) {
+    return panels.map((m) => {
+      if (m.id === id) {
+        return refreshSnapFlags({ ...m, snap: emptySnap() });
+      }
+      const snap = m.snap;
+      if (!snap) return m;
+      const next = { ...snap };
+      let changed = false;
+      const sides = [1, 2, 3, 4];
+      for (let i = 0; i < sides.length; i++) {
+        const side = sides[i];
+        if (next[side] === id) {
+          delete next[side];
+          changed = true;
+        }
+      }
+      return changed ? refreshSnapFlags({ ...m, snap: next }) : m;
+    });
+  }
+  function groupPanels(panels, aId, bId, sideOnA) {
+    if (aId === bId) return panels;
+    const opp = oppositeSnapSide(sideOnA);
+    const byId = {};
+    for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
+    const a = byId[aId];
+    const b = byId[bId];
+    if (!a || !b) return panels;
+    const oldOnA = (a.snap || {})[sideOnA];
+    const oldOnB = (b.snap || {})[opp];
+    const stale = /* @__PURE__ */ new Set();
+    if (oldOnA && oldOnA !== bId) stale.add(oldOnA);
+    if (oldOnB && oldOnB !== aId) stale.add(oldOnB);
+    return panels.map((m) => {
+      if (m.id === aId) {
+        const snap2 = { ...m.snap || {} };
+        snap2[sideOnA] = bId;
+        return refreshSnapFlags({ ...m, snap: snap2 });
+      }
+      if (m.id === bId) {
+        const snap2 = { ...m.snap || {} };
+        snap2[opp] = aId;
+        return refreshSnapFlags({ ...m, snap: snap2 });
+      }
+      if (!stale.has(m.id)) return m;
+      const snap = { ...m.snap || {} };
+      let changed = false;
+      const sides = [1, 2, 3, 4];
+      for (let i = 0; i < sides.length; i++) {
+        const side = sides[i];
+        if (snap[side] === aId || snap[side] === bId) {
+          delete snap[side];
+          changed = true;
+        }
+      }
+      return changed ? refreshSnapFlags({ ...m, snap }) : m;
+    });
+  }
+  function moveEdgeGroup(panels, movedId, newPos) {
+    const byId = {};
+    for (let i = 0; i < panels.length; i++) {
+      byId[panels[i].id] = panels[i];
+    }
+    const moved = byId[movedId];
+    if (!moved) return panels;
+    const old = moved.pos;
+    const dx = newPos.x - old.x;
+    const dy = newPos.y - old.y;
+    if (dx === 0 && dy === 0) {
+      return panels.map(
+        (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
+      );
+    }
+    const group = getEdgeGroup(panels, movedId);
+    if (group.length <= 1) {
+      return panels.map(
+        (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
+      );
+    }
+    const groupIds = new Set(group.map((g) => g.id));
+    return panels.map((m) => {
+      if (!groupIds.has(m.id)) return m;
+      if (m.id === movedId) return { ...m, pos: { ...newPos } };
+      return {
+        ...m,
+        pos: {
+          ...m.pos,
+          x: Math.max(0, Math.min(100, m.pos.x + dx)),
+          y: Math.max(0, Math.min(100, m.pos.y + dy))
+        }
+      };
+    });
+  }
+  function matchGroupHeight(panels, id, height) {
+    const group = getEdgeGroup(panels, id);
+    if (group.length <= 1) {
+      return panels.map((m) => m.id === id ? { ...m, frameH: height } : m);
+    }
+    const ids = new Set(group.map((g) => g.id));
+    return panels.map((m) => ids.has(m.id) ? { ...m, frameH: height } : m);
+  }
+  function matchGroupWidth(panels, id, width) {
+    const group = getEdgeGroup(panels, id);
+    if (group.length <= 1) {
+      return panels.map((m) => m.id === id ? { ...m, frameW: width } : m);
+    }
+    const ids = new Set(group.map((g) => g.id));
+    return panels.map((m) => ids.has(m.id) ? { ...m, frameW: width } : m);
+  }
+  function projectRectForSize(rect, anchor, nextW, nextH) {
+    const ax = anchor || "tl";
+    const oldW = rect.right - rect.left;
+    const oldH = rect.bottom - rect.top;
+    const w = nextW != null && nextW > 0 ? nextW : oldW;
+    const h = nextH != null && nextH > 0 ? nextH : oldH;
+    const dW = w - oldW;
+    const dH = h - oldH;
+    let left = rect.left;
+    let top = rect.top;
+    if (dW) {
+      if (ax === "tr" || ax === "br") left -= dW;
+      else if (ax === "tc" || ax === "bc" || ax === "center") left -= dW / 2;
+    }
+    if (dH) {
+      if (ax === "bl" || ax === "br" || ax === "bc") top -= dH;
+      else if (ax === "center") top -= dH / 2;
+    }
+    return { left, top, right: left + w, bottom: top + h };
+  }
+  function findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
+    let best = null;
+    let bestScore = Infinity;
+    const selfCx = (selfRect.left + selfRect.right) / 2;
+    const selfCy = (selfRect.top + selfRect.bottom) / 2;
+    for (let i = 0; i < others.length; i++) {
+      const o = others[i];
+      if (o.id === selfId) continue;
+      const r = o.rect;
+      const oCx = (r.left + r.right) / 2;
+      const oCy = (r.top + r.bottom) / 2;
+      const candidates = [
+        {
+          side: 3,
+          gap: Math.abs(selfRect.right - r.left),
+          align: Math.abs(selfRect.top - r.top),
+          natural: selfCx <= oCx
+        },
+        {
+          side: 1,
+          gap: Math.abs(selfRect.left - r.right),
+          align: Math.abs(selfRect.top - r.top),
+          natural: selfCx >= oCx
+        },
+        {
+          side: 2,
+          gap: Math.abs(selfRect.bottom - r.top),
+          align: Math.abs(selfRect.left - r.left),
+          natural: selfCy <= oCy
+        },
+        {
+          side: 4,
+          gap: Math.abs(selfRect.top - r.bottom),
+          align: Math.abs(selfRect.left - r.left),
+          natural: selfCy >= oCy
+        }
+      ];
+      for (let c = 0; c < candidates.length; c++) {
+        const cand = candidates[c];
+        if (!cand.natural) continue;
+        if (cand.gap > thresholdPx || cand.align > 80) continue;
+        const score = cand.gap + cand.align * 0.25;
+        if (score < bestScore) {
+          bestScore = score;
+          best = { otherId: o.id, sideOnSelf: cand.side, gap: score };
+        }
+      }
+    }
+    return best;
+  }
+  function nudgePosByPixels(pos, dxPx, dyPx, rootW, rootH) {
+    const dxPct = rootW > 0 ? dxPx / rootW * 100 : 0;
+    const dyPct = rootH > 0 ? dyPx / rootH * 100 : 0;
+    return {
+      ...pos,
+      x: Math.max(0, Math.min(100, pos.x + dxPct)),
+      y: Math.max(0, Math.min(100, pos.y + dyPct))
+    };
+  }
+  function attachPanelEdge(panels, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
+    const byId = {};
+    for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
+    const self = byId[selfId];
+    const other = byId[otherId];
+    if (!self || !other) return panels;
+    const matchH = sideOnSelf === 1 || sideOnSelf === 3;
+    const matchW = sideOnSelf === 2 || sideOnSelf === 4;
+    const peerH = other.frameH || Math.round(otherRect.bottom - otherRect.top) || void 0;
+    const peerW = other.frameW || Math.round(otherRect.right - otherRect.left) || void 0;
+    const h = matchH ? peerH || self.frameH : self.frameH;
+    const w = matchW ? peerW || self.frameW : self.frameW;
+    const projected = projectRectForSize(
+      selfRect,
+      self.pos.anchor,
+      matchW ? w : void 0,
+      matchH ? h : void 0
+    );
+    let dx = 0;
+    let dy = 0;
+    if (sideOnSelf === 3) {
+      dx = otherRect.left - GROUP_GAP_PX - projected.right;
+      dy = otherRect.top - projected.top;
+    } else if (sideOnSelf === 1) {
+      dx = otherRect.right + GROUP_GAP_PX - projected.left;
+      dy = otherRect.top - projected.top;
+    } else if (sideOnSelf === 2) {
+      dy = otherRect.top - GROUP_GAP_PX - projected.bottom;
+      dx = otherRect.left - projected.left;
+    } else {
+      dy = otherRect.bottom + GROUP_GAP_PX - projected.top;
+      dx = otherRect.left - projected.left;
+    }
+    const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
+    let next = panels.map((m) => {
+      if (m.id !== selfId) return m;
+      return {
+        ...m,
+        pos: alignedPos,
+        frameH: h != null ? h : m.frameH,
+        frameW: w != null ? w : m.frameW
+      };
+    });
+    next = groupPanels(next, selfId, otherId, sideOnSelf);
+    if (matchH && h != null) next = matchGroupHeight(next, selfId, h);
+    if (matchW && w != null) next = matchGroupWidth(next, selfId, w);
+    return next.map(refreshSnapFlags);
+  }
+
   // src/lib/settingsFocus.ts
   function resolvePartyFocus(focus, watchedPartyKey3) {
     if (focus === "all") {
@@ -2143,6 +2651,13 @@ var EnhanceCommUI = (() => {
     const eff = effectivePartyFocus(focus, hasObserver);
     return partyFocusChoiceLabel(eff, watchedName, partyLabels);
   }
+  function namedPartyKey(focus) {
+    if (!focus) return null;
+    if (focus === "watched" || focus === "you" || focus === "visible" || focus === "all") {
+      return null;
+    }
+    return focus;
+  }
   function partyFocusMenuOptions(ctx) {
     const name = ctx.watchedName;
     const out = [];
@@ -2156,7 +2671,9 @@ var EnhanceCommUI = (() => {
         label: partyFocusChoiceLabel("you", name)
       });
     }
-    out.push({ id: "visible", label: partyFocusChoiceLabel("visible") });
+    if (ctx.roster === "live") {
+      out.push({ id: "visible", label: partyFocusChoiceLabel("visible") });
+    }
     out.push({ id: "all", label: partyFocusChoiceLabel("all") });
     const parties = ctx.visibleParties || [];
     const skipKey = ctx.watchedPartyKey || "";
@@ -2180,11 +2697,8 @@ var EnhanceCommUI = (() => {
   // src/meters/meterCatalog.ts
   var VIEW_MODES = [
     { id: "bars", label: "Bars" },
-    { id: "table", label: "Table" },
     { id: "pie", label: "Pie" },
-    { id: "line", label: "Graph" },
-    { id: "realtime", label: "Realtime", seriesMode: "realtime" },
-    { id: "compare", label: "Compare", seriesMode: "compare" }
+    { id: "line", label: "Graph" }
   ];
   function supportsViewModes(query) {
     return query.kind === "players" || query.kind === "channel" || query.kind === "avoidance" || query.kind === "rolling" || query.kind === "snapshot";
@@ -2348,26 +2862,61 @@ var EnhanceCommUI = (() => {
   function displayLabelForQuery(query) {
     const idx = barModeIndex(query);
     if (idx >= 0) return BAR_MODE_CYCLE[idx].label;
-    return "";
+    switch (query.kind) {
+      case "players":
+        if (query.metric === "heal") return "Healing Done";
+        if (query.metric === "taken") return "Damage Taken";
+        if (query.metric === "healing_required") return "Healing Required";
+        if (query.metric === "avoidance") return "Avoidance";
+        return query.primary === "rate" ? "DPS" : "Damage Done";
+      case "avoidance":
+        return "Avoidance";
+      case "misc":
+        return "Miscellaneous";
+      case "channel":
+        return "Damage";
+      case "snapshot":
+        return query.mode === "pdps" ? "PDPS" : query.mode;
+      case "rolling":
+      case "realtime":
+        return "Hit DPS";
+      case "history":
+        return "DPS graph";
+      case "enemy_damage":
+        return "Adds";
+      case "taken_by_spell":
+        return "Damage Taken by Spell";
+      default:
+        return "";
+    }
   }
-  var PARTY_FOCUS_OPTIONS = partyFocusMenuOptions({ hasObserver: true });
+  function primaryRateUnit(query) {
+    const metric = query.kind === "players" || query.kind === "details" ? query.metric : void 0;
+    if (metric === "heal" || metric === "healing_required") return "HPS";
+    if (metric === "taken") return "DTPS";
+    if (query.kind === "snapshot" && query.mode === "pdps") return "PDPS";
+    return "DPS";
+  }
+  var PARTY_FOCUS_OPTIONS = partyFocusMenuOptions({ hasObserver: true, roster: "live" });
   var METER_PRESETS = [
     {
       id: "damage",
-      label: "Damage",
-      query: { kind: "players", metric: "damage" },
+      label: "DPS",
+      query: { kind: "players", metric: "damage", primary: "rate" },
       presentation: "bars",
       defaultVisible: true,
-      // Bottom-right cluster; Healing snaps on the left (see heal snap).
-      defaultPos: { x: 1, y: 28, anchor: "br" }
+      // Bottom-right cluster; HPS snaps on the right (see defaultMeterInstances).
+      defaultPos: { x: 82.1004233706721, y: 99, anchor: "br" },
+      defaultFrame: { w: 261, h: 157 }
     },
     {
       id: "heal",
-      label: "Healing",
-      query: { kind: "players", metric: "heal" },
+      label: "HPS",
+      query: { kind: "players", metric: "heal", primary: "rate" },
       presentation: "bars",
       defaultVisible: true,
-      defaultPos: { x: 16, y: 28, anchor: "br" }
+      defaultPos: { x: 95.97476985743381, y: 99, anchor: "br" },
+      defaultFrame: { w: 261, h: 157 }
     },
     {
       id: "taken",
@@ -2453,7 +3002,7 @@ var EnhanceCommUI = (() => {
       id: "summary",
       label: "Summary",
       query: { kind: "summary" },
-      presentation: "table",
+      presentation: "summary",
       catalog: false,
       defaultVisible: false,
       defaultPos: { x: 30, y: 50, anchor: "center" }
@@ -2555,6 +3104,12 @@ var EnhanceCommUI = (() => {
       normalize: overrides == null ? void 0 : overrides.normalize,
       locked: overrides == null ? void 0 : overrides.locked,
       hideWhenEmpty: (overrides == null ? void 0 : overrides.hideWhenEmpty) != null ? overrides.hideWhenEmpty : preset.hideWhenEmpty,
+      chromeOnHover: overrides == null ? void 0 : overrides.chromeOnHover,
+      statusbar: (overrides == null ? void 0 : overrides.statusbar) || {
+        left: "segment",
+        center: "clock",
+        right: "pdps"
+      },
       frameW: (overrides == null ? void 0 : overrides.frameW) != null ? overrides.frameW : (_a = preset.defaultFrame) == null ? void 0 : _a.w,
       frameH: (overrides == null ? void 0 : overrides.frameH) != null ? overrides.frameH : (_b = preset.defaultFrame) == null ? void 0 : _b.h
     };
@@ -2610,6 +3165,2668 @@ var EnhanceCommUI = (() => {
     return lines.join("\n");
   }
 
+  // src/lib/format.ts
+  function formatTime(timeSeconds) {
+    if (!timeSeconds) {
+      return "?";
+    }
+    const prefixes = [
+      { unit: "s", n: 1, resolution: 0, minMultiplier: 0 },
+      { unit: "min", n: 60, resolution: 0, minMultiplier: 99.5 / 60 },
+      { unit: "h", n: 3600, resolution: 1, minMultiplier: 99.5 / 60 },
+      { unit: "d", n: 86400, resolution: 1, minMultiplier: 99.5 / 24 }
+    ];
+    let result;
+    for (let i = prefixes.length - 1; i >= 0; i--) {
+      const prefix = prefixes[i];
+      if (timeSeconds >= prefix.minMultiplier * prefix.n) {
+        result = `${(timeSeconds / prefix.n).toFixed(prefix.resolution)}${prefix.unit}`;
+        break;
+      }
+    }
+    return result != null ? result : "?";
+  }
+  function formatDurationCompact(timeSeconds) {
+    if (timeSeconds == null || !(timeSeconds > 0)) return "";
+    if (timeSeconds < 60) return `${Math.max(1, Math.ceil(timeSeconds))}s`;
+    if (timeSeconds < 60 * 60) return `${Math.round(timeSeconds / 60)}m`;
+    if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
+    return `${Math.round(timeSeconds / 86400)}d`;
+  }
+  function syncEndsAt(prevEndsAt, ms, now = Date.now(), lastMs) {
+    if (!(ms != null && ms > 0)) return 0;
+    const next = now + ms;
+    if (!prevEndsAt) return next;
+    const stickyRemain = prevEndsAt - now;
+    if (lastMs != null && lastMs > 0 && Math.abs(ms - lastMs) <= 750 && prevEndsAt > now + 200 && ms <= stickyRemain + 750) {
+      return prevEndsAt;
+    }
+    if (ms > stickyRemain + 750) return next;
+    if (ms < stickyRemain - 250) return next;
+    return prevEndsAt;
+  }
+  function getPercent(value, precision) {
+    return `${Math.max(0, Math.min(100, value * 100)).toFixed(precision)}%`;
+  }
+  function getTimeUntil(dateString) {
+    if (!dateString) return "";
+    const target = new Date(dateString);
+    const now = /* @__PURE__ */ new Date();
+    return formatTime((target.getTime() - now.getTime()) / 1e3);
+  }
+  function formatCompactNumber(n) {
+    const a = Math.abs(n);
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return String(Math.round(n));
+  }
+  function formatCompactRate(n) {
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return n.toFixed(1);
+  }
+  function getALServerTime(timeOffset) {
+    const offset = parseInt(String(timeOffset != null ? timeOffset : 0), 10) || 0;
+    const dt = new Date(Date.now() + offset * 3600 * 1e3);
+    return dt.getUTCHours().toString().padStart(2, "0") + ":" + dt.getUTCMinutes().toString().padStart(2, "0");
+  }
+
+  // src/queries/entities.ts
+  var MTYPES_TO_SQUASH = ["nerfedbat", "nerfedmummy", "zapper0", "crab"];
+  function isCoopBoss(entity) {
+    return entity.cooperative === true;
+  }
+  function shouldSquash(mtype) {
+    if (!mtype) return false;
+    return MTYPES_TO_SQUASH.indexOf(mtype) >= 0;
+  }
+  function playersList(entities) {
+    const out = [];
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.player && ent.type === "character") out.push(ent);
+    }
+    return out;
+  }
+  function isFocusablePlayer(entity) {
+    return !!(entity && entity.player && entity.type === "character");
+  }
+  function partyGroups(entities) {
+    const players = playersList(entities);
+    const result = {};
+    for (let i = 0; i < players.length; i++) {
+      const player = players[i];
+      const key = player.party || "";
+      if (!result[key]) result[key] = [];
+      result[key].push(player);
+    }
+    const entries = Object.entries(result);
+    entries.sort((a, b) => a[0].localeCompare(b[0]));
+    for (let i = 0; i < entries.length; i++) {
+      entries[i][1].sort((a, b) => a.id.localeCompare(b.id));
+    }
+    return entries;
+  }
+  function aggroByTarget(entities) {
+    const out = {};
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.type !== "monster" || !ent.target) continue;
+      if (!out[ent.target]) out[ent.target] = [];
+      out[ent.target].push(ent);
+    }
+    return out;
+  }
+  function aggroedMonsters(entities) {
+    const out = [];
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (ent.type === "monster" && ent.cooperative !== true && ent.target) {
+        out.push(ent);
+      }
+    }
+    out.sort((a, b) => {
+      const cmp = (a.mtype || "").localeCompare(b.mtype || "");
+      if (cmp !== 0) return cmp;
+      return a.id < b.id ? -1 : 1;
+    });
+    return out;
+  }
+  function isCryptBossEntity(entity) {
+    if (entity.type !== "monster" || !entity.mtype) return false;
+    return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
+  }
+  function isAliveMonster(entity) {
+    if (entity.type !== "monster") return false;
+    if (entity.dead) return false;
+    if (entity.hp != null && entity.hp <= 0) return false;
+    return true;
+  }
+  function activeBosses(entities) {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!isAliveMonster(ent)) continue;
+      if (!isCoopBoss(ent) && !isCryptBossEntity(ent)) continue;
+      const id = String(ent.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(ent);
+    }
+    out.sort((a, b) => {
+      const lb = b.level || 0;
+      const la = a.level || 0;
+      if (lb !== la) return lb - la;
+      const cmp = String(a.name || a.mtype || a.id).localeCompare(
+        String(b.name || b.mtype || b.id)
+      );
+      if (cmp !== 0) return cmp;
+      return a.id < b.id ? -1 : 1;
+    });
+    return out;
+  }
+  function findEntity(entities, id) {
+    if (id == null || id === "") return void 0;
+    const tid = String(id);
+    for (let i = 0; i < entities.length; i++) {
+      if (String(entities[i].id) === tid) return entities[i];
+    }
+    return void 0;
+  }
+
+  // src/meters/meterRun.ts
+  function isInstanceMap(map) {
+    var _a, _b, _c;
+    if (!map) return false;
+    return !!((_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.instance);
+  }
+  function isPvpMap(map) {
+    var _a, _b, _c;
+    if (!map) return false;
+    return !!((_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.pvp);
+  }
+  function isProtectedInstance(map, mapIn, protectMapIn2) {
+    return !!protectMapIn2 && !!mapIn && mapIn === protectMapIn2 && isInstanceMap(map);
+  }
+  function sObject(name) {
+    var _a;
+    const entry = (_a = getS()) == null ? void 0 : _a[name];
+    if (!entry || typeof entry !== "object") return null;
+    return entry;
+  }
+  function eventIsActive(name) {
+    const entry = sObject(name);
+    if (!entry) return false;
+    if ("live" in entry) return !!entry.live;
+    return true;
+  }
+  function eventIsJoinable(name) {
+    var _a, _b, _c;
+    return !!((_c = (_b = (_a = getG()) == null ? void 0 : _a.events) == null ? void 0 : _b[name]) == null ? void 0 : _c.join);
+  }
+  function mapHostsEventMonster(map, eventName) {
+    var _a, _b, _c, _d;
+    const monsters = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.monsters;
+    if (!monsters) return false;
+    for (let i = 0; i < monsters.length; i++) {
+      if (((_d = monsters[i]) == null ? void 0 : _d.type) === eventName) return true;
+    }
+    return false;
+  }
+  function classifyEventName(name) {
+    var _a, _b, _c, _d;
+    if (!name || name === "schedule") return null;
+    if (eventIsJoinable(name)) return eventIsActive(name) ? "join" : null;
+    if ((_b = (_a = getG()) == null ? void 0 : _a.events) == null ? void 0 : _b[name]) return null;
+    if (((_d = (_c = getG()) == null ? void 0 : _c.monsters) == null ? void 0 : _d[name]) && eventIsActive(name)) return "monster";
+    return null;
+  }
+  function onThisMap(name, map) {
+    const entry = sObject(name);
+    if (entry && entry.map === map) return true;
+    return mapHostsEventMonster(map, name);
+  }
+  function eventOnMap(map, prefer) {
+    var _a, _b, _c, _d;
+    if (!map) return void 0;
+    const mapped = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.event;
+    if (mapped && classifyEventName(mapped) === "join" && (map === mapped || eventIsActive(mapped))) {
+      return mapped;
+    }
+    let join;
+    let monster;
+    const S = getS();
+    if (S) {
+      const names2 = Object.keys(S);
+      for (let i = 0; i < names2.length; i++) {
+        const name = names2[i];
+        const kind = classifyEventName(name);
+        if (!kind || !onThisMap(name, map)) continue;
+        if (kind === "join" && !join) join = name;
+        if (kind === "monster" && !monster) monster = name;
+      }
+    }
+    if (join) return join;
+    if (prefer && classifyEventName(prefer) === "monster" && onThisMap(prefer, map)) {
+      return prefer;
+    }
+    if (monster) return monster;
+    const events = (_d = getG()) == null ? void 0 : _d.events;
+    if (!events) return void 0;
+    const names = Object.keys(events);
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      if (classifyEventName(name) !== "join") continue;
+      if (mapHostsEventMonster(map, name)) return name;
+    }
+    return void 0;
+  }
+  function suppressIdleBreak(map, event) {
+    var _a, _b, _c;
+    if (event) return true;
+    if (isPvpMap(map)) return true;
+    if (map && ((_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.event)) return true;
+    return false;
+  }
+  function eventDisplayName(event) {
+    var _a, _b, _c, _d, _e, _f;
+    return ((_c = (_b = (_a = getG()) == null ? void 0 : _a.events) == null ? void 0 : _b[event]) == null ? void 0 : _c.name) || ((_f = (_e = (_d = getG()) == null ? void 0 : _d.monsters) == null ? void 0 : _e[event]) == null ? void 0 : _f.name) || event;
+  }
+  function mapDisplayName(map) {
+    var _a, _b, _c;
+    return ((_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.name) || map;
+  }
+  function runRefForSegment(seg) {
+    if (seg.map && isInstanceMap(seg.map) && seg.mapIn) {
+      return { mapIn: seg.mapIn };
+    }
+    if (seg.event) return { event: seg.event };
+    return null;
+  }
+
+  // src/meters/meterSegmentPack.ts
+  function intern(state, s) {
+    const v = s || "";
+    const hit = state.idx[v];
+    if (hit != null) return hit;
+    const i = state.pool.length;
+    state.pool.push(v);
+    state.idx[v] = i;
+    return i;
+  }
+  function relAt(at, startedAt) {
+    const d = at - startedAt;
+    if (d < 0) return 0;
+    if (d > 4294967295) return 4294967295;
+    return d >>> 0;
+  }
+  function levelOrMissing(n) {
+    return typeof n === "number" && Number.isFinite(n) ? n : -1;
+  }
+  function toAgg(seg) {
+    return {
+      id: seg.id,
+      startedAt: seg.startedAt,
+      endedAt: seg.endedAt,
+      label: seg.label,
+      outcome: seg.outcome,
+      seq: seg.seq,
+      observingId: seg.observingId,
+      observingName: seg.observingName,
+      observingCtype: seg.observingCtype,
+      map: seg.map,
+      mapIn: seg.mapIn,
+      event: seg.event,
+      serverRegion: seg.serverRegion,
+      serverIdentifier: seg.serverIdentifier,
+      partyKey: seg.partyKey,
+      closeReason: seg.closeReason,
+      kind: seg.kind,
+      favorite: seg.favorite ? true : void 0,
+      actors: seg.actors,
+      deaths: seg.deaths
+    };
+  }
+  function packTapes(seg) {
+    const startedAt = seg.startedAt || 0;
+    const state = { pool: [""], idx: { "": 0 } };
+    const casts = seg.casts || [];
+    const nC = casts.length;
+    const castAt = new Uint32Array(nC);
+    const castActor = new Uint16Array(nC);
+    const castSource = new Uint16Array(nC);
+    const castTarget = new Uint16Array(nC);
+    const castPid = new Uint16Array(nC);
+    for (let i = 0; i < nC; i++) {
+      const c = casts[i];
+      castAt[i] = relAt(c.at, startedAt);
+      castActor[i] = intern(state, c.actorId);
+      castSource[i] = intern(state, c.source);
+      castTarget[i] = intern(state, c.targetId);
+      castPid[i] = intern(
+        state,
+        c.pid == null ? "" : String(c.pid)
+      );
+    }
+    const gears = seg.gearSwaps || [];
+    const nG = gears.length;
+    const gearAt = new Uint32Array(nG);
+    const gearActor = new Uint16Array(nG);
+    const gearSlot = new Uint16Array(nG);
+    const gearOldName = new Uint16Array(nG);
+    const gearNewName = new Uint16Array(nG);
+    const gearOldLevel = new Int32Array(nG);
+    const gearNewLevel = new Int32Array(nG);
+    const gearSkin = new Uint16Array(nG);
+    for (let i = 0; i < nG; i++) {
+      const g = gears[i];
+      gearAt[i] = relAt(g.at, startedAt);
+      gearActor[i] = intern(state, g.actorId);
+      gearSlot[i] = intern(state, g.slot);
+      gearOldName[i] = intern(state, g.oldName);
+      gearNewName[i] = intern(state, g.newName);
+      gearOldLevel[i] = levelOrMissing(g.oldLevel);
+      gearNewLevel[i] = levelOrMissing(g.newLevel);
+      gearSkin[i] = intern(state, g.skin);
+    }
+    const conds = seg.conditions || [];
+    const nK = conds.length;
+    const condActor = new Uint16Array(nK);
+    const condKey = new Uint16Array(nK);
+    const condStart = new Uint32Array(nK);
+    const condEnd = new Uint32Array(nK);
+    for (let i = 0; i < nK; i++) {
+      const k = conds[i];
+      condActor[i] = intern(state, k.actorId);
+      condKey[i] = intern(state, k.key);
+      condStart[i] = relAt(k.startedAt, startedAt);
+      condEnd[i] = k.endedAt == null ? 0 : relAt(k.endedAt, startedAt) || 1;
+    }
+    return {
+      v: 1,
+      pool: state.pool,
+      castAt,
+      castActor,
+      castSource,
+      castTarget,
+      castPid,
+      gearAt,
+      gearActor,
+      gearSlot,
+      gearOldName,
+      gearNewName,
+      gearOldLevel,
+      gearNewLevel,
+      gearSkin,
+      condActor,
+      condKey,
+      condStart,
+      condEnd
+    };
+  }
+  function poolAt(pool, i) {
+    return pool[i] || "";
+  }
+  function unpackCasts(t, startedAt) {
+    const n = t.castAt.length;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const target = poolAt(t.pool, t.castTarget[i]);
+      const pidRaw = poolAt(t.pool, t.castPid[i]);
+      const row2 = {
+        at: startedAt + t.castAt[i],
+        actorId: poolAt(t.pool, t.castActor[i]),
+        source: poolAt(t.pool, t.castSource[i]) || "attack"
+      };
+      if (target) row2.targetId = target;
+      if (pidRaw) row2.pid = pidRaw;
+      out.push(row2);
+    }
+    return out;
+  }
+  function unpackGear(t, startedAt) {
+    const n = t.gearAt.length;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const oldName = poolAt(t.pool, t.gearOldName[i]);
+      const newName = poolAt(t.pool, t.gearNewName[i]);
+      const skin = poolAt(t.pool, t.gearSkin[i]);
+      const row2 = {
+        at: startedAt + t.gearAt[i],
+        actorId: poolAt(t.pool, t.gearActor[i]),
+        slot: poolAt(t.pool, t.gearSlot[i])
+      };
+      if (oldName) row2.oldName = oldName;
+      if (newName) row2.newName = newName;
+      if (t.gearOldLevel[i] >= 0) row2.oldLevel = t.gearOldLevel[i];
+      if (t.gearNewLevel[i] >= 0) row2.newLevel = t.gearNewLevel[i];
+      if (skin) row2.skin = skin;
+      out.push(row2);
+    }
+    return out;
+  }
+  function unpackConds(t, startedAt) {
+    const n = t.condActor.length;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const row2 = {
+        actorId: poolAt(t.pool, t.condActor[i]),
+        key: poolAt(t.pool, t.condKey[i]),
+        startedAt: startedAt + t.condStart[i]
+      };
+      if (t.condEnd[i]) row2.endedAt = startedAt + t.condEnd[i];
+      out.push(row2);
+    }
+    return out;
+  }
+  function unpackTapes(agg, tapes) {
+    const startedAt = agg.startedAt || 0;
+    return {
+      ...agg,
+      casts: tapes && tapes.v === 1 ? unpackCasts(tapes, startedAt) : [],
+      gearSwaps: tapes && tapes.v === 1 ? unpackGear(tapes, startedAt) : [],
+      conditions: tapes && tapes.v === 1 ? unpackConds(tapes, startedAt) : []
+    };
+  }
+  function packSegment(seg) {
+    return { agg: toAgg(seg), tapes: packTapes(seg) };
+  }
+
+  // src/meters/meterSegmentMeta.ts
+  var MAX_TIP_NAMES = 12;
+  function isPlayerActor(a) {
+    if (a.ctype) return true;
+    if (!a.id || /^\d+$/.test(a.id)) return false;
+    return true;
+  }
+  function playerNamesFromSegment(seg) {
+    const ids = Object.keys(seg.actors);
+    const players = [];
+    for (let i = 0; i < ids.length; i++) {
+      const a = seg.actors[ids[i]];
+      if (isPlayerActor(a)) players.push(a);
+    }
+    players.sort((a, b) => b.damage - a.damage);
+    const names = [];
+    for (let i = 0; i < players.length; i++) {
+      names.push(players[i].name || players[i].id);
+    }
+    return names;
+  }
+  function sourceFromSegment(seg) {
+    return {
+      startedAt: seg.startedAt,
+      endedAt: seg.endedAt,
+      map: seg.map,
+      event: seg.event,
+      kind: seg.kind,
+      observingName: seg.observingName,
+      outcome: seg.outcome,
+      deaths: seg.deaths.length,
+      playerNames: playerNamesFromSegment(seg),
+      serverRegion: seg.serverRegion,
+      serverIdentifier: seg.serverIdentifier,
+      favorite: !!seg.favorite
+    };
+  }
+  function sourceFromMeta(m) {
+    return {
+      startedAt: m.startedAt,
+      endedAt: m.endedAt,
+      map: m.map,
+      event: m.event,
+      kind: m.kind,
+      observingName: m.observingName,
+      outcome: m.outcome,
+      deaths: m.deaths,
+      playerNames: m.playerNames,
+      serverRegion: m.serverRegion,
+      serverIdentifier: m.serverIdentifier,
+      favorite: !!m.favorite
+    };
+  }
+  function formatSpan(startedAt, endedAt) {
+    const end = endedAt || Date.now();
+    const sec = Math.max((end - startedAt) / 1e3, 1);
+    if (sec >= 3600) return `${(sec / 3600).toFixed(1)}h`;
+    if (sec >= 60) return `${Math.round(sec / 60)}m`;
+    return `${Math.round(sec)}s`;
+  }
+  function formatRelativeAgo(at, now = Date.now()) {
+    const sec = Math.max(0, Math.round((now - at) / 1e3));
+    if (sec < 10) return "just now";
+    if (sec < 60) return `${sec}s ago`;
+    return `${formatDurationCompact(sec)} ago`;
+  }
+  function formatClock(at) {
+    const d = new Date(at);
+    if (!Number.isFinite(d.getTime())) return "";
+    return d.toLocaleString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  }
+  function whereLabel(src) {
+    if (src.event) return eventDisplayName(src.event);
+    if (src.map) return mapDisplayName(src.map);
+    return "Fight";
+  }
+  function kindBit(src) {
+    if (src.kind === "boss") return "boss";
+    if (src.kind === "pull") return "pull";
+    return "";
+  }
+  function serverLabel(src) {
+    const region = src.serverRegion || "";
+    const ident = src.serverIdentifier || "";
+    return [region, ident].filter(Boolean).join(" ").trim();
+  }
+  function pickerWhenBit(src, now) {
+    if (!src.startedAt) return "";
+    if (!src.endedAt) return formatClock(src.startedAt);
+    const sec = Math.max(0, Math.round((now - src.endedAt) / 1e3));
+    if (sec < 3600) return formatRelativeAgo(src.endedAt, now);
+    return formatClock(src.startedAt);
+  }
+  function fightChipTitle(src) {
+    const parts = [whereLabel(src)];
+    const kind = kindBit(src);
+    if (kind) parts.push(kind);
+    return parts.join(" \xB7 ");
+  }
+  function fightPickerTitle(src, now = Date.now()) {
+    const parts = [fightChipTitle(src)];
+    const server = serverLabel(src);
+    if (server) parts.push(server);
+    if (src.startedAt) {
+      parts.push(formatSpan(src.startedAt, src.endedAt));
+      const when = pickerWhenBit(src, now);
+      if (when) parts.push(when);
+    }
+    return parts.join(" \xB7 ");
+  }
+  function joinNames(names) {
+    if (names.length <= MAX_TIP_NAMES) return names.join(", ");
+    const shown = names.slice(0, MAX_TIP_NAMES);
+    return `${shown.join(", ")} +${names.length - MAX_TIP_NAMES}`;
+  }
+  function fightHoverTip(src, now = Date.now()) {
+    const lines = [];
+    const where = whereLabel(src);
+    const mapName = src.map ? mapDisplayName(src.map) : "";
+    if (src.event && mapName && mapName !== where) {
+      lines.push(`${where} \xB7 ${mapName}`);
+    } else {
+      lines.push(where);
+    }
+    const kind = kindBit(src);
+    if (kind) lines[0] += ` \xB7 ${kind}`;
+    const bits = [];
+    if (src.startedAt) {
+      bits.push(`lasted ${formatSpan(src.startedAt, src.endedAt)}`);
+    }
+    const agoAt = src.endedAt || src.startedAt;
+    if (agoAt) bits.push(formatRelativeAgo(agoAt, now));
+    const clock = src.startedAt ? formatClock(src.startedAt) : "";
+    if (clock) bits.push(clock);
+    if (bits.length) lines.push(bits.join(" \xB7 "));
+    const names = src.playerNames || [];
+    if (names.length) {
+      const n = names.length;
+      lines.push(`${n} player${n === 1 ? "" : "s"}: ${joinNames(names)}`);
+    }
+    if (src.observingName) lines.push(`Watching ${src.observingName}`);
+    if (src.outcome === "wipe") lines.push("Wipe");
+    else if (src.outcome === "kill") lines.push("Kill");
+    if (src.deaths && src.deaths > 0) {
+      lines.push(
+        `${src.deaths} death${src.deaths === 1 ? "" : "s"}`
+      );
+    }
+    const server = serverLabel(src);
+    if (server) lines.push(server);
+    if (src.favorite) lines.push("Favorited \u2014 kept when archive cleans up");
+    return lines.join("\n");
+  }
+  function autoSegmentLabel(seg, _seq) {
+    return fightPickerTitle(sourceFromSegment(seg));
+  }
+  function inferSegmentOutcome(seg, partyActorIds2) {
+    if (seg.outcome) return seg.outcome;
+    if (!partyActorIds2.length) return "timeout";
+    let dead = 0;
+    for (let i = 0; i < partyActorIds2.length; i++) {
+      const id = partyActorIds2[i];
+      let wasDead = false;
+      for (let d = 0; d < seg.deaths.length; d++) {
+        if (seg.deaths[d].id === id) {
+          wasDead = true;
+          break;
+        }
+      }
+      if (wasDead) dead += 1;
+    }
+    if (dead >= partyActorIds2.length && dead > 0) return "wipe";
+    if (seg.deaths.length === 0 && seg.endedAt) return "kill";
+    return seg.deaths.length > 0 ? "wipe" : "kill";
+  }
+  function segmentOutcomeClass(outcome) {
+    if (outcome === "wipe") return "ecu-seg-wipe";
+    if (outcome === "kill") return "ecu-seg-kill";
+    return "";
+  }
+
+  // src/meters/meterUiTick.ts
+  var MIN_FLUSH_MS = 50;
+  var listeners2 = [];
+  var dirty = false;
+  var raf = 0;
+  var delay = 0;
+  var lastFlushAt = 0;
+  function notify() {
+    for (let i = 0; i < listeners2.length; i++) {
+      listeners2[i]();
+    }
+  }
+  function flush() {
+    raf = 0;
+    if (!dirty) return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    dirty = false;
+    lastFlushAt = performance.now();
+    notify();
+  }
+  function schedule() {
+    if (raf || delay) return;
+    const wait = MIN_FLUSH_MS - (performance.now() - lastFlushAt);
+    if (wait > 0) {
+      delay = window.setTimeout(() => {
+        delay = 0;
+        if (!dirty) return;
+        raf = window.requestAnimationFrame(flush);
+      }, wait);
+      return;
+    }
+    raf = window.requestAnimationFrame(flush);
+  }
+  function markMeterDirty() {
+    dirty = true;
+    schedule();
+  }
+  function subscribeMeterTick(listener) {
+    listeners2.push(listener);
+    return () => {
+      const idx = listeners2.indexOf(listener);
+      if (idx >= 0) listeners2.splice(idx, 1);
+    };
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && dirty) schedule();
+    });
+  }
+
+  // src/meters/meterArchive.ts
+  var DB_NAME = "ecu-meter-archive";
+  var DB_VER = 1;
+  var STORE_SEGMENTS = "segments";
+  var STORE_DRAFT = "draft";
+  var DRAFT_KEY = "current";
+  var DRAFT_MS = 5e3;
+  var MAX_QUOTA_EVICT = 8;
+  var hooks = null;
+  var dbPromise = null;
+  var meta = [];
+  var draftTimer = null;
+  var draftDirty = false;
+  var hydrating = {};
+  var started = false;
+  var unsubLife = null;
+  function archiveCap() {
+    return getMeterAppearance().maxArchivedSegments;
+  }
+  function ramCap() {
+    return getMeterAppearance().maxPastSegments;
+  }
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve) => {
+      if (typeof indexedDB === "undefined") {
+        resolve(null);
+        return;
+      }
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE_SEGMENTS)) {
+          const segs = db.createObjectStore(STORE_SEGMENTS, { keyPath: "id" });
+          segs.createIndex("startedAt", "startedAt");
+          segs.createIndex("map", "map");
+          segs.createIndex("mapIn", "mapIn");
+        }
+        if (!db.objectStoreNames.contains(STORE_DRAFT)) {
+          db.createObjectStore(STORE_DRAFT);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    return dbPromise;
+  }
+  function reqToPromise(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function txDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+  function commitTx(tx) {
+    const anyTx = tx;
+    if (typeof anyTx.commit === "function") anyTx.commit();
+  }
+  function isQuota(err) {
+    const e2 = err;
+    const name = e2 && e2.name;
+    const msg = e2 && e2.message || "";
+    return name === "QuotaExceededError" || /quota/i.test(msg);
+  }
+  async function gzipUtf8(text) {
+    const bytes = new TextEncoder().encode(text);
+    const CS = globalThis.CompressionStream;
+    const copy = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength
+    );
+    if (typeof CS !== "function") return { buf: copy, gzip: 0 };
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new CS("gzip"));
+      const buf = await new Response(stream).arrayBuffer();
+      return { buf, gzip: 1 };
+    } catch (e2) {
+      return { buf: copy, gzip: 0 };
+    }
+  }
+  async function gunzipUtf8(buf, gzip) {
+    if (!gzip) return new TextDecoder().decode(buf);
+    const DS = globalThis.DecompressionStream;
+    if (typeof DS !== "function") return new TextDecoder().decode(buf);
+    const stream = new Blob([buf]).stream().pipeThrough(new DS("gzip"));
+    return await new Response(stream).text();
+  }
+  function metaOf(row2) {
+    return {
+      id: row2.id,
+      startedAt: row2.startedAt,
+      map: row2.map,
+      mapIn: row2.mapIn,
+      event: row2.event,
+      label: row2.label,
+      outcome: row2.outcome,
+      kind: row2.kind,
+      endedAt: row2.endedAt,
+      observingName: row2.observingName,
+      playerNames: row2.playerNames,
+      deaths: row2.deaths,
+      serverRegion: row2.serverRegion,
+      serverIdentifier: row2.serverIdentifier,
+      favorite: !!row2.favorite
+    };
+  }
+  function sortMetaNewest(list) {
+    list.sort((a, b) => b.startedAt - a.startedAt);
+  }
+  function listArchiveMeta() {
+    return meta.slice();
+  }
+  function trimRamPast(past2, cap, protectMapIn2, keepIds) {
+    if (past2.length <= cap) return past2;
+    const out = [];
+    let dropped = past2.length - cap;
+    for (let i = past2.length - 1; i >= 0; i--) {
+      const seg = past2[i];
+      const keep = !!seg.favorite || !!(keepIds && keepIds[seg.id]) || isProtectedInstance(seg.map, seg.mapIn, protectMapIn2);
+      if (!keep && dropped > 0) {
+        dropped -= 1;
+        continue;
+      }
+      out.push(seg);
+    }
+    out.reverse();
+    return out;
+  }
+  async function evictOldest(db, protectMapIn2) {
+    const tx = db.transaction(STORE_SEGMENTS, "readwrite");
+    const store = tx.objectStore(STORE_SEGMENTS);
+    const idx = store.index("startedAt");
+    const rows = await reqToPromise(idx.getAll());
+    sortMetaNewest(rows);
+    let victim = null;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const row2 = rows[i];
+      if (row2.favorite) continue;
+      if (isProtectedInstance(row2.map, row2.mapIn, protectMapIn2)) {
+        continue;
+      }
+      victim = row2;
+      break;
+    }
+    if (!victim) {
+      commitTx(tx);
+      return false;
+    }
+    await reqToPromise(store.delete(victim.id));
+    commitTx(tx);
+    await txDone(tx);
+    const next = [];
+    for (let i = 0; i < meta.length; i++) {
+      if (meta[i].id !== victim.id) next.push(meta[i]);
+    }
+    meta = next;
+    return true;
+  }
+  async function putWithQuota(db, row2, protectMapIn2) {
+    let tries = 0;
+    while (tries < MAX_QUOTA_EVICT) {
+      try {
+        const tx = db.transaction(STORE_SEGMENTS, "readwrite");
+        const store = tx.objectStore(STORE_SEGMENTS);
+        store.put(row2);
+        commitTx(tx);
+        await txDone(tx);
+        return;
+      } catch (err) {
+        if (!isQuota(err)) throw err;
+        const evicted = await evictOldest(db, protectMapIn2);
+        if (!evicted) throw err;
+        tries += 1;
+      }
+    }
+  }
+  async function trimArchiveStore(db, protectMapIn2) {
+    const cap = archiveCap();
+    while (meta.length > cap) {
+      const evicted = await evictOldest(db, protectMapIn2);
+      if (!evicted) break;
+    }
+  }
+  function setArchiveFavorite(id, favorite) {
+    if (!id) return;
+    const fav = !!favorite;
+    const next = [];
+    for (let i = 0; i < meta.length; i++) {
+      const m = meta[i];
+      if (m.id === id) next.push({ ...m, favorite: fav });
+      else next.push(m);
+    }
+    meta = next;
+    markMeterDirty();
+    void persistFavoriteFlag(id, fav);
+  }
+  async function persistFavoriteFlag(id, favorite) {
+    const db = await openDb();
+    if (!db) return;
+    try {
+      const tx = db.transaction(STORE_SEGMENTS, "readwrite");
+      const store = tx.objectStore(STORE_SEGMENTS);
+      const row2 = await reqToPromise(store.get(id));
+      if (!row2) {
+        commitTx(tx);
+        return;
+      }
+      row2.favorite = favorite;
+      store.put(row2);
+      commitTx(tx);
+      await txDone(tx);
+    } catch (e2) {
+    }
+  }
+  function upsertMeta(row2) {
+    const next = [metaOf(row2)];
+    for (let i = 0; i < meta.length; i++) {
+      if (meta[i].id !== row2.id) next.push(meta[i]);
+    }
+    meta = next;
+    sortMetaNewest(meta);
+  }
+  async function persistHint() {
+    try {
+      const nav = navigator;
+      if (nav.storage && typeof nav.storage.persist === "function") {
+        await nav.storage.persist();
+      }
+    } catch (e2) {
+    }
+  }
+  async function rowToSegment(row2) {
+    const json = await gunzipUtf8(row2.aggGzip, row2.gzip);
+    const agg = JSON.parse(json);
+    const seg = unpackTapes(agg, row2.tapes);
+    seg.favorite = !!row2.favorite || !!seg.favorite;
+    return seg;
+  }
+  function ramHas(id) {
+    if (!hooks) return false;
+    const ids = hooks.getPastIds();
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] === id) return true;
+    }
+    const live2 = hooks.getLive();
+    return !!(live2 && live2.id === id);
+  }
+  function requestHydrate(id) {
+    if (!id || ramHas(id) || hydrating[id]) return;
+    hydrating[id] = true;
+    void (async () => {
+      try {
+        const db = await openDb();
+        if (!db) return;
+        const tx = db.transaction(STORE_SEGMENTS, "readonly");
+        const row2 = await reqToPromise(
+          tx.objectStore(STORE_SEGMENTS).get(id)
+        );
+        if (!row2) return;
+        const seg = await rowToSegment(row2);
+        if (hooks && !ramHas(id)) hooks.adoptPast([seg]);
+        markMeterDirty();
+      } catch (e2) {
+      } finally {
+        delete hydrating[id];
+      }
+    })();
+  }
+  function ensureHydrated(match) {
+    for (let i = 0; i < meta.length; i++) {
+      const m = meta[i];
+      if (match(m)) requestHydrate(m.id);
+    }
+  }
+  async function sealSegment(seg) {
+    const db = await openDb();
+    if (!db) return;
+    const packed = packSegment(seg);
+    const json = JSON.stringify(packed.agg);
+    const gz = await gzipUtf8(json);
+    let favorite = !!seg.favorite;
+    for (let i = 0; i < meta.length; i++) {
+      if (meta[i].id === seg.id && meta[i].favorite) {
+        favorite = true;
+        break;
+      }
+    }
+    const row2 = {
+      id: seg.id,
+      startedAt: seg.startedAt,
+      map: seg.map || "",
+      mapIn: seg.mapIn || "",
+      event: seg.event,
+      label: seg.label,
+      outcome: seg.outcome,
+      kind: seg.kind,
+      endedAt: seg.endedAt,
+      observingName: seg.observingName,
+      playerNames: playerNamesFromSegment(seg),
+      deaths: seg.deaths.length,
+      serverRegion: seg.serverRegion,
+      serverIdentifier: seg.serverIdentifier,
+      favorite,
+      aggGzip: gz.buf,
+      tapes: packed.tapes,
+      gzip: gz.gzip
+    };
+    const protect = hooks ? hooks.protectMapIn() : "";
+    await putWithQuota(db, row2, protect);
+    upsertMeta(row2);
+    await trimArchiveStore(db, protect);
+    await clearDraft();
+  }
+  function scheduleDraft() {
+    if (draftTimer) return;
+    draftTimer = setTimeout(() => {
+      draftTimer = null;
+      if (draftDirty) void flushDraft();
+    }, DRAFT_MS);
+  }
+  function noteLive(seg) {
+    if (!seg || !started) return;
+    draftDirty = true;
+    scheduleDraft();
+  }
+  async function flushDraft() {
+    draftDirty = false;
+    const live2 = hooks ? hooks.getLive() : null;
+    const db = await openDb();
+    if (!db) return;
+    if (!live2) {
+      await clearDraft();
+      return;
+    }
+    const packed = packSegment(live2);
+    const row2 = {
+      id: live2.id,
+      startedAt: live2.startedAt,
+      map: live2.map,
+      mapIn: live2.mapIn,
+      event: live2.event,
+      agg: packed.agg,
+      tapes: packed.tapes
+    };
+    try {
+      const tx = db.transaction(STORE_DRAFT, "readwrite");
+      await reqToPromise(tx.objectStore(STORE_DRAFT).put(row2, DRAFT_KEY));
+      commitTx(tx);
+    } catch (e2) {
+    }
+  }
+  async function clearDraft() {
+    draftDirty = false;
+    const db = await openDb();
+    if (!db) return;
+    try {
+      const tx = db.transaction(STORE_DRAFT, "readwrite");
+      await reqToPromise(tx.objectStore(STORE_DRAFT).delete(DRAFT_KEY));
+      commitTx(tx);
+    } catch (e2) {
+    }
+  }
+  function onHidden() {
+    if (document.visibilityState === "hidden") void flushDraft();
+  }
+  function onFreeze() {
+    void flushDraft();
+  }
+  async function boot() {
+    await persistHint();
+    const db = await openDb();
+    if (!db || !hooks) return;
+    const tx = db.transaction([STORE_SEGMENTS, STORE_DRAFT], "readonly");
+    const rows = await reqToPromise(
+      tx.objectStore(STORE_SEGMENTS).getAll()
+    ) || [];
+    const draft = await reqToPromise(
+      tx.objectStore(STORE_DRAFT).get(DRAFT_KEY)
+    );
+    sortMetaNewest(rows);
+    meta = [];
+    for (let i = 0; i < rows.length; i++) meta.push(metaOf(rows[i]));
+    await trimArchiveStore(db, hooks.protectMapIn());
+    const protect = hooks.protectMapIn();
+    const cap = ramCap();
+    const load = [];
+    const seen = {};
+    for (let i = 0; i < rows.length; i++) {
+      const row2 = rows[i];
+      const prot = isProtectedInstance(row2.map, row2.mapIn, protect);
+      const fav = !!row2.favorite;
+      if (prot || fav || load.length < cap) {
+        if (!seen[row2.id]) {
+          seen[row2.id] = true;
+          load.push(row2);
+        }
+      }
+    }
+    const segs = [];
+    for (let i = 0; i < load.length; i++) {
+      try {
+        segs.push(await rowToSegment(load[i]));
+      } catch (e2) {
+      }
+    }
+    if (segs.length) hooks.adoptPast(segs);
+    if (draft && draft.agg && !hooks.getLive()) {
+      try {
+        const liveSeg = unpackTapes(draft.agg, draft.tapes);
+        hooks.adoptLive(liveSeg);
+      } catch (e2) {
+      }
+    }
+    markMeterDirty();
+  }
+  function startArchive(next) {
+    hooks = next;
+    started = true;
+    void boot();
+    document.addEventListener("visibilitychange", onHidden);
+    document.addEventListener("freeze", onFreeze);
+    unsubLife = () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      document.removeEventListener("freeze", onFreeze);
+    };
+    return () => {
+      started = false;
+      if (draftTimer) {
+        clearTimeout(draftTimer);
+        draftTimer = null;
+      }
+      if (unsubLife) unsubLife();
+      unsubLife = null;
+      void flushDraft();
+      hooks = null;
+    };
+  }
+
+  // src/meters/meterSegmentRef.ts
+  function segmentRefKey(ref) {
+    if (ref === "current" || ref === "total") return ref;
+    if ("pastId" in ref) return `past:${ref.pastId}`;
+    if ("mapIn" in ref) return `mapIn:${ref.mapIn}`;
+    if ("event" in ref) return `event:${ref.event}`;
+    const _never = ref;
+    return String(_never);
+  }
+  function refsEqual(a, b) {
+    return segmentRefKey(a) === segmentRefKey(b);
+  }
+  function isLiveCameraRef(ref) {
+    return !ref || ref === "current";
+  }
+
+  // src/meters/meterSegmentCatalog.ts
+  function runTitle(ref, map) {
+    if (ref === "current") return "Current";
+    if (ref === "total") return "Overall";
+    if ("pastId" in ref) return "Fight";
+    if ("event" in ref) return `${eventDisplayName(ref.event)} overall`;
+    if ("mapIn" in ref) {
+      return `${mapDisplayName(map || "") || "Instance"} overall`;
+    }
+    const _never = ref;
+    return String(_never);
+  }
+  function runHoverTip(ref, map) {
+    if (ref === "current") return "Live camera fight";
+    if (ref === "total") return "All recorded fights from this camera";
+    if ("pastId" in ref) return "";
+    if ("event" in ref) {
+      return `${eventDisplayName(ref.event)} overall
+All fights in this world event`;
+    }
+    if ("mapIn" in ref) {
+      const name = mapDisplayName(map || "") || "Instance";
+      return `${name} overall
+All fights in this instance`;
+    }
+    const _never = ref;
+    return String(_never);
+  }
+  function partsForRun(ref, live2, past2) {
+    const parts = [];
+    const match = (seg) => {
+      if (ref === "total") return true;
+      if (typeof ref === "object" && "mapIn" in ref) {
+        return seg.mapIn === ref.mapIn;
+      }
+      if (typeof ref === "object" && "event" in ref) {
+        return seg.event === ref.event;
+      }
+      return false;
+    };
+    if (live2 && match(live2)) parts.push(live2);
+    for (let i = 0; i < past2.length; i++) {
+      if (match(past2[i])) parts.push(past2[i]);
+    }
+    return parts;
+  }
+  function fightChoice(id, src) {
+    const fav = !!src.favorite;
+    return {
+      ref: { pastId: id },
+      title: (fav ? "\u2605 " : "") + fightPickerTitle(src),
+      chip: fightChipTitle(src),
+      tip: fightHoverTip(src),
+      outcome: src.outcome,
+      favorite: fav
+    };
+  }
+  function currentChoice(live2, past2) {
+    const srcSeg = live2 || past2[0];
+    if (!srcSeg) {
+      return {
+        ref: "current",
+        title: runTitle("current"),
+        tip: "Live camera fight\nNo fight recorded yet"
+      };
+    }
+    const src = sourceFromSegment(srcSeg);
+    const head = live2 ? "Live camera fight" : "Last fight (out of combat)";
+    return {
+      ref: "current",
+      title: runTitle("current"),
+      tip: `${head}
+${fightHoverTip(src)}`
+    };
+  }
+  function addRunChoice(out, seen, seg) {
+    if (!seg) return;
+    const run = runRefForSegment(seg);
+    if (!run) return;
+    const key = segmentRefKey(run);
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push({
+      ref: run,
+      title: runTitle(run, seg.map),
+      tip: runHoverTip(run, seg.map)
+    });
+  }
+  function appendArchivedRuns(out, seen, meta2) {
+    for (let i = 0; i < meta2.length; i++) {
+      addRunChoice(out, seen, meta2[i]);
+    }
+  }
+  function appendArchivedFights(out, ramIds, meta2) {
+    for (let i = 0; i < meta2.length; i++) {
+      const m = meta2[i];
+      if (ramIds[m.id]) continue;
+      out.push(fightChoice(m.id, sourceFromMeta(m)));
+    }
+  }
+  function buildSegmentChoices(args) {
+    const { live: live2, past: past2, camera } = args;
+    const meta2 = listArchiveMeta();
+    const out = [currentChoice(live2, past2)];
+    const seen = {};
+    addRunChoice(out, seen, live2);
+    if (camera) addRunChoice(out, seen, camera);
+    for (let i = 0; i < past2.length; i++) addRunChoice(out, seen, past2[i]);
+    appendArchivedRuns(out, seen, meta2);
+    out.push({
+      ref: "total",
+      title: runTitle("total"),
+      tip: runHoverTip("total")
+    });
+    const ramIds = {};
+    for (let i = 0; i < past2.length; i++) {
+      const p = past2[i];
+      ramIds[p.id] = true;
+      out.push(fightChoice(p.id, sourceFromSegment(p)));
+    }
+    appendArchivedFights(out, ramIds, meta2);
+    return out;
+  }
+  function titleForRef(ref, choices) {
+    for (let i = 0; i < choices.length; i++) {
+      if (refsEqual(choices[i].ref, ref)) {
+        return choices[i].chip || choices[i].title;
+      }
+    }
+    return void 0;
+  }
+
+  // src/meters/meterSegmentBoundary.ts
+  function isCryptBoss(mtype) {
+    if (!mtype) return false;
+    return CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0;
+  }
+  function samePartySameIn(prev, next) {
+    if (!prev.observingId || !next.observingId) return false;
+    if (!prev.mapIn || prev.mapIn !== next.mapIn) return false;
+    if (!prev.partyKey || prev.partyKey !== next.partyKey) return false;
+    if (prev.partyKey.indexOf("solo:") === 0) return false;
+    return true;
+  }
+  function decideSegmentBoundary(args) {
+    const { prev, next, live: live2, hitMtype } = args;
+    if (!live2) return { action: "keep" };
+    if (!prev) return { action: "keep" };
+    const prevServer = `${prev.serverRegion}|${prev.serverIdentifier}`;
+    const nextServer = `${next.serverRegion}|${next.serverIdentifier}`;
+    if (prevServer !== nextServer && (prev.serverRegion || prev.serverIdentifier)) {
+      return { action: "close", reason: "server_change" };
+    }
+    if (prev.mapIn !== next.mapIn) {
+      if (!prev.mapIn && next.mapIn) return { action: "keep" };
+      const wipe = isInstanceMap(next.map) && !!next.mapIn || !!next.event && next.event !== prev.event;
+      if (wipe) {
+        return { action: "close", reason: "map_change", wipeSessionOverall: true };
+      }
+      return { action: "close", reason: "map_change" };
+    }
+    if (prev.observingId && !next.observingId) {
+      return { action: "close", reason: "observe_cleared" };
+    }
+    if (next.event !== prev.event) {
+      if (next.event) {
+        return {
+          action: "close",
+          reason: "map_change",
+          wipeSessionOverall: true
+        };
+      }
+      return { action: "close", reason: "map_change" };
+    }
+    if (next.observingId && prev.observingId && next.observingId !== prev.observingId) {
+      if (samePartySameIn(prev, next)) return { action: "keep" };
+      return { action: "close", reason: "observe_swap" };
+    }
+    if (hitMtype && live2.map === "crypt" && live2.kind !== "boss" && isCryptBoss(hitMtype)) {
+      return { action: "close", reason: "boss_start" };
+    }
+    return { action: "keep" };
+  }
+
+  // src/meters/meterSession.ts
+  var HISTORY_MS = 5e3;
+  var MAX_HISTORY = 60;
+  var live = null;
+  var past = [];
+  var history = [];
+  var lastHistoryAt = 0;
+  var lastCombatAt = 0;
+  var inCombat = false;
+  var segSeq = 0;
+  var lastCamera = null;
+  var pendingBossKind = false;
+  var onLiveClosed = null;
+  var pinnedPastIds = {};
+  function soloKey(id, name) {
+    return `solo:${name || id}`;
+  }
+  function partyKeyFor(ent, id) {
+    if (!ent) return soloKey(id);
+    if (ent.party) return ent.party;
+    return soloKey(id, ent.name);
+  }
+  function combatBreakMs() {
+    return getMeterAppearance().combatBreakSec * 1e3;
+  }
+  function maxPastCap() {
+    return getMeterAppearance().maxPastSegments;
+  }
+  function protectMapIn() {
+    if (!lastCamera || !isInstanceMap(lastCamera.map) || !lastCamera.mapIn) {
+      return "";
+    }
+    return lastCamera.mapIn;
+  }
+  function insertPast(seg) {
+    for (let i2 = 0; i2 < past.length; i2++) {
+      if (past[i2].id === seg.id) return;
+    }
+    let i = 0;
+    while (i < past.length && past[i].startedAt >= seg.startedAt) i += 1;
+    past.splice(i, 0, seg);
+    past = trimRamPast(past, maxPastCap(), protectMapIn(), pinnedPastIds);
+  }
+  function readCamera() {
+    const observing = getObserving();
+    const observingId = getObservingId();
+    const id = observingId ? String(observingId) : "";
+    const map = getCurrentMap() || "";
+    const mapIn = getCurrentIn() || "";
+    return {
+      observingId: id,
+      map,
+      mapIn,
+      event: eventOnMap(map, live == null ? void 0 : live.event),
+      serverRegion: getServerRegion() || "",
+      serverIdentifier: getServerIdentifier() || "",
+      partyKey: observing ? partyKeyFor(observing, id || String(observing.id || "")) : "",
+      observingName: (observing == null ? void 0 : observing.name) || "",
+      observingCtype: observing ? resolvePlayerCtype(id, observing) || observing.ctype || "" : ""
+    };
+  }
+  function stampCamera(seg, cam) {
+    seg.observingId = cam.observingId || void 0;
+    seg.observingName = cam.observingName || void 0;
+    seg.observingCtype = cam.observingCtype || void 0;
+    seg.map = cam.map || void 0;
+    seg.mapIn = cam.mapIn || void 0;
+    seg.event = cam.event;
+    seg.serverRegion = cam.serverRegion || void 0;
+    seg.serverIdentifier = cam.serverIdentifier || void 0;
+    seg.partyKey = cam.partyKey || void 0;
+  }
+  function hydrateForCamera(prev, next) {
+    if (next.mapIn && next.mapIn !== (prev == null ? void 0 : prev.mapIn) && isInstanceMap(next.map)) {
+      ensureHydrated((m) => m.mapIn === next.mapIn);
+    }
+    if (next.event && next.event !== (prev == null ? void 0 : prev.event)) {
+      ensureHydrated((m) => m.event === next.event);
+    }
+  }
+  function applyBoundary(now, hitMtype) {
+    const prev = lastCamera;
+    const next = readCamera();
+    const decision = decideSegmentBoundary({
+      prev,
+      next,
+      live,
+      hitMtype
+    });
+    lastCamera = next;
+    hydrateForCamera(prev, next);
+    if (decision.action === "close") {
+      endLive(now, decision.reason);
+      if (decision.wipeSessionOverall) clearRollingHistory();
+      return;
+    }
+    if (live) stampCamera(live, next);
+  }
+  function clearRollingHistory() {
+    history = [];
+    lastHistoryAt = 0;
+    markMeterDirty();
+  }
+  function pinPastId(id) {
+    if (!id) return;
+    pinnedPastIds[id] = true;
+  }
+  function setSegmentFavorite(id, favorite) {
+    if (!id) return;
+    const fav = !!favorite;
+    for (let i = 0; i < past.length; i++) {
+      if (past[i].id === id) {
+        past[i].favorite = fav;
+        break;
+      }
+    }
+    setArchiveFavorite(id, fav);
+  }
+  function nextSegId() {
+    segSeq += 1;
+    return `fight-${segSeq}-${Date.now()}`;
+  }
+  function partyActorIds(seg) {
+    const ids = [];
+    const keys = Object.keys(seg.actors);
+    for (let i = 0; i < keys.length; i++) {
+      const a = seg.actors[keys[i]];
+      if (a.ctype || a.partyKey) ids.push(keys[i]);
+    }
+    return ids;
+  }
+  function ensureLive(now) {
+    if (!live) {
+      if (!lastCamera) lastCamera = readCamera();
+      live = emptySegment(nextSegId(), now);
+      inCombat = true;
+      stampCamera(live, lastCamera);
+      if (live.map === "crypt") {
+        live.kind = pendingBossKind ? "boss" : "pull";
+      }
+      pendingBossKind = false;
+    }
+    return live;
+  }
+  function endLive(now, reason) {
+    if (!live) return;
+    live.endedAt = now;
+    if (reason) live.closeReason = reason;
+    if (reason === "boss_start") pendingBossKind = true;
+    live.seq = segSeq;
+    live.outcome = inferSegmentOutcome(live, partyActorIds(live));
+    live.label = autoSegmentLabel(live, segSeq);
+    const sealed = live;
+    if (!isSegmentEmpty(sealed)) {
+      insertPast(sealed);
+      void sealSegment(sealed);
+    } else {
+      void clearDraft();
+    }
+    live = null;
+    inCombat = false;
+    if (onLiveClosed) onLiveClosed();
+    markMeterDirty();
+  }
+  function idleDue(now) {
+    if (!inCombat || !lastCombatAt) return false;
+    if (now - lastCombatAt <= combatBreakMs()) return false;
+    const cam = lastCamera;
+    if (cam && suppressIdleBreak(cam.map, cam.event)) return false;
+    return true;
+  }
+  function syncSession(now, hitMtype, combat) {
+    applyBoundary(now, hitMtype);
+    if (idleDue(now)) endLive(now, "idle");
+    if (combat) {
+      lastCombatAt = now;
+      return ensureLive(now);
+    }
+    return live;
+  }
+  function sampleHistory(now) {
+    if (now - lastHistoryAt < HISTORY_MS) return;
+    lastHistoryAt = now;
+    const seg = live;
+    if (!seg || !seg.startedAt) return;
+    const elapsed = Math.max(now - seg.startedAt, 1e3);
+    const values = {};
+    const ids = Object.keys(seg.actors);
+    for (let i = 0; i < ids.length; i++) {
+      const a = seg.actors[ids[i]];
+      values[a.id] = a.damage * 1e3 / elapsed;
+    }
+    history.push({ at: now, values });
+    while (history.length > MAX_HISTORY) history.shift();
+  }
+  function noteLiveDraft() {
+    if (live) noteLive(live);
+  }
+  function resolveSegment(ref) {
+    const r = ref || "current";
+    if (r === "total") {
+      const parts = partsForRun("total", live, past);
+      if (!parts.length) return null;
+      return mergeSegments("total", parts, Date.now());
+    }
+    if (r === "current") {
+      if (inCombat && live) return live;
+      if (past.length) return past[0];
+      return live;
+    }
+    if ("pastId" in r) {
+      pinPastId(r.pastId);
+      for (let i = 0; i < past.length; i++) {
+        if (past[i].id === r.pastId) return past[i];
+      }
+      requestHydrate(r.pastId);
+      return null;
+    }
+    if ("mapIn" in r) {
+      ensureHydrated((m) => m.mapIn === r.mapIn);
+      const parts = partsForRun(r, live, past);
+      if (!parts.length) return null;
+      return mergeSegments(`run-in-${r.mapIn}`, parts, Date.now());
+    }
+    if ("event" in r) {
+      ensureHydrated((m) => m.event === r.event);
+      const parts = partsForRun(r, live, past);
+      if (!parts.length) return null;
+      return mergeSegments(`run-ev-${r.event}`, parts, Date.now());
+    }
+    const _never = r;
+    return _never;
+  }
+  function listSegmentChoices() {
+    return buildSegmentChoices({ live, past, camera: lastCamera });
+  }
+  function listPastSegments() {
+    return past.slice();
+  }
+  function getLiveSegment() {
+    return live;
+  }
+  function isMeterInCombat() {
+    return inCombat;
+  }
+  function isLiveCombatSegment(seg) {
+    return inCombat && !!live && live.id === seg.id;
+  }
+  function getHistoryPoints() {
+    return history;
+  }
+  function resetSessionAll() {
+    live = null;
+    past = [];
+    history = [];
+    lastHistoryAt = 0;
+    lastCombatAt = 0;
+    inCombat = false;
+    lastCamera = null;
+    pendingBossKind = false;
+    pinnedPastIds = {};
+  }
+  function resetSessionCurrent() {
+    live = null;
+    lastCombatAt = 0;
+    inCombat = false;
+    pendingBossKind = false;
+    void clearDraft();
+  }
+  function resetSessionOverall() {
+    past = [];
+    history = [];
+    lastHistoryAt = 0;
+  }
+  function startSession(hooks2) {
+    onLiveClosed = (hooks2 == null ? void 0 : hooks2.onLiveClosed) || null;
+    return startArchive({
+      getLive: () => live,
+      getPastIds: () => {
+        const ids = [];
+        for (let i = 0; i < past.length; i++) ids.push(past[i].id);
+        return ids;
+      },
+      adoptPast: (segs) => {
+        for (let i = 0; i < segs.length; i++) insertPast(segs[i]);
+      },
+      adoptLive: (seg) => {
+        if (live) return;
+        live = seg;
+        inCombat = !seg.endedAt;
+        lastCombatAt = Date.now();
+      },
+      protectMapIn
+    });
+  }
+
+  // src/meters/meterQueryRanked.ts
+  function queryPlayers(query, seg, focus, now) {
+    return rankedPlayers(seg, query.metric, focus, now, query.primary || "total");
+  }
+  function queryAbilities(query, seg, durationMs) {
+    const actor = seg.actors[query.actorId];
+    if (!actor) return { kind: "empty", reason: "no actor" };
+    const metric = query.metric || "damage";
+    const keys = Object.keys(actor.abilities);
+    const items = keys.map((k) => {
+      const ab = actor.abilities[k];
+      return {
+        id: k,
+        name: skillDisplayName(k),
+        value: abilityMetric(ab, metric),
+        kind: "ability",
+        splashDamage: ab.splashDamage
+      };
+    });
+    return {
+      kind: "ranked",
+      rows: toRanked(items, durationMs, metric === "avoidance"),
+      title: actor.name
+    };
+  }
+  function queryAbilityTargets(query, seg, durationMs) {
+    const actor = seg.actors[query.actorId];
+    const ab = actor == null ? void 0 : actor.abilities[query.ability];
+    if (!ab) return { kind: "empty", reason: "no ability" };
+    const metric = query.metric || "damage";
+    const tKeys = Object.keys(ab.targets);
+    const items = tKeys.map((tid) => {
+      const t = ab.targets[tid];
+      let value = 0;
+      if (metric === "heal") value = t.heal;
+      else if (metric === "avoidance") {
+        const o = t.outcomes;
+        const total = o.hits + o.miss + o.evade + o.avoid;
+        value = total ? (o.miss + o.evade + o.avoid) / total : 0;
+      } else value = t.damage;
+      return {
+        id: tid,
+        name: t.name,
+        value,
+        kind: "target",
+        mtype: t.mtype,
+        ctype: t.ctype
+      };
+    });
+    return {
+      kind: "ranked",
+      rows: toRanked(items, durationMs, metric === "avoidance"),
+      title: `${actor.name} \xB7 ${skillDisplayName(query.ability)}`
+    };
+  }
+  function queryTargets(query, seg, durationMs) {
+    const actor = seg.actors[query.actorId];
+    if (!actor) return { kind: "empty", reason: "no actor" };
+    const metric = query.metric || "damage";
+    return {
+      kind: "ranked",
+      rows: toRanked(aggregateActorTargets(actor, metric), durationMs, false),
+      title: `${actor.name} \xB7 targets`
+    };
+  }
+  function queryTakenBySpell(_query, seg, focus, durationMs) {
+    const actors = scopedActors(seg, focus);
+    const bySpell = {};
+    for (let i = 0; i < actors.length; i++) {
+      const abKeys = Object.keys(actors[i].abilities);
+      for (let k = 0; k < abKeys.length; k++) {
+        const ab = actors[i].abilities[abKeys[k]];
+        if (!(ab.taken > 0)) continue;
+        bySpell[ab.key] = (bySpell[ab.key] || 0) + ab.taken;
+      }
+    }
+    const items = Object.keys(bySpell).map((key) => ({
+      id: key,
+      name: skillDisplayName(key),
+      value: bySpell[key],
+      kind: "ability"
+    }));
+    return {
+      kind: "ranked",
+      rows: toRanked(items, durationMs, false),
+      title: "Damage Taken by Spell"
+    };
+  }
+  function queryEnemyDamage(_query, seg, focus, durationMs) {
+    const actors = scopedActors(seg, focus);
+    const meta2 = getPlayerMeta();
+    const byTarget = {};
+    const skipPlayers = (tg) => {
+      if (!(tg.damage > 0)) return false;
+      if (meta2[tg.id] || seg.actors[tg.id]) return false;
+      return true;
+    };
+    for (let i = 0; i < actors.length; i++) {
+      const rows = aggregateActorTargets(actors[i], "damage", skipPlayers);
+      for (let r = 0; r < rows.length; r++) {
+        const row2 = rows[r];
+        if (!byTarget[row2.id]) {
+          byTarget[row2.id] = {
+            id: row2.id,
+            name: row2.name || row2.id,
+            value: 0,
+            kind: "target",
+            mtype: row2.mtype,
+            ctype: row2.ctype
+          };
+        }
+        byTarget[row2.id].value += row2.value;
+        if (row2.mtype) byTarget[row2.id].mtype = row2.mtype;
+        if (row2.ctype) byTarget[row2.id].ctype = row2.ctype;
+        if (row2.name) byTarget[row2.id].name = row2.name;
+      }
+    }
+    const items = Object.keys(byTarget).map((id) => byTarget[id]);
+    return {
+      kind: "ranked",
+      rows: toRanked(items, durationMs, false),
+      title: "Adds"
+    };
+  }
+  function queryChannel(query, seg, focus, durationMs) {
+    const actors = scopedActors(seg, focus);
+    const items = actors.map((a) => ({
+      id: a.id,
+      name: a.name,
+      ctype: a.ctype,
+      value: channelValue(a, query.channel),
+      kind: "player"
+    }));
+    return {
+      kind: "ranked",
+      rows: toRanked(items, durationMs, false)
+    };
+  }
+  function queryPie(query, seg, focus) {
+    if (query.actorId) {
+      const actor = seg.actors[query.actorId];
+      if (!actor) return { kind: "empty", reason: "no actor" };
+      const metric2 = query.metric || "damage";
+      const keys = Object.keys(actor.abilities);
+      const slices = keys.map((k) => {
+        const ab = actor.abilities[k];
+        return {
+          id: k,
+          name: skillDisplayName(k),
+          value: abilityMetric(ab, metric2),
+          color: classColors[actor.ctype || ""] || "#666"
+        };
+      });
+      return { kind: "pie", slices: slices.filter((s) => s.value > 0) };
+    }
+    const actors = scopedActors(seg, focus);
+    const metric = query.metric || "damage";
+    return {
+      kind: "pie",
+      slices: actors.map((a) => ({
+        id: a.id,
+        name: a.name,
+        value: actorMetric(a, metric),
+        color: classColors[a.ctype || ""] || "#666"
+      })).filter((s) => s.value > 0)
+    };
+  }
+  function queryMisc(query, seg, focus, durationMs) {
+    const actors = scopedActors(seg, focus);
+    const items = actors.map((a) => {
+      const m = a.misc || { interrupts: 0, dispels: 0, deaths: 0 };
+      let value = 0;
+      if (query.metric === "interrupts") value = m.interrupts;
+      else if (query.metric === "dispels") value = m.dispels;
+      else if (query.metric === "deaths") value = m.deaths;
+      else if (query.metric === "cc_breaks") {
+        value = Object.keys(a.abilities).reduce((sum, k) => {
+          if (INTERRUPT_ABILITY_KEYS.has(k)) return sum + 1;
+          return sum;
+        }, 0);
+      }
+      return {
+        id: a.id,
+        name: a.name,
+        value,
+        ctype: a.ctype,
+        kind: "player"
+      };
+    });
+    const labels = {
+      interrupts: "Interrupts",
+      dispels: "Dispels",
+      deaths: "Deaths",
+      cc_breaks: "CC Breaks"
+    };
+    return {
+      kind: "ranked",
+      rows: toRanked(
+        items.filter((it) => it.value > 0),
+        durationMs,
+        true
+      ),
+      title: labels[query.metric] || query.metric
+    };
+  }
+
+  // src/meters/meterQueryInspector.ts
+  function actorUptimeRows(conditions, actorId, durationMs, now) {
+    const byKey = {};
+    for (let i = 0; i < conditions.length; i++) {
+      const c = conditions[i];
+      if (c.actorId !== actorId) continue;
+      const end = c.endedAt != null ? c.endedAt : now;
+      const ms = Math.max(0, end - c.startedAt);
+      if (!byKey[c.key]) byKey[c.key] = { ms: 0, apps: 0 };
+      byKey[c.key].ms += ms;
+      byKey[c.key].apps += 1;
+    }
+    const dur = Math.max(durationMs, 1);
+    const keys = Object.keys(byKey);
+    const rows = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const rec = byKey[k];
+      rows.push({
+        id: k,
+        name: k,
+        uptime: Math.min(1, rec.ms / dur),
+        apps: rec.apps,
+        activeMs: rec.ms
+      });
+    }
+    rows.sort((a, b) => b.uptime - a.uptime || b.apps - a.apps);
+    return rows;
+  }
+  function queryDetails(query, seg, durationMs, now) {
+    const actor = seg.actors[query.actorId];
+    if (!actor) return { kind: "empty", reason: "no actor" };
+    const metric = query.metric === "heal" || query.metric === "taken" || query.metric === "healing_required" || query.metric === "avoidance" ? query.metric : "damage";
+    const primary = query.primary === "rate" ? "rate" : "total";
+    const listMetric = metric === "heal" ? "heal" : metric === "taken" ? "taken" : "damage";
+    const abKeys = Object.keys(actor.abilities);
+    const abilityItems = abKeys.map((k) => {
+      const ab2 = actor.abilities[k];
+      return {
+        id: k,
+        name: skillDisplayName(k),
+        value: abilityMetric(ab2, listMetric),
+        kind: "ability",
+        splashDamage: ab2.splashDamage
+      };
+    }).filter((it) => it.value > 0 || abKeys.length <= 1);
+    const abilityRows = toRanked(abilityItems, durationMs, false, primary);
+    let abilityKey = query.ability;
+    if (!abilityKey && abilityRows[0]) abilityKey = abilityRows[0].id;
+    const ab = abilityKey ? actor.abilities[abilityKey] : void 0;
+    const outcomes = ab ? ab.outcomes : actor.outcomes;
+    const abilityTotal = ab ? abilityMetric(ab, listMetric) : 0;
+    let abilityCasts = 0;
+    if (abilityKey) {
+      const keyLower = abilityKey.toLowerCase();
+      for (let i = 0; i < seg.casts.length; i++) {
+        const c = seg.casts[i];
+        if (c.actorId !== actor.id) continue;
+        if ((c.source || "").toLowerCase() === keyLower) abilityCasts += 1;
+      }
+    }
+    const targetItems = ab ? Object.keys(ab.targets).map((tid) => {
+      const t = ab.targets[tid];
+      let value = 0;
+      if (listMetric === "heal") value = t.heal;
+      else if (listMetric === "taken") value = t.damage;
+      else value = t.damage;
+      return {
+        id: tid,
+        name: t.name,
+        value,
+        kind: "target",
+        mtype: t.mtype,
+        ctype: t.ctype
+      };
+    }) : Object.keys(actor.abilities).length ? aggregateActorTargets(actor, listMetric) : [];
+    let deathCount = 0;
+    for (let i = 0; i < seg.deaths.length; i++) {
+      if (seg.deaths[i].id === actor.id) deathCount += 1;
+    }
+    return {
+      kind: "details",
+      actorId: actor.id,
+      actorName: actor.name,
+      ctype: actor.ctype,
+      ability: abilityKey,
+      metric,
+      primary,
+      abilitySplash: ab ? ab.splashDamage : 0,
+      abilityTotal,
+      abilityCasts,
+      outcomes,
+      hitNormal: (ab == null ? void 0 : ab.normal) ? { ...ab.normal } : emptyHitAmountStats(),
+      hitCrit: (ab == null ? void 0 : ab.crit) ? { ...ab.crit } : emptyHitAmountStats(),
+      damageType: ab ? dominantDamageType(ab.damageTypes) : void 0,
+      totals: {
+        damage: actor.damage,
+        heal: actor.heal,
+        taken: actor.taken,
+        healingRequired: actor.healingRequired
+      },
+      durationMs,
+      abilityRows,
+      uptimeRows: actorUptimeRows(seg.conditions, actor.id, durationMs, now),
+      targetRows: toRanked(targetItems, durationMs, false, primary),
+      deaths: deathCount
+    };
+  }
+  function querySummary(_query, seg, focus) {
+    const actors = scopedActors(seg, focus);
+    return {
+      kind: "summary",
+      matrix: actors.map((a) => ({
+        id: a.id,
+        name: a.name,
+        damage: a.damage,
+        heal: a.heal,
+        taken: a.taken
+      }))
+    };
+  }
+  function queryEncounterSummary(_query, seg, focus, now, durationMs) {
+    const actors = scopedActors(seg, focus);
+    let totalDamage = 0;
+    let totalHeal = 0;
+    for (let i = 0; i < actors.length; i++) {
+      totalDamage += actors[i].damage;
+      totalHeal += actors[i].heal;
+    }
+    const dpsRows = rankedPlayers(seg, "damage", focus, now);
+    return {
+      kind: "encounter",
+      durationMs,
+      totalDamage,
+      totalHeal,
+      deaths: seg.deaths.length,
+      topDps: dpsRows.kind === "ranked" && dpsRows.rows[0] ? dpsRows.rows[0] : void 0
+    };
+  }
+  function queryHistory(_query, focus) {
+    const points = getHistoryPoints();
+    const seriesKeys = /* @__PURE__ */ new Set();
+    const outPoints = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const values = {};
+      const keys = Object.keys(p.values);
+      for (let k = 0; k < keys.length; k++) {
+        const id = keys[k];
+        if (focus) {
+          const live2 = getLiveSegment();
+          const actor = live2 == null ? void 0 : live2.actors[id];
+          if (actor && live2 && !playerInScope(actor, focus, live2)) continue;
+          if (!actor && focus !== "all" && focus !== "visible") {
+            if (focus === "watched" && !isWatchedPartyMember(id)) continue;
+          }
+        }
+        values[id] = p.values[id];
+        seriesKeys.add(id);
+      }
+      outPoints.push({ at: p.at, values });
+    }
+    return {
+      kind: "history",
+      points: outPoints,
+      seriesKeys: Array.from(seriesKeys)
+    };
+  }
+  function queryDeathLog(_query, seg) {
+    return { kind: "death_log", deaths: seg.deaths.slice() };
+  }
+  function queryTimeline(_query, seg, focus, durationMs) {
+    const casts = [];
+    for (let i = 0; i < seg.casts.length; i++) {
+      if (actorIdInScope(seg.casts[i].actorId, seg, focus)) {
+        casts.push(seg.casts[i]);
+      }
+    }
+    const conditions = [];
+    for (let i = 0; i < seg.conditions.length; i++) {
+      if (actorIdInScope(seg.conditions[i].actorId, seg, focus)) {
+        conditions.push(seg.conditions[i]);
+      }
+    }
+    const gearSwaps = [];
+    const swaps = seg.gearSwaps || [];
+    for (let i = 0; i < swaps.length; i++) {
+      if (actorIdInScope(swaps[i].actorId, seg, focus)) {
+        gearSwaps.push(swaps[i]);
+      }
+    }
+    return {
+      kind: "timeline",
+      casts,
+      conditions,
+      gearSwaps,
+      durationMs
+    };
+  }
+  function queryConditions(query, seg, focus, durationMs) {
+    return {
+      kind: "timeline",
+      casts: [],
+      conditions: query.actorId ? seg.conditions.filter((c) => c.actorId === query.actorId) : seg.conditions.filter((c) => actorIdInScope(c.actorId, seg, focus)),
+      gearSwaps: [],
+      durationMs
+    };
+  }
+
+  // src/meters/meterQuery.ts
+  function partyKeyOnSegment(seg, key) {
+    if (!key) return false;
+    const ids = Object.keys(seg.actors);
+    for (let i = 0; i < ids.length; i++) {
+      if (seg.actors[ids[i]].partyKey === key) return true;
+    }
+    return false;
+  }
+  function storedPartyKey(focus, seg) {
+    return namedPartyKey(focus) || seg.partyKey || "";
+  }
+  function focusToScope(focus, seg) {
+    const liveRoster = isLiveCombatSegment(seg);
+    const hasObserver = !!seg.observingId;
+    const eff = effectivePartyFocus(focus || "watched", hasObserver);
+    if (!liveRoster && eff === "visible") return "all";
+    if (eff === "all") return "all";
+    if (eff === "visible") return "visible";
+    if (eff === "you") return "you";
+    if (eff === "watched") return "party";
+    if (!liveRoster && !partyKeyOnSegment(seg, eff)) {
+      return "all";
+    }
+    return "party";
+  }
+  function playerInScope(actor, focus, seg) {
+    const scope = focusToScope(focus, seg);
+    const liveRoster = isLiveCombatSegment(seg);
+    const you = seg.observingId || "";
+    switch (scope) {
+      case "all":
+        return true;
+      case "visible":
+        return isVisiblePlayer(actor.id);
+      case "you":
+        return !!you && (actor.id === you || !!seg.observingName && actor.name === seg.observingName);
+      case "party": {
+        if (!liveRoster) {
+          const key = storedPartyKey(focus, seg);
+          if (key) return actor.partyKey === key;
+          return true;
+        }
+        const resolved = resolvePartyFocus(
+          effectivePartyFocus(focus || "watched", !!you),
+          seg.partyKey || ""
+        );
+        if (resolved.partyFilter) {
+          return actor.partyKey === resolved.partyFilter;
+        }
+        return isWatchedPartyMember(actor.id);
+      }
+      default: {
+        const _exhaustive = scope;
+        return _exhaustive;
+      }
+    }
+  }
+  function scopedActors(seg, focus) {
+    const ids = Object.keys(seg.actors);
+    const out = [];
+    for (let i = 0; i < ids.length; i++) {
+      const a = seg.actors[ids[i]];
+      if (playerInScope(a, focus, seg)) out.push(a);
+    }
+    return out;
+  }
+  function aggregateActorTargets(actor, metric, includeTarget) {
+    const byTarget = {};
+    const abKeys = Object.keys(actor.abilities);
+    for (let i = 0; i < abKeys.length; i++) {
+      const ab = actor.abilities[abKeys[i]];
+      const tKeys = Object.keys(ab.targets);
+      for (let t = 0; t < tKeys.length; t++) {
+        const tg = ab.targets[tKeys[t]];
+        if (includeTarget && !includeTarget(tg)) continue;
+        if (!byTarget[tg.id]) {
+          byTarget[tg.id] = {
+            id: tg.id,
+            name: tg.name || tg.id,
+            value: 0,
+            kind: "target",
+            mtype: tg.mtype,
+            ctype: tg.ctype
+          };
+        }
+        byTarget[tg.id].value += metric === "heal" ? tg.heal : tg.damage;
+        if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+        if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
+        if (tg.name) byTarget[tg.id].name = tg.name;
+      }
+    }
+    const ids = Object.keys(byTarget);
+    const rows = [];
+    for (let i = 0; i < ids.length; i++) {
+      rows.push(byTarget[ids[i]]);
+    }
+    return rows;
+  }
+  function actorIdInScope(actorId, seg, focus) {
+    const actor = seg.actors[actorId];
+    if (actor) return playerInScope(actor, focus, seg);
+    const scope = focusToScope(focus, seg);
+    const liveRoster = isLiveCombatSegment(seg);
+    switch (scope) {
+      case "all":
+        return true;
+      case "visible":
+        return isVisiblePlayer(actorId);
+      case "you": {
+        const you = seg.observingId || "";
+        return !!you && actorId === you;
+      }
+      case "party": {
+        if (!liveRoster) {
+          const key = storedPartyKey(focus, seg);
+          if (key) return false;
+          return true;
+        }
+        const you = seg.observingId || "";
+        const resolved = resolvePartyFocus(
+          effectivePartyFocus(focus || "watched", !!you),
+          seg.partyKey || ""
+        );
+        if (resolved.partyFilter) return false;
+        return isWatchedPartyMember(actorId);
+      }
+      default: {
+        const _exhaustive = scope;
+        return _exhaustive;
+      }
+    }
+  }
+  function actorMetric(a, metric) {
+    switch (metric) {
+      case "damage":
+        return a.damage;
+      case "heal":
+        return a.heal;
+      case "taken":
+        return a.taken;
+      case "healing_required":
+        return a.healingRequired;
+      case "avoidance": {
+        const o = a.outcomes;
+        const total = o.hits + o.miss + o.evade + o.avoid;
+        return total ? (o.miss + o.evade + o.avoid) / total : 0;
+      }
+      default: {
+        const _exhaustive = metric;
+        return _exhaustive;
+      }
+    }
+  }
+  function abilityMetric(ab, metric) {
+    switch (metric) {
+      case "damage":
+        return ab.damage;
+      case "heal":
+        return ab.heal;
+      case "taken":
+        return ab.taken;
+      case "healing_required":
+        return ab.taken;
+      case "avoidance": {
+        const o = ab.outcomes;
+        const total = o.hits + o.miss + o.evade + o.avoid;
+        return total ? (o.miss + o.evade + o.avoid) / total : 0;
+      }
+      default: {
+        const _exhaustive = metric;
+        return _exhaustive;
+      }
+    }
+  }
+  function channelValue(a, ch) {
+    switch (ch) {
+      case "dps":
+        return a.damage;
+      case "base":
+        return a.base;
+      case "blast":
+        return a.blast;
+      case "burn":
+        return a.burn;
+      case "cleave":
+        return a.cleave;
+      case "hps":
+        return a.heal;
+      case "mps":
+        return a.mana;
+      case "dr":
+        return a.dr;
+      case "reflect":
+        return a.reflect;
+      default: {
+        const _exhaustive = ch;
+        return _exhaustive;
+      }
+    }
+  }
+  function toRanked(items, durationMs, absolute, primary = "total") {
+    let max = 0;
+    let sum = 0;
+    for (let i = 0; i < items.length; i++) {
+      max = Math.max(max, items[i].value);
+      sum += items[i].value;
+    }
+    if (!items.length || !(max > 0 || absolute)) return [];
+    const sec = Math.max(durationMs / 1e3, 1);
+    const withRate = items.map((it) => ({
+      ...it,
+      rate: absolute ? null : it.value / sec
+    }));
+    const sorted = primary === "rate" && !absolute ? withRate.slice().sort((a, b) => (b.rate || 0) - (a.rate || 0)) : withRate.slice().sort((a, b) => b.value - a.value);
+    let barMax = max;
+    if (primary === "rate" && !absolute) {
+      barMax = 0;
+      for (let i = 0; i < sorted.length; i++) {
+        barMax = Math.max(barMax, sorted[i].rate || 0);
+      }
+    }
+    const rows = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const it = sorted[i];
+      if (!(it.value > 0) && !absolute) continue;
+      const rate = it.rate;
+      const pct = sum > 0 ? it.value / sum : 0;
+      let label;
+      if (absolute) {
+        label = `${(it.value * 100).toFixed(1)}%`;
+      } else if (primary === "rate") {
+        label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}, ${getPercent(pct, 3)})`;
+      } else {
+        label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}, ${getPercent(pct, 3)})`;
+      }
+      const useRate = primary === "rate" && !absolute;
+      const barValue = useRate ? rate || 0 : it.value;
+      rows.push({
+        id: it.id,
+        name: it.name,
+        ctype: it.ctype,
+        mtype: it.mtype,
+        value: it.value,
+        rate,
+        pct,
+        barMax: barMax || 1,
+        barValue,
+        primary: useRate ? "rate" : "total",
+        label,
+        kind: it.kind,
+        you: it.you,
+        splashDamage: it.splashDamage
+      });
+    }
+    return rows;
+  }
+  function rankedPlayers(seg, metric, focus, now, primary = "total") {
+    const actors = scopedActors(seg, focus);
+    const you = seg.observingId || "";
+    const items = actors.map((a) => ({
+      id: a.id,
+      name: a.name,
+      ctype: a.ctype,
+      value: actorMetric(a, metric),
+      kind: "player",
+      you: !!you && a.id === you
+    }));
+    const absolute = metric === "avoidance";
+    return {
+      kind: "ranked",
+      rows: toRanked(
+        items,
+        segmentDurationMs(seg, now),
+        absolute,
+        absolute ? "total" : primary
+      )
+    };
+  }
+  function snapshotRows(mode, entities) {
+    var _a, _b, _c, _d;
+    if (mode === "pdps") {
+      const players = playersList(entities).filter((p) => (p.pdps || 0) > 0).sort((a, b) => (b.pdps || 0) - (a.pdps || 0));
+      let max2 = 0;
+      for (let i = 0; i < players.length; i++) {
+        max2 = Math.max(max2, players[i].pdps || 0);
+      }
+      const rows2 = [];
+      for (let i = 0; i < players.length; i++) {
+        const p = players[i];
+        const value = p.pdps || 0;
+        rows2.push({
+          id: String(p.id),
+          name: p.name || String(p.id),
+          ctype: p.ctype,
+          value,
+          rate: null,
+          pct: max2 > 0 ? value / max2 : 0,
+          barMax: max2 || 1,
+          barValue: value,
+          primary: "total",
+          label: value.toLocaleString(void 0, { maximumFractionDigits: 0 }),
+          kind: "player"
+        });
+      }
+      return { kind: "ranked", rows: rows2 };
+    }
+    const ids = new Set(entities.map((e2) => String(e2.id)));
+    const coop = entities.filter(
+      (e2) => {
+        var _a2, _b2, _c2, _d2;
+        return e2.player && e2.type === "character" && (((_b2 = (_a2 = e2.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) > 0 && ((_d2 = (_c2 = e2.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.id) != null && ids.has(String(e2.s.coop.id));
+      }
+    ).sort((a, b) => {
+      var _a2, _b2, _c2, _d2;
+      return (((_b2 = (_a2 = b.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) - (((_d2 = (_c2 = a.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.p) || 0);
+    });
+    let max = 0;
+    let total = 0;
+    for (let i = 0; i < coop.length; i++) {
+      const p = ((_b = (_a = coop[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
+      max = Math.max(max, p);
+      total += p;
+    }
+    const rows = [];
+    for (let i = 0; i < coop.length; i++) {
+      const player = coop[i];
+      const value = ((_d = (_c = player.s) == null ? void 0 : _c.coop) == null ? void 0 : _d.p) || 0;
+      const label = mode === "coop_v2" ? value.toFixed(2) : `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(void 0, { maximumFractionDigits: 0 })}`;
+      rows.push({
+        id: String(player.id),
+        name: player.name || String(player.id),
+        ctype: player.ctype,
+        value,
+        rate: null,
+        pct: total > 0 ? value / total : 0,
+        barMax: max || 1,
+        barValue: value,
+        primary: "total",
+        label,
+        kind: "player"
+      });
+    }
+    return { kind: "ranked", rows };
+  }
+  function rollingRanked(now) {
+    var _a, _b;
+    const dmg = getActorDamage(now);
+    const ids = Object.keys(dmg);
+    const windowSec = getRollingWindowMs() / 1e3;
+    const items = [];
+    const meta2 = getEntitiesRecord();
+    const playerMeta2 = getPlayerMeta();
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const ent = meta2[id];
+      items.push({
+        id,
+        name: ((_a = playerMeta2[id]) == null ? void 0 : _a.name) || (ent == null ? void 0 : ent.name) || id,
+        ctype: ((_b = playerMeta2[id]) == null ? void 0 : _b.ctype) || resolvePlayerCtype(id, ent) || (ent == null ? void 0 : ent.ctype),
+        value: dmg[id] / windowSec
+      });
+    }
+    let max = 0;
+    let sum = 0;
+    for (let i = 0; i < items.length; i++) {
+      max = Math.max(max, items[i].value);
+      sum += items[i].value;
+    }
+    const sorted = items.slice().sort((a, b) => b.value - a.value);
+    const rows = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const it = sorted[i];
+      if (!(it.value > 0)) continue;
+      const pct = sum > 0 ? it.value / sum : 0;
+      rows.push({
+        id: it.id,
+        name: it.name,
+        ctype: it.ctype,
+        value: it.value,
+        rate: it.value,
+        pct,
+        barMax: max || 1,
+        barValue: it.value,
+        primary: "rate",
+        label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`,
+        kind: "player"
+      });
+    }
+    return { kind: "ranked", rows, title: "Hit DPS (10s)" };
+  }
+  function runMeterQuery(query, ctx = {}) {
+    const now = ctx.now || Date.now();
+    const focus = ctx.partyFocus;
+    if (query.kind === "snapshot") {
+      return snapshotRows(
+        query.mode,
+        ctx.entities || Object.values(getEntitiesRecord())
+      );
+    }
+    if (query.kind === "rolling" || query.kind === "realtime") {
+      return rollingRanked(now);
+    }
+    const seg = resolveSegment(ctx.segmentRef);
+    if (!seg) return { kind: "empty", reason: "no segment" };
+    const durationMs = segmentDurationMs(seg, now);
+    switch (query.kind) {
+      case "players":
+        return queryPlayers(query, seg, focus, now);
+      case "abilities":
+        return queryAbilities(query, seg, durationMs);
+      case "ability_targets":
+        return queryAbilityTargets(query, seg, durationMs);
+      case "targets":
+        return queryTargets(query, seg, durationMs);
+      case "details":
+        return queryDetails(query, seg, durationMs, now);
+      case "summary":
+        return querySummary(query, seg, focus);
+      case "avoidance":
+        return rankedPlayers(seg, "avoidance", focus, now);
+      case "encounter_summary":
+        return queryEncounterSummary(query, seg, focus, now, durationMs);
+      case "taken_by_spell":
+        return queryTakenBySpell(query, seg, focus, durationMs);
+      case "enemy_damage":
+        return queryEnemyDamage(query, seg, focus, durationMs);
+      case "channel":
+        return queryChannel(query, seg, focus, durationMs);
+      case "compare":
+      case "history":
+        return queryHistory(query, focus);
+      case "pie":
+        return queryPie(query, seg, focus);
+      case "death_log":
+        return queryDeathLog(query, seg);
+      case "timeline":
+        return queryTimeline(query, seg, focus, durationMs);
+      case "conditions":
+        return queryConditions(query, seg, focus, durationMs);
+      case "misc":
+        return queryMisc(query, seg, focus, durationMs);
+      default: {
+        const _exhaustive = query;
+        return { kind: "empty", reason: String(_exhaustive) };
+      }
+    }
+  }
+  function segmentTitle(ref) {
+    const r = ref || "current";
+    if (r === "current" || r === "total") return runTitle(r);
+    const fromList = titleForRef(r, listSegmentChoices());
+    if (fromList) return fromList;
+    if ("pastId" in r) {
+      const seg = resolveSegment(r);
+      return (seg == null ? void 0 : seg.label) || (seg == null ? void 0 : seg.id) || "Past";
+    }
+    return runTitle(r);
+  }
+
+  // src/meters/meterStatusbarPlugins.ts
+  var DEFAULT_STATUSBAR = {
+    left: "segment",
+    center: "clock",
+    right: "pdps"
+  };
+  var STATUSBAR_PLUGIN_OPTIONS = [
+    { id: "off", label: "Off" },
+    { id: "segment", label: "Segment" },
+    { id: "clock", label: "Clock" },
+    { id: "pdps", label: "PDPS (primary rate)" },
+    { id: "attribute", label: "Attribute" },
+    { id: "total", label: "Total" }
+  ];
+  var PLUGIN_IDS = new Set(
+    STATUSBAR_PLUGIN_OPTIONS.map((p) => p.id)
+  );
+  var PLUGIN_NEEDS_TOTAL = {
+    off: false,
+    segment: false,
+    clock: false,
+    attribute: false,
+    pdps: true,
+    total: true
+  };
+  function pluginNeedsTotal(plugin) {
+    return !!PLUGIN_NEEDS_TOTAL[plugin];
+  }
+  function statusbarNeedsTotal(cfg) {
+    return pluginNeedsTotal(cfg.left) || pluginNeedsTotal(cfg.center) || pluginNeedsTotal(cfg.right);
+  }
+  function isPluginId(raw) {
+    return typeof raw === "string" && PLUGIN_IDS.has(raw);
+  }
+  function normalizeStatusbarConfig(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { ...DEFAULT_STATUSBAR };
+    }
+    const o = raw;
+    return {
+      left: isPluginId(o.left) ? o.left : DEFAULT_STATUSBAR.left,
+      center: isPluginId(o.center) ? o.center : DEFAULT_STATUSBAR.center,
+      right: isPluginId(o.right) ? o.right : DEFAULT_STATUSBAR.right
+    };
+  }
+  function statusbarForInstance(instance) {
+    return normalizeStatusbarConfig(instance.statusbar);
+  }
+  function formatStatusbarClock(durSec) {
+    const sec = Math.max(0, Math.floor(durSec));
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s}s`;
+  }
+  function statusbarTotalQuery(query) {
+    switch (query.kind) {
+      case "players":
+        return {
+          kind: "players",
+          metric: query.metric,
+          primary: "total"
+        };
+      case "channel":
+        return { kind: "channel", channel: query.channel };
+      case "avoidance":
+        return { kind: "avoidance" };
+      case "misc":
+        return { kind: "misc", metric: query.metric };
+      case "enemy_damage":
+        return { kind: "enemy_damage" };
+      case "taken_by_spell":
+        return { kind: "taken_by_spell" };
+      case "snapshot":
+        return { kind: "snapshot", mode: query.mode };
+      case "rolling":
+        return { kind: "rolling" };
+      case "realtime":
+        return { kind: "realtime" };
+      default:
+        return null;
+    }
+  }
+  function sumRankedTotal(query, segmentRef, partyFocus) {
+    const q = statusbarTotalQuery(query);
+    if (!q) return 0;
+    const res = runMeterQuery(q, { segmentRef, partyFocus });
+    if (res.kind !== "ranked") return 0;
+    let total = 0;
+    for (let i = 0; i < res.rows.length; i++) total += res.rows[i].value;
+    return total;
+  }
+  function statusbarSlotAction(plugin) {
+    switch (plugin) {
+      case "segment":
+        return "segment";
+      case "attribute":
+        return "encounter";
+      case "off":
+      case "clock":
+      case "pdps":
+      case "total":
+        return null;
+      default: {
+        const _exhaustive = plugin;
+        return _exhaustive;
+      }
+    }
+  }
+  function renderStatusbarPluginText(ctx) {
+    switch (ctx.plugin) {
+      case "off":
+        return "";
+      case "segment":
+        return ctx.segmentLabel || "Current";
+      case "clock":
+        return formatStatusbarClock(ctx.durSec);
+      case "pdps": {
+        const rate = ctx.durSec > 0 ? ctx.attributeTotal / Math.max(ctx.durSec, 1e-6) : 0;
+        const unit = primaryRateUnit(ctx.query);
+        return `${formatCompactRate(rate)} ${unit}`;
+      }
+      case "attribute": {
+        const fromCatalog = displayLabelForQuery(ctx.query);
+        if (fromCatalog) return fromCatalog;
+        if (ctx.instanceLabel) return ctx.instanceLabel;
+        return "Meter";
+      }
+      case "total":
+        return formatCompactNumber(ctx.attributeTotal);
+      default: {
+        const _exhaustive = ctx.plugin;
+        return String(_exhaustive);
+      }
+    }
+  }
+  function statusbarPluginTitle(plugin) {
+    for (let i = 0; i < STATUSBAR_PLUGIN_OPTIONS.length; i++) {
+      if (STATUSBAR_PLUGIN_OPTIONS[i].id === plugin)
+        return STATUSBAR_PLUGIN_OPTIONS[i].label;
+    }
+    return "Status";
+  }
+
   // src/meters/meterPresets.ts
   var LEGACY_POS_MAP = {
     combat: "meter-chart",
@@ -2641,13 +5858,34 @@ var EnhanceCommUI = (() => {
     const dmg = out.find((m) => m.id === stableId("damage"));
     const heal = out.find((m) => m.id === stableId("heal"));
     if (dmg && heal) {
-      dmg.snap = { 1: heal.id };
-      heal.snap = { 3: dmg.id };
-      const h = dmg.frameH || heal.frameH;
-      if (h) {
-        dmg.frameH = h;
-        heal.frameH = h;
-      }
+      dmg.label = "DPS";
+      dmg.query = { kind: "players", metric: "damage", primary: "rate" };
+      dmg.pos = { x: 82.1004233706721, y: 99, anchor: "br" };
+      dmg.frameW = 261;
+      dmg.frameH = 157;
+      dmg.locked = true;
+      dmg.zIndex = 63;
+      dmg.stack = false;
+      dmg.integrate = false;
+      dmg.normalize = false;
+      dmg.rtPaused = false;
+      dmg.statusbar = { left: "segment", center: "clock", right: "pdps" };
+      dmg.snap = { 3: heal.id };
+      Object.assign(dmg, refreshSnapFlags(dmg));
+      heal.label = "HPS";
+      heal.query = { kind: "players", metric: "heal", primary: "rate" };
+      heal.pos = { x: 95.97476985743381, y: 99, anchor: "br" };
+      heal.frameW = 261;
+      heal.frameH = 157;
+      heal.locked = false;
+      heal.zIndex = 64;
+      heal.stack = false;
+      heal.integrate = false;
+      heal.normalize = false;
+      heal.rtPaused = false;
+      heal.statusbar = { left: "segment", center: "clock", right: "pdps" };
+      heal.snap = { 1: dmg.id };
+      Object.assign(heal, refreshSnapFlags(heal));
     }
     return out;
   }
@@ -2665,17 +5903,18 @@ var EnhanceCommUI = (() => {
     let query = row2.query;
     let presentation = row2.presentation || "bars";
     let label = row2.label;
+    let seriesMode = row2.seriesMode;
     if (query.kind === "channel" && query.channel !== "dps") {
       query = { kind: "players", metric: "damage" };
       presentation = "bars";
       if (!label || COMPOSITION_CHANNEL_LABELS.has(label)) label = void 0;
     }
-    if (query.kind === "players" || query.kind === "avoidance" || query.kind === "rolling" || query.kind === "snapshot") {
-      if (presentation === "table" || presentation === "pie" || presentation === "line" || presentation === "realtime" || presentation === "compare") {
-        presentation = "bars";
-      }
+    if (presentation === "table") presentation = "bars";
+    if ((presentation === "realtime" || presentation === "compare") && supportsViewModes(query)) {
+      presentation = "bars";
+      seriesMode = void 0;
     }
-    return { query, presentation, label };
+    return { query, presentation, label, seriesMode };
   }
   function normalizeMeterInstances(raw) {
     var _a, _b;
@@ -2700,7 +5939,12 @@ var EnhanceCommUI = (() => {
         presentation = "line";
         if (!label || label === "DPS") label = "DPS graph";
       }
-      const migrated = migrateRankedInstance({ query, presentation, label });
+      const migrated = migrateRankedInstance({
+        query,
+        presentation,
+        label,
+        seriesMode: row2.seriesMode
+      });
       query = migrated.query;
       presentation = migrated.presentation;
       label = migrated.label;
@@ -2709,7 +5953,7 @@ var EnhanceCommUI = (() => {
         label,
         query,
         presentation,
-        seriesMode: row2.seriesMode,
+        seriesMode: migrated.seriesMode,
         stack: !!row2.stack,
         integrate: !!row2.integrate,
         normalize: !!row2.normalize,
@@ -2729,6 +5973,8 @@ var EnhanceCommUI = (() => {
         zIndex: typeof row2.zIndex === "number" && Number.isFinite(row2.zIndex) && row2.zIndex > 0 ? Math.floor(row2.zIndex) : void 0,
         hideWhenEmpty: typeof row2.hideWhenEmpty === "boolean" ? row2.hideWhenEmpty : void 0,
         alwaysShowSelf: typeof row2.alwaysShowSelf === "boolean" ? row2.alwaysShowSelf : void 0,
+        chromeOnHover: typeof row2.chromeOnHover === "boolean" ? row2.chromeOnHover : void 0,
+        statusbar: normalizeStatusbarConfig(row2.statusbar),
         snap: row2.snap && typeof row2.snap === "object" ? {
           1: typeof row2.snap[1] === "string" ? row2.snap[1] : void 0,
           2: typeof row2.snap[2] === "string" ? row2.snap[2] : void 0,
@@ -2752,9 +5998,9 @@ var EnhanceCommUI = (() => {
     }
     const dmg = out.find((m) => m.id === "meter-damage");
     const heal = out.find((m) => m.id === "meter-heal");
-    if (dmg && heal && !((_a = dmg.snap) == null ? void 0 : _a[1]) && !((_b = heal.snap) == null ? void 0 : _b[3]) && !meterHasAnySnap(dmg) && !meterHasAnySnap(heal)) {
-      dmg.snap = { ...dmg.snap || {}, 1: heal.id };
-      heal.snap = { ...heal.snap || {}, 3: dmg.id };
+    if (dmg && heal && !((_a = dmg.snap) == null ? void 0 : _a[3]) && !((_b = heal.snap) == null ? void 0 : _b[1]) && !meterHasAnySnap(dmg) && !meterHasAnySnap(heal)) {
+      dmg.snap = { ...dmg.snap || {}, 3: heal.id };
+      heal.snap = { ...heal.snap || {}, 1: dmg.id };
     }
     const next = [];
     for (let i = 0; i < out.length; i++) {
@@ -3488,55 +6734,14 @@ var EnhanceCommUI = (() => {
       }
     });
   }
-
-  // src/meters/meterUiTick.ts
-  var MIN_FLUSH_MS = 50;
-  var listeners2 = [];
-  var dirty = false;
-  var raf = 0;
-  var delay = 0;
-  var lastFlushAt = 0;
-  function notify() {
-    for (let i = 0; i < listeners2.length; i++) {
-      listeners2[i]();
+  function importLayoutPackage(pkg) {
+    let next = importPanelLayouts(pkg.layoutsByProfile);
+    if (pkg.meterInstances) {
+      next = saveSettings({
+        meterInstances: normalizeMeterInstances(pkg.meterInstances)
+      });
     }
-  }
-  function flush() {
-    raf = 0;
-    if (!dirty) return;
-    if (typeof document !== "undefined" && document.hidden) return;
-    dirty = false;
-    lastFlushAt = performance.now();
-    notify();
-  }
-  function schedule() {
-    if (raf || delay) return;
-    const wait = MIN_FLUSH_MS - (performance.now() - lastFlushAt);
-    if (wait > 0) {
-      delay = window.setTimeout(() => {
-        delay = 0;
-        if (!dirty) return;
-        raf = window.requestAnimationFrame(flush);
-      }, wait);
-      return;
-    }
-    raf = window.requestAnimationFrame(flush);
-  }
-  function markMeterDirty() {
-    dirty = true;
-    schedule();
-  }
-  function subscribeMeterTick(listener) {
-    listeners2.push(listener);
-    return () => {
-      const idx = listeners2.indexOf(listener);
-      if (idx >= 0) listeners2.splice(idx, 1);
-    };
-  }
-  if (typeof document !== "undefined") {
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && dirty) schedule();
-    });
+    return next;
   }
 
   // src/meters/meterAppearance.ts
@@ -3572,17 +6777,49 @@ var EnhanceCommUI = (() => {
     deathLogInvert: false,
     deathLogLifePct: true,
     deathLogRelevanceSec: 15,
-    testBars: false
+    testBars: false,
+    maxPastSegments: 12,
+    maxArchivedSegments: 100,
+    combatBreakSec: 12
   };
   function getMeterAppearance() {
+    var _a, _b, _c;
     const s = getSettings();
     const saved = s.meterAppearance || {};
     const optedIn = !!saved.classIconsMigratedOff;
+    const maxPast = clampInt(
+      (_a = saved.maxPastSegments) != null ? _a : DEFAULT_METER_APPEARANCE.maxPastSegments,
+      3,
+      50,
+      12
+    );
+    let maxArchived = clampInt(
+      (_b = saved.maxArchivedSegments) != null ? _b : DEFAULT_METER_APPEARANCE.maxArchivedSegments,
+      20,
+      250,
+      100
+    );
+    if (maxArchived < maxPast) maxArchived = maxPast;
     return {
       ...DEFAULT_METER_APPEARANCE,
       ...saved,
-      showSpecIcons: optedIn ? !!saved.showSpecIcons : false
+      showSpecIcons: optedIn ? !!saved.showSpecIcons : false,
+      maxPastSegments: maxPast,
+      maxArchivedSegments: maxArchived,
+      combatBreakSec: clampInt(
+        (_c = saved.combatBreakSec) != null ? _c : DEFAULT_METER_APPEARANCE.combatBreakSec,
+        3,
+        120,
+        12
+      )
     };
+  }
+  function clampInt(n, lo, hi, fallback) {
+    if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+    const r = Math.round(n);
+    if (r < lo) return lo;
+    if (r > hi) return hi;
+    return r;
   }
   function patchMeterAppearance(partial) {
     patchSettings({
@@ -3603,53 +6840,7 @@ var EnhanceCommUI = (() => {
   ]);
   var DISPEL_ABILITY_KEYS = /* @__PURE__ */ new Set(["curse", "partyheal"]);
 
-  // src/meters/meterSegmentMeta.ts
-  function formatSegmentDuration(seg) {
-    const end = seg.endedAt || Date.now();
-    const sec = Math.max((end - seg.startedAt) / 1e3, 1);
-    if (sec >= 3600) return `${(sec / 3600).toFixed(1)}h`;
-    if (sec >= 60) return `${Math.round(sec / 60)}m`;
-    return `${Math.round(sec)}s`;
-  }
-  function autoSegmentLabel(seg, seq) {
-    if (seg.label) return seg.label;
-    const dur = formatSegmentDuration(seg);
-    const deaths = seg.deaths.length;
-    if (deaths > 0) {
-      return `Fight #${seq} \xB7 ${dur} \xB7 ${deaths} death${deaths === 1 ? "" : "s"}`;
-    }
-    return `Fight #${seq} \xB7 ${dur}`;
-  }
-  function inferSegmentOutcome(seg, partyActorIds) {
-    if (seg.outcome) return seg.outcome;
-    if (!partyActorIds.length) return "timeout";
-    let dead = 0;
-    for (let i = 0; i < partyActorIds.length; i++) {
-      const id = partyActorIds[i];
-      let wasDead = false;
-      for (let d = 0; d < seg.deaths.length; d++) {
-        if (seg.deaths[d].id === id) {
-          wasDead = true;
-          break;
-        }
-      }
-      if (wasDead) dead += 1;
-    }
-    if (dead >= partyActorIds.length && dead > 0) return "wipe";
-    if (seg.deaths.length === 0 && seg.endedAt) return "kill";
-    return seg.deaths.length > 0 ? "wipe" : "kill";
-  }
-  function segmentOutcomeClass(outcome) {
-    if (outcome === "wipe") return "ecu-seg-wipe";
-    if (outcome === "kill") return "ecu-seg-kill";
-    return "";
-  }
-
   // src/meters/meterEngine.ts
-  var COMBAT_BREAK_MS = 12e3;
-  var MAX_PAST = 12;
-  var HISTORY_MS = 5e3;
-  var MAX_HISTORY = 60;
   var CONDITION_SAMPLE_MS = 500;
   var MAX_GEAR_SWAPS = 4e3;
   var GEAR_SLOT_NAMES = [
@@ -3670,13 +6861,6 @@ var EnhanceCommUI = (() => {
     "gloves",
     "elixir"
   ];
-  var live = null;
-  var past = [];
-  var history = [];
-  var lastHistoryAt = 0;
-  var lastCombatAt = 0;
-  var inCombat = false;
-  var segSeq = 0;
   var playerMeta = {};
   var ctypeById = {};
   var watchedPartyIds = /* @__PURE__ */ new Set();
@@ -3699,14 +6883,6 @@ var EnhanceCommUI = (() => {
   var unsubDamage = null;
   var unsubKill2 = null;
   var unsubAction = null;
-  function soloKey(id, name) {
-    return `solo:${name || id}`;
-  }
-  function partyKeyFor(ent, id) {
-    if (!ent) return soloKey(id);
-    if (ent.party) return ent.party;
-    return soloKey(id, ent.name);
-  }
   function isPlayerEntity(ent) {
     return !!(ent && (ent.player || ent.type === "character"));
   }
@@ -3725,42 +6901,10 @@ var EnhanceCommUI = (() => {
     if (ent.id != null && String(ent.id) !== "") set.add(String(ent.id));
     if (ent.name) set.add(String(ent.name));
   }
-  function nextSegId() {
-    segSeq += 1;
-    return `fight-${segSeq}-${Date.now()}`;
-  }
-  function ensureLive(now) {
-    if (!live) {
-      live = emptySegment(nextSegId(), now);
-      inCombat = true;
-    }
-    return live;
-  }
-  function endLive(now) {
-    if (!live) return;
-    live.endedAt = now;
-    const partyIds = [];
-    const ids = Object.keys(live.actors);
-    for (let i = 0; i < ids.length; i++) {
-      if (playerMeta[ids[i]]) partyIds.push(ids[i]);
-    }
-    live.seq = segSeq;
-    live.outcome = inferSegmentOutcome(live, partyIds);
-    live.label = autoSegmentLabel(live, segSeq);
-    past.unshift(live);
-    while (past.length > MAX_PAST) past.pop();
-    live = null;
-    inCombat = false;
-    clearGearSnapshots();
-    markMeterDirty();
-  }
-  function noteCombatActivity(now) {
-    if (inCombat && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
-      endLive(now);
-    }
-    lastCombatAt = now;
-    if (!live) ensureLive(now);
-    else inCombat = true;
+  function mtypeForId(id) {
+    if (!id) return void 0;
+    const ent = getEntitiesRecord()[id] || findEntityById(id);
+    return ent == null ? void 0 : ent.mtype;
   }
   function metaFor(id) {
     if (!id) return void 0;
@@ -3785,26 +6929,11 @@ var EnhanceCommUI = (() => {
       partyKey: partyKeyFor(ent, id)
     };
   }
-  function sampleHistory(now) {
-    if (now - lastHistoryAt < HISTORY_MS) return;
-    lastHistoryAt = now;
-    const seg = live;
-    if (!seg || !seg.startedAt) return;
-    const elapsed = Math.max(now - seg.startedAt, 1e3);
-    const values = {};
-    const ids = Object.keys(seg.actors);
-    for (let i = 0; i < ids.length; i++) {
-      const a = seg.actors[ids[i]];
-      values[a.id] = a.damage * 1e3 / elapsed;
-    }
-    history.push({ at: now, values });
-    while (history.length > MAX_HISTORY) history.shift();
-  }
   function sampleConditions(now) {
     var _a;
     if (now - lastConditionSample < CONDITION_SAMPLE_MS) return;
     lastConditionSample = now;
-    const seg = live;
+    const seg = getLiveSegment();
     if (!seg) return;
     const ents = getEntitiesRecord();
     const ids = Object.keys(playerMeta);
@@ -3893,7 +7022,7 @@ var EnhanceCommUI = (() => {
     while (seg.gearSwaps.length > MAX_GEAR_SWAPS) seg.gearSwaps.shift();
   }
   function sampleGearSwaps(now) {
-    const seg = live;
+    const seg = getLiveSegment();
     if (!seg) return;
     const ids = Object.keys(playerMeta);
     let dirty2 = false;
@@ -3931,7 +7060,7 @@ var EnhanceCommUI = (() => {
     const hasCombatSignal = !!(ev.damage && ev.damage > 0) || !!(ev.heal && ev.heal > 0) || !!(ev.lifesteal && ev.lifesteal > 0) || !!(ev.manasteal && ev.manasteal > 0) || !!(ev.dreturn && ev.dreturn > 0) || !!(ev.reflect && ev.reflect > 0) || !!ev.miss || !!ev.evade || !!ev.avoid;
     if (!hasCombatSignal) return;
     const relevant = actorIsPlayer && !!ev.actor || targetIsPlayer && (!!ev.dreturn || !!ev.reflect || !!ev.damage);
-    if (relevant) noteCombatActivity(ev.at);
+    syncSession(ev.at, mtypeForId(ev.target), relevant);
     if (ev.damage && ev.damage > 0 && ev.target && targetIsPlayer) {
       applyDamageToShadow(ev.target, ev.damage);
     }
@@ -3976,9 +7105,9 @@ var EnhanceCommUI = (() => {
   }
   function onKillEvent(ev) {
     const now = ev.at;
-    if (isPlayerId(ev.id) || playerMeta[ev.id]) {
-      noteCombatActivity(now);
-      const seg = ensureLive(now);
+    const playerDeath = isPlayerId(ev.id) || !!playerMeta[ev.id];
+    const seg = syncSession(now, mtypeForId(ev.id), playerDeath);
+    if (playerDeath && seg) {
       seg.deaths.push(buildDeathSnapshot(ev.id, now));
       const actor = seg.actors[ev.id];
       if (actor) {
@@ -3990,8 +7119,8 @@ var EnhanceCommUI = (() => {
   }
   function onActionEvent(ev) {
     if (!ev.actor || !isPlayerId(ev.actor)) return;
-    noteCombatActivity(ev.at);
-    const seg = ensureLive(ev.at);
+    const seg = syncSession(ev.at, void 0, true);
+    if (!seg) return;
     const src = (ev.source || "attack").toLowerCase();
     seg.casts.push({
       at: ev.at,
@@ -4006,40 +7135,6 @@ var EnhanceCommUI = (() => {
     if (INTERRUPT_ABILITY_KEYS.has(src)) actor.misc.interrupts += 1;
     if (DISPEL_ABILITY_KEYS.has(src)) actor.misc.dispels += 1;
     markMeterDirty();
-  }
-  function resolveSegment(ref) {
-    const r = ref || "current";
-    if (r === "total") {
-      const parts = [];
-      if (live) parts.push(live);
-      for (let i = 0; i < past.length; i++) parts.push(past[i]);
-      if (!parts.length) return null;
-      return mergeSegments("total", parts, Date.now());
-    }
-    if (typeof r === "object" && r.pastId) {
-      for (let i = 0; i < past.length; i++) {
-        if (past[i].id === r.pastId) return past[i];
-      }
-      return null;
-    }
-    if (inCombat && live) return live;
-    if (past.length) return past[0];
-    return live;
-  }
-  function listPastSegments() {
-    return past.slice();
-  }
-  function getLiveSegment() {
-    return live;
-  }
-  function isMeterInCombat() {
-    return inCombat;
-  }
-  function getHistoryPoints() {
-    return history;
-  }
-  function getWatchedPartyKey() {
-    return watchedPartyKey;
   }
   function getYouId() {
     return youId;
@@ -4065,18 +7160,40 @@ var EnhanceCommUI = (() => {
     if (ent.name && watchedPartyIds.has(String(ent.name))) return true;
     return false;
   }
+  function accumulatePartyMember(byKey, key, name) {
+    if (!byKey[key]) byKey[key] = [];
+    if (byKey[key].indexOf(name) < 0) byKey[key].push(name);
+  }
   function listVisibleParties() {
     const byKey = {};
     const ids = Object.keys(playerMeta);
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (!isVisiblePlayer(id)) continue;
-      const meta = playerMeta[id];
-      const key = (meta == null ? void 0 : meta.partyKey) || soloKey(id, meta == null ? void 0 : meta.name);
-      const name = (meta == null ? void 0 : meta.name) || id;
-      if (!byKey[key]) byKey[key] = [];
-      if (byKey[key].indexOf(name) < 0) byKey[key].push(name);
+      const meta2 = playerMeta[id];
+      accumulatePartyMember(
+        byKey,
+        (meta2 == null ? void 0 : meta2.partyKey) || soloKey(id, meta2 == null ? void 0 : meta2.name),
+        (meta2 == null ? void 0 : meta2.name) || id
+      );
     }
+    return partyRowsFromMembers(byKey);
+  }
+  function listSegmentParties(seg) {
+    const byKey = {};
+    const ids = Object.keys(seg.actors);
+    for (let i = 0; i < ids.length; i++) {
+      const a = seg.actors[ids[i]];
+      if (!a.ctype && a.id && /^\d+$/.test(a.id)) continue;
+      accumulatePartyMember(
+        byKey,
+        a.partyKey || soloKey(a.id, a.name),
+        a.name || a.id
+      );
+    }
+    return partyRowsFromMembers(byKey);
+  }
+  function partyRowsFromMembers(byKey) {
     const keys = Object.keys(byKey);
     const out = [];
     for (let i = 0; i < keys.length; i++) {
@@ -4097,9 +7214,8 @@ var EnhanceCommUI = (() => {
     const nextMeta = {};
     const nextWatched = /* @__PURE__ */ new Set();
     const now = Date.now();
-    if (inCombat && lastCombatAt && now - lastCombatAt > COMBAT_BREAK_MS) {
-      endLive(now);
-    }
+    syncSession(now);
+    const live2 = getLiveSegment();
     youId = observingId ? String(observingId) : "";
     if (observingId && observing) {
       rememberIdentity(nextWatched, observing, String(observingId));
@@ -4130,13 +7246,13 @@ var EnhanceCommUI = (() => {
         partyKey: partyKeyFor(ent, id)
       };
       syncShadowFromEntity(id, ent);
-      if (live && live.actors[id]) {
-        live.actors[id].name = nextMeta[id].name;
-        if (ctype) live.actors[id].ctype = ctype;
-        else if (!live.actors[id].ctype && ctypeById[id]) {
-          live.actors[id].ctype = ctypeById[id];
+      if (live2 && live2.actors[id]) {
+        live2.actors[id].name = nextMeta[id].name;
+        if (ctype) live2.actors[id].ctype = ctype;
+        else if (!live2.actors[id].ctype && ctypeById[id]) {
+          live2.actors[id].ctype = ctypeById[id];
         }
-        live.actors[id].partyKey = nextMeta[id].partyKey;
+        live2.actors[id].partyKey = nextMeta[id].partyKey;
       }
     }
     if (observingId && observing) {
@@ -4149,17 +7265,17 @@ var EnhanceCommUI = (() => {
         ctype: ctype || (prev == null ? void 0 : prev.ctype),
         partyKey: partyKeyFor(observing, id)
       };
-      if (live && live.actors[id] && nextMeta[id].ctype) {
-        live.actors[id].ctype = nextMeta[id].ctype;
-        live.actors[id].name = nextMeta[id].name;
-        live.actors[id].partyKey = nextMeta[id].partyKey;
+      if (live2 && live2.actors[id] && nextMeta[id].ctype) {
+        live2.actors[id].ctype = nextMeta[id].ctype;
+        live2.actors[id].name = nextMeta[id].name;
+        live2.actors[id].partyKey = nextMeta[id].partyKey;
       }
     }
-    if (live) {
-      const actorIds = Object.keys(live.actors);
+    if (live2) {
+      const actorIds = Object.keys(live2.actors);
       for (let i = 0; i < actorIds.length; i++) {
         const id = actorIds[i];
-        const actor = live.actors[id];
+        const actor = live2.actors[id];
         if (actor.ctype) {
           rememberCtype(id, actor.ctype);
           continue;
@@ -4179,14 +7295,10 @@ var EnhanceCommUI = (() => {
     playerMeta = nextMeta;
     sampleConditions(now);
     sampleGearSwaps(now);
+    noteLiveDraft();
   }
   function resetAllMeters() {
-    live = null;
-    past = [];
-    history = [];
-    lastHistoryAt = 0;
-    lastCombatAt = 0;
-    inCombat = false;
+    resetSessionAll();
     clearRollingWindow();
     clearDeathRings();
     const oks = Object.keys(openConditions);
@@ -4195,17 +7307,13 @@ var EnhanceCommUI = (() => {
     markMeterDirty();
   }
   function resetCurrentMeterSegment() {
-    live = null;
-    lastCombatAt = 0;
-    inCombat = false;
+    resetSessionCurrent();
     clearRollingWindow();
     clearGearSnapshots();
     markMeterDirty();
   }
   function resetOverallMeterSegments() {
-    past = [];
-    history = [];
-    lastHistoryAt = 0;
+    resetSessionOverall();
     markMeterDirty();
   }
   function startMeterEngine() {
@@ -4213,7 +7321,9 @@ var EnhanceCommUI = (() => {
     if (!unsubDamage) unsubDamage = onDamage(onDamageEvent);
     if (!unsubKill2) unsubKill2 = onKill(onKillEvent);
     if (!unsubAction) unsubAction = onActionSubscribe(onActionEvent);
+    const stopSession = startSession({ onLiveClosed: clearGearSnapshots });
     return () => {
+      stopSession();
       if (unsubDamage) {
         unsubDamage();
         unsubDamage = null;
@@ -5180,22 +8290,32 @@ var EnhanceCommUI = (() => {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
-/* Layout edit: click through panel content to reach overlapping drag chrome. */
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body *,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body * {
+/* Layout edit: click through panel content to reach overlapping drag chrome.
+ * .comm-pos-interactive (meters / Layout toggles) keeps body hits so
+ * controls + corner resize grips stay usable while arranging. */
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-panel-body *,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-hidden-body,
+#comm-ui .comm-pos-panel.comm-pos-editing:not(.comm-pos-interactive) .comm-pos-hidden-body * {
   pointer-events: none;
 }
-/* Details: large window numbers while left-hold dragging (~1s). HUD + meters. */
+/* Corner grips always receive hits \u2014 even if nested under a click-through body. */
+#comm-ui .comm-pos-panel.comm-pos-editing .ecu-meter-resize,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable .ecu-meter-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable .comm-pos-resize {
+  pointer-events: auto !important;
+}
+/* Details: large window numbers while left-hold dragging (~1s).
+ * Prefer .comm-snap-guide (LAYOUT_GUIDE_OVERLAY_Z) so numbers sit above panels;
+ * in-panel fallback keeps inset:0 for legacy mounts. */
 #comm-ui .comm-pos-window-id {
   position: absolute;
-  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  z-index: 30;
+  z-index: 1;
   font-size: clamp(48px, 55%, 120px);
   font-weight: 800;
   line-height: 1;
@@ -5206,6 +8326,12 @@ var EnhanceCommUI = (() => {
     0 0 24px rgba(255, 140, 20, 0.35);
   font-variant-numeric: tabular-nums;
   user-select: none;
+}
+#comm-ui .comm-pos-panel > .comm-pos-window-id {
+  inset: 0;
+}
+#comm-ui .comm-snap-guide .comm-pos-window-id {
+  inset: auto;
 }
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header,
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header *,
@@ -5333,20 +8459,24 @@ var EnhanceCommUI = (() => {
 #comm-ui .comm-pos-arrange-overlay > * {
   pointer-events: none;
 }
-/* JS hover class (delayed leave) \u2014 survives the gap to above-frame controls. */
+/* JS hover class (delayed leave) \u2014 survives the gap to above-frame controls.
+ * Do NOT use :focus-within here: clicking lock/WC leaves focus on the button
+ * and would pin chrome visible after the pointer leaves (stuck after re-lock).
+ * Unlocked (.comm-pos-movable): keep the whole arrange strip open so hide \xD7
+ * and lock sit in the same row (no detached floating \xD7). */
 @media (hover: hover) and (pointer: fine) {
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay {
     opacity: 1;
     pointer-events: auto;
   }
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay.is-inline,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay.is-inline {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay.is-inline {
     max-height: 48px;
     overflow: visible;
   }
   #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay > *,
-  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay > * {
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > * {
     pointer-events: auto;
   }
 }
@@ -5421,6 +8551,39 @@ var EnhanceCommUI = (() => {
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {
   max-width: 96vw;
+}
+
+/* HUD / generic PositionedPanel corner grips (layout edit + unlocked play). */
+#comm-ui .comm-pos-resize {
+  display: none;
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 12;
+  pointer-events: auto;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),
+    linear-gradient(135deg, transparent 68%, #8b9bb0 68%, #8b9bb0 74%, transparent 74%),
+    linear-gradient(135deg, transparent 84%, #8b9bb0 84%, #8b9bb0 90%, transparent 90%);
+  opacity: 0.9;
+}
+#comm-ui .comm-pos-resize.comm-pos-resize-left {
+  right: auto;
+  left: 1px;
+  cursor: nesw-resize;
+  transform: scaleX(-1);
+}
+#comm-ui .comm-pos-panel.comm-pos-editing > .comm-pos-resize,
+#comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-resize {
+  display: block;
+}
+/* Meters own .ecu-meter-resize \u2014 hide generic grips on meter frames. */
+#comm-ui .comm-pos-panel.ecu-meter-frame > .comm-pos-resize {
+  display: none !important;
 }
 
 /* Thin dark scrollbars \u2014 #comm-ui panels + enhancer chrome outside it.
@@ -5786,11 +8949,11 @@ var EnhanceCommUI = (() => {
       const char = chars[i];
       if (!char.online) continue;
       const active = !!(obsName && obsName === char.name);
-      const serverLabel2 = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
-      const offServer = !isCharOnCurrentServer(char) && !!serverLabel2;
+      const serverLabel3 = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
+      const offServer = !isCharOnCurrentServer(char) && !!serverLabel3;
       const shortName = char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "\u2026";
       const spriteHtml = typeof spriteFn === "function" ? spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) : "";
-      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel2) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
+      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel3) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
       html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + (offServer ? " is-off-server" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
       html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
       html += "<span class='ecu-char-meta'>";
@@ -5798,7 +8961,7 @@ var EnhanceCommUI = (() => {
       html += "<span class='ecu-char-sub'>";
       html += "Lv." + esc(String((_b = char.level) != null ? _b : ""));
       if (offServer) {
-        html += "<span class='ecu-char-server'>" + esc(serverLabel2) + "</span>";
+        html += "<span class='ecu-char-server'>" + esc(serverLabel3) + "</span>";
       }
       html += "</span>";
       html += "</span></button>";
@@ -6889,15 +10052,15 @@ var EnhanceCommUI = (() => {
     };
     window.render_characters = renderCharactersHud;
     window.render_servers = renderServersHud;
-    const boot = () => {
+    const boot2 = () => {
       ensureChromeShell();
       renderCharactersHud();
       renderServersHud();
     };
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", boot);
+      document.addEventListener("DOMContentLoaded", boot2);
     } else {
-      boot();
+      boot2();
     }
     const stopObserveWatch = watchObserveUiHidden();
     let lastObs = "";
@@ -7387,7 +10550,7 @@ var EnhanceCommUI = (() => {
   var BRAND = "Adventure Land";
   var installed = false;
   var lastTitle = null;
-  function serverLabel() {
+  function serverLabel2() {
     const region = getServerRegion() || "";
     const ident = getServerIdentifier() || "";
     return `${region} ${ident}`.trim();
@@ -7404,7 +10567,7 @@ var EnhanceCommUI = (() => {
     }
     const map = getMapName();
     if (map) parts.push(map);
-    const server = serverLabel();
+    const server = serverLabel2();
     if (server) parts.push(server);
     return `${parts.join(" \xB7 ")} | ${BRAND}`;
   }
@@ -7419,110 +10582,6 @@ var EnhanceCommUI = (() => {
     installed = true;
     applyPageTitle();
     subscribeTick(() => applyPageTitle());
-  }
-
-  // src/queries/entities.ts
-  var MTYPES_TO_SQUASH = ["nerfedbat", "nerfedmummy", "zapper0", "crab"];
-  function isCoopBoss(entity) {
-    return entity.cooperative === true;
-  }
-  function shouldSquash(mtype) {
-    if (!mtype) return false;
-    return MTYPES_TO_SQUASH.indexOf(mtype) >= 0;
-  }
-  function playersList(entities) {
-    const out = [];
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (ent.player && ent.type === "character") out.push(ent);
-    }
-    return out;
-  }
-  function isFocusablePlayer(entity) {
-    return !!(entity && entity.player && entity.type === "character");
-  }
-  function partyGroups(entities) {
-    const players = playersList(entities);
-    const result = {};
-    for (let i = 0; i < players.length; i++) {
-      const player = players[i];
-      const key = player.party || "";
-      if (!result[key]) result[key] = [];
-      result[key].push(player);
-    }
-    const entries = Object.entries(result);
-    entries.sort((a, b) => a[0].localeCompare(b[0]));
-    for (let i = 0; i < entries.length; i++) {
-      entries[i][1].sort((a, b) => a.id.localeCompare(b.id));
-    }
-    return entries;
-  }
-  function aggroByTarget(entities) {
-    const out = {};
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (ent.type !== "monster" || !ent.target) continue;
-      if (!out[ent.target]) out[ent.target] = [];
-      out[ent.target].push(ent);
-    }
-    return out;
-  }
-  function aggroedMonsters(entities) {
-    const out = [];
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (ent.type === "monster" && ent.cooperative !== true && ent.target) {
-        out.push(ent);
-      }
-    }
-    out.sort((a, b) => {
-      const cmp = (a.mtype || "").localeCompare(b.mtype || "");
-      if (cmp !== 0) return cmp;
-      return a.id < b.id ? -1 : 1;
-    });
-    return out;
-  }
-  function isCryptBossEntity(entity) {
-    if (entity.type !== "monster" || !entity.mtype) return false;
-    return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
-  }
-  function isAliveMonster(entity) {
-    if (entity.type !== "monster") return false;
-    if (entity.dead) return false;
-    if (entity.hp != null && entity.hp <= 0) return false;
-    return true;
-  }
-  function activeBosses(entities) {
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (let i = 0; i < entities.length; i++) {
-      const ent = entities[i];
-      if (!isAliveMonster(ent)) continue;
-      if (!isCoopBoss(ent) && !isCryptBossEntity(ent)) continue;
-      const id = String(ent.id);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push(ent);
-    }
-    out.sort((a, b) => {
-      const lb = b.level || 0;
-      const la = a.level || 0;
-      if (lb !== la) return lb - la;
-      const cmp = String(a.name || a.mtype || a.id).localeCompare(
-        String(b.name || b.mtype || b.id)
-      );
-      if (cmp !== 0) return cmp;
-      return a.id < b.id ? -1 : 1;
-    });
-    return out;
-  }
-  function findEntity(entities, id) {
-    if (id == null || id === "") return void 0;
-    const tid = String(id);
-    for (let i = 0; i < entities.length; i++) {
-      if (String(entities[i].id) === tid) return entities[i];
-    }
-    return void 0;
   }
 
   // src/queries/combatSignals.ts
@@ -9492,921 +12551,6 @@ var EnhanceCommUI = (() => {
     return false;
   }
 
-  // src/lib/format.ts
-  function formatTime(timeSeconds) {
-    if (!timeSeconds) {
-      return "?";
-    }
-    const prefixes = [
-      { unit: "s", n: 1, resolution: 0, minMultiplier: 0 },
-      { unit: "min", n: 60, resolution: 0, minMultiplier: 99.5 / 60 },
-      { unit: "h", n: 3600, resolution: 1, minMultiplier: 99.5 / 60 },
-      { unit: "d", n: 86400, resolution: 1, minMultiplier: 99.5 / 24 }
-    ];
-    let result;
-    for (let i = prefixes.length - 1; i >= 0; i--) {
-      const prefix = prefixes[i];
-      if (timeSeconds >= prefix.minMultiplier * prefix.n) {
-        result = `${(timeSeconds / prefix.n).toFixed(prefix.resolution)}${prefix.unit}`;
-        break;
-      }
-    }
-    return result != null ? result : "?";
-  }
-  function formatDurationCompact(timeSeconds) {
-    if (timeSeconds == null || !(timeSeconds > 0)) return "";
-    if (timeSeconds < 60) return `${Math.max(1, Math.ceil(timeSeconds))}s`;
-    if (timeSeconds < 60 * 60) return `${Math.round(timeSeconds / 60)}m`;
-    if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
-    return `${Math.round(timeSeconds / 86400)}d`;
-  }
-  function syncEndsAt(prevEndsAt, ms, now = Date.now(), lastMs) {
-    if (!(ms != null && ms > 0)) return 0;
-    const next = now + ms;
-    if (!prevEndsAt) return next;
-    const stickyRemain = prevEndsAt - now;
-    if (lastMs != null && lastMs > 0 && Math.abs(ms - lastMs) <= 750 && prevEndsAt > now + 200 && ms <= stickyRemain + 750) {
-      return prevEndsAt;
-    }
-    if (ms > stickyRemain + 750) return next;
-    if (ms < stickyRemain - 250) return next;
-    return prevEndsAt;
-  }
-  function getPercent(value, precision) {
-    return `${Math.max(0, Math.min(100, value * 100)).toFixed(precision)}%`;
-  }
-  function getTimeUntil(dateString) {
-    if (!dateString) return "";
-    const target = new Date(dateString);
-    const now = /* @__PURE__ */ new Date();
-    return formatTime((target.getTime() - now.getTime()) / 1e3);
-  }
-  function formatCompactNumber(n) {
-    const a = Math.abs(n);
-    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (n / 1e3).toFixed(1) + "k";
-    return String(Math.round(n));
-  }
-  function formatCompactRate(n) {
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
-    return n.toFixed(1);
-  }
-  function formatCompactRatePerSec(n) {
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k/s";
-    return `${Math.round(n)}/s`;
-  }
-  function getALServerTime(timeOffset) {
-    const offset = parseInt(String(timeOffset != null ? timeOffset : 0), 10) || 0;
-    const dt = new Date(Date.now() + offset * 3600 * 1e3);
-    return dt.getUTCHours().toString().padStart(2, "0") + ":" + dt.getUTCMinutes().toString().padStart(2, "0");
-  }
-
-  // src/meters/meterQueryRanked.ts
-  function queryPlayers(query, seg, focus, now) {
-    return rankedPlayers(seg, query.metric, focus, now, query.primary || "total");
-  }
-  function queryAbilities(query, seg, durationMs) {
-    const actor = seg.actors[query.actorId];
-    if (!actor) return { kind: "empty", reason: "no actor" };
-    const metric = query.metric || "damage";
-    const keys = Object.keys(actor.abilities);
-    const items = keys.map((k) => {
-      const ab = actor.abilities[k];
-      return {
-        id: k,
-        name: skillDisplayName(k),
-        value: abilityMetric(ab, metric),
-        kind: "ability",
-        splashDamage: ab.splashDamage
-      };
-    });
-    return {
-      kind: "ranked",
-      rows: toRanked(items, durationMs, metric === "avoidance"),
-      title: actor.name
-    };
-  }
-  function queryAbilityTargets(query, seg, durationMs) {
-    const actor = seg.actors[query.actorId];
-    const ab = actor == null ? void 0 : actor.abilities[query.ability];
-    if (!ab) return { kind: "empty", reason: "no ability" };
-    const metric = query.metric || "damage";
-    const tKeys = Object.keys(ab.targets);
-    const items = tKeys.map((tid) => {
-      const t = ab.targets[tid];
-      let value = 0;
-      if (metric === "heal") value = t.heal;
-      else if (metric === "avoidance") {
-        const o = t.outcomes;
-        const total = o.hits + o.miss + o.evade + o.avoid;
-        value = total ? (o.miss + o.evade + o.avoid) / total : 0;
-      } else value = t.damage;
-      return {
-        id: tid,
-        name: t.name,
-        value,
-        kind: "target",
-        mtype: t.mtype,
-        ctype: t.ctype
-      };
-    });
-    return {
-      kind: "ranked",
-      rows: toRanked(items, durationMs, metric === "avoidance"),
-      title: `${actor.name} \xB7 ${skillDisplayName(query.ability)}`
-    };
-  }
-  function queryTargets(query, seg, durationMs) {
-    const actor = seg.actors[query.actorId];
-    if (!actor) return { kind: "empty", reason: "no actor" };
-    const metric = query.metric || "damage";
-    return {
-      kind: "ranked",
-      rows: toRanked(aggregateActorTargets(actor, metric), durationMs, false),
-      title: `${actor.name} \xB7 targets`
-    };
-  }
-  function queryTakenBySpell(_query, seg, focus, durationMs) {
-    const actors = scopedActors(seg, focus);
-    const bySpell = {};
-    for (let i = 0; i < actors.length; i++) {
-      const abKeys = Object.keys(actors[i].abilities);
-      for (let k = 0; k < abKeys.length; k++) {
-        const ab = actors[i].abilities[abKeys[k]];
-        if (!(ab.taken > 0)) continue;
-        bySpell[ab.key] = (bySpell[ab.key] || 0) + ab.taken;
-      }
-    }
-    const items = Object.keys(bySpell).map((key) => ({
-      id: key,
-      name: skillDisplayName(key),
-      value: bySpell[key],
-      kind: "ability"
-    }));
-    return {
-      kind: "ranked",
-      rows: toRanked(items, durationMs, false),
-      title: "Damage Taken by Spell"
-    };
-  }
-  function queryEnemyDamage(_query, seg, focus, durationMs) {
-    const actors = scopedActors(seg, focus);
-    const meta = getPlayerMeta();
-    const byTarget = {};
-    const skipPlayers = (tg) => {
-      if (!(tg.damage > 0)) return false;
-      if (meta[tg.id] || seg.actors[tg.id]) return false;
-      return true;
-    };
-    for (let i = 0; i < actors.length; i++) {
-      const rows = aggregateActorTargets(actors[i], "damage", skipPlayers);
-      for (let r = 0; r < rows.length; r++) {
-        const row2 = rows[r];
-        if (!byTarget[row2.id]) {
-          byTarget[row2.id] = {
-            id: row2.id,
-            name: row2.name || row2.id,
-            value: 0,
-            kind: "target",
-            mtype: row2.mtype,
-            ctype: row2.ctype
-          };
-        }
-        byTarget[row2.id].value += row2.value;
-        if (row2.mtype) byTarget[row2.id].mtype = row2.mtype;
-        if (row2.ctype) byTarget[row2.id].ctype = row2.ctype;
-        if (row2.name) byTarget[row2.id].name = row2.name;
-      }
-    }
-    const items = Object.keys(byTarget).map((id) => byTarget[id]);
-    return {
-      kind: "ranked",
-      rows: toRanked(items, durationMs, false),
-      title: "Adds"
-    };
-  }
-  function queryChannel(query, seg, focus, durationMs) {
-    const actors = scopedActors(seg, focus);
-    const items = actors.map((a) => ({
-      id: a.id,
-      name: a.name,
-      ctype: a.ctype,
-      value: channelValue(a, query.channel),
-      kind: "player"
-    }));
-    return {
-      kind: "ranked",
-      rows: toRanked(items, durationMs, false)
-    };
-  }
-  function queryPie(query, seg, focus) {
-    if (query.actorId) {
-      const actor = seg.actors[query.actorId];
-      if (!actor) return { kind: "empty", reason: "no actor" };
-      const metric2 = query.metric || "damage";
-      const keys = Object.keys(actor.abilities);
-      const slices = keys.map((k) => {
-        const ab = actor.abilities[k];
-        return {
-          id: k,
-          name: skillDisplayName(k),
-          value: abilityMetric(ab, metric2),
-          color: classColors[actor.ctype || ""] || "#666"
-        };
-      });
-      return { kind: "pie", slices: slices.filter((s) => s.value > 0) };
-    }
-    const actors = scopedActors(seg, focus);
-    const metric = query.metric || "damage";
-    return {
-      kind: "pie",
-      slices: actors.map((a) => ({
-        id: a.id,
-        name: a.name,
-        value: actorMetric(a, metric),
-        color: classColors[a.ctype || ""] || "#666"
-      })).filter((s) => s.value > 0)
-    };
-  }
-  function queryMisc(query, seg, focus, durationMs) {
-    const actors = scopedActors(seg, focus);
-    const items = actors.map((a) => {
-      const m = a.misc || { interrupts: 0, dispels: 0, deaths: 0 };
-      let value = 0;
-      if (query.metric === "interrupts") value = m.interrupts;
-      else if (query.metric === "dispels") value = m.dispels;
-      else if (query.metric === "deaths") value = m.deaths;
-      else if (query.metric === "cc_breaks") {
-        value = Object.keys(a.abilities).reduce((sum, k) => {
-          if (INTERRUPT_ABILITY_KEYS.has(k)) return sum + 1;
-          return sum;
-        }, 0);
-      }
-      return {
-        id: a.id,
-        name: a.name,
-        value,
-        ctype: a.ctype,
-        kind: "player"
-      };
-    });
-    const labels = {
-      interrupts: "Interrupts",
-      dispels: "Dispels",
-      deaths: "Deaths",
-      cc_breaks: "CC Breaks"
-    };
-    return {
-      kind: "ranked",
-      rows: toRanked(
-        items.filter((it) => it.value > 0),
-        durationMs,
-        true
-      ),
-      title: labels[query.metric] || query.metric
-    };
-  }
-
-  // src/meters/meterQueryInspector.ts
-  function actorUptimeRows(conditions, actorId, durationMs, now) {
-    const byKey = {};
-    for (let i = 0; i < conditions.length; i++) {
-      const c = conditions[i];
-      if (c.actorId !== actorId) continue;
-      const end = c.endedAt != null ? c.endedAt : now;
-      const ms = Math.max(0, end - c.startedAt);
-      if (!byKey[c.key]) byKey[c.key] = { ms: 0, apps: 0 };
-      byKey[c.key].ms += ms;
-      byKey[c.key].apps += 1;
-    }
-    const dur = Math.max(durationMs, 1);
-    const keys = Object.keys(byKey);
-    const rows = [];
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      const rec = byKey[k];
-      rows.push({
-        id: k,
-        name: k,
-        uptime: Math.min(1, rec.ms / dur),
-        apps: rec.apps,
-        activeMs: rec.ms
-      });
-    }
-    rows.sort((a, b) => b.uptime - a.uptime || b.apps - a.apps);
-    return rows;
-  }
-  function queryDetails(query, seg, durationMs, now) {
-    const actor = seg.actors[query.actorId];
-    if (!actor) return { kind: "empty", reason: "no actor" };
-    const metric = query.metric === "heal" || query.metric === "taken" || query.metric === "healing_required" || query.metric === "avoidance" ? query.metric : "damage";
-    const primary = query.primary === "rate" ? "rate" : "total";
-    const listMetric = metric === "heal" ? "heal" : metric === "taken" ? "taken" : "damage";
-    const abKeys = Object.keys(actor.abilities);
-    const abilityItems = abKeys.map((k) => {
-      const ab2 = actor.abilities[k];
-      return {
-        id: k,
-        name: skillDisplayName(k),
-        value: abilityMetric(ab2, listMetric),
-        kind: "ability",
-        splashDamage: ab2.splashDamage
-      };
-    }).filter((it) => it.value > 0 || abKeys.length <= 1);
-    const abilityRows = toRanked(abilityItems, durationMs, false, primary);
-    let abilityKey = query.ability;
-    if (!abilityKey && abilityRows[0]) abilityKey = abilityRows[0].id;
-    const ab = abilityKey ? actor.abilities[abilityKey] : void 0;
-    const outcomes = ab ? ab.outcomes : actor.outcomes;
-    const abilityTotal = ab ? abilityMetric(ab, listMetric) : 0;
-    let abilityCasts = 0;
-    if (abilityKey) {
-      const keyLower = abilityKey.toLowerCase();
-      for (let i = 0; i < seg.casts.length; i++) {
-        const c = seg.casts[i];
-        if (c.actorId !== actor.id) continue;
-        if ((c.source || "").toLowerCase() === keyLower) abilityCasts += 1;
-      }
-    }
-    const targetItems = ab ? Object.keys(ab.targets).map((tid) => {
-      const t = ab.targets[tid];
-      let value = 0;
-      if (listMetric === "heal") value = t.heal;
-      else if (listMetric === "taken") value = t.damage;
-      else value = t.damage;
-      return {
-        id: tid,
-        name: t.name,
-        value,
-        kind: "target",
-        mtype: t.mtype,
-        ctype: t.ctype
-      };
-    }) : Object.keys(actor.abilities).length ? aggregateActorTargets(actor, listMetric) : [];
-    let deathCount = 0;
-    for (let i = 0; i < seg.deaths.length; i++) {
-      if (seg.deaths[i].id === actor.id) deathCount += 1;
-    }
-    return {
-      kind: "details",
-      actorId: actor.id,
-      actorName: actor.name,
-      ctype: actor.ctype,
-      ability: abilityKey,
-      metric,
-      primary,
-      abilitySplash: ab ? ab.splashDamage : 0,
-      abilityTotal,
-      abilityCasts,
-      outcomes,
-      hitNormal: (ab == null ? void 0 : ab.normal) ? { ...ab.normal } : emptyHitAmountStats(),
-      hitCrit: (ab == null ? void 0 : ab.crit) ? { ...ab.crit } : emptyHitAmountStats(),
-      damageType: ab ? dominantDamageType(ab.damageTypes) : void 0,
-      totals: {
-        damage: actor.damage,
-        heal: actor.heal,
-        taken: actor.taken,
-        healingRequired: actor.healingRequired
-      },
-      durationMs,
-      abilityRows,
-      uptimeRows: actorUptimeRows(seg.conditions, actor.id, durationMs, now),
-      targetRows: toRanked(targetItems, durationMs, false, primary),
-      deaths: deathCount
-    };
-  }
-  function querySummary(_query, seg, focus) {
-    const actors = scopedActors(seg, focus);
-    return {
-      kind: "summary",
-      matrix: actors.map((a) => ({
-        id: a.id,
-        name: a.name,
-        damage: a.damage,
-        heal: a.heal,
-        taken: a.taken
-      }))
-    };
-  }
-  function queryEncounterSummary(_query, seg, focus, now, durationMs) {
-    const actors = scopedActors(seg, focus);
-    let totalDamage = 0;
-    let totalHeal = 0;
-    for (let i = 0; i < actors.length; i++) {
-      totalDamage += actors[i].damage;
-      totalHeal += actors[i].heal;
-    }
-    const dpsRows = rankedPlayers(seg, "damage", focus, now);
-    return {
-      kind: "encounter",
-      durationMs,
-      totalDamage,
-      totalHeal,
-      deaths: seg.deaths.length,
-      topDps: dpsRows.kind === "ranked" && dpsRows.rows[0] ? dpsRows.rows[0] : void 0
-    };
-  }
-  function queryHistory(_query, focus) {
-    const points = getHistoryPoints();
-    const seriesKeys = /* @__PURE__ */ new Set();
-    const outPoints = [];
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i];
-      const values = {};
-      const keys = Object.keys(p.values);
-      for (let k = 0; k < keys.length; k++) {
-        const id = keys[k];
-        if (focus) {
-          const live2 = getLiveSegment();
-          const actor = live2 == null ? void 0 : live2.actors[id];
-          if (actor && !playerInScope(actor, focus)) continue;
-          if (!actor && focus !== "all" && focus !== "visible") {
-            if (focus === "watched" && !isWatchedPartyMember(id)) continue;
-          }
-        }
-        values[id] = p.values[id];
-        seriesKeys.add(id);
-      }
-      outPoints.push({ at: p.at, values });
-    }
-    return {
-      kind: "history",
-      points: outPoints,
-      seriesKeys: Array.from(seriesKeys)
-    };
-  }
-  function queryDeathLog(_query, seg) {
-    return { kind: "death_log", deaths: seg.deaths.slice() };
-  }
-  function queryTimeline(_query, seg, focus, durationMs) {
-    const casts = [];
-    for (let i = 0; i < seg.casts.length; i++) {
-      if (actorIdInScope(seg.casts[i].actorId, seg, focus)) {
-        casts.push(seg.casts[i]);
-      }
-    }
-    const conditions = [];
-    for (let i = 0; i < seg.conditions.length; i++) {
-      if (actorIdInScope(seg.conditions[i].actorId, seg, focus)) {
-        conditions.push(seg.conditions[i]);
-      }
-    }
-    const gearSwaps = [];
-    const swaps = seg.gearSwaps || [];
-    for (let i = 0; i < swaps.length; i++) {
-      if (actorIdInScope(swaps[i].actorId, seg, focus)) {
-        gearSwaps.push(swaps[i]);
-      }
-    }
-    return {
-      kind: "timeline",
-      casts,
-      conditions,
-      gearSwaps,
-      durationMs
-    };
-  }
-  function queryConditions(query, seg, focus, durationMs) {
-    return {
-      kind: "timeline",
-      casts: [],
-      conditions: query.actorId ? seg.conditions.filter((c) => c.actorId === query.actorId) : seg.conditions.filter((c) => actorIdInScope(c.actorId, seg, focus)),
-      gearSwaps: [],
-      durationMs
-    };
-  }
-
-  // src/meters/meterQuery.ts
-  function focusToScope(focus) {
-    const hasObserver = !!getYouId();
-    const eff = effectivePartyFocus(focus || "watched", hasObserver);
-    if (eff === "all") return "all";
-    if (eff === "visible") return "visible";
-    if (eff === "you") return "you";
-    if (eff === "watched") return "party";
-    return "party";
-  }
-  function playerInScope(actor, focus) {
-    const scope = focusToScope(focus);
-    const you = getYouId();
-    switch (scope) {
-      case "all":
-        return true;
-      case "visible":
-        return isVisiblePlayer(actor.id);
-      case "you":
-        return !!you && actor.id === you;
-      case "party": {
-        const resolved = resolvePartyFocus(
-          effectivePartyFocus(focus || "watched", !!you),
-          getWatchedPartyKey()
-        );
-        if (resolved.partyFilter) {
-          return actor.partyKey === resolved.partyFilter;
-        }
-        return isWatchedPartyMember(actor.id);
-      }
-      default: {
-        const _exhaustive = scope;
-        return _exhaustive;
-      }
-    }
-  }
-  function scopedActors(seg, focus) {
-    const ids = Object.keys(seg.actors);
-    const out = [];
-    for (let i = 0; i < ids.length; i++) {
-      const a = seg.actors[ids[i]];
-      if (playerInScope(a, focus)) out.push(a);
-    }
-    return out;
-  }
-  function aggregateActorTargets(actor, metric, includeTarget) {
-    const byTarget = {};
-    const abKeys = Object.keys(actor.abilities);
-    for (let i = 0; i < abKeys.length; i++) {
-      const ab = actor.abilities[abKeys[i]];
-      const tKeys = Object.keys(ab.targets);
-      for (let t = 0; t < tKeys.length; t++) {
-        const tg = ab.targets[tKeys[t]];
-        if (includeTarget && !includeTarget(tg)) continue;
-        if (!byTarget[tg.id]) {
-          byTarget[tg.id] = {
-            id: tg.id,
-            name: tg.name || tg.id,
-            value: 0,
-            kind: "target",
-            mtype: tg.mtype,
-            ctype: tg.ctype
-          };
-        }
-        byTarget[tg.id].value += metric === "heal" ? tg.heal : tg.damage;
-        if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
-        if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
-        if (tg.name) byTarget[tg.id].name = tg.name;
-      }
-    }
-    const ids = Object.keys(byTarget);
-    const rows = [];
-    for (let i = 0; i < ids.length; i++) {
-      rows.push(byTarget[ids[i]]);
-    }
-    return rows;
-  }
-  function actorIdInScope(actorId, seg, focus) {
-    const actor = seg.actors[actorId];
-    if (actor) return playerInScope(actor, focus);
-    const scope = focusToScope(focus);
-    switch (scope) {
-      case "all":
-        return true;
-      case "visible":
-        return isVisiblePlayer(actorId);
-      case "you": {
-        const you = getYouId();
-        return !!you && actorId === you;
-      }
-      case "party": {
-        const you = getYouId();
-        const resolved = resolvePartyFocus(
-          effectivePartyFocus(focus || "watched", !!you),
-          getWatchedPartyKey()
-        );
-        if (resolved.partyFilter) return false;
-        return isWatchedPartyMember(actorId);
-      }
-      default: {
-        const _exhaustive = scope;
-        return _exhaustive;
-      }
-    }
-  }
-  function actorMetric(a, metric) {
-    switch (metric) {
-      case "damage":
-        return a.damage;
-      case "heal":
-        return a.heal;
-      case "taken":
-        return a.taken;
-      case "healing_required":
-        return a.healingRequired;
-      case "avoidance": {
-        const o = a.outcomes;
-        const total = o.hits + o.miss + o.evade + o.avoid;
-        return total ? (o.miss + o.evade + o.avoid) / total : 0;
-      }
-      default: {
-        const _exhaustive = metric;
-        return _exhaustive;
-      }
-    }
-  }
-  function abilityMetric(ab, metric) {
-    switch (metric) {
-      case "damage":
-        return ab.damage;
-      case "heal":
-        return ab.heal;
-      case "taken":
-        return ab.taken;
-      case "healing_required":
-        return ab.taken;
-      case "avoidance": {
-        const o = ab.outcomes;
-        const total = o.hits + o.miss + o.evade + o.avoid;
-        return total ? (o.miss + o.evade + o.avoid) / total : 0;
-      }
-      default: {
-        const _exhaustive = metric;
-        return _exhaustive;
-      }
-    }
-  }
-  function channelValue(a, ch) {
-    switch (ch) {
-      case "dps":
-        return a.damage;
-      case "base":
-        return a.base;
-      case "blast":
-        return a.blast;
-      case "burn":
-        return a.burn;
-      case "cleave":
-        return a.cleave;
-      case "hps":
-        return a.heal;
-      case "mps":
-        return a.mana;
-      case "dr":
-        return a.dr;
-      case "reflect":
-        return a.reflect;
-      default: {
-        const _exhaustive = ch;
-        return _exhaustive;
-      }
-    }
-  }
-  function toRanked(items, durationMs, absolute, primary = "total") {
-    let max = 0;
-    let sum = 0;
-    for (let i = 0; i < items.length; i++) {
-      max = Math.max(max, items[i].value);
-      sum += items[i].value;
-    }
-    if (!items.length || !(max > 0 || absolute)) return [];
-    const sec = Math.max(durationMs / 1e3, 1);
-    const withRate = items.map((it) => ({
-      ...it,
-      rate: absolute ? null : it.value / sec
-    }));
-    const sorted = primary === "rate" && !absolute ? withRate.slice().sort((a, b) => (b.rate || 0) - (a.rate || 0)) : withRate.slice().sort((a, b) => b.value - a.value);
-    let barMax = max;
-    if (primary === "rate" && !absolute) {
-      barMax = 0;
-      for (let i = 0; i < sorted.length; i++) {
-        barMax = Math.max(barMax, sorted[i].rate || 0);
-      }
-    }
-    const rows = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const it = sorted[i];
-      if (!(it.value > 0) && !absolute) continue;
-      const rate = it.rate;
-      const pct = sum > 0 ? it.value / sum : 0;
-      let label;
-      if (absolute) {
-        label = `${(it.value * 100).toFixed(1)}%`;
-      } else if (primary === "rate") {
-        label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}, ${getPercent(pct, 3)})`;
-      } else {
-        label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}, ${getPercent(pct, 3)})`;
-      }
-      const useRate = primary === "rate" && !absolute;
-      const barValue = useRate ? rate || 0 : it.value;
-      rows.push({
-        id: it.id,
-        name: it.name,
-        ctype: it.ctype,
-        mtype: it.mtype,
-        value: it.value,
-        rate,
-        pct,
-        barMax: barMax || 1,
-        barValue,
-        primary: useRate ? "rate" : "total",
-        label,
-        kind: it.kind,
-        you: it.you,
-        splashDamage: it.splashDamage
-      });
-    }
-    return rows;
-  }
-  function rankedPlayers(seg, metric, focus, now, primary = "total") {
-    const actors = scopedActors(seg, focus);
-    const you = getYouId();
-    const items = actors.map((a) => ({
-      id: a.id,
-      name: a.name,
-      ctype: a.ctype,
-      value: actorMetric(a, metric),
-      kind: "player",
-      you: !!you && a.id === you
-    }));
-    const absolute = metric === "avoidance";
-    return {
-      kind: "ranked",
-      rows: toRanked(
-        items,
-        segmentDurationMs(seg, now),
-        absolute,
-        absolute ? "total" : primary
-      )
-    };
-  }
-  function snapshotRows(mode, entities) {
-    var _a, _b, _c, _d;
-    if (mode === "pdps") {
-      const players = playersList(entities).filter((p) => (p.pdps || 0) > 0).sort((a, b) => (b.pdps || 0) - (a.pdps || 0));
-      let max2 = 0;
-      for (let i = 0; i < players.length; i++) {
-        max2 = Math.max(max2, players[i].pdps || 0);
-      }
-      const rows2 = [];
-      for (let i = 0; i < players.length; i++) {
-        const p = players[i];
-        const value = p.pdps || 0;
-        rows2.push({
-          id: String(p.id),
-          name: p.name || String(p.id),
-          ctype: p.ctype,
-          value,
-          rate: null,
-          pct: max2 > 0 ? value / max2 : 0,
-          barMax: max2 || 1,
-          barValue: value,
-          primary: "total",
-          label: value.toLocaleString(void 0, { maximumFractionDigits: 0 }),
-          kind: "player"
-        });
-      }
-      return { kind: "ranked", rows: rows2 };
-    }
-    const ids = new Set(entities.map((e2) => String(e2.id)));
-    const coop = entities.filter(
-      (e2) => {
-        var _a2, _b2, _c2, _d2;
-        return e2.player && e2.type === "character" && (((_b2 = (_a2 = e2.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) > 0 && ((_d2 = (_c2 = e2.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.id) != null && ids.has(String(e2.s.coop.id));
-      }
-    ).sort((a, b) => {
-      var _a2, _b2, _c2, _d2;
-      return (((_b2 = (_a2 = b.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) - (((_d2 = (_c2 = a.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.p) || 0);
-    });
-    let max = 0;
-    let total = 0;
-    for (let i = 0; i < coop.length; i++) {
-      const p = ((_b = (_a = coop[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
-      max = Math.max(max, p);
-      total += p;
-    }
-    const rows = [];
-    for (let i = 0; i < coop.length; i++) {
-      const player = coop[i];
-      const value = ((_d = (_c = player.s) == null ? void 0 : _c.coop) == null ? void 0 : _d.p) || 0;
-      const label = mode === "coop_v2" ? value.toFixed(2) : `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(void 0, { maximumFractionDigits: 0 })}`;
-      rows.push({
-        id: String(player.id),
-        name: player.name || String(player.id),
-        ctype: player.ctype,
-        value,
-        rate: null,
-        pct: total > 0 ? value / total : 0,
-        barMax: max || 1,
-        barValue: value,
-        primary: "total",
-        label,
-        kind: "player"
-      });
-    }
-    return { kind: "ranked", rows };
-  }
-  function rollingRanked(now) {
-    var _a, _b;
-    const dmg = getActorDamage(now);
-    const ids = Object.keys(dmg);
-    const windowSec = getRollingWindowMs() / 1e3;
-    const items = [];
-    const meta = getEntitiesRecord();
-    const playerMeta2 = getPlayerMeta();
-    for (let i = 0; i < ids.length; i++) {
-      const id = ids[i];
-      const ent = meta[id];
-      items.push({
-        id,
-        name: ((_a = playerMeta2[id]) == null ? void 0 : _a.name) || (ent == null ? void 0 : ent.name) || id,
-        ctype: ((_b = playerMeta2[id]) == null ? void 0 : _b.ctype) || resolvePlayerCtype(id, ent) || (ent == null ? void 0 : ent.ctype),
-        value: dmg[id] / windowSec
-      });
-    }
-    let max = 0;
-    let sum = 0;
-    for (let i = 0; i < items.length; i++) {
-      max = Math.max(max, items[i].value);
-      sum += items[i].value;
-    }
-    const sorted = items.slice().sort((a, b) => b.value - a.value);
-    const rows = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const it = sorted[i];
-      if (!(it.value > 0)) continue;
-      const pct = sum > 0 ? it.value / sum : 0;
-      rows.push({
-        id: it.id,
-        name: it.name,
-        ctype: it.ctype,
-        value: it.value,
-        rate: it.value,
-        pct,
-        barMax: max || 1,
-        barValue: it.value,
-        primary: "rate",
-        label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`,
-        kind: "player"
-      });
-    }
-    return { kind: "ranked", rows, title: "Hit DPS (10s)" };
-  }
-  function runMeterQuery(query, ctx = {}) {
-    const now = ctx.now || Date.now();
-    const focus = ctx.partyFocus;
-    if (query.kind === "snapshot") {
-      return snapshotRows(
-        query.mode,
-        ctx.entities || Object.values(getEntitiesRecord())
-      );
-    }
-    if (query.kind === "rolling" || query.kind === "realtime") {
-      return rollingRanked(now);
-    }
-    const seg = resolveSegment(ctx.segmentRef);
-    if (!seg) return { kind: "empty", reason: "no segment" };
-    const durationMs = segmentDurationMs(seg, now);
-    switch (query.kind) {
-      case "players":
-        return queryPlayers(query, seg, focus, now);
-      case "abilities":
-        return queryAbilities(query, seg, durationMs);
-      case "ability_targets":
-        return queryAbilityTargets(query, seg, durationMs);
-      case "targets":
-        return queryTargets(query, seg, durationMs);
-      case "details":
-        return queryDetails(query, seg, durationMs, now);
-      case "summary":
-        return querySummary(query, seg, focus);
-      case "avoidance":
-        return rankedPlayers(seg, "avoidance", focus, now);
-      case "encounter_summary":
-        return queryEncounterSummary(query, seg, focus, now, durationMs);
-      case "taken_by_spell":
-        return queryTakenBySpell(query, seg, focus, durationMs);
-      case "enemy_damage":
-        return queryEnemyDamage(query, seg, focus, durationMs);
-      case "channel":
-        return queryChannel(query, seg, focus, durationMs);
-      case "compare":
-      case "history":
-        return queryHistory(query, focus);
-      case "pie":
-        return queryPie(query, seg, focus);
-      case "death_log":
-        return queryDeathLog(query, seg);
-      case "timeline":
-        return queryTimeline(query, seg, focus, durationMs);
-      case "conditions":
-        return queryConditions(query, seg, focus, durationMs);
-      case "misc":
-        return queryMisc(query, seg, focus, durationMs);
-      default: {
-        const _exhaustive = query;
-        return { kind: "empty", reason: String(_exhaustive) };
-      }
-    }
-  }
-  function segmentTitle(ref) {
-    const r = ref || "current";
-    if (r === "total") return "Overall";
-    if (typeof r === "object") {
-      const seg = resolveSegment(r);
-      return (seg == null ? void 0 : seg.label) || (seg == null ? void 0 : seg.id) || "Past";
-    }
-    void isMeterInCombat();
-    return "Current";
-  }
-
   // src/ui/frames/comm/guidedTour/paperdollTrade.ts
   function entityHasTradeSlots(entity) {
     if (!entity || !entity.slots) return false;
@@ -10533,6 +12677,7 @@ var EnhanceCommUI = (() => {
   // src/meters/meterWindowStack.ts
   var METER_STACK_BASE = 50;
   var METER_STACK_MAX = 77;
+  var LAYOUT_GUIDE_OVERLAY_Z = 110;
   function maxMeterStackZ(peers) {
     let max = METER_STACK_BASE - 1;
     for (let i = 0; i < peers.length; i++) {
@@ -10664,7 +12809,12 @@ var EnhanceCommUI = (() => {
 
   // src/ui/meter/meterShellHelpers.ts
   function presentationFor(inst) {
-    return inst.presentation || "bars";
+    const p = inst.presentation || "bars";
+    if (p === "table") return "bars";
+    if ((p === "realtime" || p === "compare") && supportsViewModes(inst.query)) {
+      return "bars";
+    }
+    return p;
   }
   function rootQuery(inst) {
     return inst.query;
@@ -10793,45 +12943,92 @@ var EnhanceCommUI = (() => {
     }
     return "attr-other";
   }
-  function cooltipItemNode(item) {
+  function cooltipItemNode(item, onHoverDetail) {
     const run = (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       item.onSelect();
     };
+    const itemKey = item.itemKey || item.label;
+    const label = (item.selected ? "\u25CF " : "") + item.label;
+    const enter = onHoverDetail ? () => onHoverDetail(itemKey, item.detail || null) : void 0;
+    if (!item.trailing) {
+      return e(
+        "button",
+        {
+          key: itemKey,
+          type: "button",
+          className: "ecu-meter-cooltip-item" + (item.selected ? " is-selected" : "") + (item.muted ? " is-muted" : "") + (item.className ? " " + item.className : ""),
+          onMouseEnter: enter,
+          onMouseDown: run,
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        },
+        label
+      );
+    }
+    const trail = item.trailing;
     return e(
-      "button",
+      "div",
       {
-        type: "button",
-        className: "ecu-meter-cooltip-item" + (item.selected ? " is-selected" : "") + (item.muted ? " is-muted" : "") + (item.className ? " " + item.className : ""),
-        // Prefer mousedown so selection wins the hover-leave race; suppress click.
-        onMouseDown: run,
-        onClick: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        }
+        key: itemKey,
+        className: "ecu-meter-cooltip-row" + (item.selected ? " is-selected" : "") + (item.muted ? " is-muted" : "") + (item.className ? " " + item.className : ""),
+        onMouseEnter: enter
       },
-      (item.selected ? "\u25CF " : "") + item.label
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-meter-cooltip-main",
+          onMouseDown: run,
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        },
+        label
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-meter-cooltip-trail" + (trail.className ? " " + trail.className : ""),
+          title: trail.title,
+          onMouseDown: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            trail.onSelect();
+          },
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        },
+        trail.label
+      )
     );
   }
-  function cycleSegmentRef(current, past2, delta) {
-    const chain = ["current", "total"];
-    for (let i = 0; i < past2.length; i++) {
-      chain.push({ pastId: past2[i].id });
-    }
-    const key = (s) => typeof s === "string" ? s : `past:${s.pastId}`;
+  function cycleSegmentRef(current, delta) {
+    const chain = listSegmentChoices();
+    if (!chain.length) return current;
     let idx = 0;
-    const curKey = key(current);
     for (let i = 0; i < chain.length; i++) {
-      if (key(chain[i]) === curKey) {
+      if (refsEqual(chain[i].ref, current)) {
         idx = i;
         break;
       }
     }
     const next = idx + delta;
-    if (next < 0) return chain[chain.length - 1];
-    if (next >= chain.length) return chain[0];
-    return chain[next];
+    if (next < 0) return chain[chain.length - 1].ref;
+    if (next >= chain.length) return chain[0].ref;
+    return chain[next].ref;
+  }
+  function portalOrInline(ReactDOM, node, container = document.body) {
+    if (!node) return null;
+    if (ReactDOM.createPortal) return ReactDOM.createPortal(node, container);
+    return node;
   }
 
   // src/ui/hooks/useCommMeterInstances.ts
@@ -11109,6 +13306,247 @@ var EnhanceCommUI = (() => {
     return out;
   }
 
+  // src/lib/layoutGrid.ts
+  var LAYOUT_GRID_STEP = 1;
+  var LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25];
+  var EPS = 1e-6;
+  var TIER_RANK = {
+    fine: 1,
+    medium: 2,
+    coarse: 3,
+    edge: 4
+  };
+  function normalizeGridStep(raw) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || n > 50) return LAYOUT_GRID_STEP;
+    for (let i = 0; i < LAYOUT_GRID_STEP_PRESETS.length; i++) {
+      if (Math.abs(LAYOUT_GRID_STEP_PRESETS[i] - n) < EPS) {
+        return LAYOUT_GRID_STEP_PRESETS[i];
+      }
+    }
+    const rounded = Math.round(n * 2) / 2;
+    return Math.max(0.5, Math.min(50, rounded));
+  }
+  function squareGridCellPx(step, widthPx, heightPx) {
+    const s = normalizeGridStep(step);
+    const minSide = Math.min(Math.max(1, widthPx), Math.max(1, heightPx));
+    return Math.max(1, minSide * s / 100);
+  }
+  function snapPxToGridCell(px, cellPx) {
+    const cell = Math.max(1, cellPx);
+    if (!Number.isFinite(px)) return cell;
+    return Math.round(px / cell) * cell;
+  }
+  function snapFrameSizeToGrid(w, h, step, widthPx, heightPx) {
+    const cell = squareGridCellPx(step, widthPx, heightPx);
+    return {
+      w: snapPxToGridCell(w, cell),
+      h: snapPxToGridCell(h, cell)
+    };
+  }
+  function squareGridAxisPercents(lengthPx, cellPx) {
+    const len = Math.max(1, lengthPx);
+    const cell = Math.max(1, cellPx);
+    const out = [];
+    const count = Math.ceil(len / cell);
+    for (let i = 0; i <= count; i++) {
+      const px = Math.min(len, i * cell);
+      const pct = Math.round(px / len * 1e5) / 1e3;
+      if (!out.length || Math.abs(out[out.length - 1] - pct) > EPS) {
+        out.push(pct > 100 - EPS ? 100 : pct);
+      }
+    }
+    if (!out.length || Math.abs(out[out.length - 1] - 100) > EPS) out.push(100);
+    return out;
+  }
+  function squareGridMetrics(step, widthPx, heightPx) {
+    const cellPx = squareGridCellPx(step, widthPx, heightPx);
+    return {
+      cellPx,
+      xPercents: squareGridAxisPercents(widthPx, cellPx),
+      yPercents: squareGridAxisPercents(heightPx, cellPx)
+    };
+  }
+  function bumpTier(into, percents, tier) {
+    for (let i = 0; i < percents.length; i++) {
+      const pct = percents[i];
+      const key = Math.round(pct * 1e3) / 1e3;
+      const prev = into.get(key);
+      if (!prev || TIER_RANK[tier] > TIER_RANK[prev]) into.set(key, tier);
+    }
+  }
+  function mapToSortedLines(map) {
+    const keys = Array.from(map.keys());
+    keys.sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const pct = keys[i];
+      out.push({ pct, tier: map.get(pct) || "fine" });
+    }
+    return out;
+  }
+  function squareGridTieredLines(step, widthPx, heightPx) {
+    const cellPx = squareGridCellPx(step, widthPx, heightPx);
+    const xMap = /* @__PURE__ */ new Map();
+    const yMap = /* @__PURE__ */ new Map();
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx), "fine");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx), "fine");
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 2), "medium");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 2), "medium");
+    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 4), "coarse");
+    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 4), "coarse");
+    bumpTier(xMap, [0, 50, 100], "edge");
+    bumpTier(yMap, [0, 50, 100], "edge");
+    return {
+      cellPx,
+      x: mapToSortedLines(xMap),
+      y: mapToSortedLines(yMap)
+    };
+  }
+  function snapPosToFineGrid(x, y, step, widthPx, heightPx) {
+    const metrics = squareGridMetrics(step, widthPx, heightPx);
+    return {
+      x: snapToAxisPercents(x, metrics.xPercents, false),
+      y: snapToAxisPercents(y, metrics.yPercents, false)
+    };
+  }
+  function snapToAxisPercents(n, percents, skipScreenEdges = false, maxDistPct) {
+    if (!percents.length || !Number.isFinite(n)) return n;
+    let best = n;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < percents.length; i++) {
+      const p = percents[i];
+      if (skipScreenEdges && (p <= EPS || p >= 100 - EPS)) continue;
+      const d = Math.abs(n - p);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    if (!Number.isFinite(bestDist) || bestDist === Number.POSITIVE_INFINITY) {
+      return n;
+    }
+    if (maxDistPct != null && bestDist > maxDistPct) return n;
+    return Math.max(0, Math.min(100, best));
+  }
+
+  // src/lib/layoutEditPrefs.ts
+  var KEY2 = "al-comm-ui-layout-edit-prefs-v1";
+  var DEFAULT_LAYOUT_CHROME_POS = {
+    x: 50,
+    y: 0.8
+  };
+  var DEFAULTS2 = {
+    freePlacement: false,
+    gridStep: LAYOUT_GRID_STEP,
+    chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
+  };
+  var cache2 = null;
+  var listeners6 = [];
+  function clampPct(n) {
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+  }
+  function normalizeChromePos(raw) {
+    if (!raw || typeof raw !== "object") {
+      return { ...DEFAULT_LAYOUT_CHROME_POS };
+    }
+    const obj = raw;
+    const x = typeof obj.x === "number" && Number.isFinite(obj.x) ? clampPct(obj.x) : DEFAULT_LAYOUT_CHROME_POS.x;
+    const y = typeof obj.y === "number" && Number.isFinite(obj.y) ? clampPct(obj.y) : DEFAULT_LAYOUT_CHROME_POS.y;
+    return { x, y };
+  }
+  function read() {
+    var _a;
+    try {
+      const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY2);
+      if (!raw)
+        return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
+      const parsed = JSON.parse(raw);
+      return {
+        freePlacement: !!parsed.freePlacement,
+        gridStep: parsed.gridStep != null ? normalizeGridStep(parsed.gridStep) : LAYOUT_GRID_STEP,
+        chromePos: normalizeChromePos(parsed.chromePos)
+      };
+    } catch (e2) {
+      return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
+    }
+  }
+  function write(prefs) {
+    var _a;
+    try {
+      (_a = window.localStorage) == null ? void 0 : _a.setItem(KEY2, JSON.stringify(prefs));
+    } catch (e2) {
+    }
+  }
+  function notify2() {
+    for (let i = 0; i < listeners6.length; i++) {
+      listeners6[i]();
+    }
+  }
+  function getLayoutEditPrefs() {
+    if (!cache2) cache2 = read();
+    return cache2;
+  }
+  function getLayoutFreePlacement() {
+    return getLayoutEditPrefs().freePlacement;
+  }
+  function setLayoutFreePlacement(free) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      freePlacement: !!free
+    };
+    cache2 = next;
+    write(next);
+    notify2();
+    return next;
+  }
+  function getLayoutGridStep() {
+    return getLayoutEditPrefs().gridStep;
+  }
+  function setLayoutGridStep(step) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      gridStep: normalizeGridStep(step)
+    };
+    cache2 = next;
+    write(next);
+    notify2();
+    return next;
+  }
+  function getLayoutChromePos() {
+    return getLayoutEditPrefs().chromePos;
+  }
+  function setLayoutChromePos(pos) {
+    const next = {
+      ...getLayoutEditPrefs(),
+      chromePos: normalizeChromePos(pos)
+    };
+    cache2 = next;
+    write(next);
+    notify2();
+    return next;
+  }
+  function subscribeLayoutEditPrefs(listener) {
+    listeners6.push(listener);
+    return () => {
+      const idx = listeners6.indexOf(listener);
+      if (idx >= 0) listeners6.splice(idx, 1);
+    };
+  }
+  function applyLayoutEditPrefs(partial) {
+    const cur = getLayoutEditPrefs();
+    const next = {
+      freePlacement: typeof partial.freePlacement === "boolean" ? partial.freePlacement : cur.freePlacement,
+      gridStep: partial.gridStep != null ? normalizeGridStep(partial.gridStep) : cur.gridStep,
+      chromePos: partial.chromePos != null ? normalizeChromePos(partial.chromePos) : { ...cur.chromePos }
+    };
+    cache2 = next;
+    write(next);
+    notify2();
+    return next;
+  }
+
   // src/ui/hooks/usePanelLayoutState.ts
   function isClosable(id) {
     return canCloseWindow(id);
@@ -11198,6 +13636,10 @@ var EnhanceCommUI = (() => {
     const setPanelPos = (id, pos) => {
       setLayout((prev) => {
         const nextPos = { ...prev[id], ...pos };
+        if (id === "bag") {
+          delete nextPos.frameW;
+          delete nextPos.frameH;
+        }
         const next = { ...prev, [id]: nextPos };
         savePanelPos(id, nextPos, viewportProfile);
         if (id === "bag") applyBagLayoutPos(nextPos);
@@ -11210,14 +13652,30 @@ var EnhanceCommUI = (() => {
       setLayout(next);
       applyBagLayoutPos(next.bag);
     };
-    const importLayouts = (layouts) => {
-      const settings = importPanelLayouts(layouts);
+    const importLayouts = (pkg) => {
+      const settings = importLayoutPackage({
+        layoutsByProfile: pkg.layoutsByProfile,
+        meterInstances: pkg.meterInstances
+      });
       const next = layoutForProfile(settings, viewportProfile);
       setLayout(next);
       applyBagLayoutPos(next.bag);
+      if (pkg.layoutEditPrefs) {
+        applyLayoutEditPrefs(pkg.layoutEditPrefs);
+      }
+      return pkg.meterInstances ? settings.meterInstances : void 0;
     };
     const exportLayouts = () => {
-      return { ...getSettings().panelLayoutsByProfile };
+      const settings = getSettings();
+      return {
+        layoutsByProfile: {
+          desktop: layoutForProfile(settings, "desktop"),
+          tablet: layoutForProfile(settings, "tablet"),
+          phone: layoutForProfile(settings, "phone")
+        },
+        meterInstances: settings.meterInstances,
+        layoutEditPrefs: getLayoutEditPrefs()
+      };
     };
     const setVisible = (id, visible2) => {
       if (!isClosable(id)) return;
@@ -11270,299 +13728,7 @@ var EnhanceCommUI = (() => {
     };
   }
 
-  // src/lib/panelEdgeGroup.ts
-  var DEFAULT_EDGE_SNAP_PX = 36;
-  var GROUP_GAP_PX = 0;
-  function oppositeSnapSide(side) {
-    if (side === 1) return 3;
-    if (side === 3) return 1;
-    if (side === 2) return 4;
-    return 2;
-  }
-  function emptySnap() {
-    return {};
-  }
-  function panelHasSnap(panel) {
-    const s = panel.snap;
-    if (!s) return false;
-    return !!(s[1] || s[2] || s[3] || s[4]);
-  }
-  function refreshSnapFlags(panel) {
-    if (!panelHasSnap(panel)) {
-      const next = { ...panel };
-      delete next.horizontalSnap;
-      delete next.verticalSnap;
-      return next;
-    }
-    const s = panel.snap || {};
-    const horizontal = !!(s[1] || s[3]);
-    const vertical = !!(s[2] || s[4]);
-    return {
-      ...panel,
-      horizontalSnap: horizontal || void 0,
-      verticalSnap: vertical || void 0
-    };
-  }
-  function applyGroupFrameSize(panels, resizedId, size) {
-    const source = panels.find((m) => m.id === resizedId);
-    if (!source) return panels;
-    if (!panelHasSnap(source)) {
-      return panels.map((m) => m.id === resizedId ? { ...m, ...size } : m);
-    }
-    const group = getEdgeGroup(panels, resizedId);
-    const ids = new Set(group.map((g) => g.id));
-    const snap = source.snap || {};
-    const shareH = !!source.horizontalSnap || !!(snap[1] || snap[3]);
-    const shareW = !!source.verticalSnap || !!(snap[2] || snap[4]);
-    return panels.map((m) => {
-      if (!ids.has(m.id)) return m;
-      const next = { ...m };
-      if (size.frameW != null) {
-        if (shareW) next.frameW = size.frameW;
-        else if (m.id === resizedId) next.frameW = size.frameW;
-      }
-      if (size.frameH != null) {
-        if (shareH) next.frameH = size.frameH;
-        else if (m.id === resizedId) next.frameH = size.frameH;
-      }
-      return next;
-    });
-  }
-  function getEdgeGroup(panels, startId) {
-    const byId = {};
-    for (let i = 0; i < panels.length; i++) {
-      byId[panels[i].id] = panels[i];
-    }
-    const start = byId[startId];
-    if (!start) return [];
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    const queue = [startId];
-    while (queue.length) {
-      const id = queue.shift();
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const inst = byId[id];
-      if (!inst) continue;
-      out.push(inst);
-      const snap = inst.snap || {};
-      const sides = [1, 2, 3, 4];
-      for (let i = 0; i < sides.length; i++) {
-        const nid = snap[sides[i]];
-        if (nid && !seen.has(nid)) queue.push(nid);
-      }
-    }
-    return out;
-  }
-  function ungroupPanel(panels, id) {
-    return panels.map((m) => {
-      if (m.id === id) {
-        return refreshSnapFlags({ ...m, snap: emptySnap() });
-      }
-      const snap = m.snap;
-      if (!snap) return m;
-      const next = { ...snap };
-      let changed = false;
-      const sides = [1, 2, 3, 4];
-      for (let i = 0; i < sides.length; i++) {
-        const side = sides[i];
-        if (next[side] === id) {
-          delete next[side];
-          changed = true;
-        }
-      }
-      return changed ? refreshSnapFlags({ ...m, snap: next }) : m;
-    });
-  }
-  function groupPanels(panels, aId, bId, sideOnA) {
-    if (aId === bId) return panels;
-    const opp = oppositeSnapSide(sideOnA);
-    return panels.map((m) => {
-      if (m.id === aId) {
-        const snap = { ...m.snap || {} };
-        snap[sideOnA] = bId;
-        return { ...m, snap };
-      }
-      if (m.id === bId) {
-        const snap = { ...m.snap || {} };
-        snap[opp] = aId;
-        return { ...m, snap };
-      }
-      return m;
-    });
-  }
-  function applyScreenPctDelta(pos, dxScreen, dyScreen) {
-    const ax = pos.anchor || "tl";
-    let x = pos.x;
-    let y = pos.y;
-    if (ax === "tr" || ax === "br") x -= dxScreen;
-    else x += dxScreen;
-    if (ax === "bl" || ax === "br" || ax === "bc") y -= dyScreen;
-    else y += dyScreen;
-    return {
-      ...pos,
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y))
-    };
-  }
-  function screenPctDeltaFromMove(oldPos, newPos) {
-    const ax = oldPos.anchor || "tl";
-    const dx = newPos.x - oldPos.x;
-    const dy = newPos.y - oldPos.y;
-    return {
-      dx: ax === "tr" || ax === "br" ? -dx : dx,
-      dy: ax === "bl" || ax === "br" || ax === "bc" ? -dy : dy
-    };
-  }
-  function moveEdgeGroup(panels, movedId, newPos) {
-    const byId = {};
-    for (let i = 0; i < panels.length; i++) {
-      byId[panels[i].id] = panels[i];
-    }
-    const moved = byId[movedId];
-    if (!moved) return panels;
-    const old = moved.pos;
-    const dx = newPos.x - old.x;
-    const dy = newPos.y - old.y;
-    if (dx === 0 && dy === 0) {
-      return panels.map(
-        (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
-      );
-    }
-    const group = getEdgeGroup(panels, movedId);
-    if (group.length <= 1) {
-      return panels.map(
-        (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
-      );
-    }
-    const groupIds = new Set(group.map((g) => g.id));
-    const screen = screenPctDeltaFromMove(old, newPos);
-    return panels.map((m) => {
-      if (!groupIds.has(m.id)) return m;
-      if (m.id === movedId) return { ...m, pos: { ...newPos } };
-      return {
-        ...m,
-        pos: applyScreenPctDelta(m.pos, screen.dx, screen.dy)
-      };
-    });
-  }
-  function matchGroupHeight(panels, id, height) {
-    const group = getEdgeGroup(panels, id);
-    if (group.length <= 1) {
-      return panels.map((m) => m.id === id ? { ...m, frameH: height } : m);
-    }
-    const ids = new Set(group.map((g) => g.id));
-    return panels.map((m) => ids.has(m.id) ? { ...m, frameH: height } : m);
-  }
-  function matchGroupWidth(panels, id, width) {
-    const group = getEdgeGroup(panels, id);
-    if (group.length <= 1) {
-      return panels.map((m) => m.id === id ? { ...m, frameW: width } : m);
-    }
-    const ids = new Set(group.map((g) => g.id));
-    return panels.map((m) => ids.has(m.id) ? { ...m, frameW: width } : m);
-  }
-  function findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
-    let best = null;
-    let bestScore = Infinity;
-    for (let i = 0; i < others.length; i++) {
-      const o = others[i];
-      if (o.id === selfId) continue;
-      const r = o.rect;
-      const candidates = [
-        {
-          side: 3,
-          gap: Math.abs(selfRect.right - r.left),
-          align: Math.abs(selfRect.top - r.top)
-        },
-        {
-          side: 1,
-          gap: Math.abs(selfRect.left - r.right),
-          align: Math.abs(selfRect.top - r.top)
-        },
-        {
-          side: 2,
-          gap: Math.abs(selfRect.bottom - r.top),
-          align: Math.abs(selfRect.left - r.left)
-        },
-        {
-          side: 4,
-          gap: Math.abs(selfRect.top - r.bottom),
-          align: Math.abs(selfRect.left - r.left)
-        }
-      ];
-      for (let c = 0; c < candidates.length; c++) {
-        const cand = candidates[c];
-        if (cand.gap > thresholdPx || cand.align > 80) continue;
-        const score = cand.gap + cand.align * 0.25;
-        if (score < bestScore) {
-          bestScore = score;
-          best = { otherId: o.id, sideOnSelf: cand.side, gap: score };
-        }
-      }
-    }
-    return best;
-  }
-  function nudgePosByPixels(pos, dxPx, dyPx, rootW, rootH) {
-    const ax = pos.anchor || "tl";
-    const dxPct = rootW > 0 ? dxPx / rootW * 100 : 0;
-    const dyPct = rootH > 0 ? dyPx / rootH * 100 : 0;
-    let x = pos.x;
-    let y = pos.y;
-    if (ax === "tr" || ax === "br") x -= dxPct;
-    else if (ax === "tc" || ax === "bc" || ax === "center") x += dxPct;
-    else x += dxPct;
-    if (ax === "bl" || ax === "br" || ax === "bc") y -= dyPct;
-    else if (ax === "center") y += dyPct;
-    else y += dyPct;
-    return {
-      ...pos,
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y))
-    };
-  }
-  function attachPanelEdge(panels, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
-    let dx = 0;
-    let dy = 0;
-    if (sideOnSelf === 3) {
-      dx = otherRect.left - GROUP_GAP_PX - selfRect.right;
-      dy = otherRect.top - selfRect.top;
-    } else if (sideOnSelf === 1) {
-      dx = otherRect.right + GROUP_GAP_PX - selfRect.left;
-      dy = otherRect.top - selfRect.top;
-    } else if (sideOnSelf === 2) {
-      dy = otherRect.top - GROUP_GAP_PX - selfRect.bottom;
-      dx = otherRect.left - selfRect.left;
-    } else {
-      dy = otherRect.bottom + GROUP_GAP_PX - selfRect.top;
-      dx = otherRect.left - selfRect.left;
-    }
-    const byId = {};
-    for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
-    const self = byId[selfId];
-    const other = byId[otherId];
-    if (!self || !other) return panels;
-    const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
-    const matchH = sideOnSelf === 1 || sideOnSelf === 3;
-    const matchW = sideOnSelf === 2 || sideOnSelf === 4;
-    const peerH = other.frameH || Math.round(otherRect.bottom - otherRect.top) || void 0;
-    const peerW = other.frameW || Math.round(otherRect.right - otherRect.left) || void 0;
-    const h = matchH ? peerH || self.frameH : self.frameH;
-    const w = matchW ? peerW || self.frameW : self.frameW;
-    let next = panels.map((m) => {
-      if (m.id !== selfId) return m;
-      return {
-        ...m,
-        pos: alignedPos,
-        frameH: h != null ? h : m.frameH,
-        frameW: w != null ? w : m.frameW
-      };
-    });
-    next = groupPanels(next, selfId, otherId, sideOnSelf);
-    if (matchH && h != null) next = matchGroupHeight(next, selfId, h);
-    if (matchW && w != null) next = matchGroupWidth(next, selfId, w);
-    return next.map(refreshSnapFlags);
-  }
+  // src/lib/panelEdgeSnapDom.ts
   function cssEscapePanelId(id) {
     if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
       return CSS.escape(id);
@@ -11583,44 +13749,100 @@ var EnhanceCommUI = (() => {
     }
     return others;
   }
-  function findSnapGuideTarget(panels, selfId, canSnap, nearPx = 140, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
+  function snapJoinPeerFilter(panels, selfId, canSnap) {
+    const own = new Set(getEdgeGroup(panels, selfId).map((g) => g.id));
+    return (panel, sid) => {
+      if (own.has(panel.id)) return false;
+      return canSnap(panel, sid);
+    };
+  }
+  function findSnapTarget(selfId, panels, opts) {
+    if (opts.skipGroupJoin) return null;
     if (typeof document === "undefined") return null;
+    const peerFilter = opts.peerFilter || (() => true);
     const selfEl = document.querySelector(
       `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`
     );
     if (!selfEl) return null;
     const selfRect = selfEl.getBoundingClientRect();
-    const others = collectEdgePeerRects(panels, selfId, canSnap);
-    const tight = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-    if (tight) return { id: tight.otherId, canSnap: true };
-    const loose = findEdgeSnapCandidate(selfId, selfRect, others, nearPx);
-    if (loose) return { id: loose.otherId, canSnap: false };
-    return null;
-  }
-  function trySnapOnDrop(panels, selfId, canSnap, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
-    if (typeof document === "undefined") return panels;
-    const selfEl = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`
+    const excludeOwn = opts.excludeOwnGroup !== false;
+    const joinFilter = excludeOwn ? snapJoinPeerFilter(panels, selfId, peerFilter) : peerFilter;
+    const peers = collectEdgePeerRects(panels, selfId, joinFilter);
+    const tight = findEdgeSnapCandidate(
+      selfId,
+      selfRect,
+      peers,
+      opts.thresholdPx
     );
-    if (!selfEl) return panels;
-    const selfRect = selfEl.getBoundingClientRect();
-    const others = collectEdgePeerRects(panels, selfId, canSnap);
-    const cand = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-    if (!cand) return panels;
-    const peer = others.find((o) => o.id === cand.otherId);
+    let loose = null;
+    if (opts.nearPx != null) {
+      loose = findEdgeSnapCandidate(selfId, selfRect, peers, opts.nearPx);
+    }
+    return { tight, loose, selfRect, peers };
+  }
+  function trySnapOnDrop(panels, selfId, canSnap, opts) {
+    var _a;
+    const result = findSnapTarget(selfId, panels, {
+      thresholdPx: (_a = opts == null ? void 0 : opts.thresholdPx) != null ? _a : DEFAULT_EDGE_SNAP_PX,
+      skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
+      peerFilter: canSnap
+    });
+    const cand = result == null ? void 0 : result.tight;
+    if (!result || !cand) return panels;
+    let peer = null;
+    for (let i = 0; i < result.peers.length; i++) {
+      if (result.peers[i].id === cand.otherId) {
+        peer = result.peers[i];
+        break;
+      }
+    }
     if (!peer) return panels;
-    const rootEl = typeof document !== "undefined" && (document.getElementById("comm-ui") || document.getElementById("game") || document.body) || null;
+    const rootEl = document.getElementById("comm-ui") || document.getElementById("game") || document.body;
     const root = rootEl ? rootEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
     return attachPanelEdge(
       panels,
       selfId,
       cand.otherId,
       cand.sideOnSelf,
-      selfRect,
+      result.selfRect,
       peer.rect,
       root.width || window.innerWidth,
       root.height || window.innerHeight
     );
+  }
+
+  // src/lib/percentDrag.ts
+  function layoutDragRoot() {
+    return document.getElementById("comm-ui") || document.documentElement;
+  }
+  function percentFromPointerDrag(clientX, clientY, start, root = layoutDragRoot()) {
+    const rect = root.getBoundingClientRect();
+    const { dxPct, dyPct } = deltaToPercent(
+      clientX - start.clientX,
+      clientY - start.clientY,
+      rect.width,
+      rect.height
+    );
+    return {
+      x: Math.max(0, Math.min(100, start.posX + dxPct)),
+      y: Math.max(0, Math.min(100, start.posY + dyPct))
+    };
+  }
+  function trySetPointerCapture(target, pointerId) {
+    const el = target;
+    if (!el || typeof el.setPointerCapture !== "function") return;
+    try {
+      el.setPointerCapture(pointerId);
+    } catch (e2) {
+    }
+  }
+  function tryReleasePointerCapture(target, pointerId) {
+    const el = target;
+    if (!el || typeof el.releasePointerCapture !== "function") return;
+    try {
+      el.releasePointerCapture(pointerId);
+    } catch (e2) {
+    }
   }
 
   // src/lib/commWindowGroup.ts
@@ -11630,7 +13852,9 @@ var EnhanceCommUI = (() => {
       pos: { x: pos.x, y: pos.y, anchor: pos.anchor },
       snap: pos.snap,
       horizontalSnap: pos.horizontalSnap,
-      verticalSnap: pos.verticalSnap
+      verticalSnap: pos.verticalSnap,
+      frameW: pos.frameW,
+      frameH: pos.frameH
     };
   }
   function meterToEdge(m) {
@@ -11696,6 +13920,8 @@ var EnhanceCommUI = (() => {
       const p = byId[id];
       if (!p || !layout[id]) continue;
       layout[id] = applySnapFields(layout[id], p);
+      if (p.frameW != null) layout[id] = { ...layout[id], frameW: p.frameW };
+      if (p.frameH != null) layout[id] = { ...layout[id], frameH: p.frameH };
     }
     const meters = state.meters.map((m) => {
       const p = byId[m.id];
@@ -11753,10 +13979,10 @@ var EnhanceCommUI = (() => {
     });
     return applyEdgePanelsToState(state, moved);
   }
-  function snapCommWindowAfterMove(state, id) {
+  function snapCommWindowAfterMove(state, id, opts) {
     const panels = windowsToEdgePanels(state);
     if (!panels.some((p) => p.id === id)) return state;
-    const next = trySnapOnDrop(panels, id, (p) => canGroupWindow(p.id));
+    const next = trySnapOnDrop(panels, id, (p) => canGroupWindow(p.id), opts);
     return applyEdgePanelsToState(state, next);
   }
   function ungroupCommWindow(state, id) {
@@ -11772,18 +13998,40 @@ var EnhanceCommUI = (() => {
     }
     return false;
   }
-  function findCommSnapGuideTarget(state, selfId) {
-    return findSnapGuideTarget(
-      windowsToEdgePanels(state),
-      selfId,
-      (p) => canGroupWindow(p.id)
-    );
+  function findCommSnapGuideTarget(state, selfId, opts) {
+    const panels = windowsToEdgePanels(state);
+    const canSnapPeer = (p) => canGroupWindow(p.id);
+    const join = findSnapTarget(selfId, panels, {
+      thresholdPx: DEFAULT_EDGE_SNAP_PX,
+      nearPx: 140,
+      skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
+      peerFilter: canSnapPeer,
+      excludeOwnGroup: true
+    });
+    if (join == null ? void 0 : join.tight) return { id: join.tight.otherId, canSnap: true };
+    if (join == null ? void 0 : join.loose) return { id: join.loose.otherId, canSnap: false };
+    const own = getEdgeGroup(panels, selfId);
+    if (own.length < 2) return null;
+    const ownIds = new Set(own.map((g) => g.id));
+    const linked = findSnapTarget(selfId, panels, {
+      thresholdPx: 140,
+      nearPx: 240,
+      skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
+      peerFilter: (p) => ownIds.has(p.id) && p.id !== selfId,
+      excludeOwnGroup: false
+    });
+    const peer = (linked == null ? void 0 : linked.tight) || (linked == null ? void 0 : linked.loose);
+    if (!peer) return null;
+    return { id: peer.otherId, canSnap: true };
   }
   var SCALE_MIN = 0.5;
   var SCALE_MAX = 1.5;
   function clampWindowScale(scale) {
     if (!Number.isFinite(scale)) return 1;
-    return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.round(scale * 100) / 100));
+    return Math.max(
+      SCALE_MIN,
+      Math.min(SCALE_MAX, Math.round(scale * 100) / 100)
+    );
   }
   function applyScaleToCommWindows(state, id, scale) {
     const clamped = clampWindowScale(scale);
@@ -11806,13 +14054,50 @@ var EnhanceCommUI = (() => {
     );
     return { layout, meters };
   }
+  function applyFrameSizeToCommWindows(state, id, size) {
+    const panels = windowsToEdgePanels(state);
+    if (!panels.some((p) => p.id === id)) {
+      if (state.layout[id]) {
+        const cur = state.layout[id];
+        return {
+          ...state,
+          layout: {
+            ...state.layout,
+            [id]: {
+              ...cur,
+              ...size.frameW != null ? { frameW: size.frameW } : {},
+              ...size.frameH != null ? { frameH: size.frameH } : {}
+            }
+          }
+        };
+      }
+      return {
+        ...state,
+        meters: state.meters.map(
+          (m) => m.id === id ? {
+            ...m,
+            ...size.frameW != null ? { frameW: size.frameW } : {},
+            ...size.frameH != null ? { frameH: size.frameH } : {}
+          } : m
+        )
+      };
+    }
+    const root = layoutDragRoot().getBoundingClientRect();
+    return applyEdgePanelsToState(
+      state,
+      applyGroupFrameSize(panels, id, size, {
+        rootW: root.width,
+        rootH: root.height
+      })
+    );
+  }
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners6 = [];
-  function notify2() {
-    for (let i = 0; i < listeners6.length; i++) {
-      listeners6[i]();
+  var listeners7 = [];
+  function notify3() {
+    for (let i = 0; i < listeners7.length; i++) {
+      listeners7[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -11820,7 +14105,7 @@ var EnhanceCommUI = (() => {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify2();
+    if (depth === 1) notify3();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -11828,13 +14113,13 @@ var EnhanceCommUI = (() => {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify2();
+    if (depth === 0) notify3();
   }
   function subscribeLayoutGuide(listener) {
-    listeners6.push(listener);
+    listeners7.push(listener);
     return () => {
-      const idx = listeners6.indexOf(listener);
-      if (idx >= 0) listeners6.splice(idx, 1);
+      const idx = listeners7.indexOf(listener);
+      if (idx >= 0) listeners7.splice(idx, 1);
     };
   }
 
@@ -11865,7 +14150,9 @@ var EnhanceCommUI = (() => {
     const [snapPeerId, setSnapPeerId] = React.useState(null);
     const [nearPeerId, setNearPeerId] = React.useState(null);
     const [showWindowIds, setShowWindowIds] = React.useState(false);
-    const showIdsTimer = React.useRef(null);
+    const showIdsTimer = React.useRef(
+      null
+    );
     const clearWindowIds = () => {
       if (showIdsTimer.current != null) {
         clearTimeout(showIdsTimer.current);
@@ -11902,14 +14189,14 @@ var EnhanceCommUI = (() => {
     const moveWindow = (id, pos) => {
       commit(moveCommWindowWithGroup(stateRef.current, id, pos));
     };
-    const snapAfterMove = (id) => {
+    const snapAfterMove = (id, opts2) => {
       clearWindowIds();
       setSnapDragId(null);
       setSnapPeerId(null);
       setNearPeerId(null);
       endLayoutGuide();
       if (!groupingEnabled()) return;
-      commit(snapCommWindowAfterMove(stateRef.current, id));
+      commit(snapCommWindowAfterMove(stateRef.current, id, opts2));
     };
     const ungroupWindow = (id) => {
       commit(ungroupCommWindow(stateRef.current, id));
@@ -11926,18 +14213,21 @@ var EnhanceCommUI = (() => {
       }, SHOW_WINDOW_IDS_MS);
       if (!groupingEnabled()) return;
     };
-    const onDragMove = (id) => {
-      if (!groupingEnabled()) {
+    const onDragMove = (id, opts2) => {
+      if (!groupingEnabled() || (opts2 == null ? void 0 : opts2.skipGroupJoin)) {
         setSnapPeerId(null);
         setNearPeerId(null);
         return;
       }
-      const guide = findCommSnapGuideTarget(stateRef.current, id);
+      const guide = findCommSnapGuideTarget(stateRef.current, id, opts2);
       setSnapPeerId(guide && guide.canSnap ? guide.id : null);
       setNearPeerId(guide ? guide.id : null);
     };
     const setWindowScale = (id, scale) => {
       commit(applyScaleToCommWindows(stateRef.current, id, scale));
+    };
+    const resizeWindowFrame = (id, size) => {
+      commit(applyFrameSizeToCommWindows(stateRef.current, id, size));
     };
     const graphState = () => stateRef.current;
     return {
@@ -11947,6 +14237,7 @@ var EnhanceCommUI = (() => {
       onDragStart,
       onDragMove,
       setWindowScale,
+      resizeWindowFrame,
       snapDragId,
       snapPeerId,
       nearPeerId,
@@ -12098,7 +14389,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/layoutExport.ts
-  var LAYOUT_EXPORT_VERSION = 1;
+  var LAYOUT_EXPORT_VERSION = 2;
   function isPanelPos(raw) {
     if (!raw || typeof raw !== "object") return false;
     const o = raw;
@@ -12133,7 +14424,55 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
-  function buildLayoutExport(layoutsByProfile) {
+  function sanitizeEditPrefs(raw) {
+    if (!raw || typeof raw !== "object") return void 0;
+    const o = raw;
+    const prefs = {
+      freePlacement: !!o.freePlacement,
+      gridStep: o.gridStep != null ? normalizeGridStep(o.gridStep) : normalizeGridStep(1)
+    };
+    if (o.chromePos && typeof o.chromePos === "object") {
+      const c = o.chromePos;
+      if (typeof c.x === "number" && typeof c.y === "number") {
+        prefs.chromePos = {
+          x: Math.max(0, Math.min(100, c.x)),
+          y: Math.max(0, Math.min(100, c.y))
+        };
+      }
+    }
+    return prefs;
+  }
+  function cloneMetersForExport(list) {
+    if (!Array.isArray(list) || !list.length) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m || typeof m !== "object" || !m.query) continue;
+      out.push({
+        ...m,
+        pos: { ...m.pos },
+        query: { ...m.query },
+        snap: m.snap ? { ...m.snap } : void 0,
+        statusbar: m.statusbar ? { ...m.statusbar } : void 0,
+        seriesEnabled: m.seriesEnabled ? { ...m.seriesEnabled } : void 0
+      });
+    }
+    return out;
+  }
+  function serializeEditPrefs(prefs) {
+    const out = {
+      freePlacement: !!prefs.freePlacement,
+      gridStep: normalizeGridStep(prefs.gridStep)
+    };
+    if (prefs.chromePos) {
+      out.chromePos = { x: prefs.chromePos.x, y: prefs.chromePos.y };
+    }
+    return out;
+  }
+  function buildLayoutExport(input) {
+    const isWrapped = input && typeof input === "object" && ("layoutsByProfile" in input || "meterInstances" in input || "layoutEditPrefs" in input);
+    const wrapped = isWrapped ? input : null;
+    const layoutsByProfile = wrapped ? wrapped.layoutsByProfile : input;
     const layouts = {};
     for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
       const profile = VIEWPORT_PROFILES[i];
@@ -12141,15 +14480,22 @@ var EnhanceCommUI = (() => {
       if (!partial) continue;
       layouts[profile] = mergeLayout(partial);
     }
-    return {
+    const payload = {
       version: LAYOUT_EXPORT_VERSION,
       kind: "enhance-comm-ui-layout",
       exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
       layoutsByProfile: layouts
     };
+    if (wrapped == null ? void 0 : wrapped.meterInstances) {
+      payload.meterInstances = cloneMetersForExport(wrapped.meterInstances);
+    }
+    if (wrapped == null ? void 0 : wrapped.layoutEditPrefs) {
+      payload.layoutEditPrefs = serializeEditPrefs(wrapped.layoutEditPrefs);
+    }
+    return payload;
   }
-  function stringifyLayoutExport(layoutsByProfile) {
-    return JSON.stringify(buildLayoutExport(layoutsByProfile), null, 2);
+  function stringifyLayoutExport(input) {
+    return JSON.stringify(buildLayoutExport(input), null, 2);
   }
   function parseLayoutExport(raw) {
     let parsed;
@@ -12170,7 +14516,24 @@ var EnhanceCommUI = (() => {
     if (!Object.keys(layoutsByProfile).length) {
       return { ok: false, error: "No panel layouts found in export" };
     }
-    return { ok: true, layoutsByProfile };
+    const result = {
+      ok: true,
+      layoutsByProfile
+    };
+    if (Array.isArray(obj.meterInstances)) {
+      result.meterInstances = normalizeMeterInstances(obj.meterInstances);
+    }
+    const nestedPrefs = sanitizeEditPrefs(obj.layoutEditPrefs);
+    if (nestedPrefs) {
+      result.layoutEditPrefs = nestedPrefs;
+    } else if (obj.gridStep != null || obj.freePlacement != null) {
+      result.layoutEditPrefs = sanitizeEditPrefs({
+        freePlacement: obj.freePlacement,
+        gridStep: obj.gridStep,
+        chromePos: obj.chromePos
+      });
+    }
+    return result;
   }
   function downloadLayoutJson(json, filename) {
     const name = filename || `enhance-comm-ui-layout-${Date.now()}.json`;
@@ -12186,270 +14549,8 @@ var EnhanceCommUI = (() => {
     setTimeout(() => URL.revokeObjectURL(url), 500);
   }
 
-  // src/lib/layoutGrid.ts
-  var LAYOUT_GRID_STEP = 5;
-  var LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25];
-  var EPS = 1e-6;
-  var TIER_RANK = {
-    fine: 1,
-    medium: 2,
-    coarse: 3,
-    edge: 4
-  };
-  function normalizeGridStep(raw) {
-    const n = typeof raw === "number" ? raw : Number(raw);
-    if (!Number.isFinite(n) || n <= 0 || n > 50) return LAYOUT_GRID_STEP;
-    for (let i = 0; i < LAYOUT_GRID_STEP_PRESETS.length; i++) {
-      if (Math.abs(LAYOUT_GRID_STEP_PRESETS[i] - n) < EPS) {
-        return LAYOUT_GRID_STEP_PRESETS[i];
-      }
-    }
-    const rounded = Math.round(n * 2) / 2;
-    return Math.max(0.5, Math.min(50, rounded));
-  }
-  function squareGridCellPx(step, widthPx, heightPx) {
-    const s = normalizeGridStep(step);
-    const minSide = Math.min(Math.max(1, widthPx), Math.max(1, heightPx));
-    return Math.max(1, minSide * s / 100);
-  }
-  function snapPxToGridCell(px, cellPx) {
-    const cell = Math.max(1, cellPx);
-    if (!Number.isFinite(px)) return cell;
-    return Math.round(px / cell) * cell;
-  }
-  function snapFrameSizeToGrid(w, h, step, widthPx, heightPx) {
-    const cell = squareGridCellPx(step, widthPx, heightPx);
-    return {
-      w: snapPxToGridCell(w, cell),
-      h: snapPxToGridCell(h, cell)
-    };
-  }
-  function squareGridAxisPercents(lengthPx, cellPx) {
-    const len = Math.max(1, lengthPx);
-    const cell = Math.max(1, cellPx);
-    const out = [];
-    const count = Math.ceil(len / cell);
-    for (let i = 0; i <= count; i++) {
-      const px = Math.min(len, i * cell);
-      const pct = Math.round(px / len * 1e5) / 1e3;
-      if (!out.length || Math.abs(out[out.length - 1] - pct) > EPS) {
-        out.push(pct > 100 - EPS ? 100 : pct);
-      }
-    }
-    if (!out.length || Math.abs(out[out.length - 1] - 100) > EPS) out.push(100);
-    return out;
-  }
-  function squareGridMetrics(step, widthPx, heightPx) {
-    const cellPx = squareGridCellPx(step, widthPx, heightPx);
-    return {
-      cellPx,
-      xPercents: squareGridAxisPercents(widthPx, cellPx),
-      yPercents: squareGridAxisPercents(heightPx, cellPx)
-    };
-  }
-  function bumpTier(into, percents, tier) {
-    for (let i = 0; i < percents.length; i++) {
-      const pct = percents[i];
-      const key = Math.round(pct * 1e3) / 1e3;
-      const prev = into.get(key);
-      if (!prev || TIER_RANK[tier] > TIER_RANK[prev]) into.set(key, tier);
-    }
-  }
-  function mapToSortedLines(map) {
-    const keys = Array.from(map.keys());
-    keys.sort((a, b) => a - b);
-    const out = [];
-    for (let i = 0; i < keys.length; i++) {
-      const pct = keys[i];
-      out.push({ pct, tier: map.get(pct) || "fine" });
-    }
-    return out;
-  }
-  function squareGridTieredLines(step, widthPx, heightPx) {
-    const cellPx = squareGridCellPx(step, widthPx, heightPx);
-    const xMap = /* @__PURE__ */ new Map();
-    const yMap = /* @__PURE__ */ new Map();
-    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx), "fine");
-    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx), "fine");
-    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 2), "medium");
-    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 2), "medium");
-    bumpTier(xMap, squareGridAxisPercents(widthPx, cellPx * 4), "coarse");
-    bumpTier(yMap, squareGridAxisPercents(heightPx, cellPx * 4), "coarse");
-    bumpTier(xMap, [0, 50, 100], "edge");
-    bumpTier(yMap, [0, 50, 100], "edge");
-    return {
-      cellPx,
-      x: mapToSortedLines(xMap),
-      y: mapToSortedLines(yMap)
-    };
-  }
-  function snapPosToFineGrid(x, y, step, widthPx, heightPx) {
-    const metrics = squareGridMetrics(step, widthPx, heightPx);
-    return {
-      x: snapToAxisPercents(x, metrics.xPercents, false),
-      y: snapToAxisPercents(y, metrics.yPercents, false)
-    };
-  }
-  function snapToAxisPercents(n, percents, skipScreenEdges = false, maxDistPct) {
-    if (!percents.length || !Number.isFinite(n)) return n;
-    let best = n;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < percents.length; i++) {
-      const p = percents[i];
-      if (skipScreenEdges && (p <= EPS || p >= 100 - EPS)) continue;
-      const d = Math.abs(n - p);
-      if (d < bestDist) {
-        bestDist = d;
-        best = p;
-      }
-    }
-    if (!Number.isFinite(bestDist) || bestDist === Number.POSITIVE_INFINITY) {
-      return n;
-    }
-    if (maxDistPct != null && bestDist > maxDistPct) return n;
-    return Math.max(0, Math.min(100, best));
-  }
-
-  // src/lib/layoutEditPrefs.ts
-  var KEY2 = "al-comm-ui-layout-edit-prefs-v1";
-  var DEFAULT_LAYOUT_CHROME_POS = {
-    x: 50,
-    y: 0.8
-  };
-  var DEFAULTS2 = {
-    freePlacement: false,
-    gridStep: LAYOUT_GRID_STEP,
-    chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
-  };
-  var cache2 = null;
-  var listeners7 = [];
-  function clampPct(n) {
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(100, n));
-  }
-  function normalizeChromePos(raw) {
-    if (!raw || typeof raw !== "object") {
-      return { ...DEFAULT_LAYOUT_CHROME_POS };
-    }
-    const obj = raw;
-    const x = typeof obj.x === "number" && Number.isFinite(obj.x) ? clampPct(obj.x) : DEFAULT_LAYOUT_CHROME_POS.x;
-    const y = typeof obj.y === "number" && Number.isFinite(obj.y) ? clampPct(obj.y) : DEFAULT_LAYOUT_CHROME_POS.y;
-    return { x, y };
-  }
-  function read() {
-    var _a;
-    try {
-      const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY2);
-      if (!raw)
-        return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
-      const parsed = JSON.parse(raw);
-      return {
-        freePlacement: !!parsed.freePlacement,
-        gridStep: parsed.gridStep != null ? normalizeGridStep(parsed.gridStep) : LAYOUT_GRID_STEP,
-        chromePos: normalizeChromePos(parsed.chromePos)
-      };
-    } catch (e2) {
-      return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
-    }
-  }
-  function write(prefs) {
-    var _a;
-    try {
-      (_a = window.localStorage) == null ? void 0 : _a.setItem(KEY2, JSON.stringify(prefs));
-    } catch (e2) {
-    }
-  }
-  function notify3() {
-    for (let i = 0; i < listeners7.length; i++) {
-      listeners7[i]();
-    }
-  }
-  function getLayoutEditPrefs() {
-    if (!cache2) cache2 = read();
-    return cache2;
-  }
-  function getLayoutFreePlacement() {
-    return getLayoutEditPrefs().freePlacement;
-  }
-  function setLayoutFreePlacement(free) {
-    const next = {
-      ...getLayoutEditPrefs(),
-      freePlacement: !!free
-    };
-    cache2 = next;
-    write(next);
-    notify3();
-    return next;
-  }
-  function getLayoutGridStep() {
-    return getLayoutEditPrefs().gridStep;
-  }
-  function setLayoutGridStep(step) {
-    const next = {
-      ...getLayoutEditPrefs(),
-      gridStep: normalizeGridStep(step)
-    };
-    cache2 = next;
-    write(next);
-    notify3();
-    return next;
-  }
-  function getLayoutChromePos() {
-    return getLayoutEditPrefs().chromePos;
-  }
-  function setLayoutChromePos(pos) {
-    const next = {
-      ...getLayoutEditPrefs(),
-      chromePos: normalizeChromePos(pos)
-    };
-    cache2 = next;
-    write(next);
-    notify3();
-    return next;
-  }
-  function subscribeLayoutEditPrefs(listener) {
-    listeners7.push(listener);
-    return () => {
-      const idx = listeners7.indexOf(listener);
-      if (idx >= 0) listeners7.splice(idx, 1);
-    };
-  }
-
-  // src/lib/percentDrag.ts
-  function layoutDragRoot() {
-    return document.getElementById("comm-ui") || document.documentElement;
-  }
-  function percentFromPointerDrag(clientX, clientY, start, root = layoutDragRoot()) {
-    const rect = root.getBoundingClientRect();
-    const { dxPct, dyPct } = deltaToPercent(
-      clientX - start.clientX,
-      clientY - start.clientY,
-      rect.width,
-      rect.height
-    );
-    return {
-      x: Math.max(0, Math.min(100, start.posX + dxPct)),
-      y: Math.max(0, Math.min(100, start.posY + dyPct))
-    };
-  }
-  function trySetPointerCapture(target, pointerId) {
-    const el = target;
-    if (!el || typeof el.setPointerCapture !== "function") return;
-    try {
-      el.setPointerCapture(pointerId);
-    } catch (e2) {
-    }
-  }
-  function tryReleasePointerCapture(target, pointerId) {
-    const el = target;
-    if (!el || typeof el.releasePointerCapture !== "function") return;
-    try {
-      el.releasePointerCapture(pointerId);
-    } catch (e2) {
-    }
-  }
-
   // src/ui/frames/comm/LayoutEditChrome.ts
+  var PLACE_WITHOUT_GROUP_HINT = "Ctrl = place without grouping";
   var PANEL_W = 420;
   function btnStyle(active, compact) {
     return {
@@ -12582,8 +14683,20 @@ var EnhanceCommUI = (() => {
         setStatus(parsed.error);
         return;
       }
-      props.importLayouts(parsed.layoutsByProfile);
-      setStatus("Layout imported");
+      const importedMeters = props.importLayouts({
+        layoutsByProfile: parsed.layoutsByProfile,
+        meterInstances: parsed.meterInstances,
+        layoutEditPrefs: parsed.layoutEditPrefs
+      });
+      if (importedMeters && props.onMetersImported) {
+        props.onMetersImported(importedMeters);
+      }
+      const bits = ["Layout imported"];
+      if (parsed.meterInstances) bits.push("meters");
+      if (parsed.layoutEditPrefs) bits.push("snap prefs");
+      setStatus(
+        bits.length > 1 ? `Layout imported (${bits.slice(1).join(" + ")})` : bits[0]
+      );
       setPasteOpen(false);
       setPasteText("");
     };
@@ -12780,7 +14893,7 @@ var EnhanceCommUI = (() => {
             type: "button",
             onClick: props.onResetMeters,
             style: btnStyle(false, true),
-            title: "Replace meter windows with defaults: Damage, Healing, PDPS, s.coop v2"
+            title: "Replace meter windows with defaults: DPS \u2016 HPS"
           },
           "Meters"
         ) : null,
@@ -12895,7 +15008,7 @@ var EnhanceCommUI = (() => {
             paddingTop: "2px"
           }
         },
-        freePlacement ? "Free drag/resize (edit + play) \xB7 peer + screen-edge \xB7 Ctrl+Shift+L" : `${stepLabel} fine snap (edit + unlocked play) \xB7 Shift=free size \xB7 Ctrl+Shift+L`
+        freePlacement ? `Free drag/resize (edit + play) \xB7 peer + screen-edge \xB7 ${PLACE_WITHOUT_GROUP_HINT} \xB7 Ctrl+Shift+L` : `${stepLabel} fine snap (edit + unlocked play) \xB7 Shift=free size \xB7 ${PLACE_WITHOUT_GROUP_HINT} \xB7 Ctrl+Shift+L`
       ),
       status ? e("div", { style: { fontSize: TYPE.secondary, color: "#9a9" } }, status) : null,
       pasteOpen ? e(
@@ -13031,43 +15144,6 @@ var EnhanceCommUI = (() => {
     );
   }
 
-  // src/meters/meterWindowGroup.ts
-  function meterHasSnap(inst) {
-    return panelHasSnap(inst);
-  }
-  function applyGroupFrameSize2(instances, resizedId, size) {
-    return applyGroupFrameSize(instances, resizedId, size);
-  }
-  function getMeterGroup(instances, startId) {
-    return getEdgeGroup(instances, startId);
-  }
-  function pinAlwaysShowSelf(rows, maxRows, youId2, enabled) {
-    const capped = maxRows > 0 ? maxRows : rows.length;
-    if (!enabled || !youId2 || rows.length <= capped) {
-      return rows.slice(0, capped).map((r, i) => r.rank != null ? r : { ...r, rank: i + 1 });
-    }
-    const ranked = rows.map(
-      (r, i) => r.rank != null ? r : { ...r, rank: i + 1 }
-    );
-    let youIdx = -1;
-    for (let i = 0; i < ranked.length; i++) {
-      if (ranked[i].id === youId2) {
-        youIdx = i;
-        break;
-      }
-    }
-    if (youIdx < 0 || youIdx < capped) return ranked.slice(0, capped);
-    const out = ranked.slice(0, capped - 1);
-    out.push(ranked[youIdx]);
-    return out;
-  }
-  function maxRowsForFrameHeight(frameH) {
-    const h = frameH && frameH > 0 ? frameH : 180;
-    const chrome = 52;
-    const row2 = 16;
-    return Math.max(3, Math.floor((h - chrome) / row2));
-  }
-
   // src/lib/panelDragSnap.ts
   var PEER_SNAP_PCT = 1;
   var VISUAL_EDGE_SNAP_PX = 8;
@@ -13078,11 +15154,6 @@ var EnhanceCommUI = (() => {
     let useVisualEdge = true;
     const free = input.free;
     if (!free) {
-      const metrics = squareGridMetrics(
-        input.gridStep,
-        input.rootWidth,
-        input.rootHeight
-      );
       const snapped = snapPosToFineGrid(
         nextX,
         nextY,
@@ -13092,18 +15163,27 @@ var EnhanceCommUI = (() => {
       );
       nextX = snapped.x;
       nextY = snapped.y;
-      const cellPctX = metrics.cellPx / Math.max(1, input.rootWidth) * 100;
-      const cellPctY = metrics.cellPx / Math.max(1, input.rootHeight) * 100;
-      const peerThresh = Math.min(
-        PEER_SNAP_PCT,
-        Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4)
-      );
-      nextX = snapPercent(nextX, peerThresh, input.peerXs);
-      nextY = snapPercent(nextY, peerThresh, input.peerYs);
+      if (!input.skipPeerSnap) {
+        const metrics = squareGridMetrics(
+          input.gridStep,
+          input.rootWidth,
+          input.rootHeight
+        );
+        const cellPctX = metrics.cellPx / Math.max(1, input.rootWidth) * 100;
+        const cellPctY = metrics.cellPx / Math.max(1, input.rootHeight) * 100;
+        const peerThresh = Math.min(
+          PEER_SNAP_PCT,
+          Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4)
+        );
+        nextX = snapPercent(nextX, peerThresh, input.peerXs);
+        nextY = snapPercent(nextY, peerThresh, input.peerYs);
+      }
       useVisualEdge = false;
     } else {
-      nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
-      nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
+      if (!input.skipPeerSnap) {
+        nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
+        nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
+      }
       edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
     }
     const visual = input.visual;
@@ -13119,6 +15199,11 @@ var EnhanceCommUI = (() => {
       if (edge.snapY) nextY = edge.y;
     }
     return { x: nextX, y: nextY };
+  }
+
+  // src/lib/panelGroupDrag.ts
+  function isPlaceWithoutGroupModifier(ev) {
+    return !!ev.ctrlKey;
   }
 
   // src/ui/chrome/WindowControlChrome.ts
@@ -13147,6 +15232,10 @@ var EnhanceCommUI = (() => {
           ev.preventDefault();
           ev.stopPropagation();
           props.onToggleLock();
+          try {
+            ev.currentTarget.blur();
+          } catch (e2) {
+          }
         },
         onPointerDown: (ev) => ev.stopPropagation(),
         style: chromeBtnStyle(touchish, !!props.locked)
@@ -13184,6 +15273,10 @@ var EnhanceCommUI = (() => {
               ev.stopPropagation();
               props.onToggleLock();
               setWcOpen(false);
+              try {
+                ev.currentTarget.blur();
+              } catch (e2) {
+              }
             }
           },
           props.locked ? "Unlock" : "Lock"
@@ -13335,6 +15428,11 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/chrome/PositionedPanelChrome.ts
+  var PLACE_WITHOUT_GROUP_HINT2 = "Ctrl = place without grouping";
+  function dragMoveTitle(label) {
+    const base = label ? `Drag to move \xB7 ${label}` : "Drag to move";
+    return `${base} \xB7 ${PLACE_WITHOUT_GROUP_HINT2}`;
+  }
   function anchorMeta(id) {
     for (let i = 0; i < LAYOUT_ANCHOR_OPTIONS.length; i++) {
       if (LAYOUT_ANCHOR_OPTIONS[i].id === id) return LAYOUT_ANCHOR_OPTIONS[i];
@@ -13368,13 +15466,13 @@ var EnhanceCommUI = (() => {
       onPointerUp
     } = args;
     const closeAbove = props.closePlacement === "above";
-    const showClose = !!onClose && !hidden && (hover || touchish || editing && !props.closeOnHoverOnly);
+    const showClose = !!onClose && !hidden && (hover || touchish || movable || editing && !props.closeOnHoverOnly);
     const moveGrip = movable && props.showMoveGrip !== false || editing && editChrome === "grip" ? e(
       "div",
       {
         className: "comm-pos-edit-grip",
-        title: "Drag to move",
-        "aria-label": "Drag to move",
+        title: dragMoveTitle(),
+        "aria-label": dragMoveTitle(),
         style: {
           display: "flex",
           alignItems: "center",
@@ -13481,7 +15579,7 @@ var EnhanceCommUI = (() => {
             );
             continue;
           }
-          const meta = anchorMeta(a);
+          const meta2 = anchorMeta(a);
           const active = pos.anchor === a;
           cells.push(
             e(
@@ -13489,8 +15587,8 @@ var EnhanceCommUI = (() => {
               {
                 key: a,
                 type: "button",
-                title: meta.title,
-                "aria-label": meta.title,
+                title: meta2.title,
+                "aria-label": meta2.title,
                 "aria-pressed": active,
                 onClick: (ev) => {
                   ev.preventDefault();
@@ -13512,7 +15610,7 @@ var EnhanceCommUI = (() => {
                   boxSizing: "border-box"
                 }
               },
-              meta.glyph
+              meta2.glyph
             )
           );
         }
@@ -13535,7 +15633,7 @@ var EnhanceCommUI = (() => {
       "div",
       {
         className: "comm-pos-arrange-overlay" + (moveGrip ? " has-grip" : " is-chrome-only") + (arrangePlacement === "inline" ? " is-inline" : " is-above"),
-        title: moveGrip ? `Drag to move \xB7 ${panelLabel}` : void 0
+        title: moveGrip ? dragMoveTitle(panelLabel) : void 0
       },
       moveGrip,
       props.onToggleLock || props.onUngroup ? windowChrome : null,
@@ -13576,8 +15674,8 @@ var EnhanceCommUI = (() => {
       "div",
       {
         className: "comm-pos-edit-header is-anchors-only",
-        title: `Drag to move \xB7 ${panelLabel}`,
-        "aria-label": `Drag to move ${panelLabel}`,
+        title: dragMoveTitle(panelLabel),
+        "aria-label": dragMoveTitle(panelLabel),
         style: {
           ...editHeaderStyle,
           justifyContent: "space-between",
@@ -13608,6 +15706,8 @@ var EnhanceCommUI = (() => {
       "div",
       {
         className: "comm-pos-edit-header",
+        title: dragMoveTitle(panelLabel),
+        "aria-label": dragMoveTitle(panelLabel),
         style: editHeaderStyle,
         onPointerDown,
         onPointerMove,
@@ -13724,6 +15824,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/ui/chrome/PositionedPanel.ts
+  var HUD_FRAME_MIN = { w: 80, h: 48 };
   function PositionedPanel(props) {
     const React = getReact();
     const { id, pos, editing, onMove, children, onClose, hidden, onShow } = props;
@@ -13852,6 +15953,42 @@ var EnhanceCommUI = (() => {
     const visualStart = React.useRef(null);
     const lastPos = React.useRef(pos);
     lastPos.current = pos;
+    const skipGroupRef = React.useRef(false);
+    const dragKeyCleanupRef = React.useRef(null);
+    const groupDragOpts = () => skipGroupRef.current ? { skipGroupJoin: true } : void 0;
+    const syncGroupSnapSuppress = (held) => {
+      skipGroupRef.current = held;
+    };
+    const detachDragKeyListeners = () => {
+      if (!dragKeyCleanupRef.current) return;
+      dragKeyCleanupRef.current();
+      dragKeyCleanupRef.current = null;
+    };
+    const attachDragKeyListeners = () => {
+      detachDragKeyListeners();
+      const onKey = (e2) => {
+        if (!dragging.current) return;
+        if (e2.key !== "Control") return;
+        const held = e2.ctrlKey;
+        if (held === skipGroupRef.current) return;
+        syncGroupSnapSuppress(held);
+        if (props.onDragMove) {
+          props.onDragMove(id, lastPos.current, groupDragOpts());
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      window.addEventListener("keyup", onKey);
+      dragKeyCleanupRef.current = () => {
+        window.removeEventListener("keydown", onKey);
+        window.removeEventListener("keyup", onKey);
+      };
+    };
+    React.useEffect(() => {
+      return () => {
+        detachDragKeyListeners();
+        skipGroupRef.current = false;
+      };
+    }, []);
     const touchish = isTouchishProfile(props.viewportProfile || "desktop");
     const closeSize = touchish ? 36 : 22;
     const headerPad = touchish ? "8px 12px" : "3px 8px";
@@ -13902,11 +16039,14 @@ var EnhanceCommUI = (() => {
         layoutDragRoot(),
         pos
       );
+      syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
+      attachDragKeyListeners();
       if (props.onDragStart) props.onDragStart(id);
       trySetPointerCapture(ev.currentTarget, ev.pointerId);
     };
     const onPointerMove = (ev) => {
       if (!dragging.current) return;
+      syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
       const raw = percentFromPointerDrag(ev.clientX, ev.clientY, start.current);
       const free = freePlacementRef.current || getLayoutFreePlacement();
       let rootWidth = 0;
@@ -13917,6 +16057,7 @@ var EnhanceCommUI = (() => {
         rootHeight = root.height;
       }
       const { xs, ys } = peerAxes();
+      const skipPeer = skipGroupRef.current || panelHasSnap({ id: String(id), pos, snap: pos.snap });
       const snapped = applyPanelDragMove({
         rawX: raw.x,
         rawY: raw.y,
@@ -13929,17 +16070,24 @@ var EnhanceCommUI = (() => {
         rootWidth,
         rootHeight,
         peerXs: xs,
-        peerYs: ys
+        peerYs: ys,
+        skipPeerSnap: skipPeer
       });
       onMove(id, { ...pos, x: snapped.x, y: snapped.y });
       if (props.onDragMove) {
-        props.onDragMove(id, { ...pos, x: snapped.x, y: snapped.y });
+        props.onDragMove(
+          id,
+          { ...pos, x: snapped.x, y: snapped.y },
+          groupDragOpts()
+        );
       }
     };
     const onPointerUp = (ev) => {
       if (!dragging.current) return;
       dragging.current = false;
       visualStart.current = null;
+      syncGroupSnapSuppress(isPlaceWithoutGroupModifier(ev));
+      detachDragKeyListeners();
       tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
       let finalPos = lastPos.current;
       if (props.softAvoid !== false) {
@@ -13965,7 +16113,9 @@ var EnhanceCommUI = (() => {
       if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
         onMove(id, finalPos);
       }
-      if (props.onMoveEnd) props.onMoveEnd(id, finalPos);
+      if (props.onMoveEnd) props.onMoveEnd(id, finalPos, groupDragOpts());
+      skipGroupRef.current = false;
+      syncGroupSnapSuppress(false);
     };
     const dragHandlersRef = React.useRef({
       onPointerDown,
@@ -14003,6 +16153,70 @@ var EnhanceCommUI = (() => {
     const interactiveBody = !!props.interactiveBody;
     const editChrome = props.editChrome === "grip" || props.editChrome === "anchors" ? props.editChrome : "full";
     const movable = !!props.movable && !editing;
+    const showResizeHandles = props.showResizeHandles !== false && !!props.onResizeFrame && (editing || movable);
+    const onResizePointerDown = (ev, corner) => {
+      if (!props.onResizeFrame) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const el = shellRef.current;
+      if (!el) return;
+      const startX = ev.clientX;
+      const startY = ev.clientY;
+      const startW = Math.round(el.offsetWidth);
+      const startH = Math.round(el.offsetHeight);
+      beginLayoutGuide();
+      const pointerId = ev.pointerId;
+      try {
+        ev.currentTarget.setPointerCapture(pointerId);
+      } catch (e2) {
+      }
+      let pendingW = startW;
+      let pendingH = startH;
+      const sizeFrame2 = (w, h, freeForm) => {
+        const root = layoutDragRoot().getBoundingClientRect();
+        const maxW = Math.max(HUD_FRAME_MIN.w, Math.round(root.width) || w);
+        const maxH = Math.max(HUD_FRAME_MIN.h, Math.round(root.height) || h);
+        let outW = Math.min(maxW, Math.max(HUD_FRAME_MIN.w, Math.round(w)));
+        let outH = Math.min(maxH, Math.max(HUD_FRAME_MIN.h, Math.round(h)));
+        if (!(freeForm || freePlacementRef.current || getLayoutFreePlacement())) {
+          const snapped = snapFrameSizeToGrid(
+            outW,
+            outH,
+            gridStepRef.current,
+            root.width,
+            root.height
+          );
+          outW = snapped.w;
+          outH = snapped.h;
+        }
+        return { w: outW, h: outH };
+      };
+      const onMove2 = (e2) => {
+        const dx = e2.clientX - startX;
+        const dy = e2.clientY - startY;
+        const rawW = corner === "br" ? startW + dx : startW - dx;
+        const next = sizeFrame2(rawW, startH + dy, !!e2.shiftKey);
+        pendingW = next.w;
+        pendingH = next.h;
+        el.style.width = pendingW + "px";
+        el.style.height = pendingH + "px";
+      };
+      const onUp = () => {
+        endLayoutGuide();
+        window.removeEventListener("pointermove", onMove2);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        try {
+          ev.currentTarget.releasePointerCapture(pointerId);
+        } catch (e2) {
+        }
+        if (props.onResizeFrame)
+          props.onResizeFrame({ w: pendingW, h: pendingH });
+      };
+      window.addEventListener("pointermove", onMove2);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    };
     const shellStyle = Object.assign(
       {},
       panelStyle(pos, editing || movable),
@@ -14010,6 +16224,10 @@ var EnhanceCommUI = (() => {
       {
         opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity
       },
+      // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
+      // the stock 7-col float inventory. Other HUD panels use frameW/H.
+      id !== "bag" && typeof pos.frameW === "number" && pos.frameW > 0 ? { width: Math.round(pos.frameW) + "px" } : null,
+      id !== "bag" && typeof pos.frameH === "number" && pos.frameH > 0 ? { height: Math.round(pos.frameH) + "px" } : null,
       editing ? {
         // Cyan + dark edge — yellow grid uses the same warm dashes as the old outline.
         outline: hidden ? "2px dashed rgba(160,160,160,0.85)" : "2px solid rgba(80, 210, 255, 0.95)",
@@ -14095,7 +16313,7 @@ var EnhanceCommUI = (() => {
       "div",
       {
         ref: shellRef,
-        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
+        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
         "data-panel": id,
         style: shellStyle,
         onPointerDownCapture: onActivateCapture,
@@ -14120,7 +16338,17 @@ var EnhanceCommUI = (() => {
           style: interactiveBody ? { pointerEvents: "auto" } : void 0
         },
         children
-      ) : children
+      ) : children,
+      showResizeHandles ? e("div", {
+        className: "comm-pos-resize comm-pos-resize-left",
+        title: "Resize from bottom-left (keeps top-right fixed \xB7 Shift = free size)",
+        onPointerDown: (ev) => onResizePointerDown(ev, "bl")
+      }) : null,
+      showResizeHandles ? e("div", {
+        className: "comm-pos-resize",
+        title: getLayoutFreePlacement() ? "Resize from bottom-right (keeps top-left fixed \xB7 free size)" : "Resize from bottom-right (keeps top-left fixed \xB7 Shift = free size)",
+        onPointerDown: (ev) => onResizePointerDown(ev, "br")
+      }) : null
     );
   }
 
@@ -14132,7 +16360,7 @@ var EnhanceCommUI = (() => {
   var METER_BODY_CORE_CSS = `
 .ecu-meter-report-mark {
   color: var(--meter-accent);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   line-height: 1;
   flex-shrink: 0;
   opacity: 0.95;
@@ -14161,7 +16389,7 @@ var EnhanceCommUI = (() => {
 .ecu-meter-inspector-sub {
   color: var(--meter-muted);
   font-weight: 400;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -14172,7 +16400,7 @@ var EnhanceCommUI = (() => {
   padding: 0 4px;
 }
 .ecu-meter-shell.is-inspector .ecu-meter-player-tab {
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   padding: 5px 10px;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
@@ -14217,7 +16445,7 @@ var EnhanceCommUI = (() => {
   overflow-x: hidden;
 }
 .ecu-meter-plugin-rail-sec {
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8a7a5a;
@@ -14234,7 +16462,7 @@ var EnhanceCommUI = (() => {
   border-radius: 2px;
   background: transparent;
   color: #c8c2b4;
-  font-size: 13px;
+  font-size: var(--meter-fs-body);
   padding: 6px 6px;
   line-height: 1.25;
 }
@@ -14255,7 +16483,7 @@ var EnhanceCommUI = (() => {
   flex-shrink: 0;
   width: 16px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   color: #c9a227;
 }
 .ecu-meter-plugin-rail-lab {
@@ -14278,7 +16506,7 @@ var EnhanceCommUI = (() => {
   border-bottom: 2px solid transparent;
   color: var(--meter-muted);
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   margin-bottom: -1px;
 }
 .ecu-meter-shell.is-report .ecu-meter-report-tab:hover {
@@ -14345,7 +16573,7 @@ var EnhanceCommUI = (() => {
   white-space: nowrap;
   text-overflow: ellipsis;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
   color: var(--meter-text);
 }
 .ecu-meter-row .ecu-meter-label {
@@ -14360,7 +16588,9 @@ var EnhanceCommUI = (() => {
   z-index: 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--meter-fs-secondary);
   color: #fff;
 }
 .ecu-meter-row .ecu-meter-pct { color: var(--meter-text); opacity: 0.75; }
@@ -14592,8 +16822,8 @@ var EnhanceCommUI = (() => {
   line-height: 1.3;
 }
 .ecu-meter-tt.is-gear-tip {
-  min-width: 300px;
-  max-width: 440px;
+  min-width: 360px;
+  max-width: 520px;
 }
 .ecu-meter-tt.is-tl-ev-tip {
   min-width: 260px;
@@ -14636,7 +16866,7 @@ var EnhanceCommUI = (() => {
   font-size: var(--meter-tt-sec);
 }
 .ecu-meter-tt-gear {
-  --meter-tt-icon: 26px;
+  --meter-tt-icon: 40px;
 }
 .ecu-meter-tt-gear-list,
 .ecu-meter-tt-evs-list {
@@ -14645,12 +16875,11 @@ var EnhanceCommUI = (() => {
   gap: 0;
 }
 .ecu-meter-tt-gear-row {
-  display: grid;
-  grid-template-columns: 76px 72px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 8px;
-  row-gap: 2px;
-  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 0;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .ecu-meter-tt-gear-row:first-child {
@@ -14661,62 +16890,88 @@ var EnhanceCommUI = (() => {
 .ecu-meter-tt-ev-row.is-muted {
   opacity: 0.78;
 }
+.ecu-meter-tt-gear-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
 .ecu-meter-tt-gear-slot {
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   color: #e8b84a;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.ecu-meter-tt-gear-icos {
-  display: inline-flex;
+.ecu-meter-tt-gear-swap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
   align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
+  column-gap: 8px;
+  min-width: 0;
 }
-.ecu-meter-tt-gear-icos.is-single {
-  min-width: calc(var(--meter-tt-icon) + 4px);
-  justify-content: center;
+.ecu-meter-tt-gear-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ecu-meter-tt-gear-side.is-empty {
+  opacity: 0.72;
+}
+.ecu-meter-tt-gear-ico {
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.ecu-meter-tt-gear-ico .ecu-item-instance,
+.ecu-meter-tt-gear-ico .ecu-item-instance > * {
+  margin: 0 !important;
+  vertical-align: top;
+}
+.ecu-meter-tt-gear-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.ecu-meter-tt-gear-name {
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-gear-key {
+  color: #8b9bb4;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-gear-item {
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+  line-height: 1.2;
+  white-space: nowrap;
 }
 .ecu-meter-tt-gear-arrow {
   flex: 0 0 auto;
   color: #e8b84a;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-}
-.ecu-meter-tt-gear-arrow-sm {
-  flex: 0 0 auto;
-  color: #8b9bb4;
-  font-size: 11px;
-  line-height: 1;
-}
-.ecu-meter-tt-gear-names {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  color: #fff;
-  font-size: var(--meter-tt-sec);
-  line-height: 1.2;
-}
-.ecu-meter-tt-gear-names .is-old,
-.ecu-meter-tt-gear-names .is-new {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ecu-meter-tt-gear-verb {
-  color: #e8b84a;
-  font-weight: 600;
-  flex: 0 0 auto;
+  text-align: center;
 }
 .ecu-meter-tt-gear-row-at {
-  grid-column: 1 / -1;
   font-size: 11px;
   color: #8b9bb4;
-  padding-left: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 .ecu-meter-tt-gear-empty {
   display: inline-block;
@@ -14725,10 +16980,10 @@ var EnhanceCommUI = (() => {
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.25);
   vertical-align: middle;
+  flex: 0 0 auto;
 }
 .ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-slot,
-.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-arrow,
-.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-verb {
+.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-arrow {
   color: #c9b878;
 }
 /* Dense CD / buff / debuff / death rows \u2014 pill + icon + name, not stacked cards. */
@@ -15059,6 +17314,9 @@ var EnhanceCommUI = (() => {
   flex: 1 1 0;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-width: 0;
   font-size: 9px;
   line-height: 1;
   letter-spacing: 0.05em;
@@ -15067,6 +17325,26 @@ var EnhanceCommUI = (() => {
 }
 .ecu-meter-tl-gutter-axis-lab.is-clock {
   color: #6d7a92;
+}
+/* Quiet strip chip \u2014 matches Fight/Clock labels, not filter-tab chrome. */
+.ecu-meter-tl-now-btn {
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin: 0;
+  border: none;
+  border-radius: 1px;
+  background: transparent;
+  color: #c9b878;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 1px 3px;
+}
+.ecu-meter-tl-now-btn:hover {
+  color: #ffe08a;
+  background: rgba(201, 162, 39, 0.14);
 }
 .ecu-meter-tl-gutter-rows {
   flex: 1;
@@ -15491,7 +17769,7 @@ var EnhanceCommUI = (() => {
   background: transparent;
   color: #9aa;
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-player-tab:hover {
   color: #eee;
@@ -15512,10 +17790,10 @@ var EnhanceCommUI = (() => {
   font-weight: normal;
 }
 .ecu-meter-row .ecu-meter-who {
-  font-size: 11px !important;
+  font-size: var(--meter-fs-secondary) !important;
 }
 .ecu-meter-row .ecu-meter-vals {
-  font-size: 11px !important;
+  font-size: var(--meter-fs-secondary) !important;
 }
 .ecu-meter-icon {
   width: 14px !important;
@@ -15540,7 +17818,7 @@ var EnhanceCommUI = (() => {
   border: none;
   border-radius: 0;
   color: var(--meter-muted);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   background: rgba(40, 44, 50, 0.7);
   flex-shrink: 0;
 }
@@ -15557,16 +17835,20 @@ var EnhanceCommUI = (() => {
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 3px;
-  min-height: 16px;
-  height: 16px;
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
   padding: 0 4px 0 2px;
   cursor: default;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
+  line-height: 1.15;
   color: #fff;
   font-weight: normal;
-  text-shadow: 1px 1px 0 #000, -1px 0 0 rgba(0,0,0,0.55);
+  text-shadow: none;
   background: transparent;
   border: none;
+  overflow: hidden;
+  flex: 0 0 auto;
+  box-sizing: border-box;
 }
 .ecu-meter-row.clickable { cursor: pointer; }
 .ecu-meter-row:nth-child(even) { background: transparent; }
@@ -15579,7 +17861,10 @@ var EnhanceCommUI = (() => {
   font-variant-numeric: tabular-nums;
   opacity: 0.92;
 }
-.ecu-meter-row.has-skill { min-height: 18px; height: 18px; }
+.ecu-meter-row.has-skill {
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
+}
 .ecu-meter-row:last-child {
   border-radius: 0 0 2px 2px;
 }
@@ -15598,7 +17883,7 @@ var EnhanceCommUI = (() => {
   font-variant-numeric: tabular-nums;
   width: 16px;
   z-index: 1;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   opacity: 1;
   background: transparent !important;
   border: none !important;
@@ -15641,7 +17926,7 @@ var EnhanceCommUI = (() => {
   min-height: 0;
 }
 .ecu-meter-bd-side-sec {
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #c9a227;
@@ -15673,7 +17958,7 @@ var EnhanceCommUI = (() => {
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.03);
   color: #c8c2b4;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   padding: 4px 6px;
   line-height: 1.25;
 }
@@ -15701,7 +17986,7 @@ var EnhanceCommUI = (() => {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   color: #8b9bb0;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-bd-side-item.is-active .ecu-meter-bd-side-amt {
   color: #ffe08a;
@@ -15709,7 +17994,7 @@ var EnhanceCommUI = (() => {
 .ecu-meter-bd-side-empty {
   padding: 6px;
   color: #6a7384;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-bd-side .ecu-game-icon,
 .ecu-meter-bd-side .ecu-meter-icon {
@@ -15790,11 +18075,15 @@ var EnhanceCommUI = (() => {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .ecu-meter-bd-abilities .ecu-meter-bar-host,
 .ecu-meter-bd-targets .ecu-meter-bar-host,
 .ecu-meter-bd-auras-players .ecu-meter-bar-host {
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
 }
 .ecu-meter-bd-abilities .ecu-meter-row.clickable,
@@ -16462,6 +18751,58 @@ var EnhanceCommUI = (() => {
   flex-wrap: wrap;
   align-items: center;
 }
+/* Chart / pie / series fill the meter body (no dead black space). */
+.ecu-meter-chart-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 4px;
+}
+.ecu-meter-pie {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.ecu-meter-pie-canvas-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-meter-pie canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+.ecu-meter-pie-legend {
+  flex: 0 1 42%;
+  min-width: 96px;
+  max-width: 48%;
+  max-height: 100%;
+  overflow: auto;
+  font-size: var(--meter-fs-body);
+  scrollbar-width: thin;
+}
+.ecu-meter-graph-canvas-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  position: relative;
+}
 /* \u2014\u2014 Details parity: bars & icons \u2014\u2014 */
 .ecu-meter-icon.ecu-meter-icon-class {
   display: inline-flex;
@@ -16489,10 +18830,25 @@ var EnhanceCommUI = (() => {
 .ecu-meter-fill.ecu-meter-fill-anim {
   transition: width 0.25s ease;
 }
+/* Ranked bars: body is a flex frame; only .ecu-meter-bar-scroll scrolls. */
+.ecu-meter-body:has(.ecu-meter-bar-host) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: none;
+}
+.ecu-meter-bar-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 .ecu-meter-row.is-total {
   background: rgba(0, 0, 0, 0.42);
-  min-height: 18px;
-  height: 18px;
+  min-height: var(--meter-bar-row-h, 18px);
+  height: var(--meter-bar-row-h, 18px);
   font-weight: 600;
   border-top: 1px solid rgba(0, 0, 0, 0.55);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -16506,8 +18862,11 @@ var EnhanceCommUI = (() => {
 .ecu-meter-bar-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(180, 180, 180, 0.35) transparent;
 }
@@ -16518,19 +18877,30 @@ var EnhanceCommUI = (() => {
   background: rgba(180, 180, 180, 0.35);
   border-radius: 2px;
 }
+.ecu-meter-bar-pin {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+  border-top: 1px solid rgba(232, 201, 106, 0.35);
+  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.35);
+  background: rgba(12, 12, 14, 0.92);
+}
+.ecu-meter-bar-pin[hidden] {
+  display: none !important;
+}
 /* \u2014\u2014 Details parity: statusbar \u2014\u2014 */
 .ecu-meter-statusbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
-  padding: 1px 6px;
-  min-height: 18px;
+  padding: 3px 6px;
+  min-height: 22px;
   background: linear-gradient(180deg, rgba(40, 36, 38, 0.95) 0%, rgba(26, 21, 24, 0.98) 100%);
   border-top: 1px solid rgba(0, 0, 0, 0.55);
   color: var(--meter-muted);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
   font-variant-numeric: tabular-nums;
 }
 /* Keep statusbar actions clear of corner resize grips while arranging. */
@@ -16545,8 +18915,23 @@ var EnhanceCommUI = (() => {
   font: inherit;
   padding: 0 2px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: default;
   line-height: 1.3;
+  min-width: 0;
+}
+.ecu-meter-status-slot-left {
+  justify-self: start;
+  text-align: left;
+}
+.ecu-meter-status-slot-center {
+  justify-self: center;
+  text-align: center;
+}
+.ecu-meter-status-slot-right {
+  justify-self: end;
+  text-align: right;
 }
 button.ecu-meter-status-micro {
   cursor: pointer;
@@ -16557,7 +18942,6 @@ button.ecu-meter-status-micro:hover,
 }
 .ecu-meter-status-micro.ecu-meter-status-link {
   cursor: pointer;
-  margin-left: auto;
 }
 /* \u2014\u2014 Details parity: options panel \u2014\u2014 */
 .ecu-meter-options-backdrop {
@@ -16581,7 +18965,7 @@ button.ecu-meter-status-micro:hover,
   outline: 1px solid rgba(232, 201, 106, 0.28);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.62);
   color: #eee;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   scrollbar-width: thin;
   scrollbar-color: #5a5050 #1a1618;
 }
@@ -16602,7 +18986,7 @@ button.ecu-meter-status-micro:hover,
   flex: 1;
   min-width: 0;
   color: rgba(220, 210, 210, 0.72);
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -16638,25 +19022,17 @@ button.ecu-meter-status-micro:hover,
 }
 .ecu-meter-opt-label {
   color: #ddd;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   flex: 1;
   min-width: 0;
-}
-.ecu-meter-opt-row input[type="checkbox"] {
-  margin: 0;
-  accent-color: #c9a227;
-}
-.ecu-meter-opt-row input[type="range"] {
-  width: 120px;
-  accent-color: #c9a227;
 }
 .ecu-meter-opt-btn {
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: #eee;
-  padding: 4px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
 }
 .ecu-meter-opt-btn:hover {
@@ -16829,7 +19205,7 @@ button.ecu-meter-status-micro:hover,
   padding: 5px 0;
   box-shadow: 0 10px 28px rgba(0,0,0,0.65);
   color: #eee;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   max-height: min(360px, 72vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -16861,7 +19237,7 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-cooltip-sec {
   padding: 5px 12px 3px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 11px;
+  font-size: var(--meter-fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -16875,18 +19251,59 @@ button.ecu-meter-status-micro:hover,
   border: none;
   color: #eee;
   padding: 5px 14px;
-  font-size: 13px;
+  font-size: var(--meter-fs-body);
   line-height: 1.4;
 }
-.ecu-meter-cooltip-item:hover {
+.ecu-meter-cooltip-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ecu-meter-cooltip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #eee;
+  padding: 5px 6px 5px 14px;
+  font-size: var(--meter-fs-body);
+  line-height: 1.4;
+}
+.ecu-meter-cooltip-trail {
+  flex: 0 0 auto;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: rgba(220, 210, 210, 0.55);
+  padding: 5px 12px 5px 4px;
+  font-size: var(--meter-fs-body);
+  line-height: 1.4;
+}
+.ecu-meter-cooltip-trail:hover,
+.ecu-meter-cooltip-trail.is-fav {
+  color: #ffd28a;
+}
+.ecu-meter-cooltip-item:hover,
+.ecu-meter-cooltip-row:hover {
   background: rgba(255,255,255,0.1);
   color: #fff;
 }
-.ecu-meter-cooltip-item.is-selected {
+.ecu-meter-cooltip-row:hover .ecu-meter-cooltip-main {
+  color: #fff;
+}
+.ecu-meter-cooltip-item.is-selected,
+.ecu-meter-cooltip-row.is-selected,
+.ecu-meter-cooltip-row.is-selected .ecu-meter-cooltip-main {
   color: #ffd28a;
   background: rgba(232, 201, 106, 0.12);
 }
-.ecu-meter-cooltip-item.is-muted {
+.ecu-meter-cooltip-item.is-muted,
+.ecu-meter-cooltip-row.is-muted,
+.ecu-meter-cooltip-row.is-muted .ecu-meter-cooltip-main {
   color: rgba(220, 210, 210, 0.55);
 }
 .ecu-meter-cooltip-div {
@@ -16915,7 +19332,7 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-bookmark-hint {
   padding: 0 2px 4px;
   color: rgba(220, 210, 210, 0.55);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
 }
 .ecu-meter-bookmark-slot {
   cursor: grab;
@@ -16924,7 +19341,7 @@ button.ecu-meter-status-micro:hover,
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
   min-height: 32px;
   touch-action: none;
@@ -16959,7 +19376,7 @@ button.ecu-meter-status-micro:hover,
   max-height: min(360px, 70vh);
   overflow: auto;
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   z-index: 2147483000;
   pointer-events: auto;
   scrollbar-width: thin;
@@ -16974,7 +19391,7 @@ button.ecu-meter-status-micro:hover,
   grid-column: 1 / -1;
   padding: 6px 4px 2px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 10px;
+  font-size: var(--meter-fs-micro);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -16985,7 +19402,7 @@ button.ecu-meter-status-micro:hover,
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
   color: #eee;
-  font-size: 11px;
+  font-size: var(--meter-fs-secondary);
   border-radius: 2px;
   min-height: 28px;
 }
@@ -16999,20 +19416,61 @@ button.ecu-meter-status-micro:hover,
 }
 /* \u2014\u2014 Details parity: segment outcome colors \u2014\u2014 */
 .ecu-meter-cooltip-item.ecu-seg-wipe,
+.ecu-meter-cooltip-row.ecu-seg-wipe .ecu-meter-cooltip-main,
 .ecu-seg-wipe {
   color: #ef5350;
 }
-.ecu-meter-cooltip-item.ecu-seg-wipe:hover {
+.ecu-meter-cooltip-item.ecu-seg-wipe:hover,
+.ecu-meter-cooltip-row.ecu-seg-wipe:hover {
   color: #ff8a80;
   background: rgba(229, 57, 53, 0.12);
 }
+.ecu-meter-cooltip-row.ecu-seg-wipe:hover .ecu-meter-cooltip-main {
+  color: #ff8a80;
+}
 .ecu-meter-cooltip-item.ecu-seg-kill,
+.ecu-meter-cooltip-row.ecu-seg-kill .ecu-meter-cooltip-main,
 .ecu-seg-kill {
   color: #66bb6a;
 }
-.ecu-meter-cooltip-item.ecu-seg-kill:hover {
+.ecu-meter-cooltip-item.ecu-seg-kill:hover,
+.ecu-meter-cooltip-row.ecu-seg-kill:hover {
   color: #a5d6a7;
   background: rgba(76, 175, 80, 0.12);
+}
+.ecu-meter-cooltip-row.ecu-seg-kill:hover .ecu-meter-cooltip-main {
+  color: #a5d6a7;
+}
+/* Wrap holds the scrolling menu + a sibling flyout (overflow would clip children). */
+.ecu-meter-cooltip-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 6px;
+}
+.ecu-meter-cooltip-wrap.is-flip {
+  flex-direction: row-reverse;
+}
+.ecu-meter-cooltip-wrap > .ecu-meter-cooltip {
+  position: relative;
+  left: auto;
+  top: auto;
+  z-index: auto;
+}
+.ecu-meter-cooltip-detail {
+  pointer-events: none;
+  flex: 0 0 auto;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: #141214;
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  outline: 1px solid rgba(232, 201, 106, 0.28);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  color: #eee;
+  font-size: var(--meter-fs-body);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
 /* \u2014\u2014 Details parity: bookmark header \u2014\u2014 */
 .ecu-meter-bookmark-hd {
@@ -17029,7 +19487,7 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-bookmark-hd-title {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--meter-fs-title);
   font-weight: 600;
   color: #ffd28a;
   overflow: hidden;
@@ -17039,6 +19497,134 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-bookmark-hd .ecu-meter-tool,
 .ecu-meter-bookmark-hd .ecu-meter-btn {
   flex-shrink: 0;
+}
+`;
+
+  // src/ui/meter/css/meterChromeScaleCss.ts
+  var METER_CHROME_SCALE_CSS = `
+.ecu-meter-shell,
+.ecu-meter-cooltip,
+.ecu-meter-cooltip-detail,
+.ecu-meter-switch-overlay,
+.ecu-meter-bookmark-overlay,
+.ecu-meter-options-panel {
+  --meter-fs-title: ${TYPE.chrome};
+  --meter-fs-body: ${TYPE.body};
+  --meter-fs-secondary: ${TYPE.secondary};
+  --meter-fs-micro: ${TYPE.micro};
+}
+@media (hover: hover) and (pointer: fine) {
+  /* Hide meter titlebar + statusbar until hover even when unlocked (is-layout).
+   * PositionedPanel arrange strip is separate and may stay visible unlocked. */
+  .ecu-meter-shell.is-chrome-hover:not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-titlebar,
+  .ecu-meter-shell.is-chrome-hover:not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-statusbar {
+    display: none;
+  }
+}
+.ecu-meter-opt-sec {
+  margin: 6px 0 2px;
+  padding: 6px 0 2px;
+  color: #c9a227;
+  font-size: var(--meter-fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ecu-meter-opt-row input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid rgba(232, 201, 106, 0.45);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+.ecu-meter-opt-row input[type="checkbox"]:hover {
+  border-color: rgba(232, 201, 106, 0.75);
+  background: rgba(255, 255, 255, 0.1);
+}
+.ecu-meter-opt-row input[type="checkbox"]:checked {
+  background: rgba(232, 201, 106, 0.28);
+  border-color: rgba(232, 201, 106, 0.75);
+}
+.ecu-meter-opt-row input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #ffd28a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.ecu-meter-opt-row input[type="number"],
+.ecu-meter-opt-row input[type="text"],
+.ecu-meter-opt-row select.ecu-meter-opt-select {
+  width: 76px;
+  box-sizing: border-box;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.38);
+  color: #eee;
+  font: inherit;
+  font-size: var(--meter-fs-secondary);
+  text-align: right;
+}
+.ecu-meter-opt-row input[type="text"] {
+  width: 140px;
+  text-align: left;
+}
+.ecu-meter-opt-row select.ecu-meter-opt-select {
+  width: 168px;
+  text-align: left;
+  cursor: pointer;
+}
+.ecu-meter-opt-row input[type="number"]:focus,
+.ecu-meter-opt-row input[type="text"]:focus,
+.ecu-meter-opt-row select.ecu-meter-opt-select:focus {
+  outline: none;
+  border-color: rgba(232, 201, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.2);
+}
+.ecu-meter-opt-row input[type="range"] {
+  width: 128px;
+  height: 16px;
+  accent-color: #c9a227;
+  cursor: pointer;
+}
+.ecu-meter-shell .leg-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: 1px solid rgba(232, 201, 106, 0.45);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.ecu-meter-shell .leg-item input[type="checkbox"]:checked {
+  background: rgba(232, 201, 106, 0.28);
+  border-color: rgba(232, 201, 106, 0.75);
+}
+.ecu-meter-shell .leg-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid #ffd28a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 `;
 
@@ -17058,6 +19644,7 @@ button.ecu-meter-status-micro:hover,
   --meter-cooltip-bg: rgba(18, 14, 16, 0.96);
   --meter-toolbar: url(__TOOLBAR__);
   --meter-attr-icons: url(__ATTR__);
+  --meter-bar-row-h: 18px;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -17070,7 +19657,7 @@ button.ecu-meter-status-micro:hover,
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--meter-fs-body);
   color: var(--meter-text);
   box-sizing: border-box;
   position: relative;
@@ -17125,7 +19712,7 @@ button.ecu-meter-status-micro:hover,
   height: 18px;
   cursor: nwse-resize;
   z-index: 8;
-  pointer-events: auto;
+  pointer-events: auto !important;
   touch-action: none;
   background:
     linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),
@@ -17232,7 +19819,7 @@ button.ecu-meter-status-micro:hover,
   color: var(--meter-text);
   flex-shrink: 0;
   min-width: 0;
-  min-height: 20px;
+  min-height: 24px;
   box-shadow: none;
   position: relative;
 }
@@ -17260,10 +19847,10 @@ button.ecu-meter-status-micro:hover,
   border: none;
   color: var(--meter-muted);
   padding: 0;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-micro);
   flex-shrink: 0;
   border-radius: 0;
   opacity: 0.92;
@@ -17291,7 +19878,7 @@ button.ecu-meter-status-micro:hover,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--meter-fs-title);
   font-weight: 600;
   letter-spacing: 0.01em;
   text-shadow: 1px 1px 0 rgba(0,0,0,0.9);
@@ -17310,17 +19897,17 @@ button.ecu-meter-status-micro:hover,
   border: none;
   color: var(--meter-muted);
   padding: 0;
-  width: 20px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 12px;
+  width: 22px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-secondary);
   flex-shrink: 0;
   border-radius: 0;
 }
 .ecu-meter-titlebar .ecu-meter-btn.wide {
   width: auto;
   padding: 0 6px;
-  font-size: 12px;
+  font-size: var(--meter-fs-secondary);
 }
 .ecu-meter-titlebar .ecu-meter-btn:hover {
   background: rgba(255,255,255,0.08);
@@ -17329,8 +19916,8 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-titlebar .ecu-meter-btn.active {
   color: var(--meter-accent);
 }
-/* Stretch \u2195 (+ layout \u2699/+/Rm on hover) sits after Details tools in flex flow.
- * Stretch is a plain .ecu-meter-tool (always visible) \u2014 no dark plate.
+/* Stretch \u2195 (+ layout \u2699/+/Rm) sit in .ecu-meter-actions after Details tools.
+ * On ranked meters, tools / badges / actions are hover-gated (fine pointer).
  * Do not absolute-overlay the Mode\xB7\u2026\xB7Reset hit targets.
  * Lock / ungroup / hide \xD7 belong to PositionedPanel Window Control chrome. */
 .ecu-meter-actions {
@@ -17341,6 +19928,7 @@ button.ecu-meter-status-micro:hover,
   position: relative;
   z-index: 5;
   margin-left: 2px;
+  transition: opacity 0.12s ease;
 }
 /* Layout-edit only (\u2699/+/Rm) \u2014 hover chip; stretch lives outside this. */
 .ecu-meter-chrome-hover {
@@ -17406,21 +19994,40 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-attr-ball.attr-heal { background-position: -18px 0; }
 .ecu-meter-attr-ball.attr-taken { background-position: -36px 0; }
 .ecu-meter-attr-ball.attr-other { background-position: -54px 0; }
-/* Primary toolbar + stretch \u2195 stay readable; layout chrome is hover-gated. */
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools,
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left,
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
-  opacity: 0.9;
+/*
+ * Ranked meters: tool icon clusters stay out of the way until hover.
+ * Title (attr ball + label) remains. Touch / coarse pointers keep icons visible.
+ * Inspector + report keep tools always shown. is-menu-open keeps icons up
+ * while a cooltip is open (portaled outside the shell).
+ * Unlocked / arrange (is-layout) must NOT pin tools open \u2014 only hover / tip.
+ */
+@media (hover: hover) and (pointer: fine) {
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-tools,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-tools-left,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-encounter-badges,
+  .ecu-meter-shell:not(.is-inspector):not(.is-report):not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-actions {
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    flex: 0 0 0;
+  }
 }
+.ecu-meter-shell:hover .ecu-meter-tools,
 .ecu-meter-shell.is-interacting .ecu-meter-tools,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools,
-.ecu-meter-shell.is-layout .ecu-meter-tools,
+.ecu-meter-shell:hover .ecu-meter-tools-left,
 .ecu-meter-shell.is-interacting .ecu-meter-tools-left,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools-left,
-.ecu-meter-shell.is-layout .ecu-meter-tools-left,
-.ecu-meter-shell.is-interacting .ecu-meter-actions > .ecu-meter-tool,
-.ecu-meter-shell.is-menu-open .ecu-meter-actions > .ecu-meter-tool,
-.ecu-meter-shell.is-layout .ecu-meter-actions > .ecu-meter-tool {
+.ecu-meter-shell:hover .ecu-meter-encounter-badges,
+.ecu-meter-shell.is-interacting .ecu-meter-encounter-badges,
+.ecu-meter-shell.is-menu-open .ecu-meter-encounter-badges,
+.ecu-meter-shell:hover .ecu-meter-actions,
+.ecu-meter-shell.is-interacting .ecu-meter-actions,
+.ecu-meter-shell.is-menu-open .ecu-meter-actions {
   opacity: 1;
 }
 .ecu-meter-ttl-text {
@@ -17436,6 +20043,7 @@ button.ecu-meter-status-micro:hover,
   gap: 0;
   flex-shrink: 0;
   margin-left: 2px;
+  transition: opacity 0.12s ease;
 }
 .ecu-meter-encounter-badge {
   cursor: pointer;
@@ -17443,10 +20051,10 @@ button.ecu-meter-status-micro:hover,
   border: none;
   color: var(--meter-muted);
   padding: 0 2px;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  font-size: var(--meter-fs-micro);
   flex-shrink: 0;
   opacity: 0.88;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
@@ -17475,6 +20083,7 @@ ${parts.map(cssSlice).join("\n")}
 `;
   }
   var CSS4 = [
+    METER_CHROME_SCALE_CSS,
     METER_SHELL_CSS,
     METER_TITLEBAR_CSS,
     METER_COOLTIP_CSS,
@@ -17737,6 +20346,58 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/meter/MeterStatusbar.ts
+  function slotClass(side) {
+    return `ecu-meter-status-micro ecu-meter-status-slot-${side}`;
+  }
+  function renderSlot(side, plugin, text, action, props) {
+    if (!text && plugin === "off") {
+      return e("span", {
+        key: side,
+        className: slotClass(side),
+        "aria-hidden": true
+      });
+    }
+    const title = statusbarPluginTitle(plugin);
+    if (action === "segment" && props.onSegmentClick) {
+      return e(
+        "button",
+        {
+          key: side,
+          type: "button",
+          className: slotClass(side),
+          title,
+          onClick: (ev) => {
+            var _a;
+            ev.stopPropagation();
+            (_a = props.onSegmentClick) == null ? void 0 : _a.call(props);
+          }
+        },
+        text
+      );
+    }
+    if (action === "encounter" && props.onEncounterClick) {
+      return e(
+        "button",
+        {
+          key: side,
+          type: "button",
+          className: `${slotClass(side)} ecu-meter-status-link`,
+          title: "Open Encounter",
+          onClick: (ev) => {
+            var _a;
+            ev.stopPropagation();
+            (_a = props.onEncounterClick) == null ? void 0 : _a.call(props);
+          }
+        },
+        text
+      );
+    }
+    return e(
+      "span",
+      { key: side, className: slotClass(side), title },
+      text
+    );
+  }
   function MeterStatusbar(props) {
     const React = getReact();
     const [, tick] = React.useState(0);
@@ -17749,74 +20410,35 @@ ${parts.map(cssSlice).join("\n")}
     }, []);
     const app = getMeterAppearance();
     if (!app.showStatusbar) return null;
+    const slots = statusbarForInstance(props.instance);
+    const query = rootQuery(props.instance);
     const seg = resolveSegment(props.segmentRef);
     const durMs = seg ? segmentDurationMs(seg, Date.now()) : 0;
     const durSec = Math.max(durMs / 1e3, 0);
-    const inCombat2 = isMeterInCombat() && props.segmentRef === "current";
-    let totalDmg = 0;
-    let totalHeal = 0;
-    if (seg) {
-      const dmg = runMeterQuery(
-        { kind: "players", metric: "damage", primary: "total" },
-        { segmentRef: props.segmentRef, partyFocus: props.instance.partyFocus }
+    const needsTotal = statusbarNeedsTotal(slots);
+    const attributeTotal = needsTotal ? sumRankedTotal(query, props.segmentRef, props.instance.partyFocus) : 0;
+    const sides = [
+      "left",
+      "center",
+      "right"
+    ];
+    const children = [];
+    for (let i = 0; i < sides.length; i++) {
+      const side = sides[i];
+      const plugin = slots[side];
+      const text = renderStatusbarPluginText({
+        plugin,
+        segmentLabel: props.segmentLabel,
+        durSec,
+        query,
+        instanceLabel: props.instance.label,
+        attributeTotal
+      });
+      children.push(
+        renderSlot(side, plugin, text, statusbarSlotAction(plugin), props)
       );
-      const heal = runMeterQuery(
-        { kind: "players", metric: "heal", primary: "total" },
-        { segmentRef: props.segmentRef, partyFocus: props.instance.partyFocus }
-      );
-      if (dmg.kind === "ranked") {
-        for (let i = 0; i < dmg.rows.length; i++) totalDmg += dmg.rows[i].value;
-      }
-      if (heal.kind === "ranked") {
-        for (let i = 0; i < heal.rows.length; i++)
-          totalHeal += heal.rows[i].value;
-      }
     }
-    const dps = durSec > 0 ? totalDmg / durSec : 0;
-    const hps = durSec > 0 ? totalHeal / durSec : 0;
-    return e(
-      "div",
-      { className: "ecu-meter-statusbar" },
-      e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-meter-status-micro",
-          onClick: (ev) => {
-            var _a;
-            ev.stopPropagation();
-            (_a = props.onSegmentClick) == null ? void 0 : _a.call(props);
-          },
-          title: "Segment"
-        },
-        inCombat2 ? "Combat" : props.segmentLabel,
-        ` \xB7 ${durSec.toFixed(0)}s`
-      ),
-      e(
-        "span",
-        { className: "ecu-meter-status-micro" },
-        `Dmg ${formatCompactNumber(totalDmg)}`
-      ),
-      e(
-        "span",
-        { className: "ecu-meter-status-micro" },
-        `DPS ${formatCompactRatePerSec(dps)}`
-      ),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-meter-status-micro ecu-meter-status-link",
-          onClick: (ev) => {
-            var _a;
-            ev.stopPropagation();
-            (_a = props.onEncounterClick) == null ? void 0 : _a.call(props);
-          },
-          title: "Open Encounter"
-        },
-        `Heal ${formatCompactNumber(totalHeal)} \xB7 ${formatCompactRatePerSec(hps)} HPS`
-      )
-    );
+    return e("div", { className: "ecu-meter-statusbar" }, ...children);
   }
 
   // src/ui/meter/MeterOptionsPanel.ts
@@ -17827,6 +20449,9 @@ ${parts.map(cssSlice).join("\n")}
       e("span", { className: "ecu-meter-opt-label" }, label),
       control
     );
+  }
+  function section(label) {
+    return e("div", { className: "ecu-meter-opt-sec" }, label);
   }
   function MeterOptionsPanel(props) {
     const React = getReact();
@@ -17844,6 +20469,7 @@ ${parts.map(cssSlice).join("\n")}
         onChange: (ev) => patch({ [key]: ev.target.checked })
       })
     );
+    const scale = app.windowScale > 0 ? app.windowScale : 1;
     return e(
       "div",
       {
@@ -17856,6 +20482,7 @@ ${parts.map(cssSlice).join("\n")}
         "div",
         {
           className: "ecu-meter-options-panel",
+          style: { fontSize: `calc(${TYPE.body} * ${scale})` },
           onMouseDown: (ev) => ev.stopPropagation()
         },
         e(
@@ -17880,6 +20507,51 @@ ${parts.map(cssSlice).join("\n")}
         e(
           "div",
           { className: "ecu-meter-options-body" },
+          props.instance && props.onPatchInstance ? section("This window") : null,
+          props.instance && props.onPatchInstance ? row(
+            "Hide header & footer until hover",
+            e("input", {
+              type: "checkbox",
+              checked: !!props.instance.chromeOnHover,
+              onChange: (ev) => props.onPatchInstance({
+                chromeOnHover: ev.target.checked
+              })
+            })
+          ) : null,
+          props.instance && props.onPatchInstance ? (() => {
+            const sb = statusbarForInstance(props.instance);
+            const patchSlot = (slot, value) => {
+              props.onPatchInstance({
+                statusbar: { ...sb, [slot]: value }
+              });
+            };
+            const sel = (slot, label) => row(
+              label,
+              e(
+                "select",
+                {
+                  className: "ecu-meter-opt-select",
+                  value: sb[slot],
+                  onChange: (ev) => patchSlot(slot, ev.target.value)
+                },
+                ...STATUSBAR_PLUGIN_OPTIONS.map(
+                  (opt) => e(
+                    "option",
+                    { key: opt.id, value: opt.id },
+                    opt.label
+                  )
+                )
+              )
+            );
+            return e(
+              React.Fragment,
+              null,
+              sel("left", "Statusbar left"),
+              sel("center", "Statusbar center"),
+              sel("right", "Statusbar right")
+            );
+          })() : null,
+          section("All meters"),
           chk("showStatusbar", "Show statusbar"),
           chk("showTotalBar", "Total bar"),
           chk("animateBars", "Animate bars"),
@@ -17919,6 +20591,38 @@ ${parts.map(cssSlice).join("\n")}
               max: 100,
               value: Math.round(app.idleAlpha * 100),
               onChange: (ev) => patch({ idleAlpha: Number(ev.target.value) / 100 })
+            })
+          ),
+          row(
+            "RAM fights",
+            e("input", {
+              type: "number",
+              min: 3,
+              max: 50,
+              value: app.maxPastSegments,
+              onChange: (ev) => patch({ maxPastSegments: Number(ev.target.value) })
+            })
+          ),
+          row(
+            "Archive fights",
+            e("input", {
+              type: "number",
+              min: 20,
+              max: 250,
+              title: "Oldest non-favorites are removed first. Favorited fights are never deleted and may exceed this cap.",
+              value: app.maxArchivedSegments,
+              onChange: (ev) => patch({ maxArchivedSegments: Number(ev.target.value) })
+            })
+          ),
+          row(
+            "Idle close (sec)",
+            e("input", {
+              type: "number",
+              min: 3,
+              max: 120,
+              title: "Skipped on PvP maps and live events",
+              value: app.combatBreakSec,
+              onChange: (ev) => patch({ combatBreakSec: Number(ev.target.value) })
             })
           ),
           row(
@@ -18014,6 +20718,15 @@ ${parts.map(cssSlice).join("\n")}
     }
     return sum || 1;
   }
+  function rankText(r, paintIndex, painted) {
+    if (isTotalRow(r)) return "";
+    if (r.rank != null) return `${r.rank}.`;
+    let actorsBefore = 0;
+    for (let j = 0; j < paintIndex; j++) {
+      if (!isTotalRow(painted[j])) actorsBefore++;
+    }
+    return `${actorsBefore + 1}.`;
+  }
   function barWidthPct(row2, max) {
     if (isTotalRow(row2)) return 100;
     return max ? barAmount(row2) / max * 100 : 0;
@@ -18056,7 +20769,7 @@ ${parts.map(cssSlice).join("\n")}
     else nameHost.insertAdjacentHTML("afterbegin", html);
     nameHost.dataset.iconId = want;
   }
-  function makeRowEl(r, i, opts, max, total) {
+  function makeRowEl(r, i, opts, max, total, painted) {
     const el = document.createElement("div");
     const isAbility = r.kind === "ability" || r.kind === "channel";
     el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (isAbility ? " has-skill" : "") + (opts.onClick || opts.onContextMenu ? " clickable" : "");
@@ -18065,9 +20778,10 @@ ${parts.map(cssSlice).join("\n")}
     const share = total ? r.value / total * 100 : 0;
     const icon = barRowIconHtml(r, opts);
     const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
+    const rankLabel = opts.rank !== false ? rankText(r, i, painted) : "";
     el.innerHTML = `
     <div class="ecu-meter-fill${anim}" style="width:${pct}%;background:${rowColor(r)}"></div>
-    ${opts.rank !== false ? `<span class="ecu-meter-rank">${r.rank != null ? r.rank : i + 1}.</span>` : "<span></span>"}
+    ${opts.rank !== false ? `<span class="ecu-meter-rank">${rankLabel}</span>` : "<span></span>"}
     <span class="ecu-meter-who">${icon}<span class="ecu-meter-label"></span></span>
     <span class="ecu-meter-vals"></span>`;
     const label = el.querySelector(".ecu-meter-label");
@@ -18103,12 +20817,17 @@ ${parts.map(cssSlice).join("\n")}
     }
   }
   function sortForPaint(rows) {
-    if (rows.length && rows[0].rank != null) return rows.slice();
-    return rows.slice().sort((a, b) => {
-      if (isTotalRow(a)) return 1;
-      if (isTotalRow(b)) return -1;
-      return barAmount(b) - barAmount(a);
-    });
+    const totals = [];
+    const actors = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (isTotalRow(rows[i])) totals.push(rows[i]);
+      else actors.push(rows[i]);
+    }
+    if (actors.length && actors[0].rank != null) {
+      return totals.concat(actors);
+    }
+    actors.sort((a, b) => barAmount(b) - barAmount(a));
+    return totals.concat(actors);
   }
   function renderRankedRows(container, rows, opts = {}) {
     container.innerHTML = "";
@@ -18118,7 +20837,7 @@ ${parts.map(cssSlice).join("\n")}
     const total = groupSum(sorted);
     for (let i = 0; i < sorted.length; i++) {
       const r = sorted[i];
-      const el = makeRowEl(r, i, opts, max, total);
+      const el = makeRowEl(r, i, opts, max, total, sorted);
       bindRow(el, r, opts);
       container.appendChild(el);
     }
@@ -18147,7 +20866,7 @@ ${parts.map(cssSlice).join("\n")}
     }
     while (kids.length < sorted.length) {
       const r = sorted[kids.length];
-      const el = makeRowEl(r, kids.length, merged, max, total);
+      const el = makeRowEl(r, kids.length, merged, max, total, sorted);
       container.appendChild(el);
       kids.push(el);
     }
@@ -18167,9 +20886,9 @@ ${parts.map(cssSlice).join("\n")}
         if (fill.style.background !== bg) fill.style.background = bg;
       }
       const rank = el.querySelector(".ecu-meter-rank");
-      const rankText = `${r.rank != null ? r.rank : i + 1}.`;
-      if (rank && merged.rank !== false && rank.textContent !== rankText) {
-        rank.textContent = rankText;
+      const nextRank = merged.rank !== false ? rankText(r, i, sorted) : "";
+      if (rank && rank.textContent !== nextRank) {
+        rank.textContent = nextRank;
       }
       const label = el.querySelector(".ecu-meter-label");
       if (label && label.textContent !== r.name) label.textContent = r.name;
@@ -18473,158 +21192,221 @@ ${parts.map(cssSlice).join("\n")}
     return { kind: "ranked", rows: METER_TEST_BAR_ROWS.slice() };
   }
 
+  // src/meters/meterBarViewport.ts
+  var METER_BAR_ROW_H = 18;
+
   // src/ui/meter/MeterBarRow.ts
-  function toPoolRows(rows, highlightId, selectedRowId) {
-    const you = getYouId();
-    return rows.map((r) => ({
+  function toPoolRows(rows, highlightId, selectedRowId, youId2) {
+    return rows.map((r, i) => ({
       ...r,
-      you: r.you || !!you && r.id === you || r.id === highlightId,
+      you: r.you || !!youId2 && r.id === youId2 || r.id === highlightId,
       selected: selectedRowId ? r.id === selectedRowId : !!r.selected,
       color: classColors[r.ctype || ""] || void 0,
-      rank: r.rank
+      rank: r.rank != null ? r.rank : i + 1
     }));
+  }
+  function rowInScrollView(scrollEl, rowEl) {
+    const sr = scrollEl.getBoundingClientRect();
+    const rr = rowEl.getBoundingClientRect();
+    return rr.bottom > sr.top + 1 && rr.top < sr.bottom - 1;
   }
   function MeterBarsView(props) {
     const React = getReact();
     const hostRef = React.useRef(null);
     const scrollRef = React.useRef(null);
+    const pinRef = React.useRef(null);
     const propsRef = React.useRef(props);
-    const scrollOffRef = React.useRef(0);
+    const selfRowRef = React.useRef(null);
+    const barOptsRef = React.useRef(null);
     propsRef.current = props;
-    const paint = React.useCallback((full) => {
-      var _a;
-      const host2 = hostRef.current;
+    const syncPin = React.useCallback(() => {
       const scrollEl = scrollRef.current;
-      const listHost = scrollEl || host2;
-      if (!listHost) return;
+      const pinEl = pinRef.current;
+      if (!scrollEl || !pinEl) return;
       const p = propsRef.current;
-      const app = getMeterAppearance();
-      const useTestBars = app.testBars && (p.query.kind === "players" || p.query.kind === "channel" || p.query.kind === "avoidance");
-      let result = runMeterQuery(p.query, {
-        segmentRef: p.segmentRef,
-        partyFocus: p.partyFocus,
-        entities: p.entities,
-        now: Date.now()
-      });
-      if (useTestBars && p.query.kind === "players") {
-        result = meterTestBarResult();
-      } else if (useTestBars && result.kind === "ranked" && !result.rows.length) {
-        result = meterTestBarResult();
-      }
-      if (result.kind !== "ranked" || !result.rows.length) {
-        listHost.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">No data</div>';
-        delete listHost._barOpts;
+      const showSelf = p.alwaysShowSelf != null ? p.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
+      const selfRow = selfRowRef.current;
+      const opts = barOptsRef.current;
+      if (!showSelf || !selfRow || !opts) {
+        pinEl.hidden = true;
+        pinEl.replaceChildren();
+        delete pinEl._barOpts;
         return;
       }
-      const youId2 = getYouId();
-      const showSelf = p.alwaysShowSelf != null ? p.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
-      const isPlayerRoot = p.query.kind === "players" || p.query.kind === "avoidance" || p.query.kind === "rolling" || p.query.kind === "snapshot" || p.query.kind === "channel";
-      const rankedAmt = (r) => r.barValue != null ? r.barValue : r.value;
-      const sorted = result.rows.slice().sort((a, b) => rankedAmt(b) - rankedAmt(a));
-      let totalVal = 0;
-      let totalRate = 0;
-      let ratePrimary = false;
-      for (let i = 0; i < sorted.length; i++) {
-        totalVal += sorted[i].value;
-        if (sorted[i].rate != null) totalRate += sorted[i].rate;
-        if (sorted[i].primary === "rate") ratePrimary = true;
-      }
-      const capped = isPlayerRoot ? pinAlwaysShowSelf(
-        sorted,
-        maxRowsForFrameHeight(p.frameH) + scrollOffRef.current,
-        youId2 || p.highlightId,
-        showSelf
-      ) : sorted.slice(
-        scrollOffRef.current,
-        scrollOffRef.current + maxRowsForFrameHeight(p.frameH)
+      const youEl = scrollEl.querySelector(
+        ".ecu-meter-row.you"
       );
-      const rows = toPoolRows(capped, p.highlightId, p.selectedRowId);
-      if (app.showTotalBar && isPlayerRoot && rows.length) {
-        const topBarMax = ((_a = sorted[0]) == null ? void 0 : _a.barMax) || (ratePrimary ? totalRate : totalVal) || 1;
-        rows.push({
-          id: "__total__",
-          name: "Total",
-          value: totalVal,
-          rate: totalRate || null,
-          barValue: ratePrimary ? totalRate : totalVal,
-          primary: ratePrimary ? "rate" : "total",
-          pct: 1,
-          barMax: topBarMax,
-          label: "Total",
-          kind: "player",
-          color: "#888"
-        });
+      const needPin = !youEl || !rowInScrollView(scrollEl, youEl);
+      if (!needPin) {
+        pinEl.hidden = true;
+        return;
       }
-      const metric = p.metric || (p.query.kind === "players" ? p.query.metric : p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" ? p.query.metric : void 0);
-      const wantSkillIcons = p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" || p.query.kind === "taken_by_spell" || p.query.kind === "enemy_damage";
-      const opts = {
-        rank: app.showRankNumbers,
-        pct: true,
-        metric,
-        // Player ranking (DPS/HPS/etc.) must not inherit always-on icons.
-        // Inspector Spells/TARGETS keep ability/monster chips.
-        icons: wantSkillIcons,
-        classIcons: !!app.showSpecIcons,
-        animate: app.animateBars,
-        detailsFormat: true,
-        onClick: p.onRowClick ? (ev, row2) => p.onRowClick(row2, ev) : void 0,
-        onContextMenu: p.onRowContextMenu ? (ev, row2) => p.onRowContextMenu(row2, ev) : void 0,
-        tooltipHtml: (ev, row2) => {
-          if (row2.kind === "ability") {
-            showMeterTooltip(ev, abilityBarTooltipHtml(row2));
-            return;
-          }
-          if (row2.kind === "target") {
-            showMeterTooltip(ev, targetBarTooltipHtml(row2));
-            return;
-          }
-          showMeterTooltipLive(
-            ev,
-            (mods) => playerBarTooltipHtml(
-              {
-                row: row2,
-                metric,
-                segmentRef: p.segmentRef,
-                partyFocus: p.partyFocus,
-                entities: p.entities
-              },
-              mods
-            )
-          );
-        },
-        onTooltipHide: hideMeterTooltip
-      };
-      if (full || !listHost._barOpts) {
-        renderRankedRows(listHost, rows, opts);
+      pinEl.hidden = false;
+      if (!pinEl._barOpts) {
+        renderRankedRows(pinEl, [selfRow], opts);
       } else {
-        patchRankedRows(listHost, rows, opts);
+        patchRankedRows(pinEl, [selfRow], opts);
       }
     }, []);
+    const paint = React.useCallback(
+      (full) => {
+        var _a;
+        const host2 = hostRef.current;
+        const scrollEl = scrollRef.current;
+        const listHost = scrollEl || host2;
+        if (!listHost) return;
+        const p = propsRef.current;
+        const app = getMeterAppearance();
+        const useTestBars = app.testBars && (p.query.kind === "players" || p.query.kind === "channel" || p.query.kind === "avoidance");
+        let result = runMeterQuery(p.query, {
+          segmentRef: p.segmentRef,
+          partyFocus: p.partyFocus,
+          entities: p.entities,
+          now: Date.now()
+        });
+        if (useTestBars && p.query.kind === "players") {
+          result = meterTestBarResult();
+        } else if (useTestBars && result.kind === "ranked" && !result.rows.length) {
+          result = meterTestBarResult();
+        }
+        if (result.kind !== "ranked" || !result.rows.length) {
+          listHost.innerHTML = '<div style="padding:8px;color:#888;font-size:12px">No data</div>';
+          delete listHost._barOpts;
+          selfRowRef.current = null;
+          barOptsRef.current = null;
+          syncPin();
+          return;
+        }
+        const followLive = p.live === true;
+        const youId2 = followLive ? getYouId() : void 0;
+        const pinId = followLive ? youId2 || p.highlightId : p.highlightId;
+        const isPlayerRoot = p.query.kind === "players" || p.query.kind === "avoidance" || p.query.kind === "rolling" || p.query.kind === "snapshot" || p.query.kind === "channel";
+        const rankedAmt = (r) => r.barValue != null ? r.barValue : r.value;
+        const sorted = result.rows.slice().sort((a, b) => rankedAmt(b) - rankedAmt(a));
+        let totalVal = 0;
+        let totalRate = 0;
+        let ratePrimary = false;
+        for (let i = 0; i < sorted.length; i++) {
+          totalVal += sorted[i].value;
+          if (sorted[i].rate != null) totalRate += sorted[i].rate;
+          if (sorted[i].primary === "rate") ratePrimary = true;
+        }
+        const wantTotal = app.showTotalBar && isPlayerRoot;
+        const rows = toPoolRows(sorted, pinId, p.selectedRowId, youId2);
+        if (wantTotal && rows.length) {
+          const topBarMax = ((_a = sorted[0]) == null ? void 0 : _a.barMax) || (ratePrimary ? totalRate : totalVal) || 1;
+          rows.unshift({
+            id: "__total__",
+            name: "Total",
+            value: totalVal,
+            rate: totalRate || null,
+            barValue: ratePrimary ? totalRate : totalVal,
+            primary: ratePrimary ? "rate" : "total",
+            pct: 1,
+            barMax: topBarMax,
+            label: "Total",
+            kind: "player",
+            color: "#888"
+          });
+        }
+        let selfRow = null;
+        if (pinId) {
+          for (let i = 0; i < rows.length; i++) {
+            if (rows[i].id === pinId) {
+              selfRow = rows[i];
+              break;
+            }
+          }
+        }
+        selfRowRef.current = selfRow;
+        const metric = p.metric || (p.query.kind === "players" ? p.query.metric : p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" ? p.query.metric : void 0);
+        const wantSkillIcons = p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets" || p.query.kind === "taken_by_spell" || p.query.kind === "enemy_damage";
+        const opts = {
+          rank: app.showRankNumbers,
+          pct: true,
+          metric,
+          icons: wantSkillIcons,
+          classIcons: !!app.showSpecIcons,
+          animate: app.animateBars,
+          detailsFormat: true,
+          onClick: p.onRowClick ? (ev, row2) => p.onRowClick(row2, ev) : void 0,
+          onContextMenu: p.onRowContextMenu ? (ev, row2) => p.onRowContextMenu(row2, ev) : void 0,
+          tooltipHtml: (ev, row2) => {
+            if (row2.kind === "ability") {
+              showMeterTooltip(ev, abilityBarTooltipHtml(row2));
+              return;
+            }
+            if (row2.kind === "target") {
+              showMeterTooltip(ev, targetBarTooltipHtml(row2));
+              return;
+            }
+            showMeterTooltipLive(
+              ev,
+              (mods) => playerBarTooltipHtml(
+                {
+                  row: row2,
+                  metric,
+                  segmentRef: p.segmentRef,
+                  partyFocus: p.partyFocus,
+                  entities: p.entities
+                },
+                mods
+              )
+            );
+          },
+          onTooltipHide: hideMeterTooltip
+        };
+        barOptsRef.current = opts;
+        if (full || !listHost._barOpts) {
+          renderRankedRows(listHost, rows, opts);
+        } else {
+          patchRankedRows(listHost, rows, opts);
+        }
+        syncPin();
+      },
+      [syncPin]
+    );
     React.useEffect(() => {
       injectMeterChromeCss();
       paint(true);
       const p = propsRef.current;
-      const live2 = p.live !== false && p.segmentRef === "current" && (p.query.kind === "players" || p.query.kind === "channel" || p.query.kind === "avoidance" || p.query.kind === "rolling" || p.query.kind === "realtime" || p.query.kind === "snapshot" || p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets");
+      const live2 = p.live === true && (p.query.kind === "players" || p.query.kind === "channel" || p.query.kind === "avoidance" || p.query.kind === "rolling" || p.query.kind === "realtime" || p.query.kind === "snapshot" || p.query.kind === "abilities" || p.query.kind === "ability_targets" || p.query.kind === "targets");
       const offAppearance = subscribeMeterAppearance(() => paint(true));
+      const scrollEl = scrollRef.current;
+      const onScroll = () => syncPin();
+      if (scrollEl) scrollEl.addEventListener("scroll", onScroll, { passive: true });
+      let ro = null;
+      if (scrollEl && typeof ResizeObserver !== "undefined") {
+        ro = new ResizeObserver(() => syncPin());
+        ro.observe(scrollEl);
+      }
       if (!live2) {
-        return offAppearance;
+        return () => {
+          offAppearance();
+          if (scrollEl) scrollEl.removeEventListener("scroll", onScroll);
+          if (ro) ro.disconnect();
+        };
       }
       const offTick = subscribeMeterTick(() => {
         if (!hostRef.current || !hostRef.current.isConnected) return;
-        if (propsRef.current.segmentRef !== "current") return;
+        if (propsRef.current.live !== true) return;
         paint(false);
       });
       return () => {
         offAppearance();
         offTick();
+        if (scrollEl) scrollEl.removeEventListener("scroll", onScroll);
+        if (ro) ro.disconnect();
       };
     }, [
       paint,
+      syncPin,
       props.live,
       props.segmentRef,
       props.partyFocus,
       props.highlightId,
       props.selectedRowId,
+      props.alwaysShowSelf,
       JSON.stringify(props.query)
     ]);
     return e(
@@ -18633,21 +21415,18 @@ ${parts.map(cssSlice).join("\n")}
         ref: hostRef,
         className: "ecu-meter-bar-host",
         style: {
-          fontSize: `${Math.round(getMeterAppearance().windowScale * 100)}%`
-        },
-        onWheel: (ev) => {
-          if (!scrollRef.current) return;
-          ev.preventDefault();
-          scrollOffRef.current = Math.max(
-            0,
-            scrollOffRef.current + (ev.deltaY > 0 ? 1 : -1)
-          );
-          paint(false);
+          fontSize: `${Math.round(getMeterAppearance().windowScale * 100)}%`,
+          ["--meter-bar-row-h"]: `${METER_BAR_ROW_H}px`
         }
       },
       e("div", {
         ref: scrollRef,
         className: "ecu-meter-bar-scroll ecu-meter-bar-list"
+      }),
+      e("div", {
+        ref: pinRef,
+        className: "ecu-meter-bar-pin ecu-meter-bar-list",
+        hidden: true
       })
     );
   }
@@ -18822,17 +21601,27 @@ ${parts.map(cssSlice).join("\n")}
       mtype,
       name,
       title,
+      skin,
       className,
       container
     } = props;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
-      paintGameIcon(el, id, { kind, size, ctype, mtype, name, title, container });
+      paintGameIcon(el, id, {
+        kind,
+        size,
+        ctype,
+        mtype,
+        name,
+        title,
+        skin,
+        container
+      });
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [id, kind, size, ctype, mtype, name, title, container]);
+    }, [id, kind, size, ctype, mtype, name, title, skin, container]);
     return e("span", {
       ref,
       className: ["ecu-game-icon", className].filter(Boolean).join(" "),
@@ -19106,16 +21895,38 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/ui/meter/meterHoverDetail.ts
+  function hoverDetailPosFromEl(el) {
+    const r = el.getBoundingClientRect();
+    return { top: r.top, left: r.right + 6 };
+  }
+  function meterHoverDetailNode(text, style) {
+    return e(
+      "div",
+      {
+        className: "ecu-meter-cooltip-detail",
+        role: "tooltip",
+        style: style || void 0
+      },
+      text
+    );
+  }
+  function portalHoverDetail(text, pos) {
+    const ReactDOM = getReactDOM();
+    const node = meterHoverDetailNode(text, {
+      position: "fixed",
+      top: Math.round(pos.top),
+      left: Math.round(pos.left),
+      zIndex: COOLTIP_Z
+    });
+    if (!ReactDOM.createPortal) return node;
+    return ReactDOM.createPortal(node, document.body);
+  }
+
   // src/ui/meter/MeterBreakdownSideRail.ts
-  function segmentKey(ref) {
-    if (ref === "current" || ref === "total") return ref;
-    return `past:${ref.pastId}`;
-  }
-  function refsEqual(a, b) {
-    return segmentKey(a) === segmentKey(b);
-  }
   function MeterBreakdownSideRail(props) {
-    getReact();
+    const React = getReact();
+    const [hover, setHover] = React.useState(null);
     const metric = props.metric === "heal" || props.metric === "taken" ? props.metric : "damage";
     const playersResult = runMeterQuery(
       { kind: "players", metric, primary: "total" },
@@ -19126,17 +21937,22 @@ ${parts.map(cssSlice).join("\n")}
       }
     );
     const players = playersResult.kind === "ranked" ? playersResult.rows : [];
-    const past2 = listPastSegments();
-    const segmentOpts = [
-      { ref: "current", label: segmentTitle("current") },
-      { ref: "total", label: segmentTitle("total") }
-    ];
-    for (let i = 0; i < past2.length; i++) {
-      const p = past2[i];
-      segmentOpts.push({
-        ref: { pastId: p.id },
-        label: p.label || segmentTitle({ pastId: p.id }) || p.id
-      });
+    const segmentOpts = listSegmentChoices();
+    let hoverText = null;
+    if (hover && hover.kind === "player") {
+      for (let i = 0; i < players.length; i++) {
+        if (players[i].id === hover.id) {
+          hoverText = `${players[i].name} \u2014 ${formatCompactNumber(players[i].value)}`;
+          break;
+        }
+      }
+    } else if (hover && hover.kind === "seg") {
+      for (let i = 0; i < segmentOpts.length; i++) {
+        if (segmentRefKey(segmentOpts[i].ref) === hover.key) {
+          hoverText = segmentOpts[i].tip || segmentOpts[i].title;
+          break;
+        }
+      }
     }
     return e(
       "aside",
@@ -19158,7 +21974,14 @@ ${parts.map(cssSlice).join("\n")}
               role: "option",
               "aria-selected": row2.id === props.selectedActorId,
               className: "ecu-meter-bd-side-item" + (row2.id === props.selectedActorId ? " is-active" : ""),
-              title: `${row2.name} \u2014 ${formatCompactNumber(row2.value)}`,
+              onMouseEnter: (ev) => {
+                setHover({
+                  kind: "player",
+                  id: row2.id,
+                  pos: hoverDetailPosFromEl(ev.currentTarget)
+                });
+              },
+              onMouseLeave: () => setHover(null),
               onClick: () => {
                 if (row2.id !== props.selectedActorId) {
                   props.onSelectActor(row2.id, row2.name);
@@ -19184,28 +22007,35 @@ ${parts.map(cssSlice).join("\n")}
         { className: "ecu-meter-bd-side-list is-segments", role: "listbox" },
         segmentOpts.map((opt) => {
           const active = refsEqual(opt.ref, props.segmentRef);
-          const resolved = opt.ref === "current" ? resolveSegment("current") : null;
-          const label = opt.ref === "current" && (resolved == null ? void 0 : resolved.label) ? `${opt.label}` : opt.label;
+          const key = segmentRefKey(opt.ref);
           return e(
             "button",
             {
-              key: segmentKey(opt.ref),
+              key,
               type: "button",
               role: "option",
               "aria-selected": active,
               className: "ecu-meter-bd-side-item" + (active ? " is-active" : ""),
-              title: label,
               disabled: !props.onSelectSegment,
+              onMouseEnter: (ev) => {
+                setHover({
+                  kind: "seg",
+                  key,
+                  pos: hoverDetailPosFromEl(ev.currentTarget)
+                });
+              },
+              onMouseLeave: () => setHover(null),
               onClick: () => {
                 if (props.onSelectSegment && !active) {
                   props.onSelectSegment(opt.ref);
                 }
               }
             },
-            e("span", { className: "ecu-meter-bd-side-lab" }, label)
+            e("span", { className: "ecu-meter-bd-side-lab" }, opt.title)
           );
         })
-      )
+      ),
+      hoverText && hover ? portalHoverDetail(hoverText, hover.pos) : null
     );
   }
 
@@ -19222,7 +22052,6 @@ ${parts.map(cssSlice).join("\n")}
     for (let i = 0; i < ids.length; i++) {
       const a = seg.actors[ids[i]];
       if (a.ctype !== ctype) continue;
-      if (!getPlayerMeta()[a.id] && !a.damage && !a.heal && !a.taken) continue;
       peers.push(a);
     }
     peers.sort((a, b) => b.damage - a.damage);
@@ -19810,7 +22639,7 @@ ${parts.map(cssSlice).join("\n")}
         "Select a spell on the left"
       )
     );
-    const barsLive = props.segmentRef === "current";
+    const barsLive = isLiveCameraRef(props.segmentRef);
     const spellsBody = e(
       "div",
       { className: "ecu-meter-bd-spells" },
@@ -20272,6 +23101,11 @@ ${parts.map(cssSlice).join("\n")}
     if (b.kind === "gear") return b.domKey;
     return `${b.kind}:${b.key}`;
   }
+  function gearPinZBoost(slot) {
+    if (slot === "mainhand") return 30;
+    if (slot === "offhand") return 20;
+    return 0;
+  }
   function conditionElapsedSec(b) {
     if (b.kind !== "condition") return b.durationSec;
     if (b.isOpen && b.startedAtMs) {
@@ -20320,20 +23154,49 @@ ${parts.map(cssSlice).join("\n")}
     const spaced = slot.replace(/([0-9]+)$/, " $1");
     return spaced.charAt(0).toUpperCase() + spaced.slice(1);
   }
+  function gearSwapKind(oldName, newName) {
+    if (oldName && newName) return "swap";
+    if (newName) return "equip";
+    if (oldName) return "unequip";
+    return "unknown";
+  }
   function gearItemLabel(name, level) {
     if (!name) return "(empty)";
     const pretty = itemDisplayName(name);
     if (level != null && level > 0) return `${pretty} +${level}`;
     return pretty;
   }
-  function gearItemIconHtml(name, skin, size, title) {
-    const resolved = skin || (name ? itemSkin(name) : void 0);
-    if (resolved) {
-      const sheet = skinSheetHtml(resolved, size, title);
-      if (sheet) return sheet;
+  function gearItemNameOnly(name) {
+    if (!name) return "(empty)";
+    return itemDisplayName(name);
+  }
+  function gearItemIconHtml(name, skin, size, title, opts) {
+    if (!name && !skin) {
+      return `<span class="ecu-meter-tt-gear-empty" style="width:${size}px;height:${size}px"></span>`;
     }
-    if (name) return gameIconHtml(name, { kind: "item", size, title });
-    return `<span class="ecu-meter-tt-gear-empty" style="width:${size}px;height:${size}px" title="empty"></span>`;
+    if (opts && opts.instance && name) {
+      return itemInstanceHtml(name, {
+        skin,
+        level: opts.level,
+        size,
+        title,
+        nativeTitle: false
+      });
+    }
+    if (name) {
+      return itemIconHtml(name, {
+        skin,
+        size,
+        title,
+        nativeTitle: false
+      });
+    }
+    return itemIconHtml(skin, {
+      skin,
+      size,
+      title,
+      nativeTitle: false
+    });
   }
   function prettyKey(key) {
     if (!key) return "?";
@@ -20372,10 +23235,10 @@ ${parts.map(cssSlice).join("\n")}
     return "Buff";
   }
 
-  // src/ui/meter/views/timeline/timelineTips.ts
+  // src/ui/meter/views/timeline/timelineTipHtml.ts
   var NEARBY_WINDOW_SEC = 8;
   var NEARBY_CLUSTER_SEC = 2;
-  var GEAR_TT_ICON = 26;
+  var GEAR_TT_ICON = 40;
   function collectClusterBlocks(primary, nearby) {
     const all = [primary];
     for (let i = 0; i < nearby.length; i++) all.push(nearby[i]);
@@ -20389,6 +23252,14 @@ ${parts.map(cssSlice).join("\n")}
     }
     return true;
   }
+  function clusterSameAtSec(blocks) {
+    if (!blocks.length) return true;
+    const t = blocks[0].atSec;
+    for (let i = 1; i < blocks.length; i++) {
+      if (blocks[i].atSec !== t) return false;
+    }
+    return true;
+  }
   function clusterWhenLabel(blocks, originMs) {
     if (!blocks.length) return "";
     let min = blocks[0].atSec;
@@ -20398,7 +23269,9 @@ ${parts.map(cssSlice).join("\n")}
       if (t < min) min = t;
       if (t > max) max = t;
     }
-    if (clusterSameSecond(blocks)) return tipAtLabel(originMs, min);
+    if (clusterSameAtSec(blocks) || clusterSameSecond(blocks)) {
+      return tipAtLabel(originMs, min);
+    }
     const wall = wallAtElapsed(originMs, min);
     const span = `${fmtAt(min)} \u2013 ${fmtAt(max)}`;
     return wall ? `${span} \xB7 ${wall}` : span;
@@ -20410,44 +23283,76 @@ ${parts.map(cssSlice).join("\n")}
     ${when}
   </div>`;
   }
+  function gearEmptySideHtml() {
+    return `<div class="ecu-meter-tt-gear-side is-empty">
+    <span class="ecu-meter-tt-gear-empty" style="width:${GEAR_TT_ICON}px;height:${GEAR_TT_ICON}px"></span>
+    <span class="ecu-meter-tt-gear-text">
+      <span class="ecu-meter-tt-gear-name">(empty)</span>
+    </span>
+  </div>`;
+  }
+  function gearSideHtml(name, level, skin) {
+    if (!name) return gearEmptySideHtml();
+    const display = gearItemNameOnly(name);
+    const tipTitle = gearItemLabel(name, level);
+    const icon = gearItemIconHtml(name, skin, GEAR_TT_ICON, tipTitle, {
+      level,
+      instance: true
+    });
+    return `<div class="ecu-meter-tt-gear-side">
+    <span class="ecu-meter-tt-gear-ico">${icon}</span>
+    <span class="ecu-meter-tt-gear-text">
+      <span class="ecu-meter-tt-gear-name">${escapeHtml(display)}</span>
+      <span class="ecu-meter-tt-gear-key">${escapeHtml(name)}</span>
+    </span>
+  </div>`;
+  }
   function tipGearRowHtml(b, muted, showAt, originMs) {
     const tone = muted ? " is-muted" : "";
     const slot = b.slot ? prettySlot(b.slot) : "Slot";
-    const hasOld = !!b.oldName;
-    const hasNew = !!b.newName;
-    const oldTitle = hasOld ? gearItemLabel(b.oldName, b.oldLevel) : "(empty)";
-    const newTitle = hasNew ? gearItemLabel(b.newName, b.newLevel) : "(empty)";
-    const oldIcon = gearItemIconHtml(
-      b.oldName,
-      b.oldSkin || (!hasNew ? b.skin : void 0),
-      GEAR_TT_ICON,
-      oldTitle
-    );
-    const newIcon = gearItemIconHtml(b.newName, b.skin, GEAR_TT_ICON, newTitle);
-    let icos;
-    let names;
-    if (hasOld && hasNew) {
-      icos = `<span class="ecu-meter-tt-gear-icos">${oldIcon}<span class="ecu-meter-tt-gear-arrow" aria-hidden="true">\u2192</span>${newIcon}</span>`;
-      names = `<span class="ecu-meter-tt-gear-names"><span class="is-old">${escapeHtml(oldTitle)}</span><span class="ecu-meter-tt-gear-arrow-sm" aria-hidden="true">\u2192</span><span class="is-new">${escapeHtml(newTitle)}</span></span>`;
-    } else if (hasNew) {
-      icos = `<span class="ecu-meter-tt-gear-icos is-single">${newIcon}</span>`;
-      names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Equip</span> ${escapeHtml(newTitle)}</span>`;
-    } else if (hasOld) {
-      icos = `<span class="ecu-meter-tt-gear-icos is-single">${oldIcon}</span>`;
-      names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Unequip</span> ${escapeHtml(oldTitle)}</span>`;
-    } else {
-      icos = `<span class="ecu-meter-tt-gear-icos is-single"></span>`;
-      names = `<span class="ecu-meter-tt-gear-names">${escapeHtml(b.label || "Gear change")}</span>`;
+    const kind = gearSwapKind(b.oldName, b.newName);
+    let fromHtml;
+    let toHtml;
+    switch (kind) {
+      case "swap":
+        fromHtml = gearSideHtml(b.oldName, b.oldLevel, b.oldSkin);
+        toHtml = gearSideHtml(b.newName, b.newLevel, b.skin);
+        break;
+      case "equip":
+        fromHtml = gearEmptySideHtml();
+        toHtml = gearSideHtml(b.newName, b.newLevel, b.skin);
+        break;
+      case "unequip":
+        fromHtml = gearSideHtml(
+          b.oldName,
+          b.oldLevel,
+          b.oldSkin || b.skin
+        );
+        toHtml = gearEmptySideHtml();
+        break;
+      case "unknown":
+        fromHtml = `<div class="ecu-meter-tt-gear-side"><span class="ecu-meter-tt-gear-text"><span class="ecu-meter-tt-gear-name">${escapeHtml(b.label || "Gear change")}</span></span></div>`;
+        toHtml = gearEmptySideHtml();
+        break;
+      default: {
+        const _exhaustive = kind;
+        return _exhaustive;
+      }
     }
     let atBit = "";
     if (showAt) {
       atBit = `<span class="ecu-meter-tt-gear-row-at">${escapeHtml(tipAtLabel(originMs, b.atSec))}</span>`;
     }
     return `<div class="ecu-meter-tt-gear-row${tone}">
-    <span class="ecu-meter-tt-gear-slot">${escapeHtml(slot)}</span>
-    ${icos}
-    ${names}
-    ${atBit}
+    <div class="ecu-meter-tt-gear-row-head">
+      <span class="ecu-meter-tt-gear-slot">${escapeHtml(slot)}</span>
+      ${atBit}
+    </div>
+    <div class="ecu-meter-tt-gear-swap">
+      ${fromHtml}
+      <span class="ecu-meter-tt-gear-arrow" aria-hidden="true">\u2192</span>
+      ${toHtml}
+    </div>
   </div>`;
   }
   function tipGearClusterHtml(primary, nearby, actorName, originMs) {
@@ -20460,7 +23365,7 @@ ${parts.map(cssSlice).join("\n")}
       if (sa > sb) return 1;
       return 0;
     });
-    const sameSecond = clusterSameSecond(all);
+    const sameAt = clusterSameAtSec(all);
     const who = primary.source || actorName || "Unknown";
     const whenLabel = clusterWhenLabel(all, originMs);
     let rows = "";
@@ -20469,7 +23374,7 @@ ${parts.map(cssSlice).join("\n")}
       rows += tipGearRowHtml(
         b,
         b.domKey !== primary.domKey,
-        !sameSecond,
+        !sameAt,
         originMs
       );
     }
@@ -20579,6 +23484,24 @@ ${parts.map(cssSlice).join("\n")}
     };
   }
   function nearbyBlocks(primary, laneBlocks, view) {
+    if (primary.kind === "gear") {
+      const nearby2 = [];
+      for (let i = 0; i < laneBlocks.length; i++) {
+        const o = laneBlocks[i];
+        if (o.domKey === primary.domKey) continue;
+        if (o.kind !== "gear") continue;
+        if (o.atSec !== primary.atSec) continue;
+        nearby2.push(o);
+      }
+      nearby2.sort((a, b) => {
+        const sa = a.slot || "";
+        const sb = b.slot || "";
+        if (sa < sb) return -1;
+        if (sa > sb) return 1;
+        return 0;
+      });
+      return nearby2;
+    }
     const primaryKey = skillKey(primary);
     const windowSec = nearbyWindowSec(view.pps, view.iconPx);
     const bestByKey = {};
@@ -20587,11 +23510,7 @@ ${parts.map(cssSlice).join("\n")}
       if (o.domKey === primary.domKey) continue;
       if (Math.abs(o.atSec - primary.atSec) > windowSec) continue;
       if (!blockIconInView(o, view)) continue;
-      if (primary.kind === "gear") {
-        if (o.kind !== "gear") continue;
-      } else if (o.kind === "gear") {
-        continue;
-      }
+      if (o.kind === "gear") continue;
       const k = skillKey(o);
       if (k === primaryKey) continue;
       const prev = bestByKey[k];
@@ -20612,6 +23531,126 @@ ${parts.map(cssSlice).join("\n")}
     }
     return tipEventClusterHtml(b, nearby, actorName, originMs);
   }
+
+  // src/ui/meter/views/timeline/timelineVirtualize.ts
+  function firstBlockInView(blocks, viewLeft, pps) {
+    const maxBarPx = TL_VISUAL_DUR_MAX * pps;
+    const minAt = (viewLeft - maxBarPx) / Math.max(1, pps);
+    let lo = 0;
+    let hi = blocks.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (blocks[mid].atSec < minAt) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  function lastBlockInView(blocks, viewRight, pps, from) {
+    const maxAt = viewRight / Math.max(1, pps);
+    let lo = from;
+    let hi = blocks.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (blocks[mid].atSec <= maxAt) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  function blockOverlapsView(b, viewLeft, viewRight, pps, iconPx) {
+    const layout = blockLayoutPx(b, pps, iconPx);
+    return layout.left + layout.width > viewLeft && layout.left < viewRight;
+  }
+  function isViewUnmeasured(range) {
+    return range.left <= -1e8;
+  }
+  function estimateViewRange(durSec, pps, follow) {
+    const viewW = TL_VIEW_ESTIMATE_W;
+    const buf = TL_VIEW_BUF_PX;
+    const contentW = Math.max(0, durSec * pps);
+    const left = follow ? Math.max(0, contentW - viewW) : 0;
+    const right = follow ? Math.max(viewW, contentW) : viewW;
+    return { left: left - buf, right: right + buf };
+  }
+  function tickStepSec(pps) {
+    const candidates = [5, 10, 15, 30, 60, 120];
+    for (let i = 0; i < candidates.length; i++) {
+      if (candidates[i] * pps >= TL_TICK_MIN_PX) return candidates[i];
+    }
+    return candidates[candidates.length - 1];
+  }
+  function buildTicks(pps, axisSec, includeEnd) {
+    const step = tickStepSec(pps);
+    const last = Math.max(0, Math.floor(axisSec + 1e-9));
+    const ticks = [{ sec: 0, left: 0 }];
+    for (let s = step; s <= last; s += step) {
+      ticks.push({ sec: s, left: Math.round(s * pps) });
+    }
+    if (includeEnd && last > 0) {
+      const endLeft = Math.round(last * pps);
+      const prev = ticks[ticks.length - 1];
+      if (endLeft - prev.left > 24) {
+        ticks.push({ sec: last, left: endLeft, isEnd: true });
+      }
+    }
+    return ticks;
+  }
+  function axisTickNodes(ticks, kind, originMs, viewLeft, viewRight) {
+    const slop = 48;
+    const nodes = [];
+    for (let i = 0; i < ticks.length; i++) {
+      const t = ticks[i];
+      if (t.left < viewLeft - slop || t.left > viewRight + slop) continue;
+      const wall = kind === "wall" ? wallAtElapsed(originMs, t.sec) : "";
+      const isFirst = t.sec === 0 && !t.isEnd;
+      nodes.push(
+        e(
+          "span",
+          {
+            key: `${kind}-${t.isEnd ? "end" : t.sec}`,
+            className: "ecu-meter-tl-tick" + (kind === "wall" ? " is-wall" : " is-fight") + (isFirst ? " is-first" : "") + (t.isEnd ? " is-last" : ""),
+            style: { left: `${t.left}px` },
+            title: kind === "fight" ? "Fight elapsed" : "Wall clock"
+          },
+          kind === "fight" ? fmtClock(t.sec) : wall || "\u2014"
+        )
+      );
+    }
+    return nodes;
+  }
+  function blockLayoutPx(b, pps, iconPx) {
+    const left = Math.round(Math.max(0, b.atSec * pps));
+    if (b.kind === "gear") {
+      return { left, width: iconPx, showBar: false };
+    }
+    let visualDur = visualDurationSec(b);
+    if (b.kind === "cast" && b.nextSameAtSec != null) {
+      const gapSec = TL_CAST_BAR_GAP_PX / Math.max(1, pps);
+      visualDur = Math.min(
+        visualDur,
+        Math.max(0, b.nextSameAtSec - b.atSec - gapSec)
+      );
+    }
+    const barPx = Math.round(visualDur * pps);
+    const width = Math.max(iconPx, barPx);
+    const barSpan = barPx - Math.round(iconPx / 2);
+    const showBar = b.kind !== "death" && barSpan >= TL_BAR_MIN_PX;
+    return { left, width, showBar };
+  }
+
+  // src/ui/meter/views/timeline/TimelineEvent.ts
+  var tlTipHoverRef = { current: "" };
+  function isTlHoverTarget(el) {
+    if (!(el instanceof Element)) return false;
+    return !!(el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death"));
+  }
+  function showBlockTip(domKey, ev, html) {
+    tlTipHoverRef.current = domKey;
+    showMeterTooltip(ev, html);
+  }
+  function hideTimelineBlockTip() {
+    tlTipHoverRef.current = "";
+    hideMeterTooltip();
+  }
   function IconHost(props) {
     const React = getReact();
     const ref = React.useRef(null);
@@ -20631,38 +23670,129 @@ ${parts.map(cssSlice).join("\n")}
       onMouseLeave: props.onMouseLeave
     });
   }
-  var tlHoverDomKey = "";
-  function isTlHoverTarget(el) {
-    if (!(el instanceof Element)) return false;
-    return !!(el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death"));
+  function timelineEventEqual(prev, next) {
+    if (prev.pps !== next.pps || prev.stackIndex !== next.stackIndex)
+      return false;
+    if (prev.laneId !== next.laneId || prev.actorName !== next.actorName) {
+      return false;
+    }
+    if (prev.originMs !== next.originMs) return false;
+    if (prev.iconPx !== next.iconPx || prev.subIndex !== next.subIndex || prev.subCount !== next.subCount) {
+      return false;
+    }
+    const pb = prev.block;
+    const nb = next.block;
+    if (pb.domKey !== nb.domKey || pb.atSec !== nb.atSec || pb.kind !== nb.kind) {
+      return false;
+    }
+    if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
+    if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
+    if (pb.isOpen && nb.isOpen) return true;
+    return pb.durationSec === nb.durationSec;
   }
-  function showBlockTip(domKey, ev, html) {
-    tlHoverDomKey = domKey;
-    showMeterTooltip(ev, html);
-  }
-  function hideBlockTip() {
-    tlHoverDomKey = "";
-    hideMeterTooltip();
+  function TimelineEventInner(props) {
+    const b = props.block;
+    const layout = blockLayoutPx(b, props.pps, props.iconPx);
+    const tip = (ev) => {
+      const laneBlocks = props.laneBlocksRef.current[props.laneId] || [];
+      const scroll = timelineScrollView(ev.target);
+      const view = {
+        pps: props.pps,
+        iconPx: props.iconPx,
+        viewLeft: scroll ? scroll.viewLeft : 0,
+        viewRight: scroll ? scroll.viewRight : Number.POSITIVE_INFINITY,
+        pad: scroll ? scroll.pad : 0
+      };
+      return blockTooltipHtml(
+        b,
+        props.actorName,
+        laneBlocks,
+        props.originMs,
+        view
+      );
+    };
+    const onEnter = (ev) => {
+      showBlockTip(b.domKey, ev, tip(ev));
+    };
+    const onMove = (ev) => {
+      if (tlTipHoverRef.current !== b.domKey) {
+        showBlockTip(b.domKey, ev, tip(ev));
+        return;
+      }
+      showMeterTooltip(ev, tip(ev));
+    };
+    const onLeave = (ev) => {
+      if (isTlHoverTarget(ev.relatedTarget)) return;
+      hideTimelineBlockTip();
+    };
+    const iconZ = TL_ICON_Z + props.stackIndex + (b.kind === "gear" ? gearPinZBoost(b.slot) : 0);
+    const barZ = props.stackIndex + 1;
+    const split = props.subIndex >= 0 && props.subCount >= 2;
+    if (b.kind === "death") {
+      return e("div", {
+        className: "ecu-meter-tl-death",
+        style: { left: `${layout.left}px`, zIndex: iconZ },
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
+      });
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-meter-tl-block" + (b.kind === "cast" ? " is-cast" : "") + (b.kind === "gear" ? " is-gear" : "") + (b.condKind === "buff" ? " is-buff" : "") + (b.condKind === "debuff" ? " is-debuff" : "") + (layout.showBar ? "" : " is-no-bar") + (split ? " is-sub" : ""),
+        "data-tl-key": b.domKey,
+        style: {
+          left: `${layout.left}px`,
+          width: `${layout.width}px`,
+          ...split ? {
+            ["--tl-sub-i"]: String(props.subIndex),
+            ["--tl-subs"]: String(props.subCount)
+          } : {}
+        }
+      },
+      e(IconHost, {
+        html: blockIconHtml(b, props.iconPx),
+        className: "ecu-meter-tl-block-ico",
+        style: { zIndex: iconZ },
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
+      }),
+      layout.showBar ? e("div", { className: "ecu-meter-tl-block-bar" }) : null,
+      e("div", {
+        className: "ecu-meter-tl-block-hit",
+        style: { zIndex: barZ },
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
+      })
+    );
   }
 
   // src/ui/meter/views/timeline/timelineLanes.ts
   function buildActorMaps(segmentRef) {
     const names = {};
     const ctypes = {};
-    const meta = getPlayerMeta();
-    const metaIds = Object.keys(meta);
-    for (let i = 0; i < metaIds.length; i++) {
-      const id = metaIds[i];
-      names[id] = meta[id].name;
-      ctypes[id] = meta[id].ctype;
-    }
     const seg = resolveSegment(segmentRef);
+    const liveRoster = !!(seg && isLiveCombatSegment(seg));
+    if (liveRoster) {
+      const meta2 = getPlayerMeta();
+      const metaIds = Object.keys(meta2);
+      for (let i = 0; i < metaIds.length; i++) {
+        const id = metaIds[i];
+        names[id] = meta2[id].name;
+        ctypes[id] = meta2[id].ctype;
+      }
+    }
     if (seg) {
+      const meta2 = liveRoster ? null : getPlayerMeta();
       const actorIds = Object.keys(seg.actors);
       for (let i = 0; i < actorIds.length; i++) {
         const a = seg.actors[actorIds[i]];
-        names[a.id] = a.name || names[a.id] || a.id;
-        ctypes[a.id] = a.ctype || ctypes[a.id] || resolvePlayerCtype(a.id) || void 0;
+        const extra = meta2 ? meta2[a.id] : void 0;
+        names[a.id] = a.name || (extra == null ? void 0 : extra.name) || names[a.id] || a.id;
+        ctypes[a.id] = a.ctype || (extra == null ? void 0 : extra.ctype) || ctypes[a.id] || resolvePlayerCtype(a.id) || void 0;
         if (!a.ctype && ctypes[a.id]) a.ctype = ctypes[a.id];
       }
     }
@@ -20696,19 +23826,22 @@ ${parts.map(cssSlice).join("\n")}
   }
   function seedScopeLanes(byId, ensure, seg, partyFocus) {
     var _a;
-    const meta = getPlayerMeta();
-    const metaIds = Object.keys(meta);
-    for (let i = 0; i < metaIds.length; i++) {
-      const id = metaIds[i];
-      if (seg && !actorIdInScope(id, seg, partyFocus)) continue;
-      ensure(id, (_a = meta[id]) == null ? void 0 : _a.name);
+    if (seg && isLiveCombatSegment(seg)) {
+      const meta2 = getPlayerMeta();
+      const metaIds = Object.keys(meta2);
+      for (let i = 0; i < metaIds.length; i++) {
+        const id = metaIds[i];
+        if (!actorIdInScope(id, seg, partyFocus)) continue;
+        ensure(id, (_a = meta2[id]) == null ? void 0 : _a.name);
+      }
     }
     if (!seg) return;
     const actorIds = Object.keys(seg.actors);
     for (let i = 0; i < actorIds.length; i++) {
       const id = actorIds[i];
-      if (!actorIdInScope(id, seg, partyFocus)) continue;
       const a = seg.actors[id];
+      if (!a.ctype && /^\d+$/.test(a.id)) continue;
+      if (!actorIdInScope(id, seg, partyFocus)) continue;
       ensure(id, a.name);
     }
   }
@@ -20726,13 +23859,13 @@ ${parts.map(cssSlice).join("\n")}
     return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}`;
   }
   function rosterSigNow() {
-    const meta = getPlayerMeta();
-    const ids = Object.keys(meta);
+    const meta2 = getPlayerMeta();
+    const ids = Object.keys(meta2);
     ids.sort();
     let s = "";
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      s += `${id}:${meta[id].name}:${meta[id].ctype || ""};`;
+      s += `${id}:${meta2[id].name}:${meta2[id].ctype || ""};`;
     }
     return s;
   }
@@ -20744,11 +23877,7 @@ ${parts.map(cssSlice).join("\n")}
     return n;
   }
   function timelineFightKey(segmentRef, seg) {
-    let refKey = "current";
-    if (segmentRef === "total") refKey = "total";
-    else if (segmentRef && typeof segmentRef === "object" && segmentRef.pastId) {
-      refKey = `past:${segmentRef.pastId}`;
-    }
+    const refKey = segmentRef ? segmentRefKey(segmentRef) : "current";
     if (!seg) return `${refKey}:empty`;
     return `${refKey}:${seg.id}:${seg.startedAt}`;
   }
@@ -20897,212 +24026,6 @@ ${parts.map(cssSlice).join("\n")}
     return lanes;
   }
 
-  // src/ui/meter/views/timeline/timelineVirtualize.ts
-  function firstBlockInView(blocks, viewLeft, pps) {
-    const maxBarPx = TL_VISUAL_DUR_MAX * pps;
-    const minAt = (viewLeft - maxBarPx) / Math.max(1, pps);
-    let lo = 0;
-    let hi = blocks.length;
-    while (lo < hi) {
-      const mid = lo + hi >> 1;
-      if (blocks[mid].atSec < minAt) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-  function lastBlockInView(blocks, viewRight, pps, from) {
-    const maxAt = viewRight / Math.max(1, pps);
-    let lo = from;
-    let hi = blocks.length;
-    while (lo < hi) {
-      const mid = lo + hi >> 1;
-      if (blocks[mid].atSec <= maxAt) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  }
-  function blockOverlapsView(b, viewLeft, viewRight, pps, iconPx) {
-    const layout = blockLayoutPx(b, pps, iconPx);
-    return layout.left + layout.width > viewLeft && layout.left < viewRight;
-  }
-  function isViewUnmeasured(range) {
-    return range.left <= -1e8;
-  }
-  function estimateViewRange(durSec, pps, follow) {
-    const viewW = TL_VIEW_ESTIMATE_W;
-    const buf = TL_VIEW_BUF_PX;
-    const contentW = Math.max(0, durSec * pps);
-    const left = follow ? Math.max(0, contentW - viewW) : 0;
-    const right = follow ? Math.max(viewW, contentW) : viewW;
-    return { left: left - buf, right: right + buf };
-  }
-  function tickStepSec(pps) {
-    const candidates = [5, 10, 15, 30, 60, 120];
-    for (let i = 0; i < candidates.length; i++) {
-      if (candidates[i] * pps >= TL_TICK_MIN_PX) return candidates[i];
-    }
-    return candidates[candidates.length - 1];
-  }
-  function buildTicks(pps, axisSec, includeEnd) {
-    const step = tickStepSec(pps);
-    const last = Math.max(0, Math.floor(axisSec + 1e-9));
-    const ticks = [{ sec: 0, left: 0 }];
-    for (let s = step; s <= last; s += step) {
-      ticks.push({ sec: s, left: Math.round(s * pps) });
-    }
-    if (includeEnd && last > 0) {
-      const endLeft = Math.round(last * pps);
-      const prev = ticks[ticks.length - 1];
-      if (endLeft - prev.left > 24) {
-        ticks.push({ sec: last, left: endLeft, isEnd: true });
-      }
-    }
-    return ticks;
-  }
-  function axisTickNodes(ticks, kind, originMs, viewLeft, viewRight) {
-    const slop = 48;
-    const nodes = [];
-    for (let i = 0; i < ticks.length; i++) {
-      const t = ticks[i];
-      if (t.left < viewLeft - slop || t.left > viewRight + slop) continue;
-      const wall = kind === "wall" ? wallAtElapsed(originMs, t.sec) : "";
-      const isFirst = t.sec === 0 && !t.isEnd;
-      nodes.push(
-        e(
-          "span",
-          {
-            key: `${kind}-${t.isEnd ? "end" : t.sec}`,
-            className: "ecu-meter-tl-tick" + (kind === "wall" ? " is-wall" : " is-fight") + (isFirst ? " is-first" : "") + (t.isEnd ? " is-last" : ""),
-            style: { left: `${t.left}px` },
-            title: kind === "fight" ? "Fight elapsed" : "Wall clock"
-          },
-          kind === "fight" ? fmtClock(t.sec) : wall || "\u2014"
-        )
-      );
-    }
-    return nodes;
-  }
-  function blockLayoutPx(b, pps, iconPx) {
-    const left = Math.round(Math.max(0, b.atSec * pps));
-    if (b.kind === "gear") {
-      return { left, width: iconPx, showBar: false };
-    }
-    let visualDur = visualDurationSec(b);
-    if (b.kind === "cast" && b.nextSameAtSec != null) {
-      const gapSec = TL_CAST_BAR_GAP_PX / Math.max(1, pps);
-      visualDur = Math.min(
-        visualDur,
-        Math.max(0, b.nextSameAtSec - b.atSec - gapSec)
-      );
-    }
-    const barPx = Math.round(visualDur * pps);
-    const width = Math.max(iconPx, barPx);
-    const barSpan = barPx - Math.round(iconPx / 2);
-    const showBar = b.kind !== "death" && barSpan >= TL_BAR_MIN_PX;
-    return { left, width, showBar };
-  }
-
-  // src/ui/meter/views/timeline/TimelineEvent.ts
-  function timelineEventEqual(prev, next) {
-    if (prev.pps !== next.pps || prev.stackIndex !== next.stackIndex)
-      return false;
-    if (prev.laneId !== next.laneId || prev.actorName !== next.actorName) {
-      return false;
-    }
-    if (prev.originMs !== next.originMs) return false;
-    if (prev.iconPx !== next.iconPx || prev.subIndex !== next.subIndex || prev.subCount !== next.subCount) {
-      return false;
-    }
-    const pb = prev.block;
-    const nb = next.block;
-    if (pb.domKey !== nb.domKey || pb.atSec !== nb.atSec || pb.kind !== nb.kind) {
-      return false;
-    }
-    if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
-    if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
-    if (pb.isOpen && nb.isOpen) return true;
-    return pb.durationSec === nb.durationSec;
-  }
-  function TimelineEventInner(props) {
-    const b = props.block;
-    const layout = blockLayoutPx(b, props.pps, props.iconPx);
-    const tip = (ev) => {
-      const laneBlocks = props.laneBlocksRef.current[props.laneId] || [];
-      const scroll = timelineScrollView(ev.target);
-      const view = {
-        pps: props.pps,
-        iconPx: props.iconPx,
-        viewLeft: scroll ? scroll.viewLeft : 0,
-        viewRight: scroll ? scroll.viewRight : Number.POSITIVE_INFINITY,
-        pad: scroll ? scroll.pad : 0
-      };
-      return blockTooltipHtml(
-        b,
-        props.actorName,
-        laneBlocks,
-        props.originMs,
-        view
-      );
-    };
-    const onEnter = (ev) => {
-      showBlockTip(b.domKey, ev, tip(ev));
-    };
-    const onMove = (ev) => {
-      if (tlHoverDomKey !== b.domKey) {
-        showBlockTip(b.domKey, ev, tip(ev));
-        return;
-      }
-      showMeterTooltip(ev, tip(ev));
-    };
-    const onLeave = (ev) => {
-      if (isTlHoverTarget(ev.relatedTarget)) return;
-      hideBlockTip();
-    };
-    const iconZ = TL_ICON_Z + props.stackIndex;
-    const barZ = props.stackIndex + 1;
-    const split = props.subIndex >= 0 && props.subCount >= 2;
-    if (b.kind === "death") {
-      return e("div", {
-        className: "ecu-meter-tl-death",
-        style: { left: `${layout.left}px`, zIndex: iconZ },
-        onMouseEnter: onEnter,
-        onMouseMove: onMove,
-        onMouseLeave: onLeave
-      });
-    }
-    return e(
-      "div",
-      {
-        className: "ecu-meter-tl-block" + (b.kind === "cast" ? " is-cast" : "") + (b.kind === "gear" ? " is-gear" : "") + (b.condKind === "buff" ? " is-buff" : "") + (b.condKind === "debuff" ? " is-debuff" : "") + (layout.showBar ? "" : " is-no-bar") + (split ? " is-sub" : ""),
-        "data-tl-key": b.domKey,
-        style: {
-          left: `${layout.left}px`,
-          width: `${layout.width}px`,
-          ...split ? {
-            ["--tl-sub-i"]: String(props.subIndex),
-            ["--tl-subs"]: String(props.subCount)
-          } : {}
-        }
-      },
-      e(IconHost, {
-        html: blockIconHtml(b, props.iconPx),
-        className: "ecu-meter-tl-block-ico",
-        style: { zIndex: iconZ },
-        onMouseEnter: onEnter,
-        onMouseMove: onMove,
-        onMouseLeave: onLeave
-      }),
-      layout.showBar ? e("div", { className: "ecu-meter-tl-block-bar" }) : null,
-      e("div", {
-        className: "ecu-meter-tl-block-hit",
-        style: { zIndex: barZ },
-        onMouseEnter: onEnter,
-        onMouseMove: onMove,
-        onMouseLeave: onLeave
-      })
-    );
-  }
-
   // src/ui/meter/views/timeline/timelineChrome.ts
   var TL_FILTER_TABS = [
     { id: "all", label: "All" },
@@ -21226,6 +24149,18 @@ ${parts.map(cssSlice).join("\n")}
       )
     );
   }
+  function timelineGoToNowBtn(onClick) {
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "ecu-meter-tl-now-btn",
+        title: "Go to now \u2014 live edge or end of fight",
+        onClick
+      },
+      "Now"
+    );
+  }
   function timelineLegend(items) {
     return e(
       "div",
@@ -21295,6 +24230,7 @@ ${parts.map(cssSlice).join("\n")}
     const [rulerTicks, setRulerTicks] = React.useState([]);
     const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
     const [trackFrozen, setTrackFrozen] = React.useState(false);
+    const [showGoToNow, setShowGoToNow] = React.useState(false);
     const viewSnapRef = React.useRef("");
     const rootRef = React.useRef(null);
     const scrollRef = React.useRef(null);
@@ -21458,6 +24394,21 @@ ${parts.map(cssSlice).join("\n")}
     }, [publishViewRange, syncGutterY]);
     const applyLayoutRef = React.useRef(applyLayout);
     applyLayoutRef.current = applyLayout;
+    const publishShowGoToNow = React.useCallback(() => {
+      const show = !followRef.current && freezePadRef.current == null;
+      setShowGoToNow((prev) => prev === show ? prev : show);
+    }, []);
+    const goToNow = React.useCallback(() => {
+      if (followRef.current && freezePadRef.current == null) return;
+      freezePadRef.current = null;
+      freezeResumeRef.current = false;
+      followRef.current = true;
+      setTrackFrozen(false);
+      setShowGoToNow(false);
+      applyingScrollRef.current = true;
+      applyLayoutRef.current();
+      applyingScrollRef.current = false;
+    }, []);
     const beginModFreeze = React.useCallback(() => {
       if (!isLiveRef.current) return;
       if (!shiftFreezeOkRef.current) return;
@@ -21469,7 +24420,8 @@ ${parts.map(cssSlice).join("\n")}
       freezePadRef.current = layoutCacheRef.current.pad >= 0 ? layoutCacheRef.current.pad : 0;
       followRef.current = false;
       setTrackFrozen(true);
-    }, []);
+      publishShowGoToNow();
+    }, [publishShowGoToNow]);
     const endModFreeze = React.useCallback(() => {
       const scroll = scrollRef.current;
       const hadFreeze = freezePadRef.current != null;
@@ -21482,11 +24434,12 @@ ${parts.map(cssSlice).join("\n")}
       if (wantResume && !scrolled) {
         followRef.current = true;
       }
+      publishShowGoToNow();
       applyLayoutRef.current();
-    }, []);
+    }, [publishShowGoToNow]);
     React.useEffect(() => {
       injectMeterChromeCss();
-      return () => hideBlockTip();
+      return () => hideTimelineBlockTip();
     }, []);
     React.useLayoutEffect(() => {
       applyingScrollRef.current = true;
@@ -21494,6 +24447,7 @@ ${parts.map(cssSlice).join("\n")}
       freezePadRef.current = null;
       freezeResumeRef.current = false;
       setTrackFrozen(false);
+      setShowGoToNow(false);
       layoutCacheRef.current = {
         contentW: -1,
         pad: -1,
@@ -21536,13 +24490,15 @@ ${parts.map(cssSlice).join("\n")}
         const max = Math.max(0, el.scrollWidth - el.clientWidth);
         if (max <= TL_FOLLOW_SLACK) {
           followRef.current = true;
+          publishShowGoToNow();
           return;
         }
         followRef.current = el.scrollLeft >= max - TL_FOLLOW_SLACK;
+        publishShowGoToNow();
       };
       el.addEventListener("scroll", onScroll, { passive: true });
       return () => el.removeEventListener("scroll", onScroll);
-    }, [isTimeline, publishViewRange, syncGutterY]);
+    }, [isTimeline, publishShowGoToNow, publishViewRange, syncGutterY]);
     React.useEffect(() => {
       const gutter = gutterRef.current;
       const scroll = scrollRef.current;
@@ -21770,15 +24726,19 @@ ${parts.map(cssSlice).join("\n")}
           { className: "ecu-meter-tl-gutter", ref: gutterRef },
           e(
             "div",
-            { className: "ecu-meter-tl-gutter-ruler", "aria-hidden": true },
+            { className: "ecu-meter-tl-gutter-ruler" },
             e(
               "span",
               { className: "ecu-meter-tl-gutter-axis-lab is-fight" },
-              "Fight"
+              e("span", { "aria-hidden": true }, "Fight"),
+              showGoToNow ? timelineGoToNowBtn(goToNow) : null
             ),
             e(
               "span",
-              { className: "ecu-meter-tl-gutter-axis-lab is-clock" },
+              {
+                className: "ecu-meter-tl-gutter-axis-lab is-clock",
+                "aria-hidden": true
+              },
               "Clock"
             )
           ),
@@ -21844,13 +24804,14 @@ ${parts.map(cssSlice).join("\n")}
       MeterTimelineMemo = React.memo(MeterTimelineViewInner, timelineInnerEqual);
     }
     const seg = resolveSegment(props.segmentRef);
+    const liveRoster = !!(seg && isLiveCombatSegment(seg));
     return e(MeterTimelineMemo, {
       result: props.result,
       segmentRef: props.segmentRef,
       partyFocus: props.partyFocus,
-      rosterSig: rosterSigNow(),
+      rosterSig: liveRoster ? rosterSigNow() : seg ? `fight:${seg.id}` : "empty",
       deathCount: seg ? seg.deaths.length : 0,
-      combatLive: !!(seg && seg.endedAt == null),
+      combatLive: liveRoster,
       fightKey: timelineFightKey(props.segmentRef, seg)
     });
   }
@@ -21997,7 +24958,7 @@ ${parts.map(cssSlice).join("\n")}
   function historyToSeries(result, enabled, windowPts) {
     var _a, _b;
     if (result.kind !== "history") return [];
-    const meta = getPlayerMeta();
+    const meta2 = getPlayerMeta();
     const series = [];
     for (let i = 0; i < result.seriesKeys.length && i < 12; i++) {
       const id = result.seriesKeys[i];
@@ -22009,8 +24970,8 @@ ${parts.map(cssSlice).join("\n")}
         values.push(pts[p].values[id] || 0);
       }
       series.push({
-        label: ((_a = meta[id]) == null ? void 0 : _a.name) || id,
-        color: classColors[((_b = meta[id]) == null ? void 0 : _b.ctype) || ""] || "#888",
+        label: ((_a = meta2[id]) == null ? void 0 : _a.name) || id,
+        color: classColors[((_b = meta2[id]) == null ? void 0 : _b.ctype) || ""] || "#888",
         values,
         // stash id for legend
         ...{ id }
@@ -22019,6 +24980,24 @@ ${parts.map(cssSlice).join("\n")}
     return series;
   }
   function MeterHistoryChart(props) {
+    const React = getReact();
+    const wrapRef = React.useRef(null);
+    const [box, setBox] = React.useState({ w: 280, h: 120 });
+    React.useEffect(() => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const measure = () => {
+        setBox({
+          w: Math.max(80, el.clientWidth),
+          h: Math.max(60, el.clientHeight)
+        });
+      };
+      measure();
+      if (typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
     if (props.result.kind !== "history") {
       return e(
         "div",
@@ -22027,16 +25006,26 @@ ${parts.map(cssSlice).join("\n")}
       );
     }
     const series = historyToSeries(props.result, void 0, void 0);
-    return e(MetricChart, {
-      width: props.width || 280,
-      height: props.height || 110,
-      series,
-      emptyText: "No samples yet",
-      fill: props.fill,
-      stack: props.stack,
-      integrate: props.integrate,
-      normalize: props.normalize
-    });
+    const w = props.width || box.w;
+    const h = props.height || box.h;
+    return e(
+      "div",
+      { className: "ecu-meter-chart-fill", ref: wrapRef },
+      e(
+        "div",
+        { className: "ecu-meter-graph-canvas-wrap" },
+        e(MetricChart, {
+          width: w,
+          height: h,
+          series,
+          emptyText: "No samples yet",
+          fill: props.fill,
+          stack: props.stack,
+          integrate: props.integrate,
+          normalize: props.normalize
+        })
+      )
+    );
   }
   function MeterSeriesView(props) {
     const React = getReact();
@@ -22077,9 +25066,13 @@ ${parts.map(cssSlice).join("\n")}
         200,
         wrapRef.current && wrapRef.current.clientWidth || 280
       );
+      const height = Math.max(
+        80,
+        wrapRef.current && wrapRef.current.clientHeight || 120
+      );
       paintMetricCanvas(canvas, {
         width,
-        height: 120,
+        height,
         series,
         emptyText: "No samples yet",
         fill: !isCompare,
@@ -22089,7 +25082,7 @@ ${parts.map(cssSlice).join("\n")}
       });
       const leg = legendRef.current;
       if (leg && hist.kind === "history") {
-        const meta = getPlayerMeta();
+        const meta2 = getPlayerMeta();
         const enabled = p.instance.seriesEnabled || {};
         const keys = hist.seriesKeys;
         const existing = leg.querySelectorAll("[data-id]");
@@ -22104,8 +25097,8 @@ ${parts.map(cssSlice).join("\n")}
             lab.setAttribute("data-id", id);
             lab.style.cssText = "display:inline-flex;align-items:center;gap:4px;margin:2px 6px 2px 0;font-size:11px;color:#c5d0e0;cursor:pointer";
             lab.innerHTML = `<input type="checkbox" ${on ? "checked" : ""}/>
-            <span style="width:8px;height:8px;background:${classColors[((_a = meta[id]) == null ? void 0 : _a.ctype) || ""] || "#888"}"></span>
-            <span>${((_b = meta[id]) == null ? void 0 : _b.name) || id}</span>
+            <span style="width:8px;height:8px;background:${classColors[((_a = meta2[id]) == null ? void 0 : _a.ctype) || ""] || "#888"}"></span>
+            <span>${((_b = meta2[id]) == null ? void 0 : _b.name) || id}</span>
             <b class="leg-rate" style="font-variant-numeric:tabular-nums">${fmtRate(last)}</b>`;
             const input = lab.querySelector("input");
             input.onchange = () => {
@@ -22158,6 +25151,13 @@ ${parts.map(cssSlice).join("\n")}
       props.partyFocus
     ]);
     React.useEffect(() => {
+      const el = wrapRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(() => paintLive());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [paintLive]);
+    React.useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       canvas.onmousemove = (ev) => {
@@ -22179,13 +25179,13 @@ ${parts.map(cssSlice).join("\n")}
           )
         );
         const pt = hist.points[idx];
-        const meta = getPlayerMeta();
+        const meta2 = getPlayerMeta();
         const rows = hist.seriesKeys.map((id) => {
           var _a, _b;
           return {
             id,
-            name: ((_a = meta[id]) == null ? void 0 : _a.name) || id,
-            color: classColors[((_b = meta[id]) == null ? void 0 : _b.ctype) || ""] || "#888",
+            name: ((_a = meta2[id]) == null ? void 0 : _a.name) || id,
+            color: classColors[((_b = meta2[id]) == null ? void 0 : _b.ctype) || ""] || "#888",
             value: pt.values[id] || 0
           };
         }).filter((r) => r.value > 0).sort((a, b) => b.value - a.value).slice(0, 8);
@@ -22211,17 +25211,13 @@ ${parts.map(cssSlice).join("\n")}
     );
     return e(
       "div",
-      {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          padding: 4
-        }
-      },
+      { className: "ecu-meter-chart-fill" },
       isCompare ? e(
         "div",
-        { style: { display: "flex", gap: 4, flexWrap: "wrap" } },
+        {
+          className: "chart-tools",
+          style: { flex: "0 0 auto" }
+        },
         toggleBtn(
           "Stack",
           !!props.instance.stack,
@@ -22240,12 +25236,8 @@ ${parts.map(cssSlice).join("\n")}
       ) : e(
         "div",
         {
-          style: {
-            display: "flex",
-            gap: 4,
-            flexWrap: "wrap",
-            alignItems: "center"
-          }
+          className: "chart-tools",
+          style: { flex: "0 0 auto" }
         },
         tab(
           "DPS",
@@ -22281,19 +25273,26 @@ ${parts.map(cssSlice).join("\n")}
       ),
       e(
         "div",
-        { ref: wrapRef, style: { width: "100%" } },
+        {
+          ref: wrapRef,
+          className: "ecu-meter-graph-canvas-wrap"
+        },
         e("canvas", {
           ref: canvasRef,
           style: {
             display: "block",
             width: "100%",
-            height: 120,
+            height: "100%",
             border: "1px solid #333",
             background: "#111"
           }
         })
       ),
-      e("div", { ref: legendRef, "data-leg": "1" })
+      e("div", {
+        ref: legendRef,
+        "data-leg": "1",
+        style: { flex: "0 0 auto", maxHeight: "30%", overflow: "auto" }
+      })
     );
   }
   function toggleBtn(label, on, onClick) {
@@ -22309,21 +25308,39 @@ ${parts.map(cssSlice).join("\n")}
   }
   function MeterPieView(props) {
     const React = getReact();
-    const ref = React.useRef(null);
+    const wrapRef = React.useRef(null);
+    const canvasRef = React.useRef(null);
+    const [box, setBox] = React.useState({ w: 200, h: 160 });
     React.useEffect(() => {
-      const canvas = ref.current;
+      const el = wrapRef.current;
+      if (!el) return;
+      const measure = () => {
+        setBox({
+          w: Math.max(80, el.clientWidth),
+          h: Math.max(80, el.clientHeight)
+        });
+      };
+      measure();
+      if (typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
+    React.useEffect(() => {
+      const canvas = canvasRef.current;
       if (!canvas || props.result.kind !== "pie") return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      const w = 160;
-      const h = 160;
+      const legendShare = 0.42;
+      const availW = Math.max(60, Math.floor(box.w * (1 - legendShare) - 10));
+      const size = Math.max(64, Math.min(availW, box.h - 8));
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-      canvas.style.width = w + "px";
-      canvas.style.height = h + "px";
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      canvas.style.width = size + "px";
+      canvas.style.height = size + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, w, h);
+      ctx.clearRect(0, 0, size, size);
       const slices = props.result.slices;
       let sum = 0;
       for (let i = 0; i < slices.length; i++) sum += slices[i].value;
@@ -22331,45 +25348,47 @@ ${parts.map(cssSlice).join("\n")}
         ctx.fillStyle = "#888";
         ctx.font = "12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("Empty", w / 2, h / 2);
+        ctx.fillText("Empty", size / 2, size / 2);
         return;
       }
+      const radius = size * 0.38;
       let angle = -Math.PI / 2;
       for (let i = 0; i < slices.length; i++) {
         const slice = slices[i];
         const frac = slice.value / sum;
         const next = angle + frac * Math.PI * 2;
         ctx.beginPath();
-        ctx.moveTo(w / 2, h / 2);
-        ctx.arc(w / 2, h / 2, 60, angle, next);
+        ctx.moveTo(size / 2, size / 2);
+        ctx.arc(size / 2, size / 2, radius, angle, next);
         ctx.closePath();
         ctx.fillStyle = slice.color || "#666";
         ctx.fill();
         angle = next;
       }
-    }, [props.result]);
+    }, [props.result, box]);
     if (props.result.kind !== "pie") {
       return e("div", { style: { padding: "8px", color: "#888" } }, "No pie");
     }
     return e(
       "div",
-      { style: { display: "flex", gap: "8px", alignItems: "center" } },
-      e("canvas", { ref }),
+      { className: "ecu-meter-chart-fill", ref: wrapRef },
       e(
         "div",
-        {
-          style: {
-            fontSize: TYPE.body,
-            ...PIXEL_TEXT,
-            maxHeight: "140px",
-            overflow: "auto"
-          }
-        },
-        ...props.result.slices.map(
-          (s) => e(
-            "div",
-            { key: s.id, style: { color: s.color || "#ccc" } },
-            `${s.name} ${Math.round(s.value)}`
+        { className: "ecu-meter-pie" },
+        e(
+          "div",
+          { className: "ecu-meter-pie-canvas-wrap" },
+          e("canvas", { ref: canvasRef })
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-pie-legend", style: { ...PIXEL_TEXT } },
+          ...props.result.slices.map(
+            (s) => e(
+              "div",
+              { key: s.id, style: { color: s.color || "#ccc" } },
+              `${s.name} ${Math.round(s.value)}`
+            )
           )
         )
       )
@@ -22513,7 +25532,7 @@ ${parts.map(cssSlice).join("\n")}
             partyFocus: instance.partyFocus,
             entities,
             highlightId,
-            live: selectedset === "current",
+            live: barsProps.live,
             onRowClick: (row2) => {
               onPatchInstance({
                 query: {
@@ -22616,7 +25635,7 @@ ${parts.map(cssSlice).join("\n")}
           partyFocus: instance.partyFocus
         }
       );
-      return e(MeterHistoryChart, { result: hist, height: 120 });
+      return e(MeterHistoryChart, { result: hist });
     }
     if (pres === "pie" || result.kind === "pie") {
       const metric = metricFromModeQuery(rootQuery(instance));
@@ -22630,390 +25649,459 @@ ${parts.map(cssSlice).join("\n")}
       );
       return e(MeterPieView, { result: pie });
     }
-    if (pres === "table") {
-      if (result.kind === "summary" || result.kind === "ranked") {
-        return e(MeterTableView, { result });
-      }
-      const ranked = runMeterQuery(rootQuery(instance), {
-        segmentRef: selectedset,
-        partyFocus: instance.partyFocus,
-        entities
-      });
-      return e(MeterTableView, { result: ranked });
-    }
-    if (result.kind === "summary") {
+    if (pres === "summary" || result.kind === "summary") {
       return e(MeterTableView, { result });
     }
     if (result.kind === "ranked" || activeQuery.kind === "players" || activeQuery.kind === "abilities" || activeQuery.kind === "ability_targets" || activeQuery.kind === "targets" || activeQuery.kind === "channel" || activeQuery.kind === "snapshot" || activeQuery.kind === "rolling" || activeQuery.kind === "realtime" || activeQuery.kind === "avoidance") {
       return e(MeterBarsView, barsProps);
     }
-    if (result.kind === "empty") {
-      return e(
-        "div",
-        {
-          style: {
-            padding: "8px",
-            color: "#888",
-            fontSize: TYPE.body,
-            ...PIXEL_TEXT
-          }
-        },
-        props.layoutEdit ? "No contributors yet" : "No data"
-      );
-    }
-    return e(MeterTableView, { result });
+    return e(
+      "div",
+      {
+        style: {
+          padding: "8px",
+          color: "#888",
+          fontSize: TYPE.body,
+          ...PIXEL_TEXT
+        }
+      },
+      props.layoutEdit ? "No contributors yet" : "No data"
+    );
+  }
+
+  // src/meters/meterBookmarks.ts
+  function reorderMeterBookmarks(from, to) {
+    if (from === to) return;
+    const bookmarks = (getSettings().meterBookmarks || []).slice();
+    const moved = bookmarks[from];
+    if (!moved) return;
+    bookmarks.splice(from, 1);
+    bookmarks.splice(to, 0, moved);
+    patchSettings({ meterBookmarks: bookmarks });
+  }
+  function bookmarkFromInstance(instance, label, query, presentation) {
+    return {
+      id: `bm-${Date.now().toString(36)}`,
+      label,
+      query: { ...query },
+      presentation: presentation || "bars",
+      partyFocus: instance.partyFocus,
+      selectedset: instance.selectedset
+    };
+  }
+  function saveMeterBookmarkAtSlot(slotIndex, bm) {
+    const prev = (getSettings().meterBookmarks || []).slice();
+    if (slotIndex >= prev.length) prev.push(bm);
+    else prev[slotIndex] = bm;
+    patchSettings({ meterBookmarks: prev });
+  }
+  function replaceMeterBookmarkAtSlot(slotIndex, instance, label, query, presentation) {
+    const next = (getSettings().meterBookmarks || []).slice();
+    const prev = next[slotIndex];
+    if (!prev) return;
+    next[slotIndex] = {
+      id: prev.id,
+      label,
+      query: { ...query },
+      presentation,
+      partyFocus: instance.partyFocus,
+      selectedset: instance.selectedset
+    };
+    patchSettings({ meterBookmarks: next });
+  }
+  function applyMeterBookmarkPatch(bm) {
+    return {
+      query: { ...bm.query },
+      presentation: bm.presentation || "bars",
+      label: bm.label,
+      partyFocus: bm.partyFocus,
+      selectedset: bm.selectedset
+    };
   }
 
   // src/ui/meter/meterShellTipItems.ts
-  function meterShellTipItems(ctx) {
-    const {
-      tip,
-      partyMenuOpts,
-      partyFocus,
-      hasObserver,
-      instance,
-      onPatchInstance,
-      closeTip,
-      resolved,
-      isCurrentSeg,
-      titleSeg,
-      durSec,
-      partyLabel: partyLabel2,
-      selectedset,
-      applySegment,
-      past: past2,
-      actorPickerRows,
-      setInspectorActor,
-      onOpenReport,
-      copyReport,
-      openReportDialog,
-      setOptionsOpen,
-      watchedName,
-      metersHidden,
-      onToggleMetersHidden,
-      onFocusInspector,
-      onDuplicate,
-      onClose,
-      closedInstances,
-      onReopenClosed
-    } = ctx;
-    if (!tip) return [];
-    if (tip.kind === "party") {
-      const items = partyMenuOpts.map((opt) => {
-        const eff = effectivePartyFocus(partyFocus, hasObserver);
-        const selected = partyFocus === opt.id || eff === opt.id;
-        return {
-          label: opt.label,
-          selected,
+  function asMenu(items) {
+    return { sections: [{ items }] };
+  }
+  function emptyMenu() {
+    return { sections: [] };
+  }
+  function partyRows(ctx) {
+    const { actions } = ctx;
+    const items = [];
+    const eff = effectivePartyFocus(ctx.partyFocus, ctx.hasObserver);
+    for (let i = 0; i < ctx.partyMenuOpts.length; i++) {
+      const opt = ctx.partyMenuOpts[i];
+      const selected = ctx.partyFocus === opt.id || eff === opt.id;
+      items.push({
+        label: opt.label,
+        selected,
+        onSelect: () => {
+          actions.onPatchInstance({ partyFocus: opt.id });
+          actions.closeTip();
+        }
+      });
+    }
+    const alwaysOn = ctx.instance.alwaysShowSelf != null ? ctx.instance.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
+    items.push({
+      label: "Always show me",
+      selected: alwaysOn,
+      onSelect: () => {
+        actions.onPatchInstance({ alwaysShowSelf: !alwaysOn });
+        actions.closeTip();
+      }
+    });
+    return items;
+  }
+  function menuSeg(ctx) {
+    const { actions } = ctx;
+    const choices = listSegmentChoices();
+    let header;
+    if (ctx.resolved) {
+      let headerTip;
+      for (let i = 0; i < choices.length; i++) {
+        if (refsEqual(choices[i].ref, ctx.selectedset)) {
+          headerTip = choices[i].tip;
+          break;
+        }
+      }
+      header = {
+        itemKey: "seg-header",
+        label: `${ctx.isCurrentSeg ? "Current" : ctx.titleSeg} \xB7 ${ctx.durSec.toFixed(0)}s \xB7 ${ctx.partyLabel}`,
+        detail: headerTip,
+        muted: true,
+        onSelect: () => actions.closeTip()
+      };
+    }
+    const items = [];
+    for (let i = 0; i < choices.length; i++) {
+      const c = choices[i];
+      const pastId = typeof c.ref === "object" && "pastId" in c.ref ? c.ref.pastId : "";
+      const item = {
+        itemKey: segmentRefKey(c.ref),
+        label: c.title,
+        detail: c.tip,
+        selected: refsEqual(c.ref, ctx.selectedset),
+        className: c.outcome ? segmentOutcomeClass(c.outcome) : void 0,
+        onSelect: () => {
+          actions.applySegment(c.ref);
+          actions.closeTip();
+        }
+      };
+      if (pastId) {
+        const fav = !!c.favorite;
+        item.trailing = {
+          label: fav ? "\u2605" : "\u2606",
+          title: fav ? "Unfavorite \u2014 allow archive cleanup" : "Favorite \u2014 never auto-delete",
+          className: fav ? "is-fav" : "",
           onSelect: () => {
-            onPatchInstance({ partyFocus: opt.id });
-            closeTip();
+            setSegmentFavorite(pastId, !fav);
           }
         };
-      });
-      const alwaysOn = instance.alwaysShowSelf != null ? instance.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
+      }
+      items.push(item);
+    }
+    return { header, sections: [{ items }] };
+  }
+  function menuDisplay(ctx) {
+    const { actions } = ctx;
+    const curIdx = barModeIndex(rootQuery(ctx.instance));
+    const curId = curIdx >= 0 ? BAR_MODE_CYCLE[curIdx].id : "";
+    const items = [];
+    for (let g = 0; g < DISPLAY_TREE.length; g++) {
+      const group = DISPLAY_TREE[g];
+      for (let c = 0; c < group.children.length; c++) {
+        const d = group.children[c];
+        items.push({
+          label: `${group.label} \u203A ${d.label}`,
+          selected: d.id === curId,
+          onSelect: () => {
+            actions.onPatchInstance({
+              query: { ...d.query },
+              label: d.label,
+              presentation: "bars"
+            });
+            actions.closeTip();
+          }
+        });
+      }
+    }
+    return asMenu(items);
+  }
+  function menuView(ctx) {
+    if (!supportsViewModes(rootQuery(ctx.instance))) return emptyMenu();
+    const { actions } = ctx;
+    const cur = presentationFor(ctx.instance);
+    const items = [];
+    for (let i = 0; i < VIEW_MODES.length; i++) {
+      const vm = VIEW_MODES[i];
       items.push({
-        label: "Always show me",
-        selected: alwaysOn,
+        label: vm.label,
+        selected: cur === vm.id,
         onSelect: () => {
-          onPatchInstance({ alwaysShowSelf: !alwaysOn });
-          closeTip();
+          actions.onPatchInstance(applyViewMode(vm.id));
+          actions.closeTip();
         }
       });
-      return items;
     }
-    if (tip.kind === "seg") {
-      const items = [];
-      if (resolved) {
-        items.push({
-          label: `${isCurrentSeg ? "Current" : titleSeg} \xB7 ${durSec.toFixed(0)}s \xB7 ${partyLabel2}`,
+    return { sections: [{ title: "View", items }] };
+  }
+  function menuReset(ctx) {
+    const { actions } = ctx;
+    return asMenu([
+      {
+        label: "Reset Current fight",
+        onSelect: () => {
+          resetCurrentMeterSegment();
+          actions.onPatchInstance({ selectedset: "current" });
+          actions.closeTip();
+        }
+      },
+      {
+        label: "Reset Overall",
+        onSelect: () => {
+          resetOverallMeterSegments();
+          actions.closeTip();
+        }
+      },
+      {
+        label: "Reset All \u2192 Current",
+        onSelect: () => {
+          resetAllMeters();
+          actions.onPatchInstance({ selectedset: "current" });
+          actions.closeTip();
+        }
+      },
+      {
+        label: ctx.metersHidden ? "Show all meters" : "Hide all meters",
+        onSelect: () => {
+          if (actions.onToggleMetersHidden) actions.onToggleMetersHidden();
+          else patchSettings({ metersHidden: !getSettings().metersHidden });
+          actions.closeTip();
+        }
+      }
+    ]);
+  }
+  function menuActor(ctx) {
+    const { actions } = ctx;
+    if (!ctx.actorPickerRows.length) {
+      return asMenu([
+        {
+          label: "(no players in segment)",
           muted: true,
-          onSelect: () => closeTip()
-        });
-      }
-      items.push(
-        {
-          label: "Current",
-          selected: selectedset === "current",
-          onSelect: () => {
-            applySegment("current");
-            closeTip();
-          }
-        },
-        {
-          label: "Overall",
-          selected: selectedset === "total",
-          onSelect: () => {
-            applySegment("total");
-            closeTip();
-          }
+          onSelect: () => actions.closeTip()
         }
-      );
-      for (let i = 0; i < past2.length; i++) {
-        const p = past2[i];
-        const sel = typeof selectedset === "object" && selectedset && selectedset.pastId === p.id;
-        items.push({
-          label: p.label || p.id,
-          selected: !!sel,
-          className: segmentOutcomeClass(p.outcome),
-          onSelect: () => {
-            applySegment({ pastId: p.id });
-            closeTip();
-          }
-        });
-      }
-      return items;
+      ]);
     }
-    if (tip.kind === "display") {
-      const curIdx = barModeIndex(rootQuery(instance));
-      const curId = curIdx >= 0 ? BAR_MODE_CYCLE[curIdx].id : "";
-      const items = [];
-      for (let g = 0; g < DISPLAY_TREE.length; g++) {
-        const group = DISPLAY_TREE[g];
-        for (let c = 0; c < group.children.length; c++) {
-          const d = group.children[c];
-          items.push({
-            label: `${group.label} \u203A ${d.label}`,
-            selected: d.id === curId,
-            onSelect: () => {
-              onPatchInstance({
-                query: { ...d.query },
-                label: d.label,
-                presentation: "bars"
-              });
-              closeTip();
-            }
-          });
-        }
-      }
-      return items;
-    }
-    if (tip.kind === "allDisplays") {
-      return [];
-    }
-    if (tip.kind === "reset") {
-      return [
-        {
-          label: "Reset Current fight",
-          onSelect: () => {
-            resetCurrentMeterSegment();
-            onPatchInstance({ selectedset: "current" });
-            closeTip();
-          }
-        },
-        {
-          label: "Reset Overall",
-          onSelect: () => {
-            resetOverallMeterSegments();
-            closeTip();
-          }
-        },
-        {
-          label: "Reset All \u2192 Current",
-          onSelect: () => {
-            resetAllMeters();
-            onPatchInstance({ selectedset: "current" });
-            closeTip();
-          }
-        },
-        {
-          label: metersHidden ? "Show all meters" : "Hide all meters",
-          onSelect: () => {
-            if (onToggleMetersHidden) onToggleMetersHidden();
-            else patchSettings({ metersHidden: !getSettings().metersHidden });
-            closeTip();
-          }
-        }
-      ];
-    }
-    if (tip.kind === "actor") {
-      if (!actorPickerRows.length) {
-        return [
-          {
-            label: "(no players in segment)",
-            muted: true,
-            onSelect: () => closeTip()
-          }
-        ];
-      }
-      return actorPickerRows.map((r) => ({
+    const items = [];
+    for (let i = 0; i < ctx.actorPickerRows.length; i++) {
+      const r = ctx.actorPickerRows[i];
+      items.push({
         label: r.name,
-        onSelect: () => setInspectorActor(r.id, r.name)
-      }));
+        onSelect: () => actions.setInspectorActor(r.id, r.name)
+      });
     }
-    if (tip.kind === "tools") {
-      return REPORT_TABS.map((tab) => ({
+    return asMenu(items);
+  }
+  function menuTools(ctx) {
+    const { actions } = ctx;
+    const items = [];
+    for (let i = 0; i < REPORT_TABS.length; i++) {
+      const tab = REPORT_TABS[i];
+      items.push({
         label: tab.label,
         onSelect: () => {
-          if (onOpenReport) onOpenReport(tab.kind);
-          closeTip();
+          if (actions.onOpenReport) actions.onOpenReport(tab.kind);
+          actions.closeTip();
         }
-      }));
+      });
     }
-    if (tip.kind === "report") {
-      const items = [];
-      const recent = getSettings().meterRecentReports || [];
-      for (let i = 0; i < Math.min(3, recent.length); i++) {
-        const r = recent[i];
-        items.push({
-          label: `Recent: ${r.label}`,
+    return asMenu(items);
+  }
+  function menuReport(ctx) {
+    const { actions } = ctx;
+    const sections = [];
+    const recent = getSettings().meterRecentReports || [];
+    const recentItems = [];
+    for (let i = 0; i < Math.min(3, recent.length); i++) {
+      const r = recent[i];
+      recentItems.push({
+        label: r.label,
+        onSelect: () => {
+          var _a;
+          if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
+            void navigator.clipboard.writeText(r.text);
+          }
+          actions.closeTip();
+        }
+      });
+    }
+    if (recentItems.length) {
+      sections.push({ title: "Recent", items: recentItems });
+    }
+    sections.push({
+      items: [
+        {
+          label: "Copy report",
+          onSelect: () => {
+            actions.copyReport();
+            actions.closeTip();
+          }
+        },
+        {
+          label: "Open report dialog\u2026",
+          onSelect: () => {
+            actions.openReportDialog();
+          }
+        }
+      ]
+    });
+    return { sections };
+  }
+  function menuGear(ctx) {
+    const { actions } = ctx;
+    const sections = [{ items: partyRows(ctx) }];
+    const onOpenReport = actions.onOpenReport;
+    if (onOpenReport) {
+      const pluginItems = [];
+      for (let ti = 0; ti < REPORT_TABS.length; ti++) {
+        const tab = REPORT_TABS[ti];
+        pluginItems.push({
+          label: tab.label,
+          onSelect: () => {
+            actions.closeTip();
+            onOpenReport(tab.kind);
+          }
+        });
+      }
+      sections.push({ title: "Plugins", items: pluginItems });
+    }
+    sections.push({
+      items: [
+        {
+          label: "Options panel\u2026",
+          onSelect: () => {
+            actions.closeTip();
+            actions.setOptionsOpen(true);
+          }
+        },
+        {
+          label: "Spell List\u2026",
           onSelect: () => {
             var _a;
-            if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
-              void navigator.clipboard.writeText(r.text);
-            }
-            closeTip();
+            actions.closeTip();
+            (_a = actions.onFocusInspector) == null ? void 0 : _a.call(actions, getYouId() || "", ctx.watchedName || "You");
           }
-        });
+        },
+        {
+          label: "Statistics\u2026",
+          onSelect: () => {
+            actions.closeTip();
+            actions.openReportDialog();
+          }
+        }
+      ]
+    });
+    const windowItems = [
+      {
+        label: actions.onDuplicate ? "Create new window" : "Create new window (layout edit)",
+        onSelect: () => {
+          actions.closeTip();
+          if (actions.onDuplicate) actions.onDuplicate();
+        }
       }
-      items.push({
-        label: "Copy report",
+    ];
+    const onClose = actions.onClose;
+    if (onClose) {
+      windowItems.push({
+        label: "Close window",
         onSelect: () => {
-          copyReport();
-          closeTip();
+          actions.closeTip();
+          onClose();
         }
       });
-      items.push({
-        label: "Open report dialog\u2026",
-        onSelect: () => {
-          openReportDialog();
-        }
-      });
-      return items;
     }
-    if (tip.kind === "gear") {
-      const items = [];
-      const eff = effectivePartyFocus(partyFocus, hasObserver);
-      for (let i = 0; i < partyMenuOpts.length; i++) {
-        const opt = partyMenuOpts[i];
-        const selected = partyFocus === opt.id || eff === opt.id;
-        items.push({
-          label: opt.label,
-          selected,
-          onSelect: () => {
-            onPatchInstance({ partyFocus: opt.id });
-            closeTip();
-          }
-        });
-      }
-      const alwaysOn = instance.alwaysShowSelf != null ? instance.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
-      items.push({
-        label: "Always show me",
-        selected: alwaysOn,
+    const closed = ctx.closedInstances || [];
+    for (let ci = 0; ci < closed.length; ci++) {
+      const c = closed[ci];
+      windowItems.push({
+        label: `Reopen: ${c.label || c.id}`,
         onSelect: () => {
-          onPatchInstance({ alwaysShowSelf: !alwaysOn });
-          closeTip();
+          var _a;
+          actions.closeTip();
+          (_a = actions.onReopenClosed) == null ? void 0 : _a.call(actions, c.id);
         }
       });
-      if (onOpenReport) {
-        items.push({ label: "\u2014", muted: true, onSelect: () => {
-        } });
-        items.push({
-          label: "Plugins",
-          muted: true,
-          onSelect: () => closeTip()
-        });
-        for (let ti = 0; ti < REPORT_TABS.length; ti++) {
-          const tab = REPORT_TABS[ti];
-          items.push({
-            label: tab.label,
-            onSelect: () => {
-              closeTip();
-              onOpenReport(tab.kind);
-            }
-          });
-        }
-      }
-      items.push({ label: "\u2014", muted: true, onSelect: () => {
-      } });
-      items.push({
-        label: "Options panel\u2026",
-        onSelect: () => {
-          closeTip();
-          setOptionsOpen(true);
-        }
-      });
-      items.push({
-        label: "Spell List\u2026",
-        onSelect: () => {
-          closeTip();
-          onFocusInspector == null ? void 0 : onFocusInspector(getYouId() || "", watchedName || "You");
-        }
-      });
-      items.push({
-        label: "Statistics\u2026",
-        onSelect: () => {
-          closeTip();
-          openReportDialog();
-        }
-      });
-      items.push({ label: "\u2014", muted: true, onSelect: () => {
-      } });
-      items.push({
-        label: "Window Control",
-        muted: true,
-        onSelect: () => closeTip()
-      });
-      items.push({
-        label: onDuplicate ? "Create new window" : "Create new window (layout edit)",
-        onSelect: () => {
-          closeTip();
-          if (onDuplicate) onDuplicate();
-        }
-      });
-      if (onClose) {
-        items.push({
-          label: "Close window",
-          onSelect: () => {
-            closeTip();
-            onClose();
-          }
-        });
-      }
-      const closed = closedInstances || [];
-      for (let ci = 0; ci < closed.length; ci++) {
-        const c = closed[ci];
-        items.push({
-          label: `Reopen: ${c.label || c.id}`,
-          onSelect: () => {
-            closeTip();
-            onReopenClosed == null ? void 0 : onReopenClosed(c.id);
-          }
-        });
-      }
-      if (supportsViewModes(rootQuery(instance))) {
-        items.push({ label: "\u2014", muted: true, onSelect: () => {
-        } });
-        items.push({
-          label: "View mode",
-          muted: true,
-          onSelect: () => closeTip()
-        });
-        for (let vi = 0; vi < VIEW_MODES.length; vi++) {
-          const vm = VIEW_MODES[vi];
-          items.push({
-            label: vm.label,
-            selected: presentationFor(instance) === vm.id,
-            onSelect: () => {
-              onPatchInstance(applyViewMode(vm.id));
-              closeTip();
-            }
-          });
-        }
-      }
-      items.push({
-        label: onToggleMetersHidden ? metersHidden ? "Show all meters" : "Hide all meters" : "Hide all meters",
-        onSelect: () => {
-          closeTip();
-          onToggleMetersHidden == null ? void 0 : onToggleMetersHidden();
-        }
-      });
-      return items;
     }
-    return [];
+    sections.push({ title: "Window Control", items: windowItems });
+    sections.push({
+      items: [
+        {
+          label: actions.onToggleMetersHidden ? ctx.metersHidden ? "Show all meters" : "Hide all meters" : "Hide all meters",
+          onSelect: () => {
+            var _a;
+            actions.closeTip();
+            (_a = actions.onToggleMetersHidden) == null ? void 0 : _a.call(actions);
+          }
+        }
+      ]
+    });
+    return { sections };
+  }
+  function meterShellTipItems(ctx) {
+    const tip = ctx.tip;
+    if (!tip) return emptyMenu();
+    switch (tip.kind) {
+      case "party":
+        return asMenu(partyRows(ctx));
+      case "seg":
+        return menuSeg(ctx);
+      case "display":
+        return menuDisplay(ctx);
+      case "view":
+        return menuView(ctx);
+      case "reset":
+        return menuReset(ctx);
+      case "actor":
+        return menuActor(ctx);
+      case "tools":
+        return menuTools(ctx);
+      case "report":
+        return menuReport(ctx);
+      case "gear":
+        return menuGear(ctx);
+      case "allDisplays":
+      case "bookmarks":
+      case "bookmarkPick":
+        return emptyMenu();
+      default: {
+        const _never = tip.kind;
+        return _never;
+      }
+    }
   }
 
   // src/ui/meter/meterShellCooltip.ts
+  function tipItemsCtx(ctx) {
+    return {
+      tip: ctx.tip,
+      instance: ctx.instance,
+      partyMenuOpts: ctx.partyMenuOpts,
+      partyFocus: ctx.partyFocus,
+      hasObserver: ctx.hasObserver,
+      partyLabel: ctx.partyLabel,
+      watchedName: ctx.watchedName,
+      selectedset: ctx.selectedset,
+      resolved: ctx.resolved,
+      isCurrentSeg: ctx.isCurrentSeg,
+      titleSeg: ctx.titleSeg,
+      durSec: ctx.durSec,
+      actorPickerRows: ctx.actorPickerRows,
+      metersHidden: ctx.metersHidden,
+      closedInstances: ctx.closedInstances,
+      actions: ctx.actions
+    };
+  }
   function renderMeterShellCooltip(ctx) {
     var _a;
     const {
@@ -23022,26 +26110,41 @@ ${parts.map(cssSlice).join("\n")}
       setBmDrag,
       bmDrop,
       setBmDrop,
-      finishBookmarkDrag,
-      applyBookmark,
-      closeTip,
       instance,
+      actions
+    } = ctx;
+    const {
+      closeTip,
       openTip,
       clearTipClose,
       scheduleTipClose,
       setOptionsOpen,
-      saveBookmarkAtSlot,
-      onPatchInstance,
-      tipItems
-    } = ctx;
+      onPatchInstance
+    } = actions;
     if (!tip) return null;
+    const finishBookmarkDrag = () => {
+      if (bmDrag != null && bmDrop != null && bmDrag !== bmDrop) {
+        reorderMeterBookmarks(bmDrag, bmDrop);
+      }
+      setBmDrag(null);
+      setBmDrop(null);
+    };
+    const applyBookmark = (bm) => {
+      onPatchInstance(applyMeterBookmarkPatch(bm));
+    };
+    const saveAtSlot = (slotIndex, d) => {
+      saveMeterBookmarkAtSlot(
+        slotIndex,
+        bookmarkFromInstance(instance, d.label, d.query, "bars")
+      );
+    };
     if (tip.kind === "bookmarks") {
       const bookmarks = getSettings().meterBookmarks || [];
       const slots = [];
       const slotCount = Math.max(6, bookmarks.length + 1);
       for (let i = 0; i < slotCount; i++) {
         const bm = bookmarks[i];
-        const slotClass = "ecu-meter-bookmark-slot" + (bmDrag === i ? " is-dragging" : "") + (bmDrop === i && bmDrag != null && bmDrag !== i ? " is-drop-target" : "");
+        const slotClass2 = "ecu-meter-bookmark-slot" + (bmDrag === i ? " is-dragging" : "") + (bmDrop === i && bmDrag != null && bmDrag !== i ? " is-drop-target" : "");
         if (bm) {
           slots.push(
             e(
@@ -23049,7 +26152,7 @@ ${parts.map(cssSlice).join("\n")}
               {
                 key: bm.id,
                 type: "button",
-                className: slotClass,
+                className: slotClass2,
                 title: "Drag to reorder \xB7 Left: apply \xB7 Right: replace with current display",
                 onPointerDown: (ev) => {
                   ev.preventDefault();
@@ -23075,16 +26178,13 @@ ${parts.map(cssSlice).join("\n")}
                 },
                 onContextMenu: (ev) => {
                   ev.preventDefault();
-                  const next = (getSettings().meterBookmarks || []).slice();
-                  next[i] = {
-                    id: bm.id,
-                    label: modeLabel(rootQuery(instance), instance.label),
-                    query: { ...rootQuery(instance) },
-                    presentation: presentationFor(instance),
-                    partyFocus: instance.partyFocus,
-                    selectedset: instance.selectedset
-                  };
-                  patchSettings({ meterBookmarks: next });
+                  replaceMeterBookmarkAtSlot(
+                    i,
+                    instance,
+                    modeLabel(rootQuery(instance), instance.label),
+                    rootQuery(instance),
+                    presentationFor(instance)
+                  );
                   closeTip();
                 }
               },
@@ -23098,7 +26198,7 @@ ${parts.map(cssSlice).join("\n")}
               {
                 key: `empty-${i}`,
                 type: "button",
-                className: slotClass + " is-empty",
+                className: slotClass2 + " is-empty",
                 onPointerEnter: () => {
                   if (bmDrag != null) setBmDrop(i);
                 },
@@ -23205,7 +26305,7 @@ ${parts.map(cssSlice).join("\n")}
                 onMouseDown: (ev) => {
                   ev.preventDefault();
                   ev.stopPropagation();
-                  saveBookmarkAtSlot(slotIndex, d);
+                  saveAtSlot(slotIndex, d);
                   closeTip();
                 }
               },
@@ -23296,16 +26396,16 @@ ${parts.map(cssSlice).join("\n")}
     if (tip.kind === "display") {
       const curIdx = barModeIndex(rootQuery(instance));
       const curId = curIdx >= 0 ? BAR_MODE_CYCLE[curIdx].id : "";
-      const nodes2 = [];
+      const nodes = [];
       for (let g = 0; g < DISPLAY_TREE.length; g++) {
         const group = DISPLAY_TREE[g];
-        if (g > 0) nodes2.push(e("div", { className: "ecu-meter-cooltip-div" }));
-        nodes2.push(
+        if (g > 0) nodes.push(e("div", { className: "ecu-meter-cooltip-div" }));
+        nodes.push(
           e("div", { className: "ecu-meter-cooltip-sec" }, group.label)
         );
         for (let c = 0; c < group.children.length; c++) {
           const d = group.children[c];
-          nodes2.push(
+          nodes.push(
             cooltipItemNode({
               label: d.label,
               selected: d.id === curId,
@@ -23332,58 +26432,96 @@ ${parts.map(cssSlice).join("\n")}
           onMouseEnter: () => clearTipClose(),
           onMouseLeave: () => scheduleTipClose()
         },
-        ...nodes2
+        ...nodes
       );
     }
-    const items = tipItems();
+    return e(MeterItemsCooltip, {
+      menu: meterShellTipItems(tipItemsCtx(ctx)),
+      panelStyle: {
+        ...cooltipStyle(tip.anchor, {
+          minWidth: tip.kind === "report" || tip.kind === "reset" ? 188 : tip.kind === "seg" ? 228 : 168
+        }),
+        ...PIXEL_TEXT
+      },
+      onEnter: () => clearTipClose(),
+      onLeave: () => scheduleTipClose()
+    });
+  }
+  function hoverKeyOf(item) {
+    return item.itemKey || item.label;
+  }
+  function detailForHover(menu, hoverKey) {
+    if (!hoverKey) return null;
+    if (menu.header && hoverKeyOf(menu.header) === hoverKey) {
+      return menu.header.detail || null;
+    }
+    for (let s = 0; s < menu.sections.length; s++) {
+      const items = menu.sections[s].items;
+      for (let i = 0; i < items.length; i++) {
+        if (hoverKeyOf(items[i]) === hoverKey) return items[i].detail || null;
+      }
+    }
+    return null;
+  }
+  function MeterItemsCooltip(props) {
+    const React = getReact();
+    const [hoverKey, setHoverKey] = React.useState(null);
+    const { menu } = props;
+    const onHoverDetail = (key, text) => {
+      setHoverKey(text ? key : null);
+    };
     const nodes = [];
-    let startIdx = 0;
-    if (tip.kind === "seg" && items.length > 0 && items[0].muted && items[0].label.includes("\xB7")) {
+    if (menu.header) {
+      const head = menu.header;
       nodes.push(
-        e("div", { className: "ecu-meter-cooltip-sec" }, items[0].label)
+        e(
+          "div",
+          {
+            key: hoverKeyOf(head),
+            className: "ecu-meter-cooltip-sec",
+            onMouseEnter: () => onHoverDetail(hoverKeyOf(head), head.detail || null)
+          },
+          head.label
+        )
       );
-      nodes.push(e("div", { className: "ecu-meter-cooltip-div" }));
-      startIdx = 1;
+      nodes.push(
+        e("div", { key: "seg-head-div", className: "ecu-meter-cooltip-div" })
+      );
     }
-    for (let i = startIdx; i < items.length; i++) {
-      const it = items[i];
-      if (it.muted && it.label === "\u2014") {
-        nodes.push(e("div", { key: `div-${i}`, className: "ecu-meter-cooltip-div" }));
-        continue;
-      }
-      if (tip.kind === "gear" && it.muted && (it.label === "Plugins" || it.label === "Window Control" || it.label === "View mode")) {
+    for (let s = 0; s < menu.sections.length; s++) {
+      const sec = menu.sections[s];
+      if (s > 0) {
         nodes.push(
-          e("div", { key: `sec-${i}`, className: "ecu-meter-cooltip-sec" }, it.label)
+          e("div", { key: `div-${s}`, className: "ecu-meter-cooltip-div" })
         );
-        continue;
       }
-      if (tip.kind === "report" && it.label.startsWith("Recent: ") && (i === 0 || !items[i - 1].label.startsWith("Recent: "))) {
-        nodes.push(e("div", { className: "ecu-meter-cooltip-sec" }, "Recent"));
+      if (sec.title) {
+        nodes.push(
+          e(
+            "div",
+            { key: `sec-${s}`, className: "ecu-meter-cooltip-sec" },
+            sec.title
+          )
+        );
       }
-      if (tip.kind === "report" && it.label === "Copy report" && (i === 0 || !items[i - 1].label.startsWith("Recent: "))) {
-        nodes.push(e("div", { className: "ecu-meter-cooltip-div" }));
+      for (let i = 0; i < sec.items.length; i++) {
+        nodes.push(cooltipItemNode(sec.items[i], onHoverDetail));
       }
-      nodes.push(
-        cooltipItemNode({
-          ...it,
-          label: it.label.startsWith("Recent: ") ? it.label.slice(8) : it.label
-        })
-      );
     }
+    const detail = detailForHover(menu, hoverKey);
+    const left = Number(props.panelStyle.left) || 0;
+    const minW = Number(props.panelStyle.minWidth) || 168;
+    const flip = left + minW + 272 > window.innerWidth - 8;
     return e(
       "div",
       {
-        className: "ecu-meter-cooltip",
-        style: {
-          ...cooltipStyle(tip.anchor, {
-            minWidth: tip.kind === "report" || tip.kind === "reset" ? 188 : 168
-          }),
-          ...PIXEL_TEXT
-        },
-        onMouseEnter: () => clearTipClose(),
-        onMouseLeave: () => scheduleTipClose()
+        className: "ecu-meter-cooltip-wrap" + (flip ? " is-flip" : ""),
+        style: props.panelStyle,
+        onMouseEnter: props.onEnter,
+        onMouseLeave: props.onLeave
       },
-      ...nodes
+      e("div", { className: "ecu-meter-cooltip" }, ...nodes),
+      detail ? meterHoverDetailNode(detail) : null
     );
   }
 
@@ -23496,18 +26634,18 @@ ${parts.map(cssSlice).join("\n")}
         onEnter: (el) => openTip("seg", el),
         onLeave: scheduleTipClose,
         onClick: (ev) => {
-          const next = cycleSegmentRef(selectedset, past2, 1);
+          const next = cycleSegmentRef(selectedset, 1);
           applySegment(next);
           openTip("seg", ev.currentTarget, { pin: true });
         },
         onContextMenu: (ev) => {
-          const next = cycleSegmentRef(selectedset, past2, -1);
+          const next = cycleSegmentRef(selectedset, -1);
           applySegment(next);
           openTip("seg", ev.currentTarget, { pin: true });
         }
       }),
       !isReport && cycleable ? toolBtn({
-        title: "Attribute / Display \u2014 hover menu \xB7 right-click all",
+        title: "Attribute \u2014 hover menu \xB7 right-click all",
         icon: "attribute",
         tourId: "meter-display",
         active: (tip == null ? void 0 : tip.kind) === "display" || (tip == null ? void 0 : tip.kind) === "allDisplays",
@@ -23521,6 +26659,17 @@ ${parts.map(cssSlice).join("\n")}
             pin: true
           });
         }
+      }) : null,
+      !isReport && supportsViewModes(rootQuery(instance)) ? toolBtn({
+        title: "View \u2014 Bars \xB7 Pie \xB7 Graph",
+        glyph: "\u25EB",
+        tourId: "meter-view",
+        active: (tip == null ? void 0 : tip.kind) === "view",
+        onEnter: (el) => openTip("view", el),
+        onLeave: scheduleTipClose,
+        onClick: (ev) => openTip("view", ev.currentTarget, {
+          pin: true
+        })
       }) : null,
       !isReport ? toolBtn({
         title: "Report \u2014 click opens dialog \xB7 hover for copy",
@@ -23651,6 +26800,362 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/ui/meter/meterPartyChrome.ts
+  function coerceFocus(focus, liveRoster, parties) {
+    if (liveRoster) return focus;
+    if (focus === "visible") return "all";
+    const named = namedPartyKey(focus);
+    if (!named) return focus;
+    for (let i = 0; i < parties.length; i++) {
+      if (parties[i].id === named) return focus;
+    }
+    return "all";
+  }
+  function meterPartyChrome(args) {
+    var _a, _b, _c;
+    const followCamera = isLiveCameraRef(args.ref);
+    const liveRoster = !!(args.seg && isLiveCombatSegment(args.seg));
+    const youId2 = ((_a = args.seg) == null ? void 0 : _a.observingId) || "";
+    const partyKey = ((_b = args.seg) == null ? void 0 : _b.partyKey) || "";
+    const observingName = (_c = args.seg) == null ? void 0 : _c.observingName;
+    const hasObserver = !!youId2;
+    const filterParties = liveRoster ? listVisibleParties() : args.seg ? listSegmentParties(args.seg) : [];
+    const appliedFocus = coerceFocus(
+      args.partyFocus || "watched",
+      liveRoster,
+      filterParties
+    );
+    const partyLabels = {};
+    for (let i = 0; i < filterParties.length; i++) {
+      partyLabels[filterParties[i].id] = filterParties[i].label;
+    }
+    const watchedLabel = (liveRoster ? args.watchedName : observingName) || args.watchedName || "";
+    const partyMenuOpts = partyFocusMenuOptions({
+      hasObserver,
+      watchedName: watchedLabel,
+      watchedPartyKey: partyKey,
+      visibleParties: filterParties,
+      roster: liveRoster ? "live" : "archived"
+    });
+    return {
+      followCamera,
+      liveRoster,
+      youId: youId2,
+      partyKey,
+      observingName,
+      hasObserver,
+      appliedFocus,
+      partyLabel: partyFocusLabel(
+        appliedFocus,
+        watchedLabel,
+        hasObserver,
+        partyLabels
+      ),
+      partyMenuOpts,
+      watchedLabel
+    };
+  }
+
+  // src/ui/meter/meterShellCooltipCtl.ts
+  var TOOLBAR_KINDS = {
+    gear: true,
+    party: true,
+    seg: true,
+    display: true,
+    view: true,
+    allDisplays: true,
+    report: true,
+    tools: true,
+    reset: true
+  };
+  function createMeterShellCooltipCtl(args) {
+    const clearTipClose = () => {
+      if (args.tipCloseTimer.current != null) {
+        clearTimeout(args.tipCloseTimer.current);
+        args.tipCloseTimer.current = null;
+      }
+    };
+    const closeTip = () => {
+      clearTipClose();
+      args.tipPinnedRef.current = false;
+      args.setTip(null);
+    };
+    const openTip = (kind, el, opts) => {
+      clearTipClose();
+      const pinned = !!(opts == null ? void 0 : opts.pin);
+      if (pinned && args.onToolbarInteract && TOOLBAR_KINDS[kind]) {
+        args.onToolbarInteract();
+      }
+      args.tipPinnedRef.current = pinned;
+      args.setInteracting(true);
+      args.setTip({
+        kind,
+        anchor: rectToAnchor(el),
+        pinned,
+        bookmarkSlot: opts == null ? void 0 : opts.bookmarkSlot
+      });
+    };
+    const openTipAnchor = (kind, anchor, opts) => {
+      clearTipClose();
+      const pinned = !!(opts == null ? void 0 : opts.pin);
+      args.tipPinnedRef.current = pinned;
+      args.setInteracting(true);
+      args.setTip({ kind, anchor, pinned, bookmarkSlot: opts == null ? void 0 : opts.bookmarkSlot });
+    };
+    const scheduleTipClose = () => {
+      if (args.tipPinnedRef.current) return;
+      clearTipClose();
+      args.tipCloseTimer.current = setTimeout(() => {
+        args.tipPinnedRef.current = false;
+        args.setTip(null);
+        args.tipCloseTimer.current = null;
+      }, COOLTIP_HIDE_MS);
+    };
+    const attachClickAway = () => {
+      const onDown = (ev) => {
+        const el = ev.target;
+        if (!el || typeof el.closest !== "function") return;
+        if (el.closest(
+          ".ecu-meter-cooltip, .ecu-meter-cooltip-wrap, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl"
+        )) {
+          return;
+        }
+        closeTip();
+      };
+      document.addEventListener("mousedown", onDown, true);
+      return () => document.removeEventListener("mousedown", onDown, true);
+    };
+    return {
+      tip: args.tip,
+      tipPinnedRef: args.tipPinnedRef,
+      clearTipClose,
+      closeTip,
+      openTip,
+      openTipAnchor,
+      scheduleTipClose,
+      attachClickAway
+    };
+  }
+
+  // src/ui/meter/meterShellInspector.ts
+  function patchInspectorAbilityQuery(instance, ability) {
+    const q = rootQuery(instance);
+    if (q.kind !== "details") return null;
+    const next = {
+      kind: "details",
+      actorId: q.actorId,
+      metric: q.metric,
+      primary: q.primary
+    };
+    if (ability) next.ability = ability;
+    return next;
+  }
+  function inspectorFocusOptsFor(instance) {
+    const q = rootQuery(instance);
+    const metricRaw = metricFromModeQuery(q);
+    const metric = metricRaw === "heal" || metricRaw === "taken" || metricRaw === "healing_required" || metricRaw === "avoidance" ? metricRaw : "damage";
+    const primary = q.kind === "players" && q.primary === "rate" ? "rate" : "total";
+    return {
+      metric,
+      primary,
+      selectedset: instance.selectedset,
+      partyFocus: instance.partyFocus
+    };
+  }
+  function openInspectorFromRow(args) {
+    const opts = inspectorFocusOptsFor(args.instance);
+    if (args.onFocusInspector) {
+      args.onFocusInspector(args.row.id, args.row.name, opts);
+      return;
+    }
+    if (presentationFor(args.instance) === "details") {
+      args.onPatchInstance({
+        query: {
+          kind: "details",
+          actorId: args.row.id,
+          metric: opts.metric,
+          primary: opts.primary
+        },
+        label: detailsWindowTitle(args.row.name, opts.metric, opts.primary)
+      });
+    }
+  }
+  function canInspectMeterRow(instance) {
+    const q = rootQuery(instance);
+    const pres = presentationFor(instance);
+    return q.kind === "players" || q.kind === "avoidance" || pres === "encounter" || pres === "details";
+  }
+  function detailsActorPatch(instance, actorId, name) {
+    const q = rootQuery(instance);
+    const metric = q.kind === "details" && q.metric ? q.metric : "damage";
+    const primary = q.kind === "details" && q.primary === "rate" ? "rate" : "total";
+    return {
+      query: { kind: "details", actorId, metric, primary },
+      presentation: "details",
+      label: detailsWindowTitle(name, metric, primary)
+    };
+  }
+
+  // src/ui/meter/meterShellResize.ts
+  function sizeFrame(w, h, freeForm) {
+    const root = layoutDragRoot().getBoundingClientRect();
+    const maxW = root.width > 0 ? root.width : window.innerWidth;
+    const maxH = root.height > 0 ? root.height : window.innerHeight;
+    if (freeForm || getLayoutFreePlacement()) {
+      return clampMeterFrame(w, h, maxW, maxH);
+    }
+    const snapped = snapFrameSizeToGrid(
+      w,
+      h,
+      getLayoutGridStep(),
+      root.width,
+      root.height
+    );
+    return clampMeterFrame(snapped.w, snapped.h, maxW, maxH);
+  }
+  function liveShiftX(corner, anchor, startW, w) {
+    const dw = startW - w;
+    if (corner === "bl") {
+      if (anchor === "tr" || anchor === "br") return 0;
+      if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+        return dw / 2;
+      }
+      return dw;
+    }
+    if (anchor === "tl" || anchor === "bl") return 0;
+    if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+      return -dw / 2;
+    }
+    return -dw;
+  }
+  function peerShiftX(anchor, oldW, newW) {
+    const dW = newW - oldW;
+    if (!dW) return 0;
+    if (anchor === "tl" || anchor === "bl") return 0;
+    if (anchor === "tc" || anchor === "bc" || anchor === "center") return dW / 2;
+    return dW;
+  }
+  function peerShiftY(anchor, oldH, newH) {
+    const dH = newH - oldH;
+    if (!dH) return 0;
+    if (anchor === "tl" || anchor === "tr" || anchor === "tc") return 0;
+    if (anchor === "center") return dH / 2;
+    return dH;
+  }
+  function escapePanelId(id) {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(id);
+    }
+    return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+  }
+  function beginMeterShellResize(ev, corner, args) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const { instance, onPatchInstance } = args;
+    const startX = ev.clientX;
+    const startY = ev.clientY;
+    const startW = instance.frameW || METER_FRAME_DEFAULT.w;
+    const startH = instance.frameH || METER_FRAME_DEFAULT.h;
+    const target = ev.currentTarget;
+    const shell = target.closest(".ecu-meter-shell");
+    const outer = shell ? shell.closest(".comm-pos-panel") : null;
+    if (!outer) return;
+    const root = layoutDragRoot();
+    const rootRect = root.getBoundingClientRect();
+    const anchor = instance.pos.anchor || "tl";
+    if (shell) shell.classList.add("is-resizing");
+    beginLayoutGuide();
+    const pointerId = ev.pointerId;
+    try {
+      target.setPointerCapture(pointerId);
+    } catch (e2) {
+    }
+    let pending = sizeFrame(startW, startH, !!ev.shiftKey);
+    const shareH = !!instance.horizontalSnap || !!(instance.snap && (instance.snap[1] || instance.snap[3]));
+    const shareW = !!instance.verticalSnap || !!(instance.snap && (instance.snap[2] || instance.snap[4]));
+    const peerMeta = args.resizeGroupPeers || [];
+    const peers = [];
+    for (let i = 0; i < peerMeta.length; i++) {
+      const meta2 = peerMeta[i];
+      const pel = document.querySelector(
+        `.comm-pos-panel.comm-pos-${escapePanelId(meta2.id)}`
+      );
+      if (!pel) continue;
+      peers.push({
+        id: meta2.id,
+        el: pel,
+        startW: Math.round(pel.offsetWidth) || startW,
+        startH: Math.round(pel.offsetHeight) || startH,
+        anchor: meta2.anchor || "tl"
+      });
+    }
+    const clearPeerLive = () => {
+      for (let i = 0; i < peers.length; i++) {
+        peers[i].el.style.width = "";
+        peers[i].el.style.height = "";
+        peers[i].el.style.marginLeft = "";
+        peers[i].el.style.marginTop = "";
+      }
+    };
+    const applyLiveBox = (w, h) => {
+      outer.style.width = w + "px";
+      outer.style.height = h + "px";
+      const sx = liveShiftX(corner, anchor, startW, w);
+      outer.style.marginLeft = sx ? sx + "px" : "";
+      for (let i = 0; i < peers.length; i++) {
+        const peer = peers[i];
+        if (shareW) {
+          peer.el.style.width = w + "px";
+          const peerSx = peerShiftX(peer.anchor, peer.startW, w);
+          peer.el.style.marginLeft = peerSx ? peerSx + "px" : "";
+        }
+        if (shareH) {
+          peer.el.style.height = h + "px";
+          const peerSy = peerShiftY(peer.anchor, peer.startH, h);
+          peer.el.style.marginTop = peerSy ? peerSy + "px" : "";
+        }
+      }
+    };
+    const onMove = (e2) => {
+      const dx = e2.clientX - startX;
+      const dy = e2.clientY - startY;
+      const w = corner === "br" ? startW + dx : startW - dx;
+      pending = sizeFrame(w, startH + dy, !!e2.shiftKey);
+      applyLiveBox(pending.frameW, pending.frameH);
+    };
+    const onUp = () => {
+      if (shell) shell.classList.remove("is-resizing");
+      endLayoutGuide();
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      try {
+        target.releasePointerCapture(pointerId);
+      } catch (e2) {
+      }
+      outer.style.marginLeft = "";
+      clearPeerLive();
+      const rw = Math.max(1, rootRect.width);
+      const rh = Math.max(1, rootRect.height);
+      let nextPos = { ...instance.pos };
+      const shiftX = liveShiftX(corner, anchor, startW, pending.frameW);
+      if (shiftX !== 0) {
+        nextPos = nudgePosByPixels(nextPos, shiftX, 0, rw, rh);
+      }
+      if (pending.frameH !== startH) {
+        nextPos = shiftPosKeepTopEdge(nextPos, startH, pending.frameH, rw, rh);
+      }
+      onPatchInstance({
+        frameW: pending.frameW,
+        frameH: pending.frameH,
+        pos: nextPos
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }
+
   // src/ui/meter/MeterPanelShell.ts
   function MeterPanelShell(props) {
     const React = getReact();
@@ -23665,10 +27170,7 @@ ${parts.map(cssSlice).join("\n")}
       onOpenReport
     } = props;
     const arrange = !!props.arrange;
-    const locked = props.locked === true;
-    const [tip, setTip] = React.useState(
-      null
-    );
+    const [tip, setTip] = React.useState(null);
     const [reportOpen, setReportOpen] = React.useState(false);
     const [optionsOpen, setOptionsOpen] = React.useState(false);
     const [interacting, setInteracting] = React.useState(false);
@@ -23677,99 +27179,30 @@ ${parts.map(cssSlice).join("\n")}
     );
     const tipPinnedRef = React.useRef(false);
     const shellRef = React.useRef(null);
-    const patchInspectorAbility = (ability) => {
-      const q = rootQuery(instance);
-      if (q.kind !== "details") return;
-      const next = {
-        kind: "details",
-        actorId: q.actorId,
-        metric: q.metric,
-        primary: q.primary
-      };
-      if (ability) next.ability = ability;
-      onPatchInstance({ query: next });
-    };
     const [bmDrag, setBmDrag] = React.useState(null);
     const [bmDrop, setBmDrop] = React.useState(null);
-    const finishBookmarkDrag = () => {
-      if (bmDrag != null && bmDrop != null && bmDrag !== bmDrop) {
-        const bookmarks = (getSettings().meterBookmarks || []).slice();
-        const moved = bookmarks[bmDrag];
-        if (moved) {
-          bookmarks.splice(bmDrag, 1);
-          bookmarks.splice(bmDrop, 0, moved);
-          patchSettings({ meterBookmarks: bookmarks });
-        }
-      }
-      setBmDrag(null);
-      setBmDrop(null);
+    const patchInspectorAbility = (ability) => {
+      const next = patchInspectorAbilityQuery(instance, ability);
+      if (next) onPatchInstance({ query: next });
     };
-    const clearTipClose = () => {
-      if (tipCloseTimer.current != null) {
-        clearTimeout(tipCloseTimer.current);
-        tipCloseTimer.current = null;
-      }
-    };
-    const closeTip = () => {
-      clearTipClose();
-      tipPinnedRef.current = false;
-      setTip(null);
-    };
-    const openTip = (kind, el, opts) => {
-      clearTipClose();
-      const pinned = !!(opts == null ? void 0 : opts.pin);
-      if (pinned && props.onToolbarInteract) {
-        const toolbarKinds = {
-          gear: true,
-          party: true,
-          seg: true,
-          display: true,
-          allDisplays: true,
-          report: true,
-          tools: true,
-          reset: true
-        };
-        if (toolbarKinds[kind]) props.onToolbarInteract();
-      }
-      tipPinnedRef.current = pinned;
-      setInteracting(true);
-      setTip({
-        kind,
-        anchor: rectToAnchor(el),
-        pinned,
-        bookmarkSlot: opts == null ? void 0 : opts.bookmarkSlot
-      });
-    };
-    const openTipAnchor = (kind, anchor, opts) => {
-      clearTipClose();
-      const pinned = !!(opts == null ? void 0 : opts.pin);
-      tipPinnedRef.current = pinned;
-      setInteracting(true);
-      setTip({ kind, anchor, pinned, bookmarkSlot: opts == null ? void 0 : opts.bookmarkSlot });
-    };
-    const scheduleTipClose = () => {
-      if (tipPinnedRef.current) return;
-      clearTipClose();
-      tipCloseTimer.current = setTimeout(() => {
-        tipPinnedRef.current = false;
-        setTip(null);
-        tipCloseTimer.current = null;
-      }, COOLTIP_HIDE_MS);
-    };
+    const tipCtl = createMeterShellCooltipCtl({
+      tip,
+      setTip,
+      tipCloseTimer,
+      tipPinnedRef,
+      setInteracting,
+      onToolbarInteract: props.onToolbarInteract
+    });
+    const {
+      clearTipClose,
+      closeTip,
+      openTip,
+      openTipAnchor,
+      scheduleTipClose
+    } = tipCtl;
     React.useEffect(() => {
       if (!tip) return;
-      const onDown = (ev) => {
-        const el = ev.target;
-        if (!el || typeof el.closest !== "function") return;
-        if (el.closest(
-          ".ecu-meter-cooltip, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl"
-        )) {
-          return;
-        }
-        closeTip();
-      };
-      document.addEventListener("mousedown", onDown, true);
-      return () => document.removeEventListener("mousedown", onDown, true);
+      return tipCtl.attachClickAway();
     }, [tip]);
     React.useEffect(() => {
       injectMeterChromeCss();
@@ -23786,76 +27219,52 @@ ${parts.map(cssSlice).join("\n")}
       now: Date.now()
     });
     const inCombat2 = isMeterInCombat();
-    const presNow = presentationFor(instance);
-    const isToolPanel = presNow === "details" || isReportPresentation(presNow);
-    const idle = !isToolPanel && instance.fadeWhenIdle !== false && !inCombat2;
-    const rootQ = rootQuery(instance);
-    const titleMode = rootQ.kind === "players" || rootQ.kind === "avoidance" || rootQ.kind === "rolling" || rootQ.kind === "snapshot" ? modeLabel(rootQ) : modeLabel(rootQ, instance.label);
+    const past2 = listPastSegments();
+    const resolved = resolveSegment(selectedset);
+    const partyChrome = meterPartyChrome({
+      ref: selectedset,
+      seg: resolved,
+      partyFocus: instance.partyFocus,
+      watchedName
+    });
+    const followLive = partyChrome.followCamera;
+    const { hasObserver, appliedFocus, partyLabel: partyLabel2, partyMenuOpts } = partyChrome;
+    const pres = presentationFor(instance);
+    const isToolPanel = pres === "details" || isReportPresentation(pres);
+    const idle = followLive && !isToolPanel && instance.fadeWhenIdle !== false && !inCombat2;
+    const titleMode = activeQuery.kind === "players" || activeQuery.kind === "avoidance" || activeQuery.kind === "rolling" || activeQuery.kind === "snapshot" ? modeLabel(activeQuery) : modeLabel(activeQuery, instance.label);
     const titleSeg = segmentTitle(selectedset);
     const isCurrentSeg = selectedset === "current";
-    const inspectorFocusOpts = () => {
-      const q = rootQuery(instance);
-      const metricRaw = metricFromModeQuery(q);
-      const metric = metricRaw === "heal" || metricRaw === "taken" || metricRaw === "healing_required" || metricRaw === "avoidance" ? metricRaw : "damage";
-      const primary = q.kind === "players" && q.primary === "rate" ? "rate" : "total";
-      return {
-        metric,
-        primary,
-        selectedset: instance.selectedset,
-        partyFocus: instance.partyFocus
-      };
-    };
-    const openInspectorRow = (row2) => {
-      const opts = inspectorFocusOpts();
-      if (onFocusInspector) {
-        onFocusInspector(row2.id, row2.name, opts);
-        return;
-      }
-      if (presentationFor(instance) === "details") {
-        onPatchInstance({
-          query: {
-            kind: "details",
-            actorId: row2.id,
-            metric: opts.metric,
-            primary: opts.primary
-          },
-          label: detailsWindowTitle(row2.name, opts.metric, opts.primary)
-        });
-      }
-    };
+    const isInspector = pres === "details";
+    const isReport = isReportPresentation(pres);
+    const activeReportKind = reportKindForPresentation(pres);
+    const cycleable = canCycleBarMode(activeQuery);
+    const menuOpen = tip != null;
+    const chromeActive = interacting || menuOpen || reportOpen;
+    const title = isInspector ? "Player Breakdown" : isReport ? "Encounter Details" : titleMode;
+    const durSec = resolved ? Math.max(segmentDurationMs(resolved) / 1e3, 1) : 0;
+    const barHighlightId = followLive ? highlightId : partyChrome.youId;
     const onRowClick = (row2, ev) => {
       if ((ev == null ? void 0 : ev.button) != null && ev.button !== 0) return;
-      const q = rootQuery(instance);
-      const canInspect = q.kind === "players" || q.kind === "avoidance" || presentationFor(instance) === "encounter" || presentationFor(instance) === "details";
-      if (!canInspect) return;
-      openInspectorRow(row2);
+      if (!canInspectMeterRow(instance)) return;
+      openInspectorFromRow({
+        instance,
+        row: row2,
+        onFocusInspector,
+        onPatchInstance
+      });
     };
     const onRowContextMenu = (row2, ev) => {
       ev.preventDefault();
       onRowClick(row2);
     };
     const cycle = (delta) => {
-      if (!canCycleBarMode(rootQuery(instance))) return;
-      const next = cycleBarMode(rootQuery(instance), delta);
+      if (!canCycleBarMode(activeQuery)) return;
+      const next = cycleBarMode(activeQuery, delta);
       onPatchInstance({
         query: next.query,
         label: next.label
       });
-    };
-    const past2 = listPastSegments();
-    const resolved = resolveSegment(selectedset);
-    const pres = presentationFor(instance);
-    const barsProps = {
-      query: activeQuery,
-      segmentRef: selectedset,
-      partyFocus: instance.partyFocus,
-      entities,
-      highlightId,
-      live: selectedset === "current",
-      frameH: instance.frameH,
-      alwaysShowSelf: instance.alwaysShowSelf,
-      onRowClick,
-      onRowContextMenu
     };
     const body = renderMeterShellBody({
       pres,
@@ -23863,32 +27272,23 @@ ${parts.map(cssSlice).join("\n")}
       selectedset,
       instance,
       entities,
-      highlightId,
+      highlightId: barHighlightId,
       layoutEdit: props.layoutEdit,
       activeQuery,
-      barsProps,
+      barsProps: {
+        query: activeQuery,
+        segmentRef: selectedset,
+        partyFocus: instance.partyFocus,
+        entities,
+        highlightId: barHighlightId,
+        live: followLive,
+        alwaysShowSelf: instance.alwaysShowSelf,
+        onRowClick,
+        onRowContextMenu
+      },
       onPatchInstance,
       patchInspectorAbility,
       onFocusInspector
-    });
-    const hasObserver = !!getYouId();
-    const partyFocus = instance.partyFocus || "watched";
-    const visibleParties = listVisibleParties();
-    const partyLabels = {};
-    for (let i = 0; i < visibleParties.length; i++) {
-      partyLabels[visibleParties[i].id] = visibleParties[i].label;
-    }
-    const partyLabel2 = partyFocusLabel(
-      partyFocus,
-      watchedName,
-      hasObserver,
-      partyLabels
-    );
-    const partyMenuOpts = partyFocusMenuOptions({
-      hasObserver,
-      watchedName,
-      watchedPartyKey: getWatchedPartyKey(),
-      visibleParties
     });
     const actorPickerRows = (() => {
       if (!tip || tip.kind !== "actor") return [];
@@ -23903,137 +27303,17 @@ ${parts.map(cssSlice).join("\n")}
       return ranked.kind === "ranked" ? ranked.rows : [];
     })();
     const setInspectorActor = (actorId, name) => {
-      const q = rootQuery(instance);
-      const metric = q.kind === "details" && q.metric ? q.metric : "damage";
-      const primary = q.kind === "details" && q.primary === "rate" ? "rate" : "total";
-      onPatchInstance({
-        query: { kind: "details", actorId, metric, primary },
-        presentation: "details",
-        label: detailsWindowTitle(name, metric, primary)
-      });
+      onPatchInstance(detailsActorPatch(instance, actorId, name));
       closeTip();
     };
-    const sizeFrame = (w, h, freeForm) => {
-      const root = layoutDragRoot().getBoundingClientRect();
-      const maxW = root.width > 0 ? root.width : window.innerWidth;
-      const maxH = root.height > 0 ? root.height : window.innerHeight;
-      if (freeForm || getLayoutFreePlacement()) {
-        return clampMeterFrame(w, h, maxW, maxH);
-      }
-      const snapped = snapFrameSizeToGrid(
-        w,
-        h,
-        getLayoutGridStep(),
-        root.width,
-        root.height
-      );
-      return clampMeterFrame(snapped.w, snapped.h, maxW, maxH);
-    };
     const onResizePointerDown = (ev, corner = "br") => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const startX = ev.clientX;
-      const startY = ev.clientY;
-      const startW = instance.frameW || METER_FRAME_DEFAULT.w;
-      const startH = instance.frameH || METER_FRAME_DEFAULT.h;
-      const target = ev.currentTarget;
-      const shell = target.closest(".ecu-meter-shell");
-      const outer = shell ? shell.closest(".comm-pos-panel") : null;
-      if (!outer) return;
-      const root = layoutDragRoot();
-      const rootRect = root.getBoundingClientRect();
-      const anchor = instance.pos.anchor || "tl";
-      if (shell) shell.classList.add("is-resizing");
-      beginLayoutGuide();
-      const pointerId = ev.pointerId;
-      try {
-        target.setPointerCapture(pointerId);
-      } catch (e2) {
-      }
-      let pending = sizeFrame(startW, startH, !!ev.shiftKey);
-      const shareH = !!instance.horizontalSnap || !!(instance.snap && (instance.snap[1] || instance.snap[3]));
-      const shareW = !!instance.verticalSnap || !!(instance.snap && (instance.snap[2] || instance.snap[4]));
-      const peerIds = props.resizeGroupIds || [];
-      const liveShiftX = (w) => {
-        const dw = startW - w;
-        if (corner === "bl") {
-          if (anchor === "tr" || anchor === "br") return 0;
-          if (anchor === "tc" || anchor === "bc" || anchor === "center") {
-            return dw / 2;
-          }
-          return dw;
-        }
-        if (anchor === "tl" || anchor === "bl") return 0;
-        if (anchor === "tc" || anchor === "bc" || anchor === "center") {
-          return -dw / 2;
-        }
-        return -dw;
-      };
-      const applyLiveBox = (w, h) => {
-        outer.style.width = w + "px";
-        outer.style.height = h + "px";
-        const sx = liveShiftX(w);
-        outer.style.marginLeft = sx ? sx + "px" : "";
-        for (let i = 0; i < peerIds.length; i++) {
-          const pid = peerIds[i];
-          const sel = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(pid) : pid.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
-          const pel = document.querySelector(
-            `.comm-pos-panel.comm-pos-${sel}`
-          );
-          if (!pel) continue;
-          if (shareH) pel.style.height = h + "px";
-          if (shareW) pel.style.width = w + "px";
-        }
-      };
-      const onMove = (e2) => {
-        const dx = e2.clientX - startX;
-        const dy = e2.clientY - startY;
-        const w = corner === "br" ? startW + dx : startW - dx;
-        pending = sizeFrame(w, startH + dy, !!e2.shiftKey);
-        applyLiveBox(pending.frameW, pending.frameH);
-      };
-      const onUp = () => {
-        if (shell) shell.classList.remove("is-resizing");
-        endLayoutGuide();
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
-        try {
-          target.releasePointerCapture(pointerId);
-        } catch (e2) {
-        }
-        outer.style.marginLeft = "";
-        const rw = Math.max(1, rootRect.width);
-        const rh = Math.max(1, rootRect.height);
-        let nextPos = { ...instance.pos };
-        const shiftX = liveShiftX(pending.frameW);
-        if (shiftX !== 0) {
-          nextPos = nudgePosByPixels(nextPos, shiftX, 0, rw, rh);
-        }
-        const dh = startH - pending.frameH;
-        if (dh !== 0) {
-          if (anchor === "bl" || anchor === "br" || anchor === "bc") {
-            nextPos = nudgePosByPixels(nextPos, 0, dh, rw, rh);
-          } else if (anchor === "center") {
-            nextPos = nudgePosByPixels(nextPos, 0, dh / 2, rw, rh);
-          }
-        }
-        onPatchInstance({
-          frameW: pending.frameW,
-          frameH: pending.frameH,
-          pos: nextPos
-        });
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onUp);
+      beginMeterShellResize(ev, corner, {
+        instance,
+        resizeGroupPeers: props.resizeGroupPeers,
+        onPatchInstance
+      });
     };
-    const durSec = resolved ? Math.max(segmentDurationMs(resolved) / 1e3, 1) : 0;
-    const isInspector = presentationFor(instance) === "details";
-    const isReport = isReportPresentation(presentationFor(instance));
-    const activeReportKind = reportKindForPresentation(presentationFor(instance));
-    const showStatusbar = isReportPresentation(presentationFor(instance));
-    const encounterFooter = showStatusbar && resolved && activeReportKind === "encounter" ? e(
+    const encounterFooter = isReport && resolved && activeReportKind === "encounter" ? e(
       "div",
       {
         className: "ecu-meter-status",
@@ -24052,10 +27332,6 @@ ${parts.map(cssSlice).join("\n")}
         return e("span", null, `${Math.round(enc.totalDamage)} dmg`);
       })()
     ) : null;
-    const cycleable = canCycleBarMode(rootQuery(instance));
-    const menuOpen = tip != null;
-    const chromeActive = interacting || menuOpen || reportOpen;
-    const title = isInspector ? "Player Breakdown" : isReport ? "Encounter Details" : titleMode;
     const setReportTab = (kind) => {
       const tab = REPORT_TABS.find((t) => t.kind === kind);
       if (!tab) return;
@@ -24071,14 +27347,14 @@ ${parts.map(cssSlice).join("\n")}
     };
     const copyReport = () => {
       var _a;
-      const ranked = runMeterQuery(rootQuery(instance), {
+      const ranked = runMeterQuery(activeQuery, {
         segmentRef: selectedset,
         partyFocus: instance.partyFocus,
         entities
       });
       if (ranked.kind === "ranked") {
         const textOut = formatMeterReportLines(
-          modeLabel(rootQuery(instance), instance.label),
+          modeLabel(activeQuery, instance.label),
           ranked.rows,
           segmentTitle(selectedset)
         );
@@ -24087,100 +27363,83 @@ ${parts.map(cssSlice).join("\n")}
         }
       }
     };
-    const saveBookmark = () => {
-      const bm = {
-        id: `bm-${Date.now().toString(36)}`,
-        label: modeLabel(rootQuery(instance), instance.label),
-        query: { ...rootQuery(instance) },
-        presentation: presentationFor(instance),
-        partyFocus: instance.partyFocus,
-        selectedset: instance.selectedset
-      };
-      const prev = getSettings().meterBookmarks || [];
-      patchSettings({ meterBookmarks: prev.concat([bm]) });
-    };
-    const saveBookmarkAtSlot = (slotIndex, d) => {
-      const bm = {
-        id: `bm-${Date.now().toString(36)}`,
-        label: d.label,
-        query: { ...d.query },
-        presentation: "bars",
-        partyFocus: instance.partyFocus,
-        selectedset: instance.selectedset
-      };
-      const prev = (getSettings().meterBookmarks || []).slice();
-      if (slotIndex >= prev.length) {
-        prev.push(bm);
-      } else {
-        prev[slotIndex] = bm;
-      }
-      patchSettings({ meterBookmarks: prev });
-    };
-    const applyBookmark = (bm) => {
-      onPatchInstance({
-        query: { ...bm.query },
-        presentation: bm.presentation || "bars",
-        label: bm.label,
-        partyFocus: bm.partyFocus,
-        selectedset: bm.selectedset
-      });
-    };
     const openReportDialog = () => {
       closeTip();
       setReportOpen(true);
     };
-    const tipItems = () => meterShellTipItems({
+    const tipOverlay = tip ? renderMeterShellCooltip({
       tip,
-      partyMenuOpts,
-      partyFocus,
-      hasObserver,
       instance,
-      onPatchInstance,
-      closeTip,
+      partyMenuOpts,
+      partyFocus: appliedFocus,
+      hasObserver,
+      partyLabel: partyLabel2,
+      watchedName: partyChrome.watchedLabel,
+      selectedset,
       resolved,
       isCurrentSeg,
       titleSeg,
       durSec,
-      partyLabel: partyLabel2,
-      selectedset,
-      applySegment,
-      past: past2,
       actorPickerRows,
-      setInspectorActor,
-      onOpenReport,
-      copyReport,
-      openReportDialog,
-      setOptionsOpen,
-      watchedName,
       metersHidden: props.metersHidden,
-      onToggleMetersHidden: props.onToggleMetersHidden,
-      onFocusInspector: props.onFocusInspector,
-      onDuplicate: props.onDuplicate,
-      onClose: props.onClose,
       closedInstances: props.closedInstances,
-      onReopenClosed: props.onReopenClosed
-    });
-    const renderCooltip = () => renderMeterShellCooltip({
-      tip,
       bmDrag,
       setBmDrag,
       bmDrop,
       setBmDrop,
-      finishBookmarkDrag,
-      applyBookmark,
-      closeTip,
+      actions: {
+        closeTip,
+        onPatchInstance,
+        applySegment,
+        setInspectorActor,
+        copyReport,
+        openReportDialog,
+        setOptionsOpen,
+        onOpenReport,
+        onToggleMetersHidden: props.onToggleMetersHidden,
+        onFocusInspector: props.onFocusInspector,
+        onDuplicate: props.onDuplicate,
+        onClose: props.onClose,
+        onReopenClosed: props.onReopenClosed,
+        openTip,
+        clearTipClose,
+        scheduleTipClose
+      }
+    }) : null;
+    const reportNode = reportOpen ? (() => {
+      const ranked = runMeterQuery(activeQuery, {
+        segmentRef: selectedset,
+        partyFocus: instance.partyFocus,
+        entities
+      });
+      const rows = ranked.kind === "ranked" ? ranked.rows : [];
+      const dialog = e(MeterReportDialog, {
+        title: modeLabel(activeQuery, instance.label),
+        segmentLabel: segmentTitle(selectedset),
+        rows,
+        onClose: () => setReportOpen(false)
+      });
+      if (!ReactDOM.createPortal) return dialog;
+      return e(
+        "div",
+        {
+          className: "ecu-meter-report-backdrop",
+          onMouseDown: (ev) => {
+            if (ev.target === ev.currentTarget) setReportOpen(false);
+          }
+        },
+        dialog
+      );
+    })() : null;
+    const optionsNode = optionsOpen ? e(MeterOptionsPanel, {
+      instanceLabel: instance.label,
       instance,
-      openTip,
-      clearTipClose,
-      scheduleTipClose,
-      setOptionsOpen,
-      saveBookmarkAtSlot,
       onPatchInstance,
-      tipItems
-    });
-    const shellClass = "ecu-meter-shell" + (idle ? " is-idle" : "") + (menuOpen ? " is-menu-open" : "") + (chromeActive ? " is-interacting" : "") + (props.layoutEdit || arrange ? " is-layout" : "") + (isInspector ? " is-inspector" : "") + (isReport ? " is-report" : "") + (meterHasSnap(instance) ? " is-grouped" : "");
+      onClose: () => setOptionsOpen(false)
+    }) : null;
     const meterApp = getMeterAppearance();
-    const shellTourId = meterShellTourId(rootQuery(instance));
+    const shellTourId = meterShellTourId(activeQuery);
+    const shellClass = "ecu-meter-shell" + (idle ? " is-idle" : "") + (menuOpen ? " is-menu-open" : "") + (chromeActive ? " is-interacting" : "") + (props.layoutEdit || arrange ? " is-layout" : "") + (isInspector ? " is-inspector" : "") + (isReport ? " is-report" : "") + (instance.chromeOnHover ? " is-chrome-hover" : "") + (panelHasSnap(instance) ? " is-grouped" : "");
     return e(
       "div",
       {
@@ -24188,7 +27447,7 @@ ${parts.map(cssSlice).join("\n")}
         ...shellTourId ? { "data-ecu-tour": shellTourId } : {},
         style: {
           ...PIXEL_TEXT,
-          fontSize: `${Math.round(meterApp.windowScale * 100)}%`
+          fontSize: `calc(${TYPE.body} * ${meterApp.windowScale})`
         },
         ref: (node) => {
           shellRef.current = node;
@@ -24296,7 +27555,7 @@ ${parts.map(cssSlice).join("\n")}
       !isInspector && !isReport ? MeterStatusbar({
         instance,
         segmentRef: selectedset || "current",
-        segmentLabel: `${isCurrentSeg ? "Current" : titleSeg} \xB7 ${durSec.toFixed(0)}s`,
+        segmentLabel: isCurrentSeg ? "Current" : titleSeg,
         onSegmentClick: () => {
           const shell = shellRef.current;
           if (shell) openTipAnchor("seg", rectToAnchor(shell));
@@ -24306,56 +27565,9 @@ ${parts.map(cssSlice).join("\n")}
           return (_a = props.onOpenReport) == null ? void 0 : _a.call(props, "encounter");
         }
       }) : null,
-      tip && ReactDOM.createPortal ? ReactDOM.createPortal(renderCooltip(), document.body) : renderCooltip(),
-      reportOpen && ReactDOM.createPortal ? ReactDOM.createPortal(
-        (() => {
-          const ranked = runMeterQuery(rootQuery(instance), {
-            segmentRef: selectedset,
-            partyFocus: instance.partyFocus,
-            entities
-          });
-          const rows = ranked.kind === "ranked" ? ranked.rows : [];
-          return e(
-            "div",
-            {
-              className: "ecu-meter-report-backdrop",
-              onMouseDown: (ev) => {
-                if (ev.target === ev.currentTarget) setReportOpen(false);
-              }
-            },
-            e(MeterReportDialog, {
-              title: modeLabel(rootQuery(instance), instance.label),
-              segmentLabel: segmentTitle(selectedset),
-              rows,
-              onClose: () => setReportOpen(false)
-            })
-          );
-        })(),
-        document.body
-      ) : reportOpen ? (() => {
-        const ranked = runMeterQuery(rootQuery(instance), {
-          segmentRef: selectedset,
-          partyFocus: instance.partyFocus,
-          entities
-        });
-        const rows = ranked.kind === "ranked" ? ranked.rows : [];
-        return e(MeterReportDialog, {
-          title: modeLabel(rootQuery(instance), instance.label),
-          segmentLabel: segmentTitle(selectedset),
-          rows,
-          onClose: () => setReportOpen(false)
-        });
-      })() : null,
-      optionsOpen && ReactDOM.createPortal ? ReactDOM.createPortal(
-        e(MeterOptionsPanel, {
-          instanceLabel: instance.label,
-          onClose: () => setOptionsOpen(false)
-        }),
-        document.body
-      ) : optionsOpen ? e(MeterOptionsPanel, {
-        instanceLabel: instance.label,
-        onClose: () => setOptionsOpen(false)
-      }) : null,
+      portalOrInline(ReactDOM, tipOverlay),
+      portalOrInline(ReactDOM, reportNode),
+      portalOrInline(ReactDOM, optionsNode),
       props.layoutEdit || arrange ? e("div", {
         className: "ecu-meter-resize ecu-meter-resize-left",
         title: "Resize from bottom-left (keeps top-right fixed \xB7 Shift = free size)",
@@ -24397,14 +27609,20 @@ ${parts.map(cssSlice).join("\n")}
       const app = getMeterAppearance();
       let meterOpacity = inst.opacity != null ? inst.opacity : 1;
       const inCombat2 = isMeterInCombat();
-      if (inCombat2 && app.autoHideCombat) {
+      const followLive = isLiveCameraRef(inst.selectedset);
+      if (followLive && inCombat2 && app.autoHideCombat) {
         meterOpacity = Math.min(meterOpacity, app.idleAlpha);
       }
-      if (!inCombat2 && app.autoHideOoc) {
+      if (followLive && !inCombat2 && app.autoHideOoc) {
         meterOpacity = Math.min(meterOpacity, app.idleAlpha);
       }
       const pos = {
         ...inst.pos,
+        snap: inst.snap,
+        horizontalSnap: inst.horizontalSnap,
+        verticalSnap: inst.verticalSnap,
+        frameW: inst.frameW,
+        frameH: inst.frameH,
         scale: inst.scale != null ? inst.scale : inst.pos.scale
       };
       out.push(
@@ -24421,8 +27639,8 @@ ${parts.map(cssSlice).join("\n")}
             softAvoid: false,
             onMove: (_id, nextPos) => ctx.onMove(inst.id, nextPos),
             onDragStart: () => ctx.onDragStart(inst.id),
-            onDragMove: () => ctx.onDragMove(inst.id),
-            onMoveEnd: () => ctx.onMoveEnd(inst.id),
+            onDragMove: (_id, _pos, opts) => ctx.onDragMove(inst.id, opts),
+            onMoveEnd: (_id, _pos, opts) => ctx.onMoveEnd(inst.id, opts),
             onActivate: () => ctx.onActivate(inst.id),
             onWindowScale: (scale) => ctx.onWindowScale(inst.id, scale),
             className: "ecu-meter-frame" + (playArrange ? " comm-pos-arrange" : "") + (hasSnap ? " comm-pos-grouped" : "") + (ctx.snapDragId === inst.id ? " comm-pos-dragging" : "") + (ctx.snapPeerId === inst.id ? " comm-pos-snap-target" : ""),
@@ -24457,7 +27675,9 @@ ${parts.map(cssSlice).join("\n")}
             onClose: () => ctx.layoutEdit ? ctx.removeMeter(inst.id) : ctx.closeMeterRuntime(inst.id),
             onShow: () => ctx.patchMeter(inst.id, { visible: true }),
             windowNumber,
-            showWindowIds: ctx.showWindowIds
+            showWindowIds: ctx.showWindowIds,
+            // Meter shell owns .ecu-meter-resize (group-aware); skip HUD grips.
+            showResizeHandles: false
           },
           e(
             "div",
@@ -24477,7 +27697,13 @@ ${parts.map(cssSlice).join("\n")}
               layoutEdit: ctx.layoutEdit,
               arrange,
               locked,
-              resizeGroupIds: hasSnap ? getMeterGroup(ctx.meterInstances, inst.id).map((g) => g.id).filter((gid) => gid !== inst.id) : void 0,
+              resizeGroupPeers: hasSnap ? getEdgeGroup(ctx.meterInstances, inst.id).filter((g) => g.id !== inst.id).map((g) => {
+                var _a2;
+                return {
+                  id: g.id,
+                  anchor: (_a2 = g.pos) == null ? void 0 : _a2.anchor
+                };
+              }) : void 0,
               onToggleMetersHidden: () => ctx.setMetersHiddenPersist(!ctx.metersHidden),
               metersHidden: ctx.metersHidden,
               closedInstances: ctx.closedMeters,
@@ -24485,12 +27711,22 @@ ${parts.map(cssSlice).join("\n")}
               onPatchInstance: (partial) => {
                 if (partial.frameW != null || partial.frameH != null) {
                   ctx.setMeterInstances((prev) => {
-                    let next = applyGroupFrameSize2(prev, inst.id, {
-                      frameW: partial.frameW,
-                      frameH: partial.frameH
-                    });
-                    next = next.map(
+                    var _a2;
+                    const root = (_a2 = document.getElementById("comm-ui")) == null ? void 0 : _a2.getBoundingClientRect();
+                    let next = prev.map(
                       (m) => m.id === inst.id ? { ...m, ...partial } : m
+                    );
+                    next = applyGroupFrameSize(
+                      next,
+                      inst.id,
+                      {
+                        frameW: partial.frameW,
+                        frameH: partial.frameH
+                      },
+                      {
+                        rootW: root == null ? void 0 : root.width,
+                        rootH: root == null ? void 0 : root.height
+                      }
                     );
                     patchSettings({ meterInstances: next });
                     return next;
@@ -26657,7 +29893,7 @@ ${parts.map(cssSlice).join("\n")}
     );
     const region = (_g = props.serverRegion) != null ? _g : "";
     const ident = (_h = props.serverIdentifier) != null ? _h : "";
-    const serverLabel2 = `${region} ${ident}`.trim() || "\u2014";
+    const serverLabel3 = `${region} ${ident}`.trim() || "\u2014";
     return e(
       "div",
       {
@@ -26683,7 +29919,7 @@ ${parts.map(cssSlice).join("\n")}
               letterSpacing: "0.02em"
             }
           },
-          serverLabel2
+          serverLabel3
         ),
         e(
           "div",
@@ -27052,24 +30288,37 @@ ${parts.map(cssSlice).join("\n")}
   }
   function SlotCell(props) {
     const { entity, slotName, slot, showPrice, diff } = props;
-    const skin = slotSkin(slot);
+    const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
     const { shade, s_op } = shadeFor(slotName);
     let content = null;
     const clickable = !!(slot && slot.name);
     if (slot && skin) {
-      const html = itemContainer(
-        {
-          skin,
-          size: SLOT_SIZE,
-          slot: slotName,
-          shade,
-          s_op,
-          draggable: false
-        },
-        slot
-      );
+      let html = "";
+      try {
+        html = itemContainer(
+          {
+            skin,
+            size: SLOT_SIZE,
+            slot: slotName,
+            shade,
+            s_op,
+            draggable: false
+          },
+          slot
+        ) || "";
+      } catch (e2) {
+        html = "";
+      }
       if (html) {
         content = wrapContainerHtml(html);
+      } else if (slot.name) {
+        content = wrapContainerHtml(
+          itemIconHtml(slot.name, {
+            skin,
+            size: SLOT_SIZE,
+            title: slot.name
+          })
+        );
       } else {
         content = e(
           "div",
@@ -27090,14 +30339,19 @@ ${parts.map(cssSlice).join("\n")}
         );
       }
     } else {
-      const html = itemContainer({
-        size: SLOT_SIZE,
-        shade,
-        s_op,
-        slot: slotName,
-        bcolor: EMPTY_BCOLOR,
-        draggable: false
-      });
+      let html = "";
+      try {
+        html = itemContainer({
+          size: SLOT_SIZE,
+          shade,
+          s_op,
+          slot: slotName,
+          bcolor: EMPTY_BCOLOR,
+          draggable: false
+        }) || "";
+      } catch (e2) {
+        html = "";
+      }
       if (html) {
         content = wrapContainerHtml(html);
       } else {
@@ -27974,7 +31228,7 @@ ${parts.map(cssSlice).join("\n")}
         unsub2();
       };
     }, [kind]);
-    const meta = LABELS[kind];
+    const meta2 = LABELS[kind];
     const showDummy = !!props.layoutEdit && !open;
     return e(
       "div",
@@ -27990,8 +31244,8 @@ ${parts.map(cssSlice).join("\n")}
         }
       },
       showDummy ? e(PanelShellDummy, {
-        label: meta.label,
-        hint: meta.hint,
+        label: meta2.label,
+        hint: meta2.hint,
         accent: kind === "buff" ? "#5a7a5a" : "#5a6a8a",
         rows: 4,
         style: {
@@ -30420,7 +33674,10 @@ ${parts.map(cssSlice).join("\n")}
           onMove: deps.onMove,
           onMoveEnd: playArrange || deps.layoutEdit ? deps.onMoveEnd : void 0,
           onDragStart: playArrange || deps.layoutEdit ? deps.onPanelDragStart : void 0,
-          onDragMove: playArrange || deps.layoutEdit ? deps.onPanelDragMove : void 0,
+          onDragMove: playArrange || deps.layoutEdit ? (id2, _pos, opts2) => {
+            var _a;
+            return (_a = deps.onPanelDragMove) == null ? void 0 : _a.call(deps, id2, opts2);
+          } : void 0,
           softAvoid: groupable ? false : void 0,
           style: opts == null ? void 0 : opts.style,
           hidden: isHidden,
@@ -30441,7 +33698,11 @@ ${parts.map(cssSlice).join("\n")}
           onShow: isClosablePanel ? () => deps.setVisible(id, true) : void 0,
           windowNumber: deps.windowNumberById ? deps.windowNumberById[id] : void 0,
           showWindowIds: deps.showWindowIds,
-          onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0
+          onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0,
+          // Layout toggle is chrome-only. Bag must stay content-sized (7-col
+          // float grid breaks under a locked shell width/height).
+          showResizeHandles: id !== "toggles" && id !== "bag",
+          onResizeFrame: id !== "toggles" && id !== "bag" && deps.onResizeFrame ? (size) => deps.onResizeFrame(id, size) : void 0
         },
         child
       );
@@ -30656,11 +33917,20 @@ ${parts.map(cssSlice).join("\n")}
     const r = el.getBoundingClientRect();
     return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 };
   }
+  function readPanelBox(id) {
+    const el = document.querySelector(
+      `.comm-pos-panel.comm-pos-${cssEscapePanelId(id)}`
+    );
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, width: r.width, height: r.height };
+  }
   function SnapGuideLine(props) {
     const React = getReact();
     const [tick, setTick] = React.useState(0);
+    const dragging = !!props.dragId;
     React.useEffect(() => {
-      if (!props.dragId || !props.visible) return;
+      if (!dragging) return;
       let raf2 = 0;
       const loop = () => {
         setTick((n) => n + 1);
@@ -30668,46 +33938,80 @@ ${parts.map(cssSlice).join("\n")}
       };
       raf2 = window.requestAnimationFrame(loop);
       return () => window.cancelAnimationFrame(raf2);
-    }, [props.dragId, props.visible]);
-    if (!props.dragId || !props.visible) return null;
-    const targetId = props.snapPeerId || props.nearPeerId;
-    if (!targetId) return null;
-    const from = readCenter(props.dragId);
-    const to = readCenter(targetId);
-    if (!from || !to) return null;
+    }, [dragging]);
+    if (!dragging) return null;
+    void tick;
     const root = layoutDragRoot().getBoundingClientRect();
-    const x0 = from.x - root.left;
-    const y0 = from.y - root.top;
-    const x1 = to.x - root.left;
-    const y1 = to.y - root.top;
-    const dx = x1 - x0;
-    const dy = y1 - y0;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (!(dist > 8)) return null;
-    const canSnap = !!props.snapPeerId;
-    const color = canSnap ? "rgba(80, 220, 120, 0.85)" : "rgba(220, 70, 70, 0.75)";
-    const count = Math.max(1, Math.floor(dist / BALL_STEP_PX));
-    const balls = [];
-    for (let i = 1; i <= count; i++) {
-      const t = i / (count + 1);
-      balls.push(
-        e("div", {
-          key: "b" + i + "-" + tick % 2,
-          className: "comm-snap-guide-ball",
-          style: {
-            position: "absolute",
-            left: x0 + dx * t - BALL_SIZE / 2,
-            top: y0 + dy * t - BALL_SIZE / 2,
-            width: BALL_SIZE,
-            height: BALL_SIZE,
-            borderRadius: "50%",
-            background: color,
-            boxShadow: `0 0 0 1px rgba(0,0,0,0.45)`,
-            pointerEvents: "none"
-          }
-        })
-      );
+    const kids = [];
+    const numbers = props.showWindowIds ? props.windowNumberById : void 0;
+    if (numbers) {
+      const ids = Object.keys(numbers);
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        const n = numbers[id];
+        if (!(typeof n === "number" && n > 0)) continue;
+        const box = readPanelBox(id);
+        if (!box || box.width < 4 || box.height < 4) continue;
+        kids.push(
+          e(
+            "div",
+            {
+              key: "wid-" + id,
+              className: "comm-pos-window-id",
+              "aria-hidden": true,
+              style: {
+                position: "absolute",
+                left: box.left - root.left,
+                top: box.top - root.top,
+                width: box.width,
+                height: box.height
+              }
+            },
+            String(n)
+          )
+        );
+      }
     }
+    const targetId = props.dragId && (props.snapPeerId || props.nearPeerId) ? props.snapPeerId || props.nearPeerId : null;
+    if (props.dragId && targetId) {
+      const from = readCenter(props.dragId);
+      const to = readCenter(targetId);
+      if (from && to) {
+        const x0 = from.x - root.left;
+        const y0 = from.y - root.top;
+        const x1 = to.x - root.left;
+        const y1 = to.y - root.top;
+        const dx = x1 - x0;
+        const dy = y1 - y0;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 8) {
+          const canSnap = !!props.snapPeerId;
+          const color = canSnap ? "rgba(80, 220, 120, 0.85)" : "rgba(220, 70, 70, 0.75)";
+          const count = Math.max(1, Math.floor(dist / BALL_STEP_PX));
+          for (let i = 1; i <= count; i++) {
+            const t = i / (count + 1);
+            kids.push(
+              e("div", {
+                key: "b" + i,
+                className: "comm-snap-guide-ball",
+                style: {
+                  position: "absolute",
+                  left: x0 + dx * t - BALL_SIZE / 2,
+                  top: y0 + dy * t - BALL_SIZE / 2,
+                  width: BALL_SIZE,
+                  height: BALL_SIZE,
+                  borderRadius: "50%",
+                  background: color,
+                  boxShadow: `0 0 0 1px rgba(0,0,0,0.45)`,
+                  pointerEvents: "none"
+                }
+              })
+            );
+          }
+        }
+      }
+    }
+    if (kids.length === 0) return null;
     return e(
       "div",
       {
@@ -30716,12 +34020,12 @@ ${parts.map(cssSlice).join("\n")}
         style: {
           position: "absolute",
           inset: 0,
-          zIndex: 50,
+          zIndex: LAYOUT_GUIDE_OVERLAY_Z,
           pointerEvents: "none",
           overflow: "hidden"
         }
       },
-      ...balls
+      ...kids
     );
   }
 
@@ -30878,9 +34182,12 @@ ${parts.map(cssSlice).join("\n")}
     const [layoutGuideActive, setLayoutGuideActive] = React.useState(
       () => isLayoutGuideActive()
     );
-    React.useEffect(() => subscribeLayoutGuide(() => {
-      setLayoutGuideActive(isLayoutGuideActive());
-    }), []);
+    React.useEffect(
+      () => subscribeLayoutGuide(() => {
+        setLayoutGuideActive(isLayoutGuideActive());
+      }),
+      []
+    );
     const combat = combatSignals(snap.entities);
     const onCrypt = getMapData(snap.entities).map === "crypt";
     useContextualTourTriggers({
@@ -30921,14 +34228,21 @@ ${parts.map(cssSlice).join("\n")}
       visible,
       opacityFor,
       onMove: (id, pos) => windowActions.moveWindow(id, pos),
-      onMoveEnd: (id) => windowActions.snapAfterMove(id),
+      onMoveEnd: (id, _pos, opts) => windowActions.snapAfterMove(id, opts),
+      onResizeFrame: (id, size) => {
+        windowActions.resizeWindowFrame(id, {
+          frameW: size.w,
+          frameH: size.h
+        });
+      },
       onPanelDragStart: (id) => windowActions.onDragStart(id),
-      onPanelDragMove: (id) => windowActions.onDragMove(id),
+      onPanelDragMove: (id, opts) => windowActions.onDragMove(id, opts),
       ungroupPanel: (id) => windowActions.ungroupWindow(id),
       panelSnapDragId: windowActions.snapDragId,
       panelSnapPeerId: windowActions.snapPeerId,
       windowNumberById,
-      showWindowIds: windowActions.showWindowIds,
+      // Window ids paint on SnapGuideLine overlay (above panel stack).
+      showWindowIds: false,
       onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
       panelIsLocked,
       setPanelLocked,
@@ -30960,7 +34274,8 @@ ${parts.map(cssSlice).join("\n")}
       altHeld,
       snapDragId: windowActions.snapDragId,
       snapPeerId: windowActions.snapPeerId,
-      showWindowIds: windowActions.showWindowIds,
+      // Window ids paint on SnapGuideLine overlay (above panel stack).
+      showWindowIds: false,
       windowNumberById,
       peerLayout: meters.peerLayout,
       viewportProfile,
@@ -30969,8 +34284,8 @@ ${parts.map(cssSlice).join("\n")}
       meterIsLocked: meters.meterIsLocked,
       onMove: (id, pos) => windowActions.moveWindow(id, pos),
       onDragStart: (id) => windowActions.onDragStart(id),
-      onDragMove: (id) => windowActions.onDragMove(id),
-      onMoveEnd: (id) => windowActions.snapAfterMove(id),
+      onDragMove: (id, opts) => windowActions.onDragMove(id, opts),
+      onMoveEnd: (id, opts) => windowActions.snapAfterMove(id, opts),
       onActivate: (id) => meters.raiseMeterToFront(id),
       onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
       patchMeter: meters.patchMeter,
@@ -31000,12 +34315,6 @@ ${parts.map(cssSlice).join("\n")}
         }
       },
       layoutEdit || layoutGuideActive ? e(LayoutEditGrid) : null,
-      e(SnapGuideLine, {
-        dragId: windowActions.snapDragId,
-        snapPeerId: windowActions.snapPeerId,
-        nearPeerId: windowActions.nearPeerId,
-        visible: windowActions.showWindowIds
-      }),
       layoutEdit ? e(LayoutEditChrome, {
         onReset: resetLayout,
         onDone: () => setLayoutEdit(false),
@@ -31014,6 +34323,7 @@ ${parts.map(cssSlice).join("\n")}
         onProfileMode: setLayoutProfileMode,
         exportLayouts,
         importLayouts,
+        onMetersImported: (next) => meters.setMeterInstances(next),
         onApplyAllCurrent: () => meters.applyAllSegments("current"),
         onApplyAllTotal: () => meters.applyAllSegments("total"),
         onAddMeter: () => setMeterAddOpen(true),
@@ -31025,6 +34335,15 @@ ${parts.map(cssSlice).join("\n")}
       }) : null,
       ...renderCommPanels(panelDeps),
       ...meterPanels,
+      // After panels so guide balls + window ids sit above the stack
+      // (z-index LAYOUT_GUIDE_OVERLAY_Z; pointer-events: none).
+      e(SnapGuideLine, {
+        dragId: windowActions.snapDragId,
+        snapPeerId: windowActions.snapPeerId,
+        nearPeerId: windowActions.nearPeerId,
+        showWindowIds: windowActions.showWindowIds,
+        windowNumberById
+      }),
       setupWizardOpen ? e(CommUISetupWizard, {
         step: introStep,
         onStep: setIntroStepPersist,
