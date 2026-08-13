@@ -88,35 +88,47 @@ function paintTip(html: string, clientX: number, clientY: number): void {
   placeTip(tip, clientX, clientY);
 }
 
-function onModKey(ev: KeyboardEvent): void {
-  if (ev.key !== "Shift" && ev.key !== "Control" && ev.key !== "Meta") return;
-  if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
-  const mods = {
-    shift: ev.shiftKey,
-    ctrl: ev.ctrlKey || ev.metaKey,
+function readMods(ev: {
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): { shift: boolean; ctrl: boolean } {
+  return {
+    shift: !!ev.shiftKey,
+    ctrl: !!ev.ctrlKey || !!ev.metaKey,
   };
+}
+
+/** Rebuild tip when Shift/Ctrl change — any key event may carry fresh modifiers. */
+function onModKey(ev: KeyboardEvent): void {
+  if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
+  const mods = readMods(ev);
   if (mods.shift === lastMods.shift && mods.ctrl === lastMods.ctrl) return;
   lastMods = mods;
   paintTip(hoverRebuild(mods), hoverX, hoverY);
 }
 
+const MOD_KEY_OPTS: AddEventListenerOptions = { capture: true };
+
 function bindModKeys(): void {
   if (keysBound) return;
   keysBound = true;
-  window.addEventListener("keydown", onModKey);
-  window.addEventListener("keyup", onModKey);
+  // Capture on document so canvas / game handlers cannot swallow the event first.
+  document.addEventListener("keydown", onModKey, MOD_KEY_OPTS);
+  document.addEventListener("keyup", onModKey, MOD_KEY_OPTS);
 }
 
 function unbindModKeys(): void {
   if (!keysBound) return;
   keysBound = false;
-  window.removeEventListener("keydown", onModKey);
-  window.removeEventListener("keyup", onModKey);
+  document.removeEventListener("keydown", onModKey, MOD_KEY_OPTS);
+  document.removeEventListener("keyup", onModKey, MOD_KEY_OPTS);
 }
 
 export function showMeterTooltip(ev: MouseEvent, html: string): void {
   hoverRebuild = null;
-  lastMods = { shift: ev.shiftKey, ctrl: ev.ctrlKey || ev.metaKey };
+  unbindModKeys();
+  lastMods = readMods(ev);
   hoverX = ev.clientX;
   hoverY = ev.clientY;
   paintTip(html, ev.clientX, ev.clientY);
@@ -129,10 +141,7 @@ export function showMeterTooltipLive(
   ev: MouseEvent,
   rebuild: (mods: { shift: boolean; ctrl: boolean }) => string,
 ): void {
-  const mods = {
-    shift: ev.shiftKey,
-    ctrl: ev.ctrlKey || ev.metaKey,
-  };
+  const mods = readMods(ev);
   hoverRebuild = rebuild;
   lastMods = mods;
   hoverX = ev.clientX;
@@ -178,13 +187,15 @@ function formatAmtPct(
 function sectionHeader(
   icon: string,
   title: string,
-  hint: string,
+  hint: string | null,
   maximized: boolean,
 ): string {
-  const maxCls = maximized ? " is-max" : "";
+  const canExpand = !!hint;
+  const maxCls = canExpand && maximized ? " is-max" : "";
+  const kbd = canExpand ? `<span class="ecu-meter-tt-kbd">${hint}</span>` : "";
   return `<div class="ecu-meter-tt-sec${maxCls}">
     <span class="ecu-meter-tt-sec-l">${icon}<span class="ecu-meter-tt-sec-t">${title}</span></span>
-    <span class="ecu-meter-tt-kbd">${hint}</span>
+    ${kbd}
   </div>`;
 }
 
@@ -312,8 +323,11 @@ export function playerBarTooltipHtml(
     entities,
   );
 
-  const spellLimit = mods.shift ? MAX_EXPANDED : MAX_SPELLS;
-  const targetLimit = mods.ctrl ? MAX_EXPANDED : MAX_TARGETS;
+  const spellExpandable = spells.length > MAX_SPELLS;
+  const targetExpandable = targets.length > MAX_TARGETS;
+  const spellLimit = mods.shift && spellExpandable ? MAX_EXPANDED : MAX_SPELLS;
+  const targetLimit =
+    mods.ctrl && targetExpandable ? MAX_EXPANDED : MAX_TARGETS;
   const spellTotal = spells.reduce((s, r) => s + r.value, 0) || row.value || 1;
   const targetTotal =
     targets.reduce((s, r) => s + r.value, 0) || row.value || 1;
@@ -322,7 +336,7 @@ export function playerBarTooltipHtml(
     sectionHeader(
       `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">⚔</span>`,
       "Spells",
-      "Shift",
+      spellExpandable ? "Shift" : null,
       mods.shift,
     ) +
     rankRowsHtml(
@@ -337,7 +351,7 @@ export function playerBarTooltipHtml(
     sectionHeader(
       `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">✓</span>`,
       "Targets",
-      "Ctrl",
+      targetExpandable ? "Ctrl" : null,
       mods.ctrl,
     ) +
     rankRowsHtml(

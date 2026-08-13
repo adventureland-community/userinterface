@@ -106,7 +106,7 @@ function barAmount(row: BarPoolRow): number {
  * Never let the Total row become the scale — that made Done bars shrink
  * as group sum grew (share-of-group instead of relative-to-top).
  */
-function scaleMax(rows: BarPoolRow[]): number {
+export function scaleMax(rows: BarPoolRow[]): number {
   let fromMeta = 0;
   let fromVisible = 0;
   for (let i = 0; i < rows.length; i++) {
@@ -129,7 +129,11 @@ function groupSum(rows: BarPoolRow[]): number {
 }
 
 /** Details total_bar: no `#.` — actors keep true ranks (1-based among players). */
-function rankText(r: BarPoolRow, paintIndex: number, painted: BarPoolRow[]): string {
+function rankText(
+  r: BarPoolRow,
+  paintIndex: number,
+  painted: BarPoolRow[],
+): string {
   if (isTotalRow(r)) return "";
   if (r.rank != null) return `${r.rank}.`;
   let actorsBefore = 0;
@@ -220,8 +224,7 @@ function makeRowEl(
   const share = total ? (r.value / total) * 100 : 0;
   const icon = barRowIconHtml(r, opts);
   const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
-  const rankLabel =
-    opts.rank !== false ? rankText(r, i, painted) : "";
+  const rankLabel = opts.rank !== false ? rankText(r, i, painted) : "";
   el.innerHTML = `
     <div class="ecu-meter-fill${anim}" style="width:${pct}%;background:${rowColor(r)}"></div>
     ${opts.rank !== false ? `<span class="ecu-meter-rank">${rankLabel}</span>` : "<span></span>"}
@@ -242,9 +245,17 @@ function makeRowEl(
 function bindRow(el: HTMLDivElement, r: BarPoolRow, opts: BarPoolOpts): void {
   if (opts.tooltipHtml) {
     el.onmousemove = (e) => opts.tooltipHtml!(e, r);
+    // Live patches rewrite .ecu-meter-vals under the cursor; that can false-fire
+    // mouseleave and drop the tip (and Shift/Ctrl listeners) while still hovering.
     el.onmouseleave = () => {
-      if (opts.onTooltipHide) opts.onTooltipHide();
+      requestAnimationFrame(() => {
+        if (el.isConnected && el.matches(":hover")) return;
+        if (opts.onTooltipHide) opts.onTooltipHide();
+      });
     };
+  } else {
+    el.onmousemove = null;
+    el.onmouseleave = null;
   }
   if (opts.onClick) {
     el.onclick = (e) => opts.onClick!(e, r);
