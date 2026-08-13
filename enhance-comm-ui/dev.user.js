@@ -19,19 +19,29 @@
 (function ecuDevLoader() {
   "use strict";
   var BASE = "http://127.0.0.1:3927/enhance-comm-ui.js";
+  var fetchedAt = new Date().toISOString();
   var url = BASE + "?t=" + Date.now();
 
   function fail(msg) {
     console.error("[ecu-dev]", msg);
   }
 
+  function headerValue(headers, name) {
+    if (!headers) return null;
+    var re = new RegExp("^" + name + ":\\s*(\\S+)", "im");
+    var m = re.exec(headers);
+    return m ? m[1] : null;
+  }
+
   function inject(code, meta) {
-    // Page context so window.React / game globals resolve.
     var s = document.createElement("script");
     s.textContent = code;
     (document.documentElement || document.head).appendChild(s);
     s.remove();
-    console.info("[ecu-dev] injected", meta || url);
+    // Runtime fingerprint is window.__ECU_BUILD__ / [ecu] from the bundle.
+    console.info("[ecu-dev] injected", Object.assign({}, meta || {}, {
+      fetchedAt: fetchedAt,
+    }));
   }
 
   if (typeof GM !== "undefined" && GM.xmlHttpRequest) {
@@ -44,9 +54,11 @@
           fail("HTTP " + res.status + " from " + url);
           return;
         }
+        var mtime = headerValue(res.responseHeaders, "X-ECU-Mtime");
         inject(res.responseText, {
           url: url,
           bytes: (res.responseText && res.responseText.length) || 0,
+          serverMtimeMs: mtime ? Number(mtime) : null,
         });
       },
       onerror: function () {

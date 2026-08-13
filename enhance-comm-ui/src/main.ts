@@ -13,7 +13,10 @@ import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
 import { installInventoryFix } from "./host/inventory";
 import { installPageTitle } from "./host/pageTitle";
+import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
+
+publishEcuBuildInfo();
 
 const POPUP_CSS = `
 /* Popup container */

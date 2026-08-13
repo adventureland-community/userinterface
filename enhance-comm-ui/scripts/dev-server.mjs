@@ -34,6 +34,8 @@ function startServer() {
     );
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
+    // Easy fingerprint for Tampermonkey / curl without reading the whole file.
+    res.setHeader("X-ECU-Service", "ecu-dev");
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);
@@ -48,6 +50,7 @@ function startServer() {
         JSON.stringify({
           ok: true,
           service: "ecu-dev",
+          root: ROOT,
           script: script || null,
           mtimeMs: script ? statSync(script).mtimeMs : null,
         }),
@@ -82,16 +85,16 @@ function startServer() {
 
   server.on("error", async (err) => {
     if (err && err.code === "EADDRINUSE") {
-      const reused = await isOurServer();
+      const reused = await isReusableServer();
       if (reused) {
         console.log(
-          `[ecu-dev] port ${PORT} already serving ecu-dev — reusing http://127.0.0.1:${PORT}/enhance-comm-ui.js`,
+          `[ecu-dev] port ${PORT} already serving this tree — reusing http://127.0.0.1:${PORT}/enhance-comm-ui.js`,
         );
         process.exit(0);
         return;
       }
       console.error(
-        `[ecu-dev] port ${PORT} is in use by something else. Stop that process or run ECU_DEV_PORT=3930 npm run dev (and update @require in dev.user.js).`,
+        `[ecu-dev] port ${PORT} is in use by another process (or a stale ecu-dev from a different folder). Kill it or run ECU_DEV_PORT=3930 npm run dev (and update the URL in dev.user.js).`,
       );
       process.exit(1);
       return;
@@ -111,14 +114,22 @@ function startServer() {
   });
 }
 
-async function isOurServer() {
+/**
+ * Only reuse if health is ecu-dev AND it is serving a script under this package root.
+ * An orphaned server from another clone (e.g. userinterface-meters) must not win.
+ */
+async function isReusableServer() {
   try {
     const res = await fetch(`http://127.0.0.1:${PORT}/health`, {
       cache: "no-store",
     });
     if (!res.ok) return false;
     const json = await res.json();
-    return !!(json && json.ok === true);
+    if (!(json && json.ok === true && json.service === "ecu-dev")) return false;
+    if (!json.script || typeof json.script !== "string") return false;
+    const served = resolve(json.script);
+    const ours = resolve(ROOT);
+    return served === resolve(DIST_JS) || served.startsWith(ours + "\\") || served.startsWith(ours + "/");
   } catch {
     return false;
   }
