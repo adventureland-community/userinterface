@@ -84,13 +84,63 @@ var EnhanceCommUI = (() => {
     if (snap == null) return snap;
     if (snap.id != null) {
       const live2 = findEntityById(snap.id);
-      if (live2) return live2;
+      if (live2) {
+        if (!live2.ctype && snap.ctype) live2.ctype = snap.ctype;
+        return live2;
+      }
     }
     return snap;
   }
   function getObservingId() {
     const obs = getObserving();
     return (obs == null ? void 0 : obs.id) != null ? String(obs.id) : void 0;
+  }
+  function getCharacter() {
+    return window.character;
+  }
+  var KNOWN_CTYPES = /* @__PURE__ */ new Set([
+    "warrior",
+    "mage",
+    "priest",
+    "rogue",
+    "ranger",
+    "paladin",
+    "merchant"
+  ]);
+  function asCtype(v) {
+    if (typeof v !== "string" || !v) return void 0;
+    const key = v.toLowerCase();
+    return KNOWN_CTYPES.has(key) ? key : void 0;
+  }
+  function resolvePlayerCtype(id, ent) {
+    var _a;
+    if (!id) return void 0;
+    const tid = String(id);
+    const fromEnt = asCtype(ent == null ? void 0 : ent.ctype);
+    if (fromEnt) return fromEnt;
+    const live2 = ent || findEntityById(tid);
+    const fromLive = asCtype(live2 == null ? void 0 : live2.ctype);
+    if (fromLive) return fromLive;
+    const observing = window.observing;
+    if (observing && (String(observing.id) === tid || observing.name != null && String(observing.name) === tid)) {
+      const fromObs = asCtype(observing.ctype);
+      if (fromObs) return fromObs;
+    }
+    const character = getCharacter();
+    if (character && (String(character.id) === tid || character.name != null && String(character.name) === tid)) {
+      const fromChar = asCtype(character.ctype);
+      if (fromChar) return fromChar;
+    }
+    const chars = ((_a = window.X) == null ? void 0 : _a.characters) || [];
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (!c) continue;
+      if (c.name != null && String(c.name) === tid || c.id != null && String(c.id) === tid) {
+        const fromX = asCtype(c.type);
+        if (fromX) return fromX;
+      }
+    }
+    return void 0;
   }
   function getS() {
     return window.S;
@@ -425,6 +475,588 @@ var EnhanceCommUI = (() => {
     return (_a = idToMobData.get(focusId)) == null ? void 0 : _a.mtype;
   }
 
+  // src/lib/colors.ts
+  var classColors = {
+    merchant: "#7f7f7f",
+    mage: "#3e6eed",
+    warrior: "#f07f2f",
+    priest: "#eb4d82",
+    ranger: "#8a512b",
+    paladin: "#a3b4b9",
+    rogue: "#44b75c"
+  };
+
+  // src/host/icons.ts
+  function itemContainer(item, actual) {
+    if (typeof window.item_container !== "function") {
+      return "";
+    }
+    return window.item_container(item, actual);
+  }
+  function addTint(selector, args) {
+    if (typeof window.add_tint === "function") {
+      window.add_tint(selector, args);
+    }
+  }
+  function getTint(selector) {
+    if (typeof window.get_tint === "function") {
+      return window.get_tint(selector) || null;
+    }
+    return null;
+  }
+  function rebindTint(selector) {
+    const tint = getTint(selector);
+    if (tint) tint.added = false;
+  }
+  function setXTarget(entity, opts) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
+  }
+  function slotSkin(slot) {
+    var _a, _b;
+    if (!slot || !slot.name) return void 0;
+    const def = (_b = (_a = window.G) == null ? void 0 : _a.items) == null ? void 0 : _b[slot.name];
+    return slot.skin || (def == null ? void 0 : def.skin);
+  }
+  function monsterSprite(mtype, opts) {
+    var _a;
+    if (!mtype || typeof window.sprite !== "function") return "";
+    const size = (_a = opts == null ? void 0 : opts.size) != null ? _a : 22;
+    return window.sprite(mtype, {
+      scale: size / 40,
+      width: size,
+      height: size,
+      overflow: true
+    }) || "";
+  }
+  function classSprite(ctype, opts) {
+    var _a, _b, _c, _d, _e;
+    if (!ctype || typeof window.sprite !== "function") return "";
+    const key = ctype.toLowerCase();
+    const look = (_d = (_c = (_b = (_a = window.G) == null ? void 0 : _a.classes) == null ? void 0 : _b[key]) == null ? void 0 : _c.looks) == null ? void 0 : _d[0];
+    if (!look || !look[0]) return "";
+    const size = (_e = opts == null ? void 0 : opts.size) != null ? _e : 18;
+    return window.sprite(look[0], {
+      cx: look[1] || {},
+      scale: size / 40,
+      width: size,
+      height: size,
+      overflow: true
+    }) || "";
+  }
+  function lookFromSkinCx(skin, cx, extra) {
+    if (!skin) return null;
+    return {
+      skin,
+      cx: cx || {},
+      rip: !!extra.rip,
+      ctype: extra.ctype,
+      name: extra.name,
+      source: extra.source
+    };
+  }
+  function resolveCharacterLook(id, opts) {
+    var _a, _b, _c, _d, _e;
+    const tid = id != null ? String(id) : "";
+    const hintName = opts == null ? void 0 : opts.name;
+    const hintCtype = (opts == null ? void 0 : opts.ctype) ? String(opts.ctype).toLowerCase() : void 0;
+    const fromEnt = (ent, source) => lookFromSkinCx(ent == null ? void 0 : ent.skin, ent == null ? void 0 : ent.cx, {
+      rip: ent == null ? void 0 : ent.rip,
+      ctype: (ent == null ? void 0 : ent.ctype) || hintCtype,
+      name: (ent == null ? void 0 : ent.name) || hintName,
+      source
+    });
+    if (tid) {
+      const fromLive = fromEnt(findEntityById(tid), "entity");
+      if (fromLive) return fromLive;
+      const observing = window.observing;
+      if (observing && (String(observing.id) === tid || observing.name != null && String(observing.name) === tid || hintName && observing.name === hintName)) {
+        const fromObs = fromEnt(observing, "entity");
+        if (fromObs) return fromObs;
+      }
+      const character = window.character;
+      if (character && (String(character.id) === tid || character.name != null && String(character.name) === tid || hintName && character.name === hintName)) {
+        const fromChar = fromEnt(character, "entity");
+        if (fromChar) return fromChar;
+      }
+    }
+    const chars = ((_a = window.X) == null ? void 0 : _a.characters) || [];
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (!c) continue;
+      const matchId = tid && c.id != null && String(c.id) === tid;
+      const matchName = hintName && c.name === hintName || tid && c.name != null && String(c.name) === tid;
+      if (!matchId && !matchName) continue;
+      const fromRoster = lookFromSkinCx(c.skin, c.cx, {
+        rip: c.rip,
+        ctype: c.type || hintCtype,
+        name: c.name || hintName,
+        source: "roster"
+      });
+      if (fromRoster) return fromRoster;
+    }
+    const ctypeKey = hintCtype || void 0;
+    if (ctypeKey) {
+      const look = (_e = (_d = (_c = (_b = window.G) == null ? void 0 : _b.classes) == null ? void 0 : _c[ctypeKey]) == null ? void 0 : _d.looks) == null ? void 0 : _e[0];
+      if (look && look[0]) {
+        return {
+          skin: look[0],
+          cx: look[1] || {},
+          ctype: ctypeKey,
+          name: hintName,
+          source: "class"
+        };
+      }
+    }
+    return null;
+  }
+  function characterSprite(id, opts) {
+    var _a;
+    if (typeof window.sprite !== "function") return "";
+    const resolved = resolveCharacterLook(id, {
+      ctype: opts == null ? void 0 : opts.ctype,
+      name: opts == null ? void 0 : opts.name
+    });
+    if (!resolved || !resolved.skin) return "";
+    const size = (_a = opts == null ? void 0 : opts.size) != null ? _a : 40;
+    return window.sprite(resolved.skin, {
+      cx: resolved.cx || {},
+      rip: resolved.rip,
+      scale: size / 40,
+      width: size,
+      height: size,
+      overflow: true
+    }) || "";
+  }
+
+  // src/lib/abilityIds.ts
+  var HIT_SOURCE_TO_G = {
+    burn: "burned"
+  };
+  function canonicalAbilityId(source) {
+    if (!source) return source;
+    const mapped = HIT_SOURCE_TO_G[source.toLowerCase()];
+    return mapped || source;
+  }
+
+  // src/lib/gameIcon.ts
+  var CLASS_LETTERS = {
+    warrior: "W",
+    mage: "M",
+    priest: "P",
+    rogue: "R",
+    ranger: "Rg",
+    paladin: "Pa",
+    merchant: "Me"
+  };
+  var PROMOTED_DEBUFF_KEYS = /* @__PURE__ */ new Set([
+    "stunned",
+    "deepfreezed",
+    "fingered",
+    "frozen",
+    "scared"
+  ]);
+  function escapeAttr(s) {
+    return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function letterFallbackHtml(letter, size, title, bg) {
+    const style = [
+      `width:${size}px`,
+      `height:${size}px`,
+      `line-height:${size}px`,
+      bg ? `background:${bg}` : ""
+    ].filter(Boolean).join(";");
+    return `<span class="ecu-meter-icon ecu-meter-icon-ab" title="${escapeAttr(title)}" style="${style}">${escapeAttr(letter)}</span>`;
+  }
+  function skinSheetHtml(skin, displaySize = 18, title) {
+    try {
+      const G = window.G;
+      if (!G || !G.positions || !G.imagesets) return null;
+      const pos = G.positions[skin];
+      if (!pos) return null;
+      const setName = pos[0] || "pack_20";
+      const pack = G.imagesets[setName];
+      if (!pack || !pack.file) return null;
+      const x = pos[1];
+      const y = pos[2];
+      const scale = displaySize / pack.size;
+      const sheetW = pack.columns * pack.size * scale;
+      const sheetH = pack.rows * pack.size * scale;
+      const tip = title || skin;
+      return `<span class="ecu-meter-icon ecu-meter-icon-skin" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${pack.file}"/></span></span>`;
+    } catch (e2) {
+      return null;
+    }
+  }
+  function isConditionDebuff(key) {
+    var _a, _b;
+    const gid = canonicalAbilityId(key);
+    if (PROMOTED_DEBUFF_KEYS.has(key) || PROMOTED_DEBUFF_KEYS.has(gid)) {
+      return true;
+    }
+    const G = getG();
+    const def = ((_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[key]);
+    return !!(def && def.debuff);
+  }
+  function conditionKind(key) {
+    return isConditionDebuff(key) ? "debuff" : "buff";
+  }
+  function conditionDisplayName(key) {
+    var _a, _b;
+    const G = getG();
+    const gid = canonicalAbilityId(key);
+    const def = ((_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[key]);
+    if (def && typeof def.name === "string" && def.name) return def.name;
+    return key;
+  }
+  function conditionSkin(key) {
+    var _a, _b;
+    const G = getG();
+    const gid = canonicalAbilityId(key);
+    const def = ((_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[key]);
+    if (def && typeof def.skin === "string" && def.skin) return def.skin;
+    return void 0;
+  }
+  function skillDisplayName(key) {
+    var _a, _b, _c, _d, _e, _f;
+    const G = getG();
+    const gid = canonicalAbilityId(key);
+    const skill = ((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[key]);
+    if (skill && typeof skill.name === "string" && skill.name) return skill.name;
+    const cond = ((_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[gid]) || ((_d = G == null ? void 0 : G.conditions) == null ? void 0 : _d[key]);
+    if (cond && typeof cond.name === "string" && cond.name) return cond.name;
+    const item = ((_e = G == null ? void 0 : G.items) == null ? void 0 : _e[gid]) || ((_f = G == null ? void 0 : G.items) == null ? void 0 : _f[key]);
+    if (item && typeof item.name === "string" && item.name) return item.name;
+    return key;
+  }
+  function skillSkin(key) {
+    var _a, _b, _c, _d, _e, _f;
+    const G = getG();
+    const gid = canonicalAbilityId(key);
+    const skill = ((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[key]);
+    if (skill && typeof skill.skin === "string" && skill.skin) return skill.skin;
+    const cond = ((_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[gid]) || ((_d = G == null ? void 0 : G.conditions) == null ? void 0 : _d[key]);
+    if (cond && typeof cond.skin === "string" && cond.skin) return cond.skin;
+    const item = ((_e = G == null ? void 0 : G.items) == null ? void 0 : _e[gid]) || ((_f = G == null ? void 0 : G.items) == null ? void 0 : _f[key]);
+    if (item && typeof item.skin === "string" && item.skin) return item.skin;
+    return void 0;
+  }
+  function itemSkin(key) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[key];
+    if (def && typeof def.skin === "string" && def.skin) return def.skin;
+    return void 0;
+  }
+  function itemDisplayName(key) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[key];
+    if (def && typeof def.name === "string" && def.name) return def.name;
+    return key;
+  }
+  function monsterDisplayName(mtype) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.monsters) == null ? void 0 : _a[mtype];
+    if (def && typeof def.name === "string" && def.name) return def.name;
+    return mtype;
+  }
+  function resolveMonsterMtype(id, opts) {
+    const G = getG();
+    const monsters = G == null ? void 0 : G.monsters;
+    if (opts == null ? void 0 : opts.mtype) {
+      if (!monsters || monsters[opts.mtype]) return opts.mtype;
+    }
+    if (monsters == null ? void 0 : monsters[id]) return id;
+    const ent = findEntityById(id);
+    if (ent == null ? void 0 : ent.mtype) return ent.mtype;
+    if ((opts == null ? void 0 : opts.name) && (monsters == null ? void 0 : monsters[opts.name])) return opts.name;
+    return (opts == null ? void 0 : opts.mtype) || void 0;
+  }
+  function resolveGameIcon(id, kind = "auto", opts) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+    const key = id || "";
+    if (kind === "death") {
+      return { id: key || "death", kind: "death", name: "Death" };
+    }
+    if (kind === "class") {
+      return {
+        id: key,
+        kind: "class",
+        ctype: (opts == null ? void 0 : opts.ctype) || key,
+        name: (opts == null ? void 0 : opts.ctype) || key
+      };
+    }
+    if (kind === "character" || kind === "actor") {
+      const look = resolveCharacterLook(key, {
+        ctype: opts == null ? void 0 : opts.ctype,
+        name: opts == null ? void 0 : opts.name
+      });
+      return {
+        id: key,
+        kind: "character",
+        skin: look == null ? void 0 : look.skin,
+        ctype: (look == null ? void 0 : look.ctype) || (opts == null ? void 0 : opts.ctype),
+        name: (look == null ? void 0 : look.name) || (opts == null ? void 0 : opts.name) || key,
+        lookSource: (look == null ? void 0 : look.source) || "none"
+      };
+    }
+    if (kind === "monster") {
+      const mtype = resolveMonsterMtype(key, opts) || key;
+      return {
+        id: key,
+        kind: "monster",
+        mtype,
+        name: (opts == null ? void 0 : opts.name) || monsterDisplayName(mtype)
+      };
+    }
+    if (kind === "target") {
+      if (opts == null ? void 0 : opts.ctype) {
+        return {
+          id: key,
+          kind: "class",
+          ctype: opts.ctype,
+          name: opts.name || key
+        };
+      }
+      const mtype = resolveMonsterMtype(key, opts);
+      if (mtype) {
+        return {
+          id: key,
+          kind: "monster",
+          mtype,
+          name: (opts == null ? void 0 : opts.name) || monsterDisplayName(mtype)
+        };
+      }
+      return {
+        id: key,
+        kind: "monster",
+        name: (opts == null ? void 0 : opts.name) || key
+      };
+    }
+    const G = getG();
+    const gid = canonicalAbilityId(key);
+    const asCondition = () => ({
+      id: gid,
+      kind: "condition",
+      skin: conditionSkin(gid),
+      name: conditionDisplayName(gid),
+      debuff: isConditionDebuff(gid)
+    });
+    const asSkill = () => ({
+      id: gid,
+      kind: "skill",
+      skin: skillSkin(gid),
+      name: skillDisplayName(gid)
+    });
+    const asItem = () => {
+      var _a2, _b2;
+      const def = ((_a2 = G == null ? void 0 : G.items) == null ? void 0 : _a2[gid]) || ((_b2 = G == null ? void 0 : G.items) == null ? void 0 : _b2[key]);
+      return {
+        id: gid,
+        kind: "item",
+        skin: itemSkin(gid) || itemSkin(key),
+        name: typeof (def == null ? void 0 : def.name) === "string" ? def.name : key
+      };
+    };
+    if (kind === "condition") return asCondition();
+    if (kind === "auto" && ((_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[gid])) return asCondition();
+    if (kind === "skill") {
+      if (((_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[gid]) || ((_c = G == null ? void 0 : G.skills) == null ? void 0 : _c[key])) return asSkill();
+      if (((_d = G == null ? void 0 : G.conditions) == null ? void 0 : _d[gid]) || ((_e = G == null ? void 0 : G.conditions) == null ? void 0 : _e[key])) return asCondition();
+      if (((_f = G == null ? void 0 : G.items) == null ? void 0 : _f[gid]) || ((_g = G == null ? void 0 : G.items) == null ? void 0 : _g[key])) return asItem();
+      return {
+        id: gid || key,
+        kind: "skill",
+        name: skillDisplayName(gid || key)
+      };
+    }
+    if (kind === "auto" && (((_h = G == null ? void 0 : G.skills) == null ? void 0 : _h[gid]) || ((_i = G == null ? void 0 : G.skills) == null ? void 0 : _i[key]))) {
+      return asSkill();
+    }
+    if (kind === "item" || kind === "auto" && (((_j = G == null ? void 0 : G.items) == null ? void 0 : _j[gid]) || ((_k = G == null ? void 0 : G.items) == null ? void 0 : _k[key]))) {
+      return asItem();
+    }
+    return {
+      id: gid || key,
+      kind: kind === "auto" ? "skill" : kind,
+      name: skillDisplayName(gid || key)
+    };
+  }
+  function classIconHtml(ctype, displaySize = 18) {
+    const key = (ctype || "").toLowerCase();
+    const title = key || "unknown";
+    const color = classColors[key] || "#607d8b";
+    const raw = classSprite(key || void 0, { size: displaySize });
+    if (raw) {
+      return `<span class="ecu-meter-icon ecu-meter-icon-class ecu-meter-icon-class-sprite" title="${escapeAttr(title)}" style="width:${displaySize}px;height:${displaySize}px;border-color:${color};background:${color}">${raw}</span>`;
+    }
+    const letter = CLASS_LETTERS[key] || key.slice(0, 1).toUpperCase() || "?";
+    const style = [
+      `width:${displaySize}px`,
+      `height:${displaySize}px`,
+      `line-height:${displaySize}px`,
+      `background:${color}`
+    ].join(";");
+    return `<span class="ecu-meter-icon ecu-meter-icon-class" title="${escapeAttr(title)}" style="${style}">${escapeAttr(letter)}</span>`;
+  }
+  function characterIconHtml(id, opts) {
+    const size = opts && opts.size || 40;
+    const ctype = ((opts == null ? void 0 : opts.ctype) || "").toLowerCase();
+    const tip = (opts == null ? void 0 : opts.title) || (ctype ? `${(opts == null ? void 0 : opts.name) || id} \xB7 ${ctype}` : (opts == null ? void 0 : opts.name) || id || "unknown");
+    const color = classColors[ctype] || "#607d8b";
+    const raw = characterSprite(id, {
+      size,
+      ctype: opts == null ? void 0 : opts.ctype,
+      name: opts == null ? void 0 : opts.name
+    });
+    if (raw) {
+      return `<span class="ecu-meter-icon ecu-meter-icon-character" title="${escapeAttr(tip)}" style="width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;line-height:0">${raw}</span>`;
+    }
+    const classRaw = classSprite(ctype || void 0, { size });
+    if (classRaw) {
+      return `<span class="ecu-meter-icon ecu-meter-icon-class ecu-meter-icon-class-sprite" title="${escapeAttr(tip)}" style="width:${size}px;height:${size}px;border-color:${color};background:${color}">${classRaw}</span>`;
+    }
+    const letter = CLASS_LETTERS[ctype] || ((opts == null ? void 0 : opts.name) || id || "?").slice(0, 1).toUpperCase() || "?";
+    return letterFallbackHtml(letter, size, tip, color);
+  }
+  function deathIconHtml(displaySize) {
+    return letterFallbackHtml("\u271D", displaySize, "Death", "#c62828");
+  }
+  function monsterIconHtml(mtype, displaySize = 18, title) {
+    const tip = title || monsterDisplayName(mtype) || mtype;
+    const raw = monsterSprite(mtype, { size: displaySize });
+    if (raw) {
+      return `<span class="ecu-meter-icon ecu-meter-icon-monster" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;line-height:0">${raw}</span>`;
+    }
+    return letterFallbackHtml(
+      (tip || "?").slice(0, 1).toUpperCase(),
+      displaySize,
+      tip
+    );
+  }
+  function gameIconHtml(id, opts) {
+    const size = opts && opts.size || 18;
+    const kind = opts && opts.kind || "auto";
+    if (kind === "death") return deathIconHtml(size);
+    if (kind === "class") return classIconHtml((opts == null ? void 0 : opts.ctype) || id, size);
+    if (kind === "character" || kind === "actor") {
+      return characterIconHtml(id, {
+        size,
+        ctype: opts == null ? void 0 : opts.ctype,
+        name: opts == null ? void 0 : opts.name,
+        title: opts == null ? void 0 : opts.title
+      });
+    }
+    const resolved = resolveGameIcon(id, kind, {
+      ctype: opts == null ? void 0 : opts.ctype,
+      mtype: opts == null ? void 0 : opts.mtype,
+      name: opts == null ? void 0 : opts.name
+    });
+    const title = (opts == null ? void 0 : opts.title) || resolved.name || id;
+    if (resolved.kind === "monster") {
+      if (resolved.mtype) return monsterIconHtml(resolved.mtype, size, title);
+      return letterFallbackHtml(
+        (title || id || "?").slice(0, 1).toUpperCase(),
+        size,
+        title
+      );
+    }
+    if (resolved.kind === "character") {
+      return characterIconHtml(id, {
+        size,
+        ctype: resolved.ctype || (opts == null ? void 0 : opts.ctype),
+        name: resolved.name || (opts == null ? void 0 : opts.name),
+        title
+      });
+    }
+    if (resolved.kind === "class") {
+      return classIconHtml(resolved.ctype || id, size);
+    }
+    if (resolved.skin) {
+      const sheet = skinSheetHtml(resolved.skin, size, title);
+      if (sheet) return sheet;
+    }
+    if (kind === "skill" || kind === "auto" || kind === "condition") {
+      const asSkin = skinSheetHtml(resolved.id || id, size, title);
+      if (asSkin) return asSkin;
+    }
+    const letter = (title || id || "?").slice(0, 1).toUpperCase();
+    return letterFallbackHtml(letter, size, title);
+  }
+  function skillIconHtml(key, displaySize = 18) {
+    return gameIconHtml(key, { kind: "skill", size: displaySize });
+  }
+  function targetIconHtml(row2, displaySize = 18) {
+    return gameIconHtml(row2.id, {
+      kind: "target",
+      size: displaySize,
+      ctype: row2.ctype,
+      mtype: row2.mtype,
+      name: row2.name,
+      title: row2.name
+    });
+  }
+  function rowIconHtml(row2, opts) {
+    var _a, _b;
+    if (opts && opts.icons === false) return "";
+    const size = opts && opts.iconSize || 18;
+    if (row2.kind === "ability" || row2.kind === "channel") {
+      return gameIconHtml(row2.id, { kind: "auto", size });
+    }
+    if (row2.kind === "target") {
+      return targetIconHtml(row2, size);
+    }
+    const G = getG();
+    if (((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[row2.id]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[row2.id])) {
+      return gameIconHtml(row2.id, { kind: "auto", size });
+    }
+    if (row2.kind === "player" || !row2.kind && row2.ctype) {
+      if (opts == null ? void 0 : opts.classIcons) {
+        return classIconHtml(row2.ctype, size);
+      }
+      return "";
+    }
+    if (row2.ctype && (opts == null ? void 0 : opts.classIcons)) {
+      return classIconHtml(row2.ctype, size);
+    }
+    return gameIconHtml(row2.id, { kind: "auto", size });
+  }
+  function paintItemContainerIcon(el, skin, size) {
+    const html = itemContainer({ skin, size, draggable: false }, null);
+    if (!html) {
+      el.textContent = skin.slice(0, 1);
+      return false;
+    }
+    el.innerHTML = html;
+    const root = el.firstElementChild;
+    if (root) {
+      root.style.margin = "0";
+      root.removeAttribute("onmousedown");
+      root.removeAttribute("ontouchstart");
+      root.removeAttribute("onclick");
+    }
+    return true;
+  }
+  function paintGameIcon(el, id, opts) {
+    const size = opts && opts.size || 18;
+    const kind = opts && opts.kind || "auto";
+    if ((opts == null ? void 0 : opts.container) && kind !== "monster" && kind !== "target" && kind !== "character" && kind !== "actor" && kind !== "class") {
+      const resolved = resolveGameIcon(id, kind, { ctype: opts == null ? void 0 : opts.ctype });
+      const skin = resolved.skin || (kind === "skill" ? id : void 0);
+      if (skin && paintItemContainerIcon(el, skin, size)) return;
+    }
+    el.innerHTML = gameIconHtml(id, {
+      kind,
+      size,
+      ctype: opts == null ? void 0 : opts.ctype,
+      mtype: opts == null ? void 0 : opts.mtype,
+      name: opts == null ? void 0 : opts.name,
+      title: opts == null ? void 0 : opts.title
+    });
+  }
+
   // src/meters/deathLog.ts
   var HP_RING = 40;
   var HIT_RING = 24;
@@ -660,18 +1292,62 @@ var EnhanceCommUI = (() => {
       kills: 0
     };
   }
+  function emptyHitAmountStats() {
+    return { count: 0, total: 0, min: 0, max: 0 };
+  }
+  function bumpHitAmount(stats, amount) {
+    if (!(amount > 0)) return;
+    if (stats.count === 0) {
+      stats.min = amount;
+      stats.max = amount;
+    } else {
+      if (amount < stats.min) stats.min = amount;
+      if (amount > stats.max) stats.max = amount;
+    }
+    stats.count += 1;
+    stats.total += amount;
+  }
+  function mergeHitAmountStats(dest, src) {
+    if (!src || src.count <= 0) return;
+    if (dest.count === 0) {
+      dest.count = src.count;
+      dest.total = src.total;
+      dest.min = src.min;
+      dest.max = src.max;
+      return;
+    }
+    dest.count += src.count;
+    dest.total += src.total;
+    if (src.min < dest.min) dest.min = src.min;
+    if (src.max > dest.max) dest.max = src.max;
+  }
+  function dominantDamageType(types) {
+    if (!types) return void 0;
+    const keys = Object.keys(types);
+    let best;
+    let bestV = 0;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const v = types[k] || 0;
+      if (v > bestV) {
+        bestV = v;
+        best = k;
+      }
+    }
+    return best;
+  }
   function damageAbilityKey(source) {
     if (!source || source === "attack") return "attack";
-    return source;
+    return canonicalAbilityId(source);
   }
   function healAbilityKey(source, heal, lifesteal) {
     if (heal && heal > 0) {
       if (!source || source === "attack") return "heal";
-      return source;
+      return canonicalAbilityId(source);
     }
     if (lifesteal && lifesteal > 0) return "lifesteal";
     if (!source || source === "attack") return "heal";
-    return source;
+    return canonicalAbilityId(source);
   }
   function segmentDurationMs(seg, now = Date.now()) {
     const end = seg.endedAt != null ? seg.endedAt : now;
@@ -720,26 +1396,41 @@ var EnhanceCommUI = (() => {
         splashDamage: 0,
         taken: 0,
         outcomes: emptyOutcomes(),
+        normal: emptyHitAmountStats(),
+        crit: emptyHitAmountStats(),
+        damageTypes: {},
         targets: {}
       };
       actor.abilities[key] = ab;
+    } else {
+      if (!ab.normal) ab.normal = emptyHitAmountStats();
+      if (!ab.crit) ab.crit = emptyHitAmountStats();
+      if (!ab.damageTypes) ab.damageTypes = {};
     }
     return ab;
   }
-  function ensureTarget(ab, id, name) {
+  function ensureTarget(ab, id, name, meta) {
     let t = ab.targets[id];
     if (!t) {
       t = {
         id,
         name: name || id,
+        mtype: meta == null ? void 0 : meta.mtype,
+        ctype: meta == null ? void 0 : meta.ctype,
         damage: 0,
         heal: 0,
         splashDamage: 0,
-        outcomes: emptyOutcomes()
+        outcomes: emptyOutcomes(),
+        normal: emptyHitAmountStats(),
+        crit: emptyHitAmountStats()
       };
       ab.targets[id] = t;
-    } else if (name) {
-      t.name = name;
+    } else {
+      if (name) t.name = name;
+      if (meta == null ? void 0 : meta.mtype) t.mtype = meta.mtype;
+      if (meta == null ? void 0 : meta.ctype) t.ctype = meta.ctype;
+      if (!t.normal) t.normal = emptyHitAmountStats();
+      if (!t.crit) t.crit = emptyHitAmountStats();
     }
     return t;
   }
@@ -762,8 +1453,26 @@ var EnhanceCommUI = (() => {
       if (ev.kill) o.kills += 1;
     }
   }
+  function isCritHit(ev) {
+    return !!(ev.crit && ev.crit > 1);
+  }
+  function bumpLandedAmount(ab, tgt, amount, crit) {
+    if (!(amount > 0)) return;
+    if (crit) {
+      bumpHitAmount(ab.crit, amount);
+      bumpHitAmount(tgt.crit, amount);
+    } else {
+      bumpHitAmount(ab.normal, amount);
+      bumpHitAmount(tgt.normal, amount);
+    }
+  }
+  function bumpDamageType(ab, damageType, amount) {
+    if (!damageType || !(amount > 0)) return;
+    const key = damageType.toLowerCase();
+    ab.damageTypes[key] = (ab.damageTypes[key] || 0) + amount;
+  }
   function applyDamageToSegment(seg, ev, opts) {
-    var _a;
+    var _a, _b, _c;
     const { actorIsPlayer, targetIsPlayer } = opts;
     if (ev.dreturn && ev.dreturn > 0 && targetIsPlayer && ev.target) {
       ensureActor(seg, ev.target, opts.targetMeta).dr += ev.dreturn;
@@ -775,19 +1484,26 @@ var EnhanceCommUI = (() => {
       const tgt = ensureActor(seg, ev.target, opts.targetMeta);
       tgt.taken += ev.damage;
       tgt.healingRequired += ev.damage;
+      const takenAb = ensureAbility(tgt, damageAbilityKey(ev.source));
+      takenAb.taken += ev.damage;
     }
     if (!ev.actor || !actorIsPlayer) return;
     const actor = ensureActor(seg, ev.actor, opts.actorMeta);
     const targetId = ev.target || "_";
     const targetName = (_a = opts.targetMeta) == null ? void 0 : _a.name;
+    const targetIconMeta = {
+      mtype: (_b = opts.targetMeta) == null ? void 0 : _b.mtype,
+      ctype: (_c = opts.targetMeta) == null ? void 0 : _c.ctype
+    };
     const hasDamage = !!(ev.damage && ev.damage > 0);
     const healAmt = opts.effectiveHeal || 0;
     const manaAmt = opts.effectiveMana || 0;
+    const crit = isCritHit(ev);
     bumpOutcome(actor.outcomes, ev);
     if (hasDamage) {
       const dmgKey = damageAbilityKey(ev.source);
       const ab = ensureAbility(actor, dmgKey);
-      const tgt = ensureTarget(ab, targetId, targetName);
+      const tgt = ensureTarget(ab, targetId, targetName, targetIconMeta);
       bumpOutcome(ab.outcomes, ev);
       bumpOutcome(tgt.outcomes, ev);
       actor.damage += ev.damage;
@@ -797,6 +1513,8 @@ var EnhanceCommUI = (() => {
         ab.splashDamage += ev.damage;
         tgt.splashDamage += ev.damage;
       }
+      bumpLandedAmount(ab, tgt, ev.damage, crit);
+      bumpDamageType(ab, ev.damageType, ev.damage);
       const ch = deriveChannel(ev);
       if (ch === "burn") actor.burn += ev.damage;
       else if (ch === "blast") actor.blast += ev.damage;
@@ -806,7 +1524,7 @@ var EnhanceCommUI = (() => {
     if (healAmt > 0) {
       const hKey = healAbilityKey(ev.source, ev.heal, ev.lifesteal);
       const ab = ensureAbility(actor, hKey);
-      const tgt = ensureTarget(ab, targetId, targetName);
+      const tgt = ensureTarget(ab, targetId, targetName, targetIconMeta);
       if (!hasDamage) {
         bumpOutcome(ab.outcomes, ev);
         bumpOutcome(tgt.outcomes, ev);
@@ -814,6 +1532,7 @@ var EnhanceCommUI = (() => {
       actor.heal += healAmt;
       ab.heal += healAmt;
       tgt.heal += healAmt;
+      bumpLandedAmount(ab, tgt, healAmt, !hasDamage && crit);
     }
     if (manaAmt > 0) {
       actor.mana += manaAmt;
@@ -827,8 +1546,17 @@ var EnhanceCommUI = (() => {
       actors: {},
       deaths: [],
       conditions: [],
-      casts: []
+      casts: [],
+      gearSwaps: []
     };
+  }
+  function mergeDamageTypes(dest, src) {
+    if (!src) return;
+    const keys = Object.keys(src);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      dest[k] = (dest[k] || 0) + (src[k] || 0);
+    }
   }
   function mergeSegments(id, parts, now) {
     var _a;
@@ -884,10 +1612,16 @@ var EnhanceCommUI = (() => {
           dab.outcomes.evade += sab.outcomes.evade;
           dab.outcomes.avoid += sab.outcomes.avoid;
           dab.outcomes.kills += sab.outcomes.kills;
+          mergeHitAmountStats(dab.normal, sab.normal);
+          mergeHitAmountStats(dab.crit, sab.crit);
+          mergeDamageTypes(dab.damageTypes, sab.damageTypes);
           const tKeys = Object.keys(sab.targets);
           for (let t = 0; t < tKeys.length; t++) {
             const st = sab.targets[tKeys[t]];
-            const dt = ensureTarget(dab, st.id, st.name);
+            const dt = ensureTarget(dab, st.id, st.name, {
+              mtype: st.mtype,
+              ctype: st.ctype
+            });
             dt.damage += st.damage;
             dt.heal += st.heal;
             dt.splashDamage += st.splashDamage;
@@ -897,6 +1631,8 @@ var EnhanceCommUI = (() => {
             dt.outcomes.evade += st.outcomes.evade;
             dt.outcomes.avoid += st.outcomes.avoid;
             dt.outcomes.kills += st.outcomes.kills;
+            mergeHitAmountStats(dt.normal, st.normal);
+            mergeHitAmountStats(dt.crit, st.crit);
           }
         }
       }
@@ -1028,11 +1764,25 @@ var EnhanceCommUI = (() => {
     if (!raw || typeof raw !== "object") return { ...fallback };
     const anchor = raw.anchor || fallback.anchor;
     const valid = ["tl", "tr", "bl", "br", "tc", "bc", "center"];
-    return {
+    const out = {
       x: clamp(Number(raw.x), 0, 100) || 0,
       y: clamp(Number(raw.y), 0, 100) || 0,
       anchor: valid.indexOf(anchor) >= 0 ? anchor : fallback.anchor
     };
+    if (raw.snap && typeof raw.snap === "object") {
+      const snap = {};
+      const sides = [1, 2, 3, 4];
+      for (let i = 0; i < sides.length; i++) {
+        const side = sides[i];
+        const nid = raw.snap[side];
+        if (typeof nid === "string" && nid) snap[side] = nid;
+      }
+      if (snap[1] || snap[2] || snap[3] || snap[4]) out.snap = snap;
+    }
+    if (raw.horizontalSnap) out.horizontalSnap = true;
+    if (raw.verticalSnap) out.verticalSnap = true;
+    if (typeof raw.locked === "boolean") out.locked = raw.locked;
+    return out;
   }
   function mergeLayout(partial, profile = "desktop") {
     const migrated = migrateLegacyInfoDialog(partial);
@@ -1060,6 +1810,28 @@ var EnhanceCommUI = (() => {
         return "translate(-50%, -100%)";
       case "center":
         return "translate(-50%, -50%)";
+      default: {
+        const _exhaustive = anchor;
+        return _exhaustive;
+      }
+    }
+  }
+  function anchorOrigin(anchor) {
+    switch (anchor) {
+      case "tl":
+        return "0% 0%";
+      case "tr":
+        return "100% 0%";
+      case "bl":
+        return "0% 100%";
+      case "br":
+        return "100% 100%";
+      case "tc":
+        return "50% 0%";
+      case "bc":
+        return "50% 100%";
+      case "center":
+        return "50% 50%";
       default: {
         const _exhaustive = anchor;
         return _exhaustive;
@@ -1122,18 +1894,22 @@ var EnhanceCommUI = (() => {
     ["bl", "bc", "br"]
   ];
   function panelStyle(pos, editing) {
+    const scale = typeof pos.scale === "number" && Number.isFinite(pos.scale) && pos.scale > 0 ? pos.scale : 1;
+    const base = anchorTransform(pos.anchor);
     return {
       position: "absolute",
       left: `${pos.x}%`,
       top: `${pos.y}%`,
-      transform: anchorTransform(pos.anchor),
+      transform: scale === 1 ? base : `${base} scale(${scale})`,
+      transformOrigin: anchorOrigin(pos.anchor),
       pointerEvents: "auto",
       zIndex: editing ? 40 : 20,
       // Hug children so layout chrome matches real frame footprints.
       width: "fit-content",
       height: "fit-content",
-      maxWidth: "96vw",
-      maxHeight: "96vh",
+      // Viewport ceiling so windows can fill the screen (was 96vw/96vh).
+      maxWidth: "100vw",
+      maxHeight: "100vh",
       boxSizing: "border-box"
     };
   }
@@ -1260,7 +2036,7 @@ var EnhanceCommUI = (() => {
     dps: "DPS",
     base: "Direct",
     blast: "Explosion",
-    burn: "DoT",
+    burn: "Burned",
     cleave: "AoE",
     hps: "HPS",
     mps: "MPS",
@@ -1384,7 +2160,7 @@ var EnhanceCommUI = (() => {
   var REPORT_TABS = [
     {
       kind: "encounter",
-      label: "Encounter",
+      label: "Summary",
       presetId: "encounter",
       presentation: "encounter",
       query: { kind: "encounter_summary" }
@@ -1398,11 +2174,16 @@ var EnhanceCommUI = (() => {
     },
     {
       kind: "timeline",
-      label: "Timeline",
+      label: "Time Line",
       presetId: "timeline",
       presentation: "timeline",
       query: { kind: "timeline" }
     }
+  ];
+  var REPORT_STUB_TABS = [
+    { id: "charts", label: "Charts" },
+    { id: "emotes", label: "Emotes" },
+    { id: "phases", label: "Phases" }
   ];
   function isReportPresentation(p) {
     return p === "death_log" || p === "encounter" || p === "timeline";
@@ -1571,7 +2352,7 @@ var EnhanceCommUI = (() => {
       catalogGroup: "tool",
       defaultVisible: false,
       defaultPos: { x: 50, y: 88, anchor: "bc" },
-      defaultFrame: { w: 480, h: 320 }
+      defaultFrame: { w: 780, h: 520 }
     },
     {
       id: "compare",
@@ -1595,25 +2376,25 @@ var EnhanceCommUI = (() => {
     },
     {
       id: "encounter",
-      label: "Encounter",
+      label: "Encounter Details",
       query: { kind: "encounter_summary" },
       presentation: "encounter",
       catalog: false,
       catalogGroup: "tool",
       defaultVisible: false,
       defaultPos: { x: 50, y: 88, anchor: "bc" },
-      defaultFrame: { w: 480, h: 320 }
+      defaultFrame: { w: 780, h: 520 }
     },
     {
       id: "timeline",
-      label: "Timeline",
+      label: "Time Line",
       query: { kind: "timeline" },
       presentation: "timeline",
       catalog: false,
       catalogGroup: "tool",
       defaultVisible: false,
       defaultPos: { x: 50, y: 88, anchor: "bc" },
-      defaultFrame: { w: 480, h: 320 }
+      defaultFrame: { w: 780, h: 520 }
     },
     {
       id: "summary",
@@ -1761,10 +2542,17 @@ var EnhanceCommUI = (() => {
     const lines = [`[${title}${metricLabel ? ` \xB7 ${metricLabel}` : ""}]`];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const rate = r.rate != null ? ` (${Math.round(r.rate)}/s)` : "";
-      lines.push(
-        `${i + 1}. ${r.name} \u2014 ${Math.round(r.value)}${rate} \xB7 ${Math.round(r.pct * 100)}%`
-      );
+      const ratePrimary = r.primary === "rate" || r.primary == null && r.barValue != null;
+      if (ratePrimary && r.rate != null) {
+        lines.push(
+          `${i + 1}. ${r.name} \u2014 ${Math.round(r.rate)}/s (${Math.round(r.value)}) \xB7 ${Math.round(r.pct * 100)}%`
+        );
+      } else {
+        const rate = r.rate != null ? ` (${Math.round(r.rate)}/s)` : "";
+        lines.push(
+          `${i + 1}. ${r.name} \u2014 ${Math.round(r.value)}${rate} \xB7 ${Math.round(r.pct * 100)}%`
+        );
+      }
     }
     return lines.join("\n");
   }
@@ -1817,6 +2605,7 @@ var EnhanceCommUI = (() => {
     "Explosion",
     "Direct",
     "DoT",
+    "Burned",
     "AoE"
   ]);
   function migrateRankedInstance(row2) {
@@ -1884,6 +2673,7 @@ var EnhanceCommUI = (() => {
         frameW: typeof row2.frameW === "number" && row2.frameW > 0 ? row2.frameW : void 0,
         frameH: typeof row2.frameH === "number" && row2.frameH > 0 ? row2.frameH : void 0,
         locked: typeof row2.locked === "boolean" ? row2.locked : void 0,
+        zIndex: typeof row2.zIndex === "number" && Number.isFinite(row2.zIndex) && row2.zIndex > 0 ? Math.floor(row2.zIndex) : void 0,
         hideWhenEmpty: typeof row2.hideWhenEmpty === "boolean" ? row2.hideWhenEmpty : void 0,
         alwaysShowSelf: typeof row2.alwaysShowSelf === "boolean" ? row2.alwaysShowSelf : void 0,
         snap: row2.snap && typeof row2.snap === "object" ? {
@@ -2109,6 +2899,24 @@ var EnhanceCommUI = (() => {
   ];
   var CHANGELOG = [
     {
+      id: "0.7.1-windows",
+      title: "Unified windows",
+      items: [
+        {
+          label: "Lock any panel",
+          detail: "HUD and meters share the same lock \u2014 unlock to drag; hold Alt to nudge while locked."
+        },
+        {
+          label: "Cross-group snap",
+          detail: "Edge-snap meters to HUD panels (and each other) in one group graph."
+        },
+        {
+          label: "Window Control",
+          detail: "\u2630 menu on panels: lock, ungroup, close, and reopen closed windows."
+        }
+      ]
+    },
+    {
       id: "0.7.0",
       title: "0.7",
       items: FEATURE_OVERVIEW
@@ -2173,6 +2981,7 @@ var EnhanceCommUI = (() => {
     panelOpacity: {},
     partyBuffMode: "auto",
     meterInstances: defaultMeterInstances(),
+    windowsLocked: true,
     metersLocked: true,
     meterAlwaysShowSelf: true,
     meterWindowGrouping: true,
@@ -2182,7 +2991,9 @@ var EnhanceCommUI = (() => {
     meterClosedInstances: [],
     setupWizardDone: false,
     changelogSeenId: null,
-    toursCompleted: {}
+    toursCompleted: {},
+    windowNumberById: {},
+    nextWindowNumber: 1
   };
   function resolveLayoutProfile(mode, detected) {
     if (mode && mode !== "auto") return mode;
@@ -2362,6 +3173,7 @@ var EnhanceCommUI = (() => {
         parsed.panelLayout || panelLayout
       ),
       metersLocked: parsed.metersLocked !== false,
+      windowsLocked: typeof parsed.windowsLocked === "boolean" ? parsed.windowsLocked : parsed.metersLocked !== false,
       meterAlwaysShowSelf: parsed.meterAlwaysShowSelf !== false,
       meterWindowGrouping: parsed.meterWindowGrouping !== false,
       meterBookmarks: normalizeMeterBookmarks(parsed.meterBookmarks),
@@ -2371,7 +3183,9 @@ var EnhanceCommUI = (() => {
       metersHidden: !!parsed.metersHidden,
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
       changelogSeenId: typeof parsed.changelogSeenId === "string" ? parsed.changelogSeenId : null,
-      toursCompleted: parsed.toursCompleted && typeof parsed.toursCompleted === "object" ? parsed.toursCompleted : {}
+      toursCompleted: parsed.toursCompleted && typeof parsed.toursCompleted === "object" ? parsed.toursCompleted : {},
+      windowNumberById: parsed.windowNumberById && typeof parsed.windowNumberById === "object" ? parsed.windowNumberById : {},
+      nextWindowNumber: typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0 ? Math.floor(parsed.nextWindowNumber) : 1
     };
     if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
       next.changelogSeenId = latestChangelogId();
@@ -2409,6 +3223,7 @@ var EnhanceCommUI = (() => {
       partyBuffMode: "auto",
       meterInstances: defaultMeterInstances(),
       metersLocked: true,
+      windowsLocked: true,
       meterAlwaysShowSelf: true,
       meterWindowGrouping: true,
       meterBookmarks: [],
@@ -2513,8 +3328,12 @@ var EnhanceCommUI = (() => {
     if (partial.meterInstances) {
       next.meterInstances = normalizeMeterInstances(partial.meterInstances);
     }
-    if (typeof partial.metersLocked === "boolean") {
+    if (typeof partial.windowsLocked === "boolean") {
+      next.windowsLocked = partial.windowsLocked;
+      next.metersLocked = partial.windowsLocked;
+    } else if (typeof partial.metersLocked === "boolean") {
       next.metersLocked = partial.metersLocked;
+      next.windowsLocked = partial.metersLocked;
     }
     if (typeof partial.meterAlwaysShowSelf === "boolean") {
       next.meterAlwaysShowSelf = partial.meterAlwaysShowSelf;
@@ -2530,6 +3349,24 @@ var EnhanceCommUI = (() => {
     }
     if (typeof partial.metersHidden === "boolean") {
       next.metersHidden = partial.metersHidden;
+    }
+    if (partial.windowNumberById) {
+      next.windowNumberById = { ...partial.windowNumberById };
+    }
+    if (typeof partial.nextWindowNumber === "number" && partial.nextWindowNumber > 0) {
+      next.nextWindowNumber = Math.floor(partial.nextWindowNumber);
+    }
+    if (partial.meterClosedInstances) {
+      next.meterClosedInstances = partial.meterClosedInstances;
+    }
+    if (typeof partial.setupWizardDone === "boolean") {
+      next.setupWizardDone = partial.setupWizardDone;
+    }
+    if (partial.changelogSeenId !== void 0) {
+      next.changelogSeenId = partial.changelogSeenId;
+    }
+    if (partial.toursCompleted) {
+      next.toursCompleted = { ...partial.toursCompleted };
     }
     delete next.combatVisible;
     settingsCache = next;
@@ -2553,13 +3390,28 @@ var EnhanceCommUI = (() => {
       panelLayout: { [id]: pos }
     });
   }
+  function savePanelPositions(updates, profile) {
+    var _a;
+    const settings = getSettings();
+    const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
+    return saveSettings({
+      panelLayoutsByProfile: {
+        [resolved]: {
+          ...((_a = settings.panelLayoutsByProfile) == null ? void 0 : _a[resolved]) || {},
+          ...updates
+        }
+      },
+      panelLayout: { ...updates }
+    });
+  }
   function savePanelVisible(id, visible) {
     return saveSettings({ panelVisible: { [id]: visible } });
   }
   function resetMeterInstances() {
     return saveSettings({
       meterInstances: defaultMeterInstances(),
-      metersLocked: true
+      metersLocked: true,
+      windowsLocked: true
     });
   }
   function resetPanelLayout(profile) {
@@ -2631,7 +3483,7 @@ var EnhanceCommUI = (() => {
     barHeight: 18,
     barSpacing: 1,
     windowScale: 1,
-    showSpecIcons: true,
+    showSpecIcons: false,
     showRankNumbers: true,
     segmentsLocked: false,
     disableGrouping: false,
@@ -2711,6 +3563,25 @@ var EnhanceCommUI = (() => {
   var HISTORY_MS = 5e3;
   var MAX_HISTORY = 60;
   var CONDITION_SAMPLE_MS = 500;
+  var MAX_GEAR_SWAPS = 4e3;
+  var GEAR_SLOT_NAMES = [
+    "helmet",
+    "earring1",
+    "earring2",
+    "amulet",
+    "mainhand",
+    "chest",
+    "offhand",
+    "cape",
+    "ring1",
+    "pants",
+    "ring2",
+    "orb",
+    "belt",
+    "shoes",
+    "gloves",
+    "elixir"
+  ];
   var live = null;
   var past = [];
   var history = [];
@@ -2719,12 +3590,24 @@ var EnhanceCommUI = (() => {
   var inCombat = false;
   var segSeq = 0;
   var playerMeta = {};
+  var ctypeById = {};
   var watchedPartyIds = /* @__PURE__ */ new Set();
   var watchedPartyKey = "";
   var visiblePlayerIds = /* @__PURE__ */ new Set();
   var youId = "";
+  function rememberCtype(id, ctype) {
+    if (ctype) {
+      ctypeById[id] = ctype;
+      return ctype;
+    }
+    return ctypeById[id];
+  }
+  function ctypeFor(id, ent) {
+    return rememberCtype(id, resolvePlayerCtype(id, ent) || ctypeById[id]);
+  }
   var lastConditionSample = 0;
   var openConditions = {};
+  var lastGearByActor = {};
   var unsubDamage = null;
   var unsubKill2 = null;
   var unsubAction = null;
@@ -2736,14 +3619,23 @@ var EnhanceCommUI = (() => {
     if (ent.party) return ent.party;
     return soloKey(id, ent.name);
   }
+  function isPlayerEntity(ent) {
+    return !!(ent && (ent.player || ent.type === "character"));
+  }
   function isPlayerId(id) {
     if (!id) return false;
     if (playerMeta[id]) return true;
-    const ent = getEntitiesRecord()[id];
-    if (ent) {
-      return !!(ent.player || ent.type === "character");
-    }
+    const rec = getEntitiesRecord();
+    if (isPlayerEntity(rec[id])) return true;
+    const ent = findEntityById(id);
+    if (isPlayerEntity(ent)) return true;
     return !/^\d+$/.test(id);
+  }
+  function rememberIdentity(set, ent, extra) {
+    if (extra) set.add(String(extra));
+    if (!ent) return;
+    if (ent.id != null && String(ent.id) !== "") set.add(String(ent.id));
+    if (ent.name) set.add(String(ent.name));
   }
   function nextSegId() {
     segSeq += 1;
@@ -2771,6 +3663,7 @@ var EnhanceCommUI = (() => {
     while (past.length > MAX_PAST) past.pop();
     live = null;
     inCombat = false;
+    clearGearSnapshots();
     markMeterDirty();
   }
   function noteCombatActivity(now) {
@@ -2784,12 +3677,23 @@ var EnhanceCommUI = (() => {
   function metaFor(id) {
     if (!id) return void 0;
     const m = playerMeta[id];
-    if (m) return m;
-    const ent = getEntitiesRecord()[id];
-    if (!ent) return { name: id, partyKey: soloKey(id) };
+    if (m) {
+      const ctype = ctypeFor(id) || m.ctype;
+      if (ctype && m.ctype !== ctype) m.ctype = ctype;
+      return m;
+    }
+    const ent = findEntityById(id) || getEntitiesRecord()[id];
+    if (!ent) {
+      return {
+        name: id,
+        ctype: ctypeFor(id),
+        partyKey: soloKey(id)
+      };
+    }
     return {
       name: ent.name || id,
-      ctype: ent.ctype,
+      ctype: ctypeFor(id, ent),
+      mtype: ent.mtype,
       partyKey: partyKeyFor(ent, id)
     };
   }
@@ -2809,6 +3713,7 @@ var EnhanceCommUI = (() => {
     while (history.length > MAX_HISTORY) history.shift();
   }
   function sampleConditions(now) {
+    var _a;
     if (now - lastConditionSample < CONDITION_SAMPLE_MS) return;
     lastConditionSample = now;
     const seg = live;
@@ -2817,7 +3722,7 @@ var EnhanceCommUI = (() => {
     const ids = Object.keys(playerMeta);
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      const ent = ents[id];
+      const ent = findEntityById(id) || ents[id] || (((_a = playerMeta[id]) == null ? void 0 : _a.name) ? ents[playerMeta[id].name] : void 0);
       const s = ent && ent.s;
       if (!s || typeof s !== "object") continue;
       const keys = Object.keys(s);
@@ -2845,6 +3750,90 @@ var EnhanceCommUI = (() => {
         delete openConditions[ok];
       }
     }
+  }
+  function clearGearSnapshots() {
+    const ids = Object.keys(lastGearByActor);
+    for (let i = 0; i < ids.length; i++) delete lastGearByActor[ids[i]];
+  }
+  function gearFingerprint(slot) {
+    var _a, _b;
+    if (!slot || !slot.name) return "";
+    return `${slot.name}|${(_a = slot.level) != null ? _a : ""}|${(_b = slot.skin) != null ? _b : ""}`;
+  }
+  function parseGearFp(fp) {
+    if (!fp) return {};
+    const parts = fp.split("|");
+    const name = parts[0] || void 0;
+    const levelRaw = parts[1] ? Number(parts[1]) : NaN;
+    const skin = parts[2] || void 0;
+    return {
+      name,
+      level: Number.isFinite(levelRaw) ? levelRaw : void 0,
+      skin: skin || void 0
+    };
+  }
+  function slotsForActor(id) {
+    const character = getCharacter();
+    if (character && String(character.id) === id && character.slots) {
+      return character.slots;
+    }
+    const liveEnt = findEntityById(id) || getEntitiesRecord()[id];
+    if (liveEnt && liveEnt.slots) return liveEnt.slots;
+    const observing = getObserving();
+    if (observing && String(observing.id) === id && observing.slots) {
+      return observing.slots;
+    }
+    return void 0;
+  }
+  function pushGearSwap(seg, actorId, slot, oldFp, newFp, now) {
+    const oldS = parseGearFp(oldFp);
+    const newS = parseGearFp(newFp);
+    const itemName = newS.name || oldS.name;
+    if (!itemName) return;
+    const ev = {
+      at: now,
+      actorId,
+      slot,
+      oldName: oldS.name,
+      newName: newS.name,
+      oldLevel: oldS.level,
+      newLevel: newS.level,
+      skin: newS.skin || oldS.skin || itemSkin(itemName)
+    };
+    if (!seg.gearSwaps) seg.gearSwaps = [];
+    seg.gearSwaps.push(ev);
+    while (seg.gearSwaps.length > MAX_GEAR_SWAPS) seg.gearSwaps.shift();
+  }
+  function sampleGearSwaps(now) {
+    const seg = live;
+    if (!seg) return;
+    const ids = Object.keys(playerMeta);
+    let dirty2 = false;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const slots = slotsForActor(id);
+      if (!slots) continue;
+      let prev = lastGearByActor[id];
+      const first = !prev;
+      if (!prev) {
+        prev = {};
+        lastGearByActor[id] = prev;
+      }
+      for (let s = 0; s < GEAR_SLOT_NAMES.length; s++) {
+        const slot = GEAR_SLOT_NAMES[s];
+        const nextFp = gearFingerprint(slots[slot]);
+        const oldFp = prev[slot] || "";
+        if (first) {
+          prev[slot] = nextFp;
+          continue;
+        }
+        if (oldFp === nextFp) continue;
+        prev[slot] = nextFp;
+        pushGearSwap(seg, id, slot, oldFp, nextFp, now);
+        dirty2 = true;
+      }
+    }
+    if (dirty2) markMeterDirty();
   }
   function onDamageEvent(ev) {
     ingestRollingSample(ev);
@@ -2923,7 +3912,7 @@ var EnhanceCommUI = (() => {
       targetId: ev.target,
       pid: ev.pid
     });
-    while (seg.casts.length > 200) seg.casts.shift();
+    while (seg.casts.length > 8e3) seg.casts.shift();
     const actor = ensureActor(seg, ev.actor, metaFor(ev.actor));
     if (!actor.misc) actor.misc = emptyMisc();
     if (INTERRUPT_ABILITY_KEYS.has(src)) actor.misc.interrupts += 1;
@@ -2968,16 +3957,32 @@ var EnhanceCommUI = (() => {
     return youId;
   }
   function isVisiblePlayer(id) {
-    return visiblePlayerIds.has(id);
+    if (!id) return false;
+    if (visiblePlayerIds.has(id)) return true;
+    const rec = getEntitiesRecord();
+    if (isPlayerEntity(rec[id])) return true;
+    const ent = findEntityById(id);
+    if (!isPlayerEntity(ent)) return false;
+    if (ent.id != null && visiblePlayerIds.has(String(ent.id))) return true;
+    if (ent.name && visiblePlayerIds.has(String(ent.name))) return true;
+    return true;
   }
   function isWatchedPartyMember(id) {
-    return watchedPartyIds.has(id);
+    if (!id) return false;
+    if (watchedPartyIds.has(id)) return true;
+    const rec = getEntitiesRecord();
+    const ent = rec[id] || findEntityById(id);
+    if (!ent) return false;
+    if (ent.id != null && watchedPartyIds.has(String(ent.id))) return true;
+    if (ent.name && watchedPartyIds.has(String(ent.name))) return true;
+    return false;
   }
   function listVisibleParties() {
     const byKey = {};
-    const ids = Array.from(visiblePlayerIds);
+    const ids = Object.keys(playerMeta);
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
+      if (!isVisiblePlayer(id)) continue;
       const meta = playerMeta[id];
       const key = (meta == null ? void 0 : meta.partyKey) || soloKey(id, meta == null ? void 0 : meta.name);
       const name = (meta == null ? void 0 : meta.name) || id;
@@ -3009,13 +4014,13 @@ var EnhanceCommUI = (() => {
     }
     youId = observingId ? String(observingId) : "";
     if (observingId && observing) {
-      nextWatched.add(String(observingId));
+      rememberIdentity(nextWatched, observing, String(observingId));
       watchedPartyKey = observing.party || soloKey(String(observingId), observing.name);
       if (observing.party) {
         for (let i = 0; i < entities.length; i++) {
           const ent = entities[i];
-          if (ent.player && ent.party === observing.party) {
-            nextWatched.add(String(ent.id));
+          if (isPlayerEntity(ent) && ent.party === observing.party) {
+            rememberIdentity(nextWatched, ent);
           }
         }
       }
@@ -3026,24 +4031,66 @@ var EnhanceCommUI = (() => {
     const nextVisible = /* @__PURE__ */ new Set();
     for (let i = 0; i < entities.length; i++) {
       const ent = entities[i];
-      if (!ent.player || !ent.id) continue;
-      const id = String(ent.id);
-      nextVisible.add(id);
+      if (!isPlayerEntity(ent)) continue;
+      const id = ent.id != null && String(ent.id) !== "" ? String(ent.id) : ent.name ? String(ent.name) : "";
+      if (!id) continue;
+      rememberIdentity(nextVisible, ent, id);
+      const ctype = ctypeFor(id, ent);
       nextMeta[id] = {
         name: ent.name || id,
-        ctype: ent.ctype,
+        ctype,
         partyKey: partyKeyFor(ent, id)
       };
       syncShadowFromEntity(id, ent);
       if (live && live.actors[id]) {
         live.actors[id].name = nextMeta[id].name;
-        live.actors[id].ctype = nextMeta[id].ctype;
+        if (ctype) live.actors[id].ctype = ctype;
+        else if (!live.actors[id].ctype && ctypeById[id]) {
+          live.actors[id].ctype = ctypeById[id];
+        }
         live.actors[id].partyKey = nextMeta[id].partyKey;
       }
+    }
+    if (observingId && observing) {
+      const id = String(observingId);
+      rememberIdentity(nextVisible, observing, id);
+      const ctype = ctypeFor(id, observing);
+      const prev = nextMeta[id];
+      nextMeta[id] = {
+        name: observing.name || (prev == null ? void 0 : prev.name) || id,
+        ctype: ctype || (prev == null ? void 0 : prev.ctype),
+        partyKey: partyKeyFor(observing, id)
+      };
+      if (live && live.actors[id] && nextMeta[id].ctype) {
+        live.actors[id].ctype = nextMeta[id].ctype;
+        live.actors[id].name = nextMeta[id].name;
+        live.actors[id].partyKey = nextMeta[id].partyKey;
+      }
+    }
+    if (live) {
+      const actorIds = Object.keys(live.actors);
+      for (let i = 0; i < actorIds.length; i++) {
+        const id = actorIds[i];
+        const actor = live.actors[id];
+        if (actor.ctype) {
+          rememberCtype(id, actor.ctype);
+          continue;
+        }
+        const ctype = ctypeFor(id);
+        if (ctype) actor.ctype = ctype;
+      }
+    }
+    const rec = getEntitiesRecord();
+    const recKeys = Object.keys(rec);
+    for (let i = 0; i < recKeys.length; i++) {
+      const key = recKeys[i];
+      const ent = rec[key];
+      if (isPlayerEntity(ent)) rememberIdentity(nextVisible, ent, key);
     }
     visiblePlayerIds = nextVisible;
     playerMeta = nextMeta;
     sampleConditions(now);
+    sampleGearSwaps(now);
   }
   function resetAllMeters() {
     live = null;
@@ -3056,6 +4103,7 @@ var EnhanceCommUI = (() => {
     clearDeathRings();
     const oks = Object.keys(openConditions);
     for (let i = 0; i < oks.length; i++) delete openConditions[oks[i]];
+    clearGearSnapshots();
     markMeterDirty();
   }
   function resetCurrentMeterSegment() {
@@ -3063,6 +4111,7 @@ var EnhanceCommUI = (() => {
     lastCombatAt = 0;
     inCombat = false;
     clearRollingWindow();
+    clearGearSnapshots();
     markMeterDirty();
   }
   function resetOverallMeterSegments() {
@@ -3941,28 +4990,55 @@ var EnhanceCommUI = (() => {
   }
 }
 
-/* Party roster: Buffs control overlays top-right \u2014 no flow space when hidden */
+/* Party roster: Buffs mode chip sits in the first party header (gold WC family). */
 .ecu-roster {
   position: relative;
 }
 .ecu-roster-buffs {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  z-index: 3;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.12s ease;
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 1px 7px;
+  min-height: 20px;
+  line-height: 1.2;
+  border: 1px solid #886;
+  border-radius: 0;
+  background: rgba(30, 30, 20, 0.92);
+  color: #ffe08a;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
 }
-.ecu-roster:hover .ecu-roster-buffs,
-.ecu-roster.is-layout-edit .ecu-roster-buffs,
-#comm-ui.comm-ui-touch .ecu-roster-buffs,
-#comm-ui[data-viewport="tablet"] .ecu-roster-buffs,
-#comm-ui[data-viewport="phone"] .ecu-roster-buffs {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
+.ecu-roster-buffs:hover {
+  background: rgba(50, 42, 22, 0.96);
+  border-color: #aa8;
+  color: #ffe9a8;
+}
+.ecu-roster-buffs:active {
+  background: rgba(40, 34, 18, 0.96);
+}
+.ecu-roster-buffs-k {
+  color: rgba(255, 224, 138, 0.72);
+  letter-spacing: 0.02em;
+}
+.ecu-roster-buffs-sep {
+  color: rgba(255, 224, 138, 0.45);
+  user-select: none;
+}
+.ecu-roster-buffs-v {
+  color: #ffe08a;
+  letter-spacing: 0.03em;
+}
+.ecu-roster-buffs:hover .ecu-roster-buffs-k,
+.ecu-roster-buffs:hover .ecu-roster-buffs-v {
+  color: #ffe9a8;
+}
+/* Layout-edit body is click-through \u2014 keep Buffs usable. */
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body .ecu-roster-buffs {
+  pointer-events: auto !important;
+  z-index: 8;
 }
 
 /* Tablet / phone \u2014 larger hit targets (Edge/Firefox Android, Safari iOS) */
@@ -4023,12 +5099,182 @@ var EnhanceCommUI = (() => {
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-hidden-body * {
   pointer-events: none;
 }
+/* Details: large window numbers while left-hold dragging (~1s). HUD + meters. */
+#comm-ui .comm-pos-window-id {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 30;
+  font-size: clamp(48px, 55%, 120px);
+  font-weight: 800;
+  line-height: 1;
+  color: #ff9a28;
+  text-shadow:
+    0 0 2px #000,
+    0 2px 8px rgba(0, 0, 0, 0.85),
+    0 0 24px rgba(255, 140, 20, 0.35);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header,
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-edit-header *,
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-close,
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad,
-#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button {
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-anchor-pad button,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-ungroup,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-lock,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-wc,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-wc *,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-window-chrome,
+#comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-window-chrome * {
   pointer-events: auto;
+}
+/* Edge-snap group affordances (layout edit + play-arrange). */
+#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-editing,
+#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-arrange {
+  box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.35);
+}
+#comm-ui .comm-pos-panel.comm-pos-snap-target {
+  box-shadow:
+    0 0 0 2px rgba(120, 220, 255, 0.85),
+    0 0 16px rgba(80, 180, 255, 0.25) !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-dragging {
+  opacity: 0.92;
+}
+/* Window Control menu */
+#comm-ui .comm-pos-wc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #ffe08a;
+}
+#comm-ui .comm-pos-wc-item:hover {
+  background: rgba(80, 70, 30, 0.9);
+}
+#comm-ui .comm-pos-edit-grip-row {
+  pointer-events: auto;
+  cursor: grab;
+}
+#comm-ui .comm-pos-edit-grip-row .comm-pos-edit-grip {
+  flex: 1 1 auto;
+  min-width: 48px;
+}
+/* Play-arrange lock / WC / grip: above the frame when space allows; otherwise
+ * in-flow (is-inline) so chrome is not clipped and content shifts down. */
+#comm-ui .comm-pos-arrange-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  top: auto;
+  z-index: 6;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 0;
+  padding: 0 0 4px;
+  box-sizing: border-box;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  background: transparent;
+  height: auto;
+  overflow: visible;
+}
+/* Hit bridge into the panel so moving onto the bar does not fire mouseleave. */
+#comm-ui .comm-pos-arrange-overlay.is-above::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 6px;
+}
+#comm-ui .comm-pos-arrange-overlay.is-inline {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  top: auto;
+  margin-bottom: 2px;
+  padding-bottom: 0;
+  /* Idle inline chrome must not reserve height \u2014 only when open. */
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+#comm-ui .comm-pos-arrange-overlay.is-chrome-only {
+  justify-content: flex-end;
+}
+#comm-ui .comm-pos-arrange-overlay.has-grip {
+  justify-content: stretch;
+}
+/* Mini drag header \u2014 same role as layout-edit header, but hover-only. */
+#comm-ui .comm-pos-arrange-overlay .comm-pos-edit-grip {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  flex: 1 1 auto;
+  min-width: 48px;
+  z-index: 0;
+}
+#comm-ui .comm-pos-arrange-overlay .comm-pos-window-chrome {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+#comm-ui .comm-pos-arrange-overlay .comm-pos-panel-close-in-chrome {
+  position: relative;
+  top: auto;
+  right: auto;
+  flex: 0 0 auto;
+  align-self: center;
+  z-index: 1;
+}
+#comm-ui .comm-pos-arrange-overlay > * {
+  pointer-events: none;
+}
+/* JS hover class (delayed leave) \u2014 survives the gap to above-frame controls. */
+@media (hover: hover) and (pointer: fine) {
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay,
+  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay.is-inline,
+  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay.is-inline {
+    max-height: 48px;
+    overflow: visible;
+  }
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay > *,
+  #comm-ui .comm-pos-panel:focus-within > .comm-pos-arrange-overlay > * {
+    pointer-events: auto;
+  }
+}
+/* Touch / coarse: always show so lock/WC remain reachable. */
+@media (hover: none), (pointer: coarse) {
+  #comm-ui .comm-pos-arrange-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #comm-ui .comm-pos-arrange-overlay.is-inline {
+    max-height: 48px;
+    overflow: visible;
+  }
+  #comm-ui .comm-pos-arrange-overlay > * {
+    pointer-events: auto;
+  }
 }
 /* Layout edit: subtle hover highlight on interactive chrome (header / \xD7 / anchor). */
 #comm-ui .comm-pos-panel.comm-pos-editing {
@@ -7318,7 +8564,7 @@ var EnhanceCommUI = (() => {
       },
       {
         title: "Toolbar overview",
-        body: "Titlebar icons control settings, scope, segments, displays, reports, and reset. Hover for menus \u2014 a toolbar tour appears when you first open one.",
+        body: "Right-side icons: Mode \xB7 Segment \xB7 Attribute \xB7 Report \xB7 Reset. Hover for menus \u2014 a toolbar tour appears when you first open one.",
         target: ".ecu-meter-titlebar",
         missingHint: "Add a meter window first."
       },
@@ -7337,8 +8583,8 @@ var EnhanceCommUI = (() => {
     prepare: { showMeters: true },
     steps: [
       {
-        title: "Settings",
-        body: "Skins, bar text, animations, auto-hide, window control, and mass hide.",
+        title: "Mode",
+        body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options \u2014 the Mode menu.",
         target: '[data-ecu-tour="meter-gear"]'
       },
       {
@@ -7347,22 +8593,22 @@ var EnhanceCommUI = (() => {
         target: '[data-ecu-tour="meter-segment"]'
       },
       {
-        title: "Display",
-        body: "Switch damage / heal / taken and bars / pie / graph. Right-click for the full list.",
+        title: "Attribute",
+        body: "Switch Damage Done / DPS / Healing / Taken. Right-click for the full display grid.",
         target: '[data-ecu-tour="meter-display"]',
         missingHint: "Rank-based meters only \u2014 snapshot meters omit this button."
       },
       {
-        title: "Report & tools",
-        body: "Report copies fight summaries. \u229E opens encounter dashboard, deaths, and timeline.",
+        title: "Report",
+        body: "Copy fight summaries or open the report dialog. Reset is the last icon.",
         target: '[data-ecu-tour="meter-report"]',
         missingHint: "Rank-based meters only."
       },
       {
         title: "Resize",
-        body: "Corner handles and the bottom stretch tab change size. Encounter badges (skull/play) mark kills and segment starts.",
-        target: ".ecu-meter-stretch-tab",
-        missingHint: "Add a meter window first."
+        body: "Corner grips free-resize the frame. Stretch \u2195 on the titlebar toggles taller height. After fights, skull/play badges on the titlebar open Encounter / Timeline.",
+        target: ".ecu-meter-resize",
+        missingHint: "Unlock meters or enter layout edit to see resize grips."
       }
     ]
   };
@@ -8227,17 +9473,6 @@ var EnhanceCommUI = (() => {
     return dt.getUTCHours().toString().padStart(2, "0") + ":" + dt.getUTCMinutes().toString().padStart(2, "0");
   }
 
-  // src/lib/colors.ts
-  var classColors = {
-    merchant: "#7f7f7f",
-    mage: "#3e6eed",
-    warrior: "#f07f2f",
-    priest: "#eb4d82",
-    ranger: "#8a512b",
-    paladin: "#a3b4b9",
-    rogue: "#44b75c"
-  };
-
   // src/meters/meterQuery.ts
   function focusToScope(focus) {
     const hasObserver = !!getYouId();
@@ -8282,6 +9517,34 @@ var EnhanceCommUI = (() => {
       if (playerInScope(a, focus)) out.push(a);
     }
     return out;
+  }
+  function actorIdInScope(actorId, seg, focus) {
+    const actor = seg.actors[actorId];
+    if (actor) return playerInScope(actor, focus);
+    const scope = focusToScope(focus);
+    switch (scope) {
+      case "all":
+        return true;
+      case "visible":
+        return isVisiblePlayer(actorId);
+      case "you": {
+        const you = getYouId();
+        return !!you && actorId === you;
+      }
+      case "party": {
+        const you = getYouId();
+        const resolved = resolvePartyFocus(
+          effectivePartyFocus(focus || "watched", !!you),
+          getWatchedPartyKey()
+        );
+        if (resolved.partyFilter) return false;
+        return isWatchedPartyMember(actorId);
+      }
+      default: {
+        const _exhaustive = scope;
+        return _exhaustive;
+      }
+    }
   }
   function actorMetric(a, metric) {
     switch (metric) {
@@ -8410,19 +9673,23 @@ var EnhanceCommUI = (() => {
       if (absolute) {
         label = `${(it.value * 100).toFixed(1)}%`;
       } else if (primary === "rate") {
-        label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}) ${getPercent(pct, 3)}`;
+        label = `${formatCompactRate(rate || 0)} (${formatCompactNumber(it.value)}, ${getPercent(pct, 3)})`;
       } else {
-        label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}) ${getPercent(pct, 3)}`;
+        label = `${formatCompactNumber(it.value)} (${formatCompactRate(rate || 0)}, ${getPercent(pct, 3)})`;
       }
+      const useRate = primary === "rate" && !absolute;
+      const barValue = useRate ? rate || 0 : it.value;
       rows.push({
         id: it.id,
         name: it.name,
         ctype: it.ctype,
+        mtype: it.mtype,
         value: it.value,
         rate,
         pct,
         barMax: barMax || 1,
-        barValue: primary === "rate" && !absolute ? rate || 0 : void 0,
+        barValue,
+        primary: useRate ? "rate" : "total",
         label,
         kind: it.kind,
         you: it.you,
@@ -8473,6 +9740,8 @@ var EnhanceCommUI = (() => {
           rate: null,
           pct: max2 > 0 ? value / max2 : 0,
           barMax: max2 || 1,
+          barValue: value,
+          primary: "total",
           label: value.toLocaleString(void 0, { maximumFractionDigits: 0 })
         });
       }
@@ -8508,24 +9777,28 @@ var EnhanceCommUI = (() => {
         rate: null,
         pct: total > 0 ? value / total : 0,
         barMax: max || 1,
+        barValue: value,
+        primary: "total",
         label
       });
     }
     return { kind: "ranked", rows };
   }
   function rollingRanked(now) {
+    var _a, _b;
     const dmg = getActorDamage(now);
     const ids = Object.keys(dmg);
     const windowSec = getRollingWindowMs() / 1e3;
     const items = [];
     const meta = getEntitiesRecord();
+    const playerMeta2 = getPlayerMeta();
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       const ent = meta[id];
       items.push({
         id,
-        name: (ent == null ? void 0 : ent.name) || id,
-        ctype: ent == null ? void 0 : ent.ctype,
+        name: ((_a = playerMeta2[id]) == null ? void 0 : _a.name) || (ent == null ? void 0 : ent.name) || id,
+        ctype: ((_b = playerMeta2[id]) == null ? void 0 : _b.ctype) || resolvePlayerCtype(id, ent) || (ent == null ? void 0 : ent.ctype),
         value: dmg[id] / windowSec
       });
     }
@@ -8549,6 +9822,8 @@ var EnhanceCommUI = (() => {
         rate: it.value,
         pct,
         barMax: max || 1,
+        barValue: it.value,
+        primary: "rate",
         label: `${formatCompactRate(it.value)}/s ${getPercent(pct, 3)}`
       });
     }
@@ -8587,7 +9862,7 @@ var EnhanceCommUI = (() => {
           const ab = actor.abilities[k];
           return {
             id: k,
-            name: k,
+            name: skillDisplayName(k),
             value: abilityMetric(ab, metric),
             kind: "ability",
             splashDamage: ab.splashDamage
@@ -8618,13 +9893,15 @@ var EnhanceCommUI = (() => {
             id: tid,
             name: t.name,
             value,
-            kind: "target"
+            kind: "target",
+            mtype: t.mtype,
+            ctype: t.ctype
           };
         });
         return {
           kind: "ranked",
           rows: toRanked(items, durationMs, metric === "avoidance"),
-          title: `${actor.name} \xB7 ${query.ability}`
+          title: `${actor.name} \xB7 ${skillDisplayName(query.ability)}`
         };
       }
       case "targets": {
@@ -8643,10 +9920,15 @@ var EnhanceCommUI = (() => {
                 id: tg.id,
                 name: tg.name,
                 value: 0,
-                kind: "target"
+                kind: "target",
+                mtype: tg.mtype,
+                ctype: tg.ctype
               };
             }
             byTarget[tg.id].value += metric === "heal" ? tg.heal : tg.damage;
+            if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+            if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
+            if (tg.name) byTarget[tg.id].name = tg.name;
           }
         }
         return {
@@ -8658,28 +9940,74 @@ var EnhanceCommUI = (() => {
       case "details": {
         const actor = seg.actors[query.actorId];
         if (!actor) return { kind: "empty", reason: "no actor" };
+        const metric = query.metric === "heal" || query.metric === "taken" || query.metric === "healing_required" || query.metric === "avoidance" ? query.metric : "damage";
+        const primary = query.primary === "rate" ? "rate" : "total";
+        const listMetric = metric === "heal" ? "heal" : metric === "taken" ? "taken" : "damage";
         const abKeys = Object.keys(actor.abilities);
-        const abilityItems = abKeys.map((k) => ({
-          id: k,
-          name: k,
-          // Prefer each ability's primary contribution (don't hide heals behind 0-damage).
-          value: actor.abilities[k].damage >= actor.abilities[k].heal ? actor.abilities[k].damage : actor.abilities[k].heal,
-          kind: "ability"
-        }));
-        const abilityRows = toRanked(abilityItems, durationMs, false);
+        const abilityItems = abKeys.map((k) => {
+          const ab2 = actor.abilities[k];
+          return {
+            id: k,
+            name: skillDisplayName(k),
+            value: abilityMetric(ab2, listMetric),
+            kind: "ability",
+            splashDamage: ab2.splashDamage
+          };
+        }).filter((it) => it.value > 0 || abKeys.length <= 1);
+        const abilityRows = toRanked(abilityItems, durationMs, false, primary);
         let abilityKey = query.ability;
         if (!abilityKey && abilityRows[0]) abilityKey = abilityRows[0].id;
         const ab = abilityKey ? actor.abilities[abilityKey] : void 0;
         const outcomes = ab ? ab.outcomes : actor.outcomes;
+        const abilityTotal = ab ? abilityMetric(ab, listMetric) : 0;
+        let abilityCasts = 0;
+        if (abilityKey) {
+          const keyLower = abilityKey.toLowerCase();
+          for (let i = 0; i < seg.casts.length; i++) {
+            const c = seg.casts[i];
+            if (c.actorId !== actor.id) continue;
+            if ((c.source || "").toLowerCase() === keyLower) abilityCasts += 1;
+          }
+        }
         const targetItems = ab ? Object.keys(ab.targets).map((tid) => {
           const t = ab.targets[tid];
+          let value = 0;
+          if (listMetric === "heal") value = t.heal;
+          else if (listMetric === "taken") value = t.damage;
+          else value = t.damage;
           return {
             id: tid,
             name: t.name,
-            value: t.damage >= t.heal ? t.damage : t.heal,
-            kind: "target"
+            value,
+            kind: "target",
+            mtype: t.mtype,
+            ctype: t.ctype
           };
-        }) : [];
+        }) : Object.keys(actor.abilities).length ? (() => {
+          const byTarget = {};
+          const keys = Object.keys(actor.abilities);
+          for (let i = 0; i < keys.length; i++) {
+            const ability = actor.abilities[keys[i]];
+            const tKeys = Object.keys(ability.targets);
+            for (let t = 0; t < tKeys.length; t++) {
+              const tg = ability.targets[tKeys[t]];
+              if (!byTarget[tg.id]) {
+                byTarget[tg.id] = {
+                  id: tg.id,
+                  name: tg.name,
+                  value: 0,
+                  kind: "target",
+                  mtype: tg.mtype,
+                  ctype: tg.ctype
+                };
+              }
+              byTarget[tg.id].value += listMetric === "heal" ? tg.heal : tg.damage;
+              if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+              if (tg.ctype) byTarget[tg.id].ctype = tg.ctype;
+            }
+          }
+          return Object.values(byTarget);
+        })() : [];
         let deathCount = 0;
         for (let i = 0; i < seg.deaths.length; i++) {
           if (seg.deaths[i].id === actor.id) deathCount += 1;
@@ -8690,8 +10018,15 @@ var EnhanceCommUI = (() => {
           actorName: actor.name,
           ctype: actor.ctype,
           ability: abilityKey,
+          metric,
+          primary,
           abilitySplash: ab ? ab.splashDamage : 0,
+          abilityTotal,
+          abilityCasts,
           outcomes,
+          hitNormal: (ab == null ? void 0 : ab.normal) ? { ...ab.normal } : emptyHitAmountStats(),
+          hitCrit: (ab == null ? void 0 : ab.crit) ? { ...ab.crit } : emptyHitAmountStats(),
+          damageType: ab ? dominantDamageType(ab.damageTypes) : void 0,
           totals: {
             damage: actor.damage,
             heal: actor.heal,
@@ -8701,7 +10036,7 @@ var EnhanceCommUI = (() => {
           durationMs,
           abilityRows,
           uptimeRows: actorUptimeRows(seg.conditions, actor.id, durationMs, now),
-          targetRows: toRanked(targetItems, durationMs, false),
+          targetRows: toRanked(targetItems, durationMs, false, primary),
           deaths: deathCount
         };
       }
@@ -8736,6 +10071,64 @@ var EnhanceCommUI = (() => {
           totalHeal,
           deaths: seg.deaths.length,
           topDps: dpsRows.kind === "ranked" && dpsRows.rows[0] ? dpsRows.rows[0] : void 0
+        };
+      }
+      case "taken_by_spell": {
+        const actors = scopedActors(seg, focus);
+        const bySpell = {};
+        for (let i = 0; i < actors.length; i++) {
+          const abKeys = Object.keys(actors[i].abilities);
+          for (let k = 0; k < abKeys.length; k++) {
+            const ab = actors[i].abilities[abKeys[k]];
+            if (!(ab.taken > 0)) continue;
+            bySpell[ab.key] = (bySpell[ab.key] || 0) + ab.taken;
+          }
+        }
+        const items = Object.keys(bySpell).map((key) => ({
+          id: key,
+          name: skillDisplayName(key),
+          value: bySpell[key],
+          kind: "ability"
+        }));
+        return {
+          kind: "ranked",
+          rows: toRanked(items, durationMs, false),
+          title: "Damage Taken by Spell"
+        };
+      }
+      case "enemy_damage": {
+        const actors = scopedActors(seg, focus);
+        const meta = getPlayerMeta();
+        const byTarget = {};
+        for (let i = 0; i < actors.length; i++) {
+          const abKeys = Object.keys(actors[i].abilities);
+          for (let k = 0; k < abKeys.length; k++) {
+            const ab = actors[i].abilities[abKeys[k]];
+            const tKeys = Object.keys(ab.targets);
+            for (let t = 0; t < tKeys.length; t++) {
+              const tg = ab.targets[tKeys[t]];
+              if (!(tg.damage > 0)) continue;
+              if (meta[tg.id] || seg.actors[tg.id]) continue;
+              if (!byTarget[tg.id]) {
+                byTarget[tg.id] = {
+                  id: tg.id,
+                  name: tg.name || tg.id,
+                  value: 0,
+                  kind: "target",
+                  mtype: tg.mtype,
+                  ctype: tg.ctype
+                };
+              }
+              byTarget[tg.id].value += tg.damage;
+              if (tg.mtype) byTarget[tg.id].mtype = tg.mtype;
+            }
+          }
+        }
+        const items = Object.keys(byTarget).map((id) => byTarget[id]);
+        return {
+          kind: "ranked",
+          rows: toRanked(items, durationMs, false),
+          title: "Adds"
         };
       }
       case "channel": {
@@ -8791,7 +10184,7 @@ var EnhanceCommUI = (() => {
             const ab = actor.abilities[k];
             return {
               id: k,
-              name: k,
+              name: skillDisplayName(k),
               value: abilityMetric(ab, metric2),
               color: classColors[actor.ctype || ""] || "#666"
             };
@@ -8812,18 +10205,40 @@ var EnhanceCommUI = (() => {
       }
       case "death_log":
         return { kind: "death_log", deaths: seg.deaths.slice() };
-      case "timeline":
+      case "timeline": {
+        const casts = [];
+        for (let i = 0; i < seg.casts.length; i++) {
+          if (actorIdInScope(seg.casts[i].actorId, seg, focus)) {
+            casts.push(seg.casts[i]);
+          }
+        }
+        const conditions = [];
+        for (let i = 0; i < seg.conditions.length; i++) {
+          if (actorIdInScope(seg.conditions[i].actorId, seg, focus)) {
+            conditions.push(seg.conditions[i]);
+          }
+        }
+        const gearSwaps = [];
+        const swaps = seg.gearSwaps || [];
+        for (let i = 0; i < swaps.length; i++) {
+          if (actorIdInScope(swaps[i].actorId, seg, focus)) {
+            gearSwaps.push(swaps[i]);
+          }
+        }
         return {
           kind: "timeline",
-          casts: seg.casts.slice(),
-          conditions: seg.conditions.slice(),
+          casts,
+          conditions,
+          gearSwaps,
           durationMs
         };
+      }
       case "conditions":
         return {
           kind: "timeline",
           casts: [],
-          conditions: query.actorId ? seg.conditions.filter((c) => c.actorId === query.actorId) : seg.conditions.slice(),
+          conditions: query.actorId ? seg.conditions.filter((c) => c.actorId === query.actorId) : seg.conditions.filter((c) => actorIdInScope(c.actorId, seg, focus)),
+          gearSwaps: [],
           durationMs
         };
       case "misc": {
@@ -9004,7 +10419,749 @@ var EnhanceCommUI = (() => {
     tryContextualTour("meter-toolbar", 200);
   }
 
-  // src/meters/meterWindowGroup.ts
+  // src/meters/meterWindowStack.ts
+  var METER_STACK_BASE = 50;
+  var METER_STACK_MAX = 77;
+  function maxMeterStackZ(peers) {
+    let max = METER_STACK_BASE - 1;
+    for (let i = 0; i < peers.length; i++) {
+      const z = peers[i].zIndex;
+      if (typeof z === "number" && z > max) max = z;
+    }
+    return max;
+  }
+  function nextMeterStackZ(peers) {
+    const max = maxMeterStackZ(peers);
+    if (max < METER_STACK_MAX) {
+      return { zIndex: max + 1, peers };
+    }
+    const ranked = peers.map((m, i) => ({
+      i,
+      z: typeof m.zIndex === "number" ? m.zIndex : METER_STACK_BASE - 1
+    })).sort((a, b) => a.z - b.z || a.i - b.i);
+    const next = peers.slice();
+    for (let r = 0; r < ranked.length; r++) {
+      const row2 = next[ranked[r].i];
+      next[ranked[r].i] = { ...row2, zIndex: METER_STACK_BASE + r };
+    }
+    return {
+      zIndex: METER_STACK_BASE + ranked.length,
+      peers: next
+    };
+  }
+  function prepareNewMeterWindow(inst, peers) {
+    const { zIndex, peers: nextPeers } = nextMeterStackZ(peers);
+    return {
+      peers: nextPeers,
+      inst: {
+        ...inst,
+        locked: typeof inst.locked === "boolean" ? inst.locked : false,
+        zIndex
+      }
+    };
+  }
+  function bringMeterToFront(peers, id) {
+    let target = null;
+    for (let i = 0; i < peers.length; i++) {
+      if (peers[i].id === id) {
+        target = peers[i];
+        break;
+      }
+    }
+    if (!target) return peers;
+    const max = maxMeterStackZ(peers);
+    if (typeof target.zIndex === "number" && target.zIndex === max && max >= METER_STACK_BASE) {
+      return peers;
+    }
+    const { zIndex, peers: base } = nextMeterStackZ(peers);
+    return base.map((m) => m.id === id ? { ...m, zIndex } : m);
+  }
+
+  // src/lib/frameSizes.ts
+  var BAG_FRAME_WIDTH = 385;
+  var BAG_FRAME_HEIGHT = 395;
+  var BAG_SYNC_CHROME_HEIGHT = 30;
+  var BAG_PANEL_STYLE = {
+    // minWidth floor only — fixed width + inventory host borders wraps slots.
+    minWidth: BAG_FRAME_WIDTH,
+    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
+    boxSizing: "border-box"
+  };
+  var PAPERDOLL_FRAME_WIDTH = 268;
+  var PAPERDOLL_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "340px",
+    boxSizing: "border-box",
+    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
+    zIndex: 36
+  };
+  var BOSS_BAR_PANEL_STYLE = {
+    width: "min(520px, 72vw)",
+    minWidth: "min(360px, 92vw)",
+    boxSizing: "border-box"
+  };
+  var CRYPT_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(720px, 96vw)",
+    minWidth: "200px",
+    boxSizing: "border-box"
+  };
+  var THREAT_PANEL_STYLE = {
+    minWidth: "240px",
+    width: "min(320px, 92vw)",
+    minHeight: "120px",
+    boxSizing: "border-box"
+  };
+  var COMMAND_PANEL_STYLE = {
+    width: "min(560px, 94vw)",
+    minHeight: "220px",
+    boxSizing: "border-box"
+  };
+  var METER_PANEL_STYLE = {
+    width: "320px",
+    minWidth: "240px",
+    minHeight: "140px",
+    // Fill-screen ceiling — not a design max. Defaults still come from *FRAME_DEFAULT.
+    maxWidth: "100vw",
+    maxHeight: "100vh",
+    boxSizing: "border-box"
+  };
+  var METER_FRAME_DEFAULT = { w: 320, h: 200 };
+  var REPORT_FRAME_DEFAULT = { w: 780, h: 520 };
+  var METER_FRAME_MIN = { w: 240, h: 140 };
+  function clampMeterFrame(w, h, viewportW, viewportH) {
+    const maxW = Number.isFinite(viewportW) && viewportW > 0 ? Math.round(viewportW) : Number.POSITIVE_INFINITY;
+    const maxH = Number.isFinite(viewportH) && viewportH > 0 ? Math.round(viewportH) : Number.POSITIVE_INFINITY;
+    return {
+      frameW: Math.min(maxW, Math.max(METER_FRAME_MIN.w, Math.round(w))),
+      frameH: Math.min(maxH, Math.max(METER_FRAME_MIN.h, Math.round(h)))
+    };
+  }
+  var KILLS_PANEL_STYLE = {
+    width: "min(280px, 90vw)",
+    minWidth: "180px",
+    minHeight: "80px",
+    boxSizing: "border-box"
+  };
+  var INFO_DIALOG_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(96vw, 520px)",
+    // Above other play panels so buff/item tooltips stay readable.
+    zIndex: 35,
+    boxSizing: "border-box"
+  };
+
+  // src/ui/meter/meterShellHelpers.ts
+  function presentationFor(inst) {
+    return inst.presentation || "bars";
+  }
+  function rootQuery(inst) {
+    return inst.query;
+  }
+  function meterShellTourId(query) {
+    if (query.kind === "snapshot") {
+      if (query.mode === "pdps") return "meter-pdps";
+      if (query.mode === "coop_v1" || query.mode === "coop_v2")
+        return "meter-coop";
+    }
+    return void 0;
+  }
+  function detailsAttributeLabel(metric, primary) {
+    const rate = primary === "rate";
+    if (metric === "heal") return rate ? "HPS" : "Healing Done";
+    if (metric === "taken") return "Damage Taken";
+    if (metric === "healing_required") return "Healing Required";
+    if (metric === "avoidance") return "Avoidance";
+    return rate ? "DPS" : "Damage Done";
+  }
+  function detailsWindowTitle(actorName, metric, primary) {
+    return `${detailsAttributeLabel(metric, primary)} of ${actorName}`;
+  }
+  function modeLabel(q, label) {
+    const fromCycle = displayLabelForQuery(q);
+    if (fromCycle) return fromCycle;
+    if (label) return label;
+    switch (q.kind) {
+      case "players":
+        return q.metric === "heal" ? "Healing" : q.metric === "taken" ? "Damage taken" : q.metric === "healing_required" ? "Healing required" : q.metric === "avoidance" ? "Avoidance" : "Damage";
+      case "channel":
+        return CHANNEL_LABELS[q.channel] || q.channel;
+      case "rolling":
+      case "realtime":
+        return "Hit DPS";
+      case "snapshot":
+        return q.mode;
+      case "death_log":
+        return "Deaths";
+      case "history":
+        return "DPS graph";
+      case "compare":
+        return "Compare";
+      case "encounter_summary":
+        return "Encounter Details";
+      case "taken_by_spell":
+        return "Damage Taken by Spell";
+      case "enemy_damage":
+        return "Adds";
+      case "timeline":
+        return "Time Line";
+      case "pie":
+        return "Pie";
+      case "summary":
+        return "Summary";
+      case "details":
+        return detailsAttributeLabel(q.metric, q.primary);
+      case "abilities":
+      case "ability_targets":
+      case "targets":
+      case "avoidance":
+      case "conditions":
+      case "misc":
+        return "Meter";
+      default: {
+        const _exhaustive = q;
+        return String(_exhaustive);
+      }
+    }
+  }
+  function chromeBtn(title, label, onClick, active, wide) {
+    return e(
+      "button",
+      {
+        type: "button",
+        title,
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onClick(ev);
+        },
+        onPointerDown: (ev) => ev.stopPropagation(),
+        className: "ecu-meter-btn" + (wide ? " wide" : "") + (active ? " active" : "")
+      },
+      label
+    );
+  }
+  function toolBtn(opts) {
+    const iconClass = opts.icon ? " is-icon icon-" + opts.icon : "";
+    const useNativeTitle = !opts.onEnter;
+    return e(
+      "button",
+      {
+        type: "button",
+        title: useNativeTitle ? opts.title : void 0,
+        "aria-label": opts.title,
+        ...opts.tourId ? { "data-ecu-tour": opts.tourId } : {},
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (opts.onClick) opts.onClick(ev);
+        },
+        onContextMenu: opts.onContextMenu ? (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          opts.onContextMenu(ev);
+        } : void 0,
+        onPointerDown: (ev) => ev.stopPropagation(),
+        onMouseEnter: (ev) => {
+          if (opts.onEnter) opts.onEnter(ev.currentTarget);
+        },
+        onMouseLeave: () => {
+          if (opts.onLeave) opts.onLeave();
+        },
+        className: "ecu-meter-tool" + iconClass + (opts.active ? " active" : "")
+      },
+      opts.icon ? null : opts.glyph || ""
+    );
+  }
+  function attrBallClass(q) {
+    if (q.kind === "players") {
+      if (q.metric === "heal" || q.metric === "healing_required")
+        return "attr-heal";
+      if (q.metric === "taken") return "attr-taken";
+      return "attr-damage";
+    }
+    return "attr-other";
+  }
+  function cooltipItemNode(item) {
+    const run = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      item.onSelect();
+    };
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "ecu-meter-cooltip-item" + (item.selected ? " is-selected" : "") + (item.muted ? " is-muted" : "") + (item.className ? " " + item.className : ""),
+        // Prefer mousedown so selection wins the hover-leave race; suppress click.
+        onMouseDown: run,
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      },
+      (item.selected ? "\u25CF " : "") + item.label
+    );
+  }
+  function cycleSegmentRef(current, past2, delta) {
+    const chain = ["current", "total"];
+    for (let i = 0; i < past2.length; i++) {
+      chain.push({ pastId: past2[i].id });
+    }
+    const key = (s) => typeof s === "string" ? s : `past:${s.pastId}`;
+    let idx = 0;
+    const curKey = key(current);
+    for (let i = 0; i < chain.length; i++) {
+      if (key(chain[i]) === curKey) {
+        idx = i;
+        break;
+      }
+    }
+    const next = idx + delta;
+    if (next < 0) return chain[chain.length - 1];
+    if (next >= chain.length) return chain[0];
+    return chain[next];
+  }
+
+  // src/ui/hooks/useCommMeterInstances.ts
+  function useCommMeterInstances(layout) {
+    const React = getReact();
+    const [meterInstances, setMeterInstances] = React.useState(
+      () => getSettings().meterInstances
+    );
+    const [closedMeters, setClosedMeters] = React.useState(
+      () => getSettings().meterClosedInstances || []
+    );
+    const meterInstancesRef = React.useRef(meterInstances);
+    meterInstancesRef.current = meterInstances;
+    const peerLayout = { ...layout };
+    for (let i = 0; i < meterInstances.length; i++) {
+      peerLayout[meterInstances[i].id] = meterInstances[i].pos;
+    }
+    const meterIsLocked = (inst) => {
+      if (typeof inst.locked === "boolean") return inst.locked;
+      return getSettings().windowsLocked !== false;
+    };
+    const patchMeter = (id, partial) => {
+      setMeterInstances((prev) => {
+        let next = prev.map((m) => m.id === id ? { ...m, ...partial } : m);
+        if (partial.selectedset != null && getMeterAppearance().segmentsLocked) {
+          next = next.map((m) => ({ ...m, selectedset: partial.selectedset }));
+        }
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const raiseMeterToFront = (id) => {
+      setMeterInstances((prev) => {
+        const next = bringMeterToFront(prev, id);
+        if (next === prev) return prev;
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const closeMeterRuntime = (id) => {
+      setMeterInstances((prev) => {
+        const inst = prev.find((m) => m.id === id);
+        if (!inst) return prev;
+        const next = prev.filter((m) => m.id !== id);
+        const closed = (getSettings().meterClosedInstances || []).concat([inst]);
+        patchSettings({ meterInstances: next, meterClosedInstances: closed });
+        setClosedMeters(closed);
+        return next;
+      });
+    };
+    const reopenClosedMeter = (id) => {
+      const closed = (getSettings().meterClosedInstances || []).slice();
+      let inst = null;
+      for (let i = 0; i < closed.length; i++) {
+        if (closed[i].id === id) {
+          inst = closed[i];
+          closed.splice(i, 1);
+          break;
+        }
+      }
+      if (!inst) return;
+      setClosedMeters(closed);
+      setMeterInstances((prev) => {
+        const { zIndex, peers } = nextMeterStackZ(prev);
+        const next = peers.concat([{ ...inst, visible: true, zIndex }]);
+        patchSettings({ meterInstances: next, meterClosedInstances: closed });
+        return next;
+      });
+    };
+    const focusInspector = (actorId, name, opts) => {
+      if (!actorId) return;
+      const metric = (opts == null ? void 0 : opts.metric) || "damage";
+      const primary = (opts == null ? void 0 : opts.primary) === "rate" ? "rate" : "total";
+      const label = detailsWindowTitle(name, metric, primary);
+      setMeterInstances((prev) => {
+        var _a, _b;
+        for (let i = 0; i < prev.length; i++) {
+          const m = prev[i];
+          if (m.query.kind === "details" && m.query.actorId === actorId && m.visible !== false) {
+            const patched = prev.map((row2, j) => {
+              if (j !== i) return row2;
+              return {
+                ...row2,
+                query: {
+                  kind: "details",
+                  actorId,
+                  metric,
+                  primary,
+                  ability: void 0
+                },
+                presentation: "details",
+                label,
+                visible: true,
+                selectedset: (opts == null ? void 0 : opts.selectedset) != null ? opts.selectedset : row2.selectedset,
+                partyFocus: (opts == null ? void 0 : opts.partyFocus) != null ? opts.partyFocus : row2.partyFocus
+              };
+            });
+            const next2 = bringMeterToFront(patched, m.id);
+            patchSettings({ meterInstances: next2 });
+            return next2;
+          }
+        }
+        const preset = presetById("inspector");
+        if (!preset) return prev;
+        let n = 0;
+        for (let i = 0; i < prev.length; i++) {
+          if (prev[i].presentation === "details" || prev[i].query.kind === "details") {
+            n += 1;
+          }
+        }
+        const raw = instanceFromPreset(preset, {
+          id: `meter-inspector-${Date.now().toString(36)}`,
+          pos: {
+            x: Math.min(92, 42 + n % 6 * 5),
+            y: Math.min(82, 48 + n % 5 * 5),
+            anchor: "bc"
+          },
+          query: { kind: "details", actorId, metric, primary },
+          presentation: "details",
+          label,
+          visible: true,
+          frameW: ((_a = preset.defaultFrame) == null ? void 0 : _a.w) || 640,
+          frameH: ((_b = preset.defaultFrame) == null ? void 0 : _b.h) || 440,
+          selectedset: opts == null ? void 0 : opts.selectedset,
+          partyFocus: opts == null ? void 0 : opts.partyFocus
+        });
+        const opened = prepareNewMeterWindow(raw, prev);
+        const next = opened.peers.concat([opened.inst]);
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const focusReport = (kind, from) => {
+      const tab = reportTabByKind(kind);
+      setMeterInstances((prev) => {
+        var _a, _b;
+        for (let i = 0; i < prev.length; i++) {
+          if (!isReportPresentation(prev[i].presentation)) continue;
+          const patched = prev.map((m, j) => {
+            if (j !== i) return m;
+            return {
+              ...m,
+              presentation: tab.presentation,
+              query: { ...tab.query },
+              label: tab.label,
+              visible: true,
+              selectedset: (from == null ? void 0 : from.selectedset) != null ? from.selectedset : m.selectedset,
+              partyFocus: (from == null ? void 0 : from.partyFocus) != null ? from.partyFocus : m.partyFocus
+            };
+          });
+          const next2 = bringMeterToFront(patched, prev[i].id);
+          patchSettings({ meterInstances: next2 });
+          return next2;
+        }
+        const preset = presetById(tab.presetId);
+        if (!preset) return prev;
+        const raw = instanceFromPreset(preset, {
+          id: `meter-report-${Date.now().toString(36)}`,
+          pos: { x: 50, y: 88, anchor: "bc" },
+          query: { ...tab.query },
+          presentation: tab.presentation,
+          label: tab.label,
+          visible: true,
+          selectedset: (from == null ? void 0 : from.selectedset) || "current",
+          partyFocus: (from == null ? void 0 : from.partyFocus) || "watched",
+          frameW: ((_a = preset.defaultFrame) == null ? void 0 : _a.w) || REPORT_FRAME_DEFAULT.w,
+          frameH: ((_b = preset.defaultFrame) == null ? void 0 : _b.h) || REPORT_FRAME_DEFAULT.h
+        });
+        const opened = prepareNewMeterWindow(raw, prev);
+        const next = opened.peers.concat([opened.inst]);
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const addMeterFromPreset = (presetId) => {
+      const preset = presetById(presetId);
+      if (!preset) return;
+      setMeterInstances((prev) => {
+        const raw = instanceFromPreset(preset, {
+          pos: {
+            x: 40 + Math.random() * 20,
+            y: 40 + Math.random() * 20,
+            anchor: "center"
+          }
+        });
+        const opened = prepareNewMeterWindow(raw, prev);
+        const next = opened.peers.concat([opened.inst]);
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const duplicateMeter = (id) => {
+      setMeterInstances((prev) => {
+        let src = null;
+        for (let i = 0; i < prev.length; i++) {
+          if (prev[i].id === id) {
+            src = prev[i];
+            break;
+          }
+        }
+        if (!src) return prev;
+        const raw = {
+          ...src,
+          id: `meter-dup-${Date.now().toString(36)}`,
+          pos: {
+            ...src.pos,
+            x: Math.min(98, src.pos.x + 3),
+            y: Math.min(98, src.pos.y + 3)
+          },
+          // New window — do not inherit source lock / stack rank.
+          locked: false,
+          zIndex: void 0
+        };
+        const opened = prepareNewMeterWindow(raw, prev);
+        const next = opened.peers.concat([opened.inst]);
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const removeMeter = (id) => {
+      setMeterInstances((prev) => {
+        const next = prev.filter((m) => m.id !== id);
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const applyAllSegments = (ref) => {
+      setMeterInstances((prev) => {
+        const next = prev.map((m) => ({ ...m, selectedset: ref }));
+        patchSettings({ meterInstances: next });
+        return next;
+      });
+    };
+    const resetMetersFromSettings = () => {
+      const next = resetMeterInstances();
+      setMeterInstances(next.meterInstances);
+      setClosedMeters(next.meterClosedInstances || []);
+    };
+    return {
+      meterInstances,
+      meterInstancesRef,
+      closedMeters,
+      peerLayout,
+      meterIsLocked,
+      patchMeter,
+      raiseMeterToFront,
+      closeMeterRuntime,
+      reopenClosedMeter,
+      focusInspector,
+      focusReport,
+      addMeterFromPreset,
+      duplicateMeter,
+      removeMeter,
+      applyAllSegments,
+      setMeterInstances,
+      resetMetersFromSettings
+    };
+  }
+
+  // src/lib/commWindow.ts
+  var NO_GROUP_IDS = /* @__PURE__ */ new Set(["toggles"]);
+  var CLOSABLE = new Set(CLOSABLE_PANEL_IDS);
+  function canGroupWindow(id) {
+    return !NO_GROUP_IDS.has(id);
+  }
+  function canCloseWindow(id) {
+    return CLOSABLE.has(id);
+  }
+  function hudWindowIds() {
+    const out = [];
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      const id = PANEL_IDS[i];
+      if (canGroupWindow(id)) out.push(id);
+    }
+    return out;
+  }
+
+  // src/ui/hooks/usePanelLayoutState.ts
+  function isClosable(id) {
+    return canCloseWindow(id);
+  }
+  function usePanelLayoutState() {
+    const React = getReact();
+    const settings0 = getSettings();
+    const [panelVisible, setPanelVisible] = React.useState(
+      () => mergePanelVisible(settings0.panelVisible)
+    );
+    const [panelOpacity, setPanelOpacity] = React.useState(
+      () => mergePanelOpacity(settings0.panelOpacity)
+    );
+    const [layoutEdit, setLayoutEdit] = React.useState(false);
+    const [detectedProfile, setDetectedProfile] = React.useState(
+      () => detectViewportProfile()
+    );
+    const [layoutProfileMode, setLayoutProfileModeState] = React.useState(
+      () => settings0.layoutProfileMode || "auto"
+    );
+    const viewportProfile = resolveLayoutProfile(
+      layoutProfileMode,
+      detectedProfile
+    );
+    const [layout, setLayout] = React.useState(
+      () => layoutForProfile(settings0, viewportProfile)
+    );
+    const [windowsLocked, setWindowsLocked] = React.useState(
+      () => settings0.windowsLocked !== false
+    );
+    const [altHeld, setAltHeld] = React.useState(false);
+    React.useEffect(() => {
+      const onDown = (ev) => {
+        if (ev.key === "Alt") setAltHeld(true);
+      };
+      const onUp = (ev) => {
+        if (ev.key === "Alt") setAltHeld(false);
+      };
+      const onBlur = () => setAltHeld(false);
+      window.addEventListener("keydown", onDown);
+      window.addEventListener("keyup", onUp);
+      window.addEventListener("blur", onBlur);
+      return () => {
+        window.removeEventListener("keydown", onDown);
+        window.removeEventListener("keyup", onUp);
+        window.removeEventListener("blur", onBlur);
+      };
+    }, []);
+    React.useEffect(() => {
+      const onResize = () => {
+        setDetectedProfile(detectViewportProfile());
+      };
+      window.addEventListener("resize", onResize);
+      return () => window.removeEventListener("resize", onResize);
+    }, []);
+    React.useEffect(() => {
+      const settings = getSettings();
+      const next = layoutForProfile(settings, viewportProfile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    }, [viewportProfile]);
+    const setLayoutProfileMode = (mode) => {
+      setLayoutProfileModeState(mode);
+      const settings = saveSettings({ layoutProfileMode: mode });
+      const profile = resolveLayoutProfile(mode, detectViewportProfile());
+      const next = layoutForProfile(settings, profile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
+    const setWindowsLockedPersist = (locked) => {
+      setWindowsLocked(locked);
+      saveSettings({ windowsLocked: locked });
+    };
+    const panelIsLocked = (id) => {
+      const pos = layout[id];
+      if (pos && typeof pos.locked === "boolean") return pos.locked;
+      return windowsLocked;
+    };
+    const setPanelLocked = (id, locked) => {
+      setLayout((prev) => {
+        const nextPos = { ...prev[id], locked };
+        const next = { ...prev, [id]: nextPos };
+        savePanelPos(id, nextPos, viewportProfile);
+        return next;
+      });
+    };
+    const setPanelPos = (id, pos) => {
+      setLayout((prev) => {
+        const nextPos = { ...prev[id], ...pos };
+        const next = { ...prev, [id]: nextPos };
+        savePanelPos(id, nextPos, viewportProfile);
+        if (id === "bag") applyBagLayoutPos(nextPos);
+        return next;
+      });
+    };
+    const resetLayout = () => {
+      const settings = resetPanelLayout(viewportProfile);
+      const next = layoutForProfile(settings, viewportProfile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
+    const importLayouts = (layouts) => {
+      const settings = importPanelLayouts(layouts);
+      const next = layoutForProfile(settings, viewportProfile);
+      setLayout(next);
+      applyBagLayoutPos(next.bag);
+    };
+    const exportLayouts = () => {
+      return { ...getSettings().panelLayoutsByProfile };
+    };
+    const setVisible = (id, visible2) => {
+      if (!isClosable(id)) return;
+      setPanelVisible((prev) => {
+        const next = { ...prev, [id]: visible2 };
+        return next;
+      });
+      savePanelVisible(id, visible2);
+      if (id === "bag" && !visible2 && isInventoryOpen()) {
+        openInventory();
+      }
+    };
+    const setOpacity = (id, value) => {
+      setPanelOpacity((prev) => {
+        const next = { ...prev, [id]: value };
+        saveSettings({ panelOpacity: { [id]: value } });
+        return next;
+      });
+    };
+    const visible = (id) => panelVisible[id] !== false;
+    const opacityFor = (id) => {
+      const v = panelOpacity[id];
+      if (typeof v === "number") return v;
+      return panelOpacityOf(getSettings(), id);
+    };
+    return {
+      panelVisible,
+      setPanelVisible,
+      panelOpacity,
+      layoutEdit,
+      setLayoutEdit,
+      layout,
+      setLayout,
+      viewportProfile,
+      layoutProfileMode,
+      setLayoutProfileMode,
+      setPanelPos,
+      windowsLocked,
+      setWindowsLockedPersist,
+      panelIsLocked,
+      setPanelLocked,
+      altHeld,
+      resetLayout,
+      importLayouts,
+      exportLayouts,
+      setVisible,
+      setOpacity,
+      visible,
+      opacityFor
+    };
+  }
+
+  // src/lib/panelEdgeGroup.ts
+  var DEFAULT_EDGE_SNAP_PX = 36;
+  var GROUP_GAP_PX = 0;
   function oppositeSnapSide(side) {
     if (side === 1) return 3;
     if (side === 3) return 1;
@@ -9014,39 +11171,39 @@ var EnhanceCommUI = (() => {
   function emptySnap() {
     return {};
   }
-  function meterHasSnap(inst) {
-    const s = inst.snap;
+  function panelHasSnap(panel) {
+    const s = panel.snap;
     if (!s) return false;
     return !!(s[1] || s[2] || s[3] || s[4]);
   }
-  function refreshSnapFlags(inst) {
-    if (!meterHasSnap(inst)) {
-      const next = { ...inst };
+  function refreshSnapFlags(panel) {
+    if (!panelHasSnap(panel)) {
+      const next = { ...panel };
       delete next.horizontalSnap;
       delete next.verticalSnap;
       return next;
     }
-    const s = inst.snap || {};
+    const s = panel.snap || {};
     const horizontal = !!(s[1] || s[3]);
     const vertical = !!(s[2] || s[4]);
     return {
-      ...inst,
+      ...panel,
       horizontalSnap: horizontal || void 0,
       verticalSnap: vertical || void 0
     };
   }
-  function applyGroupFrameSize(instances, resizedId, size) {
-    const source = instances.find((m) => m.id === resizedId);
-    if (!source) return instances;
-    if (!meterHasSnap(source)) {
-      return instances.map((m) => m.id === resizedId ? { ...m, ...size } : m);
+  function applyGroupFrameSize(panels, resizedId, size) {
+    const source = panels.find((m) => m.id === resizedId);
+    if (!source) return panels;
+    if (!panelHasSnap(source)) {
+      return panels.map((m) => m.id === resizedId ? { ...m, ...size } : m);
     }
-    const group = getMeterGroup(instances, resizedId);
+    const group = getEdgeGroup(panels, resizedId);
     const ids = new Set(group.map((g) => g.id));
     const snap = source.snap || {};
     const shareH = !!source.horizontalSnap || !!(snap[1] || snap[3]);
     const shareW = !!source.verticalSnap || !!(snap[2] || snap[4]);
-    return instances.map((m) => {
+    return panels.map((m) => {
       if (!ids.has(m.id)) return m;
       const next = { ...m };
       if (size.frameW != null) {
@@ -9060,10 +11217,10 @@ var EnhanceCommUI = (() => {
       return next;
     });
   }
-  function getMeterGroup(instances, startId) {
+  function getEdgeGroup(panels, startId) {
     const byId = {};
-    for (let i = 0; i < instances.length; i++) {
-      byId[instances[i].id] = instances[i];
+    for (let i = 0; i < panels.length; i++) {
+      byId[panels[i].id] = panels[i];
     }
     const start = byId[startId];
     if (!start) return [];
@@ -9086,8 +11243,8 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
-  function ungroupMeter(instances, id) {
-    return instances.map((m) => {
+  function ungroupPanel(panels, id) {
+    return panels.map((m) => {
       if (m.id === id) {
         return refreshSnapFlags({ ...m, snap: emptySnap() });
       }
@@ -9106,10 +11263,10 @@ var EnhanceCommUI = (() => {
       return changed ? refreshSnapFlags({ ...m, snap: next }) : m;
     });
   }
-  function groupMeters(instances, aId, bId, sideOnA) {
-    if (aId === bId) return instances;
+  function groupPanels(panels, aId, bId, sideOnA) {
+    if (aId === bId) return panels;
     const opp = oppositeSnapSide(sideOnA);
-    return instances.map((m) => {
+    return panels.map((m) => {
       if (m.id === aId) {
         const snap = { ...m.snap || {} };
         snap[sideOnA] = bId;
@@ -9123,55 +11280,78 @@ var EnhanceCommUI = (() => {
       return m;
     });
   }
-  function moveMeterGroup(instances, movedId, newPos) {
+  function applyScreenPctDelta(pos, dxScreen, dyScreen) {
+    const ax = pos.anchor || "tl";
+    let x = pos.x;
+    let y = pos.y;
+    if (ax === "tr" || ax === "br") x -= dxScreen;
+    else x += dxScreen;
+    if (ax === "bl" || ax === "br" || ax === "bc") y -= dyScreen;
+    else y += dyScreen;
+    return {
+      ...pos,
+      x: Math.max(0, Math.min(100, x)),
+      y: Math.max(0, Math.min(100, y))
+    };
+  }
+  function screenPctDeltaFromMove(oldPos, newPos) {
+    const ax = oldPos.anchor || "tl";
+    const dx = newPos.x - oldPos.x;
+    const dy = newPos.y - oldPos.y;
+    return {
+      dx: ax === "tr" || ax === "br" ? -dx : dx,
+      dy: ax === "bl" || ax === "br" || ax === "bc" ? -dy : dy
+    };
+  }
+  function moveEdgeGroup(panels, movedId, newPos) {
     const byId = {};
-    for (let i = 0; i < instances.length; i++) {
-      byId[instances[i].id] = instances[i];
+    for (let i = 0; i < panels.length; i++) {
+      byId[panels[i].id] = panels[i];
     }
     const moved = byId[movedId];
-    if (!moved) return instances;
+    if (!moved) return panels;
     const old = moved.pos;
     const dx = newPos.x - old.x;
     const dy = newPos.y - old.y;
     if (dx === 0 && dy === 0) {
-      return instances.map(
+      return panels.map(
         (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
       );
     }
-    const group = getMeterGroup(instances, movedId);
+    const group = getEdgeGroup(panels, movedId);
     if (group.length <= 1) {
-      return instances.map(
+      return panels.map(
         (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
       );
     }
     const groupIds = new Set(group.map((g) => g.id));
-    return instances.map((m) => {
+    const screen = screenPctDeltaFromMove(old, newPos);
+    return panels.map((m) => {
       if (!groupIds.has(m.id)) return m;
       if (m.id === movedId) return { ...m, pos: { ...newPos } };
-      if ((m.pos.anchor || "tl") !== (newPos.anchor || old.anchor || "tl")) {
-        return m;
-      }
       return {
         ...m,
-        pos: {
-          ...m.pos,
-          x: m.pos.x + dx,
-          y: m.pos.y + dy
-        }
+        pos: applyScreenPctDelta(m.pos, screen.dx, screen.dy)
       };
     });
   }
-  function matchGroupHeight(instances, id, height) {
-    const group = getMeterGroup(instances, id);
+  function matchGroupHeight(panels, id, height) {
+    const group = getEdgeGroup(panels, id);
     if (group.length <= 1) {
-      return instances.map((m) => m.id === id ? { ...m, frameH: height } : m);
+      return panels.map((m) => m.id === id ? { ...m, frameH: height } : m);
     }
     const ids = new Set(group.map((g) => g.id));
-    return instances.map((m) => ids.has(m.id) ? { ...m, frameH: height } : m);
+    return panels.map((m) => ids.has(m.id) ? { ...m, frameH: height } : m);
   }
-  var DEFAULT_SNAP_PX = 36;
-  var GROUP_GAP_PX = 0;
-  function findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx = DEFAULT_SNAP_PX) {
+  function matchGroupWidth(panels, id, width) {
+    const group = getEdgeGroup(panels, id);
+    if (group.length <= 1) {
+      return panels.map((m) => m.id === id ? { ...m, frameW: width } : m);
+    }
+    const ids = new Set(group.map((g) => g.id));
+    return panels.map((m) => ids.has(m.id) ? { ...m, frameW: width } : m);
+  }
+  function findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
     let best = null;
     let bestScore = Infinity;
     for (let i = 0; i < others.length; i++) {
@@ -9230,7 +11410,7 @@ var EnhanceCommUI = (() => {
       y: Math.max(0, Math.min(100, y))
     };
   }
-  function attachMeterEdge(instances, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
+  function attachPanelEdge(panels, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
     let dx = 0;
     let dy = 0;
     if (sideOnSelf === 3) {
@@ -9247,74 +11427,81 @@ var EnhanceCommUI = (() => {
       dx = otherRect.left - selfRect.left;
     }
     const byId = {};
-    for (let i = 0; i < instances.length; i++)
-      byId[instances[i].id] = instances[i];
+    for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
     const self = byId[selfId];
     const other = byId[otherId];
-    if (!self || !other) return instances;
+    if (!self || !other) return panels;
     const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
     const matchH = sideOnSelf === 1 || sideOnSelf === 3;
-    const h = matchH ? other.frameH || self.frameH || Math.round(otherRect.bottom - otherRect.top) : self.frameH;
-    let next = instances.map((m) => {
+    const matchW = sideOnSelf === 2 || sideOnSelf === 4;
+    const peerH = other.frameH || Math.round(otherRect.bottom - otherRect.top) || void 0;
+    const peerW = other.frameW || Math.round(otherRect.right - otherRect.left) || void 0;
+    const h = matchH ? peerH || self.frameH : self.frameH;
+    const w = matchW ? peerW || self.frameW : self.frameW;
+    let next = panels.map((m) => {
       if (m.id !== selfId) return m;
       return {
         ...m,
         pos: alignedPos,
-        frameH: h != null ? h : m.frameH
+        frameH: h != null ? h : m.frameH,
+        frameW: w != null ? w : m.frameW
       };
     });
-    next = groupMeters(next, selfId, otherId, sideOnSelf);
+    next = groupPanels(next, selfId, otherId, sideOnSelf);
     if (matchH && h != null) next = matchGroupHeight(next, selfId, h);
+    if (matchW && w != null) next = matchGroupWidth(next, selfId, w);
     return next.map(refreshSnapFlags);
   }
-  function isMeterSnapPeer(inst) {
-    if (inst.visible === false) return false;
-    if (inst.presentation === "details" || inst.presentation === "death_log" || inst.presentation === "encounter" || inst.presentation === "timeline") {
-      return false;
+  function cssEscapePanelId(id) {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(id);
     }
-    return true;
+    return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
   }
-  function meterSnapPeerRects(instances, selfId) {
+  function collectEdgePeerRects(panels, selfId, canSnap) {
     if (typeof document === "undefined") return [];
     const others = [];
-    for (let i = 0; i < instances.length; i++) {
-      const m = instances[i];
-      if (m.id === selfId || !isMeterSnapPeer(m)) continue;
+    for (let i = 0; i < panels.length; i++) {
+      const m = panels[i];
+      if (m.id === selfId || !canSnap(m, selfId)) continue;
       const el = document.querySelector(
-        `.comm-pos-panel.comm-pos-${cssEscape(m.id)}`
+        `.comm-pos-panel.comm-pos-${cssEscapePanelId(m.id)}`
       );
       if (!el) continue;
       others.push({ id: m.id, rect: el.getBoundingClientRect() });
     }
     return others;
   }
-  function findMeterSnapPreviewTarget(instances, selfId, thresholdPx = DEFAULT_SNAP_PX) {
+  function findSnapGuideTarget(panels, selfId, canSnap, nearPx = 140, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
     if (typeof document === "undefined") return null;
     const selfEl = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscape(selfId)}`
+      `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`
     );
     if (!selfEl) return null;
     const selfRect = selfEl.getBoundingClientRect();
-    const others = meterSnapPeerRects(instances, selfId);
-    const cand = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-    return cand ? cand.otherId : null;
+    const others = collectEdgePeerRects(panels, selfId, canSnap);
+    const tight = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
+    if (tight) return { id: tight.otherId, canSnap: true };
+    const loose = findEdgeSnapCandidate(selfId, selfRect, others, nearPx);
+    if (loose) return { id: loose.otherId, canSnap: false };
+    return null;
   }
-  function trySnapMeterOnDrop(instances, selfId, thresholdPx = DEFAULT_SNAP_PX) {
-    if (typeof document === "undefined") return instances;
+  function trySnapOnDrop(panels, selfId, canSnap, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
+    if (typeof document === "undefined") return panels;
     const selfEl = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscape(selfId)}`
+      `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`
     );
-    if (!selfEl) return instances;
+    if (!selfEl) return panels;
     const selfRect = selfEl.getBoundingClientRect();
-    const others = meterSnapPeerRects(instances, selfId);
+    const others = collectEdgePeerRects(panels, selfId, canSnap);
     const cand = findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx);
-    if (!cand) return instances;
+    if (!cand) return panels;
     const peer = others.find((o) => o.id === cand.otherId);
-    if (!peer) return instances;
+    if (!peer) return panels;
     const rootEl = typeof document !== "undefined" && (document.getElementById("comm-ui") || document.getElementById("game") || document.body) || null;
     const root = rootEl ? rootEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
-    return attachMeterEdge(
-      instances,
+    return attachPanelEdge(
+      panels,
       selfId,
       cand.otherId,
       cand.sideOnSelf,
@@ -9324,523 +11511,336 @@ var EnhanceCommUI = (() => {
       root.height || window.innerHeight
     );
   }
-  function cssEscape(id) {
-    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-      return CSS.escape(id);
-    }
-    return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
+
+  // src/lib/commWindowGroup.ts
+  function posToEdge(id, pos) {
+    return {
+      id,
+      pos: { x: pos.x, y: pos.y, anchor: pos.anchor },
+      snap: pos.snap,
+      horizontalSnap: pos.horizontalSnap,
+      verticalSnap: pos.verticalSnap
+    };
   }
-  function pinAlwaysShowSelf(rows, maxRows, youId2, enabled) {
-    const capped = maxRows > 0 ? maxRows : rows.length;
-    if (!enabled || !youId2 || rows.length <= capped) {
-      return rows.slice(0, capped).map((r, i) => r.rank != null ? r : { ...r, rank: i + 1 });
+  function meterToEdge(m) {
+    return {
+      id: m.id,
+      pos: { x: m.pos.x, y: m.pos.y, anchor: m.pos.anchor },
+      snap: m.snap,
+      frameW: m.frameW,
+      frameH: m.frameH,
+      horizontalSnap: m.horizontalSnap,
+      verticalSnap: m.verticalSnap
+    };
+  }
+  function applySnapFields(base, panel) {
+    const next = {
+      ...base,
+      x: panel.pos.x,
+      y: panel.pos.y,
+      anchor: panel.pos.anchor || base.anchor
+    };
+    if (panel.snap && (panel.snap[1] || panel.snap[2] || panel.snap[3] || panel.snap[4])) {
+      next.snap = panel.snap;
+    } else {
+      delete next.snap;
     }
-    const ranked = rows.map(
-      (r, i) => r.rank != null ? r : { ...r, rank: i + 1 }
-    );
-    let youIdx = -1;
-    for (let i = 0; i < ranked.length; i++) {
-      if (ranked[i].id === youId2) {
-        youIdx = i;
-        break;
-      }
+    if (panel.horizontalSnap) next.horizontalSnap = true;
+    else delete next.horizontalSnap;
+    if (panel.verticalSnap) next.verticalSnap = true;
+    else delete next.verticalSnap;
+    return next;
+  }
+  function meterCanGroup(m) {
+    if (m.visible === false) return false;
+    if (!canGroupWindow(m.id)) return false;
+    if (m.presentation === "details" || m.presentation === "death_log" || m.presentation === "encounter" || m.presentation === "timeline") {
+      return false;
     }
-    if (youIdx < 0 || youIdx < capped) return ranked.slice(0, capped);
-    const out = ranked.slice(0, capped - 1);
-    out.push(ranked[youIdx]);
+    return true;
+  }
+  function windowsToEdgePanels(state) {
+    const out = [];
+    const hudIds = hudWindowIds();
+    for (let i = 0; i < hudIds.length; i++) {
+      const id = hudIds[i];
+      const pos = state.layout[id];
+      if (!pos) continue;
+      out.push(posToEdge(id, pos));
+    }
+    for (let i = 0; i < state.meters.length; i++) {
+      const m = state.meters[i];
+      if (!meterCanGroup(m)) continue;
+      out.push(meterToEdge(m));
+    }
     return out;
   }
-  function maxRowsForFrameHeight(frameH) {
-    const h = frameH && frameH > 0 ? frameH : 180;
-    const chrome = 52;
-    const row2 = 16;
-    return Math.max(3, Math.floor((h - chrome) / row2));
-  }
-
-  // src/lib/frameSizes.ts
-  var BAG_FRAME_WIDTH = 385;
-  var BAG_FRAME_HEIGHT = 395;
-  var BAG_SYNC_CHROME_HEIGHT = 30;
-  var BAG_PANEL_STYLE = {
-    // minWidth floor only — fixed width + inventory host borders wraps slots.
-    minWidth: BAG_FRAME_WIDTH,
-    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
-    boxSizing: "border-box"
-  };
-  var PAPERDOLL_FRAME_WIDTH = 268;
-  var PAPERDOLL_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "340px",
-    boxSizing: "border-box",
-    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
-    zIndex: 36
-  };
-  var BOSS_BAR_PANEL_STYLE = {
-    width: "min(520px, 72vw)",
-    minWidth: "min(360px, 92vw)",
-    boxSizing: "border-box"
-  };
-  var CRYPT_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(720px, 96vw)",
-    minWidth: "200px",
-    boxSizing: "border-box"
-  };
-  var THREAT_PANEL_STYLE = {
-    minWidth: "240px",
-    width: "min(320px, 92vw)",
-    minHeight: "120px",
-    boxSizing: "border-box"
-  };
-  var COMMAND_PANEL_STYLE = {
-    width: "min(560px, 94vw)",
-    minHeight: "220px",
-    boxSizing: "border-box"
-  };
-  var METER_PANEL_STYLE = {
-    width: "320px",
-    minWidth: "240px",
-    minHeight: "140px",
-    boxSizing: "border-box"
-  };
-  var METER_FRAME_DEFAULT = { w: 320, h: 200 };
-  var REPORT_FRAME_DEFAULT = { w: 480, h: 320 };
-  var METER_FRAME_MIN = { w: 240, h: 140 };
-  var METER_FRAME_MAX = { w: 720, h: 560 };
-  var KILLS_PANEL_STYLE = {
-    width: "min(280px, 90vw)",
-    minWidth: "180px",
-    minHeight: "80px",
-    boxSizing: "border-box"
-  };
-  var INFO_DIALOG_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(96vw, 520px)",
-    // Above other play panels so buff/item tooltips stay readable.
-    zIndex: 35,
-    boxSizing: "border-box"
-  };
-
-  // src/ui/hooks/useCommMeterInstances.ts
-  function useCommMeterInstances(layout) {
-    const React = getReact();
-    const [meterInstances, setMeterInstances] = React.useState(
-      () => getSettings().meterInstances
-    );
-    const [meterSnapDragId, setMeterSnapDragId] = React.useState(
-      null
-    );
-    const [meterSnapPeerId, setMeterSnapPeerId] = React.useState(
-      null
-    );
-    const [metersLocked, setMetersLocked] = React.useState(
-      () => getSettings().metersLocked !== false
-    );
-    const [closedMeters, setClosedMeters] = React.useState(
-      () => getSettings().meterClosedInstances || []
-    );
-    const [altHeld, setAltHeld] = React.useState(false);
-    const meterInstancesRef = React.useRef(meterInstances);
-    meterInstancesRef.current = meterInstances;
-    const setMetersLockedPersist = (locked) => {
-      setMetersLocked(locked);
-      patchSettings({ metersLocked: locked });
-    };
-    React.useEffect(() => {
-      const onDown = (ev) => {
-        if (ev.key === "Alt") setAltHeld(true);
-      };
-      const onUp = (ev) => {
-        if (ev.key === "Alt") setAltHeld(false);
-      };
-      const onBlur = () => setAltHeld(false);
-      window.addEventListener("keydown", onDown);
-      window.addEventListener("keyup", onUp);
-      window.addEventListener("blur", onBlur);
-      return () => {
-        window.removeEventListener("keydown", onDown);
-        window.removeEventListener("keyup", onUp);
-        window.removeEventListener("blur", onBlur);
-      };
-    }, []);
-    const peerLayout = { ...layout };
-    for (let i = 0; i < meterInstances.length; i++) {
-      peerLayout[meterInstances[i].id] = meterInstances[i].pos;
+  function applyEdgePanelsToState(state, panels) {
+    const byId = {};
+    for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
+    const layout = { ...state.layout };
+    const hudIds = hudWindowIds();
+    for (let i = 0; i < hudIds.length; i++) {
+      const id = hudIds[i];
+      const p = byId[id];
+      if (!p || !layout[id]) continue;
+      layout[id] = applySnapFields(layout[id], p);
     }
-    const meterIsLocked = (inst) => {
-      if (typeof inst.locked === "boolean") return inst.locked;
-      return metersLocked;
-    };
-    const patchMeter = (id, partial) => {
-      setMeterInstances((prev) => {
-        let next = prev.map((m) => m.id === id ? { ...m, ...partial } : m);
-        if (partial.selectedset != null && getMeterAppearance().segmentsLocked) {
-          next = next.map((m) => ({ ...m, selectedset: partial.selectedset }));
-        }
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const closeMeterRuntime = (id) => {
-      setMeterInstances((prev) => {
-        const inst = prev.find((m) => m.id === id);
-        if (!inst) return prev;
-        const next = prev.filter((m) => m.id !== id);
-        const closed = (getSettings().meterClosedInstances || []).concat([inst]);
-        patchSettings({ meterInstances: next, meterClosedInstances: closed });
-        setClosedMeters(closed);
-        return next;
-      });
-    };
-    const reopenClosedMeter = (id) => {
-      const closed = (getSettings().meterClosedInstances || []).slice();
-      let inst = null;
-      for (let i = 0; i < closed.length; i++) {
-        if (closed[i].id === id) {
-          inst = closed[i];
-          closed.splice(i, 1);
-          break;
-        }
-      }
-      if (!inst) return;
-      setClosedMeters(closed);
-      setMeterInstances((prev) => {
-        const next = prev.concat([{ ...inst, visible: true }]);
-        patchSettings({ meterInstances: next, meterClosedInstances: closed });
-        return next;
-      });
-    };
-    const moveMeterWithGroup = (id, pos) => {
-      setMeterInstances((prev) => {
-        const next = moveMeterGroup(prev, id, pos);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const snapMeterAfterMove = (id) => {
-      setMeterSnapDragId(null);
-      setMeterSnapPeerId(null);
-      if (getSettings().meterWindowGrouping === false) return;
-      if (getMeterAppearance().disableGrouping) return;
-      setMeterInstances((prev) => {
-        const next = trySnapMeterOnDrop(prev, id);
-        if (next === prev) return prev;
-        const a = prev.find((m) => m.id === id);
-        const b = next.find((m) => m.id === id);
-        if (a && b && a.pos.x === b.pos.x && a.pos.y === b.pos.y && JSON.stringify(a.snap || {}) === JSON.stringify(b.snap || {})) {
-          return prev;
-        }
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const onMeterDragStart = (id) => {
-      setMeterSnapDragId(id);
-      setMeterSnapPeerId(null);
-    };
-    const onMeterDragMove = (id) => {
-      if (getSettings().meterWindowGrouping === false) {
-        setMeterSnapPeerId(null);
-        return;
-      }
-      setMeterSnapPeerId(findMeterSnapPreviewTarget(meterInstances, id));
-    };
-    const ungroupMeterPanel = (id) => {
-      setMeterInstances((prev) => {
-        const next = ungroupMeter(prev, id);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const meterDragRefs = React.useRef(
-      {}
-    );
-    const dragRefFor = (id) => {
-      if (!meterDragRefs.current[id]) {
-        meterDragRefs.current[id] = { current: null };
-      }
-      return meterDragRefs.current[id];
-    };
-    const focusInspector = (actorId, name) => {
-      if (!actorId) return;
-      setMeterInstances((prev) => {
-        var _a, _b;
-        for (let i = 0; i < prev.length; i++) {
-          const m = prev[i];
-          if (m.query.kind === "details" && m.query.actorId === actorId && m.visible !== false) {
-            return prev;
-          }
-        }
-        const preset = presetById("inspector");
-        if (!preset) return prev;
-        let n = 0;
-        for (let i = 0; i < prev.length; i++) {
-          if (prev[i].presentation === "details" || prev[i].query.kind === "details") {
-            n += 1;
-          }
-        }
-        const inst = instanceFromPreset(preset, {
-          id: `meter-inspector-${Date.now().toString(36)}`,
-          pos: {
-            x: Math.min(92, 42 + n % 6 * 5),
-            y: Math.min(82, 48 + n % 5 * 5),
-            anchor: "bc"
-          },
-          query: { kind: "details", actorId },
-          presentation: "details",
-          label: `Inspector \xB7 ${name}`,
-          visible: true,
-          frameW: ((_a = preset.defaultFrame) == null ? void 0 : _a.w) || 560,
-          frameH: ((_b = preset.defaultFrame) == null ? void 0 : _b.h) || 400
-        });
-        const next = prev.concat([inst]);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const focusReport = (kind, from) => {
-      const tab = reportTabByKind(kind);
-      setMeterInstances((prev) => {
-        var _a, _b;
-        for (let i = 0; i < prev.length; i++) {
-          if (!isReportPresentation(prev[i].presentation)) continue;
-          const next2 = prev.map((m, j) => {
-            if (j !== i) return m;
-            return {
-              ...m,
-              presentation: tab.presentation,
-              query: { ...tab.query },
-              label: tab.label,
-              visible: true,
-              selectedset: (from == null ? void 0 : from.selectedset) != null ? from.selectedset : m.selectedset,
-              partyFocus: (from == null ? void 0 : from.partyFocus) != null ? from.partyFocus : m.partyFocus
-            };
-          });
-          patchSettings({ meterInstances: next2 });
-          return next2;
-        }
-        const preset = presetById(tab.presetId);
-        if (!preset) return prev;
-        const inst = instanceFromPreset(preset, {
-          id: `meter-report-${Date.now().toString(36)}`,
-          pos: { x: 50, y: 88, anchor: "bc" },
-          query: { ...tab.query },
-          presentation: tab.presentation,
-          label: tab.label,
-          visible: true,
-          selectedset: (from == null ? void 0 : from.selectedset) || "current",
-          partyFocus: (from == null ? void 0 : from.partyFocus) || "watched",
-          frameW: ((_a = preset.defaultFrame) == null ? void 0 : _a.w) || REPORT_FRAME_DEFAULT.w,
-          frameH: ((_b = preset.defaultFrame) == null ? void 0 : _b.h) || REPORT_FRAME_DEFAULT.h
-        });
-        const next = prev.concat([inst]);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const addMeterFromPreset = (presetId) => {
-      const preset = presetById(presetId);
-      if (!preset) return;
-      const inst = instanceFromPreset(preset, {
-        pos: {
-          x: 40 + Math.random() * 20,
-          y: 40 + Math.random() * 20,
-          anchor: "center"
-        }
-      });
-      setMeterInstances((prev) => {
-        const next = prev.concat([inst]);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const duplicateMeter = (id) => {
-      setMeterInstances((prev) => {
-        let src = null;
-        for (let i = 0; i < prev.length; i++) {
-          if (prev[i].id === id) {
-            src = prev[i];
-            break;
-          }
-        }
-        if (!src) return prev;
-        const copy = {
-          ...src,
-          id: `meter-dup-${Date.now().toString(36)}`,
-          pos: {
-            ...src.pos,
-            x: Math.min(98, src.pos.x + 3),
-            y: Math.min(98, src.pos.y + 3)
+    const meters = state.meters.map((m) => {
+      const p = byId[m.id];
+      if (!p) return m;
+      const pos = applySnapFields(m.pos, p);
+      return {
+        ...m,
+        pos: { x: pos.x, y: pos.y, anchor: pos.anchor },
+        snap: pos.snap,
+        horizontalSnap: pos.horizontalSnap,
+        verticalSnap: pos.verticalSnap,
+        frameW: p.frameW != null ? p.frameW : m.frameW,
+        frameH: p.frameH != null ? p.frameH : m.frameH
+      };
+    });
+    return { layout, meters };
+  }
+  function moveCommWindowWithGroup(state, id, pos) {
+    const panels = windowsToEdgePanels(state);
+    const has = panels.some((p) => p.id === id);
+    if (!has) {
+      if (state.layout[id]) {
+        return {
+          ...state,
+          layout: {
+            ...state.layout,
+            [id]: {
+              ...state.layout[id],
+              x: pos.x,
+              y: pos.y,
+              anchor: pos.anchor || state.layout[id].anchor
+            }
           }
         };
-        const next = prev.concat([copy]);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const removeMeter = (id) => {
-      setMeterInstances((prev) => {
-        const next = prev.filter((m) => m.id !== id);
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const applyAllSegments = (ref) => {
-      setMeterInstances((prev) => {
-        const next = prev.map((m) => ({ ...m, selectedset: ref }));
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const resetMetersFromSettings = () => {
-      const next = resetMeterInstances();
-      setMeterInstances(next.meterInstances);
-      setMetersLockedPersist(next.metersLocked !== false);
-    };
-    return {
-      meterInstances,
-      meterInstancesRef,
-      closedMeters,
-      metersLocked,
-      altHeld,
-      meterSnapDragId,
-      meterSnapPeerId,
-      peerLayout,
-      meterIsLocked,
-      dragRefFor,
-      patchMeter,
-      closeMeterRuntime,
-      reopenClosedMeter,
-      moveMeterWithGroup,
-      snapMeterAfterMove,
-      onMeterDragStart,
-      onMeterDragMove,
-      ungroupMeterPanel,
-      focusInspector,
-      focusReport,
-      addMeterFromPreset,
-      duplicateMeter,
-      removeMeter,
-      applyAllSegments,
-      setMeterInstances,
-      setMetersLockedPersist,
-      resetMetersFromSettings
+      }
+      return {
+        ...state,
+        meters: state.meters.map(
+          (m) => m.id === id ? {
+            ...m,
+            pos: {
+              ...m.pos,
+              x: pos.x,
+              y: pos.y,
+              anchor: pos.anchor || m.pos.anchor
+            }
+          } : m
+        )
+      };
+    }
+    const moved = moveEdgeGroup(panels, id, {
+      x: pos.x,
+      y: pos.y,
+      anchor: pos.anchor || "tl"
+    });
+    return applyEdgePanelsToState(state, moved);
+  }
+  function snapCommWindowAfterMove(state, id) {
+    const panels = windowsToEdgePanels(state);
+    if (!panels.some((p) => p.id === id)) return state;
+    const next = trySnapOnDrop(panels, id, (p) => canGroupWindow(p.id));
+    return applyEdgePanelsToState(state, next);
+  }
+  function ungroupCommWindow(state, id) {
+    const panels = windowsToEdgePanels(state);
+    if (!panels.some((p) => p.id === id)) return state;
+    const next = ungroupPanel(panels, id);
+    return applyEdgePanelsToState(state, next);
+  }
+  function commWindowHasSnap(state, id) {
+    const panels = windowsToEdgePanels(state);
+    for (let i = 0; i < panels.length; i++) {
+      if (panels[i].id === id) return panelHasSnap(panels[i]);
+    }
+    return false;
+  }
+  function findCommSnapGuideTarget(state, selfId) {
+    return findSnapGuideTarget(
+      windowsToEdgePanels(state),
+      selfId,
+      (p) => canGroupWindow(p.id)
+    );
+  }
+  var SCALE_MIN = 0.5;
+  var SCALE_MAX = 1.5;
+  function clampWindowScale(scale) {
+    if (!Number.isFinite(scale)) return 1;
+    return Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.round(scale * 100) / 100));
+  }
+  function applyScaleToCommWindows(state, id, scale) {
+    const clamped = clampWindowScale(scale);
+    const panels = windowsToEdgePanels(state);
+    let group = getEdgeGroup(panels, id);
+    if (!group.length) {
+      group = panels.filter((p) => p.id === id);
+    }
+    const ids = new Set(group.map((g) => g.id));
+    ids.add(id);
+    const layout = { ...state.layout };
+    const hudIds = hudWindowIds();
+    for (let i = 0; i < hudIds.length; i++) {
+      const hid = hudIds[i];
+      if (!ids.has(hid) || !layout[hid]) continue;
+      layout[hid] = { ...layout[hid], scale: clamped };
+    }
+    const meters = state.meters.map(
+      (m) => ids.has(m.id) ? { ...m, scale: clamped } : m
+    );
+    return { layout, meters };
+  }
+
+  // src/lib/layoutGuide.ts
+  var depth = 0;
+  var listeners6 = [];
+  function notify() {
+    for (let i = 0; i < listeners6.length; i++) {
+      listeners6[i]();
+    }
+  }
+  function isLayoutGuideActive() {
+    return depth > 0;
+  }
+  function beginLayoutGuide() {
+    depth += 1;
+    if (depth === 1) notify();
+  }
+  function endLayoutGuide() {
+    if (depth <= 0) {
+      depth = 0;
+      return;
+    }
+    depth -= 1;
+    if (depth === 0) notify();
+  }
+  function subscribeLayoutGuide(listener) {
+    listeners6.push(listener);
+    return () => {
+      const idx = listeners6.indexOf(listener);
+      if (idx >= 0) listeners6.splice(idx, 1);
     };
   }
 
-  // src/ui/hooks/usePanelLayoutState.ts
-  function isClosable(id) {
-    return CLOSABLE_PANEL_IDS.indexOf(id) >= 0;
-  }
-  function usePanelLayoutState() {
-    const React = getReact();
-    const settings0 = getSettings();
-    const [panelVisible, setPanelVisible] = React.useState(
-      () => mergePanelVisible(settings0.panelVisible)
-    );
-    const [panelOpacity, setPanelOpacity] = React.useState(
-      () => mergePanelOpacity(settings0.panelOpacity)
-    );
-    const [layoutEdit, setLayoutEdit] = React.useState(false);
-    const [detectedProfile, setDetectedProfile] = React.useState(
-      () => detectViewportProfile()
-    );
-    const [layoutProfileMode, setLayoutProfileModeState] = React.useState(
-      () => settings0.layoutProfileMode || "auto"
-    );
-    const viewportProfile = resolveLayoutProfile(
-      layoutProfileMode,
-      detectedProfile
-    );
-    const [layout, setLayout] = React.useState(
-      () => layoutForProfile(settings0, viewportProfile)
-    );
-    React.useEffect(() => {
-      const onResize = () => {
-        setDetectedProfile(detectViewportProfile());
-      };
-      window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
-    }, []);
-    React.useEffect(() => {
-      const settings = getSettings();
-      const next = layoutForProfile(settings, viewportProfile);
-      setLayout(next);
-      applyBagLayoutPos(next.bag);
-    }, [viewportProfile]);
-    const setLayoutProfileMode = (mode) => {
-      setLayoutProfileModeState(mode);
-      const settings = saveSettings({ layoutProfileMode: mode });
-      const profile = resolveLayoutProfile(mode, detectViewportProfile());
-      const next = layoutForProfile(settings, profile);
-      setLayout(next);
-      applyBagLayoutPos(next.bag);
-    };
-    const onMove = (id, pos) => {
-      setLayout((prev) => {
-        const next = { ...prev, [id]: pos };
-        return next;
-      });
-      savePanelPos(id, pos, viewportProfile);
-      if (id === "bag") applyBagLayoutPos(pos);
-    };
-    const resetLayout = () => {
-      const settings = resetPanelLayout(viewportProfile);
-      const next = layoutForProfile(settings, viewportProfile);
-      setLayout(next);
-      applyBagLayoutPos(next.bag);
-    };
-    const importLayouts = (layouts) => {
-      const settings = importPanelLayouts(layouts);
-      const next = layoutForProfile(settings, viewportProfile);
-      setLayout(next);
-      applyBagLayoutPos(next.bag);
-    };
-    const exportLayouts = () => {
-      return { ...getSettings().panelLayoutsByProfile };
-    };
-    const setVisible = (id, visible2) => {
-      if (!isClosable(id)) return;
-      setPanelVisible((prev) => {
-        const next = { ...prev, [id]: visible2 };
-        return next;
-      });
-      savePanelVisible(id, visible2);
-      if (id === "bag" && !visible2 && isInventoryOpen()) {
-        openInventory();
+  // src/ui/hooks/useCommWindowActions.ts
+  var SHOW_WINDOW_IDS_MS = 950;
+  function layoutChanged(prev, next) {
+    const out = {};
+    const ids = Object.keys(next);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (JSON.stringify(prev[id] || null) !== JSON.stringify(next[id] || null)) {
+        out[id] = next[id];
       }
+    }
+    return out;
+  }
+  function metersChanged(prev, next) {
+    return JSON.stringify(prev) !== JSON.stringify(next);
+  }
+  function useCommWindowActions(opts) {
+    const React = getReact();
+    const stateRef = React.useRef({
+      layout: opts.layout,
+      meters: opts.meters
+    });
+    stateRef.current = { layout: opts.layout, meters: opts.meters };
+    const [snapDragId, setSnapDragId] = React.useState(null);
+    const [snapPeerId, setSnapPeerId] = React.useState(null);
+    const [nearPeerId, setNearPeerId] = React.useState(null);
+    const [showWindowIds, setShowWindowIds] = React.useState(false);
+    const showIdsTimer = React.useRef(null);
+    const clearWindowIds = () => {
+      if (showIdsTimer.current != null) {
+        clearTimeout(showIdsTimer.current);
+        showIdsTimer.current = null;
+      }
+      setShowWindowIds(false);
     };
-    const setOpacity = (id, value) => {
-      setPanelOpacity((prev) => {
-        const next = { ...prev, [id]: value };
-        saveSettings({ panelOpacity: { [id]: value } });
-        return next;
-      });
+    React.useEffect(() => {
+      return () => {
+        if (showIdsTimer.current != null) clearTimeout(showIdsTimer.current);
+      };
+    }, []);
+    const commit = (next) => {
+      const prev = stateRef.current;
+      const layoutDiff = layoutChanged(prev.layout, next.layout);
+      const layoutKeys = Object.keys(layoutDiff);
+      if (layoutKeys.length) {
+        opts.setLayout(next.layout);
+        savePanelPositions(layoutDiff, opts.viewportProfile);
+        if (layoutDiff.bag && opts.applyBagPos) opts.applyBagPos(layoutDiff.bag);
+      }
+      if (metersChanged(prev.meters, next.meters)) {
+        opts.setMeters(next.meters);
+        patchSettings({ meterInstances: next.meters });
+      }
+      stateRef.current = next;
     };
-    const visible = (id) => panelVisible[id] !== false;
-    const opacityFor = (id) => {
-      const v = panelOpacity[id];
-      if (typeof v === "number") return v;
-      return panelOpacityOf(getSettings(), id);
+    const groupingEnabled = () => {
+      const s = getSettings();
+      if (s.meterWindowGrouping === false) return false;
+      if (getMeterAppearance().disableGrouping) return false;
+      return true;
     };
+    const moveWindow = (id, pos) => {
+      commit(moveCommWindowWithGroup(stateRef.current, id, pos));
+    };
+    const snapAfterMove = (id) => {
+      clearWindowIds();
+      setSnapDragId(null);
+      setSnapPeerId(null);
+      setNearPeerId(null);
+      endLayoutGuide();
+      if (!groupingEnabled()) return;
+      commit(snapCommWindowAfterMove(stateRef.current, id));
+    };
+    const ungroupWindow = (id) => {
+      commit(ungroupCommWindow(stateRef.current, id));
+    };
+    const onDragStart = (id) => {
+      clearWindowIds();
+      setSnapDragId(id);
+      setSnapPeerId(null);
+      setNearPeerId(null);
+      beginLayoutGuide();
+      showIdsTimer.current = setTimeout(() => {
+        showIdsTimer.current = null;
+        setShowWindowIds(true);
+      }, SHOW_WINDOW_IDS_MS);
+      if (!groupingEnabled()) return;
+    };
+    const onDragMove = (id) => {
+      if (!groupingEnabled()) {
+        setSnapPeerId(null);
+        setNearPeerId(null);
+        return;
+      }
+      const guide = findCommSnapGuideTarget(stateRef.current, id);
+      setSnapPeerId(guide && guide.canSnap ? guide.id : null);
+      setNearPeerId(guide ? guide.id : null);
+    };
+    const setWindowScale = (id, scale) => {
+      commit(applyScaleToCommWindows(stateRef.current, id, scale));
+    };
+    const graphState = () => stateRef.current;
     return {
-      panelVisible,
-      setPanelVisible,
-      panelOpacity,
-      layoutEdit,
-      setLayoutEdit,
-      layout,
-      viewportProfile,
-      layoutProfileMode,
-      setLayoutProfileMode,
-      onMove,
-      resetLayout,
-      importLayouts,
-      exportLayouts,
-      setVisible,
-      setOpacity,
-      visible,
-      opacityFor
+      moveWindow,
+      snapAfterMove,
+      ungroupWindow,
+      onDragStart,
+      onDragMove,
+      setWindowScale,
+      snapDragId,
+      snapPeerId,
+      nearPeerId,
+      showWindowIds,
+      graphState
     };
   }
 
@@ -9874,50 +11874,6 @@ var EnhanceCommUI = (() => {
       };
     }, [setPanelVisible]);
     return { bagOpen, bagRefreshing: bagRefreshing2 };
-  }
-
-  // src/host/icons.ts
-  function itemContainer(item, actual) {
-    if (typeof window.item_container !== "function") {
-      return "";
-    }
-    return window.item_container(item, actual);
-  }
-  function addTint(selector, args) {
-    if (typeof window.add_tint === "function") {
-      window.add_tint(selector, args);
-    }
-  }
-  function getTint(selector) {
-    if (typeof window.get_tint === "function") {
-      return window.get_tint(selector) || null;
-    }
-    return null;
-  }
-  function rebindTint(selector) {
-    const tint = getTint(selector);
-    if (tint) tint.added = false;
-  }
-  function setXTarget(entity, opts) {
-    window.xtarget = entity || null;
-    window.__ecuDialogOnlyXTarget = !!(opts && opts.dialogOnly && entity);
-  }
-  function slotSkin(slot) {
-    var _a, _b;
-    if (!slot || !slot.name) return void 0;
-    const def = (_b = (_a = window.G) == null ? void 0 : _a.items) == null ? void 0 : _b[slot.name];
-    return slot.skin || (def == null ? void 0 : def.skin);
-  }
-  function monsterSprite(mtype, opts) {
-    var _a;
-    if (!mtype || typeof window.sprite !== "function") return "";
-    const size = (_a = opts == null ? void 0 : opts.size) != null ? _a : 22;
-    return window.sprite(mtype, {
-      scale: size / 40,
-      width: size,
-      height: size,
-      overflow: true
-    }) || "";
   }
 
   // src/ui/hooks/useSelectionFromXTarget.ts
@@ -9982,6 +11938,52 @@ var EnhanceCommUI = (() => {
       focusUnitId,
       clearFocus
     };
+  }
+
+  // src/lib/commWindowNumbers.ts
+  function seedHudWindowNumbers() {
+    const out = {};
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      out[PANEL_IDS[i]] = i + 1;
+    }
+    return out;
+  }
+  function maxAssigned(map) {
+    let max = 0;
+    const keys = Object.keys(map);
+    for (let i = 0; i < keys.length; i++) {
+      const n = map[keys[i]];
+      if (typeof n === "number" && n > max) max = n;
+    }
+    return max;
+  }
+  function ensureWindowNumbers(ids) {
+    const s = getSettings();
+    const map = {
+      ...seedHudWindowNumbers(),
+      ...s.windowNumberById || {}
+    };
+    let next = Math.max(
+      typeof s.nextWindowNumber === "number" ? s.nextWindowNumber : 1,
+      maxAssigned(map) + 1
+    );
+    let dirty2 = false;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (map[id] != null) continue;
+      map[id] = next;
+      next += 1;
+      dirty2 = true;
+    }
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      const id = PANEL_IDS[i];
+      if (s.windowNumberById && s.windowNumberById[id] === map[id]) continue;
+      dirty2 = true;
+    }
+    if (dirty2 || !s.windowNumberById || s.nextWindowNumber !== next) {
+      patchSettings({ windowNumberById: map, nextWindowNumber: next });
+    }
+    return map;
   }
 
   // src/lib/layoutExport.ts
@@ -10170,6 +12172,13 @@ var EnhanceCommUI = (() => {
       y: mapToSortedLines(yMap)
     };
   }
+  function snapPosToFineGrid(x, y, step, widthPx, heightPx) {
+    const metrics = squareGridMetrics(step, widthPx, heightPx);
+    return {
+      x: snapToAxisPercents(x, metrics.xPercents, false),
+      y: snapToAxisPercents(y, metrics.yPercents, false)
+    };
+  }
   function snapToAxisPercents(n, percents, skipScreenEdges = false, maxDistPct) {
     if (!percents.length || !Number.isFinite(n)) return n;
     let best = n;
@@ -10202,7 +12211,7 @@ var EnhanceCommUI = (() => {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners6 = [];
+  var listeners7 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -10220,7 +12229,8 @@ var EnhanceCommUI = (() => {
     var _a;
     try {
       const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY2);
-      if (!raw) return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
+      if (!raw)
+        return { ...DEFAULTS2, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
       const parsed = JSON.parse(raw);
       return {
         freePlacement: !!parsed.freePlacement,
@@ -10238,9 +12248,9 @@ var EnhanceCommUI = (() => {
     } catch (e2) {
     }
   }
-  function notify() {
-    for (let i = 0; i < listeners6.length; i++) {
-      listeners6[i]();
+  function notify2() {
+    for (let i = 0; i < listeners7.length; i++) {
+      listeners7[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -10257,7 +12267,7 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify();
+    notify2();
     return next;
   }
   function getLayoutGridStep() {
@@ -10270,7 +12280,7 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify();
+    notify2();
     return next;
   }
   function getLayoutChromePos() {
@@ -10283,14 +12293,14 @@ var EnhanceCommUI = (() => {
     };
     cache2 = next;
     write(next);
-    notify();
+    notify2();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners6.push(listener);
+    listeners7.push(listener);
     return () => {
-      const idx = listeners6.indexOf(listener);
-      if (idx >= 0) listeners6.splice(idx, 1);
+      const idx = listeners7.indexOf(listener);
+      if (idx >= 0) listeners7.splice(idx, 1);
     };
   }
 
@@ -10704,7 +12714,7 @@ var EnhanceCommUI = (() => {
             type: "button",
             onClick: toggleFree,
             style: btnStyle(freePlacement, true),
-            title: freePlacement ? "Free placement: no grid snap (peer + screen-edge magnets)" : `Snap to square ${stepLabel} fine grid`
+            title: freePlacement ? "Free placement: no grid snap (layout edit + play arrange; peer + screen-edge magnets)" : `Snap to square ${stepLabel} fine grid (layout edit + unlocked/play arrange)`
           },
           freePlacement ? "Free" : "Grid"
         ),
@@ -10774,7 +12784,7 @@ var EnhanceCommUI = (() => {
             paddingTop: "2px"
           }
         },
-        freePlacement ? "Free drag/resize \xB7 peer + screen-edge \xB7 Ctrl+Shift+L" : `${stepLabel} snap move/resize \xB7 Shift=free size \xB7 Ctrl+Shift+L`
+        freePlacement ? "Free drag/resize (edit + play) \xB7 peer + screen-edge \xB7 Ctrl+Shift+L" : `${stepLabel} fine snap (edit + unlocked play) \xB7 Shift=free size \xB7 Ctrl+Shift+L`
       ),
       status ? e("div", { style: { fontSize: TYPE.secondary, color: "#9a9" } }, status) : null,
       pasteOpen ? e(
@@ -10910,6 +12920,256 @@ var EnhanceCommUI = (() => {
     );
   }
 
+  // src/meters/meterWindowGroup.ts
+  function meterHasSnap(inst) {
+    return panelHasSnap(inst);
+  }
+  function applyGroupFrameSize2(instances, resizedId, size) {
+    return applyGroupFrameSize(instances, resizedId, size);
+  }
+  function getMeterGroup(instances, startId) {
+    return getEdgeGroup(instances, startId);
+  }
+  function pinAlwaysShowSelf(rows, maxRows, youId2, enabled) {
+    const capped = maxRows > 0 ? maxRows : rows.length;
+    if (!enabled || !youId2 || rows.length <= capped) {
+      return rows.slice(0, capped).map((r, i) => r.rank != null ? r : { ...r, rank: i + 1 });
+    }
+    const ranked = rows.map(
+      (r, i) => r.rank != null ? r : { ...r, rank: i + 1 }
+    );
+    let youIdx = -1;
+    for (let i = 0; i < ranked.length; i++) {
+      if (ranked[i].id === youId2) {
+        youIdx = i;
+        break;
+      }
+    }
+    if (youIdx < 0 || youIdx < capped) return ranked.slice(0, capped);
+    const out = ranked.slice(0, capped - 1);
+    out.push(ranked[youIdx]);
+    return out;
+  }
+  function maxRowsForFrameHeight(frameH) {
+    const h = frameH && frameH > 0 ? frameH : 180;
+    const chrome = 52;
+    const row2 = 16;
+    return Math.max(3, Math.floor((h - chrome) / row2));
+  }
+
+  // src/ui/chrome/WindowControlChrome.ts
+  var chromeBtnStyle = (touchish, lockedBg) => ({
+    cursor: "pointer",
+    fontSize: touchish ? "14px" : "12px",
+    padding: touchish ? "4px 8px" : "1px 6px",
+    minHeight: touchish ? "32px" : void 0,
+    border: "1px solid #886",
+    background: lockedBg ? "rgba(50,40,20,0.95)" : "rgba(30,30,20,0.95)",
+    color: "#ffe08a",
+    flexShrink: 0
+  });
+  function WindowControlChrome(props) {
+    const React = getReact();
+    const [wcOpen, setWcOpen] = React.useState(false);
+    const touchish = props.touchish;
+    const lockBtn = props.onToggleLock ? e(
+      "button",
+      {
+        type: "button",
+        className: "comm-pos-lock",
+        title: props.locked ? "Unlock \u2014 allow move and resize" : "Lock \u2014 prevent move and resize",
+        "aria-label": props.locked ? "Unlock window" : "Lock window",
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          props.onToggleLock();
+        },
+        onPointerDown: (ev) => ev.stopPropagation(),
+        style: chromeBtnStyle(touchish, !!props.locked)
+      },
+      props.locked ? "\u{1F512}" : "\u{1F513}"
+    ) : null;
+    const ungroupBtn = props.onUngroup ? e(
+      "button",
+      {
+        type: "button",
+        className: "comm-pos-ungroup",
+        title: "Ungroup",
+        "aria-label": "Ungroup",
+        onClick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          props.onUngroup();
+        },
+        onPointerDown: (ev) => ev.stopPropagation(),
+        style: chromeBtnStyle(touchish)
+      },
+      "\u29C9"
+    ) : null;
+    const wcItems = [];
+    if (props.onToggleLock) {
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "lock",
+            type: "button",
+            className: "comm-pos-wc-item",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              props.onToggleLock();
+              setWcOpen(false);
+            }
+          },
+          props.locked ? "Unlock" : "Lock"
+        )
+      );
+    }
+    if (props.onUngroup) {
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "ungroup",
+            type: "button",
+            className: "comm-pos-wc-item",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              props.onUngroup();
+              setWcOpen(false);
+            }
+          },
+          "Ungroup"
+        )
+      );
+    }
+    if (props.onCreateWindow) {
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "create",
+            type: "button",
+            className: "comm-pos-wc-item",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              props.onCreateWindow();
+              setWcOpen(false);
+            }
+          },
+          "+ Create window"
+        )
+      );
+    }
+    if (props.onClose) {
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "close",
+            type: "button",
+            className: "comm-pos-wc-item",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              props.onClose();
+              setWcOpen(false);
+            }
+          },
+          "Close window"
+        )
+      );
+    }
+    const closed = props.closedWindows || [];
+    for (let ci = 0; ci < closed.length; ci++) {
+      const c = closed[ci];
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "reopen-" + c.id,
+            type: "button",
+            className: "comm-pos-wc-item",
+            onClick: (ev) => {
+              var _a;
+              ev.preventDefault();
+              ev.stopPropagation();
+              (_a = props.onReopenWindow) == null ? void 0 : _a.call(props, c.id);
+              setWcOpen(false);
+            }
+          },
+          "Reopen: " + c.label
+        )
+      );
+    }
+    const windowControl = wcItems.length > 0 && props.showMenu ? e(
+      "div",
+      {
+        className: "comm-pos-wc",
+        style: { position: "relative", flexShrink: 0 },
+        onPointerDown: (ev) => ev.stopPropagation()
+      },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "comm-pos-wc-btn",
+          title: "Window Control",
+          "aria-label": "Window Control",
+          "aria-expanded": wcOpen,
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            setWcOpen(!wcOpen);
+          },
+          style: chromeBtnStyle(touchish)
+        },
+        "\u2630"
+      ),
+      wcOpen ? e(
+        "div",
+        {
+          className: "comm-pos-wc-menu",
+          style: {
+            position: "absolute",
+            top: "100%",
+            right: 0,
+            marginTop: 2,
+            minWidth: 160,
+            zIndex: 40,
+            background: "rgba(18,18,14,0.98)",
+            border: "1px solid #886",
+            padding: 4,
+            display: "flex",
+            flexDirection: "column",
+            gap: 2
+          }
+        },
+        ...wcItems
+      ) : null
+    ) : null;
+    if (!lockBtn && !ungroupBtn && !windowControl) return null;
+    return e(
+      "div",
+      {
+        className: "comm-pos-window-chrome",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          flexShrink: 0
+        },
+        onPointerDown: (ev) => ev.stopPropagation()
+      },
+      lockBtn,
+      ungroupBtn,
+      windowControl
+    );
+  }
+
   // src/ui/chrome/PositionedPanel.ts
   var PEER_SNAP_PCT = 1;
   var VISUAL_EDGE_SNAP_PX = 8;
@@ -10939,7 +13199,7 @@ var EnhanceCommUI = (() => {
       hoverLeaveTimer.current = setTimeout(() => {
         hoverLeaveTimer.current = null;
         setHover(false);
-      }, 180);
+      }, 280);
     };
     React.useEffect(() => {
       return () => {
@@ -10955,6 +13215,9 @@ var EnhanceCommUI = (() => {
     freePlacementRef.current = freePlacement;
     const gridStepRef = React.useRef(getLayoutGridStep());
     const shellRef = React.useRef(null);
+    const [arrangePlacement, setArrangePlacement] = React.useState(
+      "above"
+    );
     React.useEffect(
       () => subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
@@ -10962,6 +13225,23 @@ var EnhanceCommUI = (() => {
       }),
       []
     );
+    React.useEffect(() => {
+      const onScale = props.onWindowScale;
+      if (!onScale) return;
+      const el = shellRef.current;
+      if (!el) return;
+      const canScale = editing || !!props.movable || !props.locked;
+      if (!canScale) return;
+      const onWheel = (ev) => {
+        if (!ev.ctrlKey) return;
+        ev.preventDefault();
+        const cur = typeof pos.scale === "number" && Number.isFinite(pos.scale) ? pos.scale : 1;
+        const delta = ev.deltaY < 0 ? 0.05 : -0.05;
+        onScale(clampWindowScale(cur + delta));
+      };
+      el.addEventListener("wheel", onWheel, { passive: false });
+      return () => el.removeEventListener("wheel", onWheel);
+    }, [props.onWindowScale, props.locked, props.movable, editing, pos.scale]);
     React.useEffect(() => {
       if (!props.onResizeFrame) return;
       const el = shellRef.current;
@@ -11087,15 +13367,23 @@ var EnhanceCommUI = (() => {
       let nextY = raw.y;
       let edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
       let useVisualEdge = true;
-      if (!freePlacementRef.current) {
+      const free = freePlacementRef.current || getLayoutFreePlacement();
+      if (!free) {
         const root = layoutDragRoot().getBoundingClientRect();
         const metrics = squareGridMetrics(
           gridStepRef.current,
           root.width,
           root.height
         );
-        nextX = snapToAxisPercents(nextX, metrics.xPercents, false);
-        nextY = snapToAxisPercents(nextY, metrics.yPercents, false);
+        const snapped = snapPosToFineGrid(
+          nextX,
+          nextY,
+          gridStepRef.current,
+          root.width,
+          root.height
+        );
+        nextX = snapped.x;
+        nextY = snapped.y;
         const cellPctX = metrics.cellPx / Math.max(1, root.width) * 100;
         const cellPctY = metrics.cellPx / Math.max(1, root.height) * 100;
         const peerThresh = Math.min(
@@ -11138,8 +13426,23 @@ var EnhanceCommUI = (() => {
         const nudged = softAvoidOverlap(id, lastPos.current, peers);
         if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
           finalPos = nudged;
-          onMove(id, nudged);
         }
+      }
+      if (!(freePlacementRef.current || getLayoutFreePlacement())) {
+        const root = layoutDragRoot().getBoundingClientRect();
+        const snapped = snapPosToFineGrid(
+          finalPos.x,
+          finalPos.y,
+          gridStepRef.current,
+          root.width,
+          root.height
+        );
+        if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
+          finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
+        }
+      }
+      if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
+        onMove(id, finalPos);
       }
       if (props.onMoveEnd) props.onMoveEnd(id, finalPos);
     };
@@ -11174,7 +13477,7 @@ var EnhanceCommUI = (() => {
         el.removeEventListener("pointerup", up);
         el.removeEventListener("pointercancel", up);
       };
-    }, [props.extraDragRef, editing, props.movable, id, pos.x, pos.y]);
+    }, [props.extraDragRef, editing, props.movable, id]);
     const showClose = !!onClose && !hidden && (hover || touchish || editing && !props.closeOnHoverOnly);
     const opacity = typeof props.opacity === "number" && Number.isFinite(props.opacity) ? Math.max(0.25, Math.min(1, props.opacity)) : 1;
     const interactiveBody = !!props.interactiveBody;
@@ -11204,12 +13507,44 @@ var EnhanceCommUI = (() => {
       } : null
     );
     const closeAbove = props.closePlacement === "above";
-    const closeOnChrome = closeAbove && (editing || movable);
+    const moveGrip = movable && props.showMoveGrip !== false || editing && editChrome === "grip" ? e(
+      "div",
+      {
+        className: "comm-pos-edit-grip",
+        title: "Drag to move",
+        "aria-label": "Drag to move",
+        style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: touchish ? "6px 8px" : "2px 4px",
+          background: "rgba(40,40,20,0.92)",
+          border: "1px solid #886",
+          cursor: "grab",
+          userSelect: "none",
+          color: "#ffe08a",
+          fontSize: headerFont,
+          lineHeight: 1,
+          touchAction: "none",
+          pointerEvents: "auto",
+          // Full-width drag strip in layout-edit grip rows and play-arrange
+          // above-frame bar (CSS). Inline flex helps before CSS applies.
+          flex: 1
+        },
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel: onPointerUp
+      },
+      e("span", { "aria-hidden": true }, "\u283F")
+    ) : null;
+    const showArrangeOverlay = !editing && (!!moveGrip || !!props.onToggleLock || !!props.onUngroup);
+    const closeInArrangeOverlay = showClose && closeAbove && showArrangeOverlay;
     const closeBtn = showClose ? e(
       "button",
       {
         type: "button",
-        className: "comm-pos-panel-close" + (closeAbove ? " comm-pos-panel-close-above" : ""),
+        className: "comm-pos-panel-close" + (closeAbove ? " comm-pos-panel-close-above" : "") + (closeInArrangeOverlay ? " comm-pos-panel-close-in-chrome" : ""),
         title: `Hide ${panelLabel}`,
         "aria-label": `Hide ${panelLabel}`,
         onClick: (ev) => {
@@ -11220,10 +13555,27 @@ var EnhanceCommUI = (() => {
         onPointerDown: (ev) => ev.stopPropagation(),
         onMouseEnter: () => setPanelHover(true),
         onMouseLeave: () => setPanelHover(false),
-        style: {
+        style: closeInArrangeOverlay ? {
+          position: "relative",
+          top: "auto",
+          right: "auto",
+          zIndex: 1,
+          width: `${closeSize}px`,
+          height: `${closeSize}px`,
+          padding: 0,
+          margin: 0,
+          flexShrink: 0,
+          border: "1px solid #886",
+          background: "rgba(30,30,20,0.95)",
+          color: "#ffe08a",
+          fontSize: touchish ? "18px" : "14px",
+          lineHeight: `${closeSize - 2}px`,
+          cursor: "pointer",
+          pointerEvents: "auto"
+        } : {
           position: "absolute",
-          top: closeAbove ? closeOnChrome ? "2px" : `-${closeSize + 2}px` : editing ? "2px" : "0",
-          right: closeOnChrome ? "2px" : "0",
+          top: closeAbove ? `-${closeSize + 2}px` : editing ? "2px" : "0",
+          right: "0",
           zIndex: 2,
           width: `${closeSize}px`,
           height: `${closeSize}px`,
@@ -11306,35 +13658,46 @@ var EnhanceCommUI = (() => {
         return cells;
       }, [])
     ) : null;
-    const moveGrip = props.showMoveGrip !== false && (movable || editing && editChrome === "grip") ? e(
+    const hasWindowChrome = !!props.onToggleLock || !!props.onUngroup || !!props.onCreateWindow || !!onClose || !!(props.closedWindows && props.closedWindows.length);
+    const windowChrome = hasWindowChrome ? e(WindowControlChrome, {
+      touchish,
+      locked: props.locked,
+      onToggleLock: props.onToggleLock,
+      onUngroup: props.onUngroup,
+      onCreateWindow: props.onCreateWindow,
+      onClose: onClose || void 0,
+      closedWindows: props.closedWindows,
+      onReopenWindow: props.onReopenWindow,
+      showMenu: movable || editing || !!props.onToggleLock || !!props.onUngroup || !!onClose || !!(props.closedWindows && props.closedWindows.length)
+    }) : null;
+    const ARRANGE_CHROME_H = 34;
+    React.useLayoutEffect(() => {
+      if (!showArrangeOverlay) {
+        setArrangePlacement("above");
+        return;
+      }
+      const el = shellRef.current;
+      if (!el) return;
+      const measure = () => {
+        const root = layoutDragRoot().getBoundingClientRect();
+        const panel = el.getBoundingClientRect();
+        const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 2;
+        setArrangePlacement(fitsAbove ? "above" : "inline");
+      };
+      measure();
+      if (!hover) return;
+      const t = window.setTimeout(measure, 0);
+      return () => window.clearTimeout(t);
+    }, [showArrangeOverlay, hover, pos.x, pos.y, movable, id]);
+    const arrangeOverlay = showArrangeOverlay ? e(
       "div",
       {
-        className: "comm-pos-edit-grip",
-        title: "Drag to move",
-        "aria-label": "Drag to move",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: touchish ? "6px 8px" : "2px 4px",
-          marginBottom: "2px",
-          background: "rgba(40,40,20,0.92)",
-          border: "1px solid #886",
-          cursor: "grab",
-          userSelect: "none",
-          color: "#ffe08a",
-          fontSize: headerFont,
-          lineHeight: 1,
-          touchAction: "none",
-          pointerEvents: "auto",
-          flexShrink: 0
-        },
-        onPointerDown,
-        onPointerMove,
-        onPointerUp,
-        onPointerCancel: onPointerUp
+        className: "comm-pos-arrange-overlay" + (moveGrip ? " has-grip" : " is-chrome-only") + (arrangePlacement === "inline" ? " is-inline" : " is-above"),
+        title: moveGrip ? `Drag to move \xB7 ${panelLabel}` : void 0
       },
-      e("span", { "aria-hidden": true }, "\u283F")
+      moveGrip,
+      props.onToggleLock || props.onUngroup ? windowChrome : null,
+      closeInArrangeOverlay ? closeBtn : null
     ) : null;
     const editHeaderStyle = {
       display: "flex",
@@ -11342,7 +13705,7 @@ var EnhanceCommUI = (() => {
       gap: "6px",
       padding: headerPad,
       paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
-      marginBottom: 0,
+      marginBottom: "2px",
       background: hidden ? "rgba(30,30,30,0.92)" : "rgba(40,40,20,0.92)",
       border: hidden ? "1px solid #666" : "1px solid #886",
       cursor: "grab",
@@ -11354,7 +13717,20 @@ var EnhanceCommUI = (() => {
       minHeight: touchish ? "40px" : void 0,
       pointerEvents: "auto"
     };
-    const editHeader = !editing ? moveGrip : editChrome === "grip" ? moveGrip : editChrome === "anchors" ? e(
+    const editHeader = !editing ? arrangeOverlay : editChrome === "grip" ? e(
+      "div",
+      {
+        className: "comm-pos-edit-grip-row",
+        style: {
+          display: "flex",
+          alignItems: "stretch",
+          gap: 4,
+          marginBottom: "2px"
+        }
+      },
+      moveGrip,
+      windowChrome
+    ) : editChrome === "anchors" ? e(
       "div",
       {
         className: "comm-pos-edit-header is-anchors-only",
@@ -11384,6 +13760,7 @@ var EnhanceCommUI = (() => {
         },
         `${panelLabel}${hidden ? " (hidden)" : ""}`
       ),
+      windowChrome,
       anchorPad
     ) : e(
       "div",
@@ -11408,6 +13785,7 @@ var EnhanceCommUI = (() => {
         },
         `${panelLabel}${hidden ? " (hidden)" : ""}`
       ),
+      windowChrome,
       hidden && onShow ? e(
         "button",
         {
@@ -11494,19 +13872,33 @@ var EnhanceCommUI = (() => {
       },
       props.hiddenBodyStyle || {}
     );
+    const windowIdOverlay = props.showWindowIds && typeof props.windowNumber === "number" && props.windowNumber > 0 ? e(
+      "div",
+      {
+        className: "comm-pos-window-id",
+        "aria-hidden": true
+      },
+      String(props.windowNumber)
+    ) : null;
+    const needsChromeHover = !!onClose || showArrangeOverlay || !editing && (!!props.onToggleLock || !!props.onUngroup || movable);
+    const onActivateCapture = props.onActivate ? (_ev) => {
+      props.onActivate(id);
+    } : void 0;
     return e(
       "div",
       {
         ref: shellRef,
-        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${props.className ? ` ${props.className}` : ""}`,
+        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
         "data-panel": id,
         style: shellStyle,
-        onMouseEnter: onClose ? () => setPanelHover(true) : void 0,
-        onMouseLeave: onClose ? () => setPanelHover(false) : void 0
+        onPointerDownCapture: onActivateCapture,
+        onMouseEnter: needsChromeHover ? () => setPanelHover(true) : void 0,
+        onMouseLeave: needsChromeHover ? () => setPanelHover(false) : void 0
       },
       editHeader,
       opacityRow,
-      closeBtn,
+      closeInArrangeOverlay ? null : closeBtn,
+      windowIdOverlay,
       hidden && editing ? e(
         "div",
         {
@@ -11541,15 +13933,28 @@ var EnhanceCommUI = (() => {
 .ecu-meter-inspector-class {
   display: inline-block;
   width: 4px;
-  height: 14px;
+  height: 16px;
   flex-shrink: 0;
   border-radius: 1px;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.55);
 }
+.ecu-meter-inspector-portrait {
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+.ecu-meter-inspector-portrait .ecu-meter-icon,
+.ecu-meter-inspector-portrait .ecu-meter-icon-character {
+  width: 40px !important;
+  height: 40px !important;
+}
+.ecu-meter-inspector-ctype {
+  font-weight: 400;
+  text-transform: lowercase;
+}
 .ecu-meter-inspector-sub {
   color: var(--meter-muted);
   font-weight: 400;
-  font-size: 10px;
+  font-size: 12px;
   margin-left: 4px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -11578,6 +13983,80 @@ var EnhanceCommUI = (() => {
   border-radius: 0;
   border-bottom: none;
 }
+.ecu-meter-report-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  background: #0e1014;
+}
+.ecu-meter-report-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.ecu-meter-plugin-rail {
+  flex: 0 0 128px;
+  width: 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 5px;
+  background: linear-gradient(180deg, #1a1618 0%, #121014 100%);
+  border-right: 1px solid rgba(0, 0, 0, 0.65);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.ecu-meter-plugin-rail-sec {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a7a5a;
+  padding: 8px 6px 3px;
+}
+.ecu-meter-plugin-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: #c8c2b4;
+  font-size: 13px;
+  padding: 6px 6px;
+  line-height: 1.25;
+}
+.ecu-meter-plugin-rail-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.ecu-meter-plugin-rail-item.is-active {
+  background: rgba(201, 162, 39, 0.16);
+  border-color: rgba(201, 162, 39, 0.45);
+  color: #ffe08a;
+}
+.ecu-meter-plugin-rail-item.is-muted {
+  cursor: default;
+  opacity: 0.55;
+}
+.ecu-meter-plugin-rail-ico {
+  flex-shrink: 0;
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #c9a227;
+}
+.ecu-meter-plugin-rail-lab {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Legacy top tabs kept for any external/mock consumers */
 .ecu-meter-shell.is-report .ecu-meter-report-tabs {
   background: rgba(0, 0, 0, 0.22);
   border: none;
@@ -11942,76 +14421,845 @@ var EnhanceCommUI = (() => {
 }
 .ecu-meter-icon-clip { display: block; overflow: hidden; }
 .ecu-meter-icon-clip img { display: block; max-width: none; image-rendering: pixelated; }
+.ecu-meter-icon-monster {
+  flex-shrink: 0;
+}
+.ecu-meter-icon-monster > * {
+  margin: 0 !important;
+}
+/* Details GameCooltip-ish hover tip (bars, timeline, Spells/Targets).
+ * Shared --meter-tt-* vars: body \u226516px, icons 22px (see METER_TT_ICON). */
 .ecu-meter-tt {
+  --meter-tt-body: 16px;
+  --meter-tt-title: 17px;
+  --meter-tt-sec: 15px;
+  --meter-tt-kbd: 13px;
+  --meter-tt-foot: 13px;
+  --meter-tt-icon: 22px;
+  --meter-tt-pad-y: 12px;
+  --meter-tt-pad-x: 14px;
+  --meter-tt-row-pad-y: 4px;
+  --meter-tt-row-pad-x: 8px;
+  --meter-tt-gap: 8px;
   position: fixed;
   z-index: 10000;
-  max-width: 300px;
-  background: #121820;
-  border: 1px solid #3d4d63;
-  border-radius: 4px;
-  padding: 8px 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  min-width: 300px;
+  max-width: 460px;
+  background: rgba(12, 14, 18, 0.94);
+  border: 1px solid rgba(210, 210, 220, 0.28);
+  border-radius: 2px;
+  padding: var(--meter-tt-pad-y) var(--meter-tt-pad-x);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.55);
   pointer-events: none;
-  font-size: 14px;
+  font-size: var(--meter-tt-body);
   color: #e8eef7;
-  line-height: 1.35;
+  line-height: 1.45;
+  font-weight: normal;
+  text-shadow: none;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
-.ecu-meter-tt h4 { margin: 0 0 6px; font-size: 15px; color: #fff; font-weight: normal; }
-.ecu-meter-tt .line { display: flex; justify-content: space-between; gap: 12px; }
-.ecu-meter-tt .sec { margin-top: 6px; color: #8b9bb4; font-size: 11px; text-transform: uppercase; }
-.ecu-meter-tt ul { margin: 2px 0 0; padding: 0; list-style: none; }
-.ecu-meter-tt li { display: flex; justify-content: space-between; gap: 10px; }
+.ecu-meter-tt h4 {
+  margin: 0 0 8px;
+  font-size: var(--meter-tt-title);
+  color: #fff;
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: var(--meter-tt-gap);
+}
+/* Beat global .ecu-meter-icon { 14px !important } \u2014 bar rows stay 14px. */
+.ecu-meter-tt .ecu-meter-icon,
+.ecu-meter-tt .ecu-meter-icon-clip {
+  width: var(--meter-tt-icon) !important;
+  height: var(--meter-tt-icon) !important;
+}
+.ecu-meter-tt .ecu-meter-icon {
+  font-size: 13px;
+  line-height: var(--meter-tt-icon) !important;
+}
+.ecu-meter-tt .ecu-meter-icon-class {
+  font-size: 12px;
+  font-weight: 700;
+}
+.ecu-meter-tt .line {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  color: #c8d0dc;
+  font-size: var(--meter-tt-body);
+}
+.ecu-meter-tt .line span { color: #ffe08a; }
+.ecu-meter-tt .line b { color: #fff; font-weight: normal; }
+.ecu-meter-tt .sec {
+  margin-top: 10px;
+  color: #8b9bb4;
+  font-size: var(--meter-tt-sec);
+  text-transform: uppercase;
+}
+.ecu-meter-tt ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.ecu-meter-tt li { display: flex; justify-content: space-between; gap: 14px; }
+/* Time Line cooltip: hovered icon + nearby cluster (on-screen, ~2s).
+   Compact chrome shared by gear + CD/buff/debuff/death. */
+.ecu-meter-tt.is-tl-cluster,
+.ecu-meter-tt.is-gear-tip,
+.ecu-meter-tt.is-tl-ev-tip {
+  padding: 10px 12px;
+  line-height: 1.3;
+}
+.ecu-meter-tt.is-gear-tip {
+  min-width: 300px;
+  max-width: 440px;
+}
+.ecu-meter-tt.is-tl-ev-tip {
+  min-width: 260px;
+  max-width: 380px;
+}
+.ecu-meter-tt-tl-cat {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c9b878;
+  margin-bottom: 2px;
+}
+.ecu-meter-tt-tl-cat.is-gear {
+  color: #e8b84a;
+  margin-bottom: 4px;
+}
+.ecu-meter-tt-cluster-meta,
+.ecu-meter-tt-gear-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: var(--meter-tt-body);
+}
+.ecu-meter-tt-cluster-who,
+.ecu-meter-tt-gear-who {
+  color: #fff;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-tt-cluster-when,
+.ecu-meter-tt-gear-when {
+  flex: 0 0 auto;
+  color: #c8d0dc;
+  white-space: nowrap;
+  font-size: var(--meter-tt-sec);
+}
+.ecu-meter-tt-gear {
+  --meter-tt-icon: 26px;
+}
+.ecu-meter-tt-gear-list,
+.ecu-meter-tt-evs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.ecu-meter-tt-gear-row {
+  display: grid;
+  grid-template-columns: 76px 72px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.ecu-meter-tt-gear-row:first-child {
+  border-top: none;
+  padding-top: 2px;
+}
+.ecu-meter-tt-gear-row.is-muted,
+.ecu-meter-tt-ev-row.is-muted {
+  opacity: 0.78;
+}
+.ecu-meter-tt-gear-slot {
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  color: #e8b84a;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-gear-icos {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+.ecu-meter-tt-gear-icos.is-single {
+  min-width: calc(var(--meter-tt-icon) + 4px);
+  justify-content: center;
+}
+.ecu-meter-tt-gear-arrow {
+  flex: 0 0 auto;
+  color: #e8b84a;
+  font-size: 14px;
+  line-height: 1;
+}
+.ecu-meter-tt-gear-arrow-sm {
+  flex: 0 0 auto;
+  color: #8b9bb4;
+  font-size: 11px;
+  line-height: 1;
+}
+.ecu-meter-tt-gear-names {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+  line-height: 1.2;
+}
+.ecu-meter-tt-gear-names .is-old,
+.ecu-meter-tt-gear-names .is-new {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-tt-gear-verb {
+  color: #e8b84a;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.ecu-meter-tt-gear-row-at {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: #8b9bb4;
+  padding-left: 0;
+}
+.ecu-meter-tt-gear-empty {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.25);
+  vertical-align: middle;
+}
+.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-slot,
+.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-arrow,
+.ecu-meter-tt-gear-row.is-muted .ecu-meter-tt-gear-verb {
+  color: #c9b878;
+}
+/* Dense CD / buff / debuff / death rows \u2014 pill + icon + name, not stacked cards. */
+.ecu-meter-tt-ev-row {
+  display: grid;
+  grid-template-columns: 22px var(--meter-tt-icon) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 6px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+.ecu-meter-tt-ev-row:first-child {
+  border-top: none;
+  padding-top: 2px;
+}
+.ecu-meter-tt-ev-row.is-primary {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  margin: 0 -4px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.ecu-meter-tt-ev-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 14px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+  flex: 0 0 auto;
+}
+.ecu-meter-tt-ev-pill.is-cd {
+  background: rgba(60, 180, 255, 0.88);
+  color: #061018;
+}
+.ecu-meter-tt-ev-pill.is-buff {
+  background: rgba(48, 196, 72, 0.88);
+  color: #061008;
+}
+.ecu-meter-tt-ev-pill.is-debuff {
+  background: rgba(230, 72, 72, 0.92);
+  color: #140808;
+}
+.ecu-meter-tt-ev-pill.is-death {
+  background: rgba(210, 210, 220, 0.78);
+  color: #1a1214;
+}
+.ecu-meter-tt-ev-pill.is-gear {
+  background: rgba(232, 184, 74, 0.9);
+  color: #1a1408;
+}
+.ecu-meter-tt-ev-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ecu-meter-tt-ev-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  color: #fff;
+  font-size: var(--meter-tt-sec);
+}
+.ecu-meter-tt-ev-elapsed {
+  flex: 0 0 auto;
+  color: #8b9bb4;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-tt-ev-at {
+  flex: 0 0 auto;
+  color: #8b9bb4;
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-tt-div {
+  height: 1px;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.12);
+}
+.ecu-meter-tt-sec {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 6px;
+  padding: var(--meter-tt-row-pad-y) var(--meter-tt-row-pad-x);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 2px;
+}
+.ecu-meter-tt-sec.is-max {
+  background: rgba(201, 162, 39, 0.18);
+}
+.ecu-meter-tt-sec-l {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--meter-tt-gap);
+  min-width: 0;
+}
+.ecu-meter-tt-sec-ico {
+  font-size: var(--meter-tt-sec);
+  line-height: 1;
+  opacity: 0.9;
+}
+.ecu-meter-tt-sec-t {
+  color: #ffe08a;
+  font-size: var(--meter-tt-sec);
+  font-weight: normal;
+}
+.ecu-meter-tt-kbd {
+  flex-shrink: 0;
+  font-size: var(--meter-tt-kbd);
+  color: #a8b0bc;
+  background: rgba(80, 88, 100, 0.55);
+  border: 1px solid rgba(160, 168, 180, 0.35);
+  border-radius: 999px;
+  padding: 3px 10px;
+  letter-spacing: 0.02em;
+}
+.ecu-meter-tt-sec.is-max .ecu-meter-tt-kbd {
+  color: #1a1a1a;
+  background: #ffe08a;
+  border-color: #c9a227;
+}
+.ecu-meter-tt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: var(--meter-tt-row-pad-y) var(--meter-tt-row-pad-x);
+  border-radius: 1px;
+  font-size: var(--meter-tt-body);
+}
+.ecu-meter-tt-row.is-alt {
+  background: rgba(255, 255, 255, 0.045);
+}
+.ecu-meter-tt-row-l {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--meter-tt-gap);
+  min-width: 0;
+  flex: 1;
+}
+.ecu-meter-tt-name {
+  color: #f2f4f8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-meter-tt-amt {
+  flex-shrink: 0;
+  color: #ffe08a;
+  font-weight: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.ecu-meter-tt-empty {
+  padding: var(--meter-tt-row-pad-y) var(--meter-tt-row-pad-x);
+  color: #7a8494;
+  font-size: var(--meter-tt-sec);
+}
+.ecu-meter-tt-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8b9bb4;
+  font-size: var(--meter-tt-foot);
+}
 .ecu-meter-inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  font-size: 14px;
+  color: var(--meter-text);
+  background: transparent;
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ecu-meter-inspector-layout {
   display: flex;
   flex-direction: row;
   min-height: 0;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+.ecu-meter-bd-side {
+  flex: 0 0 168px;
+  width: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 5px 8px;
+  background: linear-gradient(180deg, #1a1618 0%, #121014 100%);
+  border-right: 1px solid rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  min-height: 0;
+}
+.ecu-meter-bd-side-sec {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #c9a227;
+  padding: 8px 6px 3px;
+  flex-shrink: 0;
+}
+.ecu-meter-bd-side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1 1 auto;
+  min-height: 48px;
+  max-height: 42%;
+}
+.ecu-meter-bd-side-list.is-segments {
+  max-height: 28%;
+  flex: 0 1 auto;
+}
+.ecu-meter-bd-side-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #c8c2b4;
   font-size: 12px;
-  color: var(--meter-text);
+  padding: 4px 6px;
+  line-height: 1.25;
+}
+.ecu-meter-bd-side-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ecu-meter-bd-side-item.is-active {
+  background: rgba(255, 220, 80, 0.22);
+  border-color: rgba(201, 162, 39, 0.55);
+  color: #ffe08a;
+}
+.ecu-meter-bd-side-item:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.ecu-meter-bd-side-lab {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-bd-side-amt {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: #8b9bb0;
+  font-size: 11px;
+}
+.ecu-meter-bd-side-item.is-active .ecu-meter-bd-side-amt {
+  color: #ffe08a;
+}
+.ecu-meter-bd-side-empty {
+  padding: 6px;
+  color: #6a7384;
+  font-size: 11px;
+}
+.ecu-meter-bd-side .ecu-game-icon,
+.ecu-meter-bd-side .ecu-meter-icon {
+  flex-shrink: 0;
+}
+.ecu-meter-inspector-top {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px 0;
+  border-bottom: 1px solid var(--meter-border);
+  background: rgba(0, 0, 0, 0.18);
+}
+.ecu-meter-inspector-attr {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  padding: 4px 0;
+}
+.ecu-meter-inspector-attr-text {
+  color: #e8eef7;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-inspector-tabs {
+  flex-shrink: 0;
+  border-bottom: none;
+  padding: 0;
+  gap: 0;
   background: transparent;
+}
+.ecu-meter-inspector-tabs .ecu-meter-player-tab {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: 0;
+}
+.ecu-meter-inspector-tabs .ecu-meter-player-tab.active {
+  color: #ffe08a;
+  border-bottom-color: #c9a227;
+  background: rgba(201, 162, 39, 0.1);
 }
 .ecu-meter-inspector .ecu-meter-inspector-body {
   flex: 1;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* Details Spells: left = abilities + TARGETS; right = spell blocks (full height) */
+.ecu-meter-bd-spells {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.ecu-meter-bd-left {
+  flex: 1.25;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--meter-border);
+}
+.ecu-meter-bd-main {
+  display: none;
+}
+.ecu-meter-bd-abilities {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
-  display: flex;
-  flex-direction: column;
 }
-.ecu-meter-inspector-tabs-rail {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  width: 72px;
-  border-left: 1px solid var(--meter-border);
-  background: rgba(0, 0, 0, 0.18);
+.ecu-meter-bd-abilities .ecu-meter-bar-host,
+.ecu-meter-bd-targets .ecu-meter-bar-host,
+.ecu-meter-bd-auras-players .ecu-meter-bar-host {
+  height: 100%;
 }
-.ecu-meter-inspector-tabs-rail .ecu-meter-player-tab {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 6px;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  background: transparent;
-  color: var(--meter-muted);
-  font-size: 11px;
+.ecu-meter-bd-abilities .ecu-meter-row.clickable,
+.ecu-meter-bd-abilities .ecu-meter-bar-list,
+.ecu-meter-bd-auras-players .ecu-meter-row.clickable {
   cursor: pointer;
 }
-.ecu-meter-inspector-tabs-rail .ecu-meter-player-tab:hover {
-  color: var(--meter-text);
-  background: rgba(255, 255, 255, 0.04);
+/* Inspector rank bars \u2014 readable density (Details ~20px rows) */
+.ecu-meter-bd-abilities .ecu-meter-row,
+.ecu-meter-bd-targets .ecu-meter-row,
+.ecu-meter-bd-auras-players .ecu-meter-row {
+  min-height: 22px;
+  height: 22px;
+  font-size: 14px;
+  text-shadow: none;
+  gap: 4px;
+  padding: 0 6px 0 3px;
 }
-.ecu-meter-inspector-tabs-rail .ecu-meter-player-tab.active {
+.ecu-meter-bd-abilities .ecu-meter-row.has-skill,
+.ecu-meter-bd-targets .ecu-meter-row.has-skill,
+.ecu-meter-bd-auras-players .ecu-meter-row.has-skill {
+  min-height: 24px;
+  height: 24px;
+}
+.ecu-meter-bd-abilities .ecu-meter-row .ecu-meter-who,
+.ecu-meter-bd-abilities .ecu-meter-row .ecu-meter-vals,
+.ecu-meter-bd-targets .ecu-meter-row .ecu-meter-who,
+.ecu-meter-bd-targets .ecu-meter-row .ecu-meter-vals,
+.ecu-meter-bd-auras-players .ecu-meter-row .ecu-meter-who,
+.ecu-meter-bd-auras-players .ecu-meter-row .ecu-meter-vals {
+  font-size: 14px !important;
+}
+.ecu-meter-bd-abilities .ecu-meter-icon,
+.ecu-meter-bd-targets .ecu-meter-icon,
+.ecu-meter-bd-auras-players .ecu-meter-icon {
+  width: 18px !important;
+  height: 18px !important;
+}
+.ecu-meter-bd-blocks {
+  flex: 0.95;
+  min-width: 200px;
+  max-width: 340px;
+  overflow: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.ecu-meter-bd-blocks-empty {
+  justify-content: center;
+  align-items: center;
+}
+.ecu-meter-bd-block {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 20, 26, 0.88);
+  padding: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  min-height: 52px;
+}
+.ecu-meter-bd-block.is-summary {
+  border-color: rgba(201, 162, 39, 0.4);
+}
+.ecu-meter-bd-block.is-crit {
+  border-color: rgba(229, 115, 115, 0.4);
+}
+.ecu-meter-bd-block-fill {
+  position: absolute;
+  inset: 1px auto 1px 1px;
+  background: rgba(110, 110, 120, 0.35);
+  pointer-events: none;
+  z-index: 0;
+}
+.ecu-meter-bd-block.is-summary .ecu-meter-bd-block-fill {
+  background: rgba(201, 162, 39, 0.16);
+}
+.ecu-meter-bd-block.is-crit .ecu-meter-bd-block-fill {
+  background: rgba(229, 115, 115, 0.22);
+}
+.ecu-meter-bd-block-body {
+  position: relative;
+  z-index: 1;
+  padding: 7px 9px;
+}
+.ecu-meter-bd-block-title {
+  color: #ffd28a;
+  font-size: 13px;
+  margin-bottom: 5px;
+  text-transform: none;
+}
+.ecu-meter-bd-block-h {
+  color: #ffd28a;
+  font-size: 13px;
+}
+.ecu-meter-bd-block-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: #c5d0e0;
+  padding: 2px 0;
+  line-height: 1.35;
+}
+.ecu-meter-bd-block-left,
+.ecu-meter-bd-block-right {
+  min-width: 0;
+}
+.ecu-meter-bd-block-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+.ecu-meter-bd-block-line b {
+  color: #fff;
+  font-weight: normal;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-bd-block-note,
+.ecu-meter-bd-muted,
+.ecu-meter-bd-stub {
+  color: #8b9bb0;
+  font-size: 12px;
+  padding: 4px 0 0;
+  line-height: 1.35;
+}
+.ecu-meter-bd-stub {
+  padding: 12px 10px;
+}
+.ecu-meter-bd-targets {
+  flex: 0 0 36%;
+  min-height: 96px;
+  max-height: 42%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--meter-border);
+}
+.ecu-meter-bd-targets-h {
+  flex-shrink: 0;
+  padding: 6px 10px 3px;
+  color: #ffd28a;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ecu-meter-bd-targets .ecu-meter-bar-scroll {
+  flex: 1;
+  min-height: 0;
+}
+.ecu-meter-bd-auras {
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.ecu-meter-bd-auras.is-full .ecu-meter-bd-auras-main {
+  flex: 1;
+  width: 100%;
+}
+.ecu-meter-bd-auras-players {
+  display: none;
+}
+.ecu-meter-bd-auras-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+.ecu-meter-bd-auras-col {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  border-right: 1px solid var(--meter-border);
+  padding-bottom: 8px;
+}
+.ecu-meter-bd-auras-col:last-child {
+  border-right: none;
+}
+.ecu-meter-bd-auras-col-h {
+  padding: 8px 10px 4px;
+  color: #ffd28a;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+.ecu-meter-bd-auras-note {
+  padding: 0 10px 6px;
+  color: #8b9bb0;
+  font-size: 12px;
+}
+.ecu-meter-bd-auras-table {
+  display: flex;
+  flex-direction: column;
+}
+.ecu-meter-bd-auras-head,
+.ecu-meter-uptime-row {
+  display: grid;
+  grid-template-columns: 1fr 64px 40px 28px 28px;
+  gap: 4px;
+  padding: 4px 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.ecu-meter-bd-auras-head {
+  color: #ffd28a;
+  border-bottom: 1px solid var(--meter-border);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.ecu-meter-uptime-row {
+  color: #c5d0e0;
+}
+.ecu-meter-uptime-row.is-alt {
+  background: rgba(255, 255, 255, 0.03);
+}
+.ecu-meter-uptime-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-uptime-ico {
+  flex: 0 0 auto;
+}
+.ecu-meter-uptime-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-uptime-time {
   color: #ffe08a;
-  background: rgba(201, 162, 39, 0.12);
-  box-shadow: inset -2px 0 0 #c9a227;
-  border-bottom-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-uptime-pct,
+.ecu-meter-uptime-apps,
+.ecu-meter-uptime-ref {
+  font-variant-numeric: tabular-nums;
+  color: #8b9bb0;
+  text-align: center;
+}
+.ecu-meter-uptime-pct {
+  color: #e8eef7;
 }
 .ecu-meter-inspector-compare {
   display: flex;
   gap: 1px;
   min-height: 0;
+  height: 100%;
   overflow: auto;
   background: var(--meter-border);
 }
@@ -12019,23 +15267,39 @@ var EnhanceCommUI = (() => {
   flex: 1;
   min-width: 0;
   background: #12141a;
-  padding: 6px 8px;
+  padding: 8px 10px;
+  overflow: auto;
 }
 .ecu-meter-inspector-compare-col.is-you {
-  background: rgba(201, 162, 39, 0.06);
+  background: rgba(201, 162, 39, 0.07);
+}
+.ecu-meter-inspector-compare-col.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-meter-inspector-compare-empty {
+  color: #8b9bb0;
+  font-size: 12px;
+  text-align: center;
+  padding: 12px;
+  line-height: 1.35;
 }
 .ecu-meter-inspector-compare-h {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
   color: #e8eef7;
   margin-bottom: 6px;
-  padding-bottom: 4px;
+  padding-bottom: 5px;
   border-bottom: 1px solid var(--meter-border);
 }
 .ecu-meter-inspector-compare-stat {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  font-size: 11px;
+  font-size: 13px;
   padding: 2px 0;
   color: #c5d0e0;
 }
@@ -12044,6 +15308,69 @@ var EnhanceCommUI = (() => {
   font-weight: normal;
   font-variant-numeric: tabular-nums;
 }
+.ecu-meter-inspector-compare-diff {
+  font-size: 12px;
+  margin: 4px 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-inspector-compare-diff.is-up { color: #81c784; }
+.ecu-meter-inspector-compare-diff.is-down { color: #e57373; }
+.ecu-meter-inspector-compare-diff.is-self { color: #8b9bb0; }
+.ecu-meter-inspector-compare-spells-h {
+  font-size: 11px;
+  color: #ffd28a;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 10px 0 4px;
+}
+.ecu-meter-inspector-compare-spell {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 4px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: #c5d0e0;
+  overflow: hidden;
+}
+.ecu-meter-inspector-compare-spell.is-missing {
+  min-height: 18px;
+  opacity: 0.25;
+}
+.ecu-meter-inspector-compare-spell-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(140, 140, 150, 0.28);
+  pointer-events: none;
+}
+.ecu-meter-inspector-compare-col.is-you .ecu-meter-inspector-compare-spell-fill {
+  background: rgba(201, 162, 39, 0.22);
+}
+.ecu-meter-inspector-compare-spell-n,
+.ecu-meter-inspector-compare-spell-v {
+  position: relative;
+  z-index: 1;
+}
+.ecu-meter-inspector-compare-spell-n {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-inspector-compare-spell-v {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+.ecu-meter-inspector-compare-pct.is-up { color: #81c784; }
+.ecu-meter-inspector-compare-pct.is-down { color: #e57373; }
+.ecu-meter-inspector-compare-pct.is-flat { color: #8b9bb0; }
 .ecu-meter-encounter {
   display: flex;
   flex-direction: column;
@@ -12052,98 +15379,508 @@ var EnhanceCommUI = (() => {
   font-size: 12px;
   color: var(--meter-text);
 }
+/* Legacy encounter nested-tab chrome \u2014 Summary panes live in meterViewsCss. */
 .ecu-meter-encounter-tabs {
-  display: flex;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--meter-border);
-  background: rgba(0, 0, 0, 0.15);
-}
-.ecu-meter-encounter-tab {
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  color: var(--meter-muted);
-  padding: 5px 10px;
-  font-size: 12px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-.ecu-meter-encounter-tab:hover {
-  color: var(--meter-text);
-}
-.ecu-meter-encounter-tab.active {
-  color: #ffe08a;
-  border-bottom-color: #c9a227;
-  background: rgba(201, 162, 39, 0.08);
-}
-.ecu-meter-encounter-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 6px;
-}
-.ecu-meter-encounter-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  font-size: 11px;
-  color: #8b9bb4;
-  margin-bottom: 6px;
-}
-.ecu-meter-encounter-stats b {
-  color: #c5d0e0;
-}
-.ecu-meter-encounter-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-.ecu-meter-encounter-widget {
-  border: 1px solid #2a3545;
-  background: #0e1218;
-  min-height: 80px;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.ecu-meter-encounter-widget-h {
-  padding: 3px 6px;
-  font-size: 10px;
-  color: #8b9bb4;
-  border-bottom: 1px solid #2a3545;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.ecu-meter-encounter-widget-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
+  display: none;
 }
 .ecu-meter-timeline {
+  /* Details CONST_ROW_HEIGHT=18 / icon~14; AL sprites need more room. */
+  --tl-row: 36px;
+  --tl-icon: 28px;
+  /* All multi-lane: ~TL_SUB_ROW (26) minus padding \u2014 keep readable. */
+  --tl-icon-sub: 20px;
+  --tl-class: 20px;
+  --tl-name-w: 132px;
+  --tl-ruler-h: 38px;
+  --tl-pad: 0px;
+  --tl-content-w: 100%;
+  --tl-track-w: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 4px;
-  font-size: 11px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.2;
+  background: #101218;
+  color: #cfd8dc;
+  cursor: default;
+}
+.ecu-meter-timeline-hd {
+  flex-shrink: 0;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+  background: linear-gradient(180deg, rgba(36, 30, 28, 0.95) 0%, rgba(18, 16, 18, 0.98) 100%);
+}
+.ecu-meter-timeline-mark {
+  font-size: 14px;
+  letter-spacing: 0.03em;
+  color: rgb(227, 186, 4);
+  margin-bottom: 6px;
+  user-select: none;
 }
 .ecu-meter-timeline-tools {
   display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
+  gap: 6px;
   flex-wrap: wrap;
   align-items: center;
 }
-.ecu-meter-timeline-meta {
-  color: #666;
-  margin-left: 4px;
-  font-size: 10px;
+.ecu-meter-tl-mode {
+  cursor: pointer;
+  border: 1px solid rgba(80, 70, 55, 0.7);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #b0a890;
+  font-size: 13px;
+  padding: 4px 10px;
 }
+.ecu-meter-tl-mode:hover {
+  color: #fff;
+  border-color: rgba(201, 162, 39, 0.5);
+}
+.ecu-meter-tl-mode.is-active {
+  color: #ffe08a;
+  background: rgba(201, 162, 39, 0.18);
+  border-color: rgba(201, 162, 39, 0.65);
+}
+.ecu-meter-timeline-meta {
+  color: #8b9bb4;
+  margin-left: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-timeline-meta [data-tl-wall] {
+  color: #6d7a92;
+}
+.ecu-meter-timeline-meta [data-tl-scale] {
+  margin-left: 8px;
+  color: #6d7a92;
+}
+/* Bar color legend \u2014 AL: green=buff, blue=CD, red=debuff. */
+.ecu-meter-tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #8b9bb4;
+  user-select: none;
+}
+.ecu-meter-tl-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ecu-meter-tl-legend-swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  flex-shrink: 0;
+}
+.ecu-meter-tl-legend-item.is-cd .ecu-meter-tl-legend-swatch {
+  background: rgba(60, 180, 255, 0.45);
+}
+.ecu-meter-tl-legend-item.is-buff .ecu-meter-tl-legend-swatch {
+  background: rgba(0, 255, 0, 0.35);
+}
+.ecu-meter-tl-legend-item.is-debuff .ecu-meter-tl-legend-swatch {
+  background: rgba(255, 0, 0, 0.35);
+}
+.ecu-meter-tl-legend-item.is-gear .ecu-meter-tl-legend-swatch {
+  background: rgba(255, 176, 32, 0.85);
+}
+.ecu-meter-tl-legend-item.is-death .ecu-meter-tl-legend-swatch {
+  width: 4px;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(220, 40, 40, 0.85);
+  box-shadow: 0 0 3px rgba(229, 57, 53, 0.5);
+}
+.ecu-meter-tl-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+.ecu-meter-tl-gutter {
+  flex: 0 0 var(--tl-name-w);
+  width: var(--tl-name-w);
+  min-width: var(--tl-name-w);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid #2a3140;
+  background: rgba(10, 10, 12, 0.96);
+  z-index: 4;
+}
+.ecu-meter-tl-gutter-ruler {
+  flex-shrink: 0;
+  height: var(--tl-ruler-h);
+  min-height: var(--tl-ruler-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+  padding: 0 8px;
+  border-bottom: 1px solid #2a3140;
+  background: #12141a;
+  user-select: none;
+}
+.ecu-meter-tl-gutter-axis-lab {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #a8b4c8;
+}
+.ecu-meter-tl-gutter-axis-lab.is-clock {
+  color: #6d7a92;
+}
+.ecu-meter-tl-gutter-rows {
+  flex: 1;
+  will-change: transform;
+  transform: translateZ(0);
+}
+.ecu-meter-tl-gutter-lane {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--tl-row);
+  min-height: var(--tl-row);
+  max-height: var(--tl-row);
+  padding: 0 8px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(42, 49, 64, 0.55);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.15;
+  background: rgba(10, 10, 12, 0.92);
+}
+.ecu-meter-tl-gutter-lane.is-alt {
+  background: rgba(16, 18, 24, 0.96);
+}
+.ecu-meter-tl-gutter-lane:hover {
+  background: rgba(36, 38, 44, 0.96);
+}
+.ecu-meter-tl-gutter-lane.is-selected {
+  background: rgba(40, 34, 18, 0.96);
+}
+.ecu-meter-tl-gutter-empty {
+  height: var(--tl-row);
+}
+.ecu-meter-tl-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: none;
+  overscroll-behavior-x: contain;
+  scroll-behavior: auto;
+}
+/* Track canvas \u2014 pad + content; follow-now pins \u201Cnow\u201D on the right. */
+.ecu-meter-tl-canvas {
+  position: relative;
+  width: var(--tl-track-w);
+  min-width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+/* Live-only playhead at content \u201Cnow\u201D (may sit at viewport right while
+   following). Not rendered post-combat \u2014 see MeterTimelineView. */
+.ecu-meter-tl-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--tl-pad) + var(--tl-content-w));
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(227, 186, 4, 0.9);
+  box-shadow: 0 0 6px rgba(227, 186, 4, 0.45);
+  pointer-events: none;
+  z-index: 5;
+}
+.ecu-meter-tl-ruler {
+  display: flex;
+  align-items: stretch;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #12141a;
+  border-bottom: 1px solid #2a3140;
+  min-height: var(--tl-ruler-h);
+}
+.ecu-meter-tl-ruler-track {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: var(--tl-track-w);
+  min-height: var(--tl-ruler-h);
+  overflow: hidden;
+}
+.ecu-meter-tl-axis {
+  position: relative;
+  margin-left: var(--tl-pad);
+  width: var(--tl-content-w);
+  min-width: var(--tl-content-w);
+  height: 100%;
+  min-height: inherit;
+}
+.ecu-meter-tl-ruler .ecu-meter-tl-axis {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+.ecu-meter-tl-tick {
+  position: absolute;
+  top: 50%;
+  /* Fixed-width box centered on the tick \u2014 digit changes must not shift X. */
+  width: 5ch;
+  margin-left: 0;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  text-align: center;
+  font-family: Consolas, Monaco, ui-monospace, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #a8b4c8;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.ecu-meter-tl-tick.is-wall {
+  width: 8ch;
+  font-size: 10px;
+  color: #6d7a92;
+}
+/* Only 00:00 / true end marker \u2014 never applied to live step ticks. */
+.ecu-meter-tl-tick.is-first {
+  transform: translate(0, -50%);
+  text-align: left;
+}
+.ecu-meter-tl-tick.is-last {
+  transform: translate(-100%, -50%);
+  text-align: right;
+}
+.ecu-meter-tl-lanes {
+  display: flex;
+  flex-direction: column;
+  width: var(--tl-track-w);
+  min-width: var(--tl-track-w);
+}
+.ecu-meter-tl-lane {
+  display: flex;
+  align-items: stretch;
+  /* Explicit width \u2014 do not shrink-wrap to the scrollport. */
+  width: var(--tl-track-w);
+  min-width: var(--tl-track-w);
+  height: var(--tl-row);
+  min-height: var(--tl-row);
+  max-height: var(--tl-row);
+  /* visible+hidden computes to auto+hidden (CSS overflow), which puts a
+     gold h-scrollbar on every player row. clip clips without a scrollport;
+     both axes stay clip/visible so neither becomes auto. hidden on this
+     wide strip also makes Chromium drop history tiles when the parent
+     pane scrolls left \u2014 do not use overflow-x:hidden/auto here. */
+  overflow: visible;
+  overflow-x: clip;
+  scrollbar-width: none !important;
+  line-height: 1.15;
+  border-bottom: 1px solid rgba(42, 49, 64, 0.55);
+  box-shadow: inset 0 1px 0 transparent, inset 0 -1px 0 transparent;
+  cursor: pointer;
+}
+.ecu-meter-tl-lane::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.ecu-meter-tl-lane.is-alt {
+  background: rgba(255, 255, 255, 0.025);
+}
+.ecu-meter-tl-lane:hover {
+  background: rgba(200, 200, 200, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(255, 255, 255, 0.35);
+}
+.ecu-meter-tl-lane.is-selected {
+  background: rgba(201, 162, 39, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 224, 138, 0.55), inset 0 -1px 0 rgba(255, 224, 138, 0.55);
+}
+.ecu-meter-tl-lane.is-selected:hover {
+  background: rgba(201, 162, 39, 0.18);
+}
+.ecu-meter-tl-name-txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+.ecu-meter-tl-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--tl-track-w);
+  min-width: var(--tl-track-w);
+  height: 100%;
+  min-height: 100%;
+  /* Same as lane: no per-row scrollport; parent .ecu-meter-tl-scroll is
+     the only overflow-x:auto. */
+  overflow: visible;
+  overflow-x: clip;
+  scrollbar-width: none !important;
+}
+.ecu-meter-tl-track::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.ecu-meter-tl-class {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.ecu-meter-tl-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(80, 90, 110, 0.4);
+  pointer-events: none;
+  z-index: 0;
+}
+.ecu-meter-tl-block {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  height: auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  min-width: var(--tl-icon);
+  /* No translateZ \u2014 promoted layers on a 30k+ px track get culled when scrolling. */
+  pointer-events: none;
+}
+.ecu-meter-tl-block.is-sub {
+  /* Stack only present kinds; row height grows with cat count (see laneRowPx). */
+  top: calc(var(--tl-sub-i) * 100% / var(--tl-subs) + 1px);
+  height: calc(100% / var(--tl-subs) - 2px);
+  bottom: auto;
+  min-width: var(--tl-icon-sub);
+}
+.ecu-meter-tl-block.is-no-bar .ecu-meter-tl-block-bar {
+  display: none;
+}
+.ecu-meter-tl-block-ico {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  display: inline-flex;
+  width: var(--tl-icon);
+  height: var(--tl-icon);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95));
+}
+/* Global .ecu-meter-icon is 14px !important (meter bars). Timeline must win. */
+.ecu-meter-timeline .ecu-meter-tl-block-ico .ecu-meter-icon,
+.ecu-meter-timeline .ecu-meter-tl-block-ico .ecu-meter-icon-clip {
+  width: var(--tl-icon) !important;
+  height: var(--tl-icon) !important;
+}
+.ecu-meter-tl-block.is-sub .ecu-meter-tl-block-ico {
+  width: var(--tl-icon-sub);
+  height: var(--tl-icon-sub);
+}
+.ecu-meter-timeline .ecu-meter-tl-block.is-sub .ecu-meter-tl-block-ico .ecu-meter-icon,
+.ecu-meter-timeline .ecu-meter-tl-block.is-sub .ecu-meter-tl-block-ico .ecu-meter-icon-clip {
+  width: var(--tl-icon-sub) !important;
+  height: var(--tl-icon-sub) !important;
+}
+.ecu-meter-timeline .ecu-meter-tl-class .ecu-meter-icon {
+  width: var(--tl-class) !important;
+  height: var(--tl-class) !important;
+  font-size: 13px !important;
+  line-height: var(--tl-class) !important;
+}
+.ecu-meter-tl-block-bar {
+  position: absolute;
+  left: calc(var(--tl-icon) / 2);
+  right: 0;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 1px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+  pointer-events: none;
+}
+.ecu-meter-tl-block.is-sub .ecu-meter-tl-block-bar {
+  left: calc(var(--tl-icon-sub) / 2);
+}
+.ecu-meter-tl-block-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--tl-icon);
+  height: 100%;
+  z-index: 3;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.ecu-meter-tl-block.is-sub .ecu-meter-tl-block-hit {
+  width: var(--tl-icon-sub);
+}
+/* AL Time Line: green = buffs, blue = cooldowns, red = debuffs. */
+.ecu-meter-tl-block.is-cast .ecu-meter-tl-block-bar {
+  background: rgba(60, 180, 255, 0.35);
+  opacity: 0.9;
+}
+.ecu-meter-tl-block.is-buff .ecu-meter-tl-block-bar {
+  background: rgba(0, 255, 0, 0.25);
+}
+.ecu-meter-tl-block.is-debuff .ecu-meter-tl-block-bar {
+  background: rgba(255, 0, 0, 0.25);
+}
+.ecu-meter-tl-block.is-gear .ecu-meter-tl-block-ico {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 2px rgba(255, 176, 32, 0.95));
+}
+.ecu-meter-tl-block.is-no-bar .ecu-meter-tl-block-bar {
+  display: none;
+}
+.ecu-meter-tl-block:hover {
+  z-index: 10000 !important;
+}
+.ecu-meter-tl-block:hover .ecu-meter-tl-block-bar {
+  filter: brightness(1.25);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+/* Details PlaceDeathPins: 4\xD714 white pin \u2014 keep thin, not a fat death icon. */
+.ecu-meter-tl-death {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  margin-left: -2px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(220, 40, 40, 0.85);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(229, 57, 53, 0.65);
+}
+.ecu-meter-tl-death:hover {
+  z-index: 10000 !important;
+}
+.ecu-meter-tl-empty {
+  padding: 20px 14px;
+  color: #8b9bb4;
+  font-size: 13px;
+}
+/* Back-compat aliases if anything still targets old class names */
 .ecu-meter-timeline-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  max-height: 260px;
 }
 .ecu-meter-timeline-lane {
   display: flex;
@@ -12445,8 +16182,23 @@ var EnhanceCommUI = (() => {
 .ecu-meter-shell.is-report .ecu-meter-death {
   min-height: 0;
 }
-@media (max-width: 520px) {
-  .ecu-meter-inspector { grid-template-columns: 1fr; }
+@media (max-width: 640px) {
+  .ecu-meter-bd-spells {
+    flex-direction: column;
+  }
+  .ecu-meter-bd-blocks {
+    max-width: none;
+    border-top: 1px solid var(--meter-border);
+  }
+  .ecu-meter-bd-auras {
+    flex-direction: column;
+  }
+  .ecu-meter-bd-auras-players {
+    display: none;
+  }
+  .ecu-meter-inspector-top {
+    flex-wrap: wrap;
+  }
 }
 `;
 
@@ -12479,6 +16231,11 @@ var EnhanceCommUI = (() => {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   overflow: hidden;
   vertical-align: middle;
+}
+.ecu-meter-icon.ecu-meter-icon-class-sprite {
+  line-height: 0;
+  font-size: 0;
+  text-shadow: none;
 }
 .ecu-meter-fill.ecu-meter-fill-anim {
   transition: width 0.25s ease;
@@ -12526,6 +16283,11 @@ var EnhanceCommUI = (() => {
   color: var(--meter-muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+/* Keep statusbar actions clear of corner resize grips while arranging. */
+.ecu-meter-shell.is-layout .ecu-meter-statusbar {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .ecu-meter-status-micro {
   background: transparent;
@@ -12651,52 +16413,6 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-opt-btn:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-/* \u2014\u2014 Inspector vertical tabs rail \u2014\u2014 */
-.ecu-meter-inspector-tabs-rail {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 2px 0;
-  background: rgba(0, 0, 0, 0.35);
-  border-left: 1px solid rgba(0, 0, 0, 0.55);
-  z-index: 4;
-}
-.ecu-meter-inspector-tab-rail {
-  flex: 1;
-  min-height: 28px;
-  max-height: 72px;
-  cursor: pointer;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  transform: rotate(180deg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 2px;
-  border: none;
-  background: transparent;
-  color: var(--meter-muted);
-  font-size: 10px;
-  letter-spacing: 0.03em;
-  line-height: 1;
-}
-.ecu-meter-inspector-tab-rail:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
-}
-.ecu-meter-inspector-tab-rail.active {
-  color: #ffd28a;
-  background: rgba(201, 162, 39, 0.12);
-  box-shadow: inset -2px 0 0 #c9a227;
-}
-.ecu-meter-shell.is-inspector:has(.ecu-meter-inspector-tabs-rail) .ecu-meter-inspector-body {
-  padding-right: 22px;
-}
 /* \u2014\u2014 Details parity: encounter dashboard \u2014\u2014 */
 .ecu-meter-encounter {
   display: flex;
@@ -12800,6 +16516,48 @@ button.ecu-meter-status-micro:hover,
   scrollbar-width: thin;
   scrollbar-color: rgba(180, 180, 180, 0.35) transparent;
 }
+.ecu-meter-enc-deathlist {
+  padding: 2px 0;
+}
+.ecu-meter-enc-deathrow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #c5d0e0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.ecu-meter-enc-deathname {
+  color: #ef9a9a;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-meter-enc-deathtime {
+  color: var(--meter-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-meter-enc-deathnum {
+  color: #8b9bb0;
+  font-size: 10px;
+}
+.ecu-meter-enc-empty {
+  padding: 8px;
+  color: #888;
+  font-size: 11px;
+}
+.ecu-meter-report-tab.is-stub {
+  opacity: 0.42;
+  cursor: default;
+  color: var(--meter-muted);
+}
+.ecu-meter-report-tab.is-stub:hover {
+  color: var(--meter-muted);
+  background: transparent;
+}
 `;
 
   // src/ui/meter/css/meterCooltipCss.ts
@@ -12819,10 +16577,10 @@ button.ecu-meter-status-micro:hover,
   border: 1px solid rgba(0,0,0,0.85);
   outline: 1px solid rgba(232, 201, 106, 0.28);
   border-radius: 0;
-  padding: 4px 0;
+  padding: 5px 0;
   box-shadow: 0 10px 28px rgba(0,0,0,0.65);
   color: #eee;
-  font-size: 11px;
+  font-size: 12px;
   max-height: min(360px, 72vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -12830,6 +16588,7 @@ button.ecu-meter-status-micro:hover,
   z-index: 2147483000;
   scrollbar-width: thin;
   scrollbar-color: #5a5050 #1a1618;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
 .ecu-meter-cooltip::-webkit-scrollbar {
   width: 8px;
@@ -12851,9 +16610,9 @@ button.ecu-meter-status-micro:hover,
   height: 10px;
 }
 .ecu-meter-cooltip-sec {
-  padding: 4px 10px 2px;
+  padding: 5px 12px 3px;
   color: rgba(220, 210, 210, 0.78);
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -12866,9 +16625,9 @@ button.ecu-meter-status-micro:hover,
   background: transparent;
   border: none;
   color: #eee;
-  padding: 4px 12px;
-  font-size: 12px;
-  line-height: 1.35;
+  padding: 5px 14px;
+  font-size: 13px;
+  line-height: 1.4;
 }
 .ecu-meter-cooltip-item:hover {
   background: rgba(255,255,255,0.1);
@@ -13069,9 +16828,6 @@ button.ecu-meter-status-micro:hover,
   pointer-events: auto;
   font-family: "Segoe UI", Tahoma, Arial, sans-serif;
 }
-.ecu-meter-shell.is-layout {
-  padding-bottom: 18px; /* room for resize grip while arranging */
-}
 .ecu-meter-shell.is-idle:not(.is-inspector):not(.is-report) .ecu-meter-body {
   opacity: 0.42;
   background: var(--meter-panel);
@@ -13097,6 +16853,19 @@ button.ecu-meter-status-micro:hover,
   border: 1px solid var(--meter-border);
   border-top: none;
   border-radius: 0 0 2px 2px;
+}
+.ecu-meter-shell.is-report .ecu-meter-report-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--meter-border);
+  border-top: none;
+  border-radius: 0 0 2px 2px;
+}
+.ecu-meter-shell.is-report .ecu-meter-report-main > .ecu-meter-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
 }
 .ecu-meter-resize {
   display: none;
@@ -13137,16 +16906,16 @@ button.ecu-meter-status-micro:hover,
   background: transparent !important;
   padding: 0 !important;
 }
-.comm-pos-panel.ecu-meter-frame.ecu-meter-grouped {
+.comm-pos-panel.ecu-meter-frame.comm-pos-grouped {
   outline: 1px solid rgba(201, 162, 39, 0.35);
   box-shadow: none;
 }
-.comm-pos-panel.ecu-meter-frame.ecu-meter-dragging {
+.comm-pos-panel.ecu-meter-frame.comm-pos-dragging {
   outline: 2px solid rgba(120, 200, 255, 0.85);
   box-shadow: 0 6px 20px rgba(0,0,0,0.45);
   z-index: 12;
 }
-.comm-pos-panel.ecu-meter-frame.ecu-meter-snap-target {
+.comm-pos-panel.ecu-meter-frame.comm-pos-snap-target {
   outline: 2px solid rgba(232, 201, 106, 0.9);
   box-shadow:
     0 0 0 1px rgba(0,0,0,0.65),
@@ -13154,7 +16923,7 @@ button.ecu-meter-status-micro:hover,
 }
 /* Arrange/edit: overflow for cooltips; resize via meter shell grip only (not CSS resize). */
 .comm-pos-panel.ecu-meter-frame.comm-pos-editing,
-.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange,
+.comm-pos-panel.ecu-meter-frame.comm-pos-arrange,
 .comm-pos-panel.ecu-meter-frame.comm-pos-movable {
   overflow: visible;
   resize: none;
@@ -13162,61 +16931,20 @@ button.ecu-meter-status-micro:hover,
   min-height: 0;
 }
 .comm-pos-panel.ecu-meter-frame.comm-pos-editing > .comm-pos-panel-body,
-.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange > .comm-pos-panel-body,
+.comm-pos-panel.ecu-meter-frame.comm-pos-arrange > .comm-pos-panel-body,
 .comm-pos-panel.ecu-meter-frame.comm-pos-movable > .comm-pos-panel-body {
   overflow: hidden;
 }
-/* Hide \xD7 sits above the frame so it does not cover \u21BA / lock / gear. */
-.comm-pos-panel.ecu-meter-frame > .comm-pos-panel-close-above {
+/* Hide \xD7 sits above the frame / on arrange chrome \u2014 never on maroon tools. */
+.comm-pos-panel.ecu-meter-frame > .comm-pos-panel-close-above:not(.comm-pos-panel-close-in-chrome) {
   top: -24px;
   right: 0;
   border-radius: 3px;
 }
-/* While arranging, resize needs overflow:hidden \u2014 park \xD7 on the grip row. */
-.comm-pos-panel.ecu-meter-frame.comm-pos-editing > .comm-pos-panel-close,
-.comm-pos-panel.ecu-meter-frame.comm-pos-movable > .comm-pos-panel-close,
-.comm-pos-panel.ecu-meter-frame.ecu-meter-arrange > .comm-pos-panel-close {
+/* Layout-edit: park \xD7 on the edit header strip (in-flow chrome). */
+.comm-pos-panel.ecu-meter-frame.comm-pos-editing > .comm-pos-panel-close {
   top: 2px;
   right: 2px;
-}
-/* \u2014\u2014 Details parity: stretch tab \u2014\u2014 */
-.ecu-meter-stretch-tab {
-  position: absolute;
-  top: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 36px;
-  height: 7px;
-  cursor: ns-resize;
-  z-index: 9;
-  border-radius: 2px 2px 0 0;
-  background: linear-gradient(180deg, #5a4044 0%, #4a2a2c 100%);
-  border: 1px solid rgba(0, 0, 0, 0.55);
-  border-bottom: none;
-  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.06);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-  touch-action: none;
-}
-.ecu-meter-stretch-tab::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 2px;
-  transform: translateX(-50%);
-  width: 14px;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.35);
-  border-radius: 1px;
-}
-.ecu-meter-shell.is-interacting .ecu-meter-stretch-tab,
-.ecu-meter-shell.is-layout .ecu-meter-stretch-tab,
-.ecu-meter-shell:hover .ecu-meter-stretch-tab {
-  opacity: 0.95;
-}
-.ecu-meter-stretch-tab:active {
-  opacity: 1;
-  background: linear-gradient(180deg, #6a5054 0%, #5a3a3c 100%);
 }
 `;
 
@@ -13257,9 +16985,19 @@ button.ecu-meter-status-micro:hover,
   min-width: 0;
   min-height: 20px;
   box-shadow: none;
+  position: relative;
 }
 .ecu-meter-titlebar.is-draggable { cursor: grab; }
 .ecu-meter-titlebar.is-draggable:active { cursor: grabbing; }
+/* Details: Mode \xB7 Segment \xB7 Attribute \xB7 Report \xB7 Reset sit right of the title. */
+.ecu-meter-tools {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  margin-left: 2px;
+  transition: opacity 0.12s ease;
+}
 .ecu-meter-tools-left {
   display: flex;
   align-items: center;
@@ -13342,7 +17080,10 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-titlebar .ecu-meter-btn.active {
   color: var(--meter-accent);
 }
-/* Primary icons stay; secondary chrome fades like Details lock/ungroup */
+/* Stretch \u2195 (+ layout \u2699/+/Rm on hover) sits after Details tools in flex flow.
+ * Stretch is a plain .ecu-meter-tool (always visible) \u2014 no dark plate.
+ * Do not absolute-overlay the Mode\xB7\u2026\xB7Reset hit targets.
+ * Lock / ungroup / hide \xD7 belong to PositionedPanel Window Control chrome. */
 .ecu-meter-actions {
   display: flex;
   align-items: center;
@@ -13350,20 +17091,30 @@ button.ecu-meter-status-micro:hover,
   flex-shrink: 0;
   position: relative;
   z-index: 5;
+  margin-left: 2px;
 }
+/* Layout-edit only (\u2699/+/Rm) \u2014 hover chip; stretch lives outside this. */
 .ecu-meter-chrome-hover {
   display: flex;
   align-items: center;
   gap: 0;
+  flex-shrink: 0;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: rgba(20, 16, 18, 0.92);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
   opacity: 0;
   transition: opacity 0.12s ease;
   pointer-events: none;
 }
-.ecu-meter-shell.is-interacting .ecu-meter-chrome-hover,
-.ecu-meter-shell.is-menu-open .ecu-meter-chrome-hover,
-.ecu-meter-shell.is-layout .ecu-meter-chrome-hover {
-  opacity: 1;
-  pointer-events: auto;
+/* Hover / menu only \u2014 unlocked (is-layout) must not pin chrome open. */
+@media (hover: hover) and (pointer: fine) {
+  .ecu-meter-shell:hover .ecu-meter-chrome-hover,
+  .ecu-meter-shell.is-interacting .ecu-meter-chrome-hover,
+  .ecu-meter-shell.is-menu-open .ecu-meter-chrome-hover {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .ecu-meter-tool.is-icon {
   width: 16px;
@@ -13406,16 +17157,21 @@ button.ecu-meter-status-micro:hover,
 .ecu-meter-attr-ball.attr-heal { background-position: -18px 0; }
 .ecu-meter-attr-ball.attr-taken { background-position: -36px 0; }
 .ecu-meter-attr-ball.attr-other { background-position: -54px 0; }
-/* Primary toolbar stays readable; secondary chrome fades until interact. */
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left {
+/* Primary toolbar + stretch \u2195 stay readable; layout chrome is hover-gated. */
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools,
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-tools-left,
+.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
   opacity: 0.9;
 }
-.ecu-meter-shell:not(.is-interacting):not(.is-menu-open):not(.is-layout) .ecu-meter-actions > .ecu-meter-tool {
-  opacity: 0.55;
-}
+.ecu-meter-shell.is-interacting .ecu-meter-tools,
+.ecu-meter-shell.is-menu-open .ecu-meter-tools,
+.ecu-meter-shell.is-layout .ecu-meter-tools,
 .ecu-meter-shell.is-interacting .ecu-meter-tools-left,
 .ecu-meter-shell.is-menu-open .ecu-meter-tools-left,
-.ecu-meter-shell.is-layout .ecu-meter-tools-left {
+.ecu-meter-shell.is-layout .ecu-meter-tools-left,
+.ecu-meter-shell.is-interacting .ecu-meter-actions > .ecu-meter-tool,
+.ecu-meter-shell.is-menu-open .ecu-meter-actions > .ecu-meter-tool,
+.ecu-meter-shell.is-layout .ecu-meter-actions > .ecu-meter-tool {
   opacity: 1;
 }
 .ecu-meter-ttl-text {
@@ -13425,6 +17181,13 @@ button.ecu-meter-status-micro:hover,
   min-width: 0;
 }
 /* \u2014\u2014 Details parity: encounter titlebar badges \u2014\u2014 */
+.ecu-meter-encounter-badges {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
 .ecu-meter-encounter-badge {
   cursor: pointer;
   background: transparent;
@@ -13534,6 +17297,8 @@ button.ecu-meter-status-micro:hover,
         name: r.name,
         value: r.value,
         rate: r.rate == null ? void 0 : r.rate,
+        barValue: r.barValue,
+        primary: r.primary,
         pct: r.pct
       })),
       props.segmentLabel
@@ -13635,6 +17400,72 @@ button.ecu-meter-status-micro:hover,
           )
         )
       ) : null
+    );
+  }
+
+  // src/ui/meter/MeterPluginRail.ts
+  var PLUGINS = [
+    {
+      kind: "encounter",
+      label: "Encounter Details",
+      icon: "\u2620",
+      title: "Encounter Details"
+    },
+    {
+      kind: "timeline",
+      label: "Time Line",
+      icon: "\u25B6",
+      title: "Time Line"
+    },
+    {
+      kind: "deaths",
+      label: "Deaths",
+      icon: "\u271D",
+      title: "Death Log"
+    }
+  ];
+  function MeterPluginRail(props) {
+    getReact();
+    return e(
+      "aside",
+      {
+        className: "ecu-meter-plugin-rail",
+        style: { ...PIXEL_TEXT },
+        "aria-label": "Plugins"
+      },
+      e("div", { className: "ecu-meter-plugin-rail-sec" }, "Plugins"),
+      ...PLUGINS.map(
+        (p) => e(
+          "button",
+          {
+            key: p.kind,
+            type: "button",
+            className: "ecu-meter-plugin-rail-item" + (props.active === p.kind ? " is-active" : ""),
+            title: p.title,
+            onClick: () => props.onSelect(p.kind)
+          },
+          e(
+            "span",
+            { className: "ecu-meter-plugin-rail-ico", "aria-hidden": true },
+            p.icon
+          ),
+          e("span", { className: "ecu-meter-plugin-rail-lab" }, p.label)
+        )
+      ),
+      e("div", { className: "ecu-meter-plugin-rail-sec" }, "Tools"),
+      e(
+        "div",
+        {
+          className: "ecu-meter-plugin-rail-item is-muted",
+          title: "Options live on the meter Mode menu"
+        },
+        e(
+          "span",
+          { className: "ecu-meter-plugin-rail-ico", "aria-hidden": true },
+          "\u2699"
+        ),
+        e("span", { className: "ecu-meter-plugin-rail-lab" }, "Options")
+      )
     );
   }
 
@@ -13760,7 +17591,11 @@ button.ecu-meter-status-micro:hover,
           "div",
           { className: "ecu-meter-options-hd" },
           e("b", null, "Options"),
-          props.instanceLabel ? e("span", { className: "ecu-meter-options-sub" }, props.instanceLabel) : null,
+          props.instanceLabel ? e(
+            "span",
+            { className: "ecu-meter-options-sub" },
+            props.instanceLabel
+          ) : null,
           e(
             "button",
             {
@@ -13771,109 +17606,84 @@ button.ecu-meter-status-micro:hover,
             "\xD7"
           )
         ),
-        e("div", { className: "ecu-meter-options-body" }, chk("showStatusbar", "Show statusbar"), chk("showTotalBar", "Total bar"), chk("animateBars", "Animate bars"), chk("showSpecIcons", "Class icons on bars"), chk("showRankNumbers", "Rank numbers"), chk("segmentsLocked", "Segments locked (all windows)"), chk("disableGrouping", "Disable new grouping"), chk("autoHideCombat", "Fade in combat"), chk("autoHideOoc", "Fade out of combat"), chk("deathLogLifePct", "Death log life %"), chk("deathLogInvert", "Invert death log"), row("Bar height", e("input", { type: "range", min: 14, max: 28, value: app.barHeight, onChange: (ev) => patch({ barHeight: Number(ev.target.value) }) })), row("Window scale", e("input", { type: "range", min: 80, max: 140, value: Math.round(app.windowScale * 100), onChange: (ev) => patch({ windowScale: Number(ev.target.value) / 100 }) })), row("Idle alpha", e("input", { type: "range", min: 20, max: 100, value: Math.round(app.idleAlpha * 100), onChange: (ev) => patch({ idleAlpha: Number(ev.target.value) / 100 }) })), row("Test bars", e("button", { type: "button", className: "ecu-meter-opt-btn", onClick: () => patch({ testBars: !app.testBars }) }, app.testBars ? "Hide test bars" : "Show test bars")), row("", e("button", { type: "button", className: "ecu-meter-opt-btn", onClick: () => patch({ ...DEFAULT_METER_APPEARANCE }) }, "Reset defaults")))
+        e(
+          "div",
+          { className: "ecu-meter-options-body" },
+          chk("showStatusbar", "Show statusbar"),
+          chk("showTotalBar", "Total bar"),
+          chk("animateBars", "Animate bars"),
+          chk("showSpecIcons", "Class icons on bars (optional)"),
+          chk("showRankNumbers", "Rank numbers"),
+          chk("segmentsLocked", "Segments locked (all windows)"),
+          chk("disableGrouping", "Disable new grouping"),
+          chk("autoHideCombat", "Fade in combat"),
+          chk("autoHideOoc", "Fade out of combat"),
+          chk("deathLogLifePct", "Death log life %"),
+          chk("deathLogInvert", "Invert death log"),
+          row(
+            "Bar height",
+            e("input", {
+              type: "range",
+              min: 14,
+              max: 28,
+              value: app.barHeight,
+              onChange: (ev) => patch({ barHeight: Number(ev.target.value) })
+            })
+          ),
+          row(
+            "Window scale",
+            e("input", {
+              type: "range",
+              min: 80,
+              max: 140,
+              value: Math.round(app.windowScale * 100),
+              onChange: (ev) => patch({ windowScale: Number(ev.target.value) / 100 })
+            })
+          ),
+          row(
+            "Idle alpha",
+            e("input", {
+              type: "range",
+              min: 20,
+              max: 100,
+              value: Math.round(app.idleAlpha * 100),
+              onChange: (ev) => patch({ idleAlpha: Number(ev.target.value) / 100 })
+            })
+          ),
+          row(
+            "Test bars",
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-meter-opt-btn",
+                onClick: () => patch({ testBars: !app.testBars })
+              },
+              app.testBars ? "Hide test bars" : "Show test bars"
+            )
+          ),
+          row(
+            "",
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-meter-opt-btn",
+                onClick: () => patch({ ...DEFAULT_METER_APPEARANCE })
+              },
+              "Reset defaults"
+            )
+          )
+        )
       )
     );
   }
 
-  // src/meters/meterIcons.ts
-  var CDN = "https://adventure.land";
-  var SETS = {
-    skills: {
-      file: CDN + "/images/tiles/items/skills_20v6.png",
-      size: 20,
-      cols: 16,
-      rows: 13
-    },
-    pack_1a: {
-      file: CDN + "/images/tiles/items/pack_1a.png?v=11",
-      size: 16,
-      cols: 16,
-      rows: 128
-    }
-  };
-  var BY_KEY = {
-    attack: ["skills", 1, 6],
-    heal: ["skills", 1, 11],
-    lifesteal: ["skills", 1, 11],
-    cleave: ["skills", 2, 1],
-    agitate: ["skills", 7, 1],
-    taunt: ["pack_1a", 8, 85],
-    partyheal: ["skills", 1, 4],
-    curse: ["pack_1a", 11, 83],
-    "3shot": ["skills", 1, 2],
-    "5shot": ["skills", 2, 2],
-    cburst: ["skills", 2, 0],
-    burn: ["pack_1a", 10, 78],
-    supershot: ["pack_1a", 8, 88],
-    quickstab: ["skills", 3, 3],
-    quickpunch: ["skills", 4, 3],
-    piercingshot: ["skills", 7, 2],
-    huntersmark: ["skills", 6, 2],
-    dash: ["skills", 9, 1],
-    stomp: ["skills", 3, 1],
-    warcry: ["skills", 6, 1],
-    tomb_slam: ["skills", 3, 11],
-    spike_bite: ["skills", 3, 3],
-    swarm: ["skills", 2, 2],
-    cryptling_swarm: ["skills", 2, 2]
-  };
-  function resolveFromG(key) {
-    try {
-      const G = window.G;
-      const skill = G && G.skills && G.skills[key];
-      if (!skill) return null;
-      if (BY_KEY[key]) return BY_KEY[key];
-      if (skill.skin && BY_KEY[skill.skin]) return BY_KEY[skill.skin];
-    } catch (e2) {
-    }
-    return BY_KEY[key] || null;
-  }
-  function skillIconHtml(key, displaySize = 18) {
-    const pos = resolveFromG(key) || BY_KEY[key];
-    if (!pos) {
-      const letter = (key || "?").slice(0, 1).toUpperCase();
-      return `<span class="ecu-meter-icon ecu-meter-icon-ab" style="width:${displaySize}px;height:${displaySize}px;line-height:${displaySize}px">${letter}</span>`;
-    }
-    const [setName, x, y] = pos;
-    const set = SETS[setName];
-    if (!set) return "";
-    const scale = displaySize / set.size;
-    const sheetW = set.cols * set.size * scale;
-    const sheetH = set.rows * set.size * scale;
-    return `<span class="ecu-meter-icon ecu-meter-icon-skill" title="${key}" style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${set.file}"/></span></span>`;
-  }
-  var CLASS_LETTERS = {
-    warrior: "W",
-    mage: "M",
-    priest: "P",
-    ranger: "R",
-    paladin: "L",
-    rogue: "G",
-    merchant: "$"
-  };
-  function classIconHtml(ctype, displaySize = 18) {
-    const key = (ctype || "").toLowerCase();
-    const letter = CLASS_LETTERS[key] || key.slice(0, 1).toUpperCase() || "?";
-    const color = classColors[key] || "#607d8b";
-    return `<span class="ecu-meter-icon ecu-meter-icon-class" title="${key || "unknown"}" style="width:${displaySize}px;height:${displaySize}px;line-height:${displaySize}px;background:${color}">${letter}</span>`;
-  }
-  function rowIconHtml(row2, opts) {
-    if (opts && opts.icons === false) return "";
-    const size = opts && opts.iconSize || 18;
-    if (row2.kind === "ability" || BY_KEY[row2.id] || resolveFromG(row2.id)) {
-      return skillIconHtml(row2.id, size);
-    }
-    if ((opts == null ? void 0 : opts.classIcons) !== false && row2.kind === "player" || !row2.kind && row2.ctype) {
-      return classIconHtml(row2.ctype, size);
-    }
-    if (row2.ctype && (opts == null ? void 0 : opts.classIcons) !== false) {
-      return classIconHtml(row2.ctype, size);
-    }
-    return "";
-  }
-
   // src/meters/meterBarPool.ts
+  var TOTAL_ROW_ID = "__total__";
+  function isTotalRow(row2) {
+    return row2.id === TOTAL_ROW_ID;
+  }
   function splashSuffix(row2) {
     if (!(row2.splashDamage != null && row2.splashDamage > 0)) return "";
     return ` <span class="ecu-meter-splash-hint" title="Explosion splash damage">+${formatCompactNumber(row2.splashDamage)}</span>`;
@@ -13883,22 +17693,29 @@ button.ecu-meter-status-micro:hover,
       return `${(row2.value * 100).toFixed(1)}%`;
     }
     const splash = splashSuffix(row2);
+    const rate = row2.rate != null ? row2.rate : null;
+    const ratePrimary = row2.primary === "rate" && rate != null;
+    const pctStr = opts.pct !== false ? `${share.toFixed(opts.detailsFormat !== false ? 1 : 0)}%` : "";
     if (opts.detailsFormat !== false) {
-      const rateStr = row2.rate != null ? formatCompactRate(row2.rate) : row2.barValue != null ? formatCompactRate(row2.barValue) : "";
-      const pctStr = opts.pct !== false ? `${share.toFixed(1)}%` : "";
-      const inner = rateStr && pctStr ? `${rateStr}, ${pctStr}` : rateStr ? rateStr : pctStr ? pctStr : "";
-      return inner ? `${formatCompactNumber(row2.value)} (${inner})${splash}` : `${formatCompactNumber(row2.value)}${splash}`;
+      if (ratePrimary) {
+        const inner = pctStr ? `${formatCompactNumber(row2.value)}, ${pctStr}` : formatCompactNumber(row2.value);
+        return `${formatCompactRate(rate)} (${inner})${splash}`;
+      }
+      if (rate != null) {
+        const inner = pctStr ? `${formatCompactRate(rate)}, ${pctStr}` : formatCompactRate(rate);
+        return `${formatCompactNumber(row2.value)} (${inner})${splash}`;
+      }
+      return pctStr ? `${formatCompactNumber(row2.value)} (${pctStr})${splash}` : `${formatCompactNumber(row2.value)}${splash}`;
     }
-    const ratePrimary = row2.barValue != null && row2.rate != null;
     if (ratePrimary) {
-      const pct2 = opts.pct !== false ? `, ${share.toFixed(0)}%` : "";
-      return `${formatCompactRate(row2.rate)} (${formatCompactNumber(row2.value)}${pct2})${splash}`;
+      const pct2 = pctStr ? `, ${pctStr}` : "";
+      return `${formatCompactRate(rate)} (${formatCompactNumber(row2.value)}${pct2})${splash}`;
     }
-    if (row2.rate != null) {
-      const pct2 = opts.pct !== false ? `, ${share.toFixed(0)}%` : "";
-      return `${formatCompactNumber(row2.value)} (${formatCompactRate(row2.rate)}${pct2})${splash}`;
+    if (rate != null) {
+      const pct2 = pctStr ? `, ${pctStr}` : "";
+      return `${formatCompactNumber(row2.value)} (${formatCompactRate(rate)}${pct2})${splash}`;
     }
-    const pct = opts.pct !== false ? ` <span class="ecu-meter-pct">${share.toFixed(0)}%</span>` : "";
+    const pct = pctStr ? ` <span class="ecu-meter-pct">${pctStr}</span>` : "";
     return `${formatCompactNumber(row2.value)}${pct}${splash}`;
   }
   function rowColor(row2) {
@@ -13907,19 +17724,42 @@ button.ecu-meter-status-micro:hover,
   function barAmount(row2) {
     return row2.barValue != null ? row2.barValue : row2.value;
   }
+  function scaleMax(rows) {
+    let fromMeta = 0;
+    let fromVisible = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (isTotalRow(r)) continue;
+      fromVisible = Math.max(fromVisible, barAmount(r));
+      if (r.barMax > 0) fromMeta = Math.max(fromMeta, r.barMax);
+    }
+    return fromMeta || fromVisible || 1;
+  }
+  function groupSum(rows) {
+    let sum = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (isTotalRow(rows[i])) continue;
+      sum += rows[i].value;
+    }
+    return sum || 1;
+  }
+  function barWidthPct(row2, max) {
+    if (isTotalRow(row2)) return 100;
+    return max ? barAmount(row2) / max * 100 : 0;
+  }
   function makeRowEl(r, i, opts, max, total) {
     const el = document.createElement("div");
     const isAbility = r.kind === "ability" || r.kind === "channel";
-    el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (r.id === "__total__" ? " is-total" : "") + (isAbility ? " has-skill" : "") + (opts.onClick || opts.onContextMenu ? " clickable" : "");
+    el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (isAbility ? " has-skill" : "") + (opts.onClick || opts.onContextMenu ? " clickable" : "");
     el.dataset.id = r.id || String(i);
-    const pct = max ? barAmount(r) / max * 100 : 0;
+    const pct = barWidthPct(r, max);
     const share = total ? r.value / total * 100 : 0;
     const icon = rowIconHtml(
-      { id: r.id, ctype: r.ctype, kind: r.kind },
+      { id: r.id, name: r.name, ctype: r.ctype, mtype: r.mtype, kind: r.kind },
       {
         icons: opts.icons !== false,
         iconSize: 14,
-        classIcons: opts.classIcons !== false
+        classIcons: !!opts.classIcons
       }
     );
     const anim = opts.animate !== false ? " ecu-meter-fill-anim" : "";
@@ -13930,6 +17770,10 @@ button.ecu-meter-status-micro:hover,
     <span class="ecu-meter-vals"></span>`;
     const label = el.querySelector(".ecu-meter-label");
     if (label) label.textContent = r.name;
+    const who = el.querySelector(".ecu-meter-who");
+    if (who && (r.kind === "ability" || r.kind === "channel")) {
+      who.dataset.iconId = r.id;
+    }
     const vals = el.querySelector(".ecu-meter-vals");
     if (vals) vals.innerHTML = formatRowValue(r, share, opts);
     return el;
@@ -13955,15 +17799,20 @@ button.ecu-meter-status-micro:hover,
       el.oncontextmenu = null;
     }
   }
+  function sortForPaint(rows) {
+    if (rows.length && rows[0].rank != null) return rows.slice();
+    return rows.slice().sort((a, b) => {
+      if (isTotalRow(a)) return 1;
+      if (isTotalRow(b)) return -1;
+      return barAmount(b) - barAmount(a);
+    });
+  }
   function renderRankedRows(container, rows, opts = {}) {
     container.innerHTML = "";
     container.classList.add("ecu-meter-bar-list");
-    const sorted = rows.length && rows[0].rank != null ? rows.slice() : rows.slice().sort((a, b) => barAmount(b) - barAmount(a));
-    const max = sorted.reduce((m, r) => {
-      const v = barAmount(r);
-      return v > m ? v : m;
-    }, 0) || 1;
-    const total = sorted.reduce((s, r) => s + r.value, 0) || 1;
+    const sorted = sortForPaint(rows);
+    const max = scaleMax(sorted);
+    const total = groupSum(sorted);
     for (let i = 0; i < sorted.length; i++) {
       const r = sorted[i];
       const el = makeRowEl(r, i, opts, max, total);
@@ -13977,12 +17826,9 @@ button.ecu-meter-status-micro:hover,
       ...container._barOpts || {},
       ...opts
     };
-    const sorted = rows.length && rows[0].rank != null ? rows.slice() : rows.slice().sort((a, b) => barAmount(b) - barAmount(a));
-    const max = sorted.reduce((m, r) => {
-      const v = barAmount(r);
-      return v > m ? v : m;
-    }, 0) || 1;
-    const total = sorted.reduce((s, r) => s + r.value, 0) || 1;
+    const sorted = sortForPaint(rows);
+    const max = scaleMax(sorted);
+    const total = groupSum(sorted);
     const stray = Array.from(container.children).filter(
       (el) => !el.classList.contains("ecu-meter-row")
     );
@@ -14006,9 +17852,9 @@ button.ecu-meter-status-micro:hover,
       const r = sorted[i];
       const el = kids[i];
       el.dataset.id = r.id || String(i);
-      el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") + (merged.onClick || merged.onContextMenu ? " clickable" : "");
+      el.className = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") + (merged.onClick || merged.onContextMenu ? " clickable" : "");
       const fill = el.querySelector(".ecu-meter-fill");
-      const pct = max ? barAmount(r) / max * 100 : 0;
+      const pct = barWidthPct(r, max);
       if (fill) {
         fill.style.width = pct + "%";
         fill.style.background = rowColor(r);
@@ -14021,15 +17867,15 @@ button.ecu-meter-status-micro:hover,
       if (label) label.textContent = r.name;
       const nameHost = el.querySelector(".ecu-meter-who");
       if (nameHost && (r.kind === "ability" || r.kind === "channel")) {
-        const existing = nameHost.querySelector(".ecu-meter-icon");
-        if (!existing) {
-          nameHost.insertAdjacentHTML(
-            "afterbegin",
-            rowIconHtml(
-              { id: r.id, kind: "ability" },
-              { icons: merged.icons !== false }
-            )
+        if (nameHost.dataset.iconId !== r.id) {
+          const iconHtml = rowIconHtml(
+            { id: r.id, kind: "ability" },
+            { icons: merged.icons !== false }
           );
+          const existing = nameHost.querySelector(".ecu-meter-icon");
+          if (existing) existing.outerHTML = iconHtml;
+          else nameHost.insertAdjacentHTML("afterbegin", iconHtml);
+          nameHost.dataset.iconId = r.id;
         }
       }
       const vals = el.querySelector(".ecu-meter-vals");
@@ -14043,7 +17889,19 @@ button.ecu-meter-status-micro:hover,
   // src/meters/meterTooltip.ts
   var PAD = 8;
   var CURSOR = 14;
+  var METER_TT_ICON = 22;
+  var MAX_SPELLS = 6;
+  var MAX_TARGETS = 2;
+  var MAX_EXPANDED = 99;
   var tipEl = null;
+  var lastMods = { shift: false, ctrl: false };
+  var hoverRebuild = null;
+  var hoverX = 0;
+  var hoverY = 0;
+  var keysBound = false;
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
   function ensureTip() {
     if (tipEl && tipEl.isConnected) return tipEl;
     tipEl = document.createElement("div");
@@ -14067,17 +17925,208 @@ button.ecu-meter-status-micro:hover,
     tip.style.left = Math.round(x) + "px";
     tip.style.top = Math.round(y) + "px";
   }
-  function showMeterTooltip(ev, html) {
+  function paintTip(html, clientX, clientY) {
     const tip = ensureTip();
     tip.innerHTML = html;
+    const isGear = html.indexOf("ecu-meter-tt-gear") !== -1;
+    const isEvs = html.indexOf("ecu-meter-tt-evs") !== -1;
+    tip.classList.toggle("is-gear-tip", isGear);
+    tip.classList.toggle("is-tl-ev-tip", isEvs);
+    tip.classList.toggle("is-tl-cluster", isGear || isEvs);
     tip.style.display = "block";
     tip.style.left = "-9999px";
     tip.style.top = "0px";
-    placeTip(tip, ev.clientX, ev.clientY);
+    placeTip(tip, clientX, clientY);
+  }
+  function onModKey(ev) {
+    if (ev.key !== "Shift" && ev.key !== "Control" && ev.key !== "Meta") return;
+    if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
+    const mods = {
+      shift: ev.shiftKey,
+      ctrl: ev.ctrlKey || ev.metaKey
+    };
+    if (mods.shift === lastMods.shift && mods.ctrl === lastMods.ctrl) return;
+    lastMods = mods;
+    paintTip(hoverRebuild(mods), hoverX, hoverY);
+  }
+  function bindModKeys() {
+    if (keysBound) return;
+    keysBound = true;
+    window.addEventListener("keydown", onModKey);
+    window.addEventListener("keyup", onModKey);
+  }
+  function unbindModKeys() {
+    if (!keysBound) return;
+    keysBound = false;
+    window.removeEventListener("keydown", onModKey);
+    window.removeEventListener("keyup", onModKey);
+  }
+  function showMeterTooltip(ev, html) {
+    hoverRebuild = null;
+    lastMods = { shift: ev.shiftKey, ctrl: ev.ctrlKey || ev.metaKey };
+    hoverX = ev.clientX;
+    hoverY = ev.clientY;
+    paintTip(html, ev.clientX, ev.clientY);
+  }
+  function showMeterTooltipLive(ev, rebuild) {
+    const mods = {
+      shift: ev.shiftKey,
+      ctrl: ev.ctrlKey || ev.metaKey
+    };
+    hoverRebuild = rebuild;
+    lastMods = mods;
+    hoverX = ev.clientX;
+    hoverY = ev.clientY;
+    bindModKeys();
+    paintTip(rebuild(mods), ev.clientX, ev.clientY);
   }
   function hideMeterTooltip() {
+    hoverRebuild = null;
+    unbindModKeys();
     if (!tipEl) return;
     tipEl.style.display = "none";
+    tipEl.classList.remove("is-gear-tip", "is-tl-ev-tip", "is-tl-cluster");
+  }
+  function metricForBreakdown(metric) {
+    if (metric === "heal" || metric === "taken" || metric === "healing_required" || metric === "avoidance" || metric === "damage") {
+      return metric;
+    }
+    return "damage";
+  }
+  function formatAmtPct(value, total, avoidance) {
+    if (avoidance) {
+      const pct2 = (value * 100).toFixed(1);
+      return `${pct2}%`;
+    }
+    const pct = total > 0 ? value / total * 100 : 0;
+    return `${formatCompactNumber(value)} (${pct.toFixed(1)}%)`;
+  }
+  function sectionHeader(icon, title, hint, maximized) {
+    const maxCls = maximized ? " is-max" : "";
+    return `<div class="ecu-meter-tt-sec${maxCls}">
+    <span class="ecu-meter-tt-sec-l">${icon}<span class="ecu-meter-tt-sec-t">${title}</span></span>
+    <span class="ecu-meter-tt-kbd">${hint}</span>
+  </div>`;
+  }
+  function rankRowsHtml(rows, limit, total, iconFor, avoidance) {
+    if (!rows.length) {
+      return `<div class="ecu-meter-tt-empty">None</div>`;
+    }
+    const n = Math.min(limit, rows.length);
+    let html = "";
+    for (let i = 0; i < n; i++) {
+      const r = rows[i];
+      const alt = i % 2 === 1 ? " is-alt" : "";
+      const name = escapeHtml(r.name);
+      const amt = formatAmtPct(r.value, total, avoidance);
+      html += `<div class="ecu-meter-tt-row${alt}">
+      <span class="ecu-meter-tt-row-l">${iconFor(r)}<span class="ecu-meter-tt-name">${name}:</span></span>
+      <span class="ecu-meter-tt-amt">${amt}</span>
+    </div>`;
+    }
+    return html;
+  }
+  function queryRanked(kind, actorId, metric, segmentRef, partyFocus, entities) {
+    const result = runMeterQuery(
+      kind === "abilities" ? { kind: "abilities", actorId, metric } : { kind: "targets", actorId, metric },
+      {
+        segmentRef,
+        partyFocus,
+        entities,
+        now: Date.now()
+      }
+    );
+    if (result.kind !== "ranked") return [];
+    return result.rows.slice().sort((a, b) => b.value - a.value);
+  }
+  function playerBarTooltipHtml(ctx, mods) {
+    const { row: row2, metric, segmentRef, partyFocus, entities } = ctx;
+    const avoidance = metric === "avoidance";
+    const rate = row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : "";
+    const abs = avoidance ? `<div class="line"><span>Value</span><b>${(row2.value * 100).toFixed(1)}%</b></div>` : `<div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>${rate}`;
+    const isPlayerRow = row2.id !== "__total__" && row2.kind !== "channel" && row2.kind !== "ability" && row2.kind !== "target";
+    const headIcon = isPlayerRow ? characterIconHtml(row2.id, {
+      size: METER_TT_ICON,
+      ctype: row2.ctype,
+      name: row2.name,
+      title: row2.ctype ? `${row2.name} \xB7 ${row2.ctype}` : row2.name || row2.id
+    }) + " " : "";
+    const classLine = isPlayerRow && row2.ctype ? `<div class="line"><span>Class</span><b>${escapeHtml(row2.ctype)}</b></div>` : "";
+    const head = `<h4>${headIcon}${escapeHtml(row2.name)}</h4>${classLine}${abs}
+    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>`;
+    if (row2.kind === "target") {
+      return targetBarTooltipHtml(row2);
+    }
+    if (row2.id === "__total__" || row2.kind === "channel" || row2.kind === "ability") {
+      return `${head}<div class="ecu-meter-tt-foot">Click row \u2192 Inspector</div>`;
+    }
+    const m = metricForBreakdown(metric);
+    const spells = queryRanked(
+      "abilities",
+      row2.id,
+      m,
+      segmentRef,
+      partyFocus,
+      entities
+    );
+    const targets = queryRanked(
+      "targets",
+      row2.id,
+      m,
+      segmentRef,
+      partyFocus,
+      entities
+    );
+    const spellLimit = mods.shift ? MAX_EXPANDED : MAX_SPELLS;
+    const targetLimit = mods.ctrl ? MAX_EXPANDED : MAX_TARGETS;
+    const spellTotal = spells.reduce((s, r) => s + r.value, 0) || row2.value || 1;
+    const targetTotal = targets.reduce((s, r) => s + r.value, 0) || row2.value || 1;
+    const spellsSec = sectionHeader(
+      `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">\u2694</span>`,
+      "Spells",
+      "Shift",
+      mods.shift
+    ) + rankRowsHtml(
+      spells,
+      spellLimit,
+      spellTotal,
+      (r) => skillIconHtml(r.id, METER_TT_ICON),
+      avoidance
+    );
+    const targetsSec = sectionHeader(
+      `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">\u2713</span>`,
+      "Targets",
+      "Ctrl",
+      mods.ctrl
+    ) + rankRowsHtml(
+      targets,
+      targetLimit,
+      targetTotal,
+      (r) => targetIconHtml(r, METER_TT_ICON),
+      avoidance
+    );
+    return `${head}
+    <div class="ecu-meter-tt-div"></div>
+    ${spellsSec}
+    <div class="ecu-meter-tt-div"></div>
+    ${targetsSec}
+    <div class="ecu-meter-tt-foot">Click \u2192 Inspector</div>`;
+  }
+  function abilityBarTooltipHtml(row2) {
+    const splash = row2.splashDamage != null && row2.splashDamage > 0 ? `<div class="line"><span>Explosion</span><b>+${formatCompactNumber(row2.splashDamage)}</b></div>` : "";
+    return `<h4>${skillIconHtml(row2.id, METER_TT_ICON)} ${escapeHtml(row2.name)}</h4>
+    <div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>
+    ${splash}
+    ${row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : ""}
+    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>
+    <div class="ecu-meter-tt-foot">Click \u2192 targets for spell</div>`;
+  }
+  function targetBarTooltipHtml(row2) {
+    return `<h4>${targetIconHtml(row2, METER_TT_ICON)} ${escapeHtml(row2.name)}</h4>
+    <div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>
+    ${row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : ""}
+    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>
+    <div class="ecu-meter-tt-foot">Click \u2192 Inspector</div>`;
   }
 
   // src/meters/meterTestBars.ts
@@ -14090,6 +18139,8 @@ button.ecu-meter-status-micro:hover,
       rate: 1200,
       pct: 0.4,
       barMax: 12e4,
+      barValue: 12e4,
+      primary: "total",
       label: "",
       kind: "player"
     },
@@ -14101,6 +18152,8 @@ button.ecu-meter-status-micro:hover,
       rate: 900,
       pct: 0.3,
       barMax: 12e4,
+      barValue: 9e4,
+      primary: "total",
       label: "",
       kind: "player"
     },
@@ -14112,6 +18165,8 @@ button.ecu-meter-status-micro:hover,
       rate: 600,
       pct: 0.2,
       barMax: 12e4,
+      barValue: 6e4,
+      primary: "total",
       label: "",
       kind: "player"
     }
@@ -14130,30 +18185,6 @@ button.ecu-meter-status-micro:hover,
       color: classColors[r.ctype || ""] || void 0,
       rank: r.rank
     }));
-  }
-  function playerTooltipHtml(row2, metric, expand) {
-    const rate = row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : "";
-    const abs = metric === "avoidance" ? `<div class="line"><span>Value</span><b>${(row2.value * 100).toFixed(1)}%</b></div>` : `<div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>${rate}`;
-    let extra = "";
-    if (expand === "spells" && row2.kind === "player") {
-      extra = `<div class="sec">Abilities (Shift)</div><ul><li><span>Tip</span><b>Click row \u2192 Inspector spells</b></li></ul>`;
-    }
-    if (expand === "targets") {
-      extra = `<div class="sec">Targets (Ctrl)</div><ul><li><span>Tip</span><b>Inspector \u2192 Targets tab</b></li></ul>`;
-    }
-    return `<h4>${row2.name}</h4>${abs}
-    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>${extra}
-    <div class="sec">Tip</div>
-    <ul><li><span>Click row</span><b>Inspector</b></li></ul>`;
-  }
-  function abilityTooltipHtml(row2) {
-    const splash = row2.splashDamage != null && row2.splashDamage > 0 ? `<div class="line"><span>Explosion</span><b>+${formatCompactNumber(row2.splashDamage)}</b></div>` : "";
-    return `<h4>${skillIconHtml(row2.id, 14)} ${row2.name}</h4>
-    <div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>
-    ${splash}
-    ${row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : ""}
-    <div class="sec">Tip</div>
-    <ul><li><span>Click</span><b>targets for spell</b></li></ul>`;
   }
   function MeterBarsView(props) {
     const React = getReact();
@@ -14190,12 +18221,15 @@ button.ecu-meter-status-micro:hover,
       const youId2 = getYouId();
       const showSelf = p.alwaysShowSelf != null ? p.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
       const isPlayerRoot = p.query.kind === "players" || p.query.kind === "avoidance" || p.query.kind === "rolling" || p.query.kind === "snapshot" || p.query.kind === "channel";
-      const sorted = result.rows.slice().sort((a, b) => b.value - a.value);
+      const rankedAmt = (r) => r.barValue != null ? r.barValue : r.value;
+      const sorted = result.rows.slice().sort((a, b) => rankedAmt(b) - rankedAmt(a));
       let totalVal = 0;
       let totalRate = 0;
+      let ratePrimary = false;
       for (let i = 0; i < sorted.length; i++) {
         totalVal += sorted[i].value;
         if (sorted[i].rate != null) totalRate += sorted[i].rate;
+        if (sorted[i].primary === "rate") ratePrimary = true;
       }
       const capped = isPlayerRoot ? pinAlwaysShowSelf(
         sorted,
@@ -14208,13 +18242,16 @@ button.ecu-meter-status-micro:hover,
       );
       const rows = toPoolRows(capped, p.highlightId, p.selectedRowId);
       if (app.showTotalBar && isPlayerRoot && rows.length) {
+        const topBarMax = ((_a = sorted[0]) == null ? void 0 : _a.barMax) || (ratePrimary ? totalRate : totalVal) || 1;
         rows.push({
           id: "__total__",
           name: "Total",
           value: totalVal,
           rate: totalRate || null,
+          barValue: ratePrimary ? totalRate : totalVal,
+          primary: ratePrimary ? "rate" : "total",
           pct: 1,
-          barMax: ((_a = sorted[0]) == null ? void 0 : _a.barMax) || totalVal,
+          barMax: topBarMax,
           label: "Total",
           kind: "player",
           color: "#888"
@@ -14232,9 +18269,27 @@ button.ecu-meter-status-micro:hover,
         onClick: p.onRowClick ? (ev, row2) => p.onRowClick(row2, ev) : void 0,
         onContextMenu: p.onRowContextMenu ? (ev, row2) => p.onRowContextMenu(row2, ev) : void 0,
         tooltipHtml: (ev, row2) => {
-          const expand = ev.shiftKey ? "spells" : ev.ctrlKey ? "targets" : void 0;
-          const html = row2.kind === "ability" ? abilityTooltipHtml(row2) : playerTooltipHtml(row2, metric, expand);
-          showMeterTooltip(ev, html);
+          if (row2.kind === "ability") {
+            showMeterTooltip(ev, abilityBarTooltipHtml(row2));
+            return;
+          }
+          if (row2.kind === "target") {
+            showMeterTooltip(ev, targetBarTooltipHtml(row2));
+            return;
+          }
+          showMeterTooltipLive(
+            ev,
+            (mods) => playerBarTooltipHtml(
+              {
+                row: row2,
+                metric,
+                segmentRef: p.segmentRef,
+                partyFocus: p.partyFocus,
+                entities: p.entities
+              },
+              mods
+            )
+          );
         },
         onTooltipHide: hideMeterTooltip
       };
@@ -14294,161 +18349,6 @@ button.ecu-meter-status-micro:hover,
         className: "ecu-meter-bar-scroll ecu-meter-bar-list"
       })
     );
-  }
-
-  // src/ui/meter/meterShellHelpers.ts
-  function presentationFor(inst) {
-    return inst.presentation || "bars";
-  }
-  function rootQuery(inst) {
-    return inst.query;
-  }
-  function meterShellTourId(query) {
-    if (query.kind === "snapshot") {
-      if (query.mode === "pdps") return "meter-pdps";
-      if (query.mode === "coop_v1" || query.mode === "coop_v2") return "meter-coop";
-    }
-    return void 0;
-  }
-  function modeLabel(q, label) {
-    const fromCycle = displayLabelForQuery(q);
-    if (fromCycle) return fromCycle;
-    if (label) return label;
-    switch (q.kind) {
-      case "players":
-        return q.metric === "heal" ? "Healing" : q.metric === "taken" ? "Damage taken" : q.metric === "healing_required" ? "Healing required" : q.metric === "avoidance" ? "Avoidance" : "Damage";
-      case "channel":
-        return CHANNEL_LABELS[q.channel] || q.channel;
-      case "rolling":
-      case "realtime":
-        return "Hit DPS";
-      case "snapshot":
-        return q.mode;
-      case "death_log":
-        return "Deaths";
-      case "history":
-        return "DPS graph";
-      case "compare":
-        return "Compare";
-      case "encounter_summary":
-        return "Encounter";
-      case "timeline":
-        return "Timeline";
-      case "pie":
-        return "Pie";
-      case "summary":
-        return "Summary";
-      case "details":
-        return "Inspector";
-      case "abilities":
-      case "ability_targets":
-      case "targets":
-      case "avoidance":
-      case "conditions":
-        return "Meter";
-      default: {
-        const _exhaustive = q;
-        return String(_exhaustive);
-      }
-    }
-  }
-  function chromeBtn(title, label, onClick, active, wide) {
-    return e(
-      "button",
-      {
-        type: "button",
-        title,
-        onClick: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          onClick(ev);
-        },
-        onPointerDown: (ev) => ev.stopPropagation(),
-        className: "ecu-meter-btn" + (wide ? " wide" : "") + (active ? " active" : "")
-      },
-      label
-    );
-  }
-  function toolBtn(opts) {
-    const iconClass = opts.icon ? " is-icon icon-" + opts.icon : "";
-    const useNativeTitle = !opts.onEnter;
-    return e(
-      "button",
-      {
-        type: "button",
-        title: useNativeTitle ? opts.title : void 0,
-        "aria-label": opts.title,
-        ...opts.tourId ? { "data-ecu-tour": opts.tourId } : {},
-        onClick: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          if (opts.onClick) opts.onClick(ev);
-        },
-        onContextMenu: opts.onContextMenu ? (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          opts.onContextMenu(ev);
-        } : void 0,
-        onPointerDown: (ev) => ev.stopPropagation(),
-        onMouseEnter: (ev) => {
-          if (opts.onEnter) opts.onEnter(ev.currentTarget);
-        },
-        onMouseLeave: () => {
-          if (opts.onLeave) opts.onLeave();
-        },
-        className: "ecu-meter-tool" + iconClass + (opts.active ? " active" : "")
-      },
-      opts.icon ? null : opts.glyph || ""
-    );
-  }
-  function attrBallClass(q) {
-    if (q.kind === "players") {
-      if (q.metric === "heal" || q.metric === "healing_required")
-        return "attr-heal";
-      if (q.metric === "taken") return "attr-taken";
-      return "attr-damage";
-    }
-    return "attr-other";
-  }
-  function cooltipItemNode(item) {
-    const run = (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      item.onSelect();
-    };
-    return e(
-      "button",
-      {
-        type: "button",
-        className: "ecu-meter-cooltip-item" + (item.selected ? " is-selected" : "") + (item.muted ? " is-muted" : "") + (item.className ? " " + item.className : ""),
-        // Prefer mousedown so selection wins the hover-leave race; suppress click.
-        onMouseDown: run,
-        onClick: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        }
-      },
-      (item.selected ? "\u25CF " : "") + item.label
-    );
-  }
-  function cycleSegmentRef(current, past2, delta) {
-    const chain = ["current", "total"];
-    for (let i = 0; i < past2.length; i++) {
-      chain.push({ pastId: past2[i].id });
-    }
-    const key = (s) => typeof s === "string" ? s : `past:${s.pastId}`;
-    let idx = 0;
-    const curKey = key(current);
-    for (let i = 0; i < chain.length; i++) {
-      if (key(chain[i]) === curKey) {
-        idx = i;
-        break;
-      }
-    }
-    const next = idx + delta;
-    if (next < 0) return chain[chain.length - 1];
-    if (next >= chain.length) return chain[0];
-    return chain[next];
   }
 
   // src/ui/chrome/MetricChart.ts
@@ -14609,7 +18509,1562 @@ button.ecu-meter-status-micro:hover,
     });
   }
 
+  // src/ui/chrome/GameIcon.ts
+  function GameIcon(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const {
+      id,
+      kind = "auto",
+      size = 18,
+      ctype,
+      mtype,
+      name,
+      title,
+      className,
+      container
+    } = props;
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      paintGameIcon(el, id, { kind, size, ctype, mtype, name, title, container });
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [id, kind, size, ctype, mtype, name, title, container]);
+    return e("span", {
+      ref,
+      className: ["ecu-game-icon", className].filter(Boolean).join(" "),
+      style: {
+        display: "inline-flex",
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        verticalAlign: "middle"
+      },
+      title: title || id
+    });
+  }
+
+  // src/ui/meter/MeterBreakdownSideRail.ts
+  function segmentKey(ref) {
+    if (ref === "current" || ref === "total") return ref;
+    return `past:${ref.pastId}`;
+  }
+  function refsEqual(a, b) {
+    return segmentKey(a) === segmentKey(b);
+  }
+  function MeterBreakdownSideRail(props) {
+    getReact();
+    const metric = props.metric === "heal" || props.metric === "taken" ? props.metric : "damage";
+    const playersResult = runMeterQuery(
+      { kind: "players", metric, primary: "total" },
+      {
+        segmentRef: props.segmentRef,
+        partyFocus: props.partyFocus,
+        now: Date.now()
+      }
+    );
+    const players = playersResult.kind === "ranked" ? playersResult.rows : [];
+    const past2 = listPastSegments();
+    const segmentOpts = [
+      { ref: "current", label: segmentTitle("current") },
+      { ref: "total", label: segmentTitle("total") }
+    ];
+    for (let i = 0; i < past2.length; i++) {
+      const p = past2[i];
+      segmentOpts.push({
+        ref: { pastId: p.id },
+        label: p.label || segmentTitle({ pastId: p.id }) || p.id
+      });
+    }
+    return e(
+      "aside",
+      {
+        className: "ecu-meter-bd-side",
+        style: { ...PIXEL_TEXT },
+        "aria-label": "Breakdown side menu"
+      },
+      e("div", { className: "ecu-meter-bd-side-sec" }, "Select Player"),
+      e(
+        "div",
+        { className: "ecu-meter-bd-side-list", role: "listbox" },
+        players.length ? players.map(
+          (row2) => e(
+            "button",
+            {
+              key: row2.id,
+              type: "button",
+              role: "option",
+              "aria-selected": row2.id === props.selectedActorId,
+              className: "ecu-meter-bd-side-item" + (row2.id === props.selectedActorId ? " is-active" : ""),
+              title: `${row2.name} \u2014 ${formatCompactNumber(row2.value)}`,
+              onClick: () => {
+                if (row2.id !== props.selectedActorId) {
+                  props.onSelectActor(row2.id, row2.name);
+                }
+              }
+            },
+            e("span", { className: "ecu-meter-bd-side-lab" }, row2.name),
+            e(
+              "span",
+              { className: "ecu-meter-bd-side-amt" },
+              formatCompactNumber(row2.value)
+            )
+          )
+        ) : e(
+          "div",
+          { className: "ecu-meter-bd-side-empty" },
+          "No players in segment"
+        )
+      ),
+      e("div", { className: "ecu-meter-bd-side-sec" }, "Select Segment"),
+      e(
+        "div",
+        { className: "ecu-meter-bd-side-list is-segments", role: "listbox" },
+        segmentOpts.map((opt) => {
+          const active = refsEqual(opt.ref, props.segmentRef);
+          const resolved = opt.ref === "current" ? resolveSegment("current") : null;
+          const label = opt.ref === "current" && (resolved == null ? void 0 : resolved.label) ? `${opt.label}` : opt.label;
+          return e(
+            "button",
+            {
+              key: segmentKey(opt.ref),
+              type: "button",
+              role: "option",
+              "aria-selected": active,
+              className: "ecu-meter-bd-side-item" + (active ? " is-active" : ""),
+              title: label,
+              disabled: !props.onSelectSegment,
+              onClick: () => {
+                if (props.onSelectSegment && !active) {
+                  props.onSelectSegment(opt.ref);
+                }
+              }
+            },
+            e("span", { className: "ecu-meter-bd-side-lab" }, label)
+          );
+        })
+      )
+    );
+  }
+
+  // src/ui/meter/views/MeterTimelineView.ts
+  var NEARBY_WINDOW_SEC = 8;
+  var NEARBY_CLUSTER_SEC = 2;
+  var TL_DEATH_W = 4;
+  var TL_ICON = 28;
+  var TL_ICON_SUB = 20;
+  var TL_ROW = 36;
+  var TL_SUB_ROW = 26;
+  var TL_PPS_BASE = 88;
+  var TL_PPS_MIN = 16;
+  var TL_PPS_MAX = 176;
+  var TL_ZOOM_STEP = 1.12;
+  var TL_BAR_MIN_PX = 4;
+  var TL_TICK_MIN_PX = 72;
+  var TL_FOLLOW_SLACK = 28;
+  var TL_VIEW_BUF_PX = 480;
+  var TL_VIEW_SNAP_PX = 64;
+  var TL_VIEW_OPEN = { left: -1e9, right: 1e9 };
+  var TL_VIEW_ESTIMATE_W = 960;
+  var TL_COALESCE_SEC = 0.3;
+  var TL_VISUAL_DUR_MIN = 5;
+  var TL_VISUAL_DUR_MAX = 20;
+  var TL_CAST_EFFECT_SEC = 8;
+  var TL_CAT_ORDER = ["cast", "buff", "debuff", "gear"];
+  function fmtClock(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  }
+  function fmtAt(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}m ${r}s`;
+  }
+  function fmtWall(ms) {
+    const d = new Date(ms);
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    const s = String(d.getSeconds()).padStart(2, "0");
+    return `${h}:${m}:${s}`;
+  }
+  function wallAtElapsed(originMs, atSec) {
+    if (!(originMs > 0)) return "";
+    return fmtWall(originMs + Math.max(0, atSec) * 1e3);
+  }
+  function tipAtLabel(originMs, atSec) {
+    const wall = wallAtElapsed(originMs, atSec);
+    return wall ? `${fmtAt(atSec)} \xB7 ${wall}` : fmtAt(atSec);
+  }
+  function escapeHtml2(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function prettySlot(slot) {
+    const spaced = slot.replace(/([0-9]+)$/, " $1");
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  }
+  function gearItemLabel(name, level) {
+    if (!name) return "(empty)";
+    const pretty = itemDisplayName(name);
+    if (level != null && level > 0) return `${pretty} +${level}`;
+    return pretty;
+  }
+  function gearItemIconHtml(name, skin, size, title) {
+    const resolved = skin || (name ? itemSkin(name) : void 0);
+    if (resolved) {
+      const sheet = skinSheetHtml(resolved, size, title);
+      if (sheet) return sheet;
+    }
+    if (name) return gameIconHtml(name, { kind: "item", size, title });
+    return `<span class="ecu-meter-tt-gear-empty" style="width:${size}px;height:${size}px" title="empty"></span>`;
+  }
+  function prettyKey(key) {
+    if (!key) return "?";
+    const cond = conditionDisplayName(key);
+    if (cond !== key) return cond;
+    const skill = skillDisplayName(key);
+    if (skill !== key) return skill;
+    return key.replace(/_/g, " ");
+  }
+  function buildActorMaps(segmentRef) {
+    const names = {};
+    const ctypes = {};
+    const meta = getPlayerMeta();
+    const metaIds = Object.keys(meta);
+    for (let i = 0; i < metaIds.length; i++) {
+      const id = metaIds[i];
+      names[id] = meta[id].name;
+      ctypes[id] = meta[id].ctype;
+    }
+    const seg = resolveSegment(segmentRef);
+    if (seg) {
+      const actorIds = Object.keys(seg.actors);
+      for (let i = 0; i < actorIds.length; i++) {
+        const a = seg.actors[actorIds[i]];
+        names[a.id] = a.name || names[a.id] || a.id;
+        ctypes[a.id] = a.ctype || ctypes[a.id] || resolvePlayerCtype(a.id) || void 0;
+        if (!a.ctype && ctypes[a.id]) a.ctype = ctypes[a.id];
+      }
+    }
+    return { names, ctypes };
+  }
+  function blockIconHtml(b, size) {
+    if (b.kind === "death") {
+      return gameIconHtml("death", { kind: "death", size });
+    }
+    if (b.kind === "condition") {
+      return gameIconHtml(b.key, {
+        kind: "condition",
+        size,
+        title: b.label
+      });
+    }
+    if (b.kind === "gear") {
+      return gearItemIconHtml(
+        b.newName || b.oldName || b.key,
+        b.skin,
+        size,
+        b.label
+      );
+    }
+    return gameIconHtml(b.key, { kind: "auto", size, title: b.label });
+  }
+  function blockCategoryLabel(b) {
+    if (b.kind === "death") return "Death";
+    if (b.kind === "cast") return "Cooldown";
+    if (b.kind === "gear") return "Gear";
+    if (b.condKind === "debuff") return "Debuff";
+    return "Buff";
+  }
+  function blockCat(b) {
+    if (b.kind === "death") return "death";
+    if (b.kind === "cast") return "cast";
+    if (b.kind === "gear") return "gear";
+    if (b.condKind === "debuff") return "debuff";
+    return "buff";
+  }
+  function laneCatsFromBlocks(blocks) {
+    const seen = {
+      cast: false,
+      buff: false,
+      debuff: false,
+      gear: false
+    };
+    for (let i = 0; i < blocks.length; i++) {
+      const cat = blockCat(blocks[i]);
+      if (cat !== "death") seen[cat] = true;
+    }
+    const out = [];
+    for (let i = 0; i < TL_CAT_ORDER.length; i++) {
+      if (seen[TL_CAT_ORDER[i]]) out.push(TL_CAT_ORDER[i]);
+    }
+    return out;
+  }
+  function laneRowPx(cats) {
+    if (cats.length >= 2) return cats.length * TL_SUB_ROW;
+    return TL_ROW;
+  }
+  function skillKey(b) {
+    if (b.kind === "gear") return b.domKey;
+    return `${b.kind}:${b.key}`;
+  }
+  function conditionElapsedSec(b) {
+    if (b.kind !== "condition") return b.durationSec;
+    if (b.isOpen && b.startedAtMs) {
+      return Math.max(0, (Date.now() - b.startedAtMs) / 1e3);
+    }
+    return b.durationSec;
+  }
+  var GEAR_TT_ICON = 26;
+  function collectClusterBlocks(primary, nearby) {
+    const all = [primary];
+    for (let i = 0; i < nearby.length; i++) all.push(nearby[i]);
+    return all;
+  }
+  function clusterSameSecond(blocks) {
+    if (!blocks.length) return true;
+    const sec = Math.floor(blocks[0].atSec);
+    for (let i = 0; i < blocks.length; i++) {
+      if (Math.floor(blocks[i].atSec) !== sec) return false;
+    }
+    return true;
+  }
+  function clusterWhenLabel(blocks, originMs) {
+    if (!blocks.length) return "";
+    let min = blocks[0].atSec;
+    let max = blocks[0].atSec;
+    for (let i = 1; i < blocks.length; i++) {
+      const t = blocks[i].atSec;
+      if (t < min) min = t;
+      if (t > max) max = t;
+    }
+    if (clusterSameSecond(blocks)) return tipAtLabel(originMs, min);
+    const wall = wallAtElapsed(originMs, min);
+    const span = `${fmtAt(min)} \u2013 ${fmtAt(max)}`;
+    return wall ? `${span} \xB7 ${wall}` : span;
+  }
+  function tipClusterMetaHtml(who, whenLabel) {
+    const when = whenLabel ? `<span class="ecu-meter-tt-cluster-when">${escapeHtml2(whenLabel)}</span>` : "";
+    return `<div class="ecu-meter-tt-cluster-meta">
+    <span class="ecu-meter-tt-cluster-who">${escapeHtml2(who)}</span>
+    ${when}
+  </div>`;
+  }
+  function tipGearRowHtml(b, muted, showAt, originMs) {
+    const tone = muted ? " is-muted" : "";
+    const slot = b.slot ? prettySlot(b.slot) : "Slot";
+    const hasOld = !!b.oldName;
+    const hasNew = !!b.newName;
+    const oldTitle = hasOld ? gearItemLabel(b.oldName, b.oldLevel) : "(empty)";
+    const newTitle = hasNew ? gearItemLabel(b.newName, b.newLevel) : "(empty)";
+    const oldIcon = gearItemIconHtml(
+      b.oldName,
+      b.oldSkin || (!hasNew ? b.skin : void 0),
+      GEAR_TT_ICON,
+      oldTitle
+    );
+    const newIcon = gearItemIconHtml(b.newName, b.skin, GEAR_TT_ICON, newTitle);
+    let icos;
+    let names;
+    if (hasOld && hasNew) {
+      icos = `<span class="ecu-meter-tt-gear-icos">${oldIcon}<span class="ecu-meter-tt-gear-arrow" aria-hidden="true">\u2192</span>${newIcon}</span>`;
+      names = `<span class="ecu-meter-tt-gear-names"><span class="is-old">${escapeHtml2(oldTitle)}</span><span class="ecu-meter-tt-gear-arrow-sm" aria-hidden="true">\u2192</span><span class="is-new">${escapeHtml2(newTitle)}</span></span>`;
+    } else if (hasNew) {
+      icos = `<span class="ecu-meter-tt-gear-icos is-single">${newIcon}</span>`;
+      names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Equip</span> ${escapeHtml2(newTitle)}</span>`;
+    } else if (hasOld) {
+      icos = `<span class="ecu-meter-tt-gear-icos is-single">${oldIcon}</span>`;
+      names = `<span class="ecu-meter-tt-gear-names"><span class="ecu-meter-tt-gear-verb">Unequip</span> ${escapeHtml2(oldTitle)}</span>`;
+    } else {
+      icos = `<span class="ecu-meter-tt-gear-icos is-single"></span>`;
+      names = `<span class="ecu-meter-tt-gear-names">${escapeHtml2(b.label || "Gear change")}</span>`;
+    }
+    let atBit = "";
+    if (showAt) {
+      atBit = `<span class="ecu-meter-tt-gear-row-at">${escapeHtml2(tipAtLabel(originMs, b.atSec))}</span>`;
+    }
+    return `<div class="ecu-meter-tt-gear-row${tone}">
+    <span class="ecu-meter-tt-gear-slot">${escapeHtml2(slot)}</span>
+    ${icos}
+    ${names}
+    ${atBit}
+  </div>`;
+  }
+  function tipGearClusterHtml(primary, nearby, actorName, originMs) {
+    const all = collectClusterBlocks(primary, nearby);
+    all.sort((a, b) => {
+      if (a.atSec !== b.atSec) return a.atSec - b.atSec;
+      const sa = a.slot || "";
+      const sb = b.slot || "";
+      if (sa < sb) return -1;
+      if (sa > sb) return 1;
+      return 0;
+    });
+    const sameSecond = clusterSameSecond(all);
+    const who = primary.source || actorName || "Unknown";
+    const whenLabel = clusterWhenLabel(all, originMs);
+    let rows = "";
+    for (let i = 0; i < all.length; i++) {
+      const b = all[i];
+      rows += tipGearRowHtml(
+        b,
+        b.domKey !== primary.domKey,
+        !sameSecond,
+        originMs
+      );
+    }
+    return `<div class="ecu-meter-tt-gear">
+    <div class="ecu-meter-tt-tl-cat is-gear">Gear</div>
+    ${tipClusterMetaHtml(who, whenLabel)}
+    <div class="ecu-meter-tt-gear-list">${rows}</div>
+  </div>`;
+  }
+  function eventPillHtml(b) {
+    const cat = blockCat(b);
+    let cls;
+    let letter;
+    switch (cat) {
+      case "cast":
+        cls = "is-cd";
+        letter = "CD";
+        break;
+      case "buff":
+        cls = "is-buff";
+        letter = "Bf";
+        break;
+      case "debuff":
+        cls = "is-debuff";
+        letter = "Db";
+        break;
+      case "death":
+        cls = "is-death";
+        letter = "Dt";
+        break;
+      case "gear":
+        cls = "is-gear";
+        letter = "Gr";
+        break;
+      default: {
+        const _exhaustive = cat;
+        return _exhaustive;
+      }
+    }
+    return `<span class="ecu-meter-tt-ev-pill ${cls}" title="${escapeHtml2(blockCategoryLabel(b))}">${letter}</span>`;
+  }
+  function tipEventRowHtml(b, muted, showAt, originMs) {
+    const tone = muted ? " is-muted" : " is-primary";
+    const icon = blockIconHtml(b, METER_TT_ICON);
+    const elapsedSec = conditionElapsedSec(b);
+    const elapsed = b.kind === "condition" && elapsedSec > 0 ? `<span class="ecu-meter-tt-ev-elapsed">${elapsedSec.toFixed(1)}s</span>` : "";
+    const at = showAt ? `<span class="ecu-meter-tt-ev-at">${escapeHtml2(tipAtLabel(originMs, b.atSec))}</span>` : "";
+    return `<div class="ecu-meter-tt-ev-row${tone}">
+    ${eventPillHtml(b)}
+    ${icon}
+    <span class="ecu-meter-tt-ev-main"><span class="ecu-meter-tt-ev-name">${escapeHtml2(b.label)}</span>${elapsed}</span>
+    ${at}
+  </div>`;
+  }
+  function tipEventClusterHtml(primary, nearby, actorName, originMs) {
+    const all = collectClusterBlocks(primary, nearby);
+    all.sort((a, b) => {
+      if (a.atSec !== b.atSec) return a.atSec - b.atSec;
+      if (a.label < b.label) return -1;
+      if (a.label > b.label) return 1;
+      return 0;
+    });
+    const sameSecond = clusterSameSecond(all);
+    const who = primary.source || actorName || "Unknown";
+    const whenLabel = clusterWhenLabel(all, originMs);
+    let rows = "";
+    for (let i = 0; i < all.length; i++) {
+      const b = all[i];
+      rows += tipEventRowHtml(
+        b,
+        b.domKey !== primary.domKey,
+        !sameSecond,
+        originMs
+      );
+    }
+    return `<div class="ecu-meter-tt-evs">
+    ${tipClusterMetaHtml(who, whenLabel)}
+    <div class="ecu-meter-tt-evs-list">${rows}</div>
+  </div>`;
+  }
+  function blockCanvasBox(b, pps, iconPx, pad2) {
+    const x = pad2 + Math.round(Math.max(0, b.atSec * pps));
+    if (b.kind === "death") return { x: x - TL_DEATH_W / 2, w: TL_DEATH_W };
+    return { x, w: iconPx };
+  }
+  function blockIconInView(b, view) {
+    const box = blockCanvasBox(b, view.pps, view.iconPx, view.pad);
+    return box.x + box.w > view.viewLeft && box.x < view.viewRight;
+  }
+  function nearbyWindowSec(pps, iconPx) {
+    const iconSec = iconPx / Math.max(1, pps);
+    return Math.min(NEARBY_WINDOW_SEC, Math.max(NEARBY_CLUSTER_SEC, iconSec));
+  }
+  function timelineScrollView(from) {
+    const el = from instanceof Element ? from : null;
+    const scroll = el && el.closest(".ecu-meter-tl-scroll");
+    if (!(scroll instanceof HTMLElement)) return null;
+    const root = scroll.closest(".ecu-meter-timeline");
+    let pad2 = 0;
+    if (root instanceof HTMLElement) {
+      pad2 = parseFloat(root.style.getPropertyValue("--tl-pad")) || 0;
+    }
+    return {
+      viewLeft: scroll.scrollLeft,
+      viewRight: scroll.scrollLeft + scroll.clientWidth,
+      pad: pad2
+    };
+  }
+  function nearbyBlocks(primary, laneBlocks, view) {
+    const primaryKey = skillKey(primary);
+    const windowSec = nearbyWindowSec(view.pps, view.iconPx);
+    const bestByKey = {};
+    for (let i = 0; i < laneBlocks.length; i++) {
+      const o = laneBlocks[i];
+      if (o.domKey === primary.domKey) continue;
+      if (Math.abs(o.atSec - primary.atSec) > windowSec) continue;
+      if (!blockIconInView(o, view)) continue;
+      if (primary.kind === "gear") {
+        if (o.kind !== "gear") continue;
+      } else if (o.kind === "gear") {
+        continue;
+      }
+      const k = skillKey(o);
+      if (k === primaryKey) continue;
+      const prev = bestByKey[k];
+      if (!prev || Math.abs(o.atSec - primary.atSec) < Math.abs(prev.atSec - primary.atSec)) {
+        bestByKey[k] = o;
+      }
+    }
+    const nearby = [];
+    const keys = Object.keys(bestByKey);
+    for (let i = 0; i < keys.length; i++) nearby.push(bestByKey[keys[i]]);
+    nearby.sort((a, b) => a.atSec - b.atSec);
+    return nearby;
+  }
+  function blockTooltipHtml(b, actorName, laneBlocks, originMs, view) {
+    const nearby = nearbyBlocks(b, laneBlocks, view);
+    if (b.kind === "gear") {
+      return tipGearClusterHtml(b, nearby, actorName, originMs);
+    }
+    return tipEventClusterHtml(b, nearby, actorName, originMs);
+  }
+  function IconHost(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const htmlRef = React.useRef("");
+    React.useLayoutEffect(() => {
+      const el = ref.current;
+      if (!el || htmlRef.current === props.html) return;
+      htmlRef.current = props.html;
+      el.innerHTML = props.html;
+    }, [props.html]);
+    return e("span", { ref, className: props.className || void 0 });
+  }
+  function visualDurationSec(b) {
+    if (b.kind === "death" || b.kind === "gear") return 0;
+    const raw = b.kind === "cast" ? b.durationSec || TL_CAST_EFFECT_SEC : b.isOpen ? TL_CAST_EFFECT_SEC : Math.max(0, b.durationSec);
+    return Math.max(
+      TL_VISUAL_DUR_MIN,
+      Math.min(TL_VISUAL_DUR_MAX, raw || TL_VISUAL_DUR_MIN)
+    );
+  }
+  function eventsInScope(items, idOf, seg, partyFocus) {
+    if (!seg) return items;
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      if (actorIdInScope(idOf(items[i]), seg, partyFocus)) out.push(items[i]);
+    }
+    return out;
+  }
+  function laneIdFor(actorId, names) {
+    if (names[actorId]) return actorId;
+    const ids = Object.keys(names);
+    for (let i = 0; i < ids.length; i++) {
+      if (names[ids[i]] === actorId) return ids[i];
+    }
+    return actorId;
+  }
+  function seedScopeLanes(byId, ensure, seg, partyFocus) {
+    var _a;
+    const meta = getPlayerMeta();
+    const metaIds = Object.keys(meta);
+    for (let i = 0; i < metaIds.length; i++) {
+      const id = metaIds[i];
+      if (seg && !actorIdInScope(id, seg, partyFocus)) continue;
+      ensure(id, (_a = meta[id]) == null ? void 0 : _a.name);
+    }
+    if (!seg) return;
+    const actorIds = Object.keys(seg.actors);
+    for (let i = 0; i < actorIds.length; i++) {
+      const id = actorIds[i];
+      if (!actorIdInScope(id, seg, partyFocus)) continue;
+      const a = seg.actors[id];
+      ensure(id, a.name);
+    }
+  }
+  function firstBlockInView(blocks, viewLeft, pps) {
+    const maxBarPx = TL_VISUAL_DUR_MAX * pps;
+    const minAt = (viewLeft - maxBarPx) / Math.max(1, pps);
+    let lo = 0;
+    let hi = blocks.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (blocks[mid].atSec < minAt) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  function lastBlockInView(blocks, viewRight, pps, from) {
+    const maxAt = viewRight / Math.max(1, pps);
+    let lo = from;
+    let hi = blocks.length;
+    while (lo < hi) {
+      const mid = lo + hi >> 1;
+      if (blocks[mid].atSec <= maxAt) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+  function blockOverlapsView(b, viewLeft, viewRight, pps, iconPx) {
+    const layout = blockLayoutPx(b, pps, iconPx);
+    return layout.left + layout.width > viewLeft && layout.left < viewRight;
+  }
+  function isViewUnmeasured(range) {
+    return range.left <= -1e8;
+  }
+  function estimateViewRange(durSec, pps, follow) {
+    const viewW = TL_VIEW_ESTIMATE_W;
+    const buf = TL_VIEW_BUF_PX;
+    const contentW = Math.max(0, durSec * pps);
+    const left = follow ? Math.max(0, contentW - viewW) : 0;
+    const right = follow ? Math.max(viewW, contentW) : viewW;
+    return { left: left - buf, right: right + buf };
+  }
+  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount) {
+    const c0 = casts.length ? casts[0].at : 0;
+    const c1 = casts.length ? casts[casts.length - 1].at : 0;
+    const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
+    let ended = 0;
+    let lastCond = 0;
+    for (let i = 0; i < conditions.length; i++) {
+      const c = conditions[i];
+      if (c.endedAt) ended++;
+      if (c.startedAt > lastCond) lastCond = c.startedAt;
+    }
+    return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}`;
+  }
+  function rosterSigNow() {
+    const meta = getPlayerMeta();
+    const ids = Object.keys(meta);
+    ids.sort();
+    let s = "";
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      s += `${id}:${meta[id].name}:${meta[id].ctype || ""};`;
+    }
+    return s;
+  }
+  function conditionsEndedCount(cs) {
+    let n = 0;
+    for (let i = 0; i < cs.length; i++) {
+      if (cs[i].endedAt) n++;
+    }
+    return n;
+  }
+  function timelineOriginMs(seg, casts, conditions, deaths, gearSwaps, now) {
+    let start = now;
+    if (seg && seg.startedAt) start = seg.startedAt;
+    for (let i = 0; i < conditions.length; i++) {
+      start = Math.min(start, conditions[i].startedAt);
+    }
+    for (let i = 0; i < casts.length; i++) {
+      start = Math.min(start, casts[i].at);
+    }
+    for (let i = 0; i < deaths.length; i++) {
+      start = Math.min(start, deaths[i].at);
+    }
+    for (let i = 0; i < gearSwaps.length; i++) {
+      start = Math.min(start, gearSwaps[i].at);
+    }
+    return start;
+  }
+  function tickStepSec(pps) {
+    const candidates = [5, 10, 15, 30, 60, 120];
+    for (let i = 0; i < candidates.length; i++) {
+      if (candidates[i] * pps >= TL_TICK_MIN_PX) return candidates[i];
+    }
+    return candidates[candidates.length - 1];
+  }
+  function buildTicks(pps, axisSec, includeEnd) {
+    const step = tickStepSec(pps);
+    const last = Math.max(0, Math.floor(axisSec + 1e-9));
+    const ticks = [{ sec: 0, left: 0 }];
+    for (let s = step; s <= last; s += step) {
+      ticks.push({ sec: s, left: Math.round(s * pps) });
+    }
+    if (includeEnd && last > 0) {
+      const endLeft = Math.round(last * pps);
+      const prev = ticks[ticks.length - 1];
+      if (endLeft - prev.left > 24) {
+        ticks.push({ sec: last, left: endLeft, isEnd: true });
+      }
+    }
+    return ticks;
+  }
+  function axisTickNodes(ticks, kind, originMs, viewLeft, viewRight) {
+    const slop = 48;
+    const nodes = [];
+    for (let i = 0; i < ticks.length; i++) {
+      const t = ticks[i];
+      if (t.left < viewLeft - slop || t.left > viewRight + slop) continue;
+      const wall = kind === "wall" ? wallAtElapsed(originMs, t.sec) : "";
+      const isFirst = t.sec === 0 && !t.isEnd;
+      nodes.push(
+        e(
+          "span",
+          {
+            key: `${kind}-${t.isEnd ? "end" : t.sec}`,
+            className: "ecu-meter-tl-tick" + (kind === "wall" ? " is-wall" : " is-fight") + (isFirst ? " is-first" : "") + (t.isEnd ? " is-last" : ""),
+            style: { left: `${t.left}px` },
+            title: kind === "fight" ? "Fight elapsed" : "Wall clock"
+          },
+          kind === "fight" ? fmtClock(t.sec) : wall || "\u2014"
+        )
+      );
+    }
+    return nodes;
+  }
+  function blockLayoutPx(b, pps, iconPx) {
+    const left = Math.round(Math.max(0, b.atSec * pps));
+    if (b.kind === "gear") {
+      return { left, width: iconPx, showBar: false };
+    }
+    const visualDur = visualDurationSec(b);
+    const width = Math.max(iconPx, Math.round(visualDur * pps));
+    const barSpan = width - Math.round(iconPx / 2);
+    const showBar = b.kind !== "death" && barSpan >= TL_BAR_MIN_PX;
+    return { left, width, showBar };
+  }
+  function timelineEventEqual(prev, next) {
+    if (prev.pps !== next.pps || prev.stackIndex !== next.stackIndex)
+      return false;
+    if (prev.laneId !== next.laneId || prev.actorName !== next.actorName) {
+      return false;
+    }
+    if (prev.originMs !== next.originMs) return false;
+    if (prev.iconPx !== next.iconPx || prev.subIndex !== next.subIndex || prev.subCount !== next.subCount) {
+      return false;
+    }
+    const pb = prev.block;
+    const nb = next.block;
+    if (pb.domKey !== nb.domKey || pb.atSec !== nb.atSec || pb.kind !== nb.kind) {
+      return false;
+    }
+    if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
+    if (pb.isOpen && nb.isOpen) return true;
+    return pb.durationSec === nb.durationSec;
+  }
+  function TimelineEventInner(props) {
+    const b = props.block;
+    const layout = blockLayoutPx(b, props.pps, props.iconPx);
+    const tip = (ev) => {
+      const laneBlocks = props.laneBlocksRef.current[props.laneId] || [];
+      const scroll = timelineScrollView(ev.target);
+      const view = {
+        pps: props.pps,
+        iconPx: props.iconPx,
+        viewLeft: scroll ? scroll.viewLeft : 0,
+        viewRight: scroll ? scroll.viewRight : Number.POSITIVE_INFINITY,
+        pad: scroll ? scroll.pad : 0
+      };
+      return blockTooltipHtml(
+        b,
+        props.actorName,
+        laneBlocks,
+        props.originMs,
+        view
+      );
+    };
+    const onEnter = (ev) => {
+      showMeterTooltip(ev, tip(ev));
+    };
+    const onMove = (ev) => {
+      showMeterTooltip(ev, tip(ev));
+    };
+    const onLeave = () => hideMeterTooltip();
+    const z = props.stackIndex + 1;
+    const split = props.subIndex >= 0 && props.subCount >= 2;
+    if (b.kind === "death") {
+      return e("div", {
+        className: "ecu-meter-tl-death",
+        style: { left: `${layout.left}px`, zIndex: z },
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
+      });
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-meter-tl-block" + (b.kind === "cast" ? " is-cast" : "") + (b.kind === "gear" ? " is-gear" : "") + (b.condKind === "buff" ? " is-buff" : "") + (b.condKind === "debuff" ? " is-debuff" : "") + (layout.showBar ? "" : " is-no-bar") + (split ? " is-sub" : ""),
+        style: {
+          left: `${layout.left}px`,
+          width: `${layout.width}px`,
+          zIndex: z,
+          ...split ? {
+            ["--tl-sub-i"]: String(props.subIndex),
+            ["--tl-subs"]: String(props.subCount)
+          } : {}
+        }
+      },
+      e(IconHost, {
+        html: blockIconHtml(b, props.iconPx),
+        className: "ecu-meter-tl-block-ico"
+      }),
+      layout.showBar ? e("div", { className: "ecu-meter-tl-block-bar" }) : null,
+      e("div", {
+        className: "ecu-meter-tl-block-hit",
+        onMouseEnter: onEnter,
+        onMouseMove: onMove,
+        onMouseLeave: onLeave
+      })
+    );
+  }
+  var TimelineEvent = null;
+  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus) {
+    var _a;
+    const byId = {};
+    const ensure = (id, fallbackName) => {
+      const lid = laneIdFor(id, names);
+      if (!byId[lid]) {
+        byId[lid] = {
+          id: lid,
+          name: names[lid] || fallbackName || names[id] || id,
+          ctype: ctypes[lid] || ctypes[id],
+          blocks: [],
+          cats: []
+        };
+      }
+      return byId[lid];
+    };
+    seedScopeLanes(byId, ensure, seg, partyFocus);
+    const wantCds = filter === "all" || filter === "cds";
+    const wantBuffs = filter === "all" || filter === "buffs";
+    const wantDebuffs = filter === "all" || filter === "debuffs";
+    const wantGear = filter === "all" || filter === "gear";
+    if (wantBuffs || wantDebuffs) {
+      for (let i = 0; i < conditions.length; i++) {
+        const c = conditions[i];
+        const ck = conditionKind(c.key);
+        if (ck === "buff" && !wantBuffs) continue;
+        if (ck === "debuff" && !wantDebuffs) continue;
+        const lane = ensure(c.actorId);
+        const t0 = Math.max(0, (c.startedAt - start) / 1e3);
+        const t1 = c.endedAt ? Math.max(t0, (c.endedAt - start) / 1e3) : t0;
+        lane.blocks.push({
+          kind: "condition",
+          domKey: `cond:${c.actorId}:${c.startedAt}:${c.key}`,
+          key: c.key,
+          label: prettyKey(c.key),
+          atSec: t0,
+          durationSec: t1 - t0,
+          startedAtMs: c.startedAt,
+          isOpen: !c.endedAt,
+          condKind: ck,
+          source: lane.name,
+          actorId: c.actorId
+        });
+      }
+    }
+    if (wantCds) {
+      for (let i = 0; i < casts.length; i++) {
+        const c = casts[i];
+        const lane = ensure(c.actorId);
+        const t0 = Math.max(0, (c.at - start) / 1e3);
+        const src = c.source || "attack";
+        lane.blocks.push({
+          kind: "cast",
+          domKey: `cast:${c.actorId}:${c.at}:${(_a = c.pid) != null ? _a : ""}:${src}`,
+          key: src,
+          label: prettyKey(src),
+          atSec: t0,
+          durationSec: TL_CAST_EFFECT_SEC,
+          source: lane.name,
+          actorId: c.actorId
+        });
+      }
+    }
+    if (wantGear) {
+      for (let i = 0; i < gearSwaps.length; i++) {
+        const g = gearSwaps[i];
+        const itemName = g.newName || g.oldName;
+        if (!itemName) continue;
+        const lane = ensure(g.actorId);
+        const t0 = Math.max(0, (g.at - start) / 1e3);
+        const label = gearItemLabel(
+          itemName,
+          g.newName ? g.newLevel : g.oldLevel
+        );
+        const oldSkin = g.oldName ? itemSkin(g.oldName) || void 0 : void 0;
+        lane.blocks.push({
+          kind: "gear",
+          domKey: `gear:${g.actorId}:${g.at}:${g.slot}:${itemName}`,
+          key: itemName,
+          label,
+          atSec: t0,
+          durationSec: 0,
+          source: lane.name,
+          actorId: g.actorId,
+          slot: g.slot,
+          oldName: g.oldName,
+          oldLevel: g.oldLevel,
+          oldSkin,
+          newName: g.newName,
+          newLevel: g.newLevel,
+          skin: g.skin || oldSkin || itemSkin(itemName)
+        });
+      }
+    }
+    for (let i = 0; i < deaths.length; i++) {
+      const d = deaths[i];
+      const lane = ensure(d.id, d.name);
+      const t0 = Math.max(0, (d.at - start) / 1e3);
+      lane.blocks.push({
+        kind: "death",
+        domKey: `death:${d.id}:${d.at}`,
+        key: "death",
+        label: `${d.name || lane.name} died`,
+        atSec: t0,
+        durationSec: 0,
+        source: lane.name,
+        actorId: d.id
+      });
+    }
+    const ids = Object.keys(byId);
+    ids.sort((a, b) => {
+      const na = byId[a].name.toLowerCase();
+      const nb = byId[b].name.toLowerCase();
+      if (na < nb) return -1;
+      if (na > nb) return 1;
+      return 0;
+    });
+    const lanes = [];
+    for (let i = 0; i < ids.length; i++) {
+      const lane = byId[ids[i]];
+      lane.blocks.sort((x, y) => x.atSec - y.atSec);
+      lane.cats = laneCatsFromBlocks(lane.blocks);
+      lanes.push(lane);
+    }
+    return lanes;
+  }
+  function timelineInnerEqual(prev, next) {
+    if (prev.segmentRef !== next.segmentRef) return false;
+    if (prev.partyFocus !== next.partyFocus) return false;
+    if (prev.rosterSig !== next.rosterSig) return false;
+    if (prev.deathCount !== next.deathCount) return false;
+    if (prev.combatLive !== next.combatLive) return false;
+    const a = prev.result;
+    const b = next.result;
+    if (a.kind !== b.kind) return false;
+    if (a.kind !== "timeline" || b.kind !== "timeline") return true;
+    if (a.casts.length !== b.casts.length) return false;
+    if (a.conditions.length !== b.conditions.length) return false;
+    const ga = a.gearSwaps || [];
+    const gb = b.gearSwaps || [];
+    if (ga.length !== gb.length) return false;
+    if (a.casts.length) {
+      if (a.casts[0].at !== b.casts[0].at) return false;
+      if (a.casts[a.casts.length - 1].at !== b.casts[b.casts.length - 1].at) {
+        return false;
+      }
+    }
+    if (a.conditions.length) {
+      if (a.conditions[0].startedAt !== b.conditions[0].startedAt) return false;
+      if (a.conditions[a.conditions.length - 1].startedAt !== b.conditions[b.conditions.length - 1].startedAt) {
+        return false;
+      }
+      if (conditionsEndedCount(a.conditions) !== conditionsEndedCount(b.conditions)) {
+        return false;
+      }
+    }
+    if (ga.length && ga[ga.length - 1].at !== gb[gb.length - 1].at) return false;
+    return true;
+  }
+  var MeterTimelineMemo = null;
+  function MeterTimelineViewInner(props) {
+    const React = getReact();
+    if (!TimelineEvent) {
+      TimelineEvent = React.memo(TimelineEventInner, timelineEventEqual);
+    }
+    const [filter, setFilter] = React.useState("all");
+    const [selectedId, setSelectedId] = React.useState(null);
+    const [zoom, setZoom] = React.useState(1);
+    const [rulerTicks, setRulerTicks] = React.useState([]);
+    const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
+    const viewSnapRef = React.useRef("");
+    const rootRef = React.useRef(null);
+    const scrollRef = React.useRef(null);
+    const gutterRef = React.useRef(null);
+    const gutterRowsRef = React.useRef(null);
+    const followRef = React.useRef(true);
+    const applyingScrollRef = React.useRef(false);
+    const isLiveRef = React.useRef(false);
+    const startRef = React.useRef(0);
+    const durSecRef = React.useRef(1);
+    const tickSigRef = React.useRef("");
+    const layoutCacheRef = React.useRef({
+      contentW: -1,
+      pad: -1,
+      trackW: -1,
+      pps: -1,
+      clock: null,
+      wall: null,
+      scale: null
+    });
+    const laneCacheRef = React.useRef({
+      sig: "",
+      lanes: []
+    });
+    const laneBlocksRef = React.useRef({});
+    const originPinRef = React.useRef(null);
+    const pps = TL_PPS_BASE * zoom;
+    const ppsRef = React.useRef(pps);
+    ppsRef.current = pps;
+    const isTimeline = props.result.kind === "timeline";
+    const seg = resolveSegment(props.segmentRef);
+    const isLive = !!(isTimeline && props.combatLive);
+    const durationMs = props.result.kind === "timeline" ? props.result.durationMs : 0;
+    const casts = isTimeline ? eventsInScope(
+      props.result.casts,
+      (c) => c.actorId,
+      seg,
+      props.partyFocus
+    ) : [];
+    const conditions = isTimeline ? eventsInScope(
+      props.result.conditions,
+      (c) => c.actorId,
+      seg,
+      props.partyFocus
+    ) : [];
+    const deaths = eventsInScope(
+      seg ? seg.deaths : [],
+      (d) => d.id,
+      seg,
+      props.partyFocus
+    );
+    const gearSwaps = isTimeline ? eventsInScope(
+      props.result.gearSwaps || [],
+      (g) => g.actorId,
+      seg,
+      props.partyFocus
+    ) : [];
+    const now = seg && seg.endedAt ? seg.endedAt : Date.now();
+    const rawStart = !isTimeline ? now : originPinRef.current != null ? originPinRef.current : timelineOriginMs(seg, casts, conditions, deaths, gearSwaps, now);
+    React.useEffect(() => {
+      originPinRef.current = null;
+    }, [props.segmentRef]);
+    if (isTimeline) {
+      const hasAnchor = !!(seg && seg.startedAt) || casts.length > 0 || conditions.length > 0 || deaths.length > 0 || gearSwaps.length > 0;
+      if (hasAnchor && originPinRef.current == null) {
+        originPinRef.current = rawStart;
+      }
+    }
+    const start = isTimeline && originPinRef.current != null ? originPinRef.current : rawStart;
+    const durSec = isLive ? Math.max((now - start) / 1e3, 1 / pps) : Math.max(durationMs / 1e3, 1 / pps);
+    isLiveRef.current = isLive;
+    startRef.current = start;
+    durSecRef.current = durSec;
+    const syncGutterY = React.useCallback(() => {
+      const rows = gutterRowsRef.current;
+      const scroll = scrollRef.current;
+      if (!rows || !scroll) return;
+      const y = Math.round(scroll.scrollTop);
+      rows.style.transform = y ? `translate3d(0, ${-y}px, 0)` : "";
+    }, []);
+    const publishViewRange = React.useCallback(() => {
+      const scroll = scrollRef.current;
+      if (!scroll || scroll.clientWidth <= 0) return;
+      const pad2 = layoutCacheRef.current.pad > 0 ? layoutCacheRef.current.pad : 0;
+      const left = scroll.scrollLeft - pad2;
+      const right = left + scroll.clientWidth;
+      const snap = TL_VIEW_SNAP_PX;
+      const buf = TL_VIEW_BUF_PX;
+      const qLeft = Math.floor((left - buf) / snap) * snap;
+      const qRight = Math.ceil((right + buf) / snap) * snap;
+      const sig = `${qLeft}:${qRight}`;
+      if (sig === viewSnapRef.current) return;
+      viewSnapRef.current = sig;
+      setViewRange({ left: qLeft, right: qRight });
+    }, []);
+    const applyLayout = React.useCallback(() => {
+      const root = rootRef.current;
+      const scroll = scrollRef.current;
+      if (!root || !scroll) return;
+      const ppsNow = ppsRef.current;
+      const cache3 = layoutCacheRef.current;
+      if (cache3.pps !== ppsNow) {
+        cache3.pps = ppsNow;
+        root.style.setProperty("--tl-pps", String(ppsNow));
+      }
+      const viewTrackW = Math.max(120, scroll.clientWidth);
+      const elapsed = isLiveRef.current ? Math.max((Date.now() - startRef.current) / 1e3, 1 / ppsNow) : Math.max(durSecRef.current, 1 / ppsNow);
+      const contentWR = Math.ceil(elapsed * ppsNow);
+      const padR = followRef.current ? Math.max(0, viewTrackW - contentWR) : 0;
+      const trackWR = padR + contentWR;
+      if (cache3.contentW !== contentWR || cache3.pad !== padR || cache3.trackW !== trackWR) {
+        cache3.contentW = contentWR;
+        cache3.pad = padR;
+        cache3.trackW = trackWR;
+      }
+      root.style.setProperty("--tl-pad", `${padR}px`);
+      root.style.setProperty("--tl-content-w", `${contentWR}px`);
+      root.style.setProperty("--tl-track-w", `${trackWR}px`);
+      if (!cache3.clock || !root.contains(cache3.clock)) {
+        cache3.clock = root.querySelector("[data-tl-clock]");
+        cache3.wall = root.querySelector("[data-tl-wall]");
+        cache3.scale = root.querySelector("[data-tl-scale]");
+      }
+      if (cache3.clock) cache3.clock.textContent = fmtClock(elapsed);
+      if (cache3.wall) {
+        cache3.wall.textContent = fmtWall(startRef.current + elapsed * 1e3);
+      }
+      if (cache3.scale) cache3.scale.textContent = `${Math.round(ppsNow)} px/s`;
+      const step = tickStepSec(ppsNow);
+      const last = Math.max(0, Math.floor(elapsed + 1e-9));
+      const includeEnd = !isLiveRef.current;
+      const lastStep = Math.floor(last / step) * step;
+      const sig = `${ppsNow}:${step}:${lastStep}:${includeEnd ? last : 0}`;
+      if (sig !== tickSigRef.current) {
+        tickSigRef.current = sig;
+        setRulerTicks(buildTicks(ppsNow, elapsed, includeEnd));
+      }
+      if (followRef.current) {
+        applyingScrollRef.current = true;
+        const target = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
+        if (Math.abs(scroll.scrollLeft - target) > 0.5) {
+          scroll.scrollLeft = target;
+        }
+        applyingScrollRef.current = false;
+      }
+      syncGutterY();
+      publishViewRange();
+    }, [publishViewRange, syncGutterY]);
+    React.useEffect(() => {
+      injectMeterChromeCss();
+      return () => hideMeterTooltip();
+    }, []);
+    React.useEffect(() => {
+      followRef.current = true;
+      layoutCacheRef.current = {
+        contentW: -1,
+        pad: -1,
+        trackW: -1,
+        pps: -1,
+        clock: null,
+        wall: null,
+        scale: null
+      };
+      tickSigRef.current = "";
+      viewSnapRef.current = "";
+    }, [start]);
+    React.useEffect(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const onScroll = () => {
+        syncGutterY();
+        publishViewRange();
+        if (applyingScrollRef.current) return;
+        const max = Math.max(0, el.scrollWidth - el.clientWidth);
+        if (max <= TL_FOLLOW_SLACK) {
+          followRef.current = true;
+          return;
+        }
+        followRef.current = el.scrollLeft >= max - TL_FOLLOW_SLACK;
+      };
+      el.addEventListener("scroll", onScroll, { passive: true });
+      return () => el.removeEventListener("scroll", onScroll);
+    }, [isTimeline, publishViewRange, syncGutterY]);
+    React.useEffect(() => {
+      const gutter = gutterRef.current;
+      const scroll = scrollRef.current;
+      if (!gutter || !scroll) return;
+      const onWheel = (ev) => {
+        scroll.scrollTop += ev.deltaY;
+        scroll.scrollLeft += ev.deltaX;
+        ev.preventDefault();
+      };
+      gutter.addEventListener("wheel", onWheel, { passive: false });
+      return () => gutter.removeEventListener("wheel", onWheel);
+    }, [isTimeline]);
+    React.useEffect(() => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const onWheel = (ev) => {
+        if (!ev.ctrlKey) return;
+        ev.preventDefault();
+        const factor = ev.deltaY < 0 ? TL_ZOOM_STEP : 1 / TL_ZOOM_STEP;
+        setZoom((z) => {
+          const minZ = TL_PPS_MIN / TL_PPS_BASE;
+          const maxZ = TL_PPS_MAX / TL_PPS_BASE;
+          return Math.max(minZ, Math.min(maxZ, z * factor));
+        });
+      };
+      scroll.addEventListener("wheel", onWheel, { passive: false });
+      return () => scroll.removeEventListener("wheel", onWheel);
+    }, [isTimeline]);
+    React.useLayoutEffect(() => {
+      applyLayout();
+      const scroll = scrollRef.current;
+      const ro = scroll && typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => applyLayout()) : null;
+      if (scroll && ro) ro.observe(scroll);
+      if (!isLive) return () => ro && ro.disconnect();
+      let raf2 = 0;
+      const loop = () => {
+        applyLayout();
+        raf2 = window.requestAnimationFrame(loop);
+      };
+      raf2 = window.requestAnimationFrame(loop);
+      return () => {
+        window.cancelAnimationFrame(raf2);
+        if (ro) ro.disconnect();
+      };
+    }, [applyLayout, isLive, isTimeline, start, zoom]);
+    if (!isTimeline) {
+      return e(
+        "div",
+        { style: { padding: "8px", color: "#888", ...PIXEL_TEXT } },
+        "No timeline"
+      );
+    }
+    const { names, ctypes } = buildActorMaps(props.segmentRef);
+    const nextLaneSig = isTimeline ? laneDataSig(
+      casts,
+      conditions,
+      gearSwaps,
+      filter,
+      start,
+      props.rosterSig,
+      props.deathCount
+    ) : "";
+    if (isTimeline && laneCacheRef.current.sig !== nextLaneSig) {
+      laneCacheRef.current = {
+        sig: nextLaneSig,
+        lanes: buildLanes(
+          casts,
+          conditions,
+          deaths,
+          gearSwaps,
+          start,
+          filter,
+          names,
+          ctypes,
+          seg,
+          props.partyFocus
+        )
+      };
+    }
+    const lanes = isTimeline ? laneCacheRef.current.lanes : [];
+    const laneBlocksMap = {};
+    for (let i = 0; i < lanes.length; i++) {
+      laneBlocksMap[lanes[i].id] = lanes[i].blocks;
+    }
+    laneBlocksRef.current = laneBlocksMap;
+    const ticks = rulerTicks.length > 0 ? rulerTicks : buildTicks(pps, durSec, !isLive);
+    const renderRange = isViewUnmeasured(viewRange) ? estimateViewRange(durSec, pps, followRef.current) : viewRange;
+    const selectLane = (laneId) => {
+      setSelectedId(selectedId === laneId ? null : laneId);
+    };
+    const gutterLane = (lane, li) => {
+      const rowH = laneRowPx(lane.cats);
+      const tip = lane.ctype ? `${lane.name} \xB7 ${lane.ctype}` : lane.name;
+      return e(
+        "div",
+        {
+          key: lane.id,
+          className: "ecu-meter-tl-gutter-lane" + (li % 2 === 1 ? " is-alt" : "") + (selectedId === lane.id ? " is-selected" : "") + (lane.cats.length >= 2 ? " is-split" : ""),
+          title: tip,
+          style: {
+            color: classColors[(lane.ctype || "").toLowerCase()] || "#b0bec5",
+            height: `${rowH}px`,
+            minHeight: `${rowH}px`,
+            maxHeight: `${rowH}px`
+          },
+          onClick: () => selectLane(lane.id)
+        },
+        e("span", { className: "ecu-meter-tl-name-txt" }, lane.name)
+      );
+    };
+    const trackLane = (lane, li) => {
+      const split = lane.cats.length >= 2;
+      const rowH = laneRowPx(lane.cats);
+      const iconPx = split ? TL_ICON_SUB : TL_ICON;
+      const from = firstBlockInView(lane.blocks, renderRange.left, pps);
+      const to = lastBlockInView(lane.blocks, renderRange.right, pps, from);
+      const eventNodes = [];
+      let lastCastKey = "";
+      let lastCastAt = -1e9;
+      for (let bi = from; bi < to; bi++) {
+        const b = lane.blocks[bi];
+        if (!blockOverlapsView(b, renderRange.left, renderRange.right, pps, iconPx)) {
+          continue;
+        }
+        if (b.kind === "cast") {
+          if (b.key === lastCastKey && b.atSec - lastCastAt < TL_COALESCE_SEC) {
+            continue;
+          }
+          lastCastKey = b.key;
+          lastCastAt = b.atSec;
+        }
+        const cat = blockCat(b);
+        const subIndex = split && cat !== "death" ? lane.cats.indexOf(cat) : -1;
+        eventNodes.push(
+          e(TimelineEvent, {
+            key: b.domKey,
+            block: b,
+            laneId: lane.id,
+            laneBlocksRef,
+            originMs: start,
+            pps,
+            actorName: lane.name,
+            stackIndex: bi,
+            iconPx,
+            subIndex,
+            subCount: split ? lane.cats.length : 1
+          })
+        );
+      }
+      const gridNodes = [];
+      for (let i = 1; i < ticks.length; i++) {
+        const t = ticks[i];
+        if (t.left < renderRange.left - 8 || t.left > renderRange.right + 8) {
+          continue;
+        }
+        gridNodes.push(
+          e("div", {
+            key: `g${t.isEnd ? "end" : t.sec}`,
+            className: "ecu-meter-tl-gridline",
+            style: { left: `${t.left}px` }
+          })
+        );
+      }
+      return e(
+        "div",
+        {
+          key: lane.id,
+          className: "ecu-meter-tl-lane" + (li % 2 === 1 ? " is-alt" : "") + (selectedId === lane.id ? " is-selected" : "") + (split ? " is-split" : ""),
+          style: {
+            height: `${rowH}px`,
+            minHeight: `${rowH}px`,
+            maxHeight: `${rowH}px`
+          },
+          onClick: () => selectLane(lane.id)
+        },
+        e(
+          "div",
+          { className: "ecu-meter-tl-track" },
+          e(
+            "div",
+            { className: "ecu-meter-tl-axis" },
+            ...gridNodes,
+            ...eventNodes
+          )
+        )
+      );
+    };
+    const filterTabs = [
+      { id: "all", label: "All" },
+      { id: "cds", label: "Cooldowns" },
+      { id: "debuffs", label: "Debuffs" },
+      { id: "buffs", label: "Buffs" },
+      { id: "gear", label: "Gear" }
+    ];
+    const legendItems = filter === "cds" ? [{ cls: "is-cd", label: "Cooldown bar" }] : filter === "buffs" ? [{ cls: "is-buff", label: "Buff bar" }] : filter === "debuffs" ? [{ cls: "is-debuff", label: "Debuff bar" }] : filter === "gear" ? [{ cls: "is-gear", label: "Gear swap" }] : [
+      { cls: "is-cd", label: "CD" },
+      { cls: "is-buff", label: "Buff" },
+      { cls: "is-debuff", label: "Debuff" },
+      { cls: "is-gear", label: "Gear" },
+      { cls: "is-death", label: "Death" }
+    ];
+    const emptyMsg = filter === "all" ? "No cast / condition / gear markers yet." : filter === "cds" ? "No cast / cooldown markers yet." : filter === "debuffs" ? "No debuffs recorded yet." : filter === "gear" ? "No gear swaps recorded yet." : "No buffs recorded yet.";
+    return e(
+      "div",
+      {
+        className: "ecu-meter-timeline",
+        ref: rootRef,
+        style: { ...PIXEL_TEXT }
+      },
+      e(
+        "div",
+        { className: "ecu-meter-timeline-hd" },
+        e("div", { className: "ecu-meter-timeline-mark" }, "Time Line"),
+        e(
+          "div",
+          { className: "ecu-meter-timeline-tools" },
+          ...filterTabs.map(
+            (f) => e(
+              "button",
+              {
+                key: f.id,
+                type: "button",
+                className: "ecu-meter-tl-mode" + (filter === f.id ? " is-active" : ""),
+                onClick: () => setFilter(f.id)
+              },
+              f.label
+            )
+          ),
+          e(
+            "span",
+            { className: "ecu-meter-timeline-meta" },
+            e(
+              "span",
+              {
+                "data-tl-clock": "",
+                title: "Fight elapsed (from pull start)"
+              },
+              fmtClock(durSec)
+            ),
+            " \xB7 ",
+            e(
+              "span",
+              {
+                "data-tl-wall": "",
+                title: "Wall-clock time"
+              },
+              fmtWall(start + durSec * 1e3)
+            ),
+            e("span", { "data-tl-scale": "" }, `${Math.round(pps)} px/s`),
+            isLive ? " \xB7 in combat" : "",
+            deaths.length ? ` \xB7 ${deaths.length} deaths` : "",
+            ` \xB7 ${lanes.length} players`,
+            " \xB7 Ctrl+wheel zoom"
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-tl-legend", "aria-label": "Bar colors" },
+          ...legendItems.map(
+            (item) => e(
+              "span",
+              {
+                key: item.cls,
+                className: "ecu-meter-tl-legend-item " + item.cls
+              },
+              e("span", {
+                className: "ecu-meter-tl-legend-swatch",
+                "aria-hidden": true
+              }),
+              item.label
+            )
+          )
+        )
+      ),
+      e(
+        "div",
+        { className: "ecu-meter-tl-body" },
+        e(
+          "div",
+          { className: "ecu-meter-tl-gutter", ref: gutterRef },
+          e(
+            "div",
+            { className: "ecu-meter-tl-gutter-ruler", "aria-hidden": true },
+            e(
+              "span",
+              { className: "ecu-meter-tl-gutter-axis-lab is-fight" },
+              "Fight"
+            ),
+            e(
+              "span",
+              { className: "ecu-meter-tl-gutter-axis-lab is-clock" },
+              "Clock"
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-tl-gutter-rows", ref: gutterRowsRef },
+            lanes.length === 0 ? e("div", { className: "ecu-meter-tl-gutter-empty" }) : lanes.map(gutterLane)
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-tl-scroll", ref: scrollRef },
+          e(
+            "div",
+            { className: "ecu-meter-tl-canvas" },
+            // Live playhead at true “now” X (right edge while follow-pinned).
+            // Omit post-combat — end-of-content would read as a permanent
+            // gold right-edge chrome bar / fake scrollbar.
+            isLive ? e("div", { className: "ecu-meter-tl-now", "aria-hidden": true }) : null,
+            e(
+              "div",
+              { className: "ecu-meter-tl-ruler" },
+              e(
+                "div",
+                { className: "ecu-meter-tl-ruler-track" },
+                e(
+                  "div",
+                  { className: "ecu-meter-tl-axis is-fight" },
+                  ...axisTickNodes(
+                    ticks,
+                    "fight",
+                    start,
+                    renderRange.left,
+                    renderRange.right
+                  )
+                ),
+                e(
+                  "div",
+                  { className: "ecu-meter-tl-axis is-wall" },
+                  ...axisTickNodes(
+                    ticks,
+                    "wall",
+                    start,
+                    renderRange.left,
+                    renderRange.right
+                  )
+                )
+              )
+            ),
+            lanes.length === 0 ? e("div", { className: "ecu-meter-tl-empty" }, emptyMsg) : e(
+              "div",
+              { className: "ecu-meter-tl-lanes" },
+              ...lanes.map(trackLane)
+            )
+          )
+        )
+      )
+    );
+  }
+  function MeterTimelineView(props) {
+    const React = getReact();
+    if (!MeterTimelineMemo) {
+      MeterTimelineMemo = React.memo(MeterTimelineViewInner, timelineInnerEqual);
+    }
+    const seg = resolveSegment(props.segmentRef);
+    return e(MeterTimelineMemo, {
+      result: props.result,
+      segmentRef: props.segmentRef,
+      partyFocus: props.partyFocus,
+      rosterSig: rosterSigNow(),
+      deathCount: seg ? seg.deaths.length : 0,
+      combatLive: !!(seg && seg.endedAt == null)
+    });
+  }
+
   // src/ui/meter/views/MeterMiscViews.ts
+  var COMPARE_SPELL_MATCH_PCT = 30;
+  var COMPARE_SPELL_ROWS = 12;
+  var COMPARE_TARGET_ROWS = 9;
   var pad = {
     padding: "8px",
     color: "#888",
@@ -14620,36 +20075,6 @@ button.ecu-meter-status-micro:hover,
     const d = (hitAt - deathAt) / 1e3;
     const sign = d <= 0 ? "" : "+";
     return `${sign}${d.toFixed(1)}s`;
-  }
-  var DEBUFF_CONDITION_KEYS = /* @__PURE__ */ new Set([
-    "cursed",
-    "burned",
-    "poisoned",
-    "weakness",
-    "frozen",
-    "stunned",
-    "slowed"
-  ]);
-  function conditionKind(key) {
-    return DEBUFF_CONDITION_KEYS.has(key) ? "debuff" : "buff";
-  }
-  function buildActorNameMap(segmentRef) {
-    const map = {};
-    const meta = getPlayerMeta();
-    const metaIds = Object.keys(meta);
-    for (let i = 0; i < metaIds.length; i++) {
-      const id = metaIds[i];
-      map[id] = meta[id].name;
-    }
-    const seg = resolveSegment(segmentRef);
-    if (seg) {
-      const actorIds = Object.keys(seg.actors);
-      for (let i = 0; i < actorIds.length; i++) {
-        const a = seg.actors[actorIds[i]];
-        map[a.id] = a.name || map[a.id] || a.id;
-      }
-    }
-    return map;
   }
   function lifePctAtHit(hpLog, hitAt) {
     if (!hpLog.length) return null;
@@ -14689,18 +20114,103 @@ button.ecu-meter-status-micro:hover,
     }
     return peers;
   }
+  function sharedAbilityPct(primary, other) {
+    const keys = Object.keys(primary.abilities);
+    if (!keys.length) return 0;
+    let same = 0;
+    for (let i = 0; i < keys.length; i++) {
+      if (other.abilities[keys[i]]) same += 1;
+    }
+    return same / keys.length * 100;
+  }
+  function comparePeerActors(segmentRef, actorId, ctype, metric) {
+    const all = sameCtypePeers(segmentRef, actorId, ctype);
+    const primary = all.find((a) => a.id === actorId) || all[0] || null;
+    if (!primary) return { primary: null, peers: [] };
+    const scored = [];
+    for (let i = 0; i < all.length; i++) {
+      const a = all[i];
+      if (a.id === primary.id) continue;
+      if (sharedAbilityPct(primary, a) <= COMPARE_SPELL_MATCH_PCT) continue;
+      scored.push({ a, total: actorMetricTotal(a, metric) });
+    }
+    scored.sort((x, y) => y.total - x.total);
+    const peers = [];
+    for (let i = 0; i < scored.length && peers.length < 2; i++) {
+      peers.push(scored[i].a);
+    }
+    return { primary, peers };
+  }
+  function actorTargetTotals(actor, metric) {
+    const byId = {};
+    const abKeys = Object.keys(actor.abilities);
+    for (let i = 0; i < abKeys.length; i++) {
+      const ab = actor.abilities[abKeys[i]];
+      const tKeys = Object.keys(ab.targets);
+      for (let t = 0; t < tKeys.length; t++) {
+        const tg = ab.targets[tKeys[t]];
+        let v = 0;
+        if (metric === "heal") v = tg.heal;
+        else if (metric === "taken") v = 0;
+        else v = tg.damage;
+        if (!(v > 0)) continue;
+        if (!byId[tg.id]) {
+          byId[tg.id] = {
+            id: tg.id,
+            name: tg.name || tg.id,
+            value: 0,
+            mtype: tg.mtype,
+            ctype: tg.ctype
+          };
+        }
+        byId[tg.id].value += v;
+        if (tg.name) byId[tg.id].name = tg.name;
+        if (tg.mtype) byId[tg.id].mtype = tg.mtype;
+        if (tg.ctype) byId[tg.id].ctype = tg.ctype;
+      }
+    }
+    const rows = Object.keys(byId).map((id) => byId[id]);
+    rows.sort((a, b) => b.value - a.value);
+    return rows;
+  }
+  function comparePctLabel(primaryVal, peerVal) {
+    if (primaryVal === 0 && peerVal === 0) {
+      return { text: "+0%", tone: "flat" };
+    }
+    if (primaryVal > peerVal) {
+      if (!(peerVal > 0)) return { text: "+999%", tone: "up" };
+      const up = Math.min(
+        999,
+        Math.floor((primaryVal - peerVal) / peerVal * 100)
+      );
+      return { text: `+${up}%`, tone: "up" };
+    }
+    if (peerVal > primaryVal) {
+      if (!(primaryVal > 0)) return { text: "\u2212999%", tone: "down" };
+      const down = Math.min(
+        999,
+        Math.floor((peerVal - primaryVal) / primaryVal * 100)
+      );
+      return { text: `\u2212${down}%`, tone: "down" };
+    }
+    return { text: "+0%", tone: "flat" };
+  }
   function DeathSourceBar(props) {
-    const React = getReact();
-    const iconRef = React.useRef(null);
-    React.useEffect(() => {
-      if (!iconRef.current) return;
-      iconRef.current.innerHTML = skillIconHtml(props.ability, 14);
-    }, [props.ability]);
     return e(
       "div",
       { className: "ecu-meter-death-source" },
-      e("span", { ref: iconRef, className: "ecu-meter-death-source-icon" }),
-      e("span", { className: "ecu-meter-death-source-name" }, props.ability),
+      e(GameIcon, {
+        id: props.ability,
+        kind: "auto",
+        size: 14,
+        className: "ecu-meter-death-source-icon",
+        title: skillDisplayName(props.ability)
+      }),
+      e(
+        "span",
+        { className: "ecu-meter-death-source-name" },
+        skillDisplayName(props.ability)
+      ),
       e(
         "span",
         { className: "ecu-meter-death-source-bar" },
@@ -14709,7 +20219,11 @@ button.ecu-meter-status-micro:hover,
           style: { width: `${Math.round(props.pct * 100)}%` }
         })
       ),
-      e("span", { className: "ecu-meter-death-source-amt" }, formatCompactNumber(props.amount))
+      e(
+        "span",
+        { className: "ecu-meter-death-source-amt" },
+        formatCompactNumber(props.amount)
+      )
     );
   }
   function DeathHitRow(props) {
@@ -14721,7 +20235,7 @@ button.ecu-meter-status-micro:hover,
     const lifePct = props.showLifePct && props.hpLog ? lifePctAtHit(props.hpLog, h.at) : null;
     React.useEffect(() => {
       if (!ref.current) return;
-      ref.current.innerHTML = `${skillIconHtml(h.source || "attack", 14)} ${h.source || "attack"}${h.actor ? ` <span class="ecu-meter-death-hit-actor">${h.actor}</span>` : ""}`;
+      ref.current.innerHTML = `${skillIconHtml(h.source || "attack", 14)} ${skillDisplayName(h.source || "attack")}${h.actor ? ` <span class="ecu-meter-death-hit-actor">${h.actor}</span>` : ""}`;
     }, [h.source, h.actor]);
     return e(
       "div",
@@ -14754,70 +20268,116 @@ button.ecu-meter-status-micro:hover,
     }, []);
     return { ref, width };
   }
-  var OC_COLORS = {
-    hits: "#90caf9",
-    crits: "#ef5350",
-    miss: "#b0bec5",
-    evade: "#80cbc4",
-    avoid: "#ce93d8",
-    kills: "#e57373"
-  };
-  function outcomeRows(outcomes) {
-    return [
-      ["hits", outcomes.hits, OC_COLORS.hits],
-      ["crits", outcomes.crits, OC_COLORS.crits],
-      ["miss", outcomes.miss, OC_COLORS.miss],
-      ["evade", outcomes.evade, OC_COLORS.evade],
-      ["avoid", outcomes.avoid, OC_COLORS.avoid],
-      ["kills", outcomes.kills, OC_COLORS.kills]
-    ].filter(([, c]) => c > 0);
+  function fmtUptimeTimer(ms) {
+    const sec = Math.max(0, ms / 1e3);
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
   }
-  function OutcomeTable(props) {
-    const rows = outcomeRows(props.outcomes);
-    let sum = 0;
-    for (let i = 0; i < rows.length; i++) sum += rows[i][1];
-    if (!sum) sum = 1;
+  function abilityAmount(actor, abilityId, metric) {
+    const ab = actor.abilities[abilityId];
+    if (!ab) return 0;
+    if (metric === "heal") return ab.heal;
+    if (metric === "taken") return ab.taken;
+    return ab.damage;
+  }
+  function actorMetricTotal(actor, metric) {
+    if (metric === "heal") return actor.heal;
+    if (metric === "taken") return actor.taken;
+    return actor.damage;
+  }
+  function topAbilityIds(actor, metric, n) {
+    const keys = Object.keys(actor.abilities);
+    const scored = keys.map((k) => ({
+      id: k,
+      v: abilityAmount(actor, k, metric)
+    }));
+    scored.sort((a, b) => b.v - a.v);
+    const out = [];
+    for (let i = 0; i < scored.length && out.length < n; i++) {
+      if (scored[i].v > 0) out.push(scored[i].id);
+    }
+    return out;
+  }
+  function SpellBlock(props) {
+    const fill = props.fillPct != null ? Math.max(0, Math.min(100, props.fillPct)) : void 0;
     return e(
-      "table",
-      { className: "ecu-meter-outcome" },
-      e(
-        "thead",
-        null,
-        e(
-          "tr",
-          null,
-          e("th", null, "Type"),
-          e("th", null, "Count"),
-          e("th", null, "%")
-        )
-      ),
-      e(
-        "tbody",
-        null,
-        ...rows.map(
-          ([name, count, color]) => e(
-            "tr",
-            { key: name },
-            e(
-              "td",
-              null,
-              props.swatches ? e("span", {
-                style: {
-                  display: "inline-block",
-                  width: 8,
-                  height: 8,
-                  background: color,
-                  marginRight: 6
-                }
-              }) : null,
-              name
-            ),
-            e("td", null, String(count)),
-            e("td", null, `${(count / sum * 100).toFixed(0)}%`)
-          )
-        )
-      )
+      "div",
+      {
+        className: "ecu-meter-bd-block" + (props.className ? ` ${props.className}` : "")
+      },
+      fill != null ? e("div", {
+        className: "ecu-meter-bd-block-fill",
+        style: { width: `${fill}%` }
+      }) : null,
+      e("div", { className: "ecu-meter-bd-block-body" }, props.children)
     );
+  }
+  function SpellBlockLine(props) {
+    return e(
+      "div",
+      { className: "ecu-meter-bd-block-line" },
+      e("span", { className: "ecu-meter-bd-block-left" }, props.left),
+      props.right != null ? e(
+        "span",
+        {
+          className: "ecu-meter-bd-block-right" + (props.mutedRight ? " ecu-meter-bd-muted" : "")
+        },
+        props.right
+      ) : null
+    );
+  }
+  function formatAlDamageType(type) {
+    if (!type) return "";
+    const t = type.toLowerCase();
+    if (t === "physical") return "Physical";
+    if (t === "magical") return "Magical";
+    if (t === "pure") return "Pure";
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+  function hitAmountBlockLines(stats, sec, rateLabel) {
+    if (!(stats.count > 0)) {
+      return [
+        e(
+          "div",
+          { className: "ecu-meter-bd-block-note" },
+          "Min / Max / avg need a new fight (reload after this update)"
+        )
+      ];
+    }
+    const avg = stats.total / stats.count;
+    const rate = stats.total / Math.max(sec, 1);
+    return [
+      e(SpellBlockLine, {
+        left: e(
+          "span",
+          null,
+          "Min: ",
+          e("b", null, formatCompactNumber(stats.min))
+        ),
+        right: e(
+          "span",
+          null,
+          "Max: ",
+          e("b", null, formatCompactNumber(stats.max))
+        )
+      }),
+      e(SpellBlockLine, {
+        left: e(
+          "span",
+          null,
+          "Average: ",
+          e("b", null, formatCompactNumber(avg))
+        ),
+        right: e(
+          "span",
+          null,
+          `${rateLabel}: `,
+          e("b", null, formatCompactRate(rate))
+        )
+      })
+    ];
   }
   function MeterDetailsView(props) {
     var _a;
@@ -14828,7 +20388,14 @@ button.ecu-meter-status-micro:hover,
     }, []);
     const isDetails = props.result.kind === "details";
     const r = isDetails ? props.result : null;
-    const abilityKey = props.selectedAbility || (r ? r.ability : void 0);
+    const abilityKey = r && (props.selectedAbility || r.ability || ((_a = r.abilityRows[0]) == null ? void 0 : _a.id) || null);
+    React.useEffect(() => {
+      var _a2;
+      if (!r) return;
+      if (props.selectedAbility) return;
+      const first = r.ability || ((_a2 = r.abilityRows[0]) == null ? void 0 : _a2.id);
+      if (first && props.onSelectAbility) props.onSelectAbility(first);
+    }, [r && r.actorId, r && r.ability, props.selectedAbility]);
     if (!r) {
       return e(
         "div",
@@ -14836,173 +20403,342 @@ button.ecu-meter-status-micro:hover,
         "Pick a player (or open Inspector after combat)"
       );
     }
+    const metric = r.metric === "heal" || r.metric === "taken" ? r.metric : "damage";
     const sec = Math.max(r.durationMs / 1e3, 1);
+    const amountLabel = metric === "heal" ? "Heal" : metric === "taken" ? "Taken" : "Damage";
+    const rateLabel = metric === "heal" ? "HPS" : "DPS";
     const tabs = [
       { id: "spells", label: "Spells" },
-      { id: "targets", label: "Targets" },
       { id: "auras", label: "Auras" },
-      { id: "compare", label: "Compare" },
-      { id: "summary", label: "Summary" }
+      { id: "compare", label: "Compare" }
     ];
     const onSpellClick = (row2) => {
+      setTab("spells");
       if (props.onSelectAbility) props.onSelectAbility(row2.id);
-      setTab("targets");
     };
-    let body = null;
-    if (tab === "spells") {
-      body = e(MeterBarsView, {
-        query: { kind: "abilities", actorId: r.actorId, metric: "damage" },
-        segmentRef: props.segmentRef,
-        partyFocus: props.partyFocus,
-        live: false,
-        selectedRowId: props.selectedAbility || void 0,
-        onRowClick: onSpellClick
-      });
-    } else if (tab === "targets") {
-      const ab = abilityKey || ((_a = r.abilityRows[0]) == null ? void 0 : _a.id);
-      body = ab ? e(MeterBarsView, {
-        query: {
-          kind: "ability_targets",
-          actorId: r.actorId,
-          ability: ab,
-          metric: "damage"
-        },
-        segmentRef: props.segmentRef,
-        partyFocus: props.partyFocus,
-        live: false
-      }) : e(MeterBarsView, {
-        query: { kind: "targets", actorId: r.actorId, metric: "damage" },
-        segmentRef: props.segmentRef,
-        partyFocus: props.partyFocus,
-        live: false
-      });
-    } else if (tab === "auras") {
-      body = e(
-        "div",
-        { className: "ecu-meter-inspector-summary", style: { ...PIXEL_TEXT } },
-        e("div", { className: "sec-h" }, "Buff / condition uptime"),
-        e(UptimeTable, { rows: r.uptimeRows || [] })
-      );
-    } else if (tab === "compare") {
-      const peers = sameCtypePeers(props.segmentRef, r.actorId, r.ctype);
-      body = peers.length > 1 ? e(
-        "div",
-        { className: "ecu-meter-inspector-compare" },
-        ...peers.map((p) => {
-          const secPeer = Math.max(r.durationMs / 1e3, 1);
-          const isSelf = p.id === r.actorId;
-          return e(
-            "div",
-            {
-              key: p.id,
-              className: "ecu-meter-inspector-compare-col" + (isSelf ? " is-you" : "")
-            },
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-h" },
-              p.name,
-              isSelf ? " (you)" : ""
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-stat" },
-              "Damage",
-              e("b", null, formatCompactNumber(p.damage))
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-stat" },
-              "DPS",
-              e("b", null, formatCompactRate(p.damage / secPeer))
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-stat" },
-              "Taken",
-              e("b", null, formatCompactNumber(p.taken))
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-stat" },
-              "Heal",
-              e("b", null, formatCompactNumber(p.heal))
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-inspector-compare-stat" },
-              "HPS",
-              e("b", null, formatCompactRate(p.heal / secPeer))
-            )
-          );
-        })
-      ) : e(
-        "div",
-        { style: { padding: 8, color: "#888", ...PIXEL_TEXT } },
-        r.ctype ? "No other players with the same class in this segment" : "Class unknown \u2014 compare needs ctype"
-      );
-    } else {
-      body = e(
-        "div",
-        { className: "ecu-meter-inspector-summary", style: { ...PIXEL_TEXT } },
+    const hits = r.outcomes.hits;
+    const crits = r.outcomes.crits;
+    const normals = Math.max(0, hits - crits);
+    const avg = hits > 0 ? r.abilityTotal / hits : 0;
+    const rate = r.abilityTotal / sec;
+    const castText = r.abilityCasts > 0 ? String(r.abilityCasts) : hits > 0 ? String(hits) : "\u2014";
+    const normalCount = r.hitNormal.count > 0 ? r.hitNormal.count : normals;
+    const critCount = r.hitCrit.count > 0 ? r.hitCrit.count : crits;
+    const hitDenom = Math.max(hits, normalCount + critCount, 1);
+    const normalPct = normalCount / hitDenom * 100;
+    const critPct = critCount / hitDenom * 100;
+    const defenseHits = r.outcomes.miss + r.outcomes.evade + r.outcomes.avoid;
+    const defensePct = hits + defenseHits > 0 ? defenseHits / (hits + defenseHits) * 100 : 0;
+    const typeLabel = formatAlDamageType(r.damageType);
+    const spellBlocks = abilityKey ? e(
+      "div",
+      { className: "ecu-meter-bd-blocks", style: { ...PIXEL_TEXT } },
+      e(
+        SpellBlock,
+        { className: "is-summary", fillPct: 100 },
         e(
           "div",
-          { className: "stat-grid" },
-          e("div", null, "Damage ", e("b", null, formatCompactNumber(r.totals.damage))),
-          e("div", null, "DPS ", e("b", null, formatCompactRate(r.totals.damage / sec))),
-          e("div", null, "Taken ", e("b", null, formatCompactNumber(r.totals.taken))),
-          e("div", null, "Heal ", e("b", null, formatCompactNumber(r.totals.heal))),
-          e("div", null, "HPS ", e("b", null, formatCompactRate(r.totals.heal / sec))),
+          { className: "ecu-meter-bd-block-title" },
+          skillDisplayName(abilityKey)
+        ),
+        e(SpellBlockLine, {
+          left: e("span", null, "Casts: ", e("b", null, castText)),
+          right: e("span", null, "Hits: ", e("b", null, String(hits)))
+        }),
+        e(SpellBlockLine, {
+          left: e(
+            "span",
+            null,
+            `${amountLabel}: `,
+            e("b", null, formatCompactNumber(r.abilityTotal))
+          ),
+          right: typeLabel || "\u2014",
+          mutedRight: true
+        }),
+        e(SpellBlockLine, {
+          left: e(
+            "span",
+            null,
+            "Average: ",
+            e("b", null, formatCompactNumber(avg))
+          ),
+          right: e(
+            "span",
+            null,
+            `${rateLabel}: `,
+            e("b", null, formatCompactRate(rate))
+          )
+        }),
+        r.abilitySplash > 0 ? e(SpellBlockLine, {
+          left: e(
+            "span",
+            null,
+            "Explosion splash: ",
+            e("b", null, formatCompactNumber(r.abilitySplash))
+          )
+        }) : null
+      ),
+      normalCount > 0 ? e(
+        SpellBlock,
+        { fillPct: normalPct },
+        e(SpellBlockLine, {
+          left: e(
+            "span",
+            { className: "ecu-meter-bd-block-h" },
+            "Normal Hits"
+          ),
+          right: e(
+            "span",
+            null,
+            e("b", null, String(normalCount)),
+            e(
+              "span",
+              { className: "ecu-meter-bd-muted" },
+              ` [${normalPct.toFixed(1)}%]`
+            )
+          )
+        }),
+        ...hitAmountBlockLines(r.hitNormal, sec, rateLabel)
+      ) : null,
+      critCount > 0 ? e(
+        SpellBlock,
+        { className: "is-crit", fillPct: critPct },
+        e(SpellBlockLine, {
+          left: e(
+            "span",
+            { className: "ecu-meter-bd-block-h" },
+            "Critical Hits"
+          ),
+          right: e(
+            "span",
+            null,
+            e("b", null, String(critCount)),
+            e(
+              "span",
+              { className: "ecu-meter-bd-muted" },
+              ` [${critPct.toFixed(1)}%]`
+            )
+          )
+        }),
+        ...hitAmountBlockLines(r.hitCrit, sec, rateLabel)
+      ) : null,
+      defenseHits > 0 ? e(
+        SpellBlock,
+        { fillPct: defensePct },
+        e(SpellBlockLine, {
+          left: e(
+            "span",
+            { className: "ecu-meter-bd-block-h" },
+            "Defenses"
+          ),
+          right: e(
+            "span",
+            null,
+            e("b", null, String(defenseHits)),
+            e(
+              "span",
+              { className: "ecu-meter-bd-muted" },
+              ` [${defensePct.toFixed(1)}%]`
+            )
+          )
+        }),
+        e(SpellBlockLine, {
+          left: r.outcomes.miss > 0 ? `Miss: ${r.outcomes.miss}` : "\xA0",
+          right: r.outcomes.evade > 0 ? `Evade: ${r.outcomes.evade}` : r.outcomes.avoid > 0 ? `Avoid: ${r.outcomes.avoid}` : "\xA0"
+        }),
+        r.outcomes.evade > 0 && r.outcomes.avoid > 0 ? e(SpellBlockLine, {
+          left: `Avoid: ${r.outcomes.avoid}`
+        }) : null
+      ) : null
+    ) : e(
+      "div",
+      {
+        className: "ecu-meter-bd-blocks ecu-meter-bd-blocks-empty",
+        style: { ...PIXEL_TEXT }
+      },
+      e(
+        "div",
+        { className: "ecu-meter-bd-stub" },
+        "Select a spell on the left"
+      )
+    );
+    const barsLive = props.segmentRef === "current";
+    const spellsBody = e(
+      "div",
+      { className: "ecu-meter-bd-spells" },
+      e(
+        "div",
+        { className: "ecu-meter-bd-left" },
+        e(
+          "div",
+          { className: "ecu-meter-bd-abilities" },
+          e(MeterBarsView, {
+            query: {
+              kind: "abilities",
+              actorId: r.actorId,
+              metric
+            },
+            segmentRef: props.segmentRef,
+            partyFocus: props.partyFocus,
+            live: barsLive,
+            selectedRowId: abilityKey || void 0,
+            onRowClick: onSpellClick
+          })
+        ),
+        e(
+          "div",
+          { className: "ecu-meter-bd-targets" },
           e(
             "div",
-            null,
-            "Heal Req ",
-            e("b", null, formatCompactNumber(r.totals.healingRequired))
+            { className: "ecu-meter-bd-targets-h", style: { ...PIXEL_TEXT } },
+            "TARGETS:"
           ),
-          e("div", null, "Deaths ", e("b", null, String(r.deaths)))
-        ),
-        e(
-          "div",
-          { className: "sec-h" },
-          props.selectedAbility ? `${props.selectedAbility} \u2014 outcomes` : "Outcomes"
-        ),
-        e(OutcomeTable, { outcomes: r.outcomes }),
-        r.uptimeRows && r.uptimeRows.length ? e(
-          "div",
-          null,
-          e("div", { className: "sec-h" }, "Uptime"),
-          e(UptimeTable, { rows: r.uptimeRows })
-        ) : null
-      );
-    }
-    return e(
-      "div",
-      { className: "ecu-meter-inspector" },
-      e(
-        "div",
-        { className: "ecu-meter-inspector-body" },
-        tab === "targets" && props.selectedAbility ? e(
-          "div",
-          { className: "ecu-meter-inspector-spell" },
-          props.selectedAbility,
-          r.abilitySplash > 0 ? ` \xB7 explosion splash ${formatCompactNumber(r.abilitySplash)}` : ""
-        ) : null,
-        body
-      ),
-      e(
-        "div",
-        { className: "ecu-meter-inspector-tabs-rail", style: { ...PIXEL_TEXT } },
-        ...tabs.map(
-          (t) => e(
-            "button",
-            {
-              key: t.id,
-              type: "button",
-              className: "ecu-meter-player-tab" + (tab === t.id ? " active" : ""),
-              onClick: () => setTab(t.id)
+          abilityKey ? e(MeterBarsView, {
+            query: {
+              kind: "ability_targets",
+              actorId: r.actorId,
+              ability: abilityKey,
+              metric
             },
-            t.label
+            segmentRef: props.segmentRef,
+            partyFocus: props.partyFocus,
+            live: barsLive
+          }) : e(
+            "div",
+            { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
+            "Select a spell to see its targets"
           )
         )
+      ),
+      spellBlocks
+    );
+    const aurasBody = (() => {
+      const rows = r.uptimeRows || [];
+      const buffs = [];
+      const debuffs = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row2 = rows[i];
+        const named = {
+          ...row2,
+          name: conditionDisplayName(row2.id) || row2.name
+        };
+        if (conditionKind(row2.id) === "debuff") debuffs.push(named);
+        else buffs.push(named);
+      }
+      return e(
+        "div",
+        { className: "ecu-meter-bd-auras is-full" },
+        e(
+          "div",
+          { className: "ecu-meter-bd-auras-main", style: { ...PIXEL_TEXT } },
+          e(
+            "div",
+            { className: "ecu-meter-bd-auras-col" },
+            e("div", { className: "ecu-meter-bd-auras-col-h" }, "Buffs"),
+            buffs.length ? e(UptimeTable, { rows: buffs }) : e(
+              "div",
+              { className: "ecu-meter-bd-stub" },
+              "No buff samples yet (need entity.s while in combat)."
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-bd-auras-col" },
+            e("div", { className: "ecu-meter-bd-auras-col-h" }, "Debuffs"),
+            debuffs.length ? e(UptimeTable, { rows: debuffs }) : e(
+              "div",
+              { className: "ecu-meter-bd-stub" },
+              "No debuff samples yet (need entity.s while in combat)."
+            )
+          )
+        )
+      );
+    })();
+    let body = null;
+    if (tab === "spells") {
+      body = spellsBody;
+    } else if (tab === "auras") {
+      body = aurasBody;
+    } else {
+      body = e(CompareTabBody, {
+        segmentRef: props.segmentRef,
+        actorId: r.actorId,
+        ctype: r.ctype,
+        metric,
+        amountLabel,
+        rateLabel,
+        sec
+      });
+    }
+    const attrTitle = detailsWindowTitle(r.actorName, r.metric, r.primary);
+    const ctype = r.ctype || "";
+    const rateTotal = metric === "heal" ? r.totals.heal : metric === "taken" ? r.totals.taken : r.totals.damage;
+    return e(
+      "div",
+      { className: "ecu-meter-inspector-layout" },
+      props.onSelectActor ? e(MeterBreakdownSideRail, {
+        segmentRef: props.segmentRef,
+        partyFocus: props.partyFocus,
+        selectedActorId: r.actorId,
+        metric,
+        onSelectActor: props.onSelectActor,
+        onSelectSegment: props.onSelectSegment
+      }) : null,
+      e(
+        "div",
+        { className: "ecu-meter-inspector" },
+        e(
+          "div",
+          { className: "ecu-meter-inspector-top", style: { ...PIXEL_TEXT } },
+          e(
+            "div",
+            { className: "ecu-meter-inspector-attr" },
+            e(GameIcon, {
+              id: r.actorId,
+              kind: "character",
+              ctype: ctype || void 0,
+              name: r.actorName,
+              size: 40,
+              title: ctype ? `${r.actorName} \xB7 ${ctype}` : r.actorName,
+              className: "ecu-meter-inspector-portrait"
+            }),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-attr-text" },
+              attrTitle,
+              ctype ? e(
+                "span",
+                {
+                  className: "ecu-meter-inspector-ctype",
+                  style: { color: classColors[ctype] || "#b0bec5" }
+                },
+                ` \xB7 ${ctype}`
+              ) : null
+            ),
+            e(
+              "span",
+              { className: "ecu-meter-inspector-sub" },
+              `${formatCompactRate(rateTotal / sec)} \xB7 ${sec.toFixed(0)}s`
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-player-tabs ecu-meter-inspector-tabs" },
+            ...tabs.map(
+              (t) => e(
+                "button",
+                {
+                  key: t.id,
+                  type: "button",
+                  className: "ecu-meter-player-tab" + (tab === t.id ? " active" : ""),
+                  onClick: () => setTab(t.id)
+                },
+                t.label
+              )
+            )
+          )
+        ),
+        e("div", { className: "ecu-meter-inspector-body" }, body)
       )
     );
   }
@@ -15010,47 +20746,272 @@ button.ecu-meter-status-micro:hover,
     if (!props.rows.length) {
       return e(
         "div",
-        { style: { padding: 8, color: "#888", ...PIXEL_TEXT } },
+        { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
         "No buff / condition samples yet (need entity.s while in combat)"
       );
     }
     return e(
       "div",
-      {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: 2,
-          padding: "4px 0",
-          ...PIXEL_TEXT
-        }
-      },
+      { className: "ecu-meter-bd-auras-table", style: { ...PIXEL_TEXT } },
+      e(
+        "div",
+        { className: "ecu-meter-bd-auras-head" },
+        e("span", null, "Name"),
+        e("span", null, "Uptime"),
+        e("span", null, "%"),
+        e("span", { title: "Applications" }, "A"),
+        e("span", { title: "Refreshes (AL: not tracked)" }, "R")
+      ),
       ...props.rows.map(
-        (row2) => e(
+        (row2, i) => e(
           "div",
           {
             key: row2.id,
-            className: "ecu-meter-uptime-row",
-            style: {
-              display: "grid",
-              gridTemplateColumns: "1fr auto auto",
-              gap: 8,
-              padding: "3px 8px",
-              alignItems: "center",
-              fontSize: 15,
-              color: "#c5d0e0"
-            },
-            title: `${row2.name}: ${(row2.activeMs / 1e3).toFixed(1)}s active`
+            className: "ecu-meter-uptime-row" + (i % 2 === 0 ? " is-alt" : ""),
+            title: `${row2.name}: ${fmtUptimeTimer(row2.activeMs)} active`
           },
-          e("span", null, row2.name),
           e(
-            "b",
-            { style: { color: "#fff" } },
+            "span",
+            { className: "ecu-meter-uptime-name" },
+            e(GameIcon, {
+              id: row2.id,
+              kind: "condition",
+              size: 16,
+              title: row2.name,
+              className: "ecu-meter-uptime-ico"
+            }),
+            e("span", { className: "ecu-meter-uptime-label" }, row2.name)
+          ),
+          e(
+            "span",
+            { className: "ecu-meter-uptime-time" },
+            fmtUptimeTimer(row2.activeMs)
+          ),
+          e(
+            "span",
+            { className: "ecu-meter-uptime-pct" },
             `${(row2.uptime * 100).toFixed(0)}%`
           ),
-          e("span", { style: { color: "#8b9bb0" } }, `${row2.apps}\xD7`)
+          e("span", { className: "ecu-meter-uptime-apps" }, String(row2.apps)),
+          e("span", { className: "ecu-meter-uptime-ref" }, "\u2014")
         )
       )
+    );
+  }
+  function CompareTabBody(props) {
+    var _a;
+    const { primary, peers } = comparePeerActors(
+      props.segmentRef,
+      props.actorId,
+      props.ctype,
+      props.metric
+    );
+    if (!primary) {
+      return e(
+        "div",
+        { className: "ecu-meter-bd-stub", style: { ...PIXEL_TEXT } },
+        props.ctype ? `No ${props.ctype} actors in this segment to compare.` : "Compare needs ctype on party members."
+      );
+    }
+    const metric = props.metric;
+    const spellIds = topAbilityIds(primary, metric, COMPARE_SPELL_ROWS);
+    const primaryTargets = actorTargetTotals(primary, metric).slice(
+      0,
+      COMPARE_TARGET_ROWS
+    );
+    const primaryTopSpell = spellIds.length ? abilityAmount(primary, spellIds[0], metric) : 1;
+    const primaryTopTarget = ((_a = primaryTargets[0]) == null ? void 0 : _a.value) || 1;
+    const emptyPeerMsg = "There's no more players to compare (with the same ctype)";
+    const columns = [
+      { actor: primary, isPrimary: true },
+      { actor: peers[0] || null, isPrimary: false },
+      { actor: peers[1] || null, isPrimary: false }
+    ];
+    return e(
+      "div",
+      {
+        className: "ecu-meter-inspector-compare",
+        style: { ...PIXEL_TEXT }
+      },
+      ...columns.map((col, colIdx) => {
+        if (!col.actor) {
+          return e(
+            "div",
+            {
+              key: `empty-${colIdx}`,
+              className: "ecu-meter-inspector-compare-col is-empty"
+            },
+            e(
+              "div",
+              { className: "ecu-meter-inspector-compare-empty" },
+              emptyPeerMsg
+            )
+          );
+        }
+        const actor = col.actor;
+        const total = actorMetricTotal(actor, metric);
+        const peerTargets = actorTargetTotals(actor, metric);
+        const peerTargetById = {};
+        for (let i = 0; i < peerTargets.length; i++) {
+          peerTargetById[peerTargets[i].id] = peerTargets[i];
+        }
+        const peerSpellRank = {};
+        const peerSpellOrder = topAbilityIds(actor, metric, 99);
+        for (let i = 0; i < peerSpellOrder.length; i++) {
+          peerSpellRank[peerSpellOrder[i]] = i + 1;
+        }
+        const peerTargetRank = {};
+        for (let i = 0; i < peerTargets.length; i++) {
+          peerTargetRank[peerTargets[i].id] = i + 1;
+        }
+        return e(
+          "div",
+          {
+            key: actor.id,
+            className: "ecu-meter-inspector-compare-col" + (col.isPrimary ? " is-you" : "")
+          },
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-h" },
+            e(GameIcon, {
+              id: actor.id,
+              kind: "character",
+              ctype: actor.ctype,
+              name: actor.name,
+              size: 28,
+              title: actor.ctype ? `${actor.name} \xB7 ${actor.ctype}` : actor.name
+            }),
+            e("span", null, actor.name),
+            col.isPrimary ? e("span", { className: "ecu-meter-bd-muted" }, " \u2605") : null
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-stat" },
+            props.amountLabel,
+            e("b", null, formatCompactNumber(total))
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-stat" },
+            props.rateLabel,
+            e("b", null, formatCompactRate(total / props.sec))
+          ),
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-spells-h" },
+            "Spells"
+          ),
+          spellIds.length === 0 ? e("div", { className: "ecu-meter-bd-muted" }, "No ability totals") : null,
+          ...spellIds.map((abId, idx) => {
+            const primaryV = abilityAmount(primary, abId, metric);
+            const v = abilityAmount(actor, abId, metric);
+            const hasSpell = !!actor.abilities[abId];
+            if (!col.isPrimary && !hasSpell) {
+              return e("div", {
+                key: abId,
+                className: "ecu-meter-inspector-compare-spell is-missing"
+              });
+            }
+            const fillPct = col.isPrimary ? Math.min(100, v / Math.max(primaryTopSpell, 1) * 100) : 100;
+            const rank = col.isPrimary ? idx + 1 : peerSpellRank[abId] || idx + 1;
+            const pct = !col.isPrimary ? comparePctLabel(primaryV, v) : null;
+            return e(
+              "div",
+              {
+                key: abId,
+                className: "ecu-meter-inspector-compare-spell",
+                title: `${skillDisplayName(abId)} \u2014 ${formatCompactNumber(v)}`
+              },
+              e("div", {
+                className: "ecu-meter-inspector-compare-spell-fill",
+                style: { width: `${fillPct}%` }
+              }),
+              e(
+                "span",
+                { className: "ecu-meter-inspector-compare-spell-n" },
+                e(GameIcon, {
+                  id: abId,
+                  kind: "auto",
+                  size: 14,
+                  title: skillDisplayName(abId)
+                }),
+                `${rank}. ${skillDisplayName(abId)}`
+              ),
+              e(
+                "span",
+                { className: "ecu-meter-inspector-compare-spell-v" },
+                formatCompactNumber(v),
+                pct ? e(
+                  "span",
+                  {
+                    className: "ecu-meter-inspector-compare-pct is-" + pct.tone
+                  },
+                  " ",
+                  pct.text
+                ) : null
+              )
+            );
+          }),
+          e(
+            "div",
+            { className: "ecu-meter-inspector-compare-spells-h" },
+            "Targets"
+          ),
+          primaryTargets.length === 0 ? e("div", { className: "ecu-meter-bd-muted" }, "No targets") : null,
+          ...primaryTargets.map((pt, idx) => {
+            const peerT = peerTargetById[pt.id];
+            const v = col.isPrimary ? pt.value : peerT ? peerT.value : 0;
+            if (!col.isPrimary && !peerT) {
+              return e("div", {
+                key: pt.id,
+                className: "ecu-meter-inspector-compare-spell is-missing"
+              });
+            }
+            const fillPct = col.isPrimary ? Math.min(100, v / Math.max(primaryTopTarget, 1) * 100) : 100;
+            const rank = col.isPrimary ? idx + 1 : peerTargetRank[pt.id] || idx + 1;
+            const pct = !col.isPrimary ? comparePctLabel(pt.value, v) : null;
+            return e(
+              "div",
+              {
+                key: pt.id,
+                className: "ecu-meter-inspector-compare-spell is-target",
+                title: `${pt.name} \u2014 ${formatCompactNumber(v)}`
+              },
+              e("div", {
+                className: "ecu-meter-inspector-compare-spell-fill",
+                style: { width: `${fillPct}%` }
+              }),
+              e(
+                "span",
+                { className: "ecu-meter-inspector-compare-spell-n" },
+                e(GameIcon, {
+                  id: pt.id,
+                  kind: "target",
+                  size: 14,
+                  mtype: pt.mtype,
+                  ctype: pt.ctype,
+                  name: pt.name,
+                  title: pt.name
+                }),
+                `${rank}. ${pt.name}`
+              ),
+              e(
+                "span",
+                { className: "ecu-meter-inspector-compare-spell-v" },
+                formatCompactNumber(v),
+                pct ? e(
+                  "span",
+                  {
+                    className: "ecu-meter-inspector-compare-pct is-" + pct.tone
+                  },
+                  " ",
+                  pct.text
+                ) : null
+              )
+            );
+          })
+        );
+      })
     );
   }
   function MeterDeathView(props) {
@@ -15096,9 +21057,7 @@ button.ecu-meter-status-micro:hover,
       if (filter === "heal") return heal;
       return true;
     });
-    const logHits = filteredHits.slice().sort(
-      (a, b) => appearance.deathLogInvert ? b.at - a.at : a.at - b.at
-    );
+    const logHits = filteredHits.slice().sort((a, b) => appearance.deathLogInvert ? b.at - a.at : a.at - b.at);
     const killerLabel = d.killerId && killerList.length ? killerList[0].key : d.killerId || null;
     const filterTabs = [
       { id: "all", label: "All" },
@@ -15217,7 +21176,6 @@ button.ecu-meter-status-micro:hover,
   }
   function MeterEncounterView(props) {
     const React = getReact();
-    const [tab, setTab] = React.useState("summary");
     React.useEffect(() => {
       injectMeterChromeCss();
     }, []);
@@ -15226,42 +21184,49 @@ button.ecu-meter-status-micro:hover,
     }
     const r = props.result;
     const sec = Math.max(r.durationMs / 1e3, 1);
-    const tabs = [
-      { id: "summary", label: "Summary" },
-      { id: "deaths", label: "Deaths" },
-      { id: "interrupts", label: "Interrupts" },
-      { id: "dispels", label: "Dispels" }
-    ];
-    const widgets = [
-      {
-        key: "dmg",
-        title: "Damage Done",
-        query: { kind: "players", metric: "damage", primary: "total" }
-      },
-      {
-        key: "dps",
-        title: "DPS",
-        query: { kind: "players", metric: "damage", primary: "rate" }
-      },
+    const seg = resolveSegment(props.segmentRef);
+    const fightLabel = (seg == null ? void 0 : seg.label) || "Current fight";
+    const openPlayer = props.onOpenPlayer ? (row2) => {
+      if (row2.kind === "player" || !row2.kind) {
+        props.onOpenPlayer(row2.id, row2.name);
+      }
+    } : void 0;
+    const panes = [
       {
         key: "taken",
-        title: "Damage Taken",
+        title: "Damage Taken per Player",
+        tone: "tone-taken",
         query: { kind: "players", metric: "taken", primary: "total" }
       },
       {
-        key: "heal",
-        title: "Healing Done",
-        query: { kind: "players", metric: "heal", primary: "total" }
+        key: "spell",
+        title: "Damage Taken by Spell",
+        tone: "tone-spell",
+        query: { kind: "taken_by_spell" }
       },
       {
-        key: "hr",
-        title: "Healing Required",
-        query: { kind: "players", metric: "healing_required", primary: "total" }
+        key: "adds",
+        title: "Adds",
+        tone: "tone-dmg",
+        query: { kind: "enemy_damage" }
       },
       {
-        key: "av",
-        title: "Avoidance",
-        query: { kind: "avoidance" }
+        key: "dispels",
+        title: "Dispels",
+        tone: "tone-heal",
+        query: { kind: "misc", metric: "dispels" }
+      },
+      {
+        key: "interrupts",
+        title: "Interrupts",
+        tone: "tone-av",
+        query: { kind: "misc", metric: "interrupts" }
+      },
+      {
+        key: "deaths",
+        title: "Death Log",
+        tone: "tone-death",
+        deathLog: true
       }
     ];
     const deathResult = runMeterQuery(
@@ -15271,252 +21236,99 @@ button.ecu-meter-status-micro:hover,
         partyFocus: props.partyFocus
       }
     );
-    let body = null;
-    if (tab === "summary") {
-      body = e(
-        "div",
-        null,
-        e(
-          "div",
-          { className: "ecu-meter-encounter-stats", style: { ...PIXEL_TEXT } },
-          e("span", null, `${sec.toFixed(0)}s`),
-          e("span", null, `${r.deaths} deaths`),
-          e("span", null, "Dmg ", e("b", null, formatCompactNumber(r.totalDamage))),
-          e("span", null, "DPS ", e("b", null, `${formatCompactNumber(r.totalDamage / sec)}/s`)),
-          e("span", null, "Heal ", e("b", null, formatCompactNumber(r.totalHeal))),
-          e("span", null, "HPS ", e("b", null, `${formatCompactNumber(r.totalHeal / sec)}/s`)),
-          r.topDps ? e("span", { style: { color: "#e88" } }, `Top ${r.topDps.name}`) : null
-        ),
-        e(
-          "div",
-          { className: "ecu-meter-encounter-grid" },
-          ...widgets.map(
-            (w) => e(
-              "div",
-              { key: w.key, className: "ecu-meter-encounter-widget" },
-              e("div", { className: "ecu-meter-encounter-widget-h" }, w.title),
-              e(
-                "div",
-                { className: "ecu-meter-encounter-widget-body" },
-                e(MeterBarsView, {
-                  query: w.query,
-                  segmentRef: props.segmentRef,
-                  partyFocus: props.partyFocus,
-                  live: false,
-                  onRowContextMenu: props.onOpenPlayer ? (row2) => props.onOpenPlayer(row2.id, row2.name) : void 0,
-                  onRowClick: props.onOpenPlayer ? (row2) => props.onOpenPlayer(row2.id, row2.name) : void 0
-                })
-              )
-            )
-          ),
-          e(
-            "div",
-            { className: "ecu-meter-encounter-widget" },
-            e("div", { className: "ecu-meter-encounter-widget-h" }, "Death Log"),
-            e(
-              "div",
-              { className: "ecu-meter-encounter-widget-body" },
-              deathResult.kind === "death_log" && deathResult.deaths.length ? e(
-                "div",
-                { style: { padding: "4px 6px", ...PIXEL_TEXT } },
-                ...deathResult.deaths.slice(0, 8).map(
-                  (d, i) => e(
-                    "div",
-                    {
-                      key: `${d.id}-${d.at}`,
-                      style: {
-                        padding: "3px 0",
-                        borderBottom: "1px solid rgba(255,255,255,0.04)",
-                        fontSize: 11,
-                        color: "#c5d0e0"
-                      }
-                    },
-                    e("b", { style: { color: "#ef9a9a" } }, d.name),
-                    ` \xB7 #${i + 1} \xB7 ${new Date(d.at).toLocaleTimeString()}`
-                  )
-                )
-              ) : e(
-                "div",
-                { style: { padding: 8, color: "#888", fontSize: 11 } },
-                "No deaths"
-              )
-            )
-          )
-        )
-      );
-    } else if (tab === "deaths") {
-      body = deathResult.kind === "death_log" ? e(MeterDeathView, { result: deathResult }) : e("div", { style: pad }, "No deaths");
-    } else if (tab === "interrupts") {
-      body = e(MeterBarsView, {
-        query: { kind: "misc", metric: "interrupts" },
-        segmentRef: props.segmentRef,
-        partyFocus: props.partyFocus,
-        live: false,
-        onRowClick: props.onOpenPlayer ? (row2) => props.onOpenPlayer(row2.id, row2.name) : void 0
-      });
-    } else {
-      body = e(MeterBarsView, {
-        query: { kind: "misc", metric: "dispels" },
-        segmentRef: props.segmentRef,
-        partyFocus: props.partyFocus,
-        live: false,
-        onRowClick: props.onOpenPlayer ? (row2) => props.onOpenPlayer(row2.id, row2.name) : void 0
-      });
-    }
     return e(
       "div",
       { className: "ecu-meter-encounter", style: { ...PIXEL_TEXT } },
       e(
         "div",
-        { className: "ecu-meter-encounter-tabs" },
-        ...tabs.map(
-          (t) => e(
-            "button",
-            {
-              key: t.id,
-              type: "button",
-              className: "ecu-meter-encounter-tab" + (tab === t.id ? " active" : ""),
-              onClick: () => setTab(t.id)
-            },
-            t.label
-          )
-        )
-      ),
-      e("div", { className: "ecu-meter-encounter-body" }, body)
-    );
-  }
-  function MeterTimelineView(props) {
-    const React = getReact();
-    const [filter, setFilter] = React.useState("all");
-    React.useEffect(() => {
-      injectMeterChromeCss();
-    }, []);
-    if (props.result.kind !== "timeline") {
-      return e("div", { style: pad }, "No timeline");
-    }
-    const { casts, conditions, durationMs } = props.result;
-    const durSec = Math.max(durationMs / 1e3, 1);
-    const nameMap = buildActorNameMap(props.segmentRef);
-    const seg = resolveSegment(props.segmentRef);
-    const deaths = seg ? seg.deaths : [];
-    let start = Date.now();
-    for (let i = 0; i < conditions.length; i++) {
-      start = Math.min(start, conditions[i].startedAt);
-    }
-    for (let i = 0; i < casts.length; i++) {
-      start = Math.min(start, casts[i].at);
-    }
-    if (seg && seg.startedAt) start = Math.min(start, seg.startedAt);
-    const lanes = {};
-    for (let i = 0; i < conditions.length; i++) {
-      const c = conditions[i];
-      if (filter === "cds") continue;
-      const ck = conditionKind(c.key);
-      if (filter === "buffs" && ck !== "buff") continue;
-      if (filter === "debuffs" && ck !== "debuff") continue;
-      const key = c.actorId;
-      if (!lanes[key]) lanes[key] = [];
-      const t0 = (c.startedAt - start) / 1e3;
-      const t1 = ((c.endedAt || Date.now()) - start) / 1e3;
-      lanes[key].push({
-        left: t0 / durSec * 100,
-        width: Math.max(0.8, (t1 - t0) / durSec * 100),
-        label: c.key,
-        color: ck === "debuff" ? "#ab47bc" : "#5c6bc0",
-        kind: "bar"
-      });
-    }
-    for (let i = 0; i < casts.length; i++) {
-      const c = casts[i];
-      if (filter === "buffs" || filter === "debuffs") continue;
-      const key = c.actorId;
-      if (!lanes[key]) lanes[key] = [];
-      const t0 = (c.at - start) / 1e3;
-      lanes[key].push({
-        left: t0 / durSec * 100,
-        width: 1.2,
-        label: c.source,
-        color: "#ffb74d",
-        kind: "bar"
-      });
-    }
-    for (let i = 0; i < deaths.length; i++) {
-      const d = deaths[i];
-      const key = d.id;
-      if (!lanes[key]) lanes[key] = [];
-      const t0 = (d.at - start) / 1e3;
-      lanes[key].push({
-        left: t0 / durSec * 100,
-        width: 0,
-        label: `${d.name} died`,
-        color: "#e53935",
-        kind: "death"
-      });
-    }
-    const laneIds = Object.keys(lanes);
-    const filterTabs = ["all", "buffs", "debuffs", "cds"];
-    return e(
-      "div",
-      { className: "ecu-meter-timeline", style: { ...PIXEL_TEXT } },
-      e(
-        "div",
-        { className: "ecu-meter-timeline-tools" },
-        ...filterTabs.map(
-          (f) => e(
-            "button",
-            {
-              key: f,
-              type: "button",
-              className: "ecu-meter-tab" + (filter === f ? " active" : ""),
-              onClick: () => setFilter(f)
-            },
-            f
-          )
+        { className: "ecu-meter-enc-head" },
+        e(
+          "div",
+          { className: "ecu-meter-enc-title" },
+          e("b", null, "Encounter Details"),
+          " \xB7 ",
+          fightLabel
         ),
         e(
-          "span",
-          { className: "ecu-meter-timeline-meta" },
-          `${durSec.toFixed(0)}s`,
-          deaths.length ? ` \xB7 ${deaths.length} deaths` : ""
+          "div",
+          { className: "ecu-meter-enc-stats" },
+          e("span", null, e("b", null, `${sec.toFixed(0)}s`)),
+          e(
+            "span",
+            { className: r.deaths > 0 ? "is-bad" : void 0 },
+            e("b", null, String(r.deaths)),
+            " deaths"
+          ),
+          e(
+            "span",
+            null,
+            "Dmg ",
+            e("b", null, formatCompactNumber(r.totalDamage))
+          ),
+          e(
+            "span",
+            null,
+            "DPS ",
+            e("b", null, `${formatCompactNumber(r.totalDamage / sec)}/s`)
+          ),
+          e(
+            "span",
+            null,
+            "Heal ",
+            e("b", null, formatCompactNumber(r.totalHeal))
+          ),
+          r.topDps ? e("span", null, "Top ", e("b", null, r.topDps.name)) : null
         )
       ),
       e(
         "div",
-        { className: "ecu-meter-timeline-scroll" },
-        ...laneIds.slice(0, 12).map(
-          (id) => e(
+        { className: "ecu-meter-enc-grid" },
+        ...panes.map(
+          (pane) => e(
             "div",
-            { key: id, className: "ecu-meter-timeline-lane" },
+            {
+              key: pane.key,
+              className: `ecu-meter-enc-widget ${pane.tone}`
+            },
+            e("div", { className: "ecu-meter-enc-widget-hd" }, pane.title),
             e(
               "div",
-              {
-                className: "ecu-meter-timeline-name",
-                title: nameMap[id] || id
-              },
-              nameMap[id] || id
-            ),
-            e(
-              "div",
-              { className: "ecu-meter-timeline-track" },
-              ...lanes[id].map(
-                (bar, bi) => bar.kind === "death" ? e("div", {
-                  key: bi,
-                  className: "ecu-meter-timeline-death",
-                  title: bar.label,
-                  style: {
-                    left: `${Math.min(99, Math.max(0, bar.left))}%`
-                  }
-                }) : e("div", {
-                  key: bi,
-                  className: "ecu-meter-timeline-bar",
-                  title: bar.label,
-                  style: {
-                    left: `${Math.min(99, Math.max(0, bar.left))}%`,
-                    width: `${Math.min(100, bar.width)}%`,
-                    background: bar.color
-                  }
-                })
-              )
+              { className: "ecu-meter-enc-widget-body" },
+              pane.deathLog ? deathResult.kind === "death_log" && deathResult.deaths.length ? e(
+                "div",
+                { className: "ecu-meter-enc-deathlist" },
+                ...deathResult.deaths.map(
+                  (d, i) => e(
+                    "div",
+                    {
+                      key: `${d.id}-${d.at}`,
+                      className: "ecu-meter-enc-deathrow"
+                    },
+                    e(
+                      "span",
+                      { className: "ecu-meter-enc-deathname" },
+                      d.name
+                    ),
+                    e(
+                      "span",
+                      { className: "ecu-meter-enc-deathtime" },
+                      new Date(d.at).toLocaleTimeString()
+                    ),
+                    e(
+                      "span",
+                      { className: "ecu-meter-enc-deathnum" },
+                      `#${i + 1}`
+                    )
+                  )
+                )
+              ) : e("div", { className: "ecu-meter-enc-empty" }, "No deaths") : e(MeterBarsView, {
+                query: pane.query,
+                segmentRef: props.segmentRef,
+                partyFocus: props.partyFocus,
+                live: false,
+                onRowContextMenu: openPlayer,
+                onRowClick: openPlayer
+              })
             )
           )
         )
@@ -16182,11 +21994,16 @@ button.ecu-meter-status-micro:hover,
             partyFocus: instance.partyFocus,
             entities,
             highlightId,
-            live: false,
+            live: selectedset === "current",
             onRowClick: (row2) => {
               onPatchInstance({
-                query: { kind: "details", actorId: row2.id },
-                label: `Inspector \xB7 ${row2.name}`
+                query: {
+                  kind: "details",
+                  actorId: row2.id,
+                  metric: "damage",
+                  primary: "total"
+                },
+                label: detailsWindowTitle(row2.name, "damage", "total")
               });
             }
           })
@@ -16198,7 +22015,24 @@ button.ecu-meter-status-micro:hover,
         segmentRef: selectedset,
         partyFocus: instance.partyFocus,
         selectedAbility,
-        onSelectAbility: (ability) => patchInspectorAbility(ability)
+        onSelectAbility: (ability) => patchInspectorAbility(ability),
+        onSelectActor: (actorId, name) => {
+          const q = instance.query;
+          const metric = q.kind === "details" && (q.metric === "heal" || q.metric === "taken") ? q.metric : "damage";
+          const primary = q.kind === "details" && q.primary === "rate" ? "rate" : "total";
+          onPatchInstance({
+            query: {
+              kind: "details",
+              actorId,
+              metric,
+              primary
+            },
+            label: detailsWindowTitle(name, metric, primary)
+          });
+        },
+        onSelectSegment: (next) => {
+          onPatchInstance({ selectedset: next });
+        }
       });
     }
     if (pres === "death_log" || result.kind === "death_log") {
@@ -16210,19 +22044,34 @@ button.ecu-meter-status-micro:hover,
         segmentRef: selectedset,
         partyFocus: instance.partyFocus,
         onOpenPlayer: (id, name) => {
-          if (onFocusInspector) onFocusInspector(id, name);
-          else {
+          if (onFocusInspector) {
+            onFocusInspector(id, name, {
+              metric: "damage",
+              primary: "total",
+              selectedset,
+              partyFocus: instance.partyFocus
+            });
+          } else {
             onPatchInstance({
-              query: { kind: "details", actorId: id },
+              query: {
+                kind: "details",
+                actorId: id,
+                metric: "damage",
+                primary: "total"
+              },
               presentation: "details",
-              label: `Inspector \xB7 ${name}`
+              label: detailsWindowTitle(name, "damage", "total")
             });
           }
         }
       });
     }
     if (pres === "timeline" || result.kind === "timeline") {
-      return e(MeterTimelineView, { result, segmentRef: selectedset });
+      return e(MeterTimelineView, {
+        result,
+        segmentRef: selectedset,
+        partyFocus: instance.partyFocus
+      });
     }
     if (pres === "realtime" || pres === "compare" || pres === "series") {
       const hist = result.kind === "history" ? result : runMeterQuery(
@@ -16514,67 +22363,88 @@ button.ecu-meter-status-micro:hover,
       return items;
     }
     if (tip.kind === "gear") {
-      const items = [
-        {
-          label: "Standard (Visible party)",
+      const items = [];
+      const eff = effectivePartyFocus(partyFocus, hasObserver);
+      for (let i = 0; i < partyMenuOpts.length; i++) {
+        const opt = partyMenuOpts[i];
+        const selected = partyFocus === opt.id || eff === opt.id;
+        items.push({
+          label: opt.label,
+          selected,
           onSelect: () => {
-            onPatchInstance({ partyFocus: "visible" });
+            onPatchInstance({ partyFocus: opt.id });
             closeTip();
           }
-        },
-        {
-          label: "Everything (All players)",
-          onSelect: () => {
-            onPatchInstance({ partyFocus: "all" });
-            closeTip();
-          }
-        },
-        { label: "\u2014", muted: true, onSelect: () => {
-        } },
-        {
-          label: "Plugins \u2014 Encounter / Deaths / Timeline",
-          onSelect: () => {
-            closeTip();
-            onOpenReport == null ? void 0 : onOpenReport("encounter");
-          }
-        },
-        { label: "\u2014", muted: true, onSelect: () => {
-        } },
-        {
-          label: "Options panel\u2026",
-          onSelect: () => {
-            closeTip();
-            setOptionsOpen(true);
-          }
-        },
-        {
-          label: "Spell List\u2026",
-          muted: true,
-          onSelect: () => {
-            closeTip();
-            onFocusInspector == null ? void 0 : onFocusInspector(getYouId() || "", watchedName || "You");
-          }
-        },
-        {
-          label: "Statistics\u2026",
-          onSelect: () => {
-            closeTip();
-            openReportDialog();
-          }
-        },
-        { label: "\u2014", muted: true, onSelect: () => {
-        } },
-        {
-          label: onDuplicate ? "Window Control \u2014 Create new" : "Create new window (layout edit)",
-          onSelect: () => {
-            closeTip();
-            if (onDuplicate) onDuplicate();
-          }
+        });
+      }
+      const alwaysOn = instance.alwaysShowSelf != null ? instance.alwaysShowSelf : getSettings().meterAlwaysShowSelf !== false;
+      items.push({
+        label: "Always show me",
+        selected: alwaysOn,
+        onSelect: () => {
+          onPatchInstance({ alwaysShowSelf: !alwaysOn });
+          closeTip();
         }
-      ];
+      });
+      if (onOpenReport) {
+        items.push({ label: "\u2014", muted: true, onSelect: () => {
+        } });
+        items.push({
+          label: "Plugins",
+          muted: true,
+          onSelect: () => closeTip()
+        });
+        for (let ti = 0; ti < REPORT_TABS.length; ti++) {
+          const tab = REPORT_TABS[ti];
+          items.push({
+            label: tab.label,
+            onSelect: () => {
+              closeTip();
+              onOpenReport(tab.kind);
+            }
+          });
+        }
+      }
+      items.push({ label: "\u2014", muted: true, onSelect: () => {
+      } });
+      items.push({
+        label: "Options panel\u2026",
+        onSelect: () => {
+          closeTip();
+          setOptionsOpen(true);
+        }
+      });
+      items.push({
+        label: "Spell List\u2026",
+        onSelect: () => {
+          closeTip();
+          onFocusInspector == null ? void 0 : onFocusInspector(getYouId() || "", watchedName || "You");
+        }
+      });
+      items.push({
+        label: "Statistics\u2026",
+        onSelect: () => {
+          closeTip();
+          openReportDialog();
+        }
+      });
+      items.push({ label: "\u2014", muted: true, onSelect: () => {
+      } });
+      items.push({
+        label: "Window Control",
+        muted: true,
+        onSelect: () => closeTip()
+      });
+      items.push({
+        label: onDuplicate ? "Create new window" : "Create new window (layout edit)",
+        onSelect: () => {
+          closeTip();
+          if (onDuplicate) onDuplicate();
+        }
+      });
       if (onClose) {
         items.push({
-          label: "Window Control \u2014 Close window",
+          label: "Close window",
           onSelect: () => {
             closeTip();
             onClose();
@@ -16958,6 +22828,16 @@ button.ecu-meter-status-micro:hover,
     }
     for (let i = startIdx; i < items.length; i++) {
       const it = items[i];
+      if (it.muted && it.label === "\u2014") {
+        nodes.push(e("div", { key: `div-${i}`, className: "ecu-meter-cooltip-div" }));
+        continue;
+      }
+      if (tip.kind === "gear" && it.muted && (it.label === "Plugins" || it.label === "Window Control" || it.label === "View mode")) {
+        nodes.push(
+          e("div", { key: `sec-${i}`, className: "ecu-meter-cooltip-sec" }, it.label)
+        );
+        continue;
+      }
       if (tip.kind === "report" && it.label.startsWith("Recent: ") && (i === 0 || !items[i - 1].label.startsWith("Recent: "))) {
         nodes.push(e("div", { className: "ecu-meter-cooltip-sec" }, "Recent"));
       }
@@ -16991,8 +22871,6 @@ button.ecu-meter-status-micro:hover,
   // src/ui/meter/meterShellTitlebar.ts
   function renderMeterShellTitlebar(ctx) {
     const {
-      arrange,
-      titlebarDragRef,
       isInspector,
       isReport,
       result,
@@ -17014,36 +22892,17 @@ button.ecu-meter-status-micro:hover,
       applySegment,
       reportOpen,
       openReportDialog,
-      onOpenReport,
       cycle,
       onPatchInstance,
-      locked,
       layoutEdit,
-      onUngroup,
-      onToggleLock,
       onConfigure,
       onDuplicate,
-      onClose
+      onClose,
+      onOpenReport
     } = ctx;
     const titleChildren = [];
-    if (isInspector && result.kind === "details" && result.actorId) {
-      const ctype = result.ctype || "";
-      titleChildren.push(
-        e("span", {
-          className: "ecu-meter-inspector-class",
-          style: { background: classColors[ctype] || "#607d8b" },
-          title: ctype || "class"
-        })
-      );
-      const sec = Math.max(result.durationMs / 1e3, 1);
-      titleChildren.push(
-        e("span", { className: "ecu-meter-ttl-text" }, title),
-        e(
-          "span",
-          { className: "ecu-meter-inspector-sub" },
-          `${formatCompactRatePerSec(result.totals.damage / sec)} \xB7 ${sec.toFixed(0)}s`
-        )
-      );
+    if (isInspector) {
+      titleChildren.push(e("span", { className: "ecu-meter-ttl-text" }, title));
     } else if (isReport) {
       titleChildren.push(
         e("span", { className: "ecu-meter-report-mark", title: "Report" }, "\u229E"),
@@ -17065,106 +22924,159 @@ button.ecu-meter-status-micro:hover,
       }
       titleChildren.push(e("span", { className: "ecu-meter-ttl-text" }, title));
     }
+    const showEncounterBadges = !isInspector && !isReport && !!resolved && (resolved.deaths.length > 0 || past2.length > 0);
+    const encounterBadges = showEncounterBadges ? e(
+      "div",
+      { className: "ecu-meter-encounter-badges" },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-meter-encounter-badge is-skull",
+          title: "Encounter Details",
+          onClick: (ev) => {
+            ev.stopPropagation();
+            onOpenReport == null ? void 0 : onOpenReport("encounter");
+          }
+        },
+        "\u{1F480}"
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-meter-encounter-badge is-play",
+          title: "Time Line",
+          onClick: (ev) => {
+            ev.stopPropagation();
+            onOpenReport == null ? void 0 : onOpenReport("timeline");
+          }
+        },
+        "\u25B6"
+      )
+    ) : null;
+    const detailsTools = !isInspector ? e(
+      "div",
+      { className: "ecu-meter-tools" },
+      toolBtn({
+        title: "Mode \u2014 scope, plugins, window control, options",
+        icon: "mode",
+        tourId: "meter-gear",
+        active: (tip == null ? void 0 : tip.kind) === "gear" || (tip == null ? void 0 : tip.kind) === "party" || optionsOpen,
+        onEnter: (el) => openTip("gear", el),
+        onLeave: scheduleTipClose,
+        onClick: (ev) => openTip("gear", ev.currentTarget, {
+          pin: true
+        })
+      }),
+      toolBtn({
+        title: "Segment \u2014 L click older \xB7 R click newer \xB7 hover menu",
+        icon: "segment",
+        tourId: "meter-segment",
+        active: (tip == null ? void 0 : tip.kind) === "seg",
+        onEnter: (el) => openTip("seg", el),
+        onLeave: scheduleTipClose,
+        onClick: (ev) => {
+          const next = cycleSegmentRef(selectedset, past2, 1);
+          applySegment(next);
+          openTip("seg", ev.currentTarget, { pin: true });
+        },
+        onContextMenu: (ev) => {
+          const next = cycleSegmentRef(selectedset, past2, -1);
+          applySegment(next);
+          openTip("seg", ev.currentTarget, { pin: true });
+        }
+      }),
+      !isReport && cycleable ? toolBtn({
+        title: "Attribute / Display \u2014 hover menu \xB7 right-click all",
+        icon: "attribute",
+        tourId: "meter-display",
+        active: (tip == null ? void 0 : tip.kind) === "display" || (tip == null ? void 0 : tip.kind) === "allDisplays",
+        onEnter: (el) => openTip("display", el),
+        onLeave: scheduleTipClose,
+        onClick: (ev) => openTip("display", ev.currentTarget, {
+          pin: true
+        }),
+        onContextMenu: (ev) => {
+          openTip("allDisplays", ev.currentTarget, {
+            pin: true
+          });
+        }
+      }) : null,
+      !isReport ? toolBtn({
+        title: "Report \u2014 click opens dialog \xB7 hover for copy",
+        icon: "report",
+        tourId: "meter-report",
+        active: (tip == null ? void 0 : tip.kind) === "report" || reportOpen,
+        onEnter: (el) => openTip("report", el),
+        onLeave: scheduleTipClose,
+        onClick: () => {
+          openReportDialog();
+        }
+      }) : null,
+      toolBtn({
+        title: "Reset \u2014 hover menu \xB7 click opens menu",
+        icon: "reset",
+        tourId: "meter-reset",
+        active: (tip == null ? void 0 : tip.kind) === "reset",
+        onEnter: (el) => openTip("reset", el),
+        onLeave: scheduleTipClose,
+        onClick: (ev) => openTip("reset", ev.currentTarget, {
+          pin: true
+        })
+      })
+    ) : null;
+    const stretchBtn = !isInspector && !isReport ? toolBtn({
+      title: (instance.frameH || METER_FRAME_DEFAULT.h) >= 340 ? "Unstretch window" : "Stretch window (taller)",
+      glyph: "\u2195",
+      onClick: () => {
+        const h = instance.frameH || METER_FRAME_DEFAULT.h;
+        onPatchInstance({
+          frameH: h >= 340 ? METER_FRAME_DEFAULT.h : 360
+        });
+      }
+    }) : null;
+    const layoutCfg = onConfigure && layoutEdit ? toolBtn({
+      title: "Add / configure meters",
+      glyph: "\u2699",
+      onClick: () => onConfigure()
+    }) : null;
+    const layoutDup = onDuplicate && layoutEdit ? toolBtn({
+      title: "Duplicate window",
+      glyph: "+",
+      onClick: () => onDuplicate()
+    }) : null;
+    const layoutRm = layoutEdit && onClose ? chromeBtn("Remove meter", "Rm", () => onClose(), false, true) : null;
+    const chromeHover = layoutCfg || layoutDup || layoutRm ? e(
+      "div",
+      { className: "ecu-meter-chrome-hover" },
+      layoutCfg,
+      layoutDup,
+      layoutRm
+    ) : null;
+    const playerTool = isInspector ? toolBtn({
+      title: "Player",
+      glyph: "\u{1F464}",
+      active: (tip == null ? void 0 : tip.kind) === "actor",
+      onEnter: (el) => openTip("actor", el),
+      onLeave: scheduleTipClose,
+      onClick: (ev) => openTip("actor", ev.currentTarget, {
+        pin: true
+      })
+    }) : null;
+    const actions = playerTool || stretchBtn || chromeHover ? e(
+      "div",
+      { className: "ecu-meter-actions" },
+      playerTool,
+      stretchBtn,
+      chromeHover
+    ) : null;
     return e(
       "div",
       {
-        className: "ecu-meter-titlebar" + (arrange ? " is-draggable" : ""),
-        style: { ...PIXEL_TEXT },
-        ref: titlebarDragRef || void 0
+        className: "ecu-meter-titlebar",
+        style: { ...PIXEL_TEXT }
       },
-      !isInspector ? e(
-        "div",
-        { className: "ecu-meter-tools-left" },
-        toolBtn({
-          title: "Settings \u2014 options, window control",
-          glyph: "\u2699",
-          tourId: "meter-gear",
-          active: (tip == null ? void 0 : tip.kind) === "gear" || optionsOpen,
-          onEnter: (el) => openTip("gear", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("gear", ev.currentTarget, {
-            pin: true
-          })
-        }),
-        toolBtn({
-          title: "Mode / Scope \u2014 who appears",
-          icon: "mode",
-          tourId: "meter-mode",
-          active: (tip == null ? void 0 : tip.kind) === "party",
-          onEnter: (el) => openTip("party", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("party", ev.currentTarget, {
-            pin: true
-          })
-        }),
-        toolBtn({
-          title: "Segment \u2014 L click older \xB7 R click newer \xB7 hover menu",
-          icon: "segment",
-          tourId: "meter-segment",
-          active: (tip == null ? void 0 : tip.kind) === "seg",
-          onEnter: (el) => openTip("seg", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => {
-            const next = cycleSegmentRef(selectedset, past2, 1);
-            applySegment(next);
-            openTip("seg", ev.currentTarget, { pin: true });
-          },
-          onContextMenu: (ev) => {
-            const next = cycleSegmentRef(selectedset, past2, -1);
-            applySegment(next);
-            openTip("seg", ev.currentTarget, { pin: true });
-          }
-        }),
-        !isReport && cycleable ? toolBtn({
-          title: "Attribute / Display \u2014 hover menu",
-          icon: "attribute",
-          tourId: "meter-display",
-          active: (tip == null ? void 0 : tip.kind) === "display" || (tip == null ? void 0 : tip.kind) === "allDisplays",
-          onEnter: (el) => openTip("display", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("display", ev.currentTarget, {
-            pin: true
-          }),
-          onContextMenu: (ev) => {
-            openTip("allDisplays", ev.currentTarget, {
-              pin: true
-            });
-          }
-        }) : null,
-        !isReport ? toolBtn({
-          title: "Report \u2014 click opens dialog \xB7 hover for copy",
-          icon: "report",
-          tourId: "meter-report",
-          active: (tip == null ? void 0 : tip.kind) === "report" || reportOpen,
-          onEnter: (el) => openTip("report", el),
-          onLeave: scheduleTipClose,
-          onClick: () => {
-            openReportDialog();
-          }
-        }) : null,
-        !isReport && onOpenReport ? toolBtn({
-          title: "Tools \u2014 Encounter \xB7 Deaths \xB7 Timeline",
-          glyph: "\u229E",
-          tourId: "meter-tools",
-          active: (tip == null ? void 0 : tip.kind) === "tools",
-          onEnter: (el) => openTip("tools", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("tools", ev.currentTarget, {
-            pin: true
-          })
-        }) : null,
-        toolBtn({
-          title: "Reset \u2014 hover menu \xB7 click opens menu",
-          icon: "reset",
-          tourId: "meter-reset",
-          active: (tip == null ? void 0 : tip.kind) === "reset",
-          onEnter: (el) => openTip("reset", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("reset", ev.currentTarget, {
-            pin: true
-          })
-        })
-      ) : null,
       e(
         "button",
         {
@@ -17214,68 +23126,14 @@ button.ecu-meter-status-micro:hover,
         },
         ...titleChildren
       ),
-      e(
-        "div",
-        { className: "ecu-meter-actions" },
-        isInspector ? toolBtn({
-          title: "Player",
-          glyph: "\u{1F464}",
-          active: (tip == null ? void 0 : tip.kind) === "actor",
-          onEnter: (el) => openTip("actor", el),
-          onLeave: scheduleTipClose,
-          onClick: (ev) => openTip("actor", ev.currentTarget, {
-            pin: true
-          })
-        }) : null,
-        e(
-          "div",
-          { className: "ecu-meter-chrome-hover" },
-          onUngroup && meterHasSnap(instance) ? toolBtn({
-            title: "Ungroup windows",
-            glyph: "\u29C9",
-            onClick: () => onUngroup()
-          }) : null,
-          !isInspector && !isReport ? toolBtn({
-            title: (instance.frameH || METER_FRAME_DEFAULT.h) >= 340 ? "Unstretch window" : "Stretch window (taller)",
-            glyph: "\u2195",
-            onClick: () => {
-              const h = instance.frameH || METER_FRAME_DEFAULT.h;
-              onPatchInstance({
-                frameH: h >= 340 ? METER_FRAME_DEFAULT.h : 360
-              });
-            }
-          }) : null,
-          onToggleLock ? toolBtn({
-            title: locked ? "Unlock \u2014 drag titlebar to move (or hold Alt)" : "Lock this meter",
-            glyph: locked ? "\u{1F512}" : "\u{1F513}",
-            active: locked,
-            onClick: () => onToggleLock()
-          }) : null,
-          onConfigure && layoutEdit ? toolBtn({
-            title: "Add / configure meters",
-            glyph: "\u2699",
-            onClick: () => onConfigure()
-          }) : null,
-          onDuplicate && layoutEdit ? toolBtn({
-            title: "Duplicate window",
-            glyph: "+",
-            onClick: () => onDuplicate()
-          }) : null,
-          layoutEdit && onClose ? chromeBtn(
-            "Remove meter",
-            "Rm",
-            () => onClose(),
-            false,
-            true
-          ) : null
-        )
-      )
+      encounterBadges,
+      detailsTools,
+      actions
     );
   }
 
   // src/ui/meter/MeterPanelShell.ts
   function MeterPanelShell(props) {
-    var _a, _b;
     const React = getReact();
     const ReactDOM = getReactDOM();
     const {
@@ -17296,7 +23154,6 @@ button.ecu-meter-status-micro:hover,
     const [reportOpen, setReportOpen] = React.useState(false);
     const [optionsOpen, setOptionsOpen] = React.useState(false);
     const [interacting, setInteracting] = React.useState(false);
-    const [stretchDrag, setStretchDrag] = React.useState(null);
     const tipCloseTimer = React.useRef(
       null
     );
@@ -17305,7 +23162,12 @@ button.ecu-meter-status-micro:hover,
     const patchInspectorAbility = (ability) => {
       const q = rootQuery(instance);
       if (q.kind !== "details") return;
-      const next = { kind: "details", actorId: q.actorId };
+      const next = {
+        kind: "details",
+        actorId: q.actorId,
+        metric: q.metric,
+        primary: q.primary
+      };
       if (ability) next.ability = ability;
       onPatchInstance({ query: next });
     };
@@ -17415,15 +23277,33 @@ button.ecu-meter-status-micro:hover,
     const titleMode = rootQ.kind === "players" || rootQ.kind === "avoidance" || rootQ.kind === "rolling" || rootQ.kind === "snapshot" ? modeLabel(rootQ) : modeLabel(rootQ, instance.label);
     const titleSeg = segmentTitle(selectedset);
     const isCurrentSeg = selectedset === "current";
+    const inspectorFocusOpts = () => {
+      const q = rootQuery(instance);
+      const metricRaw = metricFromModeQuery(q);
+      const metric = metricRaw === "heal" || metricRaw === "taken" || metricRaw === "healing_required" || metricRaw === "avoidance" ? metricRaw : "damage";
+      const primary = q.kind === "players" && q.primary === "rate" ? "rate" : "total";
+      return {
+        metric,
+        primary,
+        selectedset: instance.selectedset,
+        partyFocus: instance.partyFocus
+      };
+    };
     const openInspectorRow = (row2) => {
+      const opts = inspectorFocusOpts();
       if (onFocusInspector) {
-        onFocusInspector(row2.id, row2.name);
+        onFocusInspector(row2.id, row2.name, opts);
         return;
       }
       if (presentationFor(instance) === "details") {
         onPatchInstance({
-          query: { kind: "details", actorId: row2.id },
-          label: `Inspector \xB7 ${row2.name}`
+          query: {
+            kind: "details",
+            actorId: row2.id,
+            metric: opts.metric,
+            primary: opts.primary
+          },
+          label: detailsWindowTitle(row2.name, opts.metric, opts.primary)
         });
       }
     };
@@ -17507,28 +23387,23 @@ button.ecu-meter-status-micro:hover,
       return ranked.kind === "ranked" ? ranked.rows : [];
     })();
     const setInspectorActor = (actorId, name) => {
+      const q = rootQuery(instance);
+      const metric = q.kind === "details" && q.metric ? q.metric : "damage";
+      const primary = q.kind === "details" && q.primary === "rate" ? "rate" : "total";
       onPatchInstance({
-        query: { kind: "details", actorId },
+        query: { kind: "details", actorId, metric, primary },
         presentation: "details",
-        label: `Inspector \xB7 ${name}`
+        label: detailsWindowTitle(name, metric, primary)
       });
       closeTip();
     };
-    const clampFrame = (w, h) => ({
-      frameW: Math.min(
-        METER_FRAME_MAX.w,
-        Math.max(METER_FRAME_MIN.w, Math.round(w))
-      ),
-      frameH: Math.min(
-        METER_FRAME_MAX.h,
-        Math.max(METER_FRAME_MIN.h, Math.round(h))
-      )
-    });
     const sizeFrame = (w, h, freeForm) => {
-      if (freeForm || getLayoutFreePlacement()) {
-        return clampFrame(w, h);
-      }
       const root = layoutDragRoot().getBoundingClientRect();
+      const maxW = root.width > 0 ? root.width : window.innerWidth;
+      const maxH = root.height > 0 ? root.height : window.innerHeight;
+      if (freeForm || getLayoutFreePlacement()) {
+        return clampMeterFrame(w, h, maxW, maxH);
+      }
       const snapped = snapFrameSizeToGrid(
         w,
         h,
@@ -17536,7 +23411,7 @@ button.ecu-meter-status-micro:hover,
         root.width,
         root.height
       );
-      return clampFrame(snapped.w, snapped.h);
+      return clampMeterFrame(snapped.w, snapped.h, maxW, maxH);
     };
     const onResizePointerDown = (ev, corner = "br") => {
       ev.preventDefault();
@@ -17548,7 +23423,12 @@ button.ecu-meter-status-micro:hover,
       const target = ev.currentTarget;
       const shell = target.closest(".ecu-meter-shell");
       const outer = shell ? shell.closest(".comm-pos-panel") : null;
+      if (!outer) return;
+      const root = layoutDragRoot();
+      const rootRect = root.getBoundingClientRect();
+      const anchor = instance.pos.anchor || "tl";
       if (shell) shell.classList.add("is-resizing");
+      beginLayoutGuide();
       const pointerId = ev.pointerId;
       try {
         target.setPointerCapture(pointerId);
@@ -17558,11 +23438,26 @@ button.ecu-meter-status-micro:hover,
       const shareH = !!instance.horizontalSnap || !!(instance.snap && (instance.snap[1] || instance.snap[3]));
       const shareW = !!instance.verticalSnap || !!(instance.snap && (instance.snap[2] || instance.snap[4]));
       const peerIds = props.resizeGroupIds || [];
-      const syncOuter = (w, h) => {
-        if (outer) {
-          outer.style.width = w + "px";
-          outer.style.height = h + "px";
+      const liveShiftX = (w) => {
+        const dw = startW - w;
+        if (corner === "bl") {
+          if (anchor === "tr" || anchor === "br") return 0;
+          if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+            return dw / 2;
+          }
+          return dw;
         }
+        if (anchor === "tl" || anchor === "bl") return 0;
+        if (anchor === "tc" || anchor === "bc" || anchor === "center") {
+          return -dw / 2;
+        }
+        return -dw;
+      };
+      const applyLiveBox = (w, h) => {
+        outer.style.width = w + "px";
+        outer.style.height = h + "px";
+        const sx = liveShiftX(w);
+        outer.style.marginLeft = sx ? sx + "px" : "";
         for (let i = 0; i < peerIds.length; i++) {
           const pid = peerIds[i];
           const sel = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(pid) : pid.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
@@ -17579,10 +23474,11 @@ button.ecu-meter-status-micro:hover,
         const dy = e2.clientY - startY;
         const w = corner === "br" ? startW + dx : startW - dx;
         pending = sizeFrame(w, startH + dy, !!e2.shiftKey);
-        syncOuter(pending.frameW, pending.frameH);
+        applyLiveBox(pending.frameW, pending.frameH);
       };
       const onUp = () => {
         if (shell) shell.classList.remove("is-resizing");
+        endLayoutGuide();
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
@@ -17590,7 +23486,27 @@ button.ecu-meter-status-micro:hover,
           target.releasePointerCapture(pointerId);
         } catch (e2) {
         }
-        onPatchInstance(pending);
+        outer.style.marginLeft = "";
+        const rw = Math.max(1, rootRect.width);
+        const rh = Math.max(1, rootRect.height);
+        let nextPos = { ...instance.pos };
+        const shiftX = liveShiftX(pending.frameW);
+        if (shiftX !== 0) {
+          nextPos = nudgePosByPixels(nextPos, shiftX, 0, rw, rh);
+        }
+        const dh = startH - pending.frameH;
+        if (dh !== 0) {
+          if (anchor === "bl" || anchor === "br" || anchor === "bc") {
+            nextPos = nudgePosByPixels(nextPos, 0, dh, rw, rh);
+          } else if (anchor === "center") {
+            nextPos = nudgePosByPixels(nextPos, 0, dh / 2, rw, rh);
+          }
+        }
+        onPatchInstance({
+          frameW: pending.frameW,
+          frameH: pending.frameH,
+          pos: nextPos
+        });
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
@@ -17623,8 +23539,7 @@ button.ecu-meter-status-micro:hover,
     const cycleable = canCycleBarMode(rootQuery(instance));
     const menuOpen = tip != null;
     const chromeActive = interacting || menuOpen || reportOpen;
-    const reportTabLabel = ((_a = REPORT_TABS.find((t) => t.kind === activeReportKind)) == null ? void 0 : _a.label) || titleMode;
-    const title = isInspector ? ((_b = instance.label) == null ? void 0 : _b.replace(/^Inspector · /, "")) || "Inspector" : isReport ? reportTabLabel : titleMode;
+    const title = isInspector ? "Player Breakdown" : isReport ? "Encounter Details" : titleMode;
     const setReportTab = (kind) => {
       const tab = REPORT_TABS.find((t) => t.kind === kind);
       if (!tab) return;
@@ -17639,7 +23554,7 @@ button.ecu-meter-status-micro:hover,
       onPatchInstance({ selectedset: next });
     };
     const copyReport = () => {
-      var _a2;
+      var _a;
       const ranked = runMeterQuery(rootQuery(instance), {
         segmentRef: selectedset,
         partyFocus: instance.partyFocus,
@@ -17651,7 +23566,7 @@ button.ecu-meter-status-micro:hover,
           ranked.rows,
           segmentTitle(selectedset)
         );
-        if ((_a2 = navigator.clipboard) == null ? void 0 : _a2.writeText) {
+        if ((_a = navigator.clipboard) == null ? void 0 : _a.writeText) {
           void navigator.clipboard.writeText(textOut);
         }
       }
@@ -17768,8 +23683,6 @@ button.ecu-meter-status-micro:hover,
         }
       },
       renderMeterShellTitlebar({
-        arrange,
-        titlebarDragRef: props.titlebarDragRef,
         isInspector,
         isReport,
         result,
@@ -17791,45 +23704,70 @@ button.ecu-meter-status-micro:hover,
         applySegment,
         reportOpen,
         openReportDialog,
-        onOpenReport,
         cycle,
         onPatchInstance,
-        locked,
         layoutEdit: props.layoutEdit,
-        onUngroup: props.onUngroup,
-        onToggleLock: props.onToggleLock,
         onConfigure: props.onConfigure,
         onDuplicate: props.onDuplicate,
-        onClose: props.onClose
+        onClose: props.onClose,
+        onOpenReport: props.onOpenReport
       }),
       isReport ? e(
         "div",
-        {
-          className: "ecu-meter-report-tabs",
-          style: { ...PIXEL_TEXT }
-        },
-        ...REPORT_TABS.map(
-          (tab) => e(
-            "button",
+        { className: "ecu-meter-report-layout" },
+        e(MeterPluginRail, {
+          active: activeReportKind,
+          onSelect: setReportTab
+        }),
+        e(
+          "div",
+          { className: "ecu-meter-report-main" },
+          activeReportKind === "encounter" ? e(
+            "div",
             {
-              key: tab.kind,
-              type: "button",
-              className: "ecu-meter-report-tab" + (activeReportKind === tab.kind ? " active" : ""),
-              onClick: () => setReportTab(tab.kind)
+              className: "ecu-meter-report-tabs",
+              style: { ...PIXEL_TEXT }
             },
-            tab.label
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-meter-report-tab active"
+              },
+              "Summary"
+            ),
+            ...REPORT_STUB_TABS.map(
+              (tab) => e(
+                "button",
+                {
+                  key: tab.id,
+                  type: "button",
+                  className: "ecu-meter-report-tab is-stub",
+                  title: "Not available \u2014 Adventure Land has no CLEU emotes/phases/raid charts",
+                  disabled: true
+                },
+                tab.label
+              )
+            )
+          ) : null,
+          encounterFooter,
+          e(
+            "div",
+            {
+              className: "ecu-meter-body"
+            },
+            body
           )
         )
-      ) : null,
-      encounterFooter,
-      e(
+      ) : e(
         "div",
         {
           className: "ecu-meter-body",
           onContextMenu: (ev) => {
-            if (isInspector || isReport) return;
+            if (isInspector) return;
             const t = ev.target;
-            if (t && t.closest && t.closest("button, a, input, textarea")) return;
+            if (t && t.closest && t.closest("button, a, input, textarea"))
+              return;
             ev.preventDefault();
             ev.stopPropagation();
             const shell = shellRef.current;
@@ -17848,66 +23786,10 @@ button.ecu-meter-status-micro:hover,
           if (shell) openTipAnchor("seg", rectToAnchor(shell));
         },
         onEncounterClick: () => {
-          var _a2;
-          return (_a2 = props.onOpenReport) == null ? void 0 : _a2.call(props, "encounter");
+          var _a;
+          return (_a = props.onOpenReport) == null ? void 0 : _a.call(props, "encounter");
         }
       }) : null,
-      !isInspector && !isReport && arrange ? e("div", {
-        className: "ecu-meter-stretch-tab",
-        title: "Drag to stretch",
-        onPointerDown: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          setStretchDrag(ev.clientY);
-        },
-        onPointerMove: (ev) => {
-          if (stretchDrag == null) return;
-          const dy = stretchDrag - ev.clientY;
-          if (Math.abs(dy) < 4) return;
-          const h = instance.frameH || METER_FRAME_DEFAULT.h;
-          onPatchInstance({
-            frameH: clampFrame(
-              instance.frameW || METER_FRAME_DEFAULT.w,
-              h + dy
-            ).frameH
-          });
-          setStretchDrag(ev.clientY);
-        },
-        onPointerUp: () => setStretchDrag(null),
-        onPointerCancel: () => setStretchDrag(null)
-      }) : null,
-      !isInspector && !isReport && resolved && (resolved.deaths.length > 0 || past2.length > 0) ? e(
-        "div",
-        { className: "ecu-meter-encounter-badges" },
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-meter-encounter-badge is-skull",
-            title: "Encounter Details",
-            onClick: (ev) => {
-              var _a2;
-              ev.stopPropagation();
-              (_a2 = props.onOpenReport) == null ? void 0 : _a2.call(props, "encounter");
-            }
-          },
-          "\u{1F480}"
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-meter-encounter-badge is-play",
-            title: "Timeline",
-            onClick: (ev) => {
-              var _a2;
-              ev.stopPropagation();
-              (_a2 = props.onOpenReport) == null ? void 0 : _a2.call(props, "timeline");
-            }
-          },
-          "\u25B6"
-        )
-      ) : null,
       tip && ReactDOM.createPortal ? ReactDOM.createPortal(renderCooltip(), document.body) : renderCooltip(),
       reportOpen && ReactDOM.createPortal ? ReactDOM.createPortal(
         (() => {
@@ -17960,12 +23842,12 @@ button.ecu-meter-status-micro:hover,
       }) : null,
       props.layoutEdit || arrange ? e("div", {
         className: "ecu-meter-resize ecu-meter-resize-left",
-        title: "Drag to resize (left corner \xB7 Shift = free size \xB7 Alt/Ctrl = group)",
+        title: "Resize from bottom-left (keeps top-right fixed \xB7 Shift = free size)",
         onPointerDown: (ev) => onResizePointerDown(ev, "bl")
       }) : null,
       props.layoutEdit || arrange ? e("div", {
         className: "ecu-meter-resize",
-        title: getLayoutFreePlacement() ? "Drag to resize (Free placement \u2014 no grid snap)" : "Drag to resize (Shift = free size \xB7 Alt/Ctrl = group resize)",
+        title: getLayoutFreePlacement() ? "Resize from bottom-right (keeps top-left fixed \xB7 free size)" : "Resize from bottom-right (keeps top-left fixed \xB7 Shift = free size)",
         onPointerDown: (ev) => onResizePointerDown(ev, "br")
       }) : null
     );
@@ -17994,6 +23876,8 @@ button.ecu-meter-status-micro:hover,
       const locked = ctx.meterIsLocked(inst);
       const playArrange = !ctx.layoutEdit && (!locked || ctx.altHeld);
       const arrange = ctx.layoutEdit || playArrange;
+      const hasSnap = ctx.windowHasSnap(inst.id);
+      const windowNumber = ctx.windowNumberById[inst.id];
       const app = getMeterAppearance();
       let meterOpacity = inst.opacity != null ? inst.opacity : 1;
       const inCombat2 = isMeterInCombat();
@@ -18003,6 +23887,10 @@ button.ecu-meter-status-micro:hover,
       if (!inCombat2 && app.autoHideOoc) {
         meterOpacity = Math.min(meterOpacity, app.idleAlpha);
       }
+      const pos = {
+        ...inst.pos,
+        scale: inst.scale != null ? inst.scale : inst.pos.scale
+      };
       out.push(
         e(
           PositionedPanel,
@@ -18010,23 +23898,24 @@ button.ecu-meter-status-micro:hover,
             key: inst.id,
             id: inst.id,
             label: inst.label || inst.id,
-            pos: inst.pos,
+            pos,
             editing: ctx.layoutEdit,
             editChrome: "anchors",
             movable: playArrange,
-            showMoveGrip: false,
             softAvoid: false,
-            extraDragRef: ctx.dragRefFor(inst.id),
-            onMove: (_id, pos) => ctx.moveMeterWithGroup(inst.id, pos),
-            onDragStart: () => ctx.onMeterDragStart(inst.id),
-            onDragMove: () => ctx.onMeterDragMove(inst.id),
-            onMoveEnd: () => ctx.snapMeterAfterMove(inst.id),
-            className: "ecu-meter-frame" + (playArrange ? " ecu-meter-arrange" : "") + (meterHasSnap(inst) ? " ecu-meter-grouped" : "") + (ctx.meterSnapDragId === inst.id ? " ecu-meter-dragging" : "") + (ctx.meterSnapPeerId === inst.id ? " ecu-meter-snap-target" : ""),
+            onMove: (_id, nextPos) => ctx.onMove(inst.id, nextPos),
+            onDragStart: () => ctx.onDragStart(inst.id),
+            onDragMove: () => ctx.onDragMove(inst.id),
+            onMoveEnd: () => ctx.onMoveEnd(inst.id),
+            onActivate: () => ctx.onActivate(inst.id),
+            onWindowScale: (scale) => ctx.onWindowScale(inst.id, scale),
+            className: "ecu-meter-frame" + (playArrange ? " comm-pos-arrange" : "") + (hasSnap ? " comm-pos-grouped" : "") + (ctx.snapDragId === inst.id ? " comm-pos-dragging" : "") + (ctx.snapPeerId === inst.id ? " comm-pos-snap-target" : ""),
             style: {
               ...METER_PANEL_STYLE,
               width: frameW + "px",
               height: frameH + "px",
-              overflow: "visible"
+              overflow: "visible",
+              ...typeof inst.zIndex === "number" ? { zIndex: inst.zIndex } : {}
             },
             closePlacement: "above",
             closeOnHoverOnly: true,
@@ -18041,13 +23930,24 @@ button.ecu-meter-status-micro:hover,
             peerLayout: ctx.peerLayout,
             viewportProfile: ctx.viewportProfile,
             interactiveBody: ctx.layoutEdit,
-            onClose: () => ctx.patchMeter(inst.id, { visible: false }),
-            onShow: () => ctx.patchMeter(inst.id, { visible: true })
+            locked,
+            onToggleLock: () => {
+              ctx.patchMeter(inst.id, { locked: !locked });
+            },
+            onUngroup: hasSnap ? () => ctx.ungroupWindow(inst.id) : void 0,
+            closedWindows: ctx.closedWindows,
+            onReopenWindow: ctx.onReopenWindow,
+            onCreateWindow: () => ctx.duplicateMeter(inst.id),
+            onClose: () => ctx.layoutEdit ? ctx.removeMeter(inst.id) : ctx.closeMeterRuntime(inst.id),
+            onShow: () => ctx.patchMeter(inst.id, { visible: true }),
+            windowNumber,
+            showWindowIds: ctx.showWindowIds
           },
           e(
             "div",
             {
               style: {
+                position: "relative",
                 width: "100%",
                 height: "100%",
                 overflow: playArrange || ctx.layoutEdit ? "hidden" : "visible"
@@ -18061,12 +23961,7 @@ button.ecu-meter-status-micro:hover,
               layoutEdit: ctx.layoutEdit,
               arrange,
               locked,
-              titlebarDragRef: ctx.dragRefFor(inst.id),
-              onToggleLock: () => {
-                ctx.patchMeter(inst.id, { locked: !locked });
-              },
-              onUngroup: meterHasSnap(inst) ? () => ctx.ungroupMeterPanel(inst.id) : void 0,
-              resizeGroupIds: meterHasSnap(inst) ? getMeterGroup(ctx.meterInstances, inst.id).map((g) => g.id).filter((gid) => gid !== inst.id) : void 0,
+              resizeGroupIds: hasSnap ? getMeterGroup(ctx.meterInstances, inst.id).map((g) => g.id).filter((gid) => gid !== inst.id) : void 0,
               onToggleMetersHidden: () => ctx.setMetersHiddenPersist(!ctx.metersHidden),
               metersHidden: ctx.metersHidden,
               closedInstances: ctx.closedMeters,
@@ -18074,10 +23969,13 @@ button.ecu-meter-status-micro:hover,
               onPatchInstance: (partial) => {
                 if (partial.frameW != null || partial.frameH != null) {
                   ctx.setMeterInstances((prev) => {
-                    const next = applyGroupFrameSize(prev, inst.id, {
+                    let next = applyGroupFrameSize2(prev, inst.id, {
                       frameW: partial.frameW,
                       frameH: partial.frameH
-                    }).map((m) => m.id === inst.id ? { ...m, ...partial } : m);
+                    });
+                    next = next.map(
+                      (m) => m.id === inst.id ? { ...m, ...partial } : m
+                    );
                     patchSettings({ meterInstances: next });
                     return next;
                   });
@@ -18109,25 +24007,29 @@ button.ecu-meter-status-micro:hover,
         return {
           dark: "rgba(0, 0, 0, 0.42)",
           light: "rgba(255, 255, 255, 0.5)",
-          dashed: true
+          dashed: true,
+          hostPx: 2
         };
       case "medium":
         return {
           dark: "rgba(0, 0, 0, 0.55)",
           light: "rgba(255, 250, 220, 0.7)",
-          dashed: true
+          dashed: true,
+          hostPx: 2
         };
       case "coarse":
         return {
           dark: "rgba(0, 0, 0, 0.7)",
           light: "rgba(255, 245, 200, 0.88)",
-          dashed: false
+          dashed: false,
+          hostPx: 3
         };
       case "edge":
         return {
           dark: "rgba(0, 0, 0, 0.82)",
           light: "rgba(255, 255, 255, 0.95)",
-          dashed: false
+          dashed: false,
+          hostPx: 4
         };
       default: {
         const _exhaustive = tier;
@@ -18136,15 +24038,15 @@ button.ecu-meter-status-micro:hover,
     }
   }
   function strokeStyle(axis, color, dashed, offsetPx) {
-    const border = `${dashed ? "1px dashed" : "1px solid"} ${color}`;
+    const dash = axis === "v" ? `repeating-linear-gradient(to bottom, ${color} 0px, ${color} 3px, transparent 3px, transparent 7px)` : `repeating-linear-gradient(to right, ${color} 0px, ${color} 3px, transparent 3px, transparent 7px)`;
     if (axis === "v") {
       return {
         position: "absolute",
         left: `${offsetPx}px`,
         top: 0,
         bottom: 0,
-        width: 0,
-        borderLeft: border,
+        width: "1px",
+        ...dashed ? { backgroundImage: dash } : { backgroundColor: color },
         boxSizing: "border-box",
         pointerEvents: "none"
       };
@@ -18154,33 +24056,33 @@ button.ecu-meter-status-micro:hover,
       top: `${offsetPx}px`,
       left: 0,
       right: 0,
-      height: 0,
-      borderTop: border,
+      height: "1px",
+      ...dashed ? { backgroundImage: dash } : { backgroundColor: color },
       boxSizing: "border-box",
       pointerEvents: "none"
     };
   }
-  function gridLine(axis, pct, tier) {
+  function gridLine(axis, pct, tier, key) {
     const look = tierLook(tier);
     const host2 = axis === "v" ? {
       position: "absolute",
       left: `${pct}%`,
       top: 0,
       bottom: 0,
-      width: "2px",
+      width: `${look.hostPx}px`,
       pointerEvents: "none"
     } : {
       position: "absolute",
       top: `${pct}%`,
       left: 0,
       right: 0,
-      height: "2px",
+      height: `${look.hostPx}px`,
       pointerEvents: "none"
     };
     return e(
       "div",
       {
-        key: `${axis}-${tier}-${pct}`,
+        key,
         className: `comm-layout-grid-line is-${tier}`,
         style: host2
       },
@@ -18224,10 +24126,10 @@ button.ecu-meter-status-micro:hover,
     const tiers = squareGridTieredLines(gridStep, size.w, size.h);
     const kids = [];
     for (let i = 0; i < tiers.x.length; i++) {
-      kids.push(gridLine("v", tiers.x[i].pct, tiers.x[i].tier));
+      kids.push(gridLine("v", tiers.x[i].pct, tiers.x[i].tier, `vx${i}`));
     }
     for (let j = 0; j < tiers.y.length; j++) {
-      kids.push(gridLine("h", tiers.y[j].pct, tiers.y[j].tier));
+      kids.push(gridLine("h", tiers.y[j].pct, tiers.y[j].tier, `hy${j}`));
     }
     return e(
       "div",
@@ -18248,6 +24150,9 @@ button.ecu-meter-status-micro:hover,
   }
 
   // src/ui/frames/comm/CommControlStrip.ts
+  function stopPtr(ev) {
+    if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+  }
   function CommControlStrip(props) {
     const touchPad = isTouchishProfile(props.viewportProfile);
     const toggleBtnPad = touchPad ? "10px 16px" : "5px 12px";
@@ -18282,15 +24187,9 @@ button.ecu-meter-status-micro:hover,
             position: "relative",
             zIndex: 1
           },
-          onPointerDown: (ev) => {
-            if (ev && typeof ev.stopPropagation === "function") {
-              ev.stopPropagation();
-            }
-          },
+          onPointerDown: stopPtr,
           onClick: (ev) => {
-            if (ev && typeof ev.stopPropagation === "function") {
-              ev.stopPropagation();
-            }
+            stopPtr(ev);
             props.toggleLayoutEdit();
           }
         },
@@ -18313,6 +24212,7 @@ button.ecu-meter-status-micro:hover,
             textShadow: "none",
             fontWeight: "normal"
           },
+          onPointerDown: stopPtr,
           onClick: () => props.setMetersHiddenPersist(!props.metersHidden)
         },
         props.metersHidden ? "Meters: OFF" : "Meters"
@@ -18334,6 +24234,7 @@ button.ecu-meter-status-micro:hover,
             textShadow: "none",
             fontWeight: "normal"
           },
+          onPointerDown: stopPtr,
           onClick: () => props.onAddMeter()
         },
         "+ Meter"
@@ -18354,6 +24255,7 @@ button.ecu-meter-status-micro:hover,
             textShadow: "none",
             fontWeight: "normal"
           },
+          onPointerDown: stopPtr,
           onClick: () => props.onReplayIntroTour()
         },
         "Intro"
@@ -18369,22 +24271,7 @@ button.ecu-meter-status-micro:hover,
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
-      const html = itemContainer(
-        { skin: state.skin, size: iconSize, draggable: false },
-        null
-      );
-      if (html) {
-        el.innerHTML = html;
-        const root = el.firstElementChild;
-        if (root) {
-          root.style.margin = "0";
-          root.removeAttribute("onmousedown");
-          root.removeAttribute("ontouchstart");
-          root.removeAttribute("onclick");
-        }
-      } else {
-        el.textContent = state.label.slice(0, 1);
-      }
+      paintItemContainerIcon(el, state.skin, iconSize);
       return () => {
         if (el) el.innerHTML = "";
       };
@@ -18882,24 +24769,7 @@ button.ecu-meter-status-micro:hover,
     const paintIcon = () => {
       const el = iconRef.current;
       if (!el) return;
-      const opts = {
-        skin: effect.skin,
-        size: iconSize,
-        draggable: false
-      };
-      const html = itemContainer(opts, null);
-      if (html) {
-        el.innerHTML = html;
-        const root = el.firstElementChild;
-        if (root) {
-          root.style.margin = "0";
-          root.removeAttribute("onmousedown");
-          root.removeAttribute("ontouchstart");
-          root.removeAttribute("onclick");
-        }
-      } else {
-        el.textContent = effect.id;
-      }
+      paintItemContainerIcon(el, effect.skin, iconSize);
     };
     const hideTint = () => {
       const el = iconRef.current;
@@ -19398,27 +25268,27 @@ button.ecu-meter-status-micro:hover,
       const next = nextPartyBuffMode(buffMode);
       setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
     };
-    const buffsButton = parties.length ? e(
+    const buffsButton = e(
       "button",
       {
         type: "button",
         className: "ecu-roster-buffs",
         title: partyBuffModeTitle(buffMode),
+        "aria-label": `Party buffs mode: ${partyBuffModeLabel(buffMode)}. Click to cycle.`,
         onClick: cycleBuffMode,
         style: {
-          cursor: "pointer",
-          fontSize: TYPE.secondaryMin,
-          lineHeight: "1.2",
-          padding: "3px 8px",
-          minHeight: "26px",
-          border: "1px solid #444",
-          background: "#161616",
-          color: "#ccc",
+          fontSize: TYPE.micro,
           ...PIXEL_TEXT
         }
       },
-      `Buffs: ${partyBuffModeLabel(buffMode)}`
-    ) : null;
+      e("span", { className: "ecu-roster-buffs-k" }, "Buffs"),
+      e("span", { className: "ecu-roster-buffs-sep" }, "\xB7"),
+      e(
+        "span",
+        { className: "ecu-roster-buffs-v" },
+        partyBuffModeLabel(buffMode)
+      )
+    );
     return e(
       "div",
       {
@@ -19432,8 +25302,6 @@ button.ecu-meter-status-micro:hover,
           position: "relative"
         }
       },
-      // Absolute overlay — must not reserve header row height when idle.
-      buffsButton,
       !parties.length ? e(
         "div",
         {
@@ -19458,7 +25326,7 @@ button.ecu-meter-status-micro:hover,
         )
       ) : null,
       ...parties.map(
-        (party) => e(
+        (party, partyIdx) => e(
           "div",
           {
             key: party[0] || "solo",
@@ -19468,17 +25336,32 @@ button.ecu-meter-status-micro:hover,
           e(
             "div",
             {
+              className: "ecu-roster-party-hd",
               style: {
-                fontSize: TYPE.secondary,
-                color: "#ccc",
-                background: "rgba(0,0,0,0.55)",
-                display: "inline-block",
-                padding: "2px 6px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
                 marginBottom: "4px",
-                ...PIXEL_TEXT
+                flexWrap: "wrap"
               }
             },
-            party[0] || "(no party)"
+            e(
+              "div",
+              {
+                className: "ecu-roster-party-name",
+                style: {
+                  fontSize: TYPE.secondary,
+                  color: "#ccc",
+                  background: "rgba(0,0,0,0.55)",
+                  display: "inline-block",
+                  padding: "2px 6px",
+                  ...PIXEL_TEXT
+                }
+              },
+              party[0] || "(no party)"
+            ),
+            // Mode is global — only on the first party header so it sits with roster chrome.
+            partyIdx === 0 ? buffsButton : null
           ),
           sharedMode ? e(SharedPartyEffects, {
             key: `shared-${party[0] || "solo"}`,
@@ -23912,17 +29795,37 @@ button.ecu-meter-status-micro:hover,
   // src/ui/frames/comm/CommPanelLayout.ts
   function createPanelRenderer(deps) {
     return (id, child, opts) => {
-      const isClosablePanel = (opts == null ? void 0 : opts.closable) === true;
+      const isClosablePanel = (opts == null ? void 0 : opts.closable) === true || canCloseWindow(id);
       const isHidden = isClosablePanel && !deps.visible(id);
       if (isHidden && !deps.layoutEdit) return null;
       if ((opts == null ? void 0 : opts.empty) && !deps.layoutEdit) return null;
+      const locked = deps.panelIsLocked(id);
+      const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles";
+      const groupable = canGroupWindow(id);
+      const grouped = groupable && commWindowHasSnap(
+        { layout: deps.layout, meters: deps.meterInstances },
+        id
+      );
+      const classBits = [];
+      if (playArrange) classBits.push("comm-pos-arrange");
+      if (grouped) classBits.push("comm-pos-grouped");
+      if (deps.panelSnapDragId === id) classBits.push("comm-pos-dragging");
+      if (deps.panelSnapPeerId === id) classBits.push("comm-pos-snap-target");
       return e(
         PositionedPanel,
         {
           id,
           pos: deps.layout[id],
           editing: deps.layoutEdit,
+          movable: playArrange,
+          // Play-arrange HUD grip. `grip` chrome (toggles) also needs ⠿ in
+          // layout edit — playArrange is false then, so keep the handle on.
+          showMoveGrip: playArrange || (opts == null ? void 0 : opts.editChrome) === "grip",
           onMove: deps.onMove,
+          onMoveEnd: playArrange || deps.layoutEdit ? deps.onMoveEnd : void 0,
+          onDragStart: playArrange || deps.layoutEdit ? deps.onPanelDragStart : void 0,
+          onDragMove: playArrange || deps.layoutEdit ? deps.onPanelDragMove : void 0,
+          softAvoid: groupable ? false : void 0,
           style: opts == null ? void 0 : opts.style,
           hidden: isHidden,
           hiddenBodyStyle: opts == null ? void 0 : opts.hiddenBodyStyle,
@@ -23932,8 +29835,17 @@ button.ecu-meter-status-micro:hover,
           viewportProfile: deps.viewportProfile,
           interactiveBody: opts == null ? void 0 : opts.interactiveBody,
           editChrome: opts == null ? void 0 : opts.editChrome,
+          className: classBits.length ? classBits.join(" ") : void 0,
+          locked,
+          onToggleLock: id === "toggles" ? void 0 : () => deps.setPanelLocked(id, !locked),
+          onUngroup: grouped && deps.ungroupPanel ? () => deps.ungroupPanel(id) : void 0,
+          closedWindows: deps.closedWindows,
+          onReopenWindow: deps.onReopenWindow,
           onClose: isClosablePanel ? () => deps.setVisible(id, false) : void 0,
-          onShow: isClosablePanel ? () => deps.setVisible(id, true) : void 0
+          onShow: isClosablePanel ? () => deps.setVisible(id, true) : void 0,
+          windowNumber: deps.windowNumberById ? deps.windowNumberById[id] : void 0,
+          showWindowIds: deps.showWindowIds,
+          onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0
         },
         child
       );
@@ -24137,6 +30049,86 @@ button.ecu-meter-status-micro:hover,
     });
   }
 
+  // src/ui/chrome/SnapGuideLine.ts
+  var BALL_STEP_PX = 22;
+  var BALL_SIZE = 10;
+  function readCenter(id) {
+    const el = document.querySelector(
+      `.comm-pos-panel.comm-pos-${cssEscapePanelId(id)}`
+    );
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 };
+  }
+  function SnapGuideLine(props) {
+    const React = getReact();
+    const [tick, setTick] = React.useState(0);
+    React.useEffect(() => {
+      if (!props.dragId || !props.visible) return;
+      let raf2 = 0;
+      const loop = () => {
+        setTick((n) => n + 1);
+        raf2 = window.requestAnimationFrame(loop);
+      };
+      raf2 = window.requestAnimationFrame(loop);
+      return () => window.cancelAnimationFrame(raf2);
+    }, [props.dragId, props.visible]);
+    if (!props.dragId || !props.visible) return null;
+    const targetId = props.snapPeerId || props.nearPeerId;
+    if (!targetId) return null;
+    const from = readCenter(props.dragId);
+    const to = readCenter(targetId);
+    if (!from || !to) return null;
+    const root = layoutDragRoot().getBoundingClientRect();
+    const x0 = from.x - root.left;
+    const y0 = from.y - root.top;
+    const x1 = to.x - root.left;
+    const y1 = to.y - root.top;
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (!(dist > 8)) return null;
+    const canSnap = !!props.snapPeerId;
+    const color = canSnap ? "rgba(80, 220, 120, 0.85)" : "rgba(220, 70, 70, 0.75)";
+    const count = Math.max(1, Math.floor(dist / BALL_STEP_PX));
+    const balls = [];
+    for (let i = 1; i <= count; i++) {
+      const t = i / (count + 1);
+      balls.push(
+        e("div", {
+          key: "b" + i + "-" + tick % 2,
+          className: "comm-snap-guide-ball",
+          style: {
+            position: "absolute",
+            left: x0 + dx * t - BALL_SIZE / 2,
+            top: y0 + dy * t - BALL_SIZE / 2,
+            width: BALL_SIZE,
+            height: BALL_SIZE,
+            borderRadius: "50%",
+            background: color,
+            boxShadow: `0 0 0 1px rgba(0,0,0,0.45)`,
+            pointerEvents: "none"
+          }
+        })
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "comm-snap-guide",
+        "aria-hidden": true,
+        style: {
+          position: "absolute",
+          inset: 0,
+          zIndex: 50,
+          pointerEvents: "none",
+          overflow: "hidden"
+        }
+      },
+      ...balls
+    );
+  }
+
   // src/ui/frames/CommUI.ts
   function CommUI(props) {
     const React = getReact();
@@ -24147,10 +30139,13 @@ button.ecu-meter-status-micro:hover,
       layoutEdit,
       setLayoutEdit,
       layout,
+      setLayout,
       viewportProfile,
       layoutProfileMode,
       setLayoutProfileMode,
-      onMove,
+      panelIsLocked,
+      setPanelLocked,
+      altHeld,
       resetLayout,
       importLayouts,
       exportLayouts,
@@ -24162,6 +30157,33 @@ button.ecu-meter-status-micro:hover,
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const { selectedEntity: selectedEntity2, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
     const meters = useCommMeterInstances(layout);
+    const windowActions = useCommWindowActions({
+      layout,
+      setLayout,
+      meters: meters.meterInstances,
+      setMeters: meters.setMeterInstances,
+      viewportProfile,
+      applyBagPos: applyBagLayoutPos
+    });
+    const closedWindows = [];
+    const hudIds = Object.keys(PANEL_LABELS);
+    for (let i = 0; i < hudIds.length; i++) {
+      const id = hudIds[i];
+      if (!canCloseWindow(id)) continue;
+      if (visible(id)) continue;
+      closedWindows.push({ id, label: PANEL_LABELS[id] || id });
+    }
+    for (let i = 0; i < meters.closedMeters.length; i++) {
+      const m = meters.closedMeters[i];
+      closedWindows.push({ id: m.id, label: m.label || m.id });
+    }
+    const reopenWindow = (id) => {
+      if (canCloseWindow(id)) {
+        setVisible(id, true);
+        return;
+      }
+      meters.reopenClosedMeter(id);
+    };
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
     const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
@@ -24257,6 +30279,12 @@ button.ecu-meter-status-micro:hover,
       root.setAttribute("data-viewport", viewportProfile);
       root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
     }, [viewportProfile]);
+    const [layoutGuideActive, setLayoutGuideActive] = React.useState(
+      () => isLayoutGuideActive()
+    );
+    React.useEffect(() => subscribeLayoutGuide(() => {
+      setLayoutGuideActive(isLayoutGuideActive());
+    }), []);
     const combat = combatSignals(snap.entities);
     const onCrypt = getMapData(snap.entities).map === "crypt";
     useContextualTourTriggers({
@@ -24266,15 +30294,51 @@ button.ecu-meter-status-micro:hover,
       entities: snap.entities,
       meterInstances: meters.meterInstances
     });
+    const meterIdKey = (() => {
+      const parts = [];
+      for (let i = 0; i < meters.meterInstances.length; i++) {
+        parts.push(meters.meterInstances[i].id);
+      }
+      parts.push("|");
+      for (let i = 0; i < meters.closedMeters.length; i++) {
+        parts.push(meters.closedMeters[i].id);
+      }
+      return parts.join(",");
+    })();
+    const windowNumberById = React.useMemo(() => {
+      const ids = PANEL_IDS.slice();
+      for (let i = 0; i < meters.meterInstances.length; i++) {
+        ids.push(meters.meterInstances[i].id);
+      }
+      for (let i = 0; i < meters.closedMeters.length; i++) {
+        ids.push(meters.closedMeters[i].id);
+      }
+      return ensureWindowNumbers(ids);
+    }, [meterIdKey]);
     const panelDeps = {
       snap,
       layoutEdit,
       layout,
+      meterInstances: meters.meterInstances,
       peerLayout: meters.peerLayout,
       viewportProfile,
       visible,
       opacityFor,
-      onMove,
+      onMove: (id, pos) => windowActions.moveWindow(id, pos),
+      onMoveEnd: (id) => windowActions.snapAfterMove(id),
+      onPanelDragStart: (id) => windowActions.onDragStart(id),
+      onPanelDragMove: (id) => windowActions.onDragMove(id),
+      ungroupPanel: (id) => windowActions.ungroupWindow(id),
+      panelSnapDragId: windowActions.snapDragId,
+      panelSnapPeerId: windowActions.snapPeerId,
+      windowNumberById,
+      showWindowIds: windowActions.showWindowIds,
+      onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
+      panelIsLocked,
+      setPanelLocked,
+      altHeld,
+      closedWindows,
+      onReopenWindow: reopenWindow,
       setVisible,
       setOpacity,
       selectedEntity: selectedEntity2,
@@ -24297,28 +30361,34 @@ button.ecu-meter-status-micro:hover,
       meterInstances: meters.meterInstances,
       layoutEdit,
       metersHidden,
-      altHeld: meters.altHeld,
-      meterSnapDragId: meters.meterSnapDragId,
-      meterSnapPeerId: meters.meterSnapPeerId,
+      altHeld,
+      snapDragId: windowActions.snapDragId,
+      snapPeerId: windowActions.snapPeerId,
+      showWindowIds: windowActions.showWindowIds,
+      windowNumberById,
       peerLayout: meters.peerLayout,
       viewportProfile,
       closedMeters: meters.closedMeters,
+      closedWindows,
       meterIsLocked: meters.meterIsLocked,
-      dragRefFor: meters.dragRefFor,
-      moveMeterWithGroup: meters.moveMeterWithGroup,
-      onMeterDragStart: meters.onMeterDragStart,
-      onMeterDragMove: meters.onMeterDragMove,
-      snapMeterAfterMove: meters.snapMeterAfterMove,
+      onMove: (id, pos) => windowActions.moveWindow(id, pos),
+      onDragStart: (id) => windowActions.onDragStart(id),
+      onDragMove: (id) => windowActions.onDragMove(id),
+      onMoveEnd: (id) => windowActions.snapAfterMove(id),
+      onActivate: (id) => meters.raiseMeterToFront(id),
+      onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
       patchMeter: meters.patchMeter,
       setMeterInstances: meters.setMeterInstances,
       setMetersHiddenPersist,
       reopenClosedMeter: meters.reopenClosedMeter,
+      onReopenWindow: reopenWindow,
       focusInspector: meters.focusInspector,
       focusReport: meters.focusReport,
       duplicateMeter: meters.duplicateMeter,
       removeMeter: meters.removeMeter,
       closeMeterRuntime: meters.closeMeterRuntime,
-      ungroupMeterPanel: meters.ungroupMeterPanel,
+      ungroupWindow: (id) => windowActions.ungroupWindow(id),
+      windowHasSnap: (id) => commWindowHasSnap(windowActions.graphState(), id),
       setMeterAddOpen,
       onToolbarInteract: triggerMeterToolbarTour
     });
@@ -24333,7 +30403,13 @@ button.ecu-meter-status-micro:hover,
           overflow: "hidden"
         }
       },
-      layoutEdit ? e(LayoutEditGrid) : null,
+      layoutEdit || layoutGuideActive ? e(LayoutEditGrid) : null,
+      e(SnapGuideLine, {
+        dragId: windowActions.snapDragId,
+        snapPeerId: windowActions.snapPeerId,
+        nearPeerId: windowActions.nearPeerId,
+        visible: windowActions.showWindowIds
+      }),
       layoutEdit ? e(LayoutEditChrome, {
         onReset: resetLayout,
         onDone: () => setLayoutEdit(false),
