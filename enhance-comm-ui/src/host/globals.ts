@@ -5,6 +5,8 @@ export type EntityLike = {
   name?: string;
   type?: string;
   player?: boolean;
+  /** Local self from `add_character(data, 1)` — not set on soft-synced others. */
+  me?: boolean;
   ctype?: string;
   level?: number;
   hp?: number;
@@ -45,7 +47,7 @@ export type EntityLike = {
   /**
    * Courage overflow. Soft stranger sync omits fear/courage; /comm estimates
    * from G + gear + conditions + live aggro.
-   * Tiers: 1 scared, 2–3 terrified, 4+ petrified (stock client logs).
+   * Tiers (server combat): 1 scared, 2 terrified, 3+ petrified.
    */
   fear?: number;
   courage?: number;

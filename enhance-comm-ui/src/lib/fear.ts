@@ -48,8 +48,10 @@ export function aggroByDamageFromMobs(mobs: EntityLike[]): AggroByDamage {
 }
 
 /**
- * Simulated fear for a soft-synced player: cached courage + typed aggro mobs.
- * Packet `fear` is not used (stranger sync omits it).
+ * Simulated fear for self, party, and soft-synced players.
+ * Packet `fear` is connect-time only (not on entities) — never trust it.
+ * Courage from gear/class estimate + typed aggro on this player.
+ * Ctype enrichment lives in `estimateCouragePools` (not here).
  */
 export function estimatePlayerFear(
   player: EntityLike,

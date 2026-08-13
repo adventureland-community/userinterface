@@ -1,4 +1,4 @@
-import { getG } from "../host/al";
+import { getG, resolvePlayerCtype } from "../host/al";
 import type { EntityLike, GLike, SlotLike } from "../host/globals";
 
 /** Same order as stock `character_slots` in old_common_functions.js. */
@@ -159,7 +159,14 @@ export function estimateCouragePools(
   G: GLike | undefined = getG(),
 ): CouragePools | null {
   if (!G || !G.classes || !G.items) return null;
-  const ctype = String(entity.ctype || "");
+  const ctype = String(
+    entity.ctype ||
+      resolvePlayerCtype(
+        entity.id != null ? String(entity.id) : undefined,
+        entity,
+      ) ||
+      "",
+  );
   if (!ctype) return null;
   const classDef = G.classes[ctype] as ClassDef | undefined;
   if (!classDef) return null;

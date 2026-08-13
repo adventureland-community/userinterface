@@ -5,9 +5,11 @@ import { estimatePlayerFear } from "./fear";
 
 /**
  * Courage overflow — not a G.condition.
- * Soft stranger sync omits `fear`; for players we simulate from gear + aggro.
- * Labels match stock client logs in js/game.js:
- *   fear > 3 → petrified, fear > 1 → terrified, else scared.
+ * Packet `fear` is connect-time only (not on entities); simulate for self,
+ * party, and soft sync from gear/courage + typed aggro.
+ * Labels align with server combat fear tiers in node/server.js
+ * (attack ×0.6 / ×0.4 / ×0.2), not the stock client log off-by-one:
+ *   fear > 2 → petrified, fear > 1 → terrified, else scared.
  */
 export type FearLevel = "scared" | "terrified" | "petrified";
 
@@ -109,34 +111,35 @@ const FEAR_STYLE: Record<
     background: string;
   }
 > = {
-  // Colors from stock fear logs (#B03736 / #B04157 / gray).
+  // Colors from stock fear logs (#B03736 / #B04157 / gray) — borders must
+  // stay high-contrast; they are the main severity cue on the name pill.
   scared: {
     severity: 1,
     label: "Scared",
-    color: "#c8c8c8",
-    border: "#888",
-    background: "rgba(40,40,40,0.92)",
+    color: "#e0e0e0",
+    border: "#a0a0a0",
+    background: "rgba(48,48,48,0.95)",
   },
   terrified: {
     severity: 2,
     label: "Terrified",
-    color: "#ffc0c8",
-    border: "#B04157",
-    background: "rgba(80,20,35,0.92)",
+    color: "#ffd0d8",
+    border: "#e05570",
+    background: "rgba(90,22,40,0.95)",
   },
   petrified: {
     severity: 3,
     label: "Petrified",
-    color: "#ffb0a8",
-    border: "#B03736",
-    background: "rgba(90,20,20,0.92)",
+    color: "#ffc8c0",
+    border: "#ff4a3a",
+    background: "rgba(100,18,18,0.95)",
   },
 };
 
-/** Map courage overflow to the stock client fear tier. */
+/** Map courage overflow to server combat fear tiers (not stock client logs). */
 export function fearLevelFromValue(fear: number): FearLevel | null {
   if (!(fear > 0)) return null;
-  if (fear > 3) return "petrified";
+  if (fear > 2) return "petrified";
   if (fear > 1) return "terrified";
   return "scared";
 }
