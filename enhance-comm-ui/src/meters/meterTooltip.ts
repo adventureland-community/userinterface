@@ -37,7 +37,7 @@ let hoverX = 0;
 let hoverY = 0;
 let keysBound = false;
 
-function escapeHtml(s: string): string {
+export function escapeHtml(s: string): string {
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

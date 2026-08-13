@@ -1,13 +1,10 @@
 import { getReact, e } from "../../host/react";
+import { applyPanelDragMove } from "../../lib/panelDragSnap";
 import {
-  LAYOUT_ANCHOR_OPTIONS,
-  LAYOUT_ANCHOR_PAD,
   PANEL_LABELS,
   captureVisualSnapStart,
   panelStyle,
   reanchorKeepingVisual,
-  snapDragToVisualEdges,
-  snapPercent,
   softAvoidOverlap,
   type LayoutAnchor,
   type PanelId,
@@ -19,11 +16,7 @@ import {
   getLayoutGridStep,
   subscribeLayoutEditPrefs,
 } from "../../lib/layoutEditPrefs";
-import {
-  snapFrameSizeToGrid,
-  snapPosToFineGrid,
-  squareGridMetrics,
-} from "../../lib/layoutGrid";
+import { snapFrameSizeToGrid, snapPosToFineGrid } from "../../lib/layoutGrid";
 import {
   layoutDragRoot,
   percentFromPointerDrag,
@@ -34,21 +27,7 @@ import {
 import { clampWindowScale } from "../../lib/commWindowGroup";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 import { TYPE } from "../../lib/typeScale";
-import { WindowControlChrome } from "./WindowControlChrome";
-
-/** Peer / mid magnet — tighter than old 2.2% so near-edge stays placeable. */
-const PEER_SNAP_PCT = 1.0;
-/** Only snap painted box to screen when this close (px). */
-/** Max px to magnet painted edges to the screen. Grid mode further caps this
- * below half a cell so one interior grid row/column stays placeable. */
-const VISUAL_EDGE_SNAP_PX = 8;
-
-function anchorMeta(id: LayoutAnchor): { glyph: string; title: string } {
-  for (let i = 0; i < LAYOUT_ANCHOR_OPTIONS.length; i++) {
-    if (LAYOUT_ANCHOR_OPTIONS[i].id === id) return LAYOUT_ANCHOR_OPTIONS[i];
-  }
-  return { glyph: "·", title: id };
-}
+import { PositionedPanelChrome } from "./PositionedPanelChrome";
 
 export type PositionedPanelProps = {
   /** PanelId or meter instance id (string). */
@@ -358,62 +337,33 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   const onPointerMove = (ev: any) => {
     if (!dragging.current) return;
     const raw = percentFromPointerDrag(ev.clientX, ev.clientY, start.current);
-    let nextX = raw.x;
-    let nextY = raw.y;
-    let edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
-    let useVisualEdge = true;
-    // Fine-grid snap applies in layout edit AND play-arrange (movable), whenever
-    // Free is off. Same 1× square cell as LayoutEditGrid's finest lines.
     const free = freePlacementRef.current || getLayoutFreePlacement();
+    let rootWidth = 0;
+    let rootHeight = 0;
     if (!free) {
       const root = layoutDragRoot().getBoundingClientRect();
-      const metrics = squareGridMetrics(
-        gridStepRef.current,
-        root.width,
-        root.height,
-      );
-      const snapped = snapPosToFineGrid(
-        nextX,
-        nextY,
-        gridStepRef.current,
-        root.width,
-        root.height,
-      );
-      nextX = snapped.x;
-      nextY = snapped.y;
-      // Peers may magnetize, but tighter than one fine cell so they don't
-      // yank off the chosen grid line onto mid/peer anchors.
-      const cellPctX = (metrics.cellPx / Math.max(1, root.width)) * 100;
-      const cellPctY = (metrics.cellPx / Math.max(1, root.height)) * 100;
-      const peerThresh = Math.min(
-        PEER_SNAP_PCT,
-        Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4),
-      );
-      const { xs, ys } = peerAxes();
-      nextX = snapPercent(nextX, peerThresh, xs);
-      nextY = snapPercent(nextY, peerThresh, ys);
-      useVisualEdge = false;
-    } else {
-      // Free: peer / mid magnets + tight painted-edge flush.
-      const { xs, ys } = peerAxes();
-      nextX = snapPercent(nextX, PEER_SNAP_PCT, xs);
-      nextY = snapPercent(nextY, PEER_SNAP_PCT, ys);
-      edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
+      rootWidth = root.width;
+      rootHeight = root.height;
     }
-    const visual = visualStart.current;
-    if (useVisualEdge && visual) {
-      const edge = snapDragToVisualEdges(
-        ev.clientX,
-        ev.clientY,
-        start.current,
-        visual,
-        edgeThresholdPx,
-      );
-      if (edge.snapX) nextX = edge.x;
-      if (edge.snapY) nextY = edge.y;
+    const { xs, ys } = peerAxes();
+    const snapped = applyPanelDragMove({
+      rawX: raw.x,
+      rawY: raw.y,
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      start: start.current,
+      visual: visualStart.current,
+      free,
+      gridStep: gridStepRef.current,
+      rootWidth,
+      rootHeight,
+      peerXs: xs,
+      peerYs: ys,
+    });
+    onMove(id, { ...pos, x: snapped.x, y: snapped.y });
+    if (props.onDragMove) {
+      props.onDragMove(id, { ...pos, x: snapped.x, y: snapped.y });
     }
-    onMove(id, { ...pos, x: nextX, y: nextY });
-    if (props.onDragMove) props.onDragMove(id, { ...pos, x: nextX, y: nextY });
   };
 
   const onPointerUp = (ev: any) => {
@@ -490,10 +440,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     // depend on pos.x/y (that re-attached listeners every move and broke capture).
   }, [props.extraDragRef, editing, props.movable, id]);
 
-  const showClose =
-    !!onClose &&
-    !hidden &&
-    (hover || touchish || (editing && !props.closeOnHoverOnly));
   const opacity =
     typeof props.opacity === "number" && Number.isFinite(props.opacity)
       ? Math.max(0.25, Math.min(1, props.opacity))
@@ -536,211 +482,12 @@ export function PositionedPanel(props: PositionedPanelProps): any {
         : null,
   );
 
-  const closeAbove = props.closePlacement === "above";
-  // Layout-edit `grip` chrome (Layout toggles) *is* the drag handle — do not
-  // let showMoveGrip:false (HUD passes playArrange, which is off in edit)
-  // hide the only way to reposition that panel.
-  const moveGrip =
-    (movable && props.showMoveGrip !== false) ||
-    (editing && editChrome === "grip")
-      ? e(
-          "div",
-          {
-            className: "comm-pos-edit-grip",
-            title: "Drag to move",
-            "aria-label": "Drag to move",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: touchish ? "6px 8px" : "2px 4px",
-              background: "rgba(40,40,20,0.92)",
-              border: "1px solid #886",
-              cursor: "grab",
-              userSelect: "none",
-              color: "#ffe08a",
-              fontSize: headerFont,
-              lineHeight: 1,
-              touchAction: "none",
-              pointerEvents: "auto",
-              // Full-width drag strip in layout-edit grip rows and play-arrange
-              // above-frame bar (CSS). Inline flex helps before CSS applies.
-              flex: 1,
-            },
-            onPointerDown,
-            onPointerMove,
-            onPointerUp,
-            onPointerCancel: onPointerUp,
-          },
-          e("span", { "aria-hidden": true }, "⠿"),
-        )
-      : null;
-
-  // Play-arrange chrome: hover bar (HUD + meters). Prefer above the frame;
-  // when that would clip off-screen, sit in-flow and push content down.
+  // Same as !!moveGrip || lock || ungroup when !editing (grip-in-edit is false).
   const showArrangeOverlay =
-    !editing && (!!moveGrip || !!props.onToggleLock || !!props.onUngroup);
-  // Meters: keep hide × on WC/arrange chrome so it never stacks on the
-  // maroon titlebar stretch control (↕).
-  const closeInArrangeOverlay = showClose && closeAbove && showArrangeOverlay;
-
-  const closeBtn = showClose
-    ? e(
-        "button",
-        {
-          type: "button",
-          className:
-            "comm-pos-panel-close" +
-            (closeAbove ? " comm-pos-panel-close-above" : "") +
-            (closeInArrangeOverlay ? " comm-pos-panel-close-in-chrome" : ""),
-          title: `Hide ${panelLabel}`,
-          "aria-label": `Hide ${panelLabel}`,
-          onClick: (ev: any) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            onClose!();
-          },
-          onPointerDown: (ev: any) => ev.stopPropagation(),
-          onMouseEnter: () => setPanelHover(true),
-          onMouseLeave: () => setPanelHover(false),
-          style: closeInArrangeOverlay
-            ? {
-                position: "relative",
-                top: "auto",
-                right: "auto",
-                zIndex: 1,
-                width: `${closeSize}px`,
-                height: `${closeSize}px`,
-                padding: 0,
-                margin: 0,
-                flexShrink: 0,
-                border: "1px solid #886",
-                background: "rgba(30,30,20,0.95)",
-                color: "#ffe08a",
-                fontSize: touchish ? "18px" : "14px",
-                lineHeight: `${closeSize - 2}px`,
-                cursor: "pointer",
-                pointerEvents: "auto",
-              }
-            : {
-                position: "absolute",
-                top: closeAbove ? `-${closeSize + 2}px` : editing ? "2px" : "0",
-                right: "0",
-                zIndex: 2,
-                width: `${closeSize}px`,
-                height: `${closeSize}px`,
-                padding: 0,
-                margin: 0,
-                border: "1px solid #555",
-                background: "rgba(20,20,20,0.9)",
-                color: "#ccc",
-                fontSize: touchish ? "18px" : "14px",
-                lineHeight: `${closeSize - 2}px`,
-                cursor: "pointer",
-                pointerEvents: "auto",
-              },
-        },
-        "×",
-      )
-    : null;
-
-  const anchorPad = editing
-    ? e(
-        "div",
-        {
-          className: "comm-pos-anchor-pad",
-          title: "Stretch / anchor point",
-          onPointerDown: (ev: any) => ev.stopPropagation(),
-          style: {
-            display: "grid",
-            gridTemplateColumns: `repeat(3, ${anchorBtn}px)`,
-            gridTemplateRows: `repeat(3, ${anchorBtn}px)`,
-            gap: "2px",
-            marginLeft: "auto",
-            flexShrink: 0,
-            cursor: "default",
-          },
-        },
-        ...LAYOUT_ANCHOR_PAD.reduce((cells: any[], row) => {
-          for (let c = 0; c < row.length; c++) {
-            const a = row[c];
-            if (!a) {
-              cells.push(
-                e("div", {
-                  key: `empty-${cells.length}`,
-                  style: { width: anchorBtn, height: anchorBtn },
-                }),
-              );
-              continue;
-            }
-            const meta = anchorMeta(a);
-            const active = pos.anchor === a;
-            cells.push(
-              e(
-                "button",
-                {
-                  key: a,
-                  type: "button",
-                  title: meta.title,
-                  "aria-label": meta.title,
-                  "aria-pressed": active,
-                  onClick: (ev: any) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    setAnchor(a);
-                  },
-                  onPointerDown: (ev: any) => ev.stopPropagation(),
-                  style: {
-                    width: `${anchorBtn}px`,
-                    height: `${anchorBtn}px`,
-                    padding: 0,
-                    margin: 0,
-                    border: active ? "1px solid #ffe08a" : "1px solid #666",
-                    background: active
-                      ? "rgba(80,70,20,0.95)"
-                      : "rgba(20,20,20,0.9)",
-                    color: active ? "#ffe08a" : "#bbb",
-                    fontSize: touchish ? "14px" : "12px",
-                    lineHeight: `${anchorBtn - 2}px`,
-                    cursor: "pointer",
-                    boxSizing: "border-box",
-                  },
-                },
-                meta.glyph,
-              ),
-            );
-          }
-          return cells;
-        }, []),
-      )
-    : null;
-
-  const hasWindowChrome =
-    !!props.onToggleLock ||
-    !!props.onUngroup ||
-    !!props.onCreateWindow ||
-    !!onClose ||
-    !!(props.closedWindows && props.closedWindows.length);
-
-  const windowChrome = hasWindowChrome
-    ? e(WindowControlChrome, {
-        touchish,
-        locked: props.locked,
-        onToggleLock: props.onToggleLock,
-        onUngroup: props.onUngroup,
-        onCreateWindow: props.onCreateWindow,
-        onClose: onClose || undefined,
-        closedWindows: props.closedWindows,
-        onReopenWindow: props.onReopenWindow,
-        showMenu:
-          movable ||
-          editing ||
-          !!props.onToggleLock ||
-          !!props.onUngroup ||
-          !!onClose ||
-          !!(props.closedWindows && props.closedWindows.length),
-      })
-    : null;
+    !editing &&
+    ((movable && props.showMoveGrip !== false) ||
+      !!props.onToggleLock ||
+      !!props.onUngroup);
 
   const ARRANGE_CHROME_H = 34;
   React.useLayoutEffect(() => {
@@ -763,198 +510,38 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     return () => window.clearTimeout(t);
   }, [showArrangeOverlay, hover, pos.x, pos.y, movable, id]);
 
-  const arrangeOverlay = showArrangeOverlay
-    ? e(
-        "div",
-        {
-          className:
-            "comm-pos-arrange-overlay" +
-            (moveGrip ? " has-grip" : " is-chrome-only") +
-            (arrangePlacement === "inline" ? " is-inline" : " is-above"),
-          title: moveGrip ? `Drag to move · ${panelLabel}` : undefined,
-        },
-        moveGrip,
-        props.onToggleLock || props.onUngroup ? windowChrome : null,
-        closeInArrangeOverlay ? closeBtn : null,
-      )
-    : null;
-
-  const editHeaderStyle: Record<string, any> = {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: headerPad,
-    paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
-    marginBottom: "2px",
-    background: hidden ? "rgba(30,30,30,0.92)" : "rgba(40,40,20,0.92)",
-    border: hidden ? "1px solid #666" : "1px solid #886",
-    cursor: "grab",
-    userSelect: "none",
-    fontSize: headerFont,
-    color: hidden ? "#bbb" : "#ffe08a",
-    whiteSpace: "nowrap",
-    touchAction: "none",
-    minHeight: touchish ? "40px" : undefined,
-    pointerEvents: "auto",
-  };
-
-  const editHeader = !editing
-    ? arrangeOverlay
-    : editChrome === "grip"
-      ? e(
-          "div",
-          {
-            className: "comm-pos-edit-grip-row",
-            style: {
-              display: "flex",
-              alignItems: "stretch",
-              gap: 4,
-              marginBottom: "2px",
-            },
-          },
-          moveGrip,
-          windowChrome,
-        )
-      : editChrome === "anchors"
-        ? e(
-            "div",
-            {
-              className: "comm-pos-edit-header is-anchors-only",
-              title: `Drag to move · ${panelLabel}`,
-              "aria-label": `Drag to move ${panelLabel}`,
-              style: {
-                ...editHeaderStyle,
-                justifyContent: "space-between",
-                paddingTop: touchish ? "4px" : "2px",
-                paddingBottom: touchish ? "4px" : "2px",
-              },
-              onPointerDown,
-              onPointerMove,
-              onPointerUp,
-              onPointerCancel: onPointerUp,
-            },
-            e(
-              "span",
-              {
-                className: "comm-pos-edit-label",
-                style: {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  minWidth: 0,
-                  flex: 1,
-                },
-              },
-              `${panelLabel}${hidden ? " (hidden)" : ""}`,
-            ),
-            windowChrome,
-            anchorPad,
-          )
-        : e(
-            "div",
-            {
-              className: "comm-pos-edit-header",
-              style: editHeaderStyle,
-              onPointerDown,
-              onPointerMove,
-              onPointerUp,
-              onPointerCancel: onPointerUp,
-            },
-            e(
-              "span",
-              {
-                className: "comm-pos-edit-label",
-                style: {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  minWidth: 0,
-                  flex: 1,
-                },
-              },
-              `${panelLabel}${hidden ? " (hidden)" : ""}`,
-            ),
-            windowChrome,
-            hidden && onShow
-              ? e(
-                  "button",
-                  {
-                    type: "button",
-                    onClick: (ev: any) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      onShow();
-                    },
-                    onPointerDown: (ev: any) => ev.stopPropagation(),
-                    style: {
-                      cursor: "pointer",
-                      fontSize: touchish ? "14px" : "12px",
-                      padding: touchish ? "6px 12px" : "2px 8px",
-                      minHeight: touchish ? "36px" : undefined,
-                      border: "1px solid #7a7",
-                      background: "#1a2a1a",
-                      color: "#9e9",
-                    },
-                  },
-                  "Show",
-                )
-              : null,
-            anchorPad,
-          );
-
-  const opacityRow =
-    editing && props.onOpacityChange && !hidden
-      ? e(
-          "div",
-          {
-            className: "comm-pos-opacity-row",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: touchish ? "4px 8px" : "2px 6px",
-              marginBottom: "2px",
-              background: "rgba(20,20,24,0.92)",
-              border: "1px solid #555",
-              color: "#bbb",
-              fontSize: touchish ? "13px" : TYPE.secondaryMin,
-              pointerEvents: "auto",
-              flexShrink: 0,
-              minWidth: 0,
-            },
-            onPointerDown: (ev: any) => ev.stopPropagation(),
-          },
-          e(
-            "span",
-            {
-              style: {
-                flexShrink: 0,
-                color: "#999",
-                minWidth: touchish ? "52px" : "44px",
-              },
-            },
-            `${Math.round(opacity * 100)}%`,
-          ),
-          e("input", {
-            type: "range",
-            min: 25,
-            max: 100,
-            step: 5,
-            value: Math.round(opacity * 100),
-            title: "Panel opacity",
-            "aria-label": "Panel opacity",
-            style: {
-              flex: 1,
-              minWidth: 0,
-              margin: 0,
-              cursor: "pointer",
-            },
-            onChange: (ev: any) => {
-              const pct = Number(ev.target.value);
-              if (!Number.isFinite(pct)) return;
-              props.onOpacityChange!(pct / 100);
-            },
-          }),
-        )
-      : null;
+  const {
+    editHeader,
+    opacityRow,
+    closeBtn,
+    closeInArrangeOverlay,
+    windowIdOverlay,
+    needsChromeHover,
+  } = PositionedPanelChrome({
+    props,
+    pos,
+    editing,
+    hidden: !!hidden,
+    hover,
+    touchish,
+    movable,
+    editChrome,
+    panelLabel,
+    closeSize,
+    headerPad,
+    headerFont,
+    anchorBtn,
+    opacity,
+    arrangePlacement,
+    showArrangeOverlay,
+    onClose,
+    onShow,
+    setPanelHover,
+    setAnchor,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+  });
 
   const hiddenBodyStyle: Record<string, any> = Object.assign(
     {
@@ -966,25 +553,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     },
     props.hiddenBodyStyle || {},
   );
-
-  const windowIdOverlay =
-    props.showWindowIds &&
-    typeof props.windowNumber === "number" &&
-    props.windowNumber > 0
-      ? e(
-          "div",
-          {
-            className: "comm-pos-window-id",
-            "aria-hidden": true,
-          },
-          String(props.windowNumber),
-        )
-      : null;
-
-  const needsChromeHover =
-    !!onClose ||
-    showArrangeOverlay ||
-    (!editing && (!!props.onToggleLock || !!props.onUngroup || movable));
 
   const onActivateCapture = props.onActivate
     ? (_ev: any) => {

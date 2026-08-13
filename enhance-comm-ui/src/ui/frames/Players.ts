@@ -59,8 +59,8 @@ function chipOpacity(dead: boolean): number {
 /** observe-hud style party chips: name inside HP bar, thin MP underlay, effects + aggro. */
 export function Players(props: PlayersProps): any {
   const React = getReact();
-  const [buffMode, setBuffMode] = React.useState<PartyBuffMode>(
-    () => getSettings().partyBuffMode || "auto",
+  const [buffMode, setBuffMode] = React.useState(
+    () => (getSettings().partyBuffMode || "auto") as PartyBuffMode,
   );
 
   const parties = partyGroups(props.entities);

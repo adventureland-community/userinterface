@@ -53,12 +53,6 @@ declare global {
   interface Window {
     is_comm?: boolean;
     inventory?: boolean;
-    character?: any;
-    observing?: any;
-    socket?: {
-      id?: string;
-      on?: (event: string, fn: (...args: any[]) => void) => void;
-    };
     render_inventory?: (reset?: any) => void;
     inventory_click?: (num: number, event?: any) => void;
     hide_modal?: (force?: any) => void;

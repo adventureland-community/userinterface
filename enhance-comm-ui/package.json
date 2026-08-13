@@ -4,7 +4,8 @@
   "private": true,
   "description": "Adventure.land /comm UI enhancement userscript",
   "scripts": {
-    "build": "tsup && node scripts/sync-root.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsup && node scripts/sync-root.mjs",
     "watch": "node scripts/dev-watch.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:serve": "node scripts/dev-server.mjs"

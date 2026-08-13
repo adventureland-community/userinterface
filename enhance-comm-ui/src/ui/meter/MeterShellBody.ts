@@ -15,11 +15,9 @@ import type {
 import type { FocusInspectorOpts } from "../hooks/useCommMeterInstances";
 import { MeterBarsView } from "./MeterBarRow";
 import { detailsWindowTitle, rootQuery } from "./meterShellHelpers";
-import {
-  MeterDeathView,
-  MeterDetailsView,
-  MeterEncounterView,
-} from "./views/MeterMiscViews";
+import { MeterDeathView } from "./views/MeterDeathView";
+import { MeterDetailsView } from "./views/MeterDetailsView";
+import { MeterEncounterView } from "./views/MeterEncounterView";
 import { MeterTimelineView } from "./views/MeterTimelineView";
 import {
   MeterHistoryChart,

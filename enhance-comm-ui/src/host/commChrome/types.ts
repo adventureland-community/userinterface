@@ -24,10 +24,6 @@ export type CommServer = {
 
 declare global {
   interface Window {
-    X?: {
-      characters?: CommChar[];
-      servers?: CommServer[];
-    };
     /** Rolling RTT samples (ms), capped ~40 by stock `push_ping`. */
     pings?: number[];
     sprite?: (skin: string, opts?: any) => string;

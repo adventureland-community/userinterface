@@ -156,7 +156,7 @@ export function useCommMeterInstances(
   ) => {
     if (!actorId) return;
     const metric = opts?.metric || "damage";
-    const primary = opts?.primary === "rate" ? "rate" : "total";
+    const primary: PlayersPrimary = opts?.primary === "rate" ? "rate" : "total";
     const label = detailsWindowTitle(name, metric, primary);
     setMeterInstances((prev: MeterInstance[]) => {
       for (let i = 0; i < prev.length; i++) {

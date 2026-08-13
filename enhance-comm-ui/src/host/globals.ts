@@ -52,6 +52,10 @@ export type EntityLike = {
   cx?: Record<string, string> | any;
   /** Dead / rip — `sprite` draws gravestone when set. */
   rip?: boolean;
+  /** Inventory slots while observing (bag panel). */
+  items?: any[];
+  /** Inventory size (slot count) while observing. */
+  isize?: number;
 };
 
 export type SlotLike = {

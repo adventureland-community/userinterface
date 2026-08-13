@@ -57,6 +57,7 @@ async function build() {
   const started = Date.now();
   console.log(`[ecu-watch] build #${id}…`);
   try {
+    await run("npx tsc --noEmit");
     await run("npx tsup");
     await run("node scripts/sync-root.mjs");
     console.log(`[ecu-watch] build #${id} ok (${Date.now() - started}ms)`);
@@ -93,9 +94,7 @@ function schedule(reason) {
 }
 
 function onSrcChange(filename) {
-  const name = filename
-    ? String(filename).replace(/\\/g, "/")
-    : "(src)";
+  const name = filename ? String(filename).replace(/\\/g, "/") : "(src)";
   if (name.endsWith("~") || name.includes(".tmp")) return;
 
   // While building, only mark dirty — do not re-arm timers (that caused
@@ -113,9 +112,7 @@ try {
   watch(srcDir, { recursive: true }, (_event, filename) => {
     onSrcChange(filename);
   });
-  console.log(
-    `[ecu-watch] watching ${srcDir} (debounce ${DEBOUNCE_MS}ms)`,
-  );
+  console.log(`[ecu-watch] watching ${srcDir} (debounce ${DEBOUNCE_MS}ms)`);
 } catch (err) {
   console.error("[ecu-watch] failed to watch src/", err);
   process.exit(1);
