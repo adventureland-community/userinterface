@@ -1,10 +1,13 @@
 import { getReact, getReactDOM, e } from "./host/react";
-import { startTick, type GameSnapshot } from "./tick";
+import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
-import { startCombatMeter } from "./meters/combatMeter";
-import { startPartyCombat } from "./meters/partyCombat";
-import { startSessionKills } from "./kpi/sessionKills";
+import {
+  startMeterEngine,
+  updateMeterContext,
+} from "./meters/meterEngine";
+import { isMeterInCombat } from "./meters/meterSession";
+import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
@@ -89,10 +92,17 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   background-color: blue;
 }
 
-/* Defeat Adventure Land global pixel-font thickening inside our overlay */
+/* Defeat Adventure Land global pixel-font thickening inside our overlay.
+ * Form controls must inherit — UA styles otherwise swap in a system font. */
 #comm-ui, #comm-ui * {
   text-shadow: none !important;
   font-weight: normal !important;
+}
+#comm-ui button,
+#comm-ui input,
+#comm-ui select,
+#comm-ui textarea {
+  font-family: inherit;
 }
 `;
 
@@ -118,7 +128,9 @@ function ensureReact(onReady: () => void): void {
     document.head.append(reactScript);
   }
 
-  const existingDom = document.querySelector("#react-dom") as HTMLScriptElement | null;
+  const existingDom = document.querySelector(
+    "#react-dom",
+  ) as HTMLScriptElement | null;
   if (!existingDom) {
     const reactDomScript = document.createElement("script");
     reactDomScript.id = "react-dom";
@@ -137,7 +149,15 @@ function Root(): any {
   const [snap, setSnap] = React.useState(null as GameSnapshot | null);
 
   React.useEffect(() => {
-    const stopTick = startTick((s) => setSnap(s));
+    let lastKey = "";
+    const stopTick = startTick((s) => {
+      updateMeterContext(s.entities);
+      updateKillContext(s.entities);
+      const key = `${snapshotUiKey(s)}|${isMeterInCombat() ? 1 : 0}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      setSnap(s);
+    });
     return () => stopTick();
   }, []);
 
@@ -157,8 +177,7 @@ function onLoad(): void {
   installCommanderHook();
   startSocketHub();
   startCryptTracker();
-  startCombatMeter();
-  startPartyCombat();
+  startMeterEngine();
   startSessionKills();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;

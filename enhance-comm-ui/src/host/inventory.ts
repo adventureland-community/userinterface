@@ -53,9 +53,6 @@ declare global {
   interface Window {
     is_comm?: boolean;
     inventory?: boolean;
-    character?: any;
-    observing?: any;
-    socket?: { id?: string; on?: (event: string, fn: (...args: any[]) => void) => void };
     render_inventory?: (reset?: any) => void;
     inventory_click?: (num: number, event?: any) => void;
     hide_modal?: (force?: any) => void;
@@ -286,13 +283,16 @@ function stampBagSyncedFromObserving(obs: any): void {
 }
 
 function findObserveSecret(name: string): string | null {
-  const chars =
-    ((window as any).X && (window as any).X.characters) || [];
+  const chars = ((window as any).X && (window as any).X.characters) || [];
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     if (ch && ch.name === name && ch.secret) return String(ch.secret);
   }
   return null;
+}
+
+export function closeInventory(): void {
+  closeInventoryHost();
 }
 
 /** Close bag DOM without leaving window.character set. */
@@ -352,8 +352,7 @@ export function refreshObservedInventory(): void {
   saveSettings({ bagOpenPreferred: true });
 
   const initSocket = (window as any).init_socket as
-    | ((args?: { secret?: string }) => void)
-    | undefined;
+    ((args?: { secret?: string }) => void) | undefined;
   if (typeof initSocket !== "function") {
     setBagRefreshing(false);
     refreshPendingName = null;
@@ -533,8 +532,7 @@ function installInventoryClickBridge(): void {
       if (window.is_comm) {
         if (event && typeof window.stpr === "function") window.stpr(event);
         const obs = window.observing;
-        const item =
-          obs && Array.isArray(obs.items) ? obs.items[num] : null;
+        const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
         if (!item || !item.name || item.name === "placeholder") return;
         openItem(obs, `inv${num}`, item, { dialogOnly: true });
         return;

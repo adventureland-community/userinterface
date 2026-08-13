@@ -5,29 +5,33 @@ import {
   type PanelLayoutMap,
   type PanelPos,
 } from "./layout";
+import { COMBAT_CHANNELS, type CombatChannel } from "../meters/combatChannels";
 import {
-  COMBAT_CHANNELS,
-  type CombatChannel,
-} from "../meters/combatChannels";
+  defaultMeterInstances,
+  migrateLegacyMeterLayout,
+  normalizeMeterInstances,
+} from "../meters/meterPresets";
+import type { MeterBookmark, MeterInstance } from "../meters/meterTypes";
 import {
   VIEWPORT_PROFILES,
   detectViewportProfile,
   type ViewportProfile,
 } from "./viewport";
-import {
-  normalizePartyBuffMode,
-  type PartyBuffMode,
-} from "./partyBuffMode";
+import { normalizePartyBuffMode, type PartyBuffMode } from "./partyBuffMode";
 import type { PartyFocus, PartyScope } from "./settingsFocus";
+import { latestChangelogId } from "./changelog";
 
 export {
   resolvePartyFocus,
   effectivePartyFocus,
   effectiveKillScope,
   partyFocusLabel,
+  partyFocusChoiceLabel,
+  partyFocusMenuOptions,
   killScopeLabel,
   type PartyFocus,
   type PartyScope,
+  type PartyFocusOption,
   type ResolvedPartyFocus,
 } from "./settingsFocus";
 
@@ -48,13 +52,8 @@ export type CombatViewMode = "table" | "bars" | "graph";
 export const CLOSABLE_PANEL_IDS = [
   "bossBar",
   "crypt",
-  "combat",
   "kills",
   "threat",
-  "pdps",
-  "hitDps",
-  "coopV1",
-  "coopV2",
   "command",
   "bag",
 ] as const satisfies readonly PanelId[];
@@ -78,15 +77,16 @@ export type PanelOpacityMap = Partial<Record<PanelId, number>>;
 export type CommUiSettings = {
   partyScope: PartyScope;
   killScope: PartyScope;
-  /** @deprecated use panelVisible.combat */
+  /** @deprecated use panelVisible */
   combatVisible?: boolean;
+  /** @deprecated combat panel replaced by meterInstances */
   combatView: CombatViewMode;
   /** @deprecated migrated into combatView */
   combatViews?: { table?: boolean; bars?: boolean; graph?: boolean };
   /** Persisted CombatChannel ids (union kept across load/save). */
   combatChannels: CombatChannel[];
   barChannel: CombatChannel;
-  /** watched | all | party key */
+  /** watched | all | party key — default for new meter instances */
   partyFocus: PartyFocus;
   /** @deprecated use partyFocus */
   graphPartyKey?: string | null;
@@ -108,6 +108,7 @@ export type CommUiSettings = {
   /**
    * Compact Combat: show DPS + HPS only (table/bars/graph channels clamped).
    * Persisted; toggled from the Combat panel header.
+   * @deprecated
    */
   combatCompact: boolean;
   /**
@@ -122,18 +123,54 @@ export type CommUiSettings = {
    * all | auto | observed | compact | shared | off
    */
   partyBuffMode: PartyBuffMode;
+  /** Skada-style meter windows (pos + query + presentation). */
+  meterInstances: MeterInstance[];
+  /**
+   * When true (default), windows stay put unless Alt is held or the
+   * window is unlocked. Layout edit still moves everything.
+   * Legacy key: metersLocked.
+   */
+  windowsLocked: boolean;
+  /**
+   * @deprecated Prefer windowsLocked — kept in sync for older readers.
+   */
+  metersLocked: boolean;
+  /** Details “Always show me” default for ranked meters. */
+  meterAlwaysShowSelf: boolean;
+  /** When false, edge-snap grouping is disabled (existing groups kept). */
+  meterWindowGrouping: boolean;
+  /** Saved Display×Scope×Segment bookmarks. */
+  meterBookmarks: MeterBookmark[];
+  /** Last Reportar outputs (Details recent reports). */
+  meterRecentReports: Array<{ id: string; label: string; text: string }>;
+  /** Mass-hide all meter frames (Details show/hide toggle). */
+  metersHidden: boolean;
+  /** Details-style appearance & behavior defaults. */
+  meterAppearance?: Partial<
+    import("../meters/meterAppearance").MeterAppearanceSettings
+  >;
+  /** Closed meter instances — reopen from gear menu. */
+  meterClosedInstances?: MeterInstance[];
+  /** First-run Comm UI setup wizard completed. */
+  setupWizardDone?: boolean;
+  /**
+   * Last changelog entry id the user dismissed (What's New).
+   * Independent of setupWizardDone — upgrades can resurface What's New.
+   */
+  changelogSeenId?: string | null;
+  /** Per-tour completion flags (spotlight tours). */
+  toursCompleted?: Record<string, boolean>;
+  /** Stable window numbers (Details meu_id) for HUD + meters. */
+  windowNumberById?: Record<string, number>;
+  /** Next free window number to allocate. */
+  nextWindowNumber?: number;
 };
 
 const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
   bossBar: true,
   crypt: true,
-  combat: true,
   kills: true,
   threat: true,
-  pdps: true,
-  hitDps: false,
-  coopV1: true,
-  coopV2: true,
   command: false,
   /** Bag panel shell is always allowed; open/close follows inventory. */
   bag: true,
@@ -166,6 +203,20 @@ const DEFAULTS: CommUiSettings = {
   bagOpenPreferred: false,
   panelOpacity: {},
   partyBuffMode: "auto",
+  meterInstances: defaultMeterInstances(),
+  windowsLocked: true,
+  metersLocked: true,
+  meterAlwaysShowSelf: true,
+  meterWindowGrouping: true,
+  meterBookmarks: [],
+  meterRecentReports: [],
+  metersHidden: false,
+  meterClosedInstances: [],
+  setupWizardDone: false,
+  changelogSeenId: null,
+  toursCompleted: {},
+  windowNumberById: {},
+  nextWindowNumber: 1,
 };
 
 export function resolveLayoutProfile(
@@ -246,6 +297,33 @@ function normalizeBarChannel(raw: unknown): CombatChannel {
   return isCombatChannel(raw) ? raw : DEFAULTS.barChannel;
 }
 
+function normalizeMeterBookmarks(raw: unknown): MeterBookmark[] {
+  if (!Array.isArray(raw)) return [];
+  const out: MeterBookmark[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const row = raw[i];
+    if (!row || typeof row !== "object") continue;
+    if (typeof row.id !== "string" || !row.id) continue;
+    if (typeof row.label !== "string") continue;
+    if (
+      !row.query ||
+      typeof row.query !== "object" ||
+      typeof row.query.kind !== "string"
+    ) {
+      continue;
+    }
+    out.push({
+      id: row.id,
+      label: row.label,
+      query: { ...row.query },
+      presentation: row.presentation,
+      partyFocus: row.partyFocus,
+      selectedset: row.selectedset,
+    });
+  }
+  return out;
+}
+
 export function mergePanelOpacity(
   partial?: PanelOpacityMap | null,
 ): PanelOpacityMap {
@@ -254,8 +332,10 @@ export function mergePanelOpacity(
   const raw = partial as Record<string, unknown>;
   // Legacy shared infoDialog opacity → both new panels.
   if (typeof raw.infoDialog === "number") {
-    if (typeof raw.buffInfo !== "number") out.buffInfo = clampOpacity(raw.infoDialog);
-    if (typeof raw.itemInfo !== "number") out.itemInfo = clampOpacity(raw.infoDialog);
+    if (typeof raw.buffInfo !== "number")
+      out.buffInfo = clampOpacity(raw.infoDialog);
+    if (typeof raw.itemInfo !== "number")
+      out.itemInfo = clampOpacity(raw.infoDialog);
   }
   const keys = Object.keys(partial) as string[];
   for (let i = 0; i < keys.length; i++) {
@@ -269,10 +349,7 @@ export function mergePanelOpacity(
   return out;
 }
 
-export function panelOpacityOf(
-  settings: CommUiSettings,
-  id: PanelId,
-): number {
+export function panelOpacityOf(settings: CommUiSettings, id: PanelId): number {
   const v = settings.panelOpacity?.[id];
   return typeof v === "number" ? clampOpacity(v) : 1;
 }
@@ -282,9 +359,7 @@ export function mergePanelVisible(
   legacyCombatVisible?: boolean,
 ): PanelVisibleMap {
   const out: PanelVisibleMap = { ...DEFAULT_PANEL_VISIBLE };
-  if (typeof legacyCombatVisible === "boolean" && partial?.combat == null) {
-    out.combat = legacyCombatVisible;
-  }
+  void legacyCombatVisible;
   if (partial && typeof partial === "object") {
     for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
       const id = CLOSABLE_PANEL_IDS[i];
@@ -306,11 +381,8 @@ function normalizeSnippets(raw: any): CommandSnippet[] {
     const code = String(row.code || "");
     if (!name && !code.trim()) continue;
     const id =
-      typeof row.id === "string" && row.id
-        ? row.id
-        : `snip-${i}-${Date.now()}`;
-    const folderRaw =
-      typeof row.folder === "string" ? row.folder.trim() : "";
+      typeof row.id === "string" && row.id ? row.id : `snip-${i}-${Date.now()}`;
+    const folderRaw = typeof row.folder === "string" ? row.folder.trim() : "";
     const snip: CommandSnippet = {
       id,
       name: name || `Snippet ${out.length + 1}`,
@@ -361,10 +433,7 @@ function migrate(parsed: any): CommUiSettings {
     panelLayout,
     panelLayoutsByProfile,
     layoutProfileMode,
-    panelVisible: mergePanelVisible(
-      parsed.panelVisible,
-      parsed.combatVisible,
-    ),
+    panelVisible: mergePanelVisible(parsed.panelVisible, parsed.combatVisible),
     commandSnippets: normalizeSnippets(parsed.commandSnippets),
     commandDraft:
       typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
@@ -372,7 +441,56 @@ function migrate(parsed: any): CommUiSettings {
     bagOpenPreferred: !!parsed.bagOpenPreferred,
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
     partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode),
+    meterInstances: migrateLegacyMeterLayout(
+      normalizeMeterInstances(parsed.meterInstances),
+      parsed.panelLayout || panelLayout,
+    ),
+    metersLocked: parsed.metersLocked !== false,
+    windowsLocked:
+      typeof parsed.windowsLocked === "boolean"
+        ? parsed.windowsLocked
+        : parsed.metersLocked !== false,
+    meterAlwaysShowSelf: parsed.meterAlwaysShowSelf !== false,
+    meterWindowGrouping: parsed.meterWindowGrouping !== false,
+    meterBookmarks: normalizeMeterBookmarks(parsed.meterBookmarks),
+    meterRecentReports: Array.isArray(parsed.meterRecentReports)
+      ? parsed.meterRecentReports
+          .filter(
+            (r: any) =>
+              r &&
+              typeof r.id === "string" &&
+              typeof r.label === "string" &&
+              typeof r.text === "string",
+          )
+          .slice(0, 10)
+      : [],
+    metersHidden: !!parsed.metersHidden,
+    setupWizardDone:
+      !!parsed.setupWizardDone ||
+      !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
+    changelogSeenId:
+      typeof parsed.changelogSeenId === "string"
+        ? parsed.changelogSeenId
+        : null,
+    toursCompleted:
+      parsed.toursCompleted && typeof parsed.toursCompleted === "object"
+        ? (parsed.toursCompleted as Record<string, boolean>)
+        : {},
+    windowNumberById:
+      parsed.windowNumberById && typeof parsed.windowNumberById === "object"
+        ? (parsed.windowNumberById as Record<string, number>)
+        : {},
+    nextWindowNumber:
+      typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0
+        ? Math.floor(parsed.nextWindowNumber)
+        : 1,
   };
+
+  // Legacy: finished/skipped intro before changelog tracking — treat current
+  // as already seen so they only get What's New on the next ship.
+  if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
+    next.changelogSeenId = latestChangelogId();
+  }
 
   if (!parsed.combatView && parsed.combatViews) {
     if (parsed.combatViews.table) next.combatView = "table";
@@ -410,6 +528,14 @@ function freshDefaults(): CommUiSettings {
     bagOpenPreferred: false,
     panelOpacity: {},
     partyBuffMode: "auto",
+    meterInstances: defaultMeterInstances(),
+    metersLocked: true,
+    windowsLocked: true,
+    meterAlwaysShowSelf: true,
+    meterWindowGrouping: true,
+    meterBookmarks: [],
+    meterRecentReports: [],
+    metersHidden: false,
   };
 }
 
@@ -490,7 +616,10 @@ export function patchSettings(
     };
   }
   // Keep flat panelLayout mirrored to the active profile.
-  if (!partial.panelLayout && (partial.panelLayoutsByProfile || partial.layoutProfileMode != null)) {
+  if (
+    !partial.panelLayout &&
+    (partial.panelLayoutsByProfile || partial.layoutProfileMode != null)
+  ) {
     next.panelLayout = layoutForProfile(next);
   }
   if (partial.panelVisible) {
@@ -520,6 +649,52 @@ export function patchSettings(
   if (partial.partyBuffMode != null) {
     next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
   }
+  if (partial.meterInstances) {
+    next.meterInstances = normalizeMeterInstances(partial.meterInstances);
+  }
+  if (typeof partial.windowsLocked === "boolean") {
+    next.windowsLocked = partial.windowsLocked;
+    next.metersLocked = partial.windowsLocked;
+  } else if (typeof partial.metersLocked === "boolean") {
+    next.metersLocked = partial.metersLocked;
+    next.windowsLocked = partial.metersLocked;
+  }
+  if (typeof partial.meterAlwaysShowSelf === "boolean") {
+    next.meterAlwaysShowSelf = partial.meterAlwaysShowSelf;
+  }
+  if (typeof partial.meterWindowGrouping === "boolean") {
+    next.meterWindowGrouping = partial.meterWindowGrouping;
+  }
+  if (partial.meterBookmarks) {
+    next.meterBookmarks = normalizeMeterBookmarks(partial.meterBookmarks);
+  }
+  if (partial.meterRecentReports) {
+    next.meterRecentReports = partial.meterRecentReports.slice(0, 10);
+  }
+  if (typeof partial.metersHidden === "boolean") {
+    next.metersHidden = partial.metersHidden;
+  }
+  if (partial.windowNumberById) {
+    next.windowNumberById = { ...partial.windowNumberById };
+  }
+  if (
+    typeof partial.nextWindowNumber === "number" &&
+    partial.nextWindowNumber > 0
+  ) {
+    next.nextWindowNumber = Math.floor(partial.nextWindowNumber);
+  }
+  if (partial.meterClosedInstances) {
+    next.meterClosedInstances = partial.meterClosedInstances;
+  }
+  if (typeof partial.setupWizardDone === "boolean") {
+    next.setupWizardDone = partial.setupWizardDone;
+  }
+  if (partial.changelogSeenId !== undefined) {
+    next.changelogSeenId = partial.changelogSeenId;
+  }
+  if (partial.toursCompleted) {
+    next.toursCompleted = { ...partial.toursCompleted };
+  }
   delete next.combatVisible;
   settingsCache = next;
   writeSettingsToStorage(next);
@@ -537,8 +712,7 @@ export function savePanelPos(
   profile?: ViewportProfile,
 ): CommUiSettings {
   const settings = getSettings();
-  const resolved =
-    profile || resolveLayoutProfile(settings.layoutProfileMode);
+  const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
   return saveSettings({
     panelLayoutsByProfile: {
       [resolved]: {
@@ -550,6 +724,24 @@ export function savePanelPos(
   });
 }
 
+/** Persist several panel positions (edge-group moves). */
+export function savePanelPositions(
+  updates: PanelLayoutMap,
+  profile?: ViewportProfile,
+): CommUiSettings {
+  const settings = getSettings();
+  const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
+  return saveSettings({
+    panelLayoutsByProfile: {
+      [resolved]: {
+        ...(settings.panelLayoutsByProfile?.[resolved] || {}),
+        ...updates,
+      },
+    },
+    panelLayout: { ...updates },
+  });
+}
+
 export function savePanelVisible(
   id: PanelId,
   visible: boolean,
@@ -557,13 +749,19 @@ export function savePanelVisible(
   return saveSettings({ panelVisible: { [id]: visible } });
 }
 
+/** Reset meter windows to the built-in default set (DPS / HPS). */
+export function resetMeterInstances(): CommUiSettings {
+  return saveSettings({
+    meterInstances: defaultMeterInstances(),
+    metersLocked: true,
+    windowsLocked: true,
+  });
+}
+
 /** Reset the active (or given) profile back to its built-in defaults. */
-export function resetPanelLayout(
-  profile?: ViewportProfile,
-): CommUiSettings {
+export function resetPanelLayout(profile?: ViewportProfile): CommUiSettings {
   const settings = getSettings();
-  const resolved =
-    profile || resolveLayoutProfile(settings.layoutProfileMode);
+  const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
   const defaults = mergeLayout(null, resolved);
   return saveSettings({
     panelLayoutsByProfile: {
@@ -587,10 +785,24 @@ export function importPanelLayouts(
   });
 }
 
-export function isPanelVisible(
-  settings: CommUiSettings,
-  id: PanelId,
-): boolean {
+/**
+ * Import a layout package: HUD profiles, and optionally meters.
+ * Missing meterInstances leaves existing meters untouched (v1 exports).
+ */
+export function importLayoutPackage(pkg: {
+  layoutsByProfile: PanelLayoutsByProfile;
+  meterInstances?: MeterInstance[];
+}): CommUiSettings {
+  let next = importPanelLayouts(pkg.layoutsByProfile);
+  if (pkg.meterInstances) {
+    next = saveSettings({
+      meterInstances: normalizeMeterInstances(pkg.meterInstances),
+    });
+  }
+  return next;
+}
+
+export function isPanelVisible(settings: CommUiSettings, id: PanelId): boolean {
   const v = settings.panelVisible?.[id];
   if (typeof v === "boolean") return v;
   const def = DEFAULT_PANEL_VISIBLE[id as keyof typeof DEFAULT_PANEL_VISIBLE];

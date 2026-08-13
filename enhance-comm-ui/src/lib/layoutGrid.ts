@@ -1,5 +1,5 @@
 /** Default cell size: this % of the *shorter* viewport side (square cells). */
-export const LAYOUT_GRID_STEP = 5;
+export const LAYOUT_GRID_STEP = 1;
 
 /** Preset steps offered in Layout edit chrome (%% of min(w,h)). */
 export const LAYOUT_GRID_STEP_PRESETS = [1, 2.5, 5, 10, 25] as const;
@@ -10,8 +10,9 @@ export type LayoutGridStepPreset = (typeof LAYOUT_GRID_STEP_PRESETS)[number];
 export const LAYOUT_GRID_MAJOR_PCTS = [0, 25, 50, 75, 100];
 
 /**
- * Nested guide weight (eAlign-style): fine = snap step, medium = 2×,
- * coarse = 4×, edge = 0/50/100 emphasis.
+ * Nested guide weight (e769f28): fine = snap step (1×, smallest),
+ * medium = 2×, coarse = 4×, edge = 0/50/100 emphasis.
+ * Snap always uses the fine 1× cell via `squareGridMetrics`.
  */
 export type GridLineTier = "fine" | "medium" | "coarse" | "edge";
 
@@ -49,6 +50,28 @@ export function squareGridCellPx(
   const s = normalizeGridStep(step);
   const minSide = Math.min(Math.max(1, widthPx), Math.max(1, heightPx));
   return Math.max(1, (minSide * s) / 100);
+}
+
+/** Snap a pixel length onto the nearest square-grid cell. */
+export function snapPxToGridCell(px: number, cellPx: number): number {
+  const cell = Math.max(1, cellPx);
+  if (!Number.isFinite(px)) return cell;
+  return Math.round(px / cell) * cell;
+}
+
+/** Snap a frame size onto the active square grid (viewport shorter-side cells). */
+export function snapFrameSizeToGrid(
+  w: number,
+  h: number,
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): { w: number; h: number } {
+  const cell = squareGridCellPx(step, widthPx, heightPx);
+  return {
+    w: snapPxToGridCell(w, cell),
+    h: snapPxToGridCell(h, cell),
+  };
 }
 
 /** Line positions 0..100 inclusive at equal pixel spacing along one axis. */
@@ -118,8 +141,8 @@ function mapToSortedLines(map: Map<number, GridLineTier>): TieredGridLine[] {
 }
 
 /**
- * Nested fine / medium (2×) / coarse (4×) guides for one viewport.
- * Snap should still use the fine `step` via `squareGridMetrics`.
+ * Nested 1× / 2× / 4× / edge guides (e769f28). Fine 1× is the snap cell;
+ * coarser lines are visual hierarchy only.
  */
 export function squareGridTieredLines(
   step: number,
@@ -147,6 +170,21 @@ export function squareGridTieredLines(
   };
 }
 
+/** Snap a panel anchor (x%, y%) onto the fine square grid (1× cell). */
+export function snapPosToFineGrid(
+  x: number,
+  y: number,
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): { x: number; y: number } {
+  const metrics = squareGridMetrics(step, widthPx, heightPx);
+  return {
+    x: snapToAxisPercents(x, metrics.xPercents, false),
+    y: snapToAxisPercents(y, metrics.yPercents, false),
+  };
+}
+
 /** Major when within ~0.6% of a classic quarter/half/edge mark. */
 export function isLayoutGridMajor(pct: number): boolean {
   for (let i = 0; i < LAYOUT_GRID_MAJOR_PCTS.length; i++) {
@@ -157,31 +195,33 @@ export function isLayoutGridMajor(pct: number): boolean {
 
 /**
  * Snap onto the nearest square-grid line for one axis.
- * When `skipScreenEdges` is set, do not yank onto 0/100 — visual edge snap
- * owns flush-to-screen so near-edge free placement still works.
+ * When `maxDistPct` is set, only snap if within that distance (half a cell is typical).
+ * When `skipScreenEdges` is set, never choose 0/100 — used only if a separate
+ * visual edge magnet still owns flush; prefer leaving edges to the fine grid.
  */
 export function snapToAxisPercents(
   n: number,
   percents: number[],
   skipScreenEdges = false,
+  maxDistPct?: number,
 ): number {
   if (!percents.length || !Number.isFinite(n)) return n;
-  let best = percents[0];
-  let bestDist = Math.abs(n - best);
-  for (let i = 1; i < percents.length; i++) {
-    const d = Math.abs(n - percents[i]);
+  let best = n;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < percents.length; i++) {
+    const p = percents[i];
+    if (skipScreenEdges && (p <= EPS || p >= 100 - EPS)) continue;
+    const d = Math.abs(n - p);
     if (d < bestDist) {
       bestDist = d;
-      best = percents[i];
+      best = p;
     }
   }
-  const clamped = Math.max(0, Math.min(100, best));
-  if (skipScreenEdges) {
-    const atEdge = clamped <= EPS || clamped >= 100 - EPS;
-    const wasAtEdge = n <= EPS || n >= 100 - EPS;
-    if (atEdge && !wasAtEdge) return n;
+  if (!Number.isFinite(bestDist) || bestDist === Number.POSITIVE_INFINITY) {
+    return n;
   }
-  return clamped;
+  if (maxDistPct != null && bestDist > maxDistPct) return n;
+  return Math.max(0, Math.min(100, best));
 }
 
 /** @deprecated Prefer squareGridMetrics + snapToAxisPercents (square cells). */

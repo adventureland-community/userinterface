@@ -1,6 +1,11 @@
 # userinterface
-A collection of userinterface modifications
 
-The idea for each modification is to have a little readme with a visual representation as well as a text representation of what it does.
+A collection of Adventure.land UI modifications.
 
-PR's will be welcome, and we will be making a collection of existing UI modifications from other repositories as well.
+Each modification should include a short README (what it does + how to install/build). PRs welcome.
+
+## Packages
+
+| Folder | Status | Notes |
+|--------|--------|--------|
+| [`enhance-comm-ui/`](./enhance-comm-ui/) | **0.8.0-alpha.1** | `/comm` HUD + WoW-style meters (alpha). Build with `npm run build`; userscript is synced to [`enhance-comm-ui.js`](./enhance-comm-ui.js). |

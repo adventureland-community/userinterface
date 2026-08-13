@@ -14,7 +14,9 @@ import "./commChrome/types";
 import { injectChromeCss } from "./commChrome/chromeCss";
 import {
   clearObserve,
+  currentServerKey,
   ensureChromeShell,
+  isCharOnCurrentServer,
   syncActionsEnabled,
   toggleObserve,
 } from "./commChrome/chromeActions";
@@ -34,12 +36,7 @@ import { eventsCacheFingerprint } from "./commChrome/serverEvents";
 import { installCommKeyboardPolicy } from "./keyboardPolicy";
 import { subscribeTick } from "../tick";
 
-export {
-  clearObserve,
-  currentServerKey,
-  isCharOnCurrentServer,
-  toggleObserve,
-};
+export { clearObserve, currentServerKey, isCharOnCurrentServer, toggleObserve };
 
 function suppressObserveUi(): void {
   const el = document.getElementById("observeui");

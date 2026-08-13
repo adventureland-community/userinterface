@@ -1,7 +1,8 @@
 import { getReact, e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
-import { itemContainer, setXTarget, slotSkin } from "../../host/icons";
+import { itemContainer, setXTarget } from "../../host/icons";
+import { itemIconHtml, itemSkin } from "../../lib/gameIcon";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Classic AL `render_slots` body layout (4 cols × 4 rows). */
@@ -37,7 +38,9 @@ const SLOT_SIZE = 40;
 /** AL empty-slot border when `mode.empty_borders_darker`. */
 const EMPTY_BCOLOR = "#292929";
 
-function tradeSlotNames(slots: Record<string, SlotLike | null | undefined>): string[] {
+function tradeSlotNames(
+  slots: Record<string, SlotLike | null | undefined>,
+): string[] {
   const names: string[] = [];
   const keys = Object.keys(slots);
   for (let i = 0; i < keys.length; i++) {
@@ -108,25 +111,40 @@ function SlotCell(props: {
   diff?: boolean;
 }): any {
   const { entity, slotName, slot, showPrice, diff } = props;
-  const skin = slotSkin(slot);
+  const skin =
+    (slot && slot.skin) || (slot && slot.name ? itemSkin(slot.name) : undefined);
   const { shade, s_op } = shadeFor(slotName);
   let content: any = null;
   const clickable = !!(slot && slot.name);
 
   if (slot && skin) {
-    const html = itemContainer(
-      {
-        skin,
-        size: SLOT_SIZE,
-        slot: slotName,
-        shade,
-        s_op,
-        draggable: false,
-      },
-      slot,
-    );
+    let html = "";
+    try {
+      html =
+        itemContainer(
+          {
+            skin,
+            size: SLOT_SIZE,
+            slot: slotName,
+            shade,
+            s_op,
+            draggable: false,
+          },
+          slot,
+        ) || "";
+    } catch {
+      html = "";
+    }
     if (html) {
       content = wrapContainerHtml(html);
+    } else if (slot.name) {
+      content = wrapContainerHtml(
+        itemIconHtml(slot.name, {
+          skin,
+          size: SLOT_SIZE,
+          title: slot.name,
+        }),
+      );
     } else {
       content = e(
         "div",
@@ -148,14 +166,20 @@ function SlotCell(props: {
     }
   } else {
     // Empty: AL shade silhouette via item_container (no skin).
-    const html = itemContainer({
-      size: SLOT_SIZE,
-      shade,
-      s_op,
-      slot: slotName,
-      bcolor: EMPTY_BCOLOR,
-      draggable: false,
-    });
+    let html = "";
+    try {
+      html =
+        itemContainer({
+          size: SLOT_SIZE,
+          shade,
+          s_op,
+          slot: slotName,
+          bcolor: EMPTY_BCOLOR,
+          draggable: false,
+        }) || "";
+    } catch {
+      html = "";
+    }
     if (html) {
       content = wrapContainerHtml(html);
     } else {
@@ -177,7 +201,8 @@ function SlotCell(props: {
   // never re-read a mismatched entity.slots key.
   const onSlotPress = clickable
     ? (ev: any) => {
-        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        if (ev && typeof ev.stopPropagation === "function")
+          ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
         setXTarget(entity);
         info.openItem(entity, slotName, slot);
@@ -196,7 +221,8 @@ function SlotCell(props: {
       onMouseDown: clickable
         ? (ev: any) => {
             // Keep bubble from reaching document dismiss if pointer events differ.
-            if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+            if (ev && typeof ev.stopPropagation === "function")
+              ev.stopPropagation();
           }
         : undefined,
       style: {
@@ -251,8 +277,7 @@ export function GearGrid(props: GearGridProps): any {
   const slots = props.entity.slots;
   if (!slots) return null;
 
-  const entityId =
-    props.entity.id != null ? String(props.entity.id) : "";
+  const entityId = props.entity.id != null ? String(props.entity.id) : "";
   const compareId =
     props.compareTo && props.compareTo.id != null
       ? String(props.compareTo.id)
@@ -281,6 +306,7 @@ export function GearGrid(props: GearGridProps): any {
       "div",
       {
         className: "comm-gear-grid",
+        "data-ecu-tour": "paperdoll-gear",
         style: {
           display: "flex",
           flexDirection: "column",
@@ -326,6 +352,7 @@ export function GearGrid(props: GearGridProps): any {
         ? e(
             "div",
             {
+              "data-ecu-tour": "paperdoll-trade",
               style: {
                 display: "flex",
                 flexWrap: "wrap",
@@ -364,4 +391,3 @@ export function GearGrid(props: GearGridProps): any {
     );
   }, [fp]);
 }
-

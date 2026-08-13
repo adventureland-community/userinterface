@@ -2,10 +2,7 @@
  * Layout-edit interaction prefs (separate key so panel-layout migrations
  * elsewhere can land without fighting this toggle).
  */
-import {
-  LAYOUT_GRID_STEP,
-  normalizeGridStep,
-} from "./layoutGrid";
+import { LAYOUT_GRID_STEP, normalizeGridStep } from "./layoutGrid";
 
 const KEY = "al-comm-ui-layout-edit-prefs-v1";
 
@@ -16,7 +13,7 @@ export type LayoutChromePos = {
 };
 
 export type LayoutEditPrefs = {
-  /** When true, drag skips grid snap (peer-edge snap still applies). */
+  /** When true, drag skips grid snap (peer-edge snap still applies). Applies in layout edit and play-arrange. */
   freePlacement: boolean;
   /** Viewport-% grid step for guides + snap (when Free is off). */
   gridStep: number;
@@ -65,7 +62,8 @@ function normalizeChromePos(raw: unknown): LayoutChromePos {
 function read(): LayoutEditPrefs {
   try {
     const raw = window.localStorage?.getItem(KEY);
-    if (!raw) return { ...DEFAULTS, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
+    if (!raw)
+      return { ...DEFAULTS, chromePos: { ...DEFAULT_LAYOUT_CHROME_POS } };
     const parsed = JSON.parse(raw);
     return {
       freePlacement: !!parsed.freePlacement,
@@ -151,4 +149,32 @@ export function subscribeLayoutEditPrefs(listener: Listener): () => void {
     const idx = listeners.indexOf(listener);
     if (idx >= 0) listeners.splice(idx, 1);
   };
+}
+
+/**
+ * Apply imported layout-edit prefs (snap grid / free placement / chrome pos).
+ * Only overwrites fields present on `partial`.
+ */
+export function applyLayoutEditPrefs(
+  partial: Partial<LayoutEditPrefs>,
+): LayoutEditPrefs {
+  const cur = getLayoutEditPrefs();
+  const next: LayoutEditPrefs = {
+    freePlacement:
+      typeof partial.freePlacement === "boolean"
+        ? partial.freePlacement
+        : cur.freePlacement,
+    gridStep:
+      partial.gridStep != null
+        ? normalizeGridStep(partial.gridStep)
+        : cur.gridStep,
+    chromePos:
+      partial.chromePos != null
+        ? normalizeChromePos(partial.chromePos)
+        : { ...cur.chromePos },
+  };
+  cache = next;
+  write(next);
+  notify();
+  return next;
 }

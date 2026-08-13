@@ -1,6 +1,7 @@
 /** Viewport-relative panel placement (percent of #comm-ui / screen). */
 
 import type { ViewportProfile } from "./viewport";
+import type { EdgeSnapMap } from "./panelEdgeGroup";
 
 export type LayoutAnchor = "tl" | "tr" | "bl" | "br" | "tc" | "bc" | "center";
 
@@ -11,6 +12,22 @@ export type PanelPos = {
   y: number;
   /** Which point of the panel sits on (x,y). */
   anchor: LayoutAnchor;
+  /** Edge-snap neighbor links (Comm panel groups). */
+  snap?: EdgeSnapMap;
+  /** Side-by-side group — share height when frame sizes exist. */
+  horizontalSnap?: boolean;
+  /** Stacked group — share width when frame sizes exist. */
+  verticalSnap?: boolean;
+  /**
+   * Per-window lock (Details). `undefined` follows global windowsLocked.
+   * `false` = unlocked arrange; `true` = locked.
+   */
+  locked?: boolean;
+  /** Details window_scale — applied to snap group when changed from options/wheel. */
+  scale?: number;
+  /** Persisted outer box size (HUD PositionedPanel resize). */
+  frameW?: number;
+  frameH?: number;
 };
 
 export type PanelId =
@@ -21,16 +38,11 @@ export type PanelId =
   | "buffInfo"
   | "itemInfo"
   | "kills"
-  | "combat"
   | "playerFrame"
   | "targetFrame"
   | "bossBar"
   | "crypt"
   | "threat"
-  | "pdps"
-  | "hitDps"
-  | "coopV1"
-  | "coopV2"
   | "command"
   | "bag"
   | "toggles";
@@ -43,16 +55,11 @@ export const PANEL_IDS: PanelId[] = [
   "buffInfo",
   "itemInfo",
   "kills",
-  "combat",
   "playerFrame",
   "targetFrame",
   "bossBar",
   "crypt",
   "threat",
-  "pdps",
-  "hitDps",
-  "coopV1",
-  "coopV2",
   "command",
   "bag",
   "toggles",
@@ -66,45 +73,52 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   buffInfo: "Buff info",
   itemInfo: "Item info",
   kills: "Kills",
-  combat: "Combat",
   playerFrame: "Player frame",
   targetFrame: "Target frame",
   bossBar: "Boss bar",
   crypt: "Crypt progress",
   threat: "Threat",
-  pdps: "PDPS",
-  hitDps: "Hit DPS",
-  coopV1: "Coop V1",
-  coopV2: "Coop V2",
   command: "Command",
   bag: "Bag",
   toggles: "Layout",
 };
 
+/** Legacy meter panel ids — migrated into settings.meterInstances. */
+export const LEGACY_METER_PANEL_IDS = [
+  "combat",
+  "pdps",
+  "hitDps",
+  "coopV1",
+  "coopV2",
+] as const;
+
 /**
- * Desktop default from playtested export (floats rounded to clean %).
- * buffInfo / itemInfo: TL under party chips (not in export), offset apart.
+ * Desktop default from playtested export (2026-08-13 v2).
  * Saved layouts need Layout → Reset positions (desktop profile) to pick these up.
  */
 export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
-  players: { x: 0.4, y: 0.4, anchor: "tl" },
-  enemies: { x: 99.6, y: 0.4, anchor: "tr" },
-  topCenter: { x: 50, y: 0.4, anchor: "tc" },
-  paperdoll: { x: 0.5, y: 30, anchor: "tl" },
-  buffInfo: { x: 0.8, y: 10, anchor: "tl" },
-  itemInfo: { x: 16.8, y: 10, anchor: "tl" },
-  kills: { x: 27, y: 99.2, anchor: "br" },
-  combat: { x: 95, y: 99.2, anchor: "br" },
-  playerFrame: { x: 40.5, y: 86, anchor: "bc" },
-  targetFrame: { x: 60, y: 86, anchor: "bc" },
-  bossBar: { x: 50, y: 8, anchor: "tc" },
-  crypt: { x: 50, y: 18, anchor: "tc" },
-  threat: { x: 82, y: 75, anchor: "br" },
-  pdps: { x: 78, y: 90, anchor: "tr" },
-  hitDps: { x: 99.5, y: 50, anchor: "tr" },
-  coopV1: { x: 91, y: 63, anchor: "tr" },
-  coopV2: { x: 99.5, y: 63, anchor: "tr" },
-  command: { x: 50, y: 42, anchor: "center" },
+  players: {
+    x: 0.4,
+    y: 0.4,
+    anchor: "tl",
+    locked: true,
+    frameW: 522,
+    frameH: 65.25,
+  },
+  enemies: { x: 99.6, y: 0.4, anchor: "tr", frameW: 169.65, frameH: 52.2 },
+  topCenter: { x: 50, y: 0.4, anchor: "tc", frameW: 78.3, frameH: 78.3 },
+  paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274.05, frameH: 535.05 },
+  buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+  itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
+  kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
+  playerFrame: { x: 40.5, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+  targetFrame: { x: 60, y: 86, anchor: "bc", frameW: 365.4, frameH: 143.55 },
+  bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
+  crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
+  threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
+  command: { x: 50, y: 42, anchor: "center", frameW: 561.15, frameH: 300.15 },
+  // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
+  // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
   bag: { x: 0.5, y: 99.2, anchor: "bl" },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
 };
@@ -120,16 +134,11 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   paperdoll: { x: 1, y: 28, anchor: "tl" },
   buffInfo: { x: 1, y: 12, anchor: "tl" },
   itemInfo: { x: 17, y: 12, anchor: "tl" },
-  combat: { x: 99.2, y: 52, anchor: "tr" },
   kills: { x: 99.2, y: 72, anchor: "tr" },
   playerFrame: { x: 32, y: 78, anchor: "bc" },
   targetFrame: { x: 68, y: 78, anchor: "bc" },
   bossBar: { x: 50, y: 9, anchor: "tc" },
   crypt: { x: 50, y: 19, anchor: "tc" },
-  pdps: { x: 99.2, y: 14, anchor: "tr" },
-  hitDps: { x: 99.2, y: 28, anchor: "tr" },
-  coopV1: { x: 0.8, y: 14, anchor: "tl" },
-  coopV2: { x: 0.8, y: 28, anchor: "tl" },
   threat: { x: 99.2, y: 40, anchor: "tr" },
   command: { x: 50, y: 44, anchor: "center" },
   bag: { x: 0.8, y: 78, anchor: "bl" },
@@ -147,16 +156,11 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   paperdoll: { x: 50, y: 36, anchor: "center" },
   buffInfo: { x: 2, y: 14, anchor: "tl" },
   itemInfo: { x: 2, y: 36, anchor: "tl" },
-  combat: { x: 50, y: 72, anchor: "bc" },
   kills: { x: 98, y: 58, anchor: "br" },
   playerFrame: { x: 28, y: 62, anchor: "bc" },
   targetFrame: { x: 72, y: 62, anchor: "bc" },
   bossBar: { x: 50, y: 10, anchor: "tc" },
   crypt: { x: 50, y: 18, anchor: "tc" },
-  pdps: { x: 99, y: 16, anchor: "tr" },
-  hitDps: { x: 99, y: 28, anchor: "tr" },
-  coopV1: { x: 1, y: 16, anchor: "tl" },
-  coopV2: { x: 1, y: 28, anchor: "tl" },
   threat: { x: 50, y: 48, anchor: "tc" },
   command: { x: 50, y: 42, anchor: "center" },
   bag: { x: 50, y: 88, anchor: "bc" },
@@ -200,8 +204,7 @@ export function migrateLegacyInfoDialog(
   delete (out as Record<string, unknown>).infoDialog;
   if (!out.buffInfo) out.buffInfo = { ...legacy };
   if (!out.itemInfo) {
-    const x =
-      typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+    const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
     out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
   }
   return out;
@@ -214,20 +217,39 @@ function clamp(n: number, lo: number, hi: number): number {
 export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   if (!raw || typeof raw !== "object") return { ...fallback };
   const anchor = (raw.anchor || fallback.anchor) as LayoutAnchor;
-  const valid: LayoutAnchor[] = [
-    "tl",
-    "tr",
-    "bl",
-    "br",
-    "tc",
-    "bc",
-    "center",
-  ];
-  return {
+  const valid: LayoutAnchor[] = ["tl", "tr", "bl", "br", "tc", "bc", "center"];
+  const out: PanelPos = {
     x: clamp(Number(raw.x), 0, 100) || 0,
     y: clamp(Number(raw.y), 0, 100) || 0,
     anchor: valid.indexOf(anchor) >= 0 ? anchor : fallback.anchor,
   };
+  if (raw.snap && typeof raw.snap === "object") {
+    const snap: EdgeSnapMap = {};
+    const sides = [1, 2, 3, 4] as const;
+    for (let i = 0; i < sides.length; i++) {
+      const side = sides[i];
+      const nid = raw.snap[side];
+      if (typeof nid === "string" && nid) snap[side] = nid;
+    }
+    if (snap[1] || snap[2] || snap[3] || snap[4]) out.snap = snap;
+  }
+  if (raw.horizontalSnap) out.horizontalSnap = true;
+  if (raw.verticalSnap) out.verticalSnap = true;
+  if (typeof raw.locked === "boolean") out.locked = raw.locked;
+  if (
+    typeof raw.scale === "number" &&
+    Number.isFinite(raw.scale) &&
+    raw.scale > 0
+  ) {
+    out.scale = raw.scale;
+  }
+  if (typeof raw.frameW === "number" && raw.frameW > 0) {
+    out.frameW = raw.frameW;
+  }
+  if (typeof raw.frameH === "number" && raw.frameH > 0) {
+    out.frameH = raw.frameH;
+  }
+  return out;
 }
 
 export function mergeLayout(
@@ -240,6 +262,11 @@ export function mergeLayout(
   for (let i = 0; i < PANEL_IDS.length; i++) {
     const id = PANEL_IDS[i];
     out[id] = normalizePos(migrated && migrated[id], defaults[id]);
+  }
+  // Bag inventory is float-grid content-sized — never lock shell width/height.
+  if (out.bag) {
+    delete out.bag.frameW;
+    delete out.bag.frameH;
   }
   return out;
 }
@@ -260,6 +287,30 @@ export function anchorTransform(anchor: LayoutAnchor): string {
       return "translate(-50%, -100%)";
     case "center":
       return "translate(-50%, -50%)";
+    default: {
+      const _exhaustive: never = anchor;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Keep the anchored corner fixed when applying window scale. */
+export function anchorOrigin(anchor: LayoutAnchor): string {
+  switch (anchor) {
+    case "tl":
+      return "0% 0%";
+    case "tr":
+      return "100% 0%";
+    case "bl":
+      return "0% 100%";
+    case "br":
+      return "100% 100%";
+    case "tc":
+      return "50% 0%";
+    case "bc":
+      return "50% 100%";
+    case "center":
+      return "50% 50%";
     default: {
       const _exhaustive: never = anchor;
       return _exhaustive;
@@ -326,6 +377,36 @@ export function reanchorKeepingVisual(
   };
 }
 
+/**
+ * Build a PanelPos whose anchor point places the painted box at top-left
+ * `(leftPx, topPx)` inside the root (Details-style restore after sizing).
+ */
+export function panelPosFromTopLeft(
+  leftPx: number,
+  topPx: number,
+  widthPx: number,
+  heightPx: number,
+  anchor: LayoutAnchor,
+  rootW: number,
+  rootH: number,
+  keep?: Partial<PanelPos>,
+): PanelPos {
+  const off = anchorToTopLeftOffset(anchor, widthPx, heightPx);
+  const ax = leftPx - off.ox;
+  const ay = topPx - off.oy;
+  const next: PanelPos = {
+    x: clamp(rootW > 0 ? (ax / rootW) * 100 : 0, 0, 100),
+    y: clamp(rootH > 0 ? (ay / rootH) * 100 : 0, 0, 100),
+    anchor,
+  };
+  if (keep?.snap) next.snap = keep.snap;
+  if (keep?.horizontalSnap) next.horizontalSnap = keep.horizontalSnap;
+  if (keep?.verticalSnap) next.verticalSnap = keep.verticalSnap;
+  if (keep?.locked != null) next.locked = keep.locked;
+  if (keep?.scale != null) next.scale = keep.scale;
+  return next;
+}
+
 /** Compact labels for layout-edit anchor pad. */
 export const LAYOUT_ANCHOR_OPTIONS: {
   id: LayoutAnchor;
@@ -349,21 +430,38 @@ export const LAYOUT_ANCHOR_PAD: (LayoutAnchor | null)[][] = [
 ];
 
 /** Absolute style placing the panel at x%/y% of its offset parent. */
-export function panelStyle(pos: PanelPos, editing?: boolean): Record<string, any> {
-  return {
+export function panelStyle(
+  pos: PanelPos,
+  editing?: boolean,
+): Record<string, any> {
+  const scale =
+    typeof pos.scale === "number" && Number.isFinite(pos.scale) && pos.scale > 0
+      ? pos.scale
+      : 1;
+  const base = anchorTransform(pos.anchor);
+  const style: Record<string, any> = {
     position: "absolute",
     left: `${pos.x}%`,
     top: `${pos.y}%`,
-    transform: anchorTransform(pos.anchor),
+    transform: scale === 1 ? base : `${base} scale(${scale})`,
+    transformOrigin: anchorOrigin(pos.anchor),
     pointerEvents: "auto",
     zIndex: editing ? 40 : 20,
     // Hug children so layout chrome matches real frame footprints.
     width: "fit-content",
     height: "fit-content",
-    maxWidth: "96vw",
-    maxHeight: "96vh",
+    // Viewport ceiling so windows can fill the screen (was 96vw/96vh).
+    maxWidth: "100vw",
+    maxHeight: "100vh",
     boxSizing: "border-box",
   };
+  if (typeof pos.frameW === "number" && pos.frameW > 0) {
+    style.width = Math.round(pos.frameW) + "px";
+  }
+  if (typeof pos.frameH === "number" && pos.frameH > 0) {
+    style.height = Math.round(pos.frameH) + "px";
+  }
+  return style;
 }
 
 /** Convert a dragged screen delta into % of a container. */
@@ -503,16 +601,8 @@ export function snapDragToVisualEdges(
     }
   }
 
-  const x = clamp(
-    visual.posX + ((dx + shiftX) / visual.rootW) * 100,
-    0,
-    100,
-  );
-  const y = clamp(
-    visual.posY + ((dy + shiftY) / visual.rootH) * 100,
-    0,
-    100,
-  );
+  const x = clamp(visual.posX + ((dx + shiftX) / visual.rootW) * 100, 0, 100);
+  const y = clamp(visual.posY + ((dy + shiftY) / visual.rootH) * 100, 0, 100);
   return { x, y, snapX, snapY };
 }
 
@@ -521,9 +611,9 @@ export function snapDragToVisualEdges(
  * (same anchor family). Keeps layouts readable without hard collision.
  */
 export function softAvoidOverlap(
-  id: PanelId,
+  id: PanelId | string,
   pos: PanelPos,
-  others: Partial<Record<PanelId, PanelPos>>,
+  others: Partial<Record<string, PanelPos>>,
   nudge = 3.2,
 ): PanelPos {
   const ids = Object.keys(others) as PanelId[];

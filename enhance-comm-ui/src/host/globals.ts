@@ -24,6 +24,8 @@ export type EntityLike = {
   real_y?: number;
   visible?: boolean;
   dead?: boolean | string;
+  /** G map key while observing (not observer chrome `window.map`). */
+  map?: string;
   in?: string;
   focus?: string;
   attack?: number;
@@ -34,7 +36,7 @@ export type EntityLike = {
   reflection?: number;
   speed?: number;
   heal?: number;
-  damage_type?: "physical" | "magical" | "pure" | string;
+  damage_type?: string;
   age?: number;
   stand?: boolean | string;
   slots?: Record<string, SlotLike | null | undefined>;
@@ -49,6 +51,16 @@ export type EntityLike = {
   courage?: number;
   mcourage?: number;
   pcourage?: number;
+  /** Base body/armor skin for `sprite(skin, { cx })`. */
+  skin?: string;
+  /** Cosmetic map (head/hair/hat/…) for `sprite()`. */
+  cx?: Record<string, string> | any;
+  /** Dead / rip — `sprite` draws gravestone when set. */
+  rip?: boolean;
+  /** Inventory slots while observing (bag panel). */
+  items?: any[];
+  /** Inventory size (slot count) while observing. */
+  isize?: number;
 };
 
 export type SlotLike = {
@@ -74,18 +86,62 @@ export type StatusLike = {
   [key: string]: any;
 };
 
+export type GConditionDef = {
+  name?: string;
+  skin?: string;
+  ui?: boolean;
+  buff?: boolean;
+  debuff?: boolean;
+  [key: string]: any;
+};
+
 export type GLike = {
-  conditions?: Record<
+  conditions?: Record<string, GConditionDef>;
+  skills?: Record<
     string,
-    { skin?: string; ui?: boolean; [key: string]: any }
+    { name?: string; skin?: string; ui?: boolean; [key: string]: any }
   >;
-  skills?: Record<string, { skin?: string; ui?: boolean; [key: string]: any }>;
   items?: Record<
     string,
-    { skin?: string; wtype?: string; type?: string; [key: string]: any }
+    {
+      name?: string;
+      skin?: string;
+      wtype?: string;
+      type?: string;
+      [key: string]: any;
+    }
+  >;
+  /** Class defs — `looks[0]` is the default character-select sprite. */
+  classes?: Record<
+    string,
+    { looks?: Array<[string, Record<string, string>?]>; [key: string]: any }
   >;
   monsters?: Record<string, any>;
-  classes?: Record<string, any>;
+  maps?: Record<
+    string,
+    {
+      name?: string;
+      instance?: boolean;
+      event?: string;
+      pvp?: boolean;
+      monsters?: Array<{ type?: string; [key: string]: any }>;
+      [key: string]: any;
+    }
+  >;
+  events?: Record<
+    string,
+    {
+      name?: string;
+      join?: boolean;
+      sprite?: string;
+      [key: string]: any;
+    }
+  >;
+  positions?: Record<string, [string, number, number] | any>;
+  imagesets?: Record<
+    string,
+    { file: string; size: number; columns: number; rows: number }
+  >;
   sets?: Record<string, Record<string | number, any>>;
 };
 
@@ -109,14 +165,37 @@ declare global {
     G?: GLike;
     entities?: Record<string, EntityLike> | EntityLike[];
     observing?: EntityLike | null;
+    /** Active self while playing; null on /comm except bag borrow. */
+    character?: EntityLike | null;
+    X?: {
+      characters?: Array<{
+        name?: string;
+        id?: string;
+        type?: string;
+        skin?: string;
+        level?: number;
+        online?: boolean;
+        server?: string;
+        rip?: boolean;
+        cx?: any;
+        secret?: string;
+      }>;
+      servers?: any[];
+      [key: string]: any;
+    };
     S?: ServerInfoLike;
     socket?: SocketLike;
     server_region?: string;
     server_identifier?: string;
     server_address?: string;
     server_path?: string;
+    /** Observer/player camera map key — updated on welcome + new_map. */
+    current_map?: string;
+    /** Observer/player instance id (`in`) — updated on welcome + new_map. */
+    current_in?: string;
     map?: { map_name?: string };
     xtarget?: EntityLike | null;
+    sprite?: (skin: string, opts?: any) => string;
     item_container?: (item: any, actual?: any) => string;
     condition_click?: (name: string) => void;
     slot_click?: (name: string) => void;

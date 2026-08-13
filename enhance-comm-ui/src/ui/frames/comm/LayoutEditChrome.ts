@@ -3,6 +3,7 @@ import {
   downloadLayoutJson,
   parseLayoutExport,
   stringifyLayoutExport,
+  type LayoutExportInput,
 } from "../../../lib/layoutExport";
 import {
   getLayoutChromePos,
@@ -16,20 +17,20 @@ import {
 } from "../../../lib/layoutEditPrefs";
 import { LAYOUT_GRID_STEP_PRESETS } from "../../../lib/layoutGrid";
 import {
+  layoutDragRoot,
   percentFromPointerDrag,
   tryReleasePointerCapture,
   trySetPointerCapture,
   type PercentDragStart,
 } from "../../../lib/percentDrag";
-import {
-  type LayoutProfileMode,
-  type PanelLayoutsByProfile,
-} from "../../../lib/settings";
-import {
-  profileLabel,
-  type ViewportProfile,
-} from "../../../lib/viewport";
-import { TYPE } from "../../../lib/typeScale";
+import { type LayoutProfileMode } from "../../../lib/settings";
+import { profileLabel, type ViewportProfile } from "../../../lib/viewport";
+import { TYPE, PIXEL_TEXT } from "../../../lib/typeScale";
+import type { LayoutImportPackage } from "../../hooks/usePanelLayoutState";
+import type { MeterInstance } from "../../../meters/meterTypes";
+
+/** Drag-grip / layout-chrome tooltip fragment. */
+const PLACE_WITHOUT_GROUP_HINT = "Ctrl = place without grouping";
 
 export type LayoutEditChromeProps = {
   onReset: () => void;
@@ -37,27 +38,101 @@ export type LayoutEditChromeProps = {
   viewportProfile: ViewportProfile;
   layoutProfileMode: LayoutProfileMode;
   onProfileMode: (mode: LayoutProfileMode) => void;
-  exportLayouts: () => PanelLayoutsByProfile;
-  importLayouts: (layouts: PanelLayoutsByProfile) => void;
+  exportLayouts: () => LayoutExportInput;
+  importLayouts: (pkg: LayoutImportPackage) => MeterInstance[] | undefined;
+  /** When import restores meters, sync React meter state. */
+  onMetersImported?: (meters: MeterInstance[]) => void;
+  onApplyAllCurrent?: () => void;
+  onApplyAllTotal?: () => void;
+  onAddMeter?: () => void;
+  /** Replace meter windows with DPS / HPS defaults. */
+  onResetMeters?: () => void;
 };
 
-function btnStyle(active?: boolean): Record<string, any> {
+const PANEL_W = 420;
+
+function btnStyle(active?: boolean, compact?: boolean): Record<string, any> {
   return {
+    ...PIXEL_TEXT,
     cursor: "pointer",
+    fontSize: compact ? TYPE.secondary : TYPE.body,
+    padding: compact ? "6px 9px" : "7px 11px",
+    minHeight: compact ? "32px" : "36px",
+    border: active ? "1px solid #ffe08a" : "1px solid #665",
+    background: active ? "#3a3510" : "#1c1c18",
+    color: active ? "#ffe08a" : "#ddd",
+    borderRadius: "3px",
+    flex: "0 0 auto",
+  };
+}
+
+function rowStyle(wrap?: boolean): Record<string, any> {
+  return {
+    display: "flex",
+    flexWrap: wrap ? "wrap" : "nowrap",
+    gap: "6px",
+    alignItems: "center",
+    minWidth: 0,
+  };
+}
+
+function labelStyle(): Record<string, any> {
+  return {
+    color: "#c4b48a",
     fontSize: TYPE.secondary,
-    padding: "6px 10px",
-    minHeight: "36px",
-    border: active ? "1px solid #ffe08a" : "1px solid #886",
-    background: active ? "#3a3510" : "#222",
-    color: active ? "#ffe08a" : "#eee",
-    textShadow: "none",
-    fontWeight: "normal",
+    letterSpacing: "0.03em",
+    textTransform: "uppercase",
+    flex: "0 0 58px",
+    textAlign: "right",
+  };
+}
+
+function segStyle(): Record<string, any> {
+  return {
+    display: "flex",
+    flexWrap: "nowrap",
+    gap: "0",
+    alignItems: "center",
+    border: "1px solid #554",
+    borderRadius: "3px",
+    overflow: "hidden",
+    flex: "0 0 auto",
+  };
+}
+
+function segBtnStyle(active?: boolean): Record<string, any> {
+  return {
+    ...btnStyle(active, true),
+    border: "none",
+    borderRadius: 0,
+    borderRight: "1px solid #443",
+    minWidth: "44px",
+    padding: "6px 8px",
+  };
+}
+
+/** Keep centered-at-(x,y%) panel fully inside the drag root. */
+function clampChromePos(
+  pos: LayoutChromePos,
+  panelW: number,
+  panelH: number,
+): LayoutChromePos {
+  const root = layoutDragRoot().getBoundingClientRect();
+  const rw = Math.max(1, root.width);
+  const rh = Math.max(1, root.height);
+  const halfW = Math.min(panelW, rw - 16) / 2;
+  const minX = (halfW / rw) * 100;
+  const maxX = 100 - minX;
+  const maxY = Math.max(0, ((rh - panelH - 8) / rh) * 100);
+  return {
+    x: Math.max(minX, Math.min(maxX, pos.x)),
+    y: Math.max(0, Math.min(maxY, pos.y)),
   };
 }
 
 /**
- * Floating Layout-edit toolbar. Draggable via the grab row so it can be moved
- * off topCenter (server/map); position persists in layout-edit prefs.
+ * Floating Layout-edit toolbar. Fixed-width sectioned panel so position
+ * never reflows into a tall skinny stack; drag handle moves it (clamped).
  */
 export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   const React = getReact();
@@ -68,10 +143,11 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     getLayoutFreePlacement(),
   );
   const [gridStep, setGridStep] = React.useState(() => getLayoutGridStep());
-  const [chromePos, setChromePos] = React.useState(
-    (): LayoutChromePos => getLayoutChromePos(),
+  const [chromePos, setChromePos] = React.useState((): LayoutChromePos =>
+    getLayoutChromePos(),
   );
   const fileRef = React.useRef(null as HTMLInputElement | null);
+  const shellRef = React.useRef(null as HTMLDivElement | null);
   const dragging = React.useRef(false);
   const dragStart = React.useRef({
     clientX: 0,
@@ -87,13 +163,18 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       subscribeLayoutEditPrefs(() => {
         setFreePlacement(getLayoutFreePlacement());
         setGridStep(getLayoutGridStep());
-        // Avoid fighting an in-progress drag with a prefs echo from ourselves.
         if (!dragging.current) {
           setChromePos(getLayoutChromePos());
         }
       }),
     [],
   );
+
+  const measure = () => {
+    const el = shellRef.current;
+    if (!el) return { w: PANEL_W, h: 200 };
+    return { w: el.offsetWidth || PANEL_W, h: el.offsetHeight || 200 };
+  };
 
   const onExport = async () => {
     const json = stringifyLayoutExport(props.exportLayouts());
@@ -122,8 +203,22 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       setStatus(parsed.error);
       return;
     }
-    props.importLayouts(parsed.layoutsByProfile);
-    setStatus("Layout imported");
+    const importedMeters = props.importLayouts({
+      layoutsByProfile: parsed.layoutsByProfile,
+      meterInstances: parsed.meterInstances,
+      layoutEditPrefs: parsed.layoutEditPrefs,
+    });
+    if (importedMeters && props.onMetersImported) {
+      props.onMetersImported(importedMeters);
+    }
+    const bits = ["Layout imported"];
+    if (parsed.meterInstances) bits.push("meters");
+    if (parsed.layoutEditPrefs) bits.push("snap prefs");
+    setStatus(
+      bits.length > 1
+        ? `Layout imported (${bits.slice(1).join(" + ")})`
+        : bits[0],
+    );
     setPasteOpen(false);
     setPasteText("");
   };
@@ -165,11 +260,13 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
 
   const onChromePointerMove = (ev: any) => {
     if (!dragging.current) return;
-    const next = percentFromPointerDrag(
+    const raw = percentFromPointerDrag(
       ev.clientX,
       ev.clientY,
       dragStart.current,
     ) as LayoutChromePos;
+    const size = measure();
+    const next = clampChromePos(raw, size.w, size.h);
     chromePosRef.current = next;
     setChromePos(next);
   };
@@ -178,36 +275,85 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
     if (!dragging.current) return;
     dragging.current = false;
     tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
-    const next = setLayoutChromePos(chromePosRef.current);
+    const size = measure();
+    const clamped = clampChromePos(chromePosRef.current, size.w, size.h);
+    const next = setLayoutChromePos(clamped);
     setChromePos(next.chromePos);
   };
 
   const modes: LayoutProfileMode[] = ["auto", "desktop", "tablet", "phone"];
   const stepLabel = `${gridStep}%`;
 
+  const gridSeg = e(
+    "div",
+    { style: segStyle(), role: "group", "aria-label": "Grid step" },
+    ...LAYOUT_GRID_STEP_PRESETS.map((step, i) =>
+      e(
+        "button",
+        {
+          key: `grid-${step}`,
+          type: "button",
+          onClick: () => onGridStep(step),
+          style: {
+            ...segBtnStyle(Math.abs(gridStep - step) < 1e-6),
+            borderRight:
+              i === LAYOUT_GRID_STEP_PRESETS.length - 1
+                ? "none"
+                : "1px solid #443",
+          },
+          title: `Snap every ${step}% of the shorter side`,
+        },
+        `${step}%`,
+      ),
+    ),
+  );
+
+  const profileSeg = e(
+    "div",
+    { style: segStyle(), role: "group", "aria-label": "Layout profile" },
+    ...modes.map((mode, i) =>
+      e(
+        "button",
+        {
+          key: mode,
+          type: "button",
+          onClick: () => props.onProfileMode(mode),
+          style: {
+            ...segBtnStyle(props.layoutProfileMode === mode),
+            borderRight: i === modes.length - 1 ? "none" : "1px solid #443",
+            minWidth: "52px",
+          },
+        },
+        mode === "auto" ? "Auto" : profileLabel(mode),
+      ),
+    ),
+  );
+
   return e(
     "div",
     {
+      ref: shellRef,
       className: "comm-layout-edit-chrome",
       style: {
         position: "absolute",
         left: `${chromePos.x}%`,
         top: `${chromePos.y}%`,
         transform: "translateX(-50%)",
-        zIndex: 50,
+        zIndex: 80,
         pointerEvents: "auto",
         display: "flex",
         flexDirection: "column",
-        gap: "6px",
-        alignItems: "stretch",
-        padding: "6px 12px 8px",
-        background: "rgba(30,28,10,0.95)",
+        gap: "8px",
+        width: `min(${PANEL_W}px, calc(100vw - 24px))`,
+        boxSizing: "border-box",
+        padding: "8px 10px 10px",
+        background: "rgba(22,20,14,0.96)",
         border: "1px solid #aa8",
+        borderRadius: "4px",
         color: "#ffe08a",
         fontSize: TYPE.body,
-        maxWidth: "min(960px, 96vw)",
-        textShadow: "none",
-        fontWeight: "normal",
+        boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+        ...PIXEL_TEXT,
       },
     },
     e(
@@ -220,14 +366,14 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           display: "flex",
           alignItems: "center",
           gap: "8px",
-          padding: "4px 2px 2px",
-          margin: "0 -4px 2px",
+          padding: "2px 0 6px",
           cursor: "grab",
           userSelect: "none",
           touchAction: "none",
           color: "#ffe08a",
-          fontSize: TYPE.secondary,
-          minHeight: "28px",
+          fontSize: TYPE.title,
+          borderBottom: "1px solid rgba(170,136,80,0.35)",
+          marginBottom: "2px",
         },
         onPointerDown: onChromePointerDown,
         onPointerMove: onChromePointerMove,
@@ -237,84 +383,156 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
       e("span", { "aria-hidden": true }, "⠿"),
       e(
         "span",
-        { style: { flex: "1 1 auto", whiteSpace: "nowrap" } },
-        `Layout edit · ${profileLabel(props.viewportProfile)}` +
-          (props.layoutProfileMode === "auto" ? " (auto)" : " (forced)"),
-      ),
-      e(
-        "span",
-        { style: { color: "#886", fontSize: TYPE.microMin, whiteSpace: "nowrap" } },
-        "drag to move",
-      ),
-    ),
-    e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "8px",
-          alignItems: "center",
+        {
+          style: {
+            flex: "1 1 auto",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          },
         },
-      },
-      e(
-        "button",
-        { type: "button", onClick: props.onReset, style: btnStyle() },
-        "Reset positions",
+        `Layout edit · ${profileLabel(props.viewportProfile)}` +
+          (props.layoutProfileMode === "auto" ? " (auto)" : ""),
       ),
       e(
         "button",
         {
           type: "button",
-          onClick: toggleFree,
-          style: btnStyle(freePlacement),
-          title: freePlacement
-            ? "Free placement: no grid snap (peer edges still magnetize)"
-            : `Snap to square ${stepLabel} grid while dragging (peer edges still magnetize)`,
-        },
-        freePlacement ? "Free: ON" : "Free",
-      ),
-      e("span", { style: { color: "#aa8", fontSize: TYPE.secondary } }, "Grid"),
-      ...LAYOUT_GRID_STEP_PRESETS.map((step) =>
-        e(
-          "button",
-          {
-            key: `grid-${step}`,
-            type: "button",
-            onClick: () => onGridStep(step),
-            style: btnStyle(Math.abs(gridStep - step) < 1e-6),
-            title: `Snap every ${step}% of the shorter side; also draws 2× and 4× overlay guides (Align/eAlign-style)`,
+          onClick: props.onDone,
+          style: {
+            ...btnStyle(true, false),
+            marginLeft: "auto",
+            minWidth: "72px",
+            fontSize: TYPE.body,
           },
-          `${step}%`,
-        ),
+        },
+        "Done",
+      ),
+    ),
+
+    e(
+      "div",
+      { style: rowStyle(true) },
+      e("span", { style: labelStyle() }, "Meters"),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: props.onReset,
+          style: btnStyle(false, true),
+          title: "Reset HUD panel positions for this profile",
+        },
+        "Positions",
+      ),
+      props.onResetMeters
+        ? e(
+            "button",
+            {
+              type: "button",
+              onClick: props.onResetMeters,
+              style: btnStyle(false, true),
+              title:
+                "Replace meter windows with defaults: DPS ‖ HPS",
+            },
+            "Meters",
+          )
+        : null,
+      props.onAddMeter
+        ? e(
+            "button",
+            {
+              type: "button",
+              onClick: props.onAddMeter,
+              style: btnStyle(false, true),
+              title: "Add a meter panel from the catalog",
+            },
+            "+ Add",
+          )
+        : null,
+      props.onApplyAllCurrent
+        ? e(
+            "button",
+            {
+              type: "button",
+              onClick: props.onApplyAllCurrent,
+              style: btnStyle(false, true),
+              title: "Set every meter segment to Current",
+            },
+            "→ Cur",
+          )
+        : null,
+      props.onApplyAllTotal
+        ? e(
+            "button",
+            {
+              type: "button",
+              onClick: props.onApplyAllTotal,
+              style: btnStyle(false, true),
+              title: "Set every meter segment to Total",
+            },
+            "→ Tot",
+          )
+        : null,
+    ),
+
+    e(
+      "div",
+      { style: rowStyle() },
+      e("span", { style: labelStyle() }, "Snap"),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: toggleFree,
+          style: btnStyle(freePlacement, true),
+          title: freePlacement
+            ? "Free placement: no grid snap (layout edit + play arrange; peer + screen-edge magnets)"
+            : `Snap to square ${stepLabel} fine grid (layout edit + unlocked/play arrange)`,
+        },
+        freePlacement ? "Free" : "Grid",
+      ),
+      gridSeg,
+    ),
+
+    e(
+      "div",
+      { style: rowStyle() },
+      e("span", { style: labelStyle() }, "File"),
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: onExport,
+          style: btnStyle(false, true),
+        },
+        "Copy",
       ),
       e(
         "button",
-        { type: "button", onClick: onExport, style: btnStyle() },
-        "Copy layout",
-      ),
-      e(
-        "button",
-        { type: "button", onClick: onDownload, style: btnStyle() },
-        "Download",
+        {
+          type: "button",
+          onClick: onDownload,
+          style: btnStyle(false, true),
+        },
+        "Save",
       ),
       e(
         "button",
         {
           type: "button",
           onClick: () => setPasteOpen((v: boolean) => !v),
-          style: btnStyle(pasteOpen),
+          style: btnStyle(pasteOpen, true),
         },
-        pasteOpen ? "Cancel paste" : "Paste / import",
+        pasteOpen ? "Cancel" : "Paste",
       ),
       e(
         "button",
         {
           type: "button",
           onClick: () => fileRef.current && fileRef.current.click(),
-          style: btnStyle(),
+          style: btnStyle(false, true),
         },
-        "Upload JSON",
+        "Upload",
       ),
       e("input", {
         ref: fileRef,
@@ -323,52 +541,34 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         style: { display: "none" },
         onChange: onFile,
       }),
-      e(
-        "button",
-        {
-          type: "button",
-          onClick: props.onDone,
-          style: btnStyle(true),
-        },
-        "Done",
-      ),
     ),
+
+    e(
+      "div",
+      { style: rowStyle() },
+      e("span", { style: labelStyle() }, "Profile"),
+      profileSeg,
+    ),
+
     e(
       "div",
       {
         style: {
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "6px",
-          alignItems: "center",
+          color: "#a89878",
           fontSize: TYPE.secondary,
-          color: "#ddd",
+          lineHeight: 1.4,
+          paddingTop: "2px",
         },
       },
-      e("span", { style: { color: "#aa8" } }, "Profile"),
-      ...modes.map((mode) =>
-        e(
-          "button",
-          {
-            key: mode,
-            type: "button",
-            onClick: () => props.onProfileMode(mode),
-            style: btnStyle(props.layoutProfileMode === mode),
-          },
-          mode === "auto" ? "Auto" : profileLabel(mode),
-        ),
-      ),
-      e(
-        "span",
-        { style: { color: "#888", fontSize: TYPE.microMin } },
-        freePlacement
-          ? `Free drag · peer snap 0/50/100 · soft avoid · Ctrl+Shift+L (grid ${stepLabel} hidden snap)`
-          : `${stepLabel} grid snap · peer snap · soft avoid · Ctrl+Shift+L`,
-      ),
+      freePlacement
+        ? `Free drag/resize (edit + play) · peer + screen-edge · ${PLACE_WITHOUT_GROUP_HINT} · Ctrl+Shift+L`
+        : `${stepLabel} fine snap (edit + unlocked play) · Shift=free size · ${PLACE_WITHOUT_GROUP_HINT} · Ctrl+Shift+L`,
     ),
+
     status
       ? e("div", { style: { fontSize: TYPE.secondary, color: "#9a9" } }, status)
       : null,
+
     pasteOpen
       ? e(
           "div",
@@ -381,20 +581,19 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           },
           e("textarea", {
             value: pasteText,
-            rows: 5,
+            rows: 4,
             placeholder: "Paste enhance-comm-ui layout JSON…",
             onChange: (ev: any) => setPasteText(ev.target.value),
             style: {
               width: "100%",
-              minHeight: "100px",
+              minHeight: "88px",
               background: "#141410",
               color: "#eee",
               border: "1px solid #665",
-              fontSize: TYPE.microMin,
-              fontFamily: "Consolas, Monaco, monospace",
-              textShadow: "none",
-              fontWeight: "normal",
+              borderRadius: "3px",
+              fontSize: TYPE.secondary,
               boxSizing: "border-box",
+              ...PIXEL_TEXT,
             },
           }),
           e(
@@ -402,7 +601,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
             {
               type: "button",
               onClick: () => applyImportText(pasteText),
-              style: btnStyle(true),
+              style: btnStyle(true, true),
             },
             "Apply import",
           ),

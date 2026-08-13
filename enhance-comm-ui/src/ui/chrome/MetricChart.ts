@@ -11,16 +11,76 @@ export type MetricChartProps = {
   height?: number;
   series: ChartSeries[];
   emptyText?: string;
+  /** Area fill under lines (realtime). */
+  fill?: boolean;
+  /** Stack series (compare). */
+  stack?: boolean;
+  /** Normalize each sample to 100%. */
+  normalize?: boolean;
+  /** Running sum per series. */
+  integrate?: boolean;
 };
 
-/** Lightweight canvas line chart for party combat history. */
+function transformValues(
+  series: ChartSeries[],
+  opts: { stack?: boolean; normalize?: boolean; integrate?: boolean },
+): ChartSeries[] {
+  let out = series.map((s) => ({
+    ...s,
+    values: s.values.slice(),
+  }));
+  if (opts.integrate) {
+    for (let s = 0; s < out.length; s++) {
+      let sum = 0;
+      for (let i = 0; i < out[s].values.length; i++) {
+        sum += out[s].values[i] || 0;
+        out[s].values[i] = sum;
+      }
+    }
+  }
+  if (opts.stack || opts.normalize) {
+    const len = out.reduce((m, s) => Math.max(m, s.values.length), 0);
+    const stacked: ChartSeries[] = out.map((s) => ({
+      ...s,
+      values: new Array(len).fill(0),
+    }));
+    for (let i = 0; i < len; i++) {
+      let total = 0;
+      const raw: number[] = [];
+      for (let s = 0; s < out.length; s++) {
+        const v = out[s].values[i] || 0;
+        raw.push(v);
+        total += v;
+      }
+      let run = 0;
+      for (let s = 0; s < out.length; s++) {
+        let v = raw[s];
+        if (opts.normalize && total > 0) v = (v / total) * 100;
+        if (opts.stack) {
+          run += v;
+          stacked[s].values[i] = run;
+        } else {
+          stacked[s].values[i] = v;
+        }
+      }
+    }
+    out = stacked;
+  }
+  return out;
+}
+
+/** Lightweight canvas line / area / stack chart. */
 export function MetricChart(props: MetricChartProps): any {
   const React = getReact();
   const ref = React.useRef(null);
   const width = props.width || 280;
   const height = props.height || 100;
-  const series = props.series || [];
   const emptyText = props.emptyText || "No samples yet";
+  const series = transformValues(props.series || [], {
+    stack: props.stack,
+    normalize: props.normalize,
+    integrate: props.integrate,
+  });
 
   React.useEffect(() => {
     const canvas = ref.current as HTMLCanvasElement | null;
@@ -73,10 +133,30 @@ export function MetricChart(props: MetricChartProps): any {
     }
     ctx.stroke();
 
-    for (let s = 0; s < series.length; s++) {
+    // Draw bottom-up when stacked so lower series sit under upper.
+    for (let s = series.length - 1; s >= 0; s--) {
       const vals = series[s].values;
       if (vals.length < 2) continue;
-      ctx.strokeStyle = series[s].color;
+      const color = series[s].color || "#888";
+      ctx.beginPath();
+      for (let i = 0; i < vals.length; i++) {
+        const x = padL + (plotW * i) / Math.max(vals.length - 1, 1);
+        const y = padT + plotH - (plotH * (vals[i] || 0)) / maxVal;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      if (props.fill || props.stack) {
+        const lastX =
+          padL + (plotW * (vals.length - 1)) / Math.max(vals.length - 1, 1);
+        ctx.lineTo(lastX, padT + plotH);
+        ctx.lineTo(padL, padT + plotH);
+        ctx.closePath();
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.35;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       for (let i = 0; i < vals.length; i++) {
@@ -91,8 +171,19 @@ export function MetricChart(props: MetricChartProps): any {
     ctx.fillStyle = "#ccc";
     ctx.font = "14px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(Math.round(maxVal).toLocaleString(), padL, 12);
-  }, [series, width, height, emptyText]);
+    const topLabel = props.normalize
+      ? "100%"
+      : Math.round(maxVal).toLocaleString();
+    ctx.fillText(topLabel, padL, 12);
+  }, [
+    series,
+    width,
+    height,
+    emptyText,
+    props.fill,
+    props.stack,
+    props.normalize,
+  ]);
 
   return e("canvas", {
     ref,

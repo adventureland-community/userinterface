@@ -1,13 +1,19 @@
 {
   "name": "enhance-comm-ui",
-  "version": "0.7.0",
+  "version": "0.8.0-alpha.1",
   "private": true,
   "description": "Adventure.land /comm UI enhancement userscript",
   "scripts": {
-    "build": "tsup && node scripts/sync-root.mjs"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && tsup && node scripts/sync-root.mjs",
+    "test": "tsx --test tests/**/*.test.ts",
+    "watch": "node scripts/dev-watch.mjs",
+    "dev": "node scripts/dev.mjs",
+    "dev:serve": "node scripts/dev-server.mjs"
   },
   "devDependencies": {
     "tsup": "^8.4.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.8.2"
   }
 }

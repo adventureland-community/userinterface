@@ -1,6 +1,10 @@
 import { getReact, e } from "../../host/react";
 import { classColors } from "../../lib/colors";
-import { aggroOn, partyGroups, playersList } from "../../queries/entities";
+import {
+  aggroByTarget,
+  partyGroups,
+  playersList,
+} from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
 import { ControlBadge } from "../chrome/ControlBadge";
@@ -24,15 +28,15 @@ import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 export type PlayersProps = {
   entities: EntityLike[];
-  /** Shared aggro index from CommUI (string target ids). */
-  byTarget: Record<string, EntityLike[]>;
   setSelectedEntity: (id: string | undefined) => void;
   selectedEntity?: string;
   /** Watched /comm character id — pink observe chrome, not paperdoll select. */
   observingId?: string;
   /** Watched entity (fear overlay on observed chip, etc.). */
   observing?: EntityLike | null;
-  /** Keep Buffs control visible while repositioning panels. */
+  /**
+   * Layout-edit marker on the roster root (panel chrome owns lock/WC above).
+   */
   layoutEdit?: boolean;
 };
 
@@ -55,13 +59,12 @@ function chipOpacity(dead: boolean): number {
 /** observe-hud style party chips: name inside HP bar, thin MP underlay, effects + aggro. */
 export function Players(props: PlayersProps): any {
   const React = getReact();
-  const [buffMode, setBuffMode] = React.useState<PartyBuffMode>(
-    () => getSettings().partyBuffMode || "auto",
+  const [buffMode, setBuffMode] = React.useState(
+    () => (getSettings().partyBuffMode || "auto") as PartyBuffMode,
   );
 
   const parties = partyGroups(props.entities);
-  const byTarget = props.byTarget;
-  const observing = props.observing;
+  const byTarget = aggroByTarget(props.entities);
   const visibleChipCount = playersList(props.entities).length;
   const sharedMode = buffMode === "shared";
 
@@ -70,29 +73,28 @@ export function Players(props: PlayersProps): any {
     setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
   };
 
-  const buffsButton = parties.length
-    ? e(
-        "button",
-        {
-          type: "button",
-          className: "ecu-roster-buffs",
-          title: partyBuffModeTitle(buffMode),
-          onClick: cycleBuffMode,
-          style: {
-            cursor: "pointer",
-            fontSize: TYPE.secondaryMin,
-            lineHeight: "1.2",
-            padding: "3px 8px",
-            minHeight: "26px",
-            border: "1px solid #444",
-            background: "#161616",
-            color: "#ccc",
-            ...PIXEL_TEXT,
-          },
-        },
-        `Buffs: ${partyBuffModeLabel(buffMode)}`,
-      )
-    : null;
+  /** Gold chrome chip — same family as PositionedPanel lock / WC. */
+  const buffsButton = e(
+    "button",
+    {
+      type: "button",
+      className: "ecu-roster-buffs",
+      title: partyBuffModeTitle(buffMode),
+      "aria-label": `Party buffs mode: ${partyBuffModeLabel(buffMode)}. Click to cycle.`,
+      onClick: cycleBuffMode,
+      style: {
+        fontSize: TYPE.micro,
+        ...PIXEL_TEXT,
+      },
+    },
+    e("span", { className: "ecu-roster-buffs-k" }, "Buffs"),
+    e("span", { className: "ecu-roster-buffs-sep" }, "·"),
+    e(
+      "span",
+      { className: "ecu-roster-buffs-v" },
+      partyBuffModeLabel(buffMode),
+    ),
+  );
 
   return e(
     "div",
@@ -107,8 +109,6 @@ export function Players(props: PlayersProps): any {
         position: "relative",
       },
     },
-    // Absolute overlay — must not reserve header row height when idle.
-    buffsButton,
     !parties.length
       ? e(
           "div",
@@ -134,7 +134,7 @@ export function Players(props: PlayersProps): any {
           ),
         )
       : null,
-    ...parties.map((party) =>
+    ...parties.map((party, partyIdx) =>
       e(
         "div",
         {
@@ -145,17 +145,32 @@ export function Players(props: PlayersProps): any {
         e(
           "div",
           {
+            className: "ecu-roster-party-hd",
             style: {
-              fontSize: TYPE.secondary,
-              color: "#ccc",
-              background: "rgba(0,0,0,0.55)",
-              display: "inline-block",
-              padding: "2px 6px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
               marginBottom: "4px",
-              ...PIXEL_TEXT,
+              flexWrap: "wrap",
             },
           },
-          party[0] || "(no party)",
+          e(
+            "div",
+            {
+              className: "ecu-roster-party-name",
+              style: {
+                fontSize: TYPE.secondary,
+                color: "#ccc",
+                background: "rgba(0,0,0,0.55)",
+                display: "inline-block",
+                padding: "2px 6px",
+                ...PIXEL_TEXT,
+              },
+            },
+            party[0] || "(no party)",
+          ),
+          // Mode is global — only on the first party header so it sits with roster chrome.
+          partyIdx === 0 ? buffsButton : null,
         ),
         sharedMode
           ? e(SharedPartyEffects, {
@@ -184,7 +199,7 @@ export function Players(props: PlayersProps): any {
               String(props.selectedEntity) === pid;
             const observed =
               props.observingId != null && String(props.observingId) === pid;
-            const aggroMobs = aggroOn(byTarget, pid);
+            const aggroMobs = byTarget[pid] || byTarget[player.id] || [];
             const hasAggro = aggroMobs.length > 0;
             const color = classColors[player.ctype || ""] || "#888";
             const dead = isActuallyDead(player);

@@ -230,7 +230,7 @@ export function renderServersHud(): void {
   const html =
     "<div class='ecu-server-dd" +
     (wasOpen ? " is-open" : "") +
-    "' aria-expanded='" +
+    "' data-ecu-tour='server-picker-dd' aria-expanded='" +
     (wasOpen ? "true" : "false") +
     "'>" +
     "<button type='button' class='ecu-server-dd-trigger' aria-haspopup='listbox'>" +

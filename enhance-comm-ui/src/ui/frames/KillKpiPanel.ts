@@ -184,12 +184,14 @@ export function KillKpiPanel(): any {
           style: selectStyle,
           onChange: (ev: any) => setKillScope(ev.target.value),
         },
-        e(
-          "option",
-          { value: "watched" },
-          killScopeLabel("watched", stats.trackingName),
-        ),
-        e("option", { value: "all" }, "Visible parties"),
+        hasObserver
+          ? e(
+              "option",
+              { value: "watched" },
+              killScopeLabel("watched", stats.trackingName),
+            )
+          : null,
+        e("option", { value: "all" }, killScopeLabel("all")),
       ),
       showReset ? resetBtn : null,
     );
