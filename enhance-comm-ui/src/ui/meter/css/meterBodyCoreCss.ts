@@ -575,7 +575,7 @@ export const METER_BODY_CORE_CSS = `
 }
 .ecu-meter-tt ul { margin: 4px 0 0; padding: 0; list-style: none; }
 .ecu-meter-tt li { display: flex; justify-content: space-between; gap: 14px; }
-/* Time Line cooltip: hovered icon + nearby cluster (on-screen, ~2s).
+/* Time Line cooltip: primary = icon under cursor (else bar), + nearby cluster.
    Compact chrome shared by gear + CD/buff/debuff/death. */
 .ecu-meter-tt.is-tl-cluster,
 .ecu-meter-tt.is-gear-tip,
@@ -1681,6 +1681,9 @@ export const METER_BODY_CORE_CSS = `
   pointer-events: none;
   z-index: 5;
 }
+.ecu-meter-timeline.is-tl-frozen .ecu-meter-tl-now {
+  opacity: 0.5;
+}
 .ecu-meter-tl-ruler {
   display: flex;
   align-items: stretch;
@@ -1707,6 +1710,8 @@ export const METER_BODY_CORE_CSS = `
   min-width: var(--tl-content-w);
   height: 100%;
   min-height: inherit;
+  /* Icons + bar hits share this context so later icons beat earlier bars. */
+  isolation: isolate;
 }
 .ecu-meter-tl-ruler .ecu-meter-tl-axis {
   flex: 1 1 0;
@@ -1833,7 +1838,9 @@ export const METER_BODY_CORE_CSS = `
   top: 3px;
   bottom: 3px;
   height: auto;
-  z-index: 1;
+  /* z-index:auto — do not create a stacking context. Icons and bar-hits
+     compete in the axis so a later icon beats an earlier 5–20s bar. */
+  z-index: auto;
   display: flex;
   align-items: center;
   cursor: pointer;
@@ -1853,12 +1860,15 @@ export const METER_BODY_CORE_CSS = `
 }
 .ecu-meter-tl-block-ico {
   position: relative;
-  z-index: 2;
+  /* Icon band (inline z-index adds stackIndex). Beats every bar hit. */
+  z-index: 10000;
   flex-shrink: 0;
   display: inline-flex;
   width: var(--tl-icon);
   height: var(--tl-icon);
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95));
+  pointer-events: auto;
+  cursor: pointer;
 }
 /* Global .ecu-meter-icon is 14px !important (meter bars). Timeline must win. */
 .ecu-meter-timeline .ecu-meter-tl-block-ico .ecu-meter-icon,
@@ -1895,18 +1905,19 @@ export const METER_BODY_CORE_CSS = `
 .ecu-meter-tl-block.is-sub .ecu-meter-tl-block-bar {
   left: calc(var(--tl-icon-sub) / 2);
 }
+/* Bar-only hit (below the icon band). Easy bar hover when not on an icon.
+   ±2px x-pad only — empty row gaps still miss. */
 .ecu-meter-tl-block-hit {
   position: absolute;
-  left: 0;
+  left: -2px;
+  right: -2px;
   top: 0;
-  width: var(--tl-icon);
-  height: 100%;
-  z-index: 3;
+  bottom: 0;
+  width: auto;
+  height: auto;
+  z-index: 1;
   pointer-events: auto;
   cursor: pointer;
-}
-.ecu-meter-tl-block.is-sub .ecu-meter-tl-block-hit {
-  width: var(--tl-icon-sub);
 }
 /* AL Time Line: green = buffs, blue = cooldowns, red = debuffs. */
 .ecu-meter-tl-block.is-cast .ecu-meter-tl-block-bar {
@@ -1923,15 +1934,22 @@ export const METER_BODY_CORE_CSS = `
   filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
     drop-shadow(0 0 2px rgba(255, 176, 32, 0.95));
 }
+.ecu-meter-tl-block.is-gear .ecu-meter-tl-block-ico:hover {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 2px rgba(255, 176, 32, 0.95))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
+}
 .ecu-meter-tl-block.is-no-bar .ecu-meter-tl-block-bar {
   display: none;
 }
-.ecu-meter-tl-block:hover {
-  z-index: 10000 !important;
-}
+/* Do not lift the whole block — that trapped later icons under the first bar. */
 .ecu-meter-tl-block:hover .ecu-meter-tl-block-bar {
   filter: brightness(1.25);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.ecu-meter-tl-block-ico:hover {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 3px rgba(255, 255, 255, 0.45));
 }
 /* Details PlaceDeathPins: 4×14 white pin — keep thin, not a fat death icon. */
 .ecu-meter-tl-death {
@@ -1946,7 +1964,7 @@ export const METER_BODY_CORE_CSS = `
   box-shadow: 0 0 4px rgba(229, 57, 53, 0.65);
 }
 .ecu-meter-tl-death:hover {
-  z-index: 10000 !important;
+  box-shadow: 0 0 6px rgba(229, 57, 53, 0.9);
 }
 .ecu-meter-tl-empty {
   padding: 20px 14px;

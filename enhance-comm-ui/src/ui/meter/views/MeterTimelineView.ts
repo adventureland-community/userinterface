@@ -7,18 +7,29 @@
  * - While following, “now” stays pinned to the right of the visible track;
  *   new time extends the content and the past recedes left (rAF, no snap).
  * - Scroll left unlocks follow; scroll back to the live head re-locks.
+ * - New Current fight (new segment id / startedAt, observer swap onto
+ *   another combat) re-locks follow and jumps to now — do not keep the
+ *   old scrollLeft on a track that no longer has those events.
+ * - Shift held over the track freezes follow (same as scrolling back) so
+ *   a hover does not slide out; release resumes if the camera was not
+ *   moved. A new fight snaps to now, then freeze again if Shift is still
+ *   down. Window key listeners stay bound across fight swaps.
  * - Fight end keeps the same scale (no fit-to-width crush).
  *
  * Modes: All (AL-only overlay) | Cooldowns | Debuffs | Buffs | Gear. Details
  * has exclusive tabs only (Cooldowns / Debuffs / Enemy Cast / Enemy Spells) —
  * no combined “All”. All stacks per-kind sub-lanes when a player has ≥2
- * categories. Blocks sit at true time × pps; cooltip is the hovered icon
- * plus nearby *other* skills on the same row whose icons are in the
- * scroll viewport and clustered around the hover (~1 icon / ~2s, cap
- * ±8s — Details block_on_enter, but never off-screen). Tips are lean:
- * player + time once, dense rows with a color pill (CD/Bf/Db/Dt).
- * Visual bar width still uses the 5–20s clamp; deaths are thin pins;
- * gear swaps are icon pins (item skin, no duration bar).
+ * categories. Blocks sit at true time × pps; cooltip primary is the
+ * topmost *icon* under the cursor, else the bar you entered (Details
+ * `block_on_enter` per spell frame). A 5–20s duration bar must not steal
+ * later icons. Nearby *other* skills on the same row whose icons are in
+ * the scroll viewport cluster around that primary (~1 icon / ~2s, cap
+ * ±8s). Empty row chrome greys the lane only — never a whole-lane dump.
+ * Tips are lean: player + time once, dense rows with a color pill
+ * (CD/Bf/Db/Dt).
+ * Visual bar width uses the 5–20s clamp as a *max*. Same-skill casts
+ * (attack spam, shared CD) clip to the next identical cast so bars do
+ * not fuse into one highway. Deaths are thin pins; gear is icon-only.
  *
  * Bar colors: green = buff, blue = cooldown/cast, red = debuff,
  * amber = gear. Player name colors are class colors, not bars.
@@ -102,6 +113,8 @@ const TL_ZOOM_STEP = 1.12;
 
 /** Hide duration bars thinner than this (avoids 1–2px shimmer slivers). */
 const TL_BAR_MIN_PX = 4;
+/** Gap so clipped same-skill CD bars do not touch / read as one strip. */
+const TL_CAST_BAR_GAP_PX = 4;
 
 /** Target minimum px between axis labels. */
 const TL_TICK_MIN_PX = 72;
@@ -128,6 +141,11 @@ const TL_COALESCE_SEC = 0.3;
 /** Details SetSpellBlock clamps visual bar duration to 5–20s. */
 const TL_VISUAL_DUR_MIN = 5;
 const TL_VISUAL_DUR_MAX = 20;
+/**
+ * Icon stacking band — above every duration-bar hit layer. Later icons
+ * sit above earlier icons; no bar can cover an icon’s pointer-events.
+ */
+const TL_ICON_Z = 10000;
 
 /** Default cast/CD effect length when AL has no cooldown table (Details: 8). */
 const TL_CAST_EFFECT_SEC = 8;
@@ -152,6 +170,11 @@ type TimelineBlock = {
   atSec: number;
   /** Real elapsed (cooltip). Visual width is clamped separately. */
   durationSec: number;
+  /**
+   * Next same-skill cast on this lane (casts only). Bar width clips here
+   * so shared-CD spam is not one continuous strip.
+   */
+  nextSameAtSec?: number;
   /** Live aura start — cooltip elapsed uses Date.now() while open. */
   startedAtMs?: number;
   isOpen?: boolean;
@@ -734,7 +757,14 @@ function blockTooltipHtml(
   return tipEventClusterHtml(b, nearby, actorName, originMs);
 }
 
-function IconHost(props: { html: string; className?: string }): any {
+function IconHost(props: {
+  html: string;
+  className?: string;
+  style?: { zIndex?: number };
+  onMouseEnter?: (ev: MouseEvent) => void;
+  onMouseMove?: (ev: MouseEvent) => void;
+  onMouseLeave?: (ev: MouseEvent) => void;
+}): any {
   const React = getReact();
   const ref = React.useRef(null as HTMLSpanElement | null);
   const htmlRef = React.useRef("");
@@ -744,12 +774,55 @@ function IconHost(props: { html: string; className?: string }): any {
     htmlRef.current = props.html;
     el.innerHTML = props.html;
   }, [props.html]);
-  return e("span", { ref, className: props.className || undefined });
+  return e("span", {
+    ref,
+    className: props.className || undefined,
+    style: props.style,
+    onMouseEnter: props.onMouseEnter,
+    onMouseMove: props.onMouseMove,
+    onMouseLeave: props.onMouseLeave,
+  });
+}
+
+/** Last Time Line event whose tip is open — rebuild when this id changes. */
+let tlHoverDomKey = "";
+
+function isTlHoverTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof Element)) return false;
+  return !!(
+    el.closest(".ecu-meter-tl-block") || el.closest(".ecu-meter-tl-death")
+  );
+}
+
+function showBlockTip(domKey: string, ev: MouseEvent, html: string): void {
+  tlHoverDomKey = domKey;
+  showMeterTooltip(ev, html);
+}
+
+function hideBlockTip(): void {
+  tlHoverDomKey = "";
+  hideMeterTooltip();
+}
+
+/**
+ * Next same-skill cast on this lane — walk newest→oldest after sort.
+ * Each cast stays its own block; only the *bar* clips.
+ */
+function fillCastNextSame(blocks: TimelineBlock[]): void {
+  const nextAt: Record<string, number> = {};
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.kind !== "cast") continue;
+    const k = skillKey(b);
+    if (nextAt[k] != null) b.nextSameAtSec = nextAt[k];
+    nextAt[k] = b.atSec;
+  }
 }
 
 /**
  * Details SetSpellBlock: visual duration always clamped to 5–20s for bar width,
- * even when cooltip shows the real aura elapsed.
+ * even when cooltip shows the real aura elapsed. Casts then clip to the next
+ * same-skill event in `blockLayoutPx` (attack every 1s ≠ one 8s highway).
  */
 function visualDurationSec(b: TimelineBlock): number {
   if (b.kind === "death" || b.kind === "gear") return 0;
@@ -929,6 +1002,20 @@ function conditionsEndedCount(cs: ConditionInterval[]): number {
   return n;
 }
 
+/** Current vs past picker + live fight id. Same-fight scroll-back is not this. */
+function timelineFightKey(
+  segmentRef: SegmentRef | undefined,
+  seg: { id: string; startedAt: number } | null | undefined,
+): string {
+  let refKey = "current";
+  if (segmentRef === "total") refKey = "total";
+  else if (segmentRef && typeof segmentRef === "object" && segmentRef.pastId) {
+    refKey = `past:${segmentRef.pastId}`;
+  }
+  if (!seg) return `${refKey}:empty`;
+  return `${refKey}:${seg.id}:${seg.startedAt}`;
+}
+
 function timelineOriginMs(
   seg: { startedAt?: number; endedAt?: number } | null | undefined,
   casts: CastMarker[],
@@ -1052,9 +1139,19 @@ function blockLayoutPx(
   if (b.kind === "gear") {
     return { left, width: iconPx, showBar: false };
   }
-  const visualDur = visualDurationSec(b);
-  const width = Math.max(iconPx, Math.round(visualDur * pps));
-  const barSpan = width - Math.round(iconPx / 2);
+  let visualDur = visualDurationSec(b);
+  // Shared-CD spam: clip this cast’s bar so it ends before the next
+  // same-skill icon. Each attack stays its own block + hitbox.
+  if (b.kind === "cast" && b.nextSameAtSec != null) {
+    const gapSec = TL_CAST_BAR_GAP_PX / Math.max(1, pps);
+    visualDur = Math.min(
+      visualDur,
+      Math.max(0, b.nextSameAtSec - b.atSec - gapSec),
+    );
+  }
+  const barPx = Math.round(visualDur * pps);
+  const width = Math.max(iconPx, barPx);
+  const barSpan = barPx - Math.round(iconPx / 2);
   const showBar = b.kind !== "death" && barSpan >= TL_BAR_MIN_PX;
   return { left, width, showBar };
 }
@@ -1082,6 +1179,7 @@ function timelineEventEqual(
     return false;
   }
   if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
+  if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
   // Open auras tick elapsed in the cooltip — layout width is clamped.
   if (pb.isOpen && nb.isOpen) return true;
   return pb.durationSec === nb.durationSec;
@@ -1093,9 +1191,9 @@ function timelineEventEqual(
  * open auras grow visual width each tick, cascade-shifted later icons,
  * and misaligned same-time events across player rows.
  *
- * Hover is icon-centric (Details block is tiny at fit-to-width; our 88 px/s
- * duration strip is hundreds of px). The duration bar is visual-only so empty
- * chrome / bar tails do not dump a lane tooltip.
+ * Hover is icon-first, then bar: the wrapper is not a stacking context, so
+ * later icons sit above earlier 5–20s bars. Empty lane chrome still has
+ * no tip — that was the old whole-fight dump.
  */
 function TimelineEventInner(props: TimelineEventProps): any {
   const b = props.block;
@@ -1119,20 +1217,28 @@ function TimelineEventInner(props: TimelineEventProps): any {
     );
   };
   const onEnter = (ev: MouseEvent) => {
-    showMeterTooltip(ev, tip(ev));
+    showBlockTip(b.domKey, ev, tip(ev));
   };
   const onMove = (ev: MouseEvent) => {
+    // New event id (icon→icon) rebuilds the tip; same id just follows the cursor.
+    if (tlHoverDomKey !== b.domKey) {
+      showBlockTip(b.domKey, ev, tip(ev));
+      return;
+    }
     showMeterTooltip(ev, tip(ev));
   };
-  const onLeave = () => hideMeterTooltip();
-  // Later events paint above earlier ones; CSS :hover lifts further.
-  const z = props.stackIndex + 1;
+  const onLeave = (ev: MouseEvent) => {
+    if (isTlHoverTarget(ev.relatedTarget)) return;
+    hideBlockTip();
+  };
+  const iconZ = TL_ICON_Z + props.stackIndex;
+  const barZ = props.stackIndex + 1;
   const split = props.subIndex >= 0 && props.subCount >= 2;
 
   if (b.kind === "death") {
     return e("div", {
       className: "ecu-meter-tl-death",
-      style: { left: `${layout.left}px`, zIndex: z },
+      style: { left: `${layout.left}px`, zIndex: iconZ },
       onMouseEnter: onEnter,
       onMouseMove: onMove,
       onMouseLeave: onLeave,
@@ -1150,10 +1256,10 @@ function TimelineEventInner(props: TimelineEventProps): any {
         (b.condKind === "debuff" ? " is-debuff" : "") +
         (layout.showBar ? "" : " is-no-bar") +
         (split ? " is-sub" : ""),
+      "data-tl-key": b.domKey,
       style: {
         left: `${layout.left}px`,
         width: `${layout.width}px`,
-        zIndex: z,
         ...(split
           ? {
               ["--tl-sub-i" as string]: String(props.subIndex),
@@ -1165,10 +1271,15 @@ function TimelineEventInner(props: TimelineEventProps): any {
     e(IconHost, {
       html: blockIconHtml(b, props.iconPx),
       className: "ecu-meter-tl-block-ico",
+      style: { zIndex: iconZ },
+      onMouseEnter: onEnter,
+      onMouseMove: onMove,
+      onMouseLeave: onLeave,
     }),
     layout.showBar ? e("div", { className: "ecu-meter-tl-block-bar" }) : null,
     e("div", {
       className: "ecu-meter-tl-block-hit",
+      style: { zIndex: barZ },
       onMouseEnter: onEnter,
       onMouseMove: onMove,
       onMouseLeave: onLeave,
@@ -1325,6 +1436,7 @@ function buildLanes(
   for (let i = 0; i < ids.length; i++) {
     const lane = byId[ids[i]];
     lane.blocks.sort((x, y) => x.atSec - y.atSec);
+    fillCastNextSame(lane.blocks);
     lane.cats = laneCatsFromBlocks(lane.blocks);
     lanes.push(lane);
   }
@@ -1338,12 +1450,14 @@ type TimelineViewInnerProps = {
   rosterSig: string;
   deathCount: number;
   combatLive: boolean;
+  fightKey: string;
 };
 
 function timelineInnerEqual(
   prev: TimelineViewInnerProps,
   next: TimelineViewInnerProps,
 ): boolean {
+  if (prev.fightKey !== next.fightKey) return false;
   if (prev.segmentRef !== next.segmentRef) return false;
   if (prev.partyFocus !== next.partyFocus) return false;
   if (prev.rosterSig !== next.rosterSig) return false;
@@ -1395,12 +1509,22 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   const [zoom, setZoom] = React.useState(1);
   const [rulerTicks, setRulerTicks] = React.useState([] as TlTick[]);
   const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
+  const [trackFrozen, setTrackFrozen] = React.useState(false);
   const viewSnapRef = React.useRef("");
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const scrollRef = React.useRef(null as HTMLDivElement | null);
   const gutterRef = React.useRef(null as HTMLDivElement | null);
   const gutterRowsRef = React.useRef(null as HTMLDivElement | null);
   const followRef = React.useRef(true);
+  /** Shift-hold freeze: keep `--tl-pad` so unlocking does not jump the axis. */
+  const freezePadRef = React.useRef(null as number | null);
+  /** Resume follow on Shift-up only if we froze a following camera. */
+  const freezeResumeRef = React.useRef(false);
+  const freezeScrollLeftRef = React.useRef(0);
+  const pointerOnTrackRef = React.useRef(false);
+  const shiftHeldRef = React.useRef(false);
+  /** After a manual scroll during this Shift hold, do not re-freeze. */
+  const shiftFreezeOkRef = React.useRef(true);
   const applyingScrollRef = React.useRef(false);
   const isLiveRef = React.useRef(false);
   const startRef = React.useRef(0);
@@ -1421,12 +1545,24 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   });
   const laneBlocksRef = React.useRef({} as Record<string, TimelineBlock[]>);
   const originPinRef = React.useRef(null as number | null);
+  const fightKeyRef = React.useRef("");
   const pps = TL_PPS_BASE * zoom;
   const ppsRef = React.useRef(pps);
   ppsRef.current = pps;
 
   const isTimeline = props.result.kind === "timeline";
   const seg = resolveSegment(props.segmentRef);
+  const fightKey = props.fightKey;
+  // New Current / observer fight: drop the old origin and re-lock follow
+  // before layout, or scrollLeft stays on an empty stretch of the new track.
+  if (fightKeyRef.current !== fightKey) {
+    fightKeyRef.current = fightKey;
+    originPinRef.current = null;
+    followRef.current = true;
+    freezePadRef.current = null;
+    freezeResumeRef.current = false;
+    shiftFreezeOkRef.current = true;
+  }
   const isLive = !!(isTimeline && props.combatLive);
   const durationMs =
     props.result.kind === "timeline" ? props.result.durationMs : 0;
@@ -1461,16 +1597,12 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       )
     : [];
   const now = seg && seg.endedAt ? seg.endedAt : Date.now();
-  // Skip O(n) origin scan once the fight start is pinned.
+  // Skip O(n) origin scan once the fight start is pinned (same fight only).
   const rawStart = !isTimeline
     ? now
     : originPinRef.current != null
       ? originPinRef.current
       : timelineOriginMs(seg, casts, conditions, deaths, gearSwaps, now);
-  // Freeze origin once we have a real fight anchor so live ticks never shift X.
-  React.useEffect(() => {
-    originPinRef.current = null;
-  }, [props.segmentRef]);
   if (isTimeline) {
     const hasAnchor =
       !!(seg && seg.startedAt) ||
@@ -1533,7 +1665,12 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       ? Math.max((Date.now() - startRef.current) / 1000, 1 / ppsNow)
       : Math.max(durSecRef.current, 1 / ppsNow);
     const contentWR = Math.ceil(elapsed * ppsNow);
-    const padR = followRef.current ? Math.max(0, viewTrackW - contentWR) : 0;
+    const padR =
+      freezePadRef.current != null
+        ? freezePadRef.current
+        : followRef.current
+          ? Math.max(0, viewTrackW - contentWR)
+          : 0;
     const trackWR = padR + contentWR;
     // Always re-apply — React style diffs must not leave a stale 100% track
     // width that clips fight history when scrollLeft moves left of “now”.
@@ -1572,24 +1709,63 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     if (followRef.current) {
       // Pin “now” to the right edge as content grows — only nudge scroll
       // when the target moves >0.5px to avoid subpixel shimmer.
+      const held = applyingScrollRef.current;
       applyingScrollRef.current = true;
       const target = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
       if (Math.abs(scroll.scrollLeft - target) > 0.5) {
         scroll.scrollLeft = target;
       }
-      applyingScrollRef.current = false;
+      if (!held) applyingScrollRef.current = false;
     }
     syncGutterY();
     publishViewRange();
   }, [publishViewRange, syncGutterY]);
+  const applyLayoutRef = React.useRef(applyLayout);
+  applyLayoutRef.current = applyLayout;
 
-  React.useEffect(() => {
-    injectMeterChromeCss();
-    return () => hideMeterTooltip();
+  const beginModFreeze = React.useCallback(() => {
+    if (!isLiveRef.current) return;
+    if (!shiftFreezeOkRef.current) return;
+    if (freezePadRef.current != null) return;
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    freezeScrollLeftRef.current = scroll.scrollLeft;
+    freezeResumeRef.current = followRef.current;
+    freezePadRef.current =
+      layoutCacheRef.current.pad >= 0 ? layoutCacheRef.current.pad : 0;
+    followRef.current = false;
+    setTrackFrozen(true);
+  }, []);
+
+  const endModFreeze = React.useCallback(() => {
+    const scroll = scrollRef.current;
+    const hadFreeze = freezePadRef.current != null;
+    const wantResume = freezeResumeRef.current;
+    const scrolled =
+      !!scroll &&
+      Math.abs(scroll.scrollLeft - freezeScrollLeftRef.current) >
+        TL_FOLLOW_SLACK;
+    freezePadRef.current = null;
+    freezeResumeRef.current = false;
+    setTrackFrozen(false);
+    if (!hadFreeze && !wantResume) return;
+    if (wantResume && !scrolled) {
+      followRef.current = true;
+    }
+    applyLayoutRef.current();
   }, []);
 
   React.useEffect(() => {
+    injectMeterChromeCss();
+    return () => hideBlockTip();
+  }, []);
+
+  React.useLayoutEffect(() => {
+    applyingScrollRef.current = true;
     followRef.current = true;
+    freezePadRef.current = null;
+    freezeResumeRef.current = false;
+    setTrackFrozen(false);
     layoutCacheRef.current = {
       contentW: -1,
       pad: -1,
@@ -1601,7 +1777,15 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     };
     tickSigRef.current = "";
     viewSnapRef.current = "";
-  }, [start]);
+    applyLayoutRef.current();
+    // Snap to the new now, then freeze there if Shift is still held so the
+    // new fight does not keep sliding under the cursor.
+    if (shiftHeldRef.current && isLiveRef.current) {
+      shiftFreezeOkRef.current = true;
+      beginModFreeze();
+    }
+    applyingScrollRef.current = false;
+  }, [beginModFreeze, fightKey]);
 
   React.useEffect(() => {
     const el = scrollRef.current;
@@ -1610,6 +1794,21 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       syncGutterY();
       publishViewRange();
       if (applyingScrollRef.current) return;
+      if (freezePadRef.current != null) {
+        const maxNow = Math.max(0, el.scrollWidth - el.clientWidth);
+        // Pin-to-now after a fight jump is not a user camera move.
+        if (
+          maxNow > TL_FOLLOW_SLACK &&
+          el.scrollLeft < maxNow - TL_FOLLOW_SLACK
+        ) {
+          freezeResumeRef.current = false;
+          freezePadRef.current = null;
+          shiftFreezeOkRef.current = false;
+          setTrackFrozen(false);
+        } else {
+          return;
+        }
+      }
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
       if (max <= TL_FOLLOW_SLACK) {
         followRef.current = true;
@@ -1651,6 +1850,67 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     return () => scroll.removeEventListener("wheel", onWheel);
   }, [isTimeline]);
 
+  React.useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key !== "Shift") return;
+      shiftHeldRef.current = true;
+      if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+      // After a fight jump, Shift is still down so the next event is a
+      // repeat — still re-arm freeze (only skip if already frozen).
+      if (ev.repeat && freezePadRef.current != null) return;
+      shiftFreezeOkRef.current = true;
+      const scroll = scrollRef.current;
+      if (scroll && scroll.matches(":hover")) pointerOnTrackRef.current = true;
+      if (!pointerOnTrackRef.current) return;
+      beginModFreeze();
+    };
+    const onKeyUp = (ev: KeyboardEvent) => {
+      if (ev.key !== "Shift") return;
+      shiftHeldRef.current = false;
+      shiftFreezeOkRef.current = true;
+      endModFreeze();
+    };
+    const onBlur = () => {
+      shiftHeldRef.current = false;
+      endModFreeze();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [beginModFreeze, endModFreeze]);
+
+  React.useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const onPointerEnter = () => {
+      pointerOnTrackRef.current = true;
+      if (shiftHeldRef.current) beginModFreeze();
+    };
+    const onPointerMove = (ev: PointerEvent) => {
+      pointerOnTrackRef.current = true;
+      if (ev.shiftKey) shiftHeldRef.current = true;
+      if (ev.shiftKey && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        beginModFreeze();
+      }
+    };
+    const onPointerLeave = () => {
+      pointerOnTrackRef.current = false;
+    };
+    scroll.addEventListener("pointerenter", onPointerEnter);
+    scroll.addEventListener("pointermove", onPointerMove);
+    scroll.addEventListener("pointerleave", onPointerLeave);
+    return () => {
+      scroll.removeEventListener("pointerenter", onPointerEnter);
+      scroll.removeEventListener("pointermove", onPointerMove);
+      scroll.removeEventListener("pointerleave", onPointerLeave);
+    };
+  }, [beginModFreeze, isTimeline]);
+
   React.useLayoutEffect(() => {
     applyLayout();
     const scroll = scrollRef.current;
@@ -1670,7 +1930,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       window.cancelAnimationFrame(raf);
       if (ro) ro.disconnect();
     };
-  }, [applyLayout, isLive, isTimeline, start, zoom]);
+  }, [applyLayout, isLive, isTimeline, start, zoom, fightKey]);
 
   if (!isTimeline) {
     return e(
@@ -1876,7 +2136,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   return e(
     "div",
     {
-      className: "ecu-meter-timeline",
+      className: "ecu-meter-timeline" + (trackFrozen ? " is-tl-frozen" : ""),
       ref: rootRef,
       style: { ...PIXEL_TEXT },
     },
@@ -1925,6 +2185,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
           deaths.length ? ` · ${deaths.length} deaths` : "",
           ` · ${lanes.length} players`,
           " · Ctrl+wheel zoom",
+          isLive ? " · Shift hold freeze" : "",
         ),
       ),
       e(
@@ -2046,5 +2307,6 @@ export function MeterTimelineView(props: {
     rosterSig: rosterSigNow(),
     deathCount: seg ? seg.deaths.length : 0,
     combatLive: !!(seg && seg.endedAt == null),
+    fightKey: timelineFightKey(props.segmentRef, seg),
   });
 }
