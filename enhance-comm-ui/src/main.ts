@@ -1,9 +1,13 @@
 import { getReact, getReactDOM, e } from "./host/react";
-import { startTick, type GameSnapshot } from "./tick";
+import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
-import { startMeterEngine } from "./meters/meterEngine";
-import { startSessionKills } from "./kpi/sessionKills";
+import {
+  isMeterInCombat,
+  startMeterEngine,
+  updateMeterContext,
+} from "./meters/meterEngine";
+import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
 import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
@@ -145,7 +149,15 @@ function Root(): any {
   const [snap, setSnap] = React.useState(null as GameSnapshot | null);
 
   React.useEffect(() => {
-    const stopTick = startTick((s) => setSnap(s));
+    let lastKey = "";
+    const stopTick = startTick((s) => {
+      updateMeterContext(s.entities);
+      updateKillContext(s.entities);
+      const key = `${snapshotUiKey(s)}|${isMeterInCombat() ? 1 : 0}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      setSnap(s);
+    });
     return () => stopTick();
   }, []);
 

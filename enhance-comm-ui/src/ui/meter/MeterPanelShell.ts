@@ -39,7 +39,6 @@ import { runMeterQuery, segmentTitle } from "../../meters/meterQuery";
 import { meterHasSnap } from "../../meters/meterWindowGroup";
 import { getSettings, patchSettings } from "../../lib/settings";
 import type { MeterBookmark } from "../../meters/meterTypes";
-import { subscribeMeterTick } from "../../meters/meterUiTick";
 import type {
   CombatSegment,
   MeterInstance,
@@ -123,7 +122,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
   } = props;
   const arrange = !!props.arrange;
   const locked = props.locked === true;
-  const [tick, setTick] = React.useState(0);
   const [tip, setTip] = React.useState(
     null as null | {
       kind: MeterCooltipKind;
@@ -254,7 +252,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
 
   React.useEffect(() => {
     injectMeterChromeCss();
-    return subscribeMeterTick(() => setTick((n: number) => n + 1));
   }, []);
 
   React.useEffect(() => {
@@ -270,8 +267,6 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
     entities,
     now: Date.now(),
   });
-  void tick;
-
   const inCombat = isMeterInCombat();
   const presNow = presentationFor(instance);
   const isToolPanel = presNow === "details" || isReportPresentation(presNow);

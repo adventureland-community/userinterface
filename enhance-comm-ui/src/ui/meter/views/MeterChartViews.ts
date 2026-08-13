@@ -207,6 +207,7 @@ export function MeterSeriesView(props: {
     paintLive();
     if (isCompare) return;
     return subscribeMeterTick(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       if (propsRef.current.instance.rtPaused) return;
       if (propsRef.current.segmentRef !== "current") return;
       paintLive();

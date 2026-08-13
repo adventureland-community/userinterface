@@ -22,7 +22,10 @@ export function MeterStatusbar(props: MeterStatusbarProps): any {
   const React = getReact();
   const [, tick] = React.useState(0);
   React.useEffect(() => {
-    const id = window.setInterval(() => tick((n) => n + 1), 1000);
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      tick((n) => n + 1);
+    }, 1000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -49,7 +52,8 @@ export function MeterStatusbar(props: MeterStatusbarProps): any {
       for (let i = 0; i < dmg.rows.length; i++) totalDmg += dmg.rows[i].value;
     }
     if (heal.kind === "ranked") {
-      for (let i = 0; i < heal.rows.length; i++) totalHeal += heal.rows[i].value;
+      for (let i = 0; i < heal.rows.length; i++)
+        totalHeal += heal.rows[i].value;
     }
   }
 

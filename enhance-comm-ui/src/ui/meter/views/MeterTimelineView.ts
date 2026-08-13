@@ -1538,6 +1538,9 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     clock: null as Element | null,
     wall: null as Element | null,
     scale: null as Element | null,
+    clockText: "",
+    wallText: "",
+    scaleText: "",
   });
   const laneCacheRef = React.useRef({
     sig: "",
@@ -1672,8 +1675,6 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
           ? Math.max(0, viewTrackW - contentWR)
           : 0;
     const trackWR = padR + contentWR;
-    // Always re-apply — React style diffs must not leave a stale 100% track
-    // width that clips fight history when scrollLeft moves left of “now”.
     if (
       cache.contentW !== contentWR ||
       cache.pad !== padR ||
@@ -1682,20 +1683,30 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       cache.contentW = contentWR;
       cache.pad = padR;
       cache.trackW = trackWR;
+      root.style.setProperty("--tl-pad", `${padR}px`);
+      root.style.setProperty("--tl-content-w", `${contentWR}px`);
+      root.style.setProperty("--tl-track-w", `${trackWR}px`);
     }
-    root.style.setProperty("--tl-pad", `${padR}px`);
-    root.style.setProperty("--tl-content-w", `${contentWR}px`);
-    root.style.setProperty("--tl-track-w", `${trackWR}px`);
     if (!cache.clock || !root.contains(cache.clock)) {
       cache.clock = root.querySelector("[data-tl-clock]");
       cache.wall = root.querySelector("[data-tl-wall]");
       cache.scale = root.querySelector("[data-tl-scale]");
     }
-    if (cache.clock) cache.clock.textContent = fmtClock(elapsed);
-    if (cache.wall) {
-      cache.wall.textContent = fmtWall(startRef.current + elapsed * 1000);
+    const clockText = fmtClock(elapsed);
+    if (cache.clock && cache.clockText !== clockText) {
+      cache.clockText = clockText;
+      cache.clock.textContent = clockText;
     }
-    if (cache.scale) cache.scale.textContent = `${Math.round(ppsNow)} px/s`;
+    const wallText = fmtWall(startRef.current + elapsed * 1000);
+    if (cache.wall && cache.wallText !== wallText) {
+      cache.wallText = wallText;
+      cache.wall.textContent = wallText;
+    }
+    const scaleText = `${Math.round(ppsNow)} px/s`;
+    if (cache.scale && cache.scaleText !== scaleText) {
+      cache.scaleText = scaleText;
+      cache.scale.textContent = scaleText;
+    }
     // Grow the ruler only when the discrete step list changes (not every frame).
     const step = tickStepSec(ppsNow);
     const last = Math.max(0, Math.floor(elapsed + 1e-9));
@@ -1774,6 +1785,9 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       clock: null,
       wall: null,
       scale: null,
+      clockText: "",
+      wallText: "",
+      scaleText: "",
     };
     tickSigRef.current = "";
     viewSnapRef.current = "";
@@ -1922,7 +1936,9 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     if (!isLive) return () => ro && ro.disconnect();
     let raf = 0;
     const loop = () => {
-      applyLayout();
+      if (!(typeof document !== "undefined" && document.hidden)) {
+        applyLayout();
+      }
       raf = window.requestAnimationFrame(loop);
     };
     raf = window.requestAnimationFrame(loop);

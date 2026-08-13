@@ -313,31 +313,37 @@ export function patchRankedRows(
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i];
     const el = kids[i];
-    el.dataset.id = r.id || String(i);
-    el.className =
+    const nextId = r.id || String(i);
+    if (el.dataset.id !== nextId) el.dataset.id = nextId;
+    const nextClass =
       "ecu-meter-row" +
       (r.you ? " you" : "") +
       (r.selected ? " is-selected" : "") +
       (isTotalRow(r) ? " is-total" : "") +
       (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") +
       (merged.onClick || merged.onContextMenu ? " clickable" : "");
+    if (el.className !== nextClass) el.className = nextClass;
     const fill = el.querySelector(".ecu-meter-fill") as HTMLElement | null;
     const pct = barWidthPct(r, max);
     if (fill) {
-      fill.style.width = pct + "%";
-      fill.style.background = rowColor(r);
+      const width = pct + "%";
+      const bg = rowColor(r);
+      if (fill.style.width !== width) fill.style.width = width;
+      if (fill.style.background !== bg) fill.style.background = bg;
     }
     const rank = el.querySelector(".ecu-meter-rank");
-    if (rank && merged.rank !== false) {
-      rank.textContent = `${r.rank != null ? r.rank : i + 1}.`;
+    const rankText = `${r.rank != null ? r.rank : i + 1}.`;
+    if (rank && merged.rank !== false && rank.textContent !== rankText) {
+      rank.textContent = rankText;
     }
     const label = el.querySelector(".ecu-meter-label");
-    if (label) label.textContent = r.name;
+    if (label && label.textContent !== r.name) label.textContent = r.name;
     const nameHost = el.querySelector(".ecu-meter-who") as HTMLElement | null;
     if (nameHost) syncRowIcon(nameHost, r, merged);
     const vals = el.querySelector(".ecu-meter-vals");
     const share = total ? (r.value / total) * 100 : 0;
-    if (vals) vals.innerHTML = formatRowValue(r, share, merged);
+    const nextVals = formatRowValue(r, share, merged);
+    if (vals && vals.innerHTML !== nextVals) vals.innerHTML = nextVals;
     bindRow(el, r, merged);
   }
   (container as any)._barOpts = merged;
