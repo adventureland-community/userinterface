@@ -1,57 +1,82 @@
 /**
  * Comm UI meter panel instances — extracted from CommUI render tree.
+ * Same window chrome as HUD: PositionedPanel owns layout-edit header,
+ * play-arrange drag bar, lock / ungroup / WC. Meter titlebar is tools only.
  */
 
 import { e } from "../../../host/react";
 import type { EntityLike } from "../../../host/globals";
 import type { PanelPos } from "../../../lib/layout";
-import { METER_PANEL_STYLE, METER_FRAME_DEFAULT } from "../../../lib/frameSizes";
+import {
+  METER_PANEL_STYLE,
+  METER_FRAME_DEFAULT,
+} from "../../../lib/frameSizes";
 import { getMeterAppearance } from "../../../meters/meterAppearance";
-import { meterHidesWhenEmpty, type ReportKind } from "../../../meters/meterCatalog";
+import {
+  meterHidesWhenEmpty,
+  type ReportKind,
+} from "../../../meters/meterCatalog";
 import { isMeterInCombat } from "../../../meters/meterEngine";
 import { runMeterQuery } from "../../../meters/meterQuery";
 import {
   applyGroupFrameSize,
   getMeterGroup,
-  meterHasSnap,
 } from "../../../meters/meterWindowGroup";
 import type { MeterInstance } from "../../../meters/meterTypes";
+import type { FocusInspectorOpts } from "../../hooks/useCommMeterInstances";
 import { patchSettings } from "../../../lib/settings";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
 import { MeterPanelShell } from "../../meter/MeterPanelShell";
 
 export type CommMeterPanelsCtx = {
-  snap: { entities: EntityLike[]; observingId?: string; observing?: EntityLike };
+  snap: {
+    entities: EntityLike[];
+    observingId?: string;
+    observing?: EntityLike;
+  };
   meterInstances: MeterInstance[];
   layoutEdit: boolean;
   metersHidden: boolean;
   altHeld: boolean;
-  meterSnapDragId: string | null;
-  meterSnapPeerId: string | null;
+  snapDragId: string | null;
+  snapPeerId: string | null;
+  /** Details: large instance ids after ~1s of left-hold drag. */
+  showWindowIds: boolean;
+  windowNumberById: Record<string, number>;
   peerLayout: Record<string, PanelPos>;
   viewportProfile: string;
   closedMeters: MeterInstance[];
+  closedWindows: Array<{ id: string; label: string }>;
   meterIsLocked: (inst: MeterInstance) => boolean;
-  dragRefFor: (id: string) => { current: HTMLElement | null };
-  moveMeterWithGroup: (id: string, pos: PanelPos) => void;
-  onMeterDragStart: (id: string) => void;
-  onMeterDragMove: (id: string) => void;
-  snapMeterAfterMove: (id: string) => void;
+  onMove: (id: string, pos: PanelPos) => void;
+  onDragStart: (id: string) => void;
+  onDragMove: (id: string) => void;
+  onMoveEnd: (id: string) => void;
+  /** Details SetToplevel — raise meter on click / drag. */
+  onActivate: (id: string) => void;
+  onWindowScale: (id: string, scale: number) => void;
   patchMeter: (id: string, partial: Partial<MeterInstance>) => void;
-  setMeterInstances: (
-    fn: (prev: MeterInstance[]) => MeterInstance[],
-  ) => void;
+  setMeterInstances: (fn: (prev: MeterInstance[]) => MeterInstance[]) => void;
   setMetersHiddenPersist: (hidden: boolean) => void;
   reopenClosedMeter: (id: string) => void;
-  focusInspector: (actorId: string, name: string) => void;
+  onReopenWindow: (id: string) => void;
+  focusInspector: (
+    actorId: string,
+    name: string,
+    opts?: FocusInspectorOpts,
+  ) => void;
   focusReport: (
     kind: ReportKind,
-    from?: { selectedset?: MeterInstance["selectedset"]; partyFocus?: MeterInstance["partyFocus"] },
+    from?: {
+      selectedset?: MeterInstance["selectedset"];
+      partyFocus?: MeterInstance["partyFocus"];
+    },
   ) => void;
   duplicateMeter: (id: string) => void;
   removeMeter: (id: string) => void;
   closeMeterRuntime: (id: string) => void;
-  ungroupMeterPanel: (id: string) => void;
+  ungroupWindow: (id: string) => void;
+  windowHasSnap: (id: string) => boolean;
   setMeterAddOpen: (open: boolean) => void;
   onToolbarInteract: () => void;
 };
@@ -78,6 +103,8 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     const locked = ctx.meterIsLocked(inst);
     const playArrange = !ctx.layoutEdit && (!locked || ctx.altHeld);
     const arrange = ctx.layoutEdit || playArrange;
+    const hasSnap = ctx.windowHasSnap(inst.id);
+    const windowNumber = ctx.windowNumberById[inst.id];
     const app = getMeterAppearance();
     let meterOpacity = inst.opacity != null ? inst.opacity : 1;
     const inCombat = isMeterInCombat();
@@ -87,6 +114,10 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     if (!inCombat && app.autoHideOoc) {
       meterOpacity = Math.min(meterOpacity, app.idleAlpha);
     }
+    const pos: PanelPos = {
+      ...inst.pos,
+      scale: inst.scale != null ? inst.scale : inst.pos.scale,
+    };
     out.push(
       e(
         PositionedPanel,
@@ -94,29 +125,30 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           key: inst.id,
           id: inst.id,
           label: inst.label || inst.id,
-          pos: inst.pos,
+          pos,
           editing: ctx.layoutEdit,
           editChrome: "anchors",
           movable: playArrange,
-          showMoveGrip: false,
           softAvoid: false,
-          extraDragRef: ctx.dragRefFor(inst.id),
-          onMove: (_id: string, pos: PanelPos) =>
-            ctx.moveMeterWithGroup(inst.id, pos),
-          onDragStart: () => ctx.onMeterDragStart(inst.id),
-          onDragMove: () => ctx.onMeterDragMove(inst.id),
-          onMoveEnd: () => ctx.snapMeterAfterMove(inst.id),
+          onMove: (_id: string, nextPos: PanelPos) =>
+            ctx.onMove(inst.id, nextPos),
+          onDragStart: () => ctx.onDragStart(inst.id),
+          onDragMove: () => ctx.onDragMove(inst.id),
+          onMoveEnd: () => ctx.onMoveEnd(inst.id),
+          onActivate: () => ctx.onActivate(inst.id),
+          onWindowScale: (scale: number) => ctx.onWindowScale(inst.id, scale),
           className:
             "ecu-meter-frame" +
-            (playArrange ? " ecu-meter-arrange" : "") +
-            (meterHasSnap(inst) ? " ecu-meter-grouped" : "") +
-            (ctx.meterSnapDragId === inst.id ? " ecu-meter-dragging" : "") +
-            (ctx.meterSnapPeerId === inst.id ? " ecu-meter-snap-target" : ""),
+            (playArrange ? " comm-pos-arrange" : "") +
+            (hasSnap ? " comm-pos-grouped" : "") +
+            (ctx.snapDragId === inst.id ? " comm-pos-dragging" : "") +
+            (ctx.snapPeerId === inst.id ? " comm-pos-snap-target" : ""),
           style: {
             ...METER_PANEL_STYLE,
             width: frameW + "px",
             height: frameH + "px",
             overflow: "visible",
+            ...(typeof inst.zIndex === "number" ? { zIndex: inst.zIndex } : {}),
           },
           closePlacement: "above",
           closeOnHoverOnly: true,
@@ -133,13 +165,27 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           peerLayout: ctx.peerLayout,
           viewportProfile: ctx.viewportProfile,
           interactiveBody: ctx.layoutEdit,
-          onClose: () => ctx.patchMeter(inst.id, { visible: false }),
+          locked,
+          onToggleLock: () => {
+            ctx.patchMeter(inst.id, { locked: !locked });
+          },
+          onUngroup: hasSnap ? () => ctx.ungroupWindow(inst.id) : undefined,
+          closedWindows: ctx.closedWindows,
+          onReopenWindow: ctx.onReopenWindow,
+          onCreateWindow: () => ctx.duplicateMeter(inst.id),
+          onClose: () =>
+            ctx.layoutEdit
+              ? ctx.removeMeter(inst.id)
+              : ctx.closeMeterRuntime(inst.id),
           onShow: () => ctx.patchMeter(inst.id, { visible: true }),
+          windowNumber,
+          showWindowIds: ctx.showWindowIds,
         },
         e(
           "div",
           {
             style: {
+              position: "relative",
               width: "100%",
               height: "100%",
               overflow: playArrange || ctx.layoutEdit ? "hidden" : "visible",
@@ -153,14 +199,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             layoutEdit: ctx.layoutEdit,
             arrange,
             locked,
-            titlebarDragRef: ctx.dragRefFor(inst.id),
-            onToggleLock: () => {
-              ctx.patchMeter(inst.id, { locked: !locked });
-            },
-            onUngroup: meterHasSnap(inst)
-              ? () => ctx.ungroupMeterPanel(inst.id)
-              : undefined,
-            resizeGroupIds: meterHasSnap(inst)
+            resizeGroupIds: hasSnap
               ? getMeterGroup(ctx.meterInstances, inst.id)
                   .map((g) => g.id)
                   .filter((gid) => gid !== inst.id)
@@ -173,10 +212,13 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             onPatchInstance: (partial: Partial<MeterInstance>) => {
               if (partial.frameW != null || partial.frameH != null) {
                 ctx.setMeterInstances((prev: MeterInstance[]) => {
-                  const next = applyGroupFrameSize(prev, inst.id, {
+                  let next = applyGroupFrameSize(prev, inst.id, {
                     frameW: partial.frameW,
                     frameH: partial.frameH,
-                  }).map((m) => (m.id === inst.id ? { ...m, ...partial } : m));
+                  });
+                  next = next.map((m) =>
+                    m.id === inst.id ? { ...m, ...partial } : m,
+                  );
                   patchSettings({ meterInstances: next });
                   return next;
                 });

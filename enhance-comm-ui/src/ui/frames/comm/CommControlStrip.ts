@@ -15,6 +15,10 @@ export type CommControlStripProps = {
   viewportProfile: ViewportProfile;
 };
 
+function stopPtr(ev: any) {
+  if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+}
+
 export function CommControlStrip(props: CommControlStripProps): any {
   const touchPad = isTouchishProfile(props.viewportProfile);
   const toggleBtnPad = touchPad ? "10px 16px" : "5px 12px";
@@ -50,15 +54,9 @@ export function CommControlStrip(props: CommControlStripProps): any {
           position: "relative",
           zIndex: 1,
         },
-        onPointerDown: (ev: any) => {
-          if (ev && typeof ev.stopPropagation === "function") {
-            ev.stopPropagation();
-          }
-        },
+        onPointerDown: stopPtr,
         onClick: (ev: any) => {
-          if (ev && typeof ev.stopPropagation === "function") {
-            ev.stopPropagation();
-          }
+          stopPtr(ev);
           props.toggleLayoutEdit();
         },
       },
@@ -81,6 +79,7 @@ export function CommControlStrip(props: CommControlStripProps): any {
           textShadow: "none",
           fontWeight: "normal",
         },
+        onPointerDown: stopPtr,
         onClick: () => props.setMetersHiddenPersist(!props.metersHidden),
       },
       props.metersHidden ? "Meters: OFF" : "Meters",
@@ -102,6 +101,7 @@ export function CommControlStrip(props: CommControlStripProps): any {
           textShadow: "none",
           fontWeight: "normal",
         },
+        onPointerDown: stopPtr,
         onClick: () => props.onAddMeter(),
       },
       "+ Meter",
@@ -122,6 +122,7 @@ export function CommControlStrip(props: CommControlStripProps): any {
           textShadow: "none",
           fontWeight: "normal",
         },
+        onPointerDown: stopPtr,
         onClick: () => props.onReplayIntroTour(),
       },
       "Intro",

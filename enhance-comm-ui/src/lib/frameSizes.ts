@@ -71,6 +71,9 @@ export const METER_PANEL_STYLE: Record<string, any> = {
   width: "320px",
   minWidth: "240px",
   minHeight: "140px",
+  // Fill-screen ceiling — not a design max. Defaults still come from *FRAME_DEFAULT.
+  maxWidth: "100vw",
+  maxHeight: "100vh",
   boxSizing: "border-box",
 };
 
@@ -78,9 +81,32 @@ export const METER_FRAME_DEFAULT = { w: 320, h: 200 };
 /** Inspector needs room for overview + ability tabs. */
 export const INSPECTOR_FRAME_DEFAULT = { w: 560, h: 400 };
 /** Shared Encounter / Deaths / Timeline report window. */
-export const REPORT_FRAME_DEFAULT = { w: 480, h: 320 };
+export const REPORT_FRAME_DEFAULT = { w: 780, h: 520 };
 export const METER_FRAME_MIN = { w: 240, h: 140 };
-export const METER_FRAME_MAX = { w: 720, h: 560 };
+
+/**
+ * Resize ceiling is the layout root / viewport so a window can fill the screen.
+ * (Previously a hard 960×720 cap in METER_FRAME_MAX.)
+ */
+export function clampMeterFrame(
+  w: number,
+  h: number,
+  viewportW: number,
+  viewportH: number,
+): { frameW: number; frameH: number } {
+  const maxW =
+    Number.isFinite(viewportW) && viewportW > 0
+      ? Math.round(viewportW)
+      : Number.POSITIVE_INFINITY;
+  const maxH =
+    Number.isFinite(viewportH) && viewportH > 0
+      ? Math.round(viewportH)
+      : Number.POSITIVE_INFINITY;
+  return {
+    frameW: Math.min(maxW, Math.max(METER_FRAME_MIN.w, Math.round(w))),
+    frameH: Math.min(maxH, Math.max(METER_FRAME_MIN.h, Math.round(h))),
+  };
+}
 
 /** Kill KPI panel. */
 export const KILLS_PANEL_STYLE: Record<string, any> = {

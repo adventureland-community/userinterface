@@ -21,8 +21,18 @@ import {
 } from "../hooks/useContextualTourTriggers";
 import { useCommMeterInstances } from "../hooks/useCommMeterInstances";
 import { usePanelLayoutState } from "../hooks/usePanelLayoutState";
+import { useCommWindowActions } from "../hooks/useCommWindowActions";
 import { useBagBridge } from "../hooks/useBagBridge";
+import { applyBagLayoutPos } from "../../host/inventory";
 import { useSelectionFromXTarget } from "../hooks/useSelectionFromXTarget";
+import { PANEL_LABELS, PANEL_IDS, type PanelId } from "../../lib/layout";
+import { canCloseWindow } from "../../lib/commWindow";
+import { commWindowHasSnap } from "../../lib/commWindowGroup";
+import { ensureWindowNumbers } from "../../lib/commWindowNumbers";
+import {
+  isLayoutGuideActive,
+  subscribeLayoutGuide,
+} from "../../lib/layoutGuide";
 import { LayoutEditChrome } from "./comm/LayoutEditChrome";
 import { CommMeterAddDialog } from "./comm/CommMeterAddDialog";
 import { buildCommMeterPanels } from "./comm/CommMeterPanels";
@@ -32,6 +42,7 @@ import {
   renderCommPanels,
   renderCommTogglesPanel,
 } from "./comm/CommPanelLayout";
+import { SnapGuideLine } from "../chrome/SnapGuideLine";
 import { getMapData } from "./MapInfo";
 import { isTouchishProfile } from "../../lib/viewport";
 
@@ -49,10 +60,13 @@ export function CommUI(props: CommUIProps): any {
     layoutEdit,
     setLayoutEdit,
     layout,
+    setLayout,
     viewportProfile,
     layoutProfileMode,
     setLayoutProfileMode,
-    onMove,
+    panelIsLocked,
+    setPanelLocked,
+    altHeld,
     resetLayout,
     importLayouts,
     exportLayouts,
@@ -68,6 +82,35 @@ export function CommUI(props: CommUIProps): any {
 
   const meters = useCommMeterInstances(layout);
 
+  const windowActions = useCommWindowActions({
+    layout,
+    setLayout,
+    meters: meters.meterInstances,
+    setMeters: meters.setMeterInstances,
+    viewportProfile,
+    applyBagPos: applyBagLayoutPos,
+  });
+
+  const closedWindows: Array<{ id: string; label: string }> = [];
+  const hudIds = Object.keys(PANEL_LABELS) as PanelId[];
+  for (let i = 0; i < hudIds.length; i++) {
+    const id = hudIds[i];
+    if (!canCloseWindow(id)) continue;
+    if (visible(id)) continue;
+    closedWindows.push({ id, label: PANEL_LABELS[id] || id });
+  }
+  for (let i = 0; i < meters.closedMeters.length; i++) {
+    const m = meters.closedMeters[i];
+    closedWindows.push({ id: m.id, label: m.label || m.id });
+  }
+
+  const reopenWindow = (id: string) => {
+    if (canCloseWindow(id)) {
+      setVisible(id as PanelId, true);
+      return;
+    }
+    meters.reopenClosedMeter(id);
+  };
   const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
   const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
@@ -175,6 +218,13 @@ export function CommUI(props: CommUIProps): any {
     root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
   }, [viewportProfile]);
 
+  const [layoutGuideActive, setLayoutGuideActive] = React.useState(() =>
+    isLayoutGuideActive(),
+  );
+  React.useEffect(() => subscribeLayoutGuide(() => {
+    setLayoutGuideActive(isLayoutGuideActive());
+  }), []);
+
   const combat = combatSignals(snap.entities);
   const onCrypt = getMapData(snap.entities).map === "crypt";
 
@@ -186,15 +236,55 @@ export function CommUI(props: CommUIProps): any {
     meterInstances: meters.meterInstances,
   });
 
+  const meterIdKey = (() => {
+    const parts: string[] = [];
+    for (let i = 0; i < meters.meterInstances.length; i++) {
+      parts.push(meters.meterInstances[i].id);
+    }
+    parts.push("|");
+    for (let i = 0; i < meters.closedMeters.length; i++) {
+      parts.push(meters.closedMeters[i].id);
+    }
+    return parts.join(",");
+  })();
+  const windowNumberById = React.useMemo(() => {
+    const ids: string[] = PANEL_IDS.slice();
+    for (let i = 0; i < meters.meterInstances.length; i++) {
+      ids.push(meters.meterInstances[i].id);
+    }
+    for (let i = 0; i < meters.closedMeters.length; i++) {
+      ids.push(meters.closedMeters[i].id);
+    }
+    return ensureWindowNumbers(ids);
+    // meterIdKey tracks instance id set; closed + open meters share the pool.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meterIdKey]);
+
   const panelDeps = {
     snap,
     layoutEdit,
     layout,
+    meterInstances: meters.meterInstances,
     peerLayout: meters.peerLayout,
     viewportProfile,
     visible,
     opacityFor,
-    onMove,
+    onMove: (id: PanelId, pos: any) => windowActions.moveWindow(id, pos),
+    onMoveEnd: (id: PanelId) => windowActions.snapAfterMove(id),
+    onPanelDragStart: (id: PanelId) => windowActions.onDragStart(id),
+    onPanelDragMove: (id: PanelId) => windowActions.onDragMove(id),
+    ungroupPanel: (id: PanelId) => windowActions.ungroupWindow(id),
+    panelSnapDragId: windowActions.snapDragId,
+    panelSnapPeerId: windowActions.snapPeerId,
+    windowNumberById,
+    showWindowIds: windowActions.showWindowIds,
+    onWindowScale: (id: string, scale: number) =>
+      windowActions.setWindowScale(id, scale),
+    panelIsLocked,
+    setPanelLocked,
+    altHeld,
+    closedWindows,
+    onReopenWindow: reopenWindow,
     setVisible,
     setOpacity,
     selectedEntity,
@@ -218,28 +308,35 @@ export function CommUI(props: CommUIProps): any {
     meterInstances: meters.meterInstances,
     layoutEdit,
     metersHidden,
-    altHeld: meters.altHeld,
-    meterSnapDragId: meters.meterSnapDragId,
-    meterSnapPeerId: meters.meterSnapPeerId,
+    altHeld,
+    snapDragId: windowActions.snapDragId,
+    snapPeerId: windowActions.snapPeerId,
+    showWindowIds: windowActions.showWindowIds,
+    windowNumberById,
     peerLayout: meters.peerLayout,
     viewportProfile,
     closedMeters: meters.closedMeters,
+    closedWindows,
     meterIsLocked: meters.meterIsLocked,
-    dragRefFor: meters.dragRefFor,
-    moveMeterWithGroup: meters.moveMeterWithGroup,
-    onMeterDragStart: meters.onMeterDragStart,
-    onMeterDragMove: meters.onMeterDragMove,
-    snapMeterAfterMove: meters.snapMeterAfterMove,
+    onMove: (id, pos) => windowActions.moveWindow(id, pos),
+    onDragStart: (id) => windowActions.onDragStart(id),
+    onDragMove: (id) => windowActions.onDragMove(id),
+    onMoveEnd: (id) => windowActions.snapAfterMove(id),
+    onActivate: (id) => meters.raiseMeterToFront(id),
+    onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
     patchMeter: meters.patchMeter,
     setMeterInstances: meters.setMeterInstances,
     setMetersHiddenPersist,
     reopenClosedMeter: meters.reopenClosedMeter,
+    onReopenWindow: reopenWindow,
     focusInspector: meters.focusInspector,
     focusReport: meters.focusReport,
     duplicateMeter: meters.duplicateMeter,
     removeMeter: meters.removeMeter,
     closeMeterRuntime: meters.closeMeterRuntime,
-    ungroupMeterPanel: meters.ungroupMeterPanel,
+    ungroupWindow: (id) => windowActions.ungroupWindow(id),
+    windowHasSnap: (id) =>
+      commWindowHasSnap(windowActions.graphState(), id),
     setMeterAddOpen,
     onToolbarInteract: triggerMeterToolbarTour,
   });
@@ -255,7 +352,14 @@ export function CommUI(props: CommUIProps): any {
         overflow: "hidden",
       },
     },
-    layoutEdit ? e(LayoutEditGrid) : null,
+    layoutEdit || layoutGuideActive ? e(LayoutEditGrid) : null,
+
+    e(SnapGuideLine, {
+      dragId: windowActions.snapDragId,
+      snapPeerId: windowActions.snapPeerId,
+      nearPeerId: windowActions.nearPeerId,
+      visible: windowActions.showWindowIds,
+    }),
 
     layoutEdit
       ? e(LayoutEditChrome, {

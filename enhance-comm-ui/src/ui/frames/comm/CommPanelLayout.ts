@@ -5,11 +5,13 @@
 import { e } from "../../../host/react";
 import type { GameSnapshot } from "../../../tick";
 import { resolveTarget } from "../../../tick";
-import type { EntityLike } from "../../../host/globals";
 import { findEntity } from "../../../queries/entities";
 import type { CombatSignals } from "../../../queries/combatSignals";
 import { type PanelId, type PanelPos } from "../../../lib/layout";
+import { canCloseWindow, canGroupWindow } from "../../../lib/commWindow";
+import { commWindowHasSnap } from "../../../lib/commWindowGroup";
 import type { ViewportProfile } from "../../../lib/viewport";
+import type { MeterInstance } from "../../../meters/meterTypes";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
 import { Players } from "../Players";
 import { MapInfo } from "../MapInfo";
@@ -49,15 +51,31 @@ export type CommPanelLayoutDeps = {
   snap: GameSnapshot;
   layoutEdit: boolean;
   layout: Record<PanelId, PanelPos>;
+  meterInstances: MeterInstance[];
   peerLayout: Record<string, PanelPos>;
   viewportProfile: ViewportProfile;
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
   onMove: (id: PanelId, pos: PanelPos) => void;
+  onMoveEnd?: (id: PanelId, pos: PanelPos) => void;
+  onPanelDragStart?: (id: PanelId) => void;
+  onPanelDragMove?: (id: PanelId) => void;
+  ungroupPanel?: (id: PanelId) => void;
+  panelSnapDragId?: string | null;
+  panelSnapPeerId?: string | null;
+  /** Stable window numbers (HUD + meters share one pool). */
+  windowNumberById?: Record<string, number>;
+  showWindowIds?: boolean;
+  onWindowScale?: (id: string, scale: number) => void;
+  panelIsLocked: (id: PanelId) => boolean;
+  setPanelLocked: (id: PanelId, locked: boolean) => void;
+  altHeld: boolean;
+  closedWindows?: Array<{ id: string; label: string }>;
+  onReopenWindow?: (id: string) => void;
   setVisible: (id: PanelId, visible: boolean) => void;
   setOpacity: (id: PanelId, value: number) => void;
-  selectedEntity: EntityLike | null | undefined;
-  setSelectedEntity: (entity: EntityLike | null) => void;
+  selectedEntity: string | undefined;
+  setSelectedEntity: (entity: string | undefined) => void;
   closePaperdoll: () => void;
   focusUnitId: string | null | undefined;
   combat: CombatSignals;
@@ -74,17 +92,42 @@ export type CommPanelLayoutDeps = {
 
 function createPanelRenderer(deps: CommPanelLayoutDeps) {
   return (id: PanelId, child: any, opts?: CommPanelOpts) => {
-    const isClosablePanel = opts?.closable === true;
+    const isClosablePanel = opts?.closable === true || canCloseWindow(id);
     const isHidden = isClosablePanel && !deps.visible(id);
     if (isHidden && !deps.layoutEdit) return null;
     if (opts?.empty && !deps.layoutEdit) return null;
+    const locked = deps.panelIsLocked(id);
+    const playArrange =
+      !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles";
+    const groupable = canGroupWindow(id);
+    const grouped =
+      groupable &&
+      commWindowHasSnap(
+        { layout: deps.layout, meters: deps.meterInstances },
+        id,
+      );
+    const classBits: string[] = [];
+    if (playArrange) classBits.push("comm-pos-arrange");
+    if (grouped) classBits.push("comm-pos-grouped");
+    if (deps.panelSnapDragId === id) classBits.push("comm-pos-dragging");
+    if (deps.panelSnapPeerId === id) classBits.push("comm-pos-snap-target");
     return e(
       PositionedPanel,
       {
         id,
         pos: deps.layout[id],
         editing: deps.layoutEdit,
+        movable: playArrange,
+        // Play-arrange HUD grip. `grip` chrome (toggles) also needs ⠿ in
+        // layout edit — playArrange is false then, so keep the handle on.
+        showMoveGrip: playArrange || opts?.editChrome === "grip",
         onMove: deps.onMove,
+        onMoveEnd: playArrange || deps.layoutEdit ? deps.onMoveEnd : undefined,
+        onDragStart:
+          playArrange || deps.layoutEdit ? deps.onPanelDragStart : undefined,
+        onDragMove:
+          playArrange || deps.layoutEdit ? deps.onPanelDragMove : undefined,
+        softAvoid: groupable ? false : undefined,
         style: opts?.style,
         hidden: isHidden,
         hiddenBodyStyle: opts?.hiddenBodyStyle,
@@ -97,8 +140,25 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         viewportProfile: deps.viewportProfile,
         interactiveBody: opts?.interactiveBody,
         editChrome: opts?.editChrome,
+        className: classBits.length ? classBits.join(" ") : undefined,
+        locked,
+        onToggleLock:
+          id === "toggles" ? undefined : () => deps.setPanelLocked(id, !locked),
+        onUngroup:
+          grouped && deps.ungroupPanel
+            ? () => deps.ungroupPanel!(id)
+            : undefined,
+        closedWindows: deps.closedWindows,
+        onReopenWindow: deps.onReopenWindow,
         onClose: isClosablePanel ? () => deps.setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => deps.setVisible(id, true) : undefined,
+        windowNumber: deps.windowNumberById
+          ? deps.windowNumberById[id]
+          : undefined,
+        showWindowIds: deps.showWindowIds,
+        onWindowScale: deps.onWindowScale
+          ? (scale: number) => deps.onWindowScale!(id, scale)
+          : undefined,
       },
       child,
     );

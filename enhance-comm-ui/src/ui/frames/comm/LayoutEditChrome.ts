@@ -467,8 +467,8 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
           onClick: toggleFree,
           style: btnStyle(freePlacement, true),
           title: freePlacement
-            ? "Free placement: no grid snap (peer + screen-edge magnets)"
-            : `Snap to square ${stepLabel} fine grid`,
+            ? "Free placement: no grid snap (layout edit + play arrange; peer + screen-edge magnets)"
+            : `Snap to square ${stepLabel} fine grid (layout edit + unlocked/play arrange)`,
         },
         freePlacement ? "Free" : "Grid",
       ),
@@ -542,8 +542,8 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         },
       },
       freePlacement
-        ? "Free drag/resize · peer + screen-edge · Ctrl+Shift+L"
-        : `${stepLabel} snap move/resize · Shift=free size · Ctrl+Shift+L`,
+        ? "Free drag/resize (edit + play) · peer + screen-edge · Ctrl+Shift+L"
+        : `${stepLabel} fine snap (edit + unlocked play) · Shift=free size · Ctrl+Shift+L`,
     ),
 
     status

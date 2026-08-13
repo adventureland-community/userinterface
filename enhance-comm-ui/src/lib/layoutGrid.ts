@@ -10,8 +10,9 @@ export type LayoutGridStepPreset = (typeof LAYOUT_GRID_STEP_PRESETS)[number];
 export const LAYOUT_GRID_MAJOR_PCTS = [0, 25, 50, 75, 100];
 
 /**
- * Nested guide weight (eAlign-style): fine = snap step, medium = 2×,
- * coarse = 4×, edge = 0/50/100 emphasis.
+ * Nested guide weight (e769f28): fine = snap step (1×, smallest),
+ * medium = 2×, coarse = 4×, edge = 0/50/100 emphasis.
+ * Snap always uses the fine 1× cell via `squareGridMetrics`.
  */
 export type GridLineTier = "fine" | "medium" | "coarse" | "edge";
 
@@ -140,8 +141,8 @@ function mapToSortedLines(map: Map<number, GridLineTier>): TieredGridLine[] {
 }
 
 /**
- * Nested fine / medium (2×) / coarse (4×) guides for one viewport.
- * Snap should still use the fine `step` via `squareGridMetrics`.
+ * Nested 1× / 2× / 4× / edge guides (e769f28). Fine 1× is the snap cell;
+ * coarser lines are visual hierarchy only.
  */
 export function squareGridTieredLines(
   step: number,
@@ -166,6 +167,21 @@ export function squareGridTieredLines(
     cellPx,
     x: mapToSortedLines(xMap),
     y: mapToSortedLines(yMap),
+  };
+}
+
+/** Snap a panel anchor (x%, y%) onto the fine square grid (1× cell). */
+export function snapPosToFineGrid(
+  x: number,
+  y: number,
+  step: number,
+  widthPx: number,
+  heightPx: number,
+): { x: number; y: number } {
+  const metrics = squareGridMetrics(step, widthPx, heightPx);
+  return {
+    x: snapToAxisPercents(x, metrics.xPercents, false),
+    y: snapToAxisPercents(y, metrics.yPercents, false),
   };
 }
 

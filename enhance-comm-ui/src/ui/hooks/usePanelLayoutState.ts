@@ -1,6 +1,5 @@
 import { getReact } from "../../host/react";
 import {
-  CLOSABLE_PANEL_IDS,
   getSettings,
   importPanelLayouts,
   layoutForProfile,
@@ -18,15 +17,17 @@ import {
   type PanelVisibleMap,
   type ViewportProfile,
 } from "../../lib/settings";
-import {
-  type PanelId,
-  type PanelPos,
-} from "../../lib/layout";
+import { canCloseWindow } from "../../lib/commWindow";
+import { type PanelId, type PanelPos } from "../../lib/layout";
 import { detectViewportProfile } from "../../lib/viewport";
-import { applyBagLayoutPos, isInventoryOpen, openInventory } from "../../host/inventory";
+import {
+  applyBagLayoutPos,
+  isInventoryOpen,
+  openInventory,
+} from "../../host/inventory";
 
 function isClosable(id: PanelId): boolean {
-  return (CLOSABLE_PANEL_IDS as readonly PanelId[]).indexOf(id) >= 0;
+  return canCloseWindow(id);
 }
 
 export type PanelLayoutState = {
@@ -38,10 +39,21 @@ export type PanelLayoutState = {
   layoutEdit: boolean;
   setLayoutEdit: (v: boolean | ((prev: boolean) => boolean)) => void;
   layout: Record<PanelId, PanelPos>;
+  setLayout: (
+    value:
+      | Record<PanelId, PanelPos>
+      | ((prev: Record<PanelId, PanelPos>) => Record<PanelId, PanelPos>),
+  ) => void;
   viewportProfile: ViewportProfile;
   layoutProfileMode: LayoutProfileMode;
   setLayoutProfileMode: (mode: LayoutProfileMode) => void;
-  onMove: (id: PanelId, pos: PanelPos) => void;
+  /** Direct single-panel pos write (non-group). Prefer Comm window actions. */
+  setPanelPos: (id: PanelId, pos: PanelPos) => void;
+  windowsLocked: boolean;
+  setWindowsLockedPersist: (locked: boolean) => void;
+  panelIsLocked: (id: PanelId) => boolean;
+  setPanelLocked: (id: PanelId, locked: boolean) => void;
+  altHeld: boolean;
   resetLayout: () => void;
   importLayouts: (layouts: PanelLayoutsByProfile) => void;
   exportLayouts: () => PanelLayoutsByProfile;
@@ -75,8 +87,29 @@ export function usePanelLayoutState(): PanelLayoutState {
   const [layout, setLayout] = React.useState(() =>
     layoutForProfile(settings0, viewportProfile),
   );
+  const [windowsLocked, setWindowsLocked] = React.useState(
+    () => settings0.windowsLocked !== false,
+  );
+  const [altHeld, setAltHeld] = React.useState(false);
 
-  // Track viewport size for auto profile switching.
+  React.useEffect(() => {
+    const onDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Alt") setAltHeld(true);
+    };
+    const onUp = (ev: KeyboardEvent) => {
+      if (ev.key === "Alt") setAltHeld(false);
+    };
+    const onBlur = () => setAltHeld(false);
+    window.addEventListener("keydown", onDown);
+    window.addEventListener("keyup", onUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onDown);
+      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
   React.useEffect(() => {
     const onResize = () => {
       setDetectedProfile(detectViewportProfile());
@@ -85,7 +118,6 @@ export function usePanelLayoutState(): PanelLayoutState {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Reload layout when the active profile changes.
   React.useEffect(() => {
     const settings = getSettings();
     const next = layoutForProfile(settings, viewportProfile);
@@ -102,13 +134,34 @@ export function usePanelLayoutState(): PanelLayoutState {
     applyBagLayoutPos(next.bag);
   };
 
-  const onMove = (id: PanelId, pos: PanelPos) => {
+  const setWindowsLockedPersist = (locked: boolean) => {
+    setWindowsLocked(locked);
+    saveSettings({ windowsLocked: locked });
+  };
+
+  const panelIsLocked = (id: PanelId): boolean => {
+    const pos = layout[id];
+    if (pos && typeof pos.locked === "boolean") return pos.locked;
+    return windowsLocked;
+  };
+
+  const setPanelLocked = (id: PanelId, locked: boolean) => {
     setLayout((prev: Record<PanelId, PanelPos>) => {
-      const next = { ...prev, [id]: pos };
+      const nextPos = { ...prev[id], locked };
+      const next = { ...prev, [id]: nextPos };
+      savePanelPos(id, nextPos, viewportProfile);
       return next;
     });
-    savePanelPos(id, pos, viewportProfile);
-    if (id === "bag") applyBagLayoutPos(pos);
+  };
+
+  const setPanelPos = (id: PanelId, pos: PanelPos) => {
+    setLayout((prev: Record<PanelId, PanelPos>) => {
+      const nextPos = { ...prev[id], ...pos };
+      const next = { ...prev, [id]: nextPos };
+      savePanelPos(id, nextPos, viewportProfile);
+      if (id === "bag") applyBagLayoutPos(nextPos);
+      return next;
+    });
   };
 
   const resetLayout = () => {
@@ -136,7 +189,6 @@ export function usePanelLayoutState(): PanelLayoutState {
       return next;
     });
     savePanelVisible(id, visible);
-    // Closing Bag via × also closes the game inventory.
     if (id === "bag" && !visible && isInventoryOpen()) {
       openInventory();
     }
@@ -164,10 +216,16 @@ export function usePanelLayoutState(): PanelLayoutState {
     layoutEdit,
     setLayoutEdit,
     layout,
+    setLayout,
     viewportProfile,
     layoutProfileMode,
     setLayoutProfileMode,
-    onMove,
+    setPanelPos,
+    windowsLocked,
+    setWindowsLockedPersist,
+    panelIsLocked,
+    setPanelLocked,
+    altHeld,
     resetLayout,
     importLayouts,
     exportLayouts,

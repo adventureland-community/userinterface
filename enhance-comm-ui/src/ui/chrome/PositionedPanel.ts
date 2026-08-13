@@ -21,7 +21,7 @@ import {
 } from "../../lib/layoutEditPrefs";
 import {
   snapFrameSizeToGrid,
-  snapToAxisPercents,
+  snapPosToFineGrid,
   squareGridMetrics,
 } from "../../lib/layoutGrid";
 import {
@@ -31,8 +31,10 @@ import {
   trySetPointerCapture,
   type PercentDragStart,
 } from "../../lib/percentDrag";
+import { clampWindowScale } from "../../lib/commWindowGroup";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 import { TYPE } from "../../lib/typeScale";
+import { WindowControlChrome } from "./WindowControlChrome";
 
 /** Peer / mid magnet — tighter than old 2.2% so near-edge stays placeable. */
 const PEER_SNAP_PCT = 1.0;
@@ -61,6 +63,11 @@ export type PositionedPanelProps = {
   onMoveEnd?: (id: any, pos: PanelPos) => void;
   /** Fired when a drag begins (movable / layout edit). */
   onDragStart?: (id: any) => void;
+  /**
+   * Details SetToplevel — raise this window on any pointer-down inside the
+   * shell (click / drag), including when locked. Not hover.
+   */
+  onActivate?: (id: any) => void;
   /** Fired during drag — meter snap preview, etc. */
   onDragMove?: (id: any, pos: PanelPos) => void;
   /** When false, skip softAvoidOverlap on drop (meter snap groups). */
@@ -108,8 +115,9 @@ export type PositionedPanelProps = {
    */
   closeOnHoverOnly?: boolean;
   /**
-   * `above` = float hide × just over the top-right of the frame (meters),
-   * so it does not cover titlebar actions like reset.
+   * `above` = hide × lives on Window Control / play-arrange chrome
+   * (meters), not on the maroon titlebar next to stretch/Details tools.
+   * When the arrange overlay is absent, × floats just over the frame.
    */
   closePlacement?: "corner" | "above";
   /**
@@ -124,15 +132,30 @@ export type PositionedPanelProps = {
   extraDragRef?: { current: HTMLElement | null };
   /** When false, omit the ⠿ grip (meters drag from titlebar). Default true. */
   showMoveGrip?: boolean;
+  /** Detach this window from an edge-snap group. */
+  onUngroup?: () => void;
+  /** Details-style lock. When set with onToggleLock, shows lock control. */
+  locked?: boolean;
+  onToggleLock?: () => void;
+  /** Closed windows for Window Control → Reopen (meters + HUD). */
+  closedWindows?: Array<{ id: string; label: string }>;
+  onReopenWindow?: (id: string) => void;
+  onCreateWindow?: () => void;
+  /** Stable Comm window number (Details meu_id). */
+  windowNumber?: number;
+  /** Show large instance id overlay (after ~1s drag hold). */
+  showWindowIds?: boolean;
+  /** Ctrl+wheel → Details SetWindowScale (whole snap group). */
+  onWindowScale?: (scale: number) => void;
 };
 
 /**
  * Absolutely places children at viewport-% coords.
  * In edit mode: drag the header bar to reposition (persisted by parent);
  * 3×3 anchor pad sets stretch direction (keeps painted box put).
- * While dragging: grid snap (chosen step) unless Free placement is on; peer
- * mid snap; visual screen-edge snap (painted box, tight px threshold).
- * On drop, soft-nudges away from near peers.
+ * While dragging (layout edit OR play-arrange / unlocked): fine-grid snap
+ * unless Free placement is on; peer mid snap; visual screen-edge (Free only).
+ * On drop, soft-nudges away from near peers then re-snaps to the fine grid.
  */
 export function PositionedPanel(props: PositionedPanelProps): any {
   const React = getReact();
@@ -152,11 +175,12 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       setHover(true);
       return;
     }
-    // Delay leave so the cursor can reach an above-frame hide ×.
+    // Delay leave so the cursor can reach above-frame chrome (grip / lock / ×)
+    // across the small gap without the bar vanishing mid-click.
     hoverLeaveTimer.current = setTimeout(() => {
       hoverLeaveTimer.current = null;
       setHover(false);
-    }, 180);
+    }, 280);
   };
   React.useEffect(() => {
     return () => {
@@ -172,6 +196,10 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   freePlacementRef.current = freePlacement;
   const gridStepRef = React.useRef(getLayoutGridStep());
   const shellRef = React.useRef(null as HTMLDivElement | null);
+  /** Prefer above-frame chrome; fall back to in-flow when it would clip off-screen. */
+  const [arrangePlacement, setArrangePlacement] = React.useState(
+    "above" as "above" | "inline",
+  );
   React.useEffect(
     () =>
       subscribeLayoutEditPrefs(() => {
@@ -180,6 +208,28 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       }),
     [],
   );
+
+  // Details SetWindowScale — Ctrl+wheel on unlocked / layout-edit windows.
+  React.useEffect(() => {
+    const onScale = props.onWindowScale;
+    if (!onScale) return;
+    const el = shellRef.current;
+    if (!el) return;
+    const canScale = editing || !!props.movable || !props.locked;
+    if (!canScale) return;
+    const onWheel = (ev: WheelEvent) => {
+      if (!ev.ctrlKey) return;
+      ev.preventDefault();
+      const cur =
+        typeof pos.scale === "number" && Number.isFinite(pos.scale)
+          ? pos.scale
+          : 1;
+      const delta = ev.deltaY < 0 ? 0.05 : -0.05;
+      onScale(clampWindowScale(cur + delta));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [props.onWindowScale, props.locked, props.movable, editing, pos.scale]);
 
   React.useEffect(() => {
     if (!props.onResizeFrame) return;
@@ -312,19 +362,25 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     let nextY = raw.y;
     let edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
     let useVisualEdge = true;
-    // Square fine-grid owns placement when Free is off — including 0/100.
-    // Visual edge magnet used to eat the first interior cell and feel like
-    // "only the coarser overlay snaps."
-    if (!freePlacementRef.current) {
+    // Fine-grid snap applies in layout edit AND play-arrange (movable), whenever
+    // Free is off. Same 1× square cell as LayoutEditGrid's finest lines.
+    const free = freePlacementRef.current || getLayoutFreePlacement();
+    if (!free) {
       const root = layoutDragRoot().getBoundingClientRect();
       const metrics = squareGridMetrics(
         gridStepRef.current,
         root.width,
         root.height,
       );
-      // Always snap to the fine step (incl. 0/100). 2×/4× overlays are guides only.
-      nextX = snapToAxisPercents(nextX, metrics.xPercents, false);
-      nextY = snapToAxisPercents(nextY, metrics.yPercents, false);
+      const snapped = snapPosToFineGrid(
+        nextX,
+        nextY,
+        gridStepRef.current,
+        root.width,
+        root.height,
+      );
+      nextX = snapped.x;
+      nextY = snapped.y;
       // Peers may magnetize, but tighter than one fine cell so they don't
       // yank off the chosen grid line onto mid/peer anchors.
       const cellPctX = (metrics.cellPx / Math.max(1, root.width)) * 100;
@@ -371,8 +427,24 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       const nudged = softAvoidOverlap(id, lastPos.current, peers);
       if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
         finalPos = nudged;
-        onMove(id, nudged);
       }
+    }
+    // Keep drop on the fine grid (soft-avoid can leave a non-grid offset).
+    if (!(freePlacementRef.current || getLayoutFreePlacement())) {
+      const root = layoutDragRoot().getBoundingClientRect();
+      const snapped = snapPosToFineGrid(
+        finalPos.x,
+        finalPos.y,
+        gridStepRef.current,
+        root.width,
+        root.height,
+      );
+      if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
+        finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
+      }
+    }
+    if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
+      onMove(id, finalPos);
     }
     if (props.onMoveEnd) props.onMoveEnd(id, finalPos);
   };
@@ -414,9 +486,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointercancel", up);
     };
-    // Rebind when arrange/edit toggles; also when ref object identity is stable
-    // but the node may appear after first paint — depend on movable/editing.
-  }, [props.extraDragRef, editing, props.movable, id, pos.x, pos.y]);
+    // Rebind when arrange/edit toggles or the drag host node appears — do NOT
+    // depend on pos.x/y (that re-attached listeners every move and broke capture).
+  }, [props.extraDragRef, editing, props.movable, id]);
 
   const showClose =
     !!onClose &&
@@ -465,7 +537,53 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   );
 
   const closeAbove = props.closePlacement === "above";
-  const closeOnChrome = closeAbove && (editing || movable);
+  // Layout-edit `grip` chrome (Layout toggles) *is* the drag handle — do not
+  // let showMoveGrip:false (HUD passes playArrange, which is off in edit)
+  // hide the only way to reposition that panel.
+  const moveGrip =
+    (movable && props.showMoveGrip !== false) ||
+    (editing && editChrome === "grip")
+      ? e(
+          "div",
+          {
+            className: "comm-pos-edit-grip",
+            title: "Drag to move",
+            "aria-label": "Drag to move",
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: touchish ? "6px 8px" : "2px 4px",
+              background: "rgba(40,40,20,0.92)",
+              border: "1px solid #886",
+              cursor: "grab",
+              userSelect: "none",
+              color: "#ffe08a",
+              fontSize: headerFont,
+              lineHeight: 1,
+              touchAction: "none",
+              pointerEvents: "auto",
+              // Full-width drag strip in layout-edit grip rows and play-arrange
+              // above-frame bar (CSS). Inline flex helps before CSS applies.
+              flex: 1,
+            },
+            onPointerDown,
+            onPointerMove,
+            onPointerUp,
+            onPointerCancel: onPointerUp,
+          },
+          e("span", { "aria-hidden": true }, "⠿"),
+        )
+      : null;
+
+  // Play-arrange chrome: hover bar (HUD + meters). Prefer above the frame;
+  // when that would clip off-screen, sit in-flow and push content down.
+  const showArrangeOverlay =
+    !editing && (!!moveGrip || !!props.onToggleLock || !!props.onUngroup);
+  // Meters: keep hide × on WC/arrange chrome so it never stacks on the
+  // maroon titlebar stretch control (↕).
+  const closeInArrangeOverlay = showClose && closeAbove && showArrangeOverlay;
+
   const closeBtn = showClose
     ? e(
         "button",
@@ -473,7 +591,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           type: "button",
           className:
             "comm-pos-panel-close" +
-            (closeAbove ? " comm-pos-panel-close-above" : ""),
+            (closeAbove ? " comm-pos-panel-close-above" : "") +
+            (closeInArrangeOverlay ? " comm-pos-panel-close-in-chrome" : ""),
           title: `Hide ${panelLabel}`,
           "aria-label": `Hide ${panelLabel}`,
           onClick: (ev: any) => {
@@ -484,29 +603,42 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           onPointerDown: (ev: any) => ev.stopPropagation(),
           onMouseEnter: () => setPanelHover(true),
           onMouseLeave: () => setPanelHover(false),
-          style: {
-            position: "absolute",
-            top: closeAbove
-              ? closeOnChrome
-                ? "2px"
-                : `-${closeSize + 2}px`
-              : editing
-                ? "2px"
-                : "0",
-            right: closeOnChrome ? "2px" : "0",
-            zIndex: 2,
-            width: `${closeSize}px`,
-            height: `${closeSize}px`,
-            padding: 0,
-            margin: 0,
-            border: "1px solid #555",
-            background: "rgba(20,20,20,0.9)",
-            color: "#ccc",
-            fontSize: touchish ? "18px" : "14px",
-            lineHeight: `${closeSize - 2}px`,
-            cursor: "pointer",
-            pointerEvents: "auto",
-          },
+          style: closeInArrangeOverlay
+            ? {
+                position: "relative",
+                top: "auto",
+                right: "auto",
+                zIndex: 1,
+                width: `${closeSize}px`,
+                height: `${closeSize}px`,
+                padding: 0,
+                margin: 0,
+                flexShrink: 0,
+                border: "1px solid #886",
+                background: "rgba(30,30,20,0.95)",
+                color: "#ffe08a",
+                fontSize: touchish ? "18px" : "14px",
+                lineHeight: `${closeSize - 2}px`,
+                cursor: "pointer",
+                pointerEvents: "auto",
+              }
+            : {
+                position: "absolute",
+                top: closeAbove ? `-${closeSize + 2}px` : editing ? "2px" : "0",
+                right: "0",
+                zIndex: 2,
+                width: `${closeSize}px`,
+                height: `${closeSize}px`,
+                padding: 0,
+                margin: 0,
+                border: "1px solid #555",
+                background: "rgba(20,20,20,0.9)",
+                color: "#ccc",
+                fontSize: touchish ? "18px" : "14px",
+                lineHeight: `${closeSize - 2}px`,
+                cursor: "pointer",
+                pointerEvents: "auto",
+              },
         },
         "×",
       )
@@ -583,40 +715,69 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       )
     : null;
 
-  const moveGrip =
-    props.showMoveGrip !== false &&
-    (movable || (editing && editChrome === "grip"))
-      ? e(
-          "div",
-          {
-            className: "comm-pos-edit-grip",
-            title: "Drag to move",
-            "aria-label": "Drag to move",
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: touchish ? "6px 8px" : "2px 4px",
-              marginBottom: "2px",
-              background: "rgba(40,40,20,0.92)",
-              border: "1px solid #886",
-              cursor: "grab",
-              userSelect: "none",
-              color: "#ffe08a",
-              fontSize: headerFont,
-              lineHeight: 1,
-              touchAction: "none",
-              pointerEvents: "auto",
-              flexShrink: 0,
-            },
-            onPointerDown,
-            onPointerMove,
-            onPointerUp,
-            onPointerCancel: onPointerUp,
-          },
-          e("span", { "aria-hidden": true }, "⠿"),
-        )
-      : null;
+  const hasWindowChrome =
+    !!props.onToggleLock ||
+    !!props.onUngroup ||
+    !!props.onCreateWindow ||
+    !!onClose ||
+    !!(props.closedWindows && props.closedWindows.length);
+
+  const windowChrome = hasWindowChrome
+    ? e(WindowControlChrome, {
+        touchish,
+        locked: props.locked,
+        onToggleLock: props.onToggleLock,
+        onUngroup: props.onUngroup,
+        onCreateWindow: props.onCreateWindow,
+        onClose: onClose || undefined,
+        closedWindows: props.closedWindows,
+        onReopenWindow: props.onReopenWindow,
+        showMenu:
+          movable ||
+          editing ||
+          !!props.onToggleLock ||
+          !!props.onUngroup ||
+          !!onClose ||
+          !!(props.closedWindows && props.closedWindows.length),
+      })
+    : null;
+
+  const ARRANGE_CHROME_H = 34;
+  React.useLayoutEffect(() => {
+    if (!showArrangeOverlay) {
+      setArrangePlacement("above");
+      return;
+    }
+    const el = shellRef.current;
+    if (!el) return;
+    const measure = () => {
+      const root = layoutDragRoot().getBoundingClientRect();
+      const panel = el.getBoundingClientRect();
+      const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 2;
+      setArrangePlacement(fitsAbove ? "above" : "inline");
+    };
+    measure();
+    if (!hover) return;
+    // Re-check after paint once chrome is open (size may change).
+    const t = window.setTimeout(measure, 0);
+    return () => window.clearTimeout(t);
+  }, [showArrangeOverlay, hover, pos.x, pos.y, movable, id]);
+
+  const arrangeOverlay = showArrangeOverlay
+    ? e(
+        "div",
+        {
+          className:
+            "comm-pos-arrange-overlay" +
+            (moveGrip ? " has-grip" : " is-chrome-only") +
+            (arrangePlacement === "inline" ? " is-inline" : " is-above"),
+          title: moveGrip ? `Drag to move · ${panelLabel}` : undefined,
+        },
+        moveGrip,
+        props.onToggleLock || props.onUngroup ? windowChrome : null,
+        closeInArrangeOverlay ? closeBtn : null,
+      )
+    : null;
 
   const editHeaderStyle: Record<string, any> = {
     display: "flex",
@@ -624,7 +785,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     gap: "6px",
     padding: headerPad,
     paddingRight: onClose && !hidden ? `${closeSize + 8}px` : "8px",
-    marginBottom: 0,
+    marginBottom: "2px",
     background: hidden ? "rgba(30,30,30,0.92)" : "rgba(40,40,20,0.92)",
     border: hidden ? "1px solid #666" : "1px solid #886",
     cursor: "grab",
@@ -638,9 +799,22 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   };
 
   const editHeader = !editing
-    ? moveGrip
+    ? arrangeOverlay
     : editChrome === "grip"
-      ? moveGrip
+      ? e(
+          "div",
+          {
+            className: "comm-pos-edit-grip-row",
+            style: {
+              display: "flex",
+              alignItems: "stretch",
+              gap: 4,
+              marginBottom: "2px",
+            },
+          },
+          moveGrip,
+          windowChrome,
+        )
       : editChrome === "anchors"
         ? e(
             "div",
@@ -672,6 +846,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
               },
               `${panelLabel}${hidden ? " (hidden)" : ""}`,
             ),
+            windowChrome,
             anchorPad,
           )
         : e(
@@ -697,6 +872,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
               },
               `${panelLabel}${hidden ? " (hidden)" : ""}`,
             ),
+            windowChrome,
             hidden && onShow
               ? e(
                   "button",
@@ -791,19 +967,46 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     props.hiddenBodyStyle || {},
   );
 
+  const windowIdOverlay =
+    props.showWindowIds &&
+    typeof props.windowNumber === "number" &&
+    props.windowNumber > 0
+      ? e(
+          "div",
+          {
+            className: "comm-pos-window-id",
+            "aria-hidden": true,
+          },
+          String(props.windowNumber),
+        )
+      : null;
+
+  const needsChromeHover =
+    !!onClose ||
+    showArrangeOverlay ||
+    (!editing && (!!props.onToggleLock || !!props.onUngroup || movable));
+
+  const onActivateCapture = props.onActivate
+    ? (_ev: any) => {
+        props.onActivate!(id);
+      }
+    : undefined;
+
   return e(
     "div",
     {
       ref: shellRef,
-      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${props.className ? ` ${props.className}` : ""}`,
+      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
       "data-panel": id,
       style: shellStyle,
-      onMouseEnter: onClose ? () => setPanelHover(true) : undefined,
-      onMouseLeave: onClose ? () => setPanelHover(false) : undefined,
+      onPointerDownCapture: onActivateCapture,
+      onMouseEnter: needsChromeHover ? () => setPanelHover(true) : undefined,
+      onMouseLeave: needsChromeHover ? () => setPanelHover(false) : undefined,
     },
     editHeader,
     opacityRow,
-    closeBtn,
+    closeInArrangeOverlay ? null : closeBtn,
+    windowIdOverlay,
     hidden && editing
       ? e(
           "div",

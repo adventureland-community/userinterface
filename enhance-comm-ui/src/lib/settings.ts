@@ -126,8 +126,13 @@ export type CommUiSettings = {
   /** Skada-style meter windows (pos + query + presentation). */
   meterInstances: MeterInstance[];
   /**
-   * When true (default), meter frames stay put unless Alt is held or the
-   * panel is unlocked. Layout edit still moves everything.
+   * When true (default), windows stay put unless Alt is held or the
+   * window is unlocked. Layout edit still moves everything.
+   * Legacy key: metersLocked.
+   */
+  windowsLocked: boolean;
+  /**
+   * @deprecated Prefer windowsLocked — kept in sync for older readers.
    */
   metersLocked: boolean;
   /** Details “Always show me” default for ranked meters. */
@@ -155,6 +160,10 @@ export type CommUiSettings = {
   changelogSeenId?: string | null;
   /** Per-tour completion flags (spotlight tours). */
   toursCompleted?: Record<string, boolean>;
+  /** Stable window numbers (Details meu_id) for HUD + meters. */
+  windowNumberById?: Record<string, number>;
+  /** Next free window number to allocate. */
+  nextWindowNumber?: number;
 };
 
 const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
@@ -195,6 +204,7 @@ const DEFAULTS: CommUiSettings = {
   panelOpacity: {},
   partyBuffMode: "auto",
   meterInstances: defaultMeterInstances(),
+  windowsLocked: true,
   metersLocked: true,
   meterAlwaysShowSelf: true,
   meterWindowGrouping: true,
@@ -205,6 +215,8 @@ const DEFAULTS: CommUiSettings = {
   setupWizardDone: false,
   changelogSeenId: null,
   toursCompleted: {},
+  windowNumberById: {},
+  nextWindowNumber: 1,
 };
 
 export function resolveLayoutProfile(
@@ -434,6 +446,10 @@ function migrate(parsed: any): CommUiSettings {
       parsed.panelLayout || panelLayout,
     ),
     metersLocked: parsed.metersLocked !== false,
+    windowsLocked:
+      typeof parsed.windowsLocked === "boolean"
+        ? parsed.windowsLocked
+        : parsed.metersLocked !== false,
     meterAlwaysShowSelf: parsed.meterAlwaysShowSelf !== false,
     meterWindowGrouping: parsed.meterWindowGrouping !== false,
     meterBookmarks: normalizeMeterBookmarks(parsed.meterBookmarks),
@@ -460,6 +476,14 @@ function migrate(parsed: any): CommUiSettings {
       parsed.toursCompleted && typeof parsed.toursCompleted === "object"
         ? (parsed.toursCompleted as Record<string, boolean>)
         : {},
+    windowNumberById:
+      parsed.windowNumberById && typeof parsed.windowNumberById === "object"
+        ? (parsed.windowNumberById as Record<string, number>)
+        : {},
+    nextWindowNumber:
+      typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0
+        ? Math.floor(parsed.nextWindowNumber)
+        : 1,
   };
 
   // Legacy: finished/skipped intro before changelog tracking — treat current
@@ -506,6 +530,7 @@ function freshDefaults(): CommUiSettings {
     partyBuffMode: "auto",
     meterInstances: defaultMeterInstances(),
     metersLocked: true,
+    windowsLocked: true,
     meterAlwaysShowSelf: true,
     meterWindowGrouping: true,
     meterBookmarks: [],
@@ -627,8 +652,12 @@ export function patchSettings(
   if (partial.meterInstances) {
     next.meterInstances = normalizeMeterInstances(partial.meterInstances);
   }
-  if (typeof partial.metersLocked === "boolean") {
+  if (typeof partial.windowsLocked === "boolean") {
+    next.windowsLocked = partial.windowsLocked;
+    next.metersLocked = partial.windowsLocked;
+  } else if (typeof partial.metersLocked === "boolean") {
     next.metersLocked = partial.metersLocked;
+    next.windowsLocked = partial.metersLocked;
   }
   if (typeof partial.meterAlwaysShowSelf === "boolean") {
     next.meterAlwaysShowSelf = partial.meterAlwaysShowSelf;
@@ -644,6 +673,24 @@ export function patchSettings(
   }
   if (typeof partial.metersHidden === "boolean") {
     next.metersHidden = partial.metersHidden;
+  }
+  if (partial.windowNumberById) {
+    next.windowNumberById = { ...partial.windowNumberById };
+  }
+  if (typeof partial.nextWindowNumber === "number" && partial.nextWindowNumber > 0) {
+    next.nextWindowNumber = Math.floor(partial.nextWindowNumber);
+  }
+  if (partial.meterClosedInstances) {
+    next.meterClosedInstances = partial.meterClosedInstances;
+  }
+  if (typeof partial.setupWizardDone === "boolean") {
+    next.setupWizardDone = partial.setupWizardDone;
+  }
+  if (partial.changelogSeenId !== undefined) {
+    next.changelogSeenId = partial.changelogSeenId;
+  }
+  if (partial.toursCompleted) {
+    next.toursCompleted = { ...partial.toursCompleted };
   }
   delete next.combatVisible;
   settingsCache = next;
@@ -674,6 +721,24 @@ export function savePanelPos(
   });
 }
 
+/** Persist several panel positions (edge-group moves). */
+export function savePanelPositions(
+  updates: PanelLayoutMap,
+  profile?: ViewportProfile,
+): CommUiSettings {
+  const settings = getSettings();
+  const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode);
+  return saveSettings({
+    panelLayoutsByProfile: {
+      [resolved]: {
+        ...(settings.panelLayoutsByProfile?.[resolved] || {}),
+        ...updates,
+      },
+    },
+    panelLayout: { ...updates },
+  });
+}
+
 export function savePanelVisible(
   id: PanelId,
   visible: boolean,
@@ -686,6 +751,7 @@ export function resetMeterInstances(): CommUiSettings {
   return saveSettings({
     meterInstances: defaultMeterInstances(),
     metersLocked: true,
+    windowsLocked: true,
   });
 }
 

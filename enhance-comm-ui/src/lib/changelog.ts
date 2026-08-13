@@ -51,6 +51,24 @@ export const FEATURE_OVERVIEW: ChangelogItem[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.7.1-windows",
+    title: "Unified windows",
+    items: [
+      {
+        label: "Lock any panel",
+        detail: "HUD and meters share the same lock — unlock to drag; hold Alt to nudge while locked.",
+      },
+      {
+        label: "Cross-group snap",
+        detail: "Edge-snap meters to HUD panels (and each other) in one group graph.",
+      },
+      {
+        label: "Window Control",
+        detail: "☰ menu on panels: lock, ungroup, close, and reopen closed windows.",
+      },
+    ],
+  },
+  {
     id: "0.7.0",
     title: "0.7",
     items: FEATURE_OVERVIEW,

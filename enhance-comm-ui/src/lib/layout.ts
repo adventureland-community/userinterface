@@ -1,6 +1,7 @@
 /** Viewport-relative panel placement (percent of #comm-ui / screen). */
 
 import type { ViewportProfile } from "./viewport";
+import type { EdgeSnapMap } from "./panelEdgeGroup";
 
 export type LayoutAnchor = "tl" | "tr" | "bl" | "br" | "tc" | "bc" | "center";
 
@@ -11,6 +12,19 @@ export type PanelPos = {
   y: number;
   /** Which point of the panel sits on (x,y). */
   anchor: LayoutAnchor;
+  /** Edge-snap neighbor links (Comm panel groups). */
+  snap?: EdgeSnapMap;
+  /** Side-by-side group — share height when frame sizes exist. */
+  horizontalSnap?: boolean;
+  /** Stacked group — share width when frame sizes exist. */
+  verticalSnap?: boolean;
+  /**
+   * Per-window lock (Details). `undefined` follows global windowsLocked.
+   * `false` = unlocked arrange; `true` = locked.
+   */
+  locked?: boolean;
+  /** Details window_scale — applied to snap group when changed from options/wheel. */
+  scale?: number;
 };
 
 export type PanelId =
@@ -193,11 +207,25 @@ export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   if (!raw || typeof raw !== "object") return { ...fallback };
   const anchor = (raw.anchor || fallback.anchor) as LayoutAnchor;
   const valid: LayoutAnchor[] = ["tl", "tr", "bl", "br", "tc", "bc", "center"];
-  return {
+  const out: PanelPos = {
     x: clamp(Number(raw.x), 0, 100) || 0,
     y: clamp(Number(raw.y), 0, 100) || 0,
     anchor: valid.indexOf(anchor) >= 0 ? anchor : fallback.anchor,
   };
+  if (raw.snap && typeof raw.snap === "object") {
+    const snap: EdgeSnapMap = {};
+    const sides = [1, 2, 3, 4] as const;
+    for (let i = 0; i < sides.length; i++) {
+      const side = sides[i];
+      const nid = raw.snap[side];
+      if (typeof nid === "string" && nid) snap[side] = nid;
+    }
+    if (snap[1] || snap[2] || snap[3] || snap[4]) out.snap = snap;
+  }
+  if (raw.horizontalSnap) out.horizontalSnap = true;
+  if (raw.verticalSnap) out.verticalSnap = true;
+  if (typeof raw.locked === "boolean") out.locked = raw.locked;
+  return out;
 }
 
 export function mergeLayout(
@@ -230,6 +258,30 @@ export function anchorTransform(anchor: LayoutAnchor): string {
       return "translate(-50%, -100%)";
     case "center":
       return "translate(-50%, -50%)";
+    default: {
+      const _exhaustive: never = anchor;
+      return _exhaustive;
+    }
+  }
+}
+
+/** Keep the anchored corner fixed when applying window scale. */
+export function anchorOrigin(anchor: LayoutAnchor): string {
+  switch (anchor) {
+    case "tl":
+      return "0% 0%";
+    case "tr":
+      return "100% 0%";
+    case "bl":
+      return "0% 100%";
+    case "br":
+      return "100% 100%";
+    case "tc":
+      return "50% 0%";
+    case "bc":
+      return "50% 100%";
+    case "center":
+      return "50% 50%";
     default: {
       const _exhaustive: never = anchor;
       return _exhaustive;
@@ -296,6 +348,36 @@ export function reanchorKeepingVisual(
   };
 }
 
+/**
+ * Build a PanelPos whose anchor point places the painted box at top-left
+ * `(leftPx, topPx)` inside the root (Details-style restore after sizing).
+ */
+export function panelPosFromTopLeft(
+  leftPx: number,
+  topPx: number,
+  widthPx: number,
+  heightPx: number,
+  anchor: LayoutAnchor,
+  rootW: number,
+  rootH: number,
+  keep?: Partial<PanelPos>,
+): PanelPos {
+  const off = anchorToTopLeftOffset(anchor, widthPx, heightPx);
+  const ax = leftPx - off.ox;
+  const ay = topPx - off.oy;
+  const next: PanelPos = {
+    x: clamp(rootW > 0 ? (ax / rootW) * 100 : 0, 0, 100),
+    y: clamp(rootH > 0 ? (ay / rootH) * 100 : 0, 0, 100),
+    anchor,
+  };
+  if (keep?.snap) next.snap = keep.snap;
+  if (keep?.horizontalSnap) next.horizontalSnap = keep.horizontalSnap;
+  if (keep?.verticalSnap) next.verticalSnap = keep.verticalSnap;
+  if (keep?.locked != null) next.locked = keep.locked;
+  if (keep?.scale != null) next.scale = keep.scale;
+  return next;
+}
+
 /** Compact labels for layout-edit anchor pad. */
 export const LAYOUT_ANCHOR_OPTIONS: {
   id: LayoutAnchor;
@@ -323,18 +405,25 @@ export function panelStyle(
   pos: PanelPos,
   editing?: boolean,
 ): Record<string, any> {
+  const scale =
+    typeof pos.scale === "number" && Number.isFinite(pos.scale) && pos.scale > 0
+      ? pos.scale
+      : 1;
+  const base = anchorTransform(pos.anchor);
   return {
     position: "absolute",
     left: `${pos.x}%`,
     top: `${pos.y}%`,
-    transform: anchorTransform(pos.anchor),
+    transform: scale === 1 ? base : `${base} scale(${scale})`,
+    transformOrigin: anchorOrigin(pos.anchor),
     pointerEvents: "auto",
     zIndex: editing ? 40 : 20,
     // Hug children so layout chrome matches real frame footprints.
     width: "fit-content",
     height: "fit-content",
-    maxWidth: "96vw",
-    maxHeight: "96vh",
+    // Viewport ceiling so windows can fill the screen (was 96vw/96vh).
+    maxWidth: "100vw",
+    maxHeight: "100vh",
     boxSizing: "border-box",
   };
 }
@@ -486,9 +575,9 @@ export function snapDragToVisualEdges(
  * (same anchor family). Keeps layouts readable without hard collision.
  */
 export function softAvoidOverlap(
-  id: PanelId,
+  id: PanelId | string,
   pos: PanelPos,
-  others: Partial<Record<PanelId, PanelPos>>,
+  others: Partial<Record<string, PanelPos>>,
   nudge = 3.2,
 ): PanelPos {
   const ids = Object.keys(others) as PanelId[];
