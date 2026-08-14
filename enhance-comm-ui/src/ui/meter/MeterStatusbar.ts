@@ -28,7 +28,8 @@ export type MeterStatusbarProps = {
   segmentRef: SegmentRef;
   /** Segment name only (no duration, no mapIn). */
   segmentLabel: string;
-  onSegmentClick?: () => void;
+  /** Anchor is the slot button — required for bottom-edge flip-above. */
+  onSegmentClick?: (el: HTMLElement) => void;
   onEncounterClick?: () => void;
 };
 
@@ -61,7 +62,7 @@ function renderSlot(
         title,
         onClick: (ev: any) => {
           ev.stopPropagation();
-          props.onSegmentClick?.();
+          props.onSegmentClick?.(ev.currentTarget as HTMLElement);
         },
       },
       text,
@@ -83,11 +84,7 @@ function renderSlot(
       text,
     );
   }
-  return e(
-    "span",
-    { key: side, className: slotClass(side), title },
-    text,
-  );
+  return e("span", { key: side, className: slotClass(side), title }, text);
 }
 
 export function MeterStatusbar(props: MeterStatusbarProps): any {
@@ -116,11 +113,7 @@ export function MeterStatusbar(props: MeterStatusbarProps): any {
     ? sumRankedTotal(query, props.segmentRef, props.instance.partyFocus)
     : 0;
 
-  const sides: Array<"left" | "center" | "right"> = [
-    "left",
-    "center",
-    "right",
-  ];
+  const sides: Array<"left" | "center" | "right"> = ["left", "center", "right"];
   const children: any[] = [];
   for (let i = 0; i < sides.length; i++) {
     const side = sides[i];

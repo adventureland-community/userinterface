@@ -112,7 +112,7 @@ export function createMeterShellCooltipCtl(args: {
       if (!el || typeof el.closest !== "function") return;
       if (
         el.closest(
-          ".ecu-meter-cooltip, .ecu-meter-cooltip-wrap, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl",
+          ".ecu-meter-cooltip, .ecu-meter-cooltip-wrap, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl, .ecu-meter-statusbar",
         )
       ) {
         return;

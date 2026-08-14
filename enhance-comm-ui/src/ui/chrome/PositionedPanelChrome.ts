@@ -89,10 +89,7 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
   const showClose =
     !!onClose &&
     !hidden &&
-    (hover ||
-      touchish ||
-      movable ||
-      (editing && !props.closeOnHoverOnly));
+    (hover || touchish || movable || (editing && !props.closeOnHoverOnly));
   // Layout-edit `grip` chrome (Layout toggles) *is* the drag handle — do not
   // let showMoveGrip:false (HUD passes playArrange, which is off in edit)
   // hide the only way to reposition that panel.
@@ -103,12 +100,13 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
           "div",
           {
             className: "comm-pos-edit-grip",
-            title: dragMoveTitle(),
-            "aria-label": dragMoveTitle(),
+            title: dragMoveTitle(movable ? panelLabel : undefined),
+            "aria-label": dragMoveTitle(movable ? panelLabel : undefined),
             style: {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              gap: movable ? "6px" : undefined,
               padding: touchish ? "6px 8px" : "2px 4px",
               background: "rgba(40,40,20,0.92)",
               border: "1px solid #886",
@@ -129,6 +127,24 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
             onPointerCancel: onPointerUp,
           },
           e("span", { "aria-hidden": true }, "⠿"),
+          // Play-arrange: show the window name in the drag strip (Alt / unlock).
+          movable
+            ? e(
+                "span",
+                {
+                  className: "comm-pos-arrange-label",
+                  style: {
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    flex: 1,
+                    textAlign: "left",
+                  },
+                },
+                panelLabel,
+              )
+            : null,
         )
       : null;
 
@@ -296,6 +312,33 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
       })
     : null;
 
+  // When locked + hover without a move grip, still show the window name so
+  // Alt/unlock expectations match Layout (“what is this panel?”).
+  const arrangeLabel =
+    !moveGrip && showArrangeOverlay
+      ? e(
+          "span",
+          {
+            className: "comm-pos-arrange-label",
+            style: {
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              minWidth: 0,
+              flex: 1,
+              alignSelf: "center",
+              padding: touchish ? "0 8px" : "0 6px",
+              color: "#ffe08a",
+              fontSize: headerFont,
+              lineHeight: 1.2,
+              pointerEvents: "none",
+              userSelect: "none",
+            },
+          },
+          panelLabel,
+        )
+      : null;
+
   const arrangeOverlay = showArrangeOverlay
     ? e(
         "div",
@@ -307,6 +350,7 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
           title: moveGrip ? dragMoveTitle(panelLabel) : undefined,
         },
         moveGrip,
+        arrangeLabel,
         props.onToggleLock || props.onUngroup ? windowChrome : null,
         closeInArrangeOverlay ? closeBtn : null,
       )

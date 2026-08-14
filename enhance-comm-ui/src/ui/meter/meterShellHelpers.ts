@@ -23,10 +23,7 @@ export function presentationFor(inst: MeterInstance): MeterPresentation {
   const p = (inst.presentation || "bars") as string;
   // Legacy ranked view modes removed — paint as bars.
   if (p === "table") return "bars";
-  if (
-    (p === "realtime" || p === "compare") &&
-    supportsViewModes(inst.query)
-  ) {
+  if ((p === "realtime" || p === "compare") && supportsViewModes(inst.query)) {
     return "bars";
   }
   return p as MeterPresentation;
@@ -212,7 +209,11 @@ export function attrBallClass(q: MeterQuery): string {
 
 export function cooltipItemNode(
   item: MeterCooltipItem,
-  onHoverDetail?: (key: string, text: string | null) => void,
+  onHoverDetail?: (
+    key: string,
+    text: string | null,
+    el?: HTMLElement | null,
+  ) => void,
 ): any {
   const run = (ev: any) => {
     ev.preventDefault();
@@ -222,7 +223,12 @@ export function cooltipItemNode(
   const itemKey = item.itemKey || item.label;
   const label = (item.selected ? "● " : "") + item.label;
   const enter = onHoverDetail
-    ? () => onHoverDetail(itemKey, item.detail || null)
+    ? (ev: any) =>
+        onHoverDetail(
+          itemKey,
+          item.detail || null,
+          ev.currentTarget as HTMLElement,
+        )
     : undefined;
   if (!item.trailing) {
     return e(
@@ -294,7 +300,10 @@ export function cooltipItemNode(
 }
 
 /** Details segment L/R cycle: +1 older, -1 newer. */
-export function cycleSegmentRef(current: SegmentRef, delta: number): SegmentRef {
+export function cycleSegmentRef(
+  current: SegmentRef,
+  delta: number,
+): SegmentRef {
   const chain = listSegmentChoices();
   if (!chain.length) return current;
   let idx = 0;

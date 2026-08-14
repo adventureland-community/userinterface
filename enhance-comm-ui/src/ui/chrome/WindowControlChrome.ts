@@ -4,6 +4,7 @@
  */
 
 import { getReact, e } from "../../host/react";
+import { decideFlipAbove } from "./flipAbovePlacement";
 
 export type ClosedWindowEntry = { id: string; label: string };
 
@@ -37,7 +38,43 @@ const chromeBtnStyle = (touchish: boolean, lockedBg?: boolean) => ({
 export function WindowControlChrome(props: WindowControlChromeProps): any {
   const React = getReact();
   const [wcOpen, setWcOpen] = React.useState(false);
+  const [wcFlipUp, setWcFlipUp] = React.useState(false);
+  const wcMenuRef = React.useRef(null as HTMLElement | null);
   const touchish = props.touchish;
+
+  React.useLayoutEffect(() => {
+    if (!wcOpen) {
+      setWcFlipUp(false);
+      return;
+    }
+    const el = wcMenuRef.current;
+    if (!el) return;
+    const apply = () => {
+      const r = el.getBoundingClientRect();
+      const pad = 6;
+      const vh = window.innerHeight;
+      const parent = el.offsetParent as HTMLElement | null;
+      const parentRect = parent
+        ? parent.getBoundingClientRect()
+        : { top: r.top, bottom: r.top };
+      // Relative menu: spaces from the WC button box (offsetParent).
+      const spaceBelow = vh - pad - parentRect.bottom;
+      const spaceAbove = parentRect.top - pad;
+      const decision = decideFlipAbove(r.height, spaceAbove, spaceBelow, {
+        anchorBottomRatio: vh > 0 ? parentRect.bottom / vh : 0.5,
+      });
+      const nextFlip = decision.place === "above";
+      const nextMax =
+        decision.maxHeight != null ? decision.maxHeight + "px" : "";
+      setWcFlipUp((prev: boolean) => (prev === nextFlip ? prev : nextFlip));
+      if (el.style.maxHeight !== nextMax) el.style.maxHeight = nextMax;
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [wcOpen]);
 
   const lockBtn = props.onToggleLock
     ? e(
@@ -221,12 +258,24 @@ export function WindowControlChrome(props: WindowControlChromeProps): any {
             ? e(
                 "div",
                 {
-                  className: "comm-pos-wc-menu",
+                  ref: wcMenuRef,
+                  className: "comm-pos-wc-menu" + (wcFlipUp ? " is-above" : ""),
                   style: {
                     position: "absolute",
-                    top: "100%",
+                    ...(wcFlipUp
+                      ? {
+                          bottom: "100%",
+                          top: "auto",
+                          marginBottom: 2,
+                          marginTop: 0,
+                        }
+                      : {
+                          top: "100%",
+                          bottom: "auto",
+                          marginTop: 2,
+                          marginBottom: 0,
+                        }),
                     right: 0,
-                    marginTop: 2,
                     minWidth: 160,
                     zIndex: 40,
                     background: "rgba(18,18,14,0.98)",
@@ -235,6 +284,7 @@ export function WindowControlChrome(props: WindowControlChromeProps): any {
                     display: "flex",
                     flexDirection: "column",
                     gap: 2,
+                    overflowY: "auto",
                   },
                 },
                 ...wcItems,

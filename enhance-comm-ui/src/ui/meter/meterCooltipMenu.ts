@@ -6,6 +6,11 @@
  * (no dependency on .ecu-meter-shell CSS variables).
  */
 
+import {
+  flipSpacesForAnchor,
+  resolveFlipAbovePlacement,
+} from "../chrome/flipAbovePlacement";
+
 export type MeterCooltipItem = {
   label: string;
   /** Hover-detail copy (custom flyout). Never include instance `in`. */
@@ -64,10 +69,53 @@ export function rectToAnchor(el: HTMLElement): MeterCooltipAnchor {
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
+export type CooltipPlace = "above" | "below";
+
+export type CooltipStyleOpts = {
+  minWidth?: number;
+  cover?: boolean;
+  preferRight?: boolean;
+};
+
+const COOLTIP_PAD = 6;
+const COOLTIP_GAP = 4;
+
+/**
+ * After measuring the menu, pick top + above/below so it sits flush to the
+ * anchor and fits the viewport (scroll when both sides are tight).
+ */
+export function resolveCooltipPlacement(
+  anchor: MeterCooltipAnchor,
+  measuredH: number,
+  vh = typeof window !== "undefined" ? window.innerHeight : 800,
+  pad = COOLTIP_PAD,
+  gap = COOLTIP_GAP,
+): { top: number; place: CooltipPlace; maxHeight?: number } {
+  return resolveFlipAbovePlacement(anchor, measuredH, { vh, pad, gap });
+}
+
+/** Initial place guess before DOM measure. */
+export function guessCooltipPlace(
+  anchor: MeterCooltipAnchor,
+  vh = typeof window !== "undefined" ? window.innerHeight : 800,
+  pad = COOLTIP_PAD,
+  gap = COOLTIP_GAP,
+): CooltipPlace {
+  const { spaceAbove, spaceBelow } = flipSpacesForAnchor(anchor, {
+    vh,
+    pad,
+    gap,
+  });
+  const bottomRatio = vh > 0 ? (anchor.top + anchor.height) / vh : 0.5;
+  // Match decideFlipAbove: below unless near the physical bottom edge.
+  if (bottomRatio >= 0.72 && spaceAbove > spaceBelow) return "above";
+  return "below";
+}
+
 /** Place cooltip below anchor; flip above if near bottom of viewport. */
 export function cooltipStyle(
   anchor: MeterCooltipAnchor,
-  opts?: { minWidth?: number; cover?: boolean; preferRight?: boolean },
+  opts?: CooltipStyleOpts,
 ): Record<string, string | number> {
   if (opts?.cover) {
     return {
@@ -82,14 +130,20 @@ export function cooltipStyle(
   const minW = opts?.minWidth ?? 176;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const pad = 6;
+  const pad = COOLTIP_PAD;
+  const gap = COOLTIP_GAP;
   const estH = Math.min(360, Math.floor(vh * 0.72));
   let left = opts?.preferRight
     ? anchor.left + anchor.width - minW
     : anchor.left;
-  let top = anchor.top + anchor.height + 4;
-  if (top + Math.min(estH, 280) > vh - pad) {
-    top = Math.max(pad, anchor.top - Math.min(estH, 280) - 4);
+  const place = guessCooltipPlace(anchor, vh, pad, gap);
+  let top: number;
+  if (place === "above") {
+    const { spaceAbove } = flipSpacesForAnchor(anchor, { vh, pad, gap });
+    const h = Math.min(estH, Math.max(80, spaceAbove));
+    top = Math.max(pad, anchor.top - gap - h);
+  } else {
+    top = anchor.top + anchor.height + gap;
   }
   left = Math.max(pad, Math.min(left, vw - minW - pad));
   return {

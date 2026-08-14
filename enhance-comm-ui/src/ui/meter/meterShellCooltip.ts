@@ -27,11 +27,18 @@ import {
 } from "../../meters/meterCatalog";
 import {
   cooltipStyle,
+  type CooltipStyleOpts,
+  type MeterCooltipAnchor,
   type MeterCooltipItem,
   type MeterCooltipKind,
   type MeterCooltipMenu,
 } from "./meterCooltipMenu";
-import { meterHoverDetailNode } from "./meterHoverDetail";
+import { useAnchoredCooltip } from "./useAnchoredCooltip";
+import {
+  portalHoverDetail,
+  hoverDetailPosFromEl,
+  type HoverDetailPos,
+} from "./meterHoverDetail";
 import {
   cooltipItemNode,
   modeLabel,
@@ -100,15 +107,7 @@ function tipItemsCtx(ctx: MeterShellCooltipCtx): MeterShellTipItemsCtx {
 }
 
 export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
-  const {
-    tip,
-    bmDrag,
-    setBmDrag,
-    bmDrop,
-    setBmDrop,
-    instance,
-    actions,
-  } = ctx;
+  const { tip, bmDrag, setBmDrag, bmDrop, setBmDrop, instance, actions } = ctx;
   const {
     closeTip,
     openTip,
@@ -326,20 +325,17 @@ export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
         );
       }
     }
-    return e(
-      "div",
-      {
-        className: "ecu-meter-switch-overlay",
-        style: {
-          ...cooltipStyle(tip.anchor, { minWidth: 280, preferRight: true }),
-          ...PIXEL_TEXT,
-        },
-        onMouseEnter: () => clearTipClose(),
-        onMouseLeave: () => scheduleTipClose(),
-      },
-      e("div", { className: "ecu-meter-cooltip-sec" }, "Select Display"),
-      e("div", { className: "ecu-meter-switch-grid" }, ...cells),
-    );
+    return e(AnchoredCooltipRoot, {
+      className: "ecu-meter-switch-overlay",
+      anchor: tip.anchor,
+      opts: { minWidth: 280, preferRight: true },
+      onEnter: () => clearTipClose(),
+      onLeave: () => scheduleTipClose(),
+      children: [
+        e("div", { className: "ecu-meter-cooltip-sec" }, "Select Display"),
+        e("div", { className: "ecu-meter-switch-grid" }, ...cells),
+      ],
+    });
   }
 
   if (tip.kind === "allDisplays") {
@@ -389,24 +385,21 @@ export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
         );
       }
     }
-    return e(
-      "div",
-      {
-        className: "ecu-meter-switch-overlay",
-        style: {
-          ...cooltipStyle(tip.anchor, { minWidth: 280, preferRight: true }),
-          ...PIXEL_TEXT,
-        },
-        onMouseEnter: () => clearTipClose(),
-        onMouseLeave: () => scheduleTipClose(),
-      },
-      e(
-        "div",
-        { className: "ecu-meter-cooltip-sec" },
-        "Switch · All displays",
-      ),
-      e("div", { className: "ecu-meter-switch-grid" }, ...cells),
-    );
+    return e(AnchoredCooltipRoot, {
+      className: "ecu-meter-switch-overlay",
+      anchor: tip.anchor,
+      opts: { minWidth: 280, preferRight: true },
+      onEnter: () => clearTipClose(),
+      onLeave: () => scheduleTipClose(),
+      children: [
+        e(
+          "div",
+          { className: "ecu-meter-cooltip-sec" },
+          "Switch · All displays",
+        ),
+        e("div", { className: "ecu-meter-switch-grid" }, ...cells),
+      ],
+    });
   }
 
   if (tip.kind === "display") {
@@ -416,9 +409,7 @@ export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
     for (let g = 0; g < DISPLAY_TREE.length; g++) {
       const group = DISPLAY_TREE[g];
       if (g > 0) nodes.push(e("div", { className: "ecu-meter-cooltip-div" }));
-      nodes.push(
-        e("div", { className: "ecu-meter-cooltip-sec" }, group.label),
-      );
+      nodes.push(e("div", { className: "ecu-meter-cooltip-sec" }, group.label));
       for (let c = 0; c < group.children.length; c++) {
         const d = group.children[c];
         nodes.push(
@@ -437,34 +428,26 @@ export function renderMeterShellCooltip(ctx: MeterShellCooltipCtx): any {
         );
       }
     }
-    return e(
-      "div",
-      {
-        className: "ecu-meter-cooltip",
-        style: {
-          ...cooltipStyle(tip.anchor, { minWidth: 168 }),
-          ...PIXEL_TEXT,
-        },
-        onMouseEnter: () => clearTipClose(),
-        onMouseLeave: () => scheduleTipClose(),
-      },
-      ...nodes,
-    );
+    return e(AnchoredCooltipRoot, {
+      className: "ecu-meter-cooltip",
+      anchor: tip.anchor,
+      opts: { minWidth: 168 },
+      onEnter: () => clearTipClose(),
+      onLeave: () => scheduleTipClose(),
+      children: nodes,
+    });
   }
 
+  const tipMinW =
+    tip.kind === "report" || tip.kind === "reset"
+      ? 188
+      : tip.kind === "seg"
+        ? 228
+        : 168;
   return e(MeterItemsCooltip, {
     menu: meterShellTipItems(tipItemsCtx(ctx)),
-    panelStyle: {
-      ...cooltipStyle(tip.anchor, {
-        minWidth:
-          tip.kind === "report" || tip.kind === "reset"
-            ? 188
-            : tip.kind === "seg"
-              ? 228
-              : 168,
-      }),
-      ...PIXEL_TEXT,
-    },
+    anchor: tip.anchor,
+    opts: { minWidth: tipMinW },
     onEnter: () => clearTipClose(),
     onLeave: () => scheduleTipClose(),
   });
@@ -494,15 +477,37 @@ function detailForHover(
 /** Item cooltip with a pointer-events-none flyout (native `title` blinks on ticks). */
 function MeterItemsCooltip(props: {
   menu: MeterCooltipMenu;
-  panelStyle: Record<string, string | number>;
+  anchor: MeterCooltipAnchor;
+  opts?: CooltipStyleOpts;
   onEnter: () => void;
   onLeave: () => void;
 }): any {
   const React = getReact();
   const [hoverKey, setHoverKey] = React.useState(null as string | null);
+  const [detailPos, setDetailPos] = React.useState(
+    null as HoverDetailPos | null,
+  );
+  const { ref, style, place } = useAnchoredCooltip(
+    props.anchor,
+    props.opts,
+    ".ecu-meter-cooltip",
+  );
   const { menu } = props;
-  const onHoverDetail = (key: string, text: string | null) => {
-    setHoverKey(text ? key : null);
+  const left = Number(style.left) || 0;
+  const minW = Number(style.minWidth) || 168;
+  const flip = left + minW + 272 > window.innerWidth - 8;
+  const onHoverDetail = (
+    key: string,
+    text: string | null,
+    el?: HTMLElement | null,
+  ) => {
+    if (!text || !el) {
+      setHoverKey(null);
+      setDetailPos(null);
+      return;
+    }
+    setHoverKey(key);
+    setDetailPos(hoverDetailPosFromEl(el, { preferLeft: flip }));
   };
   const nodes: any[] = [];
   if (menu.header) {
@@ -513,8 +518,12 @@ function MeterItemsCooltip(props: {
         {
           key: hoverKeyOf(head),
           className: "ecu-meter-cooltip-sec",
-          onMouseEnter: () =>
-            onHoverDetail(hoverKeyOf(head), head.detail || null),
+          onMouseEnter: (ev: any) =>
+            onHoverDetail(
+              hoverKeyOf(head),
+              head.detail || null,
+              ev.currentTarget as HTMLElement,
+            ),
         },
         head.label,
       ),
@@ -544,18 +553,58 @@ function MeterItemsCooltip(props: {
     }
   }
   const detail = detailForHover(menu, hoverKey);
-  const left = Number(props.panelStyle.left) || 0;
-  const minW = Number(props.panelStyle.minWidth) || 168;
-  const flip = left + minW + 272 > window.innerWidth - 8;
+  const cooltipInnerStyle: Record<string, string | number> = {
+    ...PIXEL_TEXT,
+  };
+  if (style.maxHeight != null) cooltipInnerStyle.maxHeight = style.maxHeight;
+  const wrapStyle = { ...style };
+  delete wrapStyle.maxHeight;
   return e(
     "div",
     {
-      className: "ecu-meter-cooltip-wrap" + (flip ? " is-flip" : ""),
-      style: props.panelStyle,
+      ref,
+      className:
+        "ecu-meter-cooltip-wrap" +
+        (flip ? " is-flip" : "") +
+        (place === "above" ? " is-above" : ""),
+      style: wrapStyle,
       onMouseEnter: props.onEnter,
       onMouseLeave: props.onLeave,
     },
-    e("div", { className: "ecu-meter-cooltip" }, ...nodes),
-    detail ? meterHoverDetailNode(detail) : null,
+    e(
+      "div",
+      {
+        className: "ecu-meter-cooltip" + (place === "above" ? " is-above" : ""),
+        style: cooltipInnerStyle,
+      },
+      ...nodes,
+    ),
+    detail && detailPos ? portalHoverDetail(detail, detailPos) : null,
+  );
+}
+
+/** Single-panel cooltip / switch overlay with measured flip-above. */
+function AnchoredCooltipRoot(props: {
+  className: string;
+  anchor: MeterCooltipAnchor;
+  opts?: CooltipStyleOpts;
+  onEnter: () => void;
+  onLeave: () => void;
+  children: any;
+}): any {
+  const { ref, style, place } = useAnchoredCooltip(props.anchor, props.opts);
+  const kids = Array.isArray(props.children)
+    ? props.children
+    : [props.children];
+  return e(
+    "div",
+    {
+      ref,
+      className: props.className + (place === "above" ? " is-above" : ""),
+      style: { ...style, ...PIXEL_TEXT },
+      onMouseEnter: props.onEnter,
+      onMouseLeave: props.onLeave,
+    },
+    ...kids,
   );
 }

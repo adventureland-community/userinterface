@@ -10,6 +10,9 @@ export const METER_COOLTIP_CSS = `
   --meter-accent: #e8c96a;
 }
 .ecu-meter-cooltip {
+  /* Inline fixed pos from cooltipStyle for standalone roots.
+   * Inside .ecu-meter-cooltip-wrap the child rule forces relative so the
+   * wrap owns fixed anchoring (avoids 0-height wrap / beside-panel glitches). */
   position: fixed;
   background: #141214;
   border: 1px solid rgba(0,0,0,0.85);
@@ -40,6 +43,21 @@ export const METER_COOLTIP_CSS = `
 }
 /* Hover bridge so mouse can travel from toolbar → tip without closing. */
 .ecu-meter-cooltip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+}
+/* When the menu opens above the button, bridge sits under the tip. */
+.ecu-meter-cooltip.is-above::before,
+.ecu-meter-cooltip-wrap.is-above > .ecu-meter-cooltip::before,
+.ecu-meter-switch-overlay.is-above::before {
+  top: auto;
+  bottom: -10px;
+}
+.ecu-meter-switch-overlay::before {
   content: "";
   position: absolute;
   left: 0;
@@ -263,6 +281,9 @@ export const METER_COOLTIP_CSS = `
 }
 .ecu-meter-cooltip-wrap.is-flip {
   flex-direction: row-reverse;
+}
+.ecu-meter-cooltip-wrap.is-above {
+  align-items: flex-end;
 }
 .ecu-meter-cooltip-wrap > .ecu-meter-cooltip {
   position: relative;
