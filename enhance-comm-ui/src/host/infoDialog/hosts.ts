@@ -35,12 +35,17 @@ export function ensureDialogElements(): {
 } {
   injectDialogHostCss();
 
+  const body = document.body;
+  if (!body) {
+    throw new Error("ensureDialogElements: document.body is not ready");
+  }
+
   let corner = document.getElementById("topleftcorner");
   if (!corner) {
     corner = document.createElement("div");
     corner.id = "topleftcorner";
     corner.className = "bpclicks";
-    document.body.append(corner);
+    body.append(corner);
   }
 
   if (!document.getElementById("topleftcornerui")) {

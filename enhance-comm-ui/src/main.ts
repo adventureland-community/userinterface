@@ -2,10 +2,7 @@ import { getReact, getReactDOM, e } from "./host/react";
 import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startCryptTracker } from "./crypt/tracker";
-import {
-  startMeterEngine,
-  updateMeterContext,
-} from "./meters/meterEngine";
+import { startMeterEngine, updateMeterContext } from "./meters/meterEngine";
 import { isMeterInCombat } from "./meters/meterSession";
 import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
@@ -114,12 +111,35 @@ function injectCss(id: string, css: string): void {
   const style = document.createElement("style");
   style.id = id;
   style.innerText = css;
-  document.head.append(style);
+  (document.head || document.documentElement).append(style);
+}
+
+/** Userscript / early head inject can finish React before <body> exists. */
+function whenBodyReady(fn: () => void): void {
+  if (document.body) {
+    fn();
+    return;
+  }
+  let done = false;
+  const finish = () => {
+    if (done || !document.body) return;
+    done = true;
+    window.clearInterval(poll);
+    document.removeEventListener("DOMContentLoaded", finish);
+    fn();
+  };
+  document.addEventListener("DOMContentLoaded", finish);
+  const poll = window.setInterval(finish, 16);
+  window.setTimeout(() => {
+    window.clearInterval(poll);
+    document.removeEventListener("DOMContentLoaded", finish);
+  }, 15000);
 }
 
 function ensureReact(onReady: () => void): void {
+  const go = () => whenBodyReady(onReady);
   if (window.React && window.ReactDOM) {
-    onReady();
+    go();
     return;
   }
 
@@ -128,7 +148,7 @@ function ensureReact(onReady: () => void): void {
     reactScript.id = "react";
     reactScript.src = "https://unpkg.com/react@18/umd/react.development.js";
     reactScript.crossOrigin = "";
-    document.head.append(reactScript);
+    (document.head || document.documentElement).append(reactScript);
   }
 
   const existingDom = document.querySelector(
@@ -140,10 +160,10 @@ function ensureReact(onReady: () => void): void {
     reactDomScript.src =
       "https://unpkg.com/react-dom@18/umd/react-dom.development.js";
     reactDomScript.crossOrigin = "";
-    reactDomScript.addEventListener("load", onReady);
-    document.head.append(reactDomScript);
+    reactDomScript.addEventListener("load", go);
+    (document.head || document.documentElement).append(reactDomScript);
   } else {
-    existingDom.addEventListener("load", onReady);
+    existingDom.addEventListener("load", go);
   }
 }
 
