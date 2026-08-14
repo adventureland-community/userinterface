@@ -179,11 +179,25 @@ export function moveCommWindowWithGroup(
       ),
     };
   }
-  const moved = moveEdgeGroup(panels, id, {
-    x: pos.x,
-    y: pos.y,
-    anchor: pos.anchor || "tl",
-  });
+  const moved = moveEdgeGroup(
+    panels,
+    id,
+    {
+      x: pos.x,
+      y: pos.y,
+      anchor: pos.anchor || "tl",
+    },
+    (() => {
+      try {
+        const r = layoutDragRoot().getBoundingClientRect();
+        return r.width > 0 && r.height > 0
+          ? { w: r.width, h: r.height }
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    })(),
+  );
   return applyEdgePanelsToState(state, moved);
 }
 

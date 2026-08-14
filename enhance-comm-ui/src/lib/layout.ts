@@ -404,7 +404,127 @@ export function panelPosFromTopLeft(
   if (keep?.verticalSnap) next.verticalSnap = keep.verticalSnap;
   if (keep?.locked != null) next.locked = keep.locked;
   if (keep?.scale != null) next.scale = keep.scale;
+  if (keep?.frameW != null) next.frameW = keep.frameW;
+  if (keep?.frameH != null) next.frameH = keep.frameH;
   return next;
+}
+
+/**
+ * Painted top-left of a panel inside the root (CSS px), for the current anchor.
+ * `paintedW` / `paintedH` must be the on-screen box size (include scale).
+ */
+export function paintedBoxInRoot(
+  pos: PanelPos,
+  paintedW: number,
+  paintedH: number,
+  rootW: number,
+  rootH: number,
+): { left: number; top: number; right: number; bottom: number } {
+  const ax = (pos.x / 100) * rootW;
+  const ay = (pos.y / 100) * rootH;
+  const off = anchorToTopLeftOffset(pos.anchor, paintedW, paintedH);
+  const left = ax + off.ox;
+  const top = ay + off.oy;
+  return {
+    left,
+    top,
+    right: left + paintedW,
+    bottom: top + paintedH,
+  };
+}
+
+/**
+ * Keep the *painted* box inside the root. Anchor % alone is not enough —
+ * center/bottom anchors at y≈0 put Command (and friends) above the screen.
+ * If the panel is taller/wider than the root, pin to the top/left so the
+ * titlebar / drag chrome stays reachable.
+ */
+export function clampPanelPosInRoot(
+  pos: PanelPos,
+  paintedW: number,
+  paintedH: number,
+  rootW: number,
+  rootH: number,
+  pad = 0,
+): PanelPos {
+  if (!(paintedW > 0 && paintedH > 0 && rootW > 0 && rootH > 0)) {
+    return {
+      ...pos,
+      x: clamp(pos.x, 0, 100),
+      y: clamp(pos.y, 0, 100),
+    };
+  }
+  const box = paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH);
+  let left = box.left;
+  let top = box.top;
+  const maxLeft = Math.max(pad, rootW - paintedW - pad);
+  const maxTop = Math.max(pad, rootH - paintedH - pad);
+  left = clamp(left, pad, maxLeft);
+  top = clamp(top, pad, maxTop);
+  if (left === box.left && top === box.top) {
+    return {
+      ...pos,
+      x: clamp(pos.x, 0, 100),
+      y: clamp(pos.y, 0, 100),
+    };
+  }
+  return panelPosFromTopLeft(
+    left,
+    top,
+    paintedW,
+    paintedH,
+    pos.anchor,
+    rootW,
+    rootH,
+    pos,
+  );
+}
+
+/**
+ * Rigid-shift a snap group so the union of painted boxes stays in the root.
+ * Prefers top/left when the group is larger than the viewport.
+ */
+export function clampPanelGroupInRoot(
+  members: { pos: PanelPos; paintedW: number; paintedH: number }[],
+  rootW: number,
+  rootH: number,
+  pad = 0,
+): PanelPos[] {
+  if (!members.length || !(rootW > 0 && rootH > 0)) {
+    return members.map((m) => m.pos);
+  }
+  let minL = Infinity;
+  let minT = Infinity;
+  let maxR = -Infinity;
+  let maxB = -Infinity;
+  for (let i = 0; i < members.length; i++) {
+    const m = members[i];
+    if (!(m.paintedW > 0 && m.paintedH > 0)) continue;
+    const box = paintedBoxInRoot(m.pos, m.paintedW, m.paintedH, rootW, rootH);
+    if (box.left < minL) minL = box.left;
+    if (box.top < minT) minT = box.top;
+    if (box.right > maxR) maxR = box.right;
+    if (box.bottom > maxB) maxB = box.bottom;
+  }
+  if (!Number.isFinite(minL)) return members.map((m) => m.pos);
+
+  let dx = 0;
+  let dy = 0;
+  const spanW = maxR - minL;
+  const spanH = maxB - minT;
+  if (spanW >= rootW - 2 * pad) dx = pad - minL;
+  else if (minL < pad) dx = pad - minL;
+  else if (maxR > rootW - pad) dx = rootW - pad - maxR;
+  if (spanH >= rootH - 2 * pad) dy = pad - minT;
+  else if (minT < pad) dy = pad - minT;
+  else if (maxB > rootH - pad) dy = rootH - pad - maxB;
+
+  if (dx === 0 && dy === 0) return members.map((m) => m.pos);
+  return members.map((m) => ({
+    ...m.pos,
+    x: m.pos.x + (dx / rootW) * 100,
+    y: m.pos.y + (dy / rootH) * 100,
+  }));
 }
 
 /** Compact labels for layout-edit anchor pad. */
@@ -455,11 +575,18 @@ export function panelStyle(
     maxHeight: "100vh",
     boxSizing: "border-box",
   };
+  // frameW/H are a floor: keep empty padded meters at the saved size, but let
+  // the shell grow with painted content so arrange outlines / snap bounds wrap
+  // Command, Kills, etc. (fixed px left overflow:visible content outside the box).
   if (typeof pos.frameW === "number" && pos.frameW > 0) {
-    style.width = Math.round(pos.frameW) + "px";
+    const w = Math.round(pos.frameW);
+    style.width = `max(${w}px, max-content)`;
+    style.minWidth = w + "px";
   }
   if (typeof pos.frameH === "number" && pos.frameH > 0) {
-    style.height = Math.round(pos.frameH) + "px";
+    const h = Math.round(pos.frameH);
+    style.height = `max(${h}px, max-content)`;
+    style.minHeight = h + "px";
   }
   return style;
 }

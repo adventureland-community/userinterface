@@ -8,7 +8,11 @@
  * free-size resize — both taken during arrange.
  */
 
-import type { PanelPos } from "./layout";
+import {
+  clampPanelGroupInRoot,
+  clampPanelPosInRoot,
+  type PanelPos,
+} from "./layout";
 
 export type EdgeSnapSide = 1 | 2 | 3 | 4;
 
@@ -297,11 +301,13 @@ export function groupPanels<T extends EdgeGroupPanel>(
  * Move a snap group by applying the same % delta to every member.
  * PanelPos uses left%/top% of the CSS anchor point for all anchors
  * (`panelStyle` + translate) — do not invert for tr/br/bl.
+ * When root size is known, keep the group's painted union on-screen.
  */
 export function moveEdgeGroup<T extends EdgeGroupPanel>(
   panels: T[],
   movedId: string,
   newPos: PanelPos,
+  root?: { w: number; h: number },
 ): T[] {
   const byId: Record<string, T> = {};
   for (let i = 0; i < panels.length; i++) {
@@ -319,23 +325,78 @@ export function moveEdgeGroup<T extends EdgeGroupPanel>(
   }
   const group = getEdgeGroup(panels, movedId);
   if (group.length <= 1) {
-    return panels.map((m) =>
-      m.id === movedId ? { ...m, pos: { ...newPos } } : m,
-    );
+    let pos = { ...newPos };
+    if (root && root.w > 0 && root.h > 0) {
+      const pw =
+        moved.frameW ||
+        (typeof moved.pos.frameW === "number" ? moved.pos.frameW : 0) ||
+        200;
+      const ph =
+        moved.frameH ||
+        (typeof moved.pos.frameH === "number" ? moved.pos.frameH : 0) ||
+        150;
+      const scale =
+        typeof pos.scale === "number" && pos.scale > 0 ? pos.scale : 1;
+      pos = clampPanelPosInRoot(pos, pw * scale, ph * scale, root.w, root.h);
+    } else {
+      pos = {
+        ...pos,
+        x: Math.max(0, Math.min(100, pos.x)),
+        y: Math.max(0, Math.min(100, pos.y)),
+      };
+    }
+    return panels.map((m) => (m.id === movedId ? { ...m, pos } : m));
   }
   const groupIds = new Set(group.map((g) => g.id));
-  return panels.map((m) => {
+  let next = panels.map((m) => {
     if (!groupIds.has(m.id)) return m;
     if (m.id === movedId) return { ...m, pos: { ...newPos } };
     return {
       ...m,
       pos: {
         ...m.pos,
-        x: Math.max(0, Math.min(100, m.pos.x + dx)),
-        y: Math.max(0, Math.min(100, m.pos.y + dy)),
+        x: m.pos.x + dx,
+        y: m.pos.y + dy,
       },
     };
   });
+  if (root && root.w > 0 && root.h > 0) {
+    const members = next
+      .filter((m) => groupIds.has(m.id))
+      .map((m) => {
+        const pw = m.frameW || m.pos.frameW || 200;
+        const ph = m.frameH || m.pos.frameH || 150;
+        const scale =
+          typeof m.pos.scale === "number" && m.pos.scale > 0 ? m.pos.scale : 1;
+        return {
+          id: m.id,
+          pos: m.pos,
+          paintedW: pw * scale,
+          paintedH: ph * scale,
+        };
+      });
+    const clamped = clampPanelGroupInRoot(members, root.w, root.h);
+    const byClamped: Record<string, PanelPos> = {};
+    for (let i = 0; i < members.length; i++) {
+      byClamped[members[i].id] = clamped[i];
+    }
+    next = next.map((m) =>
+      byClamped[m.id] ? { ...m, pos: byClamped[m.id] } : m,
+    );
+  } else {
+    next = next.map((m) => {
+      if (!groupIds.has(m.id)) return m;
+      return {
+        ...m,
+        pos: {
+          ...m.pos,
+          x: Math.max(0, Math.min(100, m.pos.x)),
+          y: Math.max(0, Math.min(100, m.pos.y)),
+        },
+      };
+    });
+  }
+  return next;
 }
 
 /** Match peer frame height when snapping horizontally. */
@@ -476,13 +537,22 @@ export function nudgePosByPixels(
   dyPx: number,
   rootW: number,
   rootH: number,
+  painted?: { w: number; h: number },
 ): PanelPos {
   const dxPct = rootW > 0 ? (dxPx / rootW) * 100 : 0;
   const dyPct = rootH > 0 ? (dyPx / rootH) * 100 : 0;
-  return {
+  const next: PanelPos = {
     ...pos,
-    x: Math.max(0, Math.min(100, pos.x + dxPct)),
-    y: Math.max(0, Math.min(100, pos.y + dyPct)),
+    x: pos.x + dxPct,
+    y: pos.y + dyPct,
+  };
+  if (painted && painted.w > 0 && painted.h > 0) {
+    return clampPanelPosInRoot(next, painted.w, painted.h, rootW, rootH);
+  }
+  return {
+    ...next,
+    x: Math.max(0, Math.min(100, next.x)),
+    y: Math.max(0, Math.min(100, next.y)),
   };
 }
 
@@ -541,7 +611,10 @@ export function attachPanelEdge<T extends EdgeGroupPanel>(
     dx = otherRect.left - projected.left;
   }
 
-  const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
+  const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH, {
+    w: projected.right - projected.left,
+    h: projected.bottom - projected.top,
+  });
 
   let next = panels.map((m) => {
     if (m.id !== selfId) return m;

@@ -8,6 +8,7 @@ import {
 import {
   PANEL_LABELS,
   captureVisualSnapStart,
+  clampPanelPosInRoot,
   panelStyle,
   reanchorKeepingVisual,
   softAvoidOverlap,
@@ -425,13 +426,25 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       peerYs: ys,
       skipPeerSnap: skipPeer,
     });
-    onMove(id, { ...pos, x: snapped.x, y: snapped.y });
+    let nextPos: PanelPos = { ...pos, x: snapped.x, y: snapped.y };
+    const shell = shellRef.current;
+    const rootEl = layoutDragRoot();
+    if (shell && rootEl) {
+      const pr = shell.getBoundingClientRect();
+      const rr = rootEl.getBoundingClientRect();
+      if (pr.width > 0 && pr.height > 0 && rr.width > 0 && rr.height > 0) {
+        nextPos = clampPanelPosInRoot(
+          nextPos,
+          pr.width,
+          pr.height,
+          rr.width,
+          rr.height,
+        );
+      }
+    }
+    onMove(id, nextPos);
     if (props.onDragMove) {
-      props.onDragMove(
-        id,
-        { ...pos, x: snapped.x, y: snapped.y },
-        groupDragOpts(),
-      );
+      props.onDragMove(id, nextPos, groupDragOpts());
     }
   };
 
@@ -603,12 +616,19 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity,
     },
     // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
-    // the stock 7-col float inventory. Other HUD panels use frameW/H.
+    // the stock 7-col float inventory. Other HUD panels treat frameW/H as a
+    // floor that can grow with max-content so arrange outlines wrap overflow.
     id !== "bag" && typeof pos.frameW === "number" && pos.frameW > 0
-      ? { width: Math.round(pos.frameW) + "px" }
+      ? {
+          width: `max(${Math.round(pos.frameW)}px, max-content)`,
+          minWidth: Math.round(pos.frameW) + "px",
+        }
       : null,
     id !== "bag" && typeof pos.frameH === "number" && pos.frameH > 0
-      ? { height: Math.round(pos.frameH) + "px" }
+      ? {
+          height: `max(${Math.round(pos.frameH)}px, max-content)`,
+          minHeight: Math.round(pos.frameH) + "px",
+        }
       : null,
     editing
       ? {
@@ -653,7 +673,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     const measure = () => {
       const root = layoutDragRoot().getBoundingClientRect();
       const panel = el.getBoundingClientRect();
-      const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 2;
+      // Need comfortable headroom — a tight gap above parks chrome where
+      // tooltips/menus can't open below the controls.
+      const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 40;
       setArrangePlacement(fitsAbove ? "above" : "inline");
     };
     measure();
@@ -662,6 +684,29 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     const t = window.setTimeout(measure, 0);
     return () => window.clearTimeout(t);
   }, [showArrangeOverlay, hover, pos.x, pos.y, movable, id]);
+
+  // Recover panels parked off-screen (center/bottom anchors + edge snap).
+  React.useLayoutEffect(() => {
+    if (dragging.current) return;
+    const shell = shellRef.current;
+    const rootEl = layoutDragRoot();
+    if (!shell || !rootEl) return;
+    const pr = shell.getBoundingClientRect();
+    const rr = rootEl.getBoundingClientRect();
+    if (!(pr.width > 0 && pr.height > 0 && rr.width > 0 && rr.height > 0)) {
+      return;
+    }
+    const next = clampPanelPosInRoot(
+      pos,
+      pr.width,
+      pr.height,
+      rr.width,
+      rr.height,
+    );
+    if (Math.abs(next.x - pos.x) > 0.05 || Math.abs(next.y - pos.y) > 0.05) {
+      onMove(id, next);
+    }
+  }, [pos.x, pos.y, pos.anchor, pos.scale, pos.frameW, pos.frameH, id]);
 
   const {
     editHeader,
