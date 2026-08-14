@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.1
+// @version      0.8.0-alpha.2
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2092,6 +2092,105 @@ var EnhanceCommUI = (() => {
       anchor: nextAnchor
     };
   }
+  function panelPosFromTopLeft(leftPx, topPx, widthPx, heightPx, anchor, rootW, rootH, keep) {
+    const off = anchorToTopLeftOffset(anchor, widthPx, heightPx);
+    const ax = leftPx - off.ox;
+    const ay = topPx - off.oy;
+    const next = {
+      x: clamp(rootW > 0 ? ax / rootW * 100 : 0, 0, 100),
+      y: clamp(rootH > 0 ? ay / rootH * 100 : 0, 0, 100),
+      anchor
+    };
+    if (keep == null ? void 0 : keep.snap) next.snap = keep.snap;
+    if (keep == null ? void 0 : keep.horizontalSnap) next.horizontalSnap = keep.horizontalSnap;
+    if (keep == null ? void 0 : keep.verticalSnap) next.verticalSnap = keep.verticalSnap;
+    if ((keep == null ? void 0 : keep.locked) != null) next.locked = keep.locked;
+    if ((keep == null ? void 0 : keep.scale) != null) next.scale = keep.scale;
+    if ((keep == null ? void 0 : keep.frameW) != null) next.frameW = keep.frameW;
+    if ((keep == null ? void 0 : keep.frameH) != null) next.frameH = keep.frameH;
+    return next;
+  }
+  function paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH) {
+    const ax = pos.x / 100 * rootW;
+    const ay = pos.y / 100 * rootH;
+    const off = anchorToTopLeftOffset(pos.anchor, paintedW, paintedH);
+    const left = ax + off.ox;
+    const top = ay + off.oy;
+    return {
+      left,
+      top,
+      right: left + paintedW,
+      bottom: top + paintedH
+    };
+  }
+  function clampPanelPosInRoot(pos, paintedW, paintedH, rootW, rootH, pad3 = 0) {
+    if (!(paintedW > 0 && paintedH > 0 && rootW > 0 && rootH > 0)) {
+      return {
+        ...pos,
+        x: clamp(pos.x, 0, 100),
+        y: clamp(pos.y, 0, 100)
+      };
+    }
+    const box = paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH);
+    let left = box.left;
+    let top = box.top;
+    const maxLeft = Math.max(pad3, rootW - paintedW - pad3);
+    const maxTop = Math.max(pad3, rootH - paintedH - pad3);
+    left = clamp(left, pad3, maxLeft);
+    top = clamp(top, pad3, maxTop);
+    if (left === box.left && top === box.top) {
+      return {
+        ...pos,
+        x: clamp(pos.x, 0, 100),
+        y: clamp(pos.y, 0, 100)
+      };
+    }
+    return panelPosFromTopLeft(
+      left,
+      top,
+      paintedW,
+      paintedH,
+      pos.anchor,
+      rootW,
+      rootH,
+      pos
+    );
+  }
+  function clampPanelGroupInRoot(members, rootW, rootH, pad3 = 0) {
+    if (!members.length || !(rootW > 0 && rootH > 0)) {
+      return members.map((m) => m.pos);
+    }
+    let minL = Infinity;
+    let minT = Infinity;
+    let maxR = -Infinity;
+    let maxB = -Infinity;
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      if (!(m.paintedW > 0 && m.paintedH > 0)) continue;
+      const box = paintedBoxInRoot(m.pos, m.paintedW, m.paintedH, rootW, rootH);
+      if (box.left < minL) minL = box.left;
+      if (box.top < minT) minT = box.top;
+      if (box.right > maxR) maxR = box.right;
+      if (box.bottom > maxB) maxB = box.bottom;
+    }
+    if (!Number.isFinite(minL)) return members.map((m) => m.pos);
+    let dx = 0;
+    let dy = 0;
+    const spanW = maxR - minL;
+    const spanH = maxB - minT;
+    if (spanW >= rootW - 2 * pad3) dx = pad3 - minL;
+    else if (minL < pad3) dx = pad3 - minL;
+    else if (maxR > rootW - pad3) dx = rootW - pad3 - maxR;
+    if (spanH >= rootH - 2 * pad3) dy = pad3 - minT;
+    else if (minT < pad3) dy = pad3 - minT;
+    else if (maxB > rootH - pad3) dy = rootH - pad3 - maxB;
+    if (dx === 0 && dy === 0) return members.map((m) => m.pos);
+    return members.map((m) => ({
+      ...m.pos,
+      x: m.pos.x + dx / rootW * 100,
+      y: m.pos.y + dy / rootH * 100
+    }));
+  }
   var LAYOUT_ANCHOR_OPTIONS = [
     { id: "tl", glyph: "\u231C", title: "Top-left \u2014 grows down & right" },
     { id: "tc", glyph: "\u2303", title: "Top-center \u2014 grows down" },
@@ -2126,10 +2225,14 @@ var EnhanceCommUI = (() => {
       boxSizing: "border-box"
     };
     if (typeof pos.frameW === "number" && pos.frameW > 0) {
-      style.width = Math.round(pos.frameW) + "px";
+      const w = Math.round(pos.frameW);
+      style.width = `max(${w}px, max-content)`;
+      style.minWidth = w + "px";
     }
     if (typeof pos.frameH === "number" && pos.frameH > 0) {
-      style.height = Math.round(pos.frameH) + "px";
+      const h = Math.round(pos.frameH);
+      style.height = `max(${h}px, max-content)`;
+      style.minHeight = h + "px";
     }
     return style;
   }
@@ -2450,7 +2553,7 @@ var EnhanceCommUI = (() => {
       return changed ? refreshSnapFlags({ ...m, snap }) : m;
     });
   }
-  function moveEdgeGroup(panels, movedId, newPos) {
+  function moveEdgeGroup(panels, movedId, newPos, root) {
     const byId = {};
     for (let i = 0; i < panels.length; i++) {
       byId[panels[i].id] = panels[i];
@@ -2467,23 +2570,68 @@ var EnhanceCommUI = (() => {
     }
     const group = getEdgeGroup(panels, movedId);
     if (group.length <= 1) {
-      return panels.map(
-        (m) => m.id === movedId ? { ...m, pos: { ...newPos } } : m
-      );
+      let pos = { ...newPos };
+      if (root && root.w > 0 && root.h > 0) {
+        const pw = moved.frameW || (typeof moved.pos.frameW === "number" ? moved.pos.frameW : 0) || 200;
+        const ph = moved.frameH || (typeof moved.pos.frameH === "number" ? moved.pos.frameH : 0) || 150;
+        const scale = typeof pos.scale === "number" && pos.scale > 0 ? pos.scale : 1;
+        pos = clampPanelPosInRoot(pos, pw * scale, ph * scale, root.w, root.h);
+      } else {
+        pos = {
+          ...pos,
+          x: Math.max(0, Math.min(100, pos.x)),
+          y: Math.max(0, Math.min(100, pos.y))
+        };
+      }
+      return panels.map((m) => m.id === movedId ? { ...m, pos } : m);
     }
     const groupIds = new Set(group.map((g) => g.id));
-    return panels.map((m) => {
+    let next = panels.map((m) => {
       if (!groupIds.has(m.id)) return m;
       if (m.id === movedId) return { ...m, pos: { ...newPos } };
       return {
         ...m,
         pos: {
           ...m.pos,
-          x: Math.max(0, Math.min(100, m.pos.x + dx)),
-          y: Math.max(0, Math.min(100, m.pos.y + dy))
+          x: m.pos.x + dx,
+          y: m.pos.y + dy
         }
       };
     });
+    if (root && root.w > 0 && root.h > 0) {
+      const members = next.filter((m) => groupIds.has(m.id)).map((m) => {
+        const pw = m.frameW || m.pos.frameW || 200;
+        const ph = m.frameH || m.pos.frameH || 150;
+        const scale = typeof m.pos.scale === "number" && m.pos.scale > 0 ? m.pos.scale : 1;
+        return {
+          id: m.id,
+          pos: m.pos,
+          paintedW: pw * scale,
+          paintedH: ph * scale
+        };
+      });
+      const clamped = clampPanelGroupInRoot(members, root.w, root.h);
+      const byClamped = {};
+      for (let i = 0; i < members.length; i++) {
+        byClamped[members[i].id] = clamped[i];
+      }
+      next = next.map(
+        (m) => byClamped[m.id] ? { ...m, pos: byClamped[m.id] } : m
+      );
+    } else {
+      next = next.map((m) => {
+        if (!groupIds.has(m.id)) return m;
+        return {
+          ...m,
+          pos: {
+            ...m.pos,
+            x: Math.max(0, Math.min(100, m.pos.x)),
+            y: Math.max(0, Math.min(100, m.pos.y))
+          }
+        };
+      });
+    }
+    return next;
   }
   function matchGroupHeight(panels, id, height) {
     const group = getEdgeGroup(panels, id);
@@ -2571,13 +2719,21 @@ var EnhanceCommUI = (() => {
     }
     return best;
   }
-  function nudgePosByPixels(pos, dxPx, dyPx, rootW, rootH) {
+  function nudgePosByPixels(pos, dxPx, dyPx, rootW, rootH, painted) {
     const dxPct = rootW > 0 ? dxPx / rootW * 100 : 0;
     const dyPct = rootH > 0 ? dyPx / rootH * 100 : 0;
-    return {
+    const next = {
       ...pos,
-      x: Math.max(0, Math.min(100, pos.x + dxPct)),
-      y: Math.max(0, Math.min(100, pos.y + dyPct))
+      x: pos.x + dxPct,
+      y: pos.y + dyPct
+    };
+    if (painted && painted.w > 0 && painted.h > 0) {
+      return clampPanelPosInRoot(next, painted.w, painted.h, rootW, rootH);
+    }
+    return {
+      ...next,
+      x: Math.max(0, Math.min(100, next.x)),
+      y: Math.max(0, Math.min(100, next.y))
     };
   }
   function attachPanelEdge(panels, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
@@ -2613,7 +2769,10 @@ var EnhanceCommUI = (() => {
       dy = otherRect.bottom + GROUP_GAP_PX - projected.top;
       dx = otherRect.left - projected.left;
     }
-    const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH);
+    const alignedPos = nudgePosByPixels(self.pos, dx, dy, rootW, rootH, {
+      w: projected.right - projected.left,
+      h: projected.bottom - projected.top
+    });
     let next = panels.map((m) => {
       if (m.id !== selfId) return m;
       return {
@@ -3141,6 +3300,9 @@ var EnhanceCommUI = (() => {
   function meterHidesWhenEmpty(inst) {
     if (typeof inst.hideWhenEmpty === "boolean") return inst.hideWhenEmpty;
     return inst.query.kind === "snapshot";
+  }
+  function shouldMountEmptyHide(_inst, opts) {
+    return opts.layoutEdit || !opts.locked || opts.hasRows;
   }
   function barModeIndex(query) {
     for (let i = 0; i < BAR_MODE_CYCLE.length; i++) {
@@ -5545,8 +5707,11 @@ ${fightHoverTip(src)}`
       )
     };
   }
+  function coopPointsPow065(rawPoints) {
+    return Math.pow(Math.max(0, rawPoints), 0.65);
+  }
   function snapshotRows(mode, entities) {
-    var _a, _b, _c, _d;
+    var _a, _b;
     if (mode === "pdps") {
       const players = playersList(entities).filter((p) => (p.pdps || 0) > 0).sort((a, b) => (b.pdps || 0) - (a.pdps || 0));
       let max2 = 0;
@@ -5576,25 +5741,29 @@ ${fightHoverTip(src)}`
     const ids = new Set(entities.map((e2) => String(e2.id)));
     const coop = entities.filter(
       (e2) => {
-        var _a2, _b2, _c2, _d2;
-        return e2.player && e2.type === "character" && (((_b2 = (_a2 = e2.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) > 0 && ((_d2 = (_c2 = e2.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.id) != null && ids.has(String(e2.s.coop.id));
+        var _a2, _b2, _c, _d;
+        return e2.player && e2.type === "character" && (((_b2 = (_a2 = e2.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) > 0 && ((_d = (_c = e2.s) == null ? void 0 : _c.coop) == null ? void 0 : _d.id) != null && ids.has(String(e2.s.coop.id));
       }
     ).sort((a, b) => {
-      var _a2, _b2, _c2, _d2;
-      return (((_b2 = (_a2 = b.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) - (((_d2 = (_c2 = a.s) == null ? void 0 : _c2.coop) == null ? void 0 : _d2.p) || 0);
+      var _a2, _b2, _c, _d;
+      return (((_b2 = (_a2 = b.s) == null ? void 0 : _a2.coop) == null ? void 0 : _b2.p) || 0) - (((_d = (_c = a.s) == null ? void 0 : _c.coop) == null ? void 0 : _d.p) || 0);
     });
+    const useV2 = mode === "coop_v2";
     let max = 0;
-    let total = 0;
+    let total = useV2 ? 0.1 : 0;
+    const displayValues = [];
     for (let i = 0; i < coop.length; i++) {
-      const p = ((_b = (_a = coop[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
-      max = Math.max(max, p);
-      total += p;
+      const raw = ((_b = (_a = coop[i].s) == null ? void 0 : _a.coop) == null ? void 0 : _b.p) || 0;
+      const value = useV2 ? coopPointsPow065(raw) : raw;
+      displayValues.push(value);
+      max = Math.max(max, value);
+      total += value;
     }
     const rows = [];
     for (let i = 0; i < coop.length; i++) {
       const player = coop[i];
-      const value = ((_d = (_c = player.s) == null ? void 0 : _c.coop) == null ? void 0 : _d.p) || 0;
-      const label = mode === "coop_v2" ? value.toFixed(2) : `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(void 0, { maximumFractionDigits: 0 })}`;
+      const value = displayValues[i];
+      const label = `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(void 0, { maximumFractionDigits: 0 })}`;
       rows.push({
         id: String(player.id),
         name: player.name || String(player.id),
@@ -5920,7 +6089,7 @@ ${fightHoverTip(src)}`
       heal.pos = { x: 95.97476985743381, y: 99, anchor: "br" };
       heal.frameW = 261;
       heal.frameH = 157;
-      heal.locked = false;
+      heal.locked = true;
       heal.zIndex = 64;
       heal.stack = false;
       heal.integrate = false;
@@ -6212,57 +6381,145 @@ ${fightHoverTip(src)}`
   var FEATURE_OVERVIEW = [
     {
       label: "Movable panels",
-      detail: "Drag, lock, snap, and save layouts (desktop / tablet / phone)."
+      detail: "Drag, lock, snap, and save layouts for desktop, tablet, and phone.",
+      kind: "feature"
     },
     {
       label: "Combat HUD",
-      detail: "Player & target frames, party roster, boss bars, threat."
+      detail: "Player and target frames, party roster, boss bars, and threat.",
+      kind: "feature"
     },
     {
       label: "Damage meters",
-      detail: "DPS / HPS windows, Inspector, Time Line, and report views."
+      detail: "DPS and HPS windows, Inspector, Time Line, and report views.",
+      kind: "feature"
     },
     {
       label: "Command snippets",
-      detail: "Observer COMMAND panel with saved CODE presets."
+      detail: "Observer COMMAND panel with saved CODE presets.",
+      kind: "feature"
     }
   ];
   var CHANGELOG = [
     {
-      id: "0.8.0-alpha.1",
-      title: "0.8.0-alpha.1",
+      id: "0.8.0-alpha.2",
+      title: "0.8.0-alpha.2",
+      date: "2026-08",
+      summary: "Browse Changelog anytime, clearer arrange outlines, and Coop share numbers that match the game again.",
       items: [
         {
-          label: "Alpha meters",
-          detail: "WoW-style meter shell: native bar scroll, Always-show-me pin, Time Line, and Details-like Inspector."
+          label: "Changelog browser",
+          detail: "Open Changelog anytime from the bottom bar. Browse versions one at a time \u2014 the window stays on screen.",
+          kind: "ui",
+          highlight: true
         },
         {
-          label: "Unified window groups",
-          detail: "Edge-snap HUD + meters, flush group resize, and green join guides while arranging."
+          label: "Arrange outline",
+          detail: "When unlocked, the blue outline wraps the whole window (including Command buttons and Kills).",
+          kind: "fix",
+          highlight: true
         },
         {
-          label: "Session segments",
-          detail: "Clearer current / past fight binding for meters, bookmarks, and statusbar plugins."
+          label: "Coop contribution %",
+          detail: "Coop V2 contribution % matches the game again; Coop V1 is still the simple share.",
+          kind: "fix",
+          highlight: true
+        },
+        {
+          label: "Empty damage meters",
+          detail: "Empty damage meters stay on screen while unlocked. Lock them and they hide until they have data.",
+          kind: "improve"
+        },
+        {
+          label: "Window names while arranging",
+          detail: "Hold Alt or unlock a window and its name appears \u2014 the same labels as in Layout.",
+          kind: "ui"
+        },
+        {
+          label: "Meter tour focus",
+          detail: "The combat-meters tour highlights the meter you just added, not every meter at once.",
+          kind: "fix"
+        },
+        {
+          label: "Keep windows on screen",
+          detail: "Dragging and snapping keep windows inside the screen. Layouts saved off-screen snap back when you load.",
+          kind: "fix"
+        },
+        {
+          label: "Menus near the bottom",
+          detail: "Toolbar menus open below the buttons. Near the bottom of the screen they flip above so they stay visible.",
+          kind: "fix"
+        },
+        {
+          label: "Startup crash fix",
+          detail: "Fixes a rare crash if Comm UI loaded before the page finished opening.",
+          kind: "fix"
+        },
+        {
+          label: "Move locked windows",
+          detail: "Hold Alt to move locked windows that are already on screen. Closed or empty-hidden windows stay hidden \u2014 use Layout to place those. DPS and HPS start locked.",
+          kind: "improve"
+        },
+        {
+          label: "Tour and Layout fixes",
+          detail: "Aggro lines are easier to click, the paperdoll tour only runs on players, Layout Done works reliably, and Intro replays when you ask.",
+          kind: "fix"
+        },
+        {
+          label: "Fear and aggro",
+          detail: "Fear badges follow the server's fear levels. Aggro count only includes enemies targeting that character.",
+          kind: "improve"
+        }
+      ]
+    },
+    {
+      id: "0.8.0-alpha.1",
+      title: "0.8.0-alpha.1",
+      date: "2026-08",
+      summary: "New meter windows, snap groups for HUD and meters, and clearer fights.",
+      items: [
+        {
+          label: "Damage meter windows",
+          detail: "Scrollable bars, pin yourself on the list, Time Line, and a detailed Inspector.",
+          kind: "feature",
+          highlight: true
+        },
+        {
+          label: "Snap windows together",
+          detail: "Snap HUD and meters at the edges. Resize a joined group together, with green guides while arranging.",
+          kind: "feature",
+          highlight: true
+        },
+        {
+          label: "Clearer fight segments",
+          detail: "Current and past fights are easier to follow in meters, bookmarks, and the status bar.",
+          kind: "improve"
         }
       ]
     },
     {
       id: "0.7.1-windows",
-      title: "Unified windows",
+      title: "0.7.1",
+      date: "2026-07",
+      summary: "Unified windows \u2014 same lock model for HUD and meters, plus Window Control.",
       items: [
         {
           label: "Lock any panel",
-          detail: "HUD and meters share the same lock \u2014 unlock to drag; hold Alt to nudge while locked."
+          detail: "HUD and meters share the same lock \u2014 unlock to drag; hold Alt to nudge while locked.",
+          kind: "feature"
         },
         {
           label: "Window Control",
-          detail: "\u2630 menu on panels: lock, ungroup, close, and reopen closed windows."
+          detail: "Menu on each panel: lock, ungroup, close, and reopen closed windows.",
+          kind: "feature"
         }
       ]
     },
     {
       id: "0.7.0",
-      title: "0.7",
+      title: "0.7.0",
+      date: "2026-07",
+      summary: "First Comm UI ship \u2014 movable panels, combat HUD, meters, and commands.",
       items: FEATURE_OVERVIEW
     }
   ];
@@ -6276,6 +6533,22 @@ ${fightHoverTip(src)}`
     if (idx < 0) return [CHANGELOG[0]];
     if (idx === 0) return [];
     return CHANGELOG.slice(0, idx);
+  }
+  function changelogKindLabel(kind) {
+    switch (kind) {
+      case "feature":
+        return "Feature";
+      case "fix":
+        return "Fix";
+      case "improve":
+        return "Improve";
+      case "ui":
+        return "UI";
+      default: {
+        const _exhaustive = kind;
+        return _exhaustive;
+      }
+    }
   }
 
   // src/lib/settings.ts
@@ -7728,6 +8001,170 @@ ${fightHoverTip(src)}`
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  // src/host/commChrome/chromeArrangeCss.ts
+  var CHROME_ARRANGE_CSS = `
+/* Edge-snap group affordances (layout edit + play-arrange). */
+#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-editing,
+#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-arrange {
+  box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.35);
+}
+/* Alt hold: same arrange outline on every already-visible movable window. */
+#comm-ui .comm-pos-panel.comm-pos-arrange:not(.comm-pos-editing) {
+  outline: 1px solid rgba(120, 200, 255, 0.55);
+  outline-offset: 0;
+}
+#comm-ui .comm-pos-panel.comm-pos-snap-target {
+  box-shadow:
+    0 0 0 2px rgba(120, 220, 255, 0.85),
+    0 0 16px rgba(80, 180, 255, 0.25) !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-dragging {
+  opacity: 0.92;
+}
+/* Window Control menu */
+#comm-ui .comm-pos-wc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #ffe08a;
+}
+#comm-ui .comm-pos-wc-item:hover {
+  background: rgba(80, 70, 30, 0.9);
+}
+#comm-ui .comm-pos-edit-grip-row {
+  pointer-events: auto;
+  cursor: grab;
+}
+#comm-ui .comm-pos-edit-grip-row .comm-pos-edit-grip {
+  flex: 1 1 auto;
+  min-width: 48px;
+}
+/* Play-arrange lock / WC / grip: above the frame when space allows; otherwise
+ * in-flow (is-inline) so chrome is not clipped and content shifts down. */
+#comm-ui .comm-pos-arrange-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  top: auto;
+  z-index: 6;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 0;
+  padding: 0 0 4px;
+  box-sizing: border-box;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  background: transparent;
+  height: auto;
+  overflow: visible;
+}
+/* Hit bridge into the panel so moving onto the bar does not fire mouseleave. */
+#comm-ui .comm-pos-arrange-overlay.is-above::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 6px;
+}
+#comm-ui .comm-pos-arrange-overlay.is-inline {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  top: auto;
+  margin-bottom: 2px;
+  padding-bottom: 0;
+  /* Idle inline chrome must not reserve height \u2014 only when open. */
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+#comm-ui .comm-pos-arrange-overlay.is-chrome-only {
+  justify-content: flex-end;
+}
+#comm-ui .comm-pos-arrange-overlay.has-grip {
+  justify-content: stretch;
+}
+/* Mini drag header \u2014 same role as layout-edit header, but hover-only. */
+#comm-ui .comm-pos-arrange-overlay .comm-pos-edit-grip {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  flex: 1 1 auto;
+  min-width: 48px;
+  z-index: 0;
+  justify-content: flex-start;
+}
+#comm-ui .comm-pos-arrange-overlay .comm-pos-arrange-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#comm-ui .comm-pos-arrange-overlay .comm-pos-window-chrome {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+}
+#comm-ui .comm-pos-arrange-overlay .comm-pos-panel-close-in-chrome {
+  position: relative;
+  top: auto;
+  right: auto;
+  flex: 0 0 auto;
+  align-self: center;
+  z-index: 1;
+}
+#comm-ui .comm-pos-arrange-overlay > * {
+  pointer-events: none;
+}
+/* JS hover class (delayed leave) \u2014 survives the gap to above-frame controls.
+ * Do NOT use :focus-within here: clicking lock/WC leaves focus on the button
+ * and would pin chrome visible after the pointer leaves (stuck after re-lock).
+ * Unlocked (.comm-pos-movable): keep the whole arrange strip open so hide \xD7
+ * and lock sit in the same row (no detached floating \xD7). */
+@media (hover: hover) and (pointer: fine) {
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay,
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay.is-inline,
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay.is-inline {
+    max-height: 48px;
+    overflow: visible;
+  }
+  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay > *,
+  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > * {
+    pointer-events: auto;
+  }
+}
+/* Touch / coarse: always show so lock/WC remain reachable. */
+@media (hover: none), (pointer: coarse) {
+  #comm-ui .comm-pos-arrange-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  #comm-ui .comm-pos-arrange-overlay.is-inline {
+    max-height: 48px;
+    overflow: visible;
+  }
+  #comm-ui .comm-pos-arrange-overlay > * {
+    pointer-events: auto;
+  }
+}
+`;
+
   // src/host/commChrome/chromeCss.ts
   var STYLE_ID = "comm-ui-chrome-css";
   function injectChromeCss() {
@@ -8391,154 +8828,7 @@ ${fightHoverTip(src)}`
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-window-chrome * {
   pointer-events: auto;
 }
-/* Edge-snap group affordances (layout edit + play-arrange). */
-#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-editing,
-#comm-ui .comm-pos-panel.comm-pos-grouped.comm-pos-arrange {
-  box-shadow: 0 0 0 1px rgba(120, 200, 255, 0.35);
-}
-#comm-ui .comm-pos-panel.comm-pos-snap-target {
-  box-shadow:
-    0 0 0 2px rgba(120, 220, 255, 0.85),
-    0 0 16px rgba(80, 180, 255, 0.25) !important;
-}
-#comm-ui .comm-pos-panel.comm-pos-dragging {
-  opacity: 0.92;
-}
-/* Window Control menu */
-#comm-ui .comm-pos-wc-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 4px 8px;
-  border: none;
-  background: transparent;
-  color: #ffe08a;
-}
-#comm-ui .comm-pos-wc-item:hover {
-  background: rgba(80, 70, 30, 0.9);
-}
-#comm-ui .comm-pos-edit-grip-row {
-  pointer-events: auto;
-  cursor: grab;
-}
-#comm-ui .comm-pos-edit-grip-row .comm-pos-edit-grip {
-  flex: 1 1 auto;
-  min-width: 48px;
-}
-/* Play-arrange lock / WC / grip: above the frame when space allows; otherwise
- * in-flow (is-inline) so chrome is not clipped and content shifts down. */
-#comm-ui .comm-pos-arrange-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 100%;
-  top: auto;
-  z-index: 6;
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-bottom: 0;
-  padding: 0 0 4px;
-  box-sizing: border-box;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-  background: transparent;
-  height: auto;
-  overflow: visible;
-}
-/* Hit bridge into the panel so moving onto the bar does not fire mouseleave. */
-#comm-ui .comm-pos-arrange-overlay.is-above::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: 6px;
-}
-#comm-ui .comm-pos-arrange-overlay.is-inline {
-  position: relative;
-  left: auto;
-  right: auto;
-  bottom: auto;
-  top: auto;
-  margin-bottom: 2px;
-  padding-bottom: 0;
-  /* Idle inline chrome must not reserve height \u2014 only when open. */
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-}
-#comm-ui .comm-pos-arrange-overlay.is-chrome-only {
-  justify-content: flex-end;
-}
-#comm-ui .comm-pos-arrange-overlay.has-grip {
-  justify-content: stretch;
-}
-/* Mini drag header \u2014 same role as layout-edit header, but hover-only. */
-#comm-ui .comm-pos-arrange-overlay .comm-pos-edit-grip {
-  position: static;
-  left: auto;
-  top: auto;
-  transform: none;
-  flex: 1 1 auto;
-  min-width: 48px;
-  z-index: 0;
-}
-#comm-ui .comm-pos-arrange-overlay .comm-pos-window-chrome {
-  position: relative;
-  z-index: 1;
-  flex: 0 0 auto;
-}
-#comm-ui .comm-pos-arrange-overlay .comm-pos-panel-close-in-chrome {
-  position: relative;
-  top: auto;
-  right: auto;
-  flex: 0 0 auto;
-  align-self: center;
-  z-index: 1;
-}
-#comm-ui .comm-pos-arrange-overlay > * {
-  pointer-events: none;
-}
-/* JS hover class (delayed leave) \u2014 survives the gap to above-frame controls.
- * Do NOT use :focus-within here: clicking lock/WC leaves focus on the button
- * and would pin chrome visible after the pointer leaves (stuck after re-lock).
- * Unlocked (.comm-pos-movable): keep the whole arrange strip open so hide \xD7
- * and lock sit in the same row (no detached floating \xD7). */
-@media (hover: hover) and (pointer: fine) {
-  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay,
-  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay.is-inline,
-  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay.is-inline {
-    max-height: 48px;
-    overflow: visible;
-  }
-  #comm-ui .comm-pos-panel.comm-pos-chrome-open > .comm-pos-arrange-overlay > *,
-  #comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > * {
-    pointer-events: auto;
-  }
-}
-/* Touch / coarse: always show so lock/WC remain reachable. */
-@media (hover: none), (pointer: coarse) {
-  #comm-ui .comm-pos-arrange-overlay {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  #comm-ui .comm-pos-arrange-overlay.is-inline {
-    max-height: 48px;
-    overflow: visible;
-  }
-  #comm-ui .comm-pos-arrange-overlay > * {
-    pointer-events: auto;
-  }
-}
+${CHROME_ARRANGE_CSS}
 /* Layout edit: subtle hover highlight on interactive chrome (header / \xD7 / anchor). */
 #comm-ui .comm-pos-panel.comm-pos-editing {
   transition: box-shadow 0.12s ease;
@@ -9580,12 +9870,16 @@ ${fightHoverTip(src)}`
   }
   function ensureDialogElements() {
     injectDialogHostCss();
+    const body = document.body;
+    if (!body) {
+      throw new Error("ensureDialogElements: document.body is not ready");
+    }
     let corner = document.getElementById("topleftcorner");
     if (!corner) {
       corner = document.createElement("div");
       corner.id = "topleftcorner";
       corner.className = "bpclicks";
-      document.body.append(corner);
+      body.append(corner);
     }
     if (!document.getElementById("topleftcornerui")) {
       const ui = document.createElement("div");
@@ -10631,8 +10925,8 @@ ${fightHoverTip(src)}`
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.1" : "unknown";
-    const builtAt = true ? "2026-08-13T21:38:45.745Z" : "unknown";
+    const version = true ? "0.8.0-alpha.2" : "unknown";
+    const builtAt = true ? "2026-08-14T00:10:40.431Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -10734,6 +11028,12 @@ ${fightHoverTip(src)}`
   align-items: center;
   justify-content: center;
   pointer-events: auto;
+}
+/* Changelog: top-anchor so version switches don't jump the top edge */
+.ecu-comm-wiz-backdrop--changelog {
+  align-items: flex-start;
+  padding-top: 6vh;
+  box-sizing: border-box;
 }
 .ecu-comm-wiz {
   min-width: min(560px, 94vw);
@@ -10878,22 +11178,314 @@ ${fightHoverTip(src)}`
 .ecu-comm-wiz-skip:hover {
   color: #fff;
 }
-.ecu-comm-wiz-changelog-block {
+/* What's New / Changelog \u2014 viewport-safe shell (intro wizard unchanged) */
+.ecu-comm-wiz--changelog {
+  width: min(1000px, 96vw);
+  max-width: min(1000px, 96vw);
+  min-width: 0;
+  height: min(88vh, 900px);
+  max-height: min(88vh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, #0a090c 0%, #050406 100%);
+}
+.ecu-comm-wiz-cl-head {
+  flex: 0 0 auto;
+  position: relative;
+  padding: 22px 44px 10px 28px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid rgba(232, 201, 106, 0.16);
+}
+.ecu-comm-wiz--changelog .ecu-comm-wiz-logo {
+  margin-bottom: 8px;
+}
+.ecu-comm-wiz--changelog h3 {
   margin: 0 0 4px;
 }
-.ecu-comm-wiz-changelog-ver {
-  color: #ffd28a;
+.ecu-comm-wiz-cl-ver {
+  color: #ffe0a0;
   font-size: 20px;
-  margin: 0 0 10px;
+  margin: 0 0 2px;
 }
-.ecu-comm-wiz-changelog-sep {
-  height: 1px;
-  margin: 8px 0 16px;
-  background: rgba(255, 255, 255, 0.08);
+.ecu-comm-wiz-cl-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(235, 230, 225, 0.92);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.ecu-comm-wiz-cl-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+.ecu-comm-wiz-cl-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ecu-comm-wiz-cl-shell--nav {
+  flex-direction: row;
+}
+.ecu-comm-wiz-cl-nav {
+  flex: 0 0 176px;
+  min-width: 0;
+  overflow: auto;
+  padding: 8px 10px 12px;
+  background: rgba(0, 0, 0, 0.38);
+  border-right: 1px solid rgba(232, 201, 106, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ecu-comm-wiz-cl-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: #fff;
+  padding: 8px 10px 8px 9px;
+  font-size: 18px;
+  line-height: 1.25;
+  border-radius: 2px;
+}
+.ecu-comm-wiz-cl-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  border-left-color: rgba(255, 255, 255, 0.1);
+  color: #f5f5f5;
+}
+.ecu-comm-wiz-cl-nav-btn.is-active {
+  color: #e8c96a;
+  border-color: rgba(232, 201, 106, 0.35);
+  border-left-color: #e8c96a;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ecu-comm-wiz-cl-nav-title {
+  font-size: 19px;
+  line-height: 1.2;
+  color: inherit;
+}
+.ecu-comm-wiz-cl-nav-date {
+  font-size: 13px;
+  line-height: 1.2;
+  color: rgba(200, 192, 180, 0.55);
+}
+.ecu-comm-wiz-cl-nav-btn.is-active .ecu-comm-wiz-cl-nav-date {
+  color: rgba(220, 208, 180, 0.72);
+}
+.ecu-comm-wiz-cl-nav-btn:hover .ecu-comm-wiz-cl-nav-date {
+  color: rgba(210, 200, 188, 0.68);
+}
+.ecu-comm-wiz-cl-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 26px 18px;
+  background: #0c0b0e;
+}
+.ecu-comm-wiz-cl-summary {
+  margin: 0 0 10px !important;
+  color: #fff;
+  font-size: 22px !important;
+  line-height: 1.45 !important;
+}
+.ecu-comm-wiz-cl-date {
+  margin: 0 0 14px;
+  color: rgba(220, 210, 210, 0.62);
+  font-size: 16px;
+}
+.ecu-comm-wiz-cl-section-label {
+  margin: 18px 0 12px;
+  padding-bottom: 6px;
+  color: #ffe0a0;
+  font-size: 21px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-bottom: 2px solid rgba(232, 201, 106, 0.5);
+}
+.ecu-comm-wiz-cl-section-label:first-child {
+  margin-top: 0;
+}
+.ecu-comm-wiz-cl-section-label--also {
+  margin-top: 26px;
+  padding-top: 4px;
+  border-top: none;
+}
+.ecu-comm-wiz-cl-kind-group-label {
+  margin: 22px 0 10px;
+  padding-bottom: 5px;
+  color: #f2efe8;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  border-bottom: 1px solid rgba(232, 201, 106, 0.35);
+}
+.ecu-comm-wiz-cl-section-label--also + .ecu-comm-wiz-cl-kind-group-label {
+  margin-top: 14px;
+}
+.ecu-comm-wiz-cl-items {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 13px;
+  margin: 0 0 6px;
+}
+.ecu-comm-wiz-cl-items--grid {
+  grid-template-columns: 1fr 1fr;
+}
+.ecu-comm-wiz-cl-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid rgba(255, 255, 255, 0.22);
+  box-sizing: border-box;
+}
+.ecu-comm-wiz-cl-item--highlight {
+  border-left-width: 4px;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.ecu-comm-wiz-cl-item--kind-feature {
+  border-left-color: #f0d070;
+}
+.ecu-comm-wiz-cl-item--kind-fix {
+  border-left-color: #7ab8e0;
+}
+.ecu-comm-wiz-cl-item--kind-improve {
+  border-left-color: #7fd9a8;
+}
+.ecu-comm-wiz-cl-item--kind-ui {
+  border-left-color: #e09a62;
+}
+.ecu-comm-wiz-cl-item--highlight.ecu-comm-wiz-cl-item--kind-feature {
+  border-left-color: #ffe08a;
+}
+.ecu-comm-wiz-cl-item--highlight.ecu-comm-wiz-cl-item--kind-fix {
+  border-left-color: #8ec8ef;
+}
+.ecu-comm-wiz-cl-item--highlight.ecu-comm-wiz-cl-item--kind-improve {
+  border-left-color: #92e8b8;
+}
+.ecu-comm-wiz-cl-item--highlight.ecu-comm-wiz-cl-item--kind-ui {
+  border-left-color: #f0aa72;
+}
+.ecu-comm-wiz-cl-item-top {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.ecu-comm-wiz-cl-kind {
+  flex: 0 0 auto;
+  margin-left: auto;
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(200, 190, 170, 0.85);
+  border: 1px solid transparent;
+  padding: 3px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.ecu-comm-wiz-cl-kind--feature {
+  color: #fff0c0;
+  background: rgba(210, 155, 35, 0.62);
+}
+.ecu-comm-wiz-cl-kind--fix {
+  color: #e4f2ff;
+  background: rgba(55, 125, 185, 0.68);
+}
+.ecu-comm-wiz-cl-kind--improve {
+  color: #e0ffe9;
+  background: rgba(35, 145, 95, 0.64);
+}
+.ecu-comm-wiz-cl-kind--ui {
+  color: #ffe2bc;
+  background: rgba(175, 95, 40, 0.64);
+}
+.ecu-comm-wiz-cl-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #fff;
+  font-size: 35px;
+}
+.ecu-comm-wiz-cl-item-detail {
+  color: #fff;
+  font-size: 30px;
+  max-width: 36em;
+}
+.ecu-comm-wiz-cl-foot {
+  flex: 0 0 auto;
+  padding: 12px 28px 20px;
+  background: rgba(0, 0, 0, 0.22);
+  border-top: 1px solid rgba(232, 201, 106, 0.18);
+}
+@media (max-width: 640px) {
+  .ecu-comm-wiz-cl-items--grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 560px) {
+  .ecu-comm-wiz-cl-shell--nav {
+    flex-direction: column;
+  }
+  .ecu-comm-wiz-cl-nav {
+    flex: 0 0 auto;
+    max-height: 112px;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid rgba(232, 201, 106, 0.28);
+    padding: 4px 12px 8px;
+    gap: 6px;
+  }
+  .ecu-comm-wiz-cl-nav-btn {
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .ecu-comm-wiz-cl-body {
+    padding: 8px 18px 14px;
+  }
+  .ecu-comm-wiz-cl-head {
+    padding: 18px 40px 8px 18px;
+  }
+  .ecu-comm-wiz-cl-foot {
+    padding: 10px 18px 16px;
+  }
 }
 `;
   function injectCommSetupWizardCss() {
     if (typeof document === "undefined") return;
+    if (injected) return;
     let el = document.querySelector(
       "style[data-ecu-comm-wiz]"
     );
@@ -10980,7 +11572,7 @@ ${fightHoverTip(src)}`
         extra: featureList([
           "Recommended: short intro (~17 steps) \u2014 observe chrome, overlay essentials, PDPS",
           "Deeper tours appear once when you use layout, meters, paperdoll, buffs, and more",
-          "Replay the intro anytime from the Intro button on the control strip"
+          "Replay the intro anytime from Intro on the control strip; Changelog opens full What's New history"
         ]),
         actions: e(
           "div",
@@ -11029,48 +11621,272 @@ ${fightHoverTip(src)}`
   }
 
   // src/ui/frames/comm/CommUIWhatsNew.ts
+  var KIND_ORDER = ["feature", "fix", "improve", "ui"];
+  function itemsGridClass(count) {
+    return "ecu-comm-wiz-cl-items" + (count >= 2 ? " ecu-comm-wiz-cl-items--grid" : "");
+  }
+  function renderChangelogItem(item, key) {
+    const kind = item.kind;
+    return e(
+      "div",
+      {
+        key,
+        className: "ecu-comm-wiz-cl-item" + (item.highlight ? " ecu-comm-wiz-cl-item--highlight" : "") + (kind ? ` ecu-comm-wiz-cl-item--kind-${kind}` : "")
+      },
+      e(
+        "div",
+        { className: "ecu-comm-wiz-cl-item-top" },
+        e("span", { className: "ecu-comm-wiz-cl-item-label" }, item.label),
+        kind ? e(
+          "span",
+          {
+            className: `ecu-comm-wiz-cl-kind ecu-comm-wiz-cl-kind--${kind}`
+          },
+          changelogKindLabel(kind)
+        ) : null
+      ),
+      e("div", { className: "ecu-comm-wiz-cl-item-detail" }, item.detail)
+    );
+  }
+  function groupRestByKind(rest) {
+    const byKind = /* @__PURE__ */ new Map();
+    for (let i = 0; i < rest.length; i++) {
+      const item = rest[i];
+      const key = item.kind ? item.kind : "other";
+      const list = byKind.get(key);
+      if (list) list.push(item);
+      else byKind.set(key, [item]);
+    }
+    const groups = [];
+    for (let i = 0; i < KIND_ORDER.length; i++) {
+      const kind = KIND_ORDER[i];
+      const items = byKind.get(kind);
+      if (items && items.length) groups.push({ kind, items });
+    }
+    const other = byKind.get("other");
+    if (other && other.length) groups.push({ kind: null, items: other });
+    return groups;
+  }
+  function renderEntryBody(entry, opts) {
+    const highlights = [];
+    const rest = [];
+    for (let i = 0; i < entry.items.length; i++) {
+      const item = entry.items[i];
+      if (item.highlight) highlights.push(item);
+      else rest.push(item);
+    }
+    const children = [];
+    if (entry.summary) {
+      children.push(
+        e(
+          "p",
+          { key: "summary", className: "ecu-comm-wiz-cl-summary" },
+          entry.summary
+        )
+      );
+    }
+    if ((opts == null ? void 0 : opts.showDate) && entry.date) {
+      children.push(
+        e("div", { key: "date", className: "ecu-comm-wiz-cl-date" }, entry.date)
+      );
+    }
+    if (highlights.length) {
+      children.push(
+        e(
+          "div",
+          { key: "hl-label", className: "ecu-comm-wiz-cl-section-label" },
+          "Highlights"
+        ),
+        e(
+          "div",
+          {
+            key: "hl-list",
+            className: itemsGridClass(highlights.length)
+          },
+          ...highlights.map(
+            (item, i) => renderChangelogItem(item, `hl-${entry.id}-${i}`)
+          )
+        )
+      );
+    }
+    if (rest.length) {
+      if (highlights.length) {
+        children.push(
+          e(
+            "div",
+            {
+              key: "rest-label",
+              className: "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--also"
+            },
+            "Also in this release"
+          )
+        );
+      }
+      const groups = groupRestByKind(rest);
+      const useKindGroups = groups.length > 1;
+      if (useKindGroups) {
+        for (let g = 0; g < groups.length; g++) {
+          const group = groups[g];
+          const label = group.kind ? changelogKindLabel(group.kind) : "Other";
+          children.push(
+            e(
+              "div",
+              {
+                key: `kind-label-${entry.id}-${g}`,
+                className: "ecu-comm-wiz-cl-kind-group-label"
+              },
+              label
+            ),
+            e(
+              "div",
+              {
+                key: `kind-list-${entry.id}-${g}`,
+                className: itemsGridClass(group.items.length)
+              },
+              ...group.items.map(
+                (item, i) => renderChangelogItem(item, `item-${entry.id}-${g}-${i}`)
+              )
+            )
+          );
+        }
+      } else {
+        children.push(
+          e(
+            "div",
+            {
+              key: "rest-list",
+              className: itemsGridClass(rest.length)
+            },
+            ...rest.map(
+              (item, i) => renderChangelogItem(item, `item-${entry.id}-${i}`)
+            )
+          )
+        );
+      }
+    }
+    return e("div", { className: "ecu-comm-wiz-cl-entry" }, ...children);
+  }
   function CommUIWhatsNew(props) {
     injectCommSetupWizardCss();
+    const React = getReact();
+    const entries = props.entries;
+    const showNav = !!props.browseAll || entries.length > 1;
+    const [selectedId, setSelectedId] = React.useState(
+      () => entries[0] ? entries[0].id : ""
+    );
+    React.useEffect(() => {
+      const first = entries[0];
+      if (!first) {
+        setSelectedId("");
+        return;
+      }
+      setSelectedId(
+        (prev) => entries.some((entry) => entry.id === prev) ? prev : first.id
+      );
+    }, [entries]);
     const dismiss = () => {
       patchSettings({ changelogSeenId: latestChangelogId() });
       props.onDone();
     };
-    const entries = props.entries;
-    const heading = entries.length === 1 ? `What's new in ${entries[0].title}` : "What's new";
+    const onDoneRef = React.useRef(props.onDone);
+    onDoneRef.current = props.onDone;
+    React.useEffect(() => {
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          patchSettings({ changelogSeenId: latestChangelogId() });
+          onDoneRef.current();
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+    const selected = entries.find((entry) => entry.id === selectedId) || entries[0] || null;
+    const heading = props.browseAll ? "Changelog" : entries.length === 1 && selected ? `What's new in ${selected.title}` : "What's new";
+    const header = e(
+      "div",
+      { className: "ecu-comm-wiz-cl-head" },
+      e("div", { className: "ecu-comm-wiz-logo" }, "Comm UI"),
+      e("h3", null, heading),
+      showNav && selected ? e("div", { className: "ecu-comm-wiz-cl-ver" }, selected.title) : null,
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-comm-wiz-cl-close",
+          title: "Close",
+          "aria-label": "Close",
+          onClick: dismiss
+        },
+        "\xD7"
+      )
+    );
+    const nav = showNav ? e(
+      "nav",
+      {
+        className: "ecu-comm-wiz-cl-nav",
+        "aria-label": "Versions"
+      },
+      ...entries.map(
+        (entry) => e(
+          "button",
+          {
+            key: entry.id,
+            type: "button",
+            className: "ecu-comm-wiz-cl-nav-btn" + (selected && selected.id === entry.id ? " is-active" : ""),
+            onClick: () => setSelectedId(entry.id)
+          },
+          e("span", { className: "ecu-comm-wiz-cl-nav-title" }, entry.title),
+          e("span", { className: "ecu-comm-wiz-cl-nav-date" }, entry.date)
+        )
+      )
+    ) : null;
+    const body = e(
+      "div",
+      { className: "ecu-comm-wiz-cl-body" },
+      selected ? renderEntryBody(selected, { showDate: !showNav }) : null
+    );
+    const footer = e(
+      "div",
+      { className: "ecu-comm-wiz-cl-foot ecu-comm-wiz-actions" },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-comm-wiz-btn primary",
+          onClick: dismiss
+        },
+        "Got it"
+      )
+    );
     return e(
       "div",
-      { className: "ecu-comm-wiz-backdrop" },
+      {
+        className: "ecu-comm-wiz-backdrop ecu-comm-wiz-backdrop--changelog",
+        onMouseDown: (ev) => {
+          if (ev.target === ev.currentTarget) dismiss();
+        }
+      },
       e(
         "div",
         {
-          className: "ecu-comm-wiz",
+          className: "ecu-comm-wiz ecu-comm-wiz--changelog",
           style: PIXEL_TEXT,
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": heading,
           onMouseDown: (ev) => ev.stopPropagation()
         },
-        e("div", { className: "ecu-comm-wiz-logo" }, "Comm UI"),
-        e("h3", null, heading),
-        ...entries.map(
-          (entry, ei) => e(
-            "div",
-            { key: entry.id, className: "ecu-comm-wiz-changelog-block" },
-            entries.length > 1 ? e("div", { className: "ecu-comm-wiz-changelog-ver" }, entry.title) : null,
-            capabilityCaps(entry.items),
-            ei < entries.length - 1 ? e("div", { className: "ecu-comm-wiz-changelog-sep" }) : null
-          )
-        ),
+        header,
         e(
           "div",
-          { className: "ecu-comm-wiz-actions" },
-          e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-comm-wiz-btn primary",
-              onClick: dismiss
-            },
-            "Got it"
-          )
-        )
+          {
+            className: "ecu-comm-wiz-cl-shell" + (showNav ? " ecu-comm-wiz-cl-shell--nav" : "")
+          },
+          nav,
+          body
+        ),
+        footer
       )
     );
   }
@@ -11264,6 +12080,7 @@ ${fightHoverTip(src)}`
 `;
   function injectGuidedTourCss() {
     if (typeof document === "undefined") return;
+    if (injected2) return;
     let el = document.querySelector(
       "style[data-ecu-tour]"
     );
@@ -11697,8 +12514,8 @@ ${fightHoverTip(src)}`
         section: "Overlay",
         title: "Combat meters",
         body: "Optional rank windows for damage, healing, and fight history.",
-        target: ".ecu-meter-shell",
-        targetKind: "region",
+        target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
+        targetKind: "button",
         missingHint: "No meter yet \u2014 the next step shows how to add one."
       },
       {
@@ -11768,26 +12585,31 @@ ${fightHoverTip(src)}`
     steps: [
       {
         title: "Meter window",
-        body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode.",
-        target: ".ecu-meter-shell",
+        body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked; lock them to auto-hide until data \u2014 or use Layout to place.",
+        // Prefer the meter that triggered the tour (just-added); never union all shells.
+        target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
+        targetKind: "button",
         missingHint: "Add a meter from the control strip first."
       },
       {
         title: "Bar rows",
-        body: "Click a row for Inspector (spells, targets). Right-click the body for bookmark slots.",
-        target: ".ecu-meter-body",
+        body: "Click a row for Inspector (spells, targets). Right-click the body for bookmark slots. Empty windows show \u201CNo data\u201D until combat fills them.",
+        target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-body',
+        targetKind: "button",
         missingHint: "Add a meter window first."
       },
       {
         title: "Toolbar overview",
         body: "Right-side icons: Mode \xB7 Segment \xB7 Attribute \xB7 Report \xB7 Reset. Hover for menus \u2014 a toolbar tour appears when you first open one.",
-        target: ".ecu-meter-titlebar",
+        target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-titlebar',
+        targetKind: "button",
         missingHint: "Add a meter window first."
       },
       {
         title: "Status bar",
         body: "Segment timer and DPS/HPS readout along the bottom.",
-        target: ".ecu-meter-statusbar",
+        target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-statusbar',
+        targetKind: "button",
         missingHint: "Add a meter window first.",
         enter: { testBars: false }
       }
@@ -11834,7 +12656,7 @@ ${fightHoverTip(src)}`
     steps: [
       {
         title: "Enemies",
-        body: "Nearby monsters for quick targeting \u2014 click a row to select.",
+        body: "Nearby monsters for quick targeting \u2014 click a bar, or the also-N trash line.",
         target: ".comm-pos-enemies",
         missingHint: "Appears when monsters are nearby."
       },
@@ -11858,7 +12680,7 @@ ${fightHoverTip(src)}`
     steps: [
       {
         title: "s.coop meter",
-        body: "Tracks shared kill participation (s.coop) for party members on this server. v1 and v2 use different formulas \u2014 add from + Meter \u2192 Adventure Land. The window only appears once someone has coop data.",
+        body: "Tracks shared kill participation (s.coop) for party members on this server. v1 is raw points share; v2 uses the server award curve (points^0.65). Add from + Meter \u2192 Adventure Land. The window only appears once someone has coop data.",
         target: '[data-ecu-tour="meter-coop"]',
         missingHint: "Coop panels hide until participation data exists."
       }
@@ -11965,6 +12787,18 @@ ${fightHoverTip(src)}`
   function markTourCompleted(id) {
     const prev = getSettings().toursCompleted || {};
     patchSettings({ toursCompleted: { ...prev, [id]: true } });
+  }
+  function clearTourCompleted(id) {
+    const prev = getSettings().toursCompleted || {};
+    if (!prev[id]) return;
+    const next = {};
+    const keys = Object.keys(prev);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k === id) continue;
+      next[k] = prev[k];
+    }
+    patchSettings({ toursCompleted: next });
   }
   function migrateLegacyTourFlags() {
     const done = getSettings().toursCompleted || {};
@@ -12377,9 +13211,9 @@ ${fightHoverTip(src)}`
     if (effects.closeBag) host2.closeBagPanel();
     if (effects.refreshHud) host2.refreshCommHud();
   }
-  function restoreTourUi(host2, snap) {
+  function restoreTourUi(host2, snap, opts) {
     host2.setLayoutEdit(snap.layoutEdit);
-    host2.setMetersHidden(snap.metersHidden);
+    host2.setMetersHidden((opts == null ? void 0 : opts.keepMetersShown) ? false : snap.metersHidden);
     host2.setMeterAddOpen(snap.meterAddOpen);
     host2.setTestBars(snap.testBars);
     const ids = CLOSABLE_PANEL_IDS;
@@ -12430,10 +13264,12 @@ ${fightHoverTip(src)}`
   }
   function beginTourSession(host2, tour) {
     const snap = host2.snapshot();
-    applyTourStepEffects(host2, prepareEffects(tour.prepare || {}), snap);
+    const prep = tour.prepare || {};
+    const keepMetersShown = !!prep.showMeters;
+    applyTourStepEffects(host2, prepareEffects(prep), snap);
     return {
       snap,
-      restore: () => restoreTourUi(host2, snap),
+      restore: () => restoreTourUi(host2, snap, { keepMetersShown }),
       applyStep: (stepIndex, prevIndex) => {
         if (prevIndex != null && prevIndex !== stepIndex) {
           const prev = tour.steps[prevIndex];
@@ -12453,19 +13289,40 @@ ${fightHoverTip(src)}`
     session.restore();
   }
 
+  // src/ui/hooks/pickMeterTourFocusId.ts
+  function pickMeterTourFocusId(instances) {
+    if (!instances.length) return null;
+    let best = instances[0];
+    let bestZ = typeof best.zIndex === "number" ? best.zIndex : Number.NEGATIVE_INFINITY;
+    for (let i = 1; i < instances.length; i++) {
+      const m = instances[i];
+      const z = typeof m.zIndex === "number" ? m.zIndex : Number.NEGATIVE_INFINITY;
+      if (z >= bestZ) {
+        best = m;
+        bestZ = z;
+      }
+    }
+    return best.id;
+  }
+
   // src/ui/hooks/useCommGuidedTours.ts
   function useCommGuidedTours(opts) {
     const React = getReact();
     const [activeTour, setActiveTour] = React.useState(
       null
     );
+    const [tourFocusMeterId, setTourFocusMeterId] = React.useState(
+      null
+    );
     const sessionRef = React.useRef(null);
     const activeTourRef = React.useRef(activeTour);
     const toursBlockedRef = React.useRef(opts.toursBlocked);
     const optsRef = React.useRef(opts);
+    const tourFocusRef = React.useRef(tourFocusMeterId);
     activeTourRef.current = activeTour;
     toursBlockedRef.current = opts.toursBlocked;
     optsRef.current = opts;
+    tourFocusRef.current = tourFocusMeterId;
     const effectHostRef = React.useRef(null);
     if (!effectHostRef.current) {
       effectHostRef.current = defaultTourEffectHost({
@@ -12496,6 +13353,7 @@ ${fightHoverTip(src)}`
       sessionRef.current = null;
       activeTourRef.current = null;
       setActiveTour(null);
+      if (id === "meters" || id === INTRO_TOUR_ID) setTourFocusMeterId(null);
       if (!id) {
         flushContextualTourQueue();
         return;
@@ -12522,14 +13380,20 @@ ${fightHoverTip(src)}`
       flushContextualTourQueue();
     };
     const launchTour = (id) => {
-      var _a, _b;
+      var _a, _b, _c, _d;
       const tour = tourById(id);
       const effectHost = effectHostRef.current;
       if (!tour || !effectHost) return;
+      if ((id === "meters" || id === INTRO_TOUR_ID) && !tourFocusRef.current) {
+        const pick = pickMeterTourFocusId(
+          ((_b = (_a = optsRef.current).getMeterInstances) == null ? void 0 : _b.call(_a)) || []
+        );
+        if (pick) setTourFocusMeterId(pick);
+      }
       endTourSession(
         sessionRef.current,
-        (_a = activeTourRef.current) == null ? void 0 : _a.tour,
-        (_b = activeTourRef.current) == null ? void 0 : _b.step,
+        (_c = activeTourRef.current) == null ? void 0 : _c.tour,
+        (_d = activeTourRef.current) == null ? void 0 : _d.step,
         effectHost
       );
       sessionRef.current = beginTourSession(effectHost, tour);
@@ -12545,6 +13409,7 @@ ${fightHoverTip(src)}`
     };
     const startIntroTour = (force) => {
       optsRef.current.setSetupWizardOpen(false);
+      if (force) clearTourCompleted(INTRO_TOUR_ID);
       for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
         const id = INTRO_TOUR_CHAIN[i];
         if (!force && isTourCompleted(id)) continue;
@@ -12604,7 +13469,10 @@ ${fightHoverTip(src)}`
     return {
       startIntroTour,
       toggleLayoutEdit,
-      tourOverlay
+      tourOverlay,
+      tourActive: !!activeTour,
+      tourFocusMeterId,
+      setTourFocusMeterId
     };
   }
 
@@ -12648,10 +13516,15 @@ ${fightHoverTip(src)}`
       when: (ctx, prev) => prev != null && ctx.meterCount > prev.meterCount
     },
     {
-      // First paperdoll open while the base tour is incomplete.
+      // First paperdoll open on a player — bosses/mobs lack clickable gear slots.
       id: PAPERDOLL_TOUR_ID,
       delayMs: 300,
-      when: (ctx, prev) => !!ctx.selectedEntity && !(prev == null ? void 0 : prev.selectedEntity) && !isTourCompleted(PAPERDOLL_TOUR_ID)
+      when: (ctx, prev) => {
+        if (!ctx.selectedEntity || (prev == null ? void 0 : prev.selectedEntity)) return false;
+        if (isTourCompleted(PAPERDOLL_TOUR_ID)) return false;
+        const ent = selectedEntity(ctx);
+        return !!ent && isFocusablePlayer(ent);
+      }
     },
     {
       // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
@@ -12710,18 +13583,34 @@ ${fightHoverTip(src)}`
     tryContextualTour(id, delayMs);
     window.setTimeout(() => pending.delete(id), delayMs + 120);
   }
-  function useContextualTourTriggers(ctx) {
+  function useContextualTourTriggers(opts) {
     const React = getReact();
     const prevRef = React.useRef(null);
     const onceFiredRef = React.useRef(/* @__PURE__ */ new Set());
     const pendingRef = React.useRef(/* @__PURE__ */ new Set());
+    const optsRef = React.useRef(opts);
+    optsRef.current = opts;
+    const ctx = {
+      selectedEntity: opts.selectedEntity,
+      buffInfoOpen: opts.buffInfoOpen,
+      meterCount: opts.meterCount,
+      entities: opts.entities,
+      meterInstances: opts.meterInstances
+    };
     React.useEffect(() => {
+      var _a, _b;
       const prev = prevRef.current;
       for (let i = 0; i < TRIGGERS.length; i++) {
         const t = TRIGGERS[i];
         if (t.oncePerSession && onceFiredRef.current.has(t.id)) continue;
         if (!t.when(ctx, prev)) continue;
         if (t.oncePerSession) onceFiredRef.current.add(t.id);
+        if (t.id === "meters") {
+          (_b = (_a = optsRef.current).onMetersTourFocus) == null ? void 0 : _b.call(
+            _a,
+            pickMeterTourFocusId(ctx.meterInstances)
+          );
+        }
         scheduleContextualTour(pendingRef.current, t.id, t.delayMs);
       }
       prevRef.current = {
@@ -13020,7 +13909,11 @@ ${fightHoverTip(src)}`
     };
     const itemKey = item.itemKey || item.label;
     const label = (item.selected ? "\u25CF " : "") + item.label;
-    const enter = onHoverDetail ? () => onHoverDetail(itemKey, item.detail || null) : void 0;
+    const enter = onHoverDetail ? (ev) => onHoverDetail(
+      itemKey,
+      item.detail || null,
+      ev.currentTarget
+    ) : void 0;
     if (!item.trailing) {
       return e(
         "button",
@@ -13101,7 +13994,7 @@ ${fightHoverTip(src)}`
   }
 
   // src/ui/hooks/useCommMeterInstances.ts
-  function useCommMeterInstances(layout) {
+  function useCommMeterInstances(layout, opts) {
     const React = getReact();
     const [meterInstances, setMeterInstances] = React.useState(
       () => getSettings().meterInstances
@@ -13167,10 +14060,10 @@ ${fightHoverTip(src)}`
         return next;
       });
     };
-    const focusInspector = (actorId, name, opts) => {
+    const focusInspector = (actorId, name, opts2) => {
       if (!actorId) return;
-      const metric = (opts == null ? void 0 : opts.metric) || "damage";
-      const primary = (opts == null ? void 0 : opts.primary) === "rate" ? "rate" : "total";
+      const metric = (opts2 == null ? void 0 : opts2.metric) || "damage";
+      const primary = (opts2 == null ? void 0 : opts2.primary) === "rate" ? "rate" : "total";
       const label = detailsWindowTitle(name, metric, primary);
       setMeterInstances((prev) => {
         var _a, _b;
@@ -13191,8 +14084,8 @@ ${fightHoverTip(src)}`
                 presentation: "details",
                 label,
                 visible: true,
-                selectedset: (opts == null ? void 0 : opts.selectedset) != null ? opts.selectedset : row2.selectedset,
-                partyFocus: (opts == null ? void 0 : opts.partyFocus) != null ? opts.partyFocus : row2.partyFocus
+                selectedset: (opts2 == null ? void 0 : opts2.selectedset) != null ? opts2.selectedset : row2.selectedset,
+                partyFocus: (opts2 == null ? void 0 : opts2.partyFocus) != null ? opts2.partyFocus : row2.partyFocus
               };
             });
             const next2 = bringMeterToFront(patched, m.id);
@@ -13221,8 +14114,8 @@ ${fightHoverTip(src)}`
           visible: true,
           frameW: ((_a = preset.defaultFrame) == null ? void 0 : _a.w) || 640,
           frameH: ((_b = preset.defaultFrame) == null ? void 0 : _b.h) || 440,
-          selectedset: opts == null ? void 0 : opts.selectedset,
-          partyFocus: opts == null ? void 0 : opts.partyFocus
+          selectedset: opts2 == null ? void 0 : opts2.selectedset,
+          partyFocus: opts2 == null ? void 0 : opts2.partyFocus
         });
         const opened = prepareNewMeterWindow(raw, prev);
         const next = opened.peers.concat([opened.inst]);
@@ -13275,15 +14168,20 @@ ${fightHoverTip(src)}`
     const addMeterFromPreset = (presetId) => {
       const preset = presetById(presetId);
       if (!preset) return;
+      const emptyHide = !!preset.hideWhenEmpty || preset.query.kind === "snapshot";
       setMeterInstances((prev) => {
+        var _a;
         const raw = instanceFromPreset(preset, {
           pos: {
             x: 40 + Math.random() * 20,
             y: 40 + Math.random() * 20,
             anchor: "center"
-          }
+          },
+          // Empty-hide presets stay mounted while unlocked (survives F5).
+          ...emptyHide ? { locked: false } : {}
         });
         const opened = prepareNewMeterWindow(raw, prev);
+        (_a = opts == null ? void 0 : opts.onMeterAdded) == null ? void 0 : _a.call(opts, opened.inst.id);
         const next = opened.peers.concat([opened.inst]);
         patchSettings({ meterInstances: next });
         return next;
@@ -13648,19 +14546,24 @@ ${fightHoverTip(src)}`
     );
     const [altHeld, setAltHeld] = React.useState(false);
     React.useEffect(() => {
-      const onDown = (ev) => {
-        if (ev.key === "Alt") setAltHeld(true);
+      const sync = (ev) => {
+        setAltHeld(!!ev.altKey);
       };
-      const onUp = (ev) => {
-        if (ev.key === "Alt") setAltHeld(false);
+      const onKeyDown = (ev) => {
+        if (ev.key === "Alt" || ev.code === "AltLeft" || ev.code === "AltRight") {
+          ev.preventDefault();
+        }
+        sync(ev);
       };
       const onBlur = () => setAltHeld(false);
-      window.addEventListener("keydown", onDown);
-      window.addEventListener("keyup", onUp);
+      window.addEventListener("keydown", onKeyDown, true);
+      window.addEventListener("keyup", sync, true);
+      window.addEventListener("mousemove", sync, true);
       window.addEventListener("blur", onBlur);
       return () => {
-        window.removeEventListener("keydown", onDown);
-        window.removeEventListener("keyup", onUp);
+        window.removeEventListener("keydown", onKeyDown, true);
+        window.removeEventListener("keyup", sync, true);
+        window.removeEventListener("mousemove", sync, true);
         window.removeEventListener("blur", onBlur);
       };
     }, []);
@@ -14041,11 +14944,23 @@ ${fightHoverTip(src)}`
         )
       };
     }
-    const moved = moveEdgeGroup(panels, id, {
-      x: pos.x,
-      y: pos.y,
-      anchor: pos.anchor || "tl"
-    });
+    const moved = moveEdgeGroup(
+      panels,
+      id,
+      {
+        x: pos.x,
+        y: pos.y,
+        anchor: pos.anchor || "tl"
+      },
+      (() => {
+        try {
+          const r = layoutDragRoot().getBoundingClientRect();
+          return r.width > 0 && r.height > 0 ? { w: r.width, h: r.height } : void 0;
+        } catch (e2) {
+          return void 0;
+        }
+      })()
+    );
     return applyEdgePanelsToState(state, moved);
   }
   function snapCommWindowAfterMove(state, id, opts) {
@@ -14789,6 +15704,10 @@ ${fightHoverTip(src)}`
       setGridStep(next.gridStep);
     };
     const onChromePointerDown = (ev) => {
+      const t = ev.target;
+      if (t && typeof t.closest === "function" && t.closest("button, input, a, select, textarea, label")) {
+        return;
+      }
       ev.preventDefault();
       ev.stopPropagation();
       dragging.current = true;
@@ -14932,6 +15851,9 @@ ${fightHoverTip(src)}`
           {
             type: "button",
             onClick: props.onDone,
+            onPointerDown: (ev) => {
+              ev.stopPropagation();
+            },
             style: {
               ...btnStyle(true, false),
               marginLeft: "auto",
@@ -15275,6 +16197,68 @@ ${fightHoverTip(src)}`
     return !!ev.ctrlKey;
   }
 
+  // src/ui/chrome/flipAbovePlacement.ts
+  function decideFlipAbove(measuredH, spaceAbove, spaceBelow, opts) {
+    const h = Math.max(1, measuredH);
+    const fitsBelow = h <= spaceBelow + 0.5;
+    const fitsAbove = h <= spaceAbove + 0.5;
+    const nearViewportBottom = (opts == null ? void 0 : opts.anchorBottomRatio) != null && opts.anchorBottomRatio >= 0.72;
+    if (fitsBelow) {
+      if (nearViewportBottom && spaceAbove > spaceBelow) {
+        if (fitsAbove) return { place: "above" };
+        return {
+          place: "above",
+          maxHeight: Math.max(80, Math.floor(spaceAbove))
+        };
+      }
+      return { place: "below" };
+    }
+    if (fitsAbove) return { place: "above" };
+    if (spaceAbove > spaceBelow) {
+      return { place: "above", maxHeight: Math.max(80, Math.floor(spaceAbove)) };
+    }
+    return { place: "below", maxHeight: Math.max(80, Math.floor(spaceBelow)) };
+  }
+  function flipSpacesForAnchor(anchor, opts) {
+    var _a, _b, _c;
+    const vh = (_a = opts == null ? void 0 : opts.vh) != null ? _a : typeof window !== "undefined" ? window.innerHeight : 800;
+    const pad3 = (_b = opts == null ? void 0 : opts.pad) != null ? _b : 6;
+    const gap = (_c = opts == null ? void 0 : opts.gap) != null ? _c : 4;
+    const belowTop = anchor.top + anchor.height + gap;
+    return {
+      belowTop,
+      spaceBelow: vh - pad3 - belowTop,
+      spaceAbove: anchor.top - pad3 - gap
+    };
+  }
+  function resolveFlipAbovePlacement(anchor, measuredH, opts) {
+    var _a, _b, _c;
+    const pad3 = (_a = opts == null ? void 0 : opts.pad) != null ? _a : 6;
+    const gap = (_b = opts == null ? void 0 : opts.gap) != null ? _b : 4;
+    const vh = (_c = opts == null ? void 0 : opts.vh) != null ? _c : typeof window !== "undefined" ? window.innerHeight : 800;
+    const { spaceAbove, spaceBelow, belowTop } = flipSpacesForAnchor(
+      anchor,
+      opts
+    );
+    const anchorBottomRatio = vh > 0 ? (anchor.top + anchor.height) / vh : 0.5;
+    const decision = decideFlipAbove(measuredH, spaceAbove, spaceBelow, {
+      anchorBottomRatio
+    });
+    if (decision.place === "below") {
+      return {
+        top: Math.round(belowTop),
+        place: "below",
+        maxHeight: decision.maxHeight
+      };
+    }
+    const h = decision.maxHeight != null ? decision.maxHeight : Math.max(1, measuredH);
+    return {
+      top: Math.round(Math.max(pad3, anchor.top - gap - h)),
+      place: "above",
+      maxHeight: decision.maxHeight
+    };
+  }
+
   // src/ui/chrome/WindowControlChrome.ts
   var chromeBtnStyle = (touchish, lockedBg) => ({
     cursor: "pointer",
@@ -15289,7 +16273,38 @@ ${fightHoverTip(src)}`
   function WindowControlChrome(props) {
     const React = getReact();
     const [wcOpen, setWcOpen] = React.useState(false);
+    const [wcFlipUp, setWcFlipUp] = React.useState(false);
+    const wcMenuRef = React.useRef(null);
     const touchish = props.touchish;
+    React.useLayoutEffect(() => {
+      if (!wcOpen) {
+        setWcFlipUp(false);
+        return;
+      }
+      const el = wcMenuRef.current;
+      if (!el) return;
+      const apply = () => {
+        const r = el.getBoundingClientRect();
+        const pad3 = 6;
+        const vh = window.innerHeight;
+        const parent = el.offsetParent;
+        const parentRect = parent ? parent.getBoundingClientRect() : { top: r.top, bottom: r.top };
+        const spaceBelow = vh - pad3 - parentRect.bottom;
+        const spaceAbove = parentRect.top - pad3;
+        const decision = decideFlipAbove(r.height, spaceAbove, spaceBelow, {
+          anchorBottomRatio: vh > 0 ? parentRect.bottom / vh : 0.5
+        });
+        const nextFlip = decision.place === "above";
+        const nextMax = decision.maxHeight != null ? decision.maxHeight + "px" : "";
+        setWcFlipUp((prev) => prev === nextFlip ? prev : nextFlip);
+        if (el.style.maxHeight !== nextMax) el.style.maxHeight = nextMax;
+      };
+      apply();
+      if (typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(apply);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [wcOpen]);
     const lockBtn = props.onToggleLock ? e(
       "button",
       {
@@ -15458,12 +16473,22 @@ ${fightHoverTip(src)}`
       wcOpen ? e(
         "div",
         {
-          className: "comm-pos-wc-menu",
+          ref: wcMenuRef,
+          className: "comm-pos-wc-menu" + (wcFlipUp ? " is-above" : ""),
           style: {
             position: "absolute",
-            top: "100%",
+            ...wcFlipUp ? {
+              bottom: "100%",
+              top: "auto",
+              marginBottom: 2,
+              marginTop: 0
+            } : {
+              top: "100%",
+              bottom: "auto",
+              marginTop: 2,
+              marginBottom: 0
+            },
             right: 0,
-            marginTop: 2,
             minWidth: 160,
             zIndex: 40,
             background: "rgba(18,18,14,0.98)",
@@ -15471,7 +16496,8 @@ ${fightHoverTip(src)}`
             padding: 4,
             display: "flex",
             flexDirection: "column",
-            gap: 2
+            gap: 2,
+            overflowY: "auto"
           }
         },
         ...wcItems
@@ -15540,12 +16566,13 @@ ${fightHoverTip(src)}`
       "div",
       {
         className: "comm-pos-edit-grip",
-        title: dragMoveTitle(),
-        "aria-label": dragMoveTitle(),
+        title: dragMoveTitle(movable ? panelLabel : void 0),
+        "aria-label": dragMoveTitle(movable ? panelLabel : void 0),
         style: {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          gap: movable ? "6px" : void 0,
           padding: touchish ? "6px 8px" : "2px 4px",
           background: "rgba(40,40,20,0.92)",
           border: "1px solid #886",
@@ -15565,7 +16592,23 @@ ${fightHoverTip(src)}`
         onPointerUp,
         onPointerCancel: onPointerUp
       },
-      e("span", { "aria-hidden": true }, "\u283F")
+      e("span", { "aria-hidden": true }, "\u283F"),
+      // Play-arrange: show the window name in the drag strip (Alt / unlock).
+      movable ? e(
+        "span",
+        {
+          className: "comm-pos-arrange-label",
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            minWidth: 0,
+            flex: 1,
+            textAlign: "left"
+          }
+        },
+        panelLabel
+      ) : null
     ) : null;
     const closeInArrangeOverlay = showClose && closeAbove && showArrangeOverlay;
     const closeBtn = showClose ? e(
@@ -15698,6 +16741,27 @@ ${fightHoverTip(src)}`
       onReopenWindow: props.onReopenWindow,
       showMenu: movable || editing || !!props.onToggleLock || !!props.onUngroup || !!onClose || !!(props.closedWindows && props.closedWindows.length)
     }) : null;
+    const arrangeLabel = !moveGrip && showArrangeOverlay ? e(
+      "span",
+      {
+        className: "comm-pos-arrange-label",
+        style: {
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+          flex: 1,
+          alignSelf: "center",
+          padding: touchish ? "0 8px" : "0 6px",
+          color: "#ffe08a",
+          fontSize: headerFont,
+          lineHeight: 1.2,
+          pointerEvents: "none",
+          userSelect: "none"
+        }
+      },
+      panelLabel
+    ) : null;
     const arrangeOverlay = showArrangeOverlay ? e(
       "div",
       {
@@ -15705,6 +16769,7 @@ ${fightHoverTip(src)}`
         title: moveGrip ? dragMoveTitle(panelLabel) : void 0
       },
       moveGrip,
+      arrangeLabel,
       props.onToggleLock || props.onUngroup ? windowChrome : null,
       closeInArrangeOverlay ? closeBtn : null
     ) : null;
@@ -16142,13 +17207,25 @@ ${fightHoverTip(src)}`
         peerYs: ys,
         skipPeerSnap: skipPeer
       });
-      onMove(id, { ...pos, x: snapped.x, y: snapped.y });
+      let nextPos = { ...pos, x: snapped.x, y: snapped.y };
+      const shell = shellRef.current;
+      const rootEl = layoutDragRoot();
+      if (shell && rootEl) {
+        const pr = shell.getBoundingClientRect();
+        const rr = rootEl.getBoundingClientRect();
+        if (pr.width > 0 && pr.height > 0 && rr.width > 0 && rr.height > 0) {
+          nextPos = clampPanelPosInRoot(
+            nextPos,
+            pr.width,
+            pr.height,
+            rr.width,
+            rr.height
+          );
+        }
+      }
+      onMove(id, nextPos);
       if (props.onDragMove) {
-        props.onDragMove(
-          id,
-          { ...pos, x: snapped.x, y: snapped.y },
-          groupDragOpts()
-        );
+        props.onDragMove(id, nextPos, groupDragOpts());
       }
     };
     const onPointerUp = (ev) => {
@@ -16294,9 +17371,16 @@ ${fightHoverTip(src)}`
         opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity
       },
       // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
-      // the stock 7-col float inventory. Other HUD panels use frameW/H.
-      id !== "bag" && typeof pos.frameW === "number" && pos.frameW > 0 ? { width: Math.round(pos.frameW) + "px" } : null,
-      id !== "bag" && typeof pos.frameH === "number" && pos.frameH > 0 ? { height: Math.round(pos.frameH) + "px" } : null,
+      // the stock 7-col float inventory. Other HUD panels treat frameW/H as a
+      // floor that can grow with max-content so arrange outlines wrap overflow.
+      id !== "bag" && typeof pos.frameW === "number" && pos.frameW > 0 ? {
+        width: `max(${Math.round(pos.frameW)}px, max-content)`,
+        minWidth: Math.round(pos.frameW) + "px"
+      } : null,
+      id !== "bag" && typeof pos.frameH === "number" && pos.frameH > 0 ? {
+        height: `max(${Math.round(pos.frameH)}px, max-content)`,
+        minHeight: Math.round(pos.frameH) + "px"
+      } : null,
       editing ? {
         // Cyan + dark edge — yellow grid uses the same warm dashes as the old outline.
         outline: hidden ? "2px dashed rgba(160,160,160,0.85)" : "2px solid rgba(80, 210, 255, 0.95)",
@@ -16325,7 +17409,7 @@ ${fightHoverTip(src)}`
       const measure = () => {
         const root = layoutDragRoot().getBoundingClientRect();
         const panel = el.getBoundingClientRect();
-        const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 2;
+        const fitsAbove = panel.top - ARRANGE_CHROME_H >= root.top + 40;
         setArrangePlacement(fitsAbove ? "above" : "inline");
       };
       measure();
@@ -16333,6 +17417,27 @@ ${fightHoverTip(src)}`
       const t = window.setTimeout(measure, 0);
       return () => window.clearTimeout(t);
     }, [showArrangeOverlay, hover, pos.x, pos.y, movable, id]);
+    React.useLayoutEffect(() => {
+      if (dragging.current) return;
+      const shell = shellRef.current;
+      const rootEl = layoutDragRoot();
+      if (!shell || !rootEl) return;
+      const pr = shell.getBoundingClientRect();
+      const rr = rootEl.getBoundingClientRect();
+      if (!(pr.width > 0 && pr.height > 0 && rr.width > 0 && rr.height > 0)) {
+        return;
+      }
+      const next = clampPanelPosInRoot(
+        pos,
+        pr.width,
+        pr.height,
+        rr.width,
+        rr.height
+      );
+      if (Math.abs(next.x - pos.x) > 0.05 || Math.abs(next.y - pos.y) > 0.05) {
+        onMove(id, next);
+      }
+    }, [pos.x, pos.y, pos.anchor, pos.scale, pos.frameW, pos.frameH, id]);
     const {
       editHeader,
       opacityRow,
@@ -19266,6 +20371,9 @@ button.ecu-meter-status-micro:hover,
   --meter-accent: #e8c96a;
 }
 .ecu-meter-cooltip {
+  /* Inline fixed pos from cooltipStyle for standalone roots.
+   * Inside .ecu-meter-cooltip-wrap the child rule forces relative so the
+   * wrap owns fixed anchoring (avoids 0-height wrap / beside-panel glitches). */
   position: fixed;
   background: #141214;
   border: 1px solid rgba(0,0,0,0.85);
@@ -19296,6 +20404,21 @@ button.ecu-meter-status-micro:hover,
 }
 /* Hover bridge so mouse can travel from toolbar \u2192 tip without closing. */
 .ecu-meter-cooltip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
+}
+/* When the menu opens above the button, bridge sits under the tip. */
+.ecu-meter-cooltip.is-above::before,
+.ecu-meter-cooltip-wrap.is-above > .ecu-meter-cooltip::before,
+.ecu-meter-switch-overlay.is-above::before {
+  top: auto;
+  bottom: -10px;
+}
+.ecu-meter-switch-overlay::before {
   content: "";
   position: absolute;
   left: 0;
@@ -19519,6 +20642,9 @@ button.ecu-meter-status-micro:hover,
 }
 .ecu-meter-cooltip-wrap.is-flip {
   flex-direction: row-reverse;
+}
+.ecu-meter-cooltip-wrap.is-above {
+  align-items: flex-end;
 }
 .ecu-meter-cooltip-wrap > .ecu-meter-cooltip {
   position: relative;
@@ -20189,6 +21315,21 @@ ${parts.map(cssSlice).join("\n")}
     const r = el.getBoundingClientRect();
     return { left: r.left, top: r.top, width: r.width, height: r.height };
   }
+  var COOLTIP_PAD = 6;
+  var COOLTIP_GAP = 4;
+  function resolveCooltipPlacement(anchor, measuredH, vh = typeof window !== "undefined" ? window.innerHeight : 800, pad3 = COOLTIP_PAD, gap = COOLTIP_GAP) {
+    return resolveFlipAbovePlacement(anchor, measuredH, { vh, pad: pad3, gap });
+  }
+  function guessCooltipPlace(anchor, vh = typeof window !== "undefined" ? window.innerHeight : 800, pad3 = COOLTIP_PAD, gap = COOLTIP_GAP) {
+    const { spaceAbove, spaceBelow } = flipSpacesForAnchor(anchor, {
+      vh,
+      pad: pad3,
+      gap
+    });
+    const bottomRatio = vh > 0 ? (anchor.top + anchor.height) / vh : 0.5;
+    if (bottomRatio >= 0.72 && spaceAbove > spaceBelow) return "above";
+    return "below";
+  }
   function cooltipStyle(anchor, opts) {
     var _a;
     if (opts == null ? void 0 : opts.cover) {
@@ -20204,12 +21345,18 @@ ${parts.map(cssSlice).join("\n")}
     const minW = (_a = opts == null ? void 0 : opts.minWidth) != null ? _a : 176;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const pad3 = 6;
+    const pad3 = COOLTIP_PAD;
+    const gap = COOLTIP_GAP;
     const estH = Math.min(360, Math.floor(vh * 0.72));
     let left = (opts == null ? void 0 : opts.preferRight) ? anchor.left + anchor.width - minW : anchor.left;
-    let top = anchor.top + anchor.height + 4;
-    if (top + Math.min(estH, 280) > vh - pad3) {
-      top = Math.max(pad3, anchor.top - Math.min(estH, 280) - 4);
+    const place = guessCooltipPlace(anchor, vh, pad3, gap);
+    let top;
+    if (place === "above") {
+      const { spaceAbove } = flipSpacesForAnchor(anchor, { vh, pad: pad3, gap });
+      const h = Math.min(estH, Math.max(80, spaceAbove));
+      top = Math.max(pad3, anchor.top - gap - h);
+    } else {
+      top = anchor.top + anchor.height + gap;
     }
     left = Math.max(pad3, Math.min(left, vw - minW - pad3));
     return {
@@ -20438,7 +21585,7 @@ ${parts.map(cssSlice).join("\n")}
           onClick: (ev) => {
             var _a;
             ev.stopPropagation();
-            (_a = props.onSegmentClick) == null ? void 0 : _a.call(props);
+            (_a = props.onSegmentClick) == null ? void 0 : _a.call(props, ev.currentTarget);
           }
         },
         text
@@ -20461,11 +21608,7 @@ ${parts.map(cssSlice).join("\n")}
         text
       );
     }
-    return e(
-      "span",
-      { key: side, className: slotClass(side), title },
-      text
-    );
+    return e("span", { key: side, className: slotClass(side), title }, text);
   }
   function MeterStatusbar(props) {
     const React = getReact();
@@ -20486,11 +21629,7 @@ ${parts.map(cssSlice).join("\n")}
     const durSec = Math.max(durMs / 1e3, 0);
     const needsTotal = statusbarNeedsTotal(slots);
     const attributeTotal = needsTotal ? sumRankedTotal(query, props.segmentRef, props.instance.partyFocus) : 0;
-    const sides = [
-      "left",
-      "center",
-      "right"
-    ];
+    const sides = ["left", "center", "right"];
     const children = [];
     for (let i = 0; i < sides.length; i++) {
       const side = sides[i];
@@ -21976,9 +23115,23 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/meter/meterHoverDetail.ts
-  function hoverDetailPosFromEl(el) {
+  var DETAIL_EST_W = 260;
+  var DETAIL_EST_H = 120;
+  function hoverDetailPosFromEl(el, opts) {
+    var _a, _b;
     const r = el.getBoundingClientRect();
-    return { top: r.top, left: r.right + 6 };
+    const pad3 = 8;
+    const gap = 6;
+    const w = (_a = opts == null ? void 0 : opts.estWidth) != null ? _a : DETAIL_EST_W;
+    const h = (_b = opts == null ? void 0 : opts.estHeight) != null ? _b : DETAIL_EST_H;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const preferLeft = !!(opts == null ? void 0 : opts.preferLeft) || r.right + gap + w > vw - pad3;
+    let left = preferLeft ? r.left - w - gap : r.right + gap;
+    left = Math.max(pad3, Math.min(left, vw - w - pad3));
+    let top = r.top;
+    top = Math.max(pad3, Math.min(top, vh - pad3 - Math.min(h, vh - 2 * pad3)));
+    return { top: Math.round(top), left: Math.round(left) };
   }
   function meterHoverDetailNode(text, style) {
     return e(
@@ -21997,7 +23150,7 @@ ${parts.map(cssSlice).join("\n")}
       position: "fixed",
       top: Math.round(pos.top),
       left: Math.round(pos.left),
-      zIndex: COOLTIP_Z
+      zIndex: COOLTIP_Z + 1
     });
     if (!ReactDOM.createPortal) return node;
     return ReactDOM.createPortal(node, document.body);
@@ -25799,6 +26952,52 @@ ${parts.map(cssSlice).join("\n")}
     };
   }
 
+  // src/ui/meter/useAnchoredCooltip.ts
+  function useAnchoredCooltip(anchor, opts, measureSelector) {
+    var _a;
+    const React = getReact();
+    const ref = React.useRef(null);
+    const base = cooltipStyle(anchor, opts);
+    const [adj, setAdj] = React.useState(
+      null
+    );
+    React.useLayoutEffect(() => {
+      const root = ref.current;
+      if (!root) return;
+      const el = (measureSelector ? root.querySelector(measureSelector) : null) || root;
+      const apply = () => {
+        const measured = el.getBoundingClientRect().height;
+        const next = resolveCooltipPlacement(anchor, measured);
+        setAdj((prev) => {
+          if (prev && prev.top === next.top && prev.place === next.place && prev.maxHeight === next.maxHeight) {
+            return prev;
+          }
+          return next;
+        });
+      };
+      apply();
+      if (typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver(apply);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [
+      anchor.left,
+      anchor.top,
+      anchor.width,
+      anchor.height,
+      opts == null ? void 0 : opts.minWidth,
+      opts == null ? void 0 : opts.preferRight,
+      measureSelector
+    ]);
+    const place = (_a = adj == null ? void 0 : adj.place) != null ? _a : guessCooltipPlace(anchor);
+    const style = { ...base };
+    if (adj) {
+      style.top = adj.top;
+      if (adj.maxHeight != null) style.maxHeight = adj.maxHeight;
+    }
+    return { ref, style, place };
+  }
+
   // src/ui/meter/meterShellTipItems.ts
   function asMenu(items) {
     return { sections: [{ items }] };
@@ -26184,15 +27383,7 @@ ${parts.map(cssSlice).join("\n")}
   }
   function renderMeterShellCooltip(ctx) {
     var _a;
-    const {
-      tip,
-      bmDrag,
-      setBmDrag,
-      bmDrop,
-      setBmDrop,
-      instance,
-      actions
-    } = ctx;
+    const { tip, bmDrag, setBmDrag, bmDrop, setBmDrop, instance, actions } = ctx;
     const {
       closeTip,
       openTip,
@@ -26394,20 +27585,17 @@ ${parts.map(cssSlice).join("\n")}
           );
         }
       }
-      return e(
-        "div",
-        {
-          className: "ecu-meter-switch-overlay",
-          style: {
-            ...cooltipStyle(tip.anchor, { minWidth: 280, preferRight: true }),
-            ...PIXEL_TEXT
-          },
-          onMouseEnter: () => clearTipClose(),
-          onMouseLeave: () => scheduleTipClose()
-        },
-        e("div", { className: "ecu-meter-cooltip-sec" }, "Select Display"),
-        e("div", { className: "ecu-meter-switch-grid" }, ...cells)
-      );
+      return e(AnchoredCooltipRoot, {
+        className: "ecu-meter-switch-overlay",
+        anchor: tip.anchor,
+        opts: { minWidth: 280, preferRight: true },
+        onEnter: () => clearTipClose(),
+        onLeave: () => scheduleTipClose(),
+        children: [
+          e("div", { className: "ecu-meter-cooltip-sec" }, "Select Display"),
+          e("div", { className: "ecu-meter-switch-grid" }, ...cells)
+        ]
+      });
     }
     if (tip.kind === "allDisplays") {
       const curIdx = barModeIndex(rootQuery(instance));
@@ -26454,24 +27642,21 @@ ${parts.map(cssSlice).join("\n")}
           );
         }
       }
-      return e(
-        "div",
-        {
-          className: "ecu-meter-switch-overlay",
-          style: {
-            ...cooltipStyle(tip.anchor, { minWidth: 280, preferRight: true }),
-            ...PIXEL_TEXT
-          },
-          onMouseEnter: () => clearTipClose(),
-          onMouseLeave: () => scheduleTipClose()
-        },
-        e(
-          "div",
-          { className: "ecu-meter-cooltip-sec" },
-          "Switch \xB7 All displays"
-        ),
-        e("div", { className: "ecu-meter-switch-grid" }, ...cells)
-      );
+      return e(AnchoredCooltipRoot, {
+        className: "ecu-meter-switch-overlay",
+        anchor: tip.anchor,
+        opts: { minWidth: 280, preferRight: true },
+        onEnter: () => clearTipClose(),
+        onLeave: () => scheduleTipClose(),
+        children: [
+          e(
+            "div",
+            { className: "ecu-meter-cooltip-sec" },
+            "Switch \xB7 All displays"
+          ),
+          e("div", { className: "ecu-meter-switch-grid" }, ...cells)
+        ]
+      });
     }
     if (tip.kind === "display") {
       const curIdx = barModeIndex(rootQuery(instance));
@@ -26480,9 +27665,7 @@ ${parts.map(cssSlice).join("\n")}
       for (let g = 0; g < DISPLAY_TREE.length; g++) {
         const group = DISPLAY_TREE[g];
         if (g > 0) nodes.push(e("div", { className: "ecu-meter-cooltip-div" }));
-        nodes.push(
-          e("div", { className: "ecu-meter-cooltip-sec" }, group.label)
-        );
+        nodes.push(e("div", { className: "ecu-meter-cooltip-sec" }, group.label));
         for (let c = 0; c < group.children.length; c++) {
           const d = group.children[c];
           nodes.push(
@@ -26501,28 +27684,20 @@ ${parts.map(cssSlice).join("\n")}
           );
         }
       }
-      return e(
-        "div",
-        {
-          className: "ecu-meter-cooltip",
-          style: {
-            ...cooltipStyle(tip.anchor, { minWidth: 168 }),
-            ...PIXEL_TEXT
-          },
-          onMouseEnter: () => clearTipClose(),
-          onMouseLeave: () => scheduleTipClose()
-        },
-        ...nodes
-      );
+      return e(AnchoredCooltipRoot, {
+        className: "ecu-meter-cooltip",
+        anchor: tip.anchor,
+        opts: { minWidth: 168 },
+        onEnter: () => clearTipClose(),
+        onLeave: () => scheduleTipClose(),
+        children: nodes
+      });
     }
+    const tipMinW = tip.kind === "report" || tip.kind === "reset" ? 188 : tip.kind === "seg" ? 228 : 168;
     return e(MeterItemsCooltip, {
       menu: meterShellTipItems(tipItemsCtx(ctx)),
-      panelStyle: {
-        ...cooltipStyle(tip.anchor, {
-          minWidth: tip.kind === "report" || tip.kind === "reset" ? 188 : tip.kind === "seg" ? 228 : 168
-        }),
-        ...PIXEL_TEXT
-      },
+      anchor: tip.anchor,
+      opts: { minWidth: tipMinW },
       onEnter: () => clearTipClose(),
       onLeave: () => scheduleTipClose()
     });
@@ -26546,9 +27721,26 @@ ${parts.map(cssSlice).join("\n")}
   function MeterItemsCooltip(props) {
     const React = getReact();
     const [hoverKey, setHoverKey] = React.useState(null);
+    const [detailPos, setDetailPos] = React.useState(
+      null
+    );
+    const { ref, style, place } = useAnchoredCooltip(
+      props.anchor,
+      props.opts,
+      ".ecu-meter-cooltip"
+    );
     const { menu } = props;
-    const onHoverDetail = (key, text) => {
-      setHoverKey(text ? key : null);
+    const left = Number(style.left) || 0;
+    const minW = Number(style.minWidth) || 168;
+    const flip = left + minW + 272 > window.innerWidth - 8;
+    const onHoverDetail = (key, text, el) => {
+      if (!text || !el) {
+        setHoverKey(null);
+        setDetailPos(null);
+        return;
+      }
+      setHoverKey(key);
+      setDetailPos(hoverDetailPosFromEl(el, { preferLeft: flip }));
     };
     const nodes = [];
     if (menu.header) {
@@ -26559,7 +27751,11 @@ ${parts.map(cssSlice).join("\n")}
           {
             key: hoverKeyOf(head),
             className: "ecu-meter-cooltip-sec",
-            onMouseEnter: () => onHoverDetail(hoverKeyOf(head), head.detail || null)
+            onMouseEnter: (ev) => onHoverDetail(
+              hoverKeyOf(head),
+              head.detail || null,
+              ev.currentTarget
+            )
           },
           head.label
         )
@@ -26589,19 +27785,45 @@ ${parts.map(cssSlice).join("\n")}
       }
     }
     const detail = detailForHover(menu, hoverKey);
-    const left = Number(props.panelStyle.left) || 0;
-    const minW = Number(props.panelStyle.minWidth) || 168;
-    const flip = left + minW + 272 > window.innerWidth - 8;
+    const cooltipInnerStyle = {
+      ...PIXEL_TEXT
+    };
+    if (style.maxHeight != null) cooltipInnerStyle.maxHeight = style.maxHeight;
+    const wrapStyle = { ...style };
+    delete wrapStyle.maxHeight;
     return e(
       "div",
       {
-        className: "ecu-meter-cooltip-wrap" + (flip ? " is-flip" : ""),
-        style: props.panelStyle,
+        ref,
+        className: "ecu-meter-cooltip-wrap" + (flip ? " is-flip" : "") + (place === "above" ? " is-above" : ""),
+        style: wrapStyle,
         onMouseEnter: props.onEnter,
         onMouseLeave: props.onLeave
       },
-      e("div", { className: "ecu-meter-cooltip" }, ...nodes),
-      detail ? meterHoverDetailNode(detail) : null
+      e(
+        "div",
+        {
+          className: "ecu-meter-cooltip" + (place === "above" ? " is-above" : ""),
+          style: cooltipInnerStyle
+        },
+        ...nodes
+      ),
+      detail && detailPos ? portalHoverDetail(detail, detailPos) : null
+    );
+  }
+  function AnchoredCooltipRoot(props) {
+    const { ref, style, place } = useAnchoredCooltip(props.anchor, props.opts);
+    const kids = Array.isArray(props.children) ? props.children : [props.children];
+    return e(
+      "div",
+      {
+        ref,
+        className: props.className + (place === "above" ? " is-above" : ""),
+        style: { ...style, ...PIXEL_TEXT },
+        onMouseEnter: props.onEnter,
+        onMouseLeave: props.onLeave
+      },
+      ...kids
     );
   }
 
@@ -26996,7 +28218,7 @@ ${parts.map(cssSlice).join("\n")}
         const el = ev.target;
         if (!el || typeof el.closest !== "function") return;
         if (el.closest(
-          ".ecu-meter-cooltip, .ecu-meter-cooltip-wrap, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl"
+          ".ecu-meter-cooltip, .ecu-meter-cooltip-wrap, .ecu-meter-switch-overlay, .ecu-meter-bookmark-overlay, .ecu-meter-report-backdrop, .ecu-meter-tool, .ecu-meter-ttl, .ecu-meter-statusbar"
         )) {
           return;
         }
@@ -27273,13 +28495,7 @@ ${parts.map(cssSlice).join("\n")}
       setInteracting,
       onToolbarInteract: props.onToolbarInteract
     });
-    const {
-      clearTipClose,
-      closeTip,
-      openTip,
-      openTipAnchor,
-      scheduleTipClose
-    } = tipCtl;
+    const { clearTipClose, closeTip, openTip, openTipAnchor, scheduleTipClose } = tipCtl;
     React.useEffect(() => {
       if (!tip) return;
       return tipCtl.attachClickAway();
@@ -27525,6 +28741,7 @@ ${parts.map(cssSlice).join("\n")}
       {
         className: shellClass,
         ...shellTourId ? { "data-ecu-tour": shellTourId } : {},
+        ...props.tourFocus ? { "data-ecu-tour-focus": "1" } : {},
         style: {
           ...PIXEL_TEXT,
           fontSize: `calc(${TYPE.body} * ${meterApp.windowScale})`
@@ -27636,9 +28853,8 @@ ${parts.map(cssSlice).join("\n")}
         instance,
         segmentRef: selectedset || "current",
         segmentLabel: isCurrentSeg ? "Current" : titleSeg,
-        onSegmentClick: () => {
-          const shell = shellRef.current;
-          if (shell) openTipAnchor("seg", rectToAnchor(shell));
+        onSegmentClick: (el) => {
+          openTip("seg", el, { pin: true });
         },
         onEncounterClick: () => {
           var _a;
@@ -27670,18 +28886,24 @@ ${parts.map(cssSlice).join("\n")}
       const isHidden = inst.visible === false;
       if (isHidden && !ctx.layoutEdit) continue;
       if (ctx.metersHidden && !ctx.layoutEdit) continue;
-      if (!ctx.layoutEdit && meterHidesWhenEmpty(inst)) {
+      const locked = ctx.meterIsLocked(inst);
+      if (meterHidesWhenEmpty(inst)) {
         const peek = runMeterQuery(inst.query, {
           entities: ctx.snap.entities,
           partyFocus: inst.partyFocus,
           segmentRef: inst.selectedset
         });
         const hasRows = peek.kind === "ranked" ? peek.rows.length > 0 : peek.kind !== "empty";
-        if (!hasRows) continue;
+        if (!shouldMountEmptyHide(inst, {
+          layoutEdit: ctx.layoutEdit,
+          locked,
+          hasRows
+        })) {
+          continue;
+        }
       }
       const frameW = inst.frameW || METER_FRAME_DEFAULT.w;
       const frameH = inst.frameH || METER_FRAME_DEFAULT.h;
-      const locked = ctx.meterIsLocked(inst);
       const playArrange = !ctx.layoutEdit && (!locked || ctx.altHeld);
       const arrange = ctx.layoutEdit || playArrange;
       const hasSnap = ctx.windowHasSnap(inst.id);
@@ -27705,6 +28927,7 @@ ${parts.map(cssSlice).join("\n")}
         frameH: inst.frameH,
         scale: inst.scale != null ? inst.scale : inst.pos.scale
       };
+      const onMeterClose = ctx.tourActive ? void 0 : () => ctx.layoutEdit ? ctx.removeMeter(inst.id) : ctx.closeMeterRuntime(inst.id);
       out.push(
         e(
           PositionedPanel,
@@ -27752,7 +28975,7 @@ ${parts.map(cssSlice).join("\n")}
             closedWindows: ctx.closedWindows,
             onReopenWindow: ctx.onReopenWindow,
             onCreateWindow: () => ctx.duplicateMeter(inst.id),
-            onClose: () => ctx.layoutEdit ? ctx.removeMeter(inst.id) : ctx.closeMeterRuntime(inst.id),
+            onClose: onMeterClose,
             onShow: () => ctx.patchMeter(inst.id, { visible: true }),
             windowNumber,
             showWindowIds: ctx.showWindowIds,
@@ -27777,6 +29000,7 @@ ${parts.map(cssSlice).join("\n")}
               layoutEdit: ctx.layoutEdit,
               arrange,
               locked,
+              tourFocus: ctx.tourFocusMeterId === inst.id,
               resizeGroupPeers: hasSnap ? getEdgeGroup(ctx.meterInstances, inst.id).filter((g) => g.id !== inst.id).map((g) => {
                 var _a2;
                 return {
@@ -27821,7 +29045,7 @@ ${parts.map(cssSlice).join("\n")}
                 partyFocus: inst.partyFocus
               }),
               onDuplicate: () => ctx.duplicateMeter(inst.id),
-              onClose: ctx.layoutEdit ? () => ctx.removeMeter(inst.id) : () => ctx.closeMeterRuntime(inst.id),
+              onClose: onMeterClose,
               onConfigure: () => ctx.setMeterAddOpen(true),
               onToolbarInteract: ctx.onToolbarInteract
             })
@@ -28091,6 +29315,27 @@ ${parts.map(cssSlice).join("\n")}
           onClick: () => props.onReplayIntroTour()
         },
         "Intro"
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          title: "Open full changelog / What's New history",
+          style: {
+            cursor: "pointer",
+            padding: toggleBtnPad,
+            fontSize: toggleFont,
+            minHeight: touchPad ? "40px" : void 0,
+            border: "1px solid #555",
+            background: "#1a1a1a",
+            color: "#bbb",
+            textShadow: "none",
+            fontWeight: "normal"
+          },
+          onPointerDown: stopPtr,
+          onClick: () => props.onOpenChangelog()
+        },
+        "Changelog"
       )
     );
   }
@@ -30522,22 +31767,48 @@ ${parts.map(cssSlice).join("\n")}
           );
         })
       ),
-      ...squashKeys.map(
-        (enemyMtype) => e(
+      ...squashKeys.map((enemyMtype) => {
+        const members = [];
+        for (let i = 0; i < enemiesToSquash.length; i++) {
+          const m = enemiesToSquash[i];
+          if ((m.mtype || "?") === enemyMtype) members.push(m);
+        }
+        let focus = members[0];
+        let lowest = hpPctRaw(focus);
+        for (let j = 1; j < members.length; j++) {
+          const pct = hpPctRaw(members[j]);
+          if (pct < lowest) {
+            lowest = pct;
+            focus = members[j];
+          }
+        }
+        const selected = groupContainsId(
+          { key: enemyMtype, members, focus, hpPct: Math.round(lowest) },
+          props.selectedEntity
+        );
+        return e(
           "div",
           {
             key: enemyMtype,
+            role: "button",
+            title: `Target ${enemyMtype}`,
             style: {
               background: "rgba(0,0,0,0.55)",
               padding: "3px 8px",
               fontSize: TYPE.secondaryMin,
               color: "#aaa",
+              cursor: "pointer",
+              outline: selected ? "1px solid #fff" : void 0,
               ...PIXEL_TEXT
+            },
+            onClick: () => {
+              setXTarget(focus);
+              props.setSelectedEntity(focus.id);
             }
           },
           `also ${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`
-        )
-      ),
+        );
+      }),
       moreEnemiesCount ? e(
         "div",
         {
@@ -33938,7 +35209,8 @@ ${parts.map(cssSlice).join("\n")}
       if (isHidden && !deps.layoutEdit) return null;
       if ((opts == null ? void 0 : opts.empty) && !deps.layoutEdit) return null;
       const locked = deps.panelIsLocked(id);
-      const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles";
+      const infoIdle = id === "buffInfo" && !deps.buffInfoOpen || id === "itemInfo" && !deps.itemInfoOpen;
+      const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles" && !infoIdle;
       const groupable = canGroupWindow(id);
       const grouped = groupable && commWindowHasSnap(
         { layout: deps.layout, meters: deps.meterInstances },
@@ -34346,7 +35618,67 @@ ${parts.map(cssSlice).join("\n")}
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const { selectedEntity: selectedEntity2, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
-    const meters = useCommMeterInstances(layout);
+    const [commandSeed, setCommandSeed] = React.useState(null);
+    const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+    const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
+    const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
+    const [meterAddOpen, setMeterAddOpen] = React.useState(false);
+    const [metersHidden, setMetersHidden] = React.useState(
+      () => !!getSettings().metersHidden
+    );
+    const [setupWizardOpen, setSetupWizardOpen] = React.useState(
+      () => !getSettings().setupWizardDone
+    );
+    const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
+      const s = getSettings();
+      if (!s.setupWizardDone) return [];
+      return unseenChangelogEntries(s.changelogSeenId);
+    });
+    const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
+    const [introStep, setIntroStep] = React.useState(() => readIntroStep());
+    const setIntroStepPersist = (step) => {
+      setIntroStep(step);
+      writeIntroStep(step);
+    };
+    const tourActiveRef = React.useRef(false);
+    const meterInstancesForTourRef = React.useRef(
+      []
+    );
+    const setMetersHiddenPersist = (hidden) => {
+      if (hidden && tourActiveRef.current) return;
+      setMetersHidden(hidden);
+      patchSettings({ metersHidden: hidden });
+    };
+    const guidedTours = useCommGuidedTours({
+      layoutEdit,
+      setLayoutEdit,
+      metersHidden,
+      setMetersHidden: setMetersHiddenPersist,
+      meterAddOpen,
+      setMeterAddOpen,
+      setVisible,
+      getPanelVisible: visible,
+      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
+      setSetupWizardOpen,
+      isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
+      bagOpen,
+      commandOpen: visible("command"),
+      itemInfoOpen,
+      getMeterInstances: () => meterInstancesForTourRef.current
+    });
+    const {
+      startIntroTour,
+      toggleLayoutEdit,
+      tourOverlay,
+      tourActive,
+      tourFocusMeterId,
+      setTourFocusMeterId
+    } = guidedTours;
+    tourActiveRef.current = tourActive;
+    const meters = useCommMeterInstances(layout, {
+      onMeterAdded: setTourFocusMeterId
+    });
+    meterInstancesForTourRef.current = meters.meterInstances;
     const windowActions = useCommWindowActions({
       layout,
       setLayout,
@@ -34374,48 +35706,6 @@ ${parts.map(cssSlice).join("\n")}
       }
       meters.reopenClosedMeter(id);
     };
-    const [commandSeed, setCommandSeed] = React.useState(null);
-    const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
-    const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
-    const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
-    const [meterAddOpen, setMeterAddOpen] = React.useState(false);
-    const [metersHidden, setMetersHidden] = React.useState(
-      () => !!getSettings().metersHidden
-    );
-    const [setupWizardOpen, setSetupWizardOpen] = React.useState(
-      () => !getSettings().setupWizardDone
-    );
-    const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
-      const s = getSettings();
-      if (!s.setupWizardDone) return [];
-      return unseenChangelogEntries(s.changelogSeenId);
-    });
-    const [introStep, setIntroStep] = React.useState(() => readIntroStep());
-    const setIntroStepPersist = (step) => {
-      setIntroStep(step);
-      writeIntroStep(step);
-    };
-    const setMetersHiddenPersist = (hidden) => {
-      setMetersHidden(hidden);
-      patchSettings({ metersHidden: hidden });
-    };
-    const guidedTours = useCommGuidedTours({
-      layoutEdit,
-      setLayoutEdit,
-      metersHidden,
-      setMetersHidden: setMetersHiddenPersist,
-      meterAddOpen,
-      setMeterAddOpen,
-      setVisible,
-      getPanelVisible: visible,
-      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
-      setSetupWizardOpen,
-      isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
-      bagOpen,
-      commandOpen: visible("command"),
-      itemInfoOpen
-    });
-    const { startIntroTour, toggleLayoutEdit, tourOverlay } = guidedTours;
     React.useEffect(() => {
       updateKillContext(snap.entities);
       updateMeterContext(snap.entities);
@@ -34485,7 +35775,8 @@ ${parts.map(cssSlice).join("\n")}
       buffInfoOpen,
       meterCount: meters.meterInstances.length,
       entities: snap.entities,
-      meterInstances: meters.meterInstances
+      meterInstances: meters.meterInstances,
+      onMetersTourFocus: setTourFocusMeterId
     });
     const meterIdKey = (() => {
       const parts = [];
@@ -34591,7 +35882,9 @@ ${parts.map(cssSlice).join("\n")}
       ungroupWindow: (id) => windowActions.ungroupWindow(id),
       windowHasSnap: (id) => commWindowHasSnap(windowActions.graphState(), id),
       setMeterAddOpen,
-      onToolbarInteract: triggerMeterToolbarTour
+      onToolbarInteract: triggerMeterToolbarTour,
+      tourActive,
+      tourFocusMeterId
     });
     return e(
       "div",
@@ -34642,7 +35935,11 @@ ${parts.map(cssSlice).join("\n")}
       }) : null,
       !setupWizardOpen && whatsNewEntries.length > 0 ? e(CommUIWhatsNew, {
         entries: whatsNewEntries,
-        onDone: () => setWhatsNewEntries([])
+        browseAll: whatsNewBrowseAll,
+        onDone: () => {
+          setWhatsNewEntries([]);
+          setWhatsNewBrowseAll(false);
+        }
       }) : null,
       renderCommTogglesPanel(
         panelDeps,
@@ -34653,6 +35950,10 @@ ${parts.map(cssSlice).join("\n")}
           setMetersHiddenPersist,
           onAddMeter: () => setMeterAddOpen(true),
           onReplayIntroTour: () => startIntroTour(true),
+          onOpenChangelog: () => {
+            setWhatsNewBrowseAll(true);
+            setWhatsNewEntries(CHANGELOG);
+          },
           viewportProfile
         })
       ),
@@ -34756,11 +36057,32 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     const style = document.createElement("style");
     style.id = id;
     style.innerText = css;
-    document.head.append(style);
+    (document.head || document.documentElement).append(style);
+  }
+  function whenBodyReady(fn) {
+    if (document.body) {
+      fn();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done || !document.body) return;
+      done = true;
+      window.clearInterval(poll);
+      document.removeEventListener("DOMContentLoaded", finish);
+      fn();
+    };
+    document.addEventListener("DOMContentLoaded", finish);
+    const poll = window.setInterval(finish, 16);
+    window.setTimeout(() => {
+      window.clearInterval(poll);
+      document.removeEventListener("DOMContentLoaded", finish);
+    }, 15e3);
   }
   function ensureReact(onReady) {
+    const go = () => whenBodyReady(onReady);
     if (window.React && window.ReactDOM) {
-      onReady();
+      go();
       return;
     }
     if (!document.querySelector("#react")) {
@@ -34768,7 +36090,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
       reactScript.id = "react";
       reactScript.src = "https://unpkg.com/react@18/umd/react.development.js";
       reactScript.crossOrigin = "";
-      document.head.append(reactScript);
+      (document.head || document.documentElement).append(reactScript);
     }
     const existingDom = document.querySelector(
       "#react-dom"
@@ -34778,10 +36100,10 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
       reactDomScript.id = "react-dom";
       reactDomScript.src = "https://unpkg.com/react-dom@18/umd/react-dom.development.js";
       reactDomScript.crossOrigin = "";
-      reactDomScript.addEventListener("load", onReady);
-      document.head.append(reactDomScript);
+      reactDomScript.addEventListener("load", go);
+      (document.head || document.documentElement).append(reactDomScript);
     } else {
-      existingDom.addEventListener("load", onReady);
+      existingDom.addEventListener("load", go);
     }
   }
   function Root() {
