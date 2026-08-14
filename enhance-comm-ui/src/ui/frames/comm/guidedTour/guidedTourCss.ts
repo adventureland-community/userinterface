@@ -192,6 +192,7 @@ const CSS = `
 
 export function injectGuidedTourCss(): void {
   if (typeof document === "undefined") return;
+  if (injected) return;
   let el = document.querySelector(
     "style[data-ecu-tour]",
   ) as HTMLStyleElement | null;

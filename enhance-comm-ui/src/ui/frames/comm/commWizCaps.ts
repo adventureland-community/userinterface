@@ -1,10 +1,16 @@
 /**
- * Shared capability grid for intro / What's New modals.
+ * Shared capability grid for first-run intro (FEATURE_OVERVIEW).
+ * Accepts {label, detail} and ignores optional changelog kind/highlight.
  */
 
 import { e } from "../../../host/react";
 
-export type CommWizCap = { label: string; detail: string };
+export type CommWizCap = {
+  label: string;
+  detail: string;
+  kind?: string;
+  highlight?: boolean;
+};
 
 export function capabilityCaps(items: CommWizCap[]): any {
   return e(

@@ -101,7 +101,7 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
       extra: featureList([
         "Recommended: short intro (~17 steps) — observe chrome, overlay essentials, PDPS",
         "Deeper tours appear once when you use layout, meters, paperdoll, buffs, and more",
-        "Replay the intro anytime from the Intro button on the control strip",
+        "Replay the intro anytime from Intro on the control strip; Changelog opens full What's New history",
       ]),
       actions: e(
         "div",

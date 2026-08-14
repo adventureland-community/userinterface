@@ -1,5 +1,5 @@
 /**
- * Bottom-right control strip — layout, meters, add meter, intro tour.
+ * Bottom-right control strip — layout, meters, add meter, intro tour, changelog.
  */
 
 import { e } from "../../../host/react";
@@ -12,6 +12,8 @@ export type CommControlStripProps = {
   setMetersHiddenPersist: (hidden: boolean) => void;
   onAddMeter: () => void;
   onReplayIntroTour: () => void;
+  /** Open full What's New / changelog history (all entries). */
+  onOpenChangelog: () => void;
   viewportProfile: ViewportProfile;
 };
 
@@ -126,6 +128,27 @@ export function CommControlStrip(props: CommControlStripProps): any {
         onClick: () => props.onReplayIntroTour(),
       },
       "Intro",
+    ),
+    e(
+      "button",
+      {
+        type: "button",
+        title: "Open full changelog / What's New history",
+        style: {
+          cursor: "pointer",
+          padding: toggleBtnPad,
+          fontSize: toggleFont,
+          minHeight: touchPad ? "40px" : undefined,
+          border: "1px solid #555",
+          background: "#1a1a1a",
+          color: "#bbb",
+          textShadow: "none",
+          fontWeight: "normal",
+        },
+        onPointerDown: stopPtr,
+        onClick: () => props.onOpenChangelog(),
+      },
+      "Changelog",
     ),
   );
 }

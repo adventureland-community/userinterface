@@ -13,7 +13,7 @@ import {
   writeIntroStep,
 } from "./comm/CommUISetupWizard";
 import { CommUIWhatsNew } from "./comm/CommUIWhatsNew";
-import { unseenChangelogEntries } from "../../lib/changelog";
+import { CHANGELOG, unseenChangelogEntries } from "../../lib/changelog";
 import { useCommGuidedTours } from "../hooks/useCommGuidedTours";
 import {
   triggerMeterToolbarTour,
@@ -81,7 +81,74 @@ export function CommUI(props: CommUIProps): any {
   const { selectedEntity, setSelectedEntity, closePaperdoll, focusUnitId } =
     useSelectionFromXTarget(snap);
 
-  const meters = useCommMeterInstances(layout);
+  const [commandSeed, setCommandSeed] = React.useState(null as string | null);
+  const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+  const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
+  const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
+  const [meterAddOpen, setMeterAddOpen] = React.useState(false);
+  const [metersHidden, setMetersHidden] = React.useState(
+    () => !!getSettings().metersHidden,
+  );
+  const [setupWizardOpen, setSetupWizardOpen] = React.useState(
+    () => !getSettings().setupWizardDone,
+  );
+  const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
+    const s = getSettings();
+    if (!s.setupWizardDone) return [];
+    return unseenChangelogEntries(s.changelogSeenId);
+  });
+  const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
+  const [introStep, setIntroStep] = React.useState(() => readIntroStep());
+
+  const setIntroStepPersist = (step: number) => {
+    setIntroStep(step);
+    writeIntroStep(step);
+  };
+
+  const tourActiveRef = React.useRef(false);
+  const meterInstancesForTourRef = React.useRef(
+    [] as Array<{ id: string; zIndex?: number }>,
+  );
+  const setMetersHiddenPersist = (hidden: boolean) => {
+    // Spotlight hole is click-through — don't let Hide all stick mid-tour.
+    if (hidden && tourActiveRef.current) return;
+    setMetersHidden(hidden);
+    patchSettings({ metersHidden: hidden });
+  };
+
+  const guidedTours = useCommGuidedTours({
+    layoutEdit,
+    setLayoutEdit,
+    metersHidden,
+    setMetersHidden: setMetersHiddenPersist,
+    meterAddOpen,
+    setMeterAddOpen,
+    setVisible,
+    getPanelVisible: visible,
+    toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
+    setSetupWizardOpen,
+    isObserving:
+      (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
+    bagOpen,
+    commandOpen: visible("command"),
+    itemInfoOpen,
+    getMeterInstances: () => meterInstancesForTourRef.current,
+  });
+
+  const {
+    startIntroTour,
+    toggleLayoutEdit,
+    tourOverlay,
+    tourActive,
+    tourFocusMeterId,
+    setTourFocusMeterId,
+  } = guidedTours;
+  tourActiveRef.current = tourActive;
+
+  const meters = useCommMeterInstances(layout, {
+    onMeterAdded: setTourFocusMeterId,
+  });
+  meterInstancesForTourRef.current = meters.meterInstances;
 
   const windowActions = useCommWindowActions({
     layout,
@@ -112,53 +179,6 @@ export function CommUI(props: CommUIProps): any {
     }
     meters.reopenClosedMeter(id);
   };
-  const [commandSeed, setCommandSeed] = React.useState(null as string | null);
-  const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
-  const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
-  const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
-  const [meterAddOpen, setMeterAddOpen] = React.useState(false);
-  const [metersHidden, setMetersHidden] = React.useState(
-    () => !!getSettings().metersHidden,
-  );
-  const [setupWizardOpen, setSetupWizardOpen] = React.useState(
-    () => !getSettings().setupWizardDone,
-  );
-  const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
-    const s = getSettings();
-    if (!s.setupWizardDone) return [];
-    return unseenChangelogEntries(s.changelogSeenId);
-  });
-  const [introStep, setIntroStep] = React.useState(() => readIntroStep());
-
-  const setIntroStepPersist = (step: number) => {
-    setIntroStep(step);
-    writeIntroStep(step);
-  };
-
-  const setMetersHiddenPersist = (hidden: boolean) => {
-    setMetersHidden(hidden);
-    patchSettings({ metersHidden: hidden });
-  };
-
-  const guidedTours = useCommGuidedTours({
-    layoutEdit,
-    setLayoutEdit,
-    metersHidden,
-    setMetersHidden: setMetersHiddenPersist,
-    meterAddOpen,
-    setMeterAddOpen,
-    setVisible,
-    getPanelVisible: visible,
-    toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
-    setSetupWizardOpen,
-    isObserving:
-      (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
-    bagOpen,
-    commandOpen: visible("command"),
-    itemInfoOpen,
-  });
-
-  const { startIntroTour, toggleLayoutEdit, tourOverlay } = guidedTours;
 
   React.useEffect(() => {
     updateKillContext(snap.entities);
@@ -239,6 +259,7 @@ export function CommUI(props: CommUIProps): any {
     meterCount: meters.meterInstances.length,
     entities: snap.entities,
     meterInstances: meters.meterInstances,
+    onMetersTourFocus: setTourFocusMeterId,
   });
 
   const meterIdKey = (() => {
@@ -353,6 +374,8 @@ export function CommUI(props: CommUIProps): any {
     windowHasSnap: (id) => commWindowHasSnap(windowActions.graphState(), id),
     setMeterAddOpen,
     onToolbarInteract: triggerMeterToolbarTour,
+    tourActive,
+    tourFocusMeterId,
   });
 
   return e(
@@ -418,7 +441,11 @@ export function CommUI(props: CommUIProps): any {
     !setupWizardOpen && whatsNewEntries.length > 0
       ? e(CommUIWhatsNew, {
           entries: whatsNewEntries,
-          onDone: () => setWhatsNewEntries([]),
+          browseAll: whatsNewBrowseAll,
+          onDone: () => {
+            setWhatsNewEntries([]);
+            setWhatsNewBrowseAll(false);
+          },
         })
       : null,
 
@@ -431,6 +458,10 @@ export function CommUI(props: CommUIProps): any {
         setMetersHiddenPersist,
         onAddMeter: () => setMeterAddOpen(true),
         onReplayIntroTour: () => startIntroTour(true),
+        onOpenChangelog: () => {
+          setWhatsNewBrowseAll(true);
+          setWhatsNewEntries(CHANGELOG);
+        },
         viewportProfile,
       }),
     ),
