@@ -15,15 +15,13 @@ import {
 import { getMeterAppearance } from "../../../meters/meterAppearance";
 import {
   meterHidesWhenEmpty,
+  shouldMountEmptyHide,
   type ReportKind,
 } from "../../../meters/meterCatalog";
 import { isMeterInCombat } from "../../../meters/meterSession";
 import { isLiveCameraRef } from "../../../meters/meterSegmentRef";
 import { runMeterQuery } from "../../../meters/meterQuery";
-import {
-  applyGroupFrameSize,
-  getEdgeGroup,
-} from "../../../lib/panelEdgeGroup";
+import { applyGroupFrameSize, getEdgeGroup } from "../../../lib/panelEdgeGroup";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import type { FocusInspectorOpts } from "../../hooks/useCommMeterInstances";
 import { patchSettings } from "../../../lib/settings";
@@ -81,6 +79,10 @@ export type CommMeterPanelsCtx = {
   windowHasSnap: (id: string) => boolean;
   setMeterAddOpen: (open: boolean) => void;
   onToolbarInteract: () => void;
+  /** Spotlight tour active — block close / hide through the click-through hole. */
+  tourActive?: boolean;
+  /** Meter id the combat-meters tour should highlight (newest / just-added). */
+  tourFocusMeterId?: string | null;
 };
 
 export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
@@ -90,7 +92,10 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     const isHidden = inst.visible === false;
     if (isHidden && !ctx.layoutEdit) continue;
     if (ctx.metersHidden && !ctx.layoutEdit) continue;
-    if (!ctx.layoutEdit && meterHidesWhenEmpty(inst)) {
+    // Empty-hide (PDPS/coop): mount while unlocked or in Layout; locked empty
+    // meters stay hidden. Alt only unlocks panels already on screen.
+    const locked = ctx.meterIsLocked(inst);
+    if (meterHidesWhenEmpty(inst)) {
       const peek = runMeterQuery(inst.query, {
         entities: ctx.snap.entities,
         partyFocus: inst.partyFocus,
@@ -98,12 +103,19 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
       });
       const hasRows =
         peek.kind === "ranked" ? peek.rows.length > 0 : peek.kind !== "empty";
-      if (!hasRows) continue;
+      if (
+        !shouldMountEmptyHide(inst, {
+          layoutEdit: ctx.layoutEdit,
+          locked,
+          hasRows,
+        })
+      ) {
+        continue;
+      }
     }
     const frameW = inst.frameW || METER_FRAME_DEFAULT.w;
     const frameH = inst.frameH || METER_FRAME_DEFAULT.h;
-    const locked = ctx.meterIsLocked(inst);
-    // Alt = unlock-drag on locked meters. Ctrl during drag = place without grouping.
+    // Alt = unlock-drag on locked meters that are already visible.
     const playArrange = !ctx.layoutEdit && (!locked || ctx.altHeld);
     const arrange = ctx.layoutEdit || playArrange;
     const hasSnap = ctx.windowHasSnap(inst.id);
@@ -127,6 +139,12 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
       frameH: inst.frameH,
       scale: inst.scale != null ? inst.scale : inst.pos.scale,
     };
+    const onMeterClose = ctx.tourActive
+      ? undefined
+      : () =>
+          ctx.layoutEdit
+            ? ctx.removeMeter(inst.id)
+            : ctx.closeMeterRuntime(inst.id);
     out.push(
       e(
         PositionedPanel,
@@ -187,10 +205,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           closedWindows: ctx.closedWindows,
           onReopenWindow: ctx.onReopenWindow,
           onCreateWindow: () => ctx.duplicateMeter(inst.id),
-          onClose: () =>
-            ctx.layoutEdit
-              ? ctx.removeMeter(inst.id)
-              : ctx.closeMeterRuntime(inst.id),
+          onClose: onMeterClose,
           onShow: () => ctx.patchMeter(inst.id, { visible: true }),
           windowNumber,
           showWindowIds: ctx.showWindowIds,
@@ -215,6 +230,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             layoutEdit: ctx.layoutEdit,
             arrange,
             locked,
+            tourFocus: ctx.tourFocusMeterId === inst.id,
             resizeGroupPeers: hasSnap
               ? getEdgeGroup(ctx.meterInstances, inst.id)
                   .filter((g) => g.id !== inst.id)
@@ -263,9 +279,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
                 partyFocus: inst.partyFocus,
               }),
             onDuplicate: () => ctx.duplicateMeter(inst.id),
-            onClose: ctx.layoutEdit
-              ? () => ctx.removeMeter(inst.id)
-              : () => ctx.closeMeterRuntime(inst.id),
+            onClose: onMeterClose,
             onConfigure: () => ctx.setMeterAddOpen(true),
             onToolbarInteract: ctx.onToolbarInteract,
           }),

@@ -240,22 +240,49 @@ export function Enemies(props: EnemiesProps): any {
         );
       }),
     ),
-    ...squashKeys.map((enemyMtype) =>
-      e(
+    ...squashKeys.map((enemyMtype) => {
+      // Compact trash line — still clickable: target lowest-HP of that mtype.
+      const members: EntityLike[] = [];
+      for (let i = 0; i < enemiesToSquash.length; i++) {
+        const m = enemiesToSquash[i];
+        if ((m.mtype || "?") === enemyMtype) members.push(m);
+      }
+      let focus = members[0];
+      let lowest = hpPctRaw(focus);
+      for (let j = 1; j < members.length; j++) {
+        const pct = hpPctRaw(members[j]);
+        if (pct < lowest) {
+          lowest = pct;
+          focus = members[j];
+        }
+      }
+      const selected = groupContainsId(
+        { key: enemyMtype, members, focus, hpPct: Math.round(lowest) },
+        props.selectedEntity,
+      );
+      return e(
         "div",
         {
           key: enemyMtype,
+          role: "button",
+          title: `Target ${enemyMtype}`,
           style: {
             background: "rgba(0,0,0,0.55)",
             padding: "3px 8px",
             fontSize: TYPE.secondaryMin,
             color: "#aaa",
+            cursor: "pointer",
+            outline: selected ? "1px solid #fff" : undefined,
             ...PIXEL_TEXT,
+          },
+          onClick: () => {
+            setXTarget(focus);
+            props.setSelectedEntity(focus.id);
           },
         },
         `also ${squashEnemiesCounts[enemyMtype]} aggroed ${enemyMtype}'s`,
-      ),
-    ),
+      );
+    }),
     moreEnemiesCount
       ? e(
           "div",

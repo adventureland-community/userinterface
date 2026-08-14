@@ -31,11 +31,13 @@ export function beginTourSession(
   tour: GuidedTourDef,
 ): TourSession {
   const snap = host.snapshot();
-  applyTourStepEffects(host, prepareEffects(tour.prepare || {}), snap);
+  const prep = tour.prepare || {};
+  const keepMetersShown = !!prep.showMeters;
+  applyTourStepEffects(host, prepareEffects(prep), snap);
 
   return {
     snap,
-    restore: () => restoreTourUi(host, snap),
+    restore: () => restoreTourUi(host, snap, { keepMetersShown }),
     applyStep: (stepIndex: number, prevIndex: number | null) => {
       if (prevIndex != null && prevIndex !== stepIndex) {
         const prev = tour.steps[prevIndex];

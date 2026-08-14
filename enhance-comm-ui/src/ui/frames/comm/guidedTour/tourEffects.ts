@@ -66,9 +66,12 @@ export function applyTourStepEffects(
 export function restoreTourUi(
   host: TourEffectHost,
   snap: TourUiSnapshot,
+  opts?: { keepMetersShown?: boolean },
 ): void {
   host.setLayoutEdit(snap.layoutEdit);
-  host.setMetersHidden(snap.metersHidden);
+  // Tours that forced meters on should not re-hide them on exit — that feels
+  // like the deep-dive "ate" the DPS windows.
+  host.setMetersHidden(opts?.keepMetersShown ? false : snap.metersHidden);
   host.setMeterAddOpen(snap.meterAddOpen);
   host.setTestBars(snap.testBars);
   const ids = CLOSABLE_PANEL_IDS;

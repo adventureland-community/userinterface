@@ -91,6 +91,8 @@ export type MeterPanelShellProps = {
   onConfigure?: () => void;
   /** First toolbar click — contextual meter-toolbar tour. */
   onToolbarInteract?: () => void;
+  /** Combat-meters tour: only this shell is spotlighted. */
+  tourFocus?: boolean;
 };
 
 export function MeterPanelShell(props: MeterPanelShellProps): any {
@@ -131,13 +133,8 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
     setInteracting,
     onToolbarInteract: props.onToolbarInteract,
   });
-  const {
-    clearTipClose,
-    closeTip,
-    openTip,
-    openTipAnchor,
-    scheduleTipClose,
-  } = tipCtl;
+  const { clearTipClose, closeTip, openTip, openTipAnchor, scheduleTipClose } =
+    tipCtl;
 
   React.useEffect(() => {
     if (!tip) return;
@@ -435,6 +432,7 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
     {
       className: shellClass,
       ...(shellTourId ? { "data-ecu-tour": shellTourId } : {}),
+      ...(props.tourFocus ? { "data-ecu-tour-focus": "1" } : {}),
       style: {
         ...PIXEL_TEXT,
         fontSize: `calc(${TYPE.body} * ${meterApp.windowScale})`,
@@ -554,9 +552,8 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
           instance,
           segmentRef: selectedset || "current",
           segmentLabel: isCurrentSeg ? "Current" : titleSeg,
-          onSegmentClick: () => {
-            const shell = shellRef.current;
-            if (shell) openTipAnchor("seg", rectToAnchor(shell));
+          onSegmentClick: (el) => {
+            openTip("seg", el, { pin: true });
           },
           onEncounterClick: () => props.onOpenReport?.("encounter"),
         })

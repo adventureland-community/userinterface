@@ -158,8 +158,8 @@ const INTRO_TOUR: GuidedTourDef = {
       section: "Overlay",
       title: "Combat meters",
       body: "Optional rank windows for damage, healing, and fight history.",
-      target: ".ecu-meter-shell",
-      targetKind: "region",
+      target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
+      targetKind: "button",
       missingHint: "No meter yet — the next step shows how to add one.",
     },
     {
@@ -231,26 +231,31 @@ const METERS_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Meter window",
-      body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode.",
-      target: ".ecu-meter-shell",
+      body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked; lock them to auto-hide until data — or use Layout to place.",
+      // Prefer the meter that triggered the tour (just-added); never union all shells.
+      target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
+      targetKind: "button",
       missingHint: "Add a meter from the control strip first.",
     },
     {
       title: "Bar rows",
-      body: "Click a row for Inspector (spells, targets). Right-click the body for bookmark slots.",
-      target: ".ecu-meter-body",
+      body: "Click a row for Inspector (spells, targets). Right-click the body for bookmark slots. Empty windows show “No data” until combat fills them.",
+      target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-body',
+      targetKind: "button",
       missingHint: "Add a meter window first.",
     },
     {
       title: "Toolbar overview",
       body: "Right-side icons: Mode · Segment · Attribute · Report · Reset. Hover for menus — a toolbar tour appears when you first open one.",
-      target: ".ecu-meter-titlebar",
+      target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-titlebar',
+      targetKind: "button",
       missingHint: "Add a meter window first.",
     },
     {
       title: "Status bar",
       body: "Segment timer and DPS/HPS readout along the bottom.",
-      target: ".ecu-meter-statusbar",
+      target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-statusbar',
+      targetKind: "button",
       missingHint: "Add a meter window first.",
       enter: { testBars: false },
     },
@@ -299,7 +304,7 @@ const COMBAT_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Enemies",
-      body: "Nearby monsters for quick targeting — click a row to select.",
+      body: "Nearby monsters for quick targeting — click a bar, or the also-N trash line.",
       target: ".comm-pos-enemies",
       missingHint: "Appears when monsters are nearby.",
     },
@@ -324,7 +329,7 @@ const COOP_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "s.coop meter",
-      body: "Tracks shared kill participation (s.coop) for party members on this server. v1 and v2 use different formulas — add from + Meter → Adventure Land. The window only appears once someone has coop data.",
+      body: "Tracks shared kill participation (s.coop) for party members on this server. v1 is raw points share; v2 uses the server award curve (points^0.65). Add from + Meter → Adventure Land. The window only appears once someone has coop data.",
       target: '[data-ecu-tour="meter-coop"]',
       missingHint: "Coop panels hide until participation data exists.",
     },
@@ -455,6 +460,20 @@ export function isTourCompleted(id: string): boolean {
 export function markTourCompleted(id: string): void {
   const prev = getSettings().toursCompleted || {};
   patchSettings({ toursCompleted: { ...prev, [id]: true } });
+}
+
+/** Clear a completion flag (Intro button force-replay). */
+export function clearTourCompleted(id: string): void {
+  const prev = getSettings().toursCompleted || {};
+  if (!prev[id]) return;
+  const next: Record<string, boolean> = {};
+  const keys = Object.keys(prev);
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (k === id) continue;
+    next[k] = prev[k];
+  }
+  patchSettings({ toursCompleted: next });
 }
 
 /** Map old completion flags from earlier tour shapes. */

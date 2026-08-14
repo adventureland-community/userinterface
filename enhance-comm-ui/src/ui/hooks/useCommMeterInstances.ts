@@ -40,6 +40,11 @@ export type FocusInspectorOpts = {
   partyFocus?: PartyFocus;
 };
 
+export type UseCommMeterInstancesOpts = {
+  /** Called after a preset add (tour spotlight). */
+  onMeterAdded?: (id: string) => void;
+};
+
 export type CommMeterInstancesApi = {
   meterInstances: MeterInstance[];
   meterInstancesRef: { current: MeterInstance[] };
@@ -72,6 +77,7 @@ export type CommMeterInstancesApi = {
 
 export function useCommMeterInstances(
   layout: Record<string, PanelPos>,
+  opts?: UseCommMeterInstancesOpts,
 ): CommMeterInstancesApi {
   const React = getReact();
 
@@ -276,6 +282,8 @@ export function useCommMeterInstances(
   const addMeterFromPreset = (presetId: string) => {
     const preset = presetById(presetId);
     if (!preset) return;
+    const emptyHide =
+      !!preset.hideWhenEmpty || preset.query.kind === "snapshot";
     setMeterInstances((prev: MeterInstance[]) => {
       const raw = instanceFromPreset(preset, {
         pos: {
@@ -283,8 +291,11 @@ export function useCommMeterInstances(
           y: 40 + Math.random() * 20,
           anchor: "center",
         },
+        // Empty-hide presets stay mounted while unlocked (survives F5).
+        ...(emptyHide ? { locked: false } : {}),
       });
       const opened = prepareNewMeterWindow(raw, prev);
+      opts?.onMeterAdded?.(opened.inst.id);
       const next = opened.peers.concat([opened.inst]);
       patchSettings({ meterInstances: next });
       return next;

@@ -17,6 +17,8 @@ import {
 } from "../frames/comm/guidedTour/contextualTour";
 import {
   INTRO_TOUR_CHAIN,
+  INTRO_TOUR_ID,
+  clearTourCompleted,
   isTourCompleted,
   migrateLegacyTourFlags,
   tourById,
@@ -31,6 +33,7 @@ import {
   endTourSession,
   type TourSession,
 } from "../frames/comm/guidedTour/tourRunner";
+import { pickMeterTourFocusId } from "./pickMeterTourFocusId";
 
 export type UseCommGuidedToursOpts = {
   layoutEdit: boolean;
@@ -48,12 +51,19 @@ export type UseCommGuidedToursOpts = {
   bagOpen: boolean;
   commandOpen: boolean;
   itemInfoOpen: boolean;
+  /** Current meter instances — used when starting the meters tour without a prior add. */
+  getMeterInstances?: () => Array<{ id: string; zIndex?: number }>;
 };
 
 export type CommGuidedToursApi = {
   startIntroTour: (force?: boolean) => void;
   toggleLayoutEdit: () => void;
   tourOverlay: any;
+  /** True while a spotlight tour is on screen — lock destructive meter chrome. */
+  tourActive: boolean;
+  /** Meter shell spotlight for combat-meters tour. */
+  tourFocusMeterId: string | null;
+  setTourFocusMeterId: (id: string | null) => void;
 };
 
 export function useCommGuidedTours(
@@ -63,13 +73,18 @@ export function useCommGuidedTours(
   const [activeTour, setActiveTour] = React.useState(
     null as null | { tour: GuidedTourDef; step: number },
   );
+  const [tourFocusMeterId, setTourFocusMeterId] = React.useState(
+    null as string | null,
+  );
   const sessionRef = React.useRef(null as TourSession | null);
   const activeTourRef = React.useRef(activeTour);
   const toursBlockedRef = React.useRef(opts.toursBlocked);
   const optsRef = React.useRef(opts);
+  const tourFocusRef = React.useRef(tourFocusMeterId);
   activeTourRef.current = activeTour;
   toursBlockedRef.current = opts.toursBlocked;
   optsRef.current = opts;
+  tourFocusRef.current = tourFocusMeterId;
 
   const effectHostRef = React.useRef(null as TourEffectHost | null);
   if (!effectHostRef.current) {
@@ -103,6 +118,7 @@ export function useCommGuidedTours(
     // Clear immediately so Done never leaves a stuck overlay.
     activeTourRef.current = null;
     setActiveTour(null);
+    if (id === "meters" || id === INTRO_TOUR_ID) setTourFocusMeterId(null);
 
     if (!id) {
       flushContextualTourQueue();
@@ -135,6 +151,12 @@ export function useCommGuidedTours(
     const tour = tourById(id);
     const effectHost = effectHostRef.current;
     if (!tour || !effectHost) return;
+    if ((id === "meters" || id === INTRO_TOUR_ID) && !tourFocusRef.current) {
+      const pick = pickMeterTourFocusId(
+        optsRef.current.getMeterInstances?.() || [],
+      );
+      if (pick) setTourFocusMeterId(pick);
+    }
     endTourSession(
       sessionRef.current,
       activeTourRef.current?.tour,
@@ -157,6 +179,7 @@ export function useCommGuidedTours(
 
   const startIntroTour = (force?: boolean) => {
     optsRef.current.setSetupWizardOpen(false);
+    if (force) clearTourCompleted(INTRO_TOUR_ID);
     for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
       const id = INTRO_TOUR_CHAIN[i];
       if (!force && isTourCompleted(id)) continue;
@@ -174,8 +197,7 @@ export function useCommGuidedTours(
   React.useEffect(() => {
     migrateLegacyTourFlags();
     registerContextualTourHost({
-      isBlocked: () =>
-        !!activeTourRef.current || !!toursBlockedRef.current,
+      isBlocked: () => !!activeTourRef.current || !!toursBlockedRef.current,
       startTour: launchContextualTour,
     });
     return () => {
@@ -222,5 +244,8 @@ export function useCommGuidedTours(
     startIntroTour,
     toggleLayoutEdit,
     tourOverlay,
+    tourActive: !!activeTour,
+    tourFocusMeterId,
+    setTourFocusMeterId,
   };
 }

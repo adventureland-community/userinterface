@@ -4,14 +4,18 @@
 
 import { getReact } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
-import { findEntity } from "../../queries/entities";
+import { findEntity, isFocusablePlayer } from "../../queries/entities";
 import { hasVisibleCoopMeter } from "../../meters/meterCoopSignal";
 import { runMeterQuery } from "../../meters/meterQuery";
 import type { MeterInstance } from "../../meters/meterTypes";
 import { combatSignals } from "../../queries/combatSignals";
-import { isTourCompleted, PAPERDOLL_TOUR_ID } from "../frames/comm/guidedTour/tourCatalog";
+import {
+  isTourCompleted,
+  PAPERDOLL_TOUR_ID,
+} from "../frames/comm/guidedTour/tourCatalog";
 import { tryContextualTour } from "../frames/comm/guidedTour/contextualTour";
 import { entityHasTradeSlots } from "../frames/comm/guidedTour/paperdollTrade";
+import { pickMeterTourFocusId } from "./pickMeterTourFocusId";
 
 export type ContextualTourContext = {
   /** Paperdoll selection id (opens EntityInfo). */
@@ -20,6 +24,11 @@ export type ContextualTourContext = {
   meterCount: number;
   entities: EntityLike[];
   meterInstances: MeterInstance[];
+};
+
+export type UseContextualTourTriggersOpts = ContextualTourContext & {
+  /** Set when the meters rising-edge trigger fires (before the delayed start). */
+  onMetersTourFocus?: (id: string | null) => void;
 };
 
 type TriggerDef = {
@@ -49,13 +58,15 @@ const TRIGGERS: TriggerDef[] = [
     when: (ctx, prev) => prev != null && ctx.meterCount > prev.meterCount,
   },
   {
-    // First paperdoll open while the base tour is incomplete.
+    // First paperdoll open on a player — bosses/mobs lack clickable gear slots.
     id: PAPERDOLL_TOUR_ID,
     delayMs: 300,
-    when: (ctx, prev) =>
-      !!ctx.selectedEntity &&
-      !prev?.selectedEntity &&
-      !isTourCompleted(PAPERDOLL_TOUR_ID),
+    when: (ctx, prev) => {
+      if (!ctx.selectedEntity || prev?.selectedEntity) return false;
+      if (isTourCompleted(PAPERDOLL_TOUR_ID)) return false;
+      const ent = selectedEntity(ctx);
+      return !!ent && isFocusablePlayer(ent);
+    },
   },
   {
     // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
@@ -120,11 +131,23 @@ function scheduleContextualTour(
   window.setTimeout(() => pending.delete(id), delayMs + 120);
 }
 
-export function useContextualTourTriggers(ctx: ContextualTourContext): void {
+export function useContextualTourTriggers(
+  opts: UseContextualTourTriggersOpts,
+): void {
   const React = getReact();
   const prevRef = React.useRef(null as ContextualTourContext | null);
   const onceFiredRef = React.useRef(new Set<string>());
   const pendingRef = React.useRef(new Set<string>());
+  const optsRef = React.useRef(opts);
+  optsRef.current = opts;
+
+  const ctx: ContextualTourContext = {
+    selectedEntity: opts.selectedEntity,
+    buffInfoOpen: opts.buffInfoOpen,
+    meterCount: opts.meterCount,
+    entities: opts.entities,
+    meterInstances: opts.meterInstances,
+  };
 
   React.useEffect(() => {
     const prev = prevRef.current;
@@ -134,6 +157,11 @@ export function useContextualTourTriggers(ctx: ContextualTourContext): void {
       if (t.oncePerSession && onceFiredRef.current.has(t.id)) continue;
       if (!t.when(ctx, prev)) continue;
       if (t.oncePerSession) onceFiredRef.current.add(t.id);
+      if (t.id === "meters") {
+        optsRef.current.onMetersTourFocus?.(
+          pickMeterTourFocusId(ctx.meterInstances),
+        );
+      }
       scheduleContextualTour(pendingRef.current, t.id, t.delayMs);
     }
 
