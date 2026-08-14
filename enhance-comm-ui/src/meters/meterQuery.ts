@@ -422,6 +422,11 @@ export function rankedPlayers(
   };
 }
 
+/** Pre-enhance-comm Coop V2 panel / server `issue_monster_awards` curve. */
+function coopPointsPow065(rawPoints: number): number {
+  return Math.pow(Math.max(0, rawPoints), 0.65);
+}
+
 function snapshotRows(
   mode: "pdps" | "coop_v1" | "coop_v2",
   entities: EntityLike[],
@@ -455,6 +460,7 @@ function snapshotRows(
     return { kind: "ranked", rows };
   }
 
+  // Same eligibility as the old CoopContributionMeterV1/V2 panels.
   const ids = new Set(entities.map((e) => String(e.id)));
   const coop = entities
     .filter(
@@ -467,21 +473,26 @@ function snapshotRows(
     )
     .sort((a, b) => (b.s?.coop?.p || 0) - (a.s?.coop?.p || 0));
 
+  // V1: linear share of raw s.coop.p (old CoopContributionMeterV1).
+  // V2: server award curve — pow(p, 0.65) / (0.1 + sum(pow(p_i, 0.65)))
+  //     (old CoopContributionMeterV2 / issue_monster_awards).
+  const useV2 = mode === "coop_v2";
   let max = 0;
-  let total = 0;
+  // Server starts total at 0.1; V1 panel used a plain sum (no base).
+  let total = useV2 ? 0.1 : 0;
+  const displayValues: number[] = [];
   for (let i = 0; i < coop.length; i++) {
-    const p = coop[i].s?.coop?.p || 0;
-    max = Math.max(max, p);
-    total += p;
+    const raw = coop[i].s?.coop?.p || 0;
+    const value = useV2 ? coopPointsPow065(raw) : raw;
+    displayValues.push(value);
+    max = Math.max(max, value);
+    total += value;
   }
   const rows: RankedRow[] = [];
   for (let i = 0; i < coop.length; i++) {
     const player = coop[i];
-    const value = player.s?.coop?.p || 0;
-    const label =
-      mode === "coop_v2"
-        ? value.toFixed(2)
-        : `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    const value = displayValues[i];
+    const label = `${getPercent(total > 0 ? value / total : 0, 3)} | ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
     rows.push({
       id: String(player.id),
       name: player.name || String(player.id),
