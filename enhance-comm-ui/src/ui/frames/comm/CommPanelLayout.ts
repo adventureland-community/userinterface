@@ -104,8 +104,17 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
     if (isHidden && !deps.layoutEdit) return null;
     if (opts?.empty && !deps.layoutEdit) return null;
     const locked = deps.panelIsLocked(id);
+    // Buff/item hosts stay mounted when idle (stock writers); treat them as
+    // on-screen for Alt only while the dialog is open — Layout still places
+    // the empty footprint. Party (players) is always on-screen.
+    const infoIdle =
+      (id === "buffInfo" && !deps.buffInfoOpen) ||
+      (id === "itemInfo" && !deps.itemInfoOpen);
     const playArrange =
-      !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles";
+      !deps.layoutEdit &&
+      (!locked || deps.altHeld) &&
+      id !== "toggles" &&
+      !infoIdle;
     const groupable = canGroupWindow(id);
     const grouped =
       groupable &&

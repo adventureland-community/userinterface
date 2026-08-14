@@ -109,19 +109,26 @@ export function usePanelLayoutState(): PanelLayoutState {
   const [altHeld, setAltHeld] = React.useState(false);
 
   React.useEffect(() => {
-    const onDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Alt") setAltHeld(true);
+    // Windows browsers steal bare Alt for the menu bar (keyup/blur races).
+    // Track modifier state from every input event; preventDefault on Alt itself.
+    const sync = (ev: KeyboardEvent | MouseEvent) => {
+      setAltHeld(!!ev.altKey);
     };
-    const onUp = (ev: KeyboardEvent) => {
-      if (ev.key === "Alt") setAltHeld(false);
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Alt" || ev.code === "AltLeft" || ev.code === "AltRight") {
+        ev.preventDefault();
+      }
+      sync(ev);
     };
     const onBlur = () => setAltHeld(false);
-    window.addEventListener("keydown", onDown);
-    window.addEventListener("keyup", onUp);
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", sync, true);
+    window.addEventListener("mousemove", sync, true);
     window.addEventListener("blur", onBlur);
     return () => {
-      window.removeEventListener("keydown", onDown);
-      window.removeEventListener("keyup", onUp);
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", sync, true);
+      window.removeEventListener("mousemove", sync, true);
       window.removeEventListener("blur", onBlur);
     };
   }, []);

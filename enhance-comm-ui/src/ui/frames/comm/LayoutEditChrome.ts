@@ -246,6 +246,15 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
   };
 
   const onChromePointerDown = (ev: any) => {
+    // Done / other controls live in the drag handle — don't steal their clicks.
+    const t = ev.target as Element | null;
+    if (
+      t &&
+      typeof t.closest === "function" &&
+      t.closest("button, input, a, select, textarea, label")
+    ) {
+      return;
+    }
     ev.preventDefault();
     ev.stopPropagation();
     dragging.current = true;
@@ -399,6 +408,9 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
         {
           type: "button",
           onClick: props.onDone,
+          onPointerDown: (ev: any) => {
+            ev.stopPropagation();
+          },
           style: {
             ...btnStyle(true, false),
             marginLeft: "auto",
@@ -431,8 +443,7 @@ export function LayoutEditChrome(props: LayoutEditChromeProps): any {
               type: "button",
               onClick: props.onResetMeters,
               style: btnStyle(false, true),
-              title:
-                "Replace meter windows with defaults: DPS ‖ HPS",
+              title: "Replace meter windows with defaults: DPS ‖ HPS",
             },
             "Meters",
           )

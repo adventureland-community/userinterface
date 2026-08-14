@@ -67,7 +67,7 @@ export function defaultMeterInstances(): MeterInstance[] {
     heal.pos = { x: 95.97476985743381, y: 99, anchor: "br" };
     heal.frameW = 261;
     heal.frameH = 157;
-    heal.locked = false;
+    heal.locked = true;
     heal.zIndex = 64;
     heal.stack = false;
     heal.integrate = false;

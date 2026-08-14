@@ -579,6 +579,17 @@ export function meterHidesWhenEmpty(inst: MeterInstance): boolean {
   if (typeof inst.hideWhenEmpty === "boolean") return inst.hideWhenEmpty;
   return inst.query.kind === "snapshot";
 }
+
+/**
+ * Empty-hide mount policy (PDPS/coop): stay mounted while unlocked or in
+ * Layout edit; hide only when locked, empty, and not editing layout.
+ */
+export function shouldMountEmptyHide(
+  _inst: MeterInstance,
+  opts: { layoutEdit: boolean; locked: boolean; hasRows: boolean },
+): boolean {
+  return opts.layoutEdit || !opts.locked || opts.hasRows;
+}
 export function barModeIndex(query: MeterQuery): number {
   for (let i = 0; i < BAR_MODE_CYCLE.length; i++) {
     const m = BAR_MODE_CYCLE[i];
