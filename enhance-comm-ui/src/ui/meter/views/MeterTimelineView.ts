@@ -6,6 +6,8 @@
  * - 00:00 is the left of the *content* (fight start), not the viewport.
  * - While following, “now” stays pinned to the right of the visible track;
  *   new time extends the content and the past recedes left (rAF, no snap).
+ *   Predicted CD / buff ends may extend past the playhead on the track;
+ *   follow still pins “now”, not the future tip.
  * - Scroll left unlocks follow; scroll back to the live head re-locks.
  * - “Now” on the Fight axis strip jumps to the live edge (or stored-fight
  *   end). Hidden while following or Shift-frozen.
@@ -85,10 +87,12 @@ import {
   buildActorMaps,
   buildLanes,
   conditionsEndedCount,
+  conditionsPredSig,
   eventsInScope,
   laneDataSig,
   rosterSigNow,
   timelineFightKey,
+  timelineHorizonSec,
   timelineOriginMs,
 } from "./timeline/timelineLanes";
 import {
@@ -117,6 +121,8 @@ type TimelineViewInnerProps = {
   deathCount: number;
   combatLive: boolean;
   fightKey: string;
+  /** Open predicted-end / unknown-end fingerprint for in-place tape updates. */
+  condPredSig: string;
 };
 
 function timelineInnerEqual(
@@ -129,6 +135,7 @@ function timelineInnerEqual(
   if (prev.rosterSig !== next.rosterSig) return false;
   if (prev.deathCount !== next.deathCount) return false;
   if (prev.combatLive !== next.combatLive) return false;
+  if (prev.condPredSig !== next.condPredSig) return false;
   const a = prev.result;
   const b = next.result;
   if (a.kind !== b.kind) return false;
@@ -198,9 +205,12 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   const isLiveRef = React.useRef(false);
   const startRef = React.useRef(0);
   const durSecRef = React.useRef(1);
+  const elapsedSecRef = React.useRef(1);
+  const followTargetRef = React.useRef(0);
   const tickSigRef = React.useRef("");
   const layoutCacheRef = React.useRef({
     contentW: -1,
+    elapsedW: -1,
     pad: -1,
     trackW: -1,
     pps: -1,
@@ -269,13 +279,19 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     isTimeline && originPinRef.current != null
       ? originPinRef.current
       : rawStart;
+  const elapsedSec = Math.max((now - start) / 1000, 1 / pps);
   const durSec = isLive
-    ? Math.max((now - start) / 1000, 1 / pps)
+    ? Math.max(
+        timelineHorizonSec(start, now, casts, conditions),
+        elapsedSec,
+        1 / pps,
+      )
     : Math.max(durationMs / 1000, 1 / pps);
 
   isLiveRef.current = isLive;
   startRef.current = start;
   durSecRef.current = durSec;
+  elapsedSecRef.current = elapsedSec;
 
   const syncGutterY = React.useCallback(() => {
     const rows = gutterRowsRef.current;
@@ -314,25 +330,35 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     const viewTrackW = Math.max(120, scroll.clientWidth);
     const elapsed = isLiveRef.current
       ? Math.max((Date.now() - startRef.current) / 1000, 1 / ppsNow)
+      : Math.max(elapsedSecRef.current, 1 / ppsNow);
+    const horizon = isLiveRef.current
+      ? Math.max(durSecRef.current, elapsed, 1 / ppsNow)
       : Math.max(durSecRef.current, 1 / ppsNow);
-    const contentWR = Math.ceil(elapsed * ppsNow);
+    const elapsedW = Math.ceil(elapsed * ppsNow);
+    const contentWR = Math.ceil(horizon * ppsNow);
     const padR =
       freezePadRef.current != null
         ? freezePadRef.current
         : followRef.current
-          ? Math.max(0, viewTrackW - contentWR)
+          ? Math.max(0, viewTrackW - elapsedW)
           : 0;
     const trackWR = padR + contentWR;
+    // Pin “now” to the right edge — not the future tip past the playhead.
+    const followTarget = Math.max(0, padR + elapsedW - viewTrackW);
+    followTargetRef.current = followTarget;
     if (
       cache.contentW !== contentWR ||
+      cache.elapsedW !== elapsedW ||
       cache.pad !== padR ||
       cache.trackW !== trackWR
     ) {
       cache.contentW = contentWR;
+      cache.elapsedW = elapsedW;
       cache.pad = padR;
       cache.trackW = trackWR;
       root.style.setProperty("--tl-pad", `${padR}px`);
       root.style.setProperty("--tl-content-w", `${contentWR}px`);
+      root.style.setProperty("--tl-elapsed-w", `${elapsedW}px`);
       root.style.setProperty("--tl-track-w", `${trackWR}px`);
     }
     if (!cache.clock || !root.contains(cache.clock)) {
@@ -357,22 +383,19 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     }
     // Grow the ruler only when the discrete step list changes (not every frame).
     const step = tickStepSec(ppsNow);
-    const last = Math.max(0, Math.floor(elapsed + 1e-9));
+    const last = Math.max(0, Math.floor(horizon + 1e-9));
     const includeEnd = !isLiveRef.current;
     const lastStep = Math.floor(last / step) * step;
     const sig = `${ppsNow}:${step}:${lastStep}:${includeEnd ? last : 0}`;
     if (sig !== tickSigRef.current) {
       tickSigRef.current = sig;
-      setRulerTicks(buildTicks(ppsNow, elapsed, includeEnd));
+      setRulerTicks(buildTicks(ppsNow, horizon, includeEnd));
     }
     if (followRef.current) {
-      // Pin “now” to the right edge as content grows — only nudge scroll
-      // when the target moves >0.5px to avoid subpixel shimmer.
       const held = applyingScrollRef.current;
       applyingScrollRef.current = true;
-      const target = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-      if (Math.abs(scroll.scrollLeft - target) > 0.5) {
-        scroll.scrollLeft = target;
+      if (Math.abs(scroll.scrollLeft - followTarget) > 0.5) {
+        scroll.scrollLeft = followTarget;
       }
       if (!held) applyingScrollRef.current = false;
     }
@@ -447,6 +470,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
     setShowGoToNow(false);
     layoutCacheRef.current = {
       contentW: -1,
+      elapsedW: -1,
       pad: -1,
       trackW: -1,
       pps: -1,
@@ -477,11 +501,11 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
       publishViewRange();
       if (applyingScrollRef.current) return;
       if (freezePadRef.current != null) {
-        const maxNow = Math.max(0, el.scrollWidth - el.clientWidth);
+        const followTarget = followTargetRef.current;
         // Pin-to-now after a fight jump is not a user camera move.
         if (
-          maxNow > TL_FOLLOW_SLACK &&
-          el.scrollLeft < maxNow - TL_FOLLOW_SLACK
+          followTarget > TL_FOLLOW_SLACK &&
+          el.scrollLeft < followTarget - TL_FOLLOW_SLACK
         ) {
           freezeResumeRef.current = false;
           freezePadRef.current = null;
@@ -491,13 +515,14 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
           return;
         }
       }
+      const followTarget = followTargetRef.current;
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
-      if (max <= TL_FOLLOW_SLACK) {
+      if (max <= TL_FOLLOW_SLACK && followTarget <= TL_FOLLOW_SLACK) {
         followRef.current = true;
         publishShowGoToNow();
         return;
       }
-      followRef.current = el.scrollLeft >= max - TL_FOLLOW_SLACK;
+      followRef.current = el.scrollLeft >= followTarget - TL_FOLLOW_SLACK;
       publishShowGoToNow();
     };
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -636,6 +661,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
         start,
         props.rosterSig,
         props.deathCount,
+        now,
       )
     : "";
   if (isTimeline && laneCacheRef.current.sig !== nextLaneSig) {
@@ -652,6 +678,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
         ctypes,
         seg,
         props.partyFocus,
+        now,
       ),
     };
   }
@@ -665,7 +692,12 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
   const ticks =
     rulerTicks.length > 0 ? rulerTicks : buildTicks(pps, durSec, !isLive);
   const renderRange = isViewUnmeasured(viewRange)
-    ? estimateViewRange(durSec, pps, followRef.current)
+    ? estimateViewRange(
+        durSec,
+        pps,
+        followRef.current,
+        isLive ? elapsedSec : undefined,
+      )
     : viewRange;
 
   const selectLane = (laneId: string) => {
@@ -729,7 +761,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
               "data-tl-clock": "",
               title: "Fight elapsed (from pull start)",
             },
-            fmtClock(durSec),
+            fmtClock(isLive ? elapsedSec : durSec),
           ),
           " · ",
           e(
@@ -738,7 +770,7 @@ function MeterTimelineViewInner(props: TimelineViewInnerProps): any {
               "data-tl-wall": "",
               title: "Wall-clock time",
             },
-            fmtWall(start + durSec * 1000),
+            fmtWall(start + (isLive ? elapsedSec : durSec) * 1000),
           ),
           e("span", { "data-tl-scale": "" }, `${Math.round(pps)} px/s`),
           isLive ? " · in combat" : "",
@@ -848,6 +880,7 @@ export function MeterTimelineView(props: {
   }
   const seg = resolveSegment(props.segmentRef);
   const liveRoster = !!(seg && isLiveCombatSegment(seg));
+  const tl = props.result.kind === "timeline" ? props.result : null;
   return e(MeterTimelineMemo, {
     result: props.result,
     segmentRef: props.segmentRef,
@@ -856,5 +889,6 @@ export function MeterTimelineView(props: {
     deathCount: seg ? seg.deaths.length : 0,
     combatLive: liveRoster,
     fightKey: timelineFightKey(props.segmentRef, seg),
+    condPredSig: conditionsPredSig(tl ? tl.conditions : []),
   });
 }

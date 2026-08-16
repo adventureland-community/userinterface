@@ -177,6 +177,12 @@ export type ConditionInterval = {
   key: string;
   startedAt: number;
   endedAt?: number;
+  /**
+   * Live prediction from entity `s[key].ms` (wall `now + remaining`).
+   * Time Line draws open auras to this instant so bars are not clipped at
+   * the playhead. Omitted from packed archives — closed rows use endedAt.
+   */
+  expectedEndAt?: number;
 };
 
 export type CastMarker = {
@@ -417,12 +423,7 @@ export type MeterPanelConfig = {
  * `off` clears a slot.
  */
 export type StatusbarPluginId =
-  | "off"
-  | "segment"
-  | "clock"
-  | "pdps"
-  | "attribute"
-  | "total";
+  "off" | "segment" | "clock" | "pdps" | "attribute" | "total";
 
 /** Per-window Details-style statusbar plugin layout. */
 export type MeterStatusbarConfig = {

@@ -93,7 +93,7 @@ export type TimelineBlock = {
    * so shared-CD spam is not one continuous strip.
    */
   nextSameAtSec?: number;
-  /** Live aura start — cooltip elapsed uses Date.now() while open. */
+  /** Aura start wall time (cooltips / debugging). */
   startedAtMs?: number;
   isOpen?: boolean;
   condKind?: "buff" | "debuff";
@@ -174,20 +174,15 @@ export function gearPinZBoost(slot: string | undefined): number {
   return 0;
 }
 
-/** Cooltip elapsed — live open auras tick at hover time, not last render. */
+/** Cooltip elapsed — prefer stored duration (predicted or playhead-synced). */
 export function conditionElapsedSec(b: TimelineBlock): number {
   if (b.kind !== "condition") return b.durationSec;
-  if (b.isOpen && b.startedAtMs) {
-    return Math.max(0, (Date.now() - b.startedAtMs) / 1000);
-  }
-  return b.durationSec;
+  return Math.max(0, b.durationSec);
 }
 
 export function visualDurationSec(b: TimelineBlock): number {
   if (b.kind === "death" || b.kind === "gear") return 0;
-  if (b.kind === "condition") {
-    return Math.max(0, conditionElapsedSec(b));
-  }
   // Cast/CD: G.skills cooldown, or round(1000/frequency) for attack-share.
+  // Conditions: ended span, predicted ms end, or open stretch to playhead.
   return Math.max(0, b.durationSec);
 }

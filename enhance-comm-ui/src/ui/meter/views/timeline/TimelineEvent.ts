@@ -105,16 +105,14 @@ export function timelineEventEqual(
   }
   if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
   if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
-  // Open auras tick elapsed in the cooltip — layout width is clamped.
-  if (pb.isOpen && nb.isOpen) return true;
   return pb.durationSec === nb.durationSec;
 }
 
 /**
  * Place icons at true elapsed time. Overlaps stack in place (z-index +
- * cooltip cluster) — never nudge X. Live min-gap reflow was the jump source:
- * open auras grow visual width each tick, cascade-shifted later icons,
- * and misaligned same-time events across player rows.
+ * cooltip cluster) — never nudge X. Open buff/debuff bars use predicted
+ * `expectedEndAt` when known; unknown-end opens lengthen via playhead-synced
+ * durationSec on lane rebuilds (~4 Hz), not Date.now() remount jumps.
  *
  * Hover is icon-first, then bar: the wrapper is not a stacking context, so
  * later icons sit above earlier duration bars. Empty lane chrome still has

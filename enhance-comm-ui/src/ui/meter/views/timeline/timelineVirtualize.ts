@@ -70,17 +70,24 @@ export function isViewUnmeasured(range: {
 /**
  * Follow-now window before the scroller is measured. Mounts ~visible
  * seconds at the live head — never the whole fight, never an empty box.
+ * When `playheadSec` is set (live), pin to the playhead even if `durSec`
+ * extends into predicted future CD/buff ends.
  */
 export function estimateViewRange(
   durSec: number,
   pps: number,
   follow: boolean,
+  playheadSec?: number,
 ): { left: number; right: number } {
   const viewW = TL_VIEW_ESTIMATE_W;
   const buf = TL_VIEW_BUF_PX;
-  const contentW = Math.max(0, durSec * pps);
-  const left = follow ? Math.max(0, contentW - viewW) : 0;
-  const right = follow ? Math.max(viewW, contentW) : viewW;
+  const pinSec =
+    playheadSec != null && Number.isFinite(playheadSec)
+      ? Math.max(0, Math.min(durSec, playheadSec))
+      : durSec;
+  const pinW = Math.max(0, pinSec * pps);
+  const left = follow ? Math.max(0, pinW - viewW) : 0;
+  const right = follow ? Math.max(viewW, pinW) : viewW;
   return { left: left - buf, right: right + buf };
 }
 

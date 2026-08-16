@@ -8147,14 +8147,26 @@ ${fightHoverTip(src)}`
       for (let k = 0; k < keys.length; k++) {
         const key = keys[k];
         const openKey = `${id}:${key}`;
+        const ms = conditionMs(s[key]);
+        const predictedEnd = ms != null ? now + ms : void 0;
         if (!openConditions[openKey]) {
           const iv = {
             actorId: id,
             key,
-            startedAt: now
+            startedAt: now,
+            expectedEndAt: predictedEnd
           };
           openConditions[openKey] = iv;
           seg.conditions.push(iv);
+          markMeterDirty();
+        } else if (predictedEnd != null) {
+          const iv = openConditions[openKey];
+          if (iv.expectedEndAt == null || predictedEnd > iv.expectedEndAt + 250) {
+            iv.expectedEndAt = predictedEnd;
+            markMeterDirty();
+          } else {
+            iv.expectedEndAt = predictedEnd;
+          }
         }
       }
       const openKeys = Object.keys(openConditions);
@@ -8164,7 +8176,10 @@ ${fightHoverTip(src)}`
         const condKey = ok.slice(id.length + 1);
         if (s[condKey]) continue;
         const iv = openConditions[ok];
-        if (iv && iv.endedAt == null) iv.endedAt = now;
+        if (iv && iv.endedAt == null) {
+          iv.endedAt = now;
+          markMeterDirty();
+        }
         delete openConditions[ok];
       }
     }
@@ -8351,9 +8366,7 @@ ${fightHoverTip(src)}`
     )) {
       return;
     }
-    const attackMs = attackMsFromFrequency(
-      (_a = findEntityById(ev.actor)) == null ? void 0 : _a.frequency
-    );
+    const attackMs = attackMsFromFrequency((_a = findEntityById(ev.actor)) == null ? void 0 : _a.frequency);
     const row2 = {
       at: ev.at,
       actorId: ev.actor,
@@ -15740,7 +15753,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.8.0-alpha.4" : "unknown";
-    const builtAt = true ? "2026-08-16T22:46:35.284Z" : "unknown";
+    const builtAt = true ? "2026-08-16T23:07:12.897Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -23459,6 +23472,7 @@ button.comm-mail__stack-u {
   --tl-ruler-h: 38px;
   --tl-pad: 0px;
   --tl-content-w: 100%;
+  --tl-elapsed-w: 100%;
   --tl-track-w: 100%;
   display: flex;
   flex-direction: column;
@@ -23678,13 +23692,14 @@ button.comm-mail__stack-u {
   max-width: none;
   box-sizing: border-box;
 }
-/* Live-only playhead at content \u201Cnow\u201D (may sit at viewport right while
-   following). Not rendered post-combat \u2014 see MeterTimelineView. */
+/* Live-only playhead at fight \u201Cnow\u201D (may sit at viewport right while
+   following). Content may extend past this for predicted CD/buff ends.
+   Not rendered post-combat \u2014 see MeterTimelineView. */
 .ecu-meter-tl-now {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--tl-pad) + var(--tl-content-w));
+  left: calc(var(--tl-pad) + var(--tl-elapsed-w));
   width: 2px;
   margin-left: -1px;
   background: rgba(227, 186, 4, 0.9);
@@ -29527,16 +29542,10 @@ ${parts.map(cssSlice).join("\n")}
   }
   function conditionElapsedSec(b) {
     if (b.kind !== "condition") return b.durationSec;
-    if (b.isOpen && b.startedAtMs) {
-      return Math.max(0, (Date.now() - b.startedAtMs) / 1e3);
-    }
-    return b.durationSec;
+    return Math.max(0, b.durationSec);
   }
   function visualDurationSec(b) {
     if (b.kind === "death" || b.kind === "gear") return 0;
-    if (b.kind === "condition") {
-      return Math.max(0, conditionElapsedSec(b));
-    }
     return Math.max(0, b.durationSec);
   }
 
@@ -29981,12 +29990,13 @@ ${parts.map(cssSlice).join("\n")}
   function isViewUnmeasured(range) {
     return range.left <= -1e8;
   }
-  function estimateViewRange(durSec, pps, follow) {
+  function estimateViewRange(durSec, pps, follow, playheadSec) {
     const viewW = TL_VIEW_ESTIMATE_W;
     const buf = TL_VIEW_BUF_PX;
-    const contentW = Math.max(0, durSec * pps);
-    const left = follow ? Math.max(0, contentW - viewW) : 0;
-    const right = follow ? Math.max(viewW, contentW) : viewW;
+    const pinSec = playheadSec != null && Number.isFinite(playheadSec) ? Math.max(0, Math.min(durSec, playheadSec)) : durSec;
+    const pinW = Math.max(0, pinSec * pps);
+    const left = follow ? Math.max(0, pinW - viewW) : 0;
+    const right = follow ? Math.max(viewW, pinW) : viewW;
     return { left: left - buf, right: right + buf };
   }
   function tickStepSec(pps) {
@@ -30105,7 +30115,6 @@ ${parts.map(cssSlice).join("\n")}
     }
     if (pb.isOpen !== nb.isOpen || pb.condKind !== nb.condKind) return false;
     if (pb.nextSameAtSec !== nb.nextSameAtSec) return false;
-    if (pb.isOpen && nb.isOpen) return true;
     return pb.durationSec === nb.durationSec;
   }
   function TimelineEventInner(props) {
@@ -30263,18 +30272,25 @@ ${parts.map(cssSlice).join("\n")}
       ensure(id, a.name);
     }
   }
-  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount) {
+  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs = 0) {
     const c0 = casts.length ? casts[0].at : 0;
     const c1 = casts.length ? casts[casts.length - 1].at : 0;
     const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
     let ended = 0;
     let lastCond = 0;
+    let openUnknown = 0;
+    let maxExpected = 0;
     for (let i = 0; i < conditions.length; i++) {
       const c = conditions[i];
       if (c.endedAt) ended++;
+      else if (c.expectedEndAt != null) {
+        if (c.expectedEndAt > maxExpected) maxExpected = c.expectedEndAt;
+      } else openUnknown++;
       if (c.startedAt > lastCond) lastCond = c.startedAt;
     }
-    return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}`;
+    const openTick = openUnknown > 0 && nowMs > 0 ? `|o${Math.floor(nowMs / 250)}` : "";
+    const expTick = maxExpected > 0 ? `|e${Math.floor(maxExpected / 250)}` : "";
+    return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}${openTick}${expTick}`;
   }
   function rosterSigNow() {
     const meta2 = getPlayerMeta();
@@ -30293,6 +30309,18 @@ ${parts.map(cssSlice).join("\n")}
       if (cs[i].endedAt) n++;
     }
     return n;
+  }
+  function conditionsPredSig(cs) {
+    let max = 0;
+    let openUnk = 0;
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i];
+      if (c.endedAt) continue;
+      if (c.expectedEndAt != null) {
+        if (c.expectedEndAt > max) max = c.expectedEndAt;
+      } else openUnk++;
+    }
+    return `${Math.floor(max / 250)}:${openUnk}`;
   }
   function timelineFightKey(segmentRef, seg) {
     const refKey = segmentRef ? segmentRefKey(segmentRef) : "current";
@@ -30316,7 +30344,22 @@ ${parts.map(cssSlice).join("\n")}
     }
     return start;
   }
-  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus) {
+  function timelineHorizonSec(start, nowMs, casts, conditions) {
+    let end = Math.max(0, (nowMs - start) / 1e3);
+    for (let i = 0; i < casts.length; i++) {
+      const c = casts[i];
+      const t0 = Math.max(0, (c.at - start) / 1e3);
+      const cd = skillCooldownSec(c.source || "attack", c.attackMs);
+      if (cd > 0) end = Math.max(end, t0 + cd);
+    }
+    for (let i = 0; i < conditions.length; i++) {
+      const c = conditions[i];
+      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs;
+      end = Math.max(end, Math.max(0, (endAt - start) / 1e3));
+    }
+    return end;
+  }
+  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs = Date.now()) {
     var _a;
     const byId = {};
     const ensure = (id, fallbackName) => {
@@ -30345,7 +30388,8 @@ ${parts.map(cssSlice).join("\n")}
         if (ck === "debuff" && !wantDebuffs) continue;
         const lane = ensure(c.actorId);
         const t0 = Math.max(0, (c.startedAt - start) / 1e3);
-        const t1 = c.endedAt ? Math.max(t0, (c.endedAt - start) / 1e3) : t0;
+        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs;
+        const t1 = Math.max(t0, (endMs - start) / 1e3);
         lane.blocks.push({
           kind: "condition",
           domKey: `cond:${c.actorId}:${c.startedAt}:${c.key}`,
@@ -30608,6 +30652,7 @@ ${parts.map(cssSlice).join("\n")}
     if (prev.rosterSig !== next.rosterSig) return false;
     if (prev.deathCount !== next.deathCount) return false;
     if (prev.combatLive !== next.combatLive) return false;
+    if (prev.condPredSig !== next.condPredSig) return false;
     const a = prev.result;
     const b = next.result;
     if (a.kind !== b.kind) return false;
@@ -30665,9 +30710,12 @@ ${parts.map(cssSlice).join("\n")}
     const isLiveRef = React.useRef(false);
     const startRef = React.useRef(0);
     const durSecRef = React.useRef(1);
+    const elapsedSecRef = React.useRef(1);
+    const followTargetRef = React.useRef(0);
     const tickSigRef = React.useRef("");
     const layoutCacheRef = React.useRef({
       contentW: -1,
+      elapsedW: -1,
       pad: -1,
       trackW: -1,
       pps: -1,
@@ -30720,10 +30768,16 @@ ${parts.map(cssSlice).join("\n")}
       }
     }
     const start = isTimeline && originPinRef.current != null ? originPinRef.current : rawStart;
-    const durSec = isLive ? Math.max((now - start) / 1e3, 1 / pps) : Math.max(durationMs / 1e3, 1 / pps);
+    const elapsedSec = Math.max((now - start) / 1e3, 1 / pps);
+    const durSec = isLive ? Math.max(
+      timelineHorizonSec(start, now, casts, conditions),
+      elapsedSec,
+      1 / pps
+    ) : Math.max(durationMs / 1e3, 1 / pps);
     isLiveRef.current = isLive;
     startRef.current = start;
     durSecRef.current = durSec;
+    elapsedSecRef.current = elapsedSec;
     const syncGutterY = React.useCallback(() => {
       const rows = gutterRowsRef.current;
       const scroll = scrollRef.current;
@@ -30757,16 +30811,22 @@ ${parts.map(cssSlice).join("\n")}
         root.style.setProperty("--tl-pps", String(ppsNow));
       }
       const viewTrackW = Math.max(120, scroll.clientWidth);
-      const elapsed = isLiveRef.current ? Math.max((Date.now() - startRef.current) / 1e3, 1 / ppsNow) : Math.max(durSecRef.current, 1 / ppsNow);
-      const contentWR = Math.ceil(elapsed * ppsNow);
-      const padR = freezePadRef.current != null ? freezePadRef.current : followRef.current ? Math.max(0, viewTrackW - contentWR) : 0;
+      const elapsed = isLiveRef.current ? Math.max((Date.now() - startRef.current) / 1e3, 1 / ppsNow) : Math.max(elapsedSecRef.current, 1 / ppsNow);
+      const horizon = isLiveRef.current ? Math.max(durSecRef.current, elapsed, 1 / ppsNow) : Math.max(durSecRef.current, 1 / ppsNow);
+      const elapsedW = Math.ceil(elapsed * ppsNow);
+      const contentWR = Math.ceil(horizon * ppsNow);
+      const padR = freezePadRef.current != null ? freezePadRef.current : followRef.current ? Math.max(0, viewTrackW - elapsedW) : 0;
       const trackWR = padR + contentWR;
-      if (cache3.contentW !== contentWR || cache3.pad !== padR || cache3.trackW !== trackWR) {
+      const followTarget = Math.max(0, padR + elapsedW - viewTrackW);
+      followTargetRef.current = followTarget;
+      if (cache3.contentW !== contentWR || cache3.elapsedW !== elapsedW || cache3.pad !== padR || cache3.trackW !== trackWR) {
         cache3.contentW = contentWR;
+        cache3.elapsedW = elapsedW;
         cache3.pad = padR;
         cache3.trackW = trackWR;
         root.style.setProperty("--tl-pad", `${padR}px`);
         root.style.setProperty("--tl-content-w", `${contentWR}px`);
+        root.style.setProperty("--tl-elapsed-w", `${elapsedW}px`);
         root.style.setProperty("--tl-track-w", `${trackWR}px`);
       }
       if (!cache3.clock || !root.contains(cache3.clock)) {
@@ -30790,20 +30850,19 @@ ${parts.map(cssSlice).join("\n")}
         cache3.scale.textContent = scaleText;
       }
       const step = tickStepSec(ppsNow);
-      const last = Math.max(0, Math.floor(elapsed + 1e-9));
+      const last = Math.max(0, Math.floor(horizon + 1e-9));
       const includeEnd = !isLiveRef.current;
       const lastStep = Math.floor(last / step) * step;
       const sig = `${ppsNow}:${step}:${lastStep}:${includeEnd ? last : 0}`;
       if (sig !== tickSigRef.current) {
         tickSigRef.current = sig;
-        setRulerTicks(buildTicks(ppsNow, elapsed, includeEnd));
+        setRulerTicks(buildTicks(ppsNow, horizon, includeEnd));
       }
       if (followRef.current) {
         const held = applyingScrollRef.current;
         applyingScrollRef.current = true;
-        const target = Math.max(0, scroll.scrollWidth - scroll.clientWidth);
-        if (Math.abs(scroll.scrollLeft - target) > 0.5) {
-          scroll.scrollLeft = target;
+        if (Math.abs(scroll.scrollLeft - followTarget) > 0.5) {
+          scroll.scrollLeft = followTarget;
         }
         if (!held) applyingScrollRef.current = false;
       }
@@ -30868,6 +30927,7 @@ ${parts.map(cssSlice).join("\n")}
       setShowGoToNow(false);
       layoutCacheRef.current = {
         contentW: -1,
+        elapsedW: -1,
         pad: -1,
         trackW: -1,
         pps: -1,
@@ -30895,8 +30955,8 @@ ${parts.map(cssSlice).join("\n")}
         publishViewRange();
         if (applyingScrollRef.current) return;
         if (freezePadRef.current != null) {
-          const maxNow = Math.max(0, el.scrollWidth - el.clientWidth);
-          if (maxNow > TL_FOLLOW_SLACK && el.scrollLeft < maxNow - TL_FOLLOW_SLACK) {
+          const followTarget2 = followTargetRef.current;
+          if (followTarget2 > TL_FOLLOW_SLACK && el.scrollLeft < followTarget2 - TL_FOLLOW_SLACK) {
             freezeResumeRef.current = false;
             freezePadRef.current = null;
             shiftFreezeOkRef.current = false;
@@ -30905,13 +30965,14 @@ ${parts.map(cssSlice).join("\n")}
             return;
           }
         }
+        const followTarget = followTargetRef.current;
         const max = Math.max(0, el.scrollWidth - el.clientWidth);
-        if (max <= TL_FOLLOW_SLACK) {
+        if (max <= TL_FOLLOW_SLACK && followTarget <= TL_FOLLOW_SLACK) {
           followRef.current = true;
           publishShowGoToNow();
           return;
         }
-        followRef.current = el.scrollLeft >= max - TL_FOLLOW_SLACK;
+        followRef.current = el.scrollLeft >= followTarget - TL_FOLLOW_SLACK;
         publishShowGoToNow();
       };
       el.addEventListener("scroll", onScroll, { passive: true });
@@ -31036,7 +31097,8 @@ ${parts.map(cssSlice).join("\n")}
       filter,
       start,
       props.rosterSig,
-      props.deathCount
+      props.deathCount,
+      now
     ) : "";
     if (isTimeline && laneCacheRef.current.sig !== nextLaneSig) {
       laneCacheRef.current = {
@@ -31051,7 +31113,8 @@ ${parts.map(cssSlice).join("\n")}
           names,
           ctypes,
           seg,
-          props.partyFocus
+          props.partyFocus,
+          now
         )
       };
     }
@@ -31062,7 +31125,12 @@ ${parts.map(cssSlice).join("\n")}
     }
     laneBlocksRef.current = laneBlocksMap;
     const ticks = rulerTicks.length > 0 ? rulerTicks : buildTicks(pps, durSec, !isLive);
-    const renderRange = isViewUnmeasured(viewRange) ? estimateViewRange(durSec, pps, followRef.current) : viewRange;
+    const renderRange = isViewUnmeasured(viewRange) ? estimateViewRange(
+      durSec,
+      pps,
+      followRef.current,
+      isLive ? elapsedSec : void 0
+    ) : viewRange;
     const selectLane = (laneId) => {
       setSelectedId(selectedId === laneId ? null : laneId);
     };
@@ -31115,7 +31183,7 @@ ${parts.map(cssSlice).join("\n")}
                 "data-tl-clock": "",
                 title: "Fight elapsed (from pull start)"
               },
-              fmtClock(durSec)
+              fmtClock(isLive ? elapsedSec : durSec)
             ),
             " \xB7 ",
             e(
@@ -31124,7 +31192,7 @@ ${parts.map(cssSlice).join("\n")}
                 "data-tl-wall": "",
                 title: "Wall-clock time"
               },
-              fmtWall(start + durSec * 1e3)
+              fmtWall(start + (isLive ? elapsedSec : durSec) * 1e3)
             ),
             e("span", { "data-tl-scale": "" }, `${Math.round(pps)} px/s`),
             isLive ? " \xB7 in combat" : "",
@@ -31223,6 +31291,7 @@ ${parts.map(cssSlice).join("\n")}
     }
     const seg = resolveSegment(props.segmentRef);
     const liveRoster = !!(seg && isLiveCombatSegment(seg));
+    const tl = props.result.kind === "timeline" ? props.result : null;
     return e(MeterTimelineMemo, {
       result: props.result,
       segmentRef: props.segmentRef,
@@ -31230,7 +31299,8 @@ ${parts.map(cssSlice).join("\n")}
       rosterSig: liveRoster ? rosterSigNow() : seg ? `fight:${seg.id}` : "empty",
       deathCount: seg ? seg.deaths.length : 0,
       combatLive: liveRoster,
-      fightKey: timelineFightKey(props.segmentRef, seg)
+      fightKey: timelineFightKey(props.segmentRef, seg),
+      condPredSig: conditionsPredSig(tl ? tl.conditions : [])
     });
   }
 

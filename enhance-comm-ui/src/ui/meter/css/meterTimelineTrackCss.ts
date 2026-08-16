@@ -15,6 +15,7 @@ export const METER_TIMELINE_TRACK_CSS = `
   --tl-ruler-h: 38px;
   --tl-pad: 0px;
   --tl-content-w: 100%;
+  --tl-elapsed-w: 100%;
   --tl-track-w: 100%;
   display: flex;
   flex-direction: column;
@@ -234,13 +235,14 @@ export const METER_TIMELINE_TRACK_CSS = `
   max-width: none;
   box-sizing: border-box;
 }
-/* Live-only playhead at content “now” (may sit at viewport right while
-   following). Not rendered post-combat — see MeterTimelineView. */
+/* Live-only playhead at fight “now” (may sit at viewport right while
+   following). Content may extend past this for predicted CD/buff ends.
+   Not rendered post-combat — see MeterTimelineView. */
 .ecu-meter-tl-now {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--tl-pad) + var(--tl-content-w));
+  left: calc(var(--tl-pad) + var(--tl-elapsed-w));
   width: 2px;
   margin-left: -1px;
   background: rgba(227, 186, 4, 0.9);

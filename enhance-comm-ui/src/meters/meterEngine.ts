@@ -58,6 +58,7 @@ import {
   castFromEval,
   castFromGameResponse,
   castFromUi,
+  conditionMs,
   SYNTHETIC_CAST_DEBOUNCE_MS,
 } from "./syntheticCast";
 import {
@@ -184,8 +185,7 @@ function sampleConditions(now: number): void {
       ents[id] ||
       (playerMeta[id]?.name ? ents[playerMeta[id].name] : undefined);
     const s =
-      (ent &&
-        (ent as { s?: Record<string, Record<string, unknown>> }).s) ||
+      (ent && (ent as { s?: Record<string, Record<string, unknown>> }).s) ||
       null;
     // Always sample the watch (empty bag prunes); tape only while live.
     const castEvents = castsFromConditionSample(id, s, now);
@@ -200,14 +200,28 @@ function sampleConditions(now: number): void {
     for (let k = 0; k < keys.length; k++) {
       const key = keys[k];
       const openKey = `${id}:${key}`;
+      const ms = conditionMs(s[key]);
+      const predictedEnd = ms != null ? now + ms : undefined;
       if (!openConditions[openKey]) {
         const iv: ConditionInterval = {
           actorId: id,
           key,
           startedAt: now,
+          expectedEndAt: predictedEnd,
         };
         openConditions[openKey] = iv;
         seg.conditions.push(iv);
+        markMeterDirty();
+      } else if (predictedEnd != null) {
+        const iv = openConditions[openKey];
+        // Refresh / first ms sight: extend prediction. Soft-track otherwise
+        // so absolute end stays ~stable as remaining ms counts down.
+        if (iv.expectedEndAt == null || predictedEnd > iv.expectedEndAt + 250) {
+          iv.expectedEndAt = predictedEnd;
+          markMeterDirty();
+        } else {
+          iv.expectedEndAt = predictedEnd;
+        }
       }
     }
     const openKeys = Object.keys(openConditions);
@@ -217,7 +231,10 @@ function sampleConditions(now: number): void {
       const condKey = ok.slice(id.length + 1);
       if (s[condKey]) continue;
       const iv = openConditions[ok];
-      if (iv && iv.endedAt == null) iv.endedAt = now;
+      if (iv && iv.endedAt == null) {
+        iv.endedAt = now;
+        markMeterDirty();
+      }
       delete openConditions[ok];
     }
   }
@@ -458,9 +475,7 @@ function recordPlayerCast(ev: ActionEvent): void {
   ) {
     return;
   }
-  const attackMs = attackMsFromFrequency(
-    findEntityById(ev.actor)?.frequency,
-  );
+  const attackMs = attackMsFromFrequency(findEntityById(ev.actor)?.frequency);
   const row: CastMarker = {
     at: ev.at,
     actorId: ev.actor,

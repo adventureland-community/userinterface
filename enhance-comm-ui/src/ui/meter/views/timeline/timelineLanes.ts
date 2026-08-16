@@ -7,7 +7,10 @@ import { conditionKind, itemSkin } from "../../../../lib/gameIcon";
 import type { PartyFocus } from "../../../../lib/settingsFocus";
 import { actorIdInScope } from "../../../../meters/meterQuery";
 import { getPlayerMeta } from "../../../../meters/meterEngine";
-import { isLiveCombatSegment, resolveSegment } from "../../../../meters/meterSession";
+import {
+  isLiveCombatSegment,
+  resolveSegment,
+} from "../../../../meters/meterSession";
 import { segmentRefKey } from "../../../../meters/meterSegmentRef";
 import { resolvePlayerCtype } from "../../../../host/al";
 import type {
@@ -46,7 +49,11 @@ export function buildActorMaps(segmentRef?: SegmentRef): {
       const extra = meta ? meta[a.id] : undefined;
       names[a.id] = a.name || extra?.name || names[a.id] || a.id;
       ctypes[a.id] =
-        a.ctype || extra?.ctype || ctypes[a.id] || resolvePlayerCtype(a.id) || undefined;
+        a.ctype ||
+        extra?.ctype ||
+        ctypes[a.id] ||
+        resolvePlayerCtype(a.id) ||
+        undefined;
       if (!a.ctype && ctypes[a.id]) a.ctype = ctypes[a.id];
     }
   }
@@ -128,18 +135,30 @@ export function laneDataSig(
   start: number,
   rosterSig: string,
   deathCount: number,
+  /** Fight playhead — bumps unknown-end open auras (~4 Hz). */
+  nowMs = 0,
 ): string {
   const c0 = casts.length ? casts[0].at : 0;
   const c1 = casts.length ? casts[casts.length - 1].at : 0;
   const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
   let ended = 0;
   let lastCond = 0;
+  let openUnknown = 0;
+  let maxExpected = 0;
   for (let i = 0; i < conditions.length; i++) {
     const c = conditions[i];
     if (c.endedAt) ended++;
+    else if (c.expectedEndAt != null) {
+      if (c.expectedEndAt > maxExpected) maxExpected = c.expectedEndAt;
+    } else openUnknown++;
     if (c.startedAt > lastCond) lastCond = c.startedAt;
   }
-  return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}`;
+  // Only unknown-duration opens grow with the playhead; predicted ends are
+  // stable until refresh (maxExpected) and must not lag-grow at “now”.
+  const openTick =
+    openUnknown > 0 && nowMs > 0 ? `|o${Math.floor(nowMs / 250)}` : "";
+  const expTick = maxExpected > 0 ? `|e${Math.floor(maxExpected / 250)}` : "";
+  return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}${openTick}${expTick}`;
 }
 
 export function rosterSigNow(): string {
@@ -160,6 +179,20 @@ export function conditionsEndedCount(cs: ConditionInterval[]): number {
     if (cs[i].endedAt) n++;
   }
   return n;
+}
+
+/** Quantized open predicted ends — invalidates memo when a buff refreshes. */
+export function conditionsPredSig(cs: ConditionInterval[]): string {
+  let max = 0;
+  let openUnk = 0;
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i];
+    if (c.endedAt) continue;
+    if (c.expectedEndAt != null) {
+      if (c.expectedEndAt > max) max = c.expectedEndAt;
+    } else openUnk++;
+  }
+  return `${Math.floor(max / 250)}:${openUnk}`;
 }
 
 /** Current vs past picker + live fight id. Same-fight scroll-back is not this. */
@@ -197,6 +230,36 @@ export function timelineOriginMs(
   return start;
 }
 
+/**
+ * Live track length in fight-seconds: at least the playhead, plus any cast
+ * CD or condition end that still lies in the future so bars are not clipped.
+ */
+export function timelineHorizonSec(
+  start: number,
+  nowMs: number,
+  casts: CastMarker[],
+  conditions: ConditionInterval[],
+): number {
+  let end = Math.max(0, (nowMs - start) / 1000);
+  for (let i = 0; i < casts.length; i++) {
+    const c = casts[i];
+    const t0 = Math.max(0, (c.at - start) / 1000);
+    const cd = skillCooldownSec(c.source || "attack", c.attackMs);
+    if (cd > 0) end = Math.max(end, t0 + cd);
+  }
+  for (let i = 0; i < conditions.length; i++) {
+    const c = conditions[i];
+    const endAt =
+      c.endedAt != null
+        ? c.endedAt
+        : c.expectedEndAt != null
+          ? c.expectedEndAt
+          : nowMs;
+    end = Math.max(end, Math.max(0, (endAt - start) / 1000));
+  }
+  return end;
+}
+
 export function buildLanes(
   casts: CastMarker[],
   conditions: ConditionInterval[],
@@ -208,6 +271,8 @@ export function buildLanes(
   ctypes: Record<string, string | undefined>,
   seg?: CombatSegment | null,
   partyFocus?: PartyFocus,
+  /** Fight playhead (seg.endedAt when past, else now). Fallback for open auras. */
+  nowMs = Date.now(),
 ): TimelineLane[] {
   const byId: Record<string, TimelineLane> = {};
 
@@ -240,8 +305,14 @@ export function buildLanes(
       if (ck === "debuff" && !wantDebuffs) continue;
       const lane = ensure(c.actorId);
       const t0 = Math.max(0, (c.startedAt - start) / 1000);
-      // Open auras: cooltip uses Date.now(); do not grow durationSec every tick.
-      const t1 = c.endedAt ? Math.max(t0, (c.endedAt - start) / 1000) : t0;
+      // Prefer real end, else predicted ms end, else stretch to playhead.
+      const endMs =
+        c.endedAt != null
+          ? c.endedAt
+          : c.expectedEndAt != null
+            ? c.expectedEndAt
+            : nowMs;
+      const t1 = Math.max(t0, (endMs - start) / 1000);
       lane.blocks.push({
         kind: "condition",
         domKey: `cond:${c.actorId}:${c.startedAt}:${c.key}`,
