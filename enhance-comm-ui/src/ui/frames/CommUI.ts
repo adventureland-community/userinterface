@@ -4,6 +4,13 @@ import { updateMeterContext } from "../../meters/meterEngine";
 import { updateKillContext } from "../../kpi/sessionKills";
 import { getSettings, patchSettings } from "../../lib/settings";
 import { subscribeCommanderOpen } from "../../host/commander";
+import {
+  openCompose,
+  openNewestUnread,
+  queueMailAttach,
+  setMailPanelOpen,
+  subscribeMailOpen,
+} from "../../host/mail";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { info } from "../../host/dialogHost";
 import { combatSignals } from "../../queries/combatSignals";
@@ -47,6 +54,10 @@ import {
 import { SnapGuideLine } from "../chrome/SnapGuideLine";
 import { getMapData } from "./MapInfo";
 import { isTouchishProfile } from "../../lib/viewport";
+import {
+  maxRecordStackZ,
+  nextWindowFrontZ,
+} from "../../meters/meterWindowStack";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -218,6 +229,31 @@ export function CommUI(props: CommUIProps): any {
   const commandOpenRef = React.useRef(false);
   commandOpenRef.current = visible("command");
 
+  const [panelFrontZ, setPanelFrontZ] = React.useState(
+    {} as Partial<Record<PanelId, number>>,
+  );
+  const panelFrontZRef = React.useRef(panelFrontZ);
+  panelFrontZRef.current = panelFrontZ;
+
+  const raisePanelToFront = React.useCallback(
+    (id: PanelId) => {
+      const prev = panelFrontZRef.current;
+      const { zIndex, peers } = nextWindowFrontZ(
+        meters.meterInstances,
+        prev as Record<string, number | undefined>,
+      );
+      if (typeof prev[id] === "number" && prev[id] === zIndex) return;
+      if (peers !== meters.meterInstances) {
+        meters.setMeterInstances(peers);
+        patchSettings({ meterInstances: peers });
+      }
+      const next = { ...prev, [id]: zIndex };
+      panelFrontZRef.current = next;
+      setPanelFrontZ(next);
+    },
+    [meters],
+  );
+
   React.useEffect(() => {
     return subscribeCommanderOpen((payload) => {
       const hasDraft = typeof payload.draft === "string";
@@ -225,6 +261,7 @@ export function CommUI(props: CommUIProps): any {
         setCommandSeed(payload.draft as string);
         setCommandOpenSeq((n: number) => n + 1);
         setVisible("command", true);
+        raisePanelToFront("command");
         return;
       }
       if (commandOpenRef.current) {
@@ -234,8 +271,42 @@ export function CommUI(props: CommUIProps): any {
       setCommandSeed(null);
       setCommandOpenSeq((n: number) => n + 1);
       setVisible("command", true);
+      raisePanelToFront("command");
     });
-  }, [setVisible]);
+  }, [setVisible, raisePanelToFront]);
+
+  const mailVisible = visible("mail");
+  React.useEffect(() => {
+    setMailPanelOpen(mailVisible);
+  }, [mailVisible]);
+
+  const mailOpenRef = React.useRef(false);
+  mailOpenRef.current = mailVisible;
+
+  React.useEffect(() => {
+    return subscribeMailOpen((payload) => {
+      const wantsCompose = !!(
+        payload.compose ||
+        payload.attach ||
+        payload.draft
+      );
+      if (payload.toggle && !wantsCompose && !payload.focusNewestUnread && mailOpenRef.current) {
+        setVisible("mail", false);
+        return;
+      }
+      setVisible("mail", true);
+      raisePanelToFront("mail");
+      if (payload.focusNewestUnread) {
+        void openNewestUnread();
+        return;
+      }
+      if (payload.attach) {
+        queueMailAttach(payload.attach);
+      } else if (wantsCompose) {
+        openCompose(payload.draft || {});
+      }
+    });
+  }, [setVisible, raisePanelToFront]);
 
   React.useEffect(() => {
     const root = document.getElementById("comm-ui");
@@ -320,6 +391,8 @@ export function CommUI(props: CommUIProps): any {
     ungroupPanel: (id: PanelId) => windowActions.ungroupWindow(id),
     panelSnapDragId: windowActions.snapDragId,
     panelSnapPeerId: windowActions.snapPeerId,
+    panelFrontZ,
+    onActivatePanel: raisePanelToFront,
     windowNumberById,
     // Window ids paint on SnapGuideLine overlay (above panel stack).
     showWindowIds: false,
@@ -368,7 +441,8 @@ export function CommUI(props: CommUIProps): any {
     onDragStart: (id) => windowActions.onDragStart(id),
     onDragMove: (id, opts) => windowActions.onDragMove(id, opts),
     onMoveEnd: (id, opts) => windowActions.snapAfterMove(id, opts),
-    onActivate: (id) => meters.raiseMeterToFront(id),
+    onActivate: (id) =>
+      meters.raiseMeterToFront(id, maxRecordStackZ(panelFrontZ)),
     onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
     patchMeter: meters.patchMeter,
     setMeterInstances: meters.setMeterInstances,

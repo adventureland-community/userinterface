@@ -32,6 +32,7 @@ import { ThreatTable } from "../ThreatTable";
 import { KillKpiPanel } from "../KillKpiPanel";
 import { CommandPanel } from "../CommandPanel";
 import { BagPanel } from "../BagPanel";
+import { MailPanel } from "../mail/MailPanel";
 import {
   BAG_PANEL_STYLE,
   BOSS_BAR_PANEL_STYLE,
@@ -39,6 +40,7 @@ import {
   CRYPT_PANEL_STYLE,
   INFO_DIALOG_PANEL_STYLE,
   KILLS_PANEL_STYLE,
+  MAIL_PANEL_STYLE,
   PAPERDOLL_PANEL_STYLE,
   THREAT_PANEL_STYLE,
 } from "../../../lib/frameSizes";
@@ -50,6 +52,8 @@ export type CommPanelOpts = {
   hiddenBodyStyle?: Record<string, any>;
   interactiveBody?: boolean;
   editChrome?: "full" | "grip" | "anchors";
+  /** When false, frameW/H are a fixed box (scroll inside). Default: true for HUD. */
+  hugContent?: boolean;
 };
 
 export type CommPanelLayoutDeps = {
@@ -70,6 +74,9 @@ export type CommPanelLayoutDeps = {
   ungroupPanel?: (id: PanelId) => void;
   panelSnapDragId?: string | null;
   panelSnapPeerId?: string | null;
+  /** Ephemeral bring-to-front z for HUD panels (shared stack with meters). */
+  panelFrontZ?: Partial<Record<PanelId, number>>;
+  onActivatePanel?: (id: PanelId) => void;
   /** Stable window numbers (HUD + meters share one pool). */
   windowNumberById?: Record<string, number>;
   showWindowIds?: boolean;
@@ -127,6 +134,11 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
     if (grouped) classBits.push("comm-pos-grouped");
     if (deps.panelSnapDragId === id) classBits.push("comm-pos-dragging");
     if (deps.panelSnapPeerId === id) classBits.push("comm-pos-snap-target");
+    const frontZ = deps.panelFrontZ && deps.panelFrontZ[id];
+    const style =
+      typeof frontZ === "number"
+        ? Object.assign({}, opts?.style, { zIndex: frontZ })
+        : opts?.style;
     return e(
       PositionedPanel,
       {
@@ -147,7 +159,10 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
               deps.onPanelDragMove?.(id, opts)
           : undefined,
         softAvoid: groupable ? false : undefined,
-        style: opts?.style,
+        style,
+        onActivate: deps.onActivatePanel
+          ? () => deps.onActivatePanel!(id)
+          : undefined,
         hidden: isHidden,
         hiddenBodyStyle: opts?.hiddenBodyStyle,
         opacity: deps.opacityFor(id),
@@ -171,6 +186,9 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         onReopenWindow: deps.onReopenWindow,
         onClose: isClosablePanel ? () => deps.setVisible(id, false) : undefined,
         onShow: isClosablePanel ? () => deps.setVisible(id, true) : undefined,
+        // Match meters: × sits in the hover arrange chrome strip, not over the panel body.
+        closePlacement: isClosablePanel ? "above" : undefined,
+        closeOnHoverOnly: isClosablePanel ? true : undefined,
         windowNumber: deps.windowNumberById
           ? deps.windowNumberById[id]
           : undefined,
@@ -185,6 +203,7 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
           id !== "toggles" && id !== "bag" && deps.onResizeFrame
             ? (size: { w: number; h: number }) => deps.onResizeFrame!(id, size)
             : undefined,
+        hugContent: opts?.hugContent,
       },
       child,
     );
@@ -356,9 +375,19 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       },
     ),
 
+    panel("mail", e(MailPanel, { layoutEdit: deps.layoutEdit }), {
+      closable: true,
+      // Fixed frame like meters — inbox scrolls; do not grow with row count.
+      hugContent: false,
+      style: MAIL_PANEL_STYLE,
+      hiddenBodyStyle: MAIL_PANEL_STYLE,
+    }),
+
     deps.bagOpen || deps.bagRefreshing || deps.layoutEdit
       ? panel("bag", e(BagPanel, { layoutEdit: deps.layoutEdit }), {
           closable: true,
+          // Must hug content — fixed frameW/H wraps the stock 7-col float grid.
+          hugContent: true,
           style: deps.layoutEdit ? BAG_PANEL_STYLE : undefined,
           hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
             display: "flex",

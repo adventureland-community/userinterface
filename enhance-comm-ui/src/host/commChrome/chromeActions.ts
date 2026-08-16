@@ -1,3 +1,10 @@
+import { openMail } from "../mail/mailOpen";
+import {
+  formatUnreadBadgeLabel,
+  getXUnread,
+  SERVER_UNREAD_CAP,
+} from "../mail/xUnread";
+
 /**
  * Leave observe mode: reconnect as pure spectator on the current server.
  * Stock observe_character(same name) only emits o:home — it does not clear watching.
@@ -109,14 +116,28 @@ function onCommandClick(ev: Event): void {
   }
 }
 
-/** Compact SVG icons for Follow / Bag / Command (title text stays on the button). */
-const ACTION_ICONS: Record<"follow" | "bag" | "command", string> = {
+function onMailClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const t = ev.target as HTMLElement | null;
+  const onBadge = !!(t && t.closest && t.closest("[data-ecu-mail-badge]"));
+  if (onBadge) {
+    openMail({ focusNewestUnread: true });
+    return;
+  }
+  openMail({ toggle: true });
+}
+
+/** Compact SVG icons for Follow / Bag / Command / Mail. */
+const ACTION_ICONS: Record<"follow" | "bag" | "command" | "mail", string> = {
   follow:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   bag:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   command:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
+  mail:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
 };
 
 export function buildActionsEl(): HTMLElement {
@@ -126,7 +147,7 @@ export function buildActionsEl(): HTMLElement {
   actions.setAttribute("data-ecu-tour", "chrome-actions");
 
   const mk = (
-    kind: "follow" | "bag" | "command",
+    kind: "follow" | "bag" | "command" | "mail",
     label: string,
     title: string,
     onClick: (ev: Event) => void,
@@ -137,7 +158,15 @@ export function buildActionsEl(): HTMLElement {
     btn.title = title;
     btn.setAttribute("aria-label", label);
     btn.setAttribute("data-ecu-tour", "btn-" + kind);
+    if (kind === "mail") btn.setAttribute("data-ecu-mail", "1");
     btn.innerHTML = ACTION_ICONS[kind];
+    if (kind === "mail") {
+      const badge = document.createElement("span");
+      badge.className = "ecu-mail-badge";
+      badge.hidden = true;
+      badge.setAttribute("data-ecu-mail-badge", "1");
+      btn.appendChild(badge);
+    }
     btn.addEventListener("click", onClick);
     return btn;
   };
@@ -145,6 +174,7 @@ export function buildActionsEl(): HTMLElement {
   actions.append(
     mk("follow", "Follow", "Center on observed character", onFollowClick),
     mk("bag", "Bag", "Observed inventory", onBagClick),
+    mk("mail", "Mail", "Account mail", onMailClick),
     mk(
       "command",
       "Command",
@@ -159,6 +189,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
   const map: Record<string, string> = {
     Follow: "btn-follow",
     Bag: "btn-bag",
+    Mail: "btn-mail",
     Command: "btn-command",
   };
   const buttons = actions.querySelectorAll(".ecu-btn");
@@ -170,11 +201,28 @@ function syncActionTourAttrs(actions: HTMLElement): void {
   }
 }
 
+export function syncMailBadge(): void {
+  const badge = document.querySelector(
+    "[data-ecu-mail-badge]",
+  ) as HTMLElement | null;
+  if (!badge) return;
+  const n = getXUnread();
+  badge.textContent = formatUnreadBadgeLabel(n);
+  badge.hidden = n === 0;
+  badge.title =
+    n >= SERVER_UNREAD_CAP
+      ? "Unread mail (server reports at most 100)"
+      : n
+        ? n + " unread"
+        : "";
+}
+
 export function syncActionsEnabled(): void {
   const watching = !!(window.observing && window.observing.name);
   const actions = document.querySelector(".ecu-actions") as HTMLElement | null;
   if (!actions) return;
   syncActionTourAttrs(actions);
+  syncMailBadge();
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
     const btn = buttons[i] as HTMLButtonElement;
@@ -183,7 +231,7 @@ export function syncActionsEnabled(): void {
       btn.textContent ||
       ""
     ).trim();
-    // Bag/Command/Follow need an observed character
+    // Bag/Command/Follow need an observed character; Mail works logged-in.
     const needsObs =
       label === "Follow" || label === "Bag" || label === "Command";
     if (needsObs) {

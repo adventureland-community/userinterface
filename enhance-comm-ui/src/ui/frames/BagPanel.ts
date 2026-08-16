@@ -1,6 +1,7 @@
 import { getReact, e } from "../../host/react";
 import {
   attachInventoryToMount,
+  ensureInventoryHost,
   getBagRefreshKind,
   getBagSyncedAt,
   getBagSyncedName,
@@ -18,6 +19,7 @@ import {
   BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { installBagMailContextMenu } from "./mail/mailItemMenu";
 
 const HOST_ID = "bottomleftcorner";
 
@@ -297,12 +299,17 @@ export function BagPanel(props: BagPanelProps): any {
       setRefreshKind(getBagRefreshKind());
       setHasSnapshot(hasObservingInventorySnapshot());
     });
+    // Host may be created by ensureInventoryHost during attach — always bind
+    // the menu to that element (not a possibly-null getElementById race).
+    const host = ensureInventoryHost();
+    const unsubMenu = installBagMailContextMenu(host);
     return () => {
       unsubInv();
       unsubSync();
+      unsubMenu();
       // Keep #bottomleftcorner alive across panel unmount (Bag close).
-      const host = document.getElementById(HOST_ID);
-      if (host) document.body.appendChild(host);
+      const h = document.getElementById(HOST_ID);
+      if (h) document.body.appendChild(h);
     };
   }, []);
 

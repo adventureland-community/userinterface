@@ -59,6 +59,7 @@ export const CLOSABLE_PANEL_IDS = [
   "threat",
   "command",
   "bag",
+  "mail",
 ] as const satisfies readonly PanelId[];
 
 export type ClosablePanelId = (typeof CLOSABLE_PANEL_IDS)[number];
@@ -113,6 +114,14 @@ export type CommUiSettings = {
   commandSnippets: CommandSnippet[];
   /** Last draft in the Command textarea */
   commandDraft: string;
+  /** Persisted mail composer draft (JSON ComposeDraft). */
+  mailDraft?: string;
+  /** Last compose To chips (sticky). */
+  mailLastTo?: string[];
+  /** Last list filter pill. */
+  mailPill?: string;
+  /** Stack near-duplicate mails in the list (default on). */
+  mailCollapseRepeats?: boolean;
   /**
    * Compact Combat: show DPS + HPS only (table/bars/graph channels clamped).
    * Persisted; toggled from the Combat panel header.
@@ -182,6 +191,7 @@ const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
   command: false,
   /** Bag panel shell is always allowed; open/close follows inventory. */
   bag: true,
+  mail: false,
 };
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
@@ -446,6 +456,16 @@ function migrate(parsed: any): CommUiSettings {
     commandSnippets: normalizeSnippets(parsed.commandSnippets),
     commandDraft:
       typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
+    mailDraft: typeof parsed.mailDraft === "string" ? parsed.mailDraft : "",
+    mailLastTo: Array.isArray(parsed.mailLastTo)
+      ? parsed.mailLastTo.map(String).filter(Boolean).slice(0, 8)
+      : [],
+    mailPill:
+      typeof parsed.mailPill === "string" ? parsed.mailPill : "all",
+    mailCollapseRepeats:
+      typeof parsed.mailCollapseRepeats === "boolean"
+        ? parsed.mailCollapseRepeats
+        : true,
     combatCompact: !!parsed.combatCompact,
     bagOpenPreferred: !!parsed.bagOpenPreferred,
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
@@ -651,6 +671,18 @@ export function patchSettings(
   }
   if (typeof partial.commandDraft === "string") {
     next.commandDraft = partial.commandDraft;
+  }
+  if (typeof partial.mailDraft === "string") {
+    next.mailDraft = partial.mailDraft;
+  }
+  if (partial.mailLastTo) {
+    next.mailLastTo = partial.mailLastTo.map(String).filter(Boolean).slice(0, 8);
+  }
+  if (typeof partial.mailPill === "string") {
+    next.mailPill = partial.mailPill;
+  }
+  if (typeof partial.mailCollapseRepeats === "boolean") {
+    next.mailCollapseRepeats = partial.mailCollapseRepeats;
   }
   if (typeof partial.combatCompact === "boolean") {
     next.combatCompact = partial.combatCompact;

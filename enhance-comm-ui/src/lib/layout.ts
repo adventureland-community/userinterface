@@ -45,6 +45,7 @@ export type PanelId =
   | "threat"
   | "command"
   | "bag"
+  | "mail"
   | "toggles";
 
 export const PANEL_IDS: PanelId[] = [
@@ -62,6 +63,7 @@ export const PANEL_IDS: PanelId[] = [
   "threat",
   "command",
   "bag",
+  "mail",
   "toggles",
 ];
 
@@ -80,6 +82,7 @@ export const PANEL_LABELS: Record<PanelId, string> = {
   threat: "Threat",
   command: "Command",
   bag: "Bag",
+  mail: "Mail",
   toggles: "Layout",
 };
 
@@ -120,6 +123,7 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
   // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
   bag: { x: 0.5, y: 99.2, anchor: "bl" },
+  mail: { x: 50, y: 48, anchor: "center", frameW: 1100, frameH: 700 },
   toggles: { x: 99.5, y: 99.2, anchor: "br" },
 };
 
@@ -142,6 +146,7 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   threat: { x: 99.2, y: 40, anchor: "tr" },
   command: { x: 50, y: 44, anchor: "center" },
   bag: { x: 0.8, y: 78, anchor: "bl" },
+  mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
   toggles: { x: 99.2, y: 98.5, anchor: "br" },
 };
 
@@ -164,6 +169,7 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   threat: { x: 50, y: 48, anchor: "tc" },
   command: { x: 50, y: 42, anchor: "center" },
   bag: { x: 50, y: 88, anchor: "bc" },
+  mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
   toggles: { x: 98, y: 98, anchor: "br" },
 };
 
@@ -267,6 +273,25 @@ export function mergeLayout(
   if (out.bag) {
     delete out.bag.frameW;
     delete out.bag.frameH;
+  }
+  // Bump early alpha.4 mail shells that shipped undersized defaults.
+  // Also reset frames that grew with inbox content (pre–fixed-box mail).
+  if (out.mail) {
+    const def = defaults.mail;
+    const tooSmall =
+      typeof out.mail.frameW !== "number" ||
+      out.mail.frameW < 800 ||
+      typeof out.mail.frameH !== "number" ||
+      out.mail.frameH < 500;
+    const tooTall =
+      typeof out.mail.frameH === "number" && out.mail.frameH > 900;
+    if (tooSmall || tooTall) {
+      out.mail = {
+        ...out.mail,
+        frameW: def.frameW,
+        frameH: def.frameH,
+      };
+    }
   }
   return out;
 }

@@ -195,6 +195,8 @@ declare global {
         secret?: string;
       }>;
       servers?: any[];
+      /** Unread mail count (`user_data.info.mail`). */
+      unread?: number;
       [key: string]: any;
     };
     S?: ServerInfoLike;
