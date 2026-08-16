@@ -4,6 +4,7 @@ import { findEntity } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { VitalsColumn } from "../chrome/VitalsColumn";
+import { wrapIconHtml } from "../chrome/wrapIconHtml";
 import { THREAT_PANEL_STYLE } from "../../lib/frameSizes";
 import { classColors } from "../../lib/colors";
 import { formatTime, getPercent } from "../../lib/format";
@@ -13,6 +14,14 @@ import {
   stickyAggroByTarget,
 } from "../../lib/stickyPresence";
 import { AGGRO_BADGE, PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import {
+  loadSettings,
+  saveSettings,
+  effectiveThreatScope,
+  killScopeLabel,
+  type PartyScope,
+} from "../../lib/settings";
+import { partyKeyFor } from "../../meters/meterSession";
 
 const MOB_ICON_SIZE = 22;
 const MAX_MOB_CHIPS = 6;
@@ -44,22 +53,6 @@ function countByMtype(mobs: EntityLike[]): MtypeCount[] {
     return a.mtype.localeCompare(b.mtype);
   });
   return rows;
-}
-
-function wrapIconHtml(html: string): any {
-  return e("div", {
-    style: { display: "inline-block", lineHeight: 0, fontSize: 0 },
-    dangerouslySetInnerHTML: { __html: html },
-    ref: (node: HTMLElement | null) => {
-      if (!node) return;
-      const root = node.firstElementChild as HTMLElement | null;
-      if (!root) return;
-      root.style.margin = "0";
-      root.removeAttribute("onmousedown");
-      root.removeAttribute("ontouchstart");
-      root.removeAttribute("onclick");
-    },
-  });
 }
 
 function MobChip(props: { mtype: string; count: number }): any {
@@ -154,6 +147,20 @@ function pressureTrailing(target: EntityLike | undefined, tid: string): string {
     }
   }
   return parts.join(" · ");
+}
+
+/** Subject's in-game party (or self when solo). */
+function isWatchedPartyTarget(
+  tid: string,
+  entities: EntityLike[],
+  observingId?: string,
+): boolean {
+  if (!observingId) return true;
+  if (tid === observingId) return true;
+  const observing = findEntity(entities, observingId);
+  const target = findEntity(entities, tid);
+  if (!target) return false;
+  return partyKeyFor(target, tid) === partyKeyFor(observing, observingId);
 }
 
 function ThreatRow(props: {
@@ -347,17 +354,40 @@ function ThreatRow(props: {
 }
 
 export function ThreatTable(props: ThreatTableProps): any {
+  const React = getReact();
+  const [storedScope, setStoredScope] = React.useState(
+    () => (loadSettings().threatScope || "visible") as PartyScope,
+  );
+  const hasObserver = !!(props.observingId && props.observingId !== "");
+  const scope = effectiveThreatScope(storedScope, hasObserver);
+  const watchedName = hasObserver
+    ? findEntity(props.entities, props.observingId!)?.name
+    : undefined;
+
+  const setThreatScope = (next: PartyScope) => {
+    const normalized: PartyScope = next === "all" ? "visible" : next;
+    saveSettings({ threatScope: normalized });
+    setStoredScope(normalized);
+  };
+
   const nameOf = (tid: string): string => {
     const ent = findEntity(props.entities, tid);
     return (ent && ent.name) || tid;
   };
   const byTarget = stickyAggroByTarget(props.byTarget, nameOf);
-  const targetIds = sortThreatTargetIds(
+  const allIds = sortThreatTargetIds(
     Object.keys(byTarget),
     props.observingId,
     nameOf,
   );
-  if (targetIds.length === 0) {
+  const targetIds =
+    scope === "watched"
+      ? allIds.filter((tid) =>
+          isWatchedPartyTarget(tid, props.entities, props.observingId),
+        )
+      : allIds;
+
+  if (allIds.length === 0) {
     if (!props.layoutEdit) return null;
     return e(PanelShellDummy, {
       label: "Threat",
@@ -367,6 +397,80 @@ export function ThreatTable(props: ThreatTableProps): any {
       style: THREAT_PANEL_STYLE,
     });
   }
+
+  const selectStyle = {
+    fontSize: TYPE.body,
+    padding: "2px 4px",
+    border: "1px solid #555",
+    background: "#1a1a1a",
+    color: "#ccc",
+    maxWidth: "11em",
+    ...PIXEL_TEXT,
+  };
+
+  const header = e(
+    "div",
+    {
+      style: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "8px",
+        padding: "5px 8px 2px",
+        fontSize: TYPE.title,
+        ...PIXEL_TEXT,
+        color: "#ccc",
+      },
+    },
+    e("span", { style: { flexShrink: 0 } }, "Threat"),
+    e(
+      "select",
+      {
+        value: scope === "all" ? "visible" : scope,
+        title: "Who to list: your party, or everyone with aggro in vision",
+        style: selectStyle,
+        onChange: (ev: any) => setThreatScope(ev.target.value),
+      },
+      hasObserver
+        ? e(
+            "option",
+            { value: "watched" },
+            killScopeLabel("watched", watchedName),
+          )
+        : null,
+      e("option", { value: "visible" }, killScopeLabel("visible")),
+    ),
+  );
+
+  const rows =
+    targetIds.length > 0
+      ? targetIds.map((tid) =>
+          e(ThreatRow, {
+            key: tid,
+            tid,
+            mobs: byTarget[tid],
+            entities: props.entities,
+            observingId: props.observingId,
+            setSelectedEntity: props.setSelectedEntity,
+          }),
+        )
+      : [
+          e(
+            "div",
+            {
+              key: "empty",
+              style: {
+                padding: "6px 8px 8px",
+                fontSize: TYPE.body,
+                color: "#999",
+                ...PIXEL_TEXT,
+              },
+            },
+            scope === "watched"
+              ? "No party aggro — switch to Visible for everyone on screen."
+              : "No aggro targets.",
+          ),
+        ];
 
   return e(
     "div",
@@ -378,36 +482,15 @@ export function ThreatTable(props: ThreatTableProps): any {
         flexDirection: "column",
         margin: "4px",
         border: "2px double gray",
-        background: "black",
         gap: "2px",
         maxHeight: "280px",
         minWidth: "220px",
         fontSize: TYPE.name,
         ...PIXEL_TEXT,
+        ...THREAT_PANEL_STYLE,
       },
     },
-    e(
-      "div",
-      {
-        style: {
-          padding: "5px 8px 2px",
-          whiteSpace: "nowrap",
-          fontSize: TYPE.title,
-          ...PIXEL_TEXT,
-          color: "#ccc",
-        },
-      },
-      "Threat",
-    ),
-    ...targetIds.map((tid) =>
-      e(ThreatRow, {
-        key: tid,
-        tid,
-        mobs: byTarget[tid],
-        entities: props.entities,
-        observingId: props.observingId,
-        setSelectedEntity: props.setSelectedEntity,
-      }),
-    ),
+    header,
+    ...rows,
   );
 }

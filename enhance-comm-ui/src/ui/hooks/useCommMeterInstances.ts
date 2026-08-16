@@ -24,6 +24,10 @@ import {
   nextMeterStackZ,
   prepareNewMeterWindow,
 } from "../../meters/meterWindowStack";
+import {
+  appendClosedMeterInstance,
+  normalizeMeterClosedInstances,
+} from "../../meters/meterPresets";
 import type {
   MeterInstance,
   PlayersMetric,
@@ -85,7 +89,10 @@ export function useCommMeterInstances(
     () => getSettings().meterInstances as MeterInstance[],
   );
   const [closedMeters, setClosedMeters] = React.useState(
-    () => (getSettings().meterClosedInstances || []) as MeterInstance[],
+    () =>
+      normalizeMeterClosedInstances(
+        getSettings().meterClosedInstances,
+      ) as MeterInstance[],
   );
 
   const meterInstancesRef = React.useRef(meterInstances);
@@ -126,7 +133,10 @@ export function useCommMeterInstances(
       const inst = prev.find((m) => m.id === id);
       if (!inst) return prev;
       const next = prev.filter((m) => m.id !== id);
-      const closed = (getSettings().meterClosedInstances || []).concat([inst]);
+      const closed = appendClosedMeterInstance(
+        getSettings().meterClosedInstances,
+        inst,
+      );
       patchSettings({ meterInstances: next, meterClosedInstances: closed });
       setClosedMeters(closed);
       return next;
@@ -146,6 +156,13 @@ export function useCommMeterInstances(
     if (!inst) return;
     setClosedMeters(closed);
     setMeterInstances((prev: MeterInstance[]) => {
+      // Already open (e.g. normalize raced a reopen) — just drop closed entry.
+      for (let i = 0; i < prev.length; i++) {
+        if (prev[i].id === inst!.id) {
+          patchSettings({ meterClosedInstances: closed });
+          return prev;
+        }
+      }
       // Keep prior lock; only raise stack so the window paints on top.
       const { zIndex, peers } = nextMeterStackZ(prev);
       const next = peers.concat([{ ...inst!, visible: true, zIndex }]);

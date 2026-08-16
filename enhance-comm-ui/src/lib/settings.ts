@@ -8,7 +8,9 @@ import {
 import { COMBAT_CHANNELS, type CombatChannel } from "../meters/combatChannels";
 import {
   defaultMeterInstances,
+  meterClosedIdList,
   migrateLegacyMeterLayout,
+  normalizeMeterClosedInstances,
   normalizeMeterInstances,
 } from "../meters/meterPresets";
 import type { MeterBookmark, MeterInstance } from "../meters/meterTypes";
@@ -25,6 +27,7 @@ export {
   resolvePartyFocus,
   effectivePartyFocus,
   effectiveKillScope,
+  effectiveThreatScope,
   partyFocusLabel,
   partyFocusChoiceLabel,
   partyFocusMenuOptions,
@@ -77,6 +80,11 @@ export type PanelOpacityMap = Partial<Record<PanelId, number>>;
 export type CommUiSettings = {
   partyScope: PartyScope;
   killScope: PartyScope;
+  /**
+   * Threat meter rows: watched = subject's in-game party; visible = everyone
+   * with aggro in vision. `"all"` is treated as visible (no session history).
+   */
+  threatScope: PartyScope;
   /** @deprecated use panelVisible */
   combatVisible?: boolean;
   /** @deprecated combat panel replaced by meterInstances */
@@ -189,6 +197,7 @@ const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
 const DEFAULTS: CommUiSettings = {
   partyScope: "watched",
   killScope: "watched",
+  threatScope: "visible",
   combatView: "table",
   combatChannels: ["dps", "base", "blast", "burn", "hps"],
   barChannel: "dps",
@@ -442,8 +451,13 @@ function migrate(parsed: any): CommUiSettings {
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
     partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode),
     meterInstances: migrateLegacyMeterLayout(
-      normalizeMeterInstances(parsed.meterInstances),
+      normalizeMeterInstances(parsed.meterInstances, {
+        closedIds: meterClosedIdList(parsed.meterClosedInstances),
+      }),
       parsed.panelLayout || panelLayout,
+    ),
+    meterClosedInstances: normalizeMeterClosedInstances(
+      parsed.meterClosedInstances,
     ),
     metersLocked: parsed.metersLocked !== false,
     windowsLocked:
@@ -510,6 +524,10 @@ function migrate(parsed: any): CommUiSettings {
 
   // Drop deprecated flag once migrated into panelVisible
   delete next.combatVisible;
+
+  if (next.threatScope !== "watched" && next.threatScope !== "visible") {
+    next.threatScope = "visible";
+  }
 
   return next;
 }
@@ -650,7 +668,13 @@ export function patchSettings(
     next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
   }
   if (partial.meterInstances) {
-    next.meterInstances = normalizeMeterInstances(partial.meterInstances);
+    const closedForNorm =
+      partial.meterClosedInstances != null
+        ? normalizeMeterClosedInstances(partial.meterClosedInstances)
+        : normalizeMeterClosedInstances(current.meterClosedInstances);
+    next.meterInstances = normalizeMeterInstances(partial.meterInstances, {
+      closedIds: meterClosedIdList(closedForNorm),
+    });
   }
   if (typeof partial.windowsLocked === "boolean") {
     next.windowsLocked = partial.windowsLocked;
@@ -684,7 +708,9 @@ export function patchSettings(
     next.nextWindowNumber = Math.floor(partial.nextWindowNumber);
   }
   if (partial.meterClosedInstances) {
-    next.meterClosedInstances = partial.meterClosedInstances;
+    next.meterClosedInstances = normalizeMeterClosedInstances(
+      partial.meterClosedInstances,
+    );
   }
   if (typeof partial.setupWizardDone === "boolean") {
     next.setupWizardDone = partial.setupWizardDone;

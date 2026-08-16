@@ -57,11 +57,15 @@ export function aggroByTarget(
   entities: EntityLike[],
 ): Record<string, EntityLike[]> {
   const out: Record<string, EntityLike[]> = {};
+  const seen = new Set<string>();
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
-    if (ent.type !== "monster" || ent.target == null || ent.target === "") {
+    if (!isAliveMonster(ent) || ent.target == null || ent.target === "") {
       continue;
     }
+    const id = String(ent.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
     const tid = String(ent.target);
     if (!out[tid]) out[tid] = [];
     out[tid].push(ent);
@@ -103,11 +107,16 @@ export function findLocalSelf(
 
 export function aggroedMonsters(entities: EntityLike[]): EntityLike[] {
   const out: EntityLike[] = [];
+  const seen = new Set<string>();
   for (let i = 0; i < entities.length; i++) {
     const ent = entities[i];
-    if (ent.type === "monster" && ent.cooperative !== true && ent.target) {
-      out.push(ent);
+    if (!isAliveMonster(ent) || ent.cooperative === true || !ent.target) {
+      continue;
     }
+    const id = String(ent.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(ent);
   }
   out.sort((a, b) => {
     const cmp = (a.mtype || "").localeCompare(b.mtype || "");
@@ -122,7 +131,8 @@ export function isCryptBossEntity(entity: EntityLike): boolean {
   return CRYPT_BOSSES_MTYPES.indexOf(entity.mtype) >= 0;
 }
 
-function isAliveMonster(entity: EntityLike): boolean {
+/** Live monster — skips `DEAD*` corpses, vision cull, and hp<=0 leftovers. */
+export function isAliveMonster(entity: EntityLike): boolean {
   if (entity.type !== "monster") return false;
   if (entity.dead) return false;
   if (entity.hp != null && entity.hp <= 0) return false;

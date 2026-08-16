@@ -211,6 +211,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           showWindowIds: ctx.showWindowIds,
           // Meter shell owns .ecu-meter-resize (group-aware); skip HUD grips.
           showResizeHandles: false,
+          hugContent: false,
         },
         e(
           "div",
@@ -250,21 +251,34 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
                   const root = document
                     .getElementById("comm-ui")
                     ?.getBoundingClientRect();
-                  let next = prev.map((m) =>
-                    m.id === inst.id ? { ...m, ...partial } : m,
-                  );
-                  next = applyGroupFrameSize(
-                    next,
+                  // Corner resize passes `pos` and needs keep-top/left peer
+                  // nudges. Stretch ↕ is size-only — leave positions alone so
+                  // CSS anchors grow/shrink in place and unstretch returns home.
+                  const alignPos = partial.pos != null;
+                  let next = applyGroupFrameSize(
+                    prev,
                     inst.id,
                     {
                       frameW: partial.frameW,
                       frameH: partial.frameH,
                     },
-                    {
-                      rootW: root?.width,
-                      rootH: root?.height,
-                    },
+                    alignPos
+                      ? {
+                          rootW: root?.width,
+                          rootH: root?.height,
+                        }
+                      : undefined,
                   );
+                  // Corner resize may pass an explicit pos (e.g. bl keeps the
+                  // right edge). That wins over the keep-left/top group nudge.
+                  const rest: Partial<MeterInstance> = { ...partial };
+                  delete rest.frameW;
+                  delete rest.frameH;
+                  if (Object.keys(rest).length) {
+                    next = next.map((m) =>
+                      m.id === inst.id ? { ...m, ...rest } : m,
+                    );
+                  }
                   patchSettings({ meterInstances: next });
                   return next;
                 });

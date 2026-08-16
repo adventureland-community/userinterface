@@ -128,8 +128,55 @@ function migrateRankedInstance(row: {
   return { query, presentation, label, seriesMode };
 }
 
-export function normalizeMeterInstances(raw: any): MeterInstance[] {
-  if (!Array.isArray(raw) || !raw.length) return defaultMeterInstances();
+/** Ids from the closed-meter reopen list (for normalize backfill skips). */
+export function meterClosedIdList(
+  closed: { id?: string }[] | null | undefined,
+): string[] {
+  const ids: string[] = [];
+  if (!closed || !closed.length) return ids;
+  for (let i = 0; i < closed.length; i++) {
+    const id = closed[i]?.id;
+    if (typeof id === "string" && id) ids.push(id);
+  }
+  return ids;
+}
+
+export function normalizeMeterInstances(
+  raw: any,
+  opts?: { closedIds?: Iterable<string> },
+): MeterInstance[] {
+  const closedIds = new Set<string>();
+  if (opts?.closedIds) {
+    for (const id of opts.closedIds) {
+      if (id) closedIds.add(id);
+    }
+  }
+
+  const backfillDefaults = (seen: Set<string>, out: MeterInstance[]) => {
+    const defaults = defaultMeterInstances();
+    for (let i = 0; i < defaults.length; i++) {
+      const d = defaults[i];
+      if (seen.has(d.id) || closedIds.has(d.id)) continue;
+      out.push({
+        ...d,
+        pos: { ...d.pos },
+        snap: d.snap ? { ...d.snap } : undefined,
+      });
+      seen.add(d.id);
+    }
+  };
+
+  if (!Array.isArray(raw)) return defaultMeterInstances();
+  if (!raw.length) {
+    // Explicit empty open list (e.g. all meters closed) — do not resurrect
+    // defaults that live in the closed reopen list.
+    if (closedIds.size) {
+      const out: MeterInstance[] = [];
+      backfillDefaults(new Set(), out);
+      return out;
+    }
+    return defaultMeterInstances();
+  }
   const out: MeterInstance[] = [];
   const seen = new Set<string>();
   for (let i = 0; i < raw.length; i++) {
@@ -139,6 +186,7 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
       typeof row.id === "string" && row.id
         ? row.id
         : `meter-${i}-${Date.now()}`;
+    if (seen.has(id)) continue;
     const pos =
       row.pos && typeof row.pos.x === "number" && typeof row.pos.y === "number"
         ? {
@@ -227,23 +275,20 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
           : undefined,
     });
   }
-  if (!out.length) return defaultMeterInstances();
+  if (!out.length) {
+    if (closedIds.size) {
+      backfillDefaults(new Set(), out);
+      return out;
+    }
+    return defaultMeterInstances();
+  }
 
   // Backfill only current defaults (DPS / HPS).
   // Demoted panels are catalog-only — never re-injected onto existing saves.
   // Existing saves keep their own labels/queries/positions — only missing ids.
-  const defaults = defaultMeterInstances();
-  for (let i = 0; i < defaults.length; i++) {
-    const d = defaults[i];
-    if (!seen.has(d.id)) {
-      out.push({
-        ...d,
-        pos: { ...d.pos },
-        snap: d.snap ? { ...d.snap } : undefined,
-      });
-      seen.add(d.id);
-    }
-  }
+  // Skip ids the user closed (otherwise close → persist → reopen /comm
+  // resurrects default DPS/HPS from storage).
+  backfillDefaults(seen, out);
 
   // Ensure DPS ‖ HPS snap if both stable defaults exist and neither has snap yet.
   const dmg = out.find((m) => m.id === "meter-damage");
@@ -275,6 +320,50 @@ export function normalizeMeterInstances(raw: any): MeterInstance[] {
       continue;
     }
     next.push(m);
+  }
+  return next;
+}
+
+/** Cap reopen history; drop duplicate ids (keep newest). */
+export const MAX_METER_CLOSED_INSTANCES = 20;
+
+export function normalizeMeterClosedInstances(raw: any): MeterInstance[] {
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const byId = new Map<string, MeterInstance>();
+  for (let i = 0; i < raw.length; i++) {
+    const row = raw[i];
+    if (!row || typeof row !== "object") continue;
+    const id = typeof row.id === "string" ? row.id : "";
+    if (!id) continue;
+    byId.set(id, row as MeterInstance);
+  }
+  const out: MeterInstance[] = [];
+  const closed = Array.from(byId.values());
+  for (let i = 0; i < closed.length; i++) {
+    out.push(closed[i]);
+  }
+  if (out.length > MAX_METER_CLOSED_INSTANCES) {
+    return out.slice(out.length - MAX_METER_CLOSED_INSTANCES);
+  }
+  return out;
+}
+
+/**
+ * Append a closed meter, replacing any prior entry with the same id.
+ */
+export function appendClosedMeterInstance(
+  list: MeterInstance[] | null | undefined,
+  inst: MeterInstance,
+): MeterInstance[] {
+  const base = list && list.length ? list.slice() : [];
+  const next: MeterInstance[] = [];
+  for (let i = 0; i < base.length; i++) {
+    if (base[i].id === inst.id) continue;
+    next.push(base[i]);
+  }
+  next.push(inst);
+  if (next.length > MAX_METER_CLOSED_INSTANCES) {
+    return next.slice(next.length - MAX_METER_CLOSED_INSTANCES);
   }
   return next;
 }

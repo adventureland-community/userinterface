@@ -4,6 +4,7 @@
  */
 
 import type { EntityLike } from "../host/globals";
+import { isAliveMonster } from "../queries/entities";
 
 /** True only for real death — stock also sets dead="vision" for cull. */
 export function isActuallyDead(entity: EntityLike | null | undefined): boolean {
@@ -22,9 +23,8 @@ type ThreatSticky = {
 const threatStickyById = new Map<string, ThreatSticky>();
 
 function isLiveAggroMob(ent: EntityLike): boolean {
-  // Drop vision cull + real corpses from threat chips.
-  if (ent.dead) return false;
-  return ent.type === "monster" && !!ent.target;
+  // Drop vision cull, DEAD* corpses, and hp<=0 leftovers from threat chips.
+  return isAliveMonster(ent) && !!ent.target;
 }
 
 /**
