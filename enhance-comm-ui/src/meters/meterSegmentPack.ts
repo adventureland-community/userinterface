@@ -23,6 +23,8 @@ export type PackedTapes = {
   castSource: Uint16Array;
   castTarget: Uint16Array;
   castPid: Uint16Array;
+  /** Optional — missing on v1 tapes packed before attack_ms. */
+  castAttackMs?: Uint16Array;
   gearAt: Uint32Array;
   gearActor: Uint16Array;
   gearSlot: Uint16Array;
@@ -98,6 +100,7 @@ export function packTapes(seg: CombatSegment): PackedTapes {
   const castSource = new Uint16Array(nC);
   const castTarget = new Uint16Array(nC);
   const castPid = new Uint16Array(nC);
+  const castAttackMs = new Uint16Array(nC);
   for (let i = 0; i < nC; i++) {
     const c = casts[i];
     castAt[i] = relAt(c.at, startedAt);
@@ -108,6 +111,9 @@ export function packTapes(seg: CombatSegment): PackedTapes {
       state,
       c.pid == null ? "" : String(c.pid),
     );
+    const ams = c.attackMs;
+    castAttackMs[i] =
+      typeof ams === "number" && ams > 0 && ams <= 0xffff ? ams : 0;
   }
   const gears = seg.gearSwaps || [];
   const nG = gears.length;
@@ -151,6 +157,7 @@ export function packTapes(seg: CombatSegment): PackedTapes {
     castSource,
     castTarget,
     castPid,
+    castAttackMs,
     gearAt,
     gearActor,
     gearSlot,
@@ -183,6 +190,8 @@ function unpackCasts(t: PackedTapes, startedAt: number): CastMarker[] {
     };
     if (target) row.targetId = target;
     if (pidRaw) row.pid = pidRaw;
+    const ams = t.castAttackMs && t.castAttackMs[i];
+    if (ams) row.attackMs = ams;
     out.push(row);
   }
   return out;

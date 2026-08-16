@@ -2,6 +2,7 @@
  * Time Line lane build, scope seed, and fight origin.
  */
 
+import { skillCooldownSec } from "../../../../lib/abilityIds";
 import { conditionKind, itemSkin } from "../../../../lib/gameIcon";
 import type { PartyFocus } from "../../../../lib/settingsFocus";
 import { actorIdInScope } from "../../../../meters/meterQuery";
@@ -17,11 +18,7 @@ import type {
   SegmentRef,
 } from "../../../../meters/meterTypes";
 import type { TimelineBlock, TimelineLane, TlFilter } from "./timelineModel";
-import {
-  TL_CAST_EFFECT_SEC,
-  laneCatsFromBlocks,
-  skillKey,
-} from "./timelineModel";
+import { laneCatsFromBlocks, skillKey } from "./timelineModel";
 import { gearItemLabel, prettyKey } from "./timelineFormat";
 
 export function buildActorMaps(segmentRef?: SegmentRef): {
@@ -263,6 +260,7 @@ export function buildLanes(
 
   if (wantCds) {
     // Cooldowns — AL casts stand in for CLEU cooldown hooks.
+    // Attack / share:attack use recorded cast.attackMs only (never live frequency).
     for (let i = 0; i < casts.length; i++) {
       const c = casts[i];
       const lane = ensure(c.actorId);
@@ -274,7 +272,7 @@ export function buildLanes(
         key: src,
         label: prettyKey(src),
         atSec: t0,
-        durationSec: TL_CAST_EFFECT_SEC,
+        durationSec: skillCooldownSec(src, c.attackMs),
         source: lane.name,
         actorId: c.actorId,
       });

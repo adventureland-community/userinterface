@@ -368,6 +368,8 @@ export function resetSessionCurrent(): void {
   inCombat = false;
   pendingBossKind = false;
   void clearDraft();
+  // Same tape/gear teardown as endLive — keep cast-watch warm.
+  if (onLiveClosed) onLiveClosed();
 }
 
 export function resetSessionOverall(): void {

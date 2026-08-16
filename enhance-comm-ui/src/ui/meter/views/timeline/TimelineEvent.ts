@@ -117,7 +117,7 @@ export function timelineEventEqual(
  * and misaligned same-time events across player rows.
  *
  * Hover is icon-first, then bar: the wrapper is not a stacking context, so
- * later icons sit above earlier 5–20s bars. Empty lane chrome still has
+ * later icons sit above earlier duration bars. Empty lane chrome still has
  * no tip — that was the old whole-fight dump.
  */
 export function TimelineEventInner(props: TimelineEventProps): any {

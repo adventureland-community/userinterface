@@ -57,17 +57,16 @@ export const TL_VIEW_ESTIMATE_W = 960;
  */
 export const TL_COALESCE_SEC = 0.3;
 
-/** Details SetSpellBlock clamps visual bar duration to 5–20s. */
-export const TL_VISUAL_DUR_MIN = 5;
-export const TL_VISUAL_DUR_MAX = 20;
+/**
+ * Lookback when culling off-screen bars. Long CDs (Temporal Surge 60s)
+ * and auras must still mount when their start is left of the viewport.
+ */
+export const TL_CULL_DUR_MAX = 180;
 /**
  * Icon stacking band — above every duration-bar hit layer. Later icons
  * sit above earlier icons; no bar can cover an icon’s pointer-events.
  */
 export const TL_ICON_Z = 10000;
-
-/** Default cast/CD effect length when AL has no cooldown table (Details: 8). */
-export const TL_CAST_EFFECT_SEC = 8;
 
 /**
  * Modes map to Details tabs we can approximate with AL data, plus All
@@ -87,7 +86,7 @@ export type TimelineBlock = {
   key: string;
   label: string;
   atSec: number;
-  /** Real elapsed (cooltip). Visual width is clamped separately. */
+  /** Real elapsed / G.skills cooldown, or attack_ms for attack-share. */
   durationSec: number;
   /**
    * Next same-skill cast on this lane (casts only). Bar width clips here
@@ -186,15 +185,9 @@ export function conditionElapsedSec(b: TimelineBlock): number {
 
 export function visualDurationSec(b: TimelineBlock): number {
   if (b.kind === "death" || b.kind === "gear") return 0;
-  // Details: bar width from effect_time (fixed per event), not live-growing auras.
-  const raw =
-    b.kind === "cast"
-      ? b.durationSec || TL_CAST_EFFECT_SEC
-      : b.isOpen
-        ? TL_CAST_EFFECT_SEC
-        : Math.max(0, b.durationSec);
-  return Math.max(
-    TL_VISUAL_DUR_MIN,
-    Math.min(TL_VISUAL_DUR_MAX, raw || TL_VISUAL_DUR_MIN),
-  );
+  if (b.kind === "condition") {
+    return Math.max(0, conditionElapsedSec(b));
+  }
+  // Cast/CD: G.skills cooldown, or round(1000/frequency) for attack-share.
+  return Math.max(0, b.durationSec);
 }

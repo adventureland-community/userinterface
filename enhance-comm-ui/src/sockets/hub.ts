@@ -48,39 +48,67 @@ export type ActionEvent = {
   raw?: any;
 };
 
-type KillListener = (ev: KillEvent) => void;
-type DamageListener = (ev: DamageEvent) => void;
-type ActionListener = (ev: ActionEvent) => void;
+/** Stock `eval` packet — observers get animation snippets, never run them. */
+export type EvalEvent = {
+  code: string;
+  at: number;
+  raw?: any;
+};
 
-const killListeners: KillListener[] = [];
-const damageListeners: DamageListener[] = [];
-const actionListeners: ActionListener[] = [];
+/** Caster-only `game_response` (string or `{ response }`). */
+export type GameResponseEvent = {
+  response: string;
+  at: number;
+  raw?: any;
+};
+
+/**
+ * Nearby `ui` packet from `xy_emit`. Combat skills that skip `action`
+ * (stomp, mluck, warcry, …) show up here; merchants/FX use other `type`s.
+ */
+export type UiEvent = {
+  type: string;
+  name?: string;
+  from?: string;
+  to?: string;
+  id?: string;
+  at: number;
+  raw?: any;
+};
+
+function createChannel<T>(): {
+  emit: (ev: T) => void;
+  subscribe: (listener: (ev: T) => void) => () => void;
+} {
+  const listeners: Array<(ev: T) => void> = [];
+  return {
+    emit: (ev: T): void => {
+      for (let i = 0; i < listeners.length; i++) listeners[i](ev);
+    },
+    subscribe: (listener: (ev: T) => void): () => void => {
+      listeners.push(listener);
+      return () => {
+        const idx = listeners.indexOf(listener);
+        if (idx >= 0) listeners.splice(idx, 1);
+      };
+    },
+  };
+}
+
+const killCh = createChannel<KillEvent>();
+const damageCh = createChannel<DamageEvent>();
+const actionCh = createChannel<ActionEvent>();
+const evalCh = createChannel<EvalEvent>();
+const gameResponseCh = createChannel<GameResponseEvent>();
+const uiCh = createChannel<UiEvent>();
 
 let lastSocketId: string | null = null;
 let hubStarted = false;
 let pollTimer: number | null = null;
 
-function emitKill(ev: KillEvent): void {
-  for (let i = 0; i < killListeners.length; i++) {
-    killListeners[i](ev);
-  }
-}
-
-function emitDamage(ev: DamageEvent): void {
-  for (let i = 0; i < damageListeners.length; i++) {
-    damageListeners[i](ev);
-  }
-}
-
-function emitAction(ev: ActionEvent): void {
-  for (let i = 0; i < actionListeners.length; i++) {
-    actionListeners[i](ev);
-  }
-}
-
 function onDeath(data: any): void {
   if (!data || data.id == null) return;
-  emitKill({
+  killCh.emit({
     id: String(data.id),
     luckm: data.luckm,
     at: Date.now(),
@@ -133,7 +161,7 @@ function onHit(data: any): void {
   }
   if (data.pid != null) ev.pid = data.pid;
 
-  emitDamage(ev);
+  damageCh.emit(ev);
 }
 
 function onAction(data: any): void {
@@ -172,7 +200,49 @@ function onAction(data: any): void {
   if (data.heal !== undefined) {
     ev.heal = Math.abs(Number(data.heal) || 0);
   }
-  emitAction(ev);
+  actionCh.emit(ev);
+}
+
+function evalCodeFromPacket(data: any): string {
+  if (typeof data === "string") return data;
+  if (data && data.code != null) return String(data.code);
+  return "";
+}
+
+function onEval(data: any): void {
+  const code = evalCodeFromPacket(data);
+  if (!code) return;
+  evalCh.emit({ code, at: Date.now(), raw: data });
+}
+
+function responseFromPacket(data: any): string {
+  if (typeof data === "string") return data;
+  if (data && data.response != null) return String(data.response);
+  return "";
+}
+
+function onGameResponse(data: any): void {
+  const response = responseFromPacket(data);
+  if (!response) return;
+  gameResponseCh.emit({ response, at: Date.now(), raw: data });
+}
+
+function hintString(v: unknown): string | undefined {
+  if (v == null || v === "") return undefined;
+  return String(v);
+}
+
+function onUi(data: any): void {
+  if (!data || data.type == null || data.type === "") return;
+  uiCh.emit({
+    type: String(data.type),
+    name: hintString(data.name),
+    from: hintString(data.from),
+    to: hintString(data.to),
+    id: hintString(data.id),
+    at: Date.now(),
+    raw: data,
+  });
 }
 
 function maybeResubscribe(): void {
@@ -183,31 +253,17 @@ function maybeResubscribe(): void {
   socket.on("death", onDeath);
   socket.on("hit", onHit);
   socket.on("action", onAction);
+  socket.on("eval", onEval);
+  socket.on("game_response", onGameResponse);
+  socket.on("ui", onUi);
 }
 
-export function onKill(listener: KillListener): () => void {
-  killListeners.push(listener);
-  return () => {
-    const idx = killListeners.indexOf(listener);
-    if (idx >= 0) killListeners.splice(idx, 1);
-  };
-}
-
-export function onDamage(listener: DamageListener): () => void {
-  damageListeners.push(listener);
-  return () => {
-    const idx = damageListeners.indexOf(listener);
-    if (idx >= 0) damageListeners.splice(idx, 1);
-  };
-}
-
-export function onActionSubscribe(listener: ActionListener): () => void {
-  actionListeners.push(listener);
-  return () => {
-    const idx = actionListeners.indexOf(listener);
-    if (idx >= 0) actionListeners.splice(idx, 1);
-  };
-}
+export const onKill = killCh.subscribe;
+export const onDamage = damageCh.subscribe;
+export const onActionSubscribe = actionCh.subscribe;
+export const onEvalSubscribe = evalCh.subscribe;
+export const onGameResponseSubscribe = gameResponseCh.subscribe;
+export const onUiSubscribe = uiCh.subscribe;
 
 /** Boot once; tracks socket.id reconnect and fans out typed events. */
 export function startSocketHub(): () => void {

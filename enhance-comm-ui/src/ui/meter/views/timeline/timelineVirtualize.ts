@@ -10,7 +10,7 @@ import {
   TL_TICK_MIN_PX,
   TL_VIEW_BUF_PX,
   TL_VIEW_ESTIMATE_W,
-  TL_VISUAL_DUR_MAX,
+  TL_CULL_DUR_MAX,
   visualDurationSec,
 } from "./timelineModel";
 import { fmtClock, wallAtElapsed } from "./timelineFormat";
@@ -20,7 +20,7 @@ export function firstBlockInView(
   viewLeft: number,
   pps: number,
 ): number {
-  const maxBarPx = TL_VISUAL_DUR_MAX * pps;
+  const maxBarPx = TL_CULL_DUR_MAX * pps;
   const minAt = (viewLeft - maxBarPx) / Math.max(1, pps);
   let lo = 0;
   let hi = blocks.length;

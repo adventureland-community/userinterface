@@ -27,7 +27,8 @@ export const METER_TT_ICON = 22;
 /** Details profile defaults (`tooltip_max_abilities` / `tooltip_max_targets`). */
 const MAX_SPELLS = 6;
 const MAX_TARGETS = 2;
-const MAX_EXPANDED = 99;
+/** Expanded cap after pack-fold — 99 unique Spark Bots covered the screen. */
+const MAX_EXPANDED = 16;
 
 let tipEl: HTMLDivElement | null = null;
 let lastMods = { shift: false, ctrl: false };
@@ -36,6 +37,7 @@ let hoverRebuild: ((mods: { shift: boolean; ctrl: boolean }) => string) | null =
 let hoverX = 0;
 let hoverY = 0;
 let keysBound = false;
+let tipWheelBound = false;
 
 export function escapeHtml(s: string): string {
   return String(s)
@@ -45,12 +47,32 @@ export function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const TIP_WHEEL_OPTS: AddEventListenerOptions = {
+  capture: true,
+  passive: false,
+};
+
+function isMeterTooltipOpen(): boolean {
+  return !!(tipEl && tipEl.isConnected && tipEl.style.display === "block");
+}
+
+/** Keep Ctrl+wheel on an open tip from also scaling the window underneath. */
+function onTipCtrlWheel(ev: WheelEvent): void {
+  if (!ev.ctrlKey || !isMeterTooltipOpen()) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+}
+
 function ensureTip(): HTMLDivElement {
   if (tipEl && tipEl.isConnected) return tipEl;
   tipEl = document.createElement("div");
   tipEl.className = "ecu-meter-tt";
   tipEl.style.display = "none";
   document.body.appendChild(tipEl);
+  if (!tipWheelBound) {
+    tipWheelBound = true;
+    document.addEventListener("wheel", onTipCtrlWheel, TIP_WHEEL_OPTS);
+  }
   return tipEl;
 }
 
@@ -199,6 +221,37 @@ function sectionHeader(
   </div>`;
 }
 
+function packFoldKey(row: RankedRow): string {
+  if (row.ctype) return "p:" + row.id;
+  if (row.mtype) return "m:" + row.mtype;
+  return "n:" + row.name;
+}
+
+/** Collapse identical pack mobs (Spark Bot ×40) so Ctrl-expand stays readable. */
+function foldPackTargets(rows: RankedRow[]): RankedRow[] {
+  const byKey: Record<string, { row: RankedRow; count: number }> = {};
+  const order: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const key = packFoldKey(r);
+    const cur = byKey[key];
+    if (!cur) {
+      byKey[key] = { row: { ...r }, count: 1 };
+      order.push(key);
+    } else {
+      cur.count += 1;
+      cur.row.value += r.value;
+    }
+  }
+  const out: RankedRow[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const { row, count } = byKey[order[i]];
+    if (count > 1) row.name = `${row.name} ×${count}`;
+    out.push(row);
+  }
+  return out;
+}
+
 function rankRowsHtml(
   rows: RankedRow[],
   limit: number,
@@ -220,6 +273,9 @@ function rankRowsHtml(
       <span class="ecu-meter-tt-row-l">${iconFor(r)}<span class="ecu-meter-tt-name">${name}:</span></span>
       <span class="ecu-meter-tt-amt">${amt}</span>
     </div>`;
+  }
+  if (rows.length > n) {
+    html += `<div class="ecu-meter-tt-more">+${rows.length - n} more</div>`;
   }
   return html;
 }
@@ -314,13 +370,8 @@ export function playerBarTooltipHtml(
     partyFocus,
     entities,
   );
-  const targets = queryRanked(
-    "targets",
-    row.id,
-    m,
-    segmentRef,
-    partyFocus,
-    entities,
+  const targets = foldPackTargets(
+    queryRanked("targets", row.id, m, segmentRef, partyFocus, entities),
   );
 
   const spellExpandable = spells.length > MAX_SPELLS;

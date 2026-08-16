@@ -185,6 +185,8 @@ export type CastMarker = {
   source: string;
   targetId?: string;
   pid?: string | number;
+  /** `round(1000 / frequency)` at cast time — attack / share:attack CD. */
+  attackMs?: number;
 };
 
 /**

@@ -24,15 +24,16 @@
  * no combined “All”. All stacks per-kind sub-lanes when a player has ≥2
  * categories. Blocks sit at true time × pps; cooltip primary is the
  * topmost *icon* under the cursor, else the bar you entered (Details
- * `block_on_enter` per spell frame). A 5–20s duration bar must not steal
+ * `block_on_enter` per spell frame). A duration bar must not steal
  * later icons. Nearby *other* skills on the same row whose icons are in
  * the scroll viewport cluster around that primary (~1 icon / ~2s, cap
  * ±8s). Empty row chrome greys the lane only — never a whole-lane dump.
  * Tips are lean: player + time once, dense rows with a color pill
  * (CD/Bf/Db/Dt).
- * Visual bar width uses the 5–20s clamp as a *max*. Same-skill casts
- * (attack spam, shared CD) clip to the next identical cast so bars do
- * not fuse into one highway. Deaths are thin pins; gear is icon-only.
+ * Cast/CD bars use G.skills cooldown (Temporal Surge 60s) or attack_ms
+ * (`round(1000/frequency)` for attack / heal / 3shot / 5shot / piercingshot).
+ * Same-skill recasts clip so bars do not fuse. Deaths are
+ * thin pins; gear is icon-only.
  *
  * Bar colors: green = buff, blue = cooldown/cast, red = debuff,
  * amber = gear. Player name colors are class colors, not bars.

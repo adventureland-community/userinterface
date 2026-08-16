@@ -13,14 +13,22 @@ import {
   resolvePlayerCtype,
 } from "../host/al";
 import type { EntityLike, SlotLike } from "../host/globals";
+import { CHARACTER_SLOTS } from "../lib/equippedProps";
 import { itemSkin } from "../lib/gameIcon";
+import { attackMsFromFrequency } from "../lib/abilityIds";
 import {
   onActionSubscribe,
   onDamage,
+  onEvalSubscribe,
+  onGameResponseSubscribe,
   onKill,
+  onUiSubscribe,
   type ActionEvent,
   type DamageEvent,
+  type EvalEvent,
+  type GameResponseEvent,
   type KillEvent,
+  type UiEvent,
 } from "../sockets/hub";
 import {
   applyDamageToShadow,
@@ -38,12 +46,24 @@ import {
 import { applyDamageToSegment, ensureActor } from "./sessionSegment";
 import { DISPEL_ABILITY_KEYS, INTERRUPT_ABILITY_KEYS } from "./meterAppearance";
 import type {
+  CastMarker,
   CombatSegment,
   ConditionInterval,
   GearSwapEvent,
 } from "./meterTypes";
 import { emptyMisc } from "./meterTypes";
 import { markMeterDirty } from "./meterUiTick";
+import {
+  acceptIncomingCast,
+  castFromEval,
+  castFromGameResponse,
+  castFromUi,
+  SYNTHETIC_CAST_DEBOUNCE_MS,
+} from "./syntheticCast";
+import {
+  castsFromConditionSample,
+  clearConditionCastWatch,
+} from "./conditionCastWatch";
 import {
   ensureLive,
   getLiveSegment,
@@ -58,28 +78,8 @@ import {
   syncSession,
 } from "./meterSession";
 
-const CONDITION_SAMPLE_MS = 500;
+const CONDITION_SAMPLE_MS = 100;
 const MAX_GEAR_SWAPS = 4000;
-
-/** Classic body slots (not trade*). Matches paperdoll GearGrid. */
-const GEAR_SLOT_NAMES = [
-  "helmet",
-  "earring1",
-  "earring2",
-  "amulet",
-  "mainhand",
-  "chest",
-  "offhand",
-  "cape",
-  "ring1",
-  "pants",
-  "ring2",
-  "orb",
-  "belt",
-  "shoes",
-  "gloves",
-  "elixir",
-];
 
 let playerMeta: Record<
   string,
@@ -108,13 +108,13 @@ function ctypeFor(id: string, ent?: EntityLike | null): string | undefined {
 }
 
 let lastConditionSample = 0;
+/** Open aura intervals — same objects as in seg.conditions (endedAt updates). */
 const openConditions: Record<string, ConditionInterval> = {};
 /** actorId → slot → name|level|skin. First sight is a snapshot, not an event. */
 const lastGearByActor: Record<string, Record<string, string>> = {};
 
-let unsubDamage: (() => void) | null = null;
-let unsubKill: (() => void) | null = null;
-let unsubAction: (() => void) | null = null;
+let engineUnsubs: Array<() => void> = [];
+let stopSession: (() => void) | null = null;
 
 function isPlayerEntity(ent: EntityLike | null | undefined): boolean {
   return !!(ent && (ent.player || ent.type === "character"));
@@ -175,8 +175,6 @@ function metaFor(id: string | undefined) {
 function sampleConditions(now: number): void {
   if (now - lastConditionSample < CONDITION_SAMPLE_MS) return;
   lastConditionSample = now;
-  const seg = getLiveSegment();
-  if (!seg) return;
   const ents = getEntitiesRecord();
   const ids = Object.keys(playerMeta);
   for (let i = 0; i < ids.length; i++) {
@@ -185,8 +183,19 @@ function sampleConditions(now: number): void {
       findEntityById(id) ||
       ents[id] ||
       (playerMeta[id]?.name ? ents[playerMeta[id].name] : undefined);
-    const s = ent && (ent as any).s;
-    if (!s || typeof s !== "object") continue;
+    const s =
+      (ent &&
+        (ent as { s?: Record<string, Record<string, unknown>> }).s) ||
+      null;
+    // Always sample the watch (empty bag prunes); tape only while live.
+    const castEvents = castsFromConditionSample(id, s, now);
+    for (let c = 0; c < castEvents.length; c++) {
+      recordPlayerCast(castEvents[c]);
+    }
+
+    const seg = getLiveSegment();
+    if (!seg || !s) continue;
+
     const keys = Object.keys(s);
     for (let k = 0; k < keys.length; k++) {
       const key = keys[k];
@@ -201,7 +210,6 @@ function sampleConditions(now: number): void {
         seg.conditions.push(iv);
       }
     }
-    // Close conditions no longer present
     const openKeys = Object.keys(openConditions);
     for (let o = 0; o < openKeys.length; o++) {
       const ok = openKeys[o];
@@ -213,6 +221,22 @@ function sampleConditions(now: number): void {
       delete openConditions[ok];
     }
   }
+}
+
+/** Drop tape opens only — keep cast-watch warm across fights. */
+function clearConditionTape(): void {
+  const oks = Object.keys(openConditions);
+  for (let i = 0; i < oks.length; i++) delete openConditions[oks[i]];
+}
+
+function clearConditionTracking(): void {
+  clearConditionTape();
+  clearConditionCastWatch();
+}
+
+function onLiveClosed(): void {
+  clearGearSnapshots();
+  clearConditionTape();
 }
 
 function clearGearSnapshots(): void {
@@ -309,8 +333,8 @@ function sampleGearSwaps(now: number): void {
       prev = {};
       lastGearByActor[id] = prev;
     }
-    for (let s = 0; s < GEAR_SLOT_NAMES.length; s++) {
-      const slot = GEAR_SLOT_NAMES[s];
+    for (let s = 0; s < CHARACTER_SLOTS.length; s++) {
+      const slot = CHARACTER_SLOTS[s];
       const nextFp = gearFingerprint(slots[slot]);
       const oldFp = prev[slot] || "";
       if (first) {
@@ -412,17 +436,40 @@ function onKillEvent(ev: KillEvent): void {
 }
 
 function onActionEvent(ev: ActionEvent): void {
+  recordPlayerCast(ev);
+}
+
+function recordPlayerCast(ev: ActionEvent): void {
   if (!ev.actor || !isPlayerId(ev.actor)) return;
+  const src = (ev.source || "attack").toLowerCase();
   const seg = syncSession(ev.at, undefined, true);
   if (!seg) return;
-  const src = (ev.source || "attack").toLowerCase();
-  seg.casts.push({
+  if (
+    !acceptIncomingCast(
+      seg.casts,
+      {
+        actorId: ev.actor,
+        source: src,
+        at: ev.at,
+        pid: ev.pid,
+      },
+      SYNTHETIC_CAST_DEBOUNCE_MS,
+    )
+  ) {
+    return;
+  }
+  const attackMs = attackMsFromFrequency(
+    findEntityById(ev.actor)?.frequency,
+  );
+  const row: CastMarker = {
     at: ev.at,
     actorId: ev.actor,
     source: ev.source || "attack",
     targetId: ev.target,
     pid: ev.pid,
-  });
+  };
+  if (attackMs != null) row.attackMs = attackMs;
+  seg.casts.push(row);
   // Keep a long fight’s cast history for Time Line scroll-back (was 200 —
   // at party cast rates that only covered ~10–30s and erased early icons).
   while (seg.casts.length > 8000) seg.casts.shift();
@@ -431,6 +478,21 @@ function onActionEvent(ev: ActionEvent): void {
   if (INTERRUPT_ABILITY_KEYS.has(src)) actor.misc.interrupts += 1;
   if (DISPEL_ABILITY_KEYS.has(src)) actor.misc.dispels += 1;
   markMeterDirty();
+}
+
+function onEvalEvent(ev: EvalEvent): void {
+  const cast = castFromEval(ev);
+  if (cast) recordPlayerCast(cast);
+}
+
+function onGameResponseEvent(ev: GameResponseEvent): void {
+  const cast = castFromGameResponse(ev);
+  if (cast) recordPlayerCast(cast);
+}
+
+function onUiEvent(ev: UiEvent): void {
+  const cast = castFromUi(ev);
+  if (cast) recordPlayerCast(cast);
 }
 
 export function getWatchedPartyKey(): string {
@@ -652,8 +714,7 @@ export function resetAllMeters(): void {
   resetSessionAll();
   clearRollingWindow();
   clearDeathRings();
-  const oks = Object.keys(openConditions);
-  for (let i = 0; i < oks.length; i++) delete openConditions[oks[i]];
+  clearConditionTracking();
   clearGearSnapshots();
   markMeterDirty();
 }
@@ -662,7 +723,6 @@ export function resetAllMeters(): void {
 export function resetCurrentMeterSegment(): void {
   resetSessionCurrent();
   clearRollingWindow();
-  clearGearSnapshots();
   markMeterDirty();
 }
 
@@ -677,23 +737,25 @@ export function resetOverallMeterSegments(): void {
 
 export function startMeterEngine(): () => void {
   attachRollingToEngine();
-  if (!unsubDamage) unsubDamage = onDamage(onDamageEvent);
-  if (!unsubKill) unsubKill = onKill(onKillEvent);
-  if (!unsubAction) unsubAction = onActionSubscribe(onActionEvent);
-  const stopSession = startSession({ onLiveClosed: clearGearSnapshots });
+  if (!engineUnsubs.length) {
+    engineUnsubs = [
+      onDamage(onDamageEvent),
+      onKill(onKillEvent),
+      onActionSubscribe(onActionEvent),
+      onEvalSubscribe(onEvalEvent),
+      onGameResponseSubscribe(onGameResponseEvent),
+      onUiSubscribe(onUiEvent),
+    ];
+  }
+  if (!stopSession) {
+    stopSession = startSession({ onLiveClosed });
+  }
   return () => {
-    stopSession();
-    if (unsubDamage) {
-      unsubDamage();
-      unsubDamage = null;
+    if (stopSession) {
+      stopSession();
+      stopSession = null;
     }
-    if (unsubKill) {
-      unsubKill();
-      unsubKill = null;
-    }
-    if (unsubAction) {
-      unsubAction();
-      unsubAction = null;
-    }
+    for (let i = 0; i < engineUnsubs.length; i++) engineUnsubs[i]();
+    engineUnsubs = [];
   };
 }
