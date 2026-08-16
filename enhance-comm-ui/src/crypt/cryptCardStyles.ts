@@ -34,6 +34,8 @@ export const PANEL_SHELL: Record<string, any> = {
   border: "2px double gray",
   gap: "4px",
   fontSize: TYPE.chrome,
+  // Explicit solid — do not inherit a meter-idle opacity from a recycled shell.
+  opacity: 1,
   ...PIXEL_TEXT,
   ...CRYPT_PANEL_STYLE,
 };

@@ -28,6 +28,8 @@ export type CryptCardProps = {
   luckmComponent: any;
   onClick?: () => void;
   dummy?: boolean;
+  /** Dim card while dead and not in vision (clears when the boss is seen alive). */
+  faded?: boolean;
 };
 
 export const CRYPT_BAT_MTYPES = CRYPT_IMPORTANT_MOBS_MTYPES.filter(
@@ -63,27 +65,40 @@ export function buildCryptCardProps(
   instanceData: ReturnType<typeof getInstanceData>,
 ): CryptCardProps & { key: string } {
   const mobRichData = instanceData[mtype];
+  const inVision = currentlySeeMtypes.has(mtype);
+  const aggroed = aggroedMtypes.has(mtype);
   let borderColor = "gray";
-  if (aggroedMtypes.has(mtype)) borderColor = "red";
-  else if (currentlySeeMtypes.has(mtype)) borderColor = "yellow";
+  if (aggroed) borderColor = "red";
+  else if (inVision) borderColor = "yellow";
   let status = "??";
   let lastSeenComponent: any = null;
   let levelComponent = "";
   let focusComponent: any = null;
   let luckmComponent: any = null;
+  let faded = false;
   if (mobRichData) {
     if (CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0) {
       const boss = mobRichData as CryptBossState;
-      if (boss.deadCount > 0) {
+      // Prefer live sighting over stale death — battle reset respawns bosses.
+      if (inVision || aggroed) {
+        status = "Alive";
+        if (aggroed) lastSeenComponent = "Aggroed!";
+        else lastSeenComponent = "We see!";
+        if (boss.lastSeenFocus) {
+          const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
+          if (focusMtype) {
+            focusComponent = `Focus: ${getCryptMobLabel(focusMtype)}`;
+          }
+        }
+      } else if (boss.deadCount > 0) {
         status = formatBossDeathStatus(boss);
+        faded = true;
         if (boss.luckm != null) {
           luckmComponent = `luckm: ${boss.luckm.toFixed(3)}`;
         }
       } else {
         status = "Alive";
-        if (aggroedMtypes.has(mtype)) lastSeenComponent = "Aggroed!";
-        else if (currentlySeeMtypes.has(mtype)) lastSeenComponent = "We see!";
-        else if (boss.lastSeen != null) {
+        if (boss.lastSeen != null) {
           lastSeenComponent = `Seen ${formatTime((Date.now() - boss.lastSeen) / 1000)} ago`;
         }
         if (boss.lastSeenFocus) {
@@ -98,6 +113,7 @@ export function buildCryptCardProps(
       }
     } else {
       status = `Died: ${mobRichData.deadCount}`;
+      if (mobRichData.deadCount > 0 && !inVision && !aggroed) faded = true;
     }
   }
   let onClick: (() => void) | undefined;
@@ -119,5 +135,6 @@ export function buildCryptCardProps(
     focusComponent,
     luckmComponent,
     onClick,
+    faded,
   };
 }

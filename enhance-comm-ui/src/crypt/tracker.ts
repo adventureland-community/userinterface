@@ -102,6 +102,12 @@ export function updateFromEntities(
         const boss = instanceData[entity.mtype] as CryptBossState;
         boss.lastSeen = now;
         boss.lastSeenLevel = entity.level;
+        // Living sighting after a kill = battle / spawn reset — clear death UI.
+        // Keep deadCount as historical kills for the instance.
+        if (boss.deathEventTimestamp != null || boss.luckm != null) {
+          boss.deathEventTimestamp = undefined;
+          boss.luckm = undefined;
+        }
       }
     } else if (!(entity.mtype in instanceData)) {
       instanceData[entity.mtype] = { deadCount: 0 };

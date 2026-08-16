@@ -28,7 +28,7 @@ export function CryptCard(props: CryptCardProps): any {
       style: Object.assign({}, CARD_STYLE_BASE, {
         border: `2px double ${props.borderColor}`,
         cursor: clickable ? "pointer" : undefined,
-        opacity: props.dummy ? 0.85 : undefined,
+        opacity: props.dummy ? 0.85 : props.faded ? 0.45 : 1,
       }),
       title: clickable ? "Click to target" : props.mtype,
       onClick: props.onClick,
