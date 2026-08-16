@@ -1,0 +1,2031 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mail — Comm UI</title>
+    <style>
+      :root {
+        --gold: #e8c96a;
+        --text: #e6e6e6;
+        --panel: #000;
+        --line: #333;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background: #1a1a1a
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect fill='%23222' width='64' height='64'/%3E%3Crect fill='%23282828' x='32' y='32' width='32' height='32'/%3E%3C/svg%3E");
+        padding: 20px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+
+      .stage {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+
+      .stage__title {
+        margin: 0 0 10px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--gold);
+      }
+
+      .stage__tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: #aaa;
+      }
+
+      .stage__tools button {
+        font: inherit;
+        cursor: pointer;
+        background: #111;
+        color: #ddd;
+        border: 1px solid #555;
+        padding: 4px 10px;
+      }
+
+      .stage__tools button.is-on {
+        border-color: var(--gold);
+        color: var(--gold);
+      }
+
+      .stage__tools label {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        cursor: pointer;
+      }
+
+      .abar {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px 8px;
+        border: 2px double gray;
+        background: #000;
+        margin-bottom: 10px;
+        font-size: 13px;
+      }
+
+      .abar button {
+        position: relative;
+        border: none;
+        background: transparent;
+        color: #aaa;
+        font: inherit;
+        padding: 4px 8px;
+        cursor: pointer;
+      }
+
+      .abar button.is-on {
+        color: var(--gold);
+      }
+
+      .abar__badge {
+        position: absolute;
+        top: -4px;
+        right: -2px;
+        min-width: 14px;
+        height: 14px;
+        padding: 0 3px;
+        border-radius: 7px;
+        background: #c44;
+        color: #fff;
+        font-size: 10px;
+        line-height: 14px;
+        text-align: center;
+      }
+
+      .mail {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 920px;
+        height: 540px;
+        border: 2px double gray;
+        background: var(--panel);
+        font-size: 13px;
+        overflow: hidden;
+      }
+
+      .mail--narrow {
+        max-width: 400px;
+        height: 580px;
+      }
+
+      .mail__chrome {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 8px;
+        border-bottom: 1px solid var(--line);
+        background: #0a0a0a;
+        font-size: 11px;
+        color: #777;
+        flex-shrink: 0;
+      }
+
+      .mail__chrome strong {
+        color: #bbb;
+        font-weight: 600;
+      }
+
+      .mail__chrome-spacer {
+        flex: 1;
+      }
+
+      .mail__toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #222;
+        flex-shrink: 0;
+      }
+
+      .mail__search {
+        flex: 1 1 120px;
+        min-width: 100px;
+        background: #111;
+        border: 1px solid #444;
+        color: #eee;
+        padding: 5px 8px;
+        font: inherit;
+      }
+
+      .mail__search:focus {
+        outline: none;
+        border-color: var(--gold);
+      }
+
+      .mail__pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+      }
+
+      .mail__pill {
+        font: inherit;
+        font-size: 11px;
+        padding: 3px 7px;
+        border: 1px solid #444;
+        background: transparent;
+        color: #999;
+        cursor: pointer;
+      }
+
+      .mail__pill.is-on {
+        border-color: rgba(232, 201, 106, 0.55);
+        color: var(--gold);
+        background: rgba(232, 201, 106, 0.07);
+      }
+
+      .btn {
+        font: inherit;
+        font-size: 12px;
+        padding: 4px 10px;
+        border: 1px solid #555;
+        background: #141414;
+        color: #ddd;
+        cursor: pointer;
+      }
+
+      .btn:hover:not(:disabled) {
+        border-color: var(--gold);
+        color: var(--gold);
+      }
+
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .btn--gold {
+        border-color: rgba(232, 201, 106, 0.45);
+        color: var(--gold);
+      }
+
+      .btn--danger {
+        border-color: #633;
+        color: #e88;
+      }
+
+      .mail__banner {
+        padding: 5px 10px;
+        font-size: 11px;
+        color: #c9a86a;
+        background: #141008;
+        border-bottom: 1px solid #2a2410;
+        flex-shrink: 0;
+      }
+
+      .mail__banner--off {
+        color: #c99;
+        background: #140808;
+        border-bottom-color: #2a1515;
+      }
+
+      .mail__status {
+        padding: 3px 10px;
+        font-size: 11px;
+        color: #7a9a7a;
+        background: #080c08;
+        border-bottom: 1px solid #1a221a;
+        flex-shrink: 0;
+      }
+
+      .mail__status:empty {
+        display: none;
+      }
+
+      .mail__status.is-warn {
+        color: #c9a86a;
+        background: #100c08;
+        border-bottom-color: #2a2210;
+      }
+
+      .mail__status.is-err {
+        color: #c88;
+        background: #100808;
+        border-bottom-color: #2a1515;
+      }
+
+      .mail__debug {
+        display: none;
+        padding: 6px 10px;
+        font-size: 10px;
+        border-bottom: 1px solid #1a221a;
+        background: #060806;
+        flex-shrink: 0;
+        max-height: 88px;
+        overflow: auto;
+      }
+
+      .mail__debug.is-open {
+        display: block;
+      }
+
+      .mail__debug pre {
+        margin: 0;
+        color: #8a8;
+        font-family: ui-monospace, Consolas, monospace;
+        white-space: pre-wrap;
+        line-height: 1.35;
+      }
+
+      .mail__body {
+        flex: 1;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(210px, 40%) 1fr;
+        position: relative;
+      }
+
+      .mail--narrow .mail__body {
+        grid-template-columns: 1fr;
+      }
+
+      .mail__list {
+        min-height: 0;
+        overflow: auto;
+        border-right: 1px solid #222;
+        background: #050505;
+      }
+
+      .mail--narrow .mail__list {
+        border-right: none;
+      }
+
+      .mail--narrow.is-reading .mail__list,
+      .mail--narrow.is-compose .mail__list {
+        display: none;
+      }
+
+      .mail__pane {
+        min-height: 0;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .mail--narrow:not(.is-reading):not(.is-compose) .mail__pane {
+        display: none;
+      }
+
+      .mail__compose {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: #000;
+        flex-direction: column;
+        z-index: 2;
+      }
+
+      .mail.is-compose .mail__compose {
+        display: flex;
+      }
+
+      .mail.is-compose .mail__list,
+      .mail.is-compose .mail__pane {
+        visibility: hidden;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 6px 1fr auto;
+        gap: 0 8px;
+        padding: 7px 10px;
+        border-bottom: 1px solid #181818;
+        cursor: pointer;
+      }
+
+      .row:hover {
+        background: #101010;
+      }
+
+      .row.is-sel {
+        background: #15120a;
+        box-shadow: inset 2px 0 0 var(--gold);
+      }
+
+      .row.is-unread .row__sub {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .row__dot {
+        width: 5px;
+        height: 5px;
+        margin-top: 6px;
+        border-radius: 50%;
+        background: transparent;
+      }
+
+      .row.is-unread .row__dot {
+        background: var(--gold);
+      }
+
+      .row__sub {
+        color: #ccc;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .row__meta,
+      .row__prev {
+        font-size: 11px;
+        color: #666;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .row__right {
+        text-align: right;
+        font-size: 11px;
+        color: #666;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+
+      .row__acts {
+        display: none;
+        gap: 3px;
+      }
+
+      .row:hover .row__acts {
+        display: flex;
+      }
+
+      .row__acts button {
+        font: inherit;
+        font-size: 10px;
+        padding: 1px 5px;
+        border: 1px solid #444;
+        background: #111;
+        color: #bbb;
+        cursor: pointer;
+      }
+
+      .mail__foot {
+        padding: 8px;
+        text-align: center;
+        border-top: 1px solid #1a1a1a;
+      }
+
+      .empty {
+        padding: 36px 12px;
+        text-align: center;
+        color: #555;
+      }
+
+      .read__head {
+        padding: 12px 14px 8px;
+        border-bottom: 1px solid #222;
+        flex-shrink: 0;
+      }
+
+      .read__back {
+        display: none;
+        margin-bottom: 8px;
+      }
+
+      .mail--narrow .read__back {
+        display: inline-block;
+      }
+
+      .read__sub {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 600;
+        color: #f2f2f2;
+      }
+
+      .read__party {
+        font-size: 12px;
+        color: #888;
+        line-height: 1.45;
+      }
+
+      .read__party strong {
+        color: #ccc;
+        font-weight: 600;
+      }
+
+      .sys {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 0 5px;
+        border: 1px solid #555;
+        font-size: 10px;
+        color: #9ab;
+        vertical-align: middle;
+      }
+
+      .read__acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .read__body {
+        padding: 14px;
+        flex: 1;
+        white-space: pre-wrap;
+        line-height: 1.5;
+        color: #ccc;
+      }
+
+      .attach {
+        margin: 0 14px 14px;
+        padding: 8px 10px;
+        border: 1px solid #333;
+        background: #0c0c0c;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .attach__meta {
+        font-size: 12px;
+        color: #999;
+      }
+
+      .attach__meta strong {
+        display: block;
+        color: #ddd;
+        margin-bottom: 2px;
+      }
+
+      .gi {
+        display: inline-block;
+        overflow: hidden;
+        flex-shrink: 0;
+        image-rendering: pixelated;
+        background: #111;
+        border: 1px solid #444;
+        vertical-align: middle;
+      }
+
+      .gi img {
+        display: block;
+        image-rendering: pixelated;
+        max-width: none;
+      }
+
+      .gi--slot {
+        border: 2px double #666;
+        background: #15151c;
+        cursor: pointer;
+        padding: 0;
+      }
+
+      .gi--slot.is-on {
+        border-color: var(--gold);
+      }
+
+      .sheet__head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #222;
+        flex-shrink: 0;
+      }
+
+      .sheet__head h2 {
+        margin: 0;
+        flex: 1;
+        font-size: 13px;
+        font-weight: 600;
+        color: #ddd;
+      }
+
+      .sheet__form {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .field label {
+        font-size: 10px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .field input,
+      .field textarea {
+        font: inherit;
+        background: #111;
+        border: 1px solid #444;
+        color: #eee;
+        padding: 6px 8px;
+      }
+
+      .field textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        align-items: center;
+        background: #111;
+        border: 1px solid #444;
+        padding: 4px 6px;
+        min-height: 30px;
+      }
+
+      .chip {
+        font-size: 12px;
+        padding: 2px 7px;
+        border: 1px solid #555;
+        background: #1a1a1a;
+        color: #ddd;
+      }
+
+      .chip button {
+        border: none;
+        background: none;
+        color: #888;
+        cursor: pointer;
+        font: inherit;
+        margin-left: 3px;
+        padding: 0;
+      }
+
+      .chips input {
+        border: none;
+        background: transparent;
+        color: #eee;
+        font: inherit;
+        flex: 1;
+        min-width: 70px;
+        outline: none;
+      }
+
+      .suggest {
+        display: none;
+        border: 1px solid #333;
+        background: #0a0a0a;
+      }
+
+      .suggest.is-open {
+        display: block;
+      }
+
+      .suggest button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        font: inherit;
+        padding: 5px 8px;
+        border: none;
+        background: transparent;
+        color: #ccc;
+        cursor: pointer;
+      }
+
+      .suggest button:hover {
+        background: #16140c;
+        color: var(--gold);
+      }
+
+      .suggest__sec {
+        padding: 4px 8px 2px;
+        font-size: 10px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
+      .bag {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .bag__hint {
+        font-size: 11px;
+        color: #666;
+      }
+
+      .sheet__foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-top: 1px solid #222;
+        flex-shrink: 0;
+      }
+
+      .cost {
+        flex: 1;
+        font-size: 12px;
+        color: #888;
+      }
+
+      .cost strong {
+        color: var(--gold);
+      }
+
+      .stage__row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .bag-panel {
+        display: flex;
+        flex-direction: column;
+        width: 200px;
+        border: 2px double gray;
+        background: #000;
+        font-size: 12px;
+        flex-shrink: 0;
+      }
+
+      .bag-panel__chrome {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 8px;
+        border-bottom: 1px solid #333;
+        background: #0a0a0a;
+        font-size: 11px;
+        color: #777;
+      }
+
+      .bag-panel__chrome strong {
+        color: #bbb;
+        font-weight: 600;
+      }
+
+      .bag-panel__grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 10px;
+      }
+
+      .bag-panel__hint {
+        padding: 0 10px 10px;
+        font-size: 10px;
+        color: #555;
+      }
+
+      .ctx {
+        position: fixed;
+        z-index: 1000;
+        min-width: 140px;
+        padding: 3px 0;
+        background: #0e0e0e;
+        border: 1px solid #555;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+        font-size: 12px;
+      }
+
+      .ctx button {
+        display: block;
+        width: 100%;
+        text-align: left;
+        font: inherit;
+        padding: 6px 12px;
+        border: none;
+        background: transparent;
+        color: #ddd;
+        cursor: pointer;
+      }
+
+      .ctx button:hover:not(:disabled) {
+        background: #1a160c;
+        color: var(--gold);
+      }
+
+      .ctx button:disabled {
+        color: #555;
+        cursor: not-allowed;
+      }
+
+      .ctx__sep {
+        height: 1px;
+        margin: 3px 0;
+        background: #2a2a2a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <h1 class="stage__title">Mail</h1>
+      <div class="stage__tools">
+        <button type="button" id="btnWide" class="is-on">Wide</button>
+        <button type="button" id="btnNarrow">Narrow</button>
+        <label>
+          <input type="checkbox" id="chkObs" checked />
+          Observing Wizard
+        </label>
+        <label title="Character bag no longer matches Comm snapshot">
+          <input type="checkbox" id="chkStale" />
+          Stale bag (mismatch abort)
+        </label>
+        <label title="Character has no free inventory slots">
+          <input type="checkbox" id="chkFull" />
+          Full inventory
+        </label>
+        <button type="button" id="btnCompose">Compose</button>
+        <button type="button" id="btnRefresh">Refresh</button>
+        <button type="button" id="btnInbound" title="Someone mailed you — bumps server info.mail; SAC delivers X.unread">
+          Inbound mail
+        </button>
+        <button type="button" id="btnDebug">Last script</button>
+      </div>
+
+      <div class="abar">
+        <button type="button">Layout</button>
+        <button type="button" class="is-on" id="abarBag">Bag</button>
+        <button type="button" class="is-on">
+          Mail
+          <span class="abar__badge" id="badge">3</span>
+        </button>
+        <button type="button">Command</button>
+      </div>
+
+      <div class="stage__row">
+        <div class="bag-panel" id="bagPanel">
+          <div class="bag-panel__chrome">
+            <span>⠿</span>
+            <strong>bag</strong>
+          </div>
+          <div class="bag-panel__grid" id="bagGrid"></div>
+          <div class="bag-panel__hint">Right-click → Send mail</div>
+        </div>
+
+      <div class="mail" id="panel" data-mode="wide">
+        <div class="mail__chrome">
+          <span>⠿</span>
+          <strong>mail</strong>
+          <span class="mail__chrome-spacer"></span>
+          <span id="chromeMeta"></span>
+        </div>
+
+        <div class="mail__toolbar">
+          <input class="mail__search" id="search" type="search" placeholder="Search…" />
+          <div class="mail__pills" id="pills">
+            <button type="button" class="mail__pill is-on" data-pill="all">All</button>
+            <button type="button" class="mail__pill" data-pill="unread">Unread</button>
+            <button type="button" class="mail__pill" data-pill="item">Item</button>
+            <button type="button" class="mail__pill" data-pill="tome">To me</button>
+            <button type="button" class="mail__pill" data-pill="fromme">From me</button>
+          </div>
+          <button type="button" class="btn btn--gold" id="btnNew">Compose</button>
+          <button type="button" class="btn" id="btnMark">Mark read</button>
+        </div>
+
+        <div class="mail__banner" id="banner"></div>
+        <div class="mail__status" id="status"></div>
+        <div class="mail__debug" id="debug">
+          <pre id="debugPre"></pre>
+        </div>
+
+        <div class="mail__body">
+          <div class="mail__list" id="list" role="listbox"></div>
+
+          <div class="mail__pane">
+            <div class="empty" id="readEmpty">Select a message</div>
+            <div id="readContent" hidden>
+              <div class="read__head">
+                <button type="button" class="btn read__back" id="btnBack">← Inbox</button>
+                <h2 class="read__sub" id="readSub"></h2>
+                <div class="read__party" id="readParty"></div>
+                <div class="read__acts">
+                  <button type="button" class="btn" id="btnTake">Take</button>
+                  <button type="button" class="btn btn--danger" id="btnDel">Delete</button>
+                  <button type="button" class="btn" id="btnNext">Next unread</button>
+                </div>
+              </div>
+              <div class="read__body" id="readBody"></div>
+              <div class="attach" id="readAttach" hidden>
+                <span id="readIcon"></span>
+                <div class="attach__meta">
+                  <strong id="readItemName"></strong>
+                  <span id="readItemSub"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mail__compose" id="compose">
+            <div class="sheet__head">
+              <h2>New message</h2>
+              <button type="button" class="btn" id="btnCancelC">Cancel</button>
+            </div>
+            <div class="sheet__form">
+              <div class="field">
+                <label>To</label>
+                <div class="chips" id="chips">
+                  <input id="toInput" type="text" placeholder="Character…" />
+                </div>
+                <div class="suggest" id="suggest"></div>
+              </div>
+              <div class="field">
+                <label>Subject</label>
+                <input id="subject" type="text" />
+              </div>
+              <div class="field" style="flex: 1">
+                <label>Message</label>
+                <textarea id="body"></textarea>
+              </div>
+              <div class="field">
+                <label>Attach (1 item)</label>
+                <div class="bag" id="bag"></div>
+              </div>
+            </div>
+            <div class="sheet__foot">
+              <span class="cost" id="cost">Cost <strong>48,000</strong></span>
+              <button type="button" class="btn" id="btnCancelC2">Cancel</button>
+              <button type="button" class="btn btn--gold" id="btnSend">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <div class="ctx" id="ctx" hidden></div>
+
+    <script>
+      const ORIGIN = "https://adventure.land";
+      const PACK = {
+        file: "/images/tiles/items/pack_20vt8.png",
+        size: 20,
+        columns: 16,
+        rows: 64,
+      };
+      const POS = {
+        gem0: ["", 13, 25],
+        gloves: ["", 2, 2],
+        helmet: ["", 2, 0],
+        placeholder: ["", 0, 0],
+      };
+      const ITEM_NAME = {
+        gem0: "Raw Emerald",
+        gloves: "Gloves",
+        helmet: "Helmet",
+      };
+
+      function itemIcon(name, size, level) {
+        const px = size || 20;
+        const pos = POS[name] || POS.placeholder;
+        const sx = pos[1];
+        const sy = pos[2];
+        const scale = px / PACK.size;
+        const w = PACK.columns * PACK.size * scale;
+        const h = PACK.rows * PACK.size * scale;
+        const tip = (ITEM_NAME[name] || name) + (level != null ? " +" + level : "");
+        return (
+          '<span class="gi" title="' +
+          tip.replace(/"/g, "") +
+          '" style="width:' +
+          px +
+          "px;height:" +
+          px +
+          'px">' +
+          '<img alt="" draggable="false" src="' +
+          ORIGIN +
+          PACK.file +
+          '" style="width:' +
+          w +
+          "px;height:" +
+          h +
+          "px;margin-top:-" +
+          sy * px +
+          "px;margin-left:-" +
+          sx * px +
+          'px" />' +
+          "</span>"
+        );
+      }
+
+      const SELF_CHARS = ["Wizard", "Wizard2", "PriestAlt"];
+      const SELF = new Set(SELF_CHARS);
+      const OBSERVE = "Wizard";
+      /** Visible player entities on the observe map (mock). */
+      const VISIBLE_PLAYERS = ["Kael", "Thorne", "LootGoblin", "Stranger"];
+      const PAGE = 4;
+
+      /** Comm snapshot of observing bag */
+      const BAG_SNAP = [
+        { slot: 3, name: "gem0", q: 1 },
+        { slot: 7, name: "helmet", level: 7 },
+        { slot: 12, name: "gloves", level: 8 },
+      ];
+
+      /**
+       * Live character bag (simulated). When "stale", slot 7 becomes a different item
+       * so fingerprint guards abort.
+       */
+      function liveBag() {
+        if ($("chkStale").checked) {
+          return [
+            { slot: 3, name: "gem0", q: 1 },
+            { slot: 7, name: "gloves", level: 2 },
+            { slot: 12, name: "gloves", level: 8 },
+          ];
+        }
+        return BAG_SNAP.map((x) => Object.assign({}, x));
+      }
+
+      function liveEsize() {
+        return $("chkFull").checked ? 0 : 12;
+      }
+
+      const ALL = [
+        {
+          id: "m1",
+          fro: "Kael",
+          to: "Wizard",
+          subject: "Vault run tonight?",
+          message: "Got a key and a free hour after reset.\nBring a priest if you can.",
+          sent: "2026-08-16T13:40:00Z",
+          read: false,
+        },
+        {
+          id: "m2",
+          fro: "mainframe",
+          to: "Wizard",
+          subject: "Daily reward",
+          message: "Your daily mail reward has been delivered.",
+          sent: "2026-08-16T08:00:00Z",
+          read: false,
+          system: true,
+          item: { name: "gem0", q: 1 },
+        },
+        {
+          id: "m3",
+          fro: "Mira",
+          to: "Wizard",
+          subject: "Returning your gloves",
+          message: "Thanks for the loan — still intact.",
+          sent: "2026-08-15T21:12:00Z",
+          read: false,
+          item: { name: "gloves", level: 8 },
+        },
+        {
+          id: "m4",
+          fro: "Wizard",
+          to: "Thorne",
+          subject: "Party invite later",
+          message: "EU1 around 20:00. Bring scrolls.",
+          sent: "2026-08-15T18:02:00Z",
+          read: true,
+        },
+        {
+          id: "m5",
+          fro: "LootGoblin",
+          to: "Wizard",
+          subject: "WTS: slimy orb",
+          message: "2m OBO.",
+          sent: "2026-08-14T11:30:00Z",
+          read: true,
+        },
+        {
+          id: "m6",
+          fro: "Thorne",
+          to: "Wizard",
+          subject: "Re: Party invite later",
+          message: "I'll be there.",
+          sent: "2026-08-15T18:40:00Z",
+          read: true,
+        },
+        {
+          id: "m7",
+          fro: "Nexus",
+          to: "Wizard",
+          subject: "Bank hop?",
+          message: "Meet at bank_b.",
+          sent: "2026-08-13T16:00:00Z",
+          read: true,
+        },
+        {
+          id: "m8",
+          fro: "Kael",
+          to: "Wizard",
+          subject: "Old scroll trade",
+          message: "Still interested?",
+          sent: "2026-08-12T10:00:00Z",
+          read: true,
+        },
+        {
+          id: "m9",
+          fro: "mainframe",
+          to: "Wizard",
+          subject: "Weekly note",
+          message: "Nothing urgent.",
+          sent: "2026-08-10T09:00:00Z",
+          read: true,
+          system: true,
+        },
+        {
+          id: "m10",
+          fro: "PriestAlt",
+          to: "Wizard",
+          subject: "Alt check-in",
+          message: "Bags clear.",
+          sent: "2026-08-09T20:00:00Z",
+          read: true,
+        },
+      ];
+
+      let mails = [];
+      let nextCursor = 0;
+      let hasMore = true;
+      let loadingMore = false;
+      let prefetchTimer = 0;
+      let prefetchPages = 0;
+      const PREFETCH_GAP_MS = 600;
+      const PREFETCH_MAX_PAGES = 25;
+      const HEAD_TTL_MS = 20000;
+      const SAC_MS = 4000;
+      /** Server user_data.info.mail — SAC copies this into X.unread */
+      let serverMailCount = 0;
+      /** Stock client X.unread */
+      let xUnread = 0;
+      let lastSeenUnread = 0;
+      let lastHeadAt = 0;
+      let lastHeadReason = "—";
+      let pill = "all";
+      let selectedId = null;
+      let attach = null;
+      let toChips = [];
+      let listScroll = 0;
+      let lastScript = "";
+      let cmdSeq = 0;
+
+      const $ = (id) => document.getElementById(id);
+      const panel = $("panel");
+      const listEl = $("list");
+
+      function mailPartyNames() {
+        const seen = new Map();
+        for (let i = 0; i < mails.length; i++) {
+          const m = mails[i];
+          for (const n of [m.fro, m.to]) {
+            if (!n || SELF.has(n)) continue;
+            const k = n.toLowerCase();
+            if (!seen.has(k)) seen.set(k, n);
+          }
+        }
+        return Array.from(seen.values());
+      }
+
+      /**
+       * Ranked To suggestions: own chars → prior mail parties → visible players.
+       * @returns {{ name: string, group: string }[]}
+       */
+      function suggestMailTo(query) {
+        const q = String(query || "").trim().toLowerCase();
+        const out = [];
+        const used = new Set(toChips.map((n) => n.toLowerCase()));
+
+        function pushGroup(names, group) {
+          for (let i = 0; i < names.length; i++) {
+            const name = names[i];
+            const k = name.toLowerCase();
+            if (used.has(k)) continue;
+            if (q && !k.includes(q)) continue;
+            used.add(k);
+            out.push({ name, group });
+          }
+        }
+
+        pushGroup(SELF_CHARS, "Own");
+        pushGroup(mailPartyNames(), "Mail");
+        pushGroup(VISIBLE_PLAYERS, "Nearby");
+        return out.slice(0, 12);
+      }
+
+      function renderToSuggest() {
+        const sug = $("suggest");
+        sug.replaceChildren();
+        const hits = suggestMailTo($("toInput").value);
+        if (!hits.length) {
+          sug.classList.remove("is-open");
+          return;
+        }
+        let lastGroup = "";
+        for (let i = 0; i < hits.length; i++) {
+          const h = hits[i];
+          if (h.group !== lastGroup) {
+            lastGroup = h.group;
+            const sec = document.createElement("div");
+            sec.className = "suggest__sec";
+            sec.textContent = h.group;
+            sug.appendChild(sec);
+          }
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = h.name;
+          b.addEventListener("click", () => {
+            toChips.push(h.name);
+            $("toInput").value = "";
+            sug.classList.remove("is-open");
+            renderChips();
+          });
+          sug.appendChild(b);
+        }
+        sug.classList.add("is-open");
+      }
+
+      function jsStr(s) {
+        return JSON.stringify(String(s));
+      }
+
+      function fpMatch(live, expected) {
+        if (!live || live.name !== expected.name) return false;
+        if (expected.level != null && live.level !== expected.level) return false;
+        if (expected.q != null && live.q !== expected.q) return false;
+        if (expected.p != null && live.p !== expected.p) return false;
+        return true;
+      }
+
+      function buildSendScript(to, subject, message, fp) {
+        if (!fp) {
+          return "send_mail(" + jsStr(to) + "," + jsStr(subject) + "," + jsStr(message) + ");";
+        }
+        const checks = ["!it", "it.name!==" + jsStr(fp.name)];
+        if (fp.level != null) checks.push("it.level!==" + fp.level);
+        if (fp.q != null) checks.push("it.q!==" + fp.q);
+        return (
+          "var it=character.items[" +
+          fp.slot +
+          "];\n" +
+          "if(" +
+          checks.join("||") +
+          '){\n  game_log("Mail attach mismatch — aborted");\n}else{\n' +
+          "  swap(" +
+          fp.slot +
+          ",0);\n" +
+          "  send_mail(" +
+          jsStr(to) +
+          "," +
+          jsStr(subject) +
+          "," +
+          jsStr(message) +
+          ",true);\n" +
+          "  swap(0," +
+          fp.slot +
+          ");\n}"
+        );
+      }
+
+      function buildTakeScript(mailId) {
+        return (
+          'if(character.esize<1){\n  game_log("Mail take aborted — no inventory space");\n}else{\n' +
+          '  parent.socket.emit("mail_take_item",{id:' +
+          jsStr(mailId) +
+          "});\n}"
+        );
+      }
+
+      function rel(iso) {
+        const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+        if (m < 60) return m + "m";
+        const h = Math.floor(m / 60);
+        if (h < 48) return h + "h";
+        return Math.floor(h / 24) + "d";
+      }
+
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function observing() {
+        return $("chkObs").checked;
+      }
+
+      function setStatus(t, kind) {
+        const el = $("status");
+        el.textContent = t || "";
+        el.classList.toggle("is-warn", kind === "warn");
+        el.classList.toggle("is-err", kind === "err");
+      }
+
+      function showScript(script) {
+        lastScript = script;
+        $("debugPre").textContent = script;
+      }
+
+      function filtered() {
+        const q = $("search").value.trim().toLowerCase();
+        return mails.filter((m) => {
+          if (pill === "unread" && m.read) return false;
+          if (pill === "item" && !(m.item && !m.taken)) return false;
+          if (pill === "tome" && !SELF.has(m.to)) return false;
+          if (pill === "fromme" && !SELF.has(m.fro)) return false;
+          if (!q) return true;
+          return [m.fro, m.to, m.subject, m.message].join(" ").toLowerCase().includes(q);
+        });
+      }
+
+      function cacheUnread() {
+        let n = 0;
+        for (let i = 0; i < mails.length; i++) if (!mails[i].read) n++;
+        return n;
+      }
+
+      /** Badge = X.unread (stock), not cache length. */
+      function syncBadge() {
+        $("badge").textContent = String(xUnread);
+        $("badge").hidden = xUnread === 0;
+      }
+
+      function syncChrome() {
+        const wide = panel.dataset.mode === "wide";
+        const age =
+          lastHeadAt === 0 ? "never" : Math.round((Date.now() - lastHeadAt) / 1000) + "s ago";
+        $("chromeMeta").textContent =
+          (wide ? "920×540" : "400×580") +
+          " · cache " +
+          mails.length +
+          (hasMore ? "+" : "") +
+          " (local unread " +
+          cacheUnread() +
+          ")" +
+          " · X.unread " +
+          xUnread +
+          " · head " +
+          age +
+          " (" +
+          lastHeadReason +
+          ")";
+      }
+
+      /**
+       * Apply servers_and_characters mail field → X.unread.
+       * Rising unread schedules a head merge (new mail), independent of TTL.
+       */
+      function applySacMailCount(count) {
+        const prev = xUnread;
+        xUnread = count;
+        syncBadge();
+        if (count > lastSeenUnread) {
+          lastSeenUnread = count;
+          requestHead("X.unread↑ (new mail)");
+        } else if (count < lastSeenUnread && count < prev) {
+          lastSeenUnread = count;
+          requestHead("X.unread↓ (external read)");
+        } else {
+          lastSeenUnread = count;
+        }
+        syncChrome();
+      }
+
+      /** Stock Comm: servers_and_characters ~every 4s. */
+      function tickSac() {
+        applySacMailCount(serverMailCount);
+      }
+
+      function recountServerUnread() {
+        let n = 0;
+        for (let i = 0; i < ALL.length; i++) if (!ALL[i].read) n++;
+        serverMailCount = n;
+      }
+
+      /**
+       * Soft head merge. Coalesced; records reason for chrome.
+       * @param {string} reason
+       * @param {{ force?: boolean }} [opts]
+       */
+      function requestHead(reason, opts) {
+        const force = !!(opts && opts.force);
+        if (reason === "Refresh" || force) {
+          mergeHead(reason);
+          return;
+        }
+        if (reason.indexOf("X.unread") === 0 || reason.indexOf("command") === 0) {
+          mergeHead(reason);
+          return;
+        }
+        const empty = mails.length === 0;
+        const stale = lastHeadAt === 0 || Date.now() - lastHeadAt >= HEAD_TTL_MS;
+        if (empty || stale) mergeHead(reason);
+      }
+
+      function mergeHead(reason) {
+        const page = ALL.slice(0, PAGE);
+        const map = new Map();
+        for (let i = 0; i < mails.length; i++) map.set(mails[i].id, mails[i]);
+        for (let i = 0; i < page.length; i++) {
+          const p = page[i];
+          const prev = map.get(p.id);
+          map.set(p.id, prev ? Object.assign({}, prev, p) : Object.assign({}, p));
+        }
+        const older = mails.filter((m) => !page.some((p) => p.id === m.id));
+        mails = page.map((p) => map.get(p.id)).concat(older);
+        if (nextCursor < PAGE) {
+          nextCursor = PAGE;
+          hasMore = ALL.length > PAGE;
+        }
+        lastHeadAt = Date.now();
+        lastHeadReason = reason || "head";
+        setStatus("Head merge · " + lastHeadReason);
+        renderList();
+        syncChrome();
+      }
+
+      /** Local read_mail → { type: unread, count } — no list pull. */
+      function applyUnreadFromReadApi() {
+        recountServerUnread();
+        xUnread = serverMailCount;
+        lastSeenUnread = xUnread;
+        syncBadge();
+        syncChrome();
+      }
+
+      function syncCaps() {
+        const on = observing();
+        $("banner").classList.toggle("mail__banner--off", !on);
+        $("banner").textContent = on
+          ? "Observing " + OBSERVE + " · Send / Take via o:command"
+          : "Not observing · inbox only";
+        $("btnSend").disabled = !on;
+        $("btnTake").disabled = !on || !hasItem(selectedId);
+        $("bagPanel").style.opacity = on ? "1" : "0.45";
+        updateCost();
+      }
+
+      function hideCtx() {
+        const ctx = $("ctx");
+        ctx.hidden = true;
+        ctx.replaceChildren();
+      }
+
+      /**
+       * @param {MouseEvent} ev
+       * @param {typeof BAG_SNAP[0]} it
+       */
+      function showItemCtx(ev, it) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const ctx = $("ctx");
+        ctx.replaceChildren();
+
+        const send = document.createElement("button");
+        send.type = "button";
+        send.textContent = "Send mail";
+        send.disabled = !observing();
+        send.addEventListener("click", () => {
+          hideCtx();
+          openCompose({ attach: Object.assign({}, it) });
+        });
+        ctx.appendChild(send);
+
+        const sep = document.createElement("div");
+        sep.className = "ctx__sep";
+        ctx.appendChild(sep);
+
+        const info = document.createElement("button");
+        info.type = "button";
+        info.textContent =
+          (ITEM_NAME[it.name] || it.name) +
+          (it.level != null ? " +" + it.level : "") +
+          " · slot " +
+          it.slot;
+        info.disabled = true;
+        ctx.appendChild(info);
+
+        ctx.hidden = false;
+        const pad = 4;
+        let x = ev.clientX;
+        let y = ev.clientY;
+        ctx.style.left = "0px";
+        ctx.style.top = "0px";
+        const rect = ctx.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth - pad) x = window.innerWidth - rect.width - pad;
+        if (y + rect.height > window.innerHeight - pad) y = window.innerHeight - rect.height - pad;
+        ctx.style.left = Math.max(pad, x) + "px";
+        ctx.style.top = Math.max(pad, y) + "px";
+      }
+
+      function renderBagPanel() {
+        const grid = $("bagGrid");
+        grid.replaceChildren();
+        for (let i = 0; i < BAG_SNAP.length; i++) {
+          const it = BAG_SNAP[i];
+          const wrap = document.createElement("button");
+          wrap.type = "button";
+          wrap.className = "gi gi--slot";
+          wrap.style.width = "40px";
+          wrap.style.height = "40px";
+          wrap.style.overflow = "hidden";
+          wrap.title =
+            (ITEM_NAME[it.name] || it.name) +
+            " · slot " +
+            it.slot +
+            " · right-click → Send mail";
+          wrap.innerHTML = itemIcon(it.name, 36, it.level);
+          wrap.addEventListener("contextmenu", (ev) => showItemCtx(ev, it));
+          grid.appendChild(wrap);
+        }
+      }
+
+      function hasItem(id) {
+        const m = mails.find((x) => x.id === id);
+        return !!(m && m.item && !m.taken);
+      }
+
+      function stopPrefetch() {
+        if (prefetchTimer) {
+          window.clearTimeout(prefetchTimer);
+          prefetchTimer = 0;
+        }
+      }
+
+      function schedulePrefetch() {
+        stopPrefetch();
+        if (!hasMore || loadingMore) return;
+        if (prefetchPages >= PREFETCH_MAX_PAGES) {
+          setStatus("Cache warm · " + mails.length);
+          return;
+        }
+        prefetchTimer = window.setTimeout(() => {
+          prefetchTimer = 0;
+          loadOlder({ background: true });
+        }, PREFETCH_GAP_MS);
+      }
+
+      /**
+       * @param {{ background?: boolean }} [opts]
+       */
+      function loadOlder(opts) {
+        const background = !!(opts && opts.background);
+        if (!hasMore || loadingMore) return;
+        loadingMore = true;
+        renderList();
+        window.setTimeout(() => {
+          const chunk = ALL.slice(nextCursor, nextCursor + PAGE);
+          for (let i = 0; i < chunk.length; i++) {
+            if (!mails.some((m) => m.id === chunk[i].id)) mails.push(Object.assign({}, chunk[i]));
+          }
+          nextCursor += PAGE;
+          hasMore = nextCursor < ALL.length;
+          loadingMore = false;
+          if (background) prefetchPages += 1;
+          renderList();
+          setStatus(
+            (background ? "Warming cache · " : "Loaded · ") +
+              mails.length +
+              (hasMore ? "+" : "")
+          );
+          schedulePrefetch();
+        }, background ? 180 : 280);
+      }
+
+      /**
+       * Simulate character running the script. Comm only sees outcome via merge.
+       * @returns {{ ok: boolean, reason?: string }}
+       */
+      function runOnCharacter(kind, payload) {
+        if (kind === "take") {
+          if (liveEsize() < 1) return { ok: false, reason: "no space" };
+          const m = ALL.find((x) => x.id === payload.mailId);
+          if (m && m.item) {
+            m.taken = true;
+            m.item = undefined;
+          }
+          return { ok: true };
+        }
+        if (kind === "send") {
+          const fp = payload.attach;
+          if (fp) {
+            const live = liveBag().find((x) => x.slot === fp.slot);
+            if (!fpMatch(live, fp)) return { ok: false, reason: "attach mismatch" };
+          }
+          ALL.unshift({
+            id: "m" + Date.now(),
+            fro: OBSERVE,
+            to: payload.to,
+            subject: payload.subject,
+            message: payload.message,
+            sent: new Date().toISOString(),
+            read: true,
+            item: fp
+              ? { name: fp.name, level: fp.level, q: fp.q }
+              : undefined,
+          });
+          return { ok: true };
+        }
+        return { ok: false, reason: "unknown" };
+      }
+
+      /** Emit o:command — one-way; then soft-merge to infer result. */
+      function emitCommand(script, kind, payload) {
+        showScript(script);
+        const seq = ++cmdSeq;
+        setStatus("Command sent to " + OBSERVE + "…", "warn");
+        closeCompose();
+
+        window.setTimeout(() => {
+          if (seq !== cmdSeq) return;
+          const result = runOnCharacter(kind, payload);
+          const keep = selectedId;
+          const sc = listEl.scrollTop;
+          mergeHead("command · " + kind);
+          listEl.scrollTop = sc;
+          if (keep) {
+            selectedId = keep;
+            renderList();
+            renderRead();
+          }
+          recountServerUnread();
+          applyUnreadFromReadApi();
+          syncCaps();
+
+          if (!result.ok) {
+            setStatus(
+              result.reason === "attach mismatch"
+                ? "No change — attach mismatch on character"
+                : result.reason === "no space"
+                  ? "No change — inventory full on character"
+                  : "No change — command aborted",
+              "err"
+            );
+            return;
+          }
+          if (kind === "take") setStatus("Taken");
+          else setStatus("Sent");
+          if (kind === "send") {
+            attach = null;
+            toChips = [];
+            $("subject").value = "";
+            $("body").value = "";
+            renderChips();
+            renderBag();
+            updateCost();
+          }
+        }, 550);
+      }
+
+      function doTake(id) {
+        if (!observing()) return;
+        const m = mails.find((x) => x.id === id);
+        if (!m || !m.item || m.taken) return;
+        emitCommand(buildTakeScript(id), "take", { mailId: id });
+      }
+
+      function doSend() {
+        if (!observing()) return;
+        const to = toChips[0] || $("toInput").value.trim();
+        if (!to) {
+          $("toInput").focus();
+          return;
+        }
+        const subject = $("subject").value.trim() || "(no subject)";
+        const message = $("body").value || "";
+        const fp = attach ? Object.assign({}, attach) : null;
+        emitCommand(buildSendScript(to, subject, message, fp), "send", {
+          to,
+          subject,
+          message,
+          attach: fp,
+        });
+      }
+
+      function renderList() {
+        listScroll = listEl.scrollTop;
+        const rows = filtered();
+        listEl.replaceChildren();
+
+        if (!rows.length && !loadingMore) {
+          const e = document.createElement("div");
+          e.className = "empty";
+          e.textContent = mails.length ? "No matches" : "No mail";
+          listEl.appendChild(e);
+        } else {
+          for (let i = 0; i < rows.length; i++) {
+            const m = rows[i];
+            const row = document.createElement("div");
+            row.className =
+              "row" + (!m.read ? " is-unread" : "") + (m.id === selectedId ? " is-sel" : "");
+            row.innerHTML =
+              '<span class="row__dot"></span><div>' +
+              '<div class="row__sub"></div>' +
+              '<div class="row__meta"></div>' +
+              '<div class="row__prev"></div></div>' +
+              '<div class="row__right"><div class="row__time"></div>' +
+              '<span class="row__icon"></span>' +
+              '<div class="row__acts"></div></div>';
+
+            row.querySelector(".row__sub").textContent = m.subject;
+            row.querySelector(".row__meta").textContent =
+              m.fro + " → " + m.to + (m.system ? " · sys" : "");
+            row.querySelector(".row__prev").textContent = m.message
+              .replace(/\s+/g, " ")
+              .slice(0, 56);
+            row.querySelector(".row__time").textContent = rel(m.sent);
+
+            if (m.item && !m.taken) {
+              row.querySelector(".row__icon").innerHTML = itemIcon(m.item.name, 18, m.item.level);
+            }
+
+            const acts = row.querySelector(".row__acts");
+            if (m.item && !m.taken) {
+              const t = document.createElement("button");
+              t.type = "button";
+              t.textContent = "Take";
+              t.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                doTake(m.id);
+              });
+              acts.appendChild(t);
+            }
+            const d = document.createElement("button");
+            d.type = "button";
+            d.textContent = "Del";
+            d.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              del(m.id);
+            });
+            acts.appendChild(d);
+
+            row.addEventListener("click", () => select(m.id));
+            listEl.appendChild(row);
+          }
+        }
+
+        const foot = document.createElement("div");
+        foot.className = "mail__foot";
+        if (loadingMore) {
+          foot.textContent = "Warming cache…";
+        } else if (hasMore) {
+          foot.textContent = "Cached " + mails.length + "+ · warming…";
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "btn";
+          b.textContent = "Load older now";
+          b.addEventListener("click", () => loadOlder());
+          foot.appendChild(b);
+        } else {
+          foot.textContent = mails.length + " messages";
+        }
+        listEl.appendChild(foot);
+        listEl.scrollTop = listScroll;
+        syncChrome();
+      }
+
+      function select(id) {
+        selectedId = id;
+        const m = mails.find((x) => x.id === id);
+        if (m && !m.read) {
+          m.read = true;
+          const s = ALL.find((x) => x.id === id);
+          if (s) s.read = true;
+          applyUnreadFromReadApi();
+        }
+        panel.classList.add("is-reading");
+        panel.classList.remove("is-compose");
+        renderList();
+        renderRead();
+        syncCaps();
+      }
+
+      function renderRead() {
+        const m = mails.find((x) => x.id === selectedId);
+        if (!m) {
+          $("readEmpty").hidden = false;
+          $("readContent").hidden = true;
+          return;
+        }
+        $("readEmpty").hidden = true;
+        $("readContent").hidden = false;
+        $("readSub").textContent = m.subject;
+        $("readParty").innerHTML =
+          "<div><strong>From</strong> " +
+          esc(m.fro) +
+          (m.system ? '<span class="sys">system</span>' : "") +
+          "</div><div><strong>To</strong> " +
+          esc(m.to) +
+          " · " +
+          esc(rel(m.sent)) +
+          "</div>";
+        $("readBody").textContent = m.message;
+        if (m.item && !m.taken) {
+          $("readAttach").hidden = false;
+          $("readIcon").innerHTML = itemIcon(m.item.name, 40, m.item.level);
+          $("readItemName").textContent =
+            (ITEM_NAME[m.item.name] || m.item.name) +
+            (m.item.level != null ? " +" + m.item.level : "");
+          $("readItemSub").textContent = m.item.q ? "×" + m.item.q : "Attachment";
+        } else {
+          $("readAttach").hidden = true;
+        }
+      }
+
+      function del(id) {
+        mails = mails.filter((m) => m.id !== id);
+        const i = ALL.findIndex((m) => m.id === id);
+        if (i >= 0) ALL.splice(i, 1);
+        if (selectedId === id) {
+          const n = filtered()[0];
+          selectedId = n ? n.id : null;
+        }
+        applyUnreadFromReadApi();
+        renderList();
+        renderRead();
+        if (!selectedId) panel.classList.remove("is-reading");
+      }
+
+      function openCompose(opts) {
+        if (opts && opts.attach) attach = Object.assign({}, opts.attach);
+        panel.classList.add("is-compose");
+        panel.classList.remove("is-reading");
+        renderBag();
+        syncCaps();
+        $("toInput").focus();
+        if (attach) {
+          setStatus(
+            "Attach " +
+              (ITEM_NAME[attach.name] || attach.name) +
+              (attach.level != null ? " +" + attach.level : ""),
+            "warn"
+          );
+        }
+      }
+
+      function closeCompose() {
+        panel.classList.remove("is-compose");
+        if (selectedId && panel.dataset.mode === "narrow") panel.classList.add("is-reading");
+      }
+
+      function updateCost() {
+        const t = 48000 + (attach ? 312000 : 0);
+        $("cost").innerHTML = "Cost <strong>" + t.toLocaleString() + "</strong>";
+      }
+
+      function renderBag() {
+        const bag = $("bag");
+        bag.replaceChildren();
+        for (let i = 0; i < BAG_SNAP.length; i++) {
+          const it = BAG_SNAP[i];
+          const wrap = document.createElement("button");
+          wrap.type = "button";
+          wrap.className = "gi gi--slot" + (attach && attach.slot === it.slot ? " is-on" : "");
+          wrap.style.width = "40px";
+          wrap.style.height = "40px";
+          wrap.style.overflow = "hidden";
+          wrap.title = (ITEM_NAME[it.name] || it.name) + " · slot " + it.slot;
+          wrap.innerHTML = itemIcon(it.name, 36, it.level);
+          wrap.addEventListener("click", () => {
+            if (attach && attach.slot === it.slot) attach = null;
+            else attach = Object.assign({}, it);
+            renderBag();
+            updateCost();
+          });
+          bag.appendChild(wrap);
+        }
+        const hint = document.createElement("span");
+        hint.className = "bag__hint";
+        hint.textContent = attach
+          ? (ITEM_NAME[attach.name] || attach.name) + " · slot " + attach.slot
+          : "Optional";
+        bag.appendChild(hint);
+      }
+
+      function renderChips() {
+        const input = $("toInput");
+        const host = $("chips");
+        const old = host.querySelectorAll(".chip");
+        for (let i = 0; i < old.length; i++) old[i].remove();
+        for (let i = 0; i < toChips.length; i++) {
+          const name = toChips[i];
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.textContent = name + " ";
+          const x = document.createElement("button");
+          x.type = "button";
+          x.textContent = "×";
+          x.addEventListener("click", () => {
+            toChips = toChips.filter((n) => n !== name);
+            renderChips();
+          });
+          chip.appendChild(x);
+          host.insertBefore(chip, input);
+        }
+      }
+
+      function setMode(mode) {
+        panel.dataset.mode = mode;
+        panel.classList.toggle("mail--narrow", mode === "narrow");
+        $("btnWide").classList.toggle("is-on", mode === "wide");
+        $("btnNarrow").classList.toggle("is-on", mode === "narrow");
+        if (mode === "wide") {
+          if (!panel.classList.contains("is-compose")) panel.classList.remove("is-reading");
+        } else if (selectedId && !panel.classList.contains("is-compose")) {
+          panel.classList.add("is-reading");
+        }
+        syncChrome();
+      }
+
+      $("pills").addEventListener("click", (ev) => {
+        const b = ev.target.closest("[data-pill]");
+        if (!b) return;
+        pill = b.getAttribute("data-pill");
+        const kids = $("pills").querySelectorAll(".mail__pill");
+        for (let i = 0; i < kids.length; i++) kids[i].classList.toggle("is-on", kids[i] === b);
+        renderList();
+      });
+
+      $("search").addEventListener("input", () => renderList());
+      $("btnWide").addEventListener("click", () => setMode("wide"));
+      $("btnNarrow").addEventListener("click", () => setMode("narrow"));
+      $("btnCompose").addEventListener("click", () => openCompose());
+      $("btnNew").addEventListener("click", () => openCompose());
+      $("btnCancelC").addEventListener("click", closeCompose);
+      $("btnCancelC2").addEventListener("click", closeCompose);
+      $("btnSend").addEventListener("click", doSend);
+      $("btnBack").addEventListener("click", () => panel.classList.remove("is-reading"));
+      $("chkObs").addEventListener("change", syncCaps);
+      document.addEventListener("click", hideCtx);
+      $("btnDel").addEventListener("click", () => selectedId && del(selectedId));
+      $("btnTake").addEventListener("click", () => selectedId && doTake(selectedId));
+      $("btnNext").addEventListener("click", () => {
+        const u = mails.find((m) => !m.read && m.id !== selectedId);
+        if (u) select(u.id);
+      });
+      $("btnMark").addEventListener("click", () => {
+        const v = filtered();
+        for (let i = 0; i < v.length; i++) {
+          v[i].read = true;
+          const s = ALL.find((x) => x.id === v[i].id);
+          if (s) s.read = true;
+        }
+        applyUnreadFromReadApi();
+        renderList();
+        renderRead();
+      });
+      $("btnRefresh").addEventListener("click", () => {
+        const keep = selectedId;
+        const sc = listEl.scrollTop;
+        requestHead("Refresh", { force: true });
+        listEl.scrollTop = sc;
+        if (keep) {
+          selectedId = keep;
+          renderList();
+          renderRead();
+        }
+        schedulePrefetch();
+      });
+      $("btnInbound").addEventListener("click", () => {
+        ALL.unshift({
+          id: "in" + Date.now(),
+          fro: "Stranger",
+          to: "Wizard",
+          subject: "New inbound",
+          message: "Arrived on server; X.unread updates on next SAC (~4s).",
+          sent: new Date().toISOString(),
+          read: false,
+        });
+        recountServerUnread();
+        setStatus(
+          "Server mail=" +
+            serverMailCount +
+            " · waiting SAC (X.unread still " +
+            xUnread +
+            ")",
+          "warn"
+        );
+        syncChrome();
+      });
+      $("btnDebug").addEventListener("click", () => {
+        $("debug").classList.toggle("is-open");
+        if (!lastScript) $("debugPre").textContent = "(none yet)";
+      });
+
+      $("toInput").addEventListener("input", () => renderToSuggest());
+      $("toInput").addEventListener("focus", () => renderToSuggest());
+      $("toInput").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          const v = $("toInput").value.trim();
+          if (v && !toChips.includes(v)) {
+            toChips.push(v);
+            $("toInput").value = "";
+            $("suggest").classList.remove("is-open");
+            renderChips();
+          }
+        }
+      });
+
+      document.addEventListener("keydown", (ev) => {
+        if (ev.target && (ev.target.tagName === "INPUT" || ev.target.tagName === "TEXTAREA")) {
+          if (ev.key === "Escape" && panel.classList.contains("is-compose")) closeCompose();
+          return;
+        }
+        if (ev.key === "c") openCompose();
+        if (ev.key === "Escape") {
+          hideCtx();
+          if (panel.classList.contains("is-compose")) closeCompose();
+          else if (panel.classList.contains("is-reading") && panel.dataset.mode === "narrow") {
+            panel.classList.remove("is-reading");
+          }
+        }
+        if (ev.key === "j" || ev.key === "k") {
+          const rows = filtered();
+          const idx = rows.findIndex((m) => m.id === selectedId);
+          const next = ev.key === "j" ? idx + 1 : idx - 1;
+          if (next >= 0 && next < rows.length) select(rows[next].id);
+        }
+        if ((ev.key === "Delete" || ev.key === "#") && selectedId) del(selectedId);
+      });
+
+      recountServerUnread();
+      xUnread = serverMailCount;
+      lastSeenUnread = xUnread;
+      requestHead("open/empty", { force: true });
+      renderBagPanel();
+      setMode("wide");
+      syncCaps();
+      syncBadge();
+      select("m1");
+      schedulePrefetch();
+      window.setInterval(tickSac, SAC_MS);
+      window.setInterval(syncChrome, 1000);
+    </script>
+  </body>
+</html>
