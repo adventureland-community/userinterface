@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Unified instance module — mockup</title>
+    <link rel="stylesheet" href="shared.css" />
+    <style>
+      .ecu-tabs {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .ecu-tab {
+        font-family: inherit;
+        font-size: 12px;
+        padding: 3px 7px;
+        background: #111;
+        border: 1px solid #444;
+        color: #aaa;
+        cursor: pointer;
+      }
+      .ecu-tab--on {
+        border-color: var(--accent);
+        color: var(--gold);
+      }
+      .ecu-tabpanel {
+        display: none;
+      }
+      .ecu-tabpanel--on {
+        display: block;
+      }
+    </style>
+  </head>
+  <body class="mock-bg">
+    <p style="margin: 0 0 16px"><a href="index.html">← All mockups</a></p>
+    <div class="mock-row">
+      <div class="mock-stage-wrap">
+        <div class="mock-stage">
+          <div class="ecu-positioned ecu-pos-center ecu-pos-mapInfo">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">mapInfo</span>
+              </div>
+              <div class="ecu-panel__body" style="padding: 4px 10px; font-size: 14px; text-align: center">
+                The Crypt [Cave]<br />
+                <span style="color: #888">in : 7f3a*****…c2</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-instanceRun">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">instanceRun</span>
+              </div>
+              <div class="ecu-panel__body">
+                <div class="ecu-progress__label">
+                  <span>Bosses cleared</span><span>2 / 8</span>
+                </div>
+                <div class="ecu-progress"><div class="ecu-progress__fill" style="width: 25%"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-instance">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">instance</span>
+                <span class="ecu-panel__chrome-label">one panel · map config drives content</span>
+              </div>
+              <div class="ecu-panel__body">
+                <nav class="ecu-tabs" aria-label="Preview maps (mock only)">
+                  <button type="button" class="ecu-tab ecu-tab--on" data-tab="crypt">Crypt</button>
+                  <button type="button" class="ecu-tab" data-tab="spider">Spider</button>
+                  <button type="button" class="ecu-tab" data-tab="tomb">Tomb</button>
+                  <button type="button" class="ecu-tab" data-tab="winter">Dark Mage</button>
+                </nav>
+                <div id="tab-crypt" class="ecu-tabpanel ecu-tabpanel--on">
+                  <div class="ecu-section__label">Bosses</div>
+                  <div class="ecu-grid ecu-grid--bosses">
+                    <div class="ecu-card ecu-card--seen"><span class="ecu-card__name">Lestat</span><div class="ecu-card__status">We see!</div></div>
+                    <div class="ecu-card"><span class="ecu-card__name">Elena</span><div class="ecu-card__status">Alive</div></div>
+                    <div class="ecu-card ecu-card--dead"><span class="ecu-card__name">Spike</span><div class="ecu-card__status">Died 4m ago</div></div>
+                  </div>
+                </div>
+                <div id="tab-spider" class="ecu-tabpanel">
+                  <div class="ecu-section__label">Bosses</div>
+                  <div class="ecu-grid ecu-grid--2">
+                    <div class="ecu-card ecu-card--aggro"><span class="ecu-card__name">Brown Spider Queen</span><div class="ecu-card__status">Aggroed!</div></div>
+                    <div class="ecu-card ecu-card--seen"><span class="ecu-card__name">Red Spider Queen</span><div class="ecu-card__status">We see! · blocked</div></div>
+                  </div>
+                </div>
+                <div id="tab-tomb" class="ecu-tabpanel">
+                  <div class="ecu-grid ecu-grid--4">
+                    <div class="ecu-card ecu-card--dead" style="border-color: #a44"><span class="ecu-card__name">Fire</span><div class="ecu-card__status">Died</div></div>
+                    <div class="ecu-card ecu-card--seen" style="border-color: #4a4"><span class="ecu-card__name">Nature</span><div class="ecu-card__status">We see!</div></div>
+                    <div class="ecu-card" style="border-color: #48a"><span class="ecu-card__name">Frost</span><div class="ecu-card__status">Alive</div></div>
+                    <div class="ecu-card" style="border-color: #a4a"><span class="ecu-card__name">Darkness</span><div class="ecu-card__status">Alive</div></div>
+                  </div>
+                </div>
+                <div id="tab-winter" class="ecu-tabpanel">
+                  <div class="ecu-card ecu-card--aggro"><span class="ecu-card__name">Mage · Fire</span><div class="ecu-card__status">Aggroed!</div></div>
+                  <div class="ecu-card ecu-card--dead" style="margin-top: 6px"><span class="ecu-card__name">Mage · Frozen</span><div class="ecu-card__status">Cleared</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mock-stage__hint">Live UI: one map at a time · tabs = mock preview only</div>
+        </div>
+      </div>
+      <aside class="mock-note">
+        <h2>Unified module</h2>
+        <p>Same three panel ids on every instance map: <code>mapInfo</code>, <code>instanceRun</code>, <code>instance</code>. Content comes from per-map config, not separate panel ids per dungeon.</p>
+      </aside>
+    </div>
+    <script src="mock-live.js"></script>
+    <script>
+      document.querySelectorAll(".ecu-tab").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.getAttribute("data-tab");
+          document.querySelectorAll(".ecu-tab").forEach((b) => b.classList.remove("ecu-tab--on"));
+          document.querySelectorAll(".ecu-tabpanel").forEach((p) => p.classList.remove("ecu-tabpanel--on"));
+          btn.classList.add("ecu-tab--on");
+          document.getElementById("tab-" + id).classList.add("ecu-tabpanel--on");
+        });
+      });
+    </script>
+  </body>
+</html>

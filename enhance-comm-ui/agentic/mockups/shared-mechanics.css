@@ -1,0 +1,117 @@
+/* Boss mechanic chips — from G.monsters defs + live entity counts */
+.ecu-mechs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ecu-mech {
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 2px 6px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.ecu-mech--spawn {
+  color: #8c8;
+  border-color: #484;
+  background: rgba(80, 140, 80, 0.12);
+}
+
+.ecu-mech--spawn-alert[hidden] {
+  display: none;
+}
+
+.ecu-mech--spawn-soon {
+  color: #cec;
+  border-color: #6a6;
+  box-shadow: 0 0 6px rgba(120, 200, 120, 0.35);
+}
+
+.ecu-mech--spawn-flash {
+  color: #fff;
+  border-color: var(--gold);
+  background: rgba(80, 140, 80, 0.35);
+  animation: ecu-mech-spawn-flash 0.45s ease-out;
+}
+
+.ecu-mech--imminent {
+  color: var(--gold);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px rgba(232, 201, 106, 0.35);
+}
+
+.ecu-mech--flash {
+  animation: ecu-mech-spawn-flash 0.4s ease-out;
+}
+
+@keyframes ecu-mech-spawn-flash {
+  0% {
+    filter: brightness(2);
+    box-shadow: 0 0 10px rgba(255, 240, 180, 0.8);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: none;
+  }
+}
+
+.ecu-mech--aura {
+  color: #c8a;
+  border-color: #864;
+  background: rgba(140, 100, 160, 0.1);
+}
+
+.ecu-mech--ability {
+  color: #8cc;
+  border-color: #488;
+  background: rgba(80, 120, 160, 0.1);
+}
+
+.ecu-mech--role {
+  color: #aca;
+  border-color: #686;
+  background: rgba(100, 140, 120, 0.1);
+}
+
+.ecu-mech--danger {
+  color: #e88;
+  border-color: #844;
+  background: rgba(160, 80, 80, 0.1);
+}
+
+.ecu-mech--live {
+  color: var(--gold);
+  border-color: rgba(232, 201, 106, 0.5);
+}
+
+.ecu-hp-thresholds {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin-top: 4px;
+  background: #222;
+  border: 1px solid #444;
+  position: relative;
+}
+
+.ecu-hp-thresholds__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6a4, #8c6);
+}
+
+.ecu-hp-thresholds__mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #c88;
+  opacity: 0.9;
+}
+
+.ecu-hp-thresholds__mark--fired {
+  background: #666;
+  opacity: 0.5;
+}

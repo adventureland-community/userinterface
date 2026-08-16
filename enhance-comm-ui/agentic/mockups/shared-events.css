@@ -1,0 +1,121 @@
+.ecu-scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px;
+}
+
+.ecu-score {
+  min-width: 72px;
+  text-align: center;
+  padding: 8px 12px;
+  border: 2px double #555;
+  font-size: 18px;
+}
+
+.ecu-score--a {
+  border-color: #e44;
+  color: #f88;
+}
+
+.ecu-score--b {
+  border-color: #48a;
+  color: #8cf;
+}
+
+.ecu-score__label {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* A/B Testing — horizontal team score bar */
+.ecu-ab-scorebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 280px;
+}
+
+.ecu-ab-scorebar__labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  gap: 8px;
+}
+
+.ecu-ab-scorebar__team {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: normal;
+}
+
+.ecu-card--team-a {
+  border-color: #c44 !important;
+}
+
+.ecu-card--team-b {
+  border-color: #48a !important;
+}
+
+.ecu-ab-scorebar__team--a {
+  color: #f88;
+}
+
+.ecu-ab-scorebar__team--b {
+  color: #8cf;
+  flex-direction: row-reverse;
+}
+
+.ecu-ab-scorebar__pts {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ecu-ab-scorebar__track {
+  position: relative;
+  display: flex;
+  height: 14px;
+  border: 1px solid #555;
+  background: #111;
+  overflow: hidden;
+}
+
+.ecu-ab-scorebar__fill-a {
+  height: 100%;
+  background: linear-gradient(90deg, #922, #e44);
+  transition: width 0.25s ease;
+}
+
+.ecu-ab-scorebar__fill-b {
+  height: 100%;
+  background: linear-gradient(90deg, #248, #48a);
+  transition: width 0.25s ease;
+}
+
+.ecu-ab-scorebar__timer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  color: var(--gold);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 0 6px;
+  border: 1px solid #444;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  z-index: 1;
+}
+
+.ecu-timer {
+  font-size: 15px;
+  color: var(--gold);
+  padding: 6px 10px;
+  border: 1px solid #555;
+  font-variant-numeric: tabular-nums;
+}

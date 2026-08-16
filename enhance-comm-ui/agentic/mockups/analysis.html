@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Instance &amp; event analysis</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="hub analysis">
+      <p style="margin: 0 0 16px"><a href="index.html">← Mockups hub</a></p>
+      <h1>Instance / event HUD analysis</h1>
+      <p>
+        What comm could show as an <strong>observer</strong>, grounded in
+        <code>design/maps.js</code>, <code>design/events.js</code>,
+        <code>node/server.js</code>, and existing /comm modules. Tags:
+        <span class="tag tag-gen">generic</span> reusable pattern ·
+        <span class="tag tag-spec">specific</span> per map/event ·
+        <span class="tag tag-obs">observer</span> read-only / no player actions
+      </p>
+
+      <h2>Generic building blocks</h2>
+      <div class="card-grid">
+        <div class="card-block">
+          <h3>Instance tracker (crypt pattern)</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Config: <code>map</code>, <code>trackedMtypes[]</code>, labels from <code>G.monsters</code></li>
+            <li>Per-mtype state: seen / aggro / dead / kill count / level / focus / luckm</li>
+            <li>Data: entity scan + hub <code>onKill</code>, keyed by <code>entities[0].in</code></li>
+            <li>UI: card grid, click-to-target (<code>setXTarget</code>)</li>
+            <li>Progress bar: sum <code>deadCount</code> for boss mtypes vs known list</li>
+          </ul>
+          <p>Shipped today for <code>crypt</code> only.</p>
+        </div>
+        <div class="card-block">
+          <h3>Instance chrome</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Title: <code>G.maps[map].name</code></li>
+            <li>Instance id: masked <code>entities[0].in</code> (<code>MapInfo</code>)</li>
+            <li>Key held: scan <code>window.observing.items</code> (welcome snapshot; Bag refresh for update)</li>
+            <li>Phase pill: live meter <code>CombatSegment.kind</code> pull|boss</li>
+          </ul>
+        </div>
+        <div class="card-block">
+          <h3>World event row</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Metadata: <code>G.events[name]</code> — name, type, duration, join flag</li>
+            <li>Live state: <code>window.S[name]</code> — live, end, spawn, hp/max_hp, map</li>
+            <li>Countdown: <code>S[name].end</code> or <code>.spawn</code> (ServerInfo gap: chips read <code>.event</code> only)</li>
+            <li>Join/signup: show as label only — <span class="tag tag-spec">player</span> socket handlers</li>
+            <li>Cooperative boss: reuse <code>BossBarPanel</code> or <code>S.hp</code> teaser</li>
+          </ul>
+        </div>
+        <div class="card-block">
+          <h3>PvP / team event row</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-spec">specific</span></p>
+          <ul>
+            <li>Score + timer from <code>S[eventName]</code> (AB Testing prototype)</li>
+            <li>Roster: players on map with <code>.team</code> from entity packets</li>
+            <li>Observer follows camera — no join</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Instances</h2>
+
+      <h3>The Crypt <a href="crypt-v2.html">mockup</a></h3>
+      <table class="src-table">
+        <tr><th>Mechanic (server/design)</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>8 bosses a1–a8 + 7× vbat pack + nerfedbat; roam bosses</td>
+          <td>Boss card grid + optional bat row (already in CryptProgress)</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Hub kill sends <code>luckm</code> for bosses</td>
+          <td>Show luckm on last kill per mtype</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Crypt boss hit splits meter segment (pull → boss)</td>
+          <td>Phase pill from meter, not crypt panel today</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td><code>cryptkey</code> consumed on new instance create</td>
+          <td>Skip in instance HUD — already spent once inside</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>on_death</code> / <code>on_exit</code> → cave spawn 2</td>
+          <td>No exit timer on observer — not worth showing</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Rare <code>golden_bat</code> world spawn (dev weight)</td>
+          <td>Separate world-event row, not crypt panel</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+      </table>
+
+      <h3>Spider Den <a href="instance-spider.html">mockup</a></h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>3 queens: spiderbl, spiderbr, spiderr (side before queen — quirks “passage blocked”)</td>
+          <td>3-card layout; infer “queen locked” if side mtypes alive</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>6× <code>spider</code> adds (3 per side zone)</td>
+          <td>Optional add counter via visible <code>spider</code> count or kill tracking</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Exit to gateway on queen death</td>
+          <td>Optional “exit opens when queen dies” hint — no key row</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Same tracker pattern as crypt</td>
+          <td>Generalize <code>crypt/tracker.ts</code></td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+      </table>
+
+      <h3>The Tomb <a href="instance-tomb.html">mockup</a></h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>4 guardians gredpro / ggreenpro / gbluepro / gpurplepro — one each</td>
+          <td>Compass 2×2 or flat grid; progress 0–4</td>
+          <td><span class="tag tag-spec">specific</span> layout</td>
+        </tr>
+        <tr>
+          <td>No phase chain — independent kills</td>
+          <td>Same card states as crypt</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td><code>tombkey</code>, enter from mansion</td>
+          <td>Skip in instance HUD — entry gate only</td>
+          <td>—</td>
+        </tr>
+      </table>
+
+      <h3>Lair of the Dark Mage <a href="instance-winter.html">mockup</a></h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>Single arena; xmagefz → xmagefi → xmagen → xmagex via <code>respawn_as</code></td>
+          <td>Ordered phase list; active = visible mtype; prior = dead via kills</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>All named “Mage” except final “Dark Mage”</td>
+          <td>Show mtype or phase index in UI</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td><code>frozenkey</code></td>
+          <td>Skip in instance HUD — entry gate only</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Only one boss entity at a time</td>
+          <td>Progress = phase index / 4 — not a multi-boss grid</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+      </table>
+
+      <h2>Daily / nightly events</h2>
+
+      <h3>Goo Brawl</h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>Shared map <code>goobrawl</code>; join transports player</td>
+          <td>Live + <code>S.goobrawl.end</code> countdown; “joinable” label</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>Server spawns rgoo until ~6 monsters on map</td>
+          <td>Optional goo count from entity scan</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Polygon arena boundary in map def</td>
+          <td>No comm map overlay v1 — skip</td>
+          <td>—</td>
+        </tr>
+      </table>
+
+      <h3>A/B Testing <a href="event-abtesting.html">mockup</a></h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td><code>S.abtesting</code>: A/B scores, end, signup_end, run id</td>
+          <td>Horizontal score bar — A fills left, B fills right; timer centered on bar</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>PvP kills increment scorer team</td>
+          <td>Flash score on <code>server_info</code> broadcast</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td><code>signup</code> before start; join assigns team + spawn side</td>
+          <td>Show signup window state; no buttons for observer</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Join locked 120s after start unless same run id</td>
+          <td>“Late join closed” when applicable</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Visible players have <code>.team</code></td>
+          <td>Team-colored roster chips</td>
+          <td><span class="tag tag-gen">generic</span> for team events</td>
+        </tr>
+      </table>
+
+      <h3>Giga Crab (crabxx)</h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>Spawns at crabx boundary on main; cooperative</td>
+          <td><code>BossBarPanel</code> + <code>S.crabxx</code> hp/map/end</td>
+          <td><span class="tag tag-gen">generic</span> world boss</td>
+        </tr>
+        <tr>
+          <td>Join teleports near main [-1000, 1700]</td>
+          <td>“Near crab pit” hint when live</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+        <tr>
+          <td>Special 1hp phase when crabx exists alongside crabxx</td>
+          <td>HP bar note / threshold marker if detectable from entity flags</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+      </table>
+
+      <h3>Franky · Ice Golem</h3>
+      <table class="src-table">
+        <tr><th>Mechanic</th><th>HUD idea</th><th>Tag</th></tr>
+        <tr>
+          <td>Nightly spawn on level2w / winterland; <code>S</code> hp + end</td>
+          <td>Standard world-boss row + BossBar when on map</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>Join teleports to fixed coords</td>
+          <td>Map name in event row (<code>S.map</code>)</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>icegolem roams (boundary in spawn pack)</td>
+          <td><code>S.x/y</code> when broadcast — optional pin text</td>
+          <td><span class="tag tag-spec">specific</span></td>
+        </tr>
+      </table>
+
+      <h2 id="client-vs-comm-viz">Client vs comm viz</h2>
+      <p>
+        <strong>Bottom line:</strong> Comm should add observer-specific affordances the client does not
+        provide (multi-boss HUD, forward CD timeline, imminent ability rings) by composing existing data
+        (<code>entities</code>, <code>G.monsters</code>, <code>entity.s</code>). It should
+        <em>not</em> reimplement <code>border_mode</code>, native HP bars, or always-on map clutter. Map
+        viz belongs in comm only where CODE proves the API works and the feature is toggleable — which is
+        exactly what the <a href="visualization-lab.html">visualization lab</a> mockups sketch.
+      </p>
+
+      <h3>What the game client already covers</h3>
+      <table class="src-table">
+        <tr><th>Capability</th><th>Where</th><th>Comm stance</th></tr>
+        <tr>
+          <td>Sprite HP bars, nameplates, aggro tint</td>
+          <td>Native entity rendering (<code>game.js</code>)</td>
+          <td><strong>Do not duplicate.</strong> BossBarPanel vitals are enough for focus target.</td>
+        </tr>
+        <tr>
+          <td><code>border_mode</code> dev overlays</td>
+          <td><code>?borders=true</code> → <code>border_logic(sprite)</code> on entities</td>
+          <td><strong>Do not reimplement.</strong> Dev-only; not observer HUD.</td>
+        </tr>
+        <tr>
+          <td><code>draw_line</code> / <code>draw_circle</code></td>
+          <td>CODE runner on <code>parent.map</code> (<code>runner_functions.js</code>)</td>
+          <td>Reuse API pattern; comm module owns settings + redraw loop.</td>
+        </tr>
+        <tr>
+          <td>Single-character move lines, skill test circles</td>
+          <td>Player CODE / <code>test_visualize_skills.ts</code></td>
+          <td>Reference impl only — not persistent observer UI.</td>
+        </tr>
+        <tr>
+          <td>Comm HTML panels today</td>
+          <td><code>/comm</code> — instance cards, boss bar, events</td>
+          <td>Extend here first; no map drawing shipped yet.</td>
+        </tr>
+      </table>
+
+      <h3>What comm should add (observer-only)</h3>
+      <div class="card-grid">
+        <div class="card-block">
+          <h3>Multi-boss / instance HUD</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Card grid for all tracked mtypes on instance map (crypt pattern generalized)</li>
+            <li>Mechanic chips, spawn alerts, HP thresholds from <code>G.monsters</code> + entity scan</li>
+            <li><a href="boss-mechanics.html">Mockup</a></li>
+          </ul>
+        </div>
+        <div class="card-block">
+          <h3>Forward ability timeline</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Horizontal/vertical CD bars for focused boss — “what’s next” view</li>
+            <li>Data: <code>entity.s[abilityKey].ms</code> + cooldown from <code>G.monsters</code></li>
+            <li><a href="ability-timeline.html">Mockup</a></li>
+          </ul>
+        </div>
+        <div class="card-block">
+          <h3>Imminent ability rings (map)</h3>
+          <p><span class="tag tag-gen">generic</span> <span class="tag tag-obs">observer</span></p>
+          <ul>
+            <li>Pixi circles on <code>map</code> when <code>ms / cooldown &lt; 15%</code></li>
+            <li>Optional ghost ring mid-CD; highlight at-risk players via <code>distance()</code></li>
+            <li><a href="world-ability-ranges.html">Mockup</a> · <a href="visualization-lab.html">Lab</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>What comm should not build</h3>
+      <ul>
+        <li><strong><code>border_mode</code> clones</strong> — hitbox / roam debug is a client dev flag, not comm product surface</li>
+        <li><strong>Per-entity HP bars on map</strong> — already drawn by the client; comm duplicates clutter</li>
+        <li><strong>Always-on attack ranges, aggro lines, move vectors</strong> — debug-only, off by default (<code>lines.*</code> toggles)</li>
+        <li><strong>Parallel simulators</strong> — one clock per ability source (<code>entity.s</code>); HUD chips and map rings stay in sync</li>
+      </ul>
+
+      <h3>Map viz gate (when comm draws on <code>map</code>)</h3>
+      <table class="src-table">
+        <tr><th>Criterion</th><th>Rationale</th></tr>
+        <tr>
+          <td>CODE API already works</td>
+          <td><code>draw_circle</code>, <code>draw_line</code>, <code>parent.map</code> proven in runner + test script</td>
+        </tr>
+        <tr>
+          <td>Toggleable per layer</td>
+          <td><code>ecu-viz-settings</code> in lab — imminent rings default on; ghost/lines/debug default off</td>
+        </tr>
+        <tr>
+          <td>Tied to focus target</td>
+          <td>bossBar / instance focus mob — not every entity on map</td>
+        </tr>
+        <tr>
+          <td>Redraw ~4 Hz, single Graphics child</td>
+          <td>Match <code>test_visualize_skills.ts</code>; guard <code>no_graphics</code></td>
+        </tr>
+      </table>
+      <p>
+        See also: <a href="#world-ability-overlay">World ability overlay</a>,
+        <a href="#debug-entity-lines">Debug entity lines</a>,
+        <a href="#ability-timeline">Ability timeline</a>.
+      </p>
+
+      <h2 id="world-ability-overlay">World map ability ranges (PIXI overlay)</h2>
+      <p>
+        <a href="visualization-lab.html">Visualization lab</a> — unified toggle matrix for world Pixi
+        overlays, entity HUD, comm chips, and debug layers (<code>localStorage</code>).
+      </p>
+      <p>
+        <a href="world-ability-ranges.html">Mockup</a> — draw ability radius circles on the live game
+        map when a boss ability is <strong>imminent</strong> or optionally while on CD. Builds on
+        <code>adventureland-typescript/src/test_visualize_skills.ts</code> and stock CODE
+        <code>draw_circle</code> / <code>parent.map</code> patterns.
+      </p>
+
+      <h3>Client stack (observer /comm page)</h3>
+      <table class="src-table">
+        <tr><th>Piece</th><th>Location</th></tr>
+        <tr><td>Pixi version</td><td><code>js/pixi/4.8.9-custom/pixi.min.js</code> (domain config in html template)</td></tr>
+        <tr><td>Map container</td><td><code>window.map</code> — same stage as entities (<code>game.js</code>)</td></tr>
+        <tr><td>CODE drawing API</td><td><code>draw_circle(x,y,r)</code>, <code>parent.drawings[]</code> cleanup (<code>runner_functions.js</code>)</td></tr>
+        <tr><td>Reference impl</td><td><code>test_visualize_skills.ts</code> + <code>ui/draw.ts</code> (dashed circles, per-ability colors)</td></tr>
+        <tr><td>Comm host data</td><td><code>window.G</code>, <code>window.entities</code>, <code>distance()</code> from <code>old_common_functions.js</code></td></tr>
+      </table>
+
+      <h3>When to draw (CD gating)</h3>
+      <p>
+        Server stores countdown in <code>entity.s[abilityKey].ms</code> (ticks down, fires at 0, resets to
+        full cooldown). For HUD clutter control:
+      </p>
+      <ul>
+        <li><strong>Imminent</strong> — <code>ms / cooldown &lt; 0.15</code> (or &lt; 2s): solid ring + player highlights</li>
+        <li><strong>Just fired</strong> — brief flash (200–400ms) then hide until next imminent window</li>
+        <li><strong>Mid CD</strong> — hide ring (default) or ghost ring (user setting, like test script always-on)</li>
+        <li>Abilities <em>without</em> <code>radius</code> — no world ring (spawn timers, self_heal, etc.)</li>
+      </ul>
+
+      <h3>Player “would hit” highlighting</h3>
+      <p>
+        Use stock <code>distance(a,b)</code> (rectangle edge distance, not center-to-center — matches server).
+        Filter like server where possible: skip <code>rip</code>; note observer may not know <code>invis</code>.
+      </p>
+      <table class="src-table">
+        <tr><th>Ability type</th><th>Server behavior</th><th>Highlight</th></tr>
+        <tr><td><code>zap</code>, auras</td><td>All players in radius</td><td>Highlight all inside ring</td></tr>
+        <tr><td><code>anger</code>, <code>warpstomp</code>, <code>deepfreeze</code></td><td><code>random_one</code> in radius</td><td>Highlight all in radius as <em>at risk</em> (not predicted target)</td></tr>
+        <tr><td>Attack range</td><td><code>entity.range</code></td><td>Red circle always on focused boss (test script default)</td></tr>
+      </table>
+
+      <h3>Visual language (extend test_visualize_skills)</h3>
+      <ul>
+        <li>Stable color per ability key (<code>generateColorFromKey</code> hash → HSL)</li>
+        <li>Imminent: solid stroke, light fill, pulse alpha</li>
+        <li>On CD ghost: dashed stroke, low alpha (anger r300 vs warp r100 use different dash)</li>
+        <li>Label: ability name at ring edge (optional, toggle)</li>
+        <li>Player tint: reuse comm <code>add_tint</code> / sprite filter or draw small ring under feet</li>
+      </ul>
+
+      <h3>Comm implementation sketch</h3>
+      <pre style="font-size: 11px; color: #aaa; overflow-x: auto; background: #111; padding: 10px; border: 1px solid #333">abilityOverlay.ts
+  tick (250ms, match test script)
+  target ← bossBar focus || instance aggro boss
+  for ability in G.monsters[target.mtype].abilities:
+    if !ability.radius → continue
+    phase ← cdPhase(target.s[ability].ms, ability.cooldown)
+    if phase === hidden → continue
+    drawCircle(gfx, target, ability.radius, color, style[phase])
+    if phase === imminent &amp;&amp; settings.highlightPlayers:
+      for player in visiblePlayers:
+        if distance(target, player) &lt; ability.radius → markAtRisk(player)</pre>
+      <p>
+        Cleanup: single <code>PIXI.Graphics</code> child on <code>map</code>, destroyed/redrawn each
+        tick (same as test script). Guard with <code>game.graphics</code> / no_graphics mode.
+      </p>
+      <p>
+        <strong>Alternative:</strong> ship as observer COMMAND preset (remote CODE snippet) for users
+        who want it now without comm bundle changes — comm first-party module is cleaner for settings
+        + bossBar integration.
+      </p>
+
+      <h2 id="debug-entity-lines">Debug entity lines (PIXI / map overlay)</h2>
+      <p>
+        <a href="visualization-lab.html">Visualization lab</a> — toggle matrix under
+        <strong>Debug · entity lines</strong>. Draws <code>draw_line</code>-style segments from each
+        entity’s <code>real_x/y</code> (mock uses SVG coords). Same ~4 Hz redraw as ability rings.
+      </p>
+
+      <h3>Line types</h3>
+      <table class="src-table">
+        <tr><th>Setting key</th><th>From → to</th><th>Game fields</th><th>Default kind</th></tr>
+        <tr>
+          <td><code>lines.moveDest</code></td>
+          <td>Entity position → movement goal</td>
+          <td><code>real_x/y</code> → <code>going_x/y</code></td>
+          <td>Monsters + players (when moving)</td>
+        </tr>
+        <tr>
+          <td><code>lines.aggroTarget</code></td>
+          <td>Monster → aggro target</td>
+          <td><code>entity.target</code> (player id)</td>
+          <td>Monsters only</td>
+        </tr>
+        <tr>
+          <td><code>lines.attackTarget</code></td>
+          <td>Entity → combat target</td>
+          <td><code>entity.target</code> (mob or player id)</td>
+          <td>Players (party bots / manual focus)</td>
+        </tr>
+      </table>
+
+      <h3>Filters</h3>
+      <ul>
+        <li><code>lines.filter.monsters</code> / <code>lines.filter.players</code> — entity kind gate</li>
+        <li><code>lines.filter.focusOnly</code> — only draw for bossBar / instance focus mob</li>
+      </ul>
+
+      <h3>Per-mtype overrides</h3>
+      <p>
+        Stored separately in <code>localStorage</code> key <code>ecu-viz-line-mtypes</code>. Each row
+        is an <code>mtype</code> or explicit entity id (e.g. <code>gpurplepro</code>, <code>zapper0</code>,
+        <code>p:Alice</code>). Values override kind defaults:
+      </p>
+      <pre style="font-size: 11px; color: #aaa; overflow-x: auto; background: #111; padding: 10px; border: 1px solid #333">{
+  "gpurplepro": { "moveDest": false, "aggroTarget": true, "attackTarget": false },
+  "zapper0":    { "moveDest": true,  "aggroTarget": false },
+  "p:Bob":      { "attackTarget": true }
+}</pre>
+      <p>
+        Resolution order: global toggle → kind filter → focus filter → per-mtype rule (merged with
+        kind preset). Production comm UI: same grid in settings, keyed by <code>G.monsters[mtype].name</code>.
+      </p>
+
+      <h3>Comm implementation sketch</h3>
+      <pre style="font-size: 11px; color: #aaa; overflow-x: auto; background: #111; padding: 10px; border: 1px solid #333">entityLineOverlay.ts
+  tick (250ms)
+  gfx.clear()
+  for entity in visibleEntities(map):
+    if !passesFilter(entity, settings) → continue
+    rules ← mtypeRules[entity.mtype] ?? kindDefaults[entity.type]
+    if rules.moveDest &amp;&amp; moving(entity):
+      draw_line(entity.real_x, entity.real_y, entity.going_x, entity.going_y, 1, COLOR_MOVE)
+    if entity.target &amp;&amp; rules.aggroTarget &amp;&amp; entity.type === "monster":
+      t ← entities[entity.target]; draw_line(entity, t, COLOR_AGGRO)
+    if entity.target &amp;&amp; rules.attackTarget:
+      t ← entities[entity.target]; draw_line(entity, t, COLOR_TARGET)</pre>
+      <p>
+        Replaces the single static aggro segment (<code>world.targetLine</code> legacy mock). Observer
+        CODE presets already draw move lines for the local character — comm module generalizes to all
+        filtered entities with persistent settings.
+      </p>
+
+      <h2 id="boss-mechanics">Boss-specific mechanics</h2>
+      <p>
+        <a href="boss-mechanics.html">Mockup</a> — mechanic chips on instance/boss cards, HP threshold markers,
+        live minion counts. Built from <code>G.monsters</code> (same source as stock
+        <code>render_monster()</code> spawn lines) plus entity scans.
+      </p>
+
+      <h3>Mechanic categories</h3>
+      <table class="src-table">
+        <tr><th>Category</th><th>G.monsters source</th><th>Live overlay</th><th>Examples</th></tr>
+        <tr>
+          <td>Timed minion spawn</td>
+          <td><code>spawns: [[ms, mtype, count?]]</code></td>
+          <td>Count visible minions of <code>mtype</code> near boss</td>
+          <td>Spike/Franky Bat/Mummy 200ms; Orlok zapper 1.6s; Giga Crab crabx 1s; spider queens 5–8s</td>
+        </tr>
+        <tr>
+          <td>HP-threshold spawn</td>
+          <td><code>spawns: [["hp:0.75", mtype, n], …]</code></td>
+          <td>Marks on boss HP bar; grey when wave seen</td>
+          <td>Mr. Green / Mr. Pumpkin → 5× jr every 25% HP</td>
+        </tr>
+        <tr>
+          <td>Aura abilities</td>
+          <td><code>abilities.*_aura</code> + condition</td>
+          <td>CD from <code>entity.s</code>; debuff on nearby players</td>
+          <td>Marceline weakness; Lucinda dampening; Angel curse</td>
+        </tr>
+        <tr>
+          <td>Role / flag tags</td>
+          <td><code>poisonous</code>, <code>supporter</code>, <code>cooperative</code>, <code>explosion</code></td>
+          <td>Static chip; coop points only on death event</td>
+          <td>Bill poison; Elena healer; Franky coop; Lestat explosion radius</td>
+        </tr>
+        <tr>
+          <td>Phase chain</td>
+          <td><code>respawn_as</code> on xmage* chain</td>
+          <td>Active step from visible <code>mtype</code></td>
+          <td>Dark Mage 4 phases (winter instance)</td>
+        </tr>
+        <tr>
+          <td>Stationary / roam</td>
+          <td><code>stationary</code>, <code>roam</code></td>
+          <td>Position hint on card</td>
+          <td>Spider queens stationary; crypt bosses roam</td>
+        </tr>
+      </table>
+
+      <h3>Crypt boss cheat sheet (a1–a8)</h3>
+      <table class="src-table">
+        <tr><th>Boss</th><th>Notable mechanics</th></tr>
+        <tr><td>Spike (a1)</td><td>Spawns nerfedbat every 200ms</td></tr>
+        <tr><td>Bill (a2)</td><td>Poisonous · anger 8s</td></tr>
+        <tr><td>Lestat (a3)</td><td>Explosion 20 · anger 8s</td></tr>
+        <tr><td>Orlok (a4)</td><td>Spawns zapper0 trap every 1.6s</td></tr>
+        <tr><td>Elena (a5)</td><td>Supporter · healing 66k / 0.8s</td></tr>
+        <tr><td>Marceline (a6)</td><td>Weakness aura r100</td></tr>
+        <tr><td>Lucinda (a7)</td><td>Dampening aura · mlight 3s</td></tr>
+        <tr><td>Angel (a8)</td><td>Curse aura r300</td></tr>
+      </table>
+
+      <h3>What we cannot show without server help</h3>
+      <ul>
+        <li>Exact next spawn ETA — <code>monster.last</code> is server-only</li>
+        <li>Whether an HP threshold already fired before observer arrived</li>
+        <li>Live coop contribution points during fight</li>
+        <li>Minion→master link (<code>monster.master</code> not in entity packets)</li>
+      </ul>
+
+      <h3>Implementation sketch</h3>
+      <p>
+        One <code>buildMechanicChips(mtype, entity?, nearbyEntities?)</code> helper reads
+        <code>G.monsters[mtype]</code> and returns chip list. Instance panel, bossBar tooltip,
+        and focused-boss ability panel all reuse it. Config table only for overrides
+        (e.g. spider “passage blocked” when side queens alive).
+      </p>
+
+      <h2 id="ability-timeline">Monster ability timeline / cooldowns</h2>
+      <p>
+        <a href="ability-timeline.html">Mockup</a> — separate <code>abilityTimeline</code> panel,
+        vertical or horizontal, anchored to focused co-op boss. Inspired by WoW
+        <a href="https://wago.io/RaidAbilityTimeline/">Raid Ability Timeline</a> /
+        DBM–BigWigs hijack bars (static zone for long CDs, dynamic slide under ~10s, glow &lt;5s).
+      </p>
+
+      <h3>Not the same as comm combat timeline</h3>
+      <p>
+        Comm already has a meter <code>timeline</code> presentation — retrospective fight log
+        (casts, buffs, deaths on elapsed time axis). The ability panel is <strong>forward-looking</strong>:
+        “warpstomp in 3.2s”, like a boss mod.
+      </p>
+
+      <h3>Server model (today)</h3>
+      <table class="src-table">
+        <tr><th>Source</th><th>Fields</th><th>Notes</th></tr>
+        <tr>
+          <td><code>G.monsters[mtype].abilities</code></td>
+          <td><code>cooldown</code>, <code>radius</code>, <code>aura</code>, …</td>
+          <td>Static design — stock <code>render_monster()</code> lists these with no live CD</td>
+        </tr>
+        <tr>
+          <td><code>G.skills[id]</code></td>
+          <td><code>name</code>, <code>explanation</code>, <code>ui</code>, <code>skin</code></td>
+          <td>17 monster skills; only <code>multi_burn</code>, <code>mlight</code>, <code>multi_freeze</code> have <code>ui:true</code></td>
+        </tr>
+        <tr>
+          <td><code>entity.s[abilityKey]</code></td>
+          <td><code>{ ms, ability:true }</code></td>
+          <td>Countdown on <code>entities</code> packets — authoritative when visible</td>
+        </tr>
+        <tr>
+          <td><code>action</code> / <code>hit</code></td>
+          <td><code>source</code>, <code>pid</code></td>
+          <td>Cast confirmation for projectile abilities (zap, deepfreeze, multi_freeze→frostball, …)</td>
+        </tr>
+        <tr>
+          <td><code>ui</code> piggyback</td>
+          <td><code>disengage</code>, <code>mheal</code></td>
+          <td>Anger retarget, monster heals — no <code>action</code> packet</td>
+        </tr>
+      </table>
+
+      <h3>Visualization variants (WoW → AL mapping)</h3>
+      <table class="src-table">
+        <tr><th>Pattern</th><th>AL fit</th><th>Tag</th></tr>
+        <tr>
+          <td>Vertical icon + descending bar (Wago default)</td>
+          <td>One row per ability from design; bar = <code>s[id].ms / cooldown</code></td>
+          <td><span class="tag tag-extend">extend</span></td>
+        </tr>
+        <tr>
+          <td>Horizontal shrink-to-NOW</td>
+          <td>Same data, <code>orientation</code> panel setting</td>
+          <td><span class="tag tag-extend">extend</span></td>
+        </tr>
+        <tr>
+          <td>Static / dynamic zones (&gt;10s pinned)</td>
+          <td>Pure presentation — helps long CDs (anger 12s, deepfreeze 6s)</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>Imminent glow + tick marks at 5s/10s</td>
+          <td>Client-only thresholds on remaining ms</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>World range rings (PIXI)</td>
+          <td>Imminent CD + opt-in ghost + attack range debug</td>
+          <td><span class="tag tag-extend">extend</span></td>
+        </tr>
+        <tr>
+          <td>Entity nameplates / CD debug</td>
+          <td>Pixi labels toggled per observer</td>
+          <td><span class="tag tag-gen">generic</span></td>
+        </tr>
+        <tr>
+          <td>Retrospective Gantt (Details timeline)</td>
+          <td>Already in comm meter — player + visible fight history</td>
+          <td><span class="tag tag-comm">comm</span></td>
+        </tr>
+        <tr>
+          <td>Phase timeline (P1/P2 enrage)</td>
+          <td>No boss phase FSM — only HP-threshold spawns in design</td>
+          <td><span class="tag tag-none">—</span></td>
+        </tr>
+        <tr>
+          <td>DBM “next ability” prediction script</td>
+          <td>Would need pull-scoped schedule or <code>ability_used</code> emits</td>
+          <td><span class="tag tag-none">—</span></td>
+        </tr>
+      </table>
+
+      <h3>Per-ability honesty (examples)</h3>
+      <table class="src-table">
+        <tr><th>Ability</th><th>CD bar</th><th>Cast detect</th><th>Caveat</th></tr>
+        <tr><td><code>warpstomp</code></td><td>yes</td><td>partial (<code>disengage</code>)</td><td>Stomp damage may not map to one <code>source</code></td></tr>
+        <tr><td><code>anger</code></td><td>yes</td><td><code>ui/disengage</code></td><td>No target preview</td></tr>
+        <tr><td><code>multi_freeze</code></td><td>yes</td><td><code>hit</code> frostball</td><td>CD key is multi_freeze, wire source is fireball/frostball</td></tr>
+        <tr><td><code>self_healing</code></td><td>yes</td><td><code>ui/mheal</code></td><td>Silent in combat log</td></tr>
+        <tr><td><code>dampening_aura</code></td><td>yes</td><td>condition on players</td><td>Aura reapply, not a single cast moment</td></tr>
+        <tr><td><code>burn</code>, <code>warp_on_hit</code></td><td>no timer in <code>s</code></td><td>proc</td><td>Design-only row or omit</td></tr>
+      </table>
+
+      <h3>Simulation limits</h3>
+      <ul>
+        <li>Spawn randomizes initial <code>s[a].ms</code> — cannot know absolute phase until first observed packet</li>
+        <li>CD ticks pause when monster <code>is_disabled</code> — not exposed on wire</li>
+        <li><code>entities</code> updates are sparse (not every server tick) — bars jitter unless interpolated</li>
+        <li>Off-vision boss = no CD state (vision-gated <code>xy_emit</code>)</li>
+      </ul>
+
+      <h3>Server wishlist (accurate boss-mod grade)</h3>
+      <ul>
+        <li><code>ability_used</code> — <code>{ id, ability, targetId?, nextReadyAt }</code> on every fire</li>
+        <li>Include <code>monster.a</code> overrides on entity sync (per-instance damage/radius)</li>
+        <li>Optional party combat relay for off-screen boss CD (observer use case)</li>
+      </ul>
+
+      <h2>Recommended implementation order</h2>
+      <ol>
+        <li><strong>Split topCenter</strong> — separate <code>serverInfo</code> and <code>mapInfo</code> panel ids so clock chips and instance id move independently</li>
+        <li><strong>Generalize instance tracker</strong> — rename <code>crypt</code> → <code>instance</code>; add <code>instanceRun</code> for progress/phase/luckm; config table from maps.js mtypes</li>
+        <li><strong>Extend ServerInfo → events panel</strong> — new closable <code>events</code> panel; fix end/spawn countdown; read-only for observer</li>
+        <li><strong>AB Testing panels</strong> — <code>eventScore</code> + <code>eventRoster</code> (data already in <code>S.abtesting</code> + entities)</li>
+        <li><strong>Per-map layout variants</strong> — tomb compass, winter phase list, spider 3+adds (content inside <code>instance</code>, not new panel ids)</li>
+      </ol>
+
+      <h2>Proposed panel ids</h2>
+      <table class="src-table">
+        <tr><th>Panel id</th><th>Today</th><th>Notes</th></tr>
+        <tr><td><code>serverInfo</code></td><td>bundled in topCenter</td><td>Clock + live event chips</td></tr>
+        <tr><td><code>mapInfo</code></td><td>bundled in topCenter</td><td>Map name + masked instance id</td></tr>
+        <tr><td><code>crypt</code> → <code>instance</code></td><td>crypt map only</td><td>Boss/add cards; all instance maps</td></tr>
+        <tr><td><code>instanceRun</code></td><td>—</td><td>Progress bar, phase pill, luckm — not entry keys</td></tr>
+        <tr><td><code>events</code></td><td>—</td><td>World event list (closable)</td></tr>
+        <tr><td><code>eventScore</code></td><td>stock topmid HTML</td><td>Horizontal tug bar from <code>S.abtesting.A/B</code></td></tr>
+        <tr><td><code>eventRoster</code></td><td>—</td><td>Team roster on abtesting map</td></tr>
+        <tr><td><code>bossBar</code></td><td>exists</td><td>Unchanged; stays separate from instance cards</td></tr>
+        <tr><td><code>abilityTimeline</code></td><td>—</td><td>Forward CD bars for focused boss; vertical/horizontal</td></tr>
+      </table>
+
+      <h2>Observer constraints (all modules)</h2>
+      <ul>
+        <li>No join / signup — display state only</li>
+        <li>Instance keys (<code>cryptkey</code>, etc.) consumed on entry — do not show inside dungeon HUD</li>
+        <li>Bag/gear from live <code>getObserving().slots</code>; bag snapshot stale until reconnect</li>
+        <li>Follow player to event maps — camera does not self-join</li>
+      </ul>
+    </div>
+  </body>
+</html>

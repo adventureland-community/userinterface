@@ -1,0 +1,236 @@
+<!doctype html>
+
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8" />
+
+    <title>World events — mockup</title>
+
+    <link rel="stylesheet" href="shared.css" />
+
+  </head>
+
+  <body class="mock-bg">
+
+    <p style="margin: 0 0 16px"><a href="index.html">← All mockups</a></p>
+
+    <div class="mock-row">
+
+      <div class="mock-stage-wrap">
+
+        <div class="mock-stage mock-stage--compact">
+
+          <div class="ecu-positioned ecu-pos-center ecu-pos-serverInfo">
+
+            <div class="ecu-panel ecu-panel--chrome" style="max-width: none">
+
+              <div class="ecu-panel__chrome">
+
+                <span class="ecu-panel__chrome-grip">⠿</span>
+
+                <span class="ecu-panel__chrome-id">serverInfo</span>
+
+              </div>
+
+              <div class="ecu-panel__body" style="padding: 4px 8px">
+
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; font-size: 13px">
+
+                  <span data-live-day-clock style="border: 1px solid #555; padding: 2px 6px">EU 1 · 14:32 day</span>
+
+                  <span class="ecu-chip-live" style="border: 1px solid #85c76b; padding: 2px 6px; color: #85c76b">goobrawl live</span>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="ecu-positioned ecu-pos-events--wide">
+
+            <div class="ecu-panel ecu-panel--chrome">
+
+              <div class="ecu-panel__chrome">
+
+                <span class="ecu-panel__chrome-grip">⠿</span>
+
+                <span class="ecu-panel__chrome-id">events</span>
+
+                <span class="ecu-panel__chrome-label">closable · resize</span>
+
+              </div>
+
+              <div class="ecu-panel__body">
+
+                <div class="ecu-event ecu-event--active">
+
+                  <div class="ecu-sprite" style="background: #484"></div>
+
+                  <div>
+
+                    <strong>Goo Brawl</strong>
+
+                    <div class="ecu-card__meta">daily · joinable</div>
+
+                  </div>
+
+                  <div>
+
+                    <div class="ecu-event__countdown" data-live-countdown="mmss" data-ms="372000" data-countdown-suffix=" left">6:12 left</div>
+
+                    <div class="ecu-event__time" style="text-align: right; margin-top: 4px">4 goo on map</div>
+
+                  </div>
+
+                </div>
+
+                <div class="ecu-event ecu-event--active">
+
+                  <div class="ecu-sprite" style="background: #844"></div>
+
+                  <div>
+
+                    <strong>Giga Crab</strong>
+
+                    <div class="ecu-card__meta">daily · main</div>
+
+                  </div>
+
+                  <div>
+
+                    <div class="ecu-event__countdown" data-live-countdown="mmss" data-ms="1684000" data-countdown-suffix=" left">28:04 left</div>
+
+                    <div class="ecu-event__time" style="text-align: right; margin-top: 4px">live</div>
+
+                  </div>
+
+                </div>
+
+                <div class="ecu-event">
+
+                  <div class="ecu-sprite" style="background: #448"></div>
+
+                  <div>
+
+                    <strong>Franky</strong>
+
+                    <div class="ecu-card__meta">nightly · level2w</div>
+
+                  </div>
+
+                  <div class="ecu-event__time">not live</div>
+
+                </div>
+
+                <div class="ecu-event">
+
+                  <div class="ecu-sprite" style="background: #88c"></div>
+
+                  <div>
+
+                    <strong>Ice Golem</strong>
+
+                    <div class="ecu-card__meta">nightly · winterland</div>
+
+                  </div>
+
+                  <div class="ecu-event__time">
+
+                    spawns in <span data-live-countdown="hms" data-ms="6120000">1:42:00</span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="ecu-positioned ecu-pos-bossBar--solo">
+
+            <div class="ecu-panel ecu-panel--chrome">
+
+              <div class="ecu-panel__chrome">
+
+                <span class="ecu-panel__chrome-grip">⠿</span>
+
+                <span class="ecu-panel__chrome-id">bossBar</span>
+
+                <span class="ecu-panel__chrome-label">closable</span>
+
+              </div>
+
+              <div class="ecu-panel__body">
+
+                <div class="ecu-section__label">On map now</div>
+
+                <div class="ecu-card ecu-card--aggro">
+
+                  <div class="ecu-card__row">
+
+                    <div class="ecu-sprite" style="background: #6aa"></div>
+
+                    <span class="ecu-card__name">Giga Crab</span>
+
+                  </div>
+
+                  <div class="ecu-card__status"><span data-live-hp-label>72%</span> · main</div>
+
+                  <div class="ecu-progress" style="height: 4px; margin-top: 4px">
+
+                    <div class="ecu-progress__fill" data-live-hp data-live-hp="72" data-live-hp-min="18" style="width: 72%"></div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="mock-stage__hint">serverInfo chips stay compact · events list is its own panel</div>
+
+        </div>
+
+      </div>
+
+      <aside class="mock-note">
+
+        <h2>World events — panel split</h2>
+
+        <ul>
+
+          <li><code>serverInfo</code> — chips only (exists today)</li>
+
+          <li><code>events</code> — new closable list from <code>G.events</code> + <code>S</code></li>
+
+          <li><code>bossBar</code> — separate when co-op boss visible (exists today)</li>
+
+        </ul>
+
+        <p>Observer read-only. Countdowns from <code>S.end</code> / <code>S.spawn</code>.</p>
+
+      </aside>
+
+    </div>
+
+    <script src="mock-live.js"></script>
+
+  </body>
+
+</html>
+

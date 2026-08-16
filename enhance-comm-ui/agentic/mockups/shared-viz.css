@@ -1,0 +1,380 @@
+/* Visualization lab + world map debug overlays (Pixi stand-ins) */
+.mock-mob-anchor {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  overflow: hidden;
+  line-height: 0;
+}
+/* ── Visualization lab (HUD + Pixi mock layers) ── */
+.viz-lab {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) 1fr;
+  gap: 16px;
+  align-items: start;
+  max-width: 1100px;
+}
+
+.viz-settings {
+  font-size: 12px;
+  background: #0a0a0a;
+  border: 1px solid #444;
+  padding: 10px 12px;
+}
+
+.viz-settings h2 {
+  font-size: 14px;
+  font-weight: normal;
+  color: var(--gold);
+  margin: 0 0 10px;
+}
+
+.viz-settings details {
+  margin-bottom: 8px;
+  border-bottom: 1px solid #2a2a2a;
+  padding-bottom: 8px;
+}
+
+.viz-settings summary {
+  cursor: pointer;
+  color: #ccc;
+  font-size: 12px;
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+.viz-settings label {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #999;
+  margin: 4px 0;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.viz-settings label:hover {
+  color: #ccc;
+}
+
+.viz-settings .viz-tag {
+  font-size: 9px;
+  padding: 1px 4px;
+  border: 1px solid #555;
+  color: #777;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.viz-settings .viz-tag--debug {
+  border-color: #864;
+  color: #a88;
+}
+
+.viz-settings .viz-tag--static {
+  border-color: #486;
+  color: #8a8;
+}
+
+.viz-reset {
+  margin-top: 8px;
+  width: 100%;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 8px;
+  background: #1a1a1a;
+  border: 1px solid #555;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.viz-reset:hover {
+  color: #ddd;
+  border-color: #777;
+}
+
+.viz-stage {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 240px);
+  gap: 12px;
+  min-width: 0;
+}
+
+.viz-world-wrap {
+  position: relative;
+}
+
+.viz-world {
+  position: relative;
+  width: 100%;
+  min-height: 360px;
+  background: #1a2a1a;
+  border: 2px double #444;
+  overflow: hidden;
+}
+
+.viz-world svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.viz-status {
+  font-size: 11px;
+  fill: #666;
+}
+
+.viz-status--imminent {
+  fill: #ffd28a;
+  font-weight: bold;
+}
+
+.viz-player--at-risk circle {
+  fill: #f88;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.viz-player--dim {
+  opacity: 0.35;
+}
+
+.viz-player--at-risk {
+  opacity: 1;
+}
+
+.viz-entity-hp {
+  font-size: 8px;
+  fill: #8c8;
+}
+
+.viz-entity-id {
+  font-size: 7px;
+  fill: #666;
+  font-family: "Courier New", monospace;
+}
+
+.viz-cd-label {
+  font-size: 8px;
+  fill: #8cc;
+  font-family: "Courier New", monospace;
+}
+
+.viz-leash {
+  fill: none;
+  stroke: #668;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+}
+
+.viz-spawn-point {
+  fill: #c88;
+  opacity: 0.7;
+}
+
+.viz-hud-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.viz-hud-card {
+  background: #0a0a0a;
+  border: 1px solid #444;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.viz-hud-card__title {
+  font-size: 11px;
+  color: var(--gold);
+  margin-bottom: 6px;
+}
+
+.viz-layer--off {
+  display: none !important;
+}
+
+#viz-ring-attack {
+  fill: none;
+  stroke: #e44;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.45;
+}
+
+#viz-ring-aura {
+  fill: rgba(140, 100, 200, 0.06);
+  stroke: #a6a;
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  opacity: 0.5;
+}
+
+#viz-target-line {
+  stroke: #f88;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+}
+
+.viz-debug-line {
+  fill: none;
+  stroke-width: 1.5;
+  pointer-events: stroke;
+}
+
+.viz-debug-line--move {
+  stroke: #6cf;
+  stroke-dasharray: 4 3;
+  opacity: 0.75;
+}
+
+.viz-debug-line--move.viz-debug-line--monster {
+  stroke: #8ad;
+}
+
+.viz-debug-line--aggro {
+  stroke: #f88;
+  stroke-dasharray: 6 4;
+  opacity: 0.85;
+}
+
+.viz-debug-line--target {
+  stroke: #fc6;
+  stroke-dasharray: 3 2;
+  opacity: 0.8;
+}
+
+.viz-debug-line--target.viz-debug-line--player {
+  stroke: #fd9;
+}
+
+.viz-debug-line-dest {
+  fill: #6cf;
+  stroke: none;
+  opacity: 0.9;
+}
+
+.viz-settings__hint {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.45;
+  margin: 0 0 8px;
+}
+
+.viz-filter-group {
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px 10px 6px;
+  margin: 8px 0;
+}
+
+.viz-filter-group legend {
+  font-size: 11px;
+  color: #999;
+  padding: 0 4px;
+}
+
+.viz-filter-group label {
+  display: flex;
+  margin-bottom: 4px;
+}
+
+.viz-mtype-panel {
+  margin-top: 10px;
+  font-size: 11px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.viz-mtype-head,
+.viz-mtype-row {
+  display: grid;
+  grid-template-columns: 1fr 36px 36px 36px;
+  gap: 4px;
+  align-items: center;
+  padding: 6px 8px;
+}
+
+.viz-mtype-head {
+  background: #151515;
+  color: #888;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.viz-mtype-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.viz-mtype-row__label {
+  color: #aaa;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viz-mtype-row input {
+  justify-self: center;
+  cursor: pointer;
+}
+
+.ecu-world-demo {
+  position: relative;
+  width: 420px;
+  height: 320px;
+  background: #1a2a1a;
+  border: 2px double #444;
+  overflow: hidden;
+}
+
+.ecu-world-demo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.ecu-world-legend {
+  font-size: 11px;
+  color: #888;
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.ecu-world-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.ecu-world-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.ecu-world-controls .viz-tag {
+  font-size: 9px;
+  color: #777;
+  margin-left: 2px;
+}
+
+@media (max-width: 900px) {
+  .viz-lab {
+    grid-template-columns: 1fr;
+  }
+
+  .viz-stage {
+    grid-template-columns: 1fr;
+  }
+}
+

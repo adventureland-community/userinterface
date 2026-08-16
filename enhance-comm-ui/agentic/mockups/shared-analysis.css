@@ -1,0 +1,41 @@
+.analysis h2 {
+  font-size: 16px;
+  color: var(--gold);
+  font-weight: normal;
+  margin: 24px 0 8px;
+}
+
+.analysis h3 {
+  font-size: 14px;
+  color: #ccc;
+  font-weight: normal;
+  margin: 16px 0 6px;
+}
+
+.analysis p,
+.analysis li {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-meta);
+}
+
+.analysis ul {
+  padding-left: 20px;
+}
+
+.analysis .card-grid {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.analysis .card-block {
+  border: 1px solid #333;
+  background: #111;
+  padding: 12px;
+}
+
+.analysis .card-block h3 {
+  margin-top: 0;
+  color: var(--gold);
+}

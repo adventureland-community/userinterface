@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ability timeline — mockup</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body class="mock-bg">
+    <p style="margin: 0 0 16px">
+      <a href="index.html">← All mockups</a> · <a href="analysis.html#ability-timeline">Analysis</a>
+    </p>
+    <div class="mock-row">
+      <div class="mock-stage-wrap">
+        <div class="mock-stage mock-stage--compact">
+          <div id="comm-ui" class="mock-comm-ui" data-layout-edit="false" data-live-ability-timeline>
+            <button type="button" class="mock-layout-toggle" id="layout-toggle" aria-pressed="false">
+              Layout edit
+            </button>
+
+            <div class="comm-pos-panel comm-pos-bossBar" data-panel="bossBar">
+              <div class="comm-unit">
+                <div class="comm-vitals-mock">
+                  <div class="comm-vitals-mock__fill" id="boss-hp-fill" data-live-hp data-live-hp="58" style="width: 58%"></div>
+                  <div class="comm-vitals-mock__label">
+                    <span class="comm-vitals-mock__name">Protector of Darkness</span>
+                    <span class="comm-vitals-mock__spacer"></span>
+                    <span class="comm-boss-aggro">Aggro · Alice</span>
+                    <span class="comm-vitals-mock__pct" id="boss-hp-pct" data-live-hp-label>58%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              class="comm-pos-panel comm-pos-abilityTimeline comm-pos-interactive"
+              data-panel="abilityTimeline"
+              id="abil-panel"
+            >
+              <div class="comm-pos-edit-header">
+                <span class="comm-pos-edit-label">Ability timeline</span>
+              </div>
+              <button type="button" class="comm-pos-panel-close" title="Close panel" aria-label="Close">×</button>
+              <div class="comm-pos-resize" title="Resize"></div>
+              <div class="ecu-abil-panel">
+                <div class="ecu-abil-toolbar">
+                  <span class="ecu-abil-target">Protector of Darkness</span>
+                  <div class="ecu-abil-orient" role="group" aria-label="Orientation">
+                    <button type="button" id="btn-v" aria-pressed="true">Vertical</button>
+                    <button type="button" id="btn-h" aria-pressed="false">Horizontal</button>
+                  </div>
+                  <div class="ecu-abil-orient ecu-abil-display" role="group" aria-label="Display">
+                    <button type="button" id="btn-bars" aria-pressed="false">Bars</button>
+                    <button type="button" id="btn-scroll" aria-pressed="true">Icons</button>
+                  </div>
+                </div>
+
+                <div class="ecu-abil-timeline" id="timeline" data-orient="vertical" data-display="scroll">
+                  <div class="ecu-abil-scroll-labels">
+                    <span class="ecu-abil-zone-label ecu-abil-zone-label--static">static &gt;10s</span>
+                    <span class="ecu-abil-zone-label ecu-abil-zone-label--dynamic">dynamic ≤10s</span>
+                  </div>
+                  <div class="ecu-abil-scroll-lane" id="scroll-lane"></div>
+                  <div class="ecu-abil-now" title="NOW — icon reaches this line when ability fires"></div>
+                </div>
+
+                <div class="ecu-abil-legend">
+                  Static zone pins icons at the start while CD &gt;10s. At 10s they enter the same axis and slide toward NOW without jumping lanes. Off CD icons stay at NOW until cast, then return to the start.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mock-stage__hint">Icons scroll toward NOW · separate bossBar + abilityTimeline panels</div>
+        </div>
+      </div>
+
+      <aside class="mock-note">
+        <h2>Ability timeline</h2>
+        <p>WoW-style forward timers grounded in AL monster CD state — not the combat meter’s retrospective timeline.</p>
+        <h3 style="font-size: 13px; color: #ccc; font-weight: normal; margin: 12px 0 6px">WoW patterns mapped</h3>
+        <ul style="font-size: 12px; padding-left: 16px">
+          <li><strong>Vertical icon timeline</strong> (Wago) — icons scroll down the axis toward NOW</li>
+          <li><strong>Horizontal icon scroll</strong> — same data, icons slide toward right-edge NOW</li>
+          <li><strong>Bar shrink</strong> (DBM/BW fork) — toggle Bars display mode</li>
+          <li><strong>Imminent glow</strong> — &lt;5s border highlight</li>
+        </ul>
+        <h3 style="font-size: 13px; color: #ccc; font-weight: normal; margin: 12px 0 6px">This boss (design)</h3>
+        <ul style="font-size: 12px; padding-left: 16px">
+          <li><code>anger</code> — 12000ms, retarget (<code>ui/disengage</code>)</li>
+          <li><code>warpstomp</code> — 8000ms, stun radius 100</li>
+        </ul>
+      </aside>
+    </div>
+    <script src="mock-game-data.js"></script>
+    <script src="mock-game-icons.js"></script>
+    <script src="mock-ability-timeline.js"></script>
+    <script src="mock-live.js"></script>
+  </body>
+</html>

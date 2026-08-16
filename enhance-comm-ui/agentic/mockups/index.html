@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Comm UI — Instance &amp; Event mockups</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body>
+    <div class="hub">
+      <h1>Instance / Event module mockups</h1>
+      <p style="font-size: 14px; color: #aaa; line-height: 1.5">
+        Static HTML explorations grounded in game/server data and /comm today.
+        See <a href="analysis.html">full analysis</a> (generic vs specific, observer
+        constraints, implementation order).
+      </p>
+
+      <div class="src-legend" aria-label="Source legend">
+        <span><span class="src src-comm">comm</span> live in enhance-comm-ui</span>
+        <span><span class="src src-extend">extend</span> same APIs, not wired yet</span>
+        <span><span class="src src-meter">meter</span> combat meters only</span>
+        <span><span class="src src-gs">G+S</span> design + server_info</span>
+        <span><span class="src src-player">player</span> needs a player socket</span>
+        <span><span class="src src-none">—</span> not on client today</span>
+      </div>
+
+      <p style="font-size: 13px; color: #bbb; line-height: 1.55; margin: 0 0 16px">
+        <strong>Live mockups:</strong> interactive pages include <code>mock-live.js</code> (shared tick +
+        bindings) and feature modules such as <code>mock-ability-timeline.js</code> — ticking event
+        countdowns, spawn alerts (only when imminent/firing), ability CDs, HP, and scores. Spawn chips
+        are not static labels; they flash when relevant.
+      </p>
+
+      <p style="font-size: 13px; color: #bbb; line-height: 1.55; margin: 0 0 16px">
+        <strong>Styles:</strong> pages link <code>shared.css</code>, which aggregates
+        <code>shared-core.css</code>, <code>shared-timeline.css</code>, <code>shared-mechanics.css</code>,
+        and <code>shared-viz.css</code>.
+      </p>
+
+      <p style="font-size: 13px; color: #bbb; line-height: 1.55; margin: 0 0 16px">
+        <strong>Panel layout:</strong> mockups use a <code>mock-stage</code> with separate
+        <code>PositionedPanel</code>-style units (chrome bar + panel id). Each box can be
+        moved independently in comm layout mode. See
+        <a href="panels-layout.html">full layout demo</a>.
+      </p>
+
+      <p style="font-size: 13px; color: #bbb; line-height: 1.55; margin: 0 0 16px">
+        <strong>Observer lens:</strong> /comm runs on the observer client. You watch
+        via camera + entity snapshots; you do not have a <code>players[socket]</code>
+        record. Event join/signup, movement, combat, and inventory actions belong to
+        the observed player (or their game client), not the observer HUD.
+      </p>
+
+      <h2 style="font-size: 15px; color: var(--gold); font-weight: normal; margin: 20px 0 8px">
+        Observer can vs cannot
+      </h2>
+      <table class="src-table" style="max-width: 100%; margin-bottom: 20px">
+        <thead>
+          <tr>
+            <th>Can (comm today / extend)</th>
+            <th>Cannot</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Read <code>entities</code>, <code>window.S</code>, hub kills/damage
+            </td>
+            <td>Join events (<code>socket.on("join")</code> requires player)</td>
+          </tr>
+          <tr>
+            <td>
+              Follow camera; click-to-target via <code>setXTarget</code> (local)
+            </td>
+            <td>
+              Sign up for goobrawl / abtesting (<code>signup</code> is player-only)
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Equipped gear — <code>getObserving().slots</code> from live
+              <code>entities[id]</code>
+            </td>
+            <td>Use keys or enter doors yourself</td>
+          </tr>
+          <tr>
+            <td>
+              Bag inventory — <code>window.observing.items</code> on welcome;
+              refresh via Bag reconnect (<code>refreshObservedInventory</code>)
+            </td>
+            <td>
+              Live bag updates on every loot pick-up (no incremental observer packets)
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Run remote snippets on observed player via <code>o:command</code>
+            </td>
+            <td>
+              Open stock event modals as observer (no player UI shell)
+            </td>
+          </tr>
+          <tr>
+            <td>Meters, boss bars, crypt cards, server clock chips</td>
+            <td>Teleport self to event — only follow a player who joined</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 style="font-size: 15px; color: var(--gold); font-weight: normal; margin: 20px 0 8px">
+        What /comm has now
+      </h2>
+      <table class="src-table" style="max-width: 100%">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Source</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Crypt boss/bat cards</td>
+            <td><span class="src src-comm">comm</span></td>
+            <td>
+              <code>CryptProgress.ts</code> + <code>crypt/tracker.ts</code> when
+              <code>map === "crypt"</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Instance id (masked, copy)</td>
+            <td><span class="src src-comm">comm</span></td>
+            <td><code>MapInfo.ts</code> — <code>entities[0].in</code></td>
+          </tr>
+          <tr>
+            <td>Boss HP bars (co-op + crypt bosses)</td>
+            <td><span class="src src-comm">comm</span></td>
+            <td><code>BossBarPanel.ts</code> — visible cooperative monsters</td>
+          </tr>
+          <tr>
+            <td>Event / clock chips</td>
+            <td><span class="src src-comm">comm</span></td>
+            <td>
+              <code>ServerInfo.ts</code> — <code>S.schedule</code>,
+              <code>S[name].live</code>
+            </td>
+          </tr>
+          <tr>
+            <td>Pull vs boss phase</td>
+            <td><span class="src src-meter">meter</span></td>
+            <td><code>CombatSegment.kind</code> — not on crypt panel</td>
+          </tr>
+          <tr>
+            <td>Spider / Tomb / Winter HUD</td>
+            <td><span class="src src-extend">extend</span></td>
+            <td>Generalize crypt tracker; maps already define mtypes</td>
+          </tr>
+          <tr>
+            <td>Instance exit / queen gate</td>
+            <td><span class="src src-extend">extend</span></td>
+            <td>
+              e.g. spider exit opens when queen dies — in-run hint only; keys are
+              consumed on entry, not shown inside instance HUD
+            </td>
+          </tr>
+          <tr>
+            <td>Event join / signup</td>
+            <td><span class="src src-player">player</span></td>
+            <td>
+              Server <code>join</code> / <code>signup</code> handlers require
+              <code>players[socket.id]</code> — not observers
+            </td>
+          </tr>
+          <tr>
+            <td>Instance exit countdown</td>
+            <td><span class="src src-none">—</span></td>
+            <td>No timer on observer socket for instances</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <ul>
+        <li>
+          <a href="panels-layout.html">Full observer layout (all panels)</a>
+          <p>
+            Every proposed + existing panel id on one stage — inventory for layout mode.
+          </p>
+        </li>
+        <li>
+          <a href="crypt-v2.html">Crypt v2 (improved)</a>
+          <p>
+            Split into <code>serverInfo</code>, <code>mapInfo</code>,
+            <code>instanceRun</code>, <code>instance</code> panels.
+          </p>
+        </li>
+        <li>
+          <a href="instance-spider.html">Spider Den</a>
+          <p>
+            <code>spider_instance</code> — <code>spiderr</code>,
+            <code>spiderbl</code>, <code>spiderbr</code> (+ <code>spider</code>
+            adds). Tracker pattern only; no HUD today.
+          </p>
+        </li>
+        <li>
+          <a href="instance-tomb.html">The Tomb</a>
+          <p>
+            <code>tomb</code> — four protectors (<code>g*pro</code>). Compass
+            layout is presentation-only.
+          </p>
+        </li>
+        <li>
+          <a href="instance-winter.html">Lair of the Dark Mage</a>
+          <p>
+            <code>winter_instance</code> — <code>xmagefz → xmagefi → xmagen →
+            xmagex</code> via <code>respawn_as</code>.
+          </p>
+        </li>
+        <li>
+          <a href="events.html">World events</a>
+          <p>
+            <code>events</code> list panel + separate <code>bossBar</code> —
+            chips stay in <code>serverInfo</code>.
+          </p>
+        </li>
+        <li>
+          <a href="event-abtesting.html">A/B Testing</a>
+          <p>
+            <code>eventScore</code> horizontal tug bar + <code>eventRoster</code> as separate panels.
+          </p>
+        </li>
+        <li>
+          <a href="visualization-lab.html">Visualization lab (HUD + Pixi toggles)</a>
+          <p>
+            Toggle world rings, entity debug lines (move / aggro / target), nameplates, comm chips —
+            settings persist in <code>localStorage</code> (incl. per-mtype line overrides).
+          </p>
+        </li>
+        <li>
+          <a href="world-ability-ranges.html">World ability ranges (PIXI map)</a>
+          <p>
+            Imminent CD rings on <code>window.map</code>; highlight players in
+            <code>ability.radius</code>. From <code>test_visualize_skills.ts</code>.
+          </p>
+        </li>
+        <li>
+          <a href="boss-mechanics.html">Boss mechanics (chips &amp; spawns)</a>
+          <p>
+            Per-boss chips from <code>G.monsters</code> — spawns, auras, roles;
+            live minion counts; HP threshold bar for event bosses.
+          </p>
+        </li>
+        <li>
+          <a href="ability-timeline.html">Ability timeline (boss CDs)</a>
+          <p>
+            <code>abilityTimeline</code> panel — forward cooldown bars from
+            <code>entity.s</code>; vertical or horizontal; WoW boss-mod style.
+          </p>
+        </li>
+        <li>
+          <a href="instance-unified.html">Unified instance module (concept)</a>
+          <p>
+            One <code>instance</code> panel when <code>G.maps[map].instance</code>;
+            <code>mapInfo</code> + <code>instanceRun</code> always separate.
+          </p>
+        </li>
+      </ul>
+    </div>
+  </body>
+</html>

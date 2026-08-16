@@ -1,0 +1,463 @@
+/* Multi-panel mock stage — mirrors comm PositionedPanel layout */
+.mock-stage {
+  position: relative;
+  box-sizing: border-box;
+  min-height: 860px;
+  min-width: 1040px;
+  width: 100%;
+  padding: 0 0 28px;
+  border: 1px dashed #3a3a3a;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+}
+
+.mock-stage--compact {
+  min-height: 560px;
+  min-width: 880px;
+}
+
+.mock-stage--full {
+  min-height: 720px;
+  min-width: 1040px;
+}
+
+.mock-stage__hint {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: #555;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ecu-positioned {
+  position: absolute;
+  margin: 0;
+  z-index: 1;
+}
+
+.ecu-positioned .ecu-panel {
+  margin: 0;
+  width: 100%;
+}
+
+.ecu-positioned .ecu-panel:not([style*="max-width"]) {
+  max-width: none;
+}
+
+/* Default demo placements — pixel offsets sized to panel content */
+.ecu-pos-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ecu-positioned.ecu-pos-center.ecu-pos-serverInfo,
+.ecu-positioned.ecu-pos-center.ecu-pos-mapInfo {
+  width: min(360px, calc(100% - 680px));
+}
+
+.ecu-pos-serverInfo {
+  top: 8px;
+  z-index: 2;
+}
+
+.ecu-pos-mapInfo {
+  top: 100px;
+  z-index: 1;
+}
+
+.ecu-pos-instanceRun {
+  top: 110px;
+  right: 16px;
+  width: 300px;
+}
+
+.ecu-pos-instance {
+  top: 310px;
+  right: 16px;
+  width: 380px;
+}
+
+.ecu-pos-instance--sm {
+  top: 290px;
+  right: 16px;
+  width: 300px;
+}
+
+.ecu-pos-events {
+  top: 88px;
+  left: 16px;
+  width: 280px;
+}
+
+.ecu-pos-bossBar {
+  top: 500px;
+  right: 16px;
+  width: 300px;
+}
+
+.ecu-pos-players {
+  top: 500px;
+  left: 16px;
+  width: 200px;
+}
+
+.mock-stage--full .ecu-pos-instanceRun {
+  top: 200px;
+}
+
+.mock-stage--full .ecu-pos-instance--sm {
+  top: 340px;
+}
+
+.mock-stage--full .ecu-pos-bossBar {
+  top: 560px;
+}
+
+.mock-stage--full .ecu-pos-players {
+  top: 560px;
+}
+
+.mock-stage--full .ecu-pos-abilityTimeline {
+  top: 54px;
+}
+
+.ecu-pos-eventScore {
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+}
+
+.ecu-pos-eventRoster {
+  top: 310px;
+  right: 16px;
+  width: 320px;
+}
+
+.ecu-pos-events--wide {
+  top: 88px;
+  left: 16px;
+  width: 340px;
+}
+
+.ecu-pos-bossBar--solo {
+  top: 88px;
+  right: 16px;
+  width: 300px;
+}
+
+.ecu-pos-bossBar--crypt {
+  top: 110px;
+  left: 16px;
+  width: 300px;
+}
+
+.ecu-pos-abilityTimeline {
+  top: 54px;
+  right: 16px;
+  width: 300px;
+}
+
+/* Right column stack: bossBar above abilityTimeline (co-op pull mockups) */
+.mock-comm-ui .comm-pos-bossBar {
+  top: 12px;
+  right: 16px;
+  left: auto;
+}
+
+.mock-comm-ui .comm-pos-abilityTimeline {
+  top: 54px;
+  right: 16px;
+  left: auto;
+}
+
+.ecu-panel__chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: #141414;
+  border-bottom: 1px solid #444;
+  font-size: 11px;
+  color: #777;
+  user-select: none;
+}
+
+.ecu-panel__chrome-grip {
+  color: #666;
+  letter-spacing: -2px;
+}
+
+.ecu-panel__chrome-id {
+  color: var(--gold);
+  font-family: "Courier New", monospace;
+  font-size: 11px;
+}
+
+.ecu-panel__chrome-label {
+  color: #999;
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.ecu-panel--chrome .ecu-panel__head {
+  display: none;
+}
+
+.ecu-panel--chrome .ecu-panel__body {
+  padding-top: 6px;
+}
+
+/* Mock #comm-ui PositionedPanel shell — play mode + layout edit */
+.mock-comm-ui {
+  position: relative;
+  box-sizing: border-box;
+  min-height: inherit;
+  width: 100%;
+  font-family: "Press Start 2P", "Courier New", monospace;
+  image-rendering: pixelated;
+}
+
+.mock-comm-ui .comm-pos-panel {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.mock-comm-ui .comm-pos-panel-body {
+  box-sizing: border-box;
+  background: #000;
+  border: 2px double gray;
+  padding: 6px 8px;
+}
+
+.mock-comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body {
+  border-top: none;
+}
+
+.mock-comm-ui .comm-pos-edit-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: rgba(40, 40, 20, 0.92);
+  border: 1px solid #886;
+  border-bottom: none;
+  color: #ffe08a;
+  font-size: 11px;
+  line-height: 1.2;
+  user-select: none;
+  cursor: grab;
+}
+
+.mock-comm-ui .comm-pos-edit-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mock-comm-ui .comm-pos-panel-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #886;
+  background: rgba(30, 30, 20, 0.95);
+  color: #ffe08a;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mock-comm-ui .comm-pos-resize {
+  display: none;
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  z-index: 12;
+  background:
+    linear-gradient(135deg, transparent 52%, #8b9bb0 52%, #8b9bb0 58%, transparent 58%),
+    linear-gradient(135deg, transparent 68%, #8b9bb0 68%, #8b9bb0 74%, transparent 74%),
+    linear-gradient(135deg, transparent 84%, #8b9bb0 84%, #8b9bb0 90%, transparent 90%);
+  opacity: 0.9;
+}
+
+.mock-comm-ui .comm-pos-panel.comm-pos-editing > .comm-pos-resize,
+.mock-comm-ui .comm-pos-panel.comm-pos-movable > .comm-pos-resize {
+  display: block;
+}
+
+.mock-comm-ui .comm-pos-bossBar {
+  width: min(520px, 72vw);
+  min-width: min(360px, 92vw);
+}
+
+.mock-comm-ui .comm-pos-abilityTimeline {
+  width: 300px;
+}
+
+.mock-comm-ui .comm-pos-abilityTimeline .ecu-abil-timeline[data-orient="horizontal"] {
+  min-height: 108px;
+}
+
+/* ObservedUnit / VitalsColumn mock (BossBarPanel body) */
+.mock-comm-ui .comm-unit {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  gap: 6px;
+}
+
+.mock-comm-ui .comm-vitals-mock {
+  position: relative;
+  width: 100%;
+  min-height: 30px;
+  background: #000;
+  box-sizing: border-box;
+}
+
+.mock-comm-ui .comm-vitals-mock__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: #c44;
+  transition: width 0.15s linear;
+}
+
+.mock-comm-ui .comm-vitals-mock__label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.mock-comm-ui .comm-vitals-mock__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mock-comm-ui .comm-vitals-mock__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mock-comm-ui .comm-boss-aggro {
+  flex: 0 1 auto;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid #555;
+  color: #bbb;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.mock-comm-ui .comm-vitals-mock__pct {
+  flex-shrink: 0;
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+.mock-comm-ui .comm-pos-panel:not(.comm-pos-editing) > .comm-pos-panel-close,
+.mock-comm-ui .comm-pos-panel:not(.comm-pos-editing) > .comm-pos-edit-header,
+.mock-comm-ui .comm-pos-panel:not(.comm-pos-editing) > .comm-pos-resize {
+  display: none;
+}
+
+.mock-comm-ui .comm-pos-abilityTimeline > .ecu-abil-panel {
+  border: 2px double gray;
+  background: #000;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.mock-comm-ui .comm-pos-abilityTimeline.comm-pos-editing > .ecu-abil-panel {
+  border-top: none;
+}
+
+.mock-layout-toggle {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 10px;
+  background: rgba(30, 30, 20, 0.95);
+  border: 1px solid #886;
+  color: #ffe08a;
+  cursor: pointer;
+}
+
+.mock-layout-toggle[aria-pressed="true"] {
+  background: rgba(52, 48, 24, 0.96);
+  border-color: #bba86a;
+}
+
+.ecu-game-icon-sheet,
+.ecu-game-icon-mob {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: middle;
+  line-height: 0;
+  border: 1px solid #444;
+  background: #000;
+  box-sizing: border-box;
+}
+
+.ecu-game-icon-sheet img,
+.ecu-game-icon-mob img {
+  display: block;
+  image-rendering: pixelated;
+  max-width: none;
+}
+
+.ecu-game-icon-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
+  color: #ccc;
+  background: #1a1a1a;
+  border: 1px solid #555;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+.ecu-abil-icon .ecu-game-icon-sheet,
+.ecu-abil-icon .ecu-game-icon-letter {
+  border: none;
+  background: transparent;
+}
+
+.ecu-mech__icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 3px;
+  vertical-align: middle;
+}

@@ -1,0 +1,370 @@
+<!doctype html>
+
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8" />
+
+    <title>Boss mechanics — mockup</title>
+
+    <link rel="stylesheet" href="shared.css" />
+
+  </head>
+
+  <body class="mock-bg">
+
+    <p style="margin: 0 0 16px">
+
+      <a href="index.html">← All mockups</a> · <a href="analysis.html#boss-mechanics">Analysis</a>
+
+    </p>
+
+    <div class="mock-row">
+
+      <div class="mock-stage-wrap">
+
+        <p style="font-size: 13px; color: #999; margin: 0 0 12px">
+
+          Mechanic chips from <code>G.monsters[mtype]</code>. Spawn alerts only when imminent or firing — not static labels.
+
+        </p>
+
+
+
+        <div class="mock-stage mock-stage--compact" style="min-height: auto; padding: 16px">
+
+          <div style="display: grid; gap: 20px; max-width: 640px">
+
+            <div class="ecu-panel">
+
+              <header class="ecu-panel__head">
+
+                <h1 class="ecu-panel__title">Crypt bosses</h1>
+
+                <span class="ecu-panel__sub">instance panel · live spawn + ability chips</span>
+
+              </header>
+
+              <div class="ecu-panel__body">
+
+                <div class="ecu-grid ecu-grid--bosses">
+
+                  <div class="ecu-card ecu-card--aggro">
+
+                    <span class="ecu-card__name">Spike</span>
+
+                    <div class="ecu-card__status">Aggroed! · We see!</div>
+
+                    <div
+
+                      class="ecu-mechs"
+
+                      data-live-spawn
+
+                      data-spawn-interval="200"
+
+                      data-spawn-minion="Bat"
+
+                      data-spawn-offset="60"
+
+                    ></div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--live">4 bats visible</span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card ecu-card--seen">
+
+                    <span class="ecu-card__name">Bill</span>
+
+                    <div class="ecu-card__status">We see!</div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--role">Poisonous</span>
+
+                      <span
+
+                        class="ecu-mech ecu-mech--ability"
+
+                        data-live-ability
+
+                        data-ability-id="anger"
+
+                        data-ability-interval="8000"
+
+                      ></span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card">
+
+                    <span class="ecu-card__name">Lestat</span>
+
+                    <div class="ecu-card__status">Alive</div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--danger">Explosion 20</span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card ecu-card--dead">
+
+                    <span class="ecu-card__name">Orlok</span>
+
+                    <div class="ecu-card__status">Died · #2</div>
+
+                  </div>
+
+                  <div class="ecu-card">
+
+                    <span class="ecu-card__name">Elena</span>
+
+                    <div class="ecu-card__status">Alive</div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--role">Supporter</span>
+
+                      <span
+
+                        class="ecu-mech ecu-mech--ability"
+
+                        data-live-ability
+
+                        data-ability-id="healing"
+
+                        data-ability-interval="800"
+
+                      ></span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card">
+
+                    <span class="ecu-card__name">Marceline</span>
+
+                    <div class="ecu-card__status"><span data-live-countdown="ago" data-ms="120000">Seen 2m ago</span></div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--aura" data-ability-id="weakness_aura" data-mech-suffix="r100"></span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card">
+
+                    <span class="ecu-card__name">Lucinda</span>
+
+                    <div class="ecu-card__status">Alive</div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--aura" data-ability-id="dampening_aura" data-mech-suffix="r300"></span>
+
+                      <span
+
+                        class="ecu-mech ecu-mech--ability"
+
+                        data-live-ability
+
+                        data-ability-id="mlight"
+
+                        data-ability-interval="3000"
+
+                      ></span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-card">
+
+                    <span class="ecu-card__name">Angel</span>
+
+                    <div class="ecu-card__status">Alive</div>
+
+                    <div class="ecu-mechs">
+
+                      <span class="ecu-mech ecu-mech--aura">Curse aura · r300</span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+
+            <div class="ecu-panel">
+
+              <header class="ecu-panel__head">
+
+                <h1 class="ecu-panel__title">Event bosses</h1>
+
+              </header>
+
+              <div class="ecu-panel__body" style="display: grid; gap: 12px">
+
+                <div class="ecu-card ecu-card--aggro">
+
+                  <span class="ecu-card__name">Franky</span>
+
+                  <div class="ecu-card__status"><span data-live-hp-label>72</span>% HP · main · co-op</div>
+
+                  <div
+
+                    class="ecu-mechs"
+
+                    data-live-spawn
+
+                    data-spawn-interval="200"
+
+                    data-spawn-minion="Mummy"
+
+                    data-spawn-offset="45"
+
+                  ></div>
+
+                  <div class="ecu-mechs">
+
+                    <span class="ecu-mech ecu-mech--live">6 mummies visible</span>
+
+                    <span class="ecu-mech ecu-mech--role">Cooperative</span>
+
+                  </div>
+
+                </div>
+
+                <div class="ecu-card">
+
+                  <span class="ecu-card__name">Giga Crab</span>
+
+                  <div class="ecu-card__status">Live · main</div>
+
+                  <div
+
+                    class="ecu-mechs"
+
+                    data-live-spawn
+
+                    data-spawn-interval="1000"
+
+                    data-spawn-minion="Crabx"
+
+                    data-spawn-offset="350"
+
+                  ></div>
+
+                  <div class="ecu-mechs">
+
+                    <span class="ecu-mech ecu-mech--role">Cooperative</span>
+
+                  </div>
+
+                </div>
+
+                <div class="ecu-card" data-live-hp-thresholds data-live-hp="41">
+
+                  <span class="ecu-card__name">Mr. Pumpkin</span>
+
+                  <div class="ecu-card__status">41% HP</div>
+
+                  <div class="ecu-mechs">
+
+                    <span
+
+                      class="ecu-mech ecu-mech--spawn ecu-mech--spawn-alert"
+
+                      data-live-threshold-chip
+
+                      hidden
+
+                    ></span>
+
+                  </div>
+
+                  <div class="ecu-hp-thresholds" style="margin-top: 6px" aria-label="HP thresholds at 75%, 50%, 25%">
+
+                    <div class="ecu-hp-thresholds__fill" style="width: 41%"></div>
+
+                    <span class="ecu-hp-thresholds__mark ecu-hp-thresholds__mark--fired" style="left: 25%" title="75% fired"></span>
+
+                    <span class="ecu-hp-thresholds__mark ecu-hp-thresholds__mark--fired" style="left: 50%" title="50% fired"></span>
+
+                    <span class="ecu-hp-thresholds__mark" style="left: 75%" title="25% upcoming"></span>
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <aside class="mock-note">
+
+        <h2>Mechanic visualization</h2>
+
+        <p>Generic renderers driven from design data — not hand-authored per boss in comm code.</p>
+
+        <h3 style="font-size: 13px; color: #ccc; font-weight: normal; margin: 12px 0 6px">Chip types</h3>
+
+        <ul style="font-size: 12px; padding-left: 16px">
+
+          <li><span class="ecu-mech ecu-mech--spawn">spawn alert</span> — only when imminent or just fired</li>
+
+          <li><span class="ecu-mech ecu-mech--aura">aura</span> — ability + condition + radius</li>
+
+          <li><span class="ecu-mech ecu-mech--ability">ability</span> — CD chip when on cooldown</li>
+
+          <li><span class="ecu-mech ecu-mech--role">role</span> — poisonous, supporter, cooperative</li>
+
+          <li><span class="ecu-mech ecu-mech--live">live</span> — entity scan (minion count)</li>
+
+        </ul>
+
+        <p style="font-size: 12px">
+
+          Exact spawn ETA is server-only (<code>monster.last</code>). Mock simulates warn window + flash on fire.
+
+        </p>
+
+      </aside>
+
+    </div>
+
+    <script src="mock-game-data.js"></script>
+    <script src="mock-game-icons.js"></script>
+    <script src="mock-live.js"></script>
+
+  </body>
+
+</html>
+

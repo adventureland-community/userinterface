@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>World ability ranges — mockup</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body class="mock-bg">
+    <p style="margin: 0 0 16px">
+      <a href="index.html">← All mockups</a> ·
+      <a href="visualization-lab.html">Visualization lab</a> ·
+      <a href="analysis.html#world-ability-overlay">Analysis</a>
+    </p>
+    <div class="mock-row">
+      <div class="mock-stage-wrap">
+        <p style="font-size: 13px; color: #999; margin: 0 0 10px">
+          SVG stand-in for PIXI circles on <code>window.map</code> (Pixi 4.8.9). Toggles sync with
+          <a href="visualization-lab.html">visualization lab</a> via <code>localStorage</code>.
+        </p>
+
+        <div class="ecu-panel" style="max-width: 480px" data-viz-world-demo>
+          <header class="ecu-panel__head">
+            <h1 class="ecu-panel__title">Protector of Darkness</h1>
+            <span class="ecu-panel__sub">world overlay · focus target</span>
+          </header>
+          <div class="ecu-panel__body">
+            <div class="ecu-world-controls">
+              <label>
+                <input type="checkbox" id="show-attack" data-viz-toggle="world.attackRange" checked />
+                Attack r50 <span class="viz-tag viz-tag--static">static</span>
+              </label>
+              <label>
+                <input type="checkbox" id="show-warp" data-viz-toggle="world.abilityImminent" checked />
+                Warpstomp r100 imminent
+              </label>
+              <label>
+                <input type="checkbox" id="show-anger" data-viz-toggle="world.abilityGhost" />
+                Anger r300 ghost <span class="viz-tag viz-tag--static">static</span>
+              </label>
+              <label>
+                <input type="checkbox" id="highlight" data-viz-toggle="world.highlightAtRisk" checked />
+                Highlight at-risk
+              </label>
+              <label>
+                <input type="checkbox" id="show-labels" data-viz-toggle="entity.nameplate" />
+                Nameplates <span class="viz-tag viz-tag--debug">debug</span>
+              </label>
+            </div>
+            <div class="ecu-world-demo" id="demo">
+              <svg viewBox="0 0 420 320" aria-label="Map overlay demo">
+                <defs>
+                  <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2a3a2a" stroke-width="0.5" />
+                  </pattern>
+                </defs>
+                <rect width="420" height="320" fill="url(#grid)" />
+                <circle
+                  id="ring-attack"
+                  data-viz-layer="world.attackRange"
+                  cx="210"
+                  cy="170"
+                  r="50"
+                  fill="none"
+                  stroke="#e44"
+                  stroke-width="1"
+                  stroke-dasharray="3 3"
+                  opacity="0.45"
+                />
+                <circle
+                  id="ring-anger"
+                  cx="210"
+                  cy="170"
+                  r="90"
+                  fill="none"
+                  stroke="#a66"
+                  stroke-width="2"
+                  stroke-dasharray="8 6"
+                  opacity="0.35"
+                />
+                <circle
+                  id="ring-warp"
+                  cx="210"
+                  cy="170"
+                  r="30"
+                  fill="rgba(238,136,136,0.12)"
+                  stroke="#e88"
+                  stroke-width="3"
+                />
+                <text
+                  data-viz-nameplate
+                  data-viz-layer="entity.nameplate"
+                  x="210"
+                  y="148"
+                  text-anchor="middle"
+                  fill="#ccc"
+                  font-size="10"
+                  hidden
+                >
+                  Protector of Darkness
+                </text>
+                <g class="player-in" data-range="warp">
+                  <circle cx="230" cy="160" r="8" fill="#f88" stroke="#fff" stroke-width="2" />
+                  <text x="230" y="145" text-anchor="middle" fill="#f88" font-size="9">Alice</text>
+                </g>
+                <g class="player-in" data-range="warp">
+                  <circle cx="195" cy="185" r="8" fill="#f88" stroke="#fff" stroke-width="2" />
+                  <text x="195" y="200" text-anchor="middle" fill="#f88" font-size="9">Bob</text>
+                </g>
+                <g class="player-anger">
+                  <circle cx="120" cy="120" r="8" fill="#888" stroke="#666" stroke-width="1" />
+                  <text x="120" y="108" text-anchor="middle" fill="#888" font-size="9">Carol</text>
+                </g>
+                <g class="player-out">
+                  <circle cx="340" cy="240" r="8" fill="#666" stroke="#444" stroke-width="1" />
+                  <text x="340" y="255" text-anchor="middle" fill="#666" font-size="9">Dan</text>
+                </g>
+                <text data-viz-status x="210" y="30" text-anchor="middle" fill="#ffd28a" font-size="11">
+                  Warpstomp · imminent
+                </text>
+              </svg>
+              <div
+                class="mock-mob-anchor"
+                style="left: 50%; top: 53.1%"
+                data-monster-sprite="gpurplepro"
+                data-sprite-w="28"
+                data-sprite-h="42"
+              ></div>
+            </div>
+            <div class="ecu-world-legend">
+              <strong>Imminent ring</strong> — CD &lt;15% only (default on).<br />
+              <strong>Ghost ring</strong> — static mid-CD preview (opt-in).<br />
+              <strong>Attack range</strong> — debug static circle from <code>entity.range</code>.<br />
+              <strong>Red players</strong> — inside radius via stock <code>distance()</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="mock-note">
+        <h2>World range overlay</h2>
+        <p>Draws on the game map, not in comm HTML panels. Tied to bossBar / focus target.</p>
+        <p>
+          Full toggle matrix:
+          <a href="visualization-lab.html">Visualization lab</a>
+        </p>
+        <h3 style="font-size: 13px; color: #ccc; font-weight: normal; margin: 12px 0 6px">When to show rings</h3>
+        <ul style="font-size: 12px; padding-left: 16px">
+          <li><strong>Imminent</strong> — <code>ms / cooldown &lt; 15%</code></li>
+          <li><strong>Ghost (opt-in)</strong> — on CD static awareness</li>
+          <li><strong>Attack range</strong> — always when debug/static enabled</li>
+          <li><strong>Hide</strong> — mid CD default (no clutter)</li>
+        </ul>
+        <p style="font-size: 12px">Pixi: <code>PIXI.Graphics</code> on <code>map</code>, same as CODE bots.</p>
+      </aside>
+    </div>
+    <script src="mock-game-data.js"></script>
+    <script src="mock-game-icons.js"></script>
+    <script src="mock-viz-defaults.js"></script>
+    <script src="mock-world-abilities.js"></script>
+    <script src="mock-live.js"></script>
+    <script src="mock-viz.js"></script>
+  </body>
+</html>

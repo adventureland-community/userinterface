@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Visualization lab — mockup</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body class="mock-bg">
+    <p style="margin: 0 0 16px">
+      <a href="index.html">← All mockups</a> ·
+      <a href="analysis.html#client-vs-comm-viz">Analysis</a> ·
+      <a href="world-ability-ranges.html">World ranges</a>
+    </p>
+
+    <p style="font-size: 13px; color: #999; margin: 0 0 12px; max-width: 900px">
+      Toggle HUD and Pixi-style overlays independently. Settings persist in <code>localStorage</code>
+      (<code>ecu-viz-settings</code>). Static/debug layers default off in production; imminent-only
+      rings default on.
+    </p>
+
+    <div class="viz-lab" id="viz-lab" data-viz-lab>
+      <aside class="viz-settings">
+        <h2>Overlays</h2>
+
+        <details open>
+          <summary>World · Pixi on <code>map</code></summary>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.attackRange" checked />
+            Attack range <code>entity.range</code>
+            <span class="viz-tag viz-tag--static">static</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.abilityImminent" checked />
+            Ability rings when imminent (&lt;15% CD)
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.abilityGhost" />
+            Ghost rings mid-CD (anger r300 preview)
+            <span class="viz-tag viz-tag--static">static</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.auraRing" />
+            Aura radius (dampening, etc.)
+            <span class="viz-tag viz-tag--static">static</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.highlightAtRisk" checked />
+            Highlight players in ability radius
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.targetLine" />
+            Aggro target line <span class="viz-tag viz-tag--debug">legacy</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.leashBoundary" />
+            Roam / leash boundary
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="world.spawnPoints" />
+            Design spawn points
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+        </details>
+
+        <details open>
+          <summary>Entity HUD · Pixi nameplates</summary>
+          <label>
+            <input type="checkbox" data-viz-toggle="entity.hpBar" checked />
+            HP bar above boss
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="entity.aggroRing" checked />
+            Aggro ring under feet
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="entity.cdLabel" />
+            CD ms labels on entity
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="entity.nameplate" />
+            Name + level plate
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+        </details>
+
+        <details open>
+          <summary>Comm HUD · HTML panels</summary>
+          <label>
+            <input type="checkbox" data-viz-toggle="comm.mechanicChips" checked />
+            Mechanic chips on instance card
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="comm.spawnAlert" checked />
+            Spawn alert chip (imminent only)
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="comm.hpThresholds" checked />
+            HP threshold markers (event bosses)
+          </label>
+        </details>
+
+        <details open>
+          <summary>Debug · entity lines</summary>
+          <p class="viz-settings__hint">
+            Pixi lines from <code>entity.real_x/y</code> — same layer as CODE
+            <code>draw_line</code>. Filter by kind; override per <code>mtype</code> below.
+          </p>
+          <label>
+            <input type="checkbox" data-viz-toggle="lines.moveDest" />
+            Move destination <code>going_x/y</code>
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="lines.aggroTarget" checked />
+            Monster aggro → <code>target</code>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="lines.attackTarget" />
+            Entity target lines (players → mob)
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+          <fieldset class="viz-filter-group">
+            <legend>Show lines for</legend>
+            <label>
+              <input type="checkbox" data-viz-toggle="lines.filter.monsters" checked />
+              Monsters
+            </label>
+            <label>
+              <input type="checkbox" data-viz-toggle="lines.filter.players" checked />
+              Players
+            </label>
+            <label>
+              <input type="checkbox" data-viz-toggle="lines.filter.focusOnly" />
+              Focus boss only
+            </label>
+          </fieldset>
+          <div class="viz-mtype-panel" data-viz-mtype-panel aria-label="Per-mtype line overrides"></div>
+        </details>
+
+        <details>
+          <summary>Debug · wire helpers</summary>
+          <label>
+            <input type="checkbox" data-viz-toggle="debug.entityIds" />
+            Entity id + mtype
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+          <label>
+            <input type="checkbox" data-viz-toggle="debug.gridCoords" />
+            Grid coordinates
+            <span class="viz-tag viz-tag--debug">debug</span>
+          </label>
+        </details>
+
+        <button type="button" class="viz-reset" data-viz-reset>Reset to defaults</button>
+      </aside>
+
+      <div class="viz-stage">
+        <div class="viz-world-wrap">
+          <div class="viz-world">
+            <svg viewBox="0 0 480 360" aria-label="Pixi map overlay demo">
+              <defs>
+                <pattern id="viz-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                  <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#2a3a2a" stroke-width="0.5" />
+                </pattern>
+              </defs>
+              <rect width="480" height="360" fill="url(#viz-grid)" />
+
+              <g data-viz-layer="debug.gridCoords">
+                <text x="10" y="16" fill="#444" font-size="9" font-family="monospace">0,0</text>
+                <text x="430" y="350" fill="#444" font-size="9" font-family="monospace">480,360</text>
+              </g>
+
+              <rect
+                data-viz-layer="world.leashBoundary"
+                x="40"
+                y="40"
+                width="400"
+                height="280"
+                class="viz-leash"
+                rx="8"
+              />
+
+              <g data-viz-layer="world.spawnPoints">
+                <circle class="viz-spawn-point" cx="380" cy="100" r="4" />
+                <circle class="viz-spawn-point" cx="100" cy="280" r="4" />
+                <text x="385" y="95" fill="#a88" font-size="8">design spawn</text>
+              </g>
+
+              <!-- anger r300 → 90px visual scale -->
+              <circle
+                id="viz-ring-anger"
+                data-viz-layer="world.abilityImminent"
+                cx="240"
+                cy="190"
+                r="90"
+                fill="none"
+                stroke="#a66"
+                stroke-width="2"
+                stroke-dasharray="8 6"
+                opacity="0.35"
+              />
+              <!-- warp r100 → 30px -->
+              <circle
+                id="viz-ring-warp"
+                data-viz-layer="world.abilityImminent"
+                cx="240"
+                cy="190"
+                r="30"
+                fill="rgba(238,136,136,0.12)"
+                stroke="#e88"
+                stroke-width="3"
+              />
+              <!-- attack range ~50px -->
+              <circle id="viz-ring-attack" data-viz-layer="world.attackRange" cx="240" cy="190" r="50" />
+              <!-- aura r180 → 54px -->
+              <circle id="viz-ring-aura" data-viz-layer="world.auraRing" cx="240" cy="190" r="54" />
+
+              <g data-viz-lines-svg data-viz-layer="lines.any"></g>
+
+              <line id="viz-target-line" data-viz-layer="world.targetLine" x1="240" y1="190" x2="268" y2="168" />
+
+              <!-- boss (sprite overlay below SVG) -->
+              <g id="viz-boss">
+                <g data-viz-layer="entity.aggroRing">
+                  <circle cx="240" cy="200" r="14" fill="none" stroke="#e44" stroke-width="2" opacity="0.8" />
+                </g>
+                <g data-viz-layer="entity.hpBar">
+                  <rect x="222" y="162" width="36" height="4" fill="#222" stroke="#444" stroke-width="0.5" />
+                  <rect x="222" y="162" width="21" height="4" fill="#6a4" data-viz-boss-hp style="width: 21px" />
+                  <text x="240" y="160" text-anchor="middle" class="viz-entity-hp" data-viz-boss-hp-label>58%</text>
+                </g>
+                <g data-viz-layer="entity.nameplate">
+                  <text x="240" y="152" text-anchor="middle" fill="#ccc" font-size="9">Protector of Darkness</text>
+                </g>
+                <g data-viz-layer="entity.cdLabel">
+                  <text x="255" y="178" class="viz-cd-label">Warpstomp:<tspan data-viz-cd-warp>3.2s</tspan></text>
+                  <text x="255" y="188" class="viz-cd-label">Anger:<tspan data-viz-cd-anger>11.4s</tspan></text>
+                </g>
+                <g data-viz-layer="debug.entityIds">
+                  <text x="240" y="212" text-anchor="middle" class="viz-entity-id">gpurplepro</text>
+                </g>
+              </g>
+
+              <text data-viz-status x="240" y="28" text-anchor="middle" class="viz-status">abilities on cooldown</text>
+
+              <!-- players -->
+              <g data-viz-at-risk class="viz-player--dim">
+                <circle cx="268" cy="168" r="8" fill="#888" stroke="#666" stroke-width="1" />
+                <text x="268" y="155" text-anchor="middle" fill="#888" font-size="9">Alice</text>
+                <g data-viz-layer="debug.entityIds">
+                  <text x="268" y="182" text-anchor="middle" class="viz-entity-id">p:Alice</text>
+                </g>
+              </g>
+              <g data-viz-at-risk class="viz-player--dim">
+                <circle cx="222" cy="208" r="8" fill="#888" stroke="#666" stroke-width="1" />
+                <text x="222" y="222" text-anchor="middle" fill="#888" font-size="9">Bob</text>
+              </g>
+              <g class="viz-player--dim">
+                <circle cx="120" cy="120" r="8" fill="#888" stroke="#666" stroke-width="1" />
+                <text x="120" y="108" text-anchor="middle" fill="#888" font-size="9">Carol</text>
+              </g>
+              <g class="viz-player--dim">
+                <circle cx="380" cy="260" r="8" fill="#888" stroke="#666" stroke-width="1" />
+                <text x="380" y="275" text-anchor="middle" fill="#888" font-size="9">Dan</text>
+              </g>
+            </svg>
+            <div
+              class="mock-mob-anchor"
+              style="left: 50%; top: 52.8%"
+              data-monster-sprite="gpurplepro"
+              data-sprite-w="28"
+              data-sprite-h="42"
+            ></div>
+          </div>
+          <p style="font-size: 11px; color: #666; margin: 6px 0 0">
+            SVG stand-in for <code>PIXI.Graphics</code> on <code>window.map</code> — same gating as
+            <a href="world-ability-ranges.html">world ranges mockup</a>.
+            Debug lines: cyan = move (<code>going_x/y</code>), red = monster aggro, amber = player target.
+          </p>
+        </div>
+
+        <div class="viz-hud-panel">
+          <div class="viz-hud-card" data-viz-layer="comm.mechanicChips">
+            <div class="viz-hud-card__title">instance · Protector of Darkness</div>
+            <div class="ecu-card ecu-card--aggro" style="border: none; padding: 0; background: transparent">
+              <div class="ecu-card__status">Aggroed! · Alice</div>
+              <div class="ecu-mechs">
+                <span
+                  class="ecu-mech ecu-mech--ability"
+                  data-viz-ability-chip
+                  data-ability-id="warpstomp"
+                  data-ability-interval="8000"
+                ></span>
+                <span
+                  class="ecu-mech ecu-mech--ability"
+                  data-viz-ability-chip
+                  data-ability-id="anger"
+                  data-ability-interval="12000"
+                ></span>
+              </div>
+            </div>
+            <div data-viz-layer="comm.hpThresholds" style="margin-top: 8px">
+              <div class="ecu-hp-thresholds" aria-label="HP thresholds">
+                <div class="ecu-hp-thresholds__fill" style="width: 58%"></div>
+                <span class="ecu-hp-thresholds__mark ecu-hp-thresholds__mark--fired" style="left: 25%"></span>
+                <span class="ecu-hp-thresholds__mark" style="left: 50%"></span>
+                <span class="ecu-hp-thresholds__mark" style="left: 75%"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="viz-hud-card">
+            <div class="viz-hud-card__title">Pixi implementation</div>
+            <p style="font-size: 11px; color: #888; margin: 0; line-height: 1.45">
+              Single <code>PIXI.Graphics</code> child on <code>map</code>, redrawn ~4 Hz. Guard with
+              <code>no_graphics</code>. Comm settings mirror these toggles under
+              <strong>Overlays</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="mock-game-data.js"></script>
+    <script src="mock-game-icons.js"></script>
+    <script src="mock-viz-defaults.js"></script>
+    <script src="mock-world-abilities.js"></script>
+    <script src="mock-live.js"></script>
+    <script src="mock-viz-lines.js"></script>
+    <script src="mock-viz.js"></script>
+  </body>
+</html>

@@ -1,0 +1,175 @@
+<!doctype html>
+
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8" />
+
+    <title>A/B Testing — mockup</title>
+
+    <link rel="stylesheet" href="shared.css" />
+
+  </head>
+
+  <body class="mock-bg">
+
+    <p style="margin: 0 0 16px"><a href="index.html">← All mockups</a> · <a href="analysis.html">Analysis</a></p>
+
+    <div class="mock-row">
+
+      <div class="mock-stage-wrap">
+
+        <div class="mock-stage mock-stage--compact">
+
+          <div class="ecu-positioned ecu-pos-eventScore">
+
+            <div class="ecu-panel ecu-panel--chrome">
+
+              <div class="ecu-panel__chrome">
+
+                <span class="ecu-panel__chrome-grip">⠿</span>
+
+                <span class="ecu-panel__chrome-id">eventScore</span>
+
+                <span class="ecu-panel__chrome-label">closable · snap top</span>
+
+              </div>
+
+              <div class="ecu-panel__body">
+
+                <div class="ecu-ab-scorebar" data-live-ab-score data-score-a="12" data-score-b="9" data-timer-ms="278000">
+
+                  <div class="ecu-ab-scorebar__labels">
+
+                    <div class="ecu-ab-scorebar__team ecu-ab-scorebar__team--a">
+
+                      <span>Team A</span>
+
+                      <span class="ecu-ab-scorebar__pts">12</span>
+
+                    </div>
+
+                    <div class="ecu-ab-scorebar__team ecu-ab-scorebar__team--b">
+
+                      <span>Team B</span>
+
+                      <span class="ecu-ab-scorebar__pts">9</span>
+
+                    </div>
+
+                  </div>
+
+                  <div class="ecu-ab-scorebar__track" aria-label="Score tug bar">
+
+                    <div class="ecu-ab-scorebar__fill-a" style="width: 57.1%"></div>
+
+                    <div class="ecu-ab-scorebar__fill-b" style="width: 42.9%"></div>
+
+                    <span class="ecu-ab-scorebar__timer">4:38</span>
+
+                  </div>
+
+                </div>
+
+                <div class="ecu-meta-row" style="border: none; padding-top: 6px; font-size: 12px">
+
+                  <span>Signup closed</span>
+
+                  <span>Watching: Alice · Team A</span>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="ecu-positioned ecu-pos-eventRoster">
+
+            <div class="ecu-panel ecu-panel--chrome">
+
+              <div class="ecu-panel__chrome">
+
+                <span class="ecu-panel__chrome-grip">⠿</span>
+
+                <span class="ecu-panel__chrome-id">eventRoster</span>
+
+                <span class="ecu-panel__chrome-label">closable · resize</span>
+
+              </div>
+
+              <div class="ecu-panel__body">
+
+                <div class="ecu-section__label">On map</div>
+
+                <div class="ecu-grid ecu-grid--2">
+
+                  <div class="ecu-card ecu-card--seen ecu-card--team-a">
+                    <span class="ecu-card__name">Alice</span>
+                    <div class="ecu-card__status">Team A · visible</div>
+                  </div>
+                  <div class="ecu-card ecu-card--aggro ecu-card--team-b">
+                    <span class="ecu-card__name">Bob</span>
+                    <div class="ecu-card__status">Team B · vs Alice</div>
+                  </div>
+                  <div class="ecu-card ecu-card--team-a">
+                    <span class="ecu-card__name">Carol</span>
+                    <div class="ecu-card__status">Team A · <span data-live-countdown="ago" data-ms="5000">seen 5s ago</span></div>
+                  </div>
+                  <div class="ecu-card ecu-card--team-b">
+                    <span class="ecu-card__name">Dan</span>
+                    <div class="ecu-card__status">Team B · <span data-live-countdown="ago" data-ms="12000">seen 12s ago</span></div>
+                  </div>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+
+          <div class="mock-stage__hint">Horizontal score bar from S.abtesting.A / .B · roster separate</div>
+
+        </div>
+
+      </div>
+
+      <aside class="mock-note">
+
+        <h2>A/B Testing — panel split</h2>
+
+        <ul>
+
+          <li><code>eventScore</code> — horizontal tug bar: A fills left, B fills right, timer on bar</li>
+
+          <li><code>eventRoster</code> — players with <code>.team</code> on map</li>
+
+        </ul>
+
+        <p>
+
+          Data: <code>S.abtesting.A</code>, <code>S.abtesting.B</code>, <code>end</code> countdown.
+
+          Bar width = <code>A / (A + B)</code> vs <code>B / (A + B)</code> (0–0 shows even split).
+
+          Stock game uses three separate chips in topmid.
+
+        </p>
+
+      </aside>
+
+    </div>
+
+    <script src="mock-live.js"></script>
+
+  </body>
+
+</html>
+

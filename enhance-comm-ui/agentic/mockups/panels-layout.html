@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Full observer layout — mockup</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body class="mock-bg">
+    <p style="margin: 0 0 16px"><a href="index.html">← All mockups</a></p>
+    <div class="mock-row">
+      <div class="mock-stage-wrap">
+        <p style="font-size: 13px; color: #999; margin: 0 0 10px">
+          Example crypt run with every proposed panel on the stage at once — each is a separate
+          <code>PositionedPanel</code> in layout mode.
+        </p>
+        <div class="mock-stage mock-stage--full">
+          <div class="ecu-positioned ecu-pos-center ecu-pos-serverInfo">
+            <div class="ecu-panel ecu-panel--chrome" style="max-width: none">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">serverInfo</span>
+              </div>
+              <div class="ecu-panel__body" style="padding: 4px 8px; font-size: 13px">
+                <span data-live-day-clock>EU 1 · 14:32 day</span>
+                · <span class="ecu-chip-live" style="color: #85c76b">goobrawl live</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-center ecu-pos-mapInfo">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">mapInfo</span>
+              </div>
+              <div class="ecu-panel__body" style="padding: 4px 10px; font-size: 13px; text-align: center">
+                The Crypt · in : 7f3a…c2
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-events">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">events</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 12px">
+                <div class="ecu-event ecu-event--active" style="padding: 4px 0; border: none; background: transparent">
+                  <strong>Goo Brawl</strong> ·
+                  <span class="ecu-event__countdown" data-live-countdown="mmss" data-ms="372000" data-countdown-suffix=" left">6:12 left</span>
+                </div>
+                <div class="ecu-event" style="padding: 4px 0; border: none; background: transparent">Franky · not live</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-abilityTimeline">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">abilityTimeline</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 11px; color: #888; padding: 6px 8px">
+                gpurplepro · Icons mode · <a href="ability-timeline.html">full mock</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-instanceRun">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">instanceRun</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 12px">
+                <div class="ecu-progress__label"><span>5 / 8</span></div>
+                <div class="ecu-progress" style="height: 6px"><div class="ecu-progress__fill" style="width: 62%"></div></div>
+                <div style="margin-top: 4px">Phase: pull · luckm 0.125</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-instance--sm">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">instance</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 12px">
+                <div class="ecu-card ecu-card--aggro" style="margin-bottom: 4px">
+                  <span class="ecu-card__name">Orlok</span>
+                  <div class="ecu-card__status">Aggroed!</div>
+                </div>
+                <div class="ecu-card ecu-card--seen">
+                  <span class="ecu-card__name">Bats</span>
+                  <div class="ecu-card__status">3 visible</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-bossBar">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">bossBar</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 12px">
+                <div class="comm-unit">
+                  <div class="comm-vitals-mock">
+                    <div class="comm-vitals-mock__fill" data-live-hp data-live-hp="41" style="width: 41%"></div>
+                    <div class="comm-vitals-mock__label">
+                      <span class="comm-vitals-mock__name">Orlok</span>
+                      <span class="comm-vitals-mock__spacer"></span>
+                      <span class="comm-vitals-mock__pct" data-live-hp-label>41%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ecu-positioned ecu-pos-players">
+            <div class="ecu-panel ecu-panel--chrome">
+              <div class="ecu-panel__chrome">
+                <span class="ecu-panel__chrome-grip">⠿</span>
+                <span class="ecu-panel__chrome-id">players</span>
+              </div>
+              <div class="ecu-panel__body" style="font-size: 12px; color: #888">existing comm panel</div>
+            </div>
+          </div>
+
+          <div class="mock-stage__hint">Panels shown together for layout review — live comm hides irrelevant ones per map</div>
+        </div>
+      </div>
+      <aside class="mock-note">
+        <h2>Panel inventory</h2>
+        <table class="src-table" style="font-size: 12px">
+          <tr><th>Panel id</th><th>Status</th></tr>
+          <tr><td><code>serverInfo</code></td><td>exists (in topCenter)</td></tr>
+          <tr><td><code>mapInfo</code></td><td>exists (in topCenter)</td></tr>
+          <tr><td><code>crypt</code></td><td>exists → rename <code>instance</code></td></tr>
+          <tr><td><code>bossBar</code></td><td>exists</td></tr>
+          <tr><td><code>players</code>, meters…</td><td>exists</td></tr>
+          <tr><td><code>instanceRun</code></td><td>proposed split</td></tr>
+          <tr><td><code>events</code></td><td>proposed</td></tr>
+          <tr><td><code>abilityTimeline</code></td><td>proposed (co-op boss)</td></tr>
+          <tr><td><code>eventScore</code></td><td>proposed (abtesting map)</td></tr>
+          <tr><td><code>eventRoster</code></td><td>proposed (abtesting map)</td></tr>
+        </table>
+        <p style="margin-top: 10px">Splitting <code>topCenter</code> into <code>serverInfo</code> + <code>mapInfo</code> lets observers tuck map id without moving clock chips.</p>
+      </aside>
+    </div>
+    <script src="mock-live.js"></script>
+  </body>
+</html>

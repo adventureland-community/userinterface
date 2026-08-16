@@ -1,0 +1,484 @@
+/* Comm UI instance / event mockups — pixel HUD parity with CryptProgress */
+:root {
+  --bg: #000;
+  --panel-border: gray;
+  --text: #eee;
+  --text-dim: #888;
+  --text-meta: #ccc;
+  --gold: #ffd28a;
+  --alive: #6a6;
+  --seen: #cc6;
+  --aggro: #e55;
+  --dead: #666;
+  --accent: #e8c96a;
+  --card-min: 88px;
+  font-family: "Press Start 2P", "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: var(--text);
+}
+
+body.mock-bg {
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect fill='%23222' width='64' height='64'/%3E%3Crect fill='%23282828' x='32' y='32' width='32' height='32'/%3E%3C/svg%3E");
+  padding: 24px;
+}
+
+a {
+  color: var(--gold);
+}
+
+/* Panel shell — matches comm-crypt-progress */
+.ecu-panel {
+  display: flex;
+  flex-direction: column;
+  margin: 4px;
+  border: 2px double var(--panel-border);
+  background: var(--bg);
+  gap: 6px;
+  font-size: 16px;
+  image-rendering: pixelated;
+  max-width: 720px;
+}
+
+.ecu-panel--wide {
+  max-width: 960px;
+}
+
+.ecu-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  padding: 6px 10px 0;
+}
+
+.ecu-panel__title {
+  font-size: 17px;
+  color: #ccc;
+  margin: 0;
+}
+
+.ecu-panel__sub {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+
+.ecu-panel__pill {
+  font-size: 13px;
+  padding: 2px 8px;
+  border: 1px solid rgba(232, 201, 106, 0.45);
+  color: var(--gold);
+  margin-left: auto;
+}
+
+.ecu-panel__body {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ecu-progress {
+  height: 8px;
+  background: #222;
+  border: 1px solid #444;
+}
+
+.ecu-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6a4, #8c6);
+}
+
+.ecu-progress__label {
+  font-size: 13px;
+  color: var(--text-meta);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.ecu-section__label {
+  font-size: 14px;
+  color: var(--text-dim);
+  padding: 2px 4px 0;
+}
+
+.ecu-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.ecu-grid--bosses {
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min), 1fr));
+}
+
+.ecu-grid--2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ecu-grid--4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Boss / mob card */
+.ecu-card {
+  background: #000;
+  padding: 6px 8px;
+  min-width: var(--card-min);
+  border: 2px double #555;
+  font-size: 16px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.ecu-card:hover {
+  filter: brightness(1.15);
+}
+
+.ecu-card--seen {
+  border-color: var(--seen);
+}
+
+.ecu-card--aggro {
+  border-color: var(--aggro);
+}
+
+.ecu-card--dead {
+  border-color: #444;
+  opacity: 0.72;
+}
+
+.ecu-card--alive {
+  border-color: var(--alive);
+}
+
+.ecu-card__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ecu-sprite {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  background: #333;
+  border: 1px solid #555;
+}
+
+.ecu-card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ecu-card__status {
+  font-size: 12px;
+  color: var(--text-meta);
+  line-height: 1.35;
+}
+
+.ecu-card__meta {
+  font-size: 13px;
+  color: #999;
+}
+
+.ecu-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 14px;
+  color: var(--text-meta);
+  padding: 4px 0;
+  border-top: 1px solid #333;
+}
+
+.ecu-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ecu-key--ok {
+  color: #8c8;
+}
+
+.ecu-key--need {
+  color: #c88;
+}
+
+/* Events list */
+.ecu-event {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid #333;
+  background: #0a0a0a;
+}
+
+.ecu-event--active {
+  border-color: var(--accent);
+  background: rgba(232, 201, 106, 0.08);
+}
+
+.ecu-event__time {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.ecu-event__countdown {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.ecu-chip-live {
+  animation: ecu-chip-live-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes ecu-chip-live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(133, 199, 107, 0);
+  }
+  50% {
+    box-shadow: 0 0 8px 1px rgba(133, 199, 107, 0.35);
+  }
+}
+
+.ecu-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  background: #1a1a1a;
+  border: 1px solid #555;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ecu-btn--join {
+  border-color: rgba(232, 201, 106, 0.5);
+  color: var(--gold);
+}
+
+/* Hub index */
+.hub {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.hub h1 {
+  font-size: 20px;
+  color: var(--gold);
+  font-weight: normal;
+}
+
+.hub ul {
+  list-style: none;
+  padding: 0;
+}
+
+.hub li {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #333;
+  background: #111;
+}
+
+.hub li a {
+  font-size: 16px;
+}
+
+.hub li p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--text-meta);
+  line-height: 1.5;
+}
+
+.hub .src-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 8px 0 16px;
+}
+
+.hub .src-table th,
+.hub .src-table td {
+  border: 1px solid #333;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.mock-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.mock-stage-wrap {
+  flex: 1 1 680px;
+  min-width: min(100%, 680px);
+  max-width: none;
+  overflow-x: auto;
+}
+
+.mock-note {
+  flex: 0 1 280px;
+  min-width: 240px;
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-meta);
+}
+
+.mock-note h2 {
+  font-size: 15px;
+  color: var(--gold);
+  font-weight: normal;
+  margin: 0 0 8px;
+}
+
+.mock-note ul {
+  padding-left: 18px;
+  margin: 8px 0;
+}
+
+/* Data-source legend (ground mockups in /comm + game APIs) */
+.src-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 12px;
+  color: var(--text-meta);
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  border: 1px solid #333;
+  background: #0d0d0d;
+}
+
+.src {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 1px 5px;
+  border: 1px solid;
+  vertical-align: middle;
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+
+.src-comm {
+  color: #8c8;
+  border-color: #484;
+}
+
+.src-extend {
+  color: #cc8;
+  border-color: #884;
+}
+
+.src-meter {
+  color: #8cc;
+  border-color: #488;
+}
+
+.src-gs {
+  color: #c8c;
+  border-color: #848;
+}
+
+.src-stock {
+  color: #aaa;
+  border-color: #555;
+}
+
+.src-player {
+  color: #c9a;
+  border-color: #865;
+}
+
+.src-none {
+  color: #c88;
+  border-color: #844;
+  opacity: 0.85;
+}
+
+.mock-aspirational {
+  opacity: 0.55;
+  position: relative;
+}
+
+.mock-aspirational::after {
+  content: "not wired";
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 9px;
+  color: #c88;
+  border: 1px solid #844;
+  padding: 0 4px;
+  background: #000;
+}
+
+.mock-note code {
+  color: #b8d4a8;
+}
+
+.mock-note .src-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.mock-note .src-table th,
+.mock-note .src-table td {
+  border: 1px solid #333;
+  padding: 4px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid;
+  margin-right: 4px;
+}
+
+.tag-gen {
+  color: #8c8;
+  border-color: #484;
+}
+
+.tag-spec {
+  color: #c8a;
+  border-color: #864;
+}
+
+.tag-obs {
+  color: #8cc;
+  border-color: #488;
+}
+

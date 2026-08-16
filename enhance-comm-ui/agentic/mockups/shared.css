@@ -1,0 +1,8 @@
+/* Comm UI mockups — aggregate stylesheet (split into module files) */
+@import url("shared-core.css");
+@import url("shared-analysis.css");
+@import url("shared-events.css");
+@import url("shared-layout.css");
+@import url("shared-timeline.css");
+@import url("shared-mechanics.css");
+@import url("shared-viz.css");

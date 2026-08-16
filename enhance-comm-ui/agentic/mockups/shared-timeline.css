@@ -1,0 +1,489 @@
+/* Ability timeline panel — WoW boss-mod style (vertical default, horizontal option) */
+.ecu-abil-panel {
+  font-size: 12px;
+}
+
+.ecu-abil-orient {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+
+.ecu-abil-display {
+  margin-left: 0;
+}
+
+.ecu-abil-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 8px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ecu-abil-target {
+  color: var(--gold);
+  font-size: 13px;
+  margin-right: auto;
+}
+
+.ecu-abil-orient button {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  background: #111;
+  border: 1px solid #444;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.ecu-abil-orient button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--gold);
+}
+
+.ecu-abil-timeline {
+  --abil-icon: 28px;
+  --abil-track-h: 14px;
+  --abil-gap: 8px;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--abil-gap);
+  min-height: 200px;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  min-height: 140px;
+}
+
+.ecu-abil-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-zone--static {
+  flex: 1 1 auto;
+  min-height: 56px;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-zone--dynamic {
+  flex: 0 0 auto;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-zone {
+  flex: 1 1 0;
+  padding: 0 6px;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-zone--dynamic {
+  order: 1;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-zone--static {
+  order: 3;
+}
+
+.ecu-abil-zone-label {
+  font-size: 9px;
+  color: #555;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ecu-abil-now {
+  flex-shrink: 0;
+  background: rgba(232, 201, 106, 0.85);
+  position: relative;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-now {
+  height: 2px;
+  margin: 2px 0;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-now::after {
+  content: "NOW";
+  position: absolute;
+  right: 0;
+  top: -14px;
+  font-size: 8px;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-now {
+  order: 2;
+  width: 2px;
+  margin: 20px 4px 0;
+  align-self: stretch;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-now::after {
+  content: "NOW";
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.ecu-abil-entry {
+  display: grid;
+  grid-template-columns: var(--abil-icon) 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-entry {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto var(--abil-track-h);
+}
+
+.ecu-abil-icon {
+  grid-row: 1 / span 2;
+  width: var(--abil-icon);
+  height: var(--abil-icon);
+  border: 2px double #555;
+  background: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #888;
+  image-rendering: pixelated;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="bars"] .ecu-abil-entry .ecu-abil-icon {
+  display: none;
+}
+
+.ecu-abil-icon--imminent {
+  border-color: var(--gold);
+  box-shadow: 0 0 8px rgba(232, 201, 106, 0.55);
+}
+
+.ecu-abil-entry__name {
+  font-size: 11px;
+  color: #bbb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-entry__name {
+  font-size: 10px;
+  margin-bottom: 2px;
+}
+
+.ecu-abil-track {
+  grid-column: 2;
+  position: relative;
+  height: var(--abil-track-h);
+  background: #1a1a1a;
+  border: 1px solid #333;
+  overflow: hidden;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-track {
+  grid-column: 1;
+}
+
+.ecu-abil-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  min-width: 2px;
+  background: linear-gradient(90deg, #484, #6a6);
+  transition: width 0.05s linear;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-bar {
+  left: auto;
+  right: 0;
+}
+
+.ecu-abil-bar--dynamic {
+  background: linear-gradient(90deg, #844, #c66);
+}
+
+.ecu-abil-bar--imminent {
+  background: linear-gradient(90deg, #a66, #e88);
+  box-shadow: inset 0 0 6px rgba(255, 200, 120, 0.35);
+}
+
+.ecu-abil-track--imminent {
+  border-color: var(--gold);
+  box-shadow: 0 0 8px rgba(232, 201, 106, 0.35);
+}
+
+.ecu-abil-cd {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  color: #ddd;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 4px #000, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+.ecu-abil-track--imminent .ecu-abil-cd {
+  color: var(--gold);
+}
+
+.ecu-abil-entry--cast .ecu-abil-bar {
+  animation: ecu-abil-cast 0.45s ease-out;
+}
+
+.ecu-abil-entry--cast .ecu-abil-icon {
+  animation: ecu-abil-flash 0.45s ease-out;
+}
+
+@keyframes ecu-abil-cast {
+  0% {
+    filter: brightness(2.2);
+    box-shadow: 0 0 12px rgba(255, 240, 180, 0.9);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow: none;
+  }
+}
+
+@keyframes ecu-abil-flash {
+  0% {
+    border-color: #fff;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.8);
+  }
+  100% {
+    border-color: #555;
+    box-shadow: none;
+  }
+}
+
+.ecu-abil-legend {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #333;
+  font-size: 11px;
+  color: #777;
+  line-height: 1.5;
+}
+
+/* Icon scroll variant — single continuous axis (Wago / DBM hijack bars) */
+.ecu-abil-timeline[data-display="scroll"] {
+  --abil-static-ratio: 0.42;
+  gap: 4px;
+}
+
+.ecu-abil-scroll-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+  color: #555;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ecu-abil-scroll-lane {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] .ecu-abil-scroll-lane {
+  min-height: 128px;
+  margin-left: calc(var(--abil-icon) / 2 + 6px);
+  border-left: 2px solid #555;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] .ecu-abil-scroll-lane::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: 0;
+  top: 0;
+  height: calc(var(--abil-static-ratio) * 100%);
+  border-left: 2px dashed #444;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] .ecu-abil-scroll-lane::after {
+  content: "";
+  position: absolute;
+  left: -2px;
+  right: 0;
+  top: calc(var(--abil-static-ratio) * 100%);
+  height: 0;
+  border-top: 1px dashed #555;
+  pointer-events: none;
+  opacity: 0.65;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
+  gap: 4px 0;
+  align-items: stretch;
+  min-height: 100px;
+  width: 100%;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-labels {
+  grid-column: 1;
+  grid-row: 1;
+  padding: 0 4px;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-lane {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 72px;
+  margin: 0 4px 0 0;
+  border-top: 2px solid #555;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-lane::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: calc(var(--abil-static-ratio) * 100%);
+  border-top: 2px dashed #444;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-lane::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--abil-static-ratio) * 100%);
+  width: 0;
+  border-left: 1px dashed #555;
+  pointer-events: none;
+  opacity: 0.65;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-now {
+  grid-column: 2;
+  grid-row: 2;
+  order: unset;
+  margin: 18px 4px 0;
+  align-self: stretch;
+}
+
+.ecu-abil-scroll-marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ecu-abil-scroll-marker--dynamic {
+  transition:
+    bottom 0.08s linear,
+    right 0.08s linear,
+    transform 0.08s linear;
+}
+
+.ecu-abil-scroll-marker--static {
+  transition: none;
+}
+
+.ecu-abil-scroll-marker--ready .ecu-abil-scroll-cd {
+  color: #8fd48f;
+  font-weight: bold;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] .ecu-abil-scroll-marker {
+  left: -2px;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-marker {
+  top: 0;
+}
+
+.ecu-abil-scroll-marker .ecu-abil-icon {
+  grid-row: auto;
+  flex-shrink: 0;
+  display: flex;
+}
+
+.ecu-abil-scroll-name {
+  font-size: 8px;
+  color: #888;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+.ecu-abil-scroll-cd {
+  font-size: 9px;
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #000;
+}
+
+.ecu-abil-scroll-marker--imminent .ecu-abil-scroll-cd {
+  color: var(--gold);
+}
+
+.ecu-abil-scroll-marker--cast .ecu-abil-icon {
+  animation: ecu-abil-flash 0.45s ease-out;
+}
+
+.ecu-abil-scroll-trail {
+  position: absolute;
+  background: linear-gradient(180deg, rgba(106, 170, 106, 0.35), transparent);
+  pointer-events: none;
+}
+
+.ecu-abil-timeline[data-orient="vertical"][data-display="scroll"] .ecu-abil-scroll-trail {
+  left: -2px;
+  width: 3px;
+  transform: translateX(-50%);
+  bottom: 0;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"][data-display="scroll"] .ecu-abil-scroll-trail {
+  height: 3px;
+  top: 0;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, transparent, rgba(106, 170, 106, 0.35));
+  right: 0;
+}
