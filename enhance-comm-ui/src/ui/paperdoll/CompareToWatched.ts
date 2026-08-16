@@ -150,7 +150,7 @@ export function CompareToWatched(props: CompareToWatchedProps): any {
         : null,
       gold
         ? e(DeltaStat, {
-            label: "Gold",
+            label: "Goldm",
             theirs: gold.theirs,
             ours: gold.ours,
             pct: gold.pct,

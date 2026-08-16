@@ -1,5 +1,5 @@
 /**
- * Paperdoll luck / gold: welcome-snap merge + gear estimate fallback.
+ * Paperdoll luck / gold-find: gear estimates only (no wallet gold, no snap).
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
@@ -7,7 +7,7 @@ import type { EntityLike } from "../src/host/globals";
 import {
   formatMultPct,
   goldDelta,
-  goldDisplay,
+  goldFindDisplay,
   luckDelta,
   luckDisplay,
   resolvePaperdollEconomy,
@@ -43,75 +43,53 @@ describe("paperdoll luck / gold", () => {
     assert.equal(formatMultPct(1.25), "125%");
   });
 
-  it("prefers live luckm/gold over the welcome snap", () => {
-    install();
+  it("ignores entity and welcome-snap luckm/goldm; estimates from gear", () => {
+    install({
+      calc: (item) => (item.name === "ringofluck" ? { luck: 8 } : {}),
+      conditions: { mluck: { luck: 12 } },
+    });
     const live = {
       id: "a",
-      luckm: 1.1,
-      gold: 50,
-      goldm: 1.05,
-    } as EntityLike;
-    const snap = {
-      id: "a",
+      ctype: "mage",
       luckm: 1.9,
-      gold: 999,
       goldm: 2,
+      gold: 999,
+      slots: { ring1: { name: "ringofluck" } },
+      s: { mluck: { ms: 1000 } },
     } as EntityLike;
-    const eco = resolvePaperdollEconomy(live, snap);
-    assert.equal(eco.luckm, 1.1);
-    assert.equal(eco.gold, 50);
-    assert.equal(eco.goldm, 1.05);
-    assert.equal(eco.luckEstimated, false);
+    const eco = resolvePaperdollEconomy(live);
+    assert.equal(eco.luckm, 1.2);
+    assert.equal(eco.goldm, 1);
+    assert.equal(luckDisplay(eco).value, "~120%");
+    assert.equal(goldFindDisplay(eco).value, "~100%");
+    assert.match(luckDisplay(eco).title, /Estimated from equipped gear/);
   });
 
-  it("fills omitted fields from the welcome snap of the same id", () => {
-    install();
-    const live = { id: "a", type: "character" } as EntityLike;
-    const snap = {
+  it("never surfaces wallet gold", () => {
+    install({
+      calc: () => ({}),
+    });
+    const live = {
       id: "a",
-      luckm: 1.32,
+      ctype: "mage",
       gold: 1_240_000,
-      goldm: 1.25,
+      slots: {},
     } as EntityLike;
-    const eco = resolvePaperdollEconomy(live, snap);
-    assert.equal(eco.luckm, 1.32);
-    assert.equal(eco.gold, 1_240_000);
-    assert.equal(eco.goldm, 1.25);
-    const gold = goldDisplay(eco);
-    assert.equal(gold.value, "1.24M");
-    assert.match(gold.title, /gold find 125%/);
-    const luck = luckDisplay(eco);
-    assert.equal(luck.value, "132%");
+    const eco = resolvePaperdollEconomy(live);
+    assert.equal((eco as { gold?: number }).gold, undefined);
+    // Empty gear → baseline ~100% when the walker can run.
+    assert.equal(goldFindDisplay(eco).value, "~100%");
   });
 
-  it("does not use another character's welcome snap", () => {
-    install();
-    const live = { id: "b", type: "character" } as EntityLike;
-    const snap = { id: "a", luckm: 1.5, gold: 9 } as EntityLike;
-    const eco = resolvePaperdollEconomy(live, snap);
-    assert.equal(eco.luckm, undefined);
-    assert.equal(eco.gold, undefined);
-    assert.equal(luckDisplay(eco).value, "—");
-    assert.equal(goldDisplay(eco).value, "—");
-  });
-
-  it("falls back to gold-find % when coins are missing", () => {
-    const gold = goldDisplay({ goldm: 1.25 });
-    assert.equal(gold.value, "125%");
-    assert.match(gold.title, /Gold find/);
-  });
-
-  it("compares luck as percentage points and gold in a matching mode", () => {
+  it("compares luck and goldm as percentage points", () => {
     const luck = luckDelta({ luckm: 1.32 }, { luckm: 1.2 });
     assert.deepEqual(luck, { theirs: 132, ours: 120, pct: true });
-    const coins = goldDelta({ gold: 200 }, { gold: 50 });
-    assert.deepEqual(coins, { theirs: 200, ours: 50, pct: false });
     const find = goldDelta({ goldm: 1.25 }, { goldm: 1 });
     assert.deepEqual(find, { theirs: 125, ours: 100, pct: true });
-    assert.equal(goldDelta({ gold: 200 }, { goldm: 1.25 }), null);
+    assert.equal(goldDelta({ luckm: 1 }, { goldm: 1.25 }), null);
   });
 
-  it("estimates luckm from equipped luck + mluck when the server omits it", () => {
+  it("estimates luckm from equipped luck + mluck", () => {
     install({
       calc: (item) => (item.name === "ringofluck" ? { luck: 8 } : {}),
       conditions: { mluck: { luck: 12 } },
@@ -126,13 +104,11 @@ describe("paperdoll luck / gold", () => {
       s: { mluck: { ms: 1000 } },
     } as EntityLike;
     const eco = resolvePaperdollEconomy(live);
-    // 8 from ring + 12 mluck; trade slot is not equipped
     assert.equal(eco.luckm, 1.2);
-    assert.equal(eco.luckEstimated, true);
-    assert.match(luckDisplay(eco).title, /from gear/);
+    assert.equal(luckDisplay(eco).value, "~120%");
   });
 
-  it("estimates gold-find from gear; never invents wallet gold", () => {
+  it("estimates gold-find from gear", () => {
     install({
       calc: (item) => (item.name === "goldring" ? { gold: 10 } : {}),
     });
@@ -142,9 +118,7 @@ describe("paperdoll luck / gold", () => {
       slots: { ring1: { name: "goldring" } },
     } as EntityLike;
     const eco = resolvePaperdollEconomy(live);
-    assert.equal(eco.gold, undefined);
     assert.equal(eco.goldm, 1.1);
-    assert.equal(eco.goldmEstimated, true);
-    assert.equal(goldDisplay(eco).value, "110%");
+    assert.equal(goldFindDisplay(eco).value, "~110%");
   });
 });

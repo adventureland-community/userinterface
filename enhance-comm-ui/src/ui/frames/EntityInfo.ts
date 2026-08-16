@@ -20,7 +20,7 @@ import {
   PAPERDOLL_VITALS,
 } from "../paperdoll/PaperdollDummy";
 import {
-  goldDisplay,
+  goldFindDisplay,
   luckDisplay,
   resolvePaperdollEconomy,
 } from "../paperdoll/inspectStats";
@@ -99,13 +99,17 @@ export function EntityInfo(props: EntityInfoProps): any {
     String(watching.id) !== String(entity.id) &&
     !!(watching.player || watching.type === "character");
 
-  const welcomeSnap = window.observing;
-  const eco = resolvePaperdollEconomy(entity, welcomeSnap);
-  const watchEco = watching
-    ? resolvePaperdollEconomy(watching, welcomeSnap)
+  // Prefer the in-vision entity for the watched id — welcome snap is connect-time.
+  const liveWatching =
+    watching && watching.id != null
+      ? findEntity(props.entities, String(watching.id)) || watching
+      : watching;
+  const eco = resolvePaperdollEconomy(entity);
+  const watchEco = liveWatching
+    ? resolvePaperdollEconomy(liveWatching)
     : undefined;
   const luck = luckDisplay(eco);
-  const gold = goldDisplay(eco);
+  const goldFind = goldFindDisplay(eco);
 
   const close = () => {
     if (props.onClose) props.onClose();
@@ -298,10 +302,10 @@ export function EntityInfo(props: EntityInfoProps): any {
           : null,
         isPlayer
           ? e(Stat, {
-              label: "Gold",
-              value: gold.value,
-              accent: gold.accent,
-              title: gold.title,
+              label: "Goldm",
+              value: goldFind.value,
+              accent: goldFind.accent,
+              title: goldFind.title,
             })
           : null,
       ),
