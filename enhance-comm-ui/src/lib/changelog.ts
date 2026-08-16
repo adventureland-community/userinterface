@@ -22,7 +22,7 @@ export type ChangelogEntry = {
   title: string;
   /** One-line release blurb under the version title */
   summary: string;
-  /** Display date, e.g. "2026-08" */
+  /** Display date — required, ISO calendar day (YYYY-MM-DD). */
   date: string;
   items: ChangelogItem[];
 };
@@ -57,9 +57,130 @@ export const FEATURE_OVERVIEW: ChangelogItem[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.3",
+    title: "0.8.0-alpha.3",
+    date: "2026-08-16",
+    summary:
+      "Paperdoll luck and gold, Time Line cooldowns that match the game, and skills that never sent an attack packet — including party buffs and short self-buffs.",
+    items: [
+      {
+        label: "Group stretch alignment",
+        detail:
+          "Stretch ↕ on a grouped meter shares height without shifting anchors — unstretch shrinks back in place. Corner resize still keeps tops flush while dragging.",
+        kind: "fix",
+      },
+      {
+        label: "Threat scope",
+        detail:
+          "Threat meter can show Party (watched character's in-game party) or Visible (everyone with aggro on screen). Default stays Visible.",
+        kind: "feature",
+      },
+      {
+        label: "Meter bar height",
+        detail:
+          "Bar rows follow Options → Bar height (and Window scale). Chrome-on-hover no longer reflows the list when you hover Stretch ↕, so side-by-side meters keep row alignment.",
+        kind: "fix",
+      },
+      {
+        label: "Luck and gold on inspect",
+        detail:
+          "Paperdoll shows luck and gold. When /comm does not get those from the server, luck and gold-find are estimated from gear (wallet gold cannot be guessed). Compare mode uses matching units.",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Time Line cooldowns",
+        detail:
+          "Cast bars follow each skill's real cooldown, including attack speed for auto-attack and shared skills like 3shot. Attack speed is stored when the cast happens, so reviewing an older fight no longer paints yesterday's casts with today's speed.",
+        kind: "improve",
+        highlight: true,
+      },
+      {
+        label: "Time Line skills",
+        detail:
+          "Skills the game announces with ui / eval instead of an attack packet now show on the Time Line — stomp, scare, mluck, energize, Temporal Surge, and the rest of that set. Cleave still uses the attack packet; the extra ui ping is not a second cast (either packet order).",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Buffs and self skills on Time Line",
+        detail:
+          "Warcry and darkblessing show as casts from the caster (from the buff's caster field), even though the game's ui packet has no name. Hardshell, charge, and blink show from when the buff appears. Short buffs like blink are sampled often enough to usually catch them. Combat debuffs and skills that already send a named ui (mluck, energize, …) are not double-counted or mis-attributed.",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Paperdoll vitals",
+        detail:
+          "Green XP bar under MP, red HP, and a tighter stats block with luck and gold.",
+        kind: "ui",
+      },
+      {
+        label: "Threat ghosts",
+        detail:
+          "Aggro and threat no longer count vanished or already-dead monsters.",
+        kind: "fix",
+      },
+      {
+        label: "Meter window size",
+        detail:
+          "Meter windows keep their box when Inspector target lists are long — the list scrolls instead of stretching the window.",
+        kind: "fix",
+      },
+      {
+        label: "Pack names in tooltips",
+        detail:
+          "Ctrl-expand on meter targets groups identical pack members (Spark Bot ×40) so the tip stays readable.",
+        kind: "improve",
+      },
+      {
+        label: "Intro combat meters",
+        detail:
+          "The intro tour highlights all combat meters together, not only the HPS window.",
+        kind: "fix",
+      },
+      {
+        label: "Reopen menu keys",
+        detail:
+          "Closing several meters with the same title (e.g. two DPS) no longer trips React duplicate-key warnings in the Window Control reopen list.",
+        kind: "fix",
+      },
+      {
+        label: "Crypt panel opacity",
+        detail:
+          "Crypt progress stays solid (does not follow the meter out-of-combat idle fade). The panel frame fills with an opaque background so the map no longer shows through after meters wake.",
+        kind: "fix",
+      },
+      {
+        label: "Crypt bat click",
+        detail:
+          "Clicking Vampireling or Bat in Crypt progress targets an aggroed one of that type (preferring the one on you) instead of the lowest-id bat in vision.",
+        kind: "fix",
+      },
+      {
+        label: "Closed meters stay closed",
+        detail:
+          "Closing default DPS/HPS no longer resurrects them when /comm reloads — normalize respects the closed reopen list.",
+        kind: "fix",
+      },
+      {
+        label: "Layout guide stuck on",
+        detail:
+          "Releasing Alt while dragging a panel no longer leaves the alignment grid stuck on (Windows often drops pointerup when Alt opens the menu bar). The drag finishes on Alt-up.",
+        kind: "fix",
+      },
+      {
+        label: "Meter rank column",
+        detail:
+          "Ranks 10+ keep the same name alignment as 1–9 (rank column no longer clips double-digit numbers).",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.2",
     title: "0.8.0-alpha.2",
-    date: "2026-08",
+    date: "2026-08-14",
     summary:
       "Browse Changelog anytime, clearer arrange outlines, and Coop share numbers that match the game again.",
     items: [
@@ -143,7 +264,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.8.0-alpha.1",
     title: "0.8.0-alpha.1",
-    date: "2026-08",
+    date: "2026-08-13",
     summary:
       "New meter windows, snap groups for HUD and meters, and clearer fights.",
     items: [
@@ -172,7 +293,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.7.1-windows",
     title: "0.7.1",
-    date: "2026-07",
+    date: "2026-08-13",
     summary:
       "Unified windows — same lock model for HUD and meters, plus Window Control.",
     items: [
@@ -193,7 +314,7 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.7.0",
     title: "0.7.0",
-    date: "2026-07",
+    date: "2026-07-01",
     summary:
       "First Comm UI ship — movable panels, combat HUD, meters, and commands.",
     items: FEATURE_OVERVIEW,
@@ -221,6 +342,20 @@ export function unseenChangelogEntries(
 
 export function hasUnseenChangelog(seenId: string | null | undefined): boolean {
   return unseenChangelogEntries(seenId).length > 0;
+}
+
+/** True when `entryId` is newer than the last dismissed changelog id. */
+export function isChangelogEntryUnseen(
+  entryId: string,
+  seenId: string | null | undefined,
+): boolean {
+  if (!CHANGELOG.length) return false;
+  if (!seenId) return entryId === CHANGELOG[0].id;
+  const seenIdx = CHANGELOG.findIndex((entry) => entry.id === seenId);
+  if (seenIdx < 0) return entryId === CHANGELOG[0].id;
+  const entryIdx = CHANGELOG.findIndex((entry) => entry.id === entryId);
+  if (entryIdx < 0) return false;
+  return entryIdx < seenIdx;
 }
 
 export function changelogKindLabel(kind: ChangelogKind): string {
