@@ -138,14 +138,14 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         // layout edit — playArrange is false then, so keep the handle on.
         showMoveGrip: playArrange || opts?.editChrome === "grip",
         onMove: deps.onMove,
-        onMoveEnd: playArrange || deps.layoutEdit ? deps.onMoveEnd : undefined,
-        onDragStart:
-          playArrange || deps.layoutEdit ? deps.onPanelDragStart : undefined,
-        onDragMove:
-          playArrange || deps.layoutEdit
-            ? (id: PanelId, _pos: PanelPos, opts?: PanelGroupDragOpts) =>
-                deps.onPanelDragMove?.(id, opts)
-            : undefined,
+        // Always wire drag handlers — gating on playArrange cleared onMoveEnd
+        // when Alt released mid-drag, before Windows delivered pointerup.
+        onMoveEnd: deps.onMoveEnd,
+        onDragStart: deps.onPanelDragStart,
+        onDragMove: deps.onPanelDragMove
+          ? (id: PanelId, _pos: PanelPos, opts?: PanelGroupDragOpts) =>
+              deps.onPanelDragMove?.(id, opts)
+          : undefined,
         softAvoid: groupable ? false : undefined,
         style: opts?.style,
         hidden: isHidden,

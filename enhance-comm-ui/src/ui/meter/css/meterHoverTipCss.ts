@@ -18,6 +18,9 @@ export const METER_HOVER_TIP_CSS = `
   z-index: 10000;
   min-width: 300px;
   max-width: 460px;
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
   background: rgba(12, 14, 18, 0.94);
   border: 1px solid rgba(210, 210, 220, 0.28);
   border-radius: 2px;

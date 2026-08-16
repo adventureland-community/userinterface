@@ -7,11 +7,12 @@
  */
 
 import { getReact, e } from "../../../host/react";
-import { patchSettings } from "../../../lib/settings";
+import { getSettings, patchSettings } from "../../../lib/settings";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
 import { injectCommSetupWizardCss } from "./commSetupWizardCss";
 import {
   changelogKindLabel,
+  isChangelogEntryUnseen,
   latestChangelogId,
   type ChangelogEntry,
   type ChangelogItem,
@@ -84,10 +85,7 @@ function groupRestByKind(
   return groups;
 }
 
-function renderEntryBody(
-  entry: ChangelogEntry,
-  opts?: { showDate?: boolean },
-): any {
+function renderEntryBody(entry: ChangelogEntry): any {
   const highlights: ChangelogItem[] = [];
   const rest: ChangelogItem[] = [];
   for (let i = 0; i < entry.items.length; i++) {
@@ -106,9 +104,7 @@ function renderEntryBody(
       ),
     );
   }
-  // Date lives in the version nav when browsing; only show under the
-  // summary once when there is no nav (single-entry What's New).
-  if (opts?.showDate && entry.date) {
+  if (entry.date) {
     children.push(
       e("div", { key: "date", className: "ecu-comm-wiz-cl-date" }, entry.date),
     );
@@ -196,10 +192,16 @@ export function CommUIWhatsNew(props: CommUIWhatsNewProps): any {
   const React = getReact();
   const entries = props.entries;
   const showNav = !!props.browseAll || entries.length > 1;
+  // Snapshot at open — dismiss updates settings, but badges stay stable
+  // until the modal closes so "New" does not vanish mid-browse.
+  const [seenId] = React.useState(() => getSettings().changelogSeenId ?? null);
 
-  const [selectedId, setSelectedId] = React.useState(() =>
-    entries[0] ? entries[0].id : "",
-  );
+  const [selectedId, setSelectedId] = React.useState(() => {
+    const firstUnseen = entries.find((entry) =>
+      isChangelogEntryUnseen(entry.id, seenId),
+    );
+    return (firstUnseen || entries[0] || { id: "" }).id;
+  });
 
   React.useEffect(() => {
     const first = entries[0];
@@ -207,10 +209,14 @@ export function CommUIWhatsNew(props: CommUIWhatsNewProps): any {
       setSelectedId("");
       return;
     }
-    setSelectedId((prev: string) =>
-      entries.some((entry) => entry.id === prev) ? prev : first.id,
-    );
-  }, [entries]);
+    setSelectedId((prev: string) => {
+      if (entries.some((entry) => entry.id === prev)) return prev;
+      const firstUnseen = entries.find((entry) =>
+        isChangelogEntryUnseen(entry.id, seenId),
+      );
+      return (firstUnseen || first).id;
+    });
+  }, [entries, seenId]);
 
   const dismiss = () => {
     patchSettings({ changelogSeenId: latestChangelogId() });
@@ -234,6 +240,9 @@ export function CommUIWhatsNew(props: CommUIWhatsNewProps): any {
 
   const selected =
     entries.find((entry) => entry.id === selectedId) || entries[0] || null;
+  const selectedUnseen = selected
+    ? isChangelogEntryUnseen(selected.id, seenId)
+    : false;
 
   const heading = props.browseAll
     ? "Changelog"
@@ -247,7 +256,21 @@ export function CommUIWhatsNew(props: CommUIWhatsNewProps): any {
     e("div", { className: "ecu-comm-wiz-logo" }, "Comm UI"),
     e("h3", null, heading),
     showNav && selected
-      ? e("div", { className: "ecu-comm-wiz-cl-ver" }, selected.title)
+      ? e(
+          "div",
+          { className: "ecu-comm-wiz-cl-ver" },
+          selected.title,
+          selectedUnseen
+            ? e("span", { className: "ecu-comm-wiz-cl-badge-new" }, "New")
+            : null,
+          selected.date
+            ? e(
+                "span",
+                { className: "ecu-comm-wiz-cl-ver-date" },
+                selected.date,
+              )
+            : null,
+        )
       : null,
     e(
       "button",
@@ -269,28 +292,41 @@ export function CommUIWhatsNew(props: CommUIWhatsNewProps): any {
           className: "ecu-comm-wiz-cl-nav",
           "aria-label": "Versions",
         },
-        ...entries.map((entry) =>
-          e(
+        ...entries.map((entry) => {
+          const unseen = isChangelogEntryUnseen(entry.id, seenId);
+          return e(
             "button",
             {
               key: entry.id,
               type: "button",
               className:
                 "ecu-comm-wiz-cl-nav-btn" +
-                (selected && selected.id === entry.id ? " is-active" : ""),
+                (selected && selected.id === entry.id ? " is-active" : "") +
+                (unseen ? " is-new" : " is-seen"),
               onClick: () => setSelectedId(entry.id),
             },
-            e("span", { className: "ecu-comm-wiz-cl-nav-title" }, entry.title),
+            e(
+              "span",
+              { className: "ecu-comm-wiz-cl-nav-title-row" },
+              e(
+                "span",
+                { className: "ecu-comm-wiz-cl-nav-title" },
+                entry.title,
+              ),
+              unseen
+                ? e("span", { className: "ecu-comm-wiz-cl-badge-new" }, "New")
+                : null,
+            ),
             e("span", { className: "ecu-comm-wiz-cl-nav-date" }, entry.date),
-          ),
-        ),
+          );
+        }),
       )
     : null;
 
   const body = e(
     "div",
     { className: "ecu-comm-wiz-cl-body" },
-    selected ? renderEntryBody(selected, { showDate: !showNav }) : null,
+    selected ? renderEntryBody(selected) : null,
   );
 
   const footer = e(

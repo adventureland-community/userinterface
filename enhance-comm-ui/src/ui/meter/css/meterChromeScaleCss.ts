@@ -17,11 +17,32 @@ export const METER_CHROME_SCALE_CSS = `
   --meter-fs-micro: ${TYPE.micro};
 }
 @media (hover: hover) and (pointer: fine) {
-  /* Hide meter titlebar + statusbar until hover even when unlocked (is-layout).
-   * PositionedPanel arrange strip is separate and may stay visible unlocked. */
+  /*
+   * Chrome-on-hover: overlay title/status instead of display:none.
+   * display:none reflows the bar list (row tops jump / last row clips) when
+   * you hover Stretch ↕ or compare two same-height meters side by side.
+   */
+  .ecu-meter-shell.is-chrome-hover {
+    position: relative;
+  }
+  .ecu-meter-shell.is-chrome-hover .ecu-meter-titlebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+  }
+  .ecu-meter-shell.is-chrome-hover .ecu-meter-statusbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+  }
   .ecu-meter-shell.is-chrome-hover:not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-titlebar,
   .ecu-meter-shell.is-chrome-hover:not(:hover):not(.is-interacting):not(.is-menu-open) .ecu-meter-statusbar {
-    display: none;
+    opacity: 0;
+    pointer-events: none;
   }
 }
 .ecu-meter-opt-sec {

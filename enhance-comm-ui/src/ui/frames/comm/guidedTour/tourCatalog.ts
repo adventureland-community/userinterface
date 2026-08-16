@@ -158,8 +158,10 @@ const INTRO_TOUR: GuidedTourDef = {
       section: "Overlay",
       title: "Combat meters",
       body: "Optional rank windows for damage, healing, and fight history.",
-      target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
-      targetKind: "button",
+      // Union DPS ‖ HPS (and any other rank windows) — not the single
+      // top-of-stack shell the meters tour uses for a just-added window.
+      target: ".ecu-meter-shell:not(.is-inspector):not(.is-report)",
+      targetKind: "region",
       missingHint: "No meter yet — the next step shows how to add one.",
     },
     {

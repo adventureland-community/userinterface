@@ -13,7 +13,7 @@ import {
   writeIntroStep,
 } from "./comm/CommUISetupWizard";
 import { CommUIWhatsNew } from "./comm/CommUIWhatsNew";
-import { CHANGELOG, unseenChangelogEntries } from "../../lib/changelog";
+import { CHANGELOG, hasUnseenChangelog } from "../../lib/changelog";
 import { useCommGuidedTours } from "../hooks/useCommGuidedTours";
 import {
   triggerMeterToolbarTour,
@@ -32,6 +32,7 @@ import { commWindowHasSnap } from "../../lib/commWindowGroup";
 import { ensureWindowNumbers } from "../../lib/commWindowNumbers";
 import {
   isLayoutGuideActive,
+  resetLayoutGuide,
   subscribeLayoutGuide,
 } from "../../lib/layoutGuide";
 import { LayoutEditChrome } from "./comm/LayoutEditChrome";
@@ -92,10 +93,14 @@ export function CommUI(props: CommUIProps): any {
   const [setupWizardOpen, setSetupWizardOpen] = React.useState(
     () => !getSettings().setupWizardDone,
   );
+  // Auto-open when there are unseen releases, but always show the full
+  // CHANGELOG in the version nav (not only the unseen slice — that looked
+  // like older entries had been deleted).
   const [whatsNewEntries, setWhatsNewEntries] = React.useState(() => {
     const s = getSettings();
     if (!s.setupWizardDone) return [];
-    return unseenChangelogEntries(s.changelogSeenId);
+    if (!hasUnseenChangelog(s.changelogSeenId)) return [];
+    return CHANGELOG;
   });
   const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
   const [introStep, setIntroStep] = React.useState(() => readIntroStep());
@@ -249,6 +254,11 @@ export function CommUI(props: CommUIProps): any {
       }),
     [],
   );
+  React.useEffect(() => {
+    return () => {
+      resetLayoutGuide();
+    };
+  }, []);
 
   const combat = combatSignals(snap.entities);
   const onCrypt = getMapData(snap.entities).map === "crypt";

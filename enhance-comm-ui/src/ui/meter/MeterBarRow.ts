@@ -35,7 +35,7 @@ import {
   subscribeMeterAppearance,
 } from "../../meters/meterAppearance";
 import { meterTestBarResult } from "../../meters/meterTestBars";
-import { METER_BAR_ROW_H } from "../../meters/meterBarViewport";
+import { meterBarRowHeightPx } from "../../meters/meterBarViewport";
 
 function toPoolRows(
   rows: RankedRow[],
@@ -125,6 +125,10 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
       if (!listHost) return;
       const p = propsRef.current;
       const app = getMeterAppearance();
+      // Shell already applies windowScale to font-size — only sync row box here.
+      if (host) {
+        host.style.setProperty("--meter-bar-row-h", `${meterBarRowHeightPx()}px`);
+      }
       const useTestBars =
         app.testBars &&
         (p.query.kind === "players" ||
@@ -330,8 +334,7 @@ export function MeterBarsView(props: MeterBarsViewProps): any {
       ref: hostRef,
       className: "ecu-meter-bar-host",
       style: {
-        fontSize: `${Math.round(getMeterAppearance().windowScale * 100)}%`,
-        ["--meter-bar-row-h" as string]: `${METER_BAR_ROW_H}px`,
+        ["--meter-bar-row-h" as string]: `${meterBarRowHeightPx()}px`,
       },
     },
     e("div", {

@@ -1,10 +1,17 @@
 import { getReact, e } from "../../host/react";
 import { monsterSprite } from "../../host/icons";
 import { formatTime } from "../../lib/format";
-import { loadSettings, saveSettings, effectiveKillScope, killScopeLabel, type PartyScope } from "../../lib/settings";
+import {
+  loadSettings,
+  saveSettings,
+  effectiveKillScope,
+  killScopeLabel,
+  type PartyScope,
+} from "../../lib/settings";
 import { getStats, resetKillSession } from "../../kpi/sessionKills";
 import { getObservingId } from "../../host/al";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { wrapIconHtml } from "../chrome/wrapIconHtml";
 
 const MOB_ICON_SIZE = 20;
 const LIST_ROW_HEIGHT = 30;
@@ -35,22 +42,6 @@ function fmtRate(n: number): string {
   if (n >= 1000) return fmtCompact(n);
   if (n >= 100) return String(Math.round(n));
   return n.toFixed(1).replace(/\.0$/, "");
-}
-
-function wrapIconHtml(html: string): any {
-  return e("div", {
-    style: { display: "inline-block", lineHeight: 0, fontSize: 0, flexShrink: 0 },
-    dangerouslySetInnerHTML: { __html: html },
-    ref: (node: HTMLElement | null) => {
-      if (!node) return;
-      const root = node.firstElementChild as HTMLElement | null;
-      if (!root) return;
-      root.style.margin = "0";
-      root.removeAttribute("onmousedown");
-      root.removeAttribute("ontouchstart");
-      root.removeAttribute("onclick");
-    },
-  });
 }
 
 function metricCell(opts: {
@@ -413,7 +404,8 @@ export function KillKpiPanel(): any {
     avgIntervalSec?: number | null;
     showPace?: boolean;
   }) => {
-    const share = opts.max > 0 ? Math.max(0, Math.min(1, opts.count / opts.max)) : 0;
+    const share =
+      opts.max > 0 ? Math.max(0, Math.min(1, opts.count / opts.max)) : 0;
     let icon: any = null;
     if (opts.mtype) {
       const html = monsterSprite(opts.mtype, { size: MOB_ICON_SIZE });
@@ -441,7 +433,8 @@ export function KillKpiPanel(): any {
           ? metricCell({
               value: formatTime(opts.avgIntervalSec),
               unit: "avg",
-              title: "Average interval between kills of this type (pace, not HP TTK)",
+              title:
+                "Average interval between kills of this type (pace, not HP TTK)",
               minWidth: "5ch",
             })
           : metricCell({
@@ -520,9 +513,7 @@ export function KillKpiPanel(): any {
   };
 
   const partyMax =
-    scope === "all" && stats.byParty.length
-      ? stats.byParty[0].count
-      : 0;
+    scope === "all" && stats.byParty.length ? stats.byParty[0].count : 0;
   const mtypeMax = stats.byMtype.length ? stats.byMtype[0].count : 0;
 
   return shell([

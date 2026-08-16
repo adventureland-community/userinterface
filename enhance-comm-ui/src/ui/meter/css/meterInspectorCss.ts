@@ -84,7 +84,8 @@ export const METER_INSPECTOR_DRILL_CSS = `
 .ecu-meter-row {
   position: relative;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  /* Fixed rank column (ch, not em) so 10.+ lines up with 1–9 without growing with font-size. */
+  grid-template-columns: 2.75ch 1fr auto;
   align-items: center;
   gap: 3px;
   min-height: var(--meter-bar-row-h, 18px);
@@ -133,14 +134,17 @@ export const METER_INSPECTOR_DRILL_CSS = `
 .ecu-meter-row .ecu-meter-rank {
   color: #fff;
   font-variant-numeric: tabular-nums;
-  width: 16px;
+  width: 100%;
+  min-width: 0;
+  text-align: right;
+  box-sizing: border-box;
   z-index: 1;
   font-size: var(--meter-fs-secondary);
   opacity: 1;
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  padding: 0 !important;
+  padding: 0 2px 0 0 !important;
   margin: 0 !important;
 }
 `;

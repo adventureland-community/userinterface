@@ -340,6 +340,11 @@ export const METER_TIMELINE_CLUSTER_CSS = `
   color: #7a8494;
   font-size: var(--meter-tt-sec);
 }
+.ecu-meter-tt-more {
+  padding: var(--meter-tt-row-pad-y) var(--meter-tt-row-pad-x);
+  color: #8b9bb4;
+  font-size: var(--meter-tt-foot);
+}
 .ecu-meter-tt-foot {
   margin-top: 10px;
   padding-top: 8px;
@@ -757,7 +762,7 @@ export const METER_TIMELINE_TRACK_CSS = `
   bottom: 3px;
   height: auto;
   /* z-index:auto — do not create a stacking context. Icons and bar-hits
-     compete in the axis so a later icon beats an earlier 5–20s bar. */
+     compete in the axis so a later icon beats an earlier duration bar. */
   z-index: auto;
   display: flex;
   align-items: center;

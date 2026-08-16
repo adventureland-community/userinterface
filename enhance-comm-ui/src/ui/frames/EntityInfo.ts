@@ -4,14 +4,26 @@
  */
 
 import { getReact, e } from "../../host/react";
+import { getG } from "../../host/al";
 import { setXTarget } from "../../host/icons";
 import { classColors } from "../../lib/colors";
-import { getPercent } from "../../lib/format";
+import { formatCompactNumber, getPercent } from "../../lib/format";
 import { findEntity } from "../../queries/entities";
 import { GearGrid } from "../chrome/GearGrid";
 import type { EntityLike } from "../../host/globals";
 import { CompareToWatched } from "../paperdoll/CompareToWatched";
-import { PaperdollDummy, PAPERDOLL_SHELL } from "../paperdoll/PaperdollDummy";
+import {
+  PaperdollDummy,
+  PAPERDOLL_BODY,
+  PAPERDOLL_SHELL,
+  PAPERDOLL_STATS_GRID,
+  PAPERDOLL_VITALS,
+} from "../paperdoll/PaperdollDummy";
+import {
+  goldDisplay,
+  luckDisplay,
+  resolvePaperdollEconomy,
+} from "../paperdoll/inspectStats";
 import { Stat } from "../paperdoll/Stat";
 import { VitalsBar } from "../paperdoll/VitalsBar";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
@@ -32,6 +44,15 @@ function snapshotEntity(ent: EntityLike): EntityLike {
   if (ent.slots) copy.slots = Object.assign({}, ent.slots);
   if (ent.s) copy.s = Object.assign({}, ent.s);
   return copy;
+}
+
+/** Soft sync omits max_xp; G.levels[level] is the same table the server uses. */
+function resolveMaxXp(entity: EntityLike): number | undefined {
+  if (entity.max_xp != null && entity.max_xp > 0) return entity.max_xp;
+  const level = entity.level;
+  if (level == null) return undefined;
+  const cap = getG()?.levels?.[String(level)];
+  return typeof cap === "number" && cap > 0 ? cap : undefined;
 }
 
 export function EntityInfo(props: EntityInfoProps): any {
@@ -78,10 +99,30 @@ export function EntityInfo(props: EntityInfoProps): any {
     String(watching.id) !== String(entity.id) &&
     !!(watching.player || watching.type === "character");
 
+  const welcomeSnap = window.observing;
+  const eco = resolvePaperdollEconomy(entity, welcomeSnap);
+  const watchEco = watching
+    ? resolvePaperdollEconomy(watching, welcomeSnap)
+    : undefined;
+  const luck = luckDisplay(eco);
+  const gold = goldDisplay(eco);
+
   const close = () => {
     if (props.onClose) props.onClose();
     else setXTarget(null);
   };
+
+  const maxXp = isPlayer ? resolveMaxXp(entity) : undefined;
+  const xpBar =
+    isPlayer && entity.xp != null && maxXp != null
+      ? e(VitalsBar, {
+          label: "XP",
+          current: entity.xp,
+          max: maxXp,
+          color: "#368C2B",
+          valueText: `${formatCompactNumber(entity.xp)} / ${formatCompactNumber(maxXp)}`,
+        })
+      : null;
 
   return e(
     "div",
@@ -102,16 +143,16 @@ export function EntityInfo(props: EntityInfoProps): any {
         style: {
           display: "flex",
           alignItems: "center",
-          gap: "8px",
-          padding: "8px 10px",
+          gap: "6px",
+          padding: "4px 6px",
           background: `linear-gradient(90deg, ${accent}33, transparent)`,
           borderBottom: `1px solid ${accent}66`,
         },
       },
       e("div", {
         style: {
-          width: "8px",
-          height: "8px",
+          width: "7px",
+          height: "7px",
           background: stale ? "#c9a227" : accent,
           flexShrink: 0,
         },
@@ -122,7 +163,7 @@ export function EntityInfo(props: EntityInfoProps): any {
           style: {
             flex: 1,
             minWidth: 0,
-            fontSize: TYPE.title,
+            fontSize: TYPE.name,
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -146,12 +187,12 @@ export function EntityInfo(props: EntityInfoProps): any {
             border: "1px solid #555",
             background: "#1c1c1c",
             color: "#ddd",
-            width: "32px",
-            height: "32px",
-            lineHeight: "28px",
+            width: "22px",
+            height: "22px",
+            lineHeight: "18px",
             padding: 0,
             flexShrink: 0,
-            fontSize: "18px",
+            fontSize: TYPE.body,
             ...PIXEL_TEXT,
           },
         },
@@ -163,36 +204,29 @@ export function EntityInfo(props: EntityInfoProps): any {
           "div",
           {
             style: {
-              padding: "6px 10px",
+              padding: "4px 6px",
               background: "rgba(201, 162, 39, 0.14)",
               borderBottom: "1px solid rgba(201, 162, 39, 0.35)",
               color: "#e8c96a",
-              fontSize: TYPE.body,
-              lineHeight: 1.35,
+              fontSize: TYPE.micro,
+              lineHeight: 1.3,
               ...PIXEL_TEXT,
             },
           },
-          "Out of vision — last known data. Updates when they return.",
+          "Out of vision — last known data.",
         )
       : null,
     e(
       "div",
-      {
-        style: {
-          padding: "10px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-        },
-      },
+      { style: PAPERDOLL_BODY },
       e(
         "div",
         {
           style: {
             display: "flex",
             flexWrap: "wrap",
-            gap: "4px 12px",
-            fontSize: TYPE.body,
+            gap: "2px 8px",
+            fontSize: TYPE.micro,
             color: "#bdbdbd",
             ...PIXEL_TEXT,
           },
@@ -206,12 +240,12 @@ export function EntityInfo(props: EntityInfoProps): any {
       ),
       e(
         "div",
-        {},
+        { style: PAPERDOLL_VITALS },
         e(VitalsBar, {
           label: "HP",
           current: entity.hp || 0,
           max: entity.max_hp || 1,
-          color: isPlayer ? accent : "#c33",
+          color: "#c33",
         }),
         e(VitalsBar, {
           label: "MP",
@@ -219,19 +253,11 @@ export function EntityInfo(props: EntityInfoProps): any {
           max: entity.max_mp || 1,
           color: "#3a5fd4",
         }),
+        xpBar,
       ),
       e(
         "div",
-        {
-          style: {
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "4px 14px",
-            padding: "8px",
-            background: "#0d0d0d",
-            border: "1px solid #2a2a2a",
-          },
-        },
+        { style: PAPERDOLL_STATS_GRID },
         entity.attack
           ? e(Stat, {
               label: "ATK",
@@ -262,24 +288,47 @@ export function EntityInfo(props: EntityInfoProps): any {
               value: entity.frequency.toFixed(2),
             })
           : null,
+        isPlayer
+          ? e(Stat, {
+              label: "🍀 Luck",
+              value: luck.value,
+              accent: luck.accent,
+              title: luck.title,
+            })
+          : null,
+        isPlayer
+          ? e(Stat, {
+              label: "Gold",
+              value: gold.value,
+              accent: gold.accent,
+              title: gold.title,
+            })
+          : null,
       ),
-      compare ? e(CompareToWatched, { entity, watching }) : null,
+      compare && watching && watchEco
+        ? e(CompareToWatched, {
+            entity,
+            watching,
+            entityEco: eco,
+            watchEco,
+          })
+        : null,
       entity.slots
         ? e(
             "div",
             {
               style: {
                 borderTop: "1px solid #2a2a2a",
-                paddingTop: "8px",
+                paddingTop: "6px",
               },
             },
             e(
               "div",
               {
                 style: {
-                  fontSize: TYPE.body,
+                  fontSize: TYPE.micro,
                   color: "#888",
-                  marginBottom: "6px",
+                  marginBottom: "4px",
                   letterSpacing: "0.04em",
                   ...PIXEL_TEXT,
                 },

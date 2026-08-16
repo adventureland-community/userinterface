@@ -195,6 +195,15 @@ const CSS = `
   color: #ffe0a0;
   font-size: 20px;
   margin: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+.ecu-comm-wiz-cl-ver-date {
+  color: rgba(220, 210, 190, 0.78);
+  font-size: 16px;
+  font-weight: normal;
 }
 .ecu-comm-wiz-cl-close {
   position: absolute;
@@ -266,10 +275,41 @@ const CSS = `
   border-left-color: #e8c96a;
   background: rgba(255, 255, 255, 0.06);
 }
+.ecu-comm-wiz-cl-nav-btn.is-seen {
+  color: rgba(210, 205, 198, 0.62);
+}
+.ecu-comm-wiz-cl-nav-btn.is-seen .ecu-comm-wiz-cl-nav-date {
+  color: rgba(180, 172, 162, 0.42);
+}
+.ecu-comm-wiz-cl-nav-btn.is-seen.is-active {
+  color: #e8c96a;
+}
+.ecu-comm-wiz-cl-nav-btn.is-new {
+  color: #fff;
+}
+.ecu-comm-wiz-cl-nav-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
 .ecu-comm-wiz-cl-nav-title {
   font-size: 19px;
   line-height: 1.2;
   color: inherit;
+}
+.ecu-comm-wiz-cl-badge-new {
+  flex: 0 0 auto;
+  padding: 1px 6px 2px;
+  border: 1px solid rgba(232, 201, 106, 0.55);
+  border-radius: 2px;
+  background: rgba(232, 201, 106, 0.16);
+  color: #ffe0a0;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .ecu-comm-wiz-cl-nav-date {
   font-size: 13px;
@@ -296,9 +336,10 @@ const CSS = `
   line-height: 1.45 !important;
 }
 .ecu-comm-wiz-cl-date {
-  margin: 0 0 14px;
-  color: rgba(220, 210, 210, 0.62);
-  font-size: 16px;
+  margin: -4px 0 14px;
+  color: rgba(230, 220, 200, 0.82);
+  font-size: 17px;
+  letter-spacing: 0.02em;
 }
 .ecu-comm-wiz-cl-section-label {
   margin: 18px 0 12px;
@@ -472,7 +513,6 @@ const CSS = `
 
 export function injectCommSetupWizardCss(): void {
   if (typeof document === "undefined") return;
-  if (injected) return;
   let el = document.querySelector(
     "style[data-ecu-comm-wiz]",
   ) as HTMLStyleElement | null;
@@ -481,6 +521,9 @@ export function injectCommSetupWizardCss(): void {
     el.setAttribute("data-ecu-comm-wiz", "1");
     document.head.appendChild(el);
   }
-  el.textContent = CSS;
+  // Always refresh so rebuilds / HMR do not leave a blank or stale sheet.
+  if (!injected || el.textContent !== CSS) {
+    el.textContent = CSS;
+  }
   injected = true;
 }

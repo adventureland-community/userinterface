@@ -366,7 +366,10 @@ function menuGear(ctx: MeterShellTipItemsCtx): MeterCooltipMenu {
         label: "Spell List…",
         onSelect: () => {
           actions.closeTip();
-          actions.onFocusInspector?.(getYouId() || "", ctx.watchedName || "You");
+          actions.onFocusInspector?.(
+            getYouId() || "",
+            ctx.watchedName || "You",
+          );
         },
       },
       {
@@ -403,6 +406,7 @@ function menuGear(ctx: MeterShellTipItemsCtx): MeterCooltipMenu {
   for (let ci = 0; ci < closed.length; ci++) {
     const c = closed[ci];
     windowItems.push({
+      itemKey: `reopen-${c.id}`,
       label: `Reopen: ${c.label || c.id}`,
       onSelect: () => {
         actions.closeTip();
