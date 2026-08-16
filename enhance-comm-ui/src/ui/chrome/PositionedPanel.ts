@@ -399,8 +399,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     window.addEventListener("pointercancel", onUp);
   };
 
-  const hugContent =
-    props.hugContent !== undefined ? props.hugContent : id !== "bag";
+  const hugContent = props.hugContent !== undefined ? props.hugContent : true;
+  const fixedW =
+    !hugContent && typeof pos.frameW === "number" && pos.frameW > 0
+      ? Math.round(pos.frameW)
+      : 0;
+  const fixedH =
+    !hugContent && typeof pos.frameH === "number" && pos.frameH > 0
+      ? Math.round(pos.frameH)
+      : 0;
   const shellStyle = Object.assign(
     {},
     panelStyle(pos, editing || movable),
@@ -411,8 +418,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
     // the stock 7-col float inventory. Other HUD panels treat frameW/H as a
     // floor that can grow with max-content so arrange outlines wrap overflow.
-    // Meter frames keep a fixed box — inspector target lists must scroll, not
-    // stretch the window to 100vh.
+    // Meter / Mail pass hugContent:false for a fixed scrolling box.
     hugContent && typeof pos.frameW === "number" && pos.frameW > 0
       ? {
           width: `max(${Math.round(pos.frameW)}px, max-content)`,
@@ -423,6 +429,24 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       ? {
           height: `max(${Math.round(pos.frameH)}px, max-content)`,
           minHeight: Math.round(pos.frameH) + "px",
+        }
+      : null,
+    fixedW > 0
+      ? {
+          width: fixedW + "px",
+          minWidth: fixedW + "px",
+          maxWidth: "100vw",
+        }
+      : null,
+    fixedH > 0
+      ? {
+          height: fixedH + "px",
+          minHeight: Math.min(fixedH, HUD_FRAME_MIN.h) + "px",
+          maxHeight: "100vh",
+          // Keep shell overflow visible so above-frame hover arrange chrome
+          // (lock / WC / × / grips) is not clipped — same as meters. Clip
+          // scrolling content inside the panel body (e.g. .comm-mail).
+          overflow: "visible",
         }
       : null,
     editing
