@@ -4,9 +4,9 @@ import {
   MAIL_SEARCH_SCOPES,
   mailSearchFormToQuery,
   queryToMailSearchForm,
+  type MailPill,
   type MailSearchFormState,
-} from "../../../host/mail/mailSearchForm";
-import type { MailPill } from "../../../host/mail";
+} from "../../../host/mail";
 
 export type MailSearchBarProps = {
   query: string;

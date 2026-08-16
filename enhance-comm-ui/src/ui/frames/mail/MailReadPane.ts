@@ -1,28 +1,27 @@
 import { e } from "../../../host/react";
 import {
   forwardMail,
-  getMailCapabilities,
   openMailRow,
   replyToMail,
   setMailView,
   takeMailCommand,
-  undoDeleteMail,
+  type MailCapabilities,
   type MailRow,
   type MailStoreSnapshot,
 } from "../../../host/mail";
 import { ItemInstance } from "../../chrome/ItemInstance";
-import { formatMailRelative } from "./mailFormat";
+import { formatMailDate, formatMailRelative } from "./mailFormat";
 
 export type MailReadPaneProps = {
   snap: MailStoreSnapshot;
   selected: MailRow;
   wide: boolean;
+  caps: MailCapabilities;
   doDelete: (ids: string[]) => void;
 };
 
 export function MailReadPane(props: MailReadPaneProps): any {
-  const { snap, selected, wide, doDelete } = props;
-  const caps = getMailCapabilities([], 1);
+  const { snap, selected, wide, caps, doDelete } = props;
 
   return e(
     "div",
@@ -50,6 +49,8 @@ export function MailReadPane(props: MailReadPaneProps): any {
         selected.fro +
         " · To " +
         selected.to +
+        " · " +
+        formatMailDate(selected.sent) +
         " · " +
         formatMailRelative(selected.sent),
     ),
@@ -193,17 +194,6 @@ export function MailReadPane(props: MailReadPaneProps): any {
         },
         "Next unread",
       ),
-      snap.undoCount
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "comm-mail__btn",
-              onClick: () => undoDeleteMail(),
-            },
-            "Undo delete",
-          )
-        : null,
     ),
   );
 }

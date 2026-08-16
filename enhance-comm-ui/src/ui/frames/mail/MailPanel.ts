@@ -3,6 +3,7 @@ import {
   deleteMailRows,
   filterMails,
   getMailCapabilities,
+  getMailObservingSnap,
   getMailSnapshot,
   openCompose,
   openMailRow,
@@ -23,29 +24,42 @@ import { MailListPane } from "./MailListPane";
 import { MailReadPane } from "./MailReadPane";
 import { MailToolbar } from "./MailToolbar";
 
-export type MailPanelProps = {
-  layoutEdit?: boolean;
-};
-
 function useMailSnap() {
   const React = getReact();
   const [snap, setSnap] = React.useState(() => getMailSnapshot());
-  React.useEffect(() => subscribeMailStore(() => setSnap(getMailSnapshot())), []);
+  React.useEffect(
+    () => subscribeMailStore(() => setSnap(getMailSnapshot())),
+    [],
+  );
   return snap;
 }
 
-export function MailPanel(_props: MailPanelProps): any {
+/** Poll window.observing so Character/Send track observe start/stop and gold. */
+function useMailObservingSnap() {
+  const React = getReact();
+  const read = () => getMailObservingSnap();
+  const fpOf = (obs: ReturnType<typeof getMailObservingSnap>) => {
+    if (!obs) return "";
+    return String(obs.name || "") + "\0" + String(obs.gold ?? "");
+  };
+  const [obs, setObs] = React.useState(read);
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      const next = read();
+      setObs((prev: ReturnType<typeof getMailObservingSnap>) =>
+        fpOf(prev) === fpOf(next) ? prev : next,
+      );
+    }, 2000);
+    return () => window.clearInterval(id);
+  }, []);
+  return obs;
+}
+
+export function MailPanel(): any {
   const React = getReact();
   ensureMailCss();
   const snap = useMailSnap();
-  // Re-sample window.observing so Send/Character update when observe starts/stops.
-  const [, setObsTick] = React.useState(0);
-  React.useEffect(() => {
-    const id = window.setInterval(() => setObsTick((n: number) => n + 1), 2000);
-    return () => window.clearInterval(id);
-  }, []);
-  // Touch observe snap each poll so caps/Send refresh when watching starts.
-  void (window.observing && window.observing.name);
+  const mailObs = useMailObservingSnap();
   const [pill, setPill] = React.useState(() => {
     try {
       const raw = loadSettings().mailPill;
@@ -71,15 +85,14 @@ export function MailPanel(_props: MailPanelProps): any {
   const [selectedIds, setSelectedIds] = React.useState(
     {} as Record<string, boolean>,
   );
-  const wide =
-    typeof window !== "undefined" && window.innerWidth >= 900;
+  const wide = typeof window !== "undefined" && window.innerWidth >= 900;
 
   const selfNames = selfCharacterNames();
   const draftAttachesList =
     snap.view.kind === "compose" ? snap.view.draft.attaches.slice() : [];
   const draftToCount =
     snap.view.kind === "compose" ? Math.max(1, snap.view.draft.to.length) : 1;
-  const caps = getMailCapabilities(draftAttachesList, draftToCount);
+  const caps = getMailCapabilities(draftAttachesList, draftToCount, mailObs);
 
   const setPillPersist = (next: MailPill) => {
     setPill(next);
@@ -165,19 +178,24 @@ export function MailPanel(_props: MailPanelProps): any {
     setSelectedIds({});
   };
 
-  let pane: any = e("div", { className: "comm-mail__empty" }, "Select a message");
+  let pane: any = e(
+    "div",
+    { className: "comm-mail__empty" },
+    "Select a message",
+  );
   if (isCompose) {
     pane = e(MailComposePane, {
       snap,
       wide,
       selfNames,
+      caps,
       toInput,
       setToInput,
       suggestOpen,
       setSuggestOpen,
     });
   } else if (selected) {
-    pane = e(MailReadPane, { snap, selected, wide, doDelete });
+    pane = e(MailReadPane, { snap, selected, wide, caps, doDelete });
   }
 
   return e(

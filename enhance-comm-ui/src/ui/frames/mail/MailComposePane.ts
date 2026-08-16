@@ -1,7 +1,6 @@
 import { e } from "../../../host/react";
 import {
   distributeMailAttaches,
-  getMailCapabilities,
   attachesHaveRecipients,
   patchComposeDraft,
   removeMailAttachAt,
@@ -11,6 +10,7 @@ import {
   subjectPlaceholder,
   suggestMailTo,
   MAIL_SUBJECT_ITEM_TOKEN,
+  type MailCapabilities,
   type MailStoreSnapshot,
 } from "../../../host/mail";
 import { ItemInstance } from "../../chrome/ItemInstance";
@@ -20,6 +20,7 @@ export type MailComposePaneProps = {
   snap: MailStoreSnapshot;
   wide: boolean;
   selfNames: string[];
+  caps: MailCapabilities;
   toInput: string;
   setToInput: (v: string) => void;
   suggestOpen: boolean;
@@ -42,6 +43,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
     snap,
     wide,
     selfNames,
+    caps,
     toInput,
     setToInput,
     suggestOpen,
@@ -50,10 +52,6 @@ export function MailComposePane(props: MailComposePaneProps): any {
   if (snap.view.kind !== "compose") return null;
   const draft = snap.view.draft;
   const draftAttachesList = draft.attaches.slice();
-  const caps = getMailCapabilities(
-    draftAttachesList,
-    Math.max(1, draft.to.length),
-  );
 
   const suggestions = suggestOpen
     ? suggestMailTo(
@@ -209,9 +207,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
     caps.canSend &&
     !snap.commandBusy &&
     caps.goldEnough !== false &&
-    (draftAttachesList.length
-      ? attachesReady
-      : draft.to.length > 0);
+    (draftAttachesList.length ? attachesReady : draft.to.length > 0);
 
   return e(
     "div",
@@ -265,13 +261,15 @@ export function MailComposePane(props: MailComposePaneProps): any {
     e("label", null, "Subject"),
     e(
       "div",
-      { className: "comm-mail__acts", style: { marginTop: 0, marginBottom: 4 } },
+      {
+        className: "comm-mail__acts",
+        style: { marginTop: 0, marginBottom: 4 },
+      },
       e("input", {
         style: { flex: 1, minWidth: 120 },
         value: draft.subject,
         placeholder: subjectPlaceholder(draftAttachesList),
-        onChange: (ev: any) =>
-          patchComposeDraft({ subject: ev.target.value }),
+        onChange: (ev: any) => patchComposeDraft({ subject: ev.target.value }),
       }),
       draftAttachesList.length
         ? e(

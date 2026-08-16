@@ -5,7 +5,7 @@ import {
   type MailCollapseGroup,
   type MailRow,
 } from "../../../host/mail";
-import { mailItemIcon, stackMeta } from "./mailRowShared";
+import { mailItemIcon, mailWhenColumn, stackMeta } from "./mailRowShared";
 
 export type MailStackRowProps = {
   g: MailCollapseGroup;
@@ -200,6 +200,7 @@ export function MailStackRow(props: MailStackRowProps): any {
       ),
       e("div", { className: "comm-mail__meta", title: meta }, meta),
     ),
+    mailWhenColumn(g.head.sent),
     mailItemIcon(stackHead, 36, qtyTotal != null ? qtyTotal : undefined),
   );
 }

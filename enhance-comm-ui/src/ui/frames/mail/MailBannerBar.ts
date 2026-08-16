@@ -1,85 +1,53 @@
 import { getReact, e } from "../../../host/react";
 import {
   clearNewMailBanner,
+  formatDeleteProgressLabel,
   getXUnread,
+  undoDeleteMail,
+  undoSecondsLeft,
   type MailCapabilities,
   type MailStoreSnapshot,
 } from "../../../host/mail";
+import { formatRelativeAge } from "../../../lib/format";
+import { resolveMailActivity } from "./mailActivity";
 
 export type MailBannerBarProps = {
   snap: MailStoreSnapshot;
   caps: MailCapabilities;
 };
 
-export type MailActivityMode = "idle" | "pull" | "warm" | "command" | "delete";
-
-export function resolveMailActivity(snap: MailStoreSnapshot): {
-  mode: MailActivityMode;
-  label: string;
-} {
-  if (snap.deleteProgress) {
-    return {
-      mode: "delete",
-      label:
-        "Deleting " +
-        snap.deleteProgress.done +
-        " / " +
-        snap.deleteProgress.total,
-    };
-  }
-  if (snap.commandBusy) {
-    return { mode: "command", label: "Running command" };
-  }
-  if (snap.loading) {
-    return { mode: "pull", label: "Refreshing inbox" };
-  }
-  if (snap.loadingMore) {
-    return {
-      mode: "warm",
-      label: "Warming cache · " + snap.mails.length + (snap.hasMore ? "+" : ""),
-    };
-  }
-  if (snap.prefetchArmed) {
-    return {
-      mode: "warm",
-      label: "Warming cache · next page…",
-    };
-  }
-  return { mode: "idle", label: "" };
-}
-
-function formatHeadAge(lastHeadAt: number, now: number): string {
-  if (lastHeadAt === 0) return "never";
-  const sec = Math.max(0, Math.round((now - lastHeadAt) / 1000));
-  if (sec < 5) return "just now";
-  if (sec < 60) return sec + "s ago";
-  if (sec < 3600) return Math.max(1, Math.floor(sec / 60)) + "m ago";
-  return Math.floor(sec / 3600) + "h ago";
-}
-
 /** Observe context + live activity pulse + compact cache stats. */
 export function MailBannerBar(props: MailBannerBarProps): any {
   const React = getReact();
   const { snap, caps } = props;
   const [now, setNow] = React.useState(() => Date.now());
+  const undoActive = snap.undoEndsAt > 0 && snap.undoCount > 0;
   React.useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 4000);
+    const id = window.setInterval(
+      () => setNow(Date.now()),
+      undoActive ? 250 : 4000,
+    );
     return () => window.clearInterval(id);
-  }, []);
+  }, [undoActive]);
 
   const activity = resolveMailActivity(snap);
   const active = activity.mode !== "idle";
   const unread = getXUnread();
-  const headAge = formatHeadAge(snap.lastHeadAt, now);
-  // Sample observe snap on each tick (live entity often lacks name).
-  const obsName =
-    window.observing && window.observing.name
-      ? String(window.observing.name)
-      : caps.observeName;
-  const observeLine = obsName
-    ? "Observing " + obsName
+  const headAge =
+    snap.lastHeadAt === 0 ? "never" : formatRelativeAge(snap.lastHeadAt, now);
+  const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
+  const statusTitle = snap.deleteProgress
+    ? formatDeleteProgressLabel(snap.deleteProgress)
+    : undoActive
+      ? snap.undoCount === 1
+        ? "Deleted"
+        : "Deleted " + snap.undoCount
+      : snap.status;
+  const observeLine = caps.observeName
+    ? "Observing " + caps.observeName
     : caps.reason || "Not observing · inbox only";
-  const observeOn = !!obsName;
+  const observeOn = !!caps.observeName;
+  const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
   return e(
     React.Fragment,
     null,
@@ -162,7 +130,7 @@ export function MailBannerBar(props: MailBannerBarProps): any {
           ),
         ),
       ),
-      snap.status || snap.deleteProgress
+      showStatus
         ? e(
             "div",
             {
@@ -170,11 +138,13 @@ export function MailBannerBar(props: MailBannerBarProps): any {
                 "comm-mail__card comm-mail__card--status" +
                 (snap.deleteProgress
                   ? " is-warn is-progress"
-                  : snap.statusKind === "warn"
+                  : undoActive
                     ? " is-warn"
-                    : snap.statusKind === "err"
-                      ? " is-err"
-                      : " is-info"),
+                    : snap.statusKind === "warn"
+                      ? " is-warn"
+                      : snap.statusKind === "err"
+                        ? " is-err"
+                        : " is-info"),
             },
             e(
               "div",
@@ -182,13 +152,23 @@ export function MailBannerBar(props: MailBannerBarProps): any {
               e("div", { className: "comm-mail__card-kicker" }, "Status"),
               e(
                 "div",
-                { className: "comm-mail__card-title" },
-                snap.deleteProgress
-                  ? "Deleting " +
-                      snap.deleteProgress.done +
-                      " / " +
-                      snap.deleteProgress.total
-                  : snap.status,
+                { className: "comm-mail__card-title-row" },
+                e("div", { className: "comm-mail__card-title" }, statusTitle),
+                undoActive && !snap.deleteProgress
+                  ? e(
+                      "button",
+                      {
+                        type: "button",
+                        className: "comm-mail__btn comm-mail__btn--undo",
+                        title: "Restore deleted mail (U)",
+                        onClick: (ev: any) => {
+                          ev.stopPropagation();
+                          undoDeleteMail();
+                        },
+                      },
+                      undoSec > 0 ? "Undo " + undoSec + "s" : "Undo",
+                    )
+                  : null,
               ),
               snap.deleteProgress
                 ? e(

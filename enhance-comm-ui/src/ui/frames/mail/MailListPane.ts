@@ -3,11 +3,12 @@ import {
   collapseMailRows,
   loadOlderMail,
   openMailRow,
+  type MailCollapseGroup,
   type MailRow,
   type MailStoreSnapshot,
 } from "../../../host/mail";
-import { resolveMailActivity } from "./MailBannerBar";
-import { mailItemIcon, rowMeta } from "./mailRowShared";
+import { resolveMailActivity } from "./mailActivity";
+import { mailItemIcon, mailWhenColumn, rowMeta } from "./mailRowShared";
 import { MailStackRow } from "./MailStackRow";
 
 export type MailListPaneProps = {
@@ -21,6 +22,15 @@ export type MailListPaneProps = {
   expandedKeys: Record<string, boolean>;
   setGroupExpanded: (key: string, on: boolean) => void;
 };
+
+type ListEntry =
+  | { kind: "mail"; key: string; m: MailRow; nested?: boolean }
+  | {
+      kind: "stack";
+      key: string;
+      g: MailCollapseGroup;
+      expanded: boolean;
+    };
 
 function renderMailRow(opts: {
   m: MailRow;
@@ -93,8 +103,42 @@ function renderMailRow(opts: {
       ),
       e("div", { className: "comm-mail__meta", title: meta }, meta),
     ),
+    mailWhenColumn(m.sent),
     mailItemIcon(m, 36),
   );
+}
+
+function buildEntries(opts: {
+  filtered: MailRow[];
+  collapseRepeats: boolean;
+  expandedKeys: Record<string, boolean>;
+}): ListEntry[] {
+  const { filtered, collapseRepeats, expandedKeys } = opts;
+  const out: ListEntry[] = [];
+  if (!collapseRepeats) {
+    for (let i = 0; i < filtered.length; i++) {
+      const m = filtered[i];
+      out.push({ kind: "mail", key: m.id, m });
+    }
+  } else {
+    const groups = collapseMailRows(filtered);
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      if (g.mails.length === 1) {
+        out.push({ kind: "mail", key: g.head.id, m: g.head });
+        continue;
+      }
+      const expanded = !!expandedKeys[g.key];
+      out.push({ kind: "stack", key: "g-" + g.key, g, expanded });
+      if (expanded) {
+        for (let j = 0; j < g.mails.length; j++) {
+          const m = g.mails[j];
+          out.push({ kind: "mail", key: "n-" + m.id, m, nested: true });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 export function MailListPane(props: MailListPaneProps): any {
@@ -109,70 +153,41 @@ export function MailListPane(props: MailListPaneProps): any {
     setGroupExpanded,
   } = props;
 
-  const listRows: any[] = [];
-
-  if (!collapseRepeats) {
-    for (let i = 0; i < filtered.length; i++) {
-      listRows.push(
-        renderMailRow({
-          m: filtered[i],
-          selected,
-          selectedIds,
-          toggleCheck,
-        }),
-      );
-    }
-  } else {
-    const groups = collapseMailRows(filtered);
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i];
-      if (g.mails.length === 1) {
-        listRows.push(
-          renderMailRow({
-            m: g.head,
-            selected,
-            selectedIds,
-            toggleCheck,
-          }),
-        );
-        continue;
-      }
-
-      const expanded = !!expandedKeys[g.key];
-      listRows.push(
-        e(MailStackRow, {
-          key: "g-" + g.key,
-          g,
-          selected,
-          selectedIds,
-          toggleCheck,
-          expanded,
-          setGroupExpanded,
-        }),
-      );
-
-      if (expanded) {
-        for (let j = 0; j < g.mails.length; j++) {
-          listRows.push(
-            renderMailRow({
-              m: g.mails[j],
-              selected,
-              selectedIds,
-              toggleCheck,
-              nested: true,
-              keyPrefix: "n-",
-            }),
-          );
-        }
-      }
-    }
-  }
+  const entries = buildEntries({ filtered, collapseRepeats, expandedKeys });
 
   const activity = resolveMailActivity(snap);
   const warming =
     activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
 
-  listRows.push(
+  const nodes: any[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry.kind === "mail") {
+      nodes.push(
+        renderMailRow({
+          m: entry.m,
+          selected,
+          selectedIds,
+          toggleCheck,
+          nested: entry.nested,
+          keyPrefix: entry.nested ? "n-" : "",
+        }),
+      );
+    } else {
+      nodes.push(
+        e(MailStackRow, {
+          key: entry.key,
+          g: entry.g,
+          selected,
+          selectedIds,
+          toggleCheck,
+          expanded: entry.expanded,
+          setGroupExpanded,
+        }),
+      );
+    }
+  }
+  nodes.push(
     e(
       "div",
       { key: "foot", className: "comm-mail__foot" },
@@ -202,5 +217,5 @@ export function MailListPane(props: MailListPaneProps): any {
     ),
   );
 
-  return e("div", { className: "comm-mail__list" }, ...listRows);
+  return e("div", { className: "comm-mail__list" }, ...nodes);
 }

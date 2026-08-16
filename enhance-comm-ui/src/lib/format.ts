@@ -36,6 +36,22 @@ export function formatDurationCompact(
 }
 
 /**
+ * Relative age from an absolute timestamp (`3m ago`, `2d ago`, …).
+ * Shared by mail list / head age and meter picker labels.
+ */
+export function formatRelativeAge(at: number, now = Date.now()): string {
+  if (!(at > 0)) return "";
+  const sec = Math.max(0, Math.round((now - at) / 1000));
+  if (sec < 10) return "just now";
+  if (sec < 60) return sec + "s ago";
+  if (sec < 3600) return Math.max(1, Math.floor(sec / 60)) + "m ago";
+  if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+  if (sec < 86400 * 60) return Math.floor(sec / 86400) + "d ago";
+  if (sec < 86400 * 365) return Math.floor(sec / (86400 * 30)) + "mo ago";
+  return Math.floor(sec / (86400 * 365)) + "y ago";
+}
+
+/**
  * Sticky absolute end time for buff/CD remaining displays.
  * Avoids restarting a progress animation every time `ms` is re-broadcast
  * with a similar remaining value (common on observe / party soft-sync).

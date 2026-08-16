@@ -142,6 +142,7 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
     return e(
       PositionedPanel,
       {
+        key: id,
         id,
         pos: deps.layout[id],
         editing: deps.layoutEdit,
@@ -375,7 +376,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       },
     ),
 
-    panel("mail", e(MailPanel, { layoutEdit: deps.layoutEdit }), {
+    panel("mail", e(MailPanel, null), {
       closable: true,
       // Fixed frame like meters — inbox scrolls; do not grow with row count.
       hugContent: false,
