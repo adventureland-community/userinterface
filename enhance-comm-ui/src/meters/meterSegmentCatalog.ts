@@ -10,6 +10,7 @@ import {
   fightChipTitle,
   fightHoverTip,
   fightPickerTitle,
+  runOverallPickerTitle,
   sourceFromMeta,
   sourceFromSegment,
   type FightLabelSource,
@@ -29,17 +30,34 @@ export function runTitle(ref: SegmentRef, map?: string): string {
   return String(_never);
 }
 
-/** Hover copy for Current / Overall / instance-or-event overall. No mapIn. */
+/**
+ * Hover copy for Current / Overall / instance-or-event overall. No mapIn.
+ * Overall = session bag (Details Overall Data), not “this run only.”
+ */
 function runHoverTip(ref: SegmentRef, map?: string): string {
   if (ref === "current") return "Live camera fight";
-  if (ref === "total") return "All recorded fights from this camera";
+  if (ref === "total") {
+    return (
+      "Overall\n" +
+      "Past fights + the live Current fight (updates while fighting).\n" +
+      "Session total since last Reset Overall — not one dungeon run."
+    );
+  }
   if ("pastId" in ref) return "";
   if ("event" in ref) {
-    return `${eventDisplayName(ref.event)} overall\nAll fights in this world event`;
+    return (
+      `${eventDisplayName(ref.event)} overall\n` +
+      "All fights in this world event, including the live pull when you are in it " +
+      "(updates while fighting)."
+    );
   }
   if ("mapIn" in ref) {
     const name = mapDisplayName(map || "") || "Instance";
-    return `${name} overall\nAll fights in this instance`;
+    return (
+      `${name} overall\n` +
+      "All fights in this instance (this visit), including the live pull when you are in it " +
+      "(updates while fighting)."
+    );
   }
   const _never: never = ref;
   return String(_never);
@@ -103,10 +121,18 @@ function currentChoice(
   };
 }
 
+type RunLabelSeg = Pick<CombatSegment, "map" | "mapIn" | "event"> &
+  Partial<
+    Pick<
+      CombatSegment,
+      "serverRegion" | "serverIdentifier" | "startedAt" | "endedAt"
+    >
+  >;
+
 function addRunChoice(
   out: SegmentChoice[],
   seen: Record<string, boolean>,
-  seg: Pick<CombatSegment, "map" | "mapIn" | "event"> | null | undefined,
+  seg: RunLabelSeg | null | undefined,
 ): void {
   if (!seg) return;
   const run = runRefForSegment(seg);
@@ -114,9 +140,10 @@ function addRunChoice(
   const key = segmentRefKey(run);
   if (seen[key]) return;
   seen[key] = true;
+  const base = runTitle(run, seg.map);
   out.push({
     ref: run,
-    title: runTitle(run, seg.map),
+    title: runOverallPickerTitle(base, seg),
     tip: runHoverTip(run, seg.map),
   });
 }

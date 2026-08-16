@@ -3,7 +3,7 @@
  * Never put instance `in` (`mapIn`) in UI — screenshots would leak join ids.
  */
 
-import { formatDurationCompact } from "../lib/format";
+import { formatRelativeAge } from "../lib/format";
 import { eventDisplayName, mapDisplayName } from "./meterRun";
 import type { ActorAgg, CombatSegment } from "./meterTypes";
 
@@ -97,10 +97,7 @@ export function formatSegmentDuration(seg: CombatSegment): string {
 }
 
 export function formatRelativeAgo(at: number, now = Date.now()): string {
-  const sec = Math.max(0, Math.round((now - at) / 1000));
-  if (sec < 10) return "just now";
-  if (sec < 60) return `${sec}s ago`;
-  return `${formatDurationCompact(sec)} ago`;
+  return formatRelativeAge(at, now);
 }
 
 function formatClock(at: number): string {
@@ -127,10 +124,39 @@ function kindBit(src: FightLabelSource): string {
 }
 
 /** AL-style server bit: `EU I` (region + identifier). Empty if unknown. */
-function serverLabel(src: FightLabelSource): string {
+export function serverLabel(src: {
+  serverRegion?: string;
+  serverIdentifier?: string;
+}): string {
   const region = src.serverRegion || "";
   const ident = src.serverIdentifier || "";
   return [region, ident].filter(Boolean).join(" ").trim();
+}
+
+/**
+ * Disambiguate run-overall picker rows: `The Crypt overall · EU I · 8m ago`
+ * (or `· live` while the camera is still in that instance).
+ */
+export function runOverallPickerTitle(
+  baseTitle: string,
+  src: {
+    serverRegion?: string;
+    serverIdentifier?: string;
+    startedAt?: number;
+    endedAt?: number;
+  },
+  now = Date.now(),
+): string {
+  const parts: string[] = [baseTitle];
+  const server = serverLabel(src);
+  if (server) parts.push(server);
+  if (!src.endedAt && src.startedAt) {
+    parts.push("live");
+  } else if (src.endedAt || src.startedAt) {
+    const at = src.endedAt || src.startedAt!;
+    parts.push(formatRelativeAgo(at, now));
+  }
+  return parts.join(" · ");
 }
 
 /**

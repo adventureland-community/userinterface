@@ -32,12 +32,49 @@ function isCryptBoss(mtype: string | undefined): boolean {
   return CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0;
 }
 
-function samePartySameIn(prev: MeterCamera, next: MeterCamera): boolean {
+function isRealParty(partyKey: string): boolean {
+  return !!partyKey && partyKey.indexOf("solo:") !== 0;
+}
+
+/**
+ * Same party on the same map. Instance `mapIn` must match when either side
+ * has one; open-world (empty mapIn) party hops still keep Current.
+ */
+function samePartySameMap(prev: MeterCamera, next: MeterCamera): boolean {
   if (!prev.observingId || !next.observingId) return false;
-  if (!prev.mapIn || prev.mapIn !== next.mapIn) return false;
-  if (!prev.partyKey || prev.partyKey !== next.partyKey) return false;
-  if (prev.partyKey.indexOf("solo:") === 0) return false;
+  if (prev.map !== next.map) return false;
+  if (!isRealParty(prev.partyKey) || prev.partyKey !== next.partyKey) {
+    return false;
+  }
+  if (prev.mapIn || next.mapIn) {
+    if (prev.mapIn !== next.mapIn) return false;
+  }
   return true;
+}
+
+/** New camera is already on the live tape (nearby fighter / same pull). */
+function alreadyOnLiveTape(
+  next: MeterCamera,
+  live: CombatSegment,
+): boolean {
+  if (!next.observingId) return false;
+  if (live.actors[next.observingId]) return true;
+  if (!isRealParty(next.partyKey)) return false;
+  const ids = Object.keys(live.actors);
+  for (let i = 0; i < ids.length; i++) {
+    if (live.actors[ids[i]].partyKey === next.partyKey) return true;
+  }
+  return false;
+}
+
+function keepObserveHop(
+  prev: MeterCamera,
+  next: MeterCamera,
+  live: CombatSegment,
+): boolean {
+  if (samePartySameMap(prev, next)) return true;
+  if (prev.map === next.map && alreadyOnLiveTape(next, live)) return true;
+  return false;
 }
 
 export function decideSegmentBoundary(args: {
@@ -67,8 +104,10 @@ export function decideSegmentBoundary(args: {
     return { action: "close", reason: "map_change" };
   }
 
+  // Soft observe reconnect briefly clears watching. Keep Current; idle / map
+  // / server boundaries still seal the fight if the camera actually leaves.
   if (prev.observingId && !next.observingId) {
-    return { action: "close", reason: "observe_cleared" };
+    return { action: "keep" };
   }
 
   if (next.event !== prev.event) {
@@ -87,7 +126,7 @@ export function decideSegmentBoundary(args: {
     prev.observingId &&
     next.observingId !== prev.observingId
   ) {
-    if (samePartySameIn(prev, next)) return { action: "keep" };
+    if (keepObserveHop(prev, next, live)) return { action: "keep" };
     return { action: "close", reason: "observe_swap" };
   }
 

@@ -9,7 +9,8 @@ import { GameIcon } from "../../chrome/GameIcon";
 import type { PartyFocus } from "../../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
 import { classColors } from "../../../lib/colors";
-import { isLiveCameraRef } from "../../../meters/meterSegmentRef";
+import { segmentWantsLiveTick } from "../../../meters/meterSegmentRef";
+import { getLiveSegment } from "../../../meters/meterSession";
 import type {
   HitAmountStats,
   MeterResult,
@@ -445,7 +446,7 @@ export function MeterDetailsView(props: {
       );
 
   // MeterBarsView only patches on subscribeMeterTick when live (parent React ticks don't).
-  const barsLive = isLiveCameraRef(props.segmentRef);
+  const barsLive = segmentWantsLiveTick(props.segmentRef, getLiveSegment());
 
   const spellsBody = e(
     "div",

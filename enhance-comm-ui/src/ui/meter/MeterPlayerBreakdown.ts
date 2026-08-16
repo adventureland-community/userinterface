@@ -7,7 +7,8 @@ import { getReact, e } from "../../host/react";
 import { formatCompactNumber, formatCompactRatePerSec } from "../../lib/format";
 import type { PartyFocus } from "../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../lib/typeScale";
-import { isLiveCameraRef } from "../../meters/meterSegmentRef";
+import { segmentWantsLiveTick } from "../../meters/meterSegmentRef";
+import { getLiveSegment } from "../../meters/meterSession";
 import { runMeterQuery } from "../../meters/meterQuery";
 import type {
   MeterQuery,
@@ -57,7 +58,7 @@ export function MeterPlayerBreakdown(props: MeterPlayerBreakdownProps): any {
     metric: metric === "heal" ? "heal" : "damage",
   };
 
-  const barsLive = isLiveCameraRef(props.segmentRef);
+  const barsLive = segmentWantsLiveTick(props.segmentRef, getLiveSegment());
 
   let body: any = null;
   if (props.tab === "spells") {

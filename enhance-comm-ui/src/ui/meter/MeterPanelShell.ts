@@ -16,9 +16,11 @@ import {
 } from "../../meters/meterCatalog";
 import {
   isMeterInCombat,
+  getLiveSegment,
   listPastSegments,
   resolveSegment,
 } from "../../meters/meterSession";
+import { segmentWantsLiveTick } from "../../meters/meterSegmentRef";
 import { runMeterQuery, segmentTitle } from "../../meters/meterQuery";
 import { panelHasSnap } from "../../lib/panelEdgeGroup";
 import type {
@@ -168,6 +170,7 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
     watchedName,
   });
   const followLive = partyChrome.followCamera;
+  const barsLive = segmentWantsLiveTick(selectedset, getLiveSegment());
   const { hasObserver, appliedFocus, partyLabel, partyMenuOpts } = partyChrome;
   const pres = presentationFor(instance);
   const isToolPanel = pres === "details" || isReportPresentation(pres);
@@ -236,7 +239,7 @@ export function MeterPanelShell(props: MeterPanelShellProps): any {
       partyFocus: instance.partyFocus as PartyFocus | undefined,
       entities,
       highlightId: barHighlightId,
-      live: followLive,
+      live: barsLive,
       alwaysShowSelf: instance.alwaysShowSelf,
       onRowClick,
       onRowContextMenu,

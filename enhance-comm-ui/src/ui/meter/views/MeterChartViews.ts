@@ -5,6 +5,8 @@ import type { PartyFocus } from "../../../lib/settingsFocus";
 import { PIXEL_TEXT } from "../../../lib/typeScale";
 import { getPlayerMeta } from "../../../meters/meterEngine";
 import { runMeterQuery } from "../../../meters/meterQuery";
+import { getLiveSegment } from "../../../meters/meterSession";
+import { segmentWantsLiveTick } from "../../../meters/meterSegmentRef";
 import { subscribeMeterTick } from "../../../meters/meterUiTick";
 import type {
   MeterInstance,
@@ -242,7 +244,14 @@ export function MeterSeriesView(props: {
     if (isCompare) return;
     return subscribeMeterTick(() => {
       if (propsRef.current.instance.rtPaused) return;
-      if (propsRef.current.segmentRef !== "current") return;
+      if (
+        !segmentWantsLiveTick(
+          propsRef.current.segmentRef,
+          getLiveSegment(),
+        )
+      ) {
+        return;
+      }
       paintLive();
     });
   }, [
