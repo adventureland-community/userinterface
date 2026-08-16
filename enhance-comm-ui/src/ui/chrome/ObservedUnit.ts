@@ -71,7 +71,9 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     name,
     states: controlStates,
     compact: false,
-    iconSize: 26,
+    // Keep fear/CC icons inside the fixed HP track so overlay buff timers
+    // do not jump under neighboring panels when control appears.
+    iconSize: 16,
   });
 
   const aggroChip =

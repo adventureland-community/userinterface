@@ -1,12 +1,12 @@
 import { e, getReact } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { EffectIcon } from "./EffectIcon";
 import {
-  EffectIcon,
   buildEntityEffects,
   stabilizeEffectOrder,
   type BuiltEffect,
-} from "./EffectsRow";
+} from "./effectsModel";
 
 export type SharedEffectEntry = BuiltEffect & { entity: EntityLike };
 

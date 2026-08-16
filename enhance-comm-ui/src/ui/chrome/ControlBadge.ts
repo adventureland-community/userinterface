@@ -11,10 +11,7 @@ export type ControlBadgeProps = {
   compact?: boolean;
 };
 
-function ControlIcon(props: {
-  state: ControlState;
-  iconSize: number;
-}): any {
+function ControlIcon(props: { state: ControlState; iconSize: number }): any {
   const React = getReact();
   const ref = React.useRef(null);
   const { state, iconSize } = props;
@@ -62,19 +59,23 @@ export function ControlBadge(props: ControlBadgeProps): any {
       : compact
         ? 16
         : 26;
+  // In-bar badges (unit frames) use a small icon — match party-chip chrome
+  // so padding does not blow past the fixed HP track height.
+  const tight = compact || iconSize <= 18;
 
   return e(
     "div",
     {
-      className: "comm-ctrl-badges is-inline" + (compact ? " is-compact" : ""),
+      className: "comm-ctrl-badges is-inline" + (tight ? " is-compact" : ""),
       style: {
         position: "relative",
         display: "inline-flex",
         flexDirection: "row",
         flexWrap: "nowrap",
         alignItems: "center",
-        gap: compact ? "3px" : "4px",
+        gap: tight ? "3px" : "4px",
         flex: "0 0 auto",
+        maxHeight: "100%",
       },
     },
     ...states.map((state) => {
@@ -93,18 +94,19 @@ export function ControlBadge(props: ControlBadgeProps): any {
           style: {
             display: "inline-flex",
             alignItems: "center",
-            gap: compact ? "3px" : "5px",
+            gap: tight ? "3px" : "5px",
             flex: "0 0 auto",
-            padding: compact ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
+            padding: tight ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
             boxSizing: "border-box",
             background: state.background,
-            border: `${compact ? 1 : 2}px solid ${state.border}`,
+            border: `${tight ? 1 : 2}px solid ${state.border}`,
             color: state.color,
-            fontSize: compact ? TYPE.micro : TYPE.badge,
+            fontSize: tight ? TYPE.micro : TYPE.badge,
             lineHeight: 1,
             ...PIXEL_TEXT,
             cursor: "help",
             pointerEvents: "auto",
+            maxHeight: "100%",
           },
         },
         e(ControlIcon, { state, iconSize }),
@@ -115,7 +117,7 @@ export function ControlBadge(props: ControlBadgeProps): any {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              maxWidth: compact ? "5.5em" : "8em",
+              maxWidth: tight ? "5.5em" : "8em",
             },
           },
           state.label,

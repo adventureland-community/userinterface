@@ -13,6 +13,20 @@ export type VitalsColumnProps = {
   nameStyle?: any;
 };
 
+/** Stable HP track height from name font — fear/CC badges must not grow it. */
+function hpBarHeightPx(nameStyle?: Record<string, any>): number {
+  const fs = nameStyle && nameStyle.fontSize;
+  let px = 21;
+  if (typeof fs === "number" && Number.isFinite(fs) && fs > 0) {
+    px = fs;
+  } else if (typeof fs === "string") {
+    const m = /^(\d+(?:\.\d+)?)px$/i.exec(fs.trim());
+    if (m) px = parseFloat(m[1]);
+  }
+  // Matches prior padding+line box (~5+5 + 1.25×font) without room for a 26px fear icon.
+  return Math.max(30, Math.round(px * 1.25 + 10));
+}
+
 export function VitalsColumn(props: VitalsColumnProps): any {
   const {
     hp,
@@ -28,6 +42,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
 
   const hpPct = maxHp > 0 ? hp / maxHp : 0;
   const mpPct = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
+  const barH = hpBarHeightPx(nameStyle);
 
   return e(
     "div",
@@ -46,8 +61,12 @@ export function VitalsColumn(props: VitalsColumnProps): any {
           background: "black",
           position: "relative",
           width: "100%",
-          minHeight: "30px",
+          height: `${barH}px`,
+          minHeight: `${barH}px`,
+          maxHeight: `${barH}px`,
           boxSizing: "border-box",
+          // Fear pill may paint slightly outside; do not clip to an L-shape.
+          overflow: "visible",
         },
       },
       e("div", {
@@ -65,17 +84,18 @@ export function VitalsColumn(props: VitalsColumnProps): any {
         {
           style: Object.assign(
             {
-              padding: "5px 10px",
+              padding: "0 10px",
               whiteSpace: "nowrap",
-              // Ellipsis lives on the name span; visible overflow so fear
-              // border/background is not clipped to an L-shape.
               overflow: "visible",
               position: "relative",
               textShadow: "none",
               fontWeight: "normal",
               cursor: onClick ? "pointer" : undefined,
               width: "100%",
+              height: "100%",
               boxSizing: "border-box",
+              display: "flex",
+              alignItems: "center",
               lineHeight: "1.25",
             },
             nameStyle || {},

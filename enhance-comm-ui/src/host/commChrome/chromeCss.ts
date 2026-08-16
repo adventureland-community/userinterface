@@ -1,4 +1,5 @@
 import { CHROME_ARRANGE_CSS } from "./chromeArrangeCss";
+import { EFFECTS_ICON_CSS } from "./effectsIconCss";
 
 const STYLE_ID = "comm-ui-chrome-css";
 
@@ -16,6 +17,7 @@ export function injectChromeCss(): void {
 #observeui {
   display: none !important;
 }
+${EFFECTS_ICON_CSS}
 
 #bottom {
   position: fixed;
