@@ -34,9 +34,17 @@ export function endLayoutGuide(): void {
   if (depth === 0) notify();
 }
 
-export function subscribeLayoutGuide(
-  listener: Listener,
-): () => void {
+/**
+ * Force-clear the guide (Alt released mid-drag, remount, lost pointerup).
+ * Safe to call when depth is already 0.
+ */
+export function resetLayoutGuide(): void {
+  if (depth === 0) return;
+  depth = 0;
+  notify();
+}
+
+export function subscribeLayoutGuide(listener: Listener): () => void {
   listeners.push(listener);
   return () => {
     const idx = listeners.indexOf(listener);

@@ -77,6 +77,19 @@ export function effectiveKillScope(
 }
 
 /**
+ * Threat scope without a subject: Party cannot resolve — show Visible.
+ * Threat has no session-wide mode; `"all"` means Visible.
+ */
+export function effectiveThreatScope(
+  scope: PartyScope,
+  hasObserver: boolean,
+): PartyScope {
+  if (scope === "all") return "visible";
+  if (!hasObserver && scope === "watched") return "visible";
+  return scope;
+}
+
+/**
  * Canonical wording for a focus choice (menu row / status chip).
  * `partyLabels` maps party keys → friendly labels when listing visible parties.
  */

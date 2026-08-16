@@ -49,6 +49,10 @@ export const CRYPT_PANEL_STYLE: Record<string, any> = {
   maxWidth: "min(720px, 96vw)",
   minWidth: "200px",
   boxSizing: "border-box",
+  // Opaque shell on the PositionedPanel itself — frameW/H can outgrow content;
+  // without a fill the map shows through and looks like a stuck meter-idle fade.
+  background: "rgba(0,0,0,0.94)",
+  boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
 };
 
 /** Threat table footprint (HP rows + mob icon chips). */
@@ -57,6 +61,8 @@ export const THREAT_PANEL_STYLE: Record<string, any> = {
   width: "min(320px, 92vw)",
   minHeight: "120px",
   boxSizing: "border-box",
+  background: "rgba(0,0,0,0.94)",
+  boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
 };
 
 /** Command editor shell. */

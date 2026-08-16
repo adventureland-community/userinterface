@@ -89,9 +89,10 @@ export function refreshSnapFlags<T extends EdgeGroupPanel>(panel: T): T {
  * Horizontal row: share height; width stays per-window.
  * Vertical stack: share width; height stays per-window.
  *
- * When `rootW`/`rootH` are provided, peer positions are nudged so the flush
- * edge stays put (left for shared width, top for shared height) — required for
- * br/tr/bc anchors where CSS grows opposite the anchor point.
+ * When `rootW`/`rootH` are provided, every member is nudged so the flush edge
+ * stays put (left for shared width, top for shared height) — use this for
+ * corner resize. Omit root for Stretch ↕ so panels grow/shrink on their CSS
+ * anchors and unstretch returns to the prior painted box.
  */
 export function applyGroupFrameSize<T extends EdgeGroupPanel>(
   panels: T[],
@@ -130,8 +131,10 @@ export function applyGroupFrameSize<T extends EdgeGroupPanel>(
       if (shareH) next.frameH = size.frameH;
       else if (m.id === resizedId) next.frameH = size.frameH;
     }
-    // Resized panel owns its own pos nudge in the resize handler.
-    if (m.id === resizedId || !canAlign) return next;
+    if (!canAlign) return next;
+    // Keep painted flush edges for the whole group (source + peers). When the
+    // caller already applied the same nudge to the resized panel, old===new
+    // after the pre-map and these shifts are no-ops.
     if (shareW && size.frameW != null && oldW != null && oldW !== size.frameW) {
       next.pos = shiftPosKeepLeftEdge(
         next.pos,
