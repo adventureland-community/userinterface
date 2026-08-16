@@ -4,6 +4,8 @@
  *
  * Full history / multi-entry: version nav + one release at a time.
  * Body scrolls; header and Got it stay fixed inside a viewport-safe shell.
+ *
+ * Entry body order: Highlights → feature sections → Also (by kind).
  */
 
 import { getReact, e } from "../../../host/react";
@@ -14,8 +16,10 @@ import {
   changelogKindLabel,
   isChangelogEntryUnseen,
   latestChangelogId,
+  type ChangelogCard,
   type ChangelogEntry,
-  type ChangelogItem,
+  type ChangelogFeatureCard,
+  type ChangelogFeatureSection,
   type ChangelogKind,
 } from "../../../lib/changelog";
 
@@ -34,17 +38,22 @@ function itemsGridClass(count: number): string {
   );
 }
 
-function renderChangelogItem(item: ChangelogItem, key: string): any {
-  const kind = item.kind;
-  return e(
-    "div",
-    {
-      key,
-      className:
-        "ecu-comm-wiz-cl-item" +
-        (item.highlight ? " ecu-comm-wiz-cl-item--highlight" : "") +
-        (kind ? ` ecu-comm-wiz-cl-item--kind-${kind}` : ""),
-    },
+type CardOpts = {
+  /** Cards in the Highlights section get highlight chrome. */
+  highlightSection?: boolean;
+  /** Feature-section cards may include points; skip kind badge noise. */
+  featureSection?: boolean;
+};
+
+function renderChangelogItem(
+  item: ChangelogCard | ChangelogFeatureCard,
+  key: string,
+  opts: CardOpts = {},
+): any {
+  const kind = opts.featureSection ? undefined : item.kind;
+  const points =
+    opts.featureSection && "points" in item ? item.points : undefined;
+  const children: any[] = [
     e(
       "div",
       { className: "ecu-comm-wiz-cl-item-top" },
@@ -60,13 +69,33 @@ function renderChangelogItem(item: ChangelogItem, key: string): any {
         : null,
     ),
     e("div", { className: "ecu-comm-wiz-cl-item-detail" }, item.detail),
+  ];
+  if (points && points.length) {
+    children.push(
+      e(
+        "ul",
+        { className: "ecu-comm-wiz-cl-item-points" },
+        ...points.map((point, i) => e("li", { key: `${key}-p${i}` }, point)),
+      ),
+    );
+  }
+  return e(
+    "div",
+    {
+      key,
+      className:
+        "ecu-comm-wiz-cl-item" +
+        (opts.highlightSection ? " ecu-comm-wiz-cl-item--highlight" : "") +
+        (kind ? ` ecu-comm-wiz-cl-item--kind-${kind}` : ""),
+    },
+    ...children,
   );
 }
 
 function groupRestByKind(
-  rest: ChangelogItem[],
-): { kind: ChangelogKind | null; items: ChangelogItem[] }[] {
-  const byKind = new Map<ChangelogKind | "other", ChangelogItem[]>();
+  rest: ChangelogCard[],
+): { kind: ChangelogKind | null; items: ChangelogCard[] }[] {
+  const byKind = new Map<ChangelogKind | "other", ChangelogCard[]>();
   for (let i = 0; i < rest.length; i++) {
     const item = rest[i];
     const key: ChangelogKind | "other" = item.kind ? item.kind : "other";
@@ -74,7 +103,7 @@ function groupRestByKind(
     if (list) list.push(item);
     else byKind.set(key, [item]);
   }
-  const groups: { kind: ChangelogKind | null; items: ChangelogItem[] }[] = [];
+  const groups: { kind: ChangelogKind | null; items: ChangelogCard[] }[] = [];
   for (let i = 0; i < KIND_ORDER.length; i++) {
     const kind = KIND_ORDER[i];
     const items = byKind.get(kind);
@@ -85,14 +114,112 @@ function groupRestByKind(
   return groups;
 }
 
-function renderEntryBody(entry: ChangelogEntry): any {
-  const highlights: ChangelogItem[] = [];
-  const rest: ChangelogItem[] = [];
-  for (let i = 0; i < entry.items.length; i++) {
-    const item = entry.items[i];
-    if (item.highlight) highlights.push(item);
-    else rest.push(item);
+function renderCardGrid(
+  items: Array<ChangelogCard | ChangelogFeatureCard>,
+  key: string,
+  keyPrefix: string,
+  opts: CardOpts = {},
+): any {
+  return e(
+    "div",
+    { key, className: itemsGridClass(items.length) },
+    ...items.map((item, i) =>
+      renderChangelogItem(item, `${keyPrefix}-${i}`, opts),
+    ),
+  );
+}
+
+function renderFeatureSection(
+  section: ChangelogFeatureSection,
+  entryId: string,
+  index: number,
+): any[] {
+  const out: any[] = [
+    e(
+      "div",
+      {
+        key: `feat-label-${entryId}-${index}`,
+        className:
+          "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--feature",
+      },
+      section.title,
+    ),
+  ];
+  if (section.summary) {
+    out.push(
+      e(
+        "p",
+        {
+          key: `feat-sum-${entryId}-${index}`,
+          className: "ecu-comm-wiz-cl-feature-summary",
+        },
+        section.summary,
+      ),
+    );
   }
+  out.push(
+    renderCardGrid(
+      section.items,
+      `feat-list-${entryId}-${index}`,
+      `feat-${entryId}-${index}`,
+      { featureSection: true },
+    ),
+  );
+  return out;
+}
+
+function renderRestSections(
+  rest: ChangelogCard[],
+  entryId: string,
+  showAlsoLabel: boolean,
+): any[] {
+  if (!rest.length) return [];
+  const children: any[] = [];
+  if (showAlsoLabel) {
+    children.push(
+      e(
+        "div",
+        {
+          key: "rest-label",
+          className:
+            "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--also",
+        },
+        "Also in this release",
+      ),
+    );
+  }
+  const groups = groupRestByKind(rest);
+  const useKindGroups = groups.length > 1;
+  if (useKindGroups) {
+    for (let g = 0; g < groups.length; g++) {
+      const group = groups[g];
+      const label = group.kind ? changelogKindLabel(group.kind) : "Other";
+      children.push(
+        e(
+          "div",
+          {
+            key: `kind-label-${entryId}-${g}`,
+            className: "ecu-comm-wiz-cl-kind-group-label",
+          },
+          label,
+        ),
+        renderCardGrid(
+          group.items,
+          `kind-list-${entryId}-${g}`,
+          `item-${entryId}-${g}`,
+        ),
+      );
+    }
+  } else {
+    children.push(renderCardGrid(rest, "rest-list", `item-${entryId}`));
+  }
+  return children;
+}
+
+function renderEntryBody(entry: ChangelogEntry): any {
+  const highlights = entry.highlights || [];
+  const features = entry.features || [];
+  const rest = entry.items || [];
 
   const children: any[] = [];
   if (entry.summary) {
@@ -116,74 +243,21 @@ function renderEntryBody(entry: ChangelogEntry): any {
         { key: "hl-label", className: "ecu-comm-wiz-cl-section-label" },
         "Highlights",
       ),
-      e(
-        "div",
-        {
-          key: "hl-list",
-          className: itemsGridClass(highlights.length),
-        },
-        ...highlights.map((item, i) =>
-          renderChangelogItem(item, `hl-${entry.id}-${i}`),
-        ),
-      ),
+      renderCardGrid(highlights, "hl-list", `hl-${entry.id}`, {
+        highlightSection: true,
+      }),
     );
   }
-  if (rest.length) {
-    if (highlights.length) {
-      children.push(
-        e(
-          "div",
-          {
-            key: "rest-label",
-            className:
-              "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--also",
-          },
-          "Also in this release",
-        ),
-      );
-    }
-    const groups = groupRestByKind(rest);
-    const useKindGroups = groups.length > 1;
-    if (useKindGroups) {
-      for (let g = 0; g < groups.length; g++) {
-        const group = groups[g];
-        const label = group.kind ? changelogKindLabel(group.kind) : "Other";
-        children.push(
-          e(
-            "div",
-            {
-              key: `kind-label-${entry.id}-${g}`,
-              className: "ecu-comm-wiz-cl-kind-group-label",
-            },
-            label,
-          ),
-          e(
-            "div",
-            {
-              key: `kind-list-${entry.id}-${g}`,
-              className: itemsGridClass(group.items.length),
-            },
-            ...group.items.map((item, i) =>
-              renderChangelogItem(item, `item-${entry.id}-${g}-${i}`),
-            ),
-          ),
-        );
-      }
-    } else {
-      children.push(
-        e(
-          "div",
-          {
-            key: "rest-list",
-            className: itemsGridClass(rest.length),
-          },
-          ...rest.map((item, i) =>
-            renderChangelogItem(item, `item-${entry.id}-${i}`),
-          ),
-        ),
-      );
-    }
+  for (let f = 0; f < features.length; f++) {
+    children.push(...renderFeatureSection(features[f], entry.id, f));
   }
+  children.push(
+    ...renderRestSections(
+      rest,
+      entry.id,
+      !!(highlights.length || features.length),
+    ),
+  );
   return e("div", { className: "ecu-comm-wiz-cl-entry" }, ...children);
 }
 

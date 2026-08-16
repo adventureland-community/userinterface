@@ -6822,99 +6822,105 @@ ${fightHoverTip(src)}`
     {
       id: "0.8.0-alpha.4",
       title: "0.8.0-alpha.4",
-      date: "2026-08-16",
-      summary: "Full account mail in Comm, plus paperdoll / meter / crypt bugfixes while observing.",
+      date: "2026-08-17",
+      summary: "Mail UI lands on /comm, with observe/meter/crypt fixes and Time Line bars that respect known durations.",
+      highlights: [
+        {
+          label: "Mail UI",
+          detail: "Full account inbox on the bottom bar \u2014 read, search, compose, send and take while observing.",
+          kind: "feature"
+        },
+        {
+          label: "Observe-friendly meters",
+          detail: "Current sticks across party observe hops; Overall stays live while fighting.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll Luck / Goldm",
+          detail: "No more stale observe-snap wallet gold; Luck and Goldm are gear estimates with a ~ tip.",
+          kind: "fix"
+        }
+      ],
+      features: [
+        {
+          title: "Mail",
+          summary: "Layoutable inbox while observing \u2014 unlock or Alt-drag to place; click Mail to raise it above meters.",
+          items: [
+            {
+              label: "Inbox",
+              detail: "Newest first, two-line rows with a when column and item icon. Load older when you need history.",
+              points: [
+                "Today: fixed-width 24h clock; older: short locale date + relative age",
+                "Activity / Character / Inbox / Status cards stay compact so the read pane has room",
+                "Off-screen rows use content-visibility for smoother long lists"
+              ]
+            },
+            {
+              label: "Send & Take",
+              detail: "With a character observed, Send and Take run on that character \u2014 gold, bag space, and attach checks included.",
+              points: [
+                "Right-click bag \u2192 Send mail / queue attach or Item info",
+                "Shift+right-click keeps the stock menu when available",
+                "STATUS and the character log show how the send or take went"
+              ]
+            },
+            {
+              label: "Compose & batch",
+              detail: "Queue several bag items into one send \u2014 one mail per attach, each with its own To.",
+              points: [
+                "To chips: round-robin, Distribute across To, or pick per item",
+                "Plain mail still copies every To; {item} in subject/body; empty subject \u2192 item name",
+                "Reply, Forward, sticky last To, and a draft that survives closing Mail"
+              ]
+            },
+            {
+              label: "Stacks",
+              detail: "Near-duplicates collapse so spam and repeats do not bury the inbox.",
+              points: [
+                "Same parties + subject/body, or the same attached item",
+                "Expand the row or \xD7N chip; \u201CN new\u201D jumps to the first unread",
+                "Toggle Stack for a flat list; taken copies stay dim with a Taken pill"
+              ]
+            },
+            {
+              label: "Search & filters",
+              detail: "Gmail-style operators plus a guided options panel for common filters.",
+              points: [
+                "from:/to:/subject:/item:, has:attachment, is:unread|read|taken|untaken",
+                "after:/before:, newer_than:/older_than:, quotes, and -exclusions",
+                "Select all picks every row in the current filter for batch delete"
+              ]
+            },
+            {
+              label: "Cache & unread",
+              detail: "IndexedDB per account restores instantly; unread follows the game badge plus newly arrived mail.",
+              points: [
+                "Soft-merge newest page on open; older pages warm while Mail is open",
+                "Badge shows 100+ when the server caps at 100 \u2014 click to jump to newest unread",
+                "Banner (or toast if Mail is closed) announces new mail"
+              ]
+            },
+            {
+              label: "Delete",
+              detail: "Small batches get Undo; large cleanups show paced progress with an ETA.",
+              points: [
+                "Status card: Deleted + Undo with a live countdown (U still works)",
+                "Large jobs: e.g. Deleting 12 / 200 \xB7 ~2m left"
+              ]
+            }
+          ]
+        }
+      ],
       items: [
-        {
-          label: "Paperdoll Luck and Goldm",
-          detail: "Inspect no longer shows wallet gold from the stale observe snap (it looked like the wrong character\u2019s inventory). Luck and Goldm are gear + condition estimates (mluck, sets, \u2026) with a ~ prefix and a tooltip \u2014 same rules for the observed character or any nearby player.",
-          kind: "fix",
-          highlight: true
-        },
-        {
-          label: "Meter Current on observe hop",
-          detail: "Switching the watched character no longer resets Current when the new observer is in the same party on the same map, or already on the live meter tape (nearby fighter in the same pull). Brief reconnect clears of watching also keep Current.",
-          kind: "fix",
-          highlight: true
-        },
         {
           label: "Crypt battle reset",
           detail: "After a crypt battle reset, bosses seen alive again show Alive (not stuck on Died). Cards only dim when dead and out of vision; HUD panels remount cleanly so leave/re-enter does not leave a faded shell.",
           kind: "fix"
         },
         {
-          label: "Overall meters stay live",
-          detail: "Overall and instance/event overalls refresh while fighting (past fights + live Current), with picker tips that say so. Crypt overall rows include server and age so multiple visits are distinct. Current still owns idle fade / camera follow.",
-          kind: "fix",
-          highlight: true
-        },
-        {
-          label: "Mail list performance",
-          detail: "Inbox list uses content-visibility for off-screen rows and skips rewriting CSS / re-rendering on unchanged unread polls.",
-          kind: "improve"
-        },
-        {
-          label: "Mail list date column",
-          detail: "Inbox rows show a dedicated when column before the item icon: fixed-width 24h clock if today, else a short numeric date from the browser locale (DMY/MDY/\u2026) on the top line, and relative age underneath. From/to stays on the meta line.",
-          kind: "feature"
-        },
-        {
-          label: "Mail delete Undo",
-          detail: "After a small delete, the Status card shows Deleted plus an Undo button with a live countdown (U still works). One clock owns the timer.",
-          kind: "ui"
-        },
-        {
-          label: "Mail / meter structure cleanup",
-          detail: "Delete progress is a single structured channel (Status owns the ETA bar; Activity only pulses). Mail host leaves clustered; window stack owns shared z-order in lib; mail/timeline CSS split under 1k; relative-age formatting lives in lib/format.",
-          kind: "improve"
-        },
-        {
-          label: "Mail delete ETA",
-          detail: "Large inbox cleanups show an estimated time left on the delete progress line (paced server deletes), e.g. Deleting 12 / 200 \xB7 ~2m left.",
-          kind: "feature"
-        },
-        {
-          label: "Mail window",
-          detail: "New Mail button on the bottom bar opens a layoutable inbox: search, Load older, compose, multi-select delete (Undo on small batches; progress while larger cleanups run), and a badge for the game\u2019s unread count (100+ when the server caps at 100). Click the badge to jump to the newest unread. Unlock or hold Alt to drag and resize; click Mail to raise it above meters.",
-          kind: "feature",
-          highlight: true
-        },
-        {
-          label: "Send and Take while observing",
-          detail: "With a character observed, Send and Take run on that character (gold, bag space, and attach checks). Right-click a bag item for Send mail / queue attach or Item info; Shift+right-click keeps the stock menu when available. STATUS and the character log show how the send or take went.",
-          kind: "feature",
-          highlight: true
-        },
-        {
-          label: "Compose and batch mail",
-          detail: "Queue several bag items into one send \u2014 one mail per attach, each with its own To. To chips are a recipient pool (round-robin on queue, Distribute across To, or pick per item). Plain mail still copies every To. Subject/body support {item}; empty subject uses the item name. Reply, Forward, sticky last To, and a draft that survives closing Mail.",
-          kind: "feature",
-          highlight: true
-        },
-        {
-          label: "Stacked repeats",
-          detail: "Near-duplicates collapse into stacks (same parties + subject/body, or the same attached item). Click the row or \xD7N chip to expand; nested rows to read or take; \u201CN new\u201D jumps to the first unread. Toggle Stack for a flat list. Stacks sum untaken attachment qty; taken copies stay dim with a Taken pill.",
-          kind: "feature"
-        },
-        {
-          label: "Search and filters",
-          detail: "Gmail-style operators (from:/to:/subject:/item:, has:attachment, is:unread|read|taken|untaken, after:/before:, newer_than:/older_than:, quotes, -exclusions) plus Show search options for From / To / Subject / words / Item / date / scope, and Has attachment / Untaken only / Taken only. Select all picks every row in the current filter for batch delete.",
-          kind: "feature"
-        },
-        {
-          label: "Inbox list",
-          detail: "Newest mail first (flat or stacked). Two-line rows: title + chips, then from/to \xB7 time, icon on the right. Shared ItemInstance chrome for qty/level. Compact Activity / Character / Inbox / Status cards; list stays narrow so the read/compose pane has room.",
-          kind: "ui"
-        },
-        {
-          label: "Inbox cache",
-          detail: "Mail is stored in IndexedDB per account. Opening restores instantly, then soft-merges the newest page onto the cache; older pages warm in the background while Mail is open. Closing keeps the session list. Activity shows pull / warm / command / delete.",
-          kind: "feature"
-        },
-        {
-          label: "Unread",
-          detail: "Unread follows the game badge plus newly arrived mail. Opening a message clears it in Comm; a banner (or toast if Mail is closed) announces new mail.",
-          kind: "feature"
+          label: "Time Line predicted ends",
+          detail: "Buff/debuff and cooldown bars use known remaining duration (and skill CD length) so they draw past the yellow \u201Cnow\u201D line instead of lag-growing into it. Follow still pins the playhead to the right edge.",
+          kind: "fix"
         },
         {
           label: "Window chrome",
@@ -6928,6 +6934,28 @@ ${fightHoverTip(src)}`
       title: "0.8.0-alpha.3",
       date: "2026-08-16",
       summary: "Paperdoll luck and gold, Time Line cooldowns that match the game, and skills that never sent an attack packet \u2014 including party buffs and short self-buffs.",
+      highlights: [
+        {
+          label: "Luck and gold on inspect",
+          detail: "Paperdoll shows luck and gold. When /comm does not get those from the server, luck and gold-find are estimated from gear (wallet gold cannot be guessed). Compare mode uses matching units.",
+          kind: "feature"
+        },
+        {
+          label: "Time Line cooldowns",
+          detail: "Cast bars follow each skill's real cooldown, including attack speed for auto-attack and shared skills like 3shot. Attack speed is stored when the cast happens, so reviewing an older fight no longer paints yesterday's casts with today's speed.",
+          kind: "improve"
+        },
+        {
+          label: "Time Line skills",
+          detail: "Skills the game announces with ui / eval instead of an attack packet now show on the Time Line \u2014 stomp, scare, mluck, energize, Temporal Surge, and the rest of that set. Cleave still uses the attack packet; the extra ui ping is not a second cast (either packet order).",
+          kind: "feature"
+        },
+        {
+          label: "Buffs and self skills on Time Line",
+          detail: "Warcry and darkblessing show as casts from the caster (from the buff's caster field), even though the game's ui packet has no name. Hardshell, charge, and blink show from when the buff appears. Short buffs like blink are sampled often enough to usually catch them. Combat debuffs and skills that already send a named ui (mluck, energize, \u2026) are not double-counted or mis-attributed.",
+          kind: "feature"
+        }
+      ],
       items: [
         {
           label: "Group stretch alignment",
@@ -6943,30 +6971,6 @@ ${fightHoverTip(src)}`
           label: "Meter bar height",
           detail: "Bar rows follow Options \u2192 Bar height (and Window scale). Chrome-on-hover no longer reflows the list when you hover Stretch \u2195, so side-by-side meters keep row alignment.",
           kind: "fix"
-        },
-        {
-          label: "Luck and gold on inspect",
-          detail: "Paperdoll shows luck and gold. When /comm does not get those from the server, luck and gold-find are estimated from gear (wallet gold cannot be guessed). Compare mode uses matching units.",
-          kind: "feature",
-          highlight: true
-        },
-        {
-          label: "Time Line cooldowns",
-          detail: "Cast bars follow each skill's real cooldown, including attack speed for auto-attack and shared skills like 3shot. Attack speed is stored when the cast happens, so reviewing an older fight no longer paints yesterday's casts with today's speed.",
-          kind: "improve",
-          highlight: true
-        },
-        {
-          label: "Time Line skills",
-          detail: "Skills the game announces with ui / eval instead of an attack packet now show on the Time Line \u2014 stomp, scare, mluck, energize, Temporal Surge, and the rest of that set. Cleave still uses the attack packet; the extra ui ping is not a second cast (either packet order).",
-          kind: "feature",
-          highlight: true
-        },
-        {
-          label: "Buffs and self skills on Time Line",
-          detail: "Warcry and darkblessing show as casts from the caster (from the buff's caster field), even though the game's ui packet has no name. Hardshell, charge, and blink show from when the buff appears. Short buffs like blink are sampled often enough to usually catch them. Combat debuffs and skills that already send a named ui (mluck, energize, \u2026) are not double-counted or mis-attributed.",
-          kind: "feature",
-          highlight: true
         },
         {
           label: "Paperdoll vitals",
@@ -7030,25 +7034,24 @@ ${fightHoverTip(src)}`
       title: "0.8.0-alpha.2",
       date: "2026-08-14",
       summary: "Browse Changelog anytime, clearer arrange outlines, and Coop share numbers that match the game again.",
-      items: [
+      highlights: [
         {
           label: "Changelog browser",
           detail: "Open Changelog anytime from the bottom bar. Browse versions one at a time \u2014 the window stays on screen.",
-          kind: "ui",
-          highlight: true
+          kind: "ui"
         },
         {
           label: "Arrange outline",
           detail: "When unlocked, the blue outline wraps the whole window (including Command buttons and Kills).",
-          kind: "fix",
-          highlight: true
+          kind: "fix"
         },
         {
           label: "Coop contribution %",
           detail: "Coop V2 contribution % matches the game again; Coop V1 is still the simple share.",
-          kind: "fix",
-          highlight: true
-        },
+          kind: "fix"
+        }
+      ],
+      items: [
         {
           label: "Empty damage meters",
           detail: "Empty damage meters stay on screen while unlocked. Lock them and they hide until they have data.",
@@ -7101,19 +7104,19 @@ ${fightHoverTip(src)}`
       title: "0.8.0-alpha.1",
       date: "2026-08-13",
       summary: "New meter windows, snap groups for HUD and meters, and clearer fights.",
-      items: [
+      highlights: [
         {
           label: "Damage meter windows",
           detail: "Scrollable bars, pin yourself on the list, Time Line, and a detailed Inspector.",
-          kind: "feature",
-          highlight: true
+          kind: "feature"
         },
         {
           label: "Snap windows together",
           detail: "Snap HUD and meters at the edges. Resize a joined group together, with green guides while arranging.",
-          kind: "feature",
-          highlight: true
-        },
+          kind: "feature"
+        }
+      ],
+      items: [
         {
           label: "Clearer fight segments",
           detail: "Current and past fights are easier to follow in meters, bookmarks, and the status bar.",
@@ -15753,7 +15756,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.8.0-alpha.4" : "unknown";
-    const builtAt = true ? "2026-08-16T23:07:12.897Z" : "unknown";
+    const builtAt = true ? "2026-08-16T23:24:13.494Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -16199,6 +16202,16 @@ button.comm-mail__stack-u {
   padding-top: 4px;
   border-top: none;
 }
+.ecu-comm-wiz-cl-section-label--feature {
+  margin-top: 26px;
+}
+.ecu-comm-wiz-cl-feature-summary {
+  margin: -4px 0 14px;
+  color: rgba(230, 220, 200, 0.88);
+  font-size: 26px;
+  line-height: 1.35;
+  max-width: 42em;
+}
 .ecu-comm-wiz-cl-kind-group-label {
   margin: 22px 0 10px;
   padding-bottom: 5px;
@@ -16307,6 +16320,20 @@ button.comm-mail__stack-u {
   color: #fff;
   font-size: 30px;
   max-width: 36em;
+}
+.ecu-comm-wiz-cl-item-points {
+  margin: 2px 0 0;
+  padding: 0 0 0 1.15em;
+  max-width: 36em;
+  color: rgba(245, 240, 230, 0.92);
+  font-size: 24px;
+  line-height: 1.35;
+}
+.ecu-comm-wiz-cl-item-points li {
+  margin: 0 0 0.45em;
+}
+.ecu-comm-wiz-cl-item-points li:last-child {
+  margin-bottom: 0;
 }
 .ecu-comm-wiz-cl-foot {
   flex: 0 0 auto;
@@ -16494,14 +16521,10 @@ button.comm-mail__stack-u {
   function itemsGridClass(count) {
     return "ecu-comm-wiz-cl-items" + (count >= 2 ? " ecu-comm-wiz-cl-items--grid" : "");
   }
-  function renderChangelogItem(item, key) {
-    const kind = item.kind;
-    return e(
-      "div",
-      {
-        key,
-        className: "ecu-comm-wiz-cl-item" + (item.highlight ? " ecu-comm-wiz-cl-item--highlight" : "") + (kind ? ` ecu-comm-wiz-cl-item--kind-${kind}` : "")
-      },
+  function renderChangelogItem(item, key, opts = {}) {
+    const kind = opts.featureSection ? void 0 : item.kind;
+    const points = opts.featureSection && "points" in item ? item.points : void 0;
+    const children = [
       e(
         "div",
         { className: "ecu-comm-wiz-cl-item-top" },
@@ -16515,6 +16538,23 @@ button.comm-mail__stack-u {
         ) : null
       ),
       e("div", { className: "ecu-comm-wiz-cl-item-detail" }, item.detail)
+    ];
+    if (points && points.length) {
+      children.push(
+        e(
+          "ul",
+          { className: "ecu-comm-wiz-cl-item-points" },
+          ...points.map((point, i) => e("li", { key: `${key}-p${i}` }, point))
+        )
+      );
+    }
+    return e(
+      "div",
+      {
+        key,
+        className: "ecu-comm-wiz-cl-item" + (opts.highlightSection ? " ecu-comm-wiz-cl-item--highlight" : "") + (kind ? ` ecu-comm-wiz-cl-item--kind-${kind}` : "")
+      },
+      ...children
     );
   }
   function groupRestByKind(rest) {
@@ -16536,14 +16576,94 @@ button.comm-mail__stack-u {
     if (other && other.length) groups.push({ kind: null, items: other });
     return groups;
   }
-  function renderEntryBody(entry) {
-    const highlights = [];
-    const rest = [];
-    for (let i = 0; i < entry.items.length; i++) {
-      const item = entry.items[i];
-      if (item.highlight) highlights.push(item);
-      else rest.push(item);
+  function renderCardGrid(items, key, keyPrefix, opts = {}) {
+    return e(
+      "div",
+      { key, className: itemsGridClass(items.length) },
+      ...items.map(
+        (item, i) => renderChangelogItem(item, `${keyPrefix}-${i}`, opts)
+      )
+    );
+  }
+  function renderFeatureSection(section2, entryId, index) {
+    const out = [
+      e(
+        "div",
+        {
+          key: `feat-label-${entryId}-${index}`,
+          className: "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--feature"
+        },
+        section2.title
+      )
+    ];
+    if (section2.summary) {
+      out.push(
+        e(
+          "p",
+          {
+            key: `feat-sum-${entryId}-${index}`,
+            className: "ecu-comm-wiz-cl-feature-summary"
+          },
+          section2.summary
+        )
+      );
     }
+    out.push(
+      renderCardGrid(
+        section2.items,
+        `feat-list-${entryId}-${index}`,
+        `feat-${entryId}-${index}`,
+        { featureSection: true }
+      )
+    );
+    return out;
+  }
+  function renderRestSections(rest, entryId, showAlsoLabel) {
+    if (!rest.length) return [];
+    const children = [];
+    if (showAlsoLabel) {
+      children.push(
+        e(
+          "div",
+          {
+            key: "rest-label",
+            className: "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--also"
+          },
+          "Also in this release"
+        )
+      );
+    }
+    const groups = groupRestByKind(rest);
+    const useKindGroups = groups.length > 1;
+    if (useKindGroups) {
+      for (let g = 0; g < groups.length; g++) {
+        const group = groups[g];
+        const label = group.kind ? changelogKindLabel(group.kind) : "Other";
+        children.push(
+          e(
+            "div",
+            {
+              key: `kind-label-${entryId}-${g}`,
+              className: "ecu-comm-wiz-cl-kind-group-label"
+            },
+            label
+          ),
+          renderCardGrid(
+            group.items,
+            `kind-list-${entryId}-${g}`,
+            `item-${entryId}-${g}`
+          )
+        );
+      }
+    } else {
+      children.push(renderCardGrid(rest, "rest-list", `item-${entryId}`));
+    }
+    return children;
+  }
+  function renderEntryBody(entry) {
+    const highlights = entry.highlights || [];
+    const features = entry.features || [];
+    const rest = entry.items || [];
     const children = [];
     if (entry.summary) {
       children.push(
@@ -16566,73 +16686,21 @@ button.comm-mail__stack-u {
           { key: "hl-label", className: "ecu-comm-wiz-cl-section-label" },
           "Highlights"
         ),
-        e(
-          "div",
-          {
-            key: "hl-list",
-            className: itemsGridClass(highlights.length)
-          },
-          ...highlights.map(
-            (item, i) => renderChangelogItem(item, `hl-${entry.id}-${i}`)
-          )
-        )
+        renderCardGrid(highlights, "hl-list", `hl-${entry.id}`, {
+          highlightSection: true
+        })
       );
     }
-    if (rest.length) {
-      if (highlights.length) {
-        children.push(
-          e(
-            "div",
-            {
-              key: "rest-label",
-              className: "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--also"
-            },
-            "Also in this release"
-          )
-        );
-      }
-      const groups = groupRestByKind(rest);
-      const useKindGroups = groups.length > 1;
-      if (useKindGroups) {
-        for (let g = 0; g < groups.length; g++) {
-          const group = groups[g];
-          const label = group.kind ? changelogKindLabel(group.kind) : "Other";
-          children.push(
-            e(
-              "div",
-              {
-                key: `kind-label-${entry.id}-${g}`,
-                className: "ecu-comm-wiz-cl-kind-group-label"
-              },
-              label
-            ),
-            e(
-              "div",
-              {
-                key: `kind-list-${entry.id}-${g}`,
-                className: itemsGridClass(group.items.length)
-              },
-              ...group.items.map(
-                (item, i) => renderChangelogItem(item, `item-${entry.id}-${g}-${i}`)
-              )
-            )
-          );
-        }
-      } else {
-        children.push(
-          e(
-            "div",
-            {
-              key: "rest-list",
-              className: itemsGridClass(rest.length)
-            },
-            ...rest.map(
-              (item, i) => renderChangelogItem(item, `item-${entry.id}-${i}`)
-            )
-          )
-        );
-      }
+    for (let f = 0; f < features.length; f++) {
+      children.push(...renderFeatureSection(features[f], entry.id, f));
     }
+    children.push(
+      ...renderRestSections(
+        rest,
+        entry.id,
+        !!(highlights.length || features.length)
+      )
+    );
     return e("div", { className: "ecu-comm-wiz-cl-entry" }, ...children);
   }
   function CommUIWhatsNew(props) {

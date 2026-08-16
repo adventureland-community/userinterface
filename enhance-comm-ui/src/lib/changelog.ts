@@ -2,17 +2,32 @@
  * Versioned What's New entries — newest first.
  * Bump by prepending an entry when shipping user-facing changes.
  * Users who already finished/skipped intro still see unseen entries.
+ *
+ * Structure per release (placement is the shape — no highlight flag):
+ * - `highlights` → short teaser cards
+ * - `features` → named deep-dives (cards + optional `points`)
+ * - `items` → Also in this release (grouped by kind)
  */
 
 export type ChangelogKind = "feature" | "fix" | "improve" | "ui";
 
-export type ChangelogItem = {
+/** Lead + detail card (Highlights, Also, intro overview). */
+export type ChangelogCard = {
   label: string;
   detail: string;
-  /** Optional nuance for badges / grouping */
   kind?: ChangelogKind;
-  /** Pin a few items at top of a release as "highlights" */
-  highlight?: boolean;
+};
+
+/** Feature-section card — optional short sub-bullets. */
+export type ChangelogFeatureCard = ChangelogCard & {
+  points?: string[];
+};
+
+/** Deep-dive for a named feature — rendered after Highlights. */
+export type ChangelogFeatureSection = {
+  title: string;
+  summary?: string;
+  items: ChangelogFeatureCard[];
 };
 
 export type ChangelogEntry = {
@@ -24,13 +39,18 @@ export type ChangelogEntry = {
   summary: string;
   /** Display date — required, ISO calendar day (YYYY-MM-DD). */
   date: string;
-  items: ChangelogItem[];
+  /** Short teaser cards at the top. */
+  highlights?: ChangelogCard[];
+  /** Named feature sections with card grids. */
+  features?: ChangelogFeatureSection[];
+  /** Also in this release. */
+  items: ChangelogCard[];
 };
 
 /**
  * Feature overview shared by first-run intro and the baseline changelog entry.
  */
-export const FEATURE_OVERVIEW: ChangelogItem[] = [
+export const FEATURE_OVERVIEW: ChangelogCard[] = [
   {
     label: "Movable panels",
     detail:
@@ -65,24 +85,108 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.8.0-alpha.4",
     title: "0.8.0-alpha.4",
-    date: "2026-08-16",
+    date: "2026-08-17",
     summary:
-      "Full account mail in Comm, plus paperdoll / meter / crypt bugfixes while observing.",
+      "Mail UI lands on /comm, with observe/meter/crypt fixes and Time Line bars that respect known durations.",
+    highlights: [
+      {
+        label: "Mail UI",
+        detail:
+          "Full account inbox on the bottom bar — read, search, compose, send and take while observing.",
+        kind: "feature",
+      },
+      {
+        label: "Observe-friendly meters",
+        detail:
+          "Current sticks across party observe hops; Overall stays live while fighting.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll Luck / Goldm",
+        detail:
+          "No more stale observe-snap wallet gold; Luck and Goldm are gear estimates with a ~ tip.",
+        kind: "fix",
+      },
+    ],
+    features: [
+      {
+        title: "Mail",
+        summary:
+          "Layoutable inbox while observing — unlock or Alt-drag to place; click Mail to raise it above meters.",
+        items: [
+          {
+            label: "Inbox",
+            detail:
+              "Newest first, two-line rows with a when column and item icon. Load older when you need history.",
+            points: [
+              "Today: fixed-width 24h clock; older: short locale date + relative age",
+              "Activity / Character / Inbox / Status cards stay compact so the read pane has room",
+              "Off-screen rows use content-visibility for smoother long lists",
+            ],
+          },
+          {
+            label: "Send & Take",
+            detail:
+              "With a character observed, Send and Take run on that character — gold, bag space, and attach checks included.",
+            points: [
+              "Right-click bag → Send mail / queue attach or Item info",
+              "Shift+right-click keeps the stock menu when available",
+              "STATUS and the character log show how the send or take went",
+            ],
+          },
+          {
+            label: "Compose & batch",
+            detail:
+              "Queue several bag items into one send — one mail per attach, each with its own To.",
+            points: [
+              "To chips: round-robin, Distribute across To, or pick per item",
+              "Plain mail still copies every To; {item} in subject/body; empty subject → item name",
+              "Reply, Forward, sticky last To, and a draft that survives closing Mail",
+            ],
+          },
+          {
+            label: "Stacks",
+            detail:
+              "Near-duplicates collapse so spam and repeats do not bury the inbox.",
+            points: [
+              "Same parties + subject/body, or the same attached item",
+              "Expand the row or ×N chip; “N new” jumps to the first unread",
+              "Toggle Stack for a flat list; taken copies stay dim with a Taken pill",
+            ],
+          },
+          {
+            label: "Search & filters",
+            detail:
+              "Gmail-style operators plus a guided options panel for common filters.",
+            points: [
+              "from:/to:/subject:/item:, has:attachment, is:unread|read|taken|untaken",
+              "after:/before:, newer_than:/older_than:, quotes, and -exclusions",
+              "Select all picks every row in the current filter for batch delete",
+            ],
+          },
+          {
+            label: "Cache & unread",
+            detail:
+              "IndexedDB per account restores instantly; unread follows the game badge plus newly arrived mail.",
+            points: [
+              "Soft-merge newest page on open; older pages warm while Mail is open",
+              "Badge shows 100+ when the server caps at 100 — click to jump to newest unread",
+              "Banner (or toast if Mail is closed) announces new mail",
+            ],
+          },
+          {
+            label: "Delete",
+            detail:
+              "Small batches get Undo; large cleanups show paced progress with an ETA.",
+            points: [
+              "Status card: Deleted + Undo with a live countdown (U still works)",
+              "Large jobs: e.g. Deleting 12 / 200 · ~2m left",
+            ],
+          },
+        ],
+      },
+    ],
     items: [
-      {
-        label: "Paperdoll Luck and Goldm",
-        detail:
-          "Inspect no longer shows wallet gold from the stale observe snap (it looked like the wrong character’s inventory). Luck and Goldm are gear + condition estimates (mluck, sets, …) with a ~ prefix and a tooltip — same rules for the observed character or any nearby player.",
-        kind: "fix",
-        highlight: true,
-      },
-      {
-        label: "Meter Current on observe hop",
-        detail:
-          "Switching the watched character no longer resets Current when the new observer is in the same party on the same map, or already on the live meter tape (nearby fighter in the same pull). Brief reconnect clears of watching also keep Current.",
-        kind: "fix",
-        highlight: true,
-      },
       {
         label: "Crypt battle reset",
         detail:
@@ -90,92 +194,10 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "fix",
       },
       {
-        label: "Overall meters stay live",
+        label: "Time Line predicted ends",
         detail:
-          "Overall and instance/event overalls refresh while fighting (past fights + live Current), with picker tips that say so. Crypt overall rows include server and age so multiple visits are distinct. Current still owns idle fade / camera follow.",
+          "Buff/debuff and cooldown bars use known remaining duration (and skill CD length) so they draw past the yellow “now” line instead of lag-growing into it. Follow still pins the playhead to the right edge.",
         kind: "fix",
-        highlight: true,
-      },
-      {
-        label: "Mail list performance",
-        detail:
-          "Inbox list uses content-visibility for off-screen rows and skips rewriting CSS / re-rendering on unchanged unread polls.",
-        kind: "improve",
-      },
-      {
-        label: "Mail list date column",
-        detail:
-          "Inbox rows show a dedicated when column before the item icon: fixed-width 24h clock if today, else a short numeric date from the browser locale (DMY/MDY/…) on the top line, and relative age underneath. From/to stays on the meta line.",
-        kind: "feature",
-      },
-      {
-        label: "Mail delete Undo",
-        detail:
-          "After a small delete, the Status card shows Deleted plus an Undo button with a live countdown (U still works). One clock owns the timer.",
-        kind: "ui",
-      },
-      {
-        label: "Mail / meter structure cleanup",
-        detail:
-          "Delete progress is a single structured channel (Status owns the ETA bar; Activity only pulses). Mail host leaves clustered; window stack owns shared z-order in lib; mail/timeline CSS split under 1k; relative-age formatting lives in lib/format.",
-        kind: "improve",
-      },
-      {
-        label: "Mail delete ETA",
-        detail:
-          "Large inbox cleanups show an estimated time left on the delete progress line (paced server deletes), e.g. Deleting 12 / 200 · ~2m left.",
-        kind: "feature",
-      },
-      {
-        label: "Mail window",
-        detail:
-          "New Mail button on the bottom bar opens a layoutable inbox: search, Load older, compose, multi-select delete (Undo on small batches; progress while larger cleanups run), and a badge for the game’s unread count (100+ when the server caps at 100). Click the badge to jump to the newest unread. Unlock or hold Alt to drag and resize; click Mail to raise it above meters.",
-        kind: "feature",
-        highlight: true,
-      },
-      {
-        label: "Send and Take while observing",
-        detail:
-          "With a character observed, Send and Take run on that character (gold, bag space, and attach checks). Right-click a bag item for Send mail / queue attach or Item info; Shift+right-click keeps the stock menu when available. STATUS and the character log show how the send or take went.",
-        kind: "feature",
-        highlight: true,
-      },
-      {
-        label: "Compose and batch mail",
-        detail:
-          "Queue several bag items into one send — one mail per attach, each with its own To. To chips are a recipient pool (round-robin on queue, Distribute across To, or pick per item). Plain mail still copies every To. Subject/body support {item}; empty subject uses the item name. Reply, Forward, sticky last To, and a draft that survives closing Mail.",
-        kind: "feature",
-        highlight: true,
-      },
-      {
-        label: "Stacked repeats",
-        detail:
-          "Near-duplicates collapse into stacks (same parties + subject/body, or the same attached item). Click the row or ×N chip to expand; nested rows to read or take; “N new” jumps to the first unread. Toggle Stack for a flat list. Stacks sum untaken attachment qty; taken copies stay dim with a Taken pill.",
-        kind: "feature",
-      },
-      {
-        label: "Search and filters",
-        detail:
-          "Gmail-style operators (from:/to:/subject:/item:, has:attachment, is:unread|read|taken|untaken, after:/before:, newer_than:/older_than:, quotes, -exclusions) plus Show search options for From / To / Subject / words / Item / date / scope, and Has attachment / Untaken only / Taken only. Select all picks every row in the current filter for batch delete.",
-        kind: "feature",
-      },
-      {
-        label: "Inbox list",
-        detail:
-          "Newest mail first (flat or stacked). Two-line rows: title + chips, then from/to · time, icon on the right. Shared ItemInstance chrome for qty/level. Compact Activity / Character / Inbox / Status cards; list stays narrow so the read/compose pane has room.",
-        kind: "ui",
-      },
-      {
-        label: "Inbox cache",
-        detail:
-          "Mail is stored in IndexedDB per account. Opening restores instantly, then soft-merges the newest page onto the cache; older pages warm in the background while Mail is open. Closing keeps the session list. Activity shows pull / warm / command / delete.",
-        kind: "feature",
-      },
-      {
-        label: "Unread",
-        detail:
-          "Unread follows the game badge plus newly arrived mail. Opening a message clears it in Comm; a banner (or toast if Mail is closed) announces new mail.",
-        kind: "feature",
       },
       {
         label: "Window chrome",
@@ -191,6 +213,32 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-16",
     summary:
       "Paperdoll luck and gold, Time Line cooldowns that match the game, and skills that never sent an attack packet — including party buffs and short self-buffs.",
+    highlights: [
+      {
+        label: "Luck and gold on inspect",
+        detail:
+          "Paperdoll shows luck and gold. When /comm does not get those from the server, luck and gold-find are estimated from gear (wallet gold cannot be guessed). Compare mode uses matching units.",
+        kind: "feature",
+      },
+      {
+        label: "Time Line cooldowns",
+        detail:
+          "Cast bars follow each skill's real cooldown, including attack speed for auto-attack and shared skills like 3shot. Attack speed is stored when the cast happens, so reviewing an older fight no longer paints yesterday's casts with today's speed.",
+        kind: "improve",
+      },
+      {
+        label: "Time Line skills",
+        detail:
+          "Skills the game announces with ui / eval instead of an attack packet now show on the Time Line — stomp, scare, mluck, energize, Temporal Surge, and the rest of that set. Cleave still uses the attack packet; the extra ui ping is not a second cast (either packet order).",
+        kind: "feature",
+      },
+      {
+        label: "Buffs and self skills on Time Line",
+        detail:
+          "Warcry and darkblessing show as casts from the caster (from the buff's caster field), even though the game's ui packet has no name. Hardshell, charge, and blink show from when the buff appears. Short buffs like blink are sampled often enough to usually catch them. Combat debuffs and skills that already send a named ui (mluck, energize, …) are not double-counted or mis-attributed.",
+        kind: "feature",
+      },
+    ],
     items: [
       {
         label: "Group stretch alignment",
@@ -209,34 +257,6 @@ export const CHANGELOG: ChangelogEntry[] = [
         detail:
           "Bar rows follow Options → Bar height (and Window scale). Chrome-on-hover no longer reflows the list when you hover Stretch ↕, so side-by-side meters keep row alignment.",
         kind: "fix",
-      },
-      {
-        label: "Luck and gold on inspect",
-        detail:
-          "Paperdoll shows luck and gold. When /comm does not get those from the server, luck and gold-find are estimated from gear (wallet gold cannot be guessed). Compare mode uses matching units.",
-        kind: "feature",
-        highlight: true,
-      },
-      {
-        label: "Time Line cooldowns",
-        detail:
-          "Cast bars follow each skill's real cooldown, including attack speed for auto-attack and shared skills like 3shot. Attack speed is stored when the cast happens, so reviewing an older fight no longer paints yesterday's casts with today's speed.",
-        kind: "improve",
-        highlight: true,
-      },
-      {
-        label: "Time Line skills",
-        detail:
-          "Skills the game announces with ui / eval instead of an attack packet now show on the Time Line — stomp, scare, mluck, energize, Temporal Surge, and the rest of that set. Cleave still uses the attack packet; the extra ui ping is not a second cast (either packet order).",
-        kind: "feature",
-        highlight: true,
-      },
-      {
-        label: "Buffs and self skills on Time Line",
-        detail:
-          "Warcry and darkblessing show as casts from the caster (from the buff's caster field), even though the game's ui packet has no name. Hardshell, charge, and blink show from when the buff appears. Short buffs like blink are sampled often enough to usually catch them. Combat debuffs and skills that already send a named ui (mluck, energize, …) are not double-counted or mis-attributed.",
-        kind: "feature",
-        highlight: true,
       },
       {
         label: "Paperdoll vitals",
@@ -312,28 +332,27 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-14",
     summary:
       "Browse Changelog anytime, clearer arrange outlines, and Coop share numbers that match the game again.",
-    items: [
+    highlights: [
       {
         label: "Changelog browser",
         detail:
           "Open Changelog anytime from the bottom bar. Browse versions one at a time — the window stays on screen.",
         kind: "ui",
-        highlight: true,
       },
       {
         label: "Arrange outline",
         detail:
           "When unlocked, the blue outline wraps the whole window (including Command buttons and Kills).",
         kind: "fix",
-        highlight: true,
       },
       {
         label: "Coop contribution %",
         detail:
           "Coop V2 contribution % matches the game again; Coop V1 is still the simple share.",
         kind: "fix",
-        highlight: true,
       },
+    ],
+    items: [
       {
         label: "Empty damage meters",
         detail:
@@ -396,21 +415,21 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-08-13",
     summary:
       "New meter windows, snap groups for HUD and meters, and clearer fights.",
-    items: [
+    highlights: [
       {
         label: "Damage meter windows",
         detail:
           "Scrollable bars, pin yourself on the list, Time Line, and a detailed Inspector.",
         kind: "feature",
-        highlight: true,
       },
       {
         label: "Snap windows together",
         detail:
           "Snap HUD and meters at the edges. Resize a joined group together, with green guides while arranging.",
         kind: "feature",
-        highlight: true,
       },
+    ],
+    items: [
       {
         label: "Clearer fight segments",
         detail:

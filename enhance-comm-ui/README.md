@@ -85,6 +85,7 @@ In-game changelog lives in `src/lib/changelog.ts` (`CHANGELOG`, newest first).
 2. Bump `package.json` and rebuild so the UserScript `@version` banner matches (`tsup.config.ts` reads it).
 3. Users who already finished/skipped the intro still see unseen entries via `settings.changelogSeenId`.
 4. First-run intro uses `FEATURE_OVERVIEW` and marks the latest id seen on finish/skip.
+5. Large ships: short cards in `highlights`, deep-dives in `features: [{ title, summary?, items }]` (optional `points` on those cards), misc in `items` (Also).
 
 Do not gate What's New on `setupWizardDone` alone.
 

@@ -358,6 +358,16 @@ const CSS = `
   padding-top: 4px;
   border-top: none;
 }
+.ecu-comm-wiz-cl-section-label--feature {
+  margin-top: 26px;
+}
+.ecu-comm-wiz-cl-feature-summary {
+  margin: -4px 0 14px;
+  color: rgba(230, 220, 200, 0.88);
+  font-size: 26px;
+  line-height: 1.35;
+  max-width: 42em;
+}
 .ecu-comm-wiz-cl-kind-group-label {
   margin: 22px 0 10px;
   padding-bottom: 5px;
@@ -466,6 +476,20 @@ const CSS = `
   color: #fff;
   font-size: 30px;
   max-width: 36em;
+}
+.ecu-comm-wiz-cl-item-points {
+  margin: 2px 0 0;
+  padding: 0 0 0 1.15em;
+  max-width: 36em;
+  color: rgba(245, 240, 230, 0.92);
+  font-size: 24px;
+  line-height: 1.35;
+}
+.ecu-comm-wiz-cl-item-points li {
+  margin: 0 0 0.45em;
+}
+.ecu-comm-wiz-cl-item-points li:last-child {
+  margin-bottom: 0;
 }
 .ecu-comm-wiz-cl-foot {
   flex: 0 0 auto;
