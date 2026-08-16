@@ -1,6 +1,6 @@
 /**
  * Ranked-bar viewport constants — keep in sync with
- * `--meter-bar-row-h` in meterViewsCss / meterInspectorCss.
+ * `--meter-bar-row-h` in meterViewsCss / meterInspectorMainCss.
  */
 
 import { getMeterAppearance } from "./meterAppearance";

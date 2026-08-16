@@ -8,15 +8,11 @@ import {
 } from "./css/meterBodyCoreCss";
 import { METER_REPORT_CSS } from "./css/meterReportCss";
 import { METER_HOVER_TIP_CSS } from "./css/meterHoverTipCss";
-import {
-  METER_TIMELINE_CLUSTER_CSS,
-  METER_TIMELINE_TRACK_CSS,
-} from "./css/meterTimelineCss";
-import {
-  METER_INSPECTOR_DRILL_CSS,
-  METER_INSPECTOR_MAIN_CSS,
-  METER_INSPECTOR_TAIL_CSS,
-} from "./css/meterInspectorCss";
+import { METER_TIMELINE_CLUSTER_CSS } from "./css/meterTimelineClusterCss";
+import { METER_TIMELINE_TRACK_CSS } from "./css/meterTimelineTrackCss";
+import { METER_INSPECTOR_DRILL_CSS } from "./css/meterInspectorDrillCss";
+import { METER_INSPECTOR_MAIN_CSS } from "./css/meterInspectorMainCss";
+import { METER_INSPECTOR_TAIL_CSS } from "./css/meterInspectorTailCss";
 import { METER_VIEWS_CSS } from "./css/meterViewsCss";
 import { METER_COOLTIP_CSS } from "./css/meterCooltipCss";
 import { METER_CHROME_SCALE_CSS } from "./css/meterChromeScaleCss";
