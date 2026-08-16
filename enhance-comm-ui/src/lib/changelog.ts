@@ -67,8 +67,65 @@ export const CHANGELOG: ChangelogEntry[] = [
     title: "0.8.0-alpha.4",
     date: "2026-08-16",
     summary:
-      "Full account mail in Comm — read your inbox, compose and send while observing, and take attachments without leaving /comm.",
+      "Full account mail in Comm, plus paperdoll / meter / crypt bugfixes while observing.",
     items: [
+      {
+        label: "Paperdoll Luck and Goldm",
+        detail:
+          "Inspect no longer shows wallet gold from the stale observe snap (it looked like the wrong character’s inventory). Luck and Goldm are gear + condition estimates (mluck, sets, …) with a ~ prefix and a tooltip — same rules for the observed character or any nearby player.",
+        kind: "fix",
+        highlight: true,
+      },
+      {
+        label: "Meter Current on observe hop",
+        detail:
+          "Switching the watched character no longer resets Current when the new observer is in the same party on the same map, or already on the live meter tape (nearby fighter in the same pull). Brief reconnect clears of watching also keep Current.",
+        kind: "fix",
+        highlight: true,
+      },
+      {
+        label: "Crypt battle reset",
+        detail:
+          "After a crypt battle reset, bosses seen alive again show Alive (not stuck on Died). Cards only dim when dead and out of vision; HUD panels remount cleanly so leave/re-enter does not leave a faded shell.",
+        kind: "fix",
+      },
+      {
+        label: "Overall meters stay live",
+        detail:
+          "Overall and instance/event overalls refresh while fighting (past fights + live Current), with picker tips that say so. Crypt overall rows include server and age so multiple visits are distinct. Current still owns idle fade / camera follow.",
+        kind: "fix",
+        highlight: true,
+      },
+      {
+        label: "Mail list performance",
+        detail:
+          "Inbox list uses content-visibility for off-screen rows and skips rewriting CSS / re-rendering on unchanged unread polls.",
+        kind: "improve",
+      },
+      {
+        label: "Mail list date column",
+        detail:
+          "Inbox rows show a dedicated when column before the item icon: fixed-width 24h clock if today, else a short numeric date from the browser locale (DMY/MDY/…) on the top line, and relative age underneath. From/to stays on the meta line.",
+        kind: "feature",
+      },
+      {
+        label: "Mail delete Undo",
+        detail:
+          "After a small delete, the Status card shows Deleted plus an Undo button with a live countdown (U still works). One clock owns the timer.",
+        kind: "ui",
+      },
+      {
+        label: "Mail / meter structure cleanup",
+        detail:
+          "Delete progress is a single structured channel (Status owns the ETA bar; Activity only pulses). Mail host leaves clustered; window stack owns shared z-order in lib; mail/timeline CSS split under 1k; relative-age formatting lives in lib/format.",
+        kind: "improve",
+      },
+      {
+        label: "Mail delete ETA",
+        detail:
+          "Large inbox cleanups show an estimated time left on the delete progress line (paced server deletes), e.g. Deleting 12 / 200 · ~2m left.",
+        kind: "feature",
+      },
       {
         label: "Mail window",
         detail:
