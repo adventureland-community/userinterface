@@ -571,6 +571,10 @@ var EnhanceCommUI = (() => {
           const boss = instanceData[entity.mtype];
           boss.lastSeen = now;
           boss.lastSeenLevel = entity.level;
+          if (boss.deathEventTimestamp != null || boss.luckm != null) {
+            boss.deathEventTimestamp = void 0;
+            boss.luckm = void 0;
+          }
         }
       } else if (!(entity.mtype in instanceData)) {
         instanceData[entity.mtype] = { deadCount: 0 };
@@ -2242,6 +2246,17 @@ var EnhanceCommUI = (() => {
     }
     return out;
   }
+  function migrateMailFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 800;
+    const defH = typeof def.frameH === "number" ? def.frameH : 500;
+    const minW = Math.min(800, Math.round(defW * 0.85));
+    const minH = Math.min(500, Math.round(defH * 0.85));
+    const maxH = Math.max(900, Math.round(defH * 1.4));
+    const tooSmall = typeof pos.frameW !== "number" || pos.frameW < minW || typeof pos.frameH !== "number" || pos.frameH < minH;
+    const tooTall = typeof pos.frameH === "number" && pos.frameH > maxH;
+    if (!tooSmall && !tooTall) return pos;
+    return { ...pos, frameW: def.frameW, frameH: def.frameH };
+  }
   function mergeLayout(partial, profile = "desktop") {
     const migrated = migrateLegacyInfoDialog(partial);
     const defaults = defaultLayoutFor(profile);
@@ -2254,17 +2269,8 @@ var EnhanceCommUI = (() => {
       delete out.bag.frameW;
       delete out.bag.frameH;
     }
-    if (out.mail) {
-      const def = defaults.mail;
-      const tooSmall = typeof out.mail.frameW !== "number" || out.mail.frameW < 800 || typeof out.mail.frameH !== "number" || out.mail.frameH < 500;
-      const tooTall = typeof out.mail.frameH === "number" && out.mail.frameH > 900;
-      if (tooSmall || tooTall) {
-        out.mail = {
-          ...out.mail,
-          frameW: def.frameW,
-          frameH: def.frameH
-        };
-      }
+    if (out.mail && defaults.mail) {
+      out.mail = migrateMailFrame(out.mail, defaults.mail);
     }
     return out;
   }
@@ -3645,6 +3651,17 @@ var EnhanceCommUI = (() => {
     if (timeSeconds < 60 * 60 * 24) return `${Math.round(timeSeconds / 3600)}h`;
     return `${Math.round(timeSeconds / 86400)}d`;
   }
+  function formatRelativeAge(at, now = Date.now()) {
+    if (!(at > 0)) return "";
+    const sec = Math.max(0, Math.round((now - at) / 1e3));
+    if (sec < 10) return "just now";
+    if (sec < 60) return sec + "s ago";
+    if (sec < 3600) return Math.max(1, Math.floor(sec / 60)) + "m ago";
+    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+    if (sec < 86400 * 60) return Math.floor(sec / 86400) + "d ago";
+    if (sec < 86400 * 365) return Math.floor(sec / (86400 * 30)) + "mo ago";
+    return Math.floor(sec / (86400 * 365)) + "y ago";
+  }
   function syncEndsAt(prevEndsAt, ms, now = Date.now(), lastMs) {
     if (!(ms != null && ms > 0)) return 0;
     const next = now + ms;
@@ -4179,10 +4196,7 @@ var EnhanceCommUI = (() => {
     return `${Math.round(sec)}s`;
   }
   function formatRelativeAgo(at, now = Date.now()) {
-    const sec = Math.max(0, Math.round((now - at) / 1e3));
-    if (sec < 10) return "just now";
-    if (sec < 60) return `${sec}s ago`;
-    return `${formatDurationCompact(sec)} ago`;
+    return formatRelativeAge(at, now);
   }
   function formatClock(at) {
     const d = new Date(at);
@@ -4208,6 +4222,18 @@ var EnhanceCommUI = (() => {
     const region = src.serverRegion || "";
     const ident = src.serverIdentifier || "";
     return [region, ident].filter(Boolean).join(" ").trim();
+  }
+  function runOverallPickerTitle(baseTitle, src, now = Date.now()) {
+    const parts = [baseTitle];
+    const server = serverLabel(src);
+    if (server) parts.push(server);
+    if (!src.endedAt && src.startedAt) {
+      parts.push("live");
+    } else if (src.endedAt || src.startedAt) {
+      const at = src.endedAt || src.startedAt;
+      parts.push(formatRelativeAgo(at, now));
+    }
+    return parts.join(" \xB7 ");
   }
   function pickerWhenBit(src, now) {
     if (!src.startedAt) return "";
@@ -4813,6 +4839,19 @@ var EnhanceCommUI = (() => {
   function isLiveCameraRef(ref) {
     return !ref || ref === "current";
   }
+  function segmentWantsLiveTick(ref, live2) {
+    if (!ref || ref === "current") return true;
+    if (typeof ref === "object" && "pastId" in ref) return false;
+    if (!live2) return false;
+    if (ref === "total") return true;
+    if (typeof ref === "object" && "mapIn" in ref) {
+      return !!live2.mapIn && live2.mapIn === ref.mapIn;
+    }
+    if (typeof ref === "object" && "event" in ref) {
+      return !!live2.event && live2.event === ref.event;
+    }
+    return false;
+  }
 
   // src/meters/meterSegmentCatalog.ts
   function runTitle(ref, map) {
@@ -4828,16 +4867,18 @@ var EnhanceCommUI = (() => {
   }
   function runHoverTip(ref, map) {
     if (ref === "current") return "Live camera fight";
-    if (ref === "total") return "All recorded fights from this camera";
+    if (ref === "total") {
+      return "Overall\nPast fights + the live Current fight (updates while fighting).\nSession total since last Reset Overall \u2014 not one dungeon run.";
+    }
     if ("pastId" in ref) return "";
     if ("event" in ref) {
       return `${eventDisplayName(ref.event)} overall
-All fights in this world event`;
+All fights in this world event, including the live pull when you are in it (updates while fighting).`;
     }
     if ("mapIn" in ref) {
       const name = mapDisplayName(map || "") || "Instance";
       return `${name} overall
-All fights in this instance`;
+All fights in this instance (this visit), including the live pull when you are in it (updates while fighting).`;
     }
     const _never = ref;
     return String(_never);
@@ -4896,9 +4937,10 @@ ${fightHoverTip(src)}`
     const key = segmentRefKey(run);
     if (seen[key]) return;
     seen[key] = true;
+    const base = runTitle(run, seg.map);
     out.push({
       ref: run,
-      title: runTitle(run, seg.map),
+      title: runOverallPickerTitle(base, seg),
       tip: runHoverTip(run, seg.map)
     });
   }
@@ -4951,12 +4993,34 @@ ${fightHoverTip(src)}`
     if (!mtype) return false;
     return CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0;
   }
-  function samePartySameIn(prev, next) {
+  function isRealParty(partyKey) {
+    return !!partyKey && partyKey.indexOf("solo:") !== 0;
+  }
+  function samePartySameMap(prev, next) {
     if (!prev.observingId || !next.observingId) return false;
-    if (!prev.mapIn || prev.mapIn !== next.mapIn) return false;
-    if (!prev.partyKey || prev.partyKey !== next.partyKey) return false;
-    if (prev.partyKey.indexOf("solo:") === 0) return false;
+    if (prev.map !== next.map) return false;
+    if (!isRealParty(prev.partyKey) || prev.partyKey !== next.partyKey) {
+      return false;
+    }
+    if (prev.mapIn || next.mapIn) {
+      if (prev.mapIn !== next.mapIn) return false;
+    }
     return true;
+  }
+  function alreadyOnLiveTape(next, live2) {
+    if (!next.observingId) return false;
+    if (live2.actors[next.observingId]) return true;
+    if (!isRealParty(next.partyKey)) return false;
+    const ids = Object.keys(live2.actors);
+    for (let i = 0; i < ids.length; i++) {
+      if (live2.actors[ids[i]].partyKey === next.partyKey) return true;
+    }
+    return false;
+  }
+  function keepObserveHop(prev, next, live2) {
+    if (samePartySameMap(prev, next)) return true;
+    if (prev.map === next.map && alreadyOnLiveTape(next, live2)) return true;
+    return false;
   }
   function decideSegmentBoundary(args) {
     const { prev, next, live: live2, hitMtype } = args;
@@ -4976,7 +5040,7 @@ ${fightHoverTip(src)}`
       return { action: "close", reason: "map_change" };
     }
     if (prev.observingId && !next.observingId) {
-      return { action: "close", reason: "observe_cleared" };
+      return { action: "keep" };
     }
     if (next.event !== prev.event) {
       if (next.event) {
@@ -4989,7 +5053,7 @@ ${fightHoverTip(src)}`
       return { action: "close", reason: "map_change" };
     }
     if (next.observingId && prev.observingId && next.observingId !== prev.observingId) {
-      if (samePartySameIn(prev, next)) return { action: "keep" };
+      if (keepObserveHop(prev, next, live2)) return { action: "keep" };
       return { action: "close", reason: "observe_swap" };
     }
     if (hitMtype && live2.map === "crypt" && live2.kind !== "boss" && isCryptBoss(hitMtype)) {
@@ -6759,8 +6823,56 @@ ${fightHoverTip(src)}`
       id: "0.8.0-alpha.4",
       title: "0.8.0-alpha.4",
       date: "2026-08-16",
-      summary: "Full account mail in Comm \u2014 read your inbox, compose and send while observing, and take attachments without leaving /comm.",
+      summary: "Full account mail in Comm, plus paperdoll / meter / crypt bugfixes while observing.",
       items: [
+        {
+          label: "Paperdoll Luck and Goldm",
+          detail: "Inspect no longer shows wallet gold from the stale observe snap (it looked like the wrong character\u2019s inventory). Luck and Goldm are gear + condition estimates (mluck, sets, \u2026) with a ~ prefix and a tooltip \u2014 same rules for the observed character or any nearby player.",
+          kind: "fix",
+          highlight: true
+        },
+        {
+          label: "Meter Current on observe hop",
+          detail: "Switching the watched character no longer resets Current when the new observer is in the same party on the same map, or already on the live meter tape (nearby fighter in the same pull). Brief reconnect clears of watching also keep Current.",
+          kind: "fix",
+          highlight: true
+        },
+        {
+          label: "Crypt battle reset",
+          detail: "After a crypt battle reset, bosses seen alive again show Alive (not stuck on Died). Cards only dim when dead and out of vision; HUD panels remount cleanly so leave/re-enter does not leave a faded shell.",
+          kind: "fix"
+        },
+        {
+          label: "Overall meters stay live",
+          detail: "Overall and instance/event overalls refresh while fighting (past fights + live Current), with picker tips that say so. Crypt overall rows include server and age so multiple visits are distinct. Current still owns idle fade / camera follow.",
+          kind: "fix",
+          highlight: true
+        },
+        {
+          label: "Mail list performance",
+          detail: "Inbox list uses content-visibility for off-screen rows and skips rewriting CSS / re-rendering on unchanged unread polls.",
+          kind: "improve"
+        },
+        {
+          label: "Mail list date column",
+          detail: "Inbox rows show a dedicated when column before the item icon: fixed-width 24h clock if today, else a short numeric date from the browser locale (DMY/MDY/\u2026) on the top line, and relative age underneath. From/to stays on the meta line.",
+          kind: "feature"
+        },
+        {
+          label: "Mail delete Undo",
+          detail: "After a small delete, the Status card shows Deleted plus an Undo button with a live countdown (U still works). One clock owns the timer.",
+          kind: "ui"
+        },
+        {
+          label: "Mail / meter structure cleanup",
+          detail: "Delete progress is a single structured channel (Status owns the ETA bar; Activity only pulses). Mail host leaves clustered; window stack owns shared z-order in lib; mail/timeline CSS split under 1k; relative-age formatting lives in lib/format.",
+          kind: "improve"
+        },
+        {
+          label: "Mail delete ETA",
+          detail: "Large inbox cleanups show an estimated time left on the delete progress line (paced server deletes), e.g. Deleting 12 / 200 \xB7 ~2m left.",
+          kind: "feature"
+        },
         {
           label: "Mail window",
           detail: "New Mail button on the bottom bar opens a layoutable inbox: search, Load older, compose, multi-select delete (Undo on small batches; progress while larger cleanups run), and a badge for the game\u2019s unread count (100+ when the server caps at 100). Click the badge to jump to the newest unread. Unlock or hold Alt to drag and resize; click Mail to raise it above meters.",
@@ -8805,10 +8917,10 @@ ${fightHoverTip(src)}`
     };
     apply();
     let ticks = 0;
-    const timer2 = window.setInterval(() => {
+    const timer = window.setInterval(() => {
       apply();
       ticks += 1;
-      if (ticks >= 40) window.clearInterval(timer2);
+      if (ticks >= 40) window.clearInterval(timer);
     }, 500);
   }
 
@@ -9839,7 +9951,3259 @@ ${CHROME_ARRANGE_CSS}
     document.head.append(style);
   }
 
-  // src/host/mail/mailOpen.ts
+  // src/host/mail/merge.ts
+  function cloneRow(m) {
+    const next = {
+      id: m.id,
+      fro: m.fro,
+      to: m.to,
+      subject: m.subject,
+      message: m.message,
+      sent: m.sent
+    };
+    if (m.read != null) next.read = m.read;
+    if (m.item) next.item = { ...m.item };
+    if (m.taken != null) next.taken = m.taken;
+    if (m.system != null) next.system = m.system;
+    return next;
+  }
+  function mergeHeadPage(existing, page) {
+    const map = /* @__PURE__ */ new Map();
+    for (let i = 0; i < existing.length; i++) {
+      map.set(existing[i].id, existing[i]);
+    }
+    for (let i = 0; i < page.length; i++) {
+      const p = page[i];
+      const prev = map.get(p.id);
+      map.set(p.id, prev ? Object.assign({}, prev, p) : cloneRow(p));
+    }
+    const older = [];
+    for (let i = 0; i < existing.length; i++) {
+      const m = existing[i];
+      let inPage = false;
+      for (let j = 0; j < page.length; j++) {
+        if (page[j].id === m.id) {
+          inPage = true;
+          break;
+        }
+      }
+      if (!inPage) older.push(map.get(m.id) || m);
+    }
+    const head = [];
+    for (let i = 0; i < page.length; i++) {
+      head.push(map.get(page[i].id));
+    }
+    return head.concat(older);
+  }
+  function appendCursorPage(existing, page) {
+    const have = /* @__PURE__ */ new Set();
+    for (let i = 0; i < existing.length; i++) have.add(existing[i].id);
+    const next = existing.slice();
+    for (let i = 0; i < page.length; i++) {
+      const m = page[i];
+      if (have.has(m.id)) continue;
+      have.add(m.id);
+      next.push(cloneRow(m));
+    }
+    return next;
+  }
+  function applyPullMeta(page) {
+    return {
+      nextCursor: page.more ? page.cursor : null,
+      hasMore: !!page.more
+    };
+  }
+  function normalizeMailPage(raw) {
+    const info2 = raw || {};
+    const list = Array.isArray(info2.mail) ? info2.mail : [];
+    const mail = [];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m || m.id == null) continue;
+      const row2 = {
+        id: String(m.id),
+        fro: String(m.fro || ""),
+        to: String(m.to || ""),
+        subject: String(m.subject || ""),
+        message: String(m.message || ""),
+        sent: String(m.sent || "")
+      };
+      if (typeof m.read === "boolean") row2.read = m.read;
+      const item = parseMailItem(m.item);
+      if (item) row2.item = item;
+      const taken = coerceMailTaken(m.taken);
+      if (taken != null) row2.taken = taken;
+      mail.push(row2);
+    }
+    return {
+      mail,
+      more: !!info2.more,
+      cursor: info2.cursor != null ? String(info2.cursor) : null,
+      cursored: !!info2.cursored
+    };
+  }
+  function coerceMailTaken(raw) {
+    if (typeof raw === "boolean") return raw;
+    if (raw === 0 || raw === "0" || raw === "false") return false;
+    if (raw === 1 || raw === "1" || raw === "true") return true;
+    return void 0;
+  }
+  function parseMailItem(raw) {
+    let cur = raw;
+    for (let depth2 = 0; depth2 < 3; depth2++) {
+      if (cur == null || cur === "") return void 0;
+      if (typeof cur === "string") {
+        try {
+          cur = JSON.parse(cur);
+        } catch (e2) {
+          return void 0;
+        }
+        continue;
+      }
+      break;
+    }
+    if (!cur || typeof cur !== "object") return void 0;
+    const obj = cur;
+    if (obj.name == null || obj.name === "") return void 0;
+    const item = { name: String(obj.name) };
+    if (typeof obj.level === "number" && Number.isFinite(obj.level)) {
+      item.level = obj.level;
+    } else if (obj.level != null && obj.level !== "" && !isNaN(Number(obj.level))) {
+      item.level = Number(obj.level);
+    }
+    if (typeof obj.q === "number" && Number.isFinite(obj.q)) {
+      item.q = obj.q;
+    } else if (obj.q != null && obj.q !== "" && !isNaN(Number(obj.q))) {
+      item.q = Number(obj.q);
+    }
+    if (typeof obj.p === "string" && obj.p) item.p = obj.p;
+    if (typeof obj.skin === "string" && obj.skin) item.skin = obj.skin;
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k === "name" || k === "level" || k === "q" || k === "p" || k === "skin") {
+        continue;
+      }
+      if (item[k] === void 0) item[k] = obj[k];
+    }
+    return item;
+  }
+
+  // src/host/mail/api.ts
+  function getApiCall() {
+    const fn = window.api_call;
+    return typeof fn === "function" ? fn : null;
+  }
+  function extractInfs(ct) {
+    if (!ct) return [];
+    if (typeof ct === "string") {
+      try {
+        return extractInfs(JSON.parse(ct));
+      } catch (e2) {
+        return [];
+      }
+    }
+    if (Array.isArray(ct)) return ct;
+    if (typeof ct !== "object") return [];
+    const obj = ct;
+    if (obj.failed) return [];
+    if (Array.isArray(obj.infs)) return obj.infs;
+    if (obj.data != null) {
+      const nested = extractInfs(obj.data);
+      if (nested.length) return nested;
+    }
+    if (obj.type === "mail" || Array.isArray(obj.mail)) {
+      return [obj];
+    }
+    return [];
+  }
+  function readUnreadFromInfs(infs) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && info2.type === "unread" && typeof info2.count === "number") {
+        return info2.count;
+      }
+    }
+    return void 0;
+  }
+  function findMailInfo(infs) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && (info2.type === "mail" || Array.isArray(info2.mail))) {
+        return info2;
+      }
+    }
+    return null;
+  }
+  var API_TIMEOUT_MS = 2e4;
+  async function postJson(path, body, signal) {
+    if (typeof fetch !== "function") return null;
+    try {
+      const res = await fetch(window.location.origin + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify(body),
+        signal
+      });
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e2) {
+        json = null;
+      }
+      return { ok: res.ok, status: res.status, json };
+    } catch (e2) {
+      return null;
+    }
+  }
+  async function callApiFetch(method, args) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => {
+      if (ctrl) ctrl.abort();
+    }, API_TIMEOUT_MS);
+    try {
+      const res = await postJson(
+        "/api/" + method,
+        { ...args },
+        ctrl ? ctrl.signal : void 0
+      );
+      if (!res) return null;
+      if (!res.ok) return { ok: false };
+      return { ok: true, infs: extractInfs(res.json) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  function callApiStock(method, args) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (infs) => {
+        if (settled) return;
+        settled = true;
+        resolve(infs);
+      };
+      const api = getApiCall();
+      if (!api) {
+        finish([]);
+        return;
+      }
+      const timer = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
+      try {
+        const maybePromise = api(
+          method,
+          {
+            ...args,
+            callback: (ct) => {
+              window.clearTimeout(timer);
+              finish(extractInfs(ct));
+            }
+          },
+          { silent: true }
+        );
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.then((data) => {
+            window.clearTimeout(timer);
+            finish(extractInfs(data));
+          }).catch((data) => {
+            window.clearTimeout(timer);
+            finish(extractInfs(data));
+          });
+        }
+      } catch (e2) {
+        window.clearTimeout(timer);
+        finish([]);
+      }
+    });
+  }
+  async function callApi(method, args = {}) {
+    const viaFetch = await callApiFetch(method, args);
+    if (viaFetch != null) {
+      if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
+      if (viaFetch.ok) {
+        const viaStock2 = await callApiStock(method, args);
+        if (viaStock2.length) return viaStock2;
+        return viaFetch.infs;
+      }
+      const viaStock = await callApiStock(method, args);
+      if (viaStock.length) return viaStock;
+      return [];
+    }
+    return callApiStock(method, args);
+  }
+  async function callApiResult(method, args = {}) {
+    const viaFetch = await callApiFetch(method, args);
+    if (viaFetch != null) {
+      if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
+      return { ok: false, reason: "http_error", data: [] };
+    }
+    const viaStock = await callApiStock(method, args);
+    if (viaStock.length) return { ok: true, data: viaStock };
+    return { ok: false, reason: "no_response", data: [] };
+  }
+  async function pullMailPage(cursor) {
+    const args = {};
+    if (cursor) args.cursor = cursor;
+    const infs = await callApi("pull_mail", args);
+    const info2 = findMailInfo(infs);
+    if (info2) return { ok: true, data: normalizeMailPage(info2) };
+    return { ok: false, reason: "no_mail_payload" };
+  }
+  async function readMail(mailId) {
+    const res = await callApiResult("read_mail", { mail: mailId });
+    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
+    const infs = res.data || [];
+    return {
+      ok: true,
+      data: true,
+      unreadCount: readUnreadFromInfs(infs)
+    };
+  }
+  async function deleteMail(mailId) {
+    const res = await callApiResult("delete_mail", { mid: mailId });
+    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
+    const infs = res.data || [];
+    let message;
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (!info2) continue;
+      if (info2.type === "message" && typeof info2.message === "string") {
+        message = info2.message;
+      }
+    }
+    return { ok: true, data: true, message };
+  }
+  async function readMailMany(ids) {
+    let unreadCount;
+    let anyOk = false;
+    const jobs = [];
+    for (let i = 0; i < ids.length; i++) {
+      jobs.push(readMail(ids[i]));
+    }
+    const results = await Promise.all(jobs);
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].ok) anyOk = true;
+      if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
+    }
+    if (!anyOk && ids.length) {
+      return { ok: false, reason: "no_response", data: { unreadCount } };
+    }
+    return { ok: true, data: { unreadCount } };
+  }
+
+  // src/host/mail/mailPersistLogic.ts
+  var MAIL_HEAD_PAGE_SIZE = 40;
+  function headFingerprint(mails, limit = MAIL_HEAD_PAGE_SIZE) {
+    const n = Math.min(mails.length, limit);
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+      const m = mails[i];
+      const taken = m.taken === true ? "1" : m.taken === false ? "0" : "-";
+      parts.push(m.id + ":" + taken);
+    }
+    return parts.join("|");
+  }
+  function indexOfId(rows, id) {
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].id === id) return i;
+    }
+    return -1;
+  }
+  function cloneRow2(m) {
+    const next = {
+      id: m.id,
+      fro: m.fro,
+      to: m.to,
+      subject: m.subject,
+      message: m.message,
+      sent: m.sent
+    };
+    if (m.read != null) next.read = m.read;
+    if (m.item) next.item = { ...m.item };
+    if (m.taken != null) next.taken = m.taken;
+    if (m.system != null) next.system = m.system;
+    return next;
+  }
+  function patchExistingFromPage(existing, page) {
+    if (!page.length) return existing.slice();
+    const byId = /* @__PURE__ */ new Map();
+    for (let i = 0; i < page.length; i++) byId.set(page[i].id, page[i]);
+    const out = [];
+    for (let i = 0; i < existing.length; i++) {
+      const prev = existing[i];
+      const patch = byId.get(prev.id);
+      out.push(patch ? Object.assign({}, prev, patch) : prev);
+    }
+    return out;
+  }
+  function findHeadOverlap(existing, head) {
+    if (!existing.length || !head.length) return null;
+    let best = null;
+    for (let headStart = 0; headStart < head.length; headStart++) {
+      const existingStart = indexOfId(existing, head[headStart].id);
+      if (existingStart < 0) continue;
+      let matchLen = 0;
+      while (headStart + matchLen < head.length && existingStart + matchLen < existing.length && head[headStart + matchLen].id === existing[existingStart + matchLen].id) {
+        matchLen += 1;
+      }
+      if (matchLen === 0) continue;
+      if (!best || matchLen > best.matchLen || matchLen === best.matchLen && headStart < best.headStart) {
+        best = { headStart, existingStart, matchLen };
+      }
+    }
+    return best;
+  }
+  function strategyFromOverlap(overlap, headLen) {
+    const { headStart, existingStart, matchLen } = overlap;
+    if (headStart === 0 && existingStart === 0 && matchLen === headLen) {
+      return "unchanged";
+    }
+    if (existingStart === 0 && headStart > 0) return "prepend";
+    if (headStart === 0 && existingStart === 0) return "prepend";
+    return "stitch";
+  }
+  function stitchHeadOntoCache(existing, head) {
+    if (!head.length) return null;
+    if (!existing.length) {
+      return { mails: head.map(cloneRow2), strategy: "prepend" };
+    }
+    const overlap = findHeadOverlap(existing, head);
+    if (!overlap) return null;
+    const { existingStart, matchLen } = overlap;
+    const headIds = /* @__PURE__ */ new Set();
+    for (let i = 0; i < head.length; i++) headIds.add(head[i].id);
+    const out = [];
+    for (let i = 0; i < head.length; i++) {
+      const live2 = head[i];
+      const prevIdx = indexOfId(existing, live2.id);
+      const prev = prevIdx >= 0 ? existing[prevIdx] : null;
+      out.push(prev ? Object.assign({}, prev, live2) : cloneRow2(live2));
+    }
+    const tailStart = existingStart + matchLen;
+    for (let i = tailStart; i < existing.length; i++) {
+      const row2 = existing[i];
+      if (headIds.has(row2.id)) continue;
+      out.push(row2);
+    }
+    return {
+      mails: out,
+      strategy: strategyFromOverlap(overlap, head.length)
+    };
+  }
+  function reconcileAfterHeadPull(existing, headPage, prevCursor, prevHasMore) {
+    const page = headPage.mail;
+    const meta2 = applyPullMeta(headPage);
+    if (!headPage.more) {
+      return {
+        mails: mergeHeadPage([], page),
+        nextCursor: null,
+        hasMore: false,
+        strategy: "replace"
+      };
+    }
+    if (!existing.length) {
+      return {
+        mails: mergeHeadPage([], page),
+        nextCursor: meta2.nextCursor,
+        hasMore: meta2.hasMore,
+        strategy: "replace"
+      };
+    }
+    const fpNew = headFingerprint(page, page.length || MAIL_HEAD_PAGE_SIZE);
+    const fpOld = headFingerprint(existing, page.length || MAIL_HEAD_PAGE_SIZE);
+    if (fpNew === fpOld) {
+      return {
+        mails: patchExistingFromPage(existing, page),
+        nextCursor: prevCursor,
+        hasMore: prevHasMore || meta2.hasMore,
+        strategy: "unchanged"
+      };
+    }
+    const stitched = stitchHeadOntoCache(existing, page);
+    if (stitched) {
+      const merged = stitched.mails;
+      const hasMore = prevHasMore || meta2.hasMore;
+      return {
+        mails: merged,
+        // Contiguous skip cursor: we hold a prefix of the server inbox.
+        nextCursor: hasMore ? String(merged.length) : null,
+        hasMore,
+        strategy: stitched.strategy
+      };
+    }
+    return {
+      mails: mergeHeadPage([], page),
+      nextCursor: meta2.nextCursor,
+      hasMore: meta2.hasMore,
+      strategy: "truncate"
+    };
+  }
+
+  // src/host/mail/composeDraft.ts
+  function emptyDraft() {
+    return { to: [], subject: "", body: "", attaches: [] };
+  }
+  function normalizeComposeTos(raw) {
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < list.length; i++) {
+      const name = String(list[i] || "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
+  }
+  function fingerprintFields(raw) {
+    const fp = {
+      slot: Number(raw.slot) | 0,
+      name: String(raw.name || "")
+    };
+    if (raw.level != null) fp.level = Number(raw.level);
+    if (raw.q != null) fp.q = Number(raw.q);
+    if (raw.p != null) fp.p = String(raw.p);
+    return fp;
+  }
+  function makeComposeAttach(raw, to = "") {
+    return { ...fingerprintFields(raw), to: String(to || "").trim() };
+  }
+  function migrateComposeAttach(raw, fallbackTo) {
+    const to = String(raw.to || fallbackTo || "").trim();
+    return { ...fingerprintFields(raw), to };
+  }
+  function canonicalizeDraft(draft) {
+    const to = normalizeComposeTos(draft.to);
+    const attaches = [];
+    const list = Array.isArray(draft.attaches) ? draft.attaches : [];
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      attaches.push({
+        ...fingerprintFields(a),
+        to: String(a.to || "").trim()
+      });
+    }
+    return {
+      to,
+      subject: String(draft.subject || ""),
+      body: String(draft.body || ""),
+      attaches
+    };
+  }
+  function rebindAttachesToPool(attaches, tos) {
+    if (!tos.length) {
+      const out2 = [];
+      for (let i = 0; i < attaches.length; i++) {
+        out2.push({ ...attaches[i], to: "" });
+      }
+      return out2;
+    }
+    const ok = new Set(tos.map((t) => t.toLowerCase()));
+    let rr = 0;
+    const out = [];
+    for (let i = 0; i < attaches.length; i++) {
+      const a = attaches[i];
+      const cur = String(a.to || "").trim();
+      if (cur && ok.has(cur.toLowerCase())) {
+        out.push(a);
+        continue;
+      }
+      out.push({ ...a, to: tos[rr % tos.length] });
+      rr += 1;
+    }
+    return out;
+  }
+  function pickToForNewAttach(draft) {
+    var _a, _b;
+    const tos = normalizeComposeTos(draft.to);
+    if (!tos.length) return "";
+    const counts = {};
+    for (let i = 0; i < tos.length; i++) counts[tos[i].toLowerCase()] = 0;
+    for (let i = 0; i < draft.attaches.length; i++) {
+      const key = String(draft.attaches[i].to || "").toLowerCase();
+      if (!key || counts[key] == null) continue;
+      counts[key] += 1;
+    }
+    let best = tos[0];
+    let bestN = (_a = counts[best.toLowerCase()]) != null ? _a : 0;
+    for (let i = 1; i < tos.length; i++) {
+      const n = (_b = counts[tos[i].toLowerCase()]) != null ? _b : 0;
+      if (n < bestN) {
+        best = tos[i];
+        bestN = n;
+      }
+    }
+    return best;
+  }
+  function distributeAttachesAcrossTos(draft) {
+    const base = canonicalizeDraft(draft);
+    if (!base.to.length || !base.attaches.length) return base;
+    const attaches = [];
+    for (let i = 0; i < base.attaches.length; i++) {
+      attaches.push({
+        ...base.attaches[i],
+        to: base.to[i % base.to.length]
+      });
+    }
+    return { ...base, attaches };
+  }
+  function resolveComposeOpen(opts) {
+    const session = canonicalizeDraft(opts.session);
+    const sticky = normalizeComposeTos(opts.stickyTo);
+    const partial = opts.partial;
+    if (!partial) {
+      const to2 = session.to.length ? session.to : sticky.slice();
+      return canonicalizeDraft({ ...session, to: to2 });
+    }
+    const to = partial.to ? normalizeComposeTos(partial.to) : session.to.length ? session.to : sticky.slice();
+    const subject = partial.subject != null ? String(partial.subject) : session.subject;
+    const body = partial.body != null ? String(partial.body) : session.body;
+    let attaches = session.attaches;
+    if (partial.attaches !== void 0) {
+      attaches = [];
+      for (let i = 0; i < partial.attaches.length; i++) {
+        const a = partial.attaches[i];
+        attaches.push({
+          ...fingerprintFields(a),
+          to: String(a.to || "").trim()
+        });
+      }
+    }
+    return canonicalizeDraft({ to, subject, body, attaches });
+  }
+  function attachesHaveRecipients(attaches) {
+    if (!attaches.length) return true;
+    for (let i = 0; i < attaches.length; i++) {
+      if (!String(attaches[i].to || "").trim()) return false;
+    }
+    return true;
+  }
+
+  // src/host/mail/mailState.ts
+  var listeners4 = [];
+  var toastListeners = [];
+  var locallyReadIds = /* @__PURE__ */ new Set();
+  var state = {
+    mails: [],
+    nextCursor: null,
+    hasMore: false,
+    lastHeadAt: 0,
+    lastHeadReason: "\u2014",
+    status: "",
+    statusKind: "",
+    loading: false,
+    loadingMore: false,
+    prefetchArmed: false,
+    panelOpen: false,
+    view: { kind: "list" },
+    lastScript: "",
+    lastSeenUnread: -1,
+    newMailCount: 0,
+    commandBusy: false,
+    unreadStuckHint: "",
+    undoCount: 0,
+    undoEndsAt: 0,
+    deleteProgress: null,
+    sessionDraft: emptyDraft()
+  };
+  function notifyListeners() {
+    for (let i = 0; i < listeners4.length; i++) listeners4[i]();
+  }
+  function emitToast(message) {
+    for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
+  }
+  function commit(patch, opts) {
+    let changed = false;
+    for (const key in patch) {
+      if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+      const k = key;
+      if (state[k] !== patch[k]) {
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) return;
+    Object.assign(state, patch);
+    if (!(opts && opts.silent)) notifyListeners();
+  }
+  function setStatus(text, kind = "") {
+    commit({ status: text, statusKind: kind });
+  }
+  function setMailView(next) {
+    commit({ view: next });
+  }
+  function subscribeMailStore(fn) {
+    listeners4.push(fn);
+    return () => {
+      const idx = listeners4.indexOf(fn);
+      if (idx >= 0) listeners4.splice(idx, 1);
+    };
+  }
+  function subscribeMailToast(fn) {
+    toastListeners.push(fn);
+    return () => {
+      const idx = toastListeners.indexOf(fn);
+      if (idx >= 0) toastListeners.splice(idx, 1);
+    };
+  }
+  function getMailSnapshot() {
+    return {
+      mails: state.mails,
+      nextCursor: state.nextCursor,
+      hasMore: state.hasMore,
+      lastHeadAt: state.lastHeadAt,
+      lastHeadReason: state.lastHeadReason,
+      status: state.status,
+      statusKind: state.statusKind,
+      loading: state.loading,
+      loadingMore: state.loadingMore,
+      prefetchArmed: state.prefetchArmed,
+      panelOpen: state.panelOpen,
+      view: state.view,
+      lastScript: state.lastScript,
+      lastSeenUnread: state.lastSeenUnread,
+      newMailCount: state.newMailCount,
+      commandBusy: state.commandBusy,
+      unreadStuckHint: state.unreadStuckHint,
+      undoCount: state.undoCount,
+      undoEndsAt: state.undoEndsAt,
+      deleteProgress: state.deleteProgress
+    };
+  }
+  function getMails() {
+    return state.mails;
+  }
+  function getNextCursor() {
+    return state.nextCursor;
+  }
+  function getHasMore() {
+    return state.hasMore;
+  }
+  function getLastHeadAt() {
+    return state.lastHeadAt;
+  }
+  function getLoadingMore() {
+    return state.loadingMore;
+  }
+  function getPanelOpen() {
+    return state.panelOpen;
+  }
+  function getView() {
+    return state.view;
+  }
+  function getLastSeenUnread() {
+    return state.lastSeenUnread;
+  }
+  function getCommandBusy() {
+    return state.commandBusy;
+  }
+  function getLocallyReadIds() {
+    return locallyReadIds;
+  }
+  function getActiveComposeDraft() {
+    if (state.view.kind === "compose") return state.view.draft;
+    return state.sessionDraft;
+  }
+
+  // src/host/mail/mailPersist.ts
+  var DB_NAME2 = "ecu-mail-cache";
+  var DB_VER2 = 1;
+  var STORE = "inboxes";
+  var RECORD_VERSION = 1;
+  var PERSIST_DEBOUNCE_MS = 400;
+  var dbPromise2 = null;
+  var persistTimer = 0;
+  var hydrateInFlight = null;
+  function openDb2() {
+    if (dbPromise2) return dbPromise2;
+    dbPromise2 = new Promise((resolve) => {
+      if (typeof indexedDB === "undefined") {
+        resolve(null);
+        return;
+      }
+      const req = indexedDB.open(DB_NAME2, DB_VER2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) {
+          db.createObjectStore(STORE, { keyPath: "accountKey" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    return dbPromise2;
+  }
+  function reqToPromise2(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function mailAccountKey() {
+    const w = window;
+    if (w.user_id != null && String(w.user_id) !== "") {
+      return "u:" + String(w.user_id);
+    }
+    const chars = w.X && w.X.characters;
+    if (Array.isArray(chars) && chars.length) {
+      const names = [];
+      for (let i = 0; i < chars.length; i++) {
+        const n = chars[i] && chars[i].name;
+        if (n) names.push(String(n));
+      }
+      names.sort();
+      if (names.length) return "chars:" + names.join(",");
+    }
+    return "default";
+  }
+  async function loadMailCacheRecord(accountKey) {
+    try {
+      const db = await openDb2();
+      if (!db) return null;
+      const tx = db.transaction(STORE, "readonly");
+      const store = tx.objectStore(STORE);
+      const row2 = await reqToPromise2(
+        store.get(accountKey)
+      );
+      if (!row2 || row2.version !== RECORD_VERSION) return null;
+      if (!Array.isArray(row2.mails) || !row2.mails.length) return null;
+      return row2;
+    } catch (e2) {
+      return null;
+    }
+  }
+  async function saveMailCacheRecord(record) {
+    try {
+      const db = await openDb2();
+      if (!db) return;
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      await reqToPromise2(store.put(record));
+    } catch (e2) {
+    }
+  }
+  function buildRecordFromState() {
+    const mails = getMails();
+    if (!mails.length) return null;
+    const readIds = getLocallyReadIds();
+    const locallyReadIds2 = [];
+    for (const id of readIds) {
+      locallyReadIds2.push(id);
+    }
+    return {
+      accountKey: mailAccountKey(),
+      version: RECORD_VERSION,
+      savedAt: Date.now(),
+      mails,
+      nextCursor: getNextCursor(),
+      hasMore: getHasMore(),
+      lastHeadAt: getLastHeadAt(),
+      headFingerprint: headFingerprint(mails),
+      locallyReadIds: locallyReadIds2
+    };
+  }
+  function schedulePersistMailCache() {
+    if (typeof window === "undefined") return;
+    if (persistTimer) window.clearTimeout(persistTimer);
+    persistTimer = window.setTimeout(() => {
+      persistTimer = 0;
+      const record = buildRecordFromState();
+      if (!record) return;
+      void saveMailCacheRecord(record);
+    }, PERSIST_DEBOUNCE_MS);
+  }
+  async function hydrateMailCacheFromIdb() {
+    if (getMails().length > 0) return false;
+    if (hydrateInFlight) return hydrateInFlight;
+    hydrateInFlight = (async () => {
+      const rec = await loadMailCacheRecord(mailAccountKey());
+      if (!rec || getMails().length > 0) return false;
+      const local = getLocallyReadIds();
+      for (let i = 0; i < rec.locallyReadIds.length; i++) {
+        local.add(rec.locallyReadIds[i]);
+      }
+      commit({
+        mails: rec.mails,
+        nextCursor: rec.nextCursor,
+        hasMore: !!rec.hasMore,
+        lastHeadAt: rec.lastHeadAt || 0,
+        lastHeadReason: "idb",
+        status: "Restored " + rec.mails.length + " from cache",
+        statusKind: ""
+      });
+      return true;
+    })();
+    try {
+      return await hydrateInFlight;
+    } finally {
+      hydrateInFlight = null;
+    }
+  }
+
+  // src/host/mail/mailUnreadLogic.ts
+  function assignLocalReadFlags(rows, prevIds, bootstrap2, unreadBudget, locallyReadIds2) {
+    let budgetLeft = bootstrap2 ? unreadBudget : 0;
+    const out = [];
+    const newIds = [];
+    for (let i = 0; i < rows.length; i++) {
+      const m = { ...rows[i] };
+      const isNew = !prevIds.has(m.id);
+      if (isNew && !bootstrap2) newIds.push(m.id);
+      if (locallyReadIds2.has(m.id)) {
+        m.read = true;
+      } else if (bootstrap2 && budgetLeft > 0) {
+        m.read = false;
+        budgetLeft -= 1;
+      } else if (isNew && !bootstrap2) {
+        m.read = false;
+      } else if (m.read == null) {
+        m.read = true;
+      }
+      out.push(m);
+    }
+    return { rows: out, newIds };
+  }
+  function markRowsRead(mails, ids) {
+    if (!ids.size) return mails;
+    const out = [];
+    let changed = false;
+    for (let i = 0; i < mails.length; i++) {
+      const row2 = mails[i];
+      if (ids.has(row2.id) && row2.read !== true) {
+        out.push({ ...row2, read: true });
+        changed = true;
+      } else {
+        out.push(row2);
+      }
+    }
+    return changed ? out : mails;
+  }
+  function resolveCommandOutcome(p, mails) {
+    if (p.kind === "send") {
+      const fromKeys = [];
+      if (p.fromNames) {
+        for (let i = 0; i < p.fromNames.length; i++) {
+          const n = String(p.fromNames[i] || "").trim().toLowerCase();
+          if (n) fromKeys.push(n);
+        }
+      }
+      let newCount = 0;
+      for (let i = 0; i < mails.length; i++) {
+        const row2 = mails[i];
+        if (p.beforeIds.indexOf(row2.id) >= 0) continue;
+        if (fromKeys.length) {
+          const fro = String(row2.fro || "").trim().toLowerCase();
+          if (fromKeys.indexOf(fro) < 0) continue;
+        }
+        newCount += 1;
+      }
+      const expect2 = p.expect > 0 ? p.expect : 1;
+      if (expect2 > 1) {
+        if (newCount >= expect2) {
+          return {
+            code: "looks_sent",
+            text: "Looks sent \xB7 " + newCount + "/" + expect2,
+            kind: ""
+          };
+        }
+        if (newCount > 0) {
+          return {
+            code: "partial_sent",
+            text: "Partial \xB7 " + newCount + "/" + expect2 + " \u2014 check character log",
+            kind: "warn"
+          };
+        }
+        return {
+          code: "sent_inconclusive",
+          text: "Sent \u2014 confirm on character log",
+          kind: ""
+        };
+      }
+      if (newCount > 0) {
+        return { code: "looks_sent", text: "Looks sent", kind: "" };
+      }
+      return {
+        code: "sent_inconclusive",
+        text: "Sent \u2014 confirm on character log",
+        kind: ""
+      };
+    }
+    let okCount = 0;
+    for (let i = 0; i < p.targetIds.length; i++) {
+      let row2 = null;
+      for (let j = 0; j < mails.length; j++) {
+        if (mails[j].id === p.targetIds[i]) {
+          row2 = mails[j];
+          break;
+        }
+      }
+      if (row2 && (row2.taken || !row2.item)) okCount += 1;
+    }
+    const expect = p.expect > 0 ? p.expect : p.targetIds.length || 1;
+    if (expect > 1 || p.targetIds.length > 1) {
+      if (okCount >= expect) {
+        return {
+          code: "looks_taken",
+          text: "Looks taken \xB7 " + okCount + "/" + expect,
+          kind: ""
+        };
+      }
+      if (okCount > 0) {
+        return {
+          code: "partial_taken",
+          text: "Partial take \xB7 " + okCount + "/" + expect + " \u2014 check bag / log",
+          kind: "warn"
+        };
+      }
+      return {
+        code: "take_no_change",
+        text: "No change \u2014 check character log / bag",
+        kind: "warn"
+      };
+    }
+    if (okCount > 0) {
+      return { code: "looks_taken", text: "Looks taken", kind: "" };
+    }
+    return {
+      code: "take_no_change",
+      text: "No change \u2014 check character log / bag",
+      kind: "warn"
+    };
+  }
+
+  // src/host/mail/types.ts
+  var MAIL_SEND_COST = 48e3;
+  var MAIL_ATTACH_EXTRA = 312e3;
+  var MAIL_HEAD_TTL_MS = 2e4;
+  var MAIL_PREFETCH_GAP_MS = 1800;
+  var MAIL_PREFETCH_GAP_STEP_MS = 350;
+  var MAIL_PREFETCH_GAP_MAX_MS = 5e3;
+  var MAIL_COMMAND_HEAD_DELAY_MS = 1500;
+  var MAIL_DELETE_UNDO_MAX = 25;
+  var MAIL_DELETE_UNDO_MS = 5e3;
+  var MAIL_DELETE_GAP_MS = 280;
+  var MAIL_DELETE_GAP_STEP_MS = 4;
+  var MAIL_DELETE_GAP_MAX_MS = 750;
+
+  // src/host/mail/mailCache.ts
+  var pullInFlight = false;
+  var prefetchTimer = 0;
+  var prefetchPages = 0;
+  var prefetchFailStreak = 0;
+  var activePull = null;
+  function stopPrefetch() {
+    if (prefetchTimer) {
+      window.clearTimeout(prefetchTimer);
+      prefetchTimer = 0;
+    }
+    commit({ prefetchArmed: false });
+  }
+  function resetPrefetchPages() {
+    prefetchPages = 0;
+    prefetchFailStreak = 0;
+  }
+  function prefetchDelayMs() {
+    const ramp = Math.min(
+      prefetchPages * MAIL_PREFETCH_GAP_STEP_MS,
+      MAIL_PREFETCH_GAP_MAX_MS - MAIL_PREFETCH_GAP_MS
+    );
+    const failExtra = Math.min(prefetchFailStreak * 1e3, 8e3);
+    return Math.min(
+      MAIL_PREFETCH_GAP_MS + Math.max(0, ramp) + failExtra,
+      MAIL_PREFETCH_GAP_MAX_MS + 8e3
+    );
+  }
+  function schedulePrefetch() {
+    stopPrefetch();
+    if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight) {
+      return;
+    }
+    commit({ prefetchArmed: true });
+    prefetchTimer = window.setTimeout(() => {
+      prefetchTimer = 0;
+      commit({ prefetchArmed: false });
+      void loadOlderMail({ background: true });
+    }, prefetchDelayMs());
+  }
+  async function runPull(mode, reason, cursor) {
+    if (activePull) {
+      try {
+        await activePull;
+      } catch (e2) {
+      }
+      if (mode === "cursor" && (pullInFlight || getLoadingMore())) {
+        return false;
+      }
+    }
+    const work = (async () => {
+      if (pullInFlight) return false;
+      pullInFlight = true;
+      commit(
+        mode === "head" ? { loading: true, loadingMore: false } : { loadingMore: true }
+      );
+      try {
+        const res = await pullMailPage(mode === "cursor" ? cursor : null);
+        if (!res.ok || !res.data) {
+          setStatus(
+            res.reason === "no_mail_payload" ? "Mail pull returned no list \u2014 try Refresh" : "Mail pull failed",
+            "err"
+          );
+          return false;
+        }
+        const page = res.data;
+        const mails = getMails();
+        const prevIds = /* @__PURE__ */ new Set();
+        for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
+        const bootstrap2 = mode === "head" && mails.length === 0;
+        if (mode === "head") {
+          const reconciled = reconcileAfterHeadPull(
+            mails,
+            page,
+            getNextCursor(),
+            getHasMore()
+          );
+          const assigned = assignLocalReadFlags(
+            reconciled.mails,
+            prevIds,
+            bootstrap2,
+            bootstrap2 ? getXUnread() : 0,
+            getLocallyReadIds()
+          );
+          const patch = {
+            mails: assigned.rows,
+            nextCursor: reconciled.nextCursor,
+            hasMore: reconciled.hasMore,
+            lastHeadAt: Date.now(),
+            lastHeadReason: reason
+          };
+          if (reason.indexOf("X.unread\u2191") === 0 && assigned.newIds.length) {
+            patch.newMailCount = assigned.newIds.length;
+          }
+          if (!getCommandBusy()) {
+            let strat = "";
+            if (reconciled.strategy === "unchanged") strat = " \xB7 cache ok";
+            else if (reconciled.strategy === "prepend") {
+              strat = " \xB7 pushed new";
+            } else if (reconciled.strategy === "stitch") {
+              strat = " \xB7 kept older";
+            } else if (reconciled.strategy === "truncate") {
+              strat = " \xB7 refreshed head";
+            }
+            patch.status = "Loaded " + assigned.rows.length + (reconciled.hasMore ? "+" : "") + strat + " \xB7 " + reason;
+            patch.statusKind = "";
+          }
+          commit(patch);
+        } else {
+          const assigned = assignLocalReadFlags(
+            appendCursorPage(mails, page.mail),
+            prevIds,
+            false,
+            0,
+            getLocallyReadIds()
+          );
+          const meta2 = applyPullMeta(page);
+          const patch = {
+            mails: assigned.rows,
+            nextCursor: meta2.nextCursor,
+            hasMore: meta2.hasMore
+          };
+          if (!reason.startsWith("prefetch")) {
+            patch.status = "Loaded \xB7 " + assigned.rows.length + (meta2.hasMore ? "+" : "");
+            patch.statusKind = "";
+          }
+          commit(patch);
+        }
+        schedulePersistMailCache();
+        return true;
+      } finally {
+        pullInFlight = false;
+        commit({ loading: false, loadingMore: false });
+      }
+    })();
+    activePull = work;
+    try {
+      return await work;
+    } finally {
+      if (activePull === work) activePull = null;
+    }
+  }
+  async function requestMailHead(reason, opts) {
+    const force = !!(opts && opts.force);
+    const lastHeadAt = getLastHeadAt();
+    const should = reason === "Refresh" || force || reason.indexOf("X.unread") === 0 || reason.indexOf("command") === 0 || getMails().length === 0 || lastHeadAt === 0 || Date.now() - lastHeadAt >= MAIL_HEAD_TTL_MS;
+    if (!should && reason !== "Refresh" && !force) return;
+    await runPull("head", reason);
+    if (getPanelOpen()) schedulePrefetch();
+  }
+  async function loadOlderMail(opts) {
+    const background = !!(opts && opts.background);
+    if (!getHasMore() || getLoadingMore() || pullInFlight) return;
+    if (!getNextCursor() && getMails().length > 0) {
+      commit({ hasMore: false });
+      return;
+    }
+    const ok = await runPull(
+      "cursor",
+      background ? "prefetch" : "load-older",
+      getNextCursor()
+    );
+    if (background) {
+      if (ok) {
+        prefetchPages += 1;
+        prefetchFailStreak = 0;
+      } else {
+        prefetchFailStreak += 1;
+      }
+      if (getPanelOpen()) schedulePrefetch();
+    }
+  }
+  function clearNewMailBanner() {
+    commit({ newMailCount: 0 });
+  }
+
+  // src/host/mail/mailUnread.ts
+  var SERVER_UNREAD_CAP = 100;
+  function getXUnread() {
+    const x = window.X;
+    return Math.max(0, Number(x && x.unread) || 0);
+  }
+  function formatUnreadBadgeLabel(n) {
+    const c = Math.max(0, Math.floor(Number(n) || 0));
+    if (c >= SERVER_UNREAD_CAP) return SERVER_UNREAD_CAP + "+";
+    return String(c);
+  }
+  function syncMailBadge() {
+    if (typeof document === "undefined") return;
+    const badge = document.querySelector(
+      "[data-ecu-mail-badge]"
+    );
+    if (!badge) return;
+    const n = getXUnread();
+    badge.textContent = formatUnreadBadgeLabel(n);
+    badge.hidden = n === 0;
+    badge.title = n >= SERVER_UNREAD_CAP ? "Unread mail (server reports at most 100)" : n ? n + " unread" : "";
+  }
+  function applyXUnread(count, opts) {
+    const n = Math.max(0, Number(count) || 0);
+    const prevSeen = getLastSeenUnread();
+    if (typeof window !== "undefined" && window.X) {
+      window.X.unread = n;
+    }
+    try {
+      syncMailBadge();
+    } catch (e2) {
+    }
+    if (prevSeen >= 0 && n === prevSeen) return;
+    if (opts && opts.quiet) {
+      commit({ lastSeenUnread: n });
+      return;
+    }
+    if (prevSeen < 0) {
+      commit({ lastSeenUnread: n });
+      return;
+    }
+    if (n > prevSeen) {
+      const delta = n - prevSeen;
+      commit({ lastSeenUnread: n });
+      if (getPanelOpen()) {
+        void requestMailHead("X.unread\u2191 (new mail)");
+      } else {
+        emitToast(delta === 1 ? "1 new mail" : delta + " new mails");
+      }
+      return;
+    }
+    commit({ lastSeenUnread: n });
+    if (getPanelOpen()) void requestMailHead("X.unread\u2193 (external read)");
+  }
+  function findNewestUnreadId() {
+    const mails = getMails();
+    for (let i = 0; i < mails.length; i++) {
+      if (mails[i].read === false) return mails[i].id;
+    }
+    return null;
+  }
+  async function openMailRow(id) {
+    const mails = getMails();
+    let m = null;
+    for (let i = 0; i < mails.length; i++) {
+      if (mails[i].id === id) {
+        m = mails[i];
+        break;
+      }
+    }
+    if (!m) return;
+    const wasUnread = m.read === false;
+    getLocallyReadIds().add(id);
+    commit({
+      view: { kind: "read", id },
+      mails: markRowsRead(mails, /* @__PURE__ */ new Set([id])),
+      unreadStuckHint: ""
+    });
+    schedulePersistMailCache();
+    const res = await readMail(id);
+    if (res.ok) {
+      if (res.unreadCount != null) applyXUnread(res.unreadCount, { quiet: true });
+      else if (wasUnread) {
+        const cur = getXUnread();
+        if (cur > 0) applyXUnread(cur - 1, { quiet: true });
+      }
+      commit({ unreadStuckHint: "" });
+      return;
+    }
+    if (wasUnread) {
+      commit({
+        unreadStuckHint: "Could not mark read on server \u2014 try Refresh"
+      });
+    }
+  }
+  async function openNewestUnread() {
+    await requestMailHead("open");
+    const id = findNewestUnreadId();
+    if (id) await openMailRow(id);
+    else commit({ view: { kind: "list" } });
+  }
+  async function markVisibleRead(ids) {
+    const mails = getMails();
+    const unreadIds = [];
+    const idSet = /* @__PURE__ */ new Set();
+    for (let i = 0; i < ids.length; i++) {
+      let m = null;
+      for (let j = 0; j < mails.length; j++) {
+        if (mails[j].id === ids[i]) {
+          m = mails[j];
+          break;
+        }
+      }
+      if (m && m.read === false) {
+        getLocallyReadIds().add(ids[i]);
+        unreadIds.push(ids[i]);
+        idSet.add(ids[i]);
+      }
+    }
+    if (!unreadIds.length) return;
+    commit({ mails: markRowsRead(mails, idSet) });
+    schedulePersistMailCache();
+    const res = await readMailMany(unreadIds);
+    if (res.data && res.data.unreadCount != null) {
+      applyXUnread(res.data.unreadCount, { quiet: true });
+    } else {
+      applyXUnread(Math.max(0, getXUnread() - unreadIds.length), {
+        quiet: true
+      });
+    }
+  }
+  async function markAllUnreadRead() {
+    const mails = getMails();
+    const ids = [];
+    for (let i = 0; i < mails.length; i++) {
+      if (mails[i].read === false) ids.push(mails[i].id);
+    }
+    if (!ids.length) {
+      setStatus("No unread mail in cache");
+      return;
+    }
+    await markVisibleRead(ids);
+    setStatus("Marked " + ids.length + " read");
+  }
+  function bootMailUnreadWatch() {
+    if (getLastSeenUnread() < 0) {
+      commit({ lastSeenUnread: getXUnread() });
+    }
+  }
+  var unreadWatchInstalled = false;
+  var unreadWatchTimer = 0;
+  function installMailUnreadWatch() {
+    if (unreadWatchInstalled) return;
+    unreadWatchInstalled = true;
+    bootMailUnreadWatch();
+    unreadWatchTimer = window.setInterval(() => {
+      applyXUnread(getXUnread());
+    }, 2e3);
+  }
+
+  // src/host/mail/mailDeleteEstimate.ts
+  var MAIL_DELETE_API_DEFAULT_MS = 250;
+  function deleteGapMs(index) {
+    if (index <= 0) return 0;
+    const ramp = Math.min(
+      index * MAIL_DELETE_GAP_STEP_MS,
+      MAIL_DELETE_GAP_MAX_MS - MAIL_DELETE_GAP_MS
+    );
+    return Math.min(
+      MAIL_DELETE_GAP_MS + Math.max(0, ramp),
+      MAIL_DELETE_GAP_MAX_MS
+    );
+  }
+  function estimateDeleteRemainingMs(done, total, avgApiMs) {
+    const remaining = total - done;
+    if (remaining <= 0) return 0;
+    let gaps = 0;
+    for (let i = done; i < total; i++) gaps += deleteGapMs(i);
+    const api = Math.max(0, avgApiMs);
+    return gaps + remaining * api;
+  }
+  function estimateDeleteEtaMs(opts) {
+    const { done, total, startedAt } = opts;
+    const remaining = total - done;
+    if (remaining <= 0) return 0;
+    const now = opts.now != null ? opts.now : Date.now();
+    if (done >= 2 && startedAt > 0 && now > startedAt) {
+      const per = (now - startedAt) / done;
+      if (per > 0) return Math.round(per * remaining);
+    }
+    return Math.round(
+      estimateDeleteRemainingMs(
+        done,
+        total,
+        opts.avgApiMs != null ? opts.avgApiMs : MAIL_DELETE_API_DEFAULT_MS
+      )
+    );
+  }
+  function formatDeleteEta(etaMs) {
+    if (!(etaMs > 400)) return "";
+    const compact = formatDurationCompact(etaMs / 1e3);
+    return compact ? "~" + compact : "";
+  }
+  function formatDeleteProgressLabel(progress) {
+    const base = "Deleting " + progress.done + " / " + progress.total;
+    const eta = formatDeleteEta(progress.etaMs);
+    return eta ? base + " \xB7 " + eta + " left" : base;
+  }
+
+  // src/host/mail/mailDelete.ts
+  function undoSecondsLeft(endsAt, now = Date.now()) {
+    if (!(endsAt > 0)) return 0;
+    return Math.max(0, Math.ceil((endsAt - now) / 1e3));
+  }
+  var undoTimer = 0;
+  var undoRows = [];
+  var finalizeInFlight = false;
+  function sleep(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  }
+  function clearUndoState(opts) {
+    if (undoTimer) {
+      window.clearTimeout(undoTimer);
+      undoTimer = 0;
+    }
+    undoRows = [];
+    commit(
+      { undoCount: 0, undoEndsAt: 0 },
+      opts && opts.silent ? { silent: true } : void 0
+    );
+  }
+  function buildRemoveIdsPatch(unique, seen) {
+    const mails = getMails();
+    const batch = [];
+    for (let i = 0; i < unique.length; i++) {
+      for (let j = 0; j < mails.length; j++) {
+        if (mails[j].id === unique[i]) {
+          batch.push({ ...mails[j] });
+          break;
+        }
+      }
+    }
+    const nextMails = [];
+    for (let i = 0; i < mails.length; i++) {
+      if (!seen.has(mails[i].id)) nextMails.push(mails[i]);
+    }
+    const patch = { mails: nextMails };
+    if (getHasMore()) {
+      patch.nextCursor = String(nextMails.length);
+    } else if (!nextMails.length) {
+      patch.nextCursor = null;
+      patch.hasMore = false;
+    }
+    const view = getView();
+    if (view.kind === "read" && seen.has(view.id)) {
+      patch.view = { kind: "list" };
+    }
+    return { batch, patch };
+  }
+  async function deleteMailRows(ids, opts) {
+    if (finalizeInFlight) {
+      setStatus("Delete already in progress\u2026", "warn");
+      return "busy";
+    }
+    const unique = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < ids.length; i++) {
+      if (seen.has(ids[i])) continue;
+      seen.add(ids[i]);
+      unique.push(ids[i]);
+    }
+    if (!unique.length) return "ok";
+    const mails = getMails();
+    let hasUntaken = false;
+    for (let i = 0; i < unique.length; i++) {
+      let m = null;
+      for (let j = 0; j < mails.length; j++) {
+        if (mails[j].id === unique[i]) {
+          m = mails[j];
+          break;
+        }
+      }
+      if (m && m.item && !m.taken) hasUntaken = true;
+    }
+    if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
+    clearUndoState({ silent: true });
+    const { batch, patch } = buildRemoveIdsPatch(unique, seen);
+    const finalizeIds = [];
+    for (let i = 0; i < batch.length; i++) finalizeIds.push(batch[i].id);
+    const allowUndo = batch.length > 0 && batch.length <= MAIL_DELETE_UNDO_MAX;
+    if (allowUndo) {
+      undoRows = batch;
+      const undoEndsAt = Date.now() + MAIL_DELETE_UNDO_MS;
+      commit({
+        ...patch,
+        undoCount: batch.length,
+        undoEndsAt
+      });
+      schedulePersistMailCache();
+      if (undoTimer) window.clearTimeout(undoTimer);
+      undoTimer = window.setTimeout(() => {
+        undoTimer = 0;
+        undoRows = [];
+        commit({ undoCount: 0, undoEndsAt: 0 });
+        void finalizeDeletes(finalizeIds);
+      }, MAIL_DELETE_UNDO_MS);
+      return "ok";
+    }
+    undoRows = [];
+    commit({
+      ...patch,
+      undoCount: 0,
+      undoEndsAt: 0
+    });
+    schedulePersistMailCache();
+    void finalizeDeletes(finalizeIds);
+    return "ok";
+  }
+  async function finalizeDeletes(ids) {
+    if (!ids.length) return;
+    if (finalizeInFlight) return;
+    finalizeInFlight = true;
+    undoRows = [];
+    commit({ undoCount: 0, undoEndsAt: 0 });
+    const total = ids.length;
+    let failed = 0;
+    let done = 0;
+    let lastNotify = 0;
+    let avgApiMs = MAIL_DELETE_API_DEFAULT_MS;
+    const startedAt = Date.now();
+    const paint = (force) => {
+      const now = Date.now();
+      if (!force && now - lastNotify < 80 && done < total) return;
+      lastNotify = now;
+      const etaMs = estimateDeleteEtaMs({
+        done,
+        total,
+        startedAt,
+        now,
+        avgApiMs
+      });
+      commit({
+        deleteProgress: { done, total, etaMs }
+      });
+    };
+    paint(true);
+    try {
+      for (let i = 0; i < ids.length; i++) {
+        const gap = deleteGapMs(i);
+        if (gap > 0) await sleep(gap);
+        const t0 = Date.now();
+        const res = await deleteMail(ids[i]);
+        const sample = Date.now() - t0;
+        avgApiMs = done === 0 ? sample : Math.round(avgApiMs * 0.65 + sample * 0.35);
+        if (!res.ok) failed += 1;
+        done += 1;
+        paint();
+      }
+    } finally {
+      finalizeInFlight = false;
+      commit({ deleteProgress: null });
+    }
+    if (failed) {
+      setStatus(
+        "Deleted " + (total - failed) + " / " + total + " \xB7 " + failed + " failed",
+        "err"
+      );
+      void requestMailHead("Refresh", { force: true });
+      return;
+    }
+    setStatus(total === 1 ? "Mail deleted." : total + " mails deleted.");
+  }
+  function undoDeleteMail() {
+    if (!undoRows.length || finalizeInFlight) return;
+    if (undoTimer) {
+      window.clearTimeout(undoTimer);
+      undoTimer = 0;
+    }
+    const next = undoRows.concat(getMails());
+    undoRows = [];
+    const patch = {
+      mails: next,
+      undoCount: 0,
+      undoEndsAt: 0,
+      status: "Delete undone",
+      statusKind: ""
+    };
+    if (getHasMore()) patch.nextCursor = String(next.length);
+    commit(patch);
+    schedulePersistMailCache();
+  }
+
+  // src/host/mail/mailSubject.ts
+  var MAIL_SUBJECT_ITEM_TOKEN = "{item}";
+  var ITEM_TOKEN_RE = /\{item\}/gi;
+  function formatAttachSubject(fp) {
+    let s = fp.name;
+    if (fp.level != null) s += " +" + fp.level;
+    if (fp.q != null && fp.q > 1) s += " \xD7" + fp.q;
+    return s;
+  }
+  function applyItemToken(text, item) {
+    ITEM_TOKEN_RE.lastIndex = 0;
+    if (!ITEM_TOKEN_RE.test(text)) return text;
+    ITEM_TOKEN_RE.lastIndex = 0;
+    return text.replace(ITEM_TOKEN_RE, item);
+  }
+  function resolveMailSubject(base, fp, index, total) {
+    const trimmed = String(base || "").trim();
+    const item = fp ? formatAttachSubject(fp) : "";
+    ITEM_TOKEN_RE.lastIndex = 0;
+    if (ITEM_TOKEN_RE.test(trimmed)) {
+      return applyItemToken(trimmed, item);
+    }
+    if (!trimmed) {
+      if (item) return item;
+      return total > 1 ? "Mail (" + index + "/" + total + ")" : "";
+    }
+    if (total > 1 && item) return trimmed + " \xB7 " + item;
+    return trimmed;
+  }
+  function resolveMailBody(base, fp) {
+    const text = String(base || "");
+    const item = fp ? formatAttachSubject(fp) : "";
+    return applyItemToken(text, item);
+  }
+  function subjectPlaceholder(attaches) {
+    const list = attaches || [];
+    if (!list.length) return "Subject (optional)";
+    if (list.length === 1) {
+      return "e.g. Sending " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]);
+    }
+    return "e.g. Loot: " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]) + " \xB7 \u2026";
+  }
+
+  // src/host/mail/mailCompose.ts
+  var draftHydrated = false;
+  function ensureComposeDraftHydrated() {
+    if (draftHydrated) return;
+    draftHydrated = true;
+    const draft = loadPersistedDraft();
+    commit({ sessionDraft: draft }, { silent: true });
+  }
+  function stickyLastTo() {
+    try {
+      const last = loadSettings().mailLastTo;
+      return Array.isArray(last) ? last.map(String).filter(Boolean) : [];
+    } catch (e2) {
+      return [];
+    }
+  }
+  function writeDraftSettings(draft) {
+    try {
+      saveSettings({ mailDraft: JSON.stringify(draft) });
+    } catch (e2) {
+    }
+  }
+  function commitCompose(mutator, opts) {
+    ensureComposeDraftHydrated();
+    const cur = getActiveComposeDraft();
+    const next = canonicalizeDraft(mutator(cur));
+    const patch = {
+      view: { kind: "compose", draft: next },
+      sessionDraft: next
+    };
+    if (opts && opts.status != null) {
+      patch.status = opts.status;
+      patch.statusKind = opts.statusKind || "";
+    }
+    commit(patch);
+    writeDraftSettings(next);
+    return next;
+  }
+  function persistDraft(draft) {
+    const next = canonicalizeDraft(draft);
+    commit({ sessionDraft: next }, { silent: true });
+    writeDraftSettings(next);
+  }
+  function loadPersistedDraft() {
+    try {
+      const raw = loadSettings().mailDraft;
+      if (!raw || typeof raw !== "string") return emptyDraft();
+      const parsed = JSON.parse(raw);
+      const tos = normalizeComposeTos(
+        Array.isArray(parsed.to) ? parsed.to.map(String) : []
+      );
+      const fallback = tos[0] || "";
+      const hasAttaches = Array.isArray(parsed.attaches) && parsed.attaches.length > 0;
+      const rawList = hasAttaches ? parsed.attaches : parsed.attach ? [parsed.attach] : [];
+      const attaches = [];
+      for (let i = 0; i < rawList.length; i++) {
+        attaches.push(migrateComposeAttach(rawList[i], fallback));
+      }
+      const draft = canonicalizeDraft({
+        to: tos,
+        subject: String(parsed.subject || ""),
+        body: String(parsed.body || ""),
+        attaches
+      });
+      if (!hasAttaches && parsed.attach) {
+        writeDraftSettings(draft);
+      }
+      return draft;
+    } catch (e2) {
+      return emptyDraft();
+    }
+  }
+  function openCompose(partial) {
+    ensureComposeDraftHydrated();
+    const draft = resolveComposeOpen({
+      session: getActiveComposeDraft(),
+      stickyTo: stickyLastTo(),
+      partial
+    });
+    commit({
+      view: { kind: "compose", draft },
+      sessionDraft: draft
+    });
+    writeDraftSettings(draft);
+  }
+  function queueMailAttach(fp) {
+    ensureComposeDraftHydrated();
+    if (getView().kind !== "compose") openCompose();
+    const cur = getActiveComposeDraft();
+    const to = pickToForNewAttach(cur);
+    const nextLen = cur.attaches.filter((a) => a.slot !== fp.slot).length + 1;
+    commitCompose(
+      (d) => {
+        const list = d.attaches.filter((a) => a.slot !== fp.slot);
+        list.push(makeComposeAttach(fp, to));
+        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
+        return { ...d, subject, attaches: list };
+      },
+      {
+        status: to ? nextLen === 1 ? "Attached " + fp.name + " \u2192 " + to : "Queued " + nextLen + " items \xB7 " + fp.name + " \u2192 " + to : nextLen === 1 ? "Attached " + fp.name + " \xB7 add To to send" : "Queued " + nextLen + " items \xB7 " + fp.name + " \xB7 add To to send"
+      }
+    );
+  }
+  function patchComposeDraft(partial) {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => {
+      const to = partial.to ? normalizeComposeTos(partial.to) : d.to;
+      const subject = partial.subject != null ? partial.subject : d.subject;
+      const body = partial.body != null ? partial.body : d.body;
+      let attaches = d.attaches;
+      if (partial.attaches) {
+        attaches = [];
+        for (let i = 0; i < partial.attaches.length; i++) {
+          const a = partial.attaches[i];
+          attaches.push(
+            makeComposeAttach(a, String(a.to || "").trim())
+          );
+        }
+      } else if (partial.to) {
+        attaches = rebindAttachesToPool(d.attaches, to);
+      }
+      return { to, subject, body, attaches };
+    });
+  }
+  function setMailAttachTo(index, to) {
+    if (getView().kind !== "compose") return;
+    const name = String(to || "").trim();
+    if (!name) return;
+    commitCompose((d) => {
+      if (index < 0 || index >= d.attaches.length) return d;
+      const list = d.attaches.slice();
+      list[index] = { ...list[index], to: name };
+      return {
+        ...d,
+        to: normalizeComposeTos(d.to.concat([name])),
+        attaches: list
+      };
+    });
+  }
+  function distributeMailAttaches() {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => distributeAttachesAcrossTos(d), {
+      status: "Distributed items across To recipients"
+    });
+  }
+  function removeMailAttachAt(index) {
+    if (getView().kind !== "compose") return;
+    commitCompose((d) => {
+      if (index < 0 || index >= d.attaches.length) return d;
+      const list = d.attaches.slice();
+      list.splice(index, 1);
+      return { ...d, attaches: list };
+    });
+  }
+  function replyToMail(mail) {
+    openCompose({
+      to: mail.fro ? [mail.fro] : [],
+      subject: mail.subject ? mail.subject.indexOf("Re:") === 0 ? mail.subject : "Re: " + mail.subject : "Re:",
+      body: "",
+      attaches: []
+    });
+  }
+  function forwardMail(mail) {
+    const quoted = "\n\n---------- Forwarded message ----------\nFrom: " + (mail.fro || "?") + "\nTo: " + (mail.to || "?") + "\nSubject: " + (mail.subject || "") + "\n\n" + (mail.message || "");
+    openCompose({
+      to: [],
+      subject: mail.subject ? mail.subject.indexOf("Fwd:") === 0 ? mail.subject : "Fwd: " + mail.subject : "Fwd:",
+      body: quoted,
+      attaches: []
+    });
+  }
+
+  // src/host/infoDialog/bindings.ts
+  var openItemFn = null;
+  var openConditionFn = null;
+  function bindOpenHandlers(openItem2, openCondition2) {
+    openItemFn = openItem2;
+    openConditionFn = openCondition2;
+  }
+  function callOpenItem(entity, slotName, slotOverride) {
+    if (openItemFn) openItemFn(entity, slotName, slotOverride);
+  }
+  function callOpenCondition(entity, conditionName) {
+    if (openConditionFn) openConditionFn(entity, conditionName);
+  }
+
+  // src/host/infoDialog/types.ts
+  var BUFF_DIALOG_ID = "ecu-buff-dialog";
+  var ITEM_DIALOG_ID = "ecu-item-dialog";
+  var STOCK_DIALOG_ID = "topleftcornerdialog";
+  var INFO_SOURCE_ATTR = "data-ecu-info-source";
+  var CLOSE_CLASS = "ecu-dialog-close";
+  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
+  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
+  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
+  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
+  function dialogIdFor(kind) {
+    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
+  }
+  function panelAttrFor(kind) {
+    return kind === "buff" ? "buffInfo" : "itemInfo";
+  }
+
+  // src/host/infoDialog/css.ts
+  var STYLE_ID2 = "comm-ui-dialog-host-css";
+  function injectDialogHostCss() {
+    if (document.getElementById(STYLE_ID2)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID2;
+    style.textContent = `
+/* Fallback host when not yet adopted into CommUI layout panel. */
+#topleftcorner:not(.ecu-info-slot-host) {
+  position: fixed !important;
+  top: 8px !important;
+  left: 8px !important;
+  z-index: 230 !important;
+  pointer-events: none !important;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#topleftcornerui {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+}
+/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
+#${STOCK_DIALOG_ID} {
+  display: none !important;
+}
+#${BUFF_DIALOG_ID},
+#${ITEM_DIALOG_ID} {
+  pointer-events: auto !important;
+  vertical-align: top;
+  display: inline-block;
+  position: relative;
+}
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS},
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS} {
+  display: block;
+  max-width: min(96vw, 520px);
+  max-height: min(80vh, calc(100vh - 96px));
+  overflow: auto;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #1c1c1c;
+  color: #ddd;
+  width: 28px;
+  height: 28px;
+  line-height: 24px;
+  padding: 0;
+  font-size: 18px;
+  text-align: center;
+  box-sizing: border-box;
+}
+#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
+#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
+  border-color: #888;
+  color: #fff;
+}
+`;
+    document.head.append(style);
+  }
+
+  // src/host/infoDialog/hosts.ts
+  function dialogEl(kind) {
+    return document.getElementById(dialogIdFor(kind));
+  }
+  function hasContent(el) {
+    return !!(el && String(el.innerHTML || "").trim());
+  }
+  function ensureNamedDialog(id, parent) {
+    let dialog = document.getElementById(id);
+    if (!dialog) {
+      dialog = document.createElement("div");
+      dialog.id = id;
+      dialog.className = "bpclicks enableclicks";
+      parent.append(dialog);
+    }
+    return dialog;
+  }
+  function ensureDialogElements() {
+    injectDialogHostCss();
+    const body = document.body;
+    if (!body) {
+      throw new Error("ensureDialogElements: document.body is not ready");
+    }
+    let corner = document.getElementById("topleftcorner");
+    if (!corner) {
+      corner = document.createElement("div");
+      corner.id = "topleftcorner";
+      corner.className = "bpclicks";
+      body.append(corner);
+    }
+    if (!document.getElementById("topleftcornerui")) {
+      const ui = document.createElement("div");
+      ui.id = "topleftcornerui";
+      ui.className = "bpclicks";
+      corner.append(ui);
+    }
+    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
+    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
+    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
+    return { buff, item, stock };
+  }
+  function adoptInfoDialog(kind, slot) {
+    const { buff, item } = ensureDialogElements();
+    const dialog = kind === "buff" ? buff : item;
+    if (dialog.parentElement !== slot) {
+      slot.appendChild(dialog);
+    }
+    dialog.classList.add(ADOPTED_CLASS);
+    dialog.setAttribute("data-ecu-kind", kind);
+    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
+    const corner = document.getElementById("topleftcorner");
+    if (corner) corner.classList.add("ecu-info-slot-host");
+    return dialog;
+  }
+  function ensureAdoptedHost(kind) {
+    const { buff, item } = ensureDialogElements();
+    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
+    const slot = document.querySelector(slotSel);
+    if (slot) return adoptInfoDialog(kind, slot);
+    return kind === "buff" ? buff : item;
+  }
+
+  // src/host/infoDialog/write.ts
+  var listeners5 = /* @__PURE__ */ new Set();
+  var pendingWriteKind = "item";
+  function setPendingWriteKind(kind) {
+    pendingWriteKind = kind;
+  }
+  function getPendingWriteKind() {
+    return pendingWriteKind;
+  }
+  function subscribeInfoDialogChange(listener) {
+    listeners5.add(listener);
+    return () => {
+      listeners5.delete(listener);
+    };
+  }
+  function emitInfoDialogChange(kind, open) {
+    for (const listener of Array.from(listeners5)) {
+      try {
+        listener(kind, open);
+      } catch (e2) {
+      }
+    }
+  }
+  function clearDialogOnlyXTarget() {
+    if (window.__ecuDialogOnlyXTarget) {
+      window.__ecuDialogOnlyXTarget = false;
+      window.xtarget = null;
+    }
+  }
+  function clearDialogsTarget() {
+    try {
+      window.dialogs_target = null;
+    } catch (e2) {
+    }
+  }
+  function ensureCloseButton(dialog, kind, closeFn) {
+    if (!hasContent(dialog)) return;
+    if (dialog.querySelector("." + CLOSE_CLASS)) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = CLOSE_CLASS;
+    btn.title = "Close";
+    btn.setAttribute("aria-label", "Close");
+    btn.textContent = "\xD7";
+    btn.addEventListener("click", (ev) => {
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      closeFn(kind);
+    });
+    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
+    if (panel) {
+      const pos = window.getComputedStyle(panel).position;
+      if (!pos || pos === "static") panel.style.position = "relative";
+      panel.appendChild(btn);
+    } else {
+      dialog.appendChild(btn);
+    }
+  }
+  var FN_ORIG = "__ecuInfoOrig";
+  function buildItemHtml(args) {
+    const w = window;
+    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
+    if (typeof renderItem !== "function") return "";
+    try {
+      const html = renderItem.call(w, "html", args);
+      return typeof html === "string" ? html : "";
+    } catch (e2) {
+      return "";
+    }
+  }
+  function buildConditionHtml(name) {
+    const w = window;
+    const G = w.G;
+    if (!G || !G.conditions) return "";
+    let def = G.conditions[name];
+    let minutes = 0;
+    let condition;
+    const target = w.xtarget || w.ctarget;
+    if (target && target.s && target.s[name] && target.s[name].ms) {
+      minutes = target.s[name].ms / 6e3 / 10;
+    }
+    if (target && target.s && target.s[name]) {
+      const clone = typeof w.clone === "function" ? w.clone : null;
+      def = !def ? {} : clone ? clone(def) : { ...def };
+      condition = target.s[name];
+      const keys = Object.keys(condition);
+      for (let i = 0; i < keys.length; i++) {
+        def[keys[i]] = condition[keys[i]];
+      }
+    }
+    return buildItemHtml({
+      skin: condition && condition.skin || def && def.skin,
+      item: def,
+      prop: def,
+      minutes,
+      condition
+    });
+  }
+  var closeKindImpl = () => false;
+  function bindCloseImpl(fn) {
+    closeKindImpl = fn;
+  }
+  function writeInfoHtml(kind, html) {
+    const host2 = ensureAdoptedHost(kind);
+    host2.innerHTML = html || "";
+    if (hasContent(host2)) {
+      ensureCloseButton(host2, kind, (k) => {
+        closeKindImpl(k);
+      });
+    }
+    emitInfoDialogChange(kind, hasContent(host2));
+  }
+  function clearInfoHost(kind) {
+    const el = dialogEl(kind);
+    if (!hasContent(el)) return false;
+    el.innerHTML = "";
+    if (kind === "buff") clearDialogOnlyXTarget();
+    clearDialogsTarget();
+    emitInfoDialogChange(kind, false);
+    return true;
+  }
+
+  // src/host/infoDialog/dismiss.ts
+  var HANDLER = "__ecuDialogDismissHandler";
+  var layoutEditing = false;
+  function setInfoDialogLayoutEditing(editing) {
+    layoutEditing = !!editing;
+  }
+  function isOpen(kind) {
+    return hasContent(dialogEl(kind));
+  }
+  function isInfoDialogChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
+  }
+  function isInfoSource(el) {
+    if (!el.closest) return false;
+    return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
+  }
+  function isTourChrome(el) {
+    if (!el.closest) return false;
+    return !!(el.closest("[data-ecu-tour-portal]") || el.closest(".ecu-tour-root") || el.closest(".ecu-tour-card"));
+  }
+  function onDialogDismissPointerDown(ev) {
+    if (layoutEditing) return;
+    if (!isOpen("buff") && !isOpen("item")) return;
+    const t = ev.target;
+    if (!t) return;
+    const el = t;
+    if (isInfoDialogChrome(el) || isInfoSource(el) || isTourChrome(el)) {
+      return;
+    }
+    clearInfoHost("buff");
+    clearInfoHost("item");
+  }
+  function installDialogDismiss() {
+    const prev = window[HANDLER];
+    if (prev) {
+      document.removeEventListener("pointerdown", prev, true);
+    }
+    window[HANDLER] = onDialogDismissPointerDown;
+    document.addEventListener("pointerdown", onDialogDismissPointerDown, true);
+  }
+
+  // src/host/infoDialog/patches.ts
+  var PATCHED = "__ecuDialogRendersPatched";
+  var FN_MARK = "__ecuInfoPatched";
+  var FN_ORIG2 = "__ecuInfoOrig";
+  function markPatched(patched, orig) {
+    patched[FN_MARK] = true;
+    patched[FN_ORIG2] = orig;
+    return patched;
+  }
+  function isOurPatch(fn) {
+    return !!(fn && fn[FN_MARK]);
+  }
+  function isStockOrEcuSelector(selector) {
+    return selector === STOCK_SEL || selector === STOCK_DIALOG_ID || selector === BUFF_SEL || selector === ITEM_SEL || selector === "#" + STOCK_DIALOG_ID;
+  }
+  function kindFromSelector(selector) {
+    if (selector === BUFF_SEL) return "buff";
+    if (selector === ITEM_SEL) return "item";
+    return getPendingWriteKind();
+  }
+  function installRenderPatches() {
+    const w = window;
+    const done = w[PATCHED] || (w[PATCHED] = {});
+    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
+      const orig = w.render_condition[FN_ORIG2] || w.render_condition;
+      w.render_condition = markPatched(function(selector, name) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, name);
+      }, orig);
+      done.condition = true;
+    }
+    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
+      const orig = w.render_skill[FN_ORIG2] || w.render_skill;
+      w.render_skill = markPatched(function(selector, skill, args) {
+        setPendingWriteKind("buff");
+        return orig.call(this, selector, skill, args);
+      }, orig);
+      done.skill = true;
+    }
+    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
+      const orig = w.render_item[FN_ORIG2] || w.render_item;
+      w.render_item = markPatched(function(selector, args) {
+        if (selector === "html") {
+          return orig.call(this, "html", args);
+        }
+        if (isStockOrEcuSelector(selector)) {
+          const kind = kindFromSelector(selector);
+          setPendingWriteKind(kind);
+          const html = orig.call(this, "html", args);
+          if (typeof html === "string") writeInfoHtml(kind, html);
+          return html;
+        }
+        return orig.call(this, selector, args);
+      }, orig);
+      done.item = true;
+    }
+    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
+      const origSlot = w.slot_click[FN_ORIG2] || w.slot_click;
+      w.slot_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenItem(target, name);
+      }, origSlot);
+      done.slot = true;
+    }
+    if (typeof w.condition_click === "function" && !isOurPatch(w.condition_click)) {
+      const origCond = w.condition_click[FN_ORIG2] || w.condition_click;
+      w.condition_click = markPatched(function(name) {
+        const target = w.xtarget || w.ctarget;
+        if (target) callOpenCondition(target, name);
+        else origCond.call(this, name);
+      }, origCond);
+      done.conditionClick = true;
+    }
+  }
+  function installInfoDialogLifecycle() {
+    ensureDialogElements();
+    installRenderPatches();
+    installDialogDismiss();
+    if (!window.__ecuDialogPatchRetry) {
+      window.__ecuDialogPatchRetry = true;
+      let tries = 0;
+      const timer = window.setInterval(() => {
+        tries += 1;
+        installRenderPatches();
+        const w = window;
+        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
+        if (ready || tries >= 80) {
+          window.clearInterval(timer);
+        }
+      }, 250);
+    }
+  }
+
+  // src/host/infoDialog/api.ts
+  var lastConditionId = "";
+  var lastSlotName = "";
+  function resolvePaperdollEntity(entity) {
+    if (!entity) return entity;
+    const id = entity.id;
+    if (id == null || id === "") return entity;
+    const tid = String(id);
+    const raw = window.entities;
+    if (!raw) return entity;
+    if (!Array.isArray(raw)) {
+      const byKey = raw[tid] || raw[id];
+      if (byKey && byKey.slots) return byKey;
+    }
+    const list = Array.isArray(raw) ? raw : Object.values(raw);
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (ent && String(ent.id) === tid && ent.slots) return ent;
+    }
+    return entity;
+  }
+  function setDialogOnlyXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = !!entity;
+  }
+  function setSelectionXTarget(entity) {
+    window.xtarget = entity || null;
+    window.__ecuDialogOnlyXTarget = false;
+  }
+  function isBuffDialogOpen() {
+    return hasContent(dialogEl("buff"));
+  }
+  function isItemDialogOpen() {
+    return hasContent(dialogEl("item"));
+  }
+  function isTopLeftDialogOpen() {
+    return isBuffDialogOpen() || isItemDialogOpen();
+  }
+  function closeBuffDialog() {
+    lastConditionId = "";
+    return clearInfoHost("buff");
+  }
+  function closeItemDialog() {
+    lastSlotName = "";
+    return clearInfoHost("item");
+  }
+  function closeInfo(kind) {
+    if (kind === "buff") return closeBuffDialog();
+    if (kind === "item") return closeItemDialog();
+    if (closeBuffDialog()) return true;
+    return closeItemDialog();
+  }
+  function closeTopLeftDialog() {
+    return closeInfo();
+  }
+  function closeAllInfoDialogs() {
+    const a = closeBuffDialog();
+    const b = closeItemDialog();
+    return a || b;
+  }
+  bindCloseImpl((kind) => closeInfo(kind));
+  function openItem(entity, slotName, slotOverride, opts) {
+    if (!entity || !slotName) return;
+    installInfoDialogLifecycle();
+    const target = resolvePaperdollEntity(entity);
+    const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
+    if (!slot || !slot.name) return;
+    const w = window;
+    const itemHost = ensureAdoptedHost("item");
+    if (lastSlotName === slotName && String(itemHost.innerHTML || "").trim()) {
+      closeItemDialog();
+      w.last_sclick = "";
+      return;
+    }
+    const G = w.G;
+    const def = G && G.items && G.items[slot.name];
+    if (!def) return;
+    setPendingWriteKind("item");
+    lastSlotName = slotName;
+    w.last_sclick = slotName;
+    w.dialogs_target = target;
+    if (opts && opts.dialogOnly) {
+      setDialogOnlyXTarget(target);
+    } else {
+      setSelectionXTarget(target);
+    }
+    const html = buildItemHtml({
+      id: "item" + slotName,
+      item: def,
+      name: slot.name,
+      actual: slot,
+      slot: slotName,
+      from_player: target.id
+    });
+    writeInfoHtml("item", html);
+  }
+  function openCondition(entity, conditionName) {
+    if (!entity || !conditionName) return;
+    installInfoDialogLifecycle();
+    const host2 = ensureAdoptedHost("buff");
+    if (lastConditionId === conditionName && hasContent(host2)) {
+      closeBuffDialog();
+      return;
+    }
+    const w = window;
+    setPendingWriteKind("buff");
+    lastConditionId = conditionName;
+    w.dialogs_target = entity;
+    setDialogOnlyXTarget(entity);
+    const html = buildConditionHtml(conditionName);
+    writeInfoHtml("buff", html);
+  }
+  bindOpenHandlers(openItem, openCondition);
+  function adoptInfoDialog2(kind, slot) {
+    installInfoDialogLifecycle();
+    return adoptInfoDialog(kind, slot);
+  }
+  function ensureDialogHost() {
+    ensureDialogElements();
+    installInfoDialogLifecycle();
+    installRenderPatches();
+    installDialogDismiss();
+  }
+  var info = {
+    openItem,
+    openBuff: openCondition,
+    openCondition,
+    close: closeInfo,
+    closeAll: closeAllInfoDialogs,
+    isOpen: (kind) => {
+      if (kind === "buff") return isBuffDialogOpen();
+      if (kind === "item") return isItemDialogOpen();
+      return isTopLeftDialogOpen();
+    },
+    adopt: adoptInfoDialog2,
+    ensure: ensureDialogHost,
+    subscribe: subscribeInfoDialogChange,
+    setLayoutEditing: setInfoDialogLayoutEditing,
+    sourceAttr: INFO_SOURCE_ATTR
+  };
+
+  // src/host/inventory.ts
+  var HOST_ID = "bottomleftcorner";
+  var STYLE_ID3 = "comm-ui-inventory-host-css";
+  var MOUNT_ID = "comm-bag-mount";
+  var SAVED_CHAR = "__ecuInvSavedChar";
+  var HOLD_CHAR = "__ecuInvHoldChar";
+  var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
+  var listeners6 = [];
+  var syncListeners = [];
+  var bagSyncedAt = null;
+  var bagSyncedForName = null;
+  var bagRenderedForName = null;
+  var bagRefreshing = false;
+  var refreshPendingName = null;
+  var refreshPollTimer = null;
+  var bagSyncSocketId = null;
+  var bagSyncSocketPoll = null;
+  var bagRefreshKind = null;
+  function injectHostCss() {
+    if (document.getElementById(STYLE_ID3)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID3;
+    style.textContent = `
+#${HOST_ID} {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  z-index: auto;
+  pointer-events: auto;
+  max-width: min(96vw, 420px);
+  max-height: min(70vh, calc(100vh - 72px));
+  overflow: auto;
+}
+#${HOST_ID} .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.imodal .theinventory {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+#${MOUNT_ID} {
+  pointer-events: auto;
+}
+`;
+    document.head.append(style);
+  }
+  function notifyInventory(open) {
+    for (let i = 0; i < listeners6.length; i++) {
+      try {
+        listeners6[i](open);
+      } catch (e2) {
+      }
+    }
+  }
+  function notifyBagSync() {
+    for (let i = 0; i < syncListeners.length; i++) {
+      try {
+        syncListeners[i]();
+      } catch (e2) {
+      }
+    }
+  }
+  function observingSnapshotName(obs = window.observing) {
+    if (!obs || obs.name == null) return null;
+    return String(obs.name);
+  }
+  function hasItemsSnapshot(obs = window.observing) {
+    return !!(obs && Array.isArray(obs.items));
+  }
+  function setBagSyncedAt(ts, name) {
+    bagSyncedAt = ts;
+    if (ts == null) bagSyncedForName = null;
+    else if (name !== void 0) bagSyncedForName = name;
+    notifyBagSync();
+  }
+  function setBagRefreshing(next) {
+    if (bagRefreshing === next) return;
+    bagRefreshing = next;
+    notifyBagSync();
+  }
+  function clearRefreshPoll() {
+    if (refreshPollTimer != null) {
+      window.clearInterval(refreshPollTimer);
+      refreshPollTimer = null;
+    }
+  }
+  function onObserveWelcome(data) {
+    if (data && data.character) {
+      const ts = Date.now();
+      data.character[BAG_SYNC_STAMP_KEY] = ts;
+      const name = data.character.name != null ? String(data.character.name) : null;
+      setBagSyncedAt(ts, name);
+      return;
+    }
+    if (bagSyncedAt != null) setBagSyncedAt(null);
+  }
+  function backfillBagSyncedAt() {
+    if (bagSyncedAt != null) return;
+    const obs = window.observing;
+    if (!hasItemsSnapshot(obs)) return;
+    stampBagSyncedFromObserving(obs);
+  }
+  function syncBagStateForSocket() {
+    const socket = window.socket;
+    if (!socket || !socket.id || typeof socket.on !== "function") return;
+    const socketChanged = socket.id !== bagSyncSocketId;
+    if (socketChanged) {
+      bagSyncSocketId = socket.id;
+      socket.on("welcome", onObserveWelcome);
+    }
+    const obs = window.observing;
+    if (hasItemsSnapshot(obs)) {
+      if (socketChanged || bagSyncedAt == null) {
+        stampBagSyncedFromObserving(obs);
+      }
+      const name = observingSnapshotName(obs);
+      if (window.inventory && name != null && name !== bagRenderedForName) {
+        reRenderLocalSnapshot();
+      }
+    } else if (socketChanged && bagSyncedAt != null) {
+      setBagSyncedAt(null);
+    }
+  }
+  function installBagSyncSocketWatch() {
+    syncBagStateForSocket();
+    if (bagSyncSocketPoll != null) return;
+    bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
+  }
+  function subscribeInventory(listener) {
+    listeners6.push(listener);
+    return () => {
+      const idx = listeners6.indexOf(listener);
+      if (idx >= 0) listeners6.splice(idx, 1);
+    };
+  }
+  function subscribeBagSync(listener) {
+    syncListeners.push(listener);
+    return () => {
+      const idx = syncListeners.indexOf(listener);
+      if (idx >= 0) syncListeners.splice(idx, 1);
+    };
+  }
+  function isInventoryOpen() {
+    return !!window.inventory;
+  }
+  function getBagSyncedAt() {
+    return bagSyncedAt;
+  }
+  function getBagSyncedName() {
+    return bagSyncedForName;
+  }
+  function isBagGridStale() {
+    if (!window.inventory) return false;
+    const name = observingSnapshotName();
+    if (!name || bagRenderedForName == null) return false;
+    return name !== bagRenderedForName;
+  }
+  function isBagRefreshing() {
+    return bagRefreshing;
+  }
+  function getBagRefreshKind() {
+    return bagRefreshKind;
+  }
+  function hasObservingInventorySnapshot() {
+    return hasItemsSnapshot();
+  }
+  function stampBagSyncedFromObserving(obs) {
+    if (!obs) return;
+    const name = observingSnapshotName(obs);
+    const stamped = obs[BAG_SYNC_STAMP_KEY];
+    if (typeof stamped === "number" && stamped > 0) {
+      setBagSyncedAt(stamped, name);
+      return;
+    }
+    const ts = Date.now();
+    obs[BAG_SYNC_STAMP_KEY] = ts;
+    setBagSyncedAt(ts, name);
+  }
+  function findObserveSecret(name) {
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch && ch.name === name && ch.secret) return String(ch.secret);
+    }
+    return null;
+  }
+  function closeInventory() {
+    closeInventoryHost();
+  }
+  function closeInventoryHost() {
+    const host2 = document.getElementById(HOST_ID);
+    if (host2) host2.innerHTML = "";
+    window.inventory = false;
+    bagRenderedForName = null;
+    restoreCharacter();
+    notifyInventory(false);
+    notifyBagSync();
+  }
+  function reRenderLocalSnapshot() {
+    bagRefreshKind = "local";
+    callThroughDraw(() => {
+      if (typeof window.render_inventory !== "function") return;
+      if (window.inventory) {
+        window.render_inventory(true);
+        bagRenderedForName = observingSnapshotName();
+        notifyBagSync();
+      } else {
+        window.render_inventory();
+      }
+    });
+  }
+  function refreshObservedInventory() {
+    const obs = window.observing;
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    const secret = name ? findObserveSecret(name) : null;
+    if (!name || !secret || typeof window.init_socket !== "function") {
+      reRenderLocalSnapshot();
+      return;
+    }
+    clearRefreshPoll();
+    bagRefreshKind = null;
+    refreshPendingName = name;
+    setBagRefreshing(true);
+    if (window.inventory) closeInventoryHost();
+    saveSettings({ bagOpenPreferred: true });
+    const initSocket = window.init_socket;
+    if (typeof initSocket !== "function") {
+      setBagRefreshing(false);
+      refreshPendingName = null;
+      reRenderLocalSnapshot();
+      return;
+    }
+    initSocket({ secret });
+    let attempts = 0;
+    refreshPollTimer = window.setInterval(() => {
+      attempts += 1;
+      const next = window.observing;
+      if (next && next.name === refreshPendingName && next.items) {
+        clearRefreshPoll();
+        bagRefreshKind = "server";
+        refreshPendingName = null;
+        backfillBagSyncedAt();
+        if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
+        openInventory();
+        setBagRefreshing(false);
+        return;
+      }
+      if (attempts > 40) {
+        clearRefreshPoll();
+        refreshPendingName = null;
+        if (window.observing) {
+          bagRefreshKind = "server";
+          backfillBagSyncedAt();
+          if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
+          openInventory();
+        } else {
+          bagRefreshKind = "local";
+        }
+        setBagRefreshing(false);
+      }
+    }, 250);
+  }
+  function applyBagLayoutPos(pos) {
+    const host2 = document.getElementById(HOST_ID);
+    if (!host2) return;
+    if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
+      host2.style.position = "relative";
+      host2.style.left = "";
+      host2.style.top = "";
+      host2.style.transform = "";
+      host2.style.zIndex = "";
+      return;
+    }
+    const layout = mergeLayout(getSettings().panelLayout);
+    const p = pos || layout.bag;
+    const style = panelStyle(p, false);
+    host2.style.position = "fixed";
+    host2.style.left = String(style.left);
+    host2.style.top = String(style.top);
+    host2.style.transform = String(style.transform);
+    host2.style.zIndex = "240";
+    host2.style.pointerEvents = "auto";
+    host2.style.maxWidth = "min(96vw, 420px)";
+    host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
+    host2.style.overflow = "auto";
+  }
+  function ensureInventoryHost() {
+    injectHostCss();
+    let el = document.getElementById(HOST_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = HOST_ID;
+      el.className = "bpclicks enableclicks";
+      document.body.append(el);
+    }
+    applyBagLayoutPos();
+    return el;
+  }
+  function attachInventoryToMount(mount) {
+    if (!mount) return;
+    mount.id = MOUNT_ID;
+    const host2 = ensureInventoryHost();
+    if (host2.parentElement !== mount) {
+      mount.append(host2);
+    }
+    applyBagLayoutPos();
+  }
+  function callThroughDraw(fn) {
+    if (typeof window.draw_trigger === "function") {
+      window.draw_trigger(fn);
+    } else {
+      fn();
+    }
+  }
+  function restoreCharacter() {
+    if (!window[HOLD_CHAR]) return;
+    window.character = window[SAVED_CHAR];
+    delete window[SAVED_CHAR];
+    window[HOLD_CHAR] = false;
+  }
+  function prepareObservingCharacter() {
+    const obs = window.observing;
+    if (!window[HOLD_CHAR]) {
+      window[SAVED_CHAR] = window.character;
+      window[HOLD_CHAR] = true;
+    }
+    if (obs) {
+      window.character = obs;
+    }
+    const ch = window.character;
+    if (!ch) return false;
+    if (!ch.items) ch.items = [];
+    if (ch.isize == null) ch.isize = 42;
+    if (!ch.q) ch.q = {};
+    return true;
+  }
+  function openInventory() {
+    callThroughDraw(() => {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory();
+      }
+    });
+  }
+  function restorePreferredBagOpen() {
+    const preferOpen = !!getSettings().bagOpenPreferred;
+    if (!preferOpen) return;
+    if (isInventoryOpen()) return;
+    window.setTimeout(() => {
+      if (isInventoryOpen()) return;
+      if (typeof window.render_inventory === "function") {
+        openInventory();
+      }
+    }, 600);
+  }
+  function installInventoryClickBridge() {
+    if (window.__ecuInvClickPatched) return;
+    const tryPatch = () => {
+      const original = window.inventory_click;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInvClickPatched) return true;
+      window.__ecuInvClickPatched = true;
+      window.inventory_click = function patchedInventoryClick(num, event) {
+        if (window.is_comm) {
+          if (event && typeof window.stpr === "function") window.stpr(event);
+          const obs = window.observing;
+          const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
+          if (!item || !item.name || item.name === "placeholder") return;
+          openItem(obs, `inv${num}`, item, { dialogOnly: true });
+          return;
+        }
+        return original.call(this, num, event);
+      };
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) window.clearInterval(timer);
+    }, 250);
+  }
+  function installInventoryFix() {
+    installInventoryClickBridge();
+    installBagSyncSocketWatch();
+    if (window.__ecuInventoryPatched) return;
+    const tryPatch = () => {
+      const original = window.render_inventory;
+      if (typeof original !== "function") return false;
+      if (window.__ecuInventoryPatched) return true;
+      window.__ecuInventoryPatched = true;
+      ensureInventoryHost();
+      window.render_inventory = function patchedRenderInventory(reset) {
+        ensureInventoryHost();
+        if (window.inventory && !reset) {
+          const host2 = document.getElementById(HOST_ID);
+          if (host2) host2.innerHTML = "";
+          window.inventory = false;
+          bagRenderedForName = null;
+          restoreCharacter();
+          notifyInventory(false);
+          notifyBagSync();
+          return;
+        }
+        const savedComm = window.is_comm;
+        if (!prepareObservingCharacter()) {
+          restoreCharacter();
+          return;
+        }
+        window.is_comm = false;
+        let opened = false;
+        try {
+          if (typeof window.hide_modal === "function") {
+            try {
+              window.hide_modal();
+            } catch (e2) {
+            }
+          }
+          const result = original.call(this, reset);
+          opened = !!window.inventory;
+          return result;
+        } finally {
+          window.is_comm = savedComm;
+          restoreCharacter();
+          if (opened) {
+            bagRenderedForName = observingSnapshotName();
+            backfillBagSyncedAt();
+            applyBagLayoutPos();
+            notifyInventory(true);
+            notifyBagSync();
+          } else if (!window.inventory) {
+            bagRenderedForName = null;
+            notifyInventory(false);
+          }
+        }
+      };
+      restorePreferredBagOpen();
+      return true;
+    };
+    if (tryPatch()) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (tryPatch() || attempts > 40) {
+        window.clearInterval(timer);
+      }
+    }, 250);
+  }
+  if (typeof window !== "undefined") {
+    installBagSyncSocketWatch();
+  }
+
+  // src/host/mail/commands.ts
+  function lit(value) {
+    return JSON.stringify(String(value));
+  }
+  function fingerprintCheckJs(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit(fp.name)}`];
+    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
+    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit(fp.p)}`);
+    return parts.join("||");
+  }
+  function sleepJs(ms) {
+    return `await new Promise(function(r){setTimeout(r,${ms | 0});});`;
+  }
+  function awaitSendMailJs(callExpr, failLog, onFailJs = "") {
+    const beforeReturn = onFailJs || "";
+    return [
+      `var __mr=null;`,
+      `try{__mr=await ${callExpr};}catch(__e){__mr=__e&&typeof __e==="object"?__e:{failed:true};}`,
+      `if(__mr&&__mr.failed&&!__mr.in_progress){`,
+      `game_log(${lit(failLog)});`,
+      beforeReturn,
+      `return;`,
+      `}`,
+      `if(__mr&&__mr.in_progress){`,
+      `var __md=null;`,
+      `character.once("mail_sent",function(){__md={ok:1};});`,
+      `character.once("mail_failed",function(d){__md={ok:0,d:d};});`,
+      `for(var __mi=0;__mi<20000;__mi++){if(__md)break;await sleep(1);}`,
+      `if(!__md){game_log(${lit("Mail send timeout")});${beforeReturn}return;}`,
+      `if(!__md.ok){`,
+      `game_log(${lit(failLog)}+(__md.d&&__md.d.reason?(" \xB7 "+__md.d.reason):""));`,
+      beforeReturn,
+      `return;`,
+      `}`,
+      `}`
+    ].join("");
+  }
+  function goldGuardJs(need, label) {
+    return [
+      `if(character.gold<${need | 0}){`,
+      `game_log(${lit(label)});`,
+      `return;`,
+      `}`
+    ].join("");
+  }
+  function attachStepJs(fp, toLit, subjectLit, bodyLit, index, total, stepCost) {
+    const preferSlot = Number(fp.slot) | 0;
+    const mismatch = fingerprintCheckJs(fp, "it");
+    const mismatch0 = fingerprintCheckJs(fp, "it0");
+    const candMismatch = fingerprintCheckJs(fp, "__cand");
+    const abortMsg = lit(
+      total > 1 ? "Mail attach mismatch \u2014 aborted " + index + "/" + total : "Mail attach mismatch \u2014 aborted"
+    );
+    const swapAbort = lit(
+      total > 1 ? "Mail swap failed \u2014 aborted " + index + "/" + total : "Mail swap failed \u2014 aborted"
+    );
+    const goldAbort = total > 1 ? "Mail aborted \u2014 not enough gold " + index + "/" + total : "Mail aborted \u2014 not enough gold";
+    const failLog = total > 1 ? "Mail send failed " + index + "/" + total : "Mail send failed";
+    return [
+      goldGuardJs(stepCost, goldAbort),
+      `var __slot=${preferSlot};`,
+      `var it=character.items[__slot];`,
+      `if(${mismatch}){`,
+      `__slot=-1;`,
+      `for(var __si=0;__si<character.items.length;__si++){`,
+      `var __cand=character.items[__si];`,
+      `if(!(${candMismatch})){__slot=__si;break;}`,
+      `}`,
+      `if(__slot<0){game_log(${abortMsg});return;}`,
+      `it=character.items[__slot];`,
+      `}`,
+      `await swap(__slot,0);`,
+      `var it0=character.items[0];`,
+      `if(${mismatch0}){`,
+      `game_log(${swapAbort});`,
+      `await swap(0,__slot);`,
+      `return;`,
+      `}`,
+      // Restore displacee only after mail_sent; early fail keeps item in slot 0.
+      awaitSendMailJs(
+        `send_mail(${toLit},${subjectLit},${bodyLit},true)`,
+        failLog,
+        `await swap(0,__slot);`
+      ),
+      `await swap(0,__slot);`
+    ].join("");
+  }
+  function buildSendScript(opts) {
+    const tos = normalizeComposeTos(opts.to);
+    const list = opts.attaches && opts.attaches.length ? opts.attaches.slice() : [];
+    if (!list.length) {
+      if (!tos.length) {
+        return `game_log("Mail aborted \u2014 no recipient");`;
+      }
+      const subject = lit(String(opts.subject || "").trim());
+      const body = lit(String(opts.body || ""));
+      const parts2 = [
+        goldGuardJs(
+          MAIL_SEND_COST * tos.length,
+          tos.length > 1 ? "Mail aborted \u2014 not enough gold for " + tos.length + " recipients" : "Mail aborted \u2014 not enough gold"
+        )
+      ];
+      for (let i = 0; i < tos.length; i++) {
+        parts2.push(
+          awaitSendMailJs(
+            `send_mail(${lit(tos[i])},${subject},${body})`,
+            "Mail send failed \u2192 " + tos[i]
+          )
+        );
+      }
+      return parts2.join("");
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (!String(list[i].to || "").trim()) {
+        return `game_log("Mail aborted \u2014 attach missing recipient");`;
+      }
+    }
+    const stepCost = MAIL_SEND_COST + MAIL_ATTACH_EXTRA;
+    const total = list.length;
+    const parts = [
+      goldGuardJs(
+        stepCost * total,
+        "Mail aborted \u2014 not enough gold for batch (" + total + "\xD7 attach)"
+      )
+    ];
+    for (let i = 0; i < list.length; i++) {
+      const fp = list[i];
+      const subject = lit(
+        resolveMailSubject(opts.subject, fp, i + 1, total)
+      );
+      const body = lit(resolveMailBody(opts.body, fp));
+      parts.push(
+        attachStepJs(fp, lit(fp.to), subject, body, i + 1, total, stepCost)
+      );
+    }
+    return parts.join("");
+  }
+  function buildTakeScript(mailIds) {
+    const ids = Array.isArray(mailIds) ? mailIds : [mailIds];
+    if (!ids.length) return `game_log("Mail take aborted \u2014 no ids");`;
+    const parts = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = lit(ids[i]);
+      const n = i + 1;
+      const total = ids.length;
+      const spaceMsg = lit(
+        total > 1 ? "Mail take aborted \u2014 no inventory space " + n + "/" + total : "Mail take aborted \u2014 no inventory space"
+      );
+      parts.push(
+        `if(character.esize<1){game_log(${spaceMsg});return;}`,
+        `parent.socket.emit("mail_take_item",{id:${id}});`
+      );
+      if (i < ids.length - 1) {
+        parts.push(sleepJs(500));
+      }
+    }
+    return parts.join("");
+  }
+
+  // src/host/mail/itemFingerprint.ts
+  function itemMatchesFingerprint(item, expected) {
+    if (!item || !item.name) return false;
+    if (item.name !== expected.name) return false;
+    if (expected.level != null) {
+      if (item.level !== expected.level) return false;
+    }
+    if (expected.q != null) {
+      if (item.q !== expected.q) return false;
+    }
+    if (expected.p != null) {
+      if (item.p !== expected.p) return false;
+    }
+    return true;
+  }
+  function fingerprintFromSlot(slot, item) {
+    if (!item || !item.name || item.name === "placeholder") return null;
+    const fp = { slot, name: String(item.name) };
+    if (item.level != null) fp.level = Number(item.level);
+    if (item.q != null) fp.q = Number(item.q);
+    if (item.p != null) fp.p = String(item.p);
+    return fp;
+  }
+  function findFingerprintSlot(items, expected, usedSlots) {
+    if (!items || !items.length) return -1;
+    const prefer = Number(expected.slot) | 0;
+    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
+      return prefer;
+    }
+    for (let i = 0; i < items.length; i++) {
+      if (usedSlots && usedSlots.has(i)) continue;
+      if (itemMatchesFingerprint(items[i], expected)) return i;
+    }
+    return -1;
+  }
+
+  // src/host/mail/mailOutcomes.ts
+  var pendingOutcome = null;
+  var cmdSeq = 0;
+  function resolvePendingOutcome() {
+    const p = pendingOutcome;
+    pendingOutcome = null;
+    if (!p) {
+      commit({ commandBusy: false });
+      return;
+    }
+    const result = resolveCommandOutcome(p, getMails());
+    commit({
+      commandBusy: false,
+      status: result.text,
+      statusKind: result.kind
+    });
+  }
+  function rebindAttachSlots(attaches) {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) {
+      return "Not observing \u2014 cannot verify attaches";
+    }
+    const used = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < attaches.length; i++) {
+      const fp = attaches[i];
+      const slot = findFingerprintSlot(obs.items, fp, used);
+      if (slot < 0) {
+        const label = fp.level != null ? fp.name + " +" + fp.level : fp.name;
+        return "Attach not in observed bag: " + label + " \u2014 Refresh bag, then re-queue";
+      }
+      used.add(slot);
+      out.push({ ...fp, slot });
+    }
+    return out;
+  }
+  function patchObservingAfterAttachSend(attaches) {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return;
+    let changed = false;
+    for (let i = 0; i < attaches.length; i++) {
+      const fp = attaches[i];
+      const slot = findFingerprintSlot(obs.items, fp, null);
+      if (slot < 0) continue;
+      obs.items[slot] = null;
+      changed = true;
+    }
+    if (changed) {
+      try {
+        if (typeof window.render_inventory === "function") {
+          window.render_inventory();
+        }
+      } catch (e2) {
+      }
+    }
+  }
+  function sendLooksSettled(p) {
+    if (p.kind !== "send") return true;
+    const result = resolveCommandOutcome(p, getMails());
+    return result.code === "looks_sent";
+  }
+  function scheduleCommandHead(reason, delayMs) {
+    const seq = ++cmdSeq;
+    const wait = typeof delayMs === "number" && delayMs > 0 ? delayMs : MAIL_COMMAND_HEAD_DELAY_MS;
+    window.setTimeout(() => {
+      if (seq !== cmdSeq) return;
+      void (async () => {
+        const isCommand = reason.indexOf("command") === 0;
+        const sendPending = isCommand && pendingOutcome && pendingOutcome.kind === "send" ? pendingOutcome : null;
+        const attempts = sendPending ? 4 : 1;
+        for (let i = 0; i < attempts; i++) {
+          if (seq !== cmdSeq) return;
+          await requestMailHead(reason, { force: true });
+          if (!sendPending || sendLooksSettled(sendPending) || i === attempts - 1) {
+            break;
+          }
+          await new Promise((r) => window.setTimeout(r, 900));
+        }
+        if (isCommand) {
+          resolvePendingOutcome();
+        }
+        try {
+          refreshObservedInventory();
+        } catch (e2) {
+        }
+      })();
+    }, wait);
+  }
+  function sendMailCommand(opts) {
+    if (getCommandBusy()) {
+      setStatus("Wait for previous command\u2026", "warn");
+      return false;
+    }
+    const tos = Array.isArray(opts.to) ? opts.to.map(String).filter(Boolean) : opts.to ? [String(opts.to)] : [];
+    const attachesIn = opts.attaches && opts.attaches.length ? opts.attaches.slice() : [];
+    let attaches = [];
+    if (attachesIn.length) {
+      if (!attachesHaveRecipients(attachesIn)) {
+        setStatus("Each attach needs a To recipient", "warn");
+        return false;
+      }
+      const rebound = rebindAttachSlots(attachesIn);
+      if (typeof rebound === "string") {
+        setStatus(rebound, "err");
+        return false;
+      }
+      attaches = rebound;
+    } else if (!tos.length) {
+      setStatus("Add a recipient", "warn");
+      return false;
+    }
+    const expect = attaches.length > 0 ? attaches.length : Math.max(1, tos.length);
+    const script = buildSendScript({
+      to: tos,
+      subject: opts.subject,
+      body: opts.body,
+      attaches: attaches.length ? attaches : void 0
+    });
+    const ok = emitObserverCommand(script);
+    if (!ok) {
+      commit({ lastScript: script });
+      setStatus("No socket \u2014 cannot send command", "err");
+      return false;
+    }
+    if (attaches.length) {
+      patchObservingAfterAttachSend(attaches);
+    }
+    const stickyTo = [];
+    const seenSticky = /* @__PURE__ */ new Set();
+    const pushSticky = (name) => {
+      const key = name.toLowerCase();
+      if (!name || seenSticky.has(key)) return;
+      seenSticky.add(key);
+      stickyTo.push(name);
+    };
+    if (attaches.length) {
+      for (let i = 0; i < attaches.length; i++) {
+        pushSticky(String(attaches[i].to || "").trim());
+      }
+    }
+    for (let i = 0; i < tos.length; i++) pushSticky(String(tos[i]).trim());
+    try {
+      saveSettings({ mailLastTo: stickyTo.slice(0, 8) });
+    } catch (e2) {
+    }
+    const mails = getMails();
+    const beforeIds = [];
+    for (let i = 0; i < mails.length; i++) beforeIds.push(mails[i].id);
+    const fromName = window.observing && window.observing.name || getObserving() && getObserving().name || "";
+    pendingOutcome = {
+      kind: "send",
+      beforeIds,
+      targetIds: [],
+      expect,
+      fromNames: fromName ? [String(fromName)] : void 0
+    };
+    const obs = fromName || "character";
+    commit({
+      lastScript: script,
+      commandBusy: true,
+      status: expect > 1 ? "Batch command \xB7 " + expect + " mails \u2192 " + obs + "\u2026" : "Command sent to " + obs + "\u2026",
+      statusKind: "warn",
+      view: { kind: "list" }
+    });
+    persistDraft(emptyDraft());
+    scheduleCommandHead(
+      "command \xB7 send",
+      MAIL_COMMAND_HEAD_DELAY_MS + 1200 + (expect - 1) * 800
+    );
+    return true;
+  }
+  function takeMailCommand(mailIdOrIds) {
+    if (getCommandBusy()) {
+      setStatus("Wait for previous command\u2026", "warn");
+      return false;
+    }
+    const ids = Array.isArray(mailIdOrIds) ? mailIdOrIds.slice() : [mailIdOrIds];
+    if (!ids.length) return false;
+    const script = buildTakeScript(ids);
+    const ok = emitObserverCommand(script);
+    if (!ok) {
+      commit({ lastScript: script });
+      setStatus("No socket \u2014 cannot send command", "err");
+      return false;
+    }
+    const mails = getMails();
+    const beforeIds = [];
+    for (let i = 0; i < mails.length; i++) beforeIds.push(mails[i].id);
+    pendingOutcome = {
+      kind: "take",
+      beforeIds,
+      targetIds: ids.slice(),
+      expect: ids.length
+    };
+    const obs = window.observing && window.observing.name || getObserving() && getObserving().name || "character";
+    commit({
+      lastScript: script,
+      commandBusy: true,
+      status: ids.length > 1 ? "Take batch \xB7 " + ids.length + " \u2192 " + obs + "\u2026" : "Command sent to " + obs + "\u2026",
+      statusKind: "warn"
+    });
+    scheduleCommandHead(
+      "command \xB7 take",
+      ids.length > 1 ? MAIL_COMMAND_HEAD_DELAY_MS + (ids.length - 1) * 600 : MAIL_COMMAND_HEAD_DELAY_MS
+    );
+    return true;
+  }
+
+  // src/host/mail/mailSession.ts
+  function setMailPanelOpen(open) {
+    if (!open) {
+      commit({ panelOpen: false });
+      stopPrefetch();
+      schedulePersistMailCache();
+      return;
+    }
+    ensureComposeDraftHydrated();
+    resetPrefetchPages();
+    commit({ panelOpen: true });
+    void (async () => {
+      await hydrateMailCacheFromIdb();
+      await requestMailHead("open");
+      if (getMailSnapshot().panelOpen) schedulePrefetch();
+    })();
+  }
   var openListeners = [];
   function subscribeMailOpen(fn) {
     openListeners.push(fn);
@@ -9852,18 +13216,6 @@ ${CHROME_ARRANGE_CSS}
     for (let i = 0; i < openListeners.length; i++) {
       openListeners[i](payload);
     }
-  }
-
-  // src/host/mail/xUnread.ts
-  var SERVER_UNREAD_CAP = 100;
-  function getXUnread() {
-    const x = window.X;
-    return Math.max(0, Number(x && x.unread) || 0);
-  }
-  function formatUnreadBadgeLabel(n) {
-    const c = Math.max(0, Math.floor(Number(n) || 0));
-    if (c >= SERVER_UNREAD_CAP) return SERVER_UNREAD_CAP + "+";
-    return String(c);
   }
 
   // src/host/commChrome/chromeActions.ts
@@ -10016,16 +13368,6 @@ ${CHROME_ARRANGE_CSS}
       const tourId = map[label];
       if (tourId) btn.setAttribute("data-ecu-tour", tourId);
     }
-  }
-  function syncMailBadge() {
-    const badge = document.querySelector(
-      "[data-ecu-mail-badge]"
-    );
-    if (!badge) return;
-    const n = getXUnread();
-    badge.textContent = formatUnreadBadgeLabel(n);
-    badge.hidden = n === 0;
-    badge.title = n >= SERVER_UNREAD_CAP ? "Unread mail (server reports at most 100)" : n ? n + " unread" : "";
   }
   function syncActionsEnabled() {
     const watching = !!(window.observing && window.observing.name);
@@ -10647,565 +13989,6 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
-  // src/host/infoDialog/bindings.ts
-  var openItemFn = null;
-  var openConditionFn = null;
-  function bindOpenHandlers(openItem2, openCondition2) {
-    openItemFn = openItem2;
-    openConditionFn = openCondition2;
-  }
-  function callOpenItem(entity, slotName, slotOverride) {
-    if (openItemFn) openItemFn(entity, slotName, slotOverride);
-  }
-  function callOpenCondition(entity, conditionName) {
-    if (openConditionFn) openConditionFn(entity, conditionName);
-  }
-
-  // src/host/infoDialog/types.ts
-  var BUFF_DIALOG_ID = "ecu-buff-dialog";
-  var ITEM_DIALOG_ID = "ecu-item-dialog";
-  var STOCK_DIALOG_ID = "topleftcornerdialog";
-  var INFO_SOURCE_ATTR = "data-ecu-info-source";
-  var CLOSE_CLASS = "ecu-dialog-close";
-  var ADOPTED_CLASS = "ecu-info-dialog-adopted";
-  var BUFF_SEL = "#" + BUFF_DIALOG_ID;
-  var ITEM_SEL = "#" + ITEM_DIALOG_ID;
-  var STOCK_SEL = "#" + STOCK_DIALOG_ID;
-  function dialogIdFor(kind) {
-    return kind === "buff" ? BUFF_DIALOG_ID : ITEM_DIALOG_ID;
-  }
-  function panelAttrFor(kind) {
-    return kind === "buff" ? "buffInfo" : "itemInfo";
-  }
-
-  // src/host/infoDialog/css.ts
-  var STYLE_ID2 = "comm-ui-dialog-host-css";
-  function injectDialogHostCss() {
-    if (document.getElementById(STYLE_ID2)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID2;
-    style.textContent = `
-/* Fallback host when not yet adopted into CommUI layout panel. */
-#topleftcorner:not(.ecu-info-slot-host) {
-  position: fixed !important;
-  top: 8px !important;
-  left: 8px !important;
-  z-index: 230 !important;
-  pointer-events: none !important;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#topleftcornerui {
-  pointer-events: auto !important;
-  vertical-align: top;
-  display: inline-block;
-}
-/* Stub: leftover stock selectors still target this id; content lives in ecu-* hosts. */
-#${STOCK_DIALOG_ID} {
-  display: none !important;
-}
-#${BUFF_DIALOG_ID},
-#${ITEM_DIALOG_ID} {
-  pointer-events: auto !important;
-  vertical-align: top;
-  display: inline-block;
-  position: relative;
-}
-#${BUFF_DIALOG_ID}.${ADOPTED_CLASS},
-#${ITEM_DIALOG_ID}.${ADOPTED_CLASS} {
-  display: block;
-  max-width: min(96vw, 520px);
-  max-height: min(80vh, calc(100vh - 96px));
-  overflow: auto;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS},
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS} {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 2;
-  cursor: pointer;
-  border: 1px solid #555;
-  background: #1c1c1c;
-  color: #ddd;
-  width: 28px;
-  height: 28px;
-  line-height: 24px;
-  padding: 0;
-  font-size: 18px;
-  text-align: center;
-  box-sizing: border-box;
-}
-#${BUFF_DIALOG_ID} .${CLOSE_CLASS}:hover,
-#${ITEM_DIALOG_ID} .${CLOSE_CLASS}:hover {
-  border-color: #888;
-  color: #fff;
-}
-`;
-    document.head.append(style);
-  }
-
-  // src/host/infoDialog/hosts.ts
-  function dialogEl(kind) {
-    return document.getElementById(dialogIdFor(kind));
-  }
-  function hasContent(el) {
-    return !!(el && String(el.innerHTML || "").trim());
-  }
-  function ensureNamedDialog(id, parent) {
-    let dialog = document.getElementById(id);
-    if (!dialog) {
-      dialog = document.createElement("div");
-      dialog.id = id;
-      dialog.className = "bpclicks enableclicks";
-      parent.append(dialog);
-    }
-    return dialog;
-  }
-  function ensureDialogElements() {
-    injectDialogHostCss();
-    const body = document.body;
-    if (!body) {
-      throw new Error("ensureDialogElements: document.body is not ready");
-    }
-    let corner = document.getElementById("topleftcorner");
-    if (!corner) {
-      corner = document.createElement("div");
-      corner.id = "topleftcorner";
-      corner.className = "bpclicks";
-      body.append(corner);
-    }
-    if (!document.getElementById("topleftcornerui")) {
-      const ui = document.createElement("div");
-      ui.id = "topleftcornerui";
-      ui.className = "bpclicks";
-      corner.append(ui);
-    }
-    const stock = ensureNamedDialog(STOCK_DIALOG_ID, corner);
-    const buff = ensureNamedDialog(BUFF_DIALOG_ID, corner);
-    const item = ensureNamedDialog(ITEM_DIALOG_ID, corner);
-    return { buff, item, stock };
-  }
-  function adoptInfoDialog(kind, slot) {
-    const { buff, item } = ensureDialogElements();
-    const dialog = kind === "buff" ? buff : item;
-    if (dialog.parentElement !== slot) {
-      slot.appendChild(dialog);
-    }
-    dialog.classList.add(ADOPTED_CLASS);
-    dialog.setAttribute("data-ecu-kind", kind);
-    dialog.setAttribute("data-panel-host", panelAttrFor(kind));
-    const corner = document.getElementById("topleftcorner");
-    if (corner) corner.classList.add("ecu-info-slot-host");
-    return dialog;
-  }
-  function ensureAdoptedHost(kind) {
-    const { buff, item } = ensureDialogElements();
-    const slotSel = kind === "item" ? ".comm-item-info-slot" : ".comm-buff-info-slot";
-    const slot = document.querySelector(slotSel);
-    if (slot) return adoptInfoDialog(kind, slot);
-    return kind === "buff" ? buff : item;
-  }
-
-  // src/host/infoDialog/write.ts
-  var listeners4 = /* @__PURE__ */ new Set();
-  var pendingWriteKind = "item";
-  function setPendingWriteKind(kind) {
-    pendingWriteKind = kind;
-  }
-  function getPendingWriteKind() {
-    return pendingWriteKind;
-  }
-  function subscribeInfoDialogChange(listener) {
-    listeners4.add(listener);
-    return () => {
-      listeners4.delete(listener);
-    };
-  }
-  function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners4)) {
-      try {
-        listener(kind, open);
-      } catch (e2) {
-      }
-    }
-  }
-  function clearDialogOnlyXTarget() {
-    if (window.__ecuDialogOnlyXTarget) {
-      window.__ecuDialogOnlyXTarget = false;
-      window.xtarget = null;
-    }
-  }
-  function clearDialogsTarget() {
-    try {
-      window.dialogs_target = null;
-    } catch (e2) {
-    }
-  }
-  function ensureCloseButton(dialog, kind, closeFn) {
-    if (!hasContent(dialog)) return;
-    if (dialog.querySelector("." + CLOSE_CLASS)) return;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = CLOSE_CLASS;
-    btn.title = "Close";
-    btn.setAttribute("aria-label", "Close");
-    btn.textContent = "\xD7";
-    btn.addEventListener("click", (ev) => {
-      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      closeFn(kind);
-    });
-    const panel = dialog.querySelector(".buyitem") || dialog.querySelector(".cccx") || dialog.firstElementChild;
-    if (panel) {
-      const pos = window.getComputedStyle(panel).position;
-      if (!pos || pos === "static") panel.style.position = "relative";
-      panel.appendChild(btn);
-    } else {
-      dialog.appendChild(btn);
-    }
-  }
-  var FN_ORIG = "__ecuInfoOrig";
-  function buildItemHtml(args) {
-    const w = window;
-    const renderItem = typeof w.render_item === "function" && w.render_item[FN_ORIG] || w.render_item;
-    if (typeof renderItem !== "function") return "";
-    try {
-      const html = renderItem.call(w, "html", args);
-      return typeof html === "string" ? html : "";
-    } catch (e2) {
-      return "";
-    }
-  }
-  function buildConditionHtml(name) {
-    const w = window;
-    const G = w.G;
-    if (!G || !G.conditions) return "";
-    let def = G.conditions[name];
-    let minutes = 0;
-    let condition;
-    const target = w.xtarget || w.ctarget;
-    if (target && target.s && target.s[name] && target.s[name].ms) {
-      minutes = target.s[name].ms / 6e3 / 10;
-    }
-    if (target && target.s && target.s[name]) {
-      const clone = typeof w.clone === "function" ? w.clone : null;
-      def = !def ? {} : clone ? clone(def) : { ...def };
-      condition = target.s[name];
-      const keys = Object.keys(condition);
-      for (let i = 0; i < keys.length; i++) {
-        def[keys[i]] = condition[keys[i]];
-      }
-    }
-    return buildItemHtml({
-      skin: condition && condition.skin || def && def.skin,
-      item: def,
-      prop: def,
-      minutes,
-      condition
-    });
-  }
-  var closeKindImpl = () => false;
-  function bindCloseImpl(fn) {
-    closeKindImpl = fn;
-  }
-  function writeInfoHtml(kind, html) {
-    const host2 = ensureAdoptedHost(kind);
-    host2.innerHTML = html || "";
-    if (hasContent(host2)) {
-      ensureCloseButton(host2, kind, (k) => {
-        closeKindImpl(k);
-      });
-    }
-    emitInfoDialogChange(kind, hasContent(host2));
-  }
-  function clearInfoHost(kind) {
-    const el = dialogEl(kind);
-    if (!hasContent(el)) return false;
-    el.innerHTML = "";
-    if (kind === "buff") clearDialogOnlyXTarget();
-    clearDialogsTarget();
-    emitInfoDialogChange(kind, false);
-    return true;
-  }
-
-  // src/host/infoDialog/dismiss.ts
-  var HANDLER = "__ecuDialogDismissHandler";
-  var layoutEditing = false;
-  function setInfoDialogLayoutEditing(editing) {
-    layoutEditing = !!editing;
-  }
-  function isOpen(kind) {
-    return hasContent(dialogEl(kind));
-  }
-  function isInfoDialogChrome(el) {
-    if (!el.closest) return false;
-    return !!(el.closest("#" + BUFF_DIALOG_ID) || el.closest("#" + ITEM_DIALOG_ID) || el.closest('[data-panel="buffInfo"]') || el.closest('[data-panel="itemInfo"]'));
-  }
-  function isInfoSource(el) {
-    if (!el.closest) return false;
-    return !!el.closest("[" + INFO_SOURCE_ATTR + "]");
-  }
-  function isTourChrome(el) {
-    if (!el.closest) return false;
-    return !!(el.closest("[data-ecu-tour-portal]") || el.closest(".ecu-tour-root") || el.closest(".ecu-tour-card"));
-  }
-  function onDialogDismissPointerDown(ev) {
-    if (layoutEditing) return;
-    if (!isOpen("buff") && !isOpen("item")) return;
-    const t = ev.target;
-    if (!t) return;
-    const el = t;
-    if (isInfoDialogChrome(el) || isInfoSource(el) || isTourChrome(el)) {
-      return;
-    }
-    clearInfoHost("buff");
-    clearInfoHost("item");
-  }
-  function installDialogDismiss() {
-    const prev = window[HANDLER];
-    if (prev) {
-      document.removeEventListener("pointerdown", prev, true);
-    }
-    window[HANDLER] = onDialogDismissPointerDown;
-    document.addEventListener("pointerdown", onDialogDismissPointerDown, true);
-  }
-
-  // src/host/infoDialog/patches.ts
-  var PATCHED = "__ecuDialogRendersPatched";
-  var FN_MARK = "__ecuInfoPatched";
-  var FN_ORIG2 = "__ecuInfoOrig";
-  function markPatched(patched, orig) {
-    patched[FN_MARK] = true;
-    patched[FN_ORIG2] = orig;
-    return patched;
-  }
-  function isOurPatch(fn) {
-    return !!(fn && fn[FN_MARK]);
-  }
-  function isStockOrEcuSelector(selector) {
-    return selector === STOCK_SEL || selector === STOCK_DIALOG_ID || selector === BUFF_SEL || selector === ITEM_SEL || selector === "#" + STOCK_DIALOG_ID;
-  }
-  function kindFromSelector(selector) {
-    if (selector === BUFF_SEL) return "buff";
-    if (selector === ITEM_SEL) return "item";
-    return getPendingWriteKind();
-  }
-  function installRenderPatches() {
-    const w = window;
-    const done = w[PATCHED] || (w[PATCHED] = {});
-    if (typeof w.render_condition === "function" && !isOurPatch(w.render_condition)) {
-      const orig = w.render_condition[FN_ORIG2] || w.render_condition;
-      w.render_condition = markPatched(function(selector, name) {
-        setPendingWriteKind("buff");
-        return orig.call(this, selector, name);
-      }, orig);
-      done.condition = true;
-    }
-    if (typeof w.render_skill === "function" && !isOurPatch(w.render_skill)) {
-      const orig = w.render_skill[FN_ORIG2] || w.render_skill;
-      w.render_skill = markPatched(function(selector, skill, args) {
-        setPendingWriteKind("buff");
-        return orig.call(this, selector, skill, args);
-      }, orig);
-      done.skill = true;
-    }
-    if (typeof w.render_item === "function" && !isOurPatch(w.render_item)) {
-      const orig = w.render_item[FN_ORIG2] || w.render_item;
-      w.render_item = markPatched(function(selector, args) {
-        if (selector === "html") {
-          return orig.call(this, "html", args);
-        }
-        if (isStockOrEcuSelector(selector)) {
-          const kind = kindFromSelector(selector);
-          setPendingWriteKind(kind);
-          const html = orig.call(this, "html", args);
-          if (typeof html === "string") writeInfoHtml(kind, html);
-          return html;
-        }
-        return orig.call(this, selector, args);
-      }, orig);
-      done.item = true;
-    }
-    if (typeof w.slot_click === "function" && !isOurPatch(w.slot_click)) {
-      const origSlot = w.slot_click[FN_ORIG2] || w.slot_click;
-      w.slot_click = markPatched(function(name) {
-        const target = w.xtarget || w.ctarget;
-        if (target) callOpenItem(target, name);
-      }, origSlot);
-      done.slot = true;
-    }
-    if (typeof w.condition_click === "function" && !isOurPatch(w.condition_click)) {
-      const origCond = w.condition_click[FN_ORIG2] || w.condition_click;
-      w.condition_click = markPatched(function(name) {
-        const target = w.xtarget || w.ctarget;
-        if (target) callOpenCondition(target, name);
-        else origCond.call(this, name);
-      }, origCond);
-      done.conditionClick = true;
-    }
-  }
-  function installInfoDialogLifecycle() {
-    ensureDialogElements();
-    installRenderPatches();
-    installDialogDismiss();
-    if (!window.__ecuDialogPatchRetry) {
-      window.__ecuDialogPatchRetry = true;
-      let tries = 0;
-      const timer2 = window.setInterval(() => {
-        tries += 1;
-        installRenderPatches();
-        const w = window;
-        const ready = isOurPatch(w.render_condition) && isOurPatch(w.render_item) && isOurPatch(w.slot_click) && isOurPatch(w.render_skill);
-        if (ready || tries >= 80) {
-          window.clearInterval(timer2);
-        }
-      }, 250);
-    }
-  }
-
-  // src/host/infoDialog/api.ts
-  var lastConditionId = "";
-  var lastSlotName = "";
-  function resolvePaperdollEntity(entity) {
-    if (!entity) return entity;
-    const id = entity.id;
-    if (id == null || id === "") return entity;
-    const tid = String(id);
-    const raw = window.entities;
-    if (!raw) return entity;
-    if (!Array.isArray(raw)) {
-      const byKey = raw[tid] || raw[id];
-      if (byKey && byKey.slots) return byKey;
-    }
-    const list = Array.isArray(raw) ? raw : Object.values(raw);
-    for (let i = 0; i < list.length; i++) {
-      const ent = list[i];
-      if (ent && String(ent.id) === tid && ent.slots) return ent;
-    }
-    return entity;
-  }
-  function setDialogOnlyXTarget(entity) {
-    window.xtarget = entity || null;
-    window.__ecuDialogOnlyXTarget = !!entity;
-  }
-  function setSelectionXTarget(entity) {
-    window.xtarget = entity || null;
-    window.__ecuDialogOnlyXTarget = false;
-  }
-  function isBuffDialogOpen() {
-    return hasContent(dialogEl("buff"));
-  }
-  function isItemDialogOpen() {
-    return hasContent(dialogEl("item"));
-  }
-  function isTopLeftDialogOpen() {
-    return isBuffDialogOpen() || isItemDialogOpen();
-  }
-  function closeBuffDialog() {
-    lastConditionId = "";
-    return clearInfoHost("buff");
-  }
-  function closeItemDialog() {
-    lastSlotName = "";
-    return clearInfoHost("item");
-  }
-  function closeInfo(kind) {
-    if (kind === "buff") return closeBuffDialog();
-    if (kind === "item") return closeItemDialog();
-    if (closeBuffDialog()) return true;
-    return closeItemDialog();
-  }
-  function closeTopLeftDialog() {
-    return closeInfo();
-  }
-  function closeAllInfoDialogs() {
-    const a = closeBuffDialog();
-    const b = closeItemDialog();
-    return a || b;
-  }
-  bindCloseImpl((kind) => closeInfo(kind));
-  function openItem(entity, slotName, slotOverride, opts) {
-    if (!entity || !slotName) return;
-    installInfoDialogLifecycle();
-    const target = resolvePaperdollEntity(entity);
-    const slot = slotOverride && slotOverride.name ? slotOverride : target && target.slots && target.slots[slotName];
-    if (!slot || !slot.name) return;
-    const w = window;
-    const itemHost = ensureAdoptedHost("item");
-    if (lastSlotName === slotName && String(itemHost.innerHTML || "").trim()) {
-      closeItemDialog();
-      w.last_sclick = "";
-      return;
-    }
-    const G = w.G;
-    const def = G && G.items && G.items[slot.name];
-    if (!def) return;
-    setPendingWriteKind("item");
-    lastSlotName = slotName;
-    w.last_sclick = slotName;
-    w.dialogs_target = target;
-    if (opts && opts.dialogOnly) {
-      setDialogOnlyXTarget(target);
-    } else {
-      setSelectionXTarget(target);
-    }
-    const html = buildItemHtml({
-      id: "item" + slotName,
-      item: def,
-      name: slot.name,
-      actual: slot,
-      slot: slotName,
-      from_player: target.id
-    });
-    writeInfoHtml("item", html);
-  }
-  function openCondition(entity, conditionName) {
-    if (!entity || !conditionName) return;
-    installInfoDialogLifecycle();
-    const host2 = ensureAdoptedHost("buff");
-    if (lastConditionId === conditionName && hasContent(host2)) {
-      closeBuffDialog();
-      return;
-    }
-    const w = window;
-    setPendingWriteKind("buff");
-    lastConditionId = conditionName;
-    w.dialogs_target = entity;
-    setDialogOnlyXTarget(entity);
-    const html = buildConditionHtml(conditionName);
-    writeInfoHtml("buff", html);
-  }
-  bindOpenHandlers(openItem, openCondition);
-  function adoptInfoDialog2(kind, slot) {
-    installInfoDialogLifecycle();
-    return adoptInfoDialog(kind, slot);
-  }
-  function ensureDialogHost() {
-    ensureDialogElements();
-    installInfoDialogLifecycle();
-    installRenderPatches();
-    installDialogDismiss();
-  }
-  var info = {
-    openItem,
-    openBuff: openCondition,
-    openCondition,
-    close: closeInfo,
-    closeAll: closeAllInfoDialogs,
-    isOpen: (kind) => {
-      if (kind === "buff") return isBuffDialogOpen();
-      if (kind === "item") return isItemDialogOpen();
-      return isTopLeftDialogOpen();
-    },
-    adopt: adoptInfoDialog2,
-    ensure: ensureDialogHost,
-    subscribe: subscribeInfoDialogChange,
-    setLayoutEditing: setInfoDialogLayoutEditing,
-    sourceAttr: INFO_SOURCE_ATTR
-  };
-
   // src/host/keyboardPolicy.ts
   var BOUND = "__ecuCommKeyboardBound";
   function installCommKeyboardPolicy(handlers) {
@@ -11328,458 +14111,6 @@ ${CHROME_ARRANGE_CSS}
     });
   }
 
-  // src/host/inventory.ts
-  var HOST_ID = "bottomleftcorner";
-  var STYLE_ID3 = "comm-ui-inventory-host-css";
-  var MOUNT_ID = "comm-bag-mount";
-  var SAVED_CHAR = "__ecuInvSavedChar";
-  var HOLD_CHAR = "__ecuInvHoldChar";
-  var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
-  var listeners5 = [];
-  var syncListeners = [];
-  var bagSyncedAt = null;
-  var bagSyncedForName = null;
-  var bagRenderedForName = null;
-  var bagRefreshing = false;
-  var refreshPendingName = null;
-  var refreshPollTimer = null;
-  var bagSyncSocketId = null;
-  var bagSyncSocketPoll = null;
-  var bagRefreshKind = null;
-  function injectHostCss() {
-    if (document.getElementById(STYLE_ID3)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID3;
-    style.textContent = `
-#${HOST_ID} {
-  position: relative;
-  left: auto;
-  bottom: auto;
-  z-index: auto;
-  pointer-events: auto;
-  max-width: min(96vw, 420px);
-  max-height: min(70vh, calc(100vh - 72px));
-  overflow: auto;
-}
-#${HOST_ID} .theinventory {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-.imodal .theinventory {
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-#${MOUNT_ID} {
-  pointer-events: auto;
-}
-`;
-    document.head.append(style);
-  }
-  function notifyInventory(open) {
-    for (let i = 0; i < listeners5.length; i++) {
-      try {
-        listeners5[i](open);
-      } catch (e2) {
-      }
-    }
-  }
-  function notifyBagSync() {
-    for (let i = 0; i < syncListeners.length; i++) {
-      try {
-        syncListeners[i]();
-      } catch (e2) {
-      }
-    }
-  }
-  function observingSnapshotName(obs = window.observing) {
-    if (!obs || obs.name == null) return null;
-    return String(obs.name);
-  }
-  function hasItemsSnapshot(obs = window.observing) {
-    return !!(obs && Array.isArray(obs.items));
-  }
-  function setBagSyncedAt(ts, name) {
-    bagSyncedAt = ts;
-    if (ts == null) bagSyncedForName = null;
-    else if (name !== void 0) bagSyncedForName = name;
-    notifyBagSync();
-  }
-  function setBagRefreshing(next) {
-    if (bagRefreshing === next) return;
-    bagRefreshing = next;
-    notifyBagSync();
-  }
-  function clearRefreshPoll() {
-    if (refreshPollTimer != null) {
-      window.clearInterval(refreshPollTimer);
-      refreshPollTimer = null;
-    }
-  }
-  function onObserveWelcome(data) {
-    if (data && data.character) {
-      const ts = Date.now();
-      data.character[BAG_SYNC_STAMP_KEY] = ts;
-      const name = data.character.name != null ? String(data.character.name) : null;
-      setBagSyncedAt(ts, name);
-      return;
-    }
-    if (bagSyncedAt != null) setBagSyncedAt(null);
-  }
-  function backfillBagSyncedAt() {
-    if (bagSyncedAt != null) return;
-    const obs = window.observing;
-    if (!hasItemsSnapshot(obs)) return;
-    stampBagSyncedFromObserving(obs);
-  }
-  function syncBagStateForSocket() {
-    const socket = window.socket;
-    if (!socket || !socket.id || typeof socket.on !== "function") return;
-    const socketChanged = socket.id !== bagSyncSocketId;
-    if (socketChanged) {
-      bagSyncSocketId = socket.id;
-      socket.on("welcome", onObserveWelcome);
-    }
-    const obs = window.observing;
-    if (hasItemsSnapshot(obs)) {
-      if (socketChanged || bagSyncedAt == null) {
-        stampBagSyncedFromObserving(obs);
-      }
-      const name = observingSnapshotName(obs);
-      if (window.inventory && name != null && name !== bagRenderedForName) {
-        reRenderLocalSnapshot();
-      }
-    } else if (socketChanged && bagSyncedAt != null) {
-      setBagSyncedAt(null);
-    }
-  }
-  function installBagSyncSocketWatch() {
-    syncBagStateForSocket();
-    if (bagSyncSocketPoll != null) return;
-    bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
-  }
-  function subscribeInventory(listener) {
-    listeners5.push(listener);
-    return () => {
-      const idx = listeners5.indexOf(listener);
-      if (idx >= 0) listeners5.splice(idx, 1);
-    };
-  }
-  function subscribeBagSync(listener) {
-    syncListeners.push(listener);
-    return () => {
-      const idx = syncListeners.indexOf(listener);
-      if (idx >= 0) syncListeners.splice(idx, 1);
-    };
-  }
-  function isInventoryOpen() {
-    return !!window.inventory;
-  }
-  function getBagSyncedAt() {
-    return bagSyncedAt;
-  }
-  function getBagSyncedName() {
-    return bagSyncedForName;
-  }
-  function isBagGridStale() {
-    if (!window.inventory) return false;
-    const name = observingSnapshotName();
-    if (!name || bagRenderedForName == null) return false;
-    return name !== bagRenderedForName;
-  }
-  function isBagRefreshing() {
-    return bagRefreshing;
-  }
-  function getBagRefreshKind() {
-    return bagRefreshKind;
-  }
-  function hasObservingInventorySnapshot() {
-    return hasItemsSnapshot();
-  }
-  function stampBagSyncedFromObserving(obs) {
-    if (!obs) return;
-    const name = observingSnapshotName(obs);
-    const stamped = obs[BAG_SYNC_STAMP_KEY];
-    if (typeof stamped === "number" && stamped > 0) {
-      setBagSyncedAt(stamped, name);
-      return;
-    }
-    const ts = Date.now();
-    obs[BAG_SYNC_STAMP_KEY] = ts;
-    setBagSyncedAt(ts, name);
-  }
-  function findObserveSecret(name) {
-    const chars = window.X && window.X.characters || [];
-    for (let i = 0; i < chars.length; i++) {
-      const ch = chars[i];
-      if (ch && ch.name === name && ch.secret) return String(ch.secret);
-    }
-    return null;
-  }
-  function closeInventory() {
-    closeInventoryHost();
-  }
-  function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID);
-    if (host2) host2.innerHTML = "";
-    window.inventory = false;
-    bagRenderedForName = null;
-    restoreCharacter();
-    notifyInventory(false);
-    notifyBagSync();
-  }
-  function reRenderLocalSnapshot() {
-    bagRefreshKind = "local";
-    callThroughDraw(() => {
-      if (typeof window.render_inventory !== "function") return;
-      if (window.inventory) {
-        window.render_inventory(true);
-        bagRenderedForName = observingSnapshotName();
-        notifyBagSync();
-      } else {
-        window.render_inventory();
-      }
-    });
-  }
-  function refreshObservedInventory() {
-    const obs = window.observing;
-    const name = obs && obs.name != null ? String(obs.name) : "";
-    const secret = name ? findObserveSecret(name) : null;
-    if (!name || !secret || typeof window.init_socket !== "function") {
-      reRenderLocalSnapshot();
-      return;
-    }
-    clearRefreshPoll();
-    bagRefreshKind = null;
-    refreshPendingName = name;
-    setBagRefreshing(true);
-    if (window.inventory) closeInventoryHost();
-    saveSettings({ bagOpenPreferred: true });
-    const initSocket = window.init_socket;
-    if (typeof initSocket !== "function") {
-      setBagRefreshing(false);
-      refreshPendingName = null;
-      reRenderLocalSnapshot();
-      return;
-    }
-    initSocket({ secret });
-    let attempts = 0;
-    refreshPollTimer = window.setInterval(() => {
-      attempts += 1;
-      const next = window.observing;
-      if (next && next.name === refreshPendingName && next.items) {
-        clearRefreshPoll();
-        bagRefreshKind = "server";
-        refreshPendingName = null;
-        backfillBagSyncedAt();
-        if (bagSyncedAt == null) stampBagSyncedFromObserving(next);
-        openInventory();
-        setBagRefreshing(false);
-        return;
-      }
-      if (attempts > 40) {
-        clearRefreshPoll();
-        refreshPendingName = null;
-        if (window.observing) {
-          bagRefreshKind = "server";
-          backfillBagSyncedAt();
-          if (bagSyncedAt == null) stampBagSyncedFromObserving(window.observing);
-          openInventory();
-        } else {
-          bagRefreshKind = "local";
-        }
-        setBagRefreshing(false);
-      }
-    }, 250);
-  }
-  function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID);
-    if (!host2) return;
-    if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
-      host2.style.position = "relative";
-      host2.style.left = "";
-      host2.style.top = "";
-      host2.style.transform = "";
-      host2.style.zIndex = "";
-      return;
-    }
-    const layout = mergeLayout(getSettings().panelLayout);
-    const p = pos || layout.bag;
-    const style = panelStyle(p, false);
-    host2.style.position = "fixed";
-    host2.style.left = String(style.left);
-    host2.style.top = String(style.top);
-    host2.style.transform = String(style.transform);
-    host2.style.zIndex = "240";
-    host2.style.pointerEvents = "auto";
-    host2.style.maxWidth = "min(96vw, 420px)";
-    host2.style.maxHeight = "min(70vh, calc(100vh - 72px))";
-    host2.style.overflow = "auto";
-  }
-  function ensureInventoryHost() {
-    injectHostCss();
-    let el = document.getElementById(HOST_ID);
-    if (!el) {
-      el = document.createElement("div");
-      el.id = HOST_ID;
-      el.className = "bpclicks enableclicks";
-      document.body.append(el);
-    }
-    applyBagLayoutPos();
-    return el;
-  }
-  function attachInventoryToMount(mount) {
-    if (!mount) return;
-    mount.id = MOUNT_ID;
-    const host2 = ensureInventoryHost();
-    if (host2.parentElement !== mount) {
-      mount.append(host2);
-    }
-    applyBagLayoutPos();
-  }
-  function callThroughDraw(fn) {
-    if (typeof window.draw_trigger === "function") {
-      window.draw_trigger(fn);
-    } else {
-      fn();
-    }
-  }
-  function restoreCharacter() {
-    if (!window[HOLD_CHAR]) return;
-    window.character = window[SAVED_CHAR];
-    delete window[SAVED_CHAR];
-    window[HOLD_CHAR] = false;
-  }
-  function prepareObservingCharacter() {
-    const obs = window.observing;
-    if (!window[HOLD_CHAR]) {
-      window[SAVED_CHAR] = window.character;
-      window[HOLD_CHAR] = true;
-    }
-    if (obs) {
-      window.character = obs;
-    }
-    const ch = window.character;
-    if (!ch) return false;
-    if (!ch.items) ch.items = [];
-    if (ch.isize == null) ch.isize = 42;
-    if (!ch.q) ch.q = {};
-    return true;
-  }
-  function openInventory() {
-    callThroughDraw(() => {
-      if (typeof window.render_inventory === "function") {
-        window.render_inventory();
-      }
-    });
-  }
-  function restorePreferredBagOpen() {
-    const preferOpen = !!getSettings().bagOpenPreferred;
-    if (!preferOpen) return;
-    if (isInventoryOpen()) return;
-    window.setTimeout(() => {
-      if (isInventoryOpen()) return;
-      if (typeof window.render_inventory === "function") {
-        openInventory();
-      }
-    }, 600);
-  }
-  function installInventoryClickBridge() {
-    if (window.__ecuInvClickPatched) return;
-    const tryPatch = () => {
-      const original = window.inventory_click;
-      if (typeof original !== "function") return false;
-      if (window.__ecuInvClickPatched) return true;
-      window.__ecuInvClickPatched = true;
-      window.inventory_click = function patchedInventoryClick(num, event) {
-        if (window.is_comm) {
-          if (event && typeof window.stpr === "function") window.stpr(event);
-          const obs = window.observing;
-          const item = obs && Array.isArray(obs.items) ? obs.items[num] : null;
-          if (!item || !item.name || item.name === "placeholder") return;
-          openItem(obs, `inv${num}`, item, { dialogOnly: true });
-          return;
-        }
-        return original.call(this, num, event);
-      };
-      return true;
-    };
-    if (tryPatch()) return;
-    let attempts = 0;
-    const timer2 = window.setInterval(() => {
-      attempts += 1;
-      if (tryPatch() || attempts > 40) window.clearInterval(timer2);
-    }, 250);
-  }
-  function installInventoryFix() {
-    installInventoryClickBridge();
-    installBagSyncSocketWatch();
-    if (window.__ecuInventoryPatched) return;
-    const tryPatch = () => {
-      const original = window.render_inventory;
-      if (typeof original !== "function") return false;
-      if (window.__ecuInventoryPatched) return true;
-      window.__ecuInventoryPatched = true;
-      ensureInventoryHost();
-      window.render_inventory = function patchedRenderInventory(reset) {
-        ensureInventoryHost();
-        if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID);
-          if (host2) host2.innerHTML = "";
-          window.inventory = false;
-          bagRenderedForName = null;
-          restoreCharacter();
-          notifyInventory(false);
-          notifyBagSync();
-          return;
-        }
-        const savedComm = window.is_comm;
-        if (!prepareObservingCharacter()) {
-          restoreCharacter();
-          return;
-        }
-        window.is_comm = false;
-        let opened = false;
-        try {
-          if (typeof window.hide_modal === "function") {
-            try {
-              window.hide_modal();
-            } catch (e2) {
-            }
-          }
-          const result = original.call(this, reset);
-          opened = !!window.inventory;
-          return result;
-        } finally {
-          window.is_comm = savedComm;
-          restoreCharacter();
-          if (opened) {
-            bagRenderedForName = observingSnapshotName();
-            backfillBagSyncedAt();
-            applyBagLayoutPos();
-            notifyInventory(true);
-            notifyBagSync();
-          } else if (!window.inventory) {
-            bagRenderedForName = null;
-            notifyInventory(false);
-          }
-        }
-      };
-      restorePreferredBagOpen();
-      return true;
-    };
-    if (tryPatch()) return;
-    let attempts = 0;
-    const timer2 = window.setInterval(() => {
-      attempts += 1;
-      if (tryPatch() || attempts > 40) {
-        window.clearInterval(timer2);
-      }
-    }, 250);
-  }
-  if (typeof window !== "undefined") {
-    installBagSyncSocketWatch();
-  }
-
   // src/host/pageTitle.ts
   var BRAND = "Adventure Land";
   var installed = false;
@@ -11816,56 +14147,6 @@ ${CHROME_ARRANGE_CSS}
     installed = true;
     applyPageTitle();
     subscribeTick(() => applyPageTitle());
-  }
-
-  // src/host/mail/types.ts
-  var MAIL_SEND_COST = 48e3;
-  var MAIL_ATTACH_EXTRA = 312e3;
-  var MAIL_HEAD_TTL_MS = 2e4;
-  var MAIL_PREFETCH_GAP_MS = 1800;
-  var MAIL_PREFETCH_GAP_STEP_MS = 350;
-  var MAIL_PREFETCH_GAP_MAX_MS = 5e3;
-  var MAIL_COMMAND_HEAD_DELAY_MS = 1500;
-  var MAIL_DELETE_UNDO_MAX = 25;
-  var MAIL_DELETE_UNDO_MS = 5e3;
-  var MAIL_DELETE_GAP_MS = 280;
-  var MAIL_DELETE_GAP_STEP_MS = 4;
-  var MAIL_DELETE_GAP_MAX_MS = 750;
-
-  // src/host/mail/itemFingerprint.ts
-  function itemMatchesFingerprint(item, expected) {
-    if (!item || !item.name) return false;
-    if (item.name !== expected.name) return false;
-    if (expected.level != null) {
-      if (item.level !== expected.level) return false;
-    }
-    if (expected.q != null) {
-      if (item.q !== expected.q) return false;
-    }
-    if (expected.p != null) {
-      if (item.p !== expected.p) return false;
-    }
-    return true;
-  }
-  function fingerprintFromSlot(slot, item) {
-    if (!item || !item.name || item.name === "placeholder") return null;
-    const fp = { slot, name: String(item.name) };
-    if (item.level != null) fp.level = Number(item.level);
-    if (item.q != null) fp.q = Number(item.q);
-    if (item.p != null) fp.p = String(item.p);
-    return fp;
-  }
-  function findFingerprintSlot(items, expected, usedSlots) {
-    if (!items || !items.length) return -1;
-    const prefer = Number(expected.slot) | 0;
-    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
-      return prefer;
-    }
-    for (let i = 0; i < items.length; i++) {
-      if (usedSlots && usedSlots.has(i)) continue;
-      if (itemMatchesFingerprint(items[i], expected)) return i;
-    }
-    return -1;
   }
 
   // src/host/mail/mailSearch.ts
@@ -12072,7 +14353,15 @@ ${CHROME_ARRANGE_CSS}
     return true;
   }
 
-  // src/host/mail/mailSort.ts
+  // src/host/mail/filter.ts
+  function selfSet(names) {
+    const s = /* @__PURE__ */ new Set();
+    for (let i = 0; i < names.length; i++) {
+      const n = names[i];
+      if (n) s.add(String(n).toLowerCase());
+    }
+    return s;
+  }
   function mailSentMs(m) {
     const raw = String(m.sent || "");
     const parsed = Date.parse(raw);
@@ -12089,6 +14378,25 @@ ${CHROME_ARRANGE_CSS}
       return String(b.id).localeCompare(String(a.id));
     });
     return out;
+  }
+  function filterMails(mails, opts) {
+    const self = selfSet(opts.selfNames);
+    const pill = opts.pill;
+    const parsed = parseMailSearch(opts.query, opts.now);
+    const out = [];
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (pill === "unread" && m.read !== false) continue;
+      if (pill === "item" && !(m.item && !m.taken)) continue;
+      if (pill === "tome" && !self.has(String(m.to || "").toLowerCase()))
+        continue;
+      if (pill === "fromme" && !self.has(String(m.fro || "").toLowerCase())) {
+        continue;
+      }
+      if (!mailMatchesSearch(m, parsed)) continue;
+      out.push(m);
+    }
+    return sortMailsNewestFirst(out);
   }
 
   // src/host/mail/mailSearchForm.ts
@@ -12241,35 +14549,6 @@ ${CHROME_ARRANGE_CSS}
     return form;
   }
 
-  // src/host/mail/filter.ts
-  function selfSet(names) {
-    const s = /* @__PURE__ */ new Set();
-    for (let i = 0; i < names.length; i++) {
-      const n = names[i];
-      if (n) s.add(String(n).toLowerCase());
-    }
-    return s;
-  }
-  function filterMails(mails, opts) {
-    const self = selfSet(opts.selfNames);
-    const pill = opts.pill;
-    const parsed = parseMailSearch(opts.query, opts.now);
-    const out = [];
-    for (let i = 0; i < mails.length; i++) {
-      const m = mails[i];
-      if (pill === "unread" && m.read !== false) continue;
-      if (pill === "item" && !(m.item && !m.taken)) continue;
-      if (pill === "tome" && !self.has(String(m.to || "").toLowerCase()))
-        continue;
-      if (pill === "fromme" && !self.has(String(m.fro || "").toLowerCase())) {
-        continue;
-      }
-      if (!mailMatchesSearch(m, parsed)) continue;
-      out.push(m);
-    }
-    return sortMailsNewestFirst(out);
-  }
-
   // src/host/mail/collapse.ts
   function norm(s) {
     return String(s || "").trim().toLowerCase();
@@ -12380,351 +14659,6 @@ ${CHROME_ARRANGE_CSS}
     return out;
   }
 
-  // src/host/mail/mailSubject.ts
-  var MAIL_SUBJECT_ITEM_TOKEN = "{item}";
-  var ITEM_TOKEN_RE = /\{item\}/gi;
-  function formatAttachSubject(fp) {
-    let s = fp.name;
-    if (fp.level != null) s += " +" + fp.level;
-    if (fp.q != null && fp.q > 1) s += " \xD7" + fp.q;
-    return s;
-  }
-  function applyItemToken(text, item) {
-    ITEM_TOKEN_RE.lastIndex = 0;
-    if (!ITEM_TOKEN_RE.test(text)) return text;
-    ITEM_TOKEN_RE.lastIndex = 0;
-    return text.replace(ITEM_TOKEN_RE, item);
-  }
-  function resolveMailSubject(base, fp, index, total) {
-    const trimmed = String(base || "").trim();
-    const item = fp ? formatAttachSubject(fp) : "";
-    ITEM_TOKEN_RE.lastIndex = 0;
-    if (ITEM_TOKEN_RE.test(trimmed)) {
-      return applyItemToken(trimmed, item);
-    }
-    if (!trimmed) {
-      if (item) return item;
-      return total > 1 ? "Mail (" + index + "/" + total + ")" : "";
-    }
-    if (total > 1 && item) return trimmed + " \xB7 " + item;
-    return trimmed;
-  }
-  function resolveMailBody(base, fp) {
-    const text = String(base || "");
-    const item = fp ? formatAttachSubject(fp) : "";
-    return applyItemToken(text, item);
-  }
-  function subjectPlaceholder(attaches) {
-    const list = attaches || [];
-    if (!list.length) return "Subject (optional)";
-    if (list.length === 1) {
-      return "e.g. Sending " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]);
-    }
-    return "e.g. Loot: " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]) + " \xB7 \u2026";
-  }
-
-  // src/host/mail/composeDraft.ts
-  function emptyDraft() {
-    return { to: [], subject: "", body: "", attaches: [] };
-  }
-  function normalizeComposeTos(raw) {
-    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (let i = 0; i < list.length; i++) {
-      const name = String(list[i] || "").trim();
-      if (!name) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(name);
-    }
-    return out;
-  }
-  function fingerprintFields(raw) {
-    const fp = {
-      slot: Number(raw.slot) | 0,
-      name: String(raw.name || "")
-    };
-    if (raw.level != null) fp.level = Number(raw.level);
-    if (raw.q != null) fp.q = Number(raw.q);
-    if (raw.p != null) fp.p = String(raw.p);
-    return fp;
-  }
-  function makeComposeAttach(raw, to = "") {
-    return { ...fingerprintFields(raw), to: String(to || "").trim() };
-  }
-  function migrateComposeAttach(raw, fallbackTo) {
-    const to = String(raw.to || fallbackTo || "").trim();
-    return { ...fingerprintFields(raw), to };
-  }
-  function canonicalizeDraft(draft) {
-    const to = normalizeComposeTos(draft.to);
-    const attaches = [];
-    const list = Array.isArray(draft.attaches) ? draft.attaches : [];
-    for (let i = 0; i < list.length; i++) {
-      const a = list[i];
-      attaches.push({
-        ...fingerprintFields(a),
-        to: String(a.to || "").trim()
-      });
-    }
-    return {
-      to,
-      subject: String(draft.subject || ""),
-      body: String(draft.body || ""),
-      attaches
-    };
-  }
-  function rebindAttachesToPool(attaches, tos) {
-    if (!tos.length) {
-      const out2 = [];
-      for (let i = 0; i < attaches.length; i++) {
-        out2.push({ ...attaches[i], to: "" });
-      }
-      return out2;
-    }
-    const ok = new Set(tos.map((t) => t.toLowerCase()));
-    let rr = 0;
-    const out = [];
-    for (let i = 0; i < attaches.length; i++) {
-      const a = attaches[i];
-      const cur = String(a.to || "").trim();
-      if (cur && ok.has(cur.toLowerCase())) {
-        out.push(a);
-        continue;
-      }
-      out.push({ ...a, to: tos[rr % tos.length] });
-      rr += 1;
-    }
-    return out;
-  }
-  function pickToForNewAttach(draft) {
-    var _a, _b;
-    const tos = normalizeComposeTos(draft.to);
-    if (!tos.length) return "";
-    const counts = {};
-    for (let i = 0; i < tos.length; i++) counts[tos[i].toLowerCase()] = 0;
-    for (let i = 0; i < draft.attaches.length; i++) {
-      const key = String(draft.attaches[i].to || "").toLowerCase();
-      if (!key || counts[key] == null) continue;
-      counts[key] += 1;
-    }
-    let best = tos[0];
-    let bestN = (_a = counts[best.toLowerCase()]) != null ? _a : 0;
-    for (let i = 1; i < tos.length; i++) {
-      const n = (_b = counts[tos[i].toLowerCase()]) != null ? _b : 0;
-      if (n < bestN) {
-        best = tos[i];
-        bestN = n;
-      }
-    }
-    return best;
-  }
-  function distributeAttachesAcrossTos(draft) {
-    const base = canonicalizeDraft(draft);
-    if (!base.to.length || !base.attaches.length) return base;
-    const attaches = [];
-    for (let i = 0; i < base.attaches.length; i++) {
-      attaches.push({
-        ...base.attaches[i],
-        to: base.to[i % base.to.length]
-      });
-    }
-    return { ...base, attaches };
-  }
-  function resolveComposeOpen(opts) {
-    const session = canonicalizeDraft(opts.session);
-    const sticky = normalizeComposeTos(opts.stickyTo);
-    const partial = opts.partial;
-    if (!partial) {
-      const to2 = session.to.length ? session.to : sticky.slice();
-      return canonicalizeDraft({ ...session, to: to2 });
-    }
-    const to = partial.to ? normalizeComposeTos(partial.to) : session.to.length ? session.to : sticky.slice();
-    const subject = partial.subject != null ? String(partial.subject) : session.subject;
-    const body = partial.body != null ? String(partial.body) : session.body;
-    let attaches = session.attaches;
-    if (partial.attaches !== void 0) {
-      attaches = [];
-      for (let i = 0; i < partial.attaches.length; i++) {
-        const a = partial.attaches[i];
-        attaches.push({
-          ...fingerprintFields(a),
-          to: String(a.to || "").trim()
-        });
-      }
-    }
-    return canonicalizeDraft({ to, subject, body, attaches });
-  }
-  function attachesHaveRecipients(attaches) {
-    if (!attaches.length) return true;
-    for (let i = 0; i < attaches.length; i++) {
-      if (!String(attaches[i].to || "").trim()) return false;
-    }
-    return true;
-  }
-
-  // src/host/mail/commands.ts
-  function lit(value) {
-    return JSON.stringify(String(value));
-  }
-  function fingerprintCheckJs(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit(fp.name)}`];
-    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
-    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit(fp.p)}`);
-    return parts.join("||");
-  }
-  function sleepJs(ms) {
-    return `await new Promise(function(r){setTimeout(r,${ms | 0});});`;
-  }
-  function awaitSendMailJs(callExpr, failLog, onFailJs = "") {
-    const beforeReturn = onFailJs || "";
-    return [
-      `var __mr=null;`,
-      `try{__mr=await ${callExpr};}catch(__e){__mr=__e&&typeof __e==="object"?__e:{failed:true};}`,
-      `if(__mr&&__mr.failed&&!__mr.in_progress){`,
-      `game_log(${lit(failLog)});`,
-      beforeReturn,
-      `return;`,
-      `}`,
-      `if(__mr&&__mr.in_progress){`,
-      `var __md=null;`,
-      `character.once("mail_sent",function(){__md={ok:1};});`,
-      `character.once("mail_failed",function(d){__md={ok:0,d:d};});`,
-      `for(var __mi=0;__mi<20000;__mi++){if(__md)break;await sleep(1);}`,
-      `if(!__md){game_log(${lit("Mail send timeout")});${beforeReturn}return;}`,
-      `if(!__md.ok){`,
-      `game_log(${lit(failLog)}+(__md.d&&__md.d.reason?(" \xB7 "+__md.d.reason):""));`,
-      beforeReturn,
-      `return;`,
-      `}`,
-      `}`
-    ].join("");
-  }
-  function goldGuardJs(need, label) {
-    return [
-      `if(character.gold<${need | 0}){`,
-      `game_log(${lit(label)});`,
-      `return;`,
-      `}`
-    ].join("");
-  }
-  function attachStepJs(fp, toLit, subjectLit, bodyLit, index, total, stepCost) {
-    const preferSlot = Number(fp.slot) | 0;
-    const mismatch = fingerprintCheckJs(fp, "it");
-    const mismatch0 = fingerprintCheckJs(fp, "it0");
-    const candMismatch = fingerprintCheckJs(fp, "__cand");
-    const abortMsg = lit(
-      total > 1 ? "Mail attach mismatch \u2014 aborted " + index + "/" + total : "Mail attach mismatch \u2014 aborted"
-    );
-    const swapAbort = lit(
-      total > 1 ? "Mail swap failed \u2014 aborted " + index + "/" + total : "Mail swap failed \u2014 aborted"
-    );
-    const goldAbort = total > 1 ? "Mail aborted \u2014 not enough gold " + index + "/" + total : "Mail aborted \u2014 not enough gold";
-    const failLog = total > 1 ? "Mail send failed " + index + "/" + total : "Mail send failed";
-    return [
-      goldGuardJs(stepCost, goldAbort),
-      `var __slot=${preferSlot};`,
-      `var it=character.items[__slot];`,
-      `if(${mismatch}){`,
-      `__slot=-1;`,
-      `for(var __si=0;__si<character.items.length;__si++){`,
-      `var __cand=character.items[__si];`,
-      `if(!(${candMismatch})){__slot=__si;break;}`,
-      `}`,
-      `if(__slot<0){game_log(${abortMsg});return;}`,
-      `it=character.items[__slot];`,
-      `}`,
-      `await swap(__slot,0);`,
-      `var it0=character.items[0];`,
-      `if(${mismatch0}){`,
-      `game_log(${swapAbort});`,
-      `await swap(0,__slot);`,
-      `return;`,
-      `}`,
-      // Restore displacee only after mail_sent; early fail keeps item in slot 0.
-      awaitSendMailJs(
-        `send_mail(${toLit},${subjectLit},${bodyLit},true)`,
-        failLog,
-        `await swap(0,__slot);`
-      ),
-      `await swap(0,__slot);`
-    ].join("");
-  }
-  function buildSendScript(opts) {
-    const tos = normalizeComposeTos(opts.to);
-    const list = opts.attaches && opts.attaches.length ? opts.attaches.slice() : [];
-    if (!list.length) {
-      if (!tos.length) {
-        return `game_log("Mail aborted \u2014 no recipient");`;
-      }
-      const subject = lit(String(opts.subject || "").trim());
-      const body = lit(String(opts.body || ""));
-      const parts2 = [
-        goldGuardJs(
-          MAIL_SEND_COST * tos.length,
-          tos.length > 1 ? "Mail aborted \u2014 not enough gold for " + tos.length + " recipients" : "Mail aborted \u2014 not enough gold"
-        )
-      ];
-      for (let i = 0; i < tos.length; i++) {
-        parts2.push(
-          awaitSendMailJs(
-            `send_mail(${lit(tos[i])},${subject},${body})`,
-            "Mail send failed \u2192 " + tos[i]
-          )
-        );
-      }
-      return parts2.join("");
-    }
-    for (let i = 0; i < list.length; i++) {
-      if (!String(list[i].to || "").trim()) {
-        return `game_log("Mail aborted \u2014 attach missing recipient");`;
-      }
-    }
-    const stepCost = MAIL_SEND_COST + MAIL_ATTACH_EXTRA;
-    const total = list.length;
-    const parts = [
-      goldGuardJs(
-        stepCost * total,
-        "Mail aborted \u2014 not enough gold for batch (" + total + "\xD7 attach)"
-      )
-    ];
-    for (let i = 0; i < list.length; i++) {
-      const fp = list[i];
-      const subject = lit(
-        resolveMailSubject(opts.subject, fp, i + 1, total)
-      );
-      const body = lit(resolveMailBody(opts.body, fp));
-      parts.push(
-        attachStepJs(fp, lit(fp.to), subject, body, i + 1, total, stepCost)
-      );
-    }
-    return parts.join("");
-  }
-  function buildTakeScript(mailIds) {
-    const ids = Array.isArray(mailIds) ? mailIds : [mailIds];
-    if (!ids.length) return `game_log("Mail take aborted \u2014 no ids");`;
-    const parts = [];
-    for (let i = 0; i < ids.length; i++) {
-      const id = lit(ids[i]);
-      const n = i + 1;
-      const total = ids.length;
-      const spaceMsg = lit(
-        total > 1 ? "Mail take aborted \u2014 no inventory space " + n + "/" + total : "Mail take aborted \u2014 no inventory space"
-      );
-      parts.push(
-        `if(character.esize<1){game_log(${spaceMsg});return;}`,
-        `parent.socket.emit("mail_take_item",{id:${id}});`
-      );
-      if (i < ids.length - 1) {
-        parts.push(sleepJs(500));
-      }
-    }
-    return parts.join("");
-  }
-
   // src/host/mail/capabilities.ts
   function mailSendCost(hasAttach) {
     return hasAttach ? MAIL_SEND_COST + MAIL_ATTACH_EXTRA : MAIL_SEND_COST;
@@ -12735,13 +14669,13 @@ ${CHROME_ARRANGE_CSS}
     if (n <= 0) return MAIL_SEND_COST * tos;
     return n * mailSendCost(true);
   }
-  function observingSnap() {
+  function getMailObservingSnap() {
     const obs = window.observing;
     return obs && obs.name ? obs : null;
   }
-  function getMailCapabilities(attaches = [], toCount = 1) {
+  function getMailCapabilities(attaches = [], toCount = 1, observing) {
     const sock = getSocket();
-    const obs = observingSnap();
+    const obs = observing;
     const attachCount = attaches.length;
     const recipients = Math.max(1, toCount | 0);
     const cost = mailBatchSendCost(attachCount, recipients);
@@ -12771,1765 +14705,6 @@ ${CHROME_ARRANGE_CSS}
       observeName: String(obs.name),
       reason: goldEnough ? void 0 : "Not enough gold on observed character"
     };
-  }
-
-  // src/host/mail/merge.ts
-  function cloneRow(m) {
-    const next = {
-      id: m.id,
-      fro: m.fro,
-      to: m.to,
-      subject: m.subject,
-      message: m.message,
-      sent: m.sent
-    };
-    if (m.read != null) next.read = m.read;
-    if (m.item) next.item = { ...m.item };
-    if (m.taken != null) next.taken = m.taken;
-    if (m.system != null) next.system = m.system;
-    return next;
-  }
-  function mergeHeadPage(existing, page) {
-    const map = /* @__PURE__ */ new Map();
-    for (let i = 0; i < existing.length; i++) {
-      map.set(existing[i].id, existing[i]);
-    }
-    for (let i = 0; i < page.length; i++) {
-      const p = page[i];
-      const prev = map.get(p.id);
-      map.set(p.id, prev ? Object.assign({}, prev, p) : cloneRow(p));
-    }
-    const older = [];
-    for (let i = 0; i < existing.length; i++) {
-      const m = existing[i];
-      let inPage = false;
-      for (let j = 0; j < page.length; j++) {
-        if (page[j].id === m.id) {
-          inPage = true;
-          break;
-        }
-      }
-      if (!inPage) older.push(map.get(m.id) || m);
-    }
-    const head = [];
-    for (let i = 0; i < page.length; i++) {
-      head.push(map.get(page[i].id));
-    }
-    return head.concat(older);
-  }
-  function appendCursorPage(existing, page) {
-    const have = /* @__PURE__ */ new Set();
-    for (let i = 0; i < existing.length; i++) have.add(existing[i].id);
-    const next = existing.slice();
-    for (let i = 0; i < page.length; i++) {
-      const m = page[i];
-      if (have.has(m.id)) continue;
-      have.add(m.id);
-      next.push(cloneRow(m));
-    }
-    return next;
-  }
-  function applyPullMeta(page) {
-    return {
-      nextCursor: page.more ? page.cursor : null,
-      hasMore: !!page.more
-    };
-  }
-  function normalizeMailPage(raw) {
-    const info2 = raw || {};
-    const list = Array.isArray(info2.mail) ? info2.mail : [];
-    const mail = [];
-    for (let i = 0; i < list.length; i++) {
-      const m = list[i];
-      if (!m || m.id == null) continue;
-      const row2 = {
-        id: String(m.id),
-        fro: String(m.fro || ""),
-        to: String(m.to || ""),
-        subject: String(m.subject || ""),
-        message: String(m.message || ""),
-        sent: String(m.sent || "")
-      };
-      if (typeof m.read === "boolean") row2.read = m.read;
-      const item = parseMailItem(m.item);
-      if (item) row2.item = item;
-      const taken = coerceMailTaken(m.taken);
-      if (taken != null) row2.taken = taken;
-      mail.push(row2);
-    }
-    return {
-      mail,
-      more: !!info2.more,
-      cursor: info2.cursor != null ? String(info2.cursor) : null,
-      cursored: !!info2.cursored
-    };
-  }
-  function coerceMailTaken(raw) {
-    if (typeof raw === "boolean") return raw;
-    if (raw === 0 || raw === "0" || raw === "false") return false;
-    if (raw === 1 || raw === "1" || raw === "true") return true;
-    return void 0;
-  }
-  function parseMailItem(raw) {
-    let cur = raw;
-    for (let depth2 = 0; depth2 < 3; depth2++) {
-      if (cur == null || cur === "") return void 0;
-      if (typeof cur === "string") {
-        try {
-          cur = JSON.parse(cur);
-        } catch (e2) {
-          return void 0;
-        }
-        continue;
-      }
-      break;
-    }
-    if (!cur || typeof cur !== "object") return void 0;
-    const obj = cur;
-    if (obj.name == null || obj.name === "") return void 0;
-    const item = { name: String(obj.name) };
-    if (typeof obj.level === "number" && Number.isFinite(obj.level)) {
-      item.level = obj.level;
-    } else if (obj.level != null && obj.level !== "" && !isNaN(Number(obj.level))) {
-      item.level = Number(obj.level);
-    }
-    if (typeof obj.q === "number" && Number.isFinite(obj.q)) {
-      item.q = obj.q;
-    } else if (obj.q != null && obj.q !== "" && !isNaN(Number(obj.q))) {
-      item.q = Number(obj.q);
-    }
-    if (typeof obj.p === "string" && obj.p) item.p = obj.p;
-    if (typeof obj.skin === "string" && obj.skin) item.skin = obj.skin;
-    const keys = Object.keys(obj);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k === "name" || k === "level" || k === "q" || k === "p" || k === "skin") {
-        continue;
-      }
-      if (item[k] === void 0) item[k] = obj[k];
-    }
-    return item;
-  }
-
-  // src/host/mail/mailPersistLogic.ts
-  var MAIL_HEAD_PAGE_SIZE = 40;
-  function headFingerprint(mails, limit = MAIL_HEAD_PAGE_SIZE) {
-    const n = Math.min(mails.length, limit);
-    const parts = [];
-    for (let i = 0; i < n; i++) {
-      const m = mails[i];
-      const taken = m.taken === true ? "1" : m.taken === false ? "0" : "-";
-      parts.push(m.id + ":" + taken);
-    }
-    return parts.join("|");
-  }
-  function indexOfId(rows, id) {
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].id === id) return i;
-    }
-    return -1;
-  }
-  function cloneRow2(m) {
-    const next = {
-      id: m.id,
-      fro: m.fro,
-      to: m.to,
-      subject: m.subject,
-      message: m.message,
-      sent: m.sent
-    };
-    if (m.read != null) next.read = m.read;
-    if (m.item) next.item = { ...m.item };
-    if (m.taken != null) next.taken = m.taken;
-    if (m.system != null) next.system = m.system;
-    return next;
-  }
-  function patchExistingFromPage(existing, page) {
-    if (!page.length) return existing.slice();
-    const byId = /* @__PURE__ */ new Map();
-    for (let i = 0; i < page.length; i++) byId.set(page[i].id, page[i]);
-    const out = [];
-    for (let i = 0; i < existing.length; i++) {
-      const prev = existing[i];
-      const patch = byId.get(prev.id);
-      out.push(patch ? Object.assign({}, prev, patch) : prev);
-    }
-    return out;
-  }
-  function findHeadOverlap(existing, head) {
-    if (!existing.length || !head.length) return null;
-    let best = null;
-    for (let headStart = 0; headStart < head.length; headStart++) {
-      const existingStart = indexOfId(existing, head[headStart].id);
-      if (existingStart < 0) continue;
-      let matchLen = 0;
-      while (headStart + matchLen < head.length && existingStart + matchLen < existing.length && head[headStart + matchLen].id === existing[existingStart + matchLen].id) {
-        matchLen += 1;
-      }
-      if (matchLen === 0) continue;
-      if (!best || matchLen > best.matchLen || matchLen === best.matchLen && headStart < best.headStart) {
-        best = { headStart, existingStart, matchLen };
-      }
-    }
-    return best;
-  }
-  function strategyFromOverlap(overlap, headLen) {
-    const { headStart, existingStart, matchLen } = overlap;
-    if (headStart === 0 && existingStart === 0 && matchLen === headLen) {
-      return "unchanged";
-    }
-    if (existingStart === 0 && headStart > 0) return "prepend";
-    if (headStart === 0 && existingStart === 0) return "prepend";
-    return "stitch";
-  }
-  function stitchHeadOntoCache(existing, head) {
-    if (!head.length) return null;
-    if (!existing.length) {
-      return { mails: head.map(cloneRow2), strategy: "prepend" };
-    }
-    const overlap = findHeadOverlap(existing, head);
-    if (!overlap) return null;
-    const { existingStart, matchLen } = overlap;
-    const headIds = /* @__PURE__ */ new Set();
-    for (let i = 0; i < head.length; i++) headIds.add(head[i].id);
-    const out = [];
-    for (let i = 0; i < head.length; i++) {
-      const live2 = head[i];
-      const prevIdx = indexOfId(existing, live2.id);
-      const prev = prevIdx >= 0 ? existing[prevIdx] : null;
-      out.push(prev ? Object.assign({}, prev, live2) : cloneRow2(live2));
-    }
-    const tailStart = existingStart + matchLen;
-    for (let i = tailStart; i < existing.length; i++) {
-      const row2 = existing[i];
-      if (headIds.has(row2.id)) continue;
-      out.push(row2);
-    }
-    return {
-      mails: out,
-      strategy: strategyFromOverlap(overlap, head.length)
-    };
-  }
-  function reconcileAfterHeadPull(existing, headPage, prevCursor, prevHasMore) {
-    const page = headPage.mail;
-    const meta2 = applyPullMeta(headPage);
-    if (!headPage.more) {
-      return {
-        mails: mergeHeadPage([], page),
-        nextCursor: null,
-        hasMore: false,
-        strategy: "replace"
-      };
-    }
-    if (!existing.length) {
-      return {
-        mails: mergeHeadPage([], page),
-        nextCursor: meta2.nextCursor,
-        hasMore: meta2.hasMore,
-        strategy: "replace"
-      };
-    }
-    const fpNew = headFingerprint(page, page.length || MAIL_HEAD_PAGE_SIZE);
-    const fpOld = headFingerprint(existing, page.length || MAIL_HEAD_PAGE_SIZE);
-    if (fpNew === fpOld) {
-      return {
-        mails: patchExistingFromPage(existing, page),
-        nextCursor: prevCursor,
-        hasMore: prevHasMore || meta2.hasMore,
-        strategy: "unchanged"
-      };
-    }
-    const stitched = stitchHeadOntoCache(existing, page);
-    if (stitched) {
-      const merged = stitched.mails;
-      const hasMore = prevHasMore || meta2.hasMore;
-      return {
-        mails: merged,
-        // Contiguous skip cursor: we hold a prefix of the server inbox.
-        nextCursor: hasMore ? String(merged.length) : null,
-        hasMore,
-        strategy: stitched.strategy
-      };
-    }
-    return {
-      mails: mergeHeadPage([], page),
-      nextCursor: meta2.nextCursor,
-      hasMore: meta2.hasMore,
-      strategy: "truncate"
-    };
-  }
-
-  // src/host/mail/mailState.ts
-  var listeners6 = [];
-  var toastListeners = [];
-  var locallyReadIds = /* @__PURE__ */ new Set();
-  var state = {
-    mails: [],
-    nextCursor: null,
-    hasMore: false,
-    lastHeadAt: 0,
-    lastHeadReason: "\u2014",
-    status: "",
-    statusKind: "",
-    loading: false,
-    loadingMore: false,
-    prefetchArmed: false,
-    panelOpen: false,
-    view: { kind: "list" },
-    lastScript: "",
-    lastSeenUnread: -1,
-    newMailCount: 0,
-    commandBusy: false,
-    unreadStuckHint: "",
-    undoCount: 0,
-    deleteProgress: null,
-    sessionDraft: emptyDraft()
-  };
-  function notifyListeners() {
-    for (let i = 0; i < listeners6.length; i++) listeners6[i]();
-  }
-  function emitToast(message) {
-    for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
-  }
-  function commit(patch, opts) {
-    Object.assign(state, patch);
-    if (!(opts && opts.silent)) notifyListeners();
-  }
-  function setStatus(text, kind = "") {
-    commit({ status: text, statusKind: kind });
-  }
-  function setMailView(next) {
-    commit({ view: next });
-  }
-  function subscribeMailStore(fn) {
-    listeners6.push(fn);
-    return () => {
-      const idx = listeners6.indexOf(fn);
-      if (idx >= 0) listeners6.splice(idx, 1);
-    };
-  }
-  function subscribeMailToast(fn) {
-    toastListeners.push(fn);
-    return () => {
-      const idx = toastListeners.indexOf(fn);
-      if (idx >= 0) toastListeners.splice(idx, 1);
-    };
-  }
-  function getMailSnapshot() {
-    return {
-      mails: state.mails,
-      nextCursor: state.nextCursor,
-      hasMore: state.hasMore,
-      lastHeadAt: state.lastHeadAt,
-      lastHeadReason: state.lastHeadReason,
-      status: state.status,
-      statusKind: state.statusKind,
-      loading: state.loading,
-      loadingMore: state.loadingMore,
-      prefetchArmed: state.prefetchArmed,
-      panelOpen: state.panelOpen,
-      view: state.view,
-      lastScript: state.lastScript,
-      lastSeenUnread: state.lastSeenUnread,
-      newMailCount: state.newMailCount,
-      commandBusy: state.commandBusy,
-      unreadStuckHint: state.unreadStuckHint,
-      undoCount: state.undoCount,
-      deleteProgress: state.deleteProgress
-    };
-  }
-  function getMails() {
-    return state.mails;
-  }
-  function getNextCursor() {
-    return state.nextCursor;
-  }
-  function getHasMore() {
-    return state.hasMore;
-  }
-  function getLastHeadAt() {
-    return state.lastHeadAt;
-  }
-  function getLoadingMore() {
-    return state.loadingMore;
-  }
-  function getPanelOpen() {
-    return state.panelOpen;
-  }
-  function getView() {
-    return state.view;
-  }
-  function getLastSeenUnread() {
-    return state.lastSeenUnread;
-  }
-  function getCommandBusy() {
-    return state.commandBusy;
-  }
-  function getLocallyReadIds() {
-    return locallyReadIds;
-  }
-  function getActiveComposeDraft() {
-    if (state.view.kind === "compose") return state.view.draft;
-    return state.sessionDraft;
-  }
-
-  // src/host/mail/mailPersist.ts
-  var DB_NAME2 = "ecu-mail-cache";
-  var DB_VER2 = 1;
-  var STORE = "inboxes";
-  var RECORD_VERSION = 1;
-  var PERSIST_DEBOUNCE_MS = 400;
-  var dbPromise2 = null;
-  var persistTimer = 0;
-  var hydrateInFlight = null;
-  function openDb2() {
-    if (dbPromise2) return dbPromise2;
-    dbPromise2 = new Promise((resolve) => {
-      if (typeof indexedDB === "undefined") {
-        resolve(null);
-        return;
-      }
-      const req = indexedDB.open(DB_NAME2, DB_VER2);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: "accountKey" });
-        }
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => resolve(null);
-    });
-    return dbPromise2;
-  }
-  function reqToPromise2(req) {
-    return new Promise((resolve, reject) => {
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  }
-  function mailAccountKey() {
-    const w = window;
-    if (w.user_id != null && String(w.user_id) !== "") {
-      return "u:" + String(w.user_id);
-    }
-    const chars = w.X && w.X.characters;
-    if (Array.isArray(chars) && chars.length) {
-      const names = [];
-      for (let i = 0; i < chars.length; i++) {
-        const n = chars[i] && chars[i].name;
-        if (n) names.push(String(n));
-      }
-      names.sort();
-      if (names.length) return "chars:" + names.join(",");
-    }
-    return "default";
-  }
-  async function loadMailCacheRecord(accountKey) {
-    try {
-      const db = await openDb2();
-      if (!db) return null;
-      const tx = db.transaction(STORE, "readonly");
-      const store = tx.objectStore(STORE);
-      const row2 = await reqToPromise2(
-        store.get(accountKey)
-      );
-      if (!row2 || row2.version !== RECORD_VERSION) return null;
-      if (!Array.isArray(row2.mails) || !row2.mails.length) return null;
-      return row2;
-    } catch (e2) {
-      return null;
-    }
-  }
-  async function saveMailCacheRecord(record) {
-    try {
-      const db = await openDb2();
-      if (!db) return;
-      const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      await reqToPromise2(store.put(record));
-    } catch (e2) {
-    }
-  }
-  function buildRecordFromState() {
-    const mails = getMails();
-    if (!mails.length) return null;
-    const readIds = getLocallyReadIds();
-    const locallyReadIds2 = [];
-    for (const id of readIds) {
-      locallyReadIds2.push(id);
-    }
-    return {
-      accountKey: mailAccountKey(),
-      version: RECORD_VERSION,
-      savedAt: Date.now(),
-      mails,
-      nextCursor: getNextCursor(),
-      hasMore: getHasMore(),
-      lastHeadAt: getLastHeadAt(),
-      headFingerprint: headFingerprint(mails),
-      locallyReadIds: locallyReadIds2
-    };
-  }
-  function schedulePersistMailCache() {
-    if (typeof window === "undefined") return;
-    if (persistTimer) window.clearTimeout(persistTimer);
-    persistTimer = window.setTimeout(() => {
-      persistTimer = 0;
-      const record = buildRecordFromState();
-      if (!record) return;
-      void saveMailCacheRecord(record);
-    }, PERSIST_DEBOUNCE_MS);
-  }
-  async function hydrateMailCacheFromIdb() {
-    if (getMails().length > 0) return false;
-    if (hydrateInFlight) return hydrateInFlight;
-    hydrateInFlight = (async () => {
-      const rec = await loadMailCacheRecord(mailAccountKey());
-      if (!rec || getMails().length > 0) return false;
-      const local = getLocallyReadIds();
-      for (let i = 0; i < rec.locallyReadIds.length; i++) {
-        local.add(rec.locallyReadIds[i]);
-      }
-      commit({
-        mails: rec.mails,
-        nextCursor: rec.nextCursor,
-        hasMore: !!rec.hasMore,
-        lastHeadAt: rec.lastHeadAt || 0,
-        lastHeadReason: "idb",
-        status: "Restored " + rec.mails.length + " from cache",
-        statusKind: ""
-      });
-      return true;
-    })();
-    try {
-      return await hydrateInFlight;
-    } finally {
-      hydrateInFlight = null;
-    }
-  }
-
-  // src/host/mail/api.ts
-  function getApiCall() {
-    const fn = window.api_call;
-    return typeof fn === "function" ? fn : null;
-  }
-  function extractInfs(ct) {
-    if (!ct) return [];
-    if (typeof ct === "string") {
-      try {
-        return extractInfs(JSON.parse(ct));
-      } catch (e2) {
-        return [];
-      }
-    }
-    if (Array.isArray(ct)) return ct;
-    if (typeof ct !== "object") return [];
-    const obj = ct;
-    if (obj.failed) return [];
-    if (Array.isArray(obj.infs)) return obj.infs;
-    if (obj.data != null) {
-      const nested = extractInfs(obj.data);
-      if (nested.length) return nested;
-    }
-    if (obj.type === "mail" || Array.isArray(obj.mail)) {
-      return [obj];
-    }
-    return [];
-  }
-  function readUnreadFromInfs(infs) {
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (info2 && info2.type === "unread" && typeof info2.count === "number") {
-        return info2.count;
-      }
-    }
-    return void 0;
-  }
-  function findMailInfo(infs) {
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (info2 && (info2.type === "mail" || Array.isArray(info2.mail))) {
-        return info2;
-      }
-    }
-    return null;
-  }
-  var API_TIMEOUT_MS = 2e4;
-  async function postJson(path, body, signal) {
-    if (typeof fetch !== "function") return null;
-    try {
-      const res = await fetch(window.location.origin + path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        credentials: "same-origin",
-        body: JSON.stringify(body),
-        signal
-      });
-      let json = null;
-      try {
-        json = await res.json();
-      } catch (e2) {
-        json = null;
-      }
-      return { ok: res.ok, status: res.status, json };
-    } catch (e2) {
-      return null;
-    }
-  }
-  async function callApiFetch(method, args) {
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer2 = window.setTimeout(() => {
-      if (ctrl) ctrl.abort();
-    }, API_TIMEOUT_MS);
-    try {
-      const res = await postJson(
-        "/api/" + method,
-        { ...args },
-        ctrl ? ctrl.signal : void 0
-      );
-      if (!res) return null;
-      if (!res.ok) return { ok: false };
-      return { ok: true, infs: extractInfs(res.json) };
-    } finally {
-      window.clearTimeout(timer2);
-    }
-  }
-  function callApiStock(method, args) {
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (infs) => {
-        if (settled) return;
-        settled = true;
-        resolve(infs);
-      };
-      const api = getApiCall();
-      if (!api) {
-        finish([]);
-        return;
-      }
-      const timer2 = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
-      try {
-        const maybePromise = api(
-          method,
-          {
-            ...args,
-            callback: (ct) => {
-              window.clearTimeout(timer2);
-              finish(extractInfs(ct));
-            }
-          },
-          { silent: true }
-        );
-        if (maybePromise && typeof maybePromise.then === "function") {
-          maybePromise.then((data) => {
-            window.clearTimeout(timer2);
-            finish(extractInfs(data));
-          }).catch((data) => {
-            window.clearTimeout(timer2);
-            finish(extractInfs(data));
-          });
-        }
-      } catch (e2) {
-        window.clearTimeout(timer2);
-        finish([]);
-      }
-    });
-  }
-  async function callApi(method, args = {}) {
-    const viaFetch = await callApiFetch(method, args);
-    if (viaFetch != null) {
-      if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
-      if (viaFetch.ok) {
-        const viaStock2 = await callApiStock(method, args);
-        if (viaStock2.length) return viaStock2;
-        return viaFetch.infs;
-      }
-      const viaStock = await callApiStock(method, args);
-      if (viaStock.length) return viaStock;
-      return [];
-    }
-    return callApiStock(method, args);
-  }
-  async function callApiResult(method, args = {}) {
-    const viaFetch = await callApiFetch(method, args);
-    if (viaFetch != null) {
-      if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
-      return { ok: false, reason: "http_error", data: [] };
-    }
-    const viaStock = await callApiStock(method, args);
-    if (viaStock.length) return { ok: true, data: viaStock };
-    return { ok: false, reason: "no_response", data: [] };
-  }
-  async function pullMailPage(cursor) {
-    const args = {};
-    if (cursor) args.cursor = cursor;
-    const infs = await callApi("pull_mail", args);
-    const info2 = findMailInfo(infs);
-    if (info2) return { ok: true, data: normalizeMailPage(info2) };
-    return { ok: false, reason: "no_mail_payload" };
-  }
-  async function readMail(mailId) {
-    const res = await callApiResult("read_mail", { mail: mailId });
-    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
-    const infs = res.data || [];
-    return {
-      ok: true,
-      data: true,
-      unreadCount: readUnreadFromInfs(infs)
-    };
-  }
-  async function deleteMail(mailId) {
-    const res = await callApiResult("delete_mail", { mid: mailId });
-    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
-    const infs = res.data || [];
-    let message;
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (!info2) continue;
-      if (info2.type === "message" && typeof info2.message === "string") {
-        message = info2.message;
-      }
-    }
-    return { ok: true, data: true, message };
-  }
-  async function readMailMany(ids) {
-    let unreadCount;
-    let anyOk = false;
-    const jobs = [];
-    for (let i = 0; i < ids.length; i++) {
-      jobs.push(readMail(ids[i]));
-    }
-    const results = await Promise.all(jobs);
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].ok) anyOk = true;
-      if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
-    }
-    if (!anyOk && ids.length) {
-      return { ok: false, reason: "no_response", data: { unreadCount } };
-    }
-    return { ok: true, data: { unreadCount } };
-  }
-
-  // src/host/mail/mailCompose.ts
-  var draftHydrated = false;
-  function ensureComposeDraftHydrated() {
-    if (draftHydrated) return;
-    draftHydrated = true;
-    const draft = loadPersistedDraft();
-    commit({ sessionDraft: draft }, { silent: true });
-  }
-  function stickyLastTo() {
-    try {
-      const last = loadSettings().mailLastTo;
-      return Array.isArray(last) ? last.map(String).filter(Boolean) : [];
-    } catch (e2) {
-      return [];
-    }
-  }
-  function writeDraftSettings(draft) {
-    try {
-      saveSettings({ mailDraft: JSON.stringify(draft) });
-    } catch (e2) {
-    }
-  }
-  function commitCompose(mutator, opts) {
-    ensureComposeDraftHydrated();
-    const cur = getActiveComposeDraft();
-    const next = canonicalizeDraft(mutator(cur));
-    const patch = {
-      view: { kind: "compose", draft: next },
-      sessionDraft: next
-    };
-    if (opts && opts.status != null) {
-      patch.status = opts.status;
-      patch.statusKind = opts.statusKind || "";
-    }
-    commit(patch);
-    writeDraftSettings(next);
-    return next;
-  }
-  function persistDraft(draft) {
-    const next = canonicalizeDraft(draft);
-    commit({ sessionDraft: next }, { silent: true });
-    writeDraftSettings(next);
-  }
-  function loadPersistedDraft() {
-    try {
-      const raw = loadSettings().mailDraft;
-      if (!raw || typeof raw !== "string") return emptyDraft();
-      const parsed = JSON.parse(raw);
-      const tos = normalizeComposeTos(
-        Array.isArray(parsed.to) ? parsed.to.map(String) : []
-      );
-      const fallback = tos[0] || "";
-      const hasAttaches = Array.isArray(parsed.attaches) && parsed.attaches.length > 0;
-      const rawList = hasAttaches ? parsed.attaches : parsed.attach ? [parsed.attach] : [];
-      const attaches = [];
-      for (let i = 0; i < rawList.length; i++) {
-        attaches.push(migrateComposeAttach(rawList[i], fallback));
-      }
-      const draft = canonicalizeDraft({
-        to: tos,
-        subject: String(parsed.subject || ""),
-        body: String(parsed.body || ""),
-        attaches
-      });
-      if (!hasAttaches && parsed.attach) {
-        writeDraftSettings(draft);
-      }
-      return draft;
-    } catch (e2) {
-      return emptyDraft();
-    }
-  }
-  function openCompose(partial) {
-    ensureComposeDraftHydrated();
-    const draft = resolveComposeOpen({
-      session: getActiveComposeDraft(),
-      stickyTo: stickyLastTo(),
-      partial
-    });
-    commit({
-      view: { kind: "compose", draft },
-      sessionDraft: draft
-    });
-    writeDraftSettings(draft);
-  }
-  function queueMailAttach(fp) {
-    ensureComposeDraftHydrated();
-    if (getView().kind !== "compose") openCompose();
-    const cur = getActiveComposeDraft();
-    const to = pickToForNewAttach(cur);
-    const nextLen = cur.attaches.filter((a) => a.slot !== fp.slot).length + 1;
-    commitCompose(
-      (d) => {
-        const list = d.attaches.filter((a) => a.slot !== fp.slot);
-        list.push(makeComposeAttach(fp, to));
-        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
-        return { ...d, subject, attaches: list };
-      },
-      {
-        status: to ? nextLen === 1 ? "Attached " + fp.name + " \u2192 " + to : "Queued " + nextLen + " items \xB7 " + fp.name + " \u2192 " + to : nextLen === 1 ? "Attached " + fp.name + " \xB7 add To to send" : "Queued " + nextLen + " items \xB7 " + fp.name + " \xB7 add To to send"
-      }
-    );
-  }
-  function patchComposeDraft(partial) {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => {
-      const to = partial.to ? normalizeComposeTos(partial.to) : d.to;
-      const subject = partial.subject != null ? partial.subject : d.subject;
-      const body = partial.body != null ? partial.body : d.body;
-      let attaches = d.attaches;
-      if (partial.attaches) {
-        attaches = [];
-        for (let i = 0; i < partial.attaches.length; i++) {
-          const a = partial.attaches[i];
-          attaches.push(
-            makeComposeAttach(a, String(a.to || "").trim())
-          );
-        }
-      } else if (partial.to) {
-        attaches = rebindAttachesToPool(d.attaches, to);
-      }
-      return { to, subject, body, attaches };
-    });
-  }
-  function setMailAttachTo(index, to) {
-    if (getView().kind !== "compose") return;
-    const name = String(to || "").trim();
-    if (!name) return;
-    commitCompose((d) => {
-      if (index < 0 || index >= d.attaches.length) return d;
-      const list = d.attaches.slice();
-      list[index] = { ...list[index], to: name };
-      return {
-        ...d,
-        to: normalizeComposeTos(d.to.concat([name])),
-        attaches: list
-      };
-    });
-  }
-  function distributeMailAttaches() {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => distributeAttachesAcrossTos(d), {
-      status: "Distributed items across To recipients"
-    });
-  }
-  function removeMailAttachAt(index) {
-    if (getView().kind !== "compose") return;
-    commitCompose((d) => {
-      if (index < 0 || index >= d.attaches.length) return d;
-      const list = d.attaches.slice();
-      list.splice(index, 1);
-      return { ...d, attaches: list };
-    });
-  }
-  function replyToMail(mail) {
-    openCompose({
-      to: mail.fro ? [mail.fro] : [],
-      subject: mail.subject ? mail.subject.indexOf("Re:") === 0 ? mail.subject : "Re: " + mail.subject : "Re:",
-      body: "",
-      attaches: []
-    });
-  }
-  function forwardMail(mail) {
-    const quoted = "\n\n---------- Forwarded message ----------\nFrom: " + (mail.fro || "?") + "\nTo: " + (mail.to || "?") + "\nSubject: " + (mail.subject || "") + "\n\n" + (mail.message || "");
-    openCompose({
-      to: [],
-      subject: mail.subject ? mail.subject.indexOf("Fwd:") === 0 ? mail.subject : "Fwd: " + mail.subject : "Fwd:",
-      body: quoted,
-      attaches: []
-    });
-  }
-
-  // src/host/mail/mailUnreadLogic.ts
-  function assignLocalReadFlags(rows, prevIds, bootstrap2, unreadBudget, locallyReadIds2) {
-    let budgetLeft = bootstrap2 ? unreadBudget : 0;
-    const out = [];
-    const newIds = [];
-    for (let i = 0; i < rows.length; i++) {
-      const m = { ...rows[i] };
-      const isNew = !prevIds.has(m.id);
-      if (isNew && !bootstrap2) newIds.push(m.id);
-      if (locallyReadIds2.has(m.id)) {
-        m.read = true;
-      } else if (bootstrap2 && budgetLeft > 0) {
-        m.read = false;
-        budgetLeft -= 1;
-      } else if (isNew && !bootstrap2) {
-        m.read = false;
-      } else if (m.read == null) {
-        m.read = true;
-      }
-      out.push(m);
-    }
-    return { rows: out, newIds };
-  }
-  function markRowsRead(mails, ids) {
-    if (!ids.size) return mails;
-    const out = [];
-    let changed = false;
-    for (let i = 0; i < mails.length; i++) {
-      const row2 = mails[i];
-      if (ids.has(row2.id) && row2.read !== true) {
-        out.push({ ...row2, read: true });
-        changed = true;
-      } else {
-        out.push(row2);
-      }
-    }
-    return changed ? out : mails;
-  }
-  function resolveCommandOutcome(p, mails) {
-    if (p.kind === "send") {
-      const fromKeys = [];
-      if (p.fromNames) {
-        for (let i = 0; i < p.fromNames.length; i++) {
-          const n = String(p.fromNames[i] || "").trim().toLowerCase();
-          if (n) fromKeys.push(n);
-        }
-      }
-      let newCount = 0;
-      for (let i = 0; i < mails.length; i++) {
-        const row2 = mails[i];
-        if (p.beforeIds.indexOf(row2.id) >= 0) continue;
-        if (fromKeys.length) {
-          const fro = String(row2.fro || "").trim().toLowerCase();
-          if (fromKeys.indexOf(fro) < 0) continue;
-        }
-        newCount += 1;
-      }
-      const expect2 = p.expect > 0 ? p.expect : 1;
-      if (expect2 > 1) {
-        if (newCount >= expect2) {
-          return {
-            code: "looks_sent",
-            text: "Looks sent \xB7 " + newCount + "/" + expect2,
-            kind: ""
-          };
-        }
-        if (newCount > 0) {
-          return {
-            code: "partial_sent",
-            text: "Partial \xB7 " + newCount + "/" + expect2 + " \u2014 check character log",
-            kind: "warn"
-          };
-        }
-        return {
-          code: "sent_inconclusive",
-          text: "Sent \u2014 confirm on character log",
-          kind: ""
-        };
-      }
-      if (newCount > 0) {
-        return { code: "looks_sent", text: "Looks sent", kind: "" };
-      }
-      return {
-        code: "sent_inconclusive",
-        text: "Sent \u2014 confirm on character log",
-        kind: ""
-      };
-    }
-    let okCount = 0;
-    for (let i = 0; i < p.targetIds.length; i++) {
-      let row2 = null;
-      for (let j = 0; j < mails.length; j++) {
-        if (mails[j].id === p.targetIds[i]) {
-          row2 = mails[j];
-          break;
-        }
-      }
-      if (row2 && (row2.taken || !row2.item)) okCount += 1;
-    }
-    const expect = p.expect > 0 ? p.expect : p.targetIds.length || 1;
-    if (expect > 1 || p.targetIds.length > 1) {
-      if (okCount >= expect) {
-        return {
-          code: "looks_taken",
-          text: "Looks taken \xB7 " + okCount + "/" + expect,
-          kind: ""
-        };
-      }
-      if (okCount > 0) {
-        return {
-          code: "partial_taken",
-          text: "Partial take \xB7 " + okCount + "/" + expect + " \u2014 check bag / log",
-          kind: "warn"
-        };
-      }
-      return {
-        code: "take_no_change",
-        text: "No change \u2014 check character log / bag",
-        kind: "warn"
-      };
-    }
-    if (okCount > 0) {
-      return { code: "looks_taken", text: "Looks taken", kind: "" };
-    }
-    return {
-      code: "take_no_change",
-      text: "No change \u2014 check character log / bag",
-      kind: "warn"
-    };
-  }
-
-  // src/host/mail/mailCache.ts
-  var pullInFlight = false;
-  var prefetchTimer = 0;
-  var prefetchPages = 0;
-  var prefetchFailStreak = 0;
-  var activePull = null;
-  function stopPrefetch() {
-    if (prefetchTimer) {
-      window.clearTimeout(prefetchTimer);
-      prefetchTimer = 0;
-    }
-    commit({ prefetchArmed: false });
-  }
-  function resetPrefetchPages() {
-    prefetchPages = 0;
-    prefetchFailStreak = 0;
-  }
-  function prefetchDelayMs() {
-    const ramp = Math.min(
-      prefetchPages * MAIL_PREFETCH_GAP_STEP_MS,
-      MAIL_PREFETCH_GAP_MAX_MS - MAIL_PREFETCH_GAP_MS
-    );
-    const failExtra = Math.min(prefetchFailStreak * 1e3, 8e3);
-    return Math.min(
-      MAIL_PREFETCH_GAP_MS + Math.max(0, ramp) + failExtra,
-      MAIL_PREFETCH_GAP_MAX_MS + 8e3
-    );
-  }
-  function schedulePrefetch() {
-    stopPrefetch();
-    if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight) {
-      return;
-    }
-    commit({ prefetchArmed: true });
-    prefetchTimer = window.setTimeout(() => {
-      prefetchTimer = 0;
-      commit({ prefetchArmed: false });
-      void loadOlderMail({ background: true });
-    }, prefetchDelayMs());
-  }
-  async function runPull(mode, reason, cursor) {
-    if (activePull) {
-      try {
-        await activePull;
-      } catch (e2) {
-      }
-      if (mode === "cursor" && (pullInFlight || getLoadingMore())) {
-        return false;
-      }
-    }
-    const work = (async () => {
-      if (pullInFlight) return false;
-      pullInFlight = true;
-      commit(
-        mode === "head" ? { loading: true, loadingMore: false } : { loadingMore: true }
-      );
-      try {
-        const res = await pullMailPage(mode === "cursor" ? cursor : null);
-        if (!res.ok || !res.data) {
-          setStatus(
-            res.reason === "no_mail_payload" ? "Mail pull returned no list \u2014 try Refresh" : "Mail pull failed",
-            "err"
-          );
-          return false;
-        }
-        const page = res.data;
-        const mails = getMails();
-        const prevIds = /* @__PURE__ */ new Set();
-        for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
-        const bootstrap2 = mode === "head" && mails.length === 0;
-        if (mode === "head") {
-          const reconciled = reconcileAfterHeadPull(
-            mails,
-            page,
-            getNextCursor(),
-            getHasMore()
-          );
-          const assigned = assignLocalReadFlags(
-            reconciled.mails,
-            prevIds,
-            bootstrap2,
-            bootstrap2 ? getXUnread() : 0,
-            getLocallyReadIds()
-          );
-          const patch = {
-            mails: assigned.rows,
-            nextCursor: reconciled.nextCursor,
-            hasMore: reconciled.hasMore,
-            lastHeadAt: Date.now(),
-            lastHeadReason: reason
-          };
-          if (reason.indexOf("X.unread\u2191") === 0 && assigned.newIds.length) {
-            patch.newMailCount = assigned.newIds.length;
-          }
-          if (!getCommandBusy()) {
-            let strat = "";
-            if (reconciled.strategy === "unchanged") strat = " \xB7 cache ok";
-            else if (reconciled.strategy === "prepend") {
-              strat = " \xB7 pushed new";
-            } else if (reconciled.strategy === "stitch") {
-              strat = " \xB7 kept older";
-            } else if (reconciled.strategy === "truncate") {
-              strat = " \xB7 refreshed head";
-            }
-            patch.status = "Loaded " + assigned.rows.length + (reconciled.hasMore ? "+" : "") + strat + " \xB7 " + reason;
-            patch.statusKind = "";
-          }
-          commit(patch);
-        } else {
-          const assigned = assignLocalReadFlags(
-            appendCursorPage(mails, page.mail),
-            prevIds,
-            false,
-            0,
-            getLocallyReadIds()
-          );
-          const meta2 = applyPullMeta(page);
-          const patch = {
-            mails: assigned.rows,
-            nextCursor: meta2.nextCursor,
-            hasMore: meta2.hasMore
-          };
-          if (!reason.startsWith("prefetch")) {
-            patch.status = "Loaded \xB7 " + assigned.rows.length + (meta2.hasMore ? "+" : "");
-            patch.statusKind = "";
-          }
-          commit(patch);
-        }
-        schedulePersistMailCache();
-        return true;
-      } finally {
-        pullInFlight = false;
-        commit({ loading: false, loadingMore: false });
-      }
-    })();
-    activePull = work;
-    try {
-      return await work;
-    } finally {
-      if (activePull === work) activePull = null;
-    }
-  }
-  async function requestMailHead(reason, opts) {
-    const force = !!(opts && opts.force);
-    const lastHeadAt = getLastHeadAt();
-    const should = reason === "Refresh" || force || reason.indexOf("X.unread") === 0 || reason.indexOf("command") === 0 || getMails().length === 0 || lastHeadAt === 0 || Date.now() - lastHeadAt >= MAIL_HEAD_TTL_MS;
-    if (!should && reason !== "Refresh" && !force) return;
-    await runPull("head", reason);
-    if (getPanelOpen()) schedulePrefetch();
-  }
-  async function loadOlderMail(opts) {
-    const background = !!(opts && opts.background);
-    if (!getHasMore() || getLoadingMore() || pullInFlight) return;
-    if (!getNextCursor() && getMails().length > 0) {
-      commit({ hasMore: false });
-      return;
-    }
-    const ok = await runPull(
-      "cursor",
-      background ? "prefetch" : "load-older",
-      getNextCursor()
-    );
-    if (background) {
-      if (ok) {
-        prefetchPages += 1;
-        prefetchFailStreak = 0;
-      } else {
-        prefetchFailStreak += 1;
-      }
-      if (getPanelOpen()) schedulePrefetch();
-    }
-  }
-  function clearNewMailBanner() {
-    commit({ newMailCount: 0 });
-  }
-
-  // src/host/mail/mailUnread.ts
-  function applyXUnread(count, opts) {
-    const n = Math.max(0, Number(count) || 0);
-    const prevSeen = getLastSeenUnread();
-    if (typeof window !== "undefined" && window.X) {
-      window.X.unread = n;
-    }
-    try {
-      syncMailBadge();
-    } catch (e2) {
-    }
-    if (opts && opts.quiet) {
-      commit({ lastSeenUnread: n });
-      return;
-    }
-    if (prevSeen < 0) {
-      commit({ lastSeenUnread: n });
-      return;
-    }
-    if (n > prevSeen) {
-      const delta = n - prevSeen;
-      commit({ lastSeenUnread: n });
-      if (getPanelOpen()) {
-        void requestMailHead("X.unread\u2191 (new mail)");
-      } else {
-        emitToast(delta === 1 ? "1 new mail" : delta + " new mails");
-      }
-      return;
-    }
-    if (n < prevSeen) {
-      commit({ lastSeenUnread: n });
-      if (getPanelOpen()) void requestMailHead("X.unread\u2193 (external read)");
-      return;
-    }
-    commit({ lastSeenUnread: n });
-  }
-  function findNewestUnreadId() {
-    const mails = getMails();
-    for (let i = 0; i < mails.length; i++) {
-      if (mails[i].read === false) return mails[i].id;
-    }
-    return null;
-  }
-  async function openMailRow(id) {
-    const mails = getMails();
-    let m = null;
-    for (let i = 0; i < mails.length; i++) {
-      if (mails[i].id === id) {
-        m = mails[i];
-        break;
-      }
-    }
-    if (!m) return;
-    const wasUnread = m.read === false;
-    getLocallyReadIds().add(id);
-    commit({
-      view: { kind: "read", id },
-      mails: markRowsRead(mails, /* @__PURE__ */ new Set([id])),
-      unreadStuckHint: ""
-    });
-    schedulePersistMailCache();
-    const res = await readMail(id);
-    if (res.ok) {
-      if (res.unreadCount != null) applyXUnread(res.unreadCount, { quiet: true });
-      else if (wasUnread) {
-        const cur = getXUnread();
-        if (cur > 0) applyXUnread(cur - 1, { quiet: true });
-      }
-      commit({ unreadStuckHint: "" });
-      return;
-    }
-    if (wasUnread) {
-      commit({
-        unreadStuckHint: "Could not mark read on server \u2014 try Refresh"
-      });
-    }
-  }
-  async function openNewestUnread() {
-    await requestMailHead("open");
-    const id = findNewestUnreadId();
-    if (id) await openMailRow(id);
-    else commit({ view: { kind: "list" } });
-  }
-  async function markVisibleRead(ids) {
-    const mails = getMails();
-    const unreadIds = [];
-    const idSet = /* @__PURE__ */ new Set();
-    for (let i = 0; i < ids.length; i++) {
-      let m = null;
-      for (let j = 0; j < mails.length; j++) {
-        if (mails[j].id === ids[i]) {
-          m = mails[j];
-          break;
-        }
-      }
-      if (m && m.read === false) {
-        getLocallyReadIds().add(ids[i]);
-        unreadIds.push(ids[i]);
-        idSet.add(ids[i]);
-      }
-    }
-    if (!unreadIds.length) return;
-    commit({ mails: markRowsRead(mails, idSet) });
-    schedulePersistMailCache();
-    const res = await readMailMany(unreadIds);
-    if (res.data && res.data.unreadCount != null) {
-      applyXUnread(res.data.unreadCount, { quiet: true });
-    } else {
-      applyXUnread(Math.max(0, getXUnread() - unreadIds.length), {
-        quiet: true
-      });
-    }
-  }
-  async function markAllUnreadRead() {
-    const mails = getMails();
-    const ids = [];
-    for (let i = 0; i < mails.length; i++) {
-      if (mails[i].read === false) ids.push(mails[i].id);
-    }
-    if (!ids.length) {
-      setStatus("No unread mail in cache");
-      return;
-    }
-    await markVisibleRead(ids);
-    setStatus("Marked " + ids.length + " read");
-  }
-  function bootMailUnreadWatch() {
-    if (getLastSeenUnread() < 0) {
-      commit({ lastSeenUnread: getXUnread() });
-    }
-  }
-
-  // src/host/mail/mailOutcomes.ts
-  var pendingOutcome = null;
-  var cmdSeq = 0;
-  function resolvePendingOutcome() {
-    const p = pendingOutcome;
-    pendingOutcome = null;
-    if (!p) {
-      commit({ commandBusy: false });
-      return;
-    }
-    const result = resolveCommandOutcome(p, getMails());
-    commit({
-      commandBusy: false,
-      status: result.text,
-      statusKind: result.kind
-    });
-  }
-  function rebindAttachSlots(attaches) {
-    const obs = window.observing;
-    if (!obs || !Array.isArray(obs.items)) {
-      return "Not observing \u2014 cannot verify attaches";
-    }
-    const used = /* @__PURE__ */ new Set();
-    const out = [];
-    for (let i = 0; i < attaches.length; i++) {
-      const fp = attaches[i];
-      const slot = findFingerprintSlot(obs.items, fp, used);
-      if (slot < 0) {
-        const label = fp.level != null ? fp.name + " +" + fp.level : fp.name;
-        return "Attach not in observed bag: " + label + " \u2014 Refresh bag, then re-queue";
-      }
-      used.add(slot);
-      out.push({ ...fp, slot });
-    }
-    return out;
-  }
-  function patchObservingAfterAttachSend(attaches) {
-    const obs = window.observing;
-    if (!obs || !Array.isArray(obs.items)) return;
-    let changed = false;
-    for (let i = 0; i < attaches.length; i++) {
-      const fp = attaches[i];
-      const slot = findFingerprintSlot(obs.items, fp, null);
-      if (slot < 0) continue;
-      obs.items[slot] = null;
-      changed = true;
-    }
-    if (changed) {
-      try {
-        if (typeof window.render_inventory === "function") {
-          window.render_inventory();
-        }
-      } catch (e2) {
-      }
-    }
-  }
-  function sendLooksSettled(p) {
-    if (p.kind !== "send") return true;
-    const result = resolveCommandOutcome(p, getMails());
-    return result.code === "looks_sent";
-  }
-  function scheduleCommandHead(reason, delayMs) {
-    const seq = ++cmdSeq;
-    const wait = typeof delayMs === "number" && delayMs > 0 ? delayMs : MAIL_COMMAND_HEAD_DELAY_MS;
-    window.setTimeout(() => {
-      if (seq !== cmdSeq) return;
-      void (async () => {
-        const isCommand = reason.indexOf("command") === 0;
-        const sendPending = isCommand && pendingOutcome && pendingOutcome.kind === "send" ? pendingOutcome : null;
-        const attempts = sendPending ? 4 : 1;
-        for (let i = 0; i < attempts; i++) {
-          if (seq !== cmdSeq) return;
-          await requestMailHead(reason, { force: true });
-          if (!sendPending || sendLooksSettled(sendPending) || i === attempts - 1) {
-            break;
-          }
-          await new Promise((r) => window.setTimeout(r, 900));
-        }
-        if (isCommand) {
-          resolvePendingOutcome();
-        }
-        try {
-          refreshObservedInventory();
-        } catch (e2) {
-        }
-      })();
-    }, wait);
-  }
-  function sendMailCommand(opts) {
-    if (getCommandBusy()) {
-      setStatus("Wait for previous command\u2026", "warn");
-      return false;
-    }
-    const tos = Array.isArray(opts.to) ? opts.to.map(String).filter(Boolean) : opts.to ? [String(opts.to)] : [];
-    const attachesIn = opts.attaches && opts.attaches.length ? opts.attaches.slice() : [];
-    let attaches = [];
-    if (attachesIn.length) {
-      if (!attachesHaveRecipients(attachesIn)) {
-        setStatus("Each attach needs a To recipient", "warn");
-        return false;
-      }
-      const rebound = rebindAttachSlots(attachesIn);
-      if (typeof rebound === "string") {
-        setStatus(rebound, "err");
-        return false;
-      }
-      attaches = rebound;
-    } else if (!tos.length) {
-      setStatus("Add a recipient", "warn");
-      return false;
-    }
-    const expect = attaches.length > 0 ? attaches.length : Math.max(1, tos.length);
-    const script = buildSendScript({
-      to: tos,
-      subject: opts.subject,
-      body: opts.body,
-      attaches: attaches.length ? attaches : void 0
-    });
-    const ok = emitObserverCommand(script);
-    if (!ok) {
-      commit({ lastScript: script });
-      setStatus("No socket \u2014 cannot send command", "err");
-      return false;
-    }
-    if (attaches.length) {
-      patchObservingAfterAttachSend(attaches);
-    }
-    const stickyTo = [];
-    const seenSticky = /* @__PURE__ */ new Set();
-    const pushSticky = (name) => {
-      const key = name.toLowerCase();
-      if (!name || seenSticky.has(key)) return;
-      seenSticky.add(key);
-      stickyTo.push(name);
-    };
-    if (attaches.length) {
-      for (let i = 0; i < attaches.length; i++) {
-        pushSticky(String(attaches[i].to || "").trim());
-      }
-    }
-    for (let i = 0; i < tos.length; i++) pushSticky(String(tos[i]).trim());
-    try {
-      saveSettings({ mailLastTo: stickyTo.slice(0, 8) });
-    } catch (e2) {
-    }
-    const mails = getMails();
-    const beforeIds = [];
-    for (let i = 0; i < mails.length; i++) beforeIds.push(mails[i].id);
-    const fromName = window.observing && window.observing.name || getObserving() && getObserving().name || "";
-    pendingOutcome = {
-      kind: "send",
-      beforeIds,
-      targetIds: [],
-      expect,
-      fromNames: fromName ? [String(fromName)] : void 0
-    };
-    const obs = fromName || "character";
-    commit({
-      lastScript: script,
-      commandBusy: true,
-      status: expect > 1 ? "Batch command \xB7 " + expect + " mails \u2192 " + obs + "\u2026" : "Command sent to " + obs + "\u2026",
-      statusKind: "warn",
-      view: { kind: "list" }
-    });
-    persistDraft(emptyDraft());
-    scheduleCommandHead(
-      "command \xB7 send",
-      MAIL_COMMAND_HEAD_DELAY_MS + 1200 + (expect - 1) * 800
-    );
-    return true;
-  }
-  function takeMailCommand(mailIdOrIds) {
-    if (getCommandBusy()) {
-      setStatus("Wait for previous command\u2026", "warn");
-      return false;
-    }
-    const ids = Array.isArray(mailIdOrIds) ? mailIdOrIds.slice() : [mailIdOrIds];
-    if (!ids.length) return false;
-    const script = buildTakeScript(ids);
-    const ok = emitObserverCommand(script);
-    if (!ok) {
-      commit({ lastScript: script });
-      setStatus("No socket \u2014 cannot send command", "err");
-      return false;
-    }
-    const mails = getMails();
-    const beforeIds = [];
-    for (let i = 0; i < mails.length; i++) beforeIds.push(mails[i].id);
-    pendingOutcome = {
-      kind: "take",
-      beforeIds,
-      targetIds: ids.slice(),
-      expect: ids.length
-    };
-    const obs = window.observing && window.observing.name || getObserving() && getObserving().name || "character";
-    commit({
-      lastScript: script,
-      commandBusy: true,
-      status: ids.length > 1 ? "Take batch \xB7 " + ids.length + " \u2192 " + obs + "\u2026" : "Command sent to " + obs + "\u2026",
-      statusKind: "warn"
-    });
-    scheduleCommandHead(
-      "command \xB7 take",
-      ids.length > 1 ? MAIL_COMMAND_HEAD_DELAY_MS + (ids.length - 1) * 600 : MAIL_COMMAND_HEAD_DELAY_MS
-    );
-    return true;
-  }
-
-  // src/host/mail/mailDelete.ts
-  var undoTimer = 0;
-  var undoRows = [];
-  var finalizeInFlight = false;
-  function sleep(ms) {
-    return new Promise((resolve) => {
-      window.setTimeout(resolve, ms);
-    });
-  }
-  function deleteGapMs(index) {
-    if (index <= 0) return 0;
-    const ramp = Math.min(
-      index * MAIL_DELETE_GAP_STEP_MS,
-      MAIL_DELETE_GAP_MAX_MS - MAIL_DELETE_GAP_MS
-    );
-    return Math.min(
-      MAIL_DELETE_GAP_MS + Math.max(0, ramp),
-      MAIL_DELETE_GAP_MAX_MS
-    );
-  }
-  function clearUndoState() {
-    if (undoTimer) {
-      window.clearTimeout(undoTimer);
-      undoTimer = 0;
-    }
-    undoRows = [];
-    commit({ undoCount: 0 });
-  }
-  function removeIdsFromList(unique, seen) {
-    const mails = getMails();
-    const batch = [];
-    for (let i = 0; i < unique.length; i++) {
-      for (let j = 0; j < mails.length; j++) {
-        if (mails[j].id === unique[i]) {
-          batch.push({ ...mails[j] });
-          break;
-        }
-      }
-    }
-    const nextMails = [];
-    for (let i = 0; i < mails.length; i++) {
-      if (!seen.has(mails[i].id)) nextMails.push(mails[i]);
-    }
-    const patch = { mails: nextMails };
-    if (getHasMore()) {
-      patch.nextCursor = String(nextMails.length);
-    } else if (!nextMails.length) {
-      patch.nextCursor = null;
-      patch.hasMore = false;
-    }
-    const view = getView();
-    if (view.kind === "read" && seen.has(view.id)) {
-      patch.view = { kind: "list" };
-    }
-    commit(patch);
-    schedulePersistMailCache();
-    return batch;
-  }
-  async function deleteMailRows(ids, opts) {
-    if (finalizeInFlight) {
-      setStatus("Delete already in progress\u2026", "warn");
-      return "busy";
-    }
-    const unique = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (let i = 0; i < ids.length; i++) {
-      if (seen.has(ids[i])) continue;
-      seen.add(ids[i]);
-      unique.push(ids[i]);
-    }
-    if (!unique.length) return "ok";
-    const mails = getMails();
-    let hasUntaken = false;
-    for (let i = 0; i < unique.length; i++) {
-      let m = null;
-      for (let j = 0; j < mails.length; j++) {
-        if (mails[j].id === unique[i]) {
-          m = mails[j];
-          break;
-        }
-      }
-      if (m && m.item && !m.taken) hasUntaken = true;
-    }
-    if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
-    clearUndoState();
-    const batch = removeIdsFromList(unique, seen);
-    const finalizeIds = [];
-    for (let i = 0; i < batch.length; i++) finalizeIds.push(batch[i].id);
-    const allowUndo = batch.length > 0 && batch.length <= MAIL_DELETE_UNDO_MAX;
-    if (allowUndo) {
-      undoRows = batch;
-      commit({
-        undoCount: batch.length,
-        status: batch.length === 1 ? "Deleted \xB7 Undo available (5s)" : "Deleted " + batch.length + " \xB7 Undo available (5s)",
-        statusKind: "warn"
-      });
-      if (undoTimer) window.clearTimeout(undoTimer);
-      undoTimer = window.setTimeout(() => {
-        undoTimer = 0;
-        undoRows = [];
-        commit({ undoCount: 0 });
-        void finalizeDeletes(finalizeIds);
-      }, MAIL_DELETE_UNDO_MS);
-      return "ok";
-    }
-    undoRows = [];
-    commit({ undoCount: 0 });
-    void finalizeDeletes(finalizeIds);
-    return "ok";
-  }
-  async function finalizeDeletes(ids) {
-    if (!ids.length) return;
-    if (finalizeInFlight) return;
-    finalizeInFlight = true;
-    undoRows = [];
-    commit({ undoCount: 0 });
-    const total = ids.length;
-    let failed = 0;
-    let done = 0;
-    let lastNotify = 0;
-    const paint = (force) => {
-      const now = Date.now();
-      if (!force && now - lastNotify < 80 && done < total) return;
-      lastNotify = now;
-      commit({
-        deleteProgress: { done, total },
-        status: "Deleting " + done + " / " + total + "\u2026",
-        statusKind: "warn"
-      });
-    };
-    paint(true);
-    try {
-      for (let i = 0; i < ids.length; i++) {
-        const gap = deleteGapMs(i);
-        if (gap > 0) await sleep(gap);
-        const res = await deleteMail(ids[i]);
-        if (!res.ok) failed += 1;
-        done += 1;
-        paint();
-      }
-    } finally {
-      finalizeInFlight = false;
-      commit({ deleteProgress: null });
-    }
-    if (failed) {
-      setStatus(
-        "Deleted " + (total - failed) + " / " + total + " \xB7 " + failed + " failed",
-        "err"
-      );
-      void requestMailHead("Refresh", { force: true });
-      return;
-    }
-    setStatus(total === 1 ? "Mail deleted." : total + " mails deleted.");
-  }
-  function undoDeleteMail() {
-    if (!undoRows.length || finalizeInFlight) return;
-    if (undoTimer) {
-      window.clearTimeout(undoTimer);
-      undoTimer = 0;
-    }
-    const next = undoRows.concat(getMails());
-    undoRows = [];
-    const patch = {
-      mails: next,
-      undoCount: 0,
-      status: "Delete undone",
-      statusKind: ""
-    };
-    if (getHasMore()) patch.nextCursor = String(next.length);
-    commit(patch);
-    schedulePersistMailCache();
-  }
-
-  // src/host/mail/mailSession.ts
-  function setMailPanelOpen(open) {
-    if (!open) {
-      commit({ panelOpen: false });
-      stopPrefetch();
-      schedulePersistMailCache();
-      return;
-    }
-    ensureComposeDraftHydrated();
-    resetPrefetchPages();
-    commit({ panelOpen: true });
-    void (async () => {
-      await hydrateMailCacheFromIdb();
-      await requestMailHead("open");
-      if (getMailSnapshot().panelOpen) schedulePrefetch();
-    })();
-  }
-
-  // src/host/mail/unreadWatch.ts
-  var installed2 = false;
-  var timer = 0;
-  function installMailUnreadWatch() {
-    if (installed2) return;
-    installed2 = true;
-    bootMailUnreadWatch();
-    timer = window.setInterval(() => {
-      applyXUnread(getXUnread());
-    }, 2e3);
   }
 
   // src/ui/chrome/ItemInstance.ts
@@ -14674,9 +14849,8 @@ ${CHROME_ARRANGE_CSS}
 }
 `;
 
-  // src/ui/frames/mail/mailCss.ts
-  var injected = false;
-  var CSS2 = `
+  // src/ui/frames/mail/mailChromeCss.ts
+  var MAIL_CHROME_CSS = `
 .comm-mail {
   display: flex;
   flex-direction: column;
@@ -14946,6 +15120,27 @@ ${CHROME_ARRANGE_CSS}
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.comm-mail__card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.comm-mail__card-title-row .comm-mail__card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail__btn--undo {
+  flex: 0 0 auto;
+  background: #3a3420;
+  color: #ffe9a0;
+  border: 1px solid #6a5a30;
+  font-weight: 700;
+}
+.comm-mail__btn--undo:hover {
+  background: #4a4430;
+  color: #fff3c0;
+}
 .comm-mail__card-sub {
   margin-top: 3px;
   font-size: 12px;
@@ -15109,7 +15304,10 @@ ${CHROME_ARRANGE_CSS}
   color: #c9b07a;
   font-weight: 600;
 }
-.comm-mail__body {
+`;
+
+  // src/ui/frames/mail/mailListCss.ts
+  var MAIL_LIST_CSS = `.comm-mail__body {
   flex: 1 1 auto;
   display: flex;
   min-height: 0;
@@ -15117,10 +15315,12 @@ ${CHROME_ARRANGE_CSS}
 }
 .comm-mail__list {
   flex: 1 1 46%;
-  max-width: 520px;
+  max-width: 560px;
   overflow: auto;
   border-right: 1px solid #2a2a2a;
   min-width: 260px;
+  /* Isolate list layout/paint from chrome without size containment (flex needs height). */
+  contain: layout style;
 }
 .comm-mail.is-narrow .comm-mail__list { flex: 1 1 auto; max-width: none; border-right: none; }
 .comm-mail.is-narrow.is-reading .comm-mail__list,
@@ -15133,6 +15333,10 @@ ${CHROME_ARRANGE_CSS}
   cursor: pointer;
   align-items: flex-start;
   min-height: 0;
+  /* Skip layout/paint for off-screen rows while scrolling. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+  contain: layout style;
 }
 .comm-mail__row:hover { background: #161616; }
 .comm-mail__row.is-sel { background: #1c2430; }
@@ -15182,6 +15386,29 @@ ${CHROME_ARRANGE_CSS}
 }
 .comm-mail__aside {
   display: none;
+}
+.comm-mail__when {
+  flex: 0 0 4.75em;
+  width: 4.75em;
+  margin-left: 4px;
+  text-align: right;
+  align-self: center;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+.comm-mail__when-date {
+  font-size: 11px;
+  color: #9a9a9a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-mail__when-ago {
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .comm-mail__meta {
   font-size: 11px;
@@ -15239,10 +15466,16 @@ button.comm-mail__stack-u {
 .comm-mail__row.is-nested.is-sel { background: #1c2430; }
 .comm-mail__item {
   position: relative;
+  flex: 0 0 auto;
   flex-shrink: 0;
   margin-left: 2px;
   line-height: 0;
   align-self: center;
+  box-sizing: border-box;
+}
+.comm-mail__item.is-empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 .comm-mail__item.is-taken {
   opacity: 0.22;
@@ -15305,7 +15538,10 @@ button.comm-mail__stack-u {
 }
 .comm-mail__row.has-item { border-left: 2px solid transparent; }
 .comm-mail__row.item-taken { border-left: 2px solid #555; }
-.comm-mail__pane {
+`;
+
+  // src/ui/frames/mail/mailComposeCss.ts
+  var MAIL_COMPOSE_CSS = `.comm-mail__pane {
   flex: 1 1 54%;
   overflow: auto;
   padding: 14px 16px;
@@ -15480,18 +15716,21 @@ button.comm-mail__stack-u {
 }
 .comm-mail-ctx button:hover,
 .comm-mail-ctx__item:hover { background: #222; }
-` + ITEM_INSTANCE_BADGE_CSS;
+`;
+
+  // src/ui/frames/mail/mailCss.ts
+  var injected = false;
+  var CSS2 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
   function ensureMailCss() {
+    if (injected) return;
+    injected = true;
     const existing = document.querySelector(
       "style[data-ecu-mail-css]"
     );
     if (existing) {
       existing.textContent = CSS2;
-      injected = true;
       return;
     }
-    if (injected) return;
-    injected = true;
     const el = document.createElement("style");
     el.setAttribute("data-ecu-mail-css", "1");
     el.textContent = CSS2;
@@ -15501,7 +15740,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.8.0-alpha.4" : "unknown";
-    const builtAt = true ? "2026-08-16T20:47:04.413Z" : "unknown";
+    const builtAt = true ? "2026-08-16T22:46:35.284Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -18283,12 +18522,12 @@ button.comm-mail__stack-u {
     tryContextualTour("meter-toolbar", 200);
   }
 
-  // src/meters/meterWindowStack.ts
-  var METER_STACK_BASE = 50;
-  var METER_STACK_MAX = 79;
+  // src/lib/windowStack.ts
+  var WINDOW_STACK_BASE = 50;
+  var WINDOW_STACK_MAX = 79;
   var LAYOUT_GUIDE_OVERLAY_Z = 110;
-  function maxMeterStackZ(peers) {
-    let max = METER_STACK_BASE - 1;
+  function maxPeerStackZ(peers) {
+    let max = WINDOW_STACK_BASE - 1;
     for (let i = 0; i < peers.length; i++) {
       const z = peers[i].zIndex;
       if (typeof z === "number" && z > max) max = z;
@@ -18296,8 +18535,8 @@ button.comm-mail__stack-u {
     return max;
   }
   function maxRecordStackZ(zs) {
-    if (!zs) return METER_STACK_BASE - 1;
-    let max = METER_STACK_BASE - 1;
+    if (!zs) return WINDOW_STACK_BASE - 1;
+    let max = WINDOW_STACK_BASE - 1;
     const keys = Object.keys(zs);
     for (let i = 0; i < keys.length; i++) {
       const z = zs[keys[i]];
@@ -18305,33 +18544,31 @@ button.comm-mail__stack-u {
     }
     return max;
   }
-  function nextWindowFrontZ(peers, hudZs) {
-    const floor = Math.max(maxMeterStackZ(peers), maxRecordStackZ(hudZs));
-    if (floor < METER_STACK_MAX) {
+  function nextWindowFrontZ(peers, opts) {
+    const hudZs = (opts == null ? void 0 : opts.hudZs) || {};
+    const floorZ = typeof (opts == null ? void 0 : opts.floorZ) === "number" ? opts.floorZ : WINDOW_STACK_BASE - 1;
+    const floor = Math.max(maxPeerStackZ(peers), maxRecordStackZ(hudZs), floorZ);
+    if (floor < WINDOW_STACK_MAX) {
       return { zIndex: floor + 1, peers };
     }
     const ranked = peers.map((m, i) => ({
       i,
-      z: typeof m.zIndex === "number" ? m.zIndex : METER_STACK_BASE - 1
+      z: typeof m.zIndex === "number" ? m.zIndex : WINDOW_STACK_BASE - 1
     })).sort((a, b) => a.z - b.z || a.i - b.i);
     const next = peers.slice();
     for (let r = 0; r < ranked.length; r++) {
       const row2 = next[ranked[r].i];
-      next[ranked[r].i] = { ...row2, zIndex: METER_STACK_BASE + r };
+      next[ranked[r].i] = { ...row2, zIndex: WINDOW_STACK_BASE + r };
     }
     return {
-      zIndex: Math.min(
-        METER_STACK_BASE + ranked.length,
-        METER_STACK_MAX
-      ),
+      zIndex: Math.min(WINDOW_STACK_BASE + ranked.length, WINDOW_STACK_MAX),
       peers: next
     };
   }
-  function nextMeterStackZ(peers) {
-    return nextWindowFrontZ(peers, {});
-  }
+
+  // src/meters/meterWindowStack.ts
   function prepareNewMeterWindow(inst, peers) {
-    const { zIndex, peers: nextPeers } = nextMeterStackZ(peers);
+    const { zIndex, peers: nextPeers } = nextWindowFrontZ(peers, {});
     return {
       peers: nextPeers,
       inst: {
@@ -18341,7 +18578,7 @@ button.comm-mail__stack-u {
       }
     };
   }
-  function bringMeterToFront(peers, id, above = 0) {
+  function bringMeterToFront(peers, id, floorZ = 0) {
     let target = null;
     for (let i = 0; i < peers.length; i++) {
       if (peers[i].id === id) {
@@ -18350,13 +18587,14 @@ button.comm-mail__stack-u {
       }
     }
     if (!target) return peers;
-    const max = maxMeterStackZ(peers);
-    if (typeof target.zIndex === "number" && target.zIndex === max && target.zIndex > above && max >= METER_STACK_BASE) {
+    const max = maxPeerStackZ(peers);
+    if (typeof target.zIndex === "number" && target.zIndex === max && target.zIndex > floorZ && max >= WINDOW_STACK_BASE) {
       return peers;
     }
-    const { zIndex, peers: base } = nextWindowFrontZ(peers, {
-      __hud: above > 0 ? above : void 0
-    });
+    const opts = {
+      floorZ: floorZ > 0 ? floorZ : void 0
+    };
+    const { zIndex, peers: base } = nextWindowFrontZ(peers, opts);
     return base.map((m) => m.id === id ? { ...m, zIndex } : m);
   }
 
@@ -18752,7 +18990,7 @@ button.comm-mail__stack-u {
             return prev;
           }
         }
-        const { zIndex, peers } = nextMeterStackZ(prev);
+        const { zIndex, peers } = nextWindowFrontZ(prev, {});
         const next = peers.concat([{ ...inst, visible: true, zIndex }]);
         patchSettings({ meterInstances: next, meterClosedInstances: closed });
         return next;
@@ -19144,7 +19382,7 @@ button.comm-mail__stack-u {
     } catch (e2) {
     }
   }
-  function notify2() {
+  function notify3() {
     for (let i = 0; i < listeners7.length; i++) {
       listeners7[i]();
     }
@@ -19163,7 +19401,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function getLayoutGridStep() {
@@ -19176,7 +19414,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function getLayoutChromePos() {
@@ -19189,7 +19427,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
@@ -19208,7 +19446,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify2();
+    notify3();
     return next;
   }
 
@@ -19777,7 +20015,7 @@ button.comm-mail__stack-u {
   // src/lib/layoutGuide.ts
   var depth = 0;
   var listeners8 = [];
-  function notify3() {
+  function notify4() {
     for (let i = 0; i < listeners8.length; i++) {
       listeners8[i]();
     }
@@ -19787,7 +20025,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify3();
+    if (depth === 1) notify4();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -19795,12 +20033,12 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify3();
+    if (depth === 0) notify4();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify3();
+    notify4();
   }
   function subscribeLayoutGuide(listener) {
     listeners8.push(listener);
@@ -22024,7 +22262,7 @@ button.comm-mail__stack-u {
       if (!el || typeof ResizeObserver === "undefined") return;
       let lastW = 0;
       let lastH = 0;
-      let timer2 = 0;
+      let timer = 0;
       let shiftHeld = false;
       const onKey = (e2) => {
         if (e2.key === "Shift") shiftHeld = e2.type === "keydown";
@@ -22038,8 +22276,8 @@ button.comm-mail__stack-u {
         if (w === lastW && h === lastH) return;
         lastW = w;
         lastH = h;
-        window.clearTimeout(timer2);
-        timer2 = window.setTimeout(() => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
           if (!props.onResizeFrame) return;
           const free = freePlacementRef.current || shiftHeld || getLayoutFreePlacement();
           let outW = w;
@@ -22067,7 +22305,7 @@ button.comm-mail__stack-u {
       });
       obs.observe(el);
       return () => {
-        window.clearTimeout(timer2);
+        window.clearTimeout(timer);
         obs.disconnect();
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("keyup", onKey);
@@ -22848,7 +23086,7 @@ button.comm-mail__stack-u {
 .ecu-meter-tt li { display: flex; justify-content: space-between; gap: 14px; }
 `;
 
-  // src/ui/meter/css/meterTimelineCss.ts
+  // src/ui/meter/css/meterTimelineClusterCss.ts
   var METER_TIMELINE_CLUSTER_CSS = `
 /* Time Line cooltip: primary = icon under cursor (else bar), + nearby cluster.
    Compact chrome shared by gear + CD/buff/debuff/death. */
@@ -23203,6 +23441,8 @@ button.comm-mail__stack-u {
   font-size: var(--meter-tt-foot);
 }
 `;
+
+  // src/ui/meter/css/meterTimelineTrackCss.ts
   var METER_TIMELINE_TRACK_CSS = `
 /* Legacy encounter nested-tab chrome \u2014 Summary panes live in meterViewsCss. */
 .ecu-meter-encounter-tabs {
@@ -23788,7 +24028,7 @@ button.comm-mail__stack-u {
 }
 `;
 
-  // src/ui/meter/css/meterInspectorCss.ts
+  // src/ui/meter/css/meterInspectorDrillCss.ts
   var METER_INSPECTOR_DRILL_CSS = `
 /* Player drill tabs */
 .ecu-meter-player-breakdown {
@@ -23938,6 +24178,8 @@ button.comm-mail__stack-u {
   margin: 0 !important;
 }
 `;
+
+  // src/ui/meter/css/meterInspectorMainCss.ts
   var METER_INSPECTOR_MAIN_CSS = `
 .ecu-meter-inspector {
   display: flex;
@@ -24503,6 +24745,8 @@ button.comm-mail__stack-u {
   color: var(--meter-text);
 }
 `;
+
+  // src/ui/meter/css/meterInspectorTailCss.ts
   var METER_INSPECTOR_TAIL_CSS = `
 .ecu-meter-inspector .ecu-meter-inspector-spell {
   padding: 2px 8px;
@@ -28816,7 +29060,7 @@ ${parts.map(cssSlice).join("\n")}
         "Select a spell on the left"
       )
     );
-    const barsLive = isLiveCameraRef(props.segmentRef);
+    const barsLive = segmentWantsLiveTick(props.segmentRef, getLiveSegment());
     const spellsBody = e(
       "div",
       { className: "ecu-meter-bd-spells" },
@@ -31309,7 +31553,12 @@ ${parts.map(cssSlice).join("\n")}
       if (isCompare) return;
       return subscribeMeterTick(() => {
         if (propsRef.current.instance.rtPaused) return;
-        if (propsRef.current.segmentRef !== "current") return;
+        if (!segmentWantsLiveTick(
+          propsRef.current.segmentRef,
+          getLiveSegment()
+        )) {
+          return;
+        }
         paintLive();
       });
     }, [
@@ -33470,6 +33719,7 @@ ${parts.map(cssSlice).join("\n")}
       watchedName
     });
     const followLive = partyChrome.followCamera;
+    const barsLive = segmentWantsLiveTick(selectedset, getLiveSegment());
     const { hasObserver, appliedFocus, partyLabel: partyLabel2, partyMenuOpts } = partyChrome;
     const pres = presentationFor(instance);
     const isToolPanel = pres === "details" || isReportPresentation(pres);
@@ -33523,7 +33773,7 @@ ${parts.map(cssSlice).join("\n")}
         partyFocus: instance.partyFocus,
         entities,
         highlightId: barHighlightId,
-        live: followLive,
+        live: barsLive,
         alwaysShowSelf: instance.alwaysShowSelf,
         onRowClick,
         onRowContextMenu
@@ -35965,6 +36215,8 @@ ${parts.map(cssSlice).join("\n")}
     border: "2px double gray",
     gap: "4px",
     fontSize: TYPE.chrome,
+    // Explicit solid — do not inherit a meter-idle opacity from a recycled shell.
+    opacity: 1,
     ...PIXEL_TEXT,
     ...CRYPT_PANEL_STYLE
   };
@@ -36025,27 +36277,39 @@ ${parts.map(cssSlice).join("\n")}
   }
   function buildCryptCardProps(mtype, props, currentlySeeMtypes, aggroedMtypes, instanceData) {
     const mobRichData = instanceData[mtype];
+    const inVision = currentlySeeMtypes.has(mtype);
+    const aggroed = aggroedMtypes.has(mtype);
     let borderColor = "gray";
-    if (aggroedMtypes.has(mtype)) borderColor = "red";
-    else if (currentlySeeMtypes.has(mtype)) borderColor = "yellow";
+    if (aggroed) borderColor = "red";
+    else if (inVision) borderColor = "yellow";
     let status = "??";
     let lastSeenComponent = null;
     let levelComponent = "";
     let focusComponent = null;
     let luckmComponent = null;
+    let faded = false;
     if (mobRichData) {
       if (CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0) {
         const boss = mobRichData;
-        if (boss.deadCount > 0) {
+        if (inVision || aggroed) {
+          status = "Alive";
+          if (aggroed) lastSeenComponent = "Aggroed!";
+          else lastSeenComponent = "We see!";
+          if (boss.lastSeenFocus) {
+            const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
+            if (focusMtype) {
+              focusComponent = `Focus: ${getCryptMobLabel(focusMtype)}`;
+            }
+          }
+        } else if (boss.deadCount > 0) {
           status = formatBossDeathStatus(boss);
+          faded = true;
           if (boss.luckm != null) {
             luckmComponent = `luckm: ${boss.luckm.toFixed(3)}`;
           }
         } else {
           status = "Alive";
-          if (aggroedMtypes.has(mtype)) lastSeenComponent = "Aggroed!";
-          else if (currentlySeeMtypes.has(mtype)) lastSeenComponent = "We see!";
-          else if (boss.lastSeen != null) {
+          if (boss.lastSeen != null) {
             lastSeenComponent = `Seen ${formatTime((Date.now() - boss.lastSeen) / 1e3)} ago`;
           }
           if (boss.lastSeenFocus) {
@@ -36060,6 +36324,7 @@ ${parts.map(cssSlice).join("\n")}
         }
       } else {
         status = `Died: ${mobRichData.deadCount}`;
+        if (mobRichData.deadCount > 0 && !inVision && !aggroed) faded = true;
       }
     }
     let onClick;
@@ -36080,7 +36345,8 @@ ${parts.map(cssSlice).join("\n")}
       lastSeenComponent,
       focusComponent,
       luckmComponent,
-      onClick
+      onClick,
+      faded
     };
   }
 
@@ -36128,7 +36394,7 @@ ${parts.map(cssSlice).join("\n")}
         style: Object.assign({}, CARD_STYLE_BASE, {
           border: `2px double ${props.borderColor}`,
           cursor: clickable ? "pointer" : void 0,
-          opacity: props.dummy ? 0.85 : void 0
+          opacity: props.dummy ? 0.85 : props.faded ? 0.45 : 1
         }),
         title: clickable ? "Click to target" : props.mtype,
         onClick: props.onClick
@@ -37052,74 +37318,51 @@ ${parts.map(cssSlice).join("\n")}
   // src/ui/paperdoll/inspectStats.ts
   var LUCK_COLOR = "#2A9A3D";
   var GOLD_COLOR = "gold";
-  function finiteNumber(v) {
-    return typeof v === "number" && Number.isFinite(v) ? v : void 0;
-  }
-  function pickField(entity, snap, key) {
-    var _a;
-    return (_a = finiteNumber(entity[key])) != null ? _a : finiteNumber(snap == null ? void 0 : snap[key]);
-  }
-  function resolvePaperdollEconomy(entity, welcomeSnap) {
-    const snap = welcomeSnap != null && String(welcomeSnap.id) === String(entity.id) ? welcomeSnap : void 0;
-    let luckm = pickField(entity, snap, "luckm");
-    let goldm = pickField(entity, snap, "goldm");
-    const gold = pickField(entity, snap, "gold");
-    let luckEstimated = false;
-    let goldmEstimated = false;
-    if (luckm == null || goldm == null) {
-      const est = estimateMultipliersFromGear(entity);
-      if (est) {
-        if (luckm == null) {
-          luckm = est.luckm;
-          luckEstimated = true;
-        }
-        if (goldm == null) {
-          goldm = est.goldm;
-          goldmEstimated = true;
-        }
-      }
-    }
-    return { luckm, gold, goldm, luckEstimated, goldmEstimated };
+  var ESTIMATE_HINT = "Estimated from equipped gear + conditions (mluck, sets, \u2026). Soft /comm sync does not send luckm/goldm.";
+  function resolvePaperdollEconomy(entity) {
+    const est = estimateMultipliersFromGear(entity);
+    if (!est) return {};
+    return {
+      luckm: est.luckm,
+      goldm: est.goldm
+    };
   }
   function formatMultPct(mult) {
     return `${Math.round(mult * 100)}%`;
+  }
+  function formatMultValue(mult) {
+    return `~${formatMultPct(mult)}`;
   }
   function luckDisplay(eco) {
     if (eco.luckm == null) {
       return {
         value: "\u2014",
-        title: "Luck \u2014 not on this sync",
+        title: "Luck \u2014 cannot estimate (no gear props)",
         accent: "#888"
       };
     }
-    const pct = formatMultPct(eco.luckm);
-    const est = eco.luckEstimated ? " (from gear)" : "";
-    return { value: pct, title: `Luck ${pct}${est}`, accent: LUCK_COLOR };
-  }
-  function goldDisplay(eco) {
-    if (eco.gold != null) {
-      const coins = formatCompactNumber(eco.gold);
-      const find = eco.goldm != null ? ` \xB7 gold find ${formatMultPct(eco.goldm)}` : "";
-      const est = eco.goldmEstimated ? " (from gear)" : "";
-      return {
-        value: coins,
-        title: `Gold ${coins}${find}${est}`,
-        accent: GOLD_COLOR
-      };
-    }
-    if (eco.goldm != null) {
-      const pct = formatMultPct(eco.goldm);
-      const est = eco.goldmEstimated ? " (from gear)" : "";
-      return {
-        value: pct,
-        title: `Gold find ${pct}${est}`,
-        accent: GOLD_COLOR
-      };
-    }
+    const value = formatMultValue(eco.luckm);
     return {
-      value: "\u2014",
-      title: "Gold \u2014 not on this sync",
-      accent: "#888"
+      value,
+      title: `Luck ${value}
+${ESTIMATE_HINT}`,
+      accent: LUCK_COLOR
+    };
+  }
+  function goldFindDisplay(eco) {
+    if (eco.goldm == null) {
+      return {
+        value: "\u2014",
+        title: "Gold find \u2014 cannot estimate (no gear props)",
+        accent: "#888"
+      };
+    }
+    const value = formatMultValue(eco.goldm);
+    return {
+      value,
+      title: `Gold find ${value}
+${ESTIMATE_HINT}`,
+      accent: GOLD_COLOR
     };
   }
   function luckDelta(theirs, ours) {
@@ -37127,9 +37370,6 @@ ${parts.map(cssSlice).join("\n")}
     return { theirs: theirs.luckm * 100, ours: ours.luckm * 100, pct: true };
   }
   function goldDelta(theirs, ours) {
-    if (theirs.gold != null && ours.gold != null) {
-      return { theirs: theirs.gold, ours: ours.gold, pct: false };
-    }
     if (theirs.goldm != null && ours.goldm != null) {
       return { theirs: theirs.goldm * 100, ours: ours.goldm * 100, pct: true };
     }
@@ -37266,7 +37506,7 @@ ${parts.map(cssSlice).join("\n")}
           pct: luck.pct
         }) : null,
         gold ? e(DeltaStat, {
-          label: "Gold",
+          label: "Goldm",
           theirs: gold.theirs,
           ours: gold.ours,
           pct: gold.pct
@@ -37585,11 +37825,11 @@ ${parts.map(cssSlice).join("\n")}
     const title = `${entity.name || entity.id}` + (entity.mtype ? ` (${entity.mtype})` : "") + ` \xB7 ${(_a = entity.level) != null ? _a : 1}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const watching = props.observing;
     const compare = !stale && isPlayer && watching && String(watching.id) !== String(entity.id) && !!(watching.player || watching.type === "character");
-    const welcomeSnap = window.observing;
-    const eco = resolvePaperdollEconomy(entity, welcomeSnap);
-    const watchEco = watching ? resolvePaperdollEconomy(watching, welcomeSnap) : void 0;
+    const liveWatching = watching && watching.id != null ? findEntity(props.entities, String(watching.id)) || watching : watching;
+    const eco = resolvePaperdollEconomy(entity);
+    const watchEco = liveWatching ? resolvePaperdollEconomy(liveWatching) : void 0;
     const luck = luckDisplay(eco);
-    const gold = goldDisplay(eco);
+    const goldFind = goldFindDisplay(eco);
     const close = () => {
       if (props.onClose) props.onClose();
       else setXTarget(null);
@@ -37759,10 +37999,10 @@ ${parts.map(cssSlice).join("\n")}
             title: luck.title
           }) : null,
           isPlayer ? e(Stat, {
-            label: "Gold",
-            value: gold.value,
-            accent: gold.accent,
-            title: gold.title
+            label: "Goldm",
+            value: goldFind.value,
+            accent: goldFind.accent,
+            title: goldFind.title
           }) : null
         ),
         compare && watching && watchEco ? e(CompareToWatched, {
@@ -40473,19 +40713,47 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/mail/mailFormat.ts
-  function formatMailRelative(sent, now = Date.now()) {
+  function formatMailDate(sent, now = Date.now()) {
     const t = Date.parse(sent);
     if (!Number.isFinite(t)) return String(sent || "");
-    const sec = Math.max(0, Math.floor((now - t) / 1e3));
-    if (sec < 60) return "just now";
-    if (sec < 3600) return Math.floor(sec / 60) + "m ago";
-    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
-    if (sec < 86400 * 14) return Math.floor(sec / 86400) + "d ago";
+    const d = new Date(t);
+    const n = new Date(now);
     try {
-      return new Date(t).toLocaleDateString();
+      if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
+        return d.toLocaleTimeString(void 0, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        });
+      }
+      if (d.getFullYear() === n.getFullYear()) {
+        return d.toLocaleDateString(void 0, {
+          day: "2-digit",
+          month: "2-digit"
+        });
+      }
+      return d.toLocaleDateString(void 0, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "2-digit"
+      });
     } catch (e2) {
       return String(sent);
     }
+  }
+  function formatMailDateTime(sent) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    try {
+      return new Date(t).toLocaleString();
+    } catch (e2) {
+      return String(sent);
+    }
+  }
+  function formatMailRelative(sent, now = Date.now()) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    return formatRelativeAge(t, now);
   }
   function selfCharacterNames() {
     const out = [];
@@ -40510,13 +40778,10 @@ ${parts.map(cssSlice).join("\n")}
     return out;
   }
 
-  // src/ui/frames/mail/MailBannerBar.ts
+  // src/ui/frames/mail/mailActivity.ts
   function resolveMailActivity(snap) {
     if (snap.deleteProgress) {
-      return {
-        mode: "delete",
-        label: "Deleting " + snap.deleteProgress.done + " / " + snap.deleteProgress.total
-      };
+      return { mode: "delete", label: "Deleting" };
     }
     if (snap.commandBusy) {
       return { mode: "command", label: "Running command" };
@@ -40538,29 +40803,29 @@ ${parts.map(cssSlice).join("\n")}
     }
     return { mode: "idle", label: "" };
   }
-  function formatHeadAge(lastHeadAt, now) {
-    if (lastHeadAt === 0) return "never";
-    const sec = Math.max(0, Math.round((now - lastHeadAt) / 1e3));
-    if (sec < 5) return "just now";
-    if (sec < 60) return sec + "s ago";
-    if (sec < 3600) return Math.max(1, Math.floor(sec / 60)) + "m ago";
-    return Math.floor(sec / 3600) + "h ago";
-  }
+
+  // src/ui/frames/mail/MailBannerBar.ts
   function MailBannerBar(props) {
     const React = getReact();
     const { snap, caps } = props;
     const [now, setNow] = React.useState(() => Date.now());
+    const undoActive = snap.undoEndsAt > 0 && snap.undoCount > 0;
     React.useEffect(() => {
-      const id = window.setInterval(() => setNow(Date.now()), 4e3);
+      const id = window.setInterval(
+        () => setNow(Date.now()),
+        undoActive ? 250 : 4e3
+      );
       return () => window.clearInterval(id);
-    }, []);
+    }, [undoActive]);
     const activity = resolveMailActivity(snap);
     const active = activity.mode !== "idle";
     const unread = getXUnread();
-    const headAge = formatHeadAge(snap.lastHeadAt, now);
-    const obsName = window.observing && window.observing.name ? String(window.observing.name) : caps.observeName;
-    const observeLine = obsName ? "Observing " + obsName : caps.reason || "Not observing \xB7 inbox only";
-    const observeOn = !!obsName;
+    const headAge = snap.lastHeadAt === 0 ? "never" : formatRelativeAge(snap.lastHeadAt, now);
+    const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
+    const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : snap.status;
+    const observeLine = caps.observeName ? "Observing " + caps.observeName : caps.reason || "Not observing \xB7 inbox only";
+    const observeOn = !!caps.observeName;
+    const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
     return e(
       React.Fragment,
       null,
@@ -40628,10 +40893,10 @@ ${parts.map(cssSlice).join("\n")}
             )
           )
         ),
-        snap.status || snap.deleteProgress ? e(
+        showStatus ? e(
           "div",
           {
-            className: "comm-mail__card comm-mail__card--status" + (snap.deleteProgress ? " is-warn is-progress" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
+            className: "comm-mail__card comm-mail__card--status" + (snap.deleteProgress ? " is-warn is-progress" : undoActive ? " is-warn" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
           },
           e(
             "div",
@@ -40639,8 +40904,21 @@ ${parts.map(cssSlice).join("\n")}
             e("div", { className: "comm-mail__card-kicker" }, "Status"),
             e(
               "div",
-              { className: "comm-mail__card-title" },
-              snap.deleteProgress ? "Deleting " + snap.deleteProgress.done + " / " + snap.deleteProgress.total : snap.status
+              { className: "comm-mail__card-title-row" },
+              e("div", { className: "comm-mail__card-title" }, statusTitle),
+              undoActive && !snap.deleteProgress ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "comm-mail__btn comm-mail__btn--undo",
+                  title: "Restore deleted mail (U)",
+                  onClick: (ev) => {
+                    ev.stopPropagation();
+                    undoDeleteMail();
+                  }
+                },
+                undoSec > 0 ? "Undo " + undoSec + "s" : "Undo"
+              ) : null
             ),
             snap.deleteProgress ? e(
               "div",
@@ -40683,6 +40961,7 @@ ${parts.map(cssSlice).join("\n")}
       snap,
       wide,
       selfNames,
+      caps,
       toInput,
       setToInput,
       suggestOpen,
@@ -40691,10 +40970,6 @@ ${parts.map(cssSlice).join("\n")}
     if (snap.view.kind !== "compose") return null;
     const draft = snap.view.draft;
     const draftAttachesList = draft.attaches.slice();
-    const caps = getMailCapabilities(
-      draftAttachesList,
-      Math.max(1, draft.to.length)
-    );
     const suggestions = suggestOpen ? suggestMailTo(
       toInput,
       {
@@ -40880,7 +41155,10 @@ ${parts.map(cssSlice).join("\n")}
       e("label", null, "Subject"),
       e(
         "div",
-        { className: "comm-mail__acts", style: { marginTop: 0, marginBottom: 4 } },
+        {
+          className: "comm-mail__acts",
+          style: { marginTop: 0, marginBottom: 4 }
+        },
         e("input", {
           style: { flex: 1, minWidth: 120 },
           value: draft.subject,
@@ -41016,17 +41294,34 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/frames/mail/mailRowShared.ts
   function rowMeta(m) {
-    const bits = [m.fro + " \u2192 " + m.to, formatMailRelative(m.sent)];
+    const bits = [m.fro + " \u2192 " + m.to];
     if (m.item && typeof m.item.q === "number" && m.item.q > 1) {
       bits.push("\xD7" + m.item.q);
     }
     return bits.join(" \xB7 ");
   }
   function stackMeta(g) {
-    return g.head.fro + " \u2192 " + g.head.to + " \xB7 " + formatMailRelative(g.head.sent);
+    return g.head.fro + " \u2192 " + g.head.to;
+  }
+  function mailWhenColumn(sent) {
+    return e(
+      "div",
+      {
+        className: "comm-mail__when",
+        title: formatMailDateTime(sent)
+      },
+      e("div", { className: "comm-mail__when-date" }, formatMailDate(sent)),
+      e("div", { className: "comm-mail__when-ago" }, formatMailRelative(sent))
+    );
   }
   function mailItemIcon(m, size = 32, qtyOverride) {
-    if (!m.item || !m.item.name) return null;
+    if (!m.item || !m.item.name) {
+      return e("div", {
+        className: "comm-mail__item is-empty",
+        "aria-hidden": "true",
+        style: { width: size, height: size }
+      });
+    }
     const q = qtyOverride != null ? qtyOverride : typeof m.item.q === "number" ? m.item.q : void 0;
     const taken = !!m.taken;
     return e(
@@ -41034,7 +41329,8 @@ ${parts.map(cssSlice).join("\n")}
       {
         className: "comm-mail__item" + (taken ? " is-taken" : ""),
         title: taken ? "Attachment already taken" : "Attachment ready to take",
-        onClick: (ev) => ev.stopPropagation()
+        onClick: (ev) => ev.stopPropagation(),
+        style: { width: size, height: size }
       },
       e(ItemInstance, {
         name: String(m.item.name),
@@ -41197,6 +41493,7 @@ ${parts.map(cssSlice).join("\n")}
         ),
         e("div", { className: "comm-mail__meta", title: meta2 }, meta2)
       ),
+      mailWhenColumn(g.head.sent),
       mailItemIcon(stackHead, 36, qtyTotal != null ? qtyTotal : void 0)
     );
   }
@@ -41257,8 +41554,37 @@ ${parts.map(cssSlice).join("\n")}
         ),
         e("div", { className: "comm-mail__meta", title: meta2 }, meta2)
       ),
+      mailWhenColumn(m.sent),
       mailItemIcon(m, 36)
     );
+  }
+  function buildEntries(opts) {
+    const { filtered, collapseRepeats, expandedKeys } = opts;
+    const out = [];
+    if (!collapseRepeats) {
+      for (let i = 0; i < filtered.length; i++) {
+        const m = filtered[i];
+        out.push({ kind: "mail", key: m.id, m });
+      }
+    } else {
+      const groups = collapseMailRows(filtered);
+      for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (g.mails.length === 1) {
+          out.push({ kind: "mail", key: g.head.id, m: g.head });
+          continue;
+        }
+        const expanded = !!expandedKeys[g.key];
+        out.push({ kind: "stack", key: "g-" + g.key, g, expanded });
+        if (expanded) {
+          for (let j = 0; j < g.mails.length; j++) {
+            const m = g.mails[j];
+            out.push({ kind: "mail", key: "n-" + m.id, m, nested: true });
+          }
+        }
+      }
+    }
+    return out;
   }
   function MailListPane(props) {
     const {
@@ -41271,64 +41597,38 @@ ${parts.map(cssSlice).join("\n")}
       expandedKeys,
       setGroupExpanded
     } = props;
-    const listRows = [];
-    if (!collapseRepeats) {
-      for (let i = 0; i < filtered.length; i++) {
-        listRows.push(
+    const entries = buildEntries({ filtered, collapseRepeats, expandedKeys });
+    const activity = resolveMailActivity(snap);
+    const warming = activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
+    const nodes = [];
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      if (entry.kind === "mail") {
+        nodes.push(
           renderMailRow({
-            m: filtered[i],
-            selected,
-            selectedIds,
-            toggleCheck
-          })
-        );
-      }
-    } else {
-      const groups = collapseMailRows(filtered);
-      for (let i = 0; i < groups.length; i++) {
-        const g = groups[i];
-        if (g.mails.length === 1) {
-          listRows.push(
-            renderMailRow({
-              m: g.head,
-              selected,
-              selectedIds,
-              toggleCheck
-            })
-          );
-          continue;
-        }
-        const expanded = !!expandedKeys[g.key];
-        listRows.push(
-          e(MailStackRow, {
-            key: "g-" + g.key,
-            g,
+            m: entry.m,
             selected,
             selectedIds,
             toggleCheck,
-            expanded,
+            nested: entry.nested,
+            keyPrefix: entry.nested ? "n-" : ""
+          })
+        );
+      } else {
+        nodes.push(
+          e(MailStackRow, {
+            key: entry.key,
+            g: entry.g,
+            selected,
+            selectedIds,
+            toggleCheck,
+            expanded: entry.expanded,
             setGroupExpanded
           })
         );
-        if (expanded) {
-          for (let j = 0; j < g.mails.length; j++) {
-            listRows.push(
-              renderMailRow({
-                m: g.mails[j],
-                selected,
-                selectedIds,
-                toggleCheck,
-                nested: true,
-                keyPrefix: "n-"
-              })
-            );
-          }
-        }
       }
     }
-    const activity = resolveMailActivity(snap);
-    const warming = activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
-    listRows.push(
+    nodes.push(
       e(
         "div",
         { key: "foot", className: "comm-mail__foot" },
@@ -41353,13 +41653,12 @@ ${parts.map(cssSlice).join("\n")}
         ) : snap.mails.length + " messages"
       )
     );
-    return e("div", { className: "comm-mail__list" }, ...listRows);
+    return e("div", { className: "comm-mail__list" }, ...nodes);
   }
 
   // src/ui/frames/mail/MailReadPane.ts
   function MailReadPane(props) {
-    const { snap, selected, wide, doDelete } = props;
-    const caps = getMailCapabilities([], 1);
+    const { snap, selected, wide, caps, doDelete } = props;
     return e(
       "div",
       null,
@@ -41380,7 +41679,7 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "div",
         { className: "comm-mail__meta" },
-        "From " + selected.fro + " \xB7 To " + selected.to + " \xB7 " + formatMailRelative(selected.sent)
+        "From " + selected.fro + " \xB7 To " + selected.to + " \xB7 " + formatMailDate(selected.sent) + " \xB7 " + formatMailRelative(selected.sent)
       ),
       e(
         "div",
@@ -41487,16 +41786,7 @@ ${parts.map(cssSlice).join("\n")}
             }
           },
           "Next unread"
-        ),
-        snap.undoCount ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            onClick: () => undoDeleteMail()
-          },
-          "Undo delete"
-        ) : null
+        )
       )
     );
   }
@@ -41910,19 +42200,37 @@ ${parts.map(cssSlice).join("\n")}
   function useMailSnap() {
     const React = getReact();
     const [snap, setSnap] = React.useState(() => getMailSnapshot());
-    React.useEffect(() => subscribeMailStore(() => setSnap(getMailSnapshot())), []);
+    React.useEffect(
+      () => subscribeMailStore(() => setSnap(getMailSnapshot())),
+      []
+    );
     return snap;
   }
-  function MailPanel(_props) {
+  function useMailObservingSnap() {
+    const React = getReact();
+    const read2 = () => getMailObservingSnap();
+    const fpOf = (obs2) => {
+      var _a;
+      if (!obs2) return "";
+      return String(obs2.name || "") + "\0" + String((_a = obs2.gold) != null ? _a : "");
+    };
+    const [obs, setObs] = React.useState(read2);
+    React.useEffect(() => {
+      const id = window.setInterval(() => {
+        const next = read2();
+        setObs(
+          (prev) => fpOf(prev) === fpOf(next) ? prev : next
+        );
+      }, 2e3);
+      return () => window.clearInterval(id);
+    }, []);
+    return obs;
+  }
+  function MailPanel() {
     const React = getReact();
     ensureMailCss();
     const snap = useMailSnap();
-    const [, setObsTick] = React.useState(0);
-    React.useEffect(() => {
-      const id = window.setInterval(() => setObsTick((n) => n + 1), 2e3);
-      return () => window.clearInterval(id);
-    }, []);
-    void (window.observing && window.observing.name);
+    const mailObs = useMailObservingSnap();
     const [pill, setPill] = React.useState(() => {
       try {
         const raw = loadSettings().mailPill;
@@ -41952,7 +42260,7 @@ ${parts.map(cssSlice).join("\n")}
     const selfNames = selfCharacterNames();
     const draftAttachesList = snap.view.kind === "compose" ? snap.view.draft.attaches.slice() : [];
     const draftToCount = snap.view.kind === "compose" ? Math.max(1, snap.view.draft.to.length) : 1;
-    const caps = getMailCapabilities(draftAttachesList, draftToCount);
+    const caps = getMailCapabilities(draftAttachesList, draftToCount, mailObs);
     const setPillPersist = (next) => {
       setPill(next);
       try {
@@ -42023,19 +42331,24 @@ ${parts.map(cssSlice).join("\n")}
       }
       setSelectedIds({});
     };
-    let pane = e("div", { className: "comm-mail__empty" }, "Select a message");
+    let pane = e(
+      "div",
+      { className: "comm-mail__empty" },
+      "Select a message"
+    );
     if (isCompose) {
       pane = e(MailComposePane, {
         snap,
         wide,
         selfNames,
+        caps,
         toInput,
         setToInput,
         suggestOpen,
         setSuggestOpen
       });
     } else if (selected) {
-      pane = e(MailReadPane, { snap, selected, wide, doDelete });
+      pane = e(MailReadPane, { snap, selected, wide, caps, doDelete });
     }
     return e(
       "div",
@@ -42142,6 +42455,7 @@ ${parts.map(cssSlice).join("\n")}
       return e(
         PositionedPanel,
         {
+          key: id,
           id,
           pos: deps.layout[id],
           editing: deps.layoutEdit,
@@ -42337,7 +42651,7 @@ ${parts.map(cssSlice).join("\n")}
           hiddenBodyStyle: COMMAND_PANEL_STYLE
         }
       ),
-      panel("mail", e(MailPanel, { layoutEdit: deps.layoutEdit }), {
+      panel("mail", e(MailPanel, null), {
         closable: true,
         // Fixed frame like meters — inbox scrolls; do not grow with row count.
         hugContent: false,
@@ -42678,14 +42992,12 @@ ${parts.map(cssSlice).join("\n")}
     const raisePanelToFront = React.useCallback(
       (id) => {
         const prev = panelFrontZRef.current;
-        const { zIndex, peers } = nextWindowFrontZ(
-          meters.meterInstances,
-          prev
-        );
+        const { zIndex, peers } = nextWindowFrontZ(meters.meterInstances, {
+          hudZs: prev
+        });
         if (typeof prev[id] === "number" && prev[id] === zIndex) return;
         if (peers !== meters.meterInstances) {
           meters.setMeterInstances(peers);
-          patchSettings({ meterInstances: peers });
         }
         const next = { ...prev, [id]: zIndex };
         panelFrontZRef.current = next;
