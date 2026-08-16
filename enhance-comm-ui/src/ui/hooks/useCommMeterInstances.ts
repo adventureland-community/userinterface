@@ -57,7 +57,7 @@ export type CommMeterInstancesApi = {
   meterIsLocked: (inst: MeterInstance) => boolean;
   patchMeter: (id: string, partial: Partial<MeterInstance>) => void;
   /** Details SetToplevel — raise on interact (click / drag). */
-  raiseMeterToFront: (id: string) => void;
+  raiseMeterToFront: (id: string, above?: number) => void;
   closeMeterRuntime: (id: string) => void;
   reopenClosedMeter: (id: string) => void;
   focusInspector: (
@@ -119,9 +119,9 @@ export function useCommMeterInstances(
     });
   };
 
-  const raiseMeterToFront = (id: string) => {
+  const raiseMeterToFront = (id: string, above = 0) => {
     setMeterInstances((prev: MeterInstance[]) => {
-      const next = bringMeterToFront(prev, id);
+      const next = bringMeterToFront(prev, id, above);
       if (next === prev) return prev;
       patchSettings({ meterInstances: next });
       return next;
