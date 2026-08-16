@@ -48,6 +48,12 @@ export const FEATURE_OVERVIEW: ChangelogItem[] = [
     kind: "feature",
   },
   {
+    label: "Mail",
+    detail:
+      "Account inbox on /comm — read, search, compose, send and take while observing.",
+    kind: "feature",
+  },
+  {
     label: "Command snippets",
     detail: "Observer COMMAND panel with saved CODE presets.",
     kind: "feature",
@@ -56,6 +62,72 @@ export const FEATURE_OVERVIEW: ChangelogItem[] = [
 
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    id: "0.8.0-alpha.4",
+    title: "0.8.0-alpha.4",
+    date: "2026-08-16",
+    summary:
+      "Full account mail in Comm — read your inbox, compose and send while observing, and take attachments without leaving /comm.",
+    items: [
+      {
+        label: "Mail window",
+        detail:
+          "New Mail button on the bottom bar opens a layoutable inbox: search, Load older, compose, multi-select delete (Undo on small batches; progress while larger cleanups run), and a badge for the game’s unread count (100+ when the server caps at 100). Click the badge to jump to the newest unread. Unlock or hold Alt to drag and resize; click Mail to raise it above meters.",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Send and Take while observing",
+        detail:
+          "With a character observed, Send and Take run on that character (gold, bag space, and attach checks). Right-click a bag item for Send mail / queue attach or Item info; Shift+right-click keeps the stock menu when available. STATUS and the character log show how the send or take went.",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Compose and batch mail",
+        detail:
+          "Queue several bag items into one send — one mail per attach, each with its own To. To chips are a recipient pool (round-robin on queue, Distribute across To, or pick per item). Plain mail still copies every To. Subject/body support {item}; empty subject uses the item name. Reply, Forward, sticky last To, and a draft that survives closing Mail.",
+        kind: "feature",
+        highlight: true,
+      },
+      {
+        label: "Stacked repeats",
+        detail:
+          "Near-duplicates collapse into stacks (same parties + subject/body, or the same attached item). Click the row or ×N chip to expand; nested rows to read or take; “N new” jumps to the first unread. Toggle Stack for a flat list. Stacks sum untaken attachment qty; taken copies stay dim with a Taken pill.",
+        kind: "feature",
+      },
+      {
+        label: "Search and filters",
+        detail:
+          "Gmail-style operators (from:/to:/subject:/item:, has:attachment, is:unread|read|taken|untaken, after:/before:, newer_than:/older_than:, quotes, -exclusions) plus Show search options for From / To / Subject / words / Item / date / scope, and Has attachment / Untaken only / Taken only. Select all picks every row in the current filter for batch delete.",
+        kind: "feature",
+      },
+      {
+        label: "Inbox list",
+        detail:
+          "Newest mail first (flat or stacked). Two-line rows: title + chips, then from/to · time, icon on the right. Shared ItemInstance chrome for qty/level. Compact Activity / Character / Inbox / Status cards; list stays narrow so the read/compose pane has room.",
+        kind: "ui",
+      },
+      {
+        label: "Inbox cache",
+        detail:
+          "Mail is stored in IndexedDB per account. Opening restores instantly, then soft-merges the newest page onto the cache; older pages warm in the background while Mail is open. Closing keeps the session list. Activity shows pull / warm / command / delete.",
+        kind: "feature",
+      },
+      {
+        label: "Unread",
+        detail:
+          "Unread follows the game badge plus newly arrived mail. Opening a message clears it in Comm; a banner (or toast if Mail is closed) announces new mail.",
+        kind: "feature",
+      },
+      {
+        label: "Window chrome",
+        detail:
+          "Closable HUD windows (Mail, Threat, Command, …) put hide × on the hover arrange strip with lock and Window Control — same pattern as meters.",
+        kind: "ui",
+      },
+    ],
+  },
   {
     id: "0.8.0-alpha.3",
     title: "0.8.0-alpha.3",
