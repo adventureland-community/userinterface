@@ -3,7 +3,7 @@ import { PAPERDOLL_FRAME_WIDTH } from "../../lib/frameSizes";
 import { LayoutPlaceholder } from "../chrome/LayoutPlaceholder";
 import { Stat } from "./Stat";
 import { VitalsBar } from "./VitalsBar";
-import { TYPE } from "../../lib/typeScale";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
 /** Matches GearGrid SLOT_SIZE + AL item_container border/space (~46 content). */
 const DUMMY_SLOT = 46;
@@ -19,6 +19,28 @@ export const PAPERDOLL_SHELL: Record<string, any> = {
   maxWidth: "340px",
   boxSizing: "border-box",
   overflow: "visible",
+};
+
+export const PAPERDOLL_BODY: Record<string, any> = {
+  padding: "6px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "6px",
+};
+
+export const PAPERDOLL_VITALS: Record<string, any> = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "3px",
+};
+
+export const PAPERDOLL_STATS_GRID: Record<string, any> = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: "1px 8px",
+  padding: "4px 6px",
+  background: "#0d0d0d",
+  border: "1px solid #2a2a2a",
 };
 
 /** Layout-edit silhouette: vitals + stats + 4×4 gear at real footprint. */
@@ -68,22 +90,21 @@ export function PaperdollDummy(): any {
     },
     e(
       "div",
-      {
-        style: {
-          padding: "10px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "10px",
-        },
-      },
+      { style: PAPERDOLL_BODY },
       e(
         "div",
-        { style: { fontSize: TYPE.secondary, color: "#666" } },
+        {
+          style: {
+            fontSize: TYPE.micro,
+            color: "#666",
+            ...PIXEL_TEXT,
+          },
+        },
         "Select a unit to preview gear",
       ),
       e(
         "div",
-        {},
+        { style: PAPERDOLL_VITALS },
         e(VitalsBar, {
           label: "HP",
           current: 0,
@@ -96,43 +117,44 @@ export function PaperdollDummy(): any {
           max: 1,
           color: "#2a3a6a",
         }),
+        e(VitalsBar, {
+          label: "XP",
+          current: 0,
+          max: 1,
+          color: "#2a4a22",
+        }),
       ),
       e(
         "div",
         {
-          style: {
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "4px 14px",
-            padding: "8px",
-            background: "#0d0d0d",
-            border: "1px solid #2a2a2a",
+          style: Object.assign({}, PAPERDOLL_STATS_GRID, {
             color: "#555",
-            fontSize: TYPE.body,
-            lineHeight: "20px",
-          },
+          }),
         },
         e(Stat, { label: "ATK", value: "—" }),
         e(Stat, { label: "Armor", value: "—" }),
         e(Stat, { label: "Res", value: "—" }),
         e(Stat, { label: "Speed", value: "—" }),
+        e(Stat, { label: "🍀 Luck", value: "—" }),
+        e(Stat, { label: "Gold", value: "—" }),
       ),
       e(
         "div",
         {
           style: {
             borderTop: "1px solid #2a2a2a",
-            paddingTop: "8px",
+            paddingTop: "6px",
           },
         },
         e(
           "div",
           {
             style: {
-              fontSize: TYPE.body,
+              fontSize: TYPE.micro,
               color: "#555",
-              marginBottom: "6px",
+              marginBottom: "4px",
               letterSpacing: "0.04em",
+              ...PIXEL_TEXT,
             },
           },
           "GEAR",

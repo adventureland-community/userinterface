@@ -1,6 +1,8 @@
 import { e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
-import { TYPE } from "../../lib/typeScale";
+import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import type { PaperdollEconomy } from "./inspectStats";
+import { goldDelta, luckDelta } from "./inspectStats";
 
 function DeltaStat(props: {
   label: string;
@@ -21,9 +23,10 @@ function DeltaStat(props: {
       style: {
         display: "flex",
         justifyContent: "space-between",
-        gap: "8px",
-        fontSize: TYPE.body,
-        lineHeight: "18px",
+        gap: "6px",
+        fontSize: TYPE.micro,
+        lineHeight: "15px",
+        ...PIXEL_TEXT,
       },
     },
     e("span", { style: { color: "#888" } }, props.label),
@@ -43,27 +46,32 @@ function DeltaStat(props: {
 export type CompareToWatchedProps = {
   entity: EntityLike;
   watching: EntityLike;
+  entityEco: PaperdollEconomy;
+  watchEco: PaperdollEconomy;
 };
 
 export function CompareToWatched(props: CompareToWatchedProps): any {
-  const { entity, watching } = props;
+  const { entity, watching, entityEco, watchEco } = props;
   const watchName = watching.name || watching.id;
+  const luck = luckDelta(entityEco, watchEco);
+  const gold = goldDelta(entityEco, watchEco);
   return e(
     "div",
     {
       style: {
         borderTop: "1px solid #2a2a2a",
-        paddingTop: "8px",
+        paddingTop: "6px",
       },
     },
     e(
       "div",
       {
         style: {
-          fontSize: TYPE.secondary,
+          fontSize: TYPE.micro,
           color: "#888",
-          marginBottom: "6px",
+          marginBottom: "4px",
           letterSpacing: "0.04em",
+          ...PIXEL_TEXT,
         },
       },
       `VS ${watchName}`,
@@ -74,8 +82,8 @@ export function CompareToWatched(props: CompareToWatchedProps): any {
         style: {
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
-          gap: "2px 12px",
-          padding: "6px 8px",
+          gap: "1px 8px",
+          padding: "4px 6px",
           background: "#0a0a0a",
           border: "1px solid #2a2a2a",
         },
@@ -132,6 +140,22 @@ export function CompareToWatched(props: CompareToWatchedProps): any {
         theirs: entity.max_mp,
         ours: watching.max_mp,
       }),
+      luck
+        ? e(DeltaStat, {
+            label: "🍀",
+            theirs: luck.theirs,
+            ours: luck.ours,
+            pct: luck.pct,
+          })
+        : null,
+      gold
+        ? e(DeltaStat, {
+            label: "Gold",
+            theirs: gold.theirs,
+            ours: gold.ours,
+            pct: gold.pct,
+          })
+        : null,
     ),
   );
 }

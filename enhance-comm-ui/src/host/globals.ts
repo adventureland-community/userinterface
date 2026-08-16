@@ -13,6 +13,10 @@ export type EntityLike = {
   max_hp?: number;
   mp?: number;
   max_mp?: number;
+  /** Current XP — `player_to_client` sends this even for strangers. */
+  xp?: number;
+  /** XP to next level. Full sync only; otherwise use `G.levels[level]`. */
+  max_xp?: number;
   mtype?: string;
   cooperative?: boolean;
   /** Player combat target id (monster id / player id); may be number from server. */
@@ -63,6 +67,12 @@ export type EntityLike = {
   items?: any[];
   /** Inventory size (slot count) while observing. */
   isize?: number;
+  /** Wallet gold. Full sync / welcome only — stranger packets omit it. */
+  gold?: number;
+  /** Drop luck multiplier (`1 + xluck/100`). Full sync / welcome only. */
+  luckm?: number;
+  /** Gold-find multiplier (`1 + xgold/100`). Full sync / welcome only. */
+  goldm?: number;
 };
 
 export type SlotLike = {
@@ -119,6 +129,8 @@ export type GLike = {
     { looks?: Array<[string, Record<string, string>?]>; [key: string]: any }
   >;
   monsters?: Record<string, any>;
+  /** XP required per level — `G.levels[level]`. */
+  levels?: Record<string, number>;
   maps?: Record<
     string,
     {
