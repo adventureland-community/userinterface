@@ -7,7 +7,7 @@
 import { getReact, e } from "../../host/react";
 import { cssEscapePanelId } from "../../lib/panelEdgeSnapDom";
 import { layoutDragRoot } from "../../lib/percentDrag";
-import { LAYOUT_GUIDE_OVERLAY_Z } from "../../meters/meterWindowStack";
+import { LAYOUT_GUIDE_OVERLAY_Z } from "../../lib/windowStack";
 
 export type SnapGuideLineProps = {
   dragId: string | null;

@@ -21,9 +21,9 @@ import {
 } from "../../meters/meterCatalog";
 import {
   bringMeterToFront,
-  nextMeterStackZ,
   prepareNewMeterWindow,
 } from "../../meters/meterWindowStack";
+import { nextWindowFrontZ } from "../../lib/windowStack";
 import {
   appendClosedMeterInstance,
   normalizeMeterClosedInstances,
@@ -164,7 +164,7 @@ export function useCommMeterInstances(
         }
       }
       // Keep prior lock; only raise stack so the window paints on top.
-      const { zIndex, peers } = nextMeterStackZ(prev);
+      const { zIndex, peers } = nextWindowFrontZ(prev, {});
       const next = peers.concat([{ ...inst!, visible: true, zIndex }]);
       patchSettings({ meterInstances: next, meterClosedInstances: closed });
       return next;

@@ -57,7 +57,7 @@ import { isTouchishProfile } from "../../lib/viewport";
 import {
   maxRecordStackZ,
   nextWindowFrontZ,
-} from "../../meters/meterWindowStack";
+} from "../../lib/windowStack";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -238,14 +238,13 @@ export function CommUI(props: CommUIProps): any {
   const raisePanelToFront = React.useCallback(
     (id: PanelId) => {
       const prev = panelFrontZRef.current;
-      const { zIndex, peers } = nextWindowFrontZ(
-        meters.meterInstances,
-        prev as Record<string, number | undefined>,
-      );
+      const { zIndex, peers } = nextWindowFrontZ(meters.meterInstances, {
+        hudZs: prev as Record<string, number | undefined>,
+      });
       if (typeof prev[id] === "number" && prev[id] === zIndex) return;
+      // Renormalize meter zs in React only — HUD raise must not persist meters.
       if (peers !== meters.meterInstances) {
         meters.setMeterInstances(peers);
-        patchSettings({ meterInstances: peers });
       }
       const next = { ...prev, [id]: zIndex };
       panelFrontZRef.current = next;

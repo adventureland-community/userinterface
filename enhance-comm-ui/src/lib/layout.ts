@@ -258,6 +258,27 @@ export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   return out;
 }
 
+/**
+ * One-shot bump for early alpha.4 mail shells (undersized defaults or
+ * content-grown height before fixed-box mail). Thresholds scale with the
+ * profile default so phone layouts are not wiped by desktop magic numbers.
+ */
+function migrateMailFrame(pos: PanelPos, def: PanelPos): PanelPos {
+  const defW = typeof def.frameW === "number" ? def.frameW : 800;
+  const defH = typeof def.frameH === "number" ? def.frameH : 500;
+  const minW = Math.min(800, Math.round(defW * 0.85));
+  const minH = Math.min(500, Math.round(defH * 0.85));
+  const maxH = Math.max(900, Math.round(defH * 1.4));
+  const tooSmall =
+    typeof pos.frameW !== "number" ||
+    pos.frameW < minW ||
+    typeof pos.frameH !== "number" ||
+    pos.frameH < minH;
+  const tooTall = typeof pos.frameH === "number" && pos.frameH > maxH;
+  if (!tooSmall && !tooTall) return pos;
+  return { ...pos, frameW: def.frameW, frameH: def.frameH };
+}
+
 export function mergeLayout(
   partial?: PanelLayoutMap | null,
   profile: ViewportProfile = "desktop",
@@ -274,24 +295,8 @@ export function mergeLayout(
     delete out.bag.frameW;
     delete out.bag.frameH;
   }
-  // Bump early alpha.4 mail shells that shipped undersized defaults.
-  // Also reset frames that grew with inbox content (pre–fixed-box mail).
-  if (out.mail) {
-    const def = defaults.mail;
-    const tooSmall =
-      typeof out.mail.frameW !== "number" ||
-      out.mail.frameW < 800 ||
-      typeof out.mail.frameH !== "number" ||
-      out.mail.frameH < 500;
-    const tooTall =
-      typeof out.mail.frameH === "number" && out.mail.frameH > 900;
-    if (tooSmall || tooTall) {
-      out.mail = {
-        ...out.mail,
-        frameW: def.frameW,
-        frameH: def.frameH,
-      };
-    }
+  if (out.mail && defaults.mail) {
+    out.mail = migrateMailFrame(out.mail, defaults.mail);
   }
   return out;
 }
