@@ -1,9 +1,5 @@
-import { openMail } from "../mail/mailOpen";
-import {
-  formatUnreadBadgeLabel,
-  getXUnread,
-  SERVER_UNREAD_CAP,
-} from "../mail/xUnread";
+import { syncMailBadge } from "../mail/mailUnread";
+import { openMail } from "../mail/mailSession";
 
 /**
  * Leave observe mode: reconnect as pure spectator on the current server.
@@ -201,21 +197,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
   }
 }
 
-export function syncMailBadge(): void {
-  const badge = document.querySelector(
-    "[data-ecu-mail-badge]",
-  ) as HTMLElement | null;
-  if (!badge) return;
-  const n = getXUnread();
-  badge.textContent = formatUnreadBadgeLabel(n);
-  badge.hidden = n === 0;
-  badge.title =
-    n >= SERVER_UNREAD_CAP
-      ? "Unread mail (server reports at most 100)"
-      : n
-        ? n + " unread"
-        : "";
-}
+export { syncMailBadge } from "../mail/mailUnread";
 
 export function syncActionsEnabled(): void {
   const watching = !!(window.observing && window.observing.name);

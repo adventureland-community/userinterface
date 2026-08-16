@@ -25,7 +25,7 @@ import {
   MAIL_PREFETCH_GAP_MS,
   MAIL_PREFETCH_GAP_STEP_MS,
 } from "./types";
-import { getXUnread } from "./xUnread";
+import { getXUnread } from "./mailUnread";
 
 let pullInFlight = false;
 let prefetchTimer = 0;

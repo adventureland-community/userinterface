@@ -8,6 +8,8 @@ import { emptyDraft } from "./composeDraft";
 export type MailDeleteProgress = {
   done: number;
   total: number;
+  /** Estimated ms remaining (gaps + API); 0 when unknown / finished. */
+  etaMs: number;
 };
 
 export type MailStoreSnapshot = {
@@ -34,6 +36,8 @@ export type MailStoreSnapshot = {
   unreadStuckHint: string;
   /** Pending undo batch size (0 when none). */
   undoCount: number;
+  /** Absolute ms when soft-delete undo expires (0 when idle). */
+  undoEndsAt: number;
   /** Server-side delete progress (null when idle). */
   deleteProgress: MailDeleteProgress | null;
 };
@@ -68,6 +72,7 @@ const state: MailStateFields = {
   commandBusy: false,
   unreadStuckHint: "",
   undoCount: 0,
+  undoEndsAt: 0,
   deleteProgress: null,
   sessionDraft: emptyDraft(),
 };
@@ -82,13 +87,23 @@ export function emitToast(message: string): void {
 
 /**
  * Apply a patch atomically. Default notifies once.
- * Use `{ silent: true }` only when a later commit/notify will follow in the
- * same synchronous turn (e.g. clearMailSessionCore + commit({})).
+ * Use `{ silent: true }` only when a later `commit` or `notify()` will follow
+ * in the same synchronous turn (e.g. clearMailSessionCore + notify()).
  */
 export function commit(
   patch: Partial<MailStateFields>,
   opts?: { silent?: boolean },
 ): void {
+  let changed = false;
+  for (const key in patch) {
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+    const k = key as keyof MailStateFields;
+    if (state[k] !== patch[k]) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
   Object.assign(state, patch);
   if (!(opts && opts.silent)) notifyListeners();
 }
@@ -142,6 +157,7 @@ export function getMailSnapshot(): MailStoreSnapshot {
     commandBusy: state.commandBusy,
     unreadStuckHint: state.unreadStuckHint,
     undoCount: state.undoCount,
+    undoEndsAt: state.undoEndsAt,
     deleteProgress: state.deleteProgress,
   };
 }
@@ -252,6 +268,7 @@ export function clearMailSessionCore(): void {
       commandBusy: false,
       unreadStuckHint: "",
       undoCount: 0,
+      undoEndsAt: 0,
       deleteProgress: null,
     },
     { silent: true },

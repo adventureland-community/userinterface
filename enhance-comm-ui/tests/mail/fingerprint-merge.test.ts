@@ -33,7 +33,7 @@ import {
 import {
   formatUnreadBadgeLabel,
   SERVER_UNREAD_CAP,
-} from "../../src/host/mail/xUnread";
+} from "../../src/host/mail/mailUnread";
 import {
   collapseMailRows,
   mailCollapseKey,

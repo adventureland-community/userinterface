@@ -1,6 +1,5 @@
 import type { MailPill, MailRow } from "./types";
 import { mailMatchesSearch, parseMailSearch } from "./mailSearch";
-import { sortMailsNewestFirst } from "./mailSort";
 
 export type FilterMailsOpts = {
   pill: MailPill;
@@ -18,6 +17,28 @@ function selfSet(names: string[]): Set<string> {
     if (n) s.add(String(n).toLowerCase());
   }
   return s;
+}
+
+/** Sent time for sort — ISO dates, else numeric epoch/sentinel strings. */
+export function mailSentMs(m: MailRow): number {
+  const raw = String(m.sent || "");
+  const parsed = Date.parse(raw);
+  if (Number.isFinite(parsed)) return parsed;
+  const n = Number(raw);
+  if (Number.isFinite(n)) return n;
+  return 0;
+}
+
+/** Newest first (flat and stacked both consume this order). */
+export function sortMailsNewestFirst(mails: MailRow[]): MailRow[] {
+  const out = mails.slice();
+  out.sort((a, b) => {
+    const d = mailSentMs(b) - mailSentMs(a);
+    if (d !== 0) return d;
+    // Stable tie-break so identical timestamps don’t shuffle.
+    return String(b.id).localeCompare(String(a.id));
+  });
+  return out;
 }
 
 export function filterMails(
@@ -43,18 +64,9 @@ export function filterMails(
   return sortMailsNewestFirst(out);
 }
 
-export { mailSentMs, sortMailsNewestFirst } from "./mailSort";
-
 export {
   MAIL_SEARCH_HINT,
   parseMailSearch,
   mailMatchesSearch,
 } from "./mailSearch";
 export type { ParsedMailSearch, MailSearchClause } from "./mailSearch";
-export {
-  EMPTY_MAIL_SEARCH_FORM,
-  MAIL_SEARCH_SCOPES,
-  mailSearchFormToQuery,
-  queryToMailSearchForm,
-} from "./mailSearchForm";
-export type { MailSearchFormState } from "./mailSearchForm";

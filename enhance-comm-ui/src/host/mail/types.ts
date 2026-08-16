@@ -61,6 +61,7 @@ export type MailCapabilities = {
   canSend: boolean;
   canTake: boolean;
   sendCost: number;
+  /** Set when watching — from the same snap caps used for gold/send. */
   observeName?: string;
   reason?: string;
   gold?: number;

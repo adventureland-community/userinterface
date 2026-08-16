@@ -20,19 +20,20 @@ export {
   MAIL_PREFETCH_GAP_MS,
   MAIL_SEND_COST,
 } from "./types";
-export { fingerprintFromSlot, itemMatchesFingerprint, findFingerprintSlot } from "./itemFingerprint";
 export {
-  filterMails,
-  MAIL_SEARCH_HINT,
-  parseMailSearch,
+  fingerprintFromSlot,
+  itemMatchesFingerprint,
+  findFingerprintSlot,
+} from "./itemFingerprint";
+export { filterMails, MAIL_SEARCH_HINT, parseMailSearch } from "./filter";
+export type { MailSearchClause, ParsedMailSearch } from "./filter";
+export {
+  EMPTY_MAIL_SEARCH_FORM,
+  MAIL_SEARCH_SCOPES,
   mailSearchFormToQuery,
   queryToMailSearchForm,
-} from "./filter";
-export type {
-  MailSearchClause,
-  ParsedMailSearch,
-  MailSearchFormState,
-} from "./filter";
+} from "./mailSearchForm";
+export type { MailSearchFormState } from "./mailSearchForm";
 export {
   collapseMailRows,
   mailCollapseKey,
@@ -51,9 +52,11 @@ export {
 } from "./mailSubject";
 export {
   getMailCapabilities,
+  getMailObservingSnap,
   mailBatchSendCost,
   mailSendCost,
 } from "./capabilities";
+export type { MailObservingSnap } from "./capabilities";
 export {
   appendCursorPage,
   mergeHeadPage,
@@ -101,11 +104,15 @@ export {
   applyXUnread,
   bootMailUnreadWatch,
   findNewestUnreadId,
+  formatUnreadBadgeLabel,
   getXUnread,
+  installMailUnreadWatch,
   markAllUnreadRead,
   markVisibleRead,
   openMailRow,
   openNewestUnread,
+  SERVER_UNREAD_CAP,
+  syncMailBadge,
   syncUnreadFromX,
 } from "./mailUnread";
 export { sendMailCommand, takeMailCommand } from "./mailOutcomes";
@@ -114,11 +121,25 @@ export {
   loadOlderMail,
   requestMailHead,
 } from "./mailCache";
-export { deleteMailRow, deleteMailRows, undoDeleteMail } from "./mailDelete";
+export {
+  deleteMailRow,
+  deleteMailRows,
+  undoDeleteMail,
+  undoSecondsLeft,
+} from "./mailDelete";
+export {
+  estimateDeleteEtaMs,
+  estimateDeleteRemainingMs,
+  formatDeleteEta,
+  formatDeleteProgressLabel,
+} from "./mailDeleteEstimate";
 export {
   clearMailSession,
+  openMail,
   setMailPanelOpen,
+  subscribeMailOpen,
 } from "./mailSession";
+export type { MailOpenPayload } from "./mailSession";
 export {
   getMailSnapshot,
   setMailView,
@@ -126,9 +147,5 @@ export {
   subscribeMailToast,
 } from "./mailState";
 export type { MailStoreSnapshot } from "./mailState";
-export { installMailUnreadWatch } from "./unreadWatch";
-export { formatUnreadBadgeLabel, SERVER_UNREAD_CAP } from "./xUnread";
 export { assignLocalReadFlags, resolveCommandOutcome } from "./mailUnreadLogic";
 export type { CommandOutcome, CommandOutcomeCode } from "./mailUnreadLogic";
-export { openMail, subscribeMailOpen } from "./mailOpen";
-export type { MailOpenPayload } from "./mailOpen";

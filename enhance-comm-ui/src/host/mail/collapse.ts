@@ -4,7 +4,7 @@
  */
 
 import type { MailRow } from "./types";
-import { mailSentMs, sortMailsNewestFirst } from "./mailSort";
+import { mailSentMs, sortMailsNewestFirst } from "./filter";
 
 export type MailCollapseGroup = {
   key: string;

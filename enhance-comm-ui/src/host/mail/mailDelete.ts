@@ -5,22 +5,24 @@
 
 import { deleteMail } from "./api";
 import { requestMailHead } from "./mailCache";
+import {
+  deleteGapMs,
+  estimateDeleteEtaMs,
+  MAIL_DELETE_API_DEFAULT_MS,
+} from "./mailDeleteEstimate";
 import { schedulePersistMailCache } from "./mailPersist";
+import { commit, getHasMore, getMails, getView, setStatus } from "./mailState";
 import {
-  commit,
-  getHasMore,
-  getMails,
-  getView,
-  setStatus,
-} from "./mailState";
-import {
-  MAIL_DELETE_GAP_MAX_MS,
-  MAIL_DELETE_GAP_MS,
-  MAIL_DELETE_GAP_STEP_MS,
   MAIL_DELETE_UNDO_MAX,
   MAIL_DELETE_UNDO_MS,
   type MailRow,
 } from "./types";
+
+/** Seconds left on the soft-delete undo window (0 when idle / expired). */
+export function undoSecondsLeft(endsAt: number, now = Date.now()): number {
+  if (!(endsAt > 0)) return 0;
+  return Math.max(0, Math.ceil((endsAt - now) / 1000));
+}
 
 let undoTimer = 0;
 let undoRows: MailRow[] = [];
@@ -32,29 +34,22 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-/** Gap before the next delete_mail — ramps slightly on long batches. */
-function deleteGapMs(index: number): number {
-  if (index <= 0) return 0;
-  const ramp = Math.min(
-    index * MAIL_DELETE_GAP_STEP_MS,
-    MAIL_DELETE_GAP_MAX_MS - MAIL_DELETE_GAP_MS,
-  );
-  return Math.min(
-    MAIL_DELETE_GAP_MS + Math.max(0, ramp),
-    MAIL_DELETE_GAP_MAX_MS,
-  );
-}
-
-export function clearUndoState(): void {
+export function clearUndoState(opts?: { silent?: boolean }): void {
   if (undoTimer) {
     window.clearTimeout(undoTimer);
     undoTimer = 0;
   }
   undoRows = [];
-  commit({ undoCount: 0 });
+  commit(
+    { undoCount: 0, undoEndsAt: 0 },
+    opts && opts.silent ? { silent: true } : undefined,
+  );
 }
 
-function removeIdsFromList(unique: string[], seen: Set<string>): MailRow[] {
+function buildRemoveIdsPatch(
+  unique: string[],
+  seen: Set<string>,
+): { batch: MailRow[]; patch: Parameters<typeof commit>[0] } {
   const mails = getMails();
   const batch: MailRow[] = [];
   for (let i = 0; i < unique.length; i++) {
@@ -80,9 +75,7 @@ function removeIdsFromList(unique: string[], seen: Set<string>): MailRow[] {
   if (view.kind === "read" && seen.has(view.id)) {
     patch.view = { kind: "list" };
   }
-  commit(patch);
-  schedulePersistMailCache();
-  return batch;
+  return { batch, patch };
 }
 
 export async function deleteMailRows(
@@ -117,35 +110,39 @@ export async function deleteMailRows(
   if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
 
   // New delete cancels any pending undo finalize of a previous soft batch.
-  clearUndoState();
-  const batch = removeIdsFromList(unique, seen);
+  clearUndoState({ silent: true });
+  const { batch, patch } = buildRemoveIdsPatch(unique, seen);
   const finalizeIds: string[] = [];
   for (let i = 0; i < batch.length; i++) finalizeIds.push(batch[i].id);
 
   const allowUndo = batch.length > 0 && batch.length <= MAIL_DELETE_UNDO_MAX;
   if (allowUndo) {
     undoRows = batch;
+    const undoEndsAt = Date.now() + MAIL_DELETE_UNDO_MS;
     commit({
+      ...patch,
       undoCount: batch.length,
-      status:
-        batch.length === 1
-          ? "Deleted · Undo available (5s)"
-          : "Deleted " + batch.length + " · Undo available (5s)",
-      statusKind: "warn",
+      undoEndsAt,
     });
+    schedulePersistMailCache();
     if (undoTimer) window.clearTimeout(undoTimer);
     undoTimer = window.setTimeout(() => {
       undoTimer = 0;
       undoRows = [];
-      commit({ undoCount: 0 });
+      commit({ undoCount: 0, undoEndsAt: 0 });
       void finalizeDeletes(finalizeIds);
     }, MAIL_DELETE_UNDO_MS);
     return "ok";
   }
 
-  // Large batch: no undo — finalize now with progress.
+  // Large batch: no undo — list clear + undo idle in one notify, then progress.
   undoRows = [];
-  commit({ undoCount: 0 });
+  commit({
+    ...patch,
+    undoCount: 0,
+    undoEndsAt: 0,
+  });
+  schedulePersistMailCache();
   void finalizeDeletes(finalizeIds);
   return "ok";
 }
@@ -162,20 +159,27 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
   if (finalizeInFlight) return;
   finalizeInFlight = true;
   undoRows = [];
-  commit({ undoCount: 0 });
+  commit({ undoCount: 0, undoEndsAt: 0 });
   const total = ids.length;
   let failed = 0;
   let done = 0;
   let lastNotify = 0;
+  let avgApiMs = MAIL_DELETE_API_DEFAULT_MS;
+  const startedAt = Date.now();
 
   const paint = (force?: boolean) => {
     const now = Date.now();
     if (!force && now - lastNotify < 80 && done < total) return;
     lastNotify = now;
+    const etaMs = estimateDeleteEtaMs({
+      done,
+      total,
+      startedAt,
+      now,
+      avgApiMs,
+    });
     commit({
-      deleteProgress: { done, total },
-      status: "Deleting " + done + " / " + total + "…",
-      statusKind: "warn",
+      deleteProgress: { done, total, etaMs },
     });
   };
 
@@ -184,7 +188,11 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
     for (let i = 0; i < ids.length; i++) {
       const gap = deleteGapMs(i);
       if (gap > 0) await sleep(gap);
+      const t0 = Date.now();
       const res = await deleteMail(ids[i]);
+      const sample = Date.now() - t0;
+      avgApiMs =
+        done === 0 ? sample : Math.round(avgApiMs * 0.65 + sample * 0.35);
       if (!res.ok) failed += 1;
       done += 1;
       paint();
@@ -222,6 +230,7 @@ export function undoDeleteMail(): void {
   const patch: Parameters<typeof commit>[0] = {
     mails: next,
     undoCount: 0,
+    undoEndsAt: 0,
     status: "Delete undone",
     statusKind: "",
   };

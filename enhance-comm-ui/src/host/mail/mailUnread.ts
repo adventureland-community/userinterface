@@ -1,8 +1,7 @@
 /**
- * Unread / X.unread sync and open-read actions.
+ * Unread / X.unread sync, badge, watch, and open-read actions.
  */
 
-import { syncMailBadge } from "../commChrome/chromeActions";
 import { readMail, readMailMany } from "./api";
 import { requestMailHead } from "./mailCache";
 import { schedulePersistMailCache } from "./mailPersist";
@@ -16,9 +15,42 @@ import {
   getPanelOpen,
   setStatus,
 } from "./mailState";
-import { getXUnread } from "./xUnread";
 
-export { getXUnread };
+/** Stock Comm unread counter on window.X.
+ * Server recounts unread with `.limit(100)` (send_mail / read_mail / SAC),
+ * so the published count never exceeds 100 even if the inbox has more.
+ */
+export const SERVER_UNREAD_CAP = 100;
+
+export function getXUnread(): number {
+  const x = window.X as { unread?: number } | undefined;
+  return Math.max(0, Number(x && x.unread) || 0);
+}
+
+/** Badge / chrome label; `100+` when at the server cap. */
+export function formatUnreadBadgeLabel(n: number): string {
+  const c = Math.max(0, Math.floor(Number(n) || 0));
+  if (c >= SERVER_UNREAD_CAP) return SERVER_UNREAD_CAP + "+";
+  return String(c);
+}
+
+/** Mail unread badge DOM sync — chrome leaf next to X.unread helpers. */
+export function syncMailBadge(): void {
+  if (typeof document === "undefined") return;
+  const badge = document.querySelector(
+    "[data-ecu-mail-badge]",
+  ) as HTMLElement | null;
+  if (!badge) return;
+  const n = getXUnread();
+  badge.textContent = formatUnreadBadgeLabel(n);
+  badge.hidden = n === 0;
+  badge.title =
+    n >= SERVER_UNREAD_CAP
+      ? "Unread mail (server reports at most 100)"
+      : n
+        ? n + " unread"
+        : "";
+}
 
 export function applyXUnread(
   count: number,
@@ -34,6 +66,8 @@ export function applyXUnread(
   } catch {
     /* badge optional during early boot */
   }
+  // Unchanged count — avoid re-rendering the whole mail panel on the 2s watch.
+  if (prevSeen >= 0 && n === prevSeen) return;
   if (opts && opts.quiet) {
     commit({ lastSeenUnread: n });
     return;
@@ -52,12 +86,8 @@ export function applyXUnread(
     }
     return;
   }
-  if (n < prevSeen) {
-    commit({ lastSeenUnread: n });
-    if (getPanelOpen()) void requestMailHead("X.unread↓ (external read)");
-    return;
-  }
   commit({ lastSeenUnread: n });
+  if (getPanelOpen()) void requestMailHead("X.unread↓ (external read)");
 }
 
 export function syncUnreadFromX(): void {
@@ -165,4 +195,25 @@ export function bootMailUnreadWatch(): void {
   if (getLastSeenUnread() < 0) {
     commit({ lastSeenUnread: getXUnread() });
   }
+}
+
+let unreadWatchInstalled = false;
+let unreadWatchTimer = 0;
+
+export function installMailUnreadWatch(): void {
+  if (unreadWatchInstalled) return;
+  unreadWatchInstalled = true;
+  bootMailUnreadWatch();
+  // SAC runs ~every 4s on Comm; sample a bit faster so badge/list react promptly.
+  unreadWatchTimer = window.setInterval(() => {
+    applyXUnread(getXUnread());
+  }, 2000);
+}
+
+export function uninstallMailUnreadWatch(): void {
+  if (unreadWatchTimer) {
+    window.clearInterval(unreadWatchTimer);
+    unreadWatchTimer = 0;
+  }
+  unreadWatchInstalled = false;
 }
