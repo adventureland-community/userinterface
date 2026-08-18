@@ -58,6 +58,7 @@ async function build() {
   console.log(`[ecu-watch] build #${id}…`);
   try {
     await run("npx tsc --noEmit");
+    await run("node scripts/clean-dist.mjs");
     await run("npx tsup");
     await run("node scripts/sync-root.mjs");
     console.log(`[ecu-watch] build #${id} ok (${Date.now() - started}ms)`);
@@ -96,6 +97,14 @@ function schedule(reason) {
 function onSrcChange(filename) {
   const name = filename ? String(filename).replace(/\\/g, "/") : "(src)";
   if (name.endsWith("~") || name.includes(".tmp")) return;
+  if (name.endsWith(".html")) return;
+  if (
+    name.includes("/cache/") ||
+    name.startsWith("cache/") ||
+    name.includes("overlay/cache")
+  ) {
+    return;
+  }
 
   // While building, only mark dirty — do not re-arm timers (that caused
   // back-to-back rebuilds when the editor wrote the same file mid-build).
@@ -108,13 +117,17 @@ function onSrcChange(filename) {
 }
 
 const srcDir = resolve(ROOT, "src");
+const devDir = resolve(ROOT, "dev");
 try {
   watch(srcDir, { recursive: true }, (_event, filename) => {
     onSrcChange(filename);
   });
-  console.log(`[ecu-watch] watching ${srcDir} (debounce ${DEBOUNCE_MS}ms)`);
+  watch(devDir, { recursive: true }, (_event, filename) => {
+    onSrcChange(filename);
+  });
+  console.log(`[ecu-watch] watching ${srcDir} + ${devDir} (debounce ${DEBOUNCE_MS}ms)`);
 } catch (err) {
-  console.error("[ecu-watch] failed to watch src/", err);
+  console.error("[ecu-watch] failed to watch src/ or dev/", err);
   process.exit(1);
 }
 

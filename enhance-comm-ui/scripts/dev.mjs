@@ -42,6 +42,7 @@ function shutdown(code = 0) {
 }
 
 console.log(`[ecu-dev] http://127.0.0.1:${PORT}/enhance-comm-ui.js`);
+console.log(`[ecu-dev] overlay http://127.0.0.1:${PORT}/overlay`);
 console.log(
   `[ecu-dev] Install enhance-comm-ui/dev.user.js once · Externals not required (loader cache-busts) · disable full pasted script · refresh /comm`,
 );

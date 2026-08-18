@@ -12,7 +12,7 @@
     "isolatedModules": true,
     "declaration": false,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "."
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "dev/**/*"]
 }

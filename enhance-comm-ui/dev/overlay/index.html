@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comm overlay preview</title>
+    <style>
+      @font-face {
+        font-family: pixel;
+        src: url(/css/fonts/m5x7.ttf);
+        font-weight: normal;
+        font-style: normal;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0d12;
+        color: #ddd;
+        font: 16px/1.25 pixel, ui-sans-serif, monospace;
+        overflow: hidden;
+      }
+      #stage {
+        position: fixed;
+        inset: 36px 0 0 0;
+        background: #101820;
+      }
+      #stage canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #bottom {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 201;
+        pointer-events: auto;
+      }
+      .ecu-meter-icon img,
+      .ecu-game-icon img,
+      .ecu-preview-icon img {
+        image-rendering: pixelated;
+      }
+    </style>
+    <!-- Cached live G + stock sprite/item_container (dev/overlay/cache, gitignored). -->
+    <script src="/al/data.js"></script>
+    <script src="/al/client-kit.js"></script>
+  </head>
+  <body>
+    <div id="stage" aria-hidden="true"></div>
+    <div id="bottom">
+      <div class="charactersuic"></div>
+      <div class="serversuic"></div>
+    </div>
+    <script src="__OVERLAY_PREVIEW_JS__"></script>
+    <script
+      id="react"
+      src="https://unpkg.com/react@18/umd/react.development.js"
+      crossorigin
+    ></script>
+    <script
+      id="react-dom"
+      src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"
+      crossorigin
+    ></script>
+    <script src="__OVERLAY_COMM_JS__"></script>
+  </body>
+</html>

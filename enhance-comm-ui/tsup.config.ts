@@ -26,26 +26,39 @@ const banner = `// ==UserScript==
 // ==/UserScript==
 `;
 
-export default defineConfig({
-  entry: {
-    "enhance-comm-ui": "src/main.ts",
-  },
-  format: ["iife"],
-  platform: "browser",
+const shared = {
+  format: ["iife"] as const,
+  platform: "browser" as const,
   outDir: "dist",
   outExtension() {
     return { js: ".js" };
   },
-  globalName: "EnhanceCommUI",
   minify: false,
   sourcemap: false,
-  clean: true,
-  // Runtime fingerprint: window.__ECU_BUILD__ via publishEcuBuildInfo().
   define: {
     __ECU_VERSION__: JSON.stringify(pkg.version),
     __ECU_BUILD_TIME__: JSON.stringify(buildTime),
   },
-  banner: {
-    js: banner,
+};
+
+export default defineConfig([
+  {
+    ...shared,
+    entry: {
+      "enhance-comm-ui": "src/main.ts",
+    },
+    globalName: "EnhanceCommUI",
+    clean: false,
+    banner: {
+      js: banner,
+    },
   },
-});
+  {
+    ...shared,
+    entry: {
+      "overlay-preview": "dev/overlay/preview.ts",
+    },
+    globalName: "EcuOverlayPreview",
+    clean: false,
+  },
+]);

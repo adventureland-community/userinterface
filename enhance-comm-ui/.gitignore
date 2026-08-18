@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.log
 .DS_Store
+agentic/better-timeline-ref/
+*.tgz
+
+# Live adventure.land dumps for overlay preview (data.js, sprites, client kit)
+dev/overlay/cache/

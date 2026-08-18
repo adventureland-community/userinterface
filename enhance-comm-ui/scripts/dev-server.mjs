@@ -1,18 +1,34 @@
 /**
  * Local no-cache static server for Tampermonkey @require during development.
- * Serves enhance-comm-ui/dist (and falls back to synced root copy).
+ * Also serves the Comm overlay preview at /overlay (no game client).
+ *
+ * Overlay assets: gitignored cache under dev/overlay/cache/ (data.js, stock
+ * sprite kit, fonts). /images and /css are proxied from adventure.land and
+ * written into that cache on first miss.
  */
 
 import { createServer } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  REL,
+  cachePath,
+  cacheStatus,
+  ensureOverlayCache,
+  handleOverlayAsset,
+  isAllowedAssetPath,
+  isCacheReady,
+  sendDiskFile,
+} from "./overlay-client-cache.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.ECU_DEV_PORT || 3927);
 const ROOT = resolve(__dirname, "..");
 const DIST_JS = resolve(ROOT, "dist/enhance-comm-ui.js");
 const ROOT_JS = resolve(ROOT, "../enhance-comm-ui.js");
+const OVERLAY_JS = resolve(ROOT, "dist/overlay-preview.js");
+const OVERLAY_HTML = resolve(ROOT, "dev/overlay/index.html");
 
 function resolveScriptPath() {
   if (existsSync(DIST_JS)) return DIST_JS;
@@ -20,67 +36,198 @@ function resolveScriptPath() {
   return null;
 }
 
-function startServer() {
-  const server = createServer((req, res) => {
-    const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
-    const path = url.pathname;
+function fileMtimeMs(path) {
+  return existsSync(path) ? statSync(path).mtimeMs : null;
+}
 
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, max-age=0",
+function sendJs(res, filePath) {
+  const body = readFileSync(filePath);
+  res.writeHead(200, {
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Last-Modified": statSync(filePath).mtime.toUTCString(),
+    "X-ECU-Mtime": String(statSync(filePath).mtimeMs),
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+  res.end(body);
+}
+
+function sendOverlayHtml(res) {
+  if (!existsSync(OVERLAY_HTML)) {
+    res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Missing dev/overlay/index.html\n");
+    return;
+  }
+  const commMtime = fileMtimeMs(resolveScriptPath() || DIST_JS) || Date.now();
+  const previewMtime = fileMtimeMs(OVERLAY_JS) || Date.now();
+  const html = readFileSync(OVERLAY_HTML, "utf8")
+    .replaceAll(
+      "__OVERLAY_PREVIEW_JS__",
+      `/overlay-preview.js?t=${previewMtime}`,
+    )
+    .replaceAll("__OVERLAY_COMM_JS__", `/enhance-comm-ui.js?t=${commMtime}`);
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(html);
+}
+
+async function sendCachedAl(res, rel) {
+  try {
+    await ensureOverlayCache();
+  } catch (err) {
+    res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(
+      "Overlay client cache missing. Run npm run overlay:sync\n" +
+        (err && err.message ? err.message + "\n" : ""),
     );
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    // Easy fingerprint for Tampermonkey / curl without reading the whole file.
-    res.setHeader("X-ECU-Service", "ecu-dev");
+    return;
+  }
+  const filePath = cachePath(rel);
+  if (!existsSync(filePath)) {
+    res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Overlay client cache incomplete — run npm run overlay:sync\n");
+    return;
+  }
+  sendDiskFile(res, filePath, { cacheable: false });
+}
 
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
+async function handleRequest(req, res) {
+  const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
+  const path = url.pathname;
 
-    if (path === "/" || path === "/health") {
-      const script = resolveScriptPath();
-      res.writeHead(200, { "Content-Type": "application/json" });
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("X-ECU-Service", "ecu-dev");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (path === "/" || path === "/health") {
+    const script = resolveScriptPath();
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        ok: true,
+        service: "ecu-dev",
+        root: ROOT,
+        script: script || null,
+        mtimeMs: script ? statSync(script).mtimeMs : null,
+        overlay: `http://127.0.0.1:${PORT}/overlay`,
+        overlayPreview: existsSync(OVERLAY_JS) ? OVERLAY_JS : null,
+        overlayMtimeMs: fileMtimeMs(OVERLAY_JS),
+        overlayCache: cacheStatus(),
+      }),
+    );
+    return;
+  }
+
+  if (
+    path === "/overlay" ||
+    path === "/overlay/" ||
+    path === "/overlay/index.html"
+  ) {
+    sendOverlayHtml(res);
+    return;
+  }
+
+  if (path === "/al/status") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    res.end(JSON.stringify(cacheStatus()));
+    return;
+  }
+
+  if (path === "/al/sync") {
+    try {
+      const manifest = await ensureOverlayCache({
+        force: url.searchParams.get("force") === "1",
+      });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      res.end(JSON.stringify({ ok: true, ...manifest }));
+    } catch (err) {
+      res.writeHead(502, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
       res.end(
         JSON.stringify({
-          ok: true,
-          service: "ecu-dev",
-          root: ROOT,
-          script: script || null,
-          mtimeMs: script ? statSync(script).mtimeMs : null,
+          ok: false,
+          error: err && err.message ? err.message : String(err),
         }),
+      );
+    }
+    return;
+  }
+
+  if (path === "/al/data.js") {
+    await sendCachedAl(res, REL.data);
+    return;
+  }
+
+  if (path === "/al/client-kit.js") {
+    await sendCachedAl(res, REL.kit);
+    return;
+  }
+
+  if (isAllowedAssetPath(path)) {
+    await handleOverlayAsset(res, path, url.search);
+    return;
+  }
+
+  if (
+    path === "/enhance-comm-ui.js" ||
+    path === "/enhance-comm-ui.user.js" ||
+    path === "/dist/enhance-comm-ui.js"
+  ) {
+    const script = resolveScriptPath();
+    if (!script) {
+      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Build missing — run npm run build or wait for watch.\n");
+      return;
+    }
+    sendJs(res, script);
+    return;
+  }
+
+  if (path === "/overlay-preview.js" || path === "/dist/overlay-preview.js") {
+    if (!existsSync(OVERLAY_JS)) {
+      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end(
+        "Overlay preview build missing — run npm run build or wait for watch.\n",
       );
       return;
     }
+    sendJs(res, OVERLAY_JS);
+    return;
+  }
 
-    if (
-      path === "/enhance-comm-ui.js" ||
-      path === "/enhance-comm-ui.user.js" ||
-      path === "/dist/enhance-comm-ui.js"
-    ) {
-      const script = resolveScriptPath();
-      if (!script) {
-        res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
-        res.end("Build missing — run npm run build or wait for watch.\n");
-        return;
+  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Not found. Try /overlay or /enhance-comm-ui.js\n");
+}
+
+function startServer() {
+  const server = createServer((req, res) => {
+    handleRequest(req, res).catch((err) => {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
       }
-      const body = readFileSync(script);
-      res.writeHead(200, {
-        "Content-Type": "application/javascript; charset=utf-8",
-        "Last-Modified": statSync(script).mtime.toUTCString(),
-        "X-ECU-Mtime": String(statSync(script).mtimeMs),
-      });
-      res.end(body);
-      return;
-    }
-
-    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found. Try /enhance-comm-ui.js\n");
+      res.end(String(err && err.message ? err.message : err));
+    });
   });
 
   server.on("error", async (err) => {
@@ -90,6 +237,7 @@ function startServer() {
         console.log(
           `[ecu-dev] port ${PORT} already serving this tree — reusing http://127.0.0.1:${PORT}/enhance-comm-ui.js`,
         );
+        console.log(`[ecu-dev] overlay http://127.0.0.1:${PORT}/overlay`);
         process.exit(0);
         return;
       }
@@ -106,11 +254,29 @@ function startServer() {
   server.listen(PORT, "127.0.0.1", () => {
     const script = resolveScriptPath();
     console.log(`[ecu-dev] http://127.0.0.1:${PORT}/enhance-comm-ui.js`);
+    console.log(`[ecu-dev] overlay http://127.0.0.1:${PORT}/overlay`);
     console.log(
       script
         ? `[ecu-dev] serving ${script}`
         : `[ecu-dev] waiting for dist/enhance-comm-ui.js (run build/watch)`,
     );
+    if (isCacheReady()) {
+      console.log(`[ecu-dev] overlay cache ready at ${cachePath("")}`);
+    } else {
+      console.log(
+        `[ecu-dev] overlay cache empty — fetching from adventure.land (or run npm run overlay:sync)`,
+      );
+    }
+    ensureOverlayCache()
+      .then(() => {
+        console.log("[ecu-dev] overlay cache ok");
+      })
+      .catch((err) => {
+        console.warn(
+          "[ecu-dev] overlay cache sync failed:",
+          err && err.message ? err.message : err,
+        );
+      });
   });
 }
 
@@ -129,7 +295,11 @@ async function isReusableServer() {
     if (!json.script || typeof json.script !== "string") return false;
     const served = resolve(json.script);
     const ours = resolve(ROOT);
-    return served === resolve(DIST_JS) || served.startsWith(ours + "\\") || served.startsWith(ours + "/");
+    return (
+      served === resolve(DIST_JS) ||
+      served.startsWith(ours + "\\") ||
+      served.startsWith(ours + "/")
+    );
   } catch {
     return false;
   }
