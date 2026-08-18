@@ -154,24 +154,4 @@ export const MAIL_COMPOSE_CSS = `.comm-mail__pane {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-.comm-mail-ctx {
-  position: fixed; z-index: 99999;
-  background: #151515; border: 1px solid #555;
-  min-width: 200px; padding: 4px 0;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-}
-.comm-mail-ctx__sep {
-  height: 1px;
-  margin: 4px 0;
-  background: #333;
-}
-.comm-mail-ctx button,
-.comm-mail-ctx__item {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: #ddd;
-  padding: 9px 14px; cursor: pointer; font-size: 15px;
-}
-.comm-mail-ctx button:hover,
-.comm-mail-ctx__item:hover { background: #222; }
 `;

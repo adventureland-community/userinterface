@@ -1,24 +1,52 @@
 import {
   fingerprintFromSlot,
-  openMail,
   type ItemFingerprint,
   type MailItem,
-} from "../../../host/mail";
-import { openItem } from "../../../host/infoDialog/api";
-import { ensureMailCss } from "./mailCss";
+} from "../../host/mail";
+import { ensureBagItemContextMenuCss } from "./bagItemContextMenuCss";
 
-let ctxEl: HTMLDivElement | null = null;
-let ctxKeyHandler: ((ev: KeyboardEvent) => void) | null = null;
-let ctxDocHandler: ((ev: MouseEvent) => void) | null = null;
-
-export type MailBagMenuAction = {
+export type BagMenuAction = {
   id: string;
   label: string;
   title?: string;
   /** Visual divider above this row. */
   separatorBefore?: boolean;
+  /** Non-interactive row (e.g. empty nearby list). */
+  disabled?: boolean;
   run: () => void;
 };
+
+export type BagMenuContext = {
+  fp: ItemFingerprint;
+  slotEl: HTMLElement | null;
+  item: MailItem;
+};
+
+export type BagMenuProvider = (ctx: BagMenuContext) => BagMenuAction[];
+
+const providers: BagMenuProvider[] = [];
+
+/** Register bag-slot context menu actions (mail, send item, etc.). */
+export function registerBagMenuProvider(provider: BagMenuProvider): () => void {
+  providers.push(provider);
+  return () => {
+    const idx = providers.indexOf(provider);
+    if (idx >= 0) providers.splice(idx, 1);
+  };
+}
+
+function buildBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
+  const actions: BagMenuAction[] = [];
+  for (let i = 0; i < providers.length; i++) {
+    const rows = providers[i](ctx);
+    for (let j = 0; j < rows.length; j++) actions.push(rows[j]);
+  }
+  return actions;
+}
+
+let ctxEl: HTMLDivElement | null = null;
+let ctxKeyHandler: ((ev: KeyboardEvent) => void) | null = null;
+let ctxDocHandler: ((ev: MouseEvent) => void) | null = null;
 
 function hideCtx(): void {
   if (ctxKeyHandler) {
@@ -53,7 +81,7 @@ function clampMenuPosition(
  * Observed bag inventory lives on `window.observing.items` (the /comm snap).
  * Do not use getObserving() — that prefers the live entity, which has no items.
  */
-function observingBagItem(slot: number): MailItem | null {
+export function observingBagItem(slot: number): MailItem | null {
   const obs = window.observing;
   if (!obs || !Array.isArray(obs.items)) return null;
   const item = obs.items[slot] as MailItem | undefined;
@@ -61,80 +89,54 @@ function observingBagItem(slot: number): MailItem | null {
   return item;
 }
 
-/** Item info dialog for observers (stock on_rclick needs character and is N/A on /comm). */
-function openObservingItemInfo(slot: number): void {
-  const obs = window.observing;
-  const item = observingBagItem(slot);
-  if (!obs || !item) return;
-  openItem(obs, `inv${slot}`, item, { dialogOnly: true });
-}
-
-/**
- * Build the bag-slot context actions. Keep this the single place to add
- * more useful entries later.
- */
-export function buildMailBagMenuActions(
-  fp: ItemFingerprint,
-  _slotEl: HTMLElement | null,
-): MailBagMenuAction[] {
-  const actions: MailBagMenuAction[] = [
-    {
-      id: "send-mail",
-      label: "Send mail / queue attach",
-      title:
-        "Opens compose and queues this item. Right-click more items to batch (one mail each).",
-      run: () => {
-        openMail({ compose: true, attach: fp });
-      },
-    },
-    {
-      id: "item-info",
-      label: "Item info…",
-      title:
-        "Open the Comm item info dialog for this slot (same as left-click).",
-      separatorBefore: true,
-      run: () => {
-        openObservingItemInfo(fp.slot);
-      },
-    },
-  ];
-  return actions;
-}
-
-export function showMailItemContextMenu(
+export function showBagItemContextMenu(
   clientX: number,
   clientY: number,
   fp: ItemFingerprint,
   slotEl?: HTMLElement | null,
+  item?: MailItem | null,
 ): void {
   hideCtx();
-  ensureMailCss();
-  const actions = buildMailBagMenuActions(fp, slotEl || null);
+  ensureBagItemContextMenuCss();
+  const resolvedItem = item || observingBagItem(fp.slot);
+  if (!resolvedItem) return;
+
+  const ctx: BagMenuContext = {
+    fp,
+    slotEl: slotEl || null,
+    item: resolvedItem,
+  };
+  const actions = buildBagMenuActions(ctx);
   if (!actions.length) return;
 
   const el = document.createElement("div");
-  el.className = "comm-mail-ctx";
+  el.className = "comm-bag-ctx";
   el.setAttribute("role", "menu");
   for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
     if (action.separatorBefore) {
       const sep = document.createElement("div");
-      sep.className = "comm-mail-ctx__sep";
+      sep.className = "comm-bag-ctx__sep";
       sep.setAttribute("role", "separator");
       el.appendChild(sep);
     }
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "comm-mail-ctx__item";
+    btn.className = "comm-bag-ctx__item";
     btn.setAttribute("role", "menuitem");
     btn.textContent = action.label;
     if (action.title) btn.title = action.title;
-    btn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      hideCtx();
-      action.run();
-    });
+    if (action.disabled) {
+      btn.disabled = true;
+      btn.className += " is-disabled";
+    } else {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideCtx();
+        action.run();
+      });
+    }
     el.appendChild(btn);
   }
   document.body.appendChild(el);
@@ -191,11 +193,11 @@ function resolveInventorySlotNum(
 }
 
 /**
- * Plain right-click a bag slot → Comm context menu (extensible actions).
+ * Plain right-click a bag slot → Comm context menu (extensible via providers).
  * Shift+right-click is left alone for any stock handler.
  */
-export function installBagMailContextMenu(host: HTMLElement): () => void {
-  ensureMailCss();
+export function installBagItemContextMenu(host: HTMLElement): () => void {
+  ensureBagItemContextMenuCss();
   const onCtx = (ev: MouseEvent) => {
     if (ev.shiftKey) return;
 
@@ -210,7 +212,7 @@ export function installBagMailContextMenu(host: HTMLElement): () => void {
 
     ev.preventDefault();
     ev.stopPropagation();
-    showMailItemContextMenu(ev.clientX, ev.clientY, fp, t);
+    showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
   };
   host.addEventListener("contextmenu", onCtx, true);
   return () => {

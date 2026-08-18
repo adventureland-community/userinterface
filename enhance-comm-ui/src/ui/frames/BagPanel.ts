@@ -19,7 +19,8 @@ import {
   BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
-import { installBagMailContextMenu } from "./mail/mailItemMenu";
+import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
+import "../bag/registerBagMenuProviders";
 
 const HOST_ID = "bottomleftcorner";
 
@@ -302,7 +303,7 @@ export function BagPanel(props: BagPanelProps): any {
     // Host may be created by ensureInventoryHost during attach — always bind
     // the menu to that element (not a possibly-null getElementById race).
     const host = ensureInventoryHost();
-    const unsubMenu = installBagMailContextMenu(host);
+    const unsubMenu = installBagItemContextMenu(host);
     return () => {
       unsubInv();
       unsubSync();
