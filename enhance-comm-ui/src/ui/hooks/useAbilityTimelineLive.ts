@@ -18,6 +18,7 @@ import {
   getAbilityTimelinePrefs,
 } from "../../instance/abilityTimelinePrefs";
 import { dummyAbilityTimelineModel } from "../../instance/abilityTimelineDummy";
+import { dismissAbilityTimelineTip } from "../frames/abilityTimelineTip";
 import { tickAbilityMotion } from "../frames/abilityTimelineMotion";
 
 const CLOCK_MS = 100;
@@ -137,6 +138,11 @@ export function useAbilityTimelineLive(
     if (!resolved.hasActive) return;
     return subscribeAbilityClock(() => setClock((n: number) => n + 1));
   }, [resolved.hasActive, resolved.tickKey]);
+  React.useEffect(() => {
+    if (resolved.model) return;
+    dismissAbilityTimelineTip();
+  }, [resolved.model]);
+  React.useEffect(() => () => dismissAbilityTimelineTip(), []);
   return resolved;
 }
 

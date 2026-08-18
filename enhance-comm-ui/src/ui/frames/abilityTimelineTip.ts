@@ -56,16 +56,32 @@ export function abilityTimelineTipHtml(args: AbilityTimelineTipArgs): string {
   return lines.join("");
 }
 
+/** True while the pointer is over an ability-timeline hover host. */
+let abilityTimelineTipHover = false;
+
 export function abilityTimelineTipHandlers(html: string): {
   onMouseEnter: (ev: MouseEvent) => void;
   onMouseMove: (ev: MouseEvent) => void;
   onMouseLeave: () => void;
 } {
   return {
-    onMouseEnter: (ev: MouseEvent) => showMeterTooltip(ev, html),
+    onMouseEnter: (ev: MouseEvent) => {
+      abilityTimelineTipHover = true;
+      showMeterTooltip(ev, html);
+    },
     onMouseMove: (ev: MouseEvent) => showMeterTooltip(ev, html),
-    onMouseLeave: () => hideMeterTooltip(),
+    onMouseLeave: () => {
+      abilityTimelineTipHover = false;
+      hideMeterTooltip();
+    },
   };
+}
+
+/** Hide when the rail / BigIcon / highlight panel unmounts or loses casters. */
+export function dismissAbilityTimelineTip(): void {
+  if (!abilityTimelineTipHover) return;
+  abilityTimelineTipHover = false;
+  hideMeterTooltip();
 }
 
 /** Inline hit styles so stale inject-once CSS cannot swallow hover. */
@@ -89,4 +105,7 @@ export function abilityTimelineHover(
   };
 }
 
-export { hideMeterTooltip as hideAbilityTimelineTip };
+export function hideAbilityTimelineTip(): void {
+  abilityTimelineTipHover = false;
+  hideMeterTooltip();
+}
