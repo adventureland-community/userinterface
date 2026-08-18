@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.5
+// @version      0.8.0-alpha.6
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7662,6 +7662,46 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.6",
+      title: "0.8.0-alpha.6",
+      date: "2026-08-18",
+      summary: "Entity Inspect JSON on frames and paperdoll, plus Ability Timeline hover-tip and mail Take fixes.",
+      highlights: [
+        {
+          label: "Entity Inspect",
+          detail: "Click `{}` on a unit frame, paperdoll, party chip, or aggro mob to open the stock show_json modal for that entity \u2014 same as in-game INSPECT.",
+          kind: "feature"
+        },
+        {
+          label: "Ability Timeline hover tip",
+          detail: "Skill cooldown tooltips dismiss when the caster leaves or the timeline panel unmounts \u2014 no more stuck Healing tips after the mob is gone.",
+          kind: "fix"
+        },
+        {
+          label: "Mail Take",
+          detail: "Take from the inbox no longer throws SyntaxError in the character log \u2014 observer commands wrap correctly for early exit.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Inspect JSON",
+          detail: "Uses stock ui_inspect / show_json on /comm \u2014 character and monster headers, docs links, and the full soft-synced entity object.",
+          kind: "feature"
+        },
+        {
+          label: "Ability Timeline hover tip",
+          detail: "Hover tips lived on document.body; unmounting the rail while the cursor was still over an icon never fired mouseleave. The panel now clears an open tip when casters vanish.",
+          kind: "fix"
+        },
+        {
+          label: "Observer command scripts",
+          detail: "Mail take, send, and send-item CODE snippets are wrapped in an async function so inventory/gold guards can `return` safely under stock code_eval (fixes Illegal return statement on Take).",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.5",
       title: "0.8.0-alpha.5",
       date: "2026-08-18",
@@ -14013,6 +14053,11 @@ ${CHROME_ARRANGE_CSS}
     installBagSyncSocketWatch();
   }
 
+  // src/host/commandScript.ts
+  function wrapCommandScript(body) {
+    return `(async function(){${body}})();`;
+  }
+
   // src/host/mail/commands.ts
   function lit(value) {
     return JSON.stringify(String(value));
@@ -14106,7 +14151,7 @@ ${CHROME_ARRANGE_CSS}
     const list = opts.attaches && opts.attaches.length ? opts.attaches.slice() : [];
     if (!list.length) {
       if (!tos.length) {
-        return `game_log("Mail aborted \u2014 no recipient");`;
+        return wrapCommandScript(`game_log("Mail aborted \u2014 no recipient");`);
       }
       const subject = lit(String(opts.subject || "").trim());
       const body = lit(String(opts.body || ""));
@@ -14124,11 +14169,13 @@ ${CHROME_ARRANGE_CSS}
           )
         );
       }
-      return parts2.join("");
+      return wrapCommandScript(parts2.join(""));
     }
     for (let i = 0; i < list.length; i++) {
       if (!String(list[i].to || "").trim()) {
-        return `game_log("Mail aborted \u2014 attach missing recipient");`;
+        return wrapCommandScript(
+          `game_log("Mail aborted \u2014 attach missing recipient");`
+        );
       }
     }
     const stepCost = MAIL_SEND_COST + MAIL_ATTACH_EXTRA;
@@ -14141,19 +14188,19 @@ ${CHROME_ARRANGE_CSS}
     ];
     for (let i = 0; i < list.length; i++) {
       const fp = list[i];
-      const subject = lit(
-        resolveMailSubject(opts.subject, fp, i + 1, total)
-      );
+      const subject = lit(resolveMailSubject(opts.subject, fp, i + 1, total));
       const body = lit(resolveMailBody(opts.body, fp));
       parts.push(
         attachStepJs(fp, lit(fp.to), subject, body, i + 1, total, stepCost)
       );
     }
-    return parts.join("");
+    return wrapCommandScript(parts.join(""));
   }
   function buildTakeScript(mailIds) {
     const ids = Array.isArray(mailIds) ? mailIds : [mailIds];
-    if (!ids.length) return `game_log("Mail take aborted \u2014 no ids");`;
+    if (!ids.length) {
+      return wrapCommandScript(`game_log("Mail take aborted \u2014 no ids");`);
+    }
     const parts = [];
     for (let i = 0; i < ids.length; i++) {
       const id = lit(ids[i]);
@@ -14170,7 +14217,7 @@ ${CHROME_ARRANGE_CSS}
         parts.push(sleepJs(500));
       }
     }
-    return parts.join("");
+    return wrapCommandScript(parts.join(""));
   }
 
   // src/host/mail/itemFingerprint.ts
@@ -16949,8 +16996,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.5" : "unknown";
-    const builtAt = true ? "2026-08-18T11:09:18.737Z" : "unknown";
+    const version = true ? "0.8.0-alpha.6" : "unknown";
+    const builtAt = true ? "2026-08-18T20:07:02.803Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -38090,6 +38137,75 @@ ${parts.map(cssSlice).join("\n")}
     document.head.appendChild(el);
   }
 
+  // src/ui/frames/abilityTimelineTip.ts
+  function cooldownLabel(ms) {
+    if (!(ms > 0)) return "";
+    if (ms >= 1e3) {
+      const sec = Math.round(ms / 100) / 10;
+      return Number.isInteger(sec) ? sec + "s" : sec.toFixed(1) + "s";
+    }
+    return ms + "ms";
+  }
+  function skillExplanation(id) {
+    var _a, _b, _c;
+    if (typeof window === "undefined") return "";
+    const raw = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.explanation;
+    return typeof raw === "string" ? raw : "";
+  }
+  function abilityTimelineTipHtml(args) {
+    const explain = skillExplanation(args.abilityId);
+    const cd = cooldownLabel(args.cooldown);
+    const lines = [
+      `<h4>${skillIconHtml(args.abilityId, METER_TT_ICON)} ${escapeHtml(args.abilityName)}</h4>`,
+      `<div class="line"><span>Caster</span><b>${escapeHtml(args.caster)}</b></div>`,
+      `<div class="line"><span>Ready</span><b>${escapeHtml(args.remainingLabel)}</b></div>`
+    ];
+    if (cd) {
+      lines.push(
+        `<div class="line"><span>Cooldown</span><b>${escapeHtml(cd)}</b></div>`
+      );
+    }
+    if (explain) {
+      lines.push(
+        `<div class="ecu-meter-tt-foot">${escapeHtml(explain)}</div>`
+      );
+    }
+    return lines.join("");
+  }
+  var abilityTimelineTipHover = false;
+  function abilityTimelineTipHandlers(html) {
+    return {
+      onMouseEnter: (ev) => {
+        abilityTimelineTipHover = true;
+        showMeterTooltip(ev, html);
+      },
+      onMouseMove: (ev) => showMeterTooltip(ev, html),
+      onMouseLeave: () => {
+        abilityTimelineTipHover = false;
+        hideMeterTooltip();
+      }
+    };
+  }
+  function dismissAbilityTimelineTip() {
+    if (!abilityTimelineTipHover) return;
+    abilityTimelineTipHover = false;
+    hideMeterTooltip();
+  }
+  var ABILITY_TIP_HIT_STYLE = {
+    pointerEvents: "auto",
+    cursor: "help"
+  };
+  function abilityTimelineHover(args, style) {
+    return {
+      ...abilityTimelineTipHandlers(abilityTimelineTipHtml(args)),
+      style: Object.assign({}, ABILITY_TIP_HIT_STYLE, style)
+    };
+  }
+  function hideAbilityTimelineTip() {
+    abilityTimelineTipHover = false;
+    hideMeterTooltip();
+  }
+
   // src/ui/frames/abilityTimelineMotion.ts
   function tickAbilityMotion(host2, now = Date.now()) {
     const nodes = host2.querySelectorAll("[data-abil-ends]");
@@ -38223,6 +38339,11 @@ ${parts.map(cssSlice).join("\n")}
       if (!resolved.hasActive) return;
       return subscribeAbilityClock(() => setClock((n) => n + 1));
     }, [resolved.hasActive, resolved.tickKey]);
+    React.useEffect(() => {
+      if (resolved.model) return;
+      dismissAbilityTimelineTip();
+    }, [resolved.model]);
+    React.useEffect(() => () => dismissAbilityTimelineTip(), []);
     return resolved;
   }
   function useAbilityTimelineMotion(hostRef, hasActive, tickKey) {
@@ -39009,59 +39130,6 @@ ${parts.map(cssSlice).join("\n")}
     return style;
   }
 
-  // src/ui/frames/abilityTimelineTip.ts
-  function cooldownLabel(ms) {
-    if (!(ms > 0)) return "";
-    if (ms >= 1e3) {
-      const sec = Math.round(ms / 100) / 10;
-      return Number.isInteger(sec) ? sec + "s" : sec.toFixed(1) + "s";
-    }
-    return ms + "ms";
-  }
-  function skillExplanation(id) {
-    var _a, _b, _c;
-    if (typeof window === "undefined") return "";
-    const raw = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.explanation;
-    return typeof raw === "string" ? raw : "";
-  }
-  function abilityTimelineTipHtml(args) {
-    const explain = skillExplanation(args.abilityId);
-    const cd = cooldownLabel(args.cooldown);
-    const lines = [
-      `<h4>${skillIconHtml(args.abilityId, METER_TT_ICON)} ${escapeHtml(args.abilityName)}</h4>`,
-      `<div class="line"><span>Caster</span><b>${escapeHtml(args.caster)}</b></div>`,
-      `<div class="line"><span>Ready</span><b>${escapeHtml(args.remainingLabel)}</b></div>`
-    ];
-    if (cd) {
-      lines.push(
-        `<div class="line"><span>Cooldown</span><b>${escapeHtml(cd)}</b></div>`
-      );
-    }
-    if (explain) {
-      lines.push(
-        `<div class="ecu-meter-tt-foot">${escapeHtml(explain)}</div>`
-      );
-    }
-    return lines.join("");
-  }
-  function abilityTimelineTipHandlers(html) {
-    return {
-      onMouseEnter: (ev) => showMeterTooltip(ev, html),
-      onMouseMove: (ev) => showMeterTooltip(ev, html),
-      onMouseLeave: () => hideMeterTooltip()
-    };
-  }
-  var ABILITY_TIP_HIT_STYLE = {
-    pointerEvents: "auto",
-    cursor: "help"
-  };
-  function abilityTimelineHover(args, style) {
-    return {
-      ...abilityTimelineTipHandlers(abilityTimelineTipHtml(args)),
-      style: Object.assign({}, ABILITY_TIP_HIT_STYLE, style)
-    };
-  }
-
   // src/ui/frames/abilityTimelineRender.ts
   function renderTicks(prefs) {
     if (!prefs.showTicks) return [];
@@ -39225,7 +39293,7 @@ ${parts.map(cssSlice).join("\n")}
         "data-reverse": prefs.reverse ? "true" : "false",
         "data-chrome": chrome,
         "data-text-anchor": prefs.textAnchor,
-        onMouseLeave: hideMeterTooltip
+        onMouseLeave: hideAbilityTimelineTip
       },
       e(
         "div",
@@ -39295,7 +39363,7 @@ ${parts.map(cssSlice).join("\n")}
           gap: prefs.bigIconMargin + "px",
           ...PIXEL_TEXT
         },
-        onMouseLeave: hideMeterTooltip
+        onMouseLeave: hideAbilityTimelineTip
       },
       ...kids
     );
@@ -39354,7 +39422,7 @@ ${parts.map(cssSlice).join("\n")}
           gap: prefs.highlightMargin + "px",
           ...PIXEL_TEXT
         },
-        onMouseLeave: hideMeterTooltip
+        onMouseLeave: hideAbilityTimelineTip
       },
       ...kids
     );
@@ -40743,6 +40811,60 @@ ${parts.map(cssSlice).join("\n")}
           )
         )
       )
+    );
+  }
+
+  // src/host/uiInspect.ts
+  function uiInspectEntity(entity) {
+    if (!entity) return false;
+    const host2 = window;
+    if (typeof host2.ui_inspect !== "function") return false;
+    host2.ui_inspect(entity);
+    return true;
+  }
+  function uiInspectClick(event, entity) {
+    event.stopPropagation();
+    const host2 = window;
+    if (typeof host2.btc === "function") host2.btc(event);
+    return uiInspectEntity(entity);
+  }
+
+  // src/ui/chrome/InspectButton.ts
+  function InspectButton(props) {
+    const compact = !!props.compact;
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "comm-inspect-btn" + (compact ? " is-compact" : ""),
+        title: props.title || "Inspect JSON",
+        "aria-label": "Inspect JSON",
+        style: {
+          flex: "0 0 auto",
+          margin: compact ? "0 0 0 2px" : "0 4px 0 0",
+          padding: "0 2px",
+          border: "none",
+          background: "transparent",
+          color: "#9a9a9a",
+          fontSize: compact ? TYPE.micro : TYPE.secondary,
+          fontWeight: "normal",
+          lineHeight: 1,
+          cursor: "pointer",
+          pointerEvents: "auto",
+          textShadow: "1px 1px 0 #000",
+          ...PIXEL_TEXT
+        },
+        onClick: (ev) => {
+          uiInspectClick(ev, props.entity);
+        },
+        onMouseEnter: (ev) => {
+          ev.currentTarget.style.color = "#cfcfcf";
+        },
+        onMouseLeave: (ev) => {
+          ev.currentTarget.style.color = "#9a9a9a";
+        }
+      },
+      "{}"
     );
   }
 
@@ -42255,6 +42377,7 @@ ${parts.map(cssSlice).join("\n")}
                         ...PIXEL_TEXT
                       }
                     },
+                    e(InspectButton, { entity: player, compact: true }),
                     e(NameWithControl, {
                       className: "ecu-chip-namecluster",
                       name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
@@ -43631,6 +43754,7 @@ ${parts.map(cssSlice).join("\n")}
                     ...PIXEL_TEXT
                   }
                 },
+                e(InspectButton, { entity: focus, compact: true }),
                 e(
                   "span",
                   {
@@ -44616,6 +44740,7 @@ ${ESTIMATE_HINT}`,
           },
           title
         ),
+        e(InspectButton, { entity, title: "Inspect entity JSON" }),
         e(
           "button",
           {
@@ -45052,7 +45177,8 @@ ${ESTIMATE_HINT}`,
       aggroHot = false,
       aggroMobs = [],
       hpThresholdMarks,
-      footer
+      footer,
+      hideInspect = false
     } = props;
     const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
@@ -45113,6 +45239,7 @@ ${ESTIMATE_HINT}`,
           minWidth: 0
         }
       },
+      hideInspect ? null : e(InspectButton, { entity }),
       nameCluster,
       trailingEl || aggroChip ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } }) : null,
       aggroChip,
@@ -48519,29 +48646,33 @@ ${ESTIMATE_HINT}`,
   }
   function buildSendItemScript(fp, receiver, quantity) {
     const to = String(receiver || "").trim();
-    if (!to) return `game_log("Send item aborted \u2014 no recipient");`;
+    if (!to) {
+      return wrapCommandScript(`game_log("Send item aborted \u2014 no recipient");`);
+    }
     const q = quantity != null ? Math.max(1, Math.floor(quantity)) : sendItemQuantity(fp);
     const preferSlot = Number(fp.slot) | 0;
     const mismatch = fingerprintCheckJs2(fp, "it");
     const candMismatch = fingerprintCheckJs2(fp, "__cand");
-    return [
-      `var __slot=${preferSlot};`,
-      `var it=character.items[__slot];`,
-      `if(${mismatch}){`,
-      `__slot=-1;`,
-      `for(var __si=0;__si<character.items.length;__si++){`,
-      `var __cand=character.items[__si];`,
-      `if(!(${candMismatch})){__slot=__si;break;}`,
-      `}`,
-      `if(__slot<0){game_log(${lit2("Send item aborted \u2014 item mismatch")});return;}`,
-      `it=character.items[__slot];`,
-      `}`,
-      `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
-      `if(!__q)__q=1;`,
-      `try{await send_item(${lit2(to)},__slot,__q);}catch(__e){`,
-      `game_log(${lit2("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-      `}`
-    ].join("");
+    return wrapCommandScript(
+      [
+        `var __slot=${preferSlot};`,
+        `var it=character.items[__slot];`,
+        `if(${mismatch}){`,
+        `__slot=-1;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __cand=character.items[__si];`,
+        `if(!(${candMismatch})){__slot=__si;break;}`,
+        `}`,
+        `if(__slot<0){game_log(${lit2("Send item aborted \u2014 item mismatch")});return;}`,
+        `it=character.items[__slot];`,
+        `}`,
+        `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
+        `if(!__q)__q=1;`,
+        `try{await send_item(${lit2(to)},__slot,__q);}catch(__e){`,
+        `game_log(${lit2("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
   }
   function patchObservingAfterSend(fp, quantity) {
     const obs = window.observing;

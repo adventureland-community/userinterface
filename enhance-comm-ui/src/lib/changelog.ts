@@ -100,6 +100,53 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.6",
+    title: "0.8.0-alpha.6",
+    date: "2026-08-18",
+    summary:
+      "Entity Inspect JSON on frames and paperdoll, plus Ability Timeline hover-tip and mail Take fixes.",
+    highlights: [
+      {
+        label: "Entity Inspect",
+        detail:
+          "Click `{}` on a unit frame, paperdoll, party chip, or aggro mob to open the stock show_json modal for that entity — same as in-game INSPECT.",
+        kind: "feature",
+      },
+      {
+        label: "Ability Timeline hover tip",
+        detail:
+          "Skill cooldown tooltips dismiss when the caster leaves or the timeline panel unmounts — no more stuck Healing tips after the mob is gone.",
+        kind: "fix",
+      },
+      {
+        label: "Mail Take",
+        detail:
+          "Take from the inbox no longer throws SyntaxError in the character log — observer commands wrap correctly for early exit.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Inspect JSON",
+        detail:
+          "Uses stock ui_inspect / show_json on /comm — character and monster headers, docs links, and the full soft-synced entity object.",
+        kind: "feature",
+      },
+      {
+        label: "Ability Timeline hover tip",
+        detail:
+          "Hover tips lived on document.body; unmounting the rail while the cursor was still over an icon never fired mouseleave. The panel now clears an open tip when casters vanish.",
+        kind: "fix",
+      },
+      {
+        label: "Observer command scripts",
+        detail:
+          "Mail take, send, and send-item CODE snippets are wrapped in an async function so inventory/gold guards can `return` safely under stock code_eval (fixes Illegal return statement on Take).",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.5",
     title: "0.8.0-alpha.5",
     date: "2026-08-18",
