@@ -3,6 +3,7 @@ import { classColors } from "../../lib/colors";
 import { aggroOn, partyGroups, playersList } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { setXTarget } from "../../host/icons";
+import { InspectButton } from "../chrome/InspectButton";
 import { NameWithControl } from "../chrome/NameWithControl";
 import { AggroSpark } from "../chrome/AggroSpark";
 import { EffectsRow } from "../chrome/EffectsRow";
@@ -324,6 +325,7 @@ export function Players(props: PlayersProps): any {
                       ...PIXEL_TEXT,
                     },
                   },
+                  e(InspectButton, { entity: player, compact: true }),
                   e(NameWithControl, {
                     className: "ecu-chip-namecluster",
                     name: `${player.level ?? ""} ${player.id}`,

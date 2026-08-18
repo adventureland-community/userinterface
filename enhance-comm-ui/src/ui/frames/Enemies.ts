@@ -1,5 +1,6 @@
 import { e } from "../../host/react";
 import { setXTarget } from "../../host/icons";
+import { InspectButton } from "../chrome/InspectButton";
 import { aggroedMonsters, shouldSquash } from "../../queries/entities";
 import type { EntityLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
@@ -210,6 +211,7 @@ export function Enemies(props: EnemiesProps): any {
                   ...PIXEL_TEXT,
                 },
               },
+              e(InspectButton, { entity: focus, compact: true }),
               e(
                 "span",
                 {

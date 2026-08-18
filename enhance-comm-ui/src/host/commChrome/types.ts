@@ -35,7 +35,9 @@ declare global {
     __ecuToggleObserve?: (name: string) => void;
     /** Leave observe without picking another character. */
     __ecuClearObserve?: () => void;
-    btc?: (event: any) => void;
+    btc?: (event: Event, type?: string) => void;
+    /** Stock entity JSON modal (`show_json(game_stringify(e))`). */
+    ui_inspect?: (entity: unknown) => void;
     bc?: (el: any) => boolean;
     render_characters?: () => void;
     render_servers?: () => void;

@@ -10,6 +10,7 @@ import { classColors } from "../../lib/colors";
 import { formatCompactNumber, getPercent } from "../../lib/format";
 import { findEntity } from "../../queries/entities";
 import { GearGrid } from "../chrome/GearGrid";
+import { InspectButton } from "../chrome/InspectButton";
 import type { EntityLike } from "../../host/globals";
 import { CompareToWatched } from "../paperdoll/CompareToWatched";
 import {
@@ -177,6 +178,7 @@ export function EntityInfo(props: EntityInfoProps): any {
         },
         title,
       ),
+      e(InspectButton, { entity, title: "Inspect entity JSON" }),
       e(
         "button",
         {

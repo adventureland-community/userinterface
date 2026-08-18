@@ -2,6 +2,7 @@ import { e } from "../../host/react";
 import { EffectsRow } from "./EffectsRow";
 import { NameWithControl } from "./NameWithControl";
 import { AggroSpark } from "./AggroSpark";
+import { InspectButton } from "./InspectButton";
 import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
@@ -44,6 +45,8 @@ export type ObservedUnitProps = {
   hpThresholdMarks?: HpThresholdMark[];
   /** Optional row under vitals/effects (mechanic chips). */
   footer?: any;
+  /** Hide `{}` inspect (stock unit frames always show it). */
+  hideInspect?: boolean;
 };
 
 export function ObservedUnit(props: ObservedUnitProps): any {
@@ -64,6 +67,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     aggroMobs = [],
     hpThresholdMarks,
     footer,
+    hideInspect = false,
   } = props;
 
   const controlStates = getControlStates(entity, aggroMobs);
@@ -140,6 +144,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         minWidth: 0,
       },
     },
+    hideInspect ? null : e(InspectButton, { entity }),
     nameCluster,
     trailingEl || aggroChip
       ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } })
