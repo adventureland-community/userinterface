@@ -129,6 +129,7 @@ describe("mail command scripts", () => {
     const s = buildTakeScript("mid1");
     assert.match(s, /esize<1/);
     assert.match(s, /mail_take_item/);
+    assert.match(s, /\(async function\(\)\{/);
   });
 
   it("batches takes with pause between", () => {

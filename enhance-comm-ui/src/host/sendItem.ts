@@ -9,6 +9,7 @@ import {
   getObserving,
   simpleDistance,
 } from "./al";
+import { wrapCommandScript } from "./commandScript";
 import type { EntityLike } from "./globals";
 import { refreshObservedInventory } from "./inventory";
 import { findFingerprintSlot } from "./mail/itemFingerprint";
@@ -118,30 +119,34 @@ export function buildSendItemScript(
   quantity?: number,
 ): string {
   const to = String(receiver || "").trim();
-  if (!to) return `game_log("Send item aborted — no recipient");`;
+  if (!to) {
+    return wrapCommandScript(`game_log("Send item aborted — no recipient");`);
+  }
   const q =
     quantity != null ? Math.max(1, Math.floor(quantity)) : sendItemQuantity(fp);
   const preferSlot = Number(fp.slot) | 0;
   const mismatch = fingerprintCheckJs(fp, "it");
   const candMismatch = fingerprintCheckJs(fp, "__cand");
-  return [
-    `var __slot=${preferSlot};`,
-    `var it=character.items[__slot];`,
-    `if(${mismatch}){`,
-    `__slot=-1;`,
-    `for(var __si=0;__si<character.items.length;__si++){`,
-    `var __cand=character.items[__si];`,
-    `if(!(${candMismatch})){__slot=__si;break;}`,
-    `}`,
-    `if(__slot<0){game_log(${lit("Send item aborted — item mismatch")});return;}`,
-    `it=character.items[__slot];`,
-    `}`,
-    `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
-    `if(!__q)__q=1;`,
-    `try{await send_item(${lit(to)},__slot,__q);}catch(__e){`,
-    `game_log(${lit("Send item failed → " + to)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
-    `}`,
-  ].join("");
+  return wrapCommandScript(
+    [
+      `var __slot=${preferSlot};`,
+      `var it=character.items[__slot];`,
+      `if(${mismatch}){`,
+      `__slot=-1;`,
+      `for(var __si=0;__si<character.items.length;__si++){`,
+      `var __cand=character.items[__si];`,
+      `if(!(${candMismatch})){__slot=__si;break;}`,
+      `}`,
+      `if(__slot<0){game_log(${lit("Send item aborted — item mismatch")});return;}`,
+      `it=character.items[__slot];`,
+      `}`,
+      `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
+      `if(!__q)__q=1;`,
+      `try{await send_item(${lit(to)},__slot,__q);}catch(__e){`,
+      `game_log(${lit("Send item failed → " + to)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
+      `}`,
+    ].join(""),
+  );
 }
 
 /** Optimistic local bag clear when the full stack leaves. */

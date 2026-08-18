@@ -1,3 +1,4 @@
+import { wrapCommandScript } from "../commandScript";
 import { resolveMailBody, resolveMailSubject } from "./mailSubject";
 import { normalizeComposeTos } from "./composeDraft";
 import {
@@ -109,9 +110,7 @@ function attachStepJs(
       ? "Mail aborted — not enough gold " + index + "/" + total
       : "Mail aborted — not enough gold";
   const failLog =
-    total > 1
-      ? "Mail send failed " + index + "/" + total
-      : "Mail send failed";
+    total > 1 ? "Mail send failed " + index + "/" + total : "Mail send failed";
   // Prefer queued slot; if bag reshuffled after a prior send, scan for the item.
   return [
     goldGuardJs(stepCost, goldAbort),
@@ -155,7 +154,7 @@ export function buildSendScript(opts: BuildSendOpts): string {
 
   if (!list.length) {
     if (!tos.length) {
-      return `game_log("Mail aborted — no recipient");`;
+      return wrapCommandScript(`game_log("Mail aborted — no recipient");`);
     }
     const subject = lit(String(opts.subject || "").trim());
     const body = lit(String(opts.body || ""));
@@ -175,12 +174,14 @@ export function buildSendScript(opts: BuildSendOpts): string {
         ),
       );
     }
-    return parts.join("");
+    return wrapCommandScript(parts.join(""));
   }
 
   for (let i = 0; i < list.length; i++) {
     if (!String(list[i].to || "").trim()) {
-      return `game_log("Mail aborted — attach missing recipient");`;
+      return wrapCommandScript(
+        `game_log("Mail aborted — attach missing recipient");`,
+      );
     }
   }
 
@@ -194,21 +195,21 @@ export function buildSendScript(opts: BuildSendOpts): string {
   ];
   for (let i = 0; i < list.length; i++) {
     const fp = list[i];
-    const subject = lit(
-      resolveMailSubject(opts.subject, fp, i + 1, total),
-    );
+    const subject = lit(resolveMailSubject(opts.subject, fp, i + 1, total));
     const body = lit(resolveMailBody(opts.body, fp));
     parts.push(
       attachStepJs(fp, lit(fp.to), subject, body, i + 1, total, stepCost),
     );
   }
-  return parts.join("");
+  return wrapCommandScript(parts.join(""));
 }
 
 /** One or many takes in a single awaited script (esize check + pause between). */
 export function buildTakeScript(mailIds: string | string[]): string {
   const ids = Array.isArray(mailIds) ? mailIds : [mailIds];
-  if (!ids.length) return `game_log("Mail take aborted — no ids");`;
+  if (!ids.length) {
+    return wrapCommandScript(`game_log("Mail take aborted — no ids");`);
+  }
   const parts: string[] = [];
   for (let i = 0; i < ids.length; i++) {
     const id = lit(ids[i]);
@@ -227,7 +228,7 @@ export function buildTakeScript(mailIds: string | string[]): string {
       parts.push(sleepJs(500));
     }
   }
-  return parts.join("");
+  return wrapCommandScript(parts.join(""));
 }
 
 export { normalizeComposeTos as normalizeTos };
