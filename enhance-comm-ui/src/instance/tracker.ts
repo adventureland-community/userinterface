@@ -1,22 +1,13 @@
 import type { EntityLike } from "../host/globals";
 import { onKill, type KillEvent } from "../sockets/hub";
+import { INSTANCE_CONFIGS, allInstanceBossMtypes } from "./configs";
 
-export const CRYPT_BOSSES_MTYPES = [
-  "a1",
-  "a2",
-  "a3",
-  "a4",
-  "a5",
-  "a6",
-  "a7",
-  "a8",
-];
+/** @deprecated Prefer INSTANCE_CONFIGS.crypt — kept for meter segment splits. */
+export const CRYPT_BOSSES_MTYPES = INSTANCE_CONFIGS.crypt.bossMtypes.slice();
 
-export const CRYPT_IMPORTANT_MOBS_MTYPES = [
-  ...CRYPT_BOSSES_MTYPES,
-  "vbat",
-  "nerfedbat",
-];
+/** @deprecated Prefer INSTANCE_CONFIGS.crypt.trackedMtypes */
+export const CRYPT_IMPORTANT_MOBS_MTYPES =
+  INSTANCE_CONFIGS.crypt.trackedMtypes.slice();
 
 export type CryptBossState = {
   deadCount: number;
@@ -30,6 +21,7 @@ export type CryptBossState = {
 
 export type CryptMobState = {
   deadCount: number;
+  lastSeenLevel?: number;
 };
 
 type InstanceData = Record<string, CryptBossState | CryptMobState>;
@@ -38,9 +30,10 @@ const CRYPT_MOBS_STATES_AND_STATS: Record<string, InstanceData> = {};
 const idToMobData = new Map<string, { mtype: string; in: string }>();
 
 let unsubKill: (() => void) | null = null;
+let bossMtypeSet = allInstanceBossMtypes();
 
 function isBossMtype(mtype: string): boolean {
-  return CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0;
+  return bossMtypeSet.has(mtype);
 }
 
 function handleKill(ev: KillEvent): void {
@@ -59,7 +52,8 @@ function handleKill(ev: KillEvent): void {
 }
 
 /** Call once at boot — listens to hub kills only (no render subscribe). */
-export function startCryptTracker(): () => void {
+export function startInstanceTracker(): () => void {
+  bossMtypeSet = allInstanceBossMtypes();
   if (!unsubKill) {
     unsubKill = onKill(handleKill);
   }
@@ -71,25 +65,35 @@ export function startCryptTracker(): () => void {
   };
 }
 
+export type UpdateFromEntitiesOpts = {
+  trackedMtypes: string[];
+  bossMtypes: string[];
+};
+
 export function updateFromEntities(
   instanceId: string | undefined,
   entities: EntityLike[] | Record<string, EntityLike>,
+  opts?: UpdateFromEntitiesOpts,
 ): void {
   if (!instanceId) return;
   if (!(instanceId in CRYPT_MOBS_STATES_AND_STATS)) {
     CRYPT_MOBS_STATES_AND_STATS[instanceId] = {};
   }
+  const tracked = opts?.trackedMtypes || INSTANCE_CONFIGS.crypt.trackedMtypes;
+  const bosses = opts?.bossMtypes || INSTANCE_CONFIGS.crypt.bossMtypes;
+  const trackedSet = new Set(tracked);
+  const bossSet = new Set(bosses);
   const now = Date.now();
   const list = Array.isArray(entities) ? entities : Object.values(entities);
   for (let i = 0; i < list.length; i++) {
     const entity = list[i];
     if (!entity) continue;
     if (!entity.visible || entity.dead) continue;
-    if (!entity.mtype || CRYPT_IMPORTANT_MOBS_MTYPES.indexOf(entity.mtype) < 0) {
+    if (!entity.mtype || !trackedSet.has(entity.mtype)) {
       continue;
     }
     const instanceData = CRYPT_MOBS_STATES_AND_STATS[instanceId];
-    if (isBossMtype(entity.mtype)) {
+    if (bossSet.has(entity.mtype)) {
       if (!(entity.mtype in instanceData)) {
         instanceData[entity.mtype] = {
           deadCount: 0,
@@ -110,7 +114,12 @@ export function updateFromEntities(
         }
       }
     } else if (!(entity.mtype in instanceData)) {
-      instanceData[entity.mtype] = { deadCount: 0 };
+      instanceData[entity.mtype] = {
+        deadCount: 0,
+        lastSeenLevel: entity.level,
+      };
+    } else {
+      instanceData[entity.mtype].lastSeenLevel = entity.level;
     }
     idToMobData.set(entity.id, {
       mtype: entity.mtype,
@@ -124,11 +133,15 @@ export function getInstanceData(instanceId: string | undefined): InstanceData {
   return CRYPT_MOBS_STATES_AND_STATS[instanceId] ?? {};
 }
 
-export function getMobData(id: string): { mtype: string; in: string } | undefined {
+export function getMobData(
+  id: string,
+): { mtype: string; in: string } | undefined {
   return idToMobData.get(id);
 }
 
-export function resolveFocusMtype(focusId: string | undefined): string | undefined {
+export function resolveFocusMtype(
+  focusId: string | undefined,
+): string | undefined {
   if (!focusId) return undefined;
   return idToMobData.get(focusId)?.mtype;
 }

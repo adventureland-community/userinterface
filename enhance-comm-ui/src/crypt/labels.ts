@@ -15,3 +15,6 @@ export const CRYPT_MOB_LABELS: Record<string, string> = {
 export function getCryptMobLabel(mtype: string): string {
   return CRYPT_MOB_LABELS[mtype] || mtype;
 }
+
+/** @deprecated Prefer getInstanceMobLabel from instance/labels. */
+export { getInstanceMobLabel } from "../instance/labels";

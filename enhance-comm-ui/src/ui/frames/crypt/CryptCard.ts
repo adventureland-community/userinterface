@@ -1,19 +1,28 @@
 import { e, getReact } from "../../../host/react";
 import { monsterSprite } from "../../../host/icons";
-import { getCryptMobLabel } from "../../../crypt/labels";
-import {
-  CARD_ICON_SIZE,
-  CARD_STYLE_BASE,
-  META_STYLE,
-} from "../../../crypt/cryptCardStyles";
+import { getInstanceMobLabel } from "../../../instance/labels";
+import { CARD_ICON_SIZE } from "../../../crypt/cryptCardStyles";
 import type { CryptCardProps } from "../../../crypt/cryptCardModel";
 import { wrapIconHtml } from "../../chrome/wrapIconHtml";
 
 export type { CryptCardProps };
 
+function cardTone(props: CryptCardProps): "aggro" | "seen" | "dead" | "idle" {
+  if (props.borderColor === "red") return "aggro";
+  if (props.borderColor === "yellow") return "seen";
+  if (
+    props.glance.indexOf("Died") === 0 ||
+    props.glance.indexOf("Cleared") === 0
+  ) {
+    return "dead";
+  }
+  if (props.kills != null && props.kills > 0) return "dead";
+  return "idle";
+}
+
 export function CryptCard(props: CryptCardProps): any {
   const React = getReact();
-  const displayName = getCryptMobLabel(props.mtype);
+  const displayName = getInstanceMobLabel(props.mtype);
   const clickable = !!props.onClick;
   const iconHtml = React.useMemo(
     () =>
@@ -21,56 +30,88 @@ export function CryptCard(props: CryptCardProps): any {
     [props.mtype, props.dummy],
   );
   const icon = iconHtml ? wrapIconHtml(iconHtml) : null;
+  const tone = cardTone(props);
+  const accent =
+    props.borderColor.charAt(0) === "#" ? props.borderColor : undefined;
+  const hoverLines = props.hoverLines || [];
+  const hoverLineKids: any[] = [];
+  for (let i = 0; i < hoverLines.length; i++) {
+    const line = hoverLines[i];
+    hoverLineKids.push(
+      e(
+        "div",
+        {
+          key: "h" + i,
+          className:
+            line === props.mtype
+              ? "ecu-inst-card__detail-line ecu-inst-card__detail-id"
+              : "ecu-inst-card__detail-line",
+        },
+        line,
+      ),
+    );
+  }
+  const hasCorner =
+    props.level != null || (props.kills != null && props.kills > 0);
   return e(
     "div",
     {
       key: props.mtype,
-      style: Object.assign({}, CARD_STYLE_BASE, {
-        border: `2px double ${props.borderColor}`,
+      className: [
+        "ecu-inst-card",
+        `ecu-inst-card--${tone}`,
+        hasCorner ? "ecu-inst-card--meta" : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      style: {
         cursor: clickable ? "pointer" : undefined,
         opacity: props.dummy ? 0.85 : props.faded ? 0.45 : 1,
-      }),
-      title: clickable ? "Click to target" : props.mtype,
+        borderColor: accent,
+      },
       onClick: props.onClick,
     },
-    e(
-      "div",
-      {
-        key: "nameRow",
-        style: {
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          minWidth: 0,
-        },
-      },
-      icon,
-      e(
-        "span",
-        {
-          style: {
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            minWidth: 0,
-          },
-        },
-        `${displayName}${props.levelComponent}`,
-      ),
-    ),
-    e("div", { key: "state", style: META_STYLE }, props.status),
-    props.lastSeenComponent
+    hasCorner
       ? e(
           "div",
-          { key: "lastSeen", style: META_STYLE },
-          props.lastSeenComponent,
+          { key: "corner", className: "ecu-inst-card__corner" },
+          props.level != null
+            ? e(
+                "div",
+                { key: "lv", className: "ecu-inst-card__level" },
+                "Lv " + props.level,
+              )
+            : undefined,
+          props.kills != null && props.kills > 0
+            ? e(
+                "div",
+                { key: "kills", className: "ecu-inst-card__kills" },
+                "Died ×" + props.kills,
+              )
+            : undefined,
         )
       : undefined,
-    props.focusComponent
-      ? e("div", { key: "focus", style: META_STYLE }, props.focusComponent)
-      : undefined,
-    props.luckmComponent
-      ? e("div", { key: "luckm", style: META_STYLE }, props.luckmComponent)
-      : undefined,
+    e(
+      "div",
+      { key: "head", className: "ecu-inst-card__head" },
+      icon
+        ? e("div", { key: "icon", className: "ecu-inst-card__icon" }, icon)
+        : undefined,
+      e(
+        "div",
+        { key: "id", className: "ecu-inst-card__id" },
+        e("span", { className: "ecu-inst-card__name" }, displayName),
+        props.glance
+          ? e("div", { className: "ecu-inst-card__glance" }, props.glance)
+          : undefined,
+        hoverLineKids.length
+          ? e(
+              "div",
+              { key: "detail", className: "ecu-inst-card__detail" },
+              ...hoverLineKids,
+            )
+          : undefined,
+      ),
+    ),
   );
 }

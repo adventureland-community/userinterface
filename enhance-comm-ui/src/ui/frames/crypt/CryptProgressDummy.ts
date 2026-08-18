@@ -1,9 +1,5 @@
 import { e } from "../../../host/react";
-import { PIXEL_TEXT, TYPE } from "../../../lib/typeScale";
-import {
-  PANEL_SHELL,
-  SECTION_LABEL_STYLE,
-} from "../../../crypt/cryptCardStyles";
+import { PANEL_SHELL } from "../../../crypt/cryptCardStyles";
 import { CryptCard } from "./CryptCard";
 
 export function CryptProgressLayoutDummy(): any {
@@ -16,84 +12,55 @@ export function CryptProgressLayoutDummy(): any {
     e(
       "div",
       {
-        style: {
-          padding: "5px 8px 0",
-          whiteSpace: "nowrap",
-          fontSize: TYPE.title,
-          color: "#ccc",
-          ...PIXEL_TEXT,
-        },
-      },
-      "Crypt",
-    ),
-    e(
-      "div",
-      {
         key: "content",
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: "4px",
-          padding: "0 4px 4px",
-        },
+        className: "ecu-inst-body",
       },
-      e("div", { key: "bosses-label", style: SECTION_LABEL_STYLE }, "Bosses"),
+      e("div", { key: "bosses-label", className: "ecu-inst-sec" }, "Bosses"),
       e(
         "div",
-        {
-          key: "bosses",
-          style: { display: "flex", flexWrap: "wrap", gap: "4px" },
-        },
+        { key: "bosses", className: "ecu-inst-grid" },
         e(CryptCard, {
           key: "a1",
           mtype: "a1",
           borderColor: "yellow",
-          levelComponent: " (10 lvl)",
-          status: "Alive",
-          lastSeenComponent: "We see!",
-          focusComponent: null,
-          luckmComponent: null,
+          glance: "We see!",
+          hoverLines: ["a1"],
+          level: 10,
           dummy: true,
         }),
         e(CryptCard, {
           key: "a2",
           mtype: "a2",
           borderColor: "gray",
-          levelComponent: "",
-          status: "Died · #2 · 3m ago",
-          lastSeenComponent: null,
-          focusComponent: null,
-          luckmComponent: "luckm: 0.125",
+          glance: "Died · #2",
+          hoverLines: ["a2", "Died · #2 · 3m ago", "luckm 0.125"],
+          level: 12,
+          faded: true,
           dummy: true,
         }),
       ),
-      e("div", { key: "bats-label", style: SECTION_LABEL_STYLE }, "Bats"),
+      e("div", { key: "bats-label", className: "ecu-inst-sec" }, "Bats"),
       e(
         "div",
-        {
-          key: "bats",
-          style: { display: "flex", flexWrap: "wrap", gap: "4px" },
-        },
+        { key: "bats", className: "ecu-inst-grid" },
         e(CryptCard, {
           key: "vbat",
           mtype: "vbat",
           borderColor: "red",
-          levelComponent: "",
-          status: "Died: 1",
-          lastSeenComponent: null,
-          focusComponent: null,
-          luckmComponent: null,
+          glance: "Aggroed! · ×2",
+          hoverLines: ["vbat"],
+          level: 8,
+          kills: 4,
           dummy: true,
         }),
         e(CryptCard, {
           key: "nerfedbat",
           mtype: "nerfedbat",
           borderColor: "gray",
-          levelComponent: "",
-          status: "Died: 0",
-          lastSeenComponent: null,
-          focusComponent: null,
-          luckmComponent: null,
+          glance: "",
+          hoverLines: ["nerfedbat"],
+          kills: 3,
+          faded: true,
           dummy: true,
         }),
       ),
