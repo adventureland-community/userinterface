@@ -651,6 +651,20 @@ ${EFFECTS_ICON_CSS}
 #comm-ui .comm-pos-panel > .comm-pos-window-id {
   inset: 0;
 }
+/* Fill-frame HUD (Mail, Instance, Timeline, …): clip inside the body so
+ * above-frame arrange chrome (drag / lock / ×) is not swallowed. */
+#comm-ui .comm-pos-panel.comm-pos-fill {
+  overflow: visible !important;
+  display: flex;
+  flex-direction: column;
+}
+#comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
 #comm-ui .comm-snap-guide .comm-pos-window-id {
   inset: auto;
 }

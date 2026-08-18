@@ -28,11 +28,17 @@ import {
 } from "../hooks/useContextualTourTriggers";
 import { useCommMeterInstances } from "../hooks/useCommMeterInstances";
 import { usePanelLayoutState } from "../hooks/usePanelLayoutState";
+import { setWorldOverlaySelectedId } from "../../viz/startWorldOverlay";
 import { useCommWindowActions } from "../hooks/useCommWindowActions";
 import { useBagBridge } from "../hooks/useBagBridge";
 import { applyBagLayoutPos } from "../../host/inventory";
 import { useSelectionFromXTarget } from "../hooks/useSelectionFromXTarget";
-import { PANEL_LABELS, PANEL_IDS, type PanelId } from "../../lib/layout";
+import {
+  PANEL_LABELS,
+  PANEL_IDS,
+  type PanelId,
+  type PanelPos,
+} from "../../lib/layout";
 import type { PanelGroupDragOpts } from "../../lib/panelGroupDrag";
 import { canCloseWindow } from "../../lib/commWindow";
 import { commWindowHasSnap } from "../../lib/commWindowGroup";
@@ -47,21 +53,77 @@ import { CommMeterAddDialog } from "./comm/CommMeterAddDialog";
 import { buildCommMeterPanels } from "./comm/CommMeterPanels";
 import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { CommControlStrip } from "./comm/CommControlStrip";
+import { SettingsPanel } from "./SettingsPanel";
+import { findEntity } from "../../queries/entities";
 import {
   renderCommPanels,
   renderCommTogglesPanel,
 } from "./comm/CommPanelLayout";
 import { SnapGuideLine } from "../chrome/SnapGuideLine";
-import { getMapData } from "./MapInfo";
 import { isTouchishProfile } from "../../lib/viewport";
-import {
-  maxRecordStackZ,
-  nextWindowFrontZ,
-} from "../../lib/windowStack";
+import { maxRecordStackZ, nextWindowFrontZ } from "../../lib/windowStack";
 
 export type CommUIProps = {
   snap: GameSnapshot;
 };
+
+const SETTINGS_PANEL_POS_KEY = "ecu-settings-panel-pos";
+const DEFAULT_SETTINGS_POS: PanelPos = {
+  x: 50,
+  y: 50,
+  anchor: "center",
+};
+
+function readSettingsPanelPos(): PanelPos {
+  try {
+    const raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(SETTINGS_PANEL_POS_KEY)
+        : null;
+    if (!raw) return { ...DEFAULT_SETTINGS_POS };
+    const parsed = JSON.parse(raw);
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.x !== "number" ||
+      typeof parsed.y !== "number"
+    ) {
+      return { ...DEFAULT_SETTINGS_POS };
+    }
+    const anchor = String(parsed.anchor || DEFAULT_SETTINGS_POS.anchor);
+    return {
+      x: Math.max(0, Math.min(100, parsed.x)),
+      y: Math.max(0, Math.min(100, parsed.y)),
+      anchor:
+        anchor === "tl" ||
+        anchor === "tr" ||
+        anchor === "bl" ||
+        anchor === "br" ||
+        anchor === "tc" ||
+        anchor === "bc" ||
+        anchor === "center"
+          ? anchor
+          : DEFAULT_SETTINGS_POS.anchor,
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS_POS };
+  }
+}
+
+function writeSettingsPanelPos(pos: PanelPos): void {
+  try {
+    localStorage.setItem(
+      SETTINGS_PANEL_POS_KEY,
+      JSON.stringify({
+        x: pos.x,
+        y: pos.y,
+        anchor: pos.anchor,
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 export function CommUI(props: CommUIProps): any {
   const React = getReact();
@@ -87,11 +149,16 @@ export function CommUI(props: CommUIProps): any {
     setOpacity,
     visible,
     opacityFor,
+    setPanelPos,
   } = layoutState;
 
   const { bagOpen, bagRefreshing } = useBagBridge(setPanelVisible);
   const { selectedEntity, setSelectedEntity, closePaperdoll, focusUnitId } =
     useSelectionFromXTarget(snap);
+
+  React.useEffect(() => {
+    setWorldOverlaySelectedId(selectedEntity);
+  }, [selectedEntity]);
 
   const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
@@ -115,6 +182,9 @@ export function CommUI(props: CommUIProps): any {
   });
   const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
   const [introStep, setIntroStep] = React.useState(() => readIntroStep());
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [settingsWindowPos, setSettingsWindowPos] =
+    React.useState(readSettingsPanelPos);
 
   const setIntroStepPersist = (step: number) => {
     setIntroStep(step);
@@ -130,6 +200,14 @@ export function CommUI(props: CommUIProps): any {
     if (hidden && tourActiveRef.current) return;
     setMetersHidden(hidden);
     patchSettings({ metersHidden: hidden });
+  };
+  const setSettingsWindowPosPersist = (pos: PanelPos) => {
+    setSettingsWindowPos(pos);
+    writeSettingsPanelPos(pos);
+  };
+  const openSettingsChangelog = () => {
+    setWhatsNewBrowseAll(true);
+    setWhatsNewEntries(CHANGELOG);
   };
 
   const guidedTours = useCommGuidedTours({
@@ -289,7 +367,12 @@ export function CommUI(props: CommUIProps): any {
         payload.attach ||
         payload.draft
       );
-      if (payload.toggle && !wantsCompose && !payload.focusNewestUnread && mailOpenRef.current) {
+      if (
+        payload.toggle &&
+        !wantsCompose &&
+        !payload.focusNewestUnread &&
+        mailOpenRef.current
+      ) {
         setVisible("mail", false);
         return;
       }
@@ -331,7 +414,6 @@ export function CommUI(props: CommUIProps): any {
   }, []);
 
   const combat = combatSignals(snap.entities);
-  const onCrypt = getMapData(snap.entities).map === "crypt";
 
   useContextualTourTriggers({
     selectedEntity,
@@ -384,6 +466,8 @@ export function CommUI(props: CommUIProps): any {
         frameH: size.h,
       });
     },
+    onAutoSizeChange: (id, autoSize, size) =>
+      windowActions.setWindowAutoSize(id, autoSize, size),
     onPanelDragStart: (id: PanelId) => windowActions.onDragStart(id),
     onPanelDragMove: (id: PanelId, opts?: PanelGroupDragOpts) =>
       windowActions.onDragMove(id, opts),
@@ -409,7 +493,6 @@ export function CommUI(props: CommUIProps): any {
     closePaperdoll,
     focusUnitId,
     combat,
-    onCrypt,
     commandSeed,
     commandOpenSeq,
     bagOpen,
@@ -532,21 +615,41 @@ export function CommUI(props: CommUIProps): any {
         })
       : null,
 
+    settingsOpen
+      ? e(SettingsPanel, {
+          onClose: () => setSettingsOpen(false),
+          visible,
+          setVisible,
+          setPanelPos,
+          windowPos: settingsWindowPos,
+          onMoveWindow: setSettingsWindowPosPersist,
+          onReplayIntroTour: () => startIntroTour(true),
+          onOpenChangelog: openSettingsChangelog,
+        })
+      : null,
+
     renderCommTogglesPanel(
       panelDeps,
-      e(CommControlStrip, {
-        layoutEdit,
-        toggleLayoutEdit,
-        metersHidden,
-        setMetersHiddenPersist,
-        onAddMeter: () => setMeterAddOpen(true),
-        onReplayIntroTour: () => startIntroTour(true),
-        onOpenChangelog: () => {
-          setWhatsNewBrowseAll(true);
-          setWhatsNewEntries(CHANGELOG);
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            pointerEvents: "none",
+          },
         },
-        viewportProfile,
-      }),
+        e(CommControlStrip, {
+          layoutEdit,
+          toggleLayoutEdit,
+          metersHidden,
+          setMetersHiddenPersist,
+          onAddMeter: () => setMeterAddOpen(true),
+          onOpenSettings: () => setSettingsOpen(true),
+          viewportProfile,
+        }),
+      ),
     ),
 
     tourOverlay,

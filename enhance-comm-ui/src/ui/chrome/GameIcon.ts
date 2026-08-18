@@ -6,6 +6,39 @@
 import { getReact, e } from "../../host/react";
 import { paintGameIcon, type GameIconKind } from "../../lib/gameIcon";
 
+const GAME_ICON_CSS = `
+.ecu-game-icon .ecu-meter-icon,
+.ecu-game-icon .ecu-meter-icon-clip {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+}
+.ecu-game-icon .ecu-meter-icon-clip img {
+  max-width: none !important;
+  max-height: none !important;
+}
+`;
+
+let gameIconCssInjected = false;
+
+function ensureGameIconCss(): void {
+  if (gameIconCssInjected) return;
+  gameIconCssInjected = true;
+  const existing = document.querySelector(
+    "style[data-ecu-game-icon-css]",
+  ) as HTMLStyleElement | null;
+  if (existing) {
+    existing.textContent = GAME_ICON_CSS;
+    return;
+  }
+  const el = document.createElement("style");
+  el.setAttribute("data-ecu-game-icon-css", "1");
+  el.textContent = GAME_ICON_CSS;
+  document.head.appendChild(el);
+}
+
 export type GameIconProps = {
   /** Skill / condition / item id, class key, or actor id when kind="character". */
   id: string;
@@ -30,6 +63,7 @@ export type GameIconProps = {
 
 export function GameIcon(props: GameIconProps): any {
   const React = getReact();
+  ensureGameIconCss();
   const ref = React.useRef(null as HTMLSpanElement | null);
   const {
     id,
@@ -75,6 +109,6 @@ export function GameIcon(props: GameIconProps): any {
       overflow: "hidden",
       verticalAlign: "middle",
     },
-    title: title || id,
+    title: title === "" ? undefined : title || id,
   });
 }

@@ -1,4 +1,4 @@
-import { CRYPT_BOSSES_MTYPES } from "../crypt/tracker";
+import { CRYPT_BOSSES_MTYPES } from "../instance/tracker";
 import type { EntityLike } from "../host/globals";
 
 const MTYPES_TO_SQUASH = ["nerfedbat", "nerfedmummy", "zapper0", "crab"];

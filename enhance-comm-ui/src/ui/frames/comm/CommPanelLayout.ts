@@ -13,14 +13,24 @@ import {
 import type { CombatSignals } from "../../../queries/combatSignals";
 import { type PanelId, type PanelPos } from "../../../lib/layout";
 import type { PanelGroupDragOpts } from "../../../lib/panelGroupDrag";
-import { canCloseWindow, canGroupWindow } from "../../../lib/commWindow";
+import {
+  canCloseWindow,
+  canGroupWindow,
+  canResizeWindow,
+} from "../../../lib/commWindow";
+import {
+  canAutoSizeWindow,
+  panelIsContextEmpty,
+  windowFramePersist,
+} from "../../../lib/panelCatalog";
 import { commWindowHasSnap } from "../../../lib/commWindowGroup";
 import type { ViewportProfile } from "../../../lib/viewport";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
 import { Players } from "../Players";
-import { MapInfo } from "../MapInfo";
-import { CryptProgress } from "../CryptProgress";
+import { getMapData, MapInfo } from "../MapInfo";
+import { InstancePanel } from "../CryptProgress";
+import { InstanceRunPanel } from "../InstanceRunPanel";
 import { ServerInfo } from "../ServerInfo";
 import { Enemies } from "../Enemies";
 import { EntityInfo } from "../EntityInfo";
@@ -28,32 +38,40 @@ import { StockInfoPanel } from "../InfoDialogPanel";
 import { PlayerFrame, UNIT_FRAME_STYLE } from "../PlayerRow";
 import { TargetFrame } from "../TargetFrame";
 import { BossBarPanel } from "../BossBarPanel";
+import { AbilityTimelinePanel } from "../AbilityTimelinePanel";
+import { AbilityTimelineBigIconPanel } from "../AbilityTimelineBigIconPanel";
+import { AbilityTimelineHighlightPanel } from "../AbilityTimelineHighlightPanel";
 import { ThreatTable } from "../ThreatTable";
 import { KillKpiPanel } from "../KillKpiPanel";
+import { Minimap } from "../Minimap";
 import { CommandPanel } from "../CommandPanel";
 import { BagPanel } from "../BagPanel";
 import { MailPanel } from "../mail/MailPanel";
 import {
-  BAG_PANEL_STYLE,
   BOSS_BAR_PANEL_STYLE,
+  ABILITY_TIMELINE_PANEL_STYLE,
+  ABILITY_TIMELINE_BIGICON_PANEL_STYLE,
+  ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE,
+  CHIP_HUD_PANEL_STYLE,
   COMMAND_PANEL_STYLE,
-  CRYPT_PANEL_STYLE,
+  INSTANCE_PANEL_STYLE,
+  INSTANCE_RUN_PANEL_STYLE,
   INFO_DIALOG_PANEL_STYLE,
   KILLS_PANEL_STYLE,
   MAIL_PANEL_STYLE,
+  MINIMAP_PANEL_STYLE,
   PAPERDOLL_PANEL_STYLE,
+  PLAYERS_PANEL_STYLE,
   THREAT_PANEL_STYLE,
+  BAG_PANEL_STYLE,
 } from "../../../lib/frameSizes";
 
 export type CommPanelOpts = {
   style?: Record<string, any>;
-  closable?: boolean;
   empty?: boolean;
   hiddenBodyStyle?: Record<string, any>;
   interactiveBody?: boolean;
   editChrome?: "full" | "grip" | "anchors";
-  /** When false, frameW/H are a fixed box (scroll inside). Default: true for HUD. */
-  hugContent?: boolean;
 };
 
 export type CommPanelLayoutDeps = {
@@ -69,6 +87,11 @@ export type CommPanelLayoutDeps = {
   onMoveEnd?: (id: PanelId, pos: PanelPos, opts?: PanelGroupDragOpts) => void;
   /** Persist HUD frame size after corner-grip resize. */
   onResizeFrame?: (id: PanelId, size: { w: number; h: number }) => void;
+  onAutoSizeChange?: (
+    id: PanelId,
+    autoSize: boolean,
+    size?: { w: number; h: number },
+  ) => void;
   onPanelDragStart?: (id: PanelId) => void;
   onPanelDragMove?: (id: PanelId, opts?: PanelGroupDragOpts) => void;
   ungroupPanel?: (id: PanelId) => void;
@@ -93,7 +116,6 @@ export type CommPanelLayoutDeps = {
   closePaperdoll: () => void;
   focusUnitId: string | null | undefined;
   combat: CombatSignals;
-  onCrypt: boolean;
   commandSeed: string | null;
   commandOpenSeq: number;
   bagOpen: boolean;
@@ -105,11 +127,19 @@ export type CommPanelLayoutDeps = {
 };
 
 function createPanelRenderer(deps: CommPanelLayoutDeps) {
+  const ctx = {
+    map: getMapData(deps.snap.entities).map,
+    hasEnemies: deps.combat.hasEnemies,
+    hasBosses: deps.combat.hasBosses,
+    hasAbilityCasters: deps.combat.hasAbilityCasters,
+    hasThreat: deps.combat.hasThreat,
+  };
   return (id: PanelId, child: any, opts?: CommPanelOpts) => {
-    const isClosablePanel = opts?.closable === true || canCloseWindow(id);
+    const isClosablePanel = canCloseWindow(id);
     const isHidden = isClosablePanel && !deps.visible(id);
     if (isHidden && !deps.layoutEdit) return null;
-    if (opts?.empty && !deps.layoutEdit) return null;
+    const empty = opts?.empty === true || panelIsContextEmpty(id, ctx);
+    if (empty && !deps.layoutEdit) return null;
     const locked = deps.panelIsLocked(id);
     // Buff/item hosts stay mounted when idle (stock writers); treat them as
     // on-screen for Alt only while the dialog is open — Layout still places
@@ -197,14 +227,18 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         onWindowScale: deps.onWindowScale
           ? (scale: number) => deps.onWindowScale!(id, scale)
           : undefined,
-        // Layout toggle is chrome-only. Bag must stay content-sized (7-col
-        // float grid breaks under a locked shell width/height).
-        showResizeHandles: id !== "toggles" && id !== "bag",
+        // Layout toggle is chrome-only. Bag / chips stay content-sized.
+        showResizeHandles: canResizeWindow(id),
+        resizeAxes: windowFramePersist(id) === "w" ? "w" : "wh",
         onResizeFrame:
-          id !== "toggles" && id !== "bag" && deps.onResizeFrame
+          canResizeWindow(id) && deps.onResizeFrame
             ? (size: { w: number; h: number }) => deps.onResizeFrame!(id, size)
             : undefined,
-        hugContent: opts?.hugContent,
+        onAutoSizeChange:
+          canAutoSizeWindow(id) && deps.onAutoSizeChange
+            ? (autoSize: boolean, size?: { w: number; h: number }) =>
+                deps.onAutoSizeChange!(id, autoSize, size)
+            : undefined,
       },
       child,
     );
@@ -231,6 +265,10 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
   }
   const byTarget = deps.combat.byTarget;
 
+  // Context empty-hide (panelIsContextEmpty): keep panelVisible default-on so
+  // instance / combat panels auto-appear, but do not mount opaque shells when
+  // the current map has no content — also keeps them out of edge-snap peers.
+
   return [
     panel(
       "players",
@@ -242,7 +280,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         observingId: snap.observingId,
         layoutEdit: deps.layoutEdit,
       }),
-      { style: { width: "auto", maxWidth: "min(560px, 78vw)" } },
+      { style: PLAYERS_PANEL_STYLE },
     ),
 
     panel(
@@ -258,43 +296,58 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           maxWidth: "min(420px, 78vw)",
           textAlign: "right",
         },
-        empty: !deps.combat.hasEnemies,
       },
     ),
 
     panel(
-      "topCenter",
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "4px",
-          },
-        },
-        e(ServerInfo, {
-          S: snap.S,
-          serverRegion: snap.serverRegion,
-          serverIdentifier: snap.serverIdentifier,
-        }),
-        e(MapInfo, { entities: snap.entities }),
-      ),
+      "serverInfo",
+      e(ServerInfo, {
+        S: snap.S,
+        serverRegion: snap.serverRegion,
+        serverIdentifier: snap.serverIdentifier,
+      }),
+      { style: CHIP_HUD_PANEL_STYLE },
+    ),
+
+    panel("mapInfo", e(MapInfo, { entities: snap.entities }), {
+      style: CHIP_HUD_PANEL_STYLE,
+    }),
+
+    panel(
+      "minimap",
+      e(Minimap, {
+        layoutEdit: deps.layoutEdit,
+        setSelectedEntity: deps.setSelectedEntity,
+        selectedEntity: deps.selectedEntity,
+      }),
+      {
+        style: MINIMAP_PANEL_STYLE,
+        hiddenBodyStyle: MINIMAP_PANEL_STYLE,
+      },
     ),
 
     panel(
-      "crypt",
-      e(CryptProgress, {
+      "instanceRun",
+      e(InstanceRunPanel, {
+        entities: snap.entities,
+        layoutEdit: deps.layoutEdit,
+      }),
+      {
+        style: INSTANCE_RUN_PANEL_STYLE,
+        hiddenBodyStyle: INSTANCE_RUN_PANEL_STYLE,
+      },
+    ),
+
+    panel(
+      "instance",
+      e(InstancePanel, {
         entities: snap.entities,
         layoutEdit: deps.layoutEdit,
         setSelectedEntity: deps.setSelectedEntity,
       }),
       {
-        closable: true,
-        style: CRYPT_PANEL_STYLE,
-        empty: !deps.onCrypt,
-        hiddenBodyStyle: CRYPT_PANEL_STYLE,
+        style: INSTANCE_PANEL_STYLE,
+        hiddenBodyStyle: INSTANCE_PANEL_STYLE,
       },
     ),
 
@@ -307,9 +360,49 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         layoutEdit: deps.layoutEdit,
       }),
       {
-        closable: true,
         style: BOSS_BAR_PANEL_STYLE,
-        empty: !deps.combat.hasBosses,
+      },
+    ),
+
+    panel(
+      "abilityTimeline",
+      e(AbilityTimelinePanel, {
+        entities: snap.entities,
+        selectedEntity: deps.selectedEntity,
+        observing: snap.observing,
+        layoutEdit: deps.layoutEdit,
+      }),
+      {
+        style: ABILITY_TIMELINE_PANEL_STYLE,
+        hiddenBodyStyle: ABILITY_TIMELINE_PANEL_STYLE,
+      },
+    ),
+
+    panel(
+      "abilityTimelineBigIcon",
+      e(AbilityTimelineBigIconPanel, {
+        entities: snap.entities,
+        selectedEntity: deps.selectedEntity,
+        observing: snap.observing,
+        layoutEdit: deps.layoutEdit,
+      }),
+      {
+        style: ABILITY_TIMELINE_BIGICON_PANEL_STYLE,
+        hiddenBodyStyle: ABILITY_TIMELINE_BIGICON_PANEL_STYLE,
+      },
+    ),
+
+    panel(
+      "abilityTimelineHighlight",
+      e(AbilityTimelineHighlightPanel, {
+        entities: snap.entities,
+        selectedEntity: deps.selectedEntity,
+        observing: snap.observing,
+        layoutEdit: deps.layoutEdit,
+      }),
+      {
+        style: ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE,
+        hiddenBodyStyle: ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE,
       },
     ),
 
@@ -358,7 +451,6 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
     ),
 
     panel("kills", e(KillKpiPanel), {
-      closable: true,
       style: KILLS_PANEL_STYLE,
       hiddenBodyStyle: KILLS_PANEL_STYLE,
     }),
@@ -370,25 +462,18 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         openSeq: deps.commandOpenSeq,
       }),
       {
-        closable: true,
         style: COMMAND_PANEL_STYLE,
         hiddenBodyStyle: COMMAND_PANEL_STYLE,
       },
     ),
 
     panel("mail", e(MailPanel, null), {
-      closable: true,
-      // Fixed frame like meters — inbox scrolls; do not grow with row count.
-      hugContent: false,
       style: MAIL_PANEL_STYLE,
       hiddenBodyStyle: MAIL_PANEL_STYLE,
     }),
 
     deps.bagOpen || deps.bagRefreshing || deps.layoutEdit
       ? panel("bag", e(BagPanel, { layoutEdit: deps.layoutEdit }), {
-          closable: true,
-          // Must hug content — fixed frameW/H wraps the stock 7-col float grid.
-          hugContent: true,
           style: deps.layoutEdit ? BAG_PANEL_STYLE : undefined,
           hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
             display: "flex",
@@ -434,9 +519,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         setSelectedEntity: deps.setSelectedEntity,
       }),
       {
-        closable: true,
         style: THREAT_PANEL_STYLE,
-        empty: !deps.combat.hasThreat,
         hiddenBodyStyle: THREAT_PANEL_STYLE,
       },
     ),

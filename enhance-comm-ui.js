@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.4
+// @version      0.8.0-alpha.5
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -337,16 +337,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners9 = [];
+    const listeners10 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners9.length; i++) listeners9[i](ev);
+        for (let i = 0; i < listeners10.length; i++) listeners10[i](ev);
       },
       subscribe: (listener) => {
-        listeners9.push(listener);
+        listeners10.push(listener);
         return () => {
-          const idx = listeners9.indexOf(listener);
-          if (idx >= 0) listeners9.splice(idx, 1);
+          const idx = listeners10.indexOf(listener);
+          if (idx >= 0) listeners10.splice(idx, 1);
         };
       }
     };
@@ -496,27 +496,117 @@ var EnhanceCommUI = (() => {
     };
   }
 
-  // src/crypt/tracker.ts
-  var CRYPT_BOSSES_MTYPES = [
-    "a1",
-    "a2",
-    "a3",
-    "a4",
-    "a5",
-    "a6",
-    "a7",
-    "a8"
-  ];
-  var CRYPT_IMPORTANT_MOBS_MTYPES = [
-    ...CRYPT_BOSSES_MTYPES,
-    "vbat",
-    "nerfedbat"
-  ];
+  // src/instance/configs.ts
+  var INSTANCE_CONFIGS = {
+    crypt: {
+      map: "crypt",
+      title: "The Crypt",
+      bossMtypes: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8"],
+      trackedMtypes: [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "a8",
+        "vbat",
+        "nerfedbat"
+      ],
+      sections: [
+        {
+          label: "Bosses",
+          mtypes: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8"]
+        },
+        { label: "Bats", mtypes: ["vbat", "nerfedbat"] }
+      ],
+      progressMode: "count"
+    },
+    spider_instance: {
+      map: "spider_instance",
+      title: "The Spider Den",
+      bossMtypes: ["spiderbl", "spiderbr", "spiderr"],
+      trackedMtypes: ["spiderbl", "spiderbr", "spiderr", "spider"],
+      sections: [
+        {
+          label: "Bosses",
+          mtypes: ["spiderbl", "spiderbr", "spiderr"]
+        }
+      ],
+      progressMode: "adds",
+      addMtype: "spider",
+      addPackSize: 6,
+      gateSideMtypes: ["spiderbl", "spiderbr"],
+      gateBossMtype: "spiderr"
+    },
+    tomb: {
+      map: "tomb",
+      title: "The Tomb",
+      bossMtypes: ["gredpro", "ggreenpro", "gbluepro", "gpurplepro"],
+      trackedMtypes: ["gredpro", "ggreenpro", "gbluepro", "gpurplepro"],
+      sections: [
+        {
+          label: "Guardians",
+          mtypes: ["gredpro", "ggreenpro", "gbluepro", "gpurplepro"]
+        }
+      ],
+      progressMode: "count",
+      cardLayout: "compass",
+      accentBorders: {
+        gredpro: "#a44",
+        ggreenpro: "#4a4",
+        gbluepro: "#48a",
+        gpurplepro: "#a4a"
+      }
+    },
+    winter_instance: {
+      map: "winter_instance",
+      title: "Lair of the Dark Mage",
+      bossMtypes: ["xmagefz", "xmagefi", "xmagen", "xmagex"],
+      trackedMtypes: ["xmagefz", "xmagefi", "xmagen", "xmagex"],
+      sections: [
+        {
+          label: "Dark Mage",
+          mtypes: ["xmagefz", "xmagefi", "xmagen", "xmagex"]
+        }
+      ],
+      progressMode: "phase",
+      phaseOrder: ["xmagefz", "xmagefi", "xmagen", "xmagex"],
+      phaseNames: {
+        xmagefz: "Frozen",
+        xmagefi: "Fire",
+        xmagen: "Nature",
+        xmagex: "Dark"
+      }
+    }
+  };
+  function getInstanceConfig(map) {
+    if (!map) return null;
+    return INSTANCE_CONFIGS[map] || null;
+  }
+  function isTrackedInstanceMap(map) {
+    return !!getInstanceConfig(map);
+  }
+  function allInstanceBossMtypes() {
+    const out = /* @__PURE__ */ new Set();
+    const keys = Object.keys(INSTANCE_CONFIGS);
+    for (let i = 0; i < keys.length; i++) {
+      const bosses = INSTANCE_CONFIGS[keys[i]].bossMtypes;
+      for (let j = 0; j < bosses.length; j++) out.add(bosses[j]);
+    }
+    return out;
+  }
+
+  // src/instance/tracker.ts
+  var CRYPT_BOSSES_MTYPES = INSTANCE_CONFIGS.crypt.bossMtypes.slice();
+  var CRYPT_IMPORTANT_MOBS_MTYPES = INSTANCE_CONFIGS.crypt.trackedMtypes.slice();
   var CRYPT_MOBS_STATES_AND_STATS = {};
   var idToMobData = /* @__PURE__ */ new Map();
   var unsubKill = null;
+  var bossMtypeSet = allInstanceBossMtypes();
   function isBossMtype(mtype) {
-    return CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0;
+    return bossMtypeSet.has(mtype);
   }
   function handleKill(ev) {
     const mobData = idToMobData.get(ev.id);
@@ -532,7 +622,8 @@ var EnhanceCommUI = (() => {
       boss.deathEventTimestamp = ev.at;
     }
   }
-  function startCryptTracker() {
+  function startInstanceTracker() {
+    bossMtypeSet = allInstanceBossMtypes();
     if (!unsubKill) {
       unsubKill = onKill(handleKill);
     }
@@ -543,22 +634,26 @@ var EnhanceCommUI = (() => {
       }
     };
   }
-  function updateFromEntities(instanceId, entities) {
+  function updateFromEntities(instanceId, entities, opts) {
     if (!instanceId) return;
     if (!(instanceId in CRYPT_MOBS_STATES_AND_STATS)) {
       CRYPT_MOBS_STATES_AND_STATS[instanceId] = {};
     }
+    const tracked = (opts == null ? void 0 : opts.trackedMtypes) || INSTANCE_CONFIGS.crypt.trackedMtypes;
+    const bosses = (opts == null ? void 0 : opts.bossMtypes) || INSTANCE_CONFIGS.crypt.bossMtypes;
+    const trackedSet = new Set(tracked);
+    const bossSet = new Set(bosses);
     const now = Date.now();
     const list = Array.isArray(entities) ? entities : Object.values(entities);
     for (let i = 0; i < list.length; i++) {
       const entity = list[i];
       if (!entity) continue;
       if (!entity.visible || entity.dead) continue;
-      if (!entity.mtype || CRYPT_IMPORTANT_MOBS_MTYPES.indexOf(entity.mtype) < 0) {
+      if (!entity.mtype || !trackedSet.has(entity.mtype)) {
         continue;
       }
       const instanceData = CRYPT_MOBS_STATES_AND_STATS[instanceId];
-      if (isBossMtype(entity.mtype)) {
+      if (bossSet.has(entity.mtype)) {
         if (!(entity.mtype in instanceData)) {
           instanceData[entity.mtype] = {
             deadCount: 0,
@@ -577,7 +672,12 @@ var EnhanceCommUI = (() => {
           }
         }
       } else if (!(entity.mtype in instanceData)) {
-        instanceData[entity.mtype] = { deadCount: 0 };
+        instanceData[entity.mtype] = {
+          deadCount: 0,
+          lastSeenLevel: entity.level
+        };
+      } else {
+        instanceData[entity.mtype].lastSeenLevel = entity.level;
       }
       idToMobData.set(entity.id, {
         mtype: entity.mtype,
@@ -936,6 +1036,25 @@ var EnhanceCommUI = (() => {
     }) || "";
   }
 
+  // src/lib/abilityIconFallbacks.ts
+  var ABILITY_ICON_FALLBACK_SKINS = {
+    anger: "skill_agitate",
+    warpstomp: "skill_stomp",
+    healing: "skill_pheal",
+    self_healing: "skill_selfheal",
+    deepfreeze: "essenceoffrost",
+    multi_burn: "essenceoffire",
+    zap: "skill_burst",
+    mtangle: "skill_entangle",
+    fireball: "essenceoffire",
+    frostball: "essenceoffrost",
+    degen: "skill_curse"
+  };
+  function abilityIconFallbackSkin(abilityId) {
+    if (!abilityId) return void 0;
+    return ABILITY_ICON_FALLBACK_SKINS[abilityId];
+  }
+
   // src/lib/abilityIds.ts
   var HIT_SOURCE_TO_G = {
     burn: "burned"
@@ -991,7 +1110,11 @@ var EnhanceCommUI = (() => {
   function imagesetFileSrc(file) {
     if (!file) return "";
     if (/^https?:\/\//i.test(file)) return file;
-    if (file.charAt(0) === "/") return `https://adventure.land${file}`;
+    if (file.charAt(0) === "/") {
+      const origin = typeof window !== "undefined" ? window.__ecuAssetOrigin : void 0;
+      if (typeof origin === "string") return origin + file;
+      return `https://adventure.land${file}`;
+    }
     return file;
   }
   function positionsForSkin(G, skin) {
@@ -1099,11 +1222,41 @@ var EnhanceCommUI = (() => {
     const gid = canonicalAbilityId(key);
     const skill = ((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[gid]) || ((_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[key]);
     if (skill && typeof skill.skin === "string" && skill.skin) return skill.skin;
+    if (skill && typeof skill.condition === "string" && skill.condition) {
+      const viaCond = conditionSkin(skill.condition);
+      if (viaCond) return viaCond;
+    }
     const cond = ((_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[gid]) || ((_d = G == null ? void 0 : G.conditions) == null ? void 0 : _d[key]);
     if (cond && typeof cond.skin === "string" && cond.skin) return cond.skin;
     const item = ((_e = G == null ? void 0 : G.items) == null ? void 0 : _e[gid]) || ((_f = G == null ? void 0 : G.items) == null ? void 0 : _f[key]);
     if (item && typeof item.skin === "string" && item.skin) return item.skin;
     return void 0;
+  }
+  function monsterAbilitySkin(abilityId, mtype) {
+    var _a, _b, _c, _d, _e, _f;
+    const fromSkill = skillSkin(abilityId);
+    if (fromSkill) return fromSkill;
+    if (!mtype) return void 0;
+    const G = getG();
+    const gid = canonicalAbilityId(abilityId);
+    const ab = ((_c = (_b = (_a = G == null ? void 0 : G.monsters) == null ? void 0 : _a[mtype]) == null ? void 0 : _b.abilities) == null ? void 0 : _c[gid]) || ((_f = (_e = (_d = G == null ? void 0 : G.monsters) == null ? void 0 : _d[mtype]) == null ? void 0 : _e.abilities) == null ? void 0 : _f[abilityId]);
+    if (!ab) return void 0;
+    if (typeof ab.skin === "string" && ab.skin) return ab.skin;
+    if (typeof ab.condition === "string" && ab.condition) {
+      const condSkin = conditionSkin(ab.condition);
+      if (condSkin) return condSkin;
+    }
+    if (typeof ab.skill === "string" && ab.skill) {
+      const linked = skillSkin(ab.skill);
+      if (linked) return linked;
+      return ab.skill;
+    }
+    if (typeof ab.use_skill === "string" && ab.use_skill) {
+      const linked = skillSkin(ab.use_skill);
+      if (linked) return linked;
+      return ab.use_skill;
+    }
+    return abilityIconFallbackSkin(gid) || abilityIconFallbackSkin(abilityId);
   }
   function itemSkin(key) {
     var _a;
@@ -1192,7 +1345,7 @@ var EnhanceCommUI = (() => {
     return (opts == null ? void 0 : opts.mtype) || void 0;
   }
   function resolveGameIcon(id, kind = "auto", opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const key = id || "";
     if (kind === "death") {
       return { id: key || "death", kind: "death", name: "Death" };
@@ -1261,12 +1414,21 @@ var EnhanceCommUI = (() => {
       name: conditionDisplayName(gid),
       debuff: isConditionDebuff(gid)
     });
-    const asSkill = () => ({
-      id: gid,
-      kind: "skill",
-      skin: skillSkin(gid),
-      name: skillDisplayName(gid)
-    });
+    const asSkill = () => {
+      let skin = skillSkin(gid);
+      if (!skin && (opts == null ? void 0 : opts.mtype)) {
+        skin = monsterAbilitySkin(key, opts.mtype);
+      }
+      if (!skin) {
+        skin = abilityIconFallbackSkin(gid) || abilityIconFallbackSkin(key);
+      }
+      return {
+        id: gid,
+        kind: "skill",
+        skin,
+        name: skillDisplayName(gid)
+      };
+    };
     const asItem = () => {
       var _a2, _b2;
       const def = ((_a2 = G == null ? void 0 : G.items) == null ? void 0 : _a2[gid]) || ((_b2 = G == null ? void 0 : G.items) == null ? void 0 : _b2[key]);
@@ -1280,19 +1442,17 @@ var EnhanceCommUI = (() => {
     if (kind === "condition") return asCondition();
     if (kind === "auto" && ((_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[gid])) return asCondition();
     if (kind === "skill") {
-      if (((_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[gid]) || ((_c = G == null ? void 0 : G.skills) == null ? void 0 : _c[key])) return asSkill();
-      if (((_d = G == null ? void 0 : G.conditions) == null ? void 0 : _d[gid]) || ((_e = G == null ? void 0 : G.conditions) == null ? void 0 : _e[key])) return asCondition();
-      if (((_f = G == null ? void 0 : G.items) == null ? void 0 : _f[gid]) || ((_g = G == null ? void 0 : G.items) == null ? void 0 : _g[key])) return asItem();
-      return {
-        id: gid || key,
-        kind: "skill",
-        name: skillDisplayName(gid || key)
-      };
-    }
-    if (kind === "auto" && (((_h = G == null ? void 0 : G.skills) == null ? void 0 : _h[gid]) || ((_i = G == null ? void 0 : G.skills) == null ? void 0 : _i[key]))) {
+      if (((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[gid]) || ((_c = G == null ? void 0 : G.conditions) == null ? void 0 : _c[key])) return asCondition();
+      if (((_d = G == null ? void 0 : G.items) == null ? void 0 : _d[gid]) || ((_e = G == null ? void 0 : G.items) == null ? void 0 : _e[key])) return asItem();
       return asSkill();
     }
-    if (kind === "item" || kind === "auto" && (((_j = G == null ? void 0 : G.items) == null ? void 0 : _j[gid]) || ((_k = G == null ? void 0 : G.items) == null ? void 0 : _k[key]))) {
+    if (kind === "auto" && (((_f = G == null ? void 0 : G.skills) == null ? void 0 : _f[gid]) || ((_g = G == null ? void 0 : G.skills) == null ? void 0 : _g[key]))) {
+      return asSkill();
+    }
+    if (kind === "auto" && (opts == null ? void 0 : opts.mtype) && monsterAbilitySkin(key, opts.mtype)) {
+      return asSkill();
+    }
+    if (kind === "item" || kind === "auto" && (((_h = G == null ? void 0 : G.items) == null ? void 0 : _h[gid]) || ((_i = G == null ? void 0 : G.items) == null ? void 0 : _i[key]))) {
       return asItem();
     }
     return {
@@ -1374,6 +1534,10 @@ var EnhanceCommUI = (() => {
       skin: opts == null ? void 0 : opts.skin
     });
     const title = (opts == null ? void 0 : opts.title) || resolved.name || id;
+    if (opts == null ? void 0 : opts.skin) {
+      const explicit = skinSheetHtml(opts.skin, size, title);
+      if (explicit) return explicit;
+    }
     if (resolved.kind === "monster") {
       if (resolved.mtype) return monsterIconHtml(resolved.mtype, size, title);
       return letterFallbackHtml(
@@ -1408,46 +1572,47 @@ var EnhanceCommUI = (() => {
       const asSkin = skinSheetHtml(resolved.id || id, size, title);
       if (asSkin) return asSkin;
     }
+    if (opts == null ? void 0 : opts.mtype) return monsterIconHtml(opts.mtype, size, title);
     const letter = (title || id || "?").slice(0, 1).toUpperCase();
     return letterFallbackHtml(letter, size, title);
   }
   function skillIconHtml(key, displaySize = 18) {
     return gameIconHtml(key, { kind: "skill", size: displaySize });
   }
-  function targetIconHtml(row2, displaySize = 18) {
-    return gameIconHtml(row2.id, {
+  function targetIconHtml(row3, displaySize = 18) {
+    return gameIconHtml(row3.id, {
       kind: "target",
       size: displaySize,
-      ctype: row2.ctype,
-      mtype: row2.mtype,
-      name: row2.name,
-      title: row2.name
+      ctype: row3.ctype,
+      mtype: row3.mtype,
+      name: row3.name,
+      title: row3.name
     });
   }
-  function rowIconHtml(row2, opts) {
+  function rowIconHtml(row3, opts) {
     var _a, _b;
     if (opts && opts.icons === false) return "";
     const size = opts && opts.iconSize || 18;
-    if (row2.id === "__total__") return "";
-    if (row2.kind === "ability" || row2.kind === "channel") {
-      return gameIconHtml(row2.id, { kind: "auto", size });
+    if (row3.id === "__total__") return "";
+    if (row3.kind === "ability" || row3.kind === "channel") {
+      return gameIconHtml(row3.id, { kind: "auto", size });
     }
-    if (row2.kind === "target") {
-      return targetIconHtml(row2, size);
+    if (row3.kind === "target") {
+      return targetIconHtml(row3, size);
     }
-    if (row2.kind === "player") {
-      if ((opts == null ? void 0 : opts.classIcons) && row2.ctype) return classIconHtml(row2.ctype, size);
+    if (row3.kind === "player") {
+      if ((opts == null ? void 0 : opts.classIcons) && row3.ctype) return classIconHtml(row3.ctype, size);
       return "";
     }
     const G = getG();
-    if (((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[row2.id]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[row2.id])) {
-      return gameIconHtml(row2.id, { kind: "auto", size });
+    if (((_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[row3.id]) || ((_b = G == null ? void 0 : G.conditions) == null ? void 0 : _b[row3.id])) {
+      return gameIconHtml(row3.id, { kind: "auto", size });
     }
-    if (row2.ctype) {
-      if (opts == null ? void 0 : opts.classIcons) return classIconHtml(row2.ctype, size);
+    if (row3.ctype) {
+      if (opts == null ? void 0 : opts.classIcons) return classIconHtml(row3.ctype, size);
       return "";
     }
-    return gameIconHtml(row2.id, { kind: "auto", size });
+    return gameIconHtml(row3.id, { kind: "auto", size });
   }
   function paintItemContainerIcon(el, skin, size) {
     const html = itemContainer({ skin, size, draggable: false }, null);
@@ -2082,64 +2247,325 @@ var EnhanceCommUI = (() => {
     return out;
   }
 
-  // src/lib/layout.ts
-  var PANEL_IDS = [
-    "players",
-    "enemies",
-    "topCenter",
-    "paperdoll",
-    "buffInfo",
-    "itemInfo",
-    "kills",
-    "playerFrame",
-    "targetFrame",
-    "bossBar",
-    "crypt",
-    "threat",
-    "command",
-    "bag",
-    "mail",
-    "toggles"
-  ];
-  var PANEL_LABELS = {
-    players: "Players",
-    enemies: "Enemies",
-    topCenter: "Server / Map",
-    paperdoll: "Paperdoll",
-    buffInfo: "Buff info",
-    itemInfo: "Item info",
-    kills: "Kills",
-    playerFrame: "Player frame",
-    targetFrame: "Target frame",
-    bossBar: "Boss bar",
-    crypt: "Crypt progress",
-    threat: "Threat",
-    command: "Command",
-    bag: "Bag",
-    mail: "Mail",
-    toggles: "Layout"
+  // src/lib/frameSizes.ts
+  var BAG_FRAME_WIDTH = 385;
+  var BAG_FRAME_HEIGHT = 395;
+  var BAG_SYNC_CHROME_HEIGHT = 30;
+  var PARTY_CHIP_WIDTH = 168;
+  var PARTY_CHIP_GAP = 5;
+  var PARTY_ROSTER_PAD = 4;
+  var PARTY_MAX_COLS = 3;
+  function partyChipRowWidth(cols = PARTY_MAX_COLS) {
+    const n = Math.max(1, Math.floor(cols));
+    return n * PARTY_CHIP_WIDTH + (n - 1) * PARTY_CHIP_GAP;
+  }
+  function partyRosterMaxWidth(cols = PARTY_MAX_COLS) {
+    return PARTY_ROSTER_PAD * 2 + partyChipRowWidth(cols);
+  }
+  function autoSizeMaxWidthPx(id) {
+    if (id === "players") return partyRosterMaxWidth(PARTY_MAX_COLS);
+    return void 0;
+  }
+  function applyAutoSizeMaxWidth(style, id, autoSize) {
+    if (!autoSize) return;
+    const maxW = autoSizeMaxWidthPx(id);
+    if (!(typeof maxW === "number" && maxW > 0)) return;
+    style.maxWidth = `min(${maxW}px, 100vw)`;
+  }
+  var PLAYERS_FRAME_DEFAULT = { frameW: partyRosterMaxWidth() };
+  var THREAT_FRAME_DEFAULT = { frameW: 300, frameH: 360 };
+  var ENEMIES_FRAME_DEFAULT = { frameW: 200, frameH: 96 };
+  var UNIT_FRAME_DEFAULT = { frameW: 300, frameH: 112 };
+  var BAG_PANEL_STYLE = {
+    // minWidth floor only — fixed width + inventory host borders wraps slots.
+    minWidth: BAG_FRAME_WIDTH,
+    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
+    boxSizing: "border-box"
   };
+  var PAPERDOLL_FRAME_WIDTH = 268;
+  var PAPERDOLL_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "340px",
+    boxSizing: "border-box",
+    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
+    zIndex: 36
+  };
+  var BOSS_BAR_FRAME_DEFAULT = { frameW: 480, frameH: 180 };
+  var BOSS_BAR_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(520px, 72vw)",
+    minWidth: "min(360px, 92vw)",
+    boxSizing: "border-box"
+  };
+  var INSTANCE_FRAME_DEFAULT = { frameW: 560, frameH: 480 };
+  var INSTANCE_PANEL_STYLE = {
+    width: "100%",
+    maxWidth: "min(720px, 96vw)",
+    minWidth: "200px",
+    minHeight: "100%",
+    height: "100%",
+    boxSizing: "border-box",
+    // Opaque shell — must not show map through or inherit meter idle fade.
+    background: "rgba(0,0,0,0.94)",
+    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+    opacity: 1
+  };
+  var INSTANCE_RUN_PANEL_STYLE = {
+    width: "100%",
+    maxWidth: "min(360px, 92vw)",
+    minWidth: "160px",
+    minHeight: "100%",
+    height: "100%",
+    boxSizing: "border-box",
+    background: "rgba(0,0,0,0.94)",
+    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+    opacity: 1
+  };
+  var CHIP_HUD_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(360px, 94vw)",
+    boxSizing: "border-box",
+    background: "transparent",
+    boxShadow: "none"
+  };
+  var ABILITY_TIMELINE_RAIL_WIDTH = 50;
+  var ABILITY_TIMELINE_FRAME_DEFAULT = {
+    frameW: ABILITY_TIMELINE_RAIL_WIDTH,
+    frameH: 500
+  };
+  var ABILITY_TIMELINE_HORIZONTAL_FRAME_DEFAULT = {
+    frameW: 500,
+    frameH: 80
+  };
+  var ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT = {
+    frameW: 140,
+    frameH: 180
+  };
+  var ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT = {
+    frameW: 280,
+    frameH: 72
+  };
+  var ABILITY_TIMELINE_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "40px",
+    minHeight: "40px",
+    boxSizing: "border-box",
+    background: "transparent",
+    boxShadow: "none"
+  };
+  var ABILITY_TIMELINE_BIGICON_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "64px",
+    minHeight: "64px",
+    boxSizing: "border-box",
+    background: "transparent",
+    boxShadow: "none"
+  };
+  var ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "80px",
+    minHeight: "28px",
+    boxSizing: "border-box",
+    background: "transparent",
+    boxShadow: "none"
+  };
+  var MINIMAP_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "180px",
+    minHeight: "200px",
+    boxSizing: "border-box",
+    background: "transparent",
+    boxShadow: "none",
+    overflow: "hidden"
+  };
+  var PLAYERS_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: `min(${partyRosterMaxWidth()}px, 78vw)`,
+    minWidth: PARTY_CHIP_WIDTH,
+    boxSizing: "border-box"
+  };
+  var THREAT_PANEL_STYLE = {
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+    height: "100%",
+    minWidth: "200px",
+    minHeight: "80px",
+    maxWidth: "100%",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    background: "rgba(0,0,0,0.94)",
+    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+    opacity: 1
+  };
+  var THREAT_TABLE_SHELL = {
+    display: "flex",
+    flexDirection: "column",
+    flex: "1 1 auto",
+    width: "100%",
+    minWidth: 0,
+    minHeight: 0,
+    boxSizing: "border-box",
+    border: "2px double gray",
+    gap: "2px",
+    overflow: "hidden"
+  };
+  var COMMAND_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(560px, 94vw)",
+    minHeight: "220px",
+    boxSizing: "border-box"
+  };
+  var MAIL_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "min(480px, 96vw)",
+    minHeight: "360px",
+    maxWidth: "100%",
+    maxHeight: "100%",
+    boxSizing: "border-box"
+  };
+  var METER_PANEL_STYLE = {
+    width: "320px",
+    minWidth: "240px",
+    minHeight: "140px",
+    // Fill-screen ceiling — not a design max. Defaults still come from *FRAME_DEFAULT.
+    maxWidth: "100vw",
+    maxHeight: "100vh",
+    boxSizing: "border-box"
+  };
+  var METER_FRAME_DEFAULT = { w: 320, h: 200 };
+  var REPORT_FRAME_DEFAULT = { w: 780, h: 520 };
+  var METER_FRAME_MIN = { w: 240, h: 140 };
+  function clampMeterFrame(w, h, viewportW, viewportH) {
+    const maxW = Number.isFinite(viewportW) && viewportW > 0 ? Math.round(viewportW) : Number.POSITIVE_INFINITY;
+    const maxH = Number.isFinite(viewportH) && viewportH > 0 ? Math.round(viewportH) : Number.POSITIVE_INFINITY;
+    return {
+      frameW: Math.min(maxW, Math.max(METER_FRAME_MIN.w, Math.round(w))),
+      frameH: Math.min(maxH, Math.max(METER_FRAME_MIN.h, Math.round(h)))
+    };
+  }
+  var KILLS_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(280px, 90vw)",
+    minWidth: "180px",
+    minHeight: "80px",
+    boxSizing: "border-box"
+  };
+  var INFO_DIALOG_PANEL_STYLE = {
+    width: "fit-content",
+    maxWidth: "min(96vw, 520px)",
+    // Above other play panels so buff/item tooltips stay readable.
+    zIndex: 35,
+    boxSizing: "border-box"
+  };
+
+  // src/lib/layoutDefaults.ts
   var DEFAULT_LAYOUT_DESKTOP = {
     players: {
       x: 0.4,
       y: 0.4,
       anchor: "tl",
       locked: true,
-      frameW: 522,
-      frameH: 65.25
+      frameW: PLAYERS_FRAME_DEFAULT.frameW,
+      autoSize: true
     },
-    enemies: { x: 99.6, y: 0.4, anchor: "tr", frameW: 169.65, frameH: 52.2 },
-    topCenter: { x: 50, y: 0.4, anchor: "tc", frameW: 78.3, frameH: 78.3 },
-    paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274.05, frameH: 535.05 },
-    buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
-    itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
-    kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
-    playerFrame: { x: 35, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
-    targetFrame: { x: 65, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
-    bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
-    crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
-    threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
-    command: { x: 50, y: 42, anchor: "center", frameW: 561.15, frameH: 300.15 },
+    enemies: {
+      x: 99.6,
+      y: 0.4,
+      anchor: "tr",
+      frameW: ENEMIES_FRAME_DEFAULT.frameW,
+      frameH: ENEMIES_FRAME_DEFAULT.frameH
+    },
+    serverInfo: { x: 50, y: 0.4, anchor: "tc" },
+    mapInfo: { x: 50, y: 4.8, anchor: "tc" },
+    paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 535 },
+    buffInfo: {
+      x: 0.8,
+      y: 10,
+      anchor: "tl",
+      frameW: 196,
+      frameH: 248,
+      autoSize: true
+    },
+    itemInfo: {
+      x: 16.8,
+      y: 10,
+      anchor: "tl",
+      frameW: 196,
+      frameH: 248,
+      autoSize: true
+    },
+    kills: { x: 27, y: 99.2, anchor: "br", frameW: 280, frameH: 180 },
+    playerFrame: {
+      x: 35,
+      y: 86,
+      anchor: "bc",
+      frameW: UNIT_FRAME_DEFAULT.frameW,
+      frameH: UNIT_FRAME_DEFAULT.frameH
+    },
+    targetFrame: {
+      x: 65,
+      y: 86,
+      anchor: "bc",
+      frameW: UNIT_FRAME_DEFAULT.frameW,
+      frameH: UNIT_FRAME_DEFAULT.frameH
+    },
+    // Shares the mid-top band with eventScore (mutually empty-hidden).
+    bossBar: {
+      x: 50,
+      y: 10,
+      anchor: "tc",
+      frameW: BOSS_BAR_FRAME_DEFAULT.frameW,
+      frameH: BOSS_BAR_FRAME_DEFAULT.frameH
+    },
+    instanceRun: { x: 50, y: 18, anchor: "tc", frameW: 220, frameH: 70 },
+    instance: {
+      x: 50,
+      y: 26,
+      anchor: "tc",
+      frameW: INSTANCE_FRAME_DEFAULT.frameW,
+      frameH: INSTANCE_FRAME_DEFAULT.frameH
+    },
+    // Live events list — content-hugging floor (was 300×220 empty black slab).
+    events: { x: 0.5, y: 10, anchor: "tl", frameW: 260, frameH: 72 },
+    // AB score: same band as bossBar (exclusive). Roster stacked under score.
+    eventScore: { x: 50, y: 10, anchor: "tc", frameW: 360, frameH: 80 },
+    eventRoster: { x: 50, y: 20, anchor: "tc", frameW: 280, frameH: 200 },
+    abilityTimeline: {
+      x: 99.5,
+      y: 10,
+      anchor: "tr",
+      frameW: ABILITY_TIMELINE_FRAME_DEFAULT.frameW,
+      frameH: ABILITY_TIMELINE_FRAME_DEFAULT.frameH
+    },
+    abilityTimelineBigIcon: {
+      x: 96,
+      y: 10,
+      anchor: "tr",
+      frameW: ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT.frameW,
+      frameH: ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT.frameH
+    },
+    abilityTimelineHighlight: {
+      x: 50,
+      y: 48,
+      anchor: "center",
+      frameW: ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT.frameW,
+      frameH: ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT.frameH
+    },
+    minimap: { x: 0.5, y: 70, anchor: "bl", frameW: 220, frameH: 240 },
+    threat: {
+      x: 99.669,
+      y: 68,
+      anchor: "br",
+      frameW: THREAT_FRAME_DEFAULT.frameW,
+      frameH: THREAT_FRAME_DEFAULT.frameH
+    },
+    command: { x: 50, y: 42, anchor: "center", frameW: 560, frameH: 300 },
     // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
     // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
     bag: { x: 0.5, y: 99.2, anchor: "bl" },
@@ -2147,36 +2573,97 @@ var EnhanceCommUI = (() => {
     toggles: { x: 99.5, y: 99.2, anchor: "br" }
   };
   var DEFAULT_LAYOUT_TABLET = {
-    players: { x: 0.5, y: 0.5, anchor: "tl" },
-    enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-    topCenter: { x: 50, y: 0.5, anchor: "tc" },
+    players: {
+      x: 0.5,
+      y: 0.5,
+      anchor: "tl",
+      frameW: PLAYERS_FRAME_DEFAULT.frameW,
+      autoSize: true
+    },
+    enemies: {
+      x: 99.5,
+      y: 0.5,
+      anchor: "tr",
+      frameW: ENEMIES_FRAME_DEFAULT.frameW,
+      frameH: ENEMIES_FRAME_DEFAULT.frameH
+    },
+    serverInfo: { x: 50, y: 0.5, anchor: "tc" },
+    mapInfo: { x: 50, y: 5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
-    buffInfo: { x: 1, y: 12, anchor: "tl" },
-    itemInfo: { x: 17, y: 12, anchor: "tl" },
+    buffInfo: { x: 1, y: 12, anchor: "tl", autoSize: true },
+    itemInfo: { x: 17, y: 12, anchor: "tl", autoSize: true },
     kills: { x: 99.2, y: 72, anchor: "tr" },
-    playerFrame: { x: 32, y: 78, anchor: "bc" },
-    targetFrame: { x: 68, y: 78, anchor: "bc" },
-    bossBar: { x: 50, y: 9, anchor: "tc" },
-    crypt: { x: 50, y: 19, anchor: "tc" },
-    threat: { x: 99.2, y: 40, anchor: "tr" },
+    playerFrame: { x: 32, y: 78, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    targetFrame: { x: 68, y: 78, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    bossBar: { x: 50, y: 10, anchor: "tc", ...BOSS_BAR_FRAME_DEFAULT },
+    instanceRun: { x: 50, y: 18, anchor: "tc" },
+    instance: { x: 50, y: 26, anchor: "tc", ...INSTANCE_FRAME_DEFAULT },
+    events: { x: 0.5, y: 10, anchor: "tl" },
+    eventScore: { x: 50, y: 10, anchor: "tc" },
+    eventRoster: { x: 50, y: 20, anchor: "tc" },
+    abilityTimeline: {
+      x: 99.5,
+      y: 10,
+      anchor: "tr",
+      ...ABILITY_TIMELINE_FRAME_DEFAULT
+    },
+    abilityTimelineBigIcon: {
+      x: 96,
+      y: 10,
+      anchor: "tr",
+      ...ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT
+    },
+    abilityTimelineHighlight: {
+      x: 50,
+      y: 46,
+      anchor: "center",
+      ...ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT
+    },
+    minimap: { x: 0.8, y: 70, anchor: "bl", frameW: 200, frameH: 220 },
+    threat: { x: 99.2, y: 40, anchor: "tr", ...THREAT_FRAME_DEFAULT },
     command: { x: 50, y: 44, anchor: "center" },
     bag: { x: 0.8, y: 78, anchor: "bl" },
     mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
     toggles: { x: 99.2, y: 98.5, anchor: "br" }
   };
   var DEFAULT_LAYOUT_PHONE = {
-    players: { x: 0.5, y: 0.5, anchor: "tl" },
+    players: { x: 0.5, y: 0.5, anchor: "tl", frameW: 480, autoSize: true },
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-    topCenter: { x: 50, y: 0.4, anchor: "tc" },
+    serverInfo: { x: 50, y: 0.4, anchor: "tc" },
+    mapInfo: { x: 50, y: 4.5, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
-    buffInfo: { x: 2, y: 14, anchor: "tl" },
-    itemInfo: { x: 2, y: 36, anchor: "tl" },
+    buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
+    itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
     kills: { x: 98, y: 58, anchor: "br" },
-    playerFrame: { x: 28, y: 62, anchor: "bc" },
-    targetFrame: { x: 72, y: 62, anchor: "bc" },
-    bossBar: { x: 50, y: 10, anchor: "tc" },
-    crypt: { x: 50, y: 18, anchor: "tc" },
-    threat: { x: 50, y: 48, anchor: "tc" },
+    playerFrame: { x: 28, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    targetFrame: { x: 72, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    bossBar: { x: 50, y: 9, anchor: "tc" },
+    instanceRun: { x: 50, y: 16, anchor: "tc" },
+    instance: {
+      x: 50,
+      y: 22,
+      anchor: "tc",
+      frameW: 480,
+      frameH: 360
+    },
+    events: { x: 1, y: 10, anchor: "tl" },
+    eventScore: { x: 50, y: 9, anchor: "tc" },
+    eventRoster: { x: 50, y: 18, anchor: "tc" },
+    abilityTimeline: { x: 98, y: 9, anchor: "tr", frameW: 50, frameH: 400 },
+    abilityTimelineBigIcon: {
+      x: 90,
+      y: 9,
+      anchor: "tr",
+      ...ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT
+    },
+    abilityTimelineHighlight: {
+      x: 50,
+      y: 42,
+      anchor: "center",
+      ...ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT
+    },
+    minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
+    threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
     command: { x: 50, y: 42, anchor: "center" },
     bag: { x: 50, y: 88, anchor: "bc" },
     mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
@@ -2196,19 +2683,357 @@ var EnhanceCommUI = (() => {
       }
     }
   }
-  function migrateLegacyInfoDialog(partial) {
-    if (!partial || typeof partial !== "object") return partial;
-    const raw = partial;
-    if (!raw.infoDialog) return partial;
-    const legacy = raw.infoDialog;
-    const out = { ...partial };
-    delete out.infoDialog;
-    if (!out.buffInfo) out.buffInfo = { ...legacy };
-    if (!out.itemInfo) {
-      const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
-      out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
+
+  // src/lib/layoutFrameMigrations.ts
+  var LAYOUT_FRAME_REV = 5;
+  function shipped(n, target) {
+    return typeof n === "number" && Math.round(n) === target;
+  }
+  function migrateMailFrame(pos, def) {
+    if (!shipped(pos.frameW, 800) || !shipped(pos.frameH, 500)) return pos;
+    return { ...pos, frameW: def.frameW, frameH: def.frameH };
+  }
+  function migrateEventsFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 260;
+    const defH = typeof def.frameH === "number" ? def.frameH : 72;
+    if (!shipped(pos.frameW, 300) || !shipped(pos.frameH, 220)) return pos;
+    return { ...pos, frameW: defW, frameH: defH };
+  }
+  function migratePlayersFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 520;
+    if (!shipped(pos.frameW, 522) && !shipped(pos.frameW, 360)) return pos;
+    return { ...pos, frameW: defW };
+  }
+  function migrateThreatFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 300;
+    const defH = typeof def.frameH === "number" ? def.frameH : 360;
+    const shippedWide = shipped(pos.frameW, 326);
+    const shippedShort = shipped(pos.frameH, 117);
+    const shippedCompact = shipped(pos.frameW, 300) && shipped(pos.frameH, 240);
+    const noHeight = typeof pos.frameH !== "number" || pos.frameH <= 0;
+    if (!shippedWide && !shippedShort && !shippedCompact && !noHeight) {
+      return pos;
+    }
+    return {
+      ...pos,
+      frameW: shippedWide ? defW : pos.frameW,
+      frameH: shippedShort || shippedCompact || noHeight ? defH : pos.frameH
+    };
+  }
+  function migrateUnitFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 300;
+    const defH = typeof def.frameH === "number" ? def.frameH : 112;
+    if (!shipped(pos.frameW, 320) || !shipped(pos.frameH, 144)) return pos;
+    return { ...pos, frameW: defW, frameH: defH };
+  }
+  function migrateInstanceFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 560;
+    const defH = typeof def.frameH === "number" ? def.frameH : 480;
+    const compact = shipped(pos.frameW, 360) && shipped(pos.frameH, 288) || shipped(pos.frameW, 400) && shipped(pos.frameH, 320) || shipped(pos.frameW, 560) && shipped(pos.frameH, 400);
+    if (!compact) return pos;
+    return { ...pos, frameW: defW, frameH: defH };
+  }
+  function migrateBossBarFrame(pos, def) {
+    const defH = typeof def.frameH === "number" ? def.frameH : 180;
+    if (!shipped(pos.frameH, 100)) return pos;
+    return { ...pos, frameH: defH };
+  }
+  function migrateAbilityTimelineFrame(pos, def) {
+    const defW = typeof def.frameW === "number" ? def.frameW : 50;
+    const defH = typeof def.frameH === "number" ? def.frameH : 500;
+    const shippedWide = shipped(pos.frameW, 220) && shipped(pos.frameH, 200);
+    const shippedNarrow = shipped(pos.frameW, 44);
+    if (!shippedWide && !shippedNarrow) return pos;
+    return { ...pos, frameW: defW, frameH: defH };
+  }
+  var FRAME_MIGRATIONS = {
+    mail: migrateMailFrame,
+    events: migrateEventsFrame,
+    players: migratePlayersFrame,
+    threat: migrateThreatFrame,
+    playerFrame: migrateUnitFrame,
+    targetFrame: migrateUnitFrame,
+    instance: migrateInstanceFrame,
+    bossBar: migrateBossBarFrame,
+    abilityTimeline: migrateAbilityTimelineFrame
+  };
+  function applyFrameMigrations(layout, defaults) {
+    const ids = Object.keys(FRAME_MIGRATIONS);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const migrate2 = FRAME_MIGRATIONS[id];
+      const def = defaults[id];
+      if (!migrate2 || !def) continue;
+      layout[id] = migrate2(layout[id], def);
+    }
+  }
+
+  // src/lib/panelCatalog.ts
+  var PANEL_CATALOG = {
+    players: {
+      label: "Players",
+      framePersist: "w",
+      autoSize: "default-on"
+    },
+    enemies: { label: "Enemies", autoSize: "opt-in", emptyWhen: "enemies" },
+    serverInfo: { label: "Server info", framePersist: "none" },
+    mapInfo: { label: "Map info", framePersist: "none" },
+    paperdoll: { label: "Paperdoll" },
+    buffInfo: { label: "Buff info", autoSize: "default-on" },
+    itemInfo: { label: "Item info", autoSize: "default-on" },
+    kills: { label: "Kills", closable: true, autoSize: "opt-in" },
+    playerFrame: { label: "Player frame", autoSize: "opt-in" },
+    targetFrame: { label: "Target frame", autoSize: "opt-in" },
+    bossBar: {
+      label: "Boss bar",
+      closable: true,
+      autoSize: "opt-in",
+      emptyWhen: "bosses"
+    },
+    instance: {
+      label: "Instance",
+      closable: true,
+      emptyWhen: "instanceMap",
+      shell: "fill"
+    },
+    instanceRun: {
+      label: "Instance run",
+      closable: true,
+      emptyWhen: "instanceMap",
+      shell: "fill"
+    },
+    events: { label: "Events", closable: true, autoSize: "opt-in" },
+    eventScore: { label: "Event score", closable: true, autoSize: "opt-in" },
+    eventRoster: { label: "Event roster", closable: true, autoSize: "opt-in" },
+    abilityTimeline: {
+      label: "Ability timeline",
+      closable: true,
+      emptyWhen: "abilityCasters",
+      shell: "fill"
+    },
+    abilityTimelineBigIcon: {
+      label: "Ability big icon",
+      closable: true,
+      emptyWhen: "abilityCasters",
+      shell: "fill"
+    },
+    abilityTimelineHighlight: {
+      label: "Ability highlight",
+      closable: true,
+      emptyWhen: "abilityCasters",
+      shell: "fill"
+    },
+    minimap: { label: "Minimap", closable: true, shell: "fill" },
+    threat: {
+      label: "Threat",
+      closable: true,
+      autoSize: "opt-in",
+      emptyWhen: "threat",
+      shell: "fill"
+    },
+    command: { label: "Command", closable: true, defaultVisible: false },
+    bag: { label: "Bag", closable: true, framePersist: "none" },
+    mail: {
+      label: "Mail",
+      closable: true,
+      defaultVisible: false,
+      shell: "fill"
+    },
+    toggles: { label: "Layout", framePersist: "none" }
+  };
+  var PANEL_IDS = Object.keys(PANEL_CATALOG);
+  var PANEL_ID_SET = new Set(PANEL_IDS);
+  function isPanelId(id) {
+    return PANEL_ID_SET.has(id);
+  }
+  function panelDef(id) {
+    const d = PANEL_CATALOG[id];
+    const closable = d.closable === true;
+    return {
+      label: d.label,
+      closable,
+      defaultVisible: closable && d.defaultVisible !== false,
+      framePersist: d.framePersist || "wh",
+      autoSize: d.autoSize || "off",
+      emptyWhen: d.emptyWhen || "never",
+      shell: d.shell || "hug"
+    };
+  }
+  var PANEL_LABELS = (() => {
+    const out = {};
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      const id = PANEL_IDS[i];
+      out[id] = PANEL_CATALOG[id].label;
     }
     return out;
+  })();
+  var CLOSABLE_PANEL_IDS = PANEL_IDS.filter(
+    (id) => PANEL_CATALOG[id].closable === true
+  );
+  var DEFAULT_PANEL_VISIBLE = (() => {
+    const out = {};
+    for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
+      const id = CLOSABLE_PANEL_IDS[i];
+      out[id] = panelDef(id).defaultVisible;
+    }
+    return out;
+  })();
+  function mergePanelVisible(partial, legacyCombatVisible) {
+    const out = { ...DEFAULT_PANEL_VISIBLE };
+    void legacyCombatVisible;
+    if (partial && typeof partial === "object") {
+      const raw = partial;
+      if (typeof raw.crypt === "boolean") {
+        if (typeof raw.instance !== "boolean") out.instance = raw.crypt;
+        if (typeof raw.instanceRun !== "boolean") out.instanceRun = raw.crypt;
+      }
+      for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
+        const id = CLOSABLE_PANEL_IDS[i];
+        if (typeof partial[id] === "boolean") {
+          out[id] = partial[id];
+        }
+      }
+    }
+    return out;
+  }
+  function windowFramePersist(id) {
+    if (!isPanelId(id)) return "wh";
+    return panelDef(id).framePersist;
+  }
+  function canAutoSizeWindow(id) {
+    return isPanelId(id) && panelDef(id).autoSize !== "off";
+  }
+  function defaultPanelAutoSize(id) {
+    return isPanelId(id) && panelDef(id).autoSize === "default-on";
+  }
+  function panelUsesAutoSize(pos, id) {
+    if (!canAutoSizeWindow(id)) return false;
+    if (pos && typeof pos.autoSize === "boolean") return pos.autoSize;
+    return defaultPanelAutoSize(id);
+  }
+  function panelFillsFrame(id) {
+    return isPanelId(id) && panelDef(id).shell === "fill";
+  }
+  function filterPersistedFrameSize(id, size) {
+    const mode = windowFramePersist(id);
+    switch (mode) {
+      case "none":
+        return {};
+      case "w":
+        return size.frameW != null ? { frameW: size.frameW } : {};
+      case "wh":
+        return size;
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function applyWindowFramePersist(pos, id) {
+    const allowed = filterPersistedFrameSize(id, {
+      frameW: pos.frameW,
+      frameH: pos.frameH
+    });
+    const out = { ...pos };
+    delete out.frameW;
+    delete out.frameH;
+    if (allowed.frameW != null) out.frameW = allowed.frameW;
+    if (allowed.frameH != null) out.frameH = allowed.frameH;
+    return out;
+  }
+  function inTrackedInstance(map) {
+    return isTrackedInstanceMap(map);
+  }
+  function emptyWhenIsEmpty(when, ctx) {
+    switch (when) {
+      case "never":
+        return false;
+      case "instanceMap":
+        return !inTrackedInstance(ctx.map);
+      case "enemies":
+        return !ctx.hasEnemies;
+      case "bosses":
+        return !ctx.hasBosses;
+      case "abilityCasters":
+        return !ctx.hasAbilityCasters;
+      case "threat":
+        return !ctx.hasThreat;
+      default: {
+        const _never = when;
+        return _never;
+      }
+    }
+  }
+  function panelIsContextEmpty(id, ctx) {
+    return emptyWhenIsEmpty(panelDef(id).emptyWhen, ctx);
+  }
+
+  // src/lib/layout.ts
+  function copyLegacyPos(legacy, extra) {
+    const out = {
+      x: legacy.x,
+      y: legacy.y,
+      anchor: legacy.anchor
+    };
+    if (legacy.locked != null) out.locked = legacy.locked;
+    if (legacy.scale != null) out.scale = legacy.scale;
+    if (legacy.snap) out.snap = legacy.snap;
+    if (legacy.horizontalSnap) out.horizontalSnap = true;
+    if (legacy.verticalSnap) out.verticalSnap = true;
+    if (legacy.frameW != null) out.frameW = legacy.frameW;
+    if (legacy.frameH != null) out.frameH = legacy.frameH;
+    if (legacy.autoSize != null) out.autoSize = legacy.autoSize;
+    if (extra) Object.assign(out, extra);
+    return out;
+  }
+  function migrateLegacyPanelIds(partial) {
+    if (!partial || typeof partial !== "object") return partial;
+    const raw = partial;
+    const out = { ...partial };
+    let changed = false;
+    if (raw.infoDialog) {
+      const legacy = raw.infoDialog;
+      delete out.infoDialog;
+      if (!out.buffInfo) out.buffInfo = copyLegacyPos(legacy);
+      if (!out.itemInfo) {
+        const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+        out.itemInfo = copyLegacyPos(legacy, { x });
+      }
+      changed = true;
+    }
+    if (raw.topCenter) {
+      const legacy = raw.topCenter;
+      delete out.topCenter;
+      if (!out.serverInfo) {
+        out.serverInfo = applyWindowFramePersist(
+          copyLegacyPos(legacy),
+          "serverInfo"
+        );
+      }
+      if (!out.mapInfo) {
+        const y = typeof legacy.y === "number" ? Math.min(100, legacy.y + 4.5) : 5;
+        out.mapInfo = applyWindowFramePersist(
+          copyLegacyPos(legacy, { y }),
+          "mapInfo"
+        );
+      }
+      changed = true;
+    }
+    if (raw.crypt) {
+      const legacy = raw.crypt;
+      delete out.crypt;
+      if (!out.instance) out.instance = copyLegacyPos(legacy);
+      if (!out.instanceRun) {
+        const y = typeof legacy.y === "number" ? Math.max(0, legacy.y - 4) : 14;
+        out.instanceRun = copyLegacyPos(legacy, {
+          y,
+          frameW: 220,
+          frameH: 70
+        });
+      }
+      changed = true;
+    }
+    return changed ? out : partial;
   }
   function clamp(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
@@ -2244,34 +3069,24 @@ var EnhanceCommUI = (() => {
     if (typeof raw.frameH === "number" && raw.frameH > 0) {
       out.frameH = raw.frameH;
     }
+    if (typeof raw.autoSize === "boolean") out.autoSize = raw.autoSize;
+    else if (typeof fallback.autoSize === "boolean") {
+      out.autoSize = fallback.autoSize;
+    }
     return out;
   }
-  function migrateMailFrame(pos, def) {
-    const defW = typeof def.frameW === "number" ? def.frameW : 800;
-    const defH = typeof def.frameH === "number" ? def.frameH : 500;
-    const minW = Math.min(800, Math.round(defW * 0.85));
-    const minH = Math.min(500, Math.round(defH * 0.85));
-    const maxH = Math.max(900, Math.round(defH * 1.4));
-    const tooSmall = typeof pos.frameW !== "number" || pos.frameW < minW || typeof pos.frameH !== "number" || pos.frameH < minH;
-    const tooTall = typeof pos.frameH === "number" && pos.frameH > maxH;
-    if (!tooSmall && !tooTall) return pos;
-    return { ...pos, frameW: def.frameW, frameH: def.frameH };
-  }
-  function mergeLayout(partial, profile = "desktop") {
-    const migrated = migrateLegacyInfoDialog(partial);
+  function mergeLayout(partial, profile = "desktop", opts) {
+    const migrated = migrateLegacyPanelIds(partial);
     const defaults = defaultLayoutFor(profile);
     const out = {};
     for (let i = 0; i < PANEL_IDS.length; i++) {
       const id = PANEL_IDS[i];
-      out[id] = normalizePos(migrated && migrated[id], defaults[id]);
+      out[id] = applyWindowFramePersist(
+        normalizePos(migrated && migrated[id], defaults[id]),
+        id
+      );
     }
-    if (out.bag) {
-      delete out.bag.frameW;
-      delete out.bag.frameH;
-    }
-    if (out.mail && defaults.mail) {
-      out.mail = migrateMailFrame(out.mail, defaults.mail);
-    }
+    if (opts == null ? void 0 : opts.migrateFrames) applyFrameMigrations(out, defaults);
     return out;
   }
   function anchorTransform(anchor) {
@@ -2375,6 +3190,7 @@ var EnhanceCommUI = (() => {
     if ((keep == null ? void 0 : keep.scale) != null) next.scale = keep.scale;
     if ((keep == null ? void 0 : keep.frameW) != null) next.frameW = keep.frameW;
     if ((keep == null ? void 0 : keep.frameH) != null) next.frameH = keep.frameH;
+    if ((keep == null ? void 0 : keep.autoSize) != null) next.autoSize = keep.autoSize;
     return next;
   }
   function paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH) {
@@ -2493,14 +3309,24 @@ var EnhanceCommUI = (() => {
     };
     if (typeof pos.frameW === "number" && pos.frameW > 0) {
       const w = Math.round(pos.frameW);
-      style.width = `max(${w}px, max-content)`;
-      style.minWidth = w + "px";
+      style.width = w + "px";
+      style.minWidth = 0;
+      style.maxWidth = "100vw";
+      style.overflowX = "hidden";
     }
     if (typeof pos.frameH === "number" && pos.frameH > 0) {
       const h = Math.round(pos.frameH);
-      style.height = `max(${h}px, max-content)`;
-      style.minHeight = h + "px";
+      style.height = h + "px";
+      style.minHeight = 0;
+      style.maxHeight = "100vh";
+      style.overflowY = "auto";
     }
+    return style;
+  }
+  function unclipShellOverflow(style) {
+    style.overflow = "visible";
+    style.overflowX = "visible";
+    style.overflowY = "visible";
     return style;
   }
   function deltaToPercent(dx, dy, containerW, containerH) {
@@ -2936,15 +3762,16 @@ var EnhanceCommUI = (() => {
     }
     return { left, top, right: left + w, bottom: top + h };
   }
-  function findEdgeSnapCandidate(selfId, selfRect, others, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
+  function findEdgeSnapCandidate(selfId2, selfRect, others, thresholdPx = DEFAULT_EDGE_SNAP_PX) {
     let best = null;
     let bestScore = Infinity;
     const selfCx = (selfRect.left + selfRect.right) / 2;
     const selfCy = (selfRect.top + selfRect.bottom) / 2;
     for (let i = 0; i < others.length; i++) {
       const o = others[i];
-      if (o.id === selfId) continue;
+      if (o.id === selfId2) continue;
       const r = o.rect;
+      if (!(r.right - r.left > 0) || !(r.bottom - r.top > 0)) continue;
       const oCx = (r.left + r.right) / 2;
       const oCy = (r.top + r.bottom) / 2;
       const candidates = [
@@ -3003,10 +3830,10 @@ var EnhanceCommUI = (() => {
       y: Math.max(0, Math.min(100, next.y))
     };
   }
-  function attachPanelEdge(panels, selfId, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
+  function attachPanelEdge(panels, selfId2, otherId, sideOnSelf, selfRect, otherRect, rootW, rootH) {
     const byId = {};
     for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
-    const self = byId[selfId];
+    const self = byId[selfId2];
     const other = byId[otherId];
     if (!self || !other) return panels;
     const matchH = sideOnSelf === 1 || sideOnSelf === 3;
@@ -3041,7 +3868,7 @@ var EnhanceCommUI = (() => {
       h: projected.bottom - projected.top
     });
     let next = panels.map((m) => {
-      if (m.id !== selfId) return m;
+      if (m.id !== selfId2) return m;
       return {
         ...m,
         pos: alignedPos,
@@ -3049,9 +3876,9 @@ var EnhanceCommUI = (() => {
         frameW: w != null ? w : m.frameW
       };
     });
-    next = groupPanels(next, selfId, otherId, sideOnSelf);
-    if (matchH && h != null) next = matchGroupHeight(next, selfId, h);
-    if (matchW && w != null) next = matchGroupWidth(next, selfId, w);
+    next = groupPanels(next, selfId2, otherId, sideOnSelf);
+    if (matchH && h != null) next = matchGroupHeight(next, selfId2, h);
+    if (matchW && w != null) next = matchGroupWidth(next, selfId2, w);
     return next.map(refreshSnapFlags);
   }
 
@@ -4074,16 +4901,16 @@ var EnhanceCommUI = (() => {
     for (let i = 0; i < n; i++) {
       const target = poolAt(t.pool, t.castTarget[i]);
       const pidRaw = poolAt(t.pool, t.castPid[i]);
-      const row2 = {
+      const row3 = {
         at: startedAt + t.castAt[i],
         actorId: poolAt(t.pool, t.castActor[i]),
         source: poolAt(t.pool, t.castSource[i]) || "attack"
       };
-      if (target) row2.targetId = target;
-      if (pidRaw) row2.pid = pidRaw;
+      if (target) row3.targetId = target;
+      if (pidRaw) row3.pid = pidRaw;
       const ams = t.castAttackMs && t.castAttackMs[i];
-      if (ams) row2.attackMs = ams;
-      out.push(row2);
+      if (ams) row3.attackMs = ams;
+      out.push(row3);
     }
     return out;
   }
@@ -4094,17 +4921,17 @@ var EnhanceCommUI = (() => {
       const oldName = poolAt(t.pool, t.gearOldName[i]);
       const newName = poolAt(t.pool, t.gearNewName[i]);
       const skin = poolAt(t.pool, t.gearSkin[i]);
-      const row2 = {
+      const row3 = {
         at: startedAt + t.gearAt[i],
         actorId: poolAt(t.pool, t.gearActor[i]),
         slot: poolAt(t.pool, t.gearSlot[i])
       };
-      if (oldName) row2.oldName = oldName;
-      if (newName) row2.newName = newName;
-      if (t.gearOldLevel[i] >= 0) row2.oldLevel = t.gearOldLevel[i];
-      if (t.gearNewLevel[i] >= 0) row2.newLevel = t.gearNewLevel[i];
-      if (skin) row2.skin = skin;
-      out.push(row2);
+      if (oldName) row3.oldName = oldName;
+      if (newName) row3.newName = newName;
+      if (t.gearOldLevel[i] >= 0) row3.oldLevel = t.gearOldLevel[i];
+      if (t.gearNewLevel[i] >= 0) row3.newLevel = t.gearNewLevel[i];
+      if (skin) row3.skin = skin;
+      out.push(row3);
     }
     return out;
   }
@@ -4112,13 +4939,13 @@ var EnhanceCommUI = (() => {
     const n = t.condActor.length;
     const out = [];
     for (let i = 0; i < n; i++) {
-      const row2 = {
+      const row3 = {
         actorId: poolAt(t.pool, t.condActor[i]),
         key: poolAt(t.pool, t.condKey[i]),
         startedAt: startedAt + t.condStart[i]
       };
-      if (t.condEnd[i]) row2.endedAt = startedAt + t.condEnd[i];
-      out.push(row2);
+      if (t.condEnd[i]) row3.endedAt = startedAt + t.condEnd[i];
+      out.push(row3);
     }
     return out;
   }
@@ -4473,23 +5300,23 @@ var EnhanceCommUI = (() => {
     const stream = new Blob([buf]).stream().pipeThrough(new DS("gzip"));
     return await new Response(stream).text();
   }
-  function metaOf(row2) {
+  function metaOf(row3) {
     return {
-      id: row2.id,
-      startedAt: row2.startedAt,
-      map: row2.map,
-      mapIn: row2.mapIn,
-      event: row2.event,
-      label: row2.label,
-      outcome: row2.outcome,
-      kind: row2.kind,
-      endedAt: row2.endedAt,
-      observingName: row2.observingName,
-      playerNames: row2.playerNames,
-      deaths: row2.deaths,
-      serverRegion: row2.serverRegion,
-      serverIdentifier: row2.serverIdentifier,
-      favorite: !!row2.favorite
+      id: row3.id,
+      startedAt: row3.startedAt,
+      map: row3.map,
+      mapIn: row3.mapIn,
+      event: row3.event,
+      label: row3.label,
+      outcome: row3.outcome,
+      kind: row3.kind,
+      endedAt: row3.endedAt,
+      observingName: row3.observingName,
+      playerNames: row3.playerNames,
+      deaths: row3.deaths,
+      serverRegion: row3.serverRegion,
+      serverIdentifier: row3.serverIdentifier,
+      favorite: !!row3.favorite
     };
   }
   function sortMetaNewest(list) {
@@ -4522,12 +5349,12 @@ var EnhanceCommUI = (() => {
     sortMetaNewest(rows);
     let victim = null;
     for (let i = rows.length - 1; i >= 0; i--) {
-      const row2 = rows[i];
-      if (row2.favorite) continue;
-      if (isProtectedInstance(row2.map, row2.mapIn, protectMapIn2)) {
+      const row3 = rows[i];
+      if (row3.favorite) continue;
+      if (isProtectedInstance(row3.map, row3.mapIn, protectMapIn2)) {
         continue;
       }
-      victim = row2;
+      victim = row3;
       break;
     }
     if (!victim) {
@@ -4544,13 +5371,13 @@ var EnhanceCommUI = (() => {
     meta = next;
     return true;
   }
-  async function putWithQuota(db, row2, protectMapIn2) {
+  async function putWithQuota(db, row3, protectMapIn2) {
     let tries = 0;
     while (tries < MAX_QUOTA_EVICT) {
       try {
         const tx = db.transaction(STORE_SEGMENTS, "readwrite");
         const store = tx.objectStore(STORE_SEGMENTS);
-        store.put(row2);
+        store.put(row3);
         commitTx(tx);
         await txDone(tx);
         return;
@@ -4588,22 +5415,22 @@ var EnhanceCommUI = (() => {
     try {
       const tx = db.transaction(STORE_SEGMENTS, "readwrite");
       const store = tx.objectStore(STORE_SEGMENTS);
-      const row2 = await reqToPromise(store.get(id));
-      if (!row2) {
+      const row3 = await reqToPromise(store.get(id));
+      if (!row3) {
         commitTx(tx);
         return;
       }
-      row2.favorite = favorite;
-      store.put(row2);
+      row3.favorite = favorite;
+      store.put(row3);
       commitTx(tx);
       await txDone(tx);
     } catch (e2) {
     }
   }
-  function upsertMeta(row2) {
-    const next = [metaOf(row2)];
+  function upsertMeta(row3) {
+    const next = [metaOf(row3)];
     for (let i = 0; i < meta.length; i++) {
-      if (meta[i].id !== row2.id) next.push(meta[i]);
+      if (meta[i].id !== row3.id) next.push(meta[i]);
     }
     meta = next;
     sortMetaNewest(meta);
@@ -4617,11 +5444,11 @@ var EnhanceCommUI = (() => {
     } catch (e2) {
     }
   }
-  async function rowToSegment(row2) {
-    const json = await gunzipUtf8(row2.aggGzip, row2.gzip);
+  async function rowToSegment(row3) {
+    const json = await gunzipUtf8(row3.aggGzip, row3.gzip);
     const agg = JSON.parse(json);
-    const seg = unpackTapes(agg, row2.tapes);
-    seg.favorite = !!row2.favorite || !!seg.favorite;
+    const seg = unpackTapes(agg, row3.tapes);
+    seg.favorite = !!row3.favorite || !!seg.favorite;
     return seg;
   }
   function ramHas(id) {
@@ -4641,11 +5468,11 @@ var EnhanceCommUI = (() => {
         const db = await openDb();
         if (!db) return;
         const tx = db.transaction(STORE_SEGMENTS, "readonly");
-        const row2 = await reqToPromise(
+        const row3 = await reqToPromise(
           tx.objectStore(STORE_SEGMENTS).get(id)
         );
-        if (!row2) return;
-        const seg = await rowToSegment(row2);
+        if (!row3) return;
+        const seg = await rowToSegment(row3);
         if (hooks && !ramHas(id)) hooks.adoptPast([seg]);
         markMeterDirty();
       } catch (e2) {
@@ -4673,7 +5500,7 @@ var EnhanceCommUI = (() => {
         break;
       }
     }
-    const row2 = {
+    const row3 = {
       id: seg.id,
       startedAt: seg.startedAt,
       map: seg.map || "",
@@ -4694,8 +5521,8 @@ var EnhanceCommUI = (() => {
       gzip: gz.gzip
     };
     const protect = hooks ? hooks.protectMapIn() : "";
-    await putWithQuota(db, row2, protect);
-    upsertMeta(row2);
+    await putWithQuota(db, row3, protect);
+    upsertMeta(row3);
     await trimArchiveStore(db, protect);
     await clearDraft();
   }
@@ -4721,7 +5548,7 @@ var EnhanceCommUI = (() => {
       return;
     }
     const packed = packSegment(live2);
-    const row2 = {
+    const row3 = {
       id: live2.id,
       startedAt: live2.startedAt,
       map: live2.map,
@@ -4732,7 +5559,7 @@ var EnhanceCommUI = (() => {
     };
     try {
       const tx = db.transaction(STORE_DRAFT, "readwrite");
-      await reqToPromise(tx.objectStore(STORE_DRAFT).put(row2, DRAFT_KEY));
+      await reqToPromise(tx.objectStore(STORE_DRAFT).put(row3, DRAFT_KEY));
       commitTx(tx);
     } catch (e2) {
     }
@@ -4774,13 +5601,13 @@ var EnhanceCommUI = (() => {
     const load = [];
     const seen = {};
     for (let i = 0; i < rows.length; i++) {
-      const row2 = rows[i];
-      const prot = isProtectedInstance(row2.map, row2.mapIn, protect);
-      const fav = !!row2.favorite;
+      const row3 = rows[i];
+      const prot = isProtectedInstance(row3.map, row3.mapIn, protect);
+      const fav = !!row3.favorite;
       if (prot || fav || load.length < cap) {
-        if (!seen[row2.id]) {
-          seen[row2.id] = true;
-          load.push(row2);
+        if (!seen[row3.id]) {
+          seen[row3.id] = true;
+          load.push(row3);
         }
       }
     }
@@ -5459,21 +6286,21 @@ ${fightHoverTip(src)}`
     for (let i = 0; i < actors.length; i++) {
       const rows = aggregateActorTargets(actors[i], "damage", skipPlayers);
       for (let r = 0; r < rows.length; r++) {
-        const row2 = rows[r];
-        if (!byTarget[row2.id]) {
-          byTarget[row2.id] = {
-            id: row2.id,
-            name: row2.name || row2.id,
+        const row3 = rows[r];
+        if (!byTarget[row3.id]) {
+          byTarget[row3.id] = {
+            id: row3.id,
+            name: row3.name || row3.id,
             value: 0,
             kind: "target",
-            mtype: row2.mtype,
-            ctype: row2.ctype
+            mtype: row3.mtype,
+            ctype: row3.ctype
           };
         }
-        byTarget[row2.id].value += row2.value;
-        if (row2.mtype) byTarget[row2.id].mtype = row2.mtype;
-        if (row2.ctype) byTarget[row2.id].ctype = row2.ctype;
-        if (row2.name) byTarget[row2.id].name = row2.name;
+        byTarget[row3.id].value += row3.value;
+        if (row3.mtype) byTarget[row3.id].mtype = row3.mtype;
+        if (row3.ctype) byTarget[row3.id].ctype = row3.ctype;
+        if (row3.name) byTarget[row3.id].name = row3.name;
       }
     }
     const items = Object.keys(byTarget).map((id) => byTarget[id]);
@@ -6457,11 +7284,11 @@ ${fightHoverTip(src)}`
     "Burned",
     "AoE"
   ]);
-  function migrateRankedInstance(row2) {
-    let query = row2.query;
-    let presentation = row2.presentation || "bars";
-    let label = row2.label;
-    let seriesMode = row2.seriesMode;
+  function migrateRankedInstance(row3) {
+    let query = row3.query;
+    let presentation = row3.presentation || "bars";
+    let label = row3.label;
+    let seriesMode = row3.seriesMode;
     if (query.kind === "channel" && query.channel !== "dps") {
       query = { kind: "players", metric: "damage" };
       presentation = "bars";
@@ -6517,19 +7344,19 @@ ${fightHoverTip(src)}`
     const out = [];
     const seen = /* @__PURE__ */ new Set();
     for (let i = 0; i < raw.length; i++) {
-      const row2 = raw[i];
-      if (!row2 || typeof row2 !== "object" || !isQuery(row2.query)) continue;
-      const id = typeof row2.id === "string" && row2.id ? row2.id : `meter-${i}-${Date.now()}`;
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object" || !isQuery(row3.query)) continue;
+      const id = typeof row3.id === "string" && row3.id ? row3.id : `meter-${i}-${Date.now()}`;
       if (seen.has(id)) continue;
-      const pos = row2.pos && typeof row2.pos.x === "number" && typeof row2.pos.y === "number" ? {
-        x: row2.pos.x,
-        y: row2.pos.y,
-        anchor: row2.pos.anchor || "tl"
+      const pos = row3.pos && typeof row3.pos.x === "number" && typeof row3.pos.y === "number" ? {
+        x: row3.pos.x,
+        y: row3.pos.y,
+        anchor: row3.pos.anchor || "tl"
       } : { x: 50, y: 50, anchor: "center" };
       seen.add(id);
-      let query = row2.query;
-      let presentation = row2.presentation || "bars";
-      let label = typeof row2.label === "string" ? row2.label : void 0;
+      let query = row3.query;
+      let presentation = row3.presentation || "bars";
+      let label = typeof row3.label === "string" ? row3.label : void 0;
       if ((id === "meterChannels" || id === "meter-chart") && query.kind === "channel" && query.channel === "dps") {
         query = { kind: "history", channel: "dps" };
         presentation = "line";
@@ -6539,7 +7366,7 @@ ${fightHoverTip(src)}`
         query,
         presentation,
         label,
-        seriesMode: row2.seriesMode
+        seriesMode: row3.seriesMode
       });
       query = migrated.query;
       presentation = migrated.presentation;
@@ -6550,32 +7377,32 @@ ${fightHoverTip(src)}`
         query,
         presentation,
         seriesMode: migrated.seriesMode,
-        stack: !!row2.stack,
-        integrate: !!row2.integrate,
-        normalize: !!row2.normalize,
-        rtMetric: row2.rtMetric,
-        rtWindow: row2.rtWindow,
-        rtPaused: !!row2.rtPaused,
-        seriesEnabled: row2.seriesEnabled,
-        selectedset: row2.selectedset || "current",
-        partyFocus: row2.partyFocus || "watched",
-        fadeWhenIdle: row2.fadeWhenIdle !== false,
+        stack: !!row3.stack,
+        integrate: !!row3.integrate,
+        normalize: !!row3.normalize,
+        rtMetric: row3.rtMetric,
+        rtWindow: row3.rtWindow,
+        rtPaused: !!row3.rtPaused,
+        seriesEnabled: row3.seriesEnabled,
+        selectedset: row3.selectedset || "current",
+        partyFocus: row3.partyFocus || "watched",
+        fadeWhenIdle: row3.fadeWhenIdle !== false,
         pos,
-        visible: row2.visible !== false,
-        opacity: typeof row2.opacity === "number" ? Math.min(1, Math.max(0.25, row2.opacity)) : 1,
-        frameW: typeof row2.frameW === "number" && row2.frameW > 0 ? row2.frameW : void 0,
-        frameH: typeof row2.frameH === "number" && row2.frameH > 0 ? row2.frameH : void 0,
-        locked: typeof row2.locked === "boolean" ? row2.locked : void 0,
-        zIndex: typeof row2.zIndex === "number" && Number.isFinite(row2.zIndex) && row2.zIndex > 0 ? Math.floor(row2.zIndex) : void 0,
-        hideWhenEmpty: typeof row2.hideWhenEmpty === "boolean" ? row2.hideWhenEmpty : void 0,
-        alwaysShowSelf: typeof row2.alwaysShowSelf === "boolean" ? row2.alwaysShowSelf : void 0,
-        chromeOnHover: typeof row2.chromeOnHover === "boolean" ? row2.chromeOnHover : void 0,
-        statusbar: normalizeStatusbarConfig(row2.statusbar),
-        snap: row2.snap && typeof row2.snap === "object" ? {
-          1: typeof row2.snap[1] === "string" ? row2.snap[1] : void 0,
-          2: typeof row2.snap[2] === "string" ? row2.snap[2] : void 0,
-          3: typeof row2.snap[3] === "string" ? row2.snap[3] : void 0,
-          4: typeof row2.snap[4] === "string" ? row2.snap[4] : void 0
+        visible: row3.visible !== false,
+        opacity: typeof row3.opacity === "number" ? Math.min(1, Math.max(0.25, row3.opacity)) : 1,
+        frameW: typeof row3.frameW === "number" && row3.frameW > 0 ? row3.frameW : void 0,
+        frameH: typeof row3.frameH === "number" && row3.frameH > 0 ? row3.frameH : void 0,
+        locked: typeof row3.locked === "boolean" ? row3.locked : void 0,
+        zIndex: typeof row3.zIndex === "number" && Number.isFinite(row3.zIndex) && row3.zIndex > 0 ? Math.floor(row3.zIndex) : void 0,
+        hideWhenEmpty: typeof row3.hideWhenEmpty === "boolean" ? row3.hideWhenEmpty : void 0,
+        alwaysShowSelf: typeof row3.alwaysShowSelf === "boolean" ? row3.alwaysShowSelf : void 0,
+        chromeOnHover: typeof row3.chromeOnHover === "boolean" ? row3.chromeOnHover : void 0,
+        statusbar: normalizeStatusbarConfig(row3.statusbar),
+        snap: row3.snap && typeof row3.snap === "object" ? {
+          1: typeof row3.snap[1] === "string" ? row3.snap[1] : void 0,
+          2: typeof row3.snap[2] === "string" ? row3.snap[2] : void 0,
+          3: typeof row3.snap[3] === "string" ? row3.snap[3] : void 0,
+          4: typeof row3.snap[4] === "string" ? row3.snap[4] : void 0
         } : void 0
       });
     }
@@ -6610,11 +7437,11 @@ ${fightHoverTip(src)}`
     if (!Array.isArray(raw) || !raw.length) return [];
     const byId = /* @__PURE__ */ new Map();
     for (let i = 0; i < raw.length; i++) {
-      const row2 = raw[i];
-      if (!row2 || typeof row2 !== "object") continue;
-      const id = typeof row2.id === "string" ? row2.id : "";
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object") continue;
+      const id = typeof row3.id === "string" ? row3.id : "";
       if (!id) continue;
-      byId.set(id, row2);
+      byId.set(id, row3);
     }
     const out = [];
     const closed = Array.from(byId.values());
@@ -6816,9 +7643,179 @@ ${fightHoverTip(src)}`
       label: "Command snippets",
       detail: "Observer COMMAND panel with saved CODE presets.",
       kind: "feature"
+    },
+    {
+      label: "Instance HUD",
+      detail: "Crypt, spider, tomb, and winter roster plus a compact run chip.",
+      kind: "feature"
+    },
+    {
+      label: "Ability Timeline",
+      detail: "Icon rail for boss and add cooldowns, with optional Big Icon frames.",
+      kind: "feature"
+    },
+    {
+      label: "Minimap",
+      detail: "Layoutable map with pan, zoom, and a solid / faint / clear background.",
+      kind: "feature"
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.8.0-alpha.5",
+      title: "0.8.0-alpha.5",
+      date: "2026-08-18",
+      summary: "Instance HUD, Ability Timeline, and a layoutable minimap \u2014 plus a searchable Settings hub, Drawings overlays on the /comm map, and nearby send.",
+      highlights: [
+        {
+          label: "Settings hub",
+          detail: "Movable Settings window with search. Panes: Comm UI, Ability Timeline, Drawings, and Comm HUD. Intro tour and changelog live under Comm UI.",
+          kind: "feature"
+        },
+        {
+          label: "Drawings overlays",
+          detail: "Settings \u2192 Drawings toggles rings, labels, entity lines, and debug map helpers. Per-ability color and show-name overrides with skill icons.",
+          kind: "feature"
+        },
+        {
+          label: "Instance HUD",
+          detail: "One Instance panel covers crypt, spider, tomb, and winter. A separate Instance run chip tracks bosses/phases cleared and last luckm.",
+          kind: "feature"
+        },
+        {
+          label: "Ability Timeline",
+          detail: "Icon rail for visible casters\u2019 cooldowns. Vertical or horizontal, with optional Big Icon and highlight name frames.",
+          kind: "feature"
+        },
+        {
+          label: "Minimap",
+          detail: "Movable map: pan, zoom, click-to-target. Background cycles solid \u2192 faint \u2192 clear. Camera refits on map change, not every step.",
+          kind: "feature"
+        },
+        {
+          label: "Mail window chrome",
+          detail: "Hover Mail for the drag strip and hide \xD7, same as other HUD windows. The inbox no longer clips that bar.",
+          kind: "fix"
+        }
+      ],
+      features: [
+        {
+          title: "Instance cards",
+          summary: "Saved Crypt layouts migrate to Instance + Instance run. Off those maps the shells stay unmounted so they do not paint on desert.",
+          items: [
+            {
+              label: "Glance",
+              detail: "Idle cards show name, Aggroed / We see / Died / Cleared, and yellow/red borders. Hover shows mtype, luckm, focus, and death time.",
+              points: [
+                "Level is top-right; adds also show Died \xD7N there, including while the pack is in vision",
+                "Winter/phase cards: Cleared \xB7 3m ago when we saw the kill",
+                "Dead or cleared cards out of vision dim; the panel frame stays fully opaque"
+              ]
+            },
+            {
+              label: "Per-map layout",
+              detail: "Crypt bosses + bats; spider queens with a blocked-passage hint; tomb compass protectors; winter ordered phases (Up next / Final / Cleared)."
+            }
+          ]
+        },
+        {
+          title: "Ability Timeline",
+          summary: "Bottom-bar Settings \u2192 Ability Timeline. Dummy preview ticks on its own so the form does not hitch every 100ms.",
+          items: [
+            {
+              label: "Icon rail",
+              detail: "Abilities travel a window (default 10s). Flip vertical/horizontal; a mid-size user resize is not swapped away.",
+              points: [
+                "All visible casters, or only the current / observe target",
+                "Hover an icon for caster, remaining CD, and the skill explanation",
+                "Optional Big Icon and highlight frames when a CD is imminent",
+                "Default rail tint is clear; ticks and ready-at-NOW stay on"
+              ]
+            }
+          ]
+        },
+        {
+          title: "Drawings & overlays",
+          summary: "Settings \u2192 Drawings. Rings and lines paint on the /comm map; overlay preview has a world stage so you can see them without the live client.",
+          items: [
+            {
+              label: "Rings & labels",
+              detail: "Imminent ability rings, optional ghost/aura/attack-range rings, at-risk highlights, and global or per-skill name labels.",
+              points: [
+                "Ability appearance: pick a color and whether to show the name for each skill",
+                "Color picker shows the live resolved color, not a blank auto placeholder"
+              ]
+            },
+            {
+              label: "Entity lines",
+              detail: "Optional monster aggro, move destination, and player attack lines. Focus boss only limits lines to the focused entity.",
+              points: [
+                "Aggro lines are off by default \u2014 turn on Monster aggro \u2192 target when you want them"
+              ]
+            },
+            {
+              label: "Map quirks",
+              detail: "Clickable signs, shrines, and levers on the live game map. Hover shows a Comm tooltip; click opens a Comm notice because /comm has no game log.",
+              points: [
+                "Hover a sign for a Comm tooltip; click to read it in a Comm card. Click the dim backdrop to close.",
+                "Optional hover outline in Settings \u2192 Drawings \u2192 Debug \u2014 it only draws the quirk under the cursor"
+              ]
+            }
+          ]
+        },
+        {
+          title: "Minimap",
+          summary: "Always-on chrome like party/chips. \u25CE recenters and zoom-fits drawable entities.",
+          items: [
+            {
+              label: "Camera",
+              detail: "Fits on load and map/`in` change. Walking does not drag the camera; pan and wheel zoom still work."
+            },
+            {
+              label: "Background",
+              detail: "Click the mode chip: Solid (grid), Faint, or Clear (no fill, no grid)."
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "Settings",
+          detail: "Settings button on the bottom-right strip opens a movable, searchable hub: Comm UI, Ability Timeline, Drawings, and Comm HUD.",
+          kind: "feature"
+        },
+        {
+          label: "Nearby send",
+          detail: "Bag right-click can send_item to a nearby player in range (trade), not only mail.",
+          kind: "feature"
+        },
+        {
+          label: "Buff / Item info size",
+          detail: "Buff info and Item info auto-resize to content by default, same as the party roster. Corner-resize pins a size.",
+          kind: "improve"
+        },
+        {
+          label: "Boss HP marks",
+          detail: "Boss bars show G.monsters spawn HP thresholds (e.g. pumpkin/jr waves) as marks on the bar.",
+          kind: "feature"
+        },
+        {
+          label: "Empty combat shells",
+          detail: "Enemies, boss bar, threat, and the ability-timeline family unmount when there is nothing to show \u2014 no empty opaque boxes in town.",
+          kind: "improve"
+        },
+        {
+          label: "Window Control Auto-resize",
+          detail: "Auto-resize is available on more HUD windows (enemies, boss bar, threat, kills, unit frames, events). Party / buff / item still default on.",
+          kind: "improve"
+        },
+        {
+          label: "Party auto-resize cap",
+          detail: "Auto-resize on the party roster stops at three chip columns and wraps extra members down, instead of growing across the screen.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.8.0-alpha.4",
       title: "0.8.0-alpha.4",
@@ -6836,9 +7833,9 @@ ${fightHoverTip(src)}`
           kind: "fix"
         },
         {
-          label: "Paperdoll Luck / Goldm",
-          detail: "No more stale observe-snap wallet gold; Luck and Goldm are gear estimates with a ~ tip.",
-          kind: "fix"
+          label: "Party auto-resize",
+          detail: "The party roster hugs its chips by default. Window Control \u2192 Auto-resize turns that on for other HUD panels; a corner-resize turns it off.",
+          kind: "improve"
         }
       ],
       features: [
@@ -6859,7 +7856,8 @@ ${fightHoverTip(src)}`
               label: "Send & Take",
               detail: "With a character observed, Send and Take run on that character \u2014 gold, bag space, and attach checks included.",
               points: [
-                "Right-click bag \u2192 Send mail / queue attach or Item info",
+                "Right-click bag \u2192 Send mail / queue attach, Send item to nearby, or Item info",
+                "Nearby send uses send_item (trade), not mail \u2014 pick one recipient in range",
                 "Shift+right-click keeps the stock menu when available",
                 "STATUS and the character log show how the send or take went"
               ]
@@ -7190,28 +8188,188 @@ ${fightHoverTip(src)}`
     }
   }
 
+  // src/lib/minimapPrefs.ts
+  var MINIMAP_ZOOM_MIN = 80;
+  var MINIMAP_ZOOM_MAX = 2400;
+  var MINIMAP_ZOOM_DEFAULT = 220;
+  function clampMinimapZoom(n) {
+    if (!Number.isFinite(n)) return MINIMAP_ZOOM_DEFAULT;
+    return Math.max(MINIMAP_ZOOM_MIN, Math.min(MINIMAP_ZOOM_MAX, Math.round(n)));
+  }
+  var MINIMAP_BG_DEFAULT = "opaque";
+  var MODES = ["opaque", "faint", "transparent"];
+  function normalizeMinimapBgMode(raw) {
+    if (typeof raw === "string" && MODES.indexOf(raw) >= 0) {
+      return raw;
+    }
+    return MINIMAP_BG_DEFAULT;
+  }
+  function cycleMinimapBgMode(mode) {
+    const i = MODES.indexOf(mode);
+    return MODES[(i + 1) % MODES.length];
+  }
+
+  // src/lib/abilityTimelineFrame.ts
+  var VERTICAL_MAX_W = 90;
+  var VERTICAL_MIN_H = 160;
+  var HORIZONTAL_MAX_H = 120;
+  var HORIZONTAL_MIN_W = 160;
+  function dim(n) {
+    return typeof n === "number" ? n : 0;
+  }
+  function looksVerticalRail(w, h) {
+    return w > 0 && h > 0 && w <= VERTICAL_MAX_W && h >= VERTICAL_MIN_H && w < h;
+  }
+  function looksHorizontalRail(w, h) {
+    return w > 0 && h > 0 && h <= HORIZONTAL_MAX_H && w >= HORIZONTAL_MIN_W && h < w;
+  }
+  function abilityTimelineFrameForOrient(orient, current) {
+    const w = dim(current.frameW);
+    const h = dim(current.frameH);
+    const swap = orient === "horizontal" ? looksVerticalRail(w, h) : looksHorizontalRail(w, h);
+    if (!swap) return null;
+    const def = orient === "horizontal" ? ABILITY_TIMELINE_HORIZONTAL_FRAME_DEFAULT : ABILITY_TIMELINE_FRAME_DEFAULT;
+    return {
+      frameW: Math.max(h, def.frameW),
+      frameH: Math.max(w, def.frameH)
+    };
+  }
+  function applyAbilityTimelineOrientFrame(layout, orient) {
+    const pos = layout.abilityTimeline;
+    if (!pos) return layout;
+    const size = abilityTimelineFrameForOrient(orient, pos);
+    if (!size) return layout;
+    return { ...layout, abilityTimeline: { ...pos, ...size } };
+  }
+
+  // src/instance/abilityTimelinePrefs.ts
+  var DEFAULT_ABILITY_TIMELINE_PREFS = {
+    orient: "vertical",
+    scope: "all",
+    windowMs: 1e4,
+    imminentMs: 5e3,
+    iconSize: 44,
+    reverse: false,
+    showReady: true,
+    showLegend: false,
+    showTicks: true,
+    staticRatio: 0.42,
+    iconMargin: 4,
+    railTint: "transparent",
+    textAnchor: "left",
+    bigIconGrow: "right",
+    bigIconMargin: 8,
+    highlightGrow: "up",
+    highlightMargin: 4
+  };
+  function clampNum(n, lo, hi, fallback) {
+    if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+    return Math.max(lo, Math.min(hi, n));
+  }
+  function normalizeAbilityTimelineOrient(raw) {
+    return raw === "horizontal" ? "horizontal" : "vertical";
+  }
+  function normalizeAbilityTimelineScope(raw) {
+    return raw === "target" ? "target" : "all";
+  }
+  function normalizeAbilityTextAnchor(raw, orient) {
+    if (orient === "horizontal") {
+      if (raw === "top") return "top";
+      return "bottom";
+    }
+    if (raw === "right") return "right";
+    return "left";
+  }
+  function normalizeAbilityGrowDir(raw) {
+    if (raw === "left" || raw === "up" || raw === "down") return raw;
+    return "right";
+  }
+  function normalizeAbilityHighlightGrow(raw) {
+    return raw === "down" ? "down" : "up";
+  }
+  function normalizeRailTint(raw, fallback) {
+    if (typeof raw !== "string") return fallback;
+    const t = raw.trim();
+    if (!t || t.length > 64) return fallback;
+    if (t === "rgba(0,0,0,0.42)" || t === "rgba(0, 0, 0, 0.42)") return fallback;
+    return t;
+  }
+  function normalizeAbilityTimelinePrefs(raw, leftover) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const legacy = leftover && typeof leftover === "object" ? leftover : {};
+    const d = DEFAULT_ABILITY_TIMELINE_PREFS;
+    const windowMs = Math.round(clampNum(src.windowMs, 3e3, 3e4, d.windowMs) / 100) * 100;
+    let imminentMs = Math.round(clampNum(src.imminentMs, 1e3, 2e4, d.imminentMs) / 100) * 100;
+    if (imminentMs > windowMs) imminentMs = windowMs;
+    const orient = normalizeAbilityTimelineOrient(
+      src.orient != null ? src.orient : legacy.abilityTimelineOrient
+    );
+    return {
+      orient,
+      scope: normalizeAbilityTimelineScope(src.scope),
+      windowMs,
+      imminentMs,
+      iconSize: Math.round(clampNum(src.iconSize, 24, 64, d.iconSize)),
+      reverse: src.reverse === true,
+      showReady: src.showReady !== false,
+      showLegend: src.showLegend === true,
+      showTicks: src.showTicks !== false,
+      staticRatio: clampNum(src.staticRatio, 0.2, 0.7, d.staticRatio),
+      iconMargin: Math.round(clampNum(src.iconMargin, 0, 32, d.iconMargin)),
+      railTint: normalizeRailTint(src.railTint, d.railTint),
+      textAnchor: normalizeAbilityTextAnchor(src.textAnchor, orient),
+      bigIconGrow: normalizeAbilityGrowDir(src.bigIconGrow),
+      bigIconMargin: Math.round(
+        clampNum(src.bigIconMargin, 0, 32, d.bigIconMargin)
+      ),
+      highlightGrow: normalizeAbilityHighlightGrow(src.highlightGrow),
+      highlightMargin: Math.round(
+        clampNum(src.highlightMargin, 0, 32, d.highlightMargin)
+      )
+    };
+  }
+  function getAbilityTimelinePrefs() {
+    const s = getSettings();
+    return normalizeAbilityTimelinePrefs(s.abilityTimeline, s);
+  }
+  function patchAbilityTimelinePrefs(partial) {
+    const prev = getAbilityTimelinePrefs();
+    const next = normalizeAbilityTimelinePrefs({
+      ...prev,
+      ...partial
+    });
+    if (partial.orient != null && partial.orient !== prev.orient) {
+      const s = getSettings();
+      const layouts = { ...s.panelLayoutsByProfile };
+      const keys = Object.keys(layouts);
+      for (let i = 0; i < keys.length; i++) {
+        const profile = keys[i];
+        const layout = layouts[profile];
+        if (layout) {
+          layouts[profile] = applyAbilityTimelineOrientFrame(layout, next.orient);
+        }
+      }
+      patchSettings({
+        abilityTimeline: next,
+        panelLayoutsByProfile: layouts,
+        panelLayout: applyAbilityTimelineOrientFrame(
+          { ...s.panelLayout },
+          next.orient
+        )
+      });
+      return next;
+    }
+    patchSettings({ abilityTimeline: next });
+    return next;
+  }
+  function legacyShowBigIconHidden(raw) {
+    if (!raw || typeof raw !== "object") return false;
+    return raw.showBigIcon === false;
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
-  var CLOSABLE_PANEL_IDS = [
-    "bossBar",
-    "crypt",
-    "kills",
-    "threat",
-    "command",
-    "bag",
-    "mail"
-  ];
-  var DEFAULT_PANEL_VISIBLE = {
-    bossBar: true,
-    crypt: true,
-    kills: true,
-    threat: true,
-    command: false,
-    /** Bag panel shell is always allowed; open/close follows inventory. */
-    bag: true,
-    mail: false
-  };
   var DEFAULT_COMMAND_SNIPPETS = [
     { id: "loot", name: "Loot", code: "loot()" },
     { id: "stop", name: "Stop move", code: "stop('move')" },
@@ -7252,25 +8410,28 @@ ${fightHoverTip(src)}`
     changelogSeenId: null,
     toursCompleted: {},
     windowNumberById: {},
-    nextWindowNumber: 1
+    nextWindowNumber: 1,
+    minimapZoom: MINIMAP_ZOOM_DEFAULT,
+    minimapBg: MINIMAP_BG_DEFAULT,
+    layoutRev: LAYOUT_FRAME_REV
   };
   function resolveLayoutProfile(mode, detected) {
     if (mode && mode !== "auto") return mode;
     return detected || detectViewportProfile();
   }
-  function mergeLayoutsByProfile(partial, legacyFlat) {
+  function mergeLayoutsByProfile(partial, legacyFlat, opts) {
     const out = {};
     if (partial && typeof partial === "object") {
       for (let i = 0; i < VIEWPORT_PROFILES.length; i++) {
         const profile = VIEWPORT_PROFILES[i];
         const chunk = partial[profile];
         if (chunk && typeof chunk === "object") {
-          out[profile] = mergeLayout(chunk, profile);
+          out[profile] = mergeLayout(chunk, profile, opts);
         }
       }
     }
     if (legacyFlat && typeof legacyFlat === "object" && Object.keys(legacyFlat).length && !out.desktop) {
-      out.desktop = mergeLayout(legacyFlat, "desktop");
+      out.desktop = mergeLayout(legacyFlat, "desktop", opts);
     }
     return out;
   }
@@ -7278,13 +8439,15 @@ ${fightHoverTip(src)}`
     var _a;
     const resolved = profile || resolveLayoutProfile(settings.layoutProfileMode, detectViewportProfile());
     const stored = (_a = settings.panelLayoutsByProfile) == null ? void 0 : _a[resolved];
+    let merged;
     if (stored && Object.keys(stored).length) {
-      return mergeLayout(stored, resolved);
+      merged = mergeLayout(stored, resolved);
+    } else if (resolved === "desktop" && settings.panelLayout) {
+      merged = mergeLayout(settings.panelLayout, "desktop");
+    } else {
+      merged = mergeLayout(null, resolved);
     }
-    if (resolved === "desktop" && settings.panelLayout) {
-      return mergeLayout(settings.panelLayout, "desktop");
-    }
-    return mergeLayout(null, resolved);
+    return merged;
   }
   function clampOpacity(n) {
     if (!Number.isFinite(n)) return 1;
@@ -7310,20 +8473,20 @@ ${fightHoverTip(src)}`
     if (!Array.isArray(raw)) return [];
     const out = [];
     for (let i = 0; i < raw.length; i++) {
-      const row2 = raw[i];
-      if (!row2 || typeof row2 !== "object") continue;
-      if (typeof row2.id !== "string" || !row2.id) continue;
-      if (typeof row2.label !== "string") continue;
-      if (!row2.query || typeof row2.query !== "object" || typeof row2.query.kind !== "string") {
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object") continue;
+      if (typeof row3.id !== "string" || !row3.id) continue;
+      if (typeof row3.label !== "string") continue;
+      if (!row3.query || typeof row3.query !== "object" || typeof row3.query.kind !== "string") {
         continue;
       }
       out.push({
-        id: row2.id,
-        label: row2.label,
-        query: { ...row2.query },
-        presentation: row2.presentation,
-        partyFocus: row2.partyFocus,
-        selectedset: row2.selectedset
+        id: row3.id,
+        label: row3.label,
+        query: { ...row3.query },
+        presentation: row3.presentation,
+        partyFocus: row3.partyFocus,
+        selectedset: row3.selectedset
       });
     }
     return out;
@@ -7354,30 +8517,17 @@ ${fightHoverTip(src)}`
     const v = (_a = settings.panelOpacity) == null ? void 0 : _a[id];
     return typeof v === "number" ? clampOpacity(v) : 1;
   }
-  function mergePanelVisible(partial, legacyCombatVisible) {
-    const out = { ...DEFAULT_PANEL_VISIBLE };
-    void legacyCombatVisible;
-    if (partial && typeof partial === "object") {
-      for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
-        const id = CLOSABLE_PANEL_IDS[i];
-        if (typeof partial[id] === "boolean") {
-          out[id] = partial[id];
-        }
-      }
-    }
-    return out;
-  }
   function normalizeSnippets(raw) {
     if (!Array.isArray(raw)) return DEFAULT_COMMAND_SNIPPETS.slice();
     const out = [];
     for (let i = 0; i < raw.length; i++) {
-      const row2 = raw[i];
-      if (!row2 || typeof row2 !== "object") continue;
-      const name = String(row2.name || "").trim();
-      const code = String(row2.code || "");
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object") continue;
+      const name = String(row3.name || "").trim();
+      const code = String(row3.code || "");
       if (!name && !code.trim()) continue;
-      const id = typeof row2.id === "string" && row2.id ? row2.id : `snip-${i}-${Date.now()}`;
-      const folderRaw = typeof row2.folder === "string" ? row2.folder.trim() : "";
+      const id = typeof row3.id === "string" && row3.id ? row3.id : `snip-${i}-${Date.now()}`;
+      const folderRaw = typeof row3.folder === "string" ? row3.folder.trim() : "";
       const snip = {
         id,
         name: name || `Snippet ${out.length + 1}`,
@@ -7395,10 +8545,29 @@ ${fightHoverTip(src)}`
     return "auto";
   }
   function migrate(parsed) {
+    var _a, _b;
+    const staleFrames = parsed.layoutRev !== LAYOUT_FRAME_REV;
     const panelLayoutsByProfile = mergeLayoutsByProfile(
       parsed.panelLayoutsByProfile,
-      parsed.panelLayout
+      parsed.panelLayout,
+      { migrateFrames: staleFrames }
     );
+    if (staleFrames) {
+      const orient = normalizeAbilityTimelineOrient(
+        (_b = (_a = parsed.abilityTimeline) == null ? void 0 : _a.orient) != null ? _b : parsed.abilityTimelineOrient
+      );
+      const keys = Object.keys(panelLayoutsByProfile);
+      for (let i = 0; i < keys.length; i++) {
+        const profile = keys[i];
+        const layout = panelLayoutsByProfile[profile];
+        if (layout) {
+          panelLayoutsByProfile[profile] = applyAbilityTimelineOrientFrame(
+            layout,
+            orient
+          );
+        }
+      }
+    }
     const layoutProfileMode = normalizeLayoutProfileMode(
       parsed.layoutProfileMode
     );
@@ -7408,7 +8577,8 @@ ${fightHoverTip(src)}`
         ...DEFAULTS,
         panelLayout: parsed.panelLayout || {},
         panelLayoutsByProfile,
-        layoutProfileMode
+        layoutProfileMode,
+        abilityTimeline: parsed.abilityTimeline || (parsed.abilityTimelineOrient != null ? { orient: parsed.abilityTimelineOrient } : void 0)
       },
       activeProfile
     );
@@ -7420,6 +8590,7 @@ ${fightHoverTip(src)}`
       panelLayout,
       panelLayoutsByProfile,
       layoutProfileMode,
+      layoutRev: LAYOUT_FRAME_REV,
       panelVisible: mergePanelVisible(parsed.panelVisible, parsed.combatVisible),
       commandSnippets: normalizeSnippets(parsed.commandSnippets),
       commandDraft: typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
@@ -7453,7 +8624,11 @@ ${fightHoverTip(src)}`
       changelogSeenId: typeof parsed.changelogSeenId === "string" ? parsed.changelogSeenId : null,
       toursCompleted: parsed.toursCompleted && typeof parsed.toursCompleted === "object" ? parsed.toursCompleted : {},
       windowNumberById: parsed.windowNumberById && typeof parsed.windowNumberById === "object" ? parsed.windowNumberById : {},
-      nextWindowNumber: typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0 ? Math.floor(parsed.nextWindowNumber) : 1
+      nextWindowNumber: typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0 ? Math.floor(parsed.nextWindowNumber) : 1,
+      minimapZoom: clampMinimapZoom(
+        typeof parsed.minimapZoom === "number" ? parsed.minimapZoom : MINIMAP_ZOOM_DEFAULT
+      ),
+      minimapBg: normalizeMinimapBgMode(parsed.minimapBg)
     };
     if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
       next.changelogSeenId = latestChangelogId();
@@ -7473,6 +8648,20 @@ ${fightHoverTip(src)}`
       }
     }
     delete next.combatVisible;
+    if (next.abilityTimeline == null && (parsed.abilityTimelineOrient != null || parsed.abilityTimelineDisplay != null)) {
+      next.abilityTimeline = {
+        orient: parsed.abilityTimelineOrient
+      };
+    }
+    delete next.abilityTimelineOrient;
+    delete next.abilityTimelineDisplay;
+    const rawVisible = parsed.panelVisible && typeof parsed.panelVisible === "object" ? parsed.panelVisible : {};
+    if (legacyShowBigIconHidden(parsed.abilityTimeline) && typeof rawVisible.abilityTimelineBigIcon !== "boolean") {
+      next.panelVisible = {
+        ...next.panelVisible,
+        abilityTimelineBigIcon: false
+      };
+    }
     if (next.threatScope !== "watched" && next.threatScope !== "visible") {
       next.threatScope = "visible";
     }
@@ -7508,7 +8697,12 @@ ${fightHoverTip(src)}`
     try {
       const raw = (_a = window.localStorage) == null ? void 0 : _a.getItem(KEY);
       if (!raw) return freshDefaults();
-      return migrate(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      const next = migrate(parsed);
+      if (parsed && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "minimapMode")) {
+        writeSettingsToStorage(next);
+      }
+      return next;
     } catch (e2) {
       return freshDefaults();
     }
@@ -7589,6 +8783,12 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.mailPill === "string") {
       next.mailPill = partial.mailPill;
+    }
+    if (typeof partial.minimapZoom === "number") {
+      next.minimapZoom = clampMinimapZoom(partial.minimapZoom);
+    }
+    if (partial.minimapBg != null) {
+      next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);
     }
     if (typeof partial.mailCollapseRepeats === "boolean") {
       next.mailCollapseRepeats = partial.mailCollapseRepeats;
@@ -7950,14 +9150,14 @@ ${fightHoverTip(src)}`
     const actor = resolveEntityId(ev.name || ev.from, true);
     if (!actor) return null;
     const targetHint = ev.to || ev.id || (ev.name && ev.from && ev.from !== ev.name ? ev.from : void 0);
-    const row2 = {
+    const row3 = {
       actor,
       source: ev.type,
       at: ev.at
     };
     const target = resolveEntityId(targetHint, false);
-    if (target) row2.target = target;
-    return row2;
+    if (target) row3.target = target;
+    return row3;
   }
   function castFromEval(ev) {
     const xy = parseIcecrackSmoke(ev.code);
@@ -7983,9 +9183,9 @@ ${fightHoverTip(src)}`
       if (!f) return null;
       const caster = resolveEntityId(f, true);
       if (!caster) return null;
-      const row2 = { actor: caster, source: skill, at };
-      if (caster !== recipientId) row2.target = recipientId;
-      return row2;
+      const row3 = { actor: caster, source: skill, at };
+      if (caster !== recipientId) row3.target = recipientId;
+      return row3;
     }
     return { actor: recipientId, source: skill, at };
   }
@@ -8370,15 +9570,15 @@ ${fightHoverTip(src)}`
       return;
     }
     const attackMs = attackMsFromFrequency((_a = findEntityById(ev.actor)) == null ? void 0 : _a.frequency);
-    const row2 = {
+    const row3 = {
       at: ev.at,
       actorId: ev.actor,
       source: ev.source || "attack",
       targetId: ev.target,
       pid: ev.pid
     };
-    if (attackMs != null) row2.attackMs = attackMs;
-    seg.casts.push(row2);
+    if (attackMs != null) row3.attackMs = attackMs;
+    seg.casts.push(row3);
     while (seg.casts.length > 8e3) seg.casts.shift();
     const actor = ensureActor(seg, ev.actor, metaFor(ev.actor));
     if (!actor.misc) actor.misc = emptyMisc();
@@ -8683,8 +9883,8 @@ ${fightHoverTip(src)}`
     const ids = Array.from(blameByTarget.keys());
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      const row2 = blameByTarget.get(id);
-      if (!row2 || row2.at < cutoff) blameByTarget.delete(id);
+      const row3 = blameByTarget.get(id);
+      if (!row3 || row3.at < cutoff) blameByTarget.delete(id);
     }
   }
   function recordDamage(ev) {
@@ -8692,15 +9892,15 @@ ${fightHoverTip(src)}`
     if (!ev.actor) return;
     const now = ev.at;
     pruneBlame(now);
-    let row2 = blameByTarget.get(ev.target);
-    if (!row2) {
-      row2 = { at: now, actors: /* @__PURE__ */ new Set() };
-      blameByTarget.set(ev.target, row2);
+    let row3 = blameByTarget.get(ev.target);
+    if (!row3) {
+      row3 = { at: now, actors: /* @__PURE__ */ new Set() };
+      blameByTarget.set(ev.target, row3);
     }
-    row2.at = now;
-    row2.actors.add(ev.actor);
+    row3.at = now;
+    row3.actors.add(ev.actor);
     const seen = lastSeen.get(ev.target);
-    if (seen == null ? void 0 : seen.mtype) row2.mtype = seen.mtype;
+    if (seen == null ? void 0 : seen.mtype) row3.mtype = seen.mtype;
   }
   function attributionPartyKey(monsterId, now) {
     const observing = getObserving();
@@ -8789,7 +9989,7 @@ ${fightHoverTip(src)}`
       if (ent.type !== "monster" || !ent.mtype || ent.id == null) continue;
       const id = String(ent.id);
       const prev = lastSeen.get(id);
-      const row2 = {
+      const row3 = {
         mtype: ent.mtype,
         nearAt: prev == null ? void 0 : prev.nearAt,
         nearPartyKey: prev == null ? void 0 : prev.nearPartyKey
@@ -8797,18 +9997,18 @@ ${fightHoverTip(src)}`
       if (observing) {
         const dist = simpleDistance(observing, ent);
         if (Number.isFinite(dist) && dist <= NEAR_RANGE) {
-          row2.nearAt = now;
-          row2.nearPartyKey = watchedPartyKey2 || soloKey2(observing.id, observing.name);
+          row3.nearAt = now;
+          row3.nearPartyKey = watchedPartyKey2 || soloKey2(observing.id, observing.name);
         }
       }
       if (ent.target) {
         const tid = String(ent.target);
         if (killScope() === "watched" && watchedPartyIds2.has(tid)) {
-          row2.nearAt = now;
-          row2.nearPartyKey = watchedPartyKey2;
+          row3.nearAt = now;
+          row3.nearPartyKey = watchedPartyKey2;
         } else if (killScope() === "all" && playerParty.has(tid)) {
-          row2.nearAt = now;
-          row2.nearPartyKey = playerParty.get(tid);
+          row3.nearAt = now;
+          row3.nearPartyKey = playerParty.get(tid);
         }
       }
       if (killScope() === "all") {
@@ -8817,13 +10017,13 @@ ${fightHoverTip(src)}`
           if (!pl.player) continue;
           const dist = simpleDistance(pl, ent);
           if (Number.isFinite(dist) && dist <= NEAR_RANGE) {
-            row2.nearAt = now;
-            row2.nearPartyKey = pl.party || soloKey2(String(pl.id), pl.name);
+            row3.nearAt = now;
+            row3.nearPartyKey = pl.party || soloKey2(String(pl.id), pl.name);
             break;
           }
         }
       }
-      lastSeen.set(id, row2);
+      lastSeen.set(id, row3);
       const blame = blameByTarget.get(id);
       if (blame) blame.mtype = ent.mtype;
     }
@@ -9775,6 +10975,20 @@ ${EFFECTS_ICON_CSS}
 #comm-ui .comm-pos-panel > .comm-pos-window-id {
   inset: 0;
 }
+/* Fill-frame HUD (Mail, Instance, Timeline, \u2026): clip inside the body so
+ * above-frame arrange chrome (drag / lock / \xD7) is not swallowed. */
+#comm-ui .comm-pos-panel.comm-pos-fill {
+  overflow: visible !important;
+  display: flex;
+  flex-direction: column;
+}
+#comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
 #comm-ui .comm-snap-guide .comm-pos-window-id {
   inset: auto;
 }
@@ -10036,7 +11250,7 @@ ${CHROME_ARRANGE_CSS}
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
       if (!m || m.id == null) continue;
-      const row2 = {
+      const row3 = {
         id: String(m.id),
         fro: String(m.fro || ""),
         to: String(m.to || ""),
@@ -10044,12 +11258,12 @@ ${CHROME_ARRANGE_CSS}
         message: String(m.message || ""),
         sent: String(m.sent || "")
       };
-      if (typeof m.read === "boolean") row2.read = m.read;
+      if (typeof m.read === "boolean") row3.read = m.read;
       const item = parseMailItem(m.item);
-      if (item) row2.item = item;
+      if (item) row3.item = item;
       const taken = coerceMailTaken(m.taken);
-      if (taken != null) row2.taken = taken;
-      mail.push(row2);
+      if (taken != null) row3.taken = taken;
+      mail.push(row3);
     }
     return {
       mail,
@@ -10397,9 +11611,9 @@ ${CHROME_ARRANGE_CSS}
     }
     const tailStart = existingStart + matchLen;
     for (let i = tailStart; i < existing.length; i++) {
-      const row2 = existing[i];
-      if (headIds.has(row2.id)) continue;
-      out.push(row2);
+      const row3 = existing[i];
+      if (headIds.has(row3.id)) continue;
+      out.push(row3);
     }
     return {
       mails: out,
@@ -10780,12 +11994,12 @@ ${CHROME_ARRANGE_CSS}
       if (!db) return null;
       const tx = db.transaction(STORE, "readonly");
       const store = tx.objectStore(STORE);
-      const row2 = await reqToPromise2(
+      const row3 = await reqToPromise2(
         store.get(accountKey)
       );
-      if (!row2 || row2.version !== RECORD_VERSION) return null;
-      if (!Array.isArray(row2.mails) || !row2.mails.length) return null;
-      return row2;
+      if (!row3 || row3.version !== RECORD_VERSION) return null;
+      if (!Array.isArray(row3.mails) || !row3.mails.length) return null;
+      return row3;
     } catch (e2) {
       return null;
     }
@@ -10886,12 +12100,12 @@ ${CHROME_ARRANGE_CSS}
     const out = [];
     let changed = false;
     for (let i = 0; i < mails.length; i++) {
-      const row2 = mails[i];
-      if (ids.has(row2.id) && row2.read !== true) {
-        out.push({ ...row2, read: true });
+      const row3 = mails[i];
+      if (ids.has(row3.id) && row3.read !== true) {
+        out.push({ ...row3, read: true });
         changed = true;
       } else {
-        out.push(row2);
+        out.push(row3);
       }
     }
     return changed ? out : mails;
@@ -10907,10 +12121,10 @@ ${CHROME_ARRANGE_CSS}
       }
       let newCount = 0;
       for (let i = 0; i < mails.length; i++) {
-        const row2 = mails[i];
-        if (p.beforeIds.indexOf(row2.id) >= 0) continue;
+        const row3 = mails[i];
+        if (p.beforeIds.indexOf(row3.id) >= 0) continue;
         if (fromKeys.length) {
-          const fro = String(row2.fro || "").trim().toLowerCase();
+          const fro = String(row3.fro || "").trim().toLowerCase();
           if (fromKeys.indexOf(fro) < 0) continue;
         }
         newCount += 1;
@@ -10948,14 +12162,14 @@ ${CHROME_ARRANGE_CSS}
     }
     let okCount = 0;
     for (let i = 0; i < p.targetIds.length; i++) {
-      let row2 = null;
+      let row3 = null;
       for (let j = 0; j < mails.length; j++) {
         if (mails[j].id === p.targetIds[i]) {
-          row2 = mails[j];
+          row3 = mails[j];
           break;
         }
       }
-      if (row2 && (row2.taken || !row2.item)) okCount += 1;
+      if (row3 && (row3.taken || !row3.item)) okCount += 1;
     }
     const expect = p.expect > 0 ? p.expect : p.targetIds.length || 1;
     if (expect > 1 || p.targetIds.length > 1) {
@@ -13674,12 +14888,12 @@ ${CHROME_ARRANGE_CSS}
   function serverKey(region, name) {
     return String(region || "") + "|" + String(name || "");
   }
-  function isLiveRow(row2, now) {
-    if (row2.hp != null && Number.isFinite(Number(row2.hp))) {
-      if (!row2.lastSeen) return true;
+  function isLiveRow(row3, now) {
+    if (row3.hp != null && Number.isFinite(Number(row3.hp))) {
+      if (!row3.lastSeen) return true;
     }
-    if (!row2.lastSeen) return false;
-    const t = Date.parse(row2.lastSeen);
+    if (!row3.lastSeen) return false;
+    const t = Date.parse(row3.lastSeen);
     if (!Number.isFinite(t)) return false;
     return now - t <= LIVE_MAX_AGE_MS;
   }
@@ -13711,12 +14925,12 @@ ${CHROME_ARRANGE_CSS}
     const now = Date.now();
     const acc = {};
     for (let i = 0; i < rows.length; i++) {
-      const row2 = rows[i];
-      if (!row2 || !row2.type || !row2.serverRegion || !row2.serverIdentifier) continue;
-      if (!isLiveRow(row2, now)) continue;
-      const key = serverKey(row2.serverRegion, row2.serverIdentifier);
+      const row3 = rows[i];
+      if (!row3 || !row3.type || !row3.serverRegion || !row3.serverIdentifier) continue;
+      if (!isLiveRow(row3, now)) continue;
+      const key = serverKey(row3.serverRegion, row3.serverIdentifier);
       if (!acc[key]) acc[key] = [];
-      acc[key].push(row2.type);
+      acc[key].push(row3.type);
     }
     const keys = Object.keys(acc);
     for (let i = 0; i < keys.length; i++) {
@@ -15712,26 +16926,6 @@ button.comm-mail__stack-u {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-.comm-mail-ctx {
-  position: fixed; z-index: 99999;
-  background: #151515; border: 1px solid #555;
-  min-width: 200px; padding: 4px 0;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-}
-.comm-mail-ctx__sep {
-  height: 1px;
-  margin: 4px 0;
-  background: #333;
-}
-.comm-mail-ctx button,
-.comm-mail-ctx__item {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: #ddd;
-  padding: 9px 14px; cursor: pointer; font-size: 15px;
-}
-.comm-mail-ctx button:hover,
-.comm-mail-ctx__item:hover { background: #222; }
 `;
 
   // src/ui/frames/mail/mailCss.ts
@@ -15755,8 +16949,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.4" : "unknown";
-    const builtAt = true ? "2026-08-16T23:24:13.494Z" : "unknown";
+    const version = true ? "0.8.0-alpha.5" : "unknown";
+    const builtAt = true ? "2026-08-18T11:09:18.737Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -15775,17 +16969,240 @@ button.comm-mail__stack-u {
     return info2;
   }
 
+  // src/instance/abilityTimelineModel.ts
+  var stickyByKey = /* @__PURE__ */ new Map();
+  var stickyTargetSig = "";
+  function resetStickyIfTargetsChanged(targetIds) {
+    const sig = targetIds.slice().sort().join("|");
+    if (sig === stickyTargetSig) return;
+    const keep = new Set(targetIds);
+    const keys = Array.from(stickyByKey.keys());
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const cut = key.indexOf(":");
+      const targetId = cut < 0 ? key : key.slice(0, cut);
+      if (!keep.has(targetId)) stickyByKey.delete(key);
+    }
+    stickyTargetSig = sig;
+  }
+  function skillName(id) {
+    var _a, _b, _c;
+    const g = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.name;
+    if (typeof g === "string" && g) return g;
+    return id.replace(/_/g, " ");
+  }
+  function stickyKey(targetId, abilityId) {
+    return `${targetId}:${abilityId}`;
+  }
+  function monsterHasTrackableAbilities(mtype) {
+    var _a, _b, _c;
+    if (!mtype) return false;
+    const abilities = (_c = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype]) == null ? void 0 : _c.abilities;
+    if (!abilities || typeof abilities !== "object") return false;
+    const ids = Object.keys(abilities);
+    for (let i = 0; i < ids.length; i++) {
+      const ab = abilities[ids[i]];
+      if (ab.aura || ab.unlimited) continue;
+      if (typeof ab.cooldown === "number" && ab.cooldown > 0) return true;
+    }
+    return false;
+  }
+  function syncAbilityRemainingMs(targetId, abilityId, rawMs, now = Date.now()) {
+    const key = stickyKey(targetId, abilityId);
+    if (!(rawMs > 0)) {
+      const prev2 = stickyByKey.get(key);
+      if (prev2 && prev2.endsAt > now + 250) {
+        return Math.max(0, prev2.endsAt - now);
+      }
+      if (prev2) {
+        stickyByKey.set(key, { endsAt: now, lastMs: 0, gen: prev2.gen });
+      }
+      return 0;
+    }
+    const prev = stickyByKey.get(key);
+    let endsAt = syncEndsAt((prev == null ? void 0 : prev.endsAt) || 0, rawMs, now, prev == null ? void 0 : prev.lastMs);
+    let gen = (prev == null ? void 0 : prev.gen) || 0;
+    if (prev && endsAt > prev.endsAt + 200 && endsAt - prev.endsAt < 2e3) {
+      endsAt = prev.endsAt;
+    } else if (prev && endsAt >= prev.endsAt + 2e3) {
+      gen = prev.gen + 1;
+    }
+    stickyByKey.set(key, { endsAt, lastMs: rawMs, gen });
+    return Math.max(0, endsAt - now);
+  }
+  function peekAbilityCastGen(targetId, abilityId) {
+    var _a;
+    return ((_a = stickyByKey.get(stickyKey(targetId, abilityId))) == null ? void 0 : _a.gen) || 0;
+  }
+  function peekAbilityEndsAt(targetId, abilityId) {
+    var _a;
+    return ((_a = stickyByKey.get(stickyKey(targetId, abilityId))) == null ? void 0 : _a.endsAt) || 0;
+  }
+  function abilityInStatic(ms, cooldown, ready, windowMs = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs) {
+    return !ready && cooldown > windowMs && ms > windowMs;
+  }
+  function abilityScrollPos(ms, cooldown, ready, windowMs = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs) {
+    if (ready || ms <= 0) return 0;
+    if (cooldown <= windowMs) {
+      return Math.max(0, Math.min(1, ms / cooldown));
+    }
+    if (ms > windowMs) return 1;
+    return Math.max(0, Math.min(1, ms / windowMs));
+  }
+  function decorateAbilityRow(id, name, ms, cooldown, prefs, castGen = 0, endsAt = 0) {
+    const ready = ms <= 0;
+    if (ready && !prefs.showReady) return null;
+    return {
+      id,
+      name,
+      ms,
+      cooldown,
+      frac: ready ? 0 : Math.min(1, ms / cooldown),
+      imminent: !ready && ms < prefs.imminentMs,
+      ready,
+      pinned: abilityInStatic(ms, cooldown, ready, prefs.windowMs),
+      scrollPos: abilityScrollPos(ms, cooldown, ready, prefs.windowMs),
+      endsAt: ready ? 0 : endsAt,
+      castGen
+    };
+  }
+  function hasVisibleAbilityCasters(entities) {
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.type !== "monster" || !ent.visible || ent.dead) continue;
+      if (ent.hp != null && ent.hp <= 0) continue;
+      if (monsterHasTrackableAbilities(ent.mtype)) return true;
+    }
+    return false;
+  }
+  function resolveAbilityTimelineTargets(entities, selectedId2, observing, scope = DEFAULT_ABILITY_TIMELINE_PREFS.scope) {
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const add = (ent) => {
+      if (!ent || ent.type !== "monster" || !ent.visible || ent.dead) return;
+      if (ent.hp != null && ent.hp <= 0) return;
+      if (!monsterHasTrackableAbilities(ent.mtype)) return;
+      const id = String(ent.id);
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push(ent);
+    };
+    if (selectedId2) add(findEntity(entities, selectedId2));
+    if (observing && observing.target != null) {
+      add(findEntity(entities, observing.target));
+    }
+    switch (scope) {
+      case "target":
+        break;
+      case "all": {
+        for (let i = 0; i < entities.length; i++) add(entities[i]);
+        break;
+      }
+      default: {
+        const _never = scope;
+        void _never;
+        break;
+      }
+    }
+    return out;
+  }
+  function resolveAbilityTimelineTarget(entities, selectedId2, observing) {
+    const targets = resolveAbilityTimelineTargets(
+      entities,
+      selectedId2,
+      observing
+    );
+    return targets.length ? targets[0] : null;
+  }
+  function buildAbilityTimelineModel(target, now = Date.now(), prefs = DEFAULT_ABILITY_TIMELINE_PREFS) {
+    var _a, _b, _c;
+    if (!target || !target.mtype) return null;
+    const targetId = String(target.id);
+    const def = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[target.mtype];
+    const abilities = def && typeof def.abilities === "object" ? def.abilities : null;
+    if (!abilities) return null;
+    const ids = Object.keys(abilities);
+    if (!ids.length) return null;
+    const rows = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const ab = abilities[id];
+      if (ab.aura || ab.unlimited) continue;
+      const cooldown = typeof ab.cooldown === "number" && ab.cooldown > 0 ? ab.cooldown : 0;
+      if (!cooldown) continue;
+      const st = (_c = target.s) == null ? void 0 : _c[id];
+      const rawMs = st && typeof st.ms === "number" ? Math.max(0, st.ms) : 0;
+      const ms = syncAbilityRemainingMs(targetId, id, rawMs, now);
+      const row3 = decorateAbilityRow(
+        id,
+        skillName(id),
+        ms,
+        cooldown,
+        prefs,
+        peekAbilityCastGen(targetId, id),
+        peekAbilityEndsAt(targetId, id)
+      );
+      if (row3) rows.push(row3);
+    }
+    if (!rows.length) return null;
+    rows.sort((a, b) => {
+      if (a.ms === 0 && b.ms !== 0) return 1;
+      if (b.ms === 0 && a.ms !== 0) return -1;
+      return a.ms - b.ms;
+    });
+    return {
+      targetName: target.name || target.mtype || targetId,
+      targetId,
+      targetMtype: target.mtype,
+      rows
+    };
+  }
+  function buildAbilityTimelinePanelModel(entities, selectedId2, observing, now = Date.now(), prefs = DEFAULT_ABILITY_TIMELINE_PREFS) {
+    const targets = resolveAbilityTimelineTargets(
+      entities,
+      selectedId2,
+      observing,
+      prefs.scope
+    );
+    if (!targets.length) return null;
+    resetStickyIfTargetsChanged(targets.map((t) => String(t.id)));
+    const sections = [];
+    for (let i = 0; i < targets.length; i++) {
+      const section3 = buildAbilityTimelineModel(targets[i], now, prefs);
+      if (section3) sections.push(section3);
+    }
+    if (!sections.length) return null;
+    return { sections };
+  }
+  function formatAbilityMs(ms) {
+    if (ms <= 0) return "ready";
+    return formatDurationCompact(ms / 1e3) || `${Math.ceil(ms / 1e3)}s`;
+  }
+  function staticStackIndex(rows, abilityId) {
+    const pinned = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].pinned) pinned.push(rows[i]);
+    }
+    pinned.sort((a, b) => b.ms - a.ms || a.id.localeCompare(b.id));
+    for (let i = 0; i < pinned.length; i++) {
+      if (pinned[i].id === abilityId) return i;
+    }
+    return 0;
+  }
+
   // src/queries/combatSignals.ts
   function combatSignals(entities) {
     const byTarget = aggroByTarget(entities);
     const hasEnemies = aggroedMonsters(entities).length > 0;
     const hasThreat = Object.keys(byTarget).length > 0;
     const hasBosses = activeBosses(entities).length > 0;
+    const hasAbilityCasters = hasVisibleAbilityCasters(entities);
     return {
       byTarget,
       hasEnemies,
       hasThreat,
       hasBosses,
+      hasAbilityCasters,
       inCombat: hasEnemies || hasThreat || hasBosses
     };
   }
@@ -15814,9 +17231,9 @@ button.comm-mail__stack-u {
     microMin: "13px",
     /** Panel titles */
     title: "17px",
-    /** topCenter map/server body */
+    /** serverInfo / mapInfo body */
     chrome: "16px",
-    /** topCenter secondary line (time / until) */
+    /** serverInfo secondary line (time / until) */
     chromeMeta: "14px"
   };
   var AGGRO_BADGE = {
@@ -16585,7 +18002,7 @@ button.comm-mail__stack-u {
       )
     );
   }
-  function renderFeatureSection(section2, entryId, index) {
+  function renderFeatureSection(section3, entryId, index) {
     const out = [
       e(
         "div",
@@ -16593,10 +18010,10 @@ button.comm-mail__stack-u {
           key: `feat-label-${entryId}-${index}`,
           className: "ecu-comm-wiz-cl-section-label ecu-comm-wiz-cl-section-label--feature"
         },
-        section2.title
+        section3.title
       )
     ];
-    if (section2.summary) {
+    if (section3.summary) {
       out.push(
         e(
           "p",
@@ -16604,13 +18021,13 @@ button.comm-mail__stack-u {
             key: `feat-sum-${entryId}-${index}`,
             className: "ecu-comm-wiz-cl-feature-summary"
           },
-          section2.summary
+          section3.summary
         )
       );
     }
     out.push(
       renderCardGrid(
-        section2.items,
+        section3.items,
         `feat-list-${entryId}-${index}`,
         `feat-${entryId}-${index}`,
         { featureSection: true }
@@ -16712,7 +18129,7 @@ button.comm-mail__stack-u {
       var _a;
       return (_a = getSettings().changelogSeenId) != null ? _a : null;
     });
-    const [selectedId, setSelectedId] = React.useState(() => {
+    const [selectedId2, setSelectedId] = React.useState(() => {
       const firstUnseen = entries.find(
         (entry) => isChangelogEntryUnseen(entry.id, seenId)
       );
@@ -16749,7 +18166,7 @@ button.comm-mail__stack-u {
       window.addEventListener("keydown", onKey);
       return () => window.removeEventListener("keydown", onKey);
     }, []);
-    const selected = entries.find((entry) => entry.id === selectedId) || entries[0] || null;
+    const selected = entries.find((entry) => entry.id === selectedId2) || entries[0] || null;
     const selectedUnseen = selected ? isChangelogEntryUnseen(selected.id, seenId) : false;
     const heading = props.browseAll ? "Changelog" : entries.length === 1 && selected ? `What's new in ${selected.title}` : "What's new";
     const header = e(
@@ -17475,8 +18892,8 @@ button.comm-mail__stack-u {
       {
         section: "Overlay",
         title: "Map & events",
-        body: "In-game map plus server clock and live/world events at the top of the overlay.",
-        target: ".comm-pos-topCenter",
+        body: "Server clock chips (serverInfo), closable events list, map name and instance id (mapInfo).",
+        target: ".comm-pos-serverInfo, .comm-pos-mapInfo, .comm-pos-events",
         targetKind: "region"
       },
       {
@@ -17961,7 +19378,7 @@ button.comm-mail__stack-u {
     React.useEffect(() => {
       if (!(step == null ? void 0 : step.advanceWhen) || advancedRef.current) return;
       let advanceTimer = null;
-      const tick = () => {
+      const tick2 = () => {
         if (advancedRef.current) return;
         if (!tourAdvanceReady(step.advanceWhen, props.advanceContext)) return;
         advancedRef.current = true;
@@ -17974,8 +19391,8 @@ button.comm-mail__stack-u {
           props.onStep(props.stepIndex + 1);
         }, 450);
       };
-      tick();
-      const id = window.setInterval(tick, 250);
+      tick2();
+      const id = window.setInterval(tick2, 250);
       return () => {
         window.clearInterval(id);
         if (advanceTimer != null) window.clearTimeout(advanceTimer);
@@ -18638,8 +20055,8 @@ button.comm-mail__stack-u {
     })).sort((a, b) => a.z - b.z || a.i - b.i);
     const next = peers.slice();
     for (let r = 0; r < ranked.length; r++) {
-      const row2 = next[ranked[r].i];
-      next[ranked[r].i] = { ...row2, zIndex: WINDOW_STACK_BASE + r };
+      const row3 = next[ranked[r].i];
+      next[ranked[r].i] = { ...row3, zIndex: WINDOW_STACK_BASE + r };
     }
     return {
       zIndex: Math.min(WINDOW_STACK_BASE + ranked.length, WINDOW_STACK_MAX),
@@ -18678,98 +20095,6 @@ button.comm-mail__stack-u {
     const { zIndex, peers: base } = nextWindowFrontZ(peers, opts);
     return base.map((m) => m.id === id ? { ...m, zIndex } : m);
   }
-
-  // src/lib/frameSizes.ts
-  var BAG_FRAME_WIDTH = 385;
-  var BAG_FRAME_HEIGHT = 395;
-  var BAG_SYNC_CHROME_HEIGHT = 30;
-  var BAG_PANEL_STYLE = {
-    // minWidth floor only — fixed width + inventory host borders wraps slots.
-    minWidth: BAG_FRAME_WIDTH,
-    minHeight: BAG_FRAME_HEIGHT + BAG_SYNC_CHROME_HEIGHT,
-    boxSizing: "border-box"
-  };
-  var PAPERDOLL_FRAME_WIDTH = 268;
-  var PAPERDOLL_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "340px",
-    boxSizing: "border-box",
-    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
-    zIndex: 36
-  };
-  var BOSS_BAR_PANEL_STYLE = {
-    width: "min(520px, 72vw)",
-    minWidth: "min(360px, 92vw)",
-    boxSizing: "border-box"
-  };
-  var CRYPT_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(720px, 96vw)",
-    minWidth: "200px",
-    boxSizing: "border-box",
-    // Opaque shell on the PositionedPanel itself — frameW/H can outgrow content;
-    // without a fill the map shows through and looks like a stuck meter-idle fade.
-    background: "rgba(0,0,0,0.94)",
-    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)"
-  };
-  var THREAT_PANEL_STYLE = {
-    minWidth: "240px",
-    width: "min(320px, 92vw)",
-    minHeight: "120px",
-    boxSizing: "border-box",
-    background: "rgba(0,0,0,0.94)",
-    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)"
-  };
-  var COMMAND_PANEL_STYLE = {
-    width: "min(560px, 94vw)",
-    minHeight: "220px",
-    boxSizing: "border-box"
-  };
-  var MAIL_PANEL_STYLE = {
-    width: "100%",
-    height: "100%",
-    minWidth: "min(480px, 96vw)",
-    minHeight: "360px",
-    maxWidth: "100%",
-    maxHeight: "100%",
-    // Shell must stay overflow:visible so hover arrange chrome above the frame
-    // is not clipped; .comm-mail clips the inbox.
-    overflow: "visible",
-    boxSizing: "border-box"
-  };
-  var METER_PANEL_STYLE = {
-    width: "320px",
-    minWidth: "240px",
-    minHeight: "140px",
-    // Fill-screen ceiling — not a design max. Defaults still come from *FRAME_DEFAULT.
-    maxWidth: "100vw",
-    maxHeight: "100vh",
-    boxSizing: "border-box"
-  };
-  var METER_FRAME_DEFAULT = { w: 320, h: 200 };
-  var REPORT_FRAME_DEFAULT = { w: 780, h: 520 };
-  var METER_FRAME_MIN = { w: 240, h: 140 };
-  function clampMeterFrame(w, h, viewportW, viewportH) {
-    const maxW = Number.isFinite(viewportW) && viewportW > 0 ? Math.round(viewportW) : Number.POSITIVE_INFINITY;
-    const maxH = Number.isFinite(viewportH) && viewportH > 0 ? Math.round(viewportH) : Number.POSITIVE_INFINITY;
-    return {
-      frameW: Math.min(maxW, Math.max(METER_FRAME_MIN.w, Math.round(w))),
-      frameH: Math.min(maxH, Math.max(METER_FRAME_MIN.h, Math.round(h)))
-    };
-  }
-  var KILLS_PANEL_STYLE = {
-    width: "min(280px, 90vw)",
-    minWidth: "180px",
-    minHeight: "80px",
-    boxSizing: "border-box"
-  };
-  var INFO_DIALOG_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(96vw, 520px)",
-    // Above other play panels so buff/item tooltips stay readable.
-    zIndex: 35,
-    boxSizing: "border-box"
-  };
 
   // src/ui/meter/meterShellHelpers.ts
   function presentationFor(inst) {
@@ -19087,10 +20412,10 @@ button.comm-mail__stack-u {
         for (let i = 0; i < prev.length; i++) {
           const m = prev[i];
           if (m.query.kind === "details" && m.query.actorId === actorId && m.visible !== false) {
-            const patched = prev.map((row2, j) => {
-              if (j !== i) return row2;
+            const patched = prev.map((row3, j) => {
+              if (j !== i) return row3;
               return {
-                ...row2,
+                ...row3,
                 query: {
                   kind: "details",
                   actorId,
@@ -19101,8 +20426,8 @@ button.comm-mail__stack-u {
                 presentation: "details",
                 label,
                 visible: true,
-                selectedset: (opts2 == null ? void 0 : opts2.selectedset) != null ? opts2.selectedset : row2.selectedset,
-                partyFocus: (opts2 == null ? void 0 : opts2.partyFocus) != null ? opts2.partyFocus : row2.partyFocus
+                selectedset: (opts2 == null ? void 0 : opts2.selectedset) != null ? opts2.selectedset : row3.selectedset,
+                partyFocus: (opts2 == null ? void 0 : opts2.partyFocus) != null ? opts2.partyFocus : row3.partyFocus
               };
             });
             const next2 = bringMeterToFront(patched, m.id);
@@ -19277,6 +20602,9 @@ button.comm-mail__stack-u {
   var CLOSABLE = new Set(CLOSABLE_PANEL_IDS);
   function canGroupWindow(id) {
     return !NO_GROUP_IDS.has(id);
+  }
+  function canResizeWindow(id) {
+    return windowFramePersist(id) !== "none";
   }
   function canCloseWindow(id) {
     return CLOSABLE.has(id);
@@ -19624,11 +20952,7 @@ button.comm-mail__stack-u {
     };
     const setPanelPos = (id, pos) => {
       setLayout((prev) => {
-        const nextPos = { ...prev[id], ...pos };
-        if (id === "bag") {
-          delete nextPos.frameW;
-          delete nextPos.frameH;
-        }
+        const nextPos = applyWindowFramePersist({ ...prev[id], ...pos }, id);
         const next = { ...prev, [id]: nextPos };
         savePanelPos(id, nextPos, viewportProfile);
         if (id === "bag") applyBagLayoutPos(nextPos);
@@ -19717,6 +21041,1601 @@ button.comm-mail__stack-u {
     };
   }
 
+  // src/viz/mapHost.ts
+  function getHostPixi() {
+    const pixi = window.PIXI;
+    if (!pixi || typeof pixi.Graphics !== "function") return null;
+    return pixi;
+  }
+  function getHostMap() {
+    const map = window.map;
+    if (!map || typeof map.addChild !== "function") return null;
+    return map;
+  }
+  function mapOverlayBlocked() {
+    if (window.no_graphics) return true;
+    if (!getHostPixi()) return true;
+    if (!getHostMap()) return true;
+    return false;
+  }
+  function makeContainer(pixi) {
+    if (typeof pixi.Container === "function") return new pixi.Container();
+    return new pixi.Graphics();
+  }
+  function applyPlayerLayer(obj) {
+    const layer = window.player_layer;
+    if (!layer) return;
+    obj.parentGroup = layer;
+    obj.displayGroup = layer;
+  }
+  function ensureOverlayHandle(existing) {
+    if (mapOverlayBlocked()) return null;
+    const map = getHostMap();
+    const pixi = getHostPixi();
+    if (!map || !pixi) return null;
+    if (existing && existing.root.parent) return existing;
+    const root = makeContainer(pixi);
+    const gfx = new pixi.Graphics();
+    const labels = makeContainer(pixi);
+    const hotspots = makeContainer(pixi);
+    applyPlayerLayer(root);
+    applyPlayerLayer(hotspots);
+    root.interactiveChildren = true;
+    hotspots.interactive = true;
+    hotspots.interactiveChildren = true;
+    root.addChild(gfx);
+    root.addChild(labels);
+    root.addChild(hotspots);
+    map.addChild(root);
+    return { root, gfx, hotspots, labels };
+  }
+  function clearOverlayLabels(labels) {
+    if (typeof labels.removeChildren === "function") {
+      const kids = labels.children ? labels.children.slice() : [];
+      labels.removeChildren();
+      for (let i = 0; i < kids.length; i++) {
+        const kid = kids[i];
+        try {
+          if (kid && typeof kid.destroy === "function") kid.destroy();
+        } catch (e2) {
+        }
+      }
+      return;
+    }
+    if (typeof labels.removeChild === "function" && labels.children) {
+      while (labels.children.length) {
+        const kid = labels.children[0];
+        labels.removeChild(kid);
+        try {
+          if (kid && typeof kid.destroy === "function") kid.destroy();
+        } catch (e2) {
+        }
+      }
+    }
+  }
+  function addOverlayLabel(labels, text, x, y, opts) {
+    var _a, _b, _c, _d;
+    const pixi = getHostPixi();
+    if (!pixi || typeof pixi.Text !== "function") return;
+    const fill = (_a = opts == null ? void 0 : opts.fill) != null ? _a : 13421772;
+    const fontSize = (_b = opts == null ? void 0 : opts.fontSize) != null ? _b : 11;
+    const label = new pixi.Text(text, {
+      fontFamily: "monospace",
+      fontSize,
+      fill,
+      align: "left"
+    });
+    if (label.anchor && typeof label.anchor.set === "function") {
+      label.anchor.set((_c = opts == null ? void 0 : opts.anchorX) != null ? _c : 0, (_d = opts == null ? void 0 : opts.anchorY) != null ? _d : 0);
+    }
+    label.x = x;
+    label.y = y;
+    labels.addChild(label);
+  }
+  function destroyOverlayHandle(handle2) {
+    if (!handle2) return;
+    try {
+      clearOverlayLabels(handle2.labels);
+    } catch (e2) {
+    }
+    try {
+      if (handle2.root.parent && typeof handle2.root.parent.removeChild === "function") {
+        handle2.root.parent.removeChild(handle2.root);
+      }
+    } catch (e2) {
+    }
+    try {
+      if (typeof handle2.root.destroy === "function") {
+        handle2.root.destroy({ children: true });
+      }
+    } catch (e2) {
+    }
+  }
+
+  // src/lib/entityMapXY.ts
+  function entityMapXY(ent) {
+    var _a, _b;
+    if (!ent) return null;
+    const x = (_a = ent.real_x) != null ? _a : ent.x;
+    const y = (_b = ent.real_y) != null ? _b : ent.y;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+
+  // src/viz/abilityPhase.ts
+  var IMMINENT_RATIO = 0.15;
+  var JUST_FIRED_MS = 350;
+  var lastMsByKey = /* @__PURE__ */ new Map();
+  var flashUntilByKey = /* @__PURE__ */ new Map();
+  function nowMs() {
+    return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+  }
+  function noteAbilityMsForFlash(watchKey, ms, cooldown) {
+    const now = nowMs();
+    const prev = lastMsByKey.get(watchKey);
+    lastMsByKey.set(watchKey, ms);
+    if (prev != null && prev < Math.min(800, cooldown * 0.08) && ms > cooldown * 0.4) {
+      flashUntilByKey.set(watchKey, now + JUST_FIRED_MS);
+    }
+    const until = flashUntilByKey.get(watchKey);
+    if (until != null && until > now) return true;
+    if (until != null && until <= now) flashUntilByKey.delete(watchKey);
+    return false;
+  }
+  function abilityCdPhase(ms, cooldown, opts) {
+    if (opts.flash) return "flash";
+    if (!(cooldown > 0) || !(ms > 0)) return "hidden";
+    const ratio = ms / cooldown;
+    if (opts.imminent && ratio < IMMINENT_RATIO) return "imminent";
+    if (opts.ghost) return "ghost";
+    return "hidden";
+  }
+  function imminentOpacity(ms, cooldown) {
+    if (!(cooldown > 0) || !(ms > 0)) return 0;
+    const windowMs = cooldown * IMMINENT_RATIO;
+    if (windowMs <= 0) return 1;
+    const t = 1 - Math.min(1, Math.max(0, ms / windowMs));
+    return 0.5 + t * 0.5;
+  }
+  function colorFromAbilityKey(key) {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) {
+      h = h * 31 + key.charCodeAt(i) >>> 0;
+    }
+    const hue = h % 360;
+    const sat = 0.55 + (h >>> 8) % 30 / 100;
+    const light = 0.55;
+    return hslToRgb(hue / 360, sat, light);
+  }
+  function hslToRgb(h, s, l) {
+    let r;
+    let g;
+    let b;
+    if (s === 0) {
+      r = g = b = l;
+    } else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1 / 3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1 / 3);
+    }
+    return Math.round(r * 255) << 16 | Math.round(g * 255) << 8 | Math.round(b * 255);
+  }
+  function hue2rgb(p, q, t) {
+    let tt = t;
+    if (tt < 0) tt += 1;
+    if (tt > 1) tt -= 1;
+    if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+    if (tt < 1 / 2) return q;
+    if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+    return p;
+  }
+
+  // src/crypt/labels.ts
+  var CRYPT_MOB_LABELS = {
+    a1: "Spike",
+    a2: "Bill",
+    a3: "Lestat",
+    a4: "Orlok",
+    a5: "Elena",
+    a6: "Marceline",
+    a7: "Lucinda",
+    a8: "Angel",
+    vbat: "Vampireling",
+    nerfedbat: "Bat"
+  };
+
+  // src/instance/labels.ts
+  var WINTER_PHASE_LABELS = {
+    xmagefz: "Mage \xB7 Frozen",
+    xmagefi: "Mage \xB7 Fire",
+    xmagen: "Mage \xB7 Nature",
+    xmagex: "Dark Mage"
+  };
+  var EXTRA_LABELS = {
+    spiderbl: "Black Spider Queen",
+    spiderbr: "Brown Spider Queen",
+    spiderr: "Red Spider Queen",
+    spider: "Spider",
+    gredpro: "Protector of Fire",
+    ggreenpro: "Protector of Nature",
+    gbluepro: "Protector of Frost",
+    gpurplepro: "Protector of Darkness",
+    xmagefz: "Mage \xB7 Frozen",
+    xmagefi: "Mage \xB7 Fire",
+    xmagen: "Mage \xB7 Nature",
+    xmagex: "Dark Mage"
+  };
+  function getInstanceMobLabel(mtype) {
+    var _a, _b, _c;
+    if (WINTER_PHASE_LABELS[mtype]) return WINTER_PHASE_LABELS[mtype];
+    if (CRYPT_MOB_LABELS[mtype]) return CRYPT_MOB_LABELS[mtype];
+    if (EXTRA_LABELS[mtype]) return EXTRA_LABELS[mtype];
+    try {
+      const gName = (_c = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype]) == null ? void 0 : _c.name;
+      if (typeof gName === "string" && gName) return gName;
+    } catch (e2) {
+    }
+    return mtype;
+  }
+
+  // src/instance/abilityTimelineDummy.ts
+  var PREVIEW_READY_HOLD_MS = 2800;
+  var FALLBACK_CASTERS = [
+    {
+      mtype: "a2",
+      name: "Bill",
+      abilities: [{ id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 2e3 }]
+    },
+    {
+      mtype: "a3",
+      name: "Lestat",
+      abilities: [{ id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 1600 }]
+    },
+    {
+      mtype: "a5",
+      name: "Elena",
+      abilities: [
+        { id: "healing", name: "Healing", cooldown: 800, phaseMs: 0 }
+      ]
+    },
+    {
+      mtype: "a7",
+      name: "Lucinda",
+      abilities: [{ id: "mlight", name: "Light", cooldown: 3e3, phaseMs: 800 }]
+    },
+    {
+      mtype: "gpurplepro",
+      name: "Protector of Darkness",
+      abilities: [
+        { id: "anger", name: "Anger", cooldown: 12e3, phaseMs: 0 },
+        { id: "warpstomp", name: "Warpstomp", cooldown: 8e3, phaseMs: 2500 }
+      ]
+    },
+    {
+      mtype: "ggreenpro",
+      name: "Protector of Nature",
+      abilities: [
+        { id: "tangle", name: "Tangle", cooldown: 1600, phaseMs: 400 },
+        { id: "self_healing", name: "Healing", cooldown: 2e3, phaseMs: 900 }
+      ]
+    },
+    {
+      mtype: "gbluepro",
+      name: "Protector of Frost",
+      abilities: [
+        { id: "multi_freeze", name: "Multi Freeze", cooldown: 4e3, phaseMs: 1200 }
+      ]
+    },
+    {
+      mtype: "icegolem",
+      name: "Ice Golem",
+      abilities: [
+        { id: "multi_freeze", name: "Multi Freeze", cooldown: 4e3, phaseMs: 600 }
+      ]
+    },
+    {
+      mtype: "xmagefz",
+      name: "Mage \xB7 Frozen",
+      abilities: [
+        { id: "deepfreeze", name: "Deepfreeze", cooldown: 6e3, phaseMs: 0 }
+      ]
+    },
+    {
+      mtype: "xmagefi",
+      name: "Mage \xB7 Fire",
+      abilities: [
+        { id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 0 },
+        { id: "multi_burn", name: "Multi Burn", cooldown: 4e3, phaseMs: 1800 }
+      ]
+    },
+    {
+      mtype: "xmagen",
+      name: "Mage \xB7 Nature",
+      abilities: [
+        { id: "self_healing", name: "Healing", cooldown: 2e3, phaseMs: 400 },
+        { id: "mtangle", name: "Tangle", cooldown: 1600, phaseMs: 1100 }
+      ]
+    },
+    {
+      mtype: "xmagex",
+      name: "Dark Mage",
+      abilities: [
+        { id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 500 },
+        { id: "warpstomp", name: "Warpstomp", cooldown: 4e3, phaseMs: 2200 }
+      ]
+    }
+  ];
+  var DEFAULT_PREVIEW_MTYPES = ["gpurplepro", "a2"];
+  function skillName2(id) {
+    var _a, _b, _c;
+    try {
+      const g = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.name;
+      if (typeof g === "string" && g) return g;
+    } catch (e2) {
+    }
+    return id.replace(/_/g, " ");
+  }
+  function trackableFromDef(mtype, def) {
+    const abilities = def.abilities;
+    if (!abilities || typeof abilities !== "object") return null;
+    const ids = Object.keys(abilities);
+    const rows = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const ab = abilities[id] || {};
+      if (ab.aura || ab.unlimited) continue;
+      if (typeof ab.cooldown !== "number" || !(ab.cooldown > 0)) continue;
+      rows.push({
+        id,
+        name: skillName2(id),
+        cooldown: ab.cooldown,
+        phaseMs: i * 1400
+      });
+    }
+    if (!rows.length) return null;
+    return {
+      mtype,
+      name: getInstanceMobLabel(mtype) || def.name || mtype,
+      abilities: rows
+    };
+  }
+  function listAbilityPreviewCasters() {
+    var _a;
+    let monsters;
+    try {
+      monsters = (_a = getG()) == null ? void 0 : _a.monsters;
+    } catch (e2) {
+      monsters = void 0;
+    }
+    const out = [];
+    for (let i = 0; i < FALLBACK_CASTERS.length; i++) {
+      const seed = FALLBACK_CASTERS[i];
+      const def = monsters == null ? void 0 : monsters[seed.mtype];
+      const live2 = def ? trackableFromDef(seed.mtype, def) : null;
+      out.push(
+        live2 || {
+          ...seed,
+          name: getInstanceMobLabel(seed.mtype) || seed.name
+        }
+      );
+    }
+    return out;
+  }
+  function defaultAbilityPreviewMtypes() {
+    const all = listAbilityPreviewCasters();
+    const out = [];
+    for (let i = 0; i < DEFAULT_PREVIEW_MTYPES.length; i++) {
+      const mtype = DEFAULT_PREVIEW_MTYPES[i];
+      for (let j = 0; j < all.length; j++) {
+        if (all[j].mtype === mtype) {
+          out.push(mtype);
+          break;
+        }
+      }
+    }
+    if (out.length) return out;
+    if (all[0]) return [all[0].mtype];
+    return [];
+  }
+  function loopPreviewRemaining(cooldown, phaseMs, now, epoch) {
+    if (!(cooldown > 0)) return { ms: 0, cycle: 0 };
+    const period = cooldown + PREVIEW_READY_HOLD_MS;
+    const t = Math.max(0, now - epoch + phaseMs);
+    const cycle = Math.floor(t / period);
+    const elapsed = t % period;
+    if (elapsed >= cooldown) return { ms: 0, cycle };
+    const ms = elapsed === 0 ? cooldown : cooldown - elapsed;
+    return { ms, cycle };
+  }
+  function pickCasters(mtypes) {
+    const all = listAbilityPreviewCasters();
+    const want = mtypes === void 0 ? DEFAULT_PREVIEW_MTYPES : mtypes;
+    const out = [];
+    for (let i = 0; i < want.length; i++) {
+      const mtype = want[i];
+      let found = null;
+      for (let j = 0; j < all.length; j++) {
+        if (all[j].mtype === mtype) {
+          found = all[j];
+          break;
+        }
+      }
+      if (found) out.push(found);
+    }
+    return out;
+  }
+  function dummyAbilityTimelineModel(prefs, now = Date.now(), epoch, mtypes) {
+    const casters = pickCasters(mtypes);
+    const sections = [];
+    for (let i = 0; i < casters.length; i++) {
+      const caster = casters[i];
+      const rows = [];
+      for (let j = 0; j < caster.abilities.length; j++) {
+        const ab = caster.abilities[j];
+        let ms = ab.cooldown;
+        let endsAt = 0;
+        let castGen = 0;
+        if (epoch != null) {
+          const looped = loopPreviewRemaining(ab.cooldown, ab.phaseMs, now, epoch);
+          ms = looped.ms;
+          castGen = looped.cycle;
+          endsAt = ms > 0 ? now + ms : 0;
+        }
+        const row3 = decorateAbilityRow(
+          ab.id,
+          ab.name,
+          ms,
+          ab.cooldown,
+          prefs,
+          castGen,
+          endsAt
+        );
+        if (row3) rows.push(row3);
+      }
+      if (!rows.length) continue;
+      sections.push({
+        targetId: "dummy-" + caster.mtype,
+        targetName: caster.name,
+        targetMtype: caster.mtype,
+        rows
+      });
+    }
+    return { sections };
+  }
+
+  // src/viz/vizSettings.ts
+  var VIZ_SETTINGS_KEY = "ecu-viz-settings";
+  var VIZ_LINE_MTYPES_KEY = "ecu-viz-line-mtypes";
+  var DEFAULT_VIZ_SETTINGS = {
+    "world.attackRange": false,
+    "world.abilityImminent": true,
+    "world.abilityGhost": false,
+    "world.auraRing": false,
+    "world.highlightAtRisk": true,
+    "world.targetLine": false,
+    "world.leashBoundary": false,
+    "world.spawnPoints": false,
+    "world.quirkHitboxes": false,
+    // Native client already draws HP / nameplates / aggro tint — keep off.
+    "entity.hpBar": false,
+    "entity.aggroRing": false,
+    "entity.cdLabel": false,
+    "entity.abilityName": false,
+    "entity.nameplate": false,
+    "comm.mechanicChips": true,
+    "comm.spawnAlert": true,
+    "comm.hpThresholds": true,
+    "debug.entityIds": false,
+    "debug.gridCoords": false,
+    "lines.moveDest": false,
+    "lines.aggroTarget": false,
+    "lines.attackTarget": false,
+    // Kind filters stay in settings for saved prefs; not exposed in UI because
+    // aggro/attack line types already scope to monsters vs players.
+    "lines.filter.players": true,
+    "lines.filter.monsters": true,
+    "lines.filter.focusOnly": false
+  };
+  var DEFAULT_LINE_BY_KIND = {
+    monster: { moveDest: true, aggroTarget: true, attackTarget: false },
+    player: { moveDest: true, aggroTarget: false, attackTarget: true }
+  };
+  var listeners8 = [];
+  function parseBoolMap(raw) {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+      const out = {};
+      const keys = Object.keys(parsed);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (typeof parsed[k] === "boolean") out[k] = parsed[k];
+      }
+      return out;
+    } catch (e2) {
+      return {};
+    }
+  }
+  function getVizSettings() {
+    const saved = parseBoolMap(
+      typeof localStorage !== "undefined" ? localStorage.getItem(VIZ_SETTINGS_KEY) : null
+    );
+    return { ...DEFAULT_VIZ_SETTINGS, ...saved };
+  }
+  function patchVizSettings(partial) {
+    const next = { ...getVizSettings(), ...partial };
+    try {
+      localStorage.setItem(VIZ_SETTINGS_KEY, JSON.stringify(next));
+    } catch (e2) {
+    }
+    notifyVizListeners();
+    return next;
+  }
+  function resetVizSettings() {
+    try {
+      localStorage.setItem(
+        VIZ_SETTINGS_KEY,
+        JSON.stringify(DEFAULT_VIZ_SETTINGS)
+      );
+    } catch (e2) {
+    }
+    notifyVizListeners();
+    return { ...DEFAULT_VIZ_SETTINGS };
+  }
+  function getVizLineMtypeRules() {
+    try {
+      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(VIZ_LINE_MTYPES_KEY) : null;
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+      return parsed;
+    } catch (e2) {
+      return {};
+    }
+  }
+  function subscribeVizSettings(listener) {
+    listeners8.push(listener);
+    return () => {
+      const idx = listeners8.indexOf(listener);
+      if (idx >= 0) listeners8.splice(idx, 1);
+    };
+  }
+  function notifyVizListeners() {
+    for (let i = 0; i < listeners8.length; i++) listeners8[i]();
+  }
+  function notifyVizSettingsChanged() {
+    notifyVizListeners();
+  }
+  function vizCommFlag(key) {
+    return getVizSettings()[key] !== false;
+  }
+
+  // src/viz/vizAbilityRules.ts
+  var VIZ_ABILITY_RULES_KEY = "ecu-viz-ability-rules";
+  function skillDisplayName2(id) {
+    var _a, _b, _c;
+    try {
+      const g = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.name;
+      if (typeof g === "string" && g) return g;
+    } catch (e2) {
+    }
+    return id.replace(/_/g, " ");
+  }
+  function parseHexColor(raw) {
+    const s = raw.trim().replace(/^#/, "");
+    if (!/^[0-9a-fA-F]{6}$/.test(s)) return void 0;
+    return parseInt(s, 16);
+  }
+  function formatHexColor(color) {
+    return `#${(color & 16777215).toString(16).padStart(6, "0")}`;
+  }
+  function getVizAbilityRules() {
+    try {
+      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(VIZ_ABILITY_RULES_KEY) : null;
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return {};
+      const out = {};
+      const keys = Object.keys(parsed);
+      for (let i = 0; i < keys.length; i++) {
+        const id = keys[i];
+        const row3 = parsed[id];
+        if (!row3 || typeof row3 !== "object") continue;
+        const rule = {};
+        if (typeof row3.showName === "boolean") rule.showName = row3.showName;
+        if (typeof row3.color === "number" && Number.isFinite(row3.color)) {
+          rule.color = row3.color & 16777215;
+        }
+        if (rule.showName !== void 0 || rule.color !== void 0) {
+          out[id] = rule;
+        }
+      }
+      return out;
+    } catch (e2) {
+      return {};
+    }
+  }
+  function patchVizAbilityRule(abilityId, partial) {
+    const next = { ...getVizAbilityRules() };
+    if (partial == null) {
+      delete next[abilityId];
+    } else {
+      const prev = next[abilityId] || {};
+      const merged = { ...prev, ...partial };
+      const clean = {};
+      if (typeof merged.showName === "boolean") clean.showName = merged.showName;
+      if (typeof merged.color === "number" && Number.isFinite(merged.color)) {
+        clean.color = merged.color & 16777215;
+      }
+      if (clean.showName === void 0 && clean.color === void 0) {
+        delete next[abilityId];
+      } else {
+        next[abilityId] = clean;
+      }
+    }
+    try {
+      localStorage.setItem(VIZ_ABILITY_RULES_KEY, JSON.stringify(next));
+    } catch (e2) {
+    }
+    notifyVizSettingsChanged();
+    return next;
+  }
+  function resetVizAbilityRules() {
+    try {
+      localStorage.removeItem(VIZ_ABILITY_RULES_KEY);
+    } catch (e2) {
+    }
+    notifyVizSettingsChanged();
+  }
+  function listConfigurableAbilities() {
+    const casters = listAbilityPreviewCasters();
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < casters.length; i++) {
+      const abs = casters[i].abilities;
+      for (let j = 0; j < abs.length; j++) {
+        const ab = abs[j];
+        if (seen.has(ab.id)) continue;
+        seen.add(ab.id);
+        out.push({ id: ab.id, name: ab.name || skillDisplayName2(ab.id) });
+      }
+    }
+    out.sort((a, b) => {
+      const cmp = a.name.localeCompare(b.name);
+      if (cmp !== 0) return cmp;
+      return a.id < b.id ? -1 : 1;
+    });
+    return out;
+  }
+  function resolveAbilityColor(abilityId, rules) {
+    var _a;
+    const map = rules || getVizAbilityRules();
+    const override = (_a = map[abilityId]) == null ? void 0 : _a.color;
+    if (typeof override === "number" && Number.isFinite(override)) {
+      return override & 16777215;
+    }
+    return colorFromAbilityKey(abilityId);
+  }
+  function resolveAbilityShowName(abilityId, settings, rules) {
+    var _a;
+    const map = rules || getVizAbilityRules();
+    const override = (_a = map[abilityId]) == null ? void 0 : _a.showName;
+    if (typeof override === "boolean") return override;
+    return settings["entity.abilityName"] === true;
+  }
+  function resolveAbilityAppearance(abilityId, settings, rules) {
+    return {
+      color: resolveAbilityColor(abilityId, rules),
+      showName: resolveAbilityShowName(abilityId, settings, rules)
+    };
+  }
+
+  // src/viz/lineRules.ts
+  function entityLineKind(entity) {
+    if (entity.type === "monster") return "monster";
+    if (isFocusablePlayer(entity)) return "player";
+    return null;
+  }
+  function resolveLineRule(entity, mtypeRules) {
+    const kind = entityLineKind(entity);
+    if (!kind) return null;
+    const preset = DEFAULT_LINE_BY_KIND[kind];
+    const mtype = kind === "monster" && entity.mtype ? entity.mtype : kind === "player" ? "player" : "";
+    const idKey = entity.id != null ? String(entity.id) : "";
+    const nameKey = kind === "player" && entity.name ? `p:${entity.name}` : "";
+    const override = mtype && mtypeRules[mtype] || nameKey && mtypeRules[nameKey] || idKey && mtypeRules[idKey] || void 0;
+    return override ? { ...preset, ...override } : { ...preset };
+  }
+  function lineEnabled(entity, lineType, settings, mtypeRules, focusId) {
+    if (lineType === "aggroTarget") {
+      if (settings["lines.aggroTarget"]) {
+      } else if (settings["world.targetLine"]) {
+        if (entity.type !== "monster") return false;
+        if (settings["lines.filter.focusOnly"]) {
+          if (!focusId || String(entity.id) !== String(focusId)) return false;
+        }
+        return true;
+      } else {
+        return false;
+      }
+    } else if (!settings[`lines.${lineType}`]) {
+      return false;
+    }
+    const kind = entityLineKind(entity);
+    if (!kind) return false;
+    if (kind === "player" && !settings["lines.filter.players"]) return false;
+    if (kind === "monster" && !settings["lines.filter.monsters"]) return false;
+    if (settings["lines.filter.focusOnly"]) {
+      if (!focusId || String(entity.id) !== String(focusId)) return false;
+    }
+    const rule = resolveLineRule(entity, mtypeRules);
+    if (!rule) return false;
+    return !!rule[lineType];
+  }
+  function entityIsMoving(entity) {
+    var _a, _b;
+    const x = (_a = entity.real_x) != null ? _a : entity.x;
+    const y = (_b = entity.real_y) != null ? _b : entity.y;
+    const gx = entity.going_x;
+    const gy = entity.going_y;
+    if (typeof x !== "number" || typeof y !== "number" || typeof gx !== "number" || typeof gy !== "number") {
+      return false;
+    }
+    const dx = gx - x;
+    const dy = gy - y;
+    return Math.sqrt(dx * dx + dy * dy) > 0.75;
+  }
+
+  // src/viz/paintGfx.ts
+  function strokeCircle(gfx, x, y, radius, color, width, alpha, fillAlpha) {
+    if (!(radius > 0)) return;
+    if (fillAlpha > 0) {
+      gfx.beginFill(color, fillAlpha);
+      gfx.drawCircle(x, y, radius);
+      gfx.endFill();
+    }
+    gfx.lineStyle(width, color, alpha);
+    gfx.drawCircle(x, y, radius);
+    gfx.lineStyle(0, 0, 0);
+  }
+  function strokeDashedCircle(gfx, x, y, radius, color, width, alpha, dash, gap) {
+    if (!(radius > 0)) return;
+    const step = dash + gap;
+    const circ = Math.PI * 2 * radius;
+    const n = Math.max(8, Math.floor(circ / step));
+    const angStep = Math.PI * 2 / n;
+    const dashAng = dash / radius * (dash > 0 ? 1 : 0);
+    gfx.lineStyle(width, color, alpha);
+    for (let i = 0; i < n; i++) {
+      const a0 = i * angStep;
+      const a1 = a0 + Math.min(dashAng || angStep * 0.45, angStep * 0.55);
+      gfx.moveTo(x + Math.cos(a0) * radius, y + Math.sin(a0) * radius);
+      gfx.lineTo(x + Math.cos(a1) * radius, y + Math.sin(a1) * radius);
+    }
+    gfx.lineStyle(0, 0, 0);
+  }
+  function drawLine(gfx, x1, y1, x2, y2, color, width, alpha) {
+    gfx.lineStyle(width, color, alpha);
+    gfx.moveTo(x1, y1);
+    gfx.lineTo(x2, y2);
+    gfx.lineStyle(0, 0, 0);
+  }
+  function strokeRect(gfx, x, y, w, h, color, width, alpha, fillAlpha) {
+    if (!(w > 0) || !(h > 0)) return;
+    if (fillAlpha > 0 && typeof gfx.drawRect === "function") {
+      gfx.beginFill(color, fillAlpha);
+      gfx.drawRect(x, y, w, h);
+      gfx.endFill();
+    }
+    gfx.lineStyle(width, color, alpha);
+    if (typeof gfx.drawRect === "function") {
+      gfx.drawRect(x, y, w, h);
+    } else {
+      gfx.moveTo(x, y);
+      gfx.lineTo(x + w, y);
+      gfx.lineTo(x + w, y + h);
+      gfx.lineTo(x, y + h);
+      gfx.lineTo(x, y);
+    }
+    gfx.lineStyle(0, 0, 0);
+  }
+
+  // src/host/commNotice.ts
+  var CSS5 = `
+.ecu-comm-hover {
+  position: fixed;
+  z-index: 100001;
+  max-width: 280px;
+  padding: 8px 10px;
+  background: #161616;
+  border: 1px solid #888;
+  color: #f2e6c4;
+  font-size: 16px;
+  line-height: 1.35;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.ecu-comm-notice {
+  position: fixed;
+  inset: 0;
+  z-index: 100002;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 16px 88px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.ecu-comm-notice-card {
+  max-width: 420px;
+  width: 100%;
+  background: #1a1712;
+  border: 1px solid #c4a574;
+  color: #f4ead2;
+  padding: 16px 18px 14px;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+.ecu-comm-notice-title {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c4a574;
+  margin-bottom: 8px;
+}
+.ecu-comm-notice-body {
+  font-size: 18px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+`;
+  var cssInjected = false;
+  var hoverEl = null;
+  var noticeEl = null;
+  function canUseDom() {
+    return typeof document !== "undefined" && !!document.body;
+  }
+  function ensureCss() {
+    if (cssInjected || !canUseDom()) return;
+    cssInjected = true;
+    const existing = document.querySelector(
+      "style[data-ecu-comm-notice-css]"
+    );
+    if (existing) {
+      existing.textContent = CSS5;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-comm-notice-css", "1");
+    el.textContent = CSS5;
+    document.head.appendChild(el);
+  }
+  function hideCommHover() {
+    if (!hoverEl) return;
+    hoverEl.remove();
+    hoverEl = null;
+  }
+  function showCommHover(text, clientX, clientY) {
+    if (!canUseDom() || !text) {
+      hideCommHover();
+      return;
+    }
+    ensureCss();
+    if (!hoverEl) {
+      hoverEl = document.createElement("div");
+      hoverEl.className = "ecu-comm-hover";
+      document.body.appendChild(hoverEl);
+    }
+    hoverEl.textContent = text;
+    const left = Math.min(clientX + 14, window.innerWidth - 300);
+    const top = Math.max(8, clientY - 36);
+    hoverEl.style.left = `${Math.max(8, left)}px`;
+    hoverEl.style.top = `${top}px`;
+  }
+  function hideCommNotice() {
+    if (!noticeEl) return;
+    noticeEl.remove();
+    noticeEl = null;
+  }
+  function showCommNotice(notice) {
+    if (!canUseDom()) return;
+    ensureCss();
+    hideCommHover();
+    hideCommNotice();
+    noticeEl = document.createElement("div");
+    noticeEl.className = "ecu-comm-notice";
+    noticeEl.addEventListener("click", (ev) => {
+      if (ev.target === noticeEl) hideCommNotice();
+    });
+    const card = document.createElement("div");
+    card.className = "ecu-comm-notice-card";
+    const title = document.createElement("div");
+    title.className = "ecu-comm-notice-title";
+    title.textContent = notice.title;
+    const body = document.createElement("div");
+    body.className = "ecu-comm-notice-body";
+    body.textContent = notice.body;
+    card.appendChild(title);
+    card.appendChild(body);
+    noticeEl.appendChild(card);
+    document.body.appendChild(noticeEl);
+  }
+
+  // src/viz/worldQuirks.ts
+  var HELP_CURSOR_EXCLUDE = /* @__PURE__ */ new Set(["upgrade", "compound"]);
+  var SUPPORTED_TYPES = /* @__PURE__ */ new Set([
+    "sign",
+    "note",
+    "tavern_info",
+    "mainframe",
+    "the_lever",
+    "log",
+    "upgrade",
+    "compound",
+    "list_pvp",
+    "invisible_statue"
+  ]);
+  var PIXI4_OVER_EVENTS = ["mouseover", "pointerover"];
+  var PIXI4_OUT_EVENTS = ["mouseout", "pointerout"];
+  var PIXI4_MOVE_EVENTS = ["mousemove", "pointermove"];
+  var PIXI4_DOWN_EVENTS = ["rightdown", "mousedown", "touchstart"];
+  var hoveredQuirk = null;
+  var syncedSignature = "";
+  function stopEvent(event) {
+    var _a;
+    const ev = event;
+    try {
+      (_a = ev == null ? void 0 : ev.stopPropagation) == null ? void 0 : _a.call(ev);
+    } catch (e2) {
+    }
+  }
+  function isSupportedWorldQuirkType(type) {
+    return typeof type === "string" && SUPPORTED_TYPES.has(type);
+  }
+  function getCurrentWorldQuirks() {
+    var _a, _b, _c;
+    const map = getCurrentMap() || getMapName();
+    if (!map) return [];
+    const quirks = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.quirks;
+    if (!Array.isArray(quirks)) return [];
+    const out = [];
+    for (let i = 0; i < quirks.length; i++) {
+      const quirk = quirks[i];
+      if (!Array.isArray(quirk) || quirk.length < 5) continue;
+      const type = typeof quirk[4] === "string" ? quirk[4] : "";
+      if (!isSupportedWorldQuirkType(type)) continue;
+      const x = Number(quirk[0]);
+      const y = Number(quirk[1]);
+      const w = Number(quirk[2]);
+      const h = Number(quirk[3]);
+      if (![x, y, w, h].every(Number.isFinite)) continue;
+      out.push([
+        x,
+        y,
+        w,
+        h,
+        type,
+        typeof quirk[5] === "string" ? quirk[5] : void 0
+      ]);
+    }
+    return out;
+  }
+  function quirksSignature(map, quirks) {
+    return `${map}|${JSON.stringify(quirks)}`;
+  }
+  function quirkWorldRect(quirk) {
+    const w = Math.round(quirk[2]);
+    const h = Math.round(quirk[3]);
+    const x = Math.round(quirk[0]) - Math.round(w * 0.5);
+    const y = Math.round(quirk[1]) - h;
+    return { x, y, w, h };
+  }
+  function quirkHoverText(quirk) {
+    const type = quirk[4];
+    const value = quirk[5] || "";
+    switch (type) {
+      case "sign":
+        return value ? `Sign: "${value}"` : "Sign";
+      case "note":
+        return value ? `Note: "${value}"` : "Note";
+      case "log":
+        return value || "Log";
+      case "tavern_info":
+        return "Tavern info";
+      case "mainframe":
+        return "Mainframe";
+      case "the_lever":
+        return "Lever";
+      case "upgrade":
+        return "Upgrade shrine";
+      case "compound":
+        return "Compound shrine";
+      case "list_pvp":
+        return "PvP list";
+      case "invisible_statue":
+        return "Invisible statue";
+      default:
+        return null;
+    }
+  }
+  function quirkKey(quirk) {
+    return `${quirk[0]}|${quirk[1]}|${quirk[2]}|${quirk[3]}|${quirk[4]}|${quirk[5] || ""}`;
+  }
+  function isHoveredWorldQuirk(quirk) {
+    return hoveredQuirk != null && quirkKey(hoveredQuirk) === quirkKey(quirk);
+  }
+  function commNoticeFromQuirk(quirk) {
+    const type = quirk[4];
+    const value = quirk[5] || "";
+    switch (type) {
+      case "sign":
+        return { title: "Sign", body: value || "(blank)" };
+      case "note":
+        return { title: "Note", body: value || "(blank)" };
+      case "log":
+        return { title: "Notice", body: value || "(blank)" };
+      case "invisible_statue":
+        return { title: "Statue", body: "An invisible statue!" };
+      default:
+        return null;
+    }
+  }
+  function eventGlobalXY(event) {
+    var _a;
+    const ev = event;
+    const global = (_a = ev == null ? void 0 : ev.data) == null ? void 0 : _a.global;
+    if (typeof (global == null ? void 0 : global.x) === "number" && typeof (global == null ? void 0 : global.y) === "number") {
+      return { x: global.x, y: global.y };
+    }
+    return null;
+  }
+  function eventClientXY(event) {
+    var _a, _b, _c, _d, _e, _f;
+    const ev = event;
+    const orig = (_a = ev == null ? void 0 : ev.data) == null ? void 0 : _a.originalEvent;
+    if (typeof (orig == null ? void 0 : orig.clientX) === "number" && typeof (orig == null ? void 0 : orig.clientY) === "number") {
+      return { x: orig.clientX, y: orig.clientY };
+    }
+    if (typeof (ev == null ? void 0 : ev.clientX) === "number" && typeof (ev == null ? void 0 : ev.clientY) === "number") {
+      return { x: ev.clientX, y: ev.clientY };
+    }
+    const global = (_b = ev == null ? void 0 : ev.data) == null ? void 0 : _b.global;
+    if (typeof (global == null ? void 0 : global.x) === "number" && typeof (global == null ? void 0 : global.y) === "number") {
+      const view = (_c = window.renderer) == null ? void 0 : _c.view;
+      const rect = (_d = view == null ? void 0 : view.getBoundingClientRect) == null ? void 0 : _d.call(view);
+      return {
+        x: ((_e = rect == null ? void 0 : rect.left) != null ? _e : 0) + global.x,
+        y: ((_f = rect == null ? void 0 : rect.top) != null ? _f : 0) + global.y
+      };
+    }
+    return null;
+  }
+  function toMapLocal(global) {
+    var _a, _b;
+    const map = getHostMap();
+    if (!map) return null;
+    if (typeof map.toLocal === "function") {
+      const local = map.toLocal(global);
+      if (local && typeof local.x === "number" && typeof local.y === "number") {
+        return { x: local.x, y: local.y };
+      }
+    }
+    const scaleX = ((_a = map.scale) == null ? void 0 : _a.x) || 1;
+    const scaleY = ((_b = map.scale) == null ? void 0 : _b.y) || 1;
+    if (!scaleX || !scaleY) return null;
+    return {
+      x: (global.x - (map.x || 0)) / scaleX,
+      y: (global.y - (map.y || 0)) / scaleY
+    };
+  }
+  function rendererPointer() {
+    var _a, _b, _c, _d, _e, _f;
+    const renderer = window.renderer;
+    const interaction = (_a = renderer == null ? void 0 : renderer.plugins) == null ? void 0 : _a.interaction;
+    if (!interaction) return null;
+    if (interaction.mouseOverRenderer === false) {
+      return {
+        mapX: Number.NaN,
+        mapY: Number.NaN,
+        clientX: 0,
+        clientY: 0
+      };
+    }
+    const global = (_b = interaction.mouse) == null ? void 0 : _b.global;
+    if (!global || typeof global.x !== "number" || typeof global.y !== "number") {
+      return null;
+    }
+    const local = toMapLocal(global);
+    if (!local) return null;
+    const rect = (_d = (_c = renderer == null ? void 0 : renderer.view) == null ? void 0 : _c.getBoundingClientRect) == null ? void 0 : _d.call(_c);
+    return {
+      mapX: local.x,
+      mapY: local.y,
+      clientX: ((_e = rect == null ? void 0 : rect.left) != null ? _e : 0) + global.x,
+      clientY: ((_f = rect == null ? void 0 : rect.top) != null ? _f : 0) + global.y
+    };
+  }
+  function quirkContainsMapPoint(quirk, mapX, mapY) {
+    const rect = quirkWorldRect(quirk);
+    return mapX >= rect.x && mapX <= rect.x + rect.w && mapY >= rect.y && mapY <= rect.y + rect.h;
+  }
+  function findQuirkAtMapPoint(mapX, mapY) {
+    const quirks = getCurrentWorldQuirks();
+    for (let i = quirks.length - 1; i >= 0; i--) {
+      if (quirkContainsMapPoint(quirks[i], mapX, mapY)) return quirks[i];
+    }
+    return null;
+  }
+  function pointerHitsQuirk(quirk, event) {
+    const global = eventGlobalXY(event);
+    if (!global) return false;
+    const local = toMapLocal(global);
+    if (!local) return false;
+    return quirkContainsMapPoint(quirk, local.x, local.y);
+  }
+  function clearHoveredQuirk() {
+    hoveredQuirk = null;
+    hideCommHover();
+  }
+  function setHoveredQuirk(quirk, client) {
+    hoveredQuirk = quirk;
+    const text = quirkHoverText(quirk);
+    if (!text || !client) {
+      hideCommHover();
+      return;
+    }
+    showCommHover(text, client.x, client.y);
+  }
+  function refreshHoveredWorldQuirk() {
+    const ptr = rendererPointer();
+    if (!ptr) return;
+    if (!Number.isFinite(ptr.mapX) || !Number.isFinite(ptr.mapY)) {
+      if (hoveredQuirk) clearHoveredQuirk();
+      return;
+    }
+    const hit = findQuirkAtMapPoint(ptr.mapX, ptr.mapY);
+    if (!hit) {
+      if (hoveredQuirk) clearHoveredQuirk();
+      return;
+    }
+    setHoveredQuirk(hit, { x: ptr.clientX, y: ptr.clientY });
+  }
+  function getHoveredWorldQuirk() {
+    return hoveredQuirk;
+  }
+  function activateWorldQuirk(quirk, event) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const type = quirk[4];
+    const notice = commNoticeFromQuirk(quirk);
+    const socket = getSocket();
+    let handled = true;
+    if (notice) {
+      hideCommHover();
+      showCommNotice(notice);
+      if (type === "invisible_statue") (_a = window.render_none_shrine) == null ? void 0 : _a.call(window);
+    } else if (type === "tavern_info") {
+      (_b = socket == null ? void 0 : socket.emit) == null ? void 0 : _b.call(socket, "tavern", { event: "info" });
+    } else if (type === "mainframe") {
+      (_c = window.render_mainframe) == null ? void 0 : _c.call(window);
+    } else if (type === "the_lever") {
+      (_d = window.the_lever) == null ? void 0 : _d.call(window);
+    } else if (type === "upgrade") {
+      (_e = window.render_upgrade_shrine) == null ? void 0 : _e.call(window, 1);
+    } else if (type === "compound") {
+      (_f = window.render_compound_shrine) == null ? void 0 : _f.call(window, 1);
+    } else if (type === "list_pvp") {
+      (_g = socket == null ? void 0 : socket.emit) == null ? void 0 : _g.call(socket, "list_pvp");
+    } else {
+      handled = false;
+    }
+    if (handled) stopEvent(event);
+    return handled;
+  }
+  function destroyChildren(container) {
+    var _a, _b;
+    if (typeof container.removeChildren === "function") {
+      const kids = container.children ? container.children.slice() : [];
+      container.removeChildren();
+      for (let i = 0; i < kids.length; i++) {
+        const kid = kids[i];
+        try {
+          (_a = kid == null ? void 0 : kid.destroy) == null ? void 0 : _a.call(kid);
+        } catch (e2) {
+        }
+      }
+      return;
+    }
+    if (typeof container.removeChild !== "function" || !container.children)
+      return;
+    while (container.children.length) {
+      const kid = container.children[0];
+      container.removeChild(kid);
+      try {
+        (_b = kid == null ? void 0 : kid.destroy) == null ? void 0 : _b.call(kid);
+      } catch (e2) {
+      }
+    }
+  }
+  function bindOn(sprite, events, handler) {
+    var _a;
+    for (let i = 0; i < events.length; i++) (_a = sprite.on) == null ? void 0 : _a.call(sprite, events[i], handler);
+  }
+  function bindQuirkEvents(sprite, quirk) {
+    bindOn(sprite, PIXI4_OVER_EVENTS, (event) => {
+      if (eventGlobalXY(event) && !pointerHitsQuirk(quirk, event)) return;
+      const client = eventClientXY(event);
+      if (!client) return;
+      setHoveredQuirk(quirk, client);
+    });
+    bindOn(sprite, PIXI4_MOVE_EVENTS, (event) => {
+      if (eventGlobalXY(event) && !pointerHitsQuirk(quirk, event)) return;
+      if (!isHoveredWorldQuirk(quirk) && eventGlobalXY(event)) return;
+      const client = eventClientXY(event);
+      if (!client) return;
+      setHoveredQuirk(quirk, client);
+    });
+    bindOn(sprite, PIXI4_OUT_EVENTS, () => {
+      if (isHoveredWorldQuirk(quirk)) clearHoveredQuirk();
+    });
+    bindOn(
+      sprite,
+      PIXI4_DOWN_EVENTS,
+      (event) => activateWorldQuirk(quirk, event)
+    );
+  }
+  function makeRect(x, y, w, h) {
+    const pixi = getHostPixi();
+    if (!pixi || typeof pixi.Rectangle !== "function") return null;
+    return new pixi.Rectangle(x, y, w, h);
+  }
+  function makeSprite() {
+    const pixi = getHostPixi();
+    if (!pixi || typeof pixi.Sprite !== "function") return null;
+    return new pixi.Sprite();
+  }
+  function quirkHotspot(quirk) {
+    var _a, _b;
+    const sprite = makeSprite();
+    if (!sprite) return null;
+    sprite.interactive = true;
+    sprite.buttonMode = true;
+    const x = Math.round(quirk[0]);
+    const y = Math.round(quirk[1]);
+    const w = Math.round(quirk[2]);
+    const h = Math.round(quirk[3]);
+    sprite.x = x;
+    sprite.y = y;
+    (_b = (_a = sprite.anchor) == null ? void 0 : _a.set) == null ? void 0 : _b.call(_a, 0.5, 1);
+    sprite.hitArea = makeRect(-Math.round(w * 0.5), -h, w, h);
+    const layer = window.player_layer;
+    if (layer) {
+      sprite.parentGroup = layer;
+      sprite.displayGroup = layer;
+    }
+    if (!HELP_CURSOR_EXCLUDE.has(quirk[4])) sprite.cursor = "help";
+    bindQuirkEvents(sprite, quirk);
+    return sprite;
+  }
+  function syncWorldQuirkHotspots(hotspots) {
+    var _a;
+    const map = getCurrentMap() || getMapName() || "";
+    const quirks = getCurrentWorldQuirks();
+    const signature = quirksSignature(map, quirks);
+    if (signature === syncedSignature && ((_a = hotspots.children) == null ? void 0 : _a.length) === quirks.length) {
+      return;
+    }
+    syncedSignature = signature;
+    hoveredQuirk = null;
+    hideCommHover();
+    destroyChildren(hotspots);
+    hotspots.interactiveChildren = quirks.length > 0;
+    for (let i = 0; i < quirks.length; i++) {
+      const sprite = quirkHotspot(quirks[i]);
+      if (sprite) hotspots.addChild(sprite);
+    }
+  }
+  function paintWorldQuirkDebug(gfx, settings) {
+    if (!settings["world.quirkHitboxes"]) return;
+    const hovered = getHoveredWorldQuirk();
+    if (!hovered) return;
+    const rect = quirkWorldRect(hovered);
+    strokeRect(gfx, rect.x, rect.y, rect.w, rect.h, 16764006, 2, 0.95, 0.18);
+  }
+
+  // src/viz/paintWorldOverlay.ts
+  var COLOR_MOVE = 4513279;
+  var COLOR_AGGRO = 16724804;
+  var COLOR_ATTACK = 16755251;
+  var COLOR_AT_RISK = 16737894;
+  var COLOR_ATTACK_RANGE = 15615044;
+  var COLOR_SPAWN = 11176072;
+  var COLOR_FLASH = 16772744;
+  function paintAbilityLabel(labels, abilityId, origin, radius, color, showName) {
+    if (!showName) return;
+    const labelY = origin.y - radius + 10;
+    addOverlayLabel(labels, skillDisplayName2(abilityId), origin.x, labelY, {
+      fill: color,
+      fontSize: 11,
+      anchorX: 0.5
+    });
+  }
+  function paintAbilityRings(gfx, labels, focus, settings, entities) {
+    var _a, _b, _c;
+    const mtype = focus.mtype;
+    if (!mtype) return;
+    const def = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
+    const abilities = def == null ? void 0 : def.abilities;
+    const origin = entityMapXY(focus);
+    if (!origin) return;
+    const focusId = focus.id != null ? String(focus.id) : mtype;
+    if (settings["world.attackRange"] && typeof focus.range === "number") {
+      strokeCircle(
+        gfx,
+        origin.x,
+        origin.y,
+        focus.range,
+        COLOR_ATTACK_RANGE,
+        1,
+        0.45,
+        0
+      );
+    }
+    if (!abilities || typeof abilities !== "object") return;
+    const abilityRules = getVizAbilityRules();
+    const ids = Object.keys(abilities);
+    let imminentRadius = 0;
+    const cdLines = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const ab = abilities[id] || {};
+      const radius = typeof ab.radius === "number" ? ab.radius : 0;
+      if (ab.aura) {
+        if (settings["world.auraRing"] && radius > 0) {
+          const appearance2 = resolveAbilityAppearance(id, settings, abilityRules);
+          const auraColor = appearance2.color;
+          strokeDashedCircle(
+            gfx,
+            origin.x,
+            origin.y,
+            radius,
+            auraColor,
+            1.5,
+            0.35,
+            6,
+            6
+          );
+          paintAbilityLabel(
+            labels,
+            id,
+            origin,
+            radius,
+            auraColor,
+            appearance2.showName
+          );
+        }
+        continue;
+      }
+      const cooldown = typeof ab.cooldown === "number" && ab.cooldown > 0 ? ab.cooldown : 0;
+      const st = (_c = focus.s) == null ? void 0 : _c[id];
+      const ms = st && typeof st.ms === "number" ? Math.max(0, st.ms) : 0;
+      const flash = noteAbilityMsForFlash(`${focusId}:${id}`, ms, cooldown);
+      const phase = abilityCdPhase(ms, cooldown, {
+        imminent: settings["world.abilityImminent"],
+        ghost: settings["world.abilityGhost"],
+        flash
+      });
+      if (settings["entity.cdLabel"] && ms > 0 && cooldown > 0) {
+        cdLines.push(`${skillDisplayName2(id)}: ${(ms / 1e3).toFixed(1)}s`);
+      }
+      if (!(radius > 0)) continue;
+      if (phase === "hidden") continue;
+      const appearance = resolveAbilityAppearance(id, settings, abilityRules);
+      const color = phase === "flash" ? COLOR_FLASH : appearance.color;
+      if (phase === "imminent" || phase === "flash") {
+        const alpha = phase === "flash" ? 0.95 : imminentOpacity(ms, cooldown);
+        strokeCircle(
+          gfx,
+          origin.x,
+          origin.y,
+          radius,
+          color,
+          phase === "flash" ? 3 : 2.5,
+          alpha,
+          phase === "flash" ? 0.18 : 0.1
+        );
+        if (phase === "imminent" && radius > imminentRadius) {
+          imminentRadius = radius;
+        }
+        paintAbilityLabel(labels, id, origin, radius, color, appearance.showName);
+      } else {
+        strokeDashedCircle(gfx, origin.x, origin.y, radius, color, 2, 0.28, 8, 6);
+        paintAbilityLabel(labels, id, origin, radius, color, appearance.showName);
+      }
+    }
+    if (settings["entity.cdLabel"] && cdLines.length) {
+      for (let i = 0; i < cdLines.length; i++) {
+        addOverlayLabel(
+          labels,
+          cdLines[i],
+          origin.x + 16,
+          origin.y - 8 + i * 12,
+          { fill: 11193599, fontSize: 10 }
+        );
+      }
+    }
+    if (settings["debug.entityIds"]) {
+      const idText = focus.mtype || String(focus.id);
+      addOverlayLabel(labels, idText, origin.x, origin.y + 18, {
+        fill: 8947848,
+        fontSize: 9,
+        anchorX: 0.5
+      });
+    }
+    if (settings["world.highlightAtRisk"] && imminentRadius > 0 && settings["world.abilityImminent"]) {
+      for (let i = 0; i < entities.length; i++) {
+        const p = entities[i];
+        if (!p || p.type !== "character") continue;
+        if (p.rip || p.dead) continue;
+        if (!(p.player || p.me)) continue;
+        const d = simpleDistance(focus, p);
+        if (d == null || d >= imminentRadius) continue;
+        const xy = entityMapXY(p);
+        if (!xy) continue;
+        strokeCircle(gfx, xy.x, xy.y, 10, COLOR_AT_RISK, 2, 0.9, 0.15);
+      }
+    }
+  }
+  function paintEntityLines(gfx, entities, settings, focusId) {
+    const mtypeRules = getVizLineMtypeRules();
+    const anyLines = settings["lines.moveDest"] || settings["lines.aggroTarget"] || settings["lines.attackTarget"] || settings["world.targetLine"];
+    if (!anyLines) return;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.dead || !ent.visible) continue;
+      const from = entityMapXY(ent);
+      if (!from) continue;
+      if (lineEnabled(ent, "moveDest", settings, mtypeRules, focusId)) {
+        if (entityIsMoving(ent) && ent.going_x != null && ent.going_y != null) {
+          drawLine(
+            gfx,
+            from.x,
+            from.y,
+            ent.going_x,
+            ent.going_y,
+            COLOR_MOVE,
+            1.5,
+            0.75
+          );
+          strokeCircle(gfx, ent.going_x, ent.going_y, 3, COLOR_MOVE, 1, 0.8, 0.5);
+        }
+      }
+      if (ent.target == null || ent.target === "") continue;
+      const target = findEntity(entities, ent.target);
+      if (!target) continue;
+      const to = entityMapXY(target);
+      if (!to) continue;
+      if (lineEnabled(ent, "aggroTarget", settings, mtypeRules, focusId)) {
+        drawLine(gfx, from.x, from.y, to.x, to.y, COLOR_AGGRO, 1.5, 0.8);
+        continue;
+      }
+      if (lineEnabled(ent, "attackTarget", settings, mtypeRules, focusId)) {
+        drawLine(gfx, from.x, from.y, to.x, to.y, COLOR_ATTACK, 1.5, 0.7);
+      }
+    }
+  }
+  function paintSpawnPoints(gfx, labels, settings) {
+    var _a, _b, _c;
+    if (!settings["world.spawnPoints"]) return;
+    const map = getMapName();
+    if (!map) return;
+    const packs = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.monsters;
+    if (!Array.isArray(packs)) return;
+    for (let i = 0; i < packs.length; i++) {
+      const row3 = packs[i];
+      if (!row3 || !Array.isArray(row3.boundary) || row3.boundary.length < 4) {
+        continue;
+      }
+      const b = row3.boundary;
+      const x1 = Number(b[0]);
+      const y1 = Number(b[1]);
+      const x2 = Number(b[2]);
+      const y2 = Number(b[3]);
+      if (![x1, y1, x2, y2].every((n) => Number.isFinite(n))) continue;
+      const cx = (x1 + x2) / 2;
+      const cy = (y1 + y2) / 2;
+      strokeCircle(gfx, cx, cy, 5, COLOR_SPAWN, 1.5, 0.85, 0.35);
+      const label = typeof row3.type === "string" ? `${row3.type}${row3.count ? `\xD7${row3.count}` : ""}` : "spawn";
+      addOverlayLabel(labels, label, cx + 6, cy - 10, {
+        fill: 11176072,
+        fontSize: 9
+      });
+    }
+  }
+  function paintGridCoords(labels, settings) {
+    var _a, _b, _c, _d, _e;
+    if (!settings["debug.gridCoords"]) return;
+    const map = getMapName();
+    if (!map) return;
+    const geo = ((_b = (_a = getG()) == null ? void 0 : _a.geometry) == null ? void 0 : _b[map]) || ((_e = (_d = (_c = getG()) == null ? void 0 : _c.maps) == null ? void 0 : _d[map]) == null ? void 0 : _e.data);
+    if (!geo) return;
+    const minX = typeof geo.min_x === "number" ? geo.min_x : null;
+    const minY = typeof geo.min_y === "number" ? geo.min_y : null;
+    const maxX = typeof geo.max_x === "number" ? geo.max_x : null;
+    const maxY = typeof geo.max_y === "number" ? geo.max_y : null;
+    if (minX == null || minY == null || maxX == null || maxY == null) return;
+    addOverlayLabel(
+      labels,
+      `${Math.round(minX)},${Math.round(minY)}`,
+      minX + 4,
+      minY + 4,
+      { fill: 4473924, fontSize: 9 }
+    );
+    addOverlayLabel(
+      labels,
+      `${Math.round(maxX)},${Math.round(maxY)}`,
+      maxX - 4,
+      maxY - 4,
+      { fill: 4473924, fontSize: 9, anchorX: 1, anchorY: 1 }
+    );
+  }
+  function paintWorldOverlay(handle2, opts) {
+    const gfx = handle2.gfx;
+    const labels = handle2.labels;
+    gfx.clear();
+    clearOverlayLabels(labels);
+    syncWorldQuirkHotspots(handle2.hotspots);
+    refreshHoveredWorldQuirk();
+    const settings = getVizSettings();
+    paintWorldQuirkDebug(gfx, settings);
+    const focus = opts.focus;
+    const focusId = focus && focus.id != null ? String(focus.id) : null;
+    paintSpawnPoints(gfx, labels, settings);
+    paintGridCoords(labels, settings);
+    if (focus && focus.visible && !focus.dead) {
+      paintAbilityRings(gfx, labels, focus, settings, opts.entities);
+    }
+    paintEntityLines(gfx, opts.entities, settings, focusId);
+  }
+
+  // src/viz/startWorldOverlay.ts
+  var TICK_MS = 250;
+  var timerId = null;
+  var handle = null;
+  var unsubSettings = null;
+  var selectedId;
+  function setWorldOverlaySelectedId(id) {
+    selectedId = id;
+  }
+  function resolveFocus(entities) {
+    return resolveAbilityTimelineTarget(entities, selectedId, getObserving());
+  }
+  function tick() {
+    if (mapOverlayBlocked()) {
+      if (handle) {
+        destroyOverlayHandle(handle);
+        handle = null;
+      }
+      return;
+    }
+    handle = ensureOverlayHandle(handle);
+    if (!handle) return;
+    const entities = getEntitiesList();
+    paintWorldOverlay(handle, {
+      entities,
+      focus: resolveFocus(entities)
+    });
+  }
+  function startWorldOverlay() {
+    if (timerId != null) return;
+    unsubSettings = subscribeVizSettings(() => tick());
+    tick();
+    timerId = window.setInterval(tick, TICK_MS);
+  }
+
   // src/lib/panelEdgeSnapDom.ts
   function cssEscapePanelId(id) {
     if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -19724,54 +22643,73 @@ button.comm-mail__stack-u {
     }
     return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
   }
-  function collectEdgePeerRects(panels, selfId, canSnap) {
+  function isSnapPeerVisible(input) {
+    if (input.hasHiddenClass) return false;
+    if (input.display === "none" || input.visibility === "hidden") return false;
+    if (!(input.width > 0) || !(input.height > 0)) return false;
+    return true;
+  }
+  function isSnapPeerElement(el) {
+    const style = typeof window !== "undefined" ? window.getComputedStyle(el) : null;
+    const rect = el.getBoundingClientRect();
+    return isSnapPeerVisible({
+      hasHiddenClass: el.classList.contains("comm-pos-hidden"),
+      display: style ? style.display : void 0,
+      visibility: style ? style.visibility : void 0,
+      width: rect.width,
+      height: rect.height
+    });
+  }
+  function queryCommPosPanel(id) {
+    if (typeof document === "undefined") return null;
+    return document.querySelector(
+      `.comm-pos-panel.comm-pos-${cssEscapePanelId(id)}`
+    );
+  }
+  function collectEdgePeerRects(panels, selfId2, canSnap) {
     if (typeof document === "undefined") return [];
     const others = [];
     for (let i = 0; i < panels.length; i++) {
       const m = panels[i];
-      if (m.id === selfId || !canSnap(m, selfId)) continue;
-      const el = document.querySelector(
-        `.comm-pos-panel.comm-pos-${cssEscapePanelId(m.id)}`
-      );
-      if (!el) continue;
+      if (m.id === selfId2 || !canSnap(m, selfId2)) continue;
+      const el = queryCommPosPanel(m.id);
+      if (!el || !isSnapPeerElement(el)) continue;
       others.push({ id: m.id, rect: el.getBoundingClientRect() });
     }
     return others;
   }
-  function snapJoinPeerFilter(panels, selfId, canSnap) {
-    const own = new Set(getEdgeGroup(panels, selfId).map((g) => g.id));
+  function snapJoinPeerFilter(panels, selfId2, canSnap) {
+    const own = new Set(getEdgeGroup(panels, selfId2).map((g) => g.id));
     return (panel, sid) => {
       if (own.has(panel.id)) return false;
       return canSnap(panel, sid);
     };
   }
-  function findSnapTarget(selfId, panels, opts) {
+  function findSnapTarget(selfId2, panels, opts) {
     if (opts.skipGroupJoin) return null;
     if (typeof document === "undefined") return null;
     const peerFilter = opts.peerFilter || (() => true);
-    const selfEl = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`
-    );
+    const selfEl = queryCommPosPanel(selfId2);
     if (!selfEl) return null;
     const selfRect = selfEl.getBoundingClientRect();
     const excludeOwn = opts.excludeOwnGroup !== false;
-    const joinFilter = excludeOwn ? snapJoinPeerFilter(panels, selfId, peerFilter) : peerFilter;
-    const peers = collectEdgePeerRects(panels, selfId, joinFilter);
+    const joinFilter = excludeOwn ? snapJoinPeerFilter(panels, selfId2, peerFilter) : peerFilter;
+    const peers = collectEdgePeerRects(panels, selfId2, joinFilter);
     const tight = findEdgeSnapCandidate(
-      selfId,
+      selfId2,
       selfRect,
       peers,
       opts.thresholdPx
     );
     let loose = null;
     if (opts.nearPx != null) {
-      loose = findEdgeSnapCandidate(selfId, selfRect, peers, opts.nearPx);
+      loose = findEdgeSnapCandidate(selfId2, selfRect, peers, opts.nearPx);
     }
     return { tight, loose, selfRect, peers };
   }
-  function trySnapOnDrop(panels, selfId, canSnap, opts) {
+  function trySnapOnDrop(panels, selfId2, canSnap, opts) {
     var _a;
-    const result = findSnapTarget(selfId, panels, {
+    const result = findSnapTarget(selfId2, panels, {
       thresholdPx: (_a = opts == null ? void 0 : opts.thresholdPx) != null ? _a : DEFAULT_EDGE_SNAP_PX,
       skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
       peerFilter: canSnap
@@ -19790,7 +22728,7 @@ button.comm-mail__stack-u {
     const root = rootEl ? rootEl.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight };
     return attachPanelEdge(
       panels,
-      selfId,
+      selfId2,
       cand.otherId,
       cand.sideOnSelf,
       result.selfRect,
@@ -19911,6 +22849,7 @@ button.comm-mail__stack-u {
       layout[id] = applySnapFields(layout[id], p);
       if (p.frameW != null) layout[id] = { ...layout[id], frameW: p.frameW };
       if (p.frameH != null) layout[id] = { ...layout[id], frameH: p.frameH };
+      layout[id] = applyWindowFramePersist(layout[id], id);
     }
     const meters = state2.meters.map((m) => {
       const p = byId[m.id];
@@ -19999,10 +22938,10 @@ button.comm-mail__stack-u {
     }
     return false;
   }
-  function findCommSnapGuideTarget(state2, selfId, opts) {
+  function findCommSnapGuideTarget(state2, selfId2, opts) {
     const panels = windowsToEdgePanels(state2);
     const canSnapPeer = (p) => canGroupWindow(p.id);
-    const join = findSnapTarget(selfId, panels, {
+    const join = findSnapTarget(selfId2, panels, {
       thresholdPx: DEFAULT_EDGE_SNAP_PX,
       nearPx: 140,
       skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
@@ -20011,14 +22950,14 @@ button.comm-mail__stack-u {
     });
     if (join == null ? void 0 : join.tight) return { id: join.tight.otherId, canSnap: true };
     if (join == null ? void 0 : join.loose) return { id: join.loose.otherId, canSnap: false };
-    const own = getEdgeGroup(panels, selfId);
+    const own = getEdgeGroup(panels, selfId2);
     if (own.length < 2) return null;
     const ownIds = new Set(own.map((g) => g.id));
-    const linked = findSnapTarget(selfId, panels, {
+    const linked = findSnapTarget(selfId2, panels, {
       thresholdPx: 140,
       nearPx: 240,
       skipGroupJoin: opts == null ? void 0 : opts.skipGroupJoin,
-      peerFilter: (p) => ownIds.has(p.id) && p.id !== selfId,
+      peerFilter: (p) => ownIds.has(p.id) && p.id !== selfId2,
       excludeOwnGroup: false
     });
     const peer = (linked == null ? void 0 : linked.tight) || (linked == null ? void 0 : linked.loose);
@@ -20056,6 +22995,9 @@ button.comm-mail__stack-u {
     return { layout, meters };
   }
   function applyFrameSizeToCommWindows(state2, id, size) {
+    size = filterPersistedFrameSize(id, size);
+    if (size.frameW == null && size.frameH == null) return state2;
+    const withManualOff = (pos) => pos.autoSize === false ? pos : { ...pos, autoSize: false };
     const panels = windowsToEdgePanels(state2);
     if (!panels.some((p) => p.id === id)) {
       if (state2.layout[id]) {
@@ -20064,11 +23006,14 @@ button.comm-mail__stack-u {
           ...state2,
           layout: {
             ...state2.layout,
-            [id]: {
-              ...cur,
-              ...size.frameW != null ? { frameW: size.frameW } : {},
-              ...size.frameH != null ? { frameH: size.frameH } : {}
-            }
+            [id]: applyWindowFramePersist(
+              withManualOff({
+                ...cur,
+                ...size.frameW != null ? { frameW: size.frameW } : {},
+                ...size.frameH != null ? { frameH: size.frameH } : {}
+              }),
+              id
+            )
           }
         };
       }
@@ -20084,21 +23029,30 @@ button.comm-mail__stack-u {
       };
     }
     const root = layoutDragRoot().getBoundingClientRect();
-    return applyEdgePanelsToState(
+    const next = applyEdgePanelsToState(
       state2,
       applyGroupFrameSize(panels, id, size, {
         rootW: root.width,
         rootH: root.height
       })
     );
+    const hid = id;
+    if (!next.layout[hid]) return next;
+    return {
+      ...next,
+      layout: {
+        ...next.layout,
+        [hid]: withManualOff(next.layout[hid])
+      }
+    };
   }
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners8 = [];
+  var listeners9 = [];
   function notify4() {
-    for (let i = 0; i < listeners8.length; i++) {
-      listeners8[i]();
+    for (let i = 0; i < listeners9.length; i++) {
+      listeners9[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -20122,10 +23076,10 @@ button.comm-mail__stack-u {
     notify4();
   }
   function subscribeLayoutGuide(listener) {
-    listeners8.push(listener);
+    listeners9.push(listener);
     return () => {
-      const idx = listeners8.indexOf(listener);
-      if (idx >= 0) listeners8.splice(idx, 1);
+      const idx = listeners9.indexOf(listener);
+      if (idx >= 0) listeners9.splice(idx, 1);
     };
   }
 
@@ -20235,6 +23189,22 @@ button.comm-mail__stack-u {
     const resizeWindowFrame = (id, size) => {
       commit2(applyFrameSizeToCommWindows(stateRef.current, id, size));
     };
+    const setWindowAutoSize = (id, autoSize, size) => {
+      const hid = id;
+      const cur = stateRef.current.layout[hid];
+      if (!cur) return;
+      let nextPos = { ...cur, autoSize };
+      if (!autoSize && size && size.w > 0 && size.h > 0) {
+        nextPos = applyWindowFramePersist(
+          { ...nextPos, frameW: size.w, frameH: size.h },
+          id
+        );
+      }
+      commit2({
+        ...stateRef.current,
+        layout: { ...stateRef.current.layout, [hid]: nextPos }
+      });
+    };
     const graphState = () => stateRef.current;
     return {
       moveWindow,
@@ -20244,6 +23214,7 @@ button.comm-mail__stack-u {
       onDragMove,
       setWindowScale,
       resizeWindowFrame,
+      setWindowAutoSize,
       snapDragId,
       snapPeerId,
       nearPeerId,
@@ -20411,20 +23382,12 @@ button.comm-mail__stack-u {
       if (!chunk || typeof chunk !== "object") continue;
       const map = {};
       const panelSrc = chunk;
-      if (isPanelPos(panelSrc.infoDialog)) {
-        map.buffInfo = panelSrc.infoDialog;
-        if (!isPanelPos(panelSrc.itemInfo)) {
-          const legacy = panelSrc.infoDialog;
-          map.itemInfo = {
-            x: Math.min(100, legacy.x + 16),
-            y: legacy.y,
-            anchor: legacy.anchor
-          };
-        }
-      }
+      const migrated = migrateLegacyPanelIds(
+        panelSrc
+      );
       for (let j = 0; j < PANEL_IDS.length; j++) {
         const id = PANEL_IDS[j];
-        if (isPanelPos(panelSrc[id])) map[id] = panelSrc[id];
+        if (isPanelPos(migrated[id])) map[id] = migrated[id];
       }
       if (Object.keys(map).length) out[profile] = map;
     }
@@ -21384,6 +24347,26 @@ button.comm-mail__stack-u {
         )
       );
     }
+    if (props.onToggleAutoSize) {
+      wcItems.push(
+        e(
+          "button",
+          {
+            key: "autosize",
+            type: "button",
+            className: "comm-pos-wc-item",
+            "aria-pressed": props.autoSize ? "true" : "false",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              props.onToggleAutoSize();
+              setWcOpen(false);
+            }
+          },
+          props.autoSize ? "Auto-resize \xB7 on" : "Auto-resize \xB7 off"
+        )
+      );
+    }
     const closed = props.closedWindows || [];
     for (let ci = 0; ci < closed.length; ci++) {
       const c = closed[ci];
@@ -21520,6 +24503,8 @@ button.comm-mail__stack-u {
       onPointerMove,
       onPointerUp
     } = args;
+    const autoSize = args.autoSize;
+    const onToggleAutoSize = args.onToggleAutoSize;
     const closeAbove = props.closePlacement === "above";
     const showClose = !!onClose && !hidden && (hover || touchish || movable || editing && !props.closeOnHoverOnly);
     const moveGrip = movable && props.showMoveGrip !== false || editing && editChrome === "grip" ? e(
@@ -21639,9 +24624,9 @@ button.comm-mail__stack-u {
           cursor: "default"
         }
       },
-      ...LAYOUT_ANCHOR_PAD.reduce((cells, row2) => {
-        for (let c = 0; c < row2.length; c++) {
-          const a = row2[c];
+      ...LAYOUT_ANCHOR_PAD.reduce((cells, row3) => {
+        for (let c = 0; c < row3.length; c++) {
+          const a = row3[c];
           if (!a) {
             cells.push(
               e("div", {
@@ -21689,7 +24674,7 @@ button.comm-mail__stack-u {
         return cells;
       }, [])
     ) : null;
-    const hasWindowChrome = !!props.onToggleLock || !!props.onUngroup || !!props.onCreateWindow || !!onClose || !!(props.closedWindows && props.closedWindows.length);
+    const hasWindowChrome = !!props.onToggleLock || !!props.onUngroup || !!props.onCreateWindow || !!onClose || !!args.onToggleAutoSize || !!(props.closedWindows && props.closedWindows.length);
     const windowChrome = hasWindowChrome ? e(WindowControlChrome, {
       touchish,
       locked: props.locked,
@@ -21699,7 +24684,9 @@ button.comm-mail__stack-u {
       onClose: onClose || void 0,
       closedWindows: props.closedWindows,
       onReopenWindow: props.onReopenWindow,
-      showMenu: movable || editing || !!props.onToggleLock || !!props.onUngroup || !!onClose || !!(props.closedWindows && props.closedWindows.length)
+      autoSize,
+      onToggleAutoSize,
+      showMenu: movable || editing || !!props.onToggleLock || !!props.onUngroup || !!onClose || !!onToggleAutoSize || !!(props.closedWindows && props.closedWindows.length)
     }) : null;
     const arrangeLabel = !moveGrip && showArrangeOverlay ? e(
       "span",
@@ -22068,6 +25055,8 @@ button.comm-mail__stack-u {
         if (ids[i] === id) continue;
         const p = peers[ids[i]];
         if (!p) continue;
+        const el = queryCommPosPanel(ids[i]);
+        if (!el || !isSnapPeerElement(el)) continue;
         xs.push(p.x);
         ys.push(p.y);
       }
@@ -22339,6 +25328,7 @@ button.comm-mail__stack-u {
     }, [props.onWindowScale, props.locked, props.movable, editing, pos.scale]);
     React.useEffect(() => {
       if (!props.onResizeFrame) return;
+      if (panelUsesAutoSize(pos, String(id))) return;
       const el = shellRef.current;
       if (!el || typeof ResizeObserver === "undefined") return;
       let lastW = 0;
@@ -22391,7 +25381,7 @@ button.comm-mail__stack-u {
         window.removeEventListener("keydown", onKey);
         window.removeEventListener("keyup", onKey);
       };
-    }, [props.onResizeFrame]);
+    }, [props.onResizeFrame, pos.autoSize, id]);
     const {
       dragPinned,
       draggingRef: dragging,
@@ -22476,15 +25466,16 @@ button.comm-mail__stack-u {
         }
         return { w: outW, h: outH };
       };
+      const axes = props.resizeAxes === "w" ? "w" : "wh";
       const onMove2 = (e2) => {
         const dx = e2.clientX - startX;
-        const dy = e2.clientY - startY;
+        const dy = axes === "w" ? 0 : e2.clientY - startY;
         const rawW = corner === "br" ? startW + dx : startW - dx;
         const next = sizeFrame2(rawW, startH + dy, !!e2.shiftKey);
         pendingW = next.w;
-        pendingH = next.h;
+        pendingH = axes === "w" ? startH : next.h;
         el.style.width = pendingW + "px";
-        el.style.height = pendingH + "px";
+        if (axes === "wh") el.style.height = pendingH + "px";
       };
       const onUp = () => {
         endLayoutGuide();
@@ -22502,41 +25493,27 @@ button.comm-mail__stack-u {
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     };
-    const hugContent = props.hugContent !== void 0 ? props.hugContent : true;
-    const fixedW = !hugContent && typeof pos.frameW === "number" && pos.frameW > 0 ? Math.round(pos.frameW) : 0;
-    const fixedH = !hugContent && typeof pos.frameH === "number" && pos.frameH > 0 ? Math.round(pos.frameH) : 0;
+    const autoSize = panelUsesAutoSize(pos, String(id));
+    const fillFrame = isPanelId(String(id)) ? panelFillsFrame(String(id)) : props.hugContent === false;
+    const sizePos = autoSize ? { ...pos, frameW: void 0, frameH: void 0 } : pos;
+    const fillW = fillFrame && !autoSize && typeof pos.frameW === "number" && pos.frameW > 0 ? Math.round(pos.frameW) : 0;
+    const fillH = fillFrame && !autoSize && typeof pos.frameH === "number" && pos.frameH > 0 ? Math.round(pos.frameH) : 0;
     const shellStyle = Object.assign(
       {},
-      panelStyle(pos, editing || movable),
       props.style || {},
+      panelStyle(sizePos, editing || movable),
       {
         opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity
       },
-      // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
-      // the stock 7-col float inventory. Other HUD panels treat frameW/H as a
-      // floor that can grow with max-content so arrange outlines wrap overflow.
-      // Meter / Mail pass hugContent:false for a fixed scrolling box.
-      hugContent && typeof pos.frameW === "number" && pos.frameW > 0 ? {
-        width: `max(${Math.round(pos.frameW)}px, max-content)`,
-        minWidth: Math.round(pos.frameW) + "px"
-      } : null,
-      hugContent && typeof pos.frameH === "number" && pos.frameH > 0 ? {
-        height: `max(${Math.round(pos.frameH)}px, max-content)`,
-        minHeight: Math.round(pos.frameH) + "px"
-      } : null,
-      fixedW > 0 ? {
-        width: fixedW + "px",
-        minWidth: fixedW + "px",
+      fillW > 0 ? {
+        width: fillW + "px",
+        minWidth: fillW + "px",
         maxWidth: "100vw"
       } : null,
-      fixedH > 0 ? {
-        height: fixedH + "px",
-        minHeight: Math.min(fixedH, HUD_FRAME_MIN.h) + "px",
-        maxHeight: "100vh",
-        // Keep shell overflow visible so above-frame hover arrange chrome
-        // (lock / WC / × / grips) is not clipped — same as meters. Clip
-        // scrolling content inside the panel body (e.g. .comm-mail).
-        overflow: "visible"
+      fillH > 0 ? {
+        height: fillH + "px",
+        minHeight: Math.min(fillH, HUD_FRAME_MIN.h) + "px",
+        maxHeight: "100vh"
       } : null,
       editing ? {
         // Cyan + dark edge — yellow grid uses the same warm dashes as the old outline.
@@ -22554,6 +25531,8 @@ button.comm-mail__stack-u {
         pointerEvents: "auto"
       } : null
     );
+    applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
+    if (fillFrame && !autoSize) unclipShellOverflow(shellStyle);
     const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup);
     const ARRANGE_CHROME_H = 34;
     React.useLayoutEffect(() => {
@@ -22615,6 +25594,7 @@ button.comm-mail__stack-u {
       pos.scale,
       pos.frameW,
       pos.frameH,
+      pos.autoSize,
       id
     ]);
     const {
@@ -22647,7 +25627,23 @@ button.comm-mail__stack-u {
       setAnchor,
       onPointerDown,
       onPointerMove,
-      onPointerUp
+      onPointerUp,
+      autoSize,
+      onToggleAutoSize: props.onAutoSizeChange ? () => {
+        const next = !autoSize;
+        if (next) {
+          props.onAutoSizeChange(true);
+          return;
+        }
+        const el = shellRef.current;
+        props.onAutoSizeChange(
+          false,
+          el ? {
+            w: Math.round(el.offsetWidth),
+            h: Math.round(el.offsetHeight)
+          } : void 0
+        );
+      } : void 0
     });
     const hiddenBodyStyle = Object.assign(
       {
@@ -22666,8 +25662,9 @@ button.comm-mail__stack-u {
       "div",
       {
         ref: shellRef,
-        className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
+        className: `comm-pos-panel comm-pos-${id}${fillFrame ? " comm-pos-fill" : ""}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
         "data-panel": id,
+        "data-auto-size": autoSize ? "true" : void 0,
         style: shellStyle,
         onPointerDownCapture: onActivateCapture,
         onMouseEnter: needsChromeHover ? () => setPanelHover(true) : void 0,
@@ -22684,7 +25681,7 @@ button.comm-mail__stack-u {
           style: hiddenBodyStyle
         },
         `${panelLabel} \u2014 closed`
-      ) : editing && !hidden ? e(
+      ) : (fillFrame || editing) && !hidden ? e(
         "div",
         {
           className: "comm-pos-panel-body",
@@ -24160,7 +27157,8 @@ button.comm-mail__stack-u {
 .ecu-meter-row .ecu-meter-vals {
   font-size: var(--meter-fs-secondary) !important;
 }
-.ecu-meter-icon {
+.ecu-meter-body .ecu-meter-icon,
+.ecu-meter-row .ecu-meter-icon {
   width: 14px !important;
   height: 14px !important;
 }
@@ -26497,7 +29495,7 @@ button.ecu-meter-status-micro:hover,
 ${parts.map(cssSlice).join("\n")}
 `;
   }
-  var CSS5 = [
+  var CSS6 = [
     METER_CHROME_SCALE_CSS,
     METER_SHELL_CSS,
     METER_TITLEBAR_CSS,
@@ -26522,7 +29520,7 @@ ${parts.map(cssSlice).join("\n")}
       style.id = STYLE_ID4;
       document.head.appendChild(style);
     }
-    style.textContent = CSS5.replace(
+    style.textContent = CSS6.replace(
       "__TOOLBAR__",
       TOOLBAR_ICONS_DATA_URI
     ).replace("__ATTR__", ATTR_ICONS_DATA_URI);
@@ -26832,11 +29830,11 @@ ${parts.map(cssSlice).join("\n")}
   }
   function MeterStatusbar(props) {
     const React = getReact();
-    const [, tick] = React.useState(0);
+    const [, tick2] = React.useState(0);
     React.useEffect(() => {
       const id = window.setInterval(() => {
         if (typeof document !== "undefined" && document.hidden) return;
-        tick((n) => n + 1);
+        tick2((n) => n + 1);
       }, 1e3);
       return () => window.clearInterval(id);
     }, []);
@@ -27084,48 +30082,48 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/meters/meterBarPool.ts
   var TOTAL_ROW_ID = "__total__";
-  function isTotalRow(row2) {
-    return row2.id === TOTAL_ROW_ID;
+  function isTotalRow(row3) {
+    return row3.id === TOTAL_ROW_ID;
   }
-  function splashSuffix(row2) {
-    if (!(row2.splashDamage != null && row2.splashDamage > 0)) return "";
-    return ` <span class="ecu-meter-splash-hint" title="Explosion splash damage">+${formatCompactNumber(row2.splashDamage)}</span>`;
+  function splashSuffix(row3) {
+    if (!(row3.splashDamage != null && row3.splashDamage > 0)) return "";
+    return ` <span class="ecu-meter-splash-hint" title="Explosion splash damage">+${formatCompactNumber(row3.splashDamage)}</span>`;
   }
-  function formatRowValue(row2, share, opts) {
+  function formatRowValue(row3, share, opts) {
     if (opts.metric === "avoidance") {
-      return `${(row2.value * 100).toFixed(1)}%`;
+      return `${(row3.value * 100).toFixed(1)}%`;
     }
-    const splash = splashSuffix(row2);
-    const rate = row2.rate != null ? row2.rate : null;
-    const ratePrimary = row2.primary === "rate" && rate != null;
+    const splash = splashSuffix(row3);
+    const rate = row3.rate != null ? row3.rate : null;
+    const ratePrimary = row3.primary === "rate" && rate != null;
     const pctStr = opts.pct !== false ? `${share.toFixed(opts.detailsFormat !== false ? 1 : 0)}%` : "";
     if (opts.detailsFormat !== false) {
       if (ratePrimary) {
-        const inner = pctStr ? `${formatCompactNumber(row2.value)}, ${pctStr}` : formatCompactNumber(row2.value);
+        const inner = pctStr ? `${formatCompactNumber(row3.value)}, ${pctStr}` : formatCompactNumber(row3.value);
         return `${formatCompactRate(rate)} (${inner})${splash}`;
       }
       if (rate != null) {
         const inner = pctStr ? `${formatCompactRate(rate)}, ${pctStr}` : formatCompactRate(rate);
-        return `${formatCompactNumber(row2.value)} (${inner})${splash}`;
+        return `${formatCompactNumber(row3.value)} (${inner})${splash}`;
       }
-      return pctStr ? `${formatCompactNumber(row2.value)} (${pctStr})${splash}` : `${formatCompactNumber(row2.value)}${splash}`;
+      return pctStr ? `${formatCompactNumber(row3.value)} (${pctStr})${splash}` : `${formatCompactNumber(row3.value)}${splash}`;
     }
     if (ratePrimary) {
       const pct2 = pctStr ? `, ${pctStr}` : "";
-      return `${formatCompactRate(rate)} (${formatCompactNumber(row2.value)}${pct2})${splash}`;
+      return `${formatCompactRate(rate)} (${formatCompactNumber(row3.value)}${pct2})${splash}`;
     }
     if (rate != null) {
       const pct2 = pctStr ? `, ${pctStr}` : "";
-      return `${formatCompactNumber(row2.value)} (${formatCompactRate(rate)}${pct2})${splash}`;
+      return `${formatCompactNumber(row3.value)} (${formatCompactRate(rate)}${pct2})${splash}`;
     }
     const pct = pctStr ? ` <span class="ecu-meter-pct">${pctStr}</span>` : "";
-    return `${formatCompactNumber(row2.value)}${pct}${splash}`;
+    return `${formatCompactNumber(row3.value)}${pct}${splash}`;
   }
-  function rowColor(row2) {
-    return row2.color || classColors[row2.ctype || ""] || "#607d8b";
+  function rowColor(row3) {
+    return row3.color || classColors[row3.ctype || ""] || "#607d8b";
   }
-  function barAmount(row2) {
-    return row2.barValue != null ? row2.barValue : row2.value;
+  function barAmount(row3) {
+    return row3.barValue != null ? row3.barValue : row3.value;
   }
   function scaleMax(rows) {
     let fromMeta = 0;
@@ -27155,12 +30153,12 @@ ${parts.map(cssSlice).join("\n")}
     }
     return `${actorsBefore + 1}.`;
   }
-  function barWidthPct(row2, max) {
-    if (isTotalRow(row2)) return 100;
-    return max ? barAmount(row2) / max * 100 : 0;
+  function barWidthPct(row3, max) {
+    if (isTotalRow(row3)) return 100;
+    return max ? barAmount(row3) / max * 100 : 0;
   }
-  function isSkillOrTargetRow(row2) {
-    return row2.kind === "ability" || row2.kind === "channel" || row2.kind === "target";
+  function isSkillOrTargetRow(row3) {
+    return row3.kind === "ability" || row3.kind === "channel" || row3.kind === "target";
   }
   function barRowIconHtml(r, opts) {
     if (isTotalRow(r)) return "";
@@ -27371,6 +30369,8 @@ ${parts.map(cssSlice).join("\n")}
     tipEl = document.createElement("div");
     tipEl.className = "ecu-meter-tt";
     tipEl.style.display = "none";
+    tipEl.style.position = "fixed";
+    tipEl.style.zIndex = "10000";
     document.body.appendChild(tipEl);
     if (!tipWheelBound) {
       tipWheelBound = true;
@@ -27479,10 +30479,10 @@ ${parts.map(cssSlice).join("\n")}
     ${kbd}
   </div>`;
   }
-  function packFoldKey(row2) {
-    if (row2.ctype) return "p:" + row2.id;
-    if (row2.mtype) return "m:" + row2.mtype;
-    return "n:" + row2.name;
+  function packFoldKey(row3) {
+    if (row3.ctype) return "p:" + row3.id;
+    if (row3.mtype) return "m:" + row3.mtype;
+    return "n:" + row3.name;
   }
   function foldPackTargets(rows) {
     const byKey = {};
@@ -27501,9 +30501,9 @@ ${parts.map(cssSlice).join("\n")}
     }
     const out = [];
     for (let i = 0; i < order.length; i++) {
-      const { row: row2, count } = byKey[order[i]];
-      if (count > 1) row2.name = `${row2.name} \xD7${count}`;
-      out.push(row2);
+      const { row: row3, count } = byKey[order[i]];
+      if (count > 1) row3.name = `${row3.name} \xD7${count}`;
+      out.push(row3);
     }
     return out;
   }
@@ -27542,44 +30542,44 @@ ${parts.map(cssSlice).join("\n")}
     return result.rows.slice().sort((a, b) => b.value - a.value);
   }
   function playerBarTooltipHtml(ctx, mods) {
-    const { row: row2, metric, segmentRef, partyFocus, entities } = ctx;
+    const { row: row3, metric, segmentRef, partyFocus, entities } = ctx;
     const avoidance = metric === "avoidance";
-    const rate = row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : "";
-    const abs = avoidance ? `<div class="line"><span>Value</span><b>${(row2.value * 100).toFixed(1)}%</b></div>` : `<div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>${rate}`;
-    const isPlayerRow = row2.id !== "__total__" && row2.kind !== "channel" && row2.kind !== "ability" && row2.kind !== "target";
-    const headIcon = isPlayerRow ? characterIconHtml(row2.id, {
+    const rate = row3.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row3.rate)}/s</b></div>` : "";
+    const abs = avoidance ? `<div class="line"><span>Value</span><b>${(row3.value * 100).toFixed(1)}%</b></div>` : `<div class="line"><span>Total</span><b>${formatCompactNumber(row3.value)}</b></div>${rate}`;
+    const isPlayerRow = row3.id !== "__total__" && row3.kind !== "channel" && row3.kind !== "ability" && row3.kind !== "target";
+    const headIcon = isPlayerRow ? characterIconHtml(row3.id, {
       size: METER_TT_ICON,
-      ctype: row2.ctype,
-      name: row2.name,
-      title: row2.ctype ? `${row2.name} \xB7 ${row2.ctype}` : row2.name || row2.id
+      ctype: row3.ctype,
+      name: row3.name,
+      title: row3.ctype ? `${row3.name} \xB7 ${row3.ctype}` : row3.name || row3.id
     }) + " " : "";
-    const classLine = isPlayerRow && row2.ctype ? `<div class="line"><span>Class</span><b>${escapeHtml(row2.ctype)}</b></div>` : "";
-    const head = `<h4>${headIcon}${escapeHtml(row2.name)}</h4>${classLine}${abs}
-    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>`;
-    if (row2.kind === "target") {
-      return targetBarTooltipHtml(row2);
+    const classLine = isPlayerRow && row3.ctype ? `<div class="line"><span>Class</span><b>${escapeHtml(row3.ctype)}</b></div>` : "";
+    const head = `<h4>${headIcon}${escapeHtml(row3.name)}</h4>${classLine}${abs}
+    <div class="line"><span>Share</span><b>${(row3.pct * 100).toFixed(0)}%</b></div>`;
+    if (row3.kind === "target") {
+      return targetBarTooltipHtml(row3);
     }
-    if (row2.id === "__total__" || row2.kind === "channel" || row2.kind === "ability") {
+    if (row3.id === "__total__" || row3.kind === "channel" || row3.kind === "ability") {
       return `${head}<div class="ecu-meter-tt-foot">Click row \u2192 Inspector</div>`;
     }
     const m = metricForBreakdown(metric);
     const spells = queryRanked(
       "abilities",
-      row2.id,
+      row3.id,
       m,
       segmentRef,
       partyFocus,
       entities
     );
     const targets = foldPackTargets(
-      queryRanked("targets", row2.id, m, segmentRef, partyFocus, entities)
+      queryRanked("targets", row3.id, m, segmentRef, partyFocus, entities)
     );
     const spellExpandable = spells.length > MAX_SPELLS;
     const targetExpandable = targets.length > MAX_TARGETS;
     const spellLimit = mods.shift && spellExpandable ? MAX_EXPANDED : MAX_SPELLS;
     const targetLimit = mods.ctrl && targetExpandable ? MAX_EXPANDED : MAX_TARGETS;
-    const spellTotal = spells.reduce((s, r) => s + r.value, 0) || row2.value || 1;
-    const targetTotal = targets.reduce((s, r) => s + r.value, 0) || row2.value || 1;
+    const spellTotal = spells.reduce((s, r) => s + r.value, 0) || row3.value || 1;
+    const targetTotal = targets.reduce((s, r) => s + r.value, 0) || row3.value || 1;
     const spellsSec = sectionHeader(
       `<span class="ecu-meter-tt-sec-ico" aria-hidden="true">\u2694</span>`,
       "Spells",
@@ -27611,20 +30611,20 @@ ${parts.map(cssSlice).join("\n")}
     ${targetsSec}
     <div class="ecu-meter-tt-foot">Click \u2192 Inspector</div>`;
   }
-  function abilityBarTooltipHtml(row2) {
-    const splash = row2.splashDamage != null && row2.splashDamage > 0 ? `<div class="line"><span>Explosion</span><b>+${formatCompactNumber(row2.splashDamage)}</b></div>` : "";
-    return `<h4>${skillIconHtml(row2.id, METER_TT_ICON)} ${escapeHtml(row2.name)}</h4>
-    <div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>
+  function abilityBarTooltipHtml(row3) {
+    const splash = row3.splashDamage != null && row3.splashDamage > 0 ? `<div class="line"><span>Explosion</span><b>+${formatCompactNumber(row3.splashDamage)}</b></div>` : "";
+    return `<h4>${skillIconHtml(row3.id, METER_TT_ICON)} ${escapeHtml(row3.name)}</h4>
+    <div class="line"><span>Total</span><b>${formatCompactNumber(row3.value)}</b></div>
     ${splash}
-    ${row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : ""}
-    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>
+    ${row3.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row3.rate)}/s</b></div>` : ""}
+    <div class="line"><span>Share</span><b>${(row3.pct * 100).toFixed(0)}%</b></div>
     <div class="ecu-meter-tt-foot">Click \u2192 targets for spell</div>`;
   }
-  function targetBarTooltipHtml(row2) {
-    return `<h4>${targetIconHtml(row2, METER_TT_ICON)} ${escapeHtml(row2.name)}</h4>
-    <div class="line"><span>Total</span><b>${formatCompactNumber(row2.value)}</b></div>
-    ${row2.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row2.rate)}/s</b></div>` : ""}
-    <div class="line"><span>Share</span><b>${(row2.pct * 100).toFixed(0)}%</b></div>
+  function targetBarTooltipHtml(row3) {
+    return `<h4>${targetIconHtml(row3, METER_TT_ICON)} ${escapeHtml(row3.name)}</h4>
+    <div class="line"><span>Total</span><b>${formatCompactNumber(row3.value)}</b></div>
+    ${row3.rate != null ? `<div class="line"><span>Rate</span><b>${formatCompactRate(row3.rate)}/s</b></div>` : ""}
+    <div class="line"><span>Share</span><b>${(row3.pct * 100).toFixed(0)}%</b></div>
     <div class="ecu-meter-tt-foot">Click \u2192 Inspector</div>`;
   }
 
@@ -27820,22 +30820,22 @@ ${parts.map(cssSlice).join("\n")}
           classIcons: !!app.showSpecIcons,
           animate: app.animateBars,
           detailsFormat: true,
-          onClick: p.onRowClick ? (ev, row2) => p.onRowClick(row2, ev) : void 0,
-          onContextMenu: p.onRowContextMenu ? (ev, row2) => p.onRowContextMenu(row2, ev) : void 0,
-          tooltipHtml: (ev, row2) => {
-            if (row2.kind === "ability") {
-              showMeterTooltip(ev, abilityBarTooltipHtml(row2));
+          onClick: p.onRowClick ? (ev, row3) => p.onRowClick(row3, ev) : void 0,
+          onContextMenu: p.onRowContextMenu ? (ev, row3) => p.onRowContextMenu(row3, ev) : void 0,
+          tooltipHtml: (ev, row3) => {
+            if (row3.kind === "ability") {
+              showMeterTooltip(ev, abilityBarTooltipHtml(row3));
               return;
             }
-            if (row2.kind === "target") {
-              showMeterTooltip(ev, targetBarTooltipHtml(row2));
+            if (row3.kind === "target") {
+              showMeterTooltip(ev, targetBarTooltipHtml(row3));
               return;
             }
             showMeterTooltipLive(
               ev,
               (mods) => playerBarTooltipHtml(
                 {
-                  row: row2,
+                  row: row3,
                   metric,
                   segmentRef: p.segmentRef,
                   partyFocus: p.partyFocus,
@@ -28080,8 +31080,39 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/chrome/GameIcon.ts
+  var GAME_ICON_CSS = `
+.ecu-game-icon .ecu-meter-icon,
+.ecu-game-icon .ecu-meter-icon-clip {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+}
+.ecu-game-icon .ecu-meter-icon-clip img {
+  max-width: none !important;
+  max-height: none !important;
+}
+`;
+  var gameIconCssInjected = false;
+  function ensureGameIconCss() {
+    if (gameIconCssInjected) return;
+    gameIconCssInjected = true;
+    const existing = document.querySelector(
+      "style[data-ecu-game-icon-css]"
+    );
+    if (existing) {
+      existing.textContent = GAME_ICON_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-game-icon-css", "1");
+    el.textContent = GAME_ICON_CSS;
+    document.head.appendChild(el);
+  }
   function GameIcon(props) {
     const React = getReact();
+    ensureGameIconCss();
     const ref = React.useRef(null);
     const {
       id,
@@ -28125,7 +31156,7 @@ ${parts.map(cssSlice).join("\n")}
         overflow: "hidden",
         verticalAlign: "middle"
       },
-      title: title || id
+      title: title === "" ? void 0 : title || id
     });
   }
 
@@ -28281,20 +31312,20 @@ ${parts.map(cssSlice).join("\n")}
         "div",
         { className: "ecu-meter-death-side" },
         ...deaths.map(
-          (row2, i) => e(
+          (row3, i) => e(
             "button",
             {
-              key: `${row2.id}-${row2.at}`,
+              key: `${row3.id}-${row3.at}`,
               type: "button",
               className: i === idx ? "active" : "",
               onClick: () => setSel(i)
             },
             e("span", { className: "ecu-meter-death-side-num" }, `#${i + 1}`),
-            row2.name,
+            row3.name,
             e(
               "span",
               { className: "ecu-meter-death-side-time" },
-              new Date(row2.at).toLocaleTimeString()
+              new Date(row3.at).toLocaleTimeString()
             )
           )
         )
@@ -28470,33 +31501,33 @@ ${parts.map(cssSlice).join("\n")}
         "div",
         { className: "ecu-meter-bd-side-list", role: "listbox" },
         players.length ? players.map(
-          (row2) => e(
+          (row3) => e(
             "button",
             {
-              key: row2.id,
+              key: row3.id,
               type: "button",
               role: "option",
-              "aria-selected": row2.id === props.selectedActorId,
-              className: "ecu-meter-bd-side-item" + (row2.id === props.selectedActorId ? " is-active" : ""),
+              "aria-selected": row3.id === props.selectedActorId,
+              className: "ecu-meter-bd-side-item" + (row3.id === props.selectedActorId ? " is-active" : ""),
               onMouseEnter: (ev) => {
                 setHover({
                   kind: "player",
-                  id: row2.id,
+                  id: row3.id,
                   pos: hoverDetailPosFromEl(ev.currentTarget)
                 });
               },
               onMouseLeave: () => setHover(null),
               onClick: () => {
-                if (row2.id !== props.selectedActorId) {
-                  props.onSelectActor(row2.id, row2.name);
+                if (row3.id !== props.selectedActorId) {
+                  props.onSelectActor(row3.id, row3.name);
                 }
               }
             },
-            e("span", { className: "ecu-meter-bd-side-lab" }, row2.name),
+            e("span", { className: "ecu-meter-bd-side-lab" }, row3.name),
             e(
               "span",
               { className: "ecu-meter-bd-side-amt" },
-              formatCompactNumber(row2.value)
+              formatCompactNumber(row3.value)
             )
           )
         ) : e(
@@ -28568,8 +31599,8 @@ ${parts.map(cssSlice).join("\n")}
     } else if (you) {
       const youIdx = peers.findIndex((p) => p.id === you);
       if (youIdx > 1) {
-        const row2 = peers.splice(youIdx, 1)[0];
-        peers.splice(1, 0, row2);
+        const row3 = peers.splice(youIdx, 1)[0];
+        peers.splice(1, 0, row3);
       }
     }
     return peers;
@@ -28993,9 +32024,9 @@ ${parts.map(cssSlice).join("\n")}
       { id: "auras", label: "Auras" },
       { id: "compare", label: "Compare" }
     ];
-    const onSpellClick = (row2) => {
+    const onSpellClick = (row3) => {
       setTab("spells");
-      if (props.onSelectAbility) props.onSelectAbility(row2.id);
+      if (props.onSelectAbility) props.onSelectAbility(row3.id);
     };
     const hits = r.outcomes.hits;
     const crits = r.outcomes.crits;
@@ -29198,12 +32229,12 @@ ${parts.map(cssSlice).join("\n")}
       const buffs = [];
       const debuffs = [];
       for (let i = 0; i < rows.length; i++) {
-        const row2 = rows[i];
+        const row3 = rows[i];
         const named = {
-          ...row2,
-          name: conditionDisplayName(row2.id) || row2.name
+          ...row3,
+          name: conditionDisplayName(row3.id) || row3.name
         };
-        if (conditionKind(row2.id) === "debuff") debuffs.push(named);
+        if (conditionKind(row3.id) === "debuff") debuffs.push(named);
         else buffs.push(named);
       }
       return e(
@@ -29344,36 +32375,36 @@ ${parts.map(cssSlice).join("\n")}
         e("span", { title: "Refreshes (AL: not tracked)" }, "R")
       ),
       ...props.rows.map(
-        (row2, i) => e(
+        (row3, i) => e(
           "div",
           {
-            key: row2.id,
+            key: row3.id,
             className: "ecu-meter-uptime-row" + (i % 2 === 0 ? " is-alt" : ""),
-            title: `${row2.name}: ${fmtUptimeTimer(row2.activeMs)} active`
+            title: `${row3.name}: ${fmtUptimeTimer(row3.activeMs)} active`
           },
           e(
             "span",
             { className: "ecu-meter-uptime-name" },
             e(GameIcon, {
-              id: row2.id,
+              id: row3.id,
               kind: "condition",
               size: 16,
-              title: row2.name,
+              title: row3.name,
               className: "ecu-meter-uptime-ico"
             }),
-            e("span", { className: "ecu-meter-uptime-label" }, row2.name)
+            e("span", { className: "ecu-meter-uptime-label" }, row3.name)
           ),
           e(
             "span",
             { className: "ecu-meter-uptime-time" },
-            fmtUptimeTimer(row2.activeMs)
+            fmtUptimeTimer(row3.activeMs)
           ),
           e(
             "span",
             { className: "ecu-meter-uptime-pct" },
-            `${(row2.uptime * 100).toFixed(0)}%`
+            `${(row3.uptime * 100).toFixed(0)}%`
           ),
-          e("span", { className: "ecu-meter-uptime-apps" }, String(row2.apps)),
+          e("span", { className: "ecu-meter-uptime-apps" }, String(row3.apps)),
           e("span", { className: "ecu-meter-uptime-ref" }, "\u2014")
         )
       )
@@ -29399,9 +32430,9 @@ ${parts.map(cssSlice).join("\n")}
     const sec = Math.max(r.durationMs / 1e3, 1);
     const seg = resolveSegment(props.segmentRef);
     const fightLabel = (seg == null ? void 0 : seg.label) || "Current fight";
-    const openPlayer = props.onOpenPlayer ? (row2) => {
-      if (row2.kind === "player" || !row2.kind) {
-        props.onOpenPlayer(row2.id, row2.name);
+    const openPlayer = props.onOpenPlayer ? (row3) => {
+      if (row3.kind === "player" || !row3.kind) {
+        props.onOpenPlayer(row3.id, row3.name);
       }
     } : void 0;
     const panes = [
@@ -30340,7 +33371,7 @@ ${parts.map(cssSlice).join("\n")}
       ensure(id, a.name);
     }
   }
-  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs = 0) {
+  function laneDataSig(casts, conditions, gearSwaps, filter, start, rosterSig, deathCount, nowMs2 = 0) {
     const c0 = casts.length ? casts[0].at : 0;
     const c1 = casts.length ? casts[casts.length - 1].at : 0;
     const g1 = gearSwaps.length ? gearSwaps[gearSwaps.length - 1].at : 0;
@@ -30356,7 +33387,7 @@ ${parts.map(cssSlice).join("\n")}
       } else openUnknown++;
       if (c.startedAt > lastCond) lastCond = c.startedAt;
     }
-    const openTick = openUnknown > 0 && nowMs > 0 ? `|o${Math.floor(nowMs / 250)}` : "";
+    const openTick = openUnknown > 0 && nowMs2 > 0 ? `|o${Math.floor(nowMs2 / 250)}` : "";
     const expTick = maxExpected > 0 ? `|e${Math.floor(maxExpected / 250)}` : "";
     return `${filter}|${start}|${rosterSig}|${deathCount}|${casts.length}:${c0}:${c1}|${conditions.length}:${ended}:${lastCond}|${gearSwaps.length}:${g1}${openTick}${expTick}`;
   }
@@ -30412,8 +33443,8 @@ ${parts.map(cssSlice).join("\n")}
     }
     return start;
   }
-  function timelineHorizonSec(start, nowMs, casts, conditions) {
-    let end = Math.max(0, (nowMs - start) / 1e3);
+  function timelineHorizonSec(start, nowMs2, casts, conditions) {
+    let end = Math.max(0, (nowMs2 - start) / 1e3);
     for (let i = 0; i < casts.length; i++) {
       const c = casts[i];
       const t0 = Math.max(0, (c.at - start) / 1e3);
@@ -30422,12 +33453,12 @@ ${parts.map(cssSlice).join("\n")}
     }
     for (let i = 0; i < conditions.length; i++) {
       const c = conditions[i];
-      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs;
+      const endAt = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs2;
       end = Math.max(end, Math.max(0, (endAt - start) / 1e3));
     }
     return end;
   }
-  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs = Date.now()) {
+  function buildLanes(casts, conditions, deaths, gearSwaps, start, filter, names, ctypes, seg, partyFocus, nowMs2 = Date.now()) {
     var _a;
     const byId = {};
     const ensure = (id, fallbackName) => {
@@ -30456,7 +33487,7 @@ ${parts.map(cssSlice).join("\n")}
         if (ck === "debuff" && !wantDebuffs) continue;
         const lane = ensure(c.actorId);
         const t0 = Math.max(0, (c.startedAt - start) / 1e3);
-        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs;
+        const endMs = c.endedAt != null ? c.endedAt : c.expectedEndAt != null ? c.expectedEndAt : nowMs2;
         const t1 = Math.max(t0, (endMs - start) / 1e3);
         lane.blocks.push({
           kind: "condition",
@@ -30576,14 +33607,14 @@ ${parts.map(cssSlice).join("\n")}
   function timelineEmptyMsg(filter) {
     return filter === "all" ? "No cast / condition / gear markers yet." : filter === "cds" ? "No cast / cooldown markers yet." : filter === "debuffs" ? "No debuffs recorded yet." : filter === "gear" ? "No gear swaps recorded yet." : "No buffs recorded yet.";
   }
-  function timelineGutterLane(lane, li, selectedId, selectLane) {
+  function timelineGutterLane(lane, li, selectedId2, selectLane) {
     const rowH = laneRowPx(lane.cats);
     const tip = lane.ctype ? `${lane.name} \xB7 ${lane.ctype}` : lane.name;
     return e(
       "div",
       {
         key: lane.id,
-        className: "ecu-meter-tl-gutter-lane" + (li % 2 === 1 ? " is-alt" : "") + (selectedId === lane.id ? " is-selected" : "") + (lane.cats.length >= 2 ? " is-split" : ""),
+        className: "ecu-meter-tl-gutter-lane" + (li % 2 === 1 ? " is-alt" : "") + (selectedId2 === lane.id ? " is-selected" : "") + (lane.cats.length >= 2 ? " is-split" : ""),
         title: tip,
         style: {
           color: classColors[(lane.ctype || "").toLowerCase()] || "#b0bec5",
@@ -30756,7 +33787,7 @@ ${parts.map(cssSlice).join("\n")}
       TimelineEvent = React.memo(TimelineEventInner, timelineEventEqual);
     }
     const [filter, setFilter] = React.useState("all");
-    const [selectedId, setSelectedId] = React.useState(null);
+    const [selectedId2, setSelectedId] = React.useState(null);
     const [zoom, setZoom] = React.useState(1);
     const [rulerTicks, setRulerTicks] = React.useState([]);
     const [viewRange, setViewRange] = React.useState(TL_VIEW_OPEN);
@@ -31200,11 +34231,11 @@ ${parts.map(cssSlice).join("\n")}
       isLive ? elapsedSec : void 0
     ) : viewRange;
     const selectLane = (laneId) => {
-      setSelectedId(selectedId === laneId ? null : laneId);
+      setSelectedId(selectedId2 === laneId ? null : laneId);
     };
-    const gutterLane = (lane, li) => timelineGutterLane(lane, li, selectedId, selectLane);
+    const gutterLane = (lane, li) => timelineGutterLane(lane, li, selectedId2, selectLane);
     const trackLane = (lane, li) => timelineTrackLane(lane, li, {
-      selectedId,
+      selectedId: selectedId2,
       selectLane,
       renderRange,
       pps,
@@ -32094,15 +35125,15 @@ ${parts.map(cssSlice).join("\n")}
             entities,
             highlightId,
             live: barsProps.live,
-            onRowClick: (row2) => {
+            onRowClick: (row3) => {
               onPatchInstance({
                 query: {
                   kind: "details",
-                  actorId: row2.id,
+                  actorId: row3.id,
                   metric: "damage",
                   primary: "total"
                 },
-                label: detailsWindowTitle(row2.name, "damage", "total")
+                label: detailsWindowTitle(row3.name, "damage", "total")
               });
             }
           })
@@ -33874,19 +36905,19 @@ ${parts.map(cssSlice).join("\n")}
     const title = isInspector ? "Player Breakdown" : isReport ? "Encounter Details" : titleMode;
     const durSec = resolved ? Math.max(segmentDurationMs(resolved) / 1e3, 1) : 0;
     const barHighlightId = followLive ? highlightId : partyChrome.youId;
-    const onRowClick = (row2, ev) => {
+    const onRowClick = (row3, ev) => {
       if ((ev == null ? void 0 : ev.button) != null && ev.button !== 0) return;
       if (!canInspectMeterRow(instance)) return;
       openInspectorFromRow({
         instance,
-        row: row2,
+        row: row3,
         onFocusInspector,
         onPatchInstance
       });
     };
-    const onRowContextMenu = (row2, ev) => {
+    const onRowContextMenu = (row3, ev) => {
       ev.preventDefault();
-      onRowClick(row2);
+      onRowClick(row3);
     };
     const cycle = (delta) => {
       if (!canCycleBarMode(activeQuery)) return;
@@ -34640,7 +37671,7 @@ ${parts.map(cssSlice).join("\n")}
         "button",
         {
           type: "button",
-          title: "Replay intro spotlight tour",
+          title: "Settings",
           style: {
             cursor: "pointer",
             padding: toggleBtnPad,
@@ -34648,35 +37679,3069 @@ ${parts.map(cssSlice).join("\n")}
             minHeight: touchPad ? "40px" : void 0,
             border: "1px solid #555",
             background: "#1a1a1a",
-            color: "#bbb",
+            color: "#eee",
             textShadow: "none",
             fontWeight: "normal"
           },
           onPointerDown: stopPtr,
-          onClick: () => props.onReplayIntroTour()
+          onClick: () => props.onOpenSettings()
         },
-        "Intro"
+        "Settings"
+      )
+    );
+  }
+
+  // src/ui/frames/settingsPanelCss.ts
+  var SETTINGS_PANEL_CSS = `
+.ecu-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483002;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+.ecu-settings-modal {
+  width: min(980px, 96vw);
+  height: min(760px, 92vh);
+  display: flex;
+  flex-direction: column;
+  background: #14171a;
+  border: 1px solid #5c636a;
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  color: #eef1f4;
+  font-size: 20px;
+  pointer-events: auto;
+  overflow: hidden;
+}
+.ecu-settings-hd {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #2e343a;
+  flex-shrink: 0;
+  font-size: 20px;
+  background: #161a1e;
+}
+.ecu-settings-hd-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ecu-settings-search {
+  width: min(460px, 100%);
+  font-family: inherit;
+  font-size: 19px;
+  padding: 10px 14px;
+  background: #101418;
+  color: #eef1f4;
+  border: 1px solid #3d4650;
+  border-radius: 4px;
+}
+.ecu-settings-search::placeholder {
+  color: #77818c;
+}
+.ecu-settings-search:focus {
+  outline: none;
+  border-color: #9a8451;
+}
+.ecu-settings-split {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-settings-nav {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid #2e343a;
+  padding: 14px 10px;
+  background: rgba(0, 0, 0, 0.12);
+}
+.ecu-settings-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ccc;
+  font-size: 19px;
+  padding: 11px 12px;
+  margin-bottom: 6px;
+}
+.ecu-settings-nav-btn.is-dim {
+  opacity: 0.45;
+}
+.ecu-settings-nav-btn[aria-pressed="true"] {
+  border-color: #886;
+  background: #2a2210;
+  color: #ffe08a;
+}
+.ecu-settings-nav-count {
+  color: #88919a;
+  font-size: 16px;
+}
+.ecu-settings-pane {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  padding: 18px 20px;
+}
+.ecu-settings-pane-title {
+  color: #ffe08a;
+  font-size: 26px;
+  margin-bottom: 6px;
+}
+.ecu-settings-pane-desc {
+  color: #9aa3ad;
+  font-size: 18px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+}
+.ecu-settings-sec {
+  color: #ffe08a;
+  margin: 16px 0 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 224, 138, 0.25);
+  font-size: 21px;
+}
+.ecu-settings-sec:first-child {
+  margin-top: 0;
+}
+.ecu-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 8px 0;
+  font-size: 21px;
+}
+.ecu-settings-row select,
+.ecu-settings-row input[type="number"],
+.ecu-settings-row input[type="text"] {
+  font-family: inherit;
+  font-size: 19px;
+  min-width: 120px;
+  background: #1a1a1a;
+  color: #eee;
+  border: 1px solid #555;
+  padding: 6px 10px;
+}
+.ecu-settings-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.ecu-settings-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 4px;
+  max-height: 140px;
+  overflow: auto;
+}
+.ecu-settings-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 18px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #ddd;
+}
+.ecu-settings-pick input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.ecu-settings-pick[data-on="1"] {
+  border-color: #886;
+  background: #2a2210;
+  color: #ffe08a;
+}
+.ecu-settings-preview {
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid #333;
+  background: rgba(0, 0, 0, 0.35);
+  min-height: 220px;
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  pointer-events: none;
+  overflow: auto;
+  contain: layout paint;
+}
+.ecu-settings-preview-rail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 200px;
+}
+.ecu-settings-preview-rail[data-orient="horizontal"] {
+  min-height: 96px;
+  min-width: 280px;
+}
+.ecu-settings-preview-side {
+  flex: 0 1 220px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.ecu-settings-preview .ecu-abil-panel[data-orient="vertical"] .ecu-abil-sections {
+  flex-direction: row;
+  gap: 18px;
+}
+.ecu-settings-preview .ecu-abil-panel[data-orient="vertical"] .ecu-abil-section {
+  flex: 0 0 auto;
+  width: var(--abil-rail-w, 50px);
+}
+.ecu-settings-preview .ecu-abil-panel[data-orient="horizontal"] {
+  min-height: 72px;
+  width: 100%;
+}
+.ecu-settings-preview .ecu-abil-panel[data-orient="horizontal"] .ecu-abil-sections {
+  flex-direction: column;
+  width: 100%;
+  gap: 12px;
+}
+.ecu-settings-preview .ecu-abil-panel[data-orient="horizontal"] .ecu-abil-section {
+  flex: 0 0 auto;
+  width: 100%;
+  height: calc(var(--abil-rail-w, 50px) + 8px);
+}
+.ecu-settings-lead {
+  color: #aaa;
+  font-size: 18px;
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+.ecu-settings-row-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ecu-settings-row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ecu-settings-help {
+  color: #888;
+  font-size: 16px;
+}
+.ecu-settings-tag {
+  font-size: 12px;
+  padding: 2px 7px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ecu-settings-tag[data-tag="debug"] {
+  border-color: #664;
+  color: #cc8;
+}
+.ecu-settings-tag[data-tag="static"] {
+  border-color: #456;
+  color: #9ab;
+}
+.ecu-settings-tag[data-tag="legacy"] {
+  border-color: #544;
+  color: #c88;
+}
+.ecu-settings-reset {
+  cursor: pointer;
+  background: #1a1a1a;
+  border: 1px solid #555;
+  color: #eee;
+  font: inherit;
+  font-size: 18px;
+  padding: 6px 14px;
+}
+.ecu-settings-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ecu-settings-color-swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  cursor: pointer;
+}
+.ecu-settings-color-text {
+  width: 92px;
+  font: inherit;
+  font-size: 17px;
+  background: #1a1a1a;
+  color: #eee;
+  border: 1px solid #555;
+  padding: 5px 8px;
+}
+.ecu-settings-color-clear {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #444;
+  color: #888;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+.ecu-settings-color-clear:hover {
+  border-color: #866;
+  color: #faa;
+}
+.ecu-settings-abil-list {
+  margin-top: 8px;
+}
+.ecu-settings-abil-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 20px;
+}
+.ecu-settings-abil-id {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ecu-settings-abil-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ecu-settings-abil-name {
+  color: #ddd;
+  font-size: 20px;
+}
+.ecu-settings-abil-key,
+.ecu-settings-abil-icon {
+  color: #777;
+}
+.ecu-settings-abil-key {
+  font-size: 16px;
+}
+.ecu-settings-abil-icon {
+  flex: 0 0 auto;
+}
+.ecu-settings-abil-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ccc;
+  font-size: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ecu-settings-abil-check input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+.ecu-settings-abil-clear {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #444;
+  color: #888;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+.ecu-settings-abil-clear:hover {
+  border-color: #866;
+  color: #faa;
+}
+`;
+  var injected4 = false;
+  function ensureSettingsPanelCss() {
+    if (injected4) return;
+    injected4 = true;
+    const existing = document.querySelector(
+      "style[data-ecu-settings-css]"
+    );
+    if (existing) {
+      existing.textContent = SETTINGS_PANEL_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-settings-css", "1");
+    el.textContent = SETTINGS_PANEL_CSS;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/frames/abilityTimelineMotion.ts
+  function tickAbilityMotion(host2, now = Date.now()) {
+    const nodes = host2.querySelectorAll("[data-abil-ends]");
+    for (let i = 0; i < nodes.length; i++) {
+      const el = nodes[i];
+      const ends = Number(el.getAttribute("data-abil-ends"));
+      const cd = Number(el.getAttribute("data-abil-cd"));
+      const win = Number(el.getAttribute("data-abil-win"));
+      if (!(ends > 0) || !(cd > 0) || !(win > 0)) continue;
+      const rem = Math.max(0, ends - now);
+      let pos = abilityScrollPos(rem, cd, rem <= 0, win);
+      const lastRaw = el.getAttribute("data-abil-pos");
+      const last = lastRaw ? Number(lastRaw) : NaN;
+      if (Number.isFinite(last) && pos > last + 0.04) {
+        pos = last;
+      }
+      el.setAttribute("data-abil-pos", pos.toFixed(4));
+      applyAbilityMotion(el, pos);
+    }
+  }
+  function applyAbilityMotion(el, pos) {
+    const timeline = el.closest(".ecu-abil-timeline");
+    const panel = el.closest(".ecu-abil-panel");
+    const orient = (timeline == null ? void 0 : timeline.getAttribute("data-orient")) || "vertical";
+    const reverse = (panel == null ? void 0 : panel.getAttribute("data-reverse")) === "true";
+    const kind = el.getAttribute("data-abil-kind");
+    const pct = (pos * 100).toFixed(4) + "%";
+    if (kind === "trail") {
+      if (orient === "vertical") {
+        el.style.height = pct;
+        el.style.width = "2px";
+        if (reverse) {
+          el.style.top = "0";
+          el.style.bottom = "auto";
+        } else {
+          el.style.bottom = "0";
+          el.style.top = "auto";
+        }
+      } else {
+        el.style.width = pct;
+        el.style.height = "2px";
+        if (reverse) {
+          el.style.left = "0";
+          el.style.right = "auto";
+        } else {
+          el.style.right = "0";
+          el.style.left = "auto";
+        }
+      }
+      return;
+    }
+    if (orient === "vertical") {
+      if (reverse) {
+        el.style.top = pct;
+        el.style.bottom = "auto";
+      } else {
+        el.style.bottom = pct;
+        el.style.top = "auto";
+      }
+    } else if (reverse) {
+      el.style.left = pct;
+      el.style.right = "auto";
+    } else {
+      el.style.right = pct;
+      el.style.left = "auto";
+    }
+  }
+
+  // src/ui/hooks/useAbilityTimelineLive.ts
+  var CLOCK_MS = 100;
+  var clockListeners = [];
+  var clockId = 0;
+  var clockVisBound = false;
+  function notifyAbilityClock() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    for (let i = 0; i < clockListeners.length; i++) {
+      clockListeners[i]();
+    }
+  }
+  function onAbilityClockVisibility() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    notifyAbilityClock();
+  }
+  function subscribeAbilityClock(listener) {
+    clockListeners.push(listener);
+    if (!clockId) {
+      clockId = window.setInterval(notifyAbilityClock, CLOCK_MS);
+      if (!clockVisBound && typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", onAbilityClockVisibility);
+        clockVisBound = true;
+      }
+    }
+    return () => {
+      const idx = clockListeners.indexOf(listener);
+      if (idx >= 0) clockListeners.splice(idx, 1);
+      if (!clockListeners.length && clockId) {
+        window.clearInterval(clockId);
+        clockId = 0;
+      }
+    };
+  }
+  var liveCache = null;
+  function resolveAbilityTimelineLive(args, now = Date.now()) {
+    const bucket = Math.floor(now / CLOCK_MS);
+    if (liveCache && liveCache.bucket === bucket && liveCache.args.entities === args.entities && liveCache.args.selectedEntity === args.selectedEntity && liveCache.args.observing === args.observing && liveCache.args.layoutEdit === args.layoutEdit && liveCache.args.dummyEpoch === args.dummyEpoch && liveCache.args.dummyMtypes === args.dummyMtypes) {
+      return liveCache.value;
+    }
+    const prefs = getAbilityTimelinePrefs();
+    const live2 = buildAbilityTimelinePanelModel(
+      args.entities,
+      args.selectedEntity,
+      args.observing,
+      now,
+      prefs
+    );
+    const wantDummy = !!args.layoutEdit || args.dummyEpoch != null;
+    const model = live2 != null ? live2 : wantDummy ? dummyAbilityTimelineModel(prefs, now, args.dummyEpoch, args.dummyMtypes) : null;
+    const loopingDummy = args.dummyEpoch != null;
+    const hasActive = !!(loopingDummy || model && model.sections.some((section3) => section3.rows.some((r) => r.ms > 0)));
+    const tickKey = (model == null ? void 0 : model.sections.map((s) => s.targetId).join("|")) || "";
+    const value = { prefs, model, hasActive, tickKey };
+    liveCache = { bucket, args, value };
+    return value;
+  }
+  function useAbilityTimelineLive(args) {
+    const React = getReact();
+    const [clock, setClock] = React.useState(0);
+    void clock;
+    const resolved = resolveAbilityTimelineLive(args);
+    React.useEffect(() => {
+      if (!resolved.hasActive) return;
+      return subscribeAbilityClock(() => setClock((n) => n + 1));
+    }, [resolved.hasActive, resolved.tickKey]);
+    return resolved;
+  }
+  function useAbilityTimelineMotion(hostRef, hasActive, tickKey) {
+    const React = getReact();
+    React.useLayoutEffect(() => {
+      const host2 = hostRef.current;
+      if (!host2) return;
+      tickAbilityMotion(host2);
+      if (!hasActive) return;
+      let raf2 = 0;
+      let live2 = true;
+      const loop = () => {
+        if (!live2) return;
+        tickAbilityMotion(host2);
+        raf2 = window.requestAnimationFrame(loop);
+      };
+      raf2 = window.requestAnimationFrame(loop);
+      return () => {
+        live2 = false;
+        window.cancelAnimationFrame(raf2);
+      };
+    }, [hasActive, tickKey]);
+  }
+
+  // src/instance/abilityTimelineChrome.ts
+  var ABILITY_TICK_EVERY_MS = 5e3;
+  var ABILITY_CD_CRIT_MS = 3e3;
+  var ABILITY_BIGICON_MIN = 64;
+  function timelineTickMs(windowMs, everyMs = ABILITY_TICK_EVERY_MS) {
+    const out = [];
+    if (!(windowMs > 0) || !(everyMs > 0)) return out;
+    for (let t = everyMs; t < windowMs; t += everyMs) {
+      out.push(t);
+    }
+    return out;
+  }
+  function cdHighlightKind(ms, ready, imminentMs = DEFAULT_ABILITY_TIMELINE_PREFS.imminentMs) {
+    if (ready || ms <= 0) return "none";
+    const critMs = Math.min(ABILITY_CD_CRIT_MS, imminentMs);
+    if (ms <= critMs) return "crit";
+    if (ms <= imminentMs) return "warn";
+    return "none";
+  }
+  function formatAbilityCountdown(ms) {
+    if (ms <= 0) return "";
+    const sec = ms / 1e3;
+    if (sec > 60) {
+      const minutes = sec % 60 > 30 ? Math.ceil(sec / 60) : Math.floor(sec / 60);
+      return minutes + "m";
+    }
+    return String(Math.ceil(sec));
+  }
+  function nearTimelineTick(ms, windowMs, everyMs = ABILITY_TICK_EVERY_MS, slopMs = 200) {
+    if (ms <= 0) return false;
+    const ticks = timelineTickMs(windowMs, everyMs);
+    for (let i = 0; i < ticks.length; i++) {
+      if (Math.abs(ms - ticks[i]) <= slopMs) return true;
+    }
+    return false;
+  }
+  function bigIconSize(iconSize) {
+    return Math.max(ABILITY_BIGICON_MIN, Math.round(iconSize * 1.8));
+  }
+  function collectBigIcons(sections, prefs) {
+    const out = [];
+    for (let i = 0; i < sections.length; i++) {
+      const section3 = sections[i];
+      const multi = sections.length > 1;
+      for (let j = 0; j < section3.rows.length; j++) {
+        const row3 = section3.rows[j];
+        if (row3.ready || row3.ms <= 0 || row3.ms > prefs.imminentMs) continue;
+        out.push({
+          key: `${section3.targetId}:${row3.id}`,
+          id: row3.id,
+          name: multi ? `${section3.targetName} \xB7 ${row3.name}` : row3.name,
+          skillName: row3.name,
+          caster: section3.targetName,
+          ms: row3.ms,
+          cooldown: row3.cooldown,
+          mtype: section3.targetMtype,
+          highlight: cdHighlightKind(row3.ms, false, prefs.imminentMs)
+        });
+      }
+    }
+    out.sort((a, b) => a.ms - b.ms || a.id.localeCompare(b.id));
+    return out;
+  }
+  function growFlexDirection(dir) {
+    switch (dir) {
+      case "right":
+        return "row";
+      case "left":
+        return "row-reverse";
+      case "down":
+        return "column";
+      case "up":
+        return "column-reverse";
+      default: {
+        const _exhaustive = dir;
+        return _exhaustive;
+      }
+    }
+  }
+  function rowCdClass(row3, prefs) {
+    const kind = cdHighlightKind(row3.ms, row3.ready, prefs.imminentMs);
+    if (kind === "crit") return "is-crit";
+    if (kind === "warn") return "is-warn";
+    if (row3.ready) return "is-ready";
+    return "";
+  }
+
+  // src/ui/frames/abilityTimelineCss.ts
+  var ABILITY_TIMELINE_CSS = `
+#comm-ui .comm-pos-panel.comm-pos-abilityTimeline,
+#comm-ui .comm-pos-panel.comm-pos-abilityTimeline .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-abilityTimelineBigIcon,
+#comm-ui .comm-pos-panel.comm-pos-abilityTimelineBigIcon .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-abilityTimelineHighlight,
+#comm-ui .comm-pos-panel.comm-pos-abilityTimelineHighlight .comm-pos-panel-body {
+  background: transparent;
+  height: 100%;
+  overflow: visible !important;
+}
+
+.ecu-abil-panel {
+  font-size: 13px;
+  --ecu-abil-gold: #ffd28a;
+  --ecu-abil-accent: #e8c96a;
+  --abil-icon: 44px;
+  --abil-icon-margin: 4px;
+  --abil-rail-w: calc(var(--abil-icon) + 6px);
+  --abil-static-ratio: 0.42;
+  --abil-rail-tint: transparent;
+  position: relative;
+  min-width: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.ecu-abil-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ecu-abil-panel .ecu-abil-sections {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+.ecu-abil-section + .ecu-abil-section {
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ecu-abil-section-name {
+  font-size: 13px;
+  color: var(--ecu-abil-gold);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ecu-abil-panel .ecu-abil-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-section-name {
+  max-width: var(--abil-rail-w);
+  font-size: 13px;
+  color: rgba(255, 210, 138, 0.72);
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-section-name {
+  max-width: 100%;
+  font-size: 13px;
+  color: rgba(255, 210, 138, 0.72);
+}
+
+.ecu-abil-timeline {
+  --abil-gap: 6px;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--abil-gap);
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-timeline {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-timeline {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  gap: 0;
+}
+
+.ecu-abil-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ecu-abil-zone-label {
+  font-size: 13px;
+  color: #888;
+  letter-spacing: 0.04em;
+}
+
+.ecu-abil-icon {
+  width: var(--abil-icon);
+  height: var(--abil-icon);
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  background: rgba(8, 8, 8, 0.85);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.ecu-abil-scroll-marker .ecu-abil-icon,
+.ecu-abil-scroll-marker .ecu-game-icon,
+.ecu-abil-bigicon .ecu-abil-icon,
+.ecu-abil-bigicon .ecu-game-icon {
+  pointer-events: none;
+}
+
+.ecu-abil-icon--imminent {
+  border-color: var(--ecu-abil-gold);
+  box-shadow: 0 0 10px rgba(232, 201, 106, 0.55);
+}
+
+.ecu-abil-scroll-marker--cast .ecu-abil-icon {
+  animation: ecu-abil-flash 0.45s ease-out;
+}
+
+@keyframes ecu-abil-flash {
+  0% {
+    border-color: #fff;
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.8);
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  }
+}
+
+.ecu-abil-icon img {
+  image-rendering: pixelated;
+}
+
+.ecu-abil-icon .ecu-meter-icon,
+.ecu-abil-icon .ecu-meter-icon-clip {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+}
+
+.ecu-abil-icon .ecu-meter-icon-clip img {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.ecu-abil-icon .ecu-meter-icon-ab {
+  font-size: calc(var(--abil-icon) * 0.55);
+  line-height: var(--abil-icon);
+}
+
+.ecu-abil-legend {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  color: #888;
+  line-height: 1.4;
+}
+
+.ecu-abil-timeline {
+  gap: 4px;
+}
+
+.ecu-abil-scroll-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ecu-abil-panel .ecu-abil-scroll-labels {
+  display: none;
+}
+
+.ecu-abil-scroll-lane {
+  position: relative;
+  min-width: 0;
+  flex: 0 0 auto;
+  min-height: calc(var(--abil-icon) + 24px);
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-scroll-lane {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 120px;
+  width: var(--abil-rail-w);
+  background: var(--abil-rail-tint);
+  border-radius: 3px;
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-scroll-lane::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-scroll-lane::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: calc(var(--abil-static-ratio) * 100%);
+  width: 0;
+  transform: translateX(-50%);
+  border-left: 1px dashed rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+.ecu-abil-panel[data-orient="vertical"][data-reverse="true"] .ecu-abil-scroll-lane::after {
+  top: auto;
+  bottom: 0;
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-scroll-lane {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 120px;
+  height: var(--abil-rail-w);
+  min-height: var(--abil-rail-w);
+  background: var(--abil-rail-tint);
+  border-radius: 3px;
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-scroll-lane::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-scroll-lane::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: calc(var(--abil-static-ratio) * 100%);
+  height: 0;
+  transform: translateY(-50%);
+  border-top: 1px dashed rgba(255, 255, 255, 0.16);
+  pointer-events: none;
+}
+
+.ecu-abil-panel[data-orient="horizontal"][data-reverse="true"] .ecu-abil-scroll-lane::after {
+  left: auto;
+  right: 0;
+}
+
+.ecu-abil-tick {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-tick {
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-tick {
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.ecu-abil-tick-label {
+  position: absolute;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ecu-abil-timeline[data-orient="vertical"] .ecu-abil-tick-label {
+  left: 100%;
+  margin-left: 4px;
+  top: 0;
+  transform: translateY(-50%);
+}
+
+.ecu-abil-panel[data-chrome="inward"][data-orient="vertical"] .ecu-abil-tick-label {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+.ecu-abil-timeline[data-orient="horizontal"] .ecu-abil-tick-label {
+  bottom: 100%;
+  margin-bottom: 3px;
+  left: 0;
+  transform: translateX(-50%);
+}
+
+.ecu-abil-panel[data-chrome="inward"][data-orient="horizontal"] .ecu-abil-tick-label {
+  bottom: auto;
+  top: 100%;
+  margin-bottom: 0;
+  margin-top: 3px;
+}
+
+.ecu-abil-scroll-marker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  z-index: 1;
+  pointer-events: auto;
+  cursor: help;
+  transition: none;
+}
+
+/* Beat layout-edit body * { pointer-events: none }. */
+#comm-ui .ecu-abil-scroll-marker,
+#comm-ui .ecu-abil-bigicon,
+#comm-ui .ecu-abil-highlight {
+  pointer-events: auto !important;
+}
+
+.ecu-abil-icon-stack {
+  position: relative;
+  display: flex;
+  line-height: 0;
+}
+
+.ecu-abil-icon-cd {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-size: 13px;
+  font-weight: normal;
+  text-shadow: none;
+  line-height: 1.1;
+  padding: 0 2px;
+  color: #eee;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.ecu-abil-icon-name {
+  position: absolute;
+  font-size: 12px;
+  color: #ddd;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.ecu-abil-panel[data-text-anchor="left"] .ecu-abil-icon-name {
+  right: 100%;
+  margin-right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ecu-abil-panel[data-text-anchor="right"] .ecu-abil-icon-name {
+  left: 100%;
+  margin-left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ecu-abil-panel[data-text-anchor="top"] .ecu-abil-icon-name {
+  bottom: 100%;
+  left: 50%;
+  margin-bottom: 2px;
+  transform: translateX(-50%);
+}
+
+.ecu-abil-panel[data-text-anchor="bottom"] .ecu-abil-icon-name {
+  top: 100%;
+  left: 50%;
+  margin-top: 2px;
+  transform: translateX(-50%);
+}
+
+.ecu-abil-icon-cd.is-ready {
+  color: #8fd48f;
+}
+
+.ecu-abil-icon-cd.is-warn,
+.ecu-abil-bigicon-cd.is-warn {
+  color: #ffe066;
+}
+
+.ecu-abil-icon-cd.is-crit,
+.ecu-abil-bigicon-cd.is-crit {
+  color: #ff5a5a;
+}
+
+.ecu-abil-scroll-marker--tickflash .ecu-abil-icon {
+  box-shadow: 0 0 12px rgba(255, 210, 138, 0.85);
+  border-color: var(--ecu-abil-gold);
+}
+
+.ecu-abil-scroll-trail {
+  position: absolute;
+  pointer-events: none;
+  transition: none;
+}
+
+.ecu-abil-panel[data-orient="vertical"] .ecu-abil-scroll-trail {
+  width: 2px;
+  background: linear-gradient(180deg, rgba(120, 180, 120, 0.45), transparent);
+}
+
+.ecu-abil-panel[data-orient="horizontal"] .ecu-abil-scroll-trail {
+  height: 2px;
+  background: linear-gradient(90deg, rgba(120, 180, 120, 0.45), transparent);
+}
+
+.ecu-abil-bigicons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  pointer-events: none;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ecu-abil-bigicon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+  cursor: help;
+}
+.ecu-abil-bigicon .ecu-abil-icon {
+  border-width: 2px;
+}
+.ecu-abil-bigicon--warn .ecu-abil-icon,
+.ecu-abil-bigicon--crit .ecu-abil-icon {
+  border-color: var(--ecu-abil-gold, #ffd28a);
+  box-shadow: 0 0 14px rgba(232, 201, 106, 0.65);
+}
+.ecu-abil-bigicon--crit .ecu-abil-icon {
+  border-color: #ff5a5a;
+  box-shadow: 0 0 14px rgba(255, 90, 90, 0.55);
+}
+.ecu-abil-bigicon-cd {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 22px;
+  line-height: 1;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px #000, 0 0 6px #000;
+  pointer-events: none;
+}
+.ecu-abil-bigicon-name {
+  font-size: 12px;
+  color: #ddd;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
+}
+
+.ecu-abil-highlights {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ecu-abil-highlight {
+  font-size: 22px;
+  line-height: 1.15;
+  color: #ffe8b0;
+  text-shadow: 0 1px 3px #000, 0 0 8px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: help;
+}
+.ecu-abil-highlight.is-warn {
+  color: #ffe066;
+}
+.ecu-abil-highlight.is-crit {
+  color: #ff6b6b;
+}
+
+.ecu-meter-tt-foot {
+  margin-top: 8px;
+  color: #9aa8bc;
+  font-size: var(--meter-tt-foot, 13px);
+  line-height: 1.35;
+}
+`;
+  function ensureAbilityTimelineCss() {
+    const css = ABILITY_TIMELINE_CSS + METER_HOVER_TIP_CSS;
+    const existing = document.querySelector(
+      "style[data-ecu-abil-css]"
+    );
+    if (existing) {
+      existing.textContent = css;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-abil-css", "1");
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/frames/abilityTimelineRenderUtil.ts
+  function stackStep(iconSize, iconMargin) {
+    return Math.max(20, Math.round(iconSize * 0.86) + iconMargin);
+  }
+  function abilityIcon(id, imminent, size, mtype) {
+    return e(
+      "div",
+      {
+        className: ["ecu-abil-icon", imminent ? "ecu-abil-icon--imminent" : ""].filter(Boolean).join(" ")
+      },
+      e(GameIcon, {
+        id,
+        kind: "skill",
+        size,
+        mtype,
+        title: ""
+      })
+    );
+  }
+  function motionDataset(row3, prefs, kind) {
+    if (row3.ready || !(row3.ms > 0) || !(row3.endsAt > 0)) return {};
+    return {
+      "data-abil-kind": kind,
+      "data-abil-ends": String(row3.endsAt),
+      "data-abil-cd": String(row3.cooldown),
+      "data-abil-win": String(prefs.windowMs)
+    };
+  }
+  function rowKey(section3, row3) {
+    return `${section3.targetId}:${row3.id}`;
+  }
+  function cycleKey(section3, row3) {
+    return `${rowKey(section3, row3)}:g${row3.castGen}`;
+  }
+  function axisStart(pos, reverse) {
+    return { key: reverse ? "top" : "bottom", value: `${pos * 100}%` };
+  }
+  function tickStyle(pos, prefs) {
+    if (prefs.orient === "vertical") {
+      const start = axisStart(pos, prefs.reverse);
+      return { [start.key]: start.value };
+    }
+    const edge = prefs.reverse ? "left" : "right";
+    return { [edge]: `${pos * 100}%` };
+  }
+  function markerStyle(row3, stack, prefs) {
+    const step = stackStep(prefs.iconSize, prefs.iconMargin);
+    const stackShift = row3.pinned && stack > 0 ? stack * step : 0;
+    const half = Math.round(prefs.iconSize / 2);
+    const live2 = row3.endsAt > 0 && !row3.ready && row3.ms > 0;
+    if (prefs.orient === "vertical") {
+      const y = (prefs.reverse ? -half : half) + (prefs.reverse ? stackShift : -stackShift);
+      const style2 = {
+        left: "50%",
+        transform: `translate3d(-50%, ${y}px, 0)`
+      };
+      if (!live2) {
+        const start = axisStart(row3.scrollPos, prefs.reverse);
+        style2[start.key] = start.value;
+      }
+      return style2;
+    }
+    const x = prefs.reverse ? -half : half;
+    const style = {
+      top: "50%",
+      transform: `translate3d(${x}px, ${-half + stackShift}px, 0)`
+    };
+    if (!live2) {
+      const edge = prefs.reverse ? "left" : "right";
+      style[edge] = `${row3.scrollPos * 100}%`;
+    }
+    return style;
+  }
+  function trailStyle(row3, prefs) {
+    const live2 = row3.endsAt > 0;
+    if (prefs.orient === "vertical") {
+      const style2 = {
+        left: "50%",
+        width: "2px",
+        transform: "translateX(-50%)"
+      };
+      if (!live2) {
+        if (prefs.reverse) {
+          style2.top = "0";
+          style2.height = `${row3.scrollPos * 100}%`;
+        } else {
+          style2.bottom = "0";
+          style2.height = `${row3.scrollPos * 100}%`;
+        }
+      }
+      return style2;
+    }
+    const style = {
+      top: "50%",
+      height: "2px",
+      transform: "translateY(-50%)"
+    };
+    if (!live2) {
+      if (prefs.reverse) {
+        style.left = "0";
+        style.width = `${row3.scrollPos * 100}%`;
+      } else {
+        style.right = "0";
+        style.width = `${row3.scrollPos * 100}%`;
+      }
+    }
+    return style;
+  }
+
+  // src/ui/frames/abilityTimelineTip.ts
+  function cooldownLabel(ms) {
+    if (!(ms > 0)) return "";
+    if (ms >= 1e3) {
+      const sec = Math.round(ms / 100) / 10;
+      return Number.isInteger(sec) ? sec + "s" : sec.toFixed(1) + "s";
+    }
+    return ms + "ms";
+  }
+  function skillExplanation(id) {
+    var _a, _b, _c;
+    if (typeof window === "undefined") return "";
+    const raw = (_c = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[id]) == null ? void 0 : _c.explanation;
+    return typeof raw === "string" ? raw : "";
+  }
+  function abilityTimelineTipHtml(args) {
+    const explain = skillExplanation(args.abilityId);
+    const cd = cooldownLabel(args.cooldown);
+    const lines = [
+      `<h4>${skillIconHtml(args.abilityId, METER_TT_ICON)} ${escapeHtml(args.abilityName)}</h4>`,
+      `<div class="line"><span>Caster</span><b>${escapeHtml(args.caster)}</b></div>`,
+      `<div class="line"><span>Ready</span><b>${escapeHtml(args.remainingLabel)}</b></div>`
+    ];
+    if (cd) {
+      lines.push(
+        `<div class="line"><span>Cooldown</span><b>${escapeHtml(cd)}</b></div>`
+      );
+    }
+    if (explain) {
+      lines.push(
+        `<div class="ecu-meter-tt-foot">${escapeHtml(explain)}</div>`
+      );
+    }
+    return lines.join("");
+  }
+  function abilityTimelineTipHandlers(html) {
+    return {
+      onMouseEnter: (ev) => showMeterTooltip(ev, html),
+      onMouseMove: (ev) => showMeterTooltip(ev, html),
+      onMouseLeave: () => hideMeterTooltip()
+    };
+  }
+  var ABILITY_TIP_HIT_STYLE = {
+    pointerEvents: "auto",
+    cursor: "help"
+  };
+  function abilityTimelineHover(args, style) {
+    return {
+      ...abilityTimelineTipHandlers(abilityTimelineTipHtml(args)),
+      style: Object.assign({}, ABILITY_TIP_HIT_STYLE, style)
+    };
+  }
+
+  // src/ui/frames/abilityTimelineRender.ts
+  function renderTicks(prefs) {
+    if (!prefs.showTicks) return [];
+    const ticks = timelineTickMs(prefs.windowMs);
+    const out = [];
+    for (let i = 0; i < ticks.length; i++) {
+      const ms = ticks[i];
+      out.push(
+        e(
+          "div",
+          {
+            key: "tick-" + ms,
+            className: "ecu-abil-tick",
+            style: tickStyle(ms / prefs.windowMs, prefs)
+          },
+          e(
+            "span",
+            { className: "ecu-abil-tick-label" },
+            Math.round(ms / 1e3) + "s"
+          )
+        )
+      );
+    }
+    return out;
+  }
+  function renderScroll(section3, prefs) {
+    const rows = section3.rows;
+    const children = renderTicks(prefs);
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      const stack = row3.pinned ? staticStackIndex(rows, row3.id) : 0;
+      const showTrail = !row3.pinned && !row3.ready && row3.scrollPos > 0;
+      if (showTrail) {
+        children.push(
+          e("div", {
+            key: `trail-${cycleKey(section3, row3)}`,
+            className: "ecu-abil-scroll-trail",
+            "data-ability": row3.id,
+            style: trailStyle(row3, prefs),
+            ...motionDataset(row3, prefs, "trail")
+          })
+        );
+      }
+      const cd = row3.ready ? formatAbilityMs(row3.ms) : formatAbilityCountdown(row3.ms);
+      const remaining = cd || "ready";
+      const hot = row3.imminent || row3.ready;
+      const tickFlash = nearTimelineTick(row3.ms, prefs.windowMs);
+      const markerClass = [
+        "ecu-abil-scroll-marker",
+        row3.imminent ? "ecu-abil-scroll-marker--imminent" : "",
+        row3.ready ? "ecu-abil-scroll-marker--ready" : "",
+        row3.pinned ? "ecu-abil-scroll-marker--static" : "",
+        !row3.pinned && !row3.ready ? "ecu-abil-scroll-marker--dynamic" : "",
+        tickFlash ? "ecu-abil-scroll-marker--tickflash" : "",
+        row3.castGen > 0 ? "ecu-abil-scroll-marker--cast" : ""
+      ].filter(Boolean).join(" ");
+      children.push(
+        e(
+          "div",
+          {
+            key: `mk-${cycleKey(section3, row3)}`,
+            className: markerClass,
+            "data-ability": row3.id,
+            ...motionDataset(row3, prefs, "marker"),
+            ...abilityTimelineHover(
+              {
+                caster: section3.targetName,
+                abilityId: row3.id,
+                abilityName: row3.name,
+                remainingLabel: remaining,
+                cooldown: row3.cooldown
+              },
+              markerStyle(row3, stack, prefs)
+            )
+          },
+          e(
+            "div",
+            { className: "ecu-abil-icon-stack" },
+            abilityIcon(row3.id, hot, prefs.iconSize, section3.targetMtype),
+            e(
+              "span",
+              {
+                className: ["ecu-abil-icon-cd", rowCdClass(row3, prefs)].filter(Boolean).join(" ")
+              },
+              cd
+            ),
+            e("span", { className: "ecu-abil-icon-name" }, row3.name)
+          )
+        )
+      );
+    }
+    const secs = String(Math.round(prefs.windowMs / 1e3));
+    const labels = e(
+      "div",
+      { className: "ecu-abil-scroll-labels" },
+      e(
+        "span",
+        { className: "ecu-abil-zone-label ecu-abil-zone-label--static" },
+        `static >${secs}s`
       ),
       e(
+        "span",
+        { className: "ecu-abil-zone-label ecu-abil-zone-label--dynamic" },
+        `dynamic \u2264${secs}s`
+      )
+    );
+    const lane = e("div", { className: "ecu-abil-scroll-lane" }, ...children);
+    return e(
+      "div",
+      {
+        className: "ecu-abil-timeline",
+        "data-orient": prefs.orient
+      },
+      labels,
+      lane
+    );
+  }
+  function renderSection(section3, prefs, showBossLabel) {
+    return e(
+      "div",
+      {
+        key: section3.targetId,
+        className: "ecu-abil-section",
+        "data-target": section3.targetId
+      },
+      showBossLabel ? e("div", { className: "ecu-abil-section-name" }, section3.targetName) : null,
+      renderScroll(section3, prefs)
+    );
+  }
+  function renderAbilityTimelineShell(model, prefs, layoutEdit, chrome = "outward", opts) {
+    ensureAbilityTimelineCss();
+    const showBossLabels = (opts == null ? void 0 : opts.casterLabels) !== false && model.sections.length > 1;
+    const secs = String(Math.round(prefs.windowMs / 1e3));
+    const panelStyle2 = Object.assign({}, ABILITY_TIMELINE_PANEL_STYLE, {
+      padding: 0,
+      ...PIXEL_TEXT,
+      width: "100%",
+      height: "100%",
+      maxWidth: "100%",
+      minWidth: 0,
+      minHeight: 0,
+      boxSizing: "border-box",
+      display: "flex",
+      flexDirection: "column",
+      "--abil-icon": prefs.iconSize + "px",
+      "--abil-static-ratio": String(prefs.staticRatio),
+      "--abil-icon-margin": prefs.iconMargin + "px",
+      "--abil-rail-tint": prefs.railTint
+    });
+    const panelClass = [
+      "comm-ability-timeline",
+      "ecu-abil-panel",
+      layoutEdit ? "ecu-abil-panel--layout-edit" : ""
+    ].filter(Boolean).join(" ");
+    return e(
+      "div",
+      {
+        className: panelClass,
+        style: panelStyle2,
+        "data-orient": prefs.orient,
+        "data-reverse": prefs.reverse ? "true" : "false",
+        "data-chrome": chrome,
+        "data-text-anchor": prefs.textAnchor,
+        onMouseLeave: hideMeterTooltip
+      },
+      e(
+        "div",
+        { className: "ecu-abil-sections" },
+        ...model.sections.map(
+          (section3) => renderSection(section3, prefs, showBossLabels)
+        )
+      ),
+      prefs.showLegend ? e(
+        "div",
+        { className: "ecu-abil-legend" },
+        `Static zone pins icons while CD >${secs}s. At ${secs}s they slide toward NOW.`
+      ) : null
+    );
+  }
+
+  // src/ui/frames/AbilityTimelineBigIconPanel.ts
+  function renderAbilityBigIcons(model, prefs) {
+    ensureAbilityTimelineCss();
+    const icons = collectBigIcons(model.sections, prefs);
+    if (!icons.length) return null;
+    const size = bigIconSize(prefs.iconSize);
+    const kids = [];
+    for (let i = 0; i < icons.length; i++) {
+      const icon = icons[i];
+      const cd = formatAbilityCountdown(icon.ms);
+      kids.push(
+        e(
+          "div",
+          {
+            key: icon.key,
+            className: [
+              "ecu-abil-bigicon",
+              icon.highlight === "crit" ? "ecu-abil-bigicon--crit" : "",
+              icon.highlight === "warn" ? "ecu-abil-bigicon--warn" : ""
+            ].filter(Boolean).join(" "),
+            ...abilityTimelineHover({
+              caster: icon.caster,
+              abilityId: icon.id,
+              abilityName: icon.skillName,
+              remainingLabel: cd || "ready",
+              cooldown: icon.cooldown
+            })
+          },
+          abilityIcon(icon.id, true, size, icon.mtype),
+          e(
+            "span",
+            {
+              className: [
+                "ecu-abil-bigicon-cd",
+                icon.highlight === "crit" ? "is-crit" : "",
+                icon.highlight === "warn" ? "is-warn" : ""
+              ].filter(Boolean).join(" ")
+            },
+            cd
+          ),
+          e("span", { className: "ecu-abil-bigicon-name" }, icon.name)
+        )
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-abil-bigicons",
+        style: {
+          flexDirection: growFlexDirection(prefs.bigIconGrow),
+          gap: prefs.bigIconMargin + "px",
+          ...PIXEL_TEXT
+        },
+        onMouseLeave: hideMeterTooltip
+      },
+      ...kids
+    );
+  }
+  function AbilityTimelineBigIconPanel(props) {
+    const { prefs, model } = useAbilityTimelineLive(props);
+    if (!model) return null;
+    const body = renderAbilityBigIcons(model, prefs);
+    if (!body && !props.layoutEdit) return null;
+    return e(
+      "div",
+      {
+        className: "ecu-abil-bigicon-panel",
+        style: { height: "100%", width: "100%", ...PIXEL_TEXT }
+      },
+      body
+    );
+  }
+
+  // src/ui/frames/AbilityTimelineHighlightPanel.ts
+  function renderAbilityHighlights(model, prefs) {
+    ensureAbilityTimelineCss();
+    const rows = collectBigIcons(model.sections, prefs);
+    if (!rows.length) return null;
+    const kids = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      kids.push(
+        e(
+          "div",
+          {
+            key: row3.key,
+            className: [
+              "ecu-abil-highlight",
+              row3.highlight === "crit" ? "is-crit" : "",
+              row3.highlight === "warn" ? "is-warn" : ""
+            ].filter(Boolean).join(" "),
+            ...abilityTimelineHover({
+              caster: row3.caster,
+              abilityId: row3.id,
+              abilityName: row3.skillName,
+              remainingLabel: formatAbilityCountdown(row3.ms) || "ready",
+              cooldown: row3.cooldown
+            })
+          },
+          row3.name
+        )
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-abil-highlights",
+        style: {
+          flexDirection: growFlexDirection(prefs.highlightGrow),
+          gap: prefs.highlightMargin + "px",
+          ...PIXEL_TEXT
+        },
+        onMouseLeave: hideMeterTooltip
+      },
+      ...kids
+    );
+  }
+  function AbilityTimelineHighlightPanel(props) {
+    const { prefs, model } = useAbilityTimelineLive(props);
+    if (!model) return null;
+    const body = renderAbilityHighlights(model, prefs);
+    if (!body && !props.layoutEdit) return null;
+    return e(
+      "div",
+      {
+        className: "ecu-abil-highlight-panel",
+        style: { height: "100%", width: "100%", ...PIXEL_TEXT }
+      },
+      body
+    );
+  }
+
+  // src/ui/frames/settings/settingsColorInput.ts
+  function normalizeHex(raw) {
+    const trimmed = raw.trim().toLowerCase();
+    const body = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+    if (!/^[0-9a-f]{6}$/.test(body)) return null;
+    return `#${body}`;
+  }
+  function normalizeColorValue(raw, allowTransparent) {
+    const trimmed = raw.trim().toLowerCase();
+    if (!trimmed) return "";
+    if (allowTransparent && trimmed === "transparent") return "transparent";
+    return normalizeHex(trimmed);
+  }
+  function SettingsColorInput(props) {
+    const React = getReact();
+    const [draft, setDraft] = React.useState(props.value);
+    React.useEffect(() => {
+      setDraft(props.value);
+    }, [props.value]);
+    const commitDraft = React.useCallback(() => {
+      const next = normalizeColorValue(draft, !!props.allowTransparent);
+      if (next == null) {
+        setDraft(props.value);
+        return;
+      }
+      if (next === "" && props.onClear) {
+        props.onClear();
+        return;
+      }
+      props.onCommit(next);
+    }, [draft, props]);
+    const swatchValue = normalizeHex(draft) || normalizeHex(props.value) || props.fallbackColor || "#888888";
+    return e(
+      "span",
+      { className: "ecu-settings-color" },
+      e("input", {
+        type: "color",
+        className: "ecu-settings-color-swatch",
+        value: swatchValue,
+        onChange: (ev) => props.onCommit(ev.target.value),
+        title: "Pick color"
+      }),
+      e("input", {
+        type: "text",
+        className: "ecu-settings-color-text",
+        value: draft,
+        placeholder: props.placeholder || "#rrggbb",
+        onChange: (ev) => setDraft(ev.target.value),
+        onBlur: commitDraft,
+        onKeyDown: (ev) => {
+          if (ev.key === "Enter") ev.currentTarget.blur();
+        }
+      }),
+      props.onClear ? e(
         "button",
         {
           type: "button",
-          title: "Open full changelog / What's New history",
-          style: {
-            cursor: "pointer",
-            padding: toggleBtnPad,
-            fontSize: toggleFont,
-            minHeight: touchPad ? "40px" : void 0,
-            border: "1px solid #555",
-            background: "#1a1a1a",
-            color: "#bbb",
-            textShadow: "none",
-            fontWeight: "normal"
+          className: "ecu-settings-color-clear",
+          onClick: () => {
+            var _a;
+            return (_a = props.onClear) == null ? void 0 : _a.call(props);
           },
-          onPointerDown: stopPtr,
-          onClick: () => props.onOpenChangelog()
+          title: props.clearLabel || "Clear color override"
         },
-        "Changelog"
+        "\xD7"
+      ) : null
+    );
+  }
+
+  // src/ui/frames/settings/abilityTimelineSettingsPane.ts
+  function AbilityTimelineSettingsPreview(props) {
+    const React = getReact();
+    const epochRef = React.useRef(Date.now());
+    const hostRef = React.useRef(null);
+    const { model, hasActive, tickKey } = useAbilityTimelineLive({
+      entities: [],
+      dummyEpoch: epochRef.current,
+      dummyMtypes: props.picked
+    });
+    useAbilityTimelineMotion(hostRef, hasActive, tickKey);
+    const preview = model || { sections: [] };
+    return e(
+      "div",
+      { className: "ecu-settings-preview" },
+      e(
+        "div",
+        {
+          ref: hostRef,
+          className: "ecu-settings-preview-rail",
+          "data-orient": props.prefs.orient
+        },
+        renderAbilityTimelineShell(preview, props.prefs, true, "outward")
+      ),
+      e(
+        "div",
+        { className: "ecu-settings-preview-side" },
+        renderAbilityBigIcons(preview, props.prefs),
+        renderAbilityHighlights(preview, props.prefs)
+      )
+    );
+  }
+  function section2(label) {
+    return e("div", { className: "ecu-settings-sec" }, label);
+  }
+  function row2(label, control) {
+    return e(
+      "div",
+      { className: "ecu-settings-row" },
+      e("span", null, label),
+      control
+    );
+  }
+  function matchesQuery(label, query, extra) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const hay = `${label} ${extra || ""}`.toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }
+  var ABILITY_TIMELINE_SEARCH_SECTIONS = [
+    {
+      title: "Travel",
+      rows: [
+        {
+          id: "casters",
+          label: "Casters",
+          extra: "all visible current target scope"
+        },
+        {
+          id: "orientation",
+          label: "Orientation",
+          extra: "vertical horizontal"
+        },
+        { id: "reverseNow", label: "Reverse NOW", extra: "timeline direction" },
+        { id: "window", label: "Window", extra: "5s 8s 10s 12s 15s 20s" },
+        { id: "ticks", label: "Ticks", extra: "tick marks" },
+        { id: "staticZone", label: "Static zone", extra: "ratio still zone" },
+        { id: "iconMargin", label: "Icon margin", extra: "spacing" },
+        { id: "railTint", label: "Rail tint", extra: "color" }
+      ]
+    },
+    {
+      title: "Icons",
+      rows: [
+        { id: "iconSize", label: "Icon size", extra: "28 36 44 52" },
+        {
+          id: "textAnchor",
+          label: "Text anchor",
+          extra: "left right top bottom"
+        },
+        { id: "showReady", label: "Show ready", extra: "ready state" }
+      ]
+    },
+    {
+      title: "Frames",
+      rows: [
+        { id: "bigIcon", label: "Big Icon", extra: "frame panel visibility" },
+        {
+          id: "bigIconGrow",
+          label: "Big Icon grow",
+          extra: "right left down up"
+        },
+        { id: "bigIconMargin", label: "Big Icon margin", extra: "spacing" },
+        {
+          id: "highlight",
+          label: "Highlight",
+          extra: "frame panel visibility"
+        },
+        { id: "highlightGrow", label: "Highlight grow", extra: "up down" },
+        { id: "highlightMargin", label: "Highlight margin", extra: "spacing" },
+        { id: "imminentWindow", label: "Imminent window", extra: "3s 5s 8s" }
+      ]
+    },
+    {
+      title: "Preview",
+      rows: [
+        {
+          id: "preview",
+          label: "Preview",
+          extra: "dummy casters monsters rail"
+        }
+      ]
+    }
+  ];
+  function searchRowMeta(id) {
+    for (let i = 0; i < ABILITY_TIMELINE_SEARCH_SECTIONS.length; i++) {
+      const rows = ABILITY_TIMELINE_SEARCH_SECTIONS[i].rows;
+      for (let j = 0; j < rows.length; j++) {
+        if (rows[j].id === id) return rows[j];
+      }
+    }
+    return { label: id };
+  }
+  function countAbilityTimelineSettingsMatches(query) {
+    const q = query.trim();
+    if (!q) {
+      let total = 0;
+      for (let i = 0; i < ABILITY_TIMELINE_SEARCH_SECTIONS.length; i++) {
+        total += ABILITY_TIMELINE_SEARCH_SECTIONS[i].rows.length;
+      }
+      return total;
+    }
+    let matches = 0;
+    for (let i = 0; i < ABILITY_TIMELINE_SEARCH_SECTIONS.length; i++) {
+      const rows = ABILITY_TIMELINE_SEARCH_SECTIONS[i].rows;
+      for (let j = 0; j < rows.length; j++) {
+        if (matchesQuery(rows[j].label, q, rows[j].extra)) matches += 1;
+      }
+    }
+    return matches;
+  }
+  function selectCtrl(value, options, onChange) {
+    const kids = [];
+    for (let i = 0; i < options.length; i++) {
+      kids.push(
+        e(
+          "option",
+          { key: options[i].value, value: options[i].value },
+          options[i].label
+        )
+      );
+    }
+    return e(
+      "select",
+      {
+        value,
+        onChange: (ev) => onChange(ev.target.value)
+      },
+      ...kids
+    );
+  }
+  function toggleMtype(prev, mtype) {
+    const next = [];
+    let had = false;
+    for (let i = 0; i < prev.length; i++) {
+      if (prev[i] === mtype) {
+        had = true;
+        continue;
+      }
+      next.push(prev[i]);
+    }
+    if (!had) next.push(mtype);
+    return next;
+  }
+  function previewPickKids(casters, picked, onToggle) {
+    const kids = [];
+    for (let i = 0; i < casters.length; i++) {
+      const caster = casters[i];
+      let on = false;
+      for (let j = 0; j < picked.length; j++) {
+        if (picked[j] === caster.mtype) {
+          on = true;
+          break;
+        }
+      }
+      kids.push(
+        e(
+          "label",
+          {
+            key: caster.mtype,
+            className: "ecu-settings-pick",
+            "data-on": on ? "1" : "0"
+          },
+          e("input", {
+            type: "checkbox",
+            checked: on,
+            onChange: () => onToggle(caster.mtype)
+          }),
+          caster.name
+        )
+      );
+    }
+    return kids;
+  }
+  function AbilityTimelineSettingsPaneView(props) {
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    const [picked, setPicked] = React.useState(defaultAbilityPreviewMtypes);
+    const [casters] = React.useState(listAbilityPreviewCasters);
+    const prefs = getAbilityTimelinePrefs();
+    const query = (props.query || "").trim();
+    const patch = (partial) => {
+      patchAbilityTimelinePrefs(partial);
+      bump((n) => n + 1);
+    };
+    const patchOrient = (orient) => {
+      patch({ orient });
+      const pos = layoutForProfile(getSettings()).abilityTimeline;
+      if (pos) props.setPanelPos("abilityTimeline", pos);
+    };
+    const vertical = prefs.orient === "vertical";
+    const anchorOpts = vertical ? [
+      { value: "left", label: "Left" },
+      { value: "right", label: "Right" }
+    ] : [
+      { value: "top", label: "Top" },
+      { value: "bottom", label: "Bottom" }
+    ];
+    const castersRow = searchRowMeta("casters");
+    const orientationRow = searchRowMeta("orientation");
+    const reverseNowRow = searchRowMeta("reverseNow");
+    const windowRow = searchRowMeta("window");
+    const ticksRow = searchRowMeta("ticks");
+    const staticZoneRow = searchRowMeta("staticZone");
+    const iconMarginRow = searchRowMeta("iconMargin");
+    const railTintRow = searchRowMeta("railTint");
+    const iconSizeRow = searchRowMeta("iconSize");
+    const textAnchorRow = searchRowMeta("textAnchor");
+    const showReadyRow = searchRowMeta("showReady");
+    const bigIconRow = searchRowMeta("bigIcon");
+    const bigIconGrowRow = searchRowMeta("bigIconGrow");
+    const bigIconMarginRow = searchRowMeta("bigIconMargin");
+    const highlightRow = searchRowMeta("highlight");
+    const highlightGrowRow = searchRowMeta("highlightGrow");
+    const highlightMarginRow = searchRowMeta("highlightMargin");
+    const imminentWindowRow = searchRowMeta("imminentWindow");
+    const previewRow = searchRowMeta("preview");
+    const kids = [];
+    const pushSection = (label, rows, extra) => {
+      if (!matchesQuery(label, query, extra)) {
+        let anyRow = false;
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i]) {
+            anyRow = true;
+            break;
+          }
+        }
+        if (!anyRow) return;
+      }
+      kids.push(section2(label));
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i]) kids.push(rows[i]);
+      }
+    };
+    const maybeRow = (label, control, extra) => matchesQuery(label, query, extra) ? row2(label, control) : null;
+    const previewVisible = matchesQuery(
+      previewRow.label,
+      query,
+      previewRow.extra
+    );
+    pushSection("Travel", [
+      maybeRow(
+        castersRow.label,
+        selectCtrl(
+          prefs.scope,
+          [
+            { value: "all", label: "All visible" },
+            { value: "target", label: "Current target" }
+          ],
+          (v) => patch({ scope: v })
+        ),
+        castersRow.extra
+      ),
+      maybeRow(
+        orientationRow.label,
+        selectCtrl(
+          prefs.orient,
+          [
+            { value: "vertical", label: "Vertical" },
+            { value: "horizontal", label: "Horizontal" }
+          ],
+          (v) => patchOrient(v)
+        ),
+        orientationRow.extra
+      ),
+      maybeRow(
+        reverseNowRow.label,
+        e("input", {
+          type: "checkbox",
+          checked: prefs.reverse,
+          onChange: (ev) => patch({ reverse: ev.target.checked })
+        }),
+        reverseNowRow.extra
+      ),
+      maybeRow(
+        windowRow.label,
+        selectCtrl(
+          String(prefs.windowMs),
+          [
+            { value: "5000", label: "5s" },
+            { value: "8000", label: "8s" },
+            { value: "10000", label: "10s" },
+            { value: "12000", label: "12s" },
+            { value: "15000", label: "15s" },
+            { value: "20000", label: "20s" }
+          ],
+          (v) => patch({ windowMs: Number(v) })
+        ),
+        windowRow.extra
+      ),
+      maybeRow(
+        ticksRow.label,
+        e("input", {
+          type: "checkbox",
+          checked: prefs.showTicks,
+          onChange: (ev) => patch({ showTicks: ev.target.checked })
+        }),
+        ticksRow.extra
+      ),
+      maybeRow(
+        staticZoneRow.label,
+        e("input", {
+          type: "number",
+          min: 0.2,
+          max: 0.7,
+          step: 0.02,
+          value: prefs.staticRatio,
+          onChange: (ev) => patch({ staticRatio: Number(ev.target.value) })
+        }),
+        staticZoneRow.extra
+      ),
+      maybeRow(
+        iconMarginRow.label,
+        e("input", {
+          type: "number",
+          min: 0,
+          max: 32,
+          step: 1,
+          value: prefs.iconMargin,
+          onChange: (ev) => patch({ iconMargin: Number(ev.target.value) })
+        }),
+        iconMarginRow.extra
+      ),
+      maybeRow(
+        railTintRow.label,
+        e(SettingsColorInput, {
+          value: prefs.railTint,
+          placeholder: "transparent",
+          fallbackColor: "#666666",
+          clearLabel: "Reset rail tint",
+          allowTransparent: true,
+          onCommit: (value) => patch({ railTint: value }),
+          onClear: () => patch({ railTint: "transparent" })
+        }),
+        railTintRow.extra
+      )
+    ]);
+    pushSection("Icons", [
+      maybeRow(
+        iconSizeRow.label,
+        selectCtrl(
+          String(prefs.iconSize),
+          [
+            { value: "28", label: "28" },
+            { value: "36", label: "36" },
+            { value: "44", label: "44" },
+            { value: "52", label: "52" }
+          ],
+          (v) => patch({ iconSize: Number(v) })
+        ),
+        iconSizeRow.extra
+      ),
+      maybeRow(
+        textAnchorRow.label,
+        selectCtrl(
+          prefs.textAnchor,
+          anchorOpts,
+          (v) => patch({ textAnchor: v })
+        ),
+        textAnchorRow.extra
+      ),
+      maybeRow(
+        showReadyRow.label,
+        e("input", {
+          type: "checkbox",
+          checked: prefs.showReady,
+          onChange: (ev) => patch({ showReady: ev.target.checked })
+        }),
+        showReadyRow.extra
+      )
+    ]);
+    pushSection("Frames", [
+      maybeRow(
+        bigIconRow.label,
+        e("input", {
+          type: "checkbox",
+          checked: props.visibleBigIcon,
+          onChange: (ev) => props.setVisible("abilityTimelineBigIcon", ev.target.checked)
+        }),
+        bigIconRow.extra
+      ),
+      maybeRow(
+        bigIconGrowRow.label,
+        selectCtrl(
+          prefs.bigIconGrow,
+          [
+            { value: "right", label: "Right" },
+            { value: "left", label: "Left" },
+            { value: "down", label: "Down" },
+            { value: "up", label: "Up" }
+          ],
+          (v) => patch({ bigIconGrow: v })
+        ),
+        bigIconGrowRow.extra
+      ),
+      maybeRow(
+        bigIconMarginRow.label,
+        e("input", {
+          type: "number",
+          min: 0,
+          max: 32,
+          step: 1,
+          value: prefs.bigIconMargin,
+          onChange: (ev) => patch({ bigIconMargin: Number(ev.target.value) })
+        }),
+        bigIconMarginRow.extra
+      ),
+      maybeRow(
+        highlightRow.label,
+        e("input", {
+          type: "checkbox",
+          checked: props.visibleHighlight,
+          onChange: (ev) => props.setVisible("abilityTimelineHighlight", ev.target.checked)
+        }),
+        highlightRow.extra
+      ),
+      maybeRow(
+        highlightGrowRow.label,
+        selectCtrl(
+          prefs.highlightGrow,
+          [
+            { value: "up", label: "Up" },
+            { value: "down", label: "Down" }
+          ],
+          (v) => patch({ highlightGrow: v })
+        ),
+        highlightGrowRow.extra
+      ),
+      maybeRow(
+        highlightMarginRow.label,
+        e("input", {
+          type: "number",
+          min: 0,
+          max: 32,
+          step: 1,
+          value: prefs.highlightMargin,
+          onChange: (ev) => patch({ highlightMargin: Number(ev.target.value) })
+        }),
+        highlightMarginRow.extra
+      ),
+      maybeRow(
+        imminentWindowRow.label,
+        selectCtrl(
+          String(prefs.imminentMs),
+          [
+            { value: "3000", label: "3s" },
+            { value: "5000", label: "5s" },
+            { value: "8000", label: "8s" }
+          ],
+          (v) => patch({ imminentMs: Number(v) })
+        ),
+        imminentWindowRow.extra
+      )
+    ]);
+    if (previewVisible) {
+      kids.push(section2(previewRow.label));
+      kids.push(
+        e(
+          "div",
+          { className: "ecu-settings-picks" },
+          ...previewPickKids(
+            casters,
+            picked,
+            (mtype) => setPicked((prev) => toggleMtype(prev, mtype))
+          )
+        )
+      );
+      kids.push(e(AbilityTimelineSettingsPreview, { prefs, picked }));
+    }
+    if (!kids.length) {
+      kids.push(
+        e(
+          "p",
+          { className: "ecu-settings-help" },
+          "No ability timeline settings match this search."
+        )
+      );
+    }
+    return e("div", null, ...kids);
+  }
+  var paneMemo = null;
+  function AbilityTimelineSettingsPane(props) {
+    const React = getReact();
+    if (!paneMemo) paneMemo = React.memo(AbilityTimelineSettingsPaneView);
+    return e(paneMemo, props);
+  }
+
+  // src/ui/frames/settings/settingsPaneChrome.ts
+  function settingsSection(label) {
+    return e("div", { className: "ecu-settings-sec" }, label);
+  }
+  function settingsCheckboxRow(key, label, checked, onChange, extras) {
+    return e(
+      "div",
+      { key, className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e(
+          "span",
+          { className: "ecu-settings-row-label" },
+          label,
+          (extras == null ? void 0 : extras.tag) ? e(
+            "span",
+            {
+              className: "ecu-settings-tag",
+              "data-tag": extras.tag
+            },
+            extras.tag
+          ) : null
+        ),
+        (extras == null ? void 0 : extras.help) ? e("span", { className: "ecu-settings-help" }, extras.help) : null
+      ),
+      e("input", {
+        type: "checkbox",
+        checked,
+        onChange: (ev) => onChange(ev.target.checked)
+      })
+    );
+  }
+
+  // src/ui/frames/settings/commUiSettingsPane.ts
+  var COMM_UI_ACTIONS = [
+    {
+      id: "intro",
+      label: "Intro tour",
+      help: "Replay the guided Comm UI spotlight tour.",
+      buttonLabel: "Replay intro",
+      extra: "intro tour tutorial guide walkthrough spotlight onboarding",
+      onClick: (props) => props.onReplayIntroTour()
+    },
+    {
+      id: "changelog",
+      label: "Changelog",
+      help: "Open the full What's New and release history.",
+      buttonLabel: "Open changelog",
+      extra: "changelog whats new release notes updates history",
+      onClick: (props) => props.onOpenChangelog()
+    }
+  ];
+  function actionMatchesQuery(action, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return `${action.label} ${action.help} ${action.extra}`.toLowerCase().includes(q);
+  }
+  function countCommUiSettingsMatches(query) {
+    let total = 0;
+    for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
+      if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
+    }
+    return total;
+  }
+  function CommUiSettingsPane(props) {
+    const query = String(props.query || "").trim();
+    const kids = [
+      e(
+        "p",
+        { key: "lead", className: "ecu-settings-lead" },
+        "Guides, onboarding, and release notes for the Comm UI shell."
+      ),
+      settingsSection("Guides & updates")
+    ];
+    for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
+      const action = COMM_UI_ACTIONS[i];
+      if (!actionMatchesQuery(action, query)) continue;
+      kids.push(
+        e(
+          "div",
+          { key: action.id, className: "ecu-settings-row" },
+          e(
+            "div",
+            { className: "ecu-settings-row-copy" },
+            e("span", { className: "ecu-settings-row-label" }, action.label),
+            e("span", { className: "ecu-settings-help" }, action.help)
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-settings-reset",
+              onClick: () => action.onClick(props)
+            },
+            action.buttonLabel
+          )
+        )
+      );
+    }
+    if (kids.length === 2) {
+      kids.push(
+        e(
+          "p",
+          { key: "empty", className: "ecu-settings-help" },
+          "No Comm UI guide items match this search."
+        )
+      );
+    }
+    return e("div", null, ...kids);
+  }
+
+  // src/viz/overlayToggleCatalog.ts
+  var OVERLAY_TOGGLE_SECTIONS = [
+    {
+      id: "rings",
+      title: "Rings & ranges",
+      pane: "drawings",
+      defs: [
+        {
+          key: "world.attackRange",
+          label: "Attack range",
+          tag: "static",
+          help: "entity.range ring"
+        },
+        {
+          key: "world.abilityImminent",
+          label: "Ability rings when imminent",
+          help: "Under 15% remaining cooldown"
+        },
+        {
+          key: "world.abilityGhost",
+          label: "Ghost rings mid-CD",
+          tag: "static"
+        },
+        { key: "world.auraRing", label: "Aura radius", tag: "static" },
+        {
+          key: "world.highlightAtRisk",
+          label: "Highlight players in ability radius"
+        }
+      ]
+    },
+    {
+      id: "labels",
+      title: "Ring labels",
+      pane: "drawings",
+      defs: [
+        {
+          key: "entity.abilityName",
+          label: "Ability names on rings",
+          help: "Default for all skills; override per ability below"
+        }
+      ]
+    },
+    {
+      id: "lines",
+      title: "Entity lines",
+      pane: "drawings",
+      defs: [
+        { key: "lines.aggroTarget", label: "Monster aggro \u2192 target" },
+        {
+          key: "lines.moveDest",
+          label: "Move destination",
+          tag: "debug",
+          help: "going_x / going_y for mobs and players"
+        },
+        {
+          key: "lines.attackTarget",
+          label: "Player attack \u2192 target",
+          tag: "debug",
+          help: "Line from player to their target mob"
+        },
+        {
+          key: "lines.filter.focusOnly",
+          label: "Focus boss only",
+          help: "Only draw lines for the focused entity"
+        }
+      ]
+    },
+    {
+      id: "debug",
+      title: "Debug overlays",
+      pane: "drawings",
+      defs: [
+        {
+          key: "world.quirkHitboxes",
+          label: "Map quirk hover outline",
+          tag: "debug",
+          help: "Outline the sign/shrine/lever under the cursor (not all of them)"
+        },
+        {
+          key: "world.spawnPoints",
+          label: "Design spawn points",
+          tag: "debug",
+          help: "From G.maps"
+        },
+        {
+          key: "entity.cdLabel",
+          label: "CD ms labels on focus boss",
+          tag: "debug"
+        },
+        {
+          key: "debug.entityIds",
+          label: "Entity id + mtype on focus",
+          tag: "debug"
+        },
+        {
+          key: "debug.gridCoords",
+          label: "Map geometry corner coords",
+          tag: "debug"
+        }
+      ]
+    },
+    {
+      id: "comm",
+      title: "Comm HUD panels",
+      pane: "commHud",
+      defs: [
+        { key: "comm.mechanicChips", label: "Mechanic chips on instance card" },
+        { key: "comm.spawnAlert", label: "Spawn alert chip (imminent only)" },
+        {
+          key: "comm.hpThresholds",
+          label: "HP threshold markers (event bosses)"
+        }
+      ]
+    }
+  ];
+  function overlayToggleSectionsForPane(pane) {
+    const out = [];
+    for (let i = 0; i < OVERLAY_TOGGLE_SECTIONS.length; i++) {
+      const section3 = OVERLAY_TOGGLE_SECTIONS[i];
+      if (section3.pane === pane) out.push(section3);
+    }
+    return out;
+  }
+
+  // src/ui/frames/settings/commHudSettingsPane.ts
+  function tagLabel(tag) {
+    if (!tag) return null;
+    switch (tag) {
+      case "static":
+        return "static";
+      case "debug":
+        return "debug";
+      default: {
+        const _never = tag;
+        void _never;
+        return null;
+      }
+    }
+  }
+  function matchesOverlayToggle(def, query) {
+    if (!query) return true;
+    const hay = `${def.label} ${def.key} ${def.help || ""} ${def.tag || ""}`.toLowerCase();
+    return hay.includes(query);
+  }
+  function countCommHudSettingsMatches(query) {
+    const q = query.trim().toLowerCase();
+    const sections = overlayToggleSectionsForPane("commHud");
+    let total = 0;
+    for (let s = 0; s < sections.length; s++) {
+      const defs = sections[s].defs;
+      for (let i = 0; i < defs.length; i++) {
+        if (matchesOverlayToggle(defs[i], q)) total += 1;
+      }
+    }
+    return total;
+  }
+  function CommHudSettingsPane(props) {
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    React.useEffect(
+      () => subscribeVizSettings(() => bump((n) => n + 1)),
+      []
+    );
+    const settings = getVizSettings();
+    const query = String(props.query || "").trim().toLowerCase();
+    const sections = overlayToggleSectionsForPane("commHud");
+    const kids = [
+      e(
+        "p",
+        { className: "ecu-settings-lead" },
+        "Comm HUD overlay helpers that add chips and markers to the shell itself."
+      )
+    ];
+    let rowCount = 0;
+    for (let s = 0; s < sections.length; s++) {
+      const section3 = sections[s];
+      const rows = [];
+      for (let i = 0; i < section3.defs.length; i++) {
+        const def = section3.defs[i];
+        if (!matchesOverlayToggle(def, query)) continue;
+        rows.push(
+          settingsCheckboxRow(
+            def.key,
+            def.label,
+            settings[def.key],
+            (next) => patchVizSettings({ [def.key]: next }),
+            {
+              help: def.help,
+              tag: tagLabel(def.tag) || void 0
+            }
+          )
+        );
+      }
+      if (!rows.length) continue;
+      rowCount += rows.length;
+      kids.push(settingsSection(section3.title), ...rows);
+    }
+    if (!rowCount) {
+      kids.push(
+        e(
+          "p",
+          { className: "ecu-settings-help" },
+          "No Comm HUD settings match this search."
+        )
+      );
+    }
+    return e("div", null, ...kids);
+  }
+
+  // src/ui/frames/settings/inGameAbilityRulesSection.ts
+  function abilityMatchesQuery(ab, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const hay = `${ab.name} ${ab.id} name color ring auto ability appearance`.toLowerCase();
+    return hay.indexOf(q) !== -1;
+  }
+  function countInGameAbilityRuleMatches(query) {
+    const abilities = listConfigurableAbilities();
+    const q = query.trim();
+    if (!q) return abilities.length;
+    let total = 0;
+    for (let i = 0; i < abilities.length; i++) {
+      if (abilityMatchesQuery(abilities[i], q)) total += 1;
+    }
+    return total;
+  }
+  function abilityRuleRow(ab, settings, rules, onChange) {
+    const rule = rules[ab.id];
+    const showName = resolveAbilityShowName(ab.id, settings, rules);
+    const hasNameOverride = typeof (rule == null ? void 0 : rule.showName) === "boolean";
+    const appearance = resolveAbilityAppearance(ab.id, settings, rules);
+    const activeColor = formatHexColor(appearance.color);
+    return e(
+      "div",
+      { key: ab.id, className: "ecu-settings-abil-row" },
+      e(
+        "div",
+        { className: "ecu-settings-abil-id" },
+        e(GameIcon, {
+          id: ab.id,
+          kind: "skill",
+          size: 28,
+          className: "ecu-settings-abil-icon",
+          title: ab.name
+        }),
+        e(
+          "div",
+          { className: "ecu-settings-abil-copy" },
+          e("span", { className: "ecu-settings-abil-name" }, ab.name),
+          e("span", { className: "ecu-settings-abil-key" }, ab.id)
+        )
+      ),
+      e(
+        "label",
+        {
+          className: "ecu-settings-abil-check",
+          title: hasNameOverride ? "Per-ability show-name override" : "Uses the global show-name default"
+        },
+        e("input", {
+          type: "checkbox",
+          checked: showName,
+          onChange: (ev) => {
+            patchVizAbilityRule(ab.id, { showName: ev.target.checked });
+            onChange();
+          }
+        }),
+        "Show name"
+      ),
+      e(SettingsColorInput, {
+        value: activeColor,
+        fallbackColor: activeColor,
+        clearLabel: "Clear per-ability color",
+        onCommit: (value) => {
+          const parsed = parseHexColor(value);
+          if (parsed == null) return;
+          patchVizAbilityRule(ab.id, { color: parsed });
+          onChange();
+        },
+        onClear: (rule == null ? void 0 : rule.color) != null ? () => {
+          const next = { ...rules[ab.id] || {} };
+          delete next.color;
+          patchVizAbilityRule(
+            ab.id,
+            next.showName === void 0 ? null : next
+          );
+          onChange();
+        } : void 0
+      })
+    );
+  }
+  function InGameAbilityRulesSection(props) {
+    const settings = getVizSettings();
+    const rules = getVizAbilityRules();
+    const abilities = listConfigurableAbilities();
+    const kids = [];
+    for (let i = 0; i < abilities.length; i++) {
+      if (!abilityMatchesQuery(abilities[i], props.query || "")) continue;
+      kids.push(abilityRuleRow(abilities[i], settings, rules, props.bump));
+    }
+    return e(
+      "div",
+      { className: "ecu-settings-abil-list" },
+      settingsSection("Ability appearance"),
+      e(
+        "p",
+        { className: "ecu-settings-lead" },
+        "Per-skill overrides for ring color and name labels (like test_visualize_skills)."
+      ),
+      kids.length ? kids : e(
+        "p",
+        { className: "ecu-settings-help" },
+        "No trackable abilities in roster."
+      )
+    );
+  }
+  var sectionMemo = null;
+  function InGameAbilityRulesSectionMemo(props) {
+    const React = getReact();
+    if (!sectionMemo) {
+      sectionMemo = React.memo(InGameAbilityRulesSection);
+    }
+    return e(sectionMemo, props);
+  }
+
+  // src/ui/frames/settings/inGameSettingsPane.ts
+  function tagLabel2(tag) {
+    if (!tag) return null;
+    switch (tag) {
+      case "static":
+        return "static";
+      case "debug":
+        return "debug";
+      default: {
+        const _never = tag;
+        void _never;
+        return null;
+      }
+    }
+  }
+  function matchesOverlayToggle2(def, title, query) {
+    if (!query) return true;
+    const hay = `${title} ${def.label} ${def.key} ${def.help || ""} ${def.tag || ""}`.toLowerCase();
+    return hay.indexOf(query) !== -1;
+  }
+  function countOverlayToggleMatches(title, defs, query) {
+    if (!query) return defs.length;
+    let total = 0;
+    for (let i = 0; i < defs.length; i++) {
+      if (matchesOverlayToggle2(defs[i], title, query)) total += 1;
+    }
+    return total;
+  }
+  function renderOverlaySection(title, defs, settings, setKey, query) {
+    const rows = [];
+    for (let i = 0; i < defs.length; i++) {
+      const def = defs[i];
+      if (!matchesOverlayToggle2(def, title, query)) continue;
+      rows.push(
+        settingsCheckboxRow(
+          def.key,
+          def.label,
+          settings[def.key],
+          (next) => setKey(def.key, next),
+          {
+            help: def.help,
+            tag: tagLabel2(def.tag) || void 0
+          }
+        )
+      );
+    }
+    if (!rows.length) return [];
+    return [settingsSection(title), ...rows];
+  }
+  function catalogSectionToInGameSection(sec) {
+    return {
+      title: sec.title,
+      matchesQuery: (query) => countOverlayToggleMatches(sec.title, sec.defs, query),
+      render: ({ settings, setKey, query }) => renderOverlaySection(sec.title, sec.defs, settings, setKey, query)
+    };
+  }
+  var ABILITY_APPEARANCE_SECTION = {
+    title: "Ability appearance",
+    matchesQuery: countInGameAbilityRuleMatches,
+    render: ({ bump, query }) => [
+      e(InGameAbilityRulesSectionMemo, {
+        key: "abil-rules",
+        bump,
+        query
+      })
+    ]
+  };
+  function buildInGameSections() {
+    const drawing = overlayToggleSectionsForPane("drawings");
+    const out = [];
+    for (let i = 0; i < drawing.length; i++) {
+      const section3 = drawing[i];
+      out.push(catalogSectionToInGameSection(section3));
+      if (section3.id === "labels") out.push(ABILITY_APPEARANCE_SECTION);
+    }
+    return out;
+  }
+  var IN_GAME_SECTIONS = buildInGameSections();
+  function InGameSettingsPaneView(props) {
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    React.useEffect(
+      () => subscribeVizSettings(() => bump((n) => n + 1)),
+      []
+    );
+    const settings = getVizSettings();
+    const query = React.useMemo(
+      () => String(props.query || "").trim().toLowerCase(),
+      [props.query]
+    );
+    const setKey = React.useCallback((key, next) => {
+      patchVizSettings({ [key]: next });
+    }, []);
+    const forceBump = React.useCallback(() => bump((n) => n + 1), []);
+    const kids = React.useMemo(() => {
+      const nextKids = [
+        e(
+          "p",
+          { key: "lead", className: "ecu-settings-lead" },
+          "Rings, labels, entity lines, and debug overlays for the /comm world map."
+        )
+      ];
+      for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
+        const section3 = IN_GAME_SECTIONS[i];
+        if (query && section3.matchesQuery(query) === 0) continue;
+        const rows = section3.render({
+          settings,
+          setKey,
+          bump: forceBump,
+          query
+        });
+        for (let j = 0; j < rows.length; j++) nextKids.push(rows[j]);
+      }
+      nextKids.push(
+        e(
+          "div",
+          { key: "reset", className: "ecu-settings-row" },
+          e("span", null, "Reset drawing defaults"),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-settings-reset",
+              onClick: () => {
+                resetVizSettings();
+                resetVizAbilityRules();
+                forceBump();
+              }
+            },
+            "Reset"
+          )
+        )
+      );
+      if (nextKids.length === 2) {
+        nextKids.splice(
+          1,
+          0,
+          e(
+            "p",
+            { key: "empty", className: "ecu-settings-help" },
+            "No drawing settings match this search."
+          )
+        );
+      }
+      return nextKids;
+    }, [forceBump, query, setKey, settings]);
+    return e("div", null, ...kids);
+  }
+  var paneMemo2 = null;
+  function countInGameSettingsMatches(query) {
+    const q = query.trim().toLowerCase();
+    let total = 0;
+    for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
+      total += IN_GAME_SECTIONS[i].matchesQuery(q);
+    }
+    return total;
+  }
+  function InGameSettingsPane(props) {
+    const React = getReact();
+    if (!paneMemo2) paneMemo2 = React.memo(InGameSettingsPaneView);
+    return e(paneMemo2, props || {});
+  }
+
+  // src/ui/frames/settings/settingsRegistry.ts
+  var SETTINGS_PANES = [
+    {
+      id: "commUi",
+      label: "Comm UI",
+      description: "Intro tour, What's New, and release history for the shell.",
+      countMatches: countCommUiSettingsMatches,
+      render: (props) => e(CommUiSettingsPane, {
+        query: props.query,
+        onReplayIntroTour: props.onReplayIntroTour,
+        onOpenChangelog: props.onOpenChangelog
+      })
+    },
+    {
+      id: "abilityTimeline",
+      label: "Ability Timeline",
+      description: "Travel, icons, frames, and the live preview rail for timeline windows.",
+      countMatches: countAbilityTimelineSettingsMatches,
+      render: (props) => e(AbilityTimelineSettingsPane, {
+        visibleBigIcon: props.visible("abilityTimelineBigIcon"),
+        visibleHighlight: props.visible("abilityTimelineHighlight"),
+        setVisible: props.setVisible,
+        setPanelPos: props.setPanelPos,
+        query: props.query
+      })
+    },
+    {
+      id: "drawings",
+      label: "Drawings",
+      description: "Map drawings, rings, labels, debug lines, and per-ability appearance overrides.",
+      countMatches: countInGameSettingsMatches,
+      render: (props) => e(InGameSettingsPane, { query: props.query })
+    },
+    {
+      id: "commHud",
+      label: "Comm HUD",
+      description: "Shell chips, spawn markers, and other Comm HUD panel helpers.",
+      countMatches: countCommHudSettingsMatches,
+      render: (props) => e(CommHudSettingsPane, { query: props.query })
+    }
+  ];
+  function defaultSettingsPaneId() {
+    return SETTINGS_PANES[0].id;
+  }
+  function getSettingsPane(id) {
+    for (let i = 0; i < SETTINGS_PANES.length; i++) {
+      if (SETTINGS_PANES[i].id === id) return SETTINGS_PANES[i];
+    }
+    return SETTINGS_PANES[0];
+  }
+  function settingsPaneMatchCounts(query) {
+    const counts = {};
+    for (let i = 0; i < SETTINGS_PANES.length; i++) {
+      const pane = SETTINGS_PANES[i];
+      counts[pane.id] = pane.countMatches(query);
+    }
+    return counts;
+  }
+
+  // src/ui/frames/SettingsPanel.ts
+  function navBtn(id, label, cat, count, dim2, setCat) {
+    return e(
+      "button",
+      {
+        type: "button",
+        className: `ecu-settings-nav-btn${dim2 ? " is-dim" : ""}`,
+        "aria-pressed": cat === id ? "true" : "false",
+        onClick: () => setCat(id)
+      },
+      e("span", null, label),
+      e("span", { className: "ecu-settings-nav-count" }, String(count))
+    );
+  }
+  function SettingsPanel(props) {
+    const React = getReact();
+    ensureSettingsPanelCss();
+    const [cat, setCat] = React.useState(defaultSettingsPaneId);
+    const [query, setQuery] = React.useState("");
+    const propsRef = React.useRef(props);
+    propsRef.current = props;
+    const onClose = React.useCallback(() => propsRef.current.onClose(), []);
+    const setVisible = React.useCallback(
+      (id, visible) => propsRef.current.setVisible(id, visible),
+      []
+    );
+    const setPanelPos = React.useCallback(
+      (id, pos) => propsRef.current.setPanelPos(id, pos),
+      []
+    );
+    const deferredQuery = React.useDeferredValue ? React.useDeferredValue(query) : query;
+    const active = React.useMemo(() => getSettingsPane(cat), [cat]);
+    const trimmedQuery = React.useMemo(
+      () => deferredQuery.trim(),
+      [deferredQuery]
+    );
+    const counts = React.useMemo(
+      () => settingsPaneMatchCounts(trimmedQuery),
+      [trimmedQuery]
+    );
+    const navKids = React.useMemo(() => {
+      const kids = [];
+      for (let i = 0; i < SETTINGS_PANES.length; i++) {
+        const pane = SETTINGS_PANES[i];
+        kids.push(
+          navBtn(
+            pane.id,
+            pane.label,
+            cat,
+            counts[pane.id],
+            trimmedQuery.length > 0 && counts[pane.id] === 0,
+            setCat
+          )
+        );
+      }
+      return kids;
+    }, [cat, counts, trimmedQuery, setCat]);
+    return e(
+      "div",
+      {
+        className: "ecu-settings-backdrop",
+        onMouseDown: (ev) => {
+          if (ev.target === ev.currentTarget) onClose();
+        }
+      },
+      e(
+        PositionedPanel,
+        {
+          id: "settings-panel",
+          pos: props.windowPos,
+          editing: false,
+          movable: true,
+          onMove: (_id, next) => props.onMoveWindow(next),
+          onClose,
+          label: "Settings",
+          showMoveGrip: true,
+          closePlacement: "above",
+          style: {
+            width: "min(980px, 96vw)",
+            height: "min(760px, 92vh)",
+            pointerEvents: "auto"
+          }
+        },
+        e(
+          "div",
+          {
+            className: "ecu-settings-modal",
+            onMouseDown: (ev) => ev.stopPropagation()
+          },
+          e(
+            "div",
+            { className: "ecu-settings-hd" },
+            e(
+              "div",
+              { className: "ecu-settings-hd-copy" },
+              e("input", {
+                type: "search",
+                className: "ecu-settings-search",
+                placeholder: "Search settings\u2026",
+                value: query,
+                onChange: (ev) => setQuery(ev.target.value || "")
+              })
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-settings-split" },
+            e("div", { className: "ecu-settings-nav" }, ...navKids),
+            e(
+              "div",
+              { className: "ecu-settings-pane" },
+              e("div", { className: "ecu-settings-pane-title" }, active.label),
+              e("p", { className: "ecu-settings-pane-desc" }, active.description),
+              active.render({
+                query: trimmedQuery,
+                visible: props.visible,
+                setVisible,
+                setPanelPos,
+                onReplayIntroTour: props.onReplayIntroTour,
+                onOpenChangelog: props.onOpenChangelog
+              })
+            )
+          )
+        )
       )
     );
   }
@@ -35253,9 +41318,9 @@ ${parts.map(cssSlice).join("\n")}
       if (!tintShownRef.current) pushTint("restart");
     };
     React.useEffect(() => {
-      const tick = () => onClockRef.current();
-      tick();
-      return subscribeEffectClock(tick);
+      const tick2 = () => onClockRef.current();
+      tick2();
+      return subscribeEffectClock(tick2);
     }, [entityId, effect.id]);
     const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
     const showRemainLabel = shouldShowRemainingLabel(
@@ -35997,11 +42062,13 @@ ${parts.map(cssSlice).join("\n")}
       {
         className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
         style: {
-          padding: "4px",
+          padding: PARTY_ROSTER_PAD + "px",
           display: "flex",
           gap: "6px",
           flexDirection: "column",
-          maxWidth: "min(560px, 78vw)",
+          width: "fit-content",
+          maxWidth: partyRosterMaxWidth(PARTY_MAX_COLS) + "px",
+          boxSizing: "border-box",
           position: "relative"
         }
       },
@@ -36081,7 +42148,8 @@ ${parts.map(cssSlice).join("\n")}
                 flexWrap: "wrap",
                 // flex-start: chips without EffectsRow must not stretch to match buffs.
                 alignItems: "flex-start",
-                gap: "5px"
+                gap: PARTY_CHIP_GAP + "px",
+                maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px"
               }
             },
             ...party[1].map((player) => {
@@ -36127,7 +42195,7 @@ ${parts.map(cssSlice).join("\n")}
                   style: {
                     position: "relative",
                     flex: "0 0 auto",
-                    width: "168px",
+                    width: PARTY_CHIP_WIDTH + "px",
                     background: "transparent",
                     cursor: "pointer",
                     overflow: "visible",
@@ -36236,11 +42304,23 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/frames/MapInfo.ts
   function getMapData(entities) {
-    const mapData = { map: getMapName() };
-    if (entities.length > 0) {
+    const mapData = {
+      map: getMapName() || getCurrentMap()
+    };
+    const cameraIn = getCurrentIn();
+    if (cameraIn) {
+      mapData.in = cameraIn;
+    } else if (entities.length > 0) {
       mapData.in = entities[0].in;
     }
     return mapData;
+  }
+  function mapDisplayName2(mapKey) {
+    var _a, _b, _c;
+    if (!mapKey) return "loading";
+    const named = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[mapKey]) == null ? void 0 : _c.name;
+    if (typeof named === "string" && named) return named;
+    return mapKey;
   }
   function copyOnClick(text, popupId) {
     return function() {
@@ -36317,67 +42397,64 @@ ${parts.map(cssSlice).join("\n")}
             gap: "4px"
           }
         },
-        `Map: ${mapNameData && mapNameData.map ? mapNameData.map : "loading"}`
+        `Map: ${mapDisplayName2(mapNameData && mapNameData.map)}`
       ),
       instanceIdElement
     );
   }
 
   // src/crypt/cryptCardStyles.ts
-  var CARD_ICON_SIZE = 20;
-  var CARD_STYLE_BASE = {
-    background: "black",
-    padding: "4px 6px",
-    minWidth: "72px",
-    boxSizing: "border-box",
-    fontSize: TYPE.chrome,
-    lineHeight: 1.25,
-    color: "#eee",
-    ...PIXEL_TEXT
-  };
-  var META_STYLE = {
-    fontSize: TYPE.secondary,
-    color: "#ccc",
-    ...PIXEL_TEXT
-  };
-  var SECTION_LABEL_STYLE = {
-    fontSize: TYPE.secondary,
-    color: "#888",
-    padding: "2px 4px 0",
-    ...PIXEL_TEXT
-  };
+  var CARD_ICON_SIZE = 40;
   var PANEL_SHELL = {
     display: "flex",
     flexDirection: "column",
-    margin: "4px",
-    border: "2px double gray",
-    gap: "4px",
-    fontSize: TYPE.chrome,
-    // Explicit solid — do not inherit a meter-idle opacity from a recycled shell.
-    opacity: 1,
-    ...PIXEL_TEXT,
-    ...CRYPT_PANEL_STYLE
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    minHeight: "100%",
+    height: "100%",
+    boxSizing: "border-box"
   };
 
-  // src/crypt/labels.ts
-  var CRYPT_MOB_LABELS = {
-    a1: "Spike",
-    a2: "Bill",
-    a3: "Lestat",
-    a4: "Orlok",
-    a5: "Elena",
-    a6: "Marceline",
-    a7: "Lucinda",
-    a8: "Angel",
-    vbat: "Vampireling",
-    nerfedbat: "Bat"
-  };
-  function getCryptMobLabel(mtype) {
-    return CRYPT_MOB_LABELS[mtype] || mtype;
+  // src/instance/sectionCounts.ts
+  function countVisibleOfMtypes(entities, mtypes) {
+    if (!mtypes.length) return 0;
+    const want = new Set(mtypes);
+    let n = 0;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.type !== "monster" || !ent.visible || ent.dead) continue;
+      if (ent.mtype && want.has(ent.mtype)) n += 1;
+    }
+    return n;
+  }
+  function mapDesignPackCount(map, mtypes) {
+    var _a, _b, _c;
+    if (!map || !mtypes.length) return null;
+    const packs = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[map]) == null ? void 0 : _c.monsters;
+    if (!Array.isArray(packs) || !packs.length) return null;
+    const want = new Set(mtypes);
+    let total = 0;
+    let matched = false;
+    for (let i = 0; i < packs.length; i++) {
+      const row3 = packs[i];
+      if (!row3 || typeof row3.type !== "string" || !want.has(row3.type)) continue;
+      matched = true;
+      const c = typeof row3.count === "number" && row3.count > 0 ? Math.floor(row3.count) : 1;
+      total += c;
+    }
+    return matched ? total : null;
+  }
+  function formatSectionLabel(base, visible, pack) {
+    if (pack != null && pack > 0) {
+      return `${base} \xB7 ${visible} visible \xB7 ${pack} in pack`;
+    }
+    if (visible > 0) return `${base} \xB7 ${visible} visible`;
+    return base;
   }
 
   // src/crypt/pickVisibleMob.ts
-  function pickVisibleCryptMob(entities, mtype, selfId) {
+  function pickVisibleCryptMob(entities, mtype, selfId2) {
     let onSelf;
     let aggroed;
     let first;
@@ -36389,7 +42466,7 @@ ${parts.map(cssSlice).join("\n")}
       if (!first) first = entity;
       if (entity.target == null || entity.target === "") continue;
       if (!aggroed) aggroed = entity;
-      if (selfId && String(entity.target) === selfId) {
+      if (selfId2 && String(entity.target) === selfId2) {
         onSelf = entity;
         break;
       }
@@ -36403,66 +42480,85 @@ ${parts.map(cssSlice).join("\n")}
   );
   function findVisibleMob(entities, mtype) {
     const self = getCharacter();
-    const selfId = self && self.id != null ? String(self.id) : void 0;
-    return pickVisibleCryptMob(entities, mtype, selfId);
+    const selfId2 = self && self.id != null ? String(self.id) : void 0;
+    return pickVisibleCryptMob(entities, mtype, selfId2);
   }
-  function formatBossDeathStatus(boss) {
+  function formatBossDeathGlance(boss) {
+    if (boss.deadCount > 1) return `Died \xB7 #${boss.deadCount}`;
+    return "Died";
+  }
+  function formatBossDeathHover(boss) {
     const ago = boss.deathEventTimestamp != null ? formatTime((Date.now() - boss.deathEventTimestamp) / 1e3) : "?";
     if (boss.deadCount > 1) {
       return `Died \xB7 #${boss.deadCount} \xB7 ${ago} ago`;
     }
     return `Died ${ago} ago`;
   }
-  function buildCryptCardProps(mtype, props, currentlySeeMtypes, aggroedMtypes, instanceData) {
+  function formatClearedGlance(clearedAt) {
+    if (clearedAt == null || !(clearedAt > 0)) return "Cleared";
+    const ago = formatRelativeAge(clearedAt);
+    return ago ? `Cleared \xB7 ${ago}` : "Cleared";
+  }
+  function pushHover(lines, line) {
+    if (line) lines.push(line);
+  }
+  function rememberedLevel(row3) {
+    if (!row3 || typeof row3.lastSeenLevel !== "number") return void 0;
+    return row3.lastSeenLevel;
+  }
+  function buildCryptCardProps(mtype, props, currentlySeeMtypes, aggroedMtypes, instanceData, statusExtra) {
+    const bossList = props.bossMtypes || CRYPT_BOSSES_MTYPES;
+    const isBoss = bossList.indexOf(mtype) >= 0;
     const mobRichData = instanceData[mtype];
     const inVision = currentlySeeMtypes.has(mtype);
     const aggroed = aggroedMtypes.has(mtype);
+    const live2 = pickVisibleCryptMob(props.entities, mtype);
+    let level;
+    if (live2 && typeof live2.level === "number") level = live2.level;
+    else level = rememberedLevel(mobRichData);
+    let kills;
+    if (!isBoss && mobRichData && mobRichData.deadCount > 0) {
+      kills = mobRichData.deadCount;
+    }
     let borderColor = "gray";
     if (aggroed) borderColor = "red";
     else if (inVision) borderColor = "yellow";
-    let status = "??";
-    let lastSeenComponent = null;
-    let levelComponent = "";
-    let focusComponent = null;
-    let luckmComponent = null;
+    let glance = "";
     let faded = false;
+    const hoverLines = [mtype];
     if (mobRichData) {
-      if (CRYPT_BOSSES_MTYPES.indexOf(mtype) >= 0) {
+      if (isBoss) {
         const boss = mobRichData;
         if (inVision || aggroed) {
-          status = "Alive";
-          if (aggroed) lastSeenComponent = "Aggroed!";
-          else lastSeenComponent = "We see!";
-          if (boss.lastSeenFocus) {
-            const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
-            if (focusMtype) {
-              focusComponent = `Focus: ${getCryptMobLabel(focusMtype)}`;
-            }
-          }
+          glance = aggroed ? "Aggroed!" : "We see!";
+          if (statusExtra) glance = `${glance} \xB7 ${statusExtra}`;
         } else if (boss.deadCount > 0) {
-          status = formatBossDeathStatus(boss);
+          glance = formatBossDeathGlance(boss);
           faded = true;
+          pushHover(hoverLines, formatBossDeathHover(boss));
           if (boss.luckm != null) {
-            luckmComponent = `luckm: ${boss.luckm.toFixed(3)}`;
+            pushHover(hoverLines, `luckm ${boss.luckm.toFixed(3)}`);
           }
-        } else {
-          status = "Alive";
-          if (boss.lastSeen != null) {
-            lastSeenComponent = `Seen ${formatTime((Date.now() - boss.lastSeen) / 1e3)} ago`;
-          }
-          if (boss.lastSeenFocus) {
-            const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
-            if (focusMtype) {
-              focusComponent = `Focus: ${getCryptMobLabel(focusMtype)}`;
-            }
-          }
+        } else if (boss.lastSeen != null) {
+          pushHover(
+            hoverLines,
+            `Seen ${formatTime((Date.now() - boss.lastSeen) / 1e3)} ago`
+          );
         }
-        if (boss.lastSeenLevel != null) {
-          levelComponent = ` (${boss.lastSeenLevel} lvl)`;
+        if (boss.lastSeenFocus) {
+          const focusMtype = resolveFocusMtype(boss.lastSeenFocus);
+          if (focusMtype) {
+            pushHover(hoverLines, `Focus: ${getInstanceMobLabel(focusMtype)}`);
+          }
         }
       } else {
-        status = `Died: ${mobRichData.deadCount}`;
-        if (mobRichData.deadCount > 0 && !inVision && !aggroed) faded = true;
+        const n = countVisibleOfMtypes(props.entities, [mtype]);
+        if (inVision || aggroed) {
+          glance = aggroed ? "Aggroed!" : "We see!";
+          if (n > 1) glance = `${glance} \xB7 \xD7${n}`;
+        } else if (kills != null && kills > 0) {
+          faded = true;
+        }
       }
     }
     let onClick;
@@ -36478,13 +42574,12 @@ ${parts.map(cssSlice).join("\n")}
       key: mtype,
       mtype,
       borderColor,
-      levelComponent,
-      status,
-      lastSeenComponent,
-      focusComponent,
-      luckmComponent,
-      onClick,
-      faded
+      glance,
+      hoverLines,
+      level,
+      kills,
+      faded,
+      onClick
     };
   }
 
@@ -36516,60 +42611,88 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/crypt/CryptCard.ts
+  function cardTone(props) {
+    if (props.borderColor === "red") return "aggro";
+    if (props.borderColor === "yellow") return "seen";
+    if (props.glance.indexOf("Died") === 0 || props.glance.indexOf("Cleared") === 0) {
+      return "dead";
+    }
+    if (props.kills != null && props.kills > 0) return "dead";
+    return "idle";
+  }
   function CryptCard(props) {
     const React = getReact();
-    const displayName = getCryptMobLabel(props.mtype);
+    const displayName = getInstanceMobLabel(props.mtype);
     const clickable = !!props.onClick;
     const iconHtml = React.useMemo(
       () => props.dummy ? "" : monsterSprite(props.mtype, { size: CARD_ICON_SIZE }),
       [props.mtype, props.dummy]
     );
     const icon = iconHtml ? wrapIconHtml(iconHtml) : null;
+    const tone = cardTone(props);
+    const accent = props.borderColor.charAt(0) === "#" ? props.borderColor : void 0;
+    const hoverLines = props.hoverLines || [];
+    const hoverLineKids = [];
+    for (let i = 0; i < hoverLines.length; i++) {
+      const line = hoverLines[i];
+      hoverLineKids.push(
+        e(
+          "div",
+          {
+            key: "h" + i,
+            className: line === props.mtype ? "ecu-inst-card__detail-line ecu-inst-card__detail-id" : "ecu-inst-card__detail-line"
+          },
+          line
+        )
+      );
+    }
+    const hasCorner = props.level != null || props.kills != null && props.kills > 0;
     return e(
       "div",
       {
         key: props.mtype,
-        style: Object.assign({}, CARD_STYLE_BASE, {
-          border: `2px double ${props.borderColor}`,
+        className: [
+          "ecu-inst-card",
+          `ecu-inst-card--${tone}`,
+          hasCorner ? "ecu-inst-card--meta" : ""
+        ].filter(Boolean).join(" "),
+        style: {
           cursor: clickable ? "pointer" : void 0,
-          opacity: props.dummy ? 0.85 : props.faded ? 0.45 : 1
-        }),
-        title: clickable ? "Click to target" : props.mtype,
+          opacity: props.dummy ? 0.85 : props.faded ? 0.45 : 1,
+          borderColor: accent
+        },
         onClick: props.onClick
       },
+      hasCorner ? e(
+        "div",
+        { key: "corner", className: "ecu-inst-card__corner" },
+        props.level != null ? e(
+          "div",
+          { key: "lv", className: "ecu-inst-card__level" },
+          "Lv " + props.level
+        ) : void 0,
+        props.kills != null && props.kills > 0 ? e(
+          "div",
+          { key: "kills", className: "ecu-inst-card__kills" },
+          "Died \xD7" + props.kills
+        ) : void 0
+      ) : void 0,
       e(
         "div",
-        {
-          key: "nameRow",
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            minWidth: 0
-          }
-        },
-        icon,
+        { key: "head", className: "ecu-inst-card__head" },
+        icon ? e("div", { key: "icon", className: "ecu-inst-card__icon" }, icon) : void 0,
         e(
-          "span",
-          {
-            style: {
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              minWidth: 0
-            }
-          },
-          `${displayName}${props.levelComponent}`
+          "div",
+          { key: "id", className: "ecu-inst-card__id" },
+          e("span", { className: "ecu-inst-card__name" }, displayName),
+          props.glance ? e("div", { className: "ecu-inst-card__glance" }, props.glance) : void 0,
+          hoverLineKids.length ? e(
+            "div",
+            { key: "detail", className: "ecu-inst-card__detail" },
+            ...hoverLineKids
+          ) : void 0
         )
-      ),
-      e("div", { key: "state", style: META_STYLE }, props.status),
-      props.lastSeenComponent ? e(
-        "div",
-        { key: "lastSeen", style: META_STYLE },
-        props.lastSeenComponent
-      ) : void 0,
-      props.focusComponent ? e("div", { key: "focus", style: META_STYLE }, props.focusComponent) : void 0,
-      props.luckmComponent ? e("div", { key: "luckm", style: META_STYLE }, props.luckmComponent) : void 0
+      )
     );
   }
 
@@ -36584,84 +42707,55 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "div",
         {
-          style: {
-            padding: "5px 8px 0",
-            whiteSpace: "nowrap",
-            fontSize: TYPE.title,
-            color: "#ccc",
-            ...PIXEL_TEXT
-          }
-        },
-        "Crypt"
-      ),
-      e(
-        "div",
-        {
           key: "content",
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            padding: "0 4px 4px"
-          }
+          className: "ecu-inst-body"
         },
-        e("div", { key: "bosses-label", style: SECTION_LABEL_STYLE }, "Bosses"),
+        e("div", { key: "bosses-label", className: "ecu-inst-sec" }, "Bosses"),
         e(
           "div",
-          {
-            key: "bosses",
-            style: { display: "flex", flexWrap: "wrap", gap: "4px" }
-          },
+          { key: "bosses", className: "ecu-inst-grid" },
           e(CryptCard, {
             key: "a1",
             mtype: "a1",
             borderColor: "yellow",
-            levelComponent: " (10 lvl)",
-            status: "Alive",
-            lastSeenComponent: "We see!",
-            focusComponent: null,
-            luckmComponent: null,
+            glance: "We see!",
+            hoverLines: ["a1"],
+            level: 10,
             dummy: true
           }),
           e(CryptCard, {
             key: "a2",
             mtype: "a2",
             borderColor: "gray",
-            levelComponent: "",
-            status: "Died \xB7 #2 \xB7 3m ago",
-            lastSeenComponent: null,
-            focusComponent: null,
-            luckmComponent: "luckm: 0.125",
+            glance: "Died \xB7 #2",
+            hoverLines: ["a2", "Died \xB7 #2 \xB7 3m ago", "luckm 0.125"],
+            level: 12,
+            faded: true,
             dummy: true
           })
         ),
-        e("div", { key: "bats-label", style: SECTION_LABEL_STYLE }, "Bats"),
+        e("div", { key: "bats-label", className: "ecu-inst-sec" }, "Bats"),
         e(
           "div",
-          {
-            key: "bats",
-            style: { display: "flex", flexWrap: "wrap", gap: "4px" }
-          },
+          { key: "bats", className: "ecu-inst-grid" },
           e(CryptCard, {
             key: "vbat",
             mtype: "vbat",
             borderColor: "red",
-            levelComponent: "",
-            status: "Died: 1",
-            lastSeenComponent: null,
-            focusComponent: null,
-            luckmComponent: null,
+            glance: "Aggroed! \xB7 \xD72",
+            hoverLines: ["vbat"],
+            level: 8,
+            kills: 4,
             dummy: true
           }),
           e(CryptCard, {
             key: "nerfedbat",
             mtype: "nerfedbat",
             borderColor: "gray",
-            levelComponent: "",
-            status: "Died: 0",
-            lastSeenComponent: null,
-            focusComponent: null,
-            luckmComponent: null,
+            glance: "",
+            hoverLines: ["nerfedbat"],
+            kills: 3,
+            faded: true,
             dummy: true
           })
         )
@@ -36669,56 +42763,365 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/crypt/cryptPanelCss.ts
+  var CRYPT_PANEL_CSS = `
+#comm-ui .comm-pos-panel.comm-pos-instance,
+#comm-ui .comm-pos-panel.comm-pos-instanceRun {
+  opacity: 1 !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-instance .comm-crypt-progress,
+#comm-ui .comm-pos-panel.comm-pos-instanceRun .comm-instance-run {
+  min-height: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.comm-crypt-progress {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+.ecu-inst-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 8px 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ecu-inst-sec {
+  font-size: 13px;
+  color: #b0b0b0;
+  padding: 4px 2px 0;
+}
+.ecu-inst-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 164px), 1fr));
+  gap: 6px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+.ecu-inst-grid--compass {
+  grid-template-columns: 1fr 1fr;
+}
+.ecu-inst-card-span {
+  grid-column: 1 / -1;
+}
+
+.ecu-inst-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: #050505;
+  padding: 6px 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 2px double #555;
+  color: #eee;
+  font-size: 15px;
+}
+.ecu-inst-card--seen {
+  border-color: #cc6;
+}
+.ecu-inst-card--aggro {
+  border-color: #e55;
+}
+.ecu-inst-card--dead {
+  border-color: #444;
+}
+.ecu-inst-card--meta .ecu-inst-card__head {
+  padding-right: 52px;
+}
+.ecu-inst-card__corner {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  pointer-events: none;
+  line-height: 1.2;
+}
+.ecu-inst-card__level {
+  font-size: 11px;
+  color: #c8c8c8;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-inst-card__kills {
+  font-size: 11px;
+  color: #9a9a9a;
+}
+.ecu-inst-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+.ecu-inst-card__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+.ecu-inst-card__id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.ecu-inst-card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+  color: #fff;
+  font-size: 16px;
+}
+.ecu-inst-card__glance {
+  font-size: 12px;
+  color: #ccc;
+}
+.ecu-inst-card--aggro .ecu-inst-card__glance {
+  color: #f66;
+}
+.ecu-inst-card--seen .ecu-inst-card__glance {
+  color: #e8c96a;
+}
+.ecu-inst-card--dead .ecu-inst-card__glance {
+  color: #9a9a9a;
+}
+.ecu-inst-card__detail {
+  display: none;
+}
+.ecu-inst-card:hover .ecu-inst-card__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ecu-inst-card__detail-line {
+  font-size: 12px;
+  color: #ccc;
+  line-height: 1.25;
+}
+.ecu-inst-card__detail-id {
+  color: #888;
+  font-size: 11px;
+}
+
+.comm-instance-run {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px 8px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ecu-inst-run__pill {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(232, 201, 106, 0.45);
+  background: rgba(232, 201, 106, 0.12);
+  color: #e8c96a;
+  font-size: 12px;
+}
+.ecu-inst-run__label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+.ecu-inst-run__count {
+  color: #ddd;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-inst-run__bar {
+  height: 8px;
+  background: #222;
+  border: 1px solid #444;
+  overflow: hidden;
+}
+.ecu-inst-run__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6a4, #8c6);
+  transition: width 0.2s;
+}
+.ecu-inst-run__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #ccc;
+}
+`;
+  var injected5 = false;
+  function ensureCryptPanelCss() {
+    if (injected5) return;
+    injected5 = true;
+    const existing = document.querySelector(
+      "style[data-ecu-crypt-panel-css]"
+    );
+    if (existing) {
+      existing.textContent = CRYPT_PANEL_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-crypt-panel-css", "1");
+    el.textContent = CRYPT_PANEL_CSS;
+    document.head.appendChild(el);
+  }
+
   // src/ui/frames/CryptProgress.ts
-  function renderMobSection(label, mtypes, props, currentlySeeMtypes, aggroedMtypes, instanceData) {
+  function winterPhaseGlance(cfg, mtype, cardGlance, currentlySee, instanceData) {
+    const order = cfg.phaseOrder || cfg.bossMtypes;
+    const idx = order.indexOf(mtype);
+    if (idx < 0) return cardGlance;
+    let activeIdx = -1;
+    for (let i = 0; i < order.length; i++) {
+      if (currentlySee.has(order[i])) activeIdx = i;
+    }
+    if (activeIdx < 0) {
+      let cleared = 0;
+      for (let i = 0; i < order.length; i++) {
+        const row4 = instanceData[order[i]];
+        if (row4 && row4.deadCount > 0) cleared = i + 1;
+      }
+      activeIdx = cleared > 0 ? cleared - 1 : -1;
+    }
+    const row3 = instanceData[mtype];
+    const dead = !!(row3 && row3.deadCount > 0) && !currentlySee.has(mtype);
+    if (dead || activeIdx >= 0 && idx < activeIdx) {
+      const at = row3 && "deathEventTimestamp" in row3 ? row3.deathEventTimestamp : void 0;
+      return formatClearedGlance(at);
+    }
+    if (currentlySee.has(mtype)) return cardGlance;
+    if (activeIdx >= 0 && idx === activeIdx + 1) return "Up next";
+    if (idx === order.length - 1 && activeIdx < idx) return "Final phase";
+    return cardGlance;
+  }
+  function renderMobSection(label, mtypes, props, currentlySeeMtypes, aggroedMtypes, instanceData, cfg, mapKey, extras) {
     const cards = [];
+    const compass = cfg.cardLayout === "compass";
     for (let i = 0; i < mtypes.length; i++) {
+      const mt = mtypes[i];
+      const built = buildCryptCardProps(
+        mt,
+        props,
+        currentlySeeMtypes,
+        aggroedMtypes,
+        instanceData,
+        extras ? extras[mt] : null
+      );
+      if (cfg.accentBorders && cfg.accentBorders[mt]) {
+        if (built.borderColor === "gray") {
+          built.borderColor = cfg.accentBorders[mt];
+        }
+      }
+      if (cfg.progressMode === "phase") {
+        built.glance = winterPhaseGlance(
+          cfg,
+          mt,
+          built.glance,
+          currentlySeeMtypes,
+          instanceData
+        );
+        if (built.glance.indexOf("Cleared") === 0) built.faded = true;
+      }
+      const card = e(CryptCard, built);
       cards.push(
-        e(
-          CryptCard,
-          buildCryptCardProps(
-            mtypes[i],
-            props,
-            currentlySeeMtypes,
-            aggroedMtypes,
-            instanceData
-          )
-        )
+        cfg.gateBossMtype === mt ? e("div", { key: mt, className: "ecu-inst-card-span" }, card) : card
       );
     }
+    const gridClass = compass ? "ecu-inst-grid ecu-inst-grid--compass" : "ecu-inst-grid";
+    const isBossSection = mtypes.length > 0 && mtypes.every((mt) => cfg.bossMtypes.indexOf(mt) >= 0);
+    const sectionTitle = isBossSection ? label : formatSectionLabel(
+      label,
+      countVisibleOfMtypes(props.entities, mtypes),
+      mapDesignPackCount(mapKey, mtypes)
+    );
     return [
-      e("div", { key: `${label}-label`, style: SECTION_LABEL_STYLE }, label),
       e(
         "div",
-        {
-          key: label,
-          style: { display: "flex", flexWrap: "wrap", gap: "4px" }
-        },
-        ...cards
-      )
+        { key: `${label}-label`, className: "ecu-inst-sec" },
+        sectionTitle
+      ),
+      e("div", { key: label, className: gridClass }, ...cards)
     ];
   }
   function CryptProgress(props) {
+    ensureCryptPanelCss();
     const mapName = getMapData(props.entities);
-    const onCrypt = !!(mapName && mapName.map === "crypt");
-    if (!onCrypt) {
+    const cfg = getInstanceConfig(mapName.map);
+    const onInstance = isTrackedInstanceMap(mapName.map);
+    if (!onInstance || !cfg) {
       if (!props.layoutEdit) return null;
       return e(CryptProgressLayoutDummy);
     }
-    updateFromEntities(mapName.in, props.entities);
+    updateFromEntities(mapName.in, props.entities, {
+      trackedMtypes: cfg.trackedMtypes,
+      bossMtypes: cfg.bossMtypes
+    });
     const currentlySeeMtypes = /* @__PURE__ */ new Set();
     const aggroedMtypes = /* @__PURE__ */ new Set();
     for (let i = 0; i < props.entities.length; i++) {
       const entity = props.entities[i];
       if (!entity) continue;
       if (entity.type !== "monster" || !entity.visible || entity.dead) continue;
-      if (!entity.mtype || CRYPT_IMPORTANT_MOBS_MTYPES.indexOf(entity.mtype) < 0) {
+      if (!entity.mtype || cfg.trackedMtypes.indexOf(entity.mtype) < 0) {
         continue;
       }
       currentlySeeMtypes.add(entity.mtype);
       if (entity.target) aggroedMtypes.add(entity.mtype);
     }
     const instanceData = getInstanceData(mapName.in);
+    const cardProps = {
+      ...props,
+      bossMtypes: cfg.bossMtypes
+    };
+    const extras = {};
+    if (cfg.gateBossMtype && cfg.gateSideMtypes) {
+      let sideAlive = false;
+      for (let i = 0; i < cfg.gateSideMtypes.length; i++) {
+        const mt = cfg.gateSideMtypes[i];
+        const row3 = instanceData[mt];
+        const dead = !!(row3 && row3.deadCount > 0) && !currentlySeeMtypes.has(mt);
+        if (!dead) sideAlive = true;
+      }
+      if (sideAlive) extras[cfg.gateBossMtype] = "passage blocked";
+    }
+    const sections = [];
+    for (let i = 0; i < cfg.sections.length; i++) {
+      const sec = cfg.sections[i];
+      sections.push(
+        ...renderMobSection(
+          sec.label,
+          sec.mtypes,
+          cardProps,
+          currentlySeeMtypes,
+          aggroedMtypes,
+          instanceData,
+          cfg,
+          mapName.map,
+          extras
+        )
+      );
+    }
     return e(
       "div",
       {
@@ -36728,45 +43131,229 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "div",
         {
-          style: {
-            padding: "5px 8px 0",
-            whiteSpace: "nowrap",
-            fontSize: TYPE.title,
-            color: "#ccc",
-            ...PIXEL_TEXT
-          }
-        },
-        "Crypt"
-      ),
-      e(
-        "div",
-        {
           key: "content",
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "4px",
-            padding: "0 4px 4px"
-          }
+          className: "ecu-inst-body"
         },
-        ...renderMobSection(
-          "Bosses",
-          CRYPT_BOSSES_MTYPES,
-          props,
-          currentlySeeMtypes,
-          aggroedMtypes,
-          instanceData
-        ),
-        ...renderMobSection(
-          "Bats",
-          CRYPT_BAT_MTYPES,
-          props,
-          currentlySeeMtypes,
-          aggroedMtypes,
-          instanceData
-        )
+        ...sections
       )
     );
+  }
+  var InstancePanel = CryptProgress;
+
+  // src/instance/runModel.ts
+  function countClearedBosses(cfg, data) {
+    let n = 0;
+    for (let i = 0; i < cfg.bossMtypes.length; i++) {
+      const row3 = data[cfg.bossMtypes[i]];
+      if (row3 && row3.deadCount > 0) n += 1;
+    }
+    return n;
+  }
+  function latestLuckm(cfg, data) {
+    var _a;
+    let bestAt = -1;
+    let luckm = null;
+    for (let i = 0; i < cfg.bossMtypes.length; i++) {
+      const row3 = data[cfg.bossMtypes[i]];
+      if (!row3 || row3.luckm == null) continue;
+      const at = (_a = row3.deathEventTimestamp) != null ? _a : 0;
+      if (at >= bestAt) {
+        bestAt = at;
+        luckm = row3.luckm;
+      }
+    }
+    return luckm;
+  }
+  function phaseIndex(cfg, data, entities) {
+    const order = cfg.phaseOrder || cfg.bossMtypes;
+    const total = order.length;
+    let visibleIdx = -1;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.type !== "monster" || !ent.visible || ent.dead) continue;
+      if (!ent.mtype) continue;
+      const idx = order.indexOf(ent.mtype);
+      if (idx >= 0 && idx > visibleIdx) visibleIdx = idx;
+    }
+    if (visibleIdx >= 0) {
+      return {
+        current: visibleIdx + 1,
+        total,
+        activeLabel: getInstanceMobLabel(order[visibleIdx])
+      };
+    }
+    let cleared = 0;
+    for (let i = 0; i < order.length; i++) {
+      const row3 = data[order[i]];
+      if (row3 && row3.deadCount > 0) cleared = i + 1;
+    }
+    return {
+      current: cleared,
+      total,
+      activeLabel: cleared > 0 ? getInstanceMobLabel(order[cleared - 1]) : null
+    };
+  }
+  function countVisibleAdds(entities, mtype) {
+    let n = 0;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.type !== "monster" || !ent.visible || ent.dead) continue;
+      if (ent.mtype === mtype) n += 1;
+    }
+    return n;
+  }
+  function spiderGateHint(cfg, data, currentlySee) {
+    var _a;
+    const side = cfg.gateSideMtypes;
+    const gate = cfg.gateBossMtype;
+    if (!side || !gate) return null;
+    let sideAlive = false;
+    for (let i = 0; i < side.length; i++) {
+      const mt = side[i];
+      const row3 = data[mt];
+      const dead = !!(row3 && row3.deadCount > 0) && !currentlySee.has(mt);
+      if (!dead) sideAlive = true;
+    }
+    if (sideAlive && (currentlySee.has(gate) || !((_a = data[gate]) == null ? void 0 : _a.deadCount))) {
+      return "Passage blocked while side queens live";
+    }
+    if (!sideAlive) return "Exit opens when queen dies";
+    return null;
+  }
+  function buildInstanceRunModel(cfg, instanceId, entities, currentlySeeMtypes) {
+    const data = getInstanceData(instanceId);
+    let phaseLabel = null;
+    const luckm = latestLuckm(cfg, data);
+    const luckmLabel = luckm != null ? `luckm ${luckm.toFixed(3)}` : null;
+    let progressLabel = "Bosses cleared";
+    let progressCurrent = 0;
+    let progressTotal = cfg.bossMtypes.length;
+    let hint = null;
+    switch (cfg.progressMode) {
+      case "count": {
+        progressCurrent = countClearedBosses(cfg, data);
+        progressLabel = cfg.map === "tomb" ? "Guardians cleared" : "Bosses cleared";
+        break;
+      }
+      case "phase": {
+        const ph = phaseIndex(cfg, data, entities);
+        progressCurrent = ph.current;
+        progressTotal = ph.total;
+        progressLabel = "Phase";
+        if (ph.current > 0) {
+          const order = cfg.phaseOrder || cfg.bossMtypes;
+          const mt = order[ph.current - 1];
+          const short = cfg.phaseNames && cfg.phaseNames[mt] || ph.activeLabel;
+          phaseLabel = short ? `Phase ${ph.current} \xB7 ${short}` : `Phase ${ph.current} / ${ph.total}`;
+        } else if (ph.activeLabel) {
+          phaseLabel = ph.activeLabel;
+        }
+        break;
+      }
+      case "adds": {
+        const mtype = cfg.addMtype || "spider";
+        const pack = cfg.addPackSize || 6;
+        progressCurrent = countVisibleAdds(entities, mtype);
+        progressTotal = pack;
+        progressLabel = "Spiders visible";
+        hint = spiderGateHint(cfg, data, currentlySeeMtypes);
+        break;
+      }
+      default: {
+        const _exhaustive = cfg.progressMode;
+        void _exhaustive;
+        break;
+      }
+    }
+    return {
+      title: cfg.title,
+      progressLabel,
+      progressCurrent,
+      progressTotal,
+      phaseLabel,
+      luckmLabel,
+      hint
+    };
+  }
+
+  // src/ui/frames/InstanceRunPanel.ts
+  var DUMMY_MODEL = {
+    title: "The Crypt",
+    progressLabel: "Bosses cleared",
+    progressCurrent: 5,
+    progressTotal: 8,
+    phaseLabel: null,
+    luckmLabel: "luckm 0.125",
+    hint: null
+  };
+  function renderInstanceRun(model, isPhase, dummy) {
+    const pct = model.progressTotal > 0 ? Math.min(
+      100,
+      Math.round(model.progressCurrent / model.progressTotal * 100)
+    ) : 0;
+    const metaLeft = isPhase ? model.hint || "" : model.phaseLabel || model.hint || "";
+    const showMeta = !!(metaLeft || model.luckmLabel);
+    return e(
+      "div",
+      {
+        className: dummy ? "comm-instance-run comm-instance-run-dummy" : "comm-instance-run",
+        style: PIXEL_TEXT
+      },
+      isPhase && model.phaseLabel ? e("span", { className: "ecu-inst-run__pill" }, model.phaseLabel) : null,
+      e(
+        "div",
+        { className: "ecu-inst-run__label" },
+        e("span", null, model.progressLabel),
+        e(
+          "span",
+          { className: "ecu-inst-run__count" },
+          `${model.progressCurrent} / ${model.progressTotal}`
+        )
+      ),
+      !isPhase ? e(
+        "div",
+        { className: "ecu-inst-run__bar" },
+        e("div", {
+          className: "ecu-inst-run__fill",
+          style: { width: pct + "%" }
+        })
+      ) : null,
+      showMeta ? e(
+        "div",
+        { className: "ecu-inst-run__meta" },
+        e("span", null, metaLeft),
+        model.luckmLabel ? e("span", null, model.luckmLabel) : null
+      ) : null
+    );
+  }
+  function InstanceRunPanel(props) {
+    ensureCryptPanelCss();
+    const mapName = getMapData(props.entities);
+    const cfg = getInstanceConfig(mapName.map);
+    if (!isTrackedInstanceMap(mapName.map) || !cfg) {
+      if (!props.layoutEdit) return null;
+      return renderInstanceRun(DUMMY_MODEL, false, true);
+    }
+    updateFromEntities(mapName.in, props.entities, {
+      trackedMtypes: cfg.trackedMtypes,
+      bossMtypes: cfg.bossMtypes
+    });
+    const currentlySeeMtypes = /* @__PURE__ */ new Set();
+    for (let i = 0; i < props.entities.length; i++) {
+      const entity = props.entities[i];
+      if (!entity) continue;
+      if (entity.type !== "monster" || !entity.visible || entity.dead) continue;
+      if (entity.mtype && cfg.trackedMtypes.indexOf(entity.mtype) >= 0) {
+        currentlySeeMtypes.add(entity.mtype);
+      }
+    }
+    const model = buildInstanceRunModel(
+      cfg,
+      mapName.in,
+      props.entities,
+      currentlySeeMtypes
+    );
+    return renderInstanceRun(model, cfg.progressMode === "phase");
   }
 
   // src/ui/frames/ServerInfo.ts
@@ -37388,7 +43975,7 @@ ${parts.map(cssSlice).join("\n")}
             }
           },
           ...GEAR_ROWS.map(
-            (row2, ri) => e(
+            (row3, ri) => e(
               "div",
               {
                 key: `row${ri}`,
@@ -37399,7 +43986,7 @@ ${parts.map(cssSlice).join("\n")}
                   gap: "2px"
                 }
               },
-              ...row2.map(
+              ...row3.map(
                 (name) => e(SlotCell, {
                   key: name,
                   entity: props.entity,
@@ -37942,14 +44529,14 @@ ${ESTIMATE_HINT}`,
   function EntityInfo(props) {
     var _a, _b, _c;
     const React = getReact();
-    const selectedId = props.selectedEntity != null && props.selectedEntity !== "" ? String(props.selectedEntity) : "";
-    const live2 = selectedId ? findEntity(props.entities, selectedId) : void 0;
+    const selectedId2 = props.selectedEntity != null && props.selectedEntity !== "" ? String(props.selectedEntity) : "";
+    const live2 = selectedId2 ? findEntity(props.entities, selectedId2) : void 0;
     const cacheRef = React.useRef(null);
-    if (!selectedId) {
+    if (!selectedId2) {
       cacheRef.current = null;
     } else if (live2) {
       cacheRef.current = snapshotEntity(live2);
-    } else if (cacheRef.current && String(cacheRef.current.id) !== selectedId) {
+    } else if (cacheRef.current && String(cacheRef.current.id) !== selectedId2) {
       cacheRef.current = null;
     }
     const entity = live2 || cacheRef.current;
@@ -38337,11 +44924,13 @@ ${ESTIMATE_HINT}`,
       showMp = true,
       children,
       onClick,
-      nameStyle
+      nameStyle,
+      hpThresholdMarks
     } = props;
     const hpPct2 = maxHp > 0 ? hp / maxHp : 0;
     const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
     const barH = hpBarHeightPx(nameStyle);
+    const marks = hpThresholdMarks || [];
     return e(
       "div",
       {
@@ -38377,6 +44966,25 @@ ${ESTIMATE_HINT}`,
             background: hpColor
           }
         }),
+        ...marks.map(
+          (m) => e("span", {
+            key: m.key,
+            className: "comm-hp-threshold" + (m.fired ? " comm-hp-threshold--fired" : ""),
+            title: `${Math.round(m.ratio * 100)}% HP \xB7 ${m.count}\xD7 ${m.mtype}`,
+            style: {
+              position: "absolute",
+              top: "-2px",
+              bottom: "-2px",
+              left: `${m.leftPct}%`,
+              width: "2px",
+              marginLeft: "-1px",
+              background: m.fired ? "#666" : "#c88",
+              opacity: m.fired ? 0.5 : 0.9,
+              pointerEvents: "none",
+              zIndex: 2
+            }
+          })
+        ),
         e(
           "div",
           {
@@ -38394,7 +45002,8 @@ ${ESTIMATE_HINT}`,
                 boxSizing: "border-box",
                 display: "flex",
                 alignItems: "center",
-                lineHeight: "1.25"
+                lineHeight: "1.25",
+                zIndex: 1
               },
               nameStyle || {}
             ),
@@ -38441,7 +45050,9 @@ ${ESTIMATE_HINT}`,
       showMp = true,
       aggroLabel,
       aggroHot = false,
-      aggroMobs = []
+      aggroMobs = [],
+      hpThresholdMarks,
+      footer
     } = props;
     const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
@@ -38559,6 +45170,7 @@ ${ESTIMATE_HINT}`,
           maxMp: entity.max_mp,
           hpColor,
           showMp,
+          hpThresholdMarks,
           nameStyle: {
             fontSize: fontSize != null ? fontSize : "21px",
             fontWeight: "normal"
@@ -38567,7 +45179,8 @@ ${ESTIMATE_HINT}`,
         },
         label
       ),
-      effectsSlot
+      effectsSlot,
+      footer || null
     );
   }
 
@@ -38874,6 +45487,81 @@ ${ESTIMATE_HINT}`,
     return null;
   }
 
+  // src/instance/monsterSpawns.ts
+  var HP_RE = /^hp:([0-9]*\.?[0-9]+)$/i;
+  function parseSpawnCondition(condition) {
+    if (typeof condition === "number" && Number.isFinite(condition) && condition > 0) {
+      return { kind: "timed", intervalMs: condition };
+    }
+    if (typeof condition === "string") {
+      const m = HP_RE.exec(condition.trim());
+      if (!m) return null;
+      const ratio = parseFloat(m[1]);
+      if (!(ratio > 0 && ratio <= 1)) return null;
+      return { kind: "hp", ratio };
+    }
+    return null;
+  }
+  function listMonsterSpawns(mtype) {
+    var _a, _b;
+    const def = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
+    const raw = def && Array.isArray(def.spawns) ? def.spawns : null;
+    if (!raw) return [];
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const pack = raw[i];
+      if (!Array.isArray(pack) || pack.length < 2) continue;
+      const parsed = parseSpawnCondition(pack[0]);
+      const child = pack[1];
+      if (!parsed || typeof child !== "string" || !child) continue;
+      const count = typeof pack[2] === "number" && pack[2] > 0 ? Math.floor(pack[2]) : 1;
+      if (parsed.kind === "timed") {
+        out.push({
+          kind: "timed",
+          intervalMs: parsed.intervalMs,
+          mtype: child,
+          count
+        });
+      } else {
+        out.push({
+          kind: "hp",
+          ratio: parsed.ratio,
+          mtype: child,
+          count
+        });
+      }
+    }
+    return out;
+  }
+  function listHpThresholdSpawns(mtype) {
+    const all = listMonsterSpawns(mtype);
+    const out = [];
+    for (let i = 0; i < all.length; i++) {
+      const p = all[i];
+      if (p.kind === "hp") out.push(p);
+    }
+    return out;
+  }
+  function buildHpThresholdMarks(mtype, hpRatio2) {
+    if (!vizCommFlag("comm.hpThresholds")) return [];
+    const packs = listHpThresholdSpawns(mtype);
+    if (!packs.length) return [];
+    const ratio = Number.isFinite(hpRatio2) ? Math.max(0, Math.min(1, hpRatio2)) : 1;
+    const out = [];
+    for (let i = 0; i < packs.length; i++) {
+      const p = packs[i];
+      out.push({
+        leftPct: (1 - p.ratio) * 100,
+        ratio: p.ratio,
+        fired: ratio <= p.ratio,
+        mtype: p.mtype,
+        count: p.count,
+        key: `hp:${p.ratio}:${p.mtype}`
+      });
+    }
+    return out;
+  }
+
   // src/ui/frames/BossBarPanel.ts
   function bossThreat(entity, observingId) {
     if (!observingId || entity.type !== "monster") return 0;
@@ -38929,15 +45617,18 @@ ${ESTIMATE_HINT}`,
         })
       );
     }
-    return e(
-      "div",
-      { style: STACK_STYLE },
-      ...bosses.map((boss) => {
-        const onMe = bossThreat(boss, obsId) > 0;
-        const aggro = aggroName(boss, props.entities);
-        const pct = getPercent(hpRatio(boss), 1);
-        const aggroLabel = onMe ? "Aggro \xB7 you" : aggro ? `Aggro \xB7 ${aggro}` : "Aggro \xB7 \u2014";
-        return e(
+    const rows = [];
+    for (let i = 0; i < bosses.length; i++) {
+      const boss = bosses[i];
+      const onMe = bossThreat(boss, obsId) > 0;
+      const aggro = aggroName(boss, props.entities);
+      const ratio = hpRatio(boss);
+      const pct = getPercent(ratio, 1);
+      const aggroLabel = onMe ? "Aggro \xB7 you" : aggro ? `Aggro \xB7 ${aggro}` : "Aggro \xB7 \u2014";
+      const mtype = typeof boss.mtype === "string" ? boss.mtype : "";
+      const marks = mtype ? buildHpThresholdMarks(mtype, ratio) : [];
+      rows.push(
+        e(
           "div",
           {
             key: `boss-${String(boss.id)}`,
@@ -38962,19 +45653,99 @@ ${ESTIMATE_HINT}`,
             showEffects: true,
             effectsCompact: true,
             effectsIconSize: 22,
-            // 0 = show all (EffectsRow wraps; no +N overflow chip).
             effectsMaxVisible: 0,
             trailing: pct,
             aggroLabel,
             aggroHot: onMe,
+            hpThresholdMarks: marks.length ? marks : void 0,
             onSelect: (id) => {
               setXTarget(boss);
               props.setSelectedEntity(id);
             }
           })
-        );
-      })
+        )
+      );
+    }
+    return e("div", { style: STACK_STYLE }, ...rows);
+  }
+
+  // src/ui/frames/AbilityTimelinePanel.ts
+  function AbilityTimelinePanel(props) {
+    const React = getReact();
+    const { prefs, model, hasActive, tickKey } = useAbilityTimelineLive(props);
+    const hostRef = React.useRef(null);
+    const [chrome, setChrome] = React.useState("inward");
+    useAbilityTimelineMotion(hostRef, hasActive, tickKey);
+    React.useLayoutEffect(() => {
+      const el = hostRef.current;
+      if (!el) return;
+      const update = () => {
+        const r = el.getBoundingClientRect();
+        const mid = r.left + r.width / 2;
+        setChrome(mid > window.innerWidth * 0.55 ? "inward" : "outward");
+      };
+      update();
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }, [prefs.orient, hasActive]);
+    if (!model) return null;
+    return e(
+      "div",
+      { ref: hostRef, style: { height: "100%", width: "100%" } },
+      renderAbilityTimelineShell(model, prefs, !!props.layoutEdit, chrome)
     );
+  }
+
+  // src/ui/frames/threatPanelCss.ts
+  var THREAT_PANEL_CSS = `
+#comm-ui .comm-pos-panel.comm-pos-threat {
+  opacity: 1 !important;
+  display: flex !important;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: visible;
+}
+#comm-ui .comm-pos-panel.comm-pos-threat .comm-pos-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+#comm-ui .comm-pos-panel.comm-pos-threat > .comm-threat-table,
+#comm-ui .comm-pos-panel.comm-pos-threat .comm-panel-shell-dummy {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+}
+#comm-ui .comm-pos-panel.comm-pos-threat .comm-threat-rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+}
+#comm-ui .comm-pos-panel.comm-pos-threat .comm-threat-row {
+  width: 100%;
+  box-sizing: border-box;
+}
+`;
+  var injected6 = false;
+  function ensureThreatPanelCss() {
+    if (injected6) return;
+    injected6 = true;
+    const existing = document.querySelector(
+      "style[data-ecu-threat-panel-css]"
+    );
+    if (existing) {
+      existing.textContent = THREAT_PANEL_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-threat-panel-css", "1");
+    el.textContent = THREAT_PANEL_CSS;
+    document.head.appendChild(el);
   }
 
   // src/ui/frames/ThreatTable.ts
@@ -39185,7 +45956,7 @@ ${ESTIMATE_HINT}`,
         }
       },
       ...shown.map(
-        (row2) => e(MobChip, { key: row2.mtype, mtype: row2.mtype, count: row2.count })
+        (row3) => e(MobChip, { key: row3.mtype, mtype: row3.mtype, count: row3.count })
       ),
       overflow > 0 ? e(
         "span",
@@ -39247,8 +46018,9 @@ ${ESTIMATE_HINT}`,
           flexDirection: "column",
           gap: "3px",
           padding: "3px 4px 5px",
-          background: isYou ? "rgba(80,0,0,0.45)" : void 0,
-          boxSizing: "border-box"
+          width: "100%",
+          boxSizing: "border-box",
+          background: isYou ? "rgba(80,0,0,0.45)" : void 0
         }
       },
       vitals,
@@ -39257,6 +46029,7 @@ ${ESTIMATE_HINT}`,
   }
   function ThreatTable(props) {
     var _a;
+    ensureThreatPanelCss();
     const React = getReact();
     const [storedScope, setStoredScope] = React.useState(
       () => loadSettings().threatScope || "visible"
@@ -39311,6 +46084,7 @@ ${ESTIMATE_HINT}`,
           gap: "8px",
           padding: "5px 8px 2px",
           fontSize: TYPE.title,
+          flexShrink: 0,
           ...PIXEL_TEXT,
           color: "#ccc"
         }
@@ -39360,22 +46134,20 @@ ${ESTIMATE_HINT}`,
       "div",
       {
         className: "comm-threat-table",
-        style: {
-          display: "flex",
-          overflow: "auto",
-          flexDirection: "column",
-          margin: "4px",
-          border: "2px double gray",
-          gap: "2px",
-          maxHeight: "280px",
-          minWidth: "220px",
+        style: Object.assign({}, THREAT_TABLE_SHELL, {
           fontSize: TYPE.name,
-          ...PIXEL_TEXT,
-          ...THREAT_PANEL_STYLE
-        }
+          ...PIXEL_TEXT
+        })
       },
       header,
-      ...rows
+      e(
+        "div",
+        {
+          className: "comm-threat-rows",
+          style: { flex: "1 1 auto", minHeight: 0, width: "100%" }
+        },
+        ...rows
+      )
     );
   }
 
@@ -39541,7 +46313,9 @@ ${ESTIMATE_HINT}`,
           gap: "10px",
           padding: "10px",
           maxHeight: "300px",
-          minWidth: "300px",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: "100%",
           fontSize: TYPE.name,
           color: "#eee",
           ...PIXEL_TEXT
@@ -39823,12 +46597,12 @@ ${ESTIMATE_HINT}`,
         "Parties",
         "/min \xB7 count",
         stats.byParty.slice(0, 8).map(
-          (row2) => listRow({
-            key: row2.party,
-            label: partyLabel(row2.party),
-            count: row2.count,
+          (row3) => listRow({
+            key: row3.party,
+            label: partyLabel(row3.party),
+            count: row3.count,
             max: partyMax,
-            killsPerMinute: row2.killsPerMinute,
+            killsPerMinute: row3.killsPerMinute,
             showPace: false
           })
         )
@@ -39837,19 +46611,1084 @@ ${ESTIMATE_HINT}`,
         "Monsters",
         "/min \xB7 avg \xB7 count",
         stats.byMtype.slice(0, 12).map(
-          (row2) => listRow({
-            key: row2.mtype,
-            label: row2.mtype,
-            count: row2.count,
+          (row3) => listRow({
+            key: row3.mtype,
+            label: row3.mtype,
+            count: row3.count,
             max: mtypeMax,
-            mtype: row2.mtype,
-            killsPerMinute: row2.killsPerMinute,
-            avgIntervalSec: row2.avgIntervalSec,
+            mtype: row3.mtype,
+            killsPerMinute: row3.killsPerMinute,
+            avgIntervalSec: row3.avgIntervalSec,
             showPace: true
           })
         )
       ) : null
     ]);
+  }
+
+  // src/ui/minimap/mapExtent.ts
+  var MINIMAP_CHAR_FIT_MAX = 520;
+  var MINIMAP_CHAR_FIT_SOLO = 200;
+  var MINIMAP_CHAR_FIT_FILL = 0.78;
+  function asGeo(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    return raw;
+  }
+  function finiteExtent(g) {
+    const minX = g.min_x;
+    const minY = g.min_y;
+    const maxX = g.max_x;
+    const maxY = g.max_y;
+    if (typeof minX !== "number" || typeof minY !== "number" || typeof maxX !== "number" || typeof maxY !== "number") {
+      return null;
+    }
+    if (!Number.isFinite(minX + minY + maxX + maxY)) return null;
+    if (maxX <= minX || maxY <= minY) return null;
+    return { minX, minY, maxX, maxY };
+  }
+  function resolveMapGeometry(mapKey) {
+    var _a;
+    const key = mapKey != null && String(mapKey) !== "" ? String(mapKey) : getCurrentMap() || void 0;
+    const G = getG();
+    const fromGeo = key && (G == null ? void 0 : G.geometry) ? asGeo(G.geometry[key]) : null;
+    const fromMap = key && ((_a = G == null ? void 0 : G.maps) == null ? void 0 : _a[key]) ? asGeo(G.maps[key].data) : null;
+    const geo = fromGeo || fromMap;
+    if (!geo) {
+      return {
+        mapKey: key,
+        extent: null,
+        xLines: [],
+        yLines: [],
+        hasGeo: false
+      };
+    }
+    const extent = finiteExtent(geo);
+    return {
+      mapKey: key,
+      extent,
+      xLines: Array.isArray(geo.x_lines) ? geo.x_lines : [],
+      yLines: Array.isArray(geo.y_lines) ? geo.y_lines : [],
+      hasGeo: !!extent
+    };
+  }
+  function clampCharFitZoom(n) {
+    if (!Number.isFinite(n)) return MINIMAP_ZOOM_DEFAULT;
+    return Math.max(
+      MINIMAP_ZOOM_MIN,
+      Math.min(MINIMAP_CHAR_FIT_MAX, Math.round(n))
+    );
+  }
+  function xyOf(ent) {
+    var _a, _b;
+    if (!ent) return null;
+    const x = (_a = ent.real_x) != null ? _a : ent.x;
+    const y = (_b = ent.real_y) != null ? _b : ent.y;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+  function isPlayerLike(ent) {
+    return isFocusablePlayer(ent);
+  }
+  function isDrawableEntity(ent) {
+    if (!ent || ent.dead || ent.rip) return false;
+    const asEnt = ent;
+    return isFocusablePlayer(asEnt) || isAliveMonster(asEnt);
+  }
+  function characterFitHalfSpan(focus, points, canvasW, canvasH) {
+    const fill = MINIMAP_CHAR_FIT_FILL;
+    const aspect = Math.max(0.2, canvasW / Math.max(1, canvasH));
+    let need = MINIMAP_CHAR_FIT_SOLO;
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const dx = Math.abs(p.x - focus.x);
+      const dy = Math.abs(p.y - focus.y);
+      const spanForPoint = aspect >= 1 ? Math.max(dy / fill, dx / (fill * aspect)) : Math.max(dx / fill, dy * aspect / fill);
+      if (spanForPoint > need) need = spanForPoint;
+    }
+    if (points.length <= 1) {
+      need = Math.max(need, MINIMAP_CHAR_FIT_SOLO);
+    }
+    return clampCharFitZoom(need);
+  }
+  function collectCharacterFitPoints(primary, entities) {
+    const focus = xyOf(primary);
+    if (!focus) {
+      return { focus: { x: 0, y: 0 }, points: [] };
+    }
+    const points = [{ x: focus.x, y: focus.y }];
+    const primaryId = primary.id != null ? String(primary.id) : "";
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!isDrawableEntity(ent)) continue;
+      const id = ent.id != null ? String(ent.id) : "";
+      if (id && id === primaryId) continue;
+      const p = xyOf(ent);
+      if (!p) continue;
+      points.push(p);
+    }
+    return { focus, points };
+  }
+  function resolveMinimapFocusSet(entities, observing, character) {
+    let primary = null;
+    if (observing && xyOf(observing)) primary = observing;
+    else if (character && xyOf(character)) primary = character;
+    else {
+      for (let i = 0; i < entities.length; i++) {
+        const ent = entities[i];
+        if (ent && ent.me && !ent.dead && !ent.rip && isPlayerLike(ent) && xyOf(ent)) {
+          primary = ent;
+          break;
+        }
+      }
+    }
+    if (primary) {
+      const packed = collectCharacterFitPoints(primary, entities);
+      const points2 = packed.points.length > 0 ? packed.points : [packed.focus];
+      return {
+        primary,
+        focus: packed.focus,
+        points: points2,
+        focusId: primary.id != null ? String(primary.id) : "self"
+      };
+    }
+    const players = [];
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || ent.dead || ent.rip || !isPlayerLike(ent) || !xyOf(ent))
+        continue;
+      players.push(ent);
+    }
+    if (players.length === 0) {
+      return { primary: null, focus: null, points: [], focusId: "" };
+    }
+    const byParty = {};
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const key = p.party || `solo:${p.id}`;
+      if (!byParty[key]) byParty[key] = [];
+      byParty[key].push(p);
+    }
+    let best = players;
+    const keys = Object.keys(byParty);
+    for (let i = 0; i < keys.length; i++) {
+      const g = byParty[keys[i]];
+      if (g.length > best.length) best = g;
+    }
+    const points = [];
+    let sx = 0;
+    let sy = 0;
+    for (let i = 0; i < best.length; i++) {
+      const p = xyOf(best[i]);
+      if (!p) continue;
+      points.push(p);
+      sx += p.x;
+      sy += p.y;
+    }
+    if (points.length === 0) {
+      return { primary: null, focus: null, points: [], focusId: "" };
+    }
+    const focus = { x: sx / points.length, y: sy / points.length };
+    return {
+      primary: best[0],
+      focus,
+      points,
+      focusId: best[0].id != null ? String(best[0].id) : "party"
+    };
+  }
+  function cameraExtentFromWorldCoords(focus, points, canvasW, canvasH, pan, halfSpanOverride) {
+    const halfSpan = typeof halfSpanOverride === "number" && halfSpanOverride > 0 ? clampMinimapZoom(halfSpanOverride) : characterFitHalfSpan(focus, points, canvasW, canvasH);
+    const extent = aspectSpanExtent(
+      focus.x + pan.x,
+      focus.y + pan.y,
+      halfSpan,
+      canvasW,
+      canvasH
+    );
+    return { extent, halfSpan };
+  }
+  function aspectSpanExtent(cx, cy, halfSpan, canvasW, canvasH) {
+    const span = Math.max(MINIMAP_ZOOM_MIN, halfSpan);
+    const aspect = Math.max(0.2, canvasW / Math.max(1, canvasH));
+    let halfW;
+    let halfH;
+    if (aspect >= 1) {
+      halfH = span;
+      halfW = span * aspect;
+    } else {
+      halfW = span;
+      halfH = span / aspect;
+    }
+    return {
+      minX: cx - halfW,
+      maxX: cx + halfW,
+      minY: cy - halfH,
+      maxY: cy + halfH
+    };
+  }
+
+  // src/ui/minimap/minimapAppearance.ts
+  function minimapBgPalette(mode) {
+    switch (mode) {
+      case "transparent":
+        return { canvasBg: null, gridColor: null };
+      case "faint":
+        return {
+          canvasBg: "rgba(12, 14, 18, 0.12)",
+          gridColor: "rgba(255, 255, 255, 0.018)"
+        };
+      case "opaque":
+        return {
+          canvasBg: "#0c0e12",
+          gridColor: "rgba(255, 255, 255, 0.05)"
+        };
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function minimapBgModeLabel(mode) {
+    switch (mode) {
+      case "opaque":
+        return "Solid";
+      case "faint":
+        return "Faint";
+      case "transparent":
+        return "Clear";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function minimapBgModeTitle(mode) {
+    switch (mode) {
+      case "opaque":
+        return "Background: solid grid \u2014 click for faint";
+      case "faint":
+        return "Background: very faint grid \u2014 click for transparent";
+      case "transparent":
+        return "Background: transparent (no grid) \u2014 click for solid";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+
+  // src/ui/minimap/paintMinimap.ts
+  var WALL_COLOR = "rgba(140, 160, 180, 0.55)";
+  var PLAYER = "#5ec8ff";
+  var PARTY = "#7dffb3";
+  var SELF = "#ffe66d";
+  var MONSTER = "#e85d5d";
+  var BOSS = "#c77dff";
+  var TARGET_RING = "#ff9f43";
+  var SELECT_RING = "#ffffff";
+  var CROSSHAIR = "rgba(255, 230, 109, 0.35)";
+  var MAX_WALL_STROKES = 3500;
+  var PAD2 = 4;
+  function makeProjector(extent, width, height, pad3 = PAD2) {
+    const worldW = Math.max(1, extent.maxX - extent.minX);
+    const worldH = Math.max(1, extent.maxY - extent.minY);
+    const plotW = width - pad3 * 2;
+    const plotH = height - pad3 * 2;
+    const scale = Math.min(plotW / worldW, plotH / worldH);
+    const ox = pad3 + (plotW - worldW * scale) / 2;
+    const oy = pad3 + (plotH - worldH * scale) / 2;
+    return {
+      scale,
+      project: (x, y) => ({
+        sx: ox + (x - extent.minX) * scale,
+        sy: oy + (y - extent.minY) * scale
+      }),
+      unproject: (sx, sy) => ({
+        x: extent.minX + (sx - ox) / scale,
+        y: extent.minY + (sy - oy) / scale
+      })
+    };
+  }
+  function drawDot(ctx, sx, sy, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  function drawDiamond(ctx, sx, sy, r, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - r);
+    ctx.lineTo(sx + r, sy);
+    ctx.lineTo(sx, sy + r);
+    ctx.lineTo(sx - r, sy);
+    ctx.closePath();
+    ctx.fill();
+  }
+  function wallStep(count) {
+    if (count <= MAX_WALL_STROKES) return 1;
+    return Math.ceil(count / MAX_WALL_STROKES);
+  }
+  function collectHits(ents, extent, project, obsId) {
+    const out = [];
+    for (let i = 0; i < ents.length; i++) {
+      const ent = ents[i];
+      if (!ent || ent.dead || ent.rip) continue;
+      const xy = entityMapXY(ent);
+      if (!xy) continue;
+      if (xy.x < extent.minX || xy.x > extent.maxX || xy.y < extent.minY || xy.y > extent.maxY) {
+        continue;
+      }
+      const id = ent.id != null ? String(ent.id) : "";
+      if (!id) continue;
+      const p = project(xy.x, xy.y);
+      let r = 2.4;
+      if (isAliveMonster(ent)) {
+        r = ent.cooperative === true ? 3.4 : 2.4;
+      } else if (isFocusablePlayer(ent)) {
+        r = id === obsId ? 6 : 3.2;
+      } else {
+        continue;
+      }
+      out.push({ entity: ent, id, sx: p.sx, sy: p.sy, r });
+    }
+    return out;
+  }
+  function hitTestMinimap(opts) {
+    const { project } = makeProjector(opts.extent, opts.width, opts.height);
+    const obsId = opts.observingId != null ? String(opts.observingId) : "";
+    const hits = collectHits(opts.entities || [], opts.extent, project, obsId);
+    const maxDist = opts.maxDist != null ? opts.maxDist : 10;
+    let best = null;
+    for (let i = 0; i < hits.length; i++) {
+      const h = hits[i];
+      const dx = h.sx - opts.sx;
+      const dy = h.sy - opts.sy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const limit = Math.max(maxDist, h.r + 4);
+      if (dist > limit) continue;
+      if (!best || dist < best.dist) {
+        best = { id: h.id, entity: h.entity, sx: h.sx, sy: h.sy, dist };
+      }
+    }
+    return best;
+  }
+  function paintMinimap(canvas, opts) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const width = Math.max(32, Math.round(opts.width));
+    const height = Math.max(32, Math.round(opts.height));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const palette = minimapBgPalette(opts.bgMode || "opaque");
+    if (palette.canvasBg) {
+      ctx.fillStyle = palette.canvasBg;
+      ctx.fillRect(0, 0, width, height);
+    }
+    const extent = opts.extent;
+    const { project } = makeProjector(extent, width, height, PAD2);
+    if (palette.gridColor) {
+      ctx.strokeStyle = palette.gridColor;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let g = 1; g < 4; g++) {
+        const gx = PAD2 + (width - PAD2 * 2) * g / 4;
+        const gy = PAD2 + (height - PAD2 * 2) * g / 4;
+        ctx.moveTo(gx, PAD2);
+        ctx.lineTo(gx, height - PAD2);
+        ctx.moveTo(PAD2, gy);
+        ctx.lineTo(width - PAD2, gy);
+      }
+      ctx.stroke();
+    }
+    const xLines = opts.xLines || [];
+    const yLines = opts.yLines || [];
+    if (xLines.length || yLines.length) {
+      ctx.strokeStyle = WALL_COLOR;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const xs = wallStep(xLines.length);
+      for (let i = 0; i < xLines.length; i += xs) {
+        const line = xLines[i];
+        if (!line || line.length < 3) continue;
+        const lx = line[0];
+        if (lx < extent.minX || lx > extent.maxX) continue;
+        const y0 = Math.min(line[1], line[2]);
+        const y1 = Math.max(line[1], line[2]);
+        if (y1 < extent.minY || y0 > extent.maxY) continue;
+        const a = project(lx, Math.max(y0, extent.minY));
+        const b = project(lx, Math.min(y1, extent.maxY));
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+      }
+      const ys = wallStep(yLines.length);
+      for (let i = 0; i < yLines.length; i += ys) {
+        const line = yLines[i];
+        if (!line || line.length < 3) continue;
+        const ly = line[0];
+        if (ly < extent.minY || ly > extent.maxY) continue;
+        const x0 = Math.min(line[1], line[2]);
+        const x1 = Math.max(line[1], line[2]);
+        if (x1 < extent.minX || x0 > extent.maxX) continue;
+        const a = project(Math.max(x0, extent.minX), ly);
+        const b = project(Math.min(x1, extent.maxX), ly);
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+      }
+      ctx.stroke();
+    }
+    if (typeof opts.focusX === "number" && typeof opts.focusY === "number" && Number.isFinite(opts.focusX + opts.focusY)) {
+      const c = project(opts.focusX, opts.focusY);
+      ctx.strokeStyle = CROSSHAIR;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(c.sx - 10, c.sy);
+      ctx.lineTo(c.sx + 10, c.sy);
+      ctx.moveTo(c.sx, c.sy - 10);
+      ctx.lineTo(c.sx, c.sy + 10);
+      ctx.stroke();
+    }
+    const obsId = opts.observingId != null ? String(opts.observingId) : "";
+    const targetId = opts.targetId != null ? String(opts.targetId) : "";
+    const selectedId2 = opts.selectedId != null ? String(opts.selectedId) : "";
+    const partyKey = opts.partyKey || "";
+    const monsters = [];
+    const players = [];
+    let selfDot = null;
+    let targetDot = null;
+    let selectedDot = null;
+    const ents = opts.entities || [];
+    for (let i = 0; i < ents.length; i++) {
+      const ent = ents[i];
+      if (!ent || ent.dead || ent.rip) continue;
+      const xy = entityMapXY(ent);
+      if (!xy) continue;
+      if (xy.x < extent.minX || xy.x > extent.maxX || xy.y < extent.minY || xy.y > extent.maxY) {
+        continue;
+      }
+      const p = project(xy.x, xy.y);
+      const id = ent.id != null ? String(ent.id) : "";
+      if (isAliveMonster(ent)) {
+        const kind2 = ent.cooperative === true ? "boss" : "monster";
+        const dot2 = { sx: p.sx, sy: p.sy, kind: kind2, id };
+        monsters.push(dot2);
+        if (id && id === targetId) targetDot = dot2;
+        if (id && id === selectedId2) selectedDot = dot2;
+        continue;
+      }
+      if (!isFocusablePlayer(ent)) continue;
+      let kind = "player";
+      if (id && id === obsId) kind = "self";
+      else if (partyKey && ent.party === partyKey) kind = "party";
+      const dot = { sx: p.sx, sy: p.sy, kind, id };
+      if (kind === "self") selfDot = dot;
+      else players.push(dot);
+      if (id && id === targetId) targetDot = dot;
+      if (id && id === selectedId2) selectedDot = dot;
+    }
+    for (let i = 0; i < monsters.length; i++) {
+      const d = monsters[i];
+      drawDot(
+        ctx,
+        d.sx,
+        d.sy,
+        d.kind === "boss" ? 3.2 : 2.2,
+        d.kind === "boss" ? BOSS : MONSTER
+      );
+    }
+    for (let i = 0; i < players.length; i++) {
+      const d = players[i];
+      drawDot(ctx, d.sx, d.sy, 2.8, d.kind === "party" ? PARTY : PLAYER);
+    }
+    if (selfDot) {
+      drawDiamond(ctx, selfDot.sx, selfDot.sy, 5, SELF);
+    }
+    if (targetDot) {
+      ctx.strokeStyle = TARGET_RING;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(targetDot.sx, targetDot.sy, 6.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (selectedDot && selectedDot.id !== (targetDot && targetDot.id)) {
+      ctx.strokeStyle = SELECT_RING;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(selectedDot.sx, selectedDot.sy, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // src/ui/minimap/minimapCss.ts
+  var STYLE_ID5 = "ecu-minimap-chrome-css";
+  var CSS7 = `
+.comm-minimap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 200px;
+  min-height: 200px;
+  background: transparent;
+  box-shadow: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.comm-minimap-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+  min-height: 22px;
+  box-sizing: border-box;
+}
+.comm-minimap-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ccc;
+  font-size: 13px;
+}
+.comm-minimap-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease;
+}
+.comm-minimap-tools button {
+  background: #1a1a1a;
+  border: 1px solid #555;
+  color: #eee;
+  font-size: 13px;
+  padding: 1px 6px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.comm-minimap-tools button:hover {
+  border-color: #888;
+  background: #252525;
+}
+.comm-minimap-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  width: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+.comm-minimap-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.comm-minimap-legend {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 3px 6px;
+  background: rgba(0,0,0,0.72);
+  border: 1px solid #333;
+  box-sizing: border-box;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.comm-minimap-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #aaa;
+  font-size: 13px;
+}
+.comm-minimap-swatch {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.55);
+}
+/* Idle: hide tools + legend on fine pointers. */
+@media (hover: hover) and (pointer: fine) {
+  .comm-minimap:not(:hover) .comm-minimap-hover {
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* Panel hover / unlocked arrange keeps chrome usable without fighting the strip. */
+  .comm-pos-panel.comm-pos-chrome-open .comm-minimap .comm-minimap-hover,
+  .comm-pos-panel.comm-pos-movable .comm-minimap .comm-minimap-hover,
+  .comm-pos-panel.comm-pos-editing .comm-minimap .comm-minimap-hover,
+  .comm-minimap.is-layout-edit .comm-minimap-hover {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .comm-pos-panel.comm-pos-chrome-open .comm-minimap .comm-minimap-legend,
+  .comm-pos-panel.comm-pos-movable .comm-minimap .comm-minimap-legend,
+  .comm-pos-panel.comm-pos-editing .comm-minimap .comm-minimap-legend,
+  .comm-minimap.is-layout-edit .comm-minimap-legend {
+    pointer-events: none;
+  }
+}
+.comm-minimap:hover .comm-minimap-hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+.comm-minimap:hover .comm-minimap-legend {
+  pointer-events: none;
+}
+
+.comm-minimap[data-bg="opaque"] {
+  background: rgba(0, 0, 0, 0.94);
+  box-shadow: 0 0 0 1px #111, 4px 4px 0 rgba(0, 0, 0, 0.45);
+}
+
+.comm-minimap[data-bg="faint"] {
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.comm-minimap[data-bg="faint"] .comm-minimap-titlebar {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.comm-minimap[data-bg="faint"] .comm-minimap-legend {
+  background: rgba(0, 0, 0, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.comm-minimap[data-bg="transparent"] {
+  background: transparent;
+  box-shadow: none;
+}
+.comm-minimap[data-bg="transparent"] .comm-minimap-titlebar {
+  border-bottom-color: transparent;
+  background: transparent;
+}
+.comm-minimap[data-bg="transparent"] .comm-minimap-legend {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+`;
+  var injected7 = false;
+  function injectMinimapCss() {
+    if (typeof document === "undefined") return;
+    let el = document.getElementById(STYLE_ID5);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID5;
+      document.head.appendChild(el);
+    }
+    if (!injected7 || el.textContent !== CSS7) {
+      el.textContent = CSS7;
+    }
+    injected7 = true;
+  }
+
+  // src/ui/minimap/minimapScene.ts
+  function readMinimapScene() {
+    const observing = getObserving();
+    const character = getCharacter();
+    const observingId = (observing == null ? void 0 : observing.id) != null ? String(observing.id) : getObservingId() || "";
+    const entities = getEntitiesList();
+    const resolved = resolveMinimapFocusSet(entities, observing, character);
+    const primary = resolved.primary;
+    const mapKey = observing && observing.map || primary && primary.map || character && character.map || getCurrentMap() || void 0;
+    const inKey = observing && observing.in != null && String(observing.in) || primary && primary.in != null && String(primary.in) || character && character.in != null && String(character.in) || getCurrentIn() || "";
+    const geo = resolveMapGeometry(mapKey);
+    return {
+      observing,
+      character,
+      entities,
+      observingId,
+      resolved,
+      mapKey,
+      inKey,
+      geo
+    };
+  }
+
+  // src/ui/frames/Minimap.ts
+  var DEFAULT_SIZE = 200;
+  var LEGEND = [
+    { color: "#ffe66d", label: "You", title: "You / observed" },
+    { color: "#7dffb3", label: "P", title: "Party" },
+    { color: "#5ec8ff", label: "I", title: "Other players" },
+    { color: "#e85d5d", label: "M", title: "Monsters" },
+    { color: "#c77dff", label: "B", title: "Boss / cooperative" }
+  ];
+  function mapDisplayName3(mapKey) {
+    var _a, _b, _c;
+    if (!mapKey) return "\u2026";
+    const named = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[mapKey]) == null ? void 0 : _c.name;
+    if (typeof named === "string" && named) return named;
+    return mapKey;
+  }
+  function Minimap(props) {
+    const React = getReact();
+    injectMinimapCss();
+    const wrapRef = React.useRef(null);
+    const canvasRef = React.useRef(null);
+    const sizeRef = React.useRef({ w: DEFAULT_SIZE, h: DEFAULT_SIZE });
+    const extentRef = React.useRef(null);
+    const panRef = React.useRef({ x: 0, y: 0 });
+    const lastFocusRef = React.useRef(null);
+    const lastPointsRef = React.useRef([]);
+    const camFocusRef = React.useRef(null);
+    const trackRef = React.useRef({
+      primed: false,
+      mapKey: "",
+      inKey: ""
+    });
+    const dragRef = React.useRef(
+      null
+    );
+    const initial = getSettings();
+    const [zoom, setZoom] = React.useState(
+      () => clampMinimapZoom(
+        typeof initial.minimapZoom === "number" ? initial.minimapZoom : MINIMAP_ZOOM_DEFAULT
+      )
+    );
+    const [bgMode, setBgMode] = React.useState(
+      () => normalizeMinimapBgMode(initial.minimapBg)
+    );
+    const [meta2, setMeta] = React.useState({
+      label: "",
+      hasGeo: false
+    });
+    const zoomRef = React.useRef(zoom);
+    zoomRef.current = zoom;
+    const bgModeRef = React.useRef(bgMode);
+    bgModeRef.current = bgMode;
+    const persistZoom = (next) => {
+      const z = clampMinimapZoom(next);
+      zoomRef.current = z;
+      setZoom(z);
+      patchSettings({ minimapZoom: z });
+    };
+    const cycleBgMode = () => {
+      const next = cycleMinimapBgMode(bgModeRef.current);
+      bgModeRef.current = next;
+      setBgMode(next);
+      patchSettings({ minimapBg: next });
+      paint();
+    };
+    const snapCameraToFocus = (focus, points, canvasW, canvasH) => {
+      panRef.current = { x: 0, y: 0 };
+      camFocusRef.current = { x: Math.round(focus.x), y: Math.round(focus.y) };
+      const camFocus = camFocusRef.current;
+      const { halfSpan } = cameraExtentFromWorldCoords(
+        camFocus,
+        points.length > 0 ? points : [camFocus],
+        canvasW,
+        canvasH,
+        { x: 0, y: 0 }
+      );
+      zoomRef.current = halfSpan;
+      setZoom(halfSpan);
+      patchSettings({ minimapZoom: halfSpan });
+    };
+    const paint = React.useCallback(() => {
+      var _a;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const scene = readMinimapScene();
+      let focus = scene.resolved.focus;
+      let points = scene.resolved.points;
+      if (focus) {
+        lastFocusRef.current = focus;
+        lastPointsRef.current = points;
+      } else if (lastFocusRef.current) {
+        focus = lastFocusRef.current;
+        points = lastPointsRef.current.length > 0 ? lastPointsRef.current : [lastFocusRef.current];
+      }
+      const { w, h } = sizeRef.current;
+      const track = trackRef.current;
+      const mapStr = scene.mapKey || "";
+      if (focus) {
+        const needInitial = !track.primed;
+        const mapChanged = track.primed && mapStr !== "" && mapStr !== track.mapKey;
+        const inChanged = track.primed && scene.inKey !== "" && scene.inKey !== track.inKey;
+        if (needInitial || mapChanged || inChanged) {
+          snapCameraToFocus(focus, points, w, h);
+        }
+        track.primed = true;
+        if (mapStr !== "") track.mapKey = mapStr;
+        if (scene.inKey !== "") track.inKey = scene.inKey;
+      }
+      const pan = panRef.current;
+      let extent;
+      const camFocus = camFocusRef.current || focus;
+      if (camFocus) {
+        const cam = cameraExtentFromWorldCoords(
+          camFocus,
+          points.length > 0 ? points : [camFocus],
+          w,
+          h,
+          pan,
+          zoomRef.current
+        );
+        extent = cam.extent;
+      } else {
+        extent = extentRef.current || cameraExtentFromWorldCoords(
+          { x: 0, y: 0 },
+          [{ x: 0, y: 0 }],
+          w,
+          h,
+          pan,
+          zoomRef.current
+        ).extent;
+      }
+      extentRef.current = extent;
+      let targetId;
+      if (((_a = scene.observing) == null ? void 0 : _a.target) != null && scene.observing.target !== "") {
+        targetId = String(scene.observing.target);
+      } else {
+        const xt = window.xtarget;
+        if (xt && xt.id != null) targetId = String(xt.id);
+      }
+      const partyKey = scene.observing && scene.observing.party || scene.resolved.primary && scene.resolved.primary.party || scene.character && scene.character.party || "";
+      paintMinimap(canvas, {
+        width: w,
+        height: h,
+        extent,
+        xLines: scene.geo.xLines,
+        yLines: scene.geo.yLines,
+        entities: scene.entities,
+        observingId: scene.observingId || void 0,
+        targetId,
+        selectedId: props.selectedEntity,
+        partyKey,
+        focusX: focus == null ? void 0 : focus.x,
+        focusY: focus == null ? void 0 : focus.y,
+        bgMode: bgModeRef.current
+      });
+      const nextMeta = {
+        label: mapDisplayName3(scene.geo.mapKey || scene.mapKey),
+        hasGeo: scene.geo.hasGeo
+      };
+      setMeta((prev) => {
+        if (prev.label === nextMeta.label && prev.hasGeo === nextMeta.hasGeo) {
+          return prev;
+        }
+        return nextMeta;
+      });
+    }, [props.selectedEntity, bgMode]);
+    React.useEffect(() => {
+      trackRef.current.primed = false;
+      const stop = subscribeTick(() => paint());
+      paint();
+      return () => stop();
+    }, [paint]);
+    React.useEffect(() => {
+      const el = wrapRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const box = entry.contentRect;
+        const w = Math.max(120, Math.floor(box.width));
+        const h = Math.max(120, Math.floor(box.height));
+        if (w === sizeRef.current.w && h === sizeRef.current.h) return;
+        sizeRef.current = { w, h };
+        paint();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [paint]);
+    const onWheel = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const dir = ev.deltaY > 0 ? 1 : -1;
+      const factor = dir > 0 ? 1.12 : 1 / 1.12;
+      persistZoom(zoomRef.current * factor);
+      paint();
+    };
+    const onPointerDown = (ev) => {
+      var _a;
+      if (ev.button !== 0) return;
+      const canvas = canvasRef.current;
+      const extent = extentRef.current;
+      if (!canvas || !extent) return;
+      (_a = canvas.setPointerCapture) == null ? void 0 : _a.call(canvas, ev.pointerId);
+      const rect = canvas.getBoundingClientRect();
+      const { scale } = makeProjector(
+        extent,
+        sizeRef.current.w,
+        sizeRef.current.h
+      );
+      dragRef.current = {
+        sx: ev.clientX - rect.left,
+        sy: ev.clientY - rect.top,
+        panX: panRef.current.x,
+        panY: panRef.current.y,
+        scale,
+        moved: false
+      };
+    };
+    const onPointerMove = (ev) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = ev.clientX - rect.left;
+      const sy = ev.clientY - rect.top;
+      const dxPx = sx - drag.sx;
+      const dyPx = sy - drag.sy;
+      if (Math.abs(dxPx) + Math.abs(dyPx) > 3) drag.moved = true;
+      const scale = Math.max(1e-4, drag.scale);
+      panRef.current = {
+        x: drag.panX - dxPx / scale,
+        y: drag.panY - dyPx / scale
+      };
+      paint();
+    };
+    const onPointerUp = (ev) => {
+      var _a;
+      const drag = dragRef.current;
+      dragRef.current = null;
+      const canvas = canvasRef.current;
+      if (canvas) (_a = canvas.releasePointerCapture) == null ? void 0 : _a.call(canvas, ev.pointerId);
+      if (!drag || drag.moved) return;
+      const extent = extentRef.current;
+      if (!extent) return;
+      const hit = hitTestMinimap({
+        extent,
+        width: sizeRef.current.w,
+        height: sizeRef.current.h,
+        entities: getEntitiesList(),
+        observingId: getObservingId(),
+        sx: drag.sx,
+        sy: drag.sy
+      });
+      if (!hit) return;
+      setXTarget(hit.entity);
+      if (props.setSelectedEntity) props.setSelectedEntity(hit.id);
+    };
+    const recenter = () => {
+      const scene = readMinimapScene();
+      const focus = scene.resolved.focus || lastFocusRef.current;
+      const points = scene.resolved.points.length > 0 ? scene.resolved.points : lastPointsRef.current.length > 0 ? lastPointsRef.current : focus ? [focus] : [];
+      if (focus) {
+        snapCameraToFocus(focus, points, sizeRef.current.w, sizeRef.current.h);
+      } else {
+        panRef.current = { x: 0, y: 0 };
+      }
+      paint();
+    };
+    return e(
+      "div",
+      {
+        className: "comm-minimap" + (props.layoutEdit ? " is-layout-edit" : ""),
+        "data-bg": bgMode,
+        style: { ...PIXEL_TEXT }
+      },
+      e(
+        "div",
+        { className: "comm-minimap-titlebar" },
+        e(
+          "span",
+          {
+            className: "comm-minimap-title",
+            title: meta2.hasGeo ? `${meta2.label} \u2014 walls from G.geometry (no floor tiles on /comm)` : `${meta2.label} \u2014 no G.geometry; camera uses entity positions`
+          },
+          meta2.label || "Minimap"
+        ),
+        e(
+          "div",
+          { className: "comm-minimap-tools comm-minimap-hover" },
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: cycleBgMode,
+              title: minimapBgModeTitle(bgMode),
+              "aria-pressed": bgMode !== "opaque" ? "true" : "false",
+              style: PIXEL_TEXT
+            },
+            minimapBgModeLabel(bgMode)
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                persistZoom(zoomRef.current / 1.2);
+                paint();
+              },
+              title: "Zoom in (wheel also works)",
+              style: PIXEL_TEXT
+            },
+            "+"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                persistZoom(zoomRef.current * 1.2);
+                paint();
+              },
+              title: "Zoom out",
+              style: PIXEL_TEXT
+            },
+            "\u2212"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              onClick: recenter,
+              title: "Recenter on observer + zoom to fit all visible entities",
+              style: PIXEL_TEXT
+            },
+            "\u25CE"
+          )
+        )
+      ),
+      e(
+        "div",
+        {
+          ref: wrapRef,
+          className: "comm-minimap-stage",
+          onWheel,
+          onPointerDown,
+          onPointerMove,
+          onPointerUp,
+          onPointerCancel: onPointerUp
+        },
+        e("canvas", { ref: canvasRef }),
+        e(
+          "div",
+          {
+            className: "comm-minimap-legend comm-minimap-hover",
+            "aria-hidden": true
+          },
+          ...LEGEND.map(
+            (it) => e(
+              "span",
+              { key: it.label, className: "comm-minimap-leg", title: it.title },
+              e("span", {
+                className: "comm-minimap-swatch",
+                style: { background: it.color }
+              }),
+              it.label
+            )
+          )
+        )
+      )
+    );
   }
 
   // src/host/codemirror.ts
@@ -39934,9 +47773,7 @@ ${ESTIMATE_HINT}`,
     const [snippetQuery, setSnippetQuery] = React.useState("");
     const [folderFilter, setFolderFilter] = React.useState("all");
     const [status, setStatus2] = React.useState("");
-    const [selectedId, setSelectedId] = React.useState(
-      null
-    );
+    const [selectedId2, setSelectedId] = React.useState(null);
     const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
     const editorHostRef = React.useRef(null);
     const textareaRef = React.useRef(null);
@@ -40065,7 +47902,7 @@ ${ESTIMATE_HINT}`,
         if (snippets[i].id !== id) next.push(snippets[i]);
       }
       persistSnippets(next);
-      if (selectedId === id) setSelectedId(null);
+      if (selectedId2 === id) setSelectedId(null);
       setStatus2("Snippet removed");
     };
     const onPick = (snip) => {
@@ -40119,7 +47956,7 @@ ${ESTIMATE_HINT}`,
     const snippetRows = [];
     for (let i = 0; i < filtered.length; i++) {
       const snip = filtered[i];
-      const active = selectedId === snip.id;
+      const active = selectedId2 === snip.id;
       const preview = snip.code.replace(/\s+/g, " ").trim();
       snippetRows.push(
         e(
@@ -40251,7 +48088,9 @@ ${ESTIMATE_HINT}`,
           background: "rgba(0,0,0,0.88)",
           gap: "10px",
           padding: "12px",
-          width: "min(560px, 94vw)",
+          width: "100%",
+          minWidth: 0,
+          maxWidth: "100%",
           maxHeight: "78vh",
           overflow: "auto",
           fontSize: TYPE.name,
@@ -40297,32 +48136,26 @@ ${ESTIMATE_HINT}`,
           },
           "Run"
         ),
-        e(
-          "input",
-          {
-            type: "text",
-            value: newName,
-            placeholder: "Snippet name",
-            onChange: (ev) => setNewName(ev.target.value),
-            style: Object.assign({}, inputStyle, {
-              flex: "1 1 140px",
-              minWidth: "120px"
-            })
-          }
-        ),
-        e(
-          "input",
-          {
-            type: "text",
-            value: newFolder,
-            placeholder: "Folder (optional)",
-            onChange: (ev) => setNewFolder(ev.target.value),
-            style: Object.assign({}, inputStyle, {
-              flex: "0 1 120px",
-              minWidth: "100px"
-            })
-          }
-        ),
+        e("input", {
+          type: "text",
+          value: newName,
+          placeholder: "Snippet name",
+          onChange: (ev) => setNewName(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "1 1 140px",
+            minWidth: "120px"
+          })
+        }),
+        e("input", {
+          type: "text",
+          value: newFolder,
+          placeholder: "Folder (optional)",
+          onChange: (ev) => setNewFolder(ev.target.value),
+          style: Object.assign({}, inputStyle, {
+            flex: "0 1 120px",
+            minWidth: "100px"
+          })
+        }),
         e(
           "button",
           {
@@ -40333,11 +48166,7 @@ ${ESTIMATE_HINT}`,
           "Save snippet"
         )
       ),
-      status ? e(
-        "div",
-        { style: { fontSize: TYPE.body, color: "#9a9" } },
-        status
-      ) : null,
+      status ? e("div", { style: { fontSize: TYPE.body, color: "#9a9" } }, status) : null,
       e(
         "div",
         {
@@ -40400,7 +48229,70 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/ui/frames/mail/mailItemMenu.ts
+  // src/ui/bag/bagItemContextMenuCss.ts
+  var BAG_ITEM_CONTEXT_MENU_CSS = `
+.comm-bag-ctx {
+  position: fixed; z-index: 99999;
+  background: #151515; border: 1px solid #555;
+  min-width: 200px; padding: 4px 0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.comm-bag-ctx__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #333;
+}
+.comm-bag-ctx button,
+.comm-bag-ctx__item {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; color: #ddd;
+  padding: 9px 14px; cursor: pointer; font-size: 15px;
+}
+.comm-bag-ctx button:hover,
+.comm-bag-ctx__item:hover { background: #222; }
+.comm-bag-ctx__item.is-disabled,
+.comm-bag-ctx__item:disabled {
+  color: #777;
+  cursor: default;
+}
+.comm-bag-ctx__item.is-disabled:hover,
+.comm-bag-ctx__item:disabled:hover { background: transparent; }
+`;
+  var injected8 = false;
+  function ensureBagItemContextMenuCss() {
+    if (injected8) return;
+    injected8 = true;
+    const existing = document.querySelector(
+      "style[data-ecu-bag-ctx-css]"
+    );
+    if (existing) {
+      existing.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-bag-ctx-css", "1");
+    el.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/bag/bagItemContextMenu.ts
+  var providers = [];
+  function registerBagMenuProvider(provider) {
+    providers.push(provider);
+    return () => {
+      const idx = providers.indexOf(provider);
+      if (idx >= 0) providers.splice(idx, 1);
+    };
+  }
+  function buildBagMenuActions(ctx) {
+    const actions = [];
+    for (let i = 0; i < providers.length; i++) {
+      const rows = providers[i](ctx);
+      for (let j = 0; j < rows.length; j++) actions.push(rows[j]);
+    }
+    return actions;
+  }
   var ctxEl = null;
   var ctxKeyHandler = null;
   var ctxDocHandler = null;
@@ -40434,62 +48326,46 @@ ${ESTIMATE_HINT}`,
     if (!item || !item.name || item.name === "placeholder") return null;
     return item;
   }
-  function openObservingItemInfo(slot) {
-    const obs = window.observing;
-    const item = observingBagItem(slot);
-    if (!obs || !item) return;
-    openItem(obs, `inv${slot}`, item, { dialogOnly: true });
-  }
-  function buildMailBagMenuActions(fp, _slotEl) {
-    const actions = [
-      {
-        id: "send-mail",
-        label: "Send mail / queue attach",
-        title: "Opens compose and queues this item. Right-click more items to batch (one mail each).",
-        run: () => {
-          openMail({ compose: true, attach: fp });
-        }
-      },
-      {
-        id: "item-info",
-        label: "Item info\u2026",
-        title: "Open the Comm item info dialog for this slot (same as left-click).",
-        separatorBefore: true,
-        run: () => {
-          openObservingItemInfo(fp.slot);
-        }
-      }
-    ];
-    return actions;
-  }
-  function showMailItemContextMenu(clientX, clientY, fp, slotEl) {
+  function showBagItemContextMenu(clientX, clientY, fp, slotEl, item) {
     hideCtx();
-    ensureMailCss();
-    const actions = buildMailBagMenuActions(fp, slotEl || null);
+    ensureBagItemContextMenuCss();
+    const resolvedItem = item || observingBagItem(fp.slot);
+    if (!resolvedItem) return;
+    const ctx = {
+      fp,
+      slotEl: slotEl || null,
+      item: resolvedItem
+    };
+    const actions = buildBagMenuActions(ctx);
     if (!actions.length) return;
     const el = document.createElement("div");
-    el.className = "comm-mail-ctx";
+    el.className = "comm-bag-ctx";
     el.setAttribute("role", "menu");
     for (let i = 0; i < actions.length; i++) {
       const action = actions[i];
       if (action.separatorBefore) {
         const sep = document.createElement("div");
-        sep.className = "comm-mail-ctx__sep";
+        sep.className = "comm-bag-ctx__sep";
         sep.setAttribute("role", "separator");
         el.appendChild(sep);
       }
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "comm-mail-ctx__item";
+      btn.className = "comm-bag-ctx__item";
       btn.setAttribute("role", "menuitem");
       btn.textContent = action.label;
       if (action.title) btn.title = action.title;
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        hideCtx();
-        action.run();
-      });
+      if (action.disabled) {
+        btn.disabled = true;
+        btn.className += " is-disabled";
+      } else {
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          hideCtx();
+          action.run();
+        });
+      }
       el.appendChild(btn);
     }
     document.body.appendChild(el);
@@ -40539,8 +48415,8 @@ ${ESTIMATE_HINT}`,
     }
     return null;
   }
-  function installBagMailContextMenu(host2) {
-    ensureMailCss();
+  function installBagItemContextMenu(host2) {
+    ensureBagItemContextMenuCss();
     const onCtx = (ev) => {
       if (ev.shiftKey) return;
       const t = ev.target;
@@ -40552,7 +48428,7 @@ ${ESTIMATE_HINT}`,
       if (!fp) return;
       ev.preventDefault();
       ev.stopPropagation();
-      showMailItemContextMenu(ev.clientX, ev.clientY, fp, t);
+      showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
     };
     host2.addEventListener("contextmenu", onCtx, true);
     return () => {
@@ -40560,6 +48436,202 @@ ${ESTIMATE_HINT}`,
       host2.removeEventListener("contextmenu", onCtx, true);
     };
   }
+
+  // src/ui/frames/mail/mailBagMenuActions.ts
+  function buildMailBagMenuActions(ctx) {
+    return [
+      {
+        id: "send-mail",
+        label: "Send mail / queue attach",
+        title: "Opens compose and queues this item. Right-click more items to batch (one mail each).",
+        run: () => {
+          openMail({ compose: true, attach: ctx.fp });
+        }
+      }
+    ];
+  }
+  registerBagMenuProvider(buildMailBagMenuActions);
+
+  // src/host/sendItem.ts
+  var SEND_ITEM_RANGE = 400;
+  function lit2(value) {
+    return JSON.stringify(String(value));
+  }
+  function fingerprintCheckJs2(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit2(fp.name)}`];
+    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
+    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit2(fp.p)}`);
+    return parts.join("||");
+  }
+  function selfNameLower() {
+    const obs = getObserving() || window.observing;
+    const n = obs && obs.name ? String(obs.name) : "";
+    return n.toLowerCase();
+  }
+  function selfId() {
+    const obs = getObserving() || window.observing;
+    return obs && obs.id != null ? String(obs.id) : "";
+  }
+  function listNearbySendTargets(entities) {
+    const list = entities || getEntitiesList();
+    const obs = getObserving() || window.observing || null;
+    const skipName = selfNameLower();
+    const skipId = selfId();
+    const obsMap = obs && obs.map != null ? String(obs.map) : "";
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (!ent || !isFocusablePlayer(ent)) continue;
+      if (isActuallyDead(ent) || ent.rip) continue;
+      const name = ent.name ? String(ent.name).trim() : "";
+      if (!name) continue;
+      const id = ent.id != null ? String(ent.id) : name;
+      if (skipId && id === skipId) continue;
+      if (skipName && name.toLowerCase() === skipName) continue;
+      if (obsMap && ent.map != null && String(ent.map) !== obsMap) continue;
+      let dist;
+      if (obs) {
+        dist = simpleDistance(obs, ent);
+        if (Number.isFinite(dist) && dist > SEND_ITEM_RANGE) continue;
+      }
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const row3 = { name, id };
+      if (dist != null && Number.isFinite(dist)) row3.dist = dist;
+      out.push(row3);
+    }
+    out.sort((a, b) => {
+      const da = a.dist != null ? a.dist : 1e9;
+      const db = b.dist != null ? b.dist : 1e9;
+      if (da !== db) return da - db;
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function sendItemQuantity(fp) {
+    if (fp.q != null && Number.isFinite(fp.q) && fp.q > 0) {
+      return Math.floor(Number(fp.q));
+    }
+    return 1;
+  }
+  function buildSendItemScript(fp, receiver, quantity) {
+    const to = String(receiver || "").trim();
+    if (!to) return `game_log("Send item aborted \u2014 no recipient");`;
+    const q = quantity != null ? Math.max(1, Math.floor(quantity)) : sendItemQuantity(fp);
+    const preferSlot = Number(fp.slot) | 0;
+    const mismatch = fingerprintCheckJs2(fp, "it");
+    const candMismatch = fingerprintCheckJs2(fp, "__cand");
+    return [
+      `var __slot=${preferSlot};`,
+      `var it=character.items[__slot];`,
+      `if(${mismatch}){`,
+      `__slot=-1;`,
+      `for(var __si=0;__si<character.items.length;__si++){`,
+      `var __cand=character.items[__si];`,
+      `if(!(${candMismatch})){__slot=__si;break;}`,
+      `}`,
+      `if(__slot<0){game_log(${lit2("Send item aborted \u2014 item mismatch")});return;}`,
+      `it=character.items[__slot];`,
+      `}`,
+      `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
+      `if(!__q)__q=1;`,
+      `try{await send_item(${lit2(to)},__slot,__q);}catch(__e){`,
+      `game_log(${lit2("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+      `}`
+    ].join("");
+  }
+  function patchObservingAfterSend(fp, quantity) {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return;
+    const slot = findFingerprintSlot(obs.items, fp, null);
+    if (slot < 0) return;
+    const cur = obs.items[slot];
+    const stack = cur && cur.q != null ? Number(cur.q) : 1;
+    if (quantity >= stack) {
+      obs.items[slot] = null;
+    } else if (cur && cur.q != null) {
+      obs.items[slot] = { ...cur, q: stack - quantity };
+    }
+    try {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory();
+      }
+    } catch (e2) {
+    }
+  }
+  function sendItemCommand(fp, receiver, quantity) {
+    const to = String(receiver || "").trim();
+    if (!to) return false;
+    const q = quantity != null ? Math.max(1, Math.floor(quantity)) : sendItemQuantity(fp);
+    const script = buildSendItemScript(fp, to, q);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    patchObservingAfterSend(fp, q);
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+    return true;
+  }
+
+  // src/host/sendItemBagMenuActions.ts
+  function buildSendItemBagMenuActions(ctx) {
+    const actions = [];
+    const nearby = listNearbySendTargets();
+    if (nearby.length === 0) {
+      actions.push({
+        id: "send-nearby-none",
+        label: "Send item to nearby (none in range)",
+        title: "Trade send via send_item \u2014 requires a player within range",
+        separatorBefore: true,
+        disabled: true,
+        run: () => {
+        }
+      });
+      return actions;
+    }
+    for (let i = 0; i < nearby.length; i++) {
+      const t = nearby[i];
+      const distLabel = t.dist != null ? ` (${Math.round(t.dist)}px)` : "";
+      actions.push({
+        id: `send-nearby-${t.id}`,
+        label: `Send to ${t.name}${distLabel}`,
+        title: "Trade send via send_item on the observed character (not mail)",
+        separatorBefore: i === 0,
+        run: () => {
+          sendItemCommand(ctx.fp, t.name);
+        }
+      });
+    }
+    return actions;
+  }
+  registerBagMenuProvider(buildSendItemBagMenuActions);
+
+  // src/ui/bag/bagItemInfoActions.ts
+  function openObservingItemInfo(ctx) {
+    const obs = window.observing;
+    if (!obs || !ctx.item) return;
+    openItem(obs, `inv${ctx.fp.slot}`, ctx.item, { dialogOnly: true });
+  }
+  function buildBagItemInfoActions(ctx) {
+    return [
+      {
+        id: "item-info",
+        label: "Item info\u2026",
+        title: "Open the Comm item info dialog for this slot (same as left-click).",
+        separatorBefore: true,
+        run: () => {
+          openObservingItemInfo(ctx);
+        }
+      }
+    ];
+  }
+  registerBagMenuProvider(buildBagItemInfoActions);
 
   // src/ui/frames/BagPanel.ts
   var HOST_ID2 = "bottomleftcorner";
@@ -40800,7 +48872,7 @@ ${ESTIMATE_HINT}`,
         setHasSnapshot(hasObservingInventorySnapshot());
       });
       const host2 = ensureInventoryHost();
-      const unsubMenu = installBagMailContextMenu(host2);
+      const unsubMenu = installBagItemContextMenu(host2);
       return () => {
         unsubInv();
         unsubSync();
@@ -42440,14 +50512,14 @@ ${ESTIMATE_HINT}`,
     }
     const takeableCheckedIds = [];
     for (let i = 0; i < checkedIds.length; i++) {
-      let row2 = null;
+      let row3 = null;
       for (let j = 0; j < snap.mails.length; j++) {
         if (snap.mails[j].id === checkedIds[i]) {
-          row2 = snap.mails[j];
+          row3 = snap.mails[j];
           break;
         }
       }
-      if (row2 && row2.item && !row2.taken) takeableCheckedIds.push(row2.id);
+      if (row3 && row3.item && !row3.taken) takeableCheckedIds.push(row3.id);
     }
     const className = "comm-mail" + (wide ? "" : " is-narrow") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "");
     const toggleCheck = (id, on) => {
@@ -42570,11 +50642,19 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/frames/comm/CommPanelLayout.ts
   function createPanelRenderer(deps) {
+    const ctx = {
+      map: getMapData(deps.snap.entities).map,
+      hasEnemies: deps.combat.hasEnemies,
+      hasBosses: deps.combat.hasBosses,
+      hasAbilityCasters: deps.combat.hasAbilityCasters,
+      hasThreat: deps.combat.hasThreat
+    };
     return (id, child, opts) => {
-      const isClosablePanel = (opts == null ? void 0 : opts.closable) === true || canCloseWindow(id);
+      const isClosablePanel = canCloseWindow(id);
       const isHidden = isClosablePanel && !deps.visible(id);
       if (isHidden && !deps.layoutEdit) return null;
-      if ((opts == null ? void 0 : opts.empty) && !deps.layoutEdit) return null;
+      const empty2 = (opts == null ? void 0 : opts.empty) === true || panelIsContextEmpty(id, ctx);
+      if (empty2 && !deps.layoutEdit) return null;
       const locked = deps.panelIsLocked(id);
       const infoIdle = id === "buffInfo" && !deps.buffInfoOpen || id === "itemInfo" && !deps.itemInfoOpen;
       const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles" && !infoIdle;
@@ -42635,11 +50715,11 @@ ${ESTIMATE_HINT}`,
           windowNumber: deps.windowNumberById ? deps.windowNumberById[id] : void 0,
           showWindowIds: deps.showWindowIds,
           onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0,
-          // Layout toggle is chrome-only. Bag must stay content-sized (7-col
-          // float grid breaks under a locked shell width/height).
-          showResizeHandles: id !== "toggles" && id !== "bag",
-          onResizeFrame: id !== "toggles" && id !== "bag" && deps.onResizeFrame ? (size) => deps.onResizeFrame(id, size) : void 0,
-          hugContent: opts == null ? void 0 : opts.hugContent
+          // Layout toggle is chrome-only. Bag / chips stay content-sized.
+          showResizeHandles: canResizeWindow(id),
+          resizeAxes: windowFramePersist(id) === "w" ? "w" : "wh",
+          onResizeFrame: canResizeWindow(id) && deps.onResizeFrame ? (size) => deps.onResizeFrame(id, size) : void 0,
+          onAutoSizeChange: canAutoSizeWindow(id) && deps.onAutoSizeChange ? (autoSize, size) => deps.onAutoSizeChange(id, autoSize, size) : void 0
         },
         child
       );
@@ -42667,7 +50747,7 @@ ${ESTIMATE_HINT}`,
           observingId: snap.observingId,
           layoutEdit: deps.layoutEdit
         }),
-        { style: { width: "auto", maxWidth: "min(560px, 78vw)" } }
+        { style: PLAYERS_PANEL_STYLE }
       ),
       panel(
         "enemies",
@@ -42681,42 +50761,54 @@ ${ESTIMATE_HINT}`,
             width: "auto",
             maxWidth: "min(420px, 78vw)",
             textAlign: "right"
-          },
-          empty: !deps.combat.hasEnemies
+          }
         }
       ),
       panel(
-        "topCenter",
-        e(
-          "div",
-          {
-            style: {
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "4px"
-            }
-          },
-          e(ServerInfo, {
-            S: snap.S,
-            serverRegion: snap.serverRegion,
-            serverIdentifier: snap.serverIdentifier
-          }),
-          e(MapInfo, { entities: snap.entities })
-        )
+        "serverInfo",
+        e(ServerInfo, {
+          S: snap.S,
+          serverRegion: snap.serverRegion,
+          serverIdentifier: snap.serverIdentifier
+        }),
+        { style: CHIP_HUD_PANEL_STYLE }
+      ),
+      panel("mapInfo", e(MapInfo, { entities: snap.entities }), {
+        style: CHIP_HUD_PANEL_STYLE
+      }),
+      panel(
+        "minimap",
+        e(Minimap, {
+          layoutEdit: deps.layoutEdit,
+          setSelectedEntity: deps.setSelectedEntity,
+          selectedEntity: deps.selectedEntity
+        }),
+        {
+          style: MINIMAP_PANEL_STYLE,
+          hiddenBodyStyle: MINIMAP_PANEL_STYLE
+        }
       ),
       panel(
-        "crypt",
-        e(CryptProgress, {
+        "instanceRun",
+        e(InstanceRunPanel, {
+          entities: snap.entities,
+          layoutEdit: deps.layoutEdit
+        }),
+        {
+          style: INSTANCE_RUN_PANEL_STYLE,
+          hiddenBodyStyle: INSTANCE_RUN_PANEL_STYLE
+        }
+      ),
+      panel(
+        "instance",
+        e(InstancePanel, {
           entities: snap.entities,
           layoutEdit: deps.layoutEdit,
           setSelectedEntity: deps.setSelectedEntity
         }),
         {
-          closable: true,
-          style: CRYPT_PANEL_STYLE,
-          empty: !deps.onCrypt,
-          hiddenBodyStyle: CRYPT_PANEL_STYLE
+          style: INSTANCE_PANEL_STYLE,
+          hiddenBodyStyle: INSTANCE_PANEL_STYLE
         }
       ),
       panel(
@@ -42728,9 +50820,46 @@ ${ESTIMATE_HINT}`,
           layoutEdit: deps.layoutEdit
         }),
         {
-          closable: true,
-          style: BOSS_BAR_PANEL_STYLE,
-          empty: !deps.combat.hasBosses
+          style: BOSS_BAR_PANEL_STYLE
+        }
+      ),
+      panel(
+        "abilityTimeline",
+        e(AbilityTimelinePanel, {
+          entities: snap.entities,
+          selectedEntity: deps.selectedEntity,
+          observing: snap.observing,
+          layoutEdit: deps.layoutEdit
+        }),
+        {
+          style: ABILITY_TIMELINE_PANEL_STYLE,
+          hiddenBodyStyle: ABILITY_TIMELINE_PANEL_STYLE
+        }
+      ),
+      panel(
+        "abilityTimelineBigIcon",
+        e(AbilityTimelineBigIconPanel, {
+          entities: snap.entities,
+          selectedEntity: deps.selectedEntity,
+          observing: snap.observing,
+          layoutEdit: deps.layoutEdit
+        }),
+        {
+          style: ABILITY_TIMELINE_BIGICON_PANEL_STYLE,
+          hiddenBodyStyle: ABILITY_TIMELINE_BIGICON_PANEL_STYLE
+        }
+      ),
+      panel(
+        "abilityTimelineHighlight",
+        e(AbilityTimelineHighlightPanel, {
+          entities: snap.entities,
+          selectedEntity: deps.selectedEntity,
+          observing: snap.observing,
+          layoutEdit: deps.layoutEdit
+        }),
+        {
+          style: ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE,
+          hiddenBodyStyle: ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE
         }
       ),
       deps.selectedEntity || deps.layoutEdit ? panel(
@@ -42773,7 +50902,6 @@ ${ESTIMATE_HINT}`,
         }
       ),
       panel("kills", e(KillKpiPanel), {
-        closable: true,
         style: KILLS_PANEL_STYLE,
         hiddenBodyStyle: KILLS_PANEL_STYLE
       }),
@@ -42784,22 +50912,15 @@ ${ESTIMATE_HINT}`,
           openSeq: deps.commandOpenSeq
         }),
         {
-          closable: true,
           style: COMMAND_PANEL_STYLE,
           hiddenBodyStyle: COMMAND_PANEL_STYLE
         }
       ),
       panel("mail", e(MailPanel, null), {
-        closable: true,
-        // Fixed frame like meters — inbox scrolls; do not grow with row count.
-        hugContent: false,
         style: MAIL_PANEL_STYLE,
         hiddenBodyStyle: MAIL_PANEL_STYLE
       }),
       deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel("bag", e(BagPanel, { layoutEdit: deps.layoutEdit }), {
-        closable: true,
-        // Must hug content — fixed frameW/H wraps the stock 7-col float grid.
-        hugContent: true,
         style: deps.layoutEdit ? BAG_PANEL_STYLE : void 0,
         hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
           display: "flex",
@@ -42837,9 +50958,7 @@ ${ESTIMATE_HINT}`,
           setSelectedEntity: deps.setSelectedEntity
         }),
         {
-          closable: true,
           style: THREAT_PANEL_STYLE,
-          empty: !deps.combat.hasThreat,
           hiddenBodyStyle: THREAT_PANEL_STYLE
         }
       )
@@ -42875,7 +50994,7 @@ ${ESTIMATE_HINT}`,
   }
   function SnapGuideLine(props) {
     const React = getReact();
-    const [tick, setTick] = React.useState(0);
+    const [tick2, setTick] = React.useState(0);
     const dragging = !!props.dragId;
     React.useEffect(() => {
       if (!dragging) return;
@@ -42888,7 +51007,7 @@ ${ESTIMATE_HINT}`,
       return () => window.cancelAnimationFrame(raf2);
     }, [dragging]);
     if (!dragging) return null;
-    void tick;
+    void tick2;
     const root = layoutDragRoot().getBoundingClientRect();
     const kids = [];
     const numbers = props.showWindowIds ? props.windowNumberById : void 0;
@@ -42978,6 +51097,43 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/CommUI.ts
+  var SETTINGS_PANEL_POS_KEY = "ecu-settings-panel-pos";
+  var DEFAULT_SETTINGS_POS = {
+    x: 50,
+    y: 50,
+    anchor: "center"
+  };
+  function readSettingsPanelPos() {
+    try {
+      const raw = typeof localStorage !== "undefined" ? localStorage.getItem(SETTINGS_PANEL_POS_KEY) : null;
+      if (!raw) return { ...DEFAULT_SETTINGS_POS };
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || typeof parsed.x !== "number" || typeof parsed.y !== "number") {
+        return { ...DEFAULT_SETTINGS_POS };
+      }
+      const anchor = String(parsed.anchor || DEFAULT_SETTINGS_POS.anchor);
+      return {
+        x: Math.max(0, Math.min(100, parsed.x)),
+        y: Math.max(0, Math.min(100, parsed.y)),
+        anchor: anchor === "tl" || anchor === "tr" || anchor === "bl" || anchor === "br" || anchor === "tc" || anchor === "bc" || anchor === "center" ? anchor : DEFAULT_SETTINGS_POS.anchor
+      };
+    } catch (e2) {
+      return { ...DEFAULT_SETTINGS_POS };
+    }
+  }
+  function writeSettingsPanelPos(pos) {
+    try {
+      localStorage.setItem(
+        SETTINGS_PANEL_POS_KEY,
+        JSON.stringify({
+          x: pos.x,
+          y: pos.y,
+          anchor: pos.anchor
+        })
+      );
+    } catch (e2) {
+    }
+  }
   function CommUI(props) {
     const React = getReact();
     const snap = props.snap;
@@ -43000,10 +51156,14 @@ ${ESTIMATE_HINT}`,
       setVisible,
       setOpacity,
       visible,
-      opacityFor
+      opacityFor,
+      setPanelPos
     } = layoutState;
     const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
     const { selectedEntity: selectedEntity2, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
+    React.useEffect(() => {
+      setWorldOverlaySelectedId(selectedEntity2);
+    }, [selectedEntity2]);
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
     const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
@@ -43023,6 +51183,8 @@ ${ESTIMATE_HINT}`,
     });
     const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
     const [introStep, setIntroStep] = React.useState(() => readIntroStep());
+    const [settingsOpen, setSettingsOpen] = React.useState(false);
+    const [settingsWindowPos, setSettingsWindowPos] = React.useState(readSettingsPanelPos);
     const setIntroStepPersist = (step) => {
       setIntroStep(step);
       writeIntroStep(step);
@@ -43035,6 +51197,14 @@ ${ESTIMATE_HINT}`,
       if (hidden && tourActiveRef.current) return;
       setMetersHidden(hidden);
       patchSettings({ metersHidden: hidden });
+    };
+    const setSettingsWindowPosPersist = (pos) => {
+      setSettingsWindowPos(pos);
+      writeSettingsPanelPos(pos);
+    };
+    const openSettingsChangelog = () => {
+      setWhatsNewBrowseAll(true);
+      setWhatsNewEntries(CHANGELOG);
     };
     const guidedTours = useCommGuidedTours({
       layoutEdit,
@@ -43210,7 +51380,6 @@ ${ESTIMATE_HINT}`,
       };
     }, []);
     const combat = combatSignals(snap.entities);
-    const onCrypt = getMapData(snap.entities).map === "crypt";
     useContextualTourTriggers({
       selectedEntity: selectedEntity2,
       buffInfoOpen,
@@ -43257,6 +51426,7 @@ ${ESTIMATE_HINT}`,
           frameH: size.h
         });
       },
+      onAutoSizeChange: (id, autoSize, size) => windowActions.setWindowAutoSize(id, autoSize, size),
       onPanelDragStart: (id) => windowActions.onDragStart(id),
       onPanelDragMove: (id, opts) => windowActions.onDragMove(id, opts),
       ungroupPanel: (id) => windowActions.ungroupWindow(id),
@@ -43280,7 +51450,6 @@ ${ESTIMATE_HINT}`,
       closePaperdoll,
       focusUnitId,
       combat,
-      onCrypt,
       commandSeed,
       commandOpenSeq,
       bagOpen,
@@ -43384,21 +51553,38 @@ ${ESTIMATE_HINT}`,
           setWhatsNewBrowseAll(false);
         }
       }) : null,
+      settingsOpen ? e(SettingsPanel, {
+        onClose: () => setSettingsOpen(false),
+        visible,
+        setVisible,
+        setPanelPos,
+        windowPos: settingsWindowPos,
+        onMoveWindow: setSettingsWindowPosPersist,
+        onReplayIntroTour: () => startIntroTour(true),
+        onOpenChangelog: openSettingsChangelog
+      }) : null,
       renderCommTogglesPanel(
         panelDeps,
-        e(CommControlStrip, {
-          layoutEdit,
-          toggleLayoutEdit,
-          metersHidden,
-          setMetersHiddenPersist,
-          onAddMeter: () => setMeterAddOpen(true),
-          onReplayIntroTour: () => startIntroTour(true),
-          onOpenChangelog: () => {
-            setWhatsNewBrowseAll(true);
-            setWhatsNewEntries(CHANGELOG);
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              pointerEvents: "none"
+            }
           },
-          viewportProfile
-        })
+          e(CommControlStrip, {
+            layoutEdit,
+            toggleLayoutEdit,
+            metersHidden,
+            setMetersHiddenPersist,
+            onAddMeter: () => setMeterAddOpen(true),
+            onOpenSettings: () => setSettingsOpen(true),
+            viewportProfile
+          })
+        )
       ),
       tourOverlay
     );
@@ -43507,6 +51693,11 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
 #comm-ui textarea {
   font-family: inherit;
 }
+
+/* HP threshold marks on boss/unit frames */
+.comm-hp-threshold {
+  pointer-events: none;
+}
 `;
   function injectCss(id, css) {
     if (document.querySelector(`#${id}`)) return;
@@ -43592,9 +51783,10 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installMailUnreadWatch();
     subscribeMailToast((message) => showMailToast(message));
     startSocketHub();
-    startCryptTracker();
+    startInstanceTracker();
     startMeterEngine();
     startSessionKills();
+    startWorldOverlay();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");

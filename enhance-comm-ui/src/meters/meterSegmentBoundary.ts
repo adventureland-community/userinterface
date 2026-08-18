@@ -2,7 +2,7 @@
  * Keep-or-close policy for camera / instance / crypt-boss hits.
  */
 
-import { CRYPT_BOSSES_MTYPES } from "../crypt/tracker";
+import { CRYPT_BOSSES_MTYPES } from "../instance/tracker";
 import { isInstanceMap } from "./meterRun";
 import type { CombatSegment, SegmentCloseReason } from "./meterTypes";
 

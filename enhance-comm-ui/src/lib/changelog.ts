@@ -78,10 +78,208 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
     detail: "Observer COMMAND panel with saved CODE presets.",
     kind: "feature",
   },
+  {
+    label: "Instance HUD",
+    detail: "Crypt, spider, tomb, and winter roster plus a compact run chip.",
+    kind: "feature",
+  },
+  {
+    label: "Ability Timeline",
+    detail:
+      "Icon rail for boss and add cooldowns, with optional Big Icon frames.",
+    kind: "feature",
+  },
+  {
+    label: "Minimap",
+    detail:
+      "Layoutable map with pan, zoom, and a solid / faint / clear background.",
+    kind: "feature",
+  },
 ];
 
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    id: "0.8.0-alpha.5",
+    title: "0.8.0-alpha.5",
+    date: "2026-08-18",
+    summary:
+      "Instance HUD, Ability Timeline, and a layoutable minimap — plus a searchable Settings hub, Drawings overlays on the /comm map, and nearby send.",
+    highlights: [
+      {
+        label: "Settings hub",
+        detail:
+          "Movable Settings window with search. Panes: Comm UI, Ability Timeline, Drawings, and Comm HUD. Intro tour and changelog live under Comm UI.",
+        kind: "feature",
+      },
+      {
+        label: "Drawings overlays",
+        detail:
+          "Settings → Drawings toggles rings, labels, entity lines, and debug map helpers. Per-ability color and show-name overrides with skill icons.",
+        kind: "feature",
+      },
+      {
+        label: "Instance HUD",
+        detail:
+          "One Instance panel covers crypt, spider, tomb, and winter. A separate Instance run chip tracks bosses/phases cleared and last luckm.",
+        kind: "feature",
+      },
+      {
+        label: "Ability Timeline",
+        detail:
+          "Icon rail for visible casters’ cooldowns. Vertical or horizontal, with optional Big Icon and highlight name frames.",
+        kind: "feature",
+      },
+      {
+        label: "Minimap",
+        detail:
+          "Movable map: pan, zoom, click-to-target. Background cycles solid → faint → clear. Camera refits on map change, not every step.",
+        kind: "feature",
+      },
+      {
+        label: "Mail window chrome",
+        detail:
+          "Hover Mail for the drag strip and hide ×, same as other HUD windows. The inbox no longer clips that bar.",
+        kind: "fix",
+      },
+    ],
+    features: [
+      {
+        title: "Instance cards",
+        summary:
+          "Saved Crypt layouts migrate to Instance + Instance run. Off those maps the shells stay unmounted so they do not paint on desert.",
+        items: [
+          {
+            label: "Glance",
+            detail:
+              "Idle cards show name, Aggroed / We see / Died / Cleared, and yellow/red borders. Hover shows mtype, luckm, focus, and death time.",
+            points: [
+              "Level is top-right; adds also show Died ×N there, including while the pack is in vision",
+              "Winter/phase cards: Cleared · 3m ago when we saw the kill",
+              "Dead or cleared cards out of vision dim; the panel frame stays fully opaque",
+            ],
+          },
+          {
+            label: "Per-map layout",
+            detail:
+              "Crypt bosses + bats; spider queens with a blocked-passage hint; tomb compass protectors; winter ordered phases (Up next / Final / Cleared).",
+          },
+        ],
+      },
+      {
+        title: "Ability Timeline",
+        summary:
+          "Bottom-bar Settings → Ability Timeline. Dummy preview ticks on its own so the form does not hitch every 100ms.",
+        items: [
+          {
+            label: "Icon rail",
+            detail:
+              "Abilities travel a window (default 10s). Flip vertical/horizontal; a mid-size user resize is not swapped away.",
+            points: [
+              "All visible casters, or only the current / observe target",
+              "Hover an icon for caster, remaining CD, and the skill explanation",
+              "Optional Big Icon and highlight frames when a CD is imminent",
+              "Default rail tint is clear; ticks and ready-at-NOW stay on",
+            ],
+          },
+        ],
+      },
+      {
+        title: "Drawings & overlays",
+        summary:
+          "Settings → Drawings. Rings and lines paint on the /comm map; overlay preview has a world stage so you can see them without the live client.",
+        items: [
+          {
+            label: "Rings & labels",
+            detail:
+              "Imminent ability rings, optional ghost/aura/attack-range rings, at-risk highlights, and global or per-skill name labels.",
+            points: [
+              "Ability appearance: pick a color and whether to show the name for each skill",
+              "Color picker shows the live resolved color, not a blank auto placeholder",
+            ],
+          },
+          {
+            label: "Entity lines",
+            detail:
+              "Optional monster aggro, move destination, and player attack lines. Focus boss only limits lines to the focused entity.",
+            points: [
+              "Aggro lines are off by default — turn on Monster aggro → target when you want them",
+            ],
+          },
+          {
+            label: "Map quirks",
+            detail:
+              "Clickable signs, shrines, and levers on the live game map. Hover shows a Comm tooltip; click opens a Comm notice because /comm has no game log.",
+            points: [
+              "Hover a sign for a Comm tooltip; click to read it in a Comm card. Click the dim backdrop to close.",
+              "Optional hover outline in Settings → Drawings → Debug — it only draws the quirk under the cursor",
+            ],
+          },
+        ],
+      },
+      {
+        title: "Minimap",
+        summary:
+          "Always-on chrome like party/chips. ◎ recenters and zoom-fits drawable entities.",
+        items: [
+          {
+            label: "Camera",
+            detail:
+              "Fits on load and map/`in` change. Walking does not drag the camera; pan and wheel zoom still work.",
+          },
+          {
+            label: "Background",
+            detail:
+              "Click the mode chip: Solid (grid), Faint, or Clear (no fill, no grid).",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "Settings",
+        detail:
+          "Settings button on the bottom-right strip opens a movable, searchable hub: Comm UI, Ability Timeline, Drawings, and Comm HUD.",
+        kind: "feature",
+      },
+      {
+        label: "Nearby send",
+        detail:
+          "Bag right-click can send_item to a nearby player in range (trade), not only mail.",
+        kind: "feature",
+      },
+      {
+        label: "Buff / Item info size",
+        detail:
+          "Buff info and Item info auto-resize to content by default, same as the party roster. Corner-resize pins a size.",
+        kind: "improve",
+      },
+      {
+        label: "Boss HP marks",
+        detail:
+          "Boss bars show G.monsters spawn HP thresholds (e.g. pumpkin/jr waves) as marks on the bar.",
+        kind: "feature",
+      },
+      {
+        label: "Empty combat shells",
+        detail:
+          "Enemies, boss bar, threat, and the ability-timeline family unmount when there is nothing to show — no empty opaque boxes in town.",
+        kind: "improve",
+      },
+      {
+        label: "Window Control Auto-resize",
+        detail:
+          "Auto-resize is available on more HUD windows (enemies, boss bar, threat, kills, unit frames, events). Party / buff / item still default on.",
+        kind: "improve",
+      },
+      {
+        label: "Party auto-resize cap",
+        detail:
+          "Auto-resize on the party roster stops at three chip columns and wraps extra members down, instead of growing across the screen.",
+        kind: "improve",
+      },
+    ],
+  },
   {
     id: "0.8.0-alpha.4",
     title: "0.8.0-alpha.4",
@@ -102,10 +300,10 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "fix",
       },
       {
-        label: "Paperdoll Luck / Goldm",
+        label: "Party auto-resize",
         detail:
-          "No more stale observe-snap wallet gold; Luck and Goldm are gear estimates with a ~ tip.",
-        kind: "fix",
+          "The party roster hugs its chips by default. Window Control → Auto-resize turns that on for other HUD panels; a corner-resize turns it off.",
+        kind: "improve",
       },
     ],
     features: [
@@ -129,7 +327,8 @@ export const CHANGELOG: ChangelogEntry[] = [
             detail:
               "With a character observed, Send and Take run on that character — gold, bag space, and attach checks included.",
             points: [
-              "Right-click bag → Send mail / queue attach or Item info",
+              "Right-click bag → Send mail / queue attach, Send item to nearby, or Item info",
+              "Nearby send uses send_item (trade), not mail — pick one recipient in range",
               "Shift+right-click keeps the stock menu when available",
               "STATUS and the character log show how the send or take went",
             ],

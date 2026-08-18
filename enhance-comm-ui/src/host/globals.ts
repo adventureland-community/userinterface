@@ -28,6 +28,9 @@ export type EntityLike = {
   y?: number;
   real_x?: number;
   real_y?: number;
+  /** Movement goal while pathing (map space). */
+  going_x?: number;
+  going_y?: number;
   visible?: boolean;
   dead?: boolean | string;
   /** G map key while observing (not observer chrome `window.map`). */
@@ -73,6 +76,8 @@ export type EntityLike = {
   luckm?: number;
   /** Gold-find multiplier (`1 + xgold/100`). Full sync / welcome only. */
   goldm?: number;
+  /** A/B Testing team assignment (`A` / `B`) when on abtesting map. */
+  team?: string;
 };
 
 export type SlotLike = {
@@ -138,7 +143,30 @@ export type GLike = {
       instance?: boolean;
       event?: string;
       pvp?: boolean;
+      quirks?: any[];
       monsters?: Array<{ type?: string; [key: string]: any }>;
+      data?: {
+        min_x?: number;
+        min_y?: number;
+        max_x?: number;
+        max_y?: number;
+        x_lines?: Array<[number, number, number]>;
+        y_lines?: Array<[number, number, number]>;
+        [key: string]: any;
+      };
+      [key: string]: any;
+    }
+  >;
+  /** Collision / map extent — same object as `maps[name].data` after process_game_data. */
+  geometry?: Record<
+    string,
+    {
+      min_x?: number;
+      min_y?: number;
+      max_x?: number;
+      max_y?: number;
+      x_lines?: Array<[number, number, number]>;
+      y_lines?: Array<[number, number, number]>;
       [key: string]: any;
     }
   >;
@@ -148,6 +176,8 @@ export type GLike = {
       name?: string;
       join?: boolean;
       sprite?: string;
+      type?: string;
+      duration?: number;
       [key: string]: any;
     }
   >;
@@ -170,6 +200,27 @@ export type SocketLike = {
   off?: (event: string, cb?: (...args: any[]) => void) => void;
   /** Socket.IO client emit (observer commands use `o:command`). */
   emit?: (event: string, ...args: any[]) => void;
+};
+
+export type PixiRectLike = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type PixiDisplayObjectLike = {
+  x?: number;
+  y?: number;
+  interactive?: boolean;
+  interactiveChildren?: boolean;
+  buttonMode?: boolean;
+  cursor?: string;
+  hitArea?: unknown;
+  parent?: unknown;
+  anchor?: { set: (x: number, y?: number) => void };
+  on?: (event: string, cb: (...args: any[]) => void) => unknown;
+  destroy?: (opts?: { children?: boolean }) => void;
 };
 
 declare global {
@@ -209,12 +260,38 @@ declare global {
     current_map?: string;
     /** Observer/player instance id (`in`) — updated on welcome + new_map. */
     current_in?: string;
-    map?: { map_name?: string };
+    map?: {
+      map_name?: string;
+      addChild?: (...c: unknown[]) => void;
+      removeChild?: (...c: unknown[]) => void;
+      children?: unknown[];
+    };
+    /** PIXI layers plugin group used by stock quirks / entities. */
+    player_layer?: unknown;
+    PIXI?: {
+      Graphics: new () => unknown;
+      Container?: new () => unknown;
+      Text?: new (text: string, style?: Record<string, unknown>) => unknown;
+      Sprite?: new () => PixiDisplayObjectLike;
+      Rectangle?: new (
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+      ) => PixiRectLike;
+    };
+    no_graphics?: boolean;
     xtarget?: EntityLike | null;
     sprite?: (skin: string, opts?: any) => string;
     item_container?: (item: any, actual?: any) => string;
     condition_click?: (name: string) => void;
     slot_click?: (name: string) => void;
+    add_log?: (message: string, color?: string) => void;
+    render_mainframe?: () => void;
+    render_none_shrine?: () => void;
+    render_upgrade_shrine?: (explicit?: number) => void;
+    render_compound_shrine?: (explicit?: number) => void;
+    the_lever?: () => void;
     add_tint?: (selector: string, args?: any) => void;
     get_tint?: (
       selector: string,

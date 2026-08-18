@@ -68,6 +68,8 @@ function ensureTip(): HTMLDivElement {
   tipEl = document.createElement("div");
   tipEl.className = "ecu-meter-tt";
   tipEl.style.display = "none";
+  tipEl.style.position = "fixed";
+  tipEl.style.zIndex = "10000";
   document.body.appendChild(tipEl);
   if (!tipWheelBound) {
     tipWheelBound = true;

@@ -2,7 +2,7 @@
 
 Tampermonkey userscript that enhances Adventure.land `/comm` with a movable combat HUD, party roster, boss/enemy frames, **account mail**, **WoW-style damage meters** (alpha), crypt progress, effects icons, threat, gear/trade peek, and session kill KPIs.
 
-**Current package version:** see `package.json` (ships as `0.8.0-alpha.4` — meters are alpha-quality).
+**Current package version:** see `package.json` (ships as `0.8.0-alpha.5` — meters are alpha-quality).
 
 ## Install (Tampermonkey)
 
@@ -43,6 +43,21 @@ Use a tiny committed stub that loads the local build **on every page refresh** (
 5. Confirm in the browser console: `[ecu-dev] injected { url: ...?t=..., bytes: ... }`
 
 Health check: [http://127.0.0.1:3927/health](http://127.0.0.1:3927/health) should show `"ok": true`.
+
+### Overlay preview (no game client)
+
+Iterate on the Comm HUD in a plain browser tab. Instance sim lives in the preview toolbar, not in the live `/comm` UI.
+
+The harness caches live `data.js`, stock `sprite` / `item_container` (from `old_common_functions.js` + `html.js`), the pixel font, and `/images` `/css` assets under `dev/overlay/cache/` — **gitignored**. Same-origin `/images/...` paths match the real client; the HUD does not rewrite them to the CDN.
+
+1. `npm run dev` (first run fetches the cache; or `npm run overlay:sync`)
+2. Open [http://127.0.0.1:3927/overlay](http://127.0.0.1:3927/overlay)
+3. Pick a scenario in the top toolbar (crypt / tomb / spider / winter)
+4. Rebuilds auto-reload the preview page
+
+Refresh the dump with `npm run overlay:sync -- --force`. Toolbar **G: live** means cached game data loaded; **G: stub** is the tiny offline fallback.
+
+Console: `window.__ecuInstanceSim.enable("crypt-boss")`
 
 Debounce default is 1200ms (override: `ECU_WATCH_DEBOUNCE_MS=700 npm run dev`).  
 Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.user.js` to match.

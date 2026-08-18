@@ -14,6 +14,7 @@ import {
   applyFrameSizeToCommWindows,
   type CommWindowGraphState,
 } from "../../lib/commWindowGroup";
+import { applyWindowFramePersist } from "../../lib/panelCatalog";
 import type { PanelGroupDragOpts } from "../../lib/panelGroupDrag";
 import {
   getSettings,
@@ -168,6 +169,27 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     commit(applyFrameSizeToCommWindows(stateRef.current, id, size));
   };
 
+  const setWindowAutoSize = (
+    id: string,
+    autoSize: boolean,
+    size?: { w: number; h: number },
+  ) => {
+    const hid = id as PanelId;
+    const cur = stateRef.current.layout[hid];
+    if (!cur) return;
+    let nextPos: PanelPos = { ...cur, autoSize };
+    if (!autoSize && size && size.w > 0 && size.h > 0) {
+      nextPos = applyWindowFramePersist(
+        { ...nextPos, frameW: size.w, frameH: size.h },
+        id,
+      );
+    }
+    commit({
+      ...stateRef.current,
+      layout: { ...stateRef.current.layout, [hid]: nextPos },
+    });
+  };
+
   const graphState = (): CommWindowGraphState => stateRef.current;
 
   return {
@@ -178,6 +200,7 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     onDragMove,
     setWindowScale,
     resizeWindowFrame,
+    setWindowAutoSize,
     snapDragId,
     snapPeerId,
     nearPeerId,

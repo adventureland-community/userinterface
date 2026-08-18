@@ -16,6 +16,7 @@ import {
   monsterSprite,
   resolveCharacterLook,
 } from "../host/icons";
+import { abilityIconFallbackSkin } from "./abilityIconFallbacks";
 import { canonicalAbilityId } from "./abilityIds";
 
 export type GameIconKind =
@@ -101,7 +102,14 @@ export type SkinSheetOpts = {
 function imagesetFileSrc(file: string): string {
   if (!file) return "";
   if (/^https?:\/\//i.test(file)) return file;
-  if (file.charAt(0) === "/") return `https://adventure.land${file}`;
+  if (file.charAt(0) === "/") {
+    const origin =
+      typeof window !== "undefined"
+        ? (window as { __ecuAssetOrigin?: unknown }).__ecuAssetOrigin
+        : undefined;
+    if (typeof origin === "string") return origin + file;
+    return `https://adventure.land${file}`;
+  }
   return file;
 }
 
@@ -140,9 +148,7 @@ function letterFallbackHtml(
   ]
     .filter(Boolean)
     .join(";");
-  const tipAttr = nativeTitle
-    ? ` title="${escapeAttr(title)}"`
-    : "";
+  const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
   return `<span class="ecu-meter-icon ecu-meter-icon-ab"${tipAttr} style="${style}">${escapeAttr(letter)}</span>`;
 }
 
@@ -185,9 +191,7 @@ export function skinSheetHtml(
     const tip = title || skin;
     const src = imagesetFileSrc(pack.file);
     const nativeTitle = !(opts && opts.nativeTitle === false);
-    const tipAttr = nativeTitle
-      ? ` title="${escapeAttr(tip)}"`
-      : "";
+    const tipAttr = nativeTitle ? ` title="${escapeAttr(tip)}"` : "";
     return `<span class="ecu-meter-icon ecu-meter-icon-skin"${tipAttr} style="width:${displaySize}px;height:${displaySize}px"><span class="ecu-meter-icon-clip" style="width:${displaySize}px;height:${displaySize}px"><img alt="" draggable="false" style="width:${sheetW}px;height:${sheetH}px;margin-top:-${y * displaySize}px;margin-left:-${x * displaySize}px" src="${escapeAttr(src)}"/></span></span>`;
   } catch {
     return null;
@@ -245,11 +249,50 @@ export function skillSkin(key: string): string | undefined {
   const gid = canonicalAbilityId(key);
   const skill = G?.skills?.[gid] || G?.skills?.[key];
   if (skill && typeof skill.skin === "string" && skill.skin) return skill.skin;
+  if (skill && typeof skill.condition === "string" && skill.condition) {
+    const viaCond = conditionSkin(skill.condition);
+    if (viaCond) return viaCond;
+  }
   const cond = G?.conditions?.[gid] || G?.conditions?.[key];
   if (cond && typeof cond.skin === "string" && cond.skin) return cond.skin;
   const item = G?.items?.[gid] || G?.items?.[key];
   if (item && typeof item.skin === "string" && item.skin) return item.skin;
   return undefined;
+}
+
+/**
+ * Boss / monster ability art — G.skills skin, then G.monsters[mtype].abilities.
+ * Shared by ability timeline and any skill icon with `mtype` on GameIcon.
+ */
+export function monsterAbilitySkin(
+  abilityId: string,
+  mtype?: string,
+): string | undefined {
+  const fromSkill = skillSkin(abilityId);
+  if (fromSkill) return fromSkill;
+  if (!mtype) return undefined;
+  const G = getG();
+  const gid = canonicalAbilityId(abilityId);
+  const ab = (G?.monsters?.[mtype]?.abilities?.[gid] ||
+    G?.monsters?.[mtype]?.abilities?.[abilityId]) as
+    Record<string, unknown> | undefined;
+  if (!ab) return undefined;
+  if (typeof ab.skin === "string" && ab.skin) return ab.skin;
+  if (typeof ab.condition === "string" && ab.condition) {
+    const condSkin = conditionSkin(ab.condition);
+    if (condSkin) return condSkin;
+  }
+  if (typeof ab.skill === "string" && ab.skill) {
+    const linked = skillSkin(ab.skill);
+    if (linked) return linked;
+    return ab.skill;
+  }
+  if (typeof ab.use_skill === "string" && ab.use_skill) {
+    const linked = skillSkin(ab.use_skill);
+    if (linked) return linked;
+    return ab.use_skill;
+  }
+  return abilityIconFallbackSkin(gid) || abilityIconFallbackSkin(abilityId);
 }
 
 /**
@@ -364,9 +407,7 @@ export function itemInstanceHtml(
         },
       );
       if (!nativeTitle) cleaned = stripNativeTitleAttrs(cleaned);
-      const tipAttr = nativeTitle
-        ? ` title="${escapeAttr(title)}"`
-        : "";
+      const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
       return `<span class="ecu-item-instance"${tipAttr}>${cleaned}</span>`;
     }
   } catch {
@@ -486,12 +527,21 @@ export function resolveGameIcon(
     debuff: isConditionDebuff(gid),
   });
 
-  const asSkill = (): ResolvedGameIcon => ({
-    id: gid,
-    kind: "skill",
-    skin: skillSkin(gid),
-    name: skillDisplayName(gid),
-  });
+  const asSkill = (): ResolvedGameIcon => {
+    let skin = skillSkin(gid);
+    if (!skin && opts?.mtype) {
+      skin = monsterAbilitySkin(key, opts.mtype);
+    }
+    if (!skin) {
+      skin = abilityIconFallbackSkin(gid) || abilityIconFallbackSkin(key);
+    }
+    return {
+      id: gid,
+      kind: "skill",
+      skin,
+      name: skillDisplayName(gid),
+    };
+  };
 
   const asItem = (): ResolvedGameIcon => {
     const def = G?.items?.[gid] || G?.items?.[key];
@@ -508,17 +558,16 @@ export function resolveGameIcon(
 
   // Ability rows pass kind "skill", but burn ticks are G.conditions.burned.
   if (kind === "skill") {
-    if (G?.skills?.[gid] || G?.skills?.[key]) return asSkill();
     if (G?.conditions?.[gid] || G?.conditions?.[key]) return asCondition();
     if (G?.items?.[gid] || G?.items?.[key]) return asItem();
-    return {
-      id: gid || key,
-      kind: "skill",
-      name: skillDisplayName(gid || key),
-    };
+    return asSkill();
   }
 
   if (kind === "auto" && (G?.skills?.[gid] || G?.skills?.[key])) {
+    return asSkill();
+  }
+
+  if (kind === "auto" && opts?.mtype && monsterAbilitySkin(key, opts.mtype)) {
     return asSkill();
   }
 
@@ -657,6 +706,11 @@ export function gameIconHtml(
   });
   const title = opts?.title || resolved.name || id;
 
+  if (opts?.skin) {
+    const explicit = skinSheetHtml(opts.skin, size, title);
+    if (explicit) return explicit;
+  }
+
   if (resolved.kind === "monster") {
     if (resolved.mtype) return monsterIconHtml(resolved.mtype, size, title);
     return letterFallbackHtml(
@@ -697,6 +751,8 @@ export function gameIconHtml(
     const asSkin = skinSheetHtml(resolved.id || id, size, title);
     if (asSkin) return asSkin;
   }
+
+  if (opts?.mtype) return monsterIconHtml(opts.mtype, size, title);
 
   const letter = (title || id || "?").slice(0, 1).toUpperCase();
   return letterFallbackHtml(letter, size, title);

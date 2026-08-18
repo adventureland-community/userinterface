@@ -1,7 +1,7 @@
 import { getReact, getReactDOM, e } from "./host/react";
 import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
-import { startCryptTracker } from "./crypt/tracker";
+import { startInstanceTracker } from "./instance/tracker";
 import { startMeterEngine, updateMeterContext } from "./meters/meterEngine";
 import { isMeterInCombat } from "./meters/meterSession";
 import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
@@ -14,6 +14,7 @@ import { installMailUnreadWatch, subscribeMailToast } from "./host/mail";
 import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
+import { startWorldOverlay } from "./viz/startWorldOverlay";
 
 publishEcuBuildInfo();
 
@@ -120,6 +121,11 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
 #comm-ui textarea {
   font-family: inherit;
 }
+
+/* HP threshold marks on boss/unit frames */
+.comm-hp-threshold {
+  pointer-events: none;
+}
 `;
 
 function injectCss(id: string, css: string): void {
@@ -218,9 +224,10 @@ function onLoad(): void {
   installMailUnreadWatch();
   subscribeMailToast((message) => showMailToast(message));
   startSocketHub();
-  startCryptTracker();
+  startInstanceTracker();
   startMeterEngine();
   startSessionKills();
+  startWorldOverlay();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {

@@ -22,6 +22,33 @@ import {
 import { normalizePartyBuffMode, type PartyBuffMode } from "./partyBuffMode";
 import type { PartyFocus, PartyScope } from "./settingsFocus";
 import { latestChangelogId } from "./changelog";
+import {
+  clampMinimapZoom,
+  MINIMAP_ZOOM_DEFAULT,
+  MINIMAP_BG_DEFAULT,
+  normalizeMinimapBgMode,
+  type MinimapBgMode,
+} from "./minimapPrefs";
+import {
+  legacyShowBigIconHidden,
+  normalizeAbilityTimelineOrient,
+  type AbilityTimelinePrefs,
+} from "../instance/abilityTimelinePrefs";
+import { applyAbilityTimelineOrientFrame } from "./abilityTimelineFrame";
+import { LAYOUT_FRAME_REV } from "./layoutFrameMigrations";
+import {
+  mergePanelVisible,
+  type PanelVisibleMap,
+  DEFAULT_PANEL_VISIBLE,
+} from "./panelCatalog";
+
+export {
+  CLOSABLE_PANEL_IDS,
+  mergePanelVisible,
+  isPanelVisible,
+  type ClosablePanelId,
+  type PanelVisibleMap,
+} from "./panelCatalog";
 
 export {
   resolvePartyFocus,
@@ -50,21 +77,6 @@ export type PanelLayoutsByProfile = Partial<
 
 /** Single content mode for the combat panel (tabs, not stacked). */
 export type CombatViewMode = "table" | "bars" | "graph";
-
-/** Panels the user can hide via × (not core chrome). */
-export const CLOSABLE_PANEL_IDS = [
-  "bossBar",
-  "crypt",
-  "kills",
-  "threat",
-  "command",
-  "bag",
-  "mail",
-] as const satisfies readonly PanelId[];
-
-export type ClosablePanelId = (typeof CLOSABLE_PANEL_IDS)[number];
-
-export type PanelVisibleMap = Partial<Record<PanelId, boolean>>;
 
 /** Named observer COMMAND presets (`o:command` / remote code_eval). */
 export type CommandSnippet = {
@@ -181,17 +193,14 @@ export type CommUiSettings = {
   windowNumberById?: Record<string, number>;
   /** Next free window number to allocate. */
   nextWindowNumber?: number;
-};
-
-const DEFAULT_PANEL_VISIBLE: Record<ClosablePanelId, boolean> = {
-  bossBar: true,
-  crypt: true,
-  kills: true,
-  threat: true,
-  command: false,
-  /** Bag panel shell is always allowed; open/close follows inventory. */
-  bag: true,
-  mail: false,
+  /** World half-span (shorter canvas axis), clamped — sticky after snaps / wheel. */
+  minimapZoom?: number;
+  /** Minimap shell + canvas grid opacity preset. */
+  minimapBg: MinimapBgMode;
+  /** Ability timeline geometry + chrome (legacy orient/display scalars migrate in). */
+  abilityTimeline?: Partial<AbilityTimelinePrefs>;
+  /** One-shot frame migrations; bump LAYOUT_FRAME_REV when adding migrators. */
+  layoutRev?: number;
 };
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
@@ -236,6 +245,9 @@ const DEFAULTS: CommUiSettings = {
   toursCompleted: {},
   windowNumberById: {},
   nextWindowNumber: 1,
+  minimapZoom: MINIMAP_ZOOM_DEFAULT,
+  minimapBg: MINIMAP_BG_DEFAULT,
+  layoutRev: LAYOUT_FRAME_REV,
 };
 
 export function resolveLayoutProfile(
@@ -249,6 +261,7 @@ export function resolveLayoutProfile(
 export function mergeLayoutsByProfile(
   partial?: PanelLayoutsByProfile | null,
   legacyFlat?: PanelLayoutMap | null,
+  opts?: { migrateFrames?: boolean },
 ): PanelLayoutsByProfile {
   const out: PanelLayoutsByProfile = {};
   if (partial && typeof partial === "object") {
@@ -256,7 +269,7 @@ export function mergeLayoutsByProfile(
       const profile = VIEWPORT_PROFILES[i];
       const chunk = partial[profile];
       if (chunk && typeof chunk === "object") {
-        out[profile] = mergeLayout(chunk, profile);
+        out[profile] = mergeLayout(chunk, profile, opts);
       }
     }
   }
@@ -267,7 +280,7 @@ export function mergeLayoutsByProfile(
     Object.keys(legacyFlat).length &&
     !out.desktop
   ) {
-    out.desktop = mergeLayout(legacyFlat, "desktop");
+    out.desktop = mergeLayout(legacyFlat, "desktop", opts);
   }
   return out;
 }
@@ -281,14 +294,15 @@ export function layoutForProfile(
     profile ||
     resolveLayoutProfile(settings.layoutProfileMode, detectViewportProfile());
   const stored = settings.panelLayoutsByProfile?.[resolved];
+  let merged: Record<PanelId, PanelPos>;
   if (stored && Object.keys(stored).length) {
-    return mergeLayout(stored, resolved);
+    merged = mergeLayout(stored, resolved);
+  } else if (resolved === "desktop" && settings.panelLayout) {
+    merged = mergeLayout(settings.panelLayout, "desktop");
+  } else {
+    merged = mergeLayout(null, resolved);
   }
-  // Fall back to legacy flat only on desktop; other profiles use defaults.
-  if (resolved === "desktop" && settings.panelLayout) {
-    return mergeLayout(settings.panelLayout, "desktop");
-  }
-  return mergeLayout(null, resolved);
+  return merged;
 }
 
 function clampOpacity(n: number): number {
@@ -373,23 +387,6 @@ export function panelOpacityOf(settings: CommUiSettings, id: PanelId): number {
   return typeof v === "number" ? clampOpacity(v) : 1;
 }
 
-export function mergePanelVisible(
-  partial?: PanelVisibleMap | null,
-  legacyCombatVisible?: boolean,
-): PanelVisibleMap {
-  const out: PanelVisibleMap = { ...DEFAULT_PANEL_VISIBLE };
-  void legacyCombatVisible;
-  if (partial && typeof partial === "object") {
-    for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
-      const id = CLOSABLE_PANEL_IDS[i];
-      if (typeof partial[id] === "boolean") {
-        out[id] = partial[id];
-      }
-    }
-  }
-  return out;
-}
-
 function normalizeSnippets(raw: any): CommandSnippet[] {
   if (!Array.isArray(raw)) return DEFAULT_COMMAND_SNIPPETS.slice();
   const out: CommandSnippet[] = [];
@@ -426,10 +423,28 @@ function normalizeLayoutProfileMode(raw: unknown): LayoutProfileMode {
 }
 
 function migrate(parsed: any): CommUiSettings {
+  const staleFrames = parsed.layoutRev !== LAYOUT_FRAME_REV;
   const panelLayoutsByProfile = mergeLayoutsByProfile(
     parsed.panelLayoutsByProfile,
     parsed.panelLayout,
+    { migrateFrames: staleFrames },
   );
+  if (staleFrames) {
+    const orient = normalizeAbilityTimelineOrient(
+      parsed.abilityTimeline?.orient ?? parsed.abilityTimelineOrient,
+    );
+    const keys = Object.keys(panelLayoutsByProfile) as ViewportProfile[];
+    for (let i = 0; i < keys.length; i++) {
+      const profile = keys[i];
+      const layout = panelLayoutsByProfile[profile];
+      if (layout) {
+        panelLayoutsByProfile[profile] = applyAbilityTimelineOrientFrame(
+          layout,
+          orient,
+        );
+      }
+    }
+  }
   const layoutProfileMode = normalizeLayoutProfileMode(
     parsed.layoutProfileMode,
   );
@@ -440,6 +455,11 @@ function migrate(parsed: any): CommUiSettings {
       panelLayout: parsed.panelLayout || {},
       panelLayoutsByProfile,
       layoutProfileMode,
+      abilityTimeline:
+        parsed.abilityTimeline ||
+        (parsed.abilityTimelineOrient != null
+          ? { orient: parsed.abilityTimelineOrient }
+          : undefined),
     },
     activeProfile,
   );
@@ -452,6 +472,7 @@ function migrate(parsed: any): CommUiSettings {
     panelLayout,
     panelLayoutsByProfile,
     layoutProfileMode,
+    layoutRev: LAYOUT_FRAME_REV,
     panelVisible: mergePanelVisible(parsed.panelVisible, parsed.combatVisible),
     commandSnippets: normalizeSnippets(parsed.commandSnippets),
     commandDraft:
@@ -460,8 +481,7 @@ function migrate(parsed: any): CommUiSettings {
     mailLastTo: Array.isArray(parsed.mailLastTo)
       ? parsed.mailLastTo.map(String).filter(Boolean).slice(0, 8)
       : [],
-    mailPill:
-      typeof parsed.mailPill === "string" ? parsed.mailPill : "all",
+    mailPill: typeof parsed.mailPill === "string" ? parsed.mailPill : "all",
     mailCollapseRepeats:
       typeof parsed.mailCollapseRepeats === "boolean"
         ? parsed.mailCollapseRepeats
@@ -518,6 +538,12 @@ function migrate(parsed: any): CommUiSettings {
       typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0
         ? Math.floor(parsed.nextWindowNumber)
         : 1,
+    minimapZoom: clampMinimapZoom(
+      typeof parsed.minimapZoom === "number"
+        ? parsed.minimapZoom
+        : MINIMAP_ZOOM_DEFAULT,
+    ),
+    minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
   };
 
   // Legacy: finished/skipped intro before changelog tracking — treat current
@@ -544,6 +570,31 @@ function migrate(parsed: any): CommUiSettings {
 
   // Drop deprecated flag once migrated into panelVisible
   delete next.combatVisible;
+  if (
+    next.abilityTimeline == null &&
+    (parsed.abilityTimelineOrient != null ||
+      parsed.abilityTimelineDisplay != null)
+  ) {
+    next.abilityTimeline = {
+      orient: parsed.abilityTimelineOrient,
+    };
+  }
+  delete (next as { abilityTimelineOrient?: unknown }).abilityTimelineOrient;
+  delete (next as { abilityTimelineDisplay?: unknown }).abilityTimelineDisplay;
+
+  const rawVisible =
+    parsed.panelVisible && typeof parsed.panelVisible === "object"
+      ? (parsed.panelVisible as Record<string, unknown>)
+      : {};
+  if (
+    legacyShowBigIconHidden(parsed.abilityTimeline) &&
+    typeof rawVisible.abilityTimelineBigIcon !== "boolean"
+  ) {
+    next.panelVisible = {
+      ...next.panelVisible,
+      abilityTimelineBigIcon: false,
+    };
+  }
 
   if (next.threatScope !== "watched" && next.threatScope !== "visible") {
     next.threatScope = "visible";
@@ -584,7 +635,17 @@ function readSettingsFromStorage(): CommUiSettings {
   try {
     const raw = window.localStorage?.getItem(KEY);
     if (!raw) return freshDefaults();
-    return migrate(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const next = migrate(parsed);
+    // Strip retired minimapMode (follow/fit/auto) from old saves.
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      Object.prototype.hasOwnProperty.call(parsed, "minimapMode")
+    ) {
+      writeSettingsToStorage(next);
+    }
+    return next;
   } catch {
     return freshDefaults();
   }
@@ -676,10 +737,19 @@ export function patchSettings(
     next.mailDraft = partial.mailDraft;
   }
   if (partial.mailLastTo) {
-    next.mailLastTo = partial.mailLastTo.map(String).filter(Boolean).slice(0, 8);
+    next.mailLastTo = partial.mailLastTo
+      .map(String)
+      .filter(Boolean)
+      .slice(0, 8);
   }
   if (typeof partial.mailPill === "string") {
     next.mailPill = partial.mailPill;
+  }
+  if (typeof partial.minimapZoom === "number") {
+    next.minimapZoom = clampMinimapZoom(partial.minimapZoom);
+  }
+  if (partial.minimapBg != null) {
+    next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);
   }
   if (typeof partial.mailCollapseRepeats === "boolean") {
     next.mailCollapseRepeats = partial.mailCollapseRepeats;
@@ -858,11 +928,4 @@ export function importLayoutPackage(pkg: {
     });
   }
   return next;
-}
-
-export function isPanelVisible(settings: CommUiSettings, id: PanelId): boolean {
-  const v = settings.panelVisible?.[id];
-  if (typeof v === "boolean") return v;
-  const def = DEFAULT_PANEL_VISIBLE[id as keyof typeof DEFAULT_PANEL_VISIBLE];
-  return def !== false;
 }

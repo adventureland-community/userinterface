@@ -150,8 +150,8 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Overlay",
       title: "Map & events",
-      body: "In-game map plus server clock and live/world events at the top of the overlay.",
-      target: ".comm-pos-topCenter",
+      body: "Server clock chips (serverInfo), closable events list, map name and instance id (mapInfo).",
+      target: ".comm-pos-serverInfo, .comm-pos-mapInfo, .comm-pos-events",
       targetKind: "region",
     },
     {
