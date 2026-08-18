@@ -196,6 +196,8 @@ export type ServerInfoLike = {
 
 export type SocketLike = {
   id?: string;
+  /** Socket.IO client flag; false after a drop. */
+  connected?: boolean;
   on: (event: string, cb: (...args: any[]) => void) => void;
   off?: (event: string, cb?: (...args: any[]) => void) => void;
   /** Socket.IO client emit (observer commands use `o:command`). */
@@ -252,6 +254,11 @@ declare global {
     };
     S?: ServerInfoLike;
     socket?: SocketLike;
+    /** Stock /comm + /game: tears down the socket and shows DISCONNECTED. */
+    disconnect?: () => void;
+    refresh_page?: () => void;
+    disconnect_reason?: string;
+    __ecuDisconnectOverlayPatched?: boolean;
     server_region?: string;
     server_identifier?: string;
     server_address?: string;

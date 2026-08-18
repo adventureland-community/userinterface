@@ -7664,9 +7664,14 @@ ${fightHoverTip(src)}`
     {
       id: "0.8.0-alpha.6",
       title: "0.8.0-alpha.6",
-      date: "2026-08-18",
-      summary: "Entity Inspect JSON on frames and paperdoll, plus Ability Timeline hover-tip and mail Take fixes.",
+      date: "2026-08-19",
+      summary: "Entity Inspect JSON, a full-screen /comm disconnect banner with the server reason, plus Ability Timeline hover-tip and mail Take fixes.",
       highlights: [
+        {
+          label: "Disconnected banner",
+          detail: "Losing the /comm socket covers the HUD with a pulsing DISCONNECTED overlay \u2014 same idea as the in-game client. Shows the server reason when there is one. Click anywhere to reload.",
+          kind: "fix"
+        },
         {
           label: "Entity Inspect",
           detail: "Click `{}` on a unit frame, paperdoll, party chip, or aggro mob to open the stock show_json modal for that entity \u2014 same as in-game INSPECT.",
@@ -7684,6 +7689,11 @@ ${fightHoverTip(src)}`
         }
       ],
       items: [
+        {
+          label: "Disconnected banner",
+          detail: "Chrome CSS had been hiding the stock DISCONNECTED gamebutton under the character strip. Overlay sits above meters; tab title reads Disconnected. Known codes (limits, limitdc, blocked) get a readable line; other server messages show as sent.",
+          kind: "fix"
+        },
         {
           label: "Inspect JSON",
           detail: "Uses stock ui_inspect / show_json on /comm \u2014 character and monster headers, docs links, and the full soft-synced entity object.",
@@ -10369,6 +10379,7 @@ ${fightHoverTip(src)}`
 
   // src/host/commChrome/chromeCss.ts
   var STYLE_ID = "comm-ui-chrome-css";
+  var STOCK_BOTTOM_TOGGLE_HIDE = "#bottom > .gamebutton:not(.disconnected)";
   function injectChromeCss() {
     let style = document.getElementById(STYLE_ID);
     if (!style) {
@@ -10827,8 +10838,9 @@ ${EFFECTS_ICON_CSS}
   text-align: center;
 }
 
-/* Hide stock TOGGLE \u2014 strip shows chars + servers together */
-#bottom > .gamebutton {
+/* Hide stock TOGGLE \u2014 strip shows chars + servers together.
+   Keep .disconnected \u2014 that is the connection-lost reload button. */
+${STOCK_BOTTOM_TOGGLE_HIDE} {
   display: none !important;
 }
 
@@ -15361,7 +15373,7 @@ ${CHROME_ARRANGE_CSS}
     let lastServer = "";
     let lastPingAt = 0;
     let lastEventsFp = "";
-    const unsubTick = subscribeTick((snap) => {
+    const unsubTick2 = subscribeTick((snap) => {
       const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
       const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
       if (name !== lastObs || server !== lastServer) {
@@ -15384,13 +15396,250 @@ ${CHROME_ARRANGE_CSS}
     });
     window.addEventListener("unload", () => {
       stopObserveWatch();
-      unsubTick();
+      unsubTick2();
+    });
+  }
+
+  // src/host/disconnectOverlay.ts
+  var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
+  var DISCONNECT_OVERLAY_Z = 2147483647;
+  var STYLE_ID4 = "ecu-disconnect-overlay-css";
+  var CSS2 = `
+/* Stock /comm button is a #bottom child; keep it above chrome, not as the only cue. */
+#bottom > .gamebutton.disconnected:not(.hidden) {
+  display: flex !important;
+  position: fixed !important;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+}
+body.${DISCONNECT_OVERLAY_CLASS}-on #bottom > .gamebutton.disconnected {
+  display: none !important;
+}
+.${DISCONNECT_OVERLAY_CLASS} {
+  position: fixed;
+  inset: 0;
+  z-index: ${DISCONNECT_OVERLAY_Z};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 0, 0, 0.88);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.${DISCONNECT_OVERLAY_CLASS}-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  padding: 22px 36px 20px;
+  background: #140404;
+  border: 4px solid #ff2e46;
+  color: #ff2e46;
+  font-family: Pixel, "Segoe UI", Tahoma, Arial, sans-serif;
+  text-align: center;
+  box-shadow: 0 0 0 1px #4a0008, 0 18px 48px rgba(0, 0, 0, 0.65);
+  animation: ecu-disconnect-pulse 1.15s ease-in-out infinite;
+}
+.${DISCONNECT_OVERLAY_CLASS}-title {
+  font-size: clamp(32px, 7vw, 56px);
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.${DISCONNECT_OVERLAY_CLASS}-reason {
+  font-size: clamp(16px, 2.6vw, 22px);
+  line-height: 1.35;
+  color: #f3d0d4;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+}
+.${DISCONNECT_OVERLAY_CLASS}-reason.is-empty {
+  display: none;
+}
+.${DISCONNECT_OVERLAY_CLASS}-hint {
+  font-size: clamp(16px, 2.4vw, 22px);
+  color: #c9b4b6;
+  letter-spacing: 0.04em;
+}
+body > .comm-disconnect-overlay {
+  z-index: ${DISCONNECT_OVERLAY_Z} !important;
+  background: rgba(8, 0, 0, 0.88) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  pointer-events: auto !important;
+}
+body > .comm-disconnect-overlay .comm-disconnect-reason {
+  max-width: min(92vw, 520px);
+  font-size: clamp(16px, 2.6vw, 22px);
+  line-height: 1.35;
+  color: #f3d0d4;
+}
+@keyframes ecu-disconnect-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.03); filter: brightness(1.18); }
+}
+`;
+  var installed = false;
+  var everConnected = false;
+  var overlayEl = null;
+  var unsubTick = null;
+  var origDisconnect;
+  function canUseDom() {
+    return typeof document !== "undefined" && !!document.body;
+  }
+  function ensureCss() {
+    if (!canUseDom()) return;
+    const existing = document.getElementById(STYLE_ID4);
+    if (existing) {
+      existing.textContent = CSS2;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = STYLE_ID4;
+    el.textContent = CSS2;
+    document.head.appendChild(el);
+  }
+  function liveSocket(socket) {
+    if (!socket) return false;
+    if (socket.connected === false) return false;
+    return true;
+  }
+  function isCommDisconnected() {
+    const sock = typeof window !== "undefined" ? window.socket : void 0;
+    if (liveSocket(sock)) {
+      everConnected = true;
+      return false;
+    }
+    if (everConnected) return true;
+    if (typeof document === "undefined") return false;
+    if (document.querySelector(".comm-disconnect-overlay")) return true;
+    const stock = document.querySelector(".disconnected");
+    return !!(stock && !stock.classList.contains("hidden"));
+  }
+  function disconnectBannerLabel(reason) {
+    return reason === "limits" ? "REJECTED" : "DISCONNECTED";
+  }
+  function disconnectBannerDetail(reason) {
+    const raw = reason == null ? "" : String(reason).trim();
+    if (!raw) return "";
+    switch (raw) {
+      case "limits":
+        return "You can have 3 characters and one merchant online at most.";
+      case "limitdc":
+        return "Too many actions in a short time.";
+      case "blocked":
+        return "This account is blocked.";
+      case "hardcore_downrank":
+        return "Hardcore downrank.";
+      default: {
+        return raw;
+      }
+    }
+  }
+  function currentReason() {
+    return typeof window !== "undefined" ? window.disconnect_reason : void 0;
+  }
+  function reloadComm() {
+    if (typeof window.refresh_page === "function") {
+      window.refresh_page();
+      return;
+    }
+    window.location.reload();
+  }
+  function hideDisconnectOverlay() {
+    if (overlayEl) {
+      overlayEl.remove();
+      overlayEl = null;
+    }
+    if (canUseDom()) {
+      document.body.classList.remove(`${DISCONNECT_OVERLAY_CLASS}-on`);
+    }
+  }
+  function showDisconnectOverlay(reason) {
+    if (!canUseDom()) return;
+    ensureCss();
+    const label = disconnectBannerLabel(reason);
+    const detail = disconnectBannerDetail(reason);
+    if (!overlayEl) {
+      overlayEl = document.createElement("div");
+      overlayEl.className = DISCONNECT_OVERLAY_CLASS;
+      overlayEl.setAttribute("role", "alertdialog");
+      overlayEl.setAttribute("aria-live", "assertive");
+      overlayEl.setAttribute("aria-modal", "true");
+      overlayEl.addEventListener("click", () => reloadComm());
+      const card = document.createElement("div");
+      card.className = `${DISCONNECT_OVERLAY_CLASS}-card`;
+      const title = document.createElement("div");
+      title.className = `${DISCONNECT_OVERLAY_CLASS}-title`;
+      const reasonEl2 = document.createElement("div");
+      reasonEl2.className = `${DISCONNECT_OVERLAY_CLASS}-reason`;
+      const hint = document.createElement("div");
+      hint.className = `${DISCONNECT_OVERLAY_CLASS}-hint`;
+      hint.textContent = "Click anywhere to reload";
+      card.appendChild(title);
+      card.appendChild(reasonEl2);
+      card.appendChild(hint);
+      overlayEl.appendChild(card);
+      document.body.appendChild(overlayEl);
+    }
+    const titleEl = overlayEl.querySelector(
+      `.${DISCONNECT_OVERLAY_CLASS}-title`
+    );
+    if (titleEl) titleEl.textContent = label;
+    const reasonEl = overlayEl.querySelector(
+      `.${DISCONNECT_OVERLAY_CLASS}-reason`
+    );
+    if (reasonEl) {
+      reasonEl.textContent = detail;
+      reasonEl.classList.toggle("is-empty", !detail);
+    }
+    overlayEl.setAttribute("aria-label", detail ? `${label}. ${detail}` : label);
+    document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
+  }
+  function syncOverlay() {
+    if (isCommDisconnected()) showDisconnectOverlay(currentReason());
+    else hideDisconnectOverlay();
+  }
+  function wrapDisconnect() {
+    const prev = window.disconnect;
+    if (prev === wrappedDisconnect) return;
+    origDisconnect = typeof prev === "function" ? prev : void 0;
+    window.disconnect = wrappedDisconnect;
+  }
+  function wrappedDisconnect() {
+    everConnected = true;
+    try {
+      if (typeof origDisconnect === "function") origDisconnect();
+    } finally {
+      showDisconnectOverlay(currentReason());
+    }
+  }
+  function installDisconnectOverlay() {
+    if (installed) return;
+    installed = true;
+    if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
+      everConnected = true;
+    }
+    ensureCss();
+    wrapDisconnect();
+    syncOverlay();
+    unsubTick = subscribeTick(() => {
+      wrapDisconnect();
+      syncOverlay();
     });
   }
 
   // src/host/pageTitle.ts
   var BRAND = "Adventure Land";
-  var installed = false;
+  var installed2 = false;
   var lastTitle = null;
   function serverLabel2() {
     const region = getServerRegion() || "";
@@ -15401,10 +15650,12 @@ ${CHROME_ARRANGE_CSS}
     const parts = [];
     const obs = getObserving();
     const name = obs && obs.name != null ? String(obs.name) : "";
+    const dropped = isCommDisconnected();
+    if (dropped) parts.push("Disconnected");
     if (name) {
       const dead = !!(obs && obs.dead);
       parts.push(dead ? `${name} (RIP)` : name);
-    } else {
+    } else if (!dropped) {
       parts.push("Comm");
     }
     const map = getMapName();
@@ -15420,8 +15671,8 @@ ${CHROME_ARRANGE_CSS}
     if (document.title !== next) document.title = next;
   }
   function installPageTitle() {
-    if (installed) return;
-    installed = true;
+    if (installed2) return;
+    installed2 = true;
     applyPageTitle();
     subscribeTick(() => applyPageTitle());
   }
@@ -16977,7 +17228,7 @@ button.comm-mail__stack-u {
 
   // src/ui/frames/mail/mailCss.ts
   var injected = false;
-  var CSS2 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
+  var CSS3 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
   function ensureMailCss() {
     if (injected) return;
     injected = true;
@@ -16985,19 +17236,19 @@ button.comm-mail__stack-u {
       "style[data-ecu-mail-css]"
     );
     if (existing) {
-      existing.textContent = CSS2;
+      existing.textContent = CSS3;
       return;
     }
     const el = document.createElement("style");
     el.setAttribute("data-ecu-mail-css", "1");
-    el.textContent = CSS2;
+    el.textContent = CSS3;
     document.head.appendChild(el);
   }
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.8.0-alpha.6" : "unknown";
-    const builtAt = true ? "2026-08-18T20:07:02.803Z" : "unknown";
+    const builtAt = true ? "2026-08-18T23:44:00.841Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -17312,7 +17563,7 @@ button.comm-mail__stack-u {
 
   // src/ui/frames/comm/commSetupWizardCss.ts
   var injected2 = false;
-  var CSS3 = `
+  var CSS4 = `
 .ecu-comm-wiz-backdrop {
   position: fixed;
   inset: 0;
@@ -17852,8 +18103,8 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-comm-wiz", "1");
       document.head.appendChild(el);
     }
-    if (!injected2 || el.textContent !== CSS3) {
-      el.textContent = CSS3;
+    if (!injected2 || el.textContent !== CSS4) {
+      el.textContent = CSS4;
     }
     injected2 = true;
   }
@@ -18326,7 +18577,7 @@ button.comm-mail__stack-u {
 
   // src/ui/frames/comm/guidedTour/guidedTourCss.ts
   var injected3 = false;
-  var CSS4 = `
+  var CSS5 = `
 .ecu-tour-root {
   position: fixed;
   inset: 0;
@@ -18522,7 +18773,7 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-tour", "1");
       document.head.appendChild(el);
     }
-    el.textContent = CSS4;
+    el.textContent = CSS5;
     injected3 = true;
   }
 
@@ -21892,7 +22143,7 @@ button.comm-mail__stack-u {
   }
 
   // src/host/commNotice.ts
-  var CSS5 = `
+  var CSS6 = `
 .ecu-comm-hover {
   position: fixed;
   z-index: 100001;
@@ -21943,22 +22194,22 @@ button.comm-mail__stack-u {
   var cssInjected = false;
   var hoverEl = null;
   var noticeEl = null;
-  function canUseDom() {
+  function canUseDom2() {
     return typeof document !== "undefined" && !!document.body;
   }
-  function ensureCss() {
-    if (cssInjected || !canUseDom()) return;
+  function ensureCss2() {
+    if (cssInjected || !canUseDom2()) return;
     cssInjected = true;
     const existing = document.querySelector(
       "style[data-ecu-comm-notice-css]"
     );
     if (existing) {
-      existing.textContent = CSS5;
+      existing.textContent = CSS6;
       return;
     }
     const el = document.createElement("style");
     el.setAttribute("data-ecu-comm-notice-css", "1");
-    el.textContent = CSS5;
+    el.textContent = CSS6;
     document.head.appendChild(el);
   }
   function hideCommHover() {
@@ -21967,11 +22218,11 @@ button.comm-mail__stack-u {
     hoverEl = null;
   }
   function showCommHover(text, clientX, clientY) {
-    if (!canUseDom() || !text) {
+    if (!canUseDom2() || !text) {
       hideCommHover();
       return;
     }
-    ensureCss();
+    ensureCss2();
     if (!hoverEl) {
       hoverEl = document.createElement("div");
       hoverEl.className = "ecu-comm-hover";
@@ -21989,8 +22240,8 @@ button.comm-mail__stack-u {
     noticeEl = null;
   }
   function showCommNotice(notice) {
-    if (!canUseDom()) return;
-    ensureCss();
+    if (!canUseDom2()) return;
+    ensureCss2();
     hideCommHover();
     hideCommNotice();
     noticeEl = document.createElement("div");
@@ -29533,7 +29784,7 @@ button.ecu-meter-status-micro:hover,
 `;
 
   // src/ui/meter/meterChromeCss.ts
-  var STYLE_ID4 = "ecu-meter-chrome-css";
+  var STYLE_ID5 = "ecu-meter-chrome-css";
   function cssSlice(part) {
     return part.replace(/^\n/, "").replace(/\n$/, "");
   }
@@ -29542,7 +29793,7 @@ button.ecu-meter-status-micro:hover,
 ${parts.map(cssSlice).join("\n")}
 `;
   }
-  var CSS6 = [
+  var CSS7 = [
     METER_CHROME_SCALE_CSS,
     METER_SHELL_CSS,
     METER_TITLEBAR_CSS,
@@ -29561,13 +29812,13 @@ ${parts.map(cssSlice).join("\n")}
     METER_VIEWS_CSS
   ].join("\n");
   function injectMeterChromeCss() {
-    let style = document.getElementById(STYLE_ID4);
+    let style = document.getElementById(STYLE_ID5);
     if (!style) {
       style = document.createElement("style");
-      style.id = STYLE_ID4;
+      style.id = STYLE_ID5;
       document.head.appendChild(style);
     }
-    style.textContent = CSS6.replace(
+    style.textContent = CSS7.replace(
       "__TOOLBAR__",
       TOOLBAR_ICONS_DATA_URI
     ).replace("__ATTR__", ATTR_ICONS_DATA_URI);
@@ -47252,8 +47503,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID5 = "ecu-minimap-chrome-css";
-  var CSS7 = `
+  var STYLE_ID6 = "ecu-minimap-chrome-css";
+  var CSS8 = `
 .comm-minimap {
   display: flex;
   flex-direction: column;
@@ -47410,14 +47661,14 @@ ${ESTIMATE_HINT}`,
   var injected7 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID5);
+    let el = document.getElementById(STYLE_ID6);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID5;
+      el.id = STYLE_ID6;
       document.head.appendChild(el);
     }
-    if (!injected7 || el.textContent !== CSS7) {
-      el.textContent = CSS7;
+    if (!injected7 || el.textContent !== CSS8) {
+      el.textContent = CSS8;
     }
     injected7 = true;
   }
@@ -51908,6 +52159,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     ensureDialogHost();
     installCommChrome();
     installInventoryFix();
+    installDisconnectOverlay();
     installPageTitle();
     installCommanderHook();
     ensureMailCss();

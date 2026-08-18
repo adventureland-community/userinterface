@@ -3,6 +3,10 @@ import { EFFECTS_ICON_CSS } from "./effectsIconCss";
 
 const STYLE_ID = "comm-ui-chrome-css";
 
+/** Hide stock TOGGLE; keep `.disconnected` (connection-lost reload). */
+export const STOCK_BOTTOM_TOGGLE_HIDE =
+  "#bottom > .gamebutton:not(.disconnected)";
+
 export function injectChromeCss(): void {
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {
@@ -463,8 +467,9 @@ ${EFFECTS_ICON_CSS}
   text-align: center;
 }
 
-/* Hide stock TOGGLE — strip shows chars + servers together */
-#bottom > .gamebutton {
+/* Hide stock TOGGLE — strip shows chars + servers together.
+   Keep .disconnected — that is the connection-lost reload button. */
+${STOCK_BOTTOM_TOGGLE_HIDE} {
   display: none !important;
 }
 

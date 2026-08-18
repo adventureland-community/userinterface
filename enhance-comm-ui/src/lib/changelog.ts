@@ -102,10 +102,16 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     id: "0.8.0-alpha.6",
     title: "0.8.0-alpha.6",
-    date: "2026-08-18",
+    date: "2026-08-19",
     summary:
-      "Entity Inspect JSON on frames and paperdoll, plus Ability Timeline hover-tip and mail Take fixes.",
+      "Entity Inspect JSON, a full-screen /comm disconnect banner with the server reason, plus Ability Timeline hover-tip and mail Take fixes.",
     highlights: [
+      {
+        label: "Disconnected banner",
+        detail:
+          "Losing the /comm socket covers the HUD with a pulsing DISCONNECTED overlay — same idea as the in-game client. Shows the server reason when there is one. Click anywhere to reload.",
+        kind: "fix",
+      },
       {
         label: "Entity Inspect",
         detail:
@@ -126,6 +132,12 @@ export const CHANGELOG: ChangelogEntry[] = [
       },
     ],
     items: [
+      {
+        label: "Disconnected banner",
+        detail:
+          "Chrome CSS had been hiding the stock DISCONNECTED gamebutton under the character strip. Overlay sits above meters; tab title reads Disconnected. Known codes (limits, limitdc, blocked) get a readable line; other server messages show as sent.",
+        kind: "fix",
+      },
       {
         label: "Inspect JSON",
         detail:

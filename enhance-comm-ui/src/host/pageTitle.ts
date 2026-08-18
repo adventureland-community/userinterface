@@ -8,6 +8,7 @@ import {
   getServerIdentifier,
   getServerRegion,
 } from "./al";
+import { isCommDisconnected } from "./disconnectOverlay";
 import { subscribeTick } from "../tick";
 
 const BRAND = "Adventure Land";
@@ -26,11 +27,14 @@ export function formatCommPageTitle(): string {
   const parts: string[] = [];
   const obs = getObserving();
   const name = obs && obs.name != null ? String(obs.name) : "";
+  const dropped = isCommDisconnected();
+
+  if (dropped) parts.push("Disconnected");
 
   if (name) {
     const dead = !!(obs && obs.dead);
     parts.push(dead ? `${name} (RIP)` : name);
-  } else {
+  } else if (!dropped) {
     parts.push("Comm");
   }
 

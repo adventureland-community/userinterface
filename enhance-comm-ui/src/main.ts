@@ -10,6 +10,7 @@ import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
 import { installInventoryFix } from "./host/inventory";
 import { installPageTitle } from "./host/pageTitle";
+import { installDisconnectOverlay } from "./host/disconnectOverlay";
 import { installMailUnreadWatch, subscribeMailToast } from "./host/mail";
 import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
@@ -218,6 +219,7 @@ function onLoad(): void {
   ensureDialogHost();
   installCommChrome();
   installInventoryFix();
+  installDisconnectOverlay();
   installPageTitle();
   installCommanderHook();
   ensureMailCss();
