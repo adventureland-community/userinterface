@@ -19,6 +19,7 @@ import {
 } from "../../lib/settings";
 import { canCloseWindow } from "../../lib/commWindow";
 import { type PanelId, type PanelPos } from "../../lib/layout";
+import { applyWindowFramePersist } from "../../lib/panelCatalog";
 import {
   applyLayoutEditPrefs,
   getLayoutEditPrefs,
@@ -179,12 +180,7 @@ export function usePanelLayoutState(): PanelLayoutState {
 
   const setPanelPos = (id: PanelId, pos: PanelPos) => {
     setLayout((prev: Record<PanelId, PanelPos>) => {
-      const nextPos = { ...prev[id], ...pos };
-      // Bag must stay content-sized (7-col float inventory).
-      if (id === "bag") {
-        delete nextPos.frameW;
-        delete nextPos.frameH;
-      }
+      const nextPos = applyWindowFramePersist({ ...prev[id], ...pos }, id);
       const next = { ...prev, [id]: nextPos };
       savePanelPos(id, nextPos, viewportProfile);
       if (id === "bag") applyBagLayoutPos(nextPos);

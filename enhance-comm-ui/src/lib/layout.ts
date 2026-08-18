@@ -2,6 +2,18 @@
 
 import type { ViewportProfile } from "./viewport";
 import type { EdgeSnapMap } from "./panelEdgeGroup";
+import { defaultLayoutFor } from "./layoutDefaults";
+import { applyFrameMigrations } from "./layoutFrameMigrations";
+import {
+  PANEL_IDS,
+  PANEL_LABELS,
+  applyWindowFramePersist,
+  isPanelId,
+  type PanelId,
+} from "./panelCatalog";
+
+export type { PanelId };
+export { PANEL_IDS, PANEL_LABELS, isPanelId };
 
 export type LayoutAnchor = "tl" | "tr" | "bl" | "br" | "tc" | "bc" | "center";
 
@@ -28,62 +40,11 @@ export type PanelPos = {
   /** Persisted outer box size (HUD PositionedPanel resize). */
   frameW?: number;
   frameH?: number;
-};
-
-export type PanelId =
-  | "players"
-  | "enemies"
-  | "topCenter"
-  | "paperdoll"
-  | "buffInfo"
-  | "itemInfo"
-  | "kills"
-  | "playerFrame"
-  | "targetFrame"
-  | "bossBar"
-  | "crypt"
-  | "threat"
-  | "command"
-  | "bag"
-  | "mail"
-  | "toggles";
-
-export const PANEL_IDS: PanelId[] = [
-  "players",
-  "enemies",
-  "topCenter",
-  "paperdoll",
-  "buffInfo",
-  "itemInfo",
-  "kills",
-  "playerFrame",
-  "targetFrame",
-  "bossBar",
-  "crypt",
-  "threat",
-  "command",
-  "bag",
-  "mail",
-  "toggles",
-];
-
-export const PANEL_LABELS: Record<PanelId, string> = {
-  players: "Players",
-  enemies: "Enemies",
-  topCenter: "Server / Map",
-  paperdoll: "Paperdoll",
-  buffInfo: "Buff info",
-  itemInfo: "Item info",
-  kills: "Kills",
-  playerFrame: "Player frame",
-  targetFrame: "Target frame",
-  bossBar: "Boss bar",
-  crypt: "Crypt progress",
-  threat: "Threat",
-  command: "Command",
-  bag: "Bag",
-  mail: "Mail",
-  toggles: "Layout",
+  /**
+   * When true, ignore frameW/H and hug content. Party defaults on.
+   * Corner-resize turns this off.
+   */
+  autoSize?: boolean;
 };
 
 /** Legacy meter panel ids — migrated into settings.meterInstances. */
@@ -95,125 +56,95 @@ export const LEGACY_METER_PANEL_IDS = [
   "coopV2",
 ] as const;
 
-/**
- * Desktop default from playtested export (2026-08-13 v2).
- * Saved layouts need Layout → Reset positions (desktop profile) to pick these up.
- */
-export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
-  players: {
-    x: 0.4,
-    y: 0.4,
-    anchor: "tl",
-    locked: true,
-    frameW: 522,
-    frameH: 65.25,
-  },
-  enemies: { x: 99.6, y: 0.4, anchor: "tr", frameW: 169.65, frameH: 52.2 },
-  topCenter: { x: 50, y: 0.4, anchor: "tc", frameW: 78.3, frameH: 78.3 },
-  paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274.05, frameH: 535.05 },
-  buffInfo: { x: 0.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
-  itemInfo: { x: 16.8, y: 10, anchor: "tl", frameW: 195.75, frameH: 247.95 },
-  kills: { x: 27, y: 99.2, anchor: "br", frameW: 274.05, frameH: 182.7 },
-  playerFrame: { x: 35, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
-  targetFrame: { x: 65, y: 86, anchor: "bc", frameW: 320, frameH: 143.55 },
-  bossBar: { x: 50, y: 8, anchor: "tc", frameW: 522, frameH: 104.4 },
-  crypt: { x: 50, y: 18, anchor: "tc", frameW: 234.9, frameH: 287.1 },
-  threat: { x: 99.669, y: 68, anchor: "br", frameW: 326.25, frameH: 117.45 },
-  command: { x: 50, y: 42, anchor: "center", frameW: 561.15, frameH: 300.15 },
-  // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
-  // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
-  bag: { x: 0.5, y: 99.2, anchor: "bl" },
-  mail: { x: 50, y: 48, anchor: "center", frameW: 1100, frameH: 700 },
-  toggles: { x: 99.5, y: 99.2, anchor: "br" },
-};
-
-/**
- * Landscape tablet: combat/threat as right drawer, bag as left drawer,
- * command as centered sheet, meters tucked TR.
- */
-export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
-  players: { x: 0.5, y: 0.5, anchor: "tl" },
-  enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-  topCenter: { x: 50, y: 0.5, anchor: "tc" },
-  paperdoll: { x: 1, y: 28, anchor: "tl" },
-  buffInfo: { x: 1, y: 12, anchor: "tl" },
-  itemInfo: { x: 17, y: 12, anchor: "tl" },
-  kills: { x: 99.2, y: 72, anchor: "tr" },
-  playerFrame: { x: 32, y: 78, anchor: "bc" },
-  targetFrame: { x: 68, y: 78, anchor: "bc" },
-  bossBar: { x: 50, y: 9, anchor: "tc" },
-  crypt: { x: 50, y: 19, anchor: "tc" },
-  threat: { x: 99.2, y: 40, anchor: "tr" },
-  command: { x: 50, y: 44, anchor: "center" },
-  bag: { x: 0.8, y: 78, anchor: "bl" },
-  mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
-  toggles: { x: 99.2, y: 98.5, anchor: "br" },
-};
-
-/**
- * Portrait phone: sheets for combat/bag/command; frames above chrome;
- * meters mostly off-canvas edge so core frames stay usable.
- */
-export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
-  players: { x: 0.5, y: 0.5, anchor: "tl" },
-  enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-  topCenter: { x: 50, y: 0.4, anchor: "tc" },
-  paperdoll: { x: 50, y: 36, anchor: "center" },
-  buffInfo: { x: 2, y: 14, anchor: "tl" },
-  itemInfo: { x: 2, y: 36, anchor: "tl" },
-  kills: { x: 98, y: 58, anchor: "br" },
-  playerFrame: { x: 28, y: 62, anchor: "bc" },
-  targetFrame: { x: 72, y: 62, anchor: "bc" },
-  bossBar: { x: 50, y: 10, anchor: "tc" },
-  crypt: { x: 50, y: 18, anchor: "tc" },
-  threat: { x: 50, y: 48, anchor: "tc" },
-  command: { x: 50, y: 42, anchor: "center" },
-  bag: { x: 50, y: 88, anchor: "bc" },
-  mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
-  toggles: { x: 98, y: 98, anchor: "br" },
-};
-
-/** @deprecated alias — prefer DEFAULT_LAYOUT_DESKTOP / defaultLayoutFor */
-export const DEFAULT_LAYOUT = DEFAULT_LAYOUT_DESKTOP;
-
-export function defaultLayoutFor(
-  profile: ViewportProfile,
-): Record<PanelId, PanelPos> {
-  switch (profile) {
-    case "desktop":
-      return DEFAULT_LAYOUT_DESKTOP;
-    case "tablet":
-      return DEFAULT_LAYOUT_TABLET;
-    case "phone":
-      return DEFAULT_LAYOUT_PHONE;
-    default: {
-      const _exhaustive: never = profile;
-      return _exhaustive;
-    }
-  }
-}
+export {
+  DEFAULT_LAYOUT_DESKTOP,
+  DEFAULT_LAYOUT_TABLET,
+  DEFAULT_LAYOUT_PHONE,
+  DEFAULT_LAYOUT,
+  defaultLayoutFor,
+} from "./layoutDefaults";
 
 export type PanelLayoutMap = Partial<Record<PanelId, PanelPos>>;
 
+function copyLegacyPos(legacy: PanelPos, extra?: Partial<PanelPos>): PanelPos {
+  const out: PanelPos = {
+    x: legacy.x,
+    y: legacy.y,
+    anchor: legacy.anchor,
+  };
+  if (legacy.locked != null) out.locked = legacy.locked;
+  if (legacy.scale != null) out.scale = legacy.scale;
+  if (legacy.snap) out.snap = legacy.snap;
+  if (legacy.horizontalSnap) out.horizontalSnap = true;
+  if (legacy.verticalSnap) out.verticalSnap = true;
+  if (legacy.frameW != null) out.frameW = legacy.frameW;
+  if (legacy.frameH != null) out.frameH = legacy.frameH;
+  if (legacy.autoSize != null) out.autoSize = legacy.autoSize;
+  if (extra) Object.assign(out, extra);
+  return out;
+}
+
 /**
- * Migrate legacy shared `infoDialog` into `buffInfo` + `itemInfo`
- * (item offset so the two frames do not stack).
+ * Split retired panel ids: infoDialog → buffInfo+itemInfo,
+ * topCenter → serverInfo+mapInfo, crypt → instance+instanceRun.
+ * Used by mergeLayout and layout import sanitize — one copy only.
  */
-export function migrateLegacyInfoDialog(
+export function migrateLegacyPanelIds(
   partial?: PanelLayoutMap | null,
 ): PanelLayoutMap | null | undefined {
   if (!partial || typeof partial !== "object") return partial;
   const raw = partial as Record<string, PanelPos | undefined>;
-  if (!raw.infoDialog) return partial;
-  const legacy = raw.infoDialog;
   const out: PanelLayoutMap = { ...partial };
-  delete (out as Record<string, unknown>).infoDialog;
-  if (!out.buffInfo) out.buffInfo = { ...legacy };
-  if (!out.itemInfo) {
-    const x = typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
-    out.itemInfo = { x, y: legacy.y, anchor: legacy.anchor };
+  let changed = false;
+
+  if (raw.infoDialog) {
+    const legacy = raw.infoDialog;
+    delete (out as Record<string, unknown>).infoDialog;
+    if (!out.buffInfo) out.buffInfo = copyLegacyPos(legacy);
+    if (!out.itemInfo) {
+      const x =
+        typeof legacy.x === "number" ? Math.min(100, legacy.x + 16) : 16;
+      out.itemInfo = copyLegacyPos(legacy, { x });
+    }
+    changed = true;
   }
-  return out;
+
+  if (raw.topCenter) {
+    const legacy = raw.topCenter;
+    delete (out as Record<string, unknown>).topCenter;
+    if (!out.serverInfo) {
+      out.serverInfo = applyWindowFramePersist(
+        copyLegacyPos(legacy),
+        "serverInfo",
+      );
+    }
+    if (!out.mapInfo) {
+      const y =
+        typeof legacy.y === "number" ? Math.min(100, legacy.y + 4.5) : 5;
+      out.mapInfo = applyWindowFramePersist(
+        copyLegacyPos(legacy, { y }),
+        "mapInfo",
+      );
+    }
+    changed = true;
+  }
+
+  if (raw.crypt) {
+    const legacy = raw.crypt;
+    delete (out as Record<string, unknown>).crypt;
+    if (!out.instance) out.instance = copyLegacyPos(legacy);
+    if (!out.instanceRun) {
+      const y = typeof legacy.y === "number" ? Math.max(0, legacy.y - 4) : 14;
+      out.instanceRun = copyLegacyPos(legacy, {
+        y,
+        frameW: 220,
+        frameH: 70,
+      });
+    }
+    changed = true;
+  }
+
+  return changed ? out : partial;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -255,49 +186,29 @@ export function normalizePos(raw: any, fallback: PanelPos): PanelPos {
   if (typeof raw.frameH === "number" && raw.frameH > 0) {
     out.frameH = raw.frameH;
   }
+  if (typeof raw.autoSize === "boolean") out.autoSize = raw.autoSize;
+  else if (typeof fallback.autoSize === "boolean") {
+    out.autoSize = fallback.autoSize;
+  }
   return out;
-}
-
-/**
- * One-shot bump for early alpha.4 mail shells (undersized defaults or
- * content-grown height before fixed-box mail). Thresholds scale with the
- * profile default so phone layouts are not wiped by desktop magic numbers.
- */
-function migrateMailFrame(pos: PanelPos, def: PanelPos): PanelPos {
-  const defW = typeof def.frameW === "number" ? def.frameW : 800;
-  const defH = typeof def.frameH === "number" ? def.frameH : 500;
-  const minW = Math.min(800, Math.round(defW * 0.85));
-  const minH = Math.min(500, Math.round(defH * 0.85));
-  const maxH = Math.max(900, Math.round(defH * 1.4));
-  const tooSmall =
-    typeof pos.frameW !== "number" ||
-    pos.frameW < minW ||
-    typeof pos.frameH !== "number" ||
-    pos.frameH < minH;
-  const tooTall = typeof pos.frameH === "number" && pos.frameH > maxH;
-  if (!tooSmall && !tooTall) return pos;
-  return { ...pos, frameW: def.frameW, frameH: def.frameH };
 }
 
 export function mergeLayout(
   partial?: PanelLayoutMap | null,
   profile: ViewportProfile = "desktop",
+  opts?: { migrateFrames?: boolean },
 ): Record<PanelId, PanelPos> {
-  const migrated = migrateLegacyInfoDialog(partial);
+  const migrated = migrateLegacyPanelIds(partial);
   const defaults = defaultLayoutFor(profile);
   const out = {} as Record<PanelId, PanelPos>;
   for (let i = 0; i < PANEL_IDS.length; i++) {
     const id = PANEL_IDS[i];
-    out[id] = normalizePos(migrated && migrated[id], defaults[id]);
+    out[id] = applyWindowFramePersist(
+      normalizePos(migrated && migrated[id], defaults[id]),
+      id,
+    );
   }
-  // Bag inventory is float-grid content-sized — never lock shell width/height.
-  if (out.bag) {
-    delete out.bag.frameW;
-    delete out.bag.frameH;
-  }
-  if (out.mail && defaults.mail) {
-    out.mail = migrateMailFrame(out.mail, defaults.mail);
-  }
+  if (opts?.migrateFrames) applyFrameMigrations(out, defaults);
   return out;
 }
 
@@ -436,6 +347,7 @@ export function panelPosFromTopLeft(
   if (keep?.scale != null) next.scale = keep.scale;
   if (keep?.frameW != null) next.frameW = keep.frameW;
   if (keep?.frameH != null) next.frameH = keep.frameH;
+  if (keep?.autoSize != null) next.autoSize = keep.autoSize;
   return next;
 }
 
@@ -605,19 +517,35 @@ export function panelStyle(
     maxHeight: "100vh",
     boxSizing: "border-box",
   };
-  // frameW/H are a floor: keep empty padded meters at the saved size, but let
-  // the shell grow with painted content so arrange outlines / snap bounds wrap
-  // Command, Kills, etc. (fixed px left overflow:visible content outside the box).
+  // Saved frameW/H define the panel box — content reflows inside (scroll when tall).
   if (typeof pos.frameW === "number" && pos.frameW > 0) {
     const w = Math.round(pos.frameW);
-    style.width = `max(${w}px, max-content)`;
-    style.minWidth = w + "px";
+    style.width = w + "px";
+    style.minWidth = 0;
+    style.maxWidth = "100vw";
+    style.overflowX = "hidden";
   }
   if (typeof pos.frameH === "number" && pos.frameH > 0) {
     const h = Math.round(pos.frameH);
-    style.height = `max(${h}px, max-content)`;
-    style.minHeight = h + "px";
+    style.height = h + "px";
+    style.minHeight = 0;
+    style.maxHeight = "100vh";
+    style.overflowY = "auto";
   }
+  return style;
+}
+
+/**
+ * Fill-frame shells keep overflow visible so above-frame arrange chrome
+ * (lock / Window Control / hide × / drag grip) is not clipped.
+ * `panelStyle` sets overflowX/Y as separate keys; those beat `overflow`.
+ */
+export function unclipShellOverflow(
+  style: Record<string, any>,
+): Record<string, any> {
+  style.overflow = "visible";
+  style.overflowX = "visible";
+  style.overflowY = "visible";
   return style;
 }
 

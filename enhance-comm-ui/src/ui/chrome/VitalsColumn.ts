@@ -1,5 +1,6 @@
 import { e } from "../../host/react";
 import { getPercent } from "../../lib/format";
+import type { HpThresholdMark } from "../../instance/monsterSpawns";
 
 export type VitalsColumnProps = {
   hp: number;
@@ -11,6 +12,8 @@ export type VitalsColumnProps = {
   children?: any;
   onClick?: () => void;
   nameStyle?: any;
+  /** G.monsters hp-threshold spawn marks (boss bars). */
+  hpThresholdMarks?: HpThresholdMark[];
 };
 
 /** Stable HP track height from name font — fear/CC badges must not grow it. */
@@ -38,11 +41,13 @@ export function VitalsColumn(props: VitalsColumnProps): any {
     children,
     onClick,
     nameStyle,
+    hpThresholdMarks,
   } = props;
 
   const hpPct = maxHp > 0 ? hp / maxHp : 0;
   const mpPct = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
   const barH = hpBarHeightPx(nameStyle);
+  const marks = hpThresholdMarks || [];
 
   return e(
     "div",
@@ -79,6 +84,26 @@ export function VitalsColumn(props: VitalsColumnProps): any {
           background: hpColor,
         },
       }),
+      ...marks.map((m) =>
+        e("span", {
+          key: m.key,
+          className:
+            "comm-hp-threshold" + (m.fired ? " comm-hp-threshold--fired" : ""),
+          title: `${Math.round(m.ratio * 100)}% HP · ${m.count}× ${m.mtype}`,
+          style: {
+            position: "absolute",
+            top: "-2px",
+            bottom: "-2px",
+            left: `${m.leftPct}%`,
+            width: "2px",
+            marginLeft: "-1px",
+            background: m.fired ? "#666" : "#c88",
+            opacity: m.fired ? 0.5 : 0.9,
+            pointerEvents: "none",
+            zIndex: 2,
+          },
+        }),
+      ),
       e(
         "div",
         {
@@ -97,6 +122,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
               display: "flex",
               alignItems: "center",
               lineHeight: "1.25",
+              zIndex: 1,
             },
             nameStyle || {},
           ),

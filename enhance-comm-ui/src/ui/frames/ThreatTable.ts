@@ -5,7 +5,7 @@ import type { EntityLike } from "../../host/globals";
 import { PanelShellDummy } from "../chrome/PanelShellDummy";
 import { VitalsColumn } from "../chrome/VitalsColumn";
 import { wrapIconHtml } from "../chrome/wrapIconHtml";
-import { THREAT_PANEL_STYLE } from "../../lib/frameSizes";
+import { THREAT_PANEL_STYLE, THREAT_TABLE_SHELL } from "../../lib/frameSizes";
 import { classColors } from "../../lib/colors";
 import { formatTime, getPercent } from "../../lib/format";
 import { estimateTtk, getIncomingDps } from "../../meters/combatMeter";
@@ -22,6 +22,7 @@ import {
   type PartyScope,
 } from "../../lib/settings";
 import { partyKeyFor } from "../../meters/meterSession";
+import { ensureThreatPanelCss } from "./threatPanelCss";
 
 const MOB_ICON_SIZE = 22;
 const MAX_MOB_CHIPS = 6;
@@ -344,8 +345,9 @@ function ThreatRow(props: {
         flexDirection: "column",
         gap: "3px",
         padding: "3px 4px 5px",
-        background: isYou ? "rgba(80,0,0,0.45)" : undefined,
+        width: "100%",
         boxSizing: "border-box",
+        background: isYou ? "rgba(80,0,0,0.45)" : undefined,
       },
     },
     vitals,
@@ -354,6 +356,7 @@ function ThreatRow(props: {
 }
 
 export function ThreatTable(props: ThreatTableProps): any {
+  ensureThreatPanelCss();
   const React = getReact();
   const [storedScope, setStoredScope] = React.useState(
     () => (loadSettings().threatScope || "visible") as PartyScope,
@@ -418,6 +421,7 @@ export function ThreatTable(props: ThreatTableProps): any {
         gap: "8px",
         padding: "5px 8px 2px",
         fontSize: TYPE.title,
+        flexShrink: 0,
         ...PIXEL_TEXT,
         color: "#ccc",
       },
@@ -476,21 +480,19 @@ export function ThreatTable(props: ThreatTableProps): any {
     "div",
     {
       className: "comm-threat-table",
-      style: {
-        display: "flex",
-        overflow: "auto",
-        flexDirection: "column",
-        margin: "4px",
-        border: "2px double gray",
-        gap: "2px",
-        maxHeight: "280px",
-        minWidth: "220px",
+      style: Object.assign({}, THREAT_TABLE_SHELL, {
         fontSize: TYPE.name,
         ...PIXEL_TEXT,
-        ...THREAT_PANEL_STYLE,
-      },
+      }),
     },
     header,
-    ...rows,
+    e(
+      "div",
+      {
+        className: "comm-threat-rows",
+        style: { flex: "1 1 auto", minHeight: 0, width: "100%" },
+      },
+      ...rows,
+    ),
   );
 }

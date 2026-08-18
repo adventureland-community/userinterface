@@ -7,6 +7,7 @@ import {
   nudgePosByPixels,
   type EdgeGroupPanel,
 } from "../src/lib/panelEdgeGroup";
+import { isSnapPeerVisible } from "../src/lib/panelEdgeSnapDom";
 
 describe("nudgePosByPixels", () => {
   it("moves left%/top% screen-right for every anchor", () => {
@@ -170,5 +171,74 @@ describe("findEdgeSnapCandidate", () => {
     const cand = findEdgeSnapCandidate("self", self, [other]);
     assert.ok(cand);
     assert.equal(cand!.sideOnSelf, 1);
+  });
+
+  it("ignores zero-size (hidden / display:none) peer rects", () => {
+    const self = { left: 0, right: 100, top: 0, bottom: 80 };
+    const hidden = {
+      id: "ghost",
+      rect: { left: 102, right: 102, top: 0, bottom: 0 },
+    };
+    const visible = {
+      id: "o",
+      rect: { left: 200, right: 300, top: 0, bottom: 80 },
+    };
+    // Hidden is closer but invalid; only visible peer may win.
+    const cand = findEdgeSnapCandidate("self", self, [hidden, visible], 200);
+    assert.ok(cand);
+    assert.equal(cand!.otherId, "o");
+    assert.equal(findEdgeSnapCandidate("self", self, [hidden], 200), null);
+  });
+});
+
+describe("isSnapPeerVisible", () => {
+  it("rejects closed layout ghosts and out-of-layout boxes", () => {
+    assert.equal(
+      isSnapPeerVisible({
+        hasHiddenClass: true,
+        width: 100,
+        height: 80,
+      }),
+      false,
+    );
+    assert.equal(
+      isSnapPeerVisible({
+        hasHiddenClass: false,
+        display: "none",
+        width: 100,
+        height: 80,
+      }),
+      false,
+    );
+    assert.equal(
+      isSnapPeerVisible({
+        hasHiddenClass: false,
+        visibility: "hidden",
+        width: 100,
+        height: 80,
+      }),
+      false,
+    );
+    assert.equal(
+      isSnapPeerVisible({
+        hasHiddenClass: false,
+        width: 0,
+        height: 80,
+      }),
+      false,
+    );
+  });
+
+  it("keeps idle-faded (opacity) panels eligible", () => {
+    assert.equal(
+      isSnapPeerVisible({
+        hasHiddenClass: false,
+        display: "block",
+        visibility: "visible",
+        width: 120,
+        height: 60,
+      }),
+      true,
+    );
   });
 });

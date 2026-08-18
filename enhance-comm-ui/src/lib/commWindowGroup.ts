@@ -15,6 +15,10 @@ import {
 import { findSnapTarget, trySnapOnDrop } from "./panelEdgeSnapDom";
 import type { PanelGroupDragOpts } from "./panelGroupDrag";
 import { canGroupWindow, hudWindowIds } from "./commWindow";
+import {
+  filterPersistedFrameSize,
+  applyWindowFramePersist,
+} from "./panelCatalog";
 import { layoutDragRoot } from "./percentDrag";
 import type { MeterInstance } from "../meters/meterTypes";
 
@@ -119,6 +123,7 @@ export function applyEdgePanelsToState(
     layout[id] = applySnapFields(layout[id], p);
     if (p.frameW != null) layout[id] = { ...layout[id], frameW: p.frameW };
     if (p.frameH != null) layout[id] = { ...layout[id], frameH: p.frameH };
+    layout[id] = applyWindowFramePersist(layout[id], id);
   }
 
   const meters = state.meters.map((m) => {
@@ -328,6 +333,10 @@ export function applyFrameSizeToCommWindows(
   id: string,
   size: { frameW?: number; frameH?: number },
 ): CommWindowGraphState {
+  size = filterPersistedFrameSize(id, size);
+  if (size.frameW == null && size.frameH == null) return state;
+  const withManualOff = (pos: PanelPos): PanelPos =>
+    pos.autoSize === false ? pos : { ...pos, autoSize: false };
   const panels = windowsToEdgePanels(state);
   if (!panels.some((p) => p.id === id)) {
     if (state.layout[id as PanelId]) {
@@ -336,11 +345,14 @@ export function applyFrameSizeToCommWindows(
         ...state,
         layout: {
           ...state.layout,
-          [id as PanelId]: {
-            ...cur,
-            ...(size.frameW != null ? { frameW: size.frameW } : {}),
-            ...(size.frameH != null ? { frameH: size.frameH } : {}),
-          },
+          [id as PanelId]: applyWindowFramePersist(
+            withManualOff({
+              ...cur,
+              ...(size.frameW != null ? { frameW: size.frameW } : {}),
+              ...(size.frameH != null ? { frameH: size.frameH } : {}),
+            }),
+            id,
+          ),
         },
       };
     }
@@ -358,11 +370,20 @@ export function applyFrameSizeToCommWindows(
     };
   }
   const root = layoutDragRoot().getBoundingClientRect();
-  return applyEdgePanelsToState(
+  const next = applyEdgePanelsToState(
     state,
     applyGroupFrameSize(panels, id, size, {
       rootW: root.width,
       rootH: root.height,
     }),
   );
+  const hid = id as PanelId;
+  if (!next.layout[hid]) return next;
+  return {
+    ...next,
+    layout: {
+      ...next.layout,
+      [hid]: withManualOff(next.layout[hid]),
+    },
+  };
 }

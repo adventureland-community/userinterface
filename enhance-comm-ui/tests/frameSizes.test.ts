@@ -1,10 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  applyAutoSizeMaxWidth,
+  autoSizeMaxWidthPx,
   clampMeterFrame,
   INSPECTOR_FRAME_DEFAULT,
   METER_FRAME_DEFAULT,
   METER_FRAME_MIN,
+  PARTY_CHIP_GAP,
+  PARTY_CHIP_WIDTH,
+  PARTY_MAX_COLS,
+  PARTY_ROSTER_PAD,
+  partyChipRowWidth,
+  partyRosterMaxWidth,
+  PLAYERS_FRAME_DEFAULT,
   REPORT_FRAME_DEFAULT,
 } from "../src/lib/frameSizes";
 
@@ -62,5 +71,40 @@ describe("clampMeterFrame", () => {
     const overOld = clampMeterFrame(OLD_MAX.w + 80, OLD_MAX.h + 80, VP.w, VP.h);
     assert.ok(overOld.frameW > OLD_MAX.w);
     assert.ok(overOld.frameH > OLD_MAX.h);
+  });
+});
+
+describe("party auto-size width cap", () => {
+  it("is three chip columns plus gaps and roster padding", () => {
+    assert.equal(PARTY_MAX_COLS, 3);
+    assert.equal(
+      partyChipRowWidth(3),
+      PARTY_CHIP_WIDTH * 3 + PARTY_CHIP_GAP * 2,
+    );
+    assert.equal(
+      partyRosterMaxWidth(3),
+      PARTY_ROSTER_PAD * 2 + partyChipRowWidth(3),
+    );
+    assert.equal(PLAYERS_FRAME_DEFAULT.frameW, partyRosterMaxWidth(3));
+  });
+
+  it("keeps a fourth chip from widening the auto-sized roster", () => {
+    assert.ok(partyRosterMaxWidth(4) > partyRosterMaxWidth(3));
+    assert.equal(autoSizeMaxWidthPx("players"), partyRosterMaxWidth(3));
+    assert.equal(autoSizeMaxWidthPx("mail"), undefined);
+  });
+
+  it("applies the cap only while auto-resize is on", () => {
+    const on: Record<string, any> = { maxWidth: "100vw" };
+    applyAutoSizeMaxWidth(on, "players", true);
+    assert.equal(on.maxWidth, `min(${partyRosterMaxWidth(3)}px, 100vw)`);
+
+    const off: Record<string, any> = { maxWidth: "100vw" };
+    applyAutoSizeMaxWidth(off, "players", false);
+    assert.equal(off.maxWidth, "100vw");
+
+    const other: Record<string, any> = { maxWidth: "100vw" };
+    applyAutoSizeMaxWidth(other, "buffInfo", true);
+    assert.equal(other.maxWidth, "100vw");
   });
 });

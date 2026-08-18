@@ -20,7 +20,10 @@ export type CommandPanelProps = {
   openSeq?: number;
 };
 
-function btnStyle(opts?: { accent?: boolean; danger?: boolean }): Record<string, any> {
+function btnStyle(opts?: {
+  accent?: boolean;
+  danger?: boolean;
+}): Record<string, any> {
   const accent = opts?.accent === true;
   const danger = opts?.danger === true;
   return {
@@ -59,9 +62,7 @@ export function CommandPanel(props: CommandPanelProps): any {
   const [snippetQuery, setSnippetQuery] = React.useState("");
   const [folderFilter, setFolderFilter] = React.useState("all");
   const [status, setStatus] = React.useState("");
-  const [selectedId, setSelectedId] = React.useState(
-    null as string | null,
-  );
+  const [selectedId, setSelectedId] = React.useState(null as string | null);
   const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
 
   const editorHostRef = React.useRef(null as HTMLDivElement | null);
@@ -264,7 +265,8 @@ export function CommandPanel(props: CommandPanelProps): any {
       continue;
     }
     if (q) {
-      const hay = `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
+      const hay =
+        `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
       if (hay.indexOf(q) < 0) continue;
     }
     filtered.push(snip);
@@ -411,7 +413,9 @@ export function CommandPanel(props: CommandPanelProps): any {
         background: "rgba(0,0,0,0.88)",
         gap: "10px",
         padding: "12px",
-        width: "min(560px, 94vw)",
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
         maxHeight: "78vh",
         overflow: "auto",
         fontSize: TYPE.name,
@@ -457,32 +461,26 @@ export function CommandPanel(props: CommandPanelProps): any {
         },
         "Run",
       ),
-      e(
-        "input",
-        {
-          type: "text",
-          value: newName,
-          placeholder: "Snippet name",
-          onChange: (ev: any) => setNewName(ev.target.value),
-          style: Object.assign({}, inputStyle, {
-            flex: "1 1 140px",
-            minWidth: "120px",
-          }),
-        },
-      ),
-      e(
-        "input",
-        {
-          type: "text",
-          value: newFolder,
-          placeholder: "Folder (optional)",
-          onChange: (ev: any) => setNewFolder(ev.target.value),
-          style: Object.assign({}, inputStyle, {
-            flex: "0 1 120px",
-            minWidth: "100px",
-          }),
-        },
-      ),
+      e("input", {
+        type: "text",
+        value: newName,
+        placeholder: "Snippet name",
+        onChange: (ev: any) => setNewName(ev.target.value),
+        style: Object.assign({}, inputStyle, {
+          flex: "1 1 140px",
+          minWidth: "120px",
+        }),
+      }),
+      e("input", {
+        type: "text",
+        value: newFolder,
+        placeholder: "Folder (optional)",
+        onChange: (ev: any) => setNewFolder(ev.target.value),
+        style: Object.assign({}, inputStyle, {
+          flex: "0 1 120px",
+          minWidth: "100px",
+        }),
+      }),
       e(
         "button",
         {
@@ -494,11 +492,7 @@ export function CommandPanel(props: CommandPanelProps): any {
       ),
     ),
     status
-      ? e(
-          "div",
-          { style: { fontSize: TYPE.body, color: "#9a9" } },
-          status,
-        )
+      ? e("div", { style: { fontSize: TYPE.body, color: "#9a9" } }, status)
       : null,
     e(
       "div",

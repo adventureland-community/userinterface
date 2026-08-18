@@ -5,6 +5,7 @@ import { activeBosses, findEntity } from "../../queries/entities";
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
+import { buildHpThresholdMarks } from "../../instance/monsterSpawns";
 
 export type BossBarPanelProps = {
   entities: EntityLike[];
@@ -54,10 +55,8 @@ const STACK_STYLE: Record<string, any> = {
 };
 
 /**
- * Dedicated multi-boss HP bar stack. Auto-hides when empty in play mode;
- * shows sample rows in layout edit so the panel can be positioned.
- * Sorted: targeting observer first, then lowest HP%.
- * Aggro sits inside the HP bar (name · Aggro · tank · HP%); effects stay under.
+ * Multi-boss HP stack: name, aggro, HP%, live effects, HP-threshold marks.
+ * Mechanic chips live on instance cards; ability CDs on the timeline.
  */
 export function BossBarPanel(props: BossBarPanelProps): any {
   const bosses = sortBosses(
@@ -87,19 +86,22 @@ export function BossBarPanel(props: BossBarPanelProps): any {
     );
   }
 
-  return e(
-    "div",
-    { style: STACK_STYLE },
-    ...bosses.map((boss) => {
-      const onMe = bossThreat(boss, obsId) > 0;
-      const aggro = aggroName(boss, props.entities);
-      const pct = getPercent(hpRatio(boss), 1);
-      const aggroLabel = onMe
-        ? "Aggro · you"
-        : aggro
-          ? `Aggro · ${aggro}`
-          : "Aggro · —";
-      return e(
+  const rows: any[] = [];
+  for (let i = 0; i < bosses.length; i++) {
+    const boss = bosses[i];
+    const onMe = bossThreat(boss, obsId) > 0;
+    const aggro = aggroName(boss, props.entities);
+    const ratio = hpRatio(boss);
+    const pct = getPercent(ratio, 1);
+    const aggroLabel = onMe
+      ? "Aggro · you"
+      : aggro
+        ? `Aggro · ${aggro}`
+        : "Aggro · —";
+    const mtype = typeof boss.mtype === "string" ? boss.mtype : "";
+    const marks = mtype ? buildHpThresholdMarks(mtype, ratio) : [];
+    rows.push(
+      e(
         "div",
         {
           key: `boss-${String(boss.id)}`,
@@ -124,17 +126,19 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           showEffects: true,
           effectsCompact: true,
           effectsIconSize: 22,
-          // 0 = show all (EffectsRow wraps; no +N overflow chip).
           effectsMaxVisible: 0,
           trailing: pct,
           aggroLabel,
           aggroHot: onMe,
+          hpThresholdMarks: marks.length ? marks : undefined,
           onSelect: (id: string) => {
             setXTarget(boss);
             props.setSelectedEntity(id);
           },
         }),
-      );
-    }),
-  );
+      ),
+    );
+  }
+
+  return e("div", { style: STACK_STYLE }, ...rows);
 }

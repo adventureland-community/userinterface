@@ -17,6 +17,8 @@ export type WindowControlChromeProps = {
   onClose?: () => void;
   closedWindows?: ClosedWindowEntry[];
   onReopenWindow?: (id: string) => void;
+  autoSize?: boolean;
+  onToggleAutoSize?: () => void;
   /**
    * When true, show the ☰ menu even if only reopen/close items exist
    * (play-arrange / layout edit / lock affordance).
@@ -203,6 +205,26 @@ export function WindowControlChrome(props: WindowControlChromeProps): any {
           },
         },
         "Close window",
+      ),
+    );
+  }
+  if (props.onToggleAutoSize) {
+    wcItems.push(
+      e(
+        "button",
+        {
+          key: "autosize",
+          type: "button",
+          className: "comm-pos-wc-item",
+          "aria-pressed": props.autoSize ? "true" : "false",
+          onClick: (ev: any) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            props.onToggleAutoSize!();
+            setWcOpen(false);
+          },
+        },
+        props.autoSize ? "Auto-resize · on" : "Auto-resize · off",
       ),
     );
   }

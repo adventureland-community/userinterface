@@ -1,14 +1,29 @@
-import { getMapName } from "../../host/al";
+import { getCurrentIn, getCurrentMap, getG, getMapName } from "../../host/al";
 import { e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 
-function getMapData(entities: EntityLike[]): { map?: string; in?: string } {
-  const mapData: { map?: string; in?: string } = { map: getMapName() };
-  if (entities.length > 0) {
+export function getMapData(entities: EntityLike[]): {
+  map?: string;
+  in?: string;
+} {
+  const mapData: { map?: string; in?: string } = {
+    map: getMapName() || getCurrentMap(),
+  };
+  const cameraIn = getCurrentIn();
+  if (cameraIn) {
+    mapData.in = cameraIn;
+  } else if (entities.length > 0) {
     mapData.in = entities[0].in;
   }
   return mapData;
+}
+
+function mapDisplayName(mapKey: string | undefined): string {
+  if (!mapKey) return "loading";
+  const named = getG()?.maps?.[mapKey]?.name;
+  if (typeof named === "string" && named) return named;
+  return mapKey;
 }
 
 function copyOnClick(text: string, popupId: string) {
@@ -99,10 +114,8 @@ export function MapInfo(props: MapInfoProps): any {
           gap: "4px",
         },
       },
-      `Map: ${mapNameData && mapNameData.map ? mapNameData.map : "loading"}`,
+      `Map: ${mapDisplayName(mapNameData && mapNameData.map)}`,
     ),
     instanceIdElement,
   );
 }
-
-export { getMapData };

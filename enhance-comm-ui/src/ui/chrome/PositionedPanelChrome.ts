@@ -47,6 +47,8 @@ export type PositionedPanelChromeArgs = {
   onPointerDown: (ev: any) => void;
   onPointerMove: (ev: any) => void;
   onPointerUp: (ev: any) => void;
+  autoSize?: boolean;
+  onToggleAutoSize?: () => void;
 };
 
 export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
@@ -82,6 +84,8 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
     onPointerMove,
     onPointerUp,
   } = args;
+  const autoSize = args.autoSize;
+  const onToggleAutoSize = args.onToggleAutoSize;
 
   const closeAbove = props.closePlacement === "above";
   // Unlocked (movable): strip stays open (CSS) so hide × + lock remain reachable.
@@ -290,6 +294,7 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
     !!props.onUngroup ||
     !!props.onCreateWindow ||
     !!onClose ||
+    !!args.onToggleAutoSize ||
     !!(props.closedWindows && props.closedWindows.length);
 
   const windowChrome = hasWindowChrome
@@ -302,12 +307,15 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
         onClose: onClose || undefined,
         closedWindows: props.closedWindows,
         onReopenWindow: props.onReopenWindow,
+        autoSize,
+        onToggleAutoSize,
         showMenu:
           movable ||
           editing ||
           !!props.onToggleLock ||
           !!props.onUngroup ||
           !!onClose ||
+          !!onToggleAutoSize ||
           !!(props.closedWindows && props.closedWindows.length),
       })
     : null;

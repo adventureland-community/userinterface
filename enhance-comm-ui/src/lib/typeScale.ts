@@ -26,9 +26,9 @@ export const TYPE = {
   microMin: "13px",
   /** Panel titles */
   title: "17px",
-  /** topCenter map/server body */
+  /** serverInfo / mapInfo body */
   chrome: "16px",
-  /** topCenter secondary line (time / until) */
+  /** serverInfo secondary line (time / until) */
   chromeMeta: "14px",
 } as const;
 

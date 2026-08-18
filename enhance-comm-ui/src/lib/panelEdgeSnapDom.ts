@@ -20,6 +20,48 @@ export function cssEscapePanelId(id: string): string {
   return id.replace(/([^a-zA-Z0-9_-])/g, "\\$1");
 }
 
+/**
+ * Pure visibility gate for edge / peer snap targets.
+ * Hidden = closed layout ghost (`comm-pos-hidden`), display:none / visibility:hidden,
+ * or out of layout (zero painted box). Idle fade (opacity) stays eligible.
+ */
+export type SnapPeerVisibilityInput = {
+  hasHiddenClass: boolean;
+  display?: string;
+  visibility?: string;
+  width: number;
+  height: number;
+};
+
+export function isSnapPeerVisible(input: SnapPeerVisibilityInput): boolean {
+  if (input.hasHiddenClass) return false;
+  if (input.display === "none" || input.visibility === "hidden") return false;
+  if (!(input.width > 0) || !(input.height > 0)) return false;
+  return true;
+}
+
+/** Live DOM check — closed / empty-hidden / display:none panels are not snap peers. */
+export function isSnapPeerElement(el: HTMLElement): boolean {
+  const style =
+    typeof window !== "undefined" ? window.getComputedStyle(el) : null;
+  const rect = el.getBoundingClientRect();
+  return isSnapPeerVisible({
+    hasHiddenClass: el.classList.contains("comm-pos-hidden"),
+    display: style ? style.display : undefined,
+    visibility: style ? style.visibility : undefined,
+    width: rect.width,
+    height: rect.height,
+  });
+}
+
+/** Positioned-panel root for a window id, or null when unmounted. */
+export function queryCommPosPanel(id: string): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.querySelector(
+    `.comm-pos-panel.comm-pos-${cssEscapePanelId(id)}`,
+  ) as HTMLElement | null;
+}
+
 /** Collect live DOM rects for snap peers under the Comm positioned-panel convention. */
 export function collectEdgePeerRects<T extends EdgeGroupPanel>(
   panels: T[],
@@ -37,10 +79,8 @@ export function collectEdgePeerRects<T extends EdgeGroupPanel>(
   for (let i = 0; i < panels.length; i++) {
     const m = panels[i];
     if (m.id === selfId || !canSnap(m, selfId)) continue;
-    const el = document.querySelector(
-      `.comm-pos-panel.comm-pos-${cssEscapePanelId(m.id)}`,
-    ) as HTMLElement | null;
-    if (!el) continue;
+    const el = queryCommPosPanel(m.id);
+    if (!el || !isSnapPeerElement(el)) continue;
     others.push({ id: m.id, rect: el.getBoundingClientRect() });
   }
   return others;
@@ -97,9 +137,7 @@ export function findSnapTarget<T extends EdgeGroupPanel>(
   if (opts.skipGroupJoin) return null;
   if (typeof document === "undefined") return null;
   const peerFilter = opts.peerFilter || (() => true);
-  const selfEl = document.querySelector(
-    `.comm-pos-panel.comm-pos-${cssEscapePanelId(selfId)}`,
-  ) as HTMLElement | null;
+  const selfEl = queryCommPosPanel(selfId);
   if (!selfEl) return null;
   const selfRect = selfEl.getBoundingClientRect();
   const excludeOwn = opts.excludeOwnGroup !== false;

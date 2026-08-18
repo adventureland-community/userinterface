@@ -4,6 +4,7 @@ import {
   PANEL_LABELS,
   clampPanelPosInRoot,
   panelStyle,
+  unclipShellOverflow,
   reanchorKeepingVisual,
   type LayoutAnchor,
   type PanelId,
@@ -17,9 +18,15 @@ import {
 import { snapFrameSizeToGrid } from "../../lib/layoutGrid";
 import { layoutDragRoot } from "../../lib/percentDrag";
 import { clampWindowScale } from "../../lib/commWindowGroup";
+import {
+  panelUsesAutoSize,
+  panelFillsFrame,
+  isPanelId,
+} from "../../lib/panelCatalog";
 import { beginLayoutGuide, endLayoutGuide } from "../../lib/layoutGuide";
 import { isTouchishProfile, type ViewportProfile } from "../../lib/viewport";
 import { TYPE } from "../../lib/typeScale";
+import { applyAutoSizeMaxWidth } from "../../lib/frameSizes";
 import { PositionedPanelChrome } from "./PositionedPanelChrome";
 import { usePositionedPanelDrag } from "./usePositionedPanelDrag";
 
@@ -89,6 +96,8 @@ export type PositionedPanelProps = {
    * layout-editing or play-arrange (movable). Meters use shell grips instead.
    */
   showResizeHandles?: boolean;
+  /** Width-only vs box resize. Default `wh`. */
+  resizeAxes?: "w" | "wh";
   /**
    * When true, hide × only appears on hover even while `editing` — so meter
    * unlock/arrange chrome (lock, Seg, View) stays clickable.
@@ -128,10 +137,15 @@ export type PositionedPanelProps = {
   /** Ctrl+wheel → Details SetWindowScale (whole snap group). */
   onWindowScale?: (scale: number) => void;
   /**
-   * Grow the shell to max-content when frameW/H are a floor (HUD).
-   * False = fixed box (meters must scroll, not stretch). Default: id !== "bag".
+   * Grow the shell to max-content when frameW/H are a floor (HUD hug shells).
+   * False = fixed box. HUD ids use the panel catalog; this is for meters.
    */
   hugContent?: boolean;
+  /** WC → Auto-resize. Manual corner resize turns this off. */
+  onAutoSizeChange?: (
+    autoSize: boolean,
+    size?: { w: number; h: number },
+  ) => void;
 };
 
 /**
@@ -219,6 +233,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
 
   React.useEffect(() => {
     if (!props.onResizeFrame) return;
+    if (panelUsesAutoSize(pos, String(id))) return;
     const el = shellRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     let lastW = 0;
@@ -272,7 +287,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
     };
-  }, [props.onResizeFrame]);
+  }, [props.onResizeFrame, pos.autoSize, id]);
   const {
     dragPinned,
     draggingRef: dragging,
@@ -371,15 +386,16 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       }
       return { w: outW, h: outH };
     };
+    const axes = props.resizeAxes === "w" ? "w" : "wh";
     const onMove = (e: PointerEvent) => {
       const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
+      const dy = axes === "w" ? 0 : e.clientY - startY;
       const rawW = corner === "br" ? startW + dx : startW - dx;
       const next = sizeFrame(rawW, startH + dy, !!e.shiftKey);
       pendingW = next.w;
-      pendingH = next.h;
+      pendingH = axes === "w" ? startH : next.h;
       el.style.width = pendingW + "px";
-      el.style.height = pendingH + "px";
+      if (axes === "wh") el.style.height = pendingH + "px";
     };
     const onUp = () => {
       endLayoutGuide();
@@ -399,54 +415,40 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     window.addEventListener("pointercancel", onUp);
   };
 
-  const hugContent = props.hugContent !== undefined ? props.hugContent : true;
-  const fixedW =
-    !hugContent && typeof pos.frameW === "number" && pos.frameW > 0
+  const autoSize = panelUsesAutoSize(pos, String(id));
+  const fillFrame = isPanelId(String(id))
+    ? panelFillsFrame(String(id))
+    : props.hugContent === false;
+  const sizePos = autoSize
+    ? { ...pos, frameW: undefined, frameH: undefined }
+    : pos;
+  const fillW =
+    fillFrame && !autoSize && typeof pos.frameW === "number" && pos.frameW > 0
       ? Math.round(pos.frameW)
       : 0;
-  const fixedH =
-    !hugContent && typeof pos.frameH === "number" && pos.frameH > 0
+  const fillH =
+    fillFrame && !autoSize && typeof pos.frameH === "number" && pos.frameH > 0
       ? Math.round(pos.frameH)
       : 0;
   const shellStyle = Object.assign(
     {},
-    panelStyle(pos, editing || movable),
     props.style || {},
+    panelStyle(sizePos, editing || movable),
     {
       opacity: editing && hidden ? Math.min(opacity, 0.72) : opacity,
     },
-    // Bag (#bottomleftcorner) is content-sized: locking width/height wraps
-    // the stock 7-col float inventory. Other HUD panels treat frameW/H as a
-    // floor that can grow with max-content so arrange outlines wrap overflow.
-    // Meter / Mail pass hugContent:false for a fixed scrolling box.
-    hugContent && typeof pos.frameW === "number" && pos.frameW > 0
+    fillW > 0
       ? {
-          width: `max(${Math.round(pos.frameW)}px, max-content)`,
-          minWidth: Math.round(pos.frameW) + "px",
-        }
-      : null,
-    hugContent && typeof pos.frameH === "number" && pos.frameH > 0
-      ? {
-          height: `max(${Math.round(pos.frameH)}px, max-content)`,
-          minHeight: Math.round(pos.frameH) + "px",
-        }
-      : null,
-    fixedW > 0
-      ? {
-          width: fixedW + "px",
-          minWidth: fixedW + "px",
+          width: fillW + "px",
+          minWidth: fillW + "px",
           maxWidth: "100vw",
         }
       : null,
-    fixedH > 0
+    fillH > 0
       ? {
-          height: fixedH + "px",
-          minHeight: Math.min(fixedH, HUD_FRAME_MIN.h) + "px",
+          height: fillH + "px",
+          minHeight: Math.min(fillH, HUD_FRAME_MIN.h) + "px",
           maxHeight: "100vh",
-          // Keep shell overflow visible so above-frame hover arrange chrome
-          // (lock / WC / × / grips) is not clipped — same as meters. Clip
-          // scrolling content inside the panel body (e.g. .comm-mail).
-          overflow: "visible",
         }
       : null,
     editing
@@ -473,6 +475,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           }
         : null,
   );
+  applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
+  if (fillFrame && !autoSize) unclipShellOverflow(shellStyle);
 
   // Same as !!moveGrip || lock || ungroup when !editing (grip-in-edit is false).
   const showArrangeOverlay =
@@ -555,6 +559,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     pos.scale,
     pos.frameW,
     pos.frameH,
+    pos.autoSize,
     id,
   ]);
 
@@ -589,6 +594,26 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     onPointerDown,
     onPointerMove,
     onPointerUp,
+    autoSize,
+    onToggleAutoSize: props.onAutoSizeChange
+      ? () => {
+          const next = !autoSize;
+          if (next) {
+            props.onAutoSizeChange!(true);
+            return;
+          }
+          const el = shellRef.current;
+          props.onAutoSizeChange!(
+            false,
+            el
+              ? {
+                  w: Math.round(el.offsetWidth),
+                  h: Math.round(el.offsetHeight),
+                }
+              : undefined,
+          );
+        }
+      : undefined,
   });
 
   const hiddenBodyStyle: Record<string, any> = Object.assign(
@@ -612,8 +637,9 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     "div",
     {
       ref: shellRef,
-      className: `comm-pos-panel comm-pos-${id}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
+      className: `comm-pos-panel comm-pos-${id}${fillFrame ? " comm-pos-fill" : ""}${editing ? " comm-pos-editing" : ""}${movable ? " comm-pos-movable" : ""}${interactiveBody ? " comm-pos-interactive" : ""}${hidden ? " comm-pos-hidden" : ""}${hover ? " comm-pos-chrome-open" : ""}${props.className ? ` ${props.className}` : ""}`,
       "data-panel": id,
+      "data-auto-size": autoSize ? "true" : undefined,
       style: shellStyle,
       onPointerDownCapture: onActivateCapture,
       onMouseEnter: needsChromeHover ? () => setPanelHover(true) : undefined,
@@ -632,7 +658,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           },
           `${panelLabel} — closed`,
         )
-      : editing && !hidden
+      : (fillFrame || editing) && !hidden
         ? e(
             "div",
             {

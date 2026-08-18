@@ -8,6 +8,10 @@ import { getReact } from "../../host/react";
 import { applyPanelDragMove } from "../../lib/panelDragSnap";
 import { panelHasSnap } from "../../lib/panelEdgeGroup";
 import {
+  isSnapPeerElement,
+  queryCommPosPanel,
+} from "../../lib/panelEdgeSnapDom";
+import {
   isPlaceWithoutGroupModifier,
   type PanelGroupDragOpts,
 } from "../../lib/panelGroupDrag";
@@ -157,6 +161,9 @@ export function usePositionedPanelDrag(
       if (ids[i] === id) continue;
       const p = peers[ids[i]];
       if (!p) continue;
+      // Skip closed / empty-hidden / display:none peers (saved % still in layout).
+      const el = queryCommPosPanel(ids[i]);
+      if (!el || !isSnapPeerElement(el)) continue;
       xs.push(p.x);
       ys.push(p.y);
     }

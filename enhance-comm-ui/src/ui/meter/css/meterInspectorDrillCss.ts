@@ -47,7 +47,8 @@ export const METER_INSPECTOR_DRILL_CSS = `
 .ecu-meter-row .ecu-meter-vals {
   font-size: var(--meter-fs-secondary) !important;
 }
-.ecu-meter-icon {
+.ecu-meter-body .ecu-meter-icon,
+.ecu-meter-row .ecu-meter-icon {
   width: 14px !important;
   height: 14px !important;
 }

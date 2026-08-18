@@ -6,6 +6,7 @@ import { VitalsColumn } from "./VitalsColumn";
 import type { EntityLike } from "../../host/globals";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import type { HpThresholdMark } from "../../instance/monsterSpawns";
 
 export type ObservedUnitProps = {
   entity: EntityLike;
@@ -39,6 +40,10 @@ export type ObservedUnitProps = {
    * Drives fear simulation and the numeric aggro spark.
    */
   aggroMobs?: EntityLike[];
+  /** HP-threshold spawn marks from G.monsters (boss bars). */
+  hpThresholdMarks?: HpThresholdMark[];
+  /** Optional row under vitals/effects (mechanic chips). */
+  footer?: any;
 };
 
 export function ObservedUnit(props: ObservedUnitProps): any {
@@ -57,6 +62,8 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     aggroLabel,
     aggroHot = false,
     aggroMobs = [],
+    hpThresholdMarks,
+    footer,
   } = props;
 
   const controlStates = getControlStates(entity, aggroMobs);
@@ -206,6 +213,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         maxMp: entity.max_mp,
         hpColor,
         showMp,
+        hpThresholdMarks,
         nameStyle: {
           fontSize: fontSize != null ? fontSize : "21px",
           fontWeight: "normal",
@@ -215,5 +223,6 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       label,
     ),
     effectsSlot,
+    footer || null,
   );
 }

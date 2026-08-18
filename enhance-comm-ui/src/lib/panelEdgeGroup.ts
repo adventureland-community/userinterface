@@ -482,6 +482,8 @@ export function findEdgeSnapCandidate(
     const o = others[i];
     if (o.id === selfId) continue;
     const r = o.rect;
+    // Zero-size / out-of-layout peers (display:none, unmounted footprint).
+    if (!(r.right - r.left > 0) || !(r.bottom - r.top > 0)) continue;
     const oCx = (r.left + r.right) / 2;
     const oCy = (r.top + r.bottom) / 2;
     const candidates: Array<{

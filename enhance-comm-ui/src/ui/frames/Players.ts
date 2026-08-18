@@ -23,6 +23,14 @@ import {
 } from "../../lib/partyBuffMode";
 import { isActuallyDead } from "../../lib/stickyPresence";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import {
+  PARTY_CHIP_GAP,
+  PARTY_CHIP_WIDTH,
+  PARTY_MAX_COLS,
+  PARTY_ROSTER_PAD,
+  partyChipRowWidth,
+  partyRosterMaxWidth,
+} from "../../lib/frameSizes";
 
 export type PlayersProps = {
   entities: EntityLike[];
@@ -98,11 +106,13 @@ export function Players(props: PlayersProps): any {
     {
       className: "ecu-roster" + (props.layoutEdit ? " is-layout-edit" : ""),
       style: {
-        padding: "4px",
+        padding: PARTY_ROSTER_PAD + "px",
         display: "flex",
         gap: "6px",
         flexDirection: "column",
-        maxWidth: "min(560px, 78vw)",
+        width: "fit-content",
+        maxWidth: partyRosterMaxWidth(PARTY_MAX_COLS) + "px",
+        boxSizing: "border-box",
         position: "relative",
       },
     },
@@ -186,7 +196,8 @@ export function Players(props: PlayersProps): any {
               flexWrap: "wrap",
               // flex-start: chips without EffectsRow must not stretch to match buffs.
               alignItems: "flex-start",
-              gap: "5px",
+              gap: PARTY_CHIP_GAP + "px",
+              maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px",
             },
           },
           ...party[1].map((player) => {
@@ -249,7 +260,7 @@ export function Players(props: PlayersProps): any {
                 style: {
                   position: "relative",
                   flex: "0 0 auto",
-                  width: "168px",
+                  width: PARTY_CHIP_WIDTH + "px",
                   background: "transparent",
                   cursor: "pointer",
                   overflow: "visible",
