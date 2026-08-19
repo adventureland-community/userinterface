@@ -14,6 +14,10 @@ import {
   resolveAbilityShowName,
   type ConfigurableAbility,
 } from "../../../viz/vizAbilityRules";
+import {
+  listAbilityPreviewCasters,
+  type AbilityPreviewCaster,
+} from "../../../instance/abilityTimelineDummy";
 import { getVizSettings, type VizSettings } from "../../../viz/vizSettings";
 import { settingsSection } from "./settingsPaneChrome";
 import { SettingsColorInput } from "./settingsColorInput";
@@ -42,11 +46,33 @@ export function countInGameAbilityRuleMatches(query: string): number {
   return total;
 }
 
+type CasterRef = { mtype: string; name: string };
+
+function buildCasterMap(
+  casters: AbilityPreviewCaster[],
+): Map<string, CasterRef[]> {
+  const map = new Map<string, CasterRef[]>();
+  for (let i = 0; i < casters.length; i++) {
+    const c = casters[i];
+    for (let j = 0; j < c.abilities.length; j++) {
+      const aId = c.abilities[j].id;
+      const existing = map.get(aId);
+      if (existing) {
+        existing.push({ mtype: c.mtype, name: c.name });
+      } else {
+        map.set(aId, [{ mtype: c.mtype, name: c.name }]);
+      }
+    }
+  }
+  return map;
+}
+
 function abilityRuleRow(
   ab: ConfigurableAbility,
   settings: VizSettings,
   rules: ReturnType<typeof getVizAbilityRules>,
   onChange: () => void,
+  casterRefs: CasterRef[],
 ): any {
   const rule = rules[ab.id];
   const showName = resolveAbilityShowName(ab.id, settings, rules);
@@ -62,7 +88,7 @@ function abilityRuleRow(
       e(GameIcon, {
         id: ab.id,
         kind: "skill",
-        size: 28,
+        size: 32,
         className: "ecu-settings-abil-icon",
         title: ab.name,
       }),
@@ -71,6 +97,23 @@ function abilityRuleRow(
         { className: "ecu-settings-abil-copy" },
         e("span", { className: "ecu-settings-abil-name" }, ab.name),
         e("span", { className: "ecu-settings-abil-key" }, ab.id),
+      ),
+    ),
+    e(
+      "div",
+      { className: "ecu-settings-abil-casters" },
+      ...casterRefs.map((c: CasterRef) =>
+        e(
+          "span",
+          { key: c.mtype, className: "ecu-settings-abil-caster" },
+          e(GameIcon, {
+            id: c.mtype,
+            kind: "monster",
+            mtype: c.mtype,
+            size: 40,
+            title: c.name,
+          }),
+        ),
       ),
     ),
     e(
@@ -123,10 +166,19 @@ export function InGameAbilityRulesSection(
   const settings = getVizSettings();
   const rules = getVizAbilityRules();
   const abilities = listConfigurableAbilities();
+  const casterMap = buildCasterMap(listAbilityPreviewCasters());
   const kids: any[] = [];
   for (let i = 0; i < abilities.length; i++) {
     if (!abilityMatchesQuery(abilities[i], props.query || "")) continue;
-    kids.push(abilityRuleRow(abilities[i], settings, rules, props.bump));
+    kids.push(
+      abilityRuleRow(
+        abilities[i],
+        settings,
+        rules,
+        props.bump,
+        casterMap.get(abilities[i].id) || [],
+      ),
+    );
   }
   return e(
     "div",
