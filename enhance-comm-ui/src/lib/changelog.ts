@@ -100,6 +100,83 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.7",
+    title: "0.8.0-alpha.7",
+    date: "2026-08-19",
+    summary:
+      "Per-ability visibility toggles, searchable badge picker, monster icons in settings, and a disconnect overlay that no longer flashes on observer switch.",
+    highlights: [
+      {
+        label: "Ability visibility toggles",
+        detail:
+          "Settings → Ability Timeline now has a per-ability table: toggle each skill on/off for the rail and Big Icon independently. Skill icons shown inline.",
+        kind: "feature",
+      },
+      {
+        label: "Min cooldown filter",
+        detail:
+          "New minCooldownMs setting filters short cooldowns from the rail — keeps the timeline readable when mobs spam sub-second abilities.",
+        kind: "feature",
+      },
+      {
+        label: "Disconnect overlay grace period",
+        detail:
+          "The DISCONNECTED banner now waits 2 seconds before appearing. Switching observers briefly drops the socket — the overlay no longer flashes on every hop. Explicit server kicks (limits, blocked) still show immediately.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Per-ability visibility",
+        detail:
+          "Searchable table in Ability Timeline settings. Each row shows the skill icon, name, and separate rail / BigIcon checkboxes. Persisted per-layout.",
+        kind: "feature",
+      },
+      {
+        label: "Min cooldown filter",
+        detail:
+          "minCooldownMs applies only to the rail; BigIcon and Highlight frames are unaffected so important imminent CDs still show.",
+        kind: "improve",
+      },
+      {
+        label: "Preview caster picker",
+        detail:
+          "The Ability Timeline preview caster selection is now a searchable badge picker scanning G.monsters directly, replacing the old checkbox grid.",
+        kind: "ui",
+      },
+      {
+        label: "Timeline scale fix",
+        detail:
+          "Fixed ability timeline scale mismatch and short-CD skipping that caused icons to land at wrong positions.",
+        kind: "fix",
+      },
+      {
+        label: "Disconnect overlay grace",
+        detail:
+          "Socket loss starts a 2s timer; reconnecting within that window (observer switch) cancels it. Server-sent reasons bypass the timer.",
+        kind: "fix",
+      },
+      {
+        label: "Monster icons in ability lists",
+        detail:
+          "Both Ability Timeline visibility and Drawings ability appearance tables now show caster monster icons (40px) with name on hover.",
+        kind: "ui",
+      },
+      {
+        label: "Ability name + key",
+        detail:
+          "Ability rows in both settings panes now show the display name and the raw ability key, consistent across Drawings and Ability Timeline.",
+        kind: "ui",
+      },
+      {
+        label: "Stock disconnect button hidden",
+        detail:
+          "The game's stock disconnect button is now fully hidden — ECU's own overlay handles disconnect display after the grace period.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.6",
     title: "0.8.0-alpha.6",
     date: "2026-08-19",
