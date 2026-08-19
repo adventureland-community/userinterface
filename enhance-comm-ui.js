@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.6
+// @version      0.8.0-alpha.7
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -17354,8 +17354,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.6" : "unknown";
-    const builtAt = true ? "2026-08-19T10:14:17.273Z" : "unknown";
+    const version = true ? "0.8.0-alpha.7" : "unknown";
+    const builtAt = true ? "2026-08-19T10:39:50.896Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
