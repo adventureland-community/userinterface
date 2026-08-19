@@ -12,16 +12,8 @@ export const DISCONNECT_OVERLAY_Z = 2147483647;
 const STYLE_ID = "ecu-disconnect-overlay-css";
 
 const CSS = `
-/* Stock /comm button is a #bottom child; keep it above chrome, not as the only cue. */
-#bottom > .gamebutton.disconnected:not(.hidden) {
-  display: flex !important;
-  position: fixed !important;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1000;
-}
-body.${DISCONNECT_OVERLAY_CLASS}-on #bottom > .gamebutton.disconnected {
+/* Hide stock disconnect button entirely — ECU overlay handles display after a grace period. */
+#bottom > .gamebutton.disconnected {
   display: none !important;
 }
 .${DISCONNECT_OVERLAY_CLASS} {
@@ -100,6 +92,10 @@ let everConnected = false;
 let overlayEl: HTMLElement | null = null;
 let unsubTick: (() => void) | null = null;
 let origDisconnect: (() => void) | undefined;
+
+/** Grace period before showing the overlay (ms). Avoids flashing on observer switch. */
+const DISCONNECT_GRACE_MS = 2000;
+let disconnectedSince: number | null = null;
 
 function canUseDom(): boolean {
   return typeof document !== "undefined" && !!document.body;
@@ -228,8 +224,16 @@ export function showDisconnectOverlay(reason?: string | null): void {
 }
 
 function syncOverlay(): void {
-  if (isCommDisconnected()) showDisconnectOverlay(currentReason());
-  else hideDisconnectOverlay();
+  if (isCommDisconnected()) {
+    const now = Date.now();
+    if (disconnectedSince === null) disconnectedSince = now;
+    if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
+      showDisconnectOverlay(currentReason());
+    }
+  } else {
+    disconnectedSince = null;
+    hideDisconnectOverlay();
+  }
 }
 
 function wrapDisconnect(): void {
@@ -244,7 +248,15 @@ function wrappedDisconnect(): void {
   try {
     if (typeof origDisconnect === "function") origDisconnect();
   } finally {
-    showDisconnectOverlay(currentReason());
+    const reason = currentReason();
+    if (reason) {
+      // Explicit server kick — show immediately, no grace period
+      disconnectedSince = null;
+      showDisconnectOverlay(reason);
+    } else {
+      // Possibly transient (observer switch); let syncOverlay handle the delay
+      if (disconnectedSince === null) disconnectedSince = Date.now();
+    }
   }
 }
 
@@ -277,4 +289,5 @@ export function resetDisconnectOverlayForTests(): void {
   origDisconnect = undefined;
   installed = false;
   everConnected = false;
+  disconnectedSince = null;
 }

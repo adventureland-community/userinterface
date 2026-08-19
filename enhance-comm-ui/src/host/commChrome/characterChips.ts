@@ -119,8 +119,7 @@ export function renderCharactersHud(): void {
     html += "<span class='ecu-char-sub'>";
     html += "Lv." + esc(String(char.level ?? ""));
     if (offServer) {
-      html +=
-        "<span class='ecu-char-server'>" + esc(serverLabel) + "</span>";
+      html += "<span class='ecu-char-server'>" + esc(serverLabel) + "</span>";
     }
     html += "</span>";
     html += "</span></button>";

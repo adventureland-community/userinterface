@@ -31,9 +31,7 @@ export function currentServerKey(): string {
 }
 
 /** True when `char.server` matches the realm we're currently on. */
-export function isCharOnCurrentServer(char: {
-  server?: string;
-}): boolean {
+export function isCharOnCurrentServer(char: { server?: string }): boolean {
   const key = currentServerKey();
   if (!key || char.server == null || char.server === "") return true;
   return String(char.server) === key;
@@ -128,12 +126,10 @@ function onMailClick(ev: Event): void {
 const ACTION_ICONS: Record<"follow" | "bag" | "command" | "mail", string> = {
   follow:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
-  bag:
-    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   command:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
-  mail:
-    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
 };
 
 export function buildActionsEl(): HTMLElement {
@@ -242,7 +238,9 @@ export function ensureChromeShell(): void {
     const chromeEl = existingStack.querySelector(
       ".ecu-chrome",
     ) as HTMLElement | null;
-    const charsEl = bottom.querySelector(".charactersuic") as HTMLElement | null;
+    const charsEl = bottom.querySelector(
+      ".charactersuic",
+    ) as HTMLElement | null;
     const serversEl =
       (bottom.querySelector(".serversuic") as HTMLElement | null) ||
       (bottom.querySelector(".serversui") as HTMLElement | null);

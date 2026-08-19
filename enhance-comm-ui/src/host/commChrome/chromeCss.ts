@@ -194,6 +194,7 @@ ${EFFECTS_ICON_CSS}
 .ecu-char.is-active:hover {
   background: rgba(225, 55, 88, 0.28);
 }
+
 .ecu-char-sprite {
   flex: 0 0 auto;
   display: inline-flex;
