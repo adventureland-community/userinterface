@@ -7662,6 +7662,71 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.7",
+      title: "0.8.0-alpha.7",
+      date: "2026-08-19",
+      summary: "Per-ability visibility toggles, searchable badge picker, monster icons in settings, and a disconnect overlay that no longer flashes on observer switch.",
+      highlights: [
+        {
+          label: "Ability visibility toggles",
+          detail: "Settings \u2192 Ability Timeline now has a per-ability table: toggle each skill on/off for the rail and Big Icon independently. Skill icons shown inline.",
+          kind: "feature"
+        },
+        {
+          label: "Min cooldown filter",
+          detail: "New minCooldownMs setting filters short cooldowns from the rail \u2014 keeps the timeline readable when mobs spam sub-second abilities.",
+          kind: "feature"
+        },
+        {
+          label: "Disconnect overlay grace period",
+          detail: "The DISCONNECTED banner now waits 2 seconds before appearing. Switching observers briefly drops the socket \u2014 the overlay no longer flashes on every hop. Explicit server kicks (limits, blocked) still show immediately.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Per-ability visibility",
+          detail: "Searchable table in Ability Timeline settings. Each row shows the skill icon, name, and separate rail / BigIcon checkboxes. Persisted per-layout.",
+          kind: "feature"
+        },
+        {
+          label: "Min cooldown filter",
+          detail: "minCooldownMs applies only to the rail; BigIcon and Highlight frames are unaffected so important imminent CDs still show.",
+          kind: "improve"
+        },
+        {
+          label: "Preview caster picker",
+          detail: "The Ability Timeline preview caster selection is now a searchable badge picker scanning G.monsters directly, replacing the old checkbox grid.",
+          kind: "ui"
+        },
+        {
+          label: "Timeline scale fix",
+          detail: "Fixed ability timeline scale mismatch and short-CD skipping that caused icons to land at wrong positions.",
+          kind: "fix"
+        },
+        {
+          label: "Disconnect overlay grace",
+          detail: "Socket loss starts a 2s timer; reconnecting within that window (observer switch) cancels it. Server-sent reasons bypass the timer.",
+          kind: "fix"
+        },
+        {
+          label: "Monster icons in ability lists",
+          detail: "Both Ability Timeline visibility and Drawings ability appearance tables now show caster monster icons (40px) with name on hover.",
+          kind: "ui"
+        },
+        {
+          label: "Ability name + key",
+          detail: "Ability rows in both settings panes now show the display name and the raw ability key, consistent across Drawings and Ability Timeline.",
+          kind: "ui"
+        },
+        {
+          label: "Stock disconnect button hidden",
+          detail: "The game's stock disconnect button is now fully hidden \u2014 ECU's own overlay handles disconnect display after the grace period.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.6",
       title: "0.8.0-alpha.6",
       date: "2026-08-19",
@@ -8310,7 +8375,9 @@ ${fightHoverTip(src)}`
     bigIconGrow: "right",
     bigIconMargin: 8,
     highlightGrow: "up",
-    highlightMargin: 4
+    highlightMargin: 4,
+    minCooldownMs: 3e3,
+    abilityOverrides: {}
   };
   function clampNum(n, lo, hi, fallback) {
     if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
@@ -8344,6 +8411,33 @@ ${fightHoverTip(src)}`
     if (t === "rgba(0,0,0,0.42)" || t === "rgba(0, 0, 0, 0.42)") return fallback;
     return t;
   }
+  function normalizeAbilityOverrides(raw) {
+    if (!raw || typeof raw !== "object") return {};
+    const src = raw;
+    const out = {};
+    const keys = Object.keys(src);
+    for (let i = 0; i < keys.length; i++) {
+      const v = src[keys[i]];
+      if (!v || typeof v !== "object") continue;
+      const entry = v;
+      const rail = entry.rail !== false;
+      const bigIcon = entry.bigIcon !== false;
+      if (rail && bigIcon) continue;
+      out[keys[i]] = { rail, bigIcon };
+    }
+    return out;
+  }
+  function abilityVisibleOnRail(abilityId, cooldown, prefs) {
+    const ov = prefs.abilityOverrides[abilityId];
+    if (ov && !ov.rail) return false;
+    if (prefs.minCooldownMs > 0 && cooldown < prefs.minCooldownMs) return false;
+    return true;
+  }
+  function abilityVisibleOnBigIcon(abilityId, prefs) {
+    const ov = prefs.abilityOverrides[abilityId];
+    if (ov && !ov.bigIcon) return false;
+    return true;
+  }
   function normalizeAbilityTimelinePrefs(raw, leftover) {
     const src = raw && typeof raw === "object" ? raw : {};
     const legacy = leftover && typeof leftover === "object" ? leftover : {};
@@ -8375,7 +8469,9 @@ ${fightHoverTip(src)}`
       highlightGrow: normalizeAbilityHighlightGrow(src.highlightGrow),
       highlightMargin: Math.round(
         clampNum(src.highlightMargin, 0, 32, d.highlightMargin)
-      )
+      ),
+      minCooldownMs: Math.round(clampNum(src.minCooldownMs, 0, 1e4, d.minCooldownMs) / 100) * 100,
+      abilityOverrides: normalizeAbilityOverrides(src.abilityOverrides)
     };
   }
   function getAbilityTimelinePrefs() {
@@ -10565,6 +10661,7 @@ ${EFFECTS_ICON_CSS}
 .ecu-char.is-active:hover {
   background: rgba(225, 55, 88, 0.28);
 }
+
 .ecu-char-sprite {
   flex: 0 0 auto;
   display: inline-flex;
@@ -14690,7 +14787,9 @@ ${CHROME_ARRANGE_CSS}
       const chromeEl = existingStack.querySelector(
         ".ecu-chrome"
       );
-      const charsEl = bottom.querySelector(".charactersuic");
+      const charsEl = bottom.querySelector(
+        ".charactersuic"
+      );
       const serversEl = bottom.querySelector(".serversuic") || bottom.querySelector(".serversui");
       if (chromeEl && charsEl && !chromeEl.contains(charsEl)) {
         chromeEl.insertBefore(charsEl, chromeEl.firstChild);
@@ -15405,16 +15504,8 @@ ${CHROME_ARRANGE_CSS}
   var DISCONNECT_OVERLAY_Z = 2147483647;
   var STYLE_ID4 = "ecu-disconnect-overlay-css";
   var CSS2 = `
-/* Stock /comm button is a #bottom child; keep it above chrome, not as the only cue. */
-#bottom > .gamebutton.disconnected:not(.hidden) {
-  display: flex !important;
-  position: fixed !important;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 1000;
-}
-body.${DISCONNECT_OVERLAY_CLASS}-on #bottom > .gamebutton.disconnected {
+/* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
+#bottom > .gamebutton.disconnected {
   display: none !important;
 }
 .${DISCONNECT_OVERLAY_CLASS} {
@@ -15492,6 +15583,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   var overlayEl = null;
   var unsubTick = null;
   var origDisconnect;
+  var DISCONNECT_GRACE_MS = 2e3;
+  var disconnectedSince = null;
   function canUseDom() {
     return typeof document !== "undefined" && !!document.body;
   }
@@ -15605,8 +15698,16 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
   }
   function syncOverlay() {
-    if (isCommDisconnected()) showDisconnectOverlay(currentReason());
-    else hideDisconnectOverlay();
+    if (isCommDisconnected()) {
+      const now = Date.now();
+      if (disconnectedSince === null) disconnectedSince = now;
+      if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
+        showDisconnectOverlay(currentReason());
+      }
+    } else {
+      disconnectedSince = null;
+      hideDisconnectOverlay();
+    }
   }
   function wrapDisconnect() {
     const prev = window.disconnect;
@@ -15619,7 +15720,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     try {
       if (typeof origDisconnect === "function") origDisconnect();
     } finally {
-      showDisconnectOverlay(currentReason());
+      const reason = currentReason();
+      if (reason) {
+        disconnectedSince = null;
+        showDisconnectOverlay(reason);
+      } else {
+        if (disconnectedSince === null) disconnectedSince = Date.now();
+      }
     }
   }
   function installDisconnectOverlay() {
@@ -17248,7 +17355,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.8.0-alpha.6" : "unknown";
-    const builtAt = true ? "2026-08-18T23:44:00.841Z" : "unknown";
+    const builtAt = true ? "2026-08-19T10:14:17.273Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -17305,15 +17412,36 @@ button.comm-mail__stack-u {
     }
     return false;
   }
-  function syncAbilityRemainingMs(targetId, abilityId, rawMs, now = Date.now()) {
+  var AUTO_CYCLE_MAX_CD = 3e3;
+  function syncAbilityRemainingMs(targetId, abilityId, rawMs, now = Date.now(), cooldown = 0) {
     const key = stickyKey(targetId, abilityId);
     if (!(rawMs > 0)) {
       const prev2 = stickyByKey.get(key);
       if (prev2 && prev2.endsAt > now + 250) {
         return Math.max(0, prev2.endsAt - now);
       }
+      const cd = cooldown || (prev2 == null ? void 0 : prev2.cooldown) || 0;
+      if (prev2 && cd > 0 && cd <= AUTO_CYCLE_MAX_CD && prev2.endsAt > 0) {
+        const elapsed = now - prev2.endsAt;
+        if (elapsed >= 0 && elapsed < cd * 2) {
+          const newEndsAt = now + cd;
+          const newGen = prev2.gen + 1;
+          stickyByKey.set(key, {
+            endsAt: newEndsAt,
+            lastMs: cd,
+            gen: newGen,
+            cooldown: cd
+          });
+          return cd;
+        }
+      }
       if (prev2) {
-        stickyByKey.set(key, { endsAt: now, lastMs: 0, gen: prev2.gen });
+        stickyByKey.set(key, {
+          endsAt: now,
+          lastMs: 0,
+          gen: prev2.gen,
+          cooldown: prev2.cooldown
+        });
       }
       return 0;
     }
@@ -17325,7 +17453,12 @@ button.comm-mail__stack-u {
     } else if (prev && endsAt >= prev.endsAt + 2e3) {
       gen = prev.gen + 1;
     }
-    stickyByKey.set(key, { endsAt, lastMs: rawMs, gen });
+    stickyByKey.set(key, {
+      endsAt,
+      lastMs: rawMs,
+      gen,
+      cooldown: cooldown || (prev == null ? void 0 : prev.cooldown)
+    });
     return Math.max(0, endsAt - now);
   }
   function peekAbilityCastGen(targetId, abilityId) {
@@ -17339,11 +17472,8 @@ button.comm-mail__stack-u {
   function abilityInStatic(ms, cooldown, ready, windowMs = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs) {
     return !ready && cooldown > windowMs && ms > windowMs;
   }
-  function abilityScrollPos(ms, cooldown, ready, windowMs = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs) {
+  function abilityScrollPos(ms, _cooldown, ready, windowMs = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs) {
     if (ready || ms <= 0) return 0;
-    if (cooldown <= windowMs) {
-      return Math.max(0, Math.min(1, ms / cooldown));
-    }
     if (ms > windowMs) return 1;
     return Math.max(0, Math.min(1, ms / windowMs));
   }
@@ -17430,7 +17560,7 @@ button.comm-mail__stack-u {
       if (!cooldown) continue;
       const st = (_c = target.s) == null ? void 0 : _c[id];
       const rawMs = st && typeof st.ms === "number" ? Math.max(0, st.ms) : 0;
-      const ms = syncAbilityRemainingMs(targetId, id, rawMs, now);
+      const ms = syncAbilityRemainingMs(targetId, id, rawMs, now, cooldown);
       const row3 = decorateAbilityRow(
         id,
         skillName(id),
@@ -21581,92 +21711,7 @@ button.comm-mail__stack-u {
 
   // src/instance/abilityTimelineDummy.ts
   var PREVIEW_READY_HOLD_MS = 2800;
-  var FALLBACK_CASTERS = [
-    {
-      mtype: "a2",
-      name: "Bill",
-      abilities: [{ id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 2e3 }]
-    },
-    {
-      mtype: "a3",
-      name: "Lestat",
-      abilities: [{ id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 1600 }]
-    },
-    {
-      mtype: "a5",
-      name: "Elena",
-      abilities: [
-        { id: "healing", name: "Healing", cooldown: 800, phaseMs: 0 }
-      ]
-    },
-    {
-      mtype: "a7",
-      name: "Lucinda",
-      abilities: [{ id: "mlight", name: "Light", cooldown: 3e3, phaseMs: 800 }]
-    },
-    {
-      mtype: "gpurplepro",
-      name: "Protector of Darkness",
-      abilities: [
-        { id: "anger", name: "Anger", cooldown: 12e3, phaseMs: 0 },
-        { id: "warpstomp", name: "Warpstomp", cooldown: 8e3, phaseMs: 2500 }
-      ]
-    },
-    {
-      mtype: "ggreenpro",
-      name: "Protector of Nature",
-      abilities: [
-        { id: "tangle", name: "Tangle", cooldown: 1600, phaseMs: 400 },
-        { id: "self_healing", name: "Healing", cooldown: 2e3, phaseMs: 900 }
-      ]
-    },
-    {
-      mtype: "gbluepro",
-      name: "Protector of Frost",
-      abilities: [
-        { id: "multi_freeze", name: "Multi Freeze", cooldown: 4e3, phaseMs: 1200 }
-      ]
-    },
-    {
-      mtype: "icegolem",
-      name: "Ice Golem",
-      abilities: [
-        { id: "multi_freeze", name: "Multi Freeze", cooldown: 4e3, phaseMs: 600 }
-      ]
-    },
-    {
-      mtype: "xmagefz",
-      name: "Mage \xB7 Frozen",
-      abilities: [
-        { id: "deepfreeze", name: "Deepfreeze", cooldown: 6e3, phaseMs: 0 }
-      ]
-    },
-    {
-      mtype: "xmagefi",
-      name: "Mage \xB7 Fire",
-      abilities: [
-        { id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 0 },
-        { id: "multi_burn", name: "Multi Burn", cooldown: 4e3, phaseMs: 1800 }
-      ]
-    },
-    {
-      mtype: "xmagen",
-      name: "Mage \xB7 Nature",
-      abilities: [
-        { id: "self_healing", name: "Healing", cooldown: 2e3, phaseMs: 400 },
-        { id: "mtangle", name: "Tangle", cooldown: 1600, phaseMs: 1100 }
-      ]
-    },
-    {
-      mtype: "xmagex",
-      name: "Dark Mage",
-      abilities: [
-        { id: "anger", name: "Anger", cooldown: 8e3, phaseMs: 500 },
-        { id: "warpstomp", name: "Warpstomp", cooldown: 4e3, phaseMs: 2200 }
-      ]
-    }
-  ];
-  var DEFAULT_PREVIEW_MTYPES = ["gpurplepro", "a2"];
+  var PREFERRED_DEFAULTS = ["gpurplepro", "xmagefi", "a2"];
   function skillName2(id) {
     var _a, _b, _c;
     try {
@@ -21708,35 +21753,32 @@ button.comm-mail__stack-u {
     } catch (e2) {
       monsters = void 0;
     }
+    if (!monsters) return [];
     const out = [];
-    for (let i = 0; i < FALLBACK_CASTERS.length; i++) {
-      const seed = FALLBACK_CASTERS[i];
-      const def = monsters == null ? void 0 : monsters[seed.mtype];
-      const live2 = def ? trackableFromDef(seed.mtype, def) : null;
-      out.push(
-        live2 || {
-          ...seed,
-          name: getInstanceMobLabel(seed.mtype) || seed.name
-        }
-      );
+    const mtypes = Object.keys(monsters);
+    for (let i = 0; i < mtypes.length; i++) {
+      const caster = trackableFromDef(mtypes[i], monsters[mtypes[i]]);
+      if (caster) out.push(caster);
     }
+    out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
   }
   function defaultAbilityPreviewMtypes() {
     const all = listAbilityPreviewCasters();
+    if (!all.length) return [];
     const out = [];
-    for (let i = 0; i < DEFAULT_PREVIEW_MTYPES.length; i++) {
-      const mtype = DEFAULT_PREVIEW_MTYPES[i];
+    for (let i = 0; i < PREFERRED_DEFAULTS.length; i++) {
+      const mtype = PREFERRED_DEFAULTS[i];
       for (let j = 0; j < all.length; j++) {
         if (all[j].mtype === mtype) {
           out.push(mtype);
+          if (out.length >= 2) return out;
           break;
         }
       }
     }
     if (out.length) return out;
-    if (all[0]) return [all[0].mtype];
-    return [];
+    return [all[0].mtype];
   }
   function loopPreviewRemaining(cooldown, phaseMs, now, epoch) {
     if (!(cooldown > 0)) return { ms: 0, cycle: 0 };
@@ -21750,7 +21792,7 @@ button.comm-mail__stack-u {
   }
   function pickCasters(mtypes) {
     const all = listAbilityPreviewCasters();
-    const want = mtypes === void 0 ? DEFAULT_PREVIEW_MTYPES : mtypes;
+    const want = mtypes === void 0 ? PREFERRED_DEFAULTS : mtypes;
     const out = [];
     for (let i = 0; i < want.length; i++) {
       const mtype = want[i];
@@ -21773,11 +21815,18 @@ button.comm-mail__stack-u {
       const rows = [];
       for (let j = 0; j < caster.abilities.length; j++) {
         const ab = caster.abilities[j];
+        if (prefs.minCooldownMs > 0 && ab.cooldown < prefs.minCooldownMs)
+          continue;
         let ms = ab.cooldown;
         let endsAt = 0;
         let castGen = 0;
         if (epoch != null) {
-          const looped = loopPreviewRemaining(ab.cooldown, ab.phaseMs, now, epoch);
+          const looped = loopPreviewRemaining(
+            ab.cooldown,
+            ab.phaseMs,
+            now,
+            epoch
+          );
           ms = looped.ms;
           castGen = looped.cycle;
           endsAt = ms > 0 ? now + ms : 0;
@@ -38137,36 +38186,143 @@ ${parts.map(cssSlice).join("\n")}
   flex-shrink: 0;
   cursor: pointer;
 }
-.ecu-settings-picks {
+.ecu-pick-wrap {
+  margin: 8px 0 4px;
+  position: relative;
+}
+.ecu-pick-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 4px;
-  max-height: 140px;
-  overflow: auto;
-}
-.ecu-settings-pick {
-  display: flex;
-  align-items: center;
   gap: 6px;
-  font-size: 18px;
+  margin-bottom: 6px;
+}
+.ecu-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+  background: #2a2210;
+  border: 1px solid #886;
+  color: #ffe08a;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.ecu-pick-badge:hover {
+  background: #3a2a10;
+  border-color: #aa8;
+}
+.ecu-pick-badge-x {
+  font-size: 15px;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+.ecu-pick-badge:hover .ecu-pick-badge-x { opacity: 1; }
+.ecu-pick-input-row {
+  display: flex;
+}
+.ecu-pick-search {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 17px;
+  padding: 5px 8px;
   background: #1a1a1a;
   border: 1px solid #444;
-  padding: 6px 10px;
-  cursor: pointer;
   color: #ddd;
+  outline: none;
 }
-.ecu-settings-pick input {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
+.ecu-pick-search:focus { border-color: #886; }
+.ecu-pick-dropdown {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid #666;
+  border-top: none;
+}
+.ecu-pick-option {
+  padding: 5px 10px;
   cursor: pointer;
+  font-size: 17px;
+  color: #ddd;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
-.ecu-settings-pick[data-on="1"] {
-  border-color: #886;
+.ecu-pick-option:hover {
   background: #2a2210;
   color: #ffe08a;
 }
+.ecu-pick-option-detail {
+  font-size: 14px;
+  opacity: 0.5;
+  margin-left: auto;
+}
+.ecu-abvis-table {
+  margin: 8px 0;
+  border: 1px solid #333;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.ecu-abvis-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 1.5fr) 44px 62px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: #ddd;
+  border-bottom: 1px solid #222;
+  min-height: 40px;
+}
+.ecu-abvis-row:last-child { border-bottom: none; }
+.ecu-abvis-header {
+  font-size: 13px;
+  color: #888;
+  background: #1a1a1a;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 26px;
+}
+.ecu-abvis-cell { overflow: hidden; }
+.ecu-abvis-ability {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ecu-abvis-ability-copy {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.ecu-abvis-ability-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-abvis-ability-key {
+  font-size: 12px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-abvis-casters-col {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.ecu-abvis-caster {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+.ecu-abvis-toggle { text-align: center; }
+.ecu-abvis-toggle input { width: 16px; height: 16px; cursor: pointer; }
 .ecu-settings-preview {
   margin-top: 14px;
   padding: 10px;
@@ -38310,7 +38466,7 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-settings-abil-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 1.5fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 8px 0;
@@ -38342,6 +38498,15 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-settings-abil-icon {
   flex: 0 0 auto;
+}
+.ecu-settings-abil-casters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.ecu-settings-abil-caster {
+  display: inline-flex;
+  cursor: default;
 }
 .ecu-settings-abil-check {
   display: flex;
@@ -38666,6 +38831,7 @@ ${parts.map(cssSlice).join("\n")}
       for (let j = 0; j < section3.rows.length; j++) {
         const row3 = section3.rows[j];
         if (row3.ready || row3.ms <= 0 || row3.ms > prefs.imminentMs) continue;
+        if (!abilityVisibleOnBigIcon(row3.id, prefs)) continue;
         out.push({
           key: `${section3.targetId}:${row3.id}`,
           id: row3.id,
@@ -39411,6 +39577,7 @@ ${parts.map(cssSlice).join("\n")}
     const children = renderTicks(prefs);
     for (let i = 0; i < rows.length; i++) {
       const row3 = rows[i];
+      if (!abilityVisibleOnRail(row3.id, row3.cooldown, prefs)) continue;
       const stack = row3.pinned ? staticStackIndex(rows, row3.id) : 0;
       const showTrail = !row3.pinned && !row3.ready && row3.scrollPos > 0;
       if (showTrail) {
@@ -39862,7 +40029,22 @@ ${parts.map(cssSlice).join("\n")}
         },
         { id: "highlightGrow", label: "Highlight grow", extra: "up down" },
         { id: "highlightMargin", label: "Highlight margin", extra: "spacing" },
-        { id: "imminentWindow", label: "Imminent window", extra: "3s 5s 8s" }
+        { id: "imminentWindow", label: "Imminent window", extra: "3s 5s 8s" },
+        {
+          id: "minCooldown",
+          label: "Min cooldown",
+          extra: "hide short fast filter threshold"
+        }
+      ]
+    },
+    {
+      title: "Ability Visibility",
+      rows: [
+        {
+          id: "abilityVisibility",
+          label: "Ability visibility",
+          extra: "per ability rail big icon hide show toggle filter"
+        }
       ]
     },
     {
@@ -39936,35 +40118,190 @@ ${parts.map(cssSlice).join("\n")}
     if (!had) next.push(mtype);
     return next;
   }
-  function previewPickKids(casters, picked, onToggle) {
-    const kids = [];
+  function PreviewPicker(props) {
+    const React = getReact();
+    const [search, setSearch] = React.useState("");
+    const [open, setOpen] = React.useState(false);
+    const { casters, picked, onToggle } = props;
+    const pickedSet = new Set(picked);
+    const q = search.trim().toLowerCase();
+    const badges = [];
     for (let i = 0; i < casters.length; i++) {
-      const caster = casters[i];
-      let on = false;
-      for (let j = 0; j < picked.length; j++) {
-        if (picked[j] === caster.mtype) {
-          on = true;
-          break;
-        }
-      }
-      kids.push(
+      const c = casters[i];
+      if (!pickedSet.has(c.mtype)) continue;
+      badges.push(
         e(
-          "label",
+          "span",
           {
-            key: caster.mtype,
-            className: "ecu-settings-pick",
-            "data-on": on ? "1" : "0"
+            key: c.mtype,
+            className: "ecu-pick-badge",
+            onClick: () => onToggle(c.mtype),
+            title: "Remove " + c.name
           },
-          e("input", {
-            type: "checkbox",
-            checked: on,
-            onChange: () => onToggle(caster.mtype)
-          }),
-          caster.name
+          c.name,
+          e("span", { className: "ecu-pick-badge-x" }, "\xD7")
         )
       );
     }
-    return kids;
+    const filtered = [];
+    for (let i = 0; i < casters.length; i++) {
+      if (pickedSet.has(casters[i].mtype)) continue;
+      if (q && casters[i].name.toLowerCase().indexOf(q) === -1) continue;
+      filtered.push(casters[i]);
+    }
+    return e(
+      "div",
+      { className: "ecu-pick-wrap" },
+      badges.length ? e("div", { className: "ecu-pick-badges" }, ...badges) : null,
+      e(
+        "div",
+        { className: "ecu-pick-input-row" },
+        e("input", {
+          type: "text",
+          className: "ecu-pick-search",
+          placeholder: "Add caster\u2026",
+          value: search,
+          onFocus: () => setOpen(true),
+          onBlur: () => setTimeout(() => setOpen(false), 150),
+          onChange: (ev) => setSearch(ev.target.value)
+        })
+      ),
+      open && filtered.length ? e(
+        "div",
+        { className: "ecu-pick-dropdown" },
+        ...filtered.map(
+          (c) => e(
+            "div",
+            {
+              key: c.mtype,
+              className: "ecu-pick-option",
+              onMouseDown: (ev) => {
+                ev.preventDefault();
+                onToggle(c.mtype);
+                setSearch("");
+              }
+            },
+            c.name,
+            e(
+              "span",
+              { className: "ecu-pick-option-detail" },
+              c.abilities.map((a) => a.name).join(", ")
+            )
+          )
+        )
+      ) : null
+    );
+  }
+  function collectUniqueAbilities(casters) {
+    const map = /* @__PURE__ */ new Map();
+    for (let i = 0; i < casters.length; i++) {
+      const c = casters[i];
+      for (let j = 0; j < c.abilities.length; j++) {
+        const a = c.abilities[j];
+        const existing = map.get(a.id);
+        if (existing) {
+          existing.casters.push({ mtype: c.mtype, name: c.name });
+        } else {
+          map.set(a.id, {
+            id: a.id,
+            name: a.name,
+            casters: [{ mtype: c.mtype, name: c.name }]
+          });
+        }
+      }
+    }
+    const out = Array.from(map.values());
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+  function AbilityVisibilityTable(props) {
+    var _a;
+    const { abilities, prefs, patch } = props;
+    const overrides = prefs.abilityOverrides;
+    const toggleOverride = (abilityId, field) => {
+      var _a2;
+      const cur = (_a2 = overrides[abilityId]) != null ? _a2 : { rail: true, bigIcon: true };
+      const next = { ...cur, [field]: !cur[field] };
+      if (next.rail && next.bigIcon) {
+        const cleaned = { ...overrides };
+        delete cleaned[abilityId];
+        patch({ abilityOverrides: cleaned });
+      } else {
+        patch({ abilityOverrides: { ...overrides, [abilityId]: next } });
+      }
+    };
+    if (!abilities.length) return null;
+    const headerRow = e(
+      "div",
+      { className: "ecu-abvis-row ecu-abvis-header", key: "__header" },
+      e("span", { className: "ecu-abvis-cell ecu-abvis-ability" }, "Ability"),
+      e("span", { className: "ecu-abvis-cell ecu-abvis-casters-col" }, "Casters"),
+      e("span", { className: "ecu-abvis-cell ecu-abvis-toggle" }, "Rail"),
+      e("span", { className: "ecu-abvis-cell ecu-abvis-toggle" }, "Big Icon")
+    );
+    const rows = [headerRow];
+    for (let i = 0; i < abilities.length; i++) {
+      const ab = abilities[i];
+      const ov = (_a = overrides[ab.id]) != null ? _a : { rail: true, bigIcon: true };
+      const casterIcons = [];
+      for (let j = 0; j < ab.casters.length; j++) {
+        const c = ab.casters[j];
+        casterIcons.push(
+          e(
+            "span",
+            { key: c.mtype, className: "ecu-abvis-caster", title: c.name },
+            e(GameIcon, {
+              id: c.mtype,
+              kind: "monster",
+              mtype: c.mtype,
+              size: 40,
+              title: c.name
+            })
+          )
+        );
+      }
+      rows.push(
+        e(
+          "div",
+          { className: "ecu-abvis-row", key: ab.id },
+          e(
+            "span",
+            { className: "ecu-abvis-cell ecu-abvis-ability" },
+            abilityIcon(ab.id, false, 32),
+            e(
+              "div",
+              { className: "ecu-abvis-ability-copy" },
+              e("span", { className: "ecu-abvis-ability-name" }, ab.name),
+              e("span", { className: "ecu-abvis-ability-key" }, ab.id)
+            )
+          ),
+          e(
+            "span",
+            { className: "ecu-abvis-cell ecu-abvis-casters-col" },
+            ...casterIcons
+          ),
+          e(
+            "span",
+            { className: "ecu-abvis-cell ecu-abvis-toggle" },
+            e("input", {
+              type: "checkbox",
+              checked: ov.rail,
+              onChange: () => toggleOverride(ab.id, "rail")
+            })
+          ),
+          e(
+            "span",
+            { className: "ecu-abvis-cell ecu-abvis-toggle" },
+            e("input", {
+              type: "checkbox",
+              checked: ov.bigIcon,
+              onChange: () => toggleOverride(ab.id, "bigIcon")
+            })
+          )
+        )
+      );
+    }
+    return e("div", { className: "ecu-abvis-table" }, ...rows);
   }
   function AbilityTimelineSettingsPaneView(props) {
     const React = getReact();
@@ -40008,6 +40345,7 @@ ${parts.map(cssSlice).join("\n")}
     const highlightGrowRow = searchRowMeta("highlightGrow");
     const highlightMarginRow = searchRowMeta("highlightMargin");
     const imminentWindowRow = searchRowMeta("imminentWindow");
+    const minCooldownRow = searchRowMeta("minCooldown");
     const previewRow = searchRowMeta("preview");
     const kids = [];
     const pushSection = (label, rows, extra) => {
@@ -40244,20 +40582,50 @@ ${parts.map(cssSlice).join("\n")}
           (v) => patch({ imminentMs: Number(v) })
         ),
         imminentWindowRow.extra
+      ),
+      maybeRow(
+        minCooldownRow.label,
+        selectCtrl(
+          String(prefs.minCooldownMs),
+          [
+            { value: "0", label: "Show all" },
+            { value: "1000", label: "\u22651s" },
+            { value: "2000", label: "\u22652s" },
+            { value: "3000", label: "\u22653s" },
+            { value: "5000", label: "\u22655s" }
+          ],
+          (v) => patch({ minCooldownMs: Number(v) })
+        ),
+        minCooldownRow.extra
       )
     ]);
+    const abilityVisibilityRow = searchRowMeta("abilityVisibility");
+    const abilityVisVisible = matchesQuery(
+      abilityVisibilityRow.label,
+      query,
+      abilityVisibilityRow.extra
+    );
+    if (abilityVisVisible) {
+      const allAbilities = collectUniqueAbilities(casters);
+      if (allAbilities.length) {
+        kids.push(section2(abilityVisibilityRow.label));
+        kids.push(
+          e(AbilityVisibilityTable, {
+            abilities: allAbilities,
+            prefs,
+            patch
+          })
+        );
+      }
+    }
     if (previewVisible) {
       kids.push(section2(previewRow.label));
       kids.push(
-        e(
-          "div",
-          { className: "ecu-settings-picks" },
-          ...previewPickKids(
-            casters,
-            picked,
-            (mtype) => setPicked((prev) => toggleMtype(prev, mtype))
-          )
-        )
+        e(PreviewPicker, {
+          casters,
+          picked,
+          onToggle: (mtype) => setPicked((prev) => toggleMtype(prev, mtype))
+        })
       );
       kids.push(e(AbilityTimelineSettingsPreview, { prefs, picked }));
     }
@@ -40617,7 +40985,23 @@ ${parts.map(cssSlice).join("\n")}
     }
     return total;
   }
-  function abilityRuleRow(ab, settings, rules, onChange) {
+  function buildCasterMap(casters) {
+    const map = /* @__PURE__ */ new Map();
+    for (let i = 0; i < casters.length; i++) {
+      const c = casters[i];
+      for (let j = 0; j < c.abilities.length; j++) {
+        const aId = c.abilities[j].id;
+        const existing = map.get(aId);
+        if (existing) {
+          existing.push({ mtype: c.mtype, name: c.name });
+        } else {
+          map.set(aId, [{ mtype: c.mtype, name: c.name }]);
+        }
+      }
+    }
+    return map;
+  }
+  function abilityRuleRow(ab, settings, rules, onChange, casterRefs) {
     const rule = rules[ab.id];
     const showName = resolveAbilityShowName(ab.id, settings, rules);
     const hasNameOverride = typeof (rule == null ? void 0 : rule.showName) === "boolean";
@@ -40632,7 +41016,7 @@ ${parts.map(cssSlice).join("\n")}
         e(GameIcon, {
           id: ab.id,
           kind: "skill",
-          size: 28,
+          size: 32,
           className: "ecu-settings-abil-icon",
           title: ab.name
         }),
@@ -40641,6 +41025,23 @@ ${parts.map(cssSlice).join("\n")}
           { className: "ecu-settings-abil-copy" },
           e("span", { className: "ecu-settings-abil-name" }, ab.name),
           e("span", { className: "ecu-settings-abil-key" }, ab.id)
+        )
+      ),
+      e(
+        "div",
+        { className: "ecu-settings-abil-casters" },
+        ...casterRefs.map(
+          (c) => e(
+            "span",
+            { key: c.mtype, className: "ecu-settings-abil-caster" },
+            e(GameIcon, {
+              id: c.mtype,
+              kind: "monster",
+              mtype: c.mtype,
+              size: 40,
+              title: c.name
+            })
+          )
         )
       ),
       e(
@@ -40685,10 +41086,19 @@ ${parts.map(cssSlice).join("\n")}
     const settings = getVizSettings();
     const rules = getVizAbilityRules();
     const abilities = listConfigurableAbilities();
+    const casterMap = buildCasterMap(listAbilityPreviewCasters());
     const kids = [];
     for (let i = 0; i < abilities.length; i++) {
       if (!abilityMatchesQuery(abilities[i], props.query || "")) continue;
-      kids.push(abilityRuleRow(abilities[i], settings, rules, props.bump));
+      kids.push(
+        abilityRuleRow(
+          abilities[i],
+          settings,
+          rules,
+          props.bump,
+          casterMap.get(abilities[i].id) || []
+        )
+      );
     }
     return e(
       "div",
