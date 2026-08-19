@@ -56,7 +56,12 @@ export type AbilityTimelinePanelModel = {
 /** @deprecated single-boss alias */
 export type AbilityTimelineModel = AbilityTimelineSection;
 
-type StickySlot = { endsAt: number; lastMs: number; gen: number };
+type StickySlot = {
+  endsAt: number;
+  lastMs: number;
+  gen: number;
+  cooldown?: number;
+};
 
 /** Sticky absolute end times — smooth sparse entity.s rebroadcasts. */
 const stickyByKey = new Map<string, StickySlot>();
@@ -102,14 +107,25 @@ export function monsterHasTrackableAbilities(
 }
 
 /**
+ * Short-CD auto-cycle threshold. Abilities with cooldown at or below this
+ * are assumed to fire repeatedly. When the sticky slot expires without a
+ * fresh wire sample the model synthesizes a new cycle from the known CD.
+ */
+const AUTO_CYCLE_MAX_CD = 3000;
+
+/**
  * Map sparse wire `ms` onto a locally ticking remaining value.
  * Same sticky logic as buff icons (syncEndsAt).
+ *
+ * @param cooldown  Known ability cooldown (ms). Enables auto-cycle for short CDs
+ *                  whose server updates are too sparse to catch every cast.
  */
 export function syncAbilityRemainingMs(
   targetId: string,
   abilityId: string,
   rawMs: number,
   now: number = Date.now(),
+  cooldown: number = 0,
 ): number {
   const key = stickyKey(targetId, abilityId);
   if (!(rawMs > 0)) {
@@ -119,8 +135,30 @@ export function syncAbilityRemainingMs(
     if (prev && prev.endsAt > now + 250) {
       return Math.max(0, prev.endsAt - now);
     }
+    // Short-CD auto-cycle: the ability just came off CD — assume it fires
+    // again immediately and synthesize a new cycle from the known cooldown.
+    const cd = cooldown || prev?.cooldown || 0;
+    if (prev && cd > 0 && cd <= AUTO_CYCLE_MAX_CD && prev.endsAt > 0) {
+      const elapsed = now - prev.endsAt;
+      if (elapsed >= 0 && elapsed < cd * 2) {
+        const newEndsAt = now + cd;
+        const newGen = prev.gen + 1;
+        stickyByKey.set(key, {
+          endsAt: newEndsAt,
+          lastMs: cd,
+          gen: newGen,
+          cooldown: cd,
+        });
+        return cd;
+      }
+    }
     if (prev) {
-      stickyByKey.set(key, { endsAt: now, lastMs: 0, gen: prev.gen });
+      stickyByKey.set(key, {
+        endsAt: now,
+        lastMs: 0,
+        gen: prev.gen,
+        cooldown: prev.cooldown,
+      });
     }
     return 0;
   }
@@ -134,7 +172,12 @@ export function syncAbilityRemainingMs(
   } else if (prev && endsAt >= prev.endsAt + 2000) {
     gen = prev.gen + 1;
   }
-  stickyByKey.set(key, { endsAt, lastMs: rawMs, gen });
+  stickyByKey.set(key, {
+    endsAt,
+    lastMs: rawMs,
+    gen,
+    cooldown: cooldown || prev?.cooldown,
+  });
   return Math.max(0, endsAt - now);
 }
 
@@ -174,14 +217,11 @@ export function abilityInStatic(
 /** 0 = NOW edge, 1 = far start (static pin / full CD remaining). */
 export function abilityScrollPos(
   ms: number,
-  cooldown: number,
+  _cooldown: number,
   ready: boolean,
   windowMs: number = DEFAULT_ABILITY_TIMELINE_PREFS.windowMs,
 ): number {
   if (ready || ms <= 0) return 0;
-  if (cooldown <= windowMs) {
-    return Math.max(0, Math.min(1, ms / cooldown));
-  }
   if (ms > windowMs) return 1;
   return Math.max(0, Math.min(1, ms / windowMs));
 }
@@ -308,7 +348,7 @@ export function buildAbilityTimelineModel(
     if (!cooldown) continue;
     const st = target.s?.[id];
     const rawMs = st && typeof st.ms === "number" ? Math.max(0, st.ms) : 0;
-    const ms = syncAbilityRemainingMs(targetId, id, rawMs, now);
+    const ms = syncAbilityRemainingMs(targetId, id, rawMs, now, cooldown);
     const row = decorateAbilityRow(
       id,
       skillName(id),

@@ -33,8 +33,8 @@ describe("abilityTimeline scroll math", () => {
     assert.equal(abilityScrollPos(0, 12000, true), 0);
   });
 
-  it("scales short CDs across the full axis", () => {
-    assert.equal(abilityScrollPos(4000, 8000, false), 0.5);
+  it("scales short CDs relative to the window, not the cooldown", () => {
+    assert.equal(abilityScrollPos(4000, 8000, false), 0.4);
     assert.equal(abilityInStatic(4000, 8000, false), false);
   });
 
@@ -359,7 +359,7 @@ describe("abilityTimeline sticky ms", () => {
           },
           zapper0: {
             name: "Zapper",
-            abilities: { zap: { cooldown: 1000 } },
+            abilities: { zap: { cooldown: 4000 } },
           },
           a4: { name: "Orlok" },
         },

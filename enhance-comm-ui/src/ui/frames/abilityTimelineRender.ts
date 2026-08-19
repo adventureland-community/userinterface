@@ -12,7 +12,10 @@ import {
   formatAbilityMs,
   staticStackIndex,
 } from "../../instance/abilityTimelineModel";
-import type { AbilityTimelinePrefs } from "../../instance/abilityTimelinePrefs";
+import {
+  abilityVisibleOnRail,
+  type AbilityTimelinePrefs,
+} from "../../instance/abilityTimelinePrefs";
 import {
   formatAbilityCountdown,
   nearTimelineTick,
@@ -66,6 +69,7 @@ function renderScroll(
   const children: any[] = renderTicks(prefs);
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    if (!abilityVisibleOnRail(row.id, row.cooldown, prefs)) continue;
     const stack = row.pinned ? staticStackIndex(rows, row.id) : 0;
     const showTrail = !row.pinned && !row.ready && row.scrollPos > 0;
     if (showTrail) {

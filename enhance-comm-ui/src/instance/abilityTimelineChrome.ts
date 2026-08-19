@@ -9,6 +9,7 @@ import type {
   AbilityTimelineSection,
 } from "./abilityTimelineModel";
 import {
+  abilityVisibleOnBigIcon,
   DEFAULT_ABILITY_TIMELINE_PREFS,
   type AbilityGrowDir,
   type AbilityTimelinePrefs,
@@ -100,6 +101,7 @@ export function collectBigIcons(
     for (let j = 0; j < section.rows.length; j++) {
       const row = section.rows[j];
       if (row.ready || row.ms <= 0 || row.ms > prefs.imminentMs) continue;
+      if (!abilityVisibleOnBigIcon(row.id, prefs)) continue;
       out.push({
         key: `${section.targetId}:${row.id}`,
         id: row.id,

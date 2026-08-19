@@ -41,6 +41,20 @@ export type AbilityTimelinePrefs = {
   bigIconMargin: number;
   highlightGrow: AbilityHighlightGrow;
   highlightMargin: number;
+  /** Hide abilities whose cooldown is shorter than this (ms). 0 = show all. */
+  minCooldownMs: number;
+  /**
+   * Per-ability visibility overrides.
+   * Key = ability id (e.g. "heal"). Missing key = show everywhere.
+   */
+  abilityOverrides: Record<string, AbilityVisibility>;
+};
+
+export type AbilityVisibility = {
+  /** Show on the scrolling rail. Default true. */
+  rail: boolean;
+  /** Show in BigIcon / Highlight panels. Default true. */
+  bigIcon: boolean;
 };
 
 export const DEFAULT_ABILITY_TIMELINE_PREFS: AbilityTimelinePrefs = {
@@ -61,6 +75,8 @@ export const DEFAULT_ABILITY_TIMELINE_PREFS: AbilityTimelinePrefs = {
   bigIconMargin: 8,
   highlightGrow: "up",
   highlightMargin: 4,
+  minCooldownMs: 3000,
+  abilityOverrides: {},
 };
 
 function clampNum(
@@ -117,6 +133,47 @@ function normalizeRailTint(raw: unknown, fallback: string): string {
   return t;
 }
 
+function normalizeAbilityOverrides(
+  raw: unknown,
+): Record<string, AbilityVisibility> {
+  if (!raw || typeof raw !== "object") return {};
+  const src = raw as Record<string, unknown>;
+  const out: Record<string, AbilityVisibility> = {};
+  const keys = Object.keys(src);
+  for (let i = 0; i < keys.length; i++) {
+    const v = src[keys[i]];
+    if (!v || typeof v !== "object") continue;
+    const entry = v as Record<string, unknown>;
+    const rail = entry.rail !== false;
+    const bigIcon = entry.bigIcon !== false;
+    if (rail && bigIcon) continue; // default — no need to store
+    out[keys[i]] = { rail, bigIcon };
+  }
+  return out;
+}
+
+/** Whether an ability should show on the rail, considering overrides + minCooldownMs. */
+export function abilityVisibleOnRail(
+  abilityId: string,
+  cooldown: number,
+  prefs: AbilityTimelinePrefs,
+): boolean {
+  const ov = prefs.abilityOverrides[abilityId];
+  if (ov && !ov.rail) return false;
+  if (prefs.minCooldownMs > 0 && cooldown < prefs.minCooldownMs) return false;
+  return true;
+}
+
+/** Whether an ability should show in BigIcon / Highlight. */
+export function abilityVisibleOnBigIcon(
+  abilityId: string,
+  prefs: AbilityTimelinePrefs,
+): boolean {
+  const ov = prefs.abilityOverrides[abilityId];
+  if (ov && !ov.bigIcon) return false;
+  return true;
+}
+
 /** Accept saved blob, plus leftover top-level orient scalar. */
 export function normalizeAbilityTimelinePrefs(
   raw: unknown,
@@ -159,6 +216,10 @@ export function normalizeAbilityTimelinePrefs(
     highlightMargin: Math.round(
       clampNum(src.highlightMargin, 0, 32, d.highlightMargin),
     ),
+    minCooldownMs:
+      Math.round(clampNum(src.minCooldownMs, 0, 10000, d.minCooldownMs) / 100) *
+      100,
+    abilityOverrides: normalizeAbilityOverrides(src.abilityOverrides),
   };
 }
 
