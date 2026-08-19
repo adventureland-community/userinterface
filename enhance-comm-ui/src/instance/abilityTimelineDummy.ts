@@ -28,93 +28,8 @@ export type AbilityPreviewCaster = {
 /** Sit at NOW between looping preview CDs (matches overlay sim). */
 export const PREVIEW_READY_HOLD_MS = 2800;
 
-const FALLBACK_CASTERS: AbilityPreviewCaster[] = [
-  {
-    mtype: "a2",
-    name: "Bill",
-    abilities: [{ id: "anger", name: "Anger", cooldown: 8000, phaseMs: 2000 }],
-  },
-  {
-    mtype: "a3",
-    name: "Lestat",
-    abilities: [{ id: "anger", name: "Anger", cooldown: 8000, phaseMs: 1600 }],
-  },
-  {
-    mtype: "a5",
-    name: "Elena",
-    abilities: [
-      { id: "healing", name: "Healing", cooldown: 800, phaseMs: 0 },
-    ],
-  },
-  {
-    mtype: "a7",
-    name: "Lucinda",
-    abilities: [{ id: "mlight", name: "Light", cooldown: 3000, phaseMs: 800 }],
-  },
-  {
-    mtype: "gpurplepro",
-    name: "Protector of Darkness",
-    abilities: [
-      { id: "anger", name: "Anger", cooldown: 12000, phaseMs: 0 },
-      { id: "warpstomp", name: "Warpstomp", cooldown: 8000, phaseMs: 2500 },
-    ],
-  },
-  {
-    mtype: "ggreenpro",
-    name: "Protector of Nature",
-    abilities: [
-      { id: "tangle", name: "Tangle", cooldown: 1600, phaseMs: 400 },
-      { id: "self_healing", name: "Healing", cooldown: 2000, phaseMs: 900 },
-    ],
-  },
-  {
-    mtype: "gbluepro",
-    name: "Protector of Frost",
-    abilities: [
-      { id: "multi_freeze", name: "Multi Freeze", cooldown: 4000, phaseMs: 1200 },
-    ],
-  },
-  {
-    mtype: "icegolem",
-    name: "Ice Golem",
-    abilities: [
-      { id: "multi_freeze", name: "Multi Freeze", cooldown: 4000, phaseMs: 600 },
-    ],
-  },
-  {
-    mtype: "xmagefz",
-    name: "Mage · Frozen",
-    abilities: [
-      { id: "deepfreeze", name: "Deepfreeze", cooldown: 6000, phaseMs: 0 },
-    ],
-  },
-  {
-    mtype: "xmagefi",
-    name: "Mage · Fire",
-    abilities: [
-      { id: "anger", name: "Anger", cooldown: 8000, phaseMs: 0 },
-      { id: "multi_burn", name: "Multi Burn", cooldown: 4000, phaseMs: 1800 },
-    ],
-  },
-  {
-    mtype: "xmagen",
-    name: "Mage · Nature",
-    abilities: [
-      { id: "self_healing", name: "Healing", cooldown: 2000, phaseMs: 400 },
-      { id: "mtangle", name: "Tangle", cooldown: 1600, phaseMs: 1100 },
-    ],
-  },
-  {
-    mtype: "xmagex",
-    name: "Dark Mage",
-    abilities: [
-      { id: "anger", name: "Anger", cooldown: 8000, phaseMs: 500 },
-      { id: "warpstomp", name: "Warpstomp", cooldown: 4000, phaseMs: 2200 },
-    ],
-  },
-];
-
-export const DEFAULT_PREVIEW_MTYPES = ["gpurplepro", "a2"];
+/** Preferred default mtypes when G is available. First two found are shown. */
+const PREFERRED_DEFAULTS = ["gpurplepro", "xmagefi", "a2"];
 
 function skillName(id: string): string {
   try {
@@ -155,8 +70,8 @@ function trackableFromDef(
 }
 
 /**
- * Curated Settings preview roster. Live G fills CDs/names when present;
- * scanning every G.monsters entry would flood the picker.
+ * Settings preview roster — every monster in G.monsters with at least one
+ * trackable cooldown ability, sorted by name.
  */
 export function listAbilityPreviewCasters(): AbilityPreviewCaster[] {
   let monsters: Record<string, any> | undefined;
@@ -165,36 +80,33 @@ export function listAbilityPreviewCasters(): AbilityPreviewCaster[] {
   } catch {
     monsters = undefined;
   }
+  if (!monsters) return [];
   const out: AbilityPreviewCaster[] = [];
-  for (let i = 0; i < FALLBACK_CASTERS.length; i++) {
-    const seed = FALLBACK_CASTERS[i];
-    const def = monsters?.[seed.mtype];
-    const live = def ? trackableFromDef(seed.mtype, def) : null;
-    out.push(
-      live || {
-        ...seed,
-        name: getInstanceMobLabel(seed.mtype) || seed.name,
-      },
-    );
+  const mtypes = Object.keys(monsters);
+  for (let i = 0; i < mtypes.length; i++) {
+    const caster = trackableFromDef(mtypes[i], monsters[mtypes[i]]);
+    if (caster) out.push(caster);
   }
+  out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
 }
 
 export function defaultAbilityPreviewMtypes(): string[] {
   const all = listAbilityPreviewCasters();
+  if (!all.length) return [];
   const out: string[] = [];
-  for (let i = 0; i < DEFAULT_PREVIEW_MTYPES.length; i++) {
-    const mtype = DEFAULT_PREVIEW_MTYPES[i];
+  for (let i = 0; i < PREFERRED_DEFAULTS.length; i++) {
+    const mtype = PREFERRED_DEFAULTS[i];
     for (let j = 0; j < all.length; j++) {
       if (all[j].mtype === mtype) {
         out.push(mtype);
+        if (out.length >= 2) return out;
         break;
       }
     }
   }
   if (out.length) return out;
-  if (all[0]) return [all[0].mtype];
-  return [];
+  return [all[0].mtype];
 }
 
 export function loopPreviewRemaining(
@@ -215,7 +127,7 @@ export function loopPreviewRemaining(
 
 function pickCasters(mtypes?: string[]): AbilityPreviewCaster[] {
   const all = listAbilityPreviewCasters();
-  const want = mtypes === undefined ? DEFAULT_PREVIEW_MTYPES : mtypes;
+  const want = mtypes === undefined ? PREFERRED_DEFAULTS : mtypes;
   const out: AbilityPreviewCaster[] = [];
   for (let i = 0; i < want.length; i++) {
     const mtype = want[i];
@@ -248,11 +160,18 @@ export function dummyAbilityTimelineModel(
     const rows: AbilityTimelineSection["rows"] = [];
     for (let j = 0; j < caster.abilities.length; j++) {
       const ab = caster.abilities[j];
+      if (prefs.minCooldownMs > 0 && ab.cooldown < prefs.minCooldownMs)
+        continue;
       let ms = ab.cooldown;
       let endsAt = 0;
       let castGen = 0;
       if (epoch != null) {
-        const looped = loopPreviewRemaining(ab.cooldown, ab.phaseMs, now, epoch);
+        const looped = loopPreviewRemaining(
+          ab.cooldown,
+          ab.phaseMs,
+          now,
+          epoch,
+        );
         ms = looped.ms;
         castGen = looped.cycle;
         endsAt = ms > 0 ? now + ms : 0;

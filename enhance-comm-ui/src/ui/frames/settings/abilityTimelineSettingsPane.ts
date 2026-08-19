@@ -15,10 +15,12 @@ import {
   type AbilityTimelineOrient,
   type AbilityTimelinePrefs,
   type AbilityTimelineScope,
+  type AbilityVisibility,
 } from "../../../instance/abilityTimelinePrefs";
 import {
   defaultAbilityPreviewMtypes,
   listAbilityPreviewCasters,
+  type AbilityPreviewAbility,
   type AbilityPreviewCaster,
 } from "../../../instance/abilityTimelineDummy";
 import {
@@ -27,6 +29,8 @@ import {
 } from "../../hooks/useAbilityTimelineLive";
 import { renderAbilityTimelineShell } from "../abilityTimelineRender";
 import { renderAbilityBigIcons } from "../AbilityTimelineBigIconPanel";
+import { abilityIcon } from "../abilityTimelineRenderUtil";
+import { GameIcon } from "../../chrome/GameIcon";
 import { renderAbilityHighlights } from "../AbilityTimelineHighlightPanel";
 import { SettingsColorInput } from "./settingsColorInput";
 
@@ -118,6 +122,8 @@ type AbilityTimelineSearchRowId =
   | "highlightGrow"
   | "highlightMargin"
   | "imminentWindow"
+  | "minCooldown"
+  | "abilityVisibility"
   | "preview";
 
 type AbilityTimelineSearchSection = {
@@ -182,6 +188,21 @@ const ABILITY_TIMELINE_SEARCH_SECTIONS: readonly AbilityTimelineSearchSection[] 
         { id: "highlightGrow", label: "Highlight grow", extra: "up down" },
         { id: "highlightMargin", label: "Highlight margin", extra: "spacing" },
         { id: "imminentWindow", label: "Imminent window", extra: "3s 5s 8s" },
+        {
+          id: "minCooldown",
+          label: "Min cooldown",
+          extra: "hide short fast filter threshold",
+        },
+      ],
+    },
+    {
+      title: "Ability Visibility",
+      rows: [
+        {
+          id: "abilityVisibility",
+          label: "Ability visibility",
+          extra: "per ability rail big icon hide show toggle filter",
+        },
       ],
     },
     {
@@ -268,39 +289,221 @@ function toggleMtype(prev: string[], mtype: string): string[] {
   return next;
 }
 
-function previewPickKids(
-  casters: AbilityPreviewCaster[],
-  picked: string[],
-  onToggle: (mtype: string) => void,
-): any[] {
-  const kids: any[] = [];
+function PreviewPicker(props: {
+  casters: AbilityPreviewCaster[];
+  picked: string[];
+  onToggle: (mtype: string) => void;
+}): any {
+  const React = getReact();
+  const [search, setSearch] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const { casters, picked, onToggle } = props;
+
+  const pickedSet = new Set(picked);
+  const q = search.trim().toLowerCase();
+
+  const badges: any[] = [];
   for (let i = 0; i < casters.length; i++) {
-    const caster = casters[i];
-    let on = false;
-    for (let j = 0; j < picked.length; j++) {
-      if (picked[j] === caster.mtype) {
-        on = true;
-        break;
-      }
-    }
-    kids.push(
+    const c = casters[i];
+    if (!pickedSet.has(c.mtype)) continue;
+    badges.push(
       e(
-        "label",
+        "span",
         {
-          key: caster.mtype,
-          className: "ecu-settings-pick",
-          "data-on": on ? "1" : "0",
+          key: c.mtype,
+          className: "ecu-pick-badge",
+          onClick: () => onToggle(c.mtype),
+          title: "Remove " + c.name,
         },
-        e("input", {
-          type: "checkbox",
-          checked: on,
-          onChange: () => onToggle(caster.mtype),
-        }),
-        caster.name,
+        c.name,
+        e("span", { className: "ecu-pick-badge-x" }, "×"),
       ),
     );
   }
-  return kids;
+
+  const filtered: AbilityPreviewCaster[] = [];
+  for (let i = 0; i < casters.length; i++) {
+    if (pickedSet.has(casters[i].mtype)) continue;
+    if (q && casters[i].name.toLowerCase().indexOf(q) === -1) continue;
+    filtered.push(casters[i]);
+  }
+
+  return e(
+    "div",
+    { className: "ecu-pick-wrap" },
+    badges.length
+      ? e("div", { className: "ecu-pick-badges" }, ...badges)
+      : null,
+    e(
+      "div",
+      { className: "ecu-pick-input-row" },
+      e("input", {
+        type: "text",
+        className: "ecu-pick-search",
+        placeholder: "Add caster…",
+        value: search,
+        onFocus: () => setOpen(true),
+        onBlur: () => setTimeout(() => setOpen(false), 150),
+        onChange: (ev: { target: { value: string } }) =>
+          setSearch(ev.target.value),
+      }),
+    ),
+    open && filtered.length
+      ? e(
+          "div",
+          { className: "ecu-pick-dropdown" },
+          ...filtered.map((c: AbilityPreviewCaster) =>
+            e(
+              "div",
+              {
+                key: c.mtype,
+                className: "ecu-pick-option",
+                onMouseDown: (ev: { preventDefault: () => void }) => {
+                  ev.preventDefault();
+                  onToggle(c.mtype);
+                  setSearch("");
+                },
+              },
+              c.name,
+              e(
+                "span",
+                { className: "ecu-pick-option-detail" },
+                c.abilities
+                  .map((a: AbilityPreviewAbility) => a.name)
+                  .join(", "),
+              ),
+            ),
+          ),
+        )
+      : null,
+  );
+}
+
+type CasterRef = { mtype: string; name: string };
+type UniqueAbility = { id: string; name: string; casters: CasterRef[] };
+
+function collectUniqueAbilities(
+  casters: AbilityPreviewCaster[],
+): UniqueAbility[] {
+  const map = new Map<string, UniqueAbility>();
+  for (let i = 0; i < casters.length; i++) {
+    const c = casters[i];
+    for (let j = 0; j < c.abilities.length; j++) {
+      const a = c.abilities[j];
+      const existing = map.get(a.id);
+      if (existing) {
+        existing.casters.push({ mtype: c.mtype, name: c.name });
+      } else {
+        map.set(a.id, {
+          id: a.id,
+          name: a.name,
+          casters: [{ mtype: c.mtype, name: c.name }],
+        });
+      }
+    }
+  }
+  const out = Array.from(map.values());
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+function AbilityVisibilityTable(props: {
+  abilities: UniqueAbility[];
+  prefs: AbilityTimelinePrefs;
+  patch: (p: Partial<AbilityTimelinePrefs>) => void;
+}): any {
+  const { abilities, prefs, patch } = props;
+  const overrides = prefs.abilityOverrides;
+
+  const toggleOverride = (abilityId: string, field: "rail" | "bigIcon") => {
+    const cur = overrides[abilityId] ?? { rail: true, bigIcon: true };
+    const next = { ...cur, [field]: !cur[field] };
+    if (next.rail && next.bigIcon) {
+      const cleaned = { ...overrides };
+      delete cleaned[abilityId];
+      patch({ abilityOverrides: cleaned });
+    } else {
+      patch({ abilityOverrides: { ...overrides, [abilityId]: next } });
+    }
+  };
+
+  if (!abilities.length) return null;
+
+  const headerRow = e(
+    "div",
+    { className: "ecu-abvis-row ecu-abvis-header", key: "__header" },
+    e("span", { className: "ecu-abvis-cell ecu-abvis-ability" }, "Ability"),
+    e("span", { className: "ecu-abvis-cell ecu-abvis-casters-col" }, "Casters"),
+    e("span", { className: "ecu-abvis-cell ecu-abvis-toggle" }, "Rail"),
+    e("span", { className: "ecu-abvis-cell ecu-abvis-toggle" }, "Big Icon"),
+  );
+
+  const rows: any[] = [headerRow];
+  for (let i = 0; i < abilities.length; i++) {
+    const ab = abilities[i];
+    const ov = overrides[ab.id] ?? { rail: true, bigIcon: true };
+
+    const casterIcons: any[] = [];
+    for (let j = 0; j < ab.casters.length; j++) {
+      const c = ab.casters[j];
+      casterIcons.push(
+        e(
+          "span",
+          { key: c.mtype, className: "ecu-abvis-caster", title: c.name },
+          e(GameIcon, {
+            id: c.mtype,
+            kind: "monster",
+            mtype: c.mtype,
+            size: 40,
+            title: c.name,
+          }),
+        ),
+      );
+    }
+
+    rows.push(
+      e(
+        "div",
+        { className: "ecu-abvis-row", key: ab.id },
+        e(
+          "span",
+          { className: "ecu-abvis-cell ecu-abvis-ability" },
+          abilityIcon(ab.id, false, 32),
+          e(
+            "div",
+            { className: "ecu-abvis-ability-copy" },
+            e("span", { className: "ecu-abvis-ability-name" }, ab.name),
+            e("span", { className: "ecu-abvis-ability-key" }, ab.id),
+          ),
+        ),
+        e(
+          "span",
+          { className: "ecu-abvis-cell ecu-abvis-casters-col" },
+          ...casterIcons,
+        ),
+        e(
+          "span",
+          { className: "ecu-abvis-cell ecu-abvis-toggle" },
+          e("input", {
+            type: "checkbox",
+            checked: ov.rail,
+            onChange: () => toggleOverride(ab.id, "rail"),
+          }),
+        ),
+        e(
+          "span",
+          { className: "ecu-abvis-cell ecu-abvis-toggle" },
+          e("input", {
+            type: "checkbox",
+            checked: ov.bigIcon,
+            onChange: () => toggleOverride(ab.id, "bigIcon"),
+          }),
+        ),
+      ),
+    );
+  }
+
+  return e("div", { className: "ecu-abvis-table" }, ...rows);
 }
 
 function AbilityTimelineSettingsPaneView(
@@ -349,6 +552,7 @@ function AbilityTimelineSettingsPaneView(
   const highlightGrowRow = searchRowMeta("highlightGrow");
   const highlightMarginRow = searchRowMeta("highlightMargin");
   const imminentWindowRow = searchRowMeta("imminentWindow");
+  const minCooldownRow = searchRowMeta("minCooldown");
   const previewRow = searchRowMeta("preview");
 
   const kids: any[] = [];
@@ -603,18 +807,52 @@ function AbilityTimelineSettingsPaneView(
       ),
       imminentWindowRow.extra,
     ),
+    maybeRow(
+      minCooldownRow.label,
+      selectCtrl(
+        String(prefs.minCooldownMs),
+        [
+          { value: "0", label: "Show all" },
+          { value: "1000", label: "≥1s" },
+          { value: "2000", label: "≥2s" },
+          { value: "3000", label: "≥3s" },
+          { value: "5000", label: "≥5s" },
+        ],
+        (v) => patch({ minCooldownMs: Number(v) }),
+      ),
+      minCooldownRow.extra,
+    ),
   ]);
+
+  const abilityVisibilityRow = searchRowMeta("abilityVisibility");
+  const abilityVisVisible = matchesQuery(
+    abilityVisibilityRow.label,
+    query,
+    abilityVisibilityRow.extra,
+  );
+  if (abilityVisVisible) {
+    const allAbilities = collectUniqueAbilities(casters);
+    if (allAbilities.length) {
+      kids.push(section(abilityVisibilityRow.label));
+      kids.push(
+        e(AbilityVisibilityTable, {
+          abilities: allAbilities,
+          prefs,
+          patch,
+        }),
+      );
+    }
+  }
 
   if (previewVisible) {
     kids.push(section(previewRow.label));
     kids.push(
-      e(
-        "div",
-        { className: "ecu-settings-picks" },
-        ...previewPickKids(casters, picked, (mtype) =>
+      e(PreviewPicker, {
+        casters,
+        picked,
+        onToggle: (mtype: string) =>
           setPicked((prev: string[]) => toggleMtype(prev, mtype)),
-        ),
-      ),
+      }),
     );
     kids.push(e(AbilityTimelineSettingsPreview, { prefs, picked }));
   }

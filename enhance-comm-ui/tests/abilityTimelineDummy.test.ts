@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { DEFAULT_ABILITY_TIMELINE_PREFS } from "../src/instance/abilityTimelinePrefs";
 import {
-  DEFAULT_PREVIEW_MTYPES,
   PREVIEW_READY_HOLD_MS,
   dummyAbilityTimelineModel,
   listAbilityPreviewCasters,
@@ -57,7 +56,21 @@ describe("loopPreviewRemaining", () => {
 });
 
 describe("dummyAbilityTimelineModel", () => {
-  it("filters to picked mtypes and keeps Protector on gpurplepro", () => {
+  it("filters to picked mtypes from G.monsters", () => {
+    const g = globalThis as Win;
+    if (!g.window) g.window = {};
+    g.window.G = {
+      monsters: {
+        gpurplepro: {
+          name: "Protector of Darkness",
+          abilities: { anger: { cooldown: 12000 } },
+        },
+        a2: {
+          name: "Bill",
+          abilities: { anger: { cooldown: 8000 } },
+        },
+      },
+    };
     const model = dummyAbilityTimelineModel(
       DEFAULT_ABILITY_TIMELINE_PREFS,
       1_000_000,
@@ -70,6 +83,16 @@ describe("dummyAbilityTimelineModel", () => {
   });
 
   it("treats an empty pick list as empty, not the defaults", () => {
+    const g = globalThis as Win;
+    if (!g.window) g.window = {};
+    g.window.G = {
+      monsters: {
+        gpurplepro: {
+          name: "Protector of Darkness",
+          abilities: { anger: { cooldown: 12000 } },
+        },
+      },
+    };
     const empty = dummyAbilityTimelineModel(
       DEFAULT_ABILITY_TIMELINE_PREFS,
       1_000_000,
@@ -83,12 +106,21 @@ describe("dummyAbilityTimelineModel", () => {
       1_000_000,
       1_000_000,
     );
-    assert.equal(fallback.sections.length, DEFAULT_PREVIEW_MTYPES.length);
+    assert.ok(fallback.sections.length >= 1);
     assert.equal(fallback.sections[0].targetMtype, "gpurplepro");
-    assert.equal(fallback.sections[1].targetMtype, "a2");
   });
 
   it("bumps castGen when a looping CD wraps", () => {
+    const g = globalThis as Win;
+    if (!g.window) g.window = {};
+    g.window.G = {
+      monsters: {
+        gpurplepro: {
+          name: "Protector of Darkness",
+          abilities: { anger: { cooldown: 12000 } },
+        },
+      },
+    };
     const epoch = 2_000_000;
     const cd = 12000;
     const period = cd + PREVIEW_READY_HOLD_MS;
@@ -111,7 +143,7 @@ describe("dummyAbilityTimelineModel", () => {
     assert.equal(after.sections[0].rows[0].ms, cd);
   });
 
-  it("keeps the picker on the curated roster even when G has extra casters", () => {
+  it("lists all G.monsters with trackable abilities", () => {
     const g = globalThis as Win;
     if (!g.window) g.window = {};
     g.window.G = {
@@ -129,8 +161,8 @@ describe("dummyAbilityTimelineModel", () => {
     const casters = listAbilityPreviewCasters();
     const mtypes: string[] = [];
     for (let i = 0; i < casters.length; i++) mtypes.push(casters[i].mtype);
-    assert.equal(mtypes.indexOf("oneeye"), -1);
+    assert.equal(casters.length, 2);
+    assert.ok(mtypes.indexOf("oneeye") >= 0);
     assert.ok(mtypes.indexOf("a2") >= 0);
-    assert.ok(mtypes.indexOf("gpurplepro") >= 0);
   });
 });

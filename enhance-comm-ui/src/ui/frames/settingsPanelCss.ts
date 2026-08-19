@@ -147,36 +147,143 @@ export const SETTINGS_PANEL_CSS = `
   flex-shrink: 0;
   cursor: pointer;
 }
-.ecu-settings-picks {
+.ecu-pick-wrap {
+  margin: 8px 0 4px;
+  position: relative;
+}
+.ecu-pick-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 4px;
-  max-height: 140px;
-  overflow: auto;
-}
-.ecu-settings-pick {
-  display: flex;
-  align-items: center;
   gap: 6px;
-  font-size: 18px;
+  margin-bottom: 6px;
+}
+.ecu-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 17px;
+  background: #2a2210;
+  border: 1px solid #886;
+  color: #ffe08a;
+  padding: 3px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.ecu-pick-badge:hover {
+  background: #3a2a10;
+  border-color: #aa8;
+}
+.ecu-pick-badge-x {
+  font-size: 15px;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+.ecu-pick-badge:hover .ecu-pick-badge-x { opacity: 1; }
+.ecu-pick-input-row {
+  display: flex;
+}
+.ecu-pick-search {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 17px;
+  padding: 5px 8px;
   background: #1a1a1a;
   border: 1px solid #444;
-  padding: 6px 10px;
-  cursor: pointer;
   color: #ddd;
+  outline: none;
 }
-.ecu-settings-pick input {
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
+.ecu-pick-search:focus { border-color: #886; }
+.ecu-pick-dropdown {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid #666;
+  border-top: none;
+}
+.ecu-pick-option {
+  padding: 5px 10px;
   cursor: pointer;
+  font-size: 17px;
+  color: #ddd;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
-.ecu-settings-pick[data-on="1"] {
-  border-color: #886;
+.ecu-pick-option:hover {
   background: #2a2210;
   color: #ffe08a;
 }
+.ecu-pick-option-detail {
+  font-size: 14px;
+  opacity: 0.5;
+  margin-left: auto;
+}
+.ecu-abvis-table {
+  margin: 8px 0;
+  border: 1px solid #333;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.ecu-abvis-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 1.5fr) 44px 62px;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 16px;
+  color: #ddd;
+  border-bottom: 1px solid #222;
+  min-height: 40px;
+}
+.ecu-abvis-row:last-child { border-bottom: none; }
+.ecu-abvis-header {
+  font-size: 13px;
+  color: #888;
+  background: #1a1a1a;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 26px;
+}
+.ecu-abvis-cell { overflow: hidden; }
+.ecu-abvis-ability {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ecu-abvis-ability-copy {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.ecu-abvis-ability-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-abvis-ability-key {
+  font-size: 12px;
+  color: #777;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-abvis-casters-col {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.ecu-abvis-caster {
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+}
+.ecu-abvis-toggle { text-align: center; }
+.ecu-abvis-toggle input { width: 16px; height: 16px; cursor: pointer; }
 .ecu-settings-preview {
   margin-top: 14px;
   padding: 10px;
@@ -320,7 +427,7 @@ export const SETTINGS_PANEL_CSS = `
 }
 .ecu-settings-abil-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(100px, 1.5fr) auto auto;
   gap: 10px;
   align-items: center;
   padding: 8px 0;
@@ -352,6 +459,15 @@ export const SETTINGS_PANEL_CSS = `
 }
 .ecu-settings-abil-icon {
   flex: 0 0 auto;
+}
+.ecu-settings-abil-casters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.ecu-settings-abil-caster {
+  display: inline-flex;
+  cursor: default;
 }
 .ecu-settings-abil-check {
   display: flex;
