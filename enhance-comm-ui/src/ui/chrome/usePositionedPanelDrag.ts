@@ -389,6 +389,29 @@ export function usePositionedPanelDrag(
     // depend on pos.x/y (that re-attached listeners every move and broke capture).
   }, [extraDragRef, editing, movableProp, id]);
 
+  // Inner title bars (paperdoll, Kills, …) opt in with data-comm-drag-handle so
+  // Alt-arrange works even when the above-frame strip is hard to grab.
+  React.useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    if (!editing && !movableProp) return;
+    const down = (ev: PointerEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (!t || typeof t.closest !== "function") return;
+      if (!t.closest("[data-comm-drag-handle]")) return;
+      if (
+        t.closest(
+          "button, a, input, textarea, select, .ecu-meter-tool, .ecu-meter-ttl, .ecu-meter-btn",
+        )
+      ) {
+        return;
+      }
+      dragHandlersRef.current.onPointerDown(ev);
+    };
+    shell.addEventListener("pointerdown", down);
+    return () => shell.removeEventListener("pointerdown", down);
+  }, [shellRef, editing, movableProp, id]);
+
   return {
     dragPinned,
     draggingRef: dragging,

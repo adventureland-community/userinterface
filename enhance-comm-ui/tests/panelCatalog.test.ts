@@ -39,4 +39,9 @@ describe("panel catalog", () => {
   it("defaults Command to autosize on", () => {
     assert.equal(panelDef("command").autoSize, "default-on");
   });
+
+  it("defaults Kills to autosize on so arrange chrome is not frame-clipped", () => {
+    assert.equal(panelDef("kills").autoSize, "default-on");
+    assert.equal(panelDef("kills").closable, true);
+  });
 });

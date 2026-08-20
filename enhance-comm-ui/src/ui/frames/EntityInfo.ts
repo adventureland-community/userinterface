@@ -145,6 +145,7 @@ export function EntityInfo(props: EntityInfoProps): any {
     e(
       "div",
       {
+        "data-comm-drag-handle": "true",
         style: {
           display: "flex",
           alignItems: "center",
@@ -152,6 +153,7 @@ export function EntityInfo(props: EntityInfoProps): any {
           padding: "4px 6px",
           background: `linear-gradient(90deg, ${accent}33, transparent)`,
           borderBottom: `1px solid ${accent}66`,
+          cursor: "grab",
         },
       },
       e("div", {

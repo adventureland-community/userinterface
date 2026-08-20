@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.8
+// @version      0.8.0-alpha.9
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2289,7 +2289,9 @@ var EnhanceCommUI = (() => {
     maxWidth: "340px",
     boxSizing: "border-box",
     // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
-    zIndex: 36
+    zIndex: 36,
+    // Alt arrange strip + paperdoll title drag handle need visible overflow.
+    overflow: "visible"
   };
   var BOSS_BAR_FRAME_DEFAULT = { frameW: 480, frameH: 180 };
   var BOSS_BAR_PANEL_STYLE = {
@@ -2455,7 +2457,9 @@ var EnhanceCommUI = (() => {
     maxWidth: "min(280px, 90vw)",
     minWidth: "180px",
     minHeight: "80px",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Keep above-frame arrange chrome (hide × / drag) unclipped.
+    overflow: "visible"
   };
   var INFO_DIALOG_PANEL_STYLE = {
     width: "fit-content",
@@ -2501,7 +2505,14 @@ var EnhanceCommUI = (() => {
       frameH: 248,
       autoSize: true
     },
-    kills: { x: 27, y: 99.2, anchor: "br", frameW: 280, frameH: 180 },
+    kills: {
+      x: 27,
+      y: 99.2,
+      anchor: "br",
+      frameW: 280,
+      frameH: 180,
+      autoSize: true
+    },
     playerFrame: {
       x: 35,
       y: 86,
@@ -2801,7 +2812,7 @@ var EnhanceCommUI = (() => {
     paperdoll: { label: "Paperdoll" },
     buffInfo: { label: "Buff info", autoSize: "default-on" },
     itemInfo: { label: "Item info", autoSize: "default-on" },
-    kills: { label: "Kills", closable: true, autoSize: "opt-in" },
+    kills: { label: "Kills", closable: true, autoSize: "default-on" },
     playerFrame: { label: "Player frame", autoSize: "opt-in" },
     targetFrame: { label: "Target frame", autoSize: "opt-in" },
     bossBar: {
@@ -7686,6 +7697,41 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.8.0-alpha.9",
+      title: "0.8.0-alpha.9",
+      date: "2026-08-20",
+      summary: "Kills and paperdoll arrange chrome \u2014 hide \xD7 and Alt-drag work again on framed HUD windows.",
+      highlights: [
+        {
+          label: "Kills window chrome",
+          detail: "Autosize is on by default and the shell keeps overflow visible, so hover/Alt shows the drag strip and hide \xD7 instead of a bare blue outline.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll Alt-drag",
+          detail: "Hold Alt and drag the green title bar (or the arrange strip) to move the paperdoll. Overflow no longer eats the move chrome.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Arrange chrome unclip",
+          detail: "PositionedPanel always clears shell overflow while the arrange strip or layout-edit header is active, so above-frame drag / lock / \xD7 are not clipped by saved frameW/H.",
+          kind: "fix"
+        },
+        {
+          label: "In-panel drag handles",
+          detail: "Title bars marked data-comm-drag-handle (paperdoll header, Kills title) start an Alt-arrange drag without needing the thin strip above the frame.",
+          kind: "improve"
+        },
+        {
+          label: "Kills autosize default",
+          detail: "Catalog default-on plus desktop layout seeds autoSize: true so the short fixed kill box no longer traps chrome.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.8.0-alpha.8",
       title: "0.8.0-alpha.8",
@@ -17434,8 +17480,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.8" : "unknown";
-    const builtAt = true ? "2026-08-20T14:05:02.293Z" : "unknown";
+    const version = true ? "0.8.0-alpha.9" : "unknown";
+    const builtAt = true ? "2026-08-20T17:51:09.291Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -25679,6 +25725,24 @@ button.comm-mail__stack-u {
         el.removeEventListener("pointercancel", up);
       };
     }, [extraDragRef, editing, movableProp, id]);
+    React.useEffect(() => {
+      const shell = shellRef.current;
+      if (!shell) return;
+      if (!editing && !movableProp) return;
+      const down = (ev) => {
+        const t = ev.target;
+        if (!t || typeof t.closest !== "function") return;
+        if (!t.closest("[data-comm-drag-handle]")) return;
+        if (t.closest(
+          "button, a, input, textarea, select, .ecu-meter-tool, .ecu-meter-ttl, .ecu-meter-btn"
+        )) {
+          return;
+        }
+        dragHandlersRef.current.onPointerDown(ev);
+      };
+      shell.addEventListener("pointerdown", down);
+      return () => shell.removeEventListener("pointerdown", down);
+    }, [shellRef, editing, movableProp, id]);
     return {
       dragPinned,
       draggingRef: dragging,
@@ -25962,10 +26026,10 @@ button.comm-mail__stack-u {
     const hasSavedFrame = !autoSize && (typeof pos.frameW === "number" && pos.frameW > 0 || typeof pos.frameH === "number" && pos.frameH > 0);
     const styleOverflowVisible = !!(props.style && props.style.overflow === "visible");
     const wrapFrameBody = fillFrame || hasSavedFrame && !styleOverflowVisible;
-    if ((wrapFrameBody || styleOverflowVisible) && !autoSize) {
+    const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup);
+    if ((wrapFrameBody || styleOverflowVisible) && !autoSize || showArrangeOverlay || editing) {
       unclipShellOverflow(shellStyle);
     }
-    const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup);
     const ARRANGE_CHROME_H = 34;
     React.useLayoutEffect(() => {
       if (!showArrangeOverlay) {
@@ -45455,13 +45519,15 @@ ${ESTIMATE_HINT}`,
       e(
         "div",
         {
+          "data-comm-drag-handle": "true",
           style: {
             display: "flex",
             alignItems: "center",
             gap: "6px",
             padding: "4px 6px",
             background: `linear-gradient(90deg, ${accent}33, transparent)`,
-            borderBottom: `1px solid ${accent}66`
+            borderBottom: `1px solid ${accent}66`,
+            cursor: "grab"
           }
         },
         e("div", {
@@ -47135,7 +47201,15 @@ ${ESTIMATE_HINT}`,
     );
     const title = e(
       "div",
-      { style: { fontSize: TYPE.title, color: "#eee", ...PIXEL_TEXT } },
+      {
+        "data-comm-drag-handle": "true",
+        style: {
+          fontSize: TYPE.title,
+          color: "#eee",
+          cursor: "grab",
+          ...PIXEL_TEXT
+        }
+      },
       "Kills"
     );
     const scopeRow = (showReset) => e(

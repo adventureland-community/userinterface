@@ -142,7 +142,15 @@ export function KillKpiPanel(): any {
 
   const title = e(
     "div",
-    { style: { fontSize: TYPE.title, color: "#eee", ...PIXEL_TEXT } },
+    {
+      "data-comm-drag-handle": "true",
+      style: {
+        fontSize: TYPE.title,
+        color: "#eee",
+        cursor: "grab",
+        ...PIXEL_TEXT,
+      },
+    },
     "Kills",
   );
 

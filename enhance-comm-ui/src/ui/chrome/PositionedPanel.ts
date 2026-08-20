@@ -492,16 +492,19 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   );
   const wrapFrameBody =
     fillFrame || (hasSavedFrame && !styleOverflowVisible);
-  if ((wrapFrameBody || styleOverflowVisible) && !autoSize) {
-    unclipShellOverflow(shellStyle);
-  }
-
   // Same as !!moveGrip || lock || ungroup when !editing (grip-in-edit is false).
   const showArrangeOverlay =
     !editing &&
     ((movable && props.showMoveGrip !== false) ||
       !!props.onToggleLock ||
       !!props.onUngroup);
+  if (
+    ((wrapFrameBody || styleOverflowVisible) && !autoSize) ||
+    showArrangeOverlay ||
+    editing
+  ) {
+    unclipShellOverflow(shellStyle);
+  }
 
   const ARRANGE_CHROME_H = 34;
   React.useLayoutEffect(() => {

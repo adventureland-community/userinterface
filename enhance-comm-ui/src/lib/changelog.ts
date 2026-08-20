@@ -100,6 +100,47 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.9",
+    title: "0.8.0-alpha.9",
+    date: "2026-08-20",
+    summary:
+      "Kills and paperdoll arrange chrome — hide × and Alt-drag work again on framed HUD windows.",
+    highlights: [
+      {
+        label: "Kills window chrome",
+        detail:
+          "Autosize is on by default and the shell keeps overflow visible, so hover/Alt shows the drag strip and hide × instead of a bare blue outline.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll Alt-drag",
+        detail:
+          "Hold Alt and drag the green title bar (or the arrange strip) to move the paperdoll. Overflow no longer eats the move chrome.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Arrange chrome unclip",
+        detail:
+          "PositionedPanel always clears shell overflow while the arrange strip or layout-edit header is active, so above-frame drag / lock / × are not clipped by saved frameW/H.",
+        kind: "fix",
+      },
+      {
+        label: "In-panel drag handles",
+        detail:
+          "Title bars marked data-comm-drag-handle (paperdoll header, Kills title) start an Alt-arrange drag without needing the thin strip above the frame.",
+        kind: "improve",
+      },
+      {
+        label: "Kills autosize default",
+        detail:
+          "Catalog default-on plus desktop layout seeds autoSize: true so the short fixed kill box no longer traps chrome.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.8",
     title: "0.8.0-alpha.8",
     date: "2026-08-20",
