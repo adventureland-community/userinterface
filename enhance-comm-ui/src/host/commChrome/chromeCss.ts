@@ -671,6 +671,16 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   width: 100%;
   overflow: hidden;
 }
+/* Hug shells with a saved frame (Command with autosize off, …): scroll in the
+ * body so Alt outline matches the frame instead of spilling content past it. */
+#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+}
 #comm-ui .comm-snap-guide .comm-pos-window-id {
   inset: auto;
 }

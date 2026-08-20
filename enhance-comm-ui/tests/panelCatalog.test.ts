@@ -33,5 +33,10 @@ describe("panel catalog", () => {
     assert.equal(panelFillsFrame("minimap"), true);
     assert.equal(panelFillsFrame("players"), false);
     assert.equal(panelFillsFrame("bag"), false);
+    assert.equal(panelFillsFrame("command"), false);
+  });
+
+  it("defaults Command to autosize on", () => {
+    assert.equal(panelDef("command").autoSize, "default-on");
   });
 });

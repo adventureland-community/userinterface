@@ -100,6 +100,59 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.8",
+    title: "0.8.0-alpha.8",
+    date: "2026-08-20",
+    summary:
+      "Command gets real window chrome and a wider CODE editor, and player-frame aggro no longer opens scrollbars.",
+    highlights: [
+      {
+        label: "Command window chrome",
+        detail:
+          "Hover Command for the drag strip, lock, and hide × — same arrange chrome as Mail. Autosize is on by default so the panel hugs the editor and snippet list.",
+        kind: "fix",
+      },
+      {
+        label: "Wider CODE editor",
+        detail:
+          "Fixed 320px-tall CodeMirror pane in a 720px Command window. No more mid-editor scrollbar from height:auto.",
+        kind: "improve",
+      },
+      {
+        label: "Player frame scrollbars",
+        detail:
+          "Aggro count badge stays inside the unit box, so the red target indicator no longer opens horizontal and vertical scrollbars.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Command arrange chrome",
+        detail:
+          "Saved frames used to clip the above-frame drag strip. Autosize clears those frames; with autosize off the body scrolls inside the frame so Alt outline matches the box.",
+        kind: "fix",
+      },
+      {
+        label: "Command autosize default",
+        detail:
+          "Catalog default-on, layout defaults seed autoSize: true, and a one-shot migration flips old 560×300 shells (including autosize-off) onto the wider 720 default. Window Control can still turn autosize off.",
+        kind: "improve",
+      },
+      {
+        label: "CodeMirror sizing",
+        detail:
+          "Stock-style setSize(100%, 320) — fixed height fills the typing area edge to edge. Panel max width is 720px.",
+        kind: "fix",
+      },
+      {
+        label: "Unit-frame overflow",
+        detail:
+          "Player/target frames keep overflow:visible for the buff overlay. Hug-frame scroll wrappers skip panels that opt into overflow:visible, so AggroSpark and effects do not create scrollbars.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.7",
     title: "0.8.0-alpha.7",
     date: "2026-08-19",

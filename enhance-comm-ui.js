@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.7
+// @version      0.8.0-alpha.8
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2264,6 +2264,7 @@ var EnhanceCommUI = (() => {
   }
   function autoSizeMaxWidthPx(id) {
     if (id === "players") return partyRosterMaxWidth(PARTY_MAX_COLS);
+    if (id === "command") return 720;
     return void 0;
   }
   function applyAutoSizeMaxWidth(style, id, autoSize) {
@@ -2415,9 +2416,9 @@ var EnhanceCommUI = (() => {
     overflow: "hidden"
   };
   var COMMAND_PANEL_STYLE = {
-    width: "fit-content",
-    maxWidth: "min(560px, 94vw)",
-    minHeight: "220px",
+    width: "min(720px, 94vw)",
+    minWidth: "min(560px, 92vw)",
+    maxWidth: "min(720px, 94vw)",
     boxSizing: "border-box"
   };
   var MAIL_PANEL_STYLE = {
@@ -2565,7 +2566,14 @@ var EnhanceCommUI = (() => {
       frameW: THREAT_FRAME_DEFAULT.frameW,
       frameH: THREAT_FRAME_DEFAULT.frameH
     },
-    command: { x: 50, y: 42, anchor: "center", frameW: 560, frameH: 300 },
+    command: {
+      x: 50,
+      y: 42,
+      anchor: "center",
+      frameW: 720,
+      frameH: 420,
+      autoSize: true
+    },
     // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
     // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
     bag: { x: 0.5, y: 99.2, anchor: "bl" },
@@ -2621,7 +2629,7 @@ var EnhanceCommUI = (() => {
     },
     minimap: { x: 0.8, y: 70, anchor: "bl", frameW: 200, frameH: 220 },
     threat: { x: 99.2, y: 40, anchor: "tr", ...THREAT_FRAME_DEFAULT },
-    command: { x: 50, y: 44, anchor: "center" },
+    command: { x: 50, y: 44, anchor: "center", autoSize: true },
     bag: { x: 0.8, y: 78, anchor: "bl" },
     mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
     toggles: { x: 99.2, y: 98.5, anchor: "br" }
@@ -2664,7 +2672,7 @@ var EnhanceCommUI = (() => {
     },
     minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
     threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
-    command: { x: 50, y: 42, anchor: "center" },
+    command: { x: 50, y: 42, anchor: "center", autoSize: true },
     bag: { x: 50, y: 88, anchor: "bc" },
     mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
     toggles: { x: 98, y: 98, anchor: "br" }
@@ -2685,7 +2693,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/layoutFrameMigrations.ts
-  var LAYOUT_FRAME_REV = 5;
+  var LAYOUT_FRAME_REV = 7;
   function shipped(n, target) {
     return typeof n === "number" && Math.round(n) === target;
   }
@@ -2746,6 +2754,17 @@ var EnhanceCommUI = (() => {
     if (!shippedWide && !shippedNarrow) return pos;
     return { ...pos, frameW: defW, frameH: defH };
   }
+  function migrateCommandFrame(pos, def) {
+    const shippedNarrow = shipped(pos.frameW, 560) && shipped(pos.frameH, 300);
+    if (pos.autoSize === true && !shippedNarrow) return pos;
+    if (!shippedNarrow && pos.autoSize === false) return pos;
+    return {
+      ...pos,
+      autoSize: true,
+      frameW: typeof def.frameW === "number" ? def.frameW : pos.frameW,
+      frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH
+    };
+  }
   var FRAME_MIGRATIONS = {
     mail: migrateMailFrame,
     events: migrateEventsFrame,
@@ -2755,7 +2774,8 @@ var EnhanceCommUI = (() => {
     targetFrame: migrateUnitFrame,
     instance: migrateInstanceFrame,
     bossBar: migrateBossBarFrame,
-    abilityTimeline: migrateAbilityTimelineFrame
+    abilityTimeline: migrateAbilityTimelineFrame,
+    command: migrateCommandFrame
   };
   function applyFrameMigrations(layout, defaults) {
     const ids = Object.keys(FRAME_MIGRATIONS);
@@ -2831,7 +2851,12 @@ var EnhanceCommUI = (() => {
       emptyWhen: "threat",
       shell: "fill"
     },
-    command: { label: "Command", closable: true, defaultVisible: false },
+    command: {
+      label: "Command",
+      closable: true,
+      defaultVisible: false,
+      autoSize: "default-on"
+    },
     bag: { label: "Bag", closable: true, framePersist: "none" },
     mail: {
       label: "Mail",
@@ -7662,6 +7687,51 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.8",
+      title: "0.8.0-alpha.8",
+      date: "2026-08-20",
+      summary: "Command gets real window chrome and a wider CODE editor, and player-frame aggro no longer opens scrollbars.",
+      highlights: [
+        {
+          label: "Command window chrome",
+          detail: "Hover Command for the drag strip, lock, and hide \xD7 \u2014 same arrange chrome as Mail. Autosize is on by default so the panel hugs the editor and snippet list.",
+          kind: "fix"
+        },
+        {
+          label: "Wider CODE editor",
+          detail: "Fixed 320px-tall CodeMirror pane in a 720px Command window. No more mid-editor scrollbar from height:auto.",
+          kind: "improve"
+        },
+        {
+          label: "Player frame scrollbars",
+          detail: "Aggro count badge stays inside the unit box, so the red target indicator no longer opens horizontal and vertical scrollbars.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Command arrange chrome",
+          detail: "Saved frames used to clip the above-frame drag strip. Autosize clears those frames; with autosize off the body scrolls inside the frame so Alt outline matches the box.",
+          kind: "fix"
+        },
+        {
+          label: "Command autosize default",
+          detail: "Catalog default-on, layout defaults seed autoSize: true, and a one-shot migration flips old 560\xD7300 shells (including autosize-off) onto the wider 720 default. Window Control can still turn autosize off.",
+          kind: "improve"
+        },
+        {
+          label: "CodeMirror sizing",
+          detail: "Stock-style setSize(100%, 320) \u2014 fixed height fills the typing area edge to edge. Panel max width is 720px.",
+          kind: "fix"
+        },
+        {
+          label: "Unit-frame overflow",
+          detail: "Player/target frames keep overflow:visible for the buff overlay. Hug-frame scroll wrappers skip panels that opt into overflow:visible, so AggroSpark and effects do not create scrollbars.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.7",
       title: "0.8.0-alpha.7",
       date: "2026-08-19",
@@ -11137,6 +11207,16 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   min-width: 0;
   width: 100%;
   overflow: hidden;
+}
+/* Hug shells with a saved frame (Command with autosize off, \u2026): scroll in the
+ * body so Alt outline matches the frame instead of spilling content past it. */
+#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
 }
 #comm-ui .comm-snap-guide .comm-pos-window-id {
   inset: auto;
@@ -17354,8 +17434,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.7" : "unknown";
-    const builtAt = true ? "2026-08-19T10:39:50.896Z" : "unknown";
+    const version = true ? "0.8.0-alpha.8" : "unknown";
+    const builtAt = true ? "2026-08-20T14:05:02.293Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -25775,7 +25855,8 @@ button.comm-mail__stack-u {
     const interactiveBody = !!props.interactiveBody;
     const editChrome = props.editChrome === "grip" || props.editChrome === "anchors" ? props.editChrome : "full";
     const movable = (!!props.movable || dragPinned) && !editing;
-    const showResizeHandles = props.showResizeHandles !== false && !!props.onResizeFrame && (editing || movable);
+    const autoSize = panelUsesAutoSize(pos, String(id));
+    const showResizeHandles = props.showResizeHandles !== false && !!props.onResizeFrame && (editing || movable) && !autoSize;
     const onResizePointerDown = (ev, corner) => {
       if (!props.onResizeFrame) return;
       ev.preventDefault();
@@ -25840,7 +25921,6 @@ button.comm-mail__stack-u {
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     };
-    const autoSize = panelUsesAutoSize(pos, String(id));
     const fillFrame = isPanelId(String(id)) ? panelFillsFrame(String(id)) : props.hugContent === false;
     const sizePos = autoSize ? { ...pos, frameW: void 0, frameH: void 0 } : pos;
     const fillW = fillFrame && !autoSize && typeof pos.frameW === "number" && pos.frameW > 0 ? Math.round(pos.frameW) : 0;
@@ -25879,7 +25959,12 @@ button.comm-mail__stack-u {
       } : null
     );
     applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
-    if (fillFrame && !autoSize) unclipShellOverflow(shellStyle);
+    const hasSavedFrame = !autoSize && (typeof pos.frameW === "number" && pos.frameW > 0 || typeof pos.frameH === "number" && pos.frameH > 0);
+    const styleOverflowVisible = !!(props.style && props.style.overflow === "visible");
+    const wrapFrameBody = fillFrame || hasSavedFrame && !styleOverflowVisible;
+    if ((wrapFrameBody || styleOverflowVisible) && !autoSize) {
+      unclipShellOverflow(shellStyle);
+    }
     const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup);
     const ARRANGE_CHROME_H = 34;
     React.useLayoutEffect(() => {
@@ -26028,10 +26113,10 @@ button.comm-mail__stack-u {
           style: hiddenBodyStyle
         },
         `${panelLabel} \u2014 closed`
-      ) : (fillFrame || editing) && !hidden ? e(
+      ) : (wrapFrameBody || editing) && !hidden ? e(
         "div",
         {
-          className: "comm-pos-panel-body",
+          className: "comm-pos-panel-body" + (hasSavedFrame && !fillFrame ? " comm-pos-panel-body-frame" : ""),
           style: interactiveBody ? { pointerEvents: "auto" } : void 0
         },
         children
@@ -41675,8 +41760,10 @@ ${parts.map(cssSlice).join("\n")}
         "data-ecu-aggro": String(count),
         style: {
           position: "absolute",
-          top: "-3px",
-          right: "-3px",
+          // Keep inside the unit box — negative inset expands scrollable overflow
+          // on ancestors with overflow:auto and shows scrollbars on unit frames.
+          top: 0,
+          right: 0,
           zIndex: 4,
           minWidth: AGGRO_BADGE.minWidth,
           height: AGGRO_BADGE.height,
@@ -48481,9 +48568,11 @@ ${ESTIMATE_HINT}`,
 
   // src/host/codemirror.ts
   function getHostCodeMirror() {
-    const CM = window.CodeMirror;
+    const root = globalThis;
+    const CM = root.CodeMirror || root.window && root.window.CodeMirror;
     return typeof CM === "function" ? CM : null;
   }
+  var COMMAND_CM_HEIGHT_PX = 320;
   function mountCommandCodeMirror(host2, opts) {
     const CodeMirror = getHostCodeMirror();
     if (!CodeMirror) return null;
@@ -48515,7 +48604,7 @@ ${ESTIMATE_HINT}`,
     wrap.style.lineHeight = "1.4";
     wrap.style.boxSizing = "border-box";
     wrap.style.width = "100%";
-    cm.setSize("100%", "220px");
+    cm.setSize("100%", COMMAND_CM_HEIGHT_PX);
     cm.on("change", () => {
       opts.onChange(cm.getValue());
     });
@@ -48847,12 +48936,13 @@ ${ESTIMATE_HINT}`,
       className: "CommandPanel-editor",
       style: {
         width: "100%",
-        minHeight: "220px"
+        minWidth: 0,
+        alignSelf: "stretch"
       }
     }) : e("textarea", {
       ref: textareaRef,
       value: draft,
-      rows: 10,
+      rows: 14,
       spellCheck: false,
       onChange: (ev) => persistDraft2(ev.target.value),
       onKeyDown,
@@ -48860,8 +48950,10 @@ ${ESTIMATE_HINT}`,
       style: Object.assign({}, inputStyle, {
         width: "100%",
         resize: "vertical",
-        minHeight: "180px",
-        lineHeight: "1.4"
+        minHeight: `${COMMAND_CM_HEIGHT_PX}px`,
+        height: `${COMMAND_CM_HEIGHT_PX}px`,
+        lineHeight: "1.4",
+        boxSizing: "border-box"
       })
     });
     return e(
@@ -48871,7 +48963,6 @@ ${ESTIMATE_HINT}`,
         style: {
           display: "flex",
           flexDirection: "column",
-          margin: "4px",
           border: "2px solid #555",
           background: "rgba(0,0,0,0.88)",
           gap: "10px",
@@ -48880,7 +48971,9 @@ ${ESTIMATE_HINT}`,
           minWidth: 0,
           maxWidth: "100%",
           maxHeight: "78vh",
-          overflow: "auto",
+          overflowX: "hidden",
+          overflowY: "auto",
+          boxSizing: "border-box",
           fontSize: TYPE.name,
           color: "#eee",
           textShadow: "none",
@@ -49004,8 +49097,7 @@ ${ESTIMATE_HINT}`,
           style: {
             display: "flex",
             flexDirection: "column",
-            gap: "5px",
-            minHeight: "120px"
+            gap: "5px"
           }
         },
         ...snippetRows

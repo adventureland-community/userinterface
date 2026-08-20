@@ -343,10 +343,12 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       ? props.editChrome
       : "full";
   const movable = (!!props.movable || dragPinned) && !editing;
+  const autoSize = panelUsesAutoSize(pos, String(id));
   const showResizeHandles =
     props.showResizeHandles !== false &&
     !!props.onResizeFrame &&
-    (editing || movable);
+    (editing || movable) &&
+    !autoSize;
 
   const onResizePointerDown = (ev: any, corner: "br" | "bl") => {
     if (!props.onResizeFrame) return;
@@ -415,7 +417,6 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     window.addEventListener("pointercancel", onUp);
   };
 
-  const autoSize = panelUsesAutoSize(pos, String(id));
   const fillFrame = isPanelId(String(id))
     ? panelFillsFrame(String(id))
     : props.hugContent === false;
@@ -476,7 +477,24 @@ export function PositionedPanel(props: PositionedPanelProps): any {
         : null,
   );
   applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
-  if (fillFrame && !autoSize) unclipShellOverflow(shellStyle);
+  // Fixed frameW/H sets overflowX/Y in panelStyle, which clips above-frame
+  // arrange chrome. Unclip the shell when needed.
+  // Hug + frame: scroll in a body wrapper — except panels that intentionally
+  // paint outside (player/target frames: AggroSpark + effects overlay use
+  // overflow:visible on their style; wrapping those in overflow:auto shows
+  // scrollbars from the spark's -3px inset).
+  const hasSavedFrame =
+    !autoSize &&
+    ((typeof pos.frameW === "number" && pos.frameW > 0) ||
+      (typeof pos.frameH === "number" && pos.frameH > 0));
+  const styleOverflowVisible = !!(
+    props.style && props.style.overflow === "visible"
+  );
+  const wrapFrameBody =
+    fillFrame || (hasSavedFrame && !styleOverflowVisible);
+  if ((wrapFrameBody || styleOverflowVisible) && !autoSize) {
+    unclipShellOverflow(shellStyle);
+  }
 
   // Same as !!moveGrip || lock || ungroup when !editing (grip-in-edit is false).
   const showArrangeOverlay =
@@ -658,11 +676,13 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           },
           `${panelLabel} — closed`,
         )
-      : (fillFrame || editing) && !hidden
+      : (wrapFrameBody || editing) && !hidden
         ? e(
             "div",
             {
-              className: "comm-pos-panel-body",
+              className:
+                "comm-pos-panel-body" +
+                (hasSavedFrame && !fillFrame ? " comm-pos-panel-body-frame" : ""),
               style: interactiveBody ? { pointerEvents: "auto" } : undefined,
             },
             children,

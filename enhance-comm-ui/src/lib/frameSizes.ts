@@ -29,6 +29,7 @@ export function partyRosterMaxWidth(cols = PARTY_MAX_COLS): number {
 /** Auto-resize width caps (px). Omit = viewport only. */
 export function autoSizeMaxWidthPx(id: string): number | undefined {
   if (id === "players") return partyRosterMaxWidth(PARTY_MAX_COLS);
+  if (id === "command") return 720;
   return undefined;
 }
 
@@ -269,11 +270,11 @@ export const THREAT_TABLE_SHELL: Record<string, any> = {
   overflow: "hidden",
 };
 
-/** Command editor shell. */
+/** Command editor shell — wide CODE pane; width capped via autosize max. */
 export const COMMAND_PANEL_STYLE: Record<string, any> = {
-  width: "fit-content",
-  maxWidth: "min(560px, 94vw)",
-  minHeight: "220px",
+  width: "min(720px, 94vw)",
+  minWidth: "min(560px, 92vw)",
+  maxWidth: "min(720px, 94vw)",
   boxSizing: "border-box",
 };
 

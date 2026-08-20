@@ -5,7 +5,7 @@ import type { PanelId, PanelPos } from "./layout";
 export type FrameMigration = (pos: PanelPos, def: PanelPos) => PanelPos;
 
 /** Bump when adding a new one-shot frame migrator; settings runs them once. */
-export const LAYOUT_FRAME_REV = 5;
+export const LAYOUT_FRAME_REV = 7;
 
 /** Shipped defaults only — round off scale noise, do not match nearby user sizes. */
 function shipped(n: number | undefined, target: number): boolean {
@@ -103,6 +103,24 @@ export function migrateAbilityTimelineFrame(
   return { ...pos, frameW: defW, frameH: defH };
 }
 
+/**
+ * Command shipped autosize-off with a short 560×300 box. Alt outline tracked that
+ * frame while snippets spilled past it. Flip matching shells onto autosize.
+ * Also bumps the later 560×300 autosize-on default to the wider 720 shell.
+ */
+export function migrateCommandFrame(pos: PanelPos, def: PanelPos): PanelPos {
+  const shippedNarrow =
+    shipped(pos.frameW, 560) && shipped(pos.frameH, 300);
+  if (pos.autoSize === true && !shippedNarrow) return pos;
+  if (!shippedNarrow && pos.autoSize === false) return pos;
+  return {
+    ...pos,
+    autoSize: true,
+    frameW: typeof def.frameW === "number" ? def.frameW : pos.frameW,
+    frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH,
+  };
+}
+
 /** Panels whose saved frameW/frameH get a one-shot migration. */
 export const FRAME_MIGRATIONS: Partial<Record<PanelId, FrameMigration>> = {
   mail: migrateMailFrame,
@@ -114,6 +132,7 @@ export const FRAME_MIGRATIONS: Partial<Record<PanelId, FrameMigration>> = {
   instance: migrateInstanceFrame,
   bossBar: migrateBossBarFrame,
   abilityTimeline: migrateAbilityTimelineFrame,
+  command: migrateCommandFrame,
 };
 
 export function applyFrameMigrations(

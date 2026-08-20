@@ -376,4 +376,40 @@ describe("mergeLayout frame migrations", () => {
     assert.equal(layout.playerFrame.frameH, UNIT_FRAME_DEFAULT.frameH);
     assert.equal(layout.targetFrame.frameH, UNIT_FRAME_DEFAULT.frameH);
   });
+
+  it("turns Command autosize on for the shipped 560×300 shell", () => {
+    const layout = mergeLayout(
+      {
+        command: {
+          x: 50,
+          y: 42,
+          anchor: "center",
+          frameW: 560,
+          frameH: 300,
+          autoSize: false,
+        },
+      },
+      "desktop",
+    );
+    assert.equal(layout.command.autoSize, true);
+  });
+
+  it("keeps a user-resized Command shell with autosize off", () => {
+    const layout = mergeLayout(
+      {
+        command: {
+          x: 50,
+          y: 42,
+          anchor: "center",
+          frameW: 640,
+          frameH: 420,
+          autoSize: false,
+        },
+      },
+      "desktop",
+    );
+    assert.equal(layout.command.autoSize, false);
+    assert.equal(layout.command.frameW, 640);
+    assert.equal(layout.command.frameH, 420);
+  });
 });

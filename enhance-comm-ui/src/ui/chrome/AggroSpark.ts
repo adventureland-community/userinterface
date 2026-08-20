@@ -18,8 +18,10 @@ export function AggroSpark(props: AggroSparkProps): any {
       "data-ecu-aggro": String(count),
       style: {
         position: "absolute",
-        top: "-3px",
-        right: "-3px",
+        // Keep inside the unit box — negative inset expands scrollable overflow
+        // on ancestors with overflow:auto and shows scrollbars on unit frames.
+        top: 0,
+        right: 0,
         zIndex: 4,
         minWidth: AGGRO_BADGE.minWidth,
         height: AGGRO_BADGE.height,

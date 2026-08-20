@@ -24,7 +24,11 @@ type CodeMirrorFactory = (
 ) => CodeMirrorEditor;
 
 export function getHostCodeMirror(): CodeMirrorFactory | null {
-  const CM = (window as Window & { CodeMirror?: CodeMirrorFactory }).CodeMirror;
+  const root = globalThis as typeof globalThis & {
+    CodeMirror?: CodeMirrorFactory;
+    window?: { CodeMirror?: CodeMirrorFactory };
+  };
+  const CM = root.CodeMirror || (root.window && root.window.CodeMirror);
   return typeof CM === "function" ? CM : null;
 }
 
@@ -33,6 +37,17 @@ export type MountCommandEditorOpts = {
   onChange: (value: string) => void;
   onCtrlEnter: () => void;
 };
+
+/**
+ * Fixed editor height (px). CodeMirror 5 `height:auto` + min/max paints a
+ * scrollbar mid-pane; stock show_commander also uses a fixed setSize height.
+ */
+export const COMMAND_CM_HEIGHT_PX = 320;
+
+/** @deprecated alias — kept for tests / callers that expected a floor/ceiling. */
+export const COMMAND_CM_MIN_HEIGHT_PX = COMMAND_CM_HEIGHT_PX;
+/** @deprecated alias */
+export const COMMAND_CM_MAX_HEIGHT_PX = COMMAND_CM_HEIGHT_PX;
 
 /** Same options as stock `show_commander`, plus Ctrl/Cmd+Enter → Run. */
 export function mountCommandCodeMirror(
@@ -72,7 +87,8 @@ export function mountCommandCodeMirror(
   wrap.style.lineHeight = "1.4";
   wrap.style.boxSizing = "border-box";
   wrap.style.width = "100%";
-  cm.setSize("100%", "220px");
+  // Fixed size — avoids the mid-editor scrollbar from height:auto.
+  cm.setSize("100%", COMMAND_CM_HEIGHT_PX);
 
   cm.on("change", () => {
     opts.onChange(cm.getValue());

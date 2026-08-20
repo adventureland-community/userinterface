@@ -92,6 +92,7 @@ describe("party auto-size width cap", () => {
     assert.ok(partyRosterMaxWidth(4) > partyRosterMaxWidth(3));
     assert.equal(autoSizeMaxWidthPx("players"), partyRosterMaxWidth(3));
     assert.equal(autoSizeMaxWidthPx("mail"), undefined);
+    assert.equal(autoSizeMaxWidthPx("command"), 720);
   });
 
   it("applies the cap only while auto-resize is on", () => {
@@ -106,5 +107,9 @@ describe("party auto-size width cap", () => {
     const other: Record<string, any> = { maxWidth: "100vw" };
     applyAutoSizeMaxWidth(other, "buffInfo", true);
     assert.equal(other.maxWidth, "100vw");
+
+    const command: Record<string, any> = { maxWidth: "100vw" };
+    applyAutoSizeMaxWidth(command, "command", true);
+    assert.equal(command.maxWidth, "min(720px, 100vw)");
   });
 });

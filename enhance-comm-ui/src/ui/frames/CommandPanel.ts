@@ -1,6 +1,7 @@
 import { getReact, e } from "../../host/react";
 import { emitObserverCommand } from "../../host/al";
 import {
+  COMMAND_CM_HEIGHT_PX,
   disposeCodeMirror,
   getHostCodeMirror,
   mountCommandCodeMirror,
@@ -382,13 +383,14 @@ export function CommandPanel(props: CommandPanelProps): any {
         className: "CommandPanel-editor",
         style: {
           width: "100%",
-          minHeight: "220px",
+          minWidth: 0,
+          alignSelf: "stretch",
         },
       })
     : e("textarea", {
         ref: textareaRef,
         value: draft,
-        rows: 10,
+        rows: 14,
         spellCheck: false,
         onChange: (ev: any) => persistDraft(ev.target.value),
         onKeyDown,
@@ -396,8 +398,10 @@ export function CommandPanel(props: CommandPanelProps): any {
         style: Object.assign({}, inputStyle, {
           width: "100%",
           resize: "vertical",
-          minHeight: "180px",
+          minHeight: `${COMMAND_CM_HEIGHT_PX}px`,
+          height: `${COMMAND_CM_HEIGHT_PX}px`,
           lineHeight: "1.4",
+          boxSizing: "border-box",
         }),
       });
 
@@ -408,7 +412,6 @@ export function CommandPanel(props: CommandPanelProps): any {
       style: {
         display: "flex",
         flexDirection: "column",
-        margin: "4px",
         border: "2px solid #555",
         background: "rgba(0,0,0,0.88)",
         gap: "10px",
@@ -417,7 +420,9 @@ export function CommandPanel(props: CommandPanelProps): any {
         minWidth: 0,
         maxWidth: "100%",
         maxHeight: "78vh",
-        overflow: "auto",
+        overflowX: "hidden",
+        overflowY: "auto",
+        boxSizing: "border-box",
         fontSize: TYPE.name,
         color: "#eee",
         textShadow: "none",
@@ -545,7 +550,6 @@ export function CommandPanel(props: CommandPanelProps): any {
               display: "flex",
               flexDirection: "column",
               gap: "5px",
-              minHeight: "120px",
             },
           },
           ...snippetRows,

@@ -122,7 +122,12 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
     emptyWhen: "threat",
     shell: "fill",
   },
-  command: { label: "Command", closable: true, defaultVisible: false },
+  command: {
+    label: "Command",
+    closable: true,
+    defaultVisible: false,
+    autoSize: "default-on",
+  },
   bag: { label: "Bag", closable: true, framePersist: "none" },
   mail: {
     label: "Mail",
