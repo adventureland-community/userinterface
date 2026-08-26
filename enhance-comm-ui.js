@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.9
+// @version      0.8.0-alpha.10
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -337,16 +337,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners10 = [];
+    const listeners11 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners10.length; i++) listeners10[i](ev);
+        for (let i = 0; i < listeners11.length; i++) listeners11[i](ev);
       },
       subscribe: (listener) => {
-        listeners10.push(listener);
+        listeners11.push(listener);
         return () => {
-          const idx = listeners10.indexOf(listener);
-          if (idx >= 0) listeners10.splice(idx, 1);
+          const idx = listeners11.indexOf(listener);
+          if (idx >= 0) listeners11.splice(idx, 1);
         };
       }
     };
@@ -3358,6 +3358,11 @@ var EnhanceCommUI = (() => {
       style.overflowY = "auto";
     }
     return style;
+  }
+  function applyCallerStackZ(shellStyle, propsStyle) {
+    if (propsStyle && typeof propsStyle.zIndex === "number") {
+      shellStyle.zIndex = propsStyle.zIndex;
+    }
   }
   function unclipShellOverflow(style) {
     style.overflow = "visible";
@@ -7698,6 +7703,66 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.10",
+      title: "0.8.0-alpha.10",
+      date: "2026-08-26",
+      summary: "Adventure.land deploy notes on /comm, a Docs button beside Bag and Mail, and click-to-front that no longer bounces back.",
+      highlights: [
+        {
+          label: "Server update notes",
+          detail: "See Adventure.land's own deploy notes on /comm (welcome and history), separate from the ECU changelog. Settings \u2192 Comm UI \u2192 Server update notes. Opens once per unseen deploy.",
+          kind: "feature"
+        },
+        {
+          label: "Docs on the action bar",
+          detail: "Docs icon next to Bag, Mail, and Command opens the same menu as adventure.land/docs: Game Guide, CODE Docs, and Other Systems.",
+          kind: "feature"
+        },
+        {
+          label: "Window focus sticks",
+          detail: "Clicking Mail no longer flashes in front then loses to Encounter Details. Bring-to-front survives the resize/snap commits that used to clear it.",
+          kind: "fix"
+        },
+        {
+          label: "Locked title chrome",
+          detail: "Hovering a locked window shows the dark title chip again, not bare text without the arrange strip.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Server update notes",
+          detail: "Pulls page globals and /update-notes, hooks add_update_notes / show_update_notes, groups by deploy day with soft kind tags, and inlines GameIcon chips when names match live G data.",
+          kind: "feature"
+        },
+        {
+          label: "Docs button",
+          detail: "Calls stock render_guide / render_code_docs / render_others when the client kit is present. Otherwise opens /docs in a new tab.",
+          kind: "feature"
+        },
+        {
+          label: "Click-to-front raise",
+          detail: "HUD and meter windows share one raise path. Stack z on the panel style is kept after panelStyle merge, so idle z 20/40 no longer wipes bring-to-front.",
+          kind: "fix"
+        },
+        {
+          label: "Raise z survives layout commits",
+          detail: "Edge-group resize and scale used to drop ephemeral HUD raise z from the window graph, so Mail fell back to idle z a beat after you clicked it.",
+          kind: "fix"
+        },
+        {
+          label: "Locked hover title",
+          detail: "Locked panels reuse the arrange-title chip look from the unlocked drag grip when chrome opens on hover.",
+          kind: "ui"
+        },
+        {
+          label: "Hide meters mid-tour",
+          detail: "Hide meters during a spotlight tour dismisses the tour, then hides. The click is no longer ignored.",
+          kind: "improve"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.9",
       title: "0.8.0-alpha.9",
       date: "2026-08-20",
@@ -8670,6 +8735,7 @@ ${fightHoverTip(src)}`
     meterClosedInstances: [],
     setupWizardDone: false,
     changelogSeenId: null,
+    serverUpdateNotesSeenDeploy: null,
     toursCompleted: {},
     windowNumberById: {},
     nextWindowNumber: 1,
@@ -8884,6 +8950,7 @@ ${fightHoverTip(src)}`
       metersHidden: !!parsed.metersHidden,
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
       changelogSeenId: typeof parsed.changelogSeenId === "string" ? parsed.changelogSeenId : null,
+      serverUpdateNotesSeenDeploy: typeof parsed.serverUpdateNotesSeenDeploy === "string" ? parsed.serverUpdateNotesSeenDeploy : null,
       toursCompleted: parsed.toursCompleted && typeof parsed.toursCompleted === "object" ? parsed.toursCompleted : {},
       windowNumberById: parsed.windowNumberById && typeof parsed.windowNumberById === "object" ? parsed.windowNumberById : {},
       nextWindowNumber: typeof parsed.nextWindowNumber === "number" && parsed.nextWindowNumber > 0 ? Math.floor(parsed.nextWindowNumber) : 1,
@@ -9114,6 +9181,9 @@ ${fightHoverTip(src)}`
     }
     if (partial.changelogSeenId !== void 0) {
       next.changelogSeenId = partial.changelogSeenId;
+    }
+    if (partial.serverUpdateNotesSeenDeploy !== void 0) {
+      next.serverUpdateNotesSeenDeploy = typeof partial.serverUpdateNotesSeenDeploy === "string" ? partial.serverUpdateNotesSeenDeploy : null;
     }
     if (partial.toursCompleted) {
       next.toursCompleted = { ...partial.toursCompleted };
@@ -10402,6 +10472,209 @@ ${fightHoverTip(src)}`
     }, 500);
   }
 
+  // src/host/updateNotes.ts
+  var listeners4 = [];
+  var pendingOpen = null;
+  function subscribeUpdateNotesOpen(fn) {
+    listeners4.push(fn);
+    if (pendingOpen) {
+      const payload = pendingOpen;
+      pendingOpen = null;
+      fn(payload);
+    }
+    return () => {
+      const idx = listeners4.indexOf(fn);
+      if (idx >= 0) listeners4.splice(idx, 1);
+    };
+  }
+  function openUpdateNotes(mode) {
+    const payload = { mode };
+    if (!listeners4.length) {
+      pendingOpen = payload;
+      return;
+    }
+    pendingOpen = null;
+    for (let i = 0; i < listeners4.length; i++) {
+      listeners4[i](payload);
+    }
+  }
+  function asRecord(value) {
+    if (!value || typeof value !== "object") return null;
+    return value;
+  }
+  function normalizeNote(raw) {
+    if (typeof raw === "string") {
+      const note2 = raw.trim();
+      if (!note2) return null;
+      return { deployed: "", date: "", note: note2 };
+    }
+    const obj = asRecord(raw);
+    if (!obj) return null;
+    const note = typeof obj.note === "string" ? obj.note.trim() : "";
+    if (!note) return null;
+    const deployed = typeof obj.deployed === "string" ? obj.deployed : "";
+    const date = typeof obj.date === "string" && obj.date ? obj.date : deployed || "";
+    return { deployed, date, note };
+  }
+  function normalizeUpdateNotes(raw) {
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const note = normalizeNote(raw[i]);
+      if (note) out.push(note);
+    }
+    return out;
+  }
+  function getW() {
+    return window;
+  }
+  function readPageUpdateNotes() {
+    return normalizeUpdateNotes(getW().update_notes);
+  }
+  function readPageUpdateNotesMore() {
+    return !!getW().update_notes_more;
+  }
+  function readLastDeploy(notes) {
+    const w = getW();
+    if (typeof w.last_deploy === "string" && w.last_deploy) return w.last_deploy;
+    const list = notes || readPageUpdateNotes();
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].deployed) return list[i].deployed;
+    }
+    return "";
+  }
+  function latestDeployNotes(notes, lastDeploy) {
+    const deploy = lastDeploy || readLastDeploy(notes);
+    const latestStamp = notes.length && notes[0].deployed || deploy || "";
+    const filtered = [];
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      if (!latestStamp || n.deployed === latestStamp || !n.deployed) {
+        filtered.push(n);
+      }
+    }
+    return {
+      lastDeploy: deploy,
+      notes: filtered,
+      pending: !!(notes.length && latestStamp && deploy && latestStamp !== deploy)
+    };
+  }
+  function updateNoteKind(note) {
+    const t = note.toLowerCase();
+    if (t.indexOf("steam") !== -1 || t.indexOf("macos") !== -1 || t.indexOf("messagepack") !== -1) {
+      return "client";
+    }
+    if (/\bcode\b/.test(t) || t.indexOf("server.status") !== -1 || t.indexOf("asynchronous functions") !== -1) {
+      return "code";
+    }
+    if (t.indexOf("fixed") !== -1 || t.indexOf("corrected") !== -1 || /\bfix(?:ed|es|ing)?\b/.test(t)) {
+      return "fix";
+    }
+    if (t.indexOf("item") !== -1 || t.indexOf("craft") !== -1 || t.indexOf("drop") !== -1 || t.indexOf("shop") !== -1 || t.indexOf("weapon") !== -1 || t.indexOf("equipment") !== -1 || t.indexOf("rogue items") !== -1) {
+      return "items";
+    }
+    if (t.indexOf("holiday") !== -1 || t.indexOf("duelland") !== -1 || t.indexOf("lunar") !== -1 || t.indexOf("valentine") !== -1 || t.indexOf("halloween") !== -1 || t.indexOf("egg hunt") !== -1 || t.indexOf("coming soon") !== -1 || t.indexOf("anniversary") !== -1 || /\bevents?\b/.test(t)) {
+      return "event";
+    }
+    return "other";
+  }
+  function updateNoteKindLabel(kind) {
+    switch (kind) {
+      case "code":
+        return "CODE";
+      case "items":
+        return "Items";
+      case "fix":
+        return "Fix";
+      case "event":
+        return "Event";
+      case "client":
+        return "Client";
+      case "other":
+        return null;
+      default: {
+        const _exhaustive = kind;
+        return _exhaustive;
+      }
+    }
+  }
+  function groupUpdateNotesByStamp(notes) {
+    const groups = [];
+    const indexByStamp = /* @__PURE__ */ new Map();
+    for (let i = 0; i < notes.length; i++) {
+      const note = notes[i];
+      const stamp = note.deployed || note.date || "";
+      const existing = indexByStamp.get(stamp);
+      if (existing === void 0) {
+        indexByStamp.set(stamp, groups.length);
+        groups.push({ stamp, notes: [note] });
+      } else {
+        groups[existing].notes.push(note);
+      }
+    }
+    return groups;
+  }
+  async function fetchUpdateNotesPage(offset) {
+    const url = `/update-notes?offset=${Math.max(0, Math.floor(offset))}`;
+    const res = await fetch(url, { credentials: "same-origin" });
+    if (!res.ok) {
+      throw new Error(`update-notes HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const obj = asRecord(data);
+    return {
+      notes: normalizeUpdateNotes(obj ? obj.notes : data),
+      more: !!(obj && obj.more)
+    };
+  }
+  function appendPageUpdateNotes(page) {
+    const w = getW();
+    const merged = readPageUpdateNotes().concat(page.notes);
+    w.update_notes = merged;
+    w.update_notes_more = page.more;
+    return merged;
+  }
+  function ensureLastDeployGlobal() {
+    const w = getW();
+    if (typeof w.last_deploy === "string" && w.last_deploy) return;
+    const inferred = readLastDeploy();
+    if (inferred) w.last_deploy = inferred;
+  }
+  function ourAddUpdateNotes() {
+    ensureLastDeployGlobal();
+    openUpdateNotes("latest");
+  }
+  function ourShowUpdateNotes() {
+    ensureLastDeployGlobal();
+    openUpdateNotes("all");
+  }
+  function installUpdateNotesHooks() {
+    const w = getW();
+    ensureLastDeployGlobal();
+    const apply = () => {
+      ensureLastDeployGlobal();
+      if (w.add_update_notes !== ourAddUpdateNotes) {
+        if (typeof w.add_update_notes === "function" && w.add_update_notes !== ourAddUpdateNotes && !w.__ecuAddUpdateNotes) {
+          w.__ecuAddUpdateNotes = w.add_update_notes;
+        }
+        w.add_update_notes = ourAddUpdateNotes;
+      }
+      if (w.show_update_notes !== ourShowUpdateNotes) {
+        if (typeof w.show_update_notes === "function" && w.show_update_notes !== ourShowUpdateNotes && !w.__ecuShowUpdateNotes) {
+          w.__ecuShowUpdateNotes = w.show_update_notes;
+        }
+        w.show_update_notes = ourShowUpdateNotes;
+      }
+    };
+    apply();
+    let ticks = 0;
+    const timer = window.setInterval(() => {
+      apply();
+      ticks += 1;
+      if (ticks >= 40) window.clearInterval(timer);
+    }, 500);
+  }
+
   // src/host/commChrome/types.ts
   function esc(text) {
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -10496,7 +10769,7 @@ ${fightHoverTip(src)}`
   overflow: hidden;
 }
 #comm-ui .comm-pos-arrange-overlay.is-chrome-only {
-  justify-content: flex-end;
+  justify-content: stretch;
 }
 #comm-ui .comm-pos-arrange-overlay.has-grip {
   justify-content: stretch;
@@ -10512,11 +10785,27 @@ ${fightHoverTip(src)}`
   z-index: 0;
   justify-content: flex-start;
 }
+/* Locked hover title: same chip as the drag grip, no grab handle. */
+#comm-ui .comm-pos-arrange-overlay .comm-pos-arrange-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 2px 8px;
+  background: rgba(40, 40, 20, 0.92);
+  border: 1px solid #886;
+  color: #ffe08a;
+  box-sizing: border-box;
+  user-select: none;
+  pointer-events: none;
+}
 #comm-ui .comm-pos-arrange-overlay .comm-pos-arrange-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  text-align: left;
 }
 #comm-ui .comm-pos-arrange-overlay .comm-pos-window-chrome {
   position: relative;
@@ -12087,7 +12376,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/mail/mailState.ts
-  var listeners4 = [];
+  var listeners5 = [];
   var toastListeners = [];
   var locallyReadIds = /* @__PURE__ */ new Set();
   var state = {
@@ -12114,7 +12403,7 @@ ${CHROME_ARRANGE_CSS}
     sessionDraft: emptyDraft()
   };
   function notifyListeners() {
-    for (let i = 0; i < listeners4.length; i++) listeners4[i]();
+    for (let i = 0; i < listeners5.length; i++) listeners5[i]();
   }
   function emitToast(message) {
     for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
@@ -12140,10 +12429,10 @@ ${CHROME_ARRANGE_CSS}
     commit({ view: next });
   }
   function subscribeMailStore(fn) {
-    listeners4.push(fn);
+    listeners5.push(fn);
     return () => {
-      const idx = listeners4.indexOf(fn);
-      if (idx >= 0) listeners4.splice(idx, 1);
+      const idx = listeners5.indexOf(fn);
+      if (idx >= 0) listeners5.splice(idx, 1);
     };
   }
   function subscribeMailToast(fn) {
@@ -13439,7 +13728,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/infoDialog/write.ts
-  var listeners5 = /* @__PURE__ */ new Set();
+  var listeners6 = /* @__PURE__ */ new Set();
   var pendingWriteKind = "item";
   function setPendingWriteKind(kind) {
     pendingWriteKind = kind;
@@ -13448,13 +13737,13 @@ ${CHROME_ARRANGE_CSS}
     return pendingWriteKind;
   }
   function subscribeInfoDialogChange(listener) {
-    listeners5.add(listener);
+    listeners6.add(listener);
     return () => {
-      listeners5.delete(listener);
+      listeners6.delete(listener);
     };
   }
   function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners5)) {
+    for (const listener of Array.from(listeners6)) {
       try {
         listener(kind, open);
       } catch (e2) {
@@ -13843,7 +14132,7 @@ ${CHROME_ARRANGE_CSS}
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
   var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
-  var listeners6 = [];
+  var listeners7 = [];
   var syncListeners = [];
   var bagSyncedAt = null;
   var bagSyncedForName = null;
@@ -13884,9 +14173,9 @@ ${CHROME_ARRANGE_CSS}
     document.head.append(style);
   }
   function notifyInventory(open) {
-    for (let i = 0; i < listeners6.length; i++) {
+    for (let i = 0; i < listeners7.length; i++) {
       try {
-        listeners6[i](open);
+        listeners7[i](open);
       } catch (e2) {
       }
     }
@@ -13966,10 +14255,10 @@ ${CHROME_ARRANGE_CSS}
     bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
   }
   function subscribeInventory(listener) {
-    listeners6.push(listener);
+    listeners7.push(listener);
     return () => {
-      const idx = listeners6.indexOf(listener);
-      if (idx >= 0) listeners6.splice(idx, 1);
+      const idx = listeners7.indexOf(listener);
+      if (idx >= 0) listeners7.splice(idx, 1);
     };
   }
   function subscribeBagSync(listener) {
@@ -14823,11 +15112,26 @@ ${CHROME_ARRANGE_CSS}
     }
     openMail({ toggle: true });
   }
+  function openDocsMenu() {
+    const showModal = window.show_modal;
+    if (typeof showModal !== "function" || typeof window.render_guide !== "function" || typeof window.render_code_docs !== "function" || typeof window.render_others !== "function") {
+      window.open("/docs", "_blank", "noopener,noreferrer");
+      return;
+    }
+    const html = "<div style='width:360px;text-align:center'><div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_guide()'><span style='color:#69BE86'>[G]</span> Game Guide</div><div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_code_docs()'><span style='color:#D8C14F'>[C]</span> CODE Docs</div><div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_others()'><span style='color:#58A1B0'>[O]</span> Other Systems</div></div>";
+    showModal(html, { wrap: false, hideinbackground: true, url: "/docs" });
+  }
+  function onDocsClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openDocsMenu();
+  }
   var ACTION_ICONS = {
     follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
-    mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>'
+    mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+    docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
   };
   function buildActionsEl() {
     const actions = document.createElement("div");
@@ -14862,7 +15166,8 @@ ${CHROME_ARRANGE_CSS}
         "Command",
         "Send a command to the observed character",
         onCommandClick
-      )
+      ),
+      mk("docs", "Docs", "Adventure.land docs \u2014 guide, CODE, systems", onDocsClick)
     );
     return actions;
   }
@@ -14871,7 +15176,8 @@ ${CHROME_ARRANGE_CSS}
       Follow: "btn-follow",
       Bag: "btn-bag",
       Mail: "btn-mail",
-      Command: "btn-command"
+      Command: "btn-command",
+      Docs: "btn-docs"
     };
     const buttons = actions.querySelectorAll(".ecu-btn");
     for (let i = 0; i < buttons.length; i++) {
@@ -14938,7 +15244,7 @@ ${CHROME_ARRANGE_CSS}
       if (!actionsEl) {
         actionsEl = buildActionsEl();
         existingStack.insertBefore(actionsEl, existingStack.firstChild);
-      } else if (!actionsEl.querySelector(".ecu-btn-icon-only")) {
+      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]')) {
         const next = buildActionsEl();
         actionsEl.replaceWith(next);
         actionsEl = next;
@@ -17480,8 +17786,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.9" : "unknown";
-    const builtAt = true ? "2026-08-20T17:51:09.291Z" : "unknown";
+    const version = true ? "0.8.0-alpha.10" : "unknown";
+    const builtAt = true ? "2026-08-26T15:16:53.466Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -18348,6 +18654,145 @@ button.comm-mail__stack-u {
     padding: 10px 18px 16px;
   }
 }
+
+/* Adventure.land server update notes (not ECU changelog) */
+.ecu-comm-wiz--un .ecu-comm-wiz-logo {
+  color: #9ec9ef;
+}
+.ecu-comm-wiz-un-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ecu-comm-wiz-un-day-meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+  margin-bottom: 2px;
+}
+.ecu-comm-wiz-un-day-stamp {
+  color: #f0e6c8;
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+.ecu-comm-wiz-un-day-badge {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d8ecff;
+  background: rgba(70, 120, 175, 0.7);
+  border: 1px solid rgba(160, 200, 240, 0.35);
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+.ecu-comm-wiz-un-day-count {
+  margin-left: auto;
+  color: #888;
+  font-size: 15px;
+}
+.ecu-comm-wiz-un-grid {
+  margin: 0;
+}
+.ecu-comm-wiz-un-item {
+  position: relative;
+  gap: 0;
+  min-height: 0;
+}
+.ecu-comm-wiz-un-item--badged {
+  padding-right: 72px;
+}
+.ecu-comm-wiz-un-item .ecu-comm-wiz-un-kind {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  margin: 0;
+}
+.ecu-comm-wiz-un-item--code {
+  border-left-color: #7ab8e0;
+}
+.ecu-comm-wiz-un-item--items {
+  border-left-color: #f0d070;
+}
+.ecu-comm-wiz-un-item--fix {
+  border-left-color: #7fd9a8;
+}
+.ecu-comm-wiz-un-item--event {
+  border-left-color: #e09a62;
+}
+.ecu-comm-wiz-un-item--client {
+  border-left-color: #b4a0e0;
+}
+.ecu-comm-wiz-un-kind--code {
+  color: #e4f2ff;
+  background: rgba(55, 125, 185, 0.68);
+}
+.ecu-comm-wiz-un-kind--items {
+  color: #fff0c0;
+  background: rgba(210, 155, 35, 0.62);
+}
+.ecu-comm-wiz-un-kind--fix {
+  color: #e0ffe9;
+  background: rgba(35, 145, 95, 0.64);
+}
+.ecu-comm-wiz-un-kind--event {
+  color: #ffe2bc;
+  background: rgba(175, 95, 40, 0.64);
+}
+.ecu-comm-wiz-un-kind--client {
+  color: #e8e0ff;
+  background: rgba(110, 90, 170, 0.62);
+}
+.ecu-comm-wiz-un-note {
+  color: #fff;
+  font-size: 28px;
+  line-height: 1.45;
+  max-width: 36em;
+}
+.ecu-comm-wiz-un-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  margin: 0 1px;
+  padding: 1px 4px 1px 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ecu-comm-wiz-un-ref .ecu-game-icon {
+  flex: 0 0 auto;
+}
+.ecu-comm-wiz-un-ref-label {
+  color: #fff;
+}
+.ecu-comm-wiz-un-nav-more {
+  margin: 10px 8px 4px;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+}
+.ecu-comm-wiz-un-begin,
+.ecu-comm-wiz-un-empty {
+  color: #888;
+  text-align: center;
+  margin: 10px 8px 6px;
+  font-size: 15px;
+}
+.ecu-comm-wiz-un-pending {
+  margin: 0 0 4px;
+  color: #aaa;
+  font-size: 16px;
+}
+.ecu-comm-wiz-un-error {
+  color: #e08080;
+  margin: 8px 0 0;
+  font-size: 16px;
+}
+@media (max-width: 720px) {
+  .ecu-comm-wiz-un-note {
+    font-size: 22px;
+  }
+}
 `;
   function injectCommSetupWizardCss() {
     if (typeof document === "undefined") return;
@@ -18827,6 +19272,611 @@ button.comm-mail__stack-u {
           body
         ),
         footer
+      )
+    );
+  }
+
+  // src/lib/updateNoteRefs.ts
+  var GENERIC_SINGLE_NAMES = new Set(
+    [
+      "bow",
+      "wand",
+      "cape",
+      "coat",
+      "belt",
+      "ring",
+      "staff",
+      "sword",
+      "mace",
+      "claw",
+      "orb",
+      "egg",
+      "gift",
+      "test",
+      "ink",
+      "ale",
+      "gum",
+      "coal",
+      "rod",
+      "axe",
+      "spear",
+      "blade",
+      "shield",
+      "helmet",
+      "boots",
+      "gloves",
+      "pants",
+      "shoes",
+      "shirt",
+      "armor",
+      "scroll",
+      "potion",
+      "gem",
+      "key",
+      "box",
+      "bag",
+      "misc",
+      "stone",
+      "wood",
+      "iron",
+      "gold",
+      "silver",
+      "code",
+      "server",
+      "client",
+      "event",
+      "attack",
+      "heal",
+      "move",
+      "stop",
+      "use",
+      "open",
+      "blink"
+    ].map((s) => s.toLowerCase())
+  );
+  var cachedVersion = null;
+  var cachedLexicon = [];
+  function isBoundary(ch) {
+    if (ch == null || ch === "") return true;
+    return !/[A-Za-z0-9_]/.test(ch);
+  }
+  function phraseAllowed(phrase, source) {
+    const p = phrase.trim();
+    if (p.length < 3) return false;
+    const lower = p.toLowerCase();
+    if (GENERIC_SINGLE_NAMES.has(lower)) return false;
+    if (/\s/.test(p)) return p.length >= 5;
+    if (source === "id") {
+      return /^[a-z][a-z0-9_]{3,}$/i.test(p);
+    }
+    return p.length >= 7;
+  }
+  function pushEntry(out, seen, phrase, id, kind, source) {
+    if (!phraseAllowed(phrase, source)) return;
+    const key = `${kind}\0${id}\0${phrase.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ phrase: phrase.toLowerCase(), id, kind });
+  }
+  function buildUpdateNoteLexicon(G) {
+    const g = G;
+    if (!g) return [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const tables = [
+      { bag: g.items, kind: "item" },
+      { bag: g.skills, kind: "skill" },
+      { bag: g.monsters, kind: "monster" },
+      { bag: g.conditions, kind: "condition" }
+    ];
+    for (let t = 0; t < tables.length; t++) {
+      const { bag, kind } = tables[t];
+      if (!bag) continue;
+      for (const id of Object.keys(bag)) {
+        const def = bag[id];
+        if (def && typeof def.name === "string" && def.name.trim()) {
+          pushEntry(out, seen, def.name.trim(), id, kind, "name");
+        }
+        pushEntry(out, seen, id, id, kind, "id");
+      }
+    }
+    if (g.classes) {
+      for (const id of Object.keys(g.classes)) {
+        const def = g.classes[id];
+        const name = def && typeof def.name === "string" && def.name.trim() ? def.name.trim() : id;
+        const lower = name.toLowerCase();
+        if (name.length < 3 || GENERIC_SINGLE_NAMES.has(lower)) continue;
+        const key = `class\0${id}\0${lower}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ phrase: lower, id, kind: "class" });
+        if (id.toLowerCase() !== lower) {
+          const idKey = `class\0${id}\0${id.toLowerCase()}`;
+          if (!seen.has(idKey)) {
+            seen.add(idKey);
+            out.push({ phrase: id.toLowerCase(), id, kind: "class" });
+          }
+        }
+      }
+    }
+    out.sort((a, b) => b.phrase.length - a.phrase.length || a.phrase.localeCompare(b.phrase));
+    return out;
+  }
+  function getUpdateNoteLexicon() {
+    const G = getG();
+    const version = G && G.version != null ? G.version : null;
+    if (version !== cachedVersion || !cachedLexicon.length) {
+      cachedVersion = version;
+      cachedLexicon = buildUpdateNoteLexicon(G);
+    }
+    return cachedLexicon;
+  }
+  function findUpdateNoteRefs(note, lexicon = getUpdateNoteLexicon()) {
+    if (!note || !lexicon.length) return [];
+    const lower = note.toLowerCase();
+    const candidates = [];
+    for (let i = 0; i < lexicon.length; i++) {
+      const entry = lexicon[i];
+      const phrase = entry.phrase;
+      if (!phrase) continue;
+      let from = 0;
+      while (from <= lower.length - phrase.length) {
+        const at = lower.indexOf(phrase, from);
+        if (at < 0) break;
+        const before = at === 0 ? void 0 : lower[at - 1];
+        const after = at + phrase.length >= lower.length ? void 0 : lower[at + phrase.length];
+        if (isBoundary(before) && isBoundary(after)) {
+          candidates.push({
+            start: at,
+            end: at + phrase.length,
+            id: entry.id,
+            kind: entry.kind
+          });
+        }
+        from = at + 1;
+      }
+    }
+    candidates.sort(
+      (a, b) => a.start - b.start || b.end - b.start - (a.end - a.start) || a.kind.localeCompare(b.kind)
+    );
+    const hits = [];
+    let cursor = 0;
+    for (let i = 0; i < candidates.length; i++) {
+      const hit = candidates[i];
+      if (hit.start < cursor) continue;
+      hits.push(hit);
+      cursor = hit.end;
+    }
+    return hits;
+  }
+  function segmentUpdateNote(note, lexicon) {
+    const hits = findUpdateNoteRefs(note, lexicon);
+    if (!hits.length) return [{ type: "text", text: note }];
+    const segments = [];
+    let cursor = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const hit = hits[i];
+      if (hit.start > cursor) {
+        segments.push({ type: "text", text: note.slice(cursor, hit.start) });
+      }
+      segments.push({
+        type: "ref",
+        id: hit.id,
+        kind: hit.kind,
+        text: note.slice(hit.start, hit.end)
+      });
+      cursor = hit.end;
+    }
+    if (cursor < note.length) {
+      segments.push({ type: "text", text: note.slice(cursor) });
+    }
+    return segments;
+  }
+  function updateNoteRefIconKind(kind) {
+    switch (kind) {
+      case "item":
+        return "item";
+      case "skill":
+        return "skill";
+      case "monster":
+        return "monster";
+      case "class":
+        return "class";
+      case "condition":
+        return "condition";
+      default: {
+        const _exhaustive = kind;
+        return _exhaustive;
+      }
+    }
+  }
+
+  // src/ui/chrome/GameIcon.ts
+  var GAME_ICON_CSS = `
+.ecu-game-icon .ecu-meter-icon,
+.ecu-game-icon .ecu-meter-icon-clip {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+}
+.ecu-game-icon .ecu-meter-icon-clip img {
+  max-width: none !important;
+  max-height: none !important;
+}
+`;
+  var gameIconCssInjected = false;
+  function ensureGameIconCss() {
+    if (gameIconCssInjected) return;
+    gameIconCssInjected = true;
+    const existing = document.querySelector(
+      "style[data-ecu-game-icon-css]"
+    );
+    if (existing) {
+      existing.textContent = GAME_ICON_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-game-icon-css", "1");
+    el.textContent = GAME_ICON_CSS;
+    document.head.appendChild(el);
+  }
+  function GameIcon(props) {
+    const React = getReact();
+    ensureGameIconCss();
+    const ref = React.useRef(null);
+    const {
+      id,
+      kind = "auto",
+      size = 18,
+      ctype,
+      mtype,
+      name,
+      title,
+      skin,
+      className,
+      container
+    } = props;
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      paintGameIcon(el, id, {
+        kind,
+        size,
+        ctype,
+        mtype,
+        name,
+        title,
+        skin,
+        container
+      });
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [id, kind, size, ctype, mtype, name, title, skin, container]);
+    return e("span", {
+      ref,
+      className: ["ecu-game-icon", className].filter(Boolean).join(" "),
+      style: {
+        display: "inline-flex",
+        width: size,
+        height: size,
+        flex: "0 0 auto",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        verticalAlign: "middle"
+      },
+      title: title === "" ? void 0 : title || id
+    });
+  }
+
+  // src/ui/frames/comm/CommUIUpdateNotes.ts
+  function markSeen(lastDeploy) {
+    if (!lastDeploy) return;
+    patchSettings({ serverUpdateNotesSeenDeploy: lastDeploy });
+  }
+  function groupKey(group, index) {
+    return group.stamp || `undated-${index}`;
+  }
+  function renderNoteText(note) {
+    const segments = segmentUpdateNote(note);
+    const kids = [];
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg.type === "text") {
+        kids.push(seg.text);
+        continue;
+      }
+      kids.push(
+        e(
+          "span",
+          {
+            key: `ref-${i}-${seg.kind}-${seg.id}`,
+            className: "ecu-comm-wiz-un-ref",
+            title: `${seg.kind}: ${seg.id}`
+          },
+          e(GameIcon, {
+            id: seg.id,
+            kind: updateNoteRefIconKind(seg.kind),
+            size: 26,
+            ctype: seg.kind === "class" ? seg.id : void 0,
+            title: seg.text
+          }),
+          e("span", { className: "ecu-comm-wiz-un-ref-label" }, seg.text)
+        )
+      );
+    }
+    return e("div", { className: "ecu-comm-wiz-un-note" }, ...kids);
+  }
+  function renderNoteItem(entry, key) {
+    const kind = updateNoteKind(entry.note);
+    const kindLabel = updateNoteKindLabel(kind);
+    return e(
+      "div",
+      {
+        key,
+        className: "ecu-comm-wiz-cl-item ecu-comm-wiz-un-item" + (kind !== "other" ? ` ecu-comm-wiz-un-item--${kind}` : "") + (kindLabel ? " ecu-comm-wiz-un-item--badged" : "")
+      },
+      kindLabel ? e(
+        "span",
+        {
+          className: `ecu-comm-wiz-cl-kind ecu-comm-wiz-un-kind ecu-comm-wiz-un-kind--${kind}`
+        },
+        kindLabel
+      ) : null,
+      renderNoteText(entry.note)
+    );
+  }
+  function CommUIUpdateNotes(props) {
+    injectCommSetupWizardCss();
+    const React = getReact();
+    const [notes, setNotes] = React.useState(() => readPageUpdateNotes());
+    const [more, setMore] = React.useState(() => readPageUpdateNotesMore());
+    const [lastDeploy] = React.useState(() => readLastDeploy(notes));
+    const [browseAll, setBrowseAll] = React.useState(props.mode === "all");
+    const [loading, setLoading] = React.useState(false);
+    const [error, setError] = React.useState(null);
+    const latest = latestDeployNotes(notes, lastDeploy);
+    const deployLabel = lastDeploy || latest.lastDeploy;
+    const latestStamp = latest.notes[0] && (latest.notes[0].deployed || latest.notes[0].date) || deployLabel;
+    const displayNotes = browseAll ? notes : latest.notes;
+    const groups = groupUpdateNotesByStamp(displayNotes);
+    const showNav = browseAll || groups.length > 1;
+    const [selectedKey, setSelectedKey] = React.useState(
+      () => groups.length ? groupKey(groups[0], 0) : ""
+    );
+    React.useEffect(() => {
+      if (!groups.length) {
+        setSelectedKey("");
+        return;
+      }
+      setSelectedKey((prev) => {
+        for (let i = 0; i < groups.length; i++) {
+          if (groupKey(groups[i], i) === prev) return prev;
+        }
+        return groupKey(groups[0], 0);
+      });
+    }, [browseAll, notes.length, more]);
+    const selected = groups.find((g, i) => groupKey(g, i) === selectedKey) || groups[0] || null;
+    const selectedIsLatest = !!(selected && latestStamp && selected.stamp === latestStamp);
+    const dismiss = () => {
+      markSeen(deployLabel);
+      props.onDone();
+    };
+    const onDoneRef = React.useRef(props.onDone);
+    onDoneRef.current = props.onDone;
+    const deployRef = React.useRef(deployLabel);
+    deployRef.current = deployLabel;
+    React.useEffect(() => {
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          markSeen(deployRef.current);
+          onDoneRef.current();
+        }
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, []);
+    const loadMore = () => {
+      if (loading || !more) return;
+      setLoading(true);
+      setError(null);
+      setBrowseAll(true);
+      fetchUpdateNotesPage(notes.length).then((page) => {
+        const merged = appendPageUpdateNotes(page);
+        setNotes(merged);
+        setMore(page.more);
+      }).catch((err) => {
+        const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Failed to load more notes";
+        setError(msg);
+      }).then(() => setLoading(false));
+    };
+    const heading = browseAll || showNav ? "Update Notes" : "Server update";
+    const sub = deployLabel ? `Last Update ${deployLabel}` : "Adventure.land release notes";
+    const nav = showNav ? e(
+      "nav",
+      {
+        className: "ecu-comm-wiz-cl-nav",
+        "aria-label": "Update dates"
+      },
+      ...groups.map((group, i) => {
+        const key = groupKey(group, i);
+        const isLatest = !!(latestStamp && group.stamp === latestStamp);
+        const count = group.notes.length;
+        return e(
+          "button",
+          {
+            key,
+            type: "button",
+            className: "ecu-comm-wiz-cl-nav-btn" + (selectedKey === key ? " is-active" : "") + (isLatest ? " is-new" : " is-seen"),
+            onClick: () => setSelectedKey(key)
+          },
+          e(
+            "span",
+            { className: "ecu-comm-wiz-cl-nav-title-row" },
+            e(
+              "span",
+              { className: "ecu-comm-wiz-cl-nav-title" },
+              group.stamp || "Undated"
+            ),
+            isLatest ? e("span", { className: "ecu-comm-wiz-cl-badge-new" }, "Latest") : null
+          ),
+          e(
+            "span",
+            { className: "ecu-comm-wiz-cl-nav-date" },
+            count === 1 ? "1 note" : `${count} notes`
+          )
+        );
+      }),
+      browseAll && more ? e(
+        "button",
+        {
+          key: "more",
+          type: "button",
+          className: "ecu-comm-wiz-btn ecu-comm-wiz-un-nav-more",
+          disabled: loading,
+          onClick: loadMore
+        },
+        loading ? "Loading\u2026" : "Load more"
+      ) : null,
+      browseAll && !more && groups.length ? e(
+        "div",
+        { key: "begin", className: "ecu-comm-wiz-un-begin" },
+        "The Beginning"
+      ) : null
+    ) : null;
+    const bodyKids = [];
+    if (!selected) {
+      bodyKids.push(
+        e(
+          "p",
+          { key: "empty", className: "ecu-comm-wiz-un-empty" },
+          "No update notes on this page yet."
+        )
+      );
+    } else {
+      bodyKids.push(
+        e(
+          "div",
+          { key: "day-meta", className: "ecu-comm-wiz-un-day-meta" },
+          e(
+            "span",
+            { className: "ecu-comm-wiz-un-day-stamp" },
+            selected.stamp || "Undated"
+          ),
+          selectedIsLatest ? e("span", { className: "ecu-comm-wiz-un-day-badge" }, "Latest") : null,
+          e(
+            "span",
+            { className: "ecu-comm-wiz-un-day-count" },
+            selected.notes.length === 1 ? "1 note" : `${selected.notes.length} notes`
+          )
+        )
+      );
+      const cards = [];
+      for (let i = 0; i < selected.notes.length; i++) {
+        cards.push(renderNoteItem(selected.notes[i], `n-${i}`));
+      }
+      bodyKids.push(
+        e(
+          "div",
+          { key: "cards", className: "ecu-comm-wiz-cl-items ecu-comm-wiz-un-grid" },
+          ...cards
+        )
+      );
+    }
+    if (error) {
+      bodyKids.push(
+        e("p", { key: "err", className: "ecu-comm-wiz-un-error" }, error)
+      );
+    }
+    const footKids = [];
+    if (!browseAll) {
+      footKids.push(
+        e(
+          "button",
+          {
+            key: "all",
+            type: "button",
+            className: "ecu-comm-wiz-btn",
+            onClick: () => setBrowseAll(true)
+          },
+          "All update notes"
+        )
+      );
+    }
+    footKids.push(
+      e(
+        "button",
+        {
+          key: "ok",
+          type: "button",
+          className: "ecu-comm-wiz-btn primary",
+          onClick: dismiss
+        },
+        "Got it"
+      )
+    );
+    return e(
+      "div",
+      {
+        className: "ecu-comm-wiz-backdrop ecu-comm-wiz-backdrop--changelog",
+        onMouseDown: (ev) => {
+          if (ev.target === ev.currentTarget) dismiss();
+        }
+      },
+      e(
+        "div",
+        {
+          className: "ecu-comm-wiz ecu-comm-wiz--changelog ecu-comm-wiz--un",
+          style: PIXEL_TEXT,
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": heading,
+          onMouseDown: (ev) => ev.stopPropagation()
+        },
+        e(
+          "div",
+          { className: "ecu-comm-wiz-cl-head" },
+          e("div", { className: "ecu-comm-wiz-logo" }, "Adventure.land"),
+          e("h3", null, heading),
+          e("div", { className: "ecu-comm-wiz-cl-ver" }, sub),
+          latest.pending && !browseAll ? e(
+            "p",
+            { className: "ecu-comm-wiz-un-pending" },
+            `Latest notes ${notes[0] && notes[0].deployed ? notes[0].deployed : ""}`
+          ) : null,
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-comm-wiz-cl-close",
+              title: "Close",
+              "aria-label": "Close",
+              onClick: dismiss
+            },
+            "\xD7"
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-comm-wiz-cl-shell" + (showNav ? " ecu-comm-wiz-cl-shell--nav" : "")
+          },
+          nav,
+          e(
+            "div",
+            { className: "ecu-comm-wiz-cl-body ecu-comm-wiz-un-body" },
+            ...bodyKids
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-comm-wiz-cl-foot ecu-comm-wiz-actions" },
+          ...footKids
+        )
       )
     );
   }
@@ -20413,6 +21463,10 @@ button.comm-mail__stack-u {
       toggleLayoutEdit,
       tourOverlay,
       tourActive: !!activeTour,
+      dismissActiveTour: () => {
+        var _a;
+        return finishTour((_a = activeTourRef.current) == null ? void 0 : _a.tour.id);
+      },
       tourFocusMeterId,
       setTourFocusMeterId
     };
@@ -20879,7 +21933,7 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/hooks/useCommMeterInstances.ts
-  function useCommMeterInstances(layout, opts) {
+  function useCommMeterInstances(opts) {
     const React = getReact();
     const [meterInstances, setMeterInstances] = React.useState(
       () => getSettings().meterInstances
@@ -20891,10 +21945,6 @@ button.comm-mail__stack-u {
     );
     const meterInstancesRef = React.useRef(meterInstances);
     meterInstancesRef.current = meterInstances;
-    const peerLayout = { ...layout };
-    for (let i = 0; i < meterInstances.length; i++) {
-      peerLayout[meterInstances[i].id] = meterInstances[i].pos;
-    }
     const meterIsLocked = (inst) => {
       if (typeof inst.locked === "boolean") return inst.locked;
       return getSettings().windowsLocked !== false;
@@ -20905,14 +21955,6 @@ button.comm-mail__stack-u {
         if (partial.selectedset != null && getMeterAppearance().segmentsLocked) {
           next = next.map((m) => ({ ...m, selectedset: partial.selectedset }));
         }
-        patchSettings({ meterInstances: next });
-        return next;
-      });
-    };
-    const raiseMeterToFront = (id, above = 0) => {
-      setMeterInstances((prev) => {
-        const next = bringMeterToFront(prev, id, above);
-        if (next === prev) return prev;
         patchSettings({ meterInstances: next });
         return next;
       });
@@ -21134,10 +22176,8 @@ button.comm-mail__stack-u {
       meterInstances,
       meterInstancesRef,
       closedMeters,
-      peerLayout,
       meterIsLocked,
       patchMeter,
-      raiseMeterToFront,
       closeMeterRuntime,
       reopenClosedMeter,
       focusInspector,
@@ -21170,6 +22210,12 @@ button.comm-mail__stack-u {
       if (canGroupWindow(id)) out.push(id);
     }
     return out;
+  }
+  function windowKind(id) {
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      if (PANEL_IDS[i] === id) return "hud";
+    }
+    return "meter";
   }
 
   // src/lib/layoutGrid.ts
@@ -21308,7 +22354,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners7 = [];
+  var listeners8 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -21346,8 +22392,8 @@ button.comm-mail__stack-u {
     }
   }
   function notify3() {
-    for (let i = 0; i < listeners7.length; i++) {
-      listeners7[i]();
+    for (let i = 0; i < listeners8.length; i++) {
+      listeners8[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -21394,10 +22440,10 @@ button.comm-mail__stack-u {
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners7.push(listener);
+    listeners8.push(listener);
     return () => {
-      const idx = listeners7.indexOf(listener);
-      if (idx >= 0) listeners7.splice(idx, 1);
+      const idx = listeners8.indexOf(listener);
+      if (idx >= 0) listeners8.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -22016,7 +23062,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners8 = [];
+  var listeners9 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -22071,14 +23117,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners8.push(listener);
+    listeners9.push(listener);
     return () => {
-      const idx = listeners8.indexOf(listener);
-      if (idx >= 0) listeners8.splice(idx, 1);
+      const idx = listeners9.indexOf(listener);
+      if (idx >= 0) listeners9.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners8.length; i++) listeners8[i]();
+    for (let i = 0; i < listeners9.length; i++) listeners9[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -23109,6 +24155,63 @@ button.comm-mail__stack-u {
     timerId = window.setInterval(tick, TICK_MS);
   }
 
+  // src/lib/panelDragSnap.ts
+  var PEER_SNAP_PCT = 1;
+  var VISUAL_EDGE_SNAP_PX = 8;
+  function applyPanelDragMove(input) {
+    let nextX = input.rawX;
+    let nextY = input.rawY;
+    let edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
+    let useVisualEdge = true;
+    const free = input.free;
+    if (!free) {
+      const snapped = snapPosToFineGrid(
+        nextX,
+        nextY,
+        input.gridStep,
+        input.rootWidth,
+        input.rootHeight
+      );
+      nextX = snapped.x;
+      nextY = snapped.y;
+      if (!input.skipPeerSnap) {
+        const metrics = squareGridMetrics(
+          input.gridStep,
+          input.rootWidth,
+          input.rootHeight
+        );
+        const cellPctX = metrics.cellPx / Math.max(1, input.rootWidth) * 100;
+        const cellPctY = metrics.cellPx / Math.max(1, input.rootHeight) * 100;
+        const peerThresh = Math.min(
+          PEER_SNAP_PCT,
+          Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4)
+        );
+        nextX = snapPercent(nextX, peerThresh, input.peerXs);
+        nextY = snapPercent(nextY, peerThresh, input.peerYs);
+      }
+      useVisualEdge = false;
+    } else {
+      if (!input.skipPeerSnap) {
+        nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
+        nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
+      }
+      edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
+    }
+    const visual = input.visual;
+    if (useVisualEdge && visual) {
+      const edge = snapDragToVisualEdges(
+        input.clientX,
+        input.clientY,
+        input.start,
+        visual,
+        edgeThresholdPx
+      );
+      if (edge.snapX) nextX = edge.x;
+      if (edge.snapY) nextY = edge.y;
+    }
+    return { x: nextX, y: nextY };
+  }
+
   // src/lib/panelEdgeSnapDom.ts
   function cssEscapePanelId(id) {
     if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
@@ -23246,6 +24349,86 @@ button.comm-mail__stack-u {
   }
 
   // src/lib/commWindowGroup.ts
+  function commWindowPeerLayout(state2) {
+    const out = { ...state2.layout || {} };
+    const meters = state2.meters || [];
+    for (let i = 0; i < meters.length; i++) {
+      out[meters[i].id] = meters[i].pos;
+    }
+    return out;
+  }
+  function commWindowPeerSnapAxes(state2, selfId2, isPeerVisible) {
+    const peers = commWindowPeerLayout(state2);
+    const ids = Object.keys(peers);
+    const xs = [];
+    const ys = [];
+    for (let i = 0; i < ids.length; i++) {
+      const pid = ids[i];
+      if (pid === selfId2) continue;
+      const p = peers[pid];
+      if (!p || !isPeerVisible(pid)) continue;
+      xs.push(p.x);
+      ys.push(p.y);
+    }
+    return { xs, ys };
+  }
+  function commWindowDragMove(input) {
+    return applyPanelDragMove(input);
+  }
+  function finishCommWindowDragDrop(input) {
+    let finalPos = input.pos;
+    if (input.softAvoid) {
+      const peers = commWindowPeerLayout(input.state);
+      const nudged = softAvoidOverlap(input.id, finalPos, peers);
+      if (nudged.x !== finalPos.x || nudged.y !== finalPos.y) {
+        finalPos = nudged;
+      }
+    }
+    if (!input.freePlacement && input.rootWidth > 0 && input.rootHeight > 0) {
+      const snapped = snapPosToFineGrid(
+        finalPos.x,
+        finalPos.y,
+        input.gridStep,
+        input.rootWidth,
+        input.rootHeight
+      );
+      if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
+        finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
+      }
+    }
+    return finalPos;
+  }
+  function raiseCommWindow(state2, id) {
+    if (windowKind(id) === "hud") {
+      const hid = id;
+      const prev = state2.hudZs || {};
+      const { zIndex, peers } = nextWindowFrontZ(state2.meters, {
+        hudZs: prev
+      });
+      if (typeof prev[hid] === "number" && prev[hid] === zIndex) {
+        return { state: state2, persistMeters: false };
+      }
+      return {
+        state: {
+          ...state2,
+          hudZs: { ...prev, [hid]: zIndex },
+          meters: peers
+        },
+        persistMeters: false
+      };
+    }
+    const floorZ = maxRecordStackZ(
+      state2.hudZs
+    );
+    const nextMeters = bringMeterToFront(state2.meters, id, floorZ);
+    if (nextMeters === state2.meters) {
+      return { state: state2, persistMeters: false };
+    }
+    return {
+      state: { ...state2, meters: nextMeters },
+      persistMeters: true
+    };
+  }
   function posToEdge(id, pos) {
     return {
       id,
@@ -23338,7 +24521,7 @@ button.comm-mail__stack-u {
         frameH: p.frameH != null ? p.frameH : m.frameH
       };
     });
-    return { layout, meters };
+    return { ...state2, layout, meters };
   }
   function moveCommWindowWithGroup(state2, id, pos) {
     const panels = windowsToEdgePanels(state2);
@@ -23465,9 +24648,9 @@ button.comm-mail__stack-u {
     const meters = state2.meters.map(
       (m) => ids.has(m.id) ? { ...m, scale: clamped } : m
     );
-    return { layout, meters };
+    return { ...state2, layout, meters };
   }
-  function applyFrameSizeToCommWindows(state2, id, size) {
+  function applyFrameSizeToCommWindows(state2, id, size, options) {
     size = filterPersistedFrameSize(id, size);
     if (size.frameW == null && size.frameH == null) return state2;
     const withManualOff = (pos) => pos.autoSize === false ? pos : { ...pos, autoSize: false };
@@ -23492,40 +24675,58 @@ button.comm-mail__stack-u {
       }
       return {
         ...state2,
-        meters: state2.meters.map(
-          (m) => m.id === id ? {
+        meters: state2.meters.map((m) => {
+          if (m.id !== id) return m;
+          const patch2 = options == null ? void 0 : options.meterPatch;
+          return {
             ...m,
             ...size.frameW != null ? { frameW: size.frameW } : {},
-            ...size.frameH != null ? { frameH: size.frameH } : {}
-          } : m
+            ...size.frameH != null ? { frameH: size.frameH } : {},
+            ...patch2 || {}
+          };
+        })
+      };
+    }
+    let rootW = options == null ? void 0 : options.rootW;
+    let rootH = options == null ? void 0 : options.rootH;
+    if (rootW == null || rootH == null) {
+      const root = layoutDragRoot().getBoundingClientRect();
+      rootW = root.width;
+      rootH = root.height;
+    }
+    const groupOpts = (options == null ? void 0 : options.alignGroup) === false ? void 0 : rootW != null && rootH != null ? { rootW, rootH } : void 0;
+    let next = applyEdgePanelsToState(
+      state2,
+      applyGroupFrameSize(panels, id, size, groupOpts)
+    );
+    const hid = id;
+    if (next.layout[hid]) {
+      next = {
+        ...next,
+        layout: {
+          ...next.layout,
+          [hid]: withManualOff(next.layout[hid])
+        }
+      };
+    }
+    const patch = options == null ? void 0 : options.meterPatch;
+    if (patch && Object.keys(patch).length) {
+      next = {
+        ...next,
+        meters: next.meters.map(
+          (m) => m.id === id ? { ...m, ...patch } : m
         )
       };
     }
-    const root = layoutDragRoot().getBoundingClientRect();
-    const next = applyEdgePanelsToState(
-      state2,
-      applyGroupFrameSize(panels, id, size, {
-        rootW: root.width,
-        rootH: root.height
-      })
-    );
-    const hid = id;
-    if (!next.layout[hid]) return next;
-    return {
-      ...next,
-      layout: {
-        ...next.layout,
-        [hid]: withManualOff(next.layout[hid])
-      }
-    };
+    return next;
   }
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners9 = [];
+  var listeners10 = [];
   function notify4() {
-    for (let i = 0; i < listeners9.length; i++) {
-      listeners9[i]();
+    for (let i = 0; i < listeners10.length; i++) {
+      listeners10[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -23549,10 +24750,10 @@ button.comm-mail__stack-u {
     notify4();
   }
   function subscribeLayoutGuide(listener) {
-    listeners9.push(listener);
+    listeners10.push(listener);
     return () => {
-      const idx = listeners9.indexOf(listener);
-      if (idx >= 0) listeners9.splice(idx, 1);
+      const idx = listeners10.indexOf(listener);
+      if (idx >= 0) listeners10.splice(idx, 1);
     };
   }
 
@@ -23572,13 +24773,20 @@ button.comm-mail__stack-u {
   function metersChanged(prev, next) {
     return JSON.stringify(prev) !== JSON.stringify(next);
   }
+  function hudZsChanged(prev, next) {
+    return JSON.stringify(prev || null) !== JSON.stringify(next || null);
+  }
   function useCommWindowActions(opts) {
     const React = getReact();
+    const [hudZs, setHudZs] = React.useState(
+      {}
+    );
     const stateRef = React.useRef({
       layout: opts.layout,
-      meters: opts.meters
+      meters: opts.meters,
+      hudZs
     });
-    stateRef.current = { layout: opts.layout, meters: opts.meters };
+    stateRef.current = { layout: opts.layout, meters: opts.meters, hudZs };
     const [snapDragId, setSnapDragId] = React.useState(null);
     const [snapPeerId, setSnapPeerId] = React.useState(null);
     const [nearPeerId, setNearPeerId] = React.useState(null);
@@ -23598,7 +24806,8 @@ button.comm-mail__stack-u {
         if (showIdsTimer.current != null) clearTimeout(showIdsTimer.current);
       };
     }, []);
-    const commit2 = (next) => {
+    const commit2 = (next, options) => {
+      const persistMeters = (options == null ? void 0 : options.persistMeters) !== false;
       const prev = stateRef.current;
       const layoutDiff = layoutChanged(prev.layout, next.layout);
       const layoutKeys = Object.keys(layoutDiff);
@@ -23609,7 +24818,12 @@ button.comm-mail__stack-u {
       }
       if (metersChanged(prev.meters, next.meters)) {
         opts.setMeters(next.meters);
-        patchSettings({ meterInstances: next.meters });
+        if (persistMeters) {
+          patchSettings({ meterInstances: next.meters });
+        }
+      }
+      if (hudZsChanged(prev.hudZs, next.hudZs)) {
+        setHudZs(next.hudZs || {});
       }
       stateRef.current = next;
     };
@@ -23633,6 +24847,10 @@ button.comm-mail__stack-u {
     };
     const ungroupWindow = (id) => {
       commit2(ungroupCommWindow(stateRef.current, id));
+    };
+    const raiseWindow = (id) => {
+      const { state: state2, persistMeters } = raiseCommWindow(stateRef.current, id);
+      commit2(state2, { persistMeters });
     };
     const onDragStart = (id) => {
       clearWindowIds();
@@ -23659,8 +24877,10 @@ button.comm-mail__stack-u {
     const setWindowScale = (id, scale) => {
       commit2(applyScaleToCommWindows(stateRef.current, id, scale));
     };
-    const resizeWindowFrame = (id, size) => {
-      commit2(applyFrameSizeToCommWindows(stateRef.current, id, size));
+    const resizeWindowFrame = (id, size, frameOpts) => {
+      commit2(
+        applyFrameSizeToCommWindows(stateRef.current, id, size, frameOpts)
+      );
     };
     const setWindowAutoSize = (id, autoSize, size) => {
       const hid = id;
@@ -23683,6 +24903,7 @@ button.comm-mail__stack-u {
       moveWindow,
       snapAfterMove,
       ungroupWindow,
+      raiseWindow,
       onDragStart,
       onDragMove,
       setWindowScale,
@@ -23692,6 +24913,7 @@ button.comm-mail__stack-u {
       snapPeerId,
       nearPeerId,
       showWindowIds,
+      hudZs,
       graphState
     };
   }
@@ -25162,25 +26384,18 @@ button.comm-mail__stack-u {
       showMenu: movable || editing || !!props.onToggleLock || !!props.onUngroup || !!onClose || !!onToggleAutoSize || !!(props.closedWindows && props.closedWindows.length)
     }) : null;
     const arrangeLabel = !moveGrip && showArrangeOverlay ? e(
-      "span",
+      "div",
       {
-        className: "comm-pos-arrange-label",
-        style: {
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          minWidth: 0,
-          flex: 1,
-          alignSelf: "center",
-          padding: touchish ? "0 8px" : "0 6px",
-          color: "#ffe08a",
-          fontSize: headerFont,
-          lineHeight: 1.2,
-          pointerEvents: "none",
-          userSelect: "none"
-        }
+        className: "comm-pos-arrange-title",
+        title: panelLabel
       },
-      panelLabel
+      e(
+        "span",
+        {
+          className: "comm-pos-arrange-label"
+        },
+        panelLabel
+      )
     ) : null;
     const arrangeOverlay = showArrangeOverlay ? e(
       "div",
@@ -25377,63 +26592,6 @@ button.comm-mail__stack-u {
     };
   }
 
-  // src/lib/panelDragSnap.ts
-  var PEER_SNAP_PCT = 1;
-  var VISUAL_EDGE_SNAP_PX = 8;
-  function applyPanelDragMove(input) {
-    let nextX = input.rawX;
-    let nextY = input.rawY;
-    let edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
-    let useVisualEdge = true;
-    const free = input.free;
-    if (!free) {
-      const snapped = snapPosToFineGrid(
-        nextX,
-        nextY,
-        input.gridStep,
-        input.rootWidth,
-        input.rootHeight
-      );
-      nextX = snapped.x;
-      nextY = snapped.y;
-      if (!input.skipPeerSnap) {
-        const metrics = squareGridMetrics(
-          input.gridStep,
-          input.rootWidth,
-          input.rootHeight
-        );
-        const cellPctX = metrics.cellPx / Math.max(1, input.rootWidth) * 100;
-        const cellPctY = metrics.cellPx / Math.max(1, input.rootHeight) * 100;
-        const peerThresh = Math.min(
-          PEER_SNAP_PCT,
-          Math.max(0.2, Math.min(cellPctX, cellPctY) * 0.4)
-        );
-        nextX = snapPercent(nextX, peerThresh, input.peerXs);
-        nextY = snapPercent(nextY, peerThresh, input.peerYs);
-      }
-      useVisualEdge = false;
-    } else {
-      if (!input.skipPeerSnap) {
-        nextX = snapPercent(nextX, PEER_SNAP_PCT, input.peerXs);
-        nextY = snapPercent(nextY, PEER_SNAP_PCT, input.peerYs);
-      }
-      edgeThresholdPx = VISUAL_EDGE_SNAP_PX;
-    }
-    const visual = input.visual;
-    if (useVisualEdge && visual) {
-      const edge = snapDragToVisualEdges(
-        input.clientX,
-        input.clientY,
-        input.start,
-        visual,
-        edgeThresholdPx
-      );
-      if (edge.snapX) nextX = edge.x;
-      if (edge.snapY) nextY = edge.y;
-    }
-    return { x: nextX, y: nextY };
-  }
-
   // src/lib/panelGroupDrag.ts
   function isPlaceWithoutGroupModifier(ev) {
     return !!ev.ctrlKey;
@@ -25448,7 +26606,7 @@ button.comm-mail__stack-u {
       editing,
       movableProp,
       softAvoid,
-      peerLayout,
+      getGraphState,
       shellRef,
       extraDragRef,
       freePlacementRef,
@@ -25480,8 +26638,8 @@ button.comm-mail__stack-u {
     onDragMoveRef.current = onDragMove;
     const softAvoidRef = React.useRef(softAvoid);
     softAvoidRef.current = softAvoid;
-    const peerLayoutRef = React.useRef(peerLayout);
-    peerLayoutRef.current = peerLayout;
+    const getGraphStateRef = React.useRef(getGraphState);
+    getGraphStateRef.current = getGraphState;
     const onMoveRef = React.useRef(onMove);
     onMoveRef.current = onMove;
     const posRef = React.useRef(pos);
@@ -25519,21 +26677,14 @@ button.comm-mail__stack-u {
         window.removeEventListener("keyup", onKey);
       };
     };
+    const isPeerVisible = (peerId) => {
+      const el = queryCommPosPanel(peerId);
+      return !!el && isSnapPeerElement(el);
+    };
     const peerAxes = () => {
-      const peers = peerLayoutRef.current || {};
-      const ids = Object.keys(peers);
-      const xs = [];
-      const ys = [];
-      for (let i = 0; i < ids.length; i++) {
-        if (ids[i] === id) continue;
-        const p = peers[ids[i]];
-        if (!p) continue;
-        const el = queryCommPosPanel(ids[i]);
-        if (!el || !isSnapPeerElement(el)) continue;
-        xs.push(p.x);
-        ys.push(p.y);
-      }
-      return { xs, ys };
+      const getState = getGraphStateRef.current;
+      if (!getState) return { xs: [], ys: [] };
+      return commWindowPeerSnapAxes(getState(), id, isPeerVisible);
     };
     const finishDrag = (ev) => {
       if (!dragging.current) return;
@@ -25547,24 +26698,23 @@ button.comm-mail__stack-u {
         tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
       }
       let finalPos = lastPos.current;
-      if (softAvoidRef.current !== false) {
-        const peers = peerLayoutRef.current || {};
-        const nudged = softAvoidOverlap(id, lastPos.current, peers);
+      const getState = getGraphStateRef.current;
+      const root = layoutDragRoot().getBoundingClientRect();
+      if (getState) {
+        finalPos = finishCommWindowDragDrop({
+          id,
+          pos: lastPos.current,
+          state: getState(),
+          softAvoid: softAvoidRef.current !== false,
+          freePlacement: freePlacementRef.current || getLayoutFreePlacement(),
+          gridStep: gridStepRef.current,
+          rootWidth: root.width,
+          rootHeight: root.height
+        });
+      } else if (softAvoidRef.current !== false) {
+        const nudged = softAvoidOverlap(id, lastPos.current, {});
         if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
           finalPos = nudged;
-        }
-      }
-      if (!(freePlacementRef.current || getLayoutFreePlacement())) {
-        const root = layoutDragRoot().getBoundingClientRect();
-        const snapped = snapPosToFineGrid(
-          finalPos.x,
-          finalPos.y,
-          gridStepRef.current,
-          root.width,
-          root.height
-        );
-        if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
-          finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
         }
       }
       if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
@@ -25654,7 +26804,7 @@ button.comm-mail__stack-u {
       const { xs, ys } = peerAxes();
       const cur = posRef.current;
       const skipPeer = skipGroupRef.current || panelHasSnap({ id: String(id), pos: cur, snap: cur.snap });
-      const snapped = applyPanelDragMove({
+      const snapped = commWindowDragMove({
         rawX: raw.x,
         rawY: raw.y,
         clientX: ev.clientX,
@@ -25885,7 +27035,7 @@ button.comm-mail__stack-u {
       editing,
       movableProp: !!props.movable,
       softAvoid: props.softAvoid,
-      peerLayout: props.peerLayout,
+      getGraphState: props.getGraphState,
       shellRef,
       extraDragRef: props.extraDragRef,
       freePlacementRef,
@@ -26022,6 +27172,7 @@ button.comm-mail__stack-u {
         pointerEvents: "auto"
       } : null
     );
+    applyCallerStackZ(shellStyle, props.style);
     applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
     const hasSavedFrame = !autoSize && (typeof pos.frameW === "number" && pos.frameW > 0 || typeof pos.frameH === "number" && pos.frameH > 0);
     const styleOverflowVisible = !!(props.style && props.style.overflow === "visible");
@@ -31572,87 +32723,6 @@ ${parts.map(cssSlice).join("\n")}
         border: "1px solid #333",
         background: "#111"
       }
-    });
-  }
-
-  // src/ui/chrome/GameIcon.ts
-  var GAME_ICON_CSS = `
-.ecu-game-icon .ecu-meter-icon,
-.ecu-game-icon .ecu-meter-icon-clip {
-  width: 100% !important;
-  height: 100% !important;
-  max-width: none;
-  max-height: none;
-  box-sizing: border-box;
-}
-.ecu-game-icon .ecu-meter-icon-clip img {
-  max-width: none !important;
-  max-height: none !important;
-}
-`;
-  var gameIconCssInjected = false;
-  function ensureGameIconCss() {
-    if (gameIconCssInjected) return;
-    gameIconCssInjected = true;
-    const existing = document.querySelector(
-      "style[data-ecu-game-icon-css]"
-    );
-    if (existing) {
-      existing.textContent = GAME_ICON_CSS;
-      return;
-    }
-    const el = document.createElement("style");
-    el.setAttribute("data-ecu-game-icon-css", "1");
-    el.textContent = GAME_ICON_CSS;
-    document.head.appendChild(el);
-  }
-  function GameIcon(props) {
-    const React = getReact();
-    ensureGameIconCss();
-    const ref = React.useRef(null);
-    const {
-      id,
-      kind = "auto",
-      size = 18,
-      ctype,
-      mtype,
-      name,
-      title,
-      skin,
-      className,
-      container
-    } = props;
-    React.useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      paintGameIcon(el, id, {
-        kind,
-        size,
-        ctype,
-        mtype,
-        name,
-        title,
-        skin,
-        container
-      });
-      return () => {
-        if (el) el.innerHTML = "";
-      };
-    }, [id, kind, size, ctype, mtype, name, title, skin, container]);
-    return e("span", {
-      ref,
-      className: ["ecu-game-icon", className].filter(Boolean).join(" "),
-      style: {
-        display: "inline-flex",
-        width: size,
-        height: size,
-        flex: "0 0 auto",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        verticalAlign: "middle"
-      },
-      title: title === "" ? void 0 : title || id
     });
   }
 
@@ -37825,7 +38895,7 @@ ${parts.map(cssSlice).join("\n")}
             },
             opacity: meterOpacity,
             onOpacityChange: ctx.layoutEdit ? (value) => ctx.patchMeter(inst.id, { opacity: value }) : void 0,
-            peerLayout: ctx.peerLayout,
+            getGraphState: ctx.getGraphState,
             viewportProfile: ctx.viewportProfile,
             interactiveBody: ctx.layoutEdit,
             locked,
@@ -37875,34 +38945,23 @@ ${parts.map(cssSlice).join("\n")}
               closedInstances: ctx.closedMeters,
               onReopenClosed: ctx.reopenClosedMeter,
               onPatchInstance: (partial) => {
+                var _a2;
                 if (partial.frameW != null || partial.frameH != null) {
-                  ctx.setMeterInstances((prev) => {
-                    var _a2;
-                    const root = (_a2 = document.getElementById("comm-ui")) == null ? void 0 : _a2.getBoundingClientRect();
-                    const alignPos = partial.pos != null;
-                    let next = applyGroupFrameSize(
-                      prev,
-                      inst.id,
-                      {
-                        frameW: partial.frameW,
-                        frameH: partial.frameH
-                      },
-                      alignPos ? {
-                        rootW: root == null ? void 0 : root.width,
-                        rootH: root == null ? void 0 : root.height
-                      } : void 0
-                    );
-                    const rest = { ...partial };
-                    delete rest.frameW;
-                    delete rest.frameH;
-                    if (Object.keys(rest).length) {
-                      next = next.map(
-                        (m) => m.id === inst.id ? { ...m, ...rest } : m
-                      );
+                  const root = (_a2 = document.getElementById("comm-ui")) == null ? void 0 : _a2.getBoundingClientRect();
+                  const alignGroup = partial.pos != null;
+                  const rest = { ...partial };
+                  delete rest.frameW;
+                  delete rest.frameH;
+                  ctx.onResizeMeterFrame(
+                    inst.id,
+                    { frameW: partial.frameW, frameH: partial.frameH },
+                    {
+                      rootW: root == null ? void 0 : root.width,
+                      rootH: root == null ? void 0 : root.height,
+                      alignGroup,
+                      meterPatch: Object.keys(rest).length > 0 ? rest : void 0
                     }
-                    patchSettings({ meterInstances: next });
-                    return next;
-                  });
+                  );
                   return;
                 }
                 ctx.patchMeter(inst.id, partial);
@@ -40847,6 +41906,14 @@ ${parts.map(cssSlice).join("\n")}
       buttonLabel: "Open changelog",
       extra: "changelog whats new release notes updates history",
       onClick: (props) => props.onOpenChangelog()
+    },
+    {
+      id: "serverNotes",
+      label: "Server update notes",
+      help: "Adventure.land release notes from the page / welcome (not Comm UI).",
+      buttonLabel: "Open server notes",
+      extra: "server update notes last deploy adventure.land gamelog welcome patch notes",
+      onClick: (props) => props.onOpenServerUpdateNotes()
     }
   ];
   function actionMatchesQuery(action, query) {
@@ -40867,7 +41934,7 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "p",
         { key: "lead", className: "ecu-settings-lead" },
-        "Guides, onboarding, and release notes for the Comm UI shell."
+        "Guides, onboarding, Comm UI changelog, and Adventure.land server notes."
       ),
       settingsSection("Guides & updates")
     ];
@@ -41126,11 +42193,15 @@ ${parts.map(cssSlice).join("\n")}
   }
   function countInGameAbilityRuleMatches(query) {
     const abilities = listConfigurableAbilities();
-    const q = query.trim();
+    const q = query.trim().toLowerCase();
     if (!q) return abilities.length;
     let total = 0;
     for (let i = 0; i < abilities.length; i++) {
       if (abilityMatchesQuery(abilities[i], q)) total += 1;
+    }
+    if (total === 0) {
+      const sectionHay = "name color ring auto ability appearance";
+      if (sectionHay.indexOf(q) !== -1) return 1;
     }
     return total;
   }
@@ -41442,12 +42513,13 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "commUi",
       label: "Comm UI",
-      description: "Intro tour, What's New, and release history for the shell.",
+      description: "Intro tour, Comm UI What's New, and Adventure.land server update notes.",
       countMatches: countCommUiSettingsMatches,
       render: (props) => e(CommUiSettingsPane, {
         query: props.query,
         onReplayIntroTour: props.onReplayIntroTour,
-        onOpenChangelog: props.onOpenChangelog
+        onOpenChangelog: props.onOpenChangelog,
+        onOpenServerUpdateNotes: props.onOpenServerUpdateNotes
       })
     },
     {
@@ -41615,7 +42687,8 @@ ${parts.map(cssSlice).join("\n")}
                 setVisible,
                 setPanelPos,
                 onReplayIntroTour: props.onReplayIntroTour,
-                onOpenChangelog: props.onOpenChangelog
+                onOpenChangelog: props.onOpenChangelog,
+                onOpenServerUpdateNotes: props.onOpenServerUpdateNotes
               })
             )
           )
@@ -51655,7 +52728,7 @@ ${ESTIMATE_HINT}`,
           hiddenBodyStyle: opts == null ? void 0 : opts.hiddenBodyStyle,
           opacity: deps.opacityFor(id),
           onOpacityChange: (opts == null ? void 0 : opts.editChrome) === "grip" ? void 0 : (value) => deps.setOpacity(id, value),
-          peerLayout: deps.peerLayout,
+          getGraphState: deps.getGraphState,
           viewportProfile: deps.viewportProfile,
           interactiveBody: opts == null ? void 0 : opts.interactiveBody,
           editChrome: opts == null ? void 0 : opts.editChrome,
@@ -52140,6 +53213,9 @@ ${ESTIMATE_HINT}`,
       return CHANGELOG;
     });
     const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
+    const [serverNotesMode, setServerNotesMode] = React.useState(
+      null
+    );
     const [introStep, setIntroStep] = React.useState(() => readIntroStep());
     const [settingsOpen, setSettingsOpen] = React.useState(false);
     const [settingsWindowPos, setSettingsWindowPos] = React.useState(readSettingsPanelPos);
@@ -52148,11 +53224,15 @@ ${ESTIMATE_HINT}`,
       writeIntroStep(step);
     };
     const tourActiveRef = React.useRef(false);
+    const dismissTourRef = React.useRef(() => {
+    });
     const meterInstancesForTourRef = React.useRef(
       []
     );
     const setMetersHiddenPersist = (hidden) => {
-      if (hidden && tourActiveRef.current) return;
+      if (hidden && tourActiveRef.current) {
+        dismissTourRef.current();
+      }
       setMetersHidden(hidden);
       patchSettings({ metersHidden: hidden });
     };
@@ -52164,6 +53244,29 @@ ${ESTIMATE_HINT}`,
       setWhatsNewBrowseAll(true);
       setWhatsNewEntries(CHANGELOG);
     };
+    const openServerUpdateNotes = (mode = "all") => {
+      setSettingsOpen(false);
+      setServerNotesMode(mode);
+    };
+    React.useEffect(() => {
+      return subscribeUpdateNotesOpen((payload) => {
+        if (payload.mode === "all") {
+          setServerNotesMode("all");
+          return;
+        }
+        const deploy = readLastDeploy();
+        const seen = getSettings().serverUpdateNotesSeenDeploy;
+        if (deploy && seen === deploy) return;
+        setServerNotesMode("latest");
+      });
+    }, []);
+    React.useEffect(() => {
+      if (!getSettings().setupWizardDone) return;
+      const deploy = readLastDeploy();
+      if (!deploy) return;
+      if (getSettings().serverUpdateNotesSeenDeploy === deploy) return;
+      setServerNotesMode((prev) => prev || "latest");
+    }, []);
     const guidedTours = useCommGuidedTours({
       layoutEdit,
       setLayoutEdit,
@@ -52173,7 +53276,7 @@ ${ESTIMATE_HINT}`,
       setMeterAddOpen,
       setVisible,
       getPanelVisible: visible,
-      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
+      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0 || serverNotesMode != null,
       setSetupWizardOpen,
       isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
       bagOpen,
@@ -52186,11 +53289,13 @@ ${ESTIMATE_HINT}`,
       toggleLayoutEdit,
       tourOverlay,
       tourActive,
+      dismissActiveTour,
       tourFocusMeterId,
       setTourFocusMeterId
     } = guidedTours;
     tourActiveRef.current = tourActive;
-    const meters = useCommMeterInstances(layout, {
+    dismissTourRef.current = dismissActiveTour;
+    const meters = useCommMeterInstances({
       onMeterAdded: setTourFocusMeterId
     });
     meterInstancesForTourRef.current = meters.meterInstances;
@@ -52250,27 +53355,8 @@ ${ESTIMATE_HINT}`,
     }, [layoutEdit]);
     const commandOpenRef = React.useRef(false);
     commandOpenRef.current = visible("command");
-    const [panelFrontZ, setPanelFrontZ] = React.useState(
-      {}
-    );
-    const panelFrontZRef = React.useRef(panelFrontZ);
-    panelFrontZRef.current = panelFrontZ;
-    const raisePanelToFront = React.useCallback(
-      (id) => {
-        const prev = panelFrontZRef.current;
-        const { zIndex, peers } = nextWindowFrontZ(meters.meterInstances, {
-          hudZs: prev
-        });
-        if (typeof prev[id] === "number" && prev[id] === zIndex) return;
-        if (peers !== meters.meterInstances) {
-          meters.setMeterInstances(peers);
-        }
-        const next = { ...prev, [id]: zIndex };
-        panelFrontZRef.current = next;
-        setPanelFrontZ(next);
-      },
-      [meters]
-    );
+    const windowActionsRef = React.useRef(windowActions);
+    windowActionsRef.current = windowActions;
     React.useEffect(() => {
       return subscribeCommanderOpen((payload) => {
         const hasDraft = typeof payload.draft === "string";
@@ -52278,7 +53364,7 @@ ${ESTIMATE_HINT}`,
           setCommandSeed(payload.draft);
           setCommandOpenSeq((n) => n + 1);
           setVisible("command", true);
-          raisePanelToFront("command");
+          windowActionsRef.current.raiseWindow("command");
           return;
         }
         if (commandOpenRef.current) {
@@ -52288,9 +53374,9 @@ ${ESTIMATE_HINT}`,
         setCommandSeed(null);
         setCommandOpenSeq((n) => n + 1);
         setVisible("command", true);
-        raisePanelToFront("command");
+        windowActionsRef.current.raiseWindow("command");
       });
-    }, [setVisible, raisePanelToFront]);
+    }, [setVisible]);
     const mailVisible = visible("mail");
     React.useEffect(() => {
       setMailPanelOpen(mailVisible);
@@ -52305,7 +53391,7 @@ ${ESTIMATE_HINT}`,
           return;
         }
         setVisible("mail", true);
-        raisePanelToFront("mail");
+        windowActionsRef.current.raiseWindow("mail");
         if (payload.focusNewestUnread) {
           void openNewestUnread();
           return;
@@ -52316,7 +53402,7 @@ ${ESTIMATE_HINT}`,
           openCompose(payload.draft || {});
         }
       });
-    }, [setVisible, raisePanelToFront]);
+    }, [setVisible]);
     React.useEffect(() => {
       const root = document.getElementById("comm-ui");
       if (!root) return;
@@ -52372,7 +53458,7 @@ ${ESTIMATE_HINT}`,
       layoutEdit,
       layout,
       meterInstances: meters.meterInstances,
-      peerLayout: meters.peerLayout,
+      getGraphState: windowActions.graphState,
       viewportProfile,
       visible,
       opacityFor,
@@ -52390,8 +53476,8 @@ ${ESTIMATE_HINT}`,
       ungroupPanel: (id) => windowActions.ungroupWindow(id),
       panelSnapDragId: windowActions.snapDragId,
       panelSnapPeerId: windowActions.snapPeerId,
-      panelFrontZ,
-      onActivatePanel: raisePanelToFront,
+      panelFrontZ: windowActions.hudZs,
+      onActivatePanel: (id) => windowActions.raiseWindow(id),
       windowNumberById,
       // Window ids paint on SnapGuideLine overlay (above panel stack).
       showWindowIds: false,
@@ -52428,7 +53514,7 @@ ${ESTIMATE_HINT}`,
       // Window ids paint on SnapGuideLine overlay (above panel stack).
       showWindowIds: false,
       windowNumberById,
-      peerLayout: meters.peerLayout,
+      getGraphState: windowActions.graphState,
       viewportProfile,
       closedMeters: meters.closedMeters,
       closedWindows,
@@ -52437,8 +53523,9 @@ ${ESTIMATE_HINT}`,
       onDragStart: (id) => windowActions.onDragStart(id),
       onDragMove: (id, opts) => windowActions.onDragMove(id, opts),
       onMoveEnd: (id, opts) => windowActions.snapAfterMove(id, opts),
-      onActivate: (id) => meters.raiseMeterToFront(id, maxRecordStackZ(panelFrontZ)),
+      onActivate: (id) => windowActions.raiseWindow(id),
       onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
+      onResizeMeterFrame: (id, size, options) => windowActions.resizeWindowFrame(id, size, options),
       patchMeter: meters.patchMeter,
       setMeterInstances: meters.setMeterInstances,
       setMetersHiddenPersist,
@@ -52511,6 +53598,10 @@ ${ESTIMATE_HINT}`,
           setWhatsNewBrowseAll(false);
         }
       }) : null,
+      !setupWizardOpen && whatsNewEntries.length === 0 && serverNotesMode ? e(CommUIUpdateNotes, {
+        mode: serverNotesMode,
+        onDone: () => setServerNotesMode(null)
+      }) : null,
       settingsOpen ? e(SettingsPanel, {
         onClose: () => setSettingsOpen(false),
         visible,
@@ -52519,7 +53610,8 @@ ${ESTIMATE_HINT}`,
         windowPos: settingsWindowPos,
         onMoveWindow: setSettingsWindowPosPersist,
         onReplayIntroTour: () => startIntroTour(true),
-        onOpenChangelog: openSettingsChangelog
+        onOpenChangelog: openSettingsChangelog,
+        onOpenServerUpdateNotes: () => openServerUpdateNotes("all")
       }) : null,
       renderCommTogglesPanel(
         panelDeps,
@@ -52738,6 +53830,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installDisconnectOverlay();
     installPageTitle();
     installCommanderHook();
+    installUpdateNotesHooks();
     ensureMailCss();
     installMailUnreadWatch();
     subscribeMailToast((message) => showMailToast(message));
