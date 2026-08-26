@@ -100,6 +100,77 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.10",
+    title: "0.8.0-alpha.10",
+    date: "2026-08-26",
+    summary:
+      "Adventure.land deploy notes on /comm, a Docs button beside Bag and Mail, and click-to-front that no longer bounces back.",
+    highlights: [
+      {
+        label: "Server update notes",
+        detail:
+          "See Adventure.land's own deploy notes on /comm (welcome and history), separate from the ECU changelog. Settings → Comm UI → Server update notes. Opens once per unseen deploy.",
+        kind: "feature",
+      },
+      {
+        label: "Docs on the action bar",
+        detail:
+          "Docs icon next to Bag, Mail, and Command opens the same menu as adventure.land/docs: Game Guide, CODE Docs, and Other Systems.",
+        kind: "feature",
+      },
+      {
+        label: "Window focus sticks",
+        detail:
+          "Clicking Mail no longer flashes in front then loses to Encounter Details. Bring-to-front survives the resize/snap commits that used to clear it.",
+        kind: "fix",
+      },
+      {
+        label: "Locked title chrome",
+        detail:
+          "Hovering a locked window shows the dark title chip again, not bare text without the arrange strip.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Server update notes",
+        detail:
+          "Pulls page globals and /update-notes, hooks add_update_notes / show_update_notes, groups by deploy day with soft kind tags, and inlines GameIcon chips when names match live G data.",
+        kind: "feature",
+      },
+      {
+        label: "Docs button",
+        detail:
+          "Calls stock render_guide / render_code_docs / render_others when the client kit is present. Otherwise opens /docs in a new tab.",
+        kind: "feature",
+      },
+      {
+        label: "Click-to-front raise",
+        detail:
+          "HUD and meter windows share one raise path. Stack z on the panel style is kept after panelStyle merge, so idle z 20/40 no longer wipes bring-to-front.",
+        kind: "fix",
+      },
+      {
+        label: "Raise z survives layout commits",
+        detail:
+          "Edge-group resize and scale used to drop ephemeral HUD raise z from the window graph, so Mail fell back to idle z a beat after you clicked it.",
+        kind: "fix",
+      },
+      {
+        label: "Locked hover title",
+        detail:
+          "Locked panels reuse the arrange-title chip look from the unlocked drag grip when chrome opens on hover.",
+        kind: "ui",
+      },
+      {
+        label: "Hide meters mid-tour",
+        detail:
+          "Hide meters during a spotlight tour dismisses the tour, then hides. The click is no longer ignored.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.9",
     title: "0.8.0-alpha.9",
     date: "2026-08-20",
