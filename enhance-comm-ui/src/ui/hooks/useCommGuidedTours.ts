@@ -61,6 +61,8 @@ export type CommGuidedToursApi = {
   tourOverlay: any;
   /** True while a spotlight tour is on screen — lock destructive meter chrome. */
   tourActive: boolean;
+  /** End the active spotlight tour (Skip / Done / intentional override). */
+  dismissActiveTour: () => void;
   /** Meter shell spotlight for combat-meters tour. */
   tourFocusMeterId: string | null;
   setTourFocusMeterId: (id: string | null) => void;
@@ -245,6 +247,7 @@ export function useCommGuidedTours(
     toggleLayoutEdit,
     tourOverlay,
     tourActive: !!activeTour,
+    dismissActiveTour: () => finishTour(activeTourRef.current?.tour.id),
     tourFocusMeterId,
     setTourFocusMeterId,
   };

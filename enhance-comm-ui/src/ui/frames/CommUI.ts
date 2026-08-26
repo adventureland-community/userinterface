@@ -20,7 +20,13 @@ import {
   writeIntroStep,
 } from "./comm/CommUISetupWizard";
 import { CommUIWhatsNew } from "./comm/CommUIWhatsNew";
+import { CommUIUpdateNotes } from "./comm/CommUIUpdateNotes";
 import { CHANGELOG, hasUnseenChangelog } from "../../lib/changelog";
+import {
+  readLastDeploy,
+  subscribeUpdateNotesOpen,
+  type UpdateNotesOpenMode,
+} from "../../host/updateNotes";
 import { useCommGuidedTours } from "../hooks/useCommGuidedTours";
 import {
   triggerMeterToolbarTour,
@@ -61,7 +67,6 @@ import {
 } from "./comm/CommPanelLayout";
 import { SnapGuideLine } from "../chrome/SnapGuideLine";
 import { isTouchishProfile } from "../../lib/viewport";
-import { maxRecordStackZ, nextWindowFrontZ } from "../../lib/windowStack";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -181,6 +186,9 @@ export function CommUI(props: CommUIProps): any {
     return CHANGELOG;
   });
   const [whatsNewBrowseAll, setWhatsNewBrowseAll] = React.useState(false);
+  const [serverNotesMode, setServerNotesMode] = React.useState(
+    null as UpdateNotesOpenMode | null,
+  );
   const [introStep, setIntroStep] = React.useState(() => readIntroStep());
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [settingsWindowPos, setSettingsWindowPos] =
@@ -192,12 +200,16 @@ export function CommUI(props: CommUIProps): any {
   };
 
   const tourActiveRef = React.useRef(false);
+  const dismissTourRef = React.useRef(() => {});
   const meterInstancesForTourRef = React.useRef(
     [] as Array<{ id: string; zIndex?: number }>,
   );
   const setMetersHiddenPersist = (hidden: boolean) => {
-    // Spotlight hole is click-through — don't let Hide all stick mid-tour.
-    if (hidden && tourActiveRef.current) return;
+    // Spotlight hole is click-through — an accidental hide used to stick mid-tour.
+    // Intentional Hide (control strip / tip) dismisses the tour first, then applies.
+    if (hidden && tourActiveRef.current) {
+      dismissTourRef.current();
+    }
     setMetersHidden(hidden);
     patchSettings({ metersHidden: hidden });
   };
@@ -209,6 +221,33 @@ export function CommUI(props: CommUIProps): any {
     setWhatsNewBrowseAll(true);
     setWhatsNewEntries(CHANGELOG);
   };
+  const openServerUpdateNotes = (mode: UpdateNotesOpenMode = "all") => {
+    setSettingsOpen(false);
+    setServerNotesMode(mode);
+  };
+
+  React.useEffect(() => {
+    return subscribeUpdateNotesOpen((payload) => {
+      if (payload.mode === "all") {
+        setServerNotesMode("all");
+        return;
+      }
+      // Welcome path: only auto-open when this deploy hasn't been dismissed.
+      const deploy = readLastDeploy();
+      const seen = getSettings().serverUpdateNotesSeenDeploy;
+      if (deploy && seen === deploy) return;
+      setServerNotesMode("latest");
+    });
+  }, []);
+
+  // Welcome often lands before ECU mounts; still surface unseen deploys.
+  React.useEffect(() => {
+    if (!getSettings().setupWizardDone) return;
+    const deploy = readLastDeploy();
+    if (!deploy) return;
+    if (getSettings().serverUpdateNotesSeenDeploy === deploy) return;
+    setServerNotesMode((prev: UpdateNotesOpenMode | null) => prev || "latest");
+  }, []);
 
   const guidedTours = useCommGuidedTours({
     layoutEdit,
@@ -219,7 +258,11 @@ export function CommUI(props: CommUIProps): any {
     setMeterAddOpen,
     setVisible,
     getPanelVisible: visible,
-    toursBlocked: setupWizardOpen || whatsNewEntries.length > 0,
+    toursBlocked:
+      setupWizardOpen ||
+      whatsNewEntries.length > 0 ||
+      serverNotesMode != null,
+
     setSetupWizardOpen,
     isObserving:
       (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
@@ -234,12 +277,14 @@ export function CommUI(props: CommUIProps): any {
     toggleLayoutEdit,
     tourOverlay,
     tourActive,
+    dismissActiveTour,
     tourFocusMeterId,
     setTourFocusMeterId,
   } = guidedTours;
   tourActiveRef.current = tourActive;
+  dismissTourRef.current = dismissActiveTour;
 
-  const meters = useCommMeterInstances(layout, {
+  const meters = useCommMeterInstances({
     onMeterAdded: setTourFocusMeterId,
   });
   meterInstancesForTourRef.current = meters.meterInstances;
@@ -307,29 +352,8 @@ export function CommUI(props: CommUIProps): any {
   const commandOpenRef = React.useRef(false);
   commandOpenRef.current = visible("command");
 
-  const [panelFrontZ, setPanelFrontZ] = React.useState(
-    {} as Partial<Record<PanelId, number>>,
-  );
-  const panelFrontZRef = React.useRef(panelFrontZ);
-  panelFrontZRef.current = panelFrontZ;
-
-  const raisePanelToFront = React.useCallback(
-    (id: PanelId) => {
-      const prev = panelFrontZRef.current;
-      const { zIndex, peers } = nextWindowFrontZ(meters.meterInstances, {
-        hudZs: prev as Record<string, number | undefined>,
-      });
-      if (typeof prev[id] === "number" && prev[id] === zIndex) return;
-      // Renormalize meter zs in React only — HUD raise must not persist meters.
-      if (peers !== meters.meterInstances) {
-        meters.setMeterInstances(peers);
-      }
-      const next = { ...prev, [id]: zIndex };
-      panelFrontZRef.current = next;
-      setPanelFrontZ(next);
-    },
-    [meters],
-  );
+  const windowActionsRef = React.useRef(windowActions);
+  windowActionsRef.current = windowActions;
 
   React.useEffect(() => {
     return subscribeCommanderOpen((payload) => {
@@ -338,7 +362,7 @@ export function CommUI(props: CommUIProps): any {
         setCommandSeed(payload.draft as string);
         setCommandOpenSeq((n: number) => n + 1);
         setVisible("command", true);
-        raisePanelToFront("command");
+        windowActionsRef.current.raiseWindow("command");
         return;
       }
       if (commandOpenRef.current) {
@@ -348,9 +372,9 @@ export function CommUI(props: CommUIProps): any {
       setCommandSeed(null);
       setCommandOpenSeq((n: number) => n + 1);
       setVisible("command", true);
-      raisePanelToFront("command");
+      windowActionsRef.current.raiseWindow("command");
     });
-  }, [setVisible, raisePanelToFront]);
+  }, [setVisible]);
 
   const mailVisible = visible("mail");
   React.useEffect(() => {
@@ -377,7 +401,7 @@ export function CommUI(props: CommUIProps): any {
         return;
       }
       setVisible("mail", true);
-      raisePanelToFront("mail");
+      windowActionsRef.current.raiseWindow("mail");
       if (payload.focusNewestUnread) {
         void openNewestUnread();
         return;
@@ -388,7 +412,7 @@ export function CommUI(props: CommUIProps): any {
         openCompose(payload.draft || {});
       }
     });
-  }, [setVisible, raisePanelToFront]);
+  }, [setVisible]);
 
   React.useEffect(() => {
     const root = document.getElementById("comm-ui");
@@ -453,7 +477,7 @@ export function CommUI(props: CommUIProps): any {
     layoutEdit,
     layout,
     meterInstances: meters.meterInstances,
-    peerLayout: meters.peerLayout,
+    getGraphState: windowActions.graphState,
     viewportProfile,
     visible,
     opacityFor,
@@ -474,8 +498,8 @@ export function CommUI(props: CommUIProps): any {
     ungroupPanel: (id: PanelId) => windowActions.ungroupWindow(id),
     panelSnapDragId: windowActions.snapDragId,
     panelSnapPeerId: windowActions.snapPeerId,
-    panelFrontZ,
-    onActivatePanel: raisePanelToFront,
+    panelFrontZ: windowActions.hudZs,
+    onActivatePanel: (id: PanelId) => windowActions.raiseWindow(id),
     windowNumberById,
     // Window ids paint on SnapGuideLine overlay (above panel stack).
     showWindowIds: false,
@@ -514,7 +538,7 @@ export function CommUI(props: CommUIProps): any {
     // Window ids paint on SnapGuideLine overlay (above panel stack).
     showWindowIds: false,
     windowNumberById,
-    peerLayout: meters.peerLayout,
+    getGraphState: windowActions.graphState,
     viewportProfile,
     closedMeters: meters.closedMeters,
     closedWindows,
@@ -523,9 +547,10 @@ export function CommUI(props: CommUIProps): any {
     onDragStart: (id) => windowActions.onDragStart(id),
     onDragMove: (id, opts) => windowActions.onDragMove(id, opts),
     onMoveEnd: (id, opts) => windowActions.snapAfterMove(id, opts),
-    onActivate: (id) =>
-      meters.raiseMeterToFront(id, maxRecordStackZ(panelFrontZ)),
+    onActivate: (id) => windowActions.raiseWindow(id),
     onWindowScale: (id, scale) => windowActions.setWindowScale(id, scale),
+    onResizeMeterFrame: (id, size, options) =>
+      windowActions.resizeWindowFrame(id, size, options),
     patchMeter: meters.patchMeter,
     setMeterInstances: meters.setMeterInstances,
     setMetersHiddenPersist,
@@ -615,6 +640,15 @@ export function CommUI(props: CommUIProps): any {
         })
       : null,
 
+    !setupWizardOpen &&
+    whatsNewEntries.length === 0 &&
+    serverNotesMode
+      ? e(CommUIUpdateNotes, {
+          mode: serverNotesMode,
+          onDone: () => setServerNotesMode(null),
+        })
+      : null,
+
     settingsOpen
       ? e(SettingsPanel, {
           onClose: () => setSettingsOpen(false),
@@ -625,6 +659,7 @@ export function CommUI(props: CommUIProps): any {
           onMoveWindow: setSettingsWindowPosPersist,
           onReplayIntroTour: () => startIntroTour(true),
           onOpenChangelog: openSettingsChangelog,
+          onOpenServerUpdateNotes: () => openServerUpdateNotes("all"),
         })
       : null,
 

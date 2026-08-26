@@ -37,11 +37,17 @@ function abilityMatchesQuery(ab: ConfigurableAbility, query: string): boolean {
 
 export function countInGameAbilityRuleMatches(query: string): number {
   const abilities = listConfigurableAbilities();
-  const q = query.trim();
+  const q = query.trim().toLowerCase();
   if (!q) return abilities.length;
   let total = 0;
   for (let i = 0; i < abilities.length; i++) {
     if (abilityMatchesQuery(abilities[i], q)) total += 1;
+  }
+  // Section-level keywords still surface the pane when G has no abilities
+  // (overlay preview / unit tests without monster skill tables).
+  if (total === 0) {
+    const sectionHay = "name color ring auto ability appearance";
+    if (sectionHay.indexOf(q) !== -1) return 1;
   }
   return total;
 }

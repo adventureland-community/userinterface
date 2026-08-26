@@ -24,6 +24,7 @@ export type SettingsPanelProps = {
   onMoveWindow: (pos: PanelPos) => void;
   onReplayIntroTour: () => void;
   onOpenChangelog: () => void;
+  onOpenServerUpdateNotes: () => void;
 };
 
 function navBtn(
@@ -158,6 +159,7 @@ export function SettingsPanel(props: SettingsPanelProps): any {
               setPanelPos,
               onReplayIntroTour: props.onReplayIntroTour,
               onOpenChangelog: props.onOpenChangelog,
+              onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
             }),
           ),
         ),

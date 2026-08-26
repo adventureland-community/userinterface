@@ -32,6 +32,7 @@ export type SettingsPaneRenderProps = {
   setPanelPos: (id: PanelId, pos: PanelPos) => void;
   onReplayIntroTour: () => void;
   onOpenChangelog: () => void;
+  onOpenServerUpdateNotes: () => void;
 };
 
 export type SettingsPaneDef = {
@@ -46,13 +47,15 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
   {
     id: "commUi",
     label: "Comm UI",
-    description: "Intro tour, What's New, and release history for the shell.",
+    description:
+      "Intro tour, Comm UI What's New, and Adventure.land server update notes.",
     countMatches: countCommUiSettingsMatches,
     render: (props) =>
       e(CommUiSettingsPane, {
         query: props.query,
         onReplayIntroTour: props.onReplayIntroTour,
         onOpenChangelog: props.onOpenChangelog,
+        onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
       }),
   },
   {

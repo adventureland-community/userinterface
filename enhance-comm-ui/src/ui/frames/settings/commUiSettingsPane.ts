@@ -5,10 +5,11 @@ export type CommUiSettingsPaneProps = {
   query?: string;
   onReplayIntroTour: () => void;
   onOpenChangelog: () => void;
+  onOpenServerUpdateNotes: () => void;
 };
 
 type CommUiActionDef = {
-  id: "intro" | "changelog";
+  id: "intro" | "changelog" | "serverNotes";
   label: string;
   help: string;
   buttonLabel: string;
@@ -32,6 +33,15 @@ const COMM_UI_ACTIONS: readonly CommUiActionDef[] = [
     buttonLabel: "Open changelog",
     extra: "changelog whats new release notes updates history",
     onClick: (props) => props.onOpenChangelog(),
+  },
+  {
+    id: "serverNotes",
+    label: "Server update notes",
+    help: "Adventure.land release notes from the page / welcome (not Comm UI).",
+    buttonLabel: "Open server notes",
+    extra:
+      "server update notes last deploy adventure.land gamelog welcome patch notes",
+    onClick: (props) => props.onOpenServerUpdateNotes(),
   },
 ];
 
@@ -57,7 +67,7 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
     e(
       "p",
       { key: "lead", className: "ecu-settings-lead" },
-      "Guides, onboarding, and release notes for the Comm UI shell.",
+      "Guides, onboarding, Comm UI changelog, and Adventure.land server notes.",
     ),
     settingsSection("Guides & updates"),
   ];
