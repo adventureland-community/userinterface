@@ -122,14 +122,50 @@ function onMailClick(ev: Event): void {
   openMail({ toggle: true });
 }
 
-/** Compact SVG icons for Follow / Bag / Command / Mail. */
-const ACTION_ICONS: Record<"follow" | "bag" | "command" | "mail", string> = {
+/**
+ * Same three-way landing as adventure.land/docs — Game Guide / CODE Docs /
+ * Other Systems — via stock render_* helpers when the client kit is present.
+ */
+export function openDocsMenu(): void {
+  const showModal = window.show_modal;
+  if (
+    typeof showModal !== "function" ||
+    typeof window.render_guide !== "function" ||
+    typeof window.render_code_docs !== "function" ||
+    typeof window.render_others !== "function"
+  ) {
+    window.open("/docs", "_blank", "noopener,noreferrer");
+    return;
+  }
+  const html =
+    "<div style='width:360px;text-align:center'>" +
+    "<div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_guide()'>" +
+    "<span style='color:#69BE86'>[G]</span> Game Guide</div>" +
+    "<div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_code_docs()'>" +
+    "<span style='color:#D8C14F'>[C]</span> CODE Docs</div>" +
+    "<div class='gamebutton' style='display:block;margin-bottom:4px' onclick='pcs();hide_modal();render_others()'>" +
+    "<span style='color:#58A1B0'>[O]</span> Other Systems</div>" +
+    "</div>";
+  showModal(html, { wrap: false, hideinbackground: true, url: "/docs" });
+}
+
+function onDocsClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  openDocsMenu();
+}
+
+type ActionKind = "follow" | "bag" | "command" | "mail" | "docs";
+
+/** Compact SVG icons for Follow / Bag / Command / Mail / Docs. */
+const ACTION_ICONS: Record<ActionKind, string> = {
   follow:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   command:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
   mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
 };
 
 export function buildActionsEl(): HTMLElement {
@@ -139,7 +175,7 @@ export function buildActionsEl(): HTMLElement {
   actions.setAttribute("data-ecu-tour", "chrome-actions");
 
   const mk = (
-    kind: "follow" | "bag" | "command" | "mail",
+    kind: ActionKind,
     label: string,
     title: string,
     onClick: (ev: Event) => void,
@@ -173,6 +209,7 @@ export function buildActionsEl(): HTMLElement {
       "Send a command to the observed character",
       onCommandClick,
     ),
+    mk("docs", "Docs", "Adventure.land docs — guide, CODE, systems", onDocsClick),
   );
   return actions;
 }
@@ -183,6 +220,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
     Bag: "btn-bag",
     Mail: "btn-mail",
     Command: "btn-command",
+    Docs: "btn-docs",
   };
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
@@ -268,7 +306,10 @@ export function ensureChromeShell(): void {
     if (!actionsEl) {
       actionsEl = buildActionsEl();
       existingStack.insertBefore(actionsEl, existingStack.firstChild);
-    } else if (!actionsEl.querySelector(".ecu-btn-icon-only")) {
+    } else if (
+      !actionsEl.querySelector(".ecu-btn-icon-only") ||
+      !actionsEl.querySelector('[data-ecu-tour="btn-docs"]')
+    ) {
       const next = buildActionsEl();
       actionsEl.replaceWith(next);
       actionsEl = next;

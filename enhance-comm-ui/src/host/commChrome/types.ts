@@ -44,6 +44,14 @@ declare global {
     hide_nav?: () => void;
     toggle_ui?: () => void;
     show_commander?: (fvalue?: string) => void;
+    /** Stock modal host — Docs / guide / inventory dialogs. */
+    show_modal?: (html: string, opts?: Record<string, unknown>) => void;
+    /** Stock /docs Game Guide directory. */
+    render_guide?: (path?: unknown, title?: string, color?: string) => void;
+    /** Stock /docs CODE Docs directory. */
+    render_code_docs?: () => void;
+    /** Stock /docs Other Systems directory. */
+    render_others?: () => void;
     draw_trigger?: (fn: () => void) => void;
     render_inventory?: (reset?: any) => void;
     select_comm_server?: (index: number | string) => void;
