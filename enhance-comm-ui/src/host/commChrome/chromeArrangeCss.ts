@@ -88,7 +88,7 @@ export const CHROME_ARRANGE_CSS = `
   overflow: hidden;
 }
 #comm-ui .comm-pos-arrange-overlay.is-chrome-only {
-  justify-content: flex-end;
+  justify-content: stretch;
 }
 #comm-ui .comm-pos-arrange-overlay.has-grip {
   justify-content: stretch;
@@ -104,11 +104,27 @@ export const CHROME_ARRANGE_CSS = `
   z-index: 0;
   justify-content: flex-start;
 }
+/* Locked hover title: same chip as the drag grip, no grab handle. */
+#comm-ui .comm-pos-arrange-overlay .comm-pos-arrange-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 2px 8px;
+  background: rgba(40, 40, 20, 0.92);
+  border: 1px solid #886;
+  color: #ffe08a;
+  box-sizing: border-box;
+  user-select: none;
+  pointer-events: none;
+}
 #comm-ui .comm-pos-arrange-overlay .comm-pos-arrange-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  text-align: left;
 }
 #comm-ui .comm-pos-arrange-overlay .comm-pos-window-chrome {
   position: relative;

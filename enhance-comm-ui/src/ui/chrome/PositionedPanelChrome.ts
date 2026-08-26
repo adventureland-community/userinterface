@@ -320,30 +320,22 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
       })
     : null;
 
-  // When locked + hover without a move grip, still show the window name so
-  // Alt/unlock expectations match Layout (“what is this panel?”).
+  // Locked hover: same dark title strip as the unlocked drag grip, minus ⠿.
   const arrangeLabel =
     !moveGrip && showArrangeOverlay
       ? e(
-          "span",
+          "div",
           {
-            className: "comm-pos-arrange-label",
-            style: {
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              minWidth: 0,
-              flex: 1,
-              alignSelf: "center",
-              padding: touchish ? "0 8px" : "0 6px",
-              color: "#ffe08a",
-              fontSize: headerFont,
-              lineHeight: 1.2,
-              pointerEvents: "none",
-              userSelect: "none",
-            },
+            className: "comm-pos-arrange-title",
+            title: panelLabel,
           },
-          panelLabel,
+          e(
+            "span",
+            {
+              className: "comm-pos-arrange-label",
+            },
+            panelLabel,
+          ),
         )
       : null;
 
