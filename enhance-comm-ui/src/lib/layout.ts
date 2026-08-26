@@ -536,6 +536,19 @@ export function panelStyle(
 }
 
 /**
+ * `panelStyle` always stamps idle z 20/40. Callers pass raise / meter stack
+ * z on `props.style` — re-apply after Object.assign so click-to-front sticks.
+ */
+export function applyCallerStackZ(
+  shellStyle: Record<string, any>,
+  propsStyle: Record<string, any> | null | undefined,
+): void {
+  if (propsStyle && typeof propsStyle.zIndex === "number") {
+    shellStyle.zIndex = propsStyle.zIndex;
+  }
+}
+
+/**
  * Fill-frame shells keep overflow visible so above-frame arrange chrome
  * (lock / Window Control / hide × / drag grip) is not clipped.
  * `panelStyle` sets overflowX/Y as separate keys; those beat `overflow`.

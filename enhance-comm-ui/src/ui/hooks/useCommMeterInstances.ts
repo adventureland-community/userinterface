@@ -10,7 +10,6 @@ import {
   resetMeterInstances,
 } from "../../lib/settings";
 import type { PartyFocus } from "../../lib/settingsFocus";
-import type { PanelPos } from "../../lib/layout";
 import { getMeterAppearance } from "../../meters/meterAppearance";
 import {
   instanceFromPreset,
@@ -53,11 +52,8 @@ export type CommMeterInstancesApi = {
   meterInstances: MeterInstance[];
   meterInstancesRef: { current: MeterInstance[] };
   closedMeters: MeterInstance[];
-  peerLayout: Record<string, PanelPos>;
   meterIsLocked: (inst: MeterInstance) => boolean;
   patchMeter: (id: string, partial: Partial<MeterInstance>) => void;
-  /** Details SetToplevel — raise on interact (click / drag). */
-  raiseMeterToFront: (id: string, above?: number) => void;
   closeMeterRuntime: (id: string) => void;
   reopenClosedMeter: (id: string) => void;
   focusInspector: (
@@ -80,7 +76,6 @@ export type CommMeterInstancesApi = {
 };
 
 export function useCommMeterInstances(
-  layout: Record<string, PanelPos>,
   opts?: UseCommMeterInstancesOpts,
 ): CommMeterInstancesApi {
   const React = getReact();
@@ -98,11 +93,6 @@ export function useCommMeterInstances(
   const meterInstancesRef = React.useRef(meterInstances);
   meterInstancesRef.current = meterInstances;
 
-  const peerLayout: Record<string, PanelPos> = { ...layout };
-  for (let i = 0; i < meterInstances.length; i++) {
-    peerLayout[meterInstances[i].id] = meterInstances[i].pos;
-  }
-
   const meterIsLocked = (inst: MeterInstance): boolean => {
     if (typeof inst.locked === "boolean") return inst.locked;
     return getSettings().windowsLocked !== false;
@@ -114,15 +104,6 @@ export function useCommMeterInstances(
       if (partial.selectedset != null && getMeterAppearance().segmentsLocked) {
         next = next.map((m) => ({ ...m, selectedset: partial.selectedset }));
       }
-      patchSettings({ meterInstances: next });
-      return next;
-    });
-  };
-
-  const raiseMeterToFront = (id: string, above = 0) => {
-    setMeterInstances((prev: MeterInstance[]) => {
-      const next = bringMeterToFront(prev, id, above);
-      if (next === prev) return prev;
       patchSettings({ meterInstances: next });
       return next;
     });
@@ -374,10 +355,8 @@ export function useCommMeterInstances(
     meterInstances,
     meterInstancesRef,
     closedMeters,
-    peerLayout,
     meterIsLocked,
     patchMeter,
-    raiseMeterToFront,
     closeMeterRuntime,
     reopenClosedMeter,
     focusInspector,

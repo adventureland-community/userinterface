@@ -21,10 +21,13 @@ import {
 import { isMeterInCombat } from "../../../meters/meterSession";
 import { isLiveCameraRef } from "../../../meters/meterSegmentRef";
 import { runMeterQuery } from "../../../meters/meterQuery";
-import { applyGroupFrameSize, getEdgeGroup } from "../../../lib/panelEdgeGroup";
+import { getEdgeGroup } from "../../../lib/panelEdgeGroup";
+import type {
+  CommWindowFrameSizeOptions,
+  CommWindowGraphState,
+} from "../../../lib/commWindowGroup";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import type { FocusInspectorOpts } from "../../hooks/useCommMeterInstances";
-import { patchSettings } from "../../../lib/settings";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
 import { MeterPanelShell } from "../../meter/MeterPanelShell";
 
@@ -43,7 +46,7 @@ export type CommMeterPanelsCtx = {
   /** Details: large instance ids after ~1s of left-hold drag. */
   showWindowIds: boolean;
   windowNumberById: Record<string, number>;
-  peerLayout: Record<string, PanelPos>;
+  getGraphState: () => CommWindowGraphState;
   viewportProfile: string;
   closedMeters: MeterInstance[];
   closedWindows: Array<{ id: string; label: string }>;
@@ -55,6 +58,11 @@ export type CommMeterPanelsCtx = {
   /** Details SetToplevel — raise meter on click / drag. */
   onActivate: (id: string) => void;
   onWindowScale: (id: string, scale: number) => void;
+  onResizeMeterFrame: (
+    id: string,
+    size: { frameW?: number; frameH?: number },
+    options?: CommWindowFrameSizeOptions,
+  ) => void;
   patchMeter: (id: string, partial: Partial<MeterInstance>) => void;
   setMeterInstances: (fn: (prev: MeterInstance[]) => MeterInstance[]) => void;
   setMetersHiddenPersist: (hidden: boolean) => void;
@@ -194,7 +202,7 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
           onOpacityChange: ctx.layoutEdit
             ? (value: number) => ctx.patchMeter(inst.id, { opacity: value })
             : undefined,
-          peerLayout: ctx.peerLayout,
+          getGraphState: ctx.getGraphState,
           viewportProfile: ctx.viewportProfile,
           interactiveBody: ctx.layoutEdit,
           locked,
@@ -247,41 +255,24 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
             onReopenClosed: ctx.reopenClosedMeter,
             onPatchInstance: (partial: Partial<MeterInstance>) => {
               if (partial.frameW != null || partial.frameH != null) {
-                ctx.setMeterInstances((prev: MeterInstance[]) => {
-                  const root = document
-                    .getElementById("comm-ui")
-                    ?.getBoundingClientRect();
-                  // Corner resize passes `pos` and needs keep-top/left peer
-                  // nudges. Stretch ↕ is size-only — leave positions alone so
-                  // CSS anchors grow/shrink in place and unstretch returns home.
-                  const alignPos = partial.pos != null;
-                  let next = applyGroupFrameSize(
-                    prev,
-                    inst.id,
-                    {
-                      frameW: partial.frameW,
-                      frameH: partial.frameH,
-                    },
-                    alignPos
-                      ? {
-                          rootW: root?.width,
-                          rootH: root?.height,
-                        }
-                      : undefined,
-                  );
-                  // Corner resize may pass an explicit pos (e.g. bl keeps the
-                  // right edge). That wins over the keep-left/top group nudge.
-                  const rest: Partial<MeterInstance> = { ...partial };
-                  delete rest.frameW;
-                  delete rest.frameH;
-                  if (Object.keys(rest).length) {
-                    next = next.map((m) =>
-                      m.id === inst.id ? { ...m, ...rest } : m,
-                    );
-                  }
-                  patchSettings({ meterInstances: next });
-                  return next;
-                });
+                const root = document
+                  .getElementById("comm-ui")
+                  ?.getBoundingClientRect();
+                const alignGroup = partial.pos != null;
+                const rest: Partial<MeterInstance> = { ...partial };
+                delete rest.frameW;
+                delete rest.frameH;
+                ctx.onResizeMeterFrame(
+                  inst.id,
+                  { frameW: partial.frameW, frameH: partial.frameH },
+                  {
+                    rootW: root?.width,
+                    rootH: root?.height,
+                    alignGroup,
+                    meterPatch:
+                      Object.keys(rest).length > 0 ? rest : undefined,
+                  },
+                );
                 return;
               }
               ctx.patchMeter(inst.id, partial);

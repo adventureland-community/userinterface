@@ -1,6 +1,6 @@
 /**
- * Unified Comm window move / snap / ungroup across HUD + meters.
- * Also owns Details-style window-number overlay while dragging.
+ * Unified Comm window move / snap / ungroup / raise across HUD + meters.
+ * React adapter over commWindowGroup — commit, overlay state, timers.
  */
 
 import { getReact } from "../../host/react";
@@ -12,7 +12,9 @@ import {
   ungroupCommWindow,
   applyScaleToCommWindows,
   applyFrameSizeToCommWindows,
+  raiseCommWindow,
   type CommWindowGraphState,
+  type CommWindowFrameSizeOptions,
 } from "../../lib/commWindowGroup";
 import { applyWindowFramePersist } from "../../lib/panelCatalog";
 import type { PanelGroupDragOpts } from "../../lib/panelGroupDrag";
@@ -63,13 +65,25 @@ function metersChanged(prev: MeterInstance[], next: MeterInstance[]): boolean {
   return JSON.stringify(prev) !== JSON.stringify(next);
 }
 
+function hudZsChanged(
+  prev: CommWindowGraphState["hudZs"],
+  next: CommWindowGraphState["hudZs"],
+): boolean {
+  return JSON.stringify(prev || null) !== JSON.stringify(next || null);
+}
+
 export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
   const React = getReact();
+  const [hudZs, setHudZs] = React.useState(
+    {} as Partial<Record<PanelId, number>>,
+  );
+
   const stateRef = React.useRef({
     layout: opts.layout,
     meters: opts.meters,
+    hudZs,
   } as CommWindowGraphState);
-  stateRef.current = { layout: opts.layout, meters: opts.meters };
+  stateRef.current = { layout: opts.layout, meters: opts.meters, hudZs };
 
   const [snapDragId, setSnapDragId] = React.useState(null as string | null);
   const [snapPeerId, setSnapPeerId] = React.useState(null as string | null);
@@ -93,7 +107,11 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     };
   }, []);
 
-  const commit = (next: CommWindowGraphState) => {
+  const commit = (
+    next: CommWindowGraphState,
+    options?: { persistMeters?: boolean },
+  ) => {
+    const persistMeters = options?.persistMeters !== false;
     const prev = stateRef.current;
     const layoutDiff = layoutChanged(prev.layout, next.layout);
     const layoutKeys = Object.keys(layoutDiff) as PanelId[];
@@ -104,7 +122,12 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     }
     if (metersChanged(prev.meters, next.meters)) {
       opts.setMeters(next.meters);
-      patchSettings({ meterInstances: next.meters });
+      if (persistMeters) {
+        patchSettings({ meterInstances: next.meters });
+      }
+    }
+    if (hudZsChanged(prev.hudZs, next.hudZs)) {
+      setHudZs(next.hudZs || {});
     }
     stateRef.current = next;
   };
@@ -132,6 +155,11 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
 
   const ungroupWindow = (id: string) => {
     commit(ungroupCommWindow(stateRef.current, id));
+  };
+
+  const raiseWindow = (id: string) => {
+    const { state, persistMeters } = raiseCommWindow(stateRef.current, id);
+    commit(state, { persistMeters });
   };
 
   const onDragStart = (id: string) => {
@@ -165,8 +193,11 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
   const resizeWindowFrame = (
     id: string,
     size: { frameW?: number; frameH?: number },
+    frameOpts?: CommWindowFrameSizeOptions,
   ) => {
-    commit(applyFrameSizeToCommWindows(stateRef.current, id, size));
+    commit(
+      applyFrameSizeToCommWindows(stateRef.current, id, size, frameOpts),
+    );
   };
 
   const setWindowAutoSize = (
@@ -196,6 +227,7 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     moveWindow,
     snapAfterMove,
     ungroupWindow,
+    raiseWindow,
     onDragStart,
     onDragMove,
     setWindowScale,
@@ -205,6 +237,7 @@ export function useCommWindowActions(opts: UseCommWindowActionsOpts) {
     snapPeerId,
     nearPeerId,
     showWindowIds,
+    hudZs,
     graphState,
   };
 }

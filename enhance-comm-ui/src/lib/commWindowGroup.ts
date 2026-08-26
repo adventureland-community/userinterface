@@ -3,6 +3,15 @@
  */
 
 import type { PanelId, PanelPos } from "./layout";
+import { softAvoidOverlap } from "./layout";
+import { snapPosToFineGrid } from "./layoutGrid";
+import {
+  applyPanelDragMove,
+  type PanelDragSnapInput,
+} from "./panelDragSnap";
+import { maxRecordStackZ, nextWindowFrontZ } from "./windowStack";
+import { bringMeterToFront } from "../meters/meterWindowStack";
+import { windowKind } from "./commWindow";
 import {
   applyGroupFrameSize,
   moveEdgeGroup,
@@ -25,7 +34,137 @@ import type { MeterInstance } from "../meters/meterTypes";
 export type CommWindowGraphState = {
   layout: Record<PanelId, PanelPos>;
   meters: MeterInstance[];
+  /** Ephemeral HUD raise z — not persisted (Details-style toplevel). */
+  hudZs?: Partial<Record<PanelId, number>>;
 };
+
+export type CommWindowPeerVisible = (id: string) => boolean;
+
+/** All Comm window positions for peer magnets / soft-avoid. */
+export function commWindowPeerLayout(
+  state: CommWindowGraphState,
+): Record<string, PanelPos> {
+  const out: Record<string, PanelPos> = { ...(state.layout || {}) };
+  const meters = state.meters || [];
+  for (let i = 0; i < meters.length; i++) {
+    out[meters[i].id] = meters[i].pos;
+  }
+  return out;
+}
+
+/** Peer anchor % axes for live drag magnets (visibility from measure adapter). */
+export function commWindowPeerSnapAxes(
+  state: CommWindowGraphState,
+  selfId: string,
+  isPeerVisible: CommWindowPeerVisible,
+): { xs: number[]; ys: number[] } {
+  const peers = commWindowPeerLayout(state);
+  const ids = Object.keys(peers);
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < ids.length; i++) {
+    const pid = ids[i];
+    if (pid === selfId) continue;
+    const p = peers[pid];
+    if (!p || !isPeerVisible(pid)) continue;
+    xs.push(p.x);
+    ys.push(p.y);
+  }
+  return { xs, ys };
+}
+
+export type CommWindowDragMoveInput = PanelDragSnapInput;
+
+/** Live drag % policy (grid / peer / visual-edge). */
+export function commWindowDragMove(
+  input: CommWindowDragMoveInput,
+): { x: number; y: number } {
+  return applyPanelDragMove(input);
+}
+
+export type CommWindowDragFinishInput = {
+  id: string;
+  pos: PanelPos;
+  state: CommWindowGraphState;
+  softAvoid: boolean;
+  freePlacement: boolean;
+  gridStep: number;
+  rootWidth: number;
+  rootHeight: number;
+};
+
+/** Drop nudge + fine-grid finish after a drag session. */
+export function finishCommWindowDragDrop(
+  input: CommWindowDragFinishInput,
+): PanelPos {
+  let finalPos = input.pos;
+  if (input.softAvoid) {
+    const peers = commWindowPeerLayout(input.state);
+    const nudged = softAvoidOverlap(input.id, finalPos, peers);
+    if (nudged.x !== finalPos.x || nudged.y !== finalPos.y) {
+      finalPos = nudged;
+    }
+  }
+  if (
+    !input.freePlacement &&
+    input.rootWidth > 0 &&
+    input.rootHeight > 0
+  ) {
+    const snapped = snapPosToFineGrid(
+      finalPos.x,
+      finalPos.y,
+      input.gridStep,
+      input.rootWidth,
+      input.rootHeight,
+    );
+    if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
+      finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
+    }
+  }
+  return finalPos;
+}
+
+export type RaiseCommWindowResult = {
+  state: CommWindowGraphState;
+  /** When false, meter z renormalize is ephemeral (HUD raise). */
+  persistMeters: boolean;
+};
+
+/** Details SetToplevel — unified raise for HUD + meter Comm windows. */
+export function raiseCommWindow(
+  state: CommWindowGraphState,
+  id: string,
+): RaiseCommWindowResult {
+  if (windowKind(id) === "hud") {
+    const hid = id as PanelId;
+    const prev = state.hudZs || {};
+    const { zIndex, peers } = nextWindowFrontZ(state.meters, {
+      hudZs: prev as Record<string, number | undefined>,
+    });
+    if (typeof prev[hid] === "number" && prev[hid] === zIndex) {
+      return { state, persistMeters: false };
+    }
+    return {
+      state: {
+        ...state,
+        hudZs: { ...prev, [hid]: zIndex },
+        meters: peers,
+      },
+      persistMeters: false,
+    };
+  }
+  const floorZ = maxRecordStackZ(
+    state.hudZs as Record<string, number | undefined>,
+  );
+  const nextMeters = bringMeterToFront(state.meters, id, floorZ);
+  if (nextMeters === state.meters) {
+    return { state, persistMeters: false };
+  }
+  return {
+    state: { ...state, meters: nextMeters },
+    persistMeters: true,
+  };
+}
 
 function posToEdge(id: string, pos: PanelPos): EdgeGroupPanel {
   return {
@@ -141,7 +280,7 @@ export function applyEdgePanelsToState(
     };
   });
 
-  return { layout, meters };
+  return { ...state, layout, meters };
 }
 
 export function moveCommWindowWithGroup(
@@ -324,14 +463,24 @@ export function applyScaleToCommWindows(
   const meters = state.meters.map((m) =>
     ids.has(m.id) ? { ...m, scale: clamped } : m,
   );
-  return { layout, meters };
+  return { ...state, layout, meters };
 }
+
+export type CommWindowFrameSizeOptions = {
+  rootW?: number;
+  rootH?: number;
+  /** Corner resize may pass pos after group nudge (meters). */
+  meterPatch?: Partial<MeterInstance>;
+  /** Pass root dims into applyGroupFrameSize for peer anchor nudge. */
+  alignGroup?: boolean;
+};
 
 /** Propagate frameW/H within a snap group (Details shared height/width). */
 export function applyFrameSizeToCommWindows(
   state: CommWindowGraphState,
   id: string,
   size: { frameW?: number; frameH?: number },
+  options?: CommWindowFrameSizeOptions,
 ): CommWindowGraphState {
   size = filterPersistedFrameSize(id, size);
   if (size.frameW == null && size.frameH == null) return state;
@@ -358,32 +507,53 @@ export function applyFrameSizeToCommWindows(
     }
     return {
       ...state,
-      meters: state.meters.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              ...(size.frameW != null ? { frameW: size.frameW } : {}),
-              ...(size.frameH != null ? { frameH: size.frameH } : {}),
-            }
-          : m,
+      meters: state.meters.map((m) => {
+        if (m.id !== id) return m;
+        const patch = options?.meterPatch;
+        return {
+          ...m,
+          ...(size.frameW != null ? { frameW: size.frameW } : {}),
+          ...(size.frameH != null ? { frameH: size.frameH } : {}),
+          ...(patch || {}),
+        };
+      }),
+    };
+  }
+  let rootW = options?.rootW;
+  let rootH = options?.rootH;
+  if (rootW == null || rootH == null) {
+    const root = layoutDragRoot().getBoundingClientRect();
+    rootW = root.width;
+    rootH = root.height;
+  }
+  const groupOpts =
+    options?.alignGroup === false
+      ? undefined
+      : rootW != null && rootH != null
+        ? { rootW, rootH }
+        : undefined;
+  let next = applyEdgePanelsToState(
+    state,
+    applyGroupFrameSize(panels, id, size, groupOpts),
+  );
+  const hid = id as PanelId;
+  if (next.layout[hid]) {
+    next = {
+      ...next,
+      layout: {
+        ...next.layout,
+        [hid]: withManualOff(next.layout[hid]),
+      },
+    };
+  }
+  const patch = options?.meterPatch;
+  if (patch && Object.keys(patch).length) {
+    next = {
+      ...next,
+      meters: next.meters.map((m) =>
+        m.id === id ? { ...m, ...patch } : m,
       ),
     };
   }
-  const root = layoutDragRoot().getBoundingClientRect();
-  const next = applyEdgePanelsToState(
-    state,
-    applyGroupFrameSize(panels, id, size, {
-      rootW: root.width,
-      rootH: root.height,
-    }),
-  );
-  const hid = id as PanelId;
-  if (!next.layout[hid]) return next;
-  return {
-    ...next,
-    layout: {
-      ...next.layout,
-      [hid]: withManualOff(next.layout[hid]),
-    },
-  };
+  return next;
 }

@@ -5,7 +5,12 @@
  */
 
 import { getReact } from "../../host/react";
-import { applyPanelDragMove } from "../../lib/panelDragSnap";
+import {
+  commWindowDragMove,
+  commWindowPeerSnapAxes,
+  finishCommWindowDragDrop,
+  type CommWindowGraphState,
+} from "../../lib/commWindowGroup";
 import { panelHasSnap } from "../../lib/panelEdgeGroup";
 import {
   isSnapPeerElement,
@@ -24,7 +29,6 @@ import {
   type VisualSnapStart,
 } from "../../lib/layout";
 import { getLayoutFreePlacement } from "../../lib/layoutEditPrefs";
-import { snapPosToFineGrid } from "../../lib/layoutGrid";
 import {
   layoutDragRoot,
   percentFromPointerDrag,
@@ -41,7 +45,8 @@ export type UsePositionedPanelDragArgs = {
   /** Raw `movable` prop (before dragPinned merge). */
   movableProp: boolean;
   softAvoid?: boolean;
-  peerLayout?: Partial<Record<string, PanelPos>>;
+  /** Comm window graph — peer layout + drag-finish policy. */
+  getGraphState?: () => CommWindowGraphState;
   shellRef: { current: HTMLDivElement | null };
   extraDragRef?: { current: HTMLElement | null };
   freePlacementRef: { current: boolean };
@@ -70,7 +75,7 @@ export function usePositionedPanelDrag(
     editing,
     movableProp,
     softAvoid,
-    peerLayout,
+    getGraphState,
     shellRef,
     extraDragRef,
     freePlacementRef,
@@ -106,8 +111,8 @@ export function usePositionedPanelDrag(
   onDragMoveRef.current = onDragMove;
   const softAvoidRef = React.useRef(softAvoid);
   softAvoidRef.current = softAvoid;
-  const peerLayoutRef = React.useRef(peerLayout);
-  peerLayoutRef.current = peerLayout;
+  const getGraphStateRef = React.useRef(getGraphState);
+  getGraphStateRef.current = getGraphState;
   const onMoveRef = React.useRef(onMove);
   onMoveRef.current = onMove;
   const posRef = React.useRef(pos);
@@ -152,22 +157,15 @@ export function usePositionedPanelDrag(
     };
   };
 
+  const isPeerVisible = (peerId: string): boolean => {
+    const el = queryCommPosPanel(peerId);
+    return !!el && isSnapPeerElement(el);
+  };
+
   const peerAxes = (): { xs: number[]; ys: number[] } => {
-    const peers = peerLayoutRef.current || {};
-    const ids = Object.keys(peers) as PanelId[];
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (let i = 0; i < ids.length; i++) {
-      if (ids[i] === id) continue;
-      const p = peers[ids[i]];
-      if (!p) continue;
-      // Skip closed / empty-hidden / display:none peers (saved % still in layout).
-      const el = queryCommPosPanel(ids[i]);
-      if (!el || !isSnapPeerElement(el)) continue;
-      xs.push(p.x);
-      ys.push(p.y);
-    }
-    return { xs, ys };
+    const getState = getGraphStateRef.current;
+    if (!getState) return { xs: [], ys: [] };
+    return commWindowPeerSnapAxes(getState(), id, isPeerVisible);
   };
 
   const finishDrag = (ev?: any) => {
@@ -182,25 +180,24 @@ export function usePositionedPanelDrag(
       tryReleasePointerCapture(ev.currentTarget, ev.pointerId);
     }
     let finalPos = lastPos.current;
-    if (softAvoidRef.current !== false) {
-      const peers = peerLayoutRef.current || {};
-      const nudged = softAvoidOverlap(id, lastPos.current, peers);
+    const getState = getGraphStateRef.current;
+    const root = layoutDragRoot().getBoundingClientRect();
+    if (getState) {
+      finalPos = finishCommWindowDragDrop({
+        id,
+        pos: lastPos.current,
+        state: getState(),
+        softAvoid: softAvoidRef.current !== false,
+        freePlacement:
+          freePlacementRef.current || getLayoutFreePlacement(),
+        gridStep: gridStepRef.current,
+        rootWidth: root.width,
+        rootHeight: root.height,
+      });
+    } else if (softAvoidRef.current !== false) {
+      const nudged = softAvoidOverlap(id, lastPos.current, {});
       if (nudged.x !== lastPos.current.x || nudged.y !== lastPos.current.y) {
         finalPos = nudged;
-      }
-    }
-    // Keep drop on the fine grid (soft-avoid can leave a non-grid offset).
-    if (!(freePlacementRef.current || getLayoutFreePlacement())) {
-      const root = layoutDragRoot().getBoundingClientRect();
-      const snapped = snapPosToFineGrid(
-        finalPos.x,
-        finalPos.y,
-        gridStepRef.current,
-        root.width,
-        root.height,
-      );
-      if (snapped.x !== finalPos.x || snapped.y !== finalPos.y) {
-        finalPos = { ...finalPos, x: snapped.x, y: snapped.y };
       }
     }
     if (finalPos.x !== lastPos.current.x || finalPos.y !== lastPos.current.y) {
@@ -304,7 +301,7 @@ export function usePositionedPanelDrag(
     const skipPeer =
       skipGroupRef.current ||
       panelHasSnap({ id: String(id), pos: cur, snap: cur.snap });
-    const snapped = applyPanelDragMove({
+    const snapped = commWindowDragMove({
       rawX: raw.x,
       rawY: raw.y,
       clientX: ev.clientX,

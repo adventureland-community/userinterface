@@ -23,7 +23,7 @@ import {
   panelIsContextEmpty,
   windowFramePersist,
 } from "../../../lib/panelCatalog";
-import { commWindowHasSnap } from "../../../lib/commWindowGroup";
+import { commWindowHasSnap, type CommWindowGraphState } from "../../../lib/commWindowGroup";
 import type { ViewportProfile } from "../../../lib/viewport";
 import type { MeterInstance } from "../../../meters/meterTypes";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
@@ -79,7 +79,7 @@ export type CommPanelLayoutDeps = {
   layoutEdit: boolean;
   layout: Record<PanelId, PanelPos>;
   meterInstances: MeterInstance[];
-  peerLayout: Record<string, PanelPos>;
+  getGraphState: () => CommWindowGraphState;
   viewportProfile: ViewportProfile;
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
@@ -201,7 +201,7 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
           opts?.editChrome === "grip"
             ? undefined
             : (value: number) => deps.setOpacity(id, value),
-        peerLayout: deps.peerLayout,
+        getGraphState: deps.getGraphState,
         viewportProfile: deps.viewportProfile,
         interactiveBody: opts?.interactiveBody,
         editChrome: opts?.editChrome,

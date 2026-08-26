@@ -4,6 +4,7 @@ import {
   PANEL_LABELS,
   clampPanelPosInRoot,
   panelStyle,
+  applyCallerStackZ,
   unclipShellOverflow,
   reanchorKeepingVisual,
   type LayoutAnchor,
@@ -17,7 +18,7 @@ import {
 } from "../../lib/layoutEditPrefs";
 import { snapFrameSizeToGrid } from "../../lib/layoutGrid";
 import { layoutDragRoot } from "../../lib/percentDrag";
-import { clampWindowScale } from "../../lib/commWindowGroup";
+import { clampWindowScale, type CommWindowGraphState } from "../../lib/commWindowGroup";
 import {
   panelUsesAutoSize,
   panelFillsFrame,
@@ -69,8 +70,8 @@ export type PositionedPanelProps = {
   onOpacityChange?: (value: number) => void;
   /** Optional footprint for the hidden/closed edit body (e.g. bag size). */
   hiddenBodyStyle?: Record<string, any>;
-  /** Other panel positions for edge snap + soft avoid-overlap. */
-  peerLayout?: Partial<Record<string, PanelPos>>;
+  /** Comm window graph for peer magnets + drag-finish policy. */
+  getGraphState?: () => CommWindowGraphState;
   /** Active viewport profile — enlarges handles on tablet/phone. */
   viewportProfile?: ViewportProfile;
   /**
@@ -300,7 +301,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     editing,
     movableProp: !!props.movable,
     softAvoid: props.softAvoid,
-    peerLayout: props.peerLayout,
+    getGraphState: props.getGraphState,
     shellRef,
     extraDragRef: props.extraDragRef,
     freePlacementRef,
@@ -476,6 +477,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
           }
         : null,
   );
+  // panelStyle stamps idle z 20/40 — preserve raise / meter stack z from props.
+  applyCallerStackZ(shellStyle, props.style);
   applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
   // Fixed frameW/H sets overflowX/Y in panelStyle, which clips above-frame
   // arrange chrome. Unclip the shell when needed.
