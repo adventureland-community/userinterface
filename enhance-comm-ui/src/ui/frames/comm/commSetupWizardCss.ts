@@ -533,6 +533,145 @@ const CSS = `
     padding: 10px 18px 16px;
   }
 }
+
+/* Adventure.land server update notes (not ECU changelog) */
+.ecu-comm-wiz--un .ecu-comm-wiz-logo {
+  color: #9ec9ef;
+}
+.ecu-comm-wiz-un-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ecu-comm-wiz-un-day-meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 10px;
+  margin-bottom: 2px;
+}
+.ecu-comm-wiz-un-day-stamp {
+  color: #f0e6c8;
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+.ecu-comm-wiz-un-day-badge {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #d8ecff;
+  background: rgba(70, 120, 175, 0.7);
+  border: 1px solid rgba(160, 200, 240, 0.35);
+  padding: 2px 7px;
+  border-radius: 2px;
+}
+.ecu-comm-wiz-un-day-count {
+  margin-left: auto;
+  color: #888;
+  font-size: 15px;
+}
+.ecu-comm-wiz-un-grid {
+  margin: 0;
+}
+.ecu-comm-wiz-un-item {
+  position: relative;
+  gap: 0;
+  min-height: 0;
+}
+.ecu-comm-wiz-un-item--badged {
+  padding-right: 72px;
+}
+.ecu-comm-wiz-un-item .ecu-comm-wiz-un-kind {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  margin: 0;
+}
+.ecu-comm-wiz-un-item--code {
+  border-left-color: #7ab8e0;
+}
+.ecu-comm-wiz-un-item--items {
+  border-left-color: #f0d070;
+}
+.ecu-comm-wiz-un-item--fix {
+  border-left-color: #7fd9a8;
+}
+.ecu-comm-wiz-un-item--event {
+  border-left-color: #e09a62;
+}
+.ecu-comm-wiz-un-item--client {
+  border-left-color: #b4a0e0;
+}
+.ecu-comm-wiz-un-kind--code {
+  color: #e4f2ff;
+  background: rgba(55, 125, 185, 0.68);
+}
+.ecu-comm-wiz-un-kind--items {
+  color: #fff0c0;
+  background: rgba(210, 155, 35, 0.62);
+}
+.ecu-comm-wiz-un-kind--fix {
+  color: #e0ffe9;
+  background: rgba(35, 145, 95, 0.64);
+}
+.ecu-comm-wiz-un-kind--event {
+  color: #ffe2bc;
+  background: rgba(175, 95, 40, 0.64);
+}
+.ecu-comm-wiz-un-kind--client {
+  color: #e8e0ff;
+  background: rgba(110, 90, 170, 0.62);
+}
+.ecu-comm-wiz-un-note {
+  color: #fff;
+  font-size: 28px;
+  line-height: 1.45;
+  max-width: 36em;
+}
+.ecu-comm-wiz-un-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+  margin: 0 1px;
+  padding: 1px 4px 1px 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.ecu-comm-wiz-un-ref .ecu-game-icon {
+  flex: 0 0 auto;
+}
+.ecu-comm-wiz-un-ref-label {
+  color: #fff;
+}
+.ecu-comm-wiz-un-nav-more {
+  margin: 10px 8px 4px;
+  width: calc(100% - 16px);
+  box-sizing: border-box;
+}
+.ecu-comm-wiz-un-begin,
+.ecu-comm-wiz-un-empty {
+  color: #888;
+  text-align: center;
+  margin: 10px 8px 6px;
+  font-size: 15px;
+}
+.ecu-comm-wiz-un-pending {
+  margin: 0 0 4px;
+  color: #aaa;
+  font-size: 16px;
+}
+.ecu-comm-wiz-un-error {
+  color: #e08080;
+  margin: 8px 0 0;
+  font-size: 16px;
+}
+@media (max-width: 720px) {
+  .ecu-comm-wiz-un-note {
+    font-size: 22px;
+  }
+}
 `;
 
 export function injectCommSetupWizardCss(): void {

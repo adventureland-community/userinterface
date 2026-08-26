@@ -6,6 +6,7 @@ import { startMeterEngine, updateMeterContext } from "./meters/meterEngine";
 import { isMeterInCombat } from "./meters/meterSession";
 import { startSessionKills, updateKillContext } from "./kpi/sessionKills";
 import { installCommanderHook } from "./host/commander";
+import { installUpdateNotesHooks } from "./host/updateNotes";
 import { installCommChrome } from "./host/commChrome";
 import { ensureDialogHost } from "./host/dialogHost";
 import { installInventoryFix } from "./host/inventory";
@@ -222,6 +223,7 @@ function onLoad(): void {
   installDisconnectOverlay();
   installPageTitle();
   installCommanderHook();
+  installUpdateNotesHooks();
   ensureMailCss();
   installMailUnreadWatch();
   subscribeMailToast((message) => showMailToast(message));

@@ -187,6 +187,11 @@ export type CommUiSettings = {
    * Independent of setupWizardDone — upgrades can resurface What's New.
    */
   changelogSeenId?: string | null;
+  /**
+   * Last Adventure.land `last_deploy` stamp shown via Comm update notes.
+   * Welcome auto-opens only when the page deploy differs.
+   */
+  serverUpdateNotesSeenDeploy?: string | null;
   /** Per-tour completion flags (spotlight tours). */
   toursCompleted?: Record<string, boolean>;
   /** Stable window numbers (Details meu_id) for HUD + meters. */
@@ -242,6 +247,7 @@ const DEFAULTS: CommUiSettings = {
   meterClosedInstances: [],
   setupWizardDone: false,
   changelogSeenId: null,
+  serverUpdateNotesSeenDeploy: null,
   toursCompleted: {},
   windowNumberById: {},
   nextWindowNumber: 1,
@@ -525,6 +531,10 @@ function migrate(parsed: any): CommUiSettings {
     changelogSeenId:
       typeof parsed.changelogSeenId === "string"
         ? parsed.changelogSeenId
+        : null,
+    serverUpdateNotesSeenDeploy:
+      typeof parsed.serverUpdateNotesSeenDeploy === "string"
+        ? parsed.serverUpdateNotesSeenDeploy
         : null,
     toursCompleted:
       parsed.toursCompleted && typeof parsed.toursCompleted === "object"
@@ -819,6 +829,12 @@ export function patchSettings(
   }
   if (partial.changelogSeenId !== undefined) {
     next.changelogSeenId = partial.changelogSeenId;
+  }
+  if (partial.serverUpdateNotesSeenDeploy !== undefined) {
+    next.serverUpdateNotesSeenDeploy =
+      typeof partial.serverUpdateNotesSeenDeploy === "string"
+        ? partial.serverUpdateNotesSeenDeploy
+        : null;
   }
   if (partial.toursCompleted) {
     next.toursCompleted = { ...partial.toursCompleted };
