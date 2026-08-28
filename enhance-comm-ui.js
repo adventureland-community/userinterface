@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.10
+// @version      0.8.0-alpha.11
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7703,6 +7703,41 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.11",
+      title: "0.8.0-alpha.11",
+      date: "2026-08-28",
+      summary: "Mainframe back on the action bar (/mainframe, like stock comm) and bottom chrome no longer blocks update notes, buff info, or other /comm UI at the screen edge.",
+      highlights: [
+        {
+          label: "Mainframe button",
+          detail: "Terminal icon beside Docs opens /mainframe (same as the stock MAINFRAME button beside TOGGLE). Not the old cyberland render_mainframe map quirk.",
+          kind: "feature"
+        },
+        {
+          label: "Bottom chrome click-through",
+          detail: "Character strip and action bar no longer steal clicks from update notes, buff info, and other /comm UI that overlaps the bottom edge.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Mainframe on action bar",
+          detail: 'Navigates to /mainframe like stock comm.html (<a href="/mainframe">MAINFRAME</a> beside TOGGLE).',
+          kind: "feature"
+        },
+        {
+          label: "Chrome z-index + pointer-events",
+          detail: "#bottom chrome drops to z-index 201 (below #comm-ui 220). Only buttons/chips/server menu are hittable \u2014 empty flex gutters pass clicks through.",
+          kind: "fix"
+        },
+        {
+          label: "Modals portaled to body",
+          detail: "Setup wizard, What's New, and server update notes render outside the #comm-ui stacking context so footers stay above the strip.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.10",
       title: "0.8.0-alpha.10",
       date: "2026-08-26",
@@ -10881,6 +10916,17 @@ ${fightHoverTip(src)}`
   // src/host/commChrome/chromeCss.ts
   var STYLE_ID = "comm-ui-chrome-css";
   var STOCK_BOTTOM_TOGGLE_HIDE = "#bottom > .gamebutton:not(.disconnected)";
+  var BOTTOM_CHROME_Z_INDEX = 201;
+  var BOTTOM_CHROME_HIT_TARGETS = [
+    ".ecu-chrome-stack .ecu-actions",
+    ".ecu-chrome-stack .ecu-btn",
+    ".ecu-chrome-stack .ecu-chrome",
+    ".ecu-chrome-stack .ecu-char",
+    ".ecu-chrome-stack .ecu-server-dd-trigger",
+    ".ecu-chrome-stack .ecu-server-dd-menu",
+    ".ecu-chrome-stack .ecu-server-dd-option",
+    "#bottom > .gamebutton.disconnected"
+  ].join(",\n");
   function injectChromeCss() {
     let style = document.getElementById(STYLE_ID);
     if (!style) {
@@ -10900,15 +10946,17 @@ ${EFFECTS_ICON_CSS}
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 260;
+  z-index: ${BOTTOM_CHROME_Z_INDEX};
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   text-align: center;
   pointer-events: none;
   background: none !important;
   background-image: none !important;
 }
-#bottom .ecu-chrome-stack,
-#bottom .ecu-chrome-stack * {
+#bottom .ecu-chrome-stack {
+  pointer-events: none;
+}
+${BOTTOM_CHROME_HIT_TARGETS} {
   pointer-events: auto;
 }
 
@@ -10922,7 +10970,7 @@ ${EFFECTS_ICON_CSS}
   width: auto;
   max-width: min(96vw, 1200px);
   margin: 0 auto;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* Secondary control cluster \u2014 compact icon buttons */
@@ -11003,7 +11051,7 @@ ${EFFECTS_ICON_CSS}
   width: auto;
   max-width: 100%;
   margin: 0;
-  pointer-events: auto;
+  pointer-events: none;
   background: rgba(14, 14, 14, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-sizing: border-box;
@@ -15126,12 +15174,26 @@ ${CHROME_ARRANGE_CSS}
     ev.stopPropagation();
     openDocsMenu();
   }
+  function openMainframe() {
+    if (typeof window === "undefined" || !window.location) return;
+    if (typeof window.location.assign === "function") {
+      window.location.assign("/mainframe");
+      return;
+    }
+    window.location.href = "/mainframe";
+  }
+  function onMainframeClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openMainframe();
+  }
   var ACTION_ICONS = {
     follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
     mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
-    docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
+    docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+    mainframe: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
   };
   function buildActionsEl() {
     const actions = document.createElement("div");
@@ -15167,7 +15229,13 @@ ${CHROME_ARRANGE_CSS}
         "Send a command to the observed character",
         onCommandClick
       ),
-      mk("docs", "Docs", "Adventure.land docs \u2014 guide, CODE, systems", onDocsClick)
+      mk("docs", "Docs", "Adventure.land docs \u2014 guide, CODE, systems", onDocsClick),
+      mk(
+        "mainframe",
+        "Mainframe",
+        "Open Mainframe \u2014 run saved CODE in isolated machines",
+        onMainframeClick
+      )
     );
     return actions;
   }
@@ -15177,7 +15245,8 @@ ${CHROME_ARRANGE_CSS}
       Bag: "btn-bag",
       Mail: "btn-mail",
       Command: "btn-command",
-      Docs: "btn-docs"
+      Docs: "btn-docs",
+      Mainframe: "btn-mainframe"
     };
     const buttons = actions.querySelectorAll(".ecu-btn");
     for (let i = 0; i < buttons.length; i++) {
@@ -15244,7 +15313,7 @@ ${CHROME_ARRANGE_CSS}
       if (!actionsEl) {
         actionsEl = buildActionsEl();
         existingStack.insertBefore(actionsEl, existingStack.firstChild);
-      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]')) {
+      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') || !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')) {
         const next = buildActionsEl();
         actionsEl.replaceWith(next);
         actionsEl = next;
@@ -17786,8 +17855,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.10" : "unknown";
-    const builtAt = true ? "2026-08-26T15:16:53.466Z" : "unknown";
+    const version = true ? "0.8.0-alpha.11" : "unknown";
+    const builtAt = true ? "2026-08-28T19:55:07.409Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -19879,6 +19948,30 @@ button.comm-mail__stack-u {
         )
       )
     );
+  }
+
+  // src/ui/frames/comm/commModalPortal.ts
+  function CommModalPortal(props) {
+    const React = getReact();
+    const ReactDOM = getReactDOM();
+    const [host2, setHost] = React.useState(null);
+    React.useEffect(() => {
+      const orphans = document.querySelectorAll("[data-ecu-comm-modal-portal]");
+      for (let i = 0; i < orphans.length; i++) {
+        const node = orphans[i];
+        if (node.parentNode) node.parentNode.removeChild(node);
+      }
+      const el = document.createElement("div");
+      el.setAttribute("data-ecu-comm-modal-portal", "1");
+      document.body.appendChild(el);
+      setHost(el);
+      return () => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+        setHost(null);
+      };
+    }, []);
+    if (!host2) return null;
+    return ReactDOM.createPortal(props.children, host2);
   }
 
   // src/ui/frames/comm/guidedTour/guidedTourCss.ts
@@ -53584,24 +53677,24 @@ ${ESTIMATE_HINT}`,
         showWindowIds: windowActions.showWindowIds,
         windowNumberById
       }),
-      setupWizardOpen ? e(CommUISetupWizard, {
+      setupWizardOpen ? e(CommModalPortal, null, e(CommUISetupWizard, {
         step: introStep,
         onStep: setIntroStepPersist,
         onDone: () => setSetupWizardOpen(false),
         onStartTour: () => startIntroTour(false)
-      }) : null,
-      !setupWizardOpen && whatsNewEntries.length > 0 ? e(CommUIWhatsNew, {
+      })) : null,
+      !setupWizardOpen && whatsNewEntries.length > 0 ? e(CommModalPortal, null, e(CommUIWhatsNew, {
         entries: whatsNewEntries,
         browseAll: whatsNewBrowseAll,
         onDone: () => {
           setWhatsNewEntries([]);
           setWhatsNewBrowseAll(false);
         }
-      }) : null,
-      !setupWizardOpen && whatsNewEntries.length === 0 && serverNotesMode ? e(CommUIUpdateNotes, {
+      })) : null,
+      !setupWizardOpen && whatsNewEntries.length === 0 && serverNotesMode ? e(CommModalPortal, null, e(CommUIUpdateNotes, {
         mode: serverNotesMode,
         onDone: () => setServerNotesMode(null)
-      }) : null,
+      })) : null,
       settingsOpen ? e(SettingsPanel, {
         onClose: () => setSettingsOpen(false),
         visible,
