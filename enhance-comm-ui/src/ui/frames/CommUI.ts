@@ -21,6 +21,7 @@ import {
 } from "./comm/CommUISetupWizard";
 import { CommUIWhatsNew } from "./comm/CommUIWhatsNew";
 import { CommUIUpdateNotes } from "./comm/CommUIUpdateNotes";
+import { CommModalPortal } from "./comm/commModalPortal";
 import { CHANGELOG, hasUnseenChangelog } from "../../lib/changelog";
 import {
   readLastDeploy,
@@ -621,32 +622,32 @@ export function CommUI(props: CommUIProps): any {
     }),
 
     setupWizardOpen
-      ? e(CommUISetupWizard, {
+      ? e(CommModalPortal, null, e(CommUISetupWizard, {
           step: introStep,
           onStep: setIntroStepPersist,
           onDone: () => setSetupWizardOpen(false),
           onStartTour: () => startIntroTour(false),
-        })
+        }))
       : null,
 
     !setupWizardOpen && whatsNewEntries.length > 0
-      ? e(CommUIWhatsNew, {
+      ? e(CommModalPortal, null, e(CommUIWhatsNew, {
           entries: whatsNewEntries,
           browseAll: whatsNewBrowseAll,
           onDone: () => {
             setWhatsNewEntries([]);
             setWhatsNewBrowseAll(false);
           },
-        })
+        }))
       : null,
 
     !setupWizardOpen &&
     whatsNewEntries.length === 0 &&
     serverNotesMode
-      ? e(CommUIUpdateNotes, {
+      ? e(CommModalPortal, null, e(CommUIUpdateNotes, {
           mode: serverNotesMode,
           onDone: () => setServerNotesMode(null),
-        })
+        }))
       : null,
 
     settingsOpen
