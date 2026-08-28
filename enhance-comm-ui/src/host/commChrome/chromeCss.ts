@@ -7,6 +7,21 @@ const STYLE_ID = "comm-ui-chrome-css";
 export const STOCK_BOTTOM_TOGGLE_HIDE =
   "#bottom > .gamebutton:not(.disconnected)";
 
+/** Below #comm-ui (220) so panels/modals win hit-testing over empty chrome. */
+export const BOTTOM_CHROME_Z_INDEX = 201;
+
+/** Interactive chrome controls — containers stay pointer-events: none. */
+export const BOTTOM_CHROME_HIT_TARGETS = [
+  ".ecu-chrome-stack .ecu-actions",
+  ".ecu-chrome-stack .ecu-btn",
+  ".ecu-chrome-stack .ecu-chrome",
+  ".ecu-chrome-stack .ecu-char",
+  ".ecu-chrome-stack .ecu-server-dd-trigger",
+  ".ecu-chrome-stack .ecu-server-dd-menu",
+  ".ecu-chrome-stack .ecu-server-dd-option",
+  "#bottom > .gamebutton.disconnected",
+].join(",\n");
+
 export function injectChromeCss(): void {
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!style) {
@@ -14,8 +29,8 @@ export function injectChromeCss(): void {
     style.id = STYLE_ID;
     document.head.append(style);
   }
-  // Always rewrite so Tampermonkey reloads pick up CSS without a hard refresh.
-  // Above #comm-ui (220) so strip + dropdown receive clicks.
+  // #bottom below #comm-ui (220): transparent overlay passes clicks to chrome;
+  // panels/modals inside comm-ui sit above the strip (fixes "Got it" / buffs).
   style.textContent = `
 /* Hide stock observe gamebuttons — never restyle .gamebutton.block into the strip */
 #observeui {
@@ -28,15 +43,17 @@ ${EFFECTS_ICON_CSS}
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 260;
+  z-index: ${BOTTOM_CHROME_Z_INDEX};
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   text-align: center;
   pointer-events: none;
   background: none !important;
   background-image: none !important;
 }
-#bottom .ecu-chrome-stack,
-#bottom .ecu-chrome-stack * {
+#bottom .ecu-chrome-stack {
+  pointer-events: none;
+}
+${BOTTOM_CHROME_HIT_TARGETS} {
   pointer-events: auto;
 }
 
@@ -50,7 +67,7 @@ ${EFFECTS_ICON_CSS}
   width: auto;
   max-width: min(96vw, 1200px);
   margin: 0 auto;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 /* Secondary control cluster — compact icon buttons */
@@ -131,7 +148,7 @@ ${EFFECTS_ICON_CSS}
   width: auto;
   max-width: 100%;
   margin: 0;
-  pointer-events: auto;
+  pointer-events: none;
   background: rgba(14, 14, 14, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-sizing: border-box;
