@@ -100,6 +100,47 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.11",
+    title: "0.8.0-alpha.11",
+    date: "2026-08-28",
+    summary:
+      "Mainframe back on the action bar (/mainframe, like stock comm) and bottom chrome no longer blocks update notes, buff info, or other /comm UI at the screen edge.",
+    highlights: [
+      {
+        label: "Mainframe button",
+        detail:
+          "Terminal icon beside Docs opens /mainframe (same as the stock MAINFRAME button beside TOGGLE). Not the old cyberland render_mainframe map quirk.",
+        kind: "feature",
+      },
+      {
+        label: "Bottom chrome click-through",
+        detail:
+          "Character strip and action bar no longer steal clicks from update notes, buff info, and other /comm UI that overlaps the bottom edge.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Mainframe on action bar",
+        detail:
+          "Navigates to /mainframe like stock comm.html (<a href=\"/mainframe\">MAINFRAME</a> beside TOGGLE).",
+        kind: "feature",
+      },
+      {
+        label: "Chrome z-index + pointer-events",
+        detail:
+          "#bottom chrome drops to z-index 201 (below #comm-ui 220). Only buttons/chips/server menu are hittable — empty flex gutters pass clicks through.",
+        kind: "fix",
+      },
+      {
+        label: "Modals portaled to body",
+        detail:
+          "Setup wizard, What's New, and server update notes render outside the #comm-ui stacking context so footers stay above the strip.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.10",
     title: "0.8.0-alpha.10",
     date: "2026-08-26",
