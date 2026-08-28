@@ -155,7 +155,27 @@ function onDocsClick(ev: Event): void {
   openDocsMenu();
 }
 
-type ActionKind = "follow" | "bag" | "command" | "mail" | "docs";
+/**
+ * Stock /comm bottom link (`<a href="/mainframe">MAINFRAME</a>` beside TOGGLE).
+ * Opens the Mainframe product page — not the old cyberland `render_mainframe`
+ * terminal (map quirk on `main`).
+ */
+export function openMainframe(): void {
+  if (typeof window === "undefined" || !window.location) return;
+  if (typeof window.location.assign === "function") {
+    window.location.assign("/mainframe");
+    return;
+  }
+  window.location.href = "/mainframe";
+}
+
+function onMainframeClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  openMainframe();
+}
+
+type ActionKind = "follow" | "bag" | "command" | "mail" | "docs" | "mainframe";
 
 /** Compact SVG icons for Follow / Bag / Command / Mail / Docs. */
 const ACTION_ICONS: Record<ActionKind, string> = {
@@ -166,6 +186,8 @@ const ACTION_ICONS: Record<ActionKind, string> = {
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
   mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+  mainframe:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
 };
 
 export function buildActionsEl(): HTMLElement {
@@ -210,6 +232,12 @@ export function buildActionsEl(): HTMLElement {
       onCommandClick,
     ),
     mk("docs", "Docs", "Adventure.land docs — guide, CODE, systems", onDocsClick),
+    mk(
+      "mainframe",
+      "Mainframe",
+      "Open Mainframe — run saved CODE in isolated machines",
+      onMainframeClick,
+    ),
   );
   return actions;
 }
@@ -221,6 +249,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
     Mail: "btn-mail",
     Command: "btn-command",
     Docs: "btn-docs",
+    Mainframe: "btn-mainframe",
   };
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
@@ -308,7 +337,8 @@ export function ensureChromeShell(): void {
       existingStack.insertBefore(actionsEl, existingStack.firstChild);
     } else if (
       !actionsEl.querySelector(".ecu-btn-icon-only") ||
-      !actionsEl.querySelector('[data-ecu-tour="btn-docs"]')
+      !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') ||
+      !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')
     ) {
       const next = buildActionsEl();
       actionsEl.replaceWith(next);
