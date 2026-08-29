@@ -100,6 +100,52 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.14",
+    title: "0.8.0-alpha.14",
+    date: "2026-08-29",
+    summary:
+      "Closed buff/item tips no longer leave an invisible click box — paperdoll × and bag slots work again after dismissing a tip.",
+    highlights: [
+      {
+        label: "Ghost click box gone",
+        detail:
+          "Empty buff/item hosts hide and pass clicks through. Idle tip panels collapse to zero size instead of keeping a saved frame box.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll × / bag",
+        detail:
+          "Paperdoll sits above tip stack; tip shells stay click-through until content is actually open.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Empty dialog hosts",
+        detail:
+          "#ecu-buff-dialog / #ecu-item-dialog use display:none and pointer-events:none when empty; only adopted :not(:empty) hosts accept clicks.",
+        kind: "fix",
+      },
+      {
+        label: "Tip panel hit targets",
+        detail:
+          "buffInfo/itemInfo body frames are pointer-events:none; data-ecu-info-open=\"1\" re-enables the open tip shell.",
+        kind: "fix",
+      },
+      {
+        label: "Force tip autoSize",
+        detail:
+          "Saved fixed buff/item frame sizes no longer leave a leftover invisible box after close.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll z-index",
+        detail: "Paperdoll frame raised to z 56 so × and gear stay above tip raise stack.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.13",
     title: "0.8.0-alpha.13",
     date: "2026-08-29",
