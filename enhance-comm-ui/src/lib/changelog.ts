@@ -100,6 +100,47 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.13",
+    title: "0.8.0-alpha.13",
+    date: "2026-08-29",
+    summary:
+      "Ghost Buff info strip no longer parks above bag/paperdoll or blocks closing them — tips stay tips, not unlocked windows.",
+    highlights: [
+      {
+        label: "Ghost buff chrome",
+        detail:
+          "Unlocked Buff/Item info no longer leave a floating arrange strip when empty. Hold Alt to move tips; empty/close-only hosts count as closed.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll / bag clicks",
+        detail:
+          "Buff/item tips no longer raise above paperdoll or inventory, and tip shells stay click-through outside the tip content.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Stricter info hasContent",
+        detail:
+          "Close-button-only / whitespace hosts are treated as closed and scrubbed so open-state cannot stick.",
+        kind: "fix",
+      },
+      {
+        label: "Tip panels Alt-only arrange",
+        detail:
+          "buffInfo/itemInfo play-arrange only while Alt is held — no persistent unlocked chrome strip.",
+        kind: "fix",
+      },
+      {
+        label: "Tips do not raise",
+        detail:
+          "Buff/item panels skip click-to-front so they cannot jump above paperdoll × or bag slots.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.12",
     title: "0.8.0-alpha.12",
     date: "2026-08-29",
