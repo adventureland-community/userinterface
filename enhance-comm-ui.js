@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.14
+// @version      0.8.0-alpha.15
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2813,8 +2813,8 @@ var EnhanceCommUI = (() => {
     buffInfo: { label: "Buff info", autoSize: "default-on" },
     itemInfo: { label: "Item info", autoSize: "default-on" },
     kills: { label: "Kills", closable: true, autoSize: "default-on" },
-    playerFrame: { label: "Player frame", autoSize: "opt-in" },
-    targetFrame: { label: "Target frame", autoSize: "opt-in" },
+    playerFrame: { label: "Player frame", closable: true, autoSize: "opt-in" },
+    targetFrame: { label: "Target frame", closable: true, autoSize: "opt-in" },
     bossBar: {
       label: "Boss bar",
       closable: true,
@@ -7704,6 +7704,36 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.15",
+      title: "0.8.0-alpha.15",
+      date: "2026-08-29",
+      summary: "Every dismissible panel closes from the same yellow window chrome \xD7 \u2014 paperdoll, buff/item tips, player frame, bag, and meters.",
+      highlights: [
+        {
+          label: "Unified window chrome close",
+          detail: "Hover a panel for the yellow arrange strip \u2014 \xD7 closes paperdoll, buff/item tips, player/target frames, bag, and meters the same way.",
+          kind: "fix"
+        },
+        {
+          label: "No duplicate inner \xD7",
+          detail: "Paperdoll header and adopted buff/item tips no longer show a second close button inside the panel body.",
+          kind: "ui"
+        }
+      ],
+      items: [
+        {
+          label: "Content vs visibility close",
+          detail: "Tips and paperdoll dismiss their content; inventory/threat/mail hide via panelVisible; player frame can be hidden and reopened.",
+          kind: "fix"
+        },
+        {
+          label: "Player / target frame closable",
+          detail: "Character and target unit frames join the closable panel set.",
+          kind: "improve"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.14",
       title: "0.8.0-alpha.14",
       date: "2026-08-29",
@@ -11709,6 +11739,10 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .comm-pos-panel.comm-pos-buffInfo .comm-info-dialog-panel[data-ecu-info-open="1"],
 #comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel[data-ecu-info-open="1"] {
   pointer-events: auto;
+}
+/* Tip close lives in window chrome \u2014 hide duplicate stock \xD7 in adopted hosts. */
+#comm-ui .ecu-info-dialog-adopted .ecu-dialog-close {
+  display: none !important;
 }
 #comm-ui .comm-pos-panel .ecu-chip {
   pointer-events: auto;
@@ -18013,8 +18047,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.14" : "unknown";
-    const builtAt = true ? "2026-08-29T18:36:38.073Z" : "unknown";
+    const version = true ? "0.8.0-alpha.15" : "unknown";
+    const builtAt = true ? "2026-08-29T19:06:15.050Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -27427,7 +27461,7 @@ button.comm-mail__stack-u {
     const hasSavedFrame = !autoSize && (typeof pos.frameW === "number" && pos.frameW > 0 || typeof pos.frameH === "number" && pos.frameH > 0);
     const styleOverflowVisible = !!(props.style && props.style.overflow === "visible");
     const wrapFrameBody = fillFrame || hasSavedFrame && !styleOverflowVisible;
-    const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup);
+    const showArrangeOverlay = !editing && (movable && props.showMoveGrip !== false || !!props.onToggleLock || !!props.onUngroup || !!props.onClose);
     if ((wrapFrameBody || styleOverflowVisible) && !autoSize || showArrangeOverlay || editing) {
       unclipShellOverflow(shellStyle);
     }
@@ -42947,6 +42981,42 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/lib/panelClose.ts
+  function panelCloseKind(id, deps) {
+    if (canCloseWindow(id)) return "visibility";
+    if (id === "paperdoll" && deps.selectedEntity) return "content-paperdoll";
+    if (id === "buffInfo" && deps.buffInfoOpen) return "content-buff";
+    if (id === "itemInfo" && deps.itemInfoOpen) return "content-item";
+    return "none";
+  }
+  function resolvePanelClose(id, deps) {
+    const kind = panelCloseKind(id, deps);
+    switch (kind) {
+      case "visibility":
+        return () => deps.setVisible(id, false);
+      case "content-paperdoll":
+        return () => deps.closePaperdoll();
+      case "content-buff":
+        return () => {
+          closeInfo("buff");
+        };
+      case "content-item":
+        return () => {
+          closeInfo("item");
+        };
+      case "none":
+        return void 0;
+      default: {
+        const _exhaustive = kind;
+        void _exhaustive;
+        return void 0;
+      }
+    }
+  }
+  function panelHasChromeClose(id, deps) {
+    return panelCloseKind(id, deps) !== "none";
+  }
+
   // src/host/uiInspect.ts
   function uiInspectEntity(entity) {
     if (!entity) return false;
@@ -46816,10 +46886,6 @@ ${ESTIMATE_HINT}`,
     const watchEco = liveWatching ? resolvePaperdollEconomy(liveWatching) : void 0;
     const luck = luckDisplay(eco);
     const goldFind = goldFindDisplay(eco);
-    const close = () => {
-      if (props.onClose) props.onClose();
-      else setXTarget(null);
-    };
     const maxXp = isPlayer ? resolveMaxXp(entity) : void 0;
     const xpBar = isPlayer && entity.xp != null && maxXp != null ? e(VitalsBar, {
       label: "XP",
@@ -46879,32 +46945,7 @@ ${ESTIMATE_HINT}`,
           },
           title
         ),
-        e(InspectButton, { entity, title: "Inspect entity JSON" }),
-        e(
-          "button",
-          {
-            type: "button",
-            title: "Close",
-            onClick: (ev) => {
-              ev.stopPropagation();
-              close();
-            },
-            style: {
-              cursor: "pointer",
-              border: "1px solid #555",
-              background: "#1c1c1c",
-              color: "#ddd",
-              width: "22px",
-              height: "22px",
-              lineHeight: "18px",
-              padding: 0,
-              flexShrink: 0,
-              fontSize: TYPE.body,
-              ...PIXEL_TEXT
-            }
-          },
-          "\xD7"
-        )
+        e(InspectButton, { entity, title: "Inspect entity JSON" })
       ),
       stale ? e(
         "div",
@@ -52942,6 +52983,15 @@ ${ESTIMATE_HINT}`,
     };
     return (id, child, opts) => {
       const isClosablePanel = canCloseWindow(id);
+      const closeDeps = {
+        setVisible: deps.setVisible,
+        selectedEntity: deps.selectedEntity,
+        closePaperdoll: deps.closePaperdoll,
+        buffInfoOpen: deps.buffInfoOpen,
+        itemInfoOpen: deps.itemInfoOpen
+      };
+      const onClose = resolvePanelClose(id, closeDeps);
+      const hasChromeClose = panelHasChromeClose(id, closeDeps);
       const isHidden = isClosablePanel && !deps.visible(id);
       if (isHidden && !deps.layoutEdit) return null;
       const empty2 = (opts == null ? void 0 : opts.empty) === true || panelIsContextEmpty(id, ctx);
@@ -53001,11 +53051,11 @@ ${ESTIMATE_HINT}`,
           onUngroup: grouped && deps.ungroupPanel ? () => deps.ungroupPanel(id) : void 0,
           closedWindows: deps.closedWindows,
           onReopenWindow: deps.onReopenWindow,
-          onClose: isClosablePanel ? () => deps.setVisible(id, false) : void 0,
+          onClose,
           onShow: isClosablePanel ? () => deps.setVisible(id, true) : void 0,
-          // Match meters: × sits in the hover arrange chrome strip, not over the panel body.
-          closePlacement: isClosablePanel ? "above" : void 0,
-          closeOnHoverOnly: isClosablePanel ? true : void 0,
+          // Match meters / bag: × sits in the hover arrange chrome strip.
+          closePlacement: hasChromeClose ? "above" : void 0,
+          closeOnHoverOnly: hasChromeClose ? true : void 0,
           windowNumber: deps.windowNumberById ? deps.windowNumberById[id] : void 0,
           showWindowIds: deps.showWindowIds,
           onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0,
@@ -53161,7 +53211,6 @@ ${ESTIMATE_HINT}`,
         e(EntityInfo, {
           entities: snap.entities,
           selectedEntity: deps.selectedEntity,
-          onClose: deps.closePaperdoll,
           layoutEdit: deps.layoutEdit,
           observing: snap.observing
         }),
