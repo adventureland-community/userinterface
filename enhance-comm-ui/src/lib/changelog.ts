@@ -100,6 +100,45 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.12",
+    title: "0.8.0-alpha.12",
+    date: "2026-08-29",
+    summary:
+      "HUD panels pass clicks through empty box area — player frame, buff strips, and boss bar no longer block map character clicks.",
+    highlights: [
+      {
+        label: "Player frame click-through",
+        detail:
+          "Only the HP bar, inspect, and buff icons capture clicks — not the whole min-width frame box over the map.",
+        kind: "fix",
+      },
+      {
+        label: "Panel shell pass-through",
+        detail:
+          "Idle HUD panel shells use pointer-events: none; fill windows (Mail, Command, …) still capture normally.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Unit frame hit targets",
+        detail:
+          "ObservedUnit / vitals row / EffectsRow / shared party buffs — container none, controls auto.",
+        kind: "fix",
+      },
+      {
+        label: "Boss bar stack",
+        detail: "Stack container passes clicks; each boss row stays clickable.",
+        kind: "fix",
+      },
+      {
+        label: "panelStyle shells",
+        detail: "Default panelStyle pointer-events: none; party chips and fill-panel bodies stay interactive.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.11",
     title: "0.8.0-alpha.11",
     date: "2026-08-28",
