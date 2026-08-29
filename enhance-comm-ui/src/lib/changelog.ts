@@ -100,6 +100,40 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.15",
+    title: "0.8.0-alpha.15",
+    date: "2026-08-29",
+    summary:
+      "Every dismissible panel closes from the same yellow window chrome × — paperdoll, buff/item tips, player frame, bag, and meters.",
+    highlights: [
+      {
+        label: "Unified window chrome close",
+        detail:
+          "Hover a panel for the yellow arrange strip — × closes paperdoll, buff/item tips, player/target frames, bag, and meters the same way.",
+        kind: "fix",
+      },
+      {
+        label: "No duplicate inner ×",
+        detail:
+          "Paperdoll header and adopted buff/item tips no longer show a second close button inside the panel body.",
+        kind: "ui",
+      },
+    ],
+    items: [
+      {
+        label: "Content vs visibility close",
+        detail:
+          "Tips and paperdoll dismiss their content; inventory/threat/mail hide via panelVisible; player frame can be hidden and reopened.",
+        kind: "fix",
+      },
+      {
+        label: "Player / target frame closable",
+        detail: "Character and target unit frames join the closable panel set.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.14",
     title: "0.8.0-alpha.14",
     date: "2026-08-29",
