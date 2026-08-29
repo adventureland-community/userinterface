@@ -56,7 +56,10 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
       return () => unsub();
     }
     const obs = new MutationObserver(() => {
-      setOpen(isOpen(kind));
+      const next = isOpen(kind);
+      setOpen(next);
+      // Close-only / whitespace leftovers — scrub so the host stays empty.
+      if (!next && dialog.innerHTML) dialog.innerHTML = "";
     });
     obs.observe(dialog, {
       childList: true,

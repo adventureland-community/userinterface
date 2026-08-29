@@ -146,14 +146,20 @@ export function writeInfoHtml(kind: InfoDialogKind, html: string): void {
     ensureCloseButton(host, kind, (k) => {
       closeKindImpl(k);
     });
+    emitInfoDialogChange(kind, true);
+    return;
   }
-  emitInfoDialogChange(kind, hasContent(host));
+  // Empty / close-only / whitespace writes must not leave a ghost "open" host.
+  if (host.innerHTML) host.innerHTML = "";
+  emitInfoDialogChange(kind, false);
 }
 
 export function clearInfoHost(kind: InfoDialogKind): boolean {
   const el = dialogEl(kind);
-  if (!hasContent(el)) return false;
-  el!.innerHTML = "";
+  if (!el) return false;
+  const had = hasContent(el) || !!String(el.innerHTML || "").trim();
+  if (!had) return false;
+  el.innerHTML = "";
   if (kind === "buff") clearDialogOnlyXTarget();
   clearDialogsTarget();
   emitInfoDialogChange(kind, false);

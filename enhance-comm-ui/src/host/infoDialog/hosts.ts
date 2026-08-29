@@ -2,6 +2,7 @@ import { injectDialogHostCss } from "./css";
 import {
   ADOPTED_CLASS,
   BUFF_DIALOG_ID,
+  CLOSE_CLASS,
   ITEM_DIALOG_ID,
   STOCK_DIALOG_ID,
   dialogIdFor,
@@ -13,8 +14,25 @@ export function dialogEl(kind: InfoDialogKind): HTMLElement | null {
   return document.getElementById(dialogIdFor(kind));
 }
 
+/**
+ * True when the dialog has real stock tip chrome — not an empty host, not our
+ * close button alone. Loose innerHTML checks left "ghost" open panels that
+ * still showed arrange chrome and blocked paperdoll / bag clicks.
+ */
 export function hasContent(el: HTMLElement | null): boolean {
-  return !!(el && String(el.innerHTML || "").trim());
+  if (!el) return false;
+  if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
+  const walk = (node: Node): string => {
+    if (node.nodeType === 3) return node.textContent || "";
+    if (node.nodeType !== 1) return "";
+    const he = node as HTMLElement;
+    if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
+    let out = "";
+    const kids = he.childNodes;
+    for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
+    return out;
+  };
+  return walk(el).replace(/\s+/g, "").length > 0;
 }
 
 function ensureNamedDialog(id: string, parent: HTMLElement): HTMLElement {
