@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.13
+// @version      0.8.0-alpha.14
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2288,8 +2288,8 @@ var EnhanceCommUI = (() => {
     width: "fit-content",
     maxWidth: "340px",
     boxSizing: "border-box",
-    // Above buffInfo/itemInfo (z=35) so gear stays clickable while Item info is open.
-    zIndex: 36,
+    // Above buffInfo/itemInfo (35) and their raise stack floor so × / gear stay hittable.
+    zIndex: 56,
     // Alt arrange strip + paperdoll title drag handle need visible overflow.
     overflow: "visible"
   };
@@ -2943,6 +2943,7 @@ var EnhanceCommUI = (() => {
     return isPanelId(id) && panelDef(id).autoSize === "default-on";
   }
   function panelUsesAutoSize(pos, id) {
+    if (id === "buffInfo" || id === "itemInfo") return true;
     if (!canAutoSizeWindow(id)) return false;
     if (pos && typeof pos.autoSize === "boolean") return pos.autoSize;
     return defaultPanelAutoSize(id);
@@ -7703,6 +7704,46 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.14",
+      title: "0.8.0-alpha.14",
+      date: "2026-08-29",
+      summary: "Closed buff/item tips no longer leave an invisible click box \u2014 paperdoll \xD7 and bag slots work again after dismissing a tip.",
+      highlights: [
+        {
+          label: "Ghost click box gone",
+          detail: "Empty buff/item hosts hide and pass clicks through. Idle tip panels collapse to zero size instead of keeping a saved frame box.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll \xD7 / bag",
+          detail: "Paperdoll sits above tip stack; tip shells stay click-through until content is actually open.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Empty dialog hosts",
+          detail: "#ecu-buff-dialog / #ecu-item-dialog use display:none and pointer-events:none when empty; only adopted :not(:empty) hosts accept clicks.",
+          kind: "fix"
+        },
+        {
+          label: "Tip panel hit targets",
+          detail: 'buffInfo/itemInfo body frames are pointer-events:none; data-ecu-info-open="1" re-enables the open tip shell.',
+          kind: "fix"
+        },
+        {
+          label: "Force tip autoSize",
+          detail: "Saved fixed buff/item frame sizes no longer leave a leftover invisible box after close.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll z-index",
+          detail: "Paperdoll frame raised to z 56 so \xD7 and gear stay above tip raise stack.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.13",
       title: "0.8.0-alpha.13",
       date: "2026-08-29",
@@ -11649,7 +11690,24 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 }
 /* HUD shells pass clicks through transparent box area (map / game underlay). */
 #comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body,
-#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+#comm-ui .comm-pos-panel:not(.comm-pos-buffInfo):not(.comm-pos-itemInfo) > .comm-pos-panel-body-frame {
+  pointer-events: auto;
+}
+/* Tip panels: never let a saved/leftover body frame eat map or paperdoll clicks. */
+#comm-ui .comm-pos-panel.comm-pos-buffInfo,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo,
+#comm-ui .comm-pos-panel.comm-pos-buffInfo > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-buffInfo > .comm-pos-panel-body-frame,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo > .comm-pos-panel-body-frame {
+  pointer-events: none !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-buffInfo .comm-info-dialog-panel,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel {
+  pointer-events: none;
+}
+#comm-ui .comm-pos-panel.comm-pos-buffInfo .comm-info-dialog-panel[data-ecu-info-open="1"],
+#comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel[data-ecu-info-open="1"] {
   pointer-events: auto;
 }
 #comm-ui .comm-pos-panel .ecu-chip {
@@ -13726,9 +13784,12 @@ ${CHROME_ARRANGE_CSS}
   // src/host/infoDialog/css.ts
   var STYLE_ID2 = "comm-ui-dialog-host-css";
   function injectDialogHostCss() {
-    if (document.getElementById(STYLE_ID2)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID2;
+    let style = document.getElementById(STYLE_ID2);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID2;
+      document.head.append(style);
+    }
     style.textContent = `
 /* Fallback host when not yet adopted into CommUI layout panel. */
 #topleftcorner:not(.ecu-info-slot-host) {
@@ -13752,14 +13813,17 @@ ${CHROME_ARRANGE_CSS}
 }
 #${BUFF_DIALOG_ID},
 #${ITEM_DIALOG_ID} {
-  pointer-events: auto !important;
+  /* Idle hosts must not eat clicks \u2014 parent panels can be pointer-events:none
+   * while this child still had auto !important and a leftover frame box. */
+  pointer-events: none !important;
   vertical-align: top;
-  display: inline-block;
+  display: none;
   position: relative;
 }
-#${BUFF_DIALOG_ID}.${ADOPTED_CLASS},
-#${ITEM_DIALOG_ID}.${ADOPTED_CLASS} {
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
   display: block;
+  pointer-events: auto !important;
   max-width: min(96vw, 520px);
   max-height: min(80vh, calc(100vh - 96px));
   overflow: auto;
@@ -13788,7 +13852,6 @@ ${CHROME_ARRANGE_CSS}
   color: #fff;
 }
 `;
-    document.head.append(style);
   }
 
   // src/host/infoDialog/hosts.ts
@@ -17950,8 +18013,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.13" : "unknown";
-    const builtAt = true ? "2026-08-29T18:03:28.058Z" : "unknown";
+    const version = true ? "0.8.0-alpha.14" : "unknown";
+    const builtAt = true ? "2026-08-29T18:36:38.073Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -47070,6 +47133,7 @@ ${ESTIMATE_HINT}`,
       "div",
       {
         className: `comm-info-dialog-panel comm-${kind}-info-panel`,
+        "data-ecu-info-open": open ? "1" : "0",
         style: {
           width: "fit-content",
           maxWidth: "min(96vw, 520px)",
@@ -53111,10 +53175,24 @@ ${ESTIMATE_HINT}`,
           onOpenChange: deps.setBuffInfoOpen
         }),
         {
-          // Shell stays click-through; StockInfoPanel enables hits only when open.
-          style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-            zIndex: deps.layoutEdit ? 45 : 35
-          })
+          // Collapse when idle so a leftover layout frame cannot cover paperdoll ×.
+          style: Object.assign(
+            {},
+            INFO_DIALOG_PANEL_STYLE,
+            {
+              zIndex: deps.layoutEdit ? 45 : 35
+            },
+            deps.layoutEdit || deps.buffInfoOpen ? null : {
+              width: 0,
+              height: 0,
+              minWidth: 0,
+              minHeight: 0,
+              maxWidth: 0,
+              maxHeight: 0,
+              overflow: "hidden",
+              opacity: 0
+            }
+          )
         }
       ),
       panel(
@@ -53125,9 +53203,23 @@ ${ESTIMATE_HINT}`,
           onOpenChange: deps.setItemInfoOpen
         }),
         {
-          style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-            zIndex: deps.layoutEdit ? 45 : 35
-          })
+          style: Object.assign(
+            {},
+            INFO_DIALOG_PANEL_STYLE,
+            {
+              zIndex: deps.layoutEdit ? 45 : 35
+            },
+            deps.layoutEdit || deps.itemInfoOpen ? null : {
+              width: 0,
+              height: 0,
+              minWidth: 0,
+              minHeight: 0,
+              maxWidth: 0,
+              maxHeight: 0,
+              overflow: "hidden",
+              opacity: 0
+            }
+          )
         }
       ),
       panel("kills", e(KillKpiPanel), {
