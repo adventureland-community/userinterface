@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Window chrome close harness</title>
+    <style>
+      body {
+        font-family: Consolas, monospace;
+        background: #111;
+        color: #ddd;
+        margin: 16px;
+      }
+      #log {
+        white-space: pre-wrap;
+        margin-top: 16px;
+        line-height: 1.4;
+      }
+      .pass {
+        color: #6c6;
+      }
+      .fail {
+        color: #f66;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Window chrome close harness</h1>
+    <p>Verifies panelCloseKind matches expected chrome × for each panel type.</p>
+    <div id="log"></div>
+    <script>
+      const CLOSABLE = new Set([
+        "kills", "bossBar", "instance", "instanceRun", "events", "eventScore",
+        "eventRoster", "abilityTimeline", "abilityTimelineBigIcon",
+        "abilityTimelineHighlight", "minimap", "threat", "command", "bag", "mail",
+        "playerFrame", "targetFrame",
+      ]);
+
+      function panelCloseKind(id, deps) {
+        if (CLOSABLE.has(id)) return "visibility";
+        if (id === "paperdoll" && deps.selectedEntity) return "content-paperdoll";
+        if (id === "buffInfo" && deps.buffInfoOpen) return "content-buff";
+        if (id === "itemInfo" && deps.itemInfoOpen) return "content-item";
+        return "none";
+      }
+
+      const lines = [];
+      function say(ok, msg) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + msg);
+      }
+
+      say(
+        panelCloseKind("bag", {}) === "visibility",
+        "bag → visibility (yellow chrome × hides panel)",
+      );
+      say(
+        panelCloseKind("playerFrame", {}) === "visibility",
+        "playerFrame → visibility (can hide char frame)",
+      );
+      say(
+        panelCloseKind("paperdoll", { selectedEntity: "abc" }) === "content-paperdoll",
+        "open paperdoll → content close in chrome",
+      );
+      say(
+        panelCloseKind("paperdoll", {}) === "none",
+        "idle paperdoll → no chrome ×",
+      );
+      say(
+        panelCloseKind("buffInfo", { buffInfoOpen: true }) === "content-buff",
+        "open buff tip → content close in chrome",
+      );
+      say(
+        panelCloseKind("itemInfo", { itemInfoOpen: true }) === "content-item",
+        "open item tip → content close in chrome",
+      );
+      say(
+        panelCloseKind("buffInfo", {}) === "none",
+        "idle buff tip → no chrome ×",
+      );
+
+      const all = !lines.some((l) => l.startsWith("FAIL"));
+      const log = document.getElementById("log");
+      log.className = all ? "pass" : "fail";
+      log.textContent = lines.join("\n") + "\n\n" + (all ? "ALL PASS" : "SOME FAILED");
+      document.title = (all ? "PASS" : "FAIL") + " — window chrome close";
+      window.__ECU_HARNESS__ = { ok: all };
+    </script>
+  </body>
+</html>
