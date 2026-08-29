@@ -141,9 +141,10 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
     const empty = opts?.empty === true || panelIsContextEmpty(id, ctx);
     if (empty && !deps.layoutEdit) return null;
     const locked = deps.panelIsLocked(id);
-    // Buff/item hosts stay mounted when idle (stock writers); treat them as
-    // on-screen for Alt only while the dialog is open — Layout still places
-    // the empty footprint. Party (players) is always on-screen.
+    // Buff/item hosts stay mounted when idle (stock writers). Ephemeral tips:
+    // never leave unlocked arrange chrome parked (ghost "Buff info" strip);
+    // Alt still unlocks move like other panels. Party is always on-screen.
+    const infoPanel = id === "buffInfo" || id === "itemInfo";
     const infoIdle =
       (id === "buffInfo" && !deps.buffInfoOpen) ||
       (id === "itemInfo" && !deps.itemInfoOpen);
@@ -151,7 +152,8 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
       !deps.layoutEdit &&
       (!locked || deps.altHeld) &&
       id !== "toggles" &&
-      !infoIdle;
+      !infoIdle &&
+      !(infoPanel && !deps.altHeld);
     const groupable = canGroupWindow(id);
     const grouped =
       groupable &&
@@ -191,9 +193,12 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
           : undefined,
         softAvoid: groupable ? false : undefined,
         style,
-        onActivate: deps.onActivatePanel
-          ? () => deps.onActivatePanel!(id)
-          : undefined,
+        // Tip panels must not raise above paperdoll/bag — that caused the
+        // floating buff chrome to steal the paperdoll × and inventory clicks.
+        onActivate:
+          infoPanel || !deps.onActivatePanel
+            ? undefined
+            : () => deps.onActivatePanel!(id),
         hidden: isHidden,
         hiddenBodyStyle: opts?.hiddenBodyStyle,
         opacity: deps.opacityFor(id),
@@ -428,9 +433,9 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         onOpenChange: deps.setBuffInfoOpen,
       }),
       {
+        // Shell stays click-through; StockInfoPanel enables hits only when open.
         style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
           zIndex: deps.layoutEdit ? 45 : 35,
-          pointerEvents: deps.layoutEdit || deps.buffInfoOpen ? "auto" : "none",
         }),
       },
     ),
@@ -445,7 +450,6 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
           zIndex: deps.layoutEdit ? 45 : 35,
-          pointerEvents: deps.layoutEdit || deps.itemInfoOpen ? "auto" : "none",
         }),
       },
     ),
