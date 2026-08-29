@@ -236,6 +236,9 @@ export function panelUsesAutoSize(
   pos: { autoSize?: boolean } | undefined,
   id: string,
 ): boolean {
+  // Ephemeral tips must always hug content — a saved fixed frame left an
+  // invisible click box after close (blocked paperdoll × / bag).
+  if (id === "buffInfo" || id === "itemInfo") return true;
   if (!canAutoSizeWindow(id)) return false;
   if (pos && typeof pos.autoSize === "boolean") return pos.autoSize;
   return defaultPanelAutoSize(id);
