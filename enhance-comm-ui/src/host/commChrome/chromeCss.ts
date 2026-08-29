@@ -676,7 +676,24 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 }
 /* HUD shells pass clicks through transparent box area (map / game underlay). */
 #comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body,
-#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+#comm-ui .comm-pos-panel:not(.comm-pos-buffInfo):not(.comm-pos-itemInfo) > .comm-pos-panel-body-frame {
+  pointer-events: auto;
+}
+/* Tip panels: never let a saved/leftover body frame eat map or paperdoll clicks. */
+#comm-ui .comm-pos-panel.comm-pos-buffInfo,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo,
+#comm-ui .comm-pos-panel.comm-pos-buffInfo > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel.comm-pos-buffInfo > .comm-pos-panel-body-frame,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo > .comm-pos-panel-body-frame {
+  pointer-events: none !important;
+}
+#comm-ui .comm-pos-panel.comm-pos-buffInfo .comm-info-dialog-panel,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel {
+  pointer-events: none;
+}
+#comm-ui .comm-pos-panel.comm-pos-buffInfo .comm-info-dialog-panel[data-ecu-info-open="1"],
+#comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel[data-ecu-info-open="1"] {
   pointer-events: auto;
 }
 #comm-ui .comm-pos-panel .ecu-chip {

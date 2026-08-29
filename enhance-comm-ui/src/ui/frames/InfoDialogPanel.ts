@@ -81,6 +81,7 @@ export function StockInfoPanel(props: StockInfoPanelProps): any {
     "div",
     {
       className: `comm-info-dialog-panel comm-${kind}-info-panel`,
+      "data-ecu-info-open": open ? "1" : "0",
       style: {
         width: "fit-content",
         maxWidth: "min(96vw, 520px)",

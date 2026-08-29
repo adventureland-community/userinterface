@@ -9,9 +9,13 @@ import {
 const STYLE_ID = "comm-ui-dialog-host-css";
 
 export function injectDialogHostCss(): void {
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.append(style);
+  }
+  // Always rewrite so Tampermonkey reloads pick up CSS without a hard refresh.
   style.textContent = `
 /* Fallback host when not yet adopted into CommUI layout panel. */
 #topleftcorner:not(.ecu-info-slot-host) {
@@ -35,14 +39,17 @@ export function injectDialogHostCss(): void {
 }
 #${BUFF_DIALOG_ID},
 #${ITEM_DIALOG_ID} {
-  pointer-events: auto !important;
+  /* Idle hosts must not eat clicks — parent panels can be pointer-events:none
+   * while this child still had auto !important and a leftover frame box. */
+  pointer-events: none !important;
   vertical-align: top;
-  display: inline-block;
+  display: none;
   position: relative;
 }
-#${BUFF_DIALOG_ID}.${ADOPTED_CLASS},
-#${ITEM_DIALOG_ID}.${ADOPTED_CLASS} {
+#${BUFF_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty),
+#${ITEM_DIALOG_ID}.${ADOPTED_CLASS}:not(:empty) {
   display: block;
+  pointer-events: auto !important;
   max-width: min(96vw, 520px);
   max-height: min(80vh, calc(100vh - 96px));
   overflow: auto;
@@ -71,5 +78,4 @@ export function injectDialogHostCss(): void {
   color: #fff;
 }
 `;
-  document.head.append(style);
 }

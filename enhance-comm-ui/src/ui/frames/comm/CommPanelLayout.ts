@@ -433,10 +433,26 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         onOpenChange: deps.setBuffInfoOpen,
       }),
       {
-        // Shell stays click-through; StockInfoPanel enables hits only when open.
-        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-          zIndex: deps.layoutEdit ? 45 : 35,
-        }),
+        // Collapse when idle so a leftover layout frame cannot cover paperdoll ×.
+        style: Object.assign(
+          {},
+          INFO_DIALOG_PANEL_STYLE,
+          {
+            zIndex: deps.layoutEdit ? 45 : 35,
+          },
+          deps.layoutEdit || deps.buffInfoOpen
+            ? null
+            : {
+                width: 0,
+                height: 0,
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: 0,
+                maxHeight: 0,
+                overflow: "hidden",
+                opacity: 0,
+              },
+        ),
       },
     ),
 
@@ -448,9 +464,25 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         onOpenChange: deps.setItemInfoOpen,
       }),
       {
-        style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-          zIndex: deps.layoutEdit ? 45 : 35,
-        }),
+        style: Object.assign(
+          {},
+          INFO_DIALOG_PANEL_STYLE,
+          {
+            zIndex: deps.layoutEdit ? 45 : 35,
+          },
+          deps.layoutEdit || deps.itemInfoOpen
+            ? null
+            : {
+                width: 0,
+                height: 0,
+                minWidth: 0,
+                minHeight: 0,
+                maxWidth: 0,
+                maxHeight: 0,
+                overflow: "hidden",
+                opacity: 0,
+              },
+        ),
       },
     ),
 
