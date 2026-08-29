@@ -472,8 +472,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
         ? {
             outline: "2px solid rgba(80, 210, 255, 0.85)",
             outlineOffset: "0px",
-            boxShadow: "0 0 0 1px rgba(0,0,0,0.7)",
-            pointerEvents: "auto",
+            boxShadow: "0 0 0 1px rgba(0,0,0, 0.7)",
           }
         : null,
   );

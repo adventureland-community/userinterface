@@ -507,7 +507,7 @@ export function panelStyle(
     top: `${pos.y}%`,
     transform: scale === 1 ? base : `${base} scale(${scale})`,
     transformOrigin: anchorOrigin(pos.anchor),
-    pointerEvents: "auto",
+    pointerEvents: "none",
     zIndex: editing ? 40 : 20,
     // Hug children so layout chrome matches real frame footprints.
     width: "fit-content",

@@ -674,6 +674,14 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .comm-pos-panel > .comm-pos-window-id {
   inset: 0;
 }
+/* HUD shells pass clicks through transparent box area (map / game underlay). */
+#comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+  pointer-events: auto;
+}
+#comm-ui .comm-pos-panel .ecu-chip {
+  pointer-events: auto;
+}
 /* Fill-frame HUD (Mail, Instance, Timeline, …): clip inside the body so
  * above-frame arrange chrome (drag / lock / ×) is not swallowed. */
 #comm-ui .comm-pos-panel.comm-pos-fill {
