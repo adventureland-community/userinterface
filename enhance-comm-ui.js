@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.11
+// @version      0.8.0-alpha.12
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -3333,7 +3333,7 @@ var EnhanceCommUI = (() => {
       top: `${pos.y}%`,
       transform: scale === 1 ? base : `${base} scale(${scale})`,
       transformOrigin: anchorOrigin(pos.anchor),
-      pointerEvents: "auto",
+      pointerEvents: "none",
       zIndex: editing ? 40 : 20,
       // Hug children so layout chrome matches real frame footprints.
       width: "fit-content",
@@ -7703,6 +7703,41 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.12",
+      title: "0.8.0-alpha.12",
+      date: "2026-08-29",
+      summary: "HUD panels pass clicks through empty box area \u2014 player frame, buff strips, and boss bar no longer block map character clicks.",
+      highlights: [
+        {
+          label: "Player frame click-through",
+          detail: "Only the HP bar, inspect, and buff icons capture clicks \u2014 not the whole min-width frame box over the map.",
+          kind: "fix"
+        },
+        {
+          label: "Panel shell pass-through",
+          detail: "Idle HUD panel shells use pointer-events: none; fill windows (Mail, Command, \u2026) still capture normally.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Unit frame hit targets",
+          detail: "ObservedUnit / vitals row / EffectsRow / shared party buffs \u2014 container none, controls auto.",
+          kind: "fix"
+        },
+        {
+          label: "Boss bar stack",
+          detail: "Stack container passes clicks; each boss row stays clickable.",
+          kind: "fix"
+        },
+        {
+          label: "panelStyle shells",
+          detail: "Default panelStyle pointer-events: none; party chips and fill-panel bodies stay interactive.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.11",
       title: "0.8.0-alpha.11",
       date: "2026-08-28",
@@ -11576,6 +11611,14 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 }
 #comm-ui .comm-pos-panel > .comm-pos-window-id {
   inset: 0;
+}
+/* HUD shells pass clicks through transparent box area (map / game underlay). */
+#comm-ui .comm-pos-panel.comm-pos-fill > .comm-pos-panel-body,
+#comm-ui .comm-pos-panel > .comm-pos-panel-body-frame {
+  pointer-events: auto;
+}
+#comm-ui .comm-pos-panel .ecu-chip {
+  pointer-events: auto;
 }
 /* Fill-frame HUD (Mail, Instance, Timeline, \u2026): clip inside the body so
  * above-frame arrange chrome (drag / lock / \xD7) is not swallowed. */
@@ -17855,8 +17898,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.11" : "unknown";
-    const builtAt = true ? "2026-08-28T19:55:07.409Z" : "unknown";
+    const version = true ? "0.8.0-alpha.12" : "unknown";
+    const builtAt = true ? "2026-08-29T01:06:34.074Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -27261,8 +27304,7 @@ button.comm-mail__stack-u {
       } : movable ? {
         outline: "2px solid rgba(80, 210, 255, 0.85)",
         outlineOffset: "0px",
-        boxShadow: "0 0 0 1px rgba(0,0,0,0.7)",
-        pointerEvents: "auto"
+        boxShadow: "0 0 0 1px rgba(0,0,0, 0.7)"
       } : null
     );
     applyCallerStackZ(shellStyle, props.style);
@@ -43905,7 +43947,7 @@ ${parts.map(cssSlice).join("\n")}
           minHeight,
           paddingBottom: padBottom,
           boxSizing: "border-box",
-          pointerEvents: "auto",
+          pointerEvents: "none",
           overflow: compact && maxVisible > 0 ? "hidden" : "visible"
         }
       },
@@ -43942,7 +43984,8 @@ ${parts.map(cssSlice).join("\n")}
             lineHeight: 1,
             ...PIXEL_TEXT,
             cursor: "default",
-            boxSizing: "border-box"
+            boxSizing: "border-box",
+            pointerEvents: "auto"
           }
         },
         `+${overflow}`
@@ -44005,7 +44048,7 @@ ${parts.map(cssSlice).join("\n")}
           alignItems: "flex-start",
           width: "100%",
           boxSizing: "border-box",
-          pointerEvents: "auto"
+          pointerEvents: "none"
         }
       },
       ...shown.map((ef) => {
@@ -44040,7 +44083,8 @@ ${parts.map(cssSlice).join("\n")}
             lineHeight: 1,
             ...PIXEL_TEXT,
             cursor: "default",
-            boxSizing: "border-box"
+            boxSizing: "border-box",
+            pointerEvents: "auto"
           }
         },
         `+${overflow}`
@@ -47043,7 +47087,8 @@ ${ESTIMATE_HINT}`,
           display: "flex",
           width: "100%",
           flexDirection: "column",
-          minWidth: 0
+          minWidth: 0,
+          pointerEvents: "none"
         }
       },
       e(
@@ -47108,7 +47153,8 @@ ${ESTIMATE_HINT}`,
                 display: "flex",
                 alignItems: "center",
                 lineHeight: "1.25",
-                zIndex: 1
+                zIndex: 1,
+                pointerEvents: onClick ? "auto" : "none"
               },
               nameStyle || {}
             ),
@@ -47243,7 +47289,7 @@ ${ESTIMATE_HINT}`,
           top: "100%",
           width: "100%",
           boxSizing: "border-box",
-          pointerEvents: "auto",
+          pointerEvents: "none",
           zIndex: 1
         }
       },
@@ -47263,6 +47309,7 @@ ${ESTIMATE_HINT}`,
           gap: effectsOverlay ? 0 : "6px",
           position: "relative",
           overflow: "visible",
+          pointerEvents: "none",
           outline: controlTint ? `1px solid ${controlTint}` : void 0,
           outlineOffset: controlTint ? "1px" : void 0
         }
@@ -47701,7 +47748,8 @@ ${ESTIMATE_HINT}`,
     display: "flex",
     flexDirection: "column",
     gap: "6px",
-    width: "100%"
+    width: "100%",
+    pointerEvents: "none"
   };
   function BossBarPanel(props) {
     const bosses = sortBosses(
@@ -47743,6 +47791,7 @@ ${ESTIMATE_HINT}`,
               display: "flex",
               flexDirection: "column",
               cursor: "pointer",
+              pointerEvents: "auto",
               outline: onMe ? "1px solid rgba(224,85,85,0.55)" : void 0,
               outlineOffset: "1px"
             },
