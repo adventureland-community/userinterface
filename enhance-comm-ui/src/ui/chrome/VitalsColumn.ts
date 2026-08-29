@@ -57,6 +57,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
         width: "100%",
         flexDirection: "column",
         minWidth: 0,
+        pointerEvents: "none",
       },
     },
     e(
@@ -123,6 +124,7 @@ export function VitalsColumn(props: VitalsColumnProps): any {
               alignItems: "center",
               lineHeight: "1.25",
               zIndex: 1,
+              pointerEvents: onClick ? "auto" : "none",
             },
             nameStyle || {},
           ),

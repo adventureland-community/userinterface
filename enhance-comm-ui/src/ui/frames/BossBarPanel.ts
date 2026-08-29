@@ -52,6 +52,7 @@ const STACK_STYLE: Record<string, any> = {
   flexDirection: "column",
   gap: "6px",
   width: "100%",
+  pointerEvents: "none",
 };
 
 /**
@@ -109,6 +110,7 @@ export function BossBarPanel(props: BossBarPanelProps): any {
             display: "flex",
             flexDirection: "column",
             cursor: "pointer",
+            pointerEvents: "auto",
             outline: onMe ? "1px solid rgba(224,85,85,0.55)" : undefined,
             outlineOffset: "1px",
           },

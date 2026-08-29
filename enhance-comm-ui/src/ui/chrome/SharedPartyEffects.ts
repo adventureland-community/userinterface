@@ -83,7 +83,7 @@ export function SharedPartyEffects(props: {
         alignItems: "flex-start",
         width: "100%",
         boxSizing: "border-box",
-        pointerEvents: "auto",
+        pointerEvents: "none",
       },
     },
     ...shown.map((ef) => {
@@ -122,6 +122,7 @@ export function SharedPartyEffects(props: {
               ...PIXEL_TEXT,
               cursor: "default",
               boxSizing: "border-box",
+              pointerEvents: "auto",
             },
           },
           `+${overflow}`,
