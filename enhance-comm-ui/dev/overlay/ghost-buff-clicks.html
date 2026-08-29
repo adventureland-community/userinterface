@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Ghost buff click harness</title>
+    <style>
+      body {
+        font-family: Consolas, monospace;
+        background: #111;
+        color: #ddd;
+        margin: 16px;
+      }
+      #log {
+        white-space: pre-wrap;
+        margin-top: 16px;
+        line-height: 1.4;
+      }
+      .pass {
+        color: #6c6;
+      }
+      .fail {
+        color: #f66;
+      }
+      #stage-wrap {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      .case {
+        border: 1px solid #444;
+        padding: 8px;
+      }
+      .case h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ghost buffInfo click harness</h1>
+    <p>
+      Repro: closed buff tip with leftover frame must not block paperdoll ×.
+      Open tip content must still be clickable.
+    </p>
+    <div id="stage-wrap"></div>
+    <div id="log"></div>
+    <script>
+      const CSS_BEFORE = `
+#comm-ui { position: relative; width: 320px; height: 280px; background: #222; }
+.comm-pos-panel { position: absolute; pointer-events: none; }
+.comm-pos-panel > .comm-pos-panel-body-frame {
+  pointer-events: auto; width: 100%; height: 100%; box-sizing: border-box;
+}
+#ecu-buff-dialog {
+  pointer-events: auto !important; display: block;
+  max-width: 520px; max-height: 80vh; overflow: auto;
+}
+.paperdoll-close {
+  pointer-events: auto; position: absolute; left: 40px; top: 40px;
+  width: 28px; height: 28px; background: #c44; z-index: 56; border: 0; color: #fff;
+}
+/* Raised above paperdoll × — matches tip raise/stack eating the close hit. */
+.buff-frame {
+  left: 20px; top: 20px; width: 196px; height: 248px; z-index: 100;
+  background: rgba(0,255,0,0.08);
+}`;
+
+      const CSS_AFTER = `
+#comm-ui { position: relative; width: 320px; height: 280px; background: #222; }
+.comm-pos-panel { position: absolute; pointer-events: none !important; }
+.comm-pos-panel:not(.comm-pos-buffInfo):not(.comm-pos-itemInfo) > .comm-pos-panel-body-frame {
+  pointer-events: auto; width: 100%; height: 100%;
+}
+#comm-ui .comm-pos-panel.comm-pos-buffInfo,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo,
+#comm-ui .comm-pos-panel.comm-pos-buffInfo > .comm-pos-panel-body-frame,
+#comm-ui .comm-pos-panel.comm-pos-itemInfo > .comm-pos-panel-body-frame {
+  pointer-events: none !important;
+}
+#ecu-buff-dialog {
+  pointer-events: none !important; display: none; position: relative;
+}
+#ecu-buff-dialog.ecu-info-dialog-adopted:not(:empty) {
+  display: block; pointer-events: auto !important;
+}
+.paperdoll-close {
+  pointer-events: auto; position: absolute; left: 40px; top: 40px;
+  width: 28px; height: 28px; background: #c44; z-index: 56; border: 0; color: #fff;
+}
+.buff-frame-idle {
+  left: 20px; top: 20px; width: 0; height: 0; min-width: 0; min-height: 0;
+  max-width: 0; max-height: 0; overflow: hidden; opacity: 0; z-index: 35;
+}
+.buff-frame-open {
+  left: 120px; top: 80px; z-index: 35; opacity: 1;
+}
+#ecu-buff-dialog.open-demo {
+  display: block !important; pointer-events: auto !important;
+  width: 140px; height: 90px; background: #345; color: #fff; padding: 8px;
+}`;
+
+      function mountCase(id, title, css, bodyHtml) {
+        const wrap = document.createElement("div");
+        wrap.className = "case";
+        wrap.innerHTML = "<h3></h3>";
+        wrap.querySelector("h3").textContent = title;
+        const iframe = document.createElement("iframe");
+        iframe.id = id;
+        iframe.width = 340;
+        iframe.height = 300;
+        iframe.style.border = "1px solid #555";
+        wrap.appendChild(iframe);
+        document.getElementById("stage-wrap").appendChild(wrap);
+        const doc = iframe.contentDocument;
+        doc.open();
+        doc.write(
+          "<!doctype html><html><head><style>" +
+            css +
+            "</style></head><body>" +
+            bodyHtml +
+            "</body></html>",
+        );
+        doc.close();
+        return iframe;
+      }
+
+      function hit(iframe, el) {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        const target = iframe.contentDocument.elementFromPoint(x, y);
+        return {
+          x: Math.round(x),
+          y: Math.round(y),
+          id: target && target.id,
+          className: target && String(target.className || ""),
+          panel:
+            target &&
+            target.closest &&
+            target.closest("[data-panel]") &&
+            target.closest("[data-panel]").getAttribute("data-panel"),
+        };
+      }
+
+      const idleBody = `
+<div id="comm-ui">
+  <button class="paperdoll-close" id="pd-x" type="button">×</button>
+  <div class="comm-pos-panel comm-pos-buffInfo buff-frame" data-panel="buffInfo">
+    <div class="comm-pos-panel-body-frame">
+      <div class="comm-info-dialog-panel" data-ecu-info-open="0" style="pointer-events:none">
+        <div class="comm-info-dialog-slot">
+          <div id="ecu-buff-dialog" class="ecu-info-dialog-adopted"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+      const afterIdleBody = idleBody.replace(
+        'class="comm-pos-panel comm-pos-buffInfo buff-frame"',
+        'class="comm-pos-panel comm-pos-buffInfo buff-frame-idle"',
+      );
+
+      const openBody = `
+<div id="comm-ui">
+  <div class="comm-pos-panel comm-pos-buffInfo buff-frame-open" data-panel="buffInfo">
+    <div class="comm-pos-panel-body">
+      <div class="comm-info-dialog-panel" data-ecu-info-open="1" style="pointer-events:auto">
+        <div id="ecu-buff-dialog" class="ecu-info-dialog-adopted open-demo">
+          <div class="buyitem">Good Luck</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+      const log = document.getElementById("log");
+      const lines = [];
+      function say(ok, msg) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + msg);
+      }
+
+      const before = mountCase("before", "BEFORE (bug)", CSS_BEFORE, idleBody);
+      const after = mountCase("after", "AFTER (fix)", CSS_AFTER, afterIdleBody);
+      const open = mountCase("open", "OPEN tip still clicks", CSS_AFTER, openBody);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const bDoc = before.contentDocument;
+          const aDoc = after.contentDocument;
+          const oDoc = open.contentDocument;
+
+          const bHit = hit(before, bDoc.getElementById("pd-x"));
+          const aHit = hit(after, aDoc.getElementById("pd-x"));
+          const tip = oDoc.querySelector(".buyitem");
+          const oHit = hit(open, tip);
+
+          const beforeBlocked = bHit.id !== "pd-x";
+          const afterOk = aHit.id === "pd-x";
+          const openOk =
+            oHit &&
+            (oHit.id === "ecu-buff-dialog" ||
+              (oHit.className || "").indexOf("buyitem") >= 0);
+
+          say(beforeBlocked, "before: ghost frame blocks paperdoll × → " + JSON.stringify(bHit));
+          say(afterOk, "after: paperdoll × receives click → " + JSON.stringify(aHit));
+          say(openOk, "open tip content still clickable → " + JSON.stringify(oHit));
+
+          const all = beforeBlocked && afterOk && openOk;
+          lines.push("");
+          lines.push(all ? "ALL PASS" : "SOME FAILED");
+          log.className = all ? "pass" : "fail";
+          log.textContent = lines.join("\n");
+          document.title = (all ? "PASS" : "FAIL") + " — ghost buff harness";
+          window.__ECU_HARNESS__ = {
+            ok: all,
+            before: bHit,
+            after: aHit,
+            open: oHit,
+          };
+        });
+      });
+    </script>
+  </body>
+</html>
