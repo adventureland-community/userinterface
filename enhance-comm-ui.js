@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.12
+// @version      0.8.0-alpha.13
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7703,6 +7703,41 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.13",
+      title: "0.8.0-alpha.13",
+      date: "2026-08-29",
+      summary: "Ghost Buff info strip no longer parks above bag/paperdoll or blocks closing them \u2014 tips stay tips, not unlocked windows.",
+      highlights: [
+        {
+          label: "Ghost buff chrome",
+          detail: "Unlocked Buff/Item info no longer leave a floating arrange strip when empty. Hold Alt to move tips; empty/close-only hosts count as closed.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll / bag clicks",
+          detail: "Buff/item tips no longer raise above paperdoll or inventory, and tip shells stay click-through outside the tip content.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Stricter info hasContent",
+          detail: "Close-button-only / whitespace hosts are treated as closed and scrubbed so open-state cannot stick.",
+          kind: "fix"
+        },
+        {
+          label: "Tip panels Alt-only arrange",
+          detail: "buffInfo/itemInfo play-arrange only while Alt is held \u2014 no persistent unlocked chrome strip.",
+          kind: "fix"
+        },
+        {
+          label: "Tips do not raise",
+          detail: "Buff/item panels skip click-to-front so they cannot jump above paperdoll \xD7 or bag slots.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.12",
       title: "0.8.0-alpha.12",
       date: "2026-08-29",
@@ -13761,7 +13796,19 @@ ${CHROME_ARRANGE_CSS}
     return document.getElementById(dialogIdFor(kind));
   }
   function hasContent(el) {
-    return !!(el && String(el.innerHTML || "").trim());
+    if (!el) return false;
+    if (el.querySelector(".buyitem, .cccx, img, canvas, table, svg")) return true;
+    const walk = (node) => {
+      if (node.nodeType === 3) return node.textContent || "";
+      if (node.nodeType !== 1) return "";
+      const he = node;
+      if (he.classList && he.classList.contains(CLOSE_CLASS)) return "";
+      let out = "";
+      const kids = he.childNodes;
+      for (let i = 0; i < kids.length; i++) out += walk(kids[i]);
+      return out;
+    };
+    return walk(el).replace(/\s+/g, "").length > 0;
   }
   function ensureNamedDialog(id, parent) {
     let dialog = document.getElementById(id);
@@ -13927,12 +13974,17 @@ ${CHROME_ARRANGE_CSS}
       ensureCloseButton(host2, kind, (k) => {
         closeKindImpl(k);
       });
+      emitInfoDialogChange(kind, true);
+      return;
     }
-    emitInfoDialogChange(kind, hasContent(host2));
+    if (host2.innerHTML) host2.innerHTML = "";
+    emitInfoDialogChange(kind, false);
   }
   function clearInfoHost(kind) {
     const el = dialogEl(kind);
-    if (!hasContent(el)) return false;
+    if (!el) return false;
+    const had = hasContent(el) || !!String(el.innerHTML || "").trim();
+    if (!had) return false;
     el.innerHTML = "";
     if (kind === "buff") clearDialogOnlyXTarget();
     clearDialogsTarget();
@@ -17898,8 +17950,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.12" : "unknown";
-    const builtAt = true ? "2026-08-29T01:06:34.074Z" : "unknown";
+    const version = true ? "0.8.0-alpha.13" : "unknown";
+    const builtAt = true ? "2026-08-29T18:03:28.058Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -46998,7 +47050,9 @@ ${ESTIMATE_HINT}`,
         return () => unsub2();
       }
       const obs = new MutationObserver(() => {
-        setOpen(isOpen2(kind));
+        const next = isOpen2(kind);
+        setOpen(next);
+        if (!next && dialog.innerHTML) dialog.innerHTML = "";
       });
       obs.observe(dialog, {
         childList: true,
@@ -52829,8 +52883,9 @@ ${ESTIMATE_HINT}`,
       const empty2 = (opts == null ? void 0 : opts.empty) === true || panelIsContextEmpty(id, ctx);
       if (empty2 && !deps.layoutEdit) return null;
       const locked = deps.panelIsLocked(id);
+      const infoPanel = id === "buffInfo" || id === "itemInfo";
       const infoIdle = id === "buffInfo" && !deps.buffInfoOpen || id === "itemInfo" && !deps.itemInfoOpen;
-      const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles" && !infoIdle;
+      const playArrange = !deps.layoutEdit && (!locked || deps.altHeld) && id !== "toggles" && !infoIdle && !(infoPanel && !deps.altHeld);
       const groupable = canGroupWindow(id);
       const grouped = groupable && commWindowHasSnap(
         { layout: deps.layout, meters: deps.meterInstances },
@@ -52865,7 +52920,9 @@ ${ESTIMATE_HINT}`,
           } : void 0,
           softAvoid: groupable ? false : void 0,
           style,
-          onActivate: deps.onActivatePanel ? () => deps.onActivatePanel(id) : void 0,
+          // Tip panels must not raise above paperdoll/bag — that caused the
+          // floating buff chrome to steal the paperdoll × and inventory clicks.
+          onActivate: infoPanel || !deps.onActivatePanel ? void 0 : () => deps.onActivatePanel(id),
           hidden: isHidden,
           hiddenBodyStyle: opts == null ? void 0 : opts.hiddenBodyStyle,
           opacity: deps.opacityFor(id),
@@ -53054,9 +53111,9 @@ ${ESTIMATE_HINT}`,
           onOpenChange: deps.setBuffInfoOpen
         }),
         {
+          // Shell stays click-through; StockInfoPanel enables hits only when open.
           style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-            zIndex: deps.layoutEdit ? 45 : 35,
-            pointerEvents: deps.layoutEdit || deps.buffInfoOpen ? "auto" : "none"
+            zIndex: deps.layoutEdit ? 45 : 35
           })
         }
       ),
@@ -53069,8 +53126,7 @@ ${ESTIMATE_HINT}`,
         }),
         {
           style: Object.assign({}, INFO_DIALOG_PANEL_STYLE, {
-            zIndex: deps.layoutEdit ? 45 : 35,
-            pointerEvents: deps.layoutEdit || deps.itemInfoOpen ? "auto" : "none"
+            zIndex: deps.layoutEdit ? 45 : 35
           })
         }
       ),
