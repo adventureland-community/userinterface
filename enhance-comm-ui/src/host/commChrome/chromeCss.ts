@@ -696,6 +696,10 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .comm-pos-panel.comm-pos-itemInfo .comm-info-dialog-panel[data-ecu-info-open="1"] {
   pointer-events: auto;
 }
+/* Tip close lives in window chrome — hide duplicate stock × in adopted hosts. */
+#comm-ui .ecu-info-dialog-adopted .ecu-dialog-close {
+  display: none !important;
+}
 #comm-ui .comm-pos-panel .ecu-chip {
   pointer-events: auto;
 }

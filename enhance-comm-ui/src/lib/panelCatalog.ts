@@ -73,8 +73,8 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
   buffInfo: { label: "Buff info", autoSize: "default-on" },
   itemInfo: { label: "Item info", autoSize: "default-on" },
   kills: { label: "Kills", closable: true, autoSize: "default-on" },
-  playerFrame: { label: "Player frame", autoSize: "opt-in" },
-  targetFrame: { label: "Target frame", autoSize: "opt-in" },
+  playerFrame: { label: "Player frame", closable: true, autoSize: "opt-in" },
+  targetFrame: { label: "Target frame", closable: true, autoSize: "opt-in" },
   bossBar: {
     label: "Boss bar",
     closable: true,

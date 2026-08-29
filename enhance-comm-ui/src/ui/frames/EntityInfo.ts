@@ -112,11 +112,6 @@ export function EntityInfo(props: EntityInfoProps): any {
   const luck = luckDisplay(eco);
   const goldFind = goldFindDisplay(eco);
 
-  const close = () => {
-    if (props.onClose) props.onClose();
-    else setXTarget(null);
-  };
-
   const maxXp = isPlayer ? resolveMaxXp(entity) : undefined;
   const xpBar =
     isPlayer && entity.xp != null && maxXp != null
@@ -181,31 +176,6 @@ export function EntityInfo(props: EntityInfoProps): any {
         title,
       ),
       e(InspectButton, { entity, title: "Inspect entity JSON" }),
-      e(
-        "button",
-        {
-          type: "button",
-          title: "Close",
-          onClick: (ev: any) => {
-            ev.stopPropagation();
-            close();
-          },
-          style: {
-            cursor: "pointer",
-            border: "1px solid #555",
-            background: "#1c1c1c",
-            color: "#ddd",
-            width: "22px",
-            height: "22px",
-            lineHeight: "18px",
-            padding: 0,
-            flexShrink: 0,
-            fontSize: TYPE.body,
-            ...PIXEL_TEXT,
-          },
-        },
-        "×",
-      ),
     ),
     stale
       ? e(

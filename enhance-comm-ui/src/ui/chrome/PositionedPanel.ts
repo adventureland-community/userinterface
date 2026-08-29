@@ -499,7 +499,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     !editing &&
     ((movable && props.showMoveGrip !== false) ||
       !!props.onToggleLock ||
-      !!props.onUngroup);
+      !!props.onUngroup ||
+      !!props.onClose);
   if (
     ((wrapFrameBody || styleOverflowVisible) && !autoSize) ||
     showArrangeOverlay ||

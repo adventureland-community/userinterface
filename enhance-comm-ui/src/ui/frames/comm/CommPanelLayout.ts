@@ -23,6 +23,10 @@ import {
   panelIsContextEmpty,
   windowFramePersist,
 } from "../../../lib/panelCatalog";
+import {
+  panelHasChromeClose,
+  resolvePanelClose,
+} from "../../../lib/panelClose";
 import { commWindowHasSnap, type CommWindowGraphState } from "../../../lib/commWindowGroup";
 import type { ViewportProfile } from "../../../lib/viewport";
 import type { MeterInstance } from "../../../meters/meterTypes";
@@ -136,6 +140,15 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
   };
   return (id: PanelId, child: any, opts?: CommPanelOpts) => {
     const isClosablePanel = canCloseWindow(id);
+    const closeDeps = {
+      setVisible: deps.setVisible,
+      selectedEntity: deps.selectedEntity,
+      closePaperdoll: deps.closePaperdoll,
+      buffInfoOpen: deps.buffInfoOpen,
+      itemInfoOpen: deps.itemInfoOpen,
+    };
+    const onClose = resolvePanelClose(id, closeDeps);
+    const hasChromeClose = panelHasChromeClose(id, closeDeps);
     const isHidden = isClosablePanel && !deps.visible(id);
     if (isHidden && !deps.layoutEdit) return null;
     const empty = opts?.empty === true || panelIsContextEmpty(id, ctx);
@@ -220,11 +233,11 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
             : undefined,
         closedWindows: deps.closedWindows,
         onReopenWindow: deps.onReopenWindow,
-        onClose: isClosablePanel ? () => deps.setVisible(id, false) : undefined,
+        onClose,
         onShow: isClosablePanel ? () => deps.setVisible(id, true) : undefined,
-        // Match meters: × sits in the hover arrange chrome strip, not over the panel body.
-        closePlacement: isClosablePanel ? "above" : undefined,
-        closeOnHoverOnly: isClosablePanel ? true : undefined,
+        // Match meters / bag: × sits in the hover arrange chrome strip.
+        closePlacement: hasChromeClose ? "above" : undefined,
+        closeOnHoverOnly: hasChromeClose ? true : undefined,
         windowNumber: deps.windowNumberById
           ? deps.windowNumberById[id]
           : undefined,
@@ -417,7 +430,6 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           e(EntityInfo, {
             entities: snap.entities,
             selectedEntity: deps.selectedEntity,
-            onClose: deps.closePaperdoll,
             layoutEdit: deps.layoutEdit,
             observing: snap.observing,
           }),
