@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.15
+// @version      0.8.0-alpha.16
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -32,6 +32,48 @@ var EnhanceCommUI = (() => {
   function e(type, props, ...children) {
     const React = getReact();
     return React.createElement(type, props, ...children);
+  }
+
+  // src/host/observerCommandPending.ts
+  var pendingCount = 0;
+  var listeners = [];
+  var clearTimer = null;
+  function notify() {
+    for (let i = 0; i < listeners.length; i++) listeners[i]();
+  }
+  function isObserverCommandPending() {
+    return pendingCount > 0;
+  }
+  function subscribeObserverCommandPending(listener) {
+    listeners.push(listener);
+    return () => {
+      const idx = listeners.indexOf(listener);
+      if (idx >= 0) listeners.splice(idx, 1);
+    };
+  }
+  function markObserverCommandPending() {
+    pendingCount += 1;
+    if (clearTimer != null) {
+      window.clearTimeout(clearTimer);
+      clearTimer = null;
+    }
+    notify();
+  }
+  function clearObserverCommandPending() {
+    if (pendingCount <= 0) return;
+    pendingCount = 0;
+    if (clearTimer != null) {
+      window.clearTimeout(clearTimer);
+      clearTimer = null;
+    }
+    notify();
+  }
+  function scheduleObserverCommandPendingClear(ms = 1400) {
+    if (clearTimer != null) window.clearTimeout(clearTimer);
+    clearTimer = window.setTimeout(() => {
+      clearTimer = null;
+      clearObserverCommandPending();
+    }, ms);
   }
 
   // src/host/al.ts
@@ -178,6 +220,8 @@ var EnhanceCommUI = (() => {
     const trimmed = String(code || "").trim();
     if (!trimmed) return false;
     sock.emit("o:command", trimmed);
+    markObserverCommandPending();
+    scheduleObserverCommandPendingClear();
     return true;
   }
   function getServerRegion() {
@@ -226,7 +270,7 @@ var EnhanceCommUI = (() => {
 
   // src/tick.ts
   var INTERVAL_MS = 100;
-  var listeners = /* @__PURE__ */ new Set();
+  var listeners2 = /* @__PURE__ */ new Set();
   var intervalId = null;
   var visBound = false;
   function resolveTarget(source) {
@@ -296,7 +340,7 @@ var EnhanceCommUI = (() => {
   function publishSnapshot() {
     if (typeof document !== "undefined" && document.hidden) return;
     const snap = buildSnapshot();
-    const cbs = Array.from(listeners);
+    const cbs = Array.from(listeners2);
     for (let i = 0; i < cbs.length; i++) {
       try {
         cbs[i](snap);
@@ -306,7 +350,7 @@ var EnhanceCommUI = (() => {
   }
   function onTickVisibility() {
     if (typeof document !== "undefined" && document.hidden) return;
-    if (listeners.size === 0) return;
+    if (listeners2.size === 0) return;
     publishSnapshot();
   }
   function ensureInterval() {
@@ -319,15 +363,15 @@ var EnhanceCommUI = (() => {
     }
   }
   function maybeStopInterval() {
-    if (listeners.size > 0 || intervalId == null) return;
+    if (listeners2.size > 0 || intervalId == null) return;
     window.clearInterval(intervalId);
     intervalId = null;
   }
   function subscribeTick(cb) {
-    listeners.add(cb);
+    listeners2.add(cb);
     ensureInterval();
     return () => {
-      listeners.delete(cb);
+      listeners2.delete(cb);
       maybeStopInterval();
     };
   }
@@ -337,16 +381,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners11 = [];
+    const listeners12 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners11.length; i++) listeners11[i](ev);
+        for (let i = 0; i < listeners12.length; i++) listeners12[i](ev);
       },
       subscribe: (listener) => {
-        listeners11.push(listener);
+        listeners12.push(listener);
         return () => {
-          const idx = listeners11.indexOf(listener);
-          if (idx >= 0) listeners11.splice(idx, 1);
+          const idx = listeners12.indexOf(listener);
+          if (idx >= 0) listeners12.splice(idx, 1);
         };
       }
     };
@@ -899,6 +943,49 @@ var EnhanceCommUI = (() => {
     rogue: "#44b75c"
   };
 
+  // src/lib/itemTitleBorder.ts
+  function itemTitleBorderColor(p) {
+    if (!p) return void 0;
+    switch (p) {
+      case "festive":
+        return "#79ff7e";
+      case "firehazard":
+        return "#f79b11";
+      case "glitched":
+        return "grey";
+      case "gooped":
+        return "#64B867";
+      case "legacy":
+        return "white";
+      case "lucky":
+        return "#00f3ff";
+      case "shiny":
+        return "#99b2d8";
+      case "superfast":
+        return "#c681dc";
+      default:
+        return void 0;
+    }
+  }
+  function shouldShowTitleBorder(p) {
+    return !!itemTitleBorderColor(p);
+  }
+  var ITEM_CONTAINER_BORDER_RE = /border:\s*2px\s+solid\s+[^;"']+/gi;
+  function wrapHtmlWithTitleBorder(html, p) {
+    const color = itemTitleBorderColor(p);
+    if (!color) return html;
+    return html.replace(ITEM_CONTAINER_BORDER_RE, `border: 2px solid ${color}`);
+  }
+  function stampNativeItemTitleBorder(root, p) {
+    const color = itemTitleBorderColor(p);
+    if (!color) return;
+    root.style.borderColor = color;
+    root.style.boxShadow = "";
+    const inner = root.querySelector(".rclick");
+    if (inner) inner.style.borderColor = color;
+    root.dataset.ecuTitleBorder = p || "";
+  }
+
   // src/host/icons.ts
   function itemContainer(item, actual) {
     if (typeof window.item_container !== "function") {
@@ -1273,9 +1360,47 @@ var EnhanceCommUI = (() => {
     if (def && typeof def.name === "string" && def.name) return def.name;
     return key;
   }
+  function itemInstanceLabel(itemName, actual) {
+    var _a, _b, _c;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[itemName];
+    let label = def && def.name || itemDisplayName(itemName) || itemName;
+    const p = actual && actual.p ? String(actual.p) : "";
+    if (p && ((_c = (_b = G == null ? void 0 : G.titles) == null ? void 0 : _b[p]) == null ? void 0 : _c.title)) {
+      label = G.titles[p].title + " " + label;
+    } else if (p) {
+      label = p.charAt(0).toUpperCase() + p.slice(1) + " " + label;
+    }
+    const level = actual && actual.level != null ? Number(actual.level) : NaN;
+    if (def && Number.isFinite(level)) {
+      if (def.upgrade && level === 12) label += " +Z";
+      else if (def.upgrade && level === 11) label += " +Y";
+      else if (def.upgrade && level === 10) label += " +X";
+      else if (def.compound && level === 7) label += " +R";
+      else if (def.compound && level === 6) label += " +S";
+      else if (def.compound && level === 5) label += " +V";
+      else if (level > 0) label += " +" + Math.floor(level);
+    }
+    return label;
+  }
+  function stampNativeItemTitle(root, title) {
+    if (!title) return;
+    root.setAttribute("title", title);
+    const instance = root.querySelector(
+      ".ecu-item-instance"
+    );
+    if (instance) instance.setAttribute("title", title);
+    const icRoot = root.querySelector(
+      ".ecu-item-instance > div, .rclick"
+    );
+    if (icRoot) icRoot.setAttribute("title", title);
+  }
   function itemIconHtml(itemName, opts) {
     const size = opts && opts.size || 18;
-    const title = opts && opts.title || itemDisplayName(itemName) || itemName;
+    const title = opts && opts.title || itemInstanceLabel(itemName, {
+      p: opts && opts.p,
+      level: opts && opts.level
+    }) || itemName;
     const nativeTitle = !(opts && opts.nativeTitle === false);
     const skinKey = opts && opts.skin || itemSkin(itemName) || itemName;
     const fallbacks = [];
@@ -1285,8 +1410,13 @@ var EnhanceCommUI = (() => {
       placeholder: true,
       nativeTitle
     });
-    if (sheet) return sheet;
-    return letterFallbackHtml("?", size, title, void 0, nativeTitle);
+    if (sheet) {
+      return wrapHtmlWithTitleBorder(sheet, opts && opts.p);
+    }
+    return wrapHtmlWithTitleBorder(
+      letterFallbackHtml("?", size, title, void 0, nativeTitle),
+      opts && opts.p
+    );
   }
   function stripItemContainerHandlers(html) {
     return html.replace(/\s+onmousedown="[^"]*"/gi, "").replace(/\s+ontouchstart="[^"]*"/gi, "").replace(/\s+onclick="[^"]*"/gi, "");
@@ -1294,9 +1424,16 @@ var EnhanceCommUI = (() => {
   function stripNativeTitleAttrs(html) {
     return html.replace(/\s+title="[^"]*"/gi, "").replace(/\s+title='[^']*'/gi, "");
   }
+  function injectItemContainerTitle(html, title) {
+    const tip = ` title="${escapeAttr(title)}"`;
+    return html.replace(/^(<div\b)/i, `$1${tip}`);
+  }
   function itemInstanceHtml(itemName, opts) {
     const size = opts && opts.size || 40;
-    const title = opts && opts.title || itemDisplayName(itemName) || itemName;
+    const title = opts && opts.title || itemInstanceLabel(itemName, {
+      p: opts && opts.p,
+      level: opts && opts.level
+    }) || itemName;
     const nativeTitle = !(opts && opts.nativeTitle === false);
     const skinKey = opts && opts.skin || itemSkin(itemName) || itemName;
     const actual = { name: itemName };
@@ -1318,12 +1455,20 @@ var EnhanceCommUI = (() => {
           }
         );
         if (!nativeTitle) cleaned = stripNativeTitleAttrs(cleaned);
+        else cleaned = injectItemContainerTitle(cleaned, title);
+        cleaned = wrapHtmlWithTitleBorder(cleaned, opts && opts.p);
         const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
         return `<span class="ecu-item-instance"${tipAttr}>${cleaned}</span>`;
       }
     } catch (e2) {
     }
-    return itemIconHtml(itemName, { skin: skinKey, size, title, nativeTitle });
+    return itemIconHtml(itemName, {
+      skin: skinKey,
+      size,
+      title,
+      nativeTitle,
+      p: opts && opts.p
+    });
   }
   function monsterDisplayName(mtype) {
     var _a;
@@ -2290,7 +2435,20 @@ var EnhanceCommUI = (() => {
     boxSizing: "border-box",
     // Above buffInfo/itemInfo (35) and their raise stack floor so × / gear stay hittable.
     zIndex: 56,
-    // Alt arrange strip + paperdoll title drag handle need visible overflow.
+    overflow: "visible"
+  };
+  var TRADE_SLOT_GAP = 2;
+  var TRADE_SLOT_SIZE = 40;
+  var TRADE_PANEL_WIDTH = TRADE_SLOT_SIZE * 6 + TRADE_SLOT_GAP * 5 + 16;
+  var TRADE_PANEL_MIN_HEIGHT = 380;
+  var TRADE_PANEL_STYLE = {
+    width: `${TRADE_PANEL_WIDTH}px`,
+    minWidth: `${TRADE_PANEL_WIDTH}px`,
+    minHeight: `${TRADE_PANEL_MIN_HEIGHT}px`,
+    boxSizing: "border-box",
+    background: "rgba(0,0,0,0.94)",
+    boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+    zIndex: 56,
     overflow: "visible"
   };
   var BOSS_BAR_FRAME_DEFAULT = { frameW: 480, frameH: 180 };
@@ -2488,7 +2646,8 @@ var EnhanceCommUI = (() => {
     },
     serverInfo: { x: 50, y: 0.4, anchor: "tc" },
     mapInfo: { x: 50, y: 4.8, anchor: "tc" },
-    paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 535 },
+    paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 400 },
+    trade: { x: 12, y: 99.2, anchor: "bl", frameW: 272, frameH: 320 },
     buffInfo: {
       x: 0.8,
       y: 10,
@@ -2609,6 +2768,7 @@ var EnhanceCommUI = (() => {
     serverInfo: { x: 50, y: 0.5, anchor: "tc" },
     mapInfo: { x: 50, y: 5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
+    trade: { x: 1, y: 72, anchor: "bl", frameW: 272, frameH: 320 },
     buffInfo: { x: 1, y: 12, anchor: "tl", autoSize: true },
     itemInfo: { x: 17, y: 12, anchor: "tl", autoSize: true },
     kills: { x: 99.2, y: 72, anchor: "tr" },
@@ -2651,6 +2811,7 @@ var EnhanceCommUI = (() => {
     serverInfo: { x: 50, y: 0.4, anchor: "tc" },
     mapInfo: { x: 50, y: 4.5, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
+    trade: { x: 50, y: 52, anchor: "center", frameW: 272, frameH: 320 },
     buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
     itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
     kills: { x: 98, y: 58, anchor: "br" },
@@ -2704,7 +2865,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/layoutFrameMigrations.ts
-  var LAYOUT_FRAME_REV = 7;
+  var LAYOUT_FRAME_REV = 8;
   function shipped(n, target) {
     return typeof n === "number" && Math.round(n) === target;
   }
@@ -2776,6 +2937,12 @@ var EnhanceCommUI = (() => {
       frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH
     };
   }
+  function migrateTradeFrame(pos, def) {
+    if (!shipped(pos.frameW, 220) || !shipped(pos.frameH, 200)) return pos;
+    const defW = typeof def.frameW === "number" ? def.frameW : TRADE_PANEL_WIDTH;
+    const defH = typeof def.frameH === "number" ? def.frameH : TRADE_PANEL_MIN_HEIGHT;
+    return { ...pos, frameW: defW, frameH: defH };
+  }
   var FRAME_MIGRATIONS = {
     mail: migrateMailFrame,
     events: migrateEventsFrame,
@@ -2786,7 +2953,8 @@ var EnhanceCommUI = (() => {
     instance: migrateInstanceFrame,
     bossBar: migrateBossBarFrame,
     abilityTimeline: migrateAbilityTimelineFrame,
-    command: migrateCommandFrame
+    command: migrateCommandFrame,
+    trade: migrateTradeFrame
   };
   function applyFrameMigrations(layout, defaults) {
     const ids = Object.keys(FRAME_MIGRATIONS);
@@ -2869,6 +3037,7 @@ var EnhanceCommUI = (() => {
       autoSize: "default-on"
     },
     bag: { label: "Bag", closable: true, framePersist: "none" },
+    trade: { label: "Trade", closable: true, framePersist: "none" },
     mail: {
       label: "Mail",
       closable: true,
@@ -5201,14 +5370,14 @@ var EnhanceCommUI = (() => {
 
   // src/meters/meterUiTick.ts
   var MIN_FLUSH_MS = 50;
-  var listeners2 = [];
+  var listeners3 = [];
   var dirty = false;
   var raf = 0;
   var delay = 0;
   var lastFlushAt = 0;
-  function notify() {
-    for (let i = 0; i < listeners2.length; i++) {
-      listeners2[i]();
+  function notify2() {
+    for (let i = 0; i < listeners3.length; i++) {
+      listeners3[i]();
     }
   }
   function flush() {
@@ -5217,7 +5386,7 @@ var EnhanceCommUI = (() => {
     if (typeof document !== "undefined" && document.hidden) return;
     dirty = false;
     lastFlushAt = performance.now();
-    notify();
+    notify2();
   }
   function schedule() {
     if (raf || delay) return;
@@ -5237,10 +5406,10 @@ var EnhanceCommUI = (() => {
     schedule();
   }
   function subscribeMeterTick(listener) {
-    listeners2.push(listener);
+    listeners3.push(listener);
     return () => {
-      const idx = listeners2.indexOf(listener);
-      if (idx >= 0) listeners2.splice(idx, 1);
+      const idx = listeners3.indexOf(listener);
+      if (idx >= 0) listeners3.splice(idx, 1);
     };
   }
   if (typeof document !== "undefined") {
@@ -7704,6 +7873,91 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.8.0-alpha.16",
+      title: "0.8.0-alpha.16",
+      date: "2026-08-30",
+      summary: "Equip, trade, and sort inventory on the character you are observing \u2014 plus clearer item labels.",
+      highlights: [
+        {
+          label: "Observer gear editing",
+          detail: "Right-click bag items to Equip or Swap slots; right-click paperdoll gear to Unequip. Commands run on the watched character via o:command.",
+          kind: "feature"
+        },
+        {
+          label: "Trade window",
+          detail: "Trade row and merchant stand controls live in a separate Trade panel \u2014 Yours/Inspected toggle, left-click to buy, drag listings to bag to delist.",
+          kind: "feature"
+        },
+        {
+          label: "Bag sort",
+          detail: "Sort button on the bag chrome runs sequential swap()/imove on the watched character. Configure priority rules in Settings \u2192 Bag (AdiBags-style keys, empty-last).",
+          kind: "feature"
+        },
+        {
+          label: "Trade panel layout",
+          detail: "Fixed-size Trade window with opaque background \u2014 default trade1\u20134 always shown (yours and inspected merchants); stand extras (trade5+) stay visible for your character after the stand closes (game hides them from sync until reopen); Compact slots / All slots toggles grid density; Open/Close stand is separate.",
+          kind: "improve"
+        },
+        {
+          label: "Trade UX",
+          detail: "Buy/sell badges, compact gold prices, confirm dialogs, last-price memory, bag menu Sell to buy order\u2026 (B badge on matching bag items), Giveaway on trade\u2026, Shift+drag giveaway, giveaways, auto-open when inspecting a merchant, and Updating\u2026 bag feedback while commands run.",
+          kind: "improve"
+        },
+        {
+          label: "Item hover labels",
+          detail: "Bag slots and paperdoll gear show full item names on hover \u2014 title prefix (G.titles) and upgrade/compound level suffixes match stock item info.",
+          kind: "improve"
+        },
+        {
+          label: "Title-prefix borders",
+          detail: "Titled items (Festive, Gooped, Lucky, etc.) show the colored outer border from item.p \u2014 same palette as market-tracker and data-explorer.",
+          kind: "improve"
+        },
+        {
+          label: "Free bag space",
+          detail: "Send-to-nearby and trade menus show free inventory slots on the receiver when the game exposes esize.",
+          kind: "improve"
+        }
+      ],
+      items: [
+        {
+          label: "Bag equip menu",
+          detail: "Context menu picks main/off hand, rings, earrings, etc. Server validates class and slot rules.",
+          kind: "feature"
+        },
+        {
+          label: "Paperdoll unequip",
+          detail: "Right-click an equipped slot on your watched paperdoll to unequip (elixir excluded).",
+          kind: "feature"
+        },
+        {
+          label: "Inventory swap",
+          detail: "Swap with\u2026 flyout on bag right-click \u2014 pick an occupied slot or enter any slot number. Drag bag slots or onto paperdoll to equip.",
+          kind: "improve"
+        },
+        {
+          label: "Trade slot listing",
+          detail: "Bag menu List on Trade\u2026 and Sell to buy order\u2026, drag bag \u2192 empty trade slot, drag listing \u2192 bag to delist, wishlist picker, fingerprint-aware reprice, left-click buy with confirm.",
+          kind: "feature"
+        },
+        {
+          label: "Watched character only",
+          detail: "Gear and sort actions apply only when observing your own character \u2014 other players stay inspect-only.",
+          kind: "fix"
+        },
+        {
+          label: "Paperdoll click-through",
+          detail: "Paperdoll and Trade panel shells pass clicks through empty padding \u2014 only headers, gear, and trade slots capture hits.",
+          kind: "fix"
+        },
+        {
+          label: "Sort script safety",
+          detail: "One locked sequential script per batch, placeholder slots skipped, then refreshObservedInventory when finished.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.8.0-alpha.15",
       title: "0.8.0-alpha.15",
       date: "2026-08-29",
@@ -8870,6 +9124,261 @@ ${fightHoverTip(src)}`
     return raw.showBigIcon === false;
   }
 
+  // src/lib/bagSortPrefs.ts
+  var BAG_SORT_KEY_CATALOG = [
+    {
+      key: "category",
+      label: "Category",
+      help: "Consumables, scrolls, gear, then other types (AdiBags-style buckets).",
+      defaultDir: "asc"
+    },
+    {
+      key: "type",
+      label: "Item type",
+      help: "G.items type (pot, weapon, scroll, \u2026).",
+      defaultDir: "asc"
+    },
+    {
+      key: "grade",
+      label: "Grade",
+      help: "G.items.g \u2014 higher is usually rarer (WoW quality-like).",
+      defaultDir: "desc"
+    },
+    {
+      key: "gearSlot",
+      label: "Gear slot",
+      help: "Equip slot order (helmet, chest, weapon, \u2026).",
+      defaultDir: "asc"
+    },
+    {
+      key: "class",
+      label: "Class",
+      help: "Class restriction on the item definition.",
+      defaultDir: "asc"
+    },
+    {
+      key: "level",
+      label: "Upgrade level",
+      help: "+0\u2026+12 on compound/upgrade gear.",
+      defaultDir: "desc"
+    },
+    {
+      key: "name",
+      label: "Item name",
+      help: "Internal item id (hpot0, scroll0, \u2026).",
+      defaultDir: "asc"
+    },
+    {
+      key: "quantity",
+      label: "Stack size",
+      help: "Quantity in the stack.",
+      defaultDir: "desc"
+    },
+    {
+      key: "stackable",
+      label: "Stackable first",
+      help: "Items that stack in one slot before singles.",
+      defaultDir: "asc"
+    },
+    {
+      key: "locked",
+      label: "Locked last",
+      help: "Locked / sealed items after unlocked ones.",
+      defaultDir: "asc"
+    }
+  ];
+  var BAG_SORT_PRESET_LABELS = {
+    custom: "Custom",
+    default: "Category + quality (default)",
+    byName: "By name",
+    byQuality: "By quality & level",
+    byType: "By type & name",
+    equipment: "Equipment layout"
+  };
+  var VALID_KEYS = new Set(BAG_SORT_KEY_CATALOG.map((d) => d.key));
+  var nextRuleSerial = 1;
+  function newRuleId(key) {
+    nextRuleSerial += 1;
+    return `rule-${key}-${nextRuleSerial}`;
+  }
+  function defForKey(key) {
+    for (let i = 0; i < BAG_SORT_KEY_CATALOG.length; i++) {
+      if (BAG_SORT_KEY_CATALOG[i].key === key) return BAG_SORT_KEY_CATALOG[i];
+    }
+    return BAG_SORT_KEY_CATALOG[0];
+  }
+  function cloneRule(rule) {
+    return {
+      id: rule.id,
+      key: rule.key,
+      dir: rule.dir,
+      enabled: rule.enabled
+    };
+  }
+  function ruleFromPartial(raw, fallback) {
+    if (!raw || typeof raw !== "object") return cloneRule(fallback);
+    const src = raw;
+    const key = VALID_KEYS.has(String(src.key)) ? String(src.key) : fallback.key;
+    const id = typeof src.id === "string" && src.id.trim() ? String(src.id).trim() : newRuleId(key);
+    const dir = src.dir === "desc" ? "desc" : "asc";
+    return {
+      id,
+      key,
+      dir,
+      enabled: src.enabled !== false
+    };
+  }
+  function presetRules(preset) {
+    const mk = (key, dir, enabled = true) => ({
+      id: newRuleId(key),
+      key,
+      dir: dir != null ? dir : defForKey(key).defaultDir,
+      enabled
+    });
+    switch (preset) {
+      case "byName":
+        return [mk("name", "asc")];
+      case "byQuality":
+        return [
+          mk("grade", "desc"),
+          mk("level", "desc"),
+          mk("name", "asc")
+        ];
+      case "byType":
+        return [mk("type", "asc"), mk("name", "asc")];
+      case "equipment":
+        return [
+          mk("gearSlot", "asc"),
+          mk("grade", "desc"),
+          mk("level", "desc"),
+          mk("name", "asc")
+        ];
+      case "default":
+        return [
+          mk("category", "asc"),
+          mk("grade", "desc"),
+          mk("type", "asc"),
+          mk("name", "asc"),
+          mk("level", "desc"),
+          mk("locked", "asc")
+        ];
+      case "custom":
+      default:
+        return presetRules("default");
+    }
+  }
+  var DEFAULT_BAG_SORT_PREFS = {
+    emptyLast: true,
+    preset: "default",
+    rules: presetRules("default")
+  };
+  function normalizePreset(raw) {
+    const s = String(raw || "");
+    if (s === "byName" || s === "byQuality" || s === "byType" || s === "equipment") {
+      return s;
+    }
+    if (s === "custom") return "custom";
+    return "default";
+  }
+  function normalizeBagSortPrefs(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    const preset = normalizePreset(src.preset);
+    let rules = [];
+    if (Array.isArray(src.rules) && src.rules.length) {
+      const fallback = presetRules("default")[0];
+      for (let i = 0; i < src.rules.length; i++) {
+        rules.push(ruleFromPartial(src.rules[i], fallback));
+      }
+    } else {
+      rules = preset === "custom" ? presetRules("default") : presetRules(preset);
+    }
+    if (!rules.length) rules = presetRules("default");
+    return {
+      emptyLast: src.emptyLast !== false,
+      preset,
+      rules
+    };
+  }
+  function getBagSortPrefs() {
+    return normalizeBagSortPrefs(getSettings().bagSort);
+  }
+  function patchBagSortPrefs(partial) {
+    var _a;
+    const prev = getBagSortPrefs();
+    const next = normalizeBagSortPrefs({
+      ...prev,
+      ...partial,
+      rules: (_a = partial.rules) != null ? _a : prev.rules
+    });
+    patchSettings({ bagSort: next });
+    return next;
+  }
+  function applyBagSortPreset(preset) {
+    if (preset === "custom") {
+      return patchBagSortPrefs({ preset: "custom" });
+    }
+    return patchBagSortPrefs({
+      preset,
+      rules: presetRules(preset)
+    });
+  }
+  function enabledBagSortRules(prefs) {
+    const out = [];
+    for (let i = 0; i < prefs.rules.length; i++) {
+      if (prefs.rules[i].enabled) out.push(prefs.rules[i]);
+    }
+    return out;
+  }
+  function moveBagSortRule(rules, id, delta) {
+    const idx = rules.findIndex((r) => r.id === id);
+    if (idx < 0) return rules.slice();
+    const j = idx + delta;
+    if (j < 0 || j >= rules.length) return rules.slice();
+    const out = rules.map(cloneRule);
+    const tmp = out[idx];
+    out[idx] = out[j];
+    out[j] = tmp;
+    return out;
+  }
+  function addBagSortRule(rules, key) {
+    const def = defForKey(key);
+    return rules.concat([
+      {
+        id: newRuleId(key),
+        key,
+        dir: def.defaultDir,
+        enabled: true
+      }
+    ]);
+  }
+  function removeBagSortRule(rules, id) {
+    if (rules.length <= 1) return rules.slice();
+    return rules.filter((r) => r.id !== id);
+  }
+  function updateBagSortRule(rules, id, patch) {
+    return rules.map((r) => {
+      if (r.id !== id) return r;
+      const key = patch.key && VALID_KEYS.has(patch.key) ? patch.key : r.key;
+      return {
+        ...r,
+        ...patch,
+        key,
+        dir: patch.dir === "desc" ? "desc" : patch.dir === "asc" ? "asc" : r.dir
+      };
+    });
+  }
+  function describeBagSortRules(prefs) {
+    const enabled = enabledBagSortRules(prefs);
+    if (!enabled.length) return "no rules enabled";
+    const parts = [];
+    for (let i = 0; i < enabled.length; i++) {
+      const r = enabled[i];
+      const label = defForKey(r.key).label;
+      parts.push(`${label} ${r.dir === "desc" ? "\u2193" : "\u2191"}`);
+    }
+    return parts.join(" \u2192 ");
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
@@ -9133,7 +9642,8 @@ ${fightHoverTip(src)}`
       minimapZoom: clampMinimapZoom(
         typeof parsed.minimapZoom === "number" ? parsed.minimapZoom : MINIMAP_ZOOM_DEFAULT
       ),
-      minimapBg: normalizeMinimapBgMode(parsed.minimapBg)
+      minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
+      bagSort: normalizeBagSortPrefs(parsed.bagSort)
     };
     if (next.setupWizardDone && typeof parsed.changelogSeenId !== "string") {
       next.changelogSeenId = latestChangelogId();
@@ -10612,19 +11122,19 @@ ${fightHoverTip(src)}`
   }
 
   // src/host/commander.ts
-  var listeners3 = [];
+  var listeners4 = [];
   function subscribeCommanderOpen(fn) {
-    listeners3.push(fn);
+    listeners4.push(fn);
     return () => {
-      const idx = listeners3.indexOf(fn);
-      if (idx >= 0) listeners3.splice(idx, 1);
+      const idx = listeners4.indexOf(fn);
+      if (idx >= 0) listeners4.splice(idx, 1);
     };
   }
   function openCommander(draft) {
     const payload = {};
     if (typeof draft === "string") payload.draft = draft;
-    for (let i = 0; i < listeners3.length; i++) {
-      listeners3[i](payload);
+    for (let i = 0; i < listeners4.length; i++) {
+      listeners4[i](payload);
     }
   }
   function ourShowCommander(fvalue) {
@@ -10649,29 +11159,29 @@ ${fightHoverTip(src)}`
   }
 
   // src/host/updateNotes.ts
-  var listeners4 = [];
+  var listeners5 = [];
   var pendingOpen = null;
   function subscribeUpdateNotesOpen(fn) {
-    listeners4.push(fn);
+    listeners5.push(fn);
     if (pendingOpen) {
       const payload = pendingOpen;
       pendingOpen = null;
       fn(payload);
     }
     return () => {
-      const idx = listeners4.indexOf(fn);
-      if (idx >= 0) listeners4.splice(idx, 1);
+      const idx = listeners5.indexOf(fn);
+      if (idx >= 0) listeners5.splice(idx, 1);
     };
   }
   function openUpdateNotes(mode) {
     const payload = { mode };
-    if (!listeners4.length) {
+    if (!listeners5.length) {
       pendingOpen = payload;
       return;
     }
     pendingOpen = null;
-    for (let i = 0; i < listeners4.length; i++) {
-      listeners4[i](payload);
+    for (let i = 0; i < listeners5.length; i++) {
+      listeners5[i](payload);
     }
   }
   function asRecord(value) {
@@ -11723,6 +12233,12 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .comm-pos-panel:not(.comm-pos-buffInfo):not(.comm-pos-itemInfo) > .comm-pos-panel-body-frame {
   pointer-events: auto;
 }
+/* Auto-size panels (paperdoll, bag): shell is click-through \u2014 content opts in. */
+#comm-ui .comm-pos-paperdoll > .comm-paperdoll,
+#comm-ui .comm-pos-bag .comm-bag-panel,
+#comm-ui .comm-pos-bag #bottomleftcorner {
+  pointer-events: auto;
+}
 /* Tip panels: never let a saved/leftover body frame eat map or paperdoll clicks. */
 #comm-ui .comm-pos-panel.comm-pos-buffInfo,
 #comm-ui .comm-pos-panel.comm-pos-itemInfo,
@@ -12594,7 +13110,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/mail/mailState.ts
-  var listeners5 = [];
+  var listeners6 = [];
   var toastListeners = [];
   var locallyReadIds = /* @__PURE__ */ new Set();
   var state = {
@@ -12621,7 +13137,7 @@ ${CHROME_ARRANGE_CSS}
     sessionDraft: emptyDraft()
   };
   function notifyListeners() {
-    for (let i = 0; i < listeners5.length; i++) listeners5[i]();
+    for (let i = 0; i < listeners6.length; i++) listeners6[i]();
   }
   function emitToast(message) {
     for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
@@ -12647,10 +13163,10 @@ ${CHROME_ARRANGE_CSS}
     commit({ view: next });
   }
   function subscribeMailStore(fn) {
-    listeners5.push(fn);
+    listeners6.push(fn);
     return () => {
-      const idx = listeners5.indexOf(fn);
-      if (idx >= 0) listeners5.splice(idx, 1);
+      const idx = listeners6.indexOf(fn);
+      if (idx >= 0) listeners6.splice(idx, 1);
     };
   }
   function subscribeMailToast(fn) {
@@ -13784,6 +14300,295 @@ ${CHROME_ARRANGE_CSS}
     });
   }
 
+  // src/host/mail/itemFingerprint.ts
+  function itemMatchesFingerprint(item, expected) {
+    if (!item || !item.name) return false;
+    if (item.name !== expected.name) return false;
+    if (expected.level != null) {
+      if (item.level !== expected.level) return false;
+    }
+    if (expected.q != null) {
+      if (item.q !== expected.q) return false;
+    }
+    if (expected.p != null) {
+      if (item.p !== expected.p) return false;
+    }
+    return true;
+  }
+  function fingerprintFromSlot(slot, item) {
+    if (!item || !item.name || item.name === "placeholder") return null;
+    const fp = { slot, name: String(item.name) };
+    if (item.level != null) fp.level = Number(item.level);
+    if (item.q != null) fp.q = Number(item.q);
+    if (item.p != null) fp.p = String(item.p);
+    return fp;
+  }
+  function findFingerprintSlot(items, expected, usedSlots) {
+    if (!items || !items.length) return -1;
+    const prefer = Number(expected.slot) | 0;
+    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
+      return prefer;
+    }
+    for (let i = 0; i < items.length; i++) {
+      if (usedSlots && usedSlots.has(i)) continue;
+      if (itemMatchesFingerprint(items[i], expected)) return i;
+    }
+    return -1;
+  }
+
+  // src/lib/tradeHelpers.ts
+  var TRADE_RANGE_SQ = 200 * 200;
+  function formatTradeGold(n) {
+    if (n == null || !Number.isFinite(n)) return "?";
+    return formatCompactNumber(n);
+  }
+  function tradeSlotGridRows(slotNames, columns = 4) {
+    const cols = columns > 0 ? columns : 4;
+    const rows = [];
+    for (let i = 0; i < slotNames.length; i += cols) {
+      rows.push(slotNames.slice(i, i + cols));
+    }
+    return rows;
+  }
+  function isInTradeRange(target, observer) {
+    var _a, _b, _c, _d;
+    if (!target || !observer) return false;
+    if (target.id != null && observer.id != null && target.id === observer.id) {
+      return true;
+    }
+    const tx = (_a = target.real_x) != null ? _a : target.x;
+    const ty = (_b = target.real_y) != null ? _b : target.y;
+    const ox = (_c = observer.real_x) != null ? _c : observer.x;
+    const oy = (_d = observer.real_y) != null ? _d : observer.y;
+    if (tx == null || ty == null || ox == null || oy == null) return false;
+    const dx = tx - ox;
+    const dy = ty - oy;
+    return dx * dx + dy * dy <= TRADE_RANGE_SQ;
+  }
+  function findBagMatchForBuyOrder(listing, items) {
+    if (!listing.name || !items) return null;
+    const wantLevel = listing.level != null ? listing.level : void 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name !== listing.name) continue;
+      if (wantLevel != null && (it.level || 0) !== wantLevel) continue;
+      const q = it.q != null && it.q > 0 ? it.q : 1;
+      return { slot: i, q };
+    }
+    return null;
+  }
+  function canAffordListing(listing, quantity, gold) {
+    if (listing.price == null || gold == null) return false;
+    const q = quantity > 0 ? quantity : 1;
+    return gold >= listing.price * q;
+  }
+  function confirmTradePurchase(itemName, unitPrice, quantity) {
+    const total = unitPrice * quantity;
+    return window.confirm(
+      `Buy ${quantity}\xD7 ${itemName} for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
+    );
+  }
+  function confirmTradeFulfill(itemName, unitPrice, quantity) {
+    const total = unitPrice * quantity;
+    return window.confirm(
+      `Sell ${quantity}\xD7 ${itemName} to fulfill buy order for ${formatTradeGold(total)} gold (${formatTradeGold(unitPrice)} each)?`
+    );
+  }
+  function isGiveawayListing(slot) {
+    return !!(slot && (slot.giveaway || slot.registry));
+  }
+  function buyOrderItemKey(name, level, p) {
+    return `${name}|${level != null ? level : ""}|${p != null ? p : ""}`;
+  }
+  function nearbyBuyOrdersRevision(entities, observer) {
+    if (!observer) return 0;
+    let n = 0;
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (!isInTradeRange(ent, observer)) continue;
+      const slotKeys = Object.keys(ent.slots);
+      for (let si = 0; si < slotKeys.length; si++) {
+        const listing = ent.slots[slotKeys[si]];
+        if (listing && listing.b && listing.name && listing.price != null) n++;
+      }
+    }
+    return n;
+  }
+  function indexNearbyBuyOrders(entities, observer) {
+    const obsId = observer && observer.id != null ? String(observer.id) : "";
+    const byKey = /* @__PURE__ */ new Map();
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
+      if (!isInTradeRange(ent, observer)) continue;
+      const entId = ent.id != null ? String(ent.id) : "";
+      const entName = ent.name != null ? String(ent.name) : entId;
+      if (!entId) continue;
+      const slotKeys = Object.keys(ent.slots);
+      for (let si = 0; si < slotKeys.length; si++) {
+        const tradeSlot = slotKeys[si];
+        if (tradeSlot.indexOf("trade") !== 0) continue;
+        const listing = ent.slots[tradeSlot];
+        if (!listing || !listing.b || !listing.name || listing.price == null) {
+          continue;
+        }
+        if (!listing.rid) continue;
+        const key = buyOrderItemKey(
+          listing.name,
+          listing.level,
+          listing.p
+        );
+        const match = {
+          entityId: entId,
+          entityName: entName,
+          tradeSlot,
+          listing: {
+            name: listing.name,
+            price: listing.price,
+            rid: String(listing.rid),
+            q: listing.q,
+            level: listing.level,
+            p: listing.p
+          }
+        };
+        const bucket = byKey.get(key);
+        if (bucket) bucket.push(match);
+        else byKey.set(key, [match]);
+      }
+    }
+    for (const bucket of byKey.values()) {
+      bucket.sort((a, b) => {
+        if (b.listing.price !== a.listing.price) {
+          return b.listing.price - a.listing.price;
+        }
+        return a.entityName.localeCompare(b.entityName);
+      });
+    }
+    return byKey;
+  }
+  function scanBuyOrdersForBagItem(fp, entities, observer) {
+    if (!observer) return [];
+    const want = { slot: -1, name: fp.name };
+    if (fp.level != null) want.level = fp.level;
+    if (fp.p != null) want.p = fp.p;
+    const key = buyOrderItemKey(fp.name, fp.level, fp.p);
+    const indexed = indexNearbyBuyOrders(entities, observer).get(key);
+    if (!indexed) return [];
+    const matches = [];
+    for (let i = 0; i < indexed.length; i++) {
+      const m = indexed[i];
+      if (itemMatchesFingerprint(m.listing, want)) matches.push(m);
+    }
+    return matches;
+  }
+  function isJoinedGiveaway(slot, observer) {
+    if (!slot || !slot.registry || !observer) return false;
+    const id = observer.id != null ? String(observer.id) : "";
+    const name = observer.name != null ? String(observer.name) : "";
+    if (id && Object.prototype.hasOwnProperty.call(slot.registry, id)) {
+      return true;
+    }
+    if (name) {
+      const vals = Object.values(slot.registry);
+      for (let i = 0; i < vals.length; i++) {
+        if (vals[i] === name) return true;
+      }
+    }
+    return false;
+  }
+
+  // src/ui/bag/bagBuyOrderIndicator.ts
+  var HOST_ID = "bottomleftcorner";
+  var BADGE_CLASS = "ecu-bag-buy-badge";
+  var MARK_CLASS = "ecu-bag-buy-order";
+  var BAG_BUY_ORDER_CSS = `
+#${HOST_ID} [data-cnum].${MARK_CLASS} {
+  position: relative;
+}
+#${HOST_ID} .${BADGE_CLASS} {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  background: #1a3a4a;
+  border: 1px solid #8fd4ff;
+  color: #fff;
+  font-size: 9px;
+  line-height: 11px;
+  font-family: "Press Start 2P", monospace;
+  text-align: center;
+  pointer-events: none;
+}
+`;
+  var cssInjected = false;
+  function ensureCss() {
+    if (cssInjected) return;
+    cssInjected = true;
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-bag-buy-css", "1");
+    el.textContent = BAG_BUY_ORDER_CSS;
+    document.head.appendChild(el);
+  }
+  function clearBuyOrderChrome(node) {
+    node.classList.remove(MARK_CLASS);
+    const badge = node.querySelector(`.${BADGE_CLASS}`);
+    if (badge) badge.remove();
+  }
+  function refreshBagBuyOrderIndicators() {
+    if (!window.inventory) return;
+    const host2 = document.getElementById(HOST_ID);
+    if (!host2) return;
+    const obs = window.observing;
+    const items = obs && Array.isArray(obs.items) ? obs.items : null;
+    if (!obs || !items) return;
+    ensureCss();
+    const index = indexNearbyBuyOrders(getEntitiesList(), obs);
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      clearBuyOrderChrome(node);
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") continue;
+      const num = parseInt(raw, 10);
+      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
+      const item = items[num];
+      const fp = fingerprintFromSlot(num, item);
+      if (!fp) continue;
+      const key = buyOrderItemKey(fp.name, fp.level, fp.p);
+      const matches = index.get(key);
+      if (!matches || !matches.length) continue;
+      const best = matches[0];
+      const priceLabel = formatTradeGold(best.listing.price);
+      const tip = `Nearby buy order \u2014 ${best.entityName} ${priceLabel}g \xB7 right-click \u2192 Sell to buy order\u2026`;
+      node.classList.add(MARK_CLASS);
+      const badge = document.createElement("span");
+      badge.className = BADGE_CLASS;
+      badge.textContent = "B";
+      badge.title = tip;
+      node.appendChild(badge);
+      const existing = node.getAttribute("title") || "";
+      if (existing.indexOf("Nearby buy order") < 0) {
+        node.setAttribute("title", existing ? `${existing} \xB7 ${tip}` : tip);
+      }
+      const inner = node.querySelector(".rclick");
+      if (inner) {
+        const innerTip = inner.getAttribute("title") || existing;
+        if (innerTip.indexOf("Nearby buy order") < 0) {
+          inner.setAttribute(
+            "title",
+            innerTip ? `${innerTip} \xB7 ${tip}` : tip
+          );
+        }
+      }
+    }
+  }
+
   // src/host/infoDialog/bindings.ts
   var openItemFn = null;
   var openConditionFn = null;
@@ -13963,7 +14768,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/infoDialog/write.ts
-  var listeners6 = /* @__PURE__ */ new Set();
+  var listeners7 = /* @__PURE__ */ new Set();
   var pendingWriteKind = "item";
   function setPendingWriteKind(kind) {
     pendingWriteKind = kind;
@@ -13972,13 +14777,13 @@ ${CHROME_ARRANGE_CSS}
     return pendingWriteKind;
   }
   function subscribeInfoDialogChange(listener) {
-    listeners6.add(listener);
+    listeners7.add(listener);
     return () => {
-      listeners6.delete(listener);
+      listeners7.delete(listener);
     };
   }
   function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners6)) {
+    for (const listener of Array.from(listeners7)) {
       try {
         listener(kind, open);
       } catch (e2) {
@@ -14366,13 +15171,13 @@ ${CHROME_ARRANGE_CSS}
   };
 
   // src/host/inventory.ts
-  var HOST_ID = "bottomleftcorner";
+  var HOST_ID2 = "bottomleftcorner";
   var STYLE_ID3 = "comm-ui-inventory-host-css";
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
   var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
-  var listeners7 = [];
+  var listeners8 = [];
   var syncListeners = [];
   var bagSyncedAt = null;
   var bagSyncedForName = null;
@@ -14388,7 +15193,7 @@ ${CHROME_ARRANGE_CSS}
     const style = document.createElement("style");
     style.id = STYLE_ID3;
     style.textContent = `
-#${HOST_ID} {
+#${HOST_ID2} {
   position: relative;
   left: auto;
   bottom: auto;
@@ -14398,7 +15203,7 @@ ${CHROME_ARRANGE_CSS}
   max-height: min(70vh, calc(100vh - 72px));
   overflow: auto;
 }
-#${HOST_ID} .theinventory {
+#${HOST_ID2} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
@@ -14413,14 +15218,15 @@ ${CHROME_ARRANGE_CSS}
     document.head.append(style);
   }
   function notifyInventory(open) {
-    for (let i = 0; i < listeners7.length; i++) {
+    for (let i = 0; i < listeners8.length; i++) {
       try {
-        listeners7[i](open);
+        listeners8[i](open);
       } catch (e2) {
       }
     }
   }
   function notifyBagSync() {
+    clearObserverCommandPending();
     for (let i = 0; i < syncListeners.length; i++) {
       try {
         syncListeners[i]();
@@ -14483,7 +15289,7 @@ ${CHROME_ARRANGE_CSS}
       }
       const name = observingSnapshotName(obs);
       if (window.inventory && name != null && name !== bagRenderedForName) {
-        reRenderLocalSnapshot();
+        repaintObservedInventoryFromSnapshot();
       }
     } else if (socketChanged && bagSyncedAt != null) {
       setBagSyncedAt(null);
@@ -14495,10 +15301,10 @@ ${CHROME_ARRANGE_CSS}
     bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
   }
   function subscribeInventory(listener) {
-    listeners7.push(listener);
+    listeners8.push(listener);
     return () => {
-      const idx = listeners7.indexOf(listener);
-      if (idx >= 0) listeners7.splice(idx, 1);
+      const idx = listeners8.indexOf(listener);
+      if (idx >= 0) listeners8.splice(idx, 1);
     };
   }
   function subscribeBagSync(listener) {
@@ -14556,7 +15362,7 @@ ${CHROME_ARRANGE_CSS}
     closeInventoryHost();
   }
   function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID);
+    const host2 = document.getElementById(HOST_ID2);
     if (host2) host2.innerHTML = "";
     window.inventory = false;
     bagRenderedForName = null;
@@ -14564,7 +15370,7 @@ ${CHROME_ARRANGE_CSS}
     notifyInventory(false);
     notifyBagSync();
   }
-  function reRenderLocalSnapshot() {
+  function repaintObservedInventoryFromSnapshot() {
     bagRefreshKind = "local";
     callThroughDraw(() => {
       if (typeof window.render_inventory !== "function") return;
@@ -14582,7 +15388,7 @@ ${CHROME_ARRANGE_CSS}
     const name = obs && obs.name != null ? String(obs.name) : "";
     const secret = name ? findObserveSecret(name) : null;
     if (!name || !secret || typeof window.init_socket !== "function") {
-      reRenderLocalSnapshot();
+      repaintObservedInventoryFromSnapshot();
       return;
     }
     clearRefreshPoll();
@@ -14595,7 +15401,7 @@ ${CHROME_ARRANGE_CSS}
     if (typeof initSocket !== "function") {
       setBagRefreshing(false);
       refreshPendingName = null;
-      reRenderLocalSnapshot();
+      repaintObservedInventoryFromSnapshot();
       return;
     }
     initSocket({ secret });
@@ -14629,7 +15435,7 @@ ${CHROME_ARRANGE_CSS}
     }, 250);
   }
   function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID);
+    const host2 = document.getElementById(HOST_ID2);
     if (!host2) return;
     if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
       host2.style.position = "relative";
@@ -14654,10 +15460,10 @@ ${CHROME_ARRANGE_CSS}
   }
   function ensureInventoryHost() {
     injectHostCss();
-    let el = document.getElementById(HOST_ID);
+    let el = document.getElementById(HOST_ID2);
     if (!el) {
       el = document.createElement("div");
-      el.id = HOST_ID;
+      el.id = HOST_ID2;
       el.className = "bpclicks enableclicks";
       document.body.append(el);
     }
@@ -14685,6 +15491,34 @@ ${CHROME_ARRANGE_CSS}
     window.character = window[SAVED_CHAR];
     delete window[SAVED_CHAR];
     window[HOLD_CHAR] = false;
+  }
+  function refreshInventoryItemTitles() {
+    if (!window.inventory) return;
+    const host2 = document.getElementById(HOST_ID2);
+    if (!host2) return;
+    const obs = window.observing;
+    const items = obs && Array.isArray(obs.items) ? obs.items : null;
+    if (!items) return;
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") continue;
+      const num = parseInt(raw, 10);
+      if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
+      const item = items[num];
+      if (!item || !item.name || item.name === "placeholder") {
+        node.removeAttribute("title");
+        const inner = node.querySelector(".rclick");
+        if (inner) inner.removeAttribute("title");
+        continue;
+      }
+      const p = typeof item.p === "string" ? item.p : void 0;
+      const label = itemInstanceLabel(item.name, { p, level: item.level });
+      stampNativeItemTitle(node, label);
+      if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
+    }
+    refreshBagBuyOrderIndicators();
   }
   function prepareObservingCharacter() {
     const obs = window.observing;
@@ -14760,7 +15594,7 @@ ${CHROME_ARRANGE_CSS}
       window.render_inventory = function patchedRenderInventory(reset) {
         ensureInventoryHost();
         if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID);
+          const host2 = document.getElementById(HOST_ID2);
           if (host2) host2.innerHTML = "";
           window.inventory = false;
           bagRenderedForName = null;
@@ -14793,6 +15627,8 @@ ${CHROME_ARRANGE_CSS}
             bagRenderedForName = observingSnapshotName();
             backfillBagSyncedAt();
             applyBagLayoutPos();
+            refreshInventoryItemTitles();
+            window.requestAnimationFrame(() => refreshInventoryItemTitles());
             notifyInventory(true);
             notifyBagSync();
           } else if (!window.inventory) {
@@ -14982,42 +15818,6 @@ ${CHROME_ARRANGE_CSS}
       }
     }
     return wrapCommandScript(parts.join(""));
-  }
-
-  // src/host/mail/itemFingerprint.ts
-  function itemMatchesFingerprint(item, expected) {
-    if (!item || !item.name) return false;
-    if (item.name !== expected.name) return false;
-    if (expected.level != null) {
-      if (item.level !== expected.level) return false;
-    }
-    if (expected.q != null) {
-      if (item.q !== expected.q) return false;
-    }
-    if (expected.p != null) {
-      if (item.p !== expected.p) return false;
-    }
-    return true;
-  }
-  function fingerprintFromSlot(slot, item) {
-    if (!item || !item.name || item.name === "placeholder") return null;
-    const fp = { slot, name: String(item.name) };
-    if (item.level != null) fp.level = Number(item.level);
-    if (item.q != null) fp.q = Number(item.q);
-    if (item.p != null) fp.p = String(item.p);
-    return fp;
-  }
-  function findFingerprintSlot(items, expected, usedSlots) {
-    if (!items || !items.length) return -1;
-    const prefer = Number(expected.slot) | 0;
-    if (prefer >= 0 && prefer < items.length && !(usedSlots && usedSlots.has(prefer)) && itemMatchesFingerprint(items[prefer], expected)) {
-      return prefer;
-    }
-    for (let i = 0; i < items.length; i++) {
-      if (usedSlots && usedSlots.has(i)) continue;
-      if (itemMatchesFingerprint(items[i], expected)) return i;
-    }
-    return -1;
   }
 
   // src/host/mail/mailOutcomes.ts
@@ -16281,7 +17081,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   function canUseDom() {
     return typeof document !== "undefined" && !!document.body;
   }
-  function ensureCss() {
+  function ensureCss2() {
     if (!canUseDom()) return;
     const existing = document.getElementById(STYLE_ID4);
     if (existing) {
@@ -16351,7 +17151,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   }
   function showDisconnectOverlay(reason) {
     if (!canUseDom()) return;
-    ensureCss();
+    ensureCss2();
     const label = disconnectBannerLabel(reason);
     const detail = disconnectBannerDetail(reason);
     if (!overlayEl) {
@@ -16428,7 +17228,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
       everConnected = true;
     }
-    ensureCss();
+    ensureCss2();
     wrapDisconnect();
     syncOverlay();
     unsubTick = subscribeTick(() => {
@@ -18047,8 +18847,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.15" : "unknown";
-    const builtAt = true ? "2026-08-29T19:06:15.050Z" : "unknown";
+    const version = true ? "0.8.0-alpha.16" : "unknown";
+    const builtAt = true ? "2026-08-30T17:17:51.654Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -20993,29 +21793,29 @@ button.comm-mail__stack-u {
   };
   var PAPERDOLL_TRADE_TOUR = {
     id: "paperdoll-trade",
-    label: "Paperdoll \xB7 trade slots",
+    label: "Trade window",
     steps: [
       {
-        title: "Trade slots",
-        body: "This paperdoll has a TRADE row under gear \u2014 shop listings with prices (merchants and player stands).",
-        target: '[data-ecu-tour="paperdoll-trade"]',
+        title: "Trade window",
+        body: "The Trade panel shows your listings and merchants you inspect. Use Yours / Inspected to switch without losing your own row.",
+        target: '[data-ecu-tour="trade-panel"]',
         targetKind: "region",
         missingHint: "Inspect a merchant or player stand that has trade items listed."
       },
       {
-        title: "Inspect a listing",
-        body: "Click a trade item to open Item info \u2014 same panel as equipped gear. The tour continues when you do.",
-        target: '[data-ecu-tour="paperdoll-trade"]',
+        title: "Buy or sell",
+        body: "Left-click a sell listing to buy, a buy order to fulfill, or a giveaway to join. Shift+click opens Item info. Bag items with a nearby buy order also show a B badge.",
+        target: '[data-ecu-tour="trade-panel"]',
         targetKind: "region",
-        missingHint: "Click a filled trade slot.",
-        advanceWhen: "itemInfoOpen"
+        missingHint: "Inspect someone with trade slots, or list on your own row."
       },
       {
         title: "Item info",
-        body: "Listing details park here so you can compare while browsing the paperdoll.",
+        body: "Shift+click any listing to park details in Item info while you compare prices.",
         target: ".comm-pos-itemInfo",
         targetKind: "panel",
-        missingHint: "Click a filled trade slot if Item info is not open yet."
+        missingHint: "Shift+click a filled trade slot.",
+        advanceWhen: "itemInfoOpen"
       }
     ]
   };
@@ -22639,7 +23439,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners8 = [];
+  var listeners9 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -22676,9 +23476,9 @@ button.comm-mail__stack-u {
     } catch (e2) {
     }
   }
-  function notify3() {
-    for (let i = 0; i < listeners8.length; i++) {
-      listeners8[i]();
+  function notify4() {
+    for (let i = 0; i < listeners9.length; i++) {
+      listeners9[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -22695,7 +23495,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify3();
+    notify4();
     return next;
   }
   function getLayoutGridStep() {
@@ -22708,7 +23508,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify3();
+    notify4();
     return next;
   }
   function getLayoutChromePos() {
@@ -22721,14 +23521,14 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify3();
+    notify4();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners8.push(listener);
+    listeners9.push(listener);
     return () => {
-      const idx = listeners8.indexOf(listener);
-      if (idx >= 0) listeners8.splice(idx, 1);
+      const idx = listeners9.indexOf(listener);
+      if (idx >= 0) listeners9.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -22740,7 +23540,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify3();
+    notify4();
     return next;
   }
 
@@ -23237,10 +24037,10 @@ button.comm-mail__stack-u {
     if (out.length) return out;
     return [all[0].mtype];
   }
-  function loopPreviewRemaining(cooldown, phaseMs, now, epoch) {
+  function loopPreviewRemaining(cooldown, phaseMs, now, epoch2) {
     if (!(cooldown > 0)) return { ms: 0, cycle: 0 };
     const period = cooldown + PREVIEW_READY_HOLD_MS;
-    const t = Math.max(0, now - epoch + phaseMs);
+    const t = Math.max(0, now - epoch2 + phaseMs);
     const cycle = Math.floor(t / period);
     const elapsed = t % period;
     if (elapsed >= cooldown) return { ms: 0, cycle };
@@ -23264,7 +24064,7 @@ button.comm-mail__stack-u {
     }
     return out;
   }
-  function dummyAbilityTimelineModel(prefs, now = Date.now(), epoch, mtypes) {
+  function dummyAbilityTimelineModel(prefs, now = Date.now(), epoch2, mtypes) {
     const casters = pickCasters(mtypes);
     const sections = [];
     for (let i = 0; i < casters.length; i++) {
@@ -23277,12 +24077,12 @@ button.comm-mail__stack-u {
         let ms = ab.cooldown;
         let endsAt = 0;
         let castGen = 0;
-        if (epoch != null) {
+        if (epoch2 != null) {
           const looped = loopPreviewRemaining(
             ab.cooldown,
             ab.phaseMs,
             now,
-            epoch
+            epoch2
           );
           ms = looped.ms;
           castGen = looped.cycle;
@@ -23347,7 +24147,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners9 = [];
+  var listeners10 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -23402,14 +24202,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners9.push(listener);
+    listeners10.push(listener);
     return () => {
-      const idx = listeners9.indexOf(listener);
-      if (idx >= 0) listeners9.splice(idx, 1);
+      const idx = listeners10.indexOf(listener);
+      if (idx >= 0) listeners10.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners9.length; i++) listeners9[i]();
+    for (let i = 0; i < listeners10.length; i++) listeners10[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -23697,15 +24497,15 @@ button.comm-mail__stack-u {
   white-space: pre-wrap;
 }
 `;
-  var cssInjected = false;
+  var cssInjected2 = false;
   var hoverEl = null;
   var noticeEl = null;
   function canUseDom2() {
     return typeof document !== "undefined" && !!document.body;
   }
-  function ensureCss2() {
-    if (cssInjected || !canUseDom2()) return;
-    cssInjected = true;
+  function ensureCss3() {
+    if (cssInjected2 || !canUseDom2()) return;
+    cssInjected2 = true;
     const existing = document.querySelector(
       "style[data-ecu-comm-notice-css]"
     );
@@ -23728,7 +24528,7 @@ button.comm-mail__stack-u {
       hideCommHover();
       return;
     }
-    ensureCss2();
+    ensureCss3();
     if (!hoverEl) {
       hoverEl = document.createElement("div");
       hoverEl.className = "ecu-comm-hover";
@@ -23747,7 +24547,7 @@ button.comm-mail__stack-u {
   }
   function showCommNotice(notice) {
     if (!canUseDom2()) return;
-    ensureCss2();
+    ensureCss3();
     hideCommHover();
     hideCommNotice();
     noticeEl = document.createElement("div");
@@ -25008,10 +25808,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners10 = [];
-  function notify4() {
-    for (let i = 0; i < listeners10.length; i++) {
-      listeners10[i]();
+  var listeners11 = [];
+  function notify5() {
+    for (let i = 0; i < listeners11.length; i++) {
+      listeners11[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -25019,7 +25819,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify4();
+    if (depth === 1) notify5();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -25027,18 +25827,18 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify4();
+    if (depth === 0) notify5();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify4();
+    notify5();
   }
   function subscribeLayoutGuide(listener) {
-    listeners10.push(listener);
+    listeners11.push(listener);
     return () => {
-      const idx = listeners10.indexOf(listener);
-      if (idx >= 0) listeners10.splice(idx, 1);
+      const idx = listeners11.indexOf(listener);
+      if (idx >= 0) listeners11.splice(idx, 1);
     };
   }
 
@@ -42792,6 +43592,312 @@ ${parts.map(cssSlice).join("\n")}
     return e(paneMemo2, props || {});
   }
 
+  // src/ui/frames/settings/bagSettingsPane.ts
+  function matchesText(hay, query) {
+    return hay.toLowerCase().includes(query);
+  }
+  function countBagSettingsMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      return 2 + BAG_SORT_KEY_CATALOG.length;
+    }
+    let n = 0;
+    if (matchesText("pack empty slots last sort bag inventory preset", q)) n++;
+    for (const p of Object.values(BAG_SORT_PRESET_LABELS)) {
+      if (matchesText(p, q)) n++;
+    }
+    for (let i = 0; i < BAG_SORT_KEY_CATALOG.length; i++) {
+      const d = BAG_SORT_KEY_CATALOG[i];
+      if (matchesText(`${d.label} ${d.key} ${d.help} sort`, q)) n++;
+    }
+    return n;
+  }
+  function presetSelect(value, onChange) {
+    const keys = Object.keys(BAG_SORT_PRESET_LABELS);
+    return e(
+      "div",
+      { className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e("span", { className: "ecu-settings-row-label" }, "Preset"),
+        e(
+          "span",
+          { className: "ecu-settings-help" },
+          "Load a common rule chain (AdiBags-style). Pick Custom to edit freely."
+        )
+      ),
+      e(
+        "select",
+        {
+          value,
+          onChange: (ev) => onChange(ev.target.value),
+          style: {
+            fontSize: "12px",
+            background: "#1a1a1a",
+            color: "#ddd",
+            border: "1px solid #555",
+            maxWidth: "220px"
+          }
+        },
+        ...keys.map(
+          (k) => e("option", { key: k, value: k }, BAG_SORT_PRESET_LABELS[k])
+        )
+      )
+    );
+  }
+  function ruleRow(rule, index, total, onPatch, onMove, onRemove) {
+    var _a;
+    const def = BAG_SORT_KEY_CATALOG.find((d) => d.key === rule.key);
+    return e(
+      "div",
+      {
+        key: rule.id,
+        className: "ecu-settings-row ecu-settings-row--bag-rule",
+        style: { alignItems: "flex-start" }
+      },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy", style: { flex: 1 } },
+        e(
+          "span",
+          { className: "ecu-settings-row-label" },
+          `${index + 1}. `,
+          (_a = def == null ? void 0 : def.label) != null ? _a : rule.key
+        ),
+        (def == null ? void 0 : def.help) ? e("span", { className: "ecu-settings-help" }, def.help) : null
+      ),
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            alignItems: "flex-end",
+            flexShrink: 0
+          }
+        },
+        e(
+          "div",
+          { style: { display: "flex", gap: "4px", alignItems: "center" } },
+          e(
+            "button",
+            {
+              type: "button",
+              disabled: index <= 0,
+              title: "Higher priority",
+              onClick: () => onMove(-1),
+              style: { fontSize: "11px", padding: "2px 6px" }
+            },
+            "\u2191"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              disabled: index >= total - 1,
+              title: "Lower priority",
+              onClick: () => onMove(1),
+              style: { fontSize: "11px", padding: "2px 6px" }
+            },
+            "\u2193"
+          ),
+          e("input", {
+            type: "checkbox",
+            checked: rule.enabled,
+            title: "Include rule",
+            onChange: (ev) => onPatch({ enabled: ev.target.checked })
+          })
+        ),
+        e(
+          "div",
+          { style: { display: "flex", gap: "4px", alignItems: "center" } },
+          e(
+            "select",
+            {
+              value: rule.key,
+              disabled: !rule.enabled,
+              onChange: (ev) => onPatch({ key: ev.target.value }),
+              style: {
+                fontSize: "11px",
+                background: "#1a1a1a",
+                color: "#ddd",
+                border: "1px solid #555",
+                maxWidth: "120px"
+              }
+            },
+            ...BAG_SORT_KEY_CATALOG.map(
+              (d) => e("option", { key: d.key, value: d.key }, d.label)
+            )
+          ),
+          e(
+            "select",
+            {
+              value: rule.dir,
+              disabled: !rule.enabled,
+              onChange: (ev) => onPatch({
+                dir: ev.target.value === "desc" ? "desc" : "asc"
+              }),
+              style: {
+                fontSize: "11px",
+                background: "#1a1a1a",
+                color: "#ddd",
+                border: "1px solid #555"
+              }
+            },
+            e("option", { value: "asc" }, "\u2191 asc"),
+            e("option", { value: "desc" }, "\u2193 desc")
+          ),
+          total > 1 ? e(
+            "button",
+            {
+              type: "button",
+              title: "Remove rule",
+              onClick: onRemove,
+              style: { fontSize: "11px", padding: "2px 6px" }
+            },
+            "\xD7"
+          ) : null
+        )
+      )
+    );
+  }
+  function BagSettingsPane(props) {
+    var _a, _b;
+    const React = getReact();
+    const [, bump] = React.useState(0);
+    const query = String(props.query || "").trim().toLowerCase();
+    const prefs = getBagSortPrefs();
+    const refresh = () => bump((n) => n + 1);
+    const kids = [
+      e(
+        "p",
+        { className: "ecu-settings-lead" },
+        "Sort priority list for the bag Sort button \u2014 like AdiBags / Bagnon: top rules break ties first. Use presets, then tweak or reorder."
+      )
+    ];
+    if (!query || matchesText("preset sort bag", query)) {
+      kids.push(
+        settingsSection("Presets"),
+        presetSelect(prefs.preset, (preset) => {
+          if (preset === "custom") {
+            patchBagSortPrefs({ preset: "custom" });
+          } else {
+            applyBagSortPreset(preset);
+          }
+          refresh();
+        }),
+        e(
+          "p",
+          { className: "ecu-settings-help", style: { margin: "4px 0 8px" } },
+          `Active chain: ${describeBagSortRules(prefs)}`
+        )
+      );
+    }
+    if (!query || matchesText("empty pack slots sort bag", query)) {
+      kids.push(
+        settingsSection("Layout"),
+        settingsCheckboxRow(
+          "bag-sort-empty-last",
+          "Pack empty slots last",
+          prefs.emptyLast,
+          (next) => {
+            patchBagSortPrefs({ emptyLast: next, preset: "custom" });
+            refresh();
+          },
+          {
+            help: "Compact items to the front of the bag after sorting."
+          }
+        )
+      );
+    }
+    const ruleRows = [];
+    for (let i = 0; i < prefs.rules.length; i++) {
+      const rule = prefs.rules[i];
+      const def = BAG_SORT_KEY_CATALOG.find((d) => d.key === rule.key);
+      if (query && !matchesText(
+        `${(_a = def == null ? void 0 : def.label) != null ? _a : ""} ${rule.key} ${(_b = def == null ? void 0 : def.help) != null ? _b : ""} sort rule priority`,
+        query
+      )) {
+        continue;
+      }
+      ruleRows.push(
+        ruleRow(
+          rule,
+          i,
+          prefs.rules.length,
+          (patch) => {
+            patchBagSortPrefs({
+              preset: "custom",
+              rules: updateBagSortRule(prefs.rules, rule.id, patch)
+            });
+            refresh();
+          },
+          (delta) => {
+            patchBagSortPrefs({
+              preset: "custom",
+              rules: moveBagSortRule(prefs.rules, rule.id, delta)
+            });
+            refresh();
+          },
+          () => {
+            patchBagSortPrefs({
+              preset: "custom",
+              rules: removeBagSortRule(prefs.rules, rule.id)
+            });
+            refresh();
+          }
+        )
+      );
+    }
+    if (!query || matchesText("sort rule priority add", query)) {
+      kids.push(settingsSection("Sort rules (priority order)"), ...ruleRows);
+      kids.push(
+        e(
+          "div",
+          { style: { marginTop: "6px" } },
+          e(
+            "select",
+            {
+              defaultValue: "",
+              onChange: (ev) => {
+                const key = ev.target.value;
+                if (!key) return;
+                patchBagSortPrefs({
+                  preset: "custom",
+                  rules: addBagSortRule(prefs.rules, key)
+                });
+                ev.target.value = "";
+                refresh();
+              },
+              style: {
+                fontSize: "12px",
+                background: "#1a1a1a",
+                color: "#ddd",
+                border: "1px solid #555"
+              }
+            },
+            e("option", { value: "" }, "+ Add sort rule\u2026"),
+            ...BAG_SORT_KEY_CATALOG.map(
+              (d) => e("option", { key: d.key, value: d.key }, d.label)
+            )
+          )
+        )
+      );
+    }
+    if (ruleRows.length === 0 && query) {
+      kids.push(
+        e(
+          "p",
+          { className: "ecu-settings-help" },
+          "No bag sort settings match this search."
+        )
+      );
+    }
+    return e("div", null, ...kids);
+  }
+
   // src/ui/frames/settings/settingsRegistry.ts
   var SETTINGS_PANES = [
     {
@@ -42825,6 +43931,13 @@ ${parts.map(cssSlice).join("\n")}
       description: "Map drawings, rings, labels, debug lines, and per-ability appearance overrides.",
       countMatches: countInGameSettingsMatches,
       render: (props) => e(InGameSettingsPane, { query: props.query })
+    },
+    {
+      id: "bag",
+      label: "Bag",
+      description: "Inventory sort rules for the bag panel Sort button on the watched character.",
+      countMatches: countBagSettingsMatches,
+      render: (props) => e(BagSettingsPane, { query: props.query })
     },
     {
       id: "commHud",
@@ -42979,6 +44092,20 @@ ${parts.map(cssSlice).join("\n")}
         )
       )
     );
+  }
+
+  // src/host/gearObserved.ts
+  function isObservedSelf(entity) {
+    const obs = getObserving() || window.observing;
+    if (!entity || !obs || entity.id == null || obs.id == null) return false;
+    return String(entity.id) === String(obs.id);
+  }
+  function canEditObservedGear(entity, stale) {
+    if (stale) return false;
+    return isObservedSelf(entity);
+  }
+  function canEditObservedBag() {
+    return canEditObservedGear(window.observing);
   }
 
   // src/lib/panelClose.ts
@@ -46048,13 +47175,1871 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
-  // src/ui/chrome/GearGrid.ts
-  var GEAR_ROWS = [
-    ["earring1", "helmet", "earring2", "amulet"],
-    ["mainhand", "chest", "offhand", "cape"],
-    ["ring1", "pants", "ring2", "orb"],
-    ["belt", "shoes", "gloves", "elixir"]
-  ];
+  // src/lib/standTradeSlotMemory.ts
+  var byEntity = /* @__PURE__ */ new Map();
+  var epoch = 0;
+  function isStandExtraTradeSlot(name) {
+    if (name.indexOf("trade") !== 0) return false;
+    const num = parseInt(name.replace("trade", ""), 10);
+    return Number.isFinite(num) && num >= 5;
+  }
+  function cloneSlot(slot) {
+    if (!slot) return null;
+    return Object.assign({}, slot);
+  }
+  function standTradeMemoryEpoch() {
+    return epoch;
+  }
+  function bumpEpoch() {
+    epoch += 1;
+  }
+  function rememberStandTradeSlots(entityId, slots) {
+    if (!entityId || !slots) return;
+    const snap = {};
+    let changed = false;
+    const prev = byEntity.get(entityId) || null;
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (!isStandExtraTradeSlot(k)) continue;
+      snap[k] = cloneSlot(slots[k]);
+    }
+    if (!prev) {
+      changed = Object.keys(snap).length > 0;
+    } else {
+      const prevKeys = Object.keys(prev);
+      const snapKeys = Object.keys(snap);
+      if (prevKeys.length !== snapKeys.length) changed = true;
+      else {
+        for (let i = 0; i < snapKeys.length; i++) {
+          const k = snapKeys[i];
+          const a = prev[k];
+          const b = snap[k];
+          if (!a && !b) continue;
+          if (!a || !b || a.name !== b.name || a.price !== b.price || a.q !== b.q) {
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+    byEntity.set(entityId, snap);
+    if (changed) bumpEpoch();
+  }
+  function forgetStandTradeSlot(entityId, slotName) {
+    if (!entityId || !isStandExtraTradeSlot(slotName)) return;
+    const snap = byEntity.get(entityId);
+    if (!snap || !Object.prototype.hasOwnProperty.call(snap, slotName)) return;
+    delete snap[slotName];
+    bumpEpoch();
+  }
+  function mergeStandTradeSlotsForUi(entityId, slots, standOpen) {
+    if (!slots) return slots;
+    if (standOpen) {
+      rememberStandTradeSlots(entityId, slots);
+      return slots;
+    }
+    const snap = byEntity.get(entityId);
+    if (!snap) return slots;
+    const out = Object.assign({}, slots);
+    const keys = Object.keys(snap);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (Object.prototype.hasOwnProperty.call(out, k)) continue;
+      out[k] = cloneSlot(snap[k]);
+    }
+    return out;
+  }
+  function isHiddenStandTradeListing(slotName, slotListing, liveSlots) {
+    if (!(slotListing == null ? void 0 : slotListing.name) || !isStandExtraTradeSlot(slotName)) return false;
+    const live2 = liveSlots == null ? void 0 : liveSlots[slotName];
+    return !(live2 == null ? void 0 : live2.name);
+  }
+  function shouldSkipLiveTradeSlotGuard(slotName, slotListing, liveSlots) {
+    return isHiddenStandTradeListing(slotName, slotListing, liveSlots);
+  }
+  function canRepriceTradeSlot(slotName, slotListing, liveSlots, standOpen) {
+    if (!(slotListing == null ? void 0 : slotListing.name)) return false;
+    if (isHiddenStandTradeListing(slotName, slotListing, liveSlots) && !standOpen) {
+      return false;
+    }
+    return true;
+  }
+
+  // src/lib/tradeSlots.ts
+  function isTradeSlot(slotName) {
+    return String(slotName || "").indexOf("trade") === 0;
+  }
+  function formatTradeSlotLabel(slotName) {
+    const num = parseInt(String(slotName).replace("trade", ""), 10);
+    if (Number.isFinite(num) && num > 0) return `Trade ${num}`;
+    return slotName;
+  }
+  function hasTradeRowKey(slots) {
+    return Object.prototype.hasOwnProperty.call(slots, "trade1");
+  }
+  function tradeRowVisible(slots, entity) {
+    if (!slots) return false;
+    if (entity && entity.stand) return true;
+    if (hasTradeRowKey(slots)) return true;
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf("trade") === 0 && slots[keys[i]]) return true;
+    }
+    return false;
+  }
+  var PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
+  function merchantStandCapacity(entity) {
+    if (!entity) return 16;
+    const level = entity.level != null ? Number(entity.level) : 0;
+    const stand = entity.stand ? String(entity.stand) : "";
+    if (entity.type === "merchant" && level >= 80) return 30;
+    if (entity.type === "merchant" && (level >= 70 || stand === "cstand")) return 24;
+    return 16;
+  }
+  function standTradeSlotCount(entity) {
+    if (!entity || !entity.stand) return 0;
+    return merchantStandCapacity(entity);
+  }
+  function allMerchantStandSlotNames(entity) {
+    const n = merchantStandCapacity(entity);
+    const names = [];
+    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
+    return names;
+  }
+  function allStandTradeSlotNames(entity) {
+    const n = standTradeSlotCount(entity);
+    if (n <= 0) return [];
+    const names = [];
+    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
+    return names;
+  }
+  function standGridColumns(slotCount) {
+    if (slotCount > 16) return 6;
+    return 4;
+  }
+  function personalTradeSlotNames(slots, entity, gearEditable) {
+    if (gearEditable) return PERSONAL_TRADE_SLOTS.slice();
+    if (!slots) return [];
+    if (entity && entity.stand) return PERSONAL_TRADE_SLOTS.slice();
+    if (hasTradeRowKey(slots)) return PERSONAL_TRADE_SLOTS.slice();
+    const keys = Object.keys(slots);
+    const filled = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k.indexOf("trade") !== 0) continue;
+      const num = parseInt(k.replace("trade", ""), 10);
+      if (num >= 1 && num <= 4 && slots[k]) filled.push(k);
+    }
+    filled.sort((a, b) => {
+      const na = parseInt(a.replace("trade", ""), 10) || 0;
+      const nb = parseInt(b.replace("trade", ""), 10) || 0;
+      return na - nb;
+    });
+    return filled.length ? PERSONAL_TRADE_SLOTS.slice() : [];
+  }
+  function merchantStandSlotNames(slots, entity, compact, excludePersonal = false) {
+    if (!entity || !slots) return [];
+    const all = allMerchantStandSlotNames(entity);
+    const candidates = excludePersonal ? all.slice(4) : all;
+    return compactTradeSlotNames(candidates, slots, compact);
+  }
+  function tradeSlotNames(slots, entity, options) {
+    if (!slots) return [];
+    if ((options == null ? void 0 : options.editPersonalRow) && !(entity && entity.stand)) {
+      return PERSONAL_TRADE_SLOTS.slice();
+    }
+    if (!tradeRowVisible(slots, entity)) return [];
+    const keys = Object.keys(slots);
+    const tradeKeys = [];
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf("trade") === 0) tradeKeys.push(keys[i]);
+    }
+    tradeKeys.sort((a, b) => {
+      const na = parseInt(a.replace("trade", ""), 10) || 0;
+      const nb = parseInt(b.replace("trade", ""), 10) || 0;
+      return na - nb;
+    });
+    if (entity && entity.stand && tradeKeys.length > 0) return tradeKeys;
+    if (hasTradeRowKey(slots)) {
+      return PERSONAL_TRADE_SLOTS.slice();
+    }
+    return tradeKeys;
+  }
+  function observingTradeSlotNames() {
+    const obs = window.observing;
+    if (!obs || !obs.slots) return [];
+    if (obs.stand) return allStandTradeSlotNames(obs);
+    return tradeSlotNames(obs.slots, obs, { editPersonalRow: true });
+  }
+  function tradeSlotIsEmpty(slots, slotName) {
+    if (!slots) return false;
+    const slot = slots[slotName];
+    return !slot || !slot.name;
+  }
+  function compactTradeSlotNames(candidateNames, slots, compact) {
+    if (!compact || !slots) return candidateNames.slice();
+    const filled = [];
+    let firstEmpty = null;
+    for (let i = 0; i < candidateNames.length; i++) {
+      const name = candidateNames[i];
+      if (!tradeSlotIsEmpty(slots, name)) filled.push(name);
+      else if (!firstEmpty) firstEmpty = name;
+    }
+    if (firstEmpty) filled.push(firstEmpty);
+    return filled;
+  }
+
+  // src/host/gearCommands.ts
+  function lit2(value) {
+    return JSON.stringify(String(value));
+  }
+  function fingerprintCheckJs2(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit2(fp.name)}`];
+    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
+    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit2(fp.p)}`);
+    return parts.join("||");
+  }
+  function resolveInvSlotJs(fp) {
+    const preferSlot = Number(fp.slot) | 0;
+    const mismatch = fingerprintCheckJs2(fp, "it");
+    const candMismatch = fingerprintCheckJs2(fp, "__cand");
+    return [
+      `var __slot=${preferSlot};`,
+      `var it=character.items[__slot];`,
+      `if(${mismatch}){`,
+      `__slot=-1;`,
+      `for(var __si=0;__si<character.items.length;__si++){`,
+      `var __cand=character.items[__si];`,
+      `if(!(${candMismatch})){__slot=__si;break;}`,
+      `}`,
+      `if(__slot<0){game_log(${lit2("Gear command aborted \u2014 item mismatch")});return;}`,
+      `it=character.items[__slot];`,
+      `}`
+    ].join("");
+  }
+  function scheduleBagRefresh() {
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+  }
+  function buildEquipScript(fp, gearSlot) {
+    const slot = gearSlot ? String(gearSlot).trim() : "";
+    const slotArg = slot ? `,${lit2(slot)}` : "";
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        `try{await equip(__slot${slotArg});}catch(__e){`,
+        `game_log(${lit2("Equip failed" + (slot ? " \u2192 " + slot : ""))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildUnequipScript(gearSlot, options) {
+    const slot = String(gearSlot || "").trim();
+    if (!slot) {
+      return wrapCommandScript(`game_log("Unequip aborted \u2014 no slot");`);
+    }
+    if (slot === "elixir") {
+      return wrapCommandScript(`game_log("Cannot unequip elixir");`);
+    }
+    const guard = (options == null ? void 0 : options.skipSlotGuard) ? "" : `if(!character.slots[${lit2(slot)}]){game_log(${lit2("Unequip failed \u2014 slot empty")});return;}`;
+    return wrapCommandScript(
+      [
+        guard,
+        `try{await unequip(${lit2(slot)});}catch(__e){`,
+        `game_log(${lit2("Unequip failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildInvSwapScript(a, b) {
+    const ai = Number(a) | 0;
+    const bi = Number(b) | 0;
+    return wrapCommandScript(
+      [
+        `if(${ai}<0||${bi}<0||${ai}>=character.items.length||${bi}>=character.items.length){`,
+        `game_log("Swap aborted \u2014 invalid slot");return;}`,
+        `try{await swap(${ai},${bi});}catch(__e){`,
+        `game_log("Swap failed \u2192 "+${ai}+"\u2194"+${bi});`,
+        `}`
+      ].join("")
+    );
+  }
+  function patchObservingAfterInvSwap(a, b) {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return;
+    const ai = Number(a) | 0;
+    const bi = Number(b) | 0;
+    if (ai < 0 || bi < 0 || ai >= obs.items.length || bi >= obs.items.length) {
+      return;
+    }
+    const tmp = obs.items[ai];
+    obs.items[ai] = obs.items[bi];
+    obs.items[bi] = tmp;
+    try {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory(true);
+      }
+    } catch (e2) {
+    }
+  }
+  function equipCommand(fp, gearSlot) {
+    const script = buildEquipScript(fp, gearSlot);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    scheduleBagRefresh();
+    return true;
+  }
+  function unequipCommand(gearSlot, options) {
+    const obs = window.observing;
+    const skipSlotGuard = shouldSkipLiveTradeSlotGuard(
+      gearSlot,
+      options == null ? void 0 : options.slotListing,
+      obs == null ? void 0 : obs.slots
+    );
+    const script = buildUnequipScript(gearSlot, { skipSlotGuard });
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    if (isTradeSlot(gearSlot)) {
+      const id = obs && obs.id != null ? String(obs.id) : "";
+      if (id) forgetStandTradeSlot(id, gearSlot);
+    }
+    scheduleBagRefresh();
+    return true;
+  }
+  function invSwapCommand(a, b) {
+    const script = buildInvSwapScript(a, b);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    patchObservingAfterInvSwap(a, b);
+    scheduleBagRefresh();
+    return true;
+  }
+
+  // src/lib/tradePriceMemory.ts
+  var STORAGE_KEY = "ecu-trade-price-memory";
+  function readMap() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e2) {
+      return {};
+    }
+  }
+  function writeMap(map) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    } catch (e2) {
+    }
+  }
+  function recallTradePrice(itemName) {
+    const key = String(itemName || "").trim();
+    if (!key) return null;
+    const entry = readMap()[key];
+    if (!entry || !(entry.price > 0)) return null;
+    return entry;
+  }
+  function rememberTradePrice(itemName, price, q) {
+    const key = String(itemName || "").trim();
+    if (!key || !(price > 0)) return;
+    const map = readMap();
+    map[key] = { price: price | 0, q: q != null && q > 0 ? q | 0 : void 0 };
+    writeMap(map);
+  }
+  function defaultTradePrice(itemName) {
+    const mem = recallTradePrice(itemName);
+    return mem ? String(mem.price) : "";
+  }
+
+  // src/host/tradeCommands.ts
+  function lit3(value) {
+    return JSON.stringify(String(value));
+  }
+  function scheduleBagRefresh2() {
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+  }
+  function buildTradeListScript(fp, tradeSlot, price, q) {
+    const slot = String(tradeSlot || "").trim();
+    const gold = Number(price) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    if (!slot || !isTradeSlotName(slot)) {
+      return wrapCommandScript(`game_log("Trade list aborted \u2014 invalid slot");`);
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(`game_log("Trade list aborted \u2014 invalid price");`);
+    }
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Trade list failed \u2014 slot not empty")});return;}`,
+        `try{await trade(${lit3(slot)},__slot,${gold},${qty > 0 ? qty : 1});}catch(__e){`,
+        `game_log(${lit3("Trade list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildMerchantCloseScript() {
+    return wrapCommandScript(
+      [
+        `try{await close_merchant();}catch(__e){`,
+        `game_log("Close merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildMerchantOpenScript(invSlot) {
+    if (invSlot != null && Number(invSlot) >= 0) {
+      const slot = Number(invSlot) | 0;
+      return wrapCommandScript(
+        [
+          `if(${slot}<0||!character.items[${slot}]){game_log("Open stand failed \u2014 invalid slot");return;}`,
+          `try{await open_merchant(${slot});}catch(__e){`,
+          `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+          `}`
+        ].join("")
+      );
+    }
+    return wrapCommandScript(
+      [
+        `var __num=-1;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||!__it.name)continue;`,
+        `var __def=G.items[__it.name];`,
+        `if(__def&&(__def.stand||__def.type==="stand")){__num=__si;break;}`,
+        `}`,
+        `if(__num<0){game_log("No merchant stand in bag");return;}`,
+        `try{await open_merchant(__num);}catch(__e){`,
+        `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildWishlistScript(tradeSlot, itemName, price, q, level) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const name = String(itemName || "").trim();
+    const gold = Number(price) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    const lvl = level != null ? Number(level) | 0 : 0;
+    if (!slot || !name) {
+      return wrapCommandScript(`game_log("Wishlist aborted \u2014 missing slot or item");`);
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(`game_log("Wishlist aborted \u2014 invalid price");`);
+    }
+    return wrapCommandScript(
+      [
+        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Wishlist failed \u2014 slot not empty")});return;}`,
+        `try{await wishlist(${lit3(slot)},${lit3(name)},${gold},${qty > 0 ? qty : 1},${lvl});}catch(__e){`,
+        `game_log(${lit3("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildTradePurchaseScript(targetId, tradeSlot, rid, quantity) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    const q = Number(quantity) | 0;
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Buy failed \u2014 missing target or listing");`);
+    }
+    if (q <= 0) {
+      return wrapCommandScript(`game_log("Buy failed \u2014 invalid quantity");`);
+    }
+    return wrapCommandScript(
+      [
+        `var __id=${lit3(id)};`,
+        `var __slot=${lit3(slot)};`,
+        `var __rid=${lit3(listingRid)};`,
+        `var __q=${q};`,
+        `var __target=parent.entities[__id];`,
+        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Buy failed \u2014 listing gone");return;}`,
+        `var __listing=__target.slots[__slot];`,
+        `if(__listing.b){game_log("Buy failed \u2014 slot is a buy order");return;}`,
+        `if(__listing.rid!==__rid){game_log("Buy failed \u2014 listing changed");return;}`,
+        `try{socket.emit("trade_buy",{id:__id,slot:__slot,rid:__rid,q:String(__q)});}catch(__e){`,
+        `game_log("Buy failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildTradeFulfillScript(targetId, tradeSlot, rid, quantity) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    const q = Number(quantity) | 0;
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Fulfill failed \u2014 missing target or listing");`);
+    }
+    if (q <= 0) {
+      return wrapCommandScript(`game_log("Fulfill failed \u2014 invalid quantity");`);
+    }
+    return wrapCommandScript(
+      [
+        `var __id=${lit3(id)};`,
+        `var __slot=${lit3(slot)};`,
+        `var __rid=${lit3(listingRid)};`,
+        `var __q=${q};`,
+        `var __target=parent.entities[__id];`,
+        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Fulfill failed \u2014 listing gone");return;}`,
+        `var __listing=__target.slots[__slot];`,
+        `if(!__listing.b){game_log("Fulfill failed \u2014 not a buy order");return;}`,
+        `if(__listing.rid!==__rid){game_log("Fulfill failed \u2014 listing changed");return;}`,
+        `var __have=false;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||__it.name!==__listing.name)continue;`,
+        `if(__listing.level!=null&&(__it.level||0)!==__listing.level)continue;`,
+        `__have=true;break;`,
+        `}`,
+        `if(!__have){game_log("Fulfill failed \u2014 no matching item in bag");return;}`,
+        `try{socket.emit("trade_sell",{id:__id,slot:__slot,rid:__rid,q:__q});}catch(__e){`,
+        `game_log("Fulfill failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildJoinGiveawayScript(targetId, tradeSlot, rid) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Giveaway join failed \u2014 missing target");`);
+    }
+    return wrapCommandScript(
+      [
+        `try{socket.emit("join_giveaway",{id:${lit3(id)},slot:${lit3(slot)},rid:${lit3(listingRid)}});}catch(__e){`,
+        `game_log("Giveaway join failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildGiveawayScript(tradeSlot, fp, minutes, q) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const mins = Number(minutes) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    if (!slot) {
+      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid slot");`);
+    }
+    if (mins <= 0) {
+      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid duration");`);
+    }
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Giveaway failed \u2014 slot not empty")});return;}`,
+        `try{await giveaway(${lit3(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
+        `game_log(${lit3("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function tradeListingSnapshotJs(snapshot) {
+    const o = { name: snapshot.name };
+    if (snapshot.q != null) o.q = snapshot.q;
+    if (snapshot.level != null) o.level = snapshot.level;
+    if (snapshot.b) o.b = true;
+    if (snapshot.p != null) o.p = snapshot.p;
+    return JSON.stringify(o);
+  }
+  function buildTradeRepriceScript(tradeSlot, newPrice, listingSnapshot) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const gold = Number(newPrice) | 0;
+    if (!slot) {
+      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid slot");`);
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid price");`);
+    }
+    const listedInit = (listingSnapshot == null ? void 0 : listingSnapshot.name) ? `var __listed=${tradeListingSnapshotJs(listingSnapshot)};` : `var __listed=character.slots[__slot];`;
+    return wrapCommandScript(
+      [
+        `var __slot=${lit3(slot)};`,
+        `var __price=${gold};`,
+        listedInit,
+        `if(!__listed||!__listed.name){game_log("Reprice failed \u2014 slot empty");return;}`,
+        `var __name=__listed.name;`,
+        `var __q=__listed.q||1;`,
+        `var __level=__listed.level||0;`,
+        `var __p=__listed.p||null;`,
+        `var __wish=!!__listed.b;`,
+        `try{await unequip(__slot);}catch(__e){`,
+        `game_log("Reprice failed (delist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;`,
+        `}`,
+        `if(__wish){`,
+        `try{await wishlist(__slot,__name,__price,__q,__level);}catch(__e){`,
+        `game_log("Reprice failed (wishlist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`,
+        `}else{`,
+        `var __num=-1;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||__it.name!==__name||__it.b)continue;`,
+        `if((__it.level||0)!==__level)continue;`,
+        `if(__p&&__it.p!==__p)continue;`,
+        `if(!__p&&__it.p)continue;`,
+        `__num=__si;break;`,
+        `}`,
+        `if(__num<0){game_log("Reprice failed \u2014 item not in bag after delist");return;}`,
+        `try{await trade(__slot,__num,__price,__q);}catch(__e){`,
+        `game_log("Reprice failed (relist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`,
+        `}`
+      ].join("")
+    );
+  }
+  function normalizeTradeSlot(slot) {
+    const s = String(slot || "").trim();
+    if (!s) return "";
+    if (s.indexOf("trade") === 0) return s;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? "trade" + n : s;
+  }
+  function isTradeSlotName(slot) {
+    return slot.indexOf("trade") === 0;
+  }
+  function wishlistCommand(tradeSlot, itemName, price, q, level) {
+    const script = buildWishlistScript(tradeSlot, itemName, price, q, level);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    rememberTradePrice(itemName, price, q != null ? q : 1);
+    scheduleBagRefresh2();
+    return true;
+  }
+  function joinGiveawayCommand(targetId, tradeSlot, rid) {
+    const script = buildJoinGiveawayScript(targetId, tradeSlot, rid);
+    return emitObserverCommand(script);
+  }
+  function giveawayCommand(tradeSlot, fp, minutes, q) {
+    const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradePurchaseCommand(targetId, tradeSlot, rid, quantity) {
+    const script = buildTradePurchaseScript(targetId, tradeSlot, rid, quantity);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeFulfillCommand(targetId, tradeSlot, rid, quantity) {
+    const script = buildTradeFulfillScript(targetId, tradeSlot, rid, quantity);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeRepriceCommand(tradeSlot, newPrice, listingSnapshot) {
+    var _a;
+    const obs = window.observing;
+    const listed = listingSnapshot != null ? listingSnapshot : obs && obs.slots ? obs.slots[tradeSlot] : null;
+    if (!canRepriceTradeSlot(
+      tradeSlot,
+      listed,
+      obs == null ? void 0 : obs.slots,
+      !!(obs == null ? void 0 : obs.stand)
+    )) {
+      window.alert(
+        "Open your merchant stand to change prices on stand slots (trade5+)."
+      );
+      return false;
+    }
+    const script = buildTradeRepriceScript(
+      tradeSlot,
+      newPrice,
+      shouldSkipLiveTradeSlotGuard(tradeSlot, listed, obs == null ? void 0 : obs.slots) ? listed : void 0
+    );
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    if (listed == null ? void 0 : listed.name) {
+      rememberTradePrice(listed.name, newPrice, (_a = listed.q) != null ? _a : 1);
+    }
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeListCommand(fp, tradeSlot, price, q) {
+    var _a;
+    const script = buildTradeListScript(fp, tradeSlot, price, q);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    rememberTradePrice(fp.name, price, (_a = q != null ? q : fp.q) != null ? _a : 1);
+    scheduleBagRefresh2();
+    return true;
+  }
+  function merchantCloseCommand() {
+    const ok = emitObserverCommand(buildMerchantCloseScript());
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function merchantOpenCommand(invSlot) {
+    const script = buildMerchantOpenScript(invSlot);
+    const ok = emitObserverCommand(script);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function promptWishlistLevel(itemName) {
+    const G = getG();
+    const def = G && G.items && G.items[itemName];
+    const d = def;
+    if (!d || !d.upgrade && !d.compound) return 0;
+    const raw = window.prompt(
+      `Wishlist level for ${itemName} (0\u201312, compound max 7):`,
+      "0"
+    );
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = parseInt(String(raw).trim(), 10);
+    if (!Number.isFinite(n) || n < 0 || n > 12) {
+      window.alert("Enter a level from 0 to 12.");
+      return null;
+    }
+    return n;
+  }
+  function promptTradeQuantity(maxQ, itemName) {
+    const cap = maxQ != null && Number(maxQ) > 0 ? Number(maxQ) | 0 : void 0;
+    const hint = itemName ? cap != null ? `Quantity for ${itemName} (1\u2013${cap}):` : `Quantity for ${itemName}:` : cap != null ? `Quantity (1\u2013${cap}):` : "Quantity:";
+    const raw = window.prompt(hint, "1");
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = parseInt(String(raw).replace(/,/g, ""), 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      window.alert("Enter a positive quantity.");
+      return null;
+    }
+    if (cap != null && n > cap) {
+      window.alert(`Maximum quantity is ${cap}.`);
+      return null;
+    }
+    return n;
+  }
+  function promptGiveawayMinutes(defaultMins = 60) {
+    const raw = window.prompt(
+      "Giveaway duration in minutes:",
+      String(defaultMins > 0 ? defaultMins : 60)
+    );
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = parseInt(String(raw).replace(/,/g, ""), 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      window.alert("Enter a positive number of minutes.");
+      return null;
+    }
+    return n;
+  }
+  function promptTradePrice(itemName) {
+    const hint = itemName ? `List ${itemName} \u2014 price in gold:` : "List item \u2014 price in gold:";
+    const raw = window.prompt(hint, itemName ? defaultTradePrice(itemName) : "");
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = parseInt(String(raw).replace(/,/g, ""), 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      window.alert("Enter a positive gold amount.");
+      return null;
+    }
+    return n;
+  }
+
+  // src/lib/gearSlots.ts
+  var RING_SLOTS = ["ring1", "ring2"];
+  var EARRING_SLOTS = ["earring1", "earring2"];
+  var WEAPON_SLOTS = ["mainhand", "offhand"];
+  var TYPE_SLOTS = {
+    helmet: ["helmet"],
+    chest: ["chest"],
+    pants: ["pants"],
+    shoes: ["shoes"],
+    gloves: ["gloves"],
+    belt: ["belt"],
+    amulet: ["amulet"],
+    orb: ["orb"],
+    cape: ["cape"],
+    elixir: ["elixir"],
+    ring: RING_SLOTS,
+    earring: EARRING_SLOTS,
+    weapon: WEAPON_SLOTS,
+    shield: ["offhand"],
+    source: ["offhand"],
+    quiver: ["offhand"],
+    misc_offhand: ["offhand"],
+    tool: ["mainhand"]
+  };
+  function equipSlotsForItemName(itemName) {
+    const G = getG();
+    const def = G && G.items && G.items[itemName];
+    if (!def || !def.type) return [];
+    const type = String(def.type);
+    const mapped = TYPE_SLOTS[type];
+    if (mapped) return mapped.slice();
+    if (CHARACTER_SLOTS.indexOf(type) >= 0) {
+      return [type];
+    }
+    return [];
+  }
+  function canEquipItemToSlot(itemName, gearSlot) {
+    const slots = equipSlotsForItemName(itemName);
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i] === gearSlot) return true;
+    }
+    return false;
+  }
+  function formatGearSlotLabel(slot) {
+    switch (slot) {
+      case "mainhand":
+        return "Main hand";
+      case "offhand":
+        return "Off hand";
+      case "ring1":
+        return "Ring 1";
+      case "ring2":
+        return "Ring 2";
+      case "earring1":
+        return "Earring 1";
+      case "earring2":
+        return "Earring 2";
+      default:
+        return slot.charAt(0).toUpperCase() + slot.slice(1);
+    }
+  }
+
+  // src/lib/inventorySpace.ts
+  function freeInventorySlots(entity) {
+    if (!entity || entity.esize == null) return null;
+    const n = Number(entity.esize);
+    if (!Number.isFinite(n) || n < 0) return null;
+    return n | 0;
+  }
+  function formatFreeInventorySpace(entity) {
+    const free = freeInventorySlots(entity);
+    if (free == null) return null;
+    const isize = (entity == null ? void 0 : entity.isize) != null && Number.isFinite(Number(entity.isize)) ? Number(entity.isize) | 0 : null;
+    if (isize != null && isize > 0) {
+      return `${free}/${isize} free`;
+    }
+    return `${free} free`;
+  }
+  function countTradeSlotSpace(slotNames, slots) {
+    let filled = 0;
+    for (let i = 0; i < slotNames.length; i++) {
+      const slot = slots == null ? void 0 : slots[slotNames[i]];
+      if (slot && slot.name) filled++;
+    }
+    const total = slotNames.length;
+    return { total, filled, empty: Math.max(0, total - filled) };
+  }
+  function formatTradeSlotSpace(slotNames, slots) {
+    if (!slotNames.length) return null;
+    const { filled, empty: empty2 } = countTradeSlotSpace(slotNames, slots);
+    if (empty2 <= 0) return `${filled} listed`;
+    return `${empty2} free \xB7 ${filled} listed`;
+  }
+
+  // src/ui/gear/tradeWishlistPickerCss.ts
+  var TRADE_WISHLIST_PICKER_CSS = `
+.comm-wishlist-picker {
+  position: fixed;
+  z-index: 100001;
+  background: #151515;
+  border: 1px solid #555;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.comm-wishlist-picker__head {
+  padding: 8px 10px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comm-wishlist-picker__title {
+  font-size: 14px;
+  color: #f1c054;
+  letter-spacing: 0.04em;
+}
+.comm-wishlist-picker__search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0d0d0d;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.comm-wishlist-picker__grid {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: flex-start;
+}
+.comm-wishlist-picker__item {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 4px;
+  cursor: pointer;
+  line-height: 0;
+}
+.comm-wishlist-picker__item:hover {
+  border-color: #888;
+  background: #222;
+}
+.comm-wishlist-picker__foot {
+  border-top: 1px solid #333;
+  padding: 6px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.comm-wishlist-picker__foot button {
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.comm-wishlist-picker__foot button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.comm-wishlist-picker__page {
+  font-size: 12px;
+  color: #888;
+}
+`;
+  var injected6 = false;
+  function ensureTradeWishlistPickerCss() {
+    if (injected6) return;
+    injected6 = true;
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-wishlist-picker-css", "1");
+    el.textContent = TRADE_WISHLIST_PICKER_CSS;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/gear/tradeWishlistPicker.ts
+  var PAGE_SIZE = 20;
+  var pickerEl = null;
+  var keyHandler = null;
+  var docHandler = null;
+  function hidePicker() {
+    if (keyHandler) {
+      document.removeEventListener("keydown", keyHandler, true);
+      keyHandler = null;
+    }
+    if (docHandler) {
+      document.removeEventListener("mousedown", docHandler, true);
+      docHandler = null;
+    }
+    if (pickerEl) {
+      pickerEl.remove();
+      pickerEl = null;
+    }
+  }
+  function catalogItems() {
+    const G = getG();
+    if (!G || !G.items) return [];
+    const rows = [];
+    const keys = Object.keys(G.items);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const def = G.items[key];
+      if (!def || def.ignore || key === "placeholder") continue;
+      rows.push({
+        key,
+        name: def.name || key,
+        skin: def.skin || key
+      });
+    }
+    rows.sort((a, b) => {
+      var _a, _b;
+      const ga = ((_a = G.items[a.key]) == null ? void 0 : _a.g) || 0;
+      const gb = ((_b = G.items[b.key]) == null ? void 0 : _b.g) || 0;
+      return gb - ga;
+    });
+    return rows;
+  }
+  function clampPosition(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 320;
+    const h = el.offsetHeight || 400;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function pickItem(tradeSlot, itemKey) {
+    hidePicker();
+    const price = promptTradePrice(itemKey);
+    if (price == null) return;
+    const level = promptWishlistLevel(itemKey);
+    if (level == null) return;
+    wishlistCommand(tradeSlot, itemKey, price, 1, level);
+  }
+  function renderPage(root, tradeSlot, rows, query, page) {
+    const q = query.trim().toLowerCase();
+    const filtered = q ? rows.filter(
+      (r) => r.key.toLowerCase().indexOf(q) >= 0 || r.name.toLowerCase().indexOf(q) >= 0
+    ) : rows;
+    const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const safePage = Math.min(Math.max(0, page), pageCount - 1);
+    const slice = filtered.slice(
+      safePage * PAGE_SIZE,
+      safePage * PAGE_SIZE + PAGE_SIZE
+    );
+    const grid = root.querySelector(".comm-wishlist-picker__grid");
+    const pageLabel = root.querySelector(".comm-wishlist-picker__page");
+    const prevBtn = root.querySelector(
+      "[data-wishlist-prev]"
+    );
+    const nextBtn = root.querySelector(
+      "[data-wishlist-next]"
+    );
+    if (!grid) return safePage;
+    grid.innerHTML = "";
+    for (let i = 0; i < slice.length; i++) {
+      const row3 = slice[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comm-wishlist-picker__item";
+      btn.title = `${row3.name} (${row3.key})`;
+      btn.innerHTML = itemIconHtml(row3.key, { skin: row3.skin, size: 32, title: row3.name }) || row3.key;
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        pickItem(tradeSlot, row3.key);
+      });
+      grid.appendChild(btn);
+    }
+    if (pageLabel) {
+      pageLabel.textContent = filtered.length === 0 ? "No matches" : `Page ${safePage + 1} / ${pageCount} \xB7 ${filtered.length} items`;
+    }
+    if (prevBtn) prevBtn.disabled = safePage <= 0;
+    if (nextBtn) nextBtn.disabled = safePage >= pageCount - 1;
+    return safePage;
+  }
+  function showTradeWishlistPicker(tradeSlot, clientX, clientY) {
+    hidePicker();
+    ensureTradeWishlistPickerCss();
+    const rows = catalogItems();
+    if (!rows.length) {
+      window.alert("Item catalog (G.items) is not available.");
+      return;
+    }
+    let page = 0;
+    let query = "";
+    const el = document.createElement("div");
+    el.className = "comm-wishlist-picker";
+    el.setAttribute("role", "dialog");
+    el.innerHTML = `<div class="comm-wishlist-picker__head"><div class="comm-wishlist-picker__title">Wishlist \u2192 ${formatTradeSlotLabel(tradeSlot)}</div><input class="comm-wishlist-picker__search" type="search" placeholder="Search items\u2026" autocomplete="off" /></div><div class="comm-wishlist-picker__grid"></div><div class="comm-wishlist-picker__foot"><button type="button" data-wishlist-prev>Prev</button><span class="comm-wishlist-picker__page"></span><button type="button" data-wishlist-next>Next</button></div>`;
+    document.body.appendChild(el);
+    pickerEl = el;
+    clampPosition(el, clientX, clientY);
+    const search = el.querySelector(
+      ".comm-wishlist-picker__search"
+    );
+    const prevBtn = el.querySelector(
+      "[data-wishlist-prev]"
+    );
+    const nextBtn = el.querySelector(
+      "[data-wishlist-next]"
+    );
+    const redraw = () => {
+      page = renderPage(el, tradeSlot, rows, query, page);
+    };
+    if (search) {
+      search.addEventListener("input", () => {
+        query = search.value;
+        page = 0;
+        redraw();
+      });
+    }
+    prevBtn == null ? void 0 : prevBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      page = Math.max(0, page - 1);
+      redraw();
+    });
+    nextBtn == null ? void 0 : nextBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      page += 1;
+      redraw();
+    });
+    redraw();
+    search == null ? void 0 : search.focus();
+    keyHandler = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hidePicker();
+      }
+    };
+    docHandler = (ev) => {
+      if (pickerEl && ev.target instanceof Node && pickerEl.contains(ev.target)) {
+        return;
+      }
+      hidePicker();
+    };
+    document.addEventListener("keydown", keyHandler, true);
+    window.setTimeout(() => {
+      if (docHandler) document.addEventListener("mousedown", docHandler, true);
+    }, 0);
+  }
+
+  // src/ui/bag/bagItemContextMenuCss.ts
+  var BAG_ITEM_CONTEXT_MENU_CSS = `
+.comm-bag-ctx {
+  position: fixed; z-index: 99999;
+  background: #151515; border: 1px solid #555;
+  min-width: 200px; padding: 4px 0;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.comm-bag-ctx--flyout {
+  display: none;
+  position: fixed;
+  z-index: 100000;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.comm-bag-ctx__subwrap.is-open > .comm-bag-ctx__item {
+  background: #222;
+}
+.comm-bag-ctx__subwrap {
+  position: relative;
+}
+.comm-bag-ctx__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #333;
+}
+.comm-bag-ctx button,
+.comm-bag-ctx__item {
+  display: block; width: 100%; text-align: left;
+  background: transparent; border: 0; color: #ddd;
+  padding: 9px 14px; cursor: pointer; font-size: 15px;
+  box-sizing: border-box;
+}
+.comm-bag-ctx__item.has-submenu {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 10px;
+}
+.comm-bag-ctx__arrow {
+  color: #888;
+  font-size: 14px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.comm-bag-ctx button:hover,
+.comm-bag-ctx__item:hover { background: #222; }
+.comm-bag-ctx__item.is-disabled,
+.comm-bag-ctx__item:disabled {
+  color: #777;
+  cursor: default;
+}
+.comm-bag-ctx__item.is-disabled:hover,
+.comm-bag-ctx__item:disabled:hover { background: transparent; }
+`;
+  var injected7 = false;
+  function ensureBagItemContextMenuCss() {
+    if (injected7) return;
+    injected7 = true;
+    const existing = document.querySelector(
+      "style[data-ecu-bag-ctx-css]"
+    );
+    if (existing) {
+      existing.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
+      return;
+    }
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-bag-ctx-css", "1");
+    el.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/gear/gearSlotContextMenu.ts
+  var ctxEl = null;
+  var ctxKeyHandler = null;
+  var ctxDocHandler = null;
+  function hideCtx() {
+    if (ctxKeyHandler) {
+      document.removeEventListener("keydown", ctxKeyHandler, true);
+      ctxKeyHandler = null;
+    }
+    if (ctxDocHandler) {
+      document.removeEventListener("mousedown", ctxDocHandler, true);
+      ctxDocHandler = null;
+    }
+    if (ctxEl) {
+      ctxEl.remove();
+      ctxEl = null;
+    }
+  }
+  function clampMenuPosition(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 80;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function buildTradeSlotActions(slotName, hasItem, slot, menuX, menuY, entity) {
+    const actions = [];
+    const liveSlots = entity == null ? void 0 : entity.slots;
+    const standOpen = !!(entity == null ? void 0 : entity.stand);
+    if (hasItem) {
+      actions.push({
+        id: "trade-delist",
+        label: `Delist ${formatTradeSlotLabel(slotName)}`,
+        title: "Runs unequip(slot) \u2014 returns item to inventory",
+        run: () => {
+          unequipCommand(slotName, { slotListing: slot });
+        }
+      });
+      const repriceOk = canRepriceTradeSlot(
+        slotName,
+        slot,
+        liveSlots,
+        standOpen
+      );
+      actions.push({
+        id: "trade-reprice",
+        label: repriceOk ? "Change price\u2026" : "Change price (open stand)",
+        title: repriceOk ? "Delist and relist at a new price (one o:command)" : "Stand must be open to reprice trade5+ listings",
+        separatorBefore: true,
+        disabled: !repriceOk,
+        run: () => {
+          if (!repriceOk) return;
+          const current = slot == null ? void 0 : slot.price;
+          const hint = (slot == null ? void 0 : slot.name) != null ? `New price for ${slot.name}${current != null ? ` (was ${formatTradeGold(current)})` : ""}:` : "New price in gold:";
+          const raw = window.prompt(
+            hint,
+            (slot == null ? void 0 : slot.name) ? defaultTradePrice(slot.name) || (current != null ? String(current) : "") : current != null ? String(current) : ""
+          );
+          if (raw == null || String(raw).trim() === "") return;
+          const price = parseInt(String(raw).replace(/,/g, ""), 10);
+          if (!Number.isFinite(price) || price <= 0) {
+            window.alert("Enter a positive gold amount.");
+            return;
+          }
+          tradeRepriceCommand(slotName, price, slot);
+        }
+      });
+      if ((slot == null ? void 0 : slot.price) != null) {
+        actions.push({
+          id: "trade-price",
+          label: `Listed at ${formatTradeGold(slot.price)} gold`,
+          disabled: true,
+          run: () => {
+          }
+        });
+      }
+    } else {
+      actions.push({
+        id: "trade-wishlist",
+        label: "Wishlist catalog item\u2026",
+        title: "Pick an item from G.items and wishlist() on this slot",
+        separatorBefore: true,
+        run: () => {
+          const x = menuX != null ? menuX : window.innerWidth / 2;
+          const y = menuY != null ? menuY : window.innerHeight / 2;
+          showTradeWishlistPicker(slotName, x, y);
+        }
+      });
+      actions.push({
+        id: "trade-list-hint",
+        label: "List from bag (drag item here or bag menu)",
+        disabled: true,
+        run: () => {
+        }
+      });
+    }
+    return actions;
+  }
+  function buildForeignTradeActions(entity, slotName, slot) {
+    const targetId = entity.id != null ? String(entity.id) : "";
+    const rid = slot.rid != null ? String(slot.rid) : "";
+    const name = slot.name != null ? String(slot.name) : "";
+    if (!targetId || !rid || !name) return [];
+    const obs = window.observing;
+    const inRange = isInTradeRange(entity, obs);
+    const priceLabel = slot.price != null ? `${formatTradeGold(slot.price)}g` : "?";
+    const maxQ = slot.q != null && slot.q > 0 ? slot.q : void 0;
+    const receiverBag = formatFreeInventorySpace(entity);
+    if (isGiveawayListing(slot)) {
+      if (isJoinedGiveaway(slot, obs)) {
+        return [
+          {
+            id: "trade-giveaway-joined",
+            label: "Giveaway \u2014 already joined",
+            disabled: true,
+            run: () => {
+            }
+          }
+        ];
+      }
+      return [
+        {
+          id: "trade-giveaway-join",
+          label: `Join giveaway \u2014 ${name}`,
+          title: inRange ? "join_giveaway via o:command" : "Too far \u2014 move closer first",
+          disabled: !inRange,
+          run: () => {
+            if (!inRange) {
+              window.alert("Too far away \u2014 move your watched character closer.");
+              return;
+            }
+            joinGiveawayCommand(targetId, slotName, rid);
+          }
+        }
+      ];
+    }
+    if (slot.price == null) return [];
+    if (slot.b) {
+      const match = findBagMatchForBuyOrder(slot, obs == null ? void 0 : obs.items);
+      const bagHint = receiverBag ? ` \xB7 their bag ${receiverBag}` : "";
+      return [
+        {
+          id: "trade-fulfill",
+          label: match ? `Sell to fulfill \u2014 ${name} (${priceLabel})\u2026${bagHint}` : `Buy order \u2014 ${name} (${priceLabel}) \u2014 no match in bag`,
+          title: match ? receiverBag ? `trade_sell \xB7 buyer bag ${receiverBag}` : "trade_sell via o:command on your watched character" : "No matching item in your bag",
+          disabled: !match || !inRange,
+          run: () => {
+            if (!match) return;
+            if (!inRange) {
+              window.alert("Too far away \u2014 move your watched character closer.");
+              return;
+            }
+            const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
+            const q = promptTradeQuantity(cap, name);
+            if (q == null) return;
+            if (!confirmTradeFulfill(name, slot.price, q)) return;
+            tradeFulfillCommand(targetId, slotName, rid, q);
+          }
+        }
+      ];
+    }
+    return [
+      {
+        id: "trade-buy",
+        label: `Buy ${name} (${priceLabel})\u2026`,
+        title: inRange ? "trade_buy via o:command on your watched character" : "Too far \u2014 move closer first",
+        disabled: !inRange,
+        run: () => {
+          if (!inRange) {
+            window.alert("Too far away \u2014 move your watched character closer.");
+            return;
+          }
+          const q = promptTradeQuantity(maxQ, name);
+          if (q == null) return;
+          if ((obs == null ? void 0 : obs.gold) != null && !canAffordListing(slot, q, obs.gold)) {
+            window.alert(
+              `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obs.gold)}.`
+            );
+            return;
+          }
+          if (!confirmTradePurchase(name, slot.price, q)) return;
+          tradePurchaseCommand(targetId, slotName, rid, q);
+        }
+      }
+    ];
+  }
+  function buildGearSlotActions(slotName, hasItem) {
+    const actions = [];
+    if (hasItem) {
+      if (slotName !== "elixir") {
+        actions.push({
+          id: "unequip",
+          label: `Unequip ${formatGearSlotLabel(slotName)}`,
+          title: "Runs unequip(slot) on the observed character",
+          run: () => {
+            unequipCommand(slotName);
+          }
+        });
+      } else {
+        actions.push({
+          id: "unequip-elixir",
+          label: "Elixir cannot be unequipped",
+          disabled: true,
+          run: () => {
+          }
+        });
+      }
+    } else {
+      actions.push({
+        id: "equip-hint",
+        label: "Equip from bag (right-click inventory item)",
+        disabled: true,
+        run: () => {
+        }
+      });
+    }
+    return actions;
+  }
+  function showGearSlotContextMenu(clientX, clientY, slotName, hasItem, slot, options) {
+    hideCtx();
+    ensureBagItemContextMenuCss();
+    const entity = options == null ? void 0 : options.entity;
+    const gearEditable = !!(options == null ? void 0 : options.gearEditable);
+    let actions = [];
+    if (isTradeSlot(slotName)) {
+      if (gearEditable) {
+        actions = buildTradeSlotActions(
+          slotName,
+          hasItem,
+          slot,
+          clientX,
+          clientY,
+          entity
+        );
+      } else if (entity && hasItem && slot && !isObservedSelf(entity)) {
+        actions = buildForeignTradeActions(entity, slotName, slot);
+      }
+    } else if (gearEditable) {
+      actions = buildGearSlotActions(slotName, hasItem);
+    }
+    if (!actions.length) return;
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx";
+    el.setAttribute("role", "menu");
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      if (action.separatorBefore) {
+        const sep = document.createElement("div");
+        sep.className = "comm-bag-ctx__sep";
+        sep.setAttribute("role", "separator");
+        el.appendChild(sep);
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comm-bag-ctx__item";
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = action.label;
+      if (action.title) btn.title = action.title;
+      if (action.disabled) {
+        btn.disabled = true;
+        btn.className += " is-disabled";
+      } else {
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          hideCtx();
+          action.run();
+        });
+      }
+      el.appendChild(btn);
+    }
+    document.body.appendChild(el);
+    ctxEl = el;
+    clampMenuPosition(el, clientX, clientY);
+    ctxKeyHandler = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hideCtx();
+      }
+    };
+    ctxDocHandler = (ev) => {
+      if (ctxEl && ev.target instanceof Node && ctxEl.contains(ev.target)) {
+        return;
+      }
+      hideCtx();
+    };
+    document.addEventListener("keydown", ctxKeyHandler, true);
+    window.setTimeout(() => {
+      if (ctxDocHandler) {
+        document.addEventListener("mousedown", ctxDocHandler, true);
+      }
+    }, 0);
+  }
+
+  // src/ui/bag/bagDragPayload.ts
+  var BAG_DRAG_SLOT_MIME = "application/x-ecu-inv-slot";
+  function writeBagDragPayload(dt, invSlot) {
+    dt.setData(BAG_DRAG_SLOT_MIME, String(invSlot));
+    dt.setData("text/plain", `inv:${invSlot}`);
+    dt.setData("text", `inv:${invSlot}`);
+    dt.effectAllowed = "move";
+  }
+  function readBagDragPayload(ev) {
+    const dt = ev.dataTransfer;
+    if (!dt) return null;
+    const ecu = dt.getData(BAG_DRAG_SLOT_MIME);
+    if (ecu !== "") {
+      const n = parseInt(ecu, 10);
+      if (Number.isFinite(n)) return n;
+    }
+    const plain = dt.getData("text/plain") || dt.getData("text");
+    const m = /^inv:(\d+)$/.exec(plain);
+    if (m) return parseInt(m[1], 10);
+    return null;
+  }
+  function hasBagDragPayload(ev) {
+    var _a;
+    const types = (_a = ev.dataTransfer) == null ? void 0 : _a.types;
+    if (!types) return false;
+    for (let i = 0; i < types.length; i++) {
+      const t = types[i];
+      if (t === BAG_DRAG_SLOT_MIME || t === "text/plain") return true;
+    }
+    return false;
+  }
+
+  // src/ui/bag/bagItemContextMenu.ts
+  var providers = [];
+  function registerBagMenuProvider(provider) {
+    providers.push(provider);
+    return () => {
+      const idx = providers.indexOf(provider);
+      if (idx >= 0) providers.splice(idx, 1);
+    };
+  }
+  function buildBagMenuActions(ctx) {
+    const actions = [];
+    for (let i = 0; i < providers.length; i++) {
+      const rows = providers[i](ctx);
+      for (let j = 0; j < rows.length; j++) actions.push(rows[j]);
+    }
+    return actions;
+  }
+  var ctxEl2 = null;
+  var ctxKeyHandler2 = null;
+  var ctxDocHandler2 = null;
+  function hideCtx2() {
+    if (ctxKeyHandler2) {
+      document.removeEventListener("keydown", ctxKeyHandler2, true);
+      ctxKeyHandler2 = null;
+    }
+    if (ctxDocHandler2) {
+      document.removeEventListener("mousedown", ctxDocHandler2, true);
+      ctxDocHandler2 = null;
+    }
+    if (ctxEl2) {
+      ctxEl2.remove();
+      ctxEl2 = null;
+    }
+  }
+  function clampMenuPosition2(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 80;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function positionFlyout(wrap, flyout) {
+    const btn = wrap.querySelector(".comm-bag-ctx__item");
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    flyout.style.visibility = "hidden";
+    flyout.style.display = "block";
+    const fw = flyout.offsetWidth || 200;
+    const fh = flyout.offsetHeight || 80;
+    let left = rect.right - 2;
+    if (left + fw > window.innerWidth - 8) {
+      left = Math.max(8, rect.left - fw + 2);
+    }
+    let top = rect.top;
+    if (top + fh > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - fh - 8);
+    }
+    flyout.style.left = left + "px";
+    flyout.style.top = top + "px";
+    flyout.style.visibility = "visible";
+  }
+  function closeBagSubmenus(root, except) {
+    const open = root.querySelectorAll(".comm-bag-ctx__subwrap.is-open");
+    for (let i = 0; i < open.length; i++) {
+      const wrap = open[i];
+      if (except && (wrap === except || wrap.contains(except))) continue;
+      wrap.classList.remove("is-open");
+      const flyout = wrap.querySelector(
+        ".comm-bag-ctx--flyout"
+      );
+      if (flyout) flyout.style.display = "none";
+    }
+  }
+  function appendBagMenuAction(root, action, onActivate) {
+    if (action.separatorBefore) {
+      const sep = document.createElement("div");
+      sep.className = "comm-bag-ctx__sep";
+      sep.setAttribute("role", "separator");
+      root.appendChild(sep);
+    }
+    const hasChildren = Array.isArray(action.children) && action.children.length > 0;
+    if (hasChildren) {
+      const wrap = document.createElement("div");
+      wrap.className = "comm-bag-ctx__subwrap";
+      const btn2 = document.createElement("button");
+      btn2.type = "button";
+      btn2.className = "comm-bag-ctx__item has-submenu";
+      btn2.setAttribute("role", "menuitem");
+      btn2.setAttribute("aria-haspopup", "true");
+      btn2.textContent = action.label;
+      const arrow = document.createElement("span");
+      arrow.className = "comm-bag-ctx__arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "\u203A";
+      btn2.appendChild(arrow);
+      if (action.title) btn2.title = action.title;
+      if (action.disabled) {
+        btn2.disabled = true;
+        btn2.className += " is-disabled";
+      } else {
+        const flyout = document.createElement("div");
+        flyout.className = "comm-bag-ctx comm-bag-ctx--flyout";
+        flyout.setAttribute("role", "menu");
+        for (let i = 0; i < action.children.length; i++) {
+          appendBagMenuAction(flyout, action.children[i], onActivate);
+        }
+        let closeTimer = 0;
+        const openSub = () => {
+          if (closeTimer) {
+            window.clearTimeout(closeTimer);
+            closeTimer = 0;
+          }
+          closeBagSubmenus(root, wrap);
+          wrap.classList.add("is-open");
+          positionFlyout(wrap, flyout);
+        };
+        const scheduleClose = () => {
+          if (closeTimer) window.clearTimeout(closeTimer);
+          closeTimer = window.setTimeout(() => {
+            wrap.classList.remove("is-open");
+            flyout.style.display = "none";
+            closeTimer = 0;
+          }, 160);
+        };
+        btn2.addEventListener("mouseenter", openSub);
+        btn2.addEventListener("focus", openSub);
+        wrap.addEventListener("mouseleave", scheduleClose);
+        flyout.addEventListener("mouseenter", () => {
+          if (closeTimer) {
+            window.clearTimeout(closeTimer);
+            closeTimer = 0;
+          }
+        });
+        flyout.addEventListener("mouseleave", scheduleClose);
+        wrap.appendChild(btn2);
+        wrap.appendChild(flyout);
+      }
+      if (action.disabled) wrap.appendChild(btn2);
+      root.appendChild(wrap);
+      return;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "comm-bag-ctx__item";
+    btn.setAttribute("role", "menuitem");
+    btn.textContent = action.label;
+    if (action.title) btn.title = action.title;
+    if (action.disabled) {
+      btn.disabled = true;
+      btn.className += " is-disabled";
+    } else {
+      btn.addEventListener("click", (ev) => {
+        var _a;
+        ev.preventDefault();
+        ev.stopPropagation();
+        onActivate();
+        (_a = action.run) == null ? void 0 : _a.call(action);
+      });
+    }
+    root.appendChild(btn);
+  }
+  function renderBagMenuActions(root, actions, onActivate) {
+    for (let i = 0; i < actions.length; i++) {
+      appendBagMenuAction(root, actions[i], onActivate);
+    }
+  }
+  function observingBagItem(slot) {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return null;
+    const item = obs.items[slot];
+    if (!item || !item.name || item.name === "placeholder") return null;
+    return item;
+  }
+  function showBagItemContextMenu(clientX, clientY, fp, slotEl, item) {
+    hideCtx2();
+    ensureBagItemContextMenuCss();
+    const resolvedItem = item || observingBagItem(fp.slot);
+    if (!resolvedItem) return;
+    const ctx = {
+      fp,
+      slotEl: slotEl || null,
+      item: resolvedItem
+    };
+    const actions = buildBagMenuActions(ctx);
+    if (!actions.length) return;
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx";
+    el.setAttribute("role", "menu");
+    renderBagMenuActions(el, actions, hideCtx2);
+    document.body.appendChild(el);
+    ctxEl2 = el;
+    clampMenuPosition2(el, clientX, clientY);
+    ctxKeyHandler2 = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hideCtx2();
+      }
+    };
+    ctxDocHandler2 = (ev) => {
+      if (ctxEl2 && ev.target instanceof Node && ctxEl2.contains(ev.target)) {
+        return;
+      }
+      hideCtx2();
+    };
+    document.addEventListener("keydown", ctxKeyHandler2, true);
+    window.setTimeout(() => {
+      if (ctxDocHandler2) {
+        document.addEventListener("mousedown", ctxDocHandler2, true);
+      }
+    }, 0);
+  }
+  function resolveInventorySlotNum(start, host2) {
+    let node = start;
+    while (node && host2.contains(node)) {
+      const cnum = node.getAttribute && node.getAttribute("data-cnum");
+      if (cnum != null && cnum !== "") {
+        const n = parseInt(cnum, 10);
+        if (Number.isFinite(n)) return n;
+      }
+      const id = node.id || "";
+      const idMatch = /^citem(\d+)$/.exec(id);
+      if (idMatch) return parseInt(idMatch[1], 10);
+      const oc = node.getAttribute && node.getAttribute("onclick");
+      if (oc) {
+        const m = /inventory_click\((\d+)/.exec(oc);
+        if (m) return parseInt(m[1], 10);
+      }
+      const om = node.getAttribute && node.getAttribute("onmousedown");
+      if (om) {
+        const m = /inventory_click\((\d+)/.exec(om);
+        if (m) return parseInt(m[1], 10);
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function installBagItemContextMenu(host2) {
+    ensureBagItemContextMenuCss();
+    const onCtx = (ev) => {
+      if (ev.shiftKey) return;
+      const t = ev.target;
+      if (!t || !host2.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host2);
+      if (num == null || !Number.isFinite(num)) return;
+      const item = observingBagItem(num);
+      const fp = fingerprintFromSlot(num, item);
+      if (!fp) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
+    };
+    host2.addEventListener("contextmenu", onCtx, true);
+    return () => {
+      hideCtx2();
+      host2.removeEventListener("contextmenu", onCtx, true);
+    };
+  }
+
+  // src/ui/gear/gearSlotDragDrop.ts
+  function bagDragCanEquipToGearSlot(ev, gearSlot) {
+    if (isTradeSlot(gearSlot)) return false;
+    if (!hasBagDragPayload(ev)) return false;
+    const invSlot = readBagDragPayload(ev);
+    if (invSlot == null) return false;
+    const item = observingBagItem(invSlot);
+    if (!item) return false;
+    return canEquipItemToSlot(item.name, gearSlot);
+  }
+  function bagDragCanListOnTradeSlot(ev, tradeSlot, slots) {
+    if (!isTradeSlot(tradeSlot)) return false;
+    if (!tradeSlotIsEmpty(slots, tradeSlot)) return false;
+    if (!hasBagDragPayload(ev)) return false;
+    const invSlot = readBagDragPayload(ev);
+    if (invSlot == null) return false;
+    return !!observingBagItem(invSlot);
+  }
+  function resolveListingQuantity(fp) {
+    var _a;
+    const maxQ = fp.q != null && fp.q > 0 ? fp.q : void 0;
+    if (maxQ != null && maxQ > 1) {
+      return promptTradeQuantity(maxQ, fp.name);
+    }
+    return (_a = fp.q) != null ? _a : 1;
+  }
+  function handleBagDropOnGearSlot(ev, gearSlot) {
+    if (isTradeSlot(gearSlot)) return false;
+    const invSlot = readBagDragPayload(ev);
+    if (invSlot == null) return false;
+    const item = observingBagItem(invSlot);
+    const fp = fingerprintFromSlot(invSlot, item);
+    if (!fp || !canEquipItemToSlot(fp.name, gearSlot)) return false;
+    ev.preventDefault();
+    ev.stopPropagation();
+    equipCommand(fp, gearSlot);
+    return true;
+  }
+  function handleBagDropOnTradeSlot(ev, tradeSlot, slots) {
+    if (!isTradeSlot(tradeSlot)) return false;
+    if (!tradeSlotIsEmpty(slots, tradeSlot)) return false;
+    const invSlot = readBagDragPayload(ev);
+    if (invSlot == null) return false;
+    const item = observingBagItem(invSlot);
+    const fp = fingerprintFromSlot(invSlot, item);
+    if (!fp) return false;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const q = resolveListingQuantity(fp);
+    if (q == null) return false;
+    if (ev.shiftKey) {
+      const mins = promptGiveawayMinutes();
+      if (mins == null) return false;
+      giveawayCommand(tradeSlot, fp, mins, q);
+      return true;
+    }
+    const price = promptTradePrice(fp.name);
+    if (price == null) return false;
+    tradeListCommand(fp, tradeSlot, price, q);
+    return true;
+  }
+  function handleBagDragOverGearSlot(ev, gearSlot, slots) {
+    if (isTradeSlot(gearSlot)) {
+      if (!bagDragCanListOnTradeSlot(ev, gearSlot, slots)) return false;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      return true;
+    }
+    if (!bagDragCanEquipToGearSlot(ev, gearSlot)) return false;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+    return true;
+  }
+
+  // src/ui/chrome/gearSlotCell.ts
   var SLOT_SHADE = {
     earring1: { shade: "shade_earring", s_op: 0.4 },
     helmet: { shade: "shade_helmet", s_op: 0.5 },
@@ -46073,31 +49058,19 @@ ${parts.map(cssSlice).join("\n")}
     gloves: { shade: "shade_gloves", s_op: 0.4 },
     elixir: { shade: "shade20_elixir", s_op: 0.4 }
   };
-  var TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
-  var SLOT_SIZE = 40;
+  var GEAR_SLOT_SIZE = 40;
   var EMPTY_BCOLOR = "#292929";
-  function tradeSlotNames(slots) {
-    const names = [];
-    const keys = Object.keys(slots);
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i].indexOf("trade") === 0 && slots[keys[i]]) {
-        names.push(keys[i]);
-      }
-    }
-    names.sort((a, b) => {
-      const na = parseInt(a.replace("trade", ""), 10) || 0;
-      const nb = parseInt(b.replace("trade", ""), 10) || 0;
-      return na - nb;
-    });
-    return names;
-  }
   function shadeFor(slotName) {
-    if (slotName.indexOf("trade") === 0) return TRADE_SHADE;
     return SLOT_SHADE[slotName] || { shade: "placeholder", s_op: 0.4 };
   }
-  function wrapContainerHtml(html) {
+  function wrapContainerHtml(html, title) {
     return e("div", {
-      style: { display: "inline-block", lineHeight: 0, fontSize: 0 },
+      style: {
+        display: "inline-block",
+        lineHeight: 0,
+        fontSize: 0,
+        pointerEvents: "auto"
+      },
       dangerouslySetInnerHTML: { __html: html },
       ref: (node) => {
         if (!node) return;
@@ -46107,6 +49080,8 @@ ${parts.map(cssSlice).join("\n")}
         root.removeAttribute("onmousedown");
         root.removeAttribute("ontouchstart");
         root.removeAttribute("onclick");
+        const tip = title || root.getAttribute("title") || "";
+        if (tip) stampNativeItemTitle(node, tip);
       }
     });
   }
@@ -46126,46 +49101,47 @@ ${parts.map(cssSlice).join("\n")}
     }
     return parts.join(";");
   }
-  function SlotCell(props) {
-    const { entity, slotName, slot, showPrice, diff } = props;
+  function GearSlotCell(props) {
+    const React = getReact();
+    const [bagDropHover, setBagDropHover] = React.useState(false);
+    const { entity, slotName, slot, diff, gearEditable, allSlots } = props;
     const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
     const { shade, s_op } = shadeFor(slotName);
     let content = null;
     const clickable = !!(slot && slot.name);
+    const itemTitle = clickable && (slot == null ? void 0 : slot.name) ? itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }) : void 0;
     if (slot && skin) {
       let html = "";
       try {
-        html = itemContainer(
-          {
-            skin,
-            size: SLOT_SIZE,
-            slot: slotName,
-            shade,
-            s_op,
-            draggable: false
-          },
-          slot
-        ) || "";
+        html = itemInstanceHtml(slot.name, {
+          skin,
+          size: GEAR_SLOT_SIZE,
+          level: slot.level,
+          q: slot.q,
+          p: slot.p
+        }) || "";
       } catch (e2) {
         html = "";
       }
       if (html) {
-        content = wrapContainerHtml(html);
+        content = wrapContainerHtml(html, itemTitle);
       } else if (slot.name) {
         content = wrapContainerHtml(
           itemIconHtml(slot.name, {
             skin,
-            size: SLOT_SIZE,
-            title: slot.name
-          })
+            size: GEAR_SLOT_SIZE,
+            level: slot.level,
+            p: slot.p
+          }),
+          itemTitle
         );
       } else {
         content = e(
           "div",
           {
             style: {
-              width: `${SLOT_SIZE}px`,
-              height: `${SLOT_SIZE}px`,
+              width: `${GEAR_SLOT_SIZE}px`,
+              height: `${GEAR_SLOT_SIZE}px`,
               background: "#333",
               border: "1px solid #666",
               fontSize: TYPE.microMin,
@@ -46182,7 +49158,7 @@ ${parts.map(cssSlice).join("\n")}
       let html = "";
       try {
         html = itemContainer({
-          size: SLOT_SIZE,
+          size: GEAR_SLOT_SIZE,
           shade,
           s_op,
           slot: slotName,
@@ -46197,8 +49173,8 @@ ${parts.map(cssSlice).join("\n")}
       } else {
         content = e("div", {
           style: {
-            width: `${SLOT_SIZE + 6}px`,
-            height: `${SLOT_SIZE + 6}px`,
+            width: `${GEAR_SLOT_SIZE + 6}px`,
+            height: `${GEAR_SLOT_SIZE + 6}px`,
             background: "#000",
             border: `2px solid ${EMPTY_BCOLOR}`,
             boxSizing: "border-box"
@@ -46218,14 +49194,40 @@ ${parts.map(cssSlice).join("\n")}
       "div",
       {
         key: slotName,
-        className: "comm-gear-slot" + (clickable ? " is-clickable" : ""),
+        className: "comm-gear-slot" + (clickable ? " is-clickable" : "") + (bagDropHover ? " is-bag-drop-target" : ""),
         "data-slot": slotName,
         [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
-        title: clickable ? slot.name : slotName,
+        title: clickable ? itemInstanceLabel(slot.name, {
+          p: slot.p,
+          level: slot.level
+        }) : slotName,
         onPointerDown: onSlotPress,
         onMouseDown: clickable ? (ev) => {
           if (ev && typeof ev.stopPropagation === "function")
             ev.stopPropagation();
+        } : void 0,
+        onDragOver: gearEditable ? (ev) => {
+          if (handleBagDragOverGearSlot(ev, slotName, allSlots || null)) {
+            setBagDropHover(bagDragCanEquipToGearSlot(ev, slotName));
+          }
+        } : void 0,
+        onDragLeave: gearEditable ? () => setBagDropHover(false) : void 0,
+        onDrop: gearEditable ? (ev) => {
+          setBagDropHover(false);
+          handleBagDropOnGearSlot(ev, slotName);
+        } : void 0,
+        onContextMenu: gearEditable ? (ev) => {
+          if (ev && ev.shiftKey) return;
+          if (ev && typeof ev.preventDefault === "function")
+            ev.preventDefault();
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+          const cx = ev && ev.clientX != null ? ev.clientX : 0;
+          const cy = ev && ev.clientY != null ? ev.clientY : 0;
+          showGearSlotContextMenu(cx, cy, slotName, clickable, slot, {
+            entity,
+            gearEditable
+          });
         } : void 0,
         style: {
           display: "flex",
@@ -46234,7 +49236,9 @@ ${parts.map(cssSlice).join("\n")}
           gap: "2px",
           position: "relative",
           cursor: clickable ? "pointer" : "default",
-          pointerEvents: "auto"
+          pointerEvents: "auto",
+          outline: bagDropHover ? "2px solid #6ab04c" : void 0,
+          outlineOffset: bagDropHover ? "1px" : void 0
         }
       },
       content,
@@ -46261,14 +49265,17 @@ ${parts.map(cssSlice).join("\n")}
           }
         },
         "\u0394"
-      ) : null,
-      showPrice && (slot == null ? void 0 : slot.price) != null ? e(
-        "div",
-        { style: { fontSize: TYPE.micro, color: "#ffd700", ...PIXEL_TEXT } },
-        String(slot.price)
       ) : null
     );
   }
+
+  // src/ui/chrome/GearGrid.ts
+  var GEAR_ROWS = [
+    ["earring1", "helmet", "earring2", "amulet"],
+    ["mainhand", "chest", "offhand", "cape"],
+    ["ring1", "pants", "ring2", "orb"],
+    ["belt", "shoes", "gloves", "elixir"]
+  ];
   function GearGrid(props) {
     const React = getReact();
     const slots = props.entity.slots;
@@ -46278,7 +49285,6 @@ ${parts.map(cssSlice).join("\n")}
     const fp = entityId + "|" + compareId + "|" + slotsFingerprint(slots) + "|" + slotsFingerprint(props.compareTo && props.compareTo.slots);
     return React.useMemo(() => {
       const compareSlots = props.compareTo && props.compareTo.slots;
-      const tradeNames = tradeSlotNames(slots);
       const isDiff = (name) => {
         if (!compareSlots) return false;
         return slotKey(slots[name]) !== slotKey(compareSlots[name]);
@@ -46318,55 +49324,19 @@ ${parts.map(cssSlice).join("\n")}
                 }
               },
               ...row3.map(
-                (name) => e(SlotCell, {
+                (name) => e(GearSlotCell, {
                   key: name,
                   entity: props.entity,
                   slotName: name,
                   slot: slots[name],
-                  diff: isDiff(name)
+                  diff: isDiff(name),
+                  gearEditable: props.gearEditable,
+                  allSlots: slots
                 })
               )
             )
           )
-        ),
-        tradeNames.length ? e(
-          "div",
-          {
-            "data-ecu-tour": "paperdoll-trade",
-            style: {
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "2px",
-              borderTop: "1px solid #333",
-              paddingTop: "4px",
-              marginTop: "4px"
-            }
-          },
-          e(
-            "div",
-            {
-              style: {
-                flex: "0 0 100%",
-                fontSize: TYPE.micro,
-                color: "#888",
-                marginBottom: "2px",
-                letterSpacing: "0.04em",
-                ...PIXEL_TEXT
-              }
-            },
-            "TRADE"
-          ),
-          ...tradeNames.map(
-            (name) => e(SlotCell, {
-              key: name,
-              entity: props.entity,
-              slotName: name,
-              slot: slots[name],
-              showPrice: true,
-              diff: isDiff(name)
-            })
-          )
-        ) : null
+        )
       );
     }, [fp]);
   }
@@ -46690,13 +49660,15 @@ ${ESTIMATE_HINT}`,
     minWidth: PAPERDOLL_FRAME_WIDTH,
     maxWidth: "340px",
     boxSizing: "border-box",
-    overflow: "visible"
+    overflow: "visible",
+    pointerEvents: "none"
   };
   var PAPERDOLL_BODY = {
     padding: "6px",
     display: "flex",
     flexDirection: "column",
-    gap: "6px"
+    gap: "6px",
+    pointerEvents: "auto"
   };
   var PAPERDOLL_VITALS = {
     display: "flex",
@@ -46901,11 +49873,7 @@ ${ESTIMATE_HINT}`,
         style: Object.assign({}, PAPERDOLL_SHELL, {
           border: stale ? "2px dashed #c9a227" : `2px solid ${accent}`,
           opacity: stale ? 0.92 : 1
-        }),
-        onClick: (ev) => {
-          ev.stopPropagation();
-          if (!stale) setXTarget(entity);
-        }
+        })
       },
       e(
         "div",
@@ -46918,7 +49886,12 @@ ${ESTIMATE_HINT}`,
             padding: "4px 6px",
             background: `linear-gradient(90deg, ${accent}33, transparent)`,
             borderBottom: `1px solid ${accent}66`,
-            cursor: "grab"
+            cursor: "grab",
+            pointerEvents: "auto"
+          },
+          onClick: (ev) => {
+            ev.stopPropagation();
+            if (!stale) setXTarget(entity);
           }
         },
         e("div", {
@@ -47064,7 +50037,8 @@ ${ESTIMATE_HINT}`,
           ),
           e(GearGrid, {
             entity,
-            compareTo: compare ? watching : null
+            compareTo: compare ? watching : null,
+            gearEditable: canEditObservedGear(entity, stale)
           })
         ) : null
       )
@@ -48046,10 +51020,10 @@ ${ESTIMATE_HINT}`,
   box-sizing: border-box;
 }
 `;
-  var injected6 = false;
+  var injected8 = false;
   function ensureThreatPanelCss() {
-    if (injected6) return;
-    injected6 = true;
+    if (injected8) return;
+    injected8 = true;
     const existing = document.querySelector(
       "style[data-ecu-threat-panel-css]"
     );
@@ -49603,7 +52577,7 @@ ${ESTIMATE_HINT}`,
   border-color: rgba(255, 255, 255, 0.12);
 }
 `;
-  var injected7 = false;
+  var injected9 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
     let el = document.getElementById(STYLE_ID6);
@@ -49612,10 +52586,10 @@ ${ESTIMATE_HINT}`,
       el.id = STYLE_ID6;
       document.head.appendChild(el);
     }
-    if (!injected7 || el.textContent !== CSS8) {
+    if (!injected9 || el.textContent !== CSS8) {
       el.textContent = CSS8;
     }
-    injected7 = true;
+    injected9 = true;
   }
 
   // src/ui/minimap/minimapScene.ts
@@ -50557,211 +53531,67 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/ui/bag/bagItemContextMenuCss.ts
-  var BAG_ITEM_CONTEXT_MENU_CSS = `
-.comm-bag-ctx {
-  position: fixed; z-index: 99999;
-  background: #151515; border: 1px solid #555;
-  min-width: 200px; padding: 4px 0;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-}
-.comm-bag-ctx__sep {
-  height: 1px;
-  margin: 4px 0;
-  background: #333;
-}
-.comm-bag-ctx button,
-.comm-bag-ctx__item {
-  display: block; width: 100%; text-align: left;
-  background: transparent; border: 0; color: #ddd;
-  padding: 9px 14px; cursor: pointer; font-size: 15px;
-}
-.comm-bag-ctx button:hover,
-.comm-bag-ctx__item:hover { background: #222; }
-.comm-bag-ctx__item.is-disabled,
-.comm-bag-ctx__item:disabled {
-  color: #777;
-  cursor: default;
-}
-.comm-bag-ctx__item.is-disabled:hover,
-.comm-bag-ctx__item:disabled:hover { background: transparent; }
-`;
-  var injected8 = false;
-  function ensureBagItemContextMenuCss() {
-    if (injected8) return;
-    injected8 = true;
-    const existing = document.querySelector(
-      "style[data-ecu-bag-ctx-css]"
-    );
-    if (existing) {
-      existing.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
-      return;
-    }
-    const el = document.createElement("style");
-    el.setAttribute("data-ecu-bag-ctx-css", "1");
-    el.textContent = BAG_ITEM_CONTEXT_MENU_CSS;
-    document.head.appendChild(el);
+  // src/ui/bag/bagDragDrop.ts
+  function resolveDragSourceSlot(transferId, host2) {
+    if (!transferId) return null;
+    const ecuMatch = /^inv:(\d+)$/.exec(transferId);
+    if (ecuMatch) return parseInt(ecuMatch[1], 10);
+    const el = document.getElementById(transferId);
+    if (!el || !host2.contains(el)) return null;
+    return resolveInventorySlotNum(el, host2);
   }
-
-  // src/ui/bag/bagItemContextMenu.ts
-  var providers = [];
-  function registerBagMenuProvider(provider) {
-    providers.push(provider);
-    return () => {
-      const idx = providers.indexOf(provider);
-      if (idx >= 0) providers.splice(idx, 1);
-    };
+  function readDragSourceSlot(ev, host2) {
+    const fromPayload = readBagDragPayload(ev);
+    if (fromPayload != null) return fromPayload;
+    const dt = ev.dataTransfer;
+    if (!dt) return null;
+    return resolveDragSourceSlot(dt.getData("text") || "", host2);
   }
-  function buildBagMenuActions(ctx) {
-    const actions = [];
-    for (let i = 0; i < providers.length; i++) {
-      const rows = providers[i](ctx);
-      for (let j = 0; j < rows.length; j++) actions.push(rows[j]);
-    }
-    return actions;
-  }
-  var ctxEl = null;
-  var ctxKeyHandler = null;
-  var ctxDocHandler = null;
-  function hideCtx() {
-    if (ctxKeyHandler) {
-      document.removeEventListener("keydown", ctxKeyHandler, true);
-      ctxKeyHandler = null;
-    }
-    if (ctxDocHandler) {
-      document.removeEventListener("mousedown", ctxDocHandler, true);
-      ctxDocHandler = null;
-    }
-    if (ctxEl) {
-      ctxEl.remove();
-      ctxEl = null;
-    }
-  }
-  function clampMenuPosition(el, clientX, clientY) {
-    const pad3 = 8;
-    const w = el.offsetWidth || 200;
-    const h = el.offsetHeight || 80;
-    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
-    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
-    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
-    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
-  }
-  function observingBagItem(slot) {
-    const obs = window.observing;
-    if (!obs || !Array.isArray(obs.items)) return null;
-    const item = obs.items[slot];
-    if (!item || !item.name || item.name === "placeholder") return null;
-    return item;
-  }
-  function showBagItemContextMenu(clientX, clientY, fp, slotEl, item) {
-    hideCtx();
-    ensureBagItemContextMenuCss();
-    const resolvedItem = item || observingBagItem(fp.slot);
-    if (!resolvedItem) return;
-    const ctx = {
-      fp,
-      slotEl: slotEl || null,
-      item: resolvedItem
-    };
-    const actions = buildBagMenuActions(ctx);
-    if (!actions.length) return;
-    const el = document.createElement("div");
-    el.className = "comm-bag-ctx";
-    el.setAttribute("role", "menu");
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      if (action.separatorBefore) {
-        const sep = document.createElement("div");
-        sep.className = "comm-bag-ctx__sep";
-        sep.setAttribute("role", "separator");
-        el.appendChild(sep);
-      }
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "comm-bag-ctx__item";
-      btn.setAttribute("role", "menuitem");
-      btn.textContent = action.label;
-      if (action.title) btn.title = action.title;
-      if (action.disabled) {
-        btn.disabled = true;
-        btn.className += " is-disabled";
-      } else {
-        btn.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          hideCtx();
-          action.run();
-        });
-      }
-      el.appendChild(btn);
-    }
-    document.body.appendChild(el);
-    ctxEl = el;
-    clampMenuPosition(el, clientX, clientY);
-    ctxKeyHandler = (ev) => {
-      if (ev.key === "Escape") {
+  function installBagDragDrop(host2) {
+    const onDragStart = (ev) => {
+      if (!canEditObservedBag()) return;
+      const target = ev.target;
+      if (!target || !host2.contains(target)) return;
+      const fromSlot = resolveInventorySlotNum(target, host2);
+      if (fromSlot == null || !Number.isFinite(fromSlot)) {
         ev.preventDefault();
-        hideCtx();
-      }
-    };
-    ctxDocHandler = (ev) => {
-      if (ctxEl && ev.target instanceof Node && ctxEl.contains(ev.target)) {
         return;
       }
-      hideCtx();
+      if (!observingBagItem(fromSlot)) {
+        ev.preventDefault();
+        return;
+      }
+      const dt = ev.dataTransfer;
+      if (!dt) return;
+      writeBagDragPayload(dt, fromSlot);
     };
-    document.addEventListener("keydown", ctxKeyHandler, true);
-    window.setTimeout(() => {
-      if (ctxDocHandler) {
-        document.addEventListener("mousedown", ctxDocHandler, true);
+    const onDragOver = (ev) => {
+      if (!canEditObservedBag()) return;
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+    };
+    const onDrop = (ev) => {
+      if (!canEditObservedBag()) return;
+      const target = ev.target;
+      if (!target || !host2.contains(target)) return;
+      const toSlot = resolveInventorySlotNum(target, host2);
+      if (toSlot == null || !Number.isFinite(toSlot)) return;
+      const fromSlot = readDragSourceSlot(ev, host2);
+      if (fromSlot == null || !Number.isFinite(fromSlot) || fromSlot === toSlot) {
+        return;
       }
-    }, 0);
-  }
-  function resolveInventorySlotNum(start, host2) {
-    let node = start;
-    while (node && host2.contains(node)) {
-      const cnum = node.getAttribute && node.getAttribute("data-cnum");
-      if (cnum != null && cnum !== "") {
-        const n = parseInt(cnum, 10);
-        if (Number.isFinite(n)) return n;
-      }
-      const id = node.id || "";
-      const idMatch = /^citem(\d+)$/.exec(id);
-      if (idMatch) return parseInt(idMatch[1], 10);
-      const oc = node.getAttribute && node.getAttribute("onclick");
-      if (oc) {
-        const m = /inventory_click\((\d+)/.exec(oc);
-        if (m) return parseInt(m[1], 10);
-      }
-      const om = node.getAttribute && node.getAttribute("onmousedown");
-      if (om) {
-        const m = /inventory_click\((\d+)/.exec(om);
-        if (m) return parseInt(m[1], 10);
-      }
-      node = node.parentElement;
-    }
-    return null;
-  }
-  function installBagItemContextMenu(host2) {
-    ensureBagItemContextMenuCss();
-    const onCtx = (ev) => {
-      if (ev.shiftKey) return;
-      const t = ev.target;
-      if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
-      if (num == null || !Number.isFinite(num)) return;
-      const item = observingBagItem(num);
-      const fp = fingerprintFromSlot(num, item);
-      if (!fp) return;
+      if (!observingBagItem(fromSlot)) return;
       ev.preventDefault();
       ev.stopPropagation();
-      showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
+      invSwapCommand(fromSlot, toSlot);
     };
-    host2.addEventListener("contextmenu", onCtx, true);
+    host2.addEventListener("dragstart", onDragStart, true);
+    host2.addEventListener("dragover", onDragOver, true);
+    host2.addEventListener("drop", onDrop, true);
     return () => {
-      hideCtx();
-      host2.removeEventListener("contextmenu", onCtx, true);
+      host2.removeEventListener("dragstart", onDragStart, true);
+      host2.removeEventListener("dragover", onDragOver, true);
+      host2.removeEventListener("drop", onDrop, true);
     };
   }
 
@@ -50782,14 +53612,14 @@ ${ESTIMATE_HINT}`,
 
   // src/host/sendItem.ts
   var SEND_ITEM_RANGE = 400;
-  function lit2(value) {
+  function lit4(value) {
     return JSON.stringify(String(value));
   }
-  function fingerprintCheckJs2(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit2(fp.name)}`];
+  function fingerprintCheckJs3(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit4(fp.name)}`];
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit2(fp.p)}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit4(fp.p)}`);
     return parts.join("||");
   }
   function selfNameLower() {
@@ -50829,6 +53659,11 @@ ${ESTIMATE_HINT}`,
       seen.add(key);
       const row3 = { name, id };
       if (dist != null && Number.isFinite(dist)) row3.dist = dist;
+      const freeInv = freeInventorySlots(ent);
+      if (freeInv != null) row3.freeInv = freeInv;
+      if (ent.isize != null && Number.isFinite(Number(ent.isize))) {
+        row3.isize = Number(ent.isize) | 0;
+      }
       out.push(row3);
     }
     out.sort((a, b) => {
@@ -50852,8 +53687,8 @@ ${ESTIMATE_HINT}`,
     }
     const q = quantity != null ? Math.max(1, Math.floor(quantity)) : sendItemQuantity(fp);
     const preferSlot = Number(fp.slot) | 0;
-    const mismatch = fingerprintCheckJs2(fp, "it");
-    const candMismatch = fingerprintCheckJs2(fp, "__cand");
+    const mismatch = fingerprintCheckJs3(fp, "it");
+    const candMismatch = fingerprintCheckJs3(fp, "__cand");
     return wrapCommandScript(
       [
         `var __slot=${preferSlot};`,
@@ -50864,13 +53699,13 @@ ${ESTIMATE_HINT}`,
         `var __cand=character.items[__si];`,
         `if(!(${candMismatch})){__slot=__si;break;}`,
         `}`,
-        `if(__slot<0){game_log(${lit2("Send item aborted \u2014 item mismatch")});return;}`,
+        `if(__slot<0){game_log(${lit4("Send item aborted \u2014 item mismatch")});return;}`,
         `it=character.items[__slot];`,
         `}`,
         `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
         `if(!__q)__q=1;`,
-        `try{await send_item(${lit2(to)},__slot,__q);}catch(__e){`,
-        `game_log(${lit2("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `try{await send_item(${lit4(to)},__slot,__q);}catch(__e){`,
+        `game_log(${lit4("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -50912,6 +53747,17 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/host/sendItemBagMenuActions.ts
+  function receiverSpaceLabel(target) {
+    const ent = findEntityById(target.id);
+    const label = formatFreeInventorySpace(
+      ent != null ? ent : {
+        id: target.id,
+        esize: target.freeInv,
+        isize: target.isize
+      }
+    );
+    return label ? ` \xB7 bag ${label}` : "";
+  }
   function buildSendItemBagMenuActions(ctx) {
     const actions = [];
     const nearby = listNearbySendTargets();
@@ -50930,11 +53776,14 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < nearby.length; i++) {
       const t = nearby[i];
       const distLabel = t.dist != null ? ` (${Math.round(t.dist)}px)` : "";
+      const spaceLabel = receiverSpaceLabel(t);
+      const noSpace = t.freeInv != null && t.freeInv <= 0;
       actions.push({
         id: `send-nearby-${t.id}`,
-        label: `Send to ${t.name}${distLabel}`,
-        title: "Trade send via send_item on the observed character (not mail)",
+        label: `Send to ${t.name}${distLabel}${spaceLabel}`,
+        title: noSpace ? "Receiver inventory appears full \u2014 send may fail" : "Trade send via send_item on the observed character (not mail)",
         separatorBefore: i === 0,
+        disabled: noSpace,
         run: () => {
           sendItemCommand(ctx.fp, t.name);
         }
@@ -50943,6 +53792,234 @@ ${ESTIMATE_HINT}`,
     return actions;
   }
   registerBagMenuProvider(buildSendItemBagMenuActions);
+
+  // src/host/gearBagMenuActions.ts
+  function buildGearBagMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    const actions = [];
+    const slots = equipSlotsForItemName(ctx.fp.name);
+    if (!slots.length) return actions;
+    if (slots.length === 1) {
+      const gearSlot = slots[0];
+      actions.push({
+        id: "equip-auto",
+        label: `Equip \u2192 ${formatGearSlotLabel(gearSlot)}`,
+        title: "Runs equip() on the observed character via o:command",
+        separatorBefore: true,
+        run: () => {
+          equipCommand(ctx.fp, gearSlot);
+        }
+      });
+    } else {
+      for (let i = 0; i < slots.length; i++) {
+        const gearSlot = slots[i];
+        actions.push({
+          id: `equip-${gearSlot}`,
+          label: `Equip \u2192 ${formatGearSlotLabel(gearSlot)}`,
+          title: "Runs equip(num, slot) on the observed character",
+          separatorBefore: i === 0,
+          run: () => {
+            equipCommand(ctx.fp, gearSlot);
+          }
+        });
+      }
+    }
+    return actions;
+  }
+  registerBagMenuProvider(buildGearBagMenuActions);
+
+  // src/host/bagSwapMenuActions.ts
+  function formatSwapTargetLabel(slot, item) {
+    let label = `[${slot}] ${item.name}`;
+    if (item.level != null) label += ` +${item.level}`;
+    if (item.q != null && item.q > 1) label += ` \xD7${item.q}`;
+    return label;
+  }
+  function promptSwapSlot(fromSlot, maxSlot) {
+    const raw = window.prompt(
+      `Swap slot ${fromSlot} with slot (0\u2013${maxSlot - 1}):`,
+      ""
+    );
+    if (raw == null || String(raw).trim() === "") return null;
+    const n = parseInt(String(raw).trim(), 10);
+    if (!Number.isFinite(n) || n < 0 || n >= maxSlot) {
+      window.alert(`Enter a slot number from 0 to ${maxSlot - 1}.`);
+      return null;
+    }
+    if (n === fromSlot) return null;
+    return n;
+  }
+  function buildSwapSubmenu(fromSlot, obsItems) {
+    const children = [];
+    for (let i = 0; i < obsItems.length; i++) {
+      if (i === fromSlot) continue;
+      const other = obsItems[i];
+      if (!other || !other.name || other.name === "placeholder") continue;
+      children.push({
+        id: `swap-${i}`,
+        label: formatSwapTargetLabel(i, other),
+        title: `Swap slot ${fromSlot} \u2194 ${i}`,
+        run: () => {
+          invSwapCommand(fromSlot, i);
+        }
+      });
+    }
+    children.push({
+      id: "swap-prompt",
+      label: "Other slot\u2026",
+      title: "Swap with any inventory slot by number (including empty)",
+      separatorBefore: children.length > 0,
+      run: () => {
+        const target = promptSwapSlot(fromSlot, obsItems.length);
+        if (target == null) return;
+        invSwapCommand(fromSlot, target);
+      }
+    });
+    return {
+      id: "swap-submenu",
+      label: "Swap with\u2026",
+      title: "Reorder inventory \u2014 or drag the item to another slot",
+      separatorBefore: true,
+      children
+    };
+  }
+  function buildBagSwapMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    const snap = window.observing;
+    const obsItems = snap && Array.isArray(snap.items) ? snap.items : null;
+    if (!obsItems || obsItems.length < 2) return [];
+    const fromSlot = Number(ctx.fp.slot) | 0;
+    return [buildSwapSubmenu(fromSlot, obsItems)];
+  }
+  registerBagMenuProvider(buildBagSwapMenuActions);
+
+  // src/host/tradeBagMenuActions.ts
+  function buildTradeBagMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    const obs = window.observing;
+    const slots = obs && obs.slots ? obs.slots : null;
+    const tradeNames = observingTradeSlotNames();
+    if (!tradeNames.length) return [];
+    const listChildren = [];
+    const giveawayChildren = [];
+    for (let i = 0; i < tradeNames.length; i++) {
+      const tradeSlot = tradeNames[i];
+      if (!tradeSlotIsEmpty(slots, tradeSlot)) continue;
+      const label = formatTradeSlotLabel(tradeSlot);
+      listChildren.push({
+        id: `list-${tradeSlot}`,
+        label,
+        title: "Sell listing on this trade slot",
+        run: () => {
+          var _a;
+          const price = promptTradePrice(ctx.fp.name);
+          if (price == null) return;
+          const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
+          const q = maxQ != null && maxQ > 1 ? promptTradeQuantity(maxQ, ctx.fp.name) : (_a = ctx.fp.q) != null ? _a : 1;
+          if (q == null) return;
+          tradeListCommand(ctx.fp, tradeSlot, price, q);
+        }
+      });
+      giveawayChildren.push({
+        id: `giveaway-${tradeSlot}`,
+        label,
+        title: "Giveaway on this trade slot",
+        run: () => {
+          var _a;
+          const mins = promptGiveawayMinutes();
+          if (mins == null) return;
+          const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
+          const q = maxQ != null && maxQ > 1 ? promptTradeQuantity(maxQ, ctx.fp.name) : (_a = ctx.fp.q) != null ? _a : 1;
+          if (q == null) return;
+          giveawayCommand(tradeSlot, ctx.fp, mins, q);
+        }
+      });
+    }
+    if (!listChildren.length) return [];
+    if (listChildren.length === 1) {
+      const slotLabel = listChildren[0].label;
+      return [
+        {
+          id: listChildren[0].id,
+          label: `List on ${slotLabel}\u2026`,
+          title: listChildren[0].title,
+          separatorBefore: true,
+          run: listChildren[0].run
+        },
+        {
+          id: giveawayChildren[0].id,
+          label: `Giveaway on ${slotLabel}\u2026`,
+          title: giveawayChildren[0].title,
+          run: giveawayChildren[0].run
+        }
+      ];
+    }
+    return [
+      {
+        id: "list-trade-submenu",
+        label: "List on trade\u2026",
+        title: "Sell listing on an empty trade slot",
+        separatorBefore: true,
+        children: listChildren
+      },
+      {
+        id: "giveaway-trade-submenu",
+        label: "Giveaway on trade\u2026",
+        title: "Free giveaway on an empty trade slot",
+        children: giveawayChildren
+      }
+    ];
+  }
+  registerBagMenuProvider(buildTradeBagMenuActions);
+
+  // src/host/tradeBagFulfillMenuActions.ts
+  function buildFulfillBagMenuActions(ctx) {
+    const obs = window.observing;
+    const matches = scanBuyOrdersForBagItem(
+      ctx.fp,
+      getEntitiesList(),
+      obs
+    );
+    if (!matches.length) return [];
+    const children = matches.map((m, i) => {
+      const priceLabel = formatTradeGold(m.listing.price);
+      return {
+        id: `fulfill-${m.entityId}-${m.tradeSlot}-${i}`,
+        label: `${m.entityName} \u2014 ${priceLabel}g`,
+        title: `Sell to ${m.entityName}'s buy order on ${m.tradeSlot}`,
+        run: () => {
+          const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
+          const cap = m.listing.q != null && m.listing.q > 0 ? maxQ != null ? Math.min(maxQ, m.listing.q) : m.listing.q : maxQ;
+          const q = promptTradeQuantity(cap, m.listing.name);
+          if (q == null) return;
+          if (!confirmTradeFulfill(m.listing.name, m.listing.price, q)) return;
+          tradeFulfillCommand(m.entityId, m.tradeSlot, m.listing.rid, q);
+        }
+      };
+    });
+    if (children.length === 1) {
+      const only = children[0];
+      return [
+        {
+          id: only.id,
+          label: `Sell to buy order (${only.label})\u2026`,
+          title: only.title,
+          separatorBefore: true,
+          run: only.run
+        }
+      ];
+    }
+    return [
+      {
+        id: "fulfill-buy-orders-submenu",
+        label: "Sell to buy order\u2026",
+        title: "Fulfill a nearby player's buy order with this bag item",
+        separatorBefore: true,
+        children
+      }
+    ];
+  }
+  registerBagMenuProvider(buildFulfillBagMenuActions);
 
   // src/ui/bag/bagItemInfoActions.ts
   function openObservingItemInfo(ctx) {
@@ -50965,8 +54042,474 @@ ${ESTIMATE_HINT}`,
   }
   registerBagMenuProvider(buildBagItemInfoActions);
 
+  // src/lib/bagSort.ts
+  var GEAR_SLOT_ORDER = [
+    "helmet",
+    "chest",
+    "pants",
+    "shoes",
+    "gloves",
+    "belt",
+    "amulet",
+    "cape",
+    "mainhand",
+    "offhand",
+    "ring1",
+    "ring2",
+    "earring1",
+    "earring2",
+    "orb",
+    "elixir"
+  ];
+  var CATEGORY_ORDER = {
+    consumable: 10,
+    scroll: 20,
+    equipment: 30,
+    weapon: 40,
+    armor: 40,
+    quest: 50,
+    material: 60,
+    misc: 70,
+    other: 80,
+    unknown: 99
+  };
+  function isBagSlotBlocked(item) {
+    return !!(item && item.name === "placeholder");
+  }
+  function isBagSlotEmpty(item) {
+    if (isBagSlotBlocked(item)) return false;
+    if (!item || !item.name) return true;
+    return false;
+  }
+  function observedBagSlotCount(obs) {
+    if (!obs) return 0;
+    const isize = obs.isize != null && Number.isFinite(Number(obs.isize)) ? Number(obs.isize) | 0 : 42;
+    const len = Array.isArray(obs.items) ? obs.items.length : 0;
+    return Math.max(isize, len, 0);
+  }
+  function normalizeObservedBagItems(obs) {
+    const n = observedBagSlotCount(obs);
+    if (n <= 0) return [];
+    const src = obs == null ? void 0 : obs.items;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const it = src == null ? void 0 : src[i];
+      if (isBagSlotBlocked(it)) {
+        out.push(it);
+      } else if (isBagSlotEmpty(it)) {
+        out.push(null);
+      } else {
+        out.push(it);
+      }
+    }
+    return out;
+  }
+  function bagItemDef(G, name) {
+    if (!G || !G.items) return null;
+    const def = G.items[name];
+    return def != null ? def : null;
+  }
+  function itemLocked(item) {
+    return !!(item.l || item.acl || item.v);
+  }
+  function itemCategory(def, name) {
+    if (!def) return "unknown";
+    const t = String(def.type || "").toLowerCase();
+    if (t === "pot" || t === "elixir") return "consumable";
+    if (t.indexOf("scroll") >= 0 || t === "cscroll" || t === "scroll") {
+      return "scroll";
+    }
+    if (def.upgrade || def.compound) return "equipment";
+    if (t === "weapon" || t === "shield" || t === "helmet" || t === "chest" || t === "pants" || t === "shoes" || t === "gloves" || t === "belt" || t === "ring" || t === "earring" || t === "amulet" || t === "orb" || t === "cape") {
+      return "equipment";
+    }
+    if (t === "quest" || t === "material" || t === "misc") return t;
+    if (t) return "other";
+    return name.indexOf("scroll") >= 0 ? "scroll" : "unknown";
+  }
+  function categoryRank(category) {
+    var _a;
+    return (_a = CATEGORY_ORDER[category]) != null ? _a : CATEGORY_ORDER.other;
+  }
+  function gearSlotRank(def, name) {
+    var _a;
+    const slots = equipSlotsForItemName(name);
+    const slot = slots.length ? slots[0] : (_a = def == null ? void 0 : def.type) != null ? _a : "";
+    const idx = GEAR_SLOT_ORDER.indexOf(String(slot));
+    return idx >= 0 ? idx : 999;
+  }
+  function classSortKey(def) {
+    if (!def || def.class == null) return "";
+    if (Array.isArray(def.class)) return def.class.slice().sort().join(",");
+    return String(def.class);
+  }
+  function compareScalar(a, b, dir) {
+    let cmp = 0;
+    if (typeof a === "number" && typeof b === "number") {
+      cmp = a - b;
+    } else {
+      cmp = String(a).localeCompare(String(b));
+    }
+    return dir === "desc" ? -cmp : cmp;
+  }
+  function ruleValue(rule, item, G) {
+    var _a, _b, _c, _d;
+    const def = bagItemDef(G, item.name);
+    switch (rule.key) {
+      case "category":
+        return categoryRank(itemCategory(def, item.name));
+      case "type":
+        return (_a = def == null ? void 0 : def.type) != null ? _a : "";
+      case "grade":
+        return (_b = def == null ? void 0 : def.g) != null ? _b : 0;
+      case "gearSlot":
+        return gearSlotRank(def, item.name);
+      case "class":
+        return classSortKey(def);
+      case "name":
+        return item.name;
+      case "level":
+        return (_c = item.level) != null ? _c : 0;
+      case "quantity":
+        return (_d = item.q) != null ? _d : 1;
+      case "stackable":
+        return (def == null ? void 0 : def.s) ? 0 : 1;
+      case "locked":
+        return itemLocked(item) ? 1 : 0;
+      default: {
+        const _never = rule.key;
+        void _never;
+        return "";
+      }
+    }
+  }
+  function compareBagItems(a, b, prefs, G) {
+    const rules = enabledBagSortRules(prefs);
+    for (let i = 0; i < rules.length; i++) {
+      const rule = rules[i];
+      const av = ruleValue(rule, a, G);
+      const bv = ruleValue(rule, b, G);
+      const cmp = compareScalar(av, bv, rule.dir);
+      if (cmp !== 0) return cmp;
+    }
+    return compareScalar(a.name, b.name, "asc");
+  }
+  function wouldStackOnMove(a, b, G) {
+    var _a, _b;
+    if (!a || !b || !a.name || !b.name) return false;
+    if (a.name !== b.name) return false;
+    if (((_a = a.level) != null ? _a : 0) !== ((_b = b.level) != null ? _b : 0)) return false;
+    const ap = a.p != null ? String(a.p) : "";
+    const bp = b.p != null ? String(b.p) : "";
+    if (ap !== bp) return false;
+    const def = bagItemDef(G, a.name);
+    return !!(def && def.s);
+  }
+  function buildItemsById(items) {
+    const map = /* @__PURE__ */ new Map();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (isBagSlotEmpty(it) || isBagSlotBlocked(it)) continue;
+      map.set(i, it);
+    }
+    return map;
+  }
+  function buildCurrentState(items) {
+    const state2 = [];
+    for (let i = 0; i < items.length; i++) {
+      if (isBagSlotBlocked(items[i])) {
+        state2.push(i);
+      } else if (isBagSlotEmpty(items[i])) {
+        state2.push(null);
+      } else {
+        state2.push(i);
+      }
+    }
+    return state2;
+  }
+  function sortableSlotIndexes(items) {
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      if (!isBagSlotBlocked(items[i])) out.push(i);
+    }
+    return out;
+  }
+  function buildTargetState(items, prefs, G) {
+    const n = items.length;
+    const occupied = [];
+    for (let i = 0; i < n; i++) {
+      const it = items[i];
+      if (isBagSlotEmpty(it) || isBagSlotBlocked(it)) continue;
+      occupied.push({ id: i, item: it });
+    }
+    occupied.sort((a, b) => compareBagItems(a.item, b.item, prefs, G));
+    const target = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      if (isBagSlotBlocked(items[i])) target[i] = i;
+    }
+    const slots = sortableSlotIndexes(items);
+    if (prefs.emptyLast) {
+      let oi2 = 0;
+      for (let s = 0; s < slots.length && oi2 < occupied.length; s++) {
+        target[slots[s]] = occupied[oi2].id;
+        oi2++;
+      }
+      return target;
+    }
+    let oi = 0;
+    for (let s = 0; s < slots.length && oi < occupied.length; s++) {
+      const slot = slots[s];
+      if (isBagSlotEmpty(items[slot])) continue;
+      target[slot] = occupied[oi].id;
+      oi++;
+    }
+    return target;
+  }
+  function itemAtSlot(state2, slot, itemsById) {
+    var _a;
+    const id = state2[slot];
+    if (id == null) return null;
+    return (_a = itemsById.get(id)) != null ? _a : null;
+  }
+  function doSwapState(state2, a, b) {
+    const tmp = state2[a];
+    state2[a] = state2[b];
+    state2[b] = tmp;
+  }
+  function findEmptySlot(state2, skipA, skipB) {
+    for (let i = 0; i < state2.length; i++) {
+      if (i === skipA || i === skipB) continue;
+      if (state2[i] == null) return i;
+    }
+    return -1;
+  }
+  function planSafeSwap(state2, a, b, itemsById, G, out) {
+    if (a === b) return;
+    const ia = itemAtSlot(state2, a, itemsById);
+    const ib = itemAtSlot(state2, b, itemsById);
+    if (ia && ib && wouldStackOnMove(ia, ib, G)) {
+      const buf = findEmptySlot(state2, a, b);
+      if (buf >= 0) {
+        planSafeSwap(state2, a, buf, itemsById, G, out);
+        planSafeSwap(state2, buf, b, itemsById, G, out);
+        return;
+      }
+    }
+    out.push([a, b]);
+    doSwapState(state2, a, b);
+  }
+  function planBagSortSwaps(items, prefs, G) {
+    if (!items.length) return [];
+    const itemsById = buildItemsById(items);
+    if (itemsById.size <= 1) return [];
+    const current = buildCurrentState(items);
+    const target = buildTargetState(items, prefs, G);
+    const state2 = current.slice();
+    const swaps = [];
+    for (let i = 0; i < state2.length; i++) {
+      if (state2[i] === target[i]) continue;
+      if (target[i] == null) {
+        if (state2[i] != null) {
+          const empty2 = findEmptySlot(state2, i, -1);
+          if (empty2 >= 0) planSafeSwap(state2, i, empty2, itemsById, G, swaps);
+        }
+        continue;
+      }
+      let from = -1;
+      for (let j = i; j < state2.length; j++) {
+        if (state2[j] === target[i]) {
+          from = j;
+          break;
+        }
+      }
+      if (from >= 0 && from !== i) {
+        planSafeSwap(state2, i, from, itemsById, G, swaps);
+      }
+    }
+    return swaps;
+  }
+  function bagAlreadySorted(items, prefs, G) {
+    return planBagSortSwaps(items, prefs, G).length === 0;
+  }
+
+  // src/host/bagSortCommands.ts
+  var SORT_SWAP_SLEEP_MS = 100;
+  var MAX_SWAPS_PER_COMMAND = 40;
+  var sortRunningUntil = 0;
+  var sortChunkTimer = null;
+  var pendingSortChunks = null;
+  var pendingSortChunkIndex = 0;
+  function clearSortPending() {
+    pendingSortChunks = null;
+    pendingSortChunkIndex = 0;
+    if (sortChunkTimer != null) {
+      window.clearTimeout(sortChunkTimer);
+      sortChunkTimer = null;
+    }
+  }
+  function clearSortRunState() {
+    sortRunningUntil = 0;
+    clearSortPending();
+  }
+  function scheduleSortBagRefresh(lastChunkLen) {
+    sortChunkTimer = window.setTimeout(() => {
+      sortChunkTimer = null;
+      clearSortRunState();
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, sortBatchDelayMs(lastChunkLen));
+  }
+  function markSortRunning(swaps) {
+    const ms = Math.max(1200, swaps * (SORT_SWAP_SLEEP_MS + 90) + 800);
+    sortRunningUntil = Date.now() + ms;
+  }
+  function sortBatchDelayMs(batchLen) {
+    const n = Math.max(1, batchLen | 0);
+    return n * (SORT_SWAP_SLEEP_MS + 90) + 600;
+  }
+  function isBagSortRunning() {
+    if (pendingSortChunks) return true;
+    return Date.now() < sortRunningUntil;
+  }
+  function splitSortChunks(swaps) {
+    if (swaps.length <= MAX_SWAPS_PER_COMMAND) return [swaps];
+    const out = [];
+    for (let i = 0; i < swaps.length; i += MAX_SWAPS_PER_COMMAND) {
+      out.push(swaps.slice(i, i + MAX_SWAPS_PER_COMMAND));
+    }
+    return out;
+  }
+  function buildBagSortScript(swaps, options) {
+    if (!swaps.length) {
+      return wrapCommandScript(`game_log("Bag already sorted");`);
+    }
+    const parts = [];
+    if (options == null ? void 0 : options.intro) {
+      parts.push(`game_log(${JSON.stringify(options.intro)});`);
+    }
+    if ((options == null ? void 0 : options.useLock) !== false) {
+      parts.push(
+        `if(globalThis.__ecuBagSortLock){game_log("Bag sort already running on character \u2014 wait");return;}`,
+        `globalThis.__ecuBagSortLock=1;`,
+        `try{`
+      );
+    }
+    parts.push(`var __n=Math.max(character.isize||42,character.items.length);`);
+    for (let i = 0; i < swaps.length; i++) {
+      const a = swaps[i][0] | 0;
+      const b = swaps[i][1] | 0;
+      parts.push(
+        `if(${a}<0||${b}<0||${a}>=__n||${b}>=__n){`,
+        `game_log("Sort stopped \u2014 slot out of range");return;}`,
+        `if(character.items[${a}]&&character.items[${a}].name==="placeholder"){`,
+        `game_log("Sort stopped \u2014 placeholder slot "+${a});return;}`,
+        `if(character.items[${b}]&&character.items[${b}].name==="placeholder"){`,
+        `game_log("Sort stopped \u2014 placeholder slot "+${b});return;}`,
+        `try{await swap(${a},${b});}catch(__e){`,
+        `game_log("Sort stopped at "+${a}+"\u2194"+${b}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `return;}`,
+        `await sleep(${SORT_SWAP_SLEEP_MS});`
+      );
+    }
+    if (options == null ? void 0 : options.done) {
+      parts.push(`game_log("Bag sorted");`);
+    } else if ((options == null ? void 0 : options.chunk) != null && (options == null ? void 0 : options.chunks) != null && options.chunk < options.chunks) {
+      parts.push(
+        `game_log("Sort part ${options.chunk}/${options.chunks} done \u2014 continuing\u2026");`
+      );
+    }
+    if ((options == null ? void 0 : options.useLock) !== false) {
+      parts.push(`}finally{globalThis.__ecuBagSortLock=0;}`);
+    }
+    return wrapCommandScript(parts.join(""));
+  }
+  function scheduleNextSortChunk() {
+    var _a, _b;
+    if (!pendingSortChunks) return;
+    pendingSortChunkIndex += 1;
+    if (pendingSortChunkIndex >= pendingSortChunks.length) {
+      const lastLen = (_b = (_a = pendingSortChunks[pendingSortChunks.length - 1]) == null ? void 0 : _a.length) != null ? _b : 1;
+      clearSortPending();
+      scheduleSortBagRefresh(lastLen);
+      return;
+    }
+    const prev = pendingSortChunks[pendingSortChunkIndex - 1];
+    sortChunkTimer = window.setTimeout(() => {
+      sortChunkTimer = null;
+      emitSortChunk(pendingSortChunkIndex);
+    }, sortBatchDelayMs(prev.length));
+  }
+  function emitSortChunk(index) {
+    if (!pendingSortChunks || index >= pendingSortChunks.length) return false;
+    const chunk = pendingSortChunks[index];
+    const total = pendingSortChunks.reduce((n, c) => n + c.length, 0);
+    const chunks = pendingSortChunks.length;
+    const intro = index === 0 ? `Sorting bag (${total} moves${chunks > 1 ? ` \xB7 ${chunks} parts` : ""})\u2026` : `Sorting part ${index + 1}/${chunks}\u2026`;
+    const script = buildBagSortScript(chunk, {
+      intro,
+      done: index + 1 >= chunks,
+      chunk: index + 1,
+      chunks
+    });
+    const ok = emitObserverCommand(script);
+    if (!ok) {
+      clearSortRunState();
+      return false;
+    }
+    scheduleNextSortChunk();
+    return true;
+  }
+  function startSortSwaps(swaps) {
+    clearSortRunState();
+    pendingSortChunks = splitSortChunks(swaps);
+    pendingSortChunkIndex = 0;
+    markSortRunning(swaps.length);
+    return emitSortChunk(0);
+  }
+  function bagSortCommand() {
+    if (!canEditObservedBag()) {
+      window.alert("Sort only works on your watched character's bag.");
+      return false;
+    }
+    if (isBagSortRunning()) {
+      window.alert("Bag sort already in progress\u2026");
+      return false;
+    }
+    const obs = window.observing;
+    if (!obs) return false;
+    const items = normalizeObservedBagItems(obs);
+    if (!items.length) {
+      window.alert("No inventory snapshot loaded \u2014 open bag or Refresh first.");
+      return false;
+    }
+    const prefs = getBagSortPrefs();
+    if (!prefs.rules.some((r) => r.enabled)) {
+      window.alert("Enable at least one sort rule in Settings \u2192 Bag.");
+      return false;
+    }
+    const G = getG();
+    if (bagAlreadySorted(items, prefs, G)) {
+      emitObserverCommand(
+        wrapCommandScript(
+          `game_log("Bag already sorted (${describeBagSortRules(prefs).replace(/"/g, "")})");`
+        )
+      );
+      return true;
+    }
+    const swaps = planBagSortSwaps(items, prefs, G);
+    if (!swaps.length) {
+      emitObserverCommand(
+        wrapCommandScript(`game_log("Bag already matches sort rules");`)
+      );
+      return true;
+    }
+    return startSortSwaps(swaps);
+  }
+
   // src/ui/frames/BagPanel.ts
-  var HOST_ID2 = "bottomleftcorner";
+  var HOST_ID3 = "bottomleftcorner";
   var BAG_SLOT_BOX = 50;
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
@@ -51080,7 +54623,11 @@ ${ESTIMATE_HINT}`,
       gridStale,
       refreshing,
       refreshKind,
-      hasSnapshot
+      hasSnapshot,
+      commandPending,
+      canSort,
+      sortRunning,
+      onSort
     } = props;
     const [now, setNow] = React.useState(() => Date.now());
     React.useEffect(() => {
@@ -51109,6 +54656,7 @@ ${ESTIMATE_HINT}`,
     } else if (!refreshing && !gridStale && refreshKind === "server") {
       title = "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
     }
+    const busy = refreshing || commandPending || sortRunning;
     return e(
       "div",
       {
@@ -51140,12 +54688,39 @@ ${ESTIMATE_HINT}`,
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             fontSize: TYPE.secondary,
-            color: refreshing || gridStale ? "#c9a227" : "#aaa",
+            color: refreshing || gridStale || commandPending ? "#c9a227" : "#aaa",
             ...PIXEL_TEXT
           }
         },
         label
       ),
+      canSort ? e(
+        "button",
+        {
+          type: "button",
+          disabled: busy,
+          title: "Sort inventory on the watched character (configure rules in Settings \u2192 Bag). Uses swap()/imove \u2014 may take several moves.",
+          onClick: (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (onSort) onSort();
+          },
+          style: {
+            flexShrink: 0,
+            cursor: busy ? "wait" : "pointer",
+            fontSize: TYPE.secondary,
+            lineHeight: "1.2",
+            padding: "3px 8px",
+            minHeight: "26px",
+            margin: 0,
+            border: "1px solid #666",
+            background: busy ? "#1a1a1a" : "#222",
+            color: busy ? "#777" : "#ddd",
+            ...PIXEL_TEXT
+          }
+        },
+        sortRunning ? "Sorting\u2026" : "Sort"
+      ) : null,
       e(
         "button",
         {
@@ -51192,6 +54767,12 @@ ${ESTIMATE_HINT}`,
     const layoutEdit = !!props.layoutEdit;
     const showDummy = layoutEdit && !open && !refreshing;
     const showChrome = open || refreshing;
+    const [commandPending, setCommandPending] = React.useState(
+      () => isObserverCommandPending()
+    );
+    const [sortRunning, setSortRunning] = React.useState(
+      () => isBagSortRunning()
+    );
     React.useEffect(() => {
       attachInventoryToMount(mountRef.current);
       const unsubInv = subscribeInventory((next) => setOpen(next));
@@ -51203,19 +54784,35 @@ ${ESTIMATE_HINT}`,
         setRefreshKind(getBagRefreshKind());
         setHasSnapshot(hasObservingInventorySnapshot());
       });
+      const unsubPending = subscribeObserverCommandPending(() => {
+        setCommandPending(isObserverCommandPending());
+        setSortRunning(isBagSortRunning());
+      });
       const host2 = ensureInventoryHost();
       const unsubMenu = installBagItemContextMenu(host2);
+      const unsubDrag = installBagDragDrop(host2);
       return () => {
         unsubInv();
         unsubSync();
+        unsubPending();
         unsubMenu();
-        const h = document.getElementById(HOST_ID2);
+        unsubDrag();
+        const h = document.getElementById(HOST_ID3);
         if (h) document.body.appendChild(h);
       };
     }, []);
+    const canSort = canEditObservedBag();
+    React.useEffect(() => {
+      if (!sortRunning) return;
+      const id = window.setInterval(() => {
+        if (!isBagSortRunning()) setSortRunning(false);
+      }, 400);
+      return () => window.clearInterval(id);
+    }, [sortRunning]);
     React.useLayoutEffect(() => {
       attachInventoryToMount(mountRef.current);
-    }, [open, refreshing, showDummy]);
+      if (open) refreshInventoryItemTitles();
+    }, [open, refreshing, showDummy, props.tradeRevision]);
     return e(
       "div",
       {
@@ -51238,7 +54835,13 @@ ${ESTIMATE_HINT}`,
         gridStale,
         refreshing,
         refreshKind,
-        hasSnapshot
+        hasSnapshot,
+        commandPending,
+        canSort,
+        sortRunning,
+        onSort: () => {
+          if (bagSortCommand()) setSortRunning(true);
+        }
       }) : null,
       showDummy ? e(BagDummy) : null,
       e("div", {
@@ -51251,6 +54854,682 @@ ${ESTIMATE_HINT}`,
           pointerEvents: "auto"
         }
       })
+    );
+  }
+
+  // src/ui/bag/tradeDragPayload.ts
+  var TRADE_DRAG_SLOT_MIME = "application/x-ecu-trade-slot";
+  function writeTradeDragPayload(dt, tradeSlot) {
+    dt.setData(TRADE_DRAG_SLOT_MIME, tradeSlot);
+    dt.setData("text/plain", `trade:${tradeSlot}`);
+    dt.effectAllowed = "move";
+  }
+
+  // src/ui/trade/tradeSlotActions.ts
+  function openTradeItemInfo(entity, slotName, slot) {
+    if (!slot || !slot.name) return;
+    setXTarget(entity);
+    info.openItem(entity, slotName, slot);
+  }
+  function handleTradeSlotClick(ev, entity, slotName, slot, gearEditable, observing) {
+    if (ev.shiftKey) {
+      if (slot && slot.name) openTradeItemInfo(entity, slotName, slot);
+      return;
+    }
+    if (gearEditable) {
+      if (slot && slot.name) {
+        openTradeItemInfo(entity, slotName, slot);
+      } else {
+        showTradeWishlistPicker(slotName, ev.clientX, ev.clientY);
+      }
+      return;
+    }
+    if (!slot || !slot.name || !slot.rid || slot.price == null) return;
+    if (!observing || isObservedSelf(entity)) return;
+    if (!isInTradeRange(entity, observing)) {
+      window.alert("Too far away \u2014 move your watched character closer.");
+      return;
+    }
+    const targetId = entity.id != null ? String(entity.id) : "";
+    const rid = String(slot.rid);
+    const maxQ = slot.q != null && slot.q > 0 ? slot.q : void 0;
+    if (slot.b) {
+      const match = findBagMatchForBuyOrder(slot, observing.items);
+      if (!match) {
+        window.alert(`No matching ${slot.name} in bag.`);
+        return;
+      }
+      const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
+      const q2 = promptTradeQuantity(cap, slot.name);
+      if (q2 == null) return;
+      if (!confirmTradeFulfill(slot.name, slot.price, q2)) return;
+      tradeFulfillCommand(targetId, slotName, rid, q2);
+      return;
+    }
+    if (isGiveawayListing(slot)) {
+      if (isJoinedGiveaway(slot, observing)) {
+        window.alert("Already joined this giveaway.");
+        return;
+      }
+      joinGiveawayCommand(targetId, slotName, rid);
+      return;
+    }
+    const obsGold = observing.gold;
+    const q = promptTradeQuantity(maxQ, slot.name);
+    if (q == null) return;
+    if (obsGold != null && !canAffordListing(slot, q, obsGold)) {
+      window.alert(
+        `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obsGold)}.`
+      );
+      return;
+    }
+    if (!confirmTradePurchase(slot.name, slot.price, q)) return;
+    tradePurchaseCommand(targetId, slotName, rid, q);
+  }
+
+  // src/ui/trade/TradeSlotCell.ts
+  var TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
+  var EMPTY_BCOLOR2 = "#292929";
+  function wrapContainerHtml2(html, title) {
+    return e("div", {
+      style: {
+        display: "inline-block",
+        lineHeight: 0,
+        fontSize: 0,
+        pointerEvents: "auto"
+      },
+      dangerouslySetInnerHTML: { __html: html },
+      ref: (node) => {
+        if (!node) return;
+        const root = node.firstElementChild;
+        if (!root) return;
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
+        const tip = title || root.getAttribute("title") || "";
+        if (tip) stampNativeItemTitle(node, tip);
+      }
+    });
+  }
+  function TradeSlotCell(props) {
+    const React = getReact();
+    const [bagDropHover, setBagDropHover] = React.useState(false);
+    const { entity, observing, slotName, slot, gearEditable, allSlots } = props;
+    const obs = observing || window.observing;
+    const filled = !!(slot && slot.name);
+    const foreign = !gearEditable;
+    const editable = !!gearEditable;
+    const inRange = !foreign || isInTradeRange(entity, obs);
+    const bagMatch = foreign && filled && (slot == null ? void 0 : slot.b) ? findBagMatchForBuyOrder(slot, obs == null ? void 0 : obs.items) : null;
+    const canBuy = foreign && filled && slot && !slot.b && !isGiveawayListing(slot) && inRange;
+    const canFulfill = foreign && filled && !!(slot == null ? void 0 : slot.b) && !!bagMatch && inRange;
+    const canJoinGiveaway = foreign && filled && isGiveawayListing(slot) && !isJoinedGiveaway(slot, obs) && inRange;
+    const canAfford = canBuy && slot && ((obs == null ? void 0 : obs.gold) == null || canAffordListing(slot, slot.q && slot.q > 0 ? slot.q : 1, obs.gold));
+    const disabled = foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway;
+    const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
+    let content = null;
+    if (slot && skin) {
+      let html = "";
+      try {
+        html = itemInstanceHtml(slot.name, {
+          skin,
+          size: GEAR_SLOT_SIZE,
+          level: slot.level,
+          q: slot.q,
+          p: slot.p
+        }) || "";
+      } catch (e2) {
+        html = "";
+      }
+      content = html ? wrapContainerHtml2(
+        html,
+        itemInstanceLabel(slot.name, { p: slot.p, level: slot.level })
+      ) : wrapContainerHtml2(
+        itemIconHtml(slot.name, {
+          skin,
+          size: GEAR_SLOT_SIZE,
+          level: slot.level,
+          p: slot.p
+        })
+      );
+    } else {
+      let html = "";
+      try {
+        html = itemContainer({
+          size: GEAR_SLOT_SIZE,
+          shade: TRADE_SHADE.shade,
+          s_op: TRADE_SHADE.s_op,
+          slot: slotName,
+          bcolor: EMPTY_BCOLOR2,
+          draggable: false
+        }) || "";
+      } catch (e2) {
+        html = "";
+      }
+      content = html ? wrapContainerHtml2(html) : e("div", {
+        style: {
+          width: `${GEAR_SLOT_SIZE + 6}px`,
+          height: `${GEAR_SLOT_SIZE + 6}px`,
+          background: "#000",
+          border: `2px solid ${EMPTY_BCOLOR2}`,
+          boxSizing: "border-box"
+        },
+        title: slotName
+      });
+    }
+    const badge = filled ? slot.b ? "B" : isGiveawayListing(slot) ? "G" : "S" : null;
+    const priceLabel = (slot == null ? void 0 : slot.price) != null ? formatTradeGold(slot.price) : null;
+    const tipParts = [];
+    if (filled && (slot == null ? void 0 : slot.name)) {
+      tipParts.push(itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }));
+      if (priceLabel) tipParts.push(`${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`);
+      if (foreign && !inRange) tipParts.push("(too far)");
+      if (canFulfill) tipParts.push("Click to sell");
+      else if (slot.b && bagMatch) tipParts.push("Buy order \u2014 matching item in bag");
+      else if (slot.b) tipParts.push("Buy order \u2014 no match in bag");
+      else if (canBuy && canAfford) tipParts.push("Click to buy");
+      else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
+      else if (disabled) tipParts.push("(unavailable)");
+      tipParts.push("Shift+click: item info");
+    } else if (editable) {
+      tipParts.push("Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway");
+    }
+    return e(
+      "div",
+      {
+        key: slotName,
+        className: "comm-trade-slot" + (filled ? " is-filled" : "") + (bagDropHover ? " is-bag-drop-target" : "") + (disabled ? " is-disabled" : ""),
+        "data-slot": slotName,
+        title: tipParts.join(" \xB7 "),
+        draggable: editable && filled ? true : void 0,
+        onDragStart: editable && filled ? (ev) => {
+          if (!ev.dataTransfer) return;
+          writeTradeDragPayload(ev.dataTransfer, slotName);
+        } : void 0,
+        onPointerDown: (ev) => {
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+          if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+          handleTradeSlotClick(ev, entity, slotName, slot, !!gearEditable, obs);
+        },
+        onDragOver: editable ? (ev) => {
+          if (handleBagDragOverGearSlot(ev, slotName, allSlots || null))
+            setBagDropHover(true);
+        } : void 0,
+        onDragLeave: editable ? () => setBagDropHover(false) : void 0,
+        onDrop: editable ? (ev) => {
+          setBagDropHover(false);
+          handleBagDropOnTradeSlot(ev, slotName, allSlots || null);
+        } : void 0,
+        onContextMenu: (ev) => {
+          var _a, _b;
+          if (ev && ev.shiftKey) return;
+          if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+          showGearSlotContextMenu(
+            (_a = ev.clientX) != null ? _a : 0,
+            (_b = ev.clientY) != null ? _b : 0,
+            slotName,
+            filled,
+            slot,
+            { entity, gearEditable }
+          );
+        },
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "1px",
+          position: "relative",
+          opacity: disabled ? 0.45 : 1,
+          cursor: editable || filled ? "pointer" : "default",
+          pointerEvents: "auto",
+          outline: bagDropHover ? "2px solid #6ab04c" : void 0,
+          outlineOffset: bagDropHover ? "1px" : void 0
+        }
+      },
+      e(
+        "div",
+        { style: { position: "relative", lineHeight: 0 } },
+        content,
+        badge ? e(
+          "div",
+          {
+            style: {
+              position: "absolute",
+              top: "-2px",
+              left: "-2px",
+              minWidth: "14px",
+              height: "14px",
+              padding: "0 3px",
+              boxSizing: "border-box",
+              background: badge === "B" ? "#1a3a4a" : badge === "G" ? "#3a1a4a" : "#3a2a10",
+              border: badge === "B" ? "1px solid #8fd4ff" : badge === "G" ? "1px solid #c98fff" : "1px solid #ffd700",
+              color: "#fff",
+              fontSize: TYPE.microMin,
+              lineHeight: "12px",
+              textAlign: "center",
+              ...PIXEL_TEXT,
+              pointerEvents: "none"
+            }
+          },
+          badge
+        ) : null
+      ),
+      priceLabel ? e(
+        "div",
+        {
+          style: {
+            fontSize: TYPE.microMin,
+            color: slot.b ? "#8fd4ff" : "#ffd700",
+            ...PIXEL_TEXT
+          }
+        },
+        priceLabel
+      ) : null
+    );
+  }
+
+  // src/ui/trade/TradeGrid.ts
+  var TRADE_SLOTS_COMPACT_KEY = "ecu-trade-slots-compact";
+  function readSlotsCompact() {
+    try {
+      const v = localStorage.getItem(TRADE_SLOTS_COMPACT_KEY);
+      if (v === "0" || v === "false") return false;
+    } catch (_e) {
+    }
+    return true;
+  }
+  function writeSlotsCompact(compact) {
+    try {
+      localStorage.setItem(TRADE_SLOTS_COMPACT_KEY, compact ? "1" : "0");
+    } catch (_e) {
+    }
+  }
+  function sectionLabel(text, detail) {
+    return e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "6px",
+          marginBottom: "2px"
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            fontSize: TYPE.microMin,
+            color: "#a99a5b",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            ...PIXEL_TEXT
+          }
+        },
+        text
+      ),
+      detail ? e(
+        "div",
+        {
+          style: {
+            fontSize: TYPE.microMin,
+            color: "#777",
+            ...PIXEL_TEXT
+          }
+        },
+        detail
+      ) : null
+    );
+  }
+  function renderSlotRows(slotNames, columns, slots, props) {
+    const rows = tradeSlotGridRows(slotNames, columns);
+    if (!rows.length) return null;
+    return e(
+      "div",
+      {
+        style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: "2px"
+        }
+      },
+      ...rows.map(
+        (row3, ri) => e(
+          "div",
+          {
+            key: `trow${ri}`,
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              gap: "2px"
+            }
+          },
+          ...row3.map(
+            (name) => e(TradeSlotCell, {
+              key: name,
+              entity: props.entity,
+              observing: props.observing,
+              slotName: name,
+              slot: slots[name],
+              gearEditable: props.gearEditable,
+              allSlots: slots
+            })
+          )
+        )
+      )
+    );
+  }
+  function toolbarButton(label, title, onClick, active) {
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "comm-gear-trade-btn" + (active ? " is-active" : ""),
+        title,
+        onClick,
+        style: {
+          fontSize: TYPE.microMin,
+          padding: "1px 5px",
+          cursor: "pointer",
+          background: active ? "#3a3a3a" : "transparent",
+          border: active ? "1px solid #888" : "1px solid #555",
+          color: active ? "#eee" : "#aaa",
+          ...PIXEL_TEXT
+        }
+      },
+      label
+    );
+  }
+  function TradeGrid(props) {
+    const React = getReact();
+    const liveSlots = props.entity.slots;
+    if (!liveSlots) return null;
+    const [slotsCompact, setSlotsCompact] = React.useState(readSlotsCompact);
+    const entityId = props.entity.id != null ? String(props.entity.id) : "";
+    const standOpen = !!props.entity.stand;
+    const slots = props.gearEditable && entityId ? mergeStandTradeSlotsForUi(entityId, liveSlots, standOpen) || liveSlots : liveSlots;
+    const memEpoch = props.gearEditable ? standTradeMemoryEpoch() : 0;
+    const fp = entityId + "|" + slotsFingerprint(slots) + "|" + (props.gearEditable ? "edit" : "view") + "|" + (standOpen ? "stand" : "row") + "|" + (slotsCompact ? "c" : "f") + "|" + memEpoch;
+    return React.useMemo(() => {
+      const entityLabel = props.entity.name != null ? String(props.entity.name) : entityId;
+      const foreign = !props.gearEditable;
+      const inRange = !foreign || isInTradeRange(props.entity, props.observing || window.observing);
+      const personalAll = personalTradeSlotNames(slots, props.entity, props.gearEditable);
+      const personalNames = compactTradeSlotNames(personalAll, slots, slotsCompact);
+      const showPersonal = personalAll.length > 0;
+      const standCapacity = merchantStandCapacity(props.entity);
+      const standCols = standGridColumns(standCapacity);
+      const showStandSection = props.gearEditable || standOpen;
+      const standNames = showStandSection ? merchantStandSlotNames(slots, props.entity, slotsCompact, true) : [];
+      const personalSpace = formatTradeSlotSpace(personalAll, slots);
+      const standAllNames = showStandSection ? merchantStandSlotNames(slots, props.entity, false, true) : [];
+      const standSpace = formatTradeSlotSpace(standAllNames, slots);
+      const obsBagSpace = formatFreeInventorySpace(props.observing || window.observing);
+      const merchantBagSpace = foreign ? formatFreeInventorySpace(props.entity) : null;
+      const toggleSlotsCompact = () => {
+        setSlotsCompact((prev) => {
+          const next = !prev;
+          writeSlotsCompact(next);
+          return next;
+        });
+      };
+      const showSlotToolbar = showPersonal || standOpen || props.gearEditable;
+      return e(
+        "div",
+        {
+          className: "comm-trade-grid",
+          "data-ecu-tour": "trade-panel",
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            pointerEvents: "auto",
+            width: `${TRADE_PANEL_WIDTH}px`,
+            minHeight: `${TRADE_PANEL_MIN_HEIGHT}px`,
+            boxSizing: "border-box"
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "6px",
+              flexWrap: "wrap"
+            }
+          },
+          e(
+            "div",
+            {
+              style: {
+                fontSize: TYPE.micro,
+                color: "#ccc",
+                ...PIXEL_TEXT
+              }
+            },
+            props.gearEditable ? "Your trades" : `${entityLabel} \xB7 trade`
+          ),
+          showSlotToolbar ? e(
+            "div",
+            {
+              style: { display: "flex", gap: "4px", flexWrap: "wrap" },
+              title: "Merchant stand vs slot grid display"
+            },
+            props.gearEditable ? standOpen ? toolbarButton(
+              "Close stand",
+              "Close merchant stand in game",
+              () => merchantCloseCommand()
+            ) : toolbarButton(
+              "Open stand",
+              "Open merchant stand \u2014 auto-finds stand in bag",
+              () => merchantOpenCommand()
+            ) : null,
+            toolbarButton(
+              slotsCompact ? "Compact slots" : "All slots",
+              slotsCompact ? "Show filled listings plus one empty slot per row" : "Show every empty slot in the grid",
+              toggleSlotsCompact,
+              slotsCompact
+            )
+          ) : null
+        ),
+        foreign && !inRange ? e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.microMin,
+              color: "#c9a227",
+              ...PIXEL_TEXT
+            }
+          },
+          "Too far \u2014 move closer to trade."
+        ) : null,
+        showPersonal ? e(
+          "div",
+          { className: "comm-trade-section comm-trade-section--personal" },
+          sectionLabel("Trade slots", personalSpace),
+          renderSlotRows(personalNames, 4, slots, props)
+        ) : null,
+        showStandSection ? e(
+          "div",
+          { className: "comm-trade-section comm-trade-section--stand" },
+          sectionLabel(
+            standOpen ? "Merchant stand" : "Merchant stand (closed)",
+            standSpace
+          ),
+          renderSlotRows(standNames, standCols, slots, props)
+        ) : null,
+        props.gearEditable ? e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.microMin,
+              color: "#666",
+              marginTop: "auto",
+              ...PIXEL_TEXT
+            }
+          },
+          standOpen ? "Drag bag item to list \xB7 Shift+drag for giveaway" + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "") : "Stand closed \u2014 trade5+ listings stay visible from last open \xB7 Open stand to list or reprice" + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "")
+        ) : foreign ? e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.microMin,
+              color: "#666",
+              marginTop: "auto",
+              ...PIXEL_TEXT
+            }
+          },
+          "Click buy/fulfill \xB7 Shift+click info \xB7 Bag B badge = also sellable" + (merchantBagSpace ? ` \xB7 Their bag ${merchantBagSpace}` : "") + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "")
+        ) : null
+      );
+    }, [fp]);
+  }
+
+  // src/ui/frames/TradePanel.ts
+  function snapshotEntity2(ent) {
+    const copy = Object.assign({}, ent);
+    if (ent.slots) copy.slots = Object.assign({}, ent.slots);
+    return copy;
+  }
+  function resolveInspectedEntity(entities, selectedEntity2, observing, cached) {
+    const obsId = observing && observing.id != null ? String(observing.id) : "";
+    const selectedId2 = selectedEntity2 != null && selectedEntity2 !== "" ? String(selectedEntity2) : "";
+    if (!selectedId2 || selectedId2 === obsId) {
+      return { entity: null, stale: false, cache: null };
+    }
+    const live2 = findEntity(entities, selectedId2);
+    if (live2) {
+      return {
+        entity: snapshotEntity2(live2),
+        stale: false,
+        cache: snapshotEntity2(live2)
+      };
+    }
+    if (cached && String(cached.id) === selectedId2) {
+      return { entity: cached, stale: true, cache: cached };
+    }
+    return { entity: null, stale: false, cache: null };
+  }
+  function resolveOwnTradeEntity(entities, observing) {
+    if (!observing || observing.id == null) return null;
+    const obsId = String(observing.id);
+    return findEntity(entities, obsId) || observing;
+  }
+  function tradePanelHasContent(entity, gearEditable) {
+    if (!entity || !entity.slots) return false;
+    if (gearEditable) return true;
+    return tradeRowVisible(entity.slots, entity);
+  }
+  function modeButton(label, active, onClick) {
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "comm-trade-mode-btn" + (active ? " is-active" : ""),
+        onClick,
+        style: {
+          fontSize: TYPE.microMin,
+          padding: "2px 8px",
+          cursor: "pointer",
+          background: active ? "#3a3a3a" : "transparent",
+          border: active ? "1px solid #888" : "1px solid #444",
+          color: active ? "#eee" : "#888",
+          ...PIXEL_TEXT
+        }
+      },
+      label
+    );
+  }
+  function TradePanel(props) {
+    var _a, _b, _c;
+    const React = getReact();
+    const inspectCacheRef = React.useRef(null);
+    const [viewMode, setViewMode] = React.useState("yours");
+    const ownEntity = resolveOwnTradeEntity(props.entities, props.observing);
+    const inspected = resolveInspectedEntity(
+      props.entities,
+      props.selectedEntity,
+      props.observing,
+      inspectCacheRef.current
+    );
+    if (inspected.cache) inspectCacheRef.current = inspected.cache;
+    const hasInspected = !!(inspected.entity && !isObservedSelf(inspected.entity)) && tradePanelHasContent(inspected.entity, false);
+    React.useEffect(() => {
+      if (props.selectedEntity && inspected.entity && !isObservedSelf(inspected.entity) && entityHasTradeSlots(inspected.entity)) {
+        setViewMode("inspected");
+      }
+    }, [props.selectedEntity, (_a = inspected.entity) == null ? void 0 : _a.id]);
+    if (!ownEntity && !hasInspected) {
+      if (!props.layoutEdit) return null;
+      return e(
+        "div",
+        {
+          className: "comm-trade-panel comm-trade-panel--placeholder",
+          style: {
+            padding: "8px",
+            color: "#666",
+            fontSize: TYPE.micro,
+            ...PIXEL_TEXT
+          }
+        },
+        "Trade \u2014 layout preview"
+      );
+    }
+    const showInspected = viewMode === "inspected" && hasInspected;
+    const displayEntity = showInspected ? inspected.entity : ownEntity;
+    const stale = showInspected && inspected.stale;
+    const gearEditable = !showInspected && canEditObservedGear(displayEntity, false);
+    if (!displayEntity) return null;
+    if (!props.layoutEdit && !tradePanelHasContent(displayEntity, gearEditable)) {
+      return null;
+    }
+    const inspectedLabel = ((_b = inspected.entity) == null ? void 0 : _b.name) != null ? String(inspected.entity.name) : ((_c = inspected.entity) == null ? void 0 : _c.id) != null ? String(inspected.entity.id) : "Player";
+    return e(
+      "div",
+      {
+        className: "comm-trade-panel" + (stale ? " comm-trade-panel--stale" : ""),
+        style: {
+          padding: "6px 8px",
+          boxSizing: "border-box",
+          opacity: stale ? 0.92 : 1,
+          border: stale ? "1px dashed #c9a227" : void 0,
+          pointerEvents: "none",
+          background: "rgba(0,0,0,0.94)",
+          minHeight: "100%"
+        }
+      },
+      e(
+        "div",
+        { style: { pointerEvents: "auto" } },
+        hasInspected ? e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              gap: "4px",
+              marginBottom: "6px"
+            }
+          },
+          modeButton("Yours", viewMode === "yours", () => setViewMode("yours")),
+          modeButton(
+            inspectedLabel,
+            viewMode === "inspected",
+            () => setViewMode("inspected")
+          )
+        ) : null,
+        e(TradeGrid, {
+          entity: displayEntity,
+          observing: props.observing,
+          gearEditable
+        })
+      )
     );
   }
 
@@ -53216,6 +57495,16 @@ ${ESTIMATE_HINT}`,
         }),
         { style: PAPERDOLL_PANEL_STYLE }
       ) : null,
+      deps.snap.observing || deps.selectedEntity || deps.layoutEdit ? panel(
+        "trade",
+        e(TradePanel, {
+          entities: snap.entities,
+          selectedEntity: deps.selectedEntity,
+          observing: snap.observing,
+          layoutEdit: deps.layoutEdit
+        }),
+        { style: TRADE_PANEL_STYLE }
+      ) : null,
       panel(
         "buffInfo",
         e(StockInfoPanel, {
@@ -53290,7 +57579,13 @@ ${ESTIMATE_HINT}`,
         style: MAIL_PANEL_STYLE,
         hiddenBodyStyle: MAIL_PANEL_STYLE
       }),
-      deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel("bag", e(BagPanel, { layoutEdit: deps.layoutEdit }), {
+      deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel("bag", e(BagPanel, {
+        layoutEdit: deps.layoutEdit,
+        tradeRevision: nearbyBuyOrdersRevision(
+          snap.entities,
+          snap.observing
+        )
+      }), {
         style: deps.layoutEdit ? BAG_PANEL_STYLE : void 0,
         hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
           display: "flex",
@@ -53534,6 +57829,13 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       setWorldOverlaySelectedId(selectedEntity2);
     }, [selectedEntity2]);
+    React.useEffect(() => {
+      if (!selectedEntity2 || layoutEdit) return;
+      const ent = findEntity(snap.entities, selectedEntity2);
+      if (!ent || isObservedSelf(ent)) return;
+      if (!entityHasTradeSlots(ent)) return;
+      setVisible("trade", true);
+    }, [selectedEntity2, snap.entities, layoutEdit, setVisible]);
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
     const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
