@@ -68,7 +68,24 @@ export const PAPERDOLL_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
   // Above buffInfo/itemInfo (35) and their raise stack floor so × / gear stay hittable.
   zIndex: 56,
-  // Alt arrange strip + paperdoll title drag handle need visible overflow.
+  overflow: "visible",
+};
+
+/** Trade panel — fixed footprint (personal row + stand reserve; no grow/shrink on stand toggle). */
+export const TRADE_SLOT_GAP = 2;
+export const TRADE_SLOT_SIZE = 40;
+export const TRADE_PANEL_WIDTH = TRADE_SLOT_SIZE * 6 + TRADE_SLOT_GAP * 5 + 16;
+export const TRADE_PANEL_MIN_HEIGHT = 380;
+
+/** Trade row / merchant stand — own window beside paperdoll. */
+export const TRADE_PANEL_STYLE: Record<string, any> = {
+  width: `${TRADE_PANEL_WIDTH}px`,
+  minWidth: `${TRADE_PANEL_WIDTH}px`,
+  minHeight: `${TRADE_PANEL_MIN_HEIGHT}px`,
+  boxSizing: "border-box",
+  background: "rgba(0,0,0,0.94)",
+  boxShadow: "0 0 0 1px #111, 4px 4px 0 rgba(0,0,0,0.45)",
+  zIndex: 56,
   overflow: "visible",
 };
 

@@ -370,36 +370,35 @@ const PAPERDOLL_TOUR: GuidedTourDef = {
 };
 
 /**
- * Trade-slot add-on for the paperdoll — first time you inspect someone
- * with filled trade listings (merchant or player stand). Independent of
- * the base paperdoll tour: finishing paperdoll does not skip this.
+ * Trade-slot add-on — first time you inspect someone with filled trade
+ * listings (merchant or player stand). Uses the Trade window, not paperdoll.
  */
 const PAPERDOLL_TRADE_TOUR: GuidedTourDef = {
   id: "paperdoll-trade",
-  label: "Paperdoll · trade slots",
+  label: "Trade window",
   steps: [
     {
-      title: "Trade slots",
-      body: "This paperdoll has a TRADE row under gear — shop listings with prices (merchants and player stands).",
-      target: '[data-ecu-tour="paperdoll-trade"]',
+      title: "Trade window",
+      body: "The Trade panel shows your listings and merchants you inspect. Use Yours / Inspected to switch without losing your own row.",
+      target: '[data-ecu-tour="trade-panel"]',
       targetKind: "region",
       missingHint:
         "Inspect a merchant or player stand that has trade items listed.",
     },
     {
-      title: "Inspect a listing",
-      body: "Click a trade item to open Item info — same panel as equipped gear. The tour continues when you do.",
-      target: '[data-ecu-tour="paperdoll-trade"]',
+      title: "Buy or sell",
+      body: "Left-click a sell listing to buy, a buy order to fulfill, or a giveaway to join. Shift+click opens Item info. Bag items with a nearby buy order also show a B badge.",
+      target: '[data-ecu-tour="trade-panel"]',
       targetKind: "region",
-      missingHint: "Click a filled trade slot.",
-      advanceWhen: "itemInfoOpen",
+      missingHint: "Inspect someone with trade slots, or list on your own row.",
     },
     {
       title: "Item info",
-      body: "Listing details park here so you can compare while browsing the paperdoll.",
+      body: "Shift+click any listing to park details in Item info while you compare prices.",
       target: ".comm-pos-itemInfo",
       targetKind: "panel",
-      missingHint: "Click a filled trade slot if Item info is not open yet.",
+      missingHint: "Shift+click a filled trade slot.",
+      advanceWhen: "itemInfoOpen",
     },
   ],
 };

@@ -13,7 +13,9 @@ export type BagMenuAction = {
   separatorBefore?: boolean;
   /** Non-interactive row (e.g. empty nearby list). */
   disabled?: boolean;
-  run: () => void;
+  run?: () => void;
+  /** Nested flyout items (parent row opens submenu on hover). */
+  children?: BagMenuAction[];
 };
 
 export type BagMenuContext = {
@@ -77,6 +79,151 @@ function clampMenuPosition(
   el.style.top = Math.min(Math.max(pad, clientY), maxY) + "px";
 }
 
+function positionFlyout(wrap: HTMLElement, flyout: HTMLElement): void {
+  const btn = wrap.querySelector(".comm-bag-ctx__item") as HTMLElement | null;
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  flyout.style.visibility = "hidden";
+  flyout.style.display = "block";
+  const fw = flyout.offsetWidth || 200;
+  const fh = flyout.offsetHeight || 80;
+  let left = rect.right - 2;
+  if (left + fw > window.innerWidth - 8) {
+    left = Math.max(8, rect.left - fw + 2);
+  }
+  let top = rect.top;
+  if (top + fh > window.innerHeight - 8) {
+    top = Math.max(8, window.innerHeight - fh - 8);
+  }
+  flyout.style.left = left + "px";
+  flyout.style.top = top + "px";
+  flyout.style.visibility = "visible";
+}
+
+function closeBagSubmenus(root: HTMLElement, except?: HTMLElement): void {
+  const open = root.querySelectorAll(".comm-bag-ctx__subwrap.is-open");
+  for (let i = 0; i < open.length; i++) {
+    const wrap = open[i] as HTMLElement;
+    if (except && (wrap === except || wrap.contains(except))) continue;
+    wrap.classList.remove("is-open");
+    const flyout = wrap.querySelector(
+      ".comm-bag-ctx--flyout",
+    ) as HTMLElement | null;
+    if (flyout) flyout.style.display = "none";
+  }
+}
+
+function appendBagMenuAction(
+  root: HTMLElement,
+  action: BagMenuAction,
+  onActivate: () => void,
+): void {
+  if (action.separatorBefore) {
+    const sep = document.createElement("div");
+    sep.className = "comm-bag-ctx__sep";
+    sep.setAttribute("role", "separator");
+    root.appendChild(sep);
+  }
+
+  const hasChildren =
+    Array.isArray(action.children) && action.children.length > 0;
+
+  if (hasChildren) {
+    const wrap = document.createElement("div");
+    wrap.className = "comm-bag-ctx__subwrap";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "comm-bag-ctx__item has-submenu";
+    btn.setAttribute("role", "menuitem");
+    btn.setAttribute("aria-haspopup", "true");
+    btn.textContent = action.label;
+    const arrow = document.createElement("span");
+    arrow.className = "comm-bag-ctx__arrow";
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.textContent = "›";
+    btn.appendChild(arrow);
+    if (action.title) btn.title = action.title;
+    if (action.disabled) {
+      btn.disabled = true;
+      btn.className += " is-disabled";
+    } else {
+      const flyout = document.createElement("div");
+      flyout.className = "comm-bag-ctx comm-bag-ctx--flyout";
+      flyout.setAttribute("role", "menu");
+      for (let i = 0; i < action.children!.length; i++) {
+        appendBagMenuAction(flyout, action.children![i], onActivate);
+      }
+
+      let closeTimer = 0;
+      const openSub = () => {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = 0;
+        }
+        closeBagSubmenus(root, wrap);
+        wrap.classList.add("is-open");
+        positionFlyout(wrap, flyout);
+      };
+      const scheduleClose = () => {
+        if (closeTimer) window.clearTimeout(closeTimer);
+        closeTimer = window.setTimeout(() => {
+          wrap.classList.remove("is-open");
+          flyout.style.display = "none";
+          closeTimer = 0;
+        }, 160);
+      };
+
+      btn.addEventListener("mouseenter", openSub);
+      btn.addEventListener("focus", openSub);
+      wrap.addEventListener("mouseleave", scheduleClose);
+      flyout.addEventListener("mouseenter", () => {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = 0;
+        }
+      });
+      flyout.addEventListener("mouseleave", scheduleClose);
+
+      wrap.appendChild(btn);
+      wrap.appendChild(flyout);
+    }
+
+    if (action.disabled) wrap.appendChild(btn);
+    root.appendChild(wrap);
+    return;
+  }
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "comm-bag-ctx__item";
+  btn.setAttribute("role", "menuitem");
+  btn.textContent = action.label;
+  if (action.title) btn.title = action.title;
+  if (action.disabled) {
+    btn.disabled = true;
+    btn.className += " is-disabled";
+  } else {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      onActivate();
+      action.run?.();
+    });
+  }
+  root.appendChild(btn);
+}
+
+function renderBagMenuActions(
+  root: HTMLElement,
+  actions: BagMenuAction[],
+  onActivate: () => void,
+): void {
+  for (let i = 0; i < actions.length; i++) {
+    appendBagMenuAction(root, actions[i], onActivate);
+  }
+}
+
 /**
  * Observed bag inventory lives on `window.observing.items` (the /comm snap).
  * Do not use getObserving() — that prefers the live entity, which has no items.
@@ -112,33 +259,7 @@ export function showBagItemContextMenu(
   const el = document.createElement("div");
   el.className = "comm-bag-ctx";
   el.setAttribute("role", "menu");
-  for (let i = 0; i < actions.length; i++) {
-    const action = actions[i];
-    if (action.separatorBefore) {
-      const sep = document.createElement("div");
-      sep.className = "comm-bag-ctx__sep";
-      sep.setAttribute("role", "separator");
-      el.appendChild(sep);
-    }
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "comm-bag-ctx__item";
-    btn.setAttribute("role", "menuitem");
-    btn.textContent = action.label;
-    if (action.title) btn.title = action.title;
-    if (action.disabled) {
-      btn.disabled = true;
-      btn.className += " is-disabled";
-    } else {
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        hideCtx();
-        action.run();
-      });
-    }
-    el.appendChild(btn);
-  }
+  renderBagMenuActions(el, actions, hideCtx);
   document.body.appendChild(el);
   ctxEl = el;
   clampMenuPosition(el, clientX, clientY);
@@ -163,7 +284,7 @@ export function showBagItemContextMenu(
   }, 0);
 }
 
-function resolveInventorySlotNum(
+export function resolveInventorySlotNum(
   start: HTMLElement,
   host: HTMLElement,
 ): number | null {

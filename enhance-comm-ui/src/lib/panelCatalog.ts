@@ -29,6 +29,7 @@ export type PanelId =
   | "threat"
   | "command"
   | "bag"
+  | "trade"
   | "mail"
   | "toggles";
 
@@ -129,6 +130,7 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
     autoSize: "default-on",
   },
   bag: { label: "Bag", closable: true, framePersist: "none" },
+  trade: { label: "Trade", closable: true, framePersist: "none" },
   mail: {
     label: "Mail",
     closable: true,

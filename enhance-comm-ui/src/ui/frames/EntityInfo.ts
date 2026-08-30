@@ -10,6 +10,7 @@ import { classColors } from "../../lib/colors";
 import { formatCompactNumber, getPercent } from "../../lib/format";
 import { findEntity } from "../../queries/entities";
 import { GearGrid } from "../chrome/GearGrid";
+import { canEditObservedGear } from "../../host/gearObserved";
 import { InspectButton } from "../chrome/InspectButton";
 import type { EntityLike } from "../../host/globals";
 import { CompareToWatched } from "../paperdoll/CompareToWatched";
@@ -132,10 +133,6 @@ export function EntityInfo(props: EntityInfoProps): any {
         border: stale ? "2px dashed #c9a227" : `2px solid ${accent}`,
         opacity: stale ? 0.92 : 1,
       }),
-      onClick: (ev: any) => {
-        ev.stopPropagation();
-        if (!stale) setXTarget(entity);
-      },
     },
     e(
       "div",
@@ -149,6 +146,11 @@ export function EntityInfo(props: EntityInfoProps): any {
           background: `linear-gradient(90deg, ${accent}33, transparent)`,
           borderBottom: `1px solid ${accent}66`,
           cursor: "grab",
+          pointerEvents: "auto",
+        },
+        onClick: (ev: any) => {
+          ev.stopPropagation();
+          if (!stale) setXTarget(entity);
         },
       },
       e("div", {
@@ -316,6 +318,7 @@ export function EntityInfo(props: EntityInfoProps): any {
             e(GearGrid, {
               entity,
               compareTo: compare ? watching : null,
+              gearEditable: canEditObservedGear(entity, stale),
             }),
           )
         : null,

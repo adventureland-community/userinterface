@@ -59,6 +59,8 @@ describe("sendItem", () => {
         map: "main",
         x: 100,
         y: 0,
+        esize: 2,
+        isize: 42,
       },
       {
         id: "p3",
@@ -93,5 +95,7 @@ describe("sendItem", () => {
       ["Buddy"],
     );
     assert.ok(targets[0].dist != null && targets[0].dist < SEND_ITEM_RANGE);
+    assert.equal(targets[0].freeInv, 2);
+    assert.equal(targets[0].isize, 42);
   });
 });

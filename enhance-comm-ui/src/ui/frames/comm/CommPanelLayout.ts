@@ -50,6 +50,7 @@ import { KillKpiPanel } from "../KillKpiPanel";
 import { Minimap } from "../Minimap";
 import { CommandPanel } from "../CommandPanel";
 import { BagPanel } from "../BagPanel";
+import { TradePanel } from "../TradePanel";
 import { MailPanel } from "../mail/MailPanel";
 import {
   BOSS_BAR_PANEL_STYLE,
@@ -68,7 +69,9 @@ import {
   PLAYERS_PANEL_STYLE,
   THREAT_PANEL_STYLE,
   BAG_PANEL_STYLE,
+  TRADE_PANEL_STYLE,
 } from "../../../lib/frameSizes";
+import { nearbyBuyOrdersRevision } from "../../../lib/tradeHelpers";
 
 export type CommPanelOpts = {
   style?: Record<string, any>;
@@ -437,6 +440,19 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         )
       : null,
 
+    deps.snap.observing || deps.selectedEntity || deps.layoutEdit
+      ? panel(
+          "trade",
+          e(TradePanel, {
+            entities: snap.entities,
+            selectedEntity: deps.selectedEntity,
+            observing: snap.observing,
+            layoutEdit: deps.layoutEdit,
+          }),
+          { style: TRADE_PANEL_STYLE },
+        )
+      : null,
+
     panel(
       "buffInfo",
       e(StockInfoPanel, {
@@ -521,7 +537,13 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
     }),
 
     deps.bagOpen || deps.bagRefreshing || deps.layoutEdit
-      ? panel("bag", e(BagPanel, { layoutEdit: deps.layoutEdit }), {
+      ? panel("bag", e(BagPanel, {
+          layoutEdit: deps.layoutEdit,
+          tradeRevision: nearbyBuyOrdersRevision(
+            snap.entities,
+            snap.observing,
+          ),
+        }), {
           style: deps.layoutEdit ? BAG_PANEL_STYLE : undefined,
           hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
             display: "flex",

@@ -19,6 +19,7 @@ export const PAPERDOLL_SHELL: Record<string, any> = {
   maxWidth: "340px",
   boxSizing: "border-box",
   overflow: "visible",
+  pointerEvents: "none",
 };
 
 export const PAPERDOLL_BODY: Record<string, any> = {
@@ -26,6 +27,7 @@ export const PAPERDOLL_BODY: Record<string, any> = {
   display: "flex",
   flexDirection: "column",
   gap: "6px",
+  pointerEvents: "auto",
 };
 
 export const PAPERDOLL_VITALS: Record<string, any> = {

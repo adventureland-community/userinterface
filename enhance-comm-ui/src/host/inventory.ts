@@ -7,9 +7,16 @@
  * character=observing marks entities dead="vision", drops combat rows, and clears
  * the target frame until Bag closes and character is restored.
  */
+import { refreshBagBuyOrderIndicators } from "../ui/bag/bagBuyOrderIndicator";
+import { itemInstanceLabel, stampNativeItemTitle } from "../lib/gameIcon";
+import {
+  shouldShowTitleBorder,
+  stampNativeItemTitleBorder,
+} from "../lib/itemTitleBorder";
 import { mergeLayout, panelStyle, type PanelPos } from "../lib/layout";
 import { getSettings, saveSettings } from "../lib/settings";
 import { openItem } from "./infoDialog/api";
+import { clearObserverCommandPending } from "./observerCommandPending";
 
 const HOST_ID = "bottomleftcorner";
 const STYLE_ID = "comm-ui-inventory-host-css";
@@ -108,6 +115,7 @@ function notifyInventory(open: boolean): void {
 }
 
 function notifyBagSync(): void {
+  clearObserverCommandPending();
   for (let i = 0; i < syncListeners.length; i++) {
     try {
       syncListeners[i]();
@@ -193,7 +201,7 @@ function syncBagStateForSocket(): void {
     }
     const name = observingSnapshotName(obs);
     if (window.inventory && name != null && name !== bagRenderedForName) {
-      reRenderLocalSnapshot();
+      repaintObservedInventoryFromSnapshot();
     }
   } else if (socketChanged && bagSyncedAt != null) {
     setBagSyncedAt(null);
@@ -310,7 +318,7 @@ function closeInventoryHost(): void {
  * Re-render open bag from the current observing snapshot (no server fetch).
  * Stock AL has no light inventory pull for observers — items arrive on welcome.
  */
-function reRenderLocalSnapshot(): void {
+export function repaintObservedInventoryFromSnapshot(): void {
   bagRefreshKind = "local";
   callThroughDraw(() => {
     if (typeof window.render_inventory !== "function") return;
@@ -338,7 +346,7 @@ export function refreshObservedInventory(): void {
   const secret = name ? findObserveSecret(name) : null;
 
   if (!name || !secret || typeof (window as any).init_socket !== "function") {
-    reRenderLocalSnapshot();
+    repaintObservedInventoryFromSnapshot();
     return;
   }
 
@@ -356,7 +364,7 @@ export function refreshObservedInventory(): void {
   if (typeof initSocket !== "function") {
     setBagRefreshing(false);
     refreshPendingName = null;
-    reRenderLocalSnapshot();
+    repaintObservedInventoryFromSnapshot();
     return;
   }
   initSocket({ secret });
@@ -463,6 +471,44 @@ function restoreCharacter(): void {
   window.character = window[SAVED_CHAR];
   delete window[SAVED_CHAR];
   window[HOLD_CHAR] = false;
+}
+
+/**
+ * Stock `item_container` omits native hover labels and title-prefix borders.
+ * After render_inventory, stamp labels + colored title frames from the snapshot.
+ */
+export function refreshInventoryItemTitles(): void {
+  if (!window.inventory) return;
+  const host = document.getElementById(HOST_ID);
+  if (!host) return;
+  const obs = window.observing;
+  const items = obs && Array.isArray(obs.items) ? obs.items : null;
+  if (!items) return;
+
+  const nodes = host.querySelectorAll("[data-cnum]");
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i] as HTMLElement;
+    const raw = node.getAttribute("data-cnum");
+    if (raw == null || raw === "") continue;
+    const num = parseInt(raw, 10);
+    if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
+    const item = items[num] as {
+      name?: string;
+      level?: number;
+      p?: string;
+    } | null;
+    if (!item || !item.name || item.name === "placeholder") {
+      node.removeAttribute("title");
+      const inner = node.querySelector(".rclick") as HTMLElement | null;
+      if (inner) inner.removeAttribute("title");
+      continue;
+    }
+    const p = typeof item.p === "string" ? item.p : undefined;
+    const label = itemInstanceLabel(item.name, { p, level: item.level });
+    stampNativeItemTitle(node, label);
+    if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
+  }
+  refreshBagBuyOrderIndicators();
 }
 
 /**
@@ -616,6 +662,8 @@ export function installInventoryFix(): void {
           // Do not bump bagSyncedAt on open — backfill if welcome was missed.
           backfillBagSyncedAt();
           applyBagLayoutPos();
+          refreshInventoryItemTitles();
+          window.requestAnimationFrame(() => refreshInventoryItemTitles());
           notifyInventory(true);
           notifyBagSync();
         } else if (!window.inventory) {

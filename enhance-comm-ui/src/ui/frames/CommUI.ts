@@ -62,6 +62,8 @@ import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { CommControlStrip } from "./comm/CommControlStrip";
 import { SettingsPanel } from "./SettingsPanel";
 import { findEntity } from "../../queries/entities";
+import { entityHasTradeSlots } from "./comm/guidedTour/paperdollTrade";
+import { isObservedSelf } from "../../host/gearObserved";
 import {
   renderCommPanels,
   renderCommTogglesPanel,
@@ -165,6 +167,14 @@ export function CommUI(props: CommUIProps): any {
   React.useEffect(() => {
     setWorldOverlaySelectedId(selectedEntity);
   }, [selectedEntity]);
+
+  React.useEffect(() => {
+    if (!selectedEntity || layoutEdit) return;
+    const ent = findEntity(snap.entities, selectedEntity);
+    if (!ent || isObservedSelf(ent)) return;
+    if (!entityHasTradeSlots(ent)) return;
+    setVisible("trade", true);
+  }, [selectedEntity, snap.entities, layoutEdit, setVisible]);
 
   const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);

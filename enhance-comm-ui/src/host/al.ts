@@ -1,5 +1,9 @@
 import "./globals";
 import type { EntityLike, GLike, ServerInfoLike, SocketLike } from "./globals";
+import {
+  markObserverCommandPending,
+  scheduleObserverCommandPendingClear,
+} from "./observerCommandPending";
 
 export function getG(): GLike | undefined {
   return window.G;
@@ -214,6 +218,8 @@ export function emitObserverCommand(code: string): boolean {
   const trimmed = String(code || "").trim();
   if (!trimmed) return false;
   sock.emit("o:command", trimmed);
+  markObserverCommandPending();
+  scheduleObserverCommandPendingClear();
   return true;
 }
 

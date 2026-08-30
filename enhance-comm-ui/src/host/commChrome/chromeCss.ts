@@ -679,6 +679,12 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .comm-pos-panel:not(.comm-pos-buffInfo):not(.comm-pos-itemInfo) > .comm-pos-panel-body-frame {
   pointer-events: auto;
 }
+/* Auto-size panels (paperdoll, bag): shell is click-through — content opts in. */
+#comm-ui .comm-pos-paperdoll > .comm-paperdoll,
+#comm-ui .comm-pos-bag .comm-bag-panel,
+#comm-ui .comm-pos-bag #bottomleftcorner {
+  pointer-events: auto;
+}
 /* Tip panels: never let a saved/leftover body frame eat map or paperdoll clicks. */
 #comm-ui .comm-pos-panel.comm-pos-buffInfo,
 #comm-ui .comm-pos-panel.comm-pos-itemInfo,

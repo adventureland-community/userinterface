@@ -10,6 +10,9 @@
 import { classColors } from "./colors";
 import { findEntityById, getG } from "../host/al";
 import {
+  wrapHtmlWithTitleBorder,
+} from "./itemTitleBorder";
+import {
   characterSprite,
   classSprite,
   itemContainer,
@@ -314,6 +317,63 @@ export function itemDisplayName(key: string): string {
   return key;
 }
 
+export type ItemInstanceLabelActual = {
+  p?: string;
+  level?: number;
+};
+
+/**
+ * Full hover / tip label — matches stock render_item naming (G.titles prefix,
+ * compound/upgrade level suffixes).
+ */
+export function itemInstanceLabel(
+  itemName: string,
+  actual?: ItemInstanceLabelActual | null,
+): string {
+  const G = getG() as
+    | {
+        items?: Record<
+          string,
+          { name?: string; upgrade?: boolean; compound?: boolean }
+        >;
+        titles?: Record<string, { title?: string }>;
+      }
+    | undefined;
+  const def = G?.items?.[itemName];
+  let label = (def && def.name) || itemDisplayName(itemName) || itemName;
+  const p = actual && actual.p ? String(actual.p) : "";
+  if (p && G?.titles?.[p]?.title) {
+    label = G.titles[p].title + " " + label;
+  } else if (p) {
+    label = p.charAt(0).toUpperCase() + p.slice(1) + " " + label;
+  }
+  const level = actual && actual.level != null ? Number(actual.level) : NaN;
+  if (def && Number.isFinite(level)) {
+    if (def.upgrade && level === 12) label += " +Z";
+    else if (def.upgrade && level === 11) label += " +Y";
+    else if (def.upgrade && level === 10) label += " +X";
+    else if (def.compound && level === 7) label += " +R";
+    else if (def.compound && level === 6) label += " +S";
+    else if (def.compound && level === 5) label += " +V";
+    else if (level > 0) label += " +" + Math.floor(level);
+  }
+  return label;
+}
+
+/** Stamp native hover label on item_container roots (outer + skin div). */
+export function stampNativeItemTitle(root: HTMLElement, title: string): void {
+  if (!title) return;
+  root.setAttribute("title", title);
+  const instance = root.querySelector(
+    ".ecu-item-instance",
+  ) as HTMLElement | null;
+  if (instance) instance.setAttribute("title", title);
+  const icRoot = root.querySelector(
+    ".ecu-item-instance > div, .rclick",
+  ) as HTMLElement | null;
+  if (icRoot) icRoot.setAttribute("title", title);
+}
+
 /**
  * Item sheet crop — market tracker / data explorer ItemImage contract:
  * skin = G.items[name].skin ?? name (or instance/event skin override)
@@ -330,12 +390,20 @@ export function itemIconHtml(
     skin?: string;
     size?: number;
     title?: string;
+    level?: number;
+    p?: string;
     /** false → no native browser title (timeline / cooltip). Default true. */
     nativeTitle?: boolean;
   },
 ): string {
   const size = (opts && opts.size) || 18;
-  const title = (opts && opts.title) || itemDisplayName(itemName) || itemName;
+  const title =
+    (opts && opts.title) ||
+    itemInstanceLabel(itemName, {
+      p: opts && opts.p,
+      level: opts && opts.level,
+    }) ||
+    itemName;
   const nativeTitle = !(opts && opts.nativeTitle === false);
   const skinKey = (opts && opts.skin) || itemSkin(itemName) || itemName;
   const fallbacks: string[] = [];
@@ -345,8 +413,13 @@ export function itemIconHtml(
     placeholder: true,
     nativeTitle,
   });
-  if (sheet) return sheet;
-  return letterFallbackHtml("?", size, title, undefined, nativeTitle);
+  if (sheet) {
+    return wrapHtmlWithTitleBorder(sheet, opts && opts.p);
+  }
+  return wrapHtmlWithTitleBorder(
+    letterFallbackHtml("?", size, title, undefined, nativeTitle),
+    opts && opts.p,
+  );
 }
 
 function stripItemContainerHandlers(html: string): string {
@@ -360,6 +433,12 @@ function stripNativeTitleAttrs(html: string): string {
   return html
     .replace(/\s+title="[^"]*"/gi, "")
     .replace(/\s+title='[^']*'/gi, "");
+}
+
+/** Native hover on stock item_container roots (outer div). */
+function injectItemContainerTitle(html: string, title: string): string {
+  const tip = ` title="${escapeAttr(title)}"`;
+  return html.replace(/^(<div\b)/i, `$1${tip}`);
 }
 
 /**
@@ -382,7 +461,13 @@ export function itemInstanceHtml(
   },
 ): string {
   const size = (opts && opts.size) || 40;
-  const title = (opts && opts.title) || itemDisplayName(itemName) || itemName;
+  const title =
+    (opts && opts.title) ||
+    itemInstanceLabel(itemName, {
+      p: opts && opts.p,
+      level: opts && opts.level,
+    }) ||
+    itemName;
   const nativeTitle = !(opts && opts.nativeTitle === false);
   const skinKey = (opts && opts.skin) || itemSkin(itemName) || itemName;
   const actual: Record<string, unknown> = { name: itemName };
@@ -407,13 +492,21 @@ export function itemInstanceHtml(
         },
       );
       if (!nativeTitle) cleaned = stripNativeTitleAttrs(cleaned);
+      else cleaned = injectItemContainerTitle(cleaned, title);
+      cleaned = wrapHtmlWithTitleBorder(cleaned, opts && opts.p);
       const tipAttr = nativeTitle ? ` title="${escapeAttr(title)}"` : "";
       return `<span class="ecu-item-instance"${tipAttr}>${cleaned}</span>`;
     }
   } catch {
     /* fall through */
   }
-  return itemIconHtml(itemName, { skin: skinKey, size, title, nativeTitle });
+  return itemIconHtml(itemName, {
+    skin: skinKey,
+    size,
+    title,
+    nativeTitle,
+    p: opts && opts.p,
+  });
 }
 
 export function monsterDisplayName(mtype: string): string {

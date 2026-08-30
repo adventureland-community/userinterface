@@ -26,7 +26,8 @@ describe("windowFramePersist", () => {
     assert.equal(panelUsesAutoSize(undefined, "buffInfo"), true);
     assert.equal(panelUsesAutoSize(undefined, "itemInfo"), true);
     assert.equal(panelUsesAutoSize({ autoSize: false }, "players"), false);
-    assert.equal(panelUsesAutoSize({ autoSize: false }, "buffInfo"), false);
+    assert.equal(panelUsesAutoSize({ autoSize: false }, "buffInfo"), true);
+    assert.equal(panelUsesAutoSize({ autoSize: false }, "itemInfo"), true);
     const seeded = mergeLayout(undefined, "desktop");
     assert.equal(seeded.players.autoSize, true);
     assert.equal(seeded.buffInfo.autoSize, true);

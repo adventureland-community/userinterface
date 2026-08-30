@@ -70,6 +70,8 @@ export type EntityLike = {
   items?: any[];
   /** Inventory size (slot count) while observing. */
   isize?: number;
+  /** Empty inventory slots — full sync / party / friends only. */
+  esize?: number;
   /** Wallet gold. Full sync / welcome only — stranger packets omit it. */
   gold?: number;
   /** Drop luck multiplier (`1 + xluck/100`). Full sync / welcome only. */
@@ -87,6 +89,8 @@ export type SlotLike = {
   price?: number;
   b?: boolean;
   giveaway?: boolean;
+  /** Giveaway entrant registry — id → name. */
+  registry?: Record<string, string>;
   rid?: string;
   skin?: string;
   /** Title / shiny / etc. — used by calculate_item_properties. */

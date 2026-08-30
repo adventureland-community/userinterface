@@ -9,16 +9,22 @@ import {
   isBagGridStale,
   isBagRefreshing,
   isInventoryOpen,
+  refreshInventoryItemTitles,
   refreshObservedInventory,
   subscribeBagSync,
   subscribeInventory,
 } from "../../host/inventory";
+import {
+  isObserverCommandPending,
+  subscribeObserverCommandPending,
+} from "../../host/observerCommandPending";
 import {
   BAG_FRAME_HEIGHT,
   BAG_FRAME_WIDTH,
   BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { installBagDragDrop } from "../bag/bagDragDrop";
 import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
 import "../bag/registerBagMenuProviders";
 
@@ -36,6 +42,8 @@ const BAG_ROWS = 6;
 export type BagPanelProps = {
   /** When true and inventory is closed, reserve open-bag footprint. */
   layoutEdit?: boolean;
+  /** Bumps when nearby buy orders change — re-stamps bag badges. */
+  tradeRevision?: number;
 };
 
 /** Live relative age from bagSyncedAt (ticked while bag chrome is open). */
@@ -150,6 +158,7 @@ function BagSyncChrome(props: {
   refreshing: boolean;
   refreshKind: "server" | "local" | null;
   hasSnapshot: boolean;
+  commandPending: boolean;
 }): any {
   const React = getReact();
   const {
@@ -159,6 +168,7 @@ function BagSyncChrome(props: {
     refreshing,
     refreshKind,
     hasSnapshot,
+    commandPending,
   } = props;
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -227,7 +237,7 @@ function BagSyncChrome(props: {
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           fontSize: TYPE.secondary,
-          color: refreshing || gridStale ? "#c9a227" : "#aaa",
+          color: refreshing || gridStale || commandPending ? "#c9a227" : "#aaa",
           ...PIXEL_TEXT,
         },
       },
@@ -288,6 +298,9 @@ export function BagPanel(props: BagPanelProps): any {
   const layoutEdit = !!props.layoutEdit;
   const showDummy = layoutEdit && !open && !refreshing;
   const showChrome = open || refreshing;
+  const [commandPending, setCommandPending] = React.useState(() =>
+    isObserverCommandPending(),
+  );
 
   React.useEffect(() => {
     attachInventoryToMount(mountRef.current);
@@ -300,14 +313,18 @@ export function BagPanel(props: BagPanelProps): any {
       setRefreshKind(getBagRefreshKind());
       setHasSnapshot(hasObservingInventorySnapshot());
     });
-    // Host may be created by ensureInventoryHost during attach — always bind
-    // the menu to that element (not a possibly-null getElementById race).
+    const unsubPending = subscribeObserverCommandPending(() => {
+      setCommandPending(isObserverCommandPending());
+    });
     const host = ensureInventoryHost();
     const unsubMenu = installBagItemContextMenu(host);
+    const unsubDrag = installBagDragDrop(host);
     return () => {
       unsubInv();
       unsubSync();
+      unsubPending();
       unsubMenu();
+      unsubDrag();
       // Keep #bottomleftcorner alive across panel unmount (Bag close).
       const h = document.getElementById(HOST_ID);
       if (h) document.body.appendChild(h);
@@ -316,7 +333,8 @@ export function BagPanel(props: BagPanelProps): any {
 
   React.useLayoutEffect(() => {
     attachInventoryToMount(mountRef.current);
-  }, [open, refreshing, showDummy]);
+    if (open) refreshInventoryItemTitles();
+  }, [open, refreshing, showDummy, props.tradeRevision]);
 
   return e(
     "div",
@@ -350,6 +368,7 @@ export function BagPanel(props: BagPanelProps): any {
           refreshing,
           refreshKind,
           hasSnapshot,
+          commandPending,
         })
       : null,
     showDummy ? e(BagDummy) : null,

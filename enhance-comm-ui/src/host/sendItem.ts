@@ -16,6 +16,7 @@ import { findFingerprintSlot } from "./mail/itemFingerprint";
 import type { ItemFingerprint, MailItem } from "./mail/types";
 import { isFocusablePlayer } from "../queries/entities";
 import { isActuallyDead } from "../lib/stickyPresence";
+import { freeInventorySlots } from "../lib/inventorySpace";
 
 /** Server `B.dist` for socket `send` (item/gold). */
 export const SEND_ITEM_RANGE = 400;
@@ -25,6 +26,10 @@ export type NearbySendTarget = {
   id: string;
   /** Approximate px from observing; omitted when coords missing. */
   dist?: number;
+  /** Receiver bag space when synced on the entity. */
+  freeInv?: number;
+  /** Receiver inventory size when synced. */
+  isize?: number;
 };
 
 function lit(value: string): string {
@@ -87,6 +92,11 @@ export function listNearbySendTargets(
     seen.add(key);
     const row: NearbySendTarget = { name, id };
     if (dist != null && Number.isFinite(dist)) row.dist = dist;
+    const freeInv = freeInventorySlots(ent);
+    if (freeInv != null) row.freeInv = freeInv;
+    if (ent.isize != null && Number.isFinite(Number(ent.isize))) {
+      row.isize = Number(ent.isize) | 0;
+    }
     out.push(row);
   }
 

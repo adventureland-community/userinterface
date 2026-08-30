@@ -4,4 +4,8 @@
  */
 import "../frames/mail/mailBagMenuActions";
 import "../../host/sendItemBagMenuActions";
+import "../../host/gearBagMenuActions";
+import "../../host/bagSwapMenuActions";
+import "../../host/tradeBagMenuActions";
+import "../../host/tradeBagFulfillMenuActions";
 import "./bagItemInfoActions";

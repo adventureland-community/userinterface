@@ -1,11 +1,12 @@
 /** One-shot saved-layout bumps for panel shells that shipped with bad defaults. */
 
 import type { PanelId, PanelPos } from "./layout";
+import { TRADE_PANEL_MIN_HEIGHT, TRADE_PANEL_WIDTH } from "./frameSizes";
 
 export type FrameMigration = (pos: PanelPos, def: PanelPos) => PanelPos;
 
 /** Bump when adding a new one-shot frame migrator; settings runs them once. */
-export const LAYOUT_FRAME_REV = 7;
+export const LAYOUT_FRAME_REV = 8;
 
 /** Shipped defaults only — round off scale noise, do not match nearby user sizes. */
 function shipped(n: number | undefined, target: number): boolean {
@@ -121,6 +122,14 @@ export function migrateCommandFrame(pos: PanelPos, def: PanelPos): PanelPos {
   };
 }
 
+/** Trade panel shipped at 220×200 before fixed personal+stand layout. */
+export function migrateTradeFrame(pos: PanelPos, def: PanelPos): PanelPos {
+  if (!shipped(pos.frameW, 220) || !shipped(pos.frameH, 200)) return pos;
+  const defW = typeof def.frameW === "number" ? def.frameW : TRADE_PANEL_WIDTH;
+  const defH = typeof def.frameH === "number" ? def.frameH : TRADE_PANEL_MIN_HEIGHT;
+  return { ...pos, frameW: defW, frameH: defH };
+}
+
 /** Panels whose saved frameW/frameH get a one-shot migration. */
 export const FRAME_MIGRATIONS: Partial<Record<PanelId, FrameMigration>> = {
   mail: migrateMailFrame,
@@ -133,6 +142,7 @@ export const FRAME_MIGRATIONS: Partial<Record<PanelId, FrameMigration>> = {
   bossBar: migrateBossBarFrame,
   abilityTimeline: migrateAbilityTimelineFrame,
   command: migrateCommandFrame,
+  trade: migrateTradeFrame,
 };
 
 export function applyFrameMigrations(
