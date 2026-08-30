@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.8.0-alpha.16
+// @version      0.9.0
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -74,6 +74,26 @@ var EnhanceCommUI = (() => {
       clearTimer = null;
       clearObserverCommandPending();
     }, ms);
+  }
+
+  // src/host/commandScript.ts
+  var ECU_COMM_TAG = "[ECU/comm]";
+  function commLogText(label) {
+    const text = String(label || "").trim();
+    return text ? `${ECU_COMM_TAG} ${text}` : ECU_COMM_TAG;
+  }
+  function commLogJs(label) {
+    return `try{game_log(${JSON.stringify(commLogText(label))});}catch(__e){}`;
+  }
+  function injectCommLog(code, label) {
+    const trimmed = String(code || "").trim();
+    const log = commLogJs(label);
+    const m = /^\(async function\(\)\{([\s\S]*)\}\)\(\);$/.exec(trimmed);
+    if (m) return `(async function(){${log}${m[1]}})();`;
+    return `(async function(){${log}${trimmed}})();`;
+  }
+  function wrapCommandScript(body) {
+    return `(async function(){${body}})();`;
   }
 
   // src/host/al.ts
@@ -214,12 +234,13 @@ var EnhanceCommUI = (() => {
   function getSocket() {
     return window.socket;
   }
-  function emitObserverCommand(code) {
+  function emitObserverCommand(code, label) {
     const sock = getSocket();
     if (!sock || typeof sock.emit !== "function") return false;
     const trimmed = String(code || "").trim();
     if (!trimmed) return false;
-    sock.emit("o:command", trimmed);
+    const payload = label && String(label).trim() ? injectCommLog(trimmed, String(label).trim()) : trimmed;
+    sock.emit("o:command", payload);
     markObserverCommandPending();
     scheduleObserverCommandPendingClear();
     return true;
@@ -2439,7 +2460,8 @@ var EnhanceCommUI = (() => {
   };
   var TRADE_SLOT_GAP = 2;
   var TRADE_SLOT_SIZE = 40;
-  var TRADE_PANEL_WIDTH = TRADE_SLOT_SIZE * 6 + TRADE_SLOT_GAP * 5 + 16;
+  var TRADE_SLOT_CELL = TRADE_SLOT_SIZE + 6;
+  var TRADE_PANEL_WIDTH = TRADE_SLOT_CELL * 6 + TRADE_SLOT_GAP * 5 + 16;
   var TRADE_PANEL_MIN_HEIGHT = 380;
   var TRADE_PANEL_STYLE = {
     width: `${TRADE_PANEL_WIDTH}px`,
@@ -7872,6 +7894,98 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.0",
+      title: "0.9.0",
+      date: "2026-08-30",
+      summary: "Trade and bag workflows for merchants and non-merchants \u2014 split stacks, smarter list pricing, drag-and-drop fixes, and grep-friendly bot logs.",
+      highlights: [
+        {
+          label: "Bag stack split",
+          detail: "Middle-click a stackable bag item to split \u2014 modifier keys pick quick presets (half, quarter, \u2026); plain middle-click opens a custom quantity dialog. Context menu Split\u2026 too.",
+          kind: "feature"
+        },
+        {
+          label: "Trade price dialog",
+          detail: "List, reprice, wishlist, and buy-order prompts use an async ECU dialog \u2014 item icon, vendor floor chip, nearby listing chips, last price, and undercut suggestions instead of stock prompt().",
+          kind: "feature"
+        },
+        {
+          label: "Non-merchant trade row",
+          detail: "Characters without a merchant stand can list on their personal trade1\u20134 row \u2014 drag bag \u2192 slot, bag menu List on Trade\u2026, and reprice/delist work the same as on a stand.",
+          kind: "feature"
+        },
+        {
+          label: "Drag-and-drop",
+          detail: "Bag \u2192 trade slot, bag \u2192 paperdoll equip, and bag internal swap highlight targets correctly. Trade slot drop glow sits on the icon, not the price label.",
+          kind: "improve"
+        },
+        {
+          label: "Vendor floor + tax",
+          detail: "Default list price and Vendor chip account for sales tax \u2014 list price is high enough that net gold after tax is at least NPC vendor gold.",
+          kind: "improve"
+        },
+        {
+          label: "[ECU/comm] bot logs",
+          detail: "Observer COMMAND scripts log a grep-friendly [ECU/comm] line at start and on trade success/failure \u2014 docker logs al-bots-bot-official-1 | rg ECU/comm.",
+          kind: "improve"
+        }
+      ],
+      features: [
+        {
+          title: "Trade & bag on /comm",
+          summary: "Full trade and inventory editing for the character you are observing \u2014 merchants and regular players.",
+          items: [
+            {
+              label: "Personal trade row",
+              detail: "trade1\u20134 always visible in the Trade panel for your character; list/reprice/delist without opening a merchant stand.",
+              kind: "feature",
+              points: [
+                "Auto-opens personal row before list commands when closed",
+                "Stand slots (trade5+) unchanged for merchants"
+              ]
+            },
+            {
+              label: "Price dialog chips",
+              detail: "Vendor (tax-adjusted), last listed, nearby listings, undercut \u22121, and manual entry.",
+              kind: "feature"
+            },
+            {
+              label: "Bag split",
+              detail: "split() via o:command \u2014 middle-click or context menu; respects stack cap and observed-character guard.",
+              kind: "feature"
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "Trade socket fix",
+          detail: "CODE runner uses get_socket().emit for trade show/hide/list \u2014 fixes silent failure listing on non-merchant characters.",
+          kind: "fix"
+        },
+        {
+          label: "Stock on_drop guard",
+          detail: "Strip native bag drop handlers on /comm so observed drag-and-drop does not crash when character.items is null.",
+          kind: "fix"
+        },
+        {
+          label: "Active drag slot cache",
+          detail: "dragover highlights work when getData() is empty \u2014 slot number cached at dragstart.",
+          kind: "fix"
+        },
+        {
+          label: "Trade panel cell size",
+          detail: "Fixed cell footprint so long price labels do not widen the slot grid.",
+          kind: "ui"
+        },
+        {
+          label: "Entity tax field",
+          detail: "Observed character tax rate drives vendor-floor list price math.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.8.0-alpha.16",
       title: "0.8.0-alpha.16",
@@ -15211,6 +15325,14 @@ ${CHROME_ARRANGE_CSS}
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
+#${HOST_ID2}.is-trade-delist-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 2px;
+}
+#${HOST_ID2} [data-cnum].is-bag-swap-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 1px;
+}
 #${MOUNT_ID} {
   pointer-events: auto;
 }
@@ -15492,6 +15614,17 @@ ${CHROME_ARRANGE_CSS}
     delete window[SAVED_CHAR];
     window[HOLD_CHAR] = false;
   }
+  function stripObservedBagNativeDropHandlers() {
+    if (!window.is_comm || !window.observing) return;
+    const host2 = document.getElementById(HOST_ID2);
+    if (!host2) return;
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      node.removeAttribute("ondrop");
+      node.removeAttribute("ondragover");
+    }
+  }
   function refreshInventoryItemTitles() {
     if (!window.inventory) return;
     const host2 = document.getElementById(HOST_ID2);
@@ -15518,6 +15651,7 @@ ${CHROME_ARRANGE_CSS}
       stampNativeItemTitle(node, label);
       if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
     }
+    stripObservedBagNativeDropHandlers();
     refreshBagBuyOrderIndicators();
   }
   function prepareObservingCharacter() {
@@ -15651,11 +15785,6 @@ ${CHROME_ARRANGE_CSS}
   }
   if (typeof window !== "undefined") {
     installBagSyncSocketWatch();
-  }
-
-  // src/host/commandScript.ts
-  function wrapCommandScript(body) {
-    return `(async function(){${body}})();`;
   }
 
   // src/host/mail/commands.ts
@@ -18847,8 +18976,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.8.0-alpha.16" : "unknown";
-    const builtAt = true ? "2026-08-30T17:17:51.654Z" : "unknown";
+    const version = true ? "0.9.0" : "unknown";
+    const builtAt = true ? "2026-08-30T19:40:13.376Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -44107,6 +44236,11 @@ ${parts.map(cssSlice).join("\n")}
   function canEditObservedBag() {
     return canEditObservedGear(window.observing);
   }
+  function isObservedCommBagEvent(host2, ev) {
+    if (!window.is_comm || !window.observing) return false;
+    const target = ev.target;
+    return !!target && host2.contains(target);
+  }
 
   // src/lib/panelClose.ts
   function panelCloseKind(id, deps) {
@@ -47175,6 +47309,32 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/lib/itemStack.ts
+  function stackLimitForName(name) {
+    var _a, _b;
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const stack = (_b = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[name]) == null ? void 0 : _b.s;
+    if (!stack) return null;
+    return stack === true ? 9999 : Number(stack);
+  }
+  function canStackItems(a, b, extraQty = 0, options) {
+    var _a, _b;
+    if (!a || !b || !a.name || !b.name) return false;
+    const limit = stackLimitForName(a.name);
+    if (limit == null) return false;
+    if (a.name !== b.name) return false;
+    const aq = (_a = a.q) != null ? _a : 1;
+    const bq = (_b = b.q) != null ? _b : 1;
+    if (aq + bq + extraQty > limit) return false;
+    if ((a.p || b.p) && a.p !== b.p) return false;
+    if (a.name === "cxjar" && a.data !== b.data) return false;
+    if (!(options == null ? void 0 : options.ignorePvp)) {
+      if (a.v && !b.v || !a.v && b.v) return false;
+    }
+    if (a.l || b.l || a.b || b.b) return false;
+    return true;
+  }
+
   // src/lib/standTradeSlotMemory.ts
   var byEntity = /* @__PURE__ */ new Map();
   var epoch = 0;
@@ -47289,20 +47449,70 @@ ${parts.map(cssSlice).join("\n")}
     return false;
   }
   var PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
-  function merchantStandCapacity(entity) {
-    if (!entity) return 16;
-    const level = entity.level != null ? Number(entity.level) : 0;
+  function isMerchantClass(entity) {
+    const id = entity.id != null ? String(entity.id) : void 0;
+    const resolved = resolvePlayerCtype(id, entity);
+    if (resolved === "merchant") return true;
+    const cls = String(entity.ctype || entity.type || "").toLowerCase();
+    return cls === "merchant";
+  }
+  function maxTradeSlotIndex(slots) {
+    if (!slots) return 0;
+    const keys = Object.keys(slots);
+    let max = 0;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k.indexOf("trade") !== 0) continue;
+      const n = parseInt(k.replace("trade", ""), 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max;
+  }
+  function resolveEntityLevel(entity) {
+    const raw = entity.level;
+    if (raw != null && Number.isFinite(Number(raw))) {
+      const n = Number(raw) | 0;
+      if (n > 0) return n;
+    }
+    if (typeof window === "undefined") return 0;
+    if (typeof window === "undefined") return 0;
+    const id = entity.id != null ? String(entity.id) : "";
+    const obs = window.observing;
+    if (id && obs && (String(obs.id) === id || entity.name != null && obs.name != null && String(entity.name) === String(obs.name))) {
+      if (obs.level != null && Number.isFinite(Number(obs.level))) {
+        return Number(obs.level) | 0;
+      }
+    }
+    const character = window.character;
+    if (id && character && (String(character.id) === id || entity.name != null && character.name != null && String(entity.name) === String(character.name))) {
+      if (character.level != null && Number.isFinite(Number(character.level))) {
+        return Number(character.level) | 0;
+      }
+    }
+    return 0;
+  }
+  function merchantStandCapacity(entity, slots) {
+    if (!entity) return 0;
+    const level = resolveEntityLevel(entity);
     const stand = entity.stand ? String(entity.stand) : "";
-    if (entity.type === "merchant" && level >= 80) return 30;
-    if (entity.type === "merchant" && (level >= 70 || stand === "cstand")) return 24;
-    return 16;
+    const fromKeys = maxTradeSlotIndex(slots);
+    const merchant = isMerchantClass(entity);
+    if (!merchant && !stand) {
+      return fromKeys >= 5 ? fromKeys : 0;
+    }
+    let tier = 16;
+    if (merchant && level >= 80) tier = 30;
+    else if (merchant && (level >= 70 || stand === "cstand")) tier = 24;
+    else if (stand === "cstand") tier = 24;
+    if (fromKeys > tier) tier = fromKeys;
+    return tier;
   }
   function standTradeSlotCount(entity) {
     if (!entity || !entity.stand) return 0;
-    return merchantStandCapacity(entity);
+    return merchantStandCapacity(entity, entity.slots);
   }
-  function allMerchantStandSlotNames(entity) {
-    const n = merchantStandCapacity(entity);
+  function allMerchantStandSlotNames(entity, slots) {
+    const n = merchantStandCapacity(entity, slots != null ? slots : entity == null ? void 0 : entity.slots);
     const names = [];
     for (let i = 1; i <= n; i++) names.push(`trade${i}`);
     return names;
@@ -47340,7 +47550,7 @@ ${parts.map(cssSlice).join("\n")}
   }
   function merchantStandSlotNames(slots, entity, compact, excludePersonal = false) {
     if (!entity || !slots) return [];
-    const all = allMerchantStandSlotNames(entity);
+    const all = allMerchantStandSlotNames(entity, slots);
     const candidates = excludePersonal ? all.slice(4) : all;
     return compactTradeSlotNames(candidates, slots, compact);
   }
@@ -47373,9 +47583,15 @@ ${parts.map(cssSlice).join("\n")}
     return tradeSlotNames(obs.slots, obs, { editPersonalRow: true });
   }
   function tradeSlotIsEmpty(slots, slotName) {
-    if (!slots) return false;
+    if (!slots) return true;
     const slot = slots[slotName];
     return !slot || !slot.name;
+  }
+  function merchantStandSectionVisible(entity, slots, gearEditable) {
+    if (!entity || !slots) return false;
+    if (entity.stand) return true;
+    if (!gearEditable) return false;
+    return merchantStandSlotNames(slots, entity, true, true).length > 0;
   }
   function compactTradeSlotNames(candidateNames, slots, compact) {
     if (!compact || !slots) return candidateNames.slice();
@@ -47414,7 +47630,7 @@ ${parts.map(cssSlice).join("\n")}
       `var __cand=character.items[__si];`,
       `if(!(${candMismatch})){__slot=__si;break;}`,
       `}`,
-      `if(__slot<0){game_log(${lit2("Gear command aborted \u2014 item mismatch")});return;}`,
+      `if(__slot<0){game_log(${JSON.stringify(commLogText("gear \xB7 item mismatch"))});return;}`,
       `it=character.items[__slot];`,
       `}`
     ].join("");
@@ -47457,30 +47673,42 @@ ${parts.map(cssSlice).join("\n")}
       ].join("")
     );
   }
-  function buildInvSwapScript(a, b) {
-    const ai = Number(a) | 0;
-    const bi = Number(b) | 0;
+  function buildInvSwapScript(fromSlot, toSlot) {
+    const from = Number(fromSlot) | 0;
+    const to = Number(toSlot) | 0;
     return wrapCommandScript(
       [
-        `if(${ai}<0||${bi}<0||${ai}>=character.items.length||${bi}>=character.items.length){`,
+        `if(${from}<0||${to}<0||${from}>=character.items.length||${to}>=character.items.length){`,
         `game_log("Swap aborted \u2014 invalid slot");return;}`,
-        `try{await swap(${ai},${bi});}catch(__e){`,
-        `game_log("Swap failed \u2192 "+${ai}+"\u2194"+${bi});`,
+        `try{await swap(${to},${from});}catch(__e){`,
+        `game_log("Swap failed \u2192 "+${from}+"\u2194"+${to});`,
         `}`
       ].join("")
     );
   }
-  function patchObservingAfterInvSwap(a, b) {
+  function patchObservingAfterInvMove(fromSlot, toSlot) {
+    var _a, _b;
     const obs = window.observing;
     if (!obs || !Array.isArray(obs.items)) return;
-    const ai = Number(a) | 0;
-    const bi = Number(b) | 0;
-    if (ai < 0 || bi < 0 || ai >= obs.items.length || bi >= obs.items.length) {
+    const from = Number(fromSlot) | 0;
+    const to = Number(toSlot) | 0;
+    if (from < 0 || to < 0 || from >= obs.items.length || to >= obs.items.length) {
       return;
     }
-    const tmp = obs.items[ai];
-    obs.items[ai] = obs.items[bi];
-    obs.items[bi] = tmp;
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const itemLo = obs.items[lo];
+    const itemHi = obs.items[hi];
+    if (canStackItems(itemLo, itemHi)) {
+      const combinedQ = ((_a = itemLo == null ? void 0 : itemLo.q) != null ? _a : 1) + ((_b = itemHi == null ? void 0 : itemHi.q) != null ? _b : 1);
+      const targetItem = obs.items[to];
+      if (targetItem) targetItem.q = combinedQ;
+      obs.items[from] = null;
+    } else {
+      const tmp = obs.items[lo];
+      obs.items[lo] = obs.items[hi];
+      obs.items[hi] = tmp;
+    }
     try {
       if (typeof window.render_inventory === "function") {
         window.render_inventory(true);
@@ -47490,7 +47718,10 @@ ${parts.map(cssSlice).join("\n")}
   }
   function equipCommand(fp, gearSlot) {
     const script = buildEquipScript(fp, gearSlot);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(
+      script,
+      `equip ${gearSlot || fp.name}`
+    );
     if (!ok) return false;
     scheduleBagRefresh();
     return true;
@@ -47503,7 +47734,7 @@ ${parts.map(cssSlice).join("\n")}
       obs == null ? void 0 : obs.slots
     );
     const script = buildUnequipScript(gearSlot, { skipSlotGuard });
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, `unequip ${gearSlot}`);
     if (!ok) return false;
     if (isTradeSlot(gearSlot)) {
       const id = obs && obs.id != null ? String(obs.id) : "";
@@ -47514,11 +47745,123 @@ ${parts.map(cssSlice).join("\n")}
   }
   function invSwapCommand(a, b) {
     const script = buildInvSwapScript(a, b);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, `inv-swap ${a}\u2194${b}`);
     if (!ok) return false;
-    patchObservingAfterInvSwap(a, b);
+    patchObservingAfterInvMove(a, b);
     scheduleBagRefresh();
     return true;
+  }
+
+  // src/lib/tradeItemPricing.ts
+  function calculateItemValue(itemName, level) {
+    const calc = window.calculate_item_value;
+    if (typeof calc !== "function") return null;
+    const probe = { name: itemName };
+    if (level != null && level > 0) probe.level = level;
+    const v = Number(calc(probe));
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return v | 0;
+  }
+  function vendorGoldPrice(itemName, level) {
+    const name = String(itemName || "").trim();
+    if (!name) return null;
+    const G = getG();
+    const def = G && G.items && G.items[name];
+    if (!def) return null;
+    const baseG = Number(def.g);
+    if (level != null && level > 0) {
+      const computed = calculateItemValue(name, level);
+      if (computed != null && computed > 0) return computed;
+    }
+    if (Number.isFinite(baseG) && baseG > 0) return baseG | 0;
+    return null;
+  }
+  function tradeTaxRateFromLevel(level) {
+    const lv = Number(level);
+    if (!Number.isFinite(lv)) return 0.05;
+    if (lv > 80) return 0.01;
+    if (lv > 70) return 0.02;
+    if (lv > 60) return 0.025;
+    if (lv > 50) return 0.03;
+    if (lv > 20) return 0.04;
+    return 0.05;
+  }
+  function resolveTradeTaxRate(entity) {
+    var _a;
+    const obs = (_a = entity != null ? entity : getObserving()) != null ? _a : window.observing;
+    if (obs && typeof obs.tax === "number" && obs.tax >= 0 && obs.tax < 1) {
+      return obs.tax;
+    }
+    return tradeTaxRateFromLevel(obs == null ? void 0 : obs.level);
+  }
+  function tradeSaleNetGold(listPrice, taxRate) {
+    const price = Number(listPrice) | 0;
+    if (!(price > 0)) return 0;
+    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
+    return Math.round(price * (1 - tax));
+  }
+  function minListPriceForNetGold(netGold, taxRate) {
+    const want = Number(netGold) | 0;
+    if (!(want > 0)) return 1;
+    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
+    if (!(tax > 0)) return want;
+    let price = Math.ceil(want / (1 - tax));
+    while (price > 1 && tradeSaleNetGold(price - 1, tax) >= want) price -= 1;
+    while (price > 0 && tradeSaleNetGold(price, tax) < want) price += 1;
+    return price;
+  }
+  function vendorListFloorPrice(itemName, options) {
+    const vendor = vendorGoldPrice(itemName, options == null ? void 0 : options.level);
+    if (vendor == null || !(vendor > 0)) return null;
+    const tax = resolveTradeTaxRate(options == null ? void 0 : options.observer);
+    return minListPriceForNetGold(vendor, tax);
+  }
+  function nearbyMapSellPricesForItem(itemName, observer, options) {
+    var _a;
+    const name = String(itemName || "").trim();
+    if (!name) return [];
+    const obs = observer != null ? observer : window.observing;
+    if (!obs) return [];
+    const obsId = obs.id != null ? String(obs.id) : "";
+    const wantLevel = options == null ? void 0 : options.level;
+    const max = (options == null ? void 0 : options.max) != null ? Math.max(1, options.max | 0) : 12;
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    const entities = getEntitiesList();
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
+      if (!isInTradeRange(ent, obs)) continue;
+      const seller = ent.name != null ? String(ent.name) : String((_a = ent.id) != null ? _a : "player");
+      const keys = Object.keys(ent.slots);
+      for (let si = 0; si < keys.length; si++) {
+        const k = keys[si];
+        if (k.indexOf("trade") !== 0) continue;
+        const listing = ent.slots[k];
+        if (!listing || !listing.name || listing.name !== name) continue;
+        if (listing.b) continue;
+        if (isGiveawayListing(listing)) continue;
+        if (wantLevel != null && listing.level != null && listing.level !== wantLevel) {
+          continue;
+        }
+        const price = Number(listing.price) | 0;
+        if (!(price > 0) || seen.has(price)) continue;
+        seen.add(price);
+        out.push({
+          price,
+          seller,
+          level: listing.level
+        });
+      }
+    }
+    out.sort((a, b) => a.price - b.price);
+    return out.slice(0, max);
+  }
+  function formatNearbySellLine(listing) {
+    const price = formatTradeGold(listing.price);
+    const who = listing.seller.length > 10 ? listing.seller.slice(0, 9) + "\u2026" : listing.seller;
+    return `${who} \xB7 ${price}g`;
   }
 
   // src/lib/tradePriceMemory.ts
@@ -47553,14 +47896,133 @@ ${parts.map(cssSlice).join("\n")}
     map[key] = { price: price | 0, q: q != null && q > 0 ? q | 0 : void 0 };
     writeMap(map);
   }
-  function defaultTradePrice(itemName) {
-    const mem = recallTradePrice(itemName);
-    return mem ? String(mem.price) : "";
+  function formatGold(n) {
+    const v = Number(n) | 0;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e4) return `${Math.round(v / 1e3)}k`;
+    return String(v);
+  }
+  function nearbyTradePricesForItem(itemName, slots) {
+    const name = String(itemName || "").trim();
+    if (!name || !slots) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const slot = slots[keys[i]];
+      if (!slot || slot.name !== name) continue;
+      const price = Number(slot.price) | 0;
+      if (!(price > 0) || seen.has(price)) continue;
+      seen.add(price);
+      out.push(price);
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  }
+  function tradePriceSuggestions(itemName, options) {
+    var _a;
+    const name = String(itemName || "").trim();
+    if (!name) return [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (label, price, kind) => {
+      const p = Number(price) | 0;
+      if (!(p > 0) || seen.has(p)) return;
+      seen.add(p);
+      out.push({ label, price: p, kind });
+    };
+    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
+    const vendorNet = vendorGoldPrice(name, options == null ? void 0 : options.level);
+    const vendorFloor = vendorListFloorPrice(name, {
+      level: options == null ? void 0 : options.level,
+      observer
+    });
+    if (vendorFloor != null && vendorNet != null) {
+      const tax = resolveTradeTaxRate(observer);
+      const taxPct = Math.round(tax * 100);
+      const netLabel = formatGold(vendorNet);
+      push(
+        `Vendor \xB7 ${formatGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
+        vendorFloor,
+        "vendor"
+      );
+    }
+    const mem = recallTradePrice(name);
+    if (mem) push(`Last \xB7 ${formatGold(mem.price)}g`, mem.price, "last");
+    const current = options == null ? void 0 : options.currentPrice;
+    if (current != null && Number(current) > 0) {
+      push(`Current \xB7 ${formatGold(current)}g`, Number(current), "current");
+    }
+    const yours = nearbyTradePricesForItem(name, options == null ? void 0 : options.slots);
+    for (let i = 0; i < yours.length; i++) {
+      push(`Yours \xB7 ${formatGold(yours[i])}g`, yours[i], "yours");
+    }
+    const nearbyMap = nearbyMapSellPricesForItem(name, observer, {
+      level: options == null ? void 0 : options.level
+    });
+    for (let i = 0; i < nearbyMap.length; i++) {
+      const row3 = nearbyMap[i];
+      push(formatNearbySellLine(row3), row3.price, "nearby");
+    }
+    if (nearbyMap.length > 0) {
+      const low = nearbyMap[0].price;
+      const undercut = Math.max(1, low - 1);
+      if (!seen.has(undercut)) {
+        push(`Undercut \xB7 ${formatGold(undercut)}g`, undercut, "undercut");
+      }
+    }
+    return out.slice(0, 12);
+  }
+  function defaultTradePriceNumber(itemName, options) {
+    var _a;
+    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
+    const vendorFloor = vendorListFloorPrice(itemName, {
+      level: options == null ? void 0 : options.level,
+      observer
+    });
+    const floor = vendorFloor != null && vendorFloor > 0 ? vendorFloor : 1;
+    const suggestions = tradePriceSuggestions(itemName, { ...options, observer });
+    for (let i = 0; i < suggestions.length; i++) {
+      const sug = suggestions[i];
+      if (sug.kind === "vendor") continue;
+      if (sug.price >= floor) return sug.price;
+    }
+    return floor;
+  }
+  function parseTradeGoldInput(raw) {
+    const trimmed = String(raw != null ? raw : "").trim().replace(/,/g, "");
+    if (!trimmed) return null;
+    const n = parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n | 0;
   }
 
   // src/host/tradeCommands.ts
   function lit3(value) {
     return JSON.stringify(String(value));
+  }
+  function commLit(message) {
+    return lit3(commLogText(message));
+  }
+  function tradeRowOpenJs() {
+    return `(character.slots&&character.slots.trade1!==undefined)`;
+  }
+  function tradeShowEmitJs() {
+    return `var __sock=get_socket();if(__sock)__sock.emit("trade",{event:"show"});`;
+  }
+  function socketEmitJs(event, payloadExpr) {
+    return [
+      `var __sock=get_socket();`,
+      `if(!__sock){game_log(${commLit("trade \xB7 no socket")});return;}`,
+      `__sock.emit(${lit3(event)},${payloadExpr});`
+    ].join("");
+  }
+  function tradeSlotOccupiedGuardJs(slotExpr, failMessage) {
+    return [
+      `var __ts=${slotExpr};`,
+      `var __occ=character.slots&&character.slots[__ts];`,
+      `if(__occ&&__occ.name){game_log(${lit3(failMessage)});return;}`
+    ].join("");
   }
   function scheduleBagRefresh2() {
     window.setTimeout(() => {
@@ -47570,22 +48032,64 @@ ${parts.map(cssSlice).join("\n")}
       }
     }, 900);
   }
+  function tradeSlotIndex(slot) {
+    const n = parseInt(String(slot).replace("trade", ""), 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function tradeListPrefaceJs(tradeSlot) {
+    const idx = tradeSlotIndex(tradeSlot);
+    const parts = [];
+    if (idx >= 1 && idx <= 4) {
+      parts.push(
+        `if(!${tradeRowOpenJs()}){`,
+        tradeShowEmitJs(),
+        `for(var __tw=0;__tw<120;__tw++){`,
+        `await sleep(50);`,
+        `if(${tradeRowOpenJs()})break;`,
+        `if(__tw===20||__tw===50||__tw===80||__tw===100){`,
+        tradeShowEmitJs(),
+        `}`,
+        `}`,
+        `}`,
+        `if(!${tradeRowOpenJs()}){`,
+        `game_log(${commLit("trade-list \xB7 could not open trade row")});return;`,
+        `}`
+      );
+    }
+    if (idx >= 5) {
+      parts.push(
+        `if(!character.stand){game_log(${commLit("trade-list \xB7 open merchant stand for " + tradeSlot)});return;}`
+      );
+    }
+    return parts.join("");
+  }
   function buildTradeListScript(fp, tradeSlot, price, q) {
     const slot = String(tradeSlot || "").trim();
     const gold = Number(price) | 0;
     const qty = q != null ? Number(q) | 0 : 1;
     if (!slot || !isTradeSlotName(slot)) {
-      return wrapCommandScript(`game_log("Trade list aborted \u2014 invalid slot");`);
+      return wrapCommandScript(
+        `game_log(${commLit("trade-list \xB7 invalid slot")});`
+      );
     }
     if (gold <= 0) {
-      return wrapCommandScript(`game_log("Trade list aborted \u2014 invalid price");`);
+      return wrapCommandScript(
+        `game_log(${commLit("trade-list \xB7 invalid price")});`
+      );
     }
     return wrapCommandScript(
       [
         resolveInvSlotJs(fp),
-        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Trade list failed \u2014 slot not empty")});return;}`,
-        `try{await trade(${lit3(slot)},__slot,${gold},${qty > 0 ? qty : 1});}catch(__e){`,
-        `game_log(${lit3("Trade list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        tradeListPrefaceJs(slot),
+        tradeSlotOccupiedGuardJs(
+          lit3(slot),
+          commLogText("trade-list \xB7 slot not empty")
+        ),
+        // CODE API: trade(invNum, tradeSlot, price, quantity) — not parent.trade(slot, num, …)
+        `try{await trade(__slot,${lit3(slot)},${gold},${qty > 0 ? qty : 1});`,
+        `game_log(${commLit("trade-list ok \u2192 " + slot)});`,
+        `}catch(__e){`,
+        `game_log(${commLit("trade-list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -47641,8 +48145,10 @@ ${parts.map(cssSlice).join("\n")}
     }
     return wrapCommandScript(
       [
-        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Wishlist failed \u2014 slot not empty")});return;}`,
-        `try{await wishlist(${lit3(slot)},${lit3(name)},${gold},${qty > 0 ? qty : 1},${lvl});}catch(__e){`,
+        tradeSlotOccupiedGuardJs(lit3(slot), "Wishlist failed \u2014 slot not empty"),
+        tradeListPrefaceJs(slot),
+        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+        `try{await wishlist(${lit3(slot)},${lit3(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
         `game_log(${lit3("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
@@ -47670,9 +48176,7 @@ ${parts.map(cssSlice).join("\n")}
         `var __listing=__target.slots[__slot];`,
         `if(__listing.b){game_log("Buy failed \u2014 slot is a buy order");return;}`,
         `if(__listing.rid!==__rid){game_log("Buy failed \u2014 listing changed");return;}`,
-        `try{socket.emit("trade_buy",{id:__id,slot:__slot,rid:__rid,q:String(__q)});}catch(__e){`,
-        `game_log("Buy failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
+        socketEmitJs("trade_buy", "{id:__id,slot:__slot,rid:__rid,q:String(__q)}")
       ].join("")
     );
   }
@@ -47706,9 +48210,7 @@ ${parts.map(cssSlice).join("\n")}
         `__have=true;break;`,
         `}`,
         `if(!__have){game_log("Fulfill failed \u2014 no matching item in bag");return;}`,
-        `try{socket.emit("trade_sell",{id:__id,slot:__slot,rid:__rid,q:__q});}catch(__e){`,
-        `game_log("Fulfill failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
+        socketEmitJs("trade_sell", "{id:__id,slot:__slot,rid:__rid,q:__q}")
       ].join("")
     );
   }
@@ -47721,9 +48223,10 @@ ${parts.map(cssSlice).join("\n")}
     }
     return wrapCommandScript(
       [
-        `try{socket.emit("join_giveaway",{id:${lit3(id)},slot:${lit3(slot)},rid:${lit3(listingRid)}});}catch(__e){`,
-        `game_log("Giveaway join failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
+        socketEmitJs(
+          "join_giveaway",
+          `{id:${lit3(id)},slot:${lit3(slot)},rid:${lit3(listingRid)}}`
+        )
       ].join("")
     );
   }
@@ -47740,7 +48243,8 @@ ${parts.map(cssSlice).join("\n")}
     return wrapCommandScript(
       [
         resolveInvSlotJs(fp),
-        `if(character.slots[${lit3(slot)}]){game_log(${lit3("Giveaway failed \u2014 slot not empty")});return;}`,
+        tradeListPrefaceJs(slot),
+        tradeSlotOccupiedGuardJs(lit3(slot), "Giveaway failed \u2014 slot not empty"),
         `try{await giveaway(${lit3(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
         `game_log(${lit3("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
@@ -47780,7 +48284,8 @@ ${parts.map(cssSlice).join("\n")}
         `game_log("Reprice failed (delist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;`,
         `}`,
         `if(__wish){`,
-        `try{await wishlist(__slot,__name,__price,__q,__level);}catch(__e){`,
+        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+        `try{await wishlist(__slot,__name,__price,__level,__q);}catch(__e){`,
         `game_log("Reprice failed (wishlist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`,
         `}else{`,
@@ -47791,10 +48296,12 @@ ${parts.map(cssSlice).join("\n")}
         `if((__it.level||0)!==__level)continue;`,
         `if(__p&&__it.p!==__p)continue;`,
         `if(!__p&&__it.p)continue;`,
+        `if((__it.q||1)<__q)continue;`,
         `__num=__si;break;`,
         `}`,
         `if(__num<0){game_log("Reprice failed \u2014 item not in bag after delist");return;}`,
-        `try{await trade(__slot,__num,__price,__q);}catch(__e){`,
+        // CODE API: trade(invNum, tradeSlot, price, quantity)
+        `try{await trade(__num,__slot,__price,__q);}catch(__e){`,
         `game_log("Reprice failed (relist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`,
         `}`
@@ -47813,7 +48320,10 @@ ${parts.map(cssSlice).join("\n")}
   }
   function wishlistCommand(tradeSlot, itemName, price, q, level) {
     const script = buildWishlistScript(tradeSlot, itemName, price, q, level);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(
+      script,
+      `wishlist ${tradeSlot} ${itemName}`
+    );
     if (!ok) return false;
     rememberTradePrice(itemName, price, q != null ? q : 1);
     scheduleBagRefresh2();
@@ -47821,25 +48331,31 @@ ${parts.map(cssSlice).join("\n")}
   }
   function joinGiveawayCommand(targetId, tradeSlot, rid) {
     const script = buildJoinGiveawayScript(targetId, tradeSlot, rid);
-    return emitObserverCommand(script);
+    return emitObserverCommand(
+      script,
+      `join-giveaway ${tradeSlot}`
+    );
   }
   function giveawayCommand(tradeSlot, fp, minutes, q) {
     const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(
+      script,
+      `giveaway ${tradeSlot} ${fp.name}`
+    );
     if (!ok) return false;
     scheduleBagRefresh2();
     return true;
   }
   function tradePurchaseCommand(targetId, tradeSlot, rid, quantity) {
     const script = buildTradePurchaseScript(targetId, tradeSlot, rid, quantity);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, `trade-buy ${tradeSlot}`);
     if (!ok) return false;
     scheduleBagRefresh2();
     return true;
   }
   function tradeFulfillCommand(targetId, tradeSlot, rid, quantity) {
     const script = buildTradeFulfillScript(targetId, tradeSlot, rid, quantity);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, `trade-sell ${tradeSlot}`);
     if (!ok) return false;
     scheduleBagRefresh2();
     return true;
@@ -47864,7 +48380,7 @@ ${parts.map(cssSlice).join("\n")}
       newPrice,
       shouldSkipLiveTradeSlotGuard(tradeSlot, listed, obs == null ? void 0 : obs.slots) ? listed : void 0
     );
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, `trade-reprice ${tradeSlot}`);
     if (!ok) return false;
     if (listed == null ? void 0 : listed.name) {
       rememberTradePrice(listed.name, newPrice, (_a = listed.q) != null ? _a : 1);
@@ -47875,81 +48391,27 @@ ${parts.map(cssSlice).join("\n")}
   function tradeListCommand(fp, tradeSlot, price, q) {
     var _a;
     const script = buildTradeListScript(fp, tradeSlot, price, q);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(
+      script,
+      `trade-list ${tradeSlot} ${fp.name}`
+    );
     if (!ok) return false;
     rememberTradePrice(fp.name, price, (_a = q != null ? q : fp.q) != null ? _a : 1);
     scheduleBagRefresh2();
     return true;
   }
   function merchantCloseCommand() {
-    const ok = emitObserverCommand(buildMerchantCloseScript());
+    const ok = emitObserverCommand(buildMerchantCloseScript(), "merchant-close");
     if (!ok) return false;
     scheduleBagRefresh2();
     return true;
   }
   function merchantOpenCommand(invSlot) {
     const script = buildMerchantOpenScript(invSlot);
-    const ok = emitObserverCommand(script);
+    const ok = emitObserverCommand(script, "merchant-open");
     if (!ok) return false;
     scheduleBagRefresh2();
     return true;
-  }
-  function promptWishlistLevel(itemName) {
-    const G = getG();
-    const def = G && G.items && G.items[itemName];
-    const d = def;
-    if (!d || !d.upgrade && !d.compound) return 0;
-    const raw = window.prompt(
-      `Wishlist level for ${itemName} (0\u201312, compound max 7):`,
-      "0"
-    );
-    if (raw == null || String(raw).trim() === "") return null;
-    const n = parseInt(String(raw).trim(), 10);
-    if (!Number.isFinite(n) || n < 0 || n > 12) {
-      window.alert("Enter a level from 0 to 12.");
-      return null;
-    }
-    return n;
-  }
-  function promptTradeQuantity(maxQ, itemName) {
-    const cap = maxQ != null && Number(maxQ) > 0 ? Number(maxQ) | 0 : void 0;
-    const hint = itemName ? cap != null ? `Quantity for ${itemName} (1\u2013${cap}):` : `Quantity for ${itemName}:` : cap != null ? `Quantity (1\u2013${cap}):` : "Quantity:";
-    const raw = window.prompt(hint, "1");
-    if (raw == null || String(raw).trim() === "") return null;
-    const n = parseInt(String(raw).replace(/,/g, ""), 10);
-    if (!Number.isFinite(n) || n <= 0) {
-      window.alert("Enter a positive quantity.");
-      return null;
-    }
-    if (cap != null && n > cap) {
-      window.alert(`Maximum quantity is ${cap}.`);
-      return null;
-    }
-    return n;
-  }
-  function promptGiveawayMinutes(defaultMins = 60) {
-    const raw = window.prompt(
-      "Giveaway duration in minutes:",
-      String(defaultMins > 0 ? defaultMins : 60)
-    );
-    if (raw == null || String(raw).trim() === "") return null;
-    const n = parseInt(String(raw).replace(/,/g, ""), 10);
-    if (!Number.isFinite(n) || n <= 0) {
-      window.alert("Enter a positive number of minutes.");
-      return null;
-    }
-    return n;
-  }
-  function promptTradePrice(itemName) {
-    const hint = itemName ? `List ${itemName} \u2014 price in gold:` : "List item \u2014 price in gold:";
-    const raw = window.prompt(hint, itemName ? defaultTradePrice(itemName) : "");
-    if (raw == null || String(raw).trim() === "") return null;
-    const n = parseInt(String(raw).replace(/,/g, ""), 10);
-    if (!Number.isFinite(n) || n <= 0) {
-      window.alert("Enter a positive gold amount.");
-      return null;
-    }
-    return n;
   }
 
   // src/lib/gearSlots.ts
@@ -48046,6 +48508,556 @@ ${parts.map(cssSlice).join("\n")}
     return `${empty2} free \xB7 ${filled} listed`;
   }
 
+  // src/ui/trade/tradePromptDialogCss.ts
+  var injected6 = false;
+  var CSS8 = `
+.ecu-trade-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483005;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.ecu-trade-prompt {
+  min-width: min(400px, 94vw);
+  max-width: 460px;
+  padding: 18px 20px 16px;
+  background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  outline: 1px solid rgba(232, 201, 106, 0.35);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
+  color: #eee;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.ecu-trade-prompt__title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffd28a;
+}
+.ecu-trade-prompt__item {
+  margin: 0 0 12px;
+  color: rgba(220, 210, 210, 0.92);
+  line-height: 1.35;
+}
+.ecu-trade-prompt__item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.ecu-trade-prompt__icon {
+  flex: 0 0 auto;
+  line-height: 0;
+  font-size: 0;
+}
+.ecu-trade-prompt__icon .itemslot,
+.ecu-trade-prompt__icon .item_container {
+  margin: 0 !important;
+}
+.ecu-trade-prompt__item-text {
+  flex: 1;
+  min-width: 0;
+}
+.ecu-trade-prompt__item-name {
+  color: rgba(235, 225, 210, 0.96);
+  font-size: 15px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.ecu-trade-prompt__nearby {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ecu-trade-prompt__nearby-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(200, 180, 120, 0.85);
+  margin-bottom: 6px;
+}
+.ecu-trade-prompt__nearby-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 88px;
+  overflow-y: auto;
+}
+.ecu-trade-prompt__nearby-row {
+  font-size: 13px;
+  color: rgba(210, 205, 195, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-trade-prompt__field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 10px;
+}
+.ecu-trade-prompt__field input[type="number"],
+.ecu-trade-prompt__field input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+.ecu-trade-prompt__field input:focus {
+  outline: none;
+  border-color: rgba(232, 201, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.2);
+}
+.ecu-trade-prompt__suffix {
+  color: rgba(200, 190, 170, 0.85);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.ecu-trade-prompt__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.ecu-trade-prompt__chips button {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ddd;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ecu-trade-prompt__chips button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(232, 201, 106, 0.35);
+}
+.ecu-trade-prompt__chips button.is-active,
+.ecu-trade-prompt__chip.is-active {
+  background: rgba(232, 201, 106, 0.18);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+.ecu-trade-prompt__chip--vendor {
+  border-color: rgba(140, 190, 140, 0.35);
+}
+.ecu-trade-prompt__chip--nearby,
+.ecu-trade-prompt__chip--undercut {
+  border-color: rgba(143, 212, 255, 0.28);
+}
+.ecu-trade-prompt__chip--last,
+.ecu-trade-prompt__chip--current,
+.ecu-trade-prompt__chip--yours {
+  border-color: rgba(232, 201, 106, 0.28);
+}
+.ecu-trade-prompt__hint {
+  min-height: 18px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #e88;
+}
+.ecu-trade-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.ecu-trade-prompt__actions button {
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eee;
+  font-size: 15px;
+  cursor: pointer;
+}
+.ecu-trade-prompt__actions button.primary {
+  background: rgba(232, 201, 106, 0.22);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+`;
+  function ensureTradePromptDialogCss() {
+    if (injected6) return;
+    injected6 = true;
+    const style = document.createElement("style");
+    style.setAttribute("data-ecu-trade-prompt", "1");
+    style.textContent = CSS8;
+    document.head.appendChild(style);
+  }
+
+  // src/ui/trade/tradePromptDialog.ts
+  var openBackdrop = null;
+  var finishOpen = null;
+  function closeDialog(value) {
+    const finish = finishOpen;
+    finishOpen = null;
+    if (openBackdrop) {
+      openBackdrop.remove();
+      openBackdrop = null;
+    }
+    finish == null ? void 0 : finish(value);
+  }
+  function showNumberDialog(options) {
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const min = options.min != null ? Number(options.min) | 0 : 1;
+      const max = options.max != null ? Number(options.max) | 0 : 0;
+      const initial = options.defaultValue != null && options.defaultValue > 0 ? options.defaultValue | 0 : options.suggestions && options.suggestions.length ? options.suggestions[0].price : min;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const title = document.createElement("h2");
+      title.className = "ecu-trade-prompt__title";
+      title.textContent = options.title;
+      panel.appendChild(title);
+      if (options.itemLine) {
+        const itemLine = document.createElement("p");
+        itemLine.className = "ecu-trade-prompt__item";
+        itemLine.textContent = options.itemLine;
+        panel.appendChild(itemLine);
+      }
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      if (max > 0) input.max = String(max);
+      input.step = "1";
+      input.value = String(initial);
+      input.setAttribute("aria-label", options.label);
+      const suffix = document.createElement("span");
+      suffix.className = "ecu-trade-prompt__suffix";
+      suffix.textContent = options.suffix || "";
+      field.append(input, suffix);
+      panel.appendChild(field);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = "OK";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(panel, options.suggestions, input, hintEl, initial);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const parseValue = () => {
+        const n = parseInt(String(input.value).replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n < min) return null;
+        if (max > 0 && n > max) return null;
+        return n | 0;
+      };
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const n = parseValue();
+        if (n == null) {
+          hintEl.textContent = max > 0 ? `Enter ${min}\u2013${max}.` : `Enter at least ${min}.`;
+          input.focus();
+          return;
+        }
+        dismiss(n);
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      input.addEventListener("input", () => {
+        hintEl.textContent = "";
+      });
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    });
+  }
+  function appendSuggestionChips(panel, suggestions, input, hintEl, initial) {
+    const chipButtons = [];
+    if (!suggestions || !suggestions.length) return chipButtons;
+    const chips = document.createElement("div");
+    chips.className = "ecu-trade-prompt__chips";
+    const setActiveChip = (price) => {
+      for (let i = 0; i < chipButtons.length; i++) {
+        chipButtons[i].classList.toggle(
+          "is-active",
+          suggestions[i].price === price
+        );
+      }
+    };
+    for (let i = 0; i < suggestions.length; i++) {
+      const sug = suggestions[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-trade-prompt__chip" + (sug.kind ? ` ecu-trade-prompt__chip--${sug.kind}` : "");
+      btn.textContent = sug.label;
+      btn.title = `${formatTradeGold(sug.price)} gold`;
+      btn.addEventListener("click", () => {
+        input.value = String(sug.price);
+        setActiveChip(sug.price);
+        hintEl.textContent = "";
+        input.focus();
+      });
+      chipButtons.push(btn);
+      chips.appendChild(btn);
+    }
+    const actions = panel.querySelector(".ecu-trade-prompt__actions");
+    if (actions) panel.insertBefore(chips, actions);
+    else panel.appendChild(chips);
+    setActiveChip(initial);
+    return chipButtons;
+  }
+  function appendItemHeader(panel, itemName, label, options) {
+    const row3 = document.createElement("div");
+    row3.className = "ecu-trade-prompt__item-row";
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "ecu-trade-prompt__icon";
+    let iconHtml = "";
+    try {
+      iconHtml = itemInstanceHtml(itemName, {
+        skin: options == null ? void 0 : options.skin,
+        size: 34,
+        level: options == null ? void 0 : options.level,
+        p: options == null ? void 0 : options.p,
+        nativeTitle: false
+      }) || "";
+    } catch (e2) {
+      iconHtml = "";
+    }
+    if (iconHtml) {
+      iconWrap.innerHTML = iconHtml;
+    }
+    const textWrap = document.createElement("div");
+    textWrap.className = "ecu-trade-prompt__item-text";
+    const nameEl = document.createElement("div");
+    nameEl.className = "ecu-trade-prompt__item-name";
+    nameEl.textContent = label;
+    textWrap.appendChild(nameEl);
+    row3.append(iconWrap, textWrap);
+    panel.insertBefore(row3, panel.children[1] || null);
+  }
+  function appendNearbySection(panel, suggestions) {
+    const nearby = suggestions.filter((s) => s.kind === "nearby");
+    if (!nearby.length) return;
+    const section3 = document.createElement("div");
+    section3.className = "ecu-trade-prompt__nearby";
+    const heading = document.createElement("div");
+    heading.className = "ecu-trade-prompt__nearby-title";
+    heading.textContent = "Nearby listings";
+    section3.appendChild(heading);
+    const list = document.createElement("div");
+    list.className = "ecu-trade-prompt__nearby-list";
+    for (let i = 0; i < nearby.length; i++) {
+      const row3 = document.createElement("div");
+      row3.className = "ecu-trade-prompt__nearby-row";
+      row3.textContent = nearby[i].label;
+      list.appendChild(row3);
+    }
+    section3.appendChild(list);
+    const field = panel.querySelector(".ecu-trade-prompt__field");
+    if (field) panel.insertBefore(section3, field);
+    else panel.appendChild(section3);
+  }
+  function showTradePriceDialog(options) {
+    var _a, _b;
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    const name = String(options.itemName || "").trim();
+    const label = options.itemLabel || itemInstanceLabel(name, { level: options.level, p: options.p });
+    const title = options.mode === "wishlist" ? "Wishlist buy price" : options.mode === "reprice" ? "Change price" : "List for sale";
+    const suggestions = tradePriceSuggestions(name, {
+      slots: options.slots,
+      currentPrice: options.currentPrice,
+      level: options.level,
+      observer: (_a = getObserving()) != null ? _a : window.observing
+    });
+    const defaultValue = defaultTradePriceNumber(name, {
+      slots: options.slots,
+      currentPrice: options.currentPrice,
+      level: options.level,
+      observer: (_b = getObserving()) != null ? _b : window.observing
+    });
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const min = 1;
+      const initial = defaultValue > 0 ? defaultValue : min;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt ecu-trade-prompt--price";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const titleEl = document.createElement("h2");
+      titleEl.className = "ecu-trade-prompt__title";
+      titleEl.textContent = title;
+      panel.appendChild(titleEl);
+      appendItemHeader(panel, name, label, {
+        level: options.level,
+        p: options.p,
+        skin: options.skin
+      });
+      appendNearbySection(panel, suggestions);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      input.step = "1";
+      input.value = String(initial);
+      input.setAttribute("aria-label", "Price in gold");
+      const suffix = document.createElement("span");
+      suffix.className = "ecu-trade-prompt__suffix";
+      suffix.textContent = "gold";
+      field.append(input, suffix);
+      panel.appendChild(field);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = options.mode === "reprice" ? "Reprice" : options.mode === "wishlist" ? "Wishlist" : "List";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(panel, suggestions, input, hintEl, initial);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const n = parseTradeGoldInput(input.value);
+        if (n == null) {
+          hintEl.textContent = "Enter at least 1 gold.";
+          input.focus();
+          input.select();
+          return;
+        }
+        dismiss(n);
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      input.addEventListener("input", () => {
+        hintEl.textContent = "";
+      });
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    });
+  }
+  function showTradeQuantityDialog(options) {
+    const maxQ = Math.max(1, Number(options.maxQ) | 0);
+    const name = String(options.itemName || "").trim();
+    const defaultQ = options.defaultQ != null && options.defaultQ > 0 ? Math.min(maxQ, options.defaultQ | 0) : maxQ > 1 ? Math.max(1, Math.floor(maxQ / 2)) : 1;
+    const suggestions = [
+      { label: "1", price: 1 },
+      {
+        label: `Half (${Math.max(1, Math.floor(maxQ / 2))})`,
+        price: Math.max(1, Math.floor(maxQ / 2))
+      },
+      { label: `Max (${maxQ})`, price: maxQ }
+    ].filter((s, i, arr) => arr.findIndex((x) => x.price === s.price) === i);
+    return showNumberDialog({
+      title: "Quantity",
+      itemLine: name ? `${name} \xB7 up to ${maxQ}` : `Up to ${maxQ}`,
+      label: "Quantity",
+      suffix: ` / ${maxQ}`,
+      defaultValue: defaultQ,
+      suggestions: maxQ > 1 ? suggestions : void 0,
+      min: 1,
+      max: maxQ
+    });
+  }
+  function showGiveawayMinutesDialog(defaultMins = 60) {
+    const def = defaultMins > 0 ? defaultMins | 0 : 60;
+    return showNumberDialog({
+      title: "Giveaway duration",
+      itemLine: "How long should the giveaway run?",
+      label: "Minutes",
+      suffix: "min",
+      defaultValue: def,
+      suggestions: [
+        { label: "15 min", price: 15 },
+        { label: "1 hour", price: 60 },
+        { label: "4 hours", price: 240 },
+        { label: "24 hours", price: 1440 }
+      ],
+      min: 1
+    });
+  }
+  function showWishlistLevelDialog(itemName) {
+    const name = String(itemName || "").trim();
+    return showNumberDialog({
+      title: "Wishlist level",
+      itemLine: name ? `${name} \xB7 upgrade/compound level` : "Item level",
+      label: "Level",
+      suffix: "0\u201312",
+      defaultValue: 0,
+      suggestions: [
+        { label: "Any (0)", price: 0 },
+        { label: "+5", price: 5 },
+        { label: "+7", price: 7 },
+        { label: "+10", price: 10 }
+      ],
+      min: 0,
+      max: 12
+    });
+  }
+
   // src/ui/gear/tradeWishlistPickerCss.ts
   var TRADE_WISHLIST_PICKER_CSS = `
 .comm-wishlist-picker {
@@ -48125,10 +49137,10 @@ ${parts.map(cssSlice).join("\n")}
   color: #888;
 }
 `;
-  var injected6 = false;
+  var injected7 = false;
   function ensureTradeWishlistPickerCss() {
-    if (injected6) return;
-    injected6 = true;
+    if (injected7) return;
+    injected7 = true;
     const el = document.createElement("style");
     el.setAttribute("data-ecu-wishlist-picker-css", "1");
     el.textContent = TRADE_WISHLIST_PICKER_CSS;
@@ -48188,11 +49200,25 @@ ${parts.map(cssSlice).join("\n")}
   }
   function pickItem(tradeSlot, itemKey) {
     hidePicker();
-    const price = promptTradePrice(itemKey);
-    if (price == null) return;
-    const level = promptWishlistLevel(itemKey);
-    if (level == null) return;
-    wishlistCommand(tradeSlot, itemKey, price, 1, level);
+    void (async () => {
+      const obs = window.observing;
+      const price = await showTradePriceDialog({
+        mode: "wishlist",
+        itemName: itemKey,
+        slots: obs == null ? void 0 : obs.slots
+      });
+      if (price == null) return;
+      const G = getG();
+      const def = G && G.items && G.items[itemKey];
+      const d = def;
+      let level = 0;
+      if (d && (d.upgrade || d.compound)) {
+        const picked = await showWishlistLevelDialog(itemKey);
+        if (picked == null) return;
+        level = picked;
+      }
+      wishlistCommand(tradeSlot, itemKey, price, 1, level);
+    })();
   }
   function renderPage(root, tradeSlot, rows, query, page) {
     const q = query.trim().toLowerCase();
@@ -48360,10 +49386,10 @@ ${parts.map(cssSlice).join("\n")}
 .comm-bag-ctx__item.is-disabled:hover,
 .comm-bag-ctx__item:disabled:hover { background: transparent; }
 `;
-  var injected7 = false;
+  var injected8 = false;
   function ensureBagItemContextMenuCss() {
-    if (injected7) return;
-    injected7 = true;
+    if (injected8) return;
+    injected8 = true;
     const existing = document.querySelector(
       "style[data-ecu-bag-ctx-css]"
     );
@@ -48430,20 +49456,20 @@ ${parts.map(cssSlice).join("\n")}
         separatorBefore: true,
         disabled: !repriceOk,
         run: () => {
-          if (!repriceOk) return;
-          const current = slot == null ? void 0 : slot.price;
-          const hint = (slot == null ? void 0 : slot.name) != null ? `New price for ${slot.name}${current != null ? ` (was ${formatTradeGold(current)})` : ""}:` : "New price in gold:";
-          const raw = window.prompt(
-            hint,
-            (slot == null ? void 0 : slot.name) ? defaultTradePrice(slot.name) || (current != null ? String(current) : "") : current != null ? String(current) : ""
-          );
-          if (raw == null || String(raw).trim() === "") return;
-          const price = parseInt(String(raw).replace(/,/g, ""), 10);
-          if (!Number.isFinite(price) || price <= 0) {
-            window.alert("Enter a positive gold amount.");
-            return;
-          }
-          tradeRepriceCommand(slotName, price, slot);
+          if (!repriceOk || !(slot == null ? void 0 : slot.name)) return;
+          void (async () => {
+            const obs = window.observing;
+            const price = await showTradePriceDialog({
+              mode: "reprice",
+              itemName: slot.name,
+              level: slot.level,
+              p: slot.p,
+              slots: obs == null ? void 0 : obs.slots,
+              currentPrice: slot.price
+            });
+            if (price == null) return;
+            tradeRepriceCommand(slotName, price, slot);
+          })();
         }
       });
       if ((slot == null ? void 0 : slot.price) != null) {
@@ -48532,10 +49558,15 @@ ${parts.map(cssSlice).join("\n")}
               return;
             }
             const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
-            const q = promptTradeQuantity(cap, name);
-            if (q == null) return;
-            if (!confirmTradeFulfill(name, slot.price, q)) return;
-            tradeFulfillCommand(targetId, slotName, rid, q);
+            void (async () => {
+              const q = await showTradeQuantityDialog({
+                itemName: name,
+                maxQ: cap
+              });
+              if (q == null) return;
+              if (!confirmTradeFulfill(name, slot.price, q)) return;
+              tradeFulfillCommand(targetId, slotName, rid, q);
+            })();
           }
         }
       ];
@@ -48551,16 +49582,22 @@ ${parts.map(cssSlice).join("\n")}
             window.alert("Too far away \u2014 move your watched character closer.");
             return;
           }
-          const q = promptTradeQuantity(maxQ, name);
-          if (q == null) return;
-          if ((obs == null ? void 0 : obs.gold) != null && !canAffordListing(slot, q, obs.gold)) {
-            window.alert(
-              `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obs.gold)}.`
-            );
-            return;
-          }
-          if (!confirmTradePurchase(name, slot.price, q)) return;
-          tradePurchaseCommand(targetId, slotName, rid, q);
+          void (async () => {
+            const cap = maxQ != null && maxQ > 0 ? maxQ : 9999;
+            const q = await showTradeQuantityDialog({
+              itemName: name,
+              maxQ: cap
+            });
+            if (q == null) return;
+            if ((obs == null ? void 0 : obs.gold) != null && !canAffordListing(slot, q, obs.gold)) {
+              window.alert(
+                `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obs.gold)}.`
+              );
+              return;
+            }
+            if (!confirmTradePurchase(name, slot.price, q)) return;
+            tradePurchaseCommand(targetId, slotName, rid, q);
+          })();
         }
       }
     ];
@@ -48675,14 +49712,17 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/bag/bagDragPayload.ts
   var BAG_DRAG_SLOT_MIME = "application/x-ecu-inv-slot";
+  var activeBagDragSlot = null;
+  function setActiveBagDragSlot(invSlot) {
+    activeBagDragSlot = invSlot;
+  }
   function writeBagDragPayload(dt, invSlot) {
     dt.setData(BAG_DRAG_SLOT_MIME, String(invSlot));
     dt.setData("text/plain", `inv:${invSlot}`);
     dt.setData("text", `inv:${invSlot}`);
     dt.effectAllowed = "move";
   }
-  function readBagDragPayload(ev) {
-    const dt = ev.dataTransfer;
+  function readBagDragPayloadFromDataTransfer(dt) {
     if (!dt) return null;
     const ecu = dt.getData(BAG_DRAG_SLOT_MIME);
     if (ecu !== "") {
@@ -48694,6 +49734,11 @@ ${parts.map(cssSlice).join("\n")}
     if (m) return parseInt(m[1], 10);
     return null;
   }
+  function readBagDragPayload(ev) {
+    const fromData = readBagDragPayloadFromDataTransfer(ev.dataTransfer);
+    if (fromData != null) return fromData;
+    return activeBagDragSlot;
+  }
   function hasBagDragPayload(ev) {
     var _a;
     const types = (_a = ev.dataTransfer) == null ? void 0 : _a.types;
@@ -48702,7 +49747,507 @@ ${parts.map(cssSlice).join("\n")}
       const t = types[i];
       if (t === BAG_DRAG_SLOT_MIME || t === "text/plain") return true;
     }
-    return false;
+    return activeBagDragSlot != null;
+  }
+
+  // src/lib/bagSplitMath.ts
+  function clampSplitQuantity(value, maxPeel) {
+    const max = Number(maxPeel) | 0;
+    if (max <= 0) return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const q = Math.floor(n);
+    if (q <= 0 || q > max) return null;
+    return q;
+  }
+  function splitPresetQuantity(preset, totalQ, maxPeel) {
+    const total = Math.max(2, Number(totalQ) | 0);
+    const max = Math.max(1, Number(maxPeel) | 0);
+    switch (preset) {
+      case "one":
+        return 1;
+      case "half":
+        return Math.min(max, Math.max(1, Math.floor(total / 2)));
+      case "max":
+        return max;
+      default: {
+        const _exhaustive = preset;
+        return _exhaustive;
+      }
+    }
+  }
+  function splitPreview(peel, totalQ) {
+    const total = Math.max(0, Number(totalQ) | 0);
+    const take = Math.max(0, Math.min(total, Number(peel) | 0));
+    return { peel: take, remain: Math.max(0, total - take), total };
+  }
+  function defaultSplitPeel(totalQ, maxPeel) {
+    var _a;
+    const max = Math.max(1, Number(maxPeel) | 0);
+    if (max <= 1) return 1;
+    const half = splitPresetQuantity("half", totalQ, maxPeel);
+    return (_a = clampSplitQuantity(half, max)) != null ? _a : 1;
+  }
+  function parseSplitQuantityInput(raw, maxPeel) {
+    const trimmed = String(raw != null ? raw : "").trim().replace(/,/g, "");
+    if (!trimmed) return null;
+    const n = parseInt(trimmed, 10);
+    return clampSplitQuantity(n, maxPeel);
+  }
+  function quickSplitPresetFromModifiers(ev) {
+    if (ev.altKey) return "max";
+    if (ev.shiftKey) return "half";
+    if (ev.ctrlKey || ev.metaKey) return "one";
+    return null;
+  }
+  function resolveQuickSplitQuantity(totalQ, maxPeel, preset) {
+    const total = Number(totalQ) | 0;
+    const max = Number(maxPeel) | 0;
+    if (total < 2 || max <= 0) return null;
+    return clampSplitQuantity(splitPresetQuantity(preset, total, max), max);
+  }
+  var SPLIT_MODIFIER_HINT = "Ctrl+middle: 1 \xB7 Shift+middle: half \xB7 Alt+middle: max \xB7 Middle: custom";
+
+  // src/host/bagSplitCommands.ts
+  function scheduleBagRefresh3() {
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+  }
+  function maxSplitQuantity(fp) {
+    const q = fp.q != null && Number(fp.q) > 1 ? Number(fp.q) | 0 : 0;
+    if (q < 2) return 0;
+    const G = getG();
+    const def = G && G.items && fp.name ? G.items[fp.name] : void 0;
+    const stackCap = def && def.s != null && Number(def.s) > 0 ? Number(def.s) | 0 : 1;
+    const max = Math.min(stackCap, q - 1);
+    return max > 0 ? max : 0;
+  }
+  function buildSplitScript(fp, quantity) {
+    const qty = Number(quantity) | 0;
+    if (qty <= 0) {
+      return wrapCommandScript(`game_log("Split aborted \u2014 invalid quantity");`);
+    }
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        `if(!it||!(it.q>1)){game_log("Split aborted \u2014 not a stack");return;}`,
+        `try{await split(__slot,${qty});}catch(__e){`,
+        `game_log("Split failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function splitBagCommand(fp, quantity) {
+    emitObserverCommand(buildSplitScript(fp, quantity), `bag-split ${fp.name}`);
+    scheduleBagRefresh3();
+  }
+  function tryQuickSplitFromModifiers(fp, ev) {
+    const preset = quickSplitPresetFromModifiers(ev);
+    if (!preset) return false;
+    const maxPeel = maxSplitQuantity(fp);
+    const totalQ = fp.q != null && Number(fp.q) > 1 ? Number(fp.q) | 0 : 0;
+    const q = resolveQuickSplitQuantity(totalQ, maxPeel, preset);
+    if (q == null) return false;
+    splitBagCommand(fp, q);
+    return true;
+  }
+
+  // src/ui/bag/bagSplitDialogCss.ts
+  var injected9 = false;
+  var CSS9 = `
+.ecu-bag-split-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483004;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.ecu-bag-split {
+  min-width: min(380px, 94vw);
+  max-width: 440px;
+  padding: 18px 20px 16px;
+  background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  outline: 1px solid rgba(232, 201, 106, 0.35);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
+  color: #eee;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.ecu-bag-split__title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffd28a;
+}
+.ecu-bag-split__item {
+  margin: 0 0 14px;
+  color: rgba(220, 210, 210, 0.92);
+  line-height: 1.35;
+}
+.ecu-bag-split__preview {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+.ecu-bag-split__stack {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  text-align: center;
+}
+.ecu-bag-split__stack-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(200, 190, 170, 0.75);
+  margin-bottom: 4px;
+}
+.ecu-bag-split__stack-qty {
+  font-size: 24px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-bag-split__arrow {
+  color: rgba(232, 201, 106, 0.8);
+  font-size: 18px;
+}
+.ecu-bag-split__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+.ecu-bag-split__controls input[type="range"] {
+  flex: 1 1 140px;
+  min-width: 120px;
+  height: 18px;
+  accent-color: #c9a227;
+  cursor: pointer;
+}
+.ecu-bag-split__controls input[type="number"] {
+  width: 72px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+.ecu-bag-split__controls input[type="number"]:focus {
+  outline: none;
+  border-color: rgba(232, 201, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.2);
+}
+.ecu-bag-split__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.ecu-bag-split__presets button {
+  flex: 1 1 0;
+  min-width: 72px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ddd;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ecu-bag-split__presets button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(232, 201, 106, 0.35);
+}
+.ecu-bag-split__presets button.is-active {
+  background: rgba(232, 201, 106, 0.18);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+.ecu-bag-split__hint {
+  min-height: 18px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #e88;
+}
+.ecu-bag-split__shortcuts {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(200, 190, 170, 0.72);
+}
+.ecu-bag-split__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.ecu-bag-split__actions button {
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eee;
+  font-size: 15px;
+  cursor: pointer;
+}
+.ecu-bag-split__actions button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.ecu-bag-split__actions button.primary {
+  background: rgba(232, 201, 106, 0.22);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+.ecu-bag-split__actions button.primary:hover {
+  background: rgba(232, 201, 106, 0.32);
+}
+`;
+  function ensureBagSplitDialogCss() {
+    if (injected9) return;
+    injected9 = true;
+    const style = document.createElement("style");
+    style.setAttribute("data-ecu-bag-split", "1");
+    style.textContent = CSS9;
+    document.head.appendChild(style);
+  }
+
+  // src/ui/bag/bagSplitDialog.ts
+  var openBackdrop2 = null;
+  var finishOpen2 = null;
+  function closeBagSplitDialog(value) {
+    const finish = finishOpen2;
+    finishOpen2 = null;
+    if (openBackdrop2) {
+      openBackdrop2.remove();
+      openBackdrop2 = null;
+    }
+    finish == null ? void 0 : finish(value);
+  }
+  function formatQty2(n) {
+    return String(Math.max(0, n | 0));
+  }
+  function setPeel(peel, maxPeel, range, numberInput, newQtyEl, remainQtyEl, totalQ, presetButtons, hintEl) {
+    var _a;
+    const clamped = (_a = clampSplitQuantity(peel, maxPeel)) != null ? _a : 1;
+    range.value = String(clamped);
+    numberInput.value = String(clamped);
+    const preview = splitPreview(clamped, totalQ);
+    newQtyEl.textContent = formatQty2(preview.peel);
+    remainQtyEl.textContent = formatQty2(preview.remain);
+    hintEl.textContent = "";
+    const presets = ["one", "half", "max"];
+    for (let i = 0; i < presets.length; i++) {
+      const preset = presets[i];
+      const btn = presetButtons.get(preset);
+      if (!btn) continue;
+      const presetQty = splitPresetQuantity(preset, totalQ, maxPeel);
+      btn.classList.toggle("is-active", presetQty === clamped);
+    }
+  }
+  function showBagSplitDialog(fp) {
+    const maxPeel = maxSplitQuantity(fp);
+    if (maxPeel <= 0) return Promise.resolve(null);
+    if (maxPeel === 1) return Promise.resolve(1);
+    const totalQ = fp.q != null && Number(fp.q) > 1 ? Number(fp.q) | 0 : 0;
+    if (totalQ < 2) return Promise.resolve(null);
+    closeBagSplitDialog(null);
+    ensureBagSplitDialogCss();
+    return new Promise((resolve) => {
+      finishOpen2 = resolve;
+      const label = itemInstanceLabel(String(fp.name || "item"), {
+        p: fp.p,
+        level: fp.level
+      });
+      const initialPeel = defaultSplitPeel(totalQ, maxPeel);
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-bag-split-backdrop";
+      backdrop.setAttribute("data-ecu-bag-split", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-bag-split";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-label", "Split stack");
+      const title = document.createElement("h2");
+      title.className = "ecu-bag-split__title";
+      title.textContent = "Split stack";
+      const itemLine = document.createElement("p");
+      itemLine.className = "ecu-bag-split__item";
+      itemLine.textContent = `${label} \xB7 ${formatQty2(totalQ)} total`;
+      const preview = document.createElement("div");
+      preview.className = "ecu-bag-split__preview";
+      const newStack = document.createElement("div");
+      newStack.className = "ecu-bag-split__stack";
+      const newLabel = document.createElement("span");
+      newLabel.className = "ecu-bag-split__stack-label";
+      newLabel.textContent = "New stack";
+      const newQtyEl = document.createElement("span");
+      newQtyEl.className = "ecu-bag-split__stack-qty";
+      newStack.append(newLabel, newQtyEl);
+      const arrow = document.createElement("div");
+      arrow.className = "ecu-bag-split__arrow";
+      arrow.textContent = "\u2192";
+      const remainStack = document.createElement("div");
+      remainStack.className = "ecu-bag-split__stack";
+      const remainLabel = document.createElement("span");
+      remainLabel.className = "ecu-bag-split__stack-label";
+      remainLabel.textContent = "Stays here";
+      const remainQtyEl = document.createElement("span");
+      remainQtyEl.className = "ecu-bag-split__stack-qty";
+      remainStack.append(remainLabel, remainQtyEl);
+      preview.append(newStack, arrow, remainStack);
+      const controls = document.createElement("div");
+      controls.className = "ecu-bag-split__controls";
+      const range = document.createElement("input");
+      range.type = "range";
+      range.min = "1";
+      range.max = String(maxPeel);
+      range.step = "1";
+      range.value = String(initialPeel);
+      range.setAttribute("aria-label", "Split quantity");
+      const numberInput = document.createElement("input");
+      numberInput.type = "number";
+      numberInput.min = "1";
+      numberInput.max = String(maxPeel);
+      numberInput.step = "1";
+      numberInput.value = String(initialPeel);
+      numberInput.setAttribute("aria-label", "Split quantity");
+      controls.append(range, numberInput);
+      const presets = document.createElement("div");
+      presets.className = "ecu-bag-split__presets";
+      const presetButtons = /* @__PURE__ */ new Map();
+      const presetDefs = [
+        { preset: "one", label: "1" },
+        { preset: "half", label: "Half" },
+        { preset: "max", label: "Max" }
+      ];
+      for (let i = 0; i < presetDefs.length; i++) {
+        const def = presetDefs[i];
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = def.label;
+        btn.title = def.preset === "one" ? "Peel 1 into a new stack" : def.preset === "half" ? "Split roughly in half" : `Peel up to ${maxPeel}`;
+        presetButtons.set(def.preset, btn);
+        btn.addEventListener("click", () => {
+          setPeel(
+            splitPresetQuantity(def.preset, totalQ, maxPeel),
+            maxPeel,
+            range,
+            numberInput,
+            newQtyEl,
+            remainQtyEl,
+            totalQ,
+            presetButtons,
+            hintEl
+          );
+        });
+        presets.appendChild(btn);
+      }
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-bag-split__hint";
+      const shortcutsEl = document.createElement("p");
+      shortcutsEl.className = "ecu-bag-split__shortcuts";
+      shortcutsEl.textContent = SPLIT_MODIFIER_HINT;
+      const actions = document.createElement("div");
+      actions.className = "ecu-bag-split__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const splitBtn = document.createElement("button");
+      splitBtn.type = "button";
+      splitBtn.className = "primary";
+      splitBtn.textContent = "Split";
+      actions.append(cancelBtn, splitBtn);
+      panel.append(title, itemLine, preview, controls, presets, hintEl, shortcutsEl, actions);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop2 = backdrop;
+      const applyPeel = (peel) => {
+        setPeel(
+          peel,
+          maxPeel,
+          range,
+          numberInput,
+          newQtyEl,
+          remainQtyEl,
+          totalQ,
+          presetButtons,
+          hintEl
+        );
+      };
+      range.addEventListener("input", () => {
+        applyPeel(parseInt(range.value, 10));
+      });
+      const onSplitWheel = (ev) => {
+        ev.preventDefault();
+        const current = parseInt(range.value, 10);
+        if (!Number.isFinite(current)) return;
+        const step = ev.shiftKey ? 10 : 1;
+        const delta = ev.deltaY < 0 ? step : -step;
+        applyPeel(current + delta);
+      };
+      range.addEventListener("wheel", onSplitWheel, { passive: false });
+      controls.addEventListener("wheel", onSplitWheel, { passive: false });
+      numberInput.addEventListener("input", () => {
+        const parsed = parseSplitQuantityInput(numberInput.value, maxPeel);
+        if (parsed != null) applyPeel(parsed);
+      });
+      numberInput.addEventListener("change", () => {
+        const parsed = parseSplitQuantityInput(numberInput.value, maxPeel);
+        if (parsed == null) {
+          hintEl.textContent = `Enter 1\u2013${maxPeel}.`;
+          numberInput.value = range.value;
+          return;
+        }
+        applyPeel(parsed);
+      });
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeBagSplitDialog(value);
+      };
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter" && ev.target !== cancelBtn) {
+          ev.preventDefault();
+          const parsed = parseSplitQuantityInput(numberInput.value, maxPeel);
+          if (parsed == null) {
+            hintEl.textContent = `Enter 1\u2013${maxPeel}.`;
+            numberInput.focus();
+            return;
+          }
+          dismiss(parsed);
+        }
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      splitBtn.addEventListener("click", () => {
+        const parsed = parseSplitQuantityInput(numberInput.value, maxPeel);
+        if (parsed == null) {
+          hintEl.textContent = `Enter 1\u2013${maxPeel}.`;
+          numberInput.focus();
+          return;
+        }
+        dismiss(parsed);
+      });
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      document.addEventListener("keydown", onKey, true);
+      applyPeel(initialPeel);
+      window.setTimeout(() => numberInput.focus(), 0);
+    });
   }
 
   // src/ui/bag/bagItemContextMenu.ts
@@ -48958,16 +50503,37 @@ ${parts.map(cssSlice).join("\n")}
       ev.stopPropagation();
       showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
     };
+    const onMiddle = (ev) => {
+      if (ev.button !== 1) return;
+      if (!canEditObservedBag()) return;
+      const t = ev.target;
+      if (!t || !host2.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host2);
+      if (num == null || !Number.isFinite(num)) return;
+      const item = observingBagItem(num);
+      const fp = fingerprintFromSlot(num, item);
+      if (!fp || maxSplitQuantity(fp) <= 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (tryQuickSplitFromModifiers(fp, ev)) return;
+      void showBagSplitDialog(fp).then((q) => {
+        if (q == null) return;
+        splitBagCommand(fp, q);
+      });
+    };
     host2.addEventListener("contextmenu", onCtx, true);
+    host2.addEventListener("mousedown", onMiddle, true);
     return () => {
       hideCtx2();
       host2.removeEventListener("contextmenu", onCtx, true);
+      host2.removeEventListener("mousedown", onMiddle, true);
     };
   }
 
   // src/ui/gear/gearSlotDragDrop.ts
   function bagDragCanEquipToGearSlot(ev, gearSlot) {
     if (isTradeSlot(gearSlot)) return false;
+    if (!canEditObservedBag()) return false;
     if (!hasBagDragPayload(ev)) return false;
     const invSlot = readBagDragPayload(ev);
     if (invSlot == null) return false;
@@ -48976,6 +50542,7 @@ ${parts.map(cssSlice).join("\n")}
     return canEquipItemToSlot(item.name, gearSlot);
   }
   function bagDragCanListOnTradeSlot(ev, tradeSlot, slots) {
+    if (!canEditObservedBag()) return false;
     if (!isTradeSlot(tradeSlot)) return false;
     if (!tradeSlotIsEmpty(slots, tradeSlot)) return false;
     if (!hasBagDragPayload(ev)) return false;
@@ -48983,15 +50550,36 @@ ${parts.map(cssSlice).join("\n")}
     if (invSlot == null) return false;
     return !!observingBagItem(invSlot);
   }
-  function resolveListingQuantity(fp) {
-    var _a;
-    const maxQ = fp.q != null && fp.q > 0 ? fp.q : void 0;
-    if (maxQ != null && maxQ > 1) {
-      return promptTradeQuantity(maxQ, fp.name);
+  async function completeBagDropOnTradeSlot(tradeSlot, fp, shiftKey, slots) {
+    if (!fp) return;
+    const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: fp.name,
+        maxQ
+      });
+      if (picked == null) return;
+      q = picked;
     }
-    return (_a = fp.q) != null ? _a : 1;
+    if (shiftKey) {
+      const mins = await showGiveawayMinutesDialog();
+      if (mins == null) return;
+      giveawayCommand(tradeSlot, fp, mins, q);
+      return;
+    }
+    const price = await showTradePriceDialog({
+      mode: "list",
+      itemName: fp.name,
+      level: fp.level,
+      p: fp.p,
+      slots
+    });
+    if (price == null) return;
+    tradeListCommand(fp, tradeSlot, price, q);
   }
   function handleBagDropOnGearSlot(ev, gearSlot) {
+    if (!canEditObservedBag()) return false;
     if (isTradeSlot(gearSlot)) return false;
     const invSlot = readBagDragPayload(ev);
     if (invSlot == null) return false;
@@ -49004,6 +50592,7 @@ ${parts.map(cssSlice).join("\n")}
     return true;
   }
   function handleBagDropOnTradeSlot(ev, tradeSlot, slots) {
+    if (!canEditObservedBag()) return false;
     if (!isTradeSlot(tradeSlot)) return false;
     if (!tradeSlotIsEmpty(slots, tradeSlot)) return false;
     const invSlot = readBagDragPayload(ev);
@@ -49013,17 +50602,7 @@ ${parts.map(cssSlice).join("\n")}
     if (!fp) return false;
     ev.preventDefault();
     ev.stopPropagation();
-    const q = resolveListingQuantity(fp);
-    if (q == null) return false;
-    if (ev.shiftKey) {
-      const mins = promptGiveawayMinutes();
-      if (mins == null) return false;
-      giveawayCommand(tradeSlot, fp, mins, q);
-      return true;
-    }
-    const price = promptTradePrice(fp.name);
-    if (price == null) return false;
-    tradeListCommand(fp, tradeSlot, price, q);
+    void completeBagDropOnTradeSlot(tradeSlot, fp, ev.shiftKey, slots);
     return true;
   }
   function handleBagDragOverGearSlot(ev, gearSlot, slots) {
@@ -49207,9 +50786,9 @@ ${parts.map(cssSlice).join("\n")}
             ev.stopPropagation();
         } : void 0,
         onDragOver: gearEditable ? (ev) => {
-          if (handleBagDragOverGearSlot(ev, slotName, allSlots || null)) {
-            setBagDropHover(bagDragCanEquipToGearSlot(ev, slotName));
-          }
+          setBagDropHover(
+            handleBagDragOverGearSlot(ev, slotName, allSlots || null)
+          );
         } : void 0,
         onDragLeave: gearEditable ? () => setBagDropHover(false) : void 0,
         onDrop: gearEditable ? (ev) => {
@@ -51020,10 +52599,10 @@ ${ESTIMATE_HINT}`,
   box-sizing: border-box;
 }
 `;
-  var injected8 = false;
+  var injected10 = false;
   function ensureThreatPanelCss() {
-    if (injected8) return;
-    injected8 = true;
+    if (injected10) return;
+    injected10 = true;
     const existing = document.querySelector(
       "style[data-ecu-threat-panel-css]"
     );
@@ -52423,7 +54002,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/minimap/minimapCss.ts
   var STYLE_ID6 = "ecu-minimap-chrome-css";
-  var CSS8 = `
+  var CSS10 = `
 .comm-minimap {
   display: flex;
   flex-direction: column;
@@ -52577,7 +54156,7 @@ ${ESTIMATE_HINT}`,
   border-color: rgba(255, 255, 255, 0.12);
 }
 `;
-  var injected9 = false;
+  var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
     let el = document.getElementById(STYLE_ID6);
@@ -52586,10 +54165,10 @@ ${ESTIMATE_HINT}`,
       el.id = STYLE_ID6;
       document.head.appendChild(el);
     }
-    if (!injected9 || el.textContent !== CSS8) {
-      el.textContent = CSS8;
+    if (!injected11 || el.textContent !== CSS10) {
+      el.textContent = CSS10;
     }
-    injected9 = true;
+    injected11 = true;
   }
 
   // src/ui/minimap/minimapScene.ts
@@ -53531,7 +55110,61 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/ui/bag/tradeDragPayload.ts
+  var TRADE_DRAG_SLOT_MIME = "application/x-ecu-trade-slot";
+  function writeTradeDragPayload(dt, tradeSlot) {
+    dt.setData(TRADE_DRAG_SLOT_MIME, tradeSlot);
+    dt.setData("text/plain", `trade:${tradeSlot}`);
+    dt.effectAllowed = "move";
+  }
+  function readTradeDragPayload(ev) {
+    const dt = ev.dataTransfer;
+    if (!dt) return null;
+    const ecu = dt.getData(TRADE_DRAG_SLOT_MIME);
+    if (ecu) return ecu;
+    const plain = dt.getData("text/plain") || dt.getData("text");
+    const m = /^trade:(trade\d+)$/.exec(plain);
+    return m ? m[1] : null;
+  }
+  function hasTradeDragPayload(ev) {
+    var _a;
+    const types = (_a = ev.dataTransfer) == null ? void 0 : _a.types;
+    if (!types) return false;
+    for (let i = 0; i < types.length; i++) {
+      if (types[i] === TRADE_DRAG_SLOT_MIME) return true;
+    }
+    return false;
+  }
+
+  // src/ui/trade/tradeSlotDragDrop.ts
+  function handleBagDropOnTradeSlotDelist(tradeSlot, slotListing) {
+    unequipCommand(tradeSlot, { slotListing });
+    return true;
+  }
+
   // src/ui/bag/bagDragDrop.ts
+  var TRADE_DELIST_CLASS = "is-trade-delist-target";
+  var BAG_SWAP_TARGET_CLASS = "is-bag-swap-target";
+  var hoveredSwapSlotEl = null;
+  function findBagSlotElement(host2, ev) {
+    let el = ev.target;
+    while (el && el !== host2) {
+      if (el.hasAttribute("data-cnum")) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+  function setBagSwapHover(el) {
+    if (hoveredSwapSlotEl === el) return;
+    if (hoveredSwapSlotEl) {
+      hoveredSwapSlotEl.classList.remove(BAG_SWAP_TARGET_CLASS);
+    }
+    hoveredSwapSlotEl = el;
+    if (el) el.classList.add(BAG_SWAP_TARGET_CLASS);
+  }
+  function clearBagSwapHover() {
+    setBagSwapHover(null);
+  }
   function resolveDragSourceSlot(transferId, host2) {
     if (!transferId) return null;
     const ecuMatch = /^inv:(\d+)$/.exec(transferId);
@@ -53546,6 +55179,10 @@ ${ESTIMATE_HINT}`,
     const dt = ev.dataTransfer;
     if (!dt) return null;
     return resolveDragSourceSlot(dt.getData("text") || "", host2);
+  }
+  function setTradeDelistHover(host2, on) {
+    if (on) host2.classList.add(TRADE_DELIST_CLASS);
+    else host2.classList.remove(TRADE_DELIST_CLASS);
   }
   function installBagDragDrop(host2) {
     const onDragStart = (ev) => {
@@ -53564,14 +55201,61 @@ ${ESTIMATE_HINT}`,
       const dt = ev.dataTransfer;
       if (!dt) return;
       writeBagDragPayload(dt, fromSlot);
+      setActiveBagDragSlot(fromSlot);
+      ev.stopPropagation();
+    };
+    const onDragEnd = () => {
+      setActiveBagDragSlot(null);
+      clearBagSwapHover();
     };
     const onDragOver = (ev) => {
       if (!canEditObservedBag()) return;
-      ev.preventDefault();
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      if (hasTradeDragPayload(ev)) {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+        clearBagSwapHover();
+        setTradeDelistHover(host2, true);
+        return;
+      }
+      setTradeDelistHover(host2, false);
+      if (hasBagDragPayload(ev)) {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+        const slotEl = findBagSlotElement(host2, ev);
+        const toSlot = slotEl != null ? resolveInventorySlotNum(slotEl, host2) : null;
+        const fromSlot = readBagDragPayload(ev);
+        if (slotEl && toSlot != null && fromSlot != null && toSlot !== fromSlot) {
+          setBagSwapHover(slotEl);
+        } else {
+          clearBagSwapHover();
+        }
+        return;
+      }
+      clearBagSwapHover();
+    };
+    const onDragLeave = (ev) => {
+      if (!host2.contains(ev.relatedTarget)) {
+        setTradeDelistHover(host2, false);
+        clearBagSwapHover();
+      }
     };
     const onDrop = (ev) => {
+      var _a, _b;
+      setTradeDelistHover(host2, false);
+      clearBagSwapHover();
+      if (isObservedCommBagEvent(host2, ev)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
       if (!canEditObservedBag()) return;
+      const tradeSlot = readTradeDragPayload(ev);
+      if (tradeSlot) {
+        if (!host2.contains(ev.target)) return;
+        const obs = window.observing;
+        const listing = (_b = (_a = obs == null ? void 0 : obs.slots) == null ? void 0 : _a[tradeSlot]) != null ? _b : null;
+        handleBagDropOnTradeSlotDelist(tradeSlot, listing != null ? listing : null);
+        return;
+      }
       const target = ev.target;
       if (!target || !host2.contains(target)) return;
       const toSlot = resolveInventorySlotNum(target, host2);
@@ -53581,17 +55265,22 @@ ${ESTIMATE_HINT}`,
         return;
       }
       if (!observingBagItem(fromSlot)) return;
-      ev.preventDefault();
-      ev.stopPropagation();
       invSwapCommand(fromSlot, toSlot);
     };
     host2.addEventListener("dragstart", onDragStart, true);
     host2.addEventListener("dragover", onDragOver, true);
+    host2.addEventListener("dragleave", onDragLeave, true);
     host2.addEventListener("drop", onDrop, true);
+    document.addEventListener("dragend", onDragEnd, true);
     return () => {
       host2.removeEventListener("dragstart", onDragStart, true);
       host2.removeEventListener("dragover", onDragOver, true);
+      host2.removeEventListener("dragleave", onDragLeave, true);
       host2.removeEventListener("drop", onDrop, true);
+      document.removeEventListener("dragend", onDragEnd, true);
+      setActiveBagDragSlot(null);
+      setTradeDelistHover(host2, false);
+      clearBagSwapHover();
     };
   }
 
@@ -53894,6 +55583,43 @@ ${ESTIMATE_HINT}`,
   registerBagMenuProvider(buildBagSwapMenuActions);
 
   // src/host/tradeBagMenuActions.ts
+  async function runListOnTrade(ctx, tradeSlot) {
+    const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: ctx.fp.name,
+        maxQ
+      });
+      if (picked == null) return;
+      q = picked;
+    }
+    const obs = window.observing;
+    const price = await showTradePriceDialog({
+      mode: "list",
+      itemName: ctx.fp.name,
+      level: ctx.fp.level,
+      p: ctx.fp.p,
+      slots: obs == null ? void 0 : obs.slots
+    });
+    if (price == null) return;
+    tradeListCommand(ctx.fp, tradeSlot, price, q);
+  }
+  async function runGiveawayOnTrade(ctx, tradeSlot) {
+    const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: ctx.fp.name,
+        maxQ
+      });
+      if (picked == null) return;
+      q = picked;
+    }
+    const mins = await showGiveawayMinutesDialog();
+    if (mins == null) return;
+    giveawayCommand(tradeSlot, ctx.fp, mins, q);
+  }
   function buildTradeBagMenuActions(ctx) {
     if (!canEditObservedBag()) return [];
     const obs = window.observing;
@@ -53911,13 +55637,7 @@ ${ESTIMATE_HINT}`,
         label,
         title: "Sell listing on this trade slot",
         run: () => {
-          var _a;
-          const price = promptTradePrice(ctx.fp.name);
-          if (price == null) return;
-          const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
-          const q = maxQ != null && maxQ > 1 ? promptTradeQuantity(maxQ, ctx.fp.name) : (_a = ctx.fp.q) != null ? _a : 1;
-          if (q == null) return;
-          tradeListCommand(ctx.fp, tradeSlot, price, q);
+          void runListOnTrade(ctx, tradeSlot);
         }
       });
       giveawayChildren.push({
@@ -53925,13 +55645,7 @@ ${ESTIMATE_HINT}`,
         label,
         title: "Giveaway on this trade slot",
         run: () => {
-          var _a;
-          const mins = promptGiveawayMinutes();
-          if (mins == null) return;
-          const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
-          const q = maxQ != null && maxQ > 1 ? promptTradeQuantity(maxQ, ctx.fp.name) : (_a = ctx.fp.q) != null ? _a : 1;
-          if (q == null) return;
-          giveawayCommand(tradeSlot, ctx.fp, mins, q);
+          void runGiveawayOnTrade(ctx, tradeSlot);
         }
       });
     }
@@ -53989,11 +55703,16 @@ ${ESTIMATE_HINT}`,
         title: `Sell to ${m.entityName}'s buy order on ${m.tradeSlot}`,
         run: () => {
           const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : void 0;
-          const cap = m.listing.q != null && m.listing.q > 0 ? maxQ != null ? Math.min(maxQ, m.listing.q) : m.listing.q : maxQ;
-          const q = promptTradeQuantity(cap, m.listing.name);
-          if (q == null) return;
-          if (!confirmTradeFulfill(m.listing.name, m.listing.price, q)) return;
-          tradeFulfillCommand(m.entityId, m.tradeSlot, m.listing.rid, q);
+          const cap = m.listing.q != null && m.listing.q > 0 ? maxQ != null ? Math.min(maxQ, m.listing.q) : m.listing.q : maxQ != null ? maxQ : 9999;
+          void (async () => {
+            const q = await showTradeQuantityDialog({
+              itemName: m.listing.name,
+              maxQ: cap
+            });
+            if (q == null) return;
+            if (!confirmTradeFulfill(m.listing.name, m.listing.price, q)) return;
+            tradeFulfillCommand(m.entityId, m.tradeSlot, m.listing.rid, q);
+          })();
         }
       };
     });
@@ -54020,6 +55739,78 @@ ${ESTIMATE_HINT}`,
     ];
   }
   registerBagMenuProvider(buildFulfillBagMenuActions);
+
+  // src/host/bagSplitMenuActions.ts
+  function presetLabel(preset, totalQ, maxPeel) {
+    const q = splitPresetQuantity(preset, totalQ, maxPeel);
+    switch (preset) {
+      case "one":
+        return "Split 1";
+      case "half":
+        return `Split half (${q})`;
+      case "max":
+        return `Split max (${q})`;
+      default: {
+        const _exhaustive = preset;
+        return _exhaustive;
+      }
+    }
+  }
+  function presetTitle(preset) {
+    switch (preset) {
+      case "one":
+        return "Peel 1 \xB7 Ctrl+middle-click";
+      case "half":
+        return "Split roughly in half \xB7 Shift+middle-click";
+      case "max":
+        return "Peel as much as allowed \xB7 Alt+middle-click";
+      default: {
+        const _exhaustive = preset;
+        return _exhaustive;
+      }
+    }
+  }
+  function runPresetSplit(ctx, preset) {
+    const maxPeel = maxSplitQuantity(ctx.fp);
+    const totalQ = ctx.fp.q != null && Number(ctx.fp.q) > 1 ? Number(ctx.fp.q) | 0 : 0;
+    const q = splitPresetQuantity(preset, totalQ, maxPeel);
+    splitBagCommand(ctx.fp, q);
+  }
+  function buildBagSplitActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    const maxPeel = maxSplitQuantity(ctx.fp);
+    if (maxPeel <= 0) return [];
+    const totalQ = ctx.fp.q != null && Number(ctx.fp.q) > 1 ? Number(ctx.fp.q) | 0 : 0;
+    const presets = ["one", "half", "max"];
+    const children = presets.map((preset) => ({
+      id: `split-${preset}`,
+      label: presetLabel(preset, totalQ, maxPeel),
+      title: presetTitle(preset),
+      run: () => runPresetSplit(ctx, preset)
+    }));
+    children.push({
+      id: "split-custom",
+      label: "Custom\u2026",
+      title: "Middle-click (no modifier)",
+      separatorBefore: true,
+      run: () => {
+        void showBagSplitDialog(ctx.fp).then((q) => {
+          if (q == null) return;
+          splitBagCommand(ctx.fp, q);
+        });
+      }
+    });
+    return [
+      {
+        id: "split-submenu",
+        label: "Split",
+        title: "Quick presets or custom amount",
+        separatorBefore: true,
+        children
+      }
+    ];
+  }
+  registerBagMenuProvider(buildBagSplitActions);
 
   // src/ui/bag/bagItemInfoActions.ts
   function openObservingItemInfo(ctx) {
@@ -54857,19 +56648,55 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/ui/bag/tradeDragPayload.ts
-  var TRADE_DRAG_SLOT_MIME = "application/x-ecu-trade-slot";
-  function writeTradeDragPayload(dt, tradeSlot) {
-    dt.setData(TRADE_DRAG_SLOT_MIME, tradeSlot);
-    dt.setData("text/plain", `trade:${tradeSlot}`);
-    dt.effectAllowed = "move";
-  }
-
   // src/ui/trade/tradeSlotActions.ts
   function openTradeItemInfo(entity, slotName, slot) {
     if (!slot || !slot.name) return;
     setXTarget(entity);
     info.openItem(entity, slotName, slot);
+  }
+  async function handleForeignTradeBuy(entity, slotName, slot, observing) {
+    const targetId = entity.id != null ? String(entity.id) : "";
+    const rid = String(slot.rid);
+    const maxQ = slot.q != null && slot.q > 0 ? slot.q : void 0;
+    if (slot.b) {
+      const match = findBagMatchForBuyOrder(slot, observing.items);
+      if (!match) {
+        window.alert(`No matching ${slot.name} in bag.`);
+        return;
+      }
+      const cap2 = maxQ != null ? Math.min(maxQ, match.q) : match.q;
+      const q2 = await showTradeQuantityDialog({
+        itemName: slot.name,
+        maxQ: cap2
+      });
+      if (q2 == null) return;
+      if (!confirmTradeFulfill(slot.name, slot.price, q2)) return;
+      tradeFulfillCommand(targetId, slotName, rid, q2);
+      return;
+    }
+    if (isGiveawayListing(slot)) {
+      if (isJoinedGiveaway(slot, observing)) {
+        window.alert("Already joined this giveaway.");
+        return;
+      }
+      joinGiveawayCommand(targetId, slotName, rid);
+      return;
+    }
+    const obsGold = observing.gold;
+    const cap = maxQ != null ? maxQ : 9999;
+    const q = await showTradeQuantityDialog({
+      itemName: slot.name,
+      maxQ: cap
+    });
+    if (q == null) return;
+    if (obsGold != null && !canAffordListing(slot, q, obsGold)) {
+      window.alert(
+        `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obsGold)}.`
+      );
+      return;
+    }
+    if (!confirmTradePurchase(slot.name, slot.price, q)) return;
+    tradePurchaseCommand(targetId, slotName, rid, q);
   }
   function handleTradeSlotClick(ev, entity, slotName, slot, gearEditable, observing) {
     if (ev.shiftKey) {
@@ -54890,47 +56717,14 @@ ${ESTIMATE_HINT}`,
       window.alert("Too far away \u2014 move your watched character closer.");
       return;
     }
-    const targetId = entity.id != null ? String(entity.id) : "";
-    const rid = String(slot.rid);
-    const maxQ = slot.q != null && slot.q > 0 ? slot.q : void 0;
-    if (slot.b) {
-      const match = findBagMatchForBuyOrder(slot, observing.items);
-      if (!match) {
-        window.alert(`No matching ${slot.name} in bag.`);
-        return;
-      }
-      const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
-      const q2 = promptTradeQuantity(cap, slot.name);
-      if (q2 == null) return;
-      if (!confirmTradeFulfill(slot.name, slot.price, q2)) return;
-      tradeFulfillCommand(targetId, slotName, rid, q2);
-      return;
-    }
-    if (isGiveawayListing(slot)) {
-      if (isJoinedGiveaway(slot, observing)) {
-        window.alert("Already joined this giveaway.");
-        return;
-      }
-      joinGiveawayCommand(targetId, slotName, rid);
-      return;
-    }
-    const obsGold = observing.gold;
-    const q = promptTradeQuantity(maxQ, slot.name);
-    if (q == null) return;
-    if (obsGold != null && !canAffordListing(slot, q, obsGold)) {
-      window.alert(
-        `Not enough gold \u2014 need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obsGold)}.`
-      );
-      return;
-    }
-    if (!confirmTradePurchase(slot.name, slot.price, q)) return;
-    tradePurchaseCommand(targetId, slotName, rid, q);
+    void handleForeignTradeBuy(entity, slotName, slot, observing);
   }
 
   // src/ui/trade/TradeSlotCell.ts
   var TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
   var EMPTY_BCOLOR2 = "#292929";
-  function wrapContainerHtml2(html, title) {
+  var tradeListingDragActive = false;
+  function wrapContainerHtml2(html, title, options) {
     return e("div", {
       style: {
         display: "inline-block",
@@ -54947,6 +56741,12 @@ ${ESTIMATE_HINT}`,
         root.removeAttribute("onmousedown");
         root.removeAttribute("ontouchstart");
         root.removeAttribute("onclick");
+        if (options == null ? void 0 : options.stripNativeDrag) {
+          root.removeAttribute("draggable");
+          root.removeAttribute("ondragstart");
+          root.removeAttribute("ondrop");
+          root.removeAttribute("ondragover");
+        }
         const tip = title || root.getAttribute("title") || "";
         if (tip) stampNativeItemTitle(node, tip);
       }
@@ -54984,7 +56784,8 @@ ${ESTIMATE_HINT}`,
       }
       content = html ? wrapContainerHtml2(
         html,
-        itemInstanceLabel(slot.name, { p: slot.p, level: slot.level })
+        itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
+        { stripNativeDrag: editable && filled }
       ) : wrapContainerHtml2(
         itemIconHtml(slot.name, {
           skin,
@@ -55031,6 +56832,7 @@ ${ESTIMATE_HINT}`,
       else if (canBuy && canAfford) tipParts.push("Click to buy");
       else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
       else if (disabled) tipParts.push("(unavailable)");
+      if (editable) tipParts.push("Drag to bag to delist");
       tipParts.push("Shift+click: item info");
     } else if (editable) {
       tipParts.push("Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway");
@@ -55045,17 +56847,39 @@ ${ESTIMATE_HINT}`,
         draggable: editable && filled ? true : void 0,
         onDragStart: editable && filled ? (ev) => {
           if (!ev.dataTransfer) return;
+          tradeListingDragActive = true;
           writeTradeDragPayload(ev.dataTransfer, slotName);
+          ev.stopPropagation();
         } : void 0,
-        onPointerDown: (ev) => {
-          if (ev && typeof ev.stopPropagation === "function")
+        onDragEnd: editable && filled ? () => {
+          window.setTimeout(() => {
+            tradeListingDragActive = false;
+          }, 0);
+        } : void 0,
+        onPointerDown: editable && filled ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") {
             ev.stopPropagation();
-          if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-          handleTradeSlotClick(ev, entity, slotName, slot, !!gearEditable, obs);
-        },
+          }
+        } : editable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") {
+            ev.stopPropagation();
+          }
+        } : void 0,
+        onClick: editable ? (ev) => {
+          if (editable && filled && tradeListingDragActive) return;
+          handleTradeSlotClick(
+            ev,
+            entity,
+            slotName,
+            slot,
+            !!gearEditable,
+            obs
+          );
+        } : void 0,
         onDragOver: editable ? (ev) => {
-          if (handleBagDragOverGearSlot(ev, slotName, allSlots || null))
-            setBagDropHover(true);
+          setBagDropHover(
+            handleBagDragOverGearSlot(ev, slotName, allSlots || null)
+          );
         } : void 0,
         onDragLeave: editable ? () => setBagDropHover(false) : void 0,
         onDrop: editable ? (ev) => {
@@ -55083,16 +56907,24 @@ ${ESTIMATE_HINT}`,
           alignItems: "center",
           gap: "1px",
           position: "relative",
+          width: `${TRADE_SLOT_CELL}px`,
+          maxWidth: `${TRADE_SLOT_CELL}px`,
+          flex: `0 0 ${TRADE_SLOT_CELL}px`,
+          boxSizing: "border-box",
           opacity: disabled ? 0.45 : 1,
           cursor: editable || filled ? "pointer" : "default",
-          pointerEvents: "auto",
-          outline: bagDropHover ? "2px solid #6ab04c" : void 0,
-          outlineOffset: bagDropHover ? "1px" : void 0
+          pointerEvents: "auto"
         }
       },
       e(
         "div",
-        { style: { position: "relative", lineHeight: 0 } },
+        {
+          style: {
+            position: "relative",
+            lineHeight: 0,
+            boxShadow: bagDropHover ? "0 0 0 2px #6ab04c" : void 0
+          }
+        },
         content,
         badge ? e(
           "div",
@@ -55124,8 +56956,15 @@ ${ESTIMATE_HINT}`,
           style: {
             fontSize: TYPE.microMin,
             color: slot.b ? "#8fd4ff" : "#ffd700",
+            width: "100%",
+            maxWidth: `${TRADE_SLOT_CELL}px`,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            textAlign: "center",
             ...PIXEL_TEXT
-          }
+          },
+          title: priceLabel
         },
         priceLabel
       ) : null
@@ -55206,6 +57045,7 @@ ${ESTIMATE_HINT}`,
             style: {
               display: "flex",
               flexDirection: "row",
+              flexWrap: "nowrap",
               gap: "2px"
             }
           },
@@ -55260,11 +57100,15 @@ ${ESTIMATE_HINT}`,
       const foreign = !props.gearEditable;
       const inRange = !foreign || isInTradeRange(props.entity, props.observing || window.observing);
       const personalAll = personalTradeSlotNames(slots, props.entity, props.gearEditable);
-      const personalNames = compactTradeSlotNames(personalAll, slots, slotsCompact);
+      const personalNames = props.gearEditable ? personalAll : compactTradeSlotNames(personalAll, slots, slotsCompact);
       const showPersonal = personalAll.length > 0;
-      const standCapacity = merchantStandCapacity(props.entity);
+      const standCapacity = merchantStandCapacity(props.entity, slots);
       const standCols = standGridColumns(standCapacity);
-      const showStandSection = props.gearEditable || standOpen;
+      const showStandSection = merchantStandSectionVisible(
+        props.entity,
+        slots,
+        props.gearEditable
+      );
       const standNames = showStandSection ? merchantStandSlotNames(slots, props.entity, slotsCompact, true) : [];
       const personalSpace = formatTradeSlotSpace(personalAll, slots);
       const standAllNames = showStandSection ? merchantStandSlotNames(slots, props.entity, false, true) : [];
@@ -55332,8 +57176,8 @@ ${ESTIMATE_HINT}`,
               () => merchantOpenCommand()
             ) : null,
             toolbarButton(
-              slotsCompact ? "Compact slots" : "All slots",
-              slotsCompact ? "Show filled listings plus one empty slot per row" : "Show every empty slot in the grid",
+              slotsCompact ? "Compact" : "All slots",
+              slotsCompact ? "Compact: filled listings plus one empty drop target" : "All slots: every stand/trade slot including empties",
               toggleSlotsCompact,
               slotsCompact
             )

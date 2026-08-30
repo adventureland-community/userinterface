@@ -100,6 +100,113 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.0",
+    title: "0.9.0",
+    date: "2026-08-30",
+    summary:
+      "Trade and bag workflows for merchants and non-merchants — split stacks, smarter list pricing, drag-and-drop fixes, and grep-friendly bot logs.",
+    highlights: [
+      {
+        label: "Bag stack split",
+        detail:
+          "Middle-click a stackable bag item to split — modifier keys pick quick presets (half, quarter, …); plain middle-click opens a custom quantity dialog. Context menu Split… too.",
+        kind: "feature",
+      },
+      {
+        label: "Trade price dialog",
+        detail:
+          "List, reprice, wishlist, and buy-order prompts use an async ECU dialog — item icon, vendor floor chip, nearby listing chips, last price, and undercut suggestions instead of stock prompt().",
+        kind: "feature",
+      },
+      {
+        label: "Non-merchant trade row",
+        detail:
+          "Characters without a merchant stand can list on their personal trade1–4 row — drag bag → slot, bag menu List on Trade…, and reprice/delist work the same as on a stand.",
+        kind: "feature",
+      },
+      {
+        label: "Drag-and-drop",
+        detail:
+          "Bag → trade slot, bag → paperdoll equip, and bag internal swap highlight targets correctly. Trade slot drop glow sits on the icon, not the price label.",
+        kind: "improve",
+      },
+      {
+        label: "Vendor floor + tax",
+        detail:
+          "Default list price and Vendor chip account for sales tax — list price is high enough that net gold after tax is at least NPC vendor gold.",
+        kind: "improve",
+      },
+      {
+        label: "[ECU/comm] bot logs",
+        detail:
+          "Observer COMMAND scripts log a grep-friendly [ECU/comm] line at start and on trade success/failure — docker logs al-bots-bot-official-1 | rg ECU/comm.",
+        kind: "improve",
+      },
+    ],
+    features: [
+      {
+        title: "Trade & bag on /comm",
+        summary:
+          "Full trade and inventory editing for the character you are observing — merchants and regular players.",
+        items: [
+          {
+            label: "Personal trade row",
+            detail:
+              "trade1–4 always visible in the Trade panel for your character; list/reprice/delist without opening a merchant stand.",
+            kind: "feature",
+            points: [
+              "Auto-opens personal row before list commands when closed",
+              "Stand slots (trade5+) unchanged for merchants",
+            ],
+          },
+          {
+            label: "Price dialog chips",
+            detail:
+              "Vendor (tax-adjusted), last listed, nearby listings, undercut −1, and manual entry.",
+            kind: "feature",
+          },
+          {
+            label: "Bag split",
+            detail:
+              "split() via o:command — middle-click or context menu; respects stack cap and observed-character guard.",
+            kind: "feature",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "Trade socket fix",
+        detail:
+          "CODE runner uses get_socket().emit for trade show/hide/list — fixes silent failure listing on non-merchant characters.",
+        kind: "fix",
+      },
+      {
+        label: "Stock on_drop guard",
+        detail:
+          "Strip native bag drop handlers on /comm so observed drag-and-drop does not crash when character.items is null.",
+        kind: "fix",
+      },
+      {
+        label: "Active drag slot cache",
+        detail:
+          "dragover highlights work when getData() is empty — slot number cached at dragstart.",
+        kind: "fix",
+      },
+      {
+        label: "Trade panel cell size",
+        detail:
+          "Fixed cell footprint so long price labels do not widen the slot grid.",
+        kind: "ui",
+      },
+      {
+        label: "Entity tax field",
+        detail: "Observed character tax rate drives vendor-floor list price math.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.16",
     title: "0.8.0-alpha.16",
     date: "2026-08-30",
