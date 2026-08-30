@@ -8,4 +8,5 @@ import "../../host/gearBagMenuActions";
 import "../../host/bagSwapMenuActions";
 import "../../host/tradeBagMenuActions";
 import "../../host/tradeBagFulfillMenuActions";
+import "../../host/bagSplitMenuActions";
 import "./bagItemInfoActions";

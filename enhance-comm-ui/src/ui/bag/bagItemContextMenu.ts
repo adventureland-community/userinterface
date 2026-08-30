@@ -3,6 +3,13 @@ import {
   type ItemFingerprint,
   type MailItem,
 } from "../../host/mail";
+import {
+  maxSplitQuantity,
+  splitBagCommand,
+  tryQuickSplitFromModifiers,
+} from "../../host/bagSplitCommands";
+import { showBagSplitDialog } from "./bagSplitDialog";
+import { canEditObservedBag } from "../../host/gearObserved";
 import { ensureBagItemContextMenuCss } from "./bagItemContextMenuCss";
 
 export type BagMenuAction = {
@@ -316,6 +323,7 @@ export function resolveInventorySlotNum(
 /**
  * Plain right-click a bag slot → Comm context menu (extensible via providers).
  * Shift+right-click is left alone for any stock handler.
+ * Middle-click splits stacks — modifiers pick a preset; plain middle opens custom.
  */
 export function installBagItemContextMenu(host: HTMLElement): () => void {
   ensureBagItemContextMenuCss();
@@ -335,9 +343,29 @@ export function installBagItemContextMenu(host: HTMLElement): () => void {
     ev.stopPropagation();
     showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
   };
+  const onMiddle = (ev: MouseEvent) => {
+    if (ev.button !== 1) return;
+    if (!canEditObservedBag()) return;
+    const t = ev.target as HTMLElement | null;
+    if (!t || !host.contains(t)) return;
+    const num = resolveInventorySlotNum(t, host);
+    if (num == null || !Number.isFinite(num)) return;
+    const item = observingBagItem(num);
+    const fp = fingerprintFromSlot(num, item);
+    if (!fp || maxSplitQuantity(fp) <= 0) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (tryQuickSplitFromModifiers(fp, ev)) return;
+    void showBagSplitDialog(fp).then((q) => {
+      if (q == null) return;
+      splitBagCommand(fp, q);
+    });
+  };
   host.addEventListener("contextmenu", onCtx, true);
+  host.addEventListener("mousedown", onMiddle, true);
   return () => {
     hideCtx();
     host.removeEventListener("contextmenu", onCtx, true);
+    host.removeEventListener("mousedown", onMiddle, true);
   };
 }
