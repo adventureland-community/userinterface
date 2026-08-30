@@ -34,9 +34,9 @@ describe("gear command scripts", () => {
     assert.doesNotMatch(script, /slot empty/);
   });
 
-  it("builds inventory swap script", () => {
+  it("builds inventory swap script with target slot first (stock imove order)", () => {
     const script = buildInvSwapScript(2, 5);
-    assert.match(script, /await swap\(2,5\)/);
+    assert.match(script, /await swap\(5,2\)/);
   });
 });
 

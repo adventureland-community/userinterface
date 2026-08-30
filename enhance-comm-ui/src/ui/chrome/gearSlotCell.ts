@@ -12,7 +12,6 @@ import {
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import {
-  bagDragCanEquipToGearSlot,
   handleBagDragOverGearSlot,
   handleBagDropOnGearSlot,
 } from "../gear/gearSlotDragDrop";
@@ -222,9 +221,9 @@ export function GearSlotCell(props: GearSlotCellProps): any {
         : undefined,
       onDragOver: gearEditable
         ? (ev: any) => {
-            if (handleBagDragOverGearSlot(ev, slotName, allSlots || null)) {
-              setBagDropHover(bagDragCanEquipToGearSlot(ev, slotName));
-            }
+            setBagDropHover(
+              handleBagDragOverGearSlot(ev, slotName, allSlots || null),
+            );
           }
         : undefined,
       onDragLeave: gearEditable ? () => setBagDropHover(false) : undefined,

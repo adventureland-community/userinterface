@@ -23,3 +23,13 @@ export function canEditObservedGear(
 export function canEditObservedBag(): boolean {
   return canEditObservedGear(window.observing);
 }
+
+/** Drop landed on #bottomleftcorner while observing on /comm (character is null). */
+export function isObservedCommBagEvent(
+  host: HTMLElement,
+  ev: DragEvent,
+): boolean {
+  if (!window.is_comm || !window.observing) return false;
+  const target = ev.target as Node | null;
+  return !!target && host.contains(target);
+}

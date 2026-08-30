@@ -97,6 +97,14 @@ function injectHostCss(): void {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
+#${HOST_ID}.is-trade-delist-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 2px;
+}
+#${HOST_ID} [data-cnum].is-bag-swap-target {
+  outline: 2px solid #6ab04c;
+  outline-offset: 1px;
+}
 #${MOUNT_ID} {
   pointer-events: auto;
 }
@@ -474,6 +482,22 @@ function restoreCharacter(): void {
 }
 
 /**
+ * Stock item_container sets inline ondrop/ondragover → on_drop reads character.items.
+ * On /comm, character is null while observing — strip so only our bridge handles drops.
+ */
+export function stripObservedBagNativeDropHandlers(): void {
+  if (!window.is_comm || !window.observing) return;
+  const host = document.getElementById(HOST_ID);
+  if (!host) return;
+  const nodes = host.querySelectorAll("[data-cnum]");
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i] as HTMLElement;
+    node.removeAttribute("ondrop");
+    node.removeAttribute("ondragover");
+  }
+}
+
+/**
  * Stock `item_container` omits native hover labels and title-prefix borders.
  * After render_inventory, stamp labels + colored title frames from the snapshot.
  */
@@ -508,6 +532,7 @@ export function refreshInventoryItemTitles(): void {
     stampNativeItemTitle(node, label);
     if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
   }
+  stripObservedBagNativeDropHandlers();
   refreshBagBuyOrderIndicators();
 }
 

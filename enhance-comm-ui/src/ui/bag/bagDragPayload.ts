@@ -1,6 +1,17 @@
 /** DataTransfer payload for bag → bag / bag → paperdoll drags on /comm. */
 export const BAG_DRAG_SLOT_MIME = "application/x-ecu-inv-slot";
 
+/** Set on dragstart; cleared on dragend. getData() is empty during dragover. */
+let activeBagDragSlot: number | null = null;
+
+export function setActiveBagDragSlot(invSlot: number | null): void {
+  activeBagDragSlot = invSlot;
+}
+
+export function getActiveBagDragSlot(): number | null {
+  return activeBagDragSlot;
+}
+
 export function writeBagDragPayload(dt: DataTransfer, invSlot: number): void {
   dt.setData(BAG_DRAG_SLOT_MIME, String(invSlot));
   dt.setData("text/plain", `inv:${invSlot}`);
@@ -8,8 +19,9 @@ export function writeBagDragPayload(dt: DataTransfer, invSlot: number): void {
   dt.effectAllowed = "move";
 }
 
-export function readBagDragPayload(ev: DragEvent): number | null {
-  const dt = ev.dataTransfer;
+export function readBagDragPayloadFromDataTransfer(
+  dt: DataTransfer | null | undefined,
+): number | null {
   if (!dt) return null;
   const ecu = dt.getData(BAG_DRAG_SLOT_MIME);
   if (ecu !== "") {
@@ -22,6 +34,12 @@ export function readBagDragPayload(ev: DragEvent): number | null {
   return null;
 }
 
+export function readBagDragPayload(ev: DragEvent): number | null {
+  const fromData = readBagDragPayloadFromDataTransfer(ev.dataTransfer);
+  if (fromData != null) return fromData;
+  return activeBagDragSlot;
+}
+
 export function hasBagDragPayload(ev: DragEvent): boolean {
   const types = ev.dataTransfer?.types;
   if (!types) return false;
@@ -29,5 +47,5 @@ export function hasBagDragPayload(ev: DragEvent): boolean {
     const t = types[i];
     if (t === BAG_DRAG_SLOT_MIME || t === "text/plain") return true;
   }
-  return false;
+  return activeBagDragSlot != null;
 }

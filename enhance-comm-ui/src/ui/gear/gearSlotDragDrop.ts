@@ -3,11 +3,9 @@
  */
 
 import { equipCommand } from "../../host/gearCommands";
+import { canEditObservedBag } from "../../host/gearObserved";
 import {
   giveawayCommand,
-  promptGiveawayMinutes,
-  promptTradePrice,
-  promptTradeQuantity,
   tradeListCommand,
 } from "../../host/tradeCommands";
 import { fingerprintFromSlot } from "../../host/mail";
@@ -18,6 +16,11 @@ import {
   readBagDragPayload,
 } from "../bag/bagDragPayload";
 import { observingBagItem } from "../bag/bagItemContextMenu";
+import {
+  showGiveawayMinutesDialog,
+  showTradePriceDialog,
+  showTradeQuantityDialog,
+} from "../trade/tradePromptDialog";
 
 /** True when a bag item drag can equip into this gear slot (drop-time check). */
 export function bagDragCanEquipToGearSlot(
@@ -25,6 +28,7 @@ export function bagDragCanEquipToGearSlot(
   gearSlot: string,
 ): boolean {
   if (isTradeSlot(gearSlot)) return false;
+  if (!canEditObservedBag()) return false;
   if (!hasBagDragPayload(ev)) return false;
   const invSlot = readBagDragPayload(ev);
   if (invSlot == null) return false;
@@ -39,6 +43,7 @@ export function bagDragCanListOnTradeSlot(
   tradeSlot: string,
   slots: Record<string, unknown> | null | undefined,
 ): boolean {
+  if (!canEditObservedBag()) return false;
   if (!isTradeSlot(tradeSlot)) return false;
   if (!tradeSlotIsEmpty(slots as any, tradeSlot)) return false;
   if (!hasBagDragPayload(ev)) return false;
@@ -47,14 +52,41 @@ export function bagDragCanListOnTradeSlot(
   return !!observingBagItem(invSlot);
 }
 
-function resolveListingQuantity(
-  fp: { q?: number; name: string },
-): number | null {
-  const maxQ = fp.q != null && fp.q > 0 ? fp.q : undefined;
-  if (maxQ != null && maxQ > 1) {
-    return promptTradeQuantity(maxQ, fp.name);
+async function completeBagDropOnTradeSlot(
+  tradeSlot: string,
+  fp: ReturnType<typeof fingerprintFromSlot>,
+  shiftKey: boolean,
+  slots: Record<string, unknown> | null | undefined,
+): Promise<void> {
+  if (!fp) return;
+
+  const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+  let q = maxQ;
+  if (maxQ > 1) {
+    const picked = await showTradeQuantityDialog({
+      itemName: fp.name,
+      maxQ,
+    });
+    if (picked == null) return;
+    q = picked;
   }
-  return fp.q ?? 1;
+
+  if (shiftKey) {
+    const mins = await showGiveawayMinutesDialog();
+    if (mins == null) return;
+    giveawayCommand(tradeSlot, fp, mins, q);
+    return;
+  }
+
+  const price = await showTradePriceDialog({
+    mode: "list",
+    itemName: fp.name,
+    level: fp.level,
+    p: fp.p,
+    slots: slots as any,
+  });
+  if (price == null) return;
+  tradeListCommand(fp, tradeSlot, price, q);
 }
 
 /** Handle bag → gear drop. Returns true when equip was dispatched. */
@@ -62,6 +94,7 @@ export function handleBagDropOnGearSlot(
   ev: DragEvent,
   gearSlot: string,
 ): boolean {
+  if (!canEditObservedBag()) return false;
   if (isTradeSlot(gearSlot)) return false;
   const invSlot = readBagDragPayload(ev);
   if (invSlot == null) return false;
@@ -80,6 +113,7 @@ export function handleBagDropOnTradeSlot(
   tradeSlot: string,
   slots: Record<string, unknown> | null | undefined,
 ): boolean {
+  if (!canEditObservedBag()) return false;
   if (!isTradeSlot(tradeSlot)) return false;
   if (!tradeSlotIsEmpty(slots as any, tradeSlot)) return false;
   const invSlot = readBagDragPayload(ev);
@@ -90,19 +124,7 @@ export function handleBagDropOnTradeSlot(
   ev.preventDefault();
   ev.stopPropagation();
 
-  const q = resolveListingQuantity(fp);
-  if (q == null) return false;
-
-  if (ev.shiftKey) {
-    const mins = promptGiveawayMinutes();
-    if (mins == null) return false;
-    giveawayCommand(tradeSlot, fp, mins, q);
-    return true;
-  }
-
-  const price = promptTradePrice(fp.name);
-  if (price == null) return false;
-  tradeListCommand(fp, tradeSlot, price, q);
+  void completeBagDropOnTradeSlot(tradeSlot, fp, ev.shiftKey, slots);
   return true;
 }
 

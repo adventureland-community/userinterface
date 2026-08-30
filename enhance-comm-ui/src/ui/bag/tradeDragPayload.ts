@@ -21,9 +21,7 @@ export function hasTradeDragPayload(ev: DragEvent): boolean {
   const types = ev.dataTransfer?.types;
   if (!types) return false;
   for (let i = 0; i < types.length; i++) {
-    if (types[i] === TRADE_DRAG_SLOT_MIME || types[i] === "text/plain") {
-      return true;
-    }
+    if (types[i] === TRADE_DRAG_SLOT_MIME) return true;
   }
   return false;
 }
