@@ -100,6 +100,106 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.8.0-alpha.16",
+    title: "0.8.0-alpha.16",
+    date: "2026-08-30",
+    summary:
+      "Equip, trade, and sort inventory on the character you are observing — plus clearer item labels.",
+    highlights: [
+      {
+        label: "Observer gear editing",
+        detail:
+          "Right-click bag items to Equip or Swap slots; right-click paperdoll gear to Unequip. Commands run on the watched character via o:command.",
+        kind: "feature",
+      },
+      {
+        label: "Trade window",
+        detail:
+          "Trade row and merchant stand controls live in a separate Trade panel — Yours/Inspected toggle, left-click to buy, drag listings to bag to delist.",
+        kind: "feature",
+      },
+      {
+        label: "Bag sort",
+        detail:
+          "Sort button on the bag chrome runs sequential swap()/imove on the watched character. Configure priority rules in Settings → Bag (AdiBags-style keys, empty-last).",
+        kind: "feature",
+      },
+      {
+        label: "Trade panel layout",
+        detail:
+          "Fixed-size Trade window with opaque background — default trade1–4 always shown (yours and inspected merchants); stand extras (trade5+) stay visible for your character after the stand closes (game hides them from sync until reopen); Compact slots / All slots toggles grid density; Open/Close stand is separate.",
+        kind: "improve",
+      },
+      {
+        label: "Trade UX",
+        detail:
+          "Buy/sell badges, compact gold prices, confirm dialogs, last-price memory, bag menu Sell to buy order… (B badge on matching bag items), Giveaway on trade…, Shift+drag giveaway, giveaways, auto-open when inspecting a merchant, and Updating… bag feedback while commands run.",
+        kind: "improve",
+      },
+      {
+        label: "Item hover labels",
+        detail:
+          "Bag slots and paperdoll gear show full item names on hover — title prefix (G.titles) and upgrade/compound level suffixes match stock item info.",
+        kind: "improve",
+      },
+      {
+        label: "Title-prefix borders",
+        detail:
+          "Titled items (Festive, Gooped, Lucky, etc.) show the colored outer border from item.p — same palette as market-tracker and data-explorer.",
+        kind: "improve",
+      },
+      {
+        label: "Free bag space",
+        detail:
+          "Send-to-nearby and trade menus show free inventory slots on the receiver when the game exposes esize.",
+        kind: "improve",
+      },
+    ],
+    items: [
+      {
+        label: "Bag equip menu",
+        detail:
+          "Context menu picks main/off hand, rings, earrings, etc. Server validates class and slot rules.",
+        kind: "feature",
+      },
+      {
+        label: "Paperdoll unequip",
+        detail: "Right-click an equipped slot on your watched paperdoll to unequip (elixir excluded).",
+        kind: "feature",
+      },
+      {
+        label: "Inventory swap",
+        detail:
+          "Swap with… flyout on bag right-click — pick an occupied slot or enter any slot number. Drag bag slots or onto paperdoll to equip.",
+        kind: "improve",
+      },
+      {
+        label: "Trade slot listing",
+        detail:
+          "Bag menu List on Trade… and Sell to buy order…, drag bag → empty trade slot, drag listing → bag to delist, wishlist picker, fingerprint-aware reprice, left-click buy with confirm.",
+        kind: "feature",
+      },
+      {
+        label: "Watched character only",
+        detail:
+          "Gear and sort actions apply only when observing your own character — other players stay inspect-only.",
+        kind: "fix",
+      },
+      {
+        label: "Paperdoll click-through",
+        detail:
+          "Paperdoll and Trade panel shells pass clicks through empty padding — only headers, gear, and trade slots capture hits.",
+        kind: "fix",
+      },
+      {
+        label: "Sort script safety",
+        detail:
+          "One locked sequential script per batch, placeholder slots skipped, then refreshObservedInventory when finished.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.8.0-alpha.15",
     title: "0.8.0-alpha.15",
     date: "2026-08-29",
