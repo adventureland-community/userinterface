@@ -1,14 +1,12 @@
 import { unequipCommand } from "../../host/gearCommands";
 import { isObservedSelf } from "../../host/gearObserved";
+import type { EntityLike, SlotLike } from "../../host/globals";
 import {
   joinGiveawayCommand,
-  promptTradeQuantity,
   tradeFulfillCommand,
   tradePurchaseCommand,
   tradeRepriceCommand,
 } from "../../host/tradeCommands";
-import { defaultTradePrice } from "../../lib/tradePriceMemory";
-import type { EntityLike, SlotLike } from "../../host/globals";
 import { formatGearSlotLabel } from "../../lib/gearSlots";
 import {
   formatTradeSlotLabel,
@@ -27,6 +25,7 @@ import {
   isJoinedGiveaway,
 } from "../../lib/tradeHelpers";
 import { showTradeWishlistPicker } from "./tradeWishlistPicker";
+import { showTradePriceDialog, showTradeQuantityDialog } from "../trade/tradePromptDialog";
 import { ensureBagItemContextMenuCss } from "../bag/bagItemContextMenuCss";
 
 export type GearSlotMenuAction = {
@@ -106,28 +105,20 @@ function buildTradeSlotActions(
       separatorBefore: true,
       disabled: !repriceOk,
       run: () => {
-        if (!repriceOk) return;
-        const current = slot?.price;
-        const hint =
-          slot?.name != null
-            ? `New price for ${slot.name}${current != null ? ` (was ${formatTradeGold(current)})` : ""}:`
-            : "New price in gold:";
-        const raw = window.prompt(
-          hint,
-          slot?.name
-            ? defaultTradePrice(slot.name) ||
-              (current != null ? String(current) : "")
-            : current != null
-              ? String(current)
-              : "",
-        );
-        if (raw == null || String(raw).trim() === "") return;
-        const price = parseInt(String(raw).replace(/,/g, ""), 10);
-        if (!Number.isFinite(price) || price <= 0) {
-          window.alert("Enter a positive gold amount.");
-          return;
-        }
-        tradeRepriceCommand(slotName, price, slot);
+        if (!repriceOk || !slot?.name) return;
+        void (async () => {
+          const obs = window.observing;
+          const price = await showTradePriceDialog({
+            mode: "reprice",
+            itemName: slot.name,
+            level: slot.level,
+            p: slot.p,
+            slots: obs?.slots,
+            currentPrice: slot.price,
+          });
+          if (price == null) return;
+          tradeRepriceCommand(slotName, price, slot);
+        })();
       },    });
     if (slot?.price != null) {
       actions.push({
@@ -230,10 +221,15 @@ function buildForeignTradeActions(
           }
           const cap =
             maxQ != null ? Math.min(maxQ, match.q) : match.q;
-          const q = promptTradeQuantity(cap, name);
-          if (q == null) return;
-          if (!confirmTradeFulfill(name, slot.price!, q)) return;
-          tradeFulfillCommand(targetId, slotName, rid, q);
+          void (async () => {
+            const q = await showTradeQuantityDialog({
+              itemName: name,
+              maxQ: cap,
+            });
+            if (q == null) return;
+            if (!confirmTradeFulfill(name, slot.price!, q)) return;
+            tradeFulfillCommand(targetId, slotName, rid, q);
+          })();
         },
       },
     ];
@@ -252,19 +248,25 @@ function buildForeignTradeActions(
           window.alert("Too far away — move your watched character closer.");
           return;
         }
-        const q = promptTradeQuantity(maxQ, name);
-        if (q == null) return;
-        if (
-          obs?.gold != null &&
-          !canAffordListing(slot, q, obs.gold)
-        ) {
-          window.alert(
-            `Not enough gold — need ${formatTradeGold(slot.price! * q)}, have ${formatTradeGold(obs.gold)}.`,
-          );
-          return;
-        }
-        if (!confirmTradePurchase(name, slot.price!, q)) return;
-        tradePurchaseCommand(targetId, slotName, rid, q);
+        void (async () => {
+          const cap = maxQ != null && maxQ > 0 ? maxQ : 9999;
+          const q = await showTradeQuantityDialog({
+            itemName: name,
+            maxQ: cap,
+          });
+          if (q == null) return;
+          if (
+            obs?.gold != null &&
+            !canAffordListing(slot, q, obs.gold)
+          ) {
+            window.alert(
+              `Not enough gold — need ${formatTradeGold(slot.price! * q)}, have ${formatTradeGold(obs.gold)}.`,
+            );
+            return;
+          }
+          if (!confirmTradePurchase(name, slot.price!, q)) return;
+          tradePurchaseCommand(targetId, slotName, rid, q);
+        })();
       },
     },
   ];

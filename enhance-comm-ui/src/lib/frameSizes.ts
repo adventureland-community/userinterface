@@ -74,7 +74,10 @@ export const PAPERDOLL_PANEL_STYLE: Record<string, any> = {
 /** Trade panel — fixed footprint (personal row + stand reserve; no grow/shrink on stand toggle). */
 export const TRADE_SLOT_GAP = 2;
 export const TRADE_SLOT_SIZE = 40;
-export const TRADE_PANEL_WIDTH = TRADE_SLOT_SIZE * 6 + TRADE_SLOT_GAP * 5 + 16;
+/** Icon + 2px border each side — cells must not grow with price labels. */
+export const TRADE_SLOT_CELL = TRADE_SLOT_SIZE + 6;
+export const TRADE_PANEL_WIDTH =
+  TRADE_SLOT_CELL * 6 + TRADE_SLOT_GAP * 5 + 16;
 export const TRADE_PANEL_MIN_HEIGHT = 380;
 
 /** Trade row / merchant stand — own window beside paperdoll. */

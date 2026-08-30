@@ -9,10 +9,8 @@ import {
   formatTradeGold,
   scanBuyOrdersForBagItem,
 } from "../lib/tradeHelpers";
-import {
-  promptTradeQuantity,
-  tradeFulfillCommand,
-} from "./tradeCommands";
+import { tradeFulfillCommand } from "./tradeCommands";
+import { showTradeQuantityDialog } from "../ui/trade/tradePromptDialog";
 
 function buildFulfillBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
   const obs = window.observing;
@@ -36,11 +34,16 @@ function buildFulfillBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
             ? maxQ != null
               ? Math.min(maxQ, m.listing.q)
               : m.listing.q
-            : maxQ;
-        const q = promptTradeQuantity(cap, m.listing.name);
-        if (q == null) return;
-        if (!confirmTradeFulfill(m.listing.name, m.listing.price, q)) return;
-        tradeFulfillCommand(m.entityId, m.tradeSlot, m.listing.rid, q);
+            : maxQ ?? 9999;
+        void (async () => {
+          const q = await showTradeQuantityDialog({
+            itemName: m.listing.name,
+            maxQ: cap,
+          });
+          if (q == null) return;
+          if (!confirmTradeFulfill(m.listing.name, m.listing.price, q)) return;
+          tradeFulfillCommand(m.entityId, m.tradeSlot, m.listing.rid, q);
+        })();
       },
     };
   });

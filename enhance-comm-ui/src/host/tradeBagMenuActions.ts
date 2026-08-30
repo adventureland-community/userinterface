@@ -6,9 +6,6 @@ import {
 import { canEditObservedBag } from "./gearObserved";
 import {
   giveawayCommand,
-  promptGiveawayMinutes,
-  promptTradePrice,
-  promptTradeQuantity,
   tradeListCommand,
 } from "./tradeCommands";
 import {
@@ -16,6 +13,56 @@ import {
   observingTradeSlotNames,
   tradeSlotIsEmpty,
 } from "../lib/tradeSlots";
+import {
+  showGiveawayMinutesDialog,
+  showTradePriceDialog,
+  showTradeQuantityDialog,
+} from "../ui/trade/tradePromptDialog";
+
+async function runListOnTrade(
+  ctx: BagMenuContext,
+  tradeSlot: string,
+): Promise<void> {
+  const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+  let q = maxQ;
+  if (maxQ > 1) {
+    const picked = await showTradeQuantityDialog({
+      itemName: ctx.fp.name,
+      maxQ,
+    });
+    if (picked == null) return;
+    q = picked;
+  }
+  const obs = window.observing;
+  const price = await showTradePriceDialog({
+    mode: "list",
+    itemName: ctx.fp.name,
+    level: ctx.fp.level,
+    p: ctx.fp.p,
+    slots: obs?.slots,
+  });
+  if (price == null) return;
+  tradeListCommand(ctx.fp, tradeSlot, price, q);
+}
+
+async function runGiveawayOnTrade(
+  ctx: BagMenuContext,
+  tradeSlot: string,
+): Promise<void> {
+  const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+  let q = maxQ;
+  if (maxQ > 1) {
+    const picked = await showTradeQuantityDialog({
+      itemName: ctx.fp.name,
+      maxQ,
+    });
+    if (picked == null) return;
+    q = picked;
+  }
+  const mins = await showGiveawayMinutesDialog();
+  if (mins == null) return;
+  giveawayCommand(tradeSlot, ctx.fp, mins, q);
+}
 
 function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
   if (!canEditObservedBag()) return [];
@@ -37,15 +84,7 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
       label,
       title: "Sell listing on this trade slot",
       run: () => {
-        const price = promptTradePrice(ctx.fp.name);
-        if (price == null) return;
-        const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : undefined;
-        const q =
-          maxQ != null && maxQ > 1
-            ? promptTradeQuantity(maxQ, ctx.fp.name)
-            : ctx.fp.q ?? 1;
-        if (q == null) return;
-        tradeListCommand(ctx.fp, tradeSlot, price, q);
+        void runListOnTrade(ctx, tradeSlot);
       },
     });
     giveawayChildren.push({
@@ -53,15 +92,7 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
       label,
       title: "Giveaway on this trade slot",
       run: () => {
-        const mins = promptGiveawayMinutes();
-        if (mins == null) return;
-        const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q : undefined;
-        const q =
-          maxQ != null && maxQ > 1
-            ? promptTradeQuantity(maxQ, ctx.fp.name)
-            : ctx.fp.q ?? 1;
-        if (q == null) return;
-        giveawayCommand(tradeSlot, ctx.fp, mins, q);
+        void runGiveawayOnTrade(ctx, tradeSlot);
       },
     });
   }

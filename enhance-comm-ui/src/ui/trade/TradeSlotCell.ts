@@ -10,6 +10,7 @@ import {
   stampNativeItemTitle,
 } from "../../lib/gameIcon";
 import { GEAR_SLOT_SIZE } from "../chrome/gearSlotCell";
+import { TRADE_SLOT_CELL } from "../../lib/frameSizes";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import { handleBagDragOverGearSlot, handleBagDropOnTradeSlot } from "../gear/gearSlotDragDrop";
 import {
@@ -26,7 +27,14 @@ import { handleTradeSlotClick } from "./tradeSlotActions";
 const TRADE_SHADE = { shade: "shade_gold", s_op: 0.2 };
 const EMPTY_BCOLOR = "#292929";
 
-function wrapContainerHtml(html: string, title?: string): any {
+/** Suppress click after HTML5 drag from a trade listing cell. */
+let tradeListingDragActive = false;
+
+function wrapContainerHtml(
+  html: string,
+  title?: string,
+  options?: { stripNativeDrag?: boolean },
+): any {
   return e("div", {
     style: {
       display: "inline-block",
@@ -43,6 +51,12 @@ function wrapContainerHtml(html: string, title?: string): any {
       root.removeAttribute("onmousedown");
       root.removeAttribute("ontouchstart");
       root.removeAttribute("onclick");
+      if (options?.stripNativeDrag) {
+        root.removeAttribute("draggable");
+        root.removeAttribute("ondragstart");
+        root.removeAttribute("ondrop");
+        root.removeAttribute("ondragover");
+      }
       const tip = title || root.getAttribute("title") || "";
       if (tip) stampNativeItemTitle(node, tip);
     },
@@ -110,6 +124,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       ? wrapContainerHtml(
           html,
           itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
+          { stripNativeDrag: editable && filled },
         )
       : wrapContainerHtml(
           itemIconHtml(slot.name, {
@@ -168,6 +183,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     else if (canBuy && canAfford) tipParts.push("Click to buy");
     else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
     else if (disabled) tipParts.push("(unavailable)");
+    if (editable) tipParts.push("Drag to bag to delist");
     tipParts.push("Shift+click: item info");
   } else if (editable) {
     tipParts.push("Click: wishlist · drag bag item to list · Shift+drag: giveaway");
@@ -189,19 +205,52 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         editable && filled
           ? (ev: DragEvent) => {
               if (!ev.dataTransfer) return;
+              tradeListingDragActive = true;
               writeTradeDragPayload(ev.dataTransfer, slotName);
+              ev.stopPropagation();
             }
           : undefined,
-      onPointerDown: (ev: any) => {
-        if (ev && typeof ev.stopPropagation === "function")
-          ev.stopPropagation();
-        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-        handleTradeSlotClick(ev, entity, slotName, slot, !!gearEditable, obs);
-      },
+      onDragEnd:
+        editable && filled
+          ? () => {
+              window.setTimeout(() => {
+                tradeListingDragActive = false;
+              }, 0);
+            }
+          : undefined,
+      onPointerDown:
+        editable && filled
+          ? (ev: any) => {
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+            }
+          : editable
+            ? (ev: any) => {
+                if (ev && typeof ev.stopPropagation === "function") {
+                  ev.stopPropagation();
+                }
+              }
+            : undefined,
+      onClick:
+        editable
+          ? (ev: any) => {
+              if (editable && filled && tradeListingDragActive) return;
+              handleTradeSlotClick(
+                ev,
+                entity,
+                slotName,
+                slot,
+                !!gearEditable,
+                obs,
+              );
+            }
+          : undefined,
       onDragOver: editable
         ? (ev: any) => {
-            if (handleBagDragOverGearSlot(ev, slotName, allSlots || null))
-              setBagDropHover(true);
+            setBagDropHover(
+              handleBagDragOverGearSlot(ev, slotName, allSlots || null),
+            );
           }
         : undefined,
       onDragLeave: editable ? () => setBagDropHover(false) : undefined,
@@ -231,16 +280,24 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         alignItems: "center",
         gap: "1px",
         position: "relative",
+        width: `${TRADE_SLOT_CELL}px`,
+        maxWidth: `${TRADE_SLOT_CELL}px`,
+        flex: `0 0 ${TRADE_SLOT_CELL}px`,
+        boxSizing: "border-box",
         opacity: disabled ? 0.45 : 1,
         cursor: editable || filled ? "pointer" : "default",
         pointerEvents: "auto",
-        outline: bagDropHover ? "2px solid #6ab04c" : undefined,
-        outlineOffset: bagDropHover ? "1px" : undefined,
       },
     },
     e(
       "div",
-      { style: { position: "relative", lineHeight: 0 } },
+      {
+        style: {
+          position: "relative",
+          lineHeight: 0,
+          boxShadow: bagDropHover ? "0 0 0 2px #6ab04c" : undefined,
+        },
+      },
       content,
       badge
         ? e(
@@ -285,8 +342,15 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
             style: {
               fontSize: TYPE.microMin,
               color: slot!.b ? "#8fd4ff" : "#ffd700",
+              width: "100%",
+              maxWidth: `${TRADE_SLOT_CELL}px`,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              textAlign: "center",
               ...PIXEL_TEXT,
             },
+            title: priceLabel,
           },
           priceLabel,
         )

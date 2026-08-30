@@ -3,6 +3,7 @@
  */
 
 import type { EntityLike, SlotLike } from "../host/globals";
+import { resolvePlayerCtype } from "../host/al";
 
 export function isTradeSlot(slotName: string): boolean {
   return String(slotName || "").indexOf("trade") === 0;
@@ -52,29 +53,117 @@ export type TradeSlotOptions = {
 
 const PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
 
-/** Stand slot capacity from merchant tier (open or closed). */
+/**
+ * Client entities use `ctype` for class; server `get_trade_slots` uses `type`.
+ * Live packets often omit ctype — resolve via observing / roster when needed.
+ */
+function isMerchantClass(entity: EntityLike): boolean {
+  const id = entity.id != null ? String(entity.id) : undefined;
+  const resolved = resolvePlayerCtype(id, entity);
+  if (resolved === "merchant") return true;
+  const cls = String(entity.ctype || entity.type || "").toLowerCase();
+  return cls === "merchant";
+}
+
+/** Highest tradeN index present as a key on slots (stock render_slots probe). */
+export function maxTradeSlotIndex(
+  slots: Record<string, SlotLike | null | undefined> | null | undefined,
+): number {
+  if (!slots) return 0;
+  const keys = Object.keys(slots);
+  let max = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    if (k.indexOf("trade") !== 0) continue;
+    const n = parseInt(k.replace("trade", ""), 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return max;
+}
+
+function resolveEntityLevel(entity: EntityLike): number {
+  const raw = entity.level;
+  if (raw != null && Number.isFinite(Number(raw))) {
+    const n = Number(raw) | 0;
+    if (n > 0) return n;
+  }
+  if (typeof window === "undefined") return 0;
+  if (typeof window === "undefined") return 0;
+  const id = entity.id != null ? String(entity.id) : "";
+  const obs = window.observing;
+  if (
+    id &&
+    obs &&
+    (String(obs.id) === id ||
+      (entity.name != null &&
+        obs.name != null &&
+        String(entity.name) === String(obs.name)))
+  ) {
+    if (obs.level != null && Number.isFinite(Number(obs.level))) {
+      return Number(obs.level) | 0;
+    }
+  }
+  const character = window.character;
+  if (
+    id &&
+    character &&
+    (String(character.id) === id ||
+      (entity.name != null &&
+        character.name != null &&
+        String(entity.name) === String(character.name)))
+  ) {
+    if (character.level != null && Number.isFinite(Number(character.level))) {
+      return Number(character.level) | 0;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Stand slot capacity from merchant tier + open stand type (mirrors server
+ * get_trade_slots). `cstand` (computer / supercomputer) unlocks 24 before L70.
+ *
+ * Tier comes from resolved class + level — not from how many trade keys happen
+ * to be present while the stand is closed (remembered listings cap at trade24
+ * and would otherwise hide L80+ empties).
+ */
 export function merchantStandCapacity(
   entity: EntityLike | null | undefined,
+  slots?: Record<string, SlotLike | null | undefined> | null,
 ): number {
-  if (!entity) return 16;
-  const level = entity.level != null ? Number(entity.level) : 0;
+  if (!entity) return 0;
+  const level = resolveEntityLevel(entity);
   const stand = entity.stand ? String(entity.stand) : "";
-  if (entity.type === "merchant" && level >= 80) return 30;
-  if (entity.type === "merchant" && (level >= 70 || stand === "cstand")) return 24;
-  return 16;
+  const fromKeys = maxTradeSlotIndex(slots);
+  const merchant = isMerchantClass(entity);
+
+  // Non-merchant without an open stand: only trade5+ keys already on the entity
+  // (e.g. computer stand listings) — not a blank 16-slot merchant preview grid.
+  if (!merchant && !stand) {
+    return fromKeys >= 5 ? fromKeys : 0;
+  }
+
+  let tier = 16;
+  if (merchant && level >= 80) tier = 30;
+  else if (merchant && (level >= 70 || stand === "cstand")) tier = 24;
+  else if (stand === "cstand") tier = 24;
+
+  if (fromKeys > tier) tier = fromKeys;
+  return tier;
 }
 
 /** Merchant stand capacity (mirrors server get_trade_slots). Zero when stand closed. */
 export function standTradeSlotCount(entity: EntityLike | null | undefined): number {
   if (!entity || !entity.stand) return 0;
-  return merchantStandCapacity(entity);
+  return merchantStandCapacity(entity, entity.slots);
 }
 
 /** All merchant stand keys trade1…tradeN (UI preview — stand need not be open). */
 export function allMerchantStandSlotNames(
   entity: EntityLike | null | undefined,
+  slots?: Record<string, SlotLike | null | undefined> | null,
 ): string[] {
-  const n = merchantStandCapacity(entity);
+  const n = merchantStandCapacity(entity, slots ?? entity?.slots);
   const names: string[] = [];
   for (let i = 1; i <= n; i++) names.push(`trade${i}`);
   return names;
@@ -137,7 +226,7 @@ export function merchantStandSlotNames(
   excludePersonal = false,
 ): string[] {
   if (!entity || !slots) return [];
-  const all = allMerchantStandSlotNames(entity);
+  const all = allMerchantStandSlotNames(entity, slots);
   const candidates = excludePersonal ? all.slice(4) : all;
   return compactTradeSlotNames(candidates, slots, compact);
 }
@@ -199,9 +288,29 @@ export function tradeSlotIsEmpty(
   slots: Record<string, SlotLike | null | undefined> | null | undefined,
   slotName: string,
 ): boolean {
-  if (!slots) return false;
+  if (!slots) return true;
   const slot = slots[slotName];
   return !slot || !slot.name;
+}
+
+/** True when a trade slot holds a listing (mirrors server slot_occuppied checks). */
+export function tradeSlotIsOccupied(
+  slots: Record<string, SlotLike | null | undefined> | null | undefined,
+  slotName: string,
+): boolean {
+  return !tradeSlotIsEmpty(slots, slotName);
+}
+
+/** Whether the merchant stand (trade5+) section should render for this entity. */
+export function merchantStandSectionVisible(
+  entity: EntityLike | null | undefined,
+  slots: Record<string, SlotLike | null | undefined> | null | undefined,
+  gearEditable?: boolean,
+): boolean {
+  if (!entity || !slots) return false;
+  if (entity.stand) return true;
+  if (!gearEditable) return false;
+  return merchantStandSlotNames(slots, entity, true, true).length > 0;
 }
 
 /** Compact: filled slots plus one empty; expanded: full candidate list. */

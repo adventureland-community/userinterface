@@ -37,13 +37,33 @@ describe("trade command scripts", () => {
       1200,
       5,
     );
-    assert.match(script, /await trade\("trade1",__slot,1200,5\)/);
-    assert.match(script, /slot not empty/);
+    // CODE API: trade(invNum, tradeSlot, price, quantity)
+    assert.match(script, /await trade\(__slot,"trade1",1200,5\)/);
+    assert.match(script, /__occ&&__occ\.name/);
+    assert.match(script, /\[ECU\/comm\] trade-list · slot not empty/);
+    assert.match(script, /\[ECU\/comm\] trade-list failed/);
+    assert.match(script, /\[ECU\/comm\] trade-list ok/);
     assert.match(script, /hpot0/);
+    assert.match(script, /get_socket\(\)/);
+    assert.match(script, /event:"show"/);
+    assert.match(script, /character\.slots\.trade1!==undefined/);
+    assert.match(script, /\[ECU\/comm\] trade-list · could not open trade row/);
+  });
+
+  it("requires open stand for trade5+ list scripts", () => {
+    const script = buildTradeListScript(
+      { slot: 0, name: "hpot0", q: 1 },
+      "trade5",
+      500,
+    );
+    assert.match(script, /open merchant stand/);
+    assert.match(script, /character\.stand/);
   });
 
   it("builds trade row show/hide scripts", () => {
+    assert.match(buildTradeShowScript(), /get_socket\(\)/);
     assert.match(buildTradeShowScript(), /event:"show"/);
+    assert.match(buildTradeHideScript(), /get_socket\(\)/);
     assert.match(buildTradeHideScript(), /event:"hide"/);
   });
 
@@ -59,16 +79,19 @@ describe("trade command scripts", () => {
 
   it("builds wishlist script", () => {
     const script = buildWishlistScript("trade2", "hpot0", 500, 1, 0);
-    assert.match(script, /await wishlist\("trade2","hpot0",500,1,0\)/);
+    // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+    assert.match(script, /await wishlist\("trade2","hpot0",500,0,1\)/);
+    assert.match(script, /event:"show"/);
   });
 
   it("builds trade reprice script", () => {
     const script = buildTradeRepriceScript("trade1", 9999);
     assert.match(script, /await unequip\(__slot\)/);
-    assert.match(script, /await trade\(__slot,/);
-    assert.match(script, /await wishlist\(__slot,/);
+    assert.match(script, /await trade\(__num,__slot,/);
+    assert.match(script, /await wishlist\(__slot,__name,__price,__level,__q\)/);
     assert.match(script, /\(__it\.level\|\|0\)!==__level/);
     assert.match(script, /__it\.p!==__p/);
+    assert.match(script, /\(__it\.q\|\|1\)<__q/);
   });
 
   it("builds trade reprice script from listing snapshot", () => {
@@ -102,13 +125,15 @@ describe("trade command scripts", () => {
 
   it("builds trade purchase script", () => {
     const script = buildTradePurchaseScript("abc", "trade1", "rid1", 2);
-    assert.match(script, /socket\.emit\("trade_buy"/);
+    assert.match(script, /get_socket\(\)/);
+    assert.match(script, /__sock\.emit\("trade_buy"/);
     assert.match(script, /slot is a buy order/);
   });
 
   it("builds trade fulfill script", () => {
     const script = buildTradeFulfillScript("abc", "trade1", "rid1", 2);
-    assert.match(script, /socket\.emit\("trade_sell"/);
+    assert.match(script, /get_socket\(\)/);
+    assert.match(script, /__sock\.emit\("trade_sell"/);
     assert.match(script, /not a buy order/);
     assert.match(script, /no matching item in bag/);
   });
@@ -169,6 +194,32 @@ describe("trade slot helpers", () => {
       standTradeSlotCount({ stand: "x", type: "merchant", level: 80 }),
       30,
     );
+    assert.equal(
+      standTradeSlotCount({ stand: "stand0", ctype: "merchant", level: 86 }),
+      30,
+    );
+    assert.equal(
+      standTradeSlotCount({ stand: "cstand", ctype: "merchant", level: 40 }),
+      24,
+    );
+    // Live packets may omit ctype — resolve from observing.
+    const prev = (globalThis as any).window;
+    (globalThis as any).window = {
+      observing: { id: "buff", ctype: "merchant", level: 86 },
+    };
+    try {
+      assert.equal(
+        standTradeSlotCount({
+          id: "buff",
+          stand: "stand0",
+          level: 86,
+        }),
+        30,
+      );
+    } finally {
+      if (prev === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = prev;
+    }
   });
 
   it("personal row always trade1-4 while editing", () => {
@@ -199,10 +250,82 @@ describe("trade slot helpers", () => {
 
   it("merchant stand capacity does not require stand open", () => {
     assert.equal(merchantStandCapacity({ type: "merchant", level: 50 }), 16);
+    assert.equal(merchantStandCapacity({ type: "priest", level: 80 }), 0);
+    assert.equal(
+      merchantStandCapacity(
+        { type: "priest", level: 80 },
+        { trade5: { name: "scroll0" } },
+      ),
+      5,
+    );
     assert.equal(
       merchantStandCapacity({ type: "merchant", level: 80 }),
       30,
     );
+    assert.equal(
+      merchantStandCapacity({ ctype: "merchant", level: 86 }),
+      30,
+    );
+    assert.equal(
+      merchantStandCapacity({ ctype: "merchant", level: 40, stand: "cstand" }),
+      24,
+    );
+    // Closed stand: only filled trade5+ remembered — tier from level, not key probe.
+    assert.equal(
+      merchantStandCapacity(
+        { ctype: "merchant", level: 86 },
+        {
+          trade1: { name: "pickaxe" },
+          trade5: { name: "btusk" },
+          trade24: { name: "gpusher" },
+        },
+      ),
+      30,
+    );
+    // Entity packet may omit level — fall back to observing.
+    const prev = (globalThis as any).window;
+    (globalThis as any).window = {
+      observing: { id: "buff", ctype: "merchant", level: 86 },
+    };
+    try {
+      assert.equal(
+        merchantStandCapacity(
+          { id: "buff", ctype: "merchant" },
+          {
+            trade5: { name: "a" },
+            trade24: { name: "b" },
+          },
+        ),
+        30,
+      );
+      assert.equal(
+        merchantStandSlotNames(
+          {
+            trade5: { name: "a" },
+            trade24: { name: "b" },
+          },
+          { id: "buff", ctype: "merchant" },
+          true,
+          true,
+        ).length,
+        3,
+      ); // 2 filled + 1 empty (trade25)
+    } finally {
+      if (prev === undefined) delete (globalThis as any).window;
+      else (globalThis as any).window = prev;
+    }
+    assert.equal(
+      merchantStandSlotNames(
+        {
+          trade5: { name: "a" },
+          trade24: { name: "b" },
+        },
+        { ctype: "merchant", level: 86 },
+        false,
+        true,
+      ).length,
+      26,
+    ); // trade5–trade30
   });
 
   it("merchant stand slots render when stand is closed", () => {
@@ -228,6 +351,10 @@ describe("trade slot helpers", () => {
         "trade15",
         "trade16",
       ],
+    );
+    assert.deepEqual(
+      merchantStandSlotNames(slots, { type: "priest", level: 80 }, true, true),
+      [],
     );
   });
 

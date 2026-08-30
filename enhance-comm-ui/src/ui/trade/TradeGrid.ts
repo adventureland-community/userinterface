@@ -8,6 +8,7 @@ import {
 import {
   compactTradeSlotNames,
   merchantStandCapacity,
+  merchantStandSectionVisible,
   merchantStandSlotNames,
   personalTradeSlotNames,
   standGridColumns,
@@ -119,6 +120,7 @@ function renderSlotRows(
           style: {
             display: "flex",
             flexDirection: "row",
+            flexWrap: "nowrap",
             gap: "2px",
           },
         },
@@ -200,11 +202,17 @@ export function TradeGrid(props: TradeGridProps): any {
       !foreign || isInTradeRange(props.entity, props.observing || window.observing);
 
     const personalAll = personalTradeSlotNames(slots, props.entity, props.gearEditable);
-    const personalNames = compactTradeSlotNames(personalAll, slots, slotsCompact);
+    const personalNames = props.gearEditable
+      ? personalAll
+      : compactTradeSlotNames(personalAll, slots, slotsCompact);
     const showPersonal = personalAll.length > 0;
-    const standCapacity = merchantStandCapacity(props.entity);
+    const standCapacity = merchantStandCapacity(props.entity, slots);
     const standCols = standGridColumns(standCapacity);
-    const showStandSection = props.gearEditable || standOpen;
+    const showStandSection = merchantStandSectionVisible(
+      props.entity,
+      slots,
+      props.gearEditable,
+    );
     const standNames = showStandSection
       ? merchantStandSlotNames(slots, props.entity, slotsCompact, true)
       : [];
@@ -286,10 +294,10 @@ export function TradeGrid(props: TradeGridProps): any {
                     )
                 : null,
               toolbarButton(
-                slotsCompact ? "Compact slots" : "All slots",
+                slotsCompact ? "Compact" : "All slots",
                 slotsCompact
-                  ? "Show filled listings plus one empty slot per row"
-                  : "Show every empty slot in the grid",
+                  ? "Compact: filled listings plus one empty drop target"
+                  : "All slots: every stand/trade slot including empties",
                 toggleSlotsCompact,
                 slotsCompact,
               ),

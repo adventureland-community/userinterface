@@ -9,12 +9,8 @@ import type { EntityLike, SlotLike } from "../../host/globals";
 import { isObservedSelf } from "../../host/gearObserved";
 import {
   joinGiveawayCommand,
-  promptTradePrice,
-  promptTradeQuantity,
-  promptWishlistLevel,
   tradeFulfillCommand,
   tradePurchaseCommand,
-  wishlistCommand,
 } from "../../host/tradeCommands";
 import {
   canAffordListing,
@@ -28,6 +24,7 @@ import {
 } from "../../lib/tradeHelpers";
 import { rememberTradePrice } from "../../lib/tradePriceMemory";
 import { showTradeWishlistPicker } from "../gear/tradeWishlistPicker";
+import { showTradeQuantityDialog } from "./tradePromptDialog";
 
 export function openTradeItemInfo(
   entity: EntityLike,
@@ -37,6 +34,59 @@ export function openTradeItemInfo(
   if (!slot || !slot.name) return;
   setXTarget(entity);
   info.openItem(entity, slotName, slot);
+}
+
+async function handleForeignTradeBuy(
+  entity: EntityLike,
+  slotName: string,
+  slot: SlotLike,
+  observing: EntityLike,
+): Promise<void> {
+  const targetId = entity.id != null ? String(entity.id) : "";
+  const rid = String(slot.rid);
+  const maxQ = slot.q != null && slot.q > 0 ? slot.q : undefined;
+
+  if (slot.b) {
+    const match = findBagMatchForBuyOrder(slot, observing.items);
+    if (!match) {
+      window.alert(`No matching ${slot.name} in bag.`);
+      return;
+    }
+    const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
+    const q = await showTradeQuantityDialog({
+      itemName: slot.name,
+      maxQ: cap,
+    });
+    if (q == null) return;
+    if (!confirmTradeFulfill(slot.name, slot.price, q)) return;
+    tradeFulfillCommand(targetId, slotName, rid, q);
+    return;
+  }
+
+  if (isGiveawayListing(slot)) {
+    if (isJoinedGiveaway(slot, observing)) {
+      window.alert("Already joined this giveaway.");
+      return;
+    }
+    joinGiveawayCommand(targetId, slotName, rid);
+    return;
+  }
+
+  const obsGold = observing.gold;
+  const cap = maxQ != null ? maxQ : 9999;
+  const q = await showTradeQuantityDialog({
+    itemName: slot.name,
+    maxQ: cap,
+  });
+  if (q == null) return;
+  if (obsGold != null && !canAffordListing(slot, q, obsGold)) {
+    window.alert(
+      `Not enough gold — need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obsGold)}.`,
+    );
+    return;
+  }
+  if (!confirmTradePurchase(slot.name, slot.price, q)) return;
+  tradePurchaseCommand(targetId, slotName, rid, q);
 }
 
 /** Left-click on a trade slot (shift = item info only). */
@@ -69,44 +119,7 @@ export function handleTradeSlotClick(
     return;
   }
 
-  const targetId = entity.id != null ? String(entity.id) : "";
-  const rid = String(slot.rid);
-  const maxQ = slot.q != null && slot.q > 0 ? slot.q : undefined;
-
-  if (slot.b) {
-    const match = findBagMatchForBuyOrder(slot, observing.items);
-    if (!match) {
-      window.alert(`No matching ${slot.name} in bag.`);
-      return;
-    }
-    const cap = maxQ != null ? Math.min(maxQ, match.q) : match.q;
-    const q = promptTradeQuantity(cap, slot.name);
-    if (q == null) return;
-    if (!confirmTradeFulfill(slot.name, slot.price, q)) return;
-    tradeFulfillCommand(targetId, slotName, rid, q);
-    return;
-  }
-
-  if (isGiveawayListing(slot)) {
-    if (isJoinedGiveaway(slot, observing)) {
-      window.alert("Already joined this giveaway.");
-      return;
-    }
-    joinGiveawayCommand(targetId, slotName, rid);
-    return;
-  }
-
-  const obsGold = observing.gold;
-  const q = promptTradeQuantity(maxQ, slot.name);
-  if (q == null) return;
-  if (obsGold != null && !canAffordListing(slot, q, obsGold)) {
-    window.alert(
-      `Not enough gold — need ${formatTradeGold(slot.price * q)}, have ${formatTradeGold(obsGold)}.`,
-    );
-    return;
-  }
-  if (!confirmTradePurchase(slot.name, slot.price, q)) return;
-  tradePurchaseCommand(targetId, slotName, rid, q);
+  void handleForeignTradeBuy(entity, slotName, slot, observing);
 }
 
 export function handleTradeSlotDelist(
@@ -116,4 +129,4 @@ export function handleTradeSlotDelist(
   unequipCommand(slotName, { slotListing: slot });
 }
 
-export { rememberTradePrice, promptTradePrice, wishlistCommand, promptWishlistLevel };
+export { rememberTradePrice };

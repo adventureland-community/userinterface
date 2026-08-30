@@ -1,12 +1,17 @@
 /**
  * Trade row / merchant stand actions on the observed character via o:command.
+ *
+ * Snippets run under CODE (`runner_functions`), not parent `functions.js`.
+ * Critical arg-order differences:
+ * - CODE `trade(invNum, tradeSlot, price, qty)` vs parent `trade(slot, num, price, q)`
+ * - CODE `wishlist(slot, name, price, level, qty)` vs parent `wishlist(slot, name, price, q, level)`
  */
 
 import { emitObserverCommand, getG } from "./al";
-import { wrapCommandScript } from "./commandScript";
+import { commLogText, wrapCommandScript } from "./commandScript";
 import { resolveInvSlotJs } from "./gearCommands";
 import { refreshObservedInventory } from "./inventory";
-import { defaultTradePrice, rememberTradePrice } from "../lib/tradePriceMemory";
+import { rememberTradePrice } from "../lib/tradePriceMemory";
 import type { ItemFingerprint } from "./mail/types";
 import type { SlotLike } from "./globals";
 import {
@@ -16,6 +21,41 @@ import {
 
 function lit(value: string): string {
   return JSON.stringify(String(value));
+}
+
+function commLit(message: string): string {
+  return lit(commLogText(message));
+}
+
+/** Stock client: personal trade row open when trade1 key exists on character.slots. */
+function tradeRowOpenJs(): string {
+  return `(character.slots&&character.slots.trade1!==undefined)`;
+}
+
+/** CODE runner has get_socket(), not bare socket (see runner_functions.js). */
+function tradeShowEmitJs(): string {
+  return `var __sock=get_socket();if(__sock)__sock.emit("trade",{event:"show"});`;
+}
+
+function tradeHideEmitJs(): string {
+  return `var __sock=get_socket();if(__sock)__sock.emit("trade",{event:"hide"});`;
+}
+
+function socketEmitJs(event: string, payloadExpr: string): string {
+  return [
+    `var __sock=get_socket();`,
+    `if(!__sock){game_log(${commLit("trade · no socket")});return;}`,
+    `__sock.emit(${lit(event)},${payloadExpr});`,
+  ].join("");
+}
+
+/** Guard: slot has a listing (empty trade keys / null slots are OK). */
+function tradeSlotOccupiedGuardJs(slotExpr: string, failMessage: string): string {
+  return [
+    `var __ts=${slotExpr};`,
+    `var __occ=character.slots&&character.slots[__ts];`,
+    `if(__occ&&__occ.name){game_log(${lit(failMessage)});return;}`,
+  ].join("");
 }
 
 function scheduleBagRefresh(): void {
@@ -28,6 +68,40 @@ function scheduleBagRefresh(): void {
   }, 900);
 }
 
+function tradeSlotIndex(slot: string): number {
+  const n = parseInt(String(slot).replace("trade", ""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Ensure personal trade row / merchant stand is open before list-like commands. */
+function tradeListPrefaceJs(tradeSlot: string): string {
+  const idx = tradeSlotIndex(tradeSlot);
+  const parts: string[] = [];
+  if (idx >= 1 && idx <= 4) {
+    parts.push(
+      `if(!${tradeRowOpenJs()}){`,
+      tradeShowEmitJs(),
+      `for(var __tw=0;__tw<120;__tw++){`,
+      `await sleep(50);`,
+      `if(${tradeRowOpenJs()})break;`,
+      `if(__tw===20||__tw===50||__tw===80||__tw===100){`,
+      tradeShowEmitJs(),
+      `}`,
+      `}`,
+      `}`,
+      `if(!${tradeRowOpenJs()}){`,
+      `game_log(${commLit("trade-list · could not open trade row")});return;`,
+      `}`,
+    );
+  }
+  if (idx >= 5) {
+    parts.push(
+      `if(!character.stand){game_log(${commLit("trade-list · open merchant stand for " + tradeSlot)});return;}`,
+    );
+  }
+  return parts.join("");
+}
+
 export function buildTradeListScript(
   fp: ItemFingerprint,
   tradeSlot: string,
@@ -38,28 +112,39 @@ export function buildTradeListScript(
   const gold = Number(price) | 0;
   const qty = q != null ? Number(q) | 0 : 1;
   if (!slot || !isTradeSlotName(slot)) {
-    return wrapCommandScript(`game_log("Trade list aborted — invalid slot");`);
+    return wrapCommandScript(
+      `game_log(${commLit("trade-list · invalid slot")});`,
+    );
   }
   if (gold <= 0) {
-    return wrapCommandScript(`game_log("Trade list aborted — invalid price");`);
+    return wrapCommandScript(
+      `game_log(${commLit("trade-list · invalid price")});`,
+    );
   }
   return wrapCommandScript(
     [
       resolveInvSlotJs(fp),
-      `if(character.slots[${lit(slot)}]){game_log(${lit("Trade list failed — slot not empty")});return;}`,
-      `try{await trade(${lit(slot)},__slot,${gold},${qty > 0 ? qty : 1});}catch(__e){`,
-      `game_log(${lit("Trade list failed → " + slot)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
+      tradeListPrefaceJs(slot),
+      tradeSlotOccupiedGuardJs(
+        lit(slot),
+        commLogText("trade-list · slot not empty"),
+      ),
+      // CODE API: trade(invNum, tradeSlot, price, quantity) — not parent.trade(slot, num, …)
+      `try{await trade(__slot,${lit(slot)},${gold},${qty > 0 ? qty : 1});`,
+      `game_log(${commLit("trade-list ok → " + slot)});`,
+      `}catch(__e){`,
+      `game_log(${commLit("trade-list failed → " + slot)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
       `}`,
     ].join(""),
   );
 }
 
 export function buildTradeShowScript(): string {
-  return wrapCommandScript(`socket.emit("trade",{event:"show"});`);
+  return wrapCommandScript(tradeShowEmitJs());
 }
 
 export function buildTradeHideScript(): string {
-  return wrapCommandScript(`socket.emit("trade",{event:"hide"});`);
+  return wrapCommandScript(tradeHideEmitJs());
 }
 
 export function buildMerchantCloseScript(): string {
@@ -121,8 +206,10 @@ export function buildWishlistScript(
   }
   return wrapCommandScript(
     [
-      `if(character.slots[${lit(slot)}]){game_log(${lit("Wishlist failed — slot not empty")});return;}`,
-      `try{await wishlist(${lit(slot)},${lit(name)},${gold},${qty > 0 ? qty : 1},${lvl});}catch(__e){`,
+      tradeSlotOccupiedGuardJs(lit(slot), "Wishlist failed — slot not empty"),
+      tradeListPrefaceJs(slot),
+      // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+      `try{await wishlist(${lit(slot)},${lit(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
       `game_log(${lit("Wishlist failed → " + slot)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
       `}`,
     ].join(""),
@@ -156,9 +243,7 @@ export function buildTradePurchaseScript(
       `var __listing=__target.slots[__slot];`,
       `if(__listing.b){game_log("Buy failed — slot is a buy order");return;}`,
       `if(__listing.rid!==__rid){game_log("Buy failed — listing changed");return;}`,
-      `try{socket.emit("trade_buy",{id:__id,slot:__slot,rid:__rid,q:String(__q)});}catch(__e){`,
-      `game_log("Buy failed"+(__e&&__e.reason?(" · "+__e.reason):""));`,
-      `}`,
+      socketEmitJs("trade_buy", "{id:__id,slot:__slot,rid:__rid,q:String(__q)}"),
     ].join(""),
   );
 }
@@ -198,9 +283,7 @@ export function buildTradeFulfillScript(
       `__have=true;break;`,
       `}`,
       `if(!__have){game_log("Fulfill failed — no matching item in bag");return;}`,
-      `try{socket.emit("trade_sell",{id:__id,slot:__slot,rid:__rid,q:__q});}catch(__e){`,
-      `game_log("Fulfill failed"+(__e&&__e.reason?(" · "+__e.reason):""));`,
-      `}`,
+      socketEmitJs("trade_sell", "{id:__id,slot:__slot,rid:__rid,q:__q}"),
     ].join(""),
   );
 }
@@ -218,9 +301,10 @@ export function buildJoinGiveawayScript(
   }
   return wrapCommandScript(
     [
-      `try{socket.emit("join_giveaway",{id:${lit(id)},slot:${lit(slot)},rid:${lit(listingRid)}});}catch(__e){`,
-      `game_log("Giveaway join failed"+(__e&&__e.reason?(" · "+__e.reason):""));`,
-      `}`,
+      socketEmitJs(
+        "join_giveaway",
+        `{id:${lit(id)},slot:${lit(slot)},rid:${lit(listingRid)}}`,
+      ),
     ].join(""),
   );
 }
@@ -243,7 +327,8 @@ export function buildGiveawayScript(
   return wrapCommandScript(
     [
       resolveInvSlotJs(fp),
-      `if(character.slots[${lit(slot)}]){game_log(${lit("Giveaway failed — slot not empty")});return;}`,
+      tradeListPrefaceJs(slot),
+      tradeSlotOccupiedGuardJs(lit(slot), "Giveaway failed — slot not empty"),
       `try{await giveaway(${lit(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
       `game_log(${lit("Giveaway failed → " + slot)}+(__e&&__e.reason?(" · "+__e.reason):""));`,
       `}`,
@@ -291,7 +376,8 @@ export function buildTradeRepriceScript(
       `game_log("Reprice failed (delist)"+(__e&&__e.reason?(" · "+__e.reason):""));return;`,
       `}`,
       `if(__wish){`,
-      `try{await wishlist(__slot,__name,__price,__q,__level);}catch(__e){`,
+      // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+      `try{await wishlist(__slot,__name,__price,__level,__q);}catch(__e){`,
       `game_log("Reprice failed (wishlist)"+(__e&&__e.reason?(" · "+__e.reason):""));`,
       `}`,
       `}else{`,
@@ -302,10 +388,12 @@ export function buildTradeRepriceScript(
       `if((__it.level||0)!==__level)continue;`,
       `if(__p&&__it.p!==__p)continue;`,
       `if(!__p&&__it.p)continue;`,
+      `if((__it.q||1)<__q)continue;`,
       `__num=__si;break;`,
       `}`,
       `if(__num<0){game_log("Reprice failed — item not in bag after delist");return;}`,
-      `try{await trade(__slot,__num,__price,__q);}catch(__e){`,
+      // CODE API: trade(invNum, tradeSlot, price, quantity)
+      `try{await trade(__num,__slot,__price,__q);}catch(__e){`,
       `game_log("Reprice failed (relist)"+(__e&&__e.reason?(" · "+__e.reason):""));`,
       `}`,
       `}`,
@@ -354,7 +442,10 @@ export function wishlistCommand(
   level?: number,
 ): boolean {
   const script = buildWishlistScript(tradeSlot, itemName, price, q, level);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(
+    script,
+    `wishlist ${tradeSlot} ${itemName}`,
+  );
   if (!ok) return false;
   rememberTradePrice(itemName, price, q ?? 1);
   scheduleBagRefresh();
@@ -367,7 +458,10 @@ export function joinGiveawayCommand(
   rid: string,
 ): boolean {
   const script = buildJoinGiveawayScript(targetId, tradeSlot, rid);
-  return emitObserverCommand(script);
+  return emitObserverCommand(
+    script,
+    `join-giveaway ${tradeSlot}`,
+  );
 }
 
 export function giveawayCommand(
@@ -377,7 +471,10 @@ export function giveawayCommand(
   q?: number,
 ): boolean {
   const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(
+    script,
+    `giveaway ${tradeSlot} ${fp.name}`,
+  );
   if (!ok) return false;
   scheduleBagRefresh();
   return true;
@@ -390,7 +487,7 @@ export function tradePurchaseCommand(
   quantity: number,
 ): boolean {
   const script = buildTradePurchaseScript(targetId, tradeSlot, rid, quantity);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(script, `trade-buy ${tradeSlot}`);
   if (!ok) return false;
   scheduleBagRefresh();
   return true;
@@ -403,7 +500,7 @@ export function tradeFulfillCommand(
   quantity: number,
 ): boolean {
   const script = buildTradeFulfillScript(targetId, tradeSlot, rid, quantity);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(script, `trade-sell ${tradeSlot}`);
   if (!ok) return false;
   scheduleBagRefresh();
   return true;
@@ -447,7 +544,7 @@ export function tradeRepriceCommand(
       ? listed
       : undefined,
   );
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(script, `trade-reprice ${tradeSlot}`);
   if (!ok) return false;
   if (listed?.name) {
     rememberTradePrice(listed.name, newPrice, listed.q ?? 1);
@@ -463,7 +560,10 @@ export function tradeListCommand(
   q?: number,
 ): boolean {
   const script = buildTradeListScript(fp, tradeSlot, price, q);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(
+    script,
+    `trade-list ${tradeSlot} ${fp.name}`,
+  );
   if (!ok) return false;
   rememberTradePrice(fp.name, price, q ?? fp.q ?? 1);
   scheduleBagRefresh();
@@ -471,15 +571,15 @@ export function tradeListCommand(
 }
 
 export function tradeShowCommand(): boolean {
-  return emitObserverCommand(buildTradeShowScript());
+  return emitObserverCommand(buildTradeShowScript(), "trade-show");
 }
 
 export function tradeHideCommand(): boolean {
-  return emitObserverCommand(buildTradeHideScript());
+  return emitObserverCommand(buildTradeHideScript(), "trade-hide");
 }
 
 export function merchantCloseCommand(): boolean {
-  const ok = emitObserverCommand(buildMerchantCloseScript());
+  const ok = emitObserverCommand(buildMerchantCloseScript(), "merchant-close");
   if (!ok) return false;
   scheduleBagRefresh();
   return true;
@@ -487,85 +587,8 @@ export function merchantCloseCommand(): boolean {
 
 export function merchantOpenCommand(invSlot?: number): boolean {
   const script = buildMerchantOpenScript(invSlot);
-  const ok = emitObserverCommand(script);
+  const ok = emitObserverCommand(script, "merchant-open");
   if (!ok) return false;
   scheduleBagRefresh();
   return true;
-}
-
-/** Optional level for wishlist on upgrade/compound catalog items. */
-export function promptWishlistLevel(itemName: string): number | null {
-  const G = getG();
-  const def = G && G.items && G.items[itemName];
-  const d = def as { upgrade?: boolean; compound?: boolean } | undefined;
-  if (!d || (!d.upgrade && !d.compound)) return 0;
-  const raw = window.prompt(
-    `Wishlist level for ${itemName} (0–12, compound max 7):`,
-    "0",
-  );
-  if (raw == null || String(raw).trim() === "") return null;
-  const n = parseInt(String(raw).trim(), 10);
-  if (!Number.isFinite(n) || n < 0 || n > 12) {
-    window.alert("Enter a level from 0 to 12.");
-    return null;
-  }
-  return n;
-}
-
-/** Quantity prompt for buying or fulfilling stackable trade listings. */
-export function promptTradeQuantity(
-  maxQ?: number,
-  itemName?: string,
-): number | null {
-  const cap =
-    maxQ != null && Number(maxQ) > 0 ? Number(maxQ) | 0 : undefined;
-  const hint = itemName
-    ? cap != null
-      ? `Quantity for ${itemName} (1–${cap}):`
-      : `Quantity for ${itemName}:`
-    : cap != null
-      ? `Quantity (1–${cap}):`
-      : "Quantity:";
-  const raw = window.prompt(hint, "1");
-  if (raw == null || String(raw).trim() === "") return null;
-  const n = parseInt(String(raw).replace(/,/g, ""), 10);
-  if (!Number.isFinite(n) || n <= 0) {
-    window.alert("Enter a positive quantity.");
-    return null;
-  }
-  if (cap != null && n > cap) {
-    window.alert(`Maximum quantity is ${cap}.`);
-    return null;
-  }
-  return n;
-}
-
-/** Duration prompt for listing a giveaway on a trade slot. */
-export function promptGiveawayMinutes(defaultMins = 60): number | null {
-  const raw = window.prompt(
-    "Giveaway duration in minutes:",
-    String(defaultMins > 0 ? defaultMins : 60),
-  );
-  if (raw == null || String(raw).trim() === "") return null;
-  const n = parseInt(String(raw).replace(/,/g, ""), 10);
-  if (!Number.isFinite(n) || n <= 0) {
-    window.alert("Enter a positive number of minutes.");
-    return null;
-  }
-  return n;
-}
-
-/** Simple gold price prompt for listing items on trade slots. */
-export function promptTradePrice(itemName?: string): number | null {
-  const hint = itemName
-    ? `List ${itemName} — price in gold:`
-    : "List item — price in gold:";
-  const raw = window.prompt(hint, itemName ? defaultTradePrice(itemName) : "");
-  if (raw == null || String(raw).trim() === "") return null;
-  const n = parseInt(String(raw).replace(/,/g, ""), 10);
-  if (!Number.isFinite(n) || n <= 0) {
-    window.alert("Enter a positive gold amount.");
-    return null;
-  }
-  return n;
 }

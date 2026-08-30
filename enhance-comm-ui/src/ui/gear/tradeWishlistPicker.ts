@@ -3,11 +3,11 @@
  */
 
 import { getG } from "../../host/al";
+import { wishlistCommand } from "../../host/tradeCommands";
 import {
-  promptTradePrice,
-  promptWishlistLevel,
-  wishlistCommand,
-} from "../../host/tradeCommands";
+  showTradePriceDialog,
+  showWishlistLevelDialog,
+} from "../trade/tradePromptDialog";
 import { formatTradeSlotLabel } from "../../lib/tradeSlots";
 import { itemIconHtml } from "../../lib/gameIcon";
 import { ensureTradeWishlistPickerCss } from "./tradeWishlistPickerCss";
@@ -77,11 +77,25 @@ function clampPosition(el: HTMLElement, clientX: number, clientY: number): void 
 
 function pickItem(tradeSlot: string, itemKey: string): void {
   hidePicker();
-  const price = promptTradePrice(itemKey);
-  if (price == null) return;
-  const level = promptWishlistLevel(itemKey);
-  if (level == null) return;
-  wishlistCommand(tradeSlot, itemKey, price, 1, level);
+  void (async () => {
+    const obs = window.observing;
+    const price = await showTradePriceDialog({
+      mode: "wishlist",
+      itemName: itemKey,
+      slots: obs?.slots,
+    });
+    if (price == null) return;
+    const G = getG();
+    const def = G && G.items && G.items[itemKey];
+    const d = def as { upgrade?: boolean; compound?: boolean } | undefined;
+    let level = 0;
+    if (d && (d.upgrade || d.compound)) {
+      const picked = await showWishlistLevelDialog(itemKey);
+      if (picked == null) return;
+      level = picked;
+    }
+    wishlistCommand(tradeSlot, itemKey, price, 1, level);
+  })();
 }
 
 function renderPage(
