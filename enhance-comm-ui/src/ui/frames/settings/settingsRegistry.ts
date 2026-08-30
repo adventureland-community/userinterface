@@ -19,11 +19,15 @@ import {
   InGameSettingsPane,
   countInGameSettingsMatches,
 } from "./inGameSettingsPane";
+import {
+  BagSettingsPane,
+  countBagSettingsMatches,
+} from "./bagSettingsPane";
 import { e } from "../../../host/react";
 import type { PanelId, PanelPos } from "../../../lib/layout";
 
 export type SettingsPaneId =
-  "commUi" | "abilityTimeline" | "drawings" | "commHud";
+  "commUi" | "abilityTimeline" | "drawings" | "commHud" | "bag";
 
 export type SettingsPaneRenderProps = {
   query: string;
@@ -80,6 +84,14 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       "Map drawings, rings, labels, debug lines, and per-ability appearance overrides.",
     countMatches: countInGameSettingsMatches,
     render: (props) => e(InGameSettingsPane, { query: props.query }),
+  },
+  {
+    id: "bag",
+    label: "Bag",
+    description:
+      "Inventory sort rules for the bag panel Sort button on the watched character.",
+    countMatches: countBagSettingsMatches,
+    render: (props) => e(BagSettingsPane, { query: props.query }),
   },
   {
     id: "commHud",

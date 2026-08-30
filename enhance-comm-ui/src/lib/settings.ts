@@ -34,6 +34,10 @@ import {
   normalizeAbilityTimelineOrient,
   type AbilityTimelinePrefs,
 } from "../instance/abilityTimelinePrefs";
+import {
+  normalizeBagSortPrefs,
+  type BagSortPrefs,
+} from "./bagSortPrefs";
 import { applyAbilityTimelineOrientFrame } from "./abilityTimelineFrame";
 import { LAYOUT_FRAME_REV } from "./layoutFrameMigrations";
 import {
@@ -204,6 +208,8 @@ export type CommUiSettings = {
   minimapBg: MinimapBgMode;
   /** Ability timeline geometry + chrome (legacy orient/display scalars migrate in). */
   abilityTimeline?: Partial<AbilityTimelinePrefs>;
+  /** Bag sort button rules (Settings → Bag). */
+  bagSort?: Partial<BagSortPrefs>;
   /** One-shot frame migrations; bump LAYOUT_FRAME_REV when adding migrators. */
   layoutRev?: number;
 };
@@ -554,6 +560,7 @@ function migrate(parsed: any): CommUiSettings {
         : MINIMAP_ZOOM_DEFAULT,
     ),
     minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
+    bagSort: normalizeBagSortPrefs(parsed.bagSort),
   };
 
   // Legacy: finished/skipped intro before changelog tracking — treat current

@@ -27,6 +27,8 @@ import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { installBagDragDrop } from "../bag/bagDragDrop";
 import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
 import "../bag/registerBagMenuProviders";
+import { bagSortCommand, isBagSortRunning } from "../../host/bagSortCommands";
+import { canEditObservedBag } from "../../host/gearObserved";
 
 const HOST_ID = "bottomleftcorner";
 
@@ -159,6 +161,9 @@ function BagSyncChrome(props: {
   refreshKind: "server" | "local" | null;
   hasSnapshot: boolean;
   commandPending: boolean;
+  canSort: boolean;
+  sortRunning: boolean;
+  onSort?: () => void;
 }): any {
   const React = getReact();
   const {
@@ -169,6 +174,9 @@ function BagSyncChrome(props: {
     refreshKind,
     hasSnapshot,
     commandPending,
+    canSort,
+    sortRunning,
+    onSort,
   } = props;
   const [now, setNow] = React.useState(() => Date.now());
 
@@ -205,6 +213,8 @@ function BagSyncChrome(props: {
     title =
       "Last Refresh reconnected the observer and loaded a fresh welcome snapshot.";
   }
+
+  const busy = refreshing || commandPending || sortRunning;
 
   return e(
     "div",
@@ -243,6 +253,36 @@ function BagSyncChrome(props: {
       },
       label,
     ),
+    canSort
+      ? e(
+          "button",
+          {
+            type: "button",
+            disabled: busy,
+            title:
+              "Sort inventory on the watched character (configure rules in Settings → Bag). Uses swap()/imove — may take several moves.",
+            onClick: (ev: any) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              if (onSort) onSort();
+            },
+            style: {
+              flexShrink: 0,
+              cursor: busy ? "wait" : "pointer",
+              fontSize: TYPE.secondary,
+              lineHeight: "1.2",
+              padding: "3px 8px",
+              minHeight: "26px",
+              margin: 0,
+              border: "1px solid #666",
+              background: busy ? "#1a1a1a" : "#222",
+              color: busy ? "#777" : "#ddd",
+              ...PIXEL_TEXT,
+            },
+          },
+          sortRunning ? "Sorting…" : "Sort",
+        )
+      : null,
     e(
       "button",
       {
@@ -301,6 +341,9 @@ export function BagPanel(props: BagPanelProps): any {
   const [commandPending, setCommandPending] = React.useState(() =>
     isObserverCommandPending(),
   );
+  const [sortRunning, setSortRunning] = React.useState(() =>
+    isBagSortRunning(),
+  );
 
   React.useEffect(() => {
     attachInventoryToMount(mountRef.current);
@@ -315,6 +358,7 @@ export function BagPanel(props: BagPanelProps): any {
     });
     const unsubPending = subscribeObserverCommandPending(() => {
       setCommandPending(isObserverCommandPending());
+      setSortRunning(isBagSortRunning());
     });
     const host = ensureInventoryHost();
     const unsubMenu = installBagItemContextMenu(host);
@@ -330,6 +374,16 @@ export function BagPanel(props: BagPanelProps): any {
       if (h) document.body.appendChild(h);
     };
   }, []);
+
+  const canSort = canEditObservedBag();
+
+  React.useEffect(() => {
+    if (!sortRunning) return;
+    const id = window.setInterval(() => {
+      if (!isBagSortRunning()) setSortRunning(false);
+    }, 400);
+    return () => window.clearInterval(id);
+  }, [sortRunning]);
 
   React.useLayoutEffect(() => {
     attachInventoryToMount(mountRef.current);
@@ -369,6 +423,11 @@ export function BagPanel(props: BagPanelProps): any {
           refreshKind,
           hasSnapshot,
           commandPending,
+          canSort,
+          sortRunning,
+          onSort: () => {
+            if (bagSortCommand()) setSortRunning(true);
+          },
         })
       : null,
     showDummy ? e(BagDummy) : null,

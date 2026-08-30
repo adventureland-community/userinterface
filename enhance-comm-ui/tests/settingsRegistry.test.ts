@@ -10,8 +10,9 @@ import {
 describe("settingsRegistry", () => {
   it("exposes the live pane registry", () => {
     assert.equal(defaultSettingsPaneId(), "commUi");
-    assert.equal(SETTINGS_PANES.length, 4);
+    assert.equal(SETTINGS_PANES.length, 5);
     assert.equal(getSettingsPane("commUi").label, "Comm UI");
+    assert.equal(getSettingsPane("bag").label, "Bag");
     assert.equal(getSettingsPane("drawings").label, "Drawings");
     assert.equal(getSettingsPane("commHud").label, "Comm HUD");
   });
@@ -22,6 +23,10 @@ describe("settingsRegistry", () => {
     assert.equal(introCounts.abilityTimeline, 0);
     assert.equal(introCounts.drawings, 0);
     assert.equal(introCounts.commHud, 0);
+    assert.equal(introCounts.bag, 0);
+
+    const sortCounts = settingsPaneMatchCounts("sort bag");
+    assert.ok(sortCounts.bag > 0);
 
     const iconCounts = settingsPaneMatchCounts("icon");
     assert.equal(iconCounts.commUi, 0);
@@ -51,5 +56,6 @@ describe("settingsRegistry", () => {
     assert.equal(counts.abilityTimeline, 0);
     assert.equal(counts.drawings, 0);
     assert.equal(counts.commHud, 0);
+    assert.equal(counts.bag, 0);
   });
 });
