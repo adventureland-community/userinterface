@@ -74,6 +74,8 @@ export type EntityLike = {
   esize?: number;
   /** Wallet gold. Full sync / welcome only — stranger packets omit it. */
   gold?: number;
+  /** Trade sales tax rate (0–1). Full sync on self / observed character. */
+  tax?: number;
   /** Drop luck multiplier (`1 + xluck/100`). Full sync / welcome only. */
   luckm?: number;
   /** Gold-find multiplier (`1 + xgold/100`). Full sync / welcome only. */
