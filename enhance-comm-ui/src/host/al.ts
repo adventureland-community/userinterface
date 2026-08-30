@@ -4,6 +4,7 @@ import {
   markObserverCommandPending,
   scheduleObserverCommandPendingClear,
 } from "./observerCommandPending";
+import { injectCommLog } from "./commandScript";
 
 export function getG(): GLike | undefined {
   return window.G;
@@ -210,14 +211,19 @@ export function getSocket(): SocketLike | undefined {
 
 /**
  * Observer COMMAND path: `/comm` → `o:command` → observed player's `code_eval`.
+ * Optional `label` prefixes bot game_log with `[ECU/comm]` for docker log grep.
  * Returns false if socket missing / empty code.
  */
-export function emitObserverCommand(code: string): boolean {
+export function emitObserverCommand(code: string, label?: string): boolean {
   const sock = getSocket();
   if (!sock || typeof sock.emit !== "function") return false;
   const trimmed = String(code || "").trim();
   if (!trimmed) return false;
-  sock.emit("o:command", trimmed);
+  const payload =
+    label && String(label).trim()
+      ? injectCommLog(trimmed, String(label).trim())
+      : trimmed;
+  sock.emit("o:command", payload);
   markObserverCommandPending();
   scheduleObserverCommandPendingClear();
   return true;

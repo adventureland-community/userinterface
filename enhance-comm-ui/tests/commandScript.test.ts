@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { wrapCommandScript } from "../src/host/commandScript";
+import {
+  ECU_COMM_TAG,
+  commLogText,
+  injectCommLog,
+  wrapCommandScript,
+} from "../src/host/commandScript";
 import { buildSendScript, buildTakeScript } from "../src/host/mail/commands";
 import { buildSendItemScript } from "../src/host/sendItem";
 
@@ -11,6 +16,17 @@ describe("commandScript", () => {
     const s = wrapCommandScript(`if(1){return;}game_log("ok");`);
     assert.match(s, WRAPPED);
     assert.match(s, /return;/);
+  });
+
+  it("commLogText prefixes docker-grep tag", () => {
+    assert.equal(commLogText("trade-list trade1 hpot0"), "[ECU/comm] trade-list trade1 hpot0");
+  });
+
+  it("injectCommLog prepends start marker to wrapped scripts", () => {
+    const wrapped = wrapCommandScript(`await trade(0,"trade1",100,1);`);
+    const tagged = injectCommLog(wrapped, "trade-list trade1 hpot0");
+    assert.match(tagged, new RegExp(ECU_COMM_TAG.replace(/[[\]]/g, "\\$&")));
+    assert.match(tagged, /trade-list trade1 hpot0/);
   });
 });
 
