@@ -706,7 +706,8 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .ecu-info-dialog-adopted .ecu-dialog-close {
   display: none !important;
 }
-#comm-ui .comm-pos-panel .ecu-chip {
+#comm-ui .comm-pos-panel .ecu-chip,
+#comm-ui .comm-pos-panel .ecu-roster-buffs {
   pointer-events: auto;
 }
 /* Fill-frame HUD (Mail, Instance, Timeline, …): clip inside the body so
