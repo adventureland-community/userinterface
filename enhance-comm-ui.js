@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.0
+// @version      0.9.1
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7895,6 +7895,26 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.9.1",
+      title: "0.9.1",
+      date: "2026-09-02",
+      summary: "Party roster Buffs mode toggle works again on click-through HUD shells.",
+      highlights: [
+        {
+          label: "Buffs mode button",
+          detail: "The gold Buffs \xB7 Auto/Off chip on the party roster accepts clicks again \u2014 cycle All, Auto, Obs, Compact, Shared, and Off.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Roster hit target",
+          detail: "ecu-roster-buffs joins ecu-chip on the panel pointer-events allowlist so the mode chip is not buried under a click-through shell.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.9.0",
       title: "0.9.0",
       date: "2026-08-30",
@@ -12374,7 +12394,8 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui .ecu-info-dialog-adopted .ecu-dialog-close {
   display: none !important;
 }
-#comm-ui .comm-pos-panel .ecu-chip {
+#comm-ui .comm-pos-panel .ecu-chip,
+#comm-ui .comm-pos-panel .ecu-roster-buffs {
   pointer-events: auto;
 }
 /* Fill-frame HUD (Mail, Instance, Timeline, \u2026): clip inside the body so
@@ -18976,8 +18997,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.0" : "unknown";
-    const builtAt = true ? "2026-08-30T19:40:13.376Z" : "unknown";
+    const version = true ? "0.9.1" : "unknown";
+    const builtAt = true ? "2026-09-02T09:26:36.810Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

@@ -100,6 +100,28 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.1",
+    title: "0.9.1",
+    date: "2026-09-02",
+    summary: "Party roster Buffs mode toggle works again on click-through HUD shells.",
+    highlights: [
+      {
+        label: "Buffs mode button",
+        detail:
+          "The gold Buffs · Auto/Off chip on the party roster accepts clicks again — cycle All, Auto, Obs, Compact, Shared, and Off.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Roster hit target",
+        detail:
+          "ecu-roster-buffs joins ecu-chip on the panel pointer-events allowlist so the mode chip is not buried under a click-through shell.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.0",
     title: "0.9.0",
     date: "2026-08-30",
