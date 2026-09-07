@@ -269,10 +269,13 @@ export function CommUI(props: CommUIProps): any {
     setMeterAddOpen,
     setVisible,
     getPanelVisible: visible,
+    // Notes modal is deferred while a tour is active (see render below), so do
+    // not treat a pending serverNotesMode as blocked mid-tour — otherwise the
+    // bag spotlight hole lands on the update backdrop and the chip is dead.
     toursBlocked:
       setupWizardOpen ||
       whatsNewEntries.length > 0 ||
-      serverNotesMode != null,
+      (serverNotesMode != null && !tourActiveRef.current),
 
     setSetupWizardOpen,
     isObserving:
@@ -640,7 +643,7 @@ export function CommUI(props: CommUIProps): any {
         }))
       : null,
 
-    !setupWizardOpen && whatsNewEntries.length > 0
+    !setupWizardOpen && !tourActive && whatsNewEntries.length > 0
       ? e(CommModalPortal, null, e(CommUIWhatsNew, {
           entries: whatsNewEntries,
           browseAll: whatsNewBrowseAll,
@@ -651,7 +654,10 @@ export function CommUI(props: CommUIProps): any {
         }))
       : null,
 
+    // Defer update notes while the spotlight tour needs chrome clicks (bag, …).
+    // Mode stays set so the modal returns after the tour ends.
     !setupWizardOpen &&
+    !tourActive &&
     whatsNewEntries.length === 0 &&
     serverNotesMode
       ? e(CommModalPortal, null, e(CommUIUpdateNotes, {

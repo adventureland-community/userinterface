@@ -1,7 +1,11 @@
 import { e } from "../../host/react";
-import { getALServerTime, getTimeUntil } from "../../lib/format";
+import { getALServerTime } from "../../lib/format";
 import type { ServerInfoLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import {
+  listServerEventChips,
+  readServerBlessing,
+} from "./serverInfoModel";
 
 export type ServerInfoProps = {
   S?: ServerInfoLike;
@@ -24,9 +28,8 @@ const chipStyle: Record<string, any> = {
 export function ServerInfo(props: ServerInfoProps): any {
   const timeOffset = props.S?.schedule?.time_offset ?? 0;
   const night = !!props.S?.schedule?.night;
-  const events = Object.entries(props.S ?? {}).filter(
-    (entry) => entry[0] !== "schedule",
-  );
+  const events = listServerEventChips(props.S);
+  const blessing = readServerBlessing(props.S);
 
   const region = props.serverRegion ?? "";
   const ident = props.serverIdentifier ?? "";
@@ -71,16 +74,48 @@ export function ServerInfo(props: ServerInfoProps): any {
         getALServerTime(timeOffset) + (night ? " night" : " day"),
       ),
     ),
+    blessing
+      ? e(
+          "div",
+          {
+            key: "blessing",
+            title: `Server blessed by ${blessing.by}`,
+            style: {
+              ...chipStyle,
+              borderColor: "#8F70D8",
+            },
+          },
+          e(
+            "div",
+            {
+              style: {
+                fontSize: TYPE.chromeMeta,
+                color: "#cbb6f0",
+              },
+            },
+            `Blessed · ${blessing.by}`,
+          ),
+          e(
+            "div",
+            {
+              style: {
+                fontSize: TYPE.chromeMeta,
+                color: "#8F70D8",
+                fontVariantNumeric: "tabular-nums",
+              },
+            },
+            blessing.remainLabel,
+          ),
+        )
+      : null,
     ...events.map((event) => {
-      const live = !!event[1]?.live;
-      const until = event[1]?.event ? getTimeUntil(event[1].event) : "";
       return e(
         "div",
         {
-          key: event[0],
+          key: event.id,
           style: {
             ...chipStyle,
-            borderColor: live ? "#85c76b" : "#555",
+            borderColor: event.live ? "#85c76b" : "#555",
           },
         },
         e(
@@ -88,21 +123,21 @@ export function ServerInfo(props: ServerInfoProps): any {
           {
             style: {
               fontSize: TYPE.chromeMeta,
-              color: live ? "#b6e3a4" : "#eee",
+              color: event.live ? "#b6e3a4" : "#eee",
             },
           },
-          event[0],
+          event.id,
         ),
         e(
           "div",
           {
             style: {
               fontSize: TYPE.chromeMeta,
-              color: live ? "#85c76b" : "rgba(255,255,255,0.55)",
+              color: event.live ? "#85c76b" : "rgba(255,255,255,0.55)",
               fontVariantNumeric: "tabular-nums",
             },
           },
-          live ? "live" : until,
+          event.live ? "live" : event.until,
         ),
       );
     }),
