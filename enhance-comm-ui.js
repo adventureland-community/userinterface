@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.2
+// @version      0.9.3
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7894,6 +7894,31 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.3",
+      title: "0.9.3",
+      date: "2026-09-08",
+      summary: "Server info shows the 10-year anniversary season with name, tip text, and a clickable guide \u2014 not a bare anniversary label.",
+      highlights: [
+        {
+          label: "Anniversary chip",
+          detail: "Seasonal S flags (anniversary, halloween, \u2026) resolve through G.events \u2014 title, announcement blurb, event icon, and click opens the stock guide.",
+          kind: "feature"
+        },
+        {
+          label: "Event chip labels",
+          detail: "Live/upcoming bosses and joinables use G.events / G.monsters names, map when live, and spawn countdowns when waiting.",
+          kind: "improve"
+        }
+      ],
+      items: [
+        {
+          label: "Season vs event rows",
+          detail: "Truthy seasonal flags stay separate from live/spawn event objects so empty second lines do not come back.",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.2",
       title: "0.9.2",
@@ -19022,8 +19047,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.2" : "unknown";
-    const builtAt = true ? "2026-09-07T05:49:34.369Z" : "unknown";
+    const version = true ? "0.9.3" : "unknown";
+    const builtAt = true ? "2026-09-07T23:32:34.562Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -46994,12 +47019,37 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/serverInfoModel.ts
+  function eventsTable(G) {
+    const src = G || getG();
+    return (src == null ? void 0 : src.events) || {};
+  }
+  function monstersTable(G) {
+    const src = G || getG();
+    return (src == null ? void 0 : src.monsters) || {};
+  }
   function isServerEventEntry(value) {
     if (!value || typeof value !== "object") return false;
     const row3 = value;
-    return row3.live != null || row3.event != null;
+    return row3.live != null || row3.event != null || row3.spawn != null;
   }
-  function listServerEventChips(S) {
+  function untilFromRow(row3) {
+    if (typeof row3.event === "string" && row3.event) {
+      return getTimeUntil(row3.event);
+    }
+    if (row3.spawn != null) {
+      const raw = row3.spawn instanceof Date ? row3.spawn.toISOString() : typeof row3.spawn === "string" || typeof row3.spawn === "number" ? String(row3.spawn) : "";
+      if (raw) return getTimeUntil(raw);
+    }
+    return "";
+  }
+  function eventLabel(id, G) {
+    const ev = eventsTable(G)[id];
+    if (ev == null ? void 0 : ev.name) return ev.name;
+    const mon = monstersTable(G)[id];
+    if (mon == null ? void 0 : mon.name) return mon.name;
+    return id;
+  }
+  function listServerEventChips(S, G) {
     if (!S) return [];
     const out = [];
     const keys = Object.keys(S);
@@ -47010,10 +47060,56 @@ ${parts.map(cssSlice).join("\n")}
       const value = S[id];
       if (!isServerEventEntry(value)) continue;
       const row3 = value;
+      const live2 = !!row3.live;
+      const until = untilFromRow(row3);
+      const label = eventLabel(id, G);
+      let detail = "";
+      if (live2) {
+        detail = row3.map ? `live \xB7 ${row3.map}` : "live";
+      } else {
+        detail = until ? `in ${until}` : "upcoming";
+      }
       out.push({
         id,
-        live: !!row3.live,
-        until: row3.event ? getTimeUntil(row3.event) : ""
+        label,
+        live: live2,
+        detail,
+        title: live2 ? `${label} is live` + (row3.map ? ` on ${row3.map}` : "") : until ? `${label} in ${until}` : `${label} upcoming`
+      });
+    }
+    return out;
+  }
+  function listServerSeasonChips(S, G) {
+    if (!S) return [];
+    const events = eventsTable(G);
+    const out = [];
+    const keys = Object.keys(S);
+    for (let i = 0; i < keys.length; i++) {
+      const id = keys[i];
+      if (id === "schedule") continue;
+      if (id === "blessed_minutes" || id === "blessed_by") continue;
+      const value = S[id];
+      if (isServerEventEntry(value)) continue;
+      if (!value) continue;
+      const def = events[id];
+      if (!def || def.type !== "seasonal") continue;
+      const announce = def.announcement;
+      const label = (announce == null ? void 0 : announce.title) || def.name || id;
+      const detail = (announce == null ? void 0 : announce.text) || "active";
+      const titleParts = [
+        def.name || label,
+        announce == null ? void 0 : announce.text,
+        def.duration ? `typical window ~${formatDurationCompact(def.duration)}` : ""
+      ].filter(Boolean);
+      out.push({
+        id,
+        label,
+        detail,
+        title: titleParts.join(" \u2014 "),
+        accent: (announce == null ? void 0 : announce.color) || (announce == null ? void 0 : announce.accent),
+        sprite: def.sprite,
+        modal: def.modal,
+        docsUrl: `/docs/ref/${id}`
       });
     }
     return out;
@@ -47043,11 +47139,23 @@ ${parts.map(cssSlice).join("\n")}
     whiteSpace: "nowrap",
     ...PIXEL_TEXT
   };
+  function openSeasonGuide(modal, docsUrl) {
+    const openGuide = window.open_guide;
+    if (typeof openGuide === "function") {
+      openGuide(modal || docsUrl.replace(/^\/docs\/ref\//, "event-"), docsUrl);
+      return;
+    }
+    try {
+      window.open(docsUrl, "_blank", "noopener,noreferrer");
+    } catch (e2) {
+    }
+  }
   function ServerInfo(props) {
     var _a, _b, _c, _d, _e, _f, _g;
     const timeOffset = (_c = (_b = (_a = props.S) == null ? void 0 : _a.schedule) == null ? void 0 : _b.time_offset) != null ? _c : 0;
     const night = !!((_e = (_d = props.S) == null ? void 0 : _d.schedule) == null ? void 0 : _e.night);
     const events = listServerEventChips(props.S);
+    const seasons = listServerSeasonChips(props.S);
     const blessing = readServerBlessing(props.S);
     const region = (_f = props.serverRegion) != null ? _f : "";
     const ident = (_g = props.serverIdentifier) != null ? _g : "";
@@ -47123,11 +47231,67 @@ ${parts.map(cssSlice).join("\n")}
           blessing.remainLabel
         )
       ) : null,
+      ...seasons.map((season) => {
+        const accent = season.accent || "#F0B742";
+        return e(
+          "button",
+          {
+            key: "season-" + season.id,
+            type: "button",
+            title: season.title + " \xB7 click for guide",
+            onClick: () => openSeasonGuide(season.modal, season.docsUrl),
+            style: {
+              ...chipStyle,
+              borderColor: accent,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              textAlign: "left",
+              font: "inherit"
+            }
+          },
+          season.sprite ? e(GameIcon, {
+            id: season.sprite,
+            kind: "item",
+            size: 22,
+            title: season.label
+          }) : null,
+          e(
+            "div",
+            null,
+            e(
+              "div",
+              {
+                style: {
+                  fontSize: TYPE.chromeMeta,
+                  color: accent
+                }
+              },
+              season.label
+            ),
+            e(
+              "div",
+              {
+                style: {
+                  fontSize: TYPE.chromeMeta,
+                  color: "rgba(255,255,255,0.72)",
+                  maxWidth: "220px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis"
+                }
+              },
+              season.detail
+            )
+          )
+        );
+      }),
       ...events.map((event) => {
         return e(
           "div",
           {
             key: event.id,
+            title: event.title,
             style: {
               ...chipStyle,
               borderColor: event.live ? "#85c76b" : "#555"
@@ -47141,7 +47305,7 @@ ${parts.map(cssSlice).join("\n")}
                 color: event.live ? "#b6e3a4" : "#eee"
               }
             },
-            event.id
+            event.label
           ),
           e(
             "div",
@@ -47152,7 +47316,7 @@ ${parts.map(cssSlice).join("\n")}
                 fontVariantNumeric: "tabular-nums"
               }
             },
-            event.live ? "live" : event.until
+            event.detail
           )
         );
       })

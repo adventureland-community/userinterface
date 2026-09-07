@@ -100,6 +100,35 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.3",
+    title: "0.9.3",
+    date: "2026-09-08",
+    summary:
+      "Server info shows the 10-year anniversary season with name, tip text, and a clickable guide — not a bare anniversary label.",
+    highlights: [
+      {
+        label: "Anniversary chip",
+        detail:
+          "Seasonal S flags (anniversary, halloween, …) resolve through G.events — title, announcement blurb, event icon, and click opens the stock guide.",
+        kind: "feature",
+      },
+      {
+        label: "Event chip labels",
+        detail:
+          "Live/upcoming bosses and joinables use G.events / G.monsters names, map when live, and spawn countdowns when waiting.",
+        kind: "improve",
+      },
+    ],
+    items: [
+      {
+        label: "Season vs event rows",
+        detail:
+          "Truthy seasonal flags stay separate from live/spawn event objects so empty second lines do not come back.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.2",
     title: "0.9.2",
     date: "2026-09-07",
