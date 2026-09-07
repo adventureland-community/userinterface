@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.1
+// @version      0.9.2
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7894,6 +7894,31 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.2",
+      title: "0.9.2",
+      date: "2026-09-07",
+      summary: "Tour bag step works with server update notes open, and patron blessings show correctly on Server info.",
+      highlights: [
+        {
+          label: "Tour vs update notes",
+          detail: "Adventure.land server update notes wait until the guided tour finishes \u2014 the Bag spotlight is clickable again instead of hitting the update backdrop.",
+          kind: "fix"
+        },
+        {
+          label: "Server blessing chip",
+          detail: "Patron blessings (S.blessed_minutes / blessed_by) show as Blessed \xB7 name with remaining time, instead of empty event boxes.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Server event filter",
+          detail: "Server info only lists live/upcoming event objects \u2014 seasonal flags and blessing scalars no longer become blank chips.",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.1",
       title: "0.9.1",
@@ -18997,8 +19022,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.1" : "unknown";
-    const builtAt = true ? "2026-09-02T09:26:36.810Z" : "unknown";
+    const version = true ? "0.9.2" : "unknown";
+    const builtAt = true ? "2026-09-07T05:49:34.369Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -46968,6 +46993,45 @@ ${parts.map(cssSlice).join("\n")}
     return renderInstanceRun(model, cfg.progressMode === "phase");
   }
 
+  // src/ui/frames/serverInfoModel.ts
+  function isServerEventEntry(value) {
+    if (!value || typeof value !== "object") return false;
+    const row3 = value;
+    return row3.live != null || row3.event != null;
+  }
+  function listServerEventChips(S) {
+    if (!S) return [];
+    const out = [];
+    const keys = Object.keys(S);
+    for (let i = 0; i < keys.length; i++) {
+      const id = keys[i];
+      if (id === "schedule") continue;
+      if (id === "blessed_minutes" || id === "blessed_by") continue;
+      const value = S[id];
+      if (!isServerEventEntry(value)) continue;
+      const row3 = value;
+      out.push({
+        id,
+        live: !!row3.live,
+        until: row3.event ? getTimeUntil(row3.event) : ""
+      });
+    }
+    return out;
+  }
+  function readServerBlessing(S) {
+    if (!S) return null;
+    const minutesRaw = S.blessed_minutes;
+    const minutes = typeof minutesRaw === "number" ? minutesRaw : typeof minutesRaw === "string" ? Number(minutesRaw) : NaN;
+    if (!(minutes > 0)) return null;
+    const byRaw = S.blessed_by;
+    const by = typeof byRaw === "string" && byRaw.trim() ? byRaw.trim() : "unknown";
+    return {
+      by,
+      minutes: Math.floor(minutes),
+      remainLabel: formatDurationCompact(minutes * 60) || `${Math.floor(minutes)}m`
+    };
+  }
+
   // src/ui/frames/ServerInfo.ts
   var chipStyle = {
     background: "rgba(0, 0, 0, 0.82)",
@@ -46980,14 +47044,13 @@ ${parts.map(cssSlice).join("\n")}
     ...PIXEL_TEXT
   };
   function ServerInfo(props) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g;
     const timeOffset = (_c = (_b = (_a = props.S) == null ? void 0 : _a.schedule) == null ? void 0 : _b.time_offset) != null ? _c : 0;
     const night = !!((_e = (_d = props.S) == null ? void 0 : _d.schedule) == null ? void 0 : _e.night);
-    const events = Object.entries((_f = props.S) != null ? _f : {}).filter(
-      (entry) => entry[0] !== "schedule"
-    );
-    const region = (_g = props.serverRegion) != null ? _g : "";
-    const ident = (_h = props.serverIdentifier) != null ? _h : "";
+    const events = listServerEventChips(props.S);
+    const blessing = readServerBlessing(props.S);
+    const region = (_f = props.serverRegion) != null ? _f : "";
+    const ident = (_g = props.serverIdentifier) != null ? _g : "";
     const serverLabel3 = `${region} ${ident}`.trim() || "\u2014";
     return e(
       "div",
@@ -47028,17 +47091,46 @@ ${parts.map(cssSlice).join("\n")}
           getALServerTime(timeOffset) + (night ? " night" : " day")
         )
       ),
+      blessing ? e(
+        "div",
+        {
+          key: "blessing",
+          title: `Server blessed by ${blessing.by}`,
+          style: {
+            ...chipStyle,
+            borderColor: "#8F70D8"
+          }
+        },
+        e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.chromeMeta,
+              color: "#cbb6f0"
+            }
+          },
+          `Blessed \xB7 ${blessing.by}`
+        ),
+        e(
+          "div",
+          {
+            style: {
+              fontSize: TYPE.chromeMeta,
+              color: "#8F70D8",
+              fontVariantNumeric: "tabular-nums"
+            }
+          },
+          blessing.remainLabel
+        )
+      ) : null,
       ...events.map((event) => {
-        var _a2, _b2;
-        const live2 = !!((_a2 = event[1]) == null ? void 0 : _a2.live);
-        const until = ((_b2 = event[1]) == null ? void 0 : _b2.event) ? getTimeUntil(event[1].event) : "";
         return e(
           "div",
           {
-            key: event[0],
+            key: event.id,
             style: {
               ...chipStyle,
-              borderColor: live2 ? "#85c76b" : "#555"
+              borderColor: event.live ? "#85c76b" : "#555"
             }
           },
           e(
@@ -47046,21 +47138,21 @@ ${parts.map(cssSlice).join("\n")}
             {
               style: {
                 fontSize: TYPE.chromeMeta,
-                color: live2 ? "#b6e3a4" : "#eee"
+                color: event.live ? "#b6e3a4" : "#eee"
               }
             },
-            event[0]
+            event.id
           ),
           e(
             "div",
             {
               style: {
                 fontSize: TYPE.chromeMeta,
-                color: live2 ? "#85c76b" : "rgba(255,255,255,0.55)",
+                color: event.live ? "#85c76b" : "rgba(255,255,255,0.55)",
                 fontVariantNumeric: "tabular-nums"
               }
             },
-            live2 ? "live" : until
+            event.live ? "live" : event.until
           )
         );
       })
@@ -59782,7 +59874,10 @@ ${ESTIMATE_HINT}`,
       setMeterAddOpen,
       setVisible,
       getPanelVisible: visible,
-      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0 || serverNotesMode != null,
+      // Notes modal is deferred while a tour is active (see render below), so do
+      // not treat a pending serverNotesMode as blocked mid-tour — otherwise the
+      // bag spotlight hole lands on the update backdrop and the chip is dead.
+      toursBlocked: setupWizardOpen || whatsNewEntries.length > 0 || serverNotesMode != null && !tourActiveRef.current,
       setSetupWizardOpen,
       isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
       bagOpen,
@@ -60096,7 +60191,7 @@ ${ESTIMATE_HINT}`,
         onDone: () => setSetupWizardOpen(false),
         onStartTour: () => startIntroTour(false)
       })) : null,
-      !setupWizardOpen && whatsNewEntries.length > 0 ? e(CommModalPortal, null, e(CommUIWhatsNew, {
+      !setupWizardOpen && !tourActive && whatsNewEntries.length > 0 ? e(CommModalPortal, null, e(CommUIWhatsNew, {
         entries: whatsNewEntries,
         browseAll: whatsNewBrowseAll,
         onDone: () => {
@@ -60104,7 +60199,9 @@ ${ESTIMATE_HINT}`,
           setWhatsNewBrowseAll(false);
         }
       })) : null,
-      !setupWizardOpen && whatsNewEntries.length === 0 && serverNotesMode ? e(CommModalPortal, null, e(CommUIUpdateNotes, {
+      // Defer update notes while the spotlight tour needs chrome clicks (bag, …).
+      // Mode stays set so the modal returns after the tour ends.
+      !setupWizardOpen && !tourActive && whatsNewEntries.length === 0 && serverNotesMode ? e(CommModalPortal, null, e(CommUIUpdateNotes, {
         mode: serverNotesMode,
         onDone: () => setServerNotesMode(null)
       })) : null,

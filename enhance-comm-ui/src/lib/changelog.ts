@@ -100,6 +100,35 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.2",
+    title: "0.9.2",
+    date: "2026-09-07",
+    summary:
+      "Tour bag step works with server update notes open, and patron blessings show correctly on Server info.",
+    highlights: [
+      {
+        label: "Tour vs update notes",
+        detail:
+          "Adventure.land server update notes wait until the guided tour finishes — the Bag spotlight is clickable again instead of hitting the update backdrop.",
+        kind: "fix",
+      },
+      {
+        label: "Server blessing chip",
+        detail:
+          "Patron blessings (S.blessed_minutes / blessed_by) show as Blessed · name with remaining time, instead of empty event boxes.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Server event filter",
+        detail:
+          "Server info only lists live/upcoming event objects — seasonal flags and blessing scalars no longer become blank chips.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.1",
     title: "0.9.1",
     date: "2026-09-02",
