@@ -2,8 +2,10 @@ import { e } from "../../host/react";
 import { getALServerTime } from "../../lib/format";
 import type { ServerInfoLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { GameIcon } from "../chrome/GameIcon";
 import {
   listServerEventChips,
+  listServerSeasonChips,
   readServerBlessing,
 } from "./serverInfoModel";
 
@@ -24,11 +26,25 @@ const chipStyle: Record<string, any> = {
   ...PIXEL_TEXT,
 };
 
+function openSeasonGuide(modal: string | undefined, docsUrl: string): void {
+  const openGuide = (window as any).open_guide;
+  if (typeof openGuide === "function") {
+    openGuide(modal || docsUrl.replace(/^\/docs\/ref\//, "event-"), docsUrl);
+    return;
+  }
+  try {
+    window.open(docsUrl, "_blank", "noopener,noreferrer");
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Compact observe-hud status chips for server clock + live/upcoming events. */
 export function ServerInfo(props: ServerInfoProps): any {
   const timeOffset = props.S?.schedule?.time_offset ?? 0;
   const night = !!props.S?.schedule?.night;
   const events = listServerEventChips(props.S);
+  const seasons = listServerSeasonChips(props.S);
   const blessing = readServerBlessing(props.S);
 
   const region = props.serverRegion ?? "";
@@ -108,11 +124,69 @@ export function ServerInfo(props: ServerInfoProps): any {
           ),
         )
       : null,
+    ...seasons.map((season) => {
+      const accent = season.accent || "#F0B742";
+      return e(
+        "button",
+        {
+          key: "season-" + season.id,
+          type: "button",
+          title: season.title + " · click for guide",
+          onClick: () => openSeasonGuide(season.modal, season.docsUrl),
+          style: {
+            ...chipStyle,
+            borderColor: accent,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            textAlign: "left",
+            font: "inherit",
+          },
+        },
+        season.sprite
+          ? e(GameIcon, {
+              id: season.sprite,
+              kind: "item",
+              size: 22,
+              title: season.label,
+            })
+          : null,
+        e(
+          "div",
+          null,
+          e(
+            "div",
+            {
+              style: {
+                fontSize: TYPE.chromeMeta,
+                color: accent,
+              },
+            },
+            season.label,
+          ),
+          e(
+            "div",
+            {
+              style: {
+                fontSize: TYPE.chromeMeta,
+                color: "rgba(255,255,255,0.72)",
+                maxWidth: "220px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              },
+            },
+            season.detail,
+          ),
+        ),
+      );
+    }),
     ...events.map((event) => {
       return e(
         "div",
         {
           key: event.id,
+          title: event.title,
           style: {
             ...chipStyle,
             borderColor: event.live ? "#85c76b" : "#555",
@@ -126,7 +200,7 @@ export function ServerInfo(props: ServerInfoProps): any {
               color: event.live ? "#b6e3a4" : "#eee",
             },
           },
-          event.id,
+          event.label,
         ),
         e(
           "div",
@@ -137,7 +211,7 @@ export function ServerInfo(props: ServerInfoProps): any {
               fontVariantNumeric: "tabular-nums",
             },
           },
-          event.live ? "live" : event.until,
+          event.detail,
         ),
       );
     }),
