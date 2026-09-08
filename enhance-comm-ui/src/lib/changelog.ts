@@ -100,6 +100,35 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.4",
+    title: "0.9.4",
+    date: "2026-09-08",
+    summary:
+      "Anniversary Server info chip shows next featured-player countdown (and live find-target details) from S.anniversary.",
+    highlights: [
+      {
+        label: "Next anniversary round",
+        detail:
+          "When the season is active but idle, the chip shows next in Xm from S.anniversary.next (30-minute featured-player cadence).",
+        kind: "feature",
+      },
+      {
+        label: "Live featured player",
+        detail:
+          "During a round: live · name · time left, with map coordinates in the tooltip — matching stock anniversary status.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Season status shape",
+        detail:
+          "Anniversary `{ active, live, next, target, map, expires }` is no longer mistaken for a bare upcoming boss chip.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.3",
     title: "0.9.3",
     date: "2026-09-08",

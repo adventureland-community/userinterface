@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.3
+// @version      0.9.4
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -7894,6 +7894,31 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.4",
+      title: "0.9.4",
+      date: "2026-09-08",
+      summary: "Anniversary Server info chip shows next featured-player countdown (and live find-target details) from S.anniversary.",
+      highlights: [
+        {
+          label: "Next anniversary round",
+          detail: "When the season is active but idle, the chip shows next in Xm from S.anniversary.next (30-minute featured-player cadence).",
+          kind: "feature"
+        },
+        {
+          label: "Live featured player",
+          detail: "During a round: live \xB7 name \xB7 time left, with map coordinates in the tooltip \u2014 matching stock anniversary status.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Season status shape",
+          detail: "Anniversary `{ active, live, next, target, map, expires }` is no longer mistaken for a bare upcoming boss chip.",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.3",
       title: "0.9.3",
@@ -19047,8 +19072,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.3" : "unknown";
-    const builtAt = true ? "2026-09-07T23:32:34.562Z" : "unknown";
+    const version = true ? "0.9.4" : "unknown";
+    const builtAt = true ? "2026-09-08T00:12:58.639Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -47027,17 +47052,54 @@ ${parts.map(cssSlice).join("\n")}
     const src = G || getG();
     return (src == null ? void 0 : src.monsters) || {};
   }
+  function mapDisplayName3(mapKey, G) {
+    var _a, _b, _c;
+    if (!mapKey) return "";
+    const named = (_c = (_b = (_a = G || getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[mapKey]) == null ? void 0 : _c.name;
+    if (typeof named === "string" && named) return named;
+    return mapKey;
+  }
+  function formatUntilMs(at, now = Date.now()) {
+    if (typeof at !== "number" || !Number.isFinite(at)) return "";
+    const sec = (at - now) / 1e3;
+    if (!(sec > 0)) return "";
+    return formatDurationCompact(sec);
+  }
+  function formatClockMs(at) {
+    if (typeof at !== "number" || !Number.isFinite(at)) return "";
+    try {
+      return new Date(at).toLocaleString(void 0, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    } catch (e2) {
+      return "";
+    }
+  }
   function isServerEventEntry(value) {
     if (!value || typeof value !== "object") return false;
     const row3 = value;
     return row3.live != null || row3.event != null || row3.spawn != null;
+  }
+  function isSeasonStatusEntry(value, def) {
+    if (!def || def.type !== "seasonal") return false;
+    if (value === true) return true;
+    if (!value || typeof value !== "object") return false;
+    const row3 = value;
+    return row3.active != null || row3.next != null;
   }
   function untilFromRow(row3) {
     if (typeof row3.event === "string" && row3.event) {
       return getTimeUntil(row3.event);
     }
     if (row3.spawn != null) {
-      const raw = row3.spawn instanceof Date ? row3.spawn.toISOString() : typeof row3.spawn === "string" || typeof row3.spawn === "number" ? String(row3.spawn) : "";
+      if (typeof row3.spawn === "number" && Number.isFinite(row3.spawn)) {
+        return formatUntilMs(row3.spawn);
+      }
+      const raw = row3.spawn instanceof Date ? row3.spawn.toISOString() : typeof row3.spawn === "string" ? row3.spawn : "";
       if (raw) return getTimeUntil(raw);
     }
     return "";
@@ -47051,6 +47113,7 @@ ${parts.map(cssSlice).join("\n")}
   }
   function listServerEventChips(S, G) {
     if (!S) return [];
+    const events = eventsTable(G);
     const out = [];
     const keys = Object.keys(S);
     for (let i = 0; i < keys.length; i++) {
@@ -47058,6 +47121,7 @@ ${parts.map(cssSlice).join("\n")}
       if (id === "schedule") continue;
       if (id === "blessed_minutes" || id === "blessed_by") continue;
       const value = S[id];
+      if (isSeasonStatusEntry(value, events[id])) continue;
       if (!isServerEventEntry(value)) continue;
       const row3 = value;
       const live2 = !!row3.live;
@@ -47079,7 +47143,72 @@ ${parts.map(cssSlice).join("\n")}
     }
     return out;
   }
-  function listServerSeasonChips(S, G) {
+  function seasonChipFromStatus(id, def, value, G, now = Date.now()) {
+    const announce = def.announcement;
+    const label = (announce == null ? void 0 : announce.title) || def.name || id;
+    const accent = (announce == null ? void 0 : announce.color) || (announce == null ? void 0 : announce.accent) || "#F0B742";
+    const base = {
+      id,
+      label,
+      detail: (announce == null ? void 0 : announce.text) || "active",
+      title: [def.name || label, announce == null ? void 0 : announce.text].filter(Boolean).join(" \u2014 "),
+      live: false,
+      accent,
+      sprite: def.sprite,
+      modal: def.modal,
+      docsUrl: `/docs/ref/event-${id}`
+    };
+    if (value === true) return base;
+    if (value.active === false) {
+      return {
+        ...base,
+        detail: "ended",
+        title: `${def.name || label} has ended \u2014 cakes and gifts still open`
+      };
+    }
+    if (value.live && (value.target || value.id != null)) {
+      const who = value.target || String(value.id);
+      const mapLabel = mapDisplayName3(value.map, G);
+      const left = formatUntilMs(value.expires, now);
+      const where = mapLabel && value.x != null && value.y != null ? `${mapLabel} (${value.x}, ${value.y})` : mapLabel;
+      return {
+        ...base,
+        live: true,
+        detail: left ? `live \xB7 ${who} \xB7 ${left} left` : `live \xB7 ${who}`,
+        title: [
+          `Find ${who}`,
+          where,
+          left ? `${left} left in this round` : "",
+          (announce == null ? void 0 : announce.text) || "Kiss the featured player for cake + gift"
+        ].filter(Boolean).join(" \u2014 ")
+      };
+    }
+    const untilNext = formatUntilMs(value.next, now);
+    const clock = formatClockMs(value.next);
+    if (untilNext || clock) {
+      return {
+        ...base,
+        detail: untilNext ? `next in ${untilNext}` : "waiting",
+        title: [
+          def.name || label,
+          untilNext ? `Next featured player in ${untilNext}` : "Waiting for a player",
+          clock ? `at ${clock}` : "",
+          "Every 30 minutes someone is featured; online players get an Anniversary Visit",
+          (announce == null ? void 0 : announce.text) || ""
+        ].filter(Boolean).join(" \u2014 ")
+      };
+    }
+    return {
+      ...base,
+      detail: (announce == null ? void 0 : announce.text) || "waiting for a player",
+      title: [
+        def.name || label,
+        "Waiting for a player",
+        (announce == null ? void 0 : announce.text) || ""
+      ].filter(Boolean).join(" \u2014 ")
+    };
+  }
+  function listServerSeasonChips(S, G, now = Date.now()) {
     if (!S) return [];
     const events = eventsTable(G);
     const out = [];
@@ -47089,28 +47218,17 @@ ${parts.map(cssSlice).join("\n")}
       if (id === "schedule") continue;
       if (id === "blessed_minutes" || id === "blessed_by") continue;
       const value = S[id];
-      if (isServerEventEntry(value)) continue;
-      if (!value) continue;
       const def = events[id];
-      if (!def || def.type !== "seasonal") continue;
-      const announce = def.announcement;
-      const label = (announce == null ? void 0 : announce.title) || def.name || id;
-      const detail = (announce == null ? void 0 : announce.text) || "active";
-      const titleParts = [
-        def.name || label,
-        announce == null ? void 0 : announce.text,
-        def.duration ? `typical window ~${formatDurationCompact(def.duration)}` : ""
-      ].filter(Boolean);
-      out.push({
-        id,
-        label,
-        detail,
-        title: titleParts.join(" \u2014 "),
-        accent: (announce == null ? void 0 : announce.color) || (announce == null ? void 0 : announce.accent),
-        sprite: def.sprite,
-        modal: def.modal,
-        docsUrl: `/docs/ref/${id}`
-      });
+      if (!isSeasonStatusEntry(value, def)) continue;
+      out.push(
+        seasonChipFromStatus(
+          id,
+          def,
+          value === true ? true : value,
+          G,
+          now
+        )
+      );
     }
     return out;
   }
@@ -47242,7 +47360,7 @@ ${parts.map(cssSlice).join("\n")}
             onClick: () => openSeasonGuide(season.modal, season.docsUrl),
             style: {
               ...chipStyle,
-              borderColor: accent,
+              borderColor: season.live ? "#9ACA87" : accent,
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
@@ -47265,7 +47383,7 @@ ${parts.map(cssSlice).join("\n")}
               {
                 style: {
                   fontSize: TYPE.chromeMeta,
-                  color: accent
+                  color: season.live ? "#b6e3a4" : accent
                 }
               },
               season.label
@@ -47275,8 +47393,8 @@ ${parts.map(cssSlice).join("\n")}
               {
                 style: {
                   fontSize: TYPE.chromeMeta,
-                  color: "rgba(255,255,255,0.72)",
-                  maxWidth: "220px",
+                  color: season.live ? "#9ACA87" : "rgba(255,255,255,0.72)",
+                  maxWidth: "260px",
                   overflow: "hidden",
                   textOverflow: "ellipsis"
                 }
@@ -54480,7 +54598,7 @@ ${ESTIMATE_HINT}`,
     { color: "#e85d5d", label: "M", title: "Monsters" },
     { color: "#c77dff", label: "B", title: "Boss / cooperative" }
   ];
-  function mapDisplayName3(mapKey) {
+  function mapDisplayName4(mapKey) {
     var _a, _b, _c;
     if (!mapKey) return "\u2026";
     const named = (_c = (_b = (_a = getG()) == null ? void 0 : _a.maps) == null ? void 0 : _b[mapKey]) == null ? void 0 : _c.name;
@@ -54627,7 +54745,7 @@ ${ESTIMATE_HINT}`,
         bgMode: bgModeRef.current
       });
       const nextMeta = {
-        label: mapDisplayName3(scene.geo.mapKey || scene.mapKey),
+        label: mapDisplayName4(scene.geo.mapKey || scene.mapKey),
         hasGeo: scene.geo.hasGeo
       };
       setMeta((prev) => {
