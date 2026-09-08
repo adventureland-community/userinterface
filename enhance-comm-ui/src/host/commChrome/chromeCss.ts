@@ -117,6 +117,29 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
   min-height: 36px;
   padding: 0;
 }
+.ecu-btn[data-ecu-chat] {
+  position: relative;
+  overflow: visible;
+}
+.ecu-btn[data-ecu-chat] .ecu-chat-badge {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  letter-spacing: 0;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
+}
 .ecu-btn-icon {
   display: block;
   width: 18px;

@@ -28,6 +28,7 @@ export type PanelId =
   | "minimap"
   | "threat"
   | "command"
+  | "chat"
   | "bag"
   | "trade"
   | "mail"
@@ -128,6 +129,12 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
     closable: true,
     defaultVisible: false,
     autoSize: "default-on",
+  },
+  chat: {
+    label: "Chat",
+    closable: true,
+    defaultVisible: false,
+    shell: "fill",
   },
   bag: { label: "Bag", closable: true, framePersist: "none" },
   trade: { label: "Trade", closable: true, framePersist: "none" },

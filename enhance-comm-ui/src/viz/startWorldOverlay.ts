@@ -11,6 +11,7 @@ import {
   mapOverlayBlocked,
   type OverlayHandle,
 } from "./mapHost";
+import { resetAnniversaryKissFx } from "./anniversaryKiss";
 import { paintWorldOverlay } from "./paintWorldOverlay";
 import { subscribeVizSettings } from "./vizSettings";
 
@@ -64,4 +65,5 @@ export function stopWorldOverlay(): void {
   }
   destroyOverlayHandle(handle);
   handle = null;
+  resetAnniversaryKissFx();
 }

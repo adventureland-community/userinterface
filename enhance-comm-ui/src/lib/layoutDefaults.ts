@@ -143,6 +143,7 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
     frameH: 420,
     autoSize: true,
   },
+  chat: { x: 1, y: 70, anchor: "bl", frameW: 360, frameH: 280 },
   // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
   // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
   bag: { x: 0.5, y: 99.2, anchor: "bl" },
@@ -204,6 +205,7 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   minimap: { x: 0.8, y: 70, anchor: "bl", frameW: 200, frameH: 220 },
   threat: { x: 99.2, y: 40, anchor: "tr", ...THREAT_FRAME_DEFAULT },
   command: { x: 50, y: 44, anchor: "center", autoSize: true },
+  chat: { x: 1, y: 68, anchor: "bl", frameW: 320, frameH: 260 },
   bag: { x: 0.8, y: 78, anchor: "bl" },
   mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
   toggles: { x: 99.2, y: 98.5, anchor: "br" },
@@ -253,6 +255,7 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
   threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
   command: { x: 50, y: 42, anchor: "center", autoSize: true },
+  chat: { x: 2, y: 70, anchor: "bl", frameW: 300, frameH: 240 },
   bag: { x: 50, y: 88, anchor: "bc" },
   mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
   toggles: { x: 98, y: 98, anchor: "br" },

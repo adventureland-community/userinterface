@@ -294,6 +294,8 @@ declare global {
       ) => PixiRectLike;
     };
     no_graphics?: boolean;
+    /** Stock emotion / ability FX attached to an entity sprite. */
+    start_animation?: (sprite: unknown, name: string, mode?: string) => void;
     xtarget?: EntityLike | null;
     sprite?: (skin: string, opts?: any) => string;
     item_container?: (item: any, actual?: any) => string;

@@ -30,6 +30,7 @@ import {
   getVizSettings,
   type VizSettings,
 } from "./vizSettings";
+import { paintAnniversaryKiss } from "./anniversaryKiss";
 import { drawLine, strokeCircle, strokeDashedCircle } from "./paintGfx";
 import {
   paintWorldQuirkDebug,
@@ -348,6 +349,7 @@ export function paintWorldOverlay(
 
   paintSpawnPoints(gfx, labels, settings);
   paintGridCoords(labels, settings);
+  paintAnniversaryKiss(gfx, opts.entities, settings);
 
   if (focus && focus.visible && !focus.dead) {
     paintAbilityRings(gfx, labels, focus, settings, opts.entities);

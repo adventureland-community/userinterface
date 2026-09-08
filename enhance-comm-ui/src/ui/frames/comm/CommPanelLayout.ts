@@ -49,6 +49,7 @@ import { ThreatTable } from "../ThreatTable";
 import { KillKpiPanel } from "../KillKpiPanel";
 import { Minimap } from "../Minimap";
 import { CommandPanel } from "../CommandPanel";
+import { ChatPanel } from "../chat/ChatPanel";
 import { BagPanel } from "../BagPanel";
 import { TradePanel } from "../TradePanel";
 import { MailPanel } from "../mail/MailPanel";
@@ -58,6 +59,7 @@ import {
   ABILITY_TIMELINE_BIGICON_PANEL_STYLE,
   ABILITY_TIMELINE_HIGHLIGHT_PANEL_STYLE,
   CHIP_HUD_PANEL_STYLE,
+  CHAT_PANEL_STYLE,
   COMMAND_PANEL_STYLE,
   INSTANCE_PANEL_STYLE,
   INSTANCE_RUN_PANEL_STYLE,
@@ -125,6 +127,9 @@ export type CommPanelLayoutDeps = {
   combat: CombatSignals;
   commandSeed: string | null;
   commandOpenSeq: number;
+  chatSeed: string | null;
+  chatWhisperTo: string | null;
+  chatOpenSeq: number;
   bagOpen: boolean;
   bagRefreshing: boolean;
   buffInfoOpen: boolean;
@@ -528,6 +533,19 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: COMMAND_PANEL_STYLE,
         hiddenBodyStyle: COMMAND_PANEL_STYLE,
+      },
+    ),
+
+    panel(
+      "chat",
+      e(ChatPanel, {
+        seedDraft: deps.chatSeed,
+        seedWhisperTo: deps.chatWhisperTo,
+        openSeq: deps.chatOpenSeq,
+      }),
+      {
+        style: CHAT_PANEL_STYLE,
+        hiddenBodyStyle: CHAT_PANEL_STYLE,
       },
     ),
 

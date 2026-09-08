@@ -100,6 +100,47 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.5",
+    title: "0.9.5",
+    date: "2026-09-08",
+    summary:
+      "Anniversary kiss overlay on the featured player, plus a full Chat window on /comm with history, send, unread badge, and clearer text.",
+    highlights: [
+      {
+        label: "Chat window",
+        detail:
+          "Open from the action bar. Live ambient and system chat stream in; Say / Party / Whisper send via o:command on the observed character.",
+        kind: "feature",
+      },
+      {
+        label: "Chat history + unread",
+        detail:
+          "Loads saved messages via pull_messages (scroll back for older pages). Closed Chat shows a red unread badge on the icon.",
+        kind: "feature",
+      },
+      {
+        label: "Anniversary kiss overlay",
+        detail:
+          "While S.anniversary is live, a gold 80px kiss-range ring and rising hearts mark the featured player. Toggle under Settings → Drawings.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Timestamps + readability",
+        detail:
+          "Each line shows a clock; larger brighter text; stock grey chat colors are ignored so messages stay readable.",
+        kind: "improve",
+      },
+      {
+        label: "Party and whisper echo",
+        detail:
+          "Observer sockets do not receive partym/pm — those sends get a local echo in the log.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.9.4",
     title: "0.9.4",
     date: "2026-09-08",

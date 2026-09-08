@@ -1,5 +1,6 @@
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
+import { openChat, syncChatBadge } from "../chat";
 
 /**
  * Leave observe mode: reconnect as pure spectator on the current server.
@@ -110,6 +111,12 @@ function onCommandClick(ev: Event): void {
   }
 }
 
+function onChatClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  openChat({ toggle: true });
+}
+
 function onMailClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
@@ -175,15 +182,23 @@ function onMainframeClick(ev: Event): void {
   openMainframe();
 }
 
-type ActionKind = "follow" | "bag" | "command" | "mail" | "docs" | "mainframe";
+type ActionKind =
+  | "follow"
+  | "bag"
+  | "command"
+  | "chat"
+  | "mail"
+  | "docs"
+  | "mainframe";
 
-/** Compact SVG icons for Follow / Bag / Command / Mail / Docs. */
+/** Compact SVG icons for Follow / Bag / Chat / Command / Mail / Docs. */
 const ACTION_ICONS: Record<ActionKind, string> = {
   follow:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   command:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
+  chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   mainframe:
@@ -209,12 +224,20 @@ export function buildActionsEl(): HTMLElement {
     btn.setAttribute("aria-label", label);
     btn.setAttribute("data-ecu-tour", "btn-" + kind);
     if (kind === "mail") btn.setAttribute("data-ecu-mail", "1");
+    if (kind === "chat") btn.setAttribute("data-ecu-chat", "1");
     btn.innerHTML = ACTION_ICONS[kind];
     if (kind === "mail") {
       const badge = document.createElement("span");
       badge.className = "ecu-mail-badge";
       badge.hidden = true;
       badge.setAttribute("data-ecu-mail-badge", "1");
+      btn.appendChild(badge);
+    }
+    if (kind === "chat") {
+      const badge = document.createElement("span");
+      badge.className = "ecu-chat-badge";
+      badge.hidden = true;
+      badge.setAttribute("data-ecu-chat-badge", "1");
       btn.appendChild(badge);
     }
     btn.addEventListener("click", onClick);
@@ -224,6 +247,7 @@ export function buildActionsEl(): HTMLElement {
   actions.append(
     mk("follow", "Follow", "Center on observed character", onFollowClick),
     mk("bag", "Bag", "Observed inventory", onBagClick),
+    mk("chat", "Chat", "Server chat — send as observed character", onChatClick),
     mk("mail", "Mail", "Account mail", onMailClick),
     mk(
       "command",
@@ -246,6 +270,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
   const map: Record<string, string> = {
     Follow: "btn-follow",
     Bag: "btn-bag",
+    Chat: "btn-chat",
     Mail: "btn-mail",
     Command: "btn-command",
     Docs: "btn-docs",
@@ -261,6 +286,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
 }
 
 export { syncMailBadge } from "../mail/mailUnread";
+export { syncChatBadge } from "../chat";
 
 export function syncActionsEnabled(): void {
   const watching = !!(window.observing && window.observing.name);
@@ -268,6 +294,7 @@ export function syncActionsEnabled(): void {
   if (!actions) return;
   syncActionTourAttrs(actions);
   syncMailBadge();
+  syncChatBadge();
   const buttons = actions.querySelectorAll(".ecu-btn");
   for (let i = 0; i < buttons.length; i++) {
     const btn = buttons[i] as HTMLButtonElement;
@@ -276,7 +303,8 @@ export function syncActionsEnabled(): void {
       btn.textContent ||
       ""
     ).trim();
-    // Bag/Command/Follow need an observed character; Mail works logged-in.
+    // Bag/Command/Follow need an observed character; Chat/Mail work logged-in
+    // (Chat send still requires observe).
     const needsObs =
       label === "Follow" || label === "Bag" || label === "Command";
     if (needsObs) {
@@ -337,6 +365,7 @@ export function ensureChromeShell(): void {
       existingStack.insertBefore(actionsEl, existingStack.firstChild);
     } else if (
       !actionsEl.querySelector(".ecu-btn-icon-only") ||
+      !actionsEl.querySelector('[data-ecu-tour="btn-chat"]') ||
       !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') ||
       !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')
     ) {

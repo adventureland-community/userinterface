@@ -48,6 +48,11 @@ export const OVERLAY_TOGGLE_SECTIONS: readonly OverlayToggleSection[] = [
         key: "world.highlightAtRisk",
         label: "Highlight players in ability radius",
       },
+      {
+        key: "world.anniversaryKiss",
+        label: "Anniversary kiss range",
+        help: "80px gold ring + rising hearts on the featured player while live",
+      },
     ],
   },
   {

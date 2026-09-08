@@ -15,6 +15,7 @@ export type VizSettingKey =
   | "world.targetLine" // legacy localStorage only; not exposed in settings UI
   | "world.leashBoundary"
   | "world.spawnPoints"
+  | "world.anniversaryKiss"
   | "world.quirkHitboxes"
   | "entity.hpBar"
   | "entity.aggroRing"
@@ -53,6 +54,7 @@ export const DEFAULT_VIZ_SETTINGS: VizSettings = {
   "world.targetLine": false,
   "world.leashBoundary": false,
   "world.spawnPoints": false,
+  "world.anniversaryKiss": true,
   "world.quirkHitboxes": false,
   // Native client already draws HP / nameplates / aggro tint — keep off.
   "entity.hpBar": false,

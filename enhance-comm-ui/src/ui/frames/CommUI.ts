@@ -4,6 +4,7 @@ import { updateMeterContext } from "../../meters/meterEngine";
 import { updateKillContext } from "../../kpi/sessionKills";
 import { getSettings, patchSettings } from "../../lib/settings";
 import { subscribeCommanderOpen } from "../../host/commander";
+import { setChatPanelOpen, subscribeChatOpen } from "../../host/chat";
 import {
   openCompose,
   openNewestUnread,
@@ -178,6 +179,11 @@ export function CommUI(props: CommUIProps): any {
 
   const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+  const [chatSeed, setChatSeed] = React.useState(null as string | null);
+  const [chatWhisperTo, setChatWhisperTo] = React.useState(
+    null as string | null,
+  );
+  const [chatOpenSeq, setChatOpenSeq] = React.useState(0);
   const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
   const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
   const [meterAddOpen, setMeterAddOpen] = React.useState(false);
@@ -390,6 +396,36 @@ export function CommUI(props: CommUIProps): any {
     });
   }, [setVisible]);
 
+  const chatOpenRef = React.useRef(false);
+  const chatVisible = visible("chat");
+  chatOpenRef.current = chatVisible;
+
+  React.useEffect(() => {
+    setChatPanelOpen(chatVisible);
+  }, [chatVisible]);
+
+  React.useEffect(() => {
+    return subscribeChatOpen((payload) => {
+      const hasPrefill =
+        typeof payload.draft === "string" ||
+        typeof payload.whisperTo === "string";
+      if (payload.toggle && chatOpenRef.current && !hasPrefill) {
+        setVisible("chat", false);
+        return;
+      }
+      if (typeof payload.draft === "string") setChatSeed(payload.draft);
+      else setChatSeed(null);
+      if (typeof payload.whisperTo === "string") {
+        setChatWhisperTo(payload.whisperTo);
+      } else {
+        setChatWhisperTo(null);
+      }
+      setChatOpenSeq((n: number) => n + 1);
+      setVisible("chat", true);
+      windowActionsRef.current.raiseWindow("chat");
+    });
+  }, [setVisible]);
+
   const mailVisible = visible("mail");
   React.useEffect(() => {
     setMailPanelOpen(mailVisible);
@@ -533,6 +569,9 @@ export function CommUI(props: CommUIProps): any {
     combat,
     commandSeed,
     commandOpenSeq,
+    chatSeed,
+    chatWhisperTo,
+    chatOpenSeq,
     bagOpen,
     bagRefreshing,
     buffInfoOpen,

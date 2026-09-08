@@ -1,4 +1,10 @@
 import { getSocket } from "../host/al";
+import {
+  pushAmbientChat,
+  pushPartyChat,
+  pushPmChat,
+  pushSystemChat,
+} from "../host/chat/store";
 
 export type KillEvent = {
   id: string;
@@ -245,6 +251,55 @@ function onUi(data: any): void {
   });
 }
 
+function onChatLog(data: any): void {
+  if (!data) return;
+  pushAmbientChat({
+    owner: data.owner,
+    message: data.message,
+    color: data.color,
+    id: data.id,
+  });
+}
+
+function onGameChatLog(data: any): void {
+  if (data == null) return;
+  if (typeof data === "string") {
+    pushSystemChat(data);
+    return;
+  }
+  const message =
+    data.message != null
+      ? String(data.message)
+      : typeof data === "object"
+        ? ""
+        : String(data);
+  if (!message) return;
+  pushSystemChat(
+    message,
+    data.color != null ? String(data.color) : undefined,
+  );
+}
+
+/** GM / system lines (`game_chat`) — same DOM path as game_chat_log in stock. */
+function onGameChat(data: any): void {
+  onGameChatLog(data);
+}
+
+function onPm(data: any): void {
+  if (!data || data.message == null) return;
+  pushPmChat(data.owner != null ? String(data.owner) : "", String(data.message), {
+    xserver: !!data.xserver,
+  });
+}
+
+function onPartym(data: any): void {
+  if (!data || data.message == null) return;
+  pushPartyChat(
+    data.owner != null ? String(data.owner) : "",
+    String(data.message),
+  );
+}
+
 function maybeResubscribe(): void {
   const socket = getSocket();
   if (!socket || !socket.id) return;
@@ -256,6 +311,11 @@ function maybeResubscribe(): void {
   socket.on("eval", onEval);
   socket.on("game_response", onGameResponse);
   socket.on("ui", onUi);
+  socket.on("chat_log", onChatLog);
+  socket.on("game_chat_log", onGameChatLog);
+  socket.on("game_chat", onGameChat);
+  socket.on("pm", onPm);
+  socket.on("partym", onPartym);
 }
 
 export const onKill = killCh.subscribe;

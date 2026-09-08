@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.4
+// @version      0.9.5
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -400,18 +400,707 @@ var EnhanceCommUI = (() => {
     return subscribeTick(cb);
   }
 
+  // src/host/mail/merge.ts
+  function cloneRow(m) {
+    const next = {
+      id: m.id,
+      fro: m.fro,
+      to: m.to,
+      subject: m.subject,
+      message: m.message,
+      sent: m.sent
+    };
+    if (m.read != null) next.read = m.read;
+    if (m.item) next.item = { ...m.item };
+    if (m.taken != null) next.taken = m.taken;
+    if (m.system != null) next.system = m.system;
+    return next;
+  }
+  function mergeHeadPage(existing, page) {
+    const map = /* @__PURE__ */ new Map();
+    for (let i = 0; i < existing.length; i++) {
+      map.set(existing[i].id, existing[i]);
+    }
+    for (let i = 0; i < page.length; i++) {
+      const p = page[i];
+      const prev = map.get(p.id);
+      map.set(p.id, prev ? Object.assign({}, prev, p) : cloneRow(p));
+    }
+    const older = [];
+    for (let i = 0; i < existing.length; i++) {
+      const m = existing[i];
+      let inPage = false;
+      for (let j = 0; j < page.length; j++) {
+        if (page[j].id === m.id) {
+          inPage = true;
+          break;
+        }
+      }
+      if (!inPage) older.push(map.get(m.id) || m);
+    }
+    const head = [];
+    for (let i = 0; i < page.length; i++) {
+      head.push(map.get(page[i].id));
+    }
+    return head.concat(older);
+  }
+  function appendCursorPage(existing, page) {
+    const have = /* @__PURE__ */ new Set();
+    for (let i = 0; i < existing.length; i++) have.add(existing[i].id);
+    const next = existing.slice();
+    for (let i = 0; i < page.length; i++) {
+      const m = page[i];
+      if (have.has(m.id)) continue;
+      have.add(m.id);
+      next.push(cloneRow(m));
+    }
+    return next;
+  }
+  function applyPullMeta(page) {
+    return {
+      nextCursor: page.more ? page.cursor : null,
+      hasMore: !!page.more
+    };
+  }
+  function normalizeMailPage(raw) {
+    const info2 = raw || {};
+    const list = Array.isArray(info2.mail) ? info2.mail : [];
+    const mail = [];
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (!m || m.id == null) continue;
+      const row3 = {
+        id: String(m.id),
+        fro: String(m.fro || ""),
+        to: String(m.to || ""),
+        subject: String(m.subject || ""),
+        message: String(m.message || ""),
+        sent: String(m.sent || "")
+      };
+      if (typeof m.read === "boolean") row3.read = m.read;
+      const item = parseMailItem(m.item);
+      if (item) row3.item = item;
+      const taken = coerceMailTaken(m.taken);
+      if (taken != null) row3.taken = taken;
+      mail.push(row3);
+    }
+    return {
+      mail,
+      more: !!info2.more,
+      cursor: info2.cursor != null ? String(info2.cursor) : null,
+      cursored: !!info2.cursored
+    };
+  }
+  function coerceMailTaken(raw) {
+    if (typeof raw === "boolean") return raw;
+    if (raw === 0 || raw === "0" || raw === "false") return false;
+    if (raw === 1 || raw === "1" || raw === "true") return true;
+    return void 0;
+  }
+  function parseMailItem(raw) {
+    let cur = raw;
+    for (let depth2 = 0; depth2 < 3; depth2++) {
+      if (cur == null || cur === "") return void 0;
+      if (typeof cur === "string") {
+        try {
+          cur = JSON.parse(cur);
+        } catch (e2) {
+          return void 0;
+        }
+        continue;
+      }
+      break;
+    }
+    if (!cur || typeof cur !== "object") return void 0;
+    const obj = cur;
+    if (obj.name == null || obj.name === "") return void 0;
+    const item = { name: String(obj.name) };
+    if (typeof obj.level === "number" && Number.isFinite(obj.level)) {
+      item.level = obj.level;
+    } else if (obj.level != null && obj.level !== "" && !isNaN(Number(obj.level))) {
+      item.level = Number(obj.level);
+    }
+    if (typeof obj.q === "number" && Number.isFinite(obj.q)) {
+      item.q = obj.q;
+    } else if (obj.q != null && obj.q !== "" && !isNaN(Number(obj.q))) {
+      item.q = Number(obj.q);
+    }
+    if (typeof obj.p === "string" && obj.p) item.p = obj.p;
+    if (typeof obj.skin === "string" && obj.skin) item.skin = obj.skin;
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k === "name" || k === "level" || k === "q" || k === "p" || k === "skin") {
+        continue;
+      }
+      if (item[k] === void 0) item[k] = obj[k];
+    }
+    return item;
+  }
+
+  // src/host/mail/api.ts
+  function getApiCall() {
+    const fn = window.api_call;
+    return typeof fn === "function" ? fn : null;
+  }
+  function extractInfs(ct) {
+    if (!ct) return [];
+    if (typeof ct === "string") {
+      try {
+        return extractInfs(JSON.parse(ct));
+      } catch (e2) {
+        return [];
+      }
+    }
+    if (Array.isArray(ct)) return ct;
+    if (typeof ct !== "object") return [];
+    const obj = ct;
+    if (obj.failed) return [];
+    if (Array.isArray(obj.infs)) return obj.infs;
+    if (obj.data != null) {
+      const nested = extractInfs(obj.data);
+      if (nested.length) return nested;
+    }
+    if (obj.type === "mail" || Array.isArray(obj.mail)) {
+      return [obj];
+    }
+    return [];
+  }
+  function readUnreadFromInfs(infs) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && info2.type === "unread" && typeof info2.count === "number") {
+        return info2.count;
+      }
+    }
+    return void 0;
+  }
+  function findMailInfo(infs) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && (info2.type === "mail" || Array.isArray(info2.mail))) {
+        return info2;
+      }
+    }
+    return null;
+  }
+  var API_TIMEOUT_MS = 2e4;
+  async function postJson(path, body, signal) {
+    if (typeof fetch !== "function") return null;
+    try {
+      const res = await fetch(window.location.origin + path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify(body),
+        signal
+      });
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e2) {
+        json = null;
+      }
+      return { ok: res.ok, status: res.status, json };
+    } catch (e2) {
+      return null;
+    }
+  }
+  async function callApiFetch(method, args) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => {
+      if (ctrl) ctrl.abort();
+    }, API_TIMEOUT_MS);
+    try {
+      const res = await postJson(
+        "/api/" + method,
+        { ...args },
+        ctrl ? ctrl.signal : void 0
+      );
+      if (!res) return null;
+      if (!res.ok) return { ok: false };
+      return { ok: true, infs: extractInfs(res.json) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  function callApiStock(method, args) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (infs) => {
+        if (settled) return;
+        settled = true;
+        resolve(infs);
+      };
+      const api = getApiCall();
+      if (!api) {
+        finish([]);
+        return;
+      }
+      const timer = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
+      try {
+        const maybePromise = api(
+          method,
+          {
+            ...args,
+            callback: (ct) => {
+              window.clearTimeout(timer);
+              finish(extractInfs(ct));
+            }
+          },
+          { silent: true }
+        );
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.then((data) => {
+            window.clearTimeout(timer);
+            finish(extractInfs(data));
+          }).catch((data) => {
+            window.clearTimeout(timer);
+            finish(extractInfs(data));
+          });
+        }
+      } catch (e2) {
+        window.clearTimeout(timer);
+        finish([]);
+      }
+    });
+  }
+  async function callApi(method, args = {}) {
+    const viaFetch = await callApiFetch(method, args);
+    if (viaFetch != null) {
+      if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
+      if (viaFetch.ok) {
+        const viaStock2 = await callApiStock(method, args);
+        if (viaStock2.length) return viaStock2;
+        return viaFetch.infs;
+      }
+      const viaStock = await callApiStock(method, args);
+      if (viaStock.length) return viaStock;
+      return [];
+    }
+    return callApiStock(method, args);
+  }
+  async function callApiResult(method, args = {}) {
+    const viaFetch = await callApiFetch(method, args);
+    if (viaFetch != null) {
+      if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
+      return { ok: false, reason: "http_error", data: [] };
+    }
+    const viaStock = await callApiStock(method, args);
+    if (viaStock.length) return { ok: true, data: viaStock };
+    return { ok: false, reason: "no_response", data: [] };
+  }
+  async function pullMailPage(cursor) {
+    const args = {};
+    if (cursor) args.cursor = cursor;
+    const infs = await callApi("pull_mail", args);
+    const info2 = findMailInfo(infs);
+    if (info2) return { ok: true, data: normalizeMailPage(info2) };
+    return { ok: false, reason: "no_mail_payload" };
+  }
+  async function readMail(mailId) {
+    const res = await callApiResult("read_mail", { mail: mailId });
+    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
+    const infs = res.data || [];
+    return {
+      ok: true,
+      data: true,
+      unreadCount: readUnreadFromInfs(infs)
+    };
+  }
+  async function deleteMail(mailId) {
+    const res = await callApiResult("delete_mail", { mid: mailId });
+    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
+    const infs = res.data || [];
+    let message;
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (!info2) continue;
+      if (info2.type === "message" && typeof info2.message === "string") {
+        message = info2.message;
+      }
+    }
+    return { ok: true, data: true, message };
+  }
+  async function readMailMany(ids) {
+    let unreadCount;
+    let anyOk = false;
+    const jobs = [];
+    for (let i = 0; i < ids.length; i++) {
+      jobs.push(readMail(ids[i]));
+    }
+    const results = await Promise.all(jobs);
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].ok) anyOk = true;
+      if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
+    }
+    if (!anyOk && ids.length) {
+      return { ok: false, reason: "no_response", data: { unreadCount } };
+    }
+    return { ok: true, data: { unreadCount } };
+  }
+
+  // src/host/chat/history.ts
+  var API_TIMEOUT_MS2 = 12e3;
+  function postJson2(url, body, signal) {
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal
+    }).then(async (res) => {
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e2) {
+        json = null;
+      }
+      return { ok: res.ok, json };
+    }).catch(() => null);
+  }
+  function findMessagesInfo(infs) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && (info2.type === "messages" || Array.isArray(info2.messages))) {
+        return info2;
+      }
+    }
+    return null;
+  }
+  function normalizeMessagesPage(info2) {
+    const raw = Array.isArray(info2.messages) ? info2.messages : [];
+    const messages2 = [];
+    for (let i = 0; i < raw.length; i++) {
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object") continue;
+      messages2.push(row3);
+    }
+    return {
+      messages: messages2,
+      more: !!info2.more,
+      cursor: info2.cursor != null && info2.cursor !== "" ? String(info2.cursor) : null,
+      cursored: !!info2.cursored,
+      mtype: typeof info2.mtype === "string" ? info2.mtype : "all"
+    };
+  }
+  async function pullMessagesPage(opts) {
+    const args = {};
+    if (opts.type) args.type = opts.type;
+    if (opts.cursor) args.cursor = opts.cursor;
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => {
+      if (ctrl) ctrl.abort();
+    }, API_TIMEOUT_MS2);
+    try {
+      const res = await postJson2(
+        "/api/pull_messages",
+        args,
+        ctrl ? ctrl.signal : void 0
+      );
+      if (!res) return { ok: false, reason: "network" };
+      if (!res.ok) return { ok: false, reason: "http_error" };
+      const info2 = findMessagesInfo(extractInfs(res.json));
+      if (!info2) return { ok: false, reason: "no_messages_payload" };
+      return { ok: true, data: normalizeMessagesPage(info2) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  function historyRowChannel(type) {
+    if (type === "private") return "pm";
+    if (type === "party") return "party";
+    if (type === "ambient" || type === "server") return "say";
+    return "say";
+  }
+  function historyRowColor(type) {
+    if (type === "private") return "#CD7879";
+    if (type === "party") return "#46A0C6";
+    return void 0;
+  }
+  function historyRowToChatMessage(row3) {
+    const message = row3.message != null ? String(row3.message) : "";
+    if (!message) return null;
+    const at = row3.date ? Date.parse(row3.date) : NaN;
+    return {
+      id: row3.id ? `hist-${row3.id}` : `hist-${row3.fro || ""}-${row3.date || ""}-${message.slice(0, 24)}`,
+      at: Number.isFinite(at) ? at : 0,
+      channel: historyRowChannel(row3.type),
+      owner: row3.fro != null ? String(row3.fro) : "",
+      message,
+      color: historyRowColor(row3.type),
+      local: false
+    };
+  }
+  function resolveHistoryType() {
+    var _a;
+    const region = typeof window.server_region === "string" ? window.server_region : "";
+    const ident = typeof window.server_identifier === "string" ? window.server_identifier : "";
+    const servers = (_a = window.X) == null ? void 0 : _a.servers;
+    if (Array.isArray(servers) && region && ident) {
+      for (let i = 0; i < servers.length; i++) {
+        const s = servers[i];
+        if (!s) continue;
+        if (s.region === region && s.name === ident && s.key) {
+          return String(s.key);
+        }
+      }
+    }
+    if (region && ident) return `SR_${region}${ident}`;
+    return "global";
+  }
+
+  // src/host/chat/unread.ts
+  var panelOpen = false;
+  var unread = 0;
+  function setChatPanelOpen(open) {
+    panelOpen = !!open;
+    if (panelOpen) {
+      unread = 0;
+    }
+    syncChatBadge();
+  }
+  function formatChatUnreadBadge(n) {
+    const c = Math.max(0, Math.floor(Number(n) || 0));
+    if (c > 99) return "99+";
+    return String(c);
+  }
+  function syncChatBadge() {
+    if (typeof document === "undefined") return;
+    const badge = document.querySelector(
+      "[data-ecu-chat-badge]"
+    );
+    if (!badge) return;
+    const n = unread;
+    badge.textContent = formatChatUnreadBadge(n);
+    badge.hidden = n === 0;
+    badge.title = n ? n + " unread chat" : "";
+  }
+  function noteChatUnread(msg) {
+    var _a;
+    if (panelOpen) return;
+    if (msg.local) return;
+    if (String(msg.id).indexOf("hist-") === 0) return;
+    let me;
+    if (typeof window !== "undefined") {
+      me = (_a = getObserving()) == null ? void 0 : _a.name;
+    }
+    if (me && msg.owner && String(msg.owner) === String(me)) return;
+    unread += 1;
+    syncChatBadge();
+  }
+
+  // src/host/chat/store.ts
+  var MAX_MESSAGES = 800;
+  var listeners3 = [];
+  var messages = [];
+  var seq = 0;
+  var seenIds = /* @__PURE__ */ new Set();
+  var history = {
+    type: "",
+    cursor: null,
+    more: false,
+    loaded: false,
+    loading: false,
+    error: null
+  };
+  function notify2() {
+    for (let i = 0; i < listeners3.length; i++) listeners3[i]();
+  }
+  function subscribeChat(fn) {
+    listeners3.push(fn);
+    return () => {
+      const idx = listeners3.indexOf(fn);
+      if (idx >= 0) listeners3.splice(idx, 1);
+    };
+  }
+  function getChatMessages() {
+    return messages;
+  }
+  function getChatHistoryState() {
+    return { ...history };
+  }
+  function clearChatMessages() {
+    messages = [];
+    seenIds.clear();
+    history = {
+      type: "",
+      cursor: null,
+      more: false,
+      loaded: false,
+      loading: false,
+      error: null
+    };
+    notify2();
+  }
+  function nextId(prefix) {
+    seq += 1;
+    return `${prefix}-${Date.now().toString(36)}-${seq}`;
+  }
+  function rememberId(id) {
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  }
+  function trimMessages() {
+    if (messages.length <= MAX_MESSAGES) return;
+    const drop = messages.length - MAX_MESSAGES;
+    for (let i = 0; i < drop; i++) {
+      seenIds.delete(messages[i].id);
+    }
+    messages = messages.slice(drop);
+  }
+  function pushChatMessage(partial) {
+    const id = partial.id || nextId(partial.channel);
+    if (!rememberId(id)) return null;
+    const row3 = {
+      id,
+      at: partial.at != null ? partial.at : Date.now(),
+      channel: partial.channel,
+      owner: partial.owner || "",
+      message: partial.message || "",
+      color: partial.color,
+      xserver: partial.xserver,
+      entityId: partial.entityId,
+      local: partial.local
+    };
+    messages = messages.concat([row3]);
+    trimMessages();
+    noteChatUnread(row3);
+    notify2();
+    return row3;
+  }
+  function pushAmbientChat(data) {
+    const message = data.message != null ? String(data.message) : "";
+    if (!message) return;
+    pushChatMessage({
+      channel: "say",
+      owner: data.owner != null ? String(data.owner) : "",
+      message,
+      color: data.color != null ? String(data.color) : void 0,
+      entityId: data.id != null ? String(data.id) : void 0
+    });
+  }
+  function pushSystemChat(message, color) {
+    const text = String(message || "");
+    if (!text) return;
+    pushChatMessage({
+      channel: "system",
+      owner: "",
+      message: text,
+      color: color || "gray"
+    });
+  }
+  function pushPartyChat(owner, message) {
+    const text = String(message || "");
+    if (!text) return;
+    pushChatMessage({
+      channel: "party",
+      owner: owner || "",
+      message: text,
+      color: "#46A0C6"
+    });
+  }
+  function pushPmChat(owner, message, opts) {
+    const text = String(message || "");
+    if (!text) return;
+    pushChatMessage({
+      channel: "pm",
+      owner: owner || "",
+      message: text,
+      color: "#CD7879",
+      xserver: opts == null ? void 0 : opts.xserver,
+      local: opts == null ? void 0 : opts.local
+    });
+  }
+  function pushLocalPartyChat(owner, message) {
+    pushChatMessage({
+      channel: "party",
+      owner,
+      message,
+      color: "#46A0C6",
+      local: true
+    });
+  }
+  function prependHistoryPage(page) {
+    const chronological = [];
+    for (let i = page.messages.length - 1; i >= 0; i--) {
+      const row3 = historyRowToChatMessage(page.messages[i]);
+      if (!row3) continue;
+      if (!rememberId(row3.id)) continue;
+      chronological.push(row3);
+    }
+    if (chronological.length) {
+      messages = chronological.concat(messages);
+      trimMessages();
+    }
+    history = {
+      ...history,
+      type: page.mtype || history.type,
+      cursor: page.more ? page.cursor : null,
+      more: page.more,
+      loaded: true,
+      loading: false,
+      error: null
+    };
+    notify2();
+    return chronological.length;
+  }
+  async function loadChatHistory(opts) {
+    if (history.loading) return { ok: false, added: 0, reason: "busy" };
+    const type = (opts == null ? void 0 : opts.type) || history.type || resolveHistoryType();
+    const reset = (opts == null ? void 0 : opts.reset) === true || !history.loaded;
+    if (!reset && !history.more) {
+      return { ok: true, added: 0, reason: "end" };
+    }
+    const cursor = reset ? null : history.cursor;
+    if (reset) {
+      const kept = [];
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (String(msg.id).indexOf("hist-") === 0) {
+          seenIds.delete(msg.id);
+          continue;
+        }
+        kept.push(msg);
+      }
+      messages = kept;
+    }
+    history = {
+      ...history,
+      type,
+      loading: true,
+      error: null,
+      ...reset ? { cursor: null, more: false, loaded: false } : null
+    };
+    notify2();
+    const res = await pullMessagesPage({ type, cursor });
+    if (!res.ok || !res.data) {
+      history = {
+        ...history,
+        loading: false,
+        error: res.reason || "failed",
+        loaded: history.loaded || false
+      };
+      notify2();
+      return { ok: false, added: 0, reason: res.reason || "failed" };
+    }
+    const added = prependHistoryPage(res.data);
+    return { ok: true, added };
+  }
+
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners12 = [];
+    const listeners13 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners12.length; i++) listeners12[i](ev);
+        for (let i = 0; i < listeners13.length; i++) listeners13[i](ev);
       },
       subscribe: (listener) => {
-        listeners12.push(listener);
+        listeners13.push(listener);
         return () => {
-          const idx = listeners12.indexOf(listener);
-          if (idx >= 0) listeners12.splice(idx, 1);
+          const idx = listeners13.indexOf(listener);
+          if (idx >= 0) listeners13.splice(idx, 1);
         };
       }
     };
@@ -525,6 +1214,44 @@ var EnhanceCommUI = (() => {
       raw: data
     });
   }
+  function onChatLog(data) {
+    if (!data) return;
+    pushAmbientChat({
+      owner: data.owner,
+      message: data.message,
+      color: data.color,
+      id: data.id
+    });
+  }
+  function onGameChatLog(data) {
+    if (data == null) return;
+    if (typeof data === "string") {
+      pushSystemChat(data);
+      return;
+    }
+    const message = data.message != null ? String(data.message) : typeof data === "object" ? "" : String(data);
+    if (!message) return;
+    pushSystemChat(
+      message,
+      data.color != null ? String(data.color) : void 0
+    );
+  }
+  function onGameChat(data) {
+    onGameChatLog(data);
+  }
+  function onPm(data) {
+    if (!data || data.message == null) return;
+    pushPmChat(data.owner != null ? String(data.owner) : "", String(data.message), {
+      xserver: !!data.xserver
+    });
+  }
+  function onPartym(data) {
+    if (!data || data.message == null) return;
+    pushPartyChat(
+      data.owner != null ? String(data.owner) : "",
+      String(data.message)
+    );
+  }
   function maybeResubscribe() {
     const socket = getSocket();
     if (!socket || !socket.id) return;
@@ -536,6 +1263,11 @@ var EnhanceCommUI = (() => {
     socket.on("eval", onEval);
     socket.on("game_response", onGameResponse);
     socket.on("ui", onUi);
+    socket.on("chat_log", onChatLog);
+    socket.on("game_chat_log", onGameChatLog);
+    socket.on("game_chat", onGameChat);
+    socket.on("pm", onPm);
+    socket.on("partym", onPartym);
   }
   var onKill = killCh.subscribe;
   var onDamage = damageCh.subscribe;
@@ -2603,6 +3335,15 @@ var EnhanceCommUI = (() => {
     maxWidth: "min(720px, 94vw)",
     boxSizing: "border-box"
   };
+  var CHAT_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "min(320px, 92vw)",
+    minHeight: "240px",
+    maxWidth: "100%",
+    maxHeight: "100%",
+    boxSizing: "border-box"
+  };
   var MAIL_PANEL_STYLE = {
     width: "100%",
     height: "100%",
@@ -2766,6 +3507,7 @@ var EnhanceCommUI = (() => {
       frameH: 420,
       autoSize: true
     },
+    chat: { x: 1, y: 70, anchor: "bl", frameW: 360, frameH: 280 },
     // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
     // stock 7-col float inventory into broken rows (see BagPanel / ea1515d).
     bag: { x: 0.5, y: 99.2, anchor: "bl" },
@@ -2823,6 +3565,7 @@ var EnhanceCommUI = (() => {
     minimap: { x: 0.8, y: 70, anchor: "bl", frameW: 200, frameH: 220 },
     threat: { x: 99.2, y: 40, anchor: "tr", ...THREAT_FRAME_DEFAULT },
     command: { x: 50, y: 44, anchor: "center", autoSize: true },
+    chat: { x: 1, y: 68, anchor: "bl", frameW: 320, frameH: 260 },
     bag: { x: 0.8, y: 78, anchor: "bl" },
     mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
     toggles: { x: 99.2, y: 98.5, anchor: "br" }
@@ -2867,6 +3610,7 @@ var EnhanceCommUI = (() => {
     minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
     threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
     command: { x: 50, y: 42, anchor: "center", autoSize: true },
+    chat: { x: 2, y: 70, anchor: "bl", frameW: 300, frameH: 240 },
     bag: { x: 50, y: 88, anchor: "bc" },
     mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
     toggles: { x: 98, y: 98, anchor: "br" }
@@ -3057,6 +3801,12 @@ var EnhanceCommUI = (() => {
       closable: true,
       defaultVisible: false,
       autoSize: "default-on"
+    },
+    chat: {
+      label: "Chat",
+      closable: true,
+      defaultVisible: false,
+      shell: "fill"
     },
     bag: { label: "Bag", closable: true, framePersist: "none" },
     trade: { label: "Trade", closable: true, framePersist: "none" },
@@ -5392,14 +6142,14 @@ var EnhanceCommUI = (() => {
 
   // src/meters/meterUiTick.ts
   var MIN_FLUSH_MS = 50;
-  var listeners3 = [];
+  var listeners4 = [];
   var dirty = false;
   var raf = 0;
   var delay = 0;
   var lastFlushAt = 0;
-  function notify2() {
-    for (let i = 0; i < listeners3.length; i++) {
-      listeners3[i]();
+  function notify3() {
+    for (let i = 0; i < listeners4.length; i++) {
+      listeners4[i]();
     }
   }
   function flush() {
@@ -5408,7 +6158,7 @@ var EnhanceCommUI = (() => {
     if (typeof document !== "undefined" && document.hidden) return;
     dirty = false;
     lastFlushAt = performance.now();
-    notify2();
+    notify3();
   }
   function schedule() {
     if (raf || delay) return;
@@ -5428,10 +6178,10 @@ var EnhanceCommUI = (() => {
     schedule();
   }
   function subscribeMeterTick(listener) {
-    listeners3.push(listener);
+    listeners4.push(listener);
     return () => {
-      const idx = listeners3.indexOf(listener);
-      if (idx >= 0) listeners3.splice(idx, 1);
+      const idx = listeners4.indexOf(listener);
+      if (idx >= 0) listeners4.splice(idx, 1);
     };
   }
   if (typeof document !== "undefined") {
@@ -6127,7 +6877,7 @@ ${fightHoverTip(src)}`
   var MAX_HISTORY = 60;
   var live = null;
   var past = [];
-  var history = [];
+  var history2 = [];
   var lastHistoryAt = 0;
   var lastCombatAt = 0;
   var inCombat = false;
@@ -6221,7 +6971,7 @@ ${fightHoverTip(src)}`
     if (live) stampCamera(live, next);
   }
   function clearRollingHistory() {
-    history = [];
+    history2 = [];
     lastHistoryAt = 0;
     markMeterDirty();
   }
@@ -6314,8 +7064,8 @@ ${fightHoverTip(src)}`
       const a = seg.actors[ids[i]];
       values[a.id] = a.damage * 1e3 / elapsed;
     }
-    history.push({ at: now, values });
-    while (history.length > MAX_HISTORY) history.shift();
+    history2.push({ at: now, values });
+    while (history2.length > MAX_HISTORY) history2.shift();
   }
   function noteLiveDraft() {
     if (live) noteLive(live);
@@ -6371,12 +7121,12 @@ ${fightHoverTip(src)}`
     return inCombat && !!live && live.id === seg.id;
   }
   function getHistoryPoints() {
-    return history;
+    return history2;
   }
   function resetSessionAll() {
     live = null;
     past = [];
-    history = [];
+    history2 = [];
     lastHistoryAt = 0;
     lastCombatAt = 0;
     inCombat = false;
@@ -6394,7 +7144,7 @@ ${fightHoverTip(src)}`
   }
   function resetSessionOverall() {
     past = [];
-    history = [];
+    history2 = [];
     lastHistoryAt = 0;
   }
   function startSession(hooks2) {
@@ -7894,6 +8644,41 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.5",
+      title: "0.9.5",
+      date: "2026-09-08",
+      summary: "Anniversary kiss overlay on the featured player, plus a full Chat window on /comm with history, send, unread badge, and clearer text.",
+      highlights: [
+        {
+          label: "Chat window",
+          detail: "Open from the action bar. Live ambient and system chat stream in; Say / Party / Whisper send via o:command on the observed character.",
+          kind: "feature"
+        },
+        {
+          label: "Chat history + unread",
+          detail: "Loads saved messages via pull_messages (scroll back for older pages). Closed Chat shows a red unread badge on the icon.",
+          kind: "feature"
+        },
+        {
+          label: "Anniversary kiss overlay",
+          detail: "While S.anniversary is live, a gold 80px kiss-range ring and rising hearts mark the featured player. Toggle under Settings \u2192 Drawings.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Timestamps + readability",
+          detail: "Each line shows a clock; larger brighter text; stock grey chat colors are ignored so messages stay readable.",
+          kind: "improve"
+        },
+        {
+          label: "Party and whisper echo",
+          detail: "Observer sockets do not receive partym/pm \u2014 those sends get a local echo in the log.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.9.4",
       title: "0.9.4",
@@ -11331,19 +12116,19 @@ ${fightHoverTip(src)}`
   }
 
   // src/host/commander.ts
-  var listeners4 = [];
+  var listeners5 = [];
   function subscribeCommanderOpen(fn) {
-    listeners4.push(fn);
+    listeners5.push(fn);
     return () => {
-      const idx = listeners4.indexOf(fn);
-      if (idx >= 0) listeners4.splice(idx, 1);
+      const idx = listeners5.indexOf(fn);
+      if (idx >= 0) listeners5.splice(idx, 1);
     };
   }
   function openCommander(draft) {
     const payload = {};
     if (typeof draft === "string") payload.draft = draft;
-    for (let i = 0; i < listeners4.length; i++) {
-      listeners4[i](payload);
+    for (let i = 0; i < listeners5.length; i++) {
+      listeners5[i](payload);
     }
   }
   function ourShowCommander(fvalue) {
@@ -11368,29 +12153,29 @@ ${fightHoverTip(src)}`
   }
 
   // src/host/updateNotes.ts
-  var listeners5 = [];
+  var listeners6 = [];
   var pendingOpen = null;
   function subscribeUpdateNotesOpen(fn) {
-    listeners5.push(fn);
+    listeners6.push(fn);
     if (pendingOpen) {
       const payload = pendingOpen;
       pendingOpen = null;
       fn(payload);
     }
     return () => {
-      const idx = listeners5.indexOf(fn);
-      if (idx >= 0) listeners5.splice(idx, 1);
+      const idx = listeners6.indexOf(fn);
+      if (idx >= 0) listeners6.splice(idx, 1);
     };
   }
   function openUpdateNotes(mode) {
     const payload = { mode };
-    if (!listeners5.length) {
+    if (!listeners6.length) {
       pendingOpen = payload;
       return;
     }
     pendingOpen = null;
-    for (let i = 0; i < listeners5.length; i++) {
-      listeners5[i](payload);
+    for (let i = 0; i < listeners6.length; i++) {
+      listeners6[i](payload);
     }
   }
   function asRecord(value) {
@@ -11879,6 +12664,29 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
   height: 36px;
   min-height: 36px;
   padding: 0;
+}
+.ecu-btn[data-ecu-chat] {
+  position: relative;
+  overflow: visible;
+}
+.ecu-btn[data-ecu-chat] .ecu-chat-badge {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  letter-spacing: 0;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
 }
 .ecu-btn-icon {
   display: block;
@@ -12689,346 +13497,6 @@ ${CHROME_ARRANGE_CSS}
     document.head.append(style);
   }
 
-  // src/host/mail/merge.ts
-  function cloneRow(m) {
-    const next = {
-      id: m.id,
-      fro: m.fro,
-      to: m.to,
-      subject: m.subject,
-      message: m.message,
-      sent: m.sent
-    };
-    if (m.read != null) next.read = m.read;
-    if (m.item) next.item = { ...m.item };
-    if (m.taken != null) next.taken = m.taken;
-    if (m.system != null) next.system = m.system;
-    return next;
-  }
-  function mergeHeadPage(existing, page) {
-    const map = /* @__PURE__ */ new Map();
-    for (let i = 0; i < existing.length; i++) {
-      map.set(existing[i].id, existing[i]);
-    }
-    for (let i = 0; i < page.length; i++) {
-      const p = page[i];
-      const prev = map.get(p.id);
-      map.set(p.id, prev ? Object.assign({}, prev, p) : cloneRow(p));
-    }
-    const older = [];
-    for (let i = 0; i < existing.length; i++) {
-      const m = existing[i];
-      let inPage = false;
-      for (let j = 0; j < page.length; j++) {
-        if (page[j].id === m.id) {
-          inPage = true;
-          break;
-        }
-      }
-      if (!inPage) older.push(map.get(m.id) || m);
-    }
-    const head = [];
-    for (let i = 0; i < page.length; i++) {
-      head.push(map.get(page[i].id));
-    }
-    return head.concat(older);
-  }
-  function appendCursorPage(existing, page) {
-    const have = /* @__PURE__ */ new Set();
-    for (let i = 0; i < existing.length; i++) have.add(existing[i].id);
-    const next = existing.slice();
-    for (let i = 0; i < page.length; i++) {
-      const m = page[i];
-      if (have.has(m.id)) continue;
-      have.add(m.id);
-      next.push(cloneRow(m));
-    }
-    return next;
-  }
-  function applyPullMeta(page) {
-    return {
-      nextCursor: page.more ? page.cursor : null,
-      hasMore: !!page.more
-    };
-  }
-  function normalizeMailPage(raw) {
-    const info2 = raw || {};
-    const list = Array.isArray(info2.mail) ? info2.mail : [];
-    const mail = [];
-    for (let i = 0; i < list.length; i++) {
-      const m = list[i];
-      if (!m || m.id == null) continue;
-      const row3 = {
-        id: String(m.id),
-        fro: String(m.fro || ""),
-        to: String(m.to || ""),
-        subject: String(m.subject || ""),
-        message: String(m.message || ""),
-        sent: String(m.sent || "")
-      };
-      if (typeof m.read === "boolean") row3.read = m.read;
-      const item = parseMailItem(m.item);
-      if (item) row3.item = item;
-      const taken = coerceMailTaken(m.taken);
-      if (taken != null) row3.taken = taken;
-      mail.push(row3);
-    }
-    return {
-      mail,
-      more: !!info2.more,
-      cursor: info2.cursor != null ? String(info2.cursor) : null,
-      cursored: !!info2.cursored
-    };
-  }
-  function coerceMailTaken(raw) {
-    if (typeof raw === "boolean") return raw;
-    if (raw === 0 || raw === "0" || raw === "false") return false;
-    if (raw === 1 || raw === "1" || raw === "true") return true;
-    return void 0;
-  }
-  function parseMailItem(raw) {
-    let cur = raw;
-    for (let depth2 = 0; depth2 < 3; depth2++) {
-      if (cur == null || cur === "") return void 0;
-      if (typeof cur === "string") {
-        try {
-          cur = JSON.parse(cur);
-        } catch (e2) {
-          return void 0;
-        }
-        continue;
-      }
-      break;
-    }
-    if (!cur || typeof cur !== "object") return void 0;
-    const obj = cur;
-    if (obj.name == null || obj.name === "") return void 0;
-    const item = { name: String(obj.name) };
-    if (typeof obj.level === "number" && Number.isFinite(obj.level)) {
-      item.level = obj.level;
-    } else if (obj.level != null && obj.level !== "" && !isNaN(Number(obj.level))) {
-      item.level = Number(obj.level);
-    }
-    if (typeof obj.q === "number" && Number.isFinite(obj.q)) {
-      item.q = obj.q;
-    } else if (obj.q != null && obj.q !== "" && !isNaN(Number(obj.q))) {
-      item.q = Number(obj.q);
-    }
-    if (typeof obj.p === "string" && obj.p) item.p = obj.p;
-    if (typeof obj.skin === "string" && obj.skin) item.skin = obj.skin;
-    const keys = Object.keys(obj);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k === "name" || k === "level" || k === "q" || k === "p" || k === "skin") {
-        continue;
-      }
-      if (item[k] === void 0) item[k] = obj[k];
-    }
-    return item;
-  }
-
-  // src/host/mail/api.ts
-  function getApiCall() {
-    const fn = window.api_call;
-    return typeof fn === "function" ? fn : null;
-  }
-  function extractInfs(ct) {
-    if (!ct) return [];
-    if (typeof ct === "string") {
-      try {
-        return extractInfs(JSON.parse(ct));
-      } catch (e2) {
-        return [];
-      }
-    }
-    if (Array.isArray(ct)) return ct;
-    if (typeof ct !== "object") return [];
-    const obj = ct;
-    if (obj.failed) return [];
-    if (Array.isArray(obj.infs)) return obj.infs;
-    if (obj.data != null) {
-      const nested = extractInfs(obj.data);
-      if (nested.length) return nested;
-    }
-    if (obj.type === "mail" || Array.isArray(obj.mail)) {
-      return [obj];
-    }
-    return [];
-  }
-  function readUnreadFromInfs(infs) {
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (info2 && info2.type === "unread" && typeof info2.count === "number") {
-        return info2.count;
-      }
-    }
-    return void 0;
-  }
-  function findMailInfo(infs) {
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (info2 && (info2.type === "mail" || Array.isArray(info2.mail))) {
-        return info2;
-      }
-    }
-    return null;
-  }
-  var API_TIMEOUT_MS = 2e4;
-  async function postJson(path, body, signal) {
-    if (typeof fetch !== "function") return null;
-    try {
-      const res = await fetch(window.location.origin + path, {
-        method: "POST",
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        credentials: "same-origin",
-        body: JSON.stringify(body),
-        signal
-      });
-      let json = null;
-      try {
-        json = await res.json();
-      } catch (e2) {
-        json = null;
-      }
-      return { ok: res.ok, status: res.status, json };
-    } catch (e2) {
-      return null;
-    }
-  }
-  async function callApiFetch(method, args) {
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = window.setTimeout(() => {
-      if (ctrl) ctrl.abort();
-    }, API_TIMEOUT_MS);
-    try {
-      const res = await postJson(
-        "/api/" + method,
-        { ...args },
-        ctrl ? ctrl.signal : void 0
-      );
-      if (!res) return null;
-      if (!res.ok) return { ok: false };
-      return { ok: true, infs: extractInfs(res.json) };
-    } finally {
-      window.clearTimeout(timer);
-    }
-  }
-  function callApiStock(method, args) {
-    return new Promise((resolve) => {
-      let settled = false;
-      const finish = (infs) => {
-        if (settled) return;
-        settled = true;
-        resolve(infs);
-      };
-      const api = getApiCall();
-      if (!api) {
-        finish([]);
-        return;
-      }
-      const timer = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
-      try {
-        const maybePromise = api(
-          method,
-          {
-            ...args,
-            callback: (ct) => {
-              window.clearTimeout(timer);
-              finish(extractInfs(ct));
-            }
-          },
-          { silent: true }
-        );
-        if (maybePromise && typeof maybePromise.then === "function") {
-          maybePromise.then((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
-          }).catch((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
-          });
-        }
-      } catch (e2) {
-        window.clearTimeout(timer);
-        finish([]);
-      }
-    });
-  }
-  async function callApi(method, args = {}) {
-    const viaFetch = await callApiFetch(method, args);
-    if (viaFetch != null) {
-      if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
-      if (viaFetch.ok) {
-        const viaStock2 = await callApiStock(method, args);
-        if (viaStock2.length) return viaStock2;
-        return viaFetch.infs;
-      }
-      const viaStock = await callApiStock(method, args);
-      if (viaStock.length) return viaStock;
-      return [];
-    }
-    return callApiStock(method, args);
-  }
-  async function callApiResult(method, args = {}) {
-    const viaFetch = await callApiFetch(method, args);
-    if (viaFetch != null) {
-      if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
-      return { ok: false, reason: "http_error", data: [] };
-    }
-    const viaStock = await callApiStock(method, args);
-    if (viaStock.length) return { ok: true, data: viaStock };
-    return { ok: false, reason: "no_response", data: [] };
-  }
-  async function pullMailPage(cursor) {
-    const args = {};
-    if (cursor) args.cursor = cursor;
-    const infs = await callApi("pull_mail", args);
-    const info2 = findMailInfo(infs);
-    if (info2) return { ok: true, data: normalizeMailPage(info2) };
-    return { ok: false, reason: "no_mail_payload" };
-  }
-  async function readMail(mailId) {
-    const res = await callApiResult("read_mail", { mail: mailId });
-    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
-    const infs = res.data || [];
-    return {
-      ok: true,
-      data: true,
-      unreadCount: readUnreadFromInfs(infs)
-    };
-  }
-  async function deleteMail(mailId) {
-    const res = await callApiResult("delete_mail", { mid: mailId });
-    if (!res.ok) return { ok: false, reason: res.reason || "no_response" };
-    const infs = res.data || [];
-    let message;
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (!info2) continue;
-      if (info2.type === "message" && typeof info2.message === "string") {
-        message = info2.message;
-      }
-    }
-    return { ok: true, data: true, message };
-  }
-  async function readMailMany(ids) {
-    let unreadCount;
-    let anyOk = false;
-    const jobs = [];
-    for (let i = 0; i < ids.length; i++) {
-      jobs.push(readMail(ids[i]));
-    }
-    const results = await Promise.all(jobs);
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].ok) anyOk = true;
-      if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
-    }
-    if (!anyOk && ids.length) {
-      return { ok: false, reason: "no_response", data: { unreadCount } };
-    }
-    return { ok: true, data: { unreadCount } };
-  }
-
   // src/host/mail/mailPersistLogic.ts
   var MAIL_HEAD_PAGE_SIZE = 40;
   function headFingerprint(mails, limit = MAIL_HEAD_PAGE_SIZE) {
@@ -13320,7 +13788,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/mail/mailState.ts
-  var listeners6 = [];
+  var listeners7 = [];
   var toastListeners = [];
   var locallyReadIds = /* @__PURE__ */ new Set();
   var state = {
@@ -13347,7 +13815,7 @@ ${CHROME_ARRANGE_CSS}
     sessionDraft: emptyDraft()
   };
   function notifyListeners() {
-    for (let i = 0; i < listeners6.length; i++) listeners6[i]();
+    for (let i = 0; i < listeners7.length; i++) listeners7[i]();
   }
   function emitToast(message) {
     for (let i = 0; i < toastListeners.length; i++) toastListeners[i](message);
@@ -13373,10 +13841,10 @@ ${CHROME_ARRANGE_CSS}
     commit({ view: next });
   }
   function subscribeMailStore(fn) {
-    listeners6.push(fn);
+    listeners7.push(fn);
     return () => {
-      const idx = listeners6.indexOf(fn);
-      if (idx >= 0) listeners6.splice(idx, 1);
+      const idx = listeners7.indexOf(fn);
+      if (idx >= 0) listeners7.splice(idx, 1);
     };
   }
   function subscribeMailToast(fn) {
@@ -14978,7 +15446,7 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/infoDialog/write.ts
-  var listeners7 = /* @__PURE__ */ new Set();
+  var listeners8 = /* @__PURE__ */ new Set();
   var pendingWriteKind = "item";
   function setPendingWriteKind(kind) {
     pendingWriteKind = kind;
@@ -14987,13 +15455,13 @@ ${CHROME_ARRANGE_CSS}
     return pendingWriteKind;
   }
   function subscribeInfoDialogChange(listener) {
-    listeners7.add(listener);
+    listeners8.add(listener);
     return () => {
-      listeners7.delete(listener);
+      listeners8.delete(listener);
     };
   }
   function emitInfoDialogChange(kind, open) {
-    for (const listener of Array.from(listeners7)) {
+    for (const listener of Array.from(listeners8)) {
       try {
         listener(kind, open);
       } catch (e2) {
@@ -15387,7 +15855,7 @@ ${CHROME_ARRANGE_CSS}
   var SAVED_CHAR = "__ecuInvSavedChar";
   var HOLD_CHAR = "__ecuInvHoldChar";
   var BAG_SYNC_STAMP_KEY = "__ecuBagSyncedAt";
-  var listeners8 = [];
+  var listeners9 = [];
   var syncListeners = [];
   var bagSyncedAt = null;
   var bagSyncedForName = null;
@@ -15436,9 +15904,9 @@ ${CHROME_ARRANGE_CSS}
     document.head.append(style);
   }
   function notifyInventory(open) {
-    for (let i = 0; i < listeners8.length; i++) {
+    for (let i = 0; i < listeners9.length; i++) {
       try {
-        listeners8[i](open);
+        listeners9[i](open);
       } catch (e2) {
       }
     }
@@ -15519,10 +15987,10 @@ ${CHROME_ARRANGE_CSS}
     bagSyncSocketPoll = window.setInterval(syncBagStateForSocket, 500);
   }
   function subscribeInventory(listener) {
-    listeners8.push(listener);
+    listeners9.push(listener);
     return () => {
-      const idx = listeners8.indexOf(listener);
-      if (idx >= 0) listeners8.splice(idx, 1);
+      const idx = listeners9.indexOf(listener);
+      if (idx >= 0) listeners9.splice(idx, 1);
     };
   }
   function subscribeBagSync(listener) {
@@ -16107,16 +16575,16 @@ ${CHROME_ARRANGE_CSS}
     return result.code === "looks_sent";
   }
   function scheduleCommandHead(reason, delayMs) {
-    const seq = ++cmdSeq;
+    const seq2 = ++cmdSeq;
     const wait = typeof delayMs === "number" && delayMs > 0 ? delayMs : MAIL_COMMAND_HEAD_DELAY_MS;
     window.setTimeout(() => {
-      if (seq !== cmdSeq) return;
+      if (seq2 !== cmdSeq) return;
       void (async () => {
         const isCommand = reason.indexOf("command") === 0;
         const sendPending = isCommand && pendingOutcome && pendingOutcome.kind === "send" ? pendingOutcome : null;
         const attempts = sendPending ? 4 : 1;
         for (let i = 0; i < attempts; i++) {
-          if (seq !== cmdSeq) return;
+          if (seq2 !== cmdSeq) return;
           await requestMailHead(reason, { force: true });
           if (!sendPending || sendLooksSettled(sendPending) || i === attempts - 1) {
             break;
@@ -16284,6 +16752,72 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
+  // src/host/chat/commands.ts
+  var MAX_LEN = 1200;
+  function lit2(value) {
+    return JSON.stringify(String(value));
+  }
+  function truncateChatMessage(message) {
+    const raw = String(message || "");
+    if (raw.length <= MAX_LEN) return raw;
+    return raw.slice(0, MAX_LEN);
+  }
+  function buildChatSendScript(mode, message, whisperTo) {
+    const text = truncateChatMessage(message).trim();
+    if (!text) return null;
+    if (text.charAt(0) === "/") {
+      return wrapCommandScript(
+        `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit2(text)});`
+      );
+    }
+    if (mode === "party") {
+      return wrapCommandScript(
+        `if(typeof party_say!=="function"){game_log("chat \xB7 party_say missing");return;}party_say(${lit2(text)});`
+      );
+    }
+    if (mode === "whisper") {
+      const to = String(whisperTo || "").trim();
+      if (!to) return null;
+      return wrapCommandScript(
+        `if(typeof private_say!=="function"){game_log("chat \xB7 private_say missing");return;}private_say(${lit2(to)},${lit2(text)});`
+      );
+    }
+    return wrapCommandScript(
+      `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit2(text)});`
+    );
+  }
+  function sendChatViaObserver(mode, message, whisperTo) {
+    const script = buildChatSendScript(mode, message, whisperTo);
+    if (!script) {
+      if (mode === "whisper" && !String(whisperTo || "").trim()) {
+        return { ok: false, reason: "whisper needs a name" };
+      }
+      return { ok: false, reason: "empty" };
+    }
+    const labeled = injectCommLog(
+      script,
+      mode === "whisper" ? `chat \xB7 w ${String(whisperTo || "").trim()}` : `chat \xB7 ${mode}`
+    );
+    const ok = emitObserverCommand(labeled, `chat-${mode}`);
+    if (!ok) return { ok: false, reason: "no socket", script: labeled };
+    return { ok: true, script: labeled };
+  }
+
+  // src/host/chat/session.ts
+  var openListeners2 = [];
+  function subscribeChatOpen(fn) {
+    openListeners2.push(fn);
+    return () => {
+      const idx = openListeners2.indexOf(fn);
+      if (idx >= 0) openListeners2.splice(idx, 1);
+    };
+  }
+  function openChat(payload = {}) {
+    for (let i = 0; i < openListeners2.length; i++) {
+      openListeners2[i](payload);
+    }
+  }
+
   // src/host/commChrome/chromeActions.ts
   function clearObserve() {
     if (typeof window.init_socket !== "function") return;
@@ -16366,6 +16900,11 @@ ${CHROME_ARRANGE_CSS}
       window.show_commander();
     }
   }
+  function onChatClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openChat({ toggle: true });
+  }
   function onMailClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
@@ -16408,6 +16947,7 @@ ${CHROME_ARRANGE_CSS}
     follow: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     bag: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 8h12l1 12H5L6 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
+    chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mainframe: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
@@ -16425,6 +16965,7 @@ ${CHROME_ARRANGE_CSS}
       btn.setAttribute("aria-label", label);
       btn.setAttribute("data-ecu-tour", "btn-" + kind);
       if (kind === "mail") btn.setAttribute("data-ecu-mail", "1");
+      if (kind === "chat") btn.setAttribute("data-ecu-chat", "1");
       btn.innerHTML = ACTION_ICONS[kind];
       if (kind === "mail") {
         const badge = document.createElement("span");
@@ -16433,12 +16974,20 @@ ${CHROME_ARRANGE_CSS}
         badge.setAttribute("data-ecu-mail-badge", "1");
         btn.appendChild(badge);
       }
+      if (kind === "chat") {
+        const badge = document.createElement("span");
+        badge.className = "ecu-chat-badge";
+        badge.hidden = true;
+        badge.setAttribute("data-ecu-chat-badge", "1");
+        btn.appendChild(badge);
+      }
       btn.addEventListener("click", onClick);
       return btn;
     };
     actions.append(
       mk("follow", "Follow", "Center on observed character", onFollowClick),
       mk("bag", "Bag", "Observed inventory", onBagClick),
+      mk("chat", "Chat", "Server chat \u2014 send as observed character", onChatClick),
       mk("mail", "Mail", "Account mail", onMailClick),
       mk(
         "command",
@@ -16460,6 +17009,7 @@ ${CHROME_ARRANGE_CSS}
     const map = {
       Follow: "btn-follow",
       Bag: "btn-bag",
+      Chat: "btn-chat",
       Mail: "btn-mail",
       Command: "btn-command",
       Docs: "btn-docs",
@@ -16479,6 +17029,7 @@ ${CHROME_ARRANGE_CSS}
     if (!actions) return;
     syncActionTourAttrs(actions);
     syncMailBadge();
+    syncChatBadge();
     const buttons = actions.querySelectorAll(".ecu-btn");
     for (let i = 0; i < buttons.length; i++) {
       const btn = buttons[i];
@@ -16530,7 +17081,7 @@ ${CHROME_ARRANGE_CSS}
       if (!actionsEl) {
         actionsEl = buildActionsEl();
         existingStack.insertBefore(actionsEl, existingStack.firstChild);
-      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') || !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')) {
+      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-chat"]') || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') || !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')) {
         const next = buildActionsEl();
         actionsEl.replaceWith(next);
         actionsEl = next;
@@ -17935,17 +18486,17 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     for (let i = 0; i < order.length; i++) {
       const key = order[i];
       const rows = sortMailsNewestFirst(byKey[key]);
-      let unread = 0;
+      let unread2 = 0;
       let untaken = 0;
       for (let j = 0; j < rows.length; j++) {
-        if (rows[j].read === false) unread += 1;
+        if (rows[j].read === false) unread2 += 1;
         if (rows[j].item && !rows[j].taken) untaken += 1;
       }
       groups.push({
         key,
         mails: rows,
         head: rows[0],
-        unread,
+        unread: unread2,
         untaken
       });
     }
@@ -19072,8 +19623,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.4" : "unknown";
-    const builtAt = true ? "2026-09-08T00:12:58.639Z" : "unknown";
+    const version = true ? "0.9.5" : "unknown";
+    const builtAt = true ? "2026-09-08T09:17:31.952Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -22663,9 +23214,9 @@ button.comm-mail__stack-u {
       let found = false;
       for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
         if (found) {
-          const nextId = INTRO_TOUR_CHAIN[i];
-          if (isTourCompleted(nextId)) continue;
-          const tour = tourById(nextId);
+          const nextId2 = INTRO_TOUR_CHAIN[i];
+          if (isTourCompleted(nextId2)) continue;
+          const tour = tourById(nextId2);
           if (!tour || !effectHostRef.current) {
             flushContextualTourQueue();
             return;
@@ -23664,7 +24215,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners9 = [];
+  var listeners10 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -23701,9 +24252,9 @@ button.comm-mail__stack-u {
     } catch (e2) {
     }
   }
-  function notify4() {
-    for (let i = 0; i < listeners9.length; i++) {
-      listeners9[i]();
+  function notify5() {
+    for (let i = 0; i < listeners10.length; i++) {
+      listeners10[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -23720,7 +24271,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify4();
+    notify5();
     return next;
   }
   function getLayoutGridStep() {
@@ -23733,7 +24284,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify4();
+    notify5();
     return next;
   }
   function getLayoutChromePos() {
@@ -23746,14 +24297,14 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify4();
+    notify5();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners9.push(listener);
+    listeners10.push(listener);
     return () => {
-      const idx = listeners9.indexOf(listener);
-      if (idx >= 0) listeners9.splice(idx, 1);
+      const idx = listeners10.indexOf(listener);
+      if (idx >= 0) listeners10.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -23765,7 +24316,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify4();
+    notify5();
     return next;
   }
 
@@ -24073,6 +24624,214 @@ button.comm-mail__stack-u {
     return { x, y };
   }
 
+  // src/viz/paintGfx.ts
+  function strokeCircle(gfx, x, y, radius, color, width, alpha, fillAlpha) {
+    if (!(radius > 0)) return;
+    if (fillAlpha > 0) {
+      gfx.beginFill(color, fillAlpha);
+      gfx.drawCircle(x, y, radius);
+      gfx.endFill();
+    }
+    gfx.lineStyle(width, color, alpha);
+    gfx.drawCircle(x, y, radius);
+    gfx.lineStyle(0, 0, 0);
+  }
+  function strokeDashedCircle(gfx, x, y, radius, color, width, alpha, dash, gap) {
+    if (!(radius > 0)) return;
+    const step = dash + gap;
+    const circ = Math.PI * 2 * radius;
+    const n = Math.max(8, Math.floor(circ / step));
+    const angStep = Math.PI * 2 / n;
+    const dashAng = dash / radius * (dash > 0 ? 1 : 0);
+    gfx.lineStyle(width, color, alpha);
+    for (let i = 0; i < n; i++) {
+      const a0 = i * angStep;
+      const a1 = a0 + Math.min(dashAng || angStep * 0.45, angStep * 0.55);
+      gfx.moveTo(x + Math.cos(a0) * radius, y + Math.sin(a0) * radius);
+      gfx.lineTo(x + Math.cos(a1) * radius, y + Math.sin(a1) * radius);
+    }
+    gfx.lineStyle(0, 0, 0);
+  }
+  function drawLine(gfx, x1, y1, x2, y2, color, width, alpha) {
+    gfx.lineStyle(width, color, alpha);
+    gfx.moveTo(x1, y1);
+    gfx.lineTo(x2, y2);
+    gfx.lineStyle(0, 0, 0);
+  }
+  function strokeRect(gfx, x, y, w, h, color, width, alpha, fillAlpha) {
+    if (!(w > 0) || !(h > 0)) return;
+    if (fillAlpha > 0 && typeof gfx.drawRect === "function") {
+      gfx.beginFill(color, fillAlpha);
+      gfx.drawRect(x, y, w, h);
+      gfx.endFill();
+    }
+    gfx.lineStyle(width, color, alpha);
+    if (typeof gfx.drawRect === "function") {
+      gfx.drawRect(x, y, w, h);
+    } else {
+      gfx.moveTo(x, y);
+      gfx.lineTo(x + w, y);
+      gfx.lineTo(x + w, y + h);
+      gfx.lineTo(x, y + h);
+      gfx.lineTo(x, y);
+    }
+    gfx.lineStyle(0, 0, 0);
+  }
+
+  // src/viz/anniversaryKiss.ts
+  var ANNIVERSARY_KISS_RANGE_FALLBACK = 80;
+  var COLOR_VISITOR = 15775554;
+  var COLOR_HOST = 13214247;
+  var HEART_MS_VISITOR = 4200;
+  var HEART_MS_HOST = 9e3;
+  var fx = null;
+  function resetAnniversaryKissFx() {
+    fx = null;
+  }
+  function kissRangePx(G = getG()) {
+    var _a, _b;
+    const r = (_b = (_a = G == null ? void 0 : G.skills) == null ? void 0 : _a.ikissyou) == null ? void 0 : _b.range;
+    return typeof r === "number" && r > 0 ? r : ANNIVERSARY_KISS_RANGE_FALLBACK;
+  }
+  function readAnniversaryLive(S = getS()) {
+    if (!S) return null;
+    const raw = S.anniversary;
+    if (!raw || typeof raw !== "object") return null;
+    const row3 = raw;
+    if (!row3.live) return null;
+    if (row3.target == null && row3.id == null) return null;
+    return {
+      live: true,
+      target: typeof row3.target === "string" ? row3.target : void 0,
+      id: typeof row3.id === "string" || typeof row3.id === "number" ? row3.id : void 0,
+      map: typeof row3.map === "string" ? row3.map : void 0,
+      x: typeof row3.x === "number" ? row3.x : void 0,
+      y: typeof row3.y === "number" ? row3.y : void 0,
+      expires: typeof row3.expires === "number" ? row3.expires : void 0
+    };
+  }
+  function findAnniversaryTarget(entities, status) {
+    if (status.id != null) {
+      const byId = findEntity(entities, status.id);
+      if (byId && isFocusablePlayer(byId) && !byId.dead && !byId.rip) {
+        return byId;
+      }
+    }
+    const name = status.target ? String(status.target) : "";
+    if (!name) return null;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!isFocusablePlayer(ent) || ent.dead || ent.rip) continue;
+      if (ent.name != null && String(ent.name) === name) return ent;
+      if (String(ent.id) === name) return ent;
+    }
+    return null;
+  }
+  function sameMapAsStatus(status) {
+    if (!status.map) return true;
+    const here = getCurrentMap();
+    return !here || here === status.map;
+  }
+  function isHostOf(status, target) {
+    const me = getObserving() || getCharacter();
+    if (!me) return false;
+    if (target && String(me.id) === String(target.id)) return true;
+    if (status.id != null && String(me.id) === String(status.id)) return true;
+    if (status.target && me.name != null && String(me.name) === String(status.target)) {
+      return true;
+    }
+    return false;
+  }
+  function callStartAnimation(sprite, name) {
+    if (window.no_graphics) return;
+    const fn = window.start_animation;
+    if (typeof fn !== "function") return;
+    if (!sprite.animations) return;
+    try {
+      fn(sprite, name);
+    } catch (e2) {
+    }
+  }
+  function ensureFxState(targetKey) {
+    if (!fx || fx.targetKey !== targetKey) {
+      fx = { targetKey, lastHeartAt: 0, wasInRange: false };
+    }
+    return fx;
+  }
+  function pulseHearts(sprite, now, intervalMs, state2) {
+    var _a;
+    if ((_a = sprite.animations) == null ? void 0 : _a.hearts_single) return;
+    if (state2.lastHeartAt > 0 && now - state2.lastHeartAt < intervalMs) return;
+    state2.lastHeartAt = now;
+    callStartAnimation(sprite, "hearts_single");
+  }
+  function tickEnterRangeCue(target, range, host2, state2) {
+    if (host2) {
+      state2.wasInRange = true;
+      return;
+    }
+    const viewer = getObserving() || getCharacter();
+    if (!viewer || viewer.rip || viewer.dead) {
+      state2.wasInRange = false;
+      return;
+    }
+    if (String(viewer.id) === String(target.id)) {
+      state2.wasInRange = true;
+      return;
+    }
+    const d = simpleDistance(viewer, target);
+    const inRange = typeof d === "number" && d < range;
+    if (inRange && !state2.wasInRange) {
+      callStartAnimation(viewer, "hearts_single");
+    }
+    state2.wasInRange = inRange;
+  }
+  function paintAnniversaryKiss(gfx, entities, settings, now = Date.now()) {
+    var _a;
+    if (!settings["world.anniversaryKiss"]) {
+      resetAnniversaryKissFx();
+      return;
+    }
+    const status = readAnniversaryLive();
+    if (!status || !sameMapAsStatus(status)) {
+      resetAnniversaryKissFx();
+      return;
+    }
+    const target = findAnniversaryTarget(entities, status);
+    const host2 = isHostOf(status, target);
+    const range = kissRangePx();
+    const origin = target ? entityMapXY(target) : status.x != null && status.y != null ? { x: status.x, y: status.y } : null;
+    if (!origin) {
+      resetAnniversaryKissFx();
+      return;
+    }
+    const color = host2 ? COLOR_HOST : COLOR_VISITOR;
+    const alpha = host2 ? 0.42 : 0.78;
+    const width = host2 ? 1.5 : 2;
+    strokeDashedCircle(
+      gfx,
+      origin.x,
+      origin.y,
+      range,
+      color,
+      width,
+      alpha,
+      8,
+      6
+    );
+    const targetKey = (target && target.id != null ? String(target.id) : "") || status.target || String((_a = status.id) != null ? _a : "");
+    const state2 = ensureFxState(targetKey);
+    if (target && target.visible !== false) {
+      pulseHearts(
+        target,
+        now,
+        host2 ? HEART_MS_HOST : HEART_MS_VISITOR,
+        state2
+      );
+      tickEnterRangeCue(target, range, host2, state2);
+    }
+  }
+
   // src/viz/abilityPhase.ts
   var IMMINENT_RATIO = 0.15;
   var JUST_FIRED_MS = 350;
@@ -24347,6 +25106,7 @@ button.comm-mail__stack-u {
     "world.targetLine": false,
     "world.leashBoundary": false,
     "world.spawnPoints": false,
+    "world.anniversaryKiss": true,
     "world.quirkHitboxes": false,
     // Native client already draws HP / nameplates / aggro tint — keep off.
     "entity.hpBar": false,
@@ -24372,7 +25132,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners10 = [];
+  var listeners11 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -24427,14 +25187,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners10.push(listener);
+    listeners11.push(listener);
     return () => {
-      const idx = listeners10.indexOf(listener);
-      if (idx >= 0) listeners10.splice(idx, 1);
+      const idx = listeners11.indexOf(listener);
+      if (idx >= 0) listeners11.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners10.length; i++) listeners10[i]();
+    for (let i = 0; i < listeners11.length; i++) listeners11[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -24617,60 +25377,6 @@ button.comm-mail__stack-u {
     const dx = gx - x;
     const dy = gy - y;
     return Math.sqrt(dx * dx + dy * dy) > 0.75;
-  }
-
-  // src/viz/paintGfx.ts
-  function strokeCircle(gfx, x, y, radius, color, width, alpha, fillAlpha) {
-    if (!(radius > 0)) return;
-    if (fillAlpha > 0) {
-      gfx.beginFill(color, fillAlpha);
-      gfx.drawCircle(x, y, radius);
-      gfx.endFill();
-    }
-    gfx.lineStyle(width, color, alpha);
-    gfx.drawCircle(x, y, radius);
-    gfx.lineStyle(0, 0, 0);
-  }
-  function strokeDashedCircle(gfx, x, y, radius, color, width, alpha, dash, gap) {
-    if (!(radius > 0)) return;
-    const step = dash + gap;
-    const circ = Math.PI * 2 * radius;
-    const n = Math.max(8, Math.floor(circ / step));
-    const angStep = Math.PI * 2 / n;
-    const dashAng = dash / radius * (dash > 0 ? 1 : 0);
-    gfx.lineStyle(width, color, alpha);
-    for (let i = 0; i < n; i++) {
-      const a0 = i * angStep;
-      const a1 = a0 + Math.min(dashAng || angStep * 0.45, angStep * 0.55);
-      gfx.moveTo(x + Math.cos(a0) * radius, y + Math.sin(a0) * radius);
-      gfx.lineTo(x + Math.cos(a1) * radius, y + Math.sin(a1) * radius);
-    }
-    gfx.lineStyle(0, 0, 0);
-  }
-  function drawLine(gfx, x1, y1, x2, y2, color, width, alpha) {
-    gfx.lineStyle(width, color, alpha);
-    gfx.moveTo(x1, y1);
-    gfx.lineTo(x2, y2);
-    gfx.lineStyle(0, 0, 0);
-  }
-  function strokeRect(gfx, x, y, w, h, color, width, alpha, fillAlpha) {
-    if (!(w > 0) || !(h > 0)) return;
-    if (fillAlpha > 0 && typeof gfx.drawRect === "function") {
-      gfx.beginFill(color, fillAlpha);
-      gfx.drawRect(x, y, w, h);
-      gfx.endFill();
-    }
-    gfx.lineStyle(width, color, alpha);
-    if (typeof gfx.drawRect === "function") {
-      gfx.drawRect(x, y, w, h);
-    } else {
-      gfx.moveTo(x, y);
-      gfx.lineTo(x + w, y);
-      gfx.lineTo(x + w, y + h);
-      gfx.lineTo(x, y + h);
-      gfx.lineTo(x, y);
-    }
-    gfx.lineStyle(0, 0, 0);
   }
 
   // src/host/commNotice.ts
@@ -25424,6 +26130,7 @@ button.comm-mail__stack-u {
     const focusId = focus && focus.id != null ? String(focus.id) : null;
     paintSpawnPoints(gfx, labels, settings);
     paintGridCoords(labels, settings);
+    paintAnniversaryKiss(gfx, opts.entities, settings);
     if (focus && focus.visible && !focus.dead) {
       paintAbilityRings(gfx, labels, focus, settings, opts.entities);
     }
@@ -26033,10 +26740,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners11 = [];
-  function notify5() {
-    for (let i = 0; i < listeners11.length; i++) {
-      listeners11[i]();
+  var listeners12 = [];
+  function notify6() {
+    for (let i = 0; i < listeners12.length; i++) {
+      listeners12[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -26044,7 +26751,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify5();
+    if (depth === 1) notify6();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -26052,18 +26759,18 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify5();
+    if (depth === 0) notify6();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify5();
+    notify6();
   }
   function subscribeLayoutGuide(listener) {
-    listeners11.push(listener);
+    listeners12.push(listener);
     return () => {
-      const idx = listeners11.indexOf(listener);
-      if (idx >= 0) listeners11.splice(idx, 1);
+      const idx = listeners12.indexOf(listener);
+      if (idx >= 0) listeners12.splice(idx, 1);
     };
   }
 
@@ -33261,8 +33968,8 @@ ${parts.map(cssSlice).join("\n")}
     for (let i = 0; i < sorted.length; i++) {
       const r = sorted[i];
       const el = kids[i];
-      const nextId = r.id || String(i);
-      if (el.dataset.id !== nextId) el.dataset.id = nextId;
+      const nextId2 = r.id || String(i);
+      if (el.dataset.id !== nextId2) el.dataset.id = nextId2;
       const nextClass = "ecu-meter-row" + (r.you ? " you" : "") + (r.selected ? " is-selected" : "") + (isTotalRow(r) ? " is-total" : "") + (r.kind === "ability" || r.kind === "channel" ? " has-skill" : "") + (merged.onClick || merged.onContextMenu ? " clickable" : "");
       if (el.className !== nextClass) el.className = nextClass;
       const fill = el.querySelector(".ecu-meter-fill");
@@ -43311,6 +44018,11 @@ ${parts.map(cssSlice).join("\n")}
         {
           key: "world.highlightAtRisk",
           label: "Highlight players in ability radius"
+        },
+        {
+          key: "world.anniversaryKiss",
+          label: "Anniversary kiss range",
+          help: "80px gold ring + rising hearts on the featured player while live"
         }
       ]
     },
@@ -48002,14 +48714,14 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/host/gearCommands.ts
-  function lit2(value) {
+  function lit3(value) {
     return JSON.stringify(String(value));
   }
   function fingerprintCheckJs2(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit2(fp.name)}`];
+    const parts = [`!${varName}`, `${varName}.name!==${lit3(fp.name)}`];
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit2(fp.p)}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit3(fp.p)}`);
     return parts.join("||");
   }
   function resolveInvSlotJs(fp) {
@@ -48040,12 +48752,12 @@ ${parts.map(cssSlice).join("\n")}
   }
   function buildEquipScript(fp, gearSlot) {
     const slot = gearSlot ? String(gearSlot).trim() : "";
-    const slotArg = slot ? `,${lit2(slot)}` : "";
+    const slotArg = slot ? `,${lit3(slot)}` : "";
     return wrapCommandScript(
       [
         resolveInvSlotJs(fp),
         `try{await equip(__slot${slotArg});}catch(__e){`,
-        `game_log(${lit2("Equip failed" + (slot ? " \u2192 " + slot : ""))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `game_log(${lit3("Equip failed" + (slot ? " \u2192 " + slot : ""))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -48058,12 +48770,12 @@ ${parts.map(cssSlice).join("\n")}
     if (slot === "elixir") {
       return wrapCommandScript(`game_log("Cannot unequip elixir");`);
     }
-    const guard = (options == null ? void 0 : options.skipSlotGuard) ? "" : `if(!character.slots[${lit2(slot)}]){game_log(${lit2("Unequip failed \u2014 slot empty")});return;}`;
+    const guard = (options == null ? void 0 : options.skipSlotGuard) ? "" : `if(!character.slots[${lit3(slot)}]){game_log(${lit3("Unequip failed \u2014 slot empty")});return;}`;
     return wrapCommandScript(
       [
         guard,
-        `try{await unequip(${lit2(slot)});}catch(__e){`,
-        `game_log(${lit2("Unequip failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `try{await unequip(${lit3(slot)});}catch(__e){`,
+        `game_log(${lit3("Unequip failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -48393,11 +49105,11 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/host/tradeCommands.ts
-  function lit3(value) {
+  function lit4(value) {
     return JSON.stringify(String(value));
   }
   function commLit(message) {
-    return lit3(commLogText(message));
+    return lit4(commLogText(message));
   }
   function tradeRowOpenJs() {
     return `(character.slots&&character.slots.trade1!==undefined)`;
@@ -48409,14 +49121,14 @@ ${parts.map(cssSlice).join("\n")}
     return [
       `var __sock=get_socket();`,
       `if(!__sock){game_log(${commLit("trade \xB7 no socket")});return;}`,
-      `__sock.emit(${lit3(event)},${payloadExpr});`
+      `__sock.emit(${lit4(event)},${payloadExpr});`
     ].join("");
   }
   function tradeSlotOccupiedGuardJs(slotExpr, failMessage) {
     return [
       `var __ts=${slotExpr};`,
       `var __occ=character.slots&&character.slots[__ts];`,
-      `if(__occ&&__occ.name){game_log(${lit3(failMessage)});return;}`
+      `if(__occ&&__occ.name){game_log(${lit4(failMessage)});return;}`
     ].join("");
   }
   function scheduleBagRefresh2() {
@@ -48477,11 +49189,11 @@ ${parts.map(cssSlice).join("\n")}
         resolveInvSlotJs(fp),
         tradeListPrefaceJs(slot),
         tradeSlotOccupiedGuardJs(
-          lit3(slot),
+          lit4(slot),
           commLogText("trade-list \xB7 slot not empty")
         ),
         // CODE API: trade(invNum, tradeSlot, price, quantity) — not parent.trade(slot, num, …)
-        `try{await trade(__slot,${lit3(slot)},${gold},${qty > 0 ? qty : 1});`,
+        `try{await trade(__slot,${lit4(slot)},${gold},${qty > 0 ? qty : 1});`,
         `game_log(${commLit("trade-list ok \u2192 " + slot)});`,
         `}catch(__e){`,
         `game_log(${commLit("trade-list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
@@ -48540,11 +49252,11 @@ ${parts.map(cssSlice).join("\n")}
     }
     return wrapCommandScript(
       [
-        tradeSlotOccupiedGuardJs(lit3(slot), "Wishlist failed \u2014 slot not empty"),
+        tradeSlotOccupiedGuardJs(lit4(slot), "Wishlist failed \u2014 slot not empty"),
         tradeListPrefaceJs(slot),
         // CODE API: wishlist(tradeSlot, name, price, level, quantity)
-        `try{await wishlist(${lit3(slot)},${lit3(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
-        `game_log(${lit3("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `try{await wishlist(${lit4(slot)},${lit4(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
+        `game_log(${lit4("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -48562,9 +49274,9 @@ ${parts.map(cssSlice).join("\n")}
     }
     return wrapCommandScript(
       [
-        `var __id=${lit3(id)};`,
-        `var __slot=${lit3(slot)};`,
-        `var __rid=${lit3(listingRid)};`,
+        `var __id=${lit4(id)};`,
+        `var __slot=${lit4(slot)};`,
+        `var __rid=${lit4(listingRid)};`,
         `var __q=${q};`,
         `var __target=parent.entities[__id];`,
         `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Buy failed \u2014 listing gone");return;}`,
@@ -48588,9 +49300,9 @@ ${parts.map(cssSlice).join("\n")}
     }
     return wrapCommandScript(
       [
-        `var __id=${lit3(id)};`,
-        `var __slot=${lit3(slot)};`,
-        `var __rid=${lit3(listingRid)};`,
+        `var __id=${lit4(id)};`,
+        `var __slot=${lit4(slot)};`,
+        `var __rid=${lit4(listingRid)};`,
         `var __q=${q};`,
         `var __target=parent.entities[__id];`,
         `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Fulfill failed \u2014 listing gone");return;}`,
@@ -48620,7 +49332,7 @@ ${parts.map(cssSlice).join("\n")}
       [
         socketEmitJs(
           "join_giveaway",
-          `{id:${lit3(id)},slot:${lit3(slot)},rid:${lit3(listingRid)}}`
+          `{id:${lit4(id)},slot:${lit4(slot)},rid:${lit4(listingRid)}}`
         )
       ].join("")
     );
@@ -48639,9 +49351,9 @@ ${parts.map(cssSlice).join("\n")}
       [
         resolveInvSlotJs(fp),
         tradeListPrefaceJs(slot),
-        tradeSlotOccupiedGuardJs(lit3(slot), "Giveaway failed \u2014 slot not empty"),
-        `try{await giveaway(${lit3(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
-        `game_log(${lit3("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        tradeSlotOccupiedGuardJs(lit4(slot), "Giveaway failed \u2014 slot not empty"),
+        `try{await giveaway(${lit4(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
+        `game_log(${lit4("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -48666,7 +49378,7 @@ ${parts.map(cssSlice).join("\n")}
     const listedInit = (listingSnapshot == null ? void 0 : listingSnapshot.name) ? `var __listed=${tradeListingSnapshotJs(listingSnapshot)};` : `var __listed=character.slots[__slot];`;
     return wrapCommandScript(
       [
-        `var __slot=${lit3(slot)};`,
+        `var __slot=${lit4(slot)};`,
         `var __price=${gold};`,
         listedInit,
         `if(!__listed||!__listed.name){game_log("Reprice failed \u2014 slot empty");return;}`,
@@ -55505,6 +56217,508 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/ui/frames/chat/chatCss.ts
+  var CHAT_PANEL_CSS = `
+.ecu-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 220px;
+  box-sizing: border-box;
+  color: #f0f0f0;
+  font-size: 16px;
+  background: #14161a;
+}
+.ecu-chat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #3a3a3a;
+  flex-shrink: 0;
+  background: #1a1c22;
+}
+.ecu-chat-mode {
+  display: inline-flex;
+  gap: 2px;
+}
+.ecu-chat-mode button {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid #666;
+  background: #22252c;
+  color: #ddd;
+}
+.ecu-chat-mode button.is-on {
+  border-color: #c9a227;
+  background: #2a2410;
+  color: #ffe08a;
+}
+.ecu-chat-whisper {
+  flex: 1 1 120px;
+  min-width: 100px;
+  max-width: 180px;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid #555;
+  background: #0e1014;
+  color: #f0f0f0;
+  font-size: 14px;
+}
+.ecu-chat-log {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 10px;
+  min-height: 120px;
+  line-height: 1.45;
+  background: #0e1014;
+}
+.ecu-chat-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 6px;
+  margin: 0 0 6px;
+  word-break: break-word;
+  color: #f2f2f2;
+  font-size: 16px;
+}
+.ecu-chat-row--party {
+  color: #7ec8ef;
+}
+.ecu-chat-row--pm {
+  color: #f0a0b4;
+}
+.ecu-chat-row--system {
+  color: #c4c8ce;
+  font-style: italic;
+}
+.ecu-chat-time {
+  flex: 0 0 auto;
+  color: #9aa0a8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2em;
+}
+.ecu-chat-owner {
+  color: #ffffff;
+  margin-right: 2px;
+  font-weight: 700;
+}
+.ecu-chat-body {
+  color: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ecu-chat-x {
+  color: #7a8088;
+  margin-left: 4px;
+  font-size: 12px;
+}
+.ecu-chat-local {
+  opacity: 0.9;
+}
+.ecu-chat-compose {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid #3a3a3a;
+  flex-shrink: 0;
+  background: #1a1c22;
+}
+.ecu-chat-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #555;
+  background: #0e1014;
+  color: #f0f0f0;
+  font-size: 15px;
+}
+.ecu-chat-input::placeholder {
+  color: #8a9098;
+}
+.ecu-chat-send {
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid #c9a227;
+  background: #2a2410;
+  color: #ffe08a;
+  font-size: 14px;
+}
+.ecu-chat-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ecu-chat-status {
+  padding: 0 10px 6px;
+  font-size: 13px;
+  color: #a8aeb6;
+  flex-shrink: 0;
+  background: #1a1c22;
+}
+.ecu-chat-status.is-err {
+  color: #f0a0a0;
+}
+.ecu-chat-empty {
+  color: #a8aeb6;
+  font-style: italic;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.ecu-chat-history-top {
+  text-align: center;
+  padding: 4px 0 10px;
+}
+.ecu-chat-load-older {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 12px;
+  border: 1px solid #555;
+  background: #22252c;
+  color: #ddd;
+}
+.ecu-chat-load-older:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ecu-chat-history-end {
+  text-align: center;
+  color: #8a9098;
+  font-size: 13px;
+  padding: 4px 0 10px;
+}
+.ecu-btn[data-ecu-chat] {
+  position: relative;
+  overflow: visible;
+}
+.ecu-btn[data-ecu-chat] .ecu-chat-badge {
+  position: absolute;
+  top: -7px;
+  right: -8px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  letter-spacing: 0;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+  pointer-events: none;
+}
+`;
+  var injected12 = false;
+  function ensureChatCss() {
+    if (typeof document === "undefined") return;
+    const existing = document.getElementById("ecu-chat-css");
+    if (existing) {
+      existing.textContent = CHAT_PANEL_CSS;
+      injected12 = true;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = "ecu-chat-css";
+    el.textContent = CHAT_PANEL_CSS;
+    document.head.appendChild(el);
+    injected12 = true;
+  }
+
+  // src/ui/frames/chat/ChatPanel.ts
+  function rowClassName(msg) {
+    const parts = ["ecu-chat-row"];
+    if (msg.local) parts.push("ecu-chat-local");
+    if (msg.channel === "party") parts.push("ecu-chat-row--party");
+    else if (msg.channel === "pm") parts.push("ecu-chat-row--pm");
+    else if (msg.channel === "system") parts.push("ecu-chat-row--system");
+    return parts.join(" ");
+  }
+  function formatChatTimestamp(at) {
+    if (!(at > 0)) return "";
+    const d = new Date(at);
+    if (!Number.isFinite(d.getTime())) return "";
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    const now = /* @__PURE__ */ new Date();
+    if (d.toDateString() === now.toDateString()) return hh + ":" + mm;
+    const mon = d.toLocaleString(void 0, { month: "short" });
+    return mon + " " + d.getDate() + " " + hh + ":" + mm;
+  }
+  function resolveChatInlineColor(channel, color) {
+    if (!color) return void 0;
+    if (channel !== "say" && channel !== "system") return void 0;
+    const c = String(color).trim().toLowerCase();
+    if (c === "gray" || c === "grey" || c === "#808080" || c === "#888" || c === "#888888" || c === "#999" || c === "#999999") {
+      return void 0;
+    }
+    return color;
+  }
+  function ChatRow(props) {
+    const msg = props.msg;
+    const time = formatChatTimestamp(msg.at);
+    const owner = msg.owner && msg.owner !== "^" ? e("span", { className: "ecu-chat-owner" }, msg.owner + ":") : null;
+    const inline = resolveChatInlineColor(msg.channel, msg.color);
+    const style = inline ? { color: inline } : void 0;
+    return e(
+      "div",
+      {
+        className: rowClassName(msg),
+        style,
+        title: msg.at ? new Date(msg.at).toLocaleString() : void 0
+      },
+      time ? e("span", { className: "ecu-chat-time" }, time) : null,
+      owner,
+      e("span", { className: "ecu-chat-body" }, msg.message),
+      msg.xserver ? e("span", { className: "ecu-chat-x" }, "[X]") : null
+    );
+  }
+  function ChatPanel(props = {}) {
+    const React = getReact();
+    ensureChatCss();
+    const [lines, setLines] = React.useState(() => getChatMessages().slice());
+    const [hist, setHist] = React.useState(
+      () => getChatHistoryState()
+    );
+    const [mode, setMode] = React.useState("say");
+    const [whisperTo, setWhisperTo] = React.useState("");
+    const [draft, setDraft] = React.useState("");
+    const [status, setStatus2] = React.useState("");
+    const [statusErr, setStatusErr] = React.useState(false);
+    const logRef = React.useRef(null);
+    const stickBottomRef = React.useRef(true);
+    const inputRef = React.useRef(null);
+    const loadingOlderRef = React.useRef(false);
+    React.useEffect(() => {
+      return subscribeChat(() => {
+        setLines(getChatMessages().slice());
+        setHist(getChatHistoryState());
+      });
+    }, []);
+    const fetchHistory = React.useCallback(async (opts) => {
+      const res = await loadChatHistory(opts);
+      if (!res.ok && res.reason && res.reason !== "busy" && res.reason !== "end") {
+        setStatusErr(true);
+        setStatus2("History: " + res.reason);
+      }
+      return res;
+    }, []);
+    React.useEffect(() => {
+      void fetchHistory();
+    }, [fetchHistory]);
+    React.useEffect(() => {
+      if (props.openSeq == null) return;
+      if (typeof props.seedDraft === "string") setDraft(props.seedDraft);
+      if (typeof props.seedWhisperTo === "string") {
+        setWhisperTo(props.seedWhisperTo);
+        setMode("whisper");
+      }
+      if (!getChatHistoryState().loaded) {
+        void fetchHistory({ reset: true });
+      }
+      window.setTimeout(() => {
+        const el = inputRef.current;
+        if (el && typeof el.focus === "function") el.focus();
+      }, 30);
+    }, [props.openSeq, fetchHistory]);
+    React.useEffect(() => {
+      const el = logRef.current;
+      if (!el || !stickBottomRef.current) return;
+      el.scrollTop = el.scrollHeight;
+    }, [lines]);
+    const loadOlder = async () => {
+      if (loadingOlderRef.current) return;
+      const state2 = getChatHistoryState();
+      if (state2.loading || !state2.more) return;
+      const el = logRef.current;
+      const prevHeight = el ? el.scrollHeight : 0;
+      const prevTop = el ? el.scrollTop : 0;
+      loadingOlderRef.current = true;
+      stickBottomRef.current = false;
+      try {
+        await fetchHistory();
+        window.requestAnimationFrame(() => {
+          const node = logRef.current;
+          if (!node) return;
+          node.scrollTop = node.scrollHeight - prevHeight + prevTop;
+        });
+      } finally {
+        loadingOlderRef.current = false;
+      }
+    };
+    const onLogScroll = () => {
+      const el = logRef.current;
+      if (!el) return;
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickBottomRef.current = dist < 40;
+      if (el.scrollTop < 48) {
+        void loadOlder();
+      }
+    };
+    const send = () => {
+      const text = draft.trim();
+      if (!text) return;
+      const obs = getObserving();
+      if (!obs || !obs.name) {
+        setStatusErr(true);
+        setStatus2("Observe a character to send chat");
+        return;
+      }
+      const result = sendChatViaObserver(mode, text, whisperTo);
+      if (!result.ok) {
+        setStatusErr(true);
+        setStatus2(result.reason || "send failed");
+        return;
+      }
+      setStatusErr(false);
+      setStatus2(
+        mode === "whisper" ? `Whisper \u2192 ${whisperTo.trim()} via ${obs.name}` : `Sent as ${obs.name} (${mode})`
+      );
+      setDraft("");
+      stickBottomRef.current = true;
+      if (text.charAt(0) !== "/") {
+        if (mode === "party") {
+          pushLocalPartyChat(String(obs.name), text);
+        } else if (mode === "whisper") {
+          pushPmChat(String(obs.name), text, { local: true });
+        }
+      }
+    };
+    const modes = [
+      { id: "say", label: "Say" },
+      { id: "party", label: "Party" },
+      { id: "whisper", label: "Whisper" }
+    ];
+    const statusLine = hist.loading ? "Loading history\u2026" : hist.error ? "History failed \xB7 " + hist.error : statusErr ? status : status;
+    return e(
+      "div",
+      { className: "ecu-chat", "data-ecu-chat": "1" },
+      e(
+        "div",
+        { className: "ecu-chat-toolbar" },
+        e(
+          "div",
+          { className: "ecu-chat-mode", role: "group", "aria-label": "Chat mode" },
+          modes.map(
+            (m) => e(
+              "button",
+              {
+                key: m.id,
+                type: "button",
+                className: mode === m.id ? "is-on" : void 0,
+                onClick: () => setMode(m.id)
+              },
+              m.label
+            )
+          )
+        ),
+        mode === "whisper" ? e("input", {
+          className: "ecu-chat-whisper",
+          type: "text",
+          placeholder: "To\u2026",
+          value: whisperTo,
+          onChange: (ev) => setWhisperTo(ev.target.value),
+          spellCheck: false
+        }) : null,
+        e(
+          "button",
+          {
+            type: "button",
+            title: "Clear live log and reload history",
+            style: {
+              cursor: "pointer",
+              marginLeft: "auto",
+              padding: "4px 10px",
+              border: "1px solid #666",
+              background: "#22252c",
+              color: "#ddd",
+              fontSize: "13px"
+            },
+            onClick: () => {
+              clearChatMessages();
+              pushSystemChat("Chat cleared", "#b8b8b8");
+              void fetchHistory({ reset: true });
+            }
+          },
+          "Clear"
+        )
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-chat-log",
+          ref: logRef,
+          onScroll: onLogScroll
+        },
+        hist.more || hist.loading ? e(
+          "div",
+          { className: "ecu-chat-history-top" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-chat-load-older",
+              disabled: hist.loading || !hist.more,
+              onClick: () => {
+                void loadOlder();
+              }
+            },
+            hist.loading ? "Loading\u2026" : "Load older messages"
+          )
+        ) : hist.loaded ? e("div", { className: "ecu-chat-history-end" }, "\u2014 beginning \u2014") : null,
+        lines.length ? lines.map((msg) => e(ChatRow, { key: msg.id, msg })) : e(
+          "div",
+          { className: "ecu-chat-empty" },
+          hist.loading ? "Loading chat history\u2026" : "No messages yet. Live server chat appears here."
+        )
+      ),
+      statusLine ? e(
+        "div",
+        {
+          className: "ecu-chat-status" + (hist.error || statusErr ? " is-err" : "")
+        },
+        statusLine
+      ) : null,
+      e(
+        "div",
+        { className: "ecu-chat-compose" },
+        e("input", {
+          className: "ecu-chat-input",
+          ref: inputRef,
+          type: "text",
+          placeholder: mode === "party" ? "Party message\u2026 (/ commands still work)" : mode === "whisper" ? "Whisper message\u2026" : "Say something\u2026 (/p /w /list \u2026)",
+          value: draft,
+          onChange: (ev) => setDraft(ev.target.value),
+          onKeyDown: (ev) => {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              send();
+            }
+          },
+          spellCheck: false,
+          maxLength: 1200
+        }),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-chat-send",
+            disabled: !draft.trim(),
+            onClick: send
+          },
+          "Send"
+        )
+      )
+    );
+  }
+
   // src/ui/bag/tradeDragPayload.ts
   var TRADE_DRAG_SLOT_MIME = "application/x-ecu-trade-slot";
   function writeTradeDragPayload(dt, tradeSlot) {
@@ -55696,14 +56910,14 @@ ${ESTIMATE_HINT}`,
 
   // src/host/sendItem.ts
   var SEND_ITEM_RANGE = 400;
-  function lit4(value) {
+  function lit5(value) {
     return JSON.stringify(String(value));
   }
   function fingerprintCheckJs3(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit4(fp.name)}`];
+    const parts = [`!${varName}`, `${varName}.name!==${lit5(fp.name)}`];
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit4(fp.p)}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit5(fp.p)}`);
     return parts.join("||");
   }
   function selfNameLower() {
@@ -55783,13 +56997,13 @@ ${ESTIMATE_HINT}`,
         `var __cand=character.items[__si];`,
         `if(!(${candMismatch})){__slot=__si;break;}`,
         `}`,
-        `if(__slot<0){game_log(${lit4("Send item aborted \u2014 item mismatch")});return;}`,
+        `if(__slot<0){game_log(${lit5("Send item aborted \u2014 item mismatch")});return;}`,
         `it=character.items[__slot];`,
         `}`,
         `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
         `if(!__q)__q=1;`,
-        `try{await send_item(${lit4(to)},__slot,__q);}catch(__e){`,
-        `game_log(${lit4("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `try{await send_item(${lit5(to)},__slot,__q);}catch(__e){`,
+        `game_log(${lit5("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -57879,7 +59093,7 @@ ${ESTIMATE_HINT}`,
     }, [undoActive]);
     const activity = resolveMailActivity(snap);
     const active = activity.mode !== "idle";
-    const unread = getXUnread();
+    const unread2 = getXUnread();
     const headAge = snap.lastHeadAt === 0 ? "never" : formatRelativeAge(snap.lastHeadAt, now);
     const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
     const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : snap.status;
@@ -57944,7 +59158,7 @@ ${ESTIMATE_HINT}`,
             e(
               "div",
               { className: "comm-mail__card-title" },
-              "cache " + snap.mails.length + (snap.hasMore ? "+" : "") + " \xB7 unread " + unread
+              "cache " + snap.mails.length + (snap.hasMore ? "+" : "") + " \xB7 unread " + unread2
             ),
             e(
               "div",
@@ -58561,7 +59775,7 @@ ${ESTIMATE_HINT}`,
   // src/ui/frames/mail/MailListPane.ts
   function renderMailRow(opts) {
     const { m, selected, selectedIds, toggleCheck, nested, keyPrefix } = opts;
-    const unread = m.read === false;
+    const unread2 = m.read === false;
     const checked = !!selectedIds[m.id];
     const chips = [];
     if (m.item && m.taken) {
@@ -58582,7 +59796,7 @@ ${ESTIMATE_HINT}`,
       "div",
       {
         key: (keyPrefix || "") + m.id,
-        className: "comm-mail__row" + (nested ? " is-nested" : "") + (unread ? " is-unread" : "") + (selected && selected.id === m.id ? " is-sel" : "") + (checked ? " is-check" : "") + (m.item && !m.taken ? " has-item" : "") + (m.item && m.taken ? " item-taken" : ""),
+        className: "comm-mail__row" + (nested ? " is-nested" : "") + (unread2 ? " is-unread" : "") + (selected && selected.id === m.id ? " is-sel" : "") + (checked ? " is-check" : "") + (m.item && !m.taken ? " has-item" : "") + (m.item && m.taken ? " item-taken" : ""),
         onClick: () => {
           void openMailRow(m.id);
         }
@@ -59814,6 +61028,18 @@ ${ESTIMATE_HINT}`,
           hiddenBodyStyle: COMMAND_PANEL_STYLE
         }
       ),
+      panel(
+        "chat",
+        e(ChatPanel, {
+          seedDraft: deps.chatSeed,
+          seedWhisperTo: deps.chatWhisperTo,
+          openSeq: deps.chatOpenSeq
+        }),
+        {
+          style: CHAT_PANEL_STYLE,
+          hiddenBodyStyle: CHAT_PANEL_STYLE
+        }
+      ),
       panel("mail", e(MailPanel, null), {
         style: MAIL_PANEL_STYLE,
         hiddenBodyStyle: MAIL_PANEL_STYLE
@@ -60077,6 +61303,11 @@ ${ESTIMATE_HINT}`,
     }, [selectedEntity2, snap.entities, layoutEdit, setVisible]);
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
+    const [chatSeed, setChatSeed] = React.useState(null);
+    const [chatWhisperTo, setChatWhisperTo] = React.useState(
+      null
+    );
+    const [chatOpenSeq, setChatOpenSeq] = React.useState(0);
     const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
     const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
     const [meterAddOpen, setMeterAddOpen] = React.useState(false);
@@ -60260,6 +61491,31 @@ ${ESTIMATE_HINT}`,
         windowActionsRef.current.raiseWindow("command");
       });
     }, [setVisible]);
+    const chatOpenRef = React.useRef(false);
+    const chatVisible = visible("chat");
+    chatOpenRef.current = chatVisible;
+    React.useEffect(() => {
+      setChatPanelOpen(chatVisible);
+    }, [chatVisible]);
+    React.useEffect(() => {
+      return subscribeChatOpen((payload) => {
+        const hasPrefill = typeof payload.draft === "string" || typeof payload.whisperTo === "string";
+        if (payload.toggle && chatOpenRef.current && !hasPrefill) {
+          setVisible("chat", false);
+          return;
+        }
+        if (typeof payload.draft === "string") setChatSeed(payload.draft);
+        else setChatSeed(null);
+        if (typeof payload.whisperTo === "string") {
+          setChatWhisperTo(payload.whisperTo);
+        } else {
+          setChatWhisperTo(null);
+        }
+        setChatOpenSeq((n) => n + 1);
+        setVisible("chat", true);
+        windowActionsRef.current.raiseWindow("chat");
+      });
+    }, [setVisible]);
     const mailVisible = visible("mail");
     React.useEffect(() => {
       setMailPanelOpen(mailVisible);
@@ -60379,6 +61635,9 @@ ${ESTIMATE_HINT}`,
       combat,
       commandSeed,
       commandOpenSeq,
+      chatSeed,
+      chatWhisperTo,
+      chatOpenSeq,
       bagOpen,
       bagRefreshing: bagRefreshing2,
       buffInfoOpen,

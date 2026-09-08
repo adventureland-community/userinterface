@@ -300,6 +300,16 @@ export const COMMAND_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
+export const CHAT_PANEL_STYLE: Record<string, any> = {
+  width: "100%",
+  height: "100%",
+  minWidth: "min(320px, 92vw)",
+  minHeight: "240px",
+  maxWidth: "100%",
+  maxHeight: "100%",
+  boxSizing: "border-box",
+};
+
 export const MAIL_PANEL_STYLE: Record<string, any> = {
   width: "100%",
   height: "100%",
