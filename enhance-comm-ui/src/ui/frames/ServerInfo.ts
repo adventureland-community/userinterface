@@ -135,7 +135,7 @@ export function ServerInfo(props: ServerInfoProps): any {
           onClick: () => openSeasonGuide(season.modal, season.docsUrl),
           style: {
             ...chipStyle,
-            borderColor: accent,
+            borderColor: season.live ? "#9ACA87" : accent,
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
@@ -160,7 +160,7 @@ export function ServerInfo(props: ServerInfoProps): any {
             {
               style: {
                 fontSize: TYPE.chromeMeta,
-                color: accent,
+                color: season.live ? "#b6e3a4" : accent,
               },
             },
             season.label,
@@ -170,8 +170,8 @@ export function ServerInfo(props: ServerInfoProps): any {
             {
               style: {
                 fontSize: TYPE.chromeMeta,
-                color: "rgba(255,255,255,0.72)",
-                maxWidth: "220px",
+                color: season.live ? "#9ACA87" : "rgba(255,255,255,0.72)",
+                maxWidth: "260px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               },

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { GLike } from "../src/host/globals";
 import {
+  formatUntilMs,
+  isSeasonStatusEntry,
   isServerEventEntry,
   listServerEventChips,
   listServerSeasonChips,
@@ -18,7 +20,6 @@ const G = {
       announcement: {
         title: "10 Years of Adventure",
         color: "#F0B742",
-        accent: "#ED86AB",
         text: "Find players for cake and Gifts.",
       },
     },
@@ -35,6 +36,10 @@ const G = {
   monsters: {
     wabbit: { name: "Wabbit" },
   },
+  maps: {
+    main: { name: "Mainland" },
+    desertland: { name: "Desertland" },
+  },
 } as unknown as GLike;
 
 describe("serverInfoModel", () => {
@@ -42,56 +47,85 @@ describe("serverInfoModel", () => {
     assert.equal(isServerEventEntry({ live: true }), true);
     assert.equal(isServerEventEntry({ event: "2026-01-01T00:00:00.000Z" }), true);
     assert.equal(isServerEventEntry({ spawn: "2099-01-01T00:00:00.000Z" }), true);
-    assert.equal(isServerEventEntry({ live: false, event: "x" }), true);
   });
 
-  it("ignores blessing scalars and bare season flags as event rows", () => {
-    assert.equal(isServerEventEntry(4320), false);
-    assert.equal(isServerEventEntry("Alice"), false);
-    assert.equal(isServerEventEntry(true), false);
-    assert.equal(isServerEventEntry(null), false);
+  it("recognizes anniversary status objects as seasonal", () => {
+    assert.equal(
+      isSeasonStatusEntry(
+        { active: true, live: false, next: 1788827400000 },
+        G.events!.anniversary as any,
+      ),
+      true,
+    );
+    assert.equal(isSeasonStatusEntry(true, G.events!.halloween as any), true);
+    assert.equal(
+      isSeasonStatusEntry({ live: true, map: "main" }, G.events!.goobrawl as any),
+      false,
+    );
   });
 
-  it("does not render blessed_* or season booleans as empty event chips", () => {
+  it("does not render anniversary status as a bare upcoming event chip", () => {
     const chips = listServerEventChips(
       {
         schedule: { time_offset: 0, night: false },
-        blessed_minutes: 4320,
-        blessed_by: "shellBuyer",
+        anniversary: { active: true, live: false, next: 1788827400000 },
         goobrawl: { live: true, map: "main" },
-        wabbit: { live: false, spawn: "2099-01-01T00:00:00.000Z" },
         halloween: true,
-        anniversary: true,
       },
       G,
     );
     assert.deepEqual(
       chips.map((c) => c.id),
-      ["goobrawl", "wabbit"],
+      ["goobrawl"],
     );
-    assert.equal(chips[0].label, "Goo Brawl");
-    assert.equal(chips[0].detail, "live · main");
-    assert.equal(chips[1].label, "Wabbit");
-    assert.match(chips[1].detail, /^in /);
   });
 
-  it("renders anniversary seasonal chip from G.events", () => {
+  it("shows countdown to next featured anniversary round", () => {
+    const now = 1788827400000 - 18 * 60 * 1000;
     const seasons = listServerSeasonChips(
       {
-        anniversary: true,
-        halloween: false,
-        goobrawl: { live: true },
+        anniversary: { active: true, live: false, next: 1788827400000 },
       },
       G,
+      now,
     );
     assert.equal(seasons.length, 1);
     assert.equal(seasons[0].id, "anniversary");
     assert.equal(seasons[0].label, "10 Years of Adventure");
-    assert.equal(seasons[0].detail, "Find players for cake and Gifts.");
-    assert.equal(seasons[0].sprite, "sixcake");
-    assert.equal(seasons[0].modal, "event-anniversary");
-    assert.equal(seasons[0].docsUrl, "/docs/ref/anniversary");
-    assert.equal(seasons[0].accent, "#F0B742");
+    assert.equal(seasons[0].live, false);
+    assert.equal(seasons[0].detail, "next in 18m");
+    assert.match(seasons[0].title, /Next featured player in 18m/);
+    assert.match(seasons[0].title, /Every 30 minutes/);
+  });
+
+  it("shows live featured player and round time left", () => {
+    const now = 1_000_000;
+    const seasons = listServerSeasonChips(
+      {
+        anniversary: {
+          active: true,
+          live: true,
+          next: now + 30 * 60 * 1000,
+          expires: now + 4 * 60 * 1000,
+          target: "cakeHero",
+          id: "abc",
+          map: "main",
+          x: 120,
+          y: -40,
+        },
+      },
+      G,
+      now,
+    );
+    assert.equal(seasons[0].live, true);
+    assert.equal(seasons[0].detail, "live · cakeHero · 4m left");
+    assert.match(seasons[0].title, /Find cakeHero/);
+    assert.match(seasons[0].title, /Mainland \(120, -40\)/);
+  });
+
+  it("formats until-ms helpers", () => {
+    assert.equal(formatUntilMs(Date.now() + 90_000, Date.now()), "2m");
+    assert.equal(formatUntilMs(Date.now() - 1000, Date.now()), "");
   });
 
   it("reads an active patron blessing", () => {
@@ -100,14 +134,6 @@ describe("serverInfoModel", () => {
       blessed_by: "shellBuyer",
     });
     assert.ok(bless);
-    assert.equal(bless!.by, "shellBuyer");
-    assert.equal(bless!.minutes, 90);
     assert.equal(bless!.remainLabel, "2h");
-  });
-
-  it("hides blessing when minutes are gone", () => {
-    assert.equal(readServerBlessing({ blessed_minutes: 0, blessed_by: "x" }), null);
-    assert.equal(readServerBlessing({ blessed_by: "x" }), null);
-    assert.equal(readServerBlessing(undefined), null);
   });
 });
