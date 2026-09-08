@@ -13,26 +13,13 @@ import { installInventoryFix } from "./host/inventory";
 import { installPageTitle } from "./host/pageTitle";
 import { installDisconnectOverlay } from "./host/disconnectOverlay";
 import { installMailUnreadWatch, subscribeMailToast } from "./host/mail";
+import { showCommToast } from "./host/commToast";
 import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
 import { startWorldOverlay } from "./viz/startWorldOverlay";
 
 publishEcuBuildInfo();
-
-function showMailToast(message: string): void {
-  let el = document.querySelector(".ecu-mail-toast") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.className = "ecu-mail-toast";
-    document.body.appendChild(el);
-  }
-  el.textContent = message;
-  el.classList.add("is-on");
-  window.setTimeout(() => {
-    el && el.classList.remove("is-on");
-  }, 3200);
-}
 
 const POPUP_CSS = `
 /* Popup container */
@@ -226,7 +213,7 @@ function onLoad(): void {
   installUpdateNotesHooks();
   ensureMailCss();
   installMailUnreadWatch();
-  subscribeMailToast((message) => showMailToast(message));
+  subscribeMailToast((message) => showCommToast(message));
   startSocketHub();
   startInstanceTracker();
   startMeterEngine();

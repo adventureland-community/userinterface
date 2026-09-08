@@ -100,6 +100,35 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.6",
+    title: "0.9.6",
+    date: "2026-09-08",
+    summary:
+      "Stock-style keyboard shortcuts on /comm: I bag, C paperdoll, Enter chat, M mail.",
+    highlights: [
+      {
+        label: "Keyboard shortcuts",
+        detail:
+          "I toggles Bag, C toggles the observed paperdoll, Enter opens/focuses Chat, M toggles Mail. Ignored while typing in inputs. Bag/paperdoll shortcuts toast “Observe a character first” when you are not watching anyone.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Esc leaves chat compose",
+        detail:
+          "After Enter focuses Chat, Esc blurs the message field (same as stock) instead of trapping you until you click away.",
+        kind: "fix",
+      },
+      {
+        label: "Why these keys",
+        detail:
+          "Matches in-game muscle memory (I / C / Enter). M is ECU-only for Mail. Travel (T) is not wired yet — needs a /comm travel flow first.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.9.5",
     title: "0.9.5",
     date: "2026-09-08",

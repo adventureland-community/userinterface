@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.5
+// @version      0.9.6
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8644,6 +8644,31 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.6",
+      title: "0.9.6",
+      date: "2026-09-08",
+      summary: "Stock-style keyboard shortcuts on /comm: I bag, C paperdoll, Enter chat, M mail.",
+      highlights: [
+        {
+          label: "Keyboard shortcuts",
+          detail: "I toggles Bag, C toggles the observed paperdoll, Enter opens/focuses Chat, M toggles Mail. Ignored while typing in inputs. Bag/paperdoll shortcuts toast \u201CObserve a character first\u201D when you are not watching anyone.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Esc leaves chat compose",
+          detail: "After Enter focuses Chat, Esc blurs the message field (same as stock) instead of trapping you until you click away.",
+          kind: "fix"
+        },
+        {
+          label: "Why these keys",
+          detail: "Matches in-game muscle memory (I / C / Enter). M is ECU-only for Mail. Travel (T) is not wired yet \u2014 needs a /comm travel flow first.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.9.5",
       title: "0.9.5",
@@ -17646,413 +17671,6 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
-  // src/host/keyboardPolicy.ts
-  var BOUND = "__ecuCommKeyboardBound";
-  function installCommKeyboardPolicy(handlers) {
-    window.__ecuCommKeyHandlers = handlers;
-    if (window[BOUND]) return;
-    window[BOUND] = true;
-    document.addEventListener("keydown", (ev) => {
-      const key = ev.key || "";
-      const code = ev.keyCode;
-      const h = window.__ecuCommKeyHandlers || {};
-      if (key === "Escape" || code === 27) {
-        if (isTopLeftDialogOpen() && closeTopLeftDialog()) return;
-        if (isServerDdOpen()) {
-          closeServerDd();
-          return;
-        }
-        if (h.clearPaperdoll && h.clearPaperdoll()) return;
-        if (h.exitLayoutEdit && h.exitLayoutEdit()) return;
-        if (window.observing && window.__ecuClearObserve) {
-          window.__ecuClearObserve();
-        }
-        return;
-      }
-      if ((key === "l" || key === "L") && ev.ctrlKey && ev.shiftKey && !ev.altKey) {
-        const t = ev.target;
-        const tag = t && t.tagName ? t.tagName.toLowerCase() : "";
-        if (tag === "input" || tag === "textarea" || tag === "select" || t && t.isContentEditable) {
-          return;
-        }
-        if (!h.toggleLayoutEdit) return;
-        ev.preventDefault();
-        h.toggleLayoutEdit();
-      }
-    });
-  }
-  function updateCommKeyboardHandlers(handlers) {
-    window.__ecuCommKeyHandlers = handlers;
-  }
-
-  // src/host/commChrome.ts
-  function suppressObserveUi() {
-    const el = document.getElementById("observeui");
-    if (el && el.style.display !== "none") {
-      el.style.display = "none";
-      el.classList.add("hidden");
-    }
-  }
-  function watchObserveUiHidden() {
-    const bottom = document.getElementById("bottom") || document.body;
-    const mo = new MutationObserver(() => suppressObserveUi());
-    mo.observe(bottom, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["style", "class"]
-    });
-    suppressObserveUi();
-    return () => mo.disconnect();
-  }
-  function installCommChrome() {
-    if (window.__ecuCommChromePatched) return;
-    window.__ecuCommChromePatched = true;
-    injectChromeCss();
-    bindServerDdDoc();
-    installCommKeyboardPolicy({});
-    window.__ecuToggleObserve = toggleObserve;
-    window.__ecuClearObserve = clearObserve;
-    window.close_comm_server_dd = closeServerDd;
-    window.toggle_comm_server_dd = toggleServerDd;
-    window.select_comm_server = selectServer;
-    window.hide_nav = function() {
-    };
-    window.toggle_ui = function() {
-      const trigger = document.querySelector(
-        ".ecu-server-dd-trigger"
-      );
-      if (trigger) trigger.click();
-    };
-    window.render_characters = renderCharactersHud;
-    window.render_servers = renderServersHud;
-    const boot2 = () => {
-      ensureChromeShell();
-      renderCharactersHud();
-      renderServersHud();
-    };
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", boot2);
-    } else {
-      boot2();
-    }
-    const stopObserveWatch = watchObserveUiHidden();
-    let lastObs = "";
-    let lastServer = "";
-    let lastPingAt = 0;
-    let lastEventsFp = "";
-    const unsubTick2 = subscribeTick((snap) => {
-      const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
-      const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
-      if (name !== lastObs || server !== lastServer) {
-        lastObs = name;
-        lastServer = server;
-        invalidateCharacterCache();
-        renderCharactersHud();
-      } else {
-        syncActionsEnabled();
-      }
-      if (snap.now - lastPingAt >= 1e3) {
-        lastPingAt = snap.now;
-        syncServerPingHud();
-        const evFp = eventsCacheFingerprint();
-        if (evFp !== lastEventsFp) {
-          lastEventsFp = evFp;
-          renderServersHud();
-        }
-      }
-    });
-    window.addEventListener("unload", () => {
-      stopObserveWatch();
-      unsubTick2();
-    });
-  }
-
-  // src/host/disconnectOverlay.ts
-  var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
-  var DISCONNECT_OVERLAY_Z = 2147483647;
-  var STYLE_ID4 = "ecu-disconnect-overlay-css";
-  var CSS2 = `
-/* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
-#bottom > .gamebutton.disconnected {
-  display: none !important;
-}
-.${DISCONNECT_OVERLAY_CLASS} {
-  position: fixed;
-  inset: 0;
-  z-index: ${DISCONNECT_OVERLAY_Z};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(8, 0, 0, 0.88);
-  pointer-events: auto;
-  cursor: pointer;
-}
-.${DISCONNECT_OVERLAY_CLASS}-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  max-width: min(92vw, 560px);
-  padding: 22px 36px 20px;
-  background: #140404;
-  border: 4px solid #ff2e46;
-  color: #ff2e46;
-  font-family: Pixel, "Segoe UI", Tahoma, Arial, sans-serif;
-  text-align: center;
-  box-shadow: 0 0 0 1px #4a0008, 0 18px 48px rgba(0, 0, 0, 0.65);
-  animation: ecu-disconnect-pulse 1.15s ease-in-out infinite;
-}
-.${DISCONNECT_OVERLAY_CLASS}-title {
-  font-size: clamp(32px, 7vw, 56px);
-  line-height: 1.05;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-}
-.${DISCONNECT_OVERLAY_CLASS}-reason {
-  font-size: clamp(16px, 2.6vw, 22px);
-  line-height: 1.35;
-  color: #f3d0d4;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  white-space: pre-wrap;
-}
-.${DISCONNECT_OVERLAY_CLASS}-reason.is-empty {
-  display: none;
-}
-.${DISCONNECT_OVERLAY_CLASS}-hint {
-  font-size: clamp(16px, 2.4vw, 22px);
-  color: #c9b4b6;
-  letter-spacing: 0.04em;
-}
-body > .comm-disconnect-overlay {
-  z-index: ${DISCONNECT_OVERLAY_Z} !important;
-  background: rgba(8, 0, 0, 0.88) !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 12px !important;
-  pointer-events: auto !important;
-}
-body > .comm-disconnect-overlay .comm-disconnect-reason {
-  max-width: min(92vw, 520px);
-  font-size: clamp(16px, 2.6vw, 22px);
-  line-height: 1.35;
-  color: #f3d0d4;
-}
-@keyframes ecu-disconnect-pulse {
-  0%, 100% { transform: scale(1); filter: brightness(1); }
-  50% { transform: scale(1.03); filter: brightness(1.18); }
-}
-`;
-  var installed = false;
-  var everConnected = false;
-  var overlayEl = null;
-  var unsubTick = null;
-  var origDisconnect;
-  var DISCONNECT_GRACE_MS = 2e3;
-  var disconnectedSince = null;
-  function canUseDom() {
-    return typeof document !== "undefined" && !!document.body;
-  }
-  function ensureCss2() {
-    if (!canUseDom()) return;
-    const existing = document.getElementById(STYLE_ID4);
-    if (existing) {
-      existing.textContent = CSS2;
-      return;
-    }
-    const el = document.createElement("style");
-    el.id = STYLE_ID4;
-    el.textContent = CSS2;
-    document.head.appendChild(el);
-  }
-  function liveSocket(socket) {
-    if (!socket) return false;
-    if (socket.connected === false) return false;
-    return true;
-  }
-  function isCommDisconnected() {
-    const sock = typeof window !== "undefined" ? window.socket : void 0;
-    if (liveSocket(sock)) {
-      everConnected = true;
-      return false;
-    }
-    if (everConnected) return true;
-    if (typeof document === "undefined") return false;
-    if (document.querySelector(".comm-disconnect-overlay")) return true;
-    const stock = document.querySelector(".disconnected");
-    return !!(stock && !stock.classList.contains("hidden"));
-  }
-  function disconnectBannerLabel(reason) {
-    return reason === "limits" ? "REJECTED" : "DISCONNECTED";
-  }
-  function disconnectBannerDetail(reason) {
-    const raw = reason == null ? "" : String(reason).trim();
-    if (!raw) return "";
-    switch (raw) {
-      case "limits":
-        return "You can have 3 characters and one merchant online at most.";
-      case "limitdc":
-        return "Too many actions in a short time.";
-      case "blocked":
-        return "This account is blocked.";
-      case "hardcore_downrank":
-        return "Hardcore downrank.";
-      default: {
-        return raw;
-      }
-    }
-  }
-  function currentReason() {
-    return typeof window !== "undefined" ? window.disconnect_reason : void 0;
-  }
-  function reloadComm() {
-    if (typeof window.refresh_page === "function") {
-      window.refresh_page();
-      return;
-    }
-    window.location.reload();
-  }
-  function hideDisconnectOverlay() {
-    if (overlayEl) {
-      overlayEl.remove();
-      overlayEl = null;
-    }
-    if (canUseDom()) {
-      document.body.classList.remove(`${DISCONNECT_OVERLAY_CLASS}-on`);
-    }
-  }
-  function showDisconnectOverlay(reason) {
-    if (!canUseDom()) return;
-    ensureCss2();
-    const label = disconnectBannerLabel(reason);
-    const detail = disconnectBannerDetail(reason);
-    if (!overlayEl) {
-      overlayEl = document.createElement("div");
-      overlayEl.className = DISCONNECT_OVERLAY_CLASS;
-      overlayEl.setAttribute("role", "alertdialog");
-      overlayEl.setAttribute("aria-live", "assertive");
-      overlayEl.setAttribute("aria-modal", "true");
-      overlayEl.addEventListener("click", () => reloadComm());
-      const card = document.createElement("div");
-      card.className = `${DISCONNECT_OVERLAY_CLASS}-card`;
-      const title = document.createElement("div");
-      title.className = `${DISCONNECT_OVERLAY_CLASS}-title`;
-      const reasonEl2 = document.createElement("div");
-      reasonEl2.className = `${DISCONNECT_OVERLAY_CLASS}-reason`;
-      const hint = document.createElement("div");
-      hint.className = `${DISCONNECT_OVERLAY_CLASS}-hint`;
-      hint.textContent = "Click anywhere to reload";
-      card.appendChild(title);
-      card.appendChild(reasonEl2);
-      card.appendChild(hint);
-      overlayEl.appendChild(card);
-      document.body.appendChild(overlayEl);
-    }
-    const titleEl = overlayEl.querySelector(
-      `.${DISCONNECT_OVERLAY_CLASS}-title`
-    );
-    if (titleEl) titleEl.textContent = label;
-    const reasonEl = overlayEl.querySelector(
-      `.${DISCONNECT_OVERLAY_CLASS}-reason`
-    );
-    if (reasonEl) {
-      reasonEl.textContent = detail;
-      reasonEl.classList.toggle("is-empty", !detail);
-    }
-    overlayEl.setAttribute("aria-label", detail ? `${label}. ${detail}` : label);
-    document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
-  }
-  function syncOverlay() {
-    if (isCommDisconnected()) {
-      const now = Date.now();
-      if (disconnectedSince === null) disconnectedSince = now;
-      if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
-        showDisconnectOverlay(currentReason());
-      }
-    } else {
-      disconnectedSince = null;
-      hideDisconnectOverlay();
-    }
-  }
-  function wrapDisconnect() {
-    const prev = window.disconnect;
-    if (prev === wrappedDisconnect) return;
-    origDisconnect = typeof prev === "function" ? prev : void 0;
-    window.disconnect = wrappedDisconnect;
-  }
-  function wrappedDisconnect() {
-    everConnected = true;
-    try {
-      if (typeof origDisconnect === "function") origDisconnect();
-    } finally {
-      const reason = currentReason();
-      if (reason) {
-        disconnectedSince = null;
-        showDisconnectOverlay(reason);
-      } else {
-        if (disconnectedSince === null) disconnectedSince = Date.now();
-      }
-    }
-  }
-  function installDisconnectOverlay() {
-    if (installed) return;
-    installed = true;
-    if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
-      everConnected = true;
-    }
-    ensureCss2();
-    wrapDisconnect();
-    syncOverlay();
-    unsubTick = subscribeTick(() => {
-      wrapDisconnect();
-      syncOverlay();
-    });
-  }
-
-  // src/host/pageTitle.ts
-  var BRAND = "Adventure Land";
-  var installed2 = false;
-  var lastTitle = null;
-  function serverLabel2() {
-    const region = getServerRegion() || "";
-    const ident = getServerIdentifier() || "";
-    return `${region} ${ident}`.trim();
-  }
-  function formatCommPageTitle() {
-    const parts = [];
-    const obs = getObserving();
-    const name = obs && obs.name != null ? String(obs.name) : "";
-    const dropped = isCommDisconnected();
-    if (dropped) parts.push("Disconnected");
-    if (name) {
-      const dead = !!(obs && obs.dead);
-      parts.push(dead ? `${name} (RIP)` : name);
-    } else if (!dropped) {
-      parts.push("Comm");
-    }
-    const map = getMapName();
-    if (map) parts.push(map);
-    const server = serverLabel2();
-    if (server) parts.push(server);
-    return `${parts.join(" \xB7 ")} | ${BRAND}`;
-  }
-  function applyPageTitle() {
-    const next = formatCommPageTitle();
-    if (next === lastTitle) return;
-    lastTitle = next;
-    if (document.title !== next) document.title = next;
-  }
-  function installPageTitle() {
-    if (installed2) return;
-    installed2 = true;
-    applyPageTitle();
-    subscribeTick(() => applyPageTitle());
-  }
-
   // src/host/mail/mailSearch.ts
   var OP_RE = /^(from|to|subject|item|has|is|after|before|newer_than|older_than):(.*)$/i;
   function stripQuotes(s) {
@@ -18609,6 +18227,493 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       observeName: String(obs.name),
       reason: goldEnough ? void 0 : "Not enough gold on observed character"
     };
+  }
+
+  // src/host/commToast.ts
+  var TOAST_CLASS = "ecu-mail-toast";
+  var hideTimer = null;
+  function showCommToast(message, ms = 3200) {
+    if (typeof document === "undefined") return;
+    const text = String(message || "").trim();
+    if (!text) return;
+    let el = document.querySelector("." + TOAST_CLASS);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = TOAST_CLASS;
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-on");
+    if (hideTimer != null) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      el && el.classList.remove("is-on");
+      hideTimer = null;
+    }, Math.max(800, ms));
+  }
+
+  // src/host/keyboardPolicy.ts
+  var BOUND = "__ecuCommKeyboardBound";
+  function isEditableKeyboardTarget(target) {
+    const t = target;
+    if (!t || t.tagName == null) return false;
+    const tag = String(t.tagName).toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (t.isContentEditable) return true;
+    return false;
+  }
+  function resolveCommUiShortcut(ev) {
+    const key = ev.key || "";
+    const code = ev.keyCode;
+    const ctrl = !!ev.ctrlKey;
+    const meta2 = !!ev.metaKey;
+    const alt = !!ev.altKey;
+    const shift = !!ev.shiftKey;
+    if (key === "Escape" || code === 27) return "escape";
+    if ((key === "l" || key === "L") && ctrl && shift && !alt && !meta2) {
+      return "toggle_layout_edit";
+    }
+    if (ctrl || meta2 || alt) return null;
+    if (key === "i" || key === "I" || code === 73) return "toggle_inventory";
+    if (key === "c" || key === "C" || code === 67) return "toggle_character";
+    if (key === "m" || key === "M" || code === 77) return "toggle_mail";
+    if (key === "Enter" || code === 13) return "focus_chat";
+    return null;
+  }
+  function notifyObserveRequired() {
+    showCommToast("Observe a character first");
+  }
+  function installCommKeyboardPolicy(handlers) {
+    window.__ecuCommKeyHandlers = handlers;
+    if (window[BOUND]) return;
+    window[BOUND] = true;
+    document.addEventListener("keydown", (ev) => {
+      const shortcut = resolveCommUiShortcut(ev);
+      if (!shortcut) return;
+      const h = window.__ecuCommKeyHandlers || {};
+      if (shortcut === "escape") {
+        if (isEditableKeyboardTarget(ev.target)) {
+          const t = ev.target;
+          if (typeof t.blur === "function") t.blur();
+          ev.preventDefault();
+          return;
+        }
+        if (isTopLeftDialogOpen() && closeTopLeftDialog()) return;
+        if (isServerDdOpen()) {
+          closeServerDd();
+          return;
+        }
+        if (h.clearPaperdoll && h.clearPaperdoll()) return;
+        if (h.exitLayoutEdit && h.exitLayoutEdit()) return;
+        if (window.observing && window.__ecuClearObserve) {
+          window.__ecuClearObserve();
+        }
+        return;
+      }
+      if (isEditableKeyboardTarget(ev.target)) return;
+      if (shortcut === "toggle_layout_edit") {
+        if (!h.toggleLayoutEdit) return;
+        ev.preventDefault();
+        h.toggleLayoutEdit();
+        return;
+      }
+      if (shortcut === "toggle_inventory") {
+        ev.preventDefault();
+        if (!getObservingId()) {
+          notifyObserveRequired();
+          return;
+        }
+        openInventory();
+        return;
+      }
+      if (shortcut === "toggle_character") {
+        if (!h.toggleObservedPaperdoll) return;
+        ev.preventDefault();
+        if (!h.toggleObservedPaperdoll()) {
+          notifyObserveRequired();
+        }
+        return;
+      }
+      if (shortcut === "focus_chat") {
+        ev.preventDefault();
+        openChat({});
+        return;
+      }
+      if (shortcut === "toggle_mail") {
+        ev.preventDefault();
+        openMail({ toggle: true });
+      }
+    });
+  }
+  function updateCommKeyboardHandlers(handlers) {
+    window.__ecuCommKeyHandlers = handlers;
+  }
+
+  // src/host/commChrome.ts
+  function suppressObserveUi() {
+    const el = document.getElementById("observeui");
+    if (el && el.style.display !== "none") {
+      el.style.display = "none";
+      el.classList.add("hidden");
+    }
+  }
+  function watchObserveUiHidden() {
+    const bottom = document.getElementById("bottom") || document.body;
+    const mo = new MutationObserver(() => suppressObserveUi());
+    mo.observe(bottom, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class"]
+    });
+    suppressObserveUi();
+    return () => mo.disconnect();
+  }
+  function installCommChrome() {
+    if (window.__ecuCommChromePatched) return;
+    window.__ecuCommChromePatched = true;
+    injectChromeCss();
+    bindServerDdDoc();
+    installCommKeyboardPolicy({});
+    window.__ecuToggleObserve = toggleObserve;
+    window.__ecuClearObserve = clearObserve;
+    window.close_comm_server_dd = closeServerDd;
+    window.toggle_comm_server_dd = toggleServerDd;
+    window.select_comm_server = selectServer;
+    window.hide_nav = function() {
+    };
+    window.toggle_ui = function() {
+      const trigger = document.querySelector(
+        ".ecu-server-dd-trigger"
+      );
+      if (trigger) trigger.click();
+    };
+    window.render_characters = renderCharactersHud;
+    window.render_servers = renderServersHud;
+    const boot2 = () => {
+      ensureChromeShell();
+      renderCharactersHud();
+      renderServersHud();
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot2);
+    } else {
+      boot2();
+    }
+    const stopObserveWatch = watchObserveUiHidden();
+    let lastObs = "";
+    let lastServer = "";
+    let lastPingAt = 0;
+    let lastEventsFp = "";
+    const unsubTick2 = subscribeTick((snap) => {
+      const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
+      const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
+      if (name !== lastObs || server !== lastServer) {
+        lastObs = name;
+        lastServer = server;
+        invalidateCharacterCache();
+        renderCharactersHud();
+      } else {
+        syncActionsEnabled();
+      }
+      if (snap.now - lastPingAt >= 1e3) {
+        lastPingAt = snap.now;
+        syncServerPingHud();
+        const evFp = eventsCacheFingerprint();
+        if (evFp !== lastEventsFp) {
+          lastEventsFp = evFp;
+          renderServersHud();
+        }
+      }
+    });
+    window.addEventListener("unload", () => {
+      stopObserveWatch();
+      unsubTick2();
+    });
+  }
+
+  // src/host/disconnectOverlay.ts
+  var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
+  var DISCONNECT_OVERLAY_Z = 2147483647;
+  var STYLE_ID4 = "ecu-disconnect-overlay-css";
+  var CSS2 = `
+/* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
+#bottom > .gamebutton.disconnected {
+  display: none !important;
+}
+.${DISCONNECT_OVERLAY_CLASS} {
+  position: fixed;
+  inset: 0;
+  z-index: ${DISCONNECT_OVERLAY_Z};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 0, 0, 0.88);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.${DISCONNECT_OVERLAY_CLASS}-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(92vw, 560px);
+  padding: 22px 36px 20px;
+  background: #140404;
+  border: 4px solid #ff2e46;
+  color: #ff2e46;
+  font-family: Pixel, "Segoe UI", Tahoma, Arial, sans-serif;
+  text-align: center;
+  box-shadow: 0 0 0 1px #4a0008, 0 18px 48px rgba(0, 0, 0, 0.65);
+  animation: ecu-disconnect-pulse 1.15s ease-in-out infinite;
+}
+.${DISCONNECT_OVERLAY_CLASS}-title {
+  font-size: clamp(32px, 7vw, 56px);
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.${DISCONNECT_OVERLAY_CLASS}-reason {
+  font-size: clamp(16px, 2.6vw, 22px);
+  line-height: 1.35;
+  color: #f3d0d4;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+}
+.${DISCONNECT_OVERLAY_CLASS}-reason.is-empty {
+  display: none;
+}
+.${DISCONNECT_OVERLAY_CLASS}-hint {
+  font-size: clamp(16px, 2.4vw, 22px);
+  color: #c9b4b6;
+  letter-spacing: 0.04em;
+}
+body > .comm-disconnect-overlay {
+  z-index: ${DISCONNECT_OVERLAY_Z} !important;
+  background: rgba(8, 0, 0, 0.88) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  pointer-events: auto !important;
+}
+body > .comm-disconnect-overlay .comm-disconnect-reason {
+  max-width: min(92vw, 520px);
+  font-size: clamp(16px, 2.6vw, 22px);
+  line-height: 1.35;
+  color: #f3d0d4;
+}
+@keyframes ecu-disconnect-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.03); filter: brightness(1.18); }
+}
+`;
+  var installed = false;
+  var everConnected = false;
+  var overlayEl = null;
+  var unsubTick = null;
+  var origDisconnect;
+  var DISCONNECT_GRACE_MS = 2e3;
+  var disconnectedSince = null;
+  function canUseDom() {
+    return typeof document !== "undefined" && !!document.body;
+  }
+  function ensureCss2() {
+    if (!canUseDom()) return;
+    const existing = document.getElementById(STYLE_ID4);
+    if (existing) {
+      existing.textContent = CSS2;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = STYLE_ID4;
+    el.textContent = CSS2;
+    document.head.appendChild(el);
+  }
+  function liveSocket(socket) {
+    if (!socket) return false;
+    if (socket.connected === false) return false;
+    return true;
+  }
+  function isCommDisconnected() {
+    const sock = typeof window !== "undefined" ? window.socket : void 0;
+    if (liveSocket(sock)) {
+      everConnected = true;
+      return false;
+    }
+    if (everConnected) return true;
+    if (typeof document === "undefined") return false;
+    if (document.querySelector(".comm-disconnect-overlay")) return true;
+    const stock = document.querySelector(".disconnected");
+    return !!(stock && !stock.classList.contains("hidden"));
+  }
+  function disconnectBannerLabel(reason) {
+    return reason === "limits" ? "REJECTED" : "DISCONNECTED";
+  }
+  function disconnectBannerDetail(reason) {
+    const raw = reason == null ? "" : String(reason).trim();
+    if (!raw) return "";
+    switch (raw) {
+      case "limits":
+        return "You can have 3 characters and one merchant online at most.";
+      case "limitdc":
+        return "Too many actions in a short time.";
+      case "blocked":
+        return "This account is blocked.";
+      case "hardcore_downrank":
+        return "Hardcore downrank.";
+      default: {
+        return raw;
+      }
+    }
+  }
+  function currentReason() {
+    return typeof window !== "undefined" ? window.disconnect_reason : void 0;
+  }
+  function reloadComm() {
+    if (typeof window.refresh_page === "function") {
+      window.refresh_page();
+      return;
+    }
+    window.location.reload();
+  }
+  function hideDisconnectOverlay() {
+    if (overlayEl) {
+      overlayEl.remove();
+      overlayEl = null;
+    }
+    if (canUseDom()) {
+      document.body.classList.remove(`${DISCONNECT_OVERLAY_CLASS}-on`);
+    }
+  }
+  function showDisconnectOverlay(reason) {
+    if (!canUseDom()) return;
+    ensureCss2();
+    const label = disconnectBannerLabel(reason);
+    const detail = disconnectBannerDetail(reason);
+    if (!overlayEl) {
+      overlayEl = document.createElement("div");
+      overlayEl.className = DISCONNECT_OVERLAY_CLASS;
+      overlayEl.setAttribute("role", "alertdialog");
+      overlayEl.setAttribute("aria-live", "assertive");
+      overlayEl.setAttribute("aria-modal", "true");
+      overlayEl.addEventListener("click", () => reloadComm());
+      const card = document.createElement("div");
+      card.className = `${DISCONNECT_OVERLAY_CLASS}-card`;
+      const title = document.createElement("div");
+      title.className = `${DISCONNECT_OVERLAY_CLASS}-title`;
+      const reasonEl2 = document.createElement("div");
+      reasonEl2.className = `${DISCONNECT_OVERLAY_CLASS}-reason`;
+      const hint = document.createElement("div");
+      hint.className = `${DISCONNECT_OVERLAY_CLASS}-hint`;
+      hint.textContent = "Click anywhere to reload";
+      card.appendChild(title);
+      card.appendChild(reasonEl2);
+      card.appendChild(hint);
+      overlayEl.appendChild(card);
+      document.body.appendChild(overlayEl);
+    }
+    const titleEl = overlayEl.querySelector(
+      `.${DISCONNECT_OVERLAY_CLASS}-title`
+    );
+    if (titleEl) titleEl.textContent = label;
+    const reasonEl = overlayEl.querySelector(
+      `.${DISCONNECT_OVERLAY_CLASS}-reason`
+    );
+    if (reasonEl) {
+      reasonEl.textContent = detail;
+      reasonEl.classList.toggle("is-empty", !detail);
+    }
+    overlayEl.setAttribute("aria-label", detail ? `${label}. ${detail}` : label);
+    document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
+  }
+  function syncOverlay() {
+    if (isCommDisconnected()) {
+      const now = Date.now();
+      if (disconnectedSince === null) disconnectedSince = now;
+      if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
+        showDisconnectOverlay(currentReason());
+      }
+    } else {
+      disconnectedSince = null;
+      hideDisconnectOverlay();
+    }
+  }
+  function wrapDisconnect() {
+    const prev = window.disconnect;
+    if (prev === wrappedDisconnect) return;
+    origDisconnect = typeof prev === "function" ? prev : void 0;
+    window.disconnect = wrappedDisconnect;
+  }
+  function wrappedDisconnect() {
+    everConnected = true;
+    try {
+      if (typeof origDisconnect === "function") origDisconnect();
+    } finally {
+      const reason = currentReason();
+      if (reason) {
+        disconnectedSince = null;
+        showDisconnectOverlay(reason);
+      } else {
+        if (disconnectedSince === null) disconnectedSince = Date.now();
+      }
+    }
+  }
+  function installDisconnectOverlay() {
+    if (installed) return;
+    installed = true;
+    if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
+      everConnected = true;
+    }
+    ensureCss2();
+    wrapDisconnect();
+    syncOverlay();
+    unsubTick = subscribeTick(() => {
+      wrapDisconnect();
+      syncOverlay();
+    });
+  }
+
+  // src/host/pageTitle.ts
+  var BRAND = "Adventure Land";
+  var installed2 = false;
+  var lastTitle = null;
+  function serverLabel2() {
+    const region = getServerRegion() || "";
+    const ident = getServerIdentifier() || "";
+    return `${region} ${ident}`.trim();
+  }
+  function formatCommPageTitle() {
+    const parts = [];
+    const obs = getObserving();
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    const dropped = isCommDisconnected();
+    if (dropped) parts.push("Disconnected");
+    if (name) {
+      const dead = !!(obs && obs.dead);
+      parts.push(dead ? `${name} (RIP)` : name);
+    } else if (!dropped) {
+      parts.push("Comm");
+    }
+    const map = getMapName();
+    if (map) parts.push(map);
+    const server = serverLabel2();
+    if (server) parts.push(server);
+    return `${parts.join(" \xB7 ")} | ${BRAND}`;
+  }
+  function applyPageTitle() {
+    const next = formatCommPageTitle();
+    if (next === lastTitle) return;
+    lastTitle = next;
+    if (document.title !== next) document.title = next;
+  }
+  function installPageTitle() {
+    if (installed2) return;
+    installed2 = true;
+    applyPageTitle();
+    subscribeTick(() => applyPageTitle());
   }
 
   // src/ui/chrome/ItemInstance.ts
@@ -19623,8 +19728,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.5" : "unknown";
-    const builtAt = true ? "2026-09-08T09:17:31.952Z" : "unknown";
+    const version = true ? "0.9.6" : "unknown";
+    const builtAt = true ? "2026-09-08T11:04:32.304Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -61451,6 +61556,16 @@ ${ESTIMATE_HINT}`,
           closePaperdoll();
           return true;
         },
+        toggleObservedPaperdoll: () => {
+          const id = getObservingId();
+          if (!id) return false;
+          if (selectedEntity2 === id) {
+            closePaperdoll();
+            return true;
+          }
+          setSelectedEntity(id);
+          return true;
+        },
         toggleLayoutEdit,
         exitLayoutEdit: () => {
           let wasOn = false;
@@ -61462,7 +61577,13 @@ ${ESTIMATE_HINT}`,
         }
       });
       return () => updateCommKeyboardHandlers({});
-    }, [selectedEntity2, focusUnitId, closePaperdoll, toggleLayoutEdit]);
+    }, [
+      selectedEntity2,
+      focusUnitId,
+      closePaperdoll,
+      setSelectedEntity,
+      toggleLayoutEdit
+    ]);
     React.useEffect(() => {
       info.setLayoutEditing(layoutEdit);
       return () => info.setLayoutEditing(false);
@@ -61786,19 +61907,6 @@ ${ESTIMATE_HINT}`,
 
   // src/main.ts
   publishEcuBuildInfo();
-  function showMailToast(message) {
-    let el = document.querySelector(".ecu-mail-toast");
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "ecu-mail-toast";
-      document.body.appendChild(el);
-    }
-    el.textContent = message;
-    el.classList.add("is-on");
-    window.setTimeout(() => {
-      el && el.classList.remove("is-on");
-    }, 3200);
-  }
   var POPUP_CSS = `
 /* Popup container */
 .popup {
@@ -61977,7 +62085,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installUpdateNotesHooks();
     ensureMailCss();
     installMailUnreadWatch();
-    subscribeMailToast((message) => showMailToast(message));
+    subscribeMailToast((message) => showCommToast(message));
     startSocketHub();
     startInstanceTracker();
     startMeterEngine();

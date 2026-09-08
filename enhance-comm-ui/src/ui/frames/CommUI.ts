@@ -13,6 +13,7 @@ import {
   subscribeMailOpen,
 } from "../../host/mail";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
+import { getObservingId } from "../../host/al";
 import { info } from "../../host/dialogHost";
 import { combatSignals } from "../../queries/combatSignals";
 import {
@@ -351,6 +352,16 @@ export function CommUI(props: CommUIProps): any {
         closePaperdoll();
         return true;
       },
+      toggleObservedPaperdoll: () => {
+        const id = getObservingId();
+        if (!id) return false;
+        if (selectedEntity === id) {
+          closePaperdoll();
+          return true;
+        }
+        setSelectedEntity(id);
+        return true;
+      },
       toggleLayoutEdit,
       exitLayoutEdit: () => {
         let wasOn = false;
@@ -362,7 +373,13 @@ export function CommUI(props: CommUIProps): any {
       },
     });
     return () => updateCommKeyboardHandlers({});
-  }, [selectedEntity, focusUnitId, closePaperdoll, toggleLayoutEdit]);
+  }, [
+    selectedEntity,
+    focusUnitId,
+    closePaperdoll,
+    setSelectedEntity,
+    toggleLayoutEdit,
+  ]);
 
   React.useEffect(() => {
     info.setLayoutEditing(layoutEdit);
