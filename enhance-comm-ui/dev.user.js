@@ -1,12 +1,16 @@
 // ==UserScript==
-// @name         Adventure.land COMM UI Enhancement (DEV)
+// @name         Adventure.land Hub UI Enhancement (DEV)
 // @namespace    http://tampermonkey.net/
 // @version      0.8.0-alpha.1-dev
 // @description  Dev loader — fetches local npm run dev build on every page load (cache-busted).
 // @author       kevinsandow
 // @contributors vett0, thmsn
+// @match        https://adventure.land/hub
+// @match        https://adventure.land/hub?borders=1
 // @match        https://adventure.land/comm
 // @match        https://adventure.land/comm?borders=1
+// @match        https://thmsn.adventureland.community/hub
+// @match        https://thmsn.adventureland.community/hub?borders=1
 // @match        https://thmsn.adventureland.community/comm
 // @match        https://thmsn.adventureland.community/comm?borders=1
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==

@@ -73,7 +73,7 @@ describe("inject bundle without React", () => {
       requestAnimationFrame: () => 1,
       cancelAnimationFrame: () => {},
       addEventListener() {},
-      location: { href: "https://adventure.land/comm" },
+      location: { href: "https://adventure.land/hub" },
     };
     g.document = doc;
 

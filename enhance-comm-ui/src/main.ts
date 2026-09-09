@@ -14,6 +14,7 @@ import { installPageTitle } from "./host/pageTitle";
 import { installDisconnectOverlay } from "./host/disconnectOverlay";
 import { installMailUnreadWatch, subscribeMailToast } from "./host/mail";
 import { showCommToast } from "./host/commToast";
+import { installStockHubChatTakeover } from "./host/chat/stockHubTakeover";
 import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
@@ -214,6 +215,8 @@ function onLoad(): void {
   ensureMailCss();
   installMailUnreadWatch();
   subscribeMailToast((message) => showCommToast(message));
+  // Hide stock Hub #comm-chat and route CHAT / toggle_comm_chat → ECU Chat.
+  installStockHubChatTakeover();
   startSocketHub();
   startInstanceTracker();
   startMeterEngine();

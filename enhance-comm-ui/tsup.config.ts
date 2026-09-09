@@ -11,14 +11,18 @@ const pkg = JSON.parse(
 const buildTime = new Date().toISOString();
 
 const banner = `// ==UserScript==
-// @name         Adventure.land COMM UI Enhancement
+// @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
 // @version      ${pkg.version}
-// @description  enhance https://adventure.land/comm/
+// @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
+// @match        https://adventure.land/hub
+// @match        https://adventure.land/hub?borders=1
 // @match        https://adventure.land/comm
 // @match        https://adventure.land/comm?borders=1
+// @match        https://thmsn.adventureland.community/hub
+// @match        https://thmsn.adventureland.community/hub?borders=1
 // @match        https://thmsn.adventureland.community/comm
 // @match        https://thmsn.adventureland.community/comm?borders=1
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==

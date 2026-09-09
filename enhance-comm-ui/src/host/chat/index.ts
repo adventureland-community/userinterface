@@ -41,3 +41,43 @@ export {
   setChatPanelOpen,
   syncChatBadge,
 } from "./unread";
+export type {
+  HubApiResult,
+  HubChatCharacter,
+  HubChatLatest,
+  HubChatMessageRow,
+  HubChatSummary,
+  PullChatResult,
+  PullChatsResult,
+} from "./hubApi";
+export {
+  hubChatKey,
+  hubChatSince,
+  normalizePullChat,
+  normalizePullChats,
+  pullChatPage,
+  pullChatsPage,
+  sendHubMessage,
+} from "./hubApi";
+export type { HubConversation } from "./hubConversations";
+export {
+  applyPullChatResult,
+  applyPullChatsResult,
+  ensurePartyConversation,
+  getHubActiveConversation,
+  getHubActiveKey,
+  getHubCharacters,
+  getHubConversations,
+  countHubChatUnread,
+  formatHubUnreadBadge,
+  isHubChatUnread,
+  listHubConversations,
+  markHubChatSeen,
+  baselineHubChatSeen,
+  rememberHubChat,
+  resetHubConversations,
+  selectHubChat,
+  setHubActiveNew,
+  subscribeHubChat,
+} from "./hubConversations";
+export { installStockHubChatTakeover } from "./stockHubTakeover";
