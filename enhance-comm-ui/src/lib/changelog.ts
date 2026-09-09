@@ -100,6 +100,29 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.9",
+    title: "0.9.9",
+    date: "2026-09-10",
+    summary:
+      "Mail attachment hovers show full stock item names again (title prefixes and upgrade/compound suffixes).",
+    highlights: [
+      {
+        label: "Mail item hovername",
+        detail:
+          "Titled gear in mail list/read/compose tips uses itemInstanceLabel — e.g. Gooped Pants +9 — instead of the bare item name.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Attachment labels",
+        detail:
+          "Read and compose panes show the same full label next to the icon; list icons no longer override the tip with take-status-only text.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.8",
     title: "0.9.8",
     date: "2026-09-09",

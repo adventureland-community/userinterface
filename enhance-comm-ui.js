@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.8
+// @version      0.9.9
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8442,6 +8442,26 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.9",
+      title: "0.9.9",
+      date: "2026-09-10",
+      summary: "Mail attachment hovers show full stock item names again (title prefixes and upgrade/compound suffixes).",
+      highlights: [
+        {
+          label: "Mail item hovername",
+          detail: "Titled gear in mail list/read/compose tips uses itemInstanceLabel \u2014 e.g. Gooped Pants +9 \u2014 instead of the bare item name.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Attachment labels",
+          detail: "Read and compose panes show the same full label next to the icon; list icons no longer override the tip with take-status-only text.",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.8",
       title: "0.9.8",
@@ -19148,7 +19168,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       title,
       stockChrome = true
     } = props;
-    const tip = title || itemDisplayName(name) || name;
+    const tip = title || itemInstanceLabel(name, { p, level }) || name;
     const qtyLabel = formatQty(q);
     const levelLabel = formatLevel(level);
     React.useEffect(() => {
@@ -20135,8 +20155,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.8" : "unknown";
-    const builtAt = true ? "2026-09-09T22:11:14.461Z" : "unknown";
+    const version = true ? "0.9.9" : "unknown";
+    const builtAt = true ? "2026-09-09T23:06:13.540Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -61029,8 +61049,14 @@ ${ESTIMATE_HINT}`,
           e(
             "div",
             { className: "comm-mail__attach-meta" },
-            e("strong", null, fp.name),
-            fp.level != null ? " +" + fp.level : null,
+            e(
+              "strong",
+              null,
+              itemInstanceLabel(String(fp.name), {
+                p: typeof fp.p === "string" ? fp.p : void 0,
+                level: typeof fp.level === "number" ? fp.level : void 0
+              })
+            ),
             typeof fp.q === "number" && fp.q > 1 ? " \xD7" + fp.q : null,
             e(
               "div",
@@ -61285,21 +61311,26 @@ ${ESTIMATE_HINT}`,
     }
     const q = qtyOverride != null ? qtyOverride : typeof m.item.q === "number" ? m.item.q : void 0;
     const taken = !!m.taken;
+    const name = String(m.item.name);
+    const level = typeof m.item.level === "number" ? m.item.level : void 0;
+    const p = typeof m.item.p === "string" ? m.item.p : void 0;
+    const label = itemInstanceLabel(name, { p, level });
     return e(
       "div",
       {
         className: "comm-mail__item" + (taken ? " is-taken" : ""),
-        title: taken ? "Attachment already taken" : "Attachment ready to take",
+        title: taken ? label + " (taken)" : label,
         onClick: (ev) => ev.stopPropagation(),
         style: { width: size, height: size }
       },
       e(ItemInstance, {
-        name: String(m.item.name),
+        name,
         skin: typeof m.item.skin === "string" ? m.item.skin : void 0,
-        level: typeof m.item.level === "number" ? m.item.level : void 0,
+        level,
         q,
-        p: typeof m.item.p === "string" ? m.item.p : void 0,
-        size
+        p,
+        size,
+        title: label
       })
     );
   }
@@ -61669,8 +61700,14 @@ ${ESTIMATE_HINT}`,
         e(
           "div",
           { className: "comm-mail__attach-meta" },
-          e("strong", null, selected.item.name),
-          selected.item.level != null ? " +" + selected.item.level : null,
+          e(
+            "strong",
+            null,
+            itemInstanceLabel(String(selected.item.name), {
+              p: typeof selected.item.p === "string" ? selected.item.p : void 0,
+              level: typeof selected.item.level === "number" ? selected.item.level : void 0
+            })
+          ),
           typeof selected.item.q === "number" && selected.item.q > 1 ? " \xD7" + selected.item.q : null,
           e(
             "div",
