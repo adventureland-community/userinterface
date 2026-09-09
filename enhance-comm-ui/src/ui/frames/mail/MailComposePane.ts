@@ -13,6 +13,7 @@ import {
   type MailCapabilities,
   type MailStoreSnapshot,
 } from "../../../host/mail";
+import { itemInstanceLabel } from "../../../lib/gameIcon";
 import { ItemInstance } from "../../chrome/ItemInstance";
 import { visiblePlayerNames } from "./mailFormat";
 
@@ -157,8 +158,14 @@ export function MailComposePane(props: MailComposePaneProps): any {
         e(
           "div",
           { className: "comm-mail__attach-meta" },
-          e("strong", null, fp.name),
-          fp.level != null ? " +" + fp.level : null,
+          e(
+            "strong",
+            null,
+            itemInstanceLabel(String(fp.name), {
+              p: typeof fp.p === "string" ? fp.p : undefined,
+              level: typeof fp.level === "number" ? fp.level : undefined,
+            }),
+          ),
           typeof fp.q === "number" && fp.q > 1 ? " ×" + fp.q : null,
           e(
             "div",

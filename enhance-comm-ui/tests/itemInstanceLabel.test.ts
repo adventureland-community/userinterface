@@ -44,4 +44,16 @@ describe("itemInstanceLabel", () => {
     });
     assert.equal(itemInstanceLabel("dagger", { level: 12 }), "Dagger +Z");
   });
+
+  it("matches stock hovername used by mail ItemInstance tips", () => {
+    installG({
+      items: { pants1: { name: "Pants", upgrade: true } },
+      titles: { gooped: { title: "Gooped" } },
+    });
+    // ItemInstance tip = title || itemInstanceLabel(name, { p, level })
+    assert.equal(
+      itemInstanceLabel("pants1", { p: "gooped", level: 9 }),
+      "Gooped Pants +9",
+    );
+  });
 });

@@ -9,6 +9,7 @@ import {
   type MailRow,
   type MailStoreSnapshot,
 } from "../../../host/mail";
+import { itemInstanceLabel } from "../../../lib/gameIcon";
 import { ItemInstance } from "../../chrome/ItemInstance";
 import { formatMailDate, formatMailRelative } from "./mailFormat";
 
@@ -97,8 +98,20 @@ export function MailReadPane(props: MailReadPaneProps): any {
           e(
             "div",
             { className: "comm-mail__attach-meta" },
-            e("strong", null, selected.item.name),
-            selected.item.level != null ? " +" + selected.item.level : null,
+            e(
+              "strong",
+              null,
+              itemInstanceLabel(String(selected.item.name), {
+                p:
+                  typeof selected.item.p === "string"
+                    ? selected.item.p
+                    : undefined,
+                level:
+                  typeof selected.item.level === "number"
+                    ? selected.item.level
+                    : undefined,
+              }),
+            ),
             typeof selected.item.q === "number" && selected.item.q > 1
               ? " ×" + selected.item.q
               : null,

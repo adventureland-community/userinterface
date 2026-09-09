@@ -1,5 +1,6 @@
 import { e } from "../../../host/react";
 import type { MailCollapseGroup, MailRow } from "../../../host/mail";
+import { itemInstanceLabel } from "../../../lib/gameIcon";
 import { ItemInstance } from "../../chrome/ItemInstance";
 import {
   formatMailDate,
@@ -52,21 +53,26 @@ export function mailItemIcon(
         ? m.item.q
         : undefined;
   const taken = !!m.taken;
+  const name = String(m.item.name);
+  const level = typeof m.item.level === "number" ? m.item.level : undefined;
+  const p = typeof m.item.p === "string" ? m.item.p : undefined;
+  const label = itemInstanceLabel(name, { p, level });
   return e(
     "div",
     {
       className: "comm-mail__item" + (taken ? " is-taken" : ""),
-      title: taken ? "Attachment already taken" : "Attachment ready to take",
+      title: taken ? label + " (taken)" : label,
       onClick: (ev: any) => ev.stopPropagation(),
       style: { width: size, height: size },
     },
     e(ItemInstance, {
-      name: String(m.item.name),
+      name,
       skin: typeof m.item.skin === "string" ? m.item.skin : undefined,
-      level: typeof m.item.level === "number" ? m.item.level : undefined,
+      level,
       q,
-      p: typeof m.item.p === "string" ? m.item.p : undefined,
+      p,
       size,
+      title: label,
     }),
   );
 }

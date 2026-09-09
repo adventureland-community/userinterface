@@ -6,9 +6,9 @@
 
 import { getReact, e } from "../../host/react";
 import {
-  itemDisplayName,
   itemIconHtml,
   itemInstanceHtml,
+  itemInstanceLabel,
 } from "../../lib/gameIcon";
 
 export type ItemInstanceProps = {
@@ -54,7 +54,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
     stockChrome = true,
   } = props;
 
-  const tip = title || itemDisplayName(name) || name;
+  // Match stock hovername: G.titles prefix + upgrade/compound suffixes.
+  const tip = title || itemInstanceLabel(name, { p, level }) || name;
   const qtyLabel = formatQty(q);
   const levelLabel = formatLevel(level);
 
