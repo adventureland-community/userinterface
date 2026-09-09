@@ -100,6 +100,80 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.8",
+    title: "0.9.8",
+    date: "2026-09-09",
+    summary:
+      "Adventure.land renamed /comm → /hub; ECU matches /hub and takes over the new stock chat (account send-as-any-character, conversation list).",
+    highlights: [
+      {
+        label: "/hub match",
+        detail:
+          "Userscript runs on https://adventure.land/hub (and mirrors). /comm matchers stay for old bookmarks.",
+        kind: "improve",
+      },
+      {
+        label: "Hub chat takeover",
+        detail:
+          "Stock #comm-chat is hidden. ECU Chat uses pull_chats / pull_chat / send_message — server rooms, private threads, From any account character (even offline), no observe required to send.",
+        kind: "feature",
+      },
+      {
+        label: "Conversation sidebar",
+        detail:
+          "Sidebar lists server + private chats; New whisper with To; Load older / More chats; 5s poll like stock.",
+        kind: "feature",
+      },
+    ],
+    features: [
+      {
+        title: "What changed on Hub",
+        summary:
+          "Stock shipped a full chat panel on the observer page. ECU absorbs that surface instead of competing with it.",
+        items: [
+          {
+            label: "send_message API",
+            detail:
+              "Replaces observe o:command say for Hub chat. Pick From in the composer; server or whisper To.",
+            kind: "feature",
+          },
+          {
+            label: "Party still via observe",
+            detail:
+              "Party lines still need an observed character (socket party chat). Hub account APIs cover server + PM only.",
+            kind: "improve",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "CHAT / toggle_comm_chat",
+        detail:
+          "Stock CHAT button and toggle_comm_chat / comm_chat_new open the ECU Chat panel.",
+        kind: "fix",
+      },
+      {
+        label: "Chat panel polish",
+        detail:
+          "Narrow panels collapse conversations into a Chats drawer. Stock-scale pixel type (24px body / 20px meta), quieter polls, compact compose with From in the title (EU I · thmsn), FULL/MIN expand, unread counts, filters, and a Party channel.",
+        kind: "improve",
+      },
+      {
+        label: "Server picker menu",
+        detail:
+          "Stock Hub CSS sets overflow:auto on #bottom .serversui, which clipped the upward server list. ECU forces overflow:visible so the chooser menu shows again.",
+        kind: "ui",
+      },
+      {
+        label: "Server event chips",
+        detail:
+          "Goo Brawl and A/B Testing show again — stock sends `{ end }` without `.live`, which the chip filter used to skip. Server-dropdown badges also pick those up (and crabxx from ALData).",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.7",
     title: "0.9.7",
     date: "2026-09-09",

@@ -1,8 +1,8 @@
 {
   "name": "enhance-comm-ui",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "private": true,
-  "description": "Adventure.land /comm UI enhancement userscript",
+  "description": "Adventure.land /hub UI enhancement userscript (formerly /comm)",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && node scripts/clean-dist.mjs && tsup && node scripts/sync-root.mjs",

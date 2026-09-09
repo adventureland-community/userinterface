@@ -1,12 +1,16 @@
 // ==UserScript==
-// @name         Adventure.land COMM UI Enhancement
+// @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.7
-// @description  enhance https://adventure.land/comm/
+// @version      0.9.8
+// @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
+// @match        https://adventure.land/hub
+// @match        https://adventure.land/hub?borders=1
 // @match        https://adventure.land/comm
 // @match        https://adventure.land/comm?borders=1
+// @match        https://thmsn.adventureland.community/hub
+// @match        https://thmsn.adventureland.community/hub?borders=1
 // @match        https://thmsn.adventureland.community/comm
 // @match        https://thmsn.adventureland.community/comm?borders=1
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
@@ -740,116 +744,6 @@ var EnhanceCommUI = (() => {
     return { ok: true, data: { unreadCount } };
   }
 
-  // src/host/chat/history.ts
-  var API_TIMEOUT_MS2 = 12e3;
-  function postJson2(url, body, signal) {
-    return fetch(url, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal
-    }).then(async (res) => {
-      let json = null;
-      try {
-        json = await res.json();
-      } catch (e2) {
-        json = null;
-      }
-      return { ok: res.ok, json };
-    }).catch(() => null);
-  }
-  function findMessagesInfo(infs) {
-    for (let i = 0; i < infs.length; i++) {
-      const info2 = infs[i];
-      if (info2 && (info2.type === "messages" || Array.isArray(info2.messages))) {
-        return info2;
-      }
-    }
-    return null;
-  }
-  function normalizeMessagesPage(info2) {
-    const raw = Array.isArray(info2.messages) ? info2.messages : [];
-    const messages2 = [];
-    for (let i = 0; i < raw.length; i++) {
-      const row3 = raw[i];
-      if (!row3 || typeof row3 !== "object") continue;
-      messages2.push(row3);
-    }
-    return {
-      messages: messages2,
-      more: !!info2.more,
-      cursor: info2.cursor != null && info2.cursor !== "" ? String(info2.cursor) : null,
-      cursored: !!info2.cursored,
-      mtype: typeof info2.mtype === "string" ? info2.mtype : "all"
-    };
-  }
-  async function pullMessagesPage(opts) {
-    const args = {};
-    if (opts.type) args.type = opts.type;
-    if (opts.cursor) args.cursor = opts.cursor;
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer = window.setTimeout(() => {
-      if (ctrl) ctrl.abort();
-    }, API_TIMEOUT_MS2);
-    try {
-      const res = await postJson2(
-        "/api/pull_messages",
-        args,
-        ctrl ? ctrl.signal : void 0
-      );
-      if (!res) return { ok: false, reason: "network" };
-      if (!res.ok) return { ok: false, reason: "http_error" };
-      const info2 = findMessagesInfo(extractInfs(res.json));
-      if (!info2) return { ok: false, reason: "no_messages_payload" };
-      return { ok: true, data: normalizeMessagesPage(info2) };
-    } finally {
-      window.clearTimeout(timer);
-    }
-  }
-  function historyRowChannel(type) {
-    if (type === "private") return "pm";
-    if (type === "party") return "party";
-    if (type === "ambient" || type === "server") return "say";
-    return "say";
-  }
-  function historyRowColor(type) {
-    if (type === "private") return "#CD7879";
-    if (type === "party") return "#46A0C6";
-    return void 0;
-  }
-  function historyRowToChatMessage(row3) {
-    const message = row3.message != null ? String(row3.message) : "";
-    if (!message) return null;
-    const at = row3.date ? Date.parse(row3.date) : NaN;
-    return {
-      id: row3.id ? `hist-${row3.id}` : `hist-${row3.fro || ""}-${row3.date || ""}-${message.slice(0, 24)}`,
-      at: Number.isFinite(at) ? at : 0,
-      channel: historyRowChannel(row3.type),
-      owner: row3.fro != null ? String(row3.fro) : "",
-      message,
-      color: historyRowColor(row3.type),
-      local: false
-    };
-  }
-  function resolveHistoryType() {
-    var _a;
-    const region = typeof window.server_region === "string" ? window.server_region : "";
-    const ident = typeof window.server_identifier === "string" ? window.server_identifier : "";
-    const servers = (_a = window.X) == null ? void 0 : _a.servers;
-    if (Array.isArray(servers) && region && ident) {
-      for (let i = 0; i < servers.length; i++) {
-        const s = servers[i];
-        if (!s) continue;
-        if (s.region === region && s.name === ident && s.key) {
-          return String(s.key);
-        }
-      }
-    }
-    if (region && ident) return `SR_${region}${ident}`;
-    return "global";
-  }
-
   // src/host/chat/unread.ts
   var panelOpen = false;
   var unread = 0;
@@ -896,14 +790,6 @@ var EnhanceCommUI = (() => {
   var messages = [];
   var seq = 0;
   var seenIds = /* @__PURE__ */ new Set();
-  var history = {
-    type: "",
-    cursor: null,
-    more: false,
-    loaded: false,
-    loading: false,
-    error: null
-  };
   function notify2() {
     for (let i = 0; i < listeners3.length; i++) listeners3[i]();
   }
@@ -916,22 +802,6 @@ var EnhanceCommUI = (() => {
   }
   function getChatMessages() {
     return messages;
-  }
-  function getChatHistoryState() {
-    return { ...history };
-  }
-  function clearChatMessages() {
-    messages = [];
-    seenIds.clear();
-    history = {
-      type: "",
-      cursor: null,
-      more: false,
-      loaded: false,
-      loading: false,
-      error: null
-    };
-    notify2();
   }
   function nextId(prefix) {
     seq += 1;
@@ -1013,94 +883,19 @@ var EnhanceCommUI = (() => {
       local: opts == null ? void 0 : opts.local
     });
   }
-  function pushLocalPartyChat(owner, message) {
-    pushChatMessage({
-      channel: "party",
-      owner,
-      message,
-      color: "#46A0C6",
-      local: true
-    });
-  }
-  function prependHistoryPage(page) {
-    const chronological = [];
-    for (let i = page.messages.length - 1; i >= 0; i--) {
-      const row3 = historyRowToChatMessage(page.messages[i]);
-      if (!row3) continue;
-      if (!rememberId(row3.id)) continue;
-      chronological.push(row3);
-    }
-    if (chronological.length) {
-      messages = chronological.concat(messages);
-      trimMessages();
-    }
-    history = {
-      ...history,
-      type: page.mtype || history.type,
-      cursor: page.more ? page.cursor : null,
-      more: page.more,
-      loaded: true,
-      loading: false,
-      error: null
-    };
-    notify2();
-    return chronological.length;
-  }
-  async function loadChatHistory(opts) {
-    if (history.loading) return { ok: false, added: 0, reason: "busy" };
-    const type = (opts == null ? void 0 : opts.type) || history.type || resolveHistoryType();
-    const reset = (opts == null ? void 0 : opts.reset) === true || !history.loaded;
-    if (!reset && !history.more) {
-      return { ok: true, added: 0, reason: "end" };
-    }
-    const cursor = reset ? null : history.cursor;
-    if (reset) {
-      const kept = [];
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        if (String(msg.id).indexOf("hist-") === 0) {
-          seenIds.delete(msg.id);
-          continue;
-        }
-        kept.push(msg);
-      }
-      messages = kept;
-    }
-    history = {
-      ...history,
-      type,
-      loading: true,
-      error: null,
-      ...reset ? { cursor: null, more: false, loaded: false } : null
-    };
-    notify2();
-    const res = await pullMessagesPage({ type, cursor });
-    if (!res.ok || !res.data) {
-      history = {
-        ...history,
-        loading: false,
-        error: res.reason || "failed",
-        loaded: history.loaded || false
-      };
-      notify2();
-      return { ok: false, added: 0, reason: res.reason || "failed" };
-    }
-    const added = prependHistoryPage(res.data);
-    return { ok: true, added };
-  }
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners13 = [];
+    const listeners14 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners13.length; i++) listeners13[i](ev);
+        for (let i = 0; i < listeners14.length; i++) listeners14[i](ev);
       },
       subscribe: (listener) => {
-        listeners13.push(listener);
+        listeners14.push(listener);
         return () => {
-          const idx = listeners13.indexOf(listener);
-          if (idx >= 0) listeners13.splice(idx, 1);
+          const idx = listeners14.indexOf(listener);
+          if (idx >= 0) listeners14.splice(idx, 1);
         };
       }
     };
@@ -6880,7 +6675,7 @@ ${fightHoverTip(src)}`
   var MAX_HISTORY = 60;
   var live = null;
   var past = [];
-  var history2 = [];
+  var history = [];
   var lastHistoryAt = 0;
   var lastCombatAt = 0;
   var inCombat = false;
@@ -6974,7 +6769,7 @@ ${fightHoverTip(src)}`
     if (live) stampCamera(live, next);
   }
   function clearRollingHistory() {
-    history2 = [];
+    history = [];
     lastHistoryAt = 0;
     markMeterDirty();
   }
@@ -7067,8 +6862,8 @@ ${fightHoverTip(src)}`
       const a = seg.actors[ids[i]];
       values[a.id] = a.damage * 1e3 / elapsed;
     }
-    history2.push({ at: now, values });
-    while (history2.length > MAX_HISTORY) history2.shift();
+    history.push({ at: now, values });
+    while (history.length > MAX_HISTORY) history.shift();
   }
   function noteLiveDraft() {
     if (live) noteLive(live);
@@ -7124,12 +6919,12 @@ ${fightHoverTip(src)}`
     return inCombat && !!live && live.id === seg.id;
   }
   function getHistoryPoints() {
-    return history2;
+    return history;
   }
   function resetSessionAll() {
     live = null;
     past = [];
-    history2 = [];
+    history = [];
     lastHistoryAt = 0;
     lastCombatAt = 0;
     inCombat = false;
@@ -7147,7 +6942,7 @@ ${fightHoverTip(src)}`
   }
   function resetSessionOverall() {
     past = [];
-    history2 = [];
+    history = [];
     lastHistoryAt = 0;
   }
   function startSession(hooks2) {
@@ -8647,6 +8442,69 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.8",
+      title: "0.9.8",
+      date: "2026-09-09",
+      summary: "Adventure.land renamed /comm \u2192 /hub; ECU matches /hub and takes over the new stock chat (account send-as-any-character, conversation list).",
+      highlights: [
+        {
+          label: "/hub match",
+          detail: "Userscript runs on https://adventure.land/hub (and mirrors). /comm matchers stay for old bookmarks.",
+          kind: "improve"
+        },
+        {
+          label: "Hub chat takeover",
+          detail: "Stock #comm-chat is hidden. ECU Chat uses pull_chats / pull_chat / send_message \u2014 server rooms, private threads, From any account character (even offline), no observe required to send.",
+          kind: "feature"
+        },
+        {
+          label: "Conversation sidebar",
+          detail: "Sidebar lists server + private chats; New whisper with To; Load older / More chats; 5s poll like stock.",
+          kind: "feature"
+        }
+      ],
+      features: [
+        {
+          title: "What changed on Hub",
+          summary: "Stock shipped a full chat panel on the observer page. ECU absorbs that surface instead of competing with it.",
+          items: [
+            {
+              label: "send_message API",
+              detail: "Replaces observe o:command say for Hub chat. Pick From in the composer; server or whisper To.",
+              kind: "feature"
+            },
+            {
+              label: "Party still via observe",
+              detail: "Party lines still need an observed character (socket party chat). Hub account APIs cover server + PM only.",
+              kind: "improve"
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "CHAT / toggle_comm_chat",
+          detail: "Stock CHAT button and toggle_comm_chat / comm_chat_new open the ECU Chat panel.",
+          kind: "fix"
+        },
+        {
+          label: "Chat panel polish",
+          detail: "Narrow panels collapse conversations into a Chats drawer. Stock-scale pixel type (24px body / 20px meta), quieter polls, compact compose with From in the title (EU I \xB7 thmsn), FULL/MIN expand, unread counts, filters, and a Party channel.",
+          kind: "improve"
+        },
+        {
+          label: "Server picker menu",
+          detail: "Stock Hub CSS sets overflow:auto on #bottom .serversui, which clipped the upward server list. ECU forces overflow:visible so the chooser menu shows again.",
+          kind: "ui"
+        },
+        {
+          label: "Server event chips",
+          detail: "Goo Brawl and A/B Testing show again \u2014 stock sends `{ end }` without `.live`, which the chip filter used to skip. Server-dropdown badges also pick those up (and crabxx from ALData).",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.7",
       title: "0.9.7",
@@ -12896,13 +12754,16 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
 }
 
 .serversui.serversuic,
-.serversuic {
+.serversuic,
+#bottom .serversui,
+#bottom .serversuic {
   display: flex !important;
   position: relative;
   flex: 0 0 auto;
   align-items: stretch;
   margin: 0 !important;
-  overflow: visible;
+  /* Stock comm.css sets overflow:auto on #bottom .serversui \u2014 clips upward menu. */
+  overflow: visible !important;
 }
 .ecu-server-dd {
   position: relative;
@@ -16868,6 +16729,516 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
+  // src/host/chat/hubApi.ts
+  var API_TIMEOUT_MS2 = 12e3;
+  function getApiCall2() {
+    const fn = window.api_call;
+    return typeof fn === "function" ? fn : null;
+  }
+  function postJson2(url, body, signal) {
+    return fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal
+    }).then(async (res) => {
+      let json = null;
+      try {
+        json = await res.json();
+      } catch (e2) {
+        json = null;
+      }
+      return { ok: res.ok, json };
+    }).catch(() => null);
+  }
+  function asCursor(value) {
+    if (value == null || value === "") return null;
+    return String(value);
+  }
+  function normalizeCharacter(row3) {
+    if (!row3 || typeof row3 !== "object") return null;
+    const obj = row3;
+    if (obj.name == null || obj.name === "") return null;
+    const out = { name: String(obj.name) };
+    if (obj.online != null) out.online = !!obj.online;
+    if (obj.server != null && obj.server !== "") out.server = String(obj.server);
+    return out;
+  }
+  function normalizeChatSummary(row3) {
+    if (!row3 || typeof row3 !== "object") return null;
+    const obj = row3;
+    if (!obj.type) return null;
+    return obj;
+  }
+  function normalizeMessageRow(row3) {
+    if (!row3 || typeof row3 !== "object") return null;
+    const obj = row3;
+    if (obj.id == null || obj.id === "") return null;
+    return {
+      ...row3,
+      id: String(obj.id),
+      fro: obj.fro != null ? String(obj.fro) : "",
+      message: obj.message != null ? String(obj.message) : "",
+      date: obj.date != null ? String(obj.date) : ""
+    };
+  }
+  function normalizePullChats(info2) {
+    const rawChars = Array.isArray(info2.characters) ? info2.characters : [];
+    const characters2 = [];
+    for (let i = 0; i < rawChars.length; i++) {
+      const row3 = normalizeCharacter(rawChars[i]);
+      if (row3) characters2.push(row3);
+    }
+    const rawChats = Array.isArray(info2.chats) ? info2.chats : [];
+    const chats2 = [];
+    for (let i = 0; i < rawChats.length; i++) {
+      const row3 = normalizeChatSummary(rawChats[i]);
+      if (row3) chats2.push(row3);
+    }
+    return {
+      characters: characters2,
+      chats: chats2,
+      cursor: asCursor(info2.cursor),
+      after: asCursor(info2.after),
+      more: !!info2.more
+    };
+  }
+  function normalizePullChat(info2) {
+    const raw = Array.isArray(info2.messages) ? info2.messages : [];
+    const messages2 = [];
+    for (let i = 0; i < raw.length; i++) {
+      const row3 = normalizeMessageRow(raw[i]);
+      if (row3) messages2.push(row3);
+    }
+    return {
+      messages: messages2,
+      cursor: asCursor(info2.cursor),
+      after: asCursor(info2.after),
+      more: !!info2.more
+    };
+  }
+  function hasChatsShape(obj) {
+    return Array.isArray(obj.chats) || Array.isArray(obj.characters);
+  }
+  function hasMessagesShape(obj) {
+    return Array.isArray(obj.messages);
+  }
+  function findInInfs(infs, match) {
+    for (let i = 0; i < infs.length; i++) {
+      const info2 = infs[i];
+      if (info2 && match(info2)) return info2;
+    }
+    return null;
+  }
+  function findPullChatsInfo(ct) {
+    const fromInfs = findInInfs(extractInfs(ct), hasChatsShape);
+    if (fromInfs) return fromInfs;
+    if (ct && typeof ct === "object" && !Array.isArray(ct)) {
+      const obj = ct;
+      if (obj.failed) return null;
+      if (hasChatsShape(obj)) return obj;
+      if (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data)) {
+        const data = obj.data;
+        if (hasChatsShape(data)) return data;
+      }
+    }
+    return null;
+  }
+  function findPullChatInfo(ct) {
+    const fromInfs = findInInfs(extractInfs(ct), hasMessagesShape);
+    if (fromInfs) return fromInfs;
+    if (ct && typeof ct === "object" && !Array.isArray(ct)) {
+      const obj = ct;
+      if (obj.failed) return null;
+      if (hasMessagesShape(obj)) return obj;
+      if (obj.data && typeof obj.data === "object" && !Array.isArray(obj.data)) {
+        const data = obj.data;
+        if (hasMessagesShape(data)) return data;
+      }
+    }
+    return null;
+  }
+  function isFailedPayload(ct) {
+    if (!ct || typeof ct !== "object") return false;
+    return !!ct.failed;
+  }
+  function callApiStock2(method, args) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (data) => {
+        if (settled) return;
+        settled = true;
+        resolve(data);
+      };
+      const api = getApiCall2();
+      if (!api) {
+        finish(null);
+        return;
+      }
+      const timer = window.setTimeout(() => finish(null), API_TIMEOUT_MS2);
+      try {
+        const maybePromise = api(method, { ...args }, { silent: true, timeout: API_TIMEOUT_MS2 });
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.then((data) => {
+            window.clearTimeout(timer);
+            finish(data);
+          }).catch((data) => {
+            window.clearTimeout(timer);
+            finish(data);
+          });
+        } else {
+          window.clearTimeout(timer);
+          finish(maybePromise);
+        }
+      } catch (e2) {
+        window.clearTimeout(timer);
+        finish(null);
+      }
+    });
+  }
+  async function fetchApiJson(method, args) {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => {
+      if (ctrl) ctrl.abort();
+    }, API_TIMEOUT_MS2);
+    try {
+      return await postJson2(
+        "/api/" + method,
+        { ...args },
+        ctrl ? ctrl.signal : void 0
+      );
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  function hubChatKey(chat) {
+    if (chat.type === "server") return "server:" + (chat.server || "");
+    if (chat.type === "party") return "party";
+    if (chat.type === "new") return "new";
+    const a = (chat.character || "").toLowerCase();
+    const b = (chat.to || "").toLowerCase();
+    const pair = a < b ? a + ":" + b : b + ":" + a;
+    return "private:" + pair;
+  }
+  function hubChatSince(cursor) {
+    return new Date(new Date(cursor.split("|")[0]).getTime() - 1e3).toISOString() + "|MS_0";
+  }
+  async function pullChatsPage(opts) {
+    const args = {};
+    if (opts == null ? void 0 : opts.cursor) args.cursor = opts.cursor;
+    else if (opts == null ? void 0 : opts.after) args.after = opts.after;
+    const res = await fetchApiJson("pull_chats", args);
+    if (res && res.ok) {
+      const info3 = findPullChatsInfo(res.json);
+      if (info3) return { ok: true, data: normalizePullChats(info3) };
+    }
+    const stock = await callApiStock2("pull_chats", args);
+    const info2 = findPullChatsInfo(stock);
+    if (info2) return { ok: true, data: normalizePullChats(info2) };
+    if (res == null && stock == null) return { ok: false, reason: "network" };
+    if (res && !res.ok) return { ok: false, reason: "http_error" };
+    return { ok: false, reason: "no_chats_payload" };
+  }
+  async function pullChatPage(opts) {
+    const args = {};
+    if (opts.server) args.server = opts.server;
+    else {
+      if (opts.character) args.character = opts.character;
+      if (opts.to) args.to = opts.to;
+    }
+    if (opts.cursor) args.cursor = opts.cursor;
+    else if (opts.after) args.after = opts.after;
+    const res = await fetchApiJson("pull_chat", args);
+    if (res && res.ok) {
+      const info3 = findPullChatInfo(res.json);
+      if (info3) return { ok: true, data: normalizePullChat(info3) };
+    }
+    const stock = await callApiStock2("pull_chat", args);
+    const info2 = findPullChatInfo(stock);
+    if (info2) return { ok: true, data: normalizePullChat(info2) };
+    if (res == null && stock == null) return { ok: false, reason: "network" };
+    if (res && !res.ok) return { ok: false, reason: "http_error" };
+    return { ok: false, reason: "no_messages_payload" };
+  }
+  async function sendHubMessage(opts) {
+    const args = {
+      character: opts.character,
+      message: opts.message
+    };
+    if (opts.server) args.server = opts.server;
+    else if (opts.to) args.to = opts.to;
+    const res = await fetchApiJson("send_message", args);
+    if (res && res.ok && !isFailedPayload(res.json)) {
+      return { ok: true, data: true };
+    }
+    if (res && res.ok && isFailedPayload(res.json)) {
+      return { ok: false, reason: "failed" };
+    }
+    const stock = await callApiStock2("send_message", args);
+    if (stock != null && !isFailedPayload(stock)) {
+      return { ok: true, data: true };
+    }
+    if (isFailedPayload(stock)) return { ok: false, reason: "failed" };
+    if (res == null && stock == null) return { ok: false, reason: "network" };
+    if (res && !res.ok) return { ok: false, reason: "http_error" };
+    return { ok: false, reason: "no_response" };
+  }
+
+  // src/host/chat/hubConversations.ts
+  var listeners10 = [];
+  var chats = {};
+  var activeKey = null;
+  var characters = [];
+  function notify5() {
+    for (let i = 0; i < listeners10.length; i++) listeners10[i]();
+  }
+  function subscribeHubChat(fn) {
+    listeners10.push(fn);
+    return () => {
+      const idx = listeners10.indexOf(fn);
+      if (idx >= 0) listeners10.splice(idx, 1);
+    };
+  }
+  function getHubActiveKey() {
+    return activeKey;
+  }
+  function getHubActiveConversation() {
+    if (!activeKey) return null;
+    return chats[activeKey] || null;
+  }
+  function listHubConversations() {
+    const keys = Object.keys(chats);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const chat = chats[keys[i]];
+      if (!chat || chat.type === "new") continue;
+      out.push(chat);
+    }
+    out.sort((a, b) => {
+      if (a.type === "party" && b.type !== "party") return -1;
+      if (b.type === "party" && a.type !== "party") return 1;
+      const ad = a.latest && a.latest.date || "";
+      const bd = b.latest && b.latest.date || "";
+      if (ad !== bd) return bd.localeCompare(ad);
+      return a.key.localeCompare(b.key);
+    });
+    return out;
+  }
+  function countHubChatUnread(chat, isActive) {
+    if (isActive) return 0;
+    if (!chat.seen) return 0;
+    const seen = chat.seen;
+    let n = 0;
+    for (let i = 0; i < chat.messages.length; i++) {
+      const msg = chat.messages[i];
+      if (msg && msg.date && msg.date > seen) n += 1;
+    }
+    if (n > 0) return n;
+    if (chat.latest && chat.latest.date && chat.latest.date > seen) return 1;
+    return 0;
+  }
+  function formatHubUnreadBadge(n) {
+    const c = Math.max(0, Math.floor(Number(n) || 0));
+    if (c <= 0) return "";
+    if (c > 99) return "99+";
+    return String(c);
+  }
+  function baselineHubChatSeen(chat) {
+    if (chat.seen) return;
+    chat.seen = chat.latest && chat.latest.date || (/* @__PURE__ */ new Date()).toISOString();
+  }
+  function ensurePartyConversation() {
+    return rememberHubChat({ type: "party" });
+  }
+  function getHubCharacters() {
+    return characters;
+  }
+  function rememberHubChat(partial) {
+    const key = hubChatKey(partial);
+    let saved = chats[key];
+    if (!saved) {
+      saved = {
+        key,
+        type: partial.type,
+        server: partial.server,
+        character: partial.character,
+        to: partial.to,
+        latest: partial.latest || null,
+        messages: [],
+        draft: "",
+        loaded: false
+      };
+      chats[key] = saved;
+    } else {
+      if (partial.latest && (!saved.latest || (partial.latest.date || "") >= (saved.latest.date || ""))) {
+        saved.latest = partial.latest;
+      }
+      if (partial.character) saved.character = partial.character;
+      if (partial.to) saved.to = partial.to;
+      if (partial.server) saved.server = partial.server;
+    }
+    notify5();
+    return saved;
+  }
+  function selectHubChat(key) {
+    const chat = chats[key];
+    if (!chat) return null;
+    activeKey = key;
+    chat.scroll_bottom = true;
+    if (chat.latest && chat.latest.date) chat.seen = chat.latest.date;
+    notify5();
+    return chat;
+  }
+  function setHubActiveNew(to) {
+    var _a, _b;
+    if (to) {
+      const want = to.toLowerCase();
+      const keys = Object.keys(chats);
+      let best = null;
+      for (let i = 0; i < keys.length; i++) {
+        const chat = chats[keys[i]];
+        if (!chat || chat.type !== "private") continue;
+        if ((chat.to || "").toLowerCase() !== want) continue;
+        if (!best || (((_a = chat.latest) == null ? void 0 : _a.date) || "") > (((_b = best.latest) == null ? void 0 : _b.date) || "")) {
+          best = chat;
+        }
+      }
+      if (best) {
+        selectHubChat(best.key);
+        return best;
+      }
+    }
+    const draft = rememberHubChat({ type: "new", to: to || "" });
+    if (to) draft.to = to;
+    selectHubChat(draft.key);
+    return draft;
+  }
+  function seedServersFromX() {
+    const servers = typeof window !== "undefined" && window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i];
+      if (!server || !server.key) continue;
+      const key = hubChatKey({ type: "server", server: String(server.key) });
+      if (!chats[key]) {
+        rememberHubChat({ type: "server", server: String(server.key) });
+      }
+    }
+  }
+  function applyPullChatsResult(data) {
+    var _a;
+    characters = data.characters.slice();
+    for (let i = 0; i < data.chats.length; i++) {
+      const row3 = data.chats[i];
+      if (row3 && row3.type) rememberHubChat(row3);
+    }
+    const keys = Object.keys(chats);
+    let hasServer = false;
+    for (let i = 0; i < keys.length; i++) {
+      if (((_a = chats[keys[i]]) == null ? void 0 : _a.type) === "server") {
+        hasServer = true;
+        break;
+      }
+    }
+    if (!hasServer) seedServersFromX();
+    notify5();
+  }
+  function applyPullChatResult(key, data, older) {
+    const chat = chats[key];
+    if (!chat) return null;
+    const byId = {};
+    for (let i = 0; i < chat.messages.length; i++) {
+      const msg = chat.messages[i];
+      if (msg && msg.id) byId[msg.id] = msg;
+    }
+    for (let i = 0; i < data.messages.length; i++) {
+      const msg = data.messages[i];
+      if (msg && msg.id) byId[msg.id] = msg;
+    }
+    const merged = [];
+    const ids = Object.keys(byId);
+    for (let i = 0; i < ids.length; i++) {
+      merged.push(byId[ids[i]]);
+    }
+    chat.messages = merged;
+    if (older || !chat.loaded) chat.cursor = data.cursor;
+    if (!older) {
+      if (!chat.after || (data.after || "") > (chat.after || "")) {
+        chat.after = data.after;
+      }
+    }
+    chat.loaded = true;
+    chat.loading = false;
+    let best = null;
+    for (let i = 0; i < data.messages.length; i++) {
+      const msg = data.messages[i];
+      if (!best || (msg.date || "") >= (best.date || "")) best = msg;
+    }
+    if (best && (!chat.latest || (best.date || "") >= (chat.latest.date || ""))) {
+      chat.latest = best;
+    }
+    if (activeKey === key && chat.latest && chat.latest.date) {
+      chat.seen = chat.latest.date;
+    }
+    notify5();
+    return chat;
+  }
+
+  // src/host/chat/stockHubTakeover.ts
+  var STYLE_ID4 = "ecu-suppress-stock-hub-chat";
+  function injectSuppressCss() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID4)) return;
+    const el = document.createElement("style");
+    el.id = STYLE_ID4;
+    el.textContent = `
+#comm-chat,
+#comm-chat-toggle {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+`;
+    document.head.appendChild(el);
+  }
+  function hideStockNodes() {
+    const chat = document.getElementById("comm-chat");
+    if (chat && !chat.classList.contains("hidden")) {
+      chat.classList.add("hidden");
+    }
+    const toggle = document.getElementById("comm-chat-toggle");
+    if (toggle && !toggle.classList.contains("hidden")) {
+      toggle.classList.add("hidden");
+      if (toggle.getAttribute("aria-hidden") !== "true") {
+        toggle.setAttribute("aria-hidden", "true");
+      }
+    }
+  }
+  function installStockHubChatTakeover() {
+    if (typeof window === "undefined") return;
+    const w = window;
+    if (w.__ecuStockHubChatTaken) return;
+    w.__ecuStockHubChatTaken = true;
+    injectSuppressCss();
+    hideStockNodes();
+    if (typeof MutationObserver === "function") {
+      const mo = new MutationObserver(() => hideStockNodes());
+      const root = document.getElementById("bottom") || document.body;
+      if (root) {
+        mo.observe(root, { childList: true, subtree: true });
+      }
+    }
+    w.toggle_comm_chat = function ecuToggleCommChat() {
+      openChat({ toggle: true });
+    };
+    w.comm_chat_new = function ecuCommChatNew(to) {
+      openChat({
+        whisperTo: typeof to === "string" ? to : void 0,
+        draft: ""
+      });
+    };
+  }
+
   // src/host/commChrome/chromeActions.ts
   function clearObserve() {
     if (typeof window.init_socket !== "function") return;
@@ -17348,11 +17719,12 @@ ${CHROME_ARRANGE_CSS}
     "dragold",
     "tiger",
     "mrpumpkin",
-    "mrgreen"
+    "mrgreen",
+    "crabxx"
   ];
   var POLL_MS = 45e3;
   var LIVE_MAX_AGE_MS = 5 * 60 * 1e3;
-  var MAX_BADGES = 3;
+  var MAX_BADGES = 6;
   var cache = {
     fetchedAt: 0,
     byServer: {},
@@ -17390,11 +17762,21 @@ ${CHROME_ARRANGE_CSS}
     if (!S || typeof S !== "object") return [];
     const keys = Object.keys(S);
     const out = [];
+    const now = Date.now();
     for (let i = 0; i < keys.length; i++) {
       const key = keys[i];
       if (key === "schedule") continue;
+      if (key === "blessed_minutes" || key === "blessed_by") continue;
       const entry = S[key];
-      if (entry && entry.live) out.push(key);
+      if (!entry || typeof entry !== "object") continue;
+      if (entry.live) {
+        out.push(key);
+        continue;
+      }
+      if (entry.end != null) {
+        const endMs = typeof entry.end === "number" ? entry.end : typeof entry.end === "string" ? Date.parse(entry.end) : NaN;
+        if (Number.isFinite(endMs) && endMs > now) out.push(key);
+      }
     }
     return out;
   }
@@ -18459,7 +18841,7 @@ ${CHROME_ARRANGE_CSS}
   // src/host/disconnectOverlay.ts
   var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
   var DISCONNECT_OVERLAY_Z = 2147483647;
-  var STYLE_ID4 = "ecu-disconnect-overlay-css";
+  var STYLE_ID5 = "ecu-disconnect-overlay-css";
   var CSS2 = `
 /* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
 #bottom > .gamebutton.disconnected {
@@ -18547,13 +18929,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   }
   function ensureCss2() {
     if (!canUseDom()) return;
-    const existing = document.getElementById(STYLE_ID4);
+    const existing = document.getElementById(STYLE_ID5);
     if (existing) {
       existing.textContent = CSS2;
       return;
     }
     const el = document.createElement("style");
-    el.id = STYLE_ID4;
+    el.id = STYLE_ID5;
     el.textContent = CSS2;
     document.head.appendChild(el);
   }
@@ -19753,8 +20135,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.7" : "unknown";
-    const builtAt = true ? "2026-09-09T04:18:16.318Z" : "unknown";
+    const version = true ? "0.9.8" : "unknown";
+    const builtAt = true ? "2026-09-09T22:11:14.461Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -24345,7 +24727,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners10 = [];
+  var listeners11 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -24382,9 +24764,9 @@ button.comm-mail__stack-u {
     } catch (e2) {
     }
   }
-  function notify5() {
-    for (let i = 0; i < listeners10.length; i++) {
-      listeners10[i]();
+  function notify6() {
+    for (let i = 0; i < listeners11.length; i++) {
+      listeners11[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -24401,7 +24783,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify5();
+    notify6();
     return next;
   }
   function getLayoutGridStep() {
@@ -24414,7 +24796,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify5();
+    notify6();
     return next;
   }
   function getLayoutChromePos() {
@@ -24427,14 +24809,14 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify5();
+    notify6();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners10.push(listener);
+    listeners11.push(listener);
     return () => {
-      const idx = listeners10.indexOf(listener);
-      if (idx >= 0) listeners10.splice(idx, 1);
+      const idx = listeners11.indexOf(listener);
+      if (idx >= 0) listeners11.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -24446,7 +24828,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify5();
+    notify6();
     return next;
   }
 
@@ -25262,7 +25644,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners11 = [];
+  var listeners12 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -25317,14 +25699,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners11.push(listener);
+    listeners12.push(listener);
     return () => {
-      const idx = listeners11.indexOf(listener);
-      if (idx >= 0) listeners11.splice(idx, 1);
+      const idx = listeners12.indexOf(listener);
+      if (idx >= 0) listeners12.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners11.length; i++) listeners11[i]();
+    for (let i = 0; i < listeners12.length; i++) listeners12[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -26870,10 +27252,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners12 = [];
-  function notify6() {
-    for (let i = 0; i < listeners12.length; i++) {
-      listeners12[i]();
+  var listeners13 = [];
+  function notify7() {
+    for (let i = 0; i < listeners13.length; i++) {
+      listeners13[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -26881,7 +27263,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify6();
+    if (depth === 1) notify7();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -26889,18 +27271,18 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify6();
+    if (depth === 0) notify7();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify6();
+    notify7();
   }
   function subscribeLayoutGuide(listener) {
-    listeners12.push(listener);
+    listeners13.push(listener);
     return () => {
-      const idx = listeners12.indexOf(listener);
-      if (idx >= 0) listeners12.splice(idx, 1);
+      const idx = listeners13.indexOf(listener);
+      if (idx >= 0) listeners13.splice(idx, 1);
     };
   }
 
@@ -29129,6 +29511,7 @@ button.comm-mail__stack-u {
       window.addEventListener("keydown", onKey);
       window.addEventListener("keyup", onKey);
       const obs = new ResizeObserver(() => {
+        if (el.getAttribute("data-ecu-suspend-frame-resize") === "1") return;
         const w = Math.round(el.offsetWidth);
         const h = Math.round(el.offsetHeight);
         if (w < 40 || h < 40) return;
@@ -29138,6 +29521,7 @@ button.comm-mail__stack-u {
         window.clearTimeout(timer);
         timer = window.setTimeout(() => {
           if (!props.onResizeFrame) return;
+          if (el.getAttribute("data-ecu-suspend-frame-resize") === "1") return;
           const free = freePlacementRef.current || shiftHeld || getLayoutFreePlacement();
           let outW = w;
           let outH = h;
@@ -33279,7 +33663,7 @@ button.ecu-meter-status-micro:hover,
 `;
 
   // src/ui/meter/meterChromeCss.ts
-  var STYLE_ID5 = "ecu-meter-chrome-css";
+  var STYLE_ID6 = "ecu-meter-chrome-css";
   function cssSlice(part) {
     return part.replace(/^\n/, "").replace(/\n$/, "");
   }
@@ -33307,10 +33691,10 @@ ${parts.map(cssSlice).join("\n")}
     METER_VIEWS_CSS
   ].join("\n");
   function injectMeterChromeCss() {
-    let style = document.getElementById(STYLE_ID5);
+    let style = document.getElementById(STYLE_ID6);
     if (!style) {
       style = document.createElement("style");
-      style.id = STYLE_ID5;
+      style.id = STYLE_ID6;
       document.head.appendChild(style);
     }
     style.textContent = CSS7.replace(
@@ -47921,10 +48305,18 @@ ${parts.map(cssSlice).join("\n")}
       return "";
     }
   }
+  function formatEndRemaining(end, now = Date.now()) {
+    if (typeof end === "number" && Number.isFinite(end)) {
+      return formatUntilMs(end, now);
+    }
+    if (end instanceof Date) return formatUntilMs(end.getTime(), now);
+    if (typeof end === "string" && end) return getTimeUntil(end);
+    return "";
+  }
   function isServerEventEntry(value) {
     if (!value || typeof value !== "object") return false;
     const row3 = value;
-    return row3.live != null || row3.event != null || row3.spawn != null;
+    return row3.live != null || row3.event != null || row3.spawn != null || row3.end != null;
   }
   function isSeasonStatusEntry(value, def) {
     if (!def || def.type !== "seasonal") return false;
@@ -47953,7 +48345,7 @@ ${parts.map(cssSlice).join("\n")}
     if (mon == null ? void 0 : mon.name) return mon.name;
     return id;
   }
-  function listServerEventChips(S, G) {
+  function listServerEventChips(S, G, now = Date.now()) {
     if (!S) return [];
     const events = eventsTable(G);
     const out = [];
@@ -47966,21 +48358,34 @@ ${parts.map(cssSlice).join("\n")}
       if (isSeasonStatusEntry(value, events[id])) continue;
       if (!isServerEventEntry(value)) continue;
       const row3 = value;
-      const live2 = !!row3.live;
       const until = untilFromRow(row3);
+      const endLeft = formatEndRemaining(row3.end, now);
+      const joinableLive = row3.live !== true && row3.end != null && !!endLeft;
+      if (row3.live !== true && row3.event == null && row3.spawn == null && !joinableLive) {
+        continue;
+      }
+      const live2 = row3.live === true || joinableLive;
       const label = eventLabel(id, G);
       let detail = "";
       if (live2) {
-        detail = row3.map ? `live \xB7 ${row3.map}` : "live";
+        if (row3.A != null || row3.B != null) {
+          detail = "live \xB7 A " + (row3.A || 0) + " / B " + (row3.B || 0) + (endLeft ? " \xB7 " + endLeft + " left" : "");
+        } else if (row3.map) {
+          detail = "live \xB7 " + row3.map;
+        } else if (endLeft) {
+          detail = "live \xB7 " + endLeft + " left";
+        } else {
+          detail = "live";
+        }
       } else {
-        detail = until ? `in ${until}` : "upcoming";
+        detail = until ? "in " + until : endLeft ? "in " + endLeft : "upcoming";
       }
       out.push({
         id,
         label,
         live: live2,
         detail,
-        title: live2 ? `${label} is live` + (row3.map ? ` on ${row3.map}` : "") : until ? `${label} in ${until}` : `${label} upcoming`
+        title: live2 ? label + " is live" + (row3.map ? " on " + row3.map : "") + (endLeft ? " (" + endLeft + " left)" : "") : until || endLeft ? label + " in " + (until || endLeft) : label + " upcoming"
       });
     }
     return out;
@@ -55238,7 +55643,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID6 = "ecu-minimap-chrome-css";
+  var STYLE_ID7 = "ecu-minimap-chrome-css";
   var CSS10 = `
 .comm-minimap {
   display: flex;
@@ -55396,10 +55801,10 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID6);
+    let el = document.getElementById(STYLE_ID7);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID6;
+      el.id = STYLE_ID7;
       document.head.appendChild(el);
     }
     if (!injected11 || el.textContent !== CSS10) {
@@ -56430,70 +56835,344 @@ ${ESTIMATE_HINT}`,
   // src/ui/frames/chat/chatCss.ts
   var CHAT_PANEL_CSS = `
 .ecu-chat {
+  --ecu-chat-fg: #f0f0f0;
+  --ecu-chat-muted: #a8aeb6;
+  --ecu-chat-dim: #8a9098;
+  --ecu-chat-line: #3a3a3a;
+  --ecu-chat-bg: #14161a;
+  --ecu-chat-panel: #1a1c22;
+  --ecu-chat-log: #0e1014;
+  --ecu-chat-accent: #c9a227;
+  /* Match stock #comm-chat: 24px body, 20px meta (pixel face). */
+  --ecu-chat-fs: 24px;
+  --ecu-chat-fs-meta: 20px;
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 220px;
+  min-height: 200px;
   box-sizing: border-box;
-  color: #f0f0f0;
-  font-size: 16px;
-  background: #14161a;
+  color: var(--ecu-chat-fg);
+  font-family: var(--pixel-font, pixel), Pixel, sans-serif;
+  font-size: var(--ecu-chat-fs);
+  line-height: 24px;
+  font-weight: normal;
+  background: var(--ecu-chat-bg);
+  -webkit-font-smoothing: subpixel-antialiased;
 }
-.ecu-chat-toolbar {
+.ecu-chat-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+}
+.ecu-chat-sidebar {
+  flex: 0 0 248px;
+  width: 248px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+  z-index: 2;
+}
+.ecu-chat-sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--ecu-chat-line);
+  flex-shrink: 0;
+}
+.ecu-chat-filter {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  padding: 8px 10px;
-  border-bottom: 1px solid #3a3a3a;
-  flex-shrink: 0;
-  background: #1a1c22;
+  gap: 4px;
 }
-.ecu-chat-mode {
-  display: inline-flex;
-  gap: 2px;
-}
-.ecu-chat-mode button {
+.ecu-chat-filter-btn {
   cursor: pointer;
-  font-size: 13px;
-  padding: 4px 10px;
-  border: 1px solid #666;
-  background: #22252c;
-  color: #ddd;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #555;
+  background: #181a20;
+  color: #a8aeb6;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 18px;
 }
-.ecu-chat-mode button.is-on {
-  border-color: #c9a227;
+.ecu-chat-filter-btn.is-active {
+  border-color: var(--ecu-chat-accent);
   background: #2a2410;
   color: #ffe08a;
 }
-.ecu-chat-whisper {
-  flex: 1 1 120px;
-  min-width: 100px;
-  max-width: 180px;
+.ecu-chat-sidebar-empty {
+  color: var(--ecu-chat-muted);
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-style: italic;
+  padding: 10px 8px;
+}
+.ecu-chat-sidebar-btn {
+  cursor: pointer;
+  width: 100%;
   box-sizing: border-box;
-  padding: 5px 8px;
-  border: 1px solid #555;
-  background: #0e1014;
-  color: #f0f0f0;
+  padding: 6px 10px;
+  border: 1px solid #666;
+  background: #22252c;
+  color: #ddd;
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-weight: normal;
+  text-align: left;
+}
+.ecu-chat-sidebar-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ecu-chat-conv-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 4px;
+}
+.ecu-chat-conv {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+  text-align: left;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs);
+  line-height: 22px;
+  font-weight: normal;
+}
+.ecu-chat-conv:hover {
+  background: #22252c;
+  border-color: #444;
+}
+.ecu-chat-conv.is-active {
+  background: #2a2410;
+  border-color: var(--ecu-chat-accent);
+}
+.ecu-chat-conv.is-unread:not(.is-active) {
+  background: #1e222a;
+  border-color: #5a4040;
+}
+.ecu-chat-conv-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.ecu-chat-conv-label {
+  color: #fff;
+  font-size: inherit;
+  font-weight: normal;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ecu-chat-conv.is-unread .ecu-chat-conv-label {
+  color: #fff;
+}
+.ecu-chat-conv.is-server .ecu-chat-conv-label {
+  color: #c9e4ff;
+}
+.ecu-chat-conv.is-private .ecu-chat-conv-label {
+  color: #f0a0b4;
+}
+.ecu-chat-conv.is-party .ecu-chat-conv-label {
+  color: #7ec8ef;
+}
+.ecu-chat-unread-badge {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #d33;
+  color: #fff;
   font-size: 14px;
+  font-weight: normal;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 1px #1a1a1a;
+}
+.ecu-chat-conv-time {
+  flex: 0 0 auto;
+  color: var(--ecu-chat-muted);
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-chat-conv-preview {
+  display: block;
+  color: var(--ecu-chat-muted);
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-chat-conv.is-unread .ecu-chat-conv-preview {
+  color: #d8dde4;
+}
+.ecu-chat-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+.ecu-chat-title {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+  font-size: var(--ecu-chat-fs);
+  line-height: 24px;
+  font-weight: normal;
+  color: #fff;
+  min-height: 2.2em;
+  box-sizing: border-box;
+}
+.ecu-chat-title-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+.ecu-chat-title-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
+  font-weight: normal;
+  color: var(--ecu-chat-muted);
+}
+.ecu-chat-title-from-sep {
+  flex: 0 0 auto;
+  color: var(--ecu-chat-dim);
+  font-weight: normal;
+}
+.ecu-chat-title-from .ecu-chat-from {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 200px;
+  width: auto;
+  padding: 2px 4px;
+  border: 1px solid #555;
+  background: var(--ecu-chat-log);
+  color: #ffe08a;
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-weight: normal;
+}
+.ecu-chat-title-from--party {
+  color: #7ec8ef;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-chat-expand {
+  cursor: pointer;
+  flex: 0 0 auto;
+  margin-left: 4px;
+  padding: 4px 8px;
+  border: 1px solid #666;
+  background: #22252c;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 18px;
+  letter-spacing: 0.04em;
+}
+.ecu-chat-expand.is-expanded {
+  border-color: var(--ecu-chat-accent);
+  color: #ffe08a;
+  background: #2a2410;
+}
+.ecu-chat-title-toggle {
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid #666;
+  background: #22252c;
+  color: #ddd;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 18px;
+}
+.ecu-chat-title-toggle.is-open {
+  border-color: var(--ecu-chat-accent);
+  color: #ffe08a;
+  background: #2a2410;
+}
+/* Thin busy pulse \u2014 absolute, never shifts layout. */
+.ecu-chat-title.is-busy::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--ecu-chat-accent),
+    transparent
+  );
+  background-size: 40% 100%;
+  animation: ecu-chat-busy 1.1s linear infinite;
+}
+@keyframes ecu-chat-busy {
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
 }
 .ecu-chat-log {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: 8px 10px;
-  min-height: 120px;
-  line-height: 1.45;
-  background: #0e1014;
+  min-height: 80px;
+  line-height: 24px;
+  background: var(--ecu-chat-log);
 }
 .ecu-chat-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 6px;
+  display: block;
   margin: 0 0 6px;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
   color: #f2f2f2;
-  font-size: 16px;
+  font-size: var(--ecu-chat-fs);
+  line-height: 24px;
+  font-weight: normal;
 }
 .ecu-chat-row--party {
   color: #7ec8ef;
@@ -56506,79 +57185,128 @@ ${ESTIMATE_HINT}`,
   font-style: italic;
 }
 .ecu-chat-time {
-  flex: 0 0 auto;
-  color: #9aa0a8;
-  font-size: 12px;
+  color: var(--ecu-chat-muted);
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
   font-variant-numeric: tabular-nums;
-  min-width: 3.2em;
+  margin-right: 6px;
 }
 .ecu-chat-owner {
+  cursor: pointer;
+  margin: 0 4px 0 0;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: #ffffff;
-  margin-right: 2px;
-  font-weight: 700;
+  font-weight: normal;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+}
+.ecu-chat-owner:hover {
+  text-decoration: underline;
+  color: #ffe08a;
 }
 .ecu-chat-body {
   color: inherit;
-  flex: 1 1 auto;
-  min-width: 0;
 }
 .ecu-chat-x {
   color: #7a8088;
   margin-left: 4px;
-  font-size: 12px;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
 }
 .ecu-chat-local {
   opacity: 0.9;
 }
 .ecu-chat-compose {
   display: flex;
-  gap: 6px;
-  padding: 8px 10px;
-  border-top: 1px solid #3a3a3a;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--ecu-chat-line);
   flex-shrink: 0;
-  background: #1a1c22;
+  background: var(--ecu-chat-panel);
+}
+.ecu-chat-compose-row {
+  display: flex;
+  gap: 5px;
+  align-items: stretch;
+  min-width: 0;
+}
+.ecu-chat-to {
+  flex: 0 1 100px;
+  width: auto;
+  max-width: 120px;
+  min-width: 64px;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid #555;
+  background: var(--ecu-chat-log);
+  color: var(--ecu-chat-fg);
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-weight: normal;
 }
 .ecu-chat-input {
   flex: 1 1 auto;
   min-width: 0;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid #555;
-  background: #0e1014;
-  color: #f0f0f0;
-  font-size: 15px;
+  background: var(--ecu-chat-log);
+  color: var(--ecu-chat-fg);
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs);
+  line-height: 24px;
+  font-weight: normal;
 }
 .ecu-chat-input::placeholder {
-  color: #8a9098;
+  color: var(--ecu-chat-dim);
+}
+.ecu-chat-input:disabled {
+  opacity: 0.55;
 }
 .ecu-chat-send {
   cursor: pointer;
-  flex-shrink: 0;
-  padding: 6px 14px;
-  border: 1px solid #c9a227;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--ecu-chat-accent);
   background: #2a2410;
   color: #ffe08a;
-  font-size: 14px;
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-weight: normal;
 }
 .ecu-chat-send:disabled {
   opacity: 0.45;
   cursor: default;
 }
+/* Only take space when there is something to say. */
 .ecu-chat-status {
-  padding: 0 10px 6px;
-  font-size: 13px;
-  color: #a8aeb6;
+  display: none;
+  padding: 2px 10px 0;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  color: var(--ecu-chat-muted);
   flex-shrink: 0;
-  background: #1a1c22;
+  background: var(--ecu-chat-panel);
+  box-sizing: border-box;
+}
+.ecu-chat-status.is-visible {
+  display: block;
 }
 .ecu-chat-status.is-err {
   color: #f0a0a0;
 }
 .ecu-chat-empty {
-  color: #a8aeb6;
+  color: var(--ecu-chat-muted);
   font-style: italic;
   padding: 10px 0;
-  font-size: 14px;
+  font-size: var(--ecu-chat-fs);
+  line-height: 24px;
 }
 .ecu-chat-history-top {
   text-align: center;
@@ -56586,7 +57314,10 @@ ${ESTIMATE_HINT}`,
 }
 .ecu-chat-load-older {
   cursor: pointer;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
+  font-weight: normal;
   padding: 4px 12px;
   border: 1px solid #555;
   background: #22252c;
@@ -56598,9 +57329,13 @@ ${ESTIMATE_HINT}`,
 }
 .ecu-chat-history-end {
   text-align: center;
-  color: #8a9098;
-  font-size: 13px;
+  color: var(--ecu-chat-dim);
+  font-size: var(--ecu-chat-fs-meta);
+  line-height: 20px;
   padding: 4px 0 10px;
+}
+.ecu-chat-backdrop {
+  display: none;
 }
 .ecu-btn[data-ecu-chat] {
   position: relative;
@@ -56625,6 +57360,76 @@ ${ESTIMATE_HINT}`,
   box-shadow: 0 0 0 1px #1a1a1a;
   pointer-events: none;
 }
+
+/* Narrow panel: sidebar becomes a drawer so the message column stays readable. */
+.ecu-chat.is-narrow .ecu-chat-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(280px, 82%);
+  flex-basis: auto;
+  transform: translateX(-105%);
+  transition: transform 0.15s ease-out;
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.45);
+  border-right: 1px solid var(--ecu-chat-line);
+}
+.ecu-chat.is-narrow.is-sidebar-open .ecu-chat-sidebar {
+  transform: translateX(0);
+}
+.ecu-chat.is-narrow .ecu-chat-backdrop {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.45);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.ecu-chat.is-narrow:not(.is-sidebar-open) .ecu-chat-backdrop {
+  display: none;
+}
+.ecu-chat.is-narrow .ecu-chat-main {
+  width: 100%;
+}
+.ecu-chat.is-narrow .ecu-chat-compose-row {
+  flex-wrap: nowrap;
+}
+.ecu-chat.is-narrow .ecu-chat-title-from {
+  max-width: 42%;
+}
+.ecu-chat.is-narrow .ecu-chat-title-from .ecu-chat-from {
+  max-width: 120px;
+}
+.ecu-chat.is-narrow .ecu-chat-to {
+  flex: 0 1 88px;
+}
+.ecu-chat.is-expanded .ecu-chat-sidebar {
+  flex: 0 0 280px;
+  width: 280px;
+}
+
+/* Stock-like FULL mode \u2014 lift the chat shell over the layout. */
+[data-panel="chat"].ecu-chat-shell-expanded {
+  position: fixed !important;
+  left: 10px !important;
+  right: 10px !important;
+  top: 10px !important;
+  bottom: 56px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  z-index: 480 !important;
+  transform: none !important;
+}
+[data-panel="chat"].ecu-chat-shell-expanded .ecu-chat {
+  height: 100%;
+  min-height: 0;
+}
 `;
   var injected13 = false;
   function ensureChatCss() {
@@ -56643,6 +57448,104 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/chat/ChatPanel.ts
+  var POLL_MS2 = 5e3;
+  var NARROW_PX = 440;
+  var SIDEBAR_FILTERS = [
+    { id: "all", label: "All" },
+    { id: "server", label: "Server" },
+    { id: "private", label: "PM" },
+    { id: "party", label: "Party" }
+  ];
+  function isLoggedIn() {
+    const id = window.user_id;
+    return id != null && String(id) !== "";
+  }
+  function serverUiLabel(serverKey2) {
+    if (!serverKey2) return "Server";
+    const fn = window.server_to_ui;
+    if (typeof fn === "function") {
+      try {
+        const label = fn(serverKey2);
+        if (label) return String(label);
+      } catch (e2) {
+      }
+    }
+    const raw = String(serverKey2);
+    if (raw.indexOf("SR_") === 0) return raw.slice(3);
+    return raw;
+  }
+  function conversationTitle(chat) {
+    if (chat.type === "server") return serverUiLabel(chat.server);
+    if (chat.type === "party") return "Party";
+    if (chat.type === "new") return "New whisper";
+    return chat.to || "Private";
+  }
+  function resolveCurrentServerKey() {
+    const region = typeof window.server_region === "string" ? window.server_region : "";
+    const ident = typeof window.server_identifier === "string" ? window.server_identifier : "";
+    const servers = window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+    if (region && ident) {
+      for (let i = 0; i < servers.length; i++) {
+        const s = servers[i];
+        if (!s) continue;
+        if (s.region === region && s.name === ident && s.key) {
+          return String(s.key);
+        }
+      }
+    }
+    return "";
+  }
+  function seedServerChats() {
+    const servers = window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i];
+      if (!server || !server.key) continue;
+      rememberHubChat({ type: "server", server: String(server.key) });
+    }
+  }
+  function selectInitialServerChat() {
+    if (getHubActiveKey()) return;
+    const want = resolveCurrentServerKey();
+    const list = listHubConversations();
+    if (want) {
+      const key = hubChatKey({ type: "server", server: want });
+      if (selectHubChat(key)) return;
+    }
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].type === "server") {
+        selectHubChat(list[i].key);
+        return;
+      }
+    }
+    if (list.length) selectHubChat(list[0].key);
+  }
+  function hubRowToChatMessage(row3, chat) {
+    const at = row3.date ? Date.parse(row3.date) : 0;
+    return {
+      id: row3.id,
+      at: Number.isFinite(at) ? at : 0,
+      channel: chat.type === "private" || chat.type === "new" ? "pm" : "say",
+      owner: row3.fro || "",
+      message: row3.message || ""
+    };
+  }
+  function sortedMessages(chat) {
+    const rows = chat.messages.slice();
+    rows.sort((a, b) => {
+      const ad = a.date || "";
+      const bd = b.date || "";
+      if (ad !== bd) return ad.localeCompare(bd);
+      return String(a.id).localeCompare(String(b.id));
+    });
+    return rows;
+  }
+  function persistActiveDraft(draft, fromName, whisperTo) {
+    const active = getHubActiveConversation();
+    if (!active) return;
+    active.draft = draft;
+    active.sender = fromName;
+    if (active.type === "new") active.to = whisperTo;
+  }
   function rowClassName(msg) {
     const parts = ["ecu-chat-row"];
     if (msg.local) parts.push("ecu-chat-local");
@@ -56674,7 +57577,18 @@ ${ESTIMATE_HINT}`,
   function ChatRow(props) {
     const msg = props.msg;
     const time = formatChatTimestamp(msg.at);
-    const owner = msg.owner && msg.owner !== "^" ? e("span", { className: "ecu-chat-owner" }, msg.owner + ":") : null;
+    const ownerName = msg.owner && msg.owner !== "^" ? msg.owner : "";
+    const owner = ownerName ? e(
+      "button",
+      {
+        type: "button",
+        className: "ecu-chat-owner",
+        onClick: () => {
+          if (props.onAuthorClick) props.onAuthorClick(ownerName);
+        }
+      },
+      ownerName + ":"
+    ) : null;
     const inline = resolveChatInlineColor(msg.channel, msg.color);
     const style = inline ? { color: inline } : void 0;
     return e(
@@ -56693,67 +57607,338 @@ ${ESTIMATE_HINT}`,
   function ChatPanel(props = {}) {
     const React = getReact();
     ensureChatCss();
-    const [lines, setLines] = React.useState(() => getChatMessages().slice());
-    const [hist, setHist] = React.useState(
-      () => getChatHistoryState()
-    );
-    const [mode, setMode] = React.useState("say");
-    const [whisperTo, setWhisperTo] = React.useState("");
+    const [, setRev] = React.useState(0);
+    const bump = React.useCallback(() => {
+      setRev((n) => n + 1);
+    }, []);
     const [draft, setDraft] = React.useState("");
+    const [fromName, setFromName] = React.useState("");
+    const [whisperTo, setWhisperTo] = React.useState("");
     const [status, setStatus2] = React.useState("");
     const [statusErr, setStatusErr] = React.useState(false);
+    const [sending, setSending] = React.useState(false);
+    const [listCursor, setListCursor] = React.useState(
+      null
+    );
+    const [listAfter, setListAfter] = React.useState(null);
+    const [listCatchupAfter, setListCatchupAfter] = React.useState(
+      null
+    );
+    const [listLoading, setListLoading] = React.useState(false);
+    const [listLoaded, setListLoaded] = React.useState(false);
+    const [narrow, setNarrow] = React.useState(false);
+    const [sidebarOpen, setSidebarOpen] = React.useState(true);
+    const [expanded, setExpanded] = React.useState(false);
+    const [listFilter, setListFilter] = React.useState("all");
+    const rootRef = React.useRef(null);
     const logRef = React.useRef(null);
     const stickBottomRef = React.useRef(true);
     const inputRef = React.useRef(null);
     const loadingOlderRef = React.useRef(false);
+    const catchupInFlightRef = React.useRef(false);
+    const listLoadingRef = React.useRef(false);
+    const listLoadedRef = React.useRef(false);
+    const preExpandSizeRef = React.useRef(null);
+    const listAfterRef = React.useRef(listAfter);
+    const listCatchupRef = React.useRef(listCatchupAfter);
+    const listCursorRef = React.useRef(listCursor);
+    const draftRef = React.useRef(draft);
+    const fromRef = React.useRef(fromName);
+    const whisperRef = React.useRef(whisperTo);
+    listAfterRef.current = listAfter;
+    listCatchupRef.current = listCatchupAfter;
+    listCursorRef.current = listCursor;
+    draftRef.current = draft;
+    fromRef.current = fromName;
+    whisperRef.current = whisperTo;
     React.useEffect(() => {
+      return subscribeHubChat(bump);
+    }, [bump]);
+    React.useEffect(() => {
+      ensurePartyConversation();
       return subscribeChat(() => {
-        setLines(getChatMessages().slice());
-        setHist(getChatHistoryState());
+        const party = ensurePartyConversation();
+        const msgs = getChatMessages();
+        let latest = null;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].channel === "party") {
+            latest = msgs[i];
+            break;
+          }
+        }
+        if (latest) {
+          const date = new Date(latest.at).toISOString();
+          party.latest = {
+            id: String(latest.id),
+            date,
+            fro: latest.owner || "",
+            message: latest.message || ""
+          };
+          if (getHubActiveKey() === "party") party.seen = date;
+        }
+        bump();
       });
-    }, []);
-    const fetchHistory = React.useCallback(async (opts) => {
-      const res = await loadChatHistory(opts);
-      if (!res.ok && res.reason && res.reason !== "busy" && res.reason !== "end") {
-        setStatusErr(true);
-        setStatus2("History: " + res.reason);
+    }, [bump]);
+    const pullActiveChat = React.useCallback(
+      async (older) => {
+        const chat = getHubActiveConversation();
+        if (!chat || chat.type === "new" || chat.type === "party") return;
+        if (chat.loading) return;
+        if (older && !chat.cursor) return;
+        const showBusy = !!older || !chat.loaded;
+        if (!showBusy) {
+          if (catchupInFlightRef.current) return;
+          catchupInFlightRef.current = true;
+        } else {
+          chat.loading = true;
+          bump();
+        }
+        const args = chat.type === "server" ? { server: chat.server } : { character: chat.character, to: chat.to };
+        let afterUsed = null;
+        if (older) {
+          args.cursor = chat.cursor;
+        } else if (chat.after) {
+          afterUsed = chat.catchup_after || hubChatSince(chat.after);
+          args.after = afterUsed;
+        }
+        try {
+          const res = await pullChatPage(args);
+          if (!res.ok || !res.data) {
+            chat.loading = false;
+            if (showBusy) {
+              setStatusErr(true);
+              setStatus2("Messages: " + (res.reason || "failed"));
+            }
+            bump();
+            return;
+          }
+          applyPullChatResult(chat.key, res.data, !!older);
+          const updated = getHubActiveConversation();
+          if (updated && updated.key === chat.key && !older) {
+            updated.catchup_after = afterUsed && res.data.more ? res.data.after : null;
+          }
+          if (showBusy) setStatusErr(false);
+          bump();
+        } finally {
+          if (!showBusy) catchupInFlightRef.current = false;
+        }
+      },
+      [bump]
+    );
+    const pullList = React.useCallback(
+      async (older) => {
+        if (!isLoggedIn()) {
+          setStatusErr(true);
+          setStatus2("Log in to load Hub chats");
+          return;
+        }
+        if (listLoadingRef.current) return;
+        if (older && !listCursorRef.current) return;
+        const showListBusy = !!older || !listLoadedRef.current;
+        listLoadingRef.current = true;
+        if (showListBusy) setListLoading(true);
+        const opts = {};
+        if (older) {
+          opts.cursor = listCursorRef.current;
+        } else if (listAfterRef.current) {
+          opts.after = listCatchupRef.current || hubChatSince(listAfterRef.current);
+        }
+        const res = await pullChatsPage(opts);
+        listLoadingRef.current = false;
+        if (showListBusy) setListLoading(false);
+        if (!res.ok || !res.data) {
+          setStatusErr(true);
+          setStatus2("Conversations: " + (res.reason || "failed"));
+          bump();
+          return;
+        }
+        applyPullChatsResult(res.data);
+        if (!older) {
+          setListCatchupAfter(
+            listAfterRef.current && res.data.more ? res.data.after : null
+          );
+          if (!listAfterRef.current || (res.data.after || "") > (listAfterRef.current || "")) {
+            setListAfter(res.data.after);
+          }
+        }
+        if (older || !listLoadedRef.current) {
+          setListCursor(res.data.cursor);
+        }
+        listLoadedRef.current = true;
+        setListLoaded(true);
+        setStatusErr(false);
+        bump();
+      },
+      [bump]
+    );
+    React.useEffect(() => {
+      ensurePartyConversation();
+      seedServerChats();
+      selectInitialServerChat();
+      const active2 = getHubActiveConversation();
+      if (active2) {
+        setDraft(active2.draft || "");
+        setFromName(active2.sender || "");
+        setWhisperTo(active2.to || "");
       }
-      return res;
+      void (async () => {
+        await pullList(false);
+        selectInitialServerChat();
+        const chat = getHubActiveConversation();
+        if (chat && chat.type !== "new" && chat.type !== "party") {
+          await pullActiveChat(false);
+        }
+        bump();
+      })();
+      const timer = window.setInterval(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        void pullActiveChat(false);
+        void pullList(false);
+      }, POLL_MS2);
+      return () => {
+        window.clearInterval(timer);
+      };
     }, []);
     React.useEffect(() => {
-      void fetchHistory();
-    }, [fetchHistory]);
+      const el = rootRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const next = entry.contentRect.width < NARROW_PX;
+        setNarrow((prev) => prev === next ? prev : next);
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
+    React.useEffect(() => {
+      if (narrow && !expanded) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    }, [narrow, expanded]);
+    React.useEffect(() => {
+      let shell = rootRef.current;
+      while (shell) {
+        if (shell.getAttribute && shell.getAttribute("data-panel") === "chat") {
+          break;
+        }
+        shell = shell.parentElement;
+      }
+      if (!shell) return;
+      if (expanded) {
+        if (!preExpandSizeRef.current) {
+          preExpandSizeRef.current = {
+            w: Math.round(shell.offsetWidth),
+            h: Math.round(shell.offsetHeight)
+          };
+        }
+        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+        shell.classList.add("ecu-chat-shell-expanded");
+        return () => {
+          shell.classList.remove("ecu-chat-shell-expanded");
+          shell.removeAttribute("data-ecu-suspend-frame-resize");
+        };
+      }
+      shell.classList.remove("ecu-chat-shell-expanded");
+      shell.removeAttribute("data-ecu-suspend-frame-resize");
+      const saved = preExpandSizeRef.current;
+      preExpandSizeRef.current = null;
+      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
+        window.requestAnimationFrame(() => {
+          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
+        });
+      }
+    }, [expanded, props.onFrameSizeRestore]);
     React.useEffect(() => {
       if (props.openSeq == null) return;
       if (typeof props.seedDraft === "string") setDraft(props.seedDraft);
       if (typeof props.seedWhisperTo === "string") {
-        setWhisperTo(props.seedWhisperTo);
-        setMode("whisper");
-      }
-      if (!getChatHistoryState().loaded) {
-        void fetchHistory({ reset: true });
+        persistActiveDraft(draftRef.current, fromRef.current, whisperRef.current);
+        const chat = setHubActiveNew(props.seedWhisperTo);
+        setDraft(chat.draft || "");
+        setFromName(chat.sender || "");
+        setWhisperTo(chat.to || props.seedWhisperTo);
+        bump();
       }
       window.setTimeout(() => {
         const el = inputRef.current;
         if (el && typeof el.focus === "function") el.focus();
       }, 30);
-    }, [props.openSeq, fetchHistory]);
+    }, [props.openSeq, props.seedDraft, props.seedWhisperTo, bump]);
+    const active = getHubActiveConversation();
+    const conversations = listHubConversations();
+    const characters2 = getHubCharacters();
     React.useEffect(() => {
       const el = logRef.current;
       if (!el || !stickBottomRef.current) return;
       el.scrollTop = el.scrollHeight;
-    }, [lines]);
+    }, [active == null ? void 0 : active.messages.length, active == null ? void 0 : active.key]);
+    React.useEffect(() => {
+      if (!active) return;
+      if (fromName) {
+        let ok = false;
+        for (let i = 0; i < characters2.length; i++) {
+          if (characters2[i].name === fromName) {
+            ok = true;
+            break;
+          }
+        }
+        if (ok) return;
+      }
+      if (active.sender) {
+        setFromName(active.sender);
+        return;
+      }
+      if (characters2.length) {
+        let pick = characters2[0].name;
+        if (active.type === "server" && active.server) {
+          for (let i = 0; i < characters2.length; i++) {
+            const c = characters2[i];
+            if (c.online && c.server === active.server) {
+              pick = c.name;
+              break;
+            }
+          }
+        }
+        setFromName(pick);
+      }
+    }, [active == null ? void 0 : active.key, characters2, fromName, active]);
+    const selectConversation = (key) => {
+      persistActiveDraft(draft, fromName, whisperTo);
+      const chat = selectHubChat(key);
+      if (!chat) return;
+      setDraft(chat.draft || "");
+      setFromName(chat.sender || "");
+      setWhisperTo(chat.to || "");
+      stickBottomRef.current = true;
+      if (narrow && !expanded) setSidebarOpen(false);
+      bump();
+      if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
+    };
+    const startNewWhisper = (to) => {
+      persistActiveDraft(draft, fromName, whisperTo);
+      const chat = setHubActiveNew(to);
+      setDraft(chat.draft || "");
+      setFromName(chat.sender || "");
+      setWhisperTo(chat.to || to || "");
+      stickBottomRef.current = true;
+      if (narrow && !expanded) setSidebarOpen(false);
+      bump();
+      window.setTimeout(() => {
+        const el = inputRef.current;
+        if (el && typeof el.focus === "function") el.focus();
+      }, 30);
+    };
     const loadOlder = async () => {
       if (loadingOlderRef.current) return;
-      const state2 = getChatHistoryState();
-      if (state2.loading || !state2.more) return;
+      const chat = getHubActiveConversation();
+      if (!chat || chat.loading || !chat.cursor) return;
       const el = logRef.current;
       const prevHeight = el ? el.scrollHeight : 0;
       const prevTop = el ? el.scrollTop : 0;
       loadingOlderRef.current = true;
       stickBottomRef.current = false;
       try {
-        await fetchHistory();
+        await pullActiveChat(true);
         window.requestAnimationFrame(() => {
           const node = logRef.current;
           if (!node) return;
@@ -56768,162 +57953,454 @@ ${ESTIMATE_HINT}`,
       if (!el) return;
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
       stickBottomRef.current = dist < 40;
-      if (el.scrollTop < 48) {
-        void loadOlder();
-      }
     };
-    const send = () => {
+    const send = async () => {
       const text = draft.trim();
-      if (!text) return;
-      const obs = getObserving();
-      if (!obs || !obs.name) {
+      if (!text || sending) return;
+      const chat = getHubActiveConversation();
+      if (!chat) {
         setStatusErr(true);
-        setStatus2("Observe a character to send chat");
+        setStatus2("No conversation selected");
         return;
       }
-      const result = sendChatViaObserver(mode, text, whisperTo);
-      if (!result.ok) {
-        setStatusErr(true);
-        setStatus2(result.reason || "send failed");
+      if (chat.type === "party") {
+        const obs = getObserving();
+        if (!obs || !obs.name) {
+          setStatusErr(true);
+          setStatus2("Observe a character for party chat");
+          return;
+        }
+        setSending(true);
+        const result = sendChatViaObserver("party", text);
+        setSending(false);
+        if (!result.ok) {
+          setStatusErr(true);
+          setStatus2(result.reason || "party send failed");
+          return;
+        }
+        setStatusErr(false);
+        setStatus2(`Party via ${obs.name}`);
+        setDraft("");
+        stickBottomRef.current = true;
         return;
       }
+      if (!isLoggedIn()) {
+        setStatusErr(true);
+        setStatus2("Log in to send Hub chat");
+        return;
+      }
+      if (!fromName) {
+        setStatusErr(true);
+        setStatus2("Pick a From character");
+        return;
+      }
+      const to = chat.type === "new" ? whisperTo.trim() : chat.type === "private" ? String(chat.to || "").trim() : "";
+      if (chat.type !== "server" && !to) {
+        setStatusErr(true);
+        setStatus2("Enter a recipient");
+        return;
+      }
+      setSending(true);
       setStatusErr(false);
-      setStatus2(
-        mode === "whisper" ? `Whisper \u2192 ${whisperTo.trim()} via ${obs.name}` : `Sent as ${obs.name} (${mode})`
-      );
+      setStatus2("Sending\u2026");
+      const res = await sendHubMessage({
+        character: fromName,
+        message: text,
+        server: chat.type === "server" ? chat.server : void 0,
+        to: chat.type === "server" ? void 0 : to
+      });
+      setSending(false);
+      if (!res.ok) {
+        setStatusErr(true);
+        setStatus2("Send failed: " + (res.reason || "error"));
+        return;
+      }
       setDraft("");
       stickBottomRef.current = true;
-      if (text.charAt(0) !== "/") {
-        if (mode === "party") {
-          pushLocalPartyChat(String(obs.name), text);
-        } else if (mode === "whisper") {
-          pushPmChat(String(obs.name), text, { local: true });
+      setStatusErr(false);
+      setStatus2(
+        chat.type === "server" ? `Sent as ${fromName}` : `Whisper \u2192 ${to} as ${fromName}`
+      );
+      if (chat.type === "new") {
+        const saved = rememberHubChat({
+          type: "private",
+          character: fromName,
+          to
+        });
+        chat.to = "";
+        selectHubChat(saved.key);
+        setWhisperTo(saved.to || to);
+        bump();
+        window.setTimeout(() => {
+          void pullActiveChat(false);
+          void pullList(false);
+        }, 250);
+        return;
+      }
+      window.setTimeout(() => {
+        void pullActiveChat(false);
+        void pullList(false);
+      }, 250);
+    };
+    const observing = getObserving();
+    const canParty = !!(observing && observing.name);
+    const isParty = !!(active && active.type === "party");
+    const partyMessages = isParty ? getChatMessages().filter((m) => m.channel === "party") : [];
+    const messages2 = active && !isParty ? sortedMessages(active) : [];
+    const title = active ? conversationTitle(active) : "Chat";
+    const statusLine = !isLoggedIn() && !isParty ? "Log in to use Hub chat" : isParty && !canParty ? "Observe a character to use party chat" : statusErr ? status : status;
+    const titleBusy = !!(active && active.loading && !active.loaded && !isParty);
+    const fromOptions = [];
+    for (let i = 0; i < characters2.length; i++) {
+      const c = characters2[i];
+      const label = c.name + (c.online && c.server ? " \xB7 " + serverUiLabel(c.server) : "");
+      fromOptions.push(
+        e("option", { key: c.name, value: c.name }, label)
+      );
+    }
+    if (!fromOptions.length) {
+      fromOptions.push(
+        e("option", { key: "", value: "" }, "No characters")
+      );
+    }
+    const sidebarRows = [];
+    for (let i = 0; i < conversations.length; i++) {
+      const chat = conversations[i];
+      if (listFilter === "server" && chat.type !== "server") continue;
+      if (listFilter === "private" && chat.type !== "private") continue;
+      if (listFilter === "party" && chat.type !== "party") continue;
+      baselineHubChatSeen(chat);
+      const latest = chat.latest;
+      const preview = latest ? (latest.fro || "") + ": " + (latest.message || "") : chat.type === "party" ? canParty ? "Live party chat while observing" : "Observe a character to use" : "No messages yet";
+      const when = (latest == null ? void 0 : latest.date) ? formatChatTimestamp(Date.parse(latest.date)) : "";
+      const selected = !!(active && active.key === chat.key);
+      let unreadCount = countHubChatUnread(chat, selected);
+      if (chat.type === "party" && !selected && chat.seen) {
+        const seenMs = Date.parse(chat.seen);
+        if (Number.isFinite(seenMs)) {
+          const partyMsgs = getChatMessages();
+          let partyUnread = 0;
+          for (let j = 0; j < partyMsgs.length; j++) {
+            const m = partyMsgs[j];
+            if (m.channel !== "party" || m.local) continue;
+            if (m.at > seenMs) partyUnread += 1;
+          }
+          if (partyUnread > unreadCount) unreadCount = partyUnread;
         }
       }
-    };
-    const modes = [
-      { id: "say", label: "Say" },
-      { id: "party", label: "Party" },
-      { id: "whisper", label: "Whisper" }
-    ];
-    const statusLine = hist.loading ? "Loading history\u2026" : hist.error ? "History failed \xB7 " + hist.error : statusErr ? status : status;
-    return e(
-      "div",
-      { className: "ecu-chat", "data-ecu-chat": "1" },
-      e(
-        "div",
-        { className: "ecu-chat-toolbar" },
+      const unreadBadge = formatHubUnreadBadge(unreadCount);
+      sidebarRows.push(
+        e(
+          "button",
+          {
+            key: chat.key,
+            type: "button",
+            className: "ecu-chat-conv" + (selected ? " is-active" : "") + (unreadCount > 0 ? " is-unread" : "") + (chat.type === "server" ? " is-server" : chat.type === "party" ? " is-party" : " is-private"),
+            onClick: () => selectConversation(chat.key)
+          },
+          e(
+            "span",
+            { className: "ecu-chat-conv-top" },
+            e(
+              "span",
+              { className: "ecu-chat-conv-label" },
+              conversationTitle(chat),
+              unreadBadge ? e(
+                "span",
+                {
+                  className: "ecu-chat-unread-badge",
+                  "aria-label": unreadCount + " unread"
+                },
+                unreadBadge
+              ) : null
+            ),
+            when ? e("span", { className: "ecu-chat-conv-time" }, when) : null
+          ),
+          e("span", { className: "ecu-chat-conv-preview" }, preview)
+        )
+      );
+    }
+    if (!sidebarRows.length) {
+      sidebarRows.push(
         e(
           "div",
-          { className: "ecu-chat-mode", role: "group", "aria-label": "Chat mode" },
-          modes.map(
-            (m) => e(
+          { key: "empty-filter", className: "ecu-chat-sidebar-empty" },
+          listFilter === "all" ? "No conversations yet." : "No " + listFilter + " chats."
+        )
+      );
+    }
+    const filterButtons = [];
+    for (let i = 0; i < SIDEBAR_FILTERS.length; i++) {
+      const f = SIDEBAR_FILTERS[i];
+      filterButtons.push(
+        e(
+          "button",
+          {
+            key: f.id,
+            type: "button",
+            className: "ecu-chat-filter-btn" + (listFilter === f.id ? " is-active" : ""),
+            "aria-pressed": listFilter === f.id,
+            onClick: () => setListFilter(f.id)
+          },
+          f.label
+        )
+      );
+    }
+    const logChildren = [];
+    if (isParty) {
+      if (partyMessages.length) {
+        for (let i = 0; i < partyMessages.length; i++) {
+          const msg = partyMessages[i];
+          logChildren.push(
+            e(ChatRow, {
+              key: msg.id,
+              msg,
+              onAuthorClick: (name) => startNewWhisper(name)
+            })
+          );
+        }
+      } else {
+        logChildren.push(
+          e(
+            "div",
+            { key: "empty", className: "ecu-chat-empty" },
+            canParty ? "No party messages yet. Send below \u2014 uses the observed character." : "Observe a character to send and receive party chat."
+          )
+        );
+      }
+    } else {
+      if (active && active.cursor) {
+        logChildren.push(
+          e(
+            "div",
+            { key: "older", className: "ecu-chat-history-top" },
+            e(
               "button",
               {
-                key: m.id,
                 type: "button",
-                className: mode === m.id ? "is-on" : void 0,
-                onClick: () => setMode(m.id)
+                className: "ecu-chat-load-older",
+                disabled: !!active.loading,
+                onClick: () => {
+                  void loadOlder();
+                }
               },
-              m.label
+              active.loading ? "Loading\u2026" : "Load older"
             )
           )
-        ),
-        mode === "whisper" ? e("input", {
-          className: "ecu-chat-whisper",
-          type: "text",
-          placeholder: "To\u2026",
-          value: whisperTo,
-          onChange: (ev) => setWhisperTo(ev.target.value),
-          spellCheck: false
+        );
+      } else if (active && active.loaded) {
+        logChildren.push(
+          e(
+            "div",
+            { key: "end", className: "ecu-chat-history-end" },
+            "\u2014 beginning \u2014"
+          )
+        );
+      }
+      if (messages2.length) {
+        for (let i = 0; i < messages2.length; i++) {
+          const row3 = messages2[i];
+          const msg = hubRowToChatMessage(row3, active);
+          logChildren.push(
+            e(ChatRow, {
+              key: msg.id,
+              msg,
+              onAuthorClick: (name) => startNewWhisper(name)
+            })
+          );
+        }
+      } else {
+        logChildren.push(
+          e(
+            "div",
+            { key: "empty", className: "ecu-chat-empty" },
+            (active == null ? void 0 : active.type) === "new" ? "Start a private message." : (active == null ? void 0 : active.loading) ? "Loading messages\u2026" : "No messages yet."
+          )
+        );
+      }
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-chat" + (narrow && !expanded ? " is-narrow" : "") + (narrow && !expanded && sidebarOpen ? " is-sidebar-open" : "") + (expanded ? " is-expanded" : ""),
+        "data-ecu-chat": "1",
+        ref: rootRef
+      },
+      e(
+        "div",
+        { className: "ecu-chat-layout" },
+        narrow && !expanded && sidebarOpen ? e("button", {
+          key: "backdrop",
+          type: "button",
+          className: "ecu-chat-backdrop",
+          "aria-label": "Close conversations",
+          onClick: () => setSidebarOpen(false)
         }) : null,
         e(
-          "button",
+          "aside",
           {
-            type: "button",
-            title: "Clear live log and reload history",
-            style: {
-              cursor: "pointer",
-              marginLeft: "auto",
-              padding: "4px 10px",
-              border: "1px solid #666",
-              background: "#22252c",
-              color: "#ddd",
-              fontSize: "13px"
-            },
-            onClick: () => {
-              clearChatMessages();
-              pushSystemChat("Chat cleared", "#b8b8b8");
-              void fetchHistory({ reset: true });
-            }
+            className: "ecu-chat-sidebar",
+            "aria-label": "Conversations",
+            "aria-hidden": narrow && !expanded && !sidebarOpen ? "true" : void 0
           },
-          "Clear"
-        )
-      ),
-      e(
-        "div",
-        {
-          className: "ecu-chat-log",
-          ref: logRef,
-          onScroll: onLogScroll
-        },
-        hist.more || hist.loading ? e(
-          "div",
-          { className: "ecu-chat-history-top" },
           e(
-            "button",
-            {
-              type: "button",
-              className: "ecu-chat-load-older",
-              disabled: hist.loading || !hist.more,
-              onClick: () => {
-                void loadOlder();
-              }
-            },
-            hist.loading ? "Loading\u2026" : "Load older messages"
-          )
-        ) : hist.loaded ? e("div", { className: "ecu-chat-history-end" }, "\u2014 beginning \u2014") : null,
-        lines.length ? lines.map((msg) => e(ChatRow, { key: msg.id, msg })) : e(
-          "div",
-          { className: "ecu-chat-empty" },
-          hist.loading ? "Loading chat history\u2026" : "No messages yet. Live server chat appears here."
-        )
-      ),
-      statusLine ? e(
-        "div",
-        {
-          className: "ecu-chat-status" + (hist.error || statusErr ? " is-err" : "")
-        },
-        statusLine
-      ) : null,
-      e(
-        "div",
-        { className: "ecu-chat-compose" },
-        e("input", {
-          className: "ecu-chat-input",
-          ref: inputRef,
-          type: "text",
-          placeholder: mode === "party" ? "Party message\u2026 (/ commands still work)" : mode === "whisper" ? "Whisper message\u2026" : "Say something\u2026 (/p /w /list \u2026)",
-          value: draft,
-          onChange: (ev) => setDraft(ev.target.value),
-          onKeyDown: (ev) => {
-            if (ev.key === "Enter") {
-              ev.preventDefault();
-              send();
-            }
-          },
-          spellCheck: false,
-          maxLength: 1200
-        }),
+            "div",
+            { className: "ecu-chat-sidebar-actions" },
+            e(
+              "div",
+              {
+                className: "ecu-chat-filter",
+                role: "group",
+                "aria-label": "Filter conversations"
+              },
+              filterButtons
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-sidebar-btn",
+                onClick: () => startNewWhisper()
+              },
+              "New whisper"
+            ),
+            listCursor ? e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-sidebar-btn",
+                disabled: listLoading,
+                onClick: () => {
+                  void pullList(true);
+                }
+              },
+              listLoading ? "Loading\u2026" : "More chats"
+            ) : null
+          ),
+          e("div", { className: "ecu-chat-conv-list" }, sidebarRows)
+        ),
         e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-chat-send",
-            disabled: !draft.trim(),
-            onClick: send
-          },
-          "Send"
+          "div",
+          { className: "ecu-chat-main" },
+          e(
+            "div",
+            {
+              className: "ecu-chat-title" + (titleBusy ? " is-busy" : "")
+            },
+            narrow && !expanded ? e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-title-toggle" + (sidebarOpen ? " is-open" : ""),
+                onClick: () => setSidebarOpen(!sidebarOpen),
+                "aria-expanded": sidebarOpen
+              },
+              sidebarOpen ? "Hide" : "Chats"
+            ) : null,
+            e("span", { className: "ecu-chat-title-label" }, title),
+            !isParty ? e(
+              "label",
+              {
+                className: "ecu-chat-title-from",
+                title: "Send as"
+              },
+              e("span", { className: "ecu-chat-title-from-sep" }, "\xB7"),
+              e(
+                "select",
+                {
+                  className: "ecu-chat-from",
+                  value: fromName,
+                  disabled: sending || !characters2.length,
+                  onChange: (ev) => setFromName(ev.target.value),
+                  "aria-label": "Send as character"
+                },
+                fromOptions
+              )
+            ) : canParty ? e(
+              "span",
+              {
+                className: "ecu-chat-title-from ecu-chat-title-from--party",
+                title: "Party via observed character"
+              },
+              "\xB7 " + (observing && observing.name ? observing.name : "party")
+            ) : null,
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-chat-expand" + (expanded ? " is-expanded" : ""),
+                title: expanded ? "Restore chat size" : "Expand chat",
+                "aria-pressed": expanded,
+                onClick: () => setExpanded(!expanded)
+              },
+              expanded ? "MIN" : "FULL"
+            )
+          ),
+          e(
+            "div",
+            {
+              className: "ecu-chat-log",
+              ref: logRef,
+              onScroll: onLogScroll
+            },
+            logChildren
+          ),
+          statusLine ? e(
+            "div",
+            {
+              className: "ecu-chat-status is-visible" + (statusErr || !isLoggedIn() && !isParty || isParty && !canParty ? " is-err" : "")
+            },
+            statusLine
+          ) : null,
+          e(
+            "div",
+            { className: "ecu-chat-compose" },
+            e(
+              "div",
+              { className: "ecu-chat-compose-row" },
+              active && active.type === "new" ? e("input", {
+                className: "ecu-chat-to",
+                type: "text",
+                placeholder: "To\u2026",
+                value: whisperTo,
+                maxLength: 12,
+                disabled: sending,
+                onChange: (ev) => setWhisperTo(ev.target.value),
+                spellCheck: false,
+                "aria-label": "Whisper to",
+                title: "Whisper to"
+              }) : null,
+              e("input", {
+                className: "ecu-chat-input",
+                ref: inputRef,
+                type: "text",
+                placeholder: isParty ? canParty ? "Party message\u2026" : "Observe to party chat\u2026" : (active == null ? void 0 : active.type) === "new" || (active == null ? void 0 : active.type) === "private" ? "Private message\u2026" : "Message\u2026",
+                value: draft,
+                disabled: sending || (isParty ? !canParty : !isLoggedIn()),
+                onChange: (ev) => setDraft(ev.target.value),
+                onKeyDown: (ev) => {
+                  if (ev.key === "Enter") {
+                    ev.preventDefault();
+                    void send();
+                  }
+                },
+                spellCheck: false,
+                maxLength: 1200
+              }),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "ecu-chat-send",
+                  disabled: sending || !draft.trim() || (isParty ? !canParty : !isLoggedIn() || !fromName || (active == null ? void 0 : active.type) === "new" && !whisperTo.trim()),
+                  onClick: () => {
+                    void send();
+                  }
+                },
+                sending ? "\u2026" : "Send"
+              )
+            )
+          )
         )
       )
     );
@@ -61244,7 +62721,8 @@ ${ESTIMATE_HINT}`,
         e(ChatPanel, {
           seedDraft: deps.chatSeed,
           seedWhisperTo: deps.chatWhisperTo,
-          openSeq: deps.chatOpenSeq
+          openSeq: deps.chatOpenSeq,
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("chat", size) : void 0
         }),
         {
           style: CHAT_PANEL_STYLE,
@@ -62192,6 +63670,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     ensureMailCss();
     installMailUnreadWatch();
     subscribeMailToast((message) => showCommToast(message));
+    installStockHubChatTakeover();
     startSocketHub();
     startInstanceTracker();
     startMeterEngine();
