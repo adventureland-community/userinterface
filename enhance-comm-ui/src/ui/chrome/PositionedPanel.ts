@@ -247,6 +247,8 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
     const obs = new ResizeObserver(() => {
+      // FULL chat / similar modes expand via CSS without changing saved layout.
+      if (el.getAttribute("data-ecu-suspend-frame-resize") === "1") return;
       const w = Math.round(el.offsetWidth);
       const h = Math.round(el.offsetHeight);
       if (w < 40 || h < 40) return;
@@ -256,6 +258,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         if (!props.onResizeFrame) return;
+        if (el.getAttribute("data-ecu-suspend-frame-resize") === "1") return;
         const free =
           freePlacementRef.current || shiftHeld || getLayoutFreePlacement();
         let outW = w;

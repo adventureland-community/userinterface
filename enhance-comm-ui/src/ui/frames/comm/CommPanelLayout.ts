@@ -543,6 +543,10 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         seedDraft: deps.chatSeed,
         seedWhisperTo: deps.chatWhisperTo,
         openSeq: deps.chatOpenSeq,
+        onFrameSizeRestore: deps.onResizeFrame
+          ? (size: { w: number; h: number }) =>
+              deps.onResizeFrame!("chat", size)
+          : undefined,
       }),
       {
         style: CHAT_PANEL_STYLE,
