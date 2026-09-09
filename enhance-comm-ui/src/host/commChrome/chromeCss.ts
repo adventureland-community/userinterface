@@ -301,13 +301,16 @@ ${BOTTOM_CHROME_HIT_TARGETS} {
 }
 
 .serversui.serversuic,
-.serversuic {
+.serversuic,
+#bottom .serversui,
+#bottom .serversuic {
   display: flex !important;
   position: relative;
   flex: 0 0 auto;
   align-items: stretch;
   margin: 0 !important;
-  overflow: visible;
+  /* Stock comm.css sets overflow:auto on #bottom .serversui — clips upward menu. */
+  overflow: visible !important;
 }
 .ecu-server-dd {
   position: relative;

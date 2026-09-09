@@ -43,10 +43,11 @@ const G = {
 } as unknown as GLike;
 
 describe("serverInfoModel", () => {
-  it("treats live/event/spawn objects as events", () => {
+  it("treats live/event/spawn/end objects as events", () => {
     assert.equal(isServerEventEntry({ live: true }), true);
     assert.equal(isServerEventEntry({ event: "2026-01-01T00:00:00.000Z" }), true);
     assert.equal(isServerEventEntry({ spawn: "2099-01-01T00:00:00.000Z" }), true);
+    assert.equal(isServerEventEntry({ end: Date.now() + 60_000 }), true);
   });
 
   it("recognizes anniversary status objects as seasonal", () => {
@@ -78,6 +79,60 @@ describe("serverInfoModel", () => {
       chips.map((c) => c.id),
       ["goobrawl"],
     );
+  });
+
+  it("shows stock goobrawl/abtesting end-only rows as live chips", () => {
+    const now = 1_000_000;
+    const chips = listServerEventChips(
+      {
+        schedule: { time_offset: 0, night: false },
+        goobrawl: { end: now + 12 * 60 * 1000 },
+        abtesting: {
+          end: now + 25 * 60 * 1000,
+          signup_end: now + 60 * 1000,
+          A: 3,
+          B: 5,
+          id: "xyz",
+        },
+        crabxx: {
+          live: true,
+          map: "main",
+          end: now + 40 * 60 * 1000,
+        },
+      },
+      {
+        ...G,
+        events: {
+          ...G.events,
+          abtesting: { name: "A/B Testing", type: "daily" },
+          crabxx: { name: "Giga Crab", type: "daily" },
+        },
+      } as GLike,
+      now,
+    );
+    assert.deepEqual(
+      chips.map((c) => c.id).sort(),
+      ["abtesting", "crabxx", "goobrawl"],
+    );
+    const goo = chips.find((c) => c.id === "goobrawl")!;
+    assert.equal(goo.live, true);
+    assert.equal(goo.label, "Goo Brawl");
+    assert.match(goo.detail, /live/);
+    assert.match(goo.detail, /12m left/);
+    const ab = chips.find((c) => c.id === "abtesting")!;
+    assert.equal(ab.live, true);
+    assert.match(ab.detail, /A 3 \/ B 5/);
+    assert.match(ab.detail, /25m left/);
+  });
+
+  it("hides expired end-only joinables", () => {
+    const now = 1_000_000;
+    const chips = listServerEventChips(
+      { goobrawl: { end: now - 1000 } },
+      G,
+      now,
+    );
+    assert.deepEqual(chips, []);
   });
 
   it("shows countdown to next featured anniversary round", () => {

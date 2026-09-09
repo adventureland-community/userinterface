@@ -2,7 +2,9 @@
  * Parse window.S for Server info chips.
  *
  * Shapes (adventureland_mongodb main):
- * - Boss / joinable: `{ live, spawn?, event?, map?, x?, y? }`
+ * - Boss / joinable: `{ live, spawn?, event?, map?, x?, y?, end? }`
+ * - Joinable map events without `live`: `{ end }` (goobrawl) or
+ *   `{ end, signup_end, A, B, id }` (abtesting)
  * - Classic seasonals: `S.halloween === true`
  * - Anniversary season: `{ active, live, next, target?, map?, x?, y?, expires? }`
  *   from `node/logic/anniversary_event.js` → `E.anniversary`
@@ -111,11 +113,34 @@ export function formatClockMs(at: number | null | undefined): string {
   }
 }
 
+/** Remaining time from an absolute `end` (ms or ISO string). */
+export function formatEndRemaining(
+  end: unknown,
+  now: number = Date.now(),
+): string {
+  if (typeof end === "number" && Number.isFinite(end)) {
+    return formatUntilMs(end, now);
+  }
+  if (end instanceof Date) return formatUntilMs(end.getTime(), now);
+  if (typeof end === "string" && end) return getTimeUntil(end);
+  return "";
+}
+
 /** True when a status value looks like a live/upcoming boss/joinable row. */
 export function isServerEventEntry(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
-  const row = value as { live?: unknown; event?: unknown; spawn?: unknown };
-  return row.live != null || row.event != null || row.spawn != null;
+  const row = value as {
+    live?: unknown;
+    event?: unknown;
+    spawn?: unknown;
+    end?: unknown;
+  };
+  return (
+    row.live != null ||
+    row.event != null ||
+    row.spawn != null ||
+    row.end != null
+  );
 }
 
 /**
@@ -166,6 +191,7 @@ function eventLabel(id: string, G?: GLike | null): string {
 export function listServerEventChips(
   S: ServerInfoLike | null | undefined,
   G?: GLike | null,
+  now: number = Date.now(),
 ): ServerEventChip[] {
   if (!S) return [];
   const events = eventsTable(G);
@@ -182,16 +208,44 @@ export function listServerEventChips(
       live?: boolean;
       event?: string;
       spawn?: unknown;
+      end?: unknown;
       map?: string;
+      A?: number;
+      B?: number;
     };
-    const live = !!row.live;
     const until = untilFromRow(row);
+    const endLeft = formatEndRemaining(row.end, now);
+    // Stock goobrawl/abtesting are `{ end }` (no `.live`). Treat as live while
+    // `end` is still in the future; drop expired leftovers.
+    const joinableLive = row.live !== true && row.end != null && !!endLeft;
+    if (
+      row.live !== true &&
+      row.event == null &&
+      row.spawn == null &&
+      !joinableLive
+    ) {
+      continue;
+    }
+    const live = row.live === true || joinableLive;
     const label = eventLabel(id, G);
     let detail = "";
     if (live) {
-      detail = row.map ? `live · ${row.map}` : "live";
+      if (row.A != null || row.B != null) {
+        detail =
+          "live · A " +
+          (row.A || 0) +
+          " / B " +
+          (row.B || 0) +
+          (endLeft ? " · " + endLeft + " left" : "");
+      } else if (row.map) {
+        detail = "live · " + row.map;
+      } else if (endLeft) {
+        detail = "live · " + endLeft + " left";
+      } else {
+        detail = "live";
+      }
     } else {
-      detail = until ? `in ${until}` : "upcoming";
+      detail = until ? "in " + until : endLeft ? "in " + endLeft : "upcoming";
     }
     out.push({
       id,
@@ -199,10 +253,13 @@ export function listServerEventChips(
       live,
       detail,
       title: live
-        ? `${label} is live` + (row.map ? ` on ${row.map}` : "")
-        : until
-          ? `${label} in ${until}`
-          : `${label} upcoming`,
+        ? label +
+          " is live" +
+          (row.map ? " on " + row.map : "") +
+          (endLeft ? " (" + endLeft + " left)" : "")
+        : until || endLeft
+          ? label + " in " + (until || endLeft)
+          : label + " upcoming",
     });
   }
   return out;

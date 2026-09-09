@@ -26,6 +26,7 @@ const EVENT_MONSTER_TYPES = [
   "tiger",
   "mrpumpkin",
   "mrgreen",
+  "crabxx",
 ];
 
 /** ALData rate-limits ~15 req/min; one batched GET every 45s is plenty. */
@@ -35,7 +36,7 @@ const POLL_MS = 45_000;
 const LIVE_MAX_AGE_MS = 5 * 60 * 1000;
 
 /** Cap badges so the dropdown stays scannable. */
-const MAX_BADGES = 3;
+const MAX_BADGES = 6;
 
 export type ServerEventBadge = {
   type: string;
@@ -95,17 +96,37 @@ function uniqueTypes(types: string[]): string[] {
   return out;
 }
 
-/** Live event keys from stock `window.S` for the connected realm only. */
+/** Active event keys from stock `window.S` for the connected realm only. */
 function liveTypesFromLocalS(): string[] {
   const S = window.S;
   if (!S || typeof S !== "object") return [];
   const keys = Object.keys(S);
   const out: string[] = [];
+  const now = Date.now();
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     if (key === "schedule") continue;
-    const entry = S[key];
-    if (entry && entry.live) out.push(key);
+    if (key === "blessed_minutes" || key === "blessed_by") continue;
+    const entry = S[key] as
+      | { live?: boolean; end?: number | string }
+      | boolean
+      | null
+      | undefined;
+    if (!entry || typeof entry !== "object") continue;
+    if (entry.live) {
+      out.push(key);
+      continue;
+    }
+    // Stock goobrawl / abtesting are `{ end }` without `.live`.
+    if (entry.end != null) {
+      const endMs =
+        typeof entry.end === "number"
+          ? entry.end
+          : typeof entry.end === "string"
+            ? Date.parse(entry.end)
+            : NaN;
+      if (Number.isFinite(endMs) && endMs > now) out.push(key);
+    }
   }
   return out;
 }
