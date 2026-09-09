@@ -298,6 +298,9 @@ export const COMMAND_PANEL_STYLE: Record<string, any> = {
   minWidth: "min(560px, 92vw)",
   maxWidth: "min(720px, 94vw)",
   boxSizing: "border-box",
+  // Shell is pointer-events:none by default — Command must take hits so
+  // CodeMirror, Run, and hover arrange chrome work.
+  pointerEvents: "auto",
 };
 
 export const CHAT_PANEL_STYLE: Record<string, any> = {

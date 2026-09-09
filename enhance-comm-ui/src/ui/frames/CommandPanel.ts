@@ -1,5 +1,5 @@
 import { getReact, e } from "../../host/react";
-import { emitObserverCommand } from "../../host/al";
+import { runCommandSnippet } from "../../host/commandRun";
 import {
   COMMAND_CM_HEIGHT_PX,
   disposeCodeMirror,
@@ -13,6 +13,7 @@ import {
   type CommandSnippet,
 } from "../../lib/settings";
 import { TYPE } from "../../lib/typeScale";
+import { ensureCommandPanelCss } from "./commandPanelCss";
 
 export type CommandPanelProps = {
   /** External prefill (stock show_commander / open hook). */
@@ -49,6 +50,7 @@ function newId(): string {
 
 export function CommandPanel(props: CommandPanelProps): any {
   const React = getReact();
+  ensureCommandPanelCss();
   const seedDraft = props.seedDraft;
   const openSeq = props.openSeq || 0;
 
@@ -91,12 +93,8 @@ export function CommandPanel(props: CommandPanelProps): any {
   };
 
   const runCode = (code: string) => {
-    const ok = emitObserverCommand(code);
-    if (ok) {
-      setStatus("Sent to observed character");
-    } else {
-      setStatus("No socket or empty command");
-    }
+    const result = runCommandSnippet(code);
+    setStatus(result.status);
   };
   runCodeRef.current = runCode;
 
@@ -106,6 +104,16 @@ export function CommandPanel(props: CommandPanelProps): any {
     const el = textareaRef.current;
     if (el) return el.value;
     return draftRef.current;
+  };
+
+  const refreshEditor = () => {
+    const cm = cmRef.current;
+    if (!cm) return;
+    try {
+      cm.refresh();
+    } catch {
+      // ignore
+    }
   };
 
   const onRun = () => {
@@ -142,6 +150,13 @@ export function CommandPanel(props: CommandPanelProps): any {
       cmRef.current = null;
     };
   }, [cmAvailable]);
+
+  // Status / open bumps change layout — CM5 needs refresh or its measure
+  // layer can steal hits across the panel (dead editor + no hover chrome).
+  React.useEffect(() => {
+    const id = window.requestAnimationFrame(() => refreshEditor());
+    return () => window.cancelAnimationFrame(id);
+  }, [status, openSeq]);
 
   React.useEffect(() => {
     if (typeof seedDraft === "string") {
@@ -427,6 +442,7 @@ export function CommandPanel(props: CommandPanelProps): any {
         color: "#eee",
         textShadow: "none",
         fontWeight: "normal",
+        pointerEvents: "auto",
       },
     },
     e(
@@ -496,9 +512,17 @@ export function CommandPanel(props: CommandPanelProps): any {
         "Save snippet",
       ),
     ),
-    status
-      ? e("div", { style: { fontSize: TYPE.body, color: "#9a9" } }, status)
-      : null,
+    e(
+      "div",
+      {
+        style: {
+          fontSize: TYPE.body,
+          color: status ? "#9a9" : "transparent",
+          minHeight: "1.25em",
+        },
+      },
+      status || "\u00a0",
+    ),
     e(
       "div",
       {

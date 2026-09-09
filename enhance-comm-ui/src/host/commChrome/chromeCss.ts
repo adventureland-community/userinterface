@@ -827,6 +827,9 @@ ${CHROME_ARRANGE_CSS}
   background: rgba(35, 32, 18, 0.95) !important;
   color: #ddd !important;
 }
+#comm-ui .comm-pos-command {
+  pointer-events: auto;
+}
 #comm-ui[data-viewport="phone"] .comm-pos-combat,
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
 #comm-ui[data-viewport="phone"] .comm-pos-command {

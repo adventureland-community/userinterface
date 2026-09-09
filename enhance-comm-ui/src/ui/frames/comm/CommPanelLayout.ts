@@ -533,6 +533,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: COMMAND_PANEL_STYLE,
         hiddenBodyStyle: COMMAND_PANEL_STYLE,
+        interactiveBody: true,
       },
     ),
 

@@ -100,6 +100,28 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.7",
+    title: "0.9.7",
+    date: "2026-09-09",
+    summary:
+      "Fix Command panel going dead after Run — hits and hover chrome work again; Run requires observe.",
+    highlights: [
+      {
+        label: "Command panel clicks",
+        detail:
+          "Command shell takes pointer events again, and CodeMirror refreshes after Run so its measure layer cannot steal hits across the panel.",
+        kind: "fix",
+      },
+      {
+        label: "Run needs observe",
+        detail:
+          "Run / Ctrl+Enter refuse with a toast and status when you are not watching a character (same as Bag).",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.9.6",
     title: "0.9.6",
     date: "2026-09-08",

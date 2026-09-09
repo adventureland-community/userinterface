@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land COMM UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.6
+// @version      0.9.7
 // @description  enhance https://adventure.land/comm/
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -3333,7 +3333,10 @@ var EnhanceCommUI = (() => {
     width: "min(720px, 94vw)",
     minWidth: "min(560px, 92vw)",
     maxWidth: "min(720px, 94vw)",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Shell is pointer-events:none by default — Command must take hits so
+    // CodeMirror, Run, and hover arrange chrome work.
+    pointerEvents: "auto"
   };
   var CHAT_PANEL_STYLE = {
     width: "100%",
@@ -8645,6 +8648,25 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.9.7",
+      title: "0.9.7",
+      date: "2026-09-09",
+      summary: "Fix Command panel going dead after Run \u2014 hits and hover chrome work again; Run requires observe.",
+      highlights: [
+        {
+          label: "Command panel clicks",
+          detail: "Command shell takes pointer events again, and CodeMirror refreshes after Run so its measure layer cannot steal hits across the panel.",
+          kind: "fix"
+        },
+        {
+          label: "Run needs observe",
+          detail: "Run / Ctrl+Enter refuse with a toast and status when you are not watching a character (same as Bag).",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
+    {
       id: "0.9.6",
       title: "0.9.6",
       date: "2026-09-08",
@@ -13399,6 +13421,9 @@ ${CHROME_ARRANGE_CSS}
   border-color: #998 !important;
   background: rgba(35, 32, 18, 0.95) !important;
   color: #ddd !important;
+}
+#comm-ui .comm-pos-command {
+  pointer-events: auto;
 }
 #comm-ui[data-viewport="phone"] .comm-pos-combat,
 #comm-ui[data-viewport="phone"] .comm-pos-bag,
@@ -19728,8 +19753,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.6" : "unknown";
-    const builtAt = true ? "2026-09-08T11:04:32.304Z" : "unknown";
+    const version = true ? "0.9.7" : "unknown";
+    const builtAt = true ? "2026-09-09T04:18:16.318Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -55779,6 +55804,27 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/host/commandRun.ts
+  function isCommandObserveReady() {
+    const obs = getObserving();
+    return !!(obs && obs.name);
+  }
+  function runCommandSnippet(code) {
+    const trimmed = String(code || "").trim();
+    if (!trimmed) {
+      return { ok: false, status: "Write a command first" };
+    }
+    if (!isCommandObserveReady()) {
+      showCommToast("Observe a character first");
+      return { ok: false, status: "Observe a character first" };
+    }
+    const ok = emitObserverCommand(trimmed);
+    if (!ok) {
+      return { ok: false, status: "No socket \u2014 not connected" };
+    }
+    return { ok: true, status: "Sent to observed character" };
+  }
+
   // src/host/codemirror.ts
   function getHostCodeMirror() {
     const root = globalThis;
@@ -55830,6 +55876,45 @@ ${ESTIMATE_HINT}`,
     }
   }
 
+  // src/ui/frames/commandPanelCss.ts
+  var COMMAND_PANEL_CSS = `
+.CommandPanel {
+  pointer-events: auto;
+}
+.CommandPanel-editor {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  pointer-events: auto;
+  /* Keep CM's measure/input layers clipped to the editor box. */
+  contain: layout style;
+}
+.CommandPanel-editor .CodeMirror {
+  width: 100% !important;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+.CommandPanel-editor .CodeMirror-scroll {
+  max-height: none;
+}
+`;
+  var injected12 = false;
+  function ensureCommandPanelCss() {
+    if (typeof document === "undefined") return;
+    const existing = document.getElementById("ecu-command-panel-css");
+    if (existing) {
+      existing.textContent = COMMAND_PANEL_CSS;
+      injected12 = true;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = "ecu-command-panel-css";
+    el.textContent = COMMAND_PANEL_CSS;
+    document.head.appendChild(el);
+    injected12 = true;
+  }
+
   // src/ui/frames/CommandPanel.ts
   function btnStyle2(opts) {
     const accent = (opts == null ? void 0 : opts.accent) === true;
@@ -55850,6 +55935,7 @@ ${ESTIMATE_HINT}`,
   }
   function CommandPanel(props) {
     const React = getReact();
+    ensureCommandPanelCss();
     const seedDraft = props.seedDraft;
     const openSeq = props.openSeq || 0;
     const [draft, setDraft] = React.useState(
@@ -55887,12 +55973,8 @@ ${ESTIMATE_HINT}`,
       saveSettings({ commandSnippets: next });
     };
     const runCode = (code) => {
-      const ok = emitObserverCommand(code);
-      if (ok) {
-        setStatus2("Sent to observed character");
-      } else {
-        setStatus2("No socket or empty command");
-      }
+      const result = runCommandSnippet(code);
+      setStatus2(result.status);
     };
     runCodeRef.current = runCode;
     const readEditorCode = () => {
@@ -55901,6 +55983,14 @@ ${ESTIMATE_HINT}`,
       const el = textareaRef.current;
       if (el) return el.value;
       return draftRef.current;
+    };
+    const refreshEditor = () => {
+      const cm = cmRef.current;
+      if (!cm) return;
+      try {
+        cm.refresh();
+      } catch (e2) {
+      }
     };
     const onRun = () => {
       runCode(readEditorCode());
@@ -55932,6 +56022,10 @@ ${ESTIMATE_HINT}`,
         cmRef.current = null;
       };
     }, [cmAvailable]);
+    React.useEffect(() => {
+      const id = window.requestAnimationFrame(() => refreshEditor());
+      return () => window.cancelAnimationFrame(id);
+    }, [status, openSeq]);
     React.useEffect(() => {
       if (typeof seedDraft === "string") {
         persistDraft2(seedDraft);
@@ -56190,7 +56284,8 @@ ${ESTIMATE_HINT}`,
           fontSize: TYPE.name,
           color: "#eee",
           textShadow: "none",
-          fontWeight: "normal"
+          fontWeight: "normal",
+          pointerEvents: "auto"
         }
       },
       e(
@@ -56260,7 +56355,17 @@ ${ESTIMATE_HINT}`,
           "Save snippet"
         )
       ),
-      status ? e("div", { style: { fontSize: TYPE.body, color: "#9a9" } }, status) : null,
+      e(
+        "div",
+        {
+          style: {
+            fontSize: TYPE.body,
+            color: status ? "#9a9" : "transparent",
+            minHeight: "1.25em"
+          }
+        },
+        status || "\xA0"
+      ),
       e(
         "div",
         {
@@ -56521,20 +56626,20 @@ ${ESTIMATE_HINT}`,
   pointer-events: none;
 }
 `;
-  var injected12 = false;
+  var injected13 = false;
   function ensureChatCss() {
     if (typeof document === "undefined") return;
     const existing = document.getElementById("ecu-chat-css");
     if (existing) {
       existing.textContent = CHAT_PANEL_CSS;
-      injected12 = true;
+      injected13 = true;
       return;
     }
     const el = document.createElement("style");
     el.id = "ecu-chat-css";
     el.textContent = CHAT_PANEL_CSS;
     document.head.appendChild(el);
-    injected12 = true;
+    injected13 = true;
   }
 
   // src/ui/frames/chat/ChatPanel.ts
@@ -61130,7 +61235,8 @@ ${ESTIMATE_HINT}`,
         }),
         {
           style: COMMAND_PANEL_STYLE,
-          hiddenBodyStyle: COMMAND_PANEL_STYLE
+          hiddenBodyStyle: COMMAND_PANEL_STYLE,
+          interactiveBody: true
         }
       ),
       panel(
