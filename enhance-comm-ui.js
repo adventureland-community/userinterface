@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.9
+// @version      0.9.10
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -4102,6 +4102,15 @@ var EnhanceCommUI = (() => {
   function applyCallerStackZ(shellStyle, propsStyle) {
     if (propsStyle && typeof propsStyle.zIndex === "number") {
       shellStyle.zIndex = propsStyle.zIndex;
+    }
+  }
+  function applyInteractiveShellHits(shellStyle, opts) {
+    if (opts.interactiveBody) {
+      shellStyle.pointerEvents = "auto";
+      return;
+    }
+    if (opts.propsStyle && opts.propsStyle.pointerEvents === "auto") {
+      shellStyle.pointerEvents = "auto";
     }
   }
   function unclipShellOverflow(style) {
@@ -8442,6 +8451,26 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.10",
+      title: "0.9.10",
+      date: "2026-09-10",
+      summary: "Fix Command (and other fill windows) staying click-through \u2014 editor, Run, and resize work again in play mode.",
+      highlights: [
+        {
+          label: "Command shell hits",
+          detail: "PositionedPanel no longer lets idle HUD pointer-events:none overwrite interactiveBody / COMMAND_PANEL_STYLE auto \u2014 CodeMirror and Run receive clicks again.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "Fill-window shells",
+          detail: "Mail, Layout toggles, and any panel that opts into hits keep pointer-events:auto after panelStyle merge.",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.9.9",
       title: "0.9.9",
@@ -20155,8 +20184,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.9" : "unknown";
-    const builtAt = true ? "2026-09-09T23:06:13.540Z" : "unknown";
+    const version = true ? "0.9.10" : "unknown";
+    const builtAt = true ? "2026-09-10T09:09:45.574Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -29723,6 +29752,10 @@ button.comm-mail__stack-u {
       } : null
     );
     applyCallerStackZ(shellStyle, props.style);
+    applyInteractiveShellHits(shellStyle, {
+      interactiveBody,
+      propsStyle: props.style
+    });
     applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
     const hasSavedFrame = !autoSize && (typeof pos.frameW === "number" && pos.frameW > 0 || typeof pos.frameH === "number" && pos.frameH > 0);
     const styleOverflowVisible = !!(props.style && props.style.overflow === "visible");

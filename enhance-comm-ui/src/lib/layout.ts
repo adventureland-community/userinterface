@@ -549,6 +549,28 @@ export function applyCallerStackZ(
 }
 
 /**
+ * `panelStyle` stamps pointerEvents:"none" so idle HUD shells click through.
+ * Fill windows (Command, Mail, Layout toggles, …) pass interactiveBody and/or
+ * props.style.pointerEvents:"auto" — re-apply after Object.assign or the shell
+ * eats the opt-in and CodeMirror / Run stay dead.
+ */
+export function applyInteractiveShellHits(
+  shellStyle: Record<string, any>,
+  opts: {
+    interactiveBody?: boolean;
+    propsStyle?: Record<string, any> | null;
+  },
+): void {
+  if (opts.interactiveBody) {
+    shellStyle.pointerEvents = "auto";
+    return;
+  }
+  if (opts.propsStyle && opts.propsStyle.pointerEvents === "auto") {
+    shellStyle.pointerEvents = "auto";
+  }
+}
+
+/**
  * Fill-frame shells keep overflow visible so above-frame arrange chrome
  * (lock / Window Control / hide × / drag grip) is not clipped.
  * `panelStyle` sets overflowX/Y as separate keys; those beat `overflow`.

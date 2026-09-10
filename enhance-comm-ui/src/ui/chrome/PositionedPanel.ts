@@ -5,6 +5,7 @@ import {
   clampPanelPosInRoot,
   panelStyle,
   applyCallerStackZ,
+  applyInteractiveShellHits,
   unclipShellOverflow,
   reanchorKeepingVisual,
   type LayoutAnchor,
@@ -481,6 +482,11 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   );
   // panelStyle stamps idle z 20/40 — preserve raise / meter stack z from props.
   applyCallerStackZ(shellStyle, props.style);
+  // panelStyle stamps pointer-events:none — restore fill-window opt-in.
+  applyInteractiveShellHits(shellStyle, {
+    interactiveBody,
+    propsStyle: props.style,
+  });
   applyAutoSizeMaxWidth(shellStyle, String(id), autoSize);
   // Fixed frameW/H sets overflowX/Y in panelStyle, which clips above-frame
   // arrange chrome. Unclip the shell when needed.

@@ -100,6 +100,29 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.10",
+    title: "0.9.10",
+    date: "2026-09-10",
+    summary:
+      "Fix Command (and other fill windows) staying click-through — editor, Run, and resize work again in play mode.",
+    highlights: [
+      {
+        label: "Command shell hits",
+        detail:
+          "PositionedPanel no longer lets idle HUD pointer-events:none overwrite interactiveBody / COMMAND_PANEL_STYLE auto — CodeMirror and Run receive clicks again.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "Fill-window shells",
+        detail:
+          "Mail, Layout toggles, and any panel that opts into hits keep pointer-events:auto after panelStyle merge.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.9.9",
     title: "0.9.9",
     date: "2026-09-10",
