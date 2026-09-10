@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.11
+// @version      0.9.12
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -886,16 +886,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners14 = [];
+    const listeners15 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners14.length; i++) listeners14[i](ev);
+        for (let i = 0; i < listeners15.length; i++) listeners15[i](ev);
       },
       subscribe: (listener) => {
-        listeners14.push(listener);
+        listeners15.push(listener);
         return () => {
-          const idx = listeners14.indexOf(listener);
-          if (idx >= 0) listeners14.splice(idx, 1);
+          const idx = listeners15.indexOf(listener);
+          if (idx >= 0) listeners15.splice(idx, 1);
         };
       }
     };
@@ -3154,6 +3154,15 @@ var EnhanceCommUI = (() => {
     maxHeight: "100%",
     boxSizing: "border-box"
   };
+  var MARKET_PANEL_STYLE = {
+    width: "100%",
+    height: "100%",
+    minWidth: "min(480px, 96vw)",
+    minHeight: "360px",
+    maxWidth: "100%",
+    maxHeight: "100%",
+    boxSizing: "border-box"
+  };
   var METER_PANEL_STYLE = {
     width: "320px",
     minWidth: "240px",
@@ -3211,7 +3220,7 @@ var EnhanceCommUI = (() => {
     serverInfo: { x: 50, y: 0.4, anchor: "tc" },
     mapInfo: { x: 50, y: 4.8, anchor: "tc" },
     paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 400 },
-    trade: { x: 12, y: 99.2, anchor: "bl", frameW: 272, frameH: 320 },
+    market: { x: 50, y: 48, anchor: "center", frameW: 1100, frameH: 700 },
     buffInfo: {
       x: 0.8,
       y: 10,
@@ -3333,7 +3342,7 @@ var EnhanceCommUI = (() => {
     serverInfo: { x: 50, y: 0.5, anchor: "tc" },
     mapInfo: { x: 50, y: 5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
-    trade: { x: 1, y: 72, anchor: "bl", frameW: 272, frameH: 320 },
+    market: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
     buffInfo: { x: 1, y: 12, anchor: "tl", autoSize: true },
     itemInfo: { x: 17, y: 12, anchor: "tl", autoSize: true },
     kills: { x: 99.2, y: 72, anchor: "tr" },
@@ -3384,7 +3393,7 @@ var EnhanceCommUI = (() => {
     serverInfo: { x: 50, y: 0.4, anchor: "tc" },
     mapInfo: { x: 50, y: 4.5, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
-    trade: { x: 50, y: 52, anchor: "center", frameW: 272, frameH: 320 },
+    market: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
     buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
     itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
     kills: { x: 98, y: 58, anchor: "br" },
@@ -3446,7 +3455,7 @@ var EnhanceCommUI = (() => {
   }
 
   // src/lib/layoutFrameMigrations.ts
-  var LAYOUT_FRAME_REV = 8;
+  var LAYOUT_FRAME_REV = 9;
   function shipped(n, target) {
     return typeof n === "number" && Math.round(n) === target;
   }
@@ -3517,10 +3526,17 @@ var EnhanceCommUI = (() => {
       frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH
     };
   }
-  function migrateTradeFrame(pos, def) {
+  function migrateMarketFrame(pos, def) {
+    if (shipped(pos.frameW, 272) && shipped(pos.frameH, 320)) {
+      return {
+        ...pos,
+        frameW: typeof def.frameW === "number" ? def.frameW : 1100,
+        frameH: typeof def.frameH === "number" ? def.frameH : 700
+      };
+    }
     if (!shipped(pos.frameW, 220) || !shipped(pos.frameH, 200)) return pos;
-    const defW = typeof def.frameW === "number" ? def.frameW : TRADE_PANEL_WIDTH;
-    const defH = typeof def.frameH === "number" ? def.frameH : TRADE_PANEL_MIN_HEIGHT;
+    const defW = typeof def.frameW === "number" ? def.frameW : 1100;
+    const defH = typeof def.frameH === "number" ? def.frameH : 700;
     return { ...pos, frameW: defW, frameH: defH };
   }
   var FRAME_MIGRATIONS = {
@@ -3534,7 +3550,7 @@ var EnhanceCommUI = (() => {
     bossBar: migrateBossBarFrame,
     abilityTimeline: migrateAbilityTimelineFrame,
     command: migrateCommandFrame,
-    trade: migrateTradeFrame
+    market: migrateMarketFrame
   };
   function applyFrameMigrations(layout, defaults) {
     const ids = Object.keys(FRAME_MIGRATIONS);
@@ -3626,7 +3642,12 @@ var EnhanceCommUI = (() => {
       shell: "fill"
     },
     bag: { label: "Bag", closable: true, framePersist: "none" },
-    trade: { label: "Trade", closable: true, framePersist: "none" },
+    market: {
+      label: "Market",
+      closable: true,
+      defaultVisible: false,
+      shell: "fill"
+    },
     mail: {
       label: "Mail",
       closable: true,
@@ -3680,6 +3701,9 @@ var EnhanceCommUI = (() => {
       if (typeof raw.crypt === "boolean") {
         if (typeof raw.instance !== "boolean") out.instance = raw.crypt;
         if (typeof raw.instanceRun !== "boolean") out.instanceRun = raw.crypt;
+      }
+      if (typeof raw.trade === "boolean" && typeof raw.market !== "boolean") {
+        out.market = raw.trade;
       }
       for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
         const id = CLOSABLE_PANEL_IDS[i];
@@ -3825,6 +3849,14 @@ var EnhanceCommUI = (() => {
           frameW: 220,
           frameH: 70
         });
+      }
+      changed = true;
+    }
+    if (raw.trade) {
+      const legacy = raw.trade;
+      delete out.trade;
+      if (!out.market) {
+        out.market = applyWindowFramePersist(copyLegacyPos(legacy), "market");
       }
       changed = true;
     }
@@ -8444,6 +8476,11 @@ ${fightHoverTip(src)}`
       kind: "feature"
     },
     {
+      label: "Market",
+      detail: "Buy and sell across nearby and catalog merchants \u2014 Travel when out of range.",
+      kind: "feature"
+    },
+    {
       label: "Mail",
       detail: "Account inbox on /comm \u2014 read, search, compose, send and take while observing.",
       kind: "feature"
@@ -8470,6 +8507,54 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.9.12",
+      title: "0.9.12",
+      date: "2026-09-10",
+      summary: "Market hub replaces the Trade panel \u2014 Buy|Sell desks, realm catalog, Travel, and chrome Market button.",
+      highlights: [
+        {
+          label: "Market hub",
+          detail: "One Market window with Buy (search/compare for-sale listings) and Sell (fulfill buy orders, your stand, mirror/undercut). Chrome Market button; inspecting a merchant opens Market focused on them.",
+          kind: "feature"
+        },
+        {
+          label: "Live + catalog",
+          detail: "Nearby entities merge with pull_merchants. Live slots win when the merchant is in vision; catalog-only stands stay visible with Travel.",
+          kind: "feature"
+        },
+        {
+          label: "Travel then trade",
+          detail: "Out-of-range listings Travel via change_server then smart_move (overlay-owned itinerary). Catalog / closed-stand trade5+ buy only in range with a stale-listing confirm.",
+          kind: "feature"
+        }
+      ],
+      features: [
+        {
+          title: "Market",
+          summary: "Trade panel retired \u2014 Market is the only trade surface.",
+          items: [
+            {
+              label: "Buy desk",
+              detail: "Filters for afford, party merchants, and search tokens (item: / merchant: / map:). Best-price sort within item.",
+              kind: "feature"
+            },
+            {
+              label: "Sell desk",
+              detail: "Your stand grid (list/delist via existing trade controls), In bag buy-order filter, Mirror / Undercut from browse sales.",
+              kind: "feature"
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "Trade panel removed",
+          detail: "Saved Trade layout/visibility migrates to Market. Window Control reopens Market.",
+          kind: "improve"
+        }
+      ]
+    },
     {
       id: "0.9.11",
       title: "0.9.11",
@@ -15052,14 +15137,6 @@ ${CHROME_ARRANGE_CSS}
     if (n == null || !Number.isFinite(n)) return "?";
     return formatCompactNumber(n);
   }
-  function tradeSlotGridRows(slotNames, columns = 4) {
-    const cols = columns > 0 ? columns : 4;
-    const rows = [];
-    for (let i = 0; i < slotNames.length; i += cols) {
-      rows.push(slotNames.slice(i, i + cols));
-    }
-    return rows;
-  }
   function isInTradeRange(target, observer) {
     var _a, _b, _c, _d;
     if (!target || !observer) return false;
@@ -16784,9 +16861,2689 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
+  // src/host/market/marketSession.ts
+  var openListeners2 = [];
+  var panelOpen2 = false;
+  function setMarketPanelOpen(open) {
+    panelOpen2 = !!open;
+  }
+  function subscribeMarketOpen(fn) {
+    openListeners2.push(fn);
+    return () => {
+      const idx = openListeners2.indexOf(fn);
+      if (idx >= 0) openListeners2.splice(idx, 1);
+    };
+  }
+  function openMarket(payload = {}) {
+    for (let i = 0; i < openListeners2.length; i++) {
+      openListeners2[i](payload);
+    }
+  }
+
+  // src/host/market/pullMerchants.ts
+  function extractMerchantChars(ct) {
+    if (!ct) return { chars: [] };
+    if (typeof ct === "string") {
+      try {
+        return extractMerchantChars(JSON.parse(ct));
+      } catch (e2) {
+        return { chars: [] };
+      }
+    }
+    if (typeof ct !== "object") return { chars: [] };
+    const obj = ct;
+    if (obj.failed) return { chars: [] };
+    if (Array.isArray(obj.chars)) {
+      return {
+        chars: obj.chars,
+        pulledAt: typeof obj.pulledAt === "string" ? obj.pulledAt : void 0
+      };
+    }
+    if (Array.isArray(obj.infs)) {
+      const infs = obj.infs;
+      for (let i = 0; i < infs.length; i++) {
+        const info2 = infs[i];
+        if (!info2) continue;
+        if (info2.type === "merchants" || Array.isArray(info2.chars)) {
+          return {
+            chars: Array.isArray(info2.chars) ? info2.chars : [],
+            pulledAt: typeof info2.pulledAt === "string" ? info2.pulledAt : typeof obj.pulledAt === "string" ? obj.pulledAt : void 0
+          };
+        }
+      }
+    }
+    if (obj.data != null) return extractMerchantChars(obj.data);
+    return { chars: [] };
+  }
+  function normalizeCatalogSlot(slotName, raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const s = raw;
+    const name = typeof s.name === "string" ? s.name : "";
+    if (!name) return null;
+    const price = typeof s.price === "number" ? s.price : Number(s.price);
+    if (!Number.isFinite(price)) return null;
+    const listing = {
+      slot: slotName,
+      name,
+      price,
+      buyOrder: s.b === true
+    };
+    if (typeof s.rid === "string" && s.rid) listing.rid = s.rid;
+    if (typeof s.q === "number") listing.q = s.q;
+    if (typeof s.level === "number") listing.level = s.level;
+    if (typeof s.p === "string" || s.p === null) listing.p = s.p;
+    if (typeof s.stat_type === "string") listing.stat_type = s.stat_type;
+    return listing;
+  }
+  function slotsFromCatalogChar(slots) {
+    if (!slots || typeof slots !== "object") return [];
+    const keys = Object.keys(slots);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key.indexOf("trade") !== 0) continue;
+      const row3 = normalizeCatalogSlot(key, slots[key]);
+      if (row3) out.push(row3);
+    }
+    out.sort((a, b) => {
+      const an = parseInt(a.slot.replace("trade", ""), 10) || 0;
+      const bn = parseInt(b.slot.replace("trade", ""), 10) || 0;
+      return an - bn;
+    });
+    return out;
+  }
+  async function pullMerchants() {
+    try {
+      const res = await fetch(
+        (typeof window !== "undefined" && window.location ? window.location.origin : "") + "/api/pull_merchants",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json; charset=utf-8" },
+          body: "{}"
+        }
+      );
+      if (!res.ok) {
+        return {
+          ok: false,
+          chars: [],
+          message: "pull_merchants HTTP " + res.status
+        };
+      }
+      const json = await res.json();
+      const extracted = extractMerchantChars(json);
+      return {
+        ok: true,
+        chars: extracted.chars,
+        pulledAt: extracted.pulledAt || (/* @__PURE__ */ new Date()).toISOString(),
+        message: extracted.chars.length === 0 ? "Catalog empty (check login / pull_merchants)" : void 0
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        chars: [],
+        message: err instanceof Error ? err.message : "pull_merchants failed"
+      };
+    }
+  }
+
+  // src/lib/market/marketPersistLogic.ts
+  function merchantKey(name) {
+    return String(name || "").toLowerCase();
+  }
+  function listingFromSlot(slot, now) {
+    if (!slot.rid) return null;
+    const row3 = {
+      slot: slot.slot,
+      name: slot.name,
+      rid: slot.rid,
+      price: slot.price,
+      buyOrder: slot.buyOrder,
+      lastRefreshedAt: now
+    };
+    if (slot.q != null) row3.q = slot.q;
+    if (slot.level != null) row3.level = slot.level;
+    if (slot.p !== void 0) row3.p = slot.p;
+    if (slot.stat_type != null) row3.stat_type = slot.stat_type;
+    return row3;
+  }
+  function listingsFromAuthoritativeSlots(slots, now) {
+    const byRid = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < slots.length; i++) {
+      const row3 = listingFromSlot(slots[i], now);
+      if (!row3) continue;
+      byRid[row3.rid] = row3;
+    }
+    const keys = Object.keys(byRid);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byRid[keys[i]]);
+    out.sort((a, b) => {
+      const an = parseInt(a.slot.replace("trade", ""), 10) || 0;
+      const bn = parseInt(b.slot.replace("trade", ""), 10) || 0;
+      return an - bn;
+    });
+    return out;
+  }
+  function cloneMerchant(m) {
+    const slots = [];
+    for (let i = 0; i < m.slots.length; i++) {
+      slots.push({ ...m.slots[i] });
+    }
+    const next = {
+      name: m.name,
+      lastSeenAt: m.lastSeenAt,
+      slots
+    };
+    if (m.level != null) next.level = m.level;
+    if (m.map != null) next.map = m.map;
+    if (m.x != null) next.x = m.x;
+    if (m.y != null) next.y = m.y;
+    if (m.server != null) next.server = m.server;
+    if (m.stand !== void 0) next.stand = m.stand;
+    if (m.afk !== void 0) next.afk = m.afk;
+    if (m.skin != null) next.skin = m.skin;
+    return next;
+  }
+  function applyMerchantMeta(prev, patch, slots, now) {
+    var _a, _b, _c, _d, _e, _f;
+    const base = prev ? cloneMerchant(prev) : null;
+    return {
+      name: patch.name || base && base.name || "",
+      level: (_a = patch.level) != null ? _a : base == null ? void 0 : base.level,
+      map: (_b = patch.map) != null ? _b : base == null ? void 0 : base.map,
+      x: (_c = patch.x) != null ? _c : base == null ? void 0 : base.x,
+      y: (_d = patch.y) != null ? _d : base == null ? void 0 : base.y,
+      server: (_e = patch.server) != null ? _e : base == null ? void 0 : base.server,
+      stand: patch.stand !== void 0 ? patch.stand : base == null ? void 0 : base.stand,
+      afk: patch.afk !== void 0 ? patch.afk : base == null ? void 0 : base.afk,
+      skin: (_f = patch.skin) != null ? _f : base == null ? void 0 : base.skin,
+      lastSeenAt: now,
+      slots
+    };
+  }
+  function reconcileCatalogPull(prev, chars, now) {
+    const byName = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < prev.length; i++) {
+      const m = prev[i];
+      if (!m || !m.name) continue;
+      byName[merchantKey(m.name)] = cloneMerchant(m);
+    }
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (!c || !c.name) continue;
+      const key = merchantKey(c.name);
+      const prevM = byName[key] || null;
+      const slots = listingsFromAuthoritativeSlots(
+        slotsFromCatalogChar(c.slots || null),
+        now
+      );
+      byName[key] = applyMerchantMeta(
+        prevM,
+        {
+          name: c.name,
+          level: c.level,
+          map: c.map,
+          x: typeof c.x === "number" ? c.x : void 0,
+          y: typeof c.y === "number" ? c.y : void 0,
+          server: c.server,
+          stand: c.stand,
+          afk: c.afk,
+          skin: c.skin
+        },
+        slots,
+        now
+      );
+    }
+    const keys = Object.keys(byName);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byName[keys[i]]);
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+  function reconcileLiveOpenStand(prev, opts, now) {
+    if (!opts.name) return prev;
+    const key = merchantKey(opts.name);
+    const byName = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < prev.length; i++) {
+      const m = prev[i];
+      if (!m || !m.name) continue;
+      byName[merchantKey(m.name)] = cloneMerchant(m);
+    }
+    const prevM = byName[key] || null;
+    const incoming = listingsFromAuthoritativeSlots(opts.slots, now);
+    const liveMap = opts.liveSlotMap || null;
+    if (!incoming.length && prevM && prevM.slots.length) {
+      byName[key] = applyMerchantMeta(
+        prevM,
+        {
+          name: opts.name,
+          level: opts.level,
+          map: opts.map,
+          x: opts.x,
+          y: opts.y,
+          stand: opts.stand,
+          skin: opts.skin
+        },
+        prevM.slots.map((s) => ({ ...s })),
+        prevM.lastSeenAt
+      );
+      const keys2 = Object.keys(byName);
+      const out2 = [];
+      for (let i = 0; i < keys2.length; i++) out2.push(byName[keys2[i]]);
+      out2.sort((a, b) => a.name.localeCompare(b.name));
+      return out2;
+    }
+    const byRid = /* @__PURE__ */ Object.create(null);
+    if (prevM) {
+      for (let i = 0; i < prevM.slots.length; i++) {
+        byRid[prevM.slots[i].rid] = { ...prevM.slots[i] };
+      }
+    }
+    if (prevM && liveMap) {
+      for (let i = 0; i < prevM.slots.length; i++) {
+        const prevSlot = prevM.slots[i];
+        if (!Object.prototype.hasOwnProperty.call(liveMap, prevSlot.slot)) {
+          continue;
+        }
+        const raw = liveMap[prevSlot.slot];
+        if (!raw || typeof raw !== "object" || !raw.name) {
+          delete byRid[prevSlot.rid];
+          continue;
+        }
+        const liveRid = raw.rid;
+        if (typeof liveRid === "string" && liveRid && liveRid !== prevSlot.rid) {
+          delete byRid[prevSlot.rid];
+        }
+      }
+    } else if (prevM && !liveMap) {
+      const keep = /* @__PURE__ */ Object.create(null);
+      for (let i = 0; i < incoming.length; i++) keep[incoming[i].rid] = true;
+      const prevRids = Object.keys(byRid);
+      for (let i = 0; i < prevRids.length; i++) {
+        if (!keep[prevRids[i]]) delete byRid[prevRids[i]];
+      }
+    }
+    for (let i = 0; i < incoming.length; i++) {
+      byRid[incoming[i].rid] = incoming[i];
+    }
+    const ridKeys = Object.keys(byRid);
+    const slots = [];
+    for (let i = 0; i < ridKeys.length; i++) slots.push(byRid[ridKeys[i]]);
+    slots.sort((a, b) => {
+      const an = parseInt(a.slot.replace("trade", ""), 10) || 0;
+      const bn = parseInt(b.slot.replace("trade", ""), 10) || 0;
+      return an - bn;
+    });
+    byName[key] = applyMerchantMeta(
+      prevM,
+      {
+        name: opts.name,
+        level: opts.level,
+        map: opts.map,
+        x: opts.x,
+        y: opts.y,
+        stand: opts.stand,
+        skin: opts.skin
+      },
+      slots,
+      now
+    );
+    const keys = Object.keys(byName);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byName[keys[i]]);
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+  function reconcileLiveOpenStands(prev, entities, now) {
+    var _a, _b;
+    let next = prev;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || !ent.name) continue;
+      const stand = ent.stand;
+      if (stand == null || stand === false || stand === "") continue;
+      const liveSlotMap = ent.slots || null;
+      next = reconcileLiveOpenStand(
+        next,
+        {
+          name: String(ent.name),
+          slots: slotsFromCatalogChar(liveSlotMap),
+          liveSlotMap,
+          level: typeof ent.level === "number" ? ent.level : void 0,
+          map: ent.map != null ? String(ent.map) : void 0,
+          x: (_a = ent.real_x) != null ? _a : ent.x,
+          y: (_b = ent.real_y) != null ? _b : ent.y,
+          stand,
+          skin: ent.skin
+        },
+        now
+      );
+    }
+    return next;
+  }
+  function cachedSlotsAsListings(slots) {
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      const row3 = {
+        slot: s.slot,
+        name: s.name,
+        rid: s.rid,
+        price: s.price,
+        buyOrder: s.buyOrder,
+        lastRefreshedAt: s.lastRefreshedAt
+      };
+      if (s.q != null) row3.q = s.q;
+      if (s.level != null) row3.level = s.level;
+      if (s.p !== void 0) row3.p = s.p;
+      if (s.stat_type != null) row3.stat_type = s.stat_type;
+      out.push(row3);
+    }
+    return out;
+  }
+  function marketCacheContentEqual(a, b) {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i];
+      const y = b[i];
+      if (!y || x.name !== y.name || x.level !== y.level || x.map !== y.map || x.x !== y.x || x.y !== y.y || x.server !== y.server || x.stand !== y.stand || x.afk !== y.afk || x.skin !== y.skin || x.slots.length !== y.slots.length) {
+        return false;
+      }
+      for (let j = 0; j < x.slots.length; j++) {
+        const sx = x.slots[j];
+        const sy = y.slots[j];
+        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+  function liveOpenStandSignature(entities) {
+    const parts = [];
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || !ent.name) continue;
+      const stand = ent.stand;
+      if (stand == null || stand === false || stand === "") continue;
+      const slots = ent.slots || null;
+      const rids = [];
+      if (slots) {
+        const keys = Object.keys(slots);
+        for (let j = 0; j < keys.length; j++) {
+          const k = keys[j];
+          if (k.indexOf("trade") !== 0) continue;
+          const raw = slots[k];
+          if (!raw || typeof raw !== "object") continue;
+          const rid = raw.rid;
+          const price = raw.price;
+          const name = raw.name;
+          if (typeof rid === "string" && rid) {
+            rids.push(
+              k + ":" + rid + ":" + (typeof price === "number" ? price : "") + ":" + (typeof name === "string" ? name : "")
+            );
+          }
+        }
+      }
+      rids.sort();
+      parts.push(String(ent.name).toLowerCase() + "=" + rids.join(","));
+    }
+    parts.sort();
+    return parts.join("|");
+  }
+
+  // src/host/market/merchantDirectory.ts
+  function serverKey(region, ident) {
+    const r = String(region || "");
+    const i = String(ident || "");
+    if (r && i) return r + i;
+    return r || i || "";
+  }
+  function currentServerKey() {
+    return serverKey(getServerRegion(), getServerIdentifier());
+  }
+  function parseServerField(raw) {
+    return String(raw || "");
+  }
+  function standIsOpen(ent) {
+    if (!ent) return false;
+    const s = ent.stand;
+    return s != null && s !== false && s !== "";
+  }
+  function classifyMerchantStatus(opts) {
+    const obs = opts.observing;
+    if (obs && opts.name && obs.name && String(obs.name).toLowerCase() === String(opts.name).toLowerCase()) {
+      return "you";
+    }
+    if (opts.live && isInTradeRange(opts.live, obs || null)) return "inRange";
+    const curMap = String(getCurrentMap() || "");
+    const curSrv = currentServerKey();
+    const mMap = String(opts.map || opts.live && opts.live.map || "");
+    const mSrv = parseServerField(
+      opts.server || (opts.live ? serverKey(
+        opts.live.server_region,
+        opts.live.server_identifier
+      ) : "")
+    );
+    if (opts.live) {
+      if (curMap && mMap && curMap === mMap) return "sameMap";
+      if (mSrv && curSrv && mSrv !== curSrv && !mSrv.startsWith(curSrv) && curSrv.indexOf(mSrv) < 0) {
+        const soft = mSrv.replace(/^SR_/, "") === curSrv || curSrv.replace(/^SR_/, "") === mSrv || mSrv.indexOf(curSrv) >= 0 || curSrv.indexOf(mSrv.replace(/^SR_/, "")) >= 0;
+        if (!soft) return "otherServer";
+      }
+      return "otherMap";
+    }
+    if (mSrv && curSrv) {
+      const soft = mSrv === curSrv || mSrv.replace(/^SR_/, "") === curSrv || curSrv.indexOf(mSrv.replace(/^SR_/, "")) >= 0;
+      if (!soft) return "otherServer";
+    }
+    if (curMap && mMap && curMap === mMap) return "sameMap";
+    if (mMap) return "otherMap";
+    return "catalogOnly";
+  }
+  function findLiveByName(entities, name) {
+    const want = String(name || "").toLowerCase();
+    if (!want) return null;
+    for (let i = 0; i < entities.length; i++) {
+      const e2 = entities[i];
+      if (e2 && e2.name && String(e2.name).toLowerCase() === want) return e2;
+    }
+    return null;
+  }
+  function buildMerchantDirectory(opts) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    const observing = opts.observing !== void 0 ? opts.observing : getObserving();
+    const byName = /* @__PURE__ */ Object.create(null);
+    const upsert = (row3) => {
+      var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
+      const key = row3.name.toLowerCase();
+      const prev = byName[key];
+      if (!prev) {
+        byName[key] = row3;
+        return;
+      }
+      byName[key] = {
+        name: row3.name || prev.name,
+        level: (_a2 = row3.level) != null ? _a2 : prev.level,
+        map: (_b2 = row3.map) != null ? _b2 : prev.map,
+        x: (_c2 = row3.x) != null ? _c2 : prev.x,
+        y: (_d2 = row3.y) != null ? _d2 : prev.y,
+        server: (_e2 = row3.server) != null ? _e2 : prev.server,
+        stand: (_f2 = row3.stand) != null ? _f2 : prev.stand,
+        afk: (_g2 = row3.afk) != null ? _g2 : prev.afk,
+        skin: (_h2 = row3.skin) != null ? _h2 : prev.skin,
+        entityId: (_i2 = row3.entityId) != null ? _i2 : prev.entityId,
+        status: row3.fromLive ? row3.status : prev.fromLive ? prev.status : row3.status,
+        // Cache slots win — live open-stand already reconciled into cache.
+        slots: row3.slots.length ? row3.slots : prev.slots,
+        fromCatalog: prev.fromCatalog || row3.fromCatalog,
+        fromLive: prev.fromLive || row3.fromLive
+      };
+    };
+    for (let i = 0; i < opts.catalogMerchants.length; i++) {
+      const c = opts.catalogMerchants[i];
+      if (!c || !c.name) continue;
+      const live2 = findLiveByName(opts.entities, c.name);
+      const slots = cachedSlotsAsListings(c.slots);
+      const status = classifyMerchantStatus({
+        name: c.name,
+        map: c.map || (live2 && live2.map ? String(live2.map) : void 0),
+        server: c.server,
+        live: live2,
+        observing
+      });
+      upsert({
+        name: c.name,
+        level: c.level,
+        map: live2 && live2.map != null ? String(live2.map) : c.map,
+        x: live2 ? (_b = (_a = live2.real_x) != null ? _a : live2.x) != null ? _b : c.x : c.x,
+        y: live2 ? (_d = (_c = live2.real_y) != null ? _c : live2.y) != null ? _d : c.y : c.y,
+        server: c.server,
+        stand: live2 ? (_e = live2.stand) != null ? _e : c.stand : c.stand,
+        afk: c.afk,
+        skin: c.skin,
+        entityId: live2 && live2.id != null ? String(live2.id) : void 0,
+        status,
+        slots,
+        fromCatalog: true,
+        fromLive: !!live2
+      });
+    }
+    for (let i = 0; i < opts.entities.length; i++) {
+      const ent = opts.entities[i];
+      if (!ent || !ent.name) continue;
+      const key = String(ent.name).toLowerCase();
+      if (byName[key]) {
+        const prev = byName[key];
+        byName[key] = {
+          ...prev,
+          entityId: ent.id != null ? String(ent.id) : prev.entityId,
+          map: ent.map != null ? String(ent.map) : prev.map,
+          x: (_g = (_f = ent.real_x) != null ? _f : ent.x) != null ? _g : prev.x,
+          y: (_i = (_h = ent.real_y) != null ? _h : ent.y) != null ? _i : prev.y,
+          stand: (_j = ent.stand) != null ? _j : prev.stand,
+          fromLive: true,
+          status: classifyMerchantStatus({
+            name: String(ent.name),
+            map: ent.map != null ? String(ent.map) : prev.map,
+            server: prev.server,
+            live: ent,
+            observing
+          })
+        };
+        continue;
+      }
+      const open = standIsOpen(ent);
+      const liveSlots = slotsFromCatalogChar(
+        ent.slots || null
+      );
+      if (!liveSlots.length && !open) continue;
+      const status = classifyMerchantStatus({
+        name: String(ent.name),
+        map: ent.map != null ? String(ent.map) : void 0,
+        live: ent,
+        observing
+      });
+      upsert({
+        name: String(ent.name),
+        level: typeof ent.level === "number" ? ent.level : void 0,
+        map: ent.map != null ? String(ent.map) : void 0,
+        x: (_k = ent.real_x) != null ? _k : ent.x,
+        y: (_l = ent.real_y) != null ? _l : ent.y,
+        stand: ent.stand,
+        entityId: ent.id != null ? String(ent.id) : void 0,
+        status,
+        slots: liveSlots,
+        fromCatalog: false,
+        fromLive: true
+      });
+    }
+    const names = Object.keys(byName);
+    const out = [];
+    for (let i = 0; i < names.length; i++) {
+      out.push(byName[names[i]]);
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+  function flattenListings(merchants) {
+    const out = [];
+    for (let i = 0; i < merchants.length; i++) {
+      const m = merchants[i];
+      const standOpen = m.stand != null && m.stand !== false && m.stand !== "";
+      for (let j = 0; j < m.slots.length; j++) {
+        const s = m.slots[j];
+        out.push({
+          ...s,
+          merchant: m.name,
+          merchantStatus: m.status,
+          map: m.map,
+          x: m.x,
+          y: m.y,
+          server: m.server,
+          standOpen,
+          catalogOnly: m.fromCatalog && !m.fromLive,
+          fromLive: !!m.fromLive
+        });
+      }
+    }
+    return out;
+  }
+
+  // src/host/market/marketPersist.ts
+  var DB_NAME3 = "ecu-market-cache";
+  var DB_VER3 = 1;
+  var STORE2 = "catalogs";
+  var RECORD_VERSION2 = 1;
+  var PERSIST_DEBOUNCE_MS2 = 400;
+  var dbPromise3 = null;
+  var persistTimer2 = 0;
+  var pendingMerchants = null;
+  function openDb3() {
+    if (dbPromise3) return dbPromise3;
+    dbPromise3 = new Promise((resolve) => {
+      if (typeof indexedDB === "undefined") {
+        resolve(null);
+        return;
+      }
+      const req = indexedDB.open(DB_NAME3, DB_VER3);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE2)) {
+          db.createObjectStore(STORE2, { keyPath: "accountKey" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    return dbPromise3;
+  }
+  function reqToPromise3(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function marketAccountKey() {
+    const w = window;
+    if (w.user_id != null && String(w.user_id) !== "") {
+      return "u:" + String(w.user_id);
+    }
+    const chars = w.X && w.X.characters;
+    if (Array.isArray(chars) && chars.length) {
+      const names = [];
+      for (let i = 0; i < chars.length; i++) {
+        const n = chars[i] && chars[i].name;
+        if (n) names.push(String(n));
+      }
+      names.sort();
+      if (names.length) return "chars:" + names.join(",");
+    }
+    return "default";
+  }
+  function isCachedMerchant(raw) {
+    if (!raw || typeof raw !== "object") return false;
+    const m = raw;
+    if (typeof m.name !== "string" || !m.name) return false;
+    if (!Array.isArray(m.slots)) return false;
+    return true;
+  }
+  async function loadMarketCacheRecord(accountKey) {
+    try {
+      const db = await openDb3();
+      if (!db) return null;
+      const tx = db.transaction(STORE2, "readonly");
+      const store = tx.objectStore(STORE2);
+      const row3 = await reqToPromise3(
+        store.get(accountKey)
+      );
+      if (!row3 || row3.version !== RECORD_VERSION2) return null;
+      if (!Array.isArray(row3.merchants)) return null;
+      const merchants = [];
+      for (let i = 0; i < row3.merchants.length; i++) {
+        if (isCachedMerchant(row3.merchants[i])) merchants.push(row3.merchants[i]);
+      }
+      return {
+        accountKey: row3.accountKey,
+        version: RECORD_VERSION2,
+        savedAt: row3.savedAt || 0,
+        merchants
+      };
+    } catch (e2) {
+      return null;
+    }
+  }
+  async function saveMarketCacheRecord(record) {
+    try {
+      const db = await openDb3();
+      if (!db) return;
+      const tx = db.transaction(STORE2, "readwrite");
+      const store = tx.objectStore(STORE2);
+      await reqToPromise3(store.put(record));
+    } catch (e2) {
+    }
+  }
+  function schedulePersistMarketCache(merchants) {
+    if (typeof window === "undefined") return;
+    pendingMerchants = merchants;
+    if (persistTimer2) window.clearTimeout(persistTimer2);
+    persistTimer2 = window.setTimeout(() => {
+      persistTimer2 = 0;
+      const list = pendingMerchants;
+      pendingMerchants = null;
+      if (!list) return;
+      void saveMarketCacheRecord({
+        accountKey: marketAccountKey(),
+        version: RECORD_VERSION2,
+        savedAt: Date.now(),
+        merchants: list
+      });
+    }, PERSIST_DEBOUNCE_MS2);
+  }
+  async function hydrateMarketCacheFromIdb() {
+    const rec = await loadMarketCacheRecord(marketAccountKey());
+    if (!rec) return [];
+    return rec.merchants;
+  }
+
+  // src/host/commToast.ts
+  var TOAST_CLASS = "ecu-mail-toast";
+  var hideTimer = null;
+  function showCommToast(message, ms = 3200) {
+    if (typeof document === "undefined") return;
+    const text = String(message || "").trim();
+    if (!text) return;
+    let el = document.querySelector("." + TOAST_CLASS);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = TOAST_CLASS;
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-on");
+    if (hideTimer != null) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      el && el.classList.remove("is-on");
+      hideTimer = null;
+    }, Math.max(800, ms));
+  }
+
+  // src/host/market/marketTravel.ts
+  var pending = null;
+  var pollTimer2 = null;
+  var listeners10 = [];
+  function notify5() {
+    for (let i = 0; i < listeners10.length; i++) {
+      listeners10[i](pending);
+    }
+  }
+  function subscribeMarketTravel(fn) {
+    listeners10.push(fn);
+    return () => {
+      const idx = listeners10.indexOf(fn);
+      if (idx >= 0) listeners10.splice(idx, 1);
+    };
+  }
+  function cancelMarketTravel(reason) {
+    if (pollTimer2) {
+      clearInterval(pollTimer2);
+      pollTimer2 = null;
+    }
+    if (pending) {
+      pending = { ...pending, phase: "cancel" };
+      notify5();
+      if (reason) showCommToast(reason);
+    }
+    pending = null;
+    notify5();
+  }
+  function currentServerKey2() {
+    const r = String(getServerRegion() || "");
+    const i = String(getServerIdentifier() || "");
+    return r && i ? r + i : r || i;
+  }
+  function targetServerKey(it) {
+    const r = String(it.region || "");
+    const i = String(it.identifier || "");
+    if (r && i) return r + i;
+    return "";
+  }
+  function emitMove(it) {
+    const code = `smart_move({ map: ${JSON.stringify(it.map)}, x: ${it.x}, y: ${it.y} })`;
+    return emitObserverCommand(code, "market-travel");
+  }
+  function emitServerHop(it) {
+    if (!it.region || !it.identifier) return false;
+    const code = `change_server(${JSON.stringify(it.region)}, ${JSON.stringify(it.identifier)})`;
+    return emitObserverCommand(code, "market-travel-server");
+  }
+  function parseCatalogServer(server) {
+    const raw = String(server || "");
+    const m = /^SR_([A-Z]+)([IVX0-9]+)$/i.exec(raw.replace(/\s+/g, ""));
+    if (m) return { region: m[1].toUpperCase(), identifier: m[2].toUpperCase() };
+    const parts = raw.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return { region: parts[0], identifier: parts.slice(1).join("") };
+    }
+    return {};
+  }
+  function startMarketTravel(opts) {
+    if (!getObserving()) {
+      showCommToast("Observe a character first");
+      return false;
+    }
+    if (!opts.map || !Number.isFinite(opts.x) || !Number.isFinite(opts.y)) {
+      showCommToast("Missing travel destination");
+      return false;
+    }
+    cancelMarketTravel();
+    const parsed = parseCatalogServer(opts.server);
+    const it = {
+      name: opts.name,
+      map: opts.map,
+      x: opts.x,
+      y: opts.y,
+      region: opts.region || parsed.region,
+      identifier: opts.identifier || parsed.identifier,
+      phase: "idle",
+      startedAt: Date.now()
+    };
+    const want = targetServerKey(it);
+    const here = currentServerKey2();
+    if (want && here && want !== here) {
+      it.phase = "server";
+      pending = it;
+      notify5();
+      if (!emitServerHop(it)) {
+        cancelMarketTravel("No socket \u2014 cannot change server");
+        return false;
+      }
+      showCommToast(`Travel: hopping to ${want}\u2026`);
+      pollTimer2 = setInterval(() => {
+        tickMarketTravel();
+      }, 500);
+      return true;
+    }
+    it.phase = "move";
+    pending = it;
+    notify5();
+    if (!emitMove(it)) {
+      cancelMarketTravel("No socket \u2014 cannot smart_move");
+      return false;
+    }
+    showCommToast(`Travel: moving to ${it.name}\u2026`);
+    pollTimer2 = setInterval(() => {
+      tickMarketTravel();
+    }, 800);
+    return true;
+  }
+  function tickMarketTravel() {
+    if (!pending) return;
+    const it = pending;
+    const age = Date.now() - it.startedAt;
+    if (age > 12e4) {
+      cancelMarketTravel("Travel timed out");
+      return;
+    }
+    if (it.phase === "server") {
+      const want = targetServerKey(it);
+      const here = currentServerKey2();
+      if (want && here && (here === want || here.indexOf(want) >= 0)) {
+        it.phase = "move";
+        pending = { ...it };
+        notify5();
+        if (!emitMove(it)) {
+          cancelMarketTravel("No socket \u2014 cannot smart_move");
+          return;
+        }
+        showCommToast(`Travel: moving to ${it.name}\u2026`);
+      }
+      return;
+    }
+    if (it.phase === "move" && age > 45e3) {
+      pending = { ...it, phase: "done" };
+      notify5();
+      if (pollTimer2) {
+        clearInterval(pollTimer2);
+        pollTimer2 = null;
+      }
+      pending = null;
+      notify5();
+    }
+  }
+
+  // src/lib/itemStack.ts
+  function stackLimitForName(name) {
+    var _a, _b;
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const stack = (_b = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[name]) == null ? void 0 : _b.s;
+    if (!stack) return null;
+    return stack === true ? 9999 : Number(stack);
+  }
+  function canStackItems(a, b, extraQty = 0, options) {
+    var _a, _b;
+    if (!a || !b || !a.name || !b.name) return false;
+    const limit = stackLimitForName(a.name);
+    if (limit == null) return false;
+    if (a.name !== b.name) return false;
+    const aq = (_a = a.q) != null ? _a : 1;
+    const bq = (_b = b.q) != null ? _b : 1;
+    if (aq + bq + extraQty > limit) return false;
+    if ((a.p || b.p) && a.p !== b.p) return false;
+    if (a.name === "cxjar" && a.data !== b.data) return false;
+    if (!(options == null ? void 0 : options.ignorePvp)) {
+      if (a.v && !b.v || !a.v && b.v) return false;
+    }
+    if (a.l || b.l || a.b || b.b) return false;
+    return true;
+  }
+
+  // src/lib/standTradeSlotMemory.ts
+  var byEntity = /* @__PURE__ */ new Map();
+  var epoch = 0;
+  function isStandExtraTradeSlot(name) {
+    if (name.indexOf("trade") !== 0) return false;
+    const num = parseInt(name.replace("trade", ""), 10);
+    return Number.isFinite(num) && num >= 5;
+  }
+  function cloneSlot(slot) {
+    if (!slot) return null;
+    return Object.assign({}, slot);
+  }
+  function bumpEpoch() {
+    epoch += 1;
+  }
+  function slotFilled(slot) {
+    return !!(slot && slot.name);
+  }
+  function countFilledTradeExtras(map) {
+    const keys = Object.keys(map);
+    let n = 0;
+    for (let i = 0; i < keys.length; i++) {
+      if (isStandExtraTradeSlot(keys[i]) && slotFilled(map[keys[i]])) n += 1;
+    }
+    return n;
+  }
+  function rememberStandTradeSlots(entityId, slots) {
+    if (!entityId || !slots) return;
+    const snap = {};
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (!isStandExtraTradeSlot(k)) continue;
+      snap[k] = cloneSlot(slots[k]);
+    }
+    const prev = byEntity.get(entityId) || null;
+    if (prev && countFilledTradeExtras(snap) < countFilledTradeExtras(prev)) {
+      return;
+    }
+    let changed = false;
+    if (!prev) {
+      changed = Object.keys(snap).length > 0;
+    } else {
+      const prevKeys = Object.keys(prev);
+      const snapKeys = Object.keys(snap);
+      if (prevKeys.length !== snapKeys.length) changed = true;
+      else {
+        for (let i = 0; i < snapKeys.length; i++) {
+          const k = snapKeys[i];
+          const a = prev[k];
+          const b = snap[k];
+          if (!a && !b) continue;
+          if (!a || !b || a.name !== b.name || a.price !== b.price || a.q !== b.q || a.rid !== b.rid) {
+            changed = true;
+            break;
+          }
+        }
+      }
+    }
+    byEntity.set(entityId, snap);
+    if (changed) bumpEpoch();
+  }
+  function forgetStandTradeSlot(entityId, slotName) {
+    if (!entityId || !isStandExtraTradeSlot(slotName)) return;
+    const snap = byEntity.get(entityId);
+    if (!snap || !Object.prototype.hasOwnProperty.call(snap, slotName)) return;
+    delete snap[slotName];
+    bumpEpoch();
+  }
+  function mergeStandTradeSlotsForUi(entityId, slots, standOpen) {
+    if (!slots) return slots;
+    if (standOpen) {
+      rememberStandTradeSlots(entityId, slots);
+      return slots;
+    }
+    const snap = byEntity.get(entityId);
+    if (!snap) return slots;
+    const out = Object.assign({}, slots);
+    const keys = Object.keys(snap);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (Object.prototype.hasOwnProperty.call(out, k)) continue;
+      out[k] = cloneSlot(snap[k]);
+    }
+    return out;
+  }
+  function isHiddenStandTradeListing(slotName, slotListing, liveSlots) {
+    if (!(slotListing == null ? void 0 : slotListing.name) || !isStandExtraTradeSlot(slotName)) return false;
+    const live2 = liveSlots == null ? void 0 : liveSlots[slotName];
+    return !(live2 == null ? void 0 : live2.name);
+  }
+  function shouldSkipLiveTradeSlotGuard(slotName, slotListing, liveSlots) {
+    return isHiddenStandTradeListing(slotName, slotListing, liveSlots);
+  }
+  function canRepriceTradeSlot(slotName, slotListing, liveSlots, standOpen) {
+    if (!(slotListing == null ? void 0 : slotListing.name)) return false;
+    if (isHiddenStandTradeListing(slotName, slotListing, liveSlots) && !standOpen) {
+      return false;
+    }
+    return true;
+  }
+
+  // src/lib/tradeSlots.ts
+  function isTradeSlot(slotName) {
+    return String(slotName || "").indexOf("trade") === 0;
+  }
+  function formatTradeSlotLabel(slotName) {
+    const num = parseInt(String(slotName).replace("trade", ""), 10);
+    if (Number.isFinite(num) && num > 0) return `Trade ${num}`;
+    return slotName;
+  }
+  function hasTradeRowKey(slots) {
+    return Object.prototype.hasOwnProperty.call(slots, "trade1");
+  }
+  function tradeRowVisible(slots, entity) {
+    if (!slots) return false;
+    if (entity && entity.stand) return true;
+    if (hasTradeRowKey(slots)) return true;
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf("trade") === 0 && slots[keys[i]]) return true;
+    }
+    return false;
+  }
+  var PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
+  function isMerchantClass(entity) {
+    const id = entity.id != null ? String(entity.id) : void 0;
+    const resolved = resolvePlayerCtype(id, entity);
+    if (resolved === "merchant") return true;
+    const cls = String(entity.ctype || entity.type || "").toLowerCase();
+    return cls === "merchant";
+  }
+  function maxTradeSlotIndex(slots) {
+    if (!slots) return 0;
+    const keys = Object.keys(slots);
+    let max = 0;
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k.indexOf("trade") !== 0) continue;
+      const n = parseInt(k.replace("trade", ""), 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    return max;
+  }
+  function resolveEntityLevel(entity) {
+    const raw = entity.level;
+    if (raw != null && Number.isFinite(Number(raw))) {
+      const n = Number(raw) | 0;
+      if (n > 0) return n;
+    }
+    if (typeof window === "undefined") return 0;
+    if (typeof window === "undefined") return 0;
+    const id = entity.id != null ? String(entity.id) : "";
+    const obs = window.observing;
+    if (id && obs && (String(obs.id) === id || entity.name != null && obs.name != null && String(entity.name) === String(obs.name))) {
+      if (obs.level != null && Number.isFinite(Number(obs.level))) {
+        return Number(obs.level) | 0;
+      }
+    }
+    const character = window.character;
+    if (id && character && (String(character.id) === id || entity.name != null && character.name != null && String(entity.name) === String(character.name))) {
+      if (character.level != null && Number.isFinite(Number(character.level))) {
+        return Number(character.level) | 0;
+      }
+    }
+    return 0;
+  }
+  function merchantStandCapacity(entity, slots) {
+    if (!entity) return 0;
+    const level = resolveEntityLevel(entity);
+    const stand = entity.stand ? String(entity.stand) : "";
+    const fromKeys = maxTradeSlotIndex(slots);
+    const merchant = isMerchantClass(entity);
+    if (!merchant && !stand) {
+      return fromKeys >= 5 ? fromKeys : 0;
+    }
+    let tier = 16;
+    if (merchant && level >= 80) tier = 30;
+    else if (merchant && (level >= 70 || stand === "cstand")) tier = 24;
+    else if (stand === "cstand") tier = 24;
+    if (fromKeys > tier) tier = fromKeys;
+    return tier;
+  }
+  function standTradeSlotCount(entity) {
+    if (!entity || !entity.stand) return 0;
+    return merchantStandCapacity(entity, entity.slots);
+  }
+  function allMerchantStandSlotNames(entity, slots) {
+    const n = merchantStandCapacity(entity, slots != null ? slots : entity == null ? void 0 : entity.slots);
+    const names = [];
+    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
+    return names;
+  }
+  function allStandTradeSlotNames(entity) {
+    const n = standTradeSlotCount(entity);
+    if (n <= 0) return [];
+    const names = [];
+    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
+    return names;
+  }
+  function personalTradeSlotNames(slots, entity, gearEditable) {
+    if (gearEditable) return PERSONAL_TRADE_SLOTS.slice();
+    if (!slots) return [];
+    if (entity && entity.stand) return PERSONAL_TRADE_SLOTS.slice();
+    if (hasTradeRowKey(slots)) return PERSONAL_TRADE_SLOTS.slice();
+    const keys = Object.keys(slots);
+    const filled = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k.indexOf("trade") !== 0) continue;
+      const num = parseInt(k.replace("trade", ""), 10);
+      if (num >= 1 && num <= 4 && slots[k]) filled.push(k);
+    }
+    filled.sort((a, b) => {
+      const na = parseInt(a.replace("trade", ""), 10) || 0;
+      const nb = parseInt(b.replace("trade", ""), 10) || 0;
+      return na - nb;
+    });
+    return filled.length ? PERSONAL_TRADE_SLOTS.slice() : [];
+  }
+  function merchantStandSlotNames(slots, entity, compact, excludePersonal = false) {
+    if (!entity || !slots) return [];
+    const all = allMerchantStandSlotNames(entity, slots);
+    const candidates = excludePersonal ? all.slice(4) : all;
+    return compactTradeSlotNames(candidates, slots, compact);
+  }
+  function tradeSlotNames(slots, entity, options) {
+    if (!slots) return [];
+    if ((options == null ? void 0 : options.editPersonalRow) && !(entity && entity.stand)) {
+      return PERSONAL_TRADE_SLOTS.slice();
+    }
+    if (!tradeRowVisible(slots, entity)) return [];
+    const keys = Object.keys(slots);
+    const tradeKeys = [];
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i].indexOf("trade") === 0) tradeKeys.push(keys[i]);
+    }
+    tradeKeys.sort((a, b) => {
+      const na = parseInt(a.replace("trade", ""), 10) || 0;
+      const nb = parseInt(b.replace("trade", ""), 10) || 0;
+      return na - nb;
+    });
+    if (entity && entity.stand && tradeKeys.length > 0) return tradeKeys;
+    if (hasTradeRowKey(slots)) {
+      return PERSONAL_TRADE_SLOTS.slice();
+    }
+    return tradeKeys;
+  }
+  function observingTradeSlotNames() {
+    const obs = window.observing;
+    if (!obs || !obs.slots) return [];
+    if (obs.stand) return allStandTradeSlotNames(obs);
+    return tradeSlotNames(obs.slots, obs, { editPersonalRow: true });
+  }
+  function tradeSlotIsEmpty(slots, slotName) {
+    if (!slots) return true;
+    const slot = slots[slotName];
+    return !slot || !slot.name;
+  }
+  function compactTradeSlotNames(candidateNames, slots, compact) {
+    if (!compact || !slots) return candidateNames.slice();
+    const filled = [];
+    let firstEmpty = null;
+    for (let i = 0; i < candidateNames.length; i++) {
+      const name = candidateNames[i];
+      if (!tradeSlotIsEmpty(slots, name)) filled.push(name);
+      else if (!firstEmpty) firstEmpty = name;
+    }
+    if (firstEmpty) filled.push(firstEmpty);
+    return filled;
+  }
+
+  // src/host/gearCommands.ts
+  function lit2(value) {
+    return JSON.stringify(String(value));
+  }
+  function fingerprintCheckJs2(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit2(fp.name)}`];
+    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
+    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit2(fp.p)}`);
+    return parts.join("||");
+  }
+  function resolveInvSlotJs(fp) {
+    const preferSlot = Number(fp.slot) | 0;
+    const mismatch = fingerprintCheckJs2(fp, "it");
+    const candMismatch = fingerprintCheckJs2(fp, "__cand");
+    return [
+      `var __slot=${preferSlot};`,
+      `var it=character.items[__slot];`,
+      `if(${mismatch}){`,
+      `__slot=-1;`,
+      `for(var __si=0;__si<character.items.length;__si++){`,
+      `var __cand=character.items[__si];`,
+      `if(!(${candMismatch})){__slot=__si;break;}`,
+      `}`,
+      `if(__slot<0){game_log(${JSON.stringify(commLogText("gear \xB7 item mismatch"))});return;}`,
+      `it=character.items[__slot];`,
+      `}`
+    ].join("");
+  }
+  function scheduleBagRefresh() {
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+  }
+  function buildEquipScript(fp, gearSlot) {
+    const slot = gearSlot ? String(gearSlot).trim() : "";
+    const slotArg = slot ? `,${lit2(slot)}` : "";
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        `try{await equip(__slot${slotArg});}catch(__e){`,
+        `game_log(${lit2("Equip failed" + (slot ? " \u2192 " + slot : ""))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildUnequipScript(gearSlot, options) {
+    const slot = String(gearSlot || "").trim();
+    if (!slot) {
+      return wrapCommandScript(`game_log("Unequip aborted \u2014 no slot");`);
+    }
+    if (slot === "elixir") {
+      return wrapCommandScript(`game_log("Cannot unequip elixir");`);
+    }
+    const guard = (options == null ? void 0 : options.skipSlotGuard) ? "" : `if(!character.slots[${lit2(slot)}]){game_log(${lit2("Unequip failed \u2014 slot empty")});return;}`;
+    return wrapCommandScript(
+      [
+        guard,
+        `try{await unequip(${lit2(slot)});}catch(__e){`,
+        `game_log(${lit2("Unequip failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildInvSwapScript(fromSlot, toSlot) {
+    const from = Number(fromSlot) | 0;
+    const to = Number(toSlot) | 0;
+    return wrapCommandScript(
+      [
+        `if(${from}<0||${to}<0||${from}>=character.items.length||${to}>=character.items.length){`,
+        `game_log("Swap aborted \u2014 invalid slot");return;}`,
+        `try{await swap(${to},${from});}catch(__e){`,
+        `game_log("Swap failed \u2192 "+${from}+"\u2194"+${to});`,
+        `}`
+      ].join("")
+    );
+  }
+  function patchObservingAfterInvMove(fromSlot, toSlot) {
+    var _a, _b;
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return;
+    const from = Number(fromSlot) | 0;
+    const to = Number(toSlot) | 0;
+    if (from < 0 || to < 0 || from >= obs.items.length || to >= obs.items.length) {
+      return;
+    }
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const itemLo = obs.items[lo];
+    const itemHi = obs.items[hi];
+    if (canStackItems(itemLo, itemHi)) {
+      const combinedQ = ((_a = itemLo == null ? void 0 : itemLo.q) != null ? _a : 1) + ((_b = itemHi == null ? void 0 : itemHi.q) != null ? _b : 1);
+      const targetItem = obs.items[to];
+      if (targetItem) targetItem.q = combinedQ;
+      obs.items[from] = null;
+    } else {
+      const tmp = obs.items[lo];
+      obs.items[lo] = obs.items[hi];
+      obs.items[hi] = tmp;
+    }
+    try {
+      if (typeof window.render_inventory === "function") {
+        window.render_inventory(true);
+      }
+    } catch (e2) {
+    }
+  }
+  function equipCommand(fp, gearSlot) {
+    const script = buildEquipScript(fp, gearSlot);
+    const ok = emitObserverCommand(
+      script,
+      `equip ${gearSlot || fp.name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh();
+    return true;
+  }
+  function unequipCommand(gearSlot, options) {
+    const obs = window.observing;
+    const skipSlotGuard = shouldSkipLiveTradeSlotGuard(
+      gearSlot,
+      options == null ? void 0 : options.slotListing,
+      obs == null ? void 0 : obs.slots
+    );
+    const script = buildUnequipScript(gearSlot, { skipSlotGuard });
+    const ok = emitObserverCommand(script, `unequip ${gearSlot}`);
+    if (!ok) return false;
+    if (isTradeSlot(gearSlot)) {
+      const id = obs && obs.id != null ? String(obs.id) : "";
+      if (id) forgetStandTradeSlot(id, gearSlot);
+    }
+    scheduleBagRefresh();
+    return true;
+  }
+  function invSwapCommand(a, b) {
+    const script = buildInvSwapScript(a, b);
+    const ok = emitObserverCommand(script, `inv-swap ${a}\u2194${b}`);
+    if (!ok) return false;
+    patchObservingAfterInvMove(a, b);
+    scheduleBagRefresh();
+    return true;
+  }
+
+  // src/lib/tradeItemPricing.ts
+  function calculateItemValue(itemName, level) {
+    const calc = window.calculate_item_value;
+    if (typeof calc !== "function") return null;
+    const probe = { name: itemName };
+    if (level != null && level > 0) probe.level = level;
+    const v = Number(calc(probe));
+    if (!Number.isFinite(v) || v <= 0) return null;
+    return v | 0;
+  }
+  function vendorGoldPrice(itemName, level) {
+    const name = String(itemName || "").trim();
+    if (!name) return null;
+    const G = getG();
+    const def = G && G.items && G.items[name];
+    if (!def) return null;
+    const baseG = Number(def.g);
+    if (level != null && level > 0) {
+      const computed = calculateItemValue(name, level);
+      if (computed != null && computed > 0) return computed;
+    }
+    if (Number.isFinite(baseG) && baseG > 0) return baseG | 0;
+    return null;
+  }
+  function tradeTaxRateFromLevel(level) {
+    const lv = Number(level);
+    if (!Number.isFinite(lv)) return 0.05;
+    if (lv > 80) return 0.01;
+    if (lv > 70) return 0.02;
+    if (lv > 60) return 0.025;
+    if (lv > 50) return 0.03;
+    if (lv > 20) return 0.04;
+    return 0.05;
+  }
+  function resolveTradeTaxRate(entity) {
+    var _a;
+    const obs = (_a = entity != null ? entity : getObserving()) != null ? _a : window.observing;
+    if (obs && typeof obs.tax === "number" && obs.tax >= 0 && obs.tax < 1) {
+      return obs.tax;
+    }
+    return tradeTaxRateFromLevel(obs == null ? void 0 : obs.level);
+  }
+  function tradeSaleNetGold(listPrice, taxRate) {
+    const price = Number(listPrice) | 0;
+    if (!(price > 0)) return 0;
+    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
+    return Math.round(price * (1 - tax));
+  }
+  function minListPriceForNetGold(netGold, taxRate) {
+    const want = Number(netGold) | 0;
+    if (!(want > 0)) return 1;
+    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
+    if (!(tax > 0)) return want;
+    let price = Math.ceil(want / (1 - tax));
+    while (price > 1 && tradeSaleNetGold(price - 1, tax) >= want) price -= 1;
+    while (price > 0 && tradeSaleNetGold(price, tax) < want) price += 1;
+    return price;
+  }
+  function vendorListFloorPrice(itemName, options) {
+    const vendor = vendorGoldPrice(itemName, options == null ? void 0 : options.level);
+    if (vendor == null || !(vendor > 0)) return null;
+    const tax = resolveTradeTaxRate(options == null ? void 0 : options.observer);
+    return minListPriceForNetGold(vendor, tax);
+  }
+  function nearbyMapSellPricesForItem(itemName, observer, options) {
+    var _a;
+    const name = String(itemName || "").trim();
+    if (!name) return [];
+    const obs = observer != null ? observer : window.observing;
+    if (!obs) return [];
+    const obsId = obs.id != null ? String(obs.id) : "";
+    const wantLevel = options == null ? void 0 : options.level;
+    const max = (options == null ? void 0 : options.max) != null ? Math.max(1, options.max | 0) : 12;
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    const entities = getEntitiesList();
+    for (let ei = 0; ei < entities.length; ei++) {
+      const ent = entities[ei];
+      if (!ent || !ent.slots) continue;
+      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
+      if (!isInTradeRange(ent, obs)) continue;
+      const seller = ent.name != null ? String(ent.name) : String((_a = ent.id) != null ? _a : "player");
+      const keys = Object.keys(ent.slots);
+      for (let si = 0; si < keys.length; si++) {
+        const k = keys[si];
+        if (k.indexOf("trade") !== 0) continue;
+        const listing = ent.slots[k];
+        if (!listing || !listing.name || listing.name !== name) continue;
+        if (listing.b) continue;
+        if (isGiveawayListing(listing)) continue;
+        if (wantLevel != null && listing.level != null && listing.level !== wantLevel) {
+          continue;
+        }
+        const price = Number(listing.price) | 0;
+        if (!(price > 0) || seen.has(price)) continue;
+        seen.add(price);
+        out.push({
+          price,
+          seller,
+          level: listing.level
+        });
+      }
+    }
+    out.sort((a, b) => a.price - b.price);
+    return out.slice(0, max);
+  }
+  function formatNearbySellLine(listing) {
+    const price = formatTradeGold(listing.price);
+    const who = listing.seller.length > 10 ? listing.seller.slice(0, 9) + "\u2026" : listing.seller;
+    return `${who} \xB7 ${price}g`;
+  }
+
+  // src/lib/tradePriceMemory.ts
+  var STORAGE_KEY = "ecu-trade-price-memory";
+  function readMap() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e2) {
+      return {};
+    }
+  }
+  function writeMap(map) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    } catch (e2) {
+    }
+  }
+  function recallTradePrice(itemName) {
+    const key = String(itemName || "").trim();
+    if (!key) return null;
+    const entry = readMap()[key];
+    if (!entry || !(entry.price > 0)) return null;
+    return entry;
+  }
+  function rememberTradePrice(itemName, price, q) {
+    const key = String(itemName || "").trim();
+    if (!key || !(price > 0)) return;
+    const map = readMap();
+    map[key] = { price: price | 0, q: q != null && q > 0 ? q | 0 : void 0 };
+    writeMap(map);
+  }
+  function formatGold(n) {
+    const v = Number(n) | 0;
+    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+    if (v >= 1e4) return `${Math.round(v / 1e3)}k`;
+    return String(v);
+  }
+  function nearbyTradePricesForItem(itemName, slots) {
+    const name = String(itemName || "").trim();
+    if (!name || !slots) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const slot = slots[keys[i]];
+      if (!slot || slot.name !== name) continue;
+      const price = Number(slot.price) | 0;
+      if (!(price > 0) || seen.has(price)) continue;
+      seen.add(price);
+      out.push(price);
+    }
+    out.sort((a, b) => a - b);
+    return out;
+  }
+  function tradePriceSuggestions(itemName, options) {
+    var _a;
+    const name = String(itemName || "").trim();
+    if (!name) return [];
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (label, price, kind) => {
+      const p = Number(price) | 0;
+      if (!(p > 0) || seen.has(p)) return;
+      seen.add(p);
+      out.push({ label, price: p, kind });
+    };
+    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
+    const vendorNet = vendorGoldPrice(name, options == null ? void 0 : options.level);
+    const vendorFloor = vendorListFloorPrice(name, {
+      level: options == null ? void 0 : options.level,
+      observer
+    });
+    if (vendorFloor != null && vendorNet != null) {
+      const tax = resolveTradeTaxRate(observer);
+      const taxPct = Math.round(tax * 100);
+      const netLabel = formatGold(vendorNet);
+      push(
+        `Vendor \xB7 ${formatGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
+        vendorFloor,
+        "vendor"
+      );
+    }
+    const mem = recallTradePrice(name);
+    if (mem) push(`Last \xB7 ${formatGold(mem.price)}g`, mem.price, "last");
+    const current = options == null ? void 0 : options.currentPrice;
+    if (current != null && Number(current) > 0) {
+      push(`Current \xB7 ${formatGold(current)}g`, Number(current), "current");
+    }
+    const yours = nearbyTradePricesForItem(name, options == null ? void 0 : options.slots);
+    for (let i = 0; i < yours.length; i++) {
+      push(`Yours \xB7 ${formatGold(yours[i])}g`, yours[i], "yours");
+    }
+    const nearbyMap = nearbyMapSellPricesForItem(name, observer, {
+      level: options == null ? void 0 : options.level
+    });
+    for (let i = 0; i < nearbyMap.length; i++) {
+      const row3 = nearbyMap[i];
+      push(formatNearbySellLine(row3), row3.price, "nearby");
+    }
+    if (nearbyMap.length > 0) {
+      const low = nearbyMap[0].price;
+      const undercut = Math.max(1, low - 1);
+      if (!seen.has(undercut)) {
+        push(`Undercut \xB7 ${formatGold(undercut)}g`, undercut, "undercut");
+      }
+    }
+    return out.slice(0, 12);
+  }
+  function defaultTradePriceNumber(itemName, options) {
+    var _a;
+    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
+    const vendorFloor = vendorListFloorPrice(itemName, {
+      level: options == null ? void 0 : options.level,
+      observer
+    });
+    const floor = vendorFloor != null && vendorFloor > 0 ? vendorFloor : 1;
+    const suggestions = tradePriceSuggestions(itemName, { ...options, observer });
+    for (let i = 0; i < suggestions.length; i++) {
+      const sug = suggestions[i];
+      if (sug.kind === "vendor") continue;
+      if (sug.price >= floor) return sug.price;
+    }
+    return floor;
+  }
+  function parseTradeGoldInput(raw) {
+    const trimmed = String(raw != null ? raw : "").trim().replace(/,/g, "");
+    if (!trimmed) return null;
+    const n = parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n | 0;
+  }
+
+  // src/host/tradeCommands.ts
+  function lit3(value) {
+    return JSON.stringify(String(value));
+  }
+  function commLit(message) {
+    return lit3(commLogText(message));
+  }
+  function tradeRowOpenJs() {
+    return `(character.slots&&character.slots.trade1!==undefined)`;
+  }
+  function tradeShowEmitJs() {
+    return `var __sock=get_socket();if(__sock)__sock.emit("trade",{event:"show"});`;
+  }
+  function socketEmitJs(event, payloadExpr) {
+    return [
+      `var __sock=get_socket();`,
+      `if(!__sock){game_log(${commLit("trade \xB7 no socket")});return;}`,
+      `__sock.emit(${lit3(event)},${payloadExpr});`
+    ].join("");
+  }
+  function tradeSlotOccupiedGuardJs(slotExpr, failMessage) {
+    return [
+      `var __ts=${slotExpr};`,
+      `var __occ=character.slots&&character.slots[__ts];`,
+      `if(__occ&&__occ.name){game_log(${lit3(failMessage)});return;}`
+    ].join("");
+  }
+  function scheduleBagRefresh2() {
+    window.setTimeout(() => {
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    }, 900);
+  }
+  function tradeSlotIndex(slot) {
+    const n = parseInt(String(slot).replace("trade", ""), 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+  function tradeListPrefaceJs(tradeSlot) {
+    const idx = tradeSlotIndex(tradeSlot);
+    const parts = [];
+    if (idx >= 1 && idx <= 4) {
+      parts.push(
+        `if(!${tradeRowOpenJs()}){`,
+        tradeShowEmitJs(),
+        `for(var __tw=0;__tw<120;__tw++){`,
+        `await sleep(50);`,
+        `if(${tradeRowOpenJs()})break;`,
+        `if(__tw===20||__tw===50||__tw===80||__tw===100){`,
+        tradeShowEmitJs(),
+        `}`,
+        `}`,
+        `}`,
+        `if(!${tradeRowOpenJs()}){`,
+        `game_log(${commLit("trade-list \xB7 could not open trade row")});return;`,
+        `}`
+      );
+    }
+    if (idx >= 5) {
+      parts.push(
+        `if(!character.stand){game_log(${commLit("trade-list \xB7 open merchant stand for " + tradeSlot)});return;}`
+      );
+    }
+    return parts.join("");
+  }
+  function buildTradeListScript(fp, tradeSlot, price, q) {
+    const slot = String(tradeSlot || "").trim();
+    const gold = Number(price) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    if (!slot || !isTradeSlotName(slot)) {
+      return wrapCommandScript(
+        `game_log(${commLit("trade-list \xB7 invalid slot")});`
+      );
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(
+        `game_log(${commLit("trade-list \xB7 invalid price")});`
+      );
+    }
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        tradeListPrefaceJs(slot),
+        tradeSlotOccupiedGuardJs(
+          lit3(slot),
+          commLogText("trade-list \xB7 slot not empty")
+        ),
+        // CODE API: trade(invNum, tradeSlot, price, quantity) — not parent.trade(slot, num, …)
+        `try{await trade(__slot,${lit3(slot)},${gold},${qty > 0 ? qty : 1});`,
+        `game_log(${commLit("trade-list ok \u2192 " + slot)});`,
+        `}catch(__e){`,
+        `game_log(${commLit("trade-list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildMerchantCloseScript() {
+    return wrapCommandScript(
+      [
+        `try{await close_merchant();}catch(__e){`,
+        `game_log("Close merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildMerchantOpenScript(invSlot) {
+    if (invSlot != null && Number(invSlot) >= 0) {
+      const slot = Number(invSlot) | 0;
+      return wrapCommandScript(
+        [
+          `if(${slot}<0||!character.items[${slot}]){game_log("Open stand failed \u2014 invalid slot");return;}`,
+          `try{await open_merchant(${slot});}catch(__e){`,
+          `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+          `}`
+        ].join("")
+      );
+    }
+    return wrapCommandScript(
+      [
+        `var __num=-1;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||!__it.name)continue;`,
+        `var __def=G.items[__it.name];`,
+        `if(__def&&(__def.stand||__def.type==="stand")){__num=__si;break;}`,
+        `}`,
+        `if(__num<0){game_log("No merchant stand in bag");return;}`,
+        `try{await open_merchant(__num);}catch(__e){`,
+        `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildWishlistScript(tradeSlot, itemName, price, q, level) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const name = String(itemName || "").trim();
+    const gold = Number(price) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    const lvl = level != null ? Number(level) | 0 : 0;
+    if (!slot || !name) {
+      return wrapCommandScript(`game_log("Wishlist aborted \u2014 missing slot or item");`);
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(`game_log("Wishlist aborted \u2014 invalid price");`);
+    }
+    return wrapCommandScript(
+      [
+        tradeSlotOccupiedGuardJs(lit3(slot), "Wishlist failed \u2014 slot not empty"),
+        tradeListPrefaceJs(slot),
+        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+        `try{await wishlist(${lit3(slot)},${lit3(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
+        `game_log(${lit3("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function buildTradePurchaseScript(targetId, tradeSlot, rid, quantity) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    const q = Number(quantity) | 0;
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Buy failed \u2014 missing target or listing");`);
+    }
+    if (q <= 0) {
+      return wrapCommandScript(`game_log("Buy failed \u2014 invalid quantity");`);
+    }
+    return wrapCommandScript(
+      [
+        `var __id=${lit3(id)};`,
+        `var __slot=${lit3(slot)};`,
+        `var __rid=${lit3(listingRid)};`,
+        `var __q=${q};`,
+        `var __target=parent.entities[__id];`,
+        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Buy failed \u2014 listing gone");return;}`,
+        `var __listing=__target.slots[__slot];`,
+        `if(__listing.b){game_log("Buy failed \u2014 slot is a buy order");return;}`,
+        `if(__listing.rid!==__rid){game_log("Buy failed \u2014 listing changed");return;}`,
+        socketEmitJs("trade_buy", "{id:__id,slot:__slot,rid:__rid,q:String(__q)}")
+      ].join("")
+    );
+  }
+  function buildTradeFulfillScript(targetId, tradeSlot, rid, quantity) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    const q = Number(quantity) | 0;
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Fulfill failed \u2014 missing target or listing");`);
+    }
+    if (q <= 0) {
+      return wrapCommandScript(`game_log("Fulfill failed \u2014 invalid quantity");`);
+    }
+    return wrapCommandScript(
+      [
+        `var __id=${lit3(id)};`,
+        `var __slot=${lit3(slot)};`,
+        `var __rid=${lit3(listingRid)};`,
+        `var __q=${q};`,
+        `var __target=parent.entities[__id];`,
+        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Fulfill failed \u2014 listing gone");return;}`,
+        `var __listing=__target.slots[__slot];`,
+        `if(!__listing.b){game_log("Fulfill failed \u2014 not a buy order");return;}`,
+        `if(__listing.rid!==__rid){game_log("Fulfill failed \u2014 listing changed");return;}`,
+        `var __have=false;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||__it.name!==__listing.name)continue;`,
+        `if(__listing.level!=null&&(__it.level||0)!==__listing.level)continue;`,
+        `__have=true;break;`,
+        `}`,
+        `if(!__have){game_log("Fulfill failed \u2014 no matching item in bag");return;}`,
+        socketEmitJs("trade_sell", "{id:__id,slot:__slot,rid:__rid,q:__q}")
+      ].join("")
+    );
+  }
+  function buildJoinGiveawayScript(targetId, tradeSlot, rid) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    if (!id || !slot || !listingRid) {
+      return wrapCommandScript(`game_log("Giveaway join failed \u2014 missing target");`);
+    }
+    return wrapCommandScript(
+      [
+        socketEmitJs(
+          "join_giveaway",
+          `{id:${lit3(id)},slot:${lit3(slot)},rid:${lit3(listingRid)}}`
+        )
+      ].join("")
+    );
+  }
+  function buildGiveawayScript(tradeSlot, fp, minutes, q) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const mins = Number(minutes) | 0;
+    const qty = q != null ? Number(q) | 0 : 1;
+    if (!slot) {
+      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid slot");`);
+    }
+    if (mins <= 0) {
+      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid duration");`);
+    }
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        tradeListPrefaceJs(slot),
+        tradeSlotOccupiedGuardJs(lit3(slot), "Giveaway failed \u2014 slot not empty"),
+        `try{await giveaway(${lit3(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
+        `game_log(${lit3("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`
+      ].join("")
+    );
+  }
+  function tradeListingSnapshotJs(snapshot) {
+    const o = { name: snapshot.name };
+    if (snapshot.q != null) o.q = snapshot.q;
+    if (snapshot.level != null) o.level = snapshot.level;
+    if (snapshot.b) o.b = true;
+    if (snapshot.p != null) o.p = snapshot.p;
+    return JSON.stringify(o);
+  }
+  function buildTradeRepriceScript(tradeSlot, newPrice, listingSnapshot) {
+    const slot = normalizeTradeSlot(tradeSlot);
+    const gold = Number(newPrice) | 0;
+    if (!slot) {
+      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid slot");`);
+    }
+    if (gold <= 0) {
+      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid price");`);
+    }
+    const listedInit = (listingSnapshot == null ? void 0 : listingSnapshot.name) ? `var __listed=${tradeListingSnapshotJs(listingSnapshot)};` : `var __listed=character.slots[__slot];`;
+    return wrapCommandScript(
+      [
+        `var __slot=${lit3(slot)};`,
+        `var __price=${gold};`,
+        listedInit,
+        `if(!__listed||!__listed.name){game_log("Reprice failed \u2014 slot empty");return;}`,
+        `var __name=__listed.name;`,
+        `var __q=__listed.q||1;`,
+        `var __level=__listed.level||0;`,
+        `var __p=__listed.p||null;`,
+        `var __wish=!!__listed.b;`,
+        `try{await unequip(__slot);}catch(__e){`,
+        `game_log("Reprice failed (delist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;`,
+        `}`,
+        `if(__wish){`,
+        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
+        `try{await wishlist(__slot,__name,__price,__level,__q);}catch(__e){`,
+        `game_log("Reprice failed (wishlist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`,
+        `}else{`,
+        `var __num=-1;`,
+        `for(var __si=0;__si<character.items.length;__si++){`,
+        `var __it=character.items[__si];`,
+        `if(!__it||__it.name!==__name||__it.b)continue;`,
+        `if((__it.level||0)!==__level)continue;`,
+        `if(__p&&__it.p!==__p)continue;`,
+        `if(!__p&&__it.p)continue;`,
+        `if((__it.q||1)<__q)continue;`,
+        `__num=__si;break;`,
+        `}`,
+        `if(__num<0){game_log("Reprice failed \u2014 item not in bag after delist");return;}`,
+        // CODE API: trade(invNum, tradeSlot, price, quantity)
+        `try{await trade(__num,__slot,__price,__q);}catch(__e){`,
+        `game_log("Reprice failed (relist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `}`,
+        `}`
+      ].join("")
+    );
+  }
+  function normalizeTradeSlot(slot) {
+    const s = String(slot || "").trim();
+    if (!s) return "";
+    if (s.indexOf("trade") === 0) return s;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? "trade" + n : s;
+  }
+  function isTradeSlotName(slot) {
+    return slot.indexOf("trade") === 0;
+  }
+  function wishlistCommand(tradeSlot, itemName, price, q, level) {
+    const script = buildWishlistScript(tradeSlot, itemName, price, q, level);
+    const ok = emitObserverCommand(
+      script,
+      `wishlist ${tradeSlot} ${itemName}`
+    );
+    if (!ok) return false;
+    rememberTradePrice(itemName, price, q != null ? q : 1);
+    scheduleBagRefresh2();
+    return true;
+  }
+  function joinGiveawayCommand(targetId, tradeSlot, rid) {
+    const script = buildJoinGiveawayScript(targetId, tradeSlot, rid);
+    return emitObserverCommand(
+      script,
+      `join-giveaway ${tradeSlot}`
+    );
+  }
+  function giveawayCommand(tradeSlot, fp, minutes, q) {
+    const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
+    const ok = emitObserverCommand(
+      script,
+      `giveaway ${tradeSlot} ${fp.name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradePurchaseCommand(targetId, tradeSlot, rid, quantity) {
+    const script = buildTradePurchaseScript(targetId, tradeSlot, rid, quantity);
+    const ok = emitObserverCommand(script, `trade-buy ${tradeSlot}`);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeFulfillCommand(targetId, tradeSlot, rid, quantity) {
+    const script = buildTradeFulfillScript(targetId, tradeSlot, rid, quantity);
+    const ok = emitObserverCommand(script, `trade-sell ${tradeSlot}`);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeRepriceCommand(tradeSlot, newPrice, listingSnapshot) {
+    var _a;
+    const obs = window.observing;
+    const listed = listingSnapshot != null ? listingSnapshot : obs && obs.slots ? obs.slots[tradeSlot] : null;
+    if (!canRepriceTradeSlot(
+      tradeSlot,
+      listed,
+      obs == null ? void 0 : obs.slots,
+      !!(obs == null ? void 0 : obs.stand)
+    )) {
+      window.alert(
+        "Open your merchant stand to change prices on stand slots (trade5+)."
+      );
+      return false;
+    }
+    const script = buildTradeRepriceScript(
+      tradeSlot,
+      newPrice,
+      shouldSkipLiveTradeSlotGuard(tradeSlot, listed, obs == null ? void 0 : obs.slots) ? listed : void 0
+    );
+    const ok = emitObserverCommand(script, `trade-reprice ${tradeSlot}`);
+    if (!ok) return false;
+    if (listed == null ? void 0 : listed.name) {
+      rememberTradePrice(listed.name, newPrice, (_a = listed.q) != null ? _a : 1);
+    }
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeListCommand(fp, tradeSlot, price, q) {
+    var _a;
+    const script = buildTradeListScript(fp, tradeSlot, price, q);
+    const ok = emitObserverCommand(
+      script,
+      `trade-list ${tradeSlot} ${fp.name}`
+    );
+    if (!ok) return false;
+    rememberTradePrice(fp.name, price, (_a = q != null ? q : fp.q) != null ? _a : 1);
+    scheduleBagRefresh2();
+    return true;
+  }
+  function merchantCloseCommand() {
+    const ok = emitObserverCommand(buildMerchantCloseScript(), "merchant-close");
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+  function merchantOpenCommand(invSlot) {
+    const script = buildMerchantOpenScript(invSlot);
+    const ok = emitObserverCommand(script, "merchant-open");
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
+
+  // src/ui/trade/tradePromptDialogCss.ts
+  var injected = false;
+  var CSS2 = `
+.ecu-trade-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483005;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.ecu-trade-prompt {
+  min-width: min(400px, 94vw);
+  max-width: 460px;
+  padding: 18px 20px 16px;
+  background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
+  border: 1px solid rgba(0, 0, 0, 0.85);
+  outline: 1px solid rgba(232, 201, 106, 0.35);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
+  color: #eee;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+.ecu-trade-prompt__title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #ffd28a;
+}
+.ecu-trade-prompt__item {
+  margin: 0 0 12px;
+  color: rgba(220, 210, 210, 0.92);
+  line-height: 1.35;
+}
+.ecu-trade-prompt__item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.ecu-trade-prompt__icon {
+  flex: 0 0 auto;
+  line-height: 0;
+  font-size: 0;
+}
+.ecu-trade-prompt__icon .itemslot,
+.ecu-trade-prompt__icon .item_container {
+  margin: 0 !important;
+}
+.ecu-trade-prompt__item-text {
+  flex: 1;
+  min-width: 0;
+}
+.ecu-trade-prompt__item-name {
+  color: rgba(235, 225, 210, 0.96);
+  font-size: 15px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.ecu-trade-prompt__nearby {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ecu-trade-prompt__nearby-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(200, 180, 120, 0.85);
+  margin-bottom: 6px;
+}
+.ecu-trade-prompt__nearby-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 88px;
+  overflow-y: auto;
+}
+.ecu-trade-prompt__nearby-row {
+  font-size: 13px;
+  color: rgba(210, 205, 195, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+.ecu-trade-prompt__field {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 10px;
+}
+.ecu-trade-prompt__field input[type="number"],
+.ecu-trade-prompt__field input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  box-sizing: border-box;
+}
+.ecu-trade-prompt__field input:focus {
+  outline: none;
+  border-color: rgba(232, 201, 106, 0.55);
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.2);
+}
+.ecu-trade-prompt__suffix {
+  color: rgba(200, 190, 170, 0.85);
+  font-size: 14px;
+  white-space: nowrap;
+}
+.ecu-trade-prompt__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.ecu-trade-prompt__chips button {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: #ddd;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ecu-trade-prompt__chips button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(232, 201, 106, 0.35);
+}
+.ecu-trade-prompt__chips button.is-active,
+.ecu-trade-prompt__chip.is-active {
+  background: rgba(232, 201, 106, 0.18);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+.ecu-trade-prompt__chip--vendor {
+  border-color: rgba(140, 190, 140, 0.35);
+}
+.ecu-trade-prompt__chip--nearby,
+.ecu-trade-prompt__chip--undercut {
+  border-color: rgba(143, 212, 255, 0.28);
+}
+.ecu-trade-prompt__chip--last,
+.ecu-trade-prompt__chip--current,
+.ecu-trade-prompt__chip--yours {
+  border-color: rgba(232, 201, 106, 0.28);
+}
+.ecu-trade-prompt__hint {
+  min-height: 18px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #e88;
+}
+.ecu-trade-prompt__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.ecu-trade-prompt__actions button {
+  padding: 8px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #eee;
+  font-size: 15px;
+  cursor: pointer;
+}
+.ecu-trade-prompt__actions button.primary {
+  background: rgba(232, 201, 106, 0.22);
+  border-color: rgba(232, 201, 106, 0.55);
+  color: #fff;
+}
+`;
+  function ensureTradePromptDialogCss() {
+    if (injected) return;
+    injected = true;
+    const style = document.createElement("style");
+    style.setAttribute("data-ecu-trade-prompt", "1");
+    style.textContent = CSS2;
+    document.head.appendChild(style);
+  }
+
+  // src/ui/trade/tradePromptDialog.ts
+  var openBackdrop = null;
+  var finishOpen = null;
+  function closeDialog(value) {
+    const finish = finishOpen;
+    finishOpen = null;
+    if (openBackdrop) {
+      openBackdrop.remove();
+      openBackdrop = null;
+    }
+    finish == null ? void 0 : finish(value);
+  }
+  function showNumberDialog(options) {
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const min = options.min != null ? Number(options.min) | 0 : 1;
+      const max = options.max != null ? Number(options.max) | 0 : 0;
+      const initial = options.defaultValue != null && options.defaultValue > 0 ? options.defaultValue | 0 : options.suggestions && options.suggestions.length ? options.suggestions[0].price : min;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const title = document.createElement("h2");
+      title.className = "ecu-trade-prompt__title";
+      title.textContent = options.title;
+      panel.appendChild(title);
+      if (options.itemLine) {
+        const itemLine = document.createElement("p");
+        itemLine.className = "ecu-trade-prompt__item";
+        itemLine.textContent = options.itemLine;
+        panel.appendChild(itemLine);
+      }
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      if (max > 0) input.max = String(max);
+      input.step = "1";
+      input.value = String(initial);
+      input.setAttribute("aria-label", options.label);
+      const suffix = document.createElement("span");
+      suffix.className = "ecu-trade-prompt__suffix";
+      suffix.textContent = options.suffix || "";
+      field.append(input, suffix);
+      panel.appendChild(field);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = "OK";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(panel, options.suggestions, input, hintEl, initial);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const parseValue = () => {
+        const n = parseInt(String(input.value).replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n < min) return null;
+        if (max > 0 && n > max) return null;
+        return n | 0;
+      };
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const n = parseValue();
+        if (n == null) {
+          hintEl.textContent = max > 0 ? `Enter ${min}\u2013${max}.` : `Enter at least ${min}.`;
+          input.focus();
+          return;
+        }
+        dismiss(n);
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      input.addEventListener("input", () => {
+        hintEl.textContent = "";
+      });
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    });
+  }
+  function appendSuggestionChips(panel, suggestions, input, hintEl, initial) {
+    const chipButtons = [];
+    if (!suggestions || !suggestions.length) return chipButtons;
+    const chips = document.createElement("div");
+    chips.className = "ecu-trade-prompt__chips";
+    const setActiveChip = (price) => {
+      for (let i = 0; i < chipButtons.length; i++) {
+        chipButtons[i].classList.toggle(
+          "is-active",
+          suggestions[i].price === price
+        );
+      }
+    };
+    for (let i = 0; i < suggestions.length; i++) {
+      const sug = suggestions[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-trade-prompt__chip" + (sug.kind ? ` ecu-trade-prompt__chip--${sug.kind}` : "");
+      btn.textContent = sug.label;
+      btn.title = `${formatTradeGold(sug.price)} gold`;
+      btn.addEventListener("click", () => {
+        input.value = String(sug.price);
+        setActiveChip(sug.price);
+        hintEl.textContent = "";
+        input.focus();
+      });
+      chipButtons.push(btn);
+      chips.appendChild(btn);
+    }
+    const actions = panel.querySelector(".ecu-trade-prompt__actions");
+    if (actions) panel.insertBefore(chips, actions);
+    else panel.appendChild(chips);
+    setActiveChip(initial);
+    return chipButtons;
+  }
+  function appendItemHeader(panel, itemName, label, options) {
+    const row3 = document.createElement("div");
+    row3.className = "ecu-trade-prompt__item-row";
+    const iconWrap = document.createElement("div");
+    iconWrap.className = "ecu-trade-prompt__icon";
+    let iconHtml = "";
+    try {
+      iconHtml = itemInstanceHtml(itemName, {
+        skin: options == null ? void 0 : options.skin,
+        size: 34,
+        level: options == null ? void 0 : options.level,
+        p: options == null ? void 0 : options.p,
+        nativeTitle: false
+      }) || "";
+    } catch (e2) {
+      iconHtml = "";
+    }
+    if (iconHtml) {
+      iconWrap.innerHTML = iconHtml;
+    }
+    const textWrap = document.createElement("div");
+    textWrap.className = "ecu-trade-prompt__item-text";
+    const nameEl = document.createElement("div");
+    nameEl.className = "ecu-trade-prompt__item-name";
+    nameEl.textContent = label;
+    textWrap.appendChild(nameEl);
+    row3.append(iconWrap, textWrap);
+    panel.insertBefore(row3, panel.children[1] || null);
+  }
+  function appendNearbySection(panel, suggestions) {
+    const nearby = suggestions.filter((s) => s.kind === "nearby");
+    if (!nearby.length) return;
+    const section3 = document.createElement("div");
+    section3.className = "ecu-trade-prompt__nearby";
+    const heading = document.createElement("div");
+    heading.className = "ecu-trade-prompt__nearby-title";
+    heading.textContent = "Nearby listings";
+    section3.appendChild(heading);
+    const list = document.createElement("div");
+    list.className = "ecu-trade-prompt__nearby-list";
+    for (let i = 0; i < nearby.length; i++) {
+      const row3 = document.createElement("div");
+      row3.className = "ecu-trade-prompt__nearby-row";
+      row3.textContent = nearby[i].label;
+      list.appendChild(row3);
+    }
+    section3.appendChild(list);
+    const field = panel.querySelector(".ecu-trade-prompt__field");
+    if (field) panel.insertBefore(section3, field);
+    else panel.appendChild(section3);
+  }
+  function showTradePriceDialog(options) {
+    var _a, _b;
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    const name = String(options.itemName || "").trim();
+    const label = options.itemLabel || itemInstanceLabel(name, { level: options.level, p: options.p });
+    const title = options.mode === "wishlist" ? "Wishlist buy price" : options.mode === "reprice" ? "Change price" : "List for sale";
+    const suggestions = tradePriceSuggestions(name, {
+      slots: options.slots,
+      currentPrice: options.currentPrice,
+      level: options.level,
+      observer: (_a = getObserving()) != null ? _a : window.observing
+    });
+    const defaultValue = defaultTradePriceNumber(name, {
+      slots: options.slots,
+      currentPrice: options.currentPrice,
+      level: options.level,
+      observer: (_b = getObserving()) != null ? _b : window.observing
+    });
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const min = 1;
+      const initial = defaultValue > 0 ? defaultValue : min;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt ecu-trade-prompt--price";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const titleEl = document.createElement("h2");
+      titleEl.className = "ecu-trade-prompt__title";
+      titleEl.textContent = title;
+      panel.appendChild(titleEl);
+      appendItemHeader(panel, name, label, {
+        level: options.level,
+        p: options.p,
+        skin: options.skin
+      });
+      appendNearbySection(panel, suggestions);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      input.step = "1";
+      input.value = String(initial);
+      input.setAttribute("aria-label", "Price in gold");
+      const suffix = document.createElement("span");
+      suffix.className = "ecu-trade-prompt__suffix";
+      suffix.textContent = "gold";
+      field.append(input, suffix);
+      panel.appendChild(field);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = options.mode === "reprice" ? "Reprice" : options.mode === "wishlist" ? "Wishlist" : "List";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(panel, suggestions, input, hintEl, initial);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const n = parseTradeGoldInput(input.value);
+        if (n == null) {
+          hintEl.textContent = "Enter at least 1 gold.";
+          input.focus();
+          input.select();
+          return;
+        }
+        dismiss(n);
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      input.addEventListener("input", () => {
+        hintEl.textContent = "";
+      });
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    });
+  }
+  function showTradeQuantityDialog(options) {
+    const maxQ = Math.max(1, Number(options.maxQ) | 0);
+    const name = String(options.itemName || "").trim();
+    const defaultQ = options.defaultQ != null && options.defaultQ > 0 ? Math.min(maxQ, options.defaultQ | 0) : maxQ > 1 ? Math.max(1, Math.floor(maxQ / 2)) : 1;
+    const suggestions = [
+      { label: "1", price: 1 },
+      {
+        label: `Half (${Math.max(1, Math.floor(maxQ / 2))})`,
+        price: Math.max(1, Math.floor(maxQ / 2))
+      },
+      { label: `Max (${maxQ})`, price: maxQ }
+    ].filter((s, i, arr) => arr.findIndex((x) => x.price === s.price) === i);
+    return showNumberDialog({
+      title: "Quantity",
+      itemLine: name ? `${name} \xB7 up to ${maxQ}` : `Up to ${maxQ}`,
+      label: "Quantity",
+      suffix: ` / ${maxQ}`,
+      defaultValue: defaultQ,
+      suggestions: maxQ > 1 ? suggestions : void 0,
+      min: 1,
+      max: maxQ
+    });
+  }
+  function showGiveawayMinutesDialog(defaultMins = 60) {
+    const def = defaultMins > 0 ? defaultMins | 0 : 60;
+    return showNumberDialog({
+      title: "Giveaway duration",
+      itemLine: "How long should the giveaway run?",
+      label: "Minutes",
+      suffix: "min",
+      defaultValue: def,
+      suggestions: [
+        { label: "15 min", price: 15 },
+        { label: "1 hour", price: 60 },
+        { label: "4 hours", price: 240 },
+        { label: "24 hours", price: 1440 }
+      ],
+      min: 1
+    });
+  }
+  function showWishlistLevelDialog(itemName) {
+    const name = String(itemName || "").trim();
+    return showNumberDialog({
+      title: "Wishlist level",
+      itemLine: name ? `${name} \xB7 upgrade/compound level` : "Item level",
+      label: "Level",
+      suffix: "0\u201312",
+      defaultValue: 0,
+      suggestions: [
+        { label: "Any (0)", price: 0 },
+        { label: "+5", price: 5 },
+        { label: "+7", price: 7 },
+        { label: "+10", price: 10 }
+      ],
+      min: 0,
+      max: 12
+    });
+  }
+
+  // src/host/market/marketListingActions.ts
+  function findLiveMerchant(entities, name) {
+    const want = String(name || "").toLowerCase();
+    if (!want) return null;
+    for (let i = 0; i < entities.length; i++) {
+      const e2 = entities[i];
+      if (e2 && e2.name && String(e2.name).toLowerCase() === want) return e2;
+    }
+    return null;
+  }
+  function listingNeedsStaleConfirm(row3) {
+    if (row3.catalogOnly) return true;
+    const n = parseInt(String(row3.slot).replace("trade", ""), 10);
+    return Number.isFinite(n) && n >= 5 && !row3.standOpen;
+  }
+  function canActOnListing(row3) {
+    return row3.merchantStatus === "inRange";
+  }
+  function travelToListing(row3) {
+    if (row3.map == null || row3.x == null || row3.y == null) {
+      window.alert("No map position for this merchant \u2014 cannot travel.");
+      return false;
+    }
+    return startMarketTravel({
+      name: row3.merchant,
+      map: String(row3.map),
+      x: row3.x,
+      y: row3.y,
+      server: row3.server
+    });
+  }
+  async function actOnMarketListing(opts) {
+    const { row: row3, entities, observing } = opts;
+    if (!observing) {
+      window.alert("Observe a character first.");
+      return false;
+    }
+    if (row3.merchantStatus === "you") {
+      window.alert("That's your own listing.");
+      return false;
+    }
+    if (!canActOnListing(row3)) {
+      if (row3.merchantStatus === "otherMap" || row3.merchantStatus === "otherServer" || row3.merchantStatus === "sameMap" || row3.merchantStatus === "catalogOnly") {
+        return travelToListing(row3);
+      }
+      window.alert("Merchant is out of trade range.");
+      return false;
+    }
+    const live2 = findLiveMerchant(entities, row3.merchant);
+    const targetId = (live2 && live2.id != null ? String(live2.id) : "") || row3.entityId || "";
+    if (!targetId || !row3.rid) {
+      window.alert("Cannot trade \u2014 missing merchant id or listing rid.");
+      return false;
+    }
+    if (listingNeedsStaleConfirm(row3)) {
+      const ok = window.confirm(
+        "This listing may be from the catalog or a closed stand. It can be stale \u2014 the server will reject if it is gone. Continue?"
+      );
+      if (!ok) return false;
+    }
+    const maxQ = row3.q != null && row3.q > 0 ? row3.q : void 0;
+    if (row3.buyOrder) {
+      const match = findBagMatchForBuyOrder(
+        {
+          name: row3.name,
+          price: row3.price,
+          b: true,
+          rid: row3.rid,
+          level: row3.level,
+          q: row3.q,
+          p: row3.p,
+          stat_type: row3.stat_type
+        },
+        observing.items
+      );
+      if (!match) {
+        window.alert(`No matching ${row3.name} in bag.`);
+        return false;
+      }
+      const cap2 = maxQ != null ? Math.min(maxQ, match.q) : match.q;
+      let q2 = cap2;
+      if (!opts.takeAll) {
+        const picked = await showTradeQuantityDialog({
+          itemName: row3.name,
+          maxQ: cap2
+        });
+        if (picked == null) return false;
+        q2 = picked;
+      }
+      if (!confirmTradeFulfill(row3.name, row3.price, q2)) return false;
+      return tradeFulfillCommand(targetId, row3.slot, row3.rid, q2);
+    }
+    const cap = maxQ != null ? maxQ : 9999;
+    let q = opts.takeAll ? cap : 1;
+    if (!opts.takeAll) {
+      const picked = await showTradeQuantityDialog({
+        itemName: row3.name,
+        maxQ: cap
+      });
+      if (picked == null) return false;
+      q = picked;
+    }
+    if (observing.gold != null && !canAffordListing({ price: row3.price }, q, observing.gold)) {
+      window.alert(
+        `Not enough gold \u2014 need ${formatTradeGold(row3.price * q)}, have ${formatTradeGold(observing.gold)}.`
+      );
+      return false;
+    }
+    if (!confirmTradePurchase(row3.name, row3.price, q)) return false;
+    return tradePurchaseCommand(targetId, row3.slot, row3.rid, q);
+  }
+
   // src/host/chat/commands.ts
   var MAX_LEN = 1200;
-  function lit2(value) {
+  function lit4(value) {
     return JSON.stringify(String(value));
   }
   function truncateChatMessage(message) {
@@ -16799,23 +19556,23 @@ ${CHROME_ARRANGE_CSS}
     if (!text) return null;
     if (text.charAt(0) === "/") {
       return wrapCommandScript(
-        `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit2(text)});`
+        `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit4(text)});`
       );
     }
     if (mode === "party") {
       return wrapCommandScript(
-        `if(typeof party_say!=="function"){game_log("chat \xB7 party_say missing");return;}party_say(${lit2(text)});`
+        `if(typeof party_say!=="function"){game_log("chat \xB7 party_say missing");return;}party_say(${lit4(text)});`
       );
     }
     if (mode === "whisper") {
       const to = String(whisperTo || "").trim();
       if (!to) return null;
       return wrapCommandScript(
-        `if(typeof private_say!=="function"){game_log("chat \xB7 private_say missing");return;}private_say(${lit2(to)},${lit2(text)});`
+        `if(typeof private_say!=="function"){game_log("chat \xB7 private_say missing");return;}private_say(${lit4(to)},${lit4(text)});`
       );
     }
     return wrapCommandScript(
-      `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit2(text)});`
+      `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit4(text)});`
     );
   }
   function sendChatViaObserver(mode, message, whisperTo) {
@@ -16836,17 +19593,17 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/chat/session.ts
-  var openListeners2 = [];
+  var openListeners3 = [];
   function subscribeChatOpen(fn) {
-    openListeners2.push(fn);
+    openListeners3.push(fn);
     return () => {
-      const idx = openListeners2.indexOf(fn);
-      if (idx >= 0) openListeners2.splice(idx, 1);
+      const idx = openListeners3.indexOf(fn);
+      if (idx >= 0) openListeners3.splice(idx, 1);
     };
   }
   function openChat(payload = {}) {
-    for (let i = 0; i < openListeners2.length; i++) {
-      openListeners2[i](payload);
+    for (let i = 0; i < openListeners3.length; i++) {
+      openListeners3[i](payload);
     }
   }
 
@@ -17107,18 +19864,18 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/chat/hubConversations.ts
-  var listeners10 = [];
+  var listeners11 = [];
   var chats = {};
   var activeKey = null;
   var characters = [];
-  function notify5() {
-    for (let i = 0; i < listeners10.length; i++) listeners10[i]();
+  function notify6() {
+    for (let i = 0; i < listeners11.length; i++) listeners11[i]();
   }
   function subscribeHubChat(fn) {
-    listeners10.push(fn);
+    listeners11.push(fn);
     return () => {
-      const idx = listeners10.indexOf(fn);
-      if (idx >= 0) listeners10.splice(idx, 1);
+      const idx = listeners11.indexOf(fn);
+      if (idx >= 0) listeners11.splice(idx, 1);
     };
   }
   function getHubActiveKey() {
@@ -17199,7 +19956,7 @@ ${CHROME_ARRANGE_CSS}
       if (partial.to) saved.to = partial.to;
       if (partial.server) saved.server = partial.server;
     }
-    notify5();
+    notify6();
     return saved;
   }
   function selectHubChat(key) {
@@ -17208,7 +19965,7 @@ ${CHROME_ARRANGE_CSS}
     activeKey = key;
     chat.scroll_bottom = true;
     if (chat.latest && chat.latest.date) chat.seen = chat.latest.date;
-    notify5();
+    notify6();
     return chat;
   }
   function setHubActiveNew(to) {
@@ -17262,7 +20019,7 @@ ${CHROME_ARRANGE_CSS}
       }
     }
     if (!hasServer) seedServersFromX();
-    notify5();
+    notify6();
   }
   function applyPullChatResult(key, data, older) {
     const chat = chats[key];
@@ -17301,7 +20058,7 @@ ${CHROME_ARRANGE_CSS}
     if (activeKey === key && chat.latest && chat.latest.date) {
       chat.seen = chat.latest.date;
     }
-    notify5();
+    notify6();
     return chat;
   }
 
@@ -17365,7 +20122,7 @@ ${CHROME_ARRANGE_CSS}
     if (typeof window.init_socket !== "function") return;
     window.init_socket({});
   }
-  function currentServerKey() {
+  function currentServerKey3() {
     const region = window.server_region;
     const ident = window.server_identifier;
     if (!region || !ident) return "";
@@ -17379,7 +20136,7 @@ ${CHROME_ARRANGE_CSS}
     return "";
   }
   function isCharOnCurrentServer(char) {
-    const key = currentServerKey();
+    const key = currentServerKey3();
     if (!key || char.server == null || char.server === "") return true;
     return String(char.server) === key;
   }
@@ -17458,6 +20215,11 @@ ${CHROME_ARRANGE_CSS}
     }
     openMail({ toggle: true });
   }
+  function onMarketClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openMarket({ toggle: true });
+  }
   function openDocsMenu() {
     const showModal = window.show_modal;
     if (typeof showModal !== "function" || typeof window.render_guide !== "function" || typeof window.render_code_docs !== "function" || typeof window.render_others !== "function") {
@@ -17491,6 +20253,7 @@ ${CHROME_ARRANGE_CSS}
     command: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
     chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+    market: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16l-1 12H5L4 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 7V5a3 3 0 0 1 6 0v2M8 11h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mainframe: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
   };
@@ -17531,6 +20294,7 @@ ${CHROME_ARRANGE_CSS}
       mk("bag", "Bag", "Observed inventory", onBagClick),
       mk("chat", "Chat", "Server chat \u2014 send as observed character", onChatClick),
       mk("mail", "Mail", "Account mail", onMailClick),
+      mk("market", "Market", "Buy and sell across merchants", onMarketClick),
       mk(
         "command",
         "Command",
@@ -17553,6 +20317,7 @@ ${CHROME_ARRANGE_CSS}
       Bag: "btn-bag",
       Chat: "btn-chat",
       Mail: "btn-mail",
+      Market: "btn-market",
       Command: "btn-command",
       Docs: "btn-docs",
       Mainframe: "btn-mainframe"
@@ -17674,7 +20439,7 @@ ${CHROME_ARRANGE_CSS}
     var _a, _b;
     ensureChromeShell();
     const chars = window.X && window.X.characters || [];
-    const curKey = currentServerKey();
+    const curKey = currentServerKey3();
     let key = "cur:" + curKey + "|";
     let listKey = "cur:" + curKey + "|";
     for (let i = 0; i < chars.length; i++) {
@@ -17851,11 +20616,11 @@ ${CHROME_ARRANGE_CSS}
     byServer: {},
     failed: false
   };
-  var pollTimer2 = null;
+  var pollTimer3 = null;
   var inFlight = null;
   var onUpdate = null;
   var lastNotifyKey = "";
-  function serverKey(region, name) {
+  function serverKey2(region, name) {
     return String(region || "") + "|" + String(name || "");
   }
   function isLiveRow(row3, now) {
@@ -17908,7 +20673,7 @@ ${CHROME_ARRANGE_CSS}
       const row3 = rows[i];
       if (!row3 || !row3.type || !row3.serverRegion || !row3.serverIdentifier) continue;
       if (!isLiveRow(row3, now)) continue;
-      const key = serverKey(row3.serverRegion, row3.serverIdentifier);
+      const key = serverKey2(row3.serverRegion, row3.serverIdentifier);
       if (!acc[key]) acc[key] = [];
       acc[key].push(row3.type);
     }
@@ -17960,12 +20725,12 @@ ${CHROME_ARRANGE_CSS}
     const region = window.server_region || "";
     const ident = window.server_identifier || "";
     if (region && ident) {
-      parts.push("local:" + serverKey(region, ident) + "=" + liveTypesFromLocalS().join(","));
+      parts.push("local:" + serverKey2(region, ident) + "=" + liveTypesFromLocalS().join(","));
     }
     return parts.join("|");
   }
   function getServerEventBadges(region, name) {
-    const key = serverKey(region, name);
+    const key = serverKey2(region, name);
     let types = cache.byServer[key] ? cache.byServer[key].slice() : [];
     if (region && name && window.server_region === region && window.server_identifier === name) {
       types = uniqueTypes(types.concat(liveTypesFromLocalS()));
@@ -18024,9 +20789,9 @@ ${CHROME_ARRANGE_CSS}
   }
   function ensureServerEventsPolling(cb) {
     if (cb) onUpdate = cb;
-    if (pollTimer2 != null) return;
+    if (pollTimer3 != null) return;
     void fetchAlDataEvents();
-    pollTimer2 = setInterval(() => {
+    pollTimer3 = setInterval(() => {
       void fetchAlDataEvents();
     }, POLL_MS);
   }
@@ -18757,28 +21522,6 @@ ${CHROME_ARRANGE_CSS}
     };
   }
 
-  // src/host/commToast.ts
-  var TOAST_CLASS = "ecu-mail-toast";
-  var hideTimer = null;
-  function showCommToast(message, ms = 3200) {
-    if (typeof document === "undefined") return;
-    const text = String(message || "").trim();
-    if (!text) return;
-    let el = document.querySelector("." + TOAST_CLASS);
-    if (!el) {
-      el = document.createElement("div");
-      el.className = TOAST_CLASS;
-      document.body.appendChild(el);
-    }
-    el.textContent = text;
-    el.classList.add("is-on");
-    if (hideTimer != null) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-      el && el.classList.remove("is-on");
-      hideTimer = null;
-    }, Math.max(800, ms));
-  }
-
   // src/host/keyboardPolicy.ts
   var BOUND = "__ecuCommKeyboardBound";
   function isEditableKeyboardTarget(target) {
@@ -18963,7 +21706,7 @@ ${CHROME_ARRANGE_CSS}
   var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
   var DISCONNECT_OVERLAY_Z = 2147483647;
   var STYLE_ID5 = "ecu-disconnect-overlay-css";
-  var CSS2 = `
+  var CSS3 = `
 /* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
 #bottom > .gamebutton.disconnected {
   display: none !important;
@@ -19052,12 +21795,12 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (!canUseDom()) return;
     const existing = document.getElementById(STYLE_ID5);
     if (existing) {
-      existing.textContent = CSS2;
+      existing.textContent = CSS3;
       return;
     }
     const el = document.createElement("style");
     el.id = STYLE_ID5;
-    el.textContent = CSS2;
+    el.textContent = CSS3;
     document.head.appendChild(el);
   }
   function liveSocket(socket) {
@@ -20236,28 +22979,28 @@ button.comm-mail__stack-u {
 `;
 
   // src/ui/frames/mail/mailCss.ts
-  var injected = false;
-  var CSS3 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
+  var injected2 = false;
+  var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
   function ensureMailCss() {
-    if (injected) return;
-    injected = true;
+    if (injected2) return;
+    injected2 = true;
     const existing = document.querySelector(
       "style[data-ecu-mail-css]"
     );
     if (existing) {
-      existing.textContent = CSS3;
+      existing.textContent = CSS4;
       return;
     }
     const el = document.createElement("style");
     el.setAttribute("data-ecu-mail-css", "1");
-    el.textContent = CSS3;
+    el.textContent = CSS4;
     document.head.appendChild(el);
   }
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.11" : "unknown";
-    const builtAt = true ? "2026-09-10T18:48:24.175Z" : "unknown";
+    const version = true ? "0.9.12" : "unknown";
+    const builtAt = true ? "2026-09-10T21:18:50.508Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -20594,8 +23337,8 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/frames/comm/commSetupWizardCss.ts
-  var injected2 = false;
-  var CSS4 = `
+  var injected3 = false;
+  var CSS5 = `
 .ecu-comm-wiz-backdrop {
   position: fixed;
   inset: 0;
@@ -21274,10 +24017,10 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-comm-wiz", "1");
       document.head.appendChild(el);
     }
-    if (!injected2 || el.textContent !== CSS4) {
-      el.textContent = CSS4;
+    if (!injected3 || el.textContent !== CSS5) {
+      el.textContent = CSS5;
     }
-    injected2 = true;
+    injected3 = true;
   }
 
   // src/ui/frames/comm/CommUISetupWizard.ts
@@ -22376,8 +25119,8 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/frames/comm/guidedTour/guidedTourCss.ts
-  var injected3 = false;
-  var CSS5 = `
+  var injected4 = false;
+  var CSS6 = `
 .ecu-tour-root {
   position: fixed;
   inset: 0;
@@ -22564,7 +25307,7 @@ button.comm-mail__stack-u {
 `;
   function injectGuidedTourCss() {
     if (typeof document === "undefined") return;
-    if (injected3) return;
+    if (injected4) return;
     let el = document.querySelector(
       "style[data-ecu-tour]"
     );
@@ -22573,8 +25316,8 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-tour", "1");
       document.head.appendChild(el);
     }
-    el.textContent = CSS5;
-    injected3 = true;
+    el.textContent = CSS6;
+    injected4 = true;
   }
 
   // src/ui/frames/comm/guidedTour/tourGeometry.ts
@@ -23203,28 +25946,28 @@ button.comm-mail__stack-u {
   };
   var PAPERDOLL_TRADE_TOUR = {
     id: "paperdoll-trade",
-    label: "Trade window",
+    label: "Market window",
     steps: [
       {
-        title: "Trade window",
-        body: "The Trade panel shows your listings and merchants you inspect. Use Yours / Inspected to switch without losing your own row.",
-        target: '[data-ecu-tour="trade-panel"]',
+        title: "Market",
+        body: "Market replaces the old Trade panel. Browse for-sale listings across nearby merchants and the realm catalog, or switch to Sell to fulfill buy orders and manage your stand.",
+        target: '[data-ecu-tour="market-panel"]',
         targetKind: "region",
-        missingHint: "Inspect a merchant or player stand that has trade items listed."
+        missingHint: "Open Market from the chrome strip, or inspect a merchant stand."
       },
       {
         title: "Buy or sell",
-        body: "Left-click a sell listing to buy, a buy order to fulfill, or a giveaway to join. Shift+click opens Item info. Bag items with a nearby buy order also show a B badge.",
-        target: '[data-ecu-tour="trade-panel"]',
+        body: "On Buy, click a listing to purchase when in range, or Travel when far. On Sell, fulfill buy orders from your bag and list/delist on Your stand. Shift+click takes the full stack when possible.",
+        target: '[data-ecu-tour="market-panel"]',
         targetKind: "region",
-        missingHint: "Inspect someone with trade slots, or list on your own row."
+        missingHint: "Open Market from the chrome Market button."
       },
       {
         title: "Item info",
-        body: "Shift+click any listing to park details in Item info while you compare prices.",
+        body: "Shift+click stand slots to park details in Item info while you compare prices.",
         target: ".comm-pos-itemInfo",
         targetKind: "panel",
-        missingHint: "Shift+click a filled trade slot.",
+        missingHint: "Shift+click a filled trade slot on Your stand.",
         advanceWhen: "itemInfoOpen"
       }
     ]
@@ -24067,12 +26810,12 @@ button.comm-mail__stack-u {
       }
     }
   ];
-  function scheduleContextualTour(pending, id, delayMs) {
-    if (pending.has(id)) return;
+  function scheduleContextualTour(pending2, id, delayMs) {
+    if (pending2.has(id)) return;
     if (isTourCompleted(id)) return;
-    pending.add(id);
+    pending2.add(id);
     tryContextualTour(id, delayMs);
-    window.setTimeout(() => pending.delete(id), delayMs + 120);
+    window.setTimeout(() => pending2.delete(id), delayMs + 120);
   }
   function useContextualTourTriggers(opts) {
     const React = getReact();
@@ -24849,7 +27592,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners11 = [];
+  var listeners12 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -24886,9 +27629,9 @@ button.comm-mail__stack-u {
     } catch (e2) {
     }
   }
-  function notify6() {
-    for (let i = 0; i < listeners11.length; i++) {
-      listeners11[i]();
+  function notify7() {
+    for (let i = 0; i < listeners12.length; i++) {
+      listeners12[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -24905,7 +27648,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify6();
+    notify7();
     return next;
   }
   function getLayoutGridStep() {
@@ -24918,7 +27661,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify6();
+    notify7();
     return next;
   }
   function getLayoutChromePos() {
@@ -24931,14 +27674,14 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify6();
+    notify7();
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners11.push(listener);
+    listeners12.push(listener);
     return () => {
-      const idx = listeners11.indexOf(listener);
-      if (idx >= 0) listeners11.splice(idx, 1);
+      const idx = listeners12.indexOf(listener);
+      if (idx >= 0) listeners12.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -24950,7 +27693,7 @@ button.comm-mail__stack-u {
     };
     cache2 = next;
     write(next);
-    notify6();
+    notify7();
     return next;
   }
 
@@ -25766,7 +28509,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners12 = [];
+  var listeners13 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -25821,14 +28564,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners12.push(listener);
+    listeners13.push(listener);
     return () => {
-      const idx = listeners12.indexOf(listener);
-      if (idx >= 0) listeners12.splice(idx, 1);
+      const idx = listeners13.indexOf(listener);
+      if (idx >= 0) listeners13.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners12.length; i++) listeners12[i]();
+    for (let i = 0; i < listeners13.length; i++) listeners13[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -26014,7 +28757,7 @@ button.comm-mail__stack-u {
   }
 
   // src/host/commNotice.ts
-  var CSS6 = `
+  var CSS7 = `
 .ecu-comm-hover {
   position: fixed;
   z-index: 100001;
@@ -26075,12 +28818,12 @@ button.comm-mail__stack-u {
       "style[data-ecu-comm-notice-css]"
     );
     if (existing) {
-      existing.textContent = CSS6;
+      existing.textContent = CSS7;
       return;
     }
     const el = document.createElement("style");
     el.setAttribute("data-ecu-comm-notice-css", "1");
-    el.textContent = CSS6;
+    el.textContent = CSS7;
     document.head.appendChild(el);
   }
   function hideCommHover() {
@@ -27374,10 +30117,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners13 = [];
-  function notify7() {
-    for (let i = 0; i < listeners13.length; i++) {
-      listeners13[i]();
+  var listeners14 = [];
+  function notify8() {
+    for (let i = 0; i < listeners14.length; i++) {
+      listeners14[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -27385,7 +30128,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify7();
+    if (depth === 1) notify8();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -27393,18 +30136,18 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify7();
+    if (depth === 0) notify8();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify7();
+    notify8();
   }
   function subscribeLayoutGuide(listener) {
-    listeners13.push(listener);
+    listeners14.push(listener);
     return () => {
-      const idx = listeners13.indexOf(listener);
-      if (idx >= 0) listeners13.splice(idx, 1);
+      const idx = listeners14.indexOf(listener);
+      if (idx >= 0) listeners14.splice(idx, 1);
     };
   }
 
@@ -33798,7 +36541,7 @@ button.ecu-meter-status-micro:hover,
 ${parts.map(cssSlice).join("\n")}
 `;
   }
-  var CSS7 = [
+  var CSS8 = [
     METER_CHROME_SCALE_CSS,
     METER_SHELL_CSS,
     METER_TITLEBAR_CSS,
@@ -33823,7 +36566,7 @@ ${parts.map(cssSlice).join("\n")}
       style.id = STYLE_ID6;
       document.head.appendChild(style);
     }
-    style.textContent = CSS7.replace(
+    style.textContent = CSS8.replace(
       "__TOOLBAR__",
       TOOLBAR_ICONS_DATA_URI
     ).replace("__ATTR__", ATTR_ICONS_DATA_URI);
@@ -40958,7 +43701,7 @@ ${parts.map(cssSlice).join("\n")}
       target.setPointerCapture(pointerId);
     } catch (e2) {
     }
-    let pending = sizeFrame(startW, startH, !!ev.shiftKey);
+    let pending2 = sizeFrame(startW, startH, !!ev.shiftKey);
     const shareH = !!instance.horizontalSnap || !!(instance.snap && (instance.snap[1] || instance.snap[3]));
     const shareW = !!instance.verticalSnap || !!(instance.snap && (instance.snap[2] || instance.snap[4]));
     const peerMeta = args.resizeGroupPeers || [];
@@ -41008,8 +43751,8 @@ ${parts.map(cssSlice).join("\n")}
       const dx = e2.clientX - startX;
       const dy = e2.clientY - startY;
       const w = corner === "br" ? startW + dx : startW - dx;
-      pending = sizeFrame(w, startH + dy, !!e2.shiftKey);
-      applyLiveBox(pending.frameW, pending.frameH);
+      pending2 = sizeFrame(w, startH + dy, !!e2.shiftKey);
+      applyLiveBox(pending2.frameW, pending2.frameH);
     };
     const onUp = () => {
       if (shell) shell.classList.remove("is-resizing");
@@ -41026,16 +43769,16 @@ ${parts.map(cssSlice).join("\n")}
       const rw = Math.max(1, rootRect.width);
       const rh = Math.max(1, rootRect.height);
       let nextPos = { ...instance.pos };
-      const shiftX = liveShiftX(corner, anchor, startW, pending.frameW);
+      const shiftX = liveShiftX(corner, anchor, startW, pending2.frameW);
       if (shiftX !== 0) {
         nextPos = nudgePosByPixels(nextPos, shiftX, 0, rw, rh);
       }
-      if (pending.frameH !== startH) {
-        nextPos = shiftPosKeepTopEdge(nextPos, startH, pending.frameH, rw, rh);
+      if (pending2.frameH !== startH) {
+        nextPos = shiftPosKeepTopEdge(nextPos, startH, pending2.frameH, rw, rh);
       }
       onPatchInstance({
-        frameW: pending.frameW,
-        frameH: pending.frameH,
+        frameW: pending2.frameW,
+        frameH: pending2.frameH,
         pos: nextPos
       });
     };
@@ -42400,10 +45143,10 @@ ${parts.map(cssSlice).join("\n")}
   color: #faa;
 }
 `;
-  var injected4 = false;
+  var injected5 = false;
   function ensureSettingsPanelCss() {
-    if (injected4) return;
-    injected4 = true;
+    if (injected5) return;
+    injected5 = true;
     const existing = document.querySelector(
       "style[data-ecu-settings-css]"
     );
@@ -48009,10 +50752,10 @@ ${parts.map(cssSlice).join("\n")}
   color: #ccc;
 }
 `;
-  var injected5 = false;
+  var injected6 = false;
   function ensureCryptPanelCss() {
-    if (injected5) return;
-    injected5 = true;
+    if (injected6) return;
+    injected6 = true;
     const existing = document.querySelector(
       "style[data-ecu-crypt-panel-css]"
     );
@@ -49077,1111 +51820,6 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
-  // src/lib/itemStack.ts
-  function stackLimitForName(name) {
-    var _a, _b;
-    const G = typeof window !== "undefined" ? window.G : void 0;
-    const stack = (_b = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[name]) == null ? void 0 : _b.s;
-    if (!stack) return null;
-    return stack === true ? 9999 : Number(stack);
-  }
-  function canStackItems(a, b, extraQty = 0, options) {
-    var _a, _b;
-    if (!a || !b || !a.name || !b.name) return false;
-    const limit = stackLimitForName(a.name);
-    if (limit == null) return false;
-    if (a.name !== b.name) return false;
-    const aq = (_a = a.q) != null ? _a : 1;
-    const bq = (_b = b.q) != null ? _b : 1;
-    if (aq + bq + extraQty > limit) return false;
-    if ((a.p || b.p) && a.p !== b.p) return false;
-    if (a.name === "cxjar" && a.data !== b.data) return false;
-    if (!(options == null ? void 0 : options.ignorePvp)) {
-      if (a.v && !b.v || !a.v && b.v) return false;
-    }
-    if (a.l || b.l || a.b || b.b) return false;
-    return true;
-  }
-
-  // src/lib/standTradeSlotMemory.ts
-  var byEntity = /* @__PURE__ */ new Map();
-  var epoch = 0;
-  function isStandExtraTradeSlot(name) {
-    if (name.indexOf("trade") !== 0) return false;
-    const num = parseInt(name.replace("trade", ""), 10);
-    return Number.isFinite(num) && num >= 5;
-  }
-  function cloneSlot(slot) {
-    if (!slot) return null;
-    return Object.assign({}, slot);
-  }
-  function standTradeMemoryEpoch() {
-    return epoch;
-  }
-  function bumpEpoch() {
-    epoch += 1;
-  }
-  function rememberStandTradeSlots(entityId, slots) {
-    if (!entityId || !slots) return;
-    const snap = {};
-    let changed = false;
-    const prev = byEntity.get(entityId) || null;
-    const keys = Object.keys(slots);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (!isStandExtraTradeSlot(k)) continue;
-      snap[k] = cloneSlot(slots[k]);
-    }
-    if (!prev) {
-      changed = Object.keys(snap).length > 0;
-    } else {
-      const prevKeys = Object.keys(prev);
-      const snapKeys = Object.keys(snap);
-      if (prevKeys.length !== snapKeys.length) changed = true;
-      else {
-        for (let i = 0; i < snapKeys.length; i++) {
-          const k = snapKeys[i];
-          const a = prev[k];
-          const b = snap[k];
-          if (!a && !b) continue;
-          if (!a || !b || a.name !== b.name || a.price !== b.price || a.q !== b.q) {
-            changed = true;
-            break;
-          }
-        }
-      }
-    }
-    byEntity.set(entityId, snap);
-    if (changed) bumpEpoch();
-  }
-  function forgetStandTradeSlot(entityId, slotName) {
-    if (!entityId || !isStandExtraTradeSlot(slotName)) return;
-    const snap = byEntity.get(entityId);
-    if (!snap || !Object.prototype.hasOwnProperty.call(snap, slotName)) return;
-    delete snap[slotName];
-    bumpEpoch();
-  }
-  function mergeStandTradeSlotsForUi(entityId, slots, standOpen) {
-    if (!slots) return slots;
-    if (standOpen) {
-      rememberStandTradeSlots(entityId, slots);
-      return slots;
-    }
-    const snap = byEntity.get(entityId);
-    if (!snap) return slots;
-    const out = Object.assign({}, slots);
-    const keys = Object.keys(snap);
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (Object.prototype.hasOwnProperty.call(out, k)) continue;
-      out[k] = cloneSlot(snap[k]);
-    }
-    return out;
-  }
-  function isHiddenStandTradeListing(slotName, slotListing, liveSlots) {
-    if (!(slotListing == null ? void 0 : slotListing.name) || !isStandExtraTradeSlot(slotName)) return false;
-    const live2 = liveSlots == null ? void 0 : liveSlots[slotName];
-    return !(live2 == null ? void 0 : live2.name);
-  }
-  function shouldSkipLiveTradeSlotGuard(slotName, slotListing, liveSlots) {
-    return isHiddenStandTradeListing(slotName, slotListing, liveSlots);
-  }
-  function canRepriceTradeSlot(slotName, slotListing, liveSlots, standOpen) {
-    if (!(slotListing == null ? void 0 : slotListing.name)) return false;
-    if (isHiddenStandTradeListing(slotName, slotListing, liveSlots) && !standOpen) {
-      return false;
-    }
-    return true;
-  }
-
-  // src/lib/tradeSlots.ts
-  function isTradeSlot(slotName) {
-    return String(slotName || "").indexOf("trade") === 0;
-  }
-  function formatTradeSlotLabel(slotName) {
-    const num = parseInt(String(slotName).replace("trade", ""), 10);
-    if (Number.isFinite(num) && num > 0) return `Trade ${num}`;
-    return slotName;
-  }
-  function hasTradeRowKey(slots) {
-    return Object.prototype.hasOwnProperty.call(slots, "trade1");
-  }
-  function tradeRowVisible(slots, entity) {
-    if (!slots) return false;
-    if (entity && entity.stand) return true;
-    if (hasTradeRowKey(slots)) return true;
-    const keys = Object.keys(slots);
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i].indexOf("trade") === 0 && slots[keys[i]]) return true;
-    }
-    return false;
-  }
-  var PERSONAL_TRADE_SLOTS = ["trade1", "trade2", "trade3", "trade4"];
-  function isMerchantClass(entity) {
-    const id = entity.id != null ? String(entity.id) : void 0;
-    const resolved = resolvePlayerCtype(id, entity);
-    if (resolved === "merchant") return true;
-    const cls = String(entity.ctype || entity.type || "").toLowerCase();
-    return cls === "merchant";
-  }
-  function maxTradeSlotIndex(slots) {
-    if (!slots) return 0;
-    const keys = Object.keys(slots);
-    let max = 0;
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k.indexOf("trade") !== 0) continue;
-      const n = parseInt(k.replace("trade", ""), 10);
-      if (Number.isFinite(n) && n > max) max = n;
-    }
-    return max;
-  }
-  function resolveEntityLevel(entity) {
-    const raw = entity.level;
-    if (raw != null && Number.isFinite(Number(raw))) {
-      const n = Number(raw) | 0;
-      if (n > 0) return n;
-    }
-    if (typeof window === "undefined") return 0;
-    if (typeof window === "undefined") return 0;
-    const id = entity.id != null ? String(entity.id) : "";
-    const obs = window.observing;
-    if (id && obs && (String(obs.id) === id || entity.name != null && obs.name != null && String(entity.name) === String(obs.name))) {
-      if (obs.level != null && Number.isFinite(Number(obs.level))) {
-        return Number(obs.level) | 0;
-      }
-    }
-    const character = window.character;
-    if (id && character && (String(character.id) === id || entity.name != null && character.name != null && String(entity.name) === String(character.name))) {
-      if (character.level != null && Number.isFinite(Number(character.level))) {
-        return Number(character.level) | 0;
-      }
-    }
-    return 0;
-  }
-  function merchantStandCapacity(entity, slots) {
-    if (!entity) return 0;
-    const level = resolveEntityLevel(entity);
-    const stand = entity.stand ? String(entity.stand) : "";
-    const fromKeys = maxTradeSlotIndex(slots);
-    const merchant = isMerchantClass(entity);
-    if (!merchant && !stand) {
-      return fromKeys >= 5 ? fromKeys : 0;
-    }
-    let tier = 16;
-    if (merchant && level >= 80) tier = 30;
-    else if (merchant && (level >= 70 || stand === "cstand")) tier = 24;
-    else if (stand === "cstand") tier = 24;
-    if (fromKeys > tier) tier = fromKeys;
-    return tier;
-  }
-  function standTradeSlotCount(entity) {
-    if (!entity || !entity.stand) return 0;
-    return merchantStandCapacity(entity, entity.slots);
-  }
-  function allMerchantStandSlotNames(entity, slots) {
-    const n = merchantStandCapacity(entity, slots != null ? slots : entity == null ? void 0 : entity.slots);
-    const names = [];
-    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
-    return names;
-  }
-  function allStandTradeSlotNames(entity) {
-    const n = standTradeSlotCount(entity);
-    if (n <= 0) return [];
-    const names = [];
-    for (let i = 1; i <= n; i++) names.push(`trade${i}`);
-    return names;
-  }
-  function standGridColumns(slotCount) {
-    if (slotCount > 16) return 6;
-    return 4;
-  }
-  function personalTradeSlotNames(slots, entity, gearEditable) {
-    if (gearEditable) return PERSONAL_TRADE_SLOTS.slice();
-    if (!slots) return [];
-    if (entity && entity.stand) return PERSONAL_TRADE_SLOTS.slice();
-    if (hasTradeRowKey(slots)) return PERSONAL_TRADE_SLOTS.slice();
-    const keys = Object.keys(slots);
-    const filled = [];
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (k.indexOf("trade") !== 0) continue;
-      const num = parseInt(k.replace("trade", ""), 10);
-      if (num >= 1 && num <= 4 && slots[k]) filled.push(k);
-    }
-    filled.sort((a, b) => {
-      const na = parseInt(a.replace("trade", ""), 10) || 0;
-      const nb = parseInt(b.replace("trade", ""), 10) || 0;
-      return na - nb;
-    });
-    return filled.length ? PERSONAL_TRADE_SLOTS.slice() : [];
-  }
-  function merchantStandSlotNames(slots, entity, compact, excludePersonal = false) {
-    if (!entity || !slots) return [];
-    const all = allMerchantStandSlotNames(entity, slots);
-    const candidates = excludePersonal ? all.slice(4) : all;
-    return compactTradeSlotNames(candidates, slots, compact);
-  }
-  function tradeSlotNames(slots, entity, options) {
-    if (!slots) return [];
-    if ((options == null ? void 0 : options.editPersonalRow) && !(entity && entity.stand)) {
-      return PERSONAL_TRADE_SLOTS.slice();
-    }
-    if (!tradeRowVisible(slots, entity)) return [];
-    const keys = Object.keys(slots);
-    const tradeKeys = [];
-    for (let i = 0; i < keys.length; i++) {
-      if (keys[i].indexOf("trade") === 0) tradeKeys.push(keys[i]);
-    }
-    tradeKeys.sort((a, b) => {
-      const na = parseInt(a.replace("trade", ""), 10) || 0;
-      const nb = parseInt(b.replace("trade", ""), 10) || 0;
-      return na - nb;
-    });
-    if (entity && entity.stand && tradeKeys.length > 0) return tradeKeys;
-    if (hasTradeRowKey(slots)) {
-      return PERSONAL_TRADE_SLOTS.slice();
-    }
-    return tradeKeys;
-  }
-  function observingTradeSlotNames() {
-    const obs = window.observing;
-    if (!obs || !obs.slots) return [];
-    if (obs.stand) return allStandTradeSlotNames(obs);
-    return tradeSlotNames(obs.slots, obs, { editPersonalRow: true });
-  }
-  function tradeSlotIsEmpty(slots, slotName) {
-    if (!slots) return true;
-    const slot = slots[slotName];
-    return !slot || !slot.name;
-  }
-  function merchantStandSectionVisible(entity, slots, gearEditable) {
-    if (!entity || !slots) return false;
-    if (entity.stand) return true;
-    if (!gearEditable) return false;
-    return merchantStandSlotNames(slots, entity, true, true).length > 0;
-  }
-  function compactTradeSlotNames(candidateNames, slots, compact) {
-    if (!compact || !slots) return candidateNames.slice();
-    const filled = [];
-    let firstEmpty = null;
-    for (let i = 0; i < candidateNames.length; i++) {
-      const name = candidateNames[i];
-      if (!tradeSlotIsEmpty(slots, name)) filled.push(name);
-      else if (!firstEmpty) firstEmpty = name;
-    }
-    if (firstEmpty) filled.push(firstEmpty);
-    return filled;
-  }
-
-  // src/host/gearCommands.ts
-  function lit3(value) {
-    return JSON.stringify(String(value));
-  }
-  function fingerprintCheckJs2(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit3(fp.name)}`];
-    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
-    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit3(fp.p)}`);
-    return parts.join("||");
-  }
-  function resolveInvSlotJs(fp) {
-    const preferSlot = Number(fp.slot) | 0;
-    const mismatch = fingerprintCheckJs2(fp, "it");
-    const candMismatch = fingerprintCheckJs2(fp, "__cand");
-    return [
-      `var __slot=${preferSlot};`,
-      `var it=character.items[__slot];`,
-      `if(${mismatch}){`,
-      `__slot=-1;`,
-      `for(var __si=0;__si<character.items.length;__si++){`,
-      `var __cand=character.items[__si];`,
-      `if(!(${candMismatch})){__slot=__si;break;}`,
-      `}`,
-      `if(__slot<0){game_log(${JSON.stringify(commLogText("gear \xB7 item mismatch"))});return;}`,
-      `it=character.items[__slot];`,
-      `}`
-    ].join("");
-  }
-  function scheduleBagRefresh() {
-    window.setTimeout(() => {
-      try {
-        refreshObservedInventory();
-      } catch (e2) {
-      }
-    }, 900);
-  }
-  function buildEquipScript(fp, gearSlot) {
-    const slot = gearSlot ? String(gearSlot).trim() : "";
-    const slotArg = slot ? `,${lit3(slot)}` : "";
-    return wrapCommandScript(
-      [
-        resolveInvSlotJs(fp),
-        `try{await equip(__slot${slotArg});}catch(__e){`,
-        `game_log(${lit3("Equip failed" + (slot ? " \u2192 " + slot : ""))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildUnequipScript(gearSlot, options) {
-    const slot = String(gearSlot || "").trim();
-    if (!slot) {
-      return wrapCommandScript(`game_log("Unequip aborted \u2014 no slot");`);
-    }
-    if (slot === "elixir") {
-      return wrapCommandScript(`game_log("Cannot unequip elixir");`);
-    }
-    const guard = (options == null ? void 0 : options.skipSlotGuard) ? "" : `if(!character.slots[${lit3(slot)}]){game_log(${lit3("Unequip failed \u2014 slot empty")});return;}`;
-    return wrapCommandScript(
-      [
-        guard,
-        `try{await unequip(${lit3(slot)});}catch(__e){`,
-        `game_log(${lit3("Unequip failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildInvSwapScript(fromSlot, toSlot) {
-    const from = Number(fromSlot) | 0;
-    const to = Number(toSlot) | 0;
-    return wrapCommandScript(
-      [
-        `if(${from}<0||${to}<0||${from}>=character.items.length||${to}>=character.items.length){`,
-        `game_log("Swap aborted \u2014 invalid slot");return;}`,
-        `try{await swap(${to},${from});}catch(__e){`,
-        `game_log("Swap failed \u2192 "+${from}+"\u2194"+${to});`,
-        `}`
-      ].join("")
-    );
-  }
-  function patchObservingAfterInvMove(fromSlot, toSlot) {
-    var _a, _b;
-    const obs = window.observing;
-    if (!obs || !Array.isArray(obs.items)) return;
-    const from = Number(fromSlot) | 0;
-    const to = Number(toSlot) | 0;
-    if (from < 0 || to < 0 || from >= obs.items.length || to >= obs.items.length) {
-      return;
-    }
-    const lo = Math.min(from, to);
-    const hi = Math.max(from, to);
-    const itemLo = obs.items[lo];
-    const itemHi = obs.items[hi];
-    if (canStackItems(itemLo, itemHi)) {
-      const combinedQ = ((_a = itemLo == null ? void 0 : itemLo.q) != null ? _a : 1) + ((_b = itemHi == null ? void 0 : itemHi.q) != null ? _b : 1);
-      const targetItem = obs.items[to];
-      if (targetItem) targetItem.q = combinedQ;
-      obs.items[from] = null;
-    } else {
-      const tmp = obs.items[lo];
-      obs.items[lo] = obs.items[hi];
-      obs.items[hi] = tmp;
-    }
-    try {
-      if (typeof window.render_inventory === "function") {
-        window.render_inventory(true);
-      }
-    } catch (e2) {
-    }
-  }
-  function equipCommand(fp, gearSlot) {
-    const script = buildEquipScript(fp, gearSlot);
-    const ok = emitObserverCommand(
-      script,
-      `equip ${gearSlot || fp.name}`
-    );
-    if (!ok) return false;
-    scheduleBagRefresh();
-    return true;
-  }
-  function unequipCommand(gearSlot, options) {
-    const obs = window.observing;
-    const skipSlotGuard = shouldSkipLiveTradeSlotGuard(
-      gearSlot,
-      options == null ? void 0 : options.slotListing,
-      obs == null ? void 0 : obs.slots
-    );
-    const script = buildUnequipScript(gearSlot, { skipSlotGuard });
-    const ok = emitObserverCommand(script, `unequip ${gearSlot}`);
-    if (!ok) return false;
-    if (isTradeSlot(gearSlot)) {
-      const id = obs && obs.id != null ? String(obs.id) : "";
-      if (id) forgetStandTradeSlot(id, gearSlot);
-    }
-    scheduleBagRefresh();
-    return true;
-  }
-  function invSwapCommand(a, b) {
-    const script = buildInvSwapScript(a, b);
-    const ok = emitObserverCommand(script, `inv-swap ${a}\u2194${b}`);
-    if (!ok) return false;
-    patchObservingAfterInvMove(a, b);
-    scheduleBagRefresh();
-    return true;
-  }
-
-  // src/lib/tradeItemPricing.ts
-  function calculateItemValue(itemName, level) {
-    const calc = window.calculate_item_value;
-    if (typeof calc !== "function") return null;
-    const probe = { name: itemName };
-    if (level != null && level > 0) probe.level = level;
-    const v = Number(calc(probe));
-    if (!Number.isFinite(v) || v <= 0) return null;
-    return v | 0;
-  }
-  function vendorGoldPrice(itemName, level) {
-    const name = String(itemName || "").trim();
-    if (!name) return null;
-    const G = getG();
-    const def = G && G.items && G.items[name];
-    if (!def) return null;
-    const baseG = Number(def.g);
-    if (level != null && level > 0) {
-      const computed = calculateItemValue(name, level);
-      if (computed != null && computed > 0) return computed;
-    }
-    if (Number.isFinite(baseG) && baseG > 0) return baseG | 0;
-    return null;
-  }
-  function tradeTaxRateFromLevel(level) {
-    const lv = Number(level);
-    if (!Number.isFinite(lv)) return 0.05;
-    if (lv > 80) return 0.01;
-    if (lv > 70) return 0.02;
-    if (lv > 60) return 0.025;
-    if (lv > 50) return 0.03;
-    if (lv > 20) return 0.04;
-    return 0.05;
-  }
-  function resolveTradeTaxRate(entity) {
-    var _a;
-    const obs = (_a = entity != null ? entity : getObserving()) != null ? _a : window.observing;
-    if (obs && typeof obs.tax === "number" && obs.tax >= 0 && obs.tax < 1) {
-      return obs.tax;
-    }
-    return tradeTaxRateFromLevel(obs == null ? void 0 : obs.level);
-  }
-  function tradeSaleNetGold(listPrice, taxRate) {
-    const price = Number(listPrice) | 0;
-    if (!(price > 0)) return 0;
-    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
-    return Math.round(price * (1 - tax));
-  }
-  function minListPriceForNetGold(netGold, taxRate) {
-    const want = Number(netGold) | 0;
-    if (!(want > 0)) return 1;
-    const tax = taxRate != null ? taxRate : resolveTradeTaxRate();
-    if (!(tax > 0)) return want;
-    let price = Math.ceil(want / (1 - tax));
-    while (price > 1 && tradeSaleNetGold(price - 1, tax) >= want) price -= 1;
-    while (price > 0 && tradeSaleNetGold(price, tax) < want) price += 1;
-    return price;
-  }
-  function vendorListFloorPrice(itemName, options) {
-    const vendor = vendorGoldPrice(itemName, options == null ? void 0 : options.level);
-    if (vendor == null || !(vendor > 0)) return null;
-    const tax = resolveTradeTaxRate(options == null ? void 0 : options.observer);
-    return minListPriceForNetGold(vendor, tax);
-  }
-  function nearbyMapSellPricesForItem(itemName, observer, options) {
-    var _a;
-    const name = String(itemName || "").trim();
-    if (!name) return [];
-    const obs = observer != null ? observer : window.observing;
-    if (!obs) return [];
-    const obsId = obs.id != null ? String(obs.id) : "";
-    const wantLevel = options == null ? void 0 : options.level;
-    const max = (options == null ? void 0 : options.max) != null ? Math.max(1, options.max | 0) : 12;
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    const entities = getEntitiesList();
-    for (let ei = 0; ei < entities.length; ei++) {
-      const ent = entities[ei];
-      if (!ent || !ent.slots) continue;
-      if (obsId && ent.id != null && String(ent.id) === obsId) continue;
-      if (!isInTradeRange(ent, obs)) continue;
-      const seller = ent.name != null ? String(ent.name) : String((_a = ent.id) != null ? _a : "player");
-      const keys = Object.keys(ent.slots);
-      for (let si = 0; si < keys.length; si++) {
-        const k = keys[si];
-        if (k.indexOf("trade") !== 0) continue;
-        const listing = ent.slots[k];
-        if (!listing || !listing.name || listing.name !== name) continue;
-        if (listing.b) continue;
-        if (isGiveawayListing(listing)) continue;
-        if (wantLevel != null && listing.level != null && listing.level !== wantLevel) {
-          continue;
-        }
-        const price = Number(listing.price) | 0;
-        if (!(price > 0) || seen.has(price)) continue;
-        seen.add(price);
-        out.push({
-          price,
-          seller,
-          level: listing.level
-        });
-      }
-    }
-    out.sort((a, b) => a.price - b.price);
-    return out.slice(0, max);
-  }
-  function formatNearbySellLine(listing) {
-    const price = formatTradeGold(listing.price);
-    const who = listing.seller.length > 10 ? listing.seller.slice(0, 9) + "\u2026" : listing.seller;
-    return `${who} \xB7 ${price}g`;
-  }
-
-  // src/lib/tradePriceMemory.ts
-  var STORAGE_KEY = "ecu-trade-price-memory";
-  function readMap() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : {};
-    } catch (e2) {
-      return {};
-    }
-  }
-  function writeMap(map) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-    } catch (e2) {
-    }
-  }
-  function recallTradePrice(itemName) {
-    const key = String(itemName || "").trim();
-    if (!key) return null;
-    const entry = readMap()[key];
-    if (!entry || !(entry.price > 0)) return null;
-    return entry;
-  }
-  function rememberTradePrice(itemName, price, q) {
-    const key = String(itemName || "").trim();
-    if (!key || !(price > 0)) return;
-    const map = readMap();
-    map[key] = { price: price | 0, q: q != null && q > 0 ? q | 0 : void 0 };
-    writeMap(map);
-  }
-  function formatGold(n) {
-    const v = Number(n) | 0;
-    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-    if (v >= 1e4) return `${Math.round(v / 1e3)}k`;
-    return String(v);
-  }
-  function nearbyTradePricesForItem(itemName, slots) {
-    const name = String(itemName || "").trim();
-    if (!name || !slots) return [];
-    const seen = /* @__PURE__ */ new Set();
-    const out = [];
-    const keys = Object.keys(slots);
-    for (let i = 0; i < keys.length; i++) {
-      const slot = slots[keys[i]];
-      if (!slot || slot.name !== name) continue;
-      const price = Number(slot.price) | 0;
-      if (!(price > 0) || seen.has(price)) continue;
-      seen.add(price);
-      out.push(price);
-    }
-    out.sort((a, b) => a - b);
-    return out;
-  }
-  function tradePriceSuggestions(itemName, options) {
-    var _a;
-    const name = String(itemName || "").trim();
-    if (!name) return [];
-    const out = [];
-    const seen = /* @__PURE__ */ new Set();
-    const push = (label, price, kind) => {
-      const p = Number(price) | 0;
-      if (!(p > 0) || seen.has(p)) return;
-      seen.add(p);
-      out.push({ label, price: p, kind });
-    };
-    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
-    const vendorNet = vendorGoldPrice(name, options == null ? void 0 : options.level);
-    const vendorFloor = vendorListFloorPrice(name, {
-      level: options == null ? void 0 : options.level,
-      observer
-    });
-    if (vendorFloor != null && vendorNet != null) {
-      const tax = resolveTradeTaxRate(observer);
-      const taxPct = Math.round(tax * 100);
-      const netLabel = formatGold(vendorNet);
-      push(
-        `Vendor \xB7 ${formatGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
-        vendorFloor,
-        "vendor"
-      );
-    }
-    const mem = recallTradePrice(name);
-    if (mem) push(`Last \xB7 ${formatGold(mem.price)}g`, mem.price, "last");
-    const current = options == null ? void 0 : options.currentPrice;
-    if (current != null && Number(current) > 0) {
-      push(`Current \xB7 ${formatGold(current)}g`, Number(current), "current");
-    }
-    const yours = nearbyTradePricesForItem(name, options == null ? void 0 : options.slots);
-    for (let i = 0; i < yours.length; i++) {
-      push(`Yours \xB7 ${formatGold(yours[i])}g`, yours[i], "yours");
-    }
-    const nearbyMap = nearbyMapSellPricesForItem(name, observer, {
-      level: options == null ? void 0 : options.level
-    });
-    for (let i = 0; i < nearbyMap.length; i++) {
-      const row3 = nearbyMap[i];
-      push(formatNearbySellLine(row3), row3.price, "nearby");
-    }
-    if (nearbyMap.length > 0) {
-      const low = nearbyMap[0].price;
-      const undercut = Math.max(1, low - 1);
-      if (!seen.has(undercut)) {
-        push(`Undercut \xB7 ${formatGold(undercut)}g`, undercut, "undercut");
-      }
-    }
-    return out.slice(0, 12);
-  }
-  function defaultTradePriceNumber(itemName, options) {
-    var _a;
-    const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
-    const vendorFloor = vendorListFloorPrice(itemName, {
-      level: options == null ? void 0 : options.level,
-      observer
-    });
-    const floor = vendorFloor != null && vendorFloor > 0 ? vendorFloor : 1;
-    const suggestions = tradePriceSuggestions(itemName, { ...options, observer });
-    for (let i = 0; i < suggestions.length; i++) {
-      const sug = suggestions[i];
-      if (sug.kind === "vendor") continue;
-      if (sug.price >= floor) return sug.price;
-    }
-    return floor;
-  }
-  function parseTradeGoldInput(raw) {
-    const trimmed = String(raw != null ? raw : "").trim().replace(/,/g, "");
-    if (!trimmed) return null;
-    const n = parseInt(trimmed, 10);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return n | 0;
-  }
-
-  // src/host/tradeCommands.ts
-  function lit4(value) {
-    return JSON.stringify(String(value));
-  }
-  function commLit(message) {
-    return lit4(commLogText(message));
-  }
-  function tradeRowOpenJs() {
-    return `(character.slots&&character.slots.trade1!==undefined)`;
-  }
-  function tradeShowEmitJs() {
-    return `var __sock=get_socket();if(__sock)__sock.emit("trade",{event:"show"});`;
-  }
-  function socketEmitJs(event, payloadExpr) {
-    return [
-      `var __sock=get_socket();`,
-      `if(!__sock){game_log(${commLit("trade \xB7 no socket")});return;}`,
-      `__sock.emit(${lit4(event)},${payloadExpr});`
-    ].join("");
-  }
-  function tradeSlotOccupiedGuardJs(slotExpr, failMessage) {
-    return [
-      `var __ts=${slotExpr};`,
-      `var __occ=character.slots&&character.slots[__ts];`,
-      `if(__occ&&__occ.name){game_log(${lit4(failMessage)});return;}`
-    ].join("");
-  }
-  function scheduleBagRefresh2() {
-    window.setTimeout(() => {
-      try {
-        refreshObservedInventory();
-      } catch (e2) {
-      }
-    }, 900);
-  }
-  function tradeSlotIndex(slot) {
-    const n = parseInt(String(slot).replace("trade", ""), 10);
-    return Number.isFinite(n) ? n : 0;
-  }
-  function tradeListPrefaceJs(tradeSlot) {
-    const idx = tradeSlotIndex(tradeSlot);
-    const parts = [];
-    if (idx >= 1 && idx <= 4) {
-      parts.push(
-        `if(!${tradeRowOpenJs()}){`,
-        tradeShowEmitJs(),
-        `for(var __tw=0;__tw<120;__tw++){`,
-        `await sleep(50);`,
-        `if(${tradeRowOpenJs()})break;`,
-        `if(__tw===20||__tw===50||__tw===80||__tw===100){`,
-        tradeShowEmitJs(),
-        `}`,
-        `}`,
-        `}`,
-        `if(!${tradeRowOpenJs()}){`,
-        `game_log(${commLit("trade-list \xB7 could not open trade row")});return;`,
-        `}`
-      );
-    }
-    if (idx >= 5) {
-      parts.push(
-        `if(!character.stand){game_log(${commLit("trade-list \xB7 open merchant stand for " + tradeSlot)});return;}`
-      );
-    }
-    return parts.join("");
-  }
-  function buildTradeListScript(fp, tradeSlot, price, q) {
-    const slot = String(tradeSlot || "").trim();
-    const gold = Number(price) | 0;
-    const qty = q != null ? Number(q) | 0 : 1;
-    if (!slot || !isTradeSlotName(slot)) {
-      return wrapCommandScript(
-        `game_log(${commLit("trade-list \xB7 invalid slot")});`
-      );
-    }
-    if (gold <= 0) {
-      return wrapCommandScript(
-        `game_log(${commLit("trade-list \xB7 invalid price")});`
-      );
-    }
-    return wrapCommandScript(
-      [
-        resolveInvSlotJs(fp),
-        tradeListPrefaceJs(slot),
-        tradeSlotOccupiedGuardJs(
-          lit4(slot),
-          commLogText("trade-list \xB7 slot not empty")
-        ),
-        // CODE API: trade(invNum, tradeSlot, price, quantity) — not parent.trade(slot, num, …)
-        `try{await trade(__slot,${lit4(slot)},${gold},${qty > 0 ? qty : 1});`,
-        `game_log(${commLit("trade-list ok \u2192 " + slot)});`,
-        `}catch(__e){`,
-        `game_log(${commLit("trade-list failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildMerchantCloseScript() {
-    return wrapCommandScript(
-      [
-        `try{await close_merchant();}catch(__e){`,
-        `game_log("Close merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildMerchantOpenScript(invSlot) {
-    if (invSlot != null && Number(invSlot) >= 0) {
-      const slot = Number(invSlot) | 0;
-      return wrapCommandScript(
-        [
-          `if(${slot}<0||!character.items[${slot}]){game_log("Open stand failed \u2014 invalid slot");return;}`,
-          `try{await open_merchant(${slot});}catch(__e){`,
-          `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-          `}`
-        ].join("")
-      );
-    }
-    return wrapCommandScript(
-      [
-        `var __num=-1;`,
-        `for(var __si=0;__si<character.items.length;__si++){`,
-        `var __it=character.items[__si];`,
-        `if(!__it||!__it.name)continue;`,
-        `var __def=G.items[__it.name];`,
-        `if(__def&&(__def.stand||__def.type==="stand")){__num=__si;break;}`,
-        `}`,
-        `if(__num<0){game_log("No merchant stand in bag");return;}`,
-        `try{await open_merchant(__num);}catch(__e){`,
-        `game_log("Open merchant failed"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildWishlistScript(tradeSlot, itemName, price, q, level) {
-    const slot = normalizeTradeSlot(tradeSlot);
-    const name = String(itemName || "").trim();
-    const gold = Number(price) | 0;
-    const qty = q != null ? Number(q) | 0 : 1;
-    const lvl = level != null ? Number(level) | 0 : 0;
-    if (!slot || !name) {
-      return wrapCommandScript(`game_log("Wishlist aborted \u2014 missing slot or item");`);
-    }
-    if (gold <= 0) {
-      return wrapCommandScript(`game_log("Wishlist aborted \u2014 invalid price");`);
-    }
-    return wrapCommandScript(
-      [
-        tradeSlotOccupiedGuardJs(lit4(slot), "Wishlist failed \u2014 slot not empty"),
-        tradeListPrefaceJs(slot),
-        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
-        `try{await wishlist(${lit4(slot)},${lit4(name)},${gold},${lvl},${qty > 0 ? qty : 1});}catch(__e){`,
-        `game_log(${lit4("Wishlist failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function buildTradePurchaseScript(targetId, tradeSlot, rid, quantity) {
-    const id = String(targetId || "").trim();
-    const slot = normalizeTradeSlot(tradeSlot);
-    const listingRid = String(rid || "").trim();
-    const q = Number(quantity) | 0;
-    if (!id || !slot || !listingRid) {
-      return wrapCommandScript(`game_log("Buy failed \u2014 missing target or listing");`);
-    }
-    if (q <= 0) {
-      return wrapCommandScript(`game_log("Buy failed \u2014 invalid quantity");`);
-    }
-    return wrapCommandScript(
-      [
-        `var __id=${lit4(id)};`,
-        `var __slot=${lit4(slot)};`,
-        `var __rid=${lit4(listingRid)};`,
-        `var __q=${q};`,
-        `var __target=parent.entities[__id];`,
-        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Buy failed \u2014 listing gone");return;}`,
-        `var __listing=__target.slots[__slot];`,
-        `if(__listing.b){game_log("Buy failed \u2014 slot is a buy order");return;}`,
-        `if(__listing.rid!==__rid){game_log("Buy failed \u2014 listing changed");return;}`,
-        socketEmitJs("trade_buy", "{id:__id,slot:__slot,rid:__rid,q:String(__q)}")
-      ].join("")
-    );
-  }
-  function buildTradeFulfillScript(targetId, tradeSlot, rid, quantity) {
-    const id = String(targetId || "").trim();
-    const slot = normalizeTradeSlot(tradeSlot);
-    const listingRid = String(rid || "").trim();
-    const q = Number(quantity) | 0;
-    if (!id || !slot || !listingRid) {
-      return wrapCommandScript(`game_log("Fulfill failed \u2014 missing target or listing");`);
-    }
-    if (q <= 0) {
-      return wrapCommandScript(`game_log("Fulfill failed \u2014 invalid quantity");`);
-    }
-    return wrapCommandScript(
-      [
-        `var __id=${lit4(id)};`,
-        `var __slot=${lit4(slot)};`,
-        `var __rid=${lit4(listingRid)};`,
-        `var __q=${q};`,
-        `var __target=parent.entities[__id];`,
-        `if(!__target||!__target.slots||!__target.slots[__slot]){game_log("Fulfill failed \u2014 listing gone");return;}`,
-        `var __listing=__target.slots[__slot];`,
-        `if(!__listing.b){game_log("Fulfill failed \u2014 not a buy order");return;}`,
-        `if(__listing.rid!==__rid){game_log("Fulfill failed \u2014 listing changed");return;}`,
-        `var __have=false;`,
-        `for(var __si=0;__si<character.items.length;__si++){`,
-        `var __it=character.items[__si];`,
-        `if(!__it||__it.name!==__listing.name)continue;`,
-        `if(__listing.level!=null&&(__it.level||0)!==__listing.level)continue;`,
-        `__have=true;break;`,
-        `}`,
-        `if(!__have){game_log("Fulfill failed \u2014 no matching item in bag");return;}`,
-        socketEmitJs("trade_sell", "{id:__id,slot:__slot,rid:__rid,q:__q}")
-      ].join("")
-    );
-  }
-  function buildJoinGiveawayScript(targetId, tradeSlot, rid) {
-    const id = String(targetId || "").trim();
-    const slot = normalizeTradeSlot(tradeSlot);
-    const listingRid = String(rid || "").trim();
-    if (!id || !slot || !listingRid) {
-      return wrapCommandScript(`game_log("Giveaway join failed \u2014 missing target");`);
-    }
-    return wrapCommandScript(
-      [
-        socketEmitJs(
-          "join_giveaway",
-          `{id:${lit4(id)},slot:${lit4(slot)},rid:${lit4(listingRid)}}`
-        )
-      ].join("")
-    );
-  }
-  function buildGiveawayScript(tradeSlot, fp, minutes, q) {
-    const slot = normalizeTradeSlot(tradeSlot);
-    const mins = Number(minutes) | 0;
-    const qty = q != null ? Number(q) | 0 : 1;
-    if (!slot) {
-      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid slot");`);
-    }
-    if (mins <= 0) {
-      return wrapCommandScript(`game_log("Giveaway aborted \u2014 invalid duration");`);
-    }
-    return wrapCommandScript(
-      [
-        resolveInvSlotJs(fp),
-        tradeListPrefaceJs(slot),
-        tradeSlotOccupiedGuardJs(lit4(slot), "Giveaway failed \u2014 slot not empty"),
-        `try{await giveaway(${lit4(slot)},__slot,${qty > 0 ? qty : 1},${mins});}catch(__e){`,
-        `game_log(${lit4("Giveaway failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`
-      ].join("")
-    );
-  }
-  function tradeListingSnapshotJs(snapshot) {
-    const o = { name: snapshot.name };
-    if (snapshot.q != null) o.q = snapshot.q;
-    if (snapshot.level != null) o.level = snapshot.level;
-    if (snapshot.b) o.b = true;
-    if (snapshot.p != null) o.p = snapshot.p;
-    return JSON.stringify(o);
-  }
-  function buildTradeRepriceScript(tradeSlot, newPrice, listingSnapshot) {
-    const slot = normalizeTradeSlot(tradeSlot);
-    const gold = Number(newPrice) | 0;
-    if (!slot) {
-      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid slot");`);
-    }
-    if (gold <= 0) {
-      return wrapCommandScript(`game_log("Reprice aborted \u2014 invalid price");`);
-    }
-    const listedInit = (listingSnapshot == null ? void 0 : listingSnapshot.name) ? `var __listed=${tradeListingSnapshotJs(listingSnapshot)};` : `var __listed=character.slots[__slot];`;
-    return wrapCommandScript(
-      [
-        `var __slot=${lit4(slot)};`,
-        `var __price=${gold};`,
-        listedInit,
-        `if(!__listed||!__listed.name){game_log("Reprice failed \u2014 slot empty");return;}`,
-        `var __name=__listed.name;`,
-        `var __q=__listed.q||1;`,
-        `var __level=__listed.level||0;`,
-        `var __p=__listed.p||null;`,
-        `var __wish=!!__listed.b;`,
-        `try{await unequip(__slot);}catch(__e){`,
-        `game_log("Reprice failed (delist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;`,
-        `}`,
-        `if(__wish){`,
-        // CODE API: wishlist(tradeSlot, name, price, level, quantity)
-        `try{await wishlist(__slot,__name,__price,__level,__q);}catch(__e){`,
-        `game_log("Reprice failed (wishlist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`,
-        `}else{`,
-        `var __num=-1;`,
-        `for(var __si=0;__si<character.items.length;__si++){`,
-        `var __it=character.items[__si];`,
-        `if(!__it||__it.name!==__name||__it.b)continue;`,
-        `if((__it.level||0)!==__level)continue;`,
-        `if(__p&&__it.p!==__p)continue;`,
-        `if(!__p&&__it.p)continue;`,
-        `if((__it.q||1)<__q)continue;`,
-        `__num=__si;break;`,
-        `}`,
-        `if(__num<0){game_log("Reprice failed \u2014 item not in bag after delist");return;}`,
-        // CODE API: trade(invNum, tradeSlot, price, quantity)
-        `try{await trade(__num,__slot,__price,__q);}catch(__e){`,
-        `game_log("Reprice failed (relist)"+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
-        `}`,
-        `}`
-      ].join("")
-    );
-  }
-  function normalizeTradeSlot(slot) {
-    const s = String(slot || "").trim();
-    if (!s) return "";
-    if (s.indexOf("trade") === 0) return s;
-    const n = parseInt(s, 10);
-    return Number.isFinite(n) ? "trade" + n : s;
-  }
-  function isTradeSlotName(slot) {
-    return slot.indexOf("trade") === 0;
-  }
-  function wishlistCommand(tradeSlot, itemName, price, q, level) {
-    const script = buildWishlistScript(tradeSlot, itemName, price, q, level);
-    const ok = emitObserverCommand(
-      script,
-      `wishlist ${tradeSlot} ${itemName}`
-    );
-    if (!ok) return false;
-    rememberTradePrice(itemName, price, q != null ? q : 1);
-    scheduleBagRefresh2();
-    return true;
-  }
-  function joinGiveawayCommand(targetId, tradeSlot, rid) {
-    const script = buildJoinGiveawayScript(targetId, tradeSlot, rid);
-    return emitObserverCommand(
-      script,
-      `join-giveaway ${tradeSlot}`
-    );
-  }
-  function giveawayCommand(tradeSlot, fp, minutes, q) {
-    const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
-    const ok = emitObserverCommand(
-      script,
-      `giveaway ${tradeSlot} ${fp.name}`
-    );
-    if (!ok) return false;
-    scheduleBagRefresh2();
-    return true;
-  }
-  function tradePurchaseCommand(targetId, tradeSlot, rid, quantity) {
-    const script = buildTradePurchaseScript(targetId, tradeSlot, rid, quantity);
-    const ok = emitObserverCommand(script, `trade-buy ${tradeSlot}`);
-    if (!ok) return false;
-    scheduleBagRefresh2();
-    return true;
-  }
-  function tradeFulfillCommand(targetId, tradeSlot, rid, quantity) {
-    const script = buildTradeFulfillScript(targetId, tradeSlot, rid, quantity);
-    const ok = emitObserverCommand(script, `trade-sell ${tradeSlot}`);
-    if (!ok) return false;
-    scheduleBagRefresh2();
-    return true;
-  }
-  function tradeRepriceCommand(tradeSlot, newPrice, listingSnapshot) {
-    var _a;
-    const obs = window.observing;
-    const listed = listingSnapshot != null ? listingSnapshot : obs && obs.slots ? obs.slots[tradeSlot] : null;
-    if (!canRepriceTradeSlot(
-      tradeSlot,
-      listed,
-      obs == null ? void 0 : obs.slots,
-      !!(obs == null ? void 0 : obs.stand)
-    )) {
-      window.alert(
-        "Open your merchant stand to change prices on stand slots (trade5+)."
-      );
-      return false;
-    }
-    const script = buildTradeRepriceScript(
-      tradeSlot,
-      newPrice,
-      shouldSkipLiveTradeSlotGuard(tradeSlot, listed, obs == null ? void 0 : obs.slots) ? listed : void 0
-    );
-    const ok = emitObserverCommand(script, `trade-reprice ${tradeSlot}`);
-    if (!ok) return false;
-    if (listed == null ? void 0 : listed.name) {
-      rememberTradePrice(listed.name, newPrice, (_a = listed.q) != null ? _a : 1);
-    }
-    scheduleBagRefresh2();
-    return true;
-  }
-  function tradeListCommand(fp, tradeSlot, price, q) {
-    var _a;
-    const script = buildTradeListScript(fp, tradeSlot, price, q);
-    const ok = emitObserverCommand(
-      script,
-      `trade-list ${tradeSlot} ${fp.name}`
-    );
-    if (!ok) return false;
-    rememberTradePrice(fp.name, price, (_a = q != null ? q : fp.q) != null ? _a : 1);
-    scheduleBagRefresh2();
-    return true;
-  }
-  function merchantCloseCommand() {
-    const ok = emitObserverCommand(buildMerchantCloseScript(), "merchant-close");
-    if (!ok) return false;
-    scheduleBagRefresh2();
-    return true;
-  }
-  function merchantOpenCommand(invSlot) {
-    const script = buildMerchantOpenScript(invSlot);
-    const ok = emitObserverCommand(script, "merchant-open");
-    if (!ok) return false;
-    scheduleBagRefresh2();
-    return true;
-  }
-
   // src/lib/gearSlots.ts
   var RING_SLOTS = ["ring1", "ring2"];
   var EARRING_SLOTS = ["earring1", "earring2"];
@@ -50259,571 +51897,6 @@ ${parts.map(cssSlice).join("\n")}
       return `${free}/${isize} free`;
     }
     return `${free} free`;
-  }
-  function countTradeSlotSpace(slotNames, slots) {
-    let filled = 0;
-    for (let i = 0; i < slotNames.length; i++) {
-      const slot = slots == null ? void 0 : slots[slotNames[i]];
-      if (slot && slot.name) filled++;
-    }
-    const total = slotNames.length;
-    return { total, filled, empty: Math.max(0, total - filled) };
-  }
-  function formatTradeSlotSpace(slotNames, slots) {
-    if (!slotNames.length) return null;
-    const { filled, empty: empty2 } = countTradeSlotSpace(slotNames, slots);
-    if (empty2 <= 0) return `${filled} listed`;
-    return `${empty2} free \xB7 ${filled} listed`;
-  }
-
-  // src/ui/trade/tradePromptDialogCss.ts
-  var injected6 = false;
-  var CSS8 = `
-.ecu-trade-prompt-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483005;
-  background: rgba(0, 0, 0, 0.62);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto;
-}
-.ecu-trade-prompt {
-  min-width: min(400px, 94vw);
-  max-width: 460px;
-  padding: 18px 20px 16px;
-  background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
-  border: 1px solid rgba(0, 0, 0, 0.85);
-  outline: 1px solid rgba(232, 201, 106, 0.35);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
-  color: #eee;
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-  font-size: 15px;
-  box-sizing: border-box;
-}
-.ecu-trade-prompt__title {
-  margin: 0 0 6px;
-  font-size: 20px;
-  font-weight: 600;
-  color: #ffd28a;
-}
-.ecu-trade-prompt__item {
-  margin: 0 0 12px;
-  color: rgba(220, 210, 210, 0.92);
-  line-height: 1.35;
-}
-.ecu-trade-prompt__item-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 14px;
-}
-.ecu-trade-prompt__icon {
-  flex: 0 0 auto;
-  line-height: 0;
-  font-size: 0;
-}
-.ecu-trade-prompt__icon .itemslot,
-.ecu-trade-prompt__icon .item_container {
-  margin: 0 !important;
-}
-.ecu-trade-prompt__item-text {
-  flex: 1;
-  min-width: 0;
-}
-.ecu-trade-prompt__item-name {
-  color: rgba(235, 225, 210, 0.96);
-  font-size: 15px;
-  line-height: 1.35;
-  word-break: break-word;
-}
-.ecu-trade-prompt__nearby {
-  margin: 0 0 12px;
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-.ecu-trade-prompt__nearby-title {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: rgba(200, 180, 120, 0.85);
-  margin-bottom: 6px;
-}
-.ecu-trade-prompt__nearby-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 88px;
-  overflow-y: auto;
-}
-.ecu-trade-prompt__nearby-row {
-  font-size: 13px;
-  color: rgba(210, 205, 195, 0.92);
-  font-variant-numeric: tabular-nums;
-}
-.ecu-trade-prompt__field {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 0 0 10px;
-}
-.ecu-trade-prompt__field input[type="number"],
-.ecu-trade-prompt__field input[type="text"] {
-  flex: 1;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-  box-sizing: border-box;
-}
-.ecu-trade-prompt__field input:focus {
-  outline: none;
-  border-color: rgba(232, 201, 106, 0.55);
-  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.2);
-}
-.ecu-trade-prompt__suffix {
-  color: rgba(200, 190, 170, 0.85);
-  font-size: 14px;
-  white-space: nowrap;
-}
-.ecu-trade-prompt__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 12px;
-}
-.ecu-trade-prompt__chips button {
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: #ddd;
-  font-size: 13px;
-  cursor: pointer;
-}
-.ecu-trade-prompt__chips button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(232, 201, 106, 0.35);
-}
-.ecu-trade-prompt__chips button.is-active,
-.ecu-trade-prompt__chip.is-active {
-  background: rgba(232, 201, 106, 0.18);
-  border-color: rgba(232, 201, 106, 0.55);
-  color: #fff;
-}
-.ecu-trade-prompt__chip--vendor {
-  border-color: rgba(140, 190, 140, 0.35);
-}
-.ecu-trade-prompt__chip--nearby,
-.ecu-trade-prompt__chip--undercut {
-  border-color: rgba(143, 212, 255, 0.28);
-}
-.ecu-trade-prompt__chip--last,
-.ecu-trade-prompt__chip--current,
-.ecu-trade-prompt__chip--yours {
-  border-color: rgba(232, 201, 106, 0.28);
-}
-.ecu-trade-prompt__hint {
-  min-height: 18px;
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: #e88;
-}
-.ecu-trade-prompt__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-.ecu-trade-prompt__actions button {
-  padding: 8px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  color: #eee;
-  font-size: 15px;
-  cursor: pointer;
-}
-.ecu-trade-prompt__actions button.primary {
-  background: rgba(232, 201, 106, 0.22);
-  border-color: rgba(232, 201, 106, 0.55);
-  color: #fff;
-}
-`;
-  function ensureTradePromptDialogCss() {
-    if (injected6) return;
-    injected6 = true;
-    const style = document.createElement("style");
-    style.setAttribute("data-ecu-trade-prompt", "1");
-    style.textContent = CSS8;
-    document.head.appendChild(style);
-  }
-
-  // src/ui/trade/tradePromptDialog.ts
-  var openBackdrop = null;
-  var finishOpen = null;
-  function closeDialog(value) {
-    const finish = finishOpen;
-    finishOpen = null;
-    if (openBackdrop) {
-      openBackdrop.remove();
-      openBackdrop = null;
-    }
-    finish == null ? void 0 : finish(value);
-  }
-  function showNumberDialog(options) {
-    closeDialog(null);
-    ensureTradePromptDialogCss();
-    return new Promise((resolve) => {
-      finishOpen = resolve;
-      const min = options.min != null ? Number(options.min) | 0 : 1;
-      const max = options.max != null ? Number(options.max) | 0 : 0;
-      const initial = options.defaultValue != null && options.defaultValue > 0 ? options.defaultValue | 0 : options.suggestions && options.suggestions.length ? options.suggestions[0].price : min;
-      const backdrop = document.createElement("div");
-      backdrop.className = "ecu-trade-prompt-backdrop";
-      backdrop.setAttribute("data-ecu-trade-prompt", "1");
-      const panel = document.createElement("div");
-      panel.className = "ecu-trade-prompt";
-      panel.setAttribute("role", "dialog");
-      panel.setAttribute("aria-modal", "true");
-      const title = document.createElement("h2");
-      title.className = "ecu-trade-prompt__title";
-      title.textContent = options.title;
-      panel.appendChild(title);
-      if (options.itemLine) {
-        const itemLine = document.createElement("p");
-        itemLine.className = "ecu-trade-prompt__item";
-        itemLine.textContent = options.itemLine;
-        panel.appendChild(itemLine);
-      }
-      const field = document.createElement("div");
-      field.className = "ecu-trade-prompt__field";
-      const input = document.createElement("input");
-      input.type = "number";
-      input.min = String(min);
-      if (max > 0) input.max = String(max);
-      input.step = "1";
-      input.value = String(initial);
-      input.setAttribute("aria-label", options.label);
-      const suffix = document.createElement("span");
-      suffix.className = "ecu-trade-prompt__suffix";
-      suffix.textContent = options.suffix || "";
-      field.append(input, suffix);
-      panel.appendChild(field);
-      const hintEl = document.createElement("p");
-      hintEl.className = "ecu-trade-prompt__hint";
-      panel.appendChild(hintEl);
-      const actions = document.createElement("div");
-      actions.className = "ecu-trade-prompt__actions";
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.textContent = "Cancel";
-      const okBtn = document.createElement("button");
-      okBtn.type = "button";
-      okBtn.className = "primary";
-      okBtn.textContent = "OK";
-      actions.append(cancelBtn, okBtn);
-      panel.appendChild(actions);
-      appendSuggestionChips(panel, options.suggestions, input, hintEl, initial);
-      backdrop.appendChild(panel);
-      document.body.appendChild(backdrop);
-      openBackdrop = backdrop;
-      const parseValue = () => {
-        const n = parseInt(String(input.value).replace(/,/g, ""), 10);
-        if (!Number.isFinite(n) || n < min) return null;
-        if (max > 0 && n > max) return null;
-        return n | 0;
-      };
-      const dismiss = (value) => {
-        document.removeEventListener("keydown", onKey, true);
-        closeDialog(value);
-      };
-      const confirm = () => {
-        const n = parseValue();
-        if (n == null) {
-          hintEl.textContent = max > 0 ? `Enter ${min}\u2013${max}.` : `Enter at least ${min}.`;
-          input.focus();
-          return;
-        }
-        dismiss(n);
-      };
-      cancelBtn.addEventListener("click", () => dismiss(null));
-      okBtn.addEventListener("click", confirm);
-      backdrop.addEventListener("click", (ev) => {
-        if (ev.target === backdrop) dismiss(null);
-      });
-      const onKey = (ev) => {
-        if (ev.key === "Escape") {
-          ev.preventDefault();
-          dismiss(null);
-        } else if (ev.key === "Enter") {
-          ev.preventDefault();
-          confirm();
-        }
-      };
-      document.addEventListener("keydown", onKey, true);
-      input.addEventListener("input", () => {
-        hintEl.textContent = "";
-      });
-      window.setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 0);
-    });
-  }
-  function appendSuggestionChips(panel, suggestions, input, hintEl, initial) {
-    const chipButtons = [];
-    if (!suggestions || !suggestions.length) return chipButtons;
-    const chips = document.createElement("div");
-    chips.className = "ecu-trade-prompt__chips";
-    const setActiveChip = (price) => {
-      for (let i = 0; i < chipButtons.length; i++) {
-        chipButtons[i].classList.toggle(
-          "is-active",
-          suggestions[i].price === price
-        );
-      }
-    };
-    for (let i = 0; i < suggestions.length; i++) {
-      const sug = suggestions[i];
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ecu-trade-prompt__chip" + (sug.kind ? ` ecu-trade-prompt__chip--${sug.kind}` : "");
-      btn.textContent = sug.label;
-      btn.title = `${formatTradeGold(sug.price)} gold`;
-      btn.addEventListener("click", () => {
-        input.value = String(sug.price);
-        setActiveChip(sug.price);
-        hintEl.textContent = "";
-        input.focus();
-      });
-      chipButtons.push(btn);
-      chips.appendChild(btn);
-    }
-    const actions = panel.querySelector(".ecu-trade-prompt__actions");
-    if (actions) panel.insertBefore(chips, actions);
-    else panel.appendChild(chips);
-    setActiveChip(initial);
-    return chipButtons;
-  }
-  function appendItemHeader(panel, itemName, label, options) {
-    const row3 = document.createElement("div");
-    row3.className = "ecu-trade-prompt__item-row";
-    const iconWrap = document.createElement("div");
-    iconWrap.className = "ecu-trade-prompt__icon";
-    let iconHtml = "";
-    try {
-      iconHtml = itemInstanceHtml(itemName, {
-        skin: options == null ? void 0 : options.skin,
-        size: 34,
-        level: options == null ? void 0 : options.level,
-        p: options == null ? void 0 : options.p,
-        nativeTitle: false
-      }) || "";
-    } catch (e2) {
-      iconHtml = "";
-    }
-    if (iconHtml) {
-      iconWrap.innerHTML = iconHtml;
-    }
-    const textWrap = document.createElement("div");
-    textWrap.className = "ecu-trade-prompt__item-text";
-    const nameEl = document.createElement("div");
-    nameEl.className = "ecu-trade-prompt__item-name";
-    nameEl.textContent = label;
-    textWrap.appendChild(nameEl);
-    row3.append(iconWrap, textWrap);
-    panel.insertBefore(row3, panel.children[1] || null);
-  }
-  function appendNearbySection(panel, suggestions) {
-    const nearby = suggestions.filter((s) => s.kind === "nearby");
-    if (!nearby.length) return;
-    const section3 = document.createElement("div");
-    section3.className = "ecu-trade-prompt__nearby";
-    const heading = document.createElement("div");
-    heading.className = "ecu-trade-prompt__nearby-title";
-    heading.textContent = "Nearby listings";
-    section3.appendChild(heading);
-    const list = document.createElement("div");
-    list.className = "ecu-trade-prompt__nearby-list";
-    for (let i = 0; i < nearby.length; i++) {
-      const row3 = document.createElement("div");
-      row3.className = "ecu-trade-prompt__nearby-row";
-      row3.textContent = nearby[i].label;
-      list.appendChild(row3);
-    }
-    section3.appendChild(list);
-    const field = panel.querySelector(".ecu-trade-prompt__field");
-    if (field) panel.insertBefore(section3, field);
-    else panel.appendChild(section3);
-  }
-  function showTradePriceDialog(options) {
-    var _a, _b;
-    closeDialog(null);
-    ensureTradePromptDialogCss();
-    const name = String(options.itemName || "").trim();
-    const label = options.itemLabel || itemInstanceLabel(name, { level: options.level, p: options.p });
-    const title = options.mode === "wishlist" ? "Wishlist buy price" : options.mode === "reprice" ? "Change price" : "List for sale";
-    const suggestions = tradePriceSuggestions(name, {
-      slots: options.slots,
-      currentPrice: options.currentPrice,
-      level: options.level,
-      observer: (_a = getObserving()) != null ? _a : window.observing
-    });
-    const defaultValue = defaultTradePriceNumber(name, {
-      slots: options.slots,
-      currentPrice: options.currentPrice,
-      level: options.level,
-      observer: (_b = getObserving()) != null ? _b : window.observing
-    });
-    return new Promise((resolve) => {
-      finishOpen = resolve;
-      const min = 1;
-      const initial = defaultValue > 0 ? defaultValue : min;
-      const backdrop = document.createElement("div");
-      backdrop.className = "ecu-trade-prompt-backdrop";
-      backdrop.setAttribute("data-ecu-trade-prompt", "1");
-      const panel = document.createElement("div");
-      panel.className = "ecu-trade-prompt ecu-trade-prompt--price";
-      panel.setAttribute("role", "dialog");
-      panel.setAttribute("aria-modal", "true");
-      const titleEl = document.createElement("h2");
-      titleEl.className = "ecu-trade-prompt__title";
-      titleEl.textContent = title;
-      panel.appendChild(titleEl);
-      appendItemHeader(panel, name, label, {
-        level: options.level,
-        p: options.p,
-        skin: options.skin
-      });
-      appendNearbySection(panel, suggestions);
-      const field = document.createElement("div");
-      field.className = "ecu-trade-prompt__field";
-      const input = document.createElement("input");
-      input.type = "number";
-      input.min = String(min);
-      input.step = "1";
-      input.value = String(initial);
-      input.setAttribute("aria-label", "Price in gold");
-      const suffix = document.createElement("span");
-      suffix.className = "ecu-trade-prompt__suffix";
-      suffix.textContent = "gold";
-      field.append(input, suffix);
-      panel.appendChild(field);
-      const hintEl = document.createElement("p");
-      hintEl.className = "ecu-trade-prompt__hint";
-      panel.appendChild(hintEl);
-      const actions = document.createElement("div");
-      actions.className = "ecu-trade-prompt__actions";
-      const cancelBtn = document.createElement("button");
-      cancelBtn.type = "button";
-      cancelBtn.textContent = "Cancel";
-      const okBtn = document.createElement("button");
-      okBtn.type = "button";
-      okBtn.className = "primary";
-      okBtn.textContent = options.mode === "reprice" ? "Reprice" : options.mode === "wishlist" ? "Wishlist" : "List";
-      actions.append(cancelBtn, okBtn);
-      panel.appendChild(actions);
-      appendSuggestionChips(panel, suggestions, input, hintEl, initial);
-      backdrop.appendChild(panel);
-      document.body.appendChild(backdrop);
-      openBackdrop = backdrop;
-      const dismiss = (value) => {
-        document.removeEventListener("keydown", onKey, true);
-        closeDialog(value);
-      };
-      const confirm = () => {
-        const n = parseTradeGoldInput(input.value);
-        if (n == null) {
-          hintEl.textContent = "Enter at least 1 gold.";
-          input.focus();
-          input.select();
-          return;
-        }
-        dismiss(n);
-      };
-      cancelBtn.addEventListener("click", () => dismiss(null));
-      okBtn.addEventListener("click", confirm);
-      backdrop.addEventListener("click", (ev) => {
-        if (ev.target === backdrop) dismiss(null);
-      });
-      const onKey = (ev) => {
-        if (ev.key === "Escape") {
-          ev.preventDefault();
-          dismiss(null);
-        } else if (ev.key === "Enter") {
-          ev.preventDefault();
-          confirm();
-        }
-      };
-      document.addEventListener("keydown", onKey, true);
-      input.addEventListener("input", () => {
-        hintEl.textContent = "";
-      });
-      window.setTimeout(() => {
-        input.focus();
-        input.select();
-      }, 0);
-    });
-  }
-  function showTradeQuantityDialog(options) {
-    const maxQ = Math.max(1, Number(options.maxQ) | 0);
-    const name = String(options.itemName || "").trim();
-    const defaultQ = options.defaultQ != null && options.defaultQ > 0 ? Math.min(maxQ, options.defaultQ | 0) : maxQ > 1 ? Math.max(1, Math.floor(maxQ / 2)) : 1;
-    const suggestions = [
-      { label: "1", price: 1 },
-      {
-        label: `Half (${Math.max(1, Math.floor(maxQ / 2))})`,
-        price: Math.max(1, Math.floor(maxQ / 2))
-      },
-      { label: `Max (${maxQ})`, price: maxQ }
-    ].filter((s, i, arr) => arr.findIndex((x) => x.price === s.price) === i);
-    return showNumberDialog({
-      title: "Quantity",
-      itemLine: name ? `${name} \xB7 up to ${maxQ}` : `Up to ${maxQ}`,
-      label: "Quantity",
-      suffix: ` / ${maxQ}`,
-      defaultValue: defaultQ,
-      suggestions: maxQ > 1 ? suggestions : void 0,
-      min: 1,
-      max: maxQ
-    });
-  }
-  function showGiveawayMinutesDialog(defaultMins = 60) {
-    const def = defaultMins > 0 ? defaultMins | 0 : 60;
-    return showNumberDialog({
-      title: "Giveaway duration",
-      itemLine: "How long should the giveaway run?",
-      label: "Minutes",
-      suffix: "min",
-      defaultValue: def,
-      suggestions: [
-        { label: "15 min", price: 15 },
-        { label: "1 hour", price: 60 },
-        { label: "4 hours", price: 240 },
-        { label: "24 hours", price: 1440 }
-      ],
-      min: 1
-    });
-  }
-  function showWishlistLevelDialog(itemName) {
-    const name = String(itemName || "").trim();
-    return showNumberDialog({
-      title: "Wishlist level",
-      itemLine: name ? `${name} \xB7 upgrade/compound level` : "Item level",
-      label: "Level",
-      suffix: "0\u201312",
-      defaultValue: 0,
-      suggestions: [
-        { label: "Any (0)", price: 0 },
-        { label: "+5", price: 5 },
-        { label: "+7", price: 7 },
-        { label: "+10", price: 10 }
-      ],
-      min: 0,
-      max: 12
-    });
   }
 
   // src/ui/gear/tradeWishlistPickerCss.ts
@@ -59072,17 +60145,17 @@ ${ESTIMATE_HINT}`,
     const id = window.user_id;
     return id != null && String(id) !== "";
   }
-  function serverUiLabel(serverKey2) {
-    if (!serverKey2) return "Server";
+  function serverUiLabel(serverKey3) {
+    if (!serverKey3) return "Server";
     const fn = window.server_to_ui;
     if (typeof fn === "function") {
       try {
-        const label = fn(serverKey2);
+        const label = fn(serverKey3);
         if (label) return String(label);
       } catch (e2) {
       }
     }
-    const raw = String(serverKey2);
+    const raw = String(serverKey3);
     if (raw.indexOf("SR_") === 0) return raw.slice(3);
     return raw;
   }
@@ -61556,6 +62629,891 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/lib/market/marketQuery.ts
+  var MARKET_OPS = /^(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):(.*)$/i;
+  var ATTR_KEYS = [
+    "str",
+    "int",
+    "dex",
+    "vit",
+    "for",
+    "hp",
+    "mp",
+    "armor",
+    "resistance",
+    "attack",
+    "range",
+    "speed",
+    "evasion",
+    "reflection",
+    "lifesteal",
+    "manasteal",
+    "crit",
+    "critdamage",
+    "rpiercing",
+    "apiercing",
+    "dreturn",
+    "frequency",
+    "gold",
+    "luck",
+    "xp",
+    "output",
+    "stat",
+    "courage",
+    "mcourage",
+    "pcourage"
+  ];
+  function parseAmount(raw) {
+    const s = String(raw || "").trim().toLowerCase().replace(/,/g, "");
+    const m = /^([<>]=?|=)?\s*(\d+(?:\.\d+)?)\s*([kmb])?$/.exec(s);
+    if (!m) return null;
+    let n = parseFloat(m[2]);
+    if (!Number.isFinite(n)) return null;
+    const u = m[3];
+    if (u === "k") n *= 1e3;
+    else if (u === "m") n *= 1e6;
+    else if (u === "b") n *= 1e9;
+    const op = m[1] || "=";
+    return { op, n };
+  }
+  function tokenizeQuery(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return [];
+    const out = [];
+    let cur = "";
+    let quote = null;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s.charAt(i);
+      if (quote) {
+        if (ch === quote) {
+          quote = null;
+          cur += ch;
+        } else cur += ch;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        quote = ch;
+        cur += ch;
+        continue;
+      }
+      if (/\s/.test(ch)) {
+        if (cur) {
+          out.push(cur);
+          cur = "";
+        }
+        continue;
+      }
+      cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+  function stripQuotes2(s) {
+    if (s.length >= 2) {
+      const a = s.charAt(0);
+      const b = s.charAt(s.length - 1);
+      if (a === '"' && b === '"' || a === "'" && b === "'") {
+        return s.slice(1, -1);
+      }
+    }
+    return s;
+  }
+  function splitOrValues(raw) {
+    return String(raw || "").split(/[|,]/).map((s) => s.trim()).filter(Boolean);
+  }
+  function parseClauseToken(tokIn) {
+    let tok = tokIn;
+    let negate = false;
+    if (tok.charAt(0) === "-") {
+      negate = true;
+      tok = tok.slice(1);
+      if (!tok) return null;
+    }
+    const m = MARKET_OPS.exec(tok);
+    if (!m) {
+      return { kind: "text", values: [stripQuotes2(tok)], negate };
+    }
+    const op = m[1].toLowerCase();
+    const value = stripQuotes2(m[2]);
+    if (op === "mer") {
+      return { kind: "merchant", values: splitOrValues(value), negate };
+    }
+    if (op === "is" || op === "has") {
+      return {
+        kind: op,
+        values: splitOrValues(value).map((v) => v.toLowerCase()),
+        negate
+      };
+    }
+    if (op === "stat") {
+      return {
+        kind: "stat",
+        values: splitOrValues(value).map((v) => v.toLowerCase()),
+        negate
+      };
+    }
+    if (op === "attr") {
+      const specs = [];
+      const parts = splitOrValues(value);
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const am = /^([a-z_][a-z0-9_]*)\s*([<>]=?|=)?\s*(.*)$/i.exec(part.trim());
+        if (!am) continue;
+        const key = am[1].toLowerCase();
+        const opSign = am[2] || "";
+        const rhs = String(am[3] || "").trim();
+        if (!opSign && !rhs) {
+          specs.push({ key, any: true });
+          continue;
+        }
+        const amt = parseAmount((opSign || "=") + rhs);
+        if (amt) specs.push({ key, op: amt.op, n: amt.n });
+        else specs.push({ key, any: true });
+      }
+      if (!specs.length) return null;
+      return { kind: "attr", specs, negate };
+    }
+    if (op === "level" || op === "price") {
+      const parts = splitOrValues(value);
+      const amts = [];
+      for (let i = 0; i < parts.length; i++) {
+        const amt = parseAmount(parts[i]);
+        if (amt) amts.push(amt);
+      }
+      if (amts.length) return { kind: op, amts, negate };
+      if (value) return { kind: "text", values: [value], negate };
+      return null;
+    }
+    if (op === "item" || op === "title" || op === "merchant" || op === "map" || op === "server") {
+      return { kind: op, values: splitOrValues(value), negate };
+    }
+    return { kind: "text", values: splitOrValues(value), negate };
+  }
+  function parseMarketQuery(raw) {
+    const tokens = tokenizeQuery(raw);
+    const groups = [[]];
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      if (/^(or|\|)$/i.test(tok)) {
+        if (groups[groups.length - 1].length) groups.push([]);
+        continue;
+      }
+      const clause = parseClauseToken(tok);
+      if (clause) groups[groups.length - 1].push(clause);
+    }
+    return groups.filter((g) => g.length);
+  }
+  function cmpAmount(actual, amt) {
+    const n = Number(actual) || 0;
+    if (amt.op === ">=") return n >= amt.n;
+    if (amt.op === ">") return n > amt.n;
+    if (amt.op === "<=") return n <= amt.n;
+    if (amt.op === "<") return n < amt.n;
+    return n === amt.n;
+  }
+  function getGItems() {
+    if (typeof window === "undefined") return null;
+    const G = window.G;
+    return G && G.items || null;
+  }
+  function itemScrollable(name) {
+    const items = getGItems();
+    const def = items && items[name];
+    return !!(def && (def.scroll || def.stat));
+  }
+  function calcOfferProps(row3) {
+    const items = getGItems();
+    const def = items && items[row3.name] || {};
+    const prop = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < ATTR_KEYS.length; i++) {
+      const k = ATTR_KEYS[i];
+      const v = def[k];
+      prop[k] = typeof v === "number" ? v : 0;
+    }
+    const level = Math.max(0, Math.floor(Number(row3.level) || 0));
+    const up = def.upgrade;
+    if (up && typeof up === "object" && !Array.isArray(up)) {
+      const upRec = up;
+      for (let i = 1; i <= level; i++) {
+        const keys = Object.keys(upRec);
+        for (let j = 0; j < keys.length; j++) {
+          const k = keys[j];
+          const uv = upRec[k];
+          if (typeof uv !== "number") continue;
+          prop[k] = (prop[k] || 0) + uv;
+        }
+      }
+    }
+    const st = row3.stat_type ? String(row3.stat_type).toLowerCase() : "";
+    if (def.stat && st && prop.stat) {
+      prop[st] = (prop[st] || 0) + prop.stat;
+      prop.stat = 0;
+    }
+    return prop;
+  }
+  function offerHaystack(row3) {
+    let nm = String(row3.name || "").toLowerCase();
+    if (typeof window !== "undefined") {
+      try {
+        nm = itemInstanceLabel(row3.name, {
+          level: row3.level,
+          p: row3.p != null ? String(row3.p) : void 0
+        }).toLowerCase();
+      } catch (e2) {
+      }
+    }
+    const id = String(row3.name || "").toLowerCase();
+    const mer = String(row3.merchant || "").toLowerCase();
+    const titleKey = String(row3.p || "").toLowerCase();
+    let titleDisp = "";
+    let base = id;
+    if (typeof window !== "undefined") {
+      const G = window;
+      if (row3.p && G.G && G.G.titles && G.G.titles[String(row3.p)]) {
+        titleDisp = String(G.G.titles[String(row3.p)].title || "").toLowerCase();
+      }
+      base = String(
+        G.G && G.G.items && G.G.items[row3.name] && G.G.items[row3.name].name || row3.name || ""
+      ).toLowerCase();
+    }
+    const stat = String(row3.stat_type || "").toLowerCase();
+    return {
+      nm,
+      id,
+      mer,
+      titleKey,
+      titleDisp,
+      stat,
+      base,
+      hay: [nm, id, mer, titleKey, titleDisp, base, stat].filter(Boolean).join(" ")
+    };
+  }
+  function valueHits(values, test) {
+    if (!values || !values.length) return false;
+    for (let i = 0; i < values.length; i++) {
+      if (test(String(values[i] || "").toLowerCase())) return true;
+    }
+    return false;
+  }
+  function offerMatchesClause(row3, c, h, ctx) {
+    let hit = false;
+    if (c.kind === "text") {
+      hit = valueHits(c.values, (v) => h.hay.indexOf(v) >= 0);
+    } else if (c.kind === "item") {
+      hit = valueHits(
+        c.values,
+        (v) => h.nm.indexOf(v) >= 0 || h.id.indexOf(v) >= 0 || h.base.indexOf(v) >= 0
+      );
+    } else if (c.kind === "title") {
+      hit = valueHits(
+        c.values,
+        (v) => !!h.titleKey && h.titleKey.indexOf(v) >= 0 || !!h.titleDisp && h.titleDisp.indexOf(v) >= 0
+      );
+    } else if (c.kind === "stat") {
+      hit = valueHits(c.values, (v) => {
+        if (v === "none" || v === "no" || v === "empty" || v === "!") {
+          return !h.stat;
+        }
+        if (v === "any" || v === "yes" || v === "scrolled") return !!h.stat;
+        return h.stat === v || h.stat.indexOf(v) === 0;
+      });
+    } else if (c.kind === "attr") {
+      const prop = calcOfferProps(row3);
+      hit = (c.specs || []).some((spec) => {
+        const n = Number(prop[spec.key]) || 0;
+        if ("any" in spec && spec.any) return n > 0;
+        if (!("op" in spec) || !("n" in spec)) return n > 0;
+        return cmpAmount(n, { op: spec.op, n: spec.n });
+      });
+    } else if (c.kind === "merchant") {
+      hit = valueHits(c.values, (v) => h.mer.indexOf(v) >= 0);
+    } else if (c.kind === "map") {
+      const map = String(row3.map || "").toLowerCase();
+      hit = valueHits(c.values, (v) => map.indexOf(v) >= 0);
+    } else if (c.kind === "server") {
+      const srv = String(row3.server || "").toLowerCase();
+      const ui = ctx.formatServer ? ctx.formatServer(row3.server).toLowerCase() : srv;
+      hit = valueHits(c.values, (v) => srv.indexOf(v) >= 0 || ui.indexOf(v) >= 0);
+    } else if (c.kind === "level") {
+      hit = (c.amts || []).some((amt) => cmpAmount(row3.level || 0, amt));
+    } else if (c.kind === "price") {
+      hit = (c.amts || []).some((amt) => cmpAmount(row3.price || 0, amt));
+    } else if (c.kind === "has") {
+      hit = valueHits(c.values, (v) => {
+        if (v === "stat" || v === "scroll" || v === "scrolled") return !!h.stat;
+        if (v === "title" || v === "p") return !!row3.p;
+        if (v === "level") return (row3.level || 0) > 0;
+        return false;
+      });
+    } else if (c.kind === "is") {
+      hit = valueHits(c.values, (v) => {
+        if (v === "sell" || v === "sale" || v === "selling") return !row3.buyOrder;
+        if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
+          return !!row3.buyOrder;
+        }
+        if (v === "near") {
+          return !!row3.fromLive || row3.merchantStatus === "you";
+        }
+        if (v === "afford") {
+          return !!row3.buyOrder || (row3.price || 0) <= ctx.gold;
+        }
+        if (v === "have") return !!ctx.bagNames[row3.name.toLowerCase()];
+        if (v === "titled" || v === "title") return !!row3.p;
+        if (v === "stat" || v === "scrolled") return !!h.stat;
+        if (v === "nostat" || v === "unscrolled") {
+          return itemScrollable(row3.name) && !h.stat;
+        }
+        if (v === "scrollable") return itemScrollable(row3.name);
+        return false;
+      });
+    }
+    return c.negate ? !hit : hit;
+  }
+  function listingMatchesMarketQuery(row3, raw, ctx) {
+    const groups = parseMarketQuery(raw);
+    if (!groups.length) return true;
+    const h = offerHaystack(row3);
+    for (let g = 0; g < groups.length; g++) {
+      const clauses = groups[g];
+      let ok = true;
+      for (let i = 0; i < clauses.length; i++) {
+        if (!offerMatchesClause(row3, clauses[i], h, ctx)) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) return true;
+    }
+    return false;
+  }
+  function syncTogglesFromQuery(raw) {
+    const groups = parseMarketQuery(raw);
+    let facet = "all";
+    let near = false;
+    let afford = false;
+    let have = false;
+    for (let g = 0; g < groups.length; g++) {
+      const clauses = groups[g];
+      for (let i = 0; i < clauses.length; i++) {
+        const c = clauses[i];
+        if (c.kind !== "is" || c.negate) continue;
+        const vals = c.values || [];
+        for (let j = 0; j < vals.length; j++) {
+          const v = String(vals[j] || "").toLowerCase();
+          if (v === "sell" || v === "sale" || v === "selling") facet = "sale";
+          if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
+            facet = "wanted";
+          }
+          if (v === "near") near = true;
+          if (v === "afford") afford = true;
+          if (v === "have") have = true;
+        }
+      }
+    }
+    return {
+      facet,
+      nearOnly: near,
+      canAfford: afford,
+      haveStock: have
+    };
+  }
+  function rewriteIsInFilter(raw, next) {
+    const tokens = tokenizeQuery(raw);
+    const keep = [];
+    for (let i = 0; i < tokens.length; i++) {
+      let tok = tokens[i];
+      let neg = "";
+      if (tok.charAt(0) === "-") {
+        neg = "-";
+        tok = tok.slice(1);
+      }
+      const m = /^is:(.*)$/i.exec(tok);
+      if (!m) {
+        keep.push(tokens[i]);
+        continue;
+      }
+      const v = String(m[1] || "").toLowerCase();
+      if (v === "sell" || v === "sale" || v === "selling" || v === "buy" || v === "want" || v === "wanted" || v === "buying" || v === "near" || v === "afford" || v === "have") {
+        continue;
+      }
+      keep.push(neg + tok);
+    }
+    if (next.facet === "sale") keep.push("is:sell");
+    if (next.facet === "wanted") keep.push("is:buy");
+    if (next.nearOnly) keep.push("is:near");
+    if (next.canAfford) keep.push("is:afford");
+    if (next.haveStock) keep.push("is:have");
+    return keep.join(" ").trim();
+  }
+  function trailingOpContext(raw) {
+    const s = String(raw || "");
+    const m = /(^|\s)(-?)(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):([^\s]*)$/i.exec(
+      s
+    );
+    if (!m) return null;
+    return {
+      op: m[3].toLowerCase() === "mer" ? "merchant" : m[3].toLowerCase(),
+      value: m[4] || "",
+      negate: !!m[2],
+      start: m.index + m[1].length
+    };
+  }
+  function applySearchSuggestion(raw, row3) {
+    const ctx = trailingOpContext(raw);
+    if (row3.kind === "value" && ctx && row3.value != null) {
+      const before = raw.slice(0, ctx.start);
+      const neg = ctx.negate ? "-" : "";
+      return (before + neg + ctx.op + ":" + row3.value + " ").replace(/\s+/g, " ");
+    }
+    if (row3.insert != null) {
+      const trimmed = raw.replace(/\s+$/, "");
+      const needsSpace = !!(trimmed && !/:$/.test(trimmed));
+      return trimmed + (needsSpace ? " " : "") + row3.insert;
+    }
+    return raw;
+  }
+  function uniqueSorted(list) {
+    const seen = /* @__PURE__ */ Object.create(null);
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      const v = list[i];
+      if (!v || seen[v]) continue;
+      seen[v] = true;
+      out.push(v);
+    }
+    out.sort((a, b) => a.localeCompare(b));
+    return out;
+  }
+  function buildMarketSearchSuggestions(opts) {
+    const q = opts.query;
+    const ctx = trailingOpContext(q);
+    const sections = [];
+    const flat = [];
+    const pushSec = (title, rows) => {
+      if (!rows.length) return;
+      sections.push({ title, rows });
+      for (let i = 0; i < rows.length; i++) flat.push(rows[i]);
+    };
+    const itemNames = uniqueSorted(
+      opts.rows.map((r) => {
+        if (typeof window === "undefined") return r.name;
+        try {
+          return itemInstanceLabel(r.name, {
+            level: r.level,
+            p: r.p != null ? String(r.p) : void 0
+          });
+        } catch (e2) {
+          return r.name;
+        }
+      })
+    );
+    const merchants = uniqueSorted(opts.rows.map((r) => r.merchant));
+    const maps = uniqueSorted(
+      opts.rows.map((r) => r.map ? String(r.map) : "").filter(Boolean)
+    );
+    const servers = uniqueSorted(
+      opts.rows.map(
+        (r) => opts.formatServer ? opts.formatServer(r.server) : String(r.server || "")
+      ).filter(Boolean)
+    );
+    const titleKeys = uniqueSorted(
+      opts.rows.map((r) => r.p ? String(r.p) : "").filter(Boolean)
+    );
+    const stats = uniqueSorted(
+      opts.rows.map((r) => r.stat_type ? String(r.stat_type) : "").filter(Boolean)
+    );
+    if (ctx && ctx.op === "is" && ctx.value.indexOf(" ") < 0) {
+      const isOpts = [
+        { value: "sell", hint: "Selling offers only" },
+        { value: "buy", hint: "Buy orders only" },
+        { value: "near", hint: "Visible / in entities" },
+        { value: "afford", hint: "Within your gold" },
+        { value: "have", hint: "Items you hold" },
+        { value: "titled", hint: "Has an item title" },
+        { value: "stat", hint: "Stat scroll applied" },
+        { value: "nostat", hint: "Scrollable, no scroll yet" },
+        { value: "scrollable", hint: "Can take a stat scroll" }
+      ];
+      const needle = ctx.value.toLowerCase();
+      pushSec(
+        "Refine your search: is",
+        isOpts.filter((o) => !needle || o.value.indexOf(needle) === 0).map((o) => ({
+          kind: "value",
+          value: o.value,
+          label: "is:" + o.value,
+          hint: o.hint,
+          ico: "\u25B9"
+        }))
+      );
+    } else if (ctx && ctx.op === "has" && ctx.value.indexOf(" ") < 0) {
+      const hasOpts = [
+        { value: "stat", hint: "Has a stat scroll" },
+        { value: "title", hint: "Has a title prefix" },
+        { value: "level", hint: "Upgraded / compounded" }
+      ];
+      const needle = ctx.value.toLowerCase();
+      pushSec(
+        "Refine your search: has",
+        hasOpts.filter((o) => !needle || o.value.indexOf(needle) === 0).map((o) => ({
+          kind: "value",
+          value: o.value,
+          label: "has:" + o.value,
+          hint: o.hint,
+          ico: "\u25B9"
+        }))
+      );
+    } else if (ctx && ctx.op === "stat") {
+      const needle = ctx.value.toLowerCase();
+      const pool = uniqueSorted(
+        ["str", "int", "dex", "vit", "none", "any"].concat(stats)
+      );
+      const rows = [];
+      for (let i = 0; i < pool.length && rows.length < 10; i++) {
+        if (needle && pool[i].indexOf(needle) < 0) continue;
+        rows.push({
+          kind: "value",
+          value: pool[i],
+          label: "stat:" + pool[i],
+          hint: "stat scroll",
+          ico: "\u2726"
+        });
+      }
+      pushSec("Refine your search: stat", rows);
+    } else if (ctx && (ctx.op === "merchant" || ctx.op === "item" || ctx.op === "title" || ctx.op === "map" || ctx.op === "server")) {
+      const needle = ctx.value.toLowerCase();
+      let pool = [];
+      if (ctx.op === "merchant") pool = merchants;
+      else if (ctx.op === "item") pool = itemNames;
+      else if (ctx.op === "title") pool = titleKeys;
+      else if (ctx.op === "map") pool = maps;
+      else pool = servers;
+      const rows = [];
+      for (let i = 0; i < pool.length && rows.length < 8; i++) {
+        const name = pool[i];
+        if (needle && name.toLowerCase().indexOf(needle) < 0) continue;
+        const needsQuote = /\s/.test(name);
+        rows.push({
+          kind: "value",
+          value: needsQuote ? '"' + name + '"' : name,
+          label: name,
+          hint: ctx.op,
+          ico: ctx.op === "merchant" ? "\u25C6" : "\u25A3"
+        });
+      }
+      pushSec("Refine your search: " + ctx.op, rows);
+    } else if (ctx && (ctx.op === "price" || ctx.op === "level")) {
+      const samples2 = ctx.op === "price" ? [
+        { value: "<1M", hint: "Under 1M" },
+        { value: ">=10M", hint: "10M or more" },
+        { value: "<=100k", hint: "100k or less" }
+      ] : [
+        { value: ">=7", hint: "Level 7+" },
+        { value: "9", hint: "Exactly +9" },
+        { value: "<=5", hint: "Level 5 or less" }
+      ];
+      pushSec(
+        "Refine your search: " + ctx.op,
+        samples2.map((o) => ({
+          kind: "value",
+          value: o.value,
+          label: ctx.op + ":" + o.value,
+          hint: o.hint,
+          ico: "\u25B9"
+        }))
+      );
+    } else {
+      pushSec("Refine your search", [
+        { kind: "op", insert: "item:", label: "item:", hint: "Filter by item", ico: "+" },
+        {
+          kind: "op",
+          insert: "merchant:",
+          label: "merchant:",
+          hint: "Filter by merchant",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "title:",
+          label: "title:",
+          hint: "shiny \xB7 lucky \xB7 glitched\u2026",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "stat:",
+          label: "stat:",
+          hint: "dex \xB7 int \xB7 none \xB7 any",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "attr:",
+          label: "attr:",
+          hint: "e.g. attr:armor>=50",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "has:",
+          label: "has:",
+          hint: "stat \xB7 title \xB7 level",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "is:",
+          label: "is:",
+          hint: "sell \xB7 buy \xB7 near \xB7 nostat \xB7 titled",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "price:",
+          label: "price:",
+          hint: "e.g. price:<1M",
+          ico: "+"
+        },
+        {
+          kind: "op",
+          insert: "level:",
+          label: "level:",
+          hint: "e.g. level:>=7",
+          ico: "+"
+        },
+        { kind: "op", insert: "map:", label: "map:", hint: "Filter by map", ico: "+" },
+        {
+          kind: "op",
+          insert: "server:",
+          label: "server:",
+          hint: "Filter by server",
+          ico: "+"
+        }
+      ]);
+      const needle = q.trim().toLowerCase();
+      if (needle && !trailingOpContext(q)) {
+        const items = [];
+        for (let i = 0; i < itemNames.length && items.length < 5; i++) {
+          if (itemNames[i].toLowerCase().indexOf(needle) < 0) continue;
+          items.push({
+            kind: "op",
+            insert: 'item:"' + itemNames[i] + '" ',
+            label: itemNames[i],
+            hint: "item",
+            ico: "\u25A3"
+          });
+        }
+        pushSec("Items", items);
+        const mers = [];
+        for (let i = 0; i < merchants.length && mers.length < 5; i++) {
+          if (merchants[i].toLowerCase().indexOf(needle) < 0) continue;
+          mers.push({
+            kind: "op",
+            insert: "merchant:" + merchants[i] + " ",
+            label: merchants[i],
+            hint: "merchant",
+            ico: "\u25C6"
+          });
+        }
+        pushSec("Merchants", mers);
+      }
+    }
+    return { sections, flat };
+  }
+
+  // src/lib/market/marketBrowse.ts
+  function filterMarketListings(rows, filters) {
+    const out = [];
+    const merchantFilter = filters.merchantName ? String(filters.merchantName).toLowerCase() : "";
+    const qCtx = {
+      gold: filters.gold,
+      bagNames: filters.bagNames,
+      formatServer: filters.formatServer
+    };
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      if (merchantFilter && row3.merchant.toLowerCase() !== merchantFilter) {
+        continue;
+      }
+      if (filters.side === "sale" && row3.buyOrder) continue;
+      if (filters.side === "buy" && !row3.buyOrder) continue;
+      if (!listingMatchesMarketQuery(row3, filters.query, qCtx)) continue;
+      if (filters.nearOnly) {
+        if (!row3.fromLive && row3.merchantStatus !== "you") continue;
+      }
+      if (filters.canAfford && !row3.buyOrder) {
+        if (!(filters.gold >= row3.price)) continue;
+      }
+      if (filters.inMyBag) {
+        if (!filters.bagNames[row3.name.toLowerCase()]) continue;
+      }
+      out.push(row3);
+    }
+    return out;
+  }
+  function groupMarketListings(rows) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      const key = row3.name + "\0" + (row3.level != null ? String(row3.level) : "") + "\0" + (row3.p != null ? String(row3.p) : "");
+      if (!byKey[key]) byKey[key] = [];
+      byKey[key].push(row3);
+    }
+    const keys = Object.keys(byKey);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const list = byKey[keys[i]];
+      const sample = list[0];
+      const sales = [];
+      const wants = [];
+      for (let j = 0; j < list.length; j++) {
+        if (list[j].buyOrder) wants.push(list[j]);
+        else sales.push(list[j]);
+      }
+      let bestSale = null;
+      let bestWant = null;
+      for (let j = 0; j < sales.length; j++) {
+        if (bestSale == null || sales[j].price < bestSale) bestSale = sales[j].price;
+      }
+      for (let j = 0; j < wants.length; j++) {
+        if (bestWant == null || wants[j].price > bestWant) bestWant = wants[j].price;
+      }
+      out.push({
+        key: keys[i],
+        name: sample.name,
+        level: sample.level,
+        p: sample.p,
+        rows: list,
+        sales,
+        wants,
+        bestSale,
+        bestWant
+      });
+    }
+    out.sort((a, b) => {
+      const da = a.sales.length && a.wants.length ? 0 : 1;
+      const db = b.sales.length && b.wants.length ? 0 : 1;
+      if (da !== db) return da - db;
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function sortMarketListings(rows, friendNames) {
+    const copy = rows.slice();
+    copy.sort((a, b) => {
+      const fa = friendNames[a.merchant.toLowerCase()] ? 0 : 1;
+      const fb = friendNames[b.merchant.toLowerCase()] ? 0 : 1;
+      if (fa !== fb) return fa - fb;
+      const nameCmp = a.name.localeCompare(b.name);
+      if (nameCmp !== 0) return nameCmp;
+      if (a.buyOrder !== b.buyOrder) return a.buyOrder ? 1 : -1;
+      if (!a.buyOrder && !b.buyOrder) return a.price - b.price;
+      if (a.buyOrder && b.buyOrder) return b.price - a.price;
+      return a.price - b.price;
+    });
+    return copy;
+  }
+
+  // src/lib/market/marketBagStacks.ts
+  function marketBagStackKey(item) {
+    return item.name + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null && item.p !== "" ? String(item.p) : "");
+  }
+  function collapseMarketBagStacks(items) {
+    if (!items || !items.length) return [];
+    const order = [];
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name) continue;
+      const name = String(it.name);
+      const level = typeof it.level === "number" ? it.level : void 0;
+      const p = it.p != null && String(it.p) !== "" ? String(it.p) : null;
+      const key = marketBagStackKey({ name, level, p });
+      const qty = typeof it.q === "number" && it.q > 0 ? it.q | 0 : 1;
+      const slot = typeof it.slot === "number" ? it.slot : i;
+      const existing = byKey[key];
+      if (!existing) {
+        byKey[key] = {
+          slot,
+          slots: [slot],
+          name,
+          q: qty,
+          level,
+          p,
+          skin: it.skin,
+          slotCount: 1
+        };
+        order.push(key);
+        continue;
+      }
+      existing.q += qty;
+      existing.slots.push(slot);
+      existing.slotCount += 1;
+      if (!existing.skin && it.skin) existing.skin = it.skin;
+    }
+    const out = [];
+    for (let i = 0; i < order.length; i++) {
+      out.push(byKey[order[i]]);
+    }
+    return out;
+  }
+
+  // src/lib/market/marketStandPackStacks.ts
+  function marketStandPackStackKey(slot) {
+    return (slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (slot.price != null ? String(slot.price) : "");
+  }
+  function listingQty(slot) {
+    if (typeof slot.q === "number" && slot.q > 0) return slot.q | 0;
+    return 1;
+  }
+  function collapseMarketStandPackSlots(slotNames, slots) {
+    if (!slotNames.length) return [];
+    const out = [];
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < slotNames.length; i++) {
+      const slotName = slotNames[i];
+      const raw = slots ? slots[slotName] : null;
+      if (!raw || !raw.name) {
+        out.push({ slotName, slotNames: [slotName], slot: null });
+        continue;
+      }
+      const name = String(raw.name);
+      const key = marketStandPackStackKey({
+        name,
+        b: !!raw.b,
+        level: typeof raw.level === "number" ? raw.level : void 0,
+        p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
+        price: typeof raw.price === "number" ? raw.price : void 0
+      });
+      const existing = byKey[key];
+      if (!existing) {
+        const display = { ...raw, name, q: listingQty(raw) };
+        const entry = {
+          slotName,
+          slotNames: [slotName],
+          slot: display
+        };
+        byKey[key] = entry;
+        out.push(entry);
+        continue;
+      }
+      existing.slotNames.push(slotName);
+      if (existing.slot) {
+        existing.slot = {
+          ...existing.slot,
+          q: (existing.slot.q || 0) + listingQty(raw)
+        };
+      }
+    }
+    return out;
+  }
+
+  // src/lib/tradeEntityResolve.ts
+  function resolveOwnTradeEntity(entities, observing) {
+    if (!observing || observing.id == null) return null;
+    const obsId = String(observing.id);
+    return findEntity(entities, obsId) || observing;
+  }
+
   // src/ui/trade/tradeSlotActions.ts
   function openTradeItemInfo(entity, slotName, slot) {
     if (!slot || !slot.name) return;
@@ -61663,7 +63621,17 @@ ${ESTIMATE_HINT}`,
   function TradeSlotCell(props) {
     const React = getReact();
     const [bagDropHover, setBagDropHover] = React.useState(false);
-    const { entity, observing, slotName, slot, gearEditable, allSlots } = props;
+    const {
+      entity,
+      observing,
+      slotName,
+      slot,
+      gearEditable,
+      allSlots,
+      iconSize,
+      fluid,
+      selected
+    } = props;
     const obs = observing || window.observing;
     const filled = !!(slot && slot.name);
     const foreign = !gearEditable;
@@ -61675,6 +63643,9 @@ ${ESTIMATE_HINT}`,
     const canJoinGiveaway = foreign && filled && isGiveawayListing(slot) && !isJoinedGiveaway(slot, obs) && inRange;
     const canAfford = canBuy && slot && ((obs == null ? void 0 : obs.gold) == null || canAffordListing(slot, slot.q && slot.q > 0 ? slot.q : 1, obs.gold));
     const disabled = foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway;
+    const size = iconSize != null && Number.isFinite(iconSize) && iconSize > 0 ? iconSize : GEAR_SLOT_SIZE;
+    const emptyPx = size + 6;
+    const cellW = fluid ? void 0 : TRADE_SLOT_CELL;
     const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
     let content = null;
     if (slot && skin) {
@@ -61682,7 +63653,7 @@ ${ESTIMATE_HINT}`,
       try {
         html = itemInstanceHtml(slot.name, {
           skin,
-          size: GEAR_SLOT_SIZE,
+          size,
           level: slot.level,
           q: slot.q,
           p: slot.p
@@ -61697,7 +63668,7 @@ ${ESTIMATE_HINT}`,
       ) : wrapContainerHtml2(
         itemIconHtml(slot.name, {
           skin,
-          size: GEAR_SLOT_SIZE,
+          size,
           level: slot.level,
           p: slot.p
         })
@@ -61706,7 +63677,7 @@ ${ESTIMATE_HINT}`,
       let html = "";
       try {
         html = itemContainer({
-          size: GEAR_SLOT_SIZE,
+          size,
           shade: TRADE_SHADE.shade,
           s_op: TRADE_SHADE.s_op,
           slot: slotName,
@@ -61716,16 +63687,49 @@ ${ESTIMATE_HINT}`,
       } catch (e2) {
         html = "";
       }
-      content = html ? wrapContainerHtml2(html) : e("div", {
+      const frame = html ? wrapContainerHtml2(html) : e("div", {
+        className: "comm-trade-slot-empty",
         style: {
-          width: `${GEAR_SLOT_SIZE + 6}px`,
-          height: `${GEAR_SLOT_SIZE + 6}px`,
+          width: `${emptyPx}px`,
+          height: `${emptyPx}px`,
           background: "#000",
           border: `2px solid ${EMPTY_BCOLOR2}`,
           boxSizing: "border-box"
         },
         title: slotName
       });
+      content = fluid || iconSize != null ? e(
+        "div",
+        {
+          className: "comm-trade-slot-emptyWrap",
+          style: {
+            position: "relative",
+            display: "inline-block",
+            lineHeight: 0
+          }
+        },
+        frame,
+        e(
+          "span",
+          {
+            className: "comm-trade-slot-emptyPlus",
+            style: {
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#555",
+              fontSize: size <= 34 ? 14 : 18,
+              lineHeight: 1,
+              pointerEvents: "none",
+              userSelect: "none"
+            },
+            "aria-hidden": true
+          },
+          "+"
+        )
+      ) : frame;
     }
     const badge = filled ? slot.b ? "B" : isGiveawayListing(slot) ? "G" : "S" : null;
     const priceLabel = (slot == null ? void 0 : slot.price) != null ? formatTradeGold(slot.price) : null;
@@ -61749,7 +63753,7 @@ ${ESTIMATE_HINT}`,
       "div",
       {
         key: slotName,
-        className: "comm-trade-slot" + (filled ? " is-filled" : "") + (bagDropHover ? " is-bag-drop-target" : "") + (disabled ? " is-disabled" : ""),
+        className: "comm-trade-slot" + (filled ? " is-filled" : "") + (fluid ? " is-fluid" : "") + (selected ? " is-on" : "") + (bagDropHover ? " is-bag-drop-target" : "") + (disabled ? " is-disabled" : ""),
         "data-slot": slotName,
         title: tipParts.join(" \xB7 "),
         draggable: editable && filled ? true : void 0,
@@ -61815,9 +63819,10 @@ ${ESTIMATE_HINT}`,
           alignItems: "center",
           gap: "1px",
           position: "relative",
-          width: `${TRADE_SLOT_CELL}px`,
-          maxWidth: `${TRADE_SLOT_CELL}px`,
-          flex: `0 0 ${TRADE_SLOT_CELL}px`,
+          width: fluid ? "100%" : `${cellW}px`,
+          maxWidth: fluid ? "100%" : `${cellW}px`,
+          minWidth: fluid ? 0 : void 0,
+          flex: fluid ? "1 1 0" : `0 0 ${cellW}px`,
           boxSizing: "border-box",
           opacity: disabled ? 0.45 : 1,
           cursor: editable || filled ? "pointer" : "default",
@@ -61827,9 +63832,11 @@ ${ESTIMATE_HINT}`,
       e(
         "div",
         {
+          className: "comm-trade-slot-art",
           style: {
             position: "relative",
             lineHeight: 0,
+            margin: fluid ? "0 auto" : void 0,
             boxShadow: bagDropHover ? "0 0 0 2px #6ab04c" : void 0
           }
         },
@@ -61837,6 +63844,7 @@ ${ESTIMATE_HINT}`,
         badge ? e(
           "div",
           {
+            className: "comm-trade-slot-badge" + (badge === "B" ? " is-buy" : badge === "G" ? " is-give" : ""),
             style: {
               position: "absolute",
               top: "-2px",
@@ -61851,6 +63859,7 @@ ${ESTIMATE_HINT}`,
               fontSize: TYPE.microMin,
               lineHeight: "12px",
               textAlign: "center",
+              zIndex: 1,
               ...PIXEL_TEXT,
               pointerEvents: "none"
             }
@@ -61861,426 +63870,2035 @@ ${ESTIMATE_HINT}`,
       priceLabel ? e(
         "div",
         {
+          className: "comm-trade-slot-price",
           style: {
-            fontSize: TYPE.microMin,
+            fontSize: size <= 34 ? 10 : TYPE.microMin,
             color: slot.b ? "#8fd4ff" : "#ffd700",
             width: "100%",
-            maxWidth: `${TRADE_SLOT_CELL}px`,
+            maxWidth: fluid ? "100%" : `${cellW}px`,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             textAlign: "center",
+            minHeight: "14px",
+            fontVariantNumeric: "tabular-nums",
             ...PIXEL_TEXT
           },
           title: priceLabel
         },
         priceLabel
+      ) : fluid ? e(
+        "div",
+        {
+          className: "comm-trade-slot-price is-empty",
+          style: {
+            width: "100%",
+            minHeight: "14px",
+            fontSize: size <= 34 ? 10 : TYPE.microMin,
+            visibility: "hidden"
+          },
+          "aria-hidden": true
+        },
+        "0"
       ) : null
     );
   }
 
-  // src/ui/trade/TradeGrid.ts
-  var TRADE_SLOTS_COMPACT_KEY = "ecu-trade-slots-compact";
-  function readSlotsCompact() {
-    try {
-      const v = localStorage.getItem(TRADE_SLOTS_COMPACT_KEY);
-      if (v === "0" || v === "false") return false;
-    } catch (_e) {
+  // src/ui/frames/marketPanelCss.ts
+  var MARKET_PANEL_CSS = `
+.MarketPanel {
+  --mk-line: #2a2a2a;
+  --mk-line-soft: #1e1e1e;
+  --mk-panel: #0b0b0b;
+  --mk-muted: #777;
+  --mk-accent: #e8c96a;
+  --mk-gold: #e8c96a;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  overflow: hidden;
+  background: #0b0b0b;
+  border: 2px solid #555;
+  color: #eee;
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  font-size: 13px;
+}
+.MarketPanel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px 8px;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0d0d0d;
+  flex: 0 0 auto;
+}
+.MarketPanel-title {
+  margin: 0;
+  font-size: 15px;
+  color: var(--mk-accent);
+  letter-spacing: .04em;
+  font-weight: 700;
+}
+.MarketPanel-pill {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: #aaa;
+}
+.MarketPanel-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0c0c0c;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+.MarketPanel-searchWrap {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+.MarketPanel-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #3a3a3a;
+  background: #080808;
+}
+.MarketPanel-search:focus-within {
+  border-color: rgba(232, 201, 106, .55);
+}
+.MarketPanel-search .ico { color: #555; font-size: 13px; line-height: 1; }
+.MarketPanel-search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+.MarketPanel-search .clear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  font-size: 14px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.MarketPanel-search .clear:hover { color: #ccc; }
+.MarketPanel-searchMenu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  max-height: min(360px, 55vh);
+  overflow: auto;
+  border: 1px solid #3a3a3a;
+  background: #121212;
+  box-shadow: 0 12px 28px rgba(0,0,0,.55);
+}
+.MarketPanel-searchMenuSec { padding: 8px 0 4px; }
+.MarketPanel-searchMenuSec + .MarketPanel-searchMenuSec {
+  border-top: 1px solid #242424;
+}
+.MarketPanel-searchMenuH {
+  padding: 2px 12px 6px;
+  color: #666;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.MarketPanel-searchMenuRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.MarketPanel-searchMenuRow:hover,
+.MarketPanel-searchMenuRow.is-hi { background: #1c1c1c; }
+.MarketPanel-searchMenuOp {
+  flex: 0 0 auto;
+  color: #e8c96a;
+  font-family: Consolas, "Segoe UI", monospace;
+  font-weight: 600;
+}
+.MarketPanel-searchMenuLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-searchMenuHint {
+  flex: 0 1 auto;
+  color: #666;
+  font-size: 11px;
+  text-align: right;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-searchMenuIco {
+  flex: 0 0 auto;
+  color: #555;
+  width: 14px;
+  text-align: center;
+}
+.MarketPanel-searchMenuFoot {
+  border-top: 1px solid #242424;
+  padding: 6px 12px 8px;
+  color: #666;
+  font-size: 11px;
+}
+.MarketPanel-searchMenuFoot kbd {
+  float: right;
+  color: #888;
+  border: 1px solid #333;
+  padding: 0 4px;
+  font-size: 10px;
+}
+.MarketPanel-seg {
+  display: inline-flex;
+  border: 1px solid #3a3a3a;
+  height: 30px;
+  background: #080808;
+}
+.MarketPanel-seg button {
+  border: 0;
+  background: transparent;
+  color: #888;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 11px;
+  cursor: pointer;
+  height: 100%;
+}
+.MarketPanel-seg button + button { border-left: 1px solid #2a2a2a; }
+.MarketPanel-seg button.is-on {
+  color: var(--mk-accent);
+  background: #1a1810;
+}
+.MarketPanel-seg button:hover:not(.is-on) { color: #ccc; background: #121212; }
+.MarketPanel-togs {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.MarketPanel-tog {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.MarketPanel-tog:hover { color: #bbb; }
+.MarketPanel-tog input { accent-color: var(--mk-accent); margin: 0; }
+.MarketPanel-body {
+  display: grid;
+  grid-template-columns: minmax(200px, 256px) minmax(0, 1fr) minmax(280px, 420px);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.MarketPanel-you {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: #090909;
+  border-right: 1px solid var(--mk-line);
+}
+.MarketPanel-youBag {
+  /* Fixed share of the You column \u2014 header + acts pinned; items scroll. */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-youBagScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.MarketPanel-youStand {
+  /* Always 46% of You \u2014 Pack/All and listing churn must not resize Bag. */
+  flex: 0 0 46%;
+  min-height: 0;
+  border-top: 1px solid var(--mk-line);
+  background: #0c0c0c;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-youStand > .MarketPanel-ph,
+.MarketPanel-youStand > .MarketPanel-standBar {
+  flex: 0 0 auto;
+}
+.MarketPanel-col {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--mk-panel);
+  border-right: 1px solid var(--mk-line);
+}
+.MarketPanel-col:last-child { border-right: 0; }
+.MarketPanel-ph {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 11px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: #b5a56a;
+  background: #121212;
+  border-bottom: 1px solid var(--mk-line);
+  flex: 0 0 auto;
+}
+.MarketPanel-ph em {
+  font-style: normal;
+  color: var(--mk-muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
+}
+.MarketPanel-phTools {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+.MarketPanel-phTools .MarketPanel-seg { height: 24px; }
+.MarketPanel-phTools .MarketPanel-seg button {
+  font-size: 11px;
+  padding: 0 8px;
+}
+.MarketPanel-btn {
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #eee;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 8px;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.MarketPanel-btn:hover:not(:disabled) { border-color: #777; background: #202020; }
+.MarketPanel-btn:disabled { opacity: .35; cursor: default; }
+.MarketPanel-btn--gold {
+  border-color: rgba(232, 201, 106, .5);
+  color: var(--mk-accent);
+  background: #18150e;
+}
+.MarketPanel-btn--sell {
+  border-color: #6a4030;
+  color: #e0a080;
+  background: #181210;
+}
+.MarketPanel-btn--ghost {
+  background: transparent;
+  color: #888;
+  padding: 3px 8px;
+  font-size: 11px;
+  height: 24px;
+}
+.MarketPanel-youActs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--mk-line);
+  background: #0c0c0c;
+}
+.MarketPanel-slotGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 52px);
+  justify-content: start;
+  gap: 6px;
+  padding: 10px;
+}
+.MarketPanel-bagSlot {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  width: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.MarketPanel-bagSlot.is-on .ecu-item-instance-host,
+.MarketPanel-bagSlot.is-on .MarketPanel-slotEmpty {
+  box-shadow: 0 0 0 2px rgba(232, 201, 106, .75);
+}
+.MarketPanel-bagSlot:hover .ecu-item-instance-host {
+  filter: brightness(1.08);
+}
+.MarketPanel-slotEmpty {
+  width: 46px;
+  height: 46px;
+  box-sizing: border-box;
+  background: #000;
+  border: 2px solid #292929;
+}
+.MarketPanel-standBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 0;
+  font-size: 11px;
+  color: var(--mk-muted);
+  flex: 0 0 auto;
+}
+.MarketPanel-standBar .st {
+  color: #7aaf6e;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: 10px;
+}
+.MarketPanel-standBar .st.off { color: #c66; }
+.MarketPanel-standSlots {
+  /* All mode: stock-like 4 cols, cells shrink to the You column (no h-scroll). */
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 3px;
+  padding: 6px 8px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.MarketPanel-standSlots.is-dense {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+/* Pack: filled (+ one empty) wrap as a flow \u2014 same gap as All. */
+.MarketPanel-standSlots.is-pack {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  justify-content: flex-start;
+  gap: 3px;
+  padding: 6px 8px 8px;
+}
+.MarketPanel-standSlots.is-pack .comm-trade-slot {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.MarketPanel-standSlots.is-all .comm-trade-slot.is-fluid {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: none;
+}
+.MarketPanel-standSlots .comm-trade-slot-art {
+  margin: 0 auto;
+}
+.MarketPanel-standSlots .comm-trade-slot-emptyWrap {
+  margin: 0 auto;
+  line-height: 0;
+}
+.MarketPanel-standSlots .comm-trade-slot-emptyPlus {
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+  font-weight: 600;
+}
+.MarketPanel-standSlots .comm-trade-slot-price {
+  max-width: 100%;
+}
+.MarketPanel-standSlots.is-dense .comm-trade-slot-price {
+  font-size: 10px;
+}
+.MarketPanel-standSlots .comm-trade-slot.is-on .ecu-item-icon__frame,
+.MarketPanel-standSlots .comm-trade-slot.is-on .itemcontainer,
+.MarketPanel-standSlots .comm-trade-slot.is-on .comm-trade-slot-empty {
+  box-shadow: 0 0 0 2px rgba(232, 201, 106, .75);
+}
+.MarketPanel-standSlots .comm-trade-slot:hover .ecu-item-icon__frame,
+.MarketPanel-standSlots .comm-trade-slot:hover .itemcontainer,
+.MarketPanel-standSlots .comm-trade-slot:hover .comm-trade-slot-empty {
+  border-color: #777;
+}
+.MarketPanel-itemGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  grid-auto-rows: minmax(148px, auto);
+  gap: 8px;
+  padding: 10px;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.MarketPanel-itemCard {
+  appearance: none;
+  border: 1px solid #2c2c2c;
+  background: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  min-height: 148px;
+  height: 100%;
+  box-sizing: border-box;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.MarketPanel-itemCard:hover {
+  border-color: #5a5a5a;
+  background: linear-gradient(180deg, #1b1b1b 0%, #121212 100%);
+}
+.MarketPanel-itemCard.is-dual {
+  border-color: #3a3830;
+  background:
+    linear-gradient(135deg, rgba(201, 122, 90, .08) 0%, transparent 46%),
+    linear-gradient(315deg, rgba(106, 171, 142, .08) 0%, transparent 46%),
+    linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+}
+.MarketPanel-itemCard.is-dual:hover {
+  border-color: #5a5440;
+}
+.MarketPanel-itemCard.is-on {
+  border-color: var(--mk-accent);
+  box-shadow: inset 0 0 0 1px rgba(232, 201, 106, .28);
+  background: linear-gradient(180deg, #1c1910 0%, #14120c 100%);
+}
+.MarketPanel-itemCard__top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 10px 0;
+  min-height: 48px;
+}
+.MarketPanel-itemCard__top .ecu-item-icon,
+.MarketPanel-itemCard__top .market-ico {
+  flex: 0 0 auto;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.45));
+}
+.MarketPanel-itemCard__counts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-end;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.MarketPanel-itemCard__counts .s,
+.MarketPanel-itemCard__counts .b {
+  padding: 2px 5px;
+  min-width: 30px;
+  text-align: center;
+  border-radius: 2px;
+  letter-spacing: .02em;
+}
+.MarketPanel-itemCard__counts .s {
+  color: #e0a088;
+  border: 1px solid #4a3028;
+  background: #181210;
+}
+.MarketPanel-itemCard__counts .b {
+  color: #8ec4a8;
+  border: 1px solid #2a4034;
+  background: #101812;
+}
+.MarketPanel-itemCard__counts .dim { opacity: .28; }
+.MarketPanel-itemCard .nm {
+  flex: 1 1 auto;
+  padding: 8px 10px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f0f0f0;
+  line-height: 1.35;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.MarketPanel-itemCard__prices {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid #222;
+  background: rgba(0,0,0,.28);
+}
+.MarketPanel-itemCard__prices .row-p {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px 8px;
+  min-width: 0;
+}
+.MarketPanel-itemCard__prices .row-p + .row-p {
+  border-left: 1px solid #222;
+}
+.MarketPanel-itemCard__prices .lbl {
+  color: #777;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.MarketPanel-itemCard__prices .val {
+  font-weight: 700;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-itemCard__prices .val.sell { color: var(--mk-gold); }
+.MarketPanel-itemCard__prices .val.buy { color: #8ec4a8; }
+.MarketPanel-itemCard__prices .val.none { color: #3f3f3f; font-weight: 400; }
+.MarketPanel-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.MarketPanel-group {
+  border-bottom: 1px solid var(--mk-line);
+}
+.MarketPanel-group > summary {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 10px;
+  cursor: pointer;
+  background: #101010;
+}
+.MarketPanel-group > summary::-webkit-details-marker { display: none; }
+.MarketPanel-group > summary:hover { background: #161616; }
+.MarketPanel-gName { font-weight: 600; color: #eee; font-size: 13px; }
+.MarketPanel-gSub { font-size: 11px; color: var(--mk-muted); margin-top: 1px; }
+.MarketPanel-gBest {
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mk-gold);
+  line-height: 1.25;
+}
+.MarketPanel-gBest span { display: block; color: #666; font-size: 10px; }
+.MarketPanel-offer {
+  padding: 8px 9px;
+  border-bottom: 1px solid var(--mk-line-soft);
+}
+.MarketPanel-offer:hover { background: #101010; }
+.MarketPanel-offer.is-blocked { opacity: .55; }
+.MarketPanel-offerMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+.MarketPanel-offerOps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid #222;
+  flex-wrap: wrap;
+}
+.MarketPanel-who { font-weight: 600; font-size: 12px; color: #eee; }
+.MarketPanel-where {
+  font-size: 11px;
+  color: var(--mk-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.MarketPanel-chips { display: inline-flex; gap: 3px; margin-left: 5px; vertical-align: 1px; }
+.MarketPanel-chip {
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid #444;
+  color: #888;
+}
+.MarketPanel-chip.near { color: #7aaf6e; border-color: #3a5534; }
+.MarketPanel-chip.party { color: #7aa2d4; border-color: #3a5068; }
+.MarketPanel-price {
+  font-variant-numeric: tabular-nums;
+  color: var(--mk-gold);
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.MarketPanel-rowAct {
+  appearance: none;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #eee;
+  font: inherit;
+  font-size: 11px;
+  height: 26px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.MarketPanel-rowAct:disabled { opacity: .35; cursor: default; }
+.MarketPanel-rowAct.is-buy {
+  border-color: rgba(232, 201, 106, .5);
+  color: var(--mk-accent);
+  background: #18150e;
+}
+.MarketPanel-rowAct.is-sell {
+  border-color: #6a4030;
+  color: #e0a080;
+  background: #181210;
+}
+.MarketPanel-empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--mk-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.MarketPanel-empty strong {
+  display: block;
+  color: #bbb;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.MarketPanel-focusTop {
+  padding: 10px 12px 12px;
+  background: #0c0c0c;
+  flex: 0 0 auto;
+}
+.MarketPanel-focusHead {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.MarketPanel-focusHead h2 {
+  margin: 0 0 3px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+}
+.MarketPanel-focusHead .sub { color: #888; font-size: 11px; line-height: 1.35; }
+.MarketPanel-dealBar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+.MarketPanel-dealBar .MarketPanel-btn { width: 100%; padding: 8px; }
+.MarketPanel-dealBar .hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--mk-muted);
+  line-height: 1.35;
+}
+.MarketPanel-focusOffers {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid var(--mk-line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+}
+.MarketPanel-focusCol { min-width: 0; }
+.MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
+.MarketPanel-focusColH {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 9px;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--mk-line-soft);
+  background: #101010;
+}
+.MarketPanel-focusColH .sells { color: #c97a5a; font-weight: 700; }
+.MarketPanel-focusColH .wants { color: #6aab8e; font-weight: 700; }
+.MarketPanel-focusColH em {
+  font-style: normal;
+  color: var(--mk-muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
+}
+.MarketPanel-focusColEmpty {
+  padding: 14px 10px;
+  font-size: 11px;
+  color: #555;
+  line-height: 1.35;
+}
+@media (max-width: 900px) {
+  .MarketPanel-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(200px, 1fr) minmax(200px, 1fr);
+    overflow: auto;
+  }
+  .MarketPanel-you { max-height: 280px; border-right: 0; border-bottom: 1px solid var(--mk-line); }
+  .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
+}
+`;
+  function ensureMarketPanelCss() {
+    if (typeof document === "undefined") return;
+    const css = MARKET_PANEL_CSS + "\n" + ITEM_INSTANCE_BADGE_CSS;
+    const existing = document.getElementById("ecu-market-panel-css");
+    if (existing) {
+      existing.textContent = css;
+      return;
     }
-    return true;
+    const el = document.createElement("style");
+    el.id = "ecu-market-panel-css";
+    el.textContent = css;
+    document.head.appendChild(el);
   }
-  function writeSlotsCompact(compact) {
-    try {
-      localStorage.setItem(TRADE_SLOTS_COMPACT_KEY, compact ? "1" : "0");
-    } catch (_e) {
+
+  // src/ui/frames/MarketPanel.ts
+  var CATALOG_REFRESH_MS = 45e3;
+  function bagNameSet(observing) {
+    const out = /* @__PURE__ */ Object.create(null);
+    const items = observing && observing.items;
+    if (!items) return out;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it && it.name) out[String(it.name).toLowerCase()] = true;
     }
+    return out;
   }
-  function sectionLabel(text, detail) {
-    return e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: "6px",
-          marginBottom: "2px"
-        }
-      },
-      e(
-        "div",
-        {
-          style: {
-            fontSize: TYPE.microMin,
-            color: "#a99a5b",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            ...PIXEL_TEXT
-          }
-        },
-        text
-      ),
-      detail ? e(
-        "div",
-        {
-          style: {
-            fontSize: TYPE.microMin,
-            color: "#777",
-            ...PIXEL_TEXT
-          }
-        },
-        detail
-      ) : null
-    );
+  function friendNameSet(entities, observing) {
+    const out = /* @__PURE__ */ Object.create(null);
+    const party = observing && observing.party ? String(observing.party) : "";
+    if (!party) return out;
+    for (let i = 0; i < entities.length; i++) {
+      const ent = entities[i];
+      if (!ent || !ent.name || !ent.party) continue;
+      if (String(ent.party) !== party) continue;
+      if (observing && ent.id === observing.id) continue;
+      out[String(ent.name).toLowerCase()] = true;
+    }
+    return out;
   }
-  function renderSlotRows(slotNames, columns, slots, props) {
-    const rows = tradeSlotGridRows(slotNames, columns);
-    if (!rows.length) return null;
-    return e(
-      "div",
-      {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px"
-        }
-      },
-      ...rows.map(
-        (row3, ri) => e(
-          "div",
-          {
-            key: `trow${ri}`,
-            style: {
-              display: "flex",
-              flexDirection: "row",
-              flexWrap: "nowrap",
-              gap: "2px"
-            }
-          },
-          ...row3.map(
-            (name) => e(TradeSlotCell, {
-              key: name,
-              entity: props.entity,
-              observing: props.observing,
-              slotName: name,
-              slot: slots[name],
-              gearEditable: props.gearEditable,
-              allSlots: slots
-            })
-          )
-        )
-      )
-    );
-  }
-  function toolbarButton(label, title, onClick, active) {
-    return e(
-      "button",
-      {
-        type: "button",
-        className: "comm-gear-trade-btn" + (active ? " is-active" : ""),
-        title,
-        onClick,
-        style: {
-          fontSize: TYPE.microMin,
-          padding: "1px 5px",
-          cursor: "pointer",
-          background: active ? "#3a3a3a" : "transparent",
-          border: active ? "1px solid #888" : "1px solid #555",
-          color: active ? "#eee" : "#aaa",
-          ...PIXEL_TEXT
-        }
-      },
-      label
-    );
-  }
-  function TradeGrid(props) {
+  function useLiveObserving(fallback) {
     const React = getReact();
-    const liveSlots = props.entity.slots;
-    if (!liveSlots) return null;
-    const [slotsCompact, setSlotsCompact] = React.useState(readSlotsCompact);
-    const entityId = props.entity.id != null ? String(props.entity.id) : "";
-    const standOpen = !!props.entity.stand;
-    const slots = props.gearEditable && entityId ? mergeStandTradeSlotsForUi(entityId, liveSlots, standOpen) || liveSlots : liveSlots;
-    const memEpoch = props.gearEditable ? standTradeMemoryEpoch() : 0;
-    const fp = entityId + "|" + slotsFingerprint(slots) + "|" + (props.gearEditable ? "edit" : "view") + "|" + (standOpen ? "stand" : "row") + "|" + (slotsCompact ? "c" : "f") + "|" + memEpoch;
-    return React.useMemo(() => {
-      const entityLabel = props.entity.name != null ? String(props.entity.name) : entityId;
-      const foreign = !props.gearEditable;
-      const inRange = !foreign || isInTradeRange(props.entity, props.observing || window.observing);
-      const personalAll = personalTradeSlotNames(slots, props.entity, props.gearEditable);
-      const personalNames = props.gearEditable ? personalAll : compactTradeSlotNames(personalAll, slots, slotsCompact);
-      const showPersonal = personalAll.length > 0;
-      const standCapacity = merchantStandCapacity(props.entity, slots);
-      const standCols = standGridColumns(standCapacity);
-      const showStandSection = merchantStandSectionVisible(
-        props.entity,
-        slots,
-        props.gearEditable
+    const read2 = () => {
+      const w = typeof window !== "undefined" ? window.observing : null;
+      return w || fallback || null;
+    };
+    const fp = (obs2) => {
+      if (!obs2) return "";
+      const items = Array.isArray(obs2.items) ? obs2.items : null;
+      let filled = 0;
+      let gold = obs2.gold != null ? String(obs2.gold) : "";
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i] && items[i].name) filled++;
+        }
+      }
+      const stand = obs2.stand != null && obs2.stand !== false ? "1" : "0";
+      const slots = obs2.slots ? Object.keys(obs2.slots).length : 0;
+      return String(obs2.id || "") + "\0" + String(obs2.name || "") + "\0" + gold + "\0" + filled + "\0" + stand + "\0" + slots + "\0" + (items ? "1" : "0");
+    };
+    const [obs, setObs] = React.useState(read2);
+    React.useEffect(() => {
+      const id = window.setInterval(() => {
+        const next = read2();
+        setObs(
+          (prev) => fp(prev) === fp(next) ? prev : next
+        );
+      }, 500);
+      return () => window.clearInterval(id);
+    }, [fallback && fallback.id]);
+    return obs;
+  }
+  function itemLabel(name, level, p) {
+    return itemInstanceLabel(name, {
+      level,
+      p: p != null ? String(p) : void 0
+    }) || name;
+  }
+  function currentServerRaw() {
+    const region = typeof window.server_region === "string" ? window.server_region : "";
+    const ident = typeof window.server_identifier === "string" ? window.server_identifier : "";
+    if (region && ident) return region + ident;
+    return region || ident || "";
+  }
+  function formatMarketServer(server) {
+    const rawIn = server || currentServerRaw();
+    if (!rawIn) return "?";
+    const fn = window.server_to_ui;
+    if (typeof fn === "function") {
+      try {
+        const label = fn(String(rawIn));
+        if (label) return String(label);
+      } catch (e2) {
+      }
+    }
+    const raw = String(rawIn).replace(/^SR_/i, "");
+    const m = raw.match(/^([A-Z]+?)(I[IVX]*|V|X)?$/i);
+    if (m && m[2]) return m[1].toUpperCase() + " " + m[2].toUpperCase();
+    return raw || "?";
+  }
+  function offerWhereLine(row3, observing) {
+    var _a, _b;
+    const parts = [formatMarketServer(row3.server)];
+    if (row3.map) parts.push(String(row3.map));
+    const sameMap = row3.merchantStatus === "inRange" || row3.merchantStatus === "sameMap" || row3.merchantStatus === "you";
+    if (sameMap && row3.x != null && row3.y != null && observing && (observing.real_x != null || observing.x != null || observing.real_y != null || observing.y != null)) {
+      const d = Math.round(
+        simpleDistance(
+          { x: row3.x, y: row3.y },
+          {
+            x: (_a = observing.real_x) != null ? _a : observing.x,
+            y: (_b = observing.real_y) != null ? _b : observing.y
+          }
+        )
       );
-      const standNames = showStandSection ? merchantStandSlotNames(slots, props.entity, slotsCompact, true) : [];
-      const personalSpace = formatTradeSlotSpace(personalAll, slots);
-      const standAllNames = showStandSection ? merchantStandSlotNames(slots, props.entity, false, true) : [];
-      const standSpace = formatTradeSlotSpace(standAllNames, slots);
-      const obsBagSpace = formatFreeInventorySpace(props.observing || window.observing);
-      const merchantBagSpace = foreign ? formatFreeInventorySpace(props.entity) : null;
-      const toggleSlotsCompact = () => {
-        setSlotsCompact((prev) => {
-          const next = !prev;
-          writeSlotsCompact(next);
-          return next;
-        });
+      if (Number.isFinite(d)) parts.push(d + " away");
+    }
+    if (row3.q != null && row3.q > 1) parts.push("\xD7" + row3.q);
+    return parts.filter(Boolean).join(" \xB7 ");
+  }
+  function actionLabel(row3) {
+    if (row3.merchantStatus === "you") return "Yours";
+    if (canActOnListing(row3)) return row3.buyOrder ? "Sell" : "Buy";
+    return "Travel";
+  }
+  function iconEl(name, opts) {
+    return e("div", {
+      style: { lineHeight: 0, display: "inline-block" },
+      dangerouslySetInnerHTML: {
+        __html: itemIconHtml(name, {
+          size: opts.size,
+          level: opts.level,
+          p: opts.p != null ? String(opts.p) : void 0
+        })
+      }
+    });
+  }
+  function nextBest(rows, side) {
+    const wantBuy = side === "buy";
+    let best = null;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (wantBuy) {
+        if (r.buyOrder) continue;
+        if (!canActOnListing(r)) continue;
+        if (!best || r.price < best.price) best = r;
+      } else {
+        if (!r.buyOrder) continue;
+        if (!canActOnListing(r)) continue;
+        if (!best || r.price > best.price) best = r;
+      }
+    }
+    return best;
+  }
+  function MarketPanel(props) {
+    const React = getReact();
+    ensureMarketPanelCss();
+    const [query, setQuery] = React.useState("");
+    const [facet, setFacet] = React.useState("all");
+    const [view, setView] = React.useState("grid");
+    const [nearOnly, setNearOnly] = React.useState(false);
+    const [canAfford, setCanAfford] = React.useState(false);
+    const [haveStock, setHaveStock] = React.useState(false);
+    const [searchOpen, setSearchOpen] = React.useState(false);
+    const [searchHi, setSearchHi] = React.useState(0);
+    const searchInputRef = React.useRef(null);
+    const [merchantFilter, setMerchantFilter] = React.useState(
+      null
+    );
+    const [focusKey, setFocusKey] = React.useState(null);
+    const [bagStackKey, setBagStackKey] = React.useState(
+      null
+    );
+    const [standCompact, setStandCompact] = React.useState(true);
+    const [catalogMerchants, setCatalogMerchants] = React.useState(
+      []
+    );
+    const [catalogMsg, setCatalogMsg] = React.useState("");
+    const [catalogLoading, setCatalogLoading] = React.useState(false);
+    const [pulledAt, setPulledAt] = React.useState(null);
+    const [travel, setTravel] = React.useState(
+      null
+    );
+    React.useEffect(() => subscribeMarketTravel(setTravel), []);
+    React.useEffect(() => {
+      let cancelled = false;
+      void hydrateMarketCacheFromIdb().then((merchants2) => {
+        if (cancelled || !merchants2.length) return;
+        setCatalogMerchants((prev) => prev.length ? prev : merchants2);
+      });
+      return () => {
+        cancelled = true;
       };
-      const showSlotToolbar = showPersonal || standOpen || props.gearEditable;
+    }, []);
+    React.useEffect(() => {
+      if (props.seedSeq == null) return;
+      let nextQ = "";
+      let nextFacet = "all";
+      if (props.seedMerchant) {
+        setMerchantFilter(String(props.seedMerchant));
+        nextQ = "merchant:" + String(props.seedMerchant);
+      }
+      if (props.seedDesk === "buy") nextFacet = "sale";
+      if (props.seedDesk === "sell") nextFacet = "wanted";
+      nextQ = rewriteIsInFilter(nextQ, {
+        facet: nextFacet,
+        nearOnly: false,
+        canAfford: false,
+        haveStock: false
+      });
+      setQuery(nextQ);
+      setFacet(nextFacet);
+      setNearOnly(false);
+      setCanAfford(false);
+      setHaveStock(false);
+    }, [props.seedSeq]);
+    const refreshCatalog = React.useCallback(async () => {
+      setCatalogLoading(true);
+      setCatalogMsg("");
+      const res = await pullMerchants();
+      setCatalogLoading(false);
+      if (!res.ok) {
+        setCatalogMsg(res.message || "Catalog refresh failed");
+        return;
+      }
+      const now = Date.now();
+      setCatalogMerchants((prev) => {
+        const next = reconcileCatalogPull(prev, res.chars, now);
+        schedulePersistMarketCache(next);
+        return next;
+      });
+      setPulledAt(res.pulledAt || (/* @__PURE__ */ new Date()).toISOString());
+    }, []);
+    React.useEffect(() => {
+      void refreshCatalog();
+      const id = window.setInterval(() => {
+        void refreshCatalog();
+      }, CATALOG_REFRESH_MS);
+      return () => window.clearInterval(id);
+    }, [refreshCatalog]);
+    const liveStandSig = liveOpenStandSignature(props.entities);
+    const entitiesRef = React.useRef(props.entities);
+    entitiesRef.current = props.entities;
+    React.useEffect(() => {
+      const now = Date.now();
+      setCatalogMerchants((prev) => {
+        const next = reconcileLiveOpenStands(prev, entitiesRef.current, now);
+        if (marketCacheContentEqual(prev, next)) return prev;
+        schedulePersistMarketCache(next);
+        return next;
+      });
+    }, [liveStandSig]);
+    const observing = useLiveObserving(props.observing);
+    const ownEntity = resolveOwnTradeEntity(props.entities, observing);
+    const friends = friendNameSet(props.entities, observing);
+    const bagNames = bagNameSet(observing);
+    const gold = observing && typeof observing.gold === "number" ? observing.gold : 0;
+    const gearEditable = canEditObservedGear(ownEntity, false);
+    const bagSynced = hasObservingInventorySnapshot();
+    const merchants = buildMerchantDirectory({
+      entities: props.entities,
+      catalogMerchants,
+      observing
+    });
+    const flat = flattenListings(merchants);
+    const applyQuery = (next) => {
+      setQuery(next);
+      const sync = syncTogglesFromQuery(next);
+      setFacet(sync.facet);
+      setNearOnly(sync.nearOnly);
+      setCanAfford(sync.canAfford);
+      setHaveStock(sync.haveStock);
+      if (merchantFilter && next.toLowerCase().indexOf("merchant:") < 0) {
+        setMerchantFilter(null);
+      }
+    };
+    const applyToggleSync = (next) => {
+      const rewritten = rewriteIsInFilter(query, next);
+      setQuery(rewritten);
+      setFacet(next.facet);
+      setNearOnly(next.nearOnly);
+      setCanAfford(next.canAfford);
+      setHaveStock(next.haveStock);
+    };
+    const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : "all";
+    let rows = filterMarketListings(flat, {
+      query,
+      side,
+      canAfford,
+      inMyBag: haveStock,
+      nearOnly,
+      gold,
+      bagNames,
+      friendNames: friends,
+      merchantName: merchantFilter,
+      formatServer: formatMarketServer
+    });
+    rows = sortMarketListings(rows, friends);
+    const groups = groupMarketListings(rows);
+    const searchSug = buildMarketSearchSuggestions({
+      query,
+      rows: flat,
+      formatServer: formatMarketServer
+    });
+    const pickSearchSuggestion = (row3) => {
+      const next = applySearchSuggestion(query, row3);
+      applyQuery(next);
+      setSearchHi(0);
+      const keepsOpen = !!(row3.insert && /:$/.test(row3.insert));
+      setSearchOpen(keepsOpen || !!trailingOpContext(next));
+      window.setTimeout(() => {
+        const el = searchInputRef.current;
+        if (el) {
+          el.focus();
+          const len = el.value.length;
+          try {
+            el.setSelectionRange(len, len);
+          } catch (e2) {
+          }
+        }
+      }, 0);
+    };
+    const focusGroup = (() => {
+      if (!focusKey) return null;
+      for (let i = 0; i < groups.length; i++) {
+        if (groups[i].key === focusKey) return groups[i];
+      }
+      return null;
+    })();
+    const runOffer = async (row3, takeAll) => {
+      if (row3.merchantStatus === "you") return;
+      if (!canActOnListing(row3)) {
+        travelToListing(row3);
+        return;
+      }
+      await actOnMarketListing({
+        row: row3,
+        entities: props.entities,
+        observing,
+        takeAll
+      });
+    };
+    const rawBag = [];
+    const rawItems = observing && observing.items ? observing.items : [];
+    for (let i = 0; i < rawItems.length; i++) {
+      const it = rawItems[i];
+      if (!it || !it.name) continue;
+      rawBag.push({
+        slot: i,
+        name: String(it.name),
+        q: it.q,
+        level: it.level,
+        p: it.p != null ? String(it.p) : null,
+        skin: it.skin != null ? String(it.skin) : void 0
+      });
+    }
+    const bagStacks = collapseMarketBagStacks(rawBag);
+    const standOpen = !!(ownEntity && ownEntity.stand != null && ownEntity.stand !== false && ownEntity.stand !== "");
+    const selectedBag = (() => {
+      if (!bagStackKey) return null;
+      for (let i = 0; i < bagStacks.length; i++) {
+        const s = bagStacks[i];
+        if (marketBagStackKey({ name: s.name, level: s.level, p: s.p }) === bagStackKey) {
+          return s;
+        }
+      }
+      return null;
+    })();
+    const offerCard = (row3) => {
+      const own = row3.merchantStatus === "you";
+      const chips = [];
+      if (row3.merchantStatus === "inRange") {
+        chips.push(e("span", { key: "n", className: "MarketPanel-chip near" }, "near"));
+      }
+      if (own) {
+        chips.push(e("span", { key: "y", className: "MarketPanel-chip" }, "you"));
+      }
+      if (friends[row3.merchant.toLowerCase()]) {
+        chips.push(
+          e("span", { key: "p", className: "MarketPanel-chip party" }, "party")
+        );
+      }
+      if (row3.catalogOnly || !row3.standOpen && /^trade([5-9]|\d{2,})$/.test(row3.slot)) {
+        chips.push(
+          e(
+            "span",
+            { key: "c", className: "MarketPanel-chip" },
+            row3.catalogOnly ? "catalog" : "closed"
+          )
+        );
+      }
       return e(
         "div",
         {
-          className: "comm-trade-grid",
-          "data-ecu-tour": "trade-panel",
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-            pointerEvents: "auto",
-            width: `${TRADE_PANEL_WIDTH}px`,
-            minHeight: `${TRADE_PANEL_MIN_HEIGHT}px`,
-            boxSizing: "border-box"
-          }
+          key: row3.merchant + ":" + row3.slot + ":" + (row3.rid || ""),
+          className: "MarketPanel-offer" + (own ? " is-blocked" : "")
         },
         e(
           "div",
+          { className: "MarketPanel-offerMain" },
+          e(
+            "div",
+            null,
+            e(
+              "div",
+              { className: "MarketPanel-who" },
+              row3.merchant,
+              chips.length ? e("span", { className: "MarketPanel-chips" }, chips) : null
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-where" },
+              offerWhereLine(row3, observing)
+            )
+          ),
+          e("div", { className: "MarketPanel-price" }, formatTradeGold(row3.price))
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-offerOps" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-rowAct is-primary " + (row3.buyOrder ? "is-sell" : "is-buy"),
+              disabled: own,
+              title: own ? "Your listing \u2014 use Stand to reprice or delist" : void 0,
+              onClick: (ev) => {
+                if (own) return;
+                void runOffer(row3, !!(ev && ev.shiftKey));
+              }
+            },
+            actionLabel(row3)
+          )
+        )
+      );
+    };
+    const marketBody = groups.length === 0 ? e(
+      "div",
+      { className: "MarketPanel-empty" },
+      e("strong", null, "Nothing matches"),
+      "Try clearing filters or search."
+    ) : view === "grid" ? e(
+      "div",
+      { className: "MarketPanel-itemGrid" },
+      groups.map((g) => {
+        const dual = g.sales.length > 0 && g.wants.length > 0;
+        const on = focusKey === g.key;
+        return e(
+          "button",
           {
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "6px",
-              flexWrap: "wrap"
-            }
+            type: "button",
+            key: g.key,
+            className: "MarketPanel-itemCard" + (dual ? " is-dual" : "") + (on ? " is-on" : ""),
+            onClick: () => setFocusKey(g.key)
           },
           e(
             "div",
+            { className: "MarketPanel-itemCard__top" },
+            iconEl(g.name, { level: g.level, p: g.p, size: 48 }),
+            e(
+              "div",
+              { className: "MarketPanel-itemCard__counts" },
+              e(
+                "span",
+                {
+                  className: "s" + (g.sales.length ? "" : " dim")
+                },
+                g.sales.length + "S"
+              ),
+              e(
+                "span",
+                {
+                  className: "b" + (g.wants.length ? "" : " dim")
+                },
+                g.wants.length + "B"
+              )
+            )
+          ),
+          e(
+            "div",
+            { className: "nm" },
+            itemLabel(g.name, g.level, g.p)
+          ),
+          e(
+            "div",
+            { className: "MarketPanel-itemCard__prices" },
+            e(
+              "div",
+              { className: "row-p" },
+              e("span", { className: "lbl" }, "Sell"),
+              e(
+                "span",
+                {
+                  className: "val " + (g.bestSale != null ? "sell" : "none")
+                },
+                g.bestSale != null ? formatTradeGold(g.bestSale) : "\u2014"
+              )
+            ),
+            e(
+              "div",
+              { className: "row-p" },
+              e("span", { className: "lbl" }, "Buy"),
+              e(
+                "span",
+                {
+                  className: "val " + (g.bestWant != null ? "buy" : "none")
+                },
+                g.bestWant != null ? formatTradeGold(g.bestWant) : "\u2014"
+              )
+            )
+          )
+        );
+      })
+    ) : e(
+      "div",
+      { className: "MarketPanel-list" },
+      groups.map(
+        (g) => e(
+          "details",
+          {
+            key: g.key,
+            className: "MarketPanel-group",
+            open: true
+          },
+          e(
+            "summary",
             {
-              style: {
-                fontSize: TYPE.micro,
-                color: "#ccc",
-                ...PIXEL_TEXT
+              onClick: (ev) => {
+                ev.preventDefault();
+                setFocusKey(g.key);
               }
             },
-            props.gearEditable ? "Your trades" : `${entityLabel} \xB7 trade`
-          ),
-          showSlotToolbar ? e(
-            "div",
-            {
-              style: { display: "flex", gap: "4px", flexWrap: "wrap" },
-              title: "Merchant stand vs slot grid display"
-            },
-            props.gearEditable ? standOpen ? toolbarButton(
-              "Close stand",
-              "Close merchant stand in game",
-              () => merchantCloseCommand()
-            ) : toolbarButton(
-              "Open stand",
-              "Open merchant stand \u2014 auto-finds stand in bag",
-              () => merchantOpenCommand()
-            ) : null,
-            toolbarButton(
-              slotsCompact ? "Compact" : "All slots",
-              slotsCompact ? "Compact: filled listings plus one empty drop target" : "All slots: every stand/trade slot including empties",
-              toggleSlotsCompact,
-              slotsCompact
+            iconEl(g.name, { level: g.level, p: g.p, size: 40 }),
+            e(
+              "div",
+              null,
+              e(
+                "div",
+                { className: "MarketPanel-gName" },
+                itemLabel(g.name, g.level, g.p)
+              ),
+              e(
+                "div",
+                { className: "MarketPanel-gSub" },
+                g.sales.length + " selling \xB7 " + g.wants.length + " buying"
+              )
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-gBest" },
+              g.bestSale != null ? [
+                e("span", { key: "l" }, "low"),
+                formatTradeGold(g.bestSale)
+              ] : g.bestWant != null ? [
+                e("span", { key: "h" }, "high"),
+                formatTradeGold(g.bestWant)
+              ] : null
             )
-          ) : null
-        ),
-        foreign && !inRange ? e(
-          "div",
-          {
-            style: {
-              fontSize: TYPE.microMin,
-              color: "#c9a227",
-              ...PIXEL_TEXT
-            }
-          },
-          "Too far \u2014 move closer to trade."
-        ) : null,
-        showPersonal ? e(
-          "div",
-          { className: "comm-trade-section comm-trade-section--personal" },
-          sectionLabel("Trade slots", personalSpace),
-          renderSlotRows(personalNames, 4, slots, props)
-        ) : null,
-        showStandSection ? e(
-          "div",
-          { className: "comm-trade-section comm-trade-section--stand" },
-          sectionLabel(
-            standOpen ? "Merchant stand" : "Merchant stand (closed)",
-            standSpace
           ),
-          renderSlotRows(standNames, standCols, slots, props)
-        ) : null,
-        props.gearEditable ? e(
-          "div",
-          {
-            style: {
-              fontSize: TYPE.microMin,
-              color: "#666",
-              marginTop: "auto",
-              ...PIXEL_TEXT
-            }
-          },
-          standOpen ? "Drag bag item to list \xB7 Shift+drag for giveaway" + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "") : "Stand closed \u2014 trade5+ listings stay visible from last open \xB7 Open stand to list or reprice" + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "")
-        ) : foreign ? e(
-          "div",
-          {
-            style: {
-              fontSize: TYPE.microMin,
-              color: "#666",
-              marginTop: "auto",
-              ...PIXEL_TEXT
-            }
-          },
-          "Click buy/fulfill \xB7 Shift+click info \xB7 Bag B badge = also sellable" + (merchantBagSpace ? ` \xB7 Their bag ${merchantBagSpace}` : "") + (obsBagSpace ? ` \xB7 Your bag ${obsBagSpace}` : "")
-        ) : null
-      );
-    }, [fp]);
-  }
-
-  // src/ui/frames/TradePanel.ts
-  function snapshotEntity2(ent) {
-    const copy = Object.assign({}, ent);
-    if (ent.slots) copy.slots = Object.assign({}, ent.slots);
-    return copy;
-  }
-  function resolveInspectedEntity(entities, selectedEntity2, observing, cached) {
-    const obsId = observing && observing.id != null ? String(observing.id) : "";
-    const selectedId2 = selectedEntity2 != null && selectedEntity2 !== "" ? String(selectedEntity2) : "";
-    if (!selectedId2 || selectedId2 === obsId) {
-      return { entity: null, stale: false, cache: null };
-    }
-    const live2 = findEntity(entities, selectedId2);
-    if (live2) {
-      return {
-        entity: snapshotEntity2(live2),
-        stale: false,
-        cache: snapshotEntity2(live2)
-      };
-    }
-    if (cached && String(cached.id) === selectedId2) {
-      return { entity: cached, stale: true, cache: cached };
-    }
-    return { entity: null, stale: false, cache: null };
-  }
-  function resolveOwnTradeEntity(entities, observing) {
-    if (!observing || observing.id == null) return null;
-    const obsId = String(observing.id);
-    return findEntity(entities, obsId) || observing;
-  }
-  function tradePanelHasContent(entity, gearEditable) {
-    if (!entity || !entity.slots) return false;
-    if (gearEditable) return true;
-    return tradeRowVisible(entity.slots, entity);
-  }
-  function modeButton(label, active, onClick) {
-    return e(
-      "button",
-      {
-        type: "button",
-        className: "comm-trade-mode-btn" + (active ? " is-active" : ""),
-        onClick,
-        style: {
-          fontSize: TYPE.microMin,
-          padding: "2px 8px",
-          cursor: "pointer",
-          background: active ? "#3a3a3a" : "transparent",
-          border: active ? "1px solid #888" : "1px solid #444",
-          color: active ? "#eee" : "#888",
-          ...PIXEL_TEXT
-        }
-      },
-      label
+          g.rows.map(offerCard)
+        )
+      )
     );
-  }
-  function TradePanel(props) {
-    var _a, _b, _c;
-    const React = getReact();
-    const inspectCacheRef = React.useRef(null);
-    const [viewMode, setViewMode] = React.useState("yours");
-    const ownEntity = resolveOwnTradeEntity(props.entities, props.observing);
-    const inspected = resolveInspectedEntity(
-      props.entities,
-      props.selectedEntity,
-      props.observing,
-      inspectCacheRef.current
-    );
-    if (inspected.cache) inspectCacheRef.current = inspected.cache;
-    const hasInspected = !!(inspected.entity && !isObservedSelf(inspected.entity)) && tradePanelHasContent(inspected.entity, false);
-    React.useEffect(() => {
-      if (props.selectedEntity && inspected.entity && !isObservedSelf(inspected.entity) && entityHasTradeSlots(inspected.entity)) {
-        setViewMode("inspected");
-      }
-    }, [props.selectedEntity, (_a = inspected.entity) == null ? void 0 : _a.id]);
-    if (!ownEntity && !hasInspected) {
-      if (!props.layoutEdit) return null;
-      return e(
+    const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
+    const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
+    const focusPane = focusGroup ? [
+      e(
         "div",
-        {
-          className: "comm-trade-panel comm-trade-panel--placeholder",
-          style: {
-            padding: "8px",
-            color: "#666",
-            fontSize: TYPE.micro,
-            ...PIXEL_TEXT
-          }
-        },
-        "Trade \u2014 layout preview"
-      );
-    }
-    const showInspected = viewMode === "inspected" && hasInspected;
-    const displayEntity = showInspected ? inspected.entity : ownEntity;
-    const stale = showInspected && inspected.stale;
-    const gearEditable = !showInspected && canEditObservedGear(displayEntity, false);
-    if (!displayEntity) return null;
-    if (!props.layoutEdit && !tradePanelHasContent(displayEntity, gearEditable)) {
-      return null;
-    }
-    const inspectedLabel = ((_b = inspected.entity) == null ? void 0 : _b.name) != null ? String(inspected.entity.name) : ((_c = inspected.entity) == null ? void 0 : _c.id) != null ? String(inspected.entity.id) : "Player";
+        { key: "ph", className: "MarketPanel-ph" },
+        "Focus ",
+        e("em", null, focusGroup.rows.length + " offers")
+      ),
+      e(
+        "div",
+        { key: "top", className: "MarketPanel-focusTop" },
+        e(
+          "div",
+          { className: "MarketPanel-focusHead" },
+          iconEl(focusGroup.name, {
+            level: focusGroup.level,
+            p: focusGroup.p,
+            size: 40
+          }),
+          e(
+            "div",
+            null,
+            e("h2", null, itemLabel(focusGroup.name, focusGroup.level, focusGroup.p)),
+            e(
+              "div",
+              { className: "sub" },
+              focusGroup.sales.length + " selling \xB7 " + focusGroup.wants.length + " buying"
+            )
+          )
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-dealBar" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-btn MarketPanel-btn--gold",
+              disabled: !bestBuy,
+              onClick: () => {
+                if (bestBuy) void runOffer(bestBuy);
+              }
+            },
+            bestBuy ? "Buy best \xB7 " + formatTradeGold(bestBuy.price) : "Buy best"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-btn MarketPanel-btn--sell",
+              disabled: !bestSell,
+              onClick: () => {
+                if (bestSell) void runOffer(bestSell);
+              }
+            },
+            bestSell ? "Sell best \xB7 " + formatTradeGold(bestSell.price) : "Sell best"
+          ),
+          e(
+            "p",
+            { className: "hint" },
+            (bestBuy ? bestBuy.merchant + " sells @ " + formatTradeGold(bestBuy.price) : "No buyable sales") + " \xB7 " + (bestSell ? bestSell.merchant + " wants @ " + formatTradeGold(bestSell.price) : bagNames[focusGroup.name.toLowerCase()] ? "No buy orders" : "Not in bag")
+          )
+        )
+      ),
+      e(
+        "div",
+        { key: "offers", className: "MarketPanel-focusOffers" },
+        e(
+          "div",
+          { className: "MarketPanel-focusCol MarketPanel-focusCol--sells" },
+          e(
+            "div",
+            { className: "MarketPanel-focusColH" },
+            e("span", { className: "sells" }, "Sells"),
+            e("em", null, String(focusGroup.sales.length))
+          ),
+          focusGroup.sales.length ? focusGroup.sales.slice().sort((a, b) => a.price - b.price).map(offerCard) : e(
+            "div",
+            { className: "MarketPanel-focusColEmpty" },
+            "No sell offers"
+          )
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-focusCol" },
+          e(
+            "div",
+            { className: "MarketPanel-focusColH" },
+            e("span", { className: "wants" }, "Wants"),
+            e("em", null, String(focusGroup.wants.length))
+          ),
+          focusGroup.wants.length ? focusGroup.wants.slice().sort((a, b) => b.price - a.price).map(offerCard) : e(
+            "div",
+            { className: "MarketPanel-focusColEmpty" },
+            "No buy orders"
+          )
+        )
+      )
+    ] : [
+      e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
+      e(
+        "div",
+        { key: "empty", className: "MarketPanel-empty" },
+        e("strong", null, "No item selected"),
+        view === "grid" ? "Pick a card in the market grid." : "Pick a listing group, bag stack, or stand slot."
+      )
+    ];
     return e(
       "div",
       {
-        className: "comm-trade-panel" + (stale ? " comm-trade-panel--stale" : ""),
-        style: {
-          padding: "6px 8px",
-          boxSizing: "border-box",
-          opacity: stale ? 0.92 : 1,
-          border: stale ? "1px dashed #c9a227" : void 0,
-          pointerEvents: "none",
-          background: "rgba(0,0,0,0.94)",
-          minHeight: "100%"
-        }
+        className: "MarketPanel",
+        "data-ecu-tour": "market-panel"
       },
       e(
         "div",
-        { style: { pointerEvents: "auto" } },
-        hasInspected ? e(
+        { className: "MarketPanel-head" },
+        e("h1", { className: "MarketPanel-title" }, "Market"),
+        e(
           "div",
+          { className: "MarketPanel-pill" },
+          formatTradeGold(gold) + " gold" + (catalogMerchants.length ? " \xB7 " + catalogMerchants.length + " catalog" : catalogLoading ? " \xB7 catalog\u2026" : "") + (travel ? " \xB7 Travel \u2192 " + travel.name : "") + (catalogMsg ? " \xB7 " + catalogMsg : "")
+        ),
+        travel ? e(
+          "button",
           {
-            style: {
-              display: "flex",
-              gap: "4px",
-              marginBottom: "6px"
-            }
+            type: "button",
+            className: "MarketPanel-btn MarketPanel-btn--ghost",
+            onClick: () => cancelMarketTravel("Travel cancelled")
           },
-          modeButton("Yours", viewMode === "yours", () => setViewMode("yours")),
-          modeButton(
-            inspectedLabel,
-            viewMode === "inspected",
-            () => setViewMode("inspected")
-          )
+          "Cancel travel"
         ) : null,
-        e(TradeGrid, {
-          entity: displayEntity,
-          observing: props.observing,
-          gearEditable
-        })
+        e(
+          "button",
+          {
+            type: "button",
+            className: "MarketPanel-btn MarketPanel-btn--ghost",
+            disabled: catalogLoading,
+            onClick: () => {
+              void refreshCatalog();
+            },
+            title: pulledAt ? "Catalog " + String(pulledAt) : "Refresh catalog"
+          },
+          catalogLoading ? "\u2026" : "Refresh"
+        )
+      ),
+      e(
+        "div",
+        { className: "MarketPanel-tools" },
+        e(
+          "div",
+          { className: "MarketPanel-searchWrap" },
+          e(
+            "div",
+            { className: "MarketPanel-search" },
+            e("span", { className: "ico" }, "\u2315"),
+            e("input", {
+              ref: searchInputRef,
+              type: "search",
+              placeholder: "Search \xB7 item: \xB7 merchant: \xB7 is:sell \xB7 OR\u2026",
+              value: query,
+              onFocus: () => {
+                setSearchOpen(true);
+                setSearchHi(0);
+              },
+              onBlur: () => {
+                window.setTimeout(() => setSearchOpen(false), 120);
+              },
+              onChange: (ev) => {
+                applyQuery(String(ev.target.value || ""));
+                setSearchOpen(true);
+                setSearchHi(0);
+              },
+              onKeyDown: (ev) => {
+                const flatSug = searchSug.flat;
+                if (ev.key === "Escape") {
+                  setSearchOpen(false);
+                  return;
+                }
+                if (!searchOpen && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+                  setSearchOpen(true);
+                  return;
+                }
+                if (!searchOpen || !flatSug.length) return;
+                if (ev.key === "ArrowDown") {
+                  ev.preventDefault();
+                  setSearchHi((h) => (h + 1) % flatSug.length);
+                } else if (ev.key === "ArrowUp") {
+                  ev.preventDefault();
+                  setSearchHi(
+                    (h) => (h - 1 + flatSug.length) % flatSug.length
+                  );
+                } else if (ev.key === "Enter" && flatSug[searchHi]) {
+                  ev.preventDefault();
+                  pickSearchSuggestion(flatSug[searchHi]);
+                }
+              }
+            }),
+            query ? e(
+              "button",
+              {
+                type: "button",
+                className: "clear",
+                title: "Clear search",
+                onMouseDown: (ev) => ev.preventDefault(),
+                onClick: () => {
+                  applyQuery("");
+                  setMerchantFilter(null);
+                  setSearchOpen(false);
+                  setSearchHi(0);
+                }
+              },
+              "\xD7"
+            ) : null
+          ),
+          searchOpen ? e(
+            "div",
+            {
+              className: "MarketPanel-searchMenu",
+              onMouseDown: (ev) => ev.preventDefault()
+            },
+            searchSug.sections.map(
+              (sec, si) => e(
+                "div",
+                { className: "MarketPanel-searchMenuSec", key: "sec-" + si },
+                e("div", { className: "MarketPanel-searchMenuH" }, sec.title),
+                sec.rows.map((row3) => {
+                  const idx = searchSug.flat.indexOf(row3);
+                  return e(
+                    "button",
+                    {
+                      type: "button",
+                      key: "sug-" + idx + "-" + row3.label,
+                      className: "MarketPanel-searchMenuRow" + (idx === searchHi ? " is-hi" : ""),
+                      onMouseEnter: () => setSearchHi(idx),
+                      onClick: () => pickSearchSuggestion(row3)
+                    },
+                    e(
+                      "span",
+                      { className: "MarketPanel-searchMenuIco" },
+                      row3.ico || "\xB7"
+                    ),
+                    row3.kind === "op" ? e(
+                      "span",
+                      { className: "MarketPanel-searchMenuOp" },
+                      row3.label
+                    ) : e(
+                      "span",
+                      { className: "MarketPanel-searchMenuLabel" },
+                      row3.label
+                    ),
+                    e(
+                      "span",
+                      { className: "MarketPanel-searchMenuHint" },
+                      row3.hint || ""
+                    )
+                  );
+                })
+              )
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-searchMenuFoot" },
+              "Words AND \xB7 OR / | \xB7 Quotes \xB7 -negate",
+              e("kbd", null, "\u21B5")
+            )
+          ) : null
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-seg" },
+          ["all", "sale", "wanted"].map(
+            (f) => e(
+              "button",
+              {
+                type: "button",
+                key: f,
+                className: facet === f ? "is-on" : "",
+                onClick: () => applyToggleSync({
+                  facet: f,
+                  nearOnly,
+                  canAfford,
+                  haveStock
+                })
+              },
+              f === "all" ? "All" : f === "sale" ? "Selling" : "Buying"
+            )
+          )
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-togs" },
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: nearOnly,
+              onChange: (ev) => applyToggleSync({
+                facet,
+                nearOnly: !!ev.target.checked,
+                canAfford,
+                haveStock
+              })
+            }),
+            "Near"
+          ),
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: canAfford,
+              onChange: (ev) => applyToggleSync({
+                facet,
+                nearOnly,
+                canAfford: !!ev.target.checked,
+                haveStock
+              })
+            }),
+            "Afford"
+          ),
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: haveStock,
+              onChange: (ev) => applyToggleSync({
+                facet,
+                nearOnly,
+                canAfford,
+                haveStock: !!ev.target.checked
+              })
+            }),
+            "Have"
+          )
+        )
+      ),
+      e(
+        "div",
+        { className: "MarketPanel-body" },
+        e(
+          "div",
+          { className: "MarketPanel-you" },
+          e(
+            "div",
+            { className: "MarketPanel-youBag" },
+            e(
+              "div",
+              { className: "MarketPanel-ph" },
+              "Bag ",
+              e(
+                "em",
+                null,
+                bagStacks.length ? bagStacks.length + " stacks" : bagSynced ? "empty" : "syncing\u2026"
+              )
+            ),
+            bagStacks.length ? e(
+              "div",
+              { className: "MarketPanel-youBagScroll" },
+              e(
+                "div",
+                { className: "MarketPanel-slotGrid" },
+                bagStacks.map((b) => {
+                  const key = marketBagStackKey({
+                    name: b.name,
+                    level: b.level,
+                    p: b.p
+                  });
+                  const label = itemInstanceLabel(b.name, {
+                    level: b.level,
+                    p: b.p != null ? b.p : void 0
+                  });
+                  const tip = label + (b.q > 1 ? " \xD7" + b.q : "") + (b.slotCount > 1 ? " \xB7 " + b.slotCount + " slots" : "");
+                  return e(
+                    "button",
+                    {
+                      type: "button",
+                      key,
+                      className: "MarketPanel-bagSlot" + (bagStackKey === key ? " is-on" : ""),
+                      title: tip,
+                      onClick: () => {
+                        setBagStackKey(key);
+                        setFocusKey(key);
+                        const next = rewriteIsInFilter("item:" + b.name, {
+                          facet,
+                          nearOnly,
+                          canAfford,
+                          haveStock
+                        });
+                        applyQuery(next);
+                      }
+                    },
+                    e(ItemInstance, {
+                      name: b.name,
+                      skin: b.skin,
+                      level: b.level,
+                      q: b.q,
+                      p: b.p != null ? b.p : void 0,
+                      size: 40,
+                      title: tip
+                    })
+                  );
+                })
+              )
+            ) : e(
+              "div",
+              { className: "MarketPanel-youBagScroll" },
+              e(
+                "div",
+                {
+                  className: "MarketPanel-empty",
+                  style: { padding: "16px" }
+                },
+                !observing ? "Observe a character to see bag + stand." : !bagSynced ? e(
+                  "div",
+                  null,
+                  e("strong", null, "Bag not synced yet"),
+                  "Open Bag once, or ",
+                  e(
+                    "button",
+                    {
+                      type: "button",
+                      className: "MarketPanel-btn MarketPanel-btn--ghost",
+                      style: { display: "inline", height: "auto" },
+                      onClick: () => refreshObservedInventory()
+                    },
+                    "resync"
+                  ),
+                  "."
+                ) : "Bag is empty."
+              )
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-youActs" },
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-btn MarketPanel-btn--sell",
+                  disabled: !selectedBag || !gearEditable,
+                  title: "List selected bag item \u2014 use stand empty slot or bag menu",
+                  onClick: () => {
+                    window.alert(
+                      "Drag the bag item onto an empty stand/trade slot, or use the bag context menu \u2192 List on Trade\u2026"
+                    );
+                  }
+                },
+                "List"
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-btn MarketPanel-btn--ghost",
+                  disabled: !gearEditable,
+                  onClick: (ev) => {
+                    const names = observingTradeSlotNames();
+                    const slots = observing && observing.slots ? observing.slots : null;
+                    let empty2 = null;
+                    for (let i = 0; i < names.length; i++) {
+                      if (tradeSlotIsEmpty(slots, names[i])) {
+                        empty2 = names[i];
+                        break;
+                      }
+                    }
+                    if (!empty2) {
+                      window.alert("No empty trade slot for a buy order.");
+                      return;
+                    }
+                    showTradeWishlistPicker(
+                      empty2,
+                      ev.clientX || 40,
+                      ev.clientY || 40
+                    );
+                  },
+                  style: { height: "auto", padding: "7px 8px" }
+                },
+                "Buy order"
+              )
+            )
+          ),
+          e(
+            "div",
+            { className: "MarketPanel-youStand" },
+            (() => {
+              const liveSlots = ownEntity && ownEntity.slots ? ownEntity.slots : null;
+              const entityId = ownEntity && ownEntity.id != null ? String(ownEntity.id) : "";
+              const slots = gearEditable && entityId && liveSlots ? mergeStandTradeSlotsForUi(entityId, liveSlots, standOpen) || liveSlots : liveSlots;
+              const capacity = ownEntity ? merchantStandCapacity(ownEntity, slots || void 0) : 0;
+              const keys = ownEntity ? capacity > 0 ? merchantStandSlotNames(slots, ownEntity, standCompact, false) : personalTradeSlotNames(slots, ownEntity, !!gearEditable) : [];
+              let listed = 0;
+              if (slots) {
+                const sk = Object.keys(slots);
+                for (let i = 0; i < sk.length; i++) {
+                  const k = sk[i];
+                  if (k.indexOf("trade") !== 0) continue;
+                  if (slots[k] && slots[k].name) listed += 1;
+                }
+              }
+              const free = capacity > 0 ? Math.max(0, capacity - listed) : Math.max(0, keys.length - listed);
+              const space = capacity > 0 ? free <= 0 ? listed + " listed" : free + " free \xB7 " + listed + " listed" : listed ? listed + " listed" : "";
+              const pack = !!standCompact;
+              const iconSize = pack ? 40 : 34;
+              const packEntries = pack ? collapseMarketStandPackSlots(keys, slots) : keys.map((sn) => ({
+                slotName: sn,
+                slotNames: [sn],
+                slot: slots ? slots[sn] || null : null
+              }));
+              return [
+                e(
+                  "div",
+                  { key: "ph", className: "MarketPanel-ph" },
+                  "Stand ",
+                  e("em", null, space || (standOpen ? "open" : "closed")),
+                  e(
+                    "span",
+                    { className: "MarketPanel-phTools" },
+                    e(
+                      "span",
+                      { className: "MarketPanel-seg" },
+                      e(
+                        "button",
+                        {
+                          type: "button",
+                          className: standCompact ? "is-on" : "",
+                          onClick: () => setStandCompact(true)
+                        },
+                        "Pack"
+                      ),
+                      e(
+                        "button",
+                        {
+                          type: "button",
+                          className: standCompact ? "" : "is-on",
+                          onClick: () => setStandCompact(false)
+                        },
+                        "All"
+                      )
+                    ),
+                    e(
+                      "button",
+                      {
+                        type: "button",
+                        className: "MarketPanel-btn MarketPanel-btn--ghost",
+                        disabled: !gearEditable,
+                        onClick: () => {
+                          if (standOpen) merchantCloseCommand();
+                          else merchantOpenCommand();
+                        }
+                      },
+                      standOpen ? "Close" : "Open"
+                    )
+                  )
+                ),
+                e(
+                  "div",
+                  { key: "bar", className: "MarketPanel-standBar" },
+                  e(
+                    "span",
+                    { className: "st" + (standOpen ? "" : " off") },
+                    standOpen ? "Open" : "Closed"
+                  ),
+                  e(
+                    "span",
+                    null,
+                    (ownEntity && ownEntity.map ? String(ownEntity.map) : "\u2014") + (observing && observing.name ? " \xB7 " + String(observing.name) : "") + (capacity ? " \xB7 " + capacity : "")
+                  )
+                ),
+                ownEntity && keys.length ? e(
+                  "div",
+                  {
+                    key: "grid",
+                    className: "MarketPanel-standSlots" + (pack ? " is-pack" : " is-all")
+                  },
+                  packEntries.map(
+                    (entry) => e(TradeSlotCell, {
+                      key: entry.slotName,
+                      entity: ownEntity,
+                      observing,
+                      slotName: entry.slotName,
+                      slot: entry.slot,
+                      gearEditable,
+                      allSlots: slots || void 0,
+                      iconSize,
+                      fluid: !pack,
+                      selected: !!focusKey && entry.slotNames.indexOf(focusKey) >= 0
+                    })
+                  )
+                ) : e(
+                  "div",
+                  {
+                    key: "empty",
+                    className: "MarketPanel-focusColEmpty"
+                  },
+                  ownEntity ? "No stand slots \u2014 open stand or list on trade1\u20134." : "No stand while not observing."
+                )
+              ];
+            })()
+          )
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-col" },
+          e(
+            "div",
+            { className: "MarketPanel-ph" },
+            "Market ",
+            e(
+              "em",
+              null,
+              groups.length + " items \xB7 " + rows.length + " listings"
+            ),
+            e(
+              "span",
+              { className: "MarketPanel-phTools" },
+              e(
+                "span",
+                { className: "MarketPanel-seg" },
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    className: view === "grid" ? "is-on" : "",
+                    onClick: () => setView("grid")
+                  },
+                  "Grid"
+                ),
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    className: view === "list" ? "is-on" : "",
+                    onClick: () => setView("list")
+                  },
+                  "List"
+                )
+              )
+            )
+          ),
+          marketBody
+        ),
+        e("div", { className: "MarketPanel-col" }, focusPane)
       )
     );
   }
@@ -62949,7 +66567,7 @@ ${ESTIMATE_HINT}`,
     }
     return g.head;
   }
-  function itemLabel(m) {
+  function itemLabel2(m) {
     if (!m.item || !m.item.name) return m.subject || "(no subject)";
     const bits = [String(m.item.name)];
     if (typeof m.item.level === "number") bits.push("+" + m.item.level);
@@ -62967,7 +66585,7 @@ ${ESTIMATE_HINT}`,
     const allOn = groupChecked(g, selectedIds);
     const someOn = groupSomeChecked(g, selectedIds);
     const headSel = !!selected && g.mails.some((m) => m.id === selected.id);
-    const title = g.head.item ? itemLabel(g.head) : g.head.subject || "(no subject)";
+    const title = g.head.item ? itemLabel2(g.head) : g.head.subject || "(no subject)";
     const qtyTotal = mailStackItemQuantity(g);
     const showQtyPill = qtyTotal != null && qtyTotal !== g.untaken;
     const allTaken = !!g.head.item && g.untaken === 0 && g.mails.length > 0;
@@ -64264,16 +67882,21 @@ ${ESTIMATE_HINT}`,
         }),
         { style: PAPERDOLL_PANEL_STYLE }
       ) : null,
-      deps.snap.observing || deps.selectedEntity || deps.layoutEdit ? panel(
-        "trade",
-        e(TradePanel, {
+      panel(
+        "market",
+        e(MarketPanel, {
           entities: snap.entities,
-          selectedEntity: deps.selectedEntity,
           observing: snap.observing,
-          layoutEdit: deps.layoutEdit
+          layoutEdit: deps.layoutEdit,
+          seedMerchant: deps.marketMerchant,
+          seedDesk: deps.marketDesk,
+          seedSeq: deps.marketOpenSeq
         }),
-        { style: TRADE_PANEL_STYLE }
-      ) : null,
+        {
+          style: MARKET_PANEL_STYLE,
+          hiddenBodyStyle: MARKET_PANEL_STYLE
+        }
+      ),
       panel(
         "buffInfo",
         e(StockInfoPanel, {
@@ -64617,8 +68240,11 @@ ${ESTIMATE_HINT}`,
       const ent = findEntity(snap.entities, selectedEntity2);
       if (!ent || isObservedSelf(ent)) return;
       if (!entityHasTradeSlots(ent)) return;
-      setVisible("trade", true);
-    }, [selectedEntity2, snap.entities, layoutEdit, setVisible]);
+      openMarket({
+        merchantName: ent.name ? String(ent.name) : null,
+        desk: "buy"
+      });
+    }, [selectedEntity2, snap.entities, layoutEdit]);
     const [commandSeed, setCommandSeed] = React.useState(null);
     const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
     const [chatSeed, setChatSeed] = React.useState(null);
@@ -64626,6 +68252,13 @@ ${ESTIMATE_HINT}`,
       null
     );
     const [chatOpenSeq, setChatOpenSeq] = React.useState(0);
+    const [marketMerchant, setMarketMerchant] = React.useState(
+      null
+    );
+    const [marketDesk, setMarketDesk] = React.useState(
+      null
+    );
+    const [marketOpenSeq, setMarketOpenSeq] = React.useState(0);
     const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
     const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
     const [meterAddOpen, setMeterAddOpen] = React.useState(false);
@@ -64876,6 +68509,29 @@ ${ESTIMATE_HINT}`,
         }
       });
     }, [setVisible]);
+    const marketVisible = visible("market");
+    React.useEffect(() => {
+      setMarketPanelOpen(marketVisible);
+    }, [marketVisible]);
+    const marketOpenRef = React.useRef(false);
+    marketOpenRef.current = marketVisible;
+    React.useEffect(() => {
+      return subscribeMarketOpen((payload) => {
+        if (payload.toggle && marketOpenRef.current && !payload.merchantName) {
+          setVisible("market", false);
+          return;
+        }
+        if (payload.merchantName) {
+          setMarketMerchant(String(payload.merchantName));
+        }
+        if (payload.desk === "buy" || payload.desk === "sell") {
+          setMarketDesk(payload.desk);
+        }
+        setMarketOpenSeq((n) => n + 1);
+        setVisible("market", true);
+        windowActionsRef.current.raiseWindow("market");
+      });
+    }, [setVisible]);
     React.useEffect(() => {
       const root = document.getElementById("comm-ui");
       if (!root) return;
@@ -64972,6 +68628,9 @@ ${ESTIMATE_HINT}`,
       chatSeed,
       chatWhisperTo,
       chatOpenSeq,
+      marketMerchant,
+      marketDesk,
+      marketOpenSeq,
       bagOpen,
       bagRefreshing: bagRefreshing2,
       buffInfoOpen,

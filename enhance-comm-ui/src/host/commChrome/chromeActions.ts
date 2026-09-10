@@ -1,5 +1,6 @@
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
+import { openMarket } from "../market";
 import { openChat, syncChatBadge } from "../chat";
 
 /**
@@ -129,6 +130,12 @@ function onMailClick(ev: Event): void {
   openMail({ toggle: true });
 }
 
+function onMarketClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  openMarket({ toggle: true });
+}
+
 /**
  * Same three-way landing as adventure.land/docs — Game Guide / CODE Docs /
  * Other Systems — via stock render_* helpers when the client kit is present.
@@ -188,6 +195,7 @@ type ActionKind =
   | "command"
   | "chat"
   | "mail"
+  | "market"
   | "docs"
   | "mainframe";
 
@@ -200,6 +208,8 @@ const ACTION_ICONS: Record<ActionKind, string> = {
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 9l3 3-3 3M12 15h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter"/></svg>',
   chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  market:
+    '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16l-1 12H5L4 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 7V5a3 3 0 0 1 6 0v2M8 11h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   mainframe:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
@@ -249,6 +259,7 @@ export function buildActionsEl(): HTMLElement {
     mk("bag", "Bag", "Observed inventory", onBagClick),
     mk("chat", "Chat", "Server chat — send as observed character", onChatClick),
     mk("mail", "Mail", "Account mail", onMailClick),
+    mk("market", "Market", "Buy and sell across merchants", onMarketClick),
     mk(
       "command",
       "Command",
@@ -272,6 +283,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
     Bag: "btn-bag",
     Chat: "btn-chat",
     Mail: "btn-mail",
+    Market: "btn-market",
     Command: "btn-command",
     Docs: "btn-docs",
     Mainframe: "btn-mainframe",

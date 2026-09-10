@@ -24,11 +24,12 @@ describe("panel catalog", () => {
     }
   });
 
-  it("marks instance / timeline / mail / threat as fill shells", () => {
+  it("marks instance / timeline / mail / market / threat as fill shells", () => {
     assert.equal(panelFillsFrame("instance"), true);
     assert.equal(panelFillsFrame("instanceRun"), true);
     assert.equal(panelFillsFrame("abilityTimeline"), true);
     assert.equal(panelFillsFrame("mail"), true);
+    assert.equal(panelFillsFrame("market"), true);
     assert.equal(panelFillsFrame("threat"), true);
     assert.equal(panelFillsFrame("minimap"), true);
     assert.equal(panelFillsFrame("players"), false);

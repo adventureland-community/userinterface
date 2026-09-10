@@ -370,34 +370,33 @@ const PAPERDOLL_TOUR: GuidedTourDef = {
 };
 
 /**
- * Trade-slot add-on — first time you inspect someone with filled trade
- * listings (merchant or player stand). Uses the Trade window, not paperdoll.
+ * Market hub — first time you inspect someone with filled trade listings.
  */
 const PAPERDOLL_TRADE_TOUR: GuidedTourDef = {
   id: "paperdoll-trade",
-  label: "Trade window",
+  label: "Market window",
   steps: [
     {
-      title: "Trade window",
-      body: "The Trade panel shows your listings and merchants you inspect. Use Yours / Inspected to switch without losing your own row.",
-      target: '[data-ecu-tour="trade-panel"]',
+      title: "Market",
+      body: "Market replaces the old Trade panel. Browse for-sale listings across nearby merchants and the realm catalog, or switch to Sell to fulfill buy orders and manage your stand.",
+      target: '[data-ecu-tour="market-panel"]',
       targetKind: "region",
       missingHint:
-        "Inspect a merchant or player stand that has trade items listed.",
+        "Open Market from the chrome strip, or inspect a merchant stand.",
     },
     {
       title: "Buy or sell",
-      body: "Left-click a sell listing to buy, a buy order to fulfill, or a giveaway to join. Shift+click opens Item info. Bag items with a nearby buy order also show a B badge.",
-      target: '[data-ecu-tour="trade-panel"]',
+      body: "On Buy, click a listing to purchase when in range, or Travel when far. On Sell, fulfill buy orders from your bag and list/delist on Your stand. Shift+click takes the full stack when possible.",
+      target: '[data-ecu-tour="market-panel"]',
       targetKind: "region",
-      missingHint: "Inspect someone with trade slots, or list on your own row.",
+      missingHint: "Open Market from the chrome Market button.",
     },
     {
       title: "Item info",
-      body: "Shift+click any listing to park details in Item info while you compare prices.",
+      body: "Shift+click stand slots to park details in Item info while you compare prices.",
       target: ".comm-pos-itemInfo",
       targetKind: "panel",
-      missingHint: "Shift+click a filled trade slot.",
+      missingHint: "Shift+click a filled trade slot on Your stand.",
       advanceWhen: "itemInfoOpen",
     },
   ],

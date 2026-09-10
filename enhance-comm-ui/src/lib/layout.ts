@@ -144,6 +144,15 @@ export function migrateLegacyPanelIds(
     changed = true;
   }
 
+  if (raw.trade) {
+    const legacy = raw.trade;
+    delete (out as Record<string, unknown>).trade;
+    if (!out.market) {
+      out.market = applyWindowFramePersist(copyLegacyPos(legacy), "market");
+    }
+    changed = true;
+  }
+
   return changed ? out : partial;
 }
 

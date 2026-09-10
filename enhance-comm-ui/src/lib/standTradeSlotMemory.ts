@@ -34,6 +34,19 @@ function bumpEpoch(): void {
   epoch += 1;
 }
 
+function slotFilled(slot: SlotLike | null | undefined): boolean {
+  return !!(slot && slot.name);
+}
+
+function countFilledTradeExtras(map: SlotMap): number {
+  const keys = Object.keys(map);
+  let n = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (isStandExtraTradeSlot(keys[i]) && slotFilled(map[keys[i]])) n += 1;
+  }
+  return n;
+}
+
 /** Snapshot trade5+ while the stand is open (called each UI pass). */
 export function rememberStandTradeSlots(
   entityId: string,
@@ -41,14 +54,18 @@ export function rememberStandTradeSlots(
 ): void {
   if (!entityId || !slots) return;
   const snap: SlotMap = {};
-  let changed = false;
-  const prev = byEntity.get(entityId) || null;
   const keys = Object.keys(slots);
   for (let i = 0; i < keys.length; i++) {
     const k = keys[i];
     if (!isStandExtraTradeSlot(k)) continue;
     snap[k] = cloneSlot(slots[k]);
   }
+  const prev = byEntity.get(entityId) || null;
+  // Soft sync can briefly omit trade5+ — don't clobber a richer snapshot.
+  if (prev && countFilledTradeExtras(snap) < countFilledTradeExtras(prev)) {
+    return;
+  }
+  let changed = false;
   if (!prev) {
     changed = Object.keys(snap).length > 0;
   } else {
@@ -61,7 +78,14 @@ export function rememberStandTradeSlots(
         const a = prev[k];
         const b = snap[k];
         if (!a && !b) continue;
-        if (!a || !b || a.name !== b.name || a.price !== b.price || a.q !== b.q) {
+        if (
+          !a ||
+          !b ||
+          a.name !== b.name ||
+          a.price !== b.price ||
+          a.q !== b.q ||
+          a.rid !== b.rid
+        ) {
           changed = true;
           break;
         }

@@ -1,12 +1,11 @@
 /** One-shot saved-layout bumps for panel shells that shipped with bad defaults. */
 
 import type { PanelId, PanelPos } from "./layout";
-import { TRADE_PANEL_MIN_HEIGHT, TRADE_PANEL_WIDTH } from "./frameSizes";
 
 export type FrameMigration = (pos: PanelPos, def: PanelPos) => PanelPos;
 
 /** Bump when adding a new one-shot frame migrator; settings runs them once. */
-export const LAYOUT_FRAME_REV = 8;
+export const LAYOUT_FRAME_REV = 9;
 
 /** Shipped defaults only — round off scale noise, do not match nearby user sizes. */
 function shipped(n: number | undefined, target: number): boolean {
@@ -120,11 +119,19 @@ export function migrateCommandFrame(pos: PanelPos, def: PanelPos): PanelPos {
   };
 }
 
-/** Trade panel shipped at 220×200 before fixed personal+stand layout. */
-export function migrateTradeFrame(pos: PanelPos, def: PanelPos): PanelPos {
+/** Trade panel retired — Market uses mail-like fill defaults. */
+export function migrateMarketFrame(pos: PanelPos, def: PanelPos): PanelPos {
+  // Former trade shells were ~272×320 hug boxes.
+  if (shipped(pos.frameW, 272) && shipped(pos.frameH, 320)) {
+    return {
+      ...pos,
+      frameW: typeof def.frameW === "number" ? def.frameW : 1100,
+      frameH: typeof def.frameH === "number" ? def.frameH : 700,
+    };
+  }
   if (!shipped(pos.frameW, 220) || !shipped(pos.frameH, 200)) return pos;
-  const defW = typeof def.frameW === "number" ? def.frameW : TRADE_PANEL_WIDTH;
-  const defH = typeof def.frameH === "number" ? def.frameH : TRADE_PANEL_MIN_HEIGHT;
+  const defW = typeof def.frameW === "number" ? def.frameW : 1100;
+  const defH = typeof def.frameH === "number" ? def.frameH : 700;
   return { ...pos, frameW: defW, frameH: defH };
 }
 
@@ -140,7 +147,7 @@ export const FRAME_MIGRATIONS: Partial<Record<PanelId, FrameMigration>> = {
   bossBar: migrateBossBarFrame,
   abilityTimeline: migrateAbilityTimelineFrame,
   command: migrateCommandFrame,
-  trade: migrateTradeFrame,
+  market: migrateMarketFrame,
 };
 
 export function applyFrameMigrations(

@@ -68,6 +68,12 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
     kind: "feature",
   },
   {
+    label: "Market",
+    detail:
+      "Buy and sell across nearby and catalog merchants — Travel when out of range.",
+    kind: "feature",
+  },
+  {
     label: "Mail",
     detail:
       "Account inbox on /comm — read, search, compose, send and take while observing.",
@@ -99,6 +105,61 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    id: "0.9.12",
+    title: "0.9.12",
+    date: "2026-09-10",
+    summary:
+      "Market hub replaces the Trade panel — Buy|Sell desks, realm catalog, Travel, and chrome Market button.",
+    highlights: [
+      {
+        label: "Market hub",
+        detail:
+          "One Market window with Buy (search/compare for-sale listings) and Sell (fulfill buy orders, your stand, mirror/undercut). Chrome Market button; inspecting a merchant opens Market focused on them.",
+        kind: "feature",
+      },
+      {
+        label: "Live + catalog",
+        detail:
+          "Nearby entities merge with pull_merchants. Live slots win when the merchant is in vision; catalog-only stands stay visible with Travel.",
+        kind: "feature",
+      },
+      {
+        label: "Travel then trade",
+        detail:
+          "Out-of-range listings Travel via change_server then smart_move (overlay-owned itinerary). Catalog / closed-stand trade5+ buy only in range with a stale-listing confirm.",
+        kind: "feature",
+      },
+    ],
+    features: [
+      {
+        title: "Market",
+        summary: "Trade panel retired — Market is the only trade surface.",
+        items: [
+          {
+            label: "Buy desk",
+            detail:
+              "Filters for afford, party merchants, and search tokens (item: / merchant: / map:). Best-price sort within item.",
+            kind: "feature",
+          },
+          {
+            label: "Sell desk",
+            detail:
+              "Your stand grid (list/delist via existing trade controls), In bag buy-order filter, Mirror / Undercut from browse sales.",
+            kind: "feature",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "Trade panel removed",
+        detail:
+          "Saved Trade layout/visibility migrates to Market. Window Control reopens Market.",
+        kind: "improve",
+      },
+    ],
+  },
   {
     id: "0.9.11",
     title: "0.9.11",

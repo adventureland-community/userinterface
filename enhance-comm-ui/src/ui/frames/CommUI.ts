@@ -12,6 +12,11 @@ import {
   setMailPanelOpen,
   subscribeMailOpen,
 } from "../../host/mail";
+import {
+  openMarket,
+  setMarketPanelOpen,
+  subscribeMarketOpen,
+} from "../../host/market";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { getObservingId } from "../../host/al";
 import { info } from "../../host/dialogHost";
@@ -175,8 +180,11 @@ export function CommUI(props: CommUIProps): any {
     const ent = findEntity(snap.entities, selectedEntity);
     if (!ent || isObservedSelf(ent)) return;
     if (!entityHasTradeSlots(ent)) return;
-    setVisible("trade", true);
-  }, [selectedEntity, snap.entities, layoutEdit, setVisible]);
+    openMarket({
+      merchantName: ent.name ? String(ent.name) : null,
+      desk: "buy",
+    });
+  }, [selectedEntity, snap.entities, layoutEdit]);
 
   const [commandSeed, setCommandSeed] = React.useState(null as string | null);
   const [commandOpenSeq, setCommandOpenSeq] = React.useState(0);
@@ -185,6 +193,13 @@ export function CommUI(props: CommUIProps): any {
     null as string | null,
   );
   const [chatOpenSeq, setChatOpenSeq] = React.useState(0);
+  const [marketMerchant, setMarketMerchant] = React.useState(
+    null as string | null,
+  );
+  const [marketDesk, setMarketDesk] = React.useState(
+    null as "buy" | "sell" | null,
+  );
+  const [marketOpenSeq, setMarketOpenSeq] = React.useState(0);
   const [buffInfoOpen, setBuffInfoOpen] = React.useState(false);
   const [itemInfoOpen, setItemInfoOpen] = React.useState(false);
   const [meterAddOpen, setMeterAddOpen] = React.useState(false);
@@ -481,6 +496,32 @@ export function CommUI(props: CommUIProps): any {
     });
   }, [setVisible]);
 
+  const marketVisible = visible("market");
+  React.useEffect(() => {
+    setMarketPanelOpen(marketVisible);
+  }, [marketVisible]);
+
+  const marketOpenRef = React.useRef(false);
+  marketOpenRef.current = marketVisible;
+
+  React.useEffect(() => {
+    return subscribeMarketOpen((payload) => {
+      if (payload.toggle && marketOpenRef.current && !payload.merchantName) {
+        setVisible("market", false);
+        return;
+      }
+      if (payload.merchantName) {
+        setMarketMerchant(String(payload.merchantName));
+      }
+      if (payload.desk === "buy" || payload.desk === "sell") {
+        setMarketDesk(payload.desk);
+      }
+      setMarketOpenSeq((n: number) => n + 1);
+      setVisible("market", true);
+      windowActionsRef.current.raiseWindow("market");
+    });
+  }, [setVisible]);
+
   React.useEffect(() => {
     const root = document.getElementById("comm-ui");
     if (!root) return;
@@ -589,6 +630,9 @@ export function CommUI(props: CommUIProps): any {
     chatSeed,
     chatWhisperTo,
     chatOpenSeq,
+    marketMerchant,
+    marketDesk,
+    marketOpenSeq,
     bagOpen,
     bagRefreshing,
     buffInfoOpen,

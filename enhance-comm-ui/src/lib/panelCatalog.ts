@@ -30,7 +30,7 @@ export type PanelId =
   | "command"
   | "chat"
   | "bag"
-  | "trade"
+  | "market"
   | "mail"
   | "toggles";
 
@@ -140,7 +140,12 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
     shell: "fill",
   },
   bag: { label: "Bag", closable: true, framePersist: "none" },
-  trade: { label: "Trade", closable: true, framePersist: "none" },
+  market: {
+    label: "Market",
+    closable: true,
+    defaultVisible: false,
+    shell: "fill",
+  },
   mail: {
     label: "Mail",
     closable: true,
@@ -209,6 +214,10 @@ export function mergePanelVisible(
     if (typeof raw.crypt === "boolean") {
       if (typeof raw.instance !== "boolean") out.instance = raw.crypt;
       if (typeof raw.instanceRun !== "boolean") out.instanceRun = raw.crypt;
+    }
+    // Trade panel retired → Market
+    if (typeof raw.trade === "boolean" && typeof raw.market !== "boolean") {
+      out.market = raw.trade;
     }
     for (let i = 0; i < CLOSABLE_PANEL_IDS.length; i++) {
       const id = CLOSABLE_PANEL_IDS[i];

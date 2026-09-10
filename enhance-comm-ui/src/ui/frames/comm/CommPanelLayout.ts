@@ -51,7 +51,7 @@ import { Minimap } from "../Minimap";
 import { CommandPanel } from "../CommandPanel";
 import { ChatPanel } from "../chat/ChatPanel";
 import { BagPanel } from "../BagPanel";
-import { TradePanel } from "../TradePanel";
+import { MarketPanel } from "../MarketPanel";
 import { MailPanel } from "../mail/MailPanel";
 import {
   BOSS_BAR_PANEL_STYLE,
@@ -66,12 +66,12 @@ import {
   INFO_DIALOG_PANEL_STYLE,
   KILLS_PANEL_STYLE,
   MAIL_PANEL_STYLE,
+  MARKET_PANEL_STYLE,
   MINIMAP_PANEL_STYLE,
   PAPERDOLL_PANEL_STYLE,
   PLAYERS_PANEL_STYLE,
   THREAT_PANEL_STYLE,
   BAG_PANEL_STYLE,
-  TRADE_PANEL_STYLE,
 } from "../../../lib/frameSizes";
 import { nearbyBuyOrdersRevision } from "../../../lib/tradeHelpers";
 
@@ -130,6 +130,9 @@ export type CommPanelLayoutDeps = {
   chatSeed: string | null;
   chatWhisperTo: string | null;
   chatOpenSeq: number;
+  marketMerchant: string | null;
+  marketDesk: "buy" | "sell" | null;
+  marketOpenSeq: number;
   bagOpen: boolean;
   bagRefreshing: boolean;
   buffInfoOpen: boolean;
@@ -445,18 +448,21 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         )
       : null,
 
-    deps.snap.observing || deps.selectedEntity || deps.layoutEdit
-      ? panel(
-          "trade",
-          e(TradePanel, {
-            entities: snap.entities,
-            selectedEntity: deps.selectedEntity,
-            observing: snap.observing,
-            layoutEdit: deps.layoutEdit,
-          }),
-          { style: TRADE_PANEL_STYLE },
-        )
-      : null,
+    panel(
+      "market",
+      e(MarketPanel, {
+        entities: snap.entities,
+        observing: snap.observing,
+        layoutEdit: deps.layoutEdit,
+        seedMerchant: deps.marketMerchant,
+        seedDesk: deps.marketDesk,
+        seedSeq: deps.marketOpenSeq,
+      }),
+      {
+        style: MARKET_PANEL_STYLE,
+        hiddenBodyStyle: MARKET_PANEL_STYLE,
+      },
+    ),
 
     panel(
       "buffInfo",

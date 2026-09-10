@@ -326,6 +326,16 @@ export const MAIL_PANEL_STYLE: Record<string, any> = {
   boxSizing: "border-box",
 };
 
+export const MARKET_PANEL_STYLE: Record<string, any> = {
+  width: "100%",
+  height: "100%",
+  minWidth: "min(480px, 96vw)",
+  minHeight: "360px",
+  maxWidth: "100%",
+  maxHeight: "100%",
+  boxSizing: "border-box",
+};
+
 /** Rank meters — wide enough for title; size grows via frameW/H / resize. */
 export const METER_PANEL_STYLE: Record<string, any> = {
   width: "320px",

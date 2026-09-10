@@ -70,12 +70,28 @@ export type TradeSlotCellProps = {
   slot: SlotLike | null | undefined;
   gearEditable?: boolean;
   allSlots?: Record<string, SlotLike | null | undefined>;
+  /** Icon pixel size (default GEAR_SLOT_SIZE). Dense stand grids use ~34. */
+  iconSize?: number;
+  /** Fill CSS grid cell instead of fixed TRADE_SLOT_CELL width (Market stand). */
+  fluid?: boolean;
+  /** Selected / focus chrome (Market stand). */
+  selected?: boolean;
 };
 
 export function TradeSlotCell(props: TradeSlotCellProps): any {
   const React = getReact();
   const [bagDropHover, setBagDropHover] = React.useState(false);
-  const { entity, observing, slotName, slot, gearEditable, allSlots } = props;
+  const {
+    entity,
+    observing,
+    slotName,
+    slot,
+    gearEditable,
+    allSlots,
+    iconSize,
+    fluid,
+    selected,
+  } = props;
   const obs = observing || window.observing;
   const filled = !!(slot && slot.name);
   const foreign = !gearEditable;
@@ -102,6 +118,13 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
   const disabled =
     foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway;
 
+  const size =
+    iconSize != null && Number.isFinite(iconSize) && iconSize > 0
+      ? iconSize
+      : GEAR_SLOT_SIZE;
+  const emptyPx = size + 6;
+  const cellW = fluid ? undefined : TRADE_SLOT_CELL;
+
   const skin =
     (slot && slot.skin) || (slot && slot.name ? itemSkin(slot.name) : undefined);
   let content: any = null;
@@ -112,7 +135,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       html =
         itemInstanceHtml(slot.name, {
           skin,
-          size: GEAR_SLOT_SIZE,
+          size,
           level: slot.level,
           q: slot.q,
           p: slot.p,
@@ -129,17 +152,18 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       : wrapContainerHtml(
           itemIconHtml(slot.name, {
             skin,
-            size: GEAR_SLOT_SIZE,
+            size,
             level: slot.level,
             p: slot.p,
           }),
         );
   } else {
+    // Same stock empty chrome as TradeGrid — overlay "+" for Market fluid stand.
     let html = "";
     try {
       html =
         itemContainer({
-          size: GEAR_SLOT_SIZE,
+          size,
           shade: TRADE_SHADE.shade,
           s_op: TRADE_SHADE.s_op,
           slot: slotName,
@@ -149,18 +173,54 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     } catch {
       html = "";
     }
-    content = html
+    const frame = html
       ? wrapContainerHtml(html)
       : e("div", {
+          className: "comm-trade-slot-empty",
           style: {
-            width: `${GEAR_SLOT_SIZE + 6}px`,
-            height: `${GEAR_SLOT_SIZE + 6}px`,
+            width: `${emptyPx}px`,
+            height: `${emptyPx}px`,
             background: "#000",
             border: `2px solid ${EMPTY_BCOLOR}`,
             boxSizing: "border-box",
           },
           title: slotName,
         });
+    content =
+      fluid || iconSize != null
+        ? e(
+            "div",
+            {
+              className: "comm-trade-slot-emptyWrap",
+              style: {
+                position: "relative",
+                display: "inline-block",
+                lineHeight: 0,
+              },
+            },
+            frame,
+            e(
+              "span",
+              {
+                className: "comm-trade-slot-emptyPlus",
+                style: {
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#555",
+                  fontSize: size <= 34 ? 14 : 18,
+                  lineHeight: 1,
+                  pointerEvents: "none",
+                  userSelect: "none",
+                },
+                "aria-hidden": true,
+              },
+              "+",
+            ),
+          )
+        : frame;
   }
 
   const badge = filled
@@ -196,6 +256,8 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       className:
         "comm-trade-slot" +
         (filled ? " is-filled" : "") +
+        (fluid ? " is-fluid" : "") +
+        (selected ? " is-on" : "") +
         (bagDropHover ? " is-bag-drop-target" : "") +
         (disabled ? " is-disabled" : ""),
       "data-slot": slotName,
@@ -280,9 +342,10 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         alignItems: "center",
         gap: "1px",
         position: "relative",
-        width: `${TRADE_SLOT_CELL}px`,
-        maxWidth: `${TRADE_SLOT_CELL}px`,
-        flex: `0 0 ${TRADE_SLOT_CELL}px`,
+        width: fluid ? "100%" : `${cellW}px`,
+        maxWidth: fluid ? "100%" : `${cellW}px`,
+        minWidth: fluid ? 0 : undefined,
+        flex: fluid ? "1 1 0" : `0 0 ${cellW}px`,
         boxSizing: "border-box",
         opacity: disabled ? 0.45 : 1,
         cursor: editable || filled ? "pointer" : "default",
@@ -292,9 +355,11 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     e(
       "div",
       {
+        className: "comm-trade-slot-art",
         style: {
           position: "relative",
           lineHeight: 0,
+          margin: fluid ? "0 auto" : undefined,
           boxShadow: bagDropHover ? "0 0 0 2px #6ab04c" : undefined,
         },
       },
@@ -303,6 +368,9 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         ? e(
             "div",
             {
+              className:
+                "comm-trade-slot-badge" +
+                (badge === "B" ? " is-buy" : badge === "G" ? " is-give" : ""),
               style: {
                 position: "absolute",
                 top: "-2px",
@@ -327,6 +395,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
                 fontSize: TYPE.microMin,
                 lineHeight: "12px",
                 textAlign: "center",
+                zIndex: 1,
                 ...PIXEL_TEXT,
                 pointerEvents: "none",
               },
@@ -339,20 +408,36 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       ? e(
           "div",
           {
+            className: "comm-trade-slot-price",
             style: {
-              fontSize: TYPE.microMin,
+              fontSize: size <= 34 ? 10 : TYPE.microMin,
               color: slot!.b ? "#8fd4ff" : "#ffd700",
               width: "100%",
-              maxWidth: `${TRADE_SLOT_CELL}px`,
+              maxWidth: fluid ? "100%" : `${cellW}px`,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               textAlign: "center",
+              minHeight: "14px",
+              fontVariantNumeric: "tabular-nums",
               ...PIXEL_TEXT,
             },
             title: priceLabel,
           },
           priceLabel,
+        )
+      : fluid
+        ? e("div", {
+            className: "comm-trade-slot-price is-empty",
+            style: {
+              width: "100%",
+              minHeight: "14px",
+              fontSize: size <= 34 ? 10 : TYPE.microMin,
+              visibility: "hidden",
+            },
+            "aria-hidden": true,
+          },
+          "0",
         )
       : null,
   );
