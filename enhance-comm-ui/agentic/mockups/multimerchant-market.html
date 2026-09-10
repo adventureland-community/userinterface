@@ -1,0 +1,3477 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PROTOTYPE — Market</title>
+  <!--
+    Throwaway Market hub mockup.
+    Uses shared.css panel chrome + TradeSlotCell-like slots + real pull_merchants sample.
+  -->
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    /* Market mockup — denser readable HUD over shared.css */
+    .market-shell {
+      --mk-line: #2a2a2a;
+      --mk-line-soft: #1e1e1e;
+      --mk-panel: #0b0b0b;
+      --mk-panel-2: #101010;
+      --mk-muted: #777;
+      font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
+      width: min(1360px, 100%);
+      height: min(780px, calc(100vh - 52px));
+      margin: 0 auto;
+      max-width: none;
+      gap: 0;
+      overflow: hidden;
+    }
+    body.mock-bg { padding: 14px 16px 20px; }
+    .proto {
+      max-width: 1360px;
+      margin: 0 auto 8px;
+      color: #888;
+      font-size: 12px;
+      font-family: Consolas, "Segoe UI", sans-serif;
+    }
+    .proto strong { color: var(--accent); }
+    .proto a { color: var(--gold); }
+
+    .market-shell .ecu-panel__head {
+      padding: 9px 12px 8px;
+      border-bottom: 1px solid var(--mk-line);
+      flex-wrap: nowrap;
+      background: #0d0d0d;
+    }
+    .market-shell .ecu-panel__title {
+      font-size: 15px;
+      letter-spacing: .04em;
+    }
+    .market-shell .ecu-panel__pill {
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+    }
+
+    .market-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--mk-line);
+      background: #0c0c0c;
+      flex-wrap: wrap;
+    }
+    .market-tools .search {
+      flex: 1 1 220px;
+      min-width: 160px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #3a3a3a;
+      background: #080808;
+    }
+    .market-tools .search:focus-within {
+      border-color: rgba(232, 201, 106, .55);
+    }
+    .market-tools .search .ico { color: #555; font-size: 13px; line-height: 1; }
+    .market-tools .search .clear {
+      flex: 0 0 auto;
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: #666;
+      font: inherit;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0 2px;
+      cursor: pointer;
+      border-radius: 2px;
+    }
+    .market-tools .search .clear:hover { color: #ccc; background: #1a1a1a; }
+    .market-tools .search input {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: #eee;
+      font: inherit;
+      font-size: 13px;
+      outline: none;
+      min-width: 0;
+    }
+    .search-wrap {
+      position: relative;
+      flex: 1 1 220px;
+      min-width: 160px;
+    }
+    .search-wrap .search { width: 100%; }
+    .search-menu {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 40;
+      max-height: min(360px, 55vh);
+      overflow: auto;
+      border: 1px solid #3a3a3a;
+      background: #121212;
+      box-shadow: 0 12px 28px rgba(0,0,0,.55);
+    }
+    .search-menu__sec {
+      padding: 8px 0 4px;
+    }
+    .search-menu__sec + .search-menu__sec {
+      border-top: 1px solid #242424;
+    }
+    .search-menu__h {
+      padding: 2px 12px 6px;
+      color: #666;
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .search-menu__row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #ddd;
+      font: inherit;
+      font-size: 12px;
+      text-align: left;
+      padding: 7px 12px;
+      cursor: pointer;
+    }
+    .search-menu__row:hover,
+    .search-menu__row.is-hi {
+      background: #1c1c1c;
+    }
+    .search-menu__op {
+      flex: 0 0 auto;
+      color: #e8c96a;
+      font-family: Consolas, "Segoe UI", monospace;
+      font-weight: 600;
+    }
+    .search-menu__label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-menu__hint {
+      flex: 0 1 auto;
+      color: #666;
+      font-size: 11px;
+      text-align: right;
+      max-width: 46%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .search-menu__ico {
+      flex: 0 0 auto;
+      color: #555;
+      width: 14px;
+      text-align: center;
+    }
+    .search-menu__foot {
+      border-top: 1px solid #242424;
+      padding: 6px 12px 8px;
+      color: #666;
+      font-size: 11px;
+    }
+    .search-menu__foot kbd {
+      float: right;
+      color: #888;
+      border: 1px solid #333;
+      padding: 0 5px;
+      border-radius: 2px;
+      font-size: 10px;
+    }
+    .seg {
+      display: inline-flex;
+      border: 1px solid #3a3a3a;
+      height: 30px;
+      background: #080808;
+    }
+    .seg button {
+      border: 0;
+      background: transparent;
+      color: #888;
+      font: inherit;
+      font-size: 12px;
+      padding: 0 11px;
+      cursor: pointer;
+      height: 100%;
+    }
+    .seg button + button { border-left: 1px solid #2a2a2a; }
+    .seg button.is-on {
+      color: var(--accent);
+      background: #1a1810;
+    }
+    .seg button:hover:not(.is-on) { color: #ccc; background: #121212; }
+    .tog-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
+    .tog {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: #888;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .tog:hover { color: #bbb; }
+    .tog input { accent-color: var(--accent); margin: 0; }
+
+    .market-body {
+      display: grid;
+      grid-template-columns: 256px minmax(0, 1fr) 420px;
+      min-height: 0;
+      flex: 1;
+      overflow: hidden;
+      overflow-x: hidden;
+    }
+    .col {
+      min-height: 0;
+      overflow: auto;
+      overflow-x: hidden;
+      border-right: 1px solid var(--mk-line);
+      background: var(--mk-panel);
+    }
+    .col:last-child { border-right: 0; }
+    .col--market,
+    .col--focus,
+    .you {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .col--market .ph,
+    .col--focus > .ph,
+    .col--focus > .focus-top { flex: 0 0 auto; }
+    .col--market .item-grid,
+    .col--market .market-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .col--focus > .focus-offers {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .focus-offers { border-top: 1px solid var(--mk-line); }
+    .focus-offers--split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: start;
+      gap: 0;
+    }
+    .focus-col {
+      min-width: 0;
+    }
+    .focus-col--sells {
+      border-right: 1px solid var(--mk-line);
+    }
+    .focus-col__h {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 7px 9px;
+      font-size: 10px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--mk-line-soft);
+      background: #101010;
+    }
+    .focus-col__h .lbl.sells { color: #c97a5a; font-weight: 700; }
+    .focus-col__h .lbl.wants { color: #6aab8e; font-weight: 700; }
+    .focus-col__h em {
+      font-style: normal;
+      color: var(--mk-muted);
+      letter-spacing: 0;
+      text-transform: none;
+      font-size: 11px;
+    }
+    .focus-col__empty {
+      padding: 14px 10px;
+      font-size: 11px;
+      color: #555;
+      line-height: 1.35;
+    }
+    .focus-offers .offer {
+      padding: 8px 9px;
+      border-bottom: 1px solid var(--mk-line-soft);
+    }
+    .focus-offers .offer:hover { background: #101010; }
+    .focus-offers .offer.is-flash {
+      background: #1a1810;
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .focus-offers .offer.is-blocked { opacity: .55; }
+    .focus-offers--split .offer-main {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+    }
+    .focus-offers--split .offer-ops {
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .focus-offers--split .offer-ops .qty-wrap input {
+      width: 44px;
+    }
+    .focus-offers--split .row-act.is-primary {
+      min-width: 52px;
+      padding: 0 8px;
+    }
+    .you { background: #090909; }
+    .you-bag {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .you-stand {
+      flex: 0 0 auto;
+      border-top: 1px solid var(--mk-line);
+      background: #0c0c0c;
+      max-height: 46%;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    .ph {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      font-size: 11px;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      color: #b5a56a;
+      background: #121212;
+      border-bottom: 1px solid var(--mk-line);
+    }
+    .ph em {
+      font-style: normal;
+      color: var(--mk-muted);
+      letter-spacing: 0;
+      text-transform: none;
+      font-size: 11px;
+    }
+    .ph-tools {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      margin-left: auto;
+    }
+    .ph-tools .seg { height: 24px; }
+    .ph-tools .seg button {
+      font-size: 11px;
+      padding: 0 8px;
+    }
+    .ph-tools .btn {
+      padding: 3px 8px;
+      font-size: 11px;
+      height: 24px;
+    }
+
+    .slot-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 52px);
+      justify-content: start;
+      gap: 6px;
+      padding: 10px;
+    }
+    .comm-trade-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      position: relative;
+      width: 52px;
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      padding: 0;
+      cursor: pointer;
+    }
+    .comm-trade-slot.is-on .ecu-item-icon__frame,
+    .comm-trade-slot.is-on .slot-empty {
+      box-shadow: 0 0 0 2px rgba(232, 201, 106, .75);
+    }
+    .comm-trade-slot:hover .ecu-item-icon__frame,
+    .comm-trade-slot:hover .slot-empty { border-color: #777; }
+    .comm-trade-slot.is-disabled { opacity: .45; }
+    .slot-art { position: relative; line-height: 0; }
+    .slot-empty {
+      width: 46px;
+      height: 46px;
+      box-sizing: border-box;
+      background: #000;
+      border: 2px solid #292929;
+      color: #555;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .slot-badge {
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      box-sizing: border-box;
+      font-size: 10px;
+      line-height: 14px;
+      text-align: center;
+      color: #eee;
+      background: #3a2a10;
+      border: 1px solid #666;
+      z-index: 1;
+    }
+    .slot-badge.is-buy { background: #1a3a4a; }
+    .slot-price {
+      font-size: 11px;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+      max-width: 52px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-height: 14px;
+    }
+    .ecu-item-icon {
+      display: inline-block;
+      overflow: hidden;
+      line-height: 0;
+      image-rendering: pixelated;
+    }
+    .ecu-item-icon__frame {
+      display: block;
+      overflow: hidden;
+      background: #000;
+      border: 2px solid #555;
+      box-sizing: border-box;
+    }
+    .ecu-item-icon img {
+      display: block;
+      image-rendering: pixelated;
+      max-width: none;
+    }
+    .ecu-game-icon-letter {
+      display: inline-block;
+      text-align: center;
+      background: #222;
+      border: 2px solid #555;
+      color: #aaa;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .you-acts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 0 10px 10px;
+      margin-top: auto;
+    }
+    .btn {
+      appearance: none;
+      border: 1px solid #444;
+      background: #1a1a1a;
+      color: #eee;
+      font: inherit;
+      font-size: 12px;
+      padding: 7px 8px;
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.2;
+    }
+    .btn:hover:not(:disabled) { border-color: #777; background: #202020; }
+    .btn:disabled { opacity: .35; cursor: default; }
+    .btn-gold {
+      border-color: rgba(232, 201, 106, .5);
+      color: var(--accent);
+      background: #18150e;
+    }
+    .btn-sell {
+      border-color: #6a4030;
+      color: #e0a080;
+      background: #181210;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: #888;
+    }
+    .stand-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 10px 0;
+      font-size: 11px;
+      color: var(--mk-muted);
+    }
+    .stand-bar .st {
+      color: #7aaf6e;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-size: 10px;
+    }
+    .stand-bar .st.off { color: #c66; }
+
+    .slot-grid--stand {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      justify-content: stretch;
+      gap: 5px;
+      padding: 8px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .slot-grid--stand .comm-trade-slot {
+      width: auto;
+      max-width: 100%;
+    }
+    .slot-grid--stand .slot-art {
+      margin: 0 auto;
+    }
+    .slot-grid--stand .slot-empty {
+      margin: 0 auto;
+    }
+    .slot-grid--stand.cols-6 {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 3px;
+      padding: 6px 8px 8px;
+    }
+    .slot-grid--stand.cols-6 .slot-empty {
+      width: 100%;
+      max-width: 36px;
+      height: 36px;
+      margin: 0 auto;
+    }
+    .slot-grid--stand.cols-6 .slot-price { font-size: 10px; }
+
+    .item-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      grid-auto-rows: minmax(148px, auto);
+      gap: 8px;
+      padding: 10px;
+      align-content: start;
+    }
+    .item-card {
+      appearance: none;
+      border: 1px solid #2c2c2c;
+      background: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+      color: inherit;
+      font: inherit;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      min-height: 148px;
+      height: 100%;
+      box-sizing: border-box;
+      transition: border-color .12s, background .12s, box-shadow .12s;
+    }
+    .item-card:hover {
+      border-color: #5a5a5a;
+      background: linear-gradient(180deg, #1b1b1b 0%, #121212 100%);
+    }
+    .item-card.is-dual {
+      border-color: #3a3830;
+      background:
+        linear-gradient(135deg, rgba(201, 122, 90, .08) 0%, transparent 46%),
+        linear-gradient(315deg, rgba(106, 171, 142, .08) 0%, transparent 46%),
+        linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+    }
+    .item-card.is-dual:hover {
+      border-color: #5a5440;
+    }
+    .item-card.is-on {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px rgba(232, 201, 106, .28);
+      background: linear-gradient(180deg, #1c1910 0%, #14120c 100%);
+    }
+    .item-card__top {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 10px 0;
+      min-height: 48px;
+    }
+    .item-card__top .market-ico,
+    .item-card__top .ecu-item-icon {
+      flex: 0 0 auto;
+      filter: drop-shadow(0 1px 0 rgba(0,0,0,.45));
+    }
+    .item-card__counts {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      align-items: flex-end;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+    .item-card__counts .s,
+    .item-card__counts .b {
+      padding: 2px 5px;
+      min-width: 30px;
+      text-align: center;
+      border-radius: 2px;
+      letter-spacing: .02em;
+    }
+    .item-card__counts .s {
+      color: #e0a088;
+      border: 1px solid #4a3028;
+      background: #181210;
+    }
+    .item-card__counts .b {
+      color: #8ec4a8;
+      border: 1px solid #2a4034;
+      background: #101812;
+    }
+    .item-card__counts .dim { opacity: .28; }
+    .item-card .nm {
+      flex: 1 1 auto;
+      padding: 8px 10px 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #f0f0f0;
+      line-height: 1.35;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      word-break: normal;
+    }
+    .item-card__prices {
+      margin-top: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid #222;
+      background: rgba(0,0,0,.28);
+    }
+    .item-card__prices .row-p {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 7px 9px 8px;
+      min-width: 0;
+    }
+    .item-card__prices .row-p + .row-p {
+      border-left: 1px solid #222;
+    }
+    .item-card__prices .lbl {
+      color: #777;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .item-card__prices .val {
+      font-weight: 700;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .item-card__prices .val.sell { color: var(--gold); }
+    .item-card__prices .val.buy { color: #8ec4a8; }
+    .item-card__prices .val.none { color: #3f3f3f; font-weight: 400; }
+
+    .offer-main {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .offer-ops {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding-top: 7px;
+      border-top: 1px solid #222;
+    }
+    .offer-ops .qty-wrap { margin-right: auto; }
+    .offer-ops .row-act { flex: 0 0 auto; }
+    .offer-ops .row-act.is-primary { min-width: 64px; }
+    .offer-ops .row-act.is-all {
+      min-width: 0;
+      padding-left: 7px;
+      padding-right: 7px;
+      border-color: #444;
+      color: #aaa;
+      background: transparent;
+    }
+    .offer-ops .row-act.is-all.is-buy:not(:disabled) {
+      border-color: rgba(232, 201, 106, .35);
+      color: #cbb56a;
+    }
+    .offer-ops .row-act.is-all.is-sell:not(:disabled) {
+      border-color: #5a4030;
+      color: #c09070;
+    }
+
+    .group { border-bottom: 1px solid var(--mk-line); }
+    .group > summary {
+      list-style: none;
+      display: grid;
+      grid-template-columns: 46px 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 10px;
+      cursor: pointer;
+      background: #101010;
+    }
+    .group > summary::-webkit-details-marker { display: none; }
+    .group > summary:hover { background: #161616; }
+    .g-name { font-weight: 600; color: #eee; font-size: 13px; }
+    .g-sub { font-size: 11px; color: var(--mk-muted); margin-top: 1px; }
+    .g-best {
+      text-align: right;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      color: var(--gold);
+      line-height: 1.25;
+    }
+    .g-best span { display: block; color: #666; font-size: 10px; }
+
+    .row {
+      appearance: none;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 6px 10px 6px 16px;
+      border: 0;
+      border-bottom: 1px solid var(--mk-line-soft);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .row:hover { background: #151515; }
+    .row.is-on {
+      background: #1a1810;
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .qty-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      color: var(--mk-muted);
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    .qty-wrap input {
+      width: 52px;
+      height: 26px;
+      padding: 0 6px;
+      border: 1px solid #444;
+      background: #0e0e0e;
+      color: #eee;
+      font: inherit;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .qty-wrap input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    .row-act {
+      appearance: none;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      color: #eee;
+      font: inherit;
+      font-size: 11px;
+      height: 26px;
+      padding: 0 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .row-act:disabled { opacity: .35; cursor: default; }
+    .row-act.is-buy {
+      border-color: rgba(232, 201, 106, .5);
+      color: var(--accent);
+      background: #18150e;
+    }
+    .row-act.is-sell {
+      border-color: #6a4030;
+      color: #e0a080;
+      background: #181210;
+    }
+    .deal-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      padding: 0;
+      margin-top: 10px;
+    }
+    .deal-bar .btn {
+      width: 100%;
+      padding: 8px 8px;
+      font-size: 12px;
+    }
+    .deal-bar .hint {
+      grid-column: 1 / -1;
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: var(--mk-muted);
+      line-height: 1.35;
+    }
+    .kind {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    .kind.sells { color: #c97a5a; }
+    .kind.wants { color: #6aab8e; }
+    .who { font-weight: 600; font-size: 12px; color: #eee; }
+    .where {
+      font-size: 11px;
+      color: var(--mk-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .chips { display: inline-flex; gap: 3px; margin-left: 5px; vertical-align: 1px; }
+    .chip {
+      font-size: 10px;
+      padding: 0 4px;
+      border: 1px solid #444;
+      color: #888;
+    }
+    .chip.near { color: #7aaf6e; border-color: #3a5534; }
+    .chip.party { color: #7aa2d4; border-color: #3a5068; }
+    .chip.friend { color: #b08fd4; border-color: #564068; }
+    .price {
+      font-variant-numeric: tabular-nums;
+      color: var(--gold);
+      font-size: 13px;
+      text-align: right;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .price .stack {
+      display: block;
+      color: #888;
+      font-size: 10px;
+      font-weight: 400;
+    }
+
+    .empty {
+      padding: 36px 16px;
+      text-align: center;
+      color: var(--mk-muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .empty strong {
+      display: block;
+      color: #bbb;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .focus { padding: 12px; }
+    .focus-top {
+      padding: 10px 12px 12px;
+      background: #0c0c0c;
+    }
+    .focus-head {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .focus h2 {
+      margin: 0 0 3px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .focus .sub { color: #888; font-size: 11px; line-height: 1.35; }
+    .focus .big {
+      margin: 8px 0 10px;
+      font-size: 22px;
+      color: var(--gold);
+      font-variant-numeric: tabular-nums;
+    }
+    .focus .hint {
+      margin: 0 0 10px;
+      padding: 8px;
+      border: 1px solid #333;
+      background: #0a0a0a;
+      color: #888;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .focus .hint.warn { border-color: #553322; color: #d4a06a; }
+    .focus .acts { display: flex; flex-direction: column; gap: 6px; }
+    .focus-top .deal-bar .hint {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      margin: 2px 0 0;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      padding: 8px 14px;
+      background: #111;
+      border: 1px solid rgba(232, 201, 106, .5);
+      color: #eee;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .15s;
+      z-index: 40;
+      font-family: Consolas, "Segoe UI", sans-serif;
+    }
+    .toast.is-on { opacity: 1; }
+
+    .col--market .item-grid::-webkit-scrollbar,
+    .col--market .market-list::-webkit-scrollbar,
+    .col--focus > .focus-offers::-webkit-scrollbar,
+    .you-bag::-webkit-scrollbar,
+    .you-stand::-webkit-scrollbar { width: 8px; }
+    .col--market .item-grid::-webkit-scrollbar-thumb,
+    .col--market .market-list::-webkit-scrollbar-thumb,
+    .col--focus > .focus-offers::-webkit-scrollbar-thumb,
+    .you-bag::-webkit-scrollbar-thumb,
+    .you-stand::-webkit-scrollbar-thumb { background: #2a2a2a; }
+  </style>
+
+</head>
+<body class="mock-bg">
+  <p class="proto">
+    <a href="index.html">← mockups</a>
+    · <strong>PROTOTYPE</strong> — Market hub. Bag + stand always on.
+    Data: <code>pull_merchants</code> sample
+    (<span id="dataStamp">…</span>).
+    <button type="button" class="btn btn-ghost" id="btnRefresh" style="padding:2px 8px;margin-left:6px">Refresh live</button>
+  </p>
+  <div class="ecu-panel market-shell" id="market"></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="market-item-icons.js?v=3"></script>
+  <script>
+    const OBS = {
+      name: "You",
+      map: "main",
+      x: 40,
+      y: -40,
+      server: "SR_EUI",
+      gold: 2_500_000,
+      party: new Set(["Ploob"]),
+      friends: new Set(["Aleyna", "Selka"]),
+    };
+
+    /** Your stand — L80 merchant → 30 trade slots (same tier as TradeGrid). */
+    const YOU = {
+      name: "You",
+      level: 80,
+      ctype: "merchant",
+      stand: "stand0",
+      status: "you",
+      map: OBS.map,
+      server: OBS.server,
+      standOpen: true,
+      slots: {
+        trade1: { name: "helmet", level: 5, price: 120000 },
+        trade2: { name: "mpot1", price: 1800, b: true, q: 999 },
+        trade3: { name: "scroll1", price: 900, b: true, q: 400 },
+        trade5: { name: "cryptkey", price: 2500000 },
+        trade8: { name: "seashell", price: 400, q: 99 },
+        trade12: { name: "firestaff", level: 7, price: 480000 },
+        trade18: { name: "cscroll0", price: 4800, b: true, q: 50 },
+      },
+    };
+
+    const BAG = [
+      { name: "mpot1", q: 40 },
+      { name: "hpot1", q: 12 },
+      { name: "cryptkey", q: 1 },
+      { name: "essenceoffire", q: 3 },
+      { name: "firestaff", level: 7, q: 1 },
+      { name: "scroll1", q: 20 },
+      { name: "cscroll0", q: 8 },
+      { name: "seashell", q: 50 },
+    ];
+
+    const state = {
+      chars: [],
+      pulledAt: null,
+      filter: "",
+      searchOpen: false,
+      searchHi: 0,
+      facet: "all",
+      view: "grid",
+      standCompact: true,
+      nearOnly: false,
+      canAfford: false,
+      haveStock: false,
+      bagName: null,
+      gridItem: null,
+      offerKey: null,
+      standSlot: null,
+      travel: null,
+      consumedKeys: {},
+      qtyByKey: {},
+      flashKey: null,
+    };
+
+    /** Types that stack in Adventure Land (assets omit `s`). */
+    const STACK_TYPES = new Set([
+      "material",
+      "pot",
+      "uscroll",
+      "cscroll",
+      "pscroll",
+      "token",
+      "offering",
+      "quest",
+      "elixir",
+      "throw",
+      "gem",
+      "misc",
+      "jar",
+      "bank_key",
+      "dungeon_key",
+    ]);
+
+    const root = document.getElementById("market");
+    const toastEl = document.getElementById("toast");
+    const stampEl = document.getElementById("dataStamp");
+    let toastTimer = 0;
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;");
+    }
+    function fmt(n) {
+      if (n == null || !Number.isFinite(n)) return "?";
+      const a = Math.abs(n);
+      if (a >= 1e9) return (n / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+      if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+      if (a >= 1e3) return (n / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k";
+      return String(Math.round(n));
+    }
+    function parseAmount(raw) {
+      const s = String(raw || "")
+        .trim()
+        .toLowerCase()
+        .replace(/,/g, "");
+      const m = /^([<>]=?|=)?\s*(\d+(?:\.\d+)?)\s*([kmb])?$/.exec(s);
+      if (!m) return null;
+      let n = parseFloat(m[2]);
+      if (!Number.isFinite(n)) return null;
+      const u = m[3];
+      if (u === "k") n *= 1e3;
+      else if (u === "m") n *= 1e6;
+      else if (u === "b") n *= 1e9;
+      return { op: m[1] || "=", n };
+    }
+
+    /** Split on spaces while keeping "quoted phrases" intact. */
+    function tokenizeQuery(raw) {
+      const s = String(raw || "").trim();
+      if (!s) return [];
+      const out = [];
+      let cur = "";
+      let quote = null;
+      for (let i = 0; i < s.length; i++) {
+        const ch = s.charAt(i);
+        if (quote) {
+          if (ch === quote) {
+            quote = null;
+            cur += ch;
+          } else cur += ch;
+          continue;
+        }
+        if (ch === '"' || ch === "'") {
+          quote = ch;
+          cur += ch;
+          continue;
+        }
+        if (/\s/.test(ch)) {
+          if (cur) {
+            out.push(cur);
+            cur = "";
+          }
+          continue;
+        }
+        cur += ch;
+      }
+      if (cur) out.push(cur);
+      return out;
+    }
+    function stripQuotes(s) {
+      if (s.length >= 2) {
+        const a = s.charAt(0);
+        const b = s.charAt(s.length - 1);
+        if ((a === '"' && b === '"') || (a === "'" && b === "'")) {
+          return s.slice(1, -1);
+        }
+      }
+      return s;
+    }
+    const MARKET_OPS =
+      /^(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):(.*)$/i;
+
+    function splitOrValues(raw) {
+      return String(raw || "")
+        .split(/[|,]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+
+    function parseClauseToken(tokIn) {
+      let tok = tokIn;
+      let negate = false;
+      if (tok.charAt(0) === "-") {
+        negate = true;
+        tok = tok.slice(1);
+        if (!tok) return null;
+      }
+      const m = MARKET_OPS.exec(tok);
+      if (m) {
+        const op = m[1].toLowerCase();
+        const value = stripQuotes(m[2]);
+        if (op === "mer") {
+          return { kind: "merchant", values: splitOrValues(value), negate };
+        }
+        if (op === "is" || op === "has") {
+          return {
+            kind: op,
+            values: splitOrValues(value).map((v) => v.toLowerCase()),
+            negate,
+          };
+        }
+        if (op === "stat") {
+          return {
+            kind: "stat",
+            values: splitOrValues(value).map((v) => v.toLowerCase()),
+            negate,
+          };
+        }
+        if (op === "attr") {
+          const specs = [];
+          const parts = splitOrValues(value);
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const am = /^([a-z_][a-z0-9_]*)\s*([<>]=?|=)?\s*(.*)$/i.exec(
+              part.trim(),
+            );
+            if (!am) continue;
+            const key = am[1].toLowerCase();
+            const opSign = am[2] || "";
+            const rhs = String(am[3] || "").trim();
+            if (!opSign && !rhs) {
+              specs.push({ key, any: true });
+              continue;
+            }
+            const amt = parseAmount((opSign || "=") + rhs);
+            if (amt) specs.push({ key, op: amt.op, n: amt.n });
+            else specs.push({ key, any: true });
+          }
+          if (!specs.length) return null;
+          return { kind: "attr", specs, negate };
+        }
+        if (op === "level" || op === "price") {
+          const parts = splitOrValues(value);
+          const amts = [];
+          for (let i = 0; i < parts.length; i++) {
+            const amt = parseAmount(parts[i]);
+            if (amt) amts.push(amt);
+          }
+          if (amts.length) return { kind: op, amts, negate };
+          if (value) return { kind: "text", values: [value], negate };
+          return null;
+        }
+        if (
+          op === "item" ||
+          op === "title" ||
+          op === "merchant" ||
+          op === "map" ||
+          op === "server"
+        ) {
+          return { kind: op, values: splitOrValues(value), negate };
+        }
+        return { kind: op, values: splitOrValues(value), negate };
+      }
+      return { kind: "text", values: [stripQuotes(tok)], negate };
+    }
+
+    /**
+     * Parse into OR-of-AND groups.
+     * Free-text words AND together; explicit OR / | splits groups.
+     * Field values accept comma/| as OR: title:shiny,lucky
+     */
+    function parseMarketQuery(raw) {
+      const tokens = tokenizeQuery(raw);
+      const groups = [[]];
+      for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        if (/^(or|\|)$/i.test(tok)) {
+          if (groups[groups.length - 1].length) groups.push([]);
+          continue;
+        }
+        const clause = parseClauseToken(tok);
+        if (clause) groups[groups.length - 1].push(clause);
+      }
+      return groups.filter((g) => g.length);
+    }
+
+    function cmpAmount(actual, amt) {
+      const n = Number(actual) || 0;
+      if (amt.op === ">=") return n >= amt.n;
+      if (amt.op === ">") return n > amt.n;
+      if (amt.op === "<=") return n <= amt.n;
+      if (amt.op === "<") return n < amt.n;
+      return n === amt.n;
+    }
+
+    function offerHaystack(r) {
+      const nm = label(r.s.name, r.s).toLowerCase();
+      const id = String(r.s.name || "").toLowerCase();
+      const mer = String(r.mer.name || "").toLowerCase();
+      const titleKey = String(r.s.p || "").toLowerCase();
+      const titleDisp = window.MarketItemIcons.itemTitleLabel(r.s).toLowerCase();
+      const stat = String(r.s.stat_type || "").toLowerCase();
+      const base =
+        ((window.MarketItemAssets &&
+          window.MarketItemAssets.items &&
+          window.MarketItemAssets.items[r.s.name] &&
+          window.MarketItemAssets.items[r.s.name].name) ||
+          r.s.name ||
+          "") + "";
+      return {
+        nm,
+        id,
+        mer,
+        titleKey,
+        titleDisp,
+        stat,
+        base: base.toLowerCase(),
+        hay: [nm, id, mer, titleKey, titleDisp, base.toLowerCase(), stat]
+          .filter(Boolean)
+          .join(" "),
+      };
+    }
+
+    function valueHits(values, test) {
+      if (!values || !values.length) return false;
+      for (let i = 0; i < values.length; i++) {
+        if (test(String(values[i] || "").toLowerCase())) return true;
+      }
+      return false;
+    }
+
+    function offerMatchesClause(r, c, h) {
+      let hit = false;
+      if (c.kind === "text") {
+        hit = valueHits(c.values, (v) => h.hay.includes(v));
+      } else if (c.kind === "item") {
+        hit = valueHits(
+          c.values,
+          (v) => h.nm.includes(v) || h.id.includes(v) || h.base.includes(v),
+        );
+      } else if (c.kind === "title") {
+        hit = valueHits(
+          c.values,
+          (v) =>
+            (h.titleKey && h.titleKey.includes(v)) ||
+            (h.titleDisp && h.titleDisp.includes(v)),
+        );
+      } else if (c.kind === "stat") {
+        hit = valueHits(c.values, (v) => {
+          if (v === "none" || v === "no" || v === "empty" || v === "!") {
+            return !h.stat;
+          }
+          if (v === "any" || v === "yes" || v === "scrolled") return !!h.stat;
+          return h.stat === v || h.stat.indexOf(v) === 0;
+        });
+      } else if (c.kind === "attr") {
+        const prop = calcOfferProps(r.s);
+        hit = (c.specs || []).some((spec) => {
+          const n = Number(prop[spec.key]) || 0;
+          if (spec.any) return n > 0;
+          return cmpAmount(n, spec);
+        });
+      } else if (c.kind === "merchant") {
+        hit = valueHits(c.values, (v) => h.mer.includes(v));
+      } else if (c.kind === "map") {
+        const map = String(r.mer.map || "").toLowerCase();
+        hit = valueHits(c.values, (v) => map.includes(v));
+      } else if (c.kind === "server") {
+        const srv = String(r.mer.server || "").toLowerCase();
+        const ui = serverUi(r.mer.server).toLowerCase();
+        hit = valueHits(c.values, (v) => srv.includes(v) || ui.includes(v));
+      } else if (c.kind === "level") {
+        hit = (c.amts || []).some((amt) => cmpAmount(r.s.level || 0, amt));
+      } else if (c.kind === "price") {
+        hit = (c.amts || []).some((amt) => cmpAmount(r.s.price || 0, amt));
+      } else if (c.kind === "has") {
+        hit = valueHits(c.values, (v) => {
+          if (v === "stat" || v === "scroll" || v === "scrolled") return !!h.stat;
+          if (v === "title" || v === "p") return !!r.s.p;
+          if (v === "level") return (r.s.level || 0) > 0;
+          return false;
+        });
+      } else if (c.kind === "is") {
+        hit = valueHits(c.values, (v) => {
+          if (v === "sell" || v === "sale" || v === "selling") return !r.s.b;
+          if (v === "buy" || v === "want" || v === "wanted" || v === "buying")
+            return !!r.s.b;
+          if (v === "near")
+            return r.status === "inRange" || r.status === "sameMap";
+          if (v === "afford") return !!r.s.b || (r.s.price || 0) <= OBS.gold;
+          if (v === "have") return BAG.some((b) => b.name === r.s.name);
+          if (v === "titled" || v === "title") return !!r.s.p;
+          if (v === "stat" || v === "scrolled") return !!h.stat;
+          if (v === "nostat" || v === "unscrolled") {
+            return itemScrollable(r.s.name) && !h.stat;
+          }
+          if (v === "scrollable") return itemScrollable(r.s.name);
+          return false;
+        });
+      }
+      return c.negate ? !hit : hit;
+    }
+
+    function offerMatchesClauses(r, groups) {
+      if (!groups || !groups.length) return true;
+      const h = offerHaystack(r);
+      for (let g = 0; g < groups.length; g++) {
+        const clauses = groups[g];
+        let ok = true;
+        for (let i = 0; i < clauses.length; i++) {
+          if (!offerMatchesClause(r, clauses[i], h)) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return true;
+      }
+      return false;
+    }
+
+    function syncTogglesFromQuery(raw) {
+      const groups = parseMarketQuery(raw);
+      let facet = "all";
+      let near = false;
+      let afford = false;
+      let have = false;
+      for (let g = 0; g < groups.length; g++) {
+        const clauses = groups[g];
+        for (let i = 0; i < clauses.length; i++) {
+          const c = clauses[i];
+          if (c.kind !== "is" || c.negate) continue;
+          const vals = c.values || [];
+          for (let j = 0; j < vals.length; j++) {
+            const v = String(vals[j] || "").toLowerCase();
+            if (v === "sell" || v === "sale" || v === "selling") facet = "sale";
+            if (
+              v === "buy" ||
+              v === "want" ||
+              v === "wanted" ||
+              v === "buying"
+            )
+              facet = "wanted";
+            if (v === "near") near = true;
+            if (v === "afford") afford = true;
+            if (v === "have") have = true;
+          }
+        }
+      }
+      state.facet = facet;
+      state.nearOnly = near;
+      state.canAfford = afford;
+      state.haveStock = have;
+    }
+
+    function rewriteIsInFilter(next) {
+      const tokens = tokenizeQuery(state.filter);
+      const keep = [];
+      for (let i = 0; i < tokens.length; i++) {
+        let tok = tokens[i];
+        let neg = "";
+        if (tok.charAt(0) === "-") {
+          neg = "-";
+          tok = tok.slice(1);
+        }
+        const m = /^is:(.*)$/i.exec(tok);
+        if (!m) {
+          keep.push(tokens[i]);
+          continue;
+        }
+        const v = String(m[1] || "").toLowerCase();
+        if (
+          v === "sell" ||
+          v === "sale" ||
+          v === "selling" ||
+          v === "buy" ||
+          v === "want" ||
+          v === "wanted" ||
+          v === "buying" ||
+          v === "near" ||
+          v === "afford" ||
+          v === "have"
+        ) {
+          continue;
+        }
+        keep.push(neg + tok);
+      }
+      if (next.facet === "sale") keep.push("is:sell");
+      if (next.facet === "wanted") keep.push("is:buy");
+      if (next.nearOnly) keep.push("is:near");
+      if (next.canAfford) keep.push("is:afford");
+      if (next.haveStock) keep.push("is:have");
+      state.filter = keep.join(" ").trim();
+      state.facet = next.facet;
+      state.nearOnly = next.nearOnly;
+      state.canAfford = next.canAfford;
+      state.haveStock = next.haveStock;
+    }
+
+    function itemFilterToken(name, extra) {
+      const id = String(name || "");
+      const disp = label(id, extra || { name: id });
+      const use = disp && disp.toLowerCase() !== id.toLowerCase() ? disp : id;
+      if (/[\s":]/.test(use)) {
+        return 'item:"' + String(use).replace(/"/g, "") + '"';
+      }
+      return "item:" + use;
+    }
+
+    function rewriteItemInFilter(name, extra) {
+      const tokens = tokenizeQuery(state.filter);
+      const keep = [];
+      for (let i = 0; i < tokens.length; i++) {
+        let tok = tokens[i];
+        if (tok.charAt(0) === "-") tok = tok.slice(1);
+        if (/^item:/i.test(tok)) continue;
+        keep.push(tokens[i]);
+      }
+      if (name) keep.unshift(itemFilterToken(name, extra));
+      state.filter = keep.join(" ").trim();
+    }
+
+    function trailingOpContext(raw) {
+      const s = String(raw || "");
+      const m =
+        /(^|\s)(-?)(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):([^\s]*)$/i.exec(
+          s,
+        );
+      if (!m) return null;
+      return {
+        op: m[3].toLowerCase() === "mer" ? "merchant" : m[3].toLowerCase(),
+        value: m[4] || "",
+        negate: !!m[2],
+        start: m.index + m[1].length,
+      };
+    }
+
+    function uniqueSorted(list) {
+      const seen = {};
+      const out = [];
+      for (let i = 0; i < list.length; i++) {
+        const v = list[i];
+        if (!v || seen[v]) continue;
+        seen[v] = true;
+        out.push(v);
+      }
+      out.sort((a, b) => a.localeCompare(b));
+      return out;
+    }
+
+    function marketItemNames() {
+      return uniqueSorted(
+        allOffers().map((r) => label(r.s.name, r.s)),
+      );
+    }
+    function marketMerchantNames() {
+      return uniqueSorted(allOffers().map((r) => r.mer.name));
+    }
+    function marketMaps() {
+      return uniqueSorted(allOffers().map((r) => r.mer.map).filter(Boolean));
+    }
+    function marketServers() {
+      return uniqueSorted(
+        allOffers().map((r) => serverUi(r.mer.server)).filter(Boolean),
+      );
+    }
+    function marketTitles() {
+      return uniqueSorted(
+        allOffers()
+          .map((r) => window.MarketItemIcons.itemTitleLabel(r.s))
+          .filter(Boolean),
+      );
+    }
+    function marketTitleKeys() {
+      return uniqueSorted(
+        allOffers()
+          .map((r) => (r.s && r.s.p ? String(r.s.p) : ""))
+          .filter(Boolean),
+      );
+    }
+    function marketStatTypes() {
+      return uniqueSorted(
+        allOffers()
+          .map((r) => (r.s && r.s.stat_type ? String(r.s.stat_type) : ""))
+          .filter(Boolean),
+      );
+    }
+
+    function applySearchSuggestion(row) {
+      const q = state.filter;
+      const ctx = trailingOpContext(q);
+      if (row.kind === "value" && ctx) {
+        const before = q.slice(0, ctx.start);
+        const neg = ctx.negate ? "-" : "";
+        state.filter = (before + neg + ctx.op + ":" + row.value + " ").replace(
+          /\s+/g,
+          " ",
+        );
+      } else if (row.insert != null) {
+        const trimmed = q.replace(/\s+$/, "");
+        const needsSpace = trimmed && !/:$/.test(trimmed);
+        state.filter = trimmed + (needsSpace ? " " : "") + row.insert;
+      }
+      syncTogglesFromQuery(state.filter);
+      state.searchOpen = true;
+      state.searchHi = 0;
+    }
+
+    function buildSearchSuggestions() {
+      const q = state.filter;
+      const ctx = trailingOpContext(q);
+      const sections = [];
+      const flat = [];
+
+      function pushSec(title, rows) {
+        if (!rows.length) return;
+        sections.push({ title, rows });
+        for (let i = 0; i < rows.length; i++) flat.push(rows[i]);
+      }
+
+      if (ctx && ctx.op === "is" && !ctx.value.includes(" ")) {
+        const opts = [
+          { value: "sell", hint: "Selling offers only" },
+          { value: "buy", hint: "Buy orders only" },
+          { value: "near", hint: "Same map / in range" },
+          { value: "afford", hint: "Within your gold" },
+          { value: "have", hint: "Items you hold" },
+          { value: "titled", hint: "Has an item title" },
+          { value: "stat", hint: "Stat scroll applied" },
+          { value: "nostat", hint: "Scrollable, no scroll yet" },
+          { value: "scrollable", hint: "Can take a stat scroll" },
+        ];
+        const needle = ctx.value.toLowerCase();
+        pushSec(
+          "Refine your search: is",
+          opts
+            .filter((o) => !needle || o.value.indexOf(needle) === 0)
+            .map((o) => ({
+              kind: "value",
+              value: o.value,
+              label: "is:" + o.value,
+              hint: o.hint,
+              ico: "▹",
+            })),
+        );
+      } else if (ctx && ctx.op === "has" && !ctx.value.includes(" ")) {
+        const opts = [
+          { value: "stat", hint: "Has a stat scroll" },
+          { value: "title", hint: "Has a title prefix" },
+          { value: "level", hint: "Upgraded / compounded" },
+        ];
+        const needle = ctx.value.toLowerCase();
+        pushSec(
+          "Refine your search: has",
+          opts
+            .filter((o) => !needle || o.value.indexOf(needle) === 0)
+            .map((o) => ({
+              kind: "value",
+              value: o.value,
+              label: "has:" + o.value,
+              hint: o.hint,
+              ico: "▹",
+            })),
+        );
+      } else if (ctx && ctx.op === "stat") {
+        const needle = ctx.value.toLowerCase();
+        const opts = [
+          { value: "str", hint: "Strength scroll" },
+          { value: "int", hint: "Intelligence scroll" },
+          { value: "dex", hint: "Dexterity scroll" },
+          { value: "vit", hint: "Vitality scroll" },
+          { value: "none", hint: "No scroll applied" },
+          { value: "any", hint: "Any scroll applied" },
+        ];
+        const fromData = marketStatTypes();
+        const pool = uniqueSorted(
+          opts.map((o) => o.value).concat(fromData),
+        );
+        const rows = [];
+        for (let i = 0; i < pool.length && rows.length < 10; i++) {
+          const name = pool[i];
+          if (needle && name.indexOf(needle) < 0) continue;
+          const hint =
+            (opts.find((o) => o.value === name) || {}).hint || "stat scroll";
+          rows.push({
+            kind: "value",
+            value: name,
+            label: "stat:" + name,
+            hint,
+            ico: "✦",
+          });
+        }
+        pushSec("Refine your search: stat", rows);
+      } else if (ctx && ctx.op === "attr") {
+        const needle = ctx.value.toLowerCase();
+        const samples = [
+          { value: "str", hint: "Strength > 0" },
+          { value: "int>=10", hint: "Intelligence 10+" },
+          { value: "armor>=50", hint: "Armor 50+" },
+          { value: "lifesteal", hint: "Any lifesteal" },
+          { value: "crit>0", hint: "Has crit" },
+          { value: "hp>=500", hint: "HP 500+" },
+        ];
+        pushSec(
+          "Refine your search: attr",
+          samples
+            .filter((o) => !needle || o.value.indexOf(needle) === 0)
+            .map((o) => ({
+              kind: "value",
+              value: o.value,
+              label: "attr:" + o.value,
+              hint: o.hint,
+              ico: "▹",
+            })),
+        );
+      } else if (
+        ctx &&
+        (ctx.op === "merchant" ||
+          ctx.op === "item" ||
+          ctx.op === "title" ||
+          ctx.op === "map" ||
+          ctx.op === "server")
+      ) {
+        const needle = ctx.value.toLowerCase();
+        let pool = [];
+        if (ctx.op === "merchant") pool = marketMerchantNames();
+        else if (ctx.op === "item") pool = marketItemNames();
+        else if (ctx.op === "title") {
+          pool = uniqueSorted(marketTitles().concat(marketTitleKeys()));
+        } else if (ctx.op === "map") pool = marketMaps();
+        else pool = marketServers();
+        const rows = [];
+        for (let i = 0; i < pool.length && rows.length < 8; i++) {
+          const name = pool[i];
+          if (needle && name.toLowerCase().indexOf(needle) < 0) continue;
+          const needsQuote = /\s/.test(name);
+          rows.push({
+            kind: "value",
+            value: needsQuote ? '"' + name + '"' : name,
+            label: name,
+            hint: ctx.op,
+            ico: ctx.op === "merchant" ? "◆" : ctx.op === "title" ? "✦" : "▣",
+          });
+        }
+        pushSec("Refine your search: " + ctx.op, rows);
+      } else if (ctx && (ctx.op === "price" || ctx.op === "level")) {
+        const samples =
+          ctx.op === "price"
+            ? [
+                { value: "<1M", hint: "Under 1M" },
+                { value: ">=10M", hint: "10M or more" },
+                { value: "<=100k", hint: "100k or less" },
+              ]
+            : [
+                { value: ">=7", hint: "Level 7+" },
+                { value: "9", hint: "Exactly +9" },
+                { value: "<=5", hint: "Level 5 or less" },
+              ];
+        pushSec(
+          "Refine your search: " + ctx.op,
+          samples.map((o) => ({
+            kind: "value",
+            value: o.value,
+            label: ctx.op + ":" + o.value,
+            hint: o.hint,
+            ico: "▹",
+          })),
+        );
+      } else {
+        pushSec("Refine your search", [
+          {
+            kind: "op",
+            insert: "item:",
+            label: "item:",
+            hint: "Filter by item",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "merchant:",
+            label: "merchant:",
+            hint: "Filter by merchant",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "title:",
+            label: "title:",
+            hint: "shiny · lucky · glitched…",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "stat:",
+            label: "stat:",
+            hint: "dex · int · none · any",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "attr:",
+            label: "attr:",
+            hint: "e.g. attr:armor>=50",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "has:",
+            label: "has:",
+            hint: "stat · title · level",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "is:",
+            label: "is:",
+            hint: "sell · buy · near · nostat · titled",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "price:",
+            label: "price:",
+            hint: "e.g. price:<1M",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "level:",
+            label: "level:",
+            hint: "e.g. level:>=7",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "map:",
+            label: "map:",
+            hint: "Filter by map",
+            ico: "+",
+          },
+          {
+            kind: "op",
+            insert: "server:",
+            label: "server:",
+            hint: "Filter by server",
+            ico: "+",
+          },
+        ]);
+        const needle = q.trim().toLowerCase();
+        if (needle && !trailingOpContext(q)) {
+          const items = [];
+          const names = marketItemNames();
+          for (let i = 0; i < names.length && items.length < 5; i++) {
+            if (names[i].toLowerCase().indexOf(needle) < 0) continue;
+            items.push({
+              kind: "op",
+              insert: 'item:"' + names[i] + '" ',
+              label: names[i],
+              hint: "item",
+              ico: "▣",
+            });
+          }
+          pushSec("Items", items);
+          const mers = [];
+          const mnames = marketMerchantNames();
+          for (let i = 0; i < mnames.length && mers.length < 5; i++) {
+            if (mnames[i].toLowerCase().indexOf(needle) < 0) continue;
+            mers.push({
+              kind: "op",
+              insert: "merchant:" + mnames[i] + " ",
+              label: mnames[i],
+              hint: "merchant",
+              ico: "◆",
+            });
+          }
+          pushSec("Merchants", mers);
+          const titles = [];
+          const tnames = uniqueSorted(marketTitles().concat(marketTitleKeys()));
+          for (let i = 0; i < tnames.length && titles.length < 5; i++) {
+            if (tnames[i].toLowerCase().indexOf(needle) < 0) continue;
+            titles.push({
+              kind: "op",
+              insert: "title:" + tnames[i] + " ",
+              label: tnames[i],
+              hint: "title",
+              ico: "✦",
+            });
+          }
+          pushSec("Titles", titles);
+        }
+      }
+      return { sections, flat };
+    }
+
+    function renderSearchMenu() {
+      if (!state.searchOpen) return "";
+      const { sections, flat } = buildSearchSuggestions();
+      if (!sections.length) return "";
+      if (state.searchHi >= flat.length) state.searchHi = Math.max(0, flat.length - 1);
+      let hi = 0;
+      const body = sections
+        .map((sec) => {
+          const rows = sec.rows
+            .map((row) => {
+              const idx = hi++;
+              const isHi = idx === state.searchHi ? " is-hi" : "";
+              return `<button type="button" class="search-menu__row${isHi}" data-act="search-pick" data-i="${idx}">
+                <span class="search-menu__ico">${esc(row.ico || "·")}</span>
+                ${
+                  row.kind === "op" && row.label.indexOf(":") === row.label.length - 1
+                    ? `<span class="search-menu__op">${esc(row.label)}</span>`
+                    : `<span class="search-menu__label">${esc(row.label)}</span>`
+                }
+                <span class="search-menu__hint">${esc(row.hint || "")}</span>
+              </button>`;
+            })
+            .join("");
+          return `<div class="search-menu__sec"><div class="search-menu__h">${esc(
+            sec.title,
+          )}</div>${rows}</div>`;
+        })
+        .join("");
+      return `<div class="search-menu" data-search-menu>
+        ${body}
+        <div class="search-menu__foot">Words AND · OR / | · stat:dex · attr:str>=10 · -has:stat · Quotes. <kbd>↵</kbd></div>
+      </div>`;
+    }
+    function serverUi(s) {
+      if (!s) return "?";
+      const raw = String(s).replace(/^SR_/i, "");
+      // EUI → EU I, USIII → US III, ASIAI → ASIA I
+      const m = raw.match(/^([A-Z]+?)(I[IVX]*|V|X)?$/i);
+      if (m && m[2]) return m[1].toUpperCase() + " " + m[2].toUpperCase();
+      return raw;
+    }
+    function toast(msg) {
+      toastEl.textContent = msg;
+      toastEl.classList.add("is-on");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("is-on"), 1600);
+    }
+    function ico(name, opts) {
+      return window.MarketItemIcons.itemIconHtml(name, Object.assign({ size: 40 }, opts || {}));
+    }
+    function label(name, opts) {
+      return window.MarketItemIcons.itemLabel(name, opts);
+    }
+
+    /** Rough stock-like item props for mockup attr: search (not a full AL port). */
+    const ATTR_KEYS = [
+      "str", "int", "dex", "vit", "for", "hp", "mp", "armor", "resistance",
+      "attack", "range", "speed", "evasion", "reflection", "lifesteal",
+      "manasteal", "crit", "critdamage", "rpiercing", "apiercing", "dreturn",
+      "frequency", "gold", "luck", "xp", "output", "stat", "courage",
+      "mcourage", "pcourage", "pnresistance", "firesistance", "fzresistance",
+      "phresistance", "stresistance", "stun", "miss", "mp_cost", "mp_reduction",
+    ];
+    const STAT_MULT = {
+      gold: 0.5, luck: 1, xp: 0.5, int: 1, str: 1, dex: 1, vit: 1, for: 1,
+      armor: 2.25, resistance: 2.25, speed: 0.325, evasion: 0.325,
+      reflection: 0.15, lifesteal: 0.15, manasteal: 0.04, rpiercing: 2.25,
+      apiercing: 2.25, crit: 0.125, dreturn: 0.5, frequency: 0.325,
+      mp_cost: -0.6, output: 0.175,
+    };
+
+    function calcOfferProps(s) {
+      const def =
+        (window.MarketItemAssets &&
+          window.MarketItemAssets.items &&
+          window.MarketItemAssets.items[s.name]) ||
+        {};
+      const prop = {};
+      for (let i = 0; i < ATTR_KEYS.length; i++) prop[ATTR_KEYS[i]] = 0;
+      for (let i = 0; i < ATTR_KEYS.length; i++) {
+        const k = ATTR_KEYS[i];
+        if (typeof def[k] === "number") prop[k] += def[k];
+      }
+      const level = Math.max(0, Math.floor(Number(s.level) || 0));
+      const up = def.upgrade || {};
+      for (let i = 1; i <= level; i++) {
+        const keys = Object.keys(up);
+        for (let j = 0; j < keys.length; j++) {
+          const k = keys[j];
+          if (typeof up[k] !== "number") continue;
+          if (prop[k] == null) prop[k] = 0;
+          prop[k] += up[k];
+          if (k === "stat" && i >= 7) prop.stat += 1;
+        }
+      }
+      if (s.p === "shiny") {
+        if (def.attack) prop.attack += 4;
+        else if (def.stat) prop.stat += 2;
+        else if (def.armor) {
+          prop.armor += 12;
+          prop.resistance += 10;
+        } else {
+          prop.dex += 1;
+          prop.int += 1;
+          prop.str += 1;
+        }
+      }
+      const st = s.stat_type ? String(s.stat_type).toLowerCase() : "";
+      if (def.stat && st && prop.stat) {
+        const m = STAT_MULT[st] != null ? STAT_MULT[st] : 1;
+        prop[st] = (prop[st] || 0) + prop.stat * m;
+        prop.stat = 0;
+      }
+      return prop;
+    }
+
+    function itemScrollable(name) {
+      const def =
+        (window.MarketItemAssets &&
+          window.MarketItemAssets.items &&
+          window.MarketItemAssets.items[name]) ||
+        {};
+      return !!(def.scroll || def.stat);
+    }
+
+    /** Mirrors tradeSlots.merchantStandCapacity for merchants. */
+    function standCapacity(entity) {
+      const level = (entity && entity.level) || 0;
+      const stand = entity && entity.stand ? String(entity.stand) : "";
+      let tier = 16;
+      if (level >= 80) tier = 30;
+      else if (level >= 70 || stand === "cstand") tier = 24;
+      const keys = Object.keys((entity && entity.slots) || {});
+      let max = 0;
+      for (let i = 0; i < keys.length; i++) {
+        if (keys[i].indexOf("trade") !== 0) continue;
+        const n = parseInt(keys[i].replace("trade", ""), 10);
+        if (n > max) max = n;
+      }
+      return max > tier ? max : tier;
+    }
+
+    function standGridColumns(n) {
+      return n > 16 ? 6 : 4;
+    }
+
+    /** Compact: filled + one empty (TradeGrid default). */
+    function standSlotNames(entity, compact) {
+      const n = standCapacity(entity);
+      const all = [];
+      for (let i = 1; i <= n; i++) all.push("trade" + i);
+      if (!compact) return all;
+      const slots = entity.slots || {};
+      const filled = [];
+      let firstEmpty = null;
+      for (let i = 0; i < all.length; i++) {
+        const k = all[i];
+        if (slots[k] && slots[k].name) filled.push(k);
+        else if (!firstEmpty) firstEmpty = k;
+      }
+      if (firstEmpty) filled.push(firstEmpty);
+      return filled;
+    }
+
+    function offerFingerprint(r) {
+      const s = r.s;
+      return [
+        r.mer.name,
+        s.name,
+        s.b ? "b" : "s",
+        s.price || 0,
+        s.level || 0,
+        s.p || "",
+      ].join("|");
+    }
+
+    /** Same merchant + item + side + price (+level/title) → one row. */
+    function collapseOffers(list) {
+      const map = {};
+      const order = [];
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        const fp = offerFingerprint(r);
+        if (!map[fp]) {
+          map[fp] = {
+            key: r.key,
+            keys: [r.key],
+            mer: r.mer,
+            status: r.status,
+            slotName: r.slotName,
+            s: r.s,
+            count: 1,
+            totalQ: sQty(r.s),
+          };
+          order.push(fp);
+        } else {
+          const g = map[fp];
+          g.keys.push(r.key);
+          g.count += 1;
+          g.totalQ += sQty(r.s);
+        }
+      }
+      return order.map((fp) => map[fp]);
+    }
+
+    function sQty(s) {
+      return s && s.q != null && s.q > 0 ? s.q : 1;
+    }
+
+    function itemMeta(name) {
+      const assets = window.MarketItemAssets;
+      return (assets && assets.items && assets.items[name]) || {};
+    }
+
+    function isStackable(s) {
+      if (!s || !s.name) return false;
+      if (s.q != null) return true;
+      const t = itemMeta(s.name).type || "";
+      return STACK_TYPES.has(t);
+    }
+
+    function bagHaveQ(name) {
+      let n = 0;
+      for (let i = 0; i < BAG.length; i++) {
+        if (BAG[i].name === name) n += BAG[i].q || 1;
+      }
+      return n;
+    }
+
+    function offerAvailQ(r) {
+      if (!r) return 0;
+      if (r.totalQ != null) return r.totalQ;
+      return sQty(r.s);
+    }
+
+    function rowWantQty(r) {
+      const max = offerAvailQ(r);
+      const saved = state.qtyByKey[r.key];
+      let q = saved != null ? saved : 1;
+      if (q < 1) q = 1;
+      if (q > max) q = max;
+      return q;
+    }
+
+    function setRowWantQty(key, raw, max) {
+      let q = parseInt(raw, 10);
+      if (!Number.isFinite(q) || q < 1) q = 1;
+      if (max != null && q > max) q = max;
+      state.qtyByKey[key] = q;
+      return q;
+    }
+
+    function distSq(a, b) {
+      const dx = (a.x || 0) - (b.x || 0);
+      const dy = (a.y || 0) - (b.y || 0);
+      return dx * dx + dy * dy;
+    }
+
+    function distPx(a, b) {
+      return Math.round(Math.sqrt(distSq(a, b)));
+    }
+
+    function merchantStatus(mer) {
+      if (mer.server !== OBS.server) return "otherServer";
+      if (mer.map !== OBS.map) return "sameServer";
+      if (distSq(mer, OBS) <= 200 * 200) return "inRange";
+      return "sameMap";
+    }
+
+    /** Always include server; add map / distance when useful. */
+    function whereShort(mer, status) {
+      const parts = [serverUi(mer.server)];
+      if (status === "inRange" || status === "sameMap") {
+        parts.push(distPx(mer, OBS) + " away");
+      } else if (status === "sameServer") {
+        if (mer.map) parts.push(mer.map);
+      } else if (mer.map) {
+        parts.push(mer.map);
+      }
+      return parts.filter(Boolean).join(" · ");
+    }
+
+    function allOffers() {
+      const out = [];
+      for (let i = 0; i < state.chars.length; i++) {
+        const mer = state.chars[i];
+        const status = merchantStatus(mer);
+        const slots = mer.slots || {};
+        const keys = Object.keys(slots);
+        for (let j = 0; j < keys.length; j++) {
+          const key = keys[j];
+          if (!key.startsWith("trade")) continue;
+          const s = slots[key];
+          if (!s || !s.name) continue;
+          const offerKey = mer.name + ":" + key;
+          if (state.consumedKeys[offerKey]) continue;
+          out.push({
+            key: offerKey,
+            mer,
+            status,
+            slotName: key,
+            s,
+          });
+        }
+      }
+      return out;
+    }
+
+    function filteredOffers() {
+      let list = allOffers();
+      const clauses = parseMarketQuery(state.filter);
+      if (clauses.length) {
+        list = list.filter((r) => offerMatchesClauses(r, clauses));
+      }
+      if (state.facet === "sale") list = list.filter((r) => !r.s.b);
+      if (state.facet === "wanted") list = list.filter((r) => !!r.s.b);
+      if (state.nearOnly) {
+        list = list.filter(
+          (r) => r.status === "inRange" || r.status === "sameMap",
+        );
+      }
+      if (state.canAfford) {
+        list = list.filter((r) => r.s.b || (r.s.price || 0) <= OBS.gold);
+      }
+      if (state.haveStock) {
+        list = list.filter((r) => BAG.some((b) => b.name === r.s.name));
+      }
+      list.sort((a, b) => {
+        const la = label(a.s.name, a.s);
+        const lb = label(b.s.name, b.s);
+        if (la !== lb) return la.localeCompare(lb);
+        if (!!a.s.b !== !!b.s.b) return a.s.b ? 1 : -1;
+        return a.s.b
+          ? (b.s.price || 0) - (a.s.price || 0)
+          : (a.s.price || 0) - (b.s.price || 0);
+      });
+      return list;
+    }
+
+    function itemGroupKey(s) {
+      if (!s || !s.name) return "";
+      return (
+        s.name +
+        "::" +
+        (s.p || "") +
+        "::" +
+        (s.stat_type || "")
+      );
+    }
+    function parseItemGroupKey(key) {
+      const raw = String(key || "");
+      const parts = raw.split("::");
+      return {
+        name: parts[0] || "",
+        p: parts[1] || "",
+        stat_type: parts[2] || "",
+      };
+    }
+    function offerMatchesGroupKey(r, key) {
+      const g = parseItemGroupKey(key);
+      if (!g.name || r.s.name !== g.name) return false;
+      if (String(r.s.p || "") !== g.p) return false;
+      return String(r.s.stat_type || "") === g.stat_type;
+    }
+
+    function grouped(list) {
+      const map = {};
+      const order = [];
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        const k = itemGroupKey(r.s);
+        if (!map[k]) {
+          map[k] = [];
+          order.push(k);
+        }
+        map[k].push(r);
+      }
+      return order.map((k) => ({ key: k, rows: map[k] }));
+    }
+
+    function findOfferByKey(key) {
+      if (!key) return null;
+      const raw = allOffers().find((x) => x.key === key);
+      if (!raw) return null;
+      const group = collapseOffers(
+        allOffers().filter((r) => offerFingerprint(r) === offerFingerprint(raw)),
+      )[0];
+      return group || Object.assign({ count: 1, keys: [raw.key], totalQ: sQty(raw.s) }, raw);
+    }
+
+    function selectedOffer() {
+      return state.offerKey ? findOfferByKey(state.offerKey) : null;
+    }
+
+    function actionLabel(r) {
+      if (!r) return "";
+      if (r.s.b) return "Sell";
+      if ((r.s.price || 0) > OBS.gold) return "Can't afford";
+      if (r.status === "otherServer" || r.status === "sameServer") return "Travel";
+      if (r.status === "sameMap") return "Move closer";
+      return "Buy";
+    }
+
+    function actionDisabled(r, qty) {
+      if (!r) return true;
+      const n = qty != null ? qty : rowWantQty(r);
+      if (r.s.b) {
+        return bagHaveQ(r.s.name) < n;
+      }
+      return (r.s.price || 0) * n > OBS.gold;
+    }
+
+    function consumeSlotQty(offerKey, take) {
+      const raw = allOffers().find((x) => x.key === offerKey);
+      if (!raw) return 0;
+      const have = sQty(raw.s);
+      const n = Math.min(have, take);
+      if (n <= 0) return 0;
+      if (isStackable(raw.s) && raw.s.q != null) {
+        raw.s.q -= n;
+        if (raw.s.q <= 0) state.consumedKeys[offerKey] = true;
+      } else {
+        state.consumedKeys[offerKey] = true;
+      }
+      return n;
+    }
+
+    function applyGoldBag(r, taken) {
+      const unit = r.s.price || 0;
+      if (r.s.b) {
+        OBS.gold += unit * taken;
+        let left = taken;
+        for (let i = 0; i < BAG.length && left > 0; i++) {
+          if (BAG[i].name !== r.s.name) continue;
+          const use = Math.min(BAG[i].q || 1, left);
+          BAG[i].q = (BAG[i].q || 1) - use;
+          left -= use;
+        }
+        for (let i = BAG.length - 1; i >= 0; i--) {
+          if ((BAG[i].q || 0) <= 0) BAG.splice(i, 1);
+        }
+      } else {
+        OBS.gold -= unit * taken;
+      }
+    }
+
+    function doAction(r, opts) {
+      opts = opts || {};
+      if (!r) return false;
+      const buyAll = !!opts.all;
+      let qty = buyAll
+        ? offerAvailQ(r)
+        : opts.qty != null
+          ? opts.qty
+          : rowWantQty(r);
+      if (qty < 1) qty = 1;
+
+      if (r.status !== "inRange") {
+        state.travel = r.key;
+        state.flashKey = r.key;
+        toast("Traveling to " + r.mer.name + "…");
+        render();
+        setTimeout(() => {
+          r.mer.map = OBS.map;
+          r.mer.server = OBS.server;
+          r.mer.x = OBS.x + 20;
+          r.mer.y = OBS.y;
+          state.travel = null;
+          toast("Arrived near " + r.mer.name);
+          render();
+        }, 700);
+        return false;
+      }
+
+      if (actionDisabled(r, buyAll ? Math.min(qty, 1) : qty) && !buyAll) {
+        toast(r.s.b ? "Not enough in bag" : "Can't afford");
+        return false;
+      }
+      if (buyAll && actionDisabled(r, 1)) {
+        toast(r.s.b ? "Not enough in bag" : "Can't afford");
+        return false;
+      }
+
+      const keys = r.keys && r.keys.length ? r.keys : [r.key];
+      let taken = 0;
+
+      if (buyAll || (isStackable(r.s) && qty > 1)) {
+        let left = qty;
+        for (let i = 0; i < keys.length && left > 0; i++) {
+          if (state.consumedKeys[keys[i]]) continue;
+          const unitCost = r.s.price || 0;
+          if (!r.s.b) {
+            const maxByGold =
+              unitCost > 0 ? Math.floor(OBS.gold / unitCost) : left;
+            if (maxByGold <= 0) break;
+            left = Math.min(left, maxByGold);
+          } else {
+            const have = bagHaveQ(r.s.name);
+            if (have <= 0) break;
+            left = Math.min(left, have);
+          }
+          const n = consumeSlotQty(keys[i], isStackable(r.s) ? left : 1);
+          if (n) {
+            applyGoldBag(r, n);
+            taken += n;
+            left -= n;
+          }
+        }
+      } else {
+        let hit = r.key;
+        for (let i = 0; i < keys.length; i++) {
+          if (!state.consumedKeys[keys[i]]) {
+            hit = keys[i];
+            break;
+          }
+        }
+        const n = consumeSlotQty(hit, isStackable(r.s) ? qty : 1);
+        if (n) {
+          applyGoldBag(r, n);
+          taken = n;
+          state.flashKey = hit;
+        }
+      }
+
+      if (!taken) {
+        toast("Nothing left on that listing");
+        render();
+        return false;
+      }
+      state.flashKey = r.key;
+      const verb = r.s.b ? "trade_sell" : "trade_buy";
+      const plural =
+        buyAll && !isStackable(r.s) ? taken + " slots" : "×" + taken;
+      toast(verb + " → " + r.mer.name + " · " + plural);
+      render();
+      return true;
+    }
+
+    /** Next actionable deal: cheapest sale, or highest buy-order we can fill. */
+    function nextBestDeal(rows, side) {
+      const list = collapseOffers(rows).filter((r) => {
+        if (side === "buy") return !r.s.b && !actionDisabled(r, 1);
+        return !!r.s.b && !actionDisabled(r, 1);
+      });
+      if (!list.length) return null;
+      list.sort((a, b) =>
+        side === "buy"
+          ? (a.s.price || 0) - (b.s.price || 0)
+          : (b.s.price || 0) - (a.s.price || 0),
+      );
+      return list[0];
+    }
+
+    function tradeSlotButton(slotName, slot, opts) {
+      const on = opts && opts.on ? " is-on" : "";
+      const act = opts && opts.act;
+      const size = (opts && opts.size) || 40;
+      const emptyPx = size + 6;
+      const data =
+        opts && opts.data
+          ? Object.keys(opts.data)
+              .map((k) => ` data-${k}="${esc(opts.data[k])}"`)
+              .join("")
+          : "";
+      if (!slot || !slot.name) {
+        return (
+          `<button type="button" class="comm-trade-slot${on}" data-act="${esc(
+            act || "stand-empty",
+          )}" data-slot="${esc(slotName)}"${data}>` +
+          `<div class="slot-art"><div class="slot-empty" style="width:${emptyPx}px;height:${emptyPx}px">+</div></div>` +
+          `</button>`
+        );
+      }
+      const buy = !!slot.b;
+      return (
+        `<button type="button" class="comm-trade-slot is-filled${on}" data-act="${esc(
+          act || "stand-slot",
+        )}" data-slot="${esc(slotName)}" title="${esc(
+          label(slot.name, slot),
+        )}"${data}>` +
+        `<div class="slot-art">` +
+        `<span class="slot-badge${buy ? " is-buy" : ""}">${buy ? "B" : "S"}</span>` +
+        ico(slot.name, { level: slot.level, q: slot.q, size }) +
+        `</div>` +
+        `<div class="slot-price">${fmt(slot.price)}</div>` +
+        `</button>`
+      );
+    }
+
+    function renderBag() {
+      return `
+        <div class="ph">Bag <em>${BAG.length} stacks</em></div>
+        <div class="slot-grid">
+          ${BAG.map((b) => {
+            const on = state.bagName === b.name ? " is-on" : "";
+            return (
+              `<button type="button" class="comm-trade-slot${on}" data-act="bag" data-name="${esc(
+                b.name,
+              )}" title="${esc(label(b.name, b))}${
+                b.q > 1 ? " ×" + b.q : ""
+              }">` +
+              `<div class="slot-art">${ico(b.name, {
+                level: b.level,
+                q: b.q,
+                size: 40,
+              })}</div>` +
+              `</button>`
+            );
+          }).join("")}
+        </div>
+        <div class="you-acts">
+          <button type="button" class="btn btn-sell" data-act="list-sale" ${
+            state.bagName ? "" : "disabled"
+          }>List</button>
+          <button type="button" class="btn btn-ghost" data-act="wishlist">Buy order</button>
+        </div>`;
+    }
+
+    function renderStand() {
+      const capacity = standCapacity(YOU);
+      const cols = standGridColumns(capacity);
+      const keys = standSlotNames(YOU, state.standCompact);
+      const filled = Object.keys(YOU.slots).filter(
+        (k) => k.indexOf("trade") === 0 && YOU.slots[k] && YOU.slots[k].name,
+      ).length;
+      const free = capacity - filled;
+      const space =
+        free <= 0 ? filled + " listed" : free + " free · " + filled + " listed";
+      return `
+        <div class="ph">
+          Stand <em>${esc(space)}</em>
+          <span class="ph-tools">
+            <span class="seg">
+              <button type="button" data-act="stand-view" data-v="pack" class="${
+                state.standCompact ? "is-on" : ""
+              }">Pack</button>
+              <button type="button" data-act="stand-view" data-v="all" class="${
+                state.standCompact ? "" : "is-on"
+              }">All</button>
+            </span>
+            <button type="button" class="btn btn-ghost" data-act="tog-stand">${
+              YOU.standOpen ? "Close" : "Open"
+            }</button>
+          </span>
+        </div>
+        <div class="stand-bar">
+          <span class="st ${YOU.standOpen ? "" : "off"}">${
+            YOU.standOpen ? "Open" : "Closed"
+          }</span>
+          <span>${esc(YOU.map)} · ${esc(serverUi(YOU.server))} · ${capacity}</span>
+        </div>
+        <div class="slot-grid slot-grid--stand ${
+          cols === 6 ? "cols-6" : ""
+        }">
+          ${keys
+            .map((k) =>
+              tradeSlotButton(k, YOU.slots[k], {
+                on: state.standSlot === k,
+                act: YOU.slots[k] ? "stand-slot" : "stand-empty",
+                size: cols === 6 ? 34 : 40,
+              }),
+            )
+            .join("")}
+        </div>`;
+    }
+
+    function offerRow(r, opts) {
+      const withAct = opts && opts.actions;
+      const chips = [];
+      if (r.status === "inRange") chips.push('<span class="chip near">near</span>');
+      if (OBS.party.has(r.mer.name))
+        chips.push('<span class="chip party">party</span>');
+      if (OBS.friends.has(r.mer.name))
+        chips.push('<span class="chip friend">friend</span>');
+      const where = whereShort(r.mer, r.status);
+      const avail = offerAvailQ(r);
+      const stack = isStackable(r.s);
+      const qtyParts = [];
+      if (r.count > 1) qtyParts.push(r.count + " slots");
+      if (stack && avail > 0) qtyParts.push("×" + avail);
+      else if (!stack && r.s.q && r.s.q > 1) qtyParts.push("×" + r.s.q);
+      const meta = [where].concat(qtyParts).filter(Boolean).join(" · ");
+      const flash =
+        state.flashKey === r.key ||
+        (r.keys && r.keys.indexOf(state.flashKey) >= 0)
+          ? " is-flash"
+          : "";
+      const want = rowWantQty(r);
+      const disabled = actionDisabled(r, want);
+      const lbl = state.travel === r.key ? "…" : actionLabel(r);
+      const maxTake = r.s.b
+        ? Math.min(avail, bagHaveQ(r.s.name) || avail)
+        : avail;
+      const canAll =
+        withAct &&
+        r.status === "inRange" &&
+        ((r.count > 1 && !actionDisabled(r, 1)) ||
+          (stack && maxTake > 1 && !actionDisabled(r, 1)));
+
+      if (withAct) {
+        const qtyMax = r.s.b
+          ? Math.min(avail, Math.max(1, bagHaveQ(r.s.name)))
+          : avail;
+        const qtyCtrl = stack
+          ? `<label class="qty-wrap">Qty
+              <input type="number" min="1" max="${qtyMax}" step="1"
+                data-bind-qty="${esc(r.key)}" value="${want}" />
+            </label>`
+          : `<span class="qty-wrap"></span>`;
+        const allBtn = canAll
+          ? `<button type="button" class="row-act is-all ${
+              r.s.b ? "is-sell" : "is-buy"
+            }" data-act="go-all" data-key="${esc(r.key)}" title="${esc(
+              (r.s.b ? "Sell all" : "Buy all") +
+                " · Shift+click also works",
+            )}">All · ${stack ? "×" + maxTake : "×" + r.count}</button>`
+          : "";
+        const lineTotal =
+          stack && want > 1
+            ? `<span class="stack">= ${fmt((r.s.price || 0) * want)}</span>`
+            : r.count > 1
+              ? `<span class="stack">×${r.count}</span>`
+              : "";
+        const kindCell = opts.sideColumn
+          ? ""
+          : `<div class="kind ${r.s.b ? "wants" : "sells"}">${
+              r.s.b ? "Wants" : "Sells"
+            }</div>`;
+        return `
+          <div class="offer${flash}${
+            disabled && r.status === "inRange" ? " is-blocked" : ""
+          }">
+            <div class="offer-main">
+              ${kindCell}
+              <div>
+                <div class="who">${esc(r.mer.name)}${
+                  chips.length
+                    ? `<span class="chips">${chips.join("")}</span>`
+                    : ""
+                }</div>
+                <div class="where">${esc(meta || " ")}</div>
+              </div>
+              <div class="price">${fmt(r.s.price)}${lineTotal}</div>
+            </div>
+            <div class="offer-ops">
+              ${qtyCtrl}
+              <button type="button" class="row-act is-primary ${
+                r.s.b ? "is-sell" : "is-buy"
+              }" data-act="go" data-key="${esc(r.key)}" ${
+                disabled ? "disabled" : ""
+              }>${esc(lbl)}</button>
+              ${allBtn}
+            </div>
+          </div>`;
+      }
+
+      return `
+        <button type="button" class="row" data-act="pick" data-key="${esc(
+          r.key,
+        )}">
+          <div class="kind ${r.s.b ? "wants" : "sells"}">${
+            r.s.b ? "Wants" : "Sells"
+          }</div>
+          <div>
+            <div class="who">${esc(r.mer.name)}${
+              chips.length ? `<span class="chips">${chips.join("")}</span>` : ""
+            }</div>
+            <div class="where">${esc(meta)}</div>
+          </div>
+          <div class="price">${fmt(r.s.price)}${
+            r.count > 1
+              ? `<span class="stack">×${r.count}</span>`
+              : ""
+          }</div>
+        </button>`;
+    }
+
+    function itemGroupStats(rows) {
+      const sales = rows.filter((r) => !r.s.b);
+      const wants = rows.filter((r) => r.s.b);
+      return {
+        sales,
+        wants,
+        bestSale: sales.length
+          ? Math.min(...sales.map((r) => r.s.price || 0))
+          : null,
+        bestWant: wants.length
+          ? Math.max(...wants.map((r) => r.s.price || 0))
+          : null,
+      };
+    }
+
+    function renderOffersList(rows) {
+      const collapsed = collapseOffers(rows);
+      const groups = grouped(collapsed);
+      return groups
+        .map((g) => {
+          const st = itemGroupStats(g.rows);
+          const sample = g.rows[0].s;
+          const rawCount = rows.filter((r) => offerMatchesGroupKey(r, g.key))
+            .length;
+          return `
+            <details class="group" open>
+              <summary>
+                ${ico(sample.name, { level: sample.level, p: sample.p, size: 40 })}
+                <div>
+                  <div class="g-name">${esc(label(sample.name, sample))}</div>
+                  <div class="g-sub">${st.sales.length} selling · ${
+                    st.wants.length
+                  } buying${
+                    rawCount !== g.rows.length
+                      ? " · " + rawCount + " slots"
+                      : ""
+                  }</div>
+                </div>
+                <div class="g-best">
+                  ${
+                    st.bestSale != null
+                      ? `<span>low</span>${fmt(st.bestSale)}`
+                      : st.bestWant != null
+                        ? `<span>high</span>${fmt(st.bestWant)}`
+                        : ""
+                  }
+                </div>
+              </summary>
+              ${g.rows.map(offerRow).join("")}
+            </details>`;
+        })
+        .join("");
+    }
+
+    function renderMarketGrid(list) {
+      const byItem = grouped(list);
+      if (!byItem.length) {
+        return `<div class="empty"><strong>Nothing matches</strong>Try clearing filters or search.</div>`;
+      }
+      // Prefer dual-sided items first so buy+sell examples are easy to find.
+      byItem.sort((a, b) => {
+        const sa = itemGroupStats(a.rows);
+        const sb = itemGroupStats(b.rows);
+        const da = (sa.sales.length && sa.wants.length ? 0 : 1);
+        const db = (sb.sales.length && sb.wants.length ? 0 : 1);
+        if (da !== db) return da - db;
+        return label(a.rows[0].s.name, a.rows[0].s).localeCompare(
+          label(b.rows[0].s.name, b.rows[0].s),
+        );
+      });
+      const cards = byItem
+        .map((g) => {
+          const st = itemGroupStats(g.rows);
+          const sample = g.rows[0].s;
+          const on = state.gridItem === g.key ? " is-on" : "";
+          const sellN = st.sales.length;
+          const buyN = st.wants.length;
+          const dual = sellN > 0 && buyN > 0;
+          const low =
+            st.bestSale != null
+              ? `<div class="row-p"><span class="lbl">Sell</span><span class="val sell">${fmt(
+                  st.bestSale,
+                )}</span></div>`
+              : `<div class="row-p"><span class="lbl">Sell</span><span class="val none">—</span></div>`;
+          const high =
+            st.bestWant != null
+              ? `<div class="row-p"><span class="lbl">Buy</span><span class="val buy">${fmt(
+                  st.bestWant,
+                )}</span></div>`
+              : `<div class="row-p"><span class="lbl">Buy</span><span class="val none">—</span></div>`;
+          return `
+            <button type="button" class="item-card${dual ? " is-dual" : ""}${on}" data-act="grid-item" data-name="${esc(
+              g.key,
+            )}">
+              <div class="item-card__top">
+                ${ico(sample.name, { level: sample.level, p: sample.p, size: 48 })}
+                <div class="item-card__counts">
+                  <span class="s${sellN ? "" : " dim"}">${sellN}S</span>
+                  <span class="b${buyN ? "" : " dim"}">${buyN}B</span>
+                </div>
+              </div>
+              <div class="nm">${esc(label(sample.name, sample))}</div>
+              <div class="item-card__prices">${low}${high}</div>
+            </button>`;
+        })
+        .join("");
+      return `<div class="item-grid">${cards}</div>`;
+    }
+
+    function renderMarket() {
+      const list = filteredOffers();
+      const collapsedAll = collapseOffers(list);
+      const viewSeg = `
+          <span class="seg">
+            <button type="button" data-act="view" data-v="grid" class="${
+              state.view === "grid" ? "is-on" : ""
+            }">Grid</button>
+            <button type="button" data-act="view" data-v="list" class="${
+              state.view === "list" ? "is-on" : ""
+            }">List</button>
+          </span>`;
+      if (!list.length) {
+        return `
+          <div class="ph">Market <span class="ph-tools">${viewSeg}</span></div>
+          <div class="empty"><strong>Nothing matches</strong>Try clearing filters or search.</div>`;
+      }
+      return `
+        <div class="ph">
+          Market
+          <em>${collapsedAll.length} offers · ${list.length} slots</em>
+          <span class="ph-tools">${viewSeg}</span>
+        </div>
+        ${
+          state.view === "grid"
+            ? renderMarketGrid(list)
+            : `<div class="market-list">${renderOffersList(list)}</div>`
+        }`;
+    }
+
+    function renderFocusOfferDetail(r) {
+      const have = bagHaveQ(r.s.name);
+      const where = whereShort(r.mer, r.status);
+      const subParts = [
+        r.s.b ? "Wants" : "Sells",
+        r.mer.name,
+        where,
+      ].filter(Boolean);
+      const avail = offerAvailQ(r);
+      const stack = isStackable(r.s);
+      const want = rowWantQty(r);
+      const canAll =
+        r.status === "inRange" &&
+        ((r.count > 1 && !actionDisabled(r, 1)) ||
+          (stack && avail > 1 && !actionDisabled(r, 1)));
+      return `
+        <div class="focus">
+          <div class="focus-head">
+            ${ico(r.s.name, { level: r.s.level, size: 48 })}
+            <div>
+              <h2>${esc(label(r.s.name, r.s))}</h2>
+              <div class="sub">
+                <span class="kind ${r.s.b ? "wants" : "sells"}">${
+                  r.s.b ? "Wants" : "Sells"
+                }</span>
+                · ${esc(r.mer.name)}${where ? " · " + esc(where) : ""}
+              </div>
+            </div>
+          </div>
+          <div class="big">${fmt(r.s.price)}${
+            r.count > 1
+              ? ` <span style="font-size:13px;color:#777">×${r.count} slots</span>`
+              : stack
+                ? ` <span style="font-size:13px;color:#777">×${avail}</span>`
+                : ""
+          }</div>
+          ${
+            r.status !== "inRange"
+              ? `<div class="hint">Out of range — travel first (${esc(
+                  subParts.slice(2).join(" · "),
+                )}).</div>`
+              : ""
+          }
+          ${
+            r.s.b && have < 1
+              ? `<div class="hint warn">Not in your bag.</div>`
+              : ""
+          }
+          <div class="acts">
+            ${
+              stack
+                ? `<label class="qty-wrap">qty
+                    <input type="number" min="1" max="${avail}" step="1"
+                      data-bind-qty="${esc(r.key)}" value="${want}" />
+                    <span>/ ${avail}</span>
+                  </label>`
+                : ""
+            }
+            <button type="button" class="btn ${
+              r.s.b ? "btn-sell" : "btn-gold"
+            }" data-act="go" data-key="${esc(r.key)}" ${
+              actionDisabled(r, want) ? "disabled" : ""
+            }>${esc(
+              state.travel === r.key ? "Traveling…" : actionLabel(r),
+            )}</button>
+            ${
+              canAll
+                ? `<button type="button" class="btn btn-ghost" data-act="go-all" data-key="${esc(
+                    r.key,
+                  )}">${r.s.b ? "Sell all" : "Buy all"} · ${
+                    stack ? "×" + avail : "×" + r.count
+                  }</button>`
+                : ""
+            }
+            ${
+              !r.s.b
+                ? `<button type="button" class="btn btn-ghost" data-act="mirror">Mirror buy order</button>`
+                : have
+                  ? `<button type="button" class="btn btn-ghost" data-act="undercut">Undercut list</button>`
+                  : ""
+            }
+            <p class="hint" style="margin:4px 0 0;border:0;padding:0;background:transparent">Shift+click Buy/Sell takes all.</p>
+          </div>
+        </div>`;
+    }
+
+    function renderFocusGridItem(itemKey) {
+      const rows = filteredOffers().filter((r) =>
+        offerMatchesGroupKey(r, itemKey),
+      );
+      const collapsed = collapseOffers(rows);
+      if (!rows.length) {
+        return `
+          <div class="ph">Focus</div>
+          <div class="empty">No offers for this item<br/>with current filters.</div>`;
+      }
+      const sample = rows[0].s;
+      const st = itemGroupStats(rows);
+      const nextBuy = nextBestDeal(rows, "buy");
+      const nextSell = nextBestDeal(rows, "sell");
+      const sortSide = (list, wants) =>
+        list.slice().sort((a, b) => {
+          const da = actionDisabled(a, 1) ? 1 : 0;
+          const db = actionDisabled(b, 1) ? 1 : 0;
+          if (da !== db) return da - db;
+          return wants
+            ? (b.s.price || 0) - (a.s.price || 0)
+            : (a.s.price || 0) - (b.s.price || 0);
+        });
+      const sales = sortSide(
+        collapsed.filter((r) => !r.s.b),
+        false,
+      );
+      const wants = sortSide(
+        collapsed.filter((r) => r.s.b),
+        true,
+      );
+      const sideOpts = { actions: true, sideColumn: true };
+      const sellBody = sales.length
+        ? sales.map((r) => offerRow(r, sideOpts)).join("")
+        : `<div class="focus-col__empty">No sell offers</div>`;
+      const wantBody = wants.length
+        ? wants.map((r) => offerRow(r, sideOpts)).join("")
+        : `<div class="focus-col__empty">No buy orders</div>`;
+
+      return `
+        <div class="ph">Focus <em>${collapsed.length} offers</em></div>
+        <div class="focus focus-top">
+          <div class="focus-head">
+            ${ico(sample.name, { level: sample.level, p: sample.p, size: 40 })}
+            <div>
+              <h2>${esc(label(sample.name, sample))}</h2>
+              <div class="sub">${st.sales.length} selling · ${
+                st.wants.length
+              } buying</div>
+            </div>
+          </div>
+          <div class="deal-bar">
+            <button type="button" class="btn btn-gold" data-act="deal-next" data-side="buy" ${
+              nextBuy ? "" : "disabled"
+            }>${
+              nextBuy ? "Buy best · " + fmt(nextBuy.s.price) : "Buy best"
+            }</button>
+            <button type="button" class="btn btn-sell" data-act="deal-next" data-side="sell" ${
+              nextSell ? "" : "disabled"
+            }>${
+              nextSell ? "Sell best · " + fmt(nextSell.s.price) : "Sell best"
+            }</button>
+            <p class="hint">${
+              nextBuy
+                ? esc(nextBuy.mer.name) + " sells @ " + esc(fmt(nextBuy.s.price))
+                : "No buyable sales"
+            } · ${
+              nextSell
+                ? esc(nextSell.mer.name) +
+                  " wants @ " +
+                  esc(fmt(nextSell.s.price))
+                : bagHaveQ(sample.name)
+                  ? "No buy orders"
+                  : "Not in bag"
+            }</p>
+          </div>
+        </div>
+        <div class="focus-offers focus-offers--split">
+          <div class="focus-col focus-col--sells">
+            <div class="focus-col__h"><span class="lbl sells">Sells</span><em>${
+              sales.length
+            }</em></div>
+            ${sellBody}
+          </div>
+          <div class="focus-col focus-col--wants">
+            <div class="focus-col__h"><span class="lbl wants">Wants</span><em>${
+              wants.length
+            }</em></div>
+            ${wantBody}
+          </div>
+        </div>`;
+    }
+
+    function renderFocus() {
+      const r = selectedOffer();
+      const standSlot =
+        state.standSlot && YOU.slots[state.standSlot]
+          ? YOU.slots[state.standSlot]
+          : null;
+
+      if (standSlot && !r) {
+        return `
+          <div class="ph">Focus</div>
+          <div class="focus">
+            <div class="focus-head">
+              ${ico(standSlot.name, { level: standSlot.level, size: 48 })}
+              <div>
+                <h2>${esc(label(standSlot.name, standSlot))}</h2>
+                <div class="sub">Your stand · ${esc(state.standSlot)} · ${
+                  standSlot.b ? "buy order" : "for sale"
+                }</div>
+              </div>
+            </div>
+            <div class="big">${fmt(standSlot.price)}</div>
+            <div class="acts">
+              <button type="button" class="btn btn-ghost" data-act="unlist" data-slot="${esc(
+                state.standSlot,
+              )}">Remove</button>
+            </div>
+          </div>`;
+      }
+
+      // Grid: item focus stays on the offer list + next-best (no drill-in).
+      if (state.view === "grid" && state.gridItem) {
+        return renderFocusGridItem(state.gridItem);
+      }
+
+      if (r) {
+        return `<div class="ph">Focus</div>${renderFocusOfferDetail(r)}`;
+      }
+
+      const bag = state.bagName && BAG.find((b) => b.name === state.bagName);
+      if (bag) {
+        const matches = allOffers().filter((o) => o.s.name === bag.name);
+        return `
+          <div class="ph">Focus</div>
+          <div class="focus">
+            <div class="focus-head">
+              ${ico(bag.name, { level: bag.level, size: 48 })}
+              <div>
+                <h2>${esc(label(bag.name, bag))}</h2>
+                <div class="sub">Bag · ×${bag.q} · ${matches.length} market rows</div>
+              </div>
+            </div>
+            <div class="acts">
+              <button type="button" class="btn btn-sell" data-act="list-sale">List on stand</button>
+              ${
+                matches.length
+                  ? `<button type="button" class="btn btn-ghost" data-act="grid-item" data-name="${esc(
+                      bag.name,
+                    )}">See market offers</button>`
+                  : ""
+              }
+            </div>
+          </div>`;
+      }
+
+      return `
+        <div class="ph">Focus</div>
+        <div class="empty"><strong>No item selected</strong>${
+          state.view === "grid"
+            ? "Pick a card in the market grid."
+            : "Pick a listing, bag stack, or stand slot."
+        }</div>`;
+    }
+
+    function render() {
+      stampEl.textContent = state.pulledAt
+        ? new Date(state.pulledAt).toLocaleString()
+        : "loading";
+      root.innerHTML = `
+        <div class="ecu-panel__head">
+          <h1 class="ecu-panel__title">Market</h1>
+          <div class="ecu-panel__pill">${fmt(OBS.gold)} gold</div>
+        </div>
+        <div class="market-tools">
+          <div class="search-wrap">
+            <div class="search">
+              <span class="ico">⌕</span>
+              <input data-bind="filter" placeholder="Search · item: · title: · stat: · attr:…" value="${esc(
+                state.filter,
+              )}" autocomplete="off" spellcheck="false" />
+              ${
+                state.filter
+                  ? `<button type="button" class="clear" data-act="search-clear" title="Clear search" aria-label="Clear search">×</button>`
+                  : ""
+              }
+            </div>
+            ${renderSearchMenu()}
+          </div>
+          <div class="seg">
+            <button type="button" data-act="facet" data-v="all" class="${
+              state.facet === "all" ? "is-on" : ""
+            }">All</button>
+            <button type="button" data-act="facet" data-v="sale" class="${
+              state.facet === "sale" ? "is-on" : ""
+            }">Selling</button>
+            <button type="button" data-act="facet" data-v="wanted" class="${
+              state.facet === "wanted" ? "is-on" : ""
+            }">Buying</button>
+          </div>
+          <div class="tog-row">
+            <label class="tog"><input type="checkbox" data-bind="nearOnly" ${
+              state.nearOnly ? "checked" : ""
+            }/>Near</label>
+            <label class="tog"><input type="checkbox" data-bind="canAfford" ${
+              state.canAfford ? "checked" : ""
+            }/>Afford</label>
+            <label class="tog"><input type="checkbox" data-bind="haveStock" ${
+              state.haveStock ? "checked" : ""
+            }/>Have</label>
+          </div>
+        </div>
+        <div class="market-body">
+          <div class="you">
+            <div class="you-bag">${renderBag()}</div>
+            <div class="you-stand">${renderStand()}</div>
+          </div>
+          <div class="col col--market">${renderMarket()}</div>
+          <div class="col col--focus">${renderFocus()}</div>
+        </div>`;
+    }
+
+    function refocusSearch(start, end) {
+      const input = root.querySelector('[data-bind="filter"]');
+      if (!input) return;
+      input.focus();
+      try {
+        const n = input.value.length;
+        const a = start == null ? n : start;
+        const b = end == null ? n : end;
+        input.setSelectionRange(a, b);
+      } catch (e) {}
+    }
+
+    /** Show refine menu without replacing the focused input (avoids click/focus loss). */
+    function ensureSearchMenuDom() {
+      const wrap = root.querySelector(".search-wrap");
+      if (!wrap) return;
+      const existing = wrap.querySelector(".search-menu");
+      if (existing) existing.remove();
+      const html = renderSearchMenu();
+      if (html) wrap.insertAdjacentHTML("beforeend", html);
+    }
+
+    root.addEventListener("input", (ev) => {
+      const t = ev.target;
+      if (t.getAttribute("data-bind") === "filter") {
+        state.filter = t.value;
+        syncTogglesFromQuery(state.filter);
+        state.searchOpen = true;
+        state.searchHi = 0;
+        // Keep caret; only refresh clear button + menu (full render steals the click/type cycle).
+        const search = root.querySelector(".search");
+        if (search) {
+          let clear = search.querySelector('[data-act="search-clear"]');
+          if (state.filter && !clear) {
+            search.insertAdjacentHTML(
+              "beforeend",
+              `<button type="button" class="clear" data-act="search-clear" title="Clear search" aria-label="Clear search">×</button>`,
+            );
+          } else if (!state.filter && clear) {
+            clear.remove();
+          }
+        }
+        ensureSearchMenuDom();
+        // Market/list still need a full pass when the query changes.
+        const body = root.querySelector(".market-body");
+        if (body) {
+          const tools = root.querySelector(".market-tools");
+          const facet = state.facet;
+          const near = state.nearOnly;
+          const afford = state.canAfford;
+          const have = state.haveStock;
+          // Sync facet/tog UI from query without nuking the input.
+          if (tools) {
+            const segBtns = tools.querySelectorAll(".seg [data-act=facet]");
+            for (let i = 0; i < segBtns.length; i++) {
+              const b = segBtns[i];
+              const on = b.getAttribute("data-v") === facet;
+              b.classList.toggle("is-on", on);
+            }
+            const nearEl = tools.querySelector('[data-bind=nearOnly]');
+            const affordEl = tools.querySelector('[data-bind=canAfford]');
+            const haveEl = tools.querySelector('[data-bind=haveStock]');
+            if (nearEl) nearEl.checked = near;
+            if (affordEl) affordEl.checked = afford;
+            if (haveEl) haveEl.checked = have;
+          }
+          const you = body.querySelector(".you");
+          const market = body.querySelector(".col--market");
+          const focus = body.querySelector(".col--focus");
+          if (you) you.innerHTML = `<div class="you-bag">${renderBag()}</div><div class="you-stand">${renderStand()}</div>`;
+          if (market) market.innerHTML = renderMarket();
+          if (focus) focus.innerHTML = renderFocus();
+        }
+      } else if (t.hasAttribute("data-bind-qty")) {
+        const key = t.getAttribute("data-bind-qty");
+        const max = parseInt(t.getAttribute("max"), 10);
+        setRowWantQty(key, t.value, Number.isFinite(max) ? max : null);
+        const row = t.closest(".offer") || t.closest(".focus");
+        if (row) {
+          const btn = row.querySelector('[data-act="go"]');
+          const r = findOfferByKey(key);
+          if (btn && r) {
+            const want = rowWantQty(r);
+            btn.disabled = actionDisabled(r, want);
+            const priceEl = row.querySelector(".price .stack");
+            if (isStackable(r.s)) {
+              if (want > 1) {
+                if (priceEl) {
+                  priceEl.textContent = "= " + fmt((r.s.price || 0) * want);
+                } else {
+                  const price = row.querySelector(".price");
+                  if (price) {
+                    const span = document.createElement("span");
+                    span.className = "stack";
+                    span.textContent = "= " + fmt((r.s.price || 0) * want);
+                    price.appendChild(span);
+                  }
+                }
+              } else if (priceEl && !String(priceEl.textContent || "").startsWith("×")) {
+                priceEl.remove();
+              }
+            }
+          }
+        }
+      }
+    });
+    root.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLInputElement)) return;
+      const b = t.getAttribute("data-bind");
+      if (b === "nearOnly" || b === "canAfford" || b === "haveStock") {
+        rewriteIsInFilter({
+          facet: state.facet,
+          nearOnly: b === "nearOnly" ? t.checked : state.nearOnly,
+          canAfford: b === "canAfford" ? t.checked : state.canAfford,
+          haveStock: b === "haveStock" ? t.checked : state.haveStock,
+        });
+        render();
+      }
+    });
+
+    root.addEventListener("focusin", (ev) => {
+      const t = ev.target;
+      if (t && t.getAttribute("data-bind") === "filter") {
+        if (!state.searchOpen) {
+          state.searchOpen = true;
+          ensureSearchMenuDom();
+        }
+      }
+    });
+
+    root.addEventListener("pointerdown", (ev) => {
+      if (!ev.target.closest(".search")) return;
+      if (state.searchOpen) return;
+      state.searchOpen = true;
+      ensureSearchMenuDom();
+    });
+
+    root.addEventListener("keydown", (ev) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLInputElement)) return;
+      if (t.getAttribute("data-bind") !== "filter") return;
+      const { flat } = buildSearchSuggestions();
+      if (ev.key === "Escape") {
+        if (state.searchOpen) {
+          state.searchOpen = false;
+          ensureSearchMenuDom();
+          ev.preventDefault();
+        }
+        return;
+      }
+      if (!state.searchOpen || !flat.length) return;
+      if (ev.key === "ArrowDown") {
+        state.searchHi = (state.searchHi + 1) % flat.length;
+        ensureSearchMenuDom();
+        ev.preventDefault();
+      } else if (ev.key === "ArrowUp") {
+        state.searchHi = (state.searchHi - 1 + flat.length) % flat.length;
+        ensureSearchMenuDom();
+        ev.preventDefault();
+      } else if (ev.key === "Tab") {
+        const row = flat[state.searchHi];
+        if (!row) return;
+        applySearchSuggestion(row);
+        const input = root.querySelector('[data-bind="filter"]');
+        if (input) input.value = state.filter;
+        ensureSearchMenuDom();
+        const search = root.querySelector(".search");
+        if (search && state.filter && !search.querySelector('[data-act="search-clear"]')) {
+          search.insertAdjacentHTML(
+            "beforeend",
+            `<button type="button" class="clear" data-act="search-clear" title="Clear search" aria-label="Clear search">×</button>`,
+          );
+        }
+        // Refresh results without destroying input
+        root.querySelector('[data-bind="filter"]')?.dispatchEvent(
+          new Event("input", { bubbles: true }),
+        );
+        ev.preventDefault();
+      } else if (ev.key === "Enter") {
+        if (trailingOpContext(state.filter)) {
+          const row = flat[state.searchHi];
+          if (row) applySearchSuggestion(row);
+          const input = root.querySelector('[data-bind="filter"]');
+          if (input) input.value = state.filter;
+        }
+        state.searchOpen = false;
+        ensureSearchMenuDom();
+        root.querySelector('[data-bind="filter"]')?.dispatchEvent(
+          new Event("input", { bubbles: true }),
+        );
+        ev.preventDefault();
+      }
+    });
+
+    root.addEventListener("mousedown", (ev) => {
+      const pick = ev.target.closest('[data-act="search-pick"]');
+      if (!pick) return;
+      ev.preventDefault();
+      const { flat } = buildSearchSuggestions();
+      const row = flat[parseInt(pick.getAttribute("data-i"), 10)];
+      if (row) applySearchSuggestion(row);
+      const input = root.querySelector('[data-bind="filter"]');
+      if (input) {
+        input.value = state.filter;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      }
+    });
+
+    document.addEventListener("mousedown", (ev) => {
+      if (!state.searchOpen) return;
+      const wrap = root.querySelector(".search-wrap");
+      if (wrap && wrap.contains(ev.target)) return;
+      // Opening the menu used to replace the input mid-click; ignore that ghost target.
+      if (ev.target instanceof Node && !document.contains(ev.target)) return;
+      state.searchOpen = false;
+      ensureSearchMenuDom();
+    });
+
+    root.addEventListener("click", (ev) => {
+      const t = ev.target.closest("[data-act]");
+      if (!t) return;
+      const act = t.getAttribute("data-act");
+      if (act === "search-pick") {
+        return;
+      }
+      if (act === "search-clear") {
+        state.filter = "";
+        state.bagName = null;
+        syncTogglesFromQuery("");
+        state.searchOpen = true;
+        state.searchHi = 0;
+        render();
+        refocusSearch();
+        return;
+      }
+      if (act === "facet") {
+        rewriteIsInFilter({
+          facet: t.getAttribute("data-v"),
+          nearOnly: state.nearOnly,
+          canAfford: state.canAfford,
+          haveStock: state.haveStock,
+        });
+        render();
+      } else if (act === "view") {
+        state.view = t.getAttribute("data-v") === "list" ? "list" : "grid";
+        render();
+      } else if (act === "grid-item") {
+        const name = t.getAttribute("data-name");
+        state.gridItem = state.gridItem === name ? null : name;
+        state.offerKey = null;
+        state.bagName = null;
+        state.standSlot = null;
+        state.flashKey = null;
+        render();
+      } else if (act === "deal-next") {
+        const side = t.getAttribute("data-side") === "sell" ? "sell" : "buy";
+        if (!state.gridItem) return;
+        const rows = filteredOffers().filter((r) =>
+          offerMatchesGroupKey(r, state.gridItem),
+        );
+        const next = nextBestDeal(rows, side);
+        if (!next) {
+          toast(side === "buy" ? "No buyable deals left" : "No sell deals left");
+          return;
+        }
+        doAction(next);
+      } else if (act === "bag") {
+        const name = t.getAttribute("data-name");
+        if (state.bagName === name) {
+          state.bagName = null;
+          rewriteItemInFilter(null);
+        } else {
+          state.bagName = name;
+          const bag = BAG.find((b) => b.name === name);
+          // Bag pick owns the query: keep facet/near/afford/have, drop other terms.
+          const keepToggles = {
+            facet: state.facet,
+            nearOnly: state.nearOnly,
+            canAfford: state.canAfford,
+            haveStock: state.haveStock,
+          };
+          state.filter = "";
+          rewriteIsInFilter(keepToggles);
+          rewriteItemInFilter(name, bag || { name });
+        }
+        state.offerKey = null;
+        state.standSlot = null;
+        state.gridItem = name;
+        render();
+      } else if (act === "pick") {
+        state.offerKey = t.getAttribute("data-key");
+        state.standSlot = null;
+        state.bagName = null;
+        const raw = allOffers().find((x) => x.key === state.offerKey);
+        if (raw) state.gridItem = itemGroupKey(raw.s);
+        render();
+      } else if (act === "go" || act === "go-all") {
+        const r = findOfferByKey(t.getAttribute("data-key"));
+        const all = act === "go-all" || (act === "go" && ev.shiftKey);
+        doAction(r, all ? { all: true } : {});
+      } else if (act === "list-sale") {
+        toast("List dialog (prototype)");
+      } else if (act === "wishlist" || act === "mirror" || act === "undercut") {
+        toast(act + " (prototype)");
+      } else if (act === "stand-empty" || act === "stand-slot") {
+        state.standSlot = t.getAttribute("data-slot");
+        state.offerKey = null;
+        render();
+      } else if (act === "stand-view") {
+        state.standCompact = t.getAttribute("data-v") !== "all";
+        render();
+      } else if (act === "tog-stand-compact") {
+        state.standCompact = !state.standCompact;
+        render();
+      } else if (act === "tog-stand") {
+        YOU.standOpen = !YOU.standOpen;
+        YOU.stand = YOU.standOpen ? "stand0" : "";
+        render();
+      } else if (act === "unlist") {
+        delete YOU.slots[t.getAttribute("data-slot")];
+        state.standSlot = null;
+        toast("Removed");
+        render();
+      }
+    });
+
+    function applyMerchantsPayload(payload) {
+      const chars =
+        (payload && payload.chars) ||
+        (payload &&
+          payload.infs &&
+          (payload.infs.find((i) => i.type === "merchants") || {}).chars) ||
+        [];
+      state.chars = chars;
+      state.pulledAt = payload.pulledAt || new Date().toISOString();
+      render();
+    }
+
+    async function loadSample() {
+      const bust = "v=" + Date.now();
+      const [assets, merchants] = await Promise.all([
+        fetch("data/market-item-assets.json?" + bust).then((r) => r.json()),
+        fetch("data/pull-merchants-sample.json?" + bust).then((r) => r.json()),
+      ]);
+      window.MarketItemAssets = assets;
+      applyMerchantsPayload(merchants);
+      toast(merchants.chars.length + " merchants from sample");
+    }
+
+    async function refreshLive() {
+      toast("pull_merchants…");
+      try {
+        const r = await fetch("https://adventure.land/api/pull_merchants", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const data = await r.json();
+        if (data.failed) {
+          toast("Live pull failed: " + (data.reason || "auth"));
+          return;
+        }
+        applyMerchantsPayload(data);
+        toast("Live catalog refreshed");
+      } catch (e) {
+        toast("Live pull error");
+      }
+    }
+
+    document.getElementById("btnRefresh").addEventListener("click", refreshLive);
+    loadSample().catch((e) => {
+      stampEl.textContent = "failed";
+      toast(String(e && e.message ? e.message : e));
+    });
+  </script>
+</body>
+</html>
