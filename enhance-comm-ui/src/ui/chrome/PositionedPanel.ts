@@ -352,8 +352,7 @@ export function PositionedPanel(props: PositionedPanelProps): any {
   const showResizeHandles =
     props.showResizeHandles !== false &&
     !!props.onResizeFrame &&
-    (editing || movable) &&
-    !autoSize;
+    (editing || movable);
 
   const onResizePointerDown = (ev: any, corner: "br" | "bl") => {
     if (!props.onResizeFrame) return;

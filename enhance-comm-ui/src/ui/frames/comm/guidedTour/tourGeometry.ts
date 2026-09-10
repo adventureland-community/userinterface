@@ -144,6 +144,7 @@ function rectForPanelShell(el: HTMLElement, pad: number): SpotlightRect | null {
       "#bottomleftcorner",
       ".comm-bag-mount",
       ".CodeMirror",
+      ".CommandPanel-editor",
       ".ecu-command-editor",
       ".comm-fx-overlay",
       ".comm-fx-row",

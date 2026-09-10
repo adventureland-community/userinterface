@@ -377,7 +377,7 @@ describe("mergeLayout frame migrations", () => {
     assert.equal(layout.targetFrame.frameH, UNIT_FRAME_DEFAULT.frameH);
   });
 
-  it("turns Command autosize on for the shipped 560×300 shell", () => {
+  it("migrates the shipped 560×300 Command shell onto the fill default", () => {
     const layout = mergeLayout(
       {
         command: {
@@ -391,7 +391,9 @@ describe("mergeLayout frame migrations", () => {
       },
       "desktop",
     );
-    assert.equal(layout.command.autoSize, true);
+    assert.equal(layout.command.autoSize, false);
+    assert.equal(layout.command.frameW, 1080);
+    assert.equal(layout.command.frameH, 560);
   });
 
   it("keeps a user-resized Command shell with autosize off", () => {

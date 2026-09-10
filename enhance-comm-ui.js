@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.10
+// @version      0.9.11
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2957,7 +2957,7 @@ var EnhanceCommUI = (() => {
   }
   function autoSizeMaxWidthPx(id) {
     if (id === "players") return partyRosterMaxWidth(PARTY_MAX_COLS);
-    if (id === "command") return 720;
+    if (id === "command") return 1100;
     return void 0;
   }
   function applyAutoSizeMaxWidth(style, id, autoSize) {
@@ -3125,9 +3125,12 @@ var EnhanceCommUI = (() => {
     overflow: "hidden"
   };
   var COMMAND_PANEL_STYLE = {
-    width: "min(720px, 94vw)",
+    width: "100%",
+    height: "100%",
     minWidth: "min(560px, 92vw)",
-    maxWidth: "min(720px, 94vw)",
+    minHeight: "360px",
+    maxWidth: "100%",
+    maxHeight: "100%",
     boxSizing: "border-box",
     // Shell is pointer-events:none by default — Command must take hits so
     // CodeMirror, Run, and hover arrange chrome work.
@@ -3301,9 +3304,9 @@ var EnhanceCommUI = (() => {
       x: 50,
       y: 42,
       anchor: "center",
-      frameW: 720,
-      frameH: 420,
-      autoSize: true
+      frameW: 1080,
+      frameH: 560,
+      autoSize: false
     },
     chat: { x: 1, y: 70, anchor: "bl", frameW: 360, frameH: 280 },
     // Content-sized: fixed frameW/H shrinks #bottomleftcorner and wraps the
@@ -3362,7 +3365,14 @@ var EnhanceCommUI = (() => {
     },
     minimap: { x: 0.8, y: 70, anchor: "bl", frameW: 200, frameH: 220 },
     threat: { x: 99.2, y: 40, anchor: "tr", ...THREAT_FRAME_DEFAULT },
-    command: { x: 50, y: 44, anchor: "center", autoSize: true },
+    command: {
+      x: 50,
+      y: 44,
+      anchor: "center",
+      frameW: 960,
+      frameH: 520,
+      autoSize: false
+    },
     chat: { x: 1, y: 68, anchor: "bl", frameW: 320, frameH: 260 },
     bag: { x: 0.8, y: 78, anchor: "bl" },
     mail: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
@@ -3407,7 +3417,14 @@ var EnhanceCommUI = (() => {
     },
     minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
     threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
-    command: { x: 50, y: 42, anchor: "center", autoSize: true },
+    command: {
+      x: 50,
+      y: 42,
+      anchor: "center",
+      frameW: 360,
+      frameH: 420,
+      autoSize: false
+    },
     chat: { x: 2, y: 70, anchor: "bl", frameW: 300, frameH: 240 },
     bag: { x: 50, y: 88, anchor: "bc" },
     mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
@@ -3492,11 +3509,10 @@ var EnhanceCommUI = (() => {
   }
   function migrateCommandFrame(pos, def) {
     const shippedNarrow = shipped(pos.frameW, 560) && shipped(pos.frameH, 300);
-    if (pos.autoSize === true && !shippedNarrow) return pos;
-    if (!shippedNarrow && pos.autoSize === false) return pos;
+    if (!shippedNarrow) return pos;
     return {
       ...pos,
-      autoSize: true,
+      autoSize: false,
       frameW: typeof def.frameW === "number" ? def.frameW : pos.frameW,
       frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH
     };
@@ -3598,7 +3614,10 @@ var EnhanceCommUI = (() => {
       label: "Command",
       closable: true,
       defaultVisible: false,
-      autoSize: "default-on"
+      // Fill a saved frame so corner resize actually grows the CODE pane.
+      // Auto-resize stays available in Window Control (opt-in).
+      autoSize: "opt-in",
+      shell: "fill"
     },
     chat: {
       label: "Chat",
@@ -8452,6 +8471,36 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.9.11",
+      title: "0.9.11",
+      date: "2026-09-10",
+      summary: "Command panel rewrite: snippet tree, resize-friendly editor, and CODE autocomplete from live G + official runner_functions.js.",
+      highlights: [
+        {
+          label: "Command autocomplete",
+          detail: "Ctrl+Space / type-to-complete. Function names scraped from /js/runner_functions.js; args use signatures + G catalogs (items, skills, monsters, npcs, maps, events). Object props for helpers like get_nearest_monster({ type: \u2026 }).",
+          kind: "feature"
+        },
+        {
+          label: "Snippet side tree",
+          detail: "Folders, search, pin, last-run / Re-run, Update vs Save as, dirty \xB7 edited, confirm delete, \u2191\u2193 / Enter / Ctrl+Enter. Stock Town snippet (use_skill('town')).",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Editor layout",
+          detail: "CodeMirror fills the left pane with ResizeObserver sizing; Command is opt-in autosize with corner grips (~1080\xD7560 default).",
+          kind: "ui"
+        },
+        {
+          label: "Run status",
+          detail: "Sent to <name> \xB7 HH:MM:SS. {{name}}/{{map}}/\u2026 placeholders still expand on Run from observe context.",
+          kind: "improve"
+        }
+      ]
+    },
+    {
       id: "0.9.10",
       title: "0.9.10",
       date: "2026-09-10",
@@ -10332,6 +10381,7 @@ ${fightHoverTip(src)}`
   var PANEL_IDS_SET = new Set(PANEL_IDS);
   var DEFAULT_COMMAND_SNIPPETS = [
     { id: "loot", name: "Loot", code: "loot()" },
+    { id: "town", name: "Town", code: "use_skill('town')" },
     { id: "stop", name: "Stop move", code: "stop('move')" },
     {
       id: "say-hi",
@@ -10353,6 +10403,7 @@ ${fightHoverTip(src)}`
     panelVisible: { ...DEFAULT_PANEL_VISIBLE },
     commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
     commandDraft: "",
+    commandLastRunId: null,
     combatCompact: false,
     bagOpenPreferred: false,
     panelOpacity: {},
@@ -10495,9 +10546,23 @@ ${fightHoverTip(src)}`
         code
       };
       if (folderRaw) snip.folder = folderRaw;
+      if (row3.pinned === true) snip.pinned = true;
       out.push(snip);
     }
-    return out;
+    return ensureStockCommandSnippets(out);
+  }
+  function ensureStockCommandSnippets(list) {
+    const hasTown = list.some(
+      (s) => s.id === "town" || /use_skill\s*\(\s*['"]town['"]\s*\)/.test(s.code)
+    );
+    if (hasTown) return list;
+    const next = list.slice();
+    next.splice(1, 0, {
+      id: "town",
+      name: "Town",
+      code: "use_skill('town')"
+    });
+    return next;
   }
   function normalizeLayoutProfileMode(raw) {
     if (raw === "desktop" || raw === "tablet" || raw === "phone" || raw === "auto") {
@@ -10555,6 +10620,7 @@ ${fightHoverTip(src)}`
       panelVisible: mergePanelVisible(parsed.panelVisible, parsed.combatVisible),
       commandSnippets: normalizeSnippets(parsed.commandSnippets),
       commandDraft: typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
+      commandLastRunId: typeof parsed.commandLastRunId === "string" && parsed.commandLastRunId ? parsed.commandLastRunId : null,
       mailDraft: typeof parsed.mailDraft === "string" ? parsed.mailDraft : "",
       mailLastTo: Array.isArray(parsed.mailLastTo) ? parsed.mailLastTo.map(String).filter(Boolean).slice(0, 8) : [],
       mailPill: typeof parsed.mailPill === "string" ? parsed.mailPill : "all",
@@ -10640,6 +10706,7 @@ ${fightHoverTip(src)}`
       panelVisible: mergePanelVisible(null),
       commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
       commandDraft: "",
+      commandLastRunId: null,
       combatCompact: false,
       bagOpenPreferred: false,
       panelOpacity: {},
@@ -10737,6 +10804,11 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.commandDraft === "string") {
       next.commandDraft = partial.commandDraft;
+    }
+    if (partial.commandLastRunId === null) {
+      next.commandLastRunId = null;
+    } else if (typeof partial.commandLastRunId === "string") {
+      next.commandLastRunId = partial.commandLastRunId || null;
     }
     if (typeof partial.mailDraft === "string") {
       next.mailDraft = partial.mailDraft;
@@ -20184,8 +20256,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.10" : "unknown";
-    const builtAt = true ? "2026-09-10T09:09:45.574Z" : "unknown";
+    const version = true ? "0.9.11" : "unknown";
+    const builtAt = true ? "2026-09-10T18:48:24.175Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -22600,6 +22672,7 @@ button.comm-mail__stack-u {
         "#bottomleftcorner",
         ".comm-bag-mount",
         ".CodeMirror",
+        ".CommandPanel-editor",
         ".ecu-command-editor",
         ".comm-fx-overlay",
         ".comm-fx-row",
@@ -29650,7 +29723,7 @@ button.comm-mail__stack-u {
     const editChrome = props.editChrome === "grip" || props.editChrome === "anchors" ? props.editChrome : "full";
     const movable = (!!props.movable || dragPinned) && !editing;
     const autoSize = panelUsesAutoSize(pos, String(id));
-    const showResizeHandles = props.showResizeHandles !== false && !!props.onResizeFrame && (editing || movable) && !autoSize;
+    const showResizeHandles = props.showResizeHandles !== false && !!props.onResizeFrame && (editing || movable);
     const onResizePointerDown = (ev, corner) => {
       if (!props.onResizeFrame) return;
       ev.preventDefault();
@@ -56262,10 +56335,130 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/lib/commandSnippets.ts
+  function readCommandTemplateCtx() {
+    var _a, _b;
+    const obs = getObserving();
+    const region = String(getServerRegion() || "");
+    const ident = String(getServerIdentifier() || "");
+    const server = region && ident ? region + ident : region || ident || "";
+    const map = String(
+      obs && obs.map || getCurrentMap() || ""
+    );
+    const targetRaw = obs && obs.target != null && String(obs.target) !== "" ? String(obs.target) : "";
+    const x = obs && (obs.real_x != null || obs.x != null) ? String(Math.round(Number((_a = obs.real_x) != null ? _a : obs.x) || 0)) : "";
+    const y = obs && (obs.real_y != null || obs.y != null) ? String(Math.round(Number((_b = obs.real_y) != null ? _b : obs.y) || 0)) : "";
+    return {
+      name: obs && obs.name ? String(obs.name) : "",
+      map,
+      server,
+      region,
+      id: obs && obs.id != null ? String(obs.id) : "",
+      x,
+      y,
+      target: targetRaw
+    };
+  }
+  function expandCommandTemplate(code, ctx) {
+    const c = ctx || readCommandTemplateCtx();
+    return String(code || "").replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (_m, key) => {
+      const k = String(key || "").toLowerCase();
+      if (k === "name") return c.name;
+      if (k === "map") return c.map;
+      if (k === "server") return c.server;
+      if (k === "region") return c.region;
+      if (k === "id") return c.id;
+      if (k === "x") return c.x;
+      if (k === "y") return c.y;
+      if (k === "target") return c.target;
+      return "";
+    });
+  }
+  function sortSnips(list) {
+    const out = list.slice();
+    out.sort((a, b) => {
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function buildSnippetTree(snippets, query) {
+    const q = query.trim().toLowerCase();
+    const byFolder = /* @__PURE__ */ Object.create(null);
+    const root = [];
+    const pinned = [];
+    for (let i = 0; i < snippets.length; i++) {
+      const snip = snippets[i];
+      if (q) {
+        const hay = `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
+        if (hay.indexOf(q) < 0) continue;
+      }
+      if (snip.pinned) {
+        pinned.push(snip);
+        continue;
+      }
+      const folder = String(snip.folder || "").trim();
+      if (!folder) {
+        root.push(snip);
+        continue;
+      }
+      if (!byFolder[folder]) byFolder[folder] = [];
+      byFolder[folder].push(snip);
+    }
+    const keys = Object.keys(byFolder);
+    keys.sort((a, b) => a.localeCompare(b));
+    const out = [];
+    if (pinned.length) {
+      out.push({ key: "__pinned__", label: "Pinned", items: sortSnips(pinned) });
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      out.push({ key, label: key, items: sortSnips(byFolder[key]) });
+    }
+    if (root.length) {
+      out.push({
+        key: "__none__",
+        label: keys.length || pinned.length ? "Ungrouped" : "Snippets",
+        items: sortSnips(root)
+      });
+    }
+    return out;
+  }
+  function flattenVisibleSnippets(tree, collapsed, searching) {
+    const out = [];
+    for (let f = 0; f < tree.length; f++) {
+      const bucket = tree[f];
+      const isOpen3 = searching ? true : !collapsed[bucket.key];
+      if (!isOpen3) continue;
+      for (let i = 0; i < bucket.items.length; i++) {
+        out.push(bucket.items[i]);
+      }
+    }
+    return out;
+  }
+  function findSnippetById(snippets, id) {
+    if (!id) return null;
+    for (let i = 0; i < snippets.length; i++) {
+      if (snippets[i].id === id) return snippets[i];
+    }
+    return null;
+  }
+
   // src/host/commandRun.ts
   function isCommandObserveReady() {
     const obs = getObserving();
     return !!(obs && obs.name);
+  }
+  function clockStamp() {
+    try {
+      const d = /* @__PURE__ */ new Date();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      return hh + ":" + mm + ":" + ss;
+    } catch (e2) {
+      return "";
+    }
   }
   function runCommandSnippet(code) {
     const trimmed = String(code || "").trim();
@@ -56276,23 +56469,925 @@ ${ESTIMATE_HINT}`,
       showCommToast("Observe a character first");
       return { ok: false, status: "Observe a character first" };
     }
-    const ok = emitObserverCommand(trimmed);
+    const expanded = expandCommandTemplate(trimmed).trim();
+    if (!expanded) {
+      return { ok: false, status: "Command empty after template expand" };
+    }
+    const ok = emitObserverCommand(expanded);
     if (!ok) {
       return { ok: false, status: "No socket \u2014 not connected" };
     }
-    return { ok: true, status: "Sent to observed character" };
+    const obs = getObserving();
+    const who = obs && obs.name ? String(obs.name) : "observed";
+    const t = clockStamp();
+    return {
+      ok: true,
+      status: t ? `Sent to ${who} \xB7 ${t}` : `Sent to ${who}`
+    };
+  }
+
+  // src/lib/commandCompletions.ts
+  var SMART_MOVE_SHORTCUTS = [
+    "town",
+    "upgrade",
+    "compound",
+    "exchange",
+    "potions",
+    "scrolls"
+  ];
+  var STOP_MODES = ["move", "town", "blink", "smart", "teleport"];
+  var SKIP_PARAMS = {
+    quantity: true,
+    num: true,
+    gold: true,
+    x: true,
+    y: true,
+    timeout_ms: true,
+    on_done: true,
+    message: true,
+    target: true,
+    entity: true,
+    color: true,
+    data: true,
+    failed: true,
+    fn: true,
+    result: true,
+    a: true,
+    b: true,
+    price: true,
+    pack: true,
+    pack_num: true,
+    slot: true,
+    trade_slot: true,
+    item_num: true,
+    scroll_num: true,
+    offering_num: true,
+    only_calculate: true,
+    size: true,
+    code: true,
+    code_slot_or_name: true,
+    receiver: true,
+    to: true,
+    value: true,
+    second: true,
+    spawn: true,
+    extra_arg: true,
+    p: true
+  };
+  var ITEM_NAME_FNS = {
+    buy: true,
+    buy_with_gold: true,
+    buy_with_shells: true,
+    quantity: true,
+    locate_item: true,
+    craft: true,
+    auto_craft: true
+  };
+  var SKILL_NAME_FNS = {
+    use_skill: true,
+    reduce_cooldown: true
+  };
+  var MAX_RESULTS = 40;
+  function stripDefault(param) {
+    const raw = String(param || "").trim();
+    if (!raw) return "";
+    const eq = raw.indexOf("=");
+    const base = eq >= 0 ? raw.slice(0, eq) : raw;
+    return base.replace(/\s+/g, "").replace(/^[.]{3}/, "");
+  }
+  function parseObjectArgKeys(bodySnippet) {
+    const out = [];
+    const seen = /* @__PURE__ */ Object.create(null);
+    const push = (key, detail) => {
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      const row3 = { key };
+      if (detail) row3.detail = detail;
+      out.push(row3);
+    };
+    const block = /^\s*\/\/\s*args\s*:?\s*\r?\n((?:\s*\/\/[^\n]*\r?\n?)+)/i.exec(
+      bodySnippet
+    );
+    if (block) {
+      const lines = block[1].split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const m = /^\s*\/\/\s*([A-Za-z_][\w]*)\s*(?:[-:]\s*(.*))?$/.exec(line) || /^\s*\/\/\s*([A-Za-z_][\w]*)\s*$/.exec(line);
+        if (!m) continue;
+        const detail = m[2] ? String(m[2]).trim() : "";
+        push(m[1], detail || void 0);
+      }
+    }
+    const useRe = /\bargs\.([A-Za-z_][\w]*)/g;
+    let um;
+    while (um = useRe.exec(bodySnippet)) {
+      push(um[1]);
+    }
+    return out;
+  }
+  function parseRunnerApiIndex(source) {
+    const sigs = /* @__PURE__ */ Object.create(null);
+    const re = /(?:^|[\n\r;])\s*(?:async\s+)?function\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)\s*\{/g;
+    let m;
+    while (m = re.exec(source)) {
+      const name = m[1];
+      if (!name || sigs[name]) continue;
+      const paramsRaw = m[2].split(",");
+      const params = [];
+      for (let i = 0; i < paramsRaw.length; i++) {
+        const p = stripDefault(paramsRaw[i]);
+        if (p) params.push(p);
+      }
+      const bodyStart = (m.index || 0) + m[0].length;
+      const snippet = source.slice(bodyStart, bodyStart + 1600);
+      sigs[name] = {
+        name,
+        params,
+        objectKeys: parseObjectArgKeys(snippet)
+      };
+    }
+    const names = Object.keys(sigs);
+    names.sort((a, b) => a.localeCompare(b));
+    return { names, sigs };
+  }
+  function runnerFunctionsUrl() {
+    const w = typeof window !== "undefined" ? window : null;
+    const ver = w && w.version || w && w.v || w && w.domain && w.domain.v || "";
+    const base = "/js/runner_functions.js";
+    return ver ? `${base}?v=${encodeURIComponent(String(ver))}` : base;
+  }
+  var runnerIndex = null;
+  var runnerApiInflight = null;
+  function getRunnerApiIndex() {
+    return runnerIndex || {
+      names: [],
+      sigs: /* @__PURE__ */ Object.create(null)
+    };
+  }
+  function getRunnerApiNames() {
+    return getRunnerApiIndex().names.slice();
+  }
+  function ensureRunnerApiNames() {
+    if (runnerIndex) return Promise.resolve(runnerIndex.names.slice());
+    if (runnerApiInflight) return runnerApiInflight;
+    if (typeof fetch !== "function") {
+      runnerIndex = { names: [], sigs: /* @__PURE__ */ Object.create(null) };
+      return Promise.resolve([]);
+    }
+    runnerApiInflight = fetch(runnerFunctionsUrl(), {
+      credentials: "same-origin",
+      cache: "force-cache"
+    }).then((res) => {
+      if (!res.ok) throw new Error("runner_functions " + res.status);
+      return res.text();
+    }).then((text) => {
+      runnerIndex = parseRunnerApiIndex(text);
+      return runnerIndex.names.slice();
+    }).catch(() => {
+      if (!runnerIndex) {
+        runnerIndex = { names: [], sigs: /* @__PURE__ */ Object.create(null) };
+      }
+      return runnerIndex.names.slice();
+    }).then((names) => {
+      runnerApiInflight = null;
+      return names;
+    });
+    return runnerApiInflight;
+  }
+  function catalogKeys(table) {
+    if (!table || typeof table !== "object") return [];
+    const keys = Object.keys(table);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (!k || k === "ignore" || k === "placeholder") continue;
+      out.push(k);
+    }
+    return out;
+  }
+  function detailOf(table, key) {
+    if (!table || !table[key]) return void 0;
+    const name = table[key].name;
+    return typeof name === "string" && name && name !== key ? name : void 0;
+  }
+  function snapshotCommandCatalogs(G) {
+    const g = G || getG() || null;
+    const skills = (g == null ? void 0 : g.skills) || null;
+    const items = (g == null ? void 0 : g.items) || null;
+    const monsters = (g == null ? void 0 : g.monsters) || null;
+    const npcs = (g == null ? void 0 : g.npcs) || null;
+    const maps = (g == null ? void 0 : g.maps) || null;
+    const events = (g == null ? void 0 : g.events) || null;
+    return {
+      skills: catalogKeys(skills),
+      items: catalogKeys(items),
+      monsters: catalogKeys(monsters),
+      npcs: catalogKeys(npcs),
+      maps: catalogKeys(maps),
+      events: catalogKeys(events),
+      skillDetail: (k) => detailOf(skills, k),
+      itemDetail: (k) => detailOf(items, k),
+      monsterDetail: (k) => detailOf(monsters, k),
+      npcDetail: (k) => detailOf(npcs, k),
+      mapDetail: (k) => detailOf(maps, k),
+      eventDetail: (k) => detailOf(events, k)
+    };
+  }
+  function kindForParam(callName, paramName) {
+    const fn = String(callName || "").toLowerCase();
+    const p = String(paramName || "").toLowerCase();
+    if (!p) return "none";
+    if (SKIP_PARAMS[p]) return "none";
+    if (p === "skill") return "skill";
+    if (p === "npc_id" || p === "npc") return "npc";
+    if (p === "map" || p === "destination" || p === "dest" || p === "place") {
+      return "mapish";
+    }
+    if (p === "event") return "event";
+    if (p === "action" && fn === "stop") return "stop";
+    if (p === "item") return "item";
+    if (p === "type" || p === "mtype") return "monster";
+    if (p === "args") return "none";
+    if (p === "name") {
+      if (ITEM_NAME_FNS[fn]) return "item";
+      if (SKILL_NAME_FNS[fn]) return "skill";
+      return "none";
+    }
+    if (p === "name_or_slot") return "item";
+    return "none";
+  }
+  function kindForObjectPropValue(_callName, prop) {
+    const p = String(prop || "").toLowerCase();
+    if (p === "type" || p === "mtype") return "monster";
+    return "none";
+  }
+  function findEnclosingCall(value, cursor) {
+    const c = Math.max(0, Math.min(cursor, value.length));
+    let inString = null;
+    const callStack = [];
+    for (let i = 0; i < c; i++) {
+      const ch = value[i];
+      const prev = i > 0 ? value[i - 1] : "";
+      if (inString) {
+        if (ch === inString && prev !== "\\") inString = null;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        inString = ch;
+        continue;
+      }
+      if (ch === "(") {
+        let j = i - 1;
+        while (j >= 0 && /\s/.test(value[j])) j--;
+        let end = j;
+        while (j >= 0 && /[A-Za-z0-9_]/.test(value[j])) j--;
+        const name = value.slice(j + 1, end + 1);
+        if (name && /^[A-Za-z_]/.test(name)) {
+          callStack.push({
+            name,
+            openParen: i,
+            argIndex: 0,
+            argStart: i + 1,
+            brace: 0,
+            bracket: 0
+          });
+        } else if (callStack.length) {
+          callStack[callStack.length - 1].bracket++;
+        }
+        continue;
+      }
+      if (ch === ")") {
+        if (callStack.length) {
+          const top2 = callStack[callStack.length - 1];
+          if (top2.bracket > 0) top2.bracket--;
+          else callStack.pop();
+        }
+        continue;
+      }
+      if (ch === "{") {
+        if (callStack.length) callStack[callStack.length - 1].brace++;
+        continue;
+      }
+      if (ch === "}") {
+        if (callStack.length && callStack[callStack.length - 1].brace > 0) {
+          callStack[callStack.length - 1].brace--;
+        }
+        continue;
+      }
+      if (ch === "[") {
+        if (callStack.length) callStack[callStack.length - 1].bracket++;
+        continue;
+      }
+      if (ch === "]") {
+        if (callStack.length && callStack[callStack.length - 1].bracket > 0) {
+          callStack[callStack.length - 1].bracket--;
+        }
+        continue;
+      }
+      if (ch === "," && callStack.length && callStack[callStack.length - 1].brace === 0 && callStack[callStack.length - 1].bracket === 0) {
+        const top2 = callStack[callStack.length - 1];
+        top2.argIndex++;
+        top2.argStart = i + 1;
+      }
+    }
+    if (!callStack.length) return null;
+    const top = callStack[callStack.length - 1];
+    return {
+      name: top.name,
+      argIndex: top.argIndex,
+      openParen: top.openParen,
+      argStart: top.argStart
+    };
+  }
+  function inspectObjectSite(value, cursor, argStart) {
+    const c = Math.max(0, Math.min(cursor, value.length));
+    if (argStart < 0 || argStart > c) return null;
+    const slice = value.slice(argStart, c);
+    let inString = null;
+    let brace = 0;
+    let objOpen = -1;
+    for (let i = 0; i < slice.length; i++) {
+      const ch = slice[i];
+      const prev = i > 0 ? slice[i - 1] : "";
+      if (inString) {
+        if (ch === inString && prev !== "\\") inString = null;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        inString = ch;
+        continue;
+      }
+      if (ch === "{") {
+        if (brace === 0) objOpen = argStart + i;
+        brace++;
+        continue;
+      }
+      if (ch === "}") {
+        if (brace > 0) brace--;
+        if (brace === 0) objOpen = -1;
+        continue;
+      }
+    }
+    if (objOpen < 0 || brace < 1) return null;
+    const inner = value.slice(objOpen + 1, c);
+    let fragStart = 0;
+    inString = null;
+    let nested = 0;
+    for (let i = 0; i < inner.length; i++) {
+      const ch = inner[i];
+      const prev = i > 0 ? inner[i - 1] : "";
+      if (inString) {
+        if (ch === inString && prev !== "\\") inString = null;
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        inString = ch;
+        continue;
+      }
+      if (ch === "{" || ch === "[") nested++;
+      else if (ch === "}" || ch === "]") {
+        if (nested > 0) nested--;
+      } else if (ch === "," && nested === 0) fragStart = i + 1;
+    }
+    const frag = inner.slice(fragStart);
+    const valueMode = /^\s*([A-Za-z_][\w]*)\s*:\s*(.*)$/.exec(frag);
+    if (valueMode) {
+      const propKey = valueMode[1];
+      const after = valueMode[2];
+      const sm = /^(['"])(.*)$/.exec(after);
+      if (sm) {
+        return {
+          mode: "value",
+          propKey,
+          prefix: sm[2],
+          from: c - sm[2].length,
+          to: c
+        };
+      }
+      if (/^\s*$/.test(after)) {
+        return {
+          mode: "value",
+          propKey,
+          prefix: "",
+          from: c,
+          to: c
+        };
+      }
+      const id = /([A-Za-z_][\w]*)$/.exec(after);
+      if (id) {
+        return {
+          mode: "value",
+          propKey,
+          prefix: id[1],
+          from: c - id[1].length,
+          to: c
+        };
+      }
+      return {
+        mode: "value",
+        propKey,
+        prefix: "",
+        from: c,
+        to: c
+      };
+    }
+    const keyId = /^\s*([A-Za-z_][\w]*)$/.exec(frag);
+    if (!keyId && !/^\s*$/.test(frag)) return null;
+    const prefix = keyId ? keyId[1] : "";
+    const from = keyId ? c - keyId[1].length : c;
+    return {
+      mode: "key",
+      prefix,
+      from,
+      to: c
+    };
+  }
+  function inspectCompletionContext(value, cursor, apiIndex) {
+    const c = Math.max(0, Math.min(cursor, value.length));
+    const before = value.slice(0, c);
+    const index = apiIndex || getRunnerApiIndex();
+    let quote = "'";
+    let inString = false;
+    let stringStart = -1;
+    for (let i = 0; i < before.length; i++) {
+      const ch = before[i];
+      if (!inString) {
+        if (ch === "'" || ch === '"') {
+          inString = true;
+          quote = ch;
+          stringStart = i;
+        }
+      } else if (ch === quote && before[i - 1] !== "\\") {
+        inString = false;
+        stringStart = -1;
+      }
+    }
+    const call = findEnclosingCall(value, c);
+    if (call) {
+      const obj = inspectObjectSite(value, c, call.argStart);
+      if (obj) {
+        const sig2 = index.sigs[call.name];
+        if (obj.mode === "key") {
+          return {
+            prefix: obj.prefix,
+            from: obj.from,
+            to: obj.to,
+            inString: false,
+            wantQuoted: false,
+            wantColon: true,
+            quote,
+            kind: "prop",
+            callName: call.name,
+            argIndex: call.argIndex,
+            paramName: sig2 == null ? void 0 : sig2.params[call.argIndex]
+          };
+        }
+        const kind2 = kindForObjectPropValue(call.name, obj.propKey || "");
+        const valueInString = inString && stringStart >= 0;
+        return {
+          prefix: valueInString ? before.slice(stringStart + 1) : obj.prefix,
+          from: valueInString ? stringStart + 1 : obj.from,
+          to: c,
+          inString: valueInString,
+          wantQuoted: !valueInString && kind2 !== "none" && kind2 !== "api",
+          wantColon: false,
+          quote,
+          kind: kind2,
+          callName: call.name,
+          argIndex: call.argIndex,
+          paramName: obj.propKey
+        };
+      }
+    }
+    if (inString && stringStart >= 0) {
+      const prefix = before.slice(stringStart + 1);
+      let kind2 = "any_key";
+      let paramName2;
+      if (call) {
+        const sig2 = index.sigs[call.name];
+        paramName2 = sig2 == null ? void 0 : sig2.params[call.argIndex];
+        kind2 = paramName2 ? kindForParam(call.name, paramName2) : fallbackKindForCall(call.name);
+      }
+      return {
+        prefix,
+        from: stringStart + 1,
+        to: c,
+        inString: true,
+        wantQuoted: false,
+        wantColon: false,
+        quote,
+        kind: kind2,
+        callName: call == null ? void 0 : call.name,
+        argIndex: call == null ? void 0 : call.argIndex,
+        paramName: paramName2
+      };
+    }
+    if (!call) {
+      const idMatch2 = /([A-Za-z_][\w]*)$/.exec(before);
+      if (idMatch2) {
+        return {
+          prefix: idMatch2[1],
+          from: c - idMatch2[1].length,
+          to: c,
+          inString: false,
+          wantQuoted: false,
+          wantColon: false,
+          quote,
+          kind: "api"
+        };
+      }
+      return {
+        prefix: "",
+        from: c,
+        to: c,
+        inString: false,
+        wantQuoted: false,
+        wantColon: false,
+        quote,
+        kind: "api"
+      };
+    }
+    const sig = index.sigs[call.name];
+    const paramName = sig == null ? void 0 : sig.params[call.argIndex];
+    const kind = paramName ? kindForParam(call.name, paramName) : fallbackKindForCall(call.name);
+    const argBefore = value.slice(call.argStart, c);
+    const idMatch = /([A-Za-z_][\w]*)$/.exec(argBefore);
+    if (idMatch && kind === "api") {
+      return {
+        prefix: idMatch[1],
+        from: c - idMatch[1].length,
+        to: c,
+        inString: false,
+        wantQuoted: false,
+        wantColon: false,
+        quote,
+        kind: "api"
+      };
+    }
+    return {
+      prefix: idMatch && kind !== "none" ? idMatch[1] : "",
+      from: idMatch && kind !== "none" ? c - idMatch[1].length : c,
+      to: c,
+      inString: false,
+      wantQuoted: kind !== "none" && kind !== "api" && kind !== "prop",
+      wantColon: false,
+      quote,
+      kind,
+      callName: call.name,
+      argIndex: call.argIndex,
+      paramName
+    };
+  }
+  function fallbackKindForCall(call) {
+    const name = String(call || "").toLowerCase();
+    if (SKILL_NAME_FNS[name] || name === "is_on_cooldown") return "skill";
+    if (ITEM_NAME_FNS[name]) return "item";
+    if (name === "find_npc") return "npc";
+    if (name === "join") return "event";
+    if (name === "stop") return "stop";
+    if (name === "smart_move" || name === "transport" || name === "enter") {
+      return "mapish";
+    }
+    return "none";
+  }
+  function pushKey(out, key, kind, ctx, detail) {
+    let text = key;
+    if (ctx.wantColon && kind === "prop") text = `${key}: `;
+    else if (ctx.wantQuoted && !ctx.inString) {
+      text = `${ctx.quote}${key}${ctx.quote}`;
+    }
+    out.push({
+      text,
+      label: key,
+      kind,
+      detail
+    });
+  }
+  function filterSort(items, prefix) {
+    const q = prefix.toLowerCase();
+    const scored = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const label = item.label.toLowerCase();
+      const detail = (item.detail || "").toLowerCase();
+      let score = -1;
+      if (!q) score = 0;
+      else if (label === q) score = 400;
+      else if (label.startsWith(q)) {
+        score = 300 - Math.min(label.length, 80);
+      } else if (detail.startsWith(q)) score = 200;
+      else if (label.indexOf(q) >= 0) score = 100;
+      else if (detail.indexOf(q) >= 0) score = 50;
+      if (score < 0) continue;
+      if (item.kind === "api") score += 5;
+      if (item.kind === "shortcut") score += 8;
+      if (item.kind === "prop") score += 10;
+      scored.push({ score, item });
+    }
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.item.label.localeCompare(b.item.label);
+    });
+    const out = [];
+    const seen = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < scored.length && out.length < MAX_RESULTS; i++) {
+      const it = scored[i].item;
+      const k = it.kind + ":" + it.label;
+      if (seen[k]) continue;
+      seen[k] = true;
+      out.push(it);
+    }
+    return out;
+  }
+  function listCommandCompletions(query, opts) {
+    const index = (opts == null ? void 0 : opts.apiIndex) || ((opts == null ? void 0 : opts.apiNames) ? {
+      names: opts.apiNames.slice(),
+      sigs: /* @__PURE__ */ Object.create(null)
+    } : getRunnerApiIndex());
+    if ((opts == null ? void 0 : opts.apiNames) && !(opts == null ? void 0 : opts.apiIndex)) {
+      for (let i = 0; i < opts.apiNames.length; i++) {
+        const n = opts.apiNames[i];
+        if (!index.sigs[n]) {
+          index.sigs[n] = { name: n, params: [], objectKeys: [] };
+        }
+      }
+    }
+    const ctx = inspectCompletionContext(query.value, query.cursor, index);
+    if (ctx.kind === "none") return [];
+    const snap = (opts == null ? void 0 : opts.catalog) || snapshotCommandCatalogs();
+    const apis = index.names.length ? index.names : (opts == null ? void 0 : opts.apiNames) || getRunnerApiNames();
+    const raw = [];
+    const addKeys = (keys, kind, detailFn) => {
+      for (let i = 0; i < keys.length; i++) {
+        pushKey(raw, keys[i], kind, ctx, detailFn(keys[i]));
+      }
+    };
+    if (ctx.kind === "api") {
+      for (let i = 0; i < apis.length; i++) {
+        pushKey(raw, apis[i], "api", ctx);
+      }
+    } else if (ctx.kind === "prop") {
+      const sig = ctx.callName ? index.sigs[ctx.callName] : null;
+      const keys = (sig == null ? void 0 : sig.objectKeys) || [];
+      for (let i = 0; i < keys.length; i++) {
+        pushKey(raw, keys[i].key, "prop", ctx, keys[i].detail);
+      }
+    } else if (ctx.kind === "skill") {
+      addKeys(snap.skills, "skill", snap.skillDetail);
+    } else if (ctx.kind === "item") {
+      addKeys(snap.items, "item", snap.itemDetail);
+    } else if (ctx.kind === "monster") {
+      addKeys(snap.monsters, "monster", snap.monsterDetail);
+    } else if (ctx.kind === "npc") {
+      addKeys(snap.npcs, "npc", snap.npcDetail);
+    } else if (ctx.kind === "event") {
+      addKeys(snap.events, "event", snap.eventDetail);
+    } else if (ctx.kind === "stop") {
+      for (let i = 0; i < STOP_MODES.length; i++) {
+        pushKey(raw, STOP_MODES[i], "stop", ctx);
+      }
+    } else if (ctx.kind === "mapish") {
+      for (let i = 0; i < SMART_MOVE_SHORTCUTS.length; i++) {
+        pushKey(raw, SMART_MOVE_SHORTCUTS[i], "shortcut", ctx);
+      }
+      addKeys(snap.maps, "map", snap.mapDetail);
+      addKeys(snap.npcs, "npc", snap.npcDetail);
+      addKeys(snap.monsters, "monster", snap.monsterDetail);
+      addKeys(snap.events, "event", snap.eventDetail);
+    } else if (ctx.kind === "any_key") {
+      addKeys(snap.skills, "skill", snap.skillDetail);
+      addKeys(snap.items, "item", snap.itemDetail);
+      addKeys(snap.maps, "map", snap.mapDetail);
+      addKeys(snap.npcs, "npc", snap.npcDetail);
+      addKeys(snap.monsters, "monster", snap.monsterDetail);
+      addKeys(snap.events, "event", snap.eventDetail);
+    }
+    return filterSort(raw, ctx.prefix);
+  }
+  function shouldAutoOpenCompletions(value, cursor, apiIndex) {
+    const ctx = inspectCompletionContext(value, cursor, apiIndex);
+    if (ctx.kind === "none") return false;
+    if (ctx.kind === "api") return ctx.prefix.length >= 2;
+    if (ctx.kind === "prop") return true;
+    if (ctx.inString) return true;
+    if (/[A-Za-z_][\w]*\s*\(\s*$/.test(value.slice(0, cursor))) return true;
+    return ctx.prefix.length >= 1;
+  }
+
+  // src/host/commandCmHints.ts
+  function truncateHintDetail(text, max = 42) {
+    const s = String(text || "").replace(/\s+/g, " ").trim();
+    if (s.length <= max) return s;
+    return s.slice(0, max - 1) + "\u2026";
+  }
+  function indexFromPos(cm, pos) {
+    if (typeof cm.indexFromPos === "function") return cm.indexFromPos(pos);
+    const lines = cm.getValue().split("\n");
+    let n = 0;
+    for (let i = 0; i < pos.line && i < lines.length; i++) {
+      n += lines[i].length + 1;
+    }
+    return n + pos.ch;
+  }
+  function posFromIndex(cm, index) {
+    if (typeof cm.posFromIndex === "function") return cm.posFromIndex(index);
+    const text = cm.getValue();
+    const lines = text.split("\n");
+    let left = Math.max(0, Math.min(index, text.length));
+    for (let i = 0; i < lines.length; i++) {
+      if (left <= lines[i].length) return { line: i, ch: left };
+      left -= lines[i].length + 1;
+    }
+    const last = Math.max(0, lines.length - 1);
+    return { line: last, ch: (lines[last] || "").length };
+  }
+  function attachCommandCodeMirrorHints(cm) {
+    void ensureRunnerApiNames();
+    let popup = null;
+    let items = [];
+    let active = 0;
+    let replaceFrom = 0;
+    let replaceTo = 0;
+    let suppressUntil = 0;
+    const close = () => {
+      if (popup && popup.parentNode) popup.parentNode.removeChild(popup);
+      popup = null;
+      items = [];
+      active = 0;
+    };
+    const render = () => {
+      if (!popup) return;
+      popup.textContent = "";
+      for (let i = 0; i < items.length; i++) {
+        const row3 = items[i];
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "CommandPanel-hint" + (i === active ? " is-active" : "");
+        el.setAttribute("data-kind", row3.kind);
+        const label = document.createElement("span");
+        label.className = "CommandPanel-hint__label";
+        label.textContent = row3.label;
+        el.appendChild(label);
+        const meta2 = document.createElement("span");
+        meta2.className = "CommandPanel-hint__meta";
+        const detail = row3.detail ? truncateHintDetail(row3.detail) : "";
+        meta2.textContent = detail ? `${row3.kind} \xB7 ${detail}` : row3.kind;
+        el.title = row3.detail ? `${row3.label} \u2014 ${row3.detail}` : `${row3.label} (${row3.kind})`;
+        el.appendChild(meta2);
+        const idx = i;
+        el.onmousedown = (ev) => {
+          ev.preventDefault();
+          pick(idx);
+        };
+        popup.appendChild(el);
+      }
+      const on = popup.children[active];
+      if (on && typeof on.scrollIntoView === "function") {
+        on.scrollIntoView({ block: "nearest" });
+      }
+    };
+    const place = () => {
+      if (!popup) return;
+      const coords = cm.cursorCoords(true, "page");
+      popup.style.left = `${Math.round(coords.left)}px`;
+      popup.style.top = `${Math.round(coords.bottom + 2)}px`;
+    };
+    const pick = (idx) => {
+      const row3 = items[idx];
+      if (!row3) return;
+      const from = posFromIndex(cm, replaceFrom);
+      const to = posFromIndex(cm, replaceTo);
+      cm.replaceRange(row3.text, from, to);
+      close();
+      suppressUntil = Date.now() + 120;
+      try {
+        cm.focus();
+      } catch (e2) {
+      }
+    };
+    const open = () => {
+      const value = cm.getValue();
+      const cursor = indexFromPos(cm, cm.getCursor());
+      const ctx = inspectCompletionContext(value, cursor);
+      const list = listCommandCompletions({ value, cursor });
+      if (!list.length) {
+        close();
+        return;
+      }
+      replaceFrom = ctx.from;
+      replaceTo = ctx.to;
+      items = list;
+      active = 0;
+      if (!popup) {
+        popup = document.createElement("div");
+        popup.className = "CommandPanel-hints";
+        popup.setAttribute("role", "listbox");
+        document.body.appendChild(popup);
+      }
+      render();
+      place();
+    };
+    const onChange = (_cm, change) => {
+      if (Date.now() < suppressUntil) return;
+      if (change && change.origin === "setValue") return;
+      if (cm.somethingSelected && cm.somethingSelected()) {
+        close();
+        return;
+      }
+      const value = cm.getValue();
+      const cursor = indexFromPos(cm, cm.getCursor());
+      if (shouldAutoOpenCompletions(value, cursor)) open();
+      else close();
+    };
+    const onKeyDown = (_cm, ev) => {
+      if (!popup) {
+        if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === " " || ev.code === "Space")) {
+          ev.preventDefault();
+          open();
+        }
+        return;
+      }
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+        return;
+      }
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        active = (active + 1) % items.length;
+        render();
+        return;
+      }
+      if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        active = (active - 1 + items.length) % items.length;
+        render();
+        return;
+      }
+      if (ev.key === "Enter" || ev.key === "Tab") {
+        ev.preventDefault();
+        pick(active);
+        return;
+      }
+    };
+    const onScroll = () => {
+      if (popup) place();
+    };
+    const onBlur = () => {
+      window.setTimeout(() => {
+        const ae = document.activeElement;
+        if (popup && ae && popup.contains(ae)) return;
+        close();
+      }, 120);
+    };
+    cm.on("change", onChange);
+    cm.on("keydown", onKeyDown);
+    cm.on("scroll", onScroll);
+    cm.on("blur", onBlur);
+    void ensureRunnerApiNames().then(() => {
+      if (popup) open();
+    });
+    return {
+      open,
+      close,
+      dispose: () => {
+        close();
+        if (cm.off) {
+          cm.off("change", onChange);
+          cm.off("keydown", onKeyDown);
+          cm.off("scroll", onScroll);
+          cm.off("blur", onBlur);
+        }
+      }
+    };
   }
 
   // src/host/codemirror.ts
+  var hintsByHost = /* @__PURE__ */ new WeakMap();
   function getHostCodeMirror() {
     const root = globalThis;
     const CM = root.CodeMirror || root.window && root.window.CodeMirror;
     return typeof CM === "function" ? CM : null;
   }
   var COMMAND_CM_HEIGHT_PX = 320;
+  var COMMAND_CM_MIN_HEIGHT_PX = COMMAND_CM_HEIGHT_PX;
+  function syncCommandCodeMirrorSize(cm, host2) {
+    const measured = Math.floor(host2.clientHeight || 0);
+    const h = Math.max(COMMAND_CM_MIN_HEIGHT_PX, measured || COMMAND_CM_HEIGHT_PX);
+    cm.setSize("100%", h);
+    try {
+      cm.refresh();
+    } catch (e2) {
+    }
+  }
   function mountCommandCodeMirror(host2, opts) {
     const CodeMirror = getHostCodeMirror();
     if (!CodeMirror) return null;
+    const prevHints = hintsByHost.get(host2);
+    if (prevHints) {
+      prevHints.dispose();
+      hintsByHost.delete(host2);
+    }
     while (host2.firstChild) {
       host2.removeChild(host2.firstChild);
     }
@@ -56312,23 +57407,39 @@ ${ESTIMATE_HINT}`,
         },
         "Cmd-Enter": () => {
           opts.onCtrlEnter();
+        },
+        "Ctrl-Space": () => {
+          var _a;
+          (_a = hintsByHost.get(host2)) == null ? void 0 : _a.open();
+        },
+        "Cmd-Space": () => {
+          var _a;
+          (_a = hintsByHost.get(host2)) == null ? void 0 : _a.open();
         }
       }
     });
     const wrap = cm.getWrapperElement();
     wrap.style.border = "1px solid #555";
-    wrap.style.fontSize = "16px";
-    wrap.style.lineHeight = "1.4";
+    wrap.style.fontSize = "18px";
+    wrap.style.lineHeight = "1.45";
     wrap.style.boxSizing = "border-box";
     wrap.style.width = "100%";
-    cm.setSize("100%", COMMAND_CM_HEIGHT_PX);
+    syncCommandCodeMirrorSize(cm, host2);
     cm.on("change", () => {
       opts.onChange(cm.getValue());
     });
+    if (typeof cm.getCursor === "function" && typeof cm.replaceRange === "function" && typeof cm.cursorCoords === "function") {
+      hintsByHost.set(host2, attachCommandCodeMirrorHints(cm));
+    }
     return cm;
   }
   function disposeCodeMirror(host2) {
     if (!host2) return;
+    const hints = hintsByHost.get(host2);
+    if (hints) {
+      hints.dispose();
+      hintsByHost.delete(host2);
+    }
     while (host2.firstChild) {
       host2.removeChild(host2.firstChild);
     }
@@ -56338,23 +57449,318 @@ ${ESTIMATE_HINT}`,
   var COMMAND_PANEL_CSS = `
 .CommandPanel {
   pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  /* Floor when the shell is still hugging / first paint before frame fill. */
+  min-height: 420px;
+  max-height: 100%;
+  overflow: hidden;
+}
+.CommandPanel-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 10px;
+  align-items: stretch;
+}
+.CommandPanel-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .CommandPanel-editor {
   position: relative;
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 240px;
   width: 100%;
   min-width: 0;
+  overflow: hidden;
   pointer-events: auto;
-  /* Keep CM's measure/input layers clipped to the editor box. */
-  contain: layout style;
 }
 .CommandPanel-editor .CodeMirror {
   width: 100% !important;
+  height: 100% !important;
   box-sizing: border-box;
   pointer-events: auto;
 }
 .CommandPanel-editor .CodeMirror-scroll {
-  max-height: none;
+  /* Keep vertical scroll inside the editor \u2014 never clip mid-line. */
+  overflow-x: auto !important;
+  overflow-y: scroll !important;
+}
+.CommandPanel-editor textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  resize: none;
+  box-sizing: border-box;
+}
+.CommandPanel-side {
+  flex: 0 0 260px;
+  width: 260px;
+  max-width: 42%;
+  min-width: 200px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 1px solid #333;
+  padding-left: 10px;
+  box-sizing: border-box;
+}
+.CommandPanel-side__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.CommandPanel-side__title {
+  font-size: 14px;
+  color: #ccc;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.CommandPanel-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 2px;
+}
+.CommandPanel-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #a86;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 5px 4px;
+  cursor: pointer;
+}
+.CommandPanel-folder:hover {
+  background: rgba(40, 36, 20, 0.55);
+}
+.CommandPanel-folder__twist {
+  flex: 0 0 14px;
+  color: #888;
+  font-size: 12px;
+}
+.CommandPanel-snip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 2px 4px 4px;
+}
+.CommandPanel-snip.is-on {
+  border-color: #a86;
+  background: rgba(60, 50, 20, 0.55);
+}
+.CommandPanel-snip.is-hi:not(.is-on) {
+  background: rgba(40, 40, 40, 0.65);
+}
+.CommandPanel-snip.is-last .CommandPanel-snip__pick {
+  color: #cfc;
+}
+.CommandPanel-snip__pin {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #777;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 3px;
+  cursor: pointer;
+}
+.CommandPanel-snip__pin:hover {
+  color: #ffe08a;
+}
+.CommandPanel-snip.is-on .CommandPanel-snip__pin,
+.CommandPanel-snip__pin[title="Unpin"] {
+  color: #ffe08a;
+}
+.CommandPanel-snip__pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  padding: 3px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.CommandPanel-snip__pick:hover {
+  color: #ffe08a;
+}
+.CommandPanel-snip__last {
+  color: #8a8;
+  font-size: 12px;
+  margin-left: 4px;
+}
+.CommandPanel-snip__run,
+.CommandPanel-snip__del {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+.CommandPanel-snip__run {
+  border-color: #a86;
+  background: #2a2410;
+  color: #ffe08a;
+}
+.CommandPanel-snip__del {
+  border-color: #844;
+  background: #2a1515;
+  color: #eaa;
+}
+.CommandPanel-snip__del.is-confirm {
+  border-color: #c66;
+  background: #4a2020;
+  color: #fcc;
+  font-weight: 600;
+}
+.CommandPanel-dirty {
+  color: #c9a;
+  font-size: 14px;
+  font-weight: normal;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.CommandPanel-rerun {
+  appearance: none;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+.CommandPanel-rerun:hover {
+  border-color: #a86;
+  color: #ffe08a;
+}
+.CommandPanel-side:focus {
+  outline: 1px solid #555;
+  outline-offset: 2px;
+}
+.CommandPanel-empty {
+  color: #777;
+  font-size: 14px;
+  padding: 8px 4px;
+  line-height: 1.35;
+}
+.CommandPanel-side input[type="search"] {
+  font-size: 15px !important;
+}
+.CommandPanel-hints {
+  position: fixed;
+  z-index: 100000;
+  min-width: 220px;
+  max-width: 360px;
+  max-height: 240px;
+  overflow: auto;
+  box-sizing: border-box;
+  border: 1px solid #666;
+  background: rgba(12, 12, 12, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  padding: 3px;
+  pointer-events: auto;
+}
+.CommandPanel-hint {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.CommandPanel-hint.is-active,
+.CommandPanel-hint:hover {
+  background: rgba(60, 50, 20, 0.85);
+  color: #ffe08a;
+}
+.CommandPanel-hint__label {
+  flex: 0 1 auto;
+  min-width: 4.5em;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.CommandPanel-hint__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: right;
+}
+.CommandPanel-hint[data-kind="api"] .CommandPanel-hint__meta {
+  color: #a86;
+}
+.CommandPanel-hint[data-kind="item"] .CommandPanel-hint__meta {
+  color: #8ac;
+}
+.CommandPanel-hint[data-kind="monster"] .CommandPanel-hint__meta {
+  color: #c88;
+}
+.CommandPanel-hint[data-kind="npc"] .CommandPanel-hint__meta {
+  color: #8c8;
+}
+.CommandPanel-hint[data-kind="map"] .CommandPanel-hint__meta,
+.CommandPanel-hint[data-kind="shortcut"] .CommandPanel-hint__meta {
+  color: #ca8;
+}
+.CommandPanel-hint[data-kind="skill"] .CommandPanel-hint__meta {
+  color: #c9a;
+}
+.CommandPanel-hint[data-kind="prop"] .CommandPanel-hint__meta {
+  color: #9aa;
 }
 `;
   var injected12 = false;
@@ -56402,12 +57808,22 @@ ${ESTIMATE_HINT}`,
     const [snippets, setSnippets] = React.useState(
       () => loadSettings().commandSnippets.slice()
     );
+    const [lastRunId, setLastRunId] = React.useState(
+      () => loadSettings().commandLastRunId
+    );
     const [newName, setNewName] = React.useState("");
     const [newFolder, setNewFolder] = React.useState("");
     const [snippetQuery, setSnippetQuery] = React.useState("");
-    const [folderFilter, setFolderFilter] = React.useState("all");
+    const [collapsed, setCollapsed] = React.useState(
+      () => /* @__PURE__ */ Object.create(null)
+    );
     const [status, setStatus2] = React.useState("");
+    const [statusOk, setStatusOk] = React.useState(null);
     const [selectedId2, setSelectedId] = React.useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = React.useState(
+      null
+    );
+    const [treeHi, setTreeHi] = React.useState(0);
     const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
     const editorHostRef = React.useRef(null);
     const textareaRef = React.useRef(null);
@@ -56418,8 +57834,10 @@ ${ESTIMATE_HINT}`,
       setDraft(value);
       saveSettings({ commandDraft: value });
     });
-    const runCodeRef = React.useRef((_code) => {
-    });
+    const runCodeRef = React.useRef(
+      (_code, _snipId) => {
+      }
+    );
     draftRef.current = draft;
     const persistDraft2 = (value) => {
       setDraft(value);
@@ -56430,9 +57848,28 @@ ${ESTIMATE_HINT}`,
       setSnippets(next);
       saveSettings({ commandSnippets: next });
     };
-    const runCode = (code) => {
+    const persistLastRun = (id) => {
+      setLastRunId(id);
+      saveSettings({ commandLastRunId: id });
+    };
+    const runCode = (code, snipId) => {
       const result = runCommandSnippet(code);
       setStatus2(result.status);
+      setStatusOk(result.ok);
+      if (result.ok) {
+        const selected2 = findSnippetById(snippets, selectedId2);
+        const matchId = snipId || (selected2 && selected2.code === draft ? selectedId2 : null);
+        if (matchId) {
+          persistLastRun(matchId);
+        } else {
+          for (let i = 0; i < snippets.length; i++) {
+            if (snippets[i].code === code || snippets[i].code === draft) {
+              persistLastRun(snippets[i].id);
+              break;
+            }
+          }
+        }
+      }
     };
     runCodeRef.current = runCode;
     const readEditorCode = () => {
@@ -56444,14 +57881,12 @@ ${ESTIMATE_HINT}`,
     };
     const refreshEditor = () => {
       const cm = cmRef.current;
-      if (!cm) return;
-      try {
-        cm.refresh();
-      } catch (e2) {
-      }
+      const host2 = editorHostRef.current;
+      if (!cm || !host2) return;
+      syncCommandCodeMirrorSize(cm, host2);
     };
     const onRun = () => {
-      runCode(readEditorCode());
+      runCode(readEditorCode(), selectedId2);
     };
     React.useEffect(() => {
       if (!cmAvailable) return;
@@ -56471,11 +57906,26 @@ ${ESTIMATE_HINT}`,
       if (cm) {
         try {
           cm.focus();
-          cm.refresh();
+          syncCommandCodeMirrorSize(cm, host2);
         } catch (e2) {
         }
       }
+      const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => {
+        if (cmRef.current && editorHostRef.current) {
+          syncCommandCodeMirrorSize(cmRef.current, editorHostRef.current);
+        }
+      }) : null;
+      if (ro) ro.observe(host2);
+      const onViewport = () => {
+        window.requestAnimationFrame(() => refreshEditor());
+      };
+      window.addEventListener("resize", onViewport);
+      const vv = window.visualViewport;
+      if (vv) vv.addEventListener("resize", onViewport);
       return () => {
+        if (ro) ro.disconnect();
+        window.removeEventListener("resize", onViewport);
+        if (vv) vv.removeEventListener("resize", onViewport);
         disposeCodeMirror(host2);
         cmRef.current = null;
       };
@@ -56483,7 +57933,7 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       const id = window.requestAnimationFrame(() => refreshEditor());
       return () => window.cancelAnimationFrame(id);
-    }, [status, openSeq]);
+    }, [status, openSeq, snippets.length, snippetQuery]);
     React.useEffect(() => {
       if (typeof seedDraft === "string") {
         persistDraft2(seedDraft);
@@ -56496,7 +57946,7 @@ ${ESTIMATE_HINT}`,
             cm.setValue(seedDraft);
           }
           cm.focus();
-          cm.refresh();
+          refreshEditor();
         } catch (e2) {
         }
         return;
@@ -56521,11 +57971,69 @@ ${ESTIMATE_HINT}`,
         cm.setValue(draft);
       }
     }, [draft]);
-    const onSaveSnippet = () => {
+    const selected = findSnippetById(snippets, selectedId2);
+    const dirty2 = !!(selected && draft !== selected.code);
+    const writeEditor = (code) => {
+      const cm = cmRef.current;
+      if (cm && cm.getValue() !== code) {
+        skipCmSyncRef.current = true;
+        try {
+          cm.setValue(code);
+        } catch (e2) {
+        }
+      }
+      persistDraft2(code);
+    };
+    const onPick = (snip) => {
+      setSelectedId(snip.id);
+      setConfirmDeleteId(null);
+      setNewName(snip.name);
+      setNewFolder(snip.folder || "");
+      writeEditor(snip.code);
+    };
+    const onUpdateSnippet = () => {
+      if (!selectedId2) {
+        setStatus2("Select a snippet to update");
+        setStatusOk(false);
+        return;
+      }
       const name = String(newName || "").trim() || "Snippet";
       const code = String(readEditorCode() || "");
       if (!code.trim()) {
         setStatus2("Write a command before saving");
+        setStatusOk(false);
+        return;
+      }
+      if (code !== draft) persistDraft2(code);
+      const folder = String(newFolder || "").trim();
+      const next = [];
+      for (let i = 0; i < snippets.length; i++) {
+        const row3 = snippets[i];
+        if (row3.id !== selectedId2) {
+          next.push(row3);
+          continue;
+        }
+        const snip = {
+          id: row3.id,
+          name,
+          code
+        };
+        if (folder) snip.folder = folder;
+        if (row3.pinned) snip.pinned = true;
+        next.push(snip);
+      }
+      persistSnippets(next);
+      setStatus2(
+        folder ? `Updated \u201C${name}\u201D in ${folder}` : `Updated \u201C${name}\u201D`
+      );
+      setStatusOk(true);
+    };
+    const onSaveAsSnippet = () => {
+      const name = String(newName || "").trim() || "Snippet";
+      const code = String(readEditorCode() || "");
+      if (!code.trim()) {
+        setStatus2("Write a command before saving");
+        setStatusOk(false);
         return;
       }
       if (code !== draft) persistDraft2(code);
@@ -56535,35 +58043,69 @@ ${ESTIMATE_HINT}`,
       const next = snippets.slice();
       next.push(snip);
       persistSnippets(next);
-      setNewName("");
+      setSelectedId(snip.id);
       setStatus2(folder ? `Saved \u201C${name}\u201D in ${folder}` : `Saved \u201C${name}\u201D`);
+      setStatusOk(true);
     };
     const onDelete = (id) => {
+      if (confirmDeleteId !== id) {
+        setConfirmDeleteId(id);
+        setStatus2("Click \xD7 again to confirm delete");
+        setStatusOk(null);
+        return;
+      }
       const next = [];
       for (let i = 0; i < snippets.length; i++) {
         if (snippets[i].id !== id) next.push(snippets[i]);
       }
       persistSnippets(next);
       if (selectedId2 === id) setSelectedId(null);
+      if (lastRunId === id) persistLastRun(null);
+      setConfirmDeleteId(null);
       setStatus2("Snippet removed");
+      setStatusOk(true);
     };
-    const onPick = (snip) => {
-      setSelectedId(snip.id);
-      const cm = cmRef.current;
-      if (cm && cm.getValue() !== snip.code) {
-        skipCmSyncRef.current = true;
-        try {
-          cm.setValue(snip.code);
-        } catch (e2) {
+    const onTogglePin = (id) => {
+      const next = [];
+      for (let i = 0; i < snippets.length; i++) {
+        const row3 = snippets[i];
+        if (row3.id !== id) {
+          next.push(row3);
+          continue;
         }
+        const snip = {
+          id: row3.id,
+          name: row3.name,
+          code: row3.code
+        };
+        if (row3.folder) snip.folder = row3.folder;
+        if (!row3.pinned) snip.pinned = true;
+        next.push(snip);
       }
-      persistDraft2(snip.code);
+      persistSnippets(next);
+    };
+    const onReRunLast = () => {
+      const snip = findSnippetById(snippets, lastRunId);
+      if (!snip) {
+        setStatus2("No last-run snippet");
+        setStatusOk(false);
+        return;
+      }
+      onPick(snip);
+      runCode(snip.code, snip.id);
     };
     const onKeyDown = (ev) => {
       if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
         ev.preventDefault();
         onRun();
       }
+    };
+    const toggleFolder = (key) => {
+      setCollapsed((prev) => {
+        const next = Object.assign(/* @__PURE__ */ Object.create(null), prev);
+        next[key] = !prev[key];
+        return next;
+      });
     };
     const inputStyle = {
       fontSize: TYPE.name,
@@ -56575,169 +58117,155 @@ ${ESTIMATE_HINT}`,
       textShadow: "none",
       fontWeight: "normal"
     };
-    const folders = [];
-    for (let i = 0; i < snippets.length; i++) {
-      const f = snippets[i].folder;
-      if (f && folders.indexOf(f) < 0) folders.push(f);
-    }
-    folders.sort((a, b) => a.localeCompare(b));
-    const q = snippetQuery.trim().toLowerCase();
-    const filtered = [];
-    for (let i = 0; i < snippets.length; i++) {
-      const snip = snippets[i];
-      if (folderFilter === "__none__" && snip.folder) continue;
-      if (folderFilter !== "all" && folderFilter !== "__none__" && (snip.folder || "") !== folderFilter) {
-        continue;
+    const tree = buildSnippetTree(snippets, snippetQuery);
+    const searching = !!snippetQuery.trim();
+    const flat = flattenVisibleSnippets(tree, collapsed, searching);
+    const hi = flat.length ? Math.min(treeHi, flat.length - 1) : 0;
+    const onTreeKeyDown = (ev) => {
+      if (!flat.length) return;
+      if (ev.key === "ArrowDown") {
+        ev.preventDefault();
+        setTreeHi((hi + 1) % flat.length);
+      } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        setTreeHi((hi - 1 + flat.length) % flat.length);
+      } else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
+        ev.preventDefault();
+        const snip = flat[hi];
+        if (snip) {
+          onPick(snip);
+          runCode(snip.code, snip.id);
+        }
+      } else if (ev.key === "Enter") {
+        ev.preventDefault();
+        const snip = flat[hi];
+        if (snip) onPick(snip);
       }
-      if (q) {
-        const hay = `${snip.name} ${snip.code} ${snip.folder || ""}`.toLowerCase();
-        if (hay.indexOf(q) < 0) continue;
-      }
-      filtered.push(snip);
-    }
-    const snippetRows = [];
-    for (let i = 0; i < filtered.length; i++) {
-      const snip = filtered[i];
-      const active = selectedId2 === snip.id;
-      const preview = snip.code.replace(/\s+/g, " ").trim();
-      snippetRows.push(
+    };
+    const treeNodes = [];
+    for (let f = 0; f < tree.length; f++) {
+      const bucket = tree[f];
+      const isOpen3 = searching ? true : !collapsed[bucket.key];
+      treeNodes.push(
         e(
-          "div",
+          "button",
           {
-            key: snip.id,
-            style: {
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "5px 7px",
-              border: active ? "1px solid #a86" : "1px solid #3a3a3a",
-              background: active ? "rgba(60,50,20,0.55)" : "rgba(18,18,18,0.9)"
-            }
+            key: "folder-" + bucket.key,
+            type: "button",
+            className: "CommandPanel-folder",
+            onClick: () => toggleFolder(bucket.key),
+            title: isOpen3 ? "Collapse" : "Expand"
           },
           e(
-            "button",
-            {
-              type: "button",
-              onClick: () => onPick(snip),
-              title: snip.code,
-              style: {
-                flex: 1,
-                minWidth: 0,
-                textAlign: "left",
-                cursor: "pointer",
-                border: "none",
-                background: "transparent",
-                color: "#eee",
-                padding: 0,
-                fontSize: TYPE.name,
-                lineHeight: "1.3",
-                textShadow: "none",
-                fontWeight: "normal"
-              }
-            },
-            e(
-              "div",
-              {
-                style: {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap"
-                }
-              },
-              snip.folder ? e(
-                "span",
-                {},
-                e(
-                  "span",
-                  { style: { color: "#a86", marginRight: "6px" } },
-                  snip.folder
-                ),
-                snip.name
-              ) : snip.name
-            ),
-            e(
-              "div",
-              {
-                style: {
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  color: "#999",
-                  fontSize: TYPE.body,
-                  marginTop: "2px"
-                }
-              },
-              preview || "(empty)"
-            )
+            "span",
+            { className: "CommandPanel-folder__twist" },
+            isOpen3 ? "\u25BC" : "\u25B6"
           ),
+          e("span", {}, bucket.label),
           e(
-            "button",
-            {
-              type: "button",
-              title: "Run snippet",
-              onClick: () => {
-                onPick(snip);
-                runCode(snip.code);
-              },
-              style: btnStyle2({ accent: true })
-            },
-            "Run"
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              title: "Delete snippet",
-              onClick: () => onDelete(snip.id),
-              style: btnStyle2({ danger: true })
-            },
-            "\xD7"
+            "span",
+            { style: { color: "#666", marginLeft: "auto", fontSize: "14px" } },
+            String(bucket.items.length)
           )
         )
       );
+      if (!isOpen3) continue;
+      for (let i = 0; i < bucket.items.length; i++) {
+        const snip = bucket.items[i];
+        const active = selectedId2 === snip.id;
+        const isLast = lastRunId === snip.id;
+        const flatIdx = flat.indexOf(snip);
+        const isHi = flatIdx === hi;
+        const confirming = confirmDeleteId === snip.id;
+        treeNodes.push(
+          e(
+            "div",
+            {
+              key: snip.id,
+              className: "CommandPanel-snip" + (active ? " is-on" : "") + (isHi ? " is-hi" : "") + (isLast ? " is-last" : "")
+            },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "CommandPanel-snip__pin",
+                title: snip.pinned ? "Unpin" : "Pin",
+                onClick: () => onTogglePin(snip.id)
+              },
+              snip.pinned ? "\u2605" : "\u2606"
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "CommandPanel-snip__pick",
+                title: snip.code,
+                onClick: () => {
+                  setTreeHi(Math.max(0, flatIdx));
+                  onPick(snip);
+                }
+              },
+              snip.name,
+              isLast ? e("span", { className: "CommandPanel-snip__last" }, " last") : null
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "CommandPanel-snip__run",
+                title: "Run snippet",
+                onClick: () => {
+                  onPick(snip);
+                  runCode(snip.code, snip.id);
+                }
+              },
+              "Run"
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "CommandPanel-snip__del" + (confirming ? " is-confirm" : ""),
+                title: confirming ? "Confirm delete" : "Delete snippet",
+                onClick: () => onDelete(snip.id)
+              },
+              confirming ? "Yes" : "\xD7"
+            )
+          )
+        );
+      }
     }
     const editor = cmAvailable ? e("div", {
       ref: editorHostRef,
       className: "CommandPanel-editor",
-      style: {
-        width: "100%",
-        minWidth: 0,
-        alignSelf: "stretch"
-      }
+      "data-ecu-tour": "command-editor"
     }) : e("textarea", {
       ref: textareaRef,
+      className: "CommandPanel-editor",
+      "data-ecu-tour": "command-editor",
       value: draft,
-      rows: 14,
       spellCheck: false,
       onChange: (ev) => persistDraft2(ev.target.value),
       onKeyDown,
-      placeholder: "loot()\n// or any CODE for the watched character",
+      placeholder: "loot()\nuse_skill('town')",
       style: Object.assign({}, inputStyle, {
-        width: "100%",
-        resize: "vertical",
-        minHeight: `${COMMAND_CM_HEIGHT_PX}px`,
-        height: `${COMMAND_CM_HEIGHT_PX}px`,
-        lineHeight: "1.4",
-        boxSizing: "border-box"
+        lineHeight: "1.45",
+        fontSize: "18px",
+        minHeight: `${COMMAND_CM_HEIGHT_PX}px`
       })
     });
+    const lastSnip = findSnippetById(snippets, lastRunId);
     return e(
       "div",
       {
         className: "CommandPanel",
         style: {
-          display: "flex",
-          flexDirection: "column",
           border: "2px solid #555",
           background: "rgba(0,0,0,0.88)",
-          gap: "10px",
           padding: "12px",
           width: "100%",
           minWidth: 0,
           maxWidth: "100%",
-          maxHeight: "78vh",
-          overflowX: "hidden",
-          overflowY: "auto",
           boxSizing: "border-box",
           fontSize: TYPE.name,
           color: "#eee",
@@ -56753,134 +58281,165 @@ ${ESTIMATE_HINT}`,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "baseline",
-            gap: "8px"
+            gap: "8px",
+            flex: "0 0 auto"
           }
         },
-        e("div", { style: { fontSize: "20px", color: "#ffe08a" } }, "Command"),
+        e(
+          "div",
+          { style: { fontSize: "20px", color: "#ffe08a" } },
+          "Command",
+          dirty2 ? e(
+            "span",
+            {
+              className: "CommandPanel-dirty",
+              title: "Editor differs from selected snippet"
+            },
+            " \xB7 edited"
+          ) : null
+        ),
         e(
           "div",
           { style: { fontSize: TYPE.body, color: "#aaa" } },
-          "observer \u2192 code_eval \xB7 Ctrl+Enter"
+          "observer \u2192 code_eval \xB7 Ctrl+Enter \xB7 Ctrl+Space"
         )
       ),
-      editor,
       e(
         "div",
-        {
-          style: {
-            display: "flex",
-            gap: "8px",
-            flexWrap: "wrap",
-            alignItems: "center"
-          }
-        },
+        { className: "CommandPanel-body" },
         e(
-          "button",
-          {
-            type: "button",
-            onClick: onRun,
-            style: btnStyle2({ accent: true })
-          },
-          "Run"
+          "div",
+          { className: "CommandPanel-main" },
+          editor,
+          e(
+            "div",
+            {
+              style: {
+                display: "flex",
+                gap: "8px",
+                flexWrap: "wrap",
+                alignItems: "center",
+                flex: "0 0 auto"
+              }
+            },
+            e(
+              "button",
+              {
+                type: "button",
+                onClick: onRun,
+                style: btnStyle2({ accent: true })
+              },
+              "Run"
+            ),
+            e("input", {
+              type: "text",
+              value: newName,
+              placeholder: "Snippet name",
+              onChange: (ev) => setNewName(ev.target.value),
+              style: Object.assign({}, inputStyle, {
+                flex: "1 1 120px",
+                minWidth: "100px"
+              })
+            }),
+            e("input", {
+              type: "text",
+              value: newFolder,
+              placeholder: "Folder (optional)",
+              onChange: (ev) => setNewFolder(ev.target.value),
+              style: Object.assign({}, inputStyle, {
+                flex: "0 1 110px",
+                minWidth: "90px"
+              })
+            }),
+            selected ? e(
+              "button",
+              {
+                type: "button",
+                onClick: onUpdateSnippet,
+                style: btnStyle2({ accent: dirty2 }),
+                title: "Overwrite the selected snippet"
+              },
+              dirty2 ? "Update \u25CF" : "Update"
+            ) : null,
+            e(
+              "button",
+              {
+                type: "button",
+                onClick: onSaveAsSnippet,
+                style: btnStyle2(),
+                title: "Save as a new snippet"
+              },
+              "Save as"
+            )
+          ),
+          e(
+            "div",
+            {
+              className: "CommandPanel-status" + (statusOk === true ? " is-ok" : statusOk === false ? " is-err" : ""),
+              style: {
+                fontSize: TYPE.body,
+                color: status ? statusOk === false ? "#eaa" : statusOk === true ? "#9a9" : "#aaa" : "transparent",
+                minHeight: "1.25em",
+                flex: "0 0 auto"
+              }
+            },
+            status || "\xA0"
+          )
         ),
-        e("input", {
-          type: "text",
-          value: newName,
-          placeholder: "Snippet name",
-          onChange: (ev) => setNewName(ev.target.value),
-          style: Object.assign({}, inputStyle, {
-            flex: "1 1 140px",
-            minWidth: "120px"
-          })
-        }),
-        e("input", {
-          type: "text",
-          value: newFolder,
-          placeholder: "Folder (optional)",
-          onChange: (ev) => setNewFolder(ev.target.value),
-          style: Object.assign({}, inputStyle, {
-            flex: "0 1 120px",
-            minWidth: "100px"
-          })
-        }),
         e(
-          "button",
+          "aside",
           {
-            type: "button",
-            onClick: onSaveSnippet,
-            style: btnStyle2()
+            className: "CommandPanel-side",
+            "aria-label": "Command snippets",
+            tabIndex: 0,
+            onKeyDown: onTreeKeyDown
           },
-          "Save snippet"
-        )
-      ),
-      e(
-        "div",
-        {
-          style: {
-            fontSize: TYPE.body,
-            color: status ? "#9a9" : "transparent",
-            minHeight: "1.25em"
-          }
-        },
-        status || "\xA0"
-      ),
-      e(
-        "div",
-        {
-          style: {
-            fontSize: TYPE.name,
-            color: "#ccc",
-            borderTop: "1px solid #333",
-            paddingTop: "8px",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "8px",
-            alignItems: "center"
-          }
-        },
-        e("span", {}, "Snippets"),
-        e("input", {
-          type: "search",
-          value: snippetQuery,
-          placeholder: "Search\u2026",
-          onChange: (ev) => setSnippetQuery(ev.target.value),
-          style: Object.assign({}, inputStyle, {
-            flex: "1 1 140px",
-            minWidth: "120px",
-            fontSize: TYPE.body,
-            padding: "4px 8px"
-          })
-        }),
-        e(
-          "select",
-          {
-            value: folderFilter,
-            onChange: (ev) => setFolderFilter(ev.target.value),
-            style: Object.assign({}, inputStyle, {
-              flex: "0 1 140px",
-              fontSize: TYPE.body,
-              padding: "4px 8px"
+          e(
+            "div",
+            { className: "CommandPanel-side__head" },
+            e(
+              "div",
+              {
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  justifyContent: "space-between"
+                }
+              },
+              e("div", { className: "CommandPanel-side__title" }, "Snippets"),
+              lastSnip ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "CommandPanel-rerun",
+                  title: "Re-run \u201C" + lastSnip.name + "\u201D",
+                  onClick: onReRunLast
+                },
+                "Re-run"
+              ) : null
+            ),
+            e("input", {
+              type: "search",
+              value: snippetQuery,
+              placeholder: "Search\u2026 \u2191\u2193 Enter",
+              onChange: (ev) => {
+                setSnippetQuery(ev.target.value);
+                setTreeHi(0);
+              },
+              style: Object.assign({}, inputStyle, {
+                width: "100%",
+                fontSize: TYPE.body,
+                padding: "4px 8px"
+              })
             })
-          },
-          e("option", { value: "all" }, "All folders"),
-          e("option", { value: "__none__" }, "No folder"),
-          ...folders.map((f) => e("option", { key: f, value: f }, f))
+          ),
+          treeNodes.length ? e("div", { className: "CommandPanel-tree" }, ...treeNodes) : e(
+            "div",
+            { className: "CommandPanel-empty" },
+            snippets.length ? "No snippets match this search." : "No snippets yet \u2014 write a command and Save as."
+          )
         )
-      ),
-      snippetRows.length ? e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            gap: "5px"
-          }
-        },
-        ...snippetRows
-      ) : e(
-        "div",
-        { style: { fontSize: TYPE.body, color: "#777" } },
-        snippets.length ? "No snippets match this search/folder." : "No snippets yet \u2014 write a command and Save snippet."
       )
     );
   }

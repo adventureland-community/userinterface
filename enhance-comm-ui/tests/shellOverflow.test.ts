@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { panelStyle, unclipShellOverflow } from "../src/lib/layout";
-import { panelUsesAutoSize } from "../src/lib/panelCatalog";
+import { panelFillsFrame, panelUsesAutoSize } from "../src/lib/panelCatalog";
 import { DEFAULT_LAYOUT_DESKTOP } from "../src/lib/layoutDefaults";
 
 /** Mirrors PositionedPanel shell sizing for hug frames (Command Alt outline). */
@@ -51,10 +51,11 @@ describe("fill-shell overflow", () => {
 });
 
 describe("command panel sizing", () => {
-  it("defaults to autosize so saved frames do not clip arrange chrome", () => {
+  it("defaults to a fixed fill frame so corner resize works", () => {
     const pos = DEFAULT_LAYOUT_DESKTOP.command;
-    assert.equal(pos.autoSize, true);
-    assert.equal(panelUsesAutoSize(pos, "command"), true);
+    assert.equal(pos.autoSize, false);
+    assert.equal(panelUsesAutoSize(pos, "command"), false);
+    assert.equal(panelFillsFrame("command"), true);
   });
 
   it("hugs content when autosize is on (Alt outline follows full panel)", () => {

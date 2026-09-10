@@ -89,6 +89,8 @@ export type CommandSnippet = {
   code: string;
   /** Optional folder/group label for filtering long lists. */
   folder?: string;
+  /** Pinned snippets float to the top of the side tree. */
+  pinned?: boolean;
 };
 
 /** Per-panel overlay opacity (0.25–1). Unset → 1. */
@@ -130,6 +132,8 @@ export type CommUiSettings = {
   commandSnippets: CommandSnippet[];
   /** Last draft in the Command textarea */
   commandDraft: string;
+  /** Last snippet id successfully Run from Command (for Re-run). */
+  commandLastRunId: string | null;
   /** Persisted mail composer draft (JSON ComposeDraft). */
   mailDraft?: string;
   /** Last compose To chips (sticky). */
@@ -216,6 +220,7 @@ export type CommUiSettings = {
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
   { id: "loot", name: "Loot", code: "loot()" },
+  { id: "town", name: "Town", code: "use_skill('town')" },
   { id: "stop", name: "Stop move", code: "stop('move')" },
   {
     id: "say-hi",
@@ -238,6 +243,7 @@ const DEFAULTS: CommUiSettings = {
   panelVisible: { ...DEFAULT_PANEL_VISIBLE },
   commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
   commandDraft: "",
+  commandLastRunId: null,
   combatCompact: false,
   bagOpenPreferred: false,
   panelOpacity: {},
@@ -417,9 +423,27 @@ function normalizeSnippets(raw: any): CommandSnippet[] {
       code,
     };
     if (folderRaw) snip.folder = folderRaw;
+    if (row.pinned === true) snip.pinned = true;
     out.push(snip);
   }
-  return out;
+  return ensureStockCommandSnippets(out);
+}
+
+/** Seed stock snippets (e.g. Town) onto older saved lists that lack them. */
+function ensureStockCommandSnippets(list: CommandSnippet[]): CommandSnippet[] {
+  const hasTown = list.some(
+    (s) =>
+      s.id === "town" ||
+      /use_skill\s*\(\s*['"]town['"]\s*\)/.test(s.code),
+  );
+  if (hasTown) return list;
+  const next = list.slice();
+  next.splice(1, 0, {
+    id: "town",
+    name: "Town",
+    code: "use_skill('town')",
+  });
+  return next;
 }
 
 function normalizeLayoutProfileMode(raw: unknown): LayoutProfileMode {
@@ -489,6 +513,10 @@ function migrate(parsed: any): CommUiSettings {
     commandSnippets: normalizeSnippets(parsed.commandSnippets),
     commandDraft:
       typeof parsed.commandDraft === "string" ? parsed.commandDraft : "",
+    commandLastRunId:
+      typeof parsed.commandLastRunId === "string" && parsed.commandLastRunId
+        ? parsed.commandLastRunId
+        : null,
     mailDraft: typeof parsed.mailDraft === "string" ? parsed.mailDraft : "",
     mailLastTo: Array.isArray(parsed.mailLastTo)
       ? parsed.mailLastTo.map(String).filter(Boolean).slice(0, 8)
@@ -630,6 +658,7 @@ function freshDefaults(): CommUiSettings {
     panelVisible: mergePanelVisible(null),
     commandSnippets: DEFAULT_COMMAND_SNIPPETS.slice(),
     commandDraft: "",
+    commandLastRunId: null,
     combatCompact: false,
     bagOpenPreferred: false,
     panelOpacity: {},
@@ -749,6 +778,11 @@ export function patchSettings(
   }
   if (typeof partial.commandDraft === "string") {
     next.commandDraft = partial.commandDraft;
+  }
+  if (partial.commandLastRunId === null) {
+    next.commandLastRunId = null;
+  } else if (typeof partial.commandLastRunId === "string") {
+    next.commandLastRunId = partial.commandLastRunId || null;
   }
   if (typeof partial.mailDraft === "string") {
     next.mailDraft = partial.mailDraft;

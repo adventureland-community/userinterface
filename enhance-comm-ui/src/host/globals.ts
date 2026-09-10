@@ -140,6 +140,8 @@ export type GLike = {
     { looks?: Array<[string, Record<string, string>?]>; [key: string]: any }
   >;
   monsters?: Record<string, any>;
+  /** NPC defs — `G.npcs[id]` (smart_move / find_npc keys). */
+  npcs?: Record<string, any>;
   /** XP required per level — `G.levels[level]`. */
   levels?: Record<string, number>;
   maps?: Record<

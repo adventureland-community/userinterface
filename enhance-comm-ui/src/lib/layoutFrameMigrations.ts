@@ -105,18 +105,16 @@ export function migrateAbilityTimelineFrame(
 }
 
 /**
- * Command shipped autosize-off with a short 560×300 box. Alt outline tracked that
- * frame while snippets spilled past it. Flip matching shells onto autosize.
- * Also bumps the later 560×300 autosize-on default to the wider 720 shell.
+ * Command shipped autosize-off with a short 560×300 box (snippets clipped),
+ * then later hug-default 560×300 autosize-on. Prefer the current fill default.
  */
 export function migrateCommandFrame(pos: PanelPos, def: PanelPos): PanelPos {
   const shippedNarrow =
     shipped(pos.frameW, 560) && shipped(pos.frameH, 300);
-  if (pos.autoSize === true && !shippedNarrow) return pos;
-  if (!shippedNarrow && pos.autoSize === false) return pos;
+  if (!shippedNarrow) return pos;
   return {
     ...pos,
-    autoSize: true,
+    autoSize: false,
     frameW: typeof def.frameW === "number" ? def.frameW : pos.frameW,
     frameH: typeof def.frameH === "number" ? def.frameH : pos.frameH,
   };

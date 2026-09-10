@@ -33,11 +33,12 @@ describe("panel catalog", () => {
     assert.equal(panelFillsFrame("minimap"), true);
     assert.equal(panelFillsFrame("players"), false);
     assert.equal(panelFillsFrame("bag"), false);
-    assert.equal(panelFillsFrame("command"), false);
+    assert.equal(panelFillsFrame("command"), true);
   });
 
-  it("defaults Command to autosize on", () => {
-    assert.equal(panelDef("command").autoSize, "default-on");
+  it("defaults Command to fill + opt-in autosize (corner resize)", () => {
+    assert.equal(panelDef("command").autoSize, "opt-in");
+    assert.equal(panelDef("command").shell, "fill");
   });
 
   it("defaults Kills to autosize on so arrange chrome is not frame-clipped", () => {

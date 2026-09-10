@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Command panel harness</title>
+    <style>
+      body {
+        font-family: Consolas, monospace;
+        background: #111;
+        color: #ddd;
+        margin: 16px;
+      }
+      #log {
+        white-space: pre-wrap;
+        margin-top: 16px;
+        line-height: 1.4;
+      }
+      .pass {
+        color: #6c6;
+      }
+      .fail {
+        color: #f66;
+      }
+      /* Mirror production CSS contracts used by CommandPanel. */
+      .CommandPanel {
+        pointer-events: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        box-sizing: border-box;
+        height: min(72vh, 560px);
+        max-height: 78vh;
+        min-height: 420px;
+        overflow: hidden;
+        border: 2px solid #555;
+        background: rgba(0, 0, 0, 0.88);
+        padding: 12px;
+        width: min(920px, 96vw);
+      }
+      .CommandPanel-body {
+        display: flex;
+        flex: 1 1 auto;
+        min-height: 0;
+        gap: 10px;
+        align-items: stretch;
+      }
+      .CommandPanel-main {
+        flex: 1 1 auto;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .CommandPanel-editor {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 240px;
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid #555;
+        background: #0a0a0a;
+      }
+      .CommandPanel-editor .CodeMirror-scroll {
+        overflow-x: auto !important;
+        overflow-y: scroll !important;
+        height: 100%;
+      }
+      .CommandPanel-side {
+        flex: 0 0 230px;
+        width: 230px;
+        min-width: 170px;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border-left: 1px solid #333;
+        padding-left: 10px;
+      }
+      .CommandPanel-tree {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Command panel harness</h1>
+    <p>
+      Layout contracts: editor fills left column and scrolls inside; snippets
+      live in a side tree (not under the CODE pane).
+    </p>
+    <div class="CommandPanel" id="panel">
+      <div style="flex:0 0 auto;color:#ffe08a">Command</div>
+      <div class="CommandPanel-body">
+        <div class="CommandPanel-main">
+          <div class="CommandPanel-editor" id="editor">
+            <div class="CodeMirror-scroll" id="cmScroll">
+              <pre id="lines"></pre>
+            </div>
+          </div>
+          <div style="flex:0 0 auto">Run · Save</div>
+        </div>
+        <aside class="CommandPanel-side">
+          <div>Snippets</div>
+          <input type="search" placeholder="Search…" id="search" />
+          <div class="CommandPanel-tree" id="tree">
+            <div>▼ combat</div>
+            <div style="padding-left:16px">Stop move</div>
+            <div>▼ utils</div>
+            <div style="padding-left:16px">Loot</div>
+          </div>
+        </aside>
+      </div>
+    </div>
+    <div id="log"></div>
+    <script>
+      const lines = [];
+      function say(ok, msg) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + msg);
+      }
+
+      const panel = document.getElementById("panel");
+      const editor = document.getElementById("editor");
+      const side = panel.querySelector(".CommandPanel-side");
+      const body = panel.querySelector(".CommandPanel-body");
+      const cmScroll = document.getElementById("cmScroll");
+      const pre = document.getElementById("lines");
+      const search = document.getElementById("search");
+
+      // Tall content must scroll inside the editor, not clip under the toolbar.
+      pre.textContent = Array.from({ length: 40 }, (_, i) => "line " + (i + 1)).join(
+        "\n",
+      );
+
+      const panelCs = getComputedStyle(panel);
+      say(panelCs.overflow === "hidden", "panel overflow:hidden (no whole-panel scroll)");
+      say(
+        getComputedStyle(body).display === "flex",
+        "body is flex row (editor + side)",
+      );
+      say(!!side, "snippets side panel present");
+
+      const er = editor.getBoundingClientRect();
+      const sr = side.getBoundingClientRect();
+      say(sr.left >= er.right - 2, "side panel is to the right of editor");
+      say(er.height >= 240, "editor height >= 240px (got " + Math.round(er.height) + ")");
+
+      const before = cmScroll.scrollTop;
+      cmScroll.scrollTop = 200;
+      say(cmScroll.scrollTop > before, "editor scrollTop moves (internal scroll works)");
+      cmScroll.scrollTop = 0;
+
+      search.focus();
+      say(document.activeElement === search, "snippet search is focusable");
+      search.value = "stop";
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      say(search.value === "stop", "snippet search accepts input");
+
+      // Mid-line clip regression: last visible line of editor must not sit under
+      // the Run bar. Editor bottom should be above the toolbar.
+      const main = panel.querySelector(".CommandPanel-main");
+      const toolbar = main.lastElementChild;
+      const editorBottom = editor.getBoundingClientRect().bottom;
+      const toolbarTop = toolbar.getBoundingClientRect().top;
+      say(
+        editorBottom <= toolbarTop + 1,
+        "editor does not overlap Run/Save bar (gap " +
+          Math.round(toolbarTop - editorBottom) +
+          "px)",
+      );
+
+      const all = !lines.some((l) => l.startsWith("FAIL"));
+      document.getElementById("log").innerHTML = lines
+        .map((l) => {
+          const cls = l.startsWith("PASS") ? "pass" : "fail";
+          return '<div class="' + cls + '">' + l + "</div>";
+        })
+        .join("");
+      document.title = (all ? "PASS" : "FAIL") + " — command panel harness";
+    </script>
+  </body>
+</html>

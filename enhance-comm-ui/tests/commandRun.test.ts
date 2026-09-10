@@ -42,10 +42,37 @@ describe("runCommandSnippet", () => {
     };
     const r = runCommandSnippet("loot()");
     assert.equal(r.ok, true);
-    assert.match(r.status, /Sent/i);
+    assert.match(r.status, /Sent to Alice/i);
     assert.equal(emitted.length, 1);
     assert.equal(emitted[0].event, "o:command");
     assert.ok(String(emitted[0].payload).indexOf("loot()") >= 0);
+  });
+
+  it("expands template placeholders before emit", () => {
+    const emitted: Array<{ event: string; payload: string }> = [];
+    (globalThis as any).window = {
+      observing: {
+        name: "Bob",
+        id: "9",
+        map: "winterland",
+        x: 12.6,
+        y: -3.2,
+        target: "goo",
+      },
+      server_region: "EU",
+      server_identifier: "I",
+      setTimeout: () => 1,
+      clearTimeout: () => {},
+      socket: {
+        emit(event: string, payload: string) {
+          emitted.push({ event, payload });
+        },
+      },
+    };
+    const r = runCommandSnippet("say('{{name}} @ {{map}}')");
+    assert.equal(r.ok, true);
+    assert.equal(emitted.length, 1);
+    assert.match(String(emitted[0].payload), /say\('Bob @ winterland'\)/);
   });
 });
 

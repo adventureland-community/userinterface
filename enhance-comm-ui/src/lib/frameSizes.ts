@@ -29,7 +29,7 @@ export function partyRosterMaxWidth(cols = PARTY_MAX_COLS): number {
 /** Auto-resize width caps (px). Omit = viewport only. */
 export function autoSizeMaxWidthPx(id: string): number | undefined {
   if (id === "players") return partyRosterMaxWidth(PARTY_MAX_COLS);
-  if (id === "command") return 720;
+  if (id === "command") return 1100;
   return undefined;
 }
 
@@ -292,11 +292,14 @@ export const THREAT_TABLE_SHELL: Record<string, any> = {
   overflow: "hidden",
 };
 
-/** Command editor shell — wide CODE pane; width capped via autosize max. */
+/** Command editor shell — fills the positioned frame (corner-resizable). */
 export const COMMAND_PANEL_STYLE: Record<string, any> = {
-  width: "min(720px, 94vw)",
+  width: "100%",
+  height: "100%",
   minWidth: "min(560px, 92vw)",
-  maxWidth: "min(720px, 94vw)",
+  minHeight: "360px",
+  maxWidth: "100%",
+  maxHeight: "100%",
   boxSizing: "border-box",
   // Shell is pointer-events:none by default — Command must take hits so
   // CodeMirror, Run, and hover arrange chrome work.

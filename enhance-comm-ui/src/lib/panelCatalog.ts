@@ -128,7 +128,10 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
     label: "Command",
     closable: true,
     defaultVisible: false,
-    autoSize: "default-on",
+    // Fill a saved frame so corner resize actually grows the CODE pane.
+    // Auto-resize stays available in Window Control (opt-in).
+    autoSize: "opt-in",
+    shell: "fill",
   },
   chat: {
     label: "Chat",

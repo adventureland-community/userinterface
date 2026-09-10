@@ -100,6 +100,41 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.9.11",
+    title: "0.9.11",
+    date: "2026-09-10",
+    summary:
+      "Command panel rewrite: snippet tree, resize-friendly editor, and CODE autocomplete from live G + official runner_functions.js.",
+    highlights: [
+      {
+        label: "Command autocomplete",
+        detail:
+          "Ctrl+Space / type-to-complete. Function names scraped from /js/runner_functions.js; args use signatures + G catalogs (items, skills, monsters, npcs, maps, events). Object props for helpers like get_nearest_monster({ type: … }).",
+        kind: "feature",
+      },
+      {
+        label: "Snippet side tree",
+        detail:
+          "Folders, search, pin, last-run / Re-run, Update vs Save as, dirty · edited, confirm delete, ↑↓ / Enter / Ctrl+Enter. Stock Town snippet (use_skill('town')).",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Editor layout",
+        detail:
+          "CodeMirror fills the left pane with ResizeObserver sizing; Command is opt-in autosize with corner grips (~1080×560 default).",
+        kind: "ui",
+      },
+      {
+        label: "Run status",
+        detail:
+          "Sent to <name> · HH:MM:SS. {{name}}/{{map}}/… placeholders still expand on Run from observe context.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
     id: "0.9.10",
     title: "0.9.10",
     date: "2026-09-10",
