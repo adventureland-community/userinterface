@@ -7,8 +7,8 @@ import { listingMatchesMarketQuery } from "./marketQuery";
 
 export type MarketBrowseFilters = {
   query: string;
-  /** sale = for-sale; buy = buy orders; all = both */
-  side: "sale" | "buy" | "all";
+  /** sale = for-sale; buy = buy orders; giveaway = free joins; all = both */
+  side: "sale" | "buy" | "giveaway" | "all";
   canAfford: boolean;
   inMyBag: boolean;
   /** Live entities only (visible / in range of the client), not catalog same-map. */
@@ -30,6 +30,7 @@ export type MarketItemGroup = {
   rows: import("./marketTypes").MarketListingRow[];
   sales: import("./marketTypes").MarketListingRow[];
   wants: import("./marketTypes").MarketListingRow[];
+  giveaways: import("./marketTypes").MarketListingRow[];
   bestSale: number | null;
   bestWant: number | null;
 };
@@ -52,8 +53,9 @@ export function filterMarketListings(
     if (merchantFilter && row.merchant.toLowerCase() !== merchantFilter) {
       continue;
     }
-    if (filters.side === "sale" && row.buyOrder) continue;
+    if (filters.side === "sale" && (row.buyOrder || row.giveaway)) continue;
     if (filters.side === "buy" && !row.buyOrder) continue;
+    if (filters.side === "giveaway" && !row.giveaway) continue;
     if (!listingMatchesMarketQuery(row, filters.query, qCtx)) continue;
     if (filters.nearOnly) {
       if (!row.fromLive && row.merchantStatus !== "you") continue;
@@ -92,8 +94,10 @@ export function groupMarketListings(
     const sample = list[0];
     const sales: MarketListingRow[] = [];
     const wants: MarketListingRow[] = [];
+    const giveaways: MarketListingRow[] = [];
     for (let j = 0; j < list.length; j++) {
-      if (list[j].buyOrder) wants.push(list[j]);
+      if (list[j].giveaway) giveaways.push(list[j]);
+      else if (list[j].buyOrder) wants.push(list[j]);
       else sales.push(list[j]);
     }
     let bestSale: number | null = null;
@@ -112,17 +116,134 @@ export function groupMarketListings(
       rows: list,
       sales,
       wants,
+      giveaways,
       bestSale,
       bestWant,
     });
   }
   out.sort((a, b) => {
-    const da = a.sales.length && a.wants.length ? 0 : 1;
-    const db = b.sales.length && b.wants.length ? 0 : 1;
+    const da =
+      marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+    const db =
+      marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
     if (da !== db) return da - db;
     return a.name.localeCompare(b.name);
   });
   return out;
+}
+
+export type MarketGroupSort =
+  | "dual"
+  | "arb"
+  | "name"
+  | "sellAsc"
+  | "sellDesc"
+  | "buyDesc"
+  | "offers";
+
+export const MARKET_GROUP_SORT_OPTIONS: Array<{
+  id: MarketGroupSort;
+  label: string;
+}> = [
+  { id: "dual", label: "Both sides" },
+  { id: "arb", label: "Arb" },
+  { id: "name", label: "Name" },
+  { id: "sellAsc", label: "Sell low" },
+  { id: "sellDesc", label: "Sell high" },
+  { id: "buyDesc", label: "Buy high" },
+  { id: "offers", label: "Most offers" },
+];
+
+/** True when cheapest sell is below best buy (arb / spread). */
+export function marketGroupHasArb(g: MarketItemGroup): boolean {
+  return (
+    g.bestSale != null && g.bestWant != null && g.bestSale < g.bestWant
+  );
+}
+
+/** Both a priced sell and a priced buy exist (spread is meaningful). */
+export function marketGroupHasBothPrices(g: MarketItemGroup): boolean {
+  return g.bestSale != null && g.bestWant != null;
+}
+
+/** Buy−sell spread when both prices exist; otherwise −∞. */
+function priceSpread(g: MarketItemGroup): number {
+  if (!marketGroupHasBothPrices(g) || g.bestSale == null || g.bestWant == null) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  return g.bestWant - g.bestSale;
+}
+
+function salePrice(g: MarketItemGroup): number {
+  return g.bestSale != null ? g.bestSale : Number.POSITIVE_INFINITY;
+}
+
+function wantPrice(g: MarketItemGroup): number {
+  return g.bestWant != null ? g.bestWant : Number.NEGATIVE_INFINITY;
+}
+
+/** Sort item groups for the market grid. Favorites float to the top. */
+export function sortMarketGroups(
+  groups: MarketItemGroup[],
+  sort: MarketGroupSort,
+  favoriteKeys?: Record<string, boolean> | null,
+): MarketItemGroup[] {
+  const copy = groups.slice();
+  const fav = favoriteKeys || null;
+  copy.sort((a, b) => {
+    if (fav) {
+      const fa = fav[a.key] ? 0 : 1;
+      const fb = fav[b.key] ? 0 : 1;
+      if (fa !== fb) return fa - fb;
+    }
+    if (sort === "name") return a.name.localeCompare(b.name);
+    if (sort === "sellAsc") {
+      const pa = salePrice(a);
+      const pb = salePrice(b);
+      if (pa !== pb) return pa - pb;
+      return a.name.localeCompare(b.name);
+    }
+    if (sort === "sellDesc") {
+      const pa = a.bestSale != null ? a.bestSale : Number.NEGATIVE_INFINITY;
+      const pb = b.bestSale != null ? b.bestSale : Number.NEGATIVE_INFINITY;
+      if (pa !== pb) return pb - pa;
+      return a.name.localeCompare(b.name);
+    }
+    if (sort === "buyDesc") {
+      const pa = wantPrice(a);
+      const pb = wantPrice(b);
+      if (pa !== pb) return pb - pa;
+      return a.name.localeCompare(b.name);
+    }
+    if (sort === "offers") {
+      const na = a.rows.length;
+      const nb = b.rows.length;
+      if (na !== nb) return nb - na;
+      return a.name.localeCompare(b.name);
+    }
+    if (sort === "arb") {
+      // 0 = green-border arb, 1 = both prices but no arb, 2 = missing a side
+      const tier = (g: MarketItemGroup) =>
+        marketGroupHasArb(g) ? 0 : marketGroupHasBothPrices(g) ? 1 : 2;
+      const ta = tier(a);
+      const tb = tier(b);
+      if (ta !== tb) return ta - tb;
+      if (ta === 0) {
+        const sa = priceSpread(a);
+        const sb = priceSpread(b);
+        if (sa !== sb) return sb - sa;
+      }
+      return a.name.localeCompare(b.name);
+    }
+    // dual (default): both priced sides (or a giveaway) first, then name
+    const da =
+      marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+    const db =
+      marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+    if (da !== db) return da - db;
+    return a.name.localeCompare(b.name);
+  });
+  return copy;
 }
 
 /** Group by item name; sort groups by best (lowest) sell price first. */
@@ -137,10 +258,17 @@ export function sortMarketListings(
     if (fa !== fb) return fa - fb;
     const nameCmp = a.name.localeCompare(b.name);
     if (nameCmp !== 0) return nameCmp;
-    if (a.buyOrder !== b.buyOrder) return a.buyOrder ? 1 : -1;
-    // sales: cheapest first; buy orders: highest first
-    if (!a.buyOrder && !b.buyOrder) return a.price - b.price;
+    const ga = a.giveaway ? 2 : a.buyOrder ? 1 : 0;
+    const gb = b.giveaway ? 2 : b.buyOrder ? 1 : 0;
+    if (ga !== gb) return ga - gb;
+    // sales: cheapest first; buy orders: highest first; giveaways: by entrants
+    if (!a.buyOrder && !b.buyOrder && !a.giveaway && !b.giveaway) {
+      return a.price - b.price;
+    }
     if (a.buyOrder && b.buyOrder) return b.price - a.price;
+    if (a.giveaway && b.giveaway) {
+      return (a.giveawayEntries || 0) - (b.giveawayEntries || 0);
+    }
     return a.price - b.price;
   });
   return copy;

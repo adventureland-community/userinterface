@@ -17,6 +17,10 @@ export type MarketSlotListing = {
   price: number;
   /** true = buy order (merchant wants to buy). */
   buyOrder: boolean;
+  /** Free giveaway (join_giveaway), not a priced sale. */
+  giveaway?: boolean;
+  /** Entrant count when catalog/live exposes a registry. */
+  giveawayEntries?: number;
   q?: number;
   level?: number;
   p?: string | null;

@@ -214,6 +214,8 @@ export type CommUiSettings = {
   abilityTimeline?: Partial<AbilityTimelinePrefs>;
   /** Bag sort button rules (Settings → Bag). */
   bagSort?: Partial<BagSortPrefs>;
+  /** Market item group keys (name\\0level\\0title) marked favorite. */
+  marketFavoriteKeys: string[];
   /** One-shot frame migrations; bump LAYOUT_FRAME_REV when adding migrators. */
   layoutRev?: number;
 };
@@ -266,6 +268,7 @@ const DEFAULTS: CommUiSettings = {
   minimapZoom: MINIMAP_ZOOM_DEFAULT,
   minimapBg: MINIMAP_BG_DEFAULT,
   layoutRev: LAYOUT_FRAME_REV,
+  marketFavoriteKeys: [],
 };
 
 export function resolveLayoutProfile(
@@ -371,6 +374,21 @@ function normalizeMeterBookmarks(raw: unknown): MeterBookmark[] {
       partyFocus: row.partyFocus,
       selectedset: row.selectedset,
     });
+  }
+  return out;
+}
+
+/** Deduped market group keys (name\\0level\\0title). Cap keeps settings small. */
+function normalizeMarketFavoriteKeys(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen: Record<string, boolean> = Object.create(null);
+  const out: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const key = raw[i];
+    if (typeof key !== "string" || !key || seen[key]) continue;
+    seen[key] = true;
+    out.push(key);
+    if (out.length >= 200) break;
   }
   return out;
 }
@@ -547,6 +565,7 @@ function migrate(parsed: any): CommUiSettings {
     meterAlwaysShowSelf: parsed.meterAlwaysShowSelf !== false,
     meterWindowGrouping: parsed.meterWindowGrouping !== false,
     meterBookmarks: normalizeMeterBookmarks(parsed.meterBookmarks),
+    marketFavoriteKeys: normalizeMarketFavoriteKeys(parsed.marketFavoriteKeys),
     meterRecentReports: Array.isArray(parsed.meterRecentReports)
       ? parsed.meterRecentReports
           .filter(
@@ -669,6 +688,7 @@ function freshDefaults(): CommUiSettings {
     meterAlwaysShowSelf: true,
     meterWindowGrouping: true,
     meterBookmarks: [],
+    marketFavoriteKeys: [],
     meterRecentReports: [],
     metersHidden: false,
   };
@@ -844,6 +864,11 @@ export function patchSettings(
   }
   if (partial.meterBookmarks) {
     next.meterBookmarks = normalizeMeterBookmarks(partial.meterBookmarks);
+  }
+  if (partial.marketFavoriteKeys) {
+    next.marketFavoriteKeys = normalizeMarketFavoriteKeys(
+      partial.marketFavoriteKeys,
+    );
   }
   if (partial.meterRecentReports) {
     next.meterRecentReports = partial.meterRecentReports.slice(0, 10);

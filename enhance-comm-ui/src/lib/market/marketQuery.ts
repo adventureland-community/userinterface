@@ -419,15 +419,21 @@ function offerMatchesClause(
     });
   } else if (c.kind === "is") {
     hit = valueHits(c.values, (v) => {
-      if (v === "sell" || v === "sale" || v === "selling") return !row.buyOrder;
+      if (v === "sell" || v === "sale" || v === "selling") {
+        return !row.buyOrder && !row.giveaway;
+      }
       if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
         return !!row.buyOrder;
+      }
+      if (v === "give" || v === "giveaway" || v === "free") {
+        return !!row.giveaway;
       }
       if (v === "near") {
         // Visible / in entities (not catalog-only same-map).
         return !!row.fromLive || row.merchantStatus === "you";
       }
       if (v === "afford") {
+        if (row.giveaway) return true;
         return !!row.buyOrder || (row.price || 0) <= ctx.gold;
       }
       if (v === "have") return !!ctx.bagNames[row.name.toLowerCase()];
@@ -466,7 +472,7 @@ export function listingMatchesMarketQuery(
 }
 
 export type MarketToggleSync = {
-  facet: "all" | "sale" | "wanted";
+  facet: "all" | "sale" | "wanted" | "giveaway";
   nearOnly: boolean;
   canAfford: boolean;
   haveStock: boolean;
@@ -490,6 +496,9 @@ export function syncTogglesFromQuery(raw: string): MarketToggleSync {
         if (v === "sell" || v === "sale" || v === "selling") facet = "sale";
         if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
           facet = "wanted";
+        }
+        if (v === "give" || v === "giveaway" || v === "free") {
+          facet = "giveaway";
         }
         if (v === "near") near = true;
         if (v === "afford") afford = true;
@@ -533,6 +542,9 @@ export function rewriteIsInFilter(
       v === "want" ||
       v === "wanted" ||
       v === "buying" ||
+      v === "give" ||
+      v === "giveaway" ||
+      v === "free" ||
       v === "near" ||
       v === "afford" ||
       v === "have"
@@ -543,6 +555,7 @@ export function rewriteIsInFilter(
   }
   if (next.facet === "sale") keep.push("is:sell");
   if (next.facet === "wanted") keep.push("is:buy");
+  if (next.facet === "giveaway") keep.push("is:giveaway");
   if (next.nearOnly) keep.push("is:near");
   if (next.canAfford) keep.push("is:afford");
   if (next.haveStock) keep.push("is:have");
@@ -667,6 +680,7 @@ export function buildMarketSearchSuggestions(opts: {
     const isOpts = [
       { value: "sell", hint: "Selling offers only" },
       { value: "buy", hint: "Buy orders only" },
+      { value: "giveaway", hint: "Free giveaways only" },
       { value: "near", hint: "Visible / in entities" },
       { value: "afford", hint: "Within your gold" },
       { value: "have", hint: "Items you hold" },

@@ -102,8 +102,15 @@ export function getTimeUntil(dateString: string | undefined): string {
 /** Compact number for meter totals and bar labels (1.2k, 3.45M). */
 export function formatCompactNumber(n: number): string {
   const a = Math.abs(n);
+  if (a >= 1e12) return (n / 1e12).toFixed(2) + "T";
+  if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
   if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
-  if (a >= 1e3) return (n / 1e3).toFixed(1) + "k";
+  if (a >= 1e3) {
+    const kStr = (n / 1e3).toFixed(1);
+    // Avoid "1000.0k" when rounding crosses into millions.
+    if (Math.abs(Number(kStr)) >= 1000) return (n / 1e6).toFixed(2) + "M";
+    return kStr + "k";
+  }
   return String(Math.round(n));
 }
 

@@ -3,13 +3,12 @@ import type { EntityLike, SlotLike } from "../../host/globals";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { itemContainer } from "../../host/icons";
 import {
-  itemInstanceHtml,
-  itemIconHtml,
   itemInstanceLabel,
   itemSkin,
   stampNativeItemTitle,
 } from "../../lib/gameIcon";
 import { GEAR_SLOT_SIZE } from "../chrome/gearSlotCell";
+import { ItemInstance } from "../chrome/ItemInstance";
 import { TRADE_SLOT_CELL } from "../../lib/frameSizes";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import { handleBagDragOverGearSlot, handleBagDropOnTradeSlot } from "../gear/gearSlotDragDrop";
@@ -129,34 +128,16 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     (slot && slot.skin) || (slot && slot.name ? itemSkin(slot.name) : undefined);
   let content: any = null;
 
-  if (slot && skin) {
-    let html = "";
-    try {
-      html =
-        itemInstanceHtml(slot.name, {
-          skin,
-          size,
-          level: slot.level,
-          q: slot.q,
-          p: slot.p,
-        }) || "";
-    } catch {
-      html = "";
-    }
-    content = html
-      ? wrapContainerHtml(
-          html,
-          itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
-          { stripNativeDrag: editable && filled },
-        )
-      : wrapContainerHtml(
-          itemIconHtml(slot.name, {
-            skin,
-            size,
-            level: slot.level,
-            p: slot.p,
-          }),
-        );
+  if (slot && slot.name) {
+    content = e(ItemInstance, {
+      name: slot.name,
+      skin,
+      size,
+      level: typeof slot.level === "number" ? slot.level : undefined,
+      q: typeof slot.q === "number" ? slot.q : undefined,
+      p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : undefined,
+      title: itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
+    });
   } else {
     // Same stock empty chrome as TradeGrid — overlay "+" for Market fluid stand.
     let html = "";
@@ -194,8 +175,13 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
               className: "comm-trade-slot-emptyWrap",
               style: {
                 position: "relative",
-                display: "inline-block",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: emptyPx,
+                height: emptyPx,
                 lineHeight: 0,
+                boxSizing: "border-box",
               },
             },
             frame,
@@ -235,7 +221,15 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
   const tipParts: string[] = [];
   if (filled && slot?.name) {
     tipParts.push(itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }));
-    if (priceLabel) tipParts.push(`${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`);
+    if (priceLabel) {
+      tipParts.push(
+        isGiveawayListing(slot)
+          ? "Giveaway"
+          : `${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`,
+      );
+    } else if (isGiveawayListing(slot)) {
+      tipParts.push("Giveaway");
+    }
     if (foreign && !inRange) tipParts.push("(too far)");
     if (canFulfill) tipParts.push("Click to sell");
     else if (slot.b && bagMatch) tipParts.push("Buy order — matching item in bag");
@@ -426,19 +420,22 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
           },
           priceLabel,
         )
-      : fluid
-        ? e("div", {
-            className: "comm-trade-slot-price is-empty",
-            style: {
-              width: "100%",
-              minHeight: "14px",
-              fontSize: size <= 34 ? 10 : TYPE.microMin,
-              visibility: "hidden",
+      : iconSize != null
+        ? e(
+            "div",
+            {
+              className: "comm-trade-slot-price is-empty",
+              style: {
+                width: "100%",
+                maxWidth: fluid ? "100%" : `${cellW}px`,
+                minHeight: "14px",
+                fontSize: size <= 34 ? 10 : TYPE.microMin,
+                visibility: "hidden",
+              },
+              "aria-hidden": true,
             },
-            "aria-hidden": true,
-          },
-          "0",
-        )
-      : null,
+            "0",
+          )
+        : null,
   );
 }

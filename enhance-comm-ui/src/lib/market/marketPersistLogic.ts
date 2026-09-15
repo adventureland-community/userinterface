@@ -52,6 +52,8 @@ function listingFromSlot(
     buyOrder: slot.buyOrder,
     lastRefreshedAt: now,
   };
+  if (slot.giveaway) row.giveaway = true;
+  if (slot.giveawayEntries != null) row.giveawayEntries = slot.giveawayEntries;
   if (slot.q != null) row.q = slot.q;
   if (slot.level != null) row.level = slot.level;
   if (slot.p !== undefined) row.p = slot.p;
@@ -369,6 +371,8 @@ export function cachedSlotsAsListings(
       buyOrder: s.buyOrder,
       lastRefreshedAt: s.lastRefreshedAt,
     };
+    if (s.giveaway) row.giveaway = true;
+    if (s.giveawayEntries != null) row.giveawayEntries = s.giveawayEntries;
     if (s.q != null) row.q = s.q;
     if (s.level != null) row.level = s.level;
     if (s.p !== undefined) row.p = s.p;
@@ -412,6 +416,8 @@ export function marketCacheContentEqual(
         sx.name !== sy.name ||
         sx.price !== sy.price ||
         sx.buyOrder !== sy.buyOrder ||
+        !!sx.giveaway !== !!sy.giveaway ||
+        sx.giveawayEntries !== sy.giveawayEntries ||
         sx.q !== sy.q ||
         sx.level !== sy.level ||
         sx.p !== sy.p

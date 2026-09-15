@@ -5353,8 +5353,14 @@ var EnhanceCommUI = (() => {
   }
   function formatCompactNumber(n) {
     const a = Math.abs(n);
+    if (a >= 1e12) return (n / 1e12).toFixed(2) + "T";
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
     if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (a >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    if (a >= 1e3) {
+      const kStr = (n / 1e3).toFixed(1);
+      if (Math.abs(Number(kStr)) >= 1e3) return (n / 1e6).toFixed(2) + "M";
+      return kStr + "k";
+    }
     return String(Math.round(n));
   }
   function formatCompactRate(n) {
@@ -10510,7 +10516,8 @@ ${fightHoverTip(src)}`
     nextWindowNumber: 1,
     minimapZoom: MINIMAP_ZOOM_DEFAULT,
     minimapBg: MINIMAP_BG_DEFAULT,
-    layoutRev: LAYOUT_FRAME_REV
+    layoutRev: LAYOUT_FRAME_REV,
+    marketFavoriteKeys: []
   };
   function resolveLayoutProfile(mode, detected) {
     if (mode && mode !== "auto") return mode;
@@ -10585,6 +10592,19 @@ ${fightHoverTip(src)}`
         partyFocus: row3.partyFocus,
         selectedset: row3.selectedset
       });
+    }
+    return out;
+  }
+  function normalizeMarketFavoriteKeys(raw) {
+    if (!Array.isArray(raw)) return [];
+    const seen = /* @__PURE__ */ Object.create(null);
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const key = raw[i];
+      if (typeof key !== "string" || !key || seen[key]) continue;
+      seen[key] = true;
+      out.push(key);
+      if (out.length >= 200) break;
     }
     return out;
   }
@@ -10728,6 +10748,7 @@ ${fightHoverTip(src)}`
       meterAlwaysShowSelf: parsed.meterAlwaysShowSelf !== false,
       meterWindowGrouping: parsed.meterWindowGrouping !== false,
       meterBookmarks: normalizeMeterBookmarks(parsed.meterBookmarks),
+      marketFavoriteKeys: normalizeMarketFavoriteKeys(parsed.marketFavoriteKeys),
       meterRecentReports: Array.isArray(parsed.meterRecentReports) ? parsed.meterRecentReports.filter(
         (r) => r && typeof r.id === "string" && typeof r.label === "string" && typeof r.text === "string"
       ).slice(0, 10) : [],
@@ -10802,6 +10823,7 @@ ${fightHoverTip(src)}`
       meterAlwaysShowSelf: true,
       meterWindowGrouping: true,
       meterBookmarks: [],
+      marketFavoriteKeys: [],
       meterRecentReports: [],
       metersHidden: false
     };
@@ -10949,6 +10971,11 @@ ${fightHoverTip(src)}`
     }
     if (partial.meterBookmarks) {
       next.meterBookmarks = normalizeMeterBookmarks(partial.meterBookmarks);
+    }
+    if (partial.marketFavoriteKeys) {
+      next.marketFavoriteKeys = normalizeMarketFavoriteKeys(
+        partial.marketFavoriteKeys
+      );
     }
     if (partial.meterRecentReports) {
       next.meterRecentReports = partial.meterRecentReports.slice(0, 10);
@@ -16920,14 +16947,23 @@ ${CHROME_ARRANGE_CSS}
     const s = raw;
     const name = typeof s.name === "string" ? s.name : "";
     if (!name) return null;
-    const price = typeof s.price === "number" ? s.price : Number(s.price);
+    const registry = s.registry && typeof s.registry === "object" ? s.registry : null;
+    const giveaway = s.giveaway === true || !!registry;
+    const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
+    const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
     if (!Number.isFinite(price)) return null;
     const listing = {
       slot: slotName,
       name,
       price,
-      buyOrder: s.b === true
+      buyOrder: !giveaway && s.b === true
     };
+    if (giveaway) {
+      listing.giveaway = true;
+      if (registry) {
+        listing.giveawayEntries = Object.keys(registry).length;
+      }
+    }
     if (typeof s.rid === "string" && s.rid) listing.rid = s.rid;
     if (typeof s.q === "number") listing.q = s.q;
     if (typeof s.level === "number") listing.level = s.level;
@@ -17001,6 +17037,8 @@ ${CHROME_ARRANGE_CSS}
       buyOrder: slot.buyOrder,
       lastRefreshedAt: now
     };
+    if (slot.giveaway) row3.giveaway = true;
+    if (slot.giveawayEntries != null) row3.giveawayEntries = slot.giveawayEntries;
     if (slot.q != null) row3.q = slot.q;
     if (slot.level != null) row3.level = slot.level;
     if (slot.p !== void 0) row3.p = slot.p;
@@ -17233,6 +17271,8 @@ ${CHROME_ARRANGE_CSS}
         buyOrder: s.buyOrder,
         lastRefreshedAt: s.lastRefreshedAt
       };
+      if (s.giveaway) row3.giveaway = true;
+      if (s.giveawayEntries != null) row3.giveawayEntries = s.giveawayEntries;
       if (s.q != null) row3.q = s.q;
       if (s.level != null) row3.level = s.level;
       if (s.p !== void 0) row3.p = s.p;
@@ -17253,7 +17293,7 @@ ${CHROME_ARRANGE_CSS}
       for (let j = 0; j < x.slots.length; j++) {
         const sx = x.slots[j];
         const sy = y.slots[j];
-        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
+        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || !!sx.giveaway !== !!sy.giveaway || sx.giveawayEntries !== sy.giveawayEntries || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
           return false;
         }
       }
@@ -19490,6 +19530,9 @@ ${CHROME_ARRANGE_CSS}
       if (!ok) return false;
     }
     const maxQ = row3.q != null && row3.q > 0 ? row3.q : void 0;
+    if (row3.giveaway) {
+      return joinGiveawayCommand(targetId, row3.slot, row3.rid);
+    }
     if (row3.buyOrder) {
       const match = findBagMatchForBuyOrder(
         {
@@ -22000,6 +22043,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   }
   function ItemInstance(props) {
     const React = getReact();
+    ensureItemInstanceBadgeCss();
     const ref = React.useRef(null);
     const {
       name,
@@ -22128,6 +22172,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   color: #cfcfcf;
 }
 `;
+  var BADGE_STYLE_ID = "ecu-item-instance-badge-css";
+  function ensureItemInstanceBadgeCss() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(BADGE_STYLE_ID)) return;
+    const el = document.createElement("style");
+    el.id = BADGE_STYLE_ID;
+    el.textContent = ITEM_INSTANCE_BADGE_CSS;
+    document.head.appendChild(el);
+  }
 
   // src/ui/frames/mail/mailChromeCss.ts
   var MAIL_CHROME_CSS = `
@@ -23000,7 +23053,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.9.12" : "unknown";
-    const builtAt = true ? "2026-09-10T21:18:50.508Z" : "unknown";
+    const builtAt = true ? "2026-09-15T08:33:40.282Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -62947,14 +63000,20 @@ ${ESTIMATE_HINT}`,
       });
     } else if (c.kind === "is") {
       hit = valueHits(c.values, (v) => {
-        if (v === "sell" || v === "sale" || v === "selling") return !row3.buyOrder;
+        if (v === "sell" || v === "sale" || v === "selling") {
+          return !row3.buyOrder && !row3.giveaway;
+        }
         if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
           return !!row3.buyOrder;
+        }
+        if (v === "give" || v === "giveaway" || v === "free") {
+          return !!row3.giveaway;
         }
         if (v === "near") {
           return !!row3.fromLive || row3.merchantStatus === "you";
         }
         if (v === "afford") {
+          if (row3.giveaway) return true;
           return !!row3.buyOrder || (row3.price || 0) <= ctx.gold;
         }
         if (v === "have") return !!ctx.bagNames[row3.name.toLowerCase()];
@@ -63004,6 +63063,9 @@ ${ESTIMATE_HINT}`,
           if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
             facet = "wanted";
           }
+          if (v === "give" || v === "giveaway" || v === "free") {
+            facet = "giveaway";
+          }
           if (v === "near") near = true;
           if (v === "afford") afford = true;
           if (v === "have") have = true;
@@ -63033,13 +63095,14 @@ ${ESTIMATE_HINT}`,
         continue;
       }
       const v = String(m[1] || "").toLowerCase();
-      if (v === "sell" || v === "sale" || v === "selling" || v === "buy" || v === "want" || v === "wanted" || v === "buying" || v === "near" || v === "afford" || v === "have") {
+      if (v === "sell" || v === "sale" || v === "selling" || v === "buy" || v === "want" || v === "wanted" || v === "buying" || v === "give" || v === "giveaway" || v === "free" || v === "near" || v === "afford" || v === "have") {
         continue;
       }
       keep.push(neg + tok);
     }
     if (next.facet === "sale") keep.push("is:sell");
     if (next.facet === "wanted") keep.push("is:buy");
+    if (next.facet === "giveaway") keep.push("is:giveaway");
     if (next.nearOnly) keep.push("is:near");
     if (next.canAfford) keep.push("is:afford");
     if (next.haveStock) keep.push("is:have");
@@ -63126,6 +63189,7 @@ ${ESTIMATE_HINT}`,
       const isOpts = [
         { value: "sell", hint: "Selling offers only" },
         { value: "buy", hint: "Buy orders only" },
+        { value: "giveaway", hint: "Free giveaways only" },
         { value: "near", hint: "Visible / in entities" },
         { value: "afford", hint: "Within your gold" },
         { value: "have", hint: "Items you hold" },
@@ -63334,8 +63398,9 @@ ${ESTIMATE_HINT}`,
       if (merchantFilter && row3.merchant.toLowerCase() !== merchantFilter) {
         continue;
       }
-      if (filters.side === "sale" && row3.buyOrder) continue;
+      if (filters.side === "sale" && (row3.buyOrder || row3.giveaway)) continue;
       if (filters.side === "buy" && !row3.buyOrder) continue;
+      if (filters.side === "giveaway" && !row3.giveaway) continue;
       if (!listingMatchesMarketQuery(row3, filters.query, qCtx)) continue;
       if (filters.nearOnly) {
         if (!row3.fromLive && row3.merchantStatus !== "you") continue;
@@ -63365,8 +63430,10 @@ ${ESTIMATE_HINT}`,
       const sample = list[0];
       const sales = [];
       const wants = [];
+      const giveaways = [];
       for (let j = 0; j < list.length; j++) {
-        if (list[j].buyOrder) wants.push(list[j]);
+        if (list[j].giveaway) giveaways.push(list[j]);
+        else if (list[j].buyOrder) wants.push(list[j]);
         else sales.push(list[j]);
       }
       let bestSale = null;
@@ -63385,17 +63452,98 @@ ${ESTIMATE_HINT}`,
         rows: list,
         sales,
         wants,
+        giveaways,
         bestSale,
         bestWant
       });
     }
     out.sort((a, b) => {
-      const da = a.sales.length && a.wants.length ? 0 : 1;
-      const db = b.sales.length && b.wants.length ? 0 : 1;
+      const da = marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+      const db = marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
       if (da !== db) return da - db;
       return a.name.localeCompare(b.name);
     });
     return out;
+  }
+  var MARKET_GROUP_SORT_OPTIONS = [
+    { id: "dual", label: "Both sides" },
+    { id: "arb", label: "Arb" },
+    { id: "name", label: "Name" },
+    { id: "sellAsc", label: "Sell low" },
+    { id: "sellDesc", label: "Sell high" },
+    { id: "buyDesc", label: "Buy high" },
+    { id: "offers", label: "Most offers" }
+  ];
+  function marketGroupHasArb(g) {
+    return g.bestSale != null && g.bestWant != null && g.bestSale < g.bestWant;
+  }
+  function marketGroupHasBothPrices(g) {
+    return g.bestSale != null && g.bestWant != null;
+  }
+  function priceSpread(g) {
+    if (!marketGroupHasBothPrices(g) || g.bestSale == null || g.bestWant == null) {
+      return Number.NEGATIVE_INFINITY;
+    }
+    return g.bestWant - g.bestSale;
+  }
+  function salePrice(g) {
+    return g.bestSale != null ? g.bestSale : Number.POSITIVE_INFINITY;
+  }
+  function wantPrice(g) {
+    return g.bestWant != null ? g.bestWant : Number.NEGATIVE_INFINITY;
+  }
+  function sortMarketGroups(groups, sort, favoriteKeys) {
+    const copy = groups.slice();
+    const fav = favoriteKeys || null;
+    copy.sort((a, b) => {
+      if (fav) {
+        const fa = fav[a.key] ? 0 : 1;
+        const fb = fav[b.key] ? 0 : 1;
+        if (fa !== fb) return fa - fb;
+      }
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "sellAsc") {
+        const pa = salePrice(a);
+        const pb = salePrice(b);
+        if (pa !== pb) return pa - pb;
+        return a.name.localeCompare(b.name);
+      }
+      if (sort === "sellDesc") {
+        const pa = a.bestSale != null ? a.bestSale : Number.NEGATIVE_INFINITY;
+        const pb = b.bestSale != null ? b.bestSale : Number.NEGATIVE_INFINITY;
+        if (pa !== pb) return pb - pa;
+        return a.name.localeCompare(b.name);
+      }
+      if (sort === "buyDesc") {
+        const pa = wantPrice(a);
+        const pb = wantPrice(b);
+        if (pa !== pb) return pb - pa;
+        return a.name.localeCompare(b.name);
+      }
+      if (sort === "offers") {
+        const na = a.rows.length;
+        const nb = b.rows.length;
+        if (na !== nb) return nb - na;
+        return a.name.localeCompare(b.name);
+      }
+      if (sort === "arb") {
+        const tier = (g) => marketGroupHasArb(g) ? 0 : marketGroupHasBothPrices(g) ? 1 : 2;
+        const ta = tier(a);
+        const tb = tier(b);
+        if (ta !== tb) return ta - tb;
+        if (ta === 0) {
+          const sa = priceSpread(a);
+          const sb = priceSpread(b);
+          if (sa !== sb) return sb - sa;
+        }
+        return a.name.localeCompare(b.name);
+      }
+      const da = marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+      const db = marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+      if (da !== db) return da - db;
+      return a.name.localeCompare(b.name);
+    });
+    return copy;
   }
   function sortMarketListings(rows, friendNames) {
     const copy = rows.slice();
@@ -63405,9 +63553,16 @@ ${ESTIMATE_HINT}`,
       if (fa !== fb) return fa - fb;
       const nameCmp = a.name.localeCompare(b.name);
       if (nameCmp !== 0) return nameCmp;
-      if (a.buyOrder !== b.buyOrder) return a.buyOrder ? 1 : -1;
-      if (!a.buyOrder && !b.buyOrder) return a.price - b.price;
+      const ga = a.giveaway ? 2 : a.buyOrder ? 1 : 0;
+      const gb = b.giveaway ? 2 : b.buyOrder ? 1 : 0;
+      if (ga !== gb) return ga - gb;
+      if (!a.buyOrder && !b.buyOrder && !a.giveaway && !b.giveaway) {
+        return a.price - b.price;
+      }
       if (a.buyOrder && b.buyOrder) return b.price - a.price;
+      if (a.giveaway && b.giveaway) {
+        return (a.giveawayEntries || 0) - (b.giveawayEntries || 0);
+      }
       return a.price - b.price;
     });
     return copy;
@@ -63459,7 +63614,8 @@ ${ESTIMATE_HINT}`,
 
   // src/lib/market/marketStandPackStacks.ts
   function marketStandPackStackKey(slot) {
-    return (slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (slot.price != null ? String(slot.price) : "");
+    const give = !!(slot.giveaway || slot.registry);
+    return (give ? "g" : slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (give ? "give" : slot.price != null ? String(slot.price) : "");
   }
   function listingQty(slot) {
     if (typeof slot.q === "number" && slot.q > 0) return slot.q | 0;
@@ -63480,6 +63636,8 @@ ${ESTIMATE_HINT}`,
       const key = marketStandPackStackKey({
         name,
         b: !!raw.b,
+        giveaway: !!raw.giveaway,
+        registry: raw.registry,
         level: typeof raw.level === "number" ? raw.level : void 0,
         p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
         price: typeof raw.price === "number" ? raw.price : void 0
@@ -63648,31 +63806,16 @@ ${ESTIMATE_HINT}`,
     const cellW = fluid ? void 0 : TRADE_SLOT_CELL;
     const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
     let content = null;
-    if (slot && skin) {
-      let html = "";
-      try {
-        html = itemInstanceHtml(slot.name, {
-          skin,
-          size,
-          level: slot.level,
-          q: slot.q,
-          p: slot.p
-        }) || "";
-      } catch (e2) {
-        html = "";
-      }
-      content = html ? wrapContainerHtml2(
-        html,
-        itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
-        { stripNativeDrag: editable && filled }
-      ) : wrapContainerHtml2(
-        itemIconHtml(slot.name, {
-          skin,
-          size,
-          level: slot.level,
-          p: slot.p
-        })
-      );
+    if (slot && slot.name) {
+      content = e(ItemInstance, {
+        name: slot.name,
+        skin,
+        size,
+        level: typeof slot.level === "number" ? slot.level : void 0,
+        q: typeof slot.q === "number" ? slot.q : void 0,
+        p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : void 0,
+        title: itemInstanceLabel(slot.name, { p: slot.p, level: slot.level })
+      });
     } else {
       let html = "";
       try {
@@ -63704,8 +63847,13 @@ ${ESTIMATE_HINT}`,
           className: "comm-trade-slot-emptyWrap",
           style: {
             position: "relative",
-            display: "inline-block",
-            lineHeight: 0
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: emptyPx,
+            height: emptyPx,
+            lineHeight: 0,
+            boxSizing: "border-box"
           }
         },
         frame,
@@ -63736,7 +63884,13 @@ ${ESTIMATE_HINT}`,
     const tipParts = [];
     if (filled && (slot == null ? void 0 : slot.name)) {
       tipParts.push(itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }));
-      if (priceLabel) tipParts.push(`${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`);
+      if (priceLabel) {
+        tipParts.push(
+          isGiveawayListing(slot) ? "Giveaway" : `${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`
+        );
+      } else if (isGiveawayListing(slot)) {
+        tipParts.push("Giveaway");
+      }
       if (foreign && !inRange) tipParts.push("(too far)");
       if (canFulfill) tipParts.push("Click to sell");
       else if (slot.b && bagMatch) tipParts.push("Buy order \u2014 matching item in bag");
@@ -63887,12 +64041,13 @@ ${ESTIMATE_HINT}`,
           title: priceLabel
         },
         priceLabel
-      ) : fluid ? e(
+      ) : iconSize != null ? e(
         "div",
         {
           className: "comm-trade-slot-price is-empty",
           style: {
             width: "100%",
+            maxWidth: fluid ? "100%" : `${cellW}px`,
             minHeight: "14px",
             fontSize: size <= 34 ? 10 : TYPE.microMin,
             visibility: "hidden"
@@ -64199,6 +64354,31 @@ ${ESTIMATE_HINT}`,
   align-items: center;
   margin-left: auto;
 }
+.MarketPanel-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #888;
+  font-size: 11px;
+}
+.MarketPanel-sort select {
+  appearance: none;
+  border: 1px solid #3a3a3a;
+  background: #080808;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  height: 24px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.MarketPanel-sort select:hover,
+.MarketPanel-sort select:focus {
+  border-color: rgba(232, 201, 106, .45);
+  outline: none;
+}
 .MarketPanel-phTools .MarketPanel-seg { height: 24px; }
 .MarketPanel-phTools .MarketPanel-seg button {
   font-size: 11px;
@@ -64297,58 +64477,59 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-standBar .st.off { color: #c66; }
 .MarketPanel-standSlots {
-  /* All mode: stock-like 4 cols, cells shrink to the You column (no h-scroll). */
+  /* Pack + All: identical fixed cells so icon gaps match. */
+  --mk-stand-cell: 46px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  justify-content: stretch;
-  gap: 3px;
+  grid-template-columns: repeat(4, var(--mk-stand-cell));
+  justify-content: start;
+  align-content: start;
+  justify-items: stretch;
+  gap: 4px;
   padding: 6px 8px 8px;
   width: 100%;
   box-sizing: border-box;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  align-content: start;
   overflow-x: hidden;
   overflow-y: auto;
 }
 .MarketPanel-standSlots.is-dense {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(6, var(--mk-stand-cell));
 }
-/* Pack: filled (+ one empty) wrap as a flow \u2014 same gap as All. */
-.MarketPanel-standSlots.is-pack {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: start;
-  justify-content: flex-start;
-  gap: 3px;
-  padding: 6px 8px 8px;
-}
-.MarketPanel-standSlots.is-pack .comm-trade-slot {
-  width: auto;
-  max-width: none;
-  min-width: 0;
-  flex: 0 0 auto;
-}
-.MarketPanel-standSlots.is-all .comm-trade-slot.is-fluid {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  flex: none;
+.MarketPanel-standSlots .comm-trade-slot {
+  width: var(--mk-stand-cell) !important;
+  max-width: var(--mk-stand-cell) !important;
+  min-width: var(--mk-stand-cell);
+  flex: none !important;
 }
 .MarketPanel-standSlots .comm-trade-slot-art {
   margin: 0 auto;
+  width: var(--mk-stand-cell);
+  height: var(--mk-stand-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyWrap {
   margin: 0 auto;
   line-height: 0;
+  width: var(--mk-stand-cell);
+  height: var(--mk-stand-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyPlus {
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
   font-weight: 600;
 }
 .MarketPanel-standSlots .comm-trade-slot-price {
-  max-width: 100%;
+  max-width: var(--mk-stand-cell);
+  width: 100%;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots.is-dense .comm-trade-slot-price {
   font-size: 10px;
@@ -64366,30 +64547,72 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-itemGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  grid-auto-rows: minmax(148px, auto);
+  /* Tall enough for icon + 2-line name + price footer with air. */
+  grid-auto-rows: minmax(168px, auto);
   gap: 8px;
   padding: 10px;
   align-content: start;
+  align-items: stretch;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 .MarketPanel-itemCard {
-  appearance: none;
+  position: relative;
   border: 1px solid #2c2c2c;
   background: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
   color: inherit;
   font: inherit;
   padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  min-height: 168px;
+  height: auto;
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.MarketPanel-itemCard__hit {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   text-align: left;
   display: flex;
   flex-direction: column;
-  min-height: 148px;
-  height: 100%;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
   box-sizing: border-box;
-  transition: border-color .12s, background .12s, box-shadow .12s;
 }
+.MarketPanel-itemCard__fav {
+  appearance: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  border: 0;
+  background: rgba(0, 0, 0, .45);
+  color: #6a6a6a;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.MarketPanel-itemCard__fav:hover { color: #c9a84a; }
+.MarketPanel-itemCard__fav.is-on { color: var(--mk-accent); }
 .MarketPanel-itemCard:hover {
   border-color: #5a5a5a;
   background: linear-gradient(180deg, #1b1b1b 0%, #121212 100%);
@@ -64404,10 +64627,23 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-itemCard.is-dual:hover {
   border-color: #5a5440;
 }
+.MarketPanel-itemCard.is-arb {
+  border-color: #6a9a72;
+  box-shadow: inset 0 0 0 1px rgba(106, 154, 114, .35);
+}
+.MarketPanel-itemCard.is-arb:hover {
+  border-color: #84b88c;
+}
+.MarketPanel-itemCard.is-arb.is-on,
 .MarketPanel-itemCard.is-on {
   border-color: var(--mk-accent);
   box-shadow: inset 0 0 0 1px rgba(232, 201, 106, .28);
   background: linear-gradient(180deg, #1c1910 0%, #14120c 100%);
+}
+.MarketPanel-itemCard.is-arb.is-on {
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 201, 106, .28),
+    0 0 0 1px rgba(106, 154, 114, .45);
 }
 .MarketPanel-itemCard__top {
   flex: 0 0 auto;
@@ -64415,7 +64651,7 @@ ${ESTIMATE_HINT}`,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 10px 0;
+  padding: 10px 28px 0 10px;
   min-height: 48px;
 }
 .MarketPanel-itemCard__top .ecu-item-icon,
@@ -64433,7 +64669,8 @@ ${ESTIMATE_HINT}`,
   line-height: 1.2;
 }
 .MarketPanel-itemCard__counts .s,
-.MarketPanel-itemCard__counts .b {
+.MarketPanel-itemCard__counts .b,
+.MarketPanel-itemCard__counts .g {
   padding: 2px 5px;
   min-width: 30px;
   text-align: center;
@@ -64450,9 +64687,16 @@ ${ESTIMATE_HINT}`,
   border: 1px solid #2a4034;
   background: #101812;
 }
+.MarketPanel-itemCard__counts .g {
+  color: #c4b48e;
+  border: 1px solid #4a4430;
+  background: #16140e;
+}
 .MarketPanel-itemCard__counts .dim { opacity: .28; }
 .MarketPanel-itemCard .nm {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  /* Always reserve two lines so wrap grows the slot, not the price gap. */
+  min-height: calc(1.35em * 2);
   padding: 8px 10px 6px;
   font-size: 12px;
   font-weight: 600;
@@ -64463,6 +64707,7 @@ ${ESTIMATE_HINT}`,
   word-break: normal;
 }
 .MarketPanel-itemCard__prices {
+  flex: 0 0 auto;
   margin-top: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -64496,83 +64741,114 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-itemCard__prices .val.sell { color: var(--mk-gold); }
 .MarketPanel-itemCard__prices .val.buy { color: #8ec4a8; }
+.MarketPanel-itemCard__prices .val.give { color: #c4b48e; }
 .MarketPanel-itemCard__prices .val.none { color: #3f3f3f; font-weight: 400; }
-.MarketPanel-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-.MarketPanel-group {
-  border-bottom: 1px solid var(--mk-line);
-}
-.MarketPanel-group > summary {
-  list-style: none;
-  display: grid;
-  grid-template-columns: 46px 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 7px 10px;
-  cursor: pointer;
-  background: #101010;
-}
-.MarketPanel-group > summary::-webkit-details-marker { display: none; }
-.MarketPanel-group > summary:hover { background: #161616; }
-.MarketPanel-gName { font-weight: 600; color: #eee; font-size: 13px; }
-.MarketPanel-gSub { font-size: 11px; color: var(--mk-muted); margin-top: 1px; }
-.MarketPanel-gBest {
-  text-align: right;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--mk-gold);
-  line-height: 1.25;
-}
-.MarketPanel-gBest span { display: block; color: #666; font-size: 10px; }
 .MarketPanel-offer {
-  padding: 8px 9px;
+  padding: 7px 9px 8px;
   border-bottom: 1px solid var(--mk-line-soft);
 }
 .MarketPanel-offer:hover { background: #101010; }
 .MarketPanel-offer.is-blocked { opacity: .55; }
-.MarketPanel-offerMain {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: start;
-}
-.MarketPanel-offerOps {
+.MarketPanel-offerTop {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid #222;
-  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
-.MarketPanel-who { font-weight: 600; font-size: 12px; color: #eee; }
-.MarketPanel-where {
-  font-size: 11px;
-  color: var(--mk-muted);
-  white-space: nowrap;
+.MarketPanel-offerMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 1px;
+  margin-top: 3px;
+  min-width: 0;
+}
+.MarketPanel-offerMetaCell {
+  min-width: 0;
+  font-size: 10px;
+  color: #6a6a6a;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.MarketPanel-chips { display: inline-flex; gap: 3px; margin-left: 5px; vertical-align: 1px; }
-.MarketPanel-chip {
+.MarketPanel-offerMetaCell.is-empty { visibility: hidden; }
+.MarketPanel-offerMetaCell.is-place { color: #7a7a7a; }
+.MarketPanel-offerMetaCell.is-qty {
+  color: #8a8a8a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.MarketPanel-offerFoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+.MarketPanel-offerCache {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 10px;
+  color: #5a5040;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-offerCache.is-empty { visibility: hidden; }
+.MarketPanel-who {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.MarketPanel-whoName {
+  font-weight: 600;
+  font-size: 12px;
+  color: #e8e8e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-whoDist {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6a6a6a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-chips {
+  display: inline-flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.MarketPanel-chip {
+  font-size: 9px;
   padding: 0 4px;
-  border: 1px solid #444;
-  color: #888;
+  border: 1px solid #3a3a3a;
+  color: #777;
+  letter-spacing: .02em;
+  text-transform: lowercase;
 }
 .MarketPanel-chip.near { color: #7aaf6e; border-color: #3a5534; }
 .MarketPanel-chip.party { color: #7aa2d4; border-color: #3a5068; }
 .MarketPanel-price {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--mk-gold);
-  font-size: 13px;
+  font-size: 14px;
   text-align: right;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: .01em;
 }
+.MarketPanel-offer.is-want .MarketPanel-price { color: #8ec4a8; }
+.MarketPanel-offer.is-give .MarketPanel-price { color: #c4b48e; }
 .MarketPanel-rowAct {
   appearance: none;
   border: 1px solid #555;
@@ -64580,10 +64856,12 @@ ${ESTIMATE_HINT}`,
   color: #eee;
   font: inherit;
   font-size: 11px;
-  height: 26px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 9px;
   cursor: pointer;
   white-space: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .MarketPanel-rowAct:disabled { opacity: .35; cursor: default; }
 .MarketPanel-rowAct.is-buy {
@@ -64595,6 +64873,11 @@ ${ESTIMATE_HINT}`,
   border-color: #6a4030;
   color: #e0a080;
   background: #181210;
+}
+.MarketPanel-rowAct.is-give {
+  border-color: #5a5040;
+  color: #c4b48e;
+  background: #16140e;
 }
 .MarketPanel-empty {
   padding: 36px 16px;
@@ -64618,14 +64901,43 @@ ${ESTIMATE_HINT}`,
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  min-width: 0;
+}
+.MarketPanel-focusHeadText {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.MarketPanel-focusTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .MarketPanel-focusHead h2 {
   margin: 0 0 3px;
   font-size: 14px;
   font-weight: 700;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .MarketPanel-focusHead .sub { color: #888; font-size: 11px; line-height: 1.35; }
+.MarketPanel-favBtn {
+  appearance: none;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #6a6a6a;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.MarketPanel-favBtn:hover { color: #c9a84a; }
+.MarketPanel-favBtn.is-on { color: var(--mk-accent); }
 .MarketPanel-dealBar {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -64649,8 +64961,12 @@ ${ESTIMATE_HINT}`,
   grid-template-columns: 1fr 1fr;
   align-items: start;
 }
+.MarketPanel-focusOffers.has-gives {
+  grid-template-columns: 1fr 1fr 1fr;
+}
 .MarketPanel-focusCol { min-width: 0; }
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
+.MarketPanel-focusCol--mid { border-right: 1px solid var(--mk-line); }
 .MarketPanel-focusColH {
   position: sticky;
   top: 0;
@@ -64668,6 +64984,7 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-focusColH .sells { color: #c97a5a; font-weight: 700; }
 .MarketPanel-focusColH .wants { color: #6aab8e; font-weight: 700; }
+.MarketPanel-focusColH .gives { color: #c4b48e; font-weight: 700; }
 .MarketPanel-focusColH em {
   font-style: normal;
   color: var(--mk-muted);
@@ -64790,10 +65107,11 @@ ${ESTIMATE_HINT}`,
     if (m && m[2]) return m[1].toUpperCase() + " " + m[2].toUpperCase();
     return raw || "?";
   }
-  function offerWhereLine(row3, observing) {
+  function offerLocationMeta(row3, observing, now = Date.now()) {
     var _a, _b;
-    const parts = [formatMarketServer(row3.server)];
-    if (row3.map) parts.push(String(row3.map));
+    const server = formatMarketServer(row3.server);
+    const map = row3.map ? String(row3.map) : "";
+    let distance2 = "";
     const sameMap = row3.merchantStatus === "inRange" || row3.merchantStatus === "sameMap" || row3.merchantStatus === "you";
     if (sameMap && row3.x != null && row3.y != null && observing && (observing.real_x != null || observing.x != null || observing.real_y != null || observing.y != null)) {
       const d = Math.round(
@@ -64805,26 +65123,40 @@ ${ESTIMATE_HINT}`,
           }
         )
       );
-      if (Number.isFinite(d)) parts.push(d + " away");
+      if (Number.isFinite(d)) distance2 = d + " away";
     }
-    if (row3.q != null && row3.q > 1) parts.push("\xD7" + row3.q);
-    return parts.filter(Boolean).join(" \xB7 ");
+    const qty = row3.giveaway && row3.giveawayEntries != null ? row3.giveawayEntries + " in" : row3.q != null && row3.q > 1 ? "\xD7" + String(row3.q | 0) : "";
+    let cache3 = "";
+    let cacheTip;
+    const closedStand = !row3.standOpen && /^trade([5-9]|\d{2,})$/.test(row3.slot);
+    if (row3.catalogOnly || closedStand) {
+      const age = offerCacheAgeLabel(row3, now);
+      const kind = row3.catalogOnly ? "cached" : "closed";
+      cache3 = age ? kind + " \xB7 " + age : kind;
+      cacheTip = row3.catalogOnly ? age ? "Cached listing \xB7 last refreshed " + age : "Cached listing (age unknown)" : age ? "Stand closed \xB7 last seen " + age : "Stand closed";
+    }
+    return { server, map, distance: distance2, qty, cache: cache3, cacheTip };
+  }
+  function offerCacheAgeLabel(row3, now = Date.now()) {
+    const at = row3.lastRefreshedAt;
+    if (at == null || !(at > 0)) return "";
+    return formatRelativeAge(at, now);
   }
   function actionLabel(row3) {
     if (row3.merchantStatus === "you") return "Yours";
-    if (canActOnListing(row3)) return row3.buyOrder ? "Sell" : "Buy";
+    if (canActOnListing(row3)) {
+      if (row3.giveaway) return "Join";
+      return row3.buyOrder ? "Sell" : "Buy";
+    }
     return "Travel";
   }
-  function iconEl(name, opts) {
-    return e("div", {
-      style: { lineHeight: 0, display: "inline-block" },
-      dangerouslySetInnerHTML: {
-        __html: itemIconHtml(name, {
-          size: opts.size,
-          level: opts.level,
-          p: opts.p != null ? String(opts.p) : void 0
-        })
-      }
+  function marketItemIcon(name, opts) {
+    return e(ItemInstance, {
+      name,
+      size: opts.size,
+      level: opts.level,
+      q: opts.q,
+      p: opts.p != null ? String(opts.p) : void 0
     });
   }
   function nextBest(rows, side) {
@@ -64833,11 +65165,11 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (wantBuy) {
-        if (r.buyOrder) continue;
+        if (r.buyOrder || r.giveaway) continue;
         if (!canActOnListing(r)) continue;
         if (!best || r.price < best.price) best = r;
       } else {
-        if (!r.buyOrder) continue;
+        if (!r.buyOrder || r.giveaway) continue;
         if (!canActOnListing(r)) continue;
         if (!best || r.price > best.price) best = r;
       }
@@ -64849,10 +65181,14 @@ ${ESTIMATE_HINT}`,
     ensureMarketPanelCss();
     const [query, setQuery] = React.useState("");
     const [facet, setFacet] = React.useState("all");
-    const [view, setView] = React.useState("grid");
+    const [groupSort, setGroupSort] = React.useState("dual");
     const [nearOnly, setNearOnly] = React.useState(false);
     const [canAfford, setCanAfford] = React.useState(false);
     const [haveStock, setHaveStock] = React.useState(false);
+    const [favOnly, setFavOnly] = React.useState(false);
+    const [favoriteKeys, setFavoriteKeys] = React.useState(
+      () => getSettings().marketFavoriteKeys.slice()
+    );
     const [searchOpen, setSearchOpen] = React.useState(false);
     const [searchHi, setSearchHi] = React.useState(0);
     const searchInputRef = React.useRef(null);
@@ -64974,7 +65310,7 @@ ${ESTIMATE_HINT}`,
       setCanAfford(next.canAfford);
       setHaveStock(next.haveStock);
     };
-    const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : "all";
+    const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : facet === "giveaway" ? "giveaway" : "all";
     let rows = filterMarketListings(flat, {
       query,
       side,
@@ -64988,7 +65324,30 @@ ${ESTIMATE_HINT}`,
       formatServer: formatMarketServer
     });
     rows = sortMarketListings(rows, friends);
-    const groups = groupMarketListings(rows);
+    const favoriteSet = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < favoriteKeys.length; i++) {
+      favoriteSet[favoriteKeys[i]] = true;
+    }
+    let groups = sortMarketGroups(
+      groupMarketListings(rows),
+      groupSort,
+      favoriteSet
+    );
+    if (favOnly) {
+      const favGroups = [];
+      for (let i = 0; i < groups.length; i++) {
+        if (favoriteSet[groups[i].key]) favGroups.push(groups[i]);
+      }
+      groups = favGroups;
+    }
+    const toggleFavorite = (key) => {
+      const next = favoriteKeys.slice();
+      const idx = next.indexOf(key);
+      if (idx >= 0) next.splice(idx, 1);
+      else next.push(key);
+      setFavoriteKeys(next);
+      patchSettings({ marketFavoriteKeys: next });
+    };
     const searchSug = buildMarketSearchSuggestions({
       query,
       rows: flat,
@@ -65060,61 +65419,91 @@ ${ESTIMATE_HINT}`,
     })();
     const offerCard = (row3) => {
       const own = row3.merchantStatus === "you";
-      const chips = [];
+      const statusChips = [];
       if (row3.merchantStatus === "inRange") {
-        chips.push(e("span", { key: "n", className: "MarketPanel-chip near" }, "near"));
+        statusChips.push(
+          e("span", { key: "n", className: "MarketPanel-chip near" }, "near")
+        );
       }
       if (own) {
-        chips.push(e("span", { key: "y", className: "MarketPanel-chip" }, "you"));
+        statusChips.push(
+          e("span", { key: "y", className: "MarketPanel-chip" }, "you")
+        );
       }
       if (friends[row3.merchant.toLowerCase()]) {
-        chips.push(
+        statusChips.push(
           e("span", { key: "p", className: "MarketPanel-chip party" }, "party")
         );
       }
-      if (row3.catalogOnly || !row3.standOpen && /^trade([5-9]|\d{2,})$/.test(row3.slot)) {
-        chips.push(
-          e(
-            "span",
-            { key: "c", className: "MarketPanel-chip" },
-            row3.catalogOnly ? "catalog" : "closed"
-          )
-        );
-      }
+      const loc = offerLocationMeta(row3, observing);
+      const place = [loc.server, loc.map].filter(Boolean).join(" \xB7 ");
+      const metaCell = (kind, text, title) => text ? e(
+        "span",
+        {
+          className: "MarketPanel-offerMetaCell is-" + kind,
+          title: title || text
+        },
+        text
+      ) : e("span", {
+        className: "MarketPanel-offerMetaCell is-" + kind + " is-empty",
+        "aria-hidden": true
+      });
       return e(
         "div",
         {
           key: row3.merchant + ":" + row3.slot + ":" + (row3.rid || ""),
-          className: "MarketPanel-offer" + (own ? " is-blocked" : "")
+          className: "MarketPanel-offer" + (own ? " is-blocked" : "") + (row3.giveaway ? " is-give" : row3.buyOrder ? " is-want" : " is-sale"),
+          title: loc.cacheTip
         },
         e(
           "div",
-          { className: "MarketPanel-offerMain" },
+          { className: "MarketPanel-offerTop" },
           e(
             "div",
-            null,
-            e(
-              "div",
-              { className: "MarketPanel-who" },
-              row3.merchant,
-              chips.length ? e("span", { className: "MarketPanel-chips" }, chips) : null
-            ),
-            e(
-              "div",
-              { className: "MarketPanel-where" },
-              offerWhereLine(row3, observing)
-            )
+            { className: "MarketPanel-who" },
+            e("span", { className: "MarketPanel-whoName" }, row3.merchant),
+            loc.distance ? e(
+              "span",
+              {
+                className: "MarketPanel-whoDist",
+                title: loc.distance
+              },
+              loc.distance
+            ) : null,
+            statusChips.length ? e("span", { className: "MarketPanel-chips" }, statusChips) : null
           ),
-          e("div", { className: "MarketPanel-price" }, formatTradeGold(row3.price))
+          e(
+            "div",
+            { className: "MarketPanel-price" },
+            row3.giveaway ? "free" : formatTradeGold(row3.price)
+          )
         ),
         e(
           "div",
-          { className: "MarketPanel-offerOps" },
+          { className: "MarketPanel-offerMeta" },
+          metaCell("place", place),
+          metaCell(
+            "qty",
+            loc.qty,
+            loc.qty ? row3.giveaway ? "Entrants " + loc.qty : "Quantity " + loc.qty : void 0
+          )
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-offerFoot" },
+          e(
+            "span",
+            {
+              className: "MarketPanel-offerCache" + (loc.cache ? "" : " is-empty"),
+              title: loc.cacheTip
+            },
+            loc.cache || ""
+          ),
           e(
             "button",
             {
               type: "button",
-              className: "MarketPanel-rowAct is-primary " + (row3.buyOrder ? "is-sell" : "is-buy"),
+              className: "MarketPanel-rowAct is-primary " + (row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy"),
               disabled: own,
               title: own ? "Your listing \u2014 use Stand to reprice or delist" : void 0,
               onClick: (ev) => {
@@ -65132,127 +65521,117 @@ ${ESTIMATE_HINT}`,
       { className: "MarketPanel-empty" },
       e("strong", null, "Nothing matches"),
       "Try clearing filters or search."
-    ) : view === "grid" ? e(
+    ) : e(
       "div",
       { className: "MarketPanel-itemGrid" },
       groups.map((g) => {
-        const dual = g.sales.length > 0 && g.wants.length > 0;
+        const dual = marketGroupHasBothPrices(g);
+        const arb = marketGroupHasArb(g);
         const on = focusKey === g.key;
+        const isFav = !!favoriteSet[g.key];
         return e(
-          "button",
+          "div",
           {
-            type: "button",
             key: g.key,
-            className: "MarketPanel-itemCard" + (dual ? " is-dual" : "") + (on ? " is-on" : ""),
-            onClick: () => setFocusKey(g.key)
+            className: "MarketPanel-itemCard" + (dual ? " is-dual" : "") + (g.giveaways.length ? " is-give" : "") + (arb ? " is-arb" : "") + (isFav ? " is-fav" : "") + (on ? " is-on" : "")
           },
           e(
-            "div",
-            { className: "MarketPanel-itemCard__top" },
-            iconEl(g.name, { level: g.level, p: g.p, size: 48 }),
-            e(
-              "div",
-              { className: "MarketPanel-itemCard__counts" },
-              e(
-                "span",
-                {
-                  className: "s" + (g.sales.length ? "" : " dim")
-                },
-                g.sales.length + "S"
-              ),
-              e(
-                "span",
-                {
-                  className: "b" + (g.wants.length ? "" : " dim")
-                },
-                g.wants.length + "B"
-              )
-            )
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-itemCard__fav" + (isFav ? " is-on" : ""),
+              title: isFav ? "Unfavorite" : "Favorite",
+              onClick: (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                toggleFavorite(g.key);
+              }
+            },
+            isFav ? "\u2605" : "\u2606"
           ),
           e(
-            "div",
-            { className: "nm" },
-            itemLabel(g.name, g.level, g.p)
-          ),
-          e(
-            "div",
-            { className: "MarketPanel-itemCard__prices" },
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-itemCard__hit",
+              onClick: () => setFocusKey(g.key)
+            },
             e(
               "div",
-              { className: "row-p" },
-              e("span", { className: "lbl" }, "Sell"),
+              { className: "MarketPanel-itemCard__top" },
+              marketItemIcon(g.name, { level: g.level, p: g.p, size: 48 }),
               e(
-                "span",
-                {
-                  className: "val " + (g.bestSale != null ? "sell" : "none")
-                },
-                g.bestSale != null ? formatTradeGold(g.bestSale) : "\u2014"
+                "div",
+                { className: "MarketPanel-itemCard__counts" },
+                e(
+                  "span",
+                  {
+                    className: "s" + (g.sales.length ? "" : " dim")
+                  },
+                  g.sales.length + "S"
+                ),
+                e(
+                  "span",
+                  {
+                    className: "b" + (g.wants.length ? "" : " dim")
+                  },
+                  g.wants.length + "B"
+                ),
+                e(
+                  "span",
+                  {
+                    className: "g" + (g.giveaways.length ? "" : " dim")
+                  },
+                  g.giveaways.length + "G"
+                )
               )
             ),
             e(
               "div",
-              { className: "row-p" },
-              e("span", { className: "lbl" }, "Buy"),
+              { className: "nm" },
+              itemLabel(g.name, g.level, g.p)
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-itemCard__prices" },
               e(
-                "span",
-                {
-                  className: "val " + (g.bestWant != null ? "buy" : "none")
-                },
-                g.bestWant != null ? formatTradeGold(g.bestWant) : "\u2014"
-              )
+                "div",
+                { className: "row-p" },
+                e("span", { className: "lbl" }, "Sell"),
+                e(
+                  "span",
+                  {
+                    className: "val " + (g.bestSale != null ? "sell" : "none")
+                  },
+                  g.bestSale != null ? formatTradeGold(g.bestSale) : "\u2014"
+                )
+              ),
+              e(
+                "div",
+                { className: "row-p" },
+                e("span", { className: "lbl" }, "Buy"),
+                e(
+                  "span",
+                  {
+                    className: "val " + (g.bestWant != null ? "buy" : "none")
+                  },
+                  g.bestWant != null ? formatTradeGold(g.bestWant) : "\u2014"
+                )
+              ),
+              g.giveaways.length ? e(
+                "div",
+                { className: "row-p" },
+                e("span", { className: "lbl" }, "Give"),
+                e(
+                  "span",
+                  { className: "val give" },
+                  g.giveaways.length + " free"
+                )
+              ) : null
             )
           )
         );
       })
-    ) : e(
-      "div",
-      { className: "MarketPanel-list" },
-      groups.map(
-        (g) => e(
-          "details",
-          {
-            key: g.key,
-            className: "MarketPanel-group",
-            open: true
-          },
-          e(
-            "summary",
-            {
-              onClick: (ev) => {
-                ev.preventDefault();
-                setFocusKey(g.key);
-              }
-            },
-            iconEl(g.name, { level: g.level, p: g.p, size: 40 }),
-            e(
-              "div",
-              null,
-              e(
-                "div",
-                { className: "MarketPanel-gName" },
-                itemLabel(g.name, g.level, g.p)
-              ),
-              e(
-                "div",
-                { className: "MarketPanel-gSub" },
-                g.sales.length + " selling \xB7 " + g.wants.length + " buying"
-              )
-            ),
-            e(
-              "div",
-              { className: "MarketPanel-gBest" },
-              g.bestSale != null ? [
-                e("span", { key: "l" }, "low"),
-                formatTradeGold(g.bestSale)
-              ] : g.bestWant != null ? [
-                e("span", { key: "h" }, "high"),
-                formatTradeGold(g.bestWant)
-              ] : null
-            )
-          ),
-          g.rows.map(offerCard)
-        )
-      )
     );
     const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
     const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
@@ -65269,19 +65648,37 @@ ${ESTIMATE_HINT}`,
         e(
           "div",
           { className: "MarketPanel-focusHead" },
-          iconEl(focusGroup.name, {
+          marketItemIcon(focusGroup.name, {
             level: focusGroup.level,
             p: focusGroup.p,
             size: 40
           }),
           e(
             "div",
-            null,
-            e("h2", null, itemLabel(focusGroup.name, focusGroup.level, focusGroup.p)),
+            { className: "MarketPanel-focusHeadText" },
+            e(
+              "div",
+              { className: "MarketPanel-focusTitleRow" },
+              e(
+                "h2",
+                null,
+                itemLabel(focusGroup.name, focusGroup.level, focusGroup.p)
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-favBtn" + (favoriteSet[focusGroup.key] ? " is-on" : ""),
+                  title: favoriteSet[focusGroup.key] ? "Unfavorite" : "Favorite",
+                  onClick: () => toggleFavorite(focusGroup.key)
+                },
+                favoriteSet[focusGroup.key] ? "\u2605" : "\u2606"
+              )
+            ),
             e(
               "div",
               { className: "sub" },
-              focusGroup.sales.length + " selling \xB7 " + focusGroup.wants.length + " buying"
+              focusGroup.sales.length + " selling \xB7 " + focusGroup.wants.length + " buying" + (focusGroup.giveaways.length ? " \xB7 " + focusGroup.giveaways.length + " giveaways" : "")
             )
           )
         ),
@@ -65321,7 +65718,10 @@ ${ESTIMATE_HINT}`,
       ),
       e(
         "div",
-        { key: "offers", className: "MarketPanel-focusOffers" },
+        {
+          key: "offers",
+          className: "MarketPanel-focusOffers" + (focusGroup.giveaways.length ? " has-gives" : "")
+        },
         e(
           "div",
           { className: "MarketPanel-focusCol MarketPanel-focusCol--sells" },
@@ -65339,7 +65739,9 @@ ${ESTIMATE_HINT}`,
         ),
         e(
           "div",
-          { className: "MarketPanel-focusCol" },
+          {
+            className: "MarketPanel-focusCol" + (focusGroup.giveaways.length ? " MarketPanel-focusCol--mid" : "")
+          },
           e(
             "div",
             { className: "MarketPanel-focusColH" },
@@ -65351,7 +65753,20 @@ ${ESTIMATE_HINT}`,
             { className: "MarketPanel-focusColEmpty" },
             "No buy orders"
           )
-        )
+        ),
+        focusGroup.giveaways.length ? e(
+          "div",
+          { className: "MarketPanel-focusCol" },
+          e(
+            "div",
+            { className: "MarketPanel-focusColH" },
+            e("span", { className: "gives" }, "Gives"),
+            e("em", null, String(focusGroup.giveaways.length))
+          ),
+          focusGroup.giveaways.slice().sort(
+            (a, b) => (a.giveawayEntries || 0) - (b.giveawayEntries || 0)
+          ).map(offerCard)
+        ) : null
       )
     ] : [
       e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
@@ -65359,7 +65774,7 @@ ${ESTIMATE_HINT}`,
         "div",
         { key: "empty", className: "MarketPanel-empty" },
         e("strong", null, "No item selected"),
-        view === "grid" ? "Pick a card in the market grid." : "Pick a listing group, bag stack, or stand slot."
+        "Pick a card in the market grid, a bag stack, or a stand slot."
       )
     ];
     return e(
@@ -65525,7 +65940,7 @@ ${ESTIMATE_HINT}`,
         e(
           "div",
           { className: "MarketPanel-seg" },
-          ["all", "sale", "wanted"].map(
+          ["all", "sale", "wanted", "giveaway"].map(
             (f) => e(
               "button",
               {
@@ -65539,7 +65954,7 @@ ${ESTIMATE_HINT}`,
                   haveStock
                 })
               },
-              f === "all" ? "All" : f === "sale" ? "Selling" : "Buying"
+              f === "all" ? "All" : f === "sale" ? "Selling" : f === "wanted" ? "Buying" : "Giveaways"
             )
           )
         ),
@@ -65590,6 +66005,16 @@ ${ESTIMATE_HINT}`,
               })
             }),
             "Have"
+          ),
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: favOnly,
+              onChange: (ev) => setFavOnly(!!ev.target.checked)
+            }),
+            "Fav"
           )
         )
       ),
@@ -65759,7 +66184,7 @@ ${ESTIMATE_HINT}`,
               const free = capacity > 0 ? Math.max(0, capacity - listed) : Math.max(0, keys.length - listed);
               const space = capacity > 0 ? free <= 0 ? listed + " listed" : free + " free \xB7 " + listed + " listed" : listed ? listed + " listed" : "";
               const pack = !!standCompact;
-              const iconSize = pack ? 40 : 34;
+              const iconSize = 40;
               const packEntries = pack ? collapseMarketStandPackSlots(keys, slots) : keys.map((sn) => ({
                 slotName: sn,
                 slotNames: [sn],
@@ -65841,7 +66266,7 @@ ${ESTIMATE_HINT}`,
                       gearEditable,
                       allSlots: slots || void 0,
                       iconSize,
-                      fluid: !pack,
+                      fluid: true,
                       selected: !!focusKey && entry.slotNames.indexOf(focusKey) >= 0
                     })
                   )
@@ -65873,25 +66298,25 @@ ${ESTIMATE_HINT}`,
               "span",
               { className: "MarketPanel-phTools" },
               e(
-                "span",
-                { className: "MarketPanel-seg" },
+                "label",
+                { className: "MarketPanel-sort" },
+                e("span", null, "Sort"),
                 e(
-                  "button",
+                  "select",
                   {
-                    type: "button",
-                    className: view === "grid" ? "is-on" : "",
-                    onClick: () => setView("grid")
+                    value: groupSort,
+                    onChange: (ev) => {
+                      setGroupSort(String(ev.target.value));
+                    },
+                    title: "Sort market cards"
                   },
-                  "Grid"
-                ),
-                e(
-                  "button",
-                  {
-                    type: "button",
-                    className: view === "list" ? "is-on" : "",
-                    onClick: () => setView("list")
-                  },
-                  "List"
+                  MARKET_GROUP_SORT_OPTIONS.map(
+                    (opt) => e(
+                      "option",
+                      { key: opt.id, value: opt.id },
+                      opt.label
+                    )
+                  )
                 )
               )
             )

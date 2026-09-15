@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   filterMarketListings,
+  marketGroupHasArb,
+  sortMarketGroups,
   sortMarketListings,
 } from "../src/lib/market/marketBrowse";
 import type { MarketListingRow } from "../src/lib/market/marketTypes";
@@ -60,6 +62,19 @@ describe("pull_merchants normalize", () => {
     assert.equal(s?.buyOrder, true);
     assert.equal(s?.rid, "abc");
     assert.equal(s?.q, 3);
+  });
+
+  it("keeps giveaways without a finite price", () => {
+    const s = normalizeCatalogSlot("trade2", {
+      name: "scroll0",
+      giveaway: true,
+      rid: "g1",
+      registry: { a: "Alice", b: "Bob" },
+    });
+    assert.equal(s?.giveaway, true);
+    assert.equal(s?.buyOrder, false);
+    assert.equal(s?.price, 0);
+    assert.equal(s?.giveawayEntries, 2);
   });
 
   it("lists trade* keys only", () => {
@@ -228,5 +243,118 @@ describe("market browse filters", () => {
   it("boosts friends", () => {
     const sorted = sortMarketListings(rows, { friend: true });
     assert.equal(sorted[0].merchant, "Friend");
+  });
+});
+
+describe("sortMarketGroups", () => {
+  const groups = [
+    {
+      key: "a",
+      name: "zeta",
+      rows: [{}, {}],
+      sales: [{ price: 500 }],
+      wants: [],
+      giveaways: [],
+      bestSale: 500,
+      bestWant: null,
+    },
+    {
+      key: "b",
+      name: "alpha",
+      rows: [{}],
+      sales: [{ price: 100 }],
+      wants: [{ price: 80 }],
+      giveaways: [],
+      bestSale: 100,
+      bestWant: 80,
+    },
+    {
+      key: "c",
+      name: "mid",
+      rows: [{}, {}, {}],
+      sales: [],
+      wants: [{ price: 900 }],
+      giveaways: [],
+      bestSale: null,
+      bestWant: 900,
+    },
+    {
+      key: "d",
+      name: "spread-small",
+      rows: [{}, {}],
+      sales: [{ price: 100 }],
+      wants: [{ price: 120 }],
+      giveaways: [],
+      bestSale: 100,
+      bestWant: 120,
+    },
+    {
+      key: "e",
+      name: "spread-big",
+      rows: [{}, {}],
+      sales: [{ price: 50 }],
+      wants: [{ price: 200 }],
+      giveaways: [],
+      bestSale: 50,
+      bestWant: 200,
+    },
+  ] as any;
+
+  it("sorts by name", () => {
+    const got = sortMarketGroups(groups, "name");
+    assert.deepEqual(
+      got.map((g) => g.name),
+      ["alpha", "mid", "spread-big", "spread-small", "zeta"],
+    );
+  });
+
+  it("sorts sell ascending and dual first", () => {
+    assert.equal(sortMarketGroups(groups, "sellAsc")[0].name, "spread-big");
+    assert.equal(sortMarketGroups(groups, "dual")[0].name, "alpha");
+    assert.equal(sortMarketGroups(groups, "buyDesc")[0].name, "mid");
+    assert.equal(sortMarketGroups(groups, "offers")[0].name, "mid");
+  });
+
+  it("sorts arb by spread, then both-priced, then one-sided", () => {
+    const got = sortMarketGroups(groups, "arb");
+    assert.deepEqual(
+      got.map((g) => g.name).slice(0, 2),
+      ["spread-big", "spread-small"],
+    );
+    // alpha has both prices but sell > buy — after arbs, before one-sided
+    const names = got.map((g) => g.name);
+    assert.ok(names.indexOf("alpha") < names.indexOf("mid"));
+    assert.ok(names.indexOf("alpha") < names.indexOf("zeta"));
+    assert.ok(names.indexOf("spread-small") < names.indexOf("alpha"));
+  });
+
+  it("floats favorites to the top", () => {
+    const got = sortMarketGroups(groups, "name", { c: true });
+    assert.equal(got[0].name, "mid");
+    assert.deepEqual(
+      got.map((g) => g.name),
+      ["mid", "alpha", "spread-big", "spread-small", "zeta"],
+    );
+  });
+});
+
+describe("marketGroupHasArb", () => {
+  it("is true only when best sell is below best buy", () => {
+    assert.equal(
+      marketGroupHasArb({ bestSale: 100, bestWant: 120 } as any),
+      true,
+    );
+    assert.equal(
+      marketGroupHasArb({ bestSale: 100, bestWant: 100 } as any),
+      false,
+    );
+    assert.equal(
+      marketGroupHasArb({ bestSale: 120, bestWant: 100 } as any),
+      false,
+    );
+    assert.equal(
+      marketGroupHasArb({ bestSale: 100, bestWant: null } as any),
+      false,
+    );
   });
 });

@@ -298,6 +298,31 @@ export const MARKET_PANEL_CSS = `
   align-items: center;
   margin-left: auto;
 }
+.MarketPanel-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #888;
+  font-size: 11px;
+}
+.MarketPanel-sort select {
+  appearance: none;
+  border: 1px solid #3a3a3a;
+  background: #080808;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  height: 24px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.MarketPanel-sort select:hover,
+.MarketPanel-sort select:focus {
+  border-color: rgba(232, 201, 106, .45);
+  outline: none;
+}
 .MarketPanel-phTools .MarketPanel-seg { height: 24px; }
 .MarketPanel-phTools .MarketPanel-seg button {
   font-size: 11px;
@@ -396,58 +421,59 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-standBar .st.off { color: #c66; }
 .MarketPanel-standSlots {
-  /* All mode: stock-like 4 cols, cells shrink to the You column (no h-scroll). */
+  /* Pack + All: identical fixed cells so icon gaps match. */
+  --mk-stand-cell: 46px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  justify-content: stretch;
-  gap: 3px;
+  grid-template-columns: repeat(4, var(--mk-stand-cell));
+  justify-content: start;
+  align-content: start;
+  justify-items: stretch;
+  gap: 4px;
   padding: 6px 8px 8px;
   width: 100%;
   box-sizing: border-box;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  align-content: start;
   overflow-x: hidden;
   overflow-y: auto;
 }
 .MarketPanel-standSlots.is-dense {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(6, var(--mk-stand-cell));
 }
-/* Pack: filled (+ one empty) wrap as a flow — same gap as All. */
-.MarketPanel-standSlots.is-pack {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: start;
-  justify-content: flex-start;
-  gap: 3px;
-  padding: 6px 8px 8px;
-}
-.MarketPanel-standSlots.is-pack .comm-trade-slot {
-  width: auto;
-  max-width: none;
-  min-width: 0;
-  flex: 0 0 auto;
-}
-.MarketPanel-standSlots.is-all .comm-trade-slot.is-fluid {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  flex: none;
+.MarketPanel-standSlots .comm-trade-slot {
+  width: var(--mk-stand-cell) !important;
+  max-width: var(--mk-stand-cell) !important;
+  min-width: var(--mk-stand-cell);
+  flex: none !important;
 }
 .MarketPanel-standSlots .comm-trade-slot-art {
   margin: 0 auto;
+  width: var(--mk-stand-cell);
+  height: var(--mk-stand-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyWrap {
   margin: 0 auto;
   line-height: 0;
+  width: var(--mk-stand-cell);
+  height: var(--mk-stand-cell);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyPlus {
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
   font-weight: 600;
 }
 .MarketPanel-standSlots .comm-trade-slot-price {
-  max-width: 100%;
+  max-width: var(--mk-stand-cell);
+  width: 100%;
+  box-sizing: border-box;
 }
 .MarketPanel-standSlots.is-dense .comm-trade-slot-price {
   font-size: 10px;
@@ -465,30 +491,72 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-itemGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  grid-auto-rows: minmax(148px, auto);
+  /* Tall enough for icon + 2-line name + price footer with air. */
+  grid-auto-rows: minmax(168px, auto);
   gap: 8px;
   padding: 10px;
   align-content: start;
+  align-items: stretch;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
 .MarketPanel-itemCard {
-  appearance: none;
+  position: relative;
   border: 1px solid #2c2c2c;
   background: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
   color: inherit;
   font: inherit;
   padding: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  min-height: 168px;
+  height: auto;
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color .12s, background .12s, box-shadow .12s;
+}
+.MarketPanel-itemCard__hit {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
   text-align: left;
   display: flex;
   flex-direction: column;
-  min-height: 148px;
-  height: 100%;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
   box-sizing: border-box;
-  transition: border-color .12s, background .12s, box-shadow .12s;
 }
+.MarketPanel-itemCard__fav {
+  appearance: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  border: 0;
+  background: rgba(0, 0, 0, .45);
+  color: #6a6a6a;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.MarketPanel-itemCard__fav:hover { color: #c9a84a; }
+.MarketPanel-itemCard__fav.is-on { color: var(--mk-accent); }
 .MarketPanel-itemCard:hover {
   border-color: #5a5a5a;
   background: linear-gradient(180deg, #1b1b1b 0%, #121212 100%);
@@ -503,10 +571,23 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-itemCard.is-dual:hover {
   border-color: #5a5440;
 }
+.MarketPanel-itemCard.is-arb {
+  border-color: #6a9a72;
+  box-shadow: inset 0 0 0 1px rgba(106, 154, 114, .35);
+}
+.MarketPanel-itemCard.is-arb:hover {
+  border-color: #84b88c;
+}
+.MarketPanel-itemCard.is-arb.is-on,
 .MarketPanel-itemCard.is-on {
   border-color: var(--mk-accent);
   box-shadow: inset 0 0 0 1px rgba(232, 201, 106, .28);
   background: linear-gradient(180deg, #1c1910 0%, #14120c 100%);
+}
+.MarketPanel-itemCard.is-arb.is-on {
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 201, 106, .28),
+    0 0 0 1px rgba(106, 154, 114, .45);
 }
 .MarketPanel-itemCard__top {
   flex: 0 0 auto;
@@ -514,7 +595,7 @@ export const MARKET_PANEL_CSS = `
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 10px 0;
+  padding: 10px 28px 0 10px;
   min-height: 48px;
 }
 .MarketPanel-itemCard__top .ecu-item-icon,
@@ -532,7 +613,8 @@ export const MARKET_PANEL_CSS = `
   line-height: 1.2;
 }
 .MarketPanel-itemCard__counts .s,
-.MarketPanel-itemCard__counts .b {
+.MarketPanel-itemCard__counts .b,
+.MarketPanel-itemCard__counts .g {
   padding: 2px 5px;
   min-width: 30px;
   text-align: center;
@@ -549,9 +631,16 @@ export const MARKET_PANEL_CSS = `
   border: 1px solid #2a4034;
   background: #101812;
 }
+.MarketPanel-itemCard__counts .g {
+  color: #c4b48e;
+  border: 1px solid #4a4430;
+  background: #16140e;
+}
 .MarketPanel-itemCard__counts .dim { opacity: .28; }
 .MarketPanel-itemCard .nm {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  /* Always reserve two lines so wrap grows the slot, not the price gap. */
+  min-height: calc(1.35em * 2);
   padding: 8px 10px 6px;
   font-size: 12px;
   font-weight: 600;
@@ -562,6 +651,7 @@ export const MARKET_PANEL_CSS = `
   word-break: normal;
 }
 .MarketPanel-itemCard__prices {
+  flex: 0 0 auto;
   margin-top: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -595,83 +685,114 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-itemCard__prices .val.sell { color: var(--mk-gold); }
 .MarketPanel-itemCard__prices .val.buy { color: #8ec4a8; }
+.MarketPanel-itemCard__prices .val.give { color: #c4b48e; }
 .MarketPanel-itemCard__prices .val.none { color: #3f3f3f; font-weight: 400; }
-.MarketPanel-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-}
-.MarketPanel-group {
-  border-bottom: 1px solid var(--mk-line);
-}
-.MarketPanel-group > summary {
-  list-style: none;
-  display: grid;
-  grid-template-columns: 46px 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 7px 10px;
-  cursor: pointer;
-  background: #101010;
-}
-.MarketPanel-group > summary::-webkit-details-marker { display: none; }
-.MarketPanel-group > summary:hover { background: #161616; }
-.MarketPanel-gName { font-weight: 600; color: #eee; font-size: 13px; }
-.MarketPanel-gSub { font-size: 11px; color: var(--mk-muted); margin-top: 1px; }
-.MarketPanel-gBest {
-  text-align: right;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--mk-gold);
-  line-height: 1.25;
-}
-.MarketPanel-gBest span { display: block; color: #666; font-size: 10px; }
 .MarketPanel-offer {
-  padding: 8px 9px;
+  padding: 7px 9px 8px;
   border-bottom: 1px solid var(--mk-line-soft);
 }
 .MarketPanel-offer:hover { background: #101010; }
 .MarketPanel-offer.is-blocked { opacity: .55; }
-.MarketPanel-offerMain {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: start;
-}
-.MarketPanel-offerOps {
+.MarketPanel-offerTop {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px solid #222;
-  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
 }
-.MarketPanel-who { font-weight: 600; font-size: 12px; color: #eee; }
-.MarketPanel-where {
-  font-size: 11px;
-  color: var(--mk-muted);
-  white-space: nowrap;
+.MarketPanel-offerMeta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 8px;
+  row-gap: 1px;
+  margin-top: 3px;
+  min-width: 0;
+}
+.MarketPanel-offerMetaCell {
+  min-width: 0;
+  font-size: 10px;
+  color: #6a6a6a;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.MarketPanel-chips { display: inline-flex; gap: 3px; margin-left: 5px; vertical-align: 1px; }
-.MarketPanel-chip {
+.MarketPanel-offerMetaCell.is-empty { visibility: hidden; }
+.MarketPanel-offerMetaCell.is-place { color: #7a7a7a; }
+.MarketPanel-offerMetaCell.is-qty {
+  color: #8a8a8a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.MarketPanel-offerFoot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+}
+.MarketPanel-offerCache {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 10px;
+  color: #5a5040;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-offerCache.is-empty { visibility: hidden; }
+.MarketPanel-who {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.MarketPanel-whoName {
+  font-weight: 600;
+  font-size: 12px;
+  color: #e8e8e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-whoDist {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 400;
+  color: #6a6a6a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-chips {
+  display: inline-flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.MarketPanel-chip {
+  font-size: 9px;
   padding: 0 4px;
-  border: 1px solid #444;
-  color: #888;
+  border: 1px solid #3a3a3a;
+  color: #777;
+  letter-spacing: .02em;
+  text-transform: lowercase;
 }
 .MarketPanel-chip.near { color: #7aaf6e; border-color: #3a5534; }
 .MarketPanel-chip.party { color: #7aa2d4; border-color: #3a5068; }
 .MarketPanel-price {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--mk-gold);
-  font-size: 13px;
+  font-size: 14px;
   text-align: right;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: .01em;
 }
+.MarketPanel-offer.is-want .MarketPanel-price { color: #8ec4a8; }
+.MarketPanel-offer.is-give .MarketPanel-price { color: #c4b48e; }
 .MarketPanel-rowAct {
   appearance: none;
   border: 1px solid #555;
@@ -679,10 +800,12 @@ export const MARKET_PANEL_CSS = `
   color: #eee;
   font: inherit;
   font-size: 11px;
-  height: 26px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 9px;
   cursor: pointer;
   white-space: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 .MarketPanel-rowAct:disabled { opacity: .35; cursor: default; }
 .MarketPanel-rowAct.is-buy {
@@ -694,6 +817,11 @@ export const MARKET_PANEL_CSS = `
   border-color: #6a4030;
   color: #e0a080;
   background: #181210;
+}
+.MarketPanel-rowAct.is-give {
+  border-color: #5a5040;
+  color: #c4b48e;
+  background: #16140e;
 }
 .MarketPanel-empty {
   padding: 36px 16px;
@@ -717,14 +845,43 @@ export const MARKET_PANEL_CSS = `
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  min-width: 0;
+}
+.MarketPanel-focusHeadText {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.MarketPanel-focusTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .MarketPanel-focusHead h2 {
   margin: 0 0 3px;
   font-size: 14px;
   font-weight: 700;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .MarketPanel-focusHead .sub { color: #888; font-size: 11px; line-height: 1.35; }
+.MarketPanel-favBtn {
+  appearance: none;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #6a6a6a;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.MarketPanel-favBtn:hover { color: #c9a84a; }
+.MarketPanel-favBtn.is-on { color: var(--mk-accent); }
 .MarketPanel-dealBar {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -748,8 +905,12 @@ export const MARKET_PANEL_CSS = `
   grid-template-columns: 1fr 1fr;
   align-items: start;
 }
+.MarketPanel-focusOffers.has-gives {
+  grid-template-columns: 1fr 1fr 1fr;
+}
 .MarketPanel-focusCol { min-width: 0; }
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
+.MarketPanel-focusCol--mid { border-right: 1px solid var(--mk-line); }
 .MarketPanel-focusColH {
   position: sticky;
   top: 0;
@@ -767,6 +928,7 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-focusColH .sells { color: #c97a5a; font-weight: 700; }
 .MarketPanel-focusColH .wants { color: #6aab8e; font-weight: 700; }
+.MarketPanel-focusColH .gives { color: #c4b48e; font-weight: 700; }
 .MarketPanel-focusColH em {
   font-style: normal;
   color: var(--mk-muted);

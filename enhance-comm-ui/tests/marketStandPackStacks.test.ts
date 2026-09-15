@@ -25,6 +25,10 @@ describe("collapseMarketStandPackSlots", () => {
       marketStandPackStackKey({ name: "batwing", price: 100 }),
       marketStandPackStackKey({ name: "batwing", price: 101 }),
     );
+    assert.notEqual(
+      marketStandPackStackKey({ name: "batwing", price: 0, giveaway: true }),
+      marketStandPackStackKey({ name: "batwing", price: 0, b: false }),
+    );
   });
 
   it("sums qty for identical listings and keeps empties", () => {

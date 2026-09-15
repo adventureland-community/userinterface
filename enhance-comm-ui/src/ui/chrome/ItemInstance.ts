@@ -41,6 +41,7 @@ function formatLevel(level: number | undefined): string | null {
 
 export function ItemInstance(props: ItemInstanceProps): any {
   const React = getReact();
+  ensureItemInstanceBadgeCss();
   const ref = React.useRef(null as HTMLSpanElement | null);
   const {
     name,
@@ -182,3 +183,15 @@ export const ITEM_INSTANCE_BADGE_CSS = `
   color: #cfcfcf;
 }
 `;
+
+const BADGE_STYLE_ID = "ecu-item-instance-badge-css";
+
+/** Idempotent — safe from ItemInstance / TradeSlotCell / mail hosts. */
+export function ensureItemInstanceBadgeCss(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(BADGE_STYLE_ID)) return;
+  const el = document.createElement("style");
+  el.id = BADGE_STYLE_ID;
+  el.textContent = ITEM_INSTANCE_BADGE_CSS;
+  document.head.appendChild(el);
+}

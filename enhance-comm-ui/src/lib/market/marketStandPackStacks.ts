@@ -17,12 +17,15 @@ export type MarketStandPackEntry = {
 export function marketStandPackStackKey(slot: {
   name: string;
   b?: boolean;
+  giveaway?: boolean;
+  registry?: Record<string, string>;
   level?: number;
   p?: string | null;
   price?: number;
 }): string {
+  const give = !!(slot.giveaway || slot.registry);
   return (
-    (slot.b ? "1" : "0") +
+    (give ? "g" : slot.b ? "1" : "0") +
     "\0" +
     slot.name +
     "\0" +
@@ -30,7 +33,7 @@ export function marketStandPackStackKey(slot: {
     "\0" +
     (slot.p != null && slot.p !== "" ? String(slot.p) : "") +
     "\0" +
-    (slot.price != null ? String(slot.price) : "")
+    (give ? "give" : slot.price != null ? String(slot.price) : "")
   );
 }
 
@@ -63,6 +66,8 @@ export function collapseMarketStandPackSlots(
     const key = marketStandPackStackKey({
       name,
       b: !!raw.b,
+      giveaway: !!raw.giveaway,
+      registry: raw.registry,
       level: typeof raw.level === "number" ? raw.level : undefined,
       p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
       price: typeof raw.price === "number" ? raw.price : undefined,

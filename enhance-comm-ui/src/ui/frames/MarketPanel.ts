@@ -1,6 +1,6 @@
 /**
  * Market hub — visual/interaction port of agentic/mockups/multimerchant-market.html.
- * Layout: You (bag+stand) | Market grid/list | Focus (sells/wants).
+ * Layout: You (bag+stand) | Market grid | Focus (sells/wants).
  */
 
 import { getReact, e } from "../../host/react";
@@ -31,9 +31,15 @@ import {
 import {
   filterMarketListings,
   groupMarketListings,
+  marketGroupHasArb,
+  marketGroupHasBothPrices,
+  sortMarketGroups,
   sortMarketListings,
+  MARKET_GROUP_SORT_OPTIONS,
+  type MarketGroupSort,
   type MarketItemGroup,
 } from "../../lib/market/marketBrowse";
+import { getSettings, patchSettings } from "../../lib/settings";
 import {
   applySearchSuggestion,
   buildMarketSearchSuggestions,
@@ -51,13 +57,11 @@ import {
 import { collapseMarketStandPackSlots } from "../../lib/market/marketStandPackStacks";
 import type { MarketListingRow } from "../../lib/market/marketTypes";
 import { formatTradeGold } from "../../lib/tradeHelpers";
+import { formatRelativeAge } from "../../lib/format";
 import { resolveOwnTradeEntity } from "../../lib/tradeEntityResolve";
-import { itemIconHtml, itemInstanceLabel } from "../../lib/gameIcon";
+import { itemInstanceLabel } from "../../lib/gameIcon";
 import { simpleDistance } from "../../host/al";
-import {
-  ItemInstance,
-  ITEM_INSTANCE_BADGE_CSS,
-} from "../chrome/ItemInstance";
+import { ItemInstance } from "../chrome/ItemInstance";
 import { showTradeWishlistPicker } from "../gear/tradeWishlistPicker";
 import {
   merchantCloseCommand,
@@ -89,8 +93,7 @@ export type MarketPanelProps = {
 
 const CATALOG_REFRESH_MS = 45000;
 
-type Facet = "all" | "sale" | "wanted";
-type ViewMode = "grid" | "list";
+type Facet = "all" | "sale" | "wanted" | "giveaway";
 
 function bagNameSet(observing: EntityLike | null | undefined): Record<string, boolean> {
   const out: Record<string, boolean> = Object.create(null);
@@ -210,16 +213,24 @@ function formatMarketServer(server?: string | null): string {
   return raw || "?";
 }
 
-/**
- * Mockup whereShort: always server; map when known; distance when same map
- * (including in-range / you). Qty appended separately by callers when useful.
- */
-function offerWhereLine(
+type OfferLocationMeta = {
+  server: string;
+  map: string;
+  distance: string;
+  qty: string;
+  cache: string;
+  cacheTip?: string;
+};
+
+/** Discrete location / stock / cache bits for focus offer cards. */
+function offerLocationMeta(
   row: MarketListingRow,
   observing: EntityLike | null | undefined,
-): string {
-  const parts: string[] = [formatMarketServer(row.server)];
-  if (row.map) parts.push(String(row.map));
+  now = Date.now(),
+): OfferLocationMeta {
+  const server = formatMarketServer(row.server);
+  const map = row.map ? String(row.map) : "";
+  let distance = "";
   const sameMap =
     row.merchantStatus === "inRange" ||
     row.merchantStatus === "sameMap" ||
@@ -243,28 +254,60 @@ function offerWhereLine(
         },
       ),
     );
-    if (Number.isFinite(d)) parts.push(d + " away");
+    if (Number.isFinite(d)) distance = d + " away";
   }
-  if (row.q != null && row.q > 1) parts.push("×" + row.q);
-  return parts.filter(Boolean).join(" · ");
+  const qty =
+    row.giveaway && row.giveawayEntries != null
+      ? row.giveawayEntries + " in"
+      : row.q != null && row.q > 1
+        ? "×" + String(row.q | 0)
+        : "";
+
+  let cache = "";
+  let cacheTip: string | undefined;
+  const closedStand =
+    !row.standOpen && /^trade([5-9]|\d{2,})$/.test(row.slot);
+  if (row.catalogOnly || closedStand) {
+    const age = offerCacheAgeLabel(row, now);
+    const kind = row.catalogOnly ? "cached" : "closed";
+    cache = age ? kind + " · " + age : kind;
+    cacheTip = row.catalogOnly
+      ? age
+        ? "Cached listing · last refreshed " + age
+        : "Cached listing (age unknown)"
+      : age
+        ? "Stand closed · last seen " + age
+        : "Stand closed";
+  }
+
+  return { server, map, distance, qty, cache, cacheTip };
+}
+
+function offerCacheAgeLabel(row: MarketListingRow, now = Date.now()): string {
+  const at = row.lastRefreshedAt;
+  if (at == null || !(at > 0)) return "";
+  return formatRelativeAge(at, now);
 }
 
 function actionLabel(row: MarketListingRow): string {
   if (row.merchantStatus === "you") return "Yours";
-  if (canActOnListing(row)) return row.buyOrder ? "Sell" : "Buy";
+  if (canActOnListing(row)) {
+    if (row.giveaway) return "Join";
+    return row.buyOrder ? "Sell" : "Buy";
+  }
   return "Travel";
 }
 
-function iconEl(name: string, opts: { level?: number; p?: string | null; size: number }): any {
-  return e("div", {
-    style: { lineHeight: 0, display: "inline-block" },
-    dangerouslySetInnerHTML: {
-      __html: itemIconHtml(name, {
-        size: opts.size,
-        level: opts.level,
-        p: opts.p != null ? String(opts.p) : undefined,
-      }),
-    },
+function marketItemIcon(
+  name: string,
+  opts: { level?: number; p?: string | null; size: number; q?: number },
+): any {
+  return e(ItemInstance, {
+    name,
+    size: opts.size,
+    level: opts.level,
+    q: opts.q,
+    p: opts.p != null ? String(opts.p) : undefined,
   });
 }
 
@@ -277,11 +320,11 @@ function nextBest(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (wantBuy) {
-      if (r.buyOrder) continue;
+      if (r.buyOrder || r.giveaway) continue;
       if (!canActOnListing(r)) continue;
       if (!best || r.price < best.price) best = r;
     } else {
-      if (!r.buyOrder) continue;
+      if (!r.buyOrder || r.giveaway) continue;
       if (!canActOnListing(r)) continue;
       if (!best || r.price > best.price) best = r;
     }
@@ -295,10 +338,14 @@ export function MarketPanel(props: MarketPanelProps): any {
 
   const [query, setQuery] = React.useState("");
   const [facet, setFacet] = React.useState("all" as Facet);
-  const [view, setView] = React.useState("grid" as ViewMode);
+  const [groupSort, setGroupSort] = React.useState("dual" as MarketGroupSort);
   const [nearOnly, setNearOnly] = React.useState(false);
   const [canAfford, setCanAfford] = React.useState(false);
   const [haveStock, setHaveStock] = React.useState(false);
+  const [favOnly, setFavOnly] = React.useState(false);
+  const [favoriteKeys, setFavoriteKeys] = React.useState(() =>
+    getSettings().marketFavoriteKeys.slice(),
+  );
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchHi, setSearchHi] = React.useState(0);
   const searchInputRef = React.useRef(null as HTMLInputElement | null);
@@ -430,7 +477,13 @@ export function MarketPanel(props: MarketPanelProps): any {
     setHaveStock(next.haveStock);
   };
   const side =
-    facet === "sale" ? "sale" : facet === "wanted" ? "buy" : "all";
+    facet === "sale"
+      ? "sale"
+      : facet === "wanted"
+        ? "buy"
+        : facet === "giveaway"
+          ? "giveaway"
+          : "all";
   let rows = filterMarketListings(flat, {
     query,
     side,
@@ -444,7 +497,30 @@ export function MarketPanel(props: MarketPanelProps): any {
     formatServer: formatMarketServer,
   });
   rows = sortMarketListings(rows, friends);
-  const groups = groupMarketListings(rows);
+  const favoriteSet: Record<string, boolean> = Object.create(null);
+  for (let i = 0; i < favoriteKeys.length; i++) {
+    favoriteSet[favoriteKeys[i]] = true;
+  }
+  let groups = sortMarketGroups(
+    groupMarketListings(rows),
+    groupSort,
+    favoriteSet,
+  );
+  if (favOnly) {
+    const favGroups: MarketItemGroup[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      if (favoriteSet[groups[i].key]) favGroups.push(groups[i]);
+    }
+    groups = favGroups;
+  }
+  const toggleFavorite = (key: string) => {
+    const next = favoriteKeys.slice();
+    const idx = next.indexOf(key);
+    if (idx >= 0) next.splice(idx, 1);
+    else next.push(key);
+    setFavoriteKeys(next);
+    patchSettings({ marketFavoriteKeys: next });
+  };
   const searchSug = buildMarketSearchSuggestions({
     query,
     rows: flat,
@@ -538,65 +614,116 @@ export function MarketPanel(props: MarketPanelProps): any {
 
   const offerCard = (row: MarketListingRow) => {
     const own = row.merchantStatus === "you";
-    const chips: any[] = [];
+    const statusChips: any[] = [];
     if (row.merchantStatus === "inRange") {
-      chips.push(e("span", { key: "n", className: "MarketPanel-chip near" }, "near"));
+      statusChips.push(
+        e("span", { key: "n", className: "MarketPanel-chip near" }, "near"),
+      );
     }
     if (own) {
-      chips.push(e("span", { key: "y", className: "MarketPanel-chip" }, "you"));
+      statusChips.push(
+        e("span", { key: "y", className: "MarketPanel-chip" }, "you"),
+      );
     }
     if (friends[row.merchant.toLowerCase()]) {
-      chips.push(
+      statusChips.push(
         e("span", { key: "p", className: "MarketPanel-chip party" }, "party"),
       );
     }
-    if (row.catalogOnly || (!row.standOpen && /^trade([5-9]|\d{2,})$/.test(row.slot))) {
-      chips.push(
-        e(
-          "span",
-          { key: "c", className: "MarketPanel-chip" },
-          row.catalogOnly ? "catalog" : "closed",
-        ),
-      );
-    }
+    const loc = offerLocationMeta(row, observing);
+    const place = [loc.server, loc.map].filter(Boolean).join(" · ");
+    const metaCell = (kind: string, text: string, title?: string) =>
+      text
+        ? e(
+            "span",
+            {
+              className: "MarketPanel-offerMetaCell is-" + kind,
+              title: title || text,
+            },
+            text,
+          )
+        : e("span", {
+            className: "MarketPanel-offerMetaCell is-" + kind + " is-empty",
+            "aria-hidden": true,
+          });
     return e(
       "div",
       {
         key: row.merchant + ":" + row.slot + ":" + (row.rid || ""),
-        className: "MarketPanel-offer" + (own ? " is-blocked" : ""),
+        className:
+          "MarketPanel-offer" +
+          (own ? " is-blocked" : "") +
+          (row.giveaway
+            ? " is-give"
+            : row.buyOrder
+              ? " is-want"
+              : " is-sale"),
+        title: loc.cacheTip,
       },
       e(
         "div",
-        { className: "MarketPanel-offerMain" },
+        { className: "MarketPanel-offerTop" },
         e(
           "div",
-          null,
-          e(
-            "div",
-            { className: "MarketPanel-who" },
-            row.merchant,
-            chips.length
-              ? e("span", { className: "MarketPanel-chips" }, chips)
-              : null,
-          ),
-          e(
-            "div",
-            { className: "MarketPanel-where" },
-            offerWhereLine(row, observing),
-          ),
+          { className: "MarketPanel-who" },
+          e("span", { className: "MarketPanel-whoName" }, row.merchant),
+          loc.distance
+            ? e(
+                "span",
+                {
+                  className: "MarketPanel-whoDist",
+                  title: loc.distance,
+                },
+                loc.distance,
+              )
+            : null,
+          statusChips.length
+            ? e("span", { className: "MarketPanel-chips" }, statusChips)
+            : null,
         ),
-        e("div", { className: "MarketPanel-price" }, formatTradeGold(row.price)),
+        e(
+          "div",
+          { className: "MarketPanel-price" },
+          row.giveaway ? "free" : formatTradeGold(row.price),
+        ),
       ),
       e(
         "div",
-        { className: "MarketPanel-offerOps" },
+        { className: "MarketPanel-offerMeta" },
+        metaCell("place", place),
+        metaCell(
+          "qty",
+          loc.qty,
+          loc.qty
+            ? row.giveaway
+              ? "Entrants " + loc.qty
+              : "Quantity " + loc.qty
+            : undefined,
+        ),
+      ),
+      e(
+        "div",
+        { className: "MarketPanel-offerFoot" },
+        e(
+          "span",
+          {
+            className:
+              "MarketPanel-offerCache" + (loc.cache ? "" : " is-empty"),
+            title: loc.cacheTip,
+          },
+          loc.cache || "",
+        ),
         e(
           "button",
           {
             type: "button",
             className:
               "MarketPanel-rowAct is-primary " +
-              (row.buyOrder ? "is-sell" : "is-buy"),
+              (row.giveaway
+                ? "is-give"
+                : row.buyOrder
+                  ? "is-sell"
+                  : "is-buy"),
             disabled: own,
             title: own
               ? "Your listing — use Stand to reprice or delist"
@@ -620,28 +747,52 @@ export function MarketPanel(props: MarketPanelProps): any {
           e("strong", null, "Nothing matches"),
           "Try clearing filters or search.",
         )
-      : view === "grid"
-        ? e(
-            "div",
-            { className: "MarketPanel-itemGrid" },
-            groups.map((g: MarketItemGroup) => {
-              const dual = g.sales.length > 0 && g.wants.length > 0;
-              const on = focusKey === g.key;
-              return e(
+      : e(
+          "div",
+          { className: "MarketPanel-itemGrid" },
+          groups.map((g: MarketItemGroup) => {
+            const dual = marketGroupHasBothPrices(g);
+            const arb = marketGroupHasArb(g);
+            const on = focusKey === g.key;
+            const isFav = !!favoriteSet[g.key];
+            return e(
+              "div",
+              {
+                key: g.key,
+                className:
+                  "MarketPanel-itemCard" +
+                  (dual ? " is-dual" : "") +
+                  (g.giveaways.length ? " is-give" : "") +
+                  (arb ? " is-arb" : "") +
+                  (isFav ? " is-fav" : "") +
+                  (on ? " is-on" : ""),
+              },
+              e(
                 "button",
                 {
                   type: "button",
-                  key: g.key,
                   className:
-                    "MarketPanel-itemCard" +
-                    (dual ? " is-dual" : "") +
-                    (on ? " is-on" : ""),
+                    "MarketPanel-itemCard__fav" + (isFav ? " is-on" : ""),
+                  title: isFav ? "Unfavorite" : "Favorite",
+                  onClick: (ev: any) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    toggleFavorite(g.key);
+                  },
+                },
+                isFav ? "★" : "☆",
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-itemCard__hit",
                   onClick: () => setFocusKey(g.key),
                 },
                 e(
                   "div",
                   { className: "MarketPanel-itemCard__top" },
-                  iconEl(g.name, { level: g.level, p: g.p, size: 48 }),
+                  marketItemIcon(g.name, { level: g.level, p: g.p, size: 48 }),
                   e(
                     "div",
                     { className: "MarketPanel-itemCard__counts" },
@@ -658,6 +809,13 @@ export function MarketPanel(props: MarketPanelProps): any {
                         className: "b" + (g.wants.length ? "" : " dim"),
                       },
                       g.wants.length + "B",
+                    ),
+                    e(
+                      "span",
+                      {
+                        className: "g" + (g.giveaways.length ? "" : " dim"),
+                      },
+                      g.giveaways.length + "G",
                     ),
                   ),
                 ),
@@ -695,67 +853,23 @@ export function MarketPanel(props: MarketPanelProps): any {
                       g.bestWant != null ? formatTradeGold(g.bestWant) : "—",
                     ),
                   ),
+                  g.giveaways.length
+                    ? e(
+                        "div",
+                        { className: "row-p" },
+                        e("span", { className: "lbl" }, "Give"),
+                        e(
+                          "span",
+                          { className: "val give" },
+                          g.giveaways.length + " free",
+                        ),
+                      )
+                    : null,
                 ),
-              );
-            }),
-          )
-        : e(
-            "div",
-            { className: "MarketPanel-list" },
-            groups.map((g: MarketItemGroup) =>
-              e(
-                "details",
-                {
-                  key: g.key,
-                  className: "MarketPanel-group",
-                  open: true,
-                },
-                e(
-                  "summary",
-                  {
-                    onClick: (ev: any) => {
-                      ev.preventDefault();
-                      setFocusKey(g.key);
-                    },
-                  },
-                  iconEl(g.name, { level: g.level, p: g.p, size: 40 }),
-                  e(
-                    "div",
-                    null,
-                    e(
-                      "div",
-                      { className: "MarketPanel-gName" },
-                      itemLabel(g.name, g.level, g.p),
-                    ),
-                    e(
-                      "div",
-                      { className: "MarketPanel-gSub" },
-                      g.sales.length +
-                        " selling · " +
-                        g.wants.length +
-                        " buying",
-                    ),
-                  ),
-                  e(
-                    "div",
-                    { className: "MarketPanel-gBest" },
-                    g.bestSale != null
-                      ? [
-                          e("span", { key: "l" }, "low"),
-                          formatTradeGold(g.bestSale),
-                        ]
-                      : g.bestWant != null
-                        ? [
-                            e("span", { key: "h" }, "high"),
-                            formatTradeGold(g.bestWant),
-                          ]
-                        : null,
-                  ),
-                ),
-                g.rows.map(offerCard),
               ),
-            ),
-          );
+            );
+          }),
+        );
 
   const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
   const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
@@ -774,22 +888,47 @@ export function MarketPanel(props: MarketPanelProps): any {
           e(
             "div",
             { className: "MarketPanel-focusHead" },
-            iconEl(focusGroup.name, {
+            marketItemIcon(focusGroup.name, {
               level: focusGroup.level,
               p: focusGroup.p,
               size: 40,
             }),
             e(
               "div",
-              null,
-              e("h2", null, itemLabel(focusGroup.name, focusGroup.level, focusGroup.p)),
+              { className: "MarketPanel-focusHeadText" },
+              e(
+                "div",
+                { className: "MarketPanel-focusTitleRow" },
+                e(
+                  "h2",
+                  null,
+                  itemLabel(focusGroup.name, focusGroup.level, focusGroup.p),
+                ),
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    className:
+                      "MarketPanel-favBtn" +
+                      (favoriteSet[focusGroup.key] ? " is-on" : ""),
+                    title: favoriteSet[focusGroup.key]
+                      ? "Unfavorite"
+                      : "Favorite",
+                    onClick: () => toggleFavorite(focusGroup.key),
+                  },
+                  favoriteSet[focusGroup.key] ? "★" : "☆",
+                ),
+              ),
               e(
                 "div",
                 { className: "sub" },
                 focusGroup.sales.length +
                   " selling · " +
                   focusGroup.wants.length +
-                  " buying",
+                  " buying" +
+                  (focusGroup.giveaways.length
+                    ? " · " + focusGroup.giveaways.length + " giveaways"
+                    : ""),
               ),
             ),
           ),
@@ -843,7 +982,12 @@ export function MarketPanel(props: MarketPanelProps): any {
         ),
         e(
           "div",
-          { key: "offers", className: "MarketPanel-focusOffers" },
+          {
+            key: "offers",
+            className:
+              "MarketPanel-focusOffers" +
+              (focusGroup.giveaways.length ? " has-gives" : ""),
+          },
           e(
             "div",
             { className: "MarketPanel-focusCol MarketPanel-focusCol--sells" },
@@ -866,7 +1010,13 @@ export function MarketPanel(props: MarketPanelProps): any {
           ),
           e(
             "div",
-            { className: "MarketPanel-focusCol" },
+            {
+              className:
+                "MarketPanel-focusCol" +
+                (focusGroup.giveaways.length
+                  ? " MarketPanel-focusCol--mid"
+                  : ""),
+            },
             e(
               "div",
               { className: "MarketPanel-focusColH" },
@@ -884,6 +1034,25 @@ export function MarketPanel(props: MarketPanelProps): any {
                   "No buy orders",
                 ),
           ),
+          focusGroup.giveaways.length
+            ? e(
+                "div",
+                { className: "MarketPanel-focusCol" },
+                e(
+                  "div",
+                  { className: "MarketPanel-focusColH" },
+                  e("span", { className: "gives" }, "Gives"),
+                  e("em", null, String(focusGroup.giveaways.length)),
+                ),
+                focusGroup.giveaways
+                  .slice()
+                  .sort(
+                    (a, b) =>
+                      (a.giveawayEntries || 0) - (b.giveawayEntries || 0),
+                  )
+                  .map(offerCard),
+              )
+            : null,
         ),
       ]
     : [
@@ -892,9 +1061,7 @@ export function MarketPanel(props: MarketPanelProps): any {
           "div",
           { key: "empty", className: "MarketPanel-empty" },
           e("strong", null, "No item selected"),
-          view === "grid"
-            ? "Pick a card in the market grid."
-            : "Pick a listing group, bag stack, or stand slot.",
+          "Pick a card in the market grid, a bag stack, or a stand slot.",
         ),
       ];
 
@@ -1079,7 +1246,7 @@ export function MarketPanel(props: MarketPanelProps): any {
       e(
         "div",
         { className: "MarketPanel-seg" },
-        (["all", "sale", "wanted"] as Facet[]).map((f) =>
+        (["all", "sale", "wanted", "giveaway"] as Facet[]).map((f) =>
           e(
             "button",
             {
@@ -1094,7 +1261,13 @@ export function MarketPanel(props: MarketPanelProps): any {
                   haveStock,
                 }),
             },
-            f === "all" ? "All" : f === "sale" ? "Selling" : "Buying",
+            f === "all"
+              ? "All"
+              : f === "sale"
+                ? "Selling"
+                : f === "wanted"
+                  ? "Buying"
+                  : "Giveaways",
           ),
         ),
       ),
@@ -1133,24 +1306,34 @@ export function MarketPanel(props: MarketPanelProps): any {
           }),
           "Afford",
         ),
-        e(
-          "label",
-          { className: "MarketPanel-tog" },
-          e("input", {
-            type: "checkbox",
-            checked: haveStock,
-            onChange: (ev: any) =>
-              applyToggleSync({
-                facet,
-                nearOnly,
-                canAfford,
-                haveStock: !!ev.target.checked,
-              }),
-          }),
-          "Have",
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: haveStock,
+              onChange: (ev: any) =>
+                applyToggleSync({
+                  facet,
+                  nearOnly,
+                  canAfford,
+                  haveStock: !!ev.target.checked,
+                }),
+            }),
+            "Have",
+          ),
+          e(
+            "label",
+            { className: "MarketPanel-tog" },
+            e("input", {
+              type: "checkbox",
+              checked: favOnly,
+              onChange: (ev: any) => setFavOnly(!!ev.target.checked),
+            }),
+            "Fav",
+          ),
         ),
       ),
-    ),
     e(
       "div",
       { className: "MarketPanel-body" },
@@ -1358,10 +1541,9 @@ export function MarketPanel(props: MarketPanelProps): any {
                 : listed
                   ? listed + " listed"
                   : "";
-            // All mode: always 4 columns in the narrow You pane (24 → 4×6).
-            // Wider Trade panel still uses standGridColumns for density.
+            // Pack + All share the same 4-col content-sized grid spacing.
             const pack = !!standCompact;
-            const iconSize = pack ? 40 : 34;
+            const iconSize = 40;
             const packEntries = pack
               ? collapseMarketStandPackSlots(keys, slots)
               : keys.map((sn: string) => ({
@@ -1454,7 +1636,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                         gearEditable,
                         allSlots: slots || undefined,
                         iconSize,
-                        fluid: !pack,
+                        fluid: true,
                         selected:
                           !!focusKey &&
                           entry.slotNames.indexOf(focusKey) >= 0,
@@ -1491,25 +1673,25 @@ export function MarketPanel(props: MarketPanelProps): any {
             "span",
             { className: "MarketPanel-phTools" },
             e(
-              "span",
-              { className: "MarketPanel-seg" },
+              "label",
+              { className: "MarketPanel-sort" },
+              e("span", null, "Sort"),
               e(
-                "button",
+                "select",
                 {
-                  type: "button",
-                  className: view === "grid" ? "is-on" : "",
-                  onClick: () => setView("grid"),
+                  value: groupSort,
+                  onChange: (ev: any) => {
+                    setGroupSort(String(ev.target.value) as MarketGroupSort);
+                  },
+                  title: "Sort market cards",
                 },
-                "Grid",
-              ),
-              e(
-                "button",
-                {
-                  type: "button",
-                  className: view === "list" ? "is-on" : "",
-                  onClick: () => setView("list"),
-                },
-                "List",
+                MARKET_GROUP_SORT_OPTIONS.map((opt) =>
+                  e(
+                    "option",
+                    { key: opt.id, value: opt.id },
+                    opt.label,
+                  ),
+                ),
               ),
             ),
           ),

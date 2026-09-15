@@ -104,14 +104,26 @@ export function normalizeCatalogSlot(
   const s = raw as Record<string, unknown>;
   const name = typeof s.name === "string" ? s.name : "";
   if (!name) return null;
-  const price = typeof s.price === "number" ? s.price : Number(s.price);
+  const registry =
+    s.registry && typeof s.registry === "object"
+      ? (s.registry as Record<string, unknown>)
+      : null;
+  const giveaway = s.giveaway === true || !!registry;
+  const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
+  const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
   if (!Number.isFinite(price)) return null;
   const listing: MarketSlotListing = {
     slot: slotName,
     name,
     price,
-    buyOrder: s.b === true,
+    buyOrder: !giveaway && s.b === true,
   };
+  if (giveaway) {
+    listing.giveaway = true;
+    if (registry) {
+      listing.giveawayEntries = Object.keys(registry).length;
+    }
+  }
   if (typeof s.rid === "string" && s.rid) listing.rid = s.rid;
   if (typeof s.q === "number") listing.q = s.q;
   if (typeof s.level === "number") listing.level = s.level;

@@ -7,6 +7,7 @@ import {
   tradeFulfillCommand,
   tradeListCommand,
   tradePurchaseCommand,
+  joinGiveawayCommand,
 } from "../tradeCommands";
 import {
   canAffordListing,
@@ -118,6 +119,10 @@ export async function actOnMarketListing(opts: {
   }
 
   const maxQ = row.q != null && row.q > 0 ? row.q : undefined;
+
+  if (row.giveaway) {
+    return joinGiveawayCommand(targetId, row.slot, row.rid);
+  }
 
   if (row.buyOrder) {
     const match = findBagMatchForBuyOrder(

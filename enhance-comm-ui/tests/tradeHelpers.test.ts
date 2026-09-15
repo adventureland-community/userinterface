@@ -12,6 +12,9 @@ import {
 describe("trade helpers", () => {
   it("formats gold compactly", () => {
     assert.equal(formatTradeGold(1200), "1.2k");
+    assert.equal(formatTradeGold(60_000_000), "60.00M");
+    assert.equal(formatTradeGold(38_400_000_000), "38.40B");
+    assert.equal(formatTradeGold(999_999), "1.00M");
     assert.equal(formatTradeGold(null), "?");
   });
 
