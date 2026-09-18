@@ -357,4 +357,20 @@ describe("marketGroupHasArb", () => {
       false,
     );
   });
+
+  it("ignores spreads that compact to the same gold label", () => {
+    // Nightberry-style: 999_999 sells / 1_000_000 buys → both "1.00M"
+    assert.equal(
+      marketGroupHasArb({ bestSale: 999_999, bestWant: 1_000_000 } as any),
+      false,
+    );
+    assert.equal(
+      marketGroupHasArb({ bestSale: 1_000_000, bestWant: 1_004_999 } as any),
+      false,
+    );
+    assert.equal(
+      marketGroupHasArb({ bestSale: 1_000_000, bestWant: 1_050_000 } as any),
+      true,
+    );
+  });
 });

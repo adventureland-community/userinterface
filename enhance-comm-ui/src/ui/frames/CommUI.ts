@@ -17,6 +17,10 @@ import {
   setMarketPanelOpen,
   subscribeMarketOpen,
 } from "../../host/market";
+import {
+  setBankPanelOpen,
+  subscribeBankOpen,
+} from "../../host/bank";
 import { updateCommKeyboardHandlers } from "../../host/keyboardPolicy";
 import { getObservingId } from "../../host/al";
 import { info } from "../../host/dialogHost";
@@ -519,6 +523,25 @@ export function CommUI(props: CommUIProps): any {
       setMarketOpenSeq((n: number) => n + 1);
       setVisible("market", true);
       windowActionsRef.current.raiseWindow("market");
+    });
+  }, [setVisible]);
+
+  const bankVisible = visible("bank");
+  React.useEffect(() => {
+    setBankPanelOpen(bankVisible);
+  }, [bankVisible]);
+
+  const bankOpenRef = React.useRef(false);
+  bankOpenRef.current = bankVisible;
+
+  React.useEffect(() => {
+    return subscribeBankOpen((payload) => {
+      if (payload.toggle && bankOpenRef.current) {
+        setVisible("bank", false);
+        return;
+      }
+      setVisible("bank", true);
+      windowActionsRef.current.raiseWindow("bank");
     });
   }, [setVisible]);
 

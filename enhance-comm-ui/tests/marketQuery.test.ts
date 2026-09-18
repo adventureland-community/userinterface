@@ -106,7 +106,18 @@ describe("marketQuery parse", () => {
   it("applies search suggestions", () => {
     assert.equal(
       applySearchSuggestion("foo ", { kind: "op", insert: "item:" }),
-      "foo item:",
+      "item:foo ",
+    );
+    assert.equal(
+      applySearchSuggestion("near staff", { kind: "op", insert: "item:" }),
+      "near item:staff ",
+    );
+    assert.equal(
+      applySearchSuggestion("staff", {
+        kind: "op",
+        insert: 'item:"firestaff" ',
+      }),
+      'item:"firestaff" ',
     );
     assert.equal(
       applySearchSuggestion("item:gl", {
@@ -114,6 +125,10 @@ describe("marketQuery parse", () => {
         value: "gloves",
       }),
       "item:gloves ",
+    );
+    assert.equal(
+      applySearchSuggestion("", { kind: "op", insert: "item:" }),
+      "item:",
     );
   });
 });

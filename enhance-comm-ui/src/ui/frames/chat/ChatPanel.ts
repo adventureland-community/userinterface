@@ -31,6 +31,10 @@ import {
   type HubChatMessageRow,
   type HubConversation,
 } from "../../../host/chat";
+import {
+  findPanelShell,
+  PanelExpandButton,
+} from "../../chrome/panelExpandControl";
 import { ensureChatCss } from "./chatCss";
 
 const POLL_MS = 5000;
@@ -506,13 +510,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   }, [narrow, expanded]);
 
   React.useEffect(() => {
-    let shell: HTMLElement | null = rootRef.current;
-    while (shell) {
-      if (shell.getAttribute && shell.getAttribute("data-panel") === "chat") {
-        break;
-      }
-      shell = shell.parentElement;
-    }
+    const shell = findPanelShell(rootRef.current, "chat");
     if (!shell) return;
 
     if (expanded) {
@@ -525,8 +523,8 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       shell.setAttribute("data-ecu-suspend-frame-resize", "1");
       shell.classList.add("ecu-chat-shell-expanded");
       return () => {
-        shell!.classList.remove("ecu-chat-shell-expanded");
-        shell!.removeAttribute("data-ecu-suspend-frame-resize");
+        shell.classList.remove("ecu-chat-shell-expanded");
+        shell.removeAttribute("data-ecu-suspend-frame-resize");
       };
     }
 
@@ -1109,18 +1107,13 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
                   "· " + (observing && observing.name ? observing.name : "party"),
                 )
               : null,
-          e(
-            "button",
-            {
-              type: "button",
-              className:
-                "ecu-chat-expand" + (expanded ? " is-expanded" : ""),
-              title: expanded ? "Restore chat size" : "Expand chat",
-              "aria-pressed": expanded,
-              onClick: () => setExpanded(!expanded),
-            },
-            expanded ? "MIN" : "FULL",
-          ),
+          e(PanelExpandButton, {
+            expanded,
+            onToggle: () => setExpanded(!expanded),
+            expandTitle: "Expand chat",
+            restoreTitle: "Restore chat size",
+            className: "ecu-chat-expand",
+          }),
         ),
         e(
           "div",

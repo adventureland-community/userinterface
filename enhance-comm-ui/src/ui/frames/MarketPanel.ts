@@ -41,12 +41,9 @@ import {
 } from "../../lib/market/marketBrowse";
 import { getSettings, patchSettings } from "../../lib/settings";
 import {
-  applySearchSuggestion,
   buildMarketSearchSuggestions,
   rewriteIsInFilter,
   syncTogglesFromQuery,
-  trailingOpContext,
-  type MarketSearchSuggestion,
   type MarketToggleSync,
 } from "../../lib/market/marketQuery";
 import {
@@ -62,6 +59,7 @@ import { resolveOwnTradeEntity } from "../../lib/tradeEntityResolve";
 import { itemInstanceLabel } from "../../lib/gameIcon";
 import { simpleDistance } from "../../host/al";
 import { ItemInstance } from "../chrome/ItemInstance";
+import { QuerySearchField } from "../chrome/QuerySearchField";
 import { showTradeWishlistPicker } from "../gear/tradeWishlistPicker";
 import {
   merchantCloseCommand,
@@ -346,9 +344,6 @@ export function MarketPanel(props: MarketPanelProps): any {
   const [favoriteKeys, setFavoriteKeys] = React.useState(() =>
     getSettings().marketFavoriteKeys.slice(),
   );
-  const [searchOpen, setSearchOpen] = React.useState(false);
-  const [searchHi, setSearchHi] = React.useState(0);
-  const searchInputRef = React.useRef(null as HTMLInputElement | null);
   const [merchantFilter, setMerchantFilter] = React.useState(
     null as string | null,
   );
@@ -526,25 +521,6 @@ export function MarketPanel(props: MarketPanelProps): any {
     rows: flat,
     formatServer: formatMarketServer,
   });
-  const pickSearchSuggestion = (row: MarketSearchSuggestion) => {
-    const next = applySearchSuggestion(query, row);
-    applyQuery(next);
-    setSearchHi(0);
-    const keepsOpen = !!(row.insert && /:$/.test(row.insert));
-    setSearchOpen(keepsOpen || !!trailingOpContext(next));
-    window.setTimeout(() => {
-      const el = searchInputRef.current;
-      if (el) {
-        el.focus();
-        const len = el.value.length;
-        try {
-          el.setSelectionRange(len, len);
-        } catch {
-          /* ignore */
-        }
-      }
-    }, 0);
-  };
 
   const focusGroup: MarketItemGroup | null = (() => {
     if (!focusKey) return null;
@@ -1116,133 +1092,28 @@ export function MarketPanel(props: MarketPanelProps): any {
     e(
       "div",
       { className: "MarketPanel-tools" },
-      e(
-        "div",
-        { className: "MarketPanel-searchWrap" },
-        e(
-          "div",
-          { className: "MarketPanel-search" },
-          e("span", { className: "ico" }, "⌕"),
-          e("input", {
-            ref: searchInputRef,
-            type: "search",
-            placeholder: "Search · item: · merchant: · is:sell · OR…",
-            value: query,
-            onFocus: () => {
-              setSearchOpen(true);
-              setSearchHi(0);
-            },
-            onBlur: () => {
-              window.setTimeout(() => setSearchOpen(false), 120);
-            },
-            onChange: (ev: any) => {
-              applyQuery(String(ev.target.value || ""));
-              setSearchOpen(true);
-              setSearchHi(0);
-            },
-            onKeyDown: (ev: any) => {
-              const flatSug = searchSug.flat;
-              if (ev.key === "Escape") {
-                setSearchOpen(false);
-                return;
-              }
-              if (!searchOpen && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
-                setSearchOpen(true);
-                return;
-              }
-              if (!searchOpen || !flatSug.length) return;
-              if (ev.key === "ArrowDown") {
-                ev.preventDefault();
-                setSearchHi((h: number) => (h + 1) % flatSug.length);
-              } else if (ev.key === "ArrowUp") {
-                ev.preventDefault();
-                setSearchHi(
-                  (h: number) => (h - 1 + flatSug.length) % flatSug.length,
-                );
-              } else if (ev.key === "Enter" && flatSug[searchHi]) {
-                ev.preventDefault();
-                pickSearchSuggestion(flatSug[searchHi]);
-              }
-            },
-          }),
-          query
-            ? e(
-                "button",
-                {
-                  type: "button",
-                  className: "clear",
-                  title: "Clear search",
-                  onMouseDown: (ev: any) => ev.preventDefault(),
-                  onClick: () => {
-                    applyQuery("");
-                    setMerchantFilter(null);
-                    setSearchOpen(false);
-                    setSearchHi(0);
-                  },
-                },
-                "×",
-              )
-            : null,
-        ),
-        searchOpen
-          ? e(
-              "div",
-              {
-                className: "MarketPanel-searchMenu",
-                onMouseDown: (ev: any) => ev.preventDefault(),
-              },
-              searchSug.sections.map((sec, si) =>
-                e(
-                  "div",
-                  { className: "MarketPanel-searchMenuSec", key: "sec-" + si },
-                  e("div", { className: "MarketPanel-searchMenuH" }, sec.title),
-                  sec.rows.map((row) => {
-                    const idx = searchSug.flat.indexOf(row);
-                    return e(
-                      "button",
-                      {
-                        type: "button",
-                        key: "sug-" + idx + "-" + row.label,
-                        className:
-                          "MarketPanel-searchMenuRow" +
-                          (idx === searchHi ? " is-hi" : ""),
-                        onMouseEnter: () => setSearchHi(idx),
-                        onClick: () => pickSearchSuggestion(row),
-                      },
-                      e(
-                        "span",
-                        { className: "MarketPanel-searchMenuIco" },
-                        row.ico || "·",
-                      ),
-                      row.kind === "op"
-                        ? e(
-                            "span",
-                            { className: "MarketPanel-searchMenuOp" },
-                            row.label,
-                          )
-                        : e(
-                            "span",
-                            { className: "MarketPanel-searchMenuLabel" },
-                            row.label,
-                          ),
-                      e(
-                        "span",
-                        { className: "MarketPanel-searchMenuHint" },
-                        row.hint || "",
-                      ),
-                    );
-                  }),
-                ),
-              ),
-              e(
-                "div",
-                { className: "MarketPanel-searchMenuFoot" },
-                "Words AND · OR / | · Quotes · -negate",
-                e("kbd", null, "↵"),
-              ),
-            )
-          : null,
-      ),
+      e(QuerySearchField, {
+        value: query,
+        onChange: (next: string) => applyQuery(next),
+        placeholder: "Search · item: · merchant: · is:sell · OR…",
+        suggestions: searchSug,
+        trailingOps: [
+          "item",
+          "merchant",
+          "mer",
+          "title",
+          "stat",
+          "attr",
+          "has",
+          "is",
+          "level",
+          "price",
+          "map",
+          "server",
+        ],
+        trailingAliases: { mer: "merchant" },
+        onClear: () => setMerchantFilter(null),
+      }),
       e(
         "div",
         { className: "MarketPanel-seg" },

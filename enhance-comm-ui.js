@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.9.12
+// @version      0.10.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -3221,6 +3221,7 @@ var EnhanceCommUI = (() => {
     mapInfo: { x: 50, y: 4.8, anchor: "tc" },
     paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 400 },
     market: { x: 50, y: 48, anchor: "center", frameW: 1100, frameH: 700 },
+    bank: { x: 50, y: 48, anchor: "center", frameW: 900, frameH: 640 },
     buffInfo: {
       x: 0.8,
       y: 10,
@@ -3343,6 +3344,7 @@ var EnhanceCommUI = (() => {
     mapInfo: { x: 50, y: 5, anchor: "tc" },
     paperdoll: { x: 1, y: 28, anchor: "tl" },
     market: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
+    bank: { x: 50, y: 46, anchor: "center", frameW: 860, frameH: 600 },
     buffInfo: { x: 1, y: 12, anchor: "tl", autoSize: true },
     itemInfo: { x: 17, y: 12, anchor: "tl", autoSize: true },
     kills: { x: 99.2, y: 72, anchor: "tr" },
@@ -3394,6 +3396,7 @@ var EnhanceCommUI = (() => {
     mapInfo: { x: 50, y: 4.5, anchor: "tc" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
     market: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
+    bank: { x: 50, y: 44, anchor: "center", frameW: 360, frameH: 520 },
     buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
     itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
     kills: { x: 98, y: 58, anchor: "br" },
@@ -3644,6 +3647,12 @@ var EnhanceCommUI = (() => {
     bag: { label: "Bag", closable: true, framePersist: "none" },
     market: {
       label: "Market",
+      closable: true,
+      defaultVisible: false,
+      shell: "fill"
+    },
+    bank: {
+      label: "Bank",
       closable: true,
       defaultVisible: false,
       shell: "fill"
@@ -5616,13 +5625,13 @@ var EnhanceCommUI = (() => {
   }
 
   // src/meters/meterSegmentPack.ts
-  function intern(state2, s) {
+  function intern(state3, s) {
     const v = s || "";
-    const hit = state2.idx[v];
+    const hit = state3.idx[v];
     if (hit != null) return hit;
-    const i = state2.pool.length;
-    state2.pool.push(v);
-    state2.idx[v] = i;
+    const i = state3.pool.length;
+    state3.pool.push(v);
+    state3.idx[v] = i;
     return i;
   }
   function relAt(at, startedAt) {
@@ -5660,7 +5669,7 @@ var EnhanceCommUI = (() => {
   }
   function packTapes(seg) {
     const startedAt = seg.startedAt || 0;
-    const state2 = { pool: [""], idx: { "": 0 } };
+    const state3 = { pool: [""], idx: { "": 0 } };
     const casts = seg.casts || [];
     const nC = casts.length;
     const castAt = new Uint32Array(nC);
@@ -5672,11 +5681,11 @@ var EnhanceCommUI = (() => {
     for (let i = 0; i < nC; i++) {
       const c = casts[i];
       castAt[i] = relAt(c.at, startedAt);
-      castActor[i] = intern(state2, c.actorId);
-      castSource[i] = intern(state2, c.source);
-      castTarget[i] = intern(state2, c.targetId);
+      castActor[i] = intern(state3, c.actorId);
+      castSource[i] = intern(state3, c.source);
+      castTarget[i] = intern(state3, c.targetId);
       castPid[i] = intern(
-        state2,
+        state3,
         c.pid == null ? "" : String(c.pid)
       );
       const ams = c.attackMs;
@@ -5695,13 +5704,13 @@ var EnhanceCommUI = (() => {
     for (let i = 0; i < nG; i++) {
       const g = gears[i];
       gearAt[i] = relAt(g.at, startedAt);
-      gearActor[i] = intern(state2, g.actorId);
-      gearSlot[i] = intern(state2, g.slot);
-      gearOldName[i] = intern(state2, g.oldName);
-      gearNewName[i] = intern(state2, g.newName);
+      gearActor[i] = intern(state3, g.actorId);
+      gearSlot[i] = intern(state3, g.slot);
+      gearOldName[i] = intern(state3, g.oldName);
+      gearNewName[i] = intern(state3, g.newName);
       gearOldLevel[i] = levelOrMissing(g.oldLevel);
       gearNewLevel[i] = levelOrMissing(g.newLevel);
-      gearSkin[i] = intern(state2, g.skin);
+      gearSkin[i] = intern(state3, g.skin);
     }
     const conds = seg.conditions || [];
     const nK = conds.length;
@@ -5711,14 +5720,14 @@ var EnhanceCommUI = (() => {
     const condEnd = new Uint32Array(nK);
     for (let i = 0; i < nK; i++) {
       const k = conds[i];
-      condActor[i] = intern(state2, k.actorId);
-      condKey[i] = intern(state2, k.key);
+      condActor[i] = intern(state3, k.actorId);
+      condKey[i] = intern(state3, k.key);
       condStart[i] = relAt(k.startedAt, startedAt);
       condEnd[i] = k.endedAt == null ? 0 : relAt(k.endedAt, startedAt) || 1;
     }
     return {
       v: 1,
-      pool: state2.pool,
+      pool: state3.pool,
       castAt,
       castActor,
       castSource,
@@ -8483,7 +8492,12 @@ ${fightHoverTip(src)}`
     },
     {
       label: "Market",
-      detail: "Buy and sell across nearby and catalog merchants \u2014 Travel when out of range.",
+      detail: "Browse, buy, sell, and join giveaways across live + catalog merchants \u2014 Travel when out of range.",
+      kind: "feature"
+    },
+    {
+      label: "Bank",
+      detail: "Account vault browser with market-style search, packs, and type groups \u2014 Refresh reloads from the server.",
       kind: "feature"
     },
     {
@@ -8514,24 +8528,29 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
-      id: "0.9.12",
-      title: "0.9.12",
-      date: "2026-09-10",
-      summary: "Market hub replaces the Trade panel \u2014 Buy|Sell desks, realm catalog, Travel, and chrome Market button.",
+      id: "0.10.0",
+      title: "0.10.0",
+      date: "2026-09-15",
+      summary: "Market hub replaces Trade, account Bank browser with market-style search, and observe-follow across servers.",
       highlights: [
         {
           label: "Market hub",
-          detail: "One Market window with Buy (search/compare for-sale listings) and Sell (fulfill buy orders, your stand, mirror/undercut). Chrome Market button; inspecting a merchant opens Market focused on them.",
+          detail: "You (bag + stand) | item grid | Focus. Chrome Market button; inspecting a merchant opens Market on them. Trade panel is gone.",
+          kind: "feature"
+        },
+        {
+          label: "Account Bank",
+          detail: "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared \u2315 field), All / Packs / Types / Ready (Combine\xB7Craft \xD7 Ready\xB7Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, Refresh + load age.",
           kind: "feature"
         },
         {
           label: "Live + catalog",
-          detail: "Nearby entities merge with pull_merchants. Live slots win when the merchant is in vision; catalog-only stands stay visible with Travel.",
+          detail: "Nearby entities merge with pull_merchants. Live slots win in vision; catalog-only stands stay visible with Travel.",
           kind: "feature"
         },
         {
-          label: "Travel then trade",
-          detail: "Out-of-range listings Travel via change_server then smart_move (overlay-owned itinerary). Catalog / closed-stand trade5+ buy only in range with a stale-listing confirm.",
+          label: "Travel + follow",
+          detail: "Out-of-range Travel does change_server then smart_move. Comm re-observes when your watched character hops realms so Market Travel stays usable.",
           kind: "feature"
         }
       ],
@@ -8541,13 +8560,45 @@ ${fightHoverTip(src)}`
           summary: "Trade panel retired \u2014 Market is the only trade surface.",
           items: [
             {
-              label: "Buy desk",
-              detail: "Filters for afford, party merchants, and search tokens (item: / merchant: / map:). Best-price sort within item.",
+              label: "Browse grid",
+              detail: "Grouped listings with sell/buy/give counts, dual and arb borders (arb only when sell/buy labels differ), favorites (\u2605 pin + filter), Arb sort by buy\u2212sell when both sides are priced, Giveaways facet / is:giveaway.",
               kind: "feature"
             },
             {
-              label: "Sell desk",
-              detail: "Your stand grid (list/delist via existing trade controls), In bag buy-order filter, Mirror / Undercut from browse sales.",
+              label: "Focus + stand",
+              detail: "Offer cards with merchant, server \xB7 map, qty, distance; Join on giveaways; Pack/All stand stacking; Mirror / Undercut from browse sales.",
+              kind: "feature"
+            },
+            {
+              label: "Search + filters",
+              detail: "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B).",
+              kind: "feature"
+            }
+          ]
+        },
+        {
+          title: "Bank",
+          summary: "Account vault \u2014 shared across characters, refreshed on demand.",
+          items: [
+            {
+              label: "Search",
+              detail: "Shared Market \u2315 field: item:, type:, pack:, title:, level:, is:compound|upgrade|craft|exchange, OR/|, negation. Sectioned suggestions; Enter keeps free text (staff) unless you arrow/hover a row; picking item: folds the last word (staff \u2192 item:staff); picking a concrete item replaces it. Matching items list above field ops while typing.",
+              kind: "feature"
+            },
+            {
+              label: "Browse",
+              detail: "All (merged stacks), Packs (every vault board like al-data-explorer \u2014 no dropdown), Types, or Ready. Ready mirrors explorer insights: Combine / Craft tabs, Ready vs Almost (1-short / cascade), recipe cards with result \u2190 inputs. Sort All/Types like explorer: Category (default), Quantity, Stack \u2014 then type, name, level. Four-corner fullscreen expand lifts Bank like Chat. Search dims non-matches on pack boards. Click an item for stock readonly tip.",
+              kind: "feature"
+            }
+          ]
+        },
+        {
+          title: "Observe",
+          summary: "Stay on your character when they change servers.",
+          items: [
+            {
+              label: "Follow across realms",
+              detail: "While observing, if X.characters says they moved, Comm force-reconnects to their realm (secret + server address) \u2014 stock same-name observe only homes the camera. Toast names the destination (e.g. EU I).",
               kind: "feature"
             }
           ]
@@ -19584,6 +19635,152 @@ ${CHROME_ARRANGE_CSS}
     return tradePurchaseCommand(targetId, row3.slot, row3.rid, q);
   }
 
+  // src/host/bank/bankSession.ts
+  var openListeners3 = [];
+  var panelOpen3 = false;
+  function setBankPanelOpen(open) {
+    panelOpen3 = !!open;
+  }
+  function subscribeBankOpen(fn) {
+    openListeners3.push(fn);
+    return () => {
+      const idx = openListeners3.indexOf(fn);
+      if (idx >= 0) openListeners3.splice(idx, 1);
+    };
+  }
+  function openBank(payload = {}) {
+    for (let i = 0; i < openListeners3.length; i++) {
+      openListeners3[i](payload);
+    }
+  }
+
+  // src/host/bank/api.ts
+  var TIMEOUT_MS = 12e3;
+  function getApiCall2() {
+    const fn = window.api_call;
+    return typeof fn === "function" ? fn : null;
+  }
+  function asPacks(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const obj = raw;
+    const keys = Object.keys(obj);
+    let anyArray = false;
+    for (let i = 0; i < keys.length; i++) {
+      if (Array.isArray(obj[keys[i]])) anyArray = true;
+    }
+    return anyArray ? obj : null;
+  }
+  function parseLoadBankPayload(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    const obj = raw;
+    if (obj.failed) return null;
+    let packs = asPacks(obj.packs);
+    let gold = typeof obj.gold === "number" && Number.isFinite(obj.gold) ? obj.gold : 0;
+    if (!packs && Array.isArray(obj.infs)) {
+      const infs = obj.infs;
+      for (let i = 0; i < infs.length; i++) {
+        const info2 = infs[i];
+        if (!info2 || typeof info2 !== "object") continue;
+        const nested = asPacks(info2.packs);
+        if (nested) {
+          packs = nested;
+          if (typeof info2.gold === "number") gold = info2.gold;
+          break;
+        }
+      }
+    }
+    if (!packs) {
+      packs = asPacks(obj);
+    }
+    if (!packs) return null;
+    return { packs, gold };
+  }
+  function callApiStock2() {
+    return new Promise((resolve) => {
+      const api = getApiCall2();
+      if (!api) {
+        resolve(null);
+        return;
+      }
+      let settled = false;
+      const finish = (v) => {
+        if (settled) return;
+        settled = true;
+        resolve(v);
+      };
+      const timer = window.setTimeout(() => finish(null), TIMEOUT_MS);
+      try {
+        const maybe = api("load_bank", {}, { silent: true, timeout: TIMEOUT_MS });
+        if (maybe && typeof maybe.then === "function") {
+          maybe.then((data) => {
+            window.clearTimeout(timer);
+            finish(data);
+          }).catch((err) => {
+            window.clearTimeout(timer);
+            finish(err);
+          });
+          return;
+        }
+        window.clearTimeout(timer);
+        finish(maybe);
+      } catch (e2) {
+        window.clearTimeout(timer);
+        finish(null);
+      }
+    });
+  }
+  async function callApiFetch2() {
+    if (typeof fetch !== "function") return null;
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => {
+      if (ctrl) ctrl.abort();
+    }, TIMEOUT_MS);
+    try {
+      const res = await fetch(window.location.origin + "/api/load_bank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        credentials: "same-origin",
+        body: JSON.stringify({}),
+        signal: ctrl ? ctrl.signal : void 0
+      });
+      if (!res.ok) return null;
+      try {
+        return await res.json();
+      } catch (e2) {
+        return null;
+      }
+    } catch (e2) {
+      return null;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  async function loadBank() {
+    if (!window.user_id) {
+      return { ok: false, reason: "Log in to load the account bank." };
+    }
+    const viaStock = await callApiStock2();
+    let parsed = parseLoadBankPayload(viaStock);
+    if (!parsed) {
+      const viaFetch = await callApiFetch2();
+      parsed = parseLoadBankPayload(viaFetch);
+    }
+    if (!parsed) {
+      return {
+        ok: false,
+        reason: "Could not load bank (try again or re-login)."
+      };
+    }
+    return {
+      ok: true,
+      snapshot: {
+        packs: parsed.packs,
+        gold: parsed.gold,
+        loadedAt: Date.now()
+      }
+    };
+  }
+
   // src/host/chat/commands.ts
   var MAX_LEN = 1200;
   function lit4(value) {
@@ -19636,23 +19833,23 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/chat/session.ts
-  var openListeners3 = [];
+  var openListeners4 = [];
   function subscribeChatOpen(fn) {
-    openListeners3.push(fn);
+    openListeners4.push(fn);
     return () => {
-      const idx = openListeners3.indexOf(fn);
-      if (idx >= 0) openListeners3.splice(idx, 1);
+      const idx = openListeners4.indexOf(fn);
+      if (idx >= 0) openListeners4.splice(idx, 1);
     };
   }
   function openChat(payload = {}) {
-    for (let i = 0; i < openListeners3.length; i++) {
-      openListeners3[i](payload);
+    for (let i = 0; i < openListeners4.length; i++) {
+      openListeners4[i](payload);
     }
   }
 
   // src/host/chat/hubApi.ts
   var API_TIMEOUT_MS2 = 12e3;
-  function getApiCall2() {
+  function getApiCall3() {
     const fn = window.api_call;
     return typeof fn === "function" ? fn : null;
   }
@@ -19784,7 +19981,7 @@ ${CHROME_ARRANGE_CSS}
     if (!ct || typeof ct !== "object") return false;
     return !!ct.failed;
   }
-  function callApiStock2(method, args) {
+  function callApiStock3(method, args) {
     return new Promise((resolve) => {
       let settled = false;
       const finish = (data) => {
@@ -19792,7 +19989,7 @@ ${CHROME_ARRANGE_CSS}
         settled = true;
         resolve(data);
       };
-      const api = getApiCall2();
+      const api = getApiCall3();
       if (!api) {
         finish(null);
         return;
@@ -19854,7 +20051,7 @@ ${CHROME_ARRANGE_CSS}
       const info3 = findPullChatsInfo(res.json);
       if (info3) return { ok: true, data: normalizePullChats(info3) };
     }
-    const stock = await callApiStock2("pull_chats", args);
+    const stock = await callApiStock3("pull_chats", args);
     const info2 = findPullChatsInfo(stock);
     if (info2) return { ok: true, data: normalizePullChats(info2) };
     if (res == null && stock == null) return { ok: false, reason: "network" };
@@ -19875,7 +20072,7 @@ ${CHROME_ARRANGE_CSS}
       const info3 = findPullChatInfo(res.json);
       if (info3) return { ok: true, data: normalizePullChat(info3) };
     }
-    const stock = await callApiStock2("pull_chat", args);
+    const stock = await callApiStock3("pull_chat", args);
     const info2 = findPullChatInfo(stock);
     if (info2) return { ok: true, data: normalizePullChat(info2) };
     if (res == null && stock == null) return { ok: false, reason: "network" };
@@ -19896,7 +20093,7 @@ ${CHROME_ARRANGE_CSS}
     if (res && res.ok && isFailedPayload(res.json)) {
       return { ok: false, reason: "failed" };
     }
-    const stock = await callApiStock2("send_message", args);
+    const stock = await callApiStock3("send_message", args);
     if (stock != null && !isFailedPayload(stock)) {
       return { ok: true, data: true };
     }
@@ -20160,8 +20357,136 @@ ${CHROME_ARRANGE_CSS}
     };
   }
 
+  // src/host/commChrome/observeFollow.ts
+  var FOLLOW_IN_FLIGHT_MS = 8e3;
+  function createObserveFollowState() {
+    return { stickyName: null, followInFlight: false, followStartedAt: 0 };
+  }
+  function noteObservingName(state3, name, now) {
+    const n = name != null && name !== "" ? String(name) : null;
+    if (!n) return state3;
+    const next = {
+      stickyName: n,
+      followInFlight: state3.followInFlight,
+      followStartedAt: state3.followStartedAt
+    };
+    if (state3.followInFlight && state3.stickyName === n) {
+      next.followInFlight = false;
+      next.followStartedAt = 0;
+    }
+    return next;
+  }
+  function noteClearedObserve(state3) {
+    return createObserveFollowState();
+  }
+  function decideObserveFollow(input) {
+    if (input.followInFlight) return { action: "none" };
+    const name = input.stickyName ? String(input.stickyName) : "";
+    if (!name) return { action: "none" };
+    const key = input.currentServerKey ? String(input.currentServerKey) : "";
+    if (!key) return { action: "none" };
+    const char = input.char;
+    if (!char || char.name !== name) return { action: "none" };
+    if (!char.online) return { action: "none" };
+    const charServer = char.server != null ? String(char.server) : "";
+    if (!charServer) return { action: "none" };
+    if (charServer === key) return { action: "none" };
+    return { action: "follow", name };
+  }
+  function tickObserveFollow(state3, ctx) {
+    let next = noteObservingName(state3, ctx.observingName, ctx.now);
+    if (next.followInFlight && next.followStartedAt > 0 && ctx.now - next.followStartedAt > FOLLOW_IN_FLIGHT_MS) {
+      next = {
+        stickyName: next.stickyName,
+        followInFlight: false,
+        followStartedAt: 0
+      };
+    }
+    const sticky = next.stickyName;
+    const decision = decideObserveFollow({
+      stickyName: sticky,
+      currentServerKey: ctx.currentServerKey,
+      char: sticky ? ctx.findChar(sticky) : null,
+      followInFlight: next.followInFlight
+    });
+    if (decision.action === "none") {
+      return { state: next, followName: null };
+    }
+    return {
+      state: {
+        stickyName: decision.name,
+        followInFlight: true,
+        followStartedAt: ctx.now
+      },
+      followName: decision.name
+    };
+  }
+
+  // src/host/commChrome/observeFollowHost.ts
+  var state2 = createObserveFollowState();
+  function clearObserveFollowSticky() {
+    state2 = noteClearedObserve(state2);
+  }
+  function findRosterChar(name) {
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i].name === name) {
+        const c = chars[i];
+        return {
+          name: String(c.name),
+          online: !!c.online,
+          server: c.server != null ? String(c.server) : null
+        };
+      }
+    }
+    return null;
+  }
+  function serverLabel2(serverKey3) {
+    const key = String(serverKey3 || "");
+    if (!key) return "";
+    if (typeof window.server_to_ui === "function") {
+      const ui = window.server_to_ui(key);
+      if (ui) return String(ui);
+    }
+    const servers = window.X && window.X.servers || [];
+    for (let i = 0; i < servers.length; i++) {
+      const s = servers[i];
+      if (s.key != null && String(s.key) === key) {
+        return String(s.region) + " " + String(s.name);
+      }
+    }
+    return key;
+  }
+  function syncObserveFollow(now, deps) {
+    const observing = window.observing;
+    const observingName = observing && observing.name != null ? String(observing.name) : null;
+    const result = tickObserveFollow(state2, {
+      now,
+      observingName,
+      currentServerKey: deps.currentServerKey(),
+      findChar: findRosterChar
+    });
+    state2 = result.state;
+    if (!result.followName) return;
+    const ok = deps.observeCharacter(result.followName);
+    if (ok) {
+      const dest = findRosterChar(result.followName);
+      const where = dest && dest.server ? serverLabel2(dest.server) : "";
+      showCommToast(
+        where ? `Following ${result.followName} to ${where}\u2026` : `Following ${result.followName} to their server\u2026`
+      );
+    } else {
+      state2 = {
+        stickyName: state2.stickyName,
+        followInFlight: false,
+        followStartedAt: 0
+      };
+    }
+  }
+
   // src/host/commChrome/chromeActions.ts
   function clearObserve() {
+    clearObserveFollowSticky();
     if (typeof window.init_socket !== "function") return;
     window.init_socket({});
   }
@@ -20183,14 +20508,25 @@ ${CHROME_ARRANGE_CSS}
     if (!key || char.server == null || char.server === "") return true;
     return String(char.server) === key;
   }
-  function toggleObserve(name) {
-    const n = String(name || "");
-    if (!n) return;
-    const obs = window.observing;
-    if (obs && obs.name === n) {
-      clearObserve();
-      return;
+  function connectObserveWithSecret(ch) {
+    if (!ch.secret || ch.server == null) return false;
+    const servers = window.X && window.X.servers || [];
+    for (let j = 0; j < servers.length; j++) {
+      const server = servers[j];
+      if (server.key != null && String(server.key) === String(ch.server)) {
+        if (!server.address) return false;
+        window.server_address = server.address;
+        window.server_path = server.path;
+        if (typeof window.init_socket !== "function") return false;
+        window.init_socket({ secret: ch.secret });
+        return true;
+      }
     }
+    return false;
+  }
+  function observeCharacter(name) {
+    const n = String(name || "");
+    if (!n) return false;
     const chars = window.X && window.X.characters || [];
     let ch = null;
     for (let i = 0; i < chars.length; i++) {
@@ -20199,24 +20535,35 @@ ${CHROME_ARRANGE_CSS}
         break;
       }
     }
-    if (typeof window.observe_character === "function") {
+    const mustHop = !!(ch && !isCharOnCurrentServer(ch));
+    if (!mustHop && typeof window.observe_character === "function") {
       const ok = window.observe_character(n);
-      if (ok !== false) return;
+      if (ok !== false) return true;
     }
-    if (!ch || !ch.secret || ch.server == null) return;
-    const servers = window.X && window.X.servers || [];
-    for (let j = 0; j < servers.length; j++) {
-      const server = servers[j];
-      if (server.key != null && String(server.key) === String(ch.server)) {
-        if (!server.address) return;
-        window.server_address = server.address;
-        window.server_path = server.path;
-        if (typeof window.init_socket === "function") {
-          window.init_socket({ secret: ch.secret });
-        }
-        return;
+    if (!ch) return false;
+    return connectObserveWithSecret(ch);
+  }
+  function toggleObserve(name) {
+    const n = String(name || "");
+    if (!n) return;
+    const obs = window.observing;
+    const chars = window.X && window.X.characters || [];
+    let ch = null;
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i].name === n) {
+        ch = chars[i];
+        break;
       }
     }
+    if (obs && obs.name === n) {
+      if (ch && !isCharOnCurrentServer(ch)) {
+        observeCharacter(n);
+        return;
+      }
+      clearObserve();
+      return;
+    }
+    observeCharacter(n);
   }
   function onFollowClick(ev) {
     ev.preventDefault();
@@ -20263,6 +20610,11 @@ ${CHROME_ARRANGE_CSS}
     ev.stopPropagation();
     openMarket({ toggle: true });
   }
+  function onBankClick(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    openBank({ toggle: true });
+  }
   function openDocsMenu() {
     const showModal = window.show_modal;
     if (typeof showModal !== "function" || typeof window.render_guide !== "function" || typeof window.render_code_docs !== "function" || typeof window.render_others !== "function") {
@@ -20297,6 +20649,7 @@ ${CHROME_ARRANGE_CSS}
     chat: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16v11H8l-4 4V5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M8 9h8M8 13h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
     market: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16l-1 12H5L4 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 7V5a3 3 0 0 1 6 0v2M8 11h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+    bank: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="10" width="18" height="11" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 10V7a6 6 0 0 1 12 0v3M12 14v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
     mainframe: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>'
   };
@@ -20338,6 +20691,7 @@ ${CHROME_ARRANGE_CSS}
       mk("chat", "Chat", "Server chat \u2014 send as observed character", onChatClick),
       mk("mail", "Mail", "Account mail", onMailClick),
       mk("market", "Market", "Buy and sell across merchants", onMarketClick),
+      mk("bank", "Bank", "Account bank \u2014 search packs and stacks", onBankClick),
       mk(
         "command",
         "Command",
@@ -20361,6 +20715,7 @@ ${CHROME_ARRANGE_CSS}
       Chat: "btn-chat",
       Mail: "btn-mail",
       Market: "btn-market",
+      Bank: "btn-bank",
       Command: "btn-command",
       Docs: "btn-docs",
       Mainframe: "btn-mainframe"
@@ -20431,7 +20786,7 @@ ${CHROME_ARRANGE_CSS}
       if (!actionsEl) {
         actionsEl = buildActionsEl();
         existingStack.insertBefore(actionsEl, existingStack.firstChild);
-      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-chat"]') || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') || !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')) {
+      } else if (!actionsEl.querySelector(".ecu-btn-icon-only") || !actionsEl.querySelector('[data-ecu-tour="btn-chat"]') || !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') || !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]') || !actionsEl.querySelector('[data-ecu-tour="btn-bank"]')) {
         const next = buildActionsEl();
         actionsEl.replaceWith(next);
         actionsEl = next;
@@ -20481,6 +20836,7 @@ ${CHROME_ARRANGE_CSS}
   function renderCharactersHud() {
     var _a, _b;
     ensureChromeShell();
+    syncObserveFollow(Date.now(), { currentServerKey: currentServerKey3, observeCharacter });
     const chars = window.X && window.X.characters || [];
     const curKey = currentServerKey3();
     let key = "cur:" + curKey + "|";
@@ -20528,11 +20884,11 @@ ${CHROME_ARRANGE_CSS}
       const char = chars[i];
       if (!char.online) continue;
       const active = !!(obsName && obsName === char.name);
-      const serverLabel3 = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
-      const offServer = !isCharOnCurrentServer(char) && !!serverLabel3;
+      const serverLabel4 = typeof serverUi === "function" ? serverUi(char.server) : String(char.server || "");
+      const offServer = !isCharOnCurrentServer(char) && !!serverLabel4;
       const shortName = char.name.length <= 16 ? char.name : char.name.substr(0, 15) + "\u2026";
       const spriteHtml = typeof spriteFn === "function" ? spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) : "";
-      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel3) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "");
+      const title = esc(char.name) + " \xB7 Lv." + esc(String((_a = char.level) != null ? _a : "")) + " \xB7 " + esc(serverLabel4) + (active ? " \xB7 Click again to stop observing" : "") + (offServer && !active ? " \xB7 Click to switch server & observe" : "") + (offServer && active ? " \xB7 Following \u2014 click to reconnect if stuck" : "");
       html += "<button type='button' class='ecu-char" + (active ? " is-active" : "") + (offServer ? " is-off-server" : "") + "' title='" + title + `' onclick='if(window.bc&&bc(this)) return; (window.__ecuToggleObserve||observe_character)("` + esc(char.name) + `");'>`;
       html += "<span class='ecu-char-sprite'>" + spriteHtml + "</span>";
       html += "<span class='ecu-char-meta'>";
@@ -20540,7 +20896,7 @@ ${CHROME_ARRANGE_CSS}
       html += "<span class='ecu-char-sub'>";
       html += "Lv." + esc(String((_b = char.level) != null ? _b : ""));
       if (offServer) {
-        html += "<span class='ecu-char-server'>" + esc(serverLabel3) + "</span>";
+        html += "<span class='ecu-char-server'>" + esc(serverLabel4) + "</span>";
       }
       html += "</span>";
       html += "</span></button>";
@@ -21721,6 +22077,7 @@ ${CHROME_ARRANGE_CSS}
     const unsubTick2 = subscribeTick((snap) => {
       const name = snap.observing && snap.observing.name || window.observing && window.observing.name || "";
       const server = (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
+      syncObserveFollow(snap.now, { currentServerKey: currentServerKey3, observeCharacter });
       if (name !== lastObs || server !== lastServer) {
         lastObs = name;
         lastServer = server;
@@ -21994,7 +22351,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   var BRAND = "Adventure Land";
   var installed2 = false;
   var lastTitle = null;
-  function serverLabel2() {
+  function serverLabel3() {
     const region = getServerRegion() || "";
     const ident = getServerIdentifier() || "";
     return `${region} ${ident}`.trim();
@@ -22013,7 +22370,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     }
     const map = getMapName();
     if (map) parts.push(map);
-    const server = serverLabel2();
+    const server = serverLabel3();
     if (server) parts.push(server);
     return `${parts.join(" \xB7 ")} | ${BRAND}`;
   }
@@ -22031,8 +22388,9 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   }
 
   // src/ui/chrome/ItemInstance.ts
-  function formatQty(q) {
-    if (q == null || !Number.isFinite(q) || q <= 1) return null;
+  function formatQty(q, forceShowQ) {
+    if (q == null || !Number.isFinite(q)) return null;
+    if (!forceShowQ && q <= 1) return null;
     if (q >= 1e6) return Math.floor(q / 1e6) + "m";
     if (q >= 1e4) return Math.floor(q / 1e3) + "k";
     return String(Math.floor(q));
@@ -22054,10 +22412,12 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       size = 40,
       className,
       title,
-      stockChrome = true
+      stockChrome = true,
+      forceShowQ,
+      qtyColor
     } = props;
     const tip = title || itemInstanceLabel(name, { p, level }) || name;
-    const qtyLabel = formatQty(q);
+    const qtyLabel = formatQty(q, forceShowQ);
     const levelLabel = formatLevel(level);
     React.useEffect(() => {
       const el = ref.current;
@@ -22132,7 +22492,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--qty",
-          title: "Quantity " + (q != null ? q : qtyLabel)
+          title: "Quantity " + (q != null ? q : qtyLabel),
+          style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : void 0
         },
         qtyLabel
       ) : null
@@ -23052,8 +23413,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.9.12" : "unknown";
-    const builtAt = true ? "2026-09-15T08:33:40.282Z" : "unknown";
+    const version = true ? "0.10.0" : "unknown";
+    const builtAt = true ? "2026-09-18T13:18:45.938Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -28188,33 +28549,33 @@ button.comm-mail__stack-u {
     }
     return fx;
   }
-  function pulseHearts(sprite, now, intervalMs, state2) {
+  function pulseHearts(sprite, now, intervalMs, state3) {
     var _a;
     if ((_a = sprite.animations) == null ? void 0 : _a.hearts_single) return;
-    if (state2.lastHeartAt > 0 && now - state2.lastHeartAt < intervalMs) return;
-    state2.lastHeartAt = now;
+    if (state3.lastHeartAt > 0 && now - state3.lastHeartAt < intervalMs) return;
+    state3.lastHeartAt = now;
     callStartAnimation(sprite, "hearts_single");
   }
-  function tickEnterRangeCue(target, range, host2, state2) {
+  function tickEnterRangeCue(target, range, host2, state3) {
     if (host2) {
-      state2.wasInRange = true;
+      state3.wasInRange = true;
       return;
     }
     const viewer = getObserving() || getCharacter();
     if (!viewer || viewer.rip || viewer.dead) {
-      state2.wasInRange = false;
+      state3.wasInRange = false;
       return;
     }
     if (String(viewer.id) === String(target.id)) {
-      state2.wasInRange = true;
+      state3.wasInRange = true;
       return;
     }
     const d = simpleDistance(viewer, target);
     const inRange = typeof d === "number" && d < range;
-    if (inRange && !state2.wasInRange) {
+    if (inRange && !state3.wasInRange) {
       callStartAnimation(viewer, "hearts_single");
     }
-    state2.wasInRange = inRange;
+    state3.wasInRange = inRange;
   }
   function paintAnniversaryKiss(gfx, entities, settings, now = Date.now()) {
     var _a;
@@ -28250,15 +28611,15 @@ button.comm-mail__stack-u {
       6
     );
     const targetKey = (target && target.id != null ? String(target.id) : "") || status.target || String((_a = status.id) != null ? _a : "");
-    const state2 = ensureFxState(targetKey);
+    const state3 = ensureFxState(targetKey);
     if (target && target.visible !== false) {
       pulseHearts(
         target,
         now,
         host2 ? HEART_MS_HOST : HEART_MS_VISITOR,
-        state2
+        state3
       );
-      tickEnterRangeCue(target, range, host2, state2);
+      tickEnterRangeCue(target, range, host2, state3);
     }
   }
 
@@ -29796,16 +30157,16 @@ button.comm-mail__stack-u {
   }
 
   // src/lib/commWindowGroup.ts
-  function commWindowPeerLayout(state2) {
-    const out = { ...state2.layout || {} };
-    const meters = state2.meters || [];
+  function commWindowPeerLayout(state3) {
+    const out = { ...state3.layout || {} };
+    const meters = state3.meters || [];
     for (let i = 0; i < meters.length; i++) {
       out[meters[i].id] = meters[i].pos;
     }
     return out;
   }
-  function commWindowPeerSnapAxes(state2, selfId2, isPeerVisible) {
-    const peers = commWindowPeerLayout(state2);
+  function commWindowPeerSnapAxes(state3, selfId2, isPeerVisible) {
+    const peers = commWindowPeerLayout(state3);
     const ids = Object.keys(peers);
     const xs = [];
     const ys = [];
@@ -29845,19 +30206,19 @@ button.comm-mail__stack-u {
     }
     return finalPos;
   }
-  function raiseCommWindow(state2, id) {
+  function raiseCommWindow(state3, id) {
     if (windowKind(id) === "hud") {
       const hid = id;
-      const prev = state2.hudZs || {};
-      const { zIndex, peers } = nextWindowFrontZ(state2.meters, {
+      const prev = state3.hudZs || {};
+      const { zIndex, peers } = nextWindowFrontZ(state3.meters, {
         hudZs: prev
       });
       if (typeof prev[hid] === "number" && prev[hid] === zIndex) {
-        return { state: state2, persistMeters: false };
+        return { state: state3, persistMeters: false };
       }
       return {
         state: {
-          ...state2,
+          ...state3,
           hudZs: { ...prev, [hid]: zIndex },
           meters: peers
         },
@@ -29865,14 +30226,14 @@ button.comm-mail__stack-u {
       };
     }
     const floorZ = maxRecordStackZ(
-      state2.hudZs
+      state3.hudZs
     );
-    const nextMeters = bringMeterToFront(state2.meters, id, floorZ);
-    if (nextMeters === state2.meters) {
-      return { state: state2, persistMeters: false };
+    const nextMeters = bringMeterToFront(state3.meters, id, floorZ);
+    if (nextMeters === state3.meters) {
+      return { state: state3, persistMeters: false };
     }
     return {
-      state: { ...state2, meters: nextMeters },
+      state: { ...state3, meters: nextMeters },
       persistMeters: true
     };
   }
@@ -29924,26 +30285,26 @@ button.comm-mail__stack-u {
     }
     return true;
   }
-  function windowsToEdgePanels(state2) {
+  function windowsToEdgePanels(state3) {
     const out = [];
     const hudIds = hudWindowIds();
     for (let i = 0; i < hudIds.length; i++) {
       const id = hudIds[i];
-      const pos = state2.layout[id];
+      const pos = state3.layout[id];
       if (!pos) continue;
       out.push(posToEdge(id, pos));
     }
-    for (let i = 0; i < state2.meters.length; i++) {
-      const m = state2.meters[i];
+    for (let i = 0; i < state3.meters.length; i++) {
+      const m = state3.meters[i];
       if (!meterCanGroup(m)) continue;
       out.push(meterToEdge(m));
     }
     return out;
   }
-  function applyEdgePanelsToState(state2, panels) {
+  function applyEdgePanelsToState(state3, panels) {
     const byId = {};
     for (let i = 0; i < panels.length; i++) byId[panels[i].id] = panels[i];
-    const layout = { ...state2.layout };
+    const layout = { ...state3.layout };
     const hudIds = hudWindowIds();
     for (let i = 0; i < hudIds.length; i++) {
       const id = hudIds[i];
@@ -29954,7 +30315,7 @@ button.comm-mail__stack-u {
       if (p.frameH != null) layout[id] = { ...layout[id], frameH: p.frameH };
       layout[id] = applyWindowFramePersist(layout[id], id);
     }
-    const meters = state2.meters.map((m) => {
+    const meters = state3.meters.map((m) => {
       const p = byId[m.id];
       if (!p) return m;
       const pos = applySnapFields(m.pos, p);
@@ -29968,29 +30329,29 @@ button.comm-mail__stack-u {
         frameH: p.frameH != null ? p.frameH : m.frameH
       };
     });
-    return { ...state2, layout, meters };
+    return { ...state3, layout, meters };
   }
-  function moveCommWindowWithGroup(state2, id, pos) {
-    const panels = windowsToEdgePanels(state2);
+  function moveCommWindowWithGroup(state3, id, pos) {
+    const panels = windowsToEdgePanels(state3);
     const has = panels.some((p) => p.id === id);
     if (!has) {
-      if (state2.layout[id]) {
+      if (state3.layout[id]) {
         return {
-          ...state2,
+          ...state3,
           layout: {
-            ...state2.layout,
+            ...state3.layout,
             [id]: {
-              ...state2.layout[id],
+              ...state3.layout[id],
               x: pos.x,
               y: pos.y,
-              anchor: pos.anchor || state2.layout[id].anchor
+              anchor: pos.anchor || state3.layout[id].anchor
             }
           }
         };
       }
       return {
-        ...state2,
-        meters: state2.meters.map(
+        ...state3,
+        meters: state3.meters.map(
           (m) => m.id === id ? {
             ...m,
             pos: {
@@ -30020,29 +30381,29 @@ button.comm-mail__stack-u {
         }
       })()
     );
-    return applyEdgePanelsToState(state2, moved);
+    return applyEdgePanelsToState(state3, moved);
   }
-  function snapCommWindowAfterMove(state2, id, opts) {
-    const panels = windowsToEdgePanels(state2);
-    if (!panels.some((p) => p.id === id)) return state2;
+  function snapCommWindowAfterMove(state3, id, opts) {
+    const panels = windowsToEdgePanels(state3);
+    if (!panels.some((p) => p.id === id)) return state3;
     const next = trySnapOnDrop(panels, id, (p) => canGroupWindow(p.id), opts);
-    return applyEdgePanelsToState(state2, next);
+    return applyEdgePanelsToState(state3, next);
   }
-  function ungroupCommWindow(state2, id) {
-    const panels = windowsToEdgePanels(state2);
-    if (!panels.some((p) => p.id === id)) return state2;
+  function ungroupCommWindow(state3, id) {
+    const panels = windowsToEdgePanels(state3);
+    if (!panels.some((p) => p.id === id)) return state3;
     const next = ungroupPanel(panels, id);
-    return applyEdgePanelsToState(state2, next);
+    return applyEdgePanelsToState(state3, next);
   }
-  function commWindowHasSnap(state2, id) {
-    const panels = windowsToEdgePanels(state2);
+  function commWindowHasSnap(state3, id) {
+    const panels = windowsToEdgePanels(state3);
     for (let i = 0; i < panels.length; i++) {
       if (panels[i].id === id) return panelHasSnap(panels[i]);
     }
     return false;
   }
-  function findCommSnapGuideTarget(state2, selfId2, opts) {
-    const panels = windowsToEdgePanels(state2);
+  function findCommSnapGuideTarget(state3, selfId2, opts) {
+    const panels = windowsToEdgePanels(state3);
     const canSnapPeer = (p) => canGroupWindow(p.id);
     const join = findSnapTarget(selfId2, panels, {
       thresholdPx: DEFAULT_EDGE_SNAP_PX,
@@ -30076,39 +30437,39 @@ button.comm-mail__stack-u {
       Math.min(SCALE_MAX, Math.round(scale * 100) / 100)
     );
   }
-  function applyScaleToCommWindows(state2, id, scale) {
+  function applyScaleToCommWindows(state3, id, scale) {
     const clamped = clampWindowScale(scale);
-    const panels = windowsToEdgePanels(state2);
+    const panels = windowsToEdgePanels(state3);
     let group = getEdgeGroup(panels, id);
     if (!group.length) {
       group = panels.filter((p) => p.id === id);
     }
     const ids = new Set(group.map((g) => g.id));
     ids.add(id);
-    const layout = { ...state2.layout };
+    const layout = { ...state3.layout };
     const hudIds = hudWindowIds();
     for (let i = 0; i < hudIds.length; i++) {
       const hid = hudIds[i];
       if (!ids.has(hid) || !layout[hid]) continue;
       layout[hid] = { ...layout[hid], scale: clamped };
     }
-    const meters = state2.meters.map(
+    const meters = state3.meters.map(
       (m) => ids.has(m.id) ? { ...m, scale: clamped } : m
     );
-    return { ...state2, layout, meters };
+    return { ...state3, layout, meters };
   }
-  function applyFrameSizeToCommWindows(state2, id, size, options) {
+  function applyFrameSizeToCommWindows(state3, id, size, options) {
     size = filterPersistedFrameSize(id, size);
-    if (size.frameW == null && size.frameH == null) return state2;
+    if (size.frameW == null && size.frameH == null) return state3;
     const withManualOff = (pos) => pos.autoSize === false ? pos : { ...pos, autoSize: false };
-    const panels = windowsToEdgePanels(state2);
+    const panels = windowsToEdgePanels(state3);
     if (!panels.some((p) => p.id === id)) {
-      if (state2.layout[id]) {
-        const cur = state2.layout[id];
+      if (state3.layout[id]) {
+        const cur = state3.layout[id];
         return {
-          ...state2,
+          ...state3,
           layout: {
-            ...state2.layout,
+            ...state3.layout,
             [id]: applyWindowFramePersist(
               withManualOff({
                 ...cur,
@@ -30121,8 +30482,8 @@ button.comm-mail__stack-u {
         };
       }
       return {
-        ...state2,
-        meters: state2.meters.map((m) => {
+        ...state3,
+        meters: state3.meters.map((m) => {
           if (m.id !== id) return m;
           const patch2 = options == null ? void 0 : options.meterPatch;
           return {
@@ -30143,7 +30504,7 @@ button.comm-mail__stack-u {
     }
     const groupOpts = (options == null ? void 0 : options.alignGroup) === false ? void 0 : rootW != null && rootH != null ? { rootW, rootH } : void 0;
     let next = applyEdgePanelsToState(
-      state2,
+      state3,
       applyGroupFrameSize(panels, id, size, groupOpts)
     );
     const hid = id;
@@ -30296,8 +30657,8 @@ button.comm-mail__stack-u {
       commit2(ungroupCommWindow(stateRef.current, id));
     };
     const raiseWindow = (id) => {
-      const { state: state2, persistMeters } = raiseCommWindow(stateRef.current, id);
-      commit2(state2, { persistMeters });
+      const { state: state3, persistMeters } = raiseCommWindow(stateRef.current, id);
+      commit2(state3, { persistMeters });
     };
     const onDragStart = (id) => {
       clearWindowIds();
@@ -48580,15 +48941,15 @@ ${parts.map(cssSlice).join("\n")}
   function ControlIcon(props) {
     const React = getReact();
     const ref = React.useRef(null);
-    const { state: state2, iconSize } = props;
+    const { state: state3, iconSize } = props;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
-      paintItemContainerIcon(el, state2.skin, iconSize);
+      paintItemContainerIcon(el, state3.skin, iconSize);
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [state2.skin, state2.label, iconSize]);
+    }, [state3.skin, state3.label, iconSize]);
     return e("div", {
       ref,
       className: "comm-ctrl-icon",
@@ -48602,11 +48963,11 @@ ${parts.map(cssSlice).join("\n")}
       }
     });
   }
-  function badgeTitle(state2) {
-    if (state2.kind === "fear") {
-      return `${state2.label} (fear ${state2.fear})`;
+  function badgeTitle(state3) {
+    if (state3.kind === "fear") {
+      return `${state3.label} (fear ${state3.fear})`;
     }
-    return state2.label;
+    return state3.label;
   }
   function ControlBadge(props) {
     const { states, compact = false } = props;
@@ -48628,14 +48989,14 @@ ${parts.map(cssSlice).join("\n")}
           maxHeight: "100%"
         }
       },
-      ...states.map((state2) => {
-        const key = state2.kind === "fear" ? `fear-${state2.level}` : `cc-${state2.id}`;
+      ...states.map((state3) => {
+        const key = state3.kind === "fear" ? `fear-${state3.level}` : `cc-${state3.id}`;
         return e(
           "div",
           {
             key,
-            className: "comm-ctrl-badge" + (state2.kind === "fear" ? ` is-fear is-${state2.level}` : ` is-hardcc is-${state2.id}`),
-            title: badgeTitle(state2),
+            className: "comm-ctrl-badge" + (state3.kind === "fear" ? ` is-fear is-${state3.level}` : ` is-hardcc is-${state3.id}`),
+            title: badgeTitle(state3),
             style: {
               display: "inline-flex",
               alignItems: "center",
@@ -48643,9 +49004,9 @@ ${parts.map(cssSlice).join("\n")}
               flex: "0 0 auto",
               padding: tight ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
               boxSizing: "border-box",
-              background: state2.background,
-              border: `${tight ? 1 : 2}px solid ${state2.border}`,
-              color: state2.color,
+              background: state3.background,
+              border: `${tight ? 1 : 2}px solid ${state3.border}`,
+              color: state3.color,
               fontSize: tight ? TYPE.micro : TYPE.badge,
               lineHeight: 1,
               ...PIXEL_TEXT,
@@ -48654,7 +49015,7 @@ ${parts.map(cssSlice).join("\n")}
               maxHeight: "100%"
             }
           },
-          e(ControlIcon, { state: state2, iconSize }),
+          e(ControlIcon, { state: state3, iconSize }),
           e(
             "span",
             {
@@ -48665,7 +49026,7 @@ ${parts.map(cssSlice).join("\n")}
                 maxWidth: tight ? "5.5em" : "8em"
               }
             },
-            state2.label
+            state3.label
           )
         );
       })
@@ -49508,12 +49869,12 @@ ${parts.map(cssSlice).join("\n")}
   function buildEntityEffects(entity) {
     var _a, _b, _c;
     const G = getG();
-    const state2 = entity.s || {};
+    const state3 = entity.s || {};
     const out = [];
-    const keys = Object.keys(state2);
+    const keys = Object.keys(state3);
     for (let i = 0; i < keys.length; i++) {
       const condition = keys[i];
-      const actual = state2[condition];
+      const actual = state3[condition];
       if (!actual) continue;
       if ((_b = (_a = G == null ? void 0 : G.skills) == null ? void 0 : _a[condition]) == null ? void 0 : _b.ui) {
         const def = G.skills[condition];
@@ -51446,7 +51807,7 @@ ${parts.map(cssSlice).join("\n")}
     const blessing = readServerBlessing(props.S);
     const region = (_f = props.serverRegion) != null ? _f : "";
     const ident = (_g = props.serverIdentifier) != null ? _g : "";
-    const serverLabel3 = `${region} ${ident}`.trim() || "\u2014";
+    const serverLabel4 = `${region} ${ident}`.trim() || "\u2014";
     return e(
       "div",
       {
@@ -51472,7 +51833,7 @@ ${parts.map(cssSlice).join("\n")}
               letterSpacing: "0.02em"
             }
           },
-          serverLabel3
+          serverLabel4
         ),
         e(
           "div",
@@ -59570,6 +59931,63 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/ui/chrome/panelExpandControl.ts
+  function ExpandGlyph(expanded) {
+    const React = getReact();
+    const d = expanded ? (
+      // Exit: corners point inward.
+      "M5 1v4H1M11 1v4h4M5 15v-4H1M11 15v-4h4"
+    ) : (
+      // Enter: corners point outward (open frame).
+      "M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"
+    );
+    return e(
+      "svg",
+      {
+        className: "ecu-expand-glyph",
+        viewBox: "0 0 16 16",
+        width: 14,
+        height: 14,
+        "aria-hidden": true,
+        focusable: "false"
+      },
+      e("path", {
+        d,
+        fill: "none",
+        stroke: "currentColor",
+        "stroke-width": 1.6,
+        "stroke-linecap": "square",
+        "stroke-linejoin": "miter"
+      })
+    );
+  }
+  function PanelExpandButton(props) {
+    const React = getReact();
+    const title = props.expanded ? props.restoreTitle : props.expandTitle;
+    return e(
+      "button",
+      {
+        type: "button",
+        className: (props.className || "ecu-panel-expand") + (props.expanded ? " is-expanded" : ""),
+        title,
+        "aria-label": title,
+        "aria-pressed": props.expanded,
+        onClick: () => props.onToggle()
+      },
+      ExpandGlyph(props.expanded)
+    );
+  }
+  function findPanelShell(from, panelId) {
+    let shell = from;
+    while (shell) {
+      if (shell.getAttribute && shell.getAttribute("data-panel") === panelId) {
+        return shell;
+      }
+      shell = shell.parentElement;
+    }
+    return null;
+  }
+
   // src/ui/frames/chat/chatCss.ts
   var CHAT_PANEL_CSS = `
 .ecu-chat {
@@ -59841,20 +60259,25 @@ ${ESTIMATE_HINT}`,
   cursor: pointer;
   flex: 0 0 auto;
   margin-left: 4px;
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid #666;
   background: #22252c;
   color: #ddd;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: normal;
-  line-height: 18px;
-  letter-spacing: 0.04em;
+  line-height: 0;
 }
 .ecu-chat-expand.is-expanded {
   border-color: var(--ecu-chat-accent);
   color: #ffe08a;
   background: #2a2410;
+}
+.ecu-chat-expand .ecu-expand-glyph {
+  display: block;
 }
 .ecu-chat-title-toggle {
   cursor: pointer;
@@ -60554,13 +60977,7 @@ ${ESTIMATE_HINT}`,
       else setSidebarOpen(true);
     }, [narrow, expanded]);
     React.useEffect(() => {
-      let shell = rootRef.current;
-      while (shell) {
-        if (shell.getAttribute && shell.getAttribute("data-panel") === "chat") {
-          break;
-        }
-        shell = shell.parentElement;
-      }
+      const shell = findPanelShell(rootRef.current, "chat");
       if (!shell) return;
       if (expanded) {
         if (!preExpandSizeRef.current) {
@@ -61062,17 +61479,13 @@ ${ESTIMATE_HINT}`,
               },
               "\xB7 " + (observing && observing.name ? observing.name : "party")
             ) : null,
-            e(
-              "button",
-              {
-                type: "button",
-                className: "ecu-chat-expand" + (expanded ? " is-expanded" : ""),
-                title: expanded ? "Restore chat size" : "Expand chat",
-                "aria-pressed": expanded,
-                onClick: () => setExpanded(!expanded)
-              },
-              expanded ? "MIN" : "FULL"
-            )
+            e(PanelExpandButton, {
+              expanded,
+              onToggle: () => setExpanded(!expanded),
+              expandTitle: "Expand chat",
+              restoreTitle: "Restore chat size",
+              className: "ecu-chat-expand"
+            })
           ),
           e(
             "div",
@@ -62040,17 +62453,17 @@ ${ESTIMATE_HINT}`,
     return map;
   }
   function buildCurrentState(items) {
-    const state2 = [];
+    const state3 = [];
     for (let i = 0; i < items.length; i++) {
       if (isBagSlotBlocked(items[i])) {
-        state2.push(i);
+        state3.push(i);
       } else if (isBagSlotEmpty(items[i])) {
-        state2.push(null);
+        state3.push(null);
       } else {
-        state2.push(i);
+        state3.push(i);
       }
     }
-    return state2;
+    return state3;
   }
   function sortableSlotIndexes(items) {
     const out = [];
@@ -62090,38 +62503,38 @@ ${ESTIMATE_HINT}`,
     }
     return target;
   }
-  function itemAtSlot(state2, slot, itemsById) {
+  function itemAtSlot(state3, slot, itemsById) {
     var _a;
-    const id = state2[slot];
+    const id = state3[slot];
     if (id == null) return null;
     return (_a = itemsById.get(id)) != null ? _a : null;
   }
-  function doSwapState(state2, a, b) {
-    const tmp = state2[a];
-    state2[a] = state2[b];
-    state2[b] = tmp;
+  function doSwapState(state3, a, b) {
+    const tmp = state3[a];
+    state3[a] = state3[b];
+    state3[b] = tmp;
   }
-  function findEmptySlot(state2, skipA, skipB) {
-    for (let i = 0; i < state2.length; i++) {
+  function findEmptySlot(state3, skipA, skipB) {
+    for (let i = 0; i < state3.length; i++) {
       if (i === skipA || i === skipB) continue;
-      if (state2[i] == null) return i;
+      if (state3[i] == null) return i;
     }
     return -1;
   }
-  function planSafeSwap(state2, a, b, itemsById, G, out) {
+  function planSafeSwap(state3, a, b, itemsById, G, out) {
     if (a === b) return;
-    const ia = itemAtSlot(state2, a, itemsById);
-    const ib = itemAtSlot(state2, b, itemsById);
+    const ia = itemAtSlot(state3, a, itemsById);
+    const ib = itemAtSlot(state3, b, itemsById);
     if (ia && ib && wouldStackOnMove(ia, ib, G)) {
-      const buf = findEmptySlot(state2, a, b);
+      const buf = findEmptySlot(state3, a, b);
       if (buf >= 0) {
-        planSafeSwap(state2, a, buf, itemsById, G, out);
-        planSafeSwap(state2, buf, b, itemsById, G, out);
+        planSafeSwap(state3, a, buf, itemsById, G, out);
+        planSafeSwap(state3, buf, b, itemsById, G, out);
         return;
       }
     }
     out.push([a, b]);
-    doSwapState(state2, a, b);
+    doSwapState(state3, a, b);
   }
   function planBagSortSwaps(items, prefs, G) {
     if (!items.length) return [];
@@ -62129,26 +62542,26 @@ ${ESTIMATE_HINT}`,
     if (itemsById.size <= 1) return [];
     const current = buildCurrentState(items);
     const target = buildTargetState(items, prefs, G);
-    const state2 = current.slice();
+    const state3 = current.slice();
     const swaps = [];
-    for (let i = 0; i < state2.length; i++) {
-      if (state2[i] === target[i]) continue;
+    for (let i = 0; i < state3.length; i++) {
+      if (state3[i] === target[i]) continue;
       if (target[i] == null) {
-        if (state2[i] != null) {
-          const empty2 = findEmptySlot(state2, i, -1);
-          if (empty2 >= 0) planSafeSwap(state2, i, empty2, itemsById, G, swaps);
+        if (state3[i] != null) {
+          const empty2 = findEmptySlot(state3, i, -1);
+          if (empty2 >= 0) planSafeSwap(state3, i, empty2, itemsById, G, swaps);
         }
         continue;
       }
       let from = -1;
-      for (let j = i; j < state2.length; j++) {
-        if (state2[j] === target[i]) {
+      for (let j = i; j < state3.length; j++) {
+        if (state3[j] === target[i]) {
           from = j;
           break;
         }
       }
       if (from >= 0 && from !== i) {
-        planSafeSwap(state2, i, from, itemsById, G, swaps);
+        planSafeSwap(state3, i, from, itemsById, G, swaps);
       }
     }
     return swaps;
@@ -62682,6 +63095,78 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/lib/querySearch/applySuggestion.ts
+  function trailingFieldContext(raw, ops, aliases = {}) {
+    if (!ops.length) return null;
+    const aliasKeys = Object.keys(aliases);
+    const names = ops.concat(aliasKeys).join("|");
+    if (!names) return null;
+    const re = new RegExp(
+      "(^|\\s)(-?)(" + names + "):([^\\s]*)$",
+      "i"
+    );
+    const s = String(raw || "");
+    const m = re.exec(s);
+    if (!m) return null;
+    const rawOp = m[3].toLowerCase();
+    const op = aliases[rawOp] || rawOp;
+    return {
+      op,
+      value: m[4] || "",
+      negate: !!m[2],
+      start: m.index + m[1].length
+    };
+  }
+  function trailingFreeToken(raw) {
+    const s = String(raw || "").replace(/\s+$/, "");
+    if (!s) return null;
+    const m = /^(.*?)(\S+)$/.exec(s);
+    if (!m) return null;
+    const token = m[2];
+    if (/^-?[a-z][a-z0-9]*:/i.test(token)) return null;
+    return { before: m[1].replace(/\s+$/, ""), token };
+  }
+  function quoteIfNeeded(token) {
+    if (/[\s:]/.test(token) || /["']/.test(token)) {
+      return '"' + token.replace(/"/g, "") + '"';
+    }
+    return token;
+  }
+  function applyQuerySearchSuggestion(raw, row3, trailing) {
+    if (row3.kind === "value" && trailing && row3.value != null) {
+      const before = raw.slice(0, trailing.start);
+      const neg = trailing.negate ? "-" : "";
+      return (before + neg + trailing.op + ":" + row3.value + " ").replace(
+        /\s+/g,
+        " "
+      );
+    }
+    if (row3.insert == null) return raw;
+    const insert = String(row3.insert);
+    const insertTrim = insert.replace(/\s+$/, "");
+    const free = trailingFreeToken(raw);
+    const bareOp = /^([a-z][a-z0-9]*):$/i.exec(insertTrim);
+    if (bareOp && free) {
+      const op = bareOp[1].toLowerCase() + ":";
+      const body = (free.before ? free.before + " " : "") + op + quoteIfNeeded(free.token) + " ";
+      return body.replace(/\s+/g, " ");
+    }
+    if (free && /^[a-z][a-z0-9]*:.+/i.test(insertTrim)) {
+      return ((free.before ? free.before + " " : "") + insertTrim + " ").replace(
+        /\s+/g,
+        " "
+      );
+    }
+    const trimmed = raw.replace(/\s+$/, "");
+    const needsSpace = !!(trimmed && !/:$/.test(trimmed));
+    return trimmed + (needsSpace ? " " : "") + insert;
+  }
+  function pushQuerySearchSection(menu, title, rows) {
+    if (!rows.length) return;
+    menu.sections.push({ title, rows });
+    for (let i = 0; i < rows.length; i++) menu.flat.push(rows[i]);
+  }
+
   // src/lib/market/marketQuery.ts
   var MARKET_OPS = /^(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):(.*)$/i;
   var ATTR_KEYS = [
@@ -63108,32 +63593,23 @@ ${ESTIMATE_HINT}`,
     if (next.haveStock) keep.push("is:have");
     return keep.join(" ").trim();
   }
+  var MARKET_TRAILING_OPS = [
+    "item",
+    "merchant",
+    "mer",
+    "title",
+    "stat",
+    "attr",
+    "has",
+    "is",
+    "level",
+    "price",
+    "map",
+    "server"
+  ];
+  var MARKET_TRAILING_ALIASES = { mer: "merchant" };
   function trailingOpContext(raw) {
-    const s = String(raw || "");
-    const m = /(^|\s)(-?)(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):([^\s]*)$/i.exec(
-      s
-    );
-    if (!m) return null;
-    return {
-      op: m[3].toLowerCase() === "mer" ? "merchant" : m[3].toLowerCase(),
-      value: m[4] || "",
-      negate: !!m[2],
-      start: m.index + m[1].length
-    };
-  }
-  function applySearchSuggestion(raw, row3) {
-    const ctx = trailingOpContext(raw);
-    if (row3.kind === "value" && ctx && row3.value != null) {
-      const before = raw.slice(0, ctx.start);
-      const neg = ctx.negate ? "-" : "";
-      return (before + neg + ctx.op + ":" + row3.value + " ").replace(/\s+/g, " ");
-    }
-    if (row3.insert != null) {
-      const trimmed = raw.replace(/\s+$/, "");
-      const needsSpace = !!(trimmed && !/:$/.test(trimmed));
-      return trimmed + (needsSpace ? " " : "") + row3.insert;
-    }
-    return raw;
+    return trailingFieldContext(raw, MARKET_TRAILING_OPS, MARKET_TRAILING_ALIASES);
   }
   function uniqueSorted(list) {
     const seen = /* @__PURE__ */ Object.create(null);
@@ -63475,7 +63951,9 @@ ${ESTIMATE_HINT}`,
     { id: "offers", label: "Most offers" }
   ];
   function marketGroupHasArb(g) {
-    return g.bestSale != null && g.bestWant != null && g.bestSale < g.bestWant;
+    if (g.bestSale == null || g.bestWant == null) return false;
+    if (!(g.bestSale < g.bestWant)) return false;
+    return formatTradeGold(g.bestSale) !== formatTradeGold(g.bestWant);
   }
   function marketGroupHasBothPrices(g) {
     return g.bestSale != null && g.bestWant != null;
@@ -63670,6 +64148,337 @@ ${ESTIMATE_HINT}`,
     if (!observing || observing.id == null) return null;
     const obsId = String(observing.id);
     return findEntity(entities, obsId) || observing;
+  }
+
+  // src/ui/chrome/querySearchFieldCss.ts
+  var STYLE_ID8 = "ecu-query-search-field-css";
+  var CSS11 = `
+.ecu-qsearch {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+.ecu-qsearch-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #3a3a3a;
+  background: #080808;
+  box-sizing: border-box;
+}
+.ecu-qsearch-field:focus-within {
+  border-color: rgba(232, 201, 106, .55);
+}
+.ecu-qsearch-ico {
+  color: #555;
+  font-size: 13px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.ecu-qsearch-field input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #eee;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+}
+/* Hide native search clear \u2014 we draw our own \xD7. */
+.ecu-qsearch-field input[type="search"]::-webkit-search-cancel-button,
+.ecu-qsearch-field input[type="search"]::-webkit-search-decoration,
+.ecu-qsearch-field input[type="search"]::-webkit-search-results-button,
+.ecu-qsearch-field input[type="search"]::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ecu-qsearch-clear {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  font-size: 14px;
+  padding: 0 2px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.ecu-qsearch-clear:hover { color: #ccc; }
+.ecu-qsearch-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  max-height: min(360px, 55vh);
+  overflow: auto;
+  border: 1px solid #3a3a3a;
+  background: #121212;
+  box-shadow: 0 12px 28px rgba(0,0,0,.55);
+}
+.ecu-qsearch-sec { padding: 8px 0 4px; }
+.ecu-qsearch-sec + .ecu-qsearch-sec {
+  border-top: 1px solid #242424;
+}
+.ecu-qsearch-h {
+  padding: 2px 12px 6px;
+  color: #666;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.ecu-qsearch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.ecu-qsearch-row:hover,
+.ecu-qsearch-row.is-hi { background: #1c1c1c; }
+.ecu-qsearch-op {
+  flex: 0 0 auto;
+  color: #e8c96a;
+  font-family: Consolas, "Segoe UI", monospace;
+  font-weight: 600;
+}
+.ecu-qsearch-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-qsearch-hint {
+  flex: 0 1 auto;
+  color: #666;
+  font-size: 11px;
+  text-align: right;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-qsearch-rowIco {
+  flex: 0 0 auto;
+  color: #555;
+  width: 14px;
+  text-align: center;
+}
+.ecu-qsearch-foot {
+  border-top: 1px solid #242424;
+  padding: 6px 12px 8px;
+  color: #666;
+  font-size: 11px;
+}
+.ecu-qsearch-foot kbd {
+  float: right;
+  color: #888;
+  border: 1px solid #333;
+  padding: 0 4px;
+  font-size: 10px;
+}
+`;
+  function ensureQuerySearchFieldCss() {
+    if (typeof document === "undefined") return;
+    let el = document.getElementById(STYLE_ID8);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID8;
+      document.head.appendChild(el);
+    }
+    el.textContent = CSS11;
+  }
+
+  // src/ui/chrome/QuerySearchField.ts
+  var DEFAULT_FOOTER = "Words AND \xB7 OR / | \xB7 Quotes \xB7 -negate";
+  var DEFAULT_OPS = [
+    "item",
+    "merchant",
+    "mer",
+    "title",
+    "stat",
+    "attr",
+    "has",
+    "is",
+    "level",
+    "price",
+    "map",
+    "server",
+    "type",
+    "pack"
+  ];
+  function QuerySearchField(props) {
+    const React = getReact();
+    ensureQuerySearchFieldCss();
+    const [open, setOpen] = React.useState(false);
+    const [hi, setHi] = React.useState(0);
+    const navRef = React.useRef(false);
+    const localRef = React.useRef(null);
+    const inputRef = props.inputRef || localRef;
+    const ops = props.trailingOps || DEFAULT_OPS;
+    const aliases = props.trailingAliases || { mer: "merchant" };
+    const footer = props.footer != null ? props.footer : DEFAULT_FOOTER;
+    const menu = props.suggestions;
+    const flat = menu.flat;
+    const pick = (row3) => {
+      const trailing = trailingFieldContext(props.value, ops, aliases);
+      const next = applyQuerySearchSuggestion(props.value, row3, trailing);
+      props.onChange(next);
+      setHi(0);
+      navRef.current = false;
+      const keepsOpen = !!(row3.insert && /:$/.test(row3.insert));
+      const nextTrailing = trailingFieldContext(next, ops, aliases);
+      setOpen(keepsOpen || !!nextTrailing);
+      window.setTimeout(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        const len = el.value.length;
+        try {
+          el.setSelectionRange(len, len);
+        } catch (e2) {
+        }
+      }, 0);
+    };
+    const wrapClass = "ecu-qsearch" + (props.className ? " " + props.className : "");
+    return e(
+      "div",
+      { className: wrapClass },
+      e(
+        "div",
+        { className: "ecu-qsearch-field" },
+        e("span", { className: "ecu-qsearch-ico" }, "\u2315"),
+        e("input", {
+          ref: inputRef,
+          type: "search",
+          placeholder: props.placeholder || "Search\u2026",
+          value: props.value,
+          spellCheck: false,
+          autoComplete: "off",
+          onFocus: () => {
+            setOpen(true);
+            setHi(0);
+            navRef.current = false;
+          },
+          onBlur: () => {
+            window.setTimeout(() => setOpen(false), 120);
+          },
+          onChange: (ev) => {
+            props.onChange(String(ev.target.value || ""));
+            setOpen(true);
+            setHi(0);
+            navRef.current = false;
+          },
+          onKeyDown: (ev) => {
+            if (ev.key === "Escape") {
+              setOpen(false);
+              navRef.current = false;
+              return;
+            }
+            if (!open && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
+              setOpen(true);
+              navRef.current = true;
+              return;
+            }
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              if (open && navRef.current && flat[hi]) {
+                pick(flat[hi]);
+              } else {
+                setOpen(false);
+                navRef.current = false;
+              }
+              return;
+            }
+            if (!open || !flat.length) return;
+            if (ev.key === "ArrowDown") {
+              ev.preventDefault();
+              navRef.current = true;
+              setHi((h) => (h + 1) % flat.length);
+            } else if (ev.key === "ArrowUp") {
+              ev.preventDefault();
+              navRef.current = true;
+              setHi((h) => (h - 1 + flat.length) % flat.length);
+            }
+          }
+        }),
+        props.value ? e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-qsearch-clear",
+            title: "Clear search",
+            onMouseDown: (ev) => ev.preventDefault(),
+            onClick: () => {
+              props.onChange("");
+              if (typeof props.onClear === "function") props.onClear();
+              setOpen(false);
+              setHi(0);
+              navRef.current = false;
+            }
+          },
+          "\xD7"
+        ) : null
+      ),
+      open ? e(
+        "div",
+        {
+          className: "ecu-qsearch-menu",
+          onMouseDown: (ev) => ev.preventDefault()
+        },
+        menu.sections.map(
+          (sec, si) => e(
+            "div",
+            { className: "ecu-qsearch-sec", key: "sec-" + si },
+            e("div", { className: "ecu-qsearch-h" }, sec.title),
+            sec.rows.map((row3) => {
+              const idx = flat.indexOf(row3);
+              return e(
+                "button",
+                {
+                  type: "button",
+                  key: "sug-" + idx + "-" + row3.label,
+                  className: "ecu-qsearch-row" + (idx === hi ? " is-hi" : ""),
+                  onMouseEnter: () => {
+                    navRef.current = true;
+                    setHi(idx);
+                  },
+                  onClick: () => pick(row3)
+                },
+                e("span", { className: "ecu-qsearch-rowIco" }, row3.ico || "\xB7"),
+                row3.kind === "op" ? e("span", { className: "ecu-qsearch-op" }, row3.label) : e(
+                  "span",
+                  { className: "ecu-qsearch-label" },
+                  row3.label
+                ),
+                e(
+                  "span",
+                  { className: "ecu-qsearch-hint" },
+                  row3.hint || ""
+                )
+              );
+            })
+          )
+        ),
+        e(
+          "div",
+          { className: "ecu-qsearch-foot" },
+          footer,
+          e("kbd", null, "\u21B5")
+        )
+      ) : null
+    );
   }
 
   // src/ui/trade/tradeSlotActions.ts
@@ -64113,126 +64922,6 @@ ${ESTIMATE_HINT}`,
   background: #0c0c0c;
   flex-wrap: wrap;
   flex: 0 0 auto;
-}
-.MarketPanel-searchWrap {
-  position: relative;
-  flex: 1 1 220px;
-  min-width: 160px;
-}
-.MarketPanel-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid #3a3a3a;
-  background: #080808;
-}
-.MarketPanel-search:focus-within {
-  border-color: rgba(232, 201, 106, .55);
-}
-.MarketPanel-search .ico { color: #555; font-size: 13px; line-height: 1; }
-.MarketPanel-search input {
-  flex: 1;
-  border: 0;
-  background: transparent;
-  color: #eee;
-  font: inherit;
-  font-size: 13px;
-  outline: none;
-  min-width: 0;
-}
-.MarketPanel-search .clear {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: #666;
-  font: inherit;
-  font-size: 14px;
-  padding: 0 2px;
-  cursor: pointer;
-}
-.MarketPanel-search .clear:hover { color: #ccc; }
-.MarketPanel-searchMenu {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 40;
-  max-height: min(360px, 55vh);
-  overflow: auto;
-  border: 1px solid #3a3a3a;
-  background: #121212;
-  box-shadow: 0 12px 28px rgba(0,0,0,.55);
-}
-.MarketPanel-searchMenuSec { padding: 8px 0 4px; }
-.MarketPanel-searchMenuSec + .MarketPanel-searchMenuSec {
-  border-top: 1px solid #242424;
-}
-.MarketPanel-searchMenuH {
-  padding: 2px 12px 6px;
-  color: #666;
-  font-size: 10px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.MarketPanel-searchMenuRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: #ddd;
-  font: inherit;
-  font-size: 12px;
-  text-align: left;
-  padding: 7px 12px;
-  cursor: pointer;
-}
-.MarketPanel-searchMenuRow:hover,
-.MarketPanel-searchMenuRow.is-hi { background: #1c1c1c; }
-.MarketPanel-searchMenuOp {
-  flex: 0 0 auto;
-  color: #e8c96a;
-  font-family: Consolas, "Segoe UI", monospace;
-  font-weight: 600;
-}
-.MarketPanel-searchMenuLabel {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.MarketPanel-searchMenuHint {
-  flex: 0 1 auto;
-  color: #666;
-  font-size: 11px;
-  text-align: right;
-  max-width: 46%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.MarketPanel-searchMenuIco {
-  flex: 0 0 auto;
-  color: #555;
-  width: 14px;
-  text-align: center;
-}
-.MarketPanel-searchMenuFoot {
-  border-top: 1px solid #242424;
-  padding: 6px 12px 8px;
-  color: #666;
-  font-size: 11px;
-}
-.MarketPanel-searchMenuFoot kbd {
-  float: right;
-  color: #888;
-  border: 1px solid #333;
-  padding: 0 4px;
-  font-size: 10px;
 }
 .MarketPanel-seg {
   display: inline-flex;
@@ -65189,9 +65878,6 @@ ${ESTIMATE_HINT}`,
     const [favoriteKeys, setFavoriteKeys] = React.useState(
       () => getSettings().marketFavoriteKeys.slice()
     );
-    const [searchOpen, setSearchOpen] = React.useState(false);
-    const [searchHi, setSearchHi] = React.useState(0);
-    const searchInputRef = React.useRef(null);
     const [merchantFilter, setMerchantFilter] = React.useState(
       null
     );
@@ -65353,24 +66039,6 @@ ${ESTIMATE_HINT}`,
       rows: flat,
       formatServer: formatMarketServer
     });
-    const pickSearchSuggestion = (row3) => {
-      const next = applySearchSuggestion(query, row3);
-      applyQuery(next);
-      setSearchHi(0);
-      const keepsOpen = !!(row3.insert && /:$/.test(row3.insert));
-      setSearchOpen(keepsOpen || !!trailingOpContext(next));
-      window.setTimeout(() => {
-        const el = searchInputRef.current;
-        if (el) {
-          el.focus();
-          const len = el.value.length;
-          try {
-            el.setSelectionRange(len, len);
-          } catch (e2) {
-          }
-        }
-      }, 0);
-    };
     const focusGroup = (() => {
       if (!focusKey) return null;
       for (let i = 0; i < groups.length; i++) {
@@ -65818,125 +66486,28 @@ ${ESTIMATE_HINT}`,
       e(
         "div",
         { className: "MarketPanel-tools" },
-        e(
-          "div",
-          { className: "MarketPanel-searchWrap" },
-          e(
-            "div",
-            { className: "MarketPanel-search" },
-            e("span", { className: "ico" }, "\u2315"),
-            e("input", {
-              ref: searchInputRef,
-              type: "search",
-              placeholder: "Search \xB7 item: \xB7 merchant: \xB7 is:sell \xB7 OR\u2026",
-              value: query,
-              onFocus: () => {
-                setSearchOpen(true);
-                setSearchHi(0);
-              },
-              onBlur: () => {
-                window.setTimeout(() => setSearchOpen(false), 120);
-              },
-              onChange: (ev) => {
-                applyQuery(String(ev.target.value || ""));
-                setSearchOpen(true);
-                setSearchHi(0);
-              },
-              onKeyDown: (ev) => {
-                const flatSug = searchSug.flat;
-                if (ev.key === "Escape") {
-                  setSearchOpen(false);
-                  return;
-                }
-                if (!searchOpen && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) {
-                  setSearchOpen(true);
-                  return;
-                }
-                if (!searchOpen || !flatSug.length) return;
-                if (ev.key === "ArrowDown") {
-                  ev.preventDefault();
-                  setSearchHi((h) => (h + 1) % flatSug.length);
-                } else if (ev.key === "ArrowUp") {
-                  ev.preventDefault();
-                  setSearchHi(
-                    (h) => (h - 1 + flatSug.length) % flatSug.length
-                  );
-                } else if (ev.key === "Enter" && flatSug[searchHi]) {
-                  ev.preventDefault();
-                  pickSearchSuggestion(flatSug[searchHi]);
-                }
-              }
-            }),
-            query ? e(
-              "button",
-              {
-                type: "button",
-                className: "clear",
-                title: "Clear search",
-                onMouseDown: (ev) => ev.preventDefault(),
-                onClick: () => {
-                  applyQuery("");
-                  setMerchantFilter(null);
-                  setSearchOpen(false);
-                  setSearchHi(0);
-                }
-              },
-              "\xD7"
-            ) : null
-          ),
-          searchOpen ? e(
-            "div",
-            {
-              className: "MarketPanel-searchMenu",
-              onMouseDown: (ev) => ev.preventDefault()
-            },
-            searchSug.sections.map(
-              (sec, si) => e(
-                "div",
-                { className: "MarketPanel-searchMenuSec", key: "sec-" + si },
-                e("div", { className: "MarketPanel-searchMenuH" }, sec.title),
-                sec.rows.map((row3) => {
-                  const idx = searchSug.flat.indexOf(row3);
-                  return e(
-                    "button",
-                    {
-                      type: "button",
-                      key: "sug-" + idx + "-" + row3.label,
-                      className: "MarketPanel-searchMenuRow" + (idx === searchHi ? " is-hi" : ""),
-                      onMouseEnter: () => setSearchHi(idx),
-                      onClick: () => pickSearchSuggestion(row3)
-                    },
-                    e(
-                      "span",
-                      { className: "MarketPanel-searchMenuIco" },
-                      row3.ico || "\xB7"
-                    ),
-                    row3.kind === "op" ? e(
-                      "span",
-                      { className: "MarketPanel-searchMenuOp" },
-                      row3.label
-                    ) : e(
-                      "span",
-                      { className: "MarketPanel-searchMenuLabel" },
-                      row3.label
-                    ),
-                    e(
-                      "span",
-                      { className: "MarketPanel-searchMenuHint" },
-                      row3.hint || ""
-                    )
-                  );
-                })
-              )
-            ),
-            e(
-              "div",
-              { className: "MarketPanel-searchMenuFoot" },
-              "Words AND \xB7 OR / | \xB7 Quotes \xB7 -negate",
-              e("kbd", null, "\u21B5")
-            )
-          ) : null
-        ),
+        e(QuerySearchField, {
+          value: query,
+          onChange: (next) => applyQuery(next),
+          placeholder: "Search \xB7 item: \xB7 merchant: \xB7 is:sell \xB7 OR\u2026",
+          suggestions: searchSug,
+          trailingOps: [
+            "item",
+            "merchant",
+            "mer",
+            "title",
+            "stat",
+            "attr",
+            "has",
+            "is",
+            "level",
+            "price",
+            "map",
+            "server"
+          ],
+          trailingAliases: { mer: "merchant" },
+          onClear: () => setMerchantFilter(null)
+        }),
         e(
           "div",
           { className: "MarketPanel-seg" },
@@ -66325,6 +66896,1866 @@ ${ESTIMATE_HINT}`,
         ),
         e("div", { className: "MarketPanel-col" }, focusPane)
       )
+    );
+  }
+
+  // src/lib/bank/bankBrowse.ts
+  var SLOTS_PER_BANK_PACK = 42;
+  var OFFICIAL_PACK = /^items(\d+)$/;
+  function isOfficialBankPack(key) {
+    return OFFICIAL_PACK.test(key);
+  }
+  function compareBankPackKeys(a, b) {
+    const ma = OFFICIAL_PACK.exec(a);
+    const mb = OFFICIAL_PACK.exec(b);
+    if (ma && mb) return Number(ma[1]) - Number(mb[1]);
+    if (ma && !mb) return -1;
+    if (!ma && mb) return 1;
+    return a.localeCompare(b);
+  }
+  function listBankPackKeys(packs) {
+    return Object.keys(packs || {}).sort(compareBankPackKeys);
+  }
+  function packDisplayLabel(packKey) {
+    const m = OFFICIAL_PACK.exec(packKey);
+    if (m) return "Pack " + (Number(m[1]) + 1);
+    return packKey;
+  }
+  function flattenBankSlots(packs) {
+    const keys = listBankPackKeys(packs);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const pack = keys[i];
+      const slots = packs[pack];
+      if (!Array.isArray(slots)) continue;
+      for (let j = 0; j < slots.length; j++) {
+        const item = slots[j];
+        if (!item || !item.name || item.name === "placeholder") continue;
+        out.push({ pack, index: j, item });
+      }
+    }
+    return out;
+  }
+  function aggKey(item) {
+    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+  }
+  function aggregateBankItems(slots) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < slots.length; i++) {
+      const { pack, index, item } = slots[i];
+      const key = aggKey(item);
+      const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+      let row3 = byKey[key];
+      if (!row3) {
+        row3 = {
+          key,
+          name: String(item.name),
+          level: item.level,
+          p: item.p != null ? String(item.p) : null,
+          q: 0,
+          locs: []
+        };
+        byKey[key] = row3;
+      }
+      row3.q += q;
+      row3.locs.push({ pack, index, q });
+    }
+    const keys = Object.keys(byKey);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
+    out.sort((a, b) => {
+      const n = a.name.localeCompare(b.name);
+      if (n !== 0) return n;
+      const la = a.level != null ? a.level : -1;
+      const lb = b.level != null ? b.level : -1;
+      if (la !== lb) return la - lb;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return out;
+  }
+  var BANK_TYPE_CATEGORIES = [
+    { id: "helmet", label: "Helmets", types: ["helmet"] },
+    { id: "chest", label: "Armors", types: ["chest"] },
+    { id: "pants", label: "Underarmors", types: ["pants"] },
+    { id: "gloves", label: "Gloves", types: ["gloves"] },
+    { id: "shoes", label: "Shoes", types: ["shoes"] },
+    { id: "cape", label: "Capes", types: ["cape"] },
+    { id: "ring", label: "Rings", types: ["ring"] },
+    { id: "earring", label: "Earrings", types: ["earring"] },
+    { id: "amulet", label: "Amulets", types: ["amulet"] },
+    { id: "belt", label: "Belts", types: ["belt"] },
+    { id: "orb", label: "Orbs", types: ["orb"] },
+    { id: "weapon", label: "Weapons", types: ["weapon"] },
+    { id: "shield", label: "Shields", types: ["shield"] },
+    {
+      id: "offhand",
+      label: "Offhands",
+      types: ["source", "quiver", "misc_offhand"]
+    },
+    { id: "elixir", label: "Elixirs", types: ["elixir"] },
+    { id: "pot", label: "Potions", types: ["pot"] },
+    {
+      id: "scroll",
+      label: "Scrolls",
+      types: ["cscroll", "uscroll", "pscroll", "offering"]
+    },
+    { id: "material", label: "Crafting", types: ["material"] },
+    { id: "exchange", label: "Exchangeables", types: ["exchange"] },
+    { id: "other", label: "Others", types: [] }
+  ];
+  function itemType(name, G) {
+    const def = G && G.items && G.items[name];
+    return def && def.type != null ? String(def.type) : "";
+  }
+  function isExchangeable(name, G) {
+    const def = G && G.items && G.items[name];
+    return !!(def && def.e);
+  }
+  function categoryForItem(name, G) {
+    const t = itemType(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      if (cat.id === "other") continue;
+      if (cat.id === "exchange" && isExchangeable(name, G)) return cat;
+      if (cat.types.indexOf(t) >= 0) return cat;
+    }
+    return BANK_TYPE_CATEGORIES[BANK_TYPE_CATEGORIES.length - 1];
+  }
+  function groupBankByCategory(items, G) {
+    const buckets = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      buckets[BANK_TYPE_CATEGORIES[i].id] = [];
+    }
+    for (let i = 0; i < items.length; i++) {
+      const cat = categoryForItem(items[i].name, G);
+      buckets[cat.id].push(items[i]);
+    }
+    const out = [];
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      const list = buckets[cat.id];
+      if (list && list.length) out.push({ id: cat.id, label: cat.label, items: list });
+    }
+    return out;
+  }
+  function categoryOrderIndex(name, G) {
+    const cat = categoryForItem(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      if (BANK_TYPE_CATEGORIES[i].id === cat.id) return i;
+    }
+    return BANK_TYPE_CATEGORIES.length;
+  }
+  function sortBankItems(items, mode, G) {
+    const copy = items.slice();
+    copy.sort((a, b) => {
+      if (mode === "stack" && a.locs.length !== b.locs.length) {
+        return b.locs.length - a.locs.length;
+      }
+      if (mode === "quantity" && a.q !== b.q) {
+        return b.q - a.q;
+      }
+      const ca = categoryOrderIndex(a.name, G);
+      const cb = categoryOrderIndex(b.name, G);
+      if (ca !== cb) return ca - cb;
+      const ta = itemType(a.name, G);
+      const tb = itemType(b.name, G);
+      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
+      if (a.name !== b.name) return a.name.localeCompare(b.name);
+      const la = a.level != null ? Number(a.level) : 0;
+      const lb = b.level != null ? Number(b.level) : 0;
+      if (la !== lb) return lb - la;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return copy;
+  }
+
+  // src/lib/bank/bankQuery.ts
+  var BANK_TRAILING_OPS = [
+    "item",
+    "title",
+    "type",
+    "pack",
+    "level",
+    "is"
+  ];
+  var BANK_OPS = /^(item|title|type|pack|level|is):(.*)$/i;
+  function splitCsv(raw) {
+    return String(raw || "").split(/[,+]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  }
+  function parseClauseToken2(tok) {
+    let negate = false;
+    let body = tok;
+    if (body.charAt(0) === "-") {
+      negate = true;
+      body = body.slice(1);
+    }
+    if (!body) return null;
+    const m = BANK_OPS.exec(body);
+    if (!m) {
+      const values2 = splitCsv(body.replace(/^"|"$/g, ""));
+      if (!values2.length) return null;
+      return { kind: "text", values: values2, negate };
+    }
+    const field = m[1].toLowerCase();
+    const rest = m[2];
+    if (field === "level") {
+      const parts = String(rest || "").split(/[,+]/);
+      const amts = [];
+      for (let i = 0; i < parts.length; i++) {
+        const a = parseAmount(parts[i]);
+        if (a) amts.push(a);
+      }
+      if (!amts.length) return null;
+      return { kind: "level", amts, negate };
+    }
+    const values = splitCsv(rest.replace(/^"|"$/g, ""));
+    if (!values.length) return null;
+    if (field === "item") return { kind: "item", values, negate };
+    if (field === "title") return { kind: "title", values, negate };
+    if (field === "type") return { kind: "type", values, negate };
+    if (field === "pack") return { kind: "pack", values, negate };
+    if (field === "is") return { kind: "is", values, negate };
+    return null;
+  }
+  function parseBankQuery(raw) {
+    const tokens = tokenizeQuery(raw);
+    if (!tokens.length) return [[]];
+    const groups = [[]];
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t.toLowerCase() === "or" || t === "|") {
+        groups.push([]);
+        continue;
+      }
+      const clause = parseClauseToken2(t);
+      if (clause) groups[groups.length - 1].push(clause);
+    }
+    return groups.filter((g) => g.length > 0).length ? groups.filter((g) => g.length > 0) : [[]];
+  }
+  function amtOk(level, amts) {
+    const n = level != null && Number.isFinite(level) ? Number(level) : 0;
+    for (let i = 0; i < amts.length; i++) {
+      const a = amts[i];
+      if (a.op === "=" && n === a.n) return true;
+      if (a.op === ">" && n > a.n) return true;
+      if (a.op === ">=" && n >= a.n) return true;
+      if (a.op === "<" && n < a.n) return true;
+      if (a.op === "<=" && n <= a.n) return true;
+    }
+    return false;
+  }
+  function anyIncludes(hay, needles) {
+    const h = hay.toLowerCase();
+    for (let i = 0; i < needles.length; i++) {
+      if (h.indexOf(needles[i]) >= 0) return true;
+    }
+    return false;
+  }
+  function itemHasIsFlag(name, flag, G) {
+    const def = G && G.items && G.items[name];
+    if (!def) return false;
+    if (flag === "compound") return !!def.compound;
+    if (flag === "upgrade") return !!def.upgrade;
+    if (flag === "exchange") return !!def.e;
+    if (flag === "craft" || flag === "craftable") {
+      return !!(G && G.craft && G.craft[name]);
+    }
+    if (flag === "event") return !!def.event;
+    if (flag === "legacy") return !!def.legacy;
+    return false;
+  }
+  function clauseMatches(item, clause, ctx) {
+    let hit = false;
+    if (clause.kind === "text") {
+      const label = itemInstanceLabel(item.name, {
+        p: item.p,
+        level: item.level
+      });
+      hit = anyIncludes(item.name, clause.values) || anyIncludes(label, clause.values);
+    } else if (clause.kind === "item") {
+      hit = anyIncludes(item.name, clause.values);
+    } else if (clause.kind === "title") {
+      hit = anyIncludes(String(item.p || ""), clause.values);
+    } else if (clause.kind === "type") {
+      const t = ctx.itemType ? ctx.itemType(item.name) : "";
+      hit = anyIncludes(t, clause.values);
+    } else if (clause.kind === "is") {
+      for (let i = 0; i < clause.values.length; i++) {
+        if (itemHasIsFlag(item.name, clause.values[i], ctx.G)) {
+          hit = true;
+          break;
+        }
+      }
+    } else if (clause.kind === "pack") {
+      for (let i = 0; i < item.locs.length; i++) {
+        const pack = item.locs[i].pack;
+        const label = packDisplayLabel(pack).toLowerCase();
+        if (anyIncludes(pack, clause.values) || anyIncludes(label, clause.values) || anyIncludes(
+          String(Number((/^items(\d+)$/.exec(pack) || [])[1]) + 1),
+          clause.values
+        )) {
+          hit = true;
+          break;
+        }
+      }
+    } else if (clause.kind === "level") {
+      hit = amtOk(item.level, clause.amts);
+    }
+    return clause.negate ? !hit : hit;
+  }
+  function groupMatches(item, group, ctx) {
+    for (let i = 0; i < group.length; i++) {
+      if (!clauseMatches(item, group[i], ctx)) return false;
+    }
+    return true;
+  }
+  function bankItemMatchesQuery(item, raw, ctx = {}) {
+    const q = String(raw || "").trim();
+    if (!q) return true;
+    const groups = parseBankQuery(q);
+    for (let i = 0; i < groups.length; i++) {
+      if (groupMatches(item, groups[i], ctx)) return true;
+    }
+    return false;
+  }
+  function filterBankItems(items, raw, ctx = {}) {
+    const q = String(raw || "").trim();
+    if (!q) return items;
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      if (bankItemMatchesQuery(items[i], q, ctx)) out.push(items[i]);
+    }
+    return out;
+  }
+  function buildBankSearchSuggestions(raw, opts) {
+    const q = String(raw || "");
+    const menu = { sections: [], flat: [] };
+    const ctx = trailingFieldContext(q, BANK_TRAILING_OPS);
+    if (ctx && ctx.op === "is" && ctx.value.indexOf(" ") < 0) {
+      const isOpts = [
+        { value: "compound", hint: "Compoundable gear" },
+        { value: "upgrade", hint: "Upgradeable gear" },
+        { value: "craft", hint: "Craft recipe output" },
+        { value: "exchange", hint: "Exchangeable (e)" },
+        { value: "event", hint: "Event item" },
+        { value: "legacy", hint: "Legacy item" }
+      ];
+      const needle2 = ctx.value.toLowerCase();
+      pushQuerySearchSection(
+        menu,
+        "Refine your search: is",
+        isOpts.filter((o) => !needle2 || o.value.indexOf(needle2) === 0).map((o) => ({
+          kind: "value",
+          value: o.value,
+          label: "is:" + o.value,
+          hint: o.hint,
+          ico: "\u25B9"
+        }))
+      );
+      return menu;
+    }
+    if (ctx && (ctx.op === "item" || ctx.op === "type" || ctx.op === "pack" || ctx.op === "title")) {
+      const needle2 = ctx.value.toLowerCase();
+      let pool = [];
+      if (ctx.op === "item") pool = opts.itemNames;
+      else if (ctx.op === "type") pool = opts.types;
+      else if (ctx.op === "pack") pool = opts.packKeys;
+      else pool = opts.titles || [];
+      const rows = [];
+      for (let i = 0; i < pool.length && rows.length < 8; i++) {
+        const name = pool[i];
+        const label = ctx.op === "pack" ? packDisplayLabel(name) : name;
+        if (needle2 && name.toLowerCase().indexOf(needle2) < 0 && label.toLowerCase().indexOf(needle2) < 0) {
+          continue;
+        }
+        const needsQuote = /\s/.test(name);
+        rows.push({
+          kind: "value",
+          value: needsQuote ? '"' + name + '"' : name,
+          label: ctx.op === "pack" ? label : name,
+          hint: ctx.op === "pack" ? name : ctx.op,
+          ico: ctx.op === "pack" ? "\u25A6" : "\u25A3"
+        });
+      }
+      pushQuerySearchSection(menu, "Refine your search: " + ctx.op, rows);
+      return menu;
+    }
+    if (ctx && ctx.op === "level") {
+      pushQuerySearchSection(menu, "Refine your search: level", [
+        {
+          kind: "value",
+          value: ">=7",
+          label: "level:>=7",
+          hint: "Level 7+",
+          ico: "\u25B9"
+        },
+        {
+          kind: "value",
+          value: "0",
+          label: "level:0",
+          hint: "Exactly +0",
+          ico: "\u25B9"
+        },
+        {
+          kind: "value",
+          value: "<=5",
+          label: "level:<=5",
+          hint: "Level 5 or less",
+          ico: "\u25B9"
+        }
+      ]);
+      return menu;
+    }
+    const needle = q.trim().toLowerCase();
+    const freeText = !!(needle && !trailingFieldContext(q, BANK_TRAILING_OPS));
+    if (freeText) {
+      const items = [];
+      for (let i = 0; i < opts.itemNames.length && items.length < 8; i++) {
+        if (opts.itemNames[i].toLowerCase().indexOf(needle) < 0) continue;
+        items.push({
+          kind: "op",
+          insert: 'item:"' + opts.itemNames[i] + '" ',
+          label: opts.itemNames[i],
+          hint: "item",
+          ico: "\u25A3"
+        });
+      }
+      pushQuerySearchSection(menu, "Items", items);
+    }
+    const fieldOps = [
+      {
+        kind: "op",
+        insert: "item:",
+        label: "item:",
+        hint: "Filter by item",
+        ico: "+"
+      },
+      {
+        kind: "op",
+        insert: "type:",
+        label: "type:",
+        hint: "weapon \xB7 material \xB7 \u2026",
+        ico: "+"
+      },
+      {
+        kind: "op",
+        insert: "pack:",
+        label: "pack:",
+        hint: "Vault pack / tab",
+        ico: "+"
+      },
+      {
+        kind: "op",
+        insert: "title:",
+        label: "title:",
+        hint: "shiny \xB7 lucky \xB7 glitched\u2026",
+        ico: "+"
+      },
+      {
+        kind: "op",
+        insert: "is:",
+        label: "is:",
+        hint: "compound \xB7 upgrade \xB7 craft \xB7 exchange",
+        ico: "+"
+      },
+      {
+        kind: "op",
+        insert: "level:",
+        label: "level:",
+        hint: "e.g. level:>=7",
+        ico: "+"
+      }
+    ];
+    const opRows = freeText ? fieldOps.filter((o) => o.label.indexOf(needle) === 0) : fieldOps;
+    pushQuerySearchSection(
+      menu,
+      "Refine your search",
+      opRows.length ? opRows : fieldOps
+    );
+    return menu;
+  }
+
+  // src/lib/bank/bankReady.ts
+  function stockQty(items, name, level, title) {
+    let q = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.name !== name) continue;
+      if (level != null && (it.level != null ? it.level : 0) !== level) continue;
+      if (title != null && String(it.p || "") !== title) continue;
+      q += it.q;
+    }
+    return q;
+  }
+  function computeCombineCounts(have) {
+    const readyCount = Math.floor(have / 3);
+    const rem = have % 3;
+    const potentialCount = rem === 2 ? readyCount + 1 : readyCount;
+    const missing = rem === 2 ? 1 : 0;
+    return { readyCount, potentialCount, missing };
+  }
+  function combineGroupKey(name, p) {
+    return name + "\0" + (p || "");
+  }
+  function displayNameFor(name, level, p, G) {
+    const def = G && G.items && G.items[name];
+    let label = def && def.name ? String(def.name) : name;
+    if (p) {
+      const title = G && G.titles && G.titles[p] && G.titles[p].title ? String(G.titles[p].title) : p.charAt(0).toUpperCase() + p.slice(1);
+      label = title + " " + label;
+    }
+    if (level > 0) label += " +" + level;
+    return label;
+  }
+  function maxCompoundLevel(def) {
+    if (def && typeof def.compound === "object" && def.compound != null) {
+    }
+    return 7;
+  }
+  function groupCombineSteps(steps) {
+    if (!steps.length) return [];
+    const byGroup = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const key = combineGroupKey(step.name, step.p);
+      if (!byGroup[key]) byGroup[key] = [];
+      byGroup[key].push(step);
+    }
+    const chains = [];
+    const keys = Object.keys(byGroup);
+    for (let i = 0; i < keys.length; i++) {
+      const groupSteps = byGroup[keys[i]].slice();
+      groupSteps.sort((a, b) => a.level - b.level);
+      let chain = [];
+      for (let j = 0; j < groupSteps.length; j++) {
+        const step = groupSteps[j];
+        if (!chain.length || step.level === chain[chain.length - 1].level + 1) {
+          chain.push(step);
+        } else {
+          chains.push(chain);
+          chain = [step];
+        }
+      }
+      if (chain.length) chains.push(chain);
+    }
+    chains.sort((a, b) => {
+      const finalA = a[a.length - 1];
+      const finalB = b[b.length - 1];
+      const countA = finalA.combineReadyCount > 0 ? finalA.combineReadyCount : finalA.potentialCombineCount;
+      const countB = finalB.combineReadyCount > 0 ? finalB.combineReadyCount : finalB.potentialCombineCount;
+      return countB - countA || finalA.displayName.localeCompare(finalB.displayName);
+    });
+    return chains;
+  }
+  function analyzeCompoundCombines(items, G) {
+    const gItems2 = G && G.items || {};
+    const groups = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const def = gItems2[it.name];
+      if (!def || !def.compound) continue;
+      const level = it.level != null ? Number(it.level) : 0;
+      const maxLevel = maxCompoundLevel(def);
+      if (level >= maxLevel) continue;
+      const p = it.p != null ? String(it.p) : null;
+      const key = combineGroupKey(it.name, p);
+      if (!groups[key]) {
+        groups[key] = { name: it.name, p, maxLevel, byLevel: /* @__PURE__ */ Object.create(null) };
+      }
+      groups[key].byLevel[level] = (groups[key].byLevel[level] || 0) + it.q;
+    }
+    const ready = [];
+    const potential = [];
+    const keys = Object.keys(groups);
+    for (let i = 0; i < keys.length; i++) {
+      const g = groups[keys[i]];
+      let carryReady = 0;
+      let carryPotential = 0;
+      for (let level = 0; level < g.maxLevel; level++) {
+        const bankHave = g.byLevel[level] || 0;
+        const effectiveReady = bankHave + carryReady;
+        const effectivePotential = bankHave + carryPotential;
+        if (effectiveReady < 2 && effectivePotential < 2) {
+          carryReady = 0;
+          carryPotential = 0;
+          continue;
+        }
+        const readyStats = computeCombineCounts(effectiveReady);
+        const potentialStats = computeCombineCounts(effectivePotential);
+        const displayName = displayNameFor(g.name, level, g.p, G);
+        const base = {
+          name: g.name,
+          level,
+          p: g.p,
+          displayName,
+          have: bankHave,
+          outputLevel: level + 1
+        };
+        if (readyStats.readyCount > 0) {
+          ready.push({
+            ...base,
+            effectiveHave: effectiveReady,
+            cascadeIn: carryReady,
+            combineReadyCount: readyStats.readyCount,
+            potentialCombineCount: readyStats.potentialCount,
+            missing: readyStats.missing
+          });
+        }
+        if (potentialStats.potentialCount > readyStats.readyCount) {
+          potential.push({
+            ...base,
+            effectiveHave: effectivePotential,
+            cascadeIn: carryPotential,
+            combineReadyCount: readyStats.readyCount,
+            potentialCombineCount: potentialStats.potentialCount,
+            missing: potentialStats.missing
+          });
+        }
+        carryReady = readyStats.readyCount;
+        carryPotential = potentialStats.potentialCount;
+      }
+    }
+    const byCombineCount = (a, b) => b.combineReadyCount - a.combineReadyCount || b.potentialCombineCount - a.potentialCombineCount || a.level - b.level || a.displayName.localeCompare(b.displayName);
+    ready.sort(byCombineCount);
+    potential.sort((a, b) => {
+      if (b.potentialCombineCount !== a.potentialCombineCount) {
+        return b.potentialCombineCount - a.potentialCombineCount;
+      }
+      if (a.missing !== b.missing) return a.missing - b.missing;
+      return a.level - b.level || a.displayName.localeCompare(b.displayName);
+    });
+    return { ready, potential };
+  }
+  function parseCraftRow(row3) {
+    if (!Array.isArray(row3) || row3.length < 2) return null;
+    const need = Number(row3[0]);
+    const name = String(row3[1] || "");
+    if (!(need > 0) || !name) return null;
+    const third = row3[2];
+    if (typeof third === "number") return { need, name, level: third };
+    if (typeof third === "string") return { need, name, title: third };
+    return { need, name };
+  }
+  function computePotentialCraftCount(ingredients) {
+    if (!ingredients.length) return 0;
+    let max = 0;
+    for (let i = 0; i < ingredients.length; i++) {
+      const n = Math.floor(ingredients[i].have / ingredients[i].need);
+      if (n > max) max = n;
+    }
+    return max;
+  }
+  function computeMissingForCraftCount(ingredients, craftCount) {
+    const out = [];
+    for (let i = 0; i < ingredients.length; i++) {
+      const ing = ingredients[i];
+      out.push({
+        ...ing,
+        missing: Math.max(0, craftCount * ing.need - ing.have)
+      });
+    }
+    return out;
+  }
+  function analyzeCraftRecipes(items, G) {
+    const craftMap = G && G.craft;
+    if (!craftMap || typeof craftMap !== "object") {
+      return { ready: [], potential: [] };
+    }
+    const gItems2 = G && G.items || {};
+    const ready = [];
+    const potential = [];
+    const outputs = Object.keys(craftMap);
+    for (let i = 0; i < outputs.length; i++) {
+      const output = outputs[i];
+      const recipe = craftMap[output];
+      if (!recipe || !Array.isArray(recipe.items) || !recipe.items.length) continue;
+      const ingredients = [];
+      let ok = true;
+      for (let j = 0; j < recipe.items.length; j++) {
+        const parsed = parseCraftRow(recipe.items[j]);
+        if (!parsed) {
+          ok = false;
+          break;
+        }
+        const have = stockQty(items, parsed.name, parsed.level, parsed.title);
+        ingredients.push({
+          name: parsed.name,
+          need: parsed.need,
+          have,
+          missing: Math.max(0, parsed.need - have),
+          level: parsed.level,
+          title: parsed.title
+        });
+      }
+      if (!ok || !ingredients.length) continue;
+      let craftable = Infinity;
+      for (let j = 0; j < ingredients.length; j++) {
+        craftable = Math.min(
+          craftable,
+          Math.floor(ingredients[j].have / ingredients[j].need)
+        );
+      }
+      if (!Number.isFinite(craftable)) craftable = 0;
+      const potentialCraftCount = computePotentialCraftCount(ingredients);
+      let hasPartial = false;
+      for (let j = 0; j < ingredients.length; j++) {
+        if (ingredients[j].have > 0) {
+          hasPartial = true;
+          break;
+        }
+      }
+      const def = gItems2[output];
+      const outputName = def && def.name ? String(def.name) : output;
+      const cost = typeof recipe.cost === "number" ? recipe.cost : 0;
+      if (craftable > 0) {
+        ready.push({
+          output,
+          outputName,
+          cost,
+          craftableCount: craftable,
+          ingredients
+        });
+      }
+      if (potentialCraftCount > craftable && hasPartial) {
+        potential.push({
+          output,
+          outputName,
+          cost,
+          craftableCount: craftable,
+          potentialCraftCount,
+          ingredients: computeMissingForCraftCount(
+            ingredients,
+            potentialCraftCount
+          )
+        });
+      }
+    }
+    ready.sort(
+      (a, b) => b.craftableCount - a.craftableCount || a.outputName.localeCompare(b.outputName)
+    );
+    potential.sort((a, b) => {
+      var _a, _b;
+      const readyBoostA = a.craftableCount > 0 ? 1 : 0;
+      const readyBoostB = b.craftableCount > 0 ? 1 : 0;
+      if (readyBoostA !== readyBoostB) return readyBoostB - readyBoostA;
+      const potentialA = (_a = a.potentialCraftCount) != null ? _a : 0;
+      const potentialB = (_b = b.potentialCraftCount) != null ? _b : 0;
+      if (potentialA !== potentialB) return potentialB - potentialA;
+      let missingTypesA = 0;
+      let missingTypesB = 0;
+      let totalMissingA = 0;
+      let totalMissingB = 0;
+      for (let i = 0; i < a.ingredients.length; i++) {
+        if (a.ingredients[i].missing > 0) missingTypesA += 1;
+        totalMissingA += a.ingredients[i].missing;
+      }
+      for (let i = 0; i < b.ingredients.length; i++) {
+        if (b.ingredients[i].missing > 0) missingTypesB += 1;
+        totalMissingB += b.ingredients[i].missing;
+      }
+      if (missingTypesA !== missingTypesB) return missingTypesA - missingTypesB;
+      if (totalMissingA !== totalMissingB) return totalMissingA - totalMissingB;
+      return a.outputName.localeCompare(b.outputName);
+    });
+    return { ready, potential };
+  }
+
+  // src/ui/frames/bankPanelCss.ts
+  var STYLE_ID9 = "ecu-bank-panel-css";
+  var CSS12 = `
+.BankPanel {
+  --bk-line: #2a2a2a;
+  --bk-muted: #8a8680;
+  --bk-gold: #d4b35a;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: #e6e2d6;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-size: 13px;
+  background: #121110;
+}
+.BankPanel-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--bk-line);
+}
+.BankPanel-title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #cfc8b8;
+}
+.BankPanel-gold {
+  color: var(--bk-gold);
+  font-variant-numeric: tabular-nums;
+}
+.BankPanel-meta {
+  color: var(--bk-muted);
+  font-size: 12px;
+}
+.BankPanel-headGrow { flex: 1 1 auto; min-width: 8px; }
+.BankPanel-btn {
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1917;
+  color: #ddd;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.BankPanel-btn:hover:not(:disabled) { border-color: #777; background: #222; }
+.BankPanel-btn:disabled { opacity: 0.45; cursor: default; }
+.BankPanel-expand {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #444;
+  background: #1a1917;
+  color: #ddd;
+  cursor: pointer;
+  line-height: 0;
+}
+.BankPanel-expand:hover { border-color: #777; background: #222; }
+.BankPanel-expand.is-expanded {
+  border-color: rgba(212, 179, 90, 0.55);
+  color: #f0e6d0;
+  background: #2a2620;
+}
+.BankPanel-expand .ecu-expand-glyph {
+  display: block;
+}
+.BankPanel-note {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  color: #9a9080;
+  font-size: 12px;
+  border-bottom: 1px solid var(--bk-line);
+  background: #161512;
+}
+.BankPanel-tools {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--bk-line);
+}
+.BankPanel-seg {
+  display: inline-flex;
+  border: 1px solid #3a3a3a;
+  overflow: hidden;
+}
+.BankPanel-seg button {
+  appearance: none;
+  border: 0;
+  background: #141312;
+  color: #aaa;
+  padding: 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.BankPanel-seg button + button { border-left: 1px solid #2a2a2a; }
+.BankPanel-seg button.is-on {
+  background: #2a2620;
+  color: #f0e6d0;
+}
+.BankPanel-sortSeg {
+  margin-left: 0;
+}
+.BankPanel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 14px;
+}
+.BankPanel-empty {
+  color: var(--bk-muted);
+  padding: 24px 8px;
+  text-align: center;
+}
+.BankPanel-section {
+  margin-bottom: 14px;
+}
+.BankPanel-sectionTitle {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--bk-muted);
+  margin: 0 0 8px;
+}
+.BankPanel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 6px;
+}
+.BankPanel-packs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 14px 16px;
+}
+.BankPanel-pack {
+  display: inline-block;
+  vertical-align: top;
+}
+.BankPanel-packTitle {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: var(--bk-muted);
+  margin: 0 0 6px;
+}
+.BankPanel-packTitle.is-tight { color: #c9a24a; }
+.BankPanel-packTitle.is-full { color: #c07060; }
+.BankPanel-packGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 48px);
+  gap: 1px;
+  background: #1a1917;
+  border: 1px solid #2a2a2a;
+  padding: 1px;
+}
+.BankPanel-slot {
+  appearance: none;
+  width: 48px;
+  height: 48px;
+  box-sizing: border-box;
+  border: 1px solid #2e2c28;
+  background: #141312;
+  padding: 2px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.BankPanel-slot.is-empty {
+  cursor: default;
+  background: #0e0d0c;
+  border-color: #222;
+}
+.BankPanel-slot.is-dim { opacity: 0.28; }
+.BankPanel-slot:not(.is-empty):hover {
+  border-color: rgba(212, 179, 90, 0.45);
+}
+.BankPanel-cell {
+  appearance: none;
+  border: 1px solid #2e2c28;
+  background: #0e0d0c;
+  padding: 3px;
+  cursor: pointer;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.BankPanel-cell:hover { border-color: rgba(212, 179, 90, 0.45); }
+.BankPanel-cellMeta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--bk-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+.BankPanel-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.BankPanel-readyTabs,
+.BankPanel-readySub {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid #3a3a3a;
+  overflow: hidden;
+  align-self: flex-start;
+}
+.BankPanel-readyTabs button,
+.BankPanel-readySub button {
+  appearance: none;
+  border: 0;
+  background: #141312;
+  color: #aaa;
+  padding: 5px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.BankPanel-readyTabs button + button,
+.BankPanel-readySub button + button {
+  border-left: 1px solid #2a2a2a;
+}
+.BankPanel-readyTabs button.is-on,
+.BankPanel-readySub button.is-on {
+  background: #2a2620;
+  color: #f0e6d0;
+}
+.BankPanel-readyTabs button:disabled,
+.BankPanel-readySub button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.BankPanel-readySub {
+  border-color: #2e2c28;
+}
+.BankPanel-readySub button {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.BankPanel-recipeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.BankPanel-recipeCard {
+  border: 1px solid #2e2c28;
+  background: #0e0d0c;
+  padding: 10px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.BankPanel-recipeHint {
+  font-size: 11px;
+  color: var(--bk-muted);
+  text-align: center;
+}
+.BankPanel-recipeHint.is-ok {
+  color: #8bc98a;
+  font-weight: 600;
+}
+.BankPanel-recipeResult {
+  font-size: 11px;
+  font-weight: 600;
+  color: #cfc8b8;
+  text-align: center;
+}
+.BankPanel-recipeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+}
+.BankPanel-recipeArrow {
+  align-self: center;
+  color: var(--bk-muted);
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+  padding: 0 2px;
+}
+.BankPanel-recipeTile {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+.BankPanel-recipeTile:hover .ecu-item-instance-host {
+  outline: 1px solid rgba(212, 179, 90, 0.45);
+}
+.BankPanel-recipeFoot {
+  font-size: 11px;
+  color: var(--bk-muted);
+  text-align: center;
+  margin-top: 2px;
+}
+
+/* Shell lift \u2014 same inset as chat expand. */
+[data-panel="bank"].ecu-bank-shell-expanded {
+  position: fixed !important;
+  left: 10px !important;
+  right: 10px !important;
+  top: 10px !important;
+  bottom: 56px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  z-index: 480 !important;
+  transform: none !important;
+}
+[data-panel="bank"].ecu-bank-shell-expanded .BankPanel {
+  height: 100%;
+  min-height: 0;
+}
+`;
+  function ensureBankPanelCss() {
+    if (typeof document === "undefined") return;
+    let el = document.getElementById(STYLE_ID9);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID9;
+      document.head.appendChild(el);
+    }
+    el.textContent = CSS12;
+  }
+
+  // src/ui/frames/BankPanel.ts
+  var SORT_OPTIONS = [
+    { id: "category", label: "Category" },
+    { id: "quantity", label: "Quantity" },
+    { id: "stack", label: "Stack" }
+  ];
+  var MISSING_Q = "#ff6b5a";
+  function gItems() {
+    const G = window.G;
+    return G && G.items || {};
+  }
+  function itemTypeOf(name) {
+    const def = gItems()[name];
+    return def && def.type != null ? String(def.type) : "";
+  }
+  function matchCtx() {
+    return { itemType: itemTypeOf, G: window.G };
+  }
+  function showBankItem(item) {
+    const G = window.G;
+    const def = G && G.items && G.items[item.name];
+    if (!def || typeof window.render_item !== "function") return;
+    const actual = {
+      name: item.name,
+      level: item.level,
+      q: item.q,
+      p: item.p
+    };
+    const html = window.render_item("html", {
+      item: def,
+      actual,
+      readonly: true
+    });
+    if (typeof window.show_modal === "function") {
+      window.show_modal(html, { wrap: false, hideinbackground: true });
+    }
+  }
+  function asAgg(item, pack, index) {
+    var _a, _b;
+    const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+    return {
+      key: item.name + "\0" + ((_a = item.level) != null ? _a : "") + "\0" + ((_b = item.p) != null ? _b : ""),
+      name: String(item.name),
+      level: item.level,
+      p: item.p != null ? String(item.p) : null,
+      q,
+      locs: [{ pack, index, q }]
+    };
+  }
+  function slotMatchesQuery(item, pack, index, query) {
+    if (!item || !item.name || item.name === "placeholder") return false;
+    if (!String(query || "").trim()) return true;
+    return bankItemMatchesQuery(asAgg(item, pack, index), query, matchCtx());
+  }
+  function uniqueItemNames(items) {
+    const seen = /* @__PURE__ */ Object.create(null);
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const n = items[i].name;
+      if (seen[n]) continue;
+      seen[n] = true;
+      out.push(n);
+    }
+    out.sort((a, b) => a.localeCompare(b));
+    return out;
+  }
+  function uniqueTypes2(items) {
+    const seen = /* @__PURE__ */ Object.create(null);
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const t = itemTypeOf(items[i].name);
+      if (!t || seen[t]) continue;
+      seen[t] = true;
+      out.push(t);
+    }
+    out.sort((a, b) => a.localeCompare(b));
+    return out;
+  }
+  function packFillClass(used, total) {
+    if (!(total > 0)) return "";
+    const r = used / total;
+    if (r >= 1) return " is-full";
+    if (r >= 0.85) return " is-tight";
+    return "";
+  }
+  function combineMatchesQuery(row3, query) {
+    if (!String(query || "").trim()) return true;
+    const synth = {
+      key: row3.name + "\0" + row3.level + "\0" + (row3.p || ""),
+      name: row3.name,
+      level: row3.level,
+      p: row3.p != null ? String(row3.p) : null,
+      q: row3.have,
+      locs: [{ pack: "items0", index: 0, q: row3.have }]
+    };
+    return bankItemMatchesQuery(synth, query, matchCtx());
+  }
+  function craftMatchesQuery(row3, query) {
+    var _a;
+    if (!String(query || "").trim()) return true;
+    const ctx = matchCtx();
+    const outItem = {
+      key: row3.output,
+      name: row3.output,
+      q: row3.craftableCount,
+      locs: [{ pack: "items0", index: 0, q: row3.craftableCount }]
+    };
+    if (bankItemMatchesQuery(outItem, query, ctx)) return true;
+    for (let i = 0; i < row3.ingredients.length; i++) {
+      const ing = row3.ingredients[i];
+      const synth = {
+        key: ing.name + "\0" + ((_a = ing.level) != null ? _a : "") + "\0" + (ing.title || ""),
+        name: ing.name,
+        level: ing.level,
+        p: ing.title != null ? String(ing.title) : null,
+        q: ing.have,
+        locs: [{ pack: "items0", index: 0, q: ing.have }]
+      };
+      if (bankItemMatchesQuery(synth, query, ctx)) return true;
+    }
+    return false;
+  }
+  function filterCombineList(rows, query) {
+    if (!String(query || "").trim()) return rows;
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (combineMatchesQuery(rows[i], query)) out.push(rows[i]);
+    }
+    return out;
+  }
+  function filterCraftList(rows, query) {
+    if (!String(query || "").trim()) return rows;
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (craftMatchesQuery(rows[i], query)) out.push(rows[i]);
+    }
+    return out;
+  }
+  function combineStepCount(combine, mode) {
+    return mode === "ready" ? combine.combineReadyCount : combine.potentialCombineCount;
+  }
+  function combineChainKey(chain) {
+    const head = chain[0];
+    const levels = [];
+    for (let i = 0; i < chain.length; i++) levels.push(String(chain[i].level));
+    return head.name + "-" + (head.p || "") + "-" + levels.join("-");
+  }
+  function BankPanel(props) {
+    const React = getReact();
+    ensureBankPanelCss();
+    const [snap, setSnap] = React.useState(null);
+    const [error, setError] = React.useState(null);
+    const [loading, setLoading] = React.useState(false);
+    const [query, setQuery] = React.useState("");
+    const [view, setView] = React.useState("all");
+    const [sort, setSort] = React.useState("category");
+    const [readyKind, setReadyKind] = React.useState("combine");
+    const [readySection, setReadySection] = React.useState(
+      "ready"
+    );
+    const [tick2, setTick] = React.useState(0);
+    const [expanded, setExpanded] = React.useState(false);
+    const rootRef = React.useRef(null);
+    const preExpandSizeRef = React.useRef(null);
+    const refresh = React.useCallback(() => {
+      setLoading(true);
+      setError(null);
+      loadBank().then((res) => {
+        setLoading(false);
+        if (res.ok === false) {
+          setError(res.reason);
+          return;
+        }
+        setSnap(res.snapshot);
+      });
+    }, []);
+    React.useEffect(() => {
+      refresh();
+    }, [refresh]);
+    React.useEffect(() => {
+      const id = window.setInterval(() => setTick((n) => n + 1), 15e3);
+      return () => window.clearInterval(id);
+    }, []);
+    React.useEffect(() => {
+      const shell = findPanelShell(rootRef.current, "bank");
+      if (!shell) return;
+      if (expanded) {
+        if (!preExpandSizeRef.current) {
+          preExpandSizeRef.current = {
+            w: Math.round(shell.offsetWidth),
+            h: Math.round(shell.offsetHeight)
+          };
+        }
+        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+        shell.classList.add("ecu-bank-shell-expanded");
+        return () => {
+          shell.classList.remove("ecu-bank-shell-expanded");
+          shell.removeAttribute("data-ecu-suspend-frame-resize");
+        };
+      }
+      shell.classList.remove("ecu-bank-shell-expanded");
+      shell.removeAttribute("data-ecu-suspend-frame-resize");
+      const saved = preExpandSizeRef.current;
+      preExpandSizeRef.current = null;
+      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
+        window.requestAnimationFrame(() => {
+          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
+        });
+      }
+    }, [expanded, props.onFrameSizeRestore]);
+    const allAgg = React.useMemo(() => {
+      if (!snap) return [];
+      return aggregateBankItems(flattenBankSlots(snap.packs));
+    }, [snap]);
+    const filtered = React.useMemo(() => {
+      const list = filterBankItems(allAgg, query, matchCtx());
+      return sortBankItems(list, sort, window.G);
+    }, [allAgg, query, sort]);
+    const suggestions = React.useMemo(() => {
+      const titles = [];
+      const seen = /* @__PURE__ */ Object.create(null);
+      for (let i = 0; i < allAgg.length; i++) {
+        const p = allAgg[i].p;
+        if (!p || seen[p]) continue;
+        seen[p] = true;
+        titles.push(p);
+      }
+      titles.sort((a, b) => a.localeCompare(b));
+      return buildBankSearchSuggestions(query, {
+        itemNames: uniqueItemNames(allAgg),
+        packKeys: snap ? listBankPackKeys(snap.packs) : [],
+        types: uniqueTypes2(allAgg),
+        titles
+      });
+    }, [query, allAgg, snap]);
+    const packKeys = snap ? listBankPackKeys(snap.packs) : [];
+    const typeGroups = React.useMemo(() => {
+      if (view !== "types") return [];
+      return groupBankByCategory(filtered, window.G);
+    }, [view, filtered]);
+    const combineAnalysis = React.useMemo(() => {
+      if (!snap) return { ready: [], potential: [] };
+      const raw = analyzeCompoundCombines(allAgg, window.G);
+      return {
+        ready: filterCombineList(raw.ready, query),
+        potential: filterCombineList(raw.potential, query)
+      };
+    }, [snap, allAgg, query]);
+    const craftAnalysis = React.useMemo(() => {
+      if (!snap) return { ready: [], potential: [] };
+      const raw = analyzeCraftRecipes(allAgg, window.G);
+      return {
+        ready: filterCraftList(raw.ready, query),
+        potential: filterCraftList(raw.potential, query)
+      };
+    }, [snap, allAgg, query]);
+    const ageLabel = snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
+    void tick2;
+    const renderAggGrid = (items) => {
+      if (!items.length) {
+        return e("div", { className: "BankPanel-empty" }, "No items match.");
+      }
+      return e(
+        "div",
+        { className: "BankPanel-grid" },
+        items.map(
+          (it) => e(
+            "button",
+            {
+              type: "button",
+              key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
+              className: "BankPanel-cell",
+              title: it.name + (it.locs.length > 1 ? " \xB7 " + it.locs.length + " stacks" : " \xB7 " + packDisplayLabel(it.locs[0].pack)),
+              onClick: () => showBankItem(it)
+            },
+            e(ItemInstance, {
+              name: it.name,
+              level: it.level,
+              q: it.q,
+              p: it.p != null ? String(it.p) : void 0,
+              size: 40
+            })
+          )
+        )
+      );
+    };
+    const renderPacksBoard = () => {
+      if (!snap) return null;
+      const q = String(query || "").trim();
+      const boards = [];
+      for (let i = 0; i < packKeys.length; i++) {
+        const pack = packKeys[i];
+        const raw = snap.packs[pack];
+        const slots = Array.isArray(raw) ? raw : [];
+        const official = isOfficialBankPack(pack);
+        const total = official ? SLOTS_PER_BANK_PACK : Math.max(slots.length, 1);
+        const padded = [];
+        for (let s = 0; s < total; s++) {
+          const it = slots[s];
+          padded.push(it && it.name && it.name !== "placeholder" ? it : null);
+        }
+        let used = 0;
+        let anyMatch = !q;
+        for (let s = 0; s < padded.length; s++) {
+          if (padded[s]) used += 1;
+          if (q && slotMatchesQuery(padded[s], pack, s, q)) anyMatch = true;
+        }
+        if (q && !anyMatch) continue;
+        boards.push(
+          e(
+            "div",
+            { key: pack, className: "BankPanel-pack" },
+            e(
+              "div",
+              {
+                className: "BankPanel-packTitle" + packFillClass(used, total)
+              },
+              packDisplayLabel(pack) + " \xB7 " + (official ? used + "/" + total : used + " items")
+            ),
+            e(
+              "div",
+              { className: "BankPanel-packGrid" },
+              padded.map((it, index) => {
+                const match = slotMatchesQuery(it, pack, index, q);
+                const dim2 = !!(q && it && !match);
+                if (!it) {
+                  return e("div", {
+                    key: pack + ":" + index,
+                    className: "BankPanel-slot is-empty"
+                  });
+                }
+                return e(
+                  "button",
+                  {
+                    type: "button",
+                    key: pack + ":" + index,
+                    className: "BankPanel-slot" + (dim2 ? " is-dim" : ""),
+                    title: it.name + " \xB7 slot " + (index + 1),
+                    onClick: () => showBankItem(it)
+                  },
+                  e(ItemInstance, {
+                    name: it.name,
+                    level: it.level,
+                    q: it.q,
+                    p: it.p != null ? String(it.p) : void 0,
+                    size: 40
+                  })
+                );
+              })
+            )
+          )
+        );
+      }
+      if (!boards.length) {
+        return e("div", { className: "BankPanel-empty" }, "No packs match.");
+      }
+      return e("div", { className: "BankPanel-packs" }, boards);
+    };
+    const renderCombineCard = (chain, mode) => {
+      const sorted = chain.slice().sort((a, b) => a.level - b.level);
+      const finalStep = sorted[sorted.length - 1];
+      const finalCount = combineStepCount(finalStep, mode);
+      const almost = mode === "almost";
+      const tiles = [
+        e(
+          "button",
+          {
+            type: "button",
+            key: "out",
+            className: "BankPanel-recipeTile",
+            onClick: () => showBankItem({
+              name: finalStep.name,
+              level: finalStep.outputLevel,
+              q: finalCount,
+              p: finalStep.p
+            })
+          },
+          e(ItemInstance, {
+            name: finalStep.name,
+            level: finalStep.outputLevel,
+            q: finalCount,
+            p: finalStep.p != null ? String(finalStep.p) : void 0,
+            size: 40,
+            forceShowQ: true
+          })
+        )
+      ];
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        const step = sorted[i];
+        const isShort = almost && step.missing > 0;
+        const badgeQ = isShort ? step.missing : step.effectiveHave;
+        tiles.push(
+          e("span", { key: "arr" + i, className: "BankPanel-recipeArrow" }, "\u2190"),
+          e(
+            "button",
+            {
+              type: "button",
+              key: "in" + step.level,
+              className: "BankPanel-recipeTile",
+              title: step.displayName + " \xB7 bank " + step.have + (step.cascadeIn ? " \xB7 cascade +" + step.cascadeIn : "") + (step.missing ? " \xB7 missing " + step.missing : ""),
+              onClick: () => showBankItem({
+                name: step.name,
+                level: step.level,
+                q: step.have,
+                p: step.p
+              })
+            },
+            e(ItemInstance, {
+              name: step.name,
+              level: step.level,
+              q: badgeQ,
+              p: step.p != null ? String(step.p) : void 0,
+              size: 40,
+              forceShowQ: true,
+              qtyColor: isShort ? MISSING_Q : void 0
+            })
+          )
+        );
+      }
+      return e(
+        "div",
+        {
+          key: combineChainKey(chain),
+          className: "BankPanel-recipeCard"
+        },
+        almost && finalStep.combineReadyCount > 0 ? e(
+          "div",
+          { className: "BankPanel-recipeHint is-ok" },
+          finalStep.combineReadyCount + " ready now \xB7 " + (finalCount - finalStep.combineReadyCount) + " more if restocked"
+        ) : null,
+        e(
+          "div",
+          { className: "BankPanel-recipeResult" },
+          "Result: " + finalCount + " \xD7 +" + finalStep.outputLevel
+        ),
+        e("div", { className: "BankPanel-recipeRow" }, tiles),
+        e(
+          "div",
+          { className: "BankPanel-recipeFoot" },
+          "3 copies per output \xB7 +1 level \xB7 compound scroll"
+        )
+      );
+    };
+    const renderCraftCard = (recipe, mode) => {
+      const craftCount = mode === "ready" ? recipe.craftableCount : recipe.potentialCraftCount != null ? recipe.potentialCraftCount : 0;
+      const almost = mode === "almost";
+      const ings = [];
+      for (let i = 0; i < recipe.ingredients.length; i++) {
+        const ing = recipe.ingredients[i];
+        const usageQty = ing.need * craftCount;
+        const isShort = almost && ing.missing > 0;
+        const badgeQ = almost ? isShort ? ing.missing : usageQty : usageQty;
+        ings.push(
+          e(
+            "button",
+            {
+              type: "button",
+              key: ing.name + ":" + i,
+              className: "BankPanel-recipeTile",
+              title: ing.name + " \xB7 need " + ing.need + " \xB7 have " + ing.have + (ing.missing ? " \xB7 missing " + ing.missing : ""),
+              onClick: () => showBankItem({
+                name: ing.name,
+                level: ing.level,
+                q: ing.have,
+                p: ing.title
+              })
+            },
+            e(ItemInstance, {
+              name: ing.name,
+              level: ing.level,
+              q: badgeQ,
+              p: ing.title,
+              size: 40,
+              forceShowQ: true,
+              qtyColor: isShort ? MISSING_Q : void 0
+            })
+          )
+        );
+      }
+      return e(
+        "div",
+        { key: recipe.output, className: "BankPanel-recipeCard" },
+        almost && recipe.craftableCount > 0 ? e(
+          "div",
+          { className: "BankPanel-recipeHint is-ok" },
+          recipe.craftableCount + " ready now \xB7 " + (craftCount - recipe.craftableCount) + " more if restocked"
+        ) : null,
+        e(
+          "div",
+          { className: "BankPanel-recipeRow" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "BankPanel-recipeTile",
+              onClick: () => showBankItem({ name: recipe.output, q: craftCount })
+            },
+            e(ItemInstance, {
+              name: recipe.output,
+              q: craftCount,
+              size: 40,
+              forceShowQ: true
+            })
+          ),
+          e("span", { className: "BankPanel-recipeArrow" }, "\u2190"),
+          ings
+        ),
+        e(
+          "div",
+          { className: "BankPanel-recipeFoot" },
+          recipe.cost ? formatTradeGold(recipe.cost) + " gold each" + (craftCount > 1 ? " \xB7 " + formatTradeGold(recipe.cost * craftCount) + " total" : "") : "No gold cost"
+        )
+      );
+    };
+    const renderReady = () => {
+      const hasCombine = combineAnalysis.ready.length > 0 || combineAnalysis.potential.length > 0;
+      const hasCraft = craftAnalysis.ready.length > 0 || craftAnalysis.potential.length > 0;
+      if (!hasCombine && !hasCraft) {
+        return e(
+          "div",
+          { className: "BankPanel-empty" },
+          "Nothing ready or almost ready to compound or craft."
+        );
+      }
+      let kind = readyKind;
+      if (kind === "combine" && !hasCombine && hasCraft) kind = "craft";
+      if (kind === "craft" && !hasCraft && hasCombine) kind = "combine";
+      const combineReady = combineAnalysis.ready.length > 0;
+      const combineAlmost = combineAnalysis.potential.length > 0;
+      const craftReady = craftAnalysis.ready.length > 0;
+      const craftAlmost = craftAnalysis.potential.length > 0;
+      let section3 = readySection;
+      if (kind === "combine") {
+        if (section3 === "ready" && !combineReady && combineAlmost) section3 = "almost";
+        if (section3 === "almost" && !combineAlmost && combineReady) section3 = "ready";
+      } else {
+        if (section3 === "ready" && !craftReady && craftAlmost) section3 = "almost";
+        if (section3 === "almost" && !craftAlmost && craftReady) section3 = "ready";
+      }
+      let cards = null;
+      if (kind === "combine") {
+        const steps = section3 === "ready" ? combineAnalysis.ready : combineAnalysis.potential;
+        const chains = groupCombineSteps(steps);
+        cards = chains.length ? e(
+          "div",
+          { className: "BankPanel-recipeGrid" },
+          chains.map((chain) => renderCombineCard(chain, section3))
+        ) : e("div", { className: "BankPanel-empty" }, "No combines in this section.");
+      } else {
+        const recipes = section3 === "ready" ? craftAnalysis.ready : craftAnalysis.potential;
+        cards = recipes.length ? e(
+          "div",
+          { className: "BankPanel-recipeGrid" },
+          recipes.map((r) => renderCraftCard(r, section3))
+        ) : e("div", { className: "BankPanel-empty" }, "No crafts in this section.");
+      }
+      return e(
+        "div",
+        { className: "BankPanel-ready" },
+        e(
+          "div",
+          { className: "BankPanel-readyTabs" },
+          hasCombine ? e(
+            "button",
+            {
+              type: "button",
+              className: kind === "combine" ? "is-on" : "",
+              onClick: () => setReadyKind("combine")
+            },
+            "Combine (" + combineAnalysis.ready.length + ")"
+          ) : null,
+          hasCraft ? e(
+            "button",
+            {
+              type: "button",
+              className: kind === "craft" ? "is-on" : "",
+              onClick: () => setReadyKind("craft")
+            },
+            "Craft (" + craftAnalysis.ready.length + ")"
+          ) : null
+        ),
+        e(
+          "div",
+          { className: "BankPanel-readySub" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: section3 === "ready" ? "is-on" : "",
+              disabled: kind === "combine" ? !combineReady : !craftReady,
+              onClick: () => setReadySection("ready")
+            },
+            "Ready (" + (kind === "combine" ? combineAnalysis.ready.length : craftAnalysis.ready.length) + ")"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: section3 === "almost" ? "is-on" : "",
+              disabled: kind === "combine" ? !combineAlmost : !craftAlmost,
+              onClick: () => setReadySection("almost")
+            },
+            "Almost (" + (kind === "combine" ? combineAnalysis.potential.length : craftAnalysis.potential.length) + ")"
+          )
+        ),
+        cards
+      );
+    };
+    let body;
+    if (error) {
+      body = e("div", { className: "BankPanel-empty" }, error);
+    } else if (!snap && loading) {
+      body = e("div", { className: "BankPanel-empty" }, "Loading bank\u2026");
+    } else if (!snap) {
+      body = e("div", { className: "BankPanel-empty" }, "No bank loaded.");
+    } else if (view === "packs") {
+      body = renderPacksBoard();
+    } else if (view === "ready") {
+      body = renderReady();
+    } else if (view === "types") {
+      body = typeGroups.length ? typeGroups.map(
+        (g) => e(
+          "div",
+          { key: g.id, className: "BankPanel-section" },
+          e(
+            "div",
+            { className: "BankPanel-sectionTitle" },
+            g.label + " \xB7 " + g.items.length
+          ),
+          renderAggGrid(g.items)
+        )
+      ) : e("div", { className: "BankPanel-empty" }, "No items match.");
+    } else {
+      body = renderAggGrid(filtered);
+    }
+    return e(
+      "div",
+      {
+        className: "BankPanel" + (expanded ? " is-expanded" : ""),
+        "data-ecu-panel": "bank",
+        ref: rootRef
+      },
+      e(
+        "div",
+        { className: "BankPanel-head" },
+        e("span", { className: "BankPanel-title" }, "Bank"),
+        snap ? e(
+          "span",
+          { className: "BankPanel-gold" },
+          formatTradeGold(snap.gold) + " gold"
+        ) : null,
+        ageLabel ? e("span", { className: "BankPanel-meta" }, "Loaded " + ageLabel) : null,
+        e("span", { className: "BankPanel-headGrow" }),
+        e(PanelExpandButton, {
+          expanded,
+          onToggle: () => setExpanded(!expanded),
+          expandTitle: "Expand bank",
+          restoreTitle: "Restore bank size",
+          className: "BankPanel-expand"
+        }),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "BankPanel-btn",
+            disabled: loading,
+            onClick: () => refresh()
+          },
+          loading ? "Loading\u2026" : "Refresh"
+        )
+      ),
+      e(
+        "div",
+        { className: "BankPanel-note" },
+        "Account bank \xB7 shared across characters. Recent vault moves may not appear until Refresh."
+      ),
+      e(
+        "div",
+        { className: "BankPanel-tools" },
+        e(QuerySearchField, {
+          value: query,
+          onChange: (next) => setQuery(next),
+          placeholder: "Search \xB7 item: \xB7 type: \xB7 pack: \xB7 is:compound \xB7 OR\u2026",
+          suggestions,
+          trailingOps: BANK_TRAILING_OPS
+        }),
+        e(
+          "div",
+          { className: "BankPanel-seg" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: view === "all" ? "is-on" : "",
+              onClick: () => setView("all")
+            },
+            "All"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: view === "packs" ? "is-on" : "",
+              onClick: () => setView("packs")
+            },
+            "Packs"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: view === "types" ? "is-on" : "",
+              onClick: () => setView("types")
+            },
+            "Types"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: view === "ready" ? "is-on" : "",
+              onClick: () => setView("ready")
+            },
+            "Ready"
+          )
+        ),
+        view === "all" || view === "types" ? e(
+          "div",
+          {
+            className: "BankPanel-seg BankPanel-sortSeg",
+            role: "group",
+            "aria-label": "Bank sort mode"
+          },
+          SORT_OPTIONS.map(
+            (opt) => e(
+              "button",
+              {
+                type: "button",
+                key: opt.id,
+                className: sort === opt.id ? "is-on" : "",
+                title: "Sort by " + opt.label.toLowerCase(),
+                onClick: () => setSort(opt.id)
+              },
+              opt.label
+            )
+          )
+        ) : null
+      ),
+      e("div", { className: "BankPanel-body" }, body)
     );
   }
 
@@ -68323,6 +70754,17 @@ ${ESTIMATE_HINT}`,
         }
       ),
       panel(
+        "bank",
+        e(BankPanel, {
+          layoutEdit: deps.layoutEdit,
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("bank", size) : void 0
+        }),
+        {
+          style: MARKET_PANEL_STYLE,
+          hiddenBodyStyle: MARKET_PANEL_STYLE
+        }
+      ),
+      panel(
         "buffInfo",
         e(StockInfoPanel, {
           kind: "buff",
@@ -68955,6 +71397,22 @@ ${ESTIMATE_HINT}`,
         setMarketOpenSeq((n) => n + 1);
         setVisible("market", true);
         windowActionsRef.current.raiseWindow("market");
+      });
+    }, [setVisible]);
+    const bankVisible = visible("bank");
+    React.useEffect(() => {
+      setBankPanelOpen(bankVisible);
+    }, [bankVisible]);
+    const bankOpenRef = React.useRef(false);
+    bankOpenRef.current = bankVisible;
+    React.useEffect(() => {
+      return subscribeBankOpen((payload) => {
+        if (payload.toggle && bankOpenRef.current) {
+          setVisible("bank", false);
+          return;
+        }
+        setVisible("bank", true);
+        windowActionsRef.current.raiseWindow("bank");
       });
     }, [setVisible]);
     React.useEffect(() => {

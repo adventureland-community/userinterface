@@ -17,6 +17,7 @@ import {
   currentServerKey,
   ensureChromeShell,
   isCharOnCurrentServer,
+  observeCharacter,
   syncActionsEnabled,
   toggleObserve,
 } from "./commChrome/chromeActions";
@@ -24,6 +25,7 @@ import {
   invalidateCharacterCache,
   renderCharactersHud,
 } from "./commChrome/characterChips";
+import { syncObserveFollow } from "./commChrome/observeFollowHost";
 import { syncServerPingHud } from "./commChrome/pingHud";
 import {
   bindServerDdDoc,
@@ -36,7 +38,7 @@ import { eventsCacheFingerprint } from "./commChrome/serverEvents";
 import { installCommKeyboardPolicy } from "./keyboardPolicy";
 import { subscribeTick } from "../tick";
 
-export { clearObserve, currentServerKey, isCharOnCurrentServer, toggleObserve };
+export { clearObserve, currentServerKey, isCharOnCurrentServer, observeCharacter, toggleObserve };
 
 function suppressObserveUi(): void {
   const el = document.getElementById("observeui");
@@ -111,6 +113,7 @@ export function installCommChrome(): void {
       "";
     const server =
       (snap.serverRegion || "") + " " + (snap.serverIdentifier || "");
+    syncObserveFollow(snap.now, { currentServerKey, observeCharacter });
     if (name !== lastObs || server !== lastServer) {
       lastObs = name;
       lastServer = server;

@@ -4,6 +4,7 @@
 
 import type { MarketListingRow } from "./marketTypes";
 import { listingMatchesMarketQuery } from "./marketQuery";
+import { formatTradeGold } from "../tradeHelpers";
 
 export type MarketBrowseFilters = {
   query: string;
@@ -154,11 +155,12 @@ export const MARKET_GROUP_SORT_OPTIONS: Array<{
   { id: "offers", label: "Most offers" },
 ];
 
-/** True when cheapest sell is below best buy (arb / spread). */
+/** True when cheapest sell is below best buy with a visible spread. */
 export function marketGroupHasArb(g: MarketItemGroup): boolean {
-  return (
-    g.bestSale != null && g.bestWant != null && g.bestSale < g.bestWant
-  );
+  if (g.bestSale == null || g.bestWant == null) return false;
+  if (!(g.bestSale < g.bestWant)) return false;
+  // 999_999 vs 1_000_000 both render as 1.00M — not an arb players can see.
+  return formatTradeGold(g.bestSale) !== formatTradeGold(g.bestWant);
 }
 
 /** Both a priced sell and a priced buy exist (spread is meaningful). */

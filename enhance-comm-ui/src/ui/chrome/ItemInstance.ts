@@ -25,10 +25,18 @@ export type ItemInstanceProps = {
    * readable qty/level badges. Default true.
    */
   stockChrome?: boolean;
+  /** Show quantity badge even when q is 0 or 1 (recipe cards). */
+  forceShowQ?: boolean;
+  /** Override qty badge color (e.g. missing reagents). */
+  qtyColor?: string;
 };
 
-function formatQty(q: number | undefined): string | null {
-  if (q == null || !Number.isFinite(q) || q <= 1) return null;
+function formatQty(
+  q: number | undefined,
+  forceShowQ?: boolean,
+): string | null {
+  if (q == null || !Number.isFinite(q)) return null;
+  if (!forceShowQ && q <= 1) return null;
   if (q >= 1_000_000) return Math.floor(q / 1_000_000) + "m";
   if (q >= 10_000) return Math.floor(q / 1000) + "k";
   return String(Math.floor(q));
@@ -53,11 +61,13 @@ export function ItemInstance(props: ItemInstanceProps): any {
     className,
     title,
     stockChrome = true,
+    forceShowQ,
+    qtyColor,
   } = props;
 
   // Match stock hovername: G.titles prefix + upgrade/compound suffixes.
   const tip = title || itemInstanceLabel(name, { p, level }) || name;
-  const qtyLabel = formatQty(q);
+  const qtyLabel = formatQty(q, forceShowQ);
   const levelLabel = formatLevel(level);
 
   React.useEffect(() => {
@@ -141,6 +151,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
           {
             className: "ecu-item-badge ecu-item-badge--qty",
             title: "Quantity " + (q != null ? q : qtyLabel),
+            style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : undefined,
           },
           qtyLabel,
         )

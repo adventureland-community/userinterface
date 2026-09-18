@@ -6,7 +6,16 @@
  */
 
 import { itemInstanceLabel } from "../gameIcon";
+import {
+  applyQuerySearchSuggestion,
+  trailingFieldContext,
+  type QuerySearchSuggestion,
+  type QuerySearchSection,
+} from "../querySearch";
 import type { MarketListingRow } from "./marketTypes";
+
+export type MarketSearchSuggestion = QuerySearchSuggestion;
+export type MarketSearchSection = QuerySearchSection;
 
 export type MarketAmount = { op: "=" | ">" | ">=" | "<" | "<="; n: number };
 
@@ -562,57 +571,42 @@ export function rewriteIsInFilter(
   return keep.join(" ").trim();
 }
 
+const MARKET_TRAILING_OPS = [
+  "item",
+  "merchant",
+  "mer",
+  "title",
+  "stat",
+  "attr",
+  "has",
+  "is",
+  "level",
+  "price",
+  "map",
+  "server",
+] as const;
+
+const MARKET_TRAILING_ALIASES: Record<string, string> = { mer: "merchant" };
+
 export function trailingOpContext(raw: string): {
   op: string;
   value: string;
   negate: boolean;
   start: number;
 } | null {
-  const s = String(raw || "");
-  const m =
-    /(^|\s)(-?)(item|merchant|mer|title|stat|attr|has|is|level|price|map|server):([^\s]*)$/i.exec(
-      s,
-    );
-  if (!m) return null;
-  return {
-    op: m[3].toLowerCase() === "mer" ? "merchant" : m[3].toLowerCase(),
-    value: m[4] || "",
-    negate: !!m[2],
-    start: m.index + m[1].length,
-  };
+  return trailingFieldContext(raw, MARKET_TRAILING_OPS, MARKET_TRAILING_ALIASES);
 }
 
 export function applySearchSuggestion(
   raw: string,
   row: { kind: string; value?: string; insert?: string },
 ): string {
-  const ctx = trailingOpContext(raw);
-  if (row.kind === "value" && ctx && row.value != null) {
-    const before = raw.slice(0, ctx.start);
-    const neg = ctx.negate ? "-" : "";
-    return (before + neg + ctx.op + ":" + row.value + " ").replace(/\s+/g, " ");
-  }
-  if (row.insert != null) {
-    const trimmed = raw.replace(/\s+$/, "");
-    const needsSpace = !!(trimmed && !/:$/.test(trimmed));
-    return trimmed + (needsSpace ? " " : "") + row.insert;
-  }
-  return raw;
+  return applyQuerySearchSuggestion(
+    raw,
+    row as QuerySearchSuggestion,
+    trailingOpContext(raw),
+  );
 }
-
-export type MarketSearchSuggestion = {
-  kind: "op" | "value";
-  label: string;
-  hint: string;
-  ico: string;
-  insert?: string;
-  value?: string;
-};
-
-export type MarketSearchSection = {
-  title: string;
-  rows: MarketSearchSuggestion[];
-};
 
 function uniqueSorted(list: string[]): string[] {
   const seen: Record<string, boolean> = Object.create(null);

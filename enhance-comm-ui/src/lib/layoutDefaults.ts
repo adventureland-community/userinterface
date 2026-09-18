@@ -47,6 +47,7 @@ export const DEFAULT_LAYOUT_DESKTOP: Record<PanelId, PanelPos> = {
   mapInfo: { x: 50, y: 4.8, anchor: "tc" },
   paperdoll: { x: 0.5, y: 30, anchor: "tl", frameW: 274, frameH: 400 },
   market: { x: 50, y: 48, anchor: "center", frameW: 1100, frameH: 700 },
+  bank: { x: 50, y: 48, anchor: "center", frameW: 900, frameH: 640 },
   buffInfo: {
     x: 0.8,
     y: 10,
@@ -173,6 +174,7 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
   mapInfo: { x: 50, y: 5, anchor: "tc" },
   paperdoll: { x: 1, y: 28, anchor: "tl" },
   market: { x: 50, y: 46, anchor: "center", frameW: 980, frameH: 640 },
+  bank: { x: 50, y: 46, anchor: "center", frameW: 860, frameH: 600 },
   buffInfo: { x: 1, y: 12, anchor: "tl", autoSize: true },
   itemInfo: { x: 17, y: 12, anchor: "tl", autoSize: true },
   kills: { x: 99.2, y: 72, anchor: "tr" },
@@ -229,6 +231,7 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
   mapInfo: { x: 50, y: 4.5, anchor: "tc" },
   paperdoll: { x: 50, y: 36, anchor: "center" },
   market: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
+  bank: { x: 50, y: 44, anchor: "center", frameW: 360, frameH: 520 },
   buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
   itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
   kills: { x: 98, y: 58, anchor: "br" },

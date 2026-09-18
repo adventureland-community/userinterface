@@ -2,8 +2,10 @@ import {
   currentServerKey,
   ensureChromeShell,
   isCharOnCurrentServer,
+  observeCharacter,
   syncActionsEnabled,
 } from "./chromeActions";
+import { syncObserveFollow } from "./observeFollowHost";
 import { esc } from "./types";
 
 let rcCache = "-1";
@@ -16,6 +18,8 @@ export function invalidateCharacterCache(): void {
 
 export function renderCharactersHud(): void {
   ensureChromeShell();
+  // Roster server keys may change without an observe/server tick — follow hops.
+  syncObserveFollow(Date.now(), { currentServerKey, observeCharacter });
   const chars = (window.X && window.X.characters) || [];
   const curKey = currentServerKey();
   let key = "cur:" + curKey + "|";
@@ -103,7 +107,8 @@ export function renderCharactersHud(): void {
       " · " +
       esc(serverLabel) +
       (active ? " · Click again to stop observing" : "") +
-      (offServer && !active ? " · Click to switch server & observe" : "");
+      (offServer && !active ? " · Click to switch server & observe" : "") +
+      (offServer && active ? " · Following — click to reconnect if stuck" : "");
     html +=
       "<button type='button' class='ecu-char" +
       (active ? " is-active" : "") +

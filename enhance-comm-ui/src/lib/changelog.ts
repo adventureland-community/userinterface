@@ -70,7 +70,13 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
   {
     label: "Market",
     detail:
-      "Buy and sell across nearby and catalog merchants — Travel when out of range.",
+      "Browse, buy, sell, and join giveaways across live + catalog merchants — Travel when out of range.",
+    kind: "feature",
+  },
+  {
+    label: "Bank",
+    detail:
+      "Account vault browser with market-style search, packs, and type groups — Refresh reloads from the server.",
     kind: "feature",
   },
   {
@@ -106,28 +112,34 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    id: "0.9.12",
-    title: "0.9.12",
-    date: "2026-09-10",
+    id: "0.10.0",
+    title: "0.10.0",
+    date: "2026-09-15",
     summary:
-      "Market hub replaces the Trade panel — Buy|Sell desks, realm catalog, Travel, and chrome Market button.",
+      "Market hub replaces Trade, account Bank browser with market-style search, and observe-follow across servers.",
     highlights: [
       {
         label: "Market hub",
         detail:
-          "One Market window with Buy (search/compare for-sale listings) and Sell (fulfill buy orders, your stand, mirror/undercut). Chrome Market button; inspecting a merchant opens Market focused on them.",
+          "You (bag + stand) | item grid | Focus. Chrome Market button; inspecting a merchant opens Market on them. Trade panel is gone.",
+        kind: "feature",
+      },
+      {
+        label: "Account Bank",
+        detail:
+          "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared ⌕ field), All / Packs / Types / Ready (Combine·Craft × Ready·Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, Refresh + load age.",
         kind: "feature",
       },
       {
         label: "Live + catalog",
         detail:
-          "Nearby entities merge with pull_merchants. Live slots win when the merchant is in vision; catalog-only stands stay visible with Travel.",
+          "Nearby entities merge with pull_merchants. Live slots win in vision; catalog-only stands stay visible with Travel.",
         kind: "feature",
       },
       {
-        label: "Travel then trade",
+        label: "Travel + follow",
         detail:
-          "Out-of-range listings Travel via change_server then smart_move (overlay-owned itinerary). Catalog / closed-stand trade5+ buy only in range with a stale-listing confirm.",
+          "Out-of-range Travel does change_server then smart_move. Comm re-observes when your watched character hops realms so Market Travel stays usable.",
         kind: "feature",
       },
     ],
@@ -137,15 +149,51 @@ export const CHANGELOG: ChangelogEntry[] = [
         summary: "Trade panel retired — Market is the only trade surface.",
         items: [
           {
-            label: "Buy desk",
+            label: "Browse grid",
             detail:
-              "Filters for afford, party merchants, and search tokens (item: / merchant: / map:). Best-price sort within item.",
+              "Grouped listings with sell/buy/give counts, dual and arb borders (arb only when sell/buy labels differ), favorites (★ pin + filter), Arb sort by buy−sell when both sides are priced, Giveaways facet / is:giveaway.",
             kind: "feature",
           },
           {
-            label: "Sell desk",
+            label: "Focus + stand",
             detail:
-              "Your stand grid (list/delist via existing trade controls), In bag buy-order filter, Mirror / Undercut from browse sales.",
+              "Offer cards with merchant, server · map, qty, distance; Join on giveaways; Pack/All stand stacking; Mirror / Undercut from browse sales.",
+            kind: "feature",
+          },
+          {
+            label: "Search + filters",
+            detail:
+              "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B).",
+            kind: "feature",
+          },
+        ],
+      },
+      {
+        title: "Bank",
+        summary: "Account vault — shared across characters, refreshed on demand.",
+        items: [
+          {
+            label: "Search",
+            detail:
+              "Shared Market ⌕ field: item:, type:, pack:, title:, level:, is:compound|upgrade|craft|exchange, OR/|, negation. Sectioned suggestions; Enter keeps free text (staff) unless you arrow/hover a row; picking item: folds the last word (staff → item:staff); picking a concrete item replaces it. Matching items list above field ops while typing.",
+            kind: "feature",
+          },
+          {
+            label: "Browse",
+            detail:
+              "All (merged stacks), Packs (every vault board like al-data-explorer — no dropdown), Types, or Ready. Ready mirrors explorer insights: Combine / Craft tabs, Ready vs Almost (1-short / cascade), recipe cards with result ← inputs. Sort All/Types like explorer: Category (default), Quantity, Stack — then type, name, level. Four-corner fullscreen expand lifts Bank like Chat. Search dims non-matches on pack boards. Click an item for stock readonly tip.",
+            kind: "feature",
+          },
+        ],
+      },
+      {
+        title: "Observe",
+        summary: "Stay on your character when they change servers.",
+        items: [
+          {
+            label: "Follow across realms",
+            detail:
+              "While observing, if X.characters says they moved, Comm force-reconnects to their realm (secret + server address) — stock same-name observe only homes the camera. Toast names the destination (e.g. EU I).",
             kind: "feature",
           },
         ],

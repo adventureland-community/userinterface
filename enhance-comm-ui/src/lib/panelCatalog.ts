@@ -31,6 +31,7 @@ export type PanelId =
   | "chat"
   | "bag"
   | "market"
+  | "bank"
   | "mail"
   | "toggles";
 
@@ -142,6 +143,12 @@ export const PANEL_CATALOG: Record<PanelId, PanelDef> = {
   bag: { label: "Bag", closable: true, framePersist: "none" },
   market: {
     label: "Market",
+    closable: true,
+    defaultVisible: false,
+    shell: "fill",
+  },
+  bank: {
+    label: "Bank",
     closable: true,
     defaultVisible: false,
     shell: "fill",

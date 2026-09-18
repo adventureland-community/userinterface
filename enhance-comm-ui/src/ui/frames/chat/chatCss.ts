@@ -270,20 +270,25 @@ export const CHAT_PANEL_CSS = `
   cursor: pointer;
   flex: 0 0 auto;
   margin-left: 4px;
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid #666;
   background: #22252c;
   color: #ddd;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: normal;
-  line-height: 18px;
-  letter-spacing: 0.04em;
+  line-height: 0;
 }
 .ecu-chat-expand.is-expanded {
   border-color: var(--ecu-chat-accent);
   color: #ffe08a;
   background: #2a2410;
+}
+.ecu-chat-expand .ecu-expand-glyph {
+  display: block;
 }
 .ecu-chat-title-toggle {
   cursor: pointer;

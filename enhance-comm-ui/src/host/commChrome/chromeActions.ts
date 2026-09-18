@@ -1,7 +1,9 @@
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
 import { openMarket } from "../market";
+import { openBank } from "../bank";
 import { openChat, syncChatBadge } from "../chat";
+import { clearObserveFollowSticky } from "./observeFollowHost";
 
 /**
  * Leave observe mode: reconnect as pure spectator on the current server.
@@ -9,6 +11,7 @@ import { openChat, syncChatBadge } from "../chat";
  * Never assign window.character (Bag borrow must stay sync-only).
  */
 export function clearObserve(): void {
+  clearObserveFollowSticky();
   if (typeof window.init_socket !== "function") return;
   // Destroy+reconnect without secret → welcome has no data.character → observing stays null.
   window.init_socket({});
@@ -39,19 +42,57 @@ export function isCharOnCurrentServer(char: { server?: string }): boolean {
   return String(char.server) === key;
 }
 
+/** Human label for a roster/server key (`SR_EUI` → `EU I`). */
+export function formatServerKeyLabel(serverKey: string): string {
+  const key = String(serverKey || "");
+  if (!key) return "";
+  if (typeof window.server_to_ui === "function") {
+    const ui = window.server_to_ui(key);
+    if (ui) return String(ui);
+  }
+  const servers = (window.X && window.X.servers) || [];
+  for (let i = 0; i < servers.length; i++) {
+    const s = servers[i];
+    if (s.key != null && String(s.key) === key) {
+      return String(s.region) + " " + String(s.name);
+    }
+  }
+  return key;
+}
+
+function connectObserveWithSecret(ch: {
+  secret?: string;
+  server?: string | null;
+}): boolean {
+  if (!ch.secret || ch.server == null) return false;
+  const servers = (window.X && window.X.servers) || [];
+  for (let j = 0; j < servers.length; j++) {
+    const server = servers[j];
+    if (server.key != null && String(server.key) === String(ch.server)) {
+      if (!server.address) return false;
+      (window as any).server_address = server.address;
+      (window as any).server_path = server.path;
+      if (typeof window.init_socket !== "function") return false;
+      window.init_socket({ secret: ch.secret });
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Switch to the character's realm (if needed) then observe — mirrors stock
  * `observe_character` (`server_address`/`path` + `init_socket({secret})`).
- * Clicking the active chip again clears watch (deselect).
+ * Unlike `toggleObserve`, never clears an existing watch on the same name
+ * (needed to follow a character after they `change_server`).
+ *
+ * When the roster says they are on another realm, always force
+ * address/path + init_socket — stock observe_character(same name) only
+ * emits o:home and would leave Comm stuck on the old server.
  */
-export function toggleObserve(name: string): void {
+export function observeCharacter(name: string): boolean {
   const n = String(name || "");
-  if (!n) return;
-  const obs = window.observing;
-  if (obs && obs.name === n) {
-    clearObserve();
-    return;
-  }
+  if (!n) return false;
 
   const chars = (window.X && window.X.characters) || [];
   let ch: (typeof chars)[number] | null = null;
@@ -62,27 +103,43 @@ export function toggleObserve(name: string): void {
     }
   }
 
-  // Stock path: finds server by key, sets address/path, init_socket({secret}).
-  if (typeof window.observe_character === "function") {
+  const mustHop = !!(ch && !isCharOnCurrentServer(ch));
+  if (!mustHop && typeof window.observe_character === "function") {
     const ok = window.observe_character(n);
-    if (ok !== false) return;
+    if (ok !== false) return true;
   }
 
-  // Fallback when stock is missing or returned false (no secret / no server).
-  if (!ch || !ch.secret || ch.server == null) return;
-  const servers = (window.X && window.X.servers) || [];
-  for (let j = 0; j < servers.length; j++) {
-    const server = servers[j];
-    if (server.key != null && String(server.key) === String(ch.server)) {
-      if (!server.address) return;
-      (window as any).server_address = server.address;
-      (window as any).server_path = server.path;
-      if (typeof window.init_socket === "function") {
-        window.init_socket({ secret: ch.secret });
-      }
-      return;
+  if (!ch) return false;
+  return connectObserveWithSecret(ch);
+}
+
+/**
+ * Switch to the character's realm (if needed) then observe — mirrors stock
+ * `observe_character` (`server_address`/`path` + `init_socket({secret})`).
+ * Clicking the active chip again clears watch (deselect).
+ */
+export function toggleObserve(name: string): void {
+  const n = String(name || "");
+  if (!n) return;
+  const obs = window.observing;
+  const chars = (window.X && window.X.characters) || [];
+  let ch: (typeof chars)[number] | null = null;
+  for (let i = 0; i < chars.length; i++) {
+    if (chars[i].name === n) {
+      ch = chars[i];
+      break;
     }
   }
+  if (obs && obs.name === n) {
+    // Still "watching" locally but roster says they left this realm — follow.
+    if (ch && !isCharOnCurrentServer(ch)) {
+      observeCharacter(n);
+      return;
+    }
+    clearObserve();
+    return;
+  }
+  observeCharacter(n);
 }
 
 function onFollowClick(ev: Event): void {
@@ -134,6 +191,12 @@ function onMarketClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
   openMarket({ toggle: true });
+}
+
+function onBankClick(ev: Event): void {
+  ev.preventDefault();
+  ev.stopPropagation();
+  openBank({ toggle: true });
 }
 
 /**
@@ -196,6 +259,7 @@ type ActionKind =
   | "chat"
   | "mail"
   | "market"
+  | "bank"
   | "docs"
   | "mainframe";
 
@@ -210,6 +274,7 @@ const ACTION_ICONS: Record<ActionKind, string> = {
   mail: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 7l9 7 9-7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   market:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16l-1 12H5L4 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M9 7V5a3 3 0 0 1 6 0v2M8 11h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
+  bank: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="10" width="18" height="11" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6 10V7a6 6 0 0 1 12 0v3M12 14v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   docs: '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h8l4 4v12H5V4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter"/><path d="M13 4v4h4M8 12h8M8 16h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
   mainframe:
     '<svg class="ecu-btn-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 8h10M7 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/><path d="M6 20h12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>',
@@ -260,6 +325,7 @@ export function buildActionsEl(): HTMLElement {
     mk("chat", "Chat", "Server chat — send as observed character", onChatClick),
     mk("mail", "Mail", "Account mail", onMailClick),
     mk("market", "Market", "Buy and sell across merchants", onMarketClick),
+    mk("bank", "Bank", "Account bank — search packs and stacks", onBankClick),
     mk(
       "command",
       "Command",
@@ -284,6 +350,7 @@ function syncActionTourAttrs(actions: HTMLElement): void {
     Chat: "btn-chat",
     Mail: "btn-mail",
     Market: "btn-market",
+    Bank: "btn-bank",
     Command: "btn-command",
     Docs: "btn-docs",
     Mainframe: "btn-mainframe",
@@ -379,7 +446,8 @@ export function ensureChromeShell(): void {
       !actionsEl.querySelector(".ecu-btn-icon-only") ||
       !actionsEl.querySelector('[data-ecu-tour="btn-chat"]') ||
       !actionsEl.querySelector('[data-ecu-tour="btn-docs"]') ||
-      !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]')
+      !actionsEl.querySelector('[data-ecu-tour="btn-mainframe"]') ||
+      !actionsEl.querySelector('[data-ecu-tour="btn-bank"]')
     ) {
       const next = buildActionsEl();
       actionsEl.replaceWith(next);

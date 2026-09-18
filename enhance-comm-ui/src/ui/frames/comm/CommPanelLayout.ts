@@ -52,6 +52,7 @@ import { CommandPanel } from "../CommandPanel";
 import { ChatPanel } from "../chat/ChatPanel";
 import { BagPanel } from "../BagPanel";
 import { MarketPanel } from "../MarketPanel";
+import { BankPanel } from "../BankPanel";
 import { MailPanel } from "../mail/MailPanel";
 import {
   BOSS_BAR_PANEL_STYLE,
@@ -457,6 +458,21 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         seedMerchant: deps.marketMerchant,
         seedDesk: deps.marketDesk,
         seedSeq: deps.marketOpenSeq,
+      }),
+      {
+        style: MARKET_PANEL_STYLE,
+        hiddenBodyStyle: MARKET_PANEL_STYLE,
+      },
+    ),
+
+    panel(
+      "bank",
+      e(BankPanel, {
+        layoutEdit: deps.layoutEdit,
+        onFrameSizeRestore: deps.onResizeFrame
+          ? (size: { w: number; h: number }) =>
+              deps.onResizeFrame!("bank", size)
+          : undefined,
       }),
       {
         style: MARKET_PANEL_STYLE,
