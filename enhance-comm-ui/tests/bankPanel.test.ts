@@ -6,6 +6,7 @@ import {
   packDisplayLabel,
   sortBankItems,
 } from "../src/lib/bank/bankBrowse";
+import { bankQtyFor, buildBankQtyIndex } from "../src/lib/bank/bankStock";
 import {
   bankItemMatchesQuery,
   filterBankItems,
@@ -20,6 +21,12 @@ import {
   groupCombineSteps,
 } from "../src/lib/bank/bankReady";
 import { parseLoadBankPayload } from "../src/host/bank/api";
+import {
+  changeBadgeQuantity,
+  changeCaption,
+  compareBankSnapshots,
+  filterBankChanges,
+} from "../src/lib/bank/bankDiff";
 
 describe("bankBrowse", () => {
   it("flattens packs and merges identical stacks", () => {
@@ -229,5 +236,128 @@ describe("parseLoadBankPayload", () => {
 
   it("rejects failed payloads", () => {
     assert.equal(parseLoadBankPayload({ failed: true }), null);
+  });
+});
+
+describe("bankStock", () => {
+  it("indexes vault qty by name/level/title key", () => {
+    const snap = {
+      packs: {
+        items0: [
+          { name: "hpot0", q: 100 },
+          { name: "fireblade", level: 7, q: 1 },
+          { name: "hpot0", q: 50 },
+        ],
+      },
+      gold: 0,
+      loadedAt: 1,
+    };
+    const idx = buildBankQtyIndex(snap);
+    assert.equal(bankQtyFor(idx, { name: "hpot0" }), 150);
+    assert.equal(bankQtyFor(idx, { name: "fireblade", level: 7 }), 1);
+    assert.equal(bankQtyFor(idx, { name: "fireblade", level: 0 }), 0);
+  });
+});
+
+describe("bankDiff", () => {
+  it("reports added, removed, qty/stack, gold, and slot deltas", () => {
+    const prev = {
+      packs: {
+        items0: [
+          { name: "hpot0", q: 100 },
+          { name: "sword", level: 1 },
+        ],
+      },
+      gold: 1000,
+      loadedAt: 1,
+    };
+    const next = {
+      packs: {
+        items0: [
+          { name: "hpot0", q: 250 },
+          { name: "hpot0", q: 50 },
+          { name: "shield", level: 0 },
+        ],
+      },
+      gold: 1500,
+      loadedAt: 2,
+    };
+    const summary = compareBankSnapshots(prev, next);
+    assert.equal(summary.hasChanges, true);
+    assert.equal(summary.goldDelta, 500);
+    assert.equal(summary.usedSlotsDelta, 1);
+    const kinds = summary.changes.map((c) => c.kind).sort();
+    assert.deepEqual(kinds, ["added", "changed", "removed"]);
+    const added = summary.changes.find((c) => c.kind === "added");
+    assert.ok(added);
+    assert.equal(added!.item.name, "shield");
+    const removed = summary.changes.find((c) => c.kind === "removed");
+    assert.ok(removed);
+    assert.equal(removed!.item.name, "sword");
+    const changed = summary.changes.find((c) => c.kind === "changed");
+    assert.ok(changed);
+    assert.equal(changed!.item.name, "hpot0");
+    assert.equal(changed!.deltaQ, 200);
+    assert.equal(changed!.deltaStacks, 1);
+    assert.equal(changeCaption(added!), "Added");
+    assert.equal(changeCaption(removed!), "Removed");
+    assert.match(changeCaption(changed!), /\+200 qty/);
+    assert.equal(changeBadgeQuantity(changed!), 200);
+  });
+
+  it("filters gear and quantity like explorer", () => {
+    const changes = [
+      {
+        kind: "added" as const,
+        item: {
+          key: "a",
+          name: "hpot0",
+          q: 10,
+          locs: [{ pack: "items0", index: 0, q: 10 }],
+        },
+      },
+      {
+        kind: "changed" as const,
+        item: {
+          key: "b",
+          name: "fireblade",
+          level: 7,
+          q: 2,
+          locs: [{ pack: "items0", index: 1, q: 1 }],
+        },
+        deltaQ: 1,
+        deltaStacks: 0,
+      },
+      {
+        kind: "added" as const,
+        item: {
+          key: "c",
+          name: "intearring",
+          level: 2,
+          q: 1,
+          locs: [{ pack: "items0", index: 2, q: 1 }],
+        },
+      },
+    ];
+    const G = {
+      items: {
+        fireblade: { upgrade: true },
+        intearring: { compound: true },
+        hpot0: { type: "pot" },
+      },
+    };
+    assert.equal(filterBankChanges(changes, "all", G).length, 3);
+    assert.equal(filterBankChanges(changes, "gear", G).length, 2);
+    assert.equal(filterBankChanges(changes, "quantity", G).length, 1);
+  });
+
+  it("returns empty when either snapshot is missing", () => {
+    const empty = compareBankSnapshots(null, {
+      packs: {},
+      gold: 0,
+      loadedAt: 1,
+    });
+    assert.equal(empty.hasChanges, false);
+    assert.equal(empty.changes.length, 0);
   });
 });

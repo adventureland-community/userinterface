@@ -29,6 +29,8 @@ export type ItemInstanceProps = {
   forceShowQ?: boolean;
   /** Override qty badge color (e.g. missing reagents). */
   qtyColor?: string;
+  /** Account bank quantity — top-right badge (Market / bag overlays). */
+  bankQ?: number;
 };
 
 function formatQty(
@@ -63,12 +65,17 @@ export function ItemInstance(props: ItemInstanceProps): any {
     stockChrome = true,
     forceShowQ,
     qtyColor,
+    bankQ,
   } = props;
 
   // Match stock hovername: G.titles prefix + upgrade/compound suffixes.
   const tip = title || itemInstanceLabel(name, { p, level }) || name;
   const qtyLabel = formatQty(q, forceShowQ);
   const levelLabel = formatLevel(level);
+  const bankLabel =
+    bankQ != null && Number.isFinite(bankQ) && bankQ > 0
+      ? formatQty(bankQ, true)
+      : null;
 
   React.useEffect(() => {
     const el = ref.current;
@@ -156,6 +163,16 @@ export function ItemInstance(props: ItemInstanceProps): any {
           qtyLabel,
         )
       : null,
+    bankLabel
+      ? e(
+          "span",
+          {
+            className: "ecu-item-badge ecu-item-badge--bank",
+            title: "Bank ×" + (bankQ != null ? bankQ : bankLabel),
+          },
+          bankLabel,
+        )
+      : null,
   );
 }
 
@@ -193,6 +210,12 @@ export const ITEM_INSTANCE_BADGE_CSS = `
   bottom: -2px;
   color: #cfcfcf;
 }
+.ecu-item-badge--bank {
+  right: -2px;
+  top: -2px;
+  color: #e8c96a;
+  border-color: #8a7340;
+}
 `;
 
 const BADGE_STYLE_ID = "ecu-item-instance-badge-css";
@@ -200,9 +223,11 @@ const BADGE_STYLE_ID = "ecu-item-instance-badge-css";
 /** Idempotent — safe from ItemInstance / TradeSlotCell / mail hosts. */
 export function ensureItemInstanceBadgeCss(): void {
   if (typeof document === "undefined") return;
-  if (document.getElementById(BADGE_STYLE_ID)) return;
-  const el = document.createElement("style");
-  el.id = BADGE_STYLE_ID;
+  let el = document.getElementById(BADGE_STYLE_ID) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = BADGE_STYLE_ID;
+    document.head.appendChild(el);
+  }
   el.textContent = ITEM_INSTANCE_BADGE_CSS;
-  document.head.appendChild(el);
 }

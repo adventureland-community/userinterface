@@ -5,7 +5,19 @@
  */
 
 import { getReact, e } from "../../host/react";
-import { loadBank } from "../../host/bank";
+import { ensureBankSnapshot, hydrateBankCacheFromIdb } from "../../host/bank";
+import {
+  changeBadgeQuantity,
+  changeCaption,
+  changeQuantityColor,
+  changeToneClass,
+  compareBankSnapshots,
+  filterBankChanges,
+  formatBankChangeTip,
+  formatRefreshSummaryLine,
+  type BankChangeFilter,
+  type BankRefreshSummary,
+} from "../../lib/bank/bankDiff";
 import {
   aggregateBankItems,
   flattenBankSlots,
@@ -254,24 +266,53 @@ export function BankPanel(props: BankPanelProps): any {
   );
   const [tick, setTick] = React.useState(0);
   const [expanded, setExpanded] = React.useState(false);
+  const [refreshSummary, setRefreshSummary] = React.useState(
+    null as BankRefreshSummary | null,
+  );
+  const [changeFilter, setChangeFilter] = React.useState(
+    "all" as BankChangeFilter,
+  );
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const preExpandSizeRef = React.useRef(null as { w: number; h: number } | null);
+  const snapRef = React.useRef(null as BankSnapshot | null);
+  snapRef.current = snap;
 
-  const refresh = React.useCallback(() => {
-    setLoading(true);
-    setError(null);
-    loadBank().then((res) => {
-      setLoading(false);
-      if (res.ok === false) {
-        setError(res.reason);
-        return;
-      }
-      setSnap(res.snapshot);
-    });
-  }, []);
+  const refresh = React.useCallback(
+    (opts?: { force?: boolean; baseline?: BankSnapshot | null }) => {
+      const force = !(opts && opts.force === false);
+      setLoading(true);
+      setError(null);
+      const prev =
+        opts && opts.baseline !== undefined
+          ? opts.baseline
+          : snapRef.current;
+      ensureBankSnapshot({ force }).then((res) => {
+        setLoading(false);
+        if (res.ok === false) {
+          setError(res.reason);
+          return;
+        }
+        if (force && prev) {
+          const summary = compareBankSnapshots(prev, res.snapshot);
+          setRefreshSummary(summary.hasChanges ? summary : null);
+        }
+        setSnap(res.snapshot);
+      });
+    },
+    [],
+  );
 
   React.useEffect(() => {
-    refresh();
+    let cancelled = false;
+    void (async () => {
+      const fromIdb = await hydrateBankCacheFromIdb();
+      if (cancelled) return;
+      if (fromIdb) setSnap(fromIdb);
+      refresh({ force: true, baseline: fromIdb });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [refresh]);
 
   React.useEffect(() => {
@@ -370,6 +411,15 @@ export function BankPanel(props: BankPanelProps): any {
   const ageLabel =
     snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
   void tick;
+
+  const visibleChanges = React.useMemo(() => {
+    if (!refreshSummary) return [] as BankRefreshSummary["changes"];
+    return filterBankChanges(
+      refreshSummary.changes,
+      changeFilter,
+      (window as any).G,
+    );
+  }, [refreshSummary, changeFilter]);
 
   const renderAggGrid = (items: BankAggItem[]) => {
     if (!items.length) {
@@ -883,11 +933,117 @@ export function BankPanel(props: BankPanelProps): any {
         loading ? "Loading…" : "Refresh",
       ),
     ),
-    e(
-      "div",
-      { className: "BankPanel-note" },
-      "Account bank · shared across characters. Recent vault moves may not appear until Refresh.",
-    ),
+    refreshSummary
+      ? e(
+          "div",
+          {
+            className: "BankPanel-changes",
+            role: "status",
+          },
+          e(
+            "div",
+            { className: "BankPanel-changesHead" },
+            e(
+              "span",
+              { className: "BankPanel-changesTitle" },
+              formatRefreshSummaryLine(
+                refreshSummary,
+                visibleChanges.length,
+              ),
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "BankPanel-btn BankPanel-changesDismiss",
+                onClick: () => setRefreshSummary(null),
+              },
+              "Dismiss",
+            ),
+          ),
+          e(
+            "div",
+            {
+              className: "BankPanel-seg BankPanel-changesFilter",
+              role: "group",
+              "aria-label": "Change filter",
+            },
+            (["all", "gear", "quantity"] as BankChangeFilter[]).map(
+              (mode) =>
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    key: mode,
+                    className: changeFilter === mode ? "is-on" : "",
+                    onClick: () => setChangeFilter(mode),
+                  },
+                  mode === "all"
+                    ? "All"
+                    : mode === "gear"
+                      ? "Gear"
+                      : "Quantity",
+                ),
+            ),
+          ),
+          visibleChanges.length === 0
+            ? e(
+                "div",
+                { className: "BankPanel-changesEmpty" },
+                refreshSummary.changes.length
+                  ? "No changes match this filter."
+                  : "No item changes (gold/slots only).",
+              )
+            : e(
+                "div",
+                { className: "BankPanel-changesGrid" },
+                visibleChanges.map(
+                  (
+                    change: BankRefreshSummary["changes"][number],
+                    i: number,
+                  ) => {
+                    const tone = changeToneClass(
+                      change.kind,
+                      change.deltaQ,
+                    );
+                    return e(
+                      "div",
+                      {
+                        key:
+                          change.kind +
+                          ":" +
+                          change.item.key +
+                          ":" +
+                          i,
+                        className: "BankPanel-changeTile " + tone,
+                      },
+                      e(ItemInstance, {
+                        name: change.item.name,
+                        level: change.item.level,
+                        q: changeBadgeQuantity(change),
+                        p:
+                          change.item.p != null
+                            ? String(change.item.p)
+                            : undefined,
+                        size: 40,
+                        forceShowQ: true,
+                        qtyColor: changeQuantityColor(
+                          change.kind,
+                          change.deltaQ,
+                        ),
+                        title: formatBankChangeTip(change),
+                      }),
+                      e(
+                        "span",
+                        { className: "BankPanel-changeCap" },
+                        changeCaption(change),
+                      ),
+                    );
+                  },
+                ),
+              ),
+        )
+      : null,
     e(
       "div",
       { className: "BankPanel-tools" },

@@ -7,3 +7,15 @@ export {
 export type { BankOpenPayload } from "./bankSession";
 export { loadBank, parseLoadBankPayload } from "./api";
 export type { BankLoadResult } from "./api";
+export {
+  ensureBankSnapshot,
+  getCachedBankSnapshot,
+  setCachedBankSnapshot,
+  subscribeBankSnapshot,
+  hydrateBankCacheFromIdb,
+} from "./bankCache";
+export {
+  bankAccountKey,
+  hydrateBankSnapshotFromIdb,
+  schedulePersistBankSnapshot,
+} from "./bankPersist";

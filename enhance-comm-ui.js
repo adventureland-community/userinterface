@@ -886,16 +886,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners15 = [];
+    const listeners16 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners15.length; i++) listeners15[i](ev);
+        for (let i = 0; i < listeners16.length; i++) listeners16[i](ev);
       },
       subscribe: (listener) => {
-        listeners15.push(listener);
+        listeners16.push(listener);
         return () => {
-          const idx = listeners15.indexOf(listener);
-          if (idx >= 0) listeners15.splice(idx, 1);
+          const idx = listeners16.indexOf(listener);
+          if (idx >= 0) listeners16.splice(idx, 1);
         };
       }
     };
@@ -8540,7 +8540,7 @@ ${fightHoverTip(src)}`
         },
         {
           label: "Account Bank",
-          detail: "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared \u2315 field), All / Packs / Types / Ready (Combine\xB7Craft \xD7 Ready\xB7Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, Refresh + load age.",
+          detail: "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared \u2315 field), All / Packs / Types / Ready (Combine\xB7Craft \xD7 Ready\xB7Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, IndexedDB cache + Refresh what-changed.",
           kind: "feature"
         },
         {
@@ -8571,7 +8571,7 @@ ${fightHoverTip(src)}`
             },
             {
               label: "Search + filters",
-              detail: "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B).",
+              detail: "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
               kind: "feature"
             }
           ]
@@ -8588,6 +8588,11 @@ ${fightHoverTip(src)}`
             {
               label: "Browse",
               detail: "All (merged stacks), Packs (every vault board like al-data-explorer \u2014 no dropdown), Types, or Ready. Ready mirrors explorer insights: Combine / Craft tabs, Ready vs Almost (1-short / cascade), recipe cards with result \u2190 inputs. Sort All/Types like explorer: Category (default), Quantity, Stack \u2014 then type, name, level. Four-corner fullscreen expand lifts Bank like Chat. Search dims non-matches on pack boards. Click an item for stock readonly tip.",
+              kind: "feature"
+            },
+            {
+              label: "Cache + refresh",
+              detail: "Vault snapshot soft-hydrates from IndexedDB (ecu-bank-cache) for instant Bank + Market badges, then load_bank revalidates. Refresh shows an explorer-style icon grid of changes (Added / Removed / \xB1qty) with All\xB7Gear\xB7Quantity filters; gold and slots land in the subtitle.",
               kind: "feature"
             }
           ]
@@ -19781,6 +19786,188 @@ ${CHROME_ARRANGE_CSS}
     };
   }
 
+  // src/host/bank/bankPersist.ts
+  var DB_NAME4 = "ecu-bank-cache";
+  var DB_VER4 = 1;
+  var STORE3 = "snapshots";
+  var RECORD_VERSION3 = 1;
+  var PERSIST_DEBOUNCE_MS3 = 400;
+  var dbPromise4 = null;
+  var persistTimer3 = 0;
+  var pendingSnap = null;
+  function openDb4() {
+    if (dbPromise4) return dbPromise4;
+    dbPromise4 = new Promise((resolve) => {
+      if (typeof indexedDB === "undefined") {
+        resolve(null);
+        return;
+      }
+      const req = indexedDB.open(DB_NAME4, DB_VER4);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE3)) {
+          db.createObjectStore(STORE3, { keyPath: "accountKey" });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+    return dbPromise4;
+  }
+  function reqToPromise4(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function bankAccountKey() {
+    const w = window;
+    if (w.user_id != null && String(w.user_id) !== "") {
+      return "u:" + String(w.user_id);
+    }
+    const chars = w.X && w.X.characters;
+    if (Array.isArray(chars) && chars.length) {
+      const names = [];
+      for (let i = 0; i < chars.length; i++) {
+        const n = chars[i] && chars[i].name;
+        if (n) names.push(String(n));
+      }
+      names.sort();
+      if (names.length) return "chars:" + names.join(",");
+    }
+    return "default";
+  }
+  function isPacks(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+    const obj = raw;
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i++) {
+      if (Array.isArray(obj[keys[i]])) return true;
+    }
+    return false;
+  }
+  async function loadBankCacheRecord(accountKey) {
+    try {
+      const db = await openDb4();
+      if (!db) return null;
+      const tx = db.transaction(STORE3, "readonly");
+      const store = tx.objectStore(STORE3);
+      const row3 = await reqToPromise4(
+        store.get(accountKey)
+      );
+      if (!row3 || row3.version !== RECORD_VERSION3) return null;
+      if (!isPacks(row3.packs)) return null;
+      return {
+        accountKey: row3.accountKey,
+        version: RECORD_VERSION3,
+        savedAt: row3.savedAt || 0,
+        packs: row3.packs,
+        gold: typeof row3.gold === "number" ? row3.gold : 0,
+        loadedAt: typeof row3.loadedAt === "number" ? row3.loadedAt : row3.savedAt || 0
+      };
+    } catch (e2) {
+      return null;
+    }
+  }
+  async function saveBankCacheRecord(record) {
+    try {
+      const db = await openDb4();
+      if (!db) return;
+      const tx = db.transaction(STORE3, "readwrite");
+      const store = tx.objectStore(STORE3);
+      await reqToPromise4(store.put(record));
+    } catch (e2) {
+    }
+  }
+  function schedulePersistBankSnapshot(snap) {
+    if (typeof window === "undefined") return;
+    pendingSnap = snap;
+    if (persistTimer3) window.clearTimeout(persistTimer3);
+    persistTimer3 = window.setTimeout(() => {
+      persistTimer3 = 0;
+      const s = pendingSnap;
+      pendingSnap = null;
+      if (!s) return;
+      void saveBankCacheRecord({
+        accountKey: bankAccountKey(),
+        version: RECORD_VERSION3,
+        savedAt: Date.now(),
+        packs: s.packs,
+        gold: s.gold,
+        loadedAt: s.loadedAt
+      });
+    }, PERSIST_DEBOUNCE_MS3);
+  }
+  async function hydrateBankSnapshotFromIdb() {
+    const rec = await loadBankCacheRecord(bankAccountKey());
+    if (!rec) return null;
+    return {
+      packs: rec.packs,
+      gold: rec.gold,
+      loadedAt: rec.loadedAt
+    };
+  }
+
+  // src/host/bank/bankCache.ts
+  var DEFAULT_MAX_AGE_MS = 6e4;
+  var cached = null;
+  var inflight = null;
+  var idbHydrate = null;
+  var listeners11 = [];
+  function emit() {
+    const snap = cached;
+    for (let i = 0; i < listeners11.length; i++) listeners11[i](snap);
+  }
+  function getCachedBankSnapshot() {
+    return cached;
+  }
+  function subscribeBankSnapshot(fn) {
+    listeners11.push(fn);
+    return () => {
+      const i = listeners11.indexOf(fn);
+      if (i >= 0) listeners11.splice(i, 1);
+    };
+  }
+  async function hydrateBankCacheFromIdb() {
+    if (cached) return cached;
+    if (!idbHydrate) {
+      idbHydrate = hydrateBankSnapshotFromIdb().then((snap) => {
+        idbHydrate = null;
+        if (snap && !cached) {
+          cached = snap;
+          emit();
+        }
+        return snap;
+      });
+    }
+    return idbHydrate;
+  }
+  async function ensureBankSnapshot(opts) {
+    const maxAge = opts && opts.maxAgeMs != null ? opts.maxAgeMs : DEFAULT_MAX_AGE_MS;
+    const force = !!(opts && opts.force);
+    const now = Date.now();
+    if (!force && cached && now - cached.loadedAt <= maxAge) {
+      return { ok: true, snapshot: cached };
+    }
+    if (!force && !cached) {
+      const fromIdb = await hydrateBankCacheFromIdb();
+      if (fromIdb && now - fromIdb.loadedAt <= maxAge) {
+        return { ok: true, snapshot: fromIdb };
+      }
+    }
+    if (inflight) return inflight;
+    inflight = loadBank().then((res) => {
+      inflight = null;
+      if (res.ok) {
+        cached = res.snapshot;
+        schedulePersistBankSnapshot(res.snapshot);
+        emit();
+      }
+      return res;
+    });
+    return inflight;
+  }
+
   // src/host/chat/commands.ts
   var MAX_LEN = 1200;
   function lit4(value) {
@@ -20104,18 +20291,18 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/chat/hubConversations.ts
-  var listeners11 = [];
+  var listeners12 = [];
   var chats = {};
   var activeKey = null;
   var characters = [];
   function notify6() {
-    for (let i = 0; i < listeners11.length; i++) listeners11[i]();
+    for (let i = 0; i < listeners12.length; i++) listeners12[i]();
   }
   function subscribeHubChat(fn) {
-    listeners11.push(fn);
+    listeners12.push(fn);
     return () => {
-      const idx = listeners11.indexOf(fn);
-      if (idx >= 0) listeners11.splice(idx, 1);
+      const idx = listeners12.indexOf(fn);
+      if (idx >= 0) listeners12.splice(idx, 1);
     };
   }
   function getHubActiveKey() {
@@ -22414,11 +22601,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       title,
       stockChrome = true,
       forceShowQ,
-      qtyColor
+      qtyColor,
+      bankQ
     } = props;
     const tip = title || itemInstanceLabel(name, { p, level }) || name;
     const qtyLabel = formatQty(q, forceShowQ);
     const levelLabel = formatLevel(level);
+    const bankLabel = bankQ != null && Number.isFinite(bankQ) && bankQ > 0 ? formatQty(bankQ, true) : null;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
@@ -22496,6 +22685,14 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
           style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : void 0
         },
         qtyLabel
+      ) : null,
+      bankLabel ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--bank",
+          title: "Bank \xD7" + (bankQ != null ? bankQ : bankLabel)
+        },
+        bankLabel
       ) : null
     );
   }
@@ -22532,15 +22729,23 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   bottom: -2px;
   color: #cfcfcf;
 }
+.ecu-item-badge--bank {
+  right: -2px;
+  top: -2px;
+  color: #e8c96a;
+  border-color: #8a7340;
+}
 `;
   var BADGE_STYLE_ID = "ecu-item-instance-badge-css";
   function ensureItemInstanceBadgeCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(BADGE_STYLE_ID)) return;
-    const el = document.createElement("style");
-    el.id = BADGE_STYLE_ID;
+    let el = document.getElementById(BADGE_STYLE_ID);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = BADGE_STYLE_ID;
+      document.head.appendChild(el);
+    }
     el.textContent = ITEM_INSTANCE_BADGE_CSS;
-    document.head.appendChild(el);
   }
 
   // src/ui/frames/mail/mailChromeCss.ts
@@ -23414,7 +23619,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-18T13:18:45.938Z" : "unknown";
+    const builtAt = true ? "2026-09-18T15:06:40.064Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -28006,7 +28211,7 @@ button.comm-mail__stack-u {
     chromePos: { ...DEFAULT_LAYOUT_CHROME_POS }
   };
   var cache2 = null;
-  var listeners12 = [];
+  var listeners13 = [];
   function clampPct(n) {
     if (!Number.isFinite(n)) return 0;
     return Math.max(0, Math.min(100, n));
@@ -28044,8 +28249,8 @@ button.comm-mail__stack-u {
     }
   }
   function notify7() {
-    for (let i = 0; i < listeners12.length; i++) {
-      listeners12[i]();
+    for (let i = 0; i < listeners13.length; i++) {
+      listeners13[i]();
     }
   }
   function getLayoutEditPrefs() {
@@ -28092,10 +28297,10 @@ button.comm-mail__stack-u {
     return next;
   }
   function subscribeLayoutEditPrefs(listener) {
-    listeners12.push(listener);
+    listeners13.push(listener);
     return () => {
-      const idx = listeners12.indexOf(listener);
-      if (idx >= 0) listeners12.splice(idx, 1);
+      const idx = listeners13.indexOf(listener);
+      if (idx >= 0) listeners13.splice(idx, 1);
     };
   }
   function applyLayoutEditPrefs(partial) {
@@ -28923,7 +29128,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners13 = [];
+  var listeners14 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -28978,14 +29183,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners13.push(listener);
+    listeners14.push(listener);
     return () => {
-      const idx = listeners13.indexOf(listener);
-      if (idx >= 0) listeners13.splice(idx, 1);
+      const idx = listeners14.indexOf(listener);
+      if (idx >= 0) listeners14.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners13.length; i++) listeners13[i]();
+    for (let i = 0; i < listeners14.length; i++) listeners14[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -30531,10 +30736,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners14 = [];
+  var listeners15 = [];
   function notify8() {
-    for (let i = 0; i < listeners14.length; i++) {
-      listeners14[i]();
+    for (let i = 0; i < listeners15.length; i++) {
+      listeners15[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -30558,10 +30763,10 @@ button.comm-mail__stack-u {
     notify8();
   }
   function subscribeLayoutGuide(listener) {
-    listeners14.push(listener);
+    listeners15.push(listener);
     return () => {
-      const idx = listeners14.indexOf(listener);
-      if (idx >= 0) listeners14.splice(idx, 1);
+      const idx = listeners15.indexOf(listener);
+      if (idx >= 0) listeners15.splice(idx, 1);
     };
   }
 
@@ -64150,6 +64355,196 @@ ${ESTIMATE_HINT}`,
     return findEntity(entities, obsId) || observing;
   }
 
+  // src/lib/bank/bankBrowse.ts
+  var SLOTS_PER_BANK_PACK = 42;
+  var OFFICIAL_PACK = /^items(\d+)$/;
+  function isOfficialBankPack(key) {
+    return OFFICIAL_PACK.test(key);
+  }
+  function compareBankPackKeys(a, b) {
+    const ma = OFFICIAL_PACK.exec(a);
+    const mb = OFFICIAL_PACK.exec(b);
+    if (ma && mb) return Number(ma[1]) - Number(mb[1]);
+    if (ma && !mb) return -1;
+    if (!ma && mb) return 1;
+    return a.localeCompare(b);
+  }
+  function listBankPackKeys(packs) {
+    return Object.keys(packs || {}).sort(compareBankPackKeys);
+  }
+  function packDisplayLabel(packKey) {
+    const m = OFFICIAL_PACK.exec(packKey);
+    if (m) return "Pack " + (Number(m[1]) + 1);
+    return packKey;
+  }
+  function flattenBankSlots(packs) {
+    const keys = listBankPackKeys(packs);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const pack = keys[i];
+      const slots = packs[pack];
+      if (!Array.isArray(slots)) continue;
+      for (let j = 0; j < slots.length; j++) {
+        const item = slots[j];
+        if (!item || !item.name || item.name === "placeholder") continue;
+        out.push({ pack, index: j, item });
+      }
+    }
+    return out;
+  }
+  function aggKey(item) {
+    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+  }
+  function aggregateBankItems(slots) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < slots.length; i++) {
+      const { pack, index, item } = slots[i];
+      const key = aggKey(item);
+      const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+      let row3 = byKey[key];
+      if (!row3) {
+        row3 = {
+          key,
+          name: String(item.name),
+          level: item.level,
+          p: item.p != null ? String(item.p) : null,
+          q: 0,
+          locs: []
+        };
+        byKey[key] = row3;
+      }
+      row3.q += q;
+      row3.locs.push({ pack, index, q });
+    }
+    const keys = Object.keys(byKey);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
+    out.sort((a, b) => {
+      const n = a.name.localeCompare(b.name);
+      if (n !== 0) return n;
+      const la = a.level != null ? a.level : -1;
+      const lb = b.level != null ? b.level : -1;
+      if (la !== lb) return la - lb;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return out;
+  }
+  var BANK_TYPE_CATEGORIES = [
+    { id: "helmet", label: "Helmets", types: ["helmet"] },
+    { id: "chest", label: "Armors", types: ["chest"] },
+    { id: "pants", label: "Underarmors", types: ["pants"] },
+    { id: "gloves", label: "Gloves", types: ["gloves"] },
+    { id: "shoes", label: "Shoes", types: ["shoes"] },
+    { id: "cape", label: "Capes", types: ["cape"] },
+    { id: "ring", label: "Rings", types: ["ring"] },
+    { id: "earring", label: "Earrings", types: ["earring"] },
+    { id: "amulet", label: "Amulets", types: ["amulet"] },
+    { id: "belt", label: "Belts", types: ["belt"] },
+    { id: "orb", label: "Orbs", types: ["orb"] },
+    { id: "weapon", label: "Weapons", types: ["weapon"] },
+    { id: "shield", label: "Shields", types: ["shield"] },
+    {
+      id: "offhand",
+      label: "Offhands",
+      types: ["source", "quiver", "misc_offhand"]
+    },
+    { id: "elixir", label: "Elixirs", types: ["elixir"] },
+    { id: "pot", label: "Potions", types: ["pot"] },
+    {
+      id: "scroll",
+      label: "Scrolls",
+      types: ["cscroll", "uscroll", "pscroll", "offering"]
+    },
+    { id: "material", label: "Crafting", types: ["material"] },
+    { id: "exchange", label: "Exchangeables", types: ["exchange"] },
+    { id: "other", label: "Others", types: [] }
+  ];
+  function itemType(name, G) {
+    const def = G && G.items && G.items[name];
+    return def && def.type != null ? String(def.type) : "";
+  }
+  function isExchangeable(name, G) {
+    const def = G && G.items && G.items[name];
+    return !!(def && def.e);
+  }
+  function categoryForItem(name, G) {
+    const t = itemType(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      if (cat.id === "other") continue;
+      if (cat.id === "exchange" && isExchangeable(name, G)) return cat;
+      if (cat.types.indexOf(t) >= 0) return cat;
+    }
+    return BANK_TYPE_CATEGORIES[BANK_TYPE_CATEGORIES.length - 1];
+  }
+  function groupBankByCategory(items, G) {
+    const buckets = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      buckets[BANK_TYPE_CATEGORIES[i].id] = [];
+    }
+    for (let i = 0; i < items.length; i++) {
+      const cat = categoryForItem(items[i].name, G);
+      buckets[cat.id].push(items[i]);
+    }
+    const out = [];
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      const list = buckets[cat.id];
+      if (list && list.length) out.push({ id: cat.id, label: cat.label, items: list });
+    }
+    return out;
+  }
+  function categoryOrderIndex(name, G) {
+    const cat = categoryForItem(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      if (BANK_TYPE_CATEGORIES[i].id === cat.id) return i;
+    }
+    return BANK_TYPE_CATEGORIES.length;
+  }
+  function sortBankItems(items, mode, G) {
+    const copy = items.slice();
+    copy.sort((a, b) => {
+      if (mode === "stack" && a.locs.length !== b.locs.length) {
+        return b.locs.length - a.locs.length;
+      }
+      if (mode === "quantity" && a.q !== b.q) {
+        return b.q - a.q;
+      }
+      const ca = categoryOrderIndex(a.name, G);
+      const cb = categoryOrderIndex(b.name, G);
+      if (ca !== cb) return ca - cb;
+      const ta = itemType(a.name, G);
+      const tb = itemType(b.name, G);
+      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
+      if (a.name !== b.name) return a.name.localeCompare(b.name);
+      const la = a.level != null ? Number(a.level) : 0;
+      const lb = b.level != null ? Number(b.level) : 0;
+      if (la !== lb) return lb - la;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return copy;
+  }
+
+  // src/lib/bank/bankStock.ts
+  function bankItemStockKey(item) {
+    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null && item.p !== "" ? String(item.p) : "");
+  }
+  function buildBankQtyIndex(snap) {
+    const out = /* @__PURE__ */ Object.create(null);
+    if (!snap || !snap.packs) return out;
+    const agg = aggregateBankItems(flattenBankSlots(snap.packs));
+    for (let i = 0; i < agg.length; i++) {
+      const row3 = agg[i];
+      out[row3.key] = row3.q;
+    }
+    return out;
+  }
+  function bankQtyFor(index, item) {
+    if (!index) return 0;
+    const q = index[bankItemStockKey(item)];
+    return q != null && Number.isFinite(q) ? q : 0;
+  }
+
   // src/ui/chrome/querySearchFieldCss.ts
   var STYLE_ID8 = "ecu-query-search-field-css";
   var CSS11 = `
@@ -65845,7 +66240,9 @@ ${ESTIMATE_HINT}`,
       size: opts.size,
       level: opts.level,
       q: opts.q,
-      p: opts.p != null ? String(opts.p) : void 0
+      bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : void 0,
+      p: opts.p != null ? String(opts.p) : void 0,
+      title: opts.title
     });
   }
   function nextBest(rows, side) {
@@ -65895,7 +66292,37 @@ ${ESTIMATE_HINT}`,
     const [travel, setTravel] = React.useState(
       null
     );
+    const [bankSnap, setBankSnap] = React.useState(
+      () => getCachedBankSnapshot()
+    );
     React.useEffect(() => subscribeMarketTravel(setTravel), []);
+    React.useEffect(() => {
+      return subscribeBankSnapshot((snap) => setBankSnap(snap));
+    }, []);
+    React.useEffect(() => {
+      let cancelled = false;
+      void hydrateBankCacheFromIdb().then((fromIdb) => {
+        if (cancelled || !fromIdb) return;
+        setBankSnap((prev) => prev || fromIdb);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+    React.useEffect(() => {
+      let cancelled = false;
+      void ensureBankSnapshot({ maxAgeMs: 6e4 }).then((res) => {
+        if (cancelled || res.ok === false) return;
+        setBankSnap(res.snapshot);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+    const bankQtyIndex = React.useMemo(
+      () => buildBankQtyIndex(bankSnap),
+      [bankSnap]
+    );
     React.useEffect(() => {
       let cancelled = false;
       void hydrateMarketCacheFromIdb().then((merchants2) => {
@@ -66197,6 +66624,11 @@ ${ESTIMATE_HINT}`,
         const arb = marketGroupHasArb(g);
         const on = focusKey === g.key;
         const isFav = !!favoriteSet[g.key];
+        const bankQ = bankQtyFor(bankQtyIndex, {
+          name: g.name,
+          level: g.level,
+          p: g.p
+        });
         return e(
           "div",
           {
@@ -66227,7 +66659,13 @@ ${ESTIMATE_HINT}`,
             e(
               "div",
               { className: "MarketPanel-itemCard__top" },
-              marketItemIcon(g.name, { level: g.level, p: g.p, size: 48 }),
+              marketItemIcon(g.name, {
+                level: g.level,
+                p: g.p,
+                size: 48,
+                bankQ,
+                title: itemLabel(g.name, g.level, g.p) + (bankQ > 0 ? " \xB7 Bank \xD7" + bankQ : "")
+              }),
               e(
                 "div",
                 { className: "MarketPanel-itemCard__counts" },
@@ -66303,6 +66741,11 @@ ${ESTIMATE_HINT}`,
     );
     const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
     const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
+    const focusBankQ = focusGroup ? bankQtyFor(bankQtyIndex, {
+      name: focusGroup.name,
+      level: focusGroup.level,
+      p: focusGroup.p
+    }) : 0;
     const focusPane = focusGroup ? [
       e(
         "div",
@@ -66319,7 +66762,9 @@ ${ESTIMATE_HINT}`,
           marketItemIcon(focusGroup.name, {
             level: focusGroup.level,
             p: focusGroup.p,
-            size: 40
+            size: 40,
+            bankQ: focusBankQ,
+            title: itemLabel(focusGroup.name, focusGroup.level, focusGroup.p) + (focusBankQ > 0 ? " \xB7 Bank \xD7" + focusBankQ : "")
           }),
           e(
             "div",
@@ -66346,7 +66791,7 @@ ${ESTIMATE_HINT}`,
             e(
               "div",
               { className: "sub" },
-              focusGroup.sales.length + " selling \xB7 " + focusGroup.wants.length + " buying" + (focusGroup.giveaways.length ? " \xB7 " + focusGroup.giveaways.length + " giveaways" : "")
+              focusGroup.sales.length + " selling \xB7 " + focusGroup.wants.length + " buying" + (focusGroup.giveaways.length ? " \xB7 " + focusGroup.giveaways.length + " giveaways" : "") + (focusBankQ > 0 ? " \xB7 Bank \xD7" + focusBankQ : "")
             )
           )
         ),
@@ -66380,7 +66825,7 @@ ${ESTIMATE_HINT}`,
           e(
             "p",
             { className: "hint" },
-            (bestBuy ? bestBuy.merchant + " sells @ " + formatTradeGold(bestBuy.price) : "No buyable sales") + " \xB7 " + (bestSell ? bestSell.merchant + " wants @ " + formatTradeGold(bestSell.price) : bagNames[focusGroup.name.toLowerCase()] ? "No buy orders" : "Not in bag")
+            (bestBuy ? bestBuy.merchant + " sells @ " + formatTradeGold(bestBuy.price) : "No buyable sales") + " \xB7 " + (bestSell ? bestSell.merchant + " wants @ " + formatTradeGold(bestSell.price) : bagNames[focusGroup.name.toLowerCase()] ? "No buy orders" : "Not in bag") + (focusBankQ > 0 ? " \xB7 Bank \xD7" + focusBankQ : "")
           )
         )
       ),
@@ -66624,7 +67069,14 @@ ${ESTIMATE_HINT}`,
                     level: b.level,
                     p: b.p != null ? b.p : void 0
                   });
-                  const tip = label + (b.q > 1 ? " \xD7" + b.q : "") + (b.slotCount > 1 ? " \xB7 " + b.slotCount + " slots" : "");
+                  const tip = label + (b.q > 1 ? " \xD7" + b.q : "") + (b.slotCount > 1 ? " \xB7 " + b.slotCount + " slots" : "") + (() => {
+                    const bq = bankQtyFor(bankQtyIndex, {
+                      name: b.name,
+                      level: b.level,
+                      p: b.p
+                    });
+                    return bq > 0 ? " \xB7 Bank \xD7" + bq : "";
+                  })();
                   return e(
                     "button",
                     {
@@ -66649,6 +67101,11 @@ ${ESTIMATE_HINT}`,
                       skin: b.skin,
                       level: b.level,
                       q: b.q,
+                      bankQ: bankQtyFor(bankQtyIndex, {
+                        name: b.name,
+                        level: b.level,
+                        p: b.p
+                      }),
                       p: b.p != null ? b.p : void 0,
                       size: 40,
                       title: tip
@@ -66899,174 +67356,179 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/lib/bank/bankBrowse.ts
-  var SLOTS_PER_BANK_PACK = 42;
-  var OFFICIAL_PACK = /^items(\d+)$/;
-  function isOfficialBankPack(key) {
-    return OFFICIAL_PACK.test(key);
+  // src/lib/bank/bankDiff.ts
+  function stackWord(n) {
+    return n === 1 ? "stack" : "stacks";
   }
-  function compareBankPackKeys(a, b) {
-    const ma = OFFICIAL_PACK.exec(a);
-    const mb = OFFICIAL_PACK.exec(b);
-    if (ma && mb) return Number(ma[1]) - Number(mb[1]);
-    if (ma && !mb) return -1;
-    if (!ma && mb) return 1;
-    return a.localeCompare(b);
-  }
-  function listBankPackKeys(packs) {
-    return Object.keys(packs || {}).sort(compareBankPackKeys);
-  }
-  function packDisplayLabel(packKey) {
-    const m = OFFICIAL_PACK.exec(packKey);
-    if (m) return "Pack " + (Number(m[1]) + 1);
-    return packKey;
-  }
-  function flattenBankSlots(packs) {
-    const keys = listBankPackKeys(packs);
-    const out = [];
+  function countBankUsedSlots(packs) {
+    let usedOfficial = 0;
+    let totalOfficial = 0;
+    let usedAll = 0;
+    const keys = Object.keys(packs || {});
     for (let i = 0; i < keys.length; i++) {
       const pack = keys[i];
       const slots = packs[pack];
       if (!Array.isArray(slots)) continue;
+      const official = isOfficialBankPack(pack);
+      if (official) totalOfficial += SLOTS_PER_BANK_PACK;
       for (let j = 0; j < slots.length; j++) {
-        const item = slots[j];
-        if (!item || !item.name || item.name === "placeholder") continue;
-        out.push({ pack, index: j, item });
+        const it = slots[j];
+        if (!it || !it.name || it.name === "placeholder") continue;
+        usedAll += 1;
+        if (official) usedOfficial += 1;
       }
     }
-    return out;
+    return { usedOfficial, totalOfficial, usedAll };
   }
-  function aggKey(item) {
-    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
-  }
-  function aggregateBankItems(slots) {
-    const byKey = /* @__PURE__ */ Object.create(null);
-    for (let i = 0; i < slots.length; i++) {
-      const { pack, index, item } = slots[i];
-      const key = aggKey(item);
-      const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
-      let row3 = byKey[key];
-      if (!row3) {
-        row3 = {
-          key,
-          name: String(item.name),
-          level: item.level,
-          p: item.p != null ? String(item.p) : null,
-          q: 0,
-          locs: []
-        };
-        byKey[key] = row3;
-      }
-      row3.q += q;
-      row3.locs.push({ pack, index, q });
+  function compareBankSnapshots(prev, next) {
+    if (!prev || !next) {
+      return { changes: [], hasChanges: false };
     }
-    const keys = Object.keys(byKey);
-    const out = [];
-    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
-    out.sort((a, b) => {
-      const n = a.name.localeCompare(b.name);
+    const prevAgg = aggregateBankItems(flattenBankSlots(prev.packs));
+    const nextAgg = aggregateBankItems(flattenBankSlots(next.packs));
+    const prevByKey = /* @__PURE__ */ Object.create(null);
+    const nextByKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < prevAgg.length; i++) prevByKey[prevAgg[i].key] = prevAgg[i];
+    for (let i = 0; i < nextAgg.length; i++) nextByKey[nextAgg[i].key] = nextAgg[i];
+    const changes = [];
+    const nextKeys = Object.keys(nextByKey);
+    for (let i = 0; i < nextKeys.length; i++) {
+      const key = nextKeys[i];
+      const nextItem = nextByKey[key];
+      const prevItem = prevByKey[key];
+      if (!prevItem) {
+        changes.push({ kind: "added", item: nextItem });
+        continue;
+      }
+      const deltaQ = nextItem.q - prevItem.q;
+      const deltaStacks = nextItem.locs.length - prevItem.locs.length;
+      if (deltaQ !== 0 || deltaStacks !== 0) {
+        changes.push({
+          kind: "changed",
+          item: nextItem,
+          previousQ: prevItem.q,
+          previousStacks: prevItem.locs.length,
+          deltaQ,
+          deltaStacks
+        });
+      }
+    }
+    const prevKeys = Object.keys(prevByKey);
+    for (let i = 0; i < prevKeys.length; i++) {
+      const key = prevKeys[i];
+      if (!nextByKey[key]) {
+        changes.push({ kind: "removed", item: prevByKey[key] });
+      }
+    }
+    changes.sort((a, b) => {
+      const n = a.item.name.localeCompare(b.item.name);
       if (n !== 0) return n;
-      const la = a.level != null ? a.level : -1;
-      const lb = b.level != null ? b.level : -1;
+      const la = a.item.level != null ? a.item.level : -1;
+      const lb = b.item.level != null ? b.item.level : -1;
       if (la !== lb) return la - lb;
-      return String(a.p || "").localeCompare(String(b.p || ""));
+      return String(a.item.p || "").localeCompare(String(b.item.p || ""));
     });
-    return out;
+    const goldDelta2 = next.gold - prev.gold;
+    const prevSlots = countBankUsedSlots(prev.packs);
+    const nextSlots = countBankUsedSlots(next.packs);
+    const usedSlotsDelta = nextSlots.usedAll - prevSlots.usedAll;
+    return {
+      changes,
+      goldDelta: goldDelta2,
+      usedSlotsDelta,
+      hasChanges: changes.length > 0 || goldDelta2 !== 0 || usedSlotsDelta !== 0
+    };
   }
-  var BANK_TYPE_CATEGORIES = [
-    { id: "helmet", label: "Helmets", types: ["helmet"] },
-    { id: "chest", label: "Armors", types: ["chest"] },
-    { id: "pants", label: "Underarmors", types: ["pants"] },
-    { id: "gloves", label: "Gloves", types: ["gloves"] },
-    { id: "shoes", label: "Shoes", types: ["shoes"] },
-    { id: "cape", label: "Capes", types: ["cape"] },
-    { id: "ring", label: "Rings", types: ["ring"] },
-    { id: "earring", label: "Earrings", types: ["earring"] },
-    { id: "amulet", label: "Amulets", types: ["amulet"] },
-    { id: "belt", label: "Belts", types: ["belt"] },
-    { id: "orb", label: "Orbs", types: ["orb"] },
-    { id: "weapon", label: "Weapons", types: ["weapon"] },
-    { id: "shield", label: "Shields", types: ["shield"] },
-    {
-      id: "offhand",
-      label: "Offhands",
-      types: ["source", "quiver", "misc_offhand"]
-    },
-    { id: "elixir", label: "Elixirs", types: ["elixir"] },
-    { id: "pot", label: "Potions", types: ["pot"] },
-    {
-      id: "scroll",
-      label: "Scrolls",
-      types: ["cscroll", "uscroll", "pscroll", "offering"]
-    },
-    { id: "material", label: "Crafting", types: ["material"] },
-    { id: "exchange", label: "Exchangeables", types: ["exchange"] },
-    { id: "other", label: "Others", types: [] }
-  ];
-  function itemType(name, G) {
-    const def = G && G.items && G.items[name];
-    return def && def.type != null ? String(def.type) : "";
-  }
-  function isExchangeable(name, G) {
-    const def = G && G.items && G.items[name];
-    return !!(def && def.e);
-  }
-  function categoryForItem(name, G) {
-    const t = itemType(name, G);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      const cat = BANK_TYPE_CATEGORIES[i];
-      if (cat.id === "other") continue;
-      if (cat.id === "exchange" && isExchangeable(name, G)) return cat;
-      if (cat.types.indexOf(t) >= 0) return cat;
-    }
-    return BANK_TYPE_CATEGORIES[BANK_TYPE_CATEGORIES.length - 1];
-  }
-  function groupBankByCategory(items, G) {
-    const buckets = /* @__PURE__ */ Object.create(null);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      buckets[BANK_TYPE_CATEGORIES[i].id] = [];
-    }
-    for (let i = 0; i < items.length; i++) {
-      const cat = categoryForItem(items[i].name, G);
-      buckets[cat.id].push(items[i]);
-    }
+  function filterBankChanges(changes, mode, G) {
+    if (mode === "all") return changes;
     const out = [];
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      const cat = BANK_TYPE_CATEGORIES[i];
-      const list = buckets[cat.id];
-      if (list && list.length) out.push({ id: cat.id, label: cat.label, items: list });
+    for (let i = 0; i < changes.length; i++) {
+      const change = changes[i];
+      if (mode === "gear") {
+        const gItem = G && G.items ? G.items[change.item.name] : void 0;
+        const level = change.item.level != null ? change.item.level : 0;
+        if (gItem && (gItem.upgrade || gItem.compound) || level > 0) {
+          out.push(change);
+        }
+        continue;
+      }
+      if (change.kind === "changed" && (change.deltaQ || 0) !== 0) {
+        out.push(change);
+      }
     }
     return out;
   }
-  function categoryOrderIndex(name, G) {
-    const cat = categoryForItem(name, G);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      if (BANK_TYPE_CATEGORIES[i].id === cat.id) return i;
+  function changeBadgeQuantity(change) {
+    if (change.kind === "added" || change.kind === "removed") {
+      return change.item.q;
     }
-    return BANK_TYPE_CATEGORIES.length;
+    if (change.deltaQ != null && change.deltaQ !== 0) {
+      return Math.abs(change.deltaQ);
+    }
+    if (change.deltaStacks != null && change.deltaStacks !== 0) {
+      return Math.abs(change.deltaStacks);
+    }
+    return change.item.q;
   }
-  function sortBankItems(items, mode, G) {
-    const copy = items.slice();
-    copy.sort((a, b) => {
-      if (mode === "stack" && a.locs.length !== b.locs.length) {
-        return b.locs.length - a.locs.length;
-      }
-      if (mode === "quantity" && a.q !== b.q) {
-        return b.q - a.q;
-      }
-      const ca = categoryOrderIndex(a.name, G);
-      const cb = categoryOrderIndex(b.name, G);
-      if (ca !== cb) return ca - cb;
-      const ta = itemType(a.name, G);
-      const tb = itemType(b.name, G);
-      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
-      if (a.name !== b.name) return a.name.localeCompare(b.name);
-      const la = a.level != null ? Number(a.level) : 0;
-      const lb = b.level != null ? Number(b.level) : 0;
-      if (la !== lb) return lb - la;
-      return String(a.p || "").localeCompare(String(b.p || ""));
+  function changeCaption(change) {
+    if (change.kind === "added") return "Added";
+    if (change.kind === "removed") return "Removed";
+    if (change.deltaQ != null && change.deltaQ !== 0) {
+      return (change.deltaQ > 0 ? "+" : "") + formatCompactNumber(change.deltaQ) + " qty";
+    }
+    if (change.deltaStacks != null && change.deltaStacks !== 0) {
+      const n = change.deltaStacks;
+      return (n > 0 ? "+" : "") + String(n) + " " + stackWord(Math.abs(n));
+    }
+    return "Changed";
+  }
+  function changeQuantityColor(kind, deltaQ) {
+    if (kind === "added") return "#81c784";
+    if (kind === "removed") return "#ff5252";
+    if (deltaQ == null || deltaQ === 0) return void 0;
+    return deltaQ > 0 ? "#81c784" : "#ff5252";
+  }
+  function changeToneClass(kind, deltaQ) {
+    if (kind === "added") return "is-added";
+    if (kind === "removed") return "is-removed";
+    if ((deltaQ || 0) < 0) return "is-changed-down";
+    return "is-changed-up";
+  }
+  function formatRefreshSummaryLine(summary, visibleCount, title = "Refresh complete") {
+    let line = title + " \u2014 " + String(visibleCount) + " item change" + (visibleCount === 1 ? "" : "s");
+    if (summary.goldDelta) {
+      line += ", gold " + (summary.goldDelta > 0 ? "+" : "") + formatCompactNumber(summary.goldDelta);
+    }
+    if (summary.usedSlotsDelta) {
+      line += ", slots " + (summary.usedSlotsDelta > 0 ? "+" : "") + String(summary.usedSlotsDelta);
+    }
+    return line;
+  }
+  function formatBankChangeTip(change) {
+    const label = itemInstanceLabel(change.item.name, {
+      level: change.item.level,
+      p: change.item.p != null ? String(change.item.p) : void 0
     });
-    return copy;
+    const stacks = change.item.locs.length;
+    if (change.kind === "added") {
+      return label + "\nAdded \xB7 " + change.item.q.toLocaleString() + " qty \xB7 " + stacks + " " + stackWord(stacks);
+    }
+    if (change.kind === "removed") {
+      return label + "\nRemoved \xB7 " + change.item.q.toLocaleString() + " qty \xB7 " + stacks + " " + stackWord(stacks);
+    }
+    const bits = [label, "Updated"];
+    if (change.deltaQ) {
+      bits.push(
+        (change.deltaQ > 0 ? "+" : "") + change.deltaQ.toLocaleString() + " qty (" + change.item.q.toLocaleString() + " now)"
+      );
+    }
+    if (change.deltaStacks) {
+      const n = change.deltaStacks;
+      bits.push(
+        (n > 0 ? "+" : "") + String(n) + " " + stackWord(Math.abs(n)) + " (" + stacks + " now)"
+      );
+    }
+    return bits.join("\n");
   }
 
   // src/lib/bank/bankQuery.ts
@@ -67736,14 +68198,88 @@ ${ESTIMATE_HINT}`,
 .BankPanel-expand .ecu-expand-glyph {
   display: block;
 }
-.BankPanel-note {
+.BankPanel-changes {
   flex: 0 0 auto;
-  padding: 6px 12px;
-  color: #9a9080;
-  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 12px 10px;
   border-bottom: 1px solid var(--bk-line);
-  background: #161512;
+  background: linear-gradient(180deg, #1a2218 0%, #161512 100%);
+  border-left: 3px solid #5a9a5a;
 }
+.BankPanel-changesHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.BankPanel-changesTitle {
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 12px;
+  color: #cfc8b8;
+  line-height: 1.35;
+}
+.BankPanel-changesDismiss {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.BankPanel-changesFilter {
+  margin-bottom: 8px;
+}
+.BankPanel-changesEmpty {
+  color: var(--bk-muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.BankPanel-changesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+.BankPanel-changeTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 2px solid #444;
+  border-radius: 4px;
+  background: #1a1917;
+  min-width: 0;
+}
+.BankPanel-changeTile.is-added {
+  border-color: #5a9a5a;
+}
+.BankPanel-changeTile.is-removed {
+  border-color: #b05050;
+  opacity: 0.72;
+}
+.BankPanel-changeTile.is-changed-up {
+  border-color: #4a7aaa;
+}
+.BankPanel-changeTile.is-changed-down {
+  border-color: #c09040;
+}
+.BankPanel-changeCap {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.BankPanel-changeTile.is-added .BankPanel-changeCap { color: #81c784; }
+.BankPanel-changeTile.is-removed .BankPanel-changeCap { color: #ff5252; }
+.BankPanel-changeTile.is-changed-up .BankPanel-changeCap { color: #6aafd4; }
+.BankPanel-changeTile.is-changed-down .BankPanel-changeCap { color: #d4b35a; }
 .BankPanel-tools {
   flex: 0 0 auto;
   display: flex;
@@ -68169,22 +68705,48 @@ ${ESTIMATE_HINT}`,
     );
     const [tick2, setTick] = React.useState(0);
     const [expanded, setExpanded] = React.useState(false);
+    const [refreshSummary, setRefreshSummary] = React.useState(
+      null
+    );
+    const [changeFilter, setChangeFilter] = React.useState(
+      "all"
+    );
     const rootRef = React.useRef(null);
     const preExpandSizeRef = React.useRef(null);
-    const refresh = React.useCallback(() => {
-      setLoading(true);
-      setError(null);
-      loadBank().then((res) => {
-        setLoading(false);
-        if (res.ok === false) {
-          setError(res.reason);
-          return;
-        }
-        setSnap(res.snapshot);
-      });
-    }, []);
+    const snapRef = React.useRef(null);
+    snapRef.current = snap;
+    const refresh = React.useCallback(
+      (opts) => {
+        const force = !(opts && opts.force === false);
+        setLoading(true);
+        setError(null);
+        const prev = opts && opts.baseline !== void 0 ? opts.baseline : snapRef.current;
+        ensureBankSnapshot({ force }).then((res) => {
+          setLoading(false);
+          if (res.ok === false) {
+            setError(res.reason);
+            return;
+          }
+          if (force && prev) {
+            const summary = compareBankSnapshots(prev, res.snapshot);
+            setRefreshSummary(summary.hasChanges ? summary : null);
+          }
+          setSnap(res.snapshot);
+        });
+      },
+      []
+    );
     React.useEffect(() => {
-      refresh();
+      let cancelled = false;
+      void (async () => {
+        const fromIdb = await hydrateBankCacheFromIdb();
+        if (cancelled) return;
+        if (fromIdb) setSnap(fromIdb);
+        refresh({ force: true, baseline: fromIdb });
+      })();
+      return () => {
+        cancelled = true;
+      };
     }, [refresh]);
     React.useEffect(() => {
       const id = window.setInterval(() => setTick((n) => n + 1), 15e3);
@@ -68265,6 +68827,14 @@ ${ESTIMATE_HINT}`,
     }, [snap, allAgg, query]);
     const ageLabel = snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
     void tick2;
+    const visibleChanges = React.useMemo(() => {
+      if (!refreshSummary) return [];
+      return filterBankChanges(
+        refreshSummary.changes,
+        changeFilter,
+        window.G
+      );
+    }, [refreshSummary, changeFilter]);
     const renderAggGrid = (items) => {
       if (!items.length) {
         return e("div", { className: "BankPanel-empty" }, "No items match.");
@@ -68678,11 +69248,95 @@ ${ESTIMATE_HINT}`,
           loading ? "Loading\u2026" : "Refresh"
         )
       ),
-      e(
+      refreshSummary ? e(
         "div",
-        { className: "BankPanel-note" },
-        "Account bank \xB7 shared across characters. Recent vault moves may not appear until Refresh."
-      ),
+        {
+          className: "BankPanel-changes",
+          role: "status"
+        },
+        e(
+          "div",
+          { className: "BankPanel-changesHead" },
+          e(
+            "span",
+            { className: "BankPanel-changesTitle" },
+            formatRefreshSummaryLine(
+              refreshSummary,
+              visibleChanges.length
+            )
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "BankPanel-btn BankPanel-changesDismiss",
+              onClick: () => setRefreshSummary(null)
+            },
+            "Dismiss"
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "BankPanel-seg BankPanel-changesFilter",
+            role: "group",
+            "aria-label": "Change filter"
+          },
+          ["all", "gear", "quantity"].map(
+            (mode) => e(
+              "button",
+              {
+                type: "button",
+                key: mode,
+                className: changeFilter === mode ? "is-on" : "",
+                onClick: () => setChangeFilter(mode)
+              },
+              mode === "all" ? "All" : mode === "gear" ? "Gear" : "Quantity"
+            )
+          )
+        ),
+        visibleChanges.length === 0 ? e(
+          "div",
+          { className: "BankPanel-changesEmpty" },
+          refreshSummary.changes.length ? "No changes match this filter." : "No item changes (gold/slots only)."
+        ) : e(
+          "div",
+          { className: "BankPanel-changesGrid" },
+          visibleChanges.map(
+            (change, i) => {
+              const tone = changeToneClass(
+                change.kind,
+                change.deltaQ
+              );
+              return e(
+                "div",
+                {
+                  key: change.kind + ":" + change.item.key + ":" + i,
+                  className: "BankPanel-changeTile " + tone
+                },
+                e(ItemInstance, {
+                  name: change.item.name,
+                  level: change.item.level,
+                  q: changeBadgeQuantity(change),
+                  p: change.item.p != null ? String(change.item.p) : void 0,
+                  size: 40,
+                  forceShowQ: true,
+                  qtyColor: changeQuantityColor(
+                    change.kind,
+                    change.deltaQ
+                  ),
+                  title: formatBankChangeTip(change)
+                }),
+                e(
+                  "span",
+                  { className: "BankPanel-changeCap" },
+                  changeCaption(change)
+                )
+              );
+            }
+          )
+        )
+      ) : null,
       e(
         "div",
         { className: "BankPanel-tools" },

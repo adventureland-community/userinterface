@@ -127,7 +127,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Account Bank",
         detail:
-          "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared ⌕ field), All / Packs / Types / Ready (Combine·Craft × Ready·Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, Refresh + load age.",
+          "Chrome Bank button loads the shared account vault via load_bank. Search like Market (shared ⌕ field), All / Packs / Types / Ready (Combine·Craft × Ready·Almost), explorer sort (Category / Quantity / Stack), merged stacks, expand, IndexedDB cache + Refresh what-changed.",
         kind: "feature",
       },
       {
@@ -163,7 +163,7 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Search + filters",
             detail:
-              "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B).",
+              "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
             kind: "feature",
           },
         ],
@@ -182,6 +182,12 @@ export const CHANGELOG: ChangelogEntry[] = [
             label: "Browse",
             detail:
               "All (merged stacks), Packs (every vault board like al-data-explorer — no dropdown), Types, or Ready. Ready mirrors explorer insights: Combine / Craft tabs, Ready vs Almost (1-short / cascade), recipe cards with result ← inputs. Sort All/Types like explorer: Category (default), Quantity, Stack — then type, name, level. Four-corner fullscreen expand lifts Bank like Chat. Search dims non-matches on pack boards. Click an item for stock readonly tip.",
+            kind: "feature",
+          },
+          {
+            label: "Cache + refresh",
+            detail:
+              "Vault snapshot soft-hydrates from IndexedDB (ecu-bank-cache) for instant Bank + Market badges, then load_bank revalidates. Refresh shows an explorer-style icon grid of changes (Added / Removed / ±qty) with All·Gear·Quantity filters; gold and slots land in the subtitle.",
             kind: "feature",
           },
         ],

@@ -78,14 +78,88 @@ const CSS = `
 .BankPanel-expand .ecu-expand-glyph {
   display: block;
 }
-.BankPanel-note {
+.BankPanel-changes {
   flex: 0 0 auto;
-  padding: 6px 12px;
-  color: #9a9080;
-  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 12px 10px;
   border-bottom: 1px solid var(--bk-line);
-  background: #161512;
+  background: linear-gradient(180deg, #1a2218 0%, #161512 100%);
+  border-left: 3px solid #5a9a5a;
 }
+.BankPanel-changesHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.BankPanel-changesTitle {
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 12px;
+  color: #cfc8b8;
+  line-height: 1.35;
+}
+.BankPanel-changesDismiss {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.BankPanel-changesFilter {
+  margin-bottom: 8px;
+}
+.BankPanel-changesEmpty {
+  color: var(--bk-muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+.BankPanel-changesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+.BankPanel-changeTile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 2px solid #444;
+  border-radius: 4px;
+  background: #1a1917;
+  min-width: 0;
+}
+.BankPanel-changeTile.is-added {
+  border-color: #5a9a5a;
+}
+.BankPanel-changeTile.is-removed {
+  border-color: #b05050;
+  opacity: 0.72;
+}
+.BankPanel-changeTile.is-changed-up {
+  border-color: #4a7aaa;
+}
+.BankPanel-changeTile.is-changed-down {
+  border-color: #c09040;
+}
+.BankPanel-changeCap {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.BankPanel-changeTile.is-added .BankPanel-changeCap { color: #81c784; }
+.BankPanel-changeTile.is-removed .BankPanel-changeCap { color: #ff5252; }
+.BankPanel-changeTile.is-changed-up .BankPanel-changeCap { color: #6aafd4; }
+.BankPanel-changeTile.is-changed-down .BankPanel-changeCap { color: #d4b35a; }
 .BankPanel-tools {
   flex: 0 0 auto;
   display: flex;

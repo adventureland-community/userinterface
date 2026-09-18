@@ -58,6 +58,17 @@ import { formatRelativeAge } from "../../lib/format";
 import { resolveOwnTradeEntity } from "../../lib/tradeEntityResolve";
 import { itemInstanceLabel } from "../../lib/gameIcon";
 import { simpleDistance } from "../../host/al";
+import {
+  ensureBankSnapshot,
+  getCachedBankSnapshot,
+  hydrateBankCacheFromIdb,
+  subscribeBankSnapshot,
+} from "../../host/bank";
+import {
+  bankQtyFor,
+  buildBankQtyIndex,
+} from "../../lib/bank/bankStock";
+import type { BankSnapshot } from "../../lib/bank/bankTypes";
 import { ItemInstance } from "../chrome/ItemInstance";
 import { QuerySearchField } from "../chrome/QuerySearchField";
 import { showTradeWishlistPicker } from "../gear/tradeWishlistPicker";
@@ -298,14 +309,23 @@ function actionLabel(row: MarketListingRow): string {
 
 function marketItemIcon(
   name: string,
-  opts: { level?: number; p?: string | null; size: number; q?: number },
+  opts: {
+    level?: number;
+    p?: string | null;
+    size: number;
+    q?: number;
+    bankQ?: number;
+    title?: string;
+  },
 ): any {
   return e(ItemInstance, {
     name,
     size: opts.size,
     level: opts.level,
     q: opts.q,
+    bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : undefined,
     p: opts.p != null ? String(opts.p) : undefined,
+    title: opts.title,
   });
 }
 
@@ -361,8 +381,42 @@ export function MarketPanel(props: MarketPanelProps): any {
   const [travel, setTravel] = React.useState(
     null as MarketTravelItinerary | null,
   );
+  const [bankSnap, setBankSnap] = React.useState(
+    () => getCachedBankSnapshot() as BankSnapshot | null,
+  );
 
   React.useEffect(() => subscribeMarketTravel(setTravel), []);
+
+  React.useEffect(() => {
+    return subscribeBankSnapshot((snap) => setBankSnap(snap));
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void hydrateBankCacheFromIdb().then((fromIdb) => {
+      if (cancelled || !fromIdb) return;
+      setBankSnap((prev: BankSnapshot | null) => prev || fromIdb);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void ensureBankSnapshot({ maxAgeMs: 60_000 }).then((res) => {
+      if (cancelled || res.ok === false) return;
+      setBankSnap(res.snapshot);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const bankQtyIndex = React.useMemo(
+    () => buildBankQtyIndex(bankSnap),
+    [bankSnap],
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -731,6 +785,11 @@ export function MarketPanel(props: MarketPanelProps): any {
             const arb = marketGroupHasArb(g);
             const on = focusKey === g.key;
             const isFav = !!favoriteSet[g.key];
+            const bankQ = bankQtyFor(bankQtyIndex, {
+              name: g.name,
+              level: g.level,
+              p: g.p,
+            });
             return e(
               "div",
               {
@@ -768,7 +827,15 @@ export function MarketPanel(props: MarketPanelProps): any {
                 e(
                   "div",
                   { className: "MarketPanel-itemCard__top" },
-                  marketItemIcon(g.name, { level: g.level, p: g.p, size: 48 }),
+                  marketItemIcon(g.name, {
+                    level: g.level,
+                    p: g.p,
+                    size: 48,
+                    bankQ,
+                    title:
+                      itemLabel(g.name, g.level, g.p) +
+                      (bankQ > 0 ? " · Bank ×" + bankQ : ""),
+                  }),
                   e(
                     "div",
                     { className: "MarketPanel-itemCard__counts" },
@@ -849,6 +916,13 @@ export function MarketPanel(props: MarketPanelProps): any {
 
   const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
   const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
+  const focusBankQ = focusGroup
+    ? bankQtyFor(bankQtyIndex, {
+        name: focusGroup.name,
+        level: focusGroup.level,
+        p: focusGroup.p,
+      })
+    : 0;
 
   const focusPane = focusGroup
     ? [
@@ -868,6 +942,10 @@ export function MarketPanel(props: MarketPanelProps): any {
               level: focusGroup.level,
               p: focusGroup.p,
               size: 40,
+              bankQ: focusBankQ,
+              title:
+                itemLabel(focusGroup.name, focusGroup.level, focusGroup.p) +
+                (focusBankQ > 0 ? " · Bank ×" + focusBankQ : ""),
             }),
             e(
               "div",
@@ -904,7 +982,8 @@ export function MarketPanel(props: MarketPanelProps): any {
                   " buying" +
                   (focusGroup.giveaways.length
                     ? " · " + focusGroup.giveaways.length + " giveaways"
-                    : ""),
+                    : "") +
+                  (focusBankQ > 0 ? " · Bank ×" + focusBankQ : ""),
               ),
             ),
           ),
@@ -952,7 +1031,8 @@ export function MarketPanel(props: MarketPanelProps): any {
                     formatTradeGold(bestSell.price)
                   : bagNames[focusGroup.name.toLowerCase()]
                     ? "No buy orders"
-                    : "Not in bag"),
+                    : "Not in bag") +
+                (focusBankQ > 0 ? " · Bank ×" + focusBankQ : ""),
             ),
           ),
         ),
@@ -1250,7 +1330,15 @@ export function MarketPanel(props: MarketPanelProps): any {
                     (b.q > 1 ? " ×" + b.q : "") +
                     (b.slotCount > 1
                       ? " · " + b.slotCount + " slots"
-                      : "");
+                      : "") +
+                    (() => {
+                      const bq = bankQtyFor(bankQtyIndex, {
+                        name: b.name,
+                        level: b.level,
+                        p: b.p,
+                      });
+                      return bq > 0 ? " · Bank ×" + bq : "";
+                    })();
                   return e(
                     "button",
                     {
@@ -1277,6 +1365,11 @@ export function MarketPanel(props: MarketPanelProps): any {
                       skin: b.skin,
                       level: b.level,
                       q: b.q,
+                      bankQ: bankQtyFor(bankQtyIndex, {
+                        name: b.name,
+                        level: b.level,
+                        p: b.p,
+                      }),
                       p: b.p != null ? b.p : undefined,
                       size: 40,
                       title: tip,
