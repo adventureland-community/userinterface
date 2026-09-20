@@ -157,7 +157,13 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Focus + stand",
             detail:
-              "Offer cards with merchant, server · map, qty, distance; Join on giveaways; Pack/All stand stacking; Mirror / Undercut from browse sales.",
+              "Offer cards with merchant, server · map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: Mirror / Undercut / Buy. Your offers: Reprice / Delist (giveaways Delist only).",
+            kind: "feature",
+          },
+          {
+            label: "You — bag actions",
+            detail:
+              "Select a bag stack → List (price dialog → first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
             kind: "feature",
           },
           {
@@ -188,6 +194,18 @@ export const CHANGELOG: ChangelogEntry[] = [
             label: "Cache + refresh",
             detail:
               "Vault snapshot soft-hydrates from IndexedDB (ecu-bank-cache) for instant Bank + Market badges, then load_bank revalidates. Refresh shows an explorer-style icon grid of changes (Added / Removed / ±qty) with All·Gear·Quantity filters; gold and slots land in the subtitle.",
+            kind: "feature",
+          },
+          {
+            label: "Withdraw to bag",
+            detail:
+              "Click a bank stack (All / Packs) for the tip; right-click → Withdraw to bag runs bank_retrieve (smart_moves to bank then the pack’s floor when needed). Bag + Bank snapshot refresh after the pull.",
+            kind: "feature",
+          },
+          {
+            label: "Deposit from bag",
+            detail:
+              "Bag context menu Deposit to bank… and Market You → Deposit run bank_store (auto-picks stack/empty slot on the current vault map). Smart-moves to bank when the vault is not open.",
             kind: "feature",
           },
         ],

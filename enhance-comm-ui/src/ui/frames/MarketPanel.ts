@@ -26,6 +26,11 @@ import {
 import {
   actOnMarketListing,
   canActOnListing,
+  delistOwnMarketListing,
+  giveawayBagStackOnTrade,
+  listBagStackOnTrade,
+  mirrorOrUndercutListing,
+  repriceOwnMarketListing,
   travelToListing,
 } from "../../host/market/marketListingActions";
 import {
@@ -64,6 +69,8 @@ import {
   hydrateBankCacheFromIdb,
   subscribeBankSnapshot,
 } from "../../host/bank";
+import { bankStoreCommand } from "../../host/bank/bankCommands";
+import type { ItemFingerprint } from "../../host/mail/types";
 import {
   bankQtyFor,
   buildBankQtyIndex,
@@ -731,41 +738,114 @@ export function MarketPanel(props: MarketPanelProps): any {
             : undefined,
         ),
       ),
-      e(
-        "div",
-        { className: "MarketPanel-offerFoot" },
         e(
-          "span",
-          {
-            className:
-              "MarketPanel-offerCache" + (loc.cache ? "" : " is-empty"),
-            title: loc.cacheTip,
-          },
-          loc.cache || "",
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className:
-              "MarketPanel-rowAct is-primary " +
-              (row.giveaway
-                ? "is-give"
-                : row.buyOrder
-                  ? "is-sell"
-                  : "is-buy"),
-            disabled: own,
-            title: own
-              ? "Your listing — use Stand to reprice or delist"
-              : undefined,
-            onClick: (ev: any) => {
-              if (own) return;
-              void runOffer(row, !!(ev && ev.shiftKey));
+          "div",
+          { className: "MarketPanel-offerFoot" },
+          e(
+            "span",
+            {
+              className:
+                "MarketPanel-offerCache" + (loc.cache ? "" : " is-empty"),
+              title: loc.cacheTip,
             },
-          },
-          actionLabel(row),
+            loc.cache || "",
+          ),
+          own
+            ? e(
+                "div",
+                { className: "MarketPanel-offerOwnActs" },
+                !row.giveaway
+                  ? e(
+                      "button",
+                      {
+                        type: "button",
+                        className: "MarketPanel-rowAct is-primary is-sell",
+                        disabled: !gearEditable,
+                        title: "Change price (delist + relist)",
+                        onClick: () => {
+                          void repriceOwnMarketListing({
+                            row,
+                            observing,
+                          });
+                        },
+                      },
+                      "Reprice",
+                    )
+                  : null,
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    className: "MarketPanel-rowAct",
+                    disabled: !gearEditable,
+                    title: "Unequip slot — returns item to bag",
+                    onClick: () => {
+                      delistOwnMarketListing({ row, observing });
+                    },
+                  },
+                  "Delist",
+                ),
+              )
+            : e(
+                "div",
+                { className: "MarketPanel-offerActs" },
+                !row.buyOrder && !row.giveaway
+                  ? e(
+                      "button",
+                      {
+                        type: "button",
+                        className: "MarketPanel-rowAct",
+                        disabled: !gearEditable,
+                        title: "List from bag at this price",
+                        onClick: () => {
+                          void mirrorOrUndercutListing({
+                            row,
+                            observing,
+                            mode: "mirror",
+                          });
+                        },
+                      },
+                      "Mirror",
+                    )
+                  : null,
+                !row.buyOrder && !row.giveaway
+                  ? e(
+                      "button",
+                      {
+                        type: "button",
+                        className: "MarketPanel-rowAct",
+                        disabled: !gearEditable,
+                        title: "List from bag at price − 1",
+                        onClick: () => {
+                          void mirrorOrUndercutListing({
+                            row,
+                            observing,
+                            mode: "undercut",
+                          });
+                        },
+                      },
+                      "Undercut",
+                    )
+                  : null,
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    className:
+                      "MarketPanel-rowAct is-primary " +
+                      (row.giveaway
+                        ? "is-give"
+                        : row.buyOrder
+                          ? "is-sell"
+                          : "is-buy"),
+                    onClick: (ev: any) => {
+                      void runOffer(row, !!(ev && ev.shiftKey));
+                    },
+                  },
+                  actionLabel(row),
+                ),
+              ),
         ),
-      ),
     );
   };
 
@@ -1420,14 +1500,57 @@ export function MarketPanel(props: MarketPanelProps): any {
                 type: "button",
                 className: "MarketPanel-btn MarketPanel-btn--sell",
                 disabled: !selectedBag || !gearEditable,
-                title: "List selected bag item — use stand empty slot or bag menu",
+                title: "List selected bag stack on first empty trade slot",
                 onClick: () => {
-                  window.alert(
-                    "Drag the bag item onto an empty stand/trade slot, or use the bag context menu → List on Trade…",
-                  );
+                  if (!selectedBag) return;
+                  void listBagStackOnTrade({
+                    stack: selectedBag,
+                    observing,
+                  });
                 },
               },
               "List",
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-btn MarketPanel-btn--give",
+                disabled: !selectedBag || !gearEditable,
+                title: "Giveaway selected bag stack on first empty trade slot",
+                onClick: () => {
+                  if (!selectedBag) return;
+                  void giveawayBagStackOnTrade({
+                    stack: selectedBag,
+                    observing,
+                  });
+                },
+              },
+              "Giveaway",
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-btn MarketPanel-btn--ghost",
+                disabled: !selectedBag || !gearEditable,
+                title:
+                  "Deposit selected bag stack into the vault (smart_moves to bank if needed)",
+                onClick: () => {
+                  if (!selectedBag) return;
+                  const fp: ItemFingerprint = {
+                    slot: selectedBag.slot,
+                    name: selectedBag.name,
+                  };
+                  if (selectedBag.level != null) fp.level = selectedBag.level;
+                  if (selectedBag.q > 0) fp.q = selectedBag.q;
+                  if (selectedBag.p != null && selectedBag.p !== "") {
+                    fp.p = String(selectedBag.p);
+                  }
+                  bankStoreCommand(fp);
+                },
+              },
+              "Deposit",
             ),
             e(
               "button",

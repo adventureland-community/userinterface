@@ -1,13 +1,17 @@
 /**
- * Market browse actions — buy / fulfill / travel / mirror / undercut.
+ * Market browse actions — buy / fulfill / travel / mirror / undercut /
+ * list·giveaway from bag / own reprice·delist.
  */
 
-import type { EntityLike } from "../globals";
+import type { EntityLike, SlotLike } from "../globals";
+import { unequipCommand } from "../gearCommands";
 import {
   tradeFulfillCommand,
   tradeListCommand,
   tradePurchaseCommand,
   joinGiveawayCommand,
+  giveawayCommand,
+  tradeRepriceCommand,
 } from "../tradeCommands";
 import {
   canAffordListing,
@@ -17,14 +21,19 @@ import {
   formatTradeGold,
 } from "../../lib/tradeHelpers";
 import type { MarketListingRow } from "../../lib/market/marketTypes";
-import { showTradeQuantityDialog } from "../../ui/trade/tradePromptDialog";
+import type { MarketBagStack } from "../../lib/market/marketBagStacks";
+import {
+  showGiveawayMinutesDialog,
+  showTradePriceDialog,
+  showTradeQuantityDialog,
+} from "../../ui/trade/tradePromptDialog";
 import {
   observingTradeSlotNames,
   tradeSlotIsEmpty,
 } from "../../lib/tradeSlots";
+import { canRepriceTradeSlot } from "../../lib/standTradeSlotMemory";
 import { startMarketTravel } from "./marketTravel";
 import type { ItemFingerprint } from "../mail/types";
-
 function findLiveMerchant(
   entities: EntityLike[],
   name: string,
@@ -253,4 +262,147 @@ export async function mirrorOrUndercutListing(opts: {
     return false;
   }
   return tradeListCommand(fp, tradeSlot, price, q);
+}
+
+function fingerprintFromBagStack(stack: MarketBagStack): ItemFingerprint {
+  const fp: ItemFingerprint = { slot: stack.slot, name: stack.name };
+  if (stack.level != null) fp.level = stack.level;
+  if (stack.q != null && stack.q > 0) fp.q = stack.q;
+  if (stack.p != null && stack.p !== "") fp.p = String(stack.p);
+  return fp;
+}
+
+function liveSlotForOwnListing(
+  observing: EntityLike | null | undefined,
+  row: MarketListingRow,
+): SlotLike | null {
+  if (!observing || !observing.slots) return null;
+  const slot = observing.slots[row.slot] as SlotLike | undefined;
+  if (!slot || !slot.name) return null;
+  return slot;
+}
+
+/** List selected Market bag stack via price dialog onto first empty trade slot. */
+export async function listBagStackOnTrade(opts: {
+  stack: MarketBagStack;
+  observing: EntityLike | null | undefined;
+}): Promise<boolean> {
+  const { stack, observing } = opts;
+  if (!observing) {
+    window.alert("Observe a character first.");
+    return false;
+  }
+  const tradeSlot = firstEmptyTradeSlot(observing);
+  if (!tradeSlot) {
+    window.alert("No empty trade slot — open stand or free a slot.");
+    return false;
+  }
+  const fp = fingerprintFromBagStack(stack);
+  const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+  let q = maxQ;
+  if (maxQ > 1) {
+    const picked = await showTradeQuantityDialog({
+      itemName: stack.name,
+      maxQ,
+    });
+    if (picked == null) return false;
+    q = picked;
+  }
+  const price = await showTradePriceDialog({
+    mode: "list",
+    itemName: stack.name,
+    level: stack.level,
+    p: stack.p,
+    slots: observing.slots,
+  });
+  if (price == null) return false;
+  return tradeListCommand(fp, tradeSlot, price, q);
+}
+
+/** Giveaway selected Market bag stack onto first empty trade slot. */
+export async function giveawayBagStackOnTrade(opts: {
+  stack: MarketBagStack;
+  observing: EntityLike | null | undefined;
+}): Promise<boolean> {
+  const { stack, observing } = opts;
+  if (!observing) {
+    window.alert("Observe a character first.");
+    return false;
+  }
+  const tradeSlot = firstEmptyTradeSlot(observing);
+  if (!tradeSlot) {
+    window.alert("No empty trade slot — open stand or free a slot.");
+    return false;
+  }
+  const fp = fingerprintFromBagStack(stack);
+  const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+  let q = maxQ;
+  if (maxQ > 1) {
+    const picked = await showTradeQuantityDialog({
+      itemName: stack.name,
+      maxQ,
+    });
+    if (picked == null) return false;
+    q = picked;
+  }
+  const mins = await showGiveawayMinutesDialog();
+  if (mins == null) return false;
+  return giveawayCommand(tradeSlot, fp, mins, q);
+}
+
+/** Reprice your own Market Focus listing (fingerprint-aware unequip+relist). */
+export async function repriceOwnMarketListing(opts: {
+  row: MarketListingRow;
+  observing: EntityLike | null | undefined;
+}): Promise<boolean> {
+  const { row, observing } = opts;
+  if (!isOwnMarketListing(row)) return false;
+  if (row.giveaway) {
+    window.alert("Giveaways cannot be repriced — delist and post again.");
+    return false;
+  }
+  const slot = liveSlotForOwnListing(observing, row);
+  if (!slot || !slot.name) {
+    window.alert("Listing not on this character’s stand — refresh Market.");
+    return false;
+  }
+  const standOpen = !!(
+    observing &&
+    observing.stand != null &&
+    observing.stand !== false &&
+    observing.stand !== ""
+  );
+  if (
+    !canRepriceTradeSlot(
+      row.slot,
+      slot,
+      observing && observing.slots ? observing.slots : null,
+      standOpen,
+    )
+  ) {
+    window.alert("Open your stand to reprice trade5+ listings.");
+    return false;
+  }
+  const price = await showTradePriceDialog({
+    mode: "reprice",
+    itemName: slot.name,
+    level: slot.level,
+    p: slot.p,
+    slots: observing && observing.slots ? observing.slots : undefined,
+    currentPrice: slot.price != null ? slot.price : row.price,
+  });
+  if (price == null) return false;
+  return tradeRepriceCommand(row.slot, price, slot);
+}
+
+/** Delist your own Market Focus listing. */
+export function delistOwnMarketListing(opts: {
+  row: MarketListingRow;
+  observing: EntityLike | null | undefined;
+}): boolean {
+  const { row, observing } = opts;
+  if (!isOwnMarketListing(row)) return false;
+  const slot = liveSlotForOwnListing(observing, row);
+  unequipCommand(row.slot, { slotListing: slot || undefined });
+  return true;
 }

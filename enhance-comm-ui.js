@@ -8566,7 +8566,12 @@ ${fightHoverTip(src)}`
             },
             {
               label: "Focus + stand",
-              detail: "Offer cards with merchant, server \xB7 map, qty, distance; Join on giveaways; Pack/All stand stacking; Mirror / Undercut from browse sales.",
+              detail: "Offer cards with merchant, server \xB7 map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: Mirror / Undercut / Buy. Your offers: Reprice / Delist (giveaways Delist only).",
+              kind: "feature"
+            },
+            {
+              label: "You \u2014 bag actions",
+              detail: "Select a bag stack \u2192 List (price dialog \u2192 first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
               kind: "feature"
             },
             {
@@ -8593,6 +8598,16 @@ ${fightHoverTip(src)}`
             {
               label: "Cache + refresh",
               detail: "Vault snapshot soft-hydrates from IndexedDB (ecu-bank-cache) for instant Bank + Market badges, then load_bank revalidates. Refresh shows an explorer-style icon grid of changes (Added / Removed / \xB1qty) with All\xB7Gear\xB7Quantity filters; gold and slots land in the subtitle.",
+              kind: "feature"
+            },
+            {
+              label: "Withdraw to bag",
+              detail: "Click a bank stack (All / Packs) for the tip; right-click \u2192 Withdraw to bag runs bank_retrieve (smart_moves to bank then the pack\u2019s floor when needed). Bag + Bank snapshot refresh after the pull.",
+              kind: "feature"
+            },
+            {
+              label: "Deposit from bag",
+              detail: "Bag context menu Deposit to bank\u2026 and Market You \u2192 Deposit run bank_store (auto-picks stack/empty slot on the current vault map). Smart-moves to bank when the vault is not open.",
               kind: "feature"
             }
           ]
@@ -19543,6 +19558,9 @@ ${CHROME_ARRANGE_CSS}
   function canActOnListing(row3) {
     return row3.merchantStatus === "inRange";
   }
+  function isOwnMarketListing(row3) {
+    return row3.merchantStatus === "you";
+  }
   function travelToListing(row3) {
     if (row3.map == null || row3.x == null || row3.y == null) {
       window.alert("No map position for this merchant \u2014 cannot travel.");
@@ -19638,6 +19656,179 @@ ${CHROME_ARRANGE_CSS}
     }
     if (!confirmTradePurchase(row3.name, row3.price, q)) return false;
     return tradePurchaseCommand(targetId, row3.slot, row3.rid, q);
+  }
+  function firstEmptyTradeSlot(observing) {
+    const names = observingTradeSlotNames();
+    const slots = observing && observing.slots ? observing.slots : null;
+    for (let i = 0; i < names.length; i++) {
+      if (tradeSlotIsEmpty(slots, names[i])) return names[i];
+    }
+    return null;
+  }
+  function bagFingerprintForItem(observing, itemName, level) {
+    const items = observing.items;
+    if (!items) return null;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name !== itemName) continue;
+      if (level != null && (it.level || 0) !== level) continue;
+      const fp = { slot: i, name: it.name };
+      if (it.level != null) fp.level = it.level;
+      if (it.q != null) fp.q = it.q;
+      if (it.p != null) fp.p = String(it.p);
+      return fp;
+    }
+    return null;
+  }
+  async function mirrorOrUndercutListing(opts) {
+    const { row: row3, observing, mode } = opts;
+    if (!observing) {
+      window.alert("Observe a character first.");
+      return false;
+    }
+    if (row3.buyOrder) {
+      window.alert("Mirror/undercut applies to for-sale listings.");
+      return false;
+    }
+    const fp = bagFingerprintForItem(observing, row3.name, row3.level);
+    if (!fp) {
+      window.alert(`No ${row3.name} in bag to list.`);
+      return false;
+    }
+    const tradeSlot = firstEmptyTradeSlot(observing);
+    if (!tradeSlot) {
+      window.alert("No empty trade slot.");
+      return false;
+    }
+    const price = mode === "undercut" ? Math.max(1, row3.price - 1) : Math.max(1, row3.price);
+    const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: row3.name,
+        maxQ
+      });
+      if (picked == null) return false;
+      q = picked;
+    }
+    const label = mode === "undercut" ? "Undercut" : "Mirror";
+    if (!window.confirm(
+      `${label} ${q}\xD7 ${row3.name} at ${formatTradeGold(price)} on ${tradeSlot}?`
+    )) {
+      return false;
+    }
+    return tradeListCommand(fp, tradeSlot, price, q);
+  }
+  function fingerprintFromBagStack(stack) {
+    const fp = { slot: stack.slot, name: stack.name };
+    if (stack.level != null) fp.level = stack.level;
+    if (stack.q != null && stack.q > 0) fp.q = stack.q;
+    if (stack.p != null && stack.p !== "") fp.p = String(stack.p);
+    return fp;
+  }
+  function liveSlotForOwnListing(observing, row3) {
+    if (!observing || !observing.slots) return null;
+    const slot = observing.slots[row3.slot];
+    if (!slot || !slot.name) return null;
+    return slot;
+  }
+  async function listBagStackOnTrade(opts) {
+    const { stack, observing } = opts;
+    if (!observing) {
+      window.alert("Observe a character first.");
+      return false;
+    }
+    const tradeSlot = firstEmptyTradeSlot(observing);
+    if (!tradeSlot) {
+      window.alert("No empty trade slot \u2014 open stand or free a slot.");
+      return false;
+    }
+    const fp = fingerprintFromBagStack(stack);
+    const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: stack.name,
+        maxQ
+      });
+      if (picked == null) return false;
+      q = picked;
+    }
+    const price = await showTradePriceDialog({
+      mode: "list",
+      itemName: stack.name,
+      level: stack.level,
+      p: stack.p,
+      slots: observing.slots
+    });
+    if (price == null) return false;
+    return tradeListCommand(fp, tradeSlot, price, q);
+  }
+  async function giveawayBagStackOnTrade(opts) {
+    const { stack, observing } = opts;
+    if (!observing) {
+      window.alert("Observe a character first.");
+      return false;
+    }
+    const tradeSlot = firstEmptyTradeSlot(observing);
+    if (!tradeSlot) {
+      window.alert("No empty trade slot \u2014 open stand or free a slot.");
+      return false;
+    }
+    const fp = fingerprintFromBagStack(stack);
+    const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+    let q = maxQ;
+    if (maxQ > 1) {
+      const picked = await showTradeQuantityDialog({
+        itemName: stack.name,
+        maxQ
+      });
+      if (picked == null) return false;
+      q = picked;
+    }
+    const mins = await showGiveawayMinutesDialog();
+    if (mins == null) return false;
+    return giveawayCommand(tradeSlot, fp, mins, q);
+  }
+  async function repriceOwnMarketListing(opts) {
+    const { row: row3, observing } = opts;
+    if (!isOwnMarketListing(row3)) return false;
+    if (row3.giveaway) {
+      window.alert("Giveaways cannot be repriced \u2014 delist and post again.");
+      return false;
+    }
+    const slot = liveSlotForOwnListing(observing, row3);
+    if (!slot || !slot.name) {
+      window.alert("Listing not on this character\u2019s stand \u2014 refresh Market.");
+      return false;
+    }
+    const standOpen = !!(observing && observing.stand != null && observing.stand !== false && observing.stand !== "");
+    if (!canRepriceTradeSlot(
+      row3.slot,
+      slot,
+      observing && observing.slots ? observing.slots : null,
+      standOpen
+    )) {
+      window.alert("Open your stand to reprice trade5+ listings.");
+      return false;
+    }
+    const price = await showTradePriceDialog({
+      mode: "reprice",
+      itemName: slot.name,
+      level: slot.level,
+      p: slot.p,
+      slots: observing && observing.slots ? observing.slots : void 0,
+      currentPrice: slot.price != null ? slot.price : row3.price
+    });
+    if (price == null) return false;
+    return tradeRepriceCommand(row3.slot, price, slot);
+  }
+  function delistOwnMarketListing(opts) {
+    const { row: row3, observing } = opts;
+    if (!isOwnMarketListing(row3)) return false;
+    const slot = liveSlotForOwnListing(observing, row3);
+    unequipCommand(row3.slot, { slotListing: slot || void 0 });
+    return true;
   }
 
   // src/host/bank/bankSession.ts
@@ -19968,9 +20159,189 @@ ${CHROME_ARRANGE_CSS}
     return inflight;
   }
 
+  // src/host/bank/bankCommands.ts
+  var PACK_MAP_FALLBACK = {
+    items0: "bank",
+    items1: "bank",
+    items2: "bank",
+    items3: "bank",
+    items4: "bank",
+    items5: "bank",
+    items6: "bank",
+    items7: "bank",
+    items8: "bank_b",
+    items9: "bank_b",
+    items10: "bank_b",
+    items11: "bank_b",
+    items12: "bank_b",
+    items13: "bank_b",
+    items14: "bank_b",
+    items15: "bank_b",
+    items16: "bank_b",
+    items17: "bank_b",
+    items18: "bank_b",
+    items19: "bank_b",
+    items20: "bank_b",
+    items21: "bank_b",
+    items22: "bank_b",
+    items23: "bank_b",
+    items24: "bank_u",
+    items25: "bank_u",
+    items26: "bank_u",
+    items27: "bank_u",
+    items28: "bank_u",
+    items29: "bank_u",
+    items30: "bank_u",
+    items31: "bank_u",
+    items32: "bank_u",
+    items33: "bank_u",
+    items34: "bank_u",
+    items35: "bank_u",
+    items36: "bank_u",
+    items37: "bank_u",
+    items38: "bank_u",
+    items39: "bank_u",
+    items40: "bank_u",
+    items41: "bank_u",
+    items42: "bank_u",
+    items43: "bank_u",
+    items44: "bank_u",
+    items45: "bank_u",
+    items46: "bank_u",
+    items47: "bank_u"
+  };
+  function lit4(value) {
+    return JSON.stringify(String(value));
+  }
+  function bankPackMap(pack) {
+    const key = String(pack || "");
+    if (!key) return null;
+    if (typeof window !== "undefined") {
+      const live2 = window.bank_packs;
+      if (live2 && live2[key] && live2[key][0]) return String(live2[key][0]);
+    }
+    return PACK_MAP_FALLBACK[key] || null;
+  }
+  function scheduleBankAndBagRefresh() {
+    const delays = [1500, 8e3, 2e4];
+    for (let i = 0; i < delays.length; i++) {
+      window.setTimeout(() => {
+        try {
+          refreshObservedInventory();
+        } catch (e2) {
+        }
+        void ensureBankSnapshot({ force: true });
+      }, delays[i]);
+    }
+  }
+  function buildEnsureBankFloorJs(wantMap) {
+    const want = String(wantMap || "bank").trim() || "bank";
+    return [
+      `var __want=${lit4(want)};`,
+      `var __onBank=character.map==="bank"||character.map==="bank_b"||character.map==="bank_u";`,
+      `if(!(character.bank&&character.map===__want)){`,
+      `if(!__onBank){`,
+      `game_log(${lit4(commLogText("bank \xB7 smart_move \u2192 bank"))});`,
+      `try{await smart_move("bank");}catch(__e){game_log(${lit4(commLogText("bank \xB7 smart_move bank failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`,
+      `}`,
+      `if(__want!=="bank"&&character.map!==__want){`,
+      `if(character.map!=="bank"){`,
+      `game_log(${lit4(commLogText("bank \xB7 smart_move \u2192 bank (via main)"))});`,
+      `try{await smart_move("bank");}catch(__e){game_log(${lit4(commLogText("bank \xB7 smart_move bank failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`,
+      `}`,
+      `if(character.map!==__want){`,
+      `game_log(${lit4(commLogText("bank \xB7 smart_move \u2192 " + want))});`,
+      `try{await smart_move(__want);}catch(__e){game_log(${lit4(commLogText("bank \xB7 smart_move floor failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`,
+      `}`,
+      `}`,
+      `if(__want==="bank"&&character.map!=="bank"){`,
+      `game_log(${lit4(commLogText("bank \xB7 smart_move \u2192 bank"))});`,
+      `try{await smart_move("bank");}catch(__e){game_log(${lit4(commLogText("bank \xB7 smart_move bank failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`,
+      `}`,
+      `if(!character.bank||character.map!==__want){game_log(${lit4(commLogText("bank \xB7 vault not open on " + want))});return;}`,
+      `}`
+    ].join("");
+  }
+  function buildEnsureAnyBankJs() {
+    return [
+      `var __onBank=character.map==="bank"||character.map==="bank_b"||character.map==="bank_u";`,
+      `if(!character.bank){`,
+      `if(!__onBank){`,
+      `game_log(${lit4(commLogText("bank \xB7 smart_move \u2192 bank"))});`,
+      `try{await smart_move("bank");}catch(__e){game_log(${lit4(commLogText("bank \xB7 smart_move bank failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`,
+      `}`,
+      `if(!character.bank){game_log(${lit4(commLogText("bank \xB7 vault not open"))});return;}`,
+      `}`
+    ].join("");
+  }
+  function buildBankRetrieveScript(pack, packSlot, options) {
+    const packId = String(pack || "").trim();
+    const slot = Number(packSlot) | 0;
+    const mapHint = bankPackMap(packId) || "bank";
+    if (!packId || slot < 0) {
+      return wrapCommandScript(
+        `game_log(${lit4(commLogText("bank-retrieve aborted \u2014 bad pack/slot"))});`
+      );
+    }
+    const inv = options && options.inv != null && Number.isFinite(options.inv) ? Number(options.inv) | 0 : -1;
+    const expect = options && options.expectName ? String(options.expectName) : "";
+    const parts = [
+      buildEnsureBankFloorJs(mapHint),
+      `var __pack=character.bank[${lit4(packId)}];`,
+      `if(!__pack){game_log(${lit4(commLogText("bank-retrieve \xB7 pack locked or wrong vault"))});return;}`,
+      `var __it=__pack[${slot}];`,
+      `if(!__it||!__it.name||__it.name==="placeholder"){game_log(${lit4(commLogText("bank-retrieve \xB7 empty slot"))});return;}`
+    ];
+    if (expect) {
+      parts.push(
+        `if(__it.name!==${lit4(expect)}){game_log(${lit4(commLogText("bank-retrieve \xB7 item mismatch (refresh Bank)"))});return;}`
+      );
+    }
+    parts.push(
+      `try{await bank_retrieve(${lit4(packId)},${slot},${inv});game_log(${lit4(commLogText("bank-retrieve ok \xB7 " + packId + "[" + slot + "]"))});}`,
+      `catch(__e){game_log(${lit4(commLogText("bank-retrieve failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+    );
+    return wrapCommandScript(parts.join(""));
+  }
+  function bankRetrieveCommand(pack, packSlot, options) {
+    const script = buildBankRetrieveScript(pack, packSlot, options);
+    const ok = emitObserverCommand(
+      script,
+      `bank-retrieve ${pack}[${packSlot}]`
+    );
+    if (!ok) return false;
+    scheduleBankAndBagRefresh();
+    return true;
+  }
+  function buildBankStoreScript(fp, options) {
+    const pack = options && options.pack != null ? String(options.pack).trim() : "";
+    const packSlot = options && options.packSlot != null && Number.isFinite(options.packSlot) ? Number(options.packSlot) | 0 : -1;
+    const storeCall = pack ? `await bank_store(__slot,${lit4(pack)},${packSlot})` : `await bank_store(__slot)`;
+    const okLabel = pack ? commLogText("bank-store ok \xB7 " + fp.name + " \u2192 " + pack) : commLogText("bank-store ok \xB7 " + fp.name);
+    const ensure = pack ? buildEnsureBankFloorJs(bankPackMap(pack) || "bank") : buildEnsureAnyBankJs();
+    return wrapCommandScript(
+      [
+        ensure,
+        resolveInvSlotJs(fp),
+        `try{${storeCall};game_log(${lit4(okLabel)});}`,
+        `catch(__e){game_log(${lit4(commLogText("bank-store failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+      ].join("")
+    );
+  }
+  function bankStoreCommand(fp, options) {
+    const script = buildBankStoreScript(fp, options);
+    const ok = emitObserverCommand(
+      script,
+      `bank-store ${fp.name}`
+    );
+    if (!ok) return false;
+    scheduleBankAndBagRefresh();
+    return true;
+  }
+
   // src/host/chat/commands.ts
   var MAX_LEN = 1200;
-  function lit4(value) {
+  function lit5(value) {
     return JSON.stringify(String(value));
   }
   function truncateChatMessage(message) {
@@ -19983,23 +20354,23 @@ ${CHROME_ARRANGE_CSS}
     if (!text) return null;
     if (text.charAt(0) === "/") {
       return wrapCommandScript(
-        `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit4(text)});`
+        `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit5(text)});`
       );
     }
     if (mode === "party") {
       return wrapCommandScript(
-        `if(typeof party_say!=="function"){game_log("chat \xB7 party_say missing");return;}party_say(${lit4(text)});`
+        `if(typeof party_say!=="function"){game_log("chat \xB7 party_say missing");return;}party_say(${lit5(text)});`
       );
     }
     if (mode === "whisper") {
       const to = String(whisperTo || "").trim();
       if (!to) return null;
       return wrapCommandScript(
-        `if(typeof private_say!=="function"){game_log("chat \xB7 private_say missing");return;}private_say(${lit4(to)},${lit4(text)});`
+        `if(typeof private_say!=="function"){game_log("chat \xB7 private_say missing");return;}private_say(${lit5(to)},${lit5(text)});`
       );
     }
     return wrapCommandScript(
-      `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit4(text)});`
+      `if(typeof say!=="function"){game_log("chat \xB7 say missing");return;}say(${lit5(text)});`
     );
   }
   function sendChatViaObserver(mode, message, whisperTo) {
@@ -23619,7 +23990,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-18T15:06:40.064Z" : "unknown";
+    const builtAt = true ? "2026-09-20T17:08:02.450Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -61953,14 +62324,14 @@ ${ESTIMATE_HINT}`,
 
   // src/host/sendItem.ts
   var SEND_ITEM_RANGE = 400;
-  function lit5(value) {
+  function lit6(value) {
     return JSON.stringify(String(value));
   }
   function fingerprintCheckJs3(fp, varName) {
-    const parts = [`!${varName}`, `${varName}.name!==${lit5(fp.name)}`];
+    const parts = [`!${varName}`, `${varName}.name!==${lit6(fp.name)}`];
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
-    if (fp.p != null) parts.push(`${varName}.p!==${lit5(fp.p)}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit6(fp.p)}`);
     return parts.join("||");
   }
   function selfNameLower() {
@@ -62040,13 +62411,13 @@ ${ESTIMATE_HINT}`,
         `var __cand=character.items[__si];`,
         `if(!(${candMismatch})){__slot=__si;break;}`,
         `}`,
-        `if(__slot<0){game_log(${lit5("Send item aborted \u2014 item mismatch")});return;}`,
+        `if(__slot<0){game_log(${lit6("Send item aborted \u2014 item mismatch")});return;}`,
         `it=character.items[__slot];`,
         `}`,
         `var __q=Math.min(${q | 0},it&&it.q?it.q:1);`,
         `if(!__q)__q=1;`,
-        `try{await send_item(${lit5(to)},__slot,__q);}catch(__e){`,
-        `game_log(${lit5("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
+        `try{await send_item(${lit6(to)},__slot,__q);}catch(__e){`,
+        `game_log(${lit6("Send item failed \u2192 " + to)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));`,
         `}`
       ].join("")
     );
@@ -62463,6 +62834,24 @@ ${ESTIMATE_HINT}`,
     ];
   }
   registerBagMenuProvider(buildBagSplitActions);
+
+  // src/host/bankBagMenuActions.ts
+  function buildBankBagMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    if (!ctx.fp || !ctx.fp.name) return [];
+    return [
+      {
+        id: "bank-store",
+        label: "Deposit to bank\u2026",
+        title: "bank_store on the observed character \u2014 smart_moves to bank if needed",
+        separatorBefore: true,
+        run: () => {
+          bankStoreCommand(ctx.fp);
+        }
+      }
+    ];
+  }
+  registerBagMenuProvider(buildBankBagMenuActions);
 
   // src/ui/bag/bagItemInfoActions.ts
   function openObservingItemInfo(ctx) {
@@ -65492,6 +65881,11 @@ ${ESTIMATE_HINT}`,
   color: #e0a080;
   background: #181210;
 }
+.MarketPanel-btn--give {
+  border-color: #3a5a40;
+  color: #9ecf9a;
+  background: #101610;
+}
 .MarketPanel-btn--ghost {
   background: transparent;
   color: #888;
@@ -65869,6 +66263,15 @@ ${ESTIMATE_HINT}`,
   align-items: center;
   gap: 8px;
   margin-top: 4px;
+  min-width: 0;
+}
+.MarketPanel-offerOwnActs,
+.MarketPanel-offerActs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .MarketPanel-offerCache {
@@ -66594,19 +66997,86 @@ ${ESTIMATE_HINT}`,
             },
             loc.cache || ""
           ),
-          e(
-            "button",
-            {
-              type: "button",
-              className: "MarketPanel-rowAct is-primary " + (row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy"),
-              disabled: own,
-              title: own ? "Your listing \u2014 use Stand to reprice or delist" : void 0,
-              onClick: (ev) => {
-                if (own) return;
-                void runOffer(row3, !!(ev && ev.shiftKey));
-              }
-            },
-            actionLabel(row3)
+          own ? e(
+            "div",
+            { className: "MarketPanel-offerOwnActs" },
+            !row3.giveaway ? e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-rowAct is-primary is-sell",
+                disabled: !gearEditable,
+                title: "Change price (delist + relist)",
+                onClick: () => {
+                  void repriceOwnMarketListing({
+                    row: row3,
+                    observing
+                  });
+                }
+              },
+              "Reprice"
+            ) : null,
+            e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-rowAct",
+                disabled: !gearEditable,
+                title: "Unequip slot \u2014 returns item to bag",
+                onClick: () => {
+                  delistOwnMarketListing({ row: row3, observing });
+                }
+              },
+              "Delist"
+            )
+          ) : e(
+            "div",
+            { className: "MarketPanel-offerActs" },
+            !row3.buyOrder && !row3.giveaway ? e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-rowAct",
+                disabled: !gearEditable,
+                title: "List from bag at this price",
+                onClick: () => {
+                  void mirrorOrUndercutListing({
+                    row: row3,
+                    observing,
+                    mode: "mirror"
+                  });
+                }
+              },
+              "Mirror"
+            ) : null,
+            !row3.buyOrder && !row3.giveaway ? e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-rowAct",
+                disabled: !gearEditable,
+                title: "List from bag at price \u2212 1",
+                onClick: () => {
+                  void mirrorOrUndercutListing({
+                    row: row3,
+                    observing,
+                    mode: "undercut"
+                  });
+                }
+              },
+              "Undercut"
+            ) : null,
+            e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-rowAct is-primary " + (row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy"),
+                onClick: (ev) => {
+                  void runOffer(row3, !!(ev && ev.shiftKey));
+                }
+              },
+              actionLabel(row3)
+            )
           )
         )
       );
@@ -67150,14 +67620,56 @@ ${ESTIMATE_HINT}`,
                   type: "button",
                   className: "MarketPanel-btn MarketPanel-btn--sell",
                   disabled: !selectedBag || !gearEditable,
-                  title: "List selected bag item \u2014 use stand empty slot or bag menu",
+                  title: "List selected bag stack on first empty trade slot",
                   onClick: () => {
-                    window.alert(
-                      "Drag the bag item onto an empty stand/trade slot, or use the bag context menu \u2192 List on Trade\u2026"
-                    );
+                    if (!selectedBag) return;
+                    void listBagStackOnTrade({
+                      stack: selectedBag,
+                      observing
+                    });
                   }
                 },
                 "List"
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-btn MarketPanel-btn--give",
+                  disabled: !selectedBag || !gearEditable,
+                  title: "Giveaway selected bag stack on first empty trade slot",
+                  onClick: () => {
+                    if (!selectedBag) return;
+                    void giveawayBagStackOnTrade({
+                      stack: selectedBag,
+                      observing
+                    });
+                  }
+                },
+                "Giveaway"
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-btn MarketPanel-btn--ghost",
+                  disabled: !selectedBag || !gearEditable,
+                  title: "Deposit selected bag stack into the vault (smart_moves to bank if needed)",
+                  onClick: () => {
+                    if (!selectedBag) return;
+                    const fp = {
+                      slot: selectedBag.slot,
+                      name: selectedBag.name
+                    };
+                    if (selectedBag.level != null) fp.level = selectedBag.level;
+                    if (selectedBag.q > 0) fp.q = selectedBag.q;
+                    if (selectedBag.p != null && selectedBag.p !== "") {
+                      fp.p = String(selectedBag.p);
+                    }
+                    bankStoreCommand(fp);
+                  }
+                },
+                "Deposit"
               ),
               e(
                 "button",
@@ -67354,6 +67866,104 @@ ${ESTIMATE_HINT}`,
         e("div", { className: "MarketPanel-col" }, focusPane)
       )
     );
+  }
+
+  // src/ui/frames/bankSlotContextMenu.ts
+  var ctxEl3 = null;
+  var ctxKeyHandler3 = null;
+  var ctxDocHandler3 = null;
+  function hideBankCtx() {
+    if (ctxKeyHandler3) {
+      document.removeEventListener("keydown", ctxKeyHandler3, true);
+      ctxKeyHandler3 = null;
+    }
+    if (ctxDocHandler3) {
+      document.removeEventListener("mousedown", ctxDocHandler3, true);
+      ctxDocHandler3 = null;
+    }
+    if (ctxEl3) {
+      ctxEl3.remove();
+      ctxEl3 = null;
+    }
+  }
+  function clampMenuPosition3(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 80;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function showBankSlotContextMenu(opts) {
+    hideBankCtx();
+    ensureBagItemContextMenuCss();
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx";
+    el.setAttribute("role", "menu");
+    const editable = canEditObservedBag();
+    if (editable) {
+      const withdraw = document.createElement("button");
+      withdraw.type = "button";
+      withdraw.className = "comm-bag-ctx__item";
+      withdraw.setAttribute("role", "menuitem");
+      withdraw.textContent = "Withdraw to bag";
+      withdraw.title = "bank_retrieve \u2014 smart_moves to the vault floor if needed";
+      withdraw.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        hideBankCtx();
+        bankRetrieveCommand(opts.pack, opts.index, {
+          expectName: opts.item.name
+        });
+      });
+      el.appendChild(withdraw);
+      const sep = document.createElement("div");
+      sep.className = "comm-bag-ctx__sep";
+      sep.setAttribute("role", "separator");
+      el.appendChild(sep);
+    }
+    const inspect = document.createElement("button");
+    inspect.type = "button";
+    inspect.className = "comm-bag-ctx__item";
+    inspect.setAttribute("role", "menuitem");
+    inspect.textContent = "Inspect";
+    inspect.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      hideBankCtx();
+      opts.showItem(opts.item);
+    });
+    el.appendChild(inspect);
+    if (!editable) {
+      const hint = document.createElement("div");
+      hint.className = "comm-bag-ctx__item is-disabled";
+      hint.style.opacity = "0.55";
+      hint.style.cursor = "default";
+      hint.textContent = "Observe a character to withdraw";
+      el.insertBefore(hint, inspect);
+    }
+    document.body.appendChild(el);
+    ctxEl3 = el;
+    clampMenuPosition3(el, opts.clientX, opts.clientY);
+    ctxKeyHandler3 = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hideBankCtx();
+      }
+    };
+    ctxDocHandler3 = (ev) => {
+      if (ctxEl3 && ev.target instanceof Node && ctxEl3.contains(ev.target)) {
+        return;
+      }
+      hideBankCtx();
+    };
+    document.addEventListener("keydown", ctxKeyHandler3, true);
+    window.setTimeout(() => {
+      if (ctxDocHandler3) {
+        document.addEventListener("mousedown", ctxDocHandler3, true);
+      }
+    }, 0);
   }
 
   // src/lib/bank/bankDiff.ts
@@ -68580,6 +69190,27 @@ ${ESTIMATE_HINT}`,
       window.show_modal(html, { wrap: false, hideinbackground: true });
     }
   }
+  function onBankSlotClick(_ev, _pack, _index, item) {
+    showBankItem(item);
+  }
+  function onBankSlotContextMenu(ev, pack, index, item) {
+    if (ev.preventDefault) ev.preventDefault();
+    if (ev.stopPropagation) ev.stopPropagation();
+    showBankSlotContextMenu({
+      clientX: ev.clientX != null ? ev.clientX : 40,
+      clientY: ev.clientY != null ? ev.clientY : 40,
+      pack,
+      index,
+      item,
+      showItem: showBankItem
+    });
+  }
+  function bankSlotTitle(itemName, packLabel, editable) {
+    if (!editable) {
+      return itemName + " \xB7 " + packLabel + " \xB7 click to inspect";
+    }
+    return itemName + " \xB7 " + packLabel + " \xB7 Right-click: Withdraw to bag \xB7 Click: inspect";
+  }
   function asAgg(item, pack, index) {
     var _a, _b;
     const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
@@ -68839,18 +69470,26 @@ ${ESTIMATE_HINT}`,
       if (!items.length) {
         return e("div", { className: "BankPanel-empty" }, "No items match.");
       }
+      const editable = canEditObservedBag();
       return e(
         "div",
         { className: "BankPanel-grid" },
-        items.map(
-          (it) => e(
+        items.map((it) => {
+          const loc = it.locs[0];
+          const packHint = it.locs.length > 1 ? it.locs.length + " stacks" : packDisplayLabel(loc.pack);
+          return e(
             "button",
             {
               type: "button",
               key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
               className: "BankPanel-cell",
-              title: it.name + (it.locs.length > 1 ? " \xB7 " + it.locs.length + " stacks" : " \xB7 " + packDisplayLabel(it.locs[0].pack)),
-              onClick: () => showBankItem(it)
+              title: bankSlotTitle(it.name, packHint, editable),
+              onClick: (ev) => {
+                onBankSlotClick(ev, loc.pack, loc.index, it);
+              },
+              onContextMenu: (ev) => {
+                onBankSlotContextMenu(ev, loc.pack, loc.index, it);
+              }
             },
             e(ItemInstance, {
               name: it.name,
@@ -68859,13 +69498,14 @@ ${ESTIMATE_HINT}`,
               p: it.p != null ? String(it.p) : void 0,
               size: 40
             })
-          )
-        )
+          );
+        })
       );
     };
     const renderPacksBoard = () => {
       if (!snap) return null;
       const q = String(query || "").trim();
+      const editable = canEditObservedBag();
       const boards = [];
       for (let i = 0; i < packKeys.length; i++) {
         const pack = packKeys[i];
@@ -68914,8 +69554,17 @@ ${ESTIMATE_HINT}`,
                     type: "button",
                     key: pack + ":" + index,
                     className: "BankPanel-slot" + (dim2 ? " is-dim" : ""),
-                    title: it.name + " \xB7 slot " + (index + 1),
-                    onClick: () => showBankItem(it)
+                    title: bankSlotTitle(
+                      it.name,
+                      packDisplayLabel(pack) + " \xB7 slot " + (index + 1),
+                      editable
+                    ),
+                    onClick: (ev) => {
+                      onBankSlotClick(ev, pack, index, it);
+                    },
+                    onContextMenu: (ev) => {
+                      onBankSlotContextMenu(ev, pack, index, it);
+                    }
                   },
                   e(ItemInstance, {
                     name: it.name,

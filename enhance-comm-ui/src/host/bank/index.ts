@@ -19,3 +19,12 @@ export {
   hydrateBankSnapshotFromIdb,
   schedulePersistBankSnapshot,
 } from "./bankPersist";
+export {
+  bankPackMap,
+  buildEnsureBankFloorJs,
+  buildEnsureAnyBankJs,
+  buildBankRetrieveScript,
+  bankRetrieveCommand,
+  buildBankStoreScript,
+  bankStoreCommand,
+} from "./bankCommands";

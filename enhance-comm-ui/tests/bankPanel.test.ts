@@ -22,6 +22,11 @@ import {
 } from "../src/lib/bank/bankReady";
 import { parseLoadBankPayload } from "../src/host/bank/api";
 import {
+  bankPackMap,
+  buildBankRetrieveScript,
+  buildBankStoreScript,
+} from "../src/host/bank/bankCommands";
+import {
   changeBadgeQuantity,
   changeCaption,
   compareBankSnapshots,
@@ -359,5 +364,48 @@ describe("bankDiff", () => {
     });
     assert.equal(empty.hasChanges, false);
     assert.equal(empty.changes.length, 0);
+  });
+});
+
+describe("bankCommands", () => {
+  it("maps packs to vault maps", () => {
+    assert.equal(bankPackMap("items0"), "bank");
+    assert.equal(bankPackMap("items8"), "bank_b");
+    assert.equal(bankPackMap("items24"), "bank_u");
+    assert.equal(bankPackMap("nope"), null);
+  });
+
+  it("builds bank_retrieve script with guards", () => {
+    const script = buildBankRetrieveScript("items0", 3, {
+      expectName: "hpot0",
+    });
+    assert.match(script, /await bank_retrieve\("items0",3,-1\)/);
+    assert.match(script, /character\.bank/);
+    assert.match(script, /__it\.name!=="hpot0"/);
+    assert.match(script, /smart_move\("bank"\)/);
+    assert.match(script, /\[ECU\/comm\] bank-retrieve/);
+  });
+
+  it("smart_moves to bank then basement for bank_b packs", () => {
+    const script = buildBankRetrieveScript("items8", 0, {
+      expectName: "gem0",
+    });
+    assert.match(script, /__want="bank_b"/);
+    assert.match(script, /smart_move\("bank"\)/);
+    assert.match(script, /smart_move\(__want\)/);
+    assert.match(script, /await bank_retrieve\("items8",0,-1\)/);
+  });
+
+  it("builds bank_store script with fingerprint resolve", () => {
+    const script = buildBankStoreScript({
+      slot: 2,
+      name: "hpot0",
+      q: 50,
+    });
+    assert.match(script, /await bank_store\(__slot\)/);
+    assert.match(script, /character\.bank/);
+    assert.match(script, /smart_move\("bank"\)/);
+    assert.match(script, /character\.items\[__slot\]/);
+    assert.match(script, /\[ECU\/comm\] bank-store/);
   });
 });

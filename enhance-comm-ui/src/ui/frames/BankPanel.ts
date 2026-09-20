@@ -6,6 +6,8 @@
 
 import { getReact, e } from "../../host/react";
 import { ensureBankSnapshot, hydrateBankCacheFromIdb } from "../../host/bank";
+import { canEditObservedBag } from "../../host/gearObserved";
+import { showBankSlotContextMenu } from "./bankSlotContextMenu";
 import {
   changeBadgeQuantity,
   changeCaption,
@@ -112,6 +114,55 @@ function showBankItem(item: {
   if (typeof (window as any).show_modal === "function") {
     (window as any).show_modal(html, { wrap: false, hideinbackground: true });
   }
+}
+
+/** Left-click: inspect. Right-click: Withdraw / Inspect menu. */
+function onBankSlotClick(
+  _ev: unknown,
+  _pack: string,
+  _index: number,
+  item: { name: string; level?: number; q?: number; p?: string | null },
+): void {
+  showBankItem(item);
+}
+
+function onBankSlotContextMenu(
+  ev: {
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+    clientX?: number;
+    clientY?: number;
+  },
+  pack: string,
+  index: number,
+  item: { name: string; level?: number; q?: number; p?: string | null },
+): void {
+  if (ev.preventDefault) ev.preventDefault();
+  if (ev.stopPropagation) ev.stopPropagation();
+  showBankSlotContextMenu({
+    clientX: ev.clientX != null ? ev.clientX : 40,
+    clientY: ev.clientY != null ? ev.clientY : 40,
+    pack,
+    index,
+    item,
+    showItem: showBankItem,
+  });
+}
+
+function bankSlotTitle(
+  itemName: string,
+  packLabel: string,
+  editable: boolean,
+): string {
+  if (!editable) {
+    return itemName + " · " + packLabel + " · click to inspect";
+  }
+  return (
+    itemName +
+    " · " +
+    packLabel +
+    " · Right-click: Withdraw to bag · Click: inspect"
+  );
 }
 
 function asAgg(
@@ -425,22 +476,29 @@ export function BankPanel(props: BankPanelProps): any {
     if (!items.length) {
       return e("div", { className: "BankPanel-empty" }, "No items match.");
     }
+    const editable = canEditObservedBag();
     return e(
       "div",
       { className: "BankPanel-grid" },
-      items.map((it: BankAggItem) =>
-        e(
+      items.map((it: BankAggItem) => {
+        const loc = it.locs[0];
+        const packHint =
+          it.locs.length > 1
+            ? it.locs.length + " stacks"
+            : packDisplayLabel(loc.pack);
+        return e(
           "button",
           {
             type: "button",
             key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
             className: "BankPanel-cell",
-            title:
-              it.name +
-              (it.locs.length > 1
-                ? " · " + it.locs.length + " stacks"
-                : " · " + packDisplayLabel(it.locs[0].pack)),
-            onClick: () => showBankItem(it),
+            title: bankSlotTitle(it.name, packHint, editable),
+            onClick: (ev: any) => {
+              onBankSlotClick(ev, loc.pack, loc.index, it);
+            },
+            onContextMenu: (ev: any) => {
+              onBankSlotContextMenu(ev, loc.pack, loc.index, it);
+            },
           },
           e(ItemInstance, {
             name: it.name,
@@ -449,14 +507,15 @@ export function BankPanel(props: BankPanelProps): any {
             p: it.p != null ? String(it.p) : undefined,
             size: 40,
           }),
-        ),
-      ),
+        );
+      }),
     );
   };
 
   const renderPacksBoard = () => {
     if (!snap) return null;
     const q = String(query || "").trim();
+    const editable = canEditObservedBag();
     const boards: any[] = [];
     for (let i = 0; i < packKeys.length; i++) {
       const pack = packKeys[i];
@@ -510,8 +569,17 @@ export function BankPanel(props: BankPanelProps): any {
                   key: pack + ":" + index,
                   className:
                     "BankPanel-slot" + (dim ? " is-dim" : ""),
-                  title: it.name + " · slot " + (index + 1),
-                  onClick: () => showBankItem(it),
+                  title: bankSlotTitle(
+                    it.name,
+                    packDisplayLabel(pack) + " · slot " + (index + 1),
+                    editable,
+                  ),
+                  onClick: (ev: any) => {
+                    onBankSlotClick(ev, pack, index, it);
+                  },
+                  onContextMenu: (ev: any) => {
+                    onBankSlotContextMenu(ev, pack, index, it);
+                  },
                 },
                 e(ItemInstance, {
                   name: it.name,

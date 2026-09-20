@@ -232,6 +232,11 @@ export const MARKET_PANEL_CSS = `
   color: #e0a080;
   background: #181210;
 }
+.MarketPanel-btn--give {
+  border-color: #3a5a40;
+  color: #9ecf9a;
+  background: #101610;
+}
 .MarketPanel-btn--ghost {
   background: transparent;
   color: #888;
@@ -609,6 +614,15 @@ export const MARKET_PANEL_CSS = `
   align-items: center;
   gap: 8px;
   margin-top: 4px;
+  min-width: 0;
+}
+.MarketPanel-offerOwnActs,
+.MarketPanel-offerActs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .MarketPanel-offerCache {
