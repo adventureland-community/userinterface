@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Market You click harness</title>
+    <style>
+      body {
+        font-family: "Segoe UI", sans-serif;
+        background: #111;
+        color: #ddd;
+        margin: 16px;
+      }
+      h1 {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      #log {
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        margin-top: 12px;
+      }
+      .ok {
+        color: #8d8;
+      }
+      .bad {
+        color: #f88;
+      }
+      #stage {
+        position: relative;
+        width: 420px;
+        height: 280px;
+        background: #1a1a1a;
+        border: 1px solid #444;
+      }
+      /* Replicate fill-shell merge: shell none, body auto, Market auto. */
+      .comm-pos-panel {
+        position: absolute;
+        inset: 12px;
+        pointer-events: none;
+        background: rgba(255, 0, 0, 0.06);
+      }
+      .comm-pos-panel-body {
+        pointer-events: auto;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+      }
+      .MarketPanel {
+        pointer-events: auto;
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        height: 100%;
+        background: #0b0b0b;
+        border: 2px solid #555;
+      }
+      .you,
+      .grid {
+        padding: 8px;
+      }
+      .you {
+        border-right: 1px solid #2a2a2a;
+      }
+      .bagSlot,
+      .standSlot,
+      .card,
+      .underlay {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 48px;
+        margin: 4px;
+        border: 1px solid #555;
+        background: #181818;
+        color: #eee;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .underlay {
+        position: absolute;
+        left: 24px;
+        top: 80px;
+        width: 100px;
+        height: 100px;
+        z-index: 0;
+        background: #402020;
+        border-color: #a44;
+      }
+      .comm-pos-panel {
+        z-index: 2;
+      }
+      .hit {
+        outline: 2px solid #e8c96a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Market You click harness</h1>
+    <p>
+      Bag + stand must receive hits (not the underlay). Stand primary click
+      focuses — must not open tip. Shift+stand opens tip.
+    </p>
+    <div id="stage">
+      <button type="button" class="underlay" id="underlay">UNDER</button>
+      <div class="comm-pos-panel">
+        <div class="comm-pos-panel-body">
+          <div class="MarketPanel">
+            <div class="you">
+              <button type="button" class="bagSlot" id="bag">BAG</button>
+              <button type="button" class="standSlot" id="stand">STAND</button>
+            </div>
+            <div class="grid">
+              <button type="button" class="card" id="card">CARD</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="log"></div>
+    <script>
+      const log = document.getElementById("log");
+      const lines = [];
+      function say(ok, msg) {
+        lines.push((ok ? "PASS" : "FAIL") + "  " + msg);
+        const el = document.createElement("div");
+        el.className = ok ? "ok" : "bad";
+        el.textContent = (ok ? "PASS" : "FAIL") + "  " + msg;
+        log.appendChild(el);
+      }
+
+      let tipOpens = 0;
+      let focusHits = 0;
+      let underHits = 0;
+      let cardHits = 0;
+
+      document.getElementById("underlay").onclick = () => {
+        underHits += 1;
+      };
+      document.getElementById("card").onclick = () => {
+        cardHits += 1;
+      };
+      document.getElementById("bag").onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        focusHits += 1;
+        ev.currentTarget.classList.add("hit");
+      };
+      // Mirrors Market onSlotClick — primary focus, shift = tip.
+      document.getElementById("stand").onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.shiftKey) {
+          tipOpens += 1;
+          return;
+        }
+        focusHits += 1;
+        ev.currentTarget.classList.add("hit");
+      };
+
+      function clickAt(el, shiftKey) {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        const top = document.elementFromPoint(x, y);
+        const hitOk = top === el || el.contains(top);
+        el.dispatchEvent(
+          new MouseEvent("click", {
+            bubbles: true,
+            cancelable: true,
+            view: window,
+            clientX: x,
+            clientY: y,
+            shiftKey: !!shiftKey,
+          }),
+        );
+        return { hitOk, top: top && (top.id || top.className) };
+      }
+
+      const bag = document.getElementById("bag");
+      const stand = document.getElementById("stand");
+
+      const bagHit = clickAt(bag, false);
+      say(bagHit.hitOk, "bag elementFromPoint → bag (" + bagHit.top + ")");
+      say(focusHits === 1 && underHits === 0, "bag click focuses, not underlay");
+
+      const standHit = clickAt(stand, false);
+      say(
+        standHit.hitOk,
+        "stand elementFromPoint → stand (" + standHit.top + ")",
+      );
+      say(
+        focusHits === 2 && tipOpens === 0 && underHits === 0,
+        "stand primary focuses, does not open tip / underlay",
+      );
+
+      clickAt(stand, true);
+      say(tipOpens === 1, "stand shift+click opens tip path");
+
+      say(cardHits === 0 && underHits === 0, "no stray card/underlay clicks");
+
+      const all = lines.every((l) => l.indexOf("PASS") === 0);
+      document.title = (all ? "PASS" : "FAIL") + " — market You click harness";
+    </script>
+  </body>
+</html>

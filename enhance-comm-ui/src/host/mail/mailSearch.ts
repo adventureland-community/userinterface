@@ -130,6 +130,26 @@ function includesLoose(hay: string, needle: string): boolean {
   return hay.toLowerCase().indexOf(needle.toLowerCase()) >= 0;
 }
 
+/** Raw item id + optional G.items display name (Bank/Market parity). */
+function itemSearchText(m: MailRow): string {
+  const item = m.item;
+  if (!item || item.name == null || item.name === "") return "";
+  const name = String(item.name);
+  if (typeof window === "undefined") return name;
+  try {
+    const g = (
+      window as Window & {
+        G?: { items?: Record<string, { name?: string }> };
+      }
+    ).G;
+    const def = g && g.items ? g.items[name] : null;
+    if (def && def.name) return name + " " + String(def.name);
+  } catch {
+    /* ignore */
+  }
+  return name;
+}
+
 export function parseMailSearch(
   raw: string,
   now: number = Date.now(),
@@ -217,13 +237,12 @@ function matchClause(m: MailRow, c: MailSearchClause): boolean {
       return c.negate ? !ok : ok;
     }
     case "item": {
-      const name = m.item && m.item.name ? String(m.item.name) : "";
-      const ok = !!name && includesLoose(name, c.value);
+      const hay = itemSearchText(m);
+      const ok = !!hay && includesLoose(hay, c.value);
       return c.negate ? !ok : ok;
     }
     case "text": {
-      const itemName = m.item && m.item.name ? String(m.item.name) : "";
-      const hay = [m.fro, m.to, m.subject, m.message, itemName]
+      const hay = [m.fro, m.to, m.subject, m.message, itemSearchText(m)]
         .join(" ")
         .toLowerCase();
       const ok = includesLoose(hay, c.value);

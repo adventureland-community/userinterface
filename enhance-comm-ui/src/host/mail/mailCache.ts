@@ -34,6 +34,12 @@ let prefetchPages = 0;
 let prefetchFailStreak = 0;
 /** Shared head/cursor pull so Refresh waits instead of no-op while in flight. */
 let activePull: Promise<boolean> | null = null;
+/**
+ * Search is client-side over the loaded cache. While the user has a query and
+ * older pages remain, burst-prefetch so citrus (etc.) past page 1 can match.
+ */
+let searchBurst = false;
+const MAIL_SEARCH_BURST_GAP_MS = 120;
 
 export function stopPrefetch(): void {
   if (prefetchTimer) {
@@ -49,6 +55,10 @@ export function resetPrefetchPages(): void {
 }
 
 function prefetchDelayMs(): number {
+  if (searchBurst) {
+    const failExtra = Math.min(prefetchFailStreak * 400, 4000);
+    return MAIL_SEARCH_BURST_GAP_MS + failExtra;
+  }
   const ramp = Math.min(
     prefetchPages * MAIL_PREFETCH_GAP_STEP_MS,
     MAIL_PREFETCH_GAP_MAX_MS - MAIL_PREFETCH_GAP_MS,
@@ -58,6 +68,19 @@ function prefetchDelayMs(): number {
     MAIL_PREFETCH_GAP_MS + Math.max(0, ramp) + failExtra,
     MAIL_PREFETCH_GAP_MAX_MS + 8000,
   );
+}
+
+/** Enable fast older-page pulls while a mail search query is active. */
+export function setMailSearchBurst(on: boolean): void {
+  const next = !!on;
+  if (searchBurst === next) {
+    if (next && getPanelOpen() && getHasMore()) schedulePrefetch();
+    return;
+  }
+  searchBurst = next;
+  if (next && getPanelOpen() && getHasMore()) {
+    schedulePrefetch();
+  }
 }
 
 /** Keep pulling older pages while the panel is open and the server has more. */

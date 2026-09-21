@@ -1,6 +1,11 @@
 /**
  * Soft-delete with undo window (small batches), then finalize via api.
  * Large batches skip undo and show delete progress while API calls run.
+ *
+ * Rules:
+ * - Starting a new delete finalizes any prior soft batch (never drops it).
+ * - Soft removals stay in-memory only until finalize (no IDB write).
+ * - Do not rewrite skip-cursor from list length (server cursor is an offset).
  */
 
 import { deleteMail } from "./api";
@@ -11,7 +16,13 @@ import {
   MAIL_DELETE_API_DEFAULT_MS,
 } from "./mailDeleteEstimate";
 import { schedulePersistMailCache } from "./mailPersist";
-import { commit, getHasMore, getMails, getView, setStatus } from "./mailState";
+import {
+  commit,
+  getMails,
+  getPanelOpen,
+  getView,
+  setStatus,
+} from "./mailState";
 import {
   MAIL_DELETE_UNDO_MAX,
   MAIL_DELETE_UNDO_MS,
@@ -26,7 +37,10 @@ export function undoSecondsLeft(endsAt: number, now = Date.now()): number {
 
 let undoTimer = 0;
 let undoRows: MailRow[] = [];
+/** Ids waiting for delete_mail after the undo window (or flush). */
+let pendingFinalizeIds: string[] = [];
 let finalizeInFlight = false;
+let pagehideArmed = false;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -34,16 +48,49 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function armPagehideFlush(): void {
+  if (pagehideArmed || typeof window === "undefined") return;
+  pagehideArmed = true;
+  window.addEventListener("pagehide", () => {
+    void flushPendingMailDeletes();
+  });
+}
+
+/**
+ * Cancel the undo timer and return ids that still need server delete.
+ * Does not restore rows — caller finalizes or abandons explicitly.
+ */
+function takePendingFinalizeIds(): string[] {
+  if (undoTimer) {
+    window.clearTimeout(undoTimer);
+    undoTimer = 0;
+  }
+  const ids = pendingFinalizeIds.slice();
+  pendingFinalizeIds = [];
+  undoRows = [];
+  commit({ undoCount: 0, undoEndsAt: 0 }, { silent: true });
+  return ids;
+}
+
+/** Clear undo chrome only — prefer flushPendingMailDeletes when deletes pending. */
 export function clearUndoState(opts?: { silent?: boolean }): void {
   if (undoTimer) {
     window.clearTimeout(undoTimer);
     undoTimer = 0;
   }
   undoRows = [];
+  pendingFinalizeIds = [];
   commit(
     { undoCount: 0, undoEndsAt: 0 },
     opts && opts.silent ? { silent: true } : undefined,
   );
+}
+
+/** Finalize any soft-deleted rows still waiting for delete_mail. */
+export async function flushPendingMailDeletes(): Promise<void> {
+  const ids = takePendingFinalizeIds();
+  if (!ids.length) return;
+  await finalizeDeletes(ids);
 }
 
 function buildRemoveIdsPatch(
@@ -64,13 +111,9 @@ function buildRemoveIdsPatch(
   for (let i = 0; i < mails.length; i++) {
     if (!seen.has(mails[i].id)) nextMails.push(mails[i]);
   }
+  // Keep nextCursor/hasMore from the last server pull — list length is not a
+  // skip offset once mid-list ids are removed.
   const patch: Parameters<typeof commit>[0] = { mails: nextMails };
-  if (getHasMore()) {
-    patch.nextCursor = String(nextMails.length);
-  } else if (!nextMails.length) {
-    patch.nextCursor = null;
-    patch.hasMore = false;
-  }
   const view = getView();
   if (view.kind === "read" && seen.has(view.id)) {
     patch.view = { kind: "list" };
@@ -109,41 +152,49 @@ export async function deleteMailRows(
   }
   if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
 
-  // New delete cancels any pending undo finalize of a previous soft batch.
-  clearUndoState({ silent: true });
+  // Prior soft batch must hit the server — never drop it on a new delete.
+  const priorIds = takePendingFinalizeIds();
+  if (priorIds.length) {
+    await finalizeDeletes(priorIds);
+  }
+
   const { batch, patch } = buildRemoveIdsPatch(unique, seen);
   const finalizeIds: string[] = [];
   for (let i = 0; i < batch.length; i++) finalizeIds.push(batch[i].id);
 
   const allowUndo = batch.length > 0 && batch.length <= MAIL_DELETE_UNDO_MAX;
   if (allowUndo) {
+    armPagehideFlush();
     undoRows = batch;
+    pendingFinalizeIds = finalizeIds.slice();
     const undoEndsAt = Date.now() + MAIL_DELETE_UNDO_MS;
     commit({
       ...patch,
       undoCount: batch.length,
       undoEndsAt,
     });
-    schedulePersistMailCache();
+    // Soft removals are memory-only until finalize — avoid IDB/server drift.
     if (undoTimer) window.clearTimeout(undoTimer);
     undoTimer = window.setTimeout(() => {
       undoTimer = 0;
       undoRows = [];
+      const idsToFinalize = pendingFinalizeIds.slice();
+      pendingFinalizeIds = [];
       commit({ undoCount: 0, undoEndsAt: 0 });
-      void finalizeDeletes(finalizeIds);
+      void finalizeDeletes(idsToFinalize);
     }, MAIL_DELETE_UNDO_MS);
     return "ok";
   }
 
-  // Large batch: no undo — list clear + undo idle in one notify, then progress.
+  // Large batch: no undo — list clear + progress, then API.
   undoRows = [];
+  pendingFinalizeIds = [];
   commit({
     ...patch,
     undoCount: 0,
     undoEndsAt: 0,
   });
-  schedulePersistMailCache();
-  void finalizeDeletes(finalizeIds);
+  await finalizeDeletes(finalizeIds);
   return "ok";
 }
 
@@ -159,6 +210,7 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
   if (finalizeInFlight) return;
   finalizeInFlight = true;
   undoRows = [];
+  pendingFinalizeIds = [];
   commit({ undoCount: 0, undoEndsAt: 0 });
   const total = ids.length;
   let failed = 0;
@@ -202,6 +254,13 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
     commit({ deleteProgress: null });
   }
 
+  schedulePersistMailCache();
+  // Server inbox shape changed — re-pull head so skip-cursor stays valid.
+  // Skip when the panel/session already closed (clearMailSession / pagehide).
+  if (getPanelOpen()) {
+    void requestMailHead("Refresh", { force: true });
+  }
+
   if (failed) {
     setStatus(
       "Deleted " +
@@ -213,7 +272,6 @@ export async function finalizeDeletes(ids: string[]): Promise<void> {
         " failed",
       "err",
     );
-    void requestMailHead("Refresh", { force: true });
     return;
   }
   setStatus(total === 1 ? "Mail deleted." : total + " mails deleted.");
@@ -227,14 +285,13 @@ export function undoDeleteMail(): void {
   }
   const next = undoRows.concat(getMails());
   undoRows = [];
-  const patch: Parameters<typeof commit>[0] = {
+  pendingFinalizeIds = [];
+  commit({
     mails: next,
     undoCount: 0,
     undoEndsAt: 0,
     status: "Delete undone",
     statusKind: "",
-  };
-  if (getHasMore()) patch.nextCursor = String(next.length);
-  commit(patch);
-  schedulePersistMailCache();
+  });
+  // Soft path never persisted the removal — no IDB rewrite required.
 }

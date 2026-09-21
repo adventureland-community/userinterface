@@ -6,13 +6,15 @@ import {
   requestMailHead,
   resetPrefetchPages,
   schedulePrefetch,
+  setMailSearchBurst,
   stopPrefetch,
 } from "./mailCache";
 import {
   hydrateMailCacheFromIdb,
+  resetMailAccountKeyPin,
   schedulePersistMailCache,
 } from "./mailPersist";
-import { clearUndoState } from "./mailDelete";
+import { flushPendingMailDeletes } from "./mailDelete";
 import { ensureComposeDraftHydrated } from "./mailCompose";
 import { clearPendingOutcome } from "./mailOutcomes";
 import {
@@ -23,29 +25,45 @@ import {
 } from "./mailState";
 import type { ComposeDraft, ItemFingerprint } from "./types";
 
+/** Bumps on each open/close so in-flight hydrate/head cannot clobber a new session. */
+let openGen = 0;
+
+function isCurrentOpenGen(gen: number): boolean {
+  return gen === openGen;
+}
+
 export function clearMailSession(): void {
+  openGen += 1;
   stopPrefetch();
   resetPrefetchPages();
   clearPendingOutcome();
-  clearUndoState({ silent: true });
+  void flushPendingMailDeletes();
+  resetMailAccountKeyPin();
   clearMailSessionCore();
   notify();
 }
 
 export function setMailPanelOpen(open: boolean): void {
   if (!open) {
+    openGen += 1;
     commit({ panelOpen: false });
+    setMailSearchBurst(false);
     stopPrefetch();
-    schedulePersistMailCache();
+    void flushPendingMailDeletes().then(() => {
+      schedulePersistMailCache();
+    });
     return;
   }
+  const gen = ++openGen;
   ensureComposeDraftHydrated();
   resetPrefetchPages();
   commit({ panelOpen: true });
   void (async () => {
-    await hydrateMailCacheFromIdb();
+    await hydrateMailCacheFromIdb(gen, isCurrentOpenGen);
+    if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
     await requestMailHead("open");
-    if (getMailSnapshot().panelOpen) schedulePrefetch();
+    if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
+    schedulePrefetch();
   })();
 }
 

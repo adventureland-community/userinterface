@@ -334,6 +334,9 @@ export const MARKET_PANEL_STYLE: Record<string, any> = {
   maxWidth: "100%",
   maxHeight: "100%",
   boxSizing: "border-box",
+  // Fill shell is pointer-events:none by default — Market/Bank must take hits
+  // so bag + stand cells do not fall through to HUD/map underneath.
+  pointerEvents: "auto",
 };
 
 /** Rank meters — wide enough for title; size grows via frameW/H / resize. */

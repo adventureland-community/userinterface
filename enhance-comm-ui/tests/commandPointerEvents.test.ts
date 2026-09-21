@@ -9,11 +9,18 @@ import {
   applyInteractiveShellHits,
   panelStyle,
 } from "../src/lib/layout";
-import { COMMAND_PANEL_STYLE } from "../src/lib/frameSizes";
+import {
+  COMMAND_PANEL_STYLE,
+  MARKET_PANEL_STYLE,
+} from "../src/lib/frameSizes";
 
 describe("command shell pointer-events", () => {
   it("COMMAND_PANEL_STYLE opts into hits", () => {
     assert.equal(COMMAND_PANEL_STYLE.pointerEvents, "auto");
+  });
+
+  it("MARKET_PANEL_STYLE opts into hits (Market + Bank fill shells)", () => {
+    assert.equal(MARKET_PANEL_STYLE.pointerEvents, "auto");
   });
 
   it("panelStyle alone is click-through (idle HUD default)", () => {
@@ -56,6 +63,19 @@ describe("command shell pointer-events", () => {
     applyInteractiveShellHits(shell, {
       interactiveBody: false,
       propsStyle: COMMAND_PANEL_STYLE,
+    });
+    assert.equal(shell.pointerEvents, "auto");
+  });
+
+  it("applyInteractiveShellHits restores Market shell from MARKET_PANEL_STYLE", () => {
+    const shell = Object.assign(
+      {},
+      MARKET_PANEL_STYLE,
+      panelStyle({ x: 40, y: 20, anchor: "tl" }, false),
+    );
+    applyInteractiveShellHits(shell, {
+      interactiveBody: true,
+      propsStyle: MARKET_PANEL_STYLE,
     });
     assert.equal(shell.pointerEvents, "auto");
   });

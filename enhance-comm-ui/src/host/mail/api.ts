@@ -55,6 +55,18 @@ export function extractInfs(ct: unknown): InfBag[] {
   return [];
 }
 
+/**
+ * Stock `/api` often returns HTTP 200 with `{ failed: true, reason }`
+ * (e.g. delete_mail cant_delete). Match api_call's reject-on-failed.
+ */
+export function apiResponseFailed(json: unknown): boolean {
+  if (!json || typeof json !== "object") return false;
+  const obj = json as { failed?: unknown; success?: unknown };
+  if (obj.failed === true) return true;
+  if (obj.success === false) return true;
+  return false;
+}
+
 export type MailApiResult<T> = {
   ok: boolean;
   data?: T;
@@ -114,13 +126,15 @@ async function postJson(
 /**
  * POST `/api/<method>` with args body.
  * - `null` → hard network/abort failure
- * - `{ ok: false }` → non-2xx HTTP
- * - `{ ok: true, infs }` → HTTP 200 (infs may be empty)
+ * - `{ ok: false }` → non-2xx HTTP or `{ failed: true }` body
+ * - `{ ok: true, infs }` → HTTP 200 success body
  */
 async function callApiFetch(
   method: string,
   args: Record<string, unknown>,
-): Promise<{ ok: true; infs: InfBag[] } | { ok: false } | null> {
+): Promise<
+  { ok: true; infs: InfBag[] } | { ok: false; reason?: string } | null
+> {
   const ctrl =
     typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = window.setTimeout(() => {
@@ -133,36 +147,52 @@ async function callApiFetch(
       ctrl ? ctrl.signal : undefined,
     );
     if (!res) return null;
-    if (!res.ok) return { ok: false };
+    if (!res.ok) return { ok: false, reason: "http_error" };
+    if (apiResponseFailed(res.json)) {
+      return { ok: false, reason: "api_failed" };
+    }
     return { ok: true, infs: extractInfs(res.json) };
   } finally {
     window.clearTimeout(timer);
   }
 }
 
-/**
- * Soft fallback via stock `api_call` (Promise on live; may already have
- * stripped `infs` — still try to parse whatever comes back).
- */
+/** Soft fallback via stock `api_call` — preserves failed vs empty-infs. */
 function callApiStock(
   method: string,
   args: Record<string, unknown>,
-): Promise<InfBag[]> {
+): Promise<{ ok: boolean; infs: InfBag[]; reason?: string }> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (infs: InfBag[]) => {
+    const finish = (payload: {
+      ok: boolean;
+      infs: InfBag[];
+      reason?: string;
+    }) => {
       if (settled) return;
       settled = true;
-      resolve(infs);
+      resolve(payload);
     };
 
     const api = getApiCall();
     if (!api) {
-      finish([]);
+      finish({ ok: false, infs: [], reason: "no_api_call" });
       return;
     }
 
-    const timer = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
+    const timer = window.setTimeout(
+      () => finish({ ok: false, infs: [], reason: "timeout" }),
+      API_TIMEOUT_MS,
+    );
+
+    const accept = (ct: unknown) => {
+      window.clearTimeout(timer);
+      if (apiResponseFailed(ct)) {
+        finish({ ok: false, infs: [], reason: "api_failed" });
+        return;
+      }
+      finish({ ok: true, infs: extractInfs(ct) });
+    };
 
     try {
       const maybePromise = api(
@@ -170,8 +200,7 @@ function callApiStock(
         {
           ...args,
           callback: (ct: unknown) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(ct));
+            accept(ct);
           },
         },
         { silent: true },
@@ -183,17 +212,21 @@ function callApiStock(
       ) {
         (maybePromise as Promise<unknown>)
           .then((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
+            accept(data);
           })
           .catch((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
+            // Stock rejects on data.failed — still inspect the body.
+            if (apiResponseFailed(data)) {
+              window.clearTimeout(timer);
+              finish({ ok: false, infs: [], reason: "api_failed" });
+              return;
+            }
+            accept(data);
           });
       }
     } catch {
       window.clearTimeout(timer);
-      finish([]);
+      finish({ ok: false, infs: [], reason: "no_response" });
     }
   });
 }
@@ -207,29 +240,40 @@ async function callApi(
     if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
     if (viaFetch.ok) {
       const viaStock = await callApiStock(method, args);
-      if (viaStock.length) return viaStock;
+      if (viaStock.ok && viaStock.infs.length) return viaStock.infs;
       return viaFetch.infs;
     }
     const viaStock = await callApiStock(method, args);
-    if (viaStock.length) return viaStock;
+    if (viaStock.ok && viaStock.infs.length) return viaStock.infs;
     return [];
   }
-  return callApiStock(method, args);
+  const viaStock = await callApiStock(method, args);
+  return viaStock.ok ? viaStock.infs : [];
 }
 
-/** HTTP-aware call — `ok` follows live `/api` 2xx, not whether infs parsed. */
+/** HTTP-aware call — `ok` follows live `/api` success, not merely 2xx. */
 async function callApiResult(
   method: string,
   args: Record<string, unknown> = {},
 ): Promise<MailApiResult<InfBag[]>> {
   const viaFetch = await callApiFetch(method, args);
   if (viaFetch != null) {
-    if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
-    return { ok: false, reason: "http_error", data: [] };
+    if (viaFetch.ok === false) {
+      return {
+        ok: false,
+        reason: viaFetch.reason || "http_error",
+        data: [],
+      };
+    }
+    return { ok: true, data: viaFetch.infs };
   }
   const viaStock = await callApiStock(method, args);
-  if (viaStock.length) return { ok: true, data: viaStock };
-  return { ok: false, reason: "no_response", data: [] };
+  if (viaStock.ok) return { ok: true, data: viaStock.infs };
+  return {
+    ok: false,
+    reason: viaStock.reason || "no_response",
+    data: [],
+  };
 }
 
 export async function pullMailPage(
@@ -278,14 +322,11 @@ export async function readMailMany(
 ): Promise<MailApiResult<{ unreadCount?: number }>> {
   let unreadCount: number | undefined;
   let anyOk = false;
-  const jobs: Promise<MailApiResult<true>>[] = [];
+  // Serialize — parallel read_mail races the server unread counter.
   for (let i = 0; i < ids.length; i++) {
-    jobs.push(readMail(ids[i]));
-  }
-  const results = await Promise.all(jobs);
-  for (let i = 0; i < results.length; i++) {
-    if (results[i].ok) anyOk = true;
-    if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
+    const res = await readMail(ids[i]);
+    if (res.ok) anyOk = true;
+    if (res.unreadCount != null) unreadCount = res.unreadCount;
   }
   if (!anyOk && ids.length) {
     return { ok: false, reason: "no_response", data: { unreadCount } };

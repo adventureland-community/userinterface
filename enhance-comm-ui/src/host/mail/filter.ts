@@ -53,10 +53,12 @@ export function filterMails(
     const m = mails[i];
     if (pill === "unread" && m.read !== false) continue;
     if (pill === "item" && !(m.item && !m.taken)) continue;
-    if (pill === "tome" && !self.has(String(m.to || "").toLowerCase()))
-      continue;
-    if (pill === "fromme" && !self.has(String(m.fro || "").toLowerCase())) {
-      continue;
+    // Roster missing → do not hide the whole inbox behind To me / From me.
+    if (pill === "tome" && self.size > 0) {
+      if (!self.has(String(m.to || "").toLowerCase())) continue;
+    }
+    if (pill === "fromme" && self.size > 0) {
+      if (!self.has(String(m.fro || "").toLowerCase())) continue;
     }
     if (!mailMatchesSearch(m, parsed)) continue;
     out.push(m);

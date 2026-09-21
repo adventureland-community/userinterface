@@ -75,6 +75,12 @@ export type TradeSlotCellProps = {
   fluid?: boolean;
   /** Selected / focus chrome (Market stand). */
   selected?: boolean;
+  /**
+   * When set, replaces default buy / wishlist / item-info click handling.
+   * Market You stand uses this so primary click focuses the item instead of
+   * opening the stock tip (which felt like a click-through).
+   */
+  onSlotClick?: (ev: any) => void;
 };
 
 export function TradeSlotCell(props: TradeSlotCellProps): any {
@@ -90,11 +96,13 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     iconSize,
     fluid,
     selected,
+    onSlotClick,
   } = props;
   const obs = observing || window.observing;
   const filled = !!(slot && slot.name);
   const foreign = !gearEditable;
   const editable = !!gearEditable;
+  const customClick = typeof onSlotClick === "function";
   const inRange = !foreign || isInTradeRange(entity, obs);
   const bagMatch =
     foreign && filled && slot?.b
@@ -238,9 +246,14 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
     else if (disabled) tipParts.push("(unavailable)");
     if (editable) tipParts.push("Drag to bag to delist");
-    tipParts.push("Shift+click: item info");
+    if (customClick) tipParts.push("Click: focus in Market · Shift+click: item info");
+    else tipParts.push("Shift+click: item info");
   } else if (editable) {
-    tipParts.push("Click: wishlist · drag bag item to list · Shift+drag: giveaway");
+    tipParts.push(
+      customClick
+        ? "Drag bag item to list · Shift+drag: giveaway"
+        : "Click: wishlist · drag bag item to list · Shift+drag: giveaway",
+    );
   }
 
   return e(
@@ -275,33 +288,38 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
             }
           : undefined,
       onPointerDown:
-        editable && filled
+        customClick || editable
           ? (ev: any) => {
               if (ev && typeof ev.stopPropagation === "function") {
                 ev.stopPropagation();
               }
             }
+          : undefined,
+      onClick:
+        customClick
+          ? (ev: any) => {
+              if (filled && tradeListingDragActive) return;
+              if (ev && typeof ev.preventDefault === "function") {
+                ev.preventDefault();
+              }
+              if (ev && typeof ev.stopPropagation === "function") {
+                ev.stopPropagation();
+              }
+              onSlotClick!(ev);
+            }
           : editable
             ? (ev: any) => {
-                if (ev && typeof ev.stopPropagation === "function") {
-                  ev.stopPropagation();
-                }
+                if (editable && filled && tradeListingDragActive) return;
+                handleTradeSlotClick(
+                  ev,
+                  entity,
+                  slotName,
+                  slot,
+                  !!gearEditable,
+                  obs,
+                );
               }
             : undefined,
-      onClick:
-        editable
-          ? (ev: any) => {
-              if (editable && filled && tradeListingDragActive) return;
-              handleTradeSlotClick(
-                ev,
-                entity,
-                slotName,
-                slot,
-                !!gearEditable,
-                obs,
-              );
-            }
-          : undefined,
       onDragOver: editable
         ? (ev: any) => {
             setBagDropHover(
@@ -342,7 +360,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         flex: fluid ? "1 1 0" : `0 0 ${cellW}px`,
         boxSizing: "border-box",
         opacity: disabled ? 0.45 : 1,
-        cursor: editable || filled ? "pointer" : "default",
+        cursor: customClick || editable || filled ? "pointer" : "default",
         pointerEvents: "auto",
       },
     },

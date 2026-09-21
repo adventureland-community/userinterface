@@ -63,11 +63,11 @@ describe("assignLocalReadFlags", () => {
     read,
   });
 
-  it("bootstrap marks unreadBudget rows unread", () => {
+  it("bootstrap does not invent unread from X.unread budget", () => {
     const rows = [row("a"), row("b"), row("c")];
     const assigned = assignLocalReadFlags(rows, new Set(), true, 2, new Set());
-    assert.equal(assigned.rows[0].read, false);
-    assert.equal(assigned.rows[1].read, false);
+    assert.equal(assigned.rows[0].read, true);
+    assert.equal(assigned.rows[1].read, true);
     assert.equal(assigned.rows[2].read, true);
     assert.equal(assigned.newIds.length, 0);
   });
@@ -81,7 +81,7 @@ describe("assignLocalReadFlags", () => {
     assert.equal(assigned.rows[1].read, true);
   });
 
-  it("respects locallyReadIds over bootstrap budget", () => {
+  it("respects locallyReadIds on bootstrap", () => {
     const assigned = assignLocalReadFlags(
       [row("a"), row("b")],
       new Set(),
@@ -90,7 +90,7 @@ describe("assignLocalReadFlags", () => {
       new Set(["a"]),
     );
     assert.equal(assigned.rows[0].read, true);
-    assert.equal(assigned.rows[1].read, false);
+    assert.equal(assigned.rows[1].read, true);
   });
 });
 

@@ -21,6 +21,8 @@ export type MailListPaneProps = {
   collapseRepeats: boolean;
   expandedKeys: Record<string, boolean>;
   setGroupExpanded: (key: string, on: boolean) => void;
+  /** Shown when search has no hits but older pages may still load. */
+  searchEmptyHint?: string | null;
 };
 
 type ListEntry =
@@ -151,6 +153,7 @@ export function MailListPane(props: MailListPaneProps): any {
     collapseRepeats,
     expandedKeys,
     setGroupExpanded,
+    searchEmptyHint,
   } = props;
 
   const entries = buildEntries({ filtered, collapseRepeats, expandedKeys });
@@ -160,6 +163,19 @@ export function MailListPane(props: MailListPaneProps): any {
     activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
 
   const nodes: any[] = [];
+  if (!entries.length && searchEmptyHint) {
+    nodes.push(
+      e(
+        "div",
+        {
+          key: "search-empty",
+          className: "comm-mail__empty",
+          style: { padding: "24px 12px" },
+        },
+        searchEmptyHint,
+      ),
+    );
+  }
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
     if (entry.kind === "mail") {

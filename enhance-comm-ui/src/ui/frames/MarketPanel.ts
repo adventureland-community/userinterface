@@ -96,6 +96,7 @@ import {
 } from "../../host/inventory";
 import { mergeStandTradeSlotsForUi } from "../../lib/standTradeSlotMemory";
 import { TradeSlotCell } from "../trade/TradeSlotCell";
+import { openTradeItemInfo } from "../trade/tradeSlotActions";
 import { ensureMarketPanelCss } from "./marketPanelCss";
 
 export type MarketPanelProps = {
@@ -1428,7 +1429,13 @@ export function MarketPanel(props: MarketPanelProps): any {
                         "MarketPanel-bagSlot" +
                         (bagStackKey === key ? " is-on" : ""),
                       title: tip,
-                      onClick: () => {
+                      onClick: (ev: any) => {
+                        if (ev && typeof ev.preventDefault === "function") {
+                          ev.preventDefault();
+                        }
+                        if (ev && typeof ev.stopPropagation === "function") {
+                          ev.stopPropagation();
+                        }
                         setBagStackKey(key);
                         setFocusKey(key);
                         const next = rewriteIsInFilter("item:" + b.name, {
@@ -1713,8 +1720,23 @@ export function MarketPanel(props: MarketPanelProps): any {
                         "MarketPanel-standSlots" +
                         (pack ? " is-pack" : " is-all"),
                     },
-                    packEntries.map((entry) =>
-                      e(TradeSlotCell, {
+                    packEntries.map((entry) => {
+                      const slotItem = entry.slot;
+                      const itemKey =
+                        slotItem && slotItem.name
+                          ? marketBagStackKey({
+                              name: String(slotItem.name),
+                              level:
+                                typeof slotItem.level === "number"
+                                  ? slotItem.level
+                                  : undefined,
+                              p:
+                                slotItem.p != null && String(slotItem.p) !== ""
+                                  ? String(slotItem.p)
+                                  : null,
+                            })
+                          : null;
+                      return e(TradeSlotCell, {
                         key: entry.slotName,
                         entity: ownEntity,
                         observing,
@@ -1726,9 +1748,32 @@ export function MarketPanel(props: MarketPanelProps): any {
                         fluid: true,
                         selected:
                           !!focusKey &&
-                          entry.slotNames.indexOf(focusKey) >= 0,
-                      }),
-                    ),
+                          (focusKey === itemKey ||
+                            entry.slotNames.indexOf(focusKey) >= 0),
+                        onSlotClick: (ev: any) => {
+                          if (ev && ev.shiftKey && slotItem && slotItem.name) {
+                            openTradeItemInfo(
+                              ownEntity,
+                              entry.slotName,
+                              slotItem,
+                            );
+                            return;
+                          }
+                          if (!slotItem || !slotItem.name || !itemKey) return;
+                          setFocusKey(itemKey);
+                          const next = rewriteIsInFilter(
+                            "item:" + String(slotItem.name),
+                            {
+                              facet,
+                              nearOnly,
+                              canAfford,
+                              haveStock,
+                            },
+                          );
+                          applyQuery(next);
+                        },
+                      });
+                    }),
                   )
                 : e(
                     "div",

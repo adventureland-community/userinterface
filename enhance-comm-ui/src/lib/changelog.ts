@@ -163,7 +163,7 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "You — bag actions",
             detail:
-              "Select a bag stack → List (price dialog → first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
+              "Select a bag stack → List (price dialog → first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
             kind: "feature",
           },
           {
@@ -171,6 +171,24 @@ export const CHANGELOG: ChangelogEntry[] = [
             detail:
               "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
             kind: "feature",
+          },
+        ],
+      },
+      {
+        title: "Mail",
+        summary: "Inbox search covers the full warmed cache.",
+        items: [
+          {
+            label: "Search while warming",
+            detail:
+              "Typing a query (e.g. citrus) burst-fetches older pull_mail pages until the inbox is complete — matches are no longer limited to the first ~40 loaded rows. Empty results show “fetching older mail…” while hasMore. Bare item-id attachment payloads parse again; item:/free-text also match G.items display names.",
+            kind: "fix",
+          },
+          {
+            label: "Delete / cache correctness",
+            detail:
+              "Soft-delete finalizes the prior undo batch before starting another; removals stay memory-only until delete_mail succeeds; pagehide/panel close flush pending deletes. API {failed:true} is treated as failure. Skip-cursor is no longer rewritten from list length after mid-list deletes. Send keeps draft + bag snap until looks_sent. Bootstrap no longer invents unread from X.unread. To me/From me ignore empty roster; sent dates normalize to ISO; IDB account key pins/migrates.",
+            kind: "fix",
           },
         ],
       },
@@ -229,6 +247,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         detail:
           "Saved Trade layout/visibility migrates to Market. Window Control reopens Market.",
         kind: "improve",
+      },
+      {
+        label: "Market bag / stand clicks",
+        detail:
+          "You-column bag and stand cells stopPropagation and focus the item (Shift+click still opens the tip). Stand no longer opens stock item info on primary click. Market/Bank shells opt into pointer-events like Command.",
+        kind: "fix",
       },
     ],
   },

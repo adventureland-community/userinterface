@@ -61,6 +61,7 @@ export {
   appendCursorPage,
   mergeHeadPage,
   normalizeMailPage,
+  normalizeMailSent,
   parseMailItem,
 } from "./merge";
 export {
@@ -76,6 +77,7 @@ export {
 } from "./mailPersist";
 export {
   extractInfs,
+  apiResponseFailed,
   deleteMail,
   pullMailPage,
   readMail,
@@ -120,10 +122,16 @@ export {
   clearNewMailBanner,
   loadOlderMail,
   requestMailHead,
+  setMailSearchBurst,
 } from "./mailCache";
+export {
+  mailSearchEmptyHint,
+  mailSearchWantsBurst,
+} from "./mailSearchCoverage";
 export {
   deleteMailRow,
   deleteMailRows,
+  flushPendingMailDeletes,
   undoDeleteMail,
   undoSecondsLeft,
 } from "./mailDelete";

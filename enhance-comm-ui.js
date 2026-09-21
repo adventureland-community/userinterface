@@ -420,6 +420,31 @@ var EnhanceCommUI = (() => {
     if (m.system != null) next.system = m.system;
     return next;
   }
+  function normalizeMailSent(raw) {
+    if (raw == null || raw === "") return "";
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      const ms = raw < 1e12 ? raw * 1e3 : raw;
+      return new Date(ms).toISOString();
+    }
+    if (typeof raw === "object") {
+      const obj = raw;
+      if (typeof obj.getTime === "function") {
+        const t = obj.getTime();
+        if (Number.isFinite(t)) return new Date(t).toISOString();
+      }
+      if (obj.$date != null) return normalizeMailSent(obj.$date);
+    }
+    const s = String(raw).trim();
+    if (!s || s === "undefined" || s === "null") return "";
+    const parsed = Date.parse(s);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+    const n = Number(s);
+    if (Number.isFinite(n) && n > 0) {
+      const ms = n < 1e12 ? n * 1e3 : n;
+      if (ms > 1e11) return new Date(ms).toISOString();
+    }
+    return s;
+  }
   function mergeHeadPage(existing, page) {
     const map = /* @__PURE__ */ new Map();
     for (let i = 0; i < existing.length; i++) {
@@ -479,7 +504,7 @@ var EnhanceCommUI = (() => {
         to: String(m.to || ""),
         subject: String(m.subject || ""),
         message: String(m.message || ""),
-        sent: String(m.sent || "")
+        sent: normalizeMailSent(m.sent)
       };
       if (typeof m.read === "boolean") row3.read = m.read;
       const item = parseMailItem(m.item);
@@ -501,19 +526,31 @@ var EnhanceCommUI = (() => {
     if (raw === 1 || raw === "1" || raw === "true") return true;
     return void 0;
   }
+  function looksLikeItemId(s) {
+    const t = String(s || "").trim();
+    if (!t || t.length > 64) return false;
+    return /^[A-Za-z][A-Za-z0-9_]*$/.test(t);
+  }
   function parseMailItem(raw) {
     let cur = raw;
     for (let depth2 = 0; depth2 < 3; depth2++) {
       if (cur == null || cur === "") return void 0;
       if (typeof cur === "string") {
+        const trimmed = cur.trim();
         try {
-          cur = JSON.parse(cur);
+          cur = JSON.parse(trimmed);
         } catch (e2) {
+          if (looksLikeItemId(trimmed)) return { name: trimmed };
           return void 0;
         }
         continue;
       }
       break;
+    }
+    if (typeof cur === "string") {
+      const trimmed = cur.trim();
+      if (looksLikeItemId(trimmed)) return { name: trimmed };
+      return void 0;
     }
     if (!cur || typeof cur !== "object") return void 0;
     const obj = cur;
@@ -570,6 +607,13 @@ var EnhanceCommUI = (() => {
     }
     return [];
   }
+  function apiResponseFailed(json) {
+    if (!json || typeof json !== "object") return false;
+    const obj = json;
+    if (obj.failed === true) return true;
+    if (obj.success === false) return true;
+    return false;
+  }
   function readUnreadFromInfs(infs) {
     for (let i = 0; i < infs.length; i++) {
       const info2 = infs[i];
@@ -622,7 +666,10 @@ var EnhanceCommUI = (() => {
         ctrl ? ctrl.signal : void 0
       );
       if (!res) return null;
-      if (!res.ok) return { ok: false };
+      if (!res.ok) return { ok: false, reason: "http_error" };
+      if (apiResponseFailed(res.json)) {
+        return { ok: false, reason: "api_failed" };
+      }
       return { ok: true, infs: extractInfs(res.json) };
     } finally {
       window.clearTimeout(timer);
@@ -631,41 +678,54 @@ var EnhanceCommUI = (() => {
   function callApiStock(method, args) {
     return new Promise((resolve) => {
       let settled = false;
-      const finish = (infs) => {
+      const finish = (payload) => {
         if (settled) return;
         settled = true;
-        resolve(infs);
+        resolve(payload);
       };
       const api = getApiCall();
       if (!api) {
-        finish([]);
+        finish({ ok: false, infs: [], reason: "no_api_call" });
         return;
       }
-      const timer = window.setTimeout(() => finish([]), API_TIMEOUT_MS);
+      const timer = window.setTimeout(
+        () => finish({ ok: false, infs: [], reason: "timeout" }),
+        API_TIMEOUT_MS
+      );
+      const accept = (ct) => {
+        window.clearTimeout(timer);
+        if (apiResponseFailed(ct)) {
+          finish({ ok: false, infs: [], reason: "api_failed" });
+          return;
+        }
+        finish({ ok: true, infs: extractInfs(ct) });
+      };
       try {
         const maybePromise = api(
           method,
           {
             ...args,
             callback: (ct) => {
-              window.clearTimeout(timer);
-              finish(extractInfs(ct));
+              accept(ct);
             }
           },
           { silent: true }
         );
         if (maybePromise && typeof maybePromise.then === "function") {
           maybePromise.then((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
+            accept(data);
           }).catch((data) => {
-            window.clearTimeout(timer);
-            finish(extractInfs(data));
+            if (apiResponseFailed(data)) {
+              window.clearTimeout(timer);
+              finish({ ok: false, infs: [], reason: "api_failed" });
+              return;
+            }
+            accept(data);
           });
         }
       } catch (e2) {
         window.clearTimeout(timer);
-        finish([]);
+        finish({ ok: false, infs: [], reason: "no_response" });
       }
     });
   }
@@ -674,25 +734,36 @@ var EnhanceCommUI = (() => {
     if (viaFetch != null) {
       if (viaFetch.ok && viaFetch.infs.length > 0) return viaFetch.infs;
       if (viaFetch.ok) {
-        const viaStock2 = await callApiStock(method, args);
-        if (viaStock2.length) return viaStock2;
+        const viaStock3 = await callApiStock(method, args);
+        if (viaStock3.ok && viaStock3.infs.length) return viaStock3.infs;
         return viaFetch.infs;
       }
-      const viaStock = await callApiStock(method, args);
-      if (viaStock.length) return viaStock;
+      const viaStock2 = await callApiStock(method, args);
+      if (viaStock2.ok && viaStock2.infs.length) return viaStock2.infs;
       return [];
     }
-    return callApiStock(method, args);
+    const viaStock = await callApiStock(method, args);
+    return viaStock.ok ? viaStock.infs : [];
   }
   async function callApiResult(method, args = {}) {
     const viaFetch = await callApiFetch(method, args);
     if (viaFetch != null) {
-      if (viaFetch.ok) return { ok: true, data: viaFetch.infs };
-      return { ok: false, reason: "http_error", data: [] };
+      if (viaFetch.ok === false) {
+        return {
+          ok: false,
+          reason: viaFetch.reason || "http_error",
+          data: []
+        };
+      }
+      return { ok: true, data: viaFetch.infs };
     }
     const viaStock = await callApiStock(method, args);
-    if (viaStock.length) return { ok: true, data: viaStock };
-    return { ok: false, reason: "no_response", data: [] };
+    if (viaStock.ok) return { ok: true, data: viaStock.infs };
+    return {
+      ok: false,
+      reason: viaStock.reason || "no_response",
+      data: []
+    };
   }
   async function pullMailPage(cursor) {
     const args = {};
@@ -729,14 +800,10 @@ var EnhanceCommUI = (() => {
   async function readMailMany(ids) {
     let unreadCount;
     let anyOk = false;
-    const jobs = [];
     for (let i = 0; i < ids.length; i++) {
-      jobs.push(readMail(ids[i]));
-    }
-    const results = await Promise.all(jobs);
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].ok) anyOk = true;
-      if (results[i].unreadCount != null) unreadCount = results[i].unreadCount;
+      const res = await readMail(ids[i]);
+      if (res.ok) anyOk = true;
+      if (res.unreadCount != null) unreadCount = res.unreadCount;
     }
     if (!anyOk && ids.length) {
       return { ok: false, reason: "no_response", data: { unreadCount } };
@@ -3161,7 +3228,10 @@ var EnhanceCommUI = (() => {
     minHeight: "360px",
     maxWidth: "100%",
     maxHeight: "100%",
-    boxSizing: "border-box"
+    boxSizing: "border-box",
+    // Fill shell is pointer-events:none by default — Market/Bank must take hits
+    // so bag + stand cells do not fall through to HUD/map underneath.
+    pointerEvents: "auto"
   };
   var METER_PANEL_STYLE = {
     width: "320px",
@@ -8571,13 +8641,29 @@ ${fightHoverTip(src)}`
             },
             {
               label: "You \u2014 bag actions",
-              detail: "Select a bag stack \u2192 List (price dialog \u2192 first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
+              detail: "Select a bag stack \u2192 List (price dialog \u2192 first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
               kind: "feature"
             },
             {
               label: "Search + filters",
               detail: "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
               kind: "feature"
+            }
+          ]
+        },
+        {
+          title: "Mail",
+          summary: "Inbox search covers the full warmed cache.",
+          items: [
+            {
+              label: "Search while warming",
+              detail: "Typing a query (e.g. citrus) burst-fetches older pull_mail pages until the inbox is complete \u2014 matches are no longer limited to the first ~40 loaded rows. Empty results show \u201Cfetching older mail\u2026\u201D while hasMore. Bare item-id attachment payloads parse again; item:/free-text also match G.items display names.",
+              kind: "fix"
+            },
+            {
+              label: "Delete / cache correctness",
+              detail: "Soft-delete finalizes the prior undo batch before starting another; removals stay memory-only until delete_mail succeeds; pagehide/panel close flush pending deletes. API {failed:true} is treated as failure. Skip-cursor is no longer rewritten from list length after mid-list deletes. Send keeps draft + bag snap until looks_sent. Bootstrap no longer invents unread from X.unread. To me/From me ignore empty roster; sent dates normalize to ISO; IDB account key pins/migrates.",
+              kind: "fix"
             }
           ]
         },
@@ -8629,6 +8715,11 @@ ${fightHoverTip(src)}`
           label: "Trade panel removed",
           detail: "Saved Trade layout/visibility migrates to Market. Window Control reopens Market.",
           kind: "improve"
+        },
+        {
+          label: "Market bag / stand clicks",
+          detail: "You-column bag and stand cells stopPropagation and focus the item (Shift+click still opens the tip). Stand no longer opens stock item info on primary click. Market/Bank shells opt into pointer-events like Command.",
+          kind: "fix"
         }
       ]
     },
@@ -14137,6 +14228,7 @@ ${CHROME_ARRANGE_CSS}
   var dbPromise2 = null;
   var persistTimer = 0;
   var hydrateInFlight = null;
+  var pinnedAccountKey = null;
   function openDb2() {
     if (dbPromise2) return dbPromise2;
     dbPromise2 = new Promise((resolve) => {
@@ -14162,7 +14254,7 @@ ${CHROME_ARRANGE_CSS}
       req.onerror = () => reject(req.error);
     });
   }
-  function mailAccountKey() {
+  function resolveMailAccountKey() {
     const w = window;
     if (w.user_id != null && String(w.user_id) !== "") {
       return "u:" + String(w.user_id);
@@ -14178,6 +14270,12 @@ ${CHROME_ARRANGE_CSS}
       if (names.length) return "chars:" + names.join(",");
     }
     return "default";
+  }
+  function mailAccountKey() {
+    if (pinnedAccountKey) return pinnedAccountKey;
+    const key = resolveMailAccountKey();
+    if (key.startsWith("u:")) pinnedAccountKey = key;
+    return key;
   }
   async function loadMailCacheRecord(accountKey) {
     try {
@@ -14235,12 +14333,25 @@ ${CHROME_ARRANGE_CSS}
       void saveMailCacheRecord(record);
     }, PERSIST_DEBOUNCE_MS);
   }
-  async function hydrateMailCacheFromIdb() {
+  async function hydrateMailCacheFromIdb(openGen2, isCurrentGen) {
     if (getMails().length > 0) return false;
     if (hydrateInFlight) return hydrateInFlight;
     hydrateInFlight = (async () => {
-      const rec = await loadMailCacheRecord(mailAccountKey());
+      const key = mailAccountKey();
+      let rec = await loadMailCacheRecord(key);
+      if (!rec && key.startsWith("u:")) {
+        const legacyDefault = await loadMailCacheRecord("default");
+        const legacyChars = !legacyDefault ? await loadMailCacheRecord(resolveMailAccountKeyFallbackChars()) : null;
+        const legacy = legacyDefault || legacyChars;
+        if (legacy) {
+          rec = Object.assign({}, legacy, { accountKey: key });
+          await saveMailCacheRecord(rec);
+        }
+      }
       if (!rec || getMails().length > 0) return false;
+      if (openGen2 != null && isCurrentGen && !isCurrentGen(openGen2)) {
+        return false;
+      }
       const local = getLocallyReadIds();
       for (let i = 0; i < rec.locallyReadIds.length; i++) {
         local.add(rec.locallyReadIds[i]);
@@ -14262,10 +14373,22 @@ ${CHROME_ARRANGE_CSS}
       hydrateInFlight = null;
     }
   }
+  function resolveMailAccountKeyFallbackChars() {
+    const w = window;
+    const chars = w.X && w.X.characters;
+    if (!Array.isArray(chars) || !chars.length) return "chars:";
+    const names = [];
+    for (let i = 0; i < chars.length; i++) {
+      const n = chars[i] && chars[i].name;
+      if (n) names.push(String(n));
+    }
+    names.sort();
+    return names.length ? "chars:" + names.join(",") : "chars:";
+  }
 
   // src/host/mail/mailUnreadLogic.ts
   function assignLocalReadFlags(rows, prevIds, bootstrap2, unreadBudget, locallyReadIds2) {
-    let budgetLeft = bootstrap2 ? unreadBudget : 0;
+    void unreadBudget;
     const out = [];
     const newIds = [];
     for (let i = 0; i < rows.length; i++) {
@@ -14274,9 +14397,6 @@ ${CHROME_ARRANGE_CSS}
       if (isNew && !bootstrap2) newIds.push(m.id);
       if (locallyReadIds2.has(m.id)) {
         m.read = true;
-      } else if (bootstrap2 && budgetLeft > 0) {
-        m.read = false;
-        budgetLeft -= 1;
       } else if (isNew && !bootstrap2) {
         m.read = false;
       } else if (m.read == null) {
@@ -14414,6 +14534,8 @@ ${CHROME_ARRANGE_CSS}
   var prefetchPages = 0;
   var prefetchFailStreak = 0;
   var activePull = null;
+  var searchBurst = false;
+  var MAIL_SEARCH_BURST_GAP_MS = 120;
   function stopPrefetch() {
     if (prefetchTimer) {
       window.clearTimeout(prefetchTimer);
@@ -14426,6 +14548,10 @@ ${CHROME_ARRANGE_CSS}
     prefetchFailStreak = 0;
   }
   function prefetchDelayMs() {
+    if (searchBurst) {
+      const failExtra2 = Math.min(prefetchFailStreak * 400, 4e3);
+      return MAIL_SEARCH_BURST_GAP_MS + failExtra2;
+    }
     const ramp = Math.min(
       prefetchPages * MAIL_PREFETCH_GAP_STEP_MS,
       MAIL_PREFETCH_GAP_MAX_MS - MAIL_PREFETCH_GAP_MS
@@ -14435,6 +14561,17 @@ ${CHROME_ARRANGE_CSS}
       MAIL_PREFETCH_GAP_MS + Math.max(0, ramp) + failExtra,
       MAIL_PREFETCH_GAP_MAX_MS + 8e3
     );
+  }
+  function setMailSearchBurst(on) {
+    const next = !!on;
+    if (searchBurst === next) {
+      if (next && getPanelOpen() && getHasMore()) schedulePrefetch();
+      return;
+    }
+    searchBurst = next;
+    if (next && getPanelOpen() && getHasMore()) {
+      schedulePrefetch();
+    }
   }
   function schedulePrefetch() {
     stopPrefetch();
@@ -14800,22 +14937,36 @@ ${CHROME_ARRANGE_CSS}
   }
   var undoTimer = 0;
   var undoRows = [];
+  var pendingFinalizeIds = [];
   var finalizeInFlight = false;
+  var pagehideArmed = false;
   function sleep(ms) {
     return new Promise((resolve) => {
       window.setTimeout(resolve, ms);
     });
   }
-  function clearUndoState(opts) {
+  function armPagehideFlush() {
+    if (pagehideArmed || typeof window === "undefined") return;
+    pagehideArmed = true;
+    window.addEventListener("pagehide", () => {
+      void flushPendingMailDeletes();
+    });
+  }
+  function takePendingFinalizeIds() {
     if (undoTimer) {
       window.clearTimeout(undoTimer);
       undoTimer = 0;
     }
+    const ids = pendingFinalizeIds.slice();
+    pendingFinalizeIds = [];
     undoRows = [];
-    commit(
-      { undoCount: 0, undoEndsAt: 0 },
-      opts && opts.silent ? { silent: true } : void 0
-    );
+    commit({ undoCount: 0, undoEndsAt: 0 }, { silent: true });
+    return ids;
+  }
+  async function flushPendingMailDeletes() {
+    const ids = takePendingFinalizeIds();
+    if (!ids.length) return;
+    await finalizeDeletes(ids);
   }
   function buildRemoveIdsPatch(unique, seen) {
     const mails = getMails();
@@ -14833,12 +14984,6 @@ ${CHROME_ARRANGE_CSS}
       if (!seen.has(mails[i].id)) nextMails.push(mails[i]);
     }
     const patch = { mails: nextMails };
-    if (getHasMore()) {
-      patch.nextCursor = String(nextMails.length);
-    } else if (!nextMails.length) {
-      patch.nextCursor = null;
-      patch.hasMore = false;
-    }
     const view = getView();
     if (view.kind === "read" && seen.has(view.id)) {
       patch.view = { kind: "list" };
@@ -14871,37 +15016,43 @@ ${CHROME_ARRANGE_CSS}
       if (m && m.item && !m.taken) hasUntaken = true;
     }
     if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
-    clearUndoState({ silent: true });
+    const priorIds = takePendingFinalizeIds();
+    if (priorIds.length) {
+      await finalizeDeletes(priorIds);
+    }
     const { batch, patch } = buildRemoveIdsPatch(unique, seen);
     const finalizeIds = [];
     for (let i = 0; i < batch.length; i++) finalizeIds.push(batch[i].id);
     const allowUndo = batch.length > 0 && batch.length <= MAIL_DELETE_UNDO_MAX;
     if (allowUndo) {
+      armPagehideFlush();
       undoRows = batch;
+      pendingFinalizeIds = finalizeIds.slice();
       const undoEndsAt = Date.now() + MAIL_DELETE_UNDO_MS;
       commit({
         ...patch,
         undoCount: batch.length,
         undoEndsAt
       });
-      schedulePersistMailCache();
       if (undoTimer) window.clearTimeout(undoTimer);
       undoTimer = window.setTimeout(() => {
         undoTimer = 0;
         undoRows = [];
+        const idsToFinalize = pendingFinalizeIds.slice();
+        pendingFinalizeIds = [];
         commit({ undoCount: 0, undoEndsAt: 0 });
-        void finalizeDeletes(finalizeIds);
+        void finalizeDeletes(idsToFinalize);
       }, MAIL_DELETE_UNDO_MS);
       return "ok";
     }
     undoRows = [];
+    pendingFinalizeIds = [];
     commit({
       ...patch,
       undoCount: 0,
       undoEndsAt: 0
     });
-    schedulePersistMailCache();
-    void finalizeDeletes(finalizeIds);
+    await finalizeDeletes(finalizeIds);
     return "ok";
   }
   async function finalizeDeletes(ids) {
@@ -14909,6 +15060,7 @@ ${CHROME_ARRANGE_CSS}
     if (finalizeInFlight) return;
     finalizeInFlight = true;
     undoRows = [];
+    pendingFinalizeIds = [];
     commit({ undoCount: 0, undoEndsAt: 0 });
     const total = ids.length;
     let failed = 0;
@@ -14948,12 +15100,15 @@ ${CHROME_ARRANGE_CSS}
       finalizeInFlight = false;
       commit({ deleteProgress: null });
     }
+    schedulePersistMailCache();
+    if (getPanelOpen()) {
+      void requestMailHead("Refresh", { force: true });
+    }
     if (failed) {
       setStatus(
         "Deleted " + (total - failed) + " / " + total + " \xB7 " + failed + " failed",
         "err"
       );
-      void requestMailHead("Refresh", { force: true });
       return;
     }
     setStatus(total === 1 ? "Mail deleted." : total + " mails deleted.");
@@ -14966,16 +15121,14 @@ ${CHROME_ARRANGE_CSS}
     }
     const next = undoRows.concat(getMails());
     undoRows = [];
-    const patch = {
+    pendingFinalizeIds = [];
+    commit({
       mails: next,
       undoCount: 0,
       undoEndsAt: 0,
       status: "Delete undone",
       statusKind: ""
-    };
-    if (getHasMore()) patch.nextCursor = String(next.length);
-    commit(patch);
-    schedulePersistMailCache();
+    });
   }
 
   // src/host/mail/mailSubject.ts
@@ -16731,6 +16884,14 @@ ${CHROME_ARRANGE_CSS}
       return;
     }
     const result = resolveCommandOutcome(p, getMails());
+    if (p.kind === "send") {
+      if (result.code === "looks_sent" || result.code === "partial_sent") {
+        if (p.attaches && p.attaches.length) {
+          patchObservingAfterAttachSend(p.attaches);
+        }
+        persistDraft(emptyDraft());
+      }
+    }
     commit({
       commandBusy: false,
       status: result.text,
@@ -16844,9 +17005,6 @@ ${CHROME_ARRANGE_CSS}
       setStatus("No socket \u2014 cannot send command", "err");
       return false;
     }
-    if (attaches.length) {
-      patchObservingAfterAttachSend(attaches);
-    }
     const stickyTo = [];
     const seenSticky = /* @__PURE__ */ new Set();
     const pushSticky = (name) => {
@@ -16874,7 +17032,8 @@ ${CHROME_ARRANGE_CSS}
       beforeIds,
       targetIds: [],
       expect,
-      fromNames: fromName ? [String(fromName)] : void 0
+      fromNames: fromName ? [String(fromName)] : void 0,
+      attaches: attaches.length ? attaches.slice() : void 0
     };
     const obs = fromName || "character";
     commit({
@@ -16884,7 +17043,6 @@ ${CHROME_ARRANGE_CSS}
       statusKind: "warn",
       view: { kind: "list" }
     });
-    persistDraft(emptyDraft());
     scheduleCommandHead(
       "command \xB7 send",
       MAIL_COMMAND_HEAD_DELAY_MS + 1200 + (expect - 1) * 800
@@ -16929,20 +17087,31 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/mail/mailSession.ts
+  var openGen = 0;
+  function isCurrentOpenGen(gen) {
+    return gen === openGen;
+  }
   function setMailPanelOpen(open) {
     if (!open) {
+      openGen += 1;
       commit({ panelOpen: false });
+      setMailSearchBurst(false);
       stopPrefetch();
-      schedulePersistMailCache();
+      void flushPendingMailDeletes().then(() => {
+        schedulePersistMailCache();
+      });
       return;
     }
+    const gen = ++openGen;
     ensureComposeDraftHydrated();
     resetPrefetchPages();
     commit({ panelOpen: true });
     void (async () => {
-      await hydrateMailCacheFromIdb();
+      await hydrateMailCacheFromIdb(gen, isCurrentOpenGen);
+      if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
       await requestMailHead("open");
-      if (getMailSnapshot().panelOpen) schedulePrefetch();
+      if (!isCurrentOpenGen(gen) || !getMailSnapshot().panelOpen) return;
+      schedulePrefetch();
     })();
   }
   var openListeners = [];
@@ -22002,6 +22171,19 @@ ${CHROME_ARRANGE_CSS}
     if (!needle) return true;
     return hay.toLowerCase().indexOf(needle.toLowerCase()) >= 0;
   }
+  function itemSearchText(m) {
+    const item = m.item;
+    if (!item || item.name == null || item.name === "") return "";
+    const name = String(item.name);
+    if (typeof window === "undefined") return name;
+    try {
+      const g = window.G;
+      const def = g && g.items ? g.items[name] : null;
+      if (def && def.name) return name + " " + String(def.name);
+    } catch (e2) {
+    }
+    return name;
+  }
   function parseMailSearch(raw, now = Date.now()) {
     const tokens = tokenizeMailQuery(raw);
     const clauses = [];
@@ -22076,13 +22258,12 @@ ${CHROME_ARRANGE_CSS}
         return c.negate ? !ok : ok;
       }
       case "item": {
-        const name = m.item && m.item.name ? String(m.item.name) : "";
-        const ok = !!name && includesLoose(name, c.value);
+        const hay = itemSearchText(m);
+        const ok = !!hay && includesLoose(hay, c.value);
         return c.negate ? !ok : ok;
       }
       case "text": {
-        const itemName = m.item && m.item.name ? String(m.item.name) : "";
-        const hay = [m.fro, m.to, m.subject, m.message, itemName].join(" ").toLowerCase();
+        const hay = [m.fro, m.to, m.subject, m.message, itemSearchText(m)].join(" ").toLowerCase();
         const ok = includesLoose(hay, c.value);
         return c.negate ? !ok : ok;
       }
@@ -22160,10 +22341,11 @@ ${CHROME_ARRANGE_CSS}
       const m = mails[i];
       if (pill === "unread" && m.read !== false) continue;
       if (pill === "item" && !(m.item && !m.taken)) continue;
-      if (pill === "tome" && !self.has(String(m.to || "").toLowerCase()))
-        continue;
-      if (pill === "fromme" && !self.has(String(m.fro || "").toLowerCase())) {
-        continue;
+      if (pill === "tome" && self.size > 0) {
+        if (!self.has(String(m.to || "").toLowerCase())) continue;
+      }
+      if (pill === "fromme" && self.size > 0) {
+        if (!self.has(String(m.fro || "").toLowerCase())) continue;
       }
       if (!mailMatchesSearch(m, parsed)) continue;
       out.push(m);
@@ -22477,6 +22659,20 @@ ${CHROME_ARRANGE_CSS}
       observeName: String(obs.name),
       reason: goldEnough ? void 0 : "Not enough gold on observed character"
     };
+  }
+
+  // src/host/mail/mailSearchCoverage.ts
+  function mailSearchWantsBurst(opts) {
+    return String(opts.query || "").trim().length > 0 && !!opts.hasMore;
+  }
+  function mailSearchEmptyHint(opts) {
+    const q = String(opts.query || "").trim();
+    if (!q) return null;
+    if (opts.matchCount > 0) return null;
+    if (opts.hasMore) {
+      return "No matches in " + opts.loadedCount + " loaded \u2014 fetching older mail\u2026";
+    }
+    return "No matches";
   }
 
   // src/host/keyboardPolicy.ts
@@ -23990,7 +24186,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-20T17:08:02.450Z" : "unknown";
+    const builtAt = true ? "2026-09-21T17:38:26.203Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -65381,12 +65577,14 @@ ${ESTIMATE_HINT}`,
       allSlots,
       iconSize,
       fluid,
-      selected
+      selected,
+      onSlotClick
     } = props;
     const obs = observing || window.observing;
     const filled = !!(slot && slot.name);
     const foreign = !gearEditable;
     const editable = !!gearEditable;
+    const customClick = typeof onSlotClick === "function";
     const inRange = !foreign || isInTradeRange(entity, obs);
     const bagMatch = foreign && filled && (slot == null ? void 0 : slot.b) ? findBagMatchForBuyOrder(slot, obs == null ? void 0 : obs.items) : null;
     const canBuy = foreign && filled && slot && !slot.b && !isGiveawayListing(slot) && inRange;
@@ -65492,9 +65690,12 @@ ${ESTIMATE_HINT}`,
       else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
       else if (disabled) tipParts.push("(unavailable)");
       if (editable) tipParts.push("Drag to bag to delist");
-      tipParts.push("Shift+click: item info");
+      if (customClick) tipParts.push("Click: focus in Market \xB7 Shift+click: item info");
+      else tipParts.push("Shift+click: item info");
     } else if (editable) {
-      tipParts.push("Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway");
+      tipParts.push(
+        customClick ? "Drag bag item to list \xB7 Shift+drag: giveaway" : "Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway"
+      );
     }
     return e(
       "div",
@@ -65515,16 +65716,21 @@ ${ESTIMATE_HINT}`,
             tradeListingDragActive = false;
           }, 0);
         } : void 0,
-        onPointerDown: editable && filled ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function") {
-            ev.stopPropagation();
-          }
-        } : editable ? (ev) => {
+        onPointerDown: customClick || editable ? (ev) => {
           if (ev && typeof ev.stopPropagation === "function") {
             ev.stopPropagation();
           }
         } : void 0,
-        onClick: editable ? (ev) => {
+        onClick: customClick ? (ev) => {
+          if (filled && tradeListingDragActive) return;
+          if (ev && typeof ev.preventDefault === "function") {
+            ev.preventDefault();
+          }
+          if (ev && typeof ev.stopPropagation === "function") {
+            ev.stopPropagation();
+          }
+          onSlotClick(ev);
+        } : editable ? (ev) => {
           if (editable && filled && tradeListingDragActive) return;
           handleTradeSlotClick(
             ev,
@@ -65572,7 +65778,7 @@ ${ESTIMATE_HINT}`,
           flex: fluid ? "1 1 0" : `0 0 ${cellW}px`,
           boxSizing: "border-box",
           opacity: disabled ? 0.45 : 1,
-          cursor: editable || filled ? "pointer" : "default",
+          cursor: customClick || editable || filled ? "pointer" : "default",
           pointerEvents: "auto"
         }
       },
@@ -67554,7 +67760,13 @@ ${ESTIMATE_HINT}`,
                       key,
                       className: "MarketPanel-bagSlot" + (bagStackKey === key ? " is-on" : ""),
                       title: tip,
-                      onClick: () => {
+                      onClick: (ev) => {
+                        if (ev && typeof ev.preventDefault === "function") {
+                          ev.preventDefault();
+                        }
+                        if (ev && typeof ev.stopPropagation === "function") {
+                          ev.stopPropagation();
+                        }
                         setBagStackKey(key);
                         setFocusKey(key);
                         const next = rewriteIsInFilter("item:" + b.name, {
@@ -67796,8 +68008,14 @@ ${ESTIMATE_HINT}`,
                     key: "grid",
                     className: "MarketPanel-standSlots" + (pack ? " is-pack" : " is-all")
                   },
-                  packEntries.map(
-                    (entry) => e(TradeSlotCell, {
+                  packEntries.map((entry) => {
+                    const slotItem = entry.slot;
+                    const itemKey = slotItem && slotItem.name ? marketBagStackKey({
+                      name: String(slotItem.name),
+                      level: typeof slotItem.level === "number" ? slotItem.level : void 0,
+                      p: slotItem.p != null && String(slotItem.p) !== "" ? String(slotItem.p) : null
+                    }) : null;
+                    return e(TradeSlotCell, {
                       key: entry.slotName,
                       entity: ownEntity,
                       observing,
@@ -67807,9 +68025,31 @@ ${ESTIMATE_HINT}`,
                       allSlots: slots || void 0,
                       iconSize,
                       fluid: true,
-                      selected: !!focusKey && entry.slotNames.indexOf(focusKey) >= 0
-                    })
-                  )
+                      selected: !!focusKey && (focusKey === itemKey || entry.slotNames.indexOf(focusKey) >= 0),
+                      onSlotClick: (ev) => {
+                        if (ev && ev.shiftKey && slotItem && slotItem.name) {
+                          openTradeItemInfo(
+                            ownEntity,
+                            entry.slotName,
+                            slotItem
+                          );
+                          return;
+                        }
+                        if (!slotItem || !slotItem.name || !itemKey) return;
+                        setFocusKey(itemKey);
+                        const next = rewriteIsInFilter(
+                          "item:" + String(slotItem.name),
+                          {
+                            facet,
+                            nearOnly,
+                            canAfford,
+                            haveStock
+                          }
+                        );
+                        applyQuery(next);
+                      }
+                    });
+                  })
                 ) : e(
                   "div",
                   {
@@ -68739,6 +68979,7 @@ ${ESTIMATE_HINT}`,
   --bk-line: #2a2a2a;
   --bk-muted: #8a8680;
   --bk-gold: #d4b35a;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -70956,12 +71197,26 @@ ${ESTIMATE_HINT}`,
       toggleCheck,
       collapseRepeats,
       expandedKeys,
-      setGroupExpanded
+      setGroupExpanded,
+      searchEmptyHint
     } = props;
     const entries = buildEntries({ filtered, collapseRepeats, expandedKeys });
     const activity = resolveMailActivity(snap);
     const warming = activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
     const nodes = [];
+    if (!entries.length && searchEmptyHint) {
+      nodes.push(
+        e(
+          "div",
+          {
+            key: "search-empty",
+            className: "comm-mail__empty",
+            style: { padding: "24px 12px" }
+          },
+          searchEmptyHint
+        )
+      );
+    }
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       if (entry.kind === "mail") {
@@ -71602,7 +71857,11 @@ ${ESTIMATE_HINT}`,
       try {
         const raw = loadSettings().mailPill;
         const allowed = ["all", "unread", "item", "tome", "fromme"];
-        return allowed.indexOf(String(raw)) >= 0 ? raw : "all";
+        const next = allowed.indexOf(String(raw)) >= 0 ? raw : "all";
+        if ((next === "tome" || next === "fromme") && !selfCharacterNames().length) {
+          return "all";
+        }
+        return next;
       } catch (e2) {
         return "all";
       }
@@ -71652,6 +71911,22 @@ ${ESTIMATE_HINT}`,
       });
     };
     const filtered = filterMails(snap.mails, { pill, query, selfNames });
+    React.useEffect(() => {
+      const burst = mailSearchWantsBurst({
+        query,
+        hasMore: snap.hasMore
+      });
+      setMailSearchBurst(burst);
+      return () => {
+        setMailSearchBurst(false);
+      };
+    }, [query, snap.hasMore]);
+    const searchEmptyHint = mailSearchEmptyHint({
+      query,
+      hasMore: snap.hasMore,
+      matchCount: filtered.length,
+      loadedCount: snap.mails.length
+    });
     let selected = null;
     if (snap.view.kind === "read") {
       for (let i = 0; i < snap.mails.length; i++) {
@@ -71790,7 +72065,8 @@ ${ESTIMATE_HINT}`,
           toggleCheck,
           collapseRepeats,
           expandedKeys,
-          setGroupExpanded
+          setGroupExpanded,
+          searchEmptyHint
         }),
         e("div", { className: "comm-mail__pane" }, pane)
       )
@@ -72053,7 +72329,8 @@ ${ESTIMATE_HINT}`,
         }),
         {
           style: MARKET_PANEL_STYLE,
-          hiddenBodyStyle: MARKET_PANEL_STYLE
+          hiddenBodyStyle: MARKET_PANEL_STYLE,
+          interactiveBody: true
         }
       ),
       panel(
@@ -72064,7 +72341,8 @@ ${ESTIMATE_HINT}`,
         }),
         {
           style: MARKET_PANEL_STYLE,
-          hiddenBodyStyle: MARKET_PANEL_STYLE
+          hiddenBodyStyle: MARKET_PANEL_STYLE,
+          interactiveBody: true
         }
       ),
       panel(

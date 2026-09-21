@@ -5,9 +5,12 @@ import {
   getMailCapabilities,
   getMailObservingSnap,
   getMailSnapshot,
+  mailSearchEmptyHint,
+  mailSearchWantsBurst,
   openCompose,
   openMailRow,
   replyToMail,
+  setMailSearchBurst,
   setMailView,
   subscribeMailStore,
   takeMailCommand,
@@ -64,7 +67,17 @@ export function MailPanel(): any {
     try {
       const raw = loadSettings().mailPill;
       const allowed = ["all", "unread", "item", "tome", "fromme"];
-      return (allowed.indexOf(String(raw)) >= 0 ? raw : "all") as MailPill;
+      const next = (
+        allowed.indexOf(String(raw)) >= 0 ? raw : "all"
+      ) as MailPill;
+      // Roster may not be ready yet — avoid empty To me / From me.
+      if (
+        (next === "tome" || next === "fromme") &&
+        !selfCharacterNames().length
+      ) {
+        return "all" as MailPill;
+      }
+      return next;
     } catch {
       return "all" as MailPill;
     }
@@ -120,6 +133,24 @@ export function MailPanel(): any {
     });
   };
   const filtered = filterMails(snap.mails, { pill, query, selfNames });
+
+  React.useEffect(() => {
+    const burst = mailSearchWantsBurst({
+      query,
+      hasMore: snap.hasMore,
+    });
+    setMailSearchBurst(burst);
+    return () => {
+      setMailSearchBurst(false);
+    };
+  }, [query, snap.hasMore]);
+
+  const searchEmptyHint = mailSearchEmptyHint({
+    query,
+    hasMore: snap.hasMore,
+    matchCount: filtered.length,
+    loadedCount: snap.mails.length,
+  });
 
   let selected: MailRow | null = null;
   if (snap.view.kind === "read") {
@@ -277,6 +308,7 @@ export function MailPanel(): any {
         collapseRepeats,
         expandedKeys,
         setGroupExpanded,
+        searchEmptyHint,
       }),
       e("div", { className: "comm-mail__pane" }, pane),
     ),

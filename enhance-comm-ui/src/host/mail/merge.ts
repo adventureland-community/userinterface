@@ -16,6 +16,36 @@ function cloneRow(m: MailRow): MailRow {
   return next;
 }
 
+/**
+ * Coerce pull_mail `sent` (`"" + created`) into something Date.parse trusts.
+ * Prefer ISO; accept epoch ms numbers and Date-like strings.
+ */
+export function normalizeMailSent(raw: unknown): string {
+  if (raw == null || raw === "") return "";
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw < 1e12 ? raw * 1000 : raw;
+    return new Date(ms).toISOString();
+  }
+  if (typeof raw === "object") {
+    const obj = raw as { $date?: unknown; getTime?: () => number };
+    if (typeof obj.getTime === "function") {
+      const t = obj.getTime();
+      if (Number.isFinite(t)) return new Date(t).toISOString();
+    }
+    if (obj.$date != null) return normalizeMailSent(obj.$date);
+  }
+  const s = String(raw).trim();
+  if (!s || s === "undefined" || s === "null") return "";
+  const parsed = Date.parse(s);
+  if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  const n = Number(s);
+  if (Number.isFinite(n) && n > 0) {
+    const ms = n < 1e12 ? n * 1000 : n;
+    if (ms > 1e11) return new Date(ms).toISOString();
+  }
+  return s;
+}
+
 /** Soft-merge first page by id; keep already-loaded older pages. */
 export function mergeHeadPage(
   existing: MailRow[],
@@ -95,7 +125,7 @@ export function normalizeMailPage(raw: unknown): PullMailPage {
       to: String(m.to || ""),
       subject: String(m.subject || ""),
       message: String(m.message || ""),
-      sent: String(m.sent || ""),
+      sent: normalizeMailSent(m.sent),
     };
     if (typeof m.read === "boolean") row.read = m.read;
     // Stock pull_mail omits `read` — leave unset; store assigns local session state.
@@ -122,6 +152,13 @@ export function coerceMailTaken(raw: unknown): boolean | undefined {
   return undefined;
 }
 
+/** True when a non-JSON string is a plausible AdventureLand item id. */
+function looksLikeItemId(s: string): boolean {
+  const t = String(s || "").trim();
+  if (!t || t.length > 64) return false;
+  return /^[A-Za-z][A-Za-z0-9_]*$/.test(t);
+}
+
 /** Stock mail.item is often a JSON string; accept objects too. */
 export function parseMailItem(raw: unknown): MailRow["item"] | undefined {
   let cur: unknown = raw;
@@ -129,14 +166,22 @@ export function parseMailItem(raw: unknown): MailRow["item"] | undefined {
   for (let depth = 0; depth < 3; depth++) {
     if (cur == null || cur === "") return undefined;
     if (typeof cur === "string") {
+      const trimmed = cur.trim();
       try {
-        cur = JSON.parse(cur);
+        cur = JSON.parse(trimmed);
       } catch {
+        // Bare id ("citrus") or JSON string value "\"citrus\"" after unwrap.
+        if (looksLikeItemId(trimmed)) return { name: trimmed };
         return undefined;
       }
       continue;
     }
     break;
+  }
+  if (typeof cur === "string") {
+    const trimmed = cur.trim();
+    if (looksLikeItemId(trimmed)) return { name: trimmed };
+    return undefined;
   }
   if (!cur || typeof cur !== "object") return undefined;
   const obj = cur as Record<string, unknown>;

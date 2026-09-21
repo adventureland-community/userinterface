@@ -30,6 +30,8 @@ export type PendingOutcome = {
   expect: number;
   /** Sender name(s) for send outcome (usually the observed character). */
   fromNames?: string[];
+  /** Attach fingerprints to clear from bag snap only after looks_sent. */
+  attaches?: ComposeAttach[];
 };
 
 let pendingOutcome: PendingOutcome | null = null;
@@ -51,6 +53,15 @@ export function resolvePendingOutcome(): void {
     return;
   }
   const result = resolveCommandOutcome(p, getMails());
+  if (p.kind === "send") {
+    if (result.code === "looks_sent" || result.code === "partial_sent") {
+      if (p.attaches && p.attaches.length) {
+        patchObservingAfterAttachSend(p.attaches);
+      }
+      persistDraft(emptyDraft());
+    }
+    // Failed / inconclusive: keep session draft + bag snap for retry.
+  }
   commit({
     commandBusy: false,
     status: result.text,
@@ -213,9 +224,6 @@ export function sendMailCommand(opts: {
     setStatus("No socket — cannot send command", "err");
     return false;
   }
-  if (attaches.length) {
-    patchObservingAfterAttachSend(attaches);
-  }
   const stickyTo: string[] = [];
   const seenSticky = new Set<string>();
   const pushSticky = (name: string) => {
@@ -248,6 +256,7 @@ export function sendMailCommand(opts: {
     targetIds: [],
     expect,
     fromNames: fromName ? [String(fromName)] : undefined,
+    attaches: attaches.length ? attaches.slice() : undefined,
   };
   const obs = fromName || "character";
   commit({
@@ -260,8 +269,7 @@ export function sendMailCommand(opts: {
     statusKind: "warn",
     view: { kind: "list" },
   });
-  persistDraft(emptyDraft());
-  // Script waits for mail_sent (~async DB). Give CODE time to start + settle.
+  // Draft + bag snap clear only after looks_sent / partial_sent.
   scheduleCommandHead(
     "command · send",
     MAIL_COMMAND_HEAD_DELAY_MS + 1200 + (expect - 1) * 800,

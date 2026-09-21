@@ -462,6 +462,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: MARKET_PANEL_STYLE,
         hiddenBodyStyle: MARKET_PANEL_STYLE,
+        interactiveBody: true,
       },
     ),
 
@@ -477,6 +478,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       {
         style: MARKET_PANEL_STYLE,
         hiddenBodyStyle: MARKET_PANEL_STYLE,
+        interactiveBody: true,
       },
     ),
 

@@ -6,8 +6,9 @@ import type { MailRow } from "./types";
 
 /**
  * Assign local `read` flags for a pull merge.
- * Bootstrap: mark the newest `unreadBudget` rows unread.
+ * Bootstrap: do not invent unread from X.unread (server unread ≠ newest N).
  * Delta: mark brand-new ids unread.
+ * `locallyReadIds` always wins as read.
  */
 export function assignLocalReadFlags(
   rows: MailRow[],
@@ -16,7 +17,7 @@ export function assignLocalReadFlags(
   unreadBudget: number,
   locallyReadIds: Set<string>,
 ): { rows: MailRow[]; newIds: string[] } {
-  let budgetLeft = bootstrap ? unreadBudget : 0;
+  void unreadBudget;
   const out: MailRow[] = [];
   const newIds: string[] = [];
   for (let i = 0; i < rows.length; i++) {
@@ -25,12 +26,10 @@ export function assignLocalReadFlags(
     if (isNew && !bootstrap) newIds.push(m.id);
     if (locallyReadIds.has(m.id)) {
       m.read = true;
-    } else if (bootstrap && budgetLeft > 0) {
-      m.read = false;
-      budgetLeft -= 1;
     } else if (isNew && !bootstrap) {
       m.read = false;
     } else if (m.read == null) {
+      // Unknown / bootstrap — treat as read until X.unread↑ marks new ids.
       m.read = true;
     }
     out.push(m);

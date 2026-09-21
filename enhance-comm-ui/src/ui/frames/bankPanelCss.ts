@@ -9,6 +9,7 @@ const CSS = `
   --bk-line: #2a2a2a;
   --bk-muted: #8a8680;
   --bk-gold: #d4b35a;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   height: 100%;

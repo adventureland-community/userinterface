@@ -35,6 +35,8 @@ export type MailCacheRecord = {
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 let persistTimer = 0;
 let hydrateInFlight: Promise<boolean> | null = null;
+/** Pin once we know a stable account id so hydrate/persist don't split keys. */
+let pinnedAccountKey: string | null = null;
 
 function openDb(): Promise<IDBDatabase | null> {
   if (dbPromise) return dbPromise;
@@ -63,8 +65,8 @@ function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 
-/** Scope cache per account when user_id / roster is available. */
-export function mailAccountKey(): string {
+/** Resolve account key from window (no pin). */
+export function resolveMailAccountKey(): string {
   const w = window as Window & {
     user_id?: string | number;
     X?: { characters?: Array<{ name?: string }> };
@@ -83,6 +85,19 @@ export function mailAccountKey(): string {
     if (names.length) return "chars:" + names.join(",");
   }
   return "default";
+}
+
+/** Scope cache per account when user_id / roster is available. */
+export function mailAccountKey(): string {
+  if (pinnedAccountKey) return pinnedAccountKey;
+  const key = resolveMailAccountKey();
+  // Prefer pinning only when we have a real account id.
+  if (key.startsWith("u:")) pinnedAccountKey = key;
+  return key;
+}
+
+export function resetMailAccountKeyPin(): void {
+  pinnedAccountKey = null;
 }
 
 export async function loadMailCacheRecord(
@@ -154,13 +169,37 @@ export function schedulePersistMailCache(): void {
 /**
  * Apply IndexedDB snapshot when the session list is empty.
  * Returns true if rows were restored (UI can paint before network head).
+ * `openGen` — ignore commit when the panel open generation advanced.
  */
-export async function hydrateMailCacheFromIdb(): Promise<boolean> {
+export async function hydrateMailCacheFromIdb(
+  openGen?: number,
+  isCurrentGen?: (gen: number) => boolean,
+): Promise<boolean> {
   if (getMails().length > 0) return false;
   if (hydrateInFlight) return hydrateInFlight;
   hydrateInFlight = (async () => {
-    const rec = await loadMailCacheRecord(mailAccountKey());
+    const key = mailAccountKey();
+    let rec = await loadMailCacheRecord(key);
+    // Migrate legacy default/chars caches into u: once user_id is known.
+    if (!rec && key.startsWith("u:")) {
+      const legacyDefault = await loadMailCacheRecord("default");
+      const legacyChars = !legacyDefault
+        ? await loadMailCacheRecord(resolveMailAccountKeyFallbackChars())
+        : null;
+      const legacy = legacyDefault || legacyChars;
+      if (legacy) {
+        rec = Object.assign({}, legacy, { accountKey: key });
+        await saveMailCacheRecord(rec);
+      }
+    }
     if (!rec || getMails().length > 0) return false;
+    if (
+      openGen != null &&
+      isCurrentGen &&
+      !isCurrentGen(openGen)
+    ) {
+      return false;
+    }
     const local = getLocallyReadIds();
     for (let i = 0; i < rec.locallyReadIds.length; i++) {
       local.add(rec.locallyReadIds[i]);
@@ -181,4 +220,20 @@ export async function hydrateMailCacheFromIdb(): Promise<boolean> {
   } finally {
     hydrateInFlight = null;
   }
+}
+
+/** Best-effort chars: key when migrating without pinning. */
+function resolveMailAccountKeyFallbackChars(): string {
+  const w = window as Window & {
+    X?: { characters?: Array<{ name?: string }> };
+  };
+  const chars = w.X && w.X.characters;
+  if (!Array.isArray(chars) || !chars.length) return "chars:";
+  const names: string[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    const n = chars[i] && chars[i].name;
+    if (n) names.push(String(n));
+  }
+  names.sort();
+  return names.length ? "chars:" + names.join(",") : "chars:";
 }
