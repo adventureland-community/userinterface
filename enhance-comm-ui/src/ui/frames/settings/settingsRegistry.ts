@@ -34,7 +34,8 @@ export type SettingsPaneRenderProps = {
   visible: (id: PanelId) => boolean;
   setVisible: (id: PanelId, visible: boolean) => void;
   setPanelPos: (id: PanelId, pos: PanelPos) => void;
-  onReplayIntroTour: () => void;
+  onReplayTour: (id: string) => void;
+  onResetTour: (id: string) => void;
   onOpenChangelog: () => void;
   onOpenServerUpdateNotes: () => void;
 };
@@ -52,12 +53,13 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commUi",
     label: "Comm UI",
     description:
-      "Intro tour, Comm UI What's New, and Adventure.land server update notes.",
+      "Guided tours (replay / reset), Comm UI What's New, and Adventure.land server update notes.",
     countMatches: countCommUiSettingsMatches,
     render: (props) =>
       e(CommUiSettingsPane, {
         query: props.query,
-        onReplayIntroTour: props.onReplayIntroTour,
+        onReplayTour: props.onReplayTour,
+        onResetTour: props.onResetTour,
         onOpenChangelog: props.onOpenChangelog,
         onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
       }),

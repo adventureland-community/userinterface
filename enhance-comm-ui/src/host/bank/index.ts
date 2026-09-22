@@ -3,8 +3,10 @@ export {
   subscribeBankOpen,
   setBankPanelOpen,
   isBankPanelOpen,
+  cueBankView,
+  subscribeBankViewCue,
 } from "./bankSession";
-export type { BankOpenPayload } from "./bankSession";
+export type { BankOpenPayload, BankViewMode } from "./bankSession";
 export { loadBank, parseLoadBankPayload } from "./api";
 export type { BankLoadResult } from "./api";
 export {

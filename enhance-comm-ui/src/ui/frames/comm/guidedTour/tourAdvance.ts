@@ -6,7 +6,8 @@ export type TourAdvanceWhen =
   | "observing"
   | "bagOpen"
   | "commandOpen"
-  | "itemInfoOpen";
+  | "itemInfoOpen"
+  | "marketFocus";
 
 export type TourAdvanceContext = {
   isObserving: boolean;
@@ -29,6 +30,10 @@ export function tourAdvanceReady(
       return ctx.commandOpen;
     case "itemInfoOpen":
       return ctx.itemInfoOpen;
+    case "marketFocus":
+      return !!document.querySelector(
+        '[data-ecu-tour="market-focus"][data-ecu-has-focus="1"]',
+      );
     default: {
       const _exhaustive: never = when;
       return _exhaustive;

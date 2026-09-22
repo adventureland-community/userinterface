@@ -54,6 +54,10 @@ function listingFromSlot(
   };
   if (slot.giveaway) row.giveaway = true;
   if (slot.giveawayEntries != null) row.giveawayEntries = slot.giveawayEntries;
+  if (slot.giveawayMinutes != null) row.giveawayMinutes = slot.giveawayMinutes;
+  if (slot.giveawayNames && slot.giveawayNames.length) {
+    row.giveawayNames = slot.giveawayNames.slice();
+  }
   if (slot.q != null) row.q = slot.q;
   if (slot.level != null) row.level = slot.level;
   if (slot.p !== undefined) row.p = slot.p;
@@ -373,6 +377,10 @@ export function cachedSlotsAsListings(
     };
     if (s.giveaway) row.giveaway = true;
     if (s.giveawayEntries != null) row.giveawayEntries = s.giveawayEntries;
+    if (s.giveawayMinutes != null) row.giveawayMinutes = s.giveawayMinutes;
+    if (s.giveawayNames && s.giveawayNames.length) {
+      row.giveawayNames = s.giveawayNames.slice();
+    }
     if (s.q != null) row.q = s.q;
     if (s.level != null) row.level = s.level;
     if (s.p !== undefined) row.p = s.p;
@@ -418,6 +426,9 @@ export function marketCacheContentEqual(
         sx.buyOrder !== sy.buyOrder ||
         !!sx.giveaway !== !!sy.giveaway ||
         sx.giveawayEntries !== sy.giveawayEntries ||
+        sx.giveawayMinutes !== sy.giveawayMinutes ||
+        (sx.giveawayNames || []).join("\0") !==
+          (sy.giveawayNames || []).join("\0") ||
         sx.q !== sy.q ||
         sx.level !== sy.level ||
         sx.p !== sy.p

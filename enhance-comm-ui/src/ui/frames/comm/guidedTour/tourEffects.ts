@@ -5,6 +5,8 @@
 import { CLOSABLE_PANEL_IDS } from "../../../../lib/settings";
 import type { PanelId } from "../../../../lib/layout";
 import { closeInventory } from "../../../../host/inventory";
+import { openMarket } from "../../../../host/market";
+import { openBank, cueBankView, type BankViewMode } from "../../../../host/bank";
 
 export type TourStepEffects = {
   layoutEdit?: boolean;
@@ -14,6 +16,12 @@ export type TourStepEffects = {
   closeCommand?: boolean;
   closeBag?: boolean;
   refreshHud?: boolean;
+  /** Open the Market hub panel. */
+  openMarket?: boolean;
+  /** Open the Bank panel. */
+  openBank?: boolean;
+  /** Switch Bank panel view (All / Packs / Types / Ready). */
+  bankView?: BankViewMode;
 };
 
 export type TourUiSnapshot = {
@@ -61,6 +69,9 @@ export function applyTourStepEffects(
   if (effects.closeCommand) host.closeCommandPanel();
   if (effects.closeBag) host.closeBagPanel();
   if (effects.refreshHud) host.refreshCommHud();
+  if (effects.openMarket) openMarket({});
+  if (effects.openBank) openBank({});
+  if (effects.bankView) cueBankView(effects.bankView);
 }
 
 export function restoreTourUi(

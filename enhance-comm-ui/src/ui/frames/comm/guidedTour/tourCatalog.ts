@@ -27,6 +27,8 @@ export type TourPrepare = {
   layoutEdit?: boolean;
   showMeters?: boolean;
   testBars?: boolean;
+  openMarket?: boolean;
+  openBank?: boolean;
 };
 
 export type GuidedTourDef = {
@@ -49,7 +51,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Observe",
       title: "Pick a character",
-      body: "Click a character chip — party frames, meters, and the action bar all follow whoever is highlighted. Click the active chip again to stop observing.",
+      body: "Click a character chip. Party frames, meters, and the action bar follow whoever is highlighted. Click the active chip again to stop observing.",
       target: '[data-ecu-tour="character-ui"]',
       targetKind: "region",
       missingHint: "Click any character chip in the strip below.",
@@ -78,7 +80,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Observe",
       title: "Action bar",
-      body: "Follow centers the camera, Bag opens inventory, Command sends CODE — all for whoever you are observing.",
+      body: "Follow centers the camera, Bag opens inventory, Command sends CODE. All of it runs on whoever you are observing.",
       target: '[data-ecu-tour="chrome-actions"]',
       targetKind: "region",
       missingHint: "Action buttons sit above the character strip.",
@@ -135,7 +137,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Overlay",
       title: "Layout mode",
-      body: "Turn this on to drag panels into place. Every panel appears at once so you can position them — it looks busy, and that's normal. A short layout tour runs the first time you enable it.",
+      body: "Turn this on to drag panels into place. Every panel appears at once so you can position them. It looks busy; that is normal. A short layout tour runs the first time you enable it.",
       target: '[data-ecu-tour="btn-layout"]',
       targetKind: "button",
       missingHint: "Click the Layout button in the control strip.",
@@ -162,7 +164,7 @@ const INTRO_TOUR: GuidedTourDef = {
       // top-of-stack shell the meters tour uses for a just-added window.
       target: ".ecu-meter-shell:not(.is-inspector):not(.is-report)",
       targetKind: "region",
-      missingHint: "No meter yet — the next step shows how to add one.",
+      missingHint: "No meter yet. The next step shows how to add one.",
     },
     {
       section: "Overlay",
@@ -176,7 +178,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Overlay",
       title: "PDPS",
-      body: "Under Adventure Land in the add dialog — live party-DPS snapshot during combat.",
+      body: "Under Adventure Land in the add dialog. Live party-DPS snapshot during combat.",
       target: '[data-ecu-tour="preset-pdps"]',
       targetKind: "button",
       missingHint: "Tap + Meter to open the preset list.",
@@ -194,7 +196,7 @@ const INTRO_TOUR: GuidedTourDef = {
     {
       section: "Overlay",
       title: "You're set",
-      body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, trade slots, buffs, and combat panels — each only once.",
+      body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, Market, Bank, buffs, and combat panels, each only once. Replay any tour from Settings → Comm UI.",
       target: ".comm-pos-toggles",
       targetKind: "region",
     },
@@ -208,12 +210,12 @@ const LAYOUT_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Layout mode",
-      body: "Every panel is visible so you can move them — it looks crowded at first. Pick one panel, drag its header, then adjust anchors and opacity below.",
+      body: "Every panel is visible so you can move them. It looks crowded at first. Pick one panel, drag its header, then adjust anchors and opacity below.",
       target: ".comm-pos-edit-header",
     },
     {
       title: "Anchor pad",
-      body: "The 3×3 pad sets stretch direction — which corner stays fixed when the window grows.",
+      body: "The 3×3 pad sets stretch direction: which corner stays fixed when the window grows.",
       target: ".comm-pos-anchor-pad",
       missingHint: "Anchor pad is on each panel header in layout mode.",
     },
@@ -233,7 +235,7 @@ const METERS_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Meter window",
-      body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked; lock them to auto-hide until data — or use Layout to place.",
+      body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked. Lock them to auto-hide until data, or use Layout to place.",
       // Prefer the meter that triggered the tour (just-added); never union all shells.
       target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
       targetKind: "button",
@@ -248,7 +250,7 @@ const METERS_TOUR: GuidedTourDef = {
     },
     {
       title: "Toolbar overview",
-      body: "Right-side icons: Mode · Segment · Attribute · Report · Reset. Hover for menus — a toolbar tour appears when you first open one.",
+      body: "Right-side icons: Mode · Segment · Attribute · Report · Reset. Hover for menus. A toolbar tour appears when you first open one.",
       target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-titlebar',
       targetKind: "button",
       missingHint: "Add a meter window first.",
@@ -271,19 +273,19 @@ const METER_TOOLBAR_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Mode",
-      body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options — the Mode menu.",
+      body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options. That is the Mode menu.",
       target: '[data-ecu-tour="meter-gear"]',
     },
     {
       title: "Segment",
-      body: "Fight history — click older/newer segments. Hover for wipe/kill markers.",
+      body: "Fight history. Click older or newer segments. Hover for wipe/kill markers.",
       target: '[data-ecu-tour="meter-segment"]',
     },
     {
       title: "Attribute",
       body: "Switch Damage Done / DPS / Healing / Taken. Right-click for the full display grid.",
       target: '[data-ecu-tour="meter-display"]',
-      missingHint: "Rank-based meters only — snapshot meters omit this button.",
+      missingHint: "Rank-based meters only. Snapshot meters omit this button.",
     },
     {
       title: "Report",
@@ -306,7 +308,7 @@ const COMBAT_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Enemies",
-      body: "Nearby monsters for quick targeting — click a bar, or the also-N trash line.",
+      body: "Nearby monsters for quick targeting. Click a bar, or the also-N trash line.",
       target: ".comm-pos-enemies",
       missingHint: "Appears when monsters are nearby.",
     },
@@ -318,7 +320,7 @@ const COMBAT_TOUR: GuidedTourDef = {
     },
     {
       title: "Boss bar",
-      body: "Large HP bar during boss fights — click to target the boss.",
+      body: "Large HP bar during boss fights. Click to target the boss.",
       target: ".comm-pos-bossBar",
       missingHint: "Appears during boss encounters.",
     },
@@ -353,7 +355,7 @@ const PAPERDOLL_TOUR: GuidedTourDef = {
     },
     {
       title: "Gear",
-      body: "Equipped slots live here. Click any filled slot to open Item info — the tour continues when you do.",
+      body: "Equipped slots live here. Click any filled slot to open Item info. The tour continues when you do.",
       target: '[data-ecu-tour="paperdoll-gear"]',
       targetKind: "region",
       missingHint: "Click a filled gear slot on the paperdoll.",
@@ -361,7 +363,7 @@ const PAPERDOLL_TOUR: GuidedTourDef = {
     },
     {
       title: "Item info",
-      body: "Stock item details park in this panel — stats, lore, grade. It stays here so you can compare while looking at gear.",
+      body: "Stock item details park in this panel: stats, lore, grade. It stays here so you can compare while looking at gear.",
       target: ".comm-pos-itemInfo",
       targetKind: "panel",
       missingHint: "Click a filled gear slot if Item info is not open yet.",
@@ -370,34 +372,159 @@ const PAPERDOLL_TOUR: GuidedTourDef = {
 };
 
 /**
- * Market hub — first time you inspect someone with filled trade listings.
+ * Market hub — first open of the Market panel (chrome or merchant inspect).
  */
-const PAPERDOLL_TRADE_TOUR: GuidedTourDef = {
-  id: "paperdoll-trade",
-  label: "Market window",
+export const MARKET_TOUR_ID = "market";
+
+const MARKET_TOUR: GuidedTourDef = {
+  id: MARKET_TOUR_ID,
+  label: "Market hub",
+  prepare: { openMarket: true },
   steps: [
     {
-      title: "Market",
-      body: "Market replaces the old Trade panel. Browse for-sale listings across nearby merchants and the realm catalog, or switch to Sell to fulfill buy orders and manage your stand.",
+      section: "Market",
+      title: "Market hub",
+      body: "Three columns: You (bag + stand), item grid, Focus. Open from the chrome Market button, or by inspecting a merchant with a stand.",
       target: '[data-ecu-tour="market-panel"]',
       targetKind: "region",
-      missingHint:
-        "Open Market from the chrome strip, or inspect a merchant stand.",
+      missingHint: "Open Market from the chrome strip, or inspect a merchant stand.",
+      enter: { openMarket: true },
     },
     {
-      title: "Buy or sell",
-      body: "On Buy, click a listing to purchase when in range, or Travel when far. On Sell, fulfill buy orders from your bag and list/delist on Your stand. Shift+click takes the full stack when possible.",
-      target: '[data-ecu-tour="market-panel"]',
+      section: "Market",
+      title: "Observe a character",
+      body: "Bag and stand need a watched character. Click a chip in the strip below. The tour continues when you are observing.",
+      target: '[data-ecu-tour="character-ui"]',
       targetKind: "region",
-      missingHint: "Open Market from the chrome Market button.",
+      missingHint: "Click any character chip in the strip below.",
+      advanceWhen: "observing",
+      enter: { refreshHud: true, openMarket: true },
     },
     {
-      title: "Item info",
-      body: "Shift+click stand slots to park details in Item info while you compare prices.",
-      target: ".comm-pos-itemInfo",
-      targetKind: "panel",
-      missingHint: "Shift+click a filled trade slot on Your stand.",
-      advanceWhen: "itemInfoOpen",
+      section: "Market",
+      title: "You: bag & stand",
+      body: "Select a bag stack, then List, Giveaway, Deposit, or Buy order. Deposit travels to the vault when needed. Drop onto the stand to list. Shift+drop for giveaway.",
+      target: '[data-ecu-tour="market-you"]',
+      targetKind: "region",
+      missingHint: "Open Market. The You column is on the left.",
+    },
+    {
+      section: "Market",
+      title: "Search & filters",
+      body: "Selling, Buying, Giveaways. Near keeps live entities. Search takes item:, merchant:, is:sell, and the same style as Bank.",
+      target: '[data-ecu-tour="market-tools"]',
+      targetKind: "region",
+      missingHint: "Open Market. Search sits under the header.",
+    },
+    {
+      section: "Market",
+      title: "Pick an item",
+      body: "Cards show sell / buy / giveaway counts and best prices. Click one to fill Focus. The tour advances when Focus has an item. ★ favorites; Arb sorts by buy−sell spread.",
+      target: '[data-ecu-tour="market-grid"]',
+      targetKind: "region",
+      missingHint: "Click any item card in the Market grid.",
+      advanceWhen: "marketFocus",
+    },
+    {
+      section: "Market",
+      title: "Focus offers",
+      body: "In range: Buy, Sell, or Join. Out of range: Travel. ⋯ or right-click for Mirror / Undercut on foreign sales, Reprice / Delist on yours. Shift+click Buy/Sell takes the full stack when it can.",
+      target: '[data-ecu-tour="market-focus"]',
+      targetKind: "region",
+      missingHint: "Pick an item card, bag stack, or stand slot to fill Focus.",
+    },
+  ],
+};
+
+/** Account Bank — first open of the Bank panel. */
+export const BANK_TOUR_ID = "bank";
+
+const BANK_TOUR: GuidedTourDef = {
+  id: BANK_TOUR_ID,
+  label: "Account Bank",
+  prepare: { openBank: true },
+  steps: [
+    {
+      section: "Bank",
+      title: "Account Bank",
+      body: "Shared account vault, not one character's bag. Open from the chrome Bank button. The header shows gold and how stale the last load is.",
+      target: '[data-ecu-tour="bank-panel"]',
+      targetKind: "region",
+      missingHint: "Open Bank from the chrome strip.",
+      enter: { openBank: true },
+    },
+    {
+      section: "Bank",
+      title: "Observe a character",
+      body: "Withdraw and deposit run on the watched character. Click a chip below. The tour continues when you are observing.",
+      target: '[data-ecu-tour="character-ui"]',
+      targetKind: "region",
+      missingHint: "Click any character chip in the strip below.",
+      advanceWhen: "observing",
+      enter: { refreshHud: true, openBank: true },
+    },
+    {
+      section: "Bank",
+      title: "Refresh",
+      body: "Reloads the vault from the server. When something changed, a strip lists Added / Removed / ±qty with All · Gear · Quantity filters.",
+      target: '[data-ecu-tour="bank-refresh"]',
+      targetKind: "button",
+      missingHint: "Open Bank. Refresh sits in the header.",
+      enter: { openBank: true },
+    },
+    {
+      section: "Bank",
+      title: "Search",
+      body: "Same style as Market: item:, type:, pack:, title:, level:, is:compound|upgrade|craft|exchange, OR and negation. Suggestions appear while you type.",
+      target: '[data-ecu-tour="bank-search"]',
+      targetKind: "region",
+      missingHint: "Open Bank. Search sits under the header.",
+      enter: { openBank: true },
+    },
+    {
+      section: "Bank",
+      title: "Views",
+      body: "All merges stacks across packs. Packs shows each vault board. Types groups by item type. Ready lists Combine and Craft you can finish from bank + bag.",
+      target: '[data-ecu-tour="bank-views"]',
+      targetKind: "region",
+      missingHint: "Open Bank. View tabs sit under search.",
+      enter: { openBank: true, bankView: "all" },
+    },
+    {
+      section: "Bank",
+      title: "Packs",
+      body: "Every vault pack as a slot board (like the explorer). Search dims non-matches. Click a stack to inspect; right-click to withdraw.",
+      target: '[data-ecu-tour="bank-body"]',
+      targetKind: "region",
+      missingHint: "Open Bank and switch to Packs.",
+      enter: { openBank: true, bankView: "packs" },
+    },
+    {
+      section: "Bank",
+      title: "Ready",
+      body: "Combine and Craft tabs, Ready vs Almost. Recipe cards show result ← inputs from bank + bag stock.",
+      target: '[data-ecu-tour="bank-body"]',
+      targetKind: "region",
+      missingHint: "Open Bank and switch to Ready.",
+      enter: { openBank: true, bankView: "ready" },
+    },
+    {
+      section: "Bank",
+      title: "Sort",
+      body: "On All and Types: Category, Quantity, or Stack. Packs and Ready hide sort because layout is fixed.",
+      target: '[data-ecu-tour="bank-sort"]',
+      targetKind: "region",
+      missingHint: "Open Bank on All or Types to see sort.",
+      enter: { openBank: true, bankView: "all" },
+    },
+    {
+      section: "Bank",
+      title: "Browse & withdraw",
+      body: "Click or right-click a stack to pull it into the watched bag. Away from the vault, the character travels there first.",
+      target: '[data-ecu-tour="bank-body"]',
+      targetKind: "region",
+      missingHint: "Open Bank. The item grid fills the body.",
+      enter: { openBank: true, bankView: "all" },
     },
   ],
 };
@@ -409,7 +536,7 @@ const BUFF_INFO_TOUR: GuidedTourDef = {
   steps: [
     {
       title: "Buff info",
-      body: "Stock condition details for the buff you clicked — what it does and how long it lasts.",
+      body: "Stock condition details for the buff you clicked: what it does and how long it lasts.",
       target: ".comm-pos-buffInfo",
       targetKind: "panel",
       missingHint: "Click a buff icon on a unit or party frame.",
@@ -433,12 +560,33 @@ export const GUIDED_TOURS: GuidedTourDef[] = [
   COOP_TOUR,
   COMBAT_TOUR,
   PAPERDOLL_TOUR,
-  PAPERDOLL_TRADE_TOUR,
+  MARKET_TOUR,
+  BANK_TOUR,
   BUFF_INFO_TOUR,
 ];
 
 /** First-run spotlight from the setup wizard. */
 export const INTRO_TOUR_CHAIN = [INTRO_TOUR_ID];
+
+export type GuidedTourListItem = {
+  id: string;
+  label: string;
+  completed: boolean;
+};
+
+/** Settings list — every registered tour with completion state. */
+export function listGuidedTours(): GuidedTourListItem[] {
+  const out: GuidedTourListItem[] = [];
+  for (let i = 0; i < GUIDED_TOURS.length; i++) {
+    const t = GUIDED_TOURS[i];
+    out.push({
+      id: t.id,
+      label: t.label,
+      completed: isTourCompleted(t.id),
+    });
+  }
+  return out;
+}
 
 export function tourById(id: string): GuidedTourDef | null {
   for (let i = 0; i < GUIDED_TOURS.length; i++) {
@@ -462,7 +610,7 @@ export function markTourCompleted(id: string): void {
   patchSettings({ toursCompleted: { ...prev, [id]: true } });
 }
 
-/** Clear a completion flag (Intro button force-replay). */
+/** Clear a completion flag (Settings Replay / Reset). */
 export function clearTourCompleted(id: string): void {
   const prev = getSettings().toursCompleted || {};
   if (!prev[id]) return;
@@ -503,9 +651,13 @@ export function migrateLegacyTourFlags(): void {
     delete next["paperdoll-gear-v1"];
     changed = true;
   }
-  // Renamed merchant tour → paperdoll-trade (trade slots only; not base paperdoll).
-  if (done.merchant && !done["paperdoll-trade"]) {
-    next["paperdoll-trade"] = true;
+  // Drop old merchant / paperdoll-trade flags — Market hub tour is a new id
+  // so users who only saw the thin predecessor still get the expanded tour once.
+  if (done["paperdoll-trade"] != null) {
+    delete next["paperdoll-trade"];
+    changed = true;
+  }
+  if (done.merchant != null) {
     delete next.merchant;
     changed = true;
   }

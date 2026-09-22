@@ -554,16 +554,12 @@ export const ABILITY_TIMELINE_CSS = `
 `;
 
 export function ensureAbilityTimelineCss(): void {
-  const css = ABILITY_TIMELINE_CSS + METER_HOVER_TIP_CSS;
   const existing = document.querySelector(
     "style[data-ecu-abil-css]",
   ) as HTMLStyleElement | null;
-  if (existing) {
-    existing.textContent = css;
-    return;
-  }
+  if (existing) return;
   const el = document.createElement("style");
   el.setAttribute("data-ecu-abil-css", "1");
-  el.textContent = css;
+  el.textContent = ABILITY_TIMELINE_CSS + METER_HOVER_TIP_CSS;
   document.head.appendChild(el);
 }

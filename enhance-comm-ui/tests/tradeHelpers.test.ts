@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   formatTradeGold,
+  formatGiveawayTimeLeft,
   findBagMatchForBuyOrder,
   isGiveawayListing,
   isInTradeRange,
@@ -49,5 +50,22 @@ describe("trade helpers", () => {
     assert.equal(isGiveawayListing(slot), true);
     assert.equal(isJoinedGiveaway(slot, { id: "p1", name: "Bob" }), true);
     assert.equal(isJoinedGiveaway(slot, { id: "p2", name: "Bob" }), false);
+    assert.equal(isGiveawayListing({ name: "jacko", giveaway: 12 }), true);
+  });
+
+  it("formats giveaway time left", () => {
+    assert.equal(formatGiveawayTimeLeft(17), "17m");
+    assert.equal(formatGiveawayTimeLeft(65), "1h 5m");
+    assert.equal(formatGiveawayTimeLeft(120), "2h");
+    assert.equal(formatGiveawayTimeLeft(null), "");
+    const now = 1_000_000;
+    assert.equal(
+      formatGiveawayTimeLeft(10, now - 3 * 60_000, now),
+      "7m",
+    );
+    assert.equal(
+      formatGiveawayTimeLeft(2, now - 5 * 60_000, now),
+      "<1m",
+    );
   });
 });

@@ -14,7 +14,7 @@ import {
   tradeSlotIsEmpty,
 } from "../lib/tradeSlots";
 import {
-  showGiveawayMinutesDialog,
+  showGiveawayDialog,
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../ui/trade/tradePromptDialog";
@@ -50,18 +50,12 @@ async function runGiveawayOnTrade(
   tradeSlot: string,
 ): Promise<void> {
   const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
-  let q = maxQ;
-  if (maxQ > 1) {
-    const picked = await showTradeQuantityDialog({
-      itemName: ctx.fp.name,
-      maxQ,
-    });
-    if (picked == null) return;
-    q = picked;
-  }
-  const mins = await showGiveawayMinutesDialog();
-  if (mins == null) return;
-  giveawayCommand(tradeSlot, ctx.fp, mins, q);
+  const picked = await showGiveawayDialog({
+    itemName: ctx.fp.name,
+    maxQ,
+  });
+  if (picked == null) return;
+  giveawayCommand(tradeSlot, ctx.fp, picked.minutes, picked.q);
 }
 
 function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {

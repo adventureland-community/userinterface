@@ -93,6 +93,13 @@ const CSS = `
   align-items: center;
   margin: 0 0 10px;
 }
+.ecu-trade-prompt__field-label {
+  margin: 4px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(200, 180, 120, 0.85);
+}
 .ecu-trade-prompt__field input[type="number"],
 .ecu-trade-prompt__field input[type="text"] {
   flex: 1;
@@ -142,13 +149,23 @@ const CSS = `
   border-color: rgba(140, 190, 140, 0.35);
 }
 .ecu-trade-prompt__chip--nearby,
-.ecu-trade-prompt__chip--undercut {
+.ecu-trade-prompt__chip--undercut,
+.ecu-trade-prompt__chip--market {
   border-color: rgba(143, 212, 255, 0.28);
+}
+.ecu-trade-prompt__chip--want {
+  border-color: rgba(190, 150, 220, 0.35);
 }
 .ecu-trade-prompt__chip--last,
 .ecu-trade-prompt__chip--current,
 .ecu-trade-prompt__chip--yours {
   border-color: rgba(232, 201, 106, 0.28);
+}
+.ecu-trade-prompt__market-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: rgba(180, 195, 210, 0.88);
+  font-variant-numeric: tabular-nums;
 }
 .ecu-trade-prompt__hint {
   min-height: 18px;

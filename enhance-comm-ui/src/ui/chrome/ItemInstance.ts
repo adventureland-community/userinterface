@@ -220,9 +220,15 @@ export const ITEM_INSTANCE_BADGE_CSS = `
 
 const BADGE_STYLE_ID = "ecu-item-instance-badge-css";
 
+let itemInstanceBadgeCssInjected = false;
+
 /** Idempotent — safe from ItemInstance / TradeSlotCell / mail hosts. */
 export function ensureItemInstanceBadgeCss(): void {
   if (typeof document === "undefined") return;
+  if (itemInstanceBadgeCssInjected) {
+    if (document.getElementById(BADGE_STYLE_ID)) return;
+    itemInstanceBadgeCssInjected = false;
+  }
   let el = document.getElementById(BADGE_STYLE_ID) as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement("style");
@@ -230,4 +236,5 @@ export function ensureItemInstanceBadgeCss(): void {
     document.head.appendChild(el);
   }
   el.textContent = ITEM_INSTANCE_BADGE_CSS;
+  itemInstanceBadgeCssInjected = true;
 }

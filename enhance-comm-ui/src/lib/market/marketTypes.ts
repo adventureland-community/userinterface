@@ -21,6 +21,10 @@ export type MarketSlotListing = {
   giveaway?: boolean;
   /** Entrant count when catalog/live exposes a registry. */
   giveawayEntries?: number;
+  /** Participant character names (from registry / list). */
+  giveawayNames?: string[];
+  /** Minutes remaining on the giveaway (slot.giveaway from the server). */
+  giveawayMinutes?: number;
   q?: number;
   level?: number;
   p?: string | null;

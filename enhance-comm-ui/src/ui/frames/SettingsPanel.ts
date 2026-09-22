@@ -22,7 +22,8 @@ export type SettingsPanelProps = {
   setPanelPos: (id: PanelId, pos: PanelPos) => void;
   windowPos: PanelPos;
   onMoveWindow: (pos: PanelPos) => void;
-  onReplayIntroTour: () => void;
+  onReplayTour: (id: string) => void;
+  onResetTour: (id: string) => void;
   onOpenChangelog: () => void;
   onOpenServerUpdateNotes: () => void;
 };
@@ -157,7 +158,8 @@ export function SettingsPanel(props: SettingsPanelProps): any {
               visible: props.visible,
               setVisible,
               setPanelPos,
-              onReplayIntroTour: props.onReplayIntroTour,
+              onReplayTour: props.onReplayTour,
+              onResetTour: props.onResetTour,
               onOpenChangelog: props.onOpenChangelog,
               onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
             }),

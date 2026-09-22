@@ -144,11 +144,9 @@ const CSS = `
 
 export function ensureQuerySearchFieldCss(): void {
   if (typeof document === "undefined") return;
-  let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
-  if (!el) {
-    el = document.createElement("style");
-    el.id = STYLE_ID;
-    document.head.appendChild(el);
-  }
+  if (document.getElementById(STYLE_ID)) return;
+  const el = document.createElement("style");
+  el.id = STYLE_ID;
   el.textContent = CSS;
+  document.head.appendChild(el);
 }

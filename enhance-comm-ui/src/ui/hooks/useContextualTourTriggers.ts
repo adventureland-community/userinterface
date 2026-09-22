@@ -10,11 +10,12 @@ import { runMeterQuery } from "../../meters/meterQuery";
 import type { MeterInstance } from "../../meters/meterTypes";
 import { combatSignals } from "../../queries/combatSignals";
 import {
+  BANK_TOUR_ID,
   isTourCompleted,
+  MARKET_TOUR_ID,
   PAPERDOLL_TOUR_ID,
 } from "../frames/comm/guidedTour/tourCatalog";
 import { tryContextualTour } from "../frames/comm/guidedTour/contextualTour";
-import { entityHasTradeSlots } from "../frames/comm/guidedTour/paperdollTrade";
 import { pickMeterTourFocusId } from "./pickMeterTourFocusId";
 
 export type ContextualTourContext = {
@@ -24,6 +25,8 @@ export type ContextualTourContext = {
   meterCount: number;
   entities: EntityLike[];
   meterInstances: MeterInstance[];
+  marketOpen: boolean;
+  bankOpen: boolean;
 };
 
 export type UseContextualTourTriggersOpts = ContextualTourContext & {
@@ -47,10 +50,6 @@ function selectedEntity(ctx: ContextualTourContext): EntityLike | undefined {
   return findEntity(ctx.entities, ctx.selectedEntity);
 }
 
-function selectedHasTradeSlots(ctx: ContextualTourContext): boolean {
-  return entityHasTradeSlots(selectedEntity(ctx));
-}
-
 const TRIGGERS: TriggerDef[] = [
   {
     id: "meters",
@@ -69,15 +68,19 @@ const TRIGGERS: TriggerDef[] = [
     },
   },
   {
-    // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
-    id: "paperdoll-trade",
+    id: MARKET_TOUR_ID,
     delayMs: 320,
     when: (ctx, prev) => {
-      if (isTourCompleted("paperdoll-trade")) return false;
-      const now = !!ctx.selectedEntity && selectedHasTradeSlots(ctx);
-      if (!now) return false;
-      const was = !!prev?.selectedEntity && selectedHasTradeSlots(prev);
-      return !was;
+      if (isTourCompleted(MARKET_TOUR_ID)) return false;
+      return ctx.marketOpen && !prev?.marketOpen;
+    },
+  },
+  {
+    id: BANK_TOUR_ID,
+    delayMs: 320,
+    when: (ctx, prev) => {
+      if (isTourCompleted(BANK_TOUR_ID)) return false;
+      return ctx.bankOpen && !prev?.bankOpen;
     },
   },
   {
@@ -147,6 +150,8 @@ export function useContextualTourTriggers(
     meterCount: opts.meterCount,
     entities: opts.entities,
     meterInstances: opts.meterInstances,
+    marketOpen: opts.marketOpen,
+    bankOpen: opts.bankOpen,
   };
 
   React.useEffect(() => {
@@ -171,6 +176,8 @@ export function useContextualTourTriggers(
       meterCount: ctx.meterCount,
       entities: ctx.entities,
       meterInstances: ctx.meterInstances,
+      marketOpen: ctx.marketOpen,
+      bankOpen: ctx.bankOpen,
     };
   }, [
     ctx.selectedEntity,
@@ -178,6 +185,8 @@ export function useContextualTourTriggers(
     ctx.meterCount,
     ctx.entities,
     ctx.meterInstances,
+    ctx.marketOpen,
+    ctx.bankOpen,
   ]);
 }
 

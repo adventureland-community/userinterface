@@ -108,7 +108,16 @@ export function normalizeCatalogSlot(
     s.registry && typeof s.registry === "object"
       ? (s.registry as Record<string, unknown>)
       : null;
-  const giveaway = s.giveaway === true || !!registry;
+  const giveawayNames = collectGiveawayNames(s);
+  const giveawayMinutes =
+    typeof s.giveaway === "number" && Number.isFinite(s.giveaway)
+      ? Math.max(0, Math.floor(s.giveaway))
+      : null;
+  const giveaway =
+    (giveawayMinutes != null && giveawayMinutes > 0) ||
+    s.giveaway === true ||
+    !!registry ||
+    giveawayNames.length > 0;
   const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
   const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
   if (!Number.isFinite(price)) return null;
@@ -120,7 +129,13 @@ export function normalizeCatalogSlot(
   };
   if (giveaway) {
     listing.giveaway = true;
-    if (registry) {
+    if (giveawayMinutes != null && giveawayMinutes > 0) {
+      listing.giveawayMinutes = giveawayMinutes;
+    }
+    if (giveawayNames.length) {
+      listing.giveawayNames = giveawayNames;
+      listing.giveawayEntries = giveawayNames.length;
+    } else if (registry) {
       listing.giveawayEntries = Object.keys(registry).length;
     }
   }
@@ -130,6 +145,31 @@ export function normalizeCatalogSlot(
   if (typeof s.p === "string" || s.p === null) listing.p = s.p as string | null;
   if (typeof s.stat_type === "string") listing.stat_type = s.stat_type;
   return listing;
+}
+
+/** Character names from slot.registry values and/or slot.list. */
+function collectGiveawayNames(s: Record<string, unknown>): string[] {
+  const names: string[] = [];
+  const seen: Record<string, boolean> = Object.create(null);
+  const add = (raw: unknown) => {
+    if (typeof raw !== "string") return;
+    const t = raw.trim();
+    if (!t) return;
+    const key = t.toLowerCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    names.push(t);
+  };
+  if (s.registry && typeof s.registry === "object") {
+    const reg = s.registry as Record<string, unknown>;
+    const keys = Object.keys(reg);
+    for (let i = 0; i < keys.length; i++) add(reg[keys[i]]);
+  }
+  if (Array.isArray(s.list)) {
+    for (let i = 0; i < s.list.length; i++) add(s.list[i]);
+  }
+  names.sort((a, b) => a.localeCompare(b));
+  return names;
 }
 
 export function slotsFromCatalogChar(

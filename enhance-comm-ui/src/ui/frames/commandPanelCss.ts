@@ -324,9 +324,7 @@ let injected = false;
 
 export function ensureCommandPanelCss(): void {
   if (typeof document === "undefined") return;
-  const existing = document.getElementById("ecu-command-panel-css");
-  if (existing) {
-    existing.textContent = COMMAND_PANEL_CSS;
+  if (injected || document.getElementById("ecu-command-panel-css")) {
     injected = true;
     return;
   }

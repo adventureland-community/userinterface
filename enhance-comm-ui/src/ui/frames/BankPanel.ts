@@ -5,7 +5,12 @@
  */
 
 import { getReact, e } from "../../host/react";
-import { ensureBankSnapshot, hydrateBankCacheFromIdb } from "../../host/bank";
+import {
+  ensureBankSnapshot,
+  hydrateBankCacheFromIdb,
+  subscribeBankViewCue,
+  type BankViewMode,
+} from "../../host/bank";
 import { canEditObservedBag } from "../../host/gearObserved";
 import { showBankSlotContextMenu } from "./bankSlotContextMenu";
 import {
@@ -65,7 +70,6 @@ export type BankPanelProps = {
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
 };
 
-type ViewMode = "all" | "packs" | "types" | "ready";
 type ReadyKind = "combine" | "craft";
 type ReadySection = "ready" | "almost";
 
@@ -309,7 +313,7 @@ export function BankPanel(props: BankPanelProps): any {
   const [error, setError] = React.useState(null as string | null);
   const [loading, setLoading] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [view, setView] = React.useState("all" as ViewMode);
+  const [view, setView] = React.useState("all" as BankViewMode);
   const [sort, setSort] = React.useState("category" as BankSortMode);
   const [readyKind, setReadyKind] = React.useState("combine" as ReadyKind);
   const [readySection, setReadySection] = React.useState(
@@ -369,6 +373,12 @@ export function BankPanel(props: BankPanelProps): any {
   React.useEffect(() => {
     const id = window.setInterval(() => setTick((n: number) => n + 1), 15000);
     return () => window.clearInterval(id);
+  }, []);
+
+  React.useEffect(() => {
+    return subscribeBankViewCue((next: BankViewMode) => {
+      setView(next);
+    });
   }, []);
 
   React.useEffect(() => {
@@ -966,6 +976,7 @@ export function BankPanel(props: BankPanelProps): any {
     {
       className: "BankPanel" + (expanded ? " is-expanded" : ""),
       "data-ecu-panel": "bank",
+      "data-ecu-tour": "bank-panel",
       ref: rootRef,
     },
     e(
@@ -997,6 +1008,7 @@ export function BankPanel(props: BankPanelProps): any {
           className: "BankPanel-btn",
           disabled: loading,
           onClick: () => refresh(),
+          "data-ecu-tour": "bank-refresh",
         },
         loading ? "Loading…" : "Refresh",
       ),
@@ -1114,17 +1126,29 @@ export function BankPanel(props: BankPanelProps): any {
       : null,
     e(
       "div",
-      { className: "BankPanel-tools" },
-      e(QuerySearchField, {
-        value: query,
-        onChange: (next: string) => setQuery(next),
-        placeholder: "Search · item: · type: · pack: · is:compound · OR…",
-        suggestions,
-        trailingOps: BANK_TRAILING_OPS,
-      }),
+      {
+        className: "BankPanel-tools",
+        "data-ecu-tour": "bank-tools",
+      },
       e(
         "div",
-        { className: "BankPanel-seg" },
+        { "data-ecu-tour": "bank-search" },
+        e(QuerySearchField, {
+          value: query,
+          onChange: (next: string) => setQuery(next),
+          placeholder: "Search · item: · type: · pack: · is:compound · OR…",
+          suggestions,
+          trailingOps: BANK_TRAILING_OPS,
+        }),
+      ),
+      e(
+        "div",
+        {
+          className: "BankPanel-seg",
+          "data-ecu-tour": "bank-views",
+          role: "group",
+          "aria-label": "Bank view mode",
+        },
         e(
           "button",
           {
@@ -1169,6 +1193,7 @@ export function BankPanel(props: BankPanelProps): any {
               className: "BankPanel-seg BankPanel-sortSeg",
               role: "group",
               "aria-label": "Bank sort mode",
+              "data-ecu-tour": "bank-sort",
             },
             SORT_OPTIONS.map((opt) =>
               e(
@@ -1186,6 +1211,13 @@ export function BankPanel(props: BankPanelProps): any {
           )
         : null,
     ),
-    e("div", { className: "BankPanel-body" }, body),
+    e(
+      "div",
+      {
+        className: "BankPanel-body",
+        "data-ecu-tour": "bank-body",
+      },
+      body,
+    ),
   );
 }

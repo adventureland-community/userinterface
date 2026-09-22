@@ -4,6 +4,10 @@
  */
 
 import type { CachedMarketMerchant } from "../../lib/market/marketPersistLogic";
+import {
+  getCachedMarketMerchants,
+  setCachedMarketMerchants,
+} from "./marketMemory";
 
 const DB_NAME = "ecu-market-cache";
 const DB_VER = 1;
@@ -126,6 +130,7 @@ export function schedulePersistMarketCache(
   merchants: CachedMarketMerchant[],
 ): void {
   if (typeof window === "undefined") return;
+  setCachedMarketMerchants(merchants);
   pendingMerchants = merchants;
   if (persistTimer) window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(() => {
@@ -148,5 +153,9 @@ export async function hydrateMarketCacheFromIdb(): Promise<
 > {
   const rec = await loadMarketCacheRecord(marketAccountKey());
   if (!rec) return [];
+  // Don't clobber a fresher in-memory pull that raced ahead of IDB hydrate.
+  if (!getCachedMarketMerchants().length) {
+    setCachedMarketMerchants(rec.merchants);
+  }
   return rec.merchants;
 }

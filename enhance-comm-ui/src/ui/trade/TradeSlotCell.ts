@@ -8,13 +8,14 @@ import {
   stampNativeItemTitle,
 } from "../../lib/gameIcon";
 import { GEAR_SLOT_SIZE } from "../chrome/gearSlotCell";
-import { ItemInstance } from "../chrome/ItemInstance";
+import { ItemInstance, ensureItemInstanceBadgeCss } from "../chrome/ItemInstance";
 import { TRADE_SLOT_CELL } from "../../lib/frameSizes";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import { handleBagDragOverGearSlot, handleBagDropOnTradeSlot } from "../gear/gearSlotDragDrop";
 import {
   canAffordListing,
   findBagMatchForBuyOrder,
+  formatGiveawayTimeLeft,
   formatTradeGold,
   isGiveawayListing,
   isInTradeRange,
@@ -76,6 +77,11 @@ export type TradeSlotCellProps = {
   /** Selected / focus chrome (Market stand). */
   selected?: boolean;
   /**
+   * Pack-mode free-slot stack count (empty cell only). Shown as a qty badge
+   * on the empty stand icon so you can see how many slots are still free.
+   */
+  emptyQty?: number;
+  /**
    * When set, replaces default buy / wishlist / item-info click handling.
    * Market You stand uses this so primary click focuses the item instead of
    * opening the stock tip (which felt like a click-through).
@@ -85,6 +91,7 @@ export type TradeSlotCellProps = {
 
 export function TradeSlotCell(props: TradeSlotCellProps): any {
   const React = getReact();
+  ensureItemInstanceBadgeCss();
   const [bagDropHover, setBagDropHover] = React.useState(false);
   const {
     entity,
@@ -96,6 +103,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     iconSize,
     fluid,
     selected,
+    emptyQty,
     onSlotClick,
   } = props;
   const obs = observing || window.observing;
@@ -213,6 +221,19 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
               },
               "+",
             ),
+            emptyQty != null && emptyQty > 0
+              ? e(
+                  "span",
+                  {
+                    className: "ecu-item-badge ecu-item-badge--qty",
+                    title:
+                      emptyQty === 1
+                        ? "1 free slot"
+                        : emptyQty + " free slots",
+                  },
+                  String(emptyQty),
+                )
+              : null,
           )
         : frame;
   }
@@ -238,6 +259,10 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     } else if (isGiveawayListing(slot)) {
       tipParts.push("Giveaway");
     }
+    if (isGiveawayListing(slot) && typeof slot.giveaway === "number") {
+      const left = formatGiveawayTimeLeft(slot.giveaway);
+      if (left) tipParts.push(left + " left");
+    }
     if (foreign && !inRange) tipParts.push("(too far)");
     if (canFulfill) tipParts.push("Click to sell");
     else if (slot.b && bagMatch) tipParts.push("Buy order — matching item in bag");
@@ -249,6 +274,11 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     if (customClick) tipParts.push("Click: focus in Market · Shift+click: item info");
     else tipParts.push("Shift+click: item info");
   } else if (editable) {
+    if (emptyQty != null && emptyQty > 0) {
+      tipParts.push(
+        emptyQty === 1 ? "1 free slot" : emptyQty + " free slots",
+      );
+    }
     tipParts.push(
       customClick
         ? "Drag bag item to list · Shift+drag: giveaway"

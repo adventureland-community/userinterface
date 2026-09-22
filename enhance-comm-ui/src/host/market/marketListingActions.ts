@@ -23,7 +23,7 @@ import {
 import type { MarketListingRow } from "../../lib/market/marketTypes";
 import type { MarketBagStack } from "../../lib/market/marketBagStacks";
 import {
-  showGiveawayMinutesDialog,
+  showGiveawayDialog,
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../../ui/trade/tradePromptDialog";
@@ -336,18 +336,12 @@ export async function giveawayBagStackOnTrade(opts: {
   }
   const fp = fingerprintFromBagStack(stack);
   const maxQ = stack.q > 0 ? stack.q | 0 : 1;
-  let q = maxQ;
-  if (maxQ > 1) {
-    const picked = await showTradeQuantityDialog({
-      itemName: stack.name,
-      maxQ,
-    });
-    if (picked == null) return false;
-    q = picked;
-  }
-  const mins = await showGiveawayMinutesDialog();
-  if (mins == null) return false;
-  return giveawayCommand(tradeSlot, fp, mins, q);
+  const picked = await showGiveawayDialog({
+    itemName: stack.name,
+    maxQ,
+  });
+  if (picked == null) return false;
+  return giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
 }
 
 /** Reprice your own Market Focus listing (fingerprint-aware unequip+relist). */

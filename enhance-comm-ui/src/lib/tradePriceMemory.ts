@@ -3,6 +3,9 @@
  */
 
 import type { EntityLike, SlotLike } from "../host/globals";
+import { getCachedMarketMerchants } from "../host/market/marketMemory";
+import { marketCatalogPricesForItem } from "./market/marketCatalogPricing";
+import { formatTradeGold } from "./tradeHelpers";
 import {
   formatNearbySellLine,
   nearbyMapSellPricesForItem,
@@ -24,8 +27,18 @@ export type TradePriceSuggestion = {
   label: string;
   price: number;
   /** Chip styling hint for the price dialog. */
-  kind?: "vendor" | "last" | "current" | "yours" | "nearby" | "undercut";
+  kind?:
+    | "vendor"
+    | "last"
+    | "current"
+    | "yours"
+    | "nearby"
+    | "undercut"
+    | "market"
+    | "want";
 };
+
+export type TradePriceDialogMode = "list" | "wishlist" | "reprice";
 
 function readMap(): PriceMap {
   try {
@@ -66,13 +79,6 @@ export function rememberTradePrice(
   writeMap(map);
 }
 
-function formatGold(n: number): string {
-  const v = Number(n) | 0;
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 10_000) return `${Math.round(v / 1000)}k`;
-  return String(v);
-}
-
 /** Prices for the same item already listed on trade slots. */
 export function nearbyTradePricesForItem(
   itemName: string,
@@ -100,7 +106,12 @@ export type TradePriceSuggestionOptions = {
   currentPrice?: number;
   level?: number | null;
   observer?: EntityLike | null;
+  mode?: TradePriceDialogMode;
 };
+
+function truncateMerchant(name: string): string {
+  return name.length > 10 ? name.slice(0, 9) + "…" : name;
+}
 
 export function tradePriceSuggestions(
   itemName: string,
@@ -123,6 +134,7 @@ export function tradePriceSuggestions(
   };
 
   const observer = options?.observer ?? (window.observing as EntityLike | null);
+  const mode = options?.mode;
 
   const vendorNet = vendorGoldPrice(name, options?.level);
   const vendorFloor = vendorListFloorPrice(name, {
@@ -132,25 +144,47 @@ export function tradePriceSuggestions(
   if (vendorFloor != null && vendorNet != null) {
     const tax = resolveTradeTaxRate(observer);
     const taxPct = Math.round(tax * 100);
-    const netLabel = formatGold(vendorNet);
+    const netLabel = formatTradeGold(vendorNet);
     push(
-      `Vendor · ${formatGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
+      `Vendor · ${formatTradeGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
       vendorFloor,
       "vendor",
     );
   }
 
+  const catalog = marketCatalogPricesForItem(
+    name,
+    getCachedMarketMerchants(),
+    { level: options?.level },
+  );
+  if (catalog.sells.length) {
+    const low = catalog.sells[0];
+    push(
+      `Market low · ${formatTradeGold(low.price)}g (${truncateMerchant(low.merchant)})`,
+      low.price,
+      "market",
+    );
+  }
+  if (catalog.wants.length) {
+    const high = catalog.wants[0];
+    push(
+      `Want · ${formatTradeGold(high.price)}g (${truncateMerchant(high.merchant)})`,
+      high.price,
+      "want",
+    );
+  }
+
   const mem = recallTradePrice(name);
-  if (mem) push(`Last · ${formatGold(mem.price)}g`, mem.price, "last");
+  if (mem) push(`Last · ${formatTradeGold(mem.price)}g`, mem.price, "last");
 
   const current = options?.currentPrice;
   if (current != null && Number(current) > 0) {
-    push(`Current · ${formatGold(current)}g`, Number(current), "current");
+    push(`Current · ${formatTradeGold(current)}g`, Number(current), "current");
   }
 
   const yours = nearbyTradePricesForItem(name, options?.slots);
   for (let i = 0; i < yours.length; i++) {
-    push(`Yours · ${formatGold(yours[i])}g`, yours[i], "yours");
+    push(`Yours · ${formatTradeGold(yours[i])}g`, yours[i], "yours");
   }
 
   const nearbyMap = nearbyMapSellPricesForItem(name, observer, {
@@ -161,11 +195,16 @@ export function tradePriceSuggestions(
     push(formatNearbySellLine(row), row.price, "nearby");
   }
 
-  if (nearbyMap.length > 0) {
-    const low = nearbyMap[0].price;
-    const undercut = Math.max(1, low - 1);
+  let undercutBase = 0;
+  if (nearbyMap.length > 0) undercutBase = nearbyMap[0].price;
+  if (catalog.sells.length > 0) {
+    const marketLow = catalog.sells[0].price;
+    if (!undercutBase || marketLow < undercutBase) undercutBase = marketLow;
+  }
+  if (undercutBase > 0 && mode !== "wishlist") {
+    const undercut = Math.max(1, undercutBase - 1);
     if (!seen.has(undercut)) {
-      push(`Undercut · ${formatGold(undercut)}g`, undercut, "undercut");
+      push(`Undercut · ${formatTradeGold(undercut)}g`, undercut, "undercut");
     }
   }
 
@@ -189,10 +228,25 @@ export function defaultTradePriceNumber(
   });
   const floor = vendorFloor != null && vendorFloor > 0 ? vendorFloor : 1;
   const suggestions = tradePriceSuggestions(itemName, { ...options, observer });
+  const mode = options?.mode;
+
+  if (mode === "wishlist") {
+    for (let i = 0; i < suggestions.length; i++) {
+      if (suggestions[i].kind === "market") return suggestions[i].price;
+    }
+    for (let i = 0; i < suggestions.length; i++) {
+      if (suggestions[i].kind === "want") return suggestions[i].price;
+    }
+    for (let i = 0; i < suggestions.length; i++) {
+      const sug = suggestions[i];
+      if (sug.kind === "vendor") continue;
+      if (sug.price > 0) return sug.price;
+    }
+  }
 
   for (let i = 0; i < suggestions.length; i++) {
     const sug = suggestions[i];
-    if (sug.kind === "vendor") continue;
+    if (sug.kind === "vendor" || sug.kind === "want") continue;
     if (sug.price >= floor) return sug.price;
   }
 

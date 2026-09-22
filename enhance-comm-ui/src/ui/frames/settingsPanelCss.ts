@@ -387,6 +387,22 @@ export const SETTINGS_PANEL_CSS = `
   font-size: 18px;
   padding: 6px 14px;
 }
+.ecu-settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+.ecu-settings-reset.is-ghost {
+  background: transparent;
+  border-color: #444;
+  color: #aaa;
+}
+.ecu-settings-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .ecu-settings-color {
   display: inline-flex;
   align-items: center;

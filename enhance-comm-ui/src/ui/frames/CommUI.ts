@@ -304,6 +304,7 @@ export function CommUI(props: CommUIProps): any {
       (serverNotesMode != null && !tourActiveRef.current),
 
     setSetupWizardOpen,
+    closeSettings: () => setSettingsOpen(false),
     isObserving:
       (snap.observingId != null && snap.observingId !== "") || !!snap.observing,
     bagOpen,
@@ -314,6 +315,8 @@ export function CommUI(props: CommUIProps): any {
 
   const {
     startIntroTour,
+    replayTour,
+    resetTour,
     toggleLayoutEdit,
     tourOverlay,
     tourActive,
@@ -576,6 +579,8 @@ export function CommUI(props: CommUIProps): any {
     meterCount: meters.meterInstances.length,
     entities: snap.entities,
     meterInstances: meters.meterInstances,
+    marketOpen: marketVisible,
+    bankOpen: bankVisible,
     onMetersTourFocus: setTourFocusMeterId,
   });
 
@@ -797,7 +802,8 @@ export function CommUI(props: CommUIProps): any {
           setPanelPos,
           windowPos: settingsWindowPos,
           onMoveWindow: setSettingsWindowPosPersist,
-          onReplayIntroTour: () => startIntroTour(true),
+          onReplayTour: replayTour,
+          onResetTour: resetTour,
           onOpenChangelog: openSettingsChangelog,
           onOpenServerUpdateNotes: () => openServerUpdateNotes("all"),
         })

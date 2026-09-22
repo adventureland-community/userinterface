@@ -17,7 +17,7 @@ import {
 } from "../bag/bagDragPayload";
 import { observingBagItem } from "../bag/bagItemContextMenu";
 import {
-  showGiveawayMinutesDialog,
+  showGiveawayDialog,
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../trade/tradePromptDialog";
@@ -61,6 +61,17 @@ async function completeBagDropOnTradeSlot(
   if (!fp) return;
 
   const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+
+  if (shiftKey) {
+    const picked = await showGiveawayDialog({
+      itemName: fp.name,
+      maxQ,
+    });
+    if (picked == null) return;
+    giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
+    return;
+  }
+
   let q = maxQ;
   if (maxQ > 1) {
     const picked = await showTradeQuantityDialog({
@@ -69,13 +80,6 @@ async function completeBagDropOnTradeSlot(
     });
     if (picked == null) return;
     q = picked;
-  }
-
-  if (shiftKey) {
-    const mins = await showGiveawayMinutesDialog();
-    if (mins == null) return;
-    giveawayCommand(tradeSlot, fp, mins, q);
-    return;
   }
 
   const price = await showTradePriceDialog({

@@ -8636,17 +8636,37 @@ ${fightHoverTip(src)}`
             },
             {
               label: "Focus + stand",
-              detail: "Offer cards with merchant, server \xB7 map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: Mirror / Undercut / Buy. Your offers: Reprice / Delist (giveaways Delist only).",
+              detail: "Offer cards with merchant, server \xB7 map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: primary Travel/Buy plus \u22EF (or right-click) for Mirror / Undercut. Your offers: Reprice + \u22EF Delist.",
               kind: "feature"
             },
             {
+              label: "Focus giveaways strip",
+              detail: "Gives sit in their own list above Sells | Wants instead of a third column. Offer cards show minutes left and a clickable N in entrant count that opens the participant list.",
+              kind: "ui"
+            },
+            {
+              label: "Stand Pack free-slot qty",
+              detail: "Pack mode empty stand cell shows how many free slots remain (same qty badge as items).",
+              kind: "ui"
+            },
+            {
               label: "You \u2014 bag actions",
-              detail: "Select a bag stack \u2192 List (price dialog \u2192 first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
+              detail: "Select a bag stack \u2192 List (price dialog \u2192 first empty trade slot), Giveaway (quantity + duration in one dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
               kind: "feature"
             },
             {
               label: "Search + filters",
               detail: "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
+              kind: "feature"
+            },
+            {
+              label: "Price dialog market context",
+              detail: "List / wishlist / reprice prompts show Market catalog sell low and want high (from the merchant cache) plus chips; wishlist defaults prefer catalog sell low. Quantity prompts show a compact Market hint when the item is in cache.",
+              kind: "improve"
+            },
+            {
+              label: "Market & Bank tours",
+              detail: "First open of Market or Bank runs a spotlight tour. Bank covers observe, Refresh, search, All/Packs/Types/Ready (Packs + Ready body demos), sort, and withdraw-with-travel. Market covers observe, You, search, grid, Focus. Settings \u2192 Comm UI lists every tour with Replay and Reset.",
               kind: "feature"
             }
           ]
@@ -15435,6 +15455,24 @@ ${CHROME_ARRANGE_CSS}
   function isGiveawayListing(slot) {
     return !!(slot && (slot.giveaway || slot.registry));
   }
+  function giveawayMinutesLeft(minutes, lastRefreshedAt, now = Date.now()) {
+    if (minutes == null || !Number.isFinite(minutes)) return null;
+    let left = Math.floor(minutes);
+    if (lastRefreshedAt != null && lastRefreshedAt > 0) {
+      const elapsed = Math.floor((now - lastRefreshedAt) / 6e4);
+      if (elapsed > 0) left = Math.max(0, left - elapsed);
+    }
+    return left < 0 ? 0 : left;
+  }
+  function formatGiveawayTimeLeft(minutes, lastRefreshedAt, now = Date.now()) {
+    const left = giveawayMinutesLeft(minutes, lastRefreshedAt, now);
+    if (left == null) return "";
+    if (left <= 0) return "<1m";
+    if (left < 60) return left + "m";
+    const h = Math.floor(left / 60);
+    const m = left % 60;
+    return m ? h + "h " + m + "m" : h + "h";
+  }
   function buyOrderItemKey(name, level, p) {
     return `${name}|${level != null ? level : ""}|${p != null ? p : ""}`;
   }
@@ -17188,7 +17226,9 @@ ${CHROME_ARRANGE_CSS}
     const name = typeof s.name === "string" ? s.name : "";
     if (!name) return null;
     const registry = s.registry && typeof s.registry === "object" ? s.registry : null;
-    const giveaway = s.giveaway === true || !!registry;
+    const giveawayNames = collectGiveawayNames(s);
+    const giveawayMinutes = typeof s.giveaway === "number" && Number.isFinite(s.giveaway) ? Math.max(0, Math.floor(s.giveaway)) : null;
+    const giveaway = giveawayMinutes != null && giveawayMinutes > 0 || s.giveaway === true || !!registry || giveawayNames.length > 0;
     const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
     const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
     if (!Number.isFinite(price)) return null;
@@ -17200,7 +17240,13 @@ ${CHROME_ARRANGE_CSS}
     };
     if (giveaway) {
       listing.giveaway = true;
-      if (registry) {
+      if (giveawayMinutes != null && giveawayMinutes > 0) {
+        listing.giveawayMinutes = giveawayMinutes;
+      }
+      if (giveawayNames.length) {
+        listing.giveawayNames = giveawayNames;
+        listing.giveawayEntries = giveawayNames.length;
+      } else if (registry) {
         listing.giveawayEntries = Object.keys(registry).length;
       }
     }
@@ -17210,6 +17256,29 @@ ${CHROME_ARRANGE_CSS}
     if (typeof s.p === "string" || s.p === null) listing.p = s.p;
     if (typeof s.stat_type === "string") listing.stat_type = s.stat_type;
     return listing;
+  }
+  function collectGiveawayNames(s) {
+    const names = [];
+    const seen = /* @__PURE__ */ Object.create(null);
+    const add = (raw) => {
+      if (typeof raw !== "string") return;
+      const t = raw.trim();
+      if (!t) return;
+      const key = t.toLowerCase();
+      if (seen[key]) return;
+      seen[key] = true;
+      names.push(t);
+    };
+    if (s.registry && typeof s.registry === "object") {
+      const reg = s.registry;
+      const keys = Object.keys(reg);
+      for (let i = 0; i < keys.length; i++) add(reg[keys[i]]);
+    }
+    if (Array.isArray(s.list)) {
+      for (let i = 0; i < s.list.length; i++) add(s.list[i]);
+    }
+    names.sort((a, b) => a.localeCompare(b));
+    return names;
   }
   function slotsFromCatalogChar(slots) {
     if (!slots || typeof slots !== "object") return [];
@@ -17279,6 +17348,10 @@ ${CHROME_ARRANGE_CSS}
     };
     if (slot.giveaway) row3.giveaway = true;
     if (slot.giveawayEntries != null) row3.giveawayEntries = slot.giveawayEntries;
+    if (slot.giveawayMinutes != null) row3.giveawayMinutes = slot.giveawayMinutes;
+    if (slot.giveawayNames && slot.giveawayNames.length) {
+      row3.giveawayNames = slot.giveawayNames.slice();
+    }
     if (slot.q != null) row3.q = slot.q;
     if (slot.level != null) row3.level = slot.level;
     if (slot.p !== void 0) row3.p = slot.p;
@@ -17513,6 +17586,10 @@ ${CHROME_ARRANGE_CSS}
       };
       if (s.giveaway) row3.giveaway = true;
       if (s.giveawayEntries != null) row3.giveawayEntries = s.giveawayEntries;
+      if (s.giveawayMinutes != null) row3.giveawayMinutes = s.giveawayMinutes;
+      if (s.giveawayNames && s.giveawayNames.length) {
+        row3.giveawayNames = s.giveawayNames.slice();
+      }
       if (s.q != null) row3.q = s.q;
       if (s.level != null) row3.level = s.level;
       if (s.p !== void 0) row3.p = s.p;
@@ -17533,7 +17610,7 @@ ${CHROME_ARRANGE_CSS}
       for (let j = 0; j < x.slots.length; j++) {
         const sx = x.slots[j];
         const sy = y.slots[j];
-        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || !!sx.giveaway !== !!sy.giveaway || sx.giveawayEntries !== sy.giveawayEntries || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
+        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || !!sx.giveaway !== !!sy.giveaway || sx.giveawayEntries !== sy.giveawayEntries || sx.giveawayMinutes !== sy.giveawayMinutes || (sx.giveawayNames || []).join("\0") !== (sy.giveawayNames || []).join("\0") || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
           return false;
         }
       }
@@ -17771,6 +17848,15 @@ ${CHROME_ARRANGE_CSS}
     return out;
   }
 
+  // src/host/market/marketMemory.ts
+  var cached = [];
+  function getCachedMarketMerchants() {
+    return cached;
+  }
+  function setCachedMarketMerchants(merchants) {
+    cached = Array.isArray(merchants) ? merchants : [];
+  }
+
   // src/host/market/marketPersist.ts
   var DB_NAME3 = "ecu-market-cache";
   var DB_VER3 = 1;
@@ -17866,6 +17952,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function schedulePersistMarketCache(merchants) {
     if (typeof window === "undefined") return;
+    setCachedMarketMerchants(merchants);
     pendingMerchants = merchants;
     if (persistTimer2) window.clearTimeout(persistTimer2);
     persistTimer2 = window.setTimeout(() => {
@@ -17884,6 +17971,9 @@ ${CHROME_ARRANGE_CSS}
   async function hydrateMarketCacheFromIdb() {
     const rec = await loadMarketCacheRecord(marketAccountKey());
     if (!rec) return [];
+    if (!getCachedMarketMerchants().length) {
+      setCachedMarketMerchants(rec.merchants);
+    }
     return rec.merchants;
   }
 
@@ -18497,6 +18587,55 @@ ${CHROME_ARRANGE_CSS}
     return true;
   }
 
+  // src/lib/market/marketCatalogPricing.ts
+  function marketCatalogPricesForItem(itemName, merchants, options) {
+    const name = String(itemName || "").trim();
+    const empty2 = { sells: [], wants: [] };
+    if (!name || !merchants || !merchants.length) return empty2;
+    const wantLevel = options == null ? void 0 : options.level;
+    const max = (options == null ? void 0 : options.max) != null ? Math.max(1, options.max | 0) : 8;
+    const sells = [];
+    const wants = [];
+    const seenSell = /* @__PURE__ */ new Set();
+    const seenWant = /* @__PURE__ */ new Set();
+    for (let mi = 0; mi < merchants.length; mi++) {
+      const m = merchants[mi];
+      if (!m || !m.slots || !m.slots.length) continue;
+      const merchant = String(m.name || "").trim() || "merchant";
+      for (let si = 0; si < m.slots.length; si++) {
+        const slot = m.slots[si];
+        if (!slot || slot.name !== name) continue;
+        if (slot.giveaway) continue;
+        const price = Number(slot.price) | 0;
+        if (!(price > 0)) continue;
+        if (wantLevel != null && slot.level != null && slot.level !== wantLevel) {
+          continue;
+        }
+        const sample = {
+          price,
+          merchant,
+          buyOrder: !!slot.buyOrder
+        };
+        if (slot.level != null) sample.level = slot.level;
+        if (slot.buyOrder) {
+          if (seenWant.has(price)) continue;
+          seenWant.add(price);
+          wants.push(sample);
+        } else {
+          if (seenSell.has(price)) continue;
+          seenSell.add(price);
+          sells.push(sample);
+        }
+      }
+    }
+    sells.sort((a, b) => a.price - b.price);
+    wants.sort((a, b) => b.price - a.price);
+    return {
+      sells: sells.slice(0, max),
+      wants: wants.slice(0, max)
+    };
+  }
+
   // src/lib/tradeItemPricing.ts
   function calculateItemValue(itemName, level) {
     const calc = window.calculate_item_value;
@@ -18641,12 +18780,6 @@ ${CHROME_ARRANGE_CSS}
     map[key] = { price: price | 0, q: q != null && q > 0 ? q | 0 : void 0 };
     writeMap(map);
   }
-  function formatGold(n) {
-    const v = Number(n) | 0;
-    if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-    if (v >= 1e4) return `${Math.round(v / 1e3)}k`;
-    return String(v);
-  }
   function nearbyTradePricesForItem(itemName, slots) {
     const name = String(itemName || "").trim();
     if (!name || !slots) return [];
@@ -18664,6 +18797,9 @@ ${CHROME_ARRANGE_CSS}
     out.sort((a, b) => a - b);
     return out;
   }
+  function truncateMerchant(name) {
+    return name.length > 10 ? name.slice(0, 9) + "\u2026" : name;
+  }
   function tradePriceSuggestions(itemName, options) {
     var _a;
     const name = String(itemName || "").trim();
@@ -18677,6 +18813,7 @@ ${CHROME_ARRANGE_CSS}
       out.push({ label, price: p, kind });
     };
     const observer = (_a = options == null ? void 0 : options.observer) != null ? _a : window.observing;
+    const mode = options == null ? void 0 : options.mode;
     const vendorNet = vendorGoldPrice(name, options == null ? void 0 : options.level);
     const vendorFloor = vendorListFloorPrice(name, {
       level: options == null ? void 0 : options.level,
@@ -18685,22 +18822,43 @@ ${CHROME_ARRANGE_CSS}
     if (vendorFloor != null && vendorNet != null) {
       const tax = resolveTradeTaxRate(observer);
       const taxPct = Math.round(tax * 100);
-      const netLabel = formatGold(vendorNet);
+      const netLabel = formatTradeGold(vendorNet);
       push(
-        `Vendor \xB7 ${formatGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
+        `Vendor \xB7 ${formatTradeGold(vendorFloor)}g (${netLabel}g net, ${taxPct}% tax)`,
         vendorFloor,
         "vendor"
       );
     }
+    const catalog = marketCatalogPricesForItem(
+      name,
+      getCachedMarketMerchants(),
+      { level: options == null ? void 0 : options.level }
+    );
+    if (catalog.sells.length) {
+      const low = catalog.sells[0];
+      push(
+        `Market low \xB7 ${formatTradeGold(low.price)}g (${truncateMerchant(low.merchant)})`,
+        low.price,
+        "market"
+      );
+    }
+    if (catalog.wants.length) {
+      const high = catalog.wants[0];
+      push(
+        `Want \xB7 ${formatTradeGold(high.price)}g (${truncateMerchant(high.merchant)})`,
+        high.price,
+        "want"
+      );
+    }
     const mem = recallTradePrice(name);
-    if (mem) push(`Last \xB7 ${formatGold(mem.price)}g`, mem.price, "last");
+    if (mem) push(`Last \xB7 ${formatTradeGold(mem.price)}g`, mem.price, "last");
     const current = options == null ? void 0 : options.currentPrice;
     if (current != null && Number(current) > 0) {
-      push(`Current \xB7 ${formatGold(current)}g`, Number(current), "current");
+      push(`Current \xB7 ${formatTradeGold(current)}g`, Number(current), "current");
     }
     const yours = nearbyTradePricesForItem(name, options == null ? void 0 : options.slots);
     for (let i = 0; i < yours.length; i++) {
-      push(`Yours \xB7 ${formatGold(yours[i])}g`, yours[i], "yours");
+      push(`Yours \xB7 ${formatTradeGold(yours[i])}g`, yours[i], "yours");
     }
     const nearbyMap = nearbyMapSellPricesForItem(name, observer, {
       level: options == null ? void 0 : options.level
@@ -18709,11 +18867,16 @@ ${CHROME_ARRANGE_CSS}
       const row3 = nearbyMap[i];
       push(formatNearbySellLine(row3), row3.price, "nearby");
     }
-    if (nearbyMap.length > 0) {
-      const low = nearbyMap[0].price;
-      const undercut = Math.max(1, low - 1);
+    let undercutBase = 0;
+    if (nearbyMap.length > 0) undercutBase = nearbyMap[0].price;
+    if (catalog.sells.length > 0) {
+      const marketLow = catalog.sells[0].price;
+      if (!undercutBase || marketLow < undercutBase) undercutBase = marketLow;
+    }
+    if (undercutBase > 0 && mode !== "wishlist") {
+      const undercut = Math.max(1, undercutBase - 1);
       if (!seen.has(undercut)) {
-        push(`Undercut \xB7 ${formatGold(undercut)}g`, undercut, "undercut");
+        push(`Undercut \xB7 ${formatTradeGold(undercut)}g`, undercut, "undercut");
       }
     }
     return out.slice(0, 12);
@@ -18727,9 +18890,23 @@ ${CHROME_ARRANGE_CSS}
     });
     const floor = vendorFloor != null && vendorFloor > 0 ? vendorFloor : 1;
     const suggestions = tradePriceSuggestions(itemName, { ...options, observer });
+    const mode = options == null ? void 0 : options.mode;
+    if (mode === "wishlist") {
+      for (let i = 0; i < suggestions.length; i++) {
+        if (suggestions[i].kind === "market") return suggestions[i].price;
+      }
+      for (let i = 0; i < suggestions.length; i++) {
+        if (suggestions[i].kind === "want") return suggestions[i].price;
+      }
+      for (let i = 0; i < suggestions.length; i++) {
+        const sug = suggestions[i];
+        if (sug.kind === "vendor") continue;
+        if (sug.price > 0) return sug.price;
+      }
+    }
     for (let i = 0; i < suggestions.length; i++) {
       const sug = suggestions[i];
-      if (sug.kind === "vendor") continue;
+      if (sug.kind === "vendor" || sug.kind === "want") continue;
       if (sug.price >= floor) return sug.price;
     }
     return floor;
@@ -19252,6 +19429,13 @@ ${CHROME_ARRANGE_CSS}
   align-items: center;
   margin: 0 0 10px;
 }
+.ecu-trade-prompt__field-label {
+  margin: 4px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(200, 180, 120, 0.85);
+}
 .ecu-trade-prompt__field input[type="number"],
 .ecu-trade-prompt__field input[type="text"] {
   flex: 1;
@@ -19301,13 +19485,23 @@ ${CHROME_ARRANGE_CSS}
   border-color: rgba(140, 190, 140, 0.35);
 }
 .ecu-trade-prompt__chip--nearby,
-.ecu-trade-prompt__chip--undercut {
+.ecu-trade-prompt__chip--undercut,
+.ecu-trade-prompt__chip--market {
   border-color: rgba(143, 212, 255, 0.28);
+}
+.ecu-trade-prompt__chip--want {
+  border-color: rgba(190, 150, 220, 0.35);
 }
 .ecu-trade-prompt__chip--last,
 .ecu-trade-prompt__chip--current,
 .ecu-trade-prompt__chip--yours {
   border-color: rgba(232, 201, 106, 0.28);
+}
+.ecu-trade-prompt__market-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: rgba(180, 195, 210, 0.88);
+  font-variant-numeric: tabular-nums;
 }
 .ecu-trade-prompt__hint {
   min-height: 18px;
@@ -19474,11 +19668,11 @@ ${CHROME_ARRANGE_CSS}
       btn.type = "button";
       btn.className = "ecu-trade-prompt__chip" + (sug.kind ? ` ecu-trade-prompt__chip--${sug.kind}` : "");
       btn.textContent = sug.label;
-      btn.title = `${formatTradeGold(sug.price)} gold`;
+      btn.title = sug.kind ? `${formatTradeGold(sug.price)} gold` : sug.label;
       btn.addEventListener("click", () => {
         input.value = String(sug.price);
         setActiveChip(sug.price);
-        hintEl.textContent = "";
+        if (hintEl) hintEl.textContent = "";
         input.focus();
       });
       chipButtons.push(btn);
@@ -19541,25 +19735,84 @@ ${CHROME_ARRANGE_CSS}
     if (field) panel.insertBefore(section3, field);
     else panel.appendChild(section3);
   }
-  function showTradePriceDialog(options) {
-    var _a, _b;
+  function appendMarketCatalogSection(panel, itemName, level) {
+    const info2 = marketCatalogPricesForItem(
+      itemName,
+      getCachedMarketMerchants(),
+      { level, max: 4 }
+    );
+    if (!info2.sells.length && !info2.wants.length) return;
+    const section3 = document.createElement("div");
+    section3.className = "ecu-trade-prompt__nearby ecu-trade-prompt__market";
+    const heading = document.createElement("div");
+    heading.className = "ecu-trade-prompt__nearby-title";
+    heading.textContent = "Market catalog";
+    section3.appendChild(heading);
+    const list = document.createElement("div");
+    list.className = "ecu-trade-prompt__nearby-list";
+    if (info2.sells.length) {
+      const low = info2.sells[0];
+      const sellRow = document.createElement("div");
+      sellRow.className = "ecu-trade-prompt__nearby-row";
+      const high = info2.sells[info2.sells.length - 1];
+      sellRow.textContent = info2.sells.length === 1 ? `Sell low \xB7 ${low.merchant} \xB7 ${formatTradeGold(low.price)}g` : `Sell \xB7 ${formatTradeGold(low.price)}g\u2013${formatTradeGold(high.price)}g \xB7 ${info2.sells.length} prices`;
+      list.appendChild(sellRow);
+    }
+    if (info2.wants.length) {
+      const highWant = info2.wants[0];
+      const wantRow = document.createElement("div");
+      wantRow.className = "ecu-trade-prompt__nearby-row";
+      wantRow.textContent = `Want high \xB7 ${highWant.merchant} \xB7 ${formatTradeGold(highWant.price)}g`;
+      list.appendChild(wantRow);
+    }
+    section3.appendChild(list);
+    const field = panel.querySelector(".ecu-trade-prompt__field");
+    if (field) panel.insertBefore(section3, field);
+    else panel.appendChild(section3);
+  }
+  function appendMarketHint(panel, itemName) {
+    const name = String(itemName || "").trim();
+    if (!name) return;
+    const info2 = marketCatalogPricesForItem(name, getCachedMarketMerchants(), {
+      max: 1
+    });
+    if (!info2.sells.length && !info2.wants.length) return;
+    const hint = document.createElement("p");
+    hint.className = "ecu-trade-prompt__market-hint";
+    const parts = [];
+    if (info2.sells.length) {
+      parts.push(`Sell low ${formatTradeGold(info2.sells[0].price)}g`);
+    }
+    if (info2.wants.length) {
+      parts.push(`Want ${formatTradeGold(info2.wants[0].price)}g`);
+    }
+    hint.textContent = `Market \xB7 ${parts.join(" \xB7 ")}`;
+    const field = panel.querySelector(".ecu-trade-prompt__field");
+    if (field) panel.insertBefore(hint, field);
+    else panel.appendChild(hint);
+  }
+  async function showTradePriceDialog(options) {
+    var _a;
     closeDialog(null);
     ensureTradePromptDialogCss();
+    if (!getCachedMarketMerchants().length) {
+      try {
+        await hydrateMarketCacheFromIdb();
+      } catch (e2) {
+      }
+    }
     const name = String(options.itemName || "").trim();
     const label = options.itemLabel || itemInstanceLabel(name, { level: options.level, p: options.p });
     const title = options.mode === "wishlist" ? "Wishlist buy price" : options.mode === "reprice" ? "Change price" : "List for sale";
-    const suggestions = tradePriceSuggestions(name, {
+    const suggestionOpts = {
       slots: options.slots,
       currentPrice: options.currentPrice,
       level: options.level,
-      observer: (_a = getObserving()) != null ? _a : window.observing
-    });
-    const defaultValue = defaultTradePriceNumber(name, {
-      slots: options.slots,
-      currentPrice: options.currentPrice,
-      level: options.level,
-      observer: (_b = getObserving()) != null ? _b : window.observing
-    });
+      observer: (_a = getObserving()) != null ? _a : window.observing,
+      mode: options.mode
+    };
+    const suggestions = tradePriceSuggestions(name, suggestionOpts);
+    const defaultValue = defaultTradePriceNumber(name, suggestionOpts);
     return new Promise((resolve) => {
       finishOpen = resolve;
       const min = 1;
@@ -19580,6 +19833,7 @@ ${CHROME_ARRANGE_CSS}
         p: options.p,
         skin: options.skin
       });
+      appendMarketCatalogSection(panel, name, options.level);
       appendNearbySection(panel, suggestions);
       const field = document.createElement("div");
       field.className = "ecu-trade-prompt__field";
@@ -19650,7 +19904,7 @@ ${CHROME_ARRANGE_CSS}
       }, 0);
     });
   }
-  function showTradeQuantityDialog(options) {
+  async function showTradeQuantityDialog(options) {
     const maxQ = Math.max(1, Number(options.maxQ) | 0);
     const name = String(options.itemName || "").trim();
     const defaultQ = options.defaultQ != null && options.defaultQ > 0 ? Math.min(maxQ, options.defaultQ | 0) : maxQ > 1 ? Math.max(1, Math.floor(maxQ / 2)) : 1;
@@ -19662,32 +19916,274 @@ ${CHROME_ARRANGE_CSS}
       },
       { label: `Max (${maxQ})`, price: maxQ }
     ].filter((s, i, arr) => arr.findIndex((x) => x.price === s.price) === i);
-    return showNumberDialog({
-      title: "Quantity",
-      itemLine: name ? `${name} \xB7 up to ${maxQ}` : `Up to ${maxQ}`,
-      label: "Quantity",
-      suffix: ` / ${maxQ}`,
-      defaultValue: defaultQ,
-      suggestions: maxQ > 1 ? suggestions : void 0,
-      min: 1,
-      max: maxQ
+    if (name && !getCachedMarketMerchants().length) {
+      try {
+        await hydrateMarketCacheFromIdb();
+      } catch (e2) {
+      }
+    }
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const min = 1;
+      const max = maxQ;
+      const initial = defaultQ;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const title = document.createElement("h2");
+      title.className = "ecu-trade-prompt__title";
+      title.textContent = "Quantity";
+      panel.appendChild(title);
+      const itemLine = document.createElement("p");
+      itemLine.className = "ecu-trade-prompt__item";
+      itemLine.textContent = name ? `${name} \xB7 up to ${maxQ}` : `Up to ${maxQ}`;
+      panel.appendChild(itemLine);
+      appendMarketHint(panel, name);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      input.max = String(max);
+      input.step = "1";
+      input.value = String(initial);
+      input.setAttribute("aria-label", "Quantity");
+      const suffix = document.createElement("span");
+      suffix.className = "ecu-trade-prompt__suffix";
+      suffix.textContent = ` / ${maxQ}`;
+      field.append(input, suffix);
+      panel.appendChild(field);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = "OK";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(
+        panel,
+        maxQ > 1 ? suggestions : void 0,
+        input,
+        hintEl,
+        initial
+      );
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const parseValue = () => {
+        const n = parseInt(String(input.value).replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n < min) return null;
+        if (n > max) return null;
+        return n | 0;
+      };
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const n = parseValue();
+        if (n == null) {
+          hintEl.textContent = `Enter ${min}\u2013${max}.`;
+          input.focus();
+          return;
+        }
+        dismiss(n);
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      input.addEventListener("input", () => {
+        hintEl.textContent = "";
+      });
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
     });
   }
-  function showGiveawayMinutesDialog(defaultMins = 60) {
-    const def = defaultMins > 0 ? defaultMins | 0 : 60;
-    return showNumberDialog({
-      title: "Giveaway duration",
-      itemLine: "How long should the giveaway run?",
-      label: "Minutes",
-      suffix: "min",
-      defaultValue: def,
-      suggestions: [
-        { label: "15 min", price: 15 },
-        { label: "1 hour", price: 60 },
-        { label: "4 hours", price: 240 },
-        { label: "24 hours", price: 1440 }
-      ],
-      min: 1
+  var GIVEAWAY_DURATION_CHIPS = [
+    { label: "15 min", price: 15 },
+    { label: "1 hour", price: 60 },
+    { label: "4 hours", price: 240 },
+    { label: "24 hours", price: 1440 }
+  ];
+  function showGiveawayDialog(options) {
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    const maxQ = Math.max(1, Number(options.maxQ) | 0);
+    const name = String(options.itemName || "").trim();
+    const defaultMins = options.defaultMins != null && options.defaultMins > 0 ? options.defaultMins | 0 : 60;
+    const defaultQ = options.defaultQ != null && options.defaultQ > 0 ? Math.min(maxQ, options.defaultQ | 0) : maxQ > 1 ? Math.max(1, Math.floor(maxQ / 2)) : 1;
+    const showQty = maxQ > 1;
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt ecu-trade-prompt--giveaway";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const title = document.createElement("h2");
+      title.className = "ecu-trade-prompt__title";
+      title.textContent = "Giveaway";
+      panel.appendChild(title);
+      const itemLine = document.createElement("p");
+      itemLine.className = "ecu-trade-prompt__item";
+      itemLine.textContent = name ? showQty ? `${name} \xB7 up to ${maxQ}` : name : showQty ? `Up to ${maxQ}` : "Free giveaway on an empty trade slot";
+      panel.appendChild(itemLine);
+      let qtyInput = null;
+      if (showQty) {
+        const qtyLabel = document.createElement("div");
+        qtyLabel.className = "ecu-trade-prompt__field-label";
+        qtyLabel.textContent = "Quantity";
+        panel.appendChild(qtyLabel);
+        const qtyField = document.createElement("div");
+        qtyField.className = "ecu-trade-prompt__field";
+        qtyInput = document.createElement("input");
+        qtyInput.type = "number";
+        qtyInput.min = "1";
+        qtyInput.max = String(maxQ);
+        qtyInput.step = "1";
+        qtyInput.value = String(defaultQ);
+        qtyInput.setAttribute("aria-label", "Quantity");
+        const qtySuffix = document.createElement("span");
+        qtySuffix.className = "ecu-trade-prompt__suffix";
+        qtySuffix.textContent = ` / ${maxQ}`;
+        qtyField.append(qtyInput, qtySuffix);
+        panel.appendChild(qtyField);
+        const qtyChips = [
+          { label: "1", price: 1 },
+          {
+            label: `Half (${Math.max(1, Math.floor(maxQ / 2))})`,
+            price: Math.max(1, Math.floor(maxQ / 2))
+          },
+          { label: `Max (${maxQ})`, price: maxQ }
+        ].filter((s, i, arr) => arr.findIndex((x) => x.price === s.price) === i);
+        appendSuggestionChips(panel, qtyChips, qtyInput, null, defaultQ);
+      }
+      const minsLabel = document.createElement("div");
+      minsLabel.className = "ecu-trade-prompt__field-label";
+      minsLabel.textContent = "Duration";
+      panel.appendChild(minsLabel);
+      const minsField = document.createElement("div");
+      minsField.className = "ecu-trade-prompt__field";
+      const minsInput = document.createElement("input");
+      minsInput.type = "number";
+      minsInput.min = "1";
+      minsInput.step = "1";
+      minsInput.value = String(defaultMins);
+      minsInput.setAttribute("aria-label", "Duration in minutes");
+      const minsSuffix = document.createElement("span");
+      minsSuffix.className = "ecu-trade-prompt__suffix";
+      minsSuffix.textContent = "min";
+      minsField.append(minsInput, minsSuffix);
+      panel.appendChild(minsField);
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "primary";
+      okBtn.textContent = "Giveaway";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      appendSuggestionChips(
+        panel,
+        GIVEAWAY_DURATION_CHIPS,
+        minsInput,
+        hintEl,
+        defaultMins
+      );
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      openBackdrop = backdrop;
+      const parseQty = () => {
+        if (!qtyInput) return 1;
+        const n = parseInt(String(qtyInput.value).replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n < 1 || n > maxQ) return null;
+        return n | 0;
+      };
+      const parseMins = () => {
+        const n = parseInt(String(minsInput.value).replace(/,/g, ""), 10);
+        if (!Number.isFinite(n) || n < 1) return null;
+        return n | 0;
+      };
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        const q = parseQty();
+        if (q == null) {
+          hintEl.textContent = `Enter quantity 1\u2013${maxQ}.`;
+          qtyInput == null ? void 0 : qtyInput.focus();
+          return;
+        }
+        const minutes = parseMins();
+        if (minutes == null) {
+          hintEl.textContent = "Enter at least 1 minute.";
+          minsInput.focus();
+          minsInput.select();
+          return;
+        }
+        dismiss({ q, minutes });
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      const clearHint = () => {
+        hintEl.textContent = "";
+      };
+      qtyInput == null ? void 0 : qtyInput.addEventListener("input", clearHint);
+      minsInput.addEventListener("input", clearHint);
+      window.setTimeout(() => {
+        const focusEl = qtyInput || minsInput;
+        focusEl.focus();
+        focusEl.select();
+      }, 0);
     });
   }
   function showWishlistLevelDialog(itemName) {
@@ -19946,18 +20442,12 @@ ${CHROME_ARRANGE_CSS}
     }
     const fp = fingerprintFromBagStack(stack);
     const maxQ = stack.q > 0 ? stack.q | 0 : 1;
-    let q = maxQ;
-    if (maxQ > 1) {
-      const picked = await showTradeQuantityDialog({
-        itemName: stack.name,
-        maxQ
-      });
-      if (picked == null) return false;
-      q = picked;
-    }
-    const mins = await showGiveawayMinutesDialog();
-    if (mins == null) return false;
-    return giveawayCommand(tradeSlot, fp, mins, q);
+    const picked = await showGiveawayDialog({
+      itemName: stack.name,
+      maxQ
+    });
+    if (picked == null) return false;
+    return giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
   }
   async function repriceOwnMarketListing(opts) {
     const { row: row3, observing } = opts;
@@ -20002,7 +20492,9 @@ ${CHROME_ARRANGE_CSS}
 
   // src/host/bank/bankSession.ts
   var openListeners3 = [];
+  var viewCueListeners = [];
   var panelOpen3 = false;
+  var pendingViewCue = null;
   function setBankPanelOpen(open) {
     panelOpen3 = !!open;
   }
@@ -20017,6 +20509,21 @@ ${CHROME_ARRANGE_CSS}
     for (let i = 0; i < openListeners3.length; i++) {
       openListeners3[i](payload);
     }
+  }
+  function cueBankView(view) {
+    pendingViewCue = view;
+    if (viewCueListeners.length === 0) return;
+    for (let i = 0; i < viewCueListeners.length; i++) {
+      viewCueListeners[i](view);
+    }
+  }
+  function subscribeBankViewCue(fn) {
+    viewCueListeners.push(fn);
+    if (pendingViewCue) fn(pendingViewCue);
+    return () => {
+      const idx = viewCueListeners.indexOf(fn);
+      if (idx >= 0) viewCueListeners.splice(idx, 1);
+    };
   }
 
   // src/host/bank/api.ts
@@ -20270,16 +20777,16 @@ ${CHROME_ARRANGE_CSS}
 
   // src/host/bank/bankCache.ts
   var DEFAULT_MAX_AGE_MS = 6e4;
-  var cached = null;
+  var cached2 = null;
   var inflight = null;
   var idbHydrate = null;
   var listeners11 = [];
   function emit() {
-    const snap = cached;
+    const snap = cached2;
     for (let i = 0; i < listeners11.length; i++) listeners11[i](snap);
   }
   function getCachedBankSnapshot() {
-    return cached;
+    return cached2;
   }
   function subscribeBankSnapshot(fn) {
     listeners11.push(fn);
@@ -20289,12 +20796,12 @@ ${CHROME_ARRANGE_CSS}
     };
   }
   async function hydrateBankCacheFromIdb() {
-    if (cached) return cached;
+    if (cached2) return cached2;
     if (!idbHydrate) {
       idbHydrate = hydrateBankSnapshotFromIdb().then((snap) => {
         idbHydrate = null;
-        if (snap && !cached) {
-          cached = snap;
+        if (snap && !cached2) {
+          cached2 = snap;
           emit();
         }
         return snap;
@@ -20306,10 +20813,10 @@ ${CHROME_ARRANGE_CSS}
     const maxAge = opts && opts.maxAgeMs != null ? opts.maxAgeMs : DEFAULT_MAX_AGE_MS;
     const force = !!(opts && opts.force);
     const now = Date.now();
-    if (!force && cached && now - cached.loadedAt <= maxAge) {
-      return { ok: true, snapshot: cached };
+    if (!force && cached2 && now - cached2.loadedAt <= maxAge) {
+      return { ok: true, snapshot: cached2 };
     }
-    if (!force && !cached) {
+    if (!force && !cached2) {
       const fromIdb = await hydrateBankCacheFromIdb();
       if (fromIdb && now - fromIdb.loadedAt <= maxAge) {
         return { ok: true, snapshot: fromIdb };
@@ -20319,7 +20826,7 @@ ${CHROME_ARRANGE_CSS}
     inflight = loadBank().then((res) => {
       inflight = null;
       if (res.ok) {
-        cached = res.snapshot;
+        cached2 = res.snapshot;
         schedulePersistBankSnapshot(res.snapshot);
         emit();
       }
@@ -23304,8 +23811,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 }
 `;
   var BADGE_STYLE_ID = "ecu-item-instance-badge-css";
+  var itemInstanceBadgeCssInjected = false;
   function ensureItemInstanceBadgeCss() {
     if (typeof document === "undefined") return;
+    if (itemInstanceBadgeCssInjected) {
+      if (document.getElementById(BADGE_STYLE_ID)) return;
+      itemInstanceBadgeCssInjected = false;
+    }
     let el = document.getElementById(BADGE_STYLE_ID);
     if (!el) {
       el = document.createElement("style");
@@ -23313,6 +23825,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       document.head.appendChild(el);
     }
     el.textContent = ITEM_INSTANCE_BADGE_CSS;
+    itemInstanceBadgeCssInjected = true;
   }
 
   // src/ui/frames/mail/mailChromeCss.ts
@@ -24186,7 +24699,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-21T17:38:26.203Z" : "unknown";
+    const builtAt = true ? "2026-09-22T08:44:36.193Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -26823,7 +27336,7 @@ button.comm-mail__stack-u {
       {
         section: "Observe",
         title: "Pick a character",
-        body: "Click a character chip \u2014 party frames, meters, and the action bar all follow whoever is highlighted. Click the active chip again to stop observing.",
+        body: "Click a character chip. Party frames, meters, and the action bar follow whoever is highlighted. Click the active chip again to stop observing.",
         target: '[data-ecu-tour="character-ui"]',
         targetKind: "region",
         missingHint: "Click any character chip in the strip below.",
@@ -26850,7 +27363,7 @@ button.comm-mail__stack-u {
       {
         section: "Observe",
         title: "Action bar",
-        body: "Follow centers the camera, Bag opens inventory, Command sends CODE \u2014 all for whoever you are observing.",
+        body: "Follow centers the camera, Bag opens inventory, Command sends CODE. All of it runs on whoever you are observing.",
         target: '[data-ecu-tour="chrome-actions"]',
         targetKind: "region",
         missingHint: "Action buttons sit above the character strip.",
@@ -26905,7 +27418,7 @@ button.comm-mail__stack-u {
       {
         section: "Overlay",
         title: "Layout mode",
-        body: "Turn this on to drag panels into place. Every panel appears at once so you can position them \u2014 it looks busy, and that's normal. A short layout tour runs the first time you enable it.",
+        body: "Turn this on to drag panels into place. Every panel appears at once so you can position them. It looks busy; that is normal. A short layout tour runs the first time you enable it.",
         target: '[data-ecu-tour="btn-layout"]',
         targetKind: "button",
         missingHint: "Click the Layout button in the control strip."
@@ -26932,7 +27445,7 @@ button.comm-mail__stack-u {
         // top-of-stack shell the meters tour uses for a just-added window.
         target: ".ecu-meter-shell:not(.is-inspector):not(.is-report)",
         targetKind: "region",
-        missingHint: "No meter yet \u2014 the next step shows how to add one."
+        missingHint: "No meter yet. The next step shows how to add one."
       },
       {
         section: "Overlay",
@@ -26946,7 +27459,7 @@ button.comm-mail__stack-u {
       {
         section: "Overlay",
         title: "PDPS",
-        body: "Under Adventure Land in the add dialog \u2014 live party-DPS snapshot during combat.",
+        body: "Under Adventure Land in the add dialog. Live party-DPS snapshot during combat.",
         target: '[data-ecu-tour="preset-pdps"]',
         targetKind: "button",
         missingHint: "Tap + Meter to open the preset list.",
@@ -26964,7 +27477,7 @@ button.comm-mail__stack-u {
       {
         section: "Overlay",
         title: "You're set",
-        body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, trade slots, buffs, and combat panels \u2014 each only once.",
+        body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, Market, Bank, buffs, and combat panels, each only once. Replay any tour from Settings \u2192 Comm UI.",
         target: ".comm-pos-toggles",
         targetKind: "region"
       }
@@ -26977,12 +27490,12 @@ button.comm-mail__stack-u {
     steps: [
       {
         title: "Layout mode",
-        body: "Every panel is visible so you can move them \u2014 it looks crowded at first. Pick one panel, drag its header, then adjust anchors and opacity below.",
+        body: "Every panel is visible so you can move them. It looks crowded at first. Pick one panel, drag its header, then adjust anchors and opacity below.",
         target: ".comm-pos-edit-header"
       },
       {
         title: "Anchor pad",
-        body: "The 3\xD73 pad sets stretch direction \u2014 which corner stays fixed when the window grows.",
+        body: "The 3\xD73 pad sets stretch direction: which corner stays fixed when the window grows.",
         target: ".comm-pos-anchor-pad",
         missingHint: "Anchor pad is on each panel header in layout mode."
       },
@@ -27001,7 +27514,7 @@ button.comm-mail__stack-u {
     steps: [
       {
         title: "Meter window",
-        body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked; lock them to auto-hide until data \u2014 or use Layout to place.",
+        body: "Each window tracks its own metric. Drag the titlebar (Alt) to move without layout mode. Empty PDPS/coop stay visible while unlocked. Lock them to auto-hide until data, or use Layout to place.",
         // Prefer the meter that triggered the tour (just-added); never union all shells.
         target: '.ecu-meter-shell[data-ecu-tour-focus="1"]',
         targetKind: "button",
@@ -27016,7 +27529,7 @@ button.comm-mail__stack-u {
       },
       {
         title: "Toolbar overview",
-        body: "Right-side icons: Mode \xB7 Segment \xB7 Attribute \xB7 Report \xB7 Reset. Hover for menus \u2014 a toolbar tour appears when you first open one.",
+        body: "Right-side icons: Mode \xB7 Segment \xB7 Attribute \xB7 Report \xB7 Reset. Hover for menus. A toolbar tour appears when you first open one.",
         target: '.ecu-meter-shell[data-ecu-tour-focus="1"] .ecu-meter-titlebar',
         targetKind: "button",
         missingHint: "Add a meter window first."
@@ -27038,19 +27551,19 @@ button.comm-mail__stack-u {
     steps: [
       {
         title: "Mode",
-        body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options \u2014 the Mode menu.",
+        body: "Who appears (party scope), Plugins (Encounter / Deaths / Timeline), Window Control, and Options. That is the Mode menu.",
         target: '[data-ecu-tour="meter-gear"]'
       },
       {
         title: "Segment",
-        body: "Fight history \u2014 click older/newer segments. Hover for wipe/kill markers.",
+        body: "Fight history. Click older or newer segments. Hover for wipe/kill markers.",
         target: '[data-ecu-tour="meter-segment"]'
       },
       {
         title: "Attribute",
         body: "Switch Damage Done / DPS / Healing / Taken. Right-click for the full display grid.",
         target: '[data-ecu-tour="meter-display"]',
-        missingHint: "Rank-based meters only \u2014 snapshot meters omit this button."
+        missingHint: "Rank-based meters only. Snapshot meters omit this button."
       },
       {
         title: "Report",
@@ -27072,7 +27585,7 @@ button.comm-mail__stack-u {
     steps: [
       {
         title: "Enemies",
-        body: "Nearby monsters for quick targeting \u2014 click a bar, or the also-N trash line.",
+        body: "Nearby monsters for quick targeting. Click a bar, or the also-N trash line.",
         target: ".comm-pos-enemies",
         missingHint: "Appears when monsters are nearby."
       },
@@ -27084,7 +27597,7 @@ button.comm-mail__stack-u {
       },
       {
         title: "Boss bar",
-        body: "Large HP bar during boss fights \u2014 click to target the boss.",
+        body: "Large HP bar during boss fights. Click to target the boss.",
         target: ".comm-pos-bossBar",
         missingHint: "Appears during boss encounters."
       }
@@ -27115,7 +27628,7 @@ button.comm-mail__stack-u {
       },
       {
         title: "Gear",
-        body: "Equipped slots live here. Click any filled slot to open Item info \u2014 the tour continues when you do.",
+        body: "Equipped slots live here. Click any filled slot to open Item info. The tour continues when you do.",
         target: '[data-ecu-tour="paperdoll-gear"]',
         targetKind: "region",
         missingHint: "Click a filled gear slot on the paperdoll.",
@@ -27123,38 +27636,160 @@ button.comm-mail__stack-u {
       },
       {
         title: "Item info",
-        body: "Stock item details park in this panel \u2014 stats, lore, grade. It stays here so you can compare while looking at gear.",
+        body: "Stock item details park in this panel: stats, lore, grade. It stays here so you can compare while looking at gear.",
         target: ".comm-pos-itemInfo",
         targetKind: "panel",
         missingHint: "Click a filled gear slot if Item info is not open yet."
       }
     ]
   };
-  var PAPERDOLL_TRADE_TOUR = {
-    id: "paperdoll-trade",
-    label: "Market window",
+  var MARKET_TOUR_ID = "market";
+  var MARKET_TOUR = {
+    id: MARKET_TOUR_ID,
+    label: "Market hub",
+    prepare: { openMarket: true },
     steps: [
       {
-        title: "Market",
-        body: "Market replaces the old Trade panel. Browse for-sale listings across nearby merchants and the realm catalog, or switch to Sell to fulfill buy orders and manage your stand.",
+        section: "Market",
+        title: "Market hub",
+        body: "Three columns: You (bag + stand), item grid, Focus. Open from the chrome Market button, or by inspecting a merchant with a stand.",
         target: '[data-ecu-tour="market-panel"]',
         targetKind: "region",
-        missingHint: "Open Market from the chrome strip, or inspect a merchant stand."
+        missingHint: "Open Market from the chrome strip, or inspect a merchant stand.",
+        enter: { openMarket: true }
       },
       {
-        title: "Buy or sell",
-        body: "On Buy, click a listing to purchase when in range, or Travel when far. On Sell, fulfill buy orders from your bag and list/delist on Your stand. Shift+click takes the full stack when possible.",
-        target: '[data-ecu-tour="market-panel"]',
+        section: "Market",
+        title: "Observe a character",
+        body: "Bag and stand need a watched character. Click a chip in the strip below. The tour continues when you are observing.",
+        target: '[data-ecu-tour="character-ui"]',
         targetKind: "region",
-        missingHint: "Open Market from the chrome Market button."
+        missingHint: "Click any character chip in the strip below.",
+        advanceWhen: "observing",
+        enter: { refreshHud: true, openMarket: true }
       },
       {
-        title: "Item info",
-        body: "Shift+click stand slots to park details in Item info while you compare prices.",
-        target: ".comm-pos-itemInfo",
-        targetKind: "panel",
-        missingHint: "Shift+click a filled trade slot on Your stand.",
-        advanceWhen: "itemInfoOpen"
+        section: "Market",
+        title: "You: bag & stand",
+        body: "Select a bag stack, then List, Giveaway, Deposit, or Buy order. Deposit travels to the vault when needed. Drop onto the stand to list. Shift+drop for giveaway.",
+        target: '[data-ecu-tour="market-you"]',
+        targetKind: "region",
+        missingHint: "Open Market. The You column is on the left."
+      },
+      {
+        section: "Market",
+        title: "Search & filters",
+        body: "Selling, Buying, Giveaways. Near keeps live entities. Search takes item:, merchant:, is:sell, and the same style as Bank.",
+        target: '[data-ecu-tour="market-tools"]',
+        targetKind: "region",
+        missingHint: "Open Market. Search sits under the header."
+      },
+      {
+        section: "Market",
+        title: "Pick an item",
+        body: "Cards show sell / buy / giveaway counts and best prices. Click one to fill Focus. The tour advances when Focus has an item. \u2605 favorites; Arb sorts by buy\u2212sell spread.",
+        target: '[data-ecu-tour="market-grid"]',
+        targetKind: "region",
+        missingHint: "Click any item card in the Market grid.",
+        advanceWhen: "marketFocus"
+      },
+      {
+        section: "Market",
+        title: "Focus offers",
+        body: "In range: Buy, Sell, or Join. Out of range: Travel. \u22EF or right-click for Mirror / Undercut on foreign sales, Reprice / Delist on yours. Shift+click Buy/Sell takes the full stack when it can.",
+        target: '[data-ecu-tour="market-focus"]',
+        targetKind: "region",
+        missingHint: "Pick an item card, bag stack, or stand slot to fill Focus."
+      }
+    ]
+  };
+  var BANK_TOUR_ID = "bank";
+  var BANK_TOUR = {
+    id: BANK_TOUR_ID,
+    label: "Account Bank",
+    prepare: { openBank: true },
+    steps: [
+      {
+        section: "Bank",
+        title: "Account Bank",
+        body: "Shared account vault, not one character's bag. Open from the chrome Bank button. The header shows gold and how stale the last load is.",
+        target: '[data-ecu-tour="bank-panel"]',
+        targetKind: "region",
+        missingHint: "Open Bank from the chrome strip.",
+        enter: { openBank: true }
+      },
+      {
+        section: "Bank",
+        title: "Observe a character",
+        body: "Withdraw and deposit run on the watched character. Click a chip below. The tour continues when you are observing.",
+        target: '[data-ecu-tour="character-ui"]',
+        targetKind: "region",
+        missingHint: "Click any character chip in the strip below.",
+        advanceWhen: "observing",
+        enter: { refreshHud: true, openBank: true }
+      },
+      {
+        section: "Bank",
+        title: "Refresh",
+        body: "Reloads the vault from the server. When something changed, a strip lists Added / Removed / \xB1qty with All \xB7 Gear \xB7 Quantity filters.",
+        target: '[data-ecu-tour="bank-refresh"]',
+        targetKind: "button",
+        missingHint: "Open Bank. Refresh sits in the header.",
+        enter: { openBank: true }
+      },
+      {
+        section: "Bank",
+        title: "Search",
+        body: "Same style as Market: item:, type:, pack:, title:, level:, is:compound|upgrade|craft|exchange, OR and negation. Suggestions appear while you type.",
+        target: '[data-ecu-tour="bank-search"]',
+        targetKind: "region",
+        missingHint: "Open Bank. Search sits under the header.",
+        enter: { openBank: true }
+      },
+      {
+        section: "Bank",
+        title: "Views",
+        body: "All merges stacks across packs. Packs shows each vault board. Types groups by item type. Ready lists Combine and Craft you can finish from bank + bag.",
+        target: '[data-ecu-tour="bank-views"]',
+        targetKind: "region",
+        missingHint: "Open Bank. View tabs sit under search.",
+        enter: { openBank: true, bankView: "all" }
+      },
+      {
+        section: "Bank",
+        title: "Packs",
+        body: "Every vault pack as a slot board (like the explorer). Search dims non-matches. Click a stack to inspect; right-click to withdraw.",
+        target: '[data-ecu-tour="bank-body"]',
+        targetKind: "region",
+        missingHint: "Open Bank and switch to Packs.",
+        enter: { openBank: true, bankView: "packs" }
+      },
+      {
+        section: "Bank",
+        title: "Ready",
+        body: "Combine and Craft tabs, Ready vs Almost. Recipe cards show result \u2190 inputs from bank + bag stock.",
+        target: '[data-ecu-tour="bank-body"]',
+        targetKind: "region",
+        missingHint: "Open Bank and switch to Ready.",
+        enter: { openBank: true, bankView: "ready" }
+      },
+      {
+        section: "Bank",
+        title: "Sort",
+        body: "On All and Types: Category, Quantity, or Stack. Packs and Ready hide sort because layout is fixed.",
+        target: '[data-ecu-tour="bank-sort"]',
+        targetKind: "region",
+        missingHint: "Open Bank on All or Types to see sort.",
+        enter: { openBank: true, bankView: "all" }
+      },
+      {
+        section: "Bank",
+        title: "Browse & withdraw",
+        body: "Click or right-click a stack to pull it into the watched bag. Away from the vault, the character travels there first.",
+        target: '[data-ecu-tour="bank-body"]',
+        targetKind: "region",
+        missingHint: "Open Bank. The item grid fills the body.",
+        enter: { openBank: true, bankView: "all" }
       }
     ]
   };
@@ -27164,7 +27799,7 @@ button.comm-mail__stack-u {
     steps: [
       {
         title: "Buff info",
-        body: "Stock condition details for the buff you clicked \u2014 what it does and how long it lasts.",
+        body: "Stock condition details for the buff you clicked: what it does and how long it lasts.",
         target: ".comm-pos-buffInfo",
         targetKind: "panel",
         missingHint: "Click a buff icon on a unit or party frame."
@@ -27186,10 +27821,23 @@ button.comm-mail__stack-u {
     COOP_TOUR,
     COMBAT_TOUR,
     PAPERDOLL_TOUR,
-    PAPERDOLL_TRADE_TOUR,
+    MARKET_TOUR,
+    BANK_TOUR,
     BUFF_INFO_TOUR
   ];
   var INTRO_TOUR_CHAIN = [INTRO_TOUR_ID];
+  function listGuidedTours() {
+    const out = [];
+    for (let i = 0; i < GUIDED_TOURS.length; i++) {
+      const t = GUIDED_TOURS[i];
+      out.push({
+        id: t.id,
+        label: t.label,
+        completed: isTourCompleted(t.id)
+      });
+    }
+    return out;
+  }
   function tourById(id) {
     for (let i = 0; i < GUIDED_TOURS.length; i++) {
       if (GUIDED_TOURS[i].id === id) return GUIDED_TOURS[i];
@@ -27240,8 +27888,11 @@ button.comm-mail__stack-u {
       delete next["paperdoll-gear-v1"];
       changed = true;
     }
-    if (done.merchant && !done["paperdoll-trade"]) {
-      next["paperdoll-trade"] = true;
+    if (done["paperdoll-trade"] != null) {
+      delete next["paperdoll-trade"];
+      changed = true;
+    }
+    if (done.merchant != null) {
       delete next.merchant;
       changed = true;
     }
@@ -27260,6 +27911,10 @@ button.comm-mail__stack-u {
         return ctx.commandOpen;
       case "itemInfoOpen":
         return ctx.itemInfoOpen;
+      case "marketFocus":
+        return !!document.querySelector(
+          '[data-ecu-tour="market-focus"][data-ecu-has-focus="1"]'
+        );
       default: {
         const _exhaustive = when;
         return _exhaustive;
@@ -27626,6 +28281,9 @@ button.comm-mail__stack-u {
     if (effects.closeCommand) host2.closeCommandPanel();
     if (effects.closeBag) host2.closeBagPanel();
     if (effects.refreshHud) host2.refreshCommHud();
+    if (effects.openMarket) openMarket({});
+    if (effects.openBank) openBank({});
+    if (effects.bankView) cueBankView(effects.bankView);
   }
   function restoreTourUi(host2, snap, opts) {
     host2.setLayoutEdit(snap.layoutEdit);
@@ -27676,6 +28334,8 @@ button.comm-mail__stack-u {
     if (prep.layoutEdit) out.layoutEdit = true;
     if (prep.showMeters) out.showMeters = true;
     if (prep.testBars) out.testBars = true;
+    if (prep.openMarket) out.openMarket = true;
+    if (prep.openBank) out.openBank = true;
     return out;
   }
   function beginTourSession(host2, tour) {
@@ -27824,6 +28484,8 @@ button.comm-mail__stack-u {
       return true;
     };
     const startIntroTour = (force) => {
+      var _a, _b;
+      (_b = (_a = optsRef.current).closeSettings) == null ? void 0 : _b.call(_a);
       optsRef.current.setSetupWizardOpen(false);
       if (force) clearTourCompleted(INTRO_TOUR_ID);
       for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
@@ -27832,6 +28494,20 @@ button.comm-mail__stack-u {
         launchTour(id);
         return;
       }
+    };
+    const replayTour = (id) => {
+      var _a, _b;
+      if (id === INTRO_TOUR_ID) {
+        startIntroTour(true);
+        return;
+      }
+      (_b = (_a = optsRef.current).closeSettings) == null ? void 0 : _b.call(_a);
+      optsRef.current.setSetupWizardOpen(false);
+      clearTourCompleted(id);
+      launchTour(id);
+    };
+    const resetTour = (id) => {
+      clearTourCompleted(id);
     };
     const toggleLayoutEdit = () => {
       const next = !optsRef.current.layoutEdit;
@@ -27884,6 +28560,8 @@ button.comm-mail__stack-u {
     }) : null;
     return {
       startIntroTour,
+      replayTour,
+      resetTour,
       toggleLayoutEdit,
       tourOverlay,
       tourActive: !!activeTour,
@@ -27908,26 +28586,10 @@ button.comm-mail__stack-u {
     return false;
   }
 
-  // src/ui/frames/comm/guidedTour/paperdollTrade.ts
-  function entityHasTradeSlots(entity) {
-    if (!entity || !entity.slots) return false;
-    const slots = entity.slots;
-    const keys = Object.keys(slots);
-    for (let i = 0; i < keys.length; i++) {
-      const name = keys[i];
-      if (name.indexOf("trade") !== 0) continue;
-      if (slots[name]) return true;
-    }
-    return false;
-  }
-
   // src/ui/hooks/useContextualTourTriggers.ts
   function selectedEntity(ctx) {
     if (!ctx.selectedEntity) return void 0;
     return findEntity(ctx.entities, ctx.selectedEntity);
-  }
-  function selectedHasTradeSlots(ctx) {
-    return entityHasTradeSlots(selectedEntity(ctx));
   }
   var TRIGGERS = [
     {
@@ -27947,15 +28609,19 @@ button.comm-mail__stack-u {
       }
     },
     {
-      // Rising edge: selected entity gains filled trade* slots (open or mid-inspect).
-      id: "paperdoll-trade",
+      id: MARKET_TOUR_ID,
       delayMs: 320,
       when: (ctx, prev) => {
-        if (isTourCompleted("paperdoll-trade")) return false;
-        const now = !!ctx.selectedEntity && selectedHasTradeSlots(ctx);
-        if (!now) return false;
-        const was = !!(prev == null ? void 0 : prev.selectedEntity) && selectedHasTradeSlots(prev);
-        return !was;
+        if (isTourCompleted(MARKET_TOUR_ID)) return false;
+        return ctx.marketOpen && !(prev == null ? void 0 : prev.marketOpen);
+      }
+    },
+    {
+      id: BANK_TOUR_ID,
+      delayMs: 320,
+      when: (ctx, prev) => {
+        if (isTourCompleted(BANK_TOUR_ID)) return false;
+        return ctx.bankOpen && !(prev == null ? void 0 : prev.bankOpen);
       }
     },
     {
@@ -28015,7 +28681,9 @@ button.comm-mail__stack-u {
       buffInfoOpen: opts.buffInfoOpen,
       meterCount: opts.meterCount,
       entities: opts.entities,
-      meterInstances: opts.meterInstances
+      meterInstances: opts.meterInstances,
+      marketOpen: opts.marketOpen,
+      bankOpen: opts.bankOpen
     };
     React.useEffect(() => {
       var _a, _b;
@@ -28038,14 +28706,18 @@ button.comm-mail__stack-u {
         buffInfoOpen: ctx.buffInfoOpen,
         meterCount: ctx.meterCount,
         entities: ctx.entities,
-        meterInstances: ctx.meterInstances
+        meterInstances: ctx.meterInstances,
+        marketOpen: ctx.marketOpen,
+        bankOpen: ctx.bankOpen
       };
     }, [
       ctx.selectedEntity,
       ctx.buffInfoOpen,
       ctx.meterCount,
       ctx.entities,
-      ctx.meterInstances
+      ctx.meterInstances,
+      ctx.marketOpen,
+      ctx.bankOpen
     ]);
   }
   function triggerMeterToolbarTour() {
@@ -46219,6 +46891,22 @@ ${parts.map(cssSlice).join("\n")}
   font-size: 18px;
   padding: 6px 14px;
 }
+.ecu-settings-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+.ecu-settings-reset.is-ghost {
+  background: transparent;
+  border-color: #444;
+  color: #aaa;
+}
+.ecu-settings-reset:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 .ecu-settings-color {
   display: inline-flex;
   align-items: center;
@@ -47217,17 +47905,13 @@ ${parts.map(cssSlice).join("\n")}
 }
 `;
   function ensureAbilityTimelineCss() {
-    const css = ABILITY_TIMELINE_CSS + METER_HOVER_TIP_CSS;
     const existing = document.querySelector(
       "style[data-ecu-abil-css]"
     );
-    if (existing) {
-      existing.textContent = css;
-      return;
-    }
+    if (existing) return;
     const el = document.createElement("style");
     el.setAttribute("data-ecu-abil-css", "1");
-    el.textContent = css;
+    el.textContent = ABILITY_TIMELINE_CSS + METER_HOVER_TIP_CSS;
     document.head.appendChild(el);
   }
 
@@ -48477,14 +49161,6 @@ ${parts.map(cssSlice).join("\n")}
   // src/ui/frames/settings/commUiSettingsPane.ts
   var COMM_UI_ACTIONS = [
     {
-      id: "intro",
-      label: "Intro tour",
-      help: "Replay the guided Comm UI spotlight tour.",
-      buttonLabel: "Replay intro",
-      extra: "intro tour tutorial guide walkthrough spotlight onboarding",
-      onClick: (props) => props.onReplayIntroTour()
-    },
-    {
       id: "changelog",
       label: "Changelog",
       help: "Open the full What's New and release history.",
@@ -48506,26 +49182,41 @@ ${parts.map(cssSlice).join("\n")}
     if (!q) return true;
     return `${action.label} ${action.help} ${action.extra}`.toLowerCase().includes(q);
   }
+  function tourMatchesQuery(tour, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return `${tour.label} ${tour.id} tour guide tutorial replay reset`.toLowerCase().includes(q);
+  }
   function countCommUiSettingsMatches(query) {
     let total = 0;
+    const tours = listGuidedTours();
+    for (let i = 0; i < tours.length; i++) {
+      if (tourMatchesQuery(tours[i], query)) total += 1;
+    }
     for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
       if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
     }
     return total;
   }
   function CommUiSettingsPane(props) {
+    const React = getReact();
+    const [tourTick, setTourTick] = React.useState(0);
     const query = String(props.query || "").trim();
+    const tours = listGuidedTours();
+    void tourTick;
     const kids = [
       e(
         "p",
         { key: "lead", className: "ecu-settings-lead" },
         "Guides, onboarding, Comm UI changelog, and Adventure.land server notes."
       ),
-      settingsSection("Guides & updates")
+      settingsSection("Updates")
     ];
+    let updateRows = 0;
     for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
       const action = COMM_UI_ACTIONS[i];
       if (!actionMatchesQuery(action, query)) continue;
+      updateRows += 1;
       kids.push(
         e(
           "div",
@@ -48548,7 +49239,57 @@ ${parts.map(cssSlice).join("\n")}
         )
       );
     }
-    if (kids.length === 2) {
+    kids.push(settingsSection("Guided tours"));
+    let tourRows = 0;
+    for (let i = 0; i < tours.length; i++) {
+      const tour = tours[i];
+      if (!tourMatchesQuery(tour, query)) continue;
+      tourRows += 1;
+      kids.push(
+        e(
+          "div",
+          { key: "tour-" + tour.id, className: "ecu-settings-row" },
+          e(
+            "div",
+            { className: "ecu-settings-row-copy" },
+            e("span", { className: "ecu-settings-row-label" }, tour.label),
+            e(
+              "span",
+              { className: "ecu-settings-help" },
+              tour.completed ? "Completed \u2014 Replay runs it now; Reset clears the flag so the next open can trigger it again." : "Not completed yet \u2014 Replay starts it now."
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-settings-row-actions" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-settings-reset",
+                onClick: () => props.onReplayTour(tour.id)
+              },
+              "Replay"
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-settings-reset is-ghost",
+                disabled: !tour.completed,
+                title: tour.completed ? "Clear completion so the contextual trigger can fire again" : "Already unset",
+                onClick: () => {
+                  props.onResetTour(tour.id);
+                  setTourTick((n) => n + 1);
+                }
+              },
+              "Reset"
+            )
+          )
+        )
+      );
+    }
+    if (tourRows === 0 && updateRows === 0) {
       kids.push(
         e(
           "p",
@@ -49409,11 +50150,12 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "commUi",
       label: "Comm UI",
-      description: "Intro tour, Comm UI What's New, and Adventure.land server update notes.",
+      description: "Guided tours (replay / reset), Comm UI What's New, and Adventure.land server update notes.",
       countMatches: countCommUiSettingsMatches,
       render: (props) => e(CommUiSettingsPane, {
         query: props.query,
-        onReplayIntroTour: props.onReplayIntroTour,
+        onReplayTour: props.onReplayTour,
+        onResetTour: props.onResetTour,
         onOpenChangelog: props.onOpenChangelog,
         onOpenServerUpdateNotes: props.onOpenServerUpdateNotes
       })
@@ -49589,7 +50331,8 @@ ${parts.map(cssSlice).join("\n")}
                 visible: props.visible,
                 setVisible,
                 setPanelPos,
-                onReplayIntroTour: props.onReplayIntroTour,
+                onReplayTour: props.onReplayTour,
+                onResetTour: props.onResetTour,
                 onOpenChangelog: props.onOpenChangelog,
                 onOpenServerUpdateNotes: props.onOpenServerUpdateNotes
               })
@@ -49598,6 +50341,19 @@ ${parts.map(cssSlice).join("\n")}
         )
       )
     );
+  }
+
+  // src/ui/frames/comm/guidedTour/paperdollTrade.ts
+  function entityHasTradeSlots(entity) {
+    if (!entity || !entity.slots) return false;
+    const slots = entity.slots;
+    const keys = Object.keys(slots);
+    for (let i = 0; i < keys.length; i++) {
+      const name = keys[i];
+      if (name.indexOf("trade") !== 0) continue;
+      if (slots[name]) return true;
+    }
+    return false;
   }
 
   // src/host/gearObserved.ts
@@ -54580,6 +55336,15 @@ ${parts.map(cssSlice).join("\n")}
   async function completeBagDropOnTradeSlot(tradeSlot, fp, shiftKey, slots) {
     if (!fp) return;
     const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+    if (shiftKey) {
+      const picked = await showGiveawayDialog({
+        itemName: fp.name,
+        maxQ
+      });
+      if (picked == null) return;
+      giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
+      return;
+    }
     let q = maxQ;
     if (maxQ > 1) {
       const picked = await showTradeQuantityDialog({
@@ -54588,12 +55353,6 @@ ${parts.map(cssSlice).join("\n")}
       });
       if (picked == null) return;
       q = picked;
-    }
-    if (shiftKey) {
-      const mins = await showGiveawayMinutesDialog();
-      if (mins == null) return;
-      giveawayCommand(tradeSlot, fp, mins, q);
-      return;
     }
     const price = await showTradePriceDialog({
       mode: "list",
@@ -60025,9 +60784,7 @@ ${ESTIMATE_HINT}`,
   var injected12 = false;
   function ensureCommandPanelCss() {
     if (typeof document === "undefined") return;
-    const existing = document.getElementById("ecu-command-panel-css");
-    if (existing) {
-      existing.textContent = COMMAND_PANEL_CSS;
+    if (injected12 || document.getElementById("ecu-command-panel-css")) {
       injected12 = true;
       return;
     }
@@ -60727,9 +61484,9 @@ ${ESTIMATE_HINT}`,
         d,
         fill: "none",
         stroke: "currentColor",
-        "stroke-width": 1.6,
-        "stroke-linecap": "square",
-        "stroke-linejoin": "miter"
+        strokeWidth: 1.6,
+        strokeLinecap: "square",
+        strokeLinejoin: "miter"
       })
     );
   }
@@ -61367,9 +62124,7 @@ ${ESTIMATE_HINT}`,
   var injected13 = false;
   function ensureChatCss() {
     if (typeof document === "undefined") return;
-    const existing = document.getElementById("ecu-chat-css");
-    if (existing) {
-      existing.textContent = CHAT_PANEL_CSS;
+    if (injected13 || document.getElementById("ecu-chat-css")) {
       injected13 = true;
       return;
     }
@@ -62826,18 +63581,12 @@ ${ESTIMATE_HINT}`,
   }
   async function runGiveawayOnTrade(ctx, tradeSlot) {
     const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
-    let q = maxQ;
-    if (maxQ > 1) {
-      const picked = await showTradeQuantityDialog({
-        itemName: ctx.fp.name,
-        maxQ
-      });
-      if (picked == null) return;
-      q = picked;
-    }
-    const mins = await showGiveawayMinutesDialog();
-    if (mins == null) return;
-    giveawayCommand(tradeSlot, ctx.fp, mins, q);
+    const picked = await showGiveawayDialog({
+      itemName: ctx.fp.name,
+      maxQ
+    });
+    if (picked == null) return;
+    giveawayCommand(tradeSlot, ctx.fp, picked.minutes, picked.q);
   }
   function buildTradeBagMenuActions(ctx) {
     if (!canEditObservedBag()) return [];
@@ -63883,6 +64632,113 @@ ${ESTIMATE_HINT}`,
         }
       })
     );
+  }
+
+  // src/ui/frames/marketOfferMenu.ts
+  var ctxEl3 = null;
+  var ctxKeyHandler3 = null;
+  var ctxDocHandler3 = null;
+  function hideMarketOfferMenu() {
+    if (ctxKeyHandler3) {
+      document.removeEventListener("keydown", ctxKeyHandler3, true);
+      ctxKeyHandler3 = null;
+    }
+    if (ctxDocHandler3) {
+      document.removeEventListener("mousedown", ctxDocHandler3, true);
+      ctxDocHandler3 = null;
+    }
+    if (ctxEl3) {
+      ctxEl3.remove();
+      ctxEl3 = null;
+    }
+  }
+  function clampMenuPosition3(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 200;
+    const h = el.offsetHeight || 80;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function attachDismissHandlers() {
+    ctxKeyHandler3 = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hideMarketOfferMenu();
+      }
+    };
+    ctxDocHandler3 = (ev) => {
+      if (ctxEl3 && !ctxEl3.contains(ev.target)) hideMarketOfferMenu();
+    };
+    document.addEventListener("keydown", ctxKeyHandler3, true);
+    document.addEventListener("mousedown", ctxDocHandler3, true);
+  }
+  function showMarketOfferMenu(opts) {
+    hideMarketOfferMenu();
+    if (!opts.actions.length) return;
+    ensureBagItemContextMenuCss();
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx";
+    el.setAttribute("role", "menu");
+    for (let i = 0; i < opts.actions.length; i++) {
+      const act = opts.actions[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comm-bag-ctx__item" + (act.disabled ? " is-disabled" : "");
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = act.label;
+      if (act.title) btn.title = act.title;
+      if (act.disabled) {
+        btn.disabled = true;
+      } else {
+        btn.addEventListener("click", (ev) => {
+          var _a;
+          ev.preventDefault();
+          ev.stopPropagation();
+          hideMarketOfferMenu();
+          (_a = act.run) == null ? void 0 : _a.call(act);
+        });
+      }
+      el.appendChild(btn);
+    }
+    document.body.appendChild(el);
+    ctxEl3 = el;
+    clampMenuPosition3(el, opts.clientX, opts.clientY);
+    attachDismissHandlers();
+  }
+  function showGiveawayParticipants(opts) {
+    hideMarketOfferMenu();
+    ensureBagItemContextMenuCss();
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx MarketPanel-giveawayPop";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Giveaway participants");
+    const head = document.createElement("div");
+    head.className = "MarketPanel-giveawayPopHead";
+    const count = opts.names.length;
+    head.textContent = count === 0 ? "No participants yet" : count + (count === 1 ? " participant" : " participants");
+    el.appendChild(head);
+    if (opts.merchant) {
+      const sub = document.createElement("div");
+      sub.className = "MarketPanel-giveawayPopSub";
+      sub.textContent = opts.merchant + "'s giveaway";
+      el.appendChild(sub);
+    }
+    if (opts.names.length) {
+      const list = document.createElement("ul");
+      list.className = "MarketPanel-giveawayPopList";
+      for (let i = 0; i < opts.names.length; i++) {
+        const li = document.createElement("li");
+        li.textContent = opts.names[i];
+        list.appendChild(li);
+      }
+      el.appendChild(list);
+    }
+    document.body.appendChild(el);
+    ctxEl3 = el;
+    clampMenuPosition3(el, opts.clientX, opts.clientY);
+    attachDismissHandlers();
   }
 
   // src/lib/querySearch/applySuggestion.ts
@@ -65271,13 +66127,11 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID8);
-    if (!el) {
-      el = document.createElement("style");
-      el.id = STYLE_ID8;
-      document.head.appendChild(el);
-    }
+    if (document.getElementById(STYLE_ID8)) return;
+    const el = document.createElement("style");
+    el.id = STYLE_ID8;
     el.textContent = CSS11;
+    document.head.appendChild(el);
   }
 
   // src/ui/chrome/QuerySearchField.ts
@@ -65567,6 +66421,7 @@ ${ESTIMATE_HINT}`,
   }
   function TradeSlotCell(props) {
     const React = getReact();
+    ensureItemInstanceBadgeCss();
     const [bagDropHover, setBagDropHover] = React.useState(false);
     const {
       entity,
@@ -65578,6 +66433,7 @@ ${ESTIMATE_HINT}`,
       iconSize,
       fluid,
       selected,
+      emptyQty,
       onSlotClick
     } = props;
     const obs = observing || window.observing;
@@ -65667,7 +66523,15 @@ ${ESTIMATE_HINT}`,
             "aria-hidden": true
           },
           "+"
-        )
+        ),
+        emptyQty != null && emptyQty > 0 ? e(
+          "span",
+          {
+            className: "ecu-item-badge ecu-item-badge--qty",
+            title: emptyQty === 1 ? "1 free slot" : emptyQty + " free slots"
+          },
+          String(emptyQty)
+        ) : null
       ) : frame;
     }
     const badge = filled ? slot.b ? "B" : isGiveawayListing(slot) ? "G" : "S" : null;
@@ -65682,6 +66546,10 @@ ${ESTIMATE_HINT}`,
       } else if (isGiveawayListing(slot)) {
         tipParts.push("Giveaway");
       }
+      if (isGiveawayListing(slot) && typeof slot.giveaway === "number") {
+        const left = formatGiveawayTimeLeft(slot.giveaway);
+        if (left) tipParts.push(left + " left");
+      }
       if (foreign && !inRange) tipParts.push("(too far)");
       if (canFulfill) tipParts.push("Click to sell");
       else if (slot.b && bagMatch) tipParts.push("Buy order \u2014 matching item in bag");
@@ -65693,6 +66561,11 @@ ${ESTIMATE_HINT}`,
       if (customClick) tipParts.push("Click: focus in Market \xB7 Shift+click: item info");
       else tipParts.push("Shift+click: item info");
     } else if (editable) {
+      if (emptyQty != null && emptyQty > 0) {
+        tipParts.push(
+          emptyQty === 1 ? "1 free slot" : emptyQty + " free slots"
+        );
+      }
       tipParts.push(
         customClick ? "Drag bag item to list \xB7 Shift+drag: giveaway" : "Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway"
       );
@@ -66205,6 +67078,8 @@ ${ESTIMATE_HINT}`,
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  overflow: visible;
+  position: relative;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyPlus {
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
@@ -66464,6 +67339,63 @@ ${ESTIMATE_HINT}`,
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.MarketPanel-offerEntrants {
+  appearance: none;
+  justify-self: end;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #c4b48e;
+  font: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: right;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 180, 142, 0.35);
+  text-underline-offset: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-offerEntrants:hover {
+  color: #e8d6a0;
+  text-decoration-color: rgba(232, 214, 160, 0.7);
+}
+.MarketPanel-giveawayPop {
+  min-width: 160px;
+  max-width: 240px;
+  max-height: min(280px, 50vh);
+  overflow: auto;
+  padding: 8px 0 6px;
+}
+.MarketPanel-giveawayPopHead {
+  padding: 0 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ddd;
+}
+.MarketPanel-giveawayPopSub {
+  padding: 0 12px 6px;
+  font-size: 10px;
+  color: #777;
+}
+.MarketPanel-giveawayPopList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #2a2a2a;
+}
+.MarketPanel-giveawayPopList li {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #ccc;
+  border-bottom: 1px solid #222;
+}
+.MarketPanel-giveawayPopList li:last-child { border-bottom: 0; }
 .MarketPanel-offerFoot {
   display: flex;
   align-items: center;
@@ -66474,11 +67406,30 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-offerOwnActs,
 .MarketPanel-offerActs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   justify-content: flex-end;
-  flex: 0 1 auto;
+  align-items: center;
+  flex: 0 0 auto;
   min-width: 0;
+}
+.MarketPanel-rowMore {
+  appearance: none;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.MarketPanel-rowMore:hover {
+  border-color: rgba(232, 201, 106, 0.45);
+  color: #fff;
 }
 .MarketPanel-offerCache {
   flex: 1 1 auto;
@@ -66550,11 +67501,10 @@ ${ESTIMATE_HINT}`,
   font: inherit;
   font-size: 11px;
   height: 24px;
-  padding: 0 9px;
+  padding: 0 7px;
   cursor: pointer;
   white-space: nowrap;
   flex: 0 0 auto;
-  margin-left: auto;
 }
 .MarketPanel-rowAct:disabled { opacity: .35; cursor: default; }
 .MarketPanel-rowAct.is-buy {
@@ -66648,18 +67598,36 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-focusOffers {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   border-top: 1px solid var(--mk-line);
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-focusGives {
+  flex: 0 1 auto;
+  max-height: 42%;
+  min-height: 0;
+  overflow: auto;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0c0c0c;
+}
+.MarketPanel-focusGivesList {
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-focusGivesList .MarketPanel-offer {
+  border-bottom: 1px solid var(--mk-line-soft);
+}
+.MarketPanel-focusTrade {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: start;
 }
-.MarketPanel-focusOffers.has-gives {
-  grid-template-columns: 1fr 1fr 1fr;
-}
 .MarketPanel-focusCol { min-width: 0; }
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
-.MarketPanel-focusCol--mid { border-right: 1px solid var(--mk-line); }
 .MarketPanel-focusColH {
   position: sticky;
   top: 0;
@@ -66701,18 +67669,22 @@ ${ESTIMATE_HINT}`,
   .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
 }
 `;
+  var marketPanelCssInjected = false;
   function ensureMarketPanelCss() {
     if (typeof document === "undefined") return;
-    const css = MARKET_PANEL_CSS + "\n" + ITEM_INSTANCE_BADGE_CSS;
-    const existing = document.getElementById("ecu-market-panel-css");
-    if (existing) {
-      existing.textContent = css;
-      return;
+    if (marketPanelCssInjected) {
+      if (document.getElementById("ecu-market-panel-css")) return;
+      marketPanelCssInjected = false;
     }
-    const el = document.createElement("style");
-    el.id = "ecu-market-panel-css";
+    const css = MARKET_PANEL_CSS + "\n" + ITEM_INSTANCE_BADGE_CSS;
+    let el = document.getElementById("ecu-market-panel-css");
+    if (!el) {
+      el = document.createElement("style");
+      el.id = "ecu-market-panel-css";
+      document.head.appendChild(el);
+    }
     el.textContent = css;
-    document.head.appendChild(el);
+    marketPanelCssInjected = true;
   }
 
   // src/ui/frames/MarketPanel.ts
@@ -66818,7 +67790,7 @@ ${ESTIMATE_HINT}`,
       );
       if (Number.isFinite(d)) distance2 = d + " away";
     }
-    const qty = row3.giveaway && row3.giveawayEntries != null ? row3.giveawayEntries + " in" : row3.q != null && row3.q > 1 ? "\xD7" + String(row3.q | 0) : "";
+    const qty = row3.giveaway ? (row3.giveawayEntries != null ? row3.giveawayEntries : 0) + " in" : row3.q != null && row3.q > 1 ? "\xD7" + String(row3.q | 0) : "";
     let cache3 = "";
     let cacheTip;
     const closedStand = !row3.standOpen && /^trade([5-9]|\d{2,})$/.test(row3.slot);
@@ -66892,6 +67864,7 @@ ${ESTIMATE_HINT}`,
       null
     );
     const [standCompact, setStandCompact] = React.useState(true);
+    const [clock, setClock] = React.useState(() => Date.now());
     const [catalogMerchants, setCatalogMerchants] = React.useState(
       []
     );
@@ -66988,6 +67961,10 @@ ${ESTIMATE_HINT}`,
       }, CATALOG_REFRESH_MS);
       return () => window.clearInterval(id);
     }, [refreshCatalog]);
+    React.useEffect(() => {
+      const id = window.setInterval(() => setClock(Date.now()), 3e4);
+      return () => window.clearInterval(id);
+    }, []);
     const liveStandSig = liveOpenStandSignature(props.entities);
     const entitiesRef = React.useRef(props.entities);
     entitiesRef.current = props.entities;
@@ -67139,8 +68116,11 @@ ${ESTIMATE_HINT}`,
           e("span", { key: "p", className: "MarketPanel-chip party" }, "party")
         );
       }
-      const loc = offerLocationMeta(row3, observing);
+      const loc = offerLocationMeta(row3, observing, clock);
       const place = [loc.server, loc.map].filter(Boolean).join(" \xB7 ");
+      const giveLeft = row3.giveaway ? formatGiveawayTimeLeft(row3.giveawayMinutes, row3.lastRefreshedAt, clock) : "";
+      const priceLabel = row3.giveaway ? giveLeft || "free" : formatTradeGold(row3.price);
+      const priceTitle = row3.giveaway ? giveLeft ? giveLeft + " left" : "Giveaway" : void 0;
       const metaCell = (kind, text, title) => text ? e(
         "span",
         {
@@ -67152,12 +68132,77 @@ ${ESTIMATE_HINT}`,
         className: "MarketPanel-offerMetaCell is-" + kind + " is-empty",
         "aria-hidden": true
       });
+      const moreActions = [];
+      if (own) {
+        if (!row3.giveaway) {
+          moreActions.push({
+            id: "delist",
+            label: "Delist",
+            title: "Unequip slot \u2014 returns item to bag",
+            disabled: !gearEditable,
+            run: () => {
+              delistOwnMarketListing({ row: row3, observing });
+            }
+          });
+        }
+      } else if (!row3.buyOrder && !row3.giveaway) {
+        moreActions.push({
+          id: "mirror",
+          label: "Mirror price",
+          title: "List from bag at this price",
+          disabled: !gearEditable,
+          run: () => {
+            void mirrorOrUndercutListing({
+              row: row3,
+              observing,
+              mode: "mirror"
+            });
+          }
+        });
+        moreActions.push({
+          id: "undercut",
+          label: "Undercut (\u22121)",
+          title: "List from bag at price \u2212 1",
+          disabled: !gearEditable,
+          run: () => {
+            void mirrorOrUndercutListing({
+              row: row3,
+              observing,
+              mode: "undercut"
+            });
+          }
+        });
+      }
+      const openMore = (clientX, clientY) => {
+        if (!moreActions.length) return;
+        showMarketOfferMenu({ clientX, clientY, actions: moreActions });
+      };
+      const primaryLabel = own ? row3.giveaway ? "Delist" : "Reprice" : actionLabel(row3);
+      const primaryClass = "MarketPanel-rowAct is-primary " + (own ? row3.giveaway ? "" : "is-sell" : row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy");
+      const primaryDisabled = own ? !gearEditable : false;
+      const onPrimary = (ev) => {
+        if (own) {
+          if (row3.giveaway) {
+            delistOwnMarketListing({ row: row3, observing });
+          } else {
+            void repriceOwnMarketListing({ row: row3, observing });
+          }
+          return;
+        }
+        void runOffer(row3, !!(ev && ev.shiftKey));
+      };
       return e(
         "div",
         {
           key: row3.merchant + ":" + row3.slot + ":" + (row3.rid || ""),
           className: "MarketPanel-offer" + (own ? " is-blocked" : "") + (row3.giveaway ? " is-give" : row3.buyOrder ? " is-want" : " is-sale"),
-          title: loc.cacheTip
+          title: loc.cacheTip,
+          onContextMenu: (ev) => {
+            if (!moreActions.length) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            openMore(ev.clientX, ev.clientY);
+          }
         },
         e(
           "div",
@@ -67178,18 +68223,40 @@ ${ESTIMATE_HINT}`,
           ),
           e(
             "div",
-            { className: "MarketPanel-price" },
-            row3.giveaway ? "free" : formatTradeGold(row3.price)
+            {
+              className: "MarketPanel-price",
+              title: priceTitle
+            },
+            priceLabel
           )
         ),
         e(
           "div",
           { className: "MarketPanel-offerMeta" },
           metaCell("place", place),
-          metaCell(
+          row3.giveaway ? e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-offerEntrants",
+              title: (row3.giveawayNames && row3.giveawayNames.length ? "Show participants" : "Participants") + (loc.qty ? " \xB7 " + loc.qty : ""),
+              onClick: (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const r = ev.currentTarget.getBoundingClientRect();
+                showGiveawayParticipants({
+                  clientX: r.left,
+                  clientY: r.bottom + 2,
+                  merchant: row3.merchant,
+                  names: row3.giveawayNames ? row3.giveawayNames.slice() : []
+                });
+              }
+            },
+            loc.qty || "0 in"
+          ) : metaCell(
             "qty",
             loc.qty,
-            loc.qty ? row3.giveaway ? "Entrants " + loc.qty : "Quantity " + loc.qty : void 0
+            loc.qty ? "Quantity " + loc.qty : void 0
           )
         ),
         e(
@@ -67203,85 +68270,35 @@ ${ESTIMATE_HINT}`,
             },
             loc.cache || ""
           ),
-          own ? e(
-            "div",
-            { className: "MarketPanel-offerOwnActs" },
-            !row3.giveaway ? e(
-              "button",
-              {
-                type: "button",
-                className: "MarketPanel-rowAct is-primary is-sell",
-                disabled: !gearEditable,
-                title: "Change price (delist + relist)",
-                onClick: () => {
-                  void repriceOwnMarketListing({
-                    row: row3,
-                    observing
-                  });
-                }
-              },
-              "Reprice"
-            ) : null,
-            e(
-              "button",
-              {
-                type: "button",
-                className: "MarketPanel-rowAct",
-                disabled: !gearEditable,
-                title: "Unequip slot \u2014 returns item to bag",
-                onClick: () => {
-                  delistOwnMarketListing({ row: row3, observing });
-                }
-              },
-              "Delist"
-            )
-          ) : e(
+          e(
             "div",
             { className: "MarketPanel-offerActs" },
-            !row3.buyOrder && !row3.giveaway ? e(
+            moreActions.length ? e(
               "button",
               {
                 type: "button",
-                className: "MarketPanel-rowAct",
-                disabled: !gearEditable,
-                title: "List from bag at this price",
-                onClick: () => {
-                  void mirrorOrUndercutListing({
-                    row: row3,
-                    observing,
-                    mode: "mirror"
-                  });
+                className: "MarketPanel-rowMore",
+                title: "More actions (also right-click)",
+                "aria-label": "More actions",
+                onClick: (ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  const r = ev.currentTarget.getBoundingClientRect();
+                  openMore(r.left, r.bottom + 2);
                 }
               },
-              "Mirror"
-            ) : null,
-            !row3.buyOrder && !row3.giveaway ? e(
-              "button",
-              {
-                type: "button",
-                className: "MarketPanel-rowAct",
-                disabled: !gearEditable,
-                title: "List from bag at price \u2212 1",
-                onClick: () => {
-                  void mirrorOrUndercutListing({
-                    row: row3,
-                    observing,
-                    mode: "undercut"
-                  });
-                }
-              },
-              "Undercut"
+              "\u22EF"
             ) : null,
             e(
               "button",
               {
                 type: "button",
-                className: "MarketPanel-rowAct is-primary " + (row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy"),
-                onClick: (ev) => {
-                  void runOffer(row3, !!(ev && ev.shiftKey));
-                }
+                className: primaryClass,
+                disabled: primaryDisabled,
+                title: own ? row3.giveaway ? "Unequip slot \u2014 returns item to bag" : "Change price (delist + relist)" : void 0,
+                onClick: onPrimary
               },
-              actionLabel(row3)
+              primaryLabel
             )
           )
         )
@@ -67509,53 +68526,67 @@ ${ESTIMATE_HINT}`,
         "div",
         {
           key: "offers",
-          className: "MarketPanel-focusOffers" + (focusGroup.giveaways.length ? " has-gives" : "")
+          className: "MarketPanel-focusOffers"
         },
-        e(
-          "div",
-          { className: "MarketPanel-focusCol MarketPanel-focusCol--sells" },
-          e(
-            "div",
-            { className: "MarketPanel-focusColH" },
-            e("span", { className: "sells" }, "Sells"),
-            e("em", null, String(focusGroup.sales.length))
-          ),
-          focusGroup.sales.length ? focusGroup.sales.slice().sort((a, b) => a.price - b.price).map(offerCard) : e(
-            "div",
-            { className: "MarketPanel-focusColEmpty" },
-            "No sell offers"
-          )
-        ),
-        e(
-          "div",
-          {
-            className: "MarketPanel-focusCol" + (focusGroup.giveaways.length ? " MarketPanel-focusCol--mid" : "")
-          },
-          e(
-            "div",
-            { className: "MarketPanel-focusColH" },
-            e("span", { className: "wants" }, "Wants"),
-            e("em", null, String(focusGroup.wants.length))
-          ),
-          focusGroup.wants.length ? focusGroup.wants.slice().sort((a, b) => b.price - a.price).map(offerCard) : e(
-            "div",
-            { className: "MarketPanel-focusColEmpty" },
-            "No buy orders"
-          )
-        ),
         focusGroup.giveaways.length ? e(
           "div",
-          { className: "MarketPanel-focusCol" },
+          {
+            key: "gives",
+            className: "MarketPanel-focusGives"
+          },
           e(
             "div",
             { className: "MarketPanel-focusColH" },
             e("span", { className: "gives" }, "Gives"),
             e("em", null, String(focusGroup.giveaways.length))
           ),
-          focusGroup.giveaways.slice().sort(
-            (a, b) => (a.giveawayEntries || 0) - (b.giveawayEntries || 0)
-          ).map(offerCard)
-        ) : null
+          e(
+            "div",
+            { className: "MarketPanel-focusGivesList" },
+            focusGroup.giveaways.slice().sort((a, b) => {
+              const am = a.giveawayMinutes;
+              const bm = b.giveawayMinutes;
+              if (am != null && bm != null && am !== bm) return am - bm;
+              if (am != null && bm == null) return -1;
+              if (am == null && bm != null) return 1;
+              return (a.giveawayEntries || 0) - (b.giveawayEntries || 0);
+            }).map(offerCard)
+          )
+        ) : null,
+        e(
+          "div",
+          { key: "trade", className: "MarketPanel-focusTrade" },
+          e(
+            "div",
+            { className: "MarketPanel-focusCol MarketPanel-focusCol--sells" },
+            e(
+              "div",
+              { className: "MarketPanel-focusColH" },
+              e("span", { className: "sells" }, "Sells"),
+              e("em", null, String(focusGroup.sales.length))
+            ),
+            focusGroup.sales.length ? focusGroup.sales.slice().sort((a, b) => a.price - b.price).map(offerCard) : e(
+              "div",
+              { className: "MarketPanel-focusColEmpty" },
+              "No sell offers"
+            )
+          ),
+          e(
+            "div",
+            { className: "MarketPanel-focusCol" },
+            e(
+              "div",
+              { className: "MarketPanel-focusColH" },
+              e("span", { className: "wants" }, "Wants"),
+              e("em", null, String(focusGroup.wants.length))
+            ),
+            focusGroup.wants.length ? focusGroup.wants.slice().sort((a, b) => b.price - a.price).map(offerCard) : e(
+              "div",
+              { className: "MarketPanel-focusColEmpty" },
+              "No buy orders"
+            )
+          )
+        )
       )
     ] : [
       e("div", { key: "ph", className: "MarketPanel-ph" }, "Focus"),
@@ -67606,7 +68637,10 @@ ${ESTIMATE_HINT}`,
       ),
       e(
         "div",
-        { className: "MarketPanel-tools" },
+        {
+          className: "MarketPanel-tools",
+          "data-ecu-tour": "market-tools"
+        },
         e(QuerySearchField, {
           value: query,
           onChange: (next) => applyQuery(next),
@@ -67715,7 +68749,10 @@ ${ESTIMATE_HINT}`,
         { className: "MarketPanel-body" },
         e(
           "div",
-          { className: "MarketPanel-you" },
+          {
+            className: "MarketPanel-you",
+            "data-ecu-tour": "market-you"
+          },
           e(
             "div",
             { className: "MarketPanel-youBag" },
@@ -68025,6 +69062,7 @@ ${ESTIMATE_HINT}`,
                       allSlots: slots || void 0,
                       iconSize,
                       fluid: true,
+                      emptyQty: pack && (!slotItem || !slotItem.name) && free > 0 ? free : void 0,
                       selected: !!focusKey && (focusKey === itemKey || entry.slotNames.indexOf(focusKey) >= 0),
                       onSlotClick: (ev) => {
                         if (ev && ev.shiftKey && slotItem && slotItem.name) {
@@ -68064,7 +69102,10 @@ ${ESTIMATE_HINT}`,
         ),
         e(
           "div",
-          { className: "MarketPanel-col" },
+          {
+            className: "MarketPanel-col",
+            "data-ecu-tour": "market-grid"
+          },
           e(
             "div",
             { className: "MarketPanel-ph" },
@@ -68103,30 +69144,38 @@ ${ESTIMATE_HINT}`,
           ),
           marketBody
         ),
-        e("div", { className: "MarketPanel-col" }, focusPane)
+        e(
+          "div",
+          {
+            className: "MarketPanel-col",
+            "data-ecu-tour": "market-focus",
+            "data-ecu-has-focus": focusGroup ? "1" : "0"
+          },
+          focusPane
+        )
       )
     );
   }
 
   // src/ui/frames/bankSlotContextMenu.ts
-  var ctxEl3 = null;
-  var ctxKeyHandler3 = null;
-  var ctxDocHandler3 = null;
+  var ctxEl4 = null;
+  var ctxKeyHandler4 = null;
+  var ctxDocHandler4 = null;
   function hideBankCtx() {
-    if (ctxKeyHandler3) {
-      document.removeEventListener("keydown", ctxKeyHandler3, true);
-      ctxKeyHandler3 = null;
+    if (ctxKeyHandler4) {
+      document.removeEventListener("keydown", ctxKeyHandler4, true);
+      ctxKeyHandler4 = null;
     }
-    if (ctxDocHandler3) {
-      document.removeEventListener("mousedown", ctxDocHandler3, true);
-      ctxDocHandler3 = null;
+    if (ctxDocHandler4) {
+      document.removeEventListener("mousedown", ctxDocHandler4, true);
+      ctxDocHandler4 = null;
     }
-    if (ctxEl3) {
-      ctxEl3.remove();
-      ctxEl3 = null;
+    if (ctxEl4) {
+      ctxEl4.remove();
+      ctxEl4 = null;
     }
   }
-  function clampMenuPosition3(el, clientX, clientY) {
+  function clampMenuPosition4(el, clientX, clientY) {
     const pad3 = 8;
     const w = el.offsetWidth || 200;
     const h = el.offsetHeight || 80;
@@ -68184,24 +69233,24 @@ ${ESTIMATE_HINT}`,
       el.insertBefore(hint, inspect);
     }
     document.body.appendChild(el);
-    ctxEl3 = el;
-    clampMenuPosition3(el, opts.clientX, opts.clientY);
-    ctxKeyHandler3 = (ev) => {
+    ctxEl4 = el;
+    clampMenuPosition4(el, opts.clientX, opts.clientY);
+    ctxKeyHandler4 = (ev) => {
       if (ev.key === "Escape") {
         ev.preventDefault();
         hideBankCtx();
       }
     };
-    ctxDocHandler3 = (ev) => {
-      if (ctxEl3 && ev.target instanceof Node && ctxEl3.contains(ev.target)) {
+    ctxDocHandler4 = (ev) => {
+      if (ctxEl4 && ev.target instanceof Node && ctxEl4.contains(ev.target)) {
         return;
       }
       hideBankCtx();
     };
-    document.addEventListener("keydown", ctxKeyHandler3, true);
+    document.addEventListener("keydown", ctxKeyHandler4, true);
     window.setTimeout(() => {
-      if (ctxDocHandler3) {
-        document.addEventListener("mousedown", ctxDocHandler3, true);
+      if (ctxDocHandler4) {
+        document.addEventListener("mousedown", ctxDocHandler4, true);
       }
     }, 0);
   }
@@ -69140,6 +70189,15 @@ ${ESTIMATE_HINT}`,
   padding: 8px 12px;
   border-bottom: 1px solid var(--bk-line);
 }
+.BankPanel-tools [data-ecu-tour="bank-search"] {
+  flex: 1 1 220px;
+  min-width: 160px;
+  display: flex;
+}
+.BankPanel-tools [data-ecu-tour="bank-search"] .ecu-qsearch {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .BankPanel-seg {
   display: inline-flex;
   border: 1px solid #3a3a3a;
@@ -69383,8 +70441,13 @@ ${ESTIMATE_HINT}`,
   min-height: 0;
 }
 `;
+  var bankPanelCssInjected = false;
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
+    if (bankPanelCssInjected) {
+      if (document.getElementById(STYLE_ID9)) return;
+      bankPanelCssInjected = false;
+    }
     let el = document.getElementById(STYLE_ID9);
     if (!el) {
       el = document.createElement("style");
@@ -69392,6 +70455,7 @@ ${ESTIMATE_HINT}`,
       document.head.appendChild(el);
     }
     el.textContent = CSS12;
+    bankPanelCssInjected = true;
   }
 
   // src/ui/frames/BankPanel.ts
@@ -69623,6 +70687,11 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       const id = window.setInterval(() => setTick((n) => n + 1), 15e3);
       return () => window.clearInterval(id);
+    }, []);
+    React.useEffect(() => {
+      return subscribeBankViewCue((next) => {
+        setView(next);
+      });
     }, []);
     React.useEffect(() => {
       const shell = findPanelShell(rootRef.current, "bank");
@@ -70107,6 +71176,7 @@ ${ESTIMATE_HINT}`,
       {
         className: "BankPanel" + (expanded ? " is-expanded" : ""),
         "data-ecu-panel": "bank",
+        "data-ecu-tour": "bank-panel",
         ref: rootRef
       },
       e(
@@ -70133,7 +71203,8 @@ ${ESTIMATE_HINT}`,
             type: "button",
             className: "BankPanel-btn",
             disabled: loading,
-            onClick: () => refresh()
+            onClick: () => refresh(),
+            "data-ecu-tour": "bank-refresh"
           },
           loading ? "Loading\u2026" : "Refresh"
         )
@@ -70229,17 +71300,29 @@ ${ESTIMATE_HINT}`,
       ) : null,
       e(
         "div",
-        { className: "BankPanel-tools" },
-        e(QuerySearchField, {
-          value: query,
-          onChange: (next) => setQuery(next),
-          placeholder: "Search \xB7 item: \xB7 type: \xB7 pack: \xB7 is:compound \xB7 OR\u2026",
-          suggestions,
-          trailingOps: BANK_TRAILING_OPS
-        }),
+        {
+          className: "BankPanel-tools",
+          "data-ecu-tour": "bank-tools"
+        },
         e(
           "div",
-          { className: "BankPanel-seg" },
+          { "data-ecu-tour": "bank-search" },
+          e(QuerySearchField, {
+            value: query,
+            onChange: (next) => setQuery(next),
+            placeholder: "Search \xB7 item: \xB7 type: \xB7 pack: \xB7 is:compound \xB7 OR\u2026",
+            suggestions,
+            trailingOps: BANK_TRAILING_OPS
+          })
+        ),
+        e(
+          "div",
+          {
+            className: "BankPanel-seg",
+            "data-ecu-tour": "bank-views",
+            role: "group",
+            "aria-label": "Bank view mode"
+          },
           e(
             "button",
             {
@@ -70282,7 +71365,8 @@ ${ESTIMATE_HINT}`,
           {
             className: "BankPanel-seg BankPanel-sortSeg",
             role: "group",
-            "aria-label": "Bank sort mode"
+            "aria-label": "Bank sort mode",
+            "data-ecu-tour": "bank-sort"
           },
           SORT_OPTIONS.map(
             (opt) => e(
@@ -70299,7 +71383,14 @@ ${ESTIMATE_HINT}`,
           )
         ) : null
       ),
-      e("div", { className: "BankPanel-body" }, body)
+      e(
+        "div",
+        {
+          className: "BankPanel-body",
+          "data-ecu-tour": "bank-body"
+        },
+        body
+      )
     );
   }
 
@@ -72791,6 +73882,7 @@ ${ESTIMATE_HINT}`,
       // bag spotlight hole lands on the update backdrop and the chip is dead.
       toursBlocked: setupWizardOpen || whatsNewEntries.length > 0 || serverNotesMode != null && !tourActiveRef.current,
       setSetupWizardOpen,
+      closeSettings: () => setSettingsOpen(false),
       isObserving: snap.observingId != null && snap.observingId !== "" || !!snap.observing,
       bagOpen,
       commandOpen: visible("command"),
@@ -72799,6 +73891,8 @@ ${ESTIMATE_HINT}`,
     });
     const {
       startIntroTour,
+      replayTour,
+      resetTour,
       toggleLayoutEdit,
       tourOverlay,
       tourActive,
@@ -73023,6 +74117,8 @@ ${ESTIMATE_HINT}`,
       meterCount: meters.meterInstances.length,
       entities: snap.entities,
       meterInstances: meters.meterInstances,
+      marketOpen: marketVisible,
+      bankOpen: bankVisible,
       onMetersTourFocus: setTourFocusMeterId
     });
     const meterIdKey = (() => {
@@ -73210,7 +74306,8 @@ ${ESTIMATE_HINT}`,
         setPanelPos,
         windowPos: settingsWindowPos,
         onMoveWindow: setSettingsWindowPosPersist,
-        onReplayIntroTour: () => startIntroTour(true),
+        onReplayTour: replayTour,
+        onResetTour: resetTour,
         onOpenChangelog: openSettingsChangelog,
         onOpenServerUpdateNotes: () => openServerUpdateNotes("all")
       }) : null,

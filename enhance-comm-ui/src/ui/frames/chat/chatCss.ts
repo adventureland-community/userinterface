@@ -608,9 +608,7 @@ let injected = false;
 
 export function ensureChatCss(): void {
   if (typeof document === "undefined") return;
-  const existing = document.getElementById("ecu-chat-css");
-  if (existing) {
-    existing.textContent = CHAT_PANEL_CSS;
+  if (injected || document.getElementById("ecu-chat-css")) {
     injected = true;
     return;
   }

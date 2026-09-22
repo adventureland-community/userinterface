@@ -129,6 +129,39 @@ export function isGiveawayListing(slot: SlotLike | null | undefined): boolean {
   return !!(slot && (slot.giveaway || slot.registry));
 }
 
+/**
+ * Remaining giveaway minutes from a slot snapshot.
+ * Adjusts by elapsed wall time since lastRefreshedAt when present.
+ */
+export function giveawayMinutesLeft(
+  minutes: number | null | undefined,
+  lastRefreshedAt?: number | null,
+  now = Date.now(),
+): number | null {
+  if (minutes == null || !Number.isFinite(minutes)) return null;
+  let left = Math.floor(minutes);
+  if (lastRefreshedAt != null && lastRefreshedAt > 0) {
+    const elapsed = Math.floor((now - lastRefreshedAt) / 60000);
+    if (elapsed > 0) left = Math.max(0, left - elapsed);
+  }
+  return left < 0 ? 0 : left;
+}
+
+/** Compact label: `12m`, `1h 5m`, `<1m`. Empty when unknown. */
+export function formatGiveawayTimeLeft(
+  minutes: number | null | undefined,
+  lastRefreshedAt?: number | null,
+  now = Date.now(),
+): string {
+  const left = giveawayMinutesLeft(minutes, lastRefreshedAt, now);
+  if (left == null) return "";
+  if (left <= 0) return "<1m";
+  if (left < 60) return left + "m";
+  const h = Math.floor(left / 60);
+  const m = left % 60;
+  return m ? h + "h " + m + "m" : h + "h";
+}
+
 export type BuyOrderMatch = {
   entityId: string;
   entityName: string;

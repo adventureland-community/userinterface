@@ -47,6 +47,8 @@ export type UseCommGuidedToursOpts = {
   /** True while intro or What's New (or any blocking modal) is open. */
   toursBlocked: boolean;
   setSetupWizardOpen: (open: boolean) => void;
+  /** Close Settings so a replayed tour is not buried under the modal. */
+  closeSettings?: () => void;
   isObserving: boolean;
   bagOpen: boolean;
   commandOpen: boolean;
@@ -57,6 +59,10 @@ export type UseCommGuidedToursOpts = {
 
 export type CommGuidedToursApi = {
   startIntroTour: (force?: boolean) => void;
+  /** Clear completion and start a specific tour (Settings replay). */
+  replayTour: (id: string) => void;
+  /** Clear completion only — next contextual trigger can fire again. */
+  resetTour: (id: string) => void;
   toggleLayoutEdit: () => void;
   tourOverlay: any;
   /** True while a spotlight tour is on screen — lock destructive meter chrome. */
@@ -180,6 +186,7 @@ export function useCommGuidedTours(
   };
 
   const startIntroTour = (force?: boolean) => {
+    optsRef.current.closeSettings?.();
     optsRef.current.setSetupWizardOpen(false);
     if (force) clearTourCompleted(INTRO_TOUR_ID);
     for (let i = 0; i < INTRO_TOUR_CHAIN.length; i++) {
@@ -188,6 +195,21 @@ export function useCommGuidedTours(
       launchTour(id);
       return;
     }
+  };
+
+  const replayTour = (id: string) => {
+    if (id === INTRO_TOUR_ID) {
+      startIntroTour(true);
+      return;
+    }
+    optsRef.current.closeSettings?.();
+    optsRef.current.setSetupWizardOpen(false);
+    clearTourCompleted(id);
+    launchTour(id);
+  };
+
+  const resetTour = (id: string) => {
+    clearTourCompleted(id);
   };
 
   const toggleLayoutEdit = () => {
@@ -244,6 +266,8 @@ export function useCommGuidedTours(
 
   return {
     startIntroTour,
+    replayTour,
+    resetTour,
     toggleLayoutEdit,
     tourOverlay,
     tourActive: !!activeTour,

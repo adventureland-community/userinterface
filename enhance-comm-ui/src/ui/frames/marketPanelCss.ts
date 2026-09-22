@@ -350,6 +350,8 @@ export const MARKET_PANEL_CSS = `
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  overflow: visible;
+  position: relative;
 }
 .MarketPanel-standSlots .comm-trade-slot-emptyPlus {
   font-family: Consolas, "Segoe UI", Tahoma, sans-serif;
@@ -609,6 +611,63 @@ export const MARKET_PANEL_CSS = `
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.MarketPanel-offerEntrants {
+  appearance: none;
+  justify-self: end;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: #c4b48e;
+  font: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+  text-align: right;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(196, 180, 142, 0.35);
+  text-underline-offset: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-offerEntrants:hover {
+  color: #e8d6a0;
+  text-decoration-color: rgba(232, 214, 160, 0.7);
+}
+.MarketPanel-giveawayPop {
+  min-width: 160px;
+  max-width: 240px;
+  max-height: min(280px, 50vh);
+  overflow: auto;
+  padding: 8px 0 6px;
+}
+.MarketPanel-giveawayPopHead {
+  padding: 0 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ddd;
+}
+.MarketPanel-giveawayPopSub {
+  padding: 0 12px 6px;
+  font-size: 10px;
+  color: #777;
+}
+.MarketPanel-giveawayPopList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #2a2a2a;
+}
+.MarketPanel-giveawayPopList li {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #ccc;
+  border-bottom: 1px solid #222;
+}
+.MarketPanel-giveawayPopList li:last-child { border-bottom: 0; }
 .MarketPanel-offerFoot {
   display: flex;
   align-items: center;
@@ -619,11 +678,30 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-offerOwnActs,
 .MarketPanel-offerActs {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   justify-content: flex-end;
-  flex: 0 1 auto;
+  align-items: center;
+  flex: 0 0 auto;
   min-width: 0;
+}
+.MarketPanel-rowMore {
+  appearance: none;
+  border: 1px solid #555;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.MarketPanel-rowMore:hover {
+  border-color: rgba(232, 201, 106, 0.45);
+  color: #fff;
 }
 .MarketPanel-offerCache {
   flex: 1 1 auto;
@@ -695,11 +773,10 @@ export const MARKET_PANEL_CSS = `
   font: inherit;
   font-size: 11px;
   height: 24px;
-  padding: 0 9px;
+  padding: 0 7px;
   cursor: pointer;
   white-space: nowrap;
   flex: 0 0 auto;
-  margin-left: auto;
 }
 .MarketPanel-rowAct:disabled { opacity: .35; cursor: default; }
 .MarketPanel-rowAct.is-buy {
@@ -793,18 +870,36 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-focusOffers {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   border-top: 1px solid var(--mk-line);
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-focusGives {
+  flex: 0 1 auto;
+  max-height: 42%;
+  min-height: 0;
+  overflow: auto;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0c0c0c;
+}
+.MarketPanel-focusGivesList {
+  display: flex;
+  flex-direction: column;
+}
+.MarketPanel-focusGivesList .MarketPanel-offer {
+  border-bottom: 1px solid var(--mk-line-soft);
+}
+.MarketPanel-focusTrade {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   display: grid;
   grid-template-columns: 1fr 1fr;
   align-items: start;
 }
-.MarketPanel-focusOffers.has-gives {
-  grid-template-columns: 1fr 1fr 1fr;
-}
 .MarketPanel-focusCol { min-width: 0; }
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
-.MarketPanel-focusCol--mid { border-right: 1px solid var(--mk-line); }
 .MarketPanel-focusColH {
   position: sticky;
   top: 0;
@@ -847,16 +942,21 @@ export const MARKET_PANEL_CSS = `
 }
 `;
 
+let marketPanelCssInjected = false;
+
 export function ensureMarketPanelCss(): void {
   if (typeof document === "undefined") return;
-  const css = MARKET_PANEL_CSS + "\n" + ITEM_INSTANCE_BADGE_CSS;
-  const existing = document.getElementById("ecu-market-panel-css");
-  if (existing) {
-    existing.textContent = css;
-    return;
+  if (marketPanelCssInjected) {
+    if (document.getElementById("ecu-market-panel-css")) return;
+    marketPanelCssInjected = false;
   }
-  const el = document.createElement("style");
-  el.id = "ecu-market-panel-css";
+  const css = MARKET_PANEL_CSS + "\n" + ITEM_INSTANCE_BADGE_CSS;
+  let el = document.getElementById("ecu-market-panel-css") as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement("style");
+    el.id = "ecu-market-panel-css";
+    document.head.appendChild(el);
+  }
   el.textContent = css;
-  document.head.appendChild(el);
+  marketPanelCssInjected = true;
 }

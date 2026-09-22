@@ -90,7 +90,7 @@ export type SlotLike = {
   q?: number;
   price?: number;
   b?: boolean;
-  giveaway?: boolean;
+  giveaway?: boolean | number;
   /** Giveaway entrant registry — id → name. */
   registry?: Record<string, string>;
   rid?: string;

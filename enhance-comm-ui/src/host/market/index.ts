@@ -24,6 +24,10 @@ export {
 } from "./marketPersist";
 export type { MarketCacheRecord } from "./marketPersist";
 export {
+  getCachedMarketMerchants,
+  setCachedMarketMerchants,
+} from "./marketMemory";
+export {
   startMarketTravel,
   cancelMarketTravel,
   getMarketTravel,

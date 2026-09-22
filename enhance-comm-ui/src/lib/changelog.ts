@@ -157,19 +157,43 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Focus + stand",
             detail:
-              "Offer cards with merchant, server · map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: Mirror / Undercut / Buy. Your offers: Reprice / Delist (giveaways Delist only).",
+              "Offer cards with merchant, server · map, qty, distance; Join on giveaways; Pack/All stand stacking. Foreign sales: primary Travel/Buy plus ⋯ (or right-click) for Mirror / Undercut. Your offers: Reprice + ⋯ Delist.",
             kind: "feature",
+          },
+          {
+            label: "Focus giveaways strip",
+            detail:
+              "Gives sit in their own list above Sells | Wants instead of a third column. Offer cards show minutes left and a clickable N in entrant count that opens the participant list.",
+            kind: "ui",
+          },
+          {
+            label: "Stand Pack free-slot qty",
+            detail:
+              "Pack mode empty stand cell shows how many free slots remain (same qty badge as items).",
+            kind: "ui",
           },
           {
             label: "You — bag actions",
             detail:
-              "Select a bag stack → List (price dialog → first empty trade slot), Giveaway (minutes dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
+              "Select a bag stack → List (price dialog → first empty trade slot), Giveaway (quantity + duration in one dialog), Deposit (bank_store into open vault), or Buy order (wishlist). Click bag or stand to focus that item (Shift+click stand for tip). Stand cells still support drop-to-list, Shift+drop giveaway, and RMB reprice/delist.",
             kind: "feature",
           },
           {
             label: "Search + filters",
             detail:
               "Query tokens (item: / merchant: / map: / is:), afford, near (live entities), party merchants, compact gold (k/M/B). Grid / Focus / Bag show vault qty (gold bank badge) from a shared load_bank cache.",
+            kind: "feature",
+          },
+          {
+            label: "Price dialog market context",
+            detail:
+              "List / wishlist / reprice prompts show Market catalog sell low and want high (from the merchant cache) plus chips; wishlist defaults prefer catalog sell low. Quantity prompts show a compact Market hint when the item is in cache.",
+            kind: "improve",
+          },
+          {
+            label: "Market & Bank tours",
+            detail:
+              "First open of Market or Bank runs a spotlight tour. Bank covers observe, Refresh, search, All/Packs/Types/Ready (Packs + Ready body demos), sort, and withdraw-with-travel. Market covers observe, You, search, grid, Focus. Settings → Comm UI lists every tour with Replay and Reset.",
             kind: "feature",
           },
         ],

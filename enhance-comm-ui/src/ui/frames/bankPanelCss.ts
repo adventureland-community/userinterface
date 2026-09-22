@@ -170,6 +170,15 @@ const CSS = `
   padding: 8px 12px;
   border-bottom: 1px solid var(--bk-line);
 }
+.BankPanel-tools [data-ecu-tour="bank-search"] {
+  flex: 1 1 220px;
+  min-width: 160px;
+  display: flex;
+}
+.BankPanel-tools [data-ecu-tour="bank-search"] .ecu-qsearch {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .BankPanel-seg {
   display: inline-flex;
   border: 1px solid #3a3a3a;
@@ -414,8 +423,14 @@ const CSS = `
 }
 `;
 
+let bankPanelCssInjected = false;
+
 export function ensureBankPanelCss(): void {
   if (typeof document === "undefined") return;
+  if (bankPanelCssInjected) {
+    if (document.getElementById(STYLE_ID)) return;
+    bankPanelCssInjected = false;
+  }
   let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement("style");
@@ -423,4 +438,5 @@ export function ensureBankPanelCss(): void {
     document.head.appendChild(el);
   }
   el.textContent = CSS;
+  bankPanelCssInjected = true;
 }

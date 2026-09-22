@@ -77,6 +77,43 @@ describe("pull_merchants normalize", () => {
     assert.equal(s?.giveawayEntries, 2);
   });
 
+  it("reads giveaway minutes from numeric slot.giveaway", () => {
+    const s = normalizeCatalogSlot("trade3", {
+      name: "jacko",
+      giveaway: 17,
+      rid: "g2",
+      registry: { a: "Alice" },
+    });
+    assert.equal(s?.giveaway, true);
+    assert.equal(s?.giveawayMinutes, 17);
+    assert.equal(s?.giveawayEntries, 1);
+    assert.deepEqual(s?.giveawayNames, ["Alice"]);
+    assert.equal(s?.price, 0);
+  });
+
+  it("collects giveaway names from registry and list", () => {
+    const s = normalizeCatalogSlot("trade5", {
+      name: "candy0",
+      giveaway: 8,
+      rid: "g4",
+      registry: { id1: "Zed", id2: "Ann" },
+      list: ["Ann", "Bob"],
+    });
+    assert.deepEqual(s?.giveawayNames, ["Ann", "Bob", "Zed"]);
+    assert.equal(s?.giveawayEntries, 3);
+  });
+
+  it("treats numeric giveaway with no registry as a giveaway", () => {
+    const s = normalizeCatalogSlot("trade4", {
+      name: "candy0",
+      giveaway: 5,
+      rid: "g3",
+    });
+    assert.equal(s?.giveaway, true);
+    assert.equal(s?.giveawayMinutes, 5);
+    assert.equal(s?.giveawayEntries, undefined);
+  });
+
   it("lists trade* keys only", () => {
     const slots = slotsFromCatalogChar({
       trade1: { name: "a", price: 1 },

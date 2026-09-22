@@ -23,6 +23,8 @@ function prepareEffects(prep: ReturnType<typeof tourPrepare>): TourStepEffects {
   if (prep.layoutEdit) out.layoutEdit = true;
   if (prep.showMeters) out.showMeters = true;
   if (prep.testBars) out.testBars = true;
+  if (prep.openMarket) out.openMarket = true;
+  if (prep.openBank) out.openBank = true;
   return out;
 }
 

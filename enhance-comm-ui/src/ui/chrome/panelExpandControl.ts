@@ -37,9 +37,9 @@ function ExpandGlyph(expanded: boolean): any {
       d,
       fill: "none",
       stroke: "currentColor",
-      "stroke-width": 1.6,
-      "stroke-linecap": "square",
-      "stroke-linejoin": "miter",
+      strokeWidth: 1.6,
+      strokeLinecap: "square",
+      strokeLinejoin: "miter",
     }),
   );
 }
