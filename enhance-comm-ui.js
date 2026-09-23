@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.10.0
+// @version      0.10.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8597,6 +8597,41 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.10.1",
+      title: "0.10.1",
+      date: "2026-09-23",
+      summary: "Disconnect banner no longer false-fires on slow character switches; reconnect clears it and click reopens the socket.",
+      highlights: [
+        {
+          label: "Disconnect on character switch",
+          detail: "Observer / server hops call init_socket and briefly drop the socket. ECU suppresses DISCONNECTED for that reconnect (up to ~25s) so Asia-slow handshakes do not paint a false banner. Unexpected drops wait 10s; server kicks still show immediately.",
+          kind: "fix"
+        },
+        {
+          label: "Clear when connected",
+          detail: "A live socket removes the ECU banner and any leftover stock disconnect overlay \u2014 no page reload required after a late handshake.",
+          kind: "fix"
+        },
+        {
+          label: "Click reconnects the socket",
+          detail: "Click anywhere calls init_socket (with the last observe secret when known) instead of refreshing the whole page.",
+          kind: "improve"
+        }
+      ],
+      items: [
+        {
+          label: "Intentional reconnect suppress",
+          detail: "Wrapping init_socket marks a reconnect in flight so character chips, server picker, bag Refresh, and observe-follow do not trip DISCONNECTED mid-handshake.",
+          kind: "fix"
+        },
+        {
+          label: "Longer unexpected-drop grace",
+          detail: "Reason-less socket loss outside a reconnect waits 10s before the banner (was 2s).",
+          kind: "fix"
+        }
+      ]
+    },
     {
       id: "0.10.0",
       title: "0.10.0",
@@ -23378,6 +23413,8 @@ ${CHROME_ARRANGE_CSS}
   // src/host/disconnectOverlay.ts
   var DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
   var DISCONNECT_OVERLAY_Z = 2147483647;
+  var DISCONNECT_GRACE_MS = 1e4;
+  var RECONNECT_HARD_TIMEOUT_MS = 25e3;
   var STYLE_ID5 = "ecu-disconnect-overlay-css";
   var CSS3 = `
 /* Hide stock disconnect button entirely \u2014 ECU overlay handles display after a grace period. */
@@ -23459,8 +23496,11 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   var overlayEl = null;
   var unsubTick = null;
   var origDisconnect;
-  var DISCONNECT_GRACE_MS = 2e3;
+  var origInitSocket;
   var disconnectedSince = null;
+  var reconnectInFlight = false;
+  var reconnectStartedAt = null;
+  var lastObserveSecret = null;
   function canUseDom() {
     return typeof document !== "undefined" && !!document.body;
   }
@@ -23480,6 +23520,53 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (!socket) return false;
     if (socket.connected === false) return false;
     return true;
+  }
+  function removeStockDisconnectOverlay() {
+    if (!canUseDom()) return;
+    const nodes = document.querySelectorAll(".comm-disconnect-overlay");
+    for (let i = 0; i < nodes.length; i++) {
+      nodes[i].remove();
+    }
+  }
+  function clearDisconnectUi(opts) {
+    hideDisconnectOverlay();
+    removeStockDisconnectOverlay();
+    disconnectedSince = null;
+    reconnectInFlight = false;
+    reconnectStartedAt = null;
+    if ((opts == null ? void 0 : opts.clearReason) === false) return;
+    if (typeof window !== "undefined" && "disconnect_reason" in window) {
+      delete window.disconnect_reason;
+    }
+  }
+  function beginReconnectInFlight(now = Date.now()) {
+    hideDisconnectOverlay();
+    removeStockDisconnectOverlay();
+    disconnectedSince = null;
+    if (typeof window !== "undefined" && "disconnect_reason" in window) {
+      delete window.disconnect_reason;
+    }
+    reconnectInFlight = true;
+    reconnectStartedAt = now;
+  }
+  function isReconnectInFlight(now = Date.now()) {
+    if (!reconnectInFlight || reconnectStartedAt == null) return false;
+    if (now - reconnectStartedAt >= RECONNECT_HARD_TIMEOUT_MS) return false;
+    return true;
+  }
+  function rememberObserveSecretFromRoster() {
+    if (typeof window === "undefined") return;
+    const obs = window.observing;
+    const name = obs && obs.name != null ? String(obs.name) : "";
+    if (!name) return;
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (ch && ch.name === name && ch.secret) {
+        lastObserveSecret = String(ch.secret);
+        return;
+      }
+    }
   }
   function isCommDisconnected() {
     const sock = typeof window !== "undefined" ? window.socket : void 0;
@@ -23516,7 +23603,17 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   function currentReason() {
     return typeof window !== "undefined" ? window.disconnect_reason : void 0;
   }
-  function reloadComm() {
+  function reconnectComm() {
+    if (typeof window === "undefined") return;
+    const init = window.init_socket;
+    if (typeof init === "function" && window.server_address) {
+      if (lastObserveSecret) {
+        init({ secret: lastObserveSecret });
+      } else {
+        init({});
+      }
+      return;
+    }
     if (typeof window.refresh_page === "function") {
       window.refresh_page();
       return;
@@ -23543,7 +23640,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       overlayEl.setAttribute("role", "alertdialog");
       overlayEl.setAttribute("aria-live", "assertive");
       overlayEl.setAttribute("aria-modal", "true");
-      overlayEl.addEventListener("click", () => reloadComm());
+      overlayEl.addEventListener("click", () => reconnectComm());
       const card = document.createElement("div");
       card.className = `${DISCONNECT_OVERLAY_CLASS}-card`;
       const title = document.createElement("div");
@@ -23552,7 +23649,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       reasonEl2.className = `${DISCONNECT_OVERLAY_CLASS}-reason`;
       const hint = document.createElement("div");
       hint.className = `${DISCONNECT_OVERLAY_CLASS}-hint`;
-      hint.textContent = "Click anywhere to reload";
+      hint.textContent = "Click anywhere to reconnect";
       card.appendChild(title);
       card.appendChild(reasonEl2);
       card.appendChild(hint);
@@ -23573,16 +23670,30 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     overlayEl.setAttribute("aria-label", detail ? `${label}. ${detail}` : label);
     document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
   }
-  function syncOverlay() {
+  function syncOverlay(now = Date.now()) {
+    const sock = typeof window !== "undefined" ? window.socket : void 0;
+    if (liveSocket(sock)) {
+      everConnected = true;
+      rememberObserveSecretFromRoster();
+      clearDisconnectUi();
+      return;
+    }
+    if (reconnectInFlight && reconnectStartedAt != null && now - reconnectStartedAt >= RECONNECT_HARD_TIMEOUT_MS) {
+      reconnectInFlight = false;
+      reconnectStartedAt = null;
+    }
+    if (isReconnectInFlight(now)) {
+      hideDisconnectOverlay();
+      removeStockDisconnectOverlay();
+      return;
+    }
     if (isCommDisconnected()) {
-      const now = Date.now();
       if (disconnectedSince === null) disconnectedSince = now;
       if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
         showDisconnectOverlay(currentReason());
       }
     } else {
-      disconnectedSince = null;
-      hideDisconnectOverlay();
+      clearDisconnectUi();
     }
   }
   function wrapDisconnect() {
@@ -23591,6 +23702,23 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     origDisconnect = typeof prev === "function" ? prev : void 0;
     window.disconnect = wrappedDisconnect;
   }
+  function wrapInitSocket() {
+    const prev = window.init_socket;
+    if (prev === wrappedInitSocket) return;
+    origInitSocket = typeof prev === "function" ? prev : void 0;
+    window.init_socket = wrappedInitSocket;
+  }
+  function wrappedInitSocket(args) {
+    if (args && args.secret) {
+      lastObserveSecret = String(args.secret);
+    }
+    if (typeof window !== "undefined" && window.server_address) {
+      beginReconnectInFlight();
+    }
+    if (typeof origInitSocket === "function") {
+      origInitSocket(args);
+    }
+  }
   function wrappedDisconnect() {
     everConnected = true;
     try {
@@ -23598,10 +23726,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     } finally {
       const reason = currentReason();
       if (reason) {
+        reconnectInFlight = false;
+        reconnectStartedAt = null;
         disconnectedSince = null;
         showDisconnectOverlay(reason);
-      } else {
-        if (disconnectedSince === null) disconnectedSince = Date.now();
+      } else if (reconnectInFlight) {
+        hideDisconnectOverlay();
+        removeStockDisconnectOverlay();
+      } else if (disconnectedSince === null) {
+        disconnectedSince = Date.now();
       }
     }
   }
@@ -23610,12 +23743,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     installed = true;
     if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
       everConnected = true;
+      rememberObserveSecretFromRoster();
     }
     ensureCss2();
     wrapDisconnect();
+    wrapInitSocket();
     syncOverlay();
     unsubTick = subscribeTick(() => {
       wrapDisconnect();
+      wrapInitSocket();
       syncOverlay();
     });
   }
@@ -24710,8 +24846,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-23T05:18:12.402Z" : "unknown";
+    const version = true ? "0.10.1" : "unknown";
+    const builtAt = true ? "2026-09-23T05:55:34.828Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,

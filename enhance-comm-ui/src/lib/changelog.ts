@@ -112,6 +112,47 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.10.1",
+    title: "0.10.1",
+    date: "2026-09-23",
+    summary:
+      "Disconnect banner no longer false-fires on slow character switches; reconnect clears it and click reopens the socket.",
+    highlights: [
+      {
+        label: "Disconnect on character switch",
+        detail:
+          "Observer / server hops call init_socket and briefly drop the socket. ECU suppresses DISCONNECTED for that reconnect (up to ~25s) so Asia-slow handshakes do not paint a false banner. Unexpected drops wait 10s; server kicks still show immediately.",
+        kind: "fix",
+      },
+      {
+        label: "Clear when connected",
+        detail:
+          "A live socket removes the ECU banner and any leftover stock disconnect overlay — no page reload required after a late handshake.",
+        kind: "fix",
+      },
+      {
+        label: "Click reconnects the socket",
+        detail:
+          "Click anywhere calls init_socket (with the last observe secret when known) instead of refreshing the whole page.",
+        kind: "improve",
+      },
+    ],
+    items: [
+      {
+        label: "Intentional reconnect suppress",
+        detail:
+          "Wrapping init_socket marks a reconnect in flight so character chips, server picker, bag Refresh, and observe-follow do not trip DISCONNECTED mid-handshake.",
+        kind: "fix",
+      },
+      {
+        label: "Longer unexpected-drop grace",
+        detail:
+          "Reason-less socket loss outside a reconnect waits 10s before the banner (was 2s).",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.10.0",
     title: "0.10.0",
     date: "2026-09-15",

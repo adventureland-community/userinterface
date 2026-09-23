@@ -264,6 +264,8 @@ declare global {
     socket?: SocketLike;
     /** Stock /comm + /game: tears down the socket and shows DISCONNECTED. */
     disconnect?: () => void;
+    /** Stock /comm: destroy + open a new Socket.IO client (observe / server hop). */
+    init_socket?: (args?: { secret?: string }) => void;
     refresh_page?: () => void;
     disconnect_reason?: string;
     __ecuDisconnectOverlayPatched?: boolean;

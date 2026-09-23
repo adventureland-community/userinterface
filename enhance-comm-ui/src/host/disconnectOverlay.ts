@@ -2,12 +2,26 @@
  * /comm disconnect banner — stock DISCONNECTED lives in #bottom as a
  * .gamebutton and is easy to miss under meters. This overlay sits above
  * every HUD layer (same idea as the in-game centered DISCONNECTED).
+ *
+ * Character / server switches destroy the socket via init_socket; Asia-slow
+ * handshakes can take many seconds. We suppress the banner while that
+ * intentional reconnect is in flight, clear it as soon as the socket is
+ * live again, and prefer socket reconnect over a full page reload on click.
  */
 
 import { subscribeTick } from "../tick";
 
 export const DISCONNECT_OVERLAY_CLASS = "ecu-disconnect-overlay";
 export const DISCONNECT_OVERLAY_Z = 2147483647;
+
+/** Grace before showing overlay on unexpected (reason-less) drops. */
+export const DISCONNECT_GRACE_MS = 10_000;
+
+/**
+ * Max time an intentional init_socket reconnect may suppress the overlay
+ * (Asia ~1.3s RTT + spikes). After this, treat as a real disconnect.
+ */
+export const RECONNECT_HARD_TIMEOUT_MS = 25_000;
 
 const STYLE_ID = "ecu-disconnect-overlay-css";
 
@@ -92,10 +106,13 @@ let everConnected = false;
 let overlayEl: HTMLElement | null = null;
 let unsubTick: (() => void) | null = null;
 let origDisconnect: (() => void) | undefined;
+let origInitSocket: ((args?: { secret?: string }) => void) | undefined;
 
-/** Grace period before showing the overlay (ms). Avoids flashing on observer switch. */
-const DISCONNECT_GRACE_MS = 2000;
 let disconnectedSince: number | null = null;
+let reconnectInFlight = false;
+let reconnectStartedAt: number | null = null;
+/** Last observe secret seen (init_socket args or roster while observing). */
+let lastObserveSecret: string | null = null;
 
 function canUseDom(): boolean {
   return typeof document !== "undefined" && !!document.body;
@@ -120,6 +137,60 @@ function liveSocket(
   if (!socket) return false;
   if (socket.connected === false) return false;
   return true;
+}
+
+function removeStockDisconnectOverlay(): void {
+  if (!canUseDom()) return;
+  const nodes = document.querySelectorAll(".comm-disconnect-overlay");
+  for (let i = 0; i < nodes.length; i++) {
+    nodes[i].remove();
+  }
+}
+
+/** Hide ECU + stock disconnect UI and reset timers. */
+export function clearDisconnectUi(opts?: { clearReason?: boolean }): void {
+  hideDisconnectOverlay();
+  removeStockDisconnectOverlay();
+  disconnectedSince = null;
+  reconnectInFlight = false;
+  reconnectStartedAt = null;
+  if (opts?.clearReason === false) return;
+  if (typeof window !== "undefined" && "disconnect_reason" in window) {
+    delete window.disconnect_reason;
+  }
+}
+
+function beginReconnectInFlight(now = Date.now()): void {
+  hideDisconnectOverlay();
+  removeStockDisconnectOverlay();
+  disconnectedSince = null;
+  if (typeof window !== "undefined" && "disconnect_reason" in window) {
+    delete window.disconnect_reason;
+  }
+  reconnectInFlight = true;
+  reconnectStartedAt = now;
+}
+
+/** True while an intentional init_socket reconnect should suppress the banner. */
+export function isReconnectInFlight(now = Date.now()): boolean {
+  if (!reconnectInFlight || reconnectStartedAt == null) return false;
+  if (now - reconnectStartedAt >= RECONNECT_HARD_TIMEOUT_MS) return false;
+  return true;
+}
+
+function rememberObserveSecretFromRoster(): void {
+  if (typeof window === "undefined") return;
+  const obs = window.observing;
+  const name = obs && obs.name != null ? String(obs.name) : "";
+  if (!name) return;
+  const chars = (window.X && window.X.characters) || [];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch && ch.name === name && ch.secret) {
+      lastObserveSecret = String(ch.secret);
+      return;
+    }
+  }
 }
 
 /** True after a socket was seen and then dropped (not first-load empty). */
@@ -163,7 +234,18 @@ function currentReason(): string | undefined {
   return typeof window !== "undefined" ? window.disconnect_reason : undefined;
 }
 
-function reloadComm(): void {
+/** Prefer socket reconnect; fall back to full page reload. */
+export function reconnectComm(): void {
+  if (typeof window === "undefined") return;
+  const init = window.init_socket;
+  if (typeof init === "function" && window.server_address) {
+    if (lastObserveSecret) {
+      init({ secret: lastObserveSecret });
+    } else {
+      init({});
+    }
+    return;
+  }
   if (typeof window.refresh_page === "function") {
     window.refresh_page();
     return;
@@ -192,7 +274,7 @@ export function showDisconnectOverlay(reason?: string | null): void {
     overlayEl.setAttribute("role", "alertdialog");
     overlayEl.setAttribute("aria-live", "assertive");
     overlayEl.setAttribute("aria-modal", "true");
-    overlayEl.addEventListener("click", () => reloadComm());
+    overlayEl.addEventListener("click", () => reconnectComm());
     const card = document.createElement("div");
     card.className = `${DISCONNECT_OVERLAY_CLASS}-card`;
     const title = document.createElement("div");
@@ -201,7 +283,7 @@ export function showDisconnectOverlay(reason?: string | null): void {
     reasonEl.className = `${DISCONNECT_OVERLAY_CLASS}-reason`;
     const hint = document.createElement("div");
     hint.className = `${DISCONNECT_OVERLAY_CLASS}-hint`;
-    hint.textContent = "Click anywhere to reload";
+    hint.textContent = "Click anywhere to reconnect";
     card.appendChild(title);
     card.appendChild(reasonEl);
     card.appendChild(hint);
@@ -223,16 +305,37 @@ export function showDisconnectOverlay(reason?: string | null): void {
   document.body.classList.add(`${DISCONNECT_OVERLAY_CLASS}-on`);
 }
 
-function syncOverlay(): void {
+function syncOverlay(now = Date.now()): void {
+  const sock = typeof window !== "undefined" ? window.socket : undefined;
+  if (liveSocket(sock)) {
+    everConnected = true;
+    rememberObserveSecretFromRoster();
+    clearDisconnectUi();
+    return;
+  }
+
+  if (
+    reconnectInFlight &&
+    reconnectStartedAt != null &&
+    now - reconnectStartedAt >= RECONNECT_HARD_TIMEOUT_MS
+  ) {
+    reconnectInFlight = false;
+    reconnectStartedAt = null;
+  }
+
+  if (isReconnectInFlight(now)) {
+    hideDisconnectOverlay();
+    removeStockDisconnectOverlay();
+    return;
+  }
+
   if (isCommDisconnected()) {
-    const now = Date.now();
     if (disconnectedSince === null) disconnectedSince = now;
     if (now - disconnectedSince >= DISCONNECT_GRACE_MS) {
       showDisconnectOverlay(currentReason());
     }
   } else {
-    disconnectedSince = null;
-    hideDisconnectOverlay();
+    clearDisconnectUi();
   }
 }
 
@@ -243,6 +346,25 @@ function wrapDisconnect(): void {
   window.disconnect = wrappedDisconnect;
 }
 
+function wrapInitSocket(): void {
+  const prev = window.init_socket;
+  if (prev === wrappedInitSocket) return;
+  origInitSocket = typeof prev === "function" ? prev : undefined;
+  window.init_socket = wrappedInitSocket;
+}
+
+function wrappedInitSocket(args?: { secret?: string }): void {
+  if (args && args.secret) {
+    lastObserveSecret = String(args.secret);
+  }
+  if (typeof window !== "undefined" && window.server_address) {
+    beginReconnectInFlight();
+  }
+  if (typeof origInitSocket === "function") {
+    origInitSocket(args);
+  }
+}
+
 function wrappedDisconnect(): void {
   everConnected = true;
   try {
@@ -250,30 +372,43 @@ function wrappedDisconnect(): void {
   } finally {
     const reason = currentReason();
     if (reason) {
-      // Explicit server kick — show immediately, no grace period
+      // Explicit server kick — show immediately, no grace / no reconnect suppress
+      reconnectInFlight = false;
+      reconnectStartedAt = null;
       disconnectedSince = null;
       showDisconnectOverlay(reason);
-    } else {
-      // Possibly transient (observer switch); let syncOverlay handle the delay
-      if (disconnectedSince === null) disconnectedSince = Date.now();
+    } else if (reconnectInFlight) {
+      // Intentional init_socket tear-down — strip stock flash, stay suppressed
+      hideDisconnectOverlay();
+      removeStockDisconnectOverlay();
+    } else if (disconnectedSince === null) {
+      disconnectedSince = Date.now();
     }
   }
 }
 
-/** Watch socket loss and wrap stock `disconnect()`. */
+/** Watch socket loss and wrap stock `disconnect` / `init_socket`. */
 export function installDisconnectOverlay(): void {
   if (installed) return;
   installed = true;
   if (liveSocket(typeof window !== "undefined" ? window.socket : undefined)) {
     everConnected = true;
+    rememberObserveSecretFromRoster();
   }
   ensureCss();
   wrapDisconnect();
+  wrapInitSocket();
   syncOverlay();
   unsubTick = subscribeTick(() => {
     wrapDisconnect();
+    wrapInitSocket();
     syncOverlay();
   });
+}
+
+/** Drive overlay sync from tests (optional `now` for timer control). */
+export function syncDisconnectOverlayForTests(now = Date.now()): void {
+  syncOverlay(now);
 }
 
 /** Test helper. */
@@ -283,11 +418,17 @@ export function resetDisconnectOverlayForTests(): void {
     unsubTick = null;
   }
   hideDisconnectOverlay();
-  if (typeof window !== "undefined" && origDisconnect) {
-    window.disconnect = origDisconnect;
+  removeStockDisconnectOverlay();
+  if (typeof window !== "undefined") {
+    if (origDisconnect) window.disconnect = origDisconnect;
+    if (origInitSocket) window.init_socket = origInitSocket;
   }
   origDisconnect = undefined;
+  origInitSocket = undefined;
   installed = false;
   everConnected = false;
   disconnectedSince = null;
+  reconnectInFlight = false;
+  reconnectStartedAt = null;
+  lastObserveSecret = null;
 }
