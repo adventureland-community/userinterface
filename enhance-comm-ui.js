@@ -13748,6 +13748,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *,
 .charactersui.charactersuic,
 .ecu-server-dd-menu,
+.comm-bag-ctx,
+.MarketPanel-giveawayPop,
 #bottomleftcorner,
 #ecu-buff-dialog,
 #ecu-item-dialog,
@@ -13761,6 +13763,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *::-webkit-scrollbar,
 .charactersui.charactersuic::-webkit-scrollbar,
 .ecu-server-dd-menu::-webkit-scrollbar,
+.comm-bag-ctx::-webkit-scrollbar,
+.MarketPanel-giveawayPop::-webkit-scrollbar,
 #bottomleftcorner::-webkit-scrollbar,
 #ecu-buff-dialog::-webkit-scrollbar,
 #ecu-item-dialog::-webkit-scrollbar,
@@ -13774,6 +13778,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *::-webkit-scrollbar-track,
 .charactersui.charactersuic::-webkit-scrollbar-track,
 .ecu-server-dd-menu::-webkit-scrollbar-track,
+.comm-bag-ctx::-webkit-scrollbar-track,
+.MarketPanel-giveawayPop::-webkit-scrollbar-track,
 #bottomleftcorner::-webkit-scrollbar-track,
 #ecu-buff-dialog::-webkit-scrollbar-track,
 #ecu-item-dialog::-webkit-scrollbar-track,
@@ -13787,6 +13793,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *::-webkit-scrollbar-thumb,
 .charactersui.charactersuic::-webkit-scrollbar-thumb,
 .ecu-server-dd-menu::-webkit-scrollbar-thumb,
+.comm-bag-ctx::-webkit-scrollbar-thumb,
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb,
 #bottomleftcorner::-webkit-scrollbar-thumb,
 #ecu-buff-dialog::-webkit-scrollbar-thumb,
 #ecu-item-dialog::-webkit-scrollbar-thumb,
@@ -13801,6 +13809,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *::-webkit-scrollbar-thumb:hover,
 .charactersui.charactersuic::-webkit-scrollbar-thumb:hover,
 .ecu-server-dd-menu::-webkit-scrollbar-thumb:hover,
+.comm-bag-ctx::-webkit-scrollbar-thumb:hover,
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb:hover,
 #bottomleftcorner::-webkit-scrollbar-thumb:hover,
 #ecu-buff-dialog::-webkit-scrollbar-thumb:hover,
 #ecu-item-dialog::-webkit-scrollbar-thumb:hover,
@@ -13813,6 +13823,8 @@ ${CHROME_ARRANGE_CSS}
 .ecu-chrome-stack *::-webkit-scrollbar-corner,
 .charactersui.charactersuic::-webkit-scrollbar-corner,
 .ecu-server-dd-menu::-webkit-scrollbar-corner,
+.comm-bag-ctx::-webkit-scrollbar-corner,
+.MarketPanel-giveawayPop::-webkit-scrollbar-corner,
 #bottomleftcorner::-webkit-scrollbar-corner,
 #ecu-buff-dialog::-webkit-scrollbar-corner,
 #ecu-item-dialog::-webkit-scrollbar-corner,
@@ -24699,7 +24711,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.10.0" : "unknown";
-    const builtAt = true ? "2026-09-22T08:44:36.193Z" : "unknown";
+    const builtAt = true ? "2026-09-23T05:18:12.402Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -67371,6 +67383,25 @@ ${ESTIMATE_HINT}`,
   max-height: min(280px, 50vh);
   overflow: auto;
   padding: 8px 0 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #7a7048 #161616;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-track {
+  background: #161616;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb {
+  background: #6e6640;
+  border: 1px solid #3a3828;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb:hover {
+  background: #9a8840;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-corner {
+  background: #161616;
 }
 .MarketPanel-giveawayPopHead {
   padding: 0 12px 2px;

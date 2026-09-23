@@ -643,6 +643,25 @@ export const MARKET_PANEL_CSS = `
   max-height: min(280px, 50vh);
   overflow: auto;
   padding: 8px 0 6px;
+  scrollbar-width: thin;
+  scrollbar-color: #7a7048 #161616;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-track {
+  background: #161616;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb {
+  background: #6e6640;
+  border: 1px solid #3a3828;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-thumb:hover {
+  background: #9a8840;
+}
+.MarketPanel-giveawayPop::-webkit-scrollbar-corner {
+  background: #161616;
 }
 .MarketPanel-giveawayPopHead {
   padding: 0 12px 2px;
