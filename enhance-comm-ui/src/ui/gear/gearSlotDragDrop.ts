@@ -21,6 +21,7 @@ import {
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../trade/tradePromptDialog";
+import { showTradeOfferWantPicker } from "./tradeWishlistPicker";
 
 /** True when a bag item drag can equip into this gear slot (drop-time check). */
 export function bagDragCanEquipToGearSlot(
@@ -56,11 +57,25 @@ async function completeBagDropOnTradeSlot(
   tradeSlot: string,
   fp: ReturnType<typeof fingerprintFromSlot>,
   shiftKey: boolean,
+  ctrlKey: boolean,
   slots: Record<string, unknown> | null | undefined,
+  clientX: number,
+  clientY: number,
 ): Promise<void> {
   if (!fp) return;
 
   const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+
+  if (ctrlKey) {
+    showTradeOfferWantPicker({
+      tradeSlot,
+      fp,
+      offeredMaxQ: maxQ,
+      clientX,
+      clientY,
+    });
+    return;
+  }
 
   if (shiftKey) {
     const picked = await showGiveawayDialog({
@@ -111,7 +126,7 @@ export function handleBagDropOnGearSlot(
   return true;
 }
 
-/** Handle bag → empty trade slot drop. Returns true when list/giveaway dispatched. */
+/** Handle bag → empty trade slot drop. Returns true when list/giveaway/offer dispatched. */
 export function handleBagDropOnTradeSlot(
   ev: DragEvent,
   tradeSlot: string,
@@ -128,7 +143,15 @@ export function handleBagDropOnTradeSlot(
   ev.preventDefault();
   ev.stopPropagation();
 
-  void completeBagDropOnTradeSlot(tradeSlot, fp, ev.shiftKey, slots);
+  void completeBagDropOnTradeSlot(
+    tradeSlot,
+    fp,
+    ev.shiftKey,
+    ev.ctrlKey || ev.metaKey,
+    slots,
+    ev.clientX || 80,
+    ev.clientY || 80,
+  );
   return true;
 }
 

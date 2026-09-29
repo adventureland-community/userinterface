@@ -18,6 +18,7 @@ import {
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../ui/trade/tradePromptDialog";
+import { showTradeOfferWantPicker } from "../ui/gear/tradeWishlistPicker";
 
 async function runListOnTrade(
   ctx: BagMenuContext,
@@ -58,6 +59,22 @@ async function runGiveawayOnTrade(
   giveawayCommand(tradeSlot, ctx.fp, picked.minutes, picked.q);
 }
 
+function runOfferOnTrade(
+  ctx: BagMenuContext,
+  tradeSlot: string,
+  clientX: number,
+  clientY: number,
+): void {
+  const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+  showTradeOfferWantPicker({
+    tradeSlot,
+    fp: ctx.fp,
+    offeredMaxQ: maxQ,
+    clientX,
+    clientY,
+  });
+}
+
 function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
   if (!canEditObservedBag()) return [];
 
@@ -68,6 +85,7 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
 
   const listChildren: BagMenuAction[] = [];
   const giveawayChildren: BagMenuAction[] = [];
+  const offerChildren: BagMenuAction[] = [];
 
   for (let i = 0; i < tradeNames.length; i++) {
     const tradeSlot = tradeNames[i];
@@ -87,6 +105,14 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
       title: "Giveaway on this trade slot",
       run: () => {
         void runGiveawayOnTrade(ctx, tradeSlot);
+      },
+    });
+    offerChildren.push({
+      id: `offer-${tradeSlot}`,
+      label,
+      title: "Item-for-item trade offer on this trade slot",
+      run: () => {
+        runOfferOnTrade(ctx, tradeSlot, 80, 80);
       },
     });
   }
@@ -109,6 +135,12 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
         title: giveawayChildren[0].title,
         run: giveawayChildren[0].run,
       },
+      {
+        id: offerChildren[0].id,
+        label: `Offer for trade on ${slotLabel}…`,
+        title: offerChildren[0].title,
+        run: offerChildren[0].run,
+      },
     ];
   }
 
@@ -125,6 +157,12 @@ function buildTradeBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
       label: "Giveaway on trade…",
       title: "Free giveaway on an empty trade slot",
       children: giveawayChildren,
+    },
+    {
+      id: "offer-trade-submenu",
+      label: "Offer for trade…",
+      title: "Item-for-item trade offer on an empty trade slot",
+      children: offerChildren,
     },
   ];
 }

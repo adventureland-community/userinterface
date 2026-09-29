@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   filterMarketListings,
+  groupIdenticalTradeOffers,
+  groupTradeOffersByMerchant,
   marketGroupHasArb,
   sortMarketGroups,
   sortMarketListings,
@@ -112,6 +114,46 @@ describe("pull_merchants normalize", () => {
     assert.equal(s?.giveaway, true);
     assert.equal(s?.giveawayMinutes, 5);
     assert.equal(s?.giveawayEntries, undefined);
+  });
+
+  it("keeps item-for-item trade offers without a gold price", () => {
+    const s = normalizeCatalogSlot("trade7", {
+      name: "staff",
+      level: 5,
+      rid: "toff1",
+      want: { name: "fireblade", level: 3, p: "shiny" },
+    });
+    assert.equal(s?.tradeOffer, true);
+    assert.equal(s?.buyOrder, false);
+    assert.equal(s?.giveaway, undefined);
+    assert.equal(s?.price, 0);
+    assert.deepEqual(s?.want, {
+      name: "fireblade",
+      level: 3,
+      p: "shiny",
+    });
+  });
+
+  it("accepts string want as a trade offer", () => {
+    const s = normalizeCatalogSlot("trade8", {
+      name: "helmet",
+      rid: "toff2",
+      want: "hpot0",
+    });
+    assert.equal(s?.tradeOffer, true);
+    assert.equal(s?.want?.name, "hpot0");
+  });
+
+  it("drops price-0 listings without want (not free sales)", () => {
+    assert.equal(
+      normalizeCatalogSlot("trade9", {
+        name: "slice_strawberry",
+        price: 0,
+        rid: "fake-free",
+        q: 50,
+      }),
+      null,
+    );
   });
 
   it("lists trade* keys only", () => {
@@ -292,6 +334,7 @@ describe("sortMarketGroups", () => {
       sales: [{ price: 500 }],
       wants: [],
       giveaways: [],
+      tradeOffers: [],
       bestSale: 500,
       bestWant: null,
     },
@@ -302,6 +345,7 @@ describe("sortMarketGroups", () => {
       sales: [{ price: 100 }],
       wants: [{ price: 80 }],
       giveaways: [],
+      tradeOffers: [],
       bestSale: 100,
       bestWant: 80,
     },
@@ -312,6 +356,7 @@ describe("sortMarketGroups", () => {
       sales: [],
       wants: [{ price: 900 }],
       giveaways: [],
+      tradeOffers: [],
       bestSale: null,
       bestWant: 900,
     },
@@ -322,6 +367,7 @@ describe("sortMarketGroups", () => {
       sales: [{ price: 100 }],
       wants: [{ price: 120 }],
       giveaways: [],
+      tradeOffers: [],
       bestSale: 100,
       bestWant: 120,
     },
@@ -332,6 +378,7 @@ describe("sortMarketGroups", () => {
       sales: [{ price: 50 }],
       wants: [{ price: 200 }],
       giveaways: [],
+      tradeOffers: [],
       bestSale: 50,
       bestWant: 200,
     },
@@ -408,6 +455,113 @@ describe("marketGroupHasArb", () => {
     assert.equal(
       marketGroupHasArb({ bestSale: 1_000_000, bestWant: 1_050_000 } as any),
       true,
+    );
+  });
+});
+
+describe("groupIdenticalTradeOffers", () => {
+  it("stacks same merchant + want + ratio (different absolute sizes)", () => {
+    const base = {
+      name: "slice_strawberry",
+      price: 0,
+      buyOrder: false,
+      tradeOffer: true as const,
+      want: { name: "slice_honey", q: 50 },
+      q: 100,
+      merchant: "buffett",
+      merchantStatus: "catalogOnly" as const,
+      standOpen: true,
+      catalogOnly: true,
+      fromLive: false,
+      map: "main",
+      server: "EUI",
+    };
+    const rows = [
+      { ...base, slot: "trade1", rid: "a" },
+      {
+        ...base,
+        slot: "trade2",
+        rid: "b",
+        want: { name: "slice_honey", q: 100 },
+        q: 200,
+      },
+      {
+        ...base,
+        slot: "trade3",
+        rid: "c",
+        want: { name: "slice_mint", q: 335 },
+        q: 500,
+      },
+      {
+        ...base,
+        slot: "trade4",
+        rid: "d",
+        want: { name: "slice_mint", q: 670 },
+        q: 1000,
+      },
+    ];
+    const stacks = groupIdenticalTradeOffers(rows as any);
+    assert.equal(stacks.length, 4);
+    const honey = stacks.filter((s) => s.row.want?.name === "slice_honey");
+    const mint = stacks.filter((s) => s.row.want?.name === "slice_mint");
+    assert.equal(honey.length, 2);
+    assert.equal(mint.length, 2);
+    assert.deepEqual(honey[0].ratio, { give: 1, get: 2 });
+    assert.equal(honey[0].row.want?.q, 50);
+    assert.equal(honey[1].row.want?.q, 100);
+    assert.equal(honey[0].count, 1);
+    assert.equal(honey[1].count, 1);
+
+    const merchants = groupTradeOffersByMerchant(rows as any);
+    assert.equal(merchants.length, 1);
+    assert.equal(merchants[0].merchant, "buffett");
+    assert.equal(merchants[0].stacks.length, 4);
+    assert.equal(merchants[0].listingCount, 4);
+  });
+
+  it("pins your stand ahead of other merchants", () => {
+    const base = {
+      name: "slice_strawberry",
+      price: 0,
+      buyOrder: false,
+      tradeOffer: true as const,
+      want: { name: "slice_honey", q: 1 },
+      q: 2,
+      standOpen: true,
+      catalogOnly: false,
+      fromLive: true,
+      map: "main",
+      server: "EUI",
+    };
+    const rows = [
+      {
+        ...base,
+        slot: "trade1",
+        rid: "z",
+        merchant: "Zebra",
+        merchantStatus: "catalogOnly" as const,
+        fromLive: false,
+        catalogOnly: true,
+      },
+      {
+        ...base,
+        slot: "trade2",
+        rid: "y",
+        merchant: "YouBot",
+        merchantStatus: "you" as const,
+      },
+      {
+        ...base,
+        slot: "trade3",
+        rid: "n",
+        merchant: "NearMerch",
+        merchantStatus: "inRange" as const,
+      },
+    ];
+    const merchants = groupTradeOffersByMerchant(rows as any);
+    assert.deepEqual(
+      merchants.map((m) => m.merchant),
+      ["YouBot", "NearMerch", "Zebra"],
     );
   });
 });

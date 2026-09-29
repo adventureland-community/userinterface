@@ -46,6 +46,7 @@ export {
   mirrorOrUndercutListing,
   listBagStackOnTrade,
   giveawayBagStackOnTrade,
+  offerBagStackOnTrade,
   repriceOwnMarketListing,
   delistOwnMarketListing,
 } from "./marketListingActions";

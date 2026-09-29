@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.10.1
+// @version      0.11.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8598,6 +8598,61 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.11.0",
+      title: "0.11.0",
+      date: "2026-09-27",
+      summary: "Market Trade Offers: browse, swap, and post item-for-item stands after adventure.land\u2019s 27/09 deploy.",
+      highlights: [
+        {
+          label: "Trade Offers in Market",
+          detail: "Live stands can ask for an item instead of gold (slot.want). Catalog and Focus keep those listings, Trades facet / is:trade filters them, and Swap completes trade_swap when you have a matching bag stack.",
+          kind: "feature"
+        },
+        {
+          label: "Post from Market You",
+          detail: "Select a bag stack \u2192 Trade offer (or bag menu Offer for trade\u2026 / Ctrl+drag onto an empty stand slot). Pick what you want, optional min level / title / qty, then trade_offer lists it.",
+          kind: "feature"
+        },
+        {
+          label: "Live client 27/09",
+          detail: "adventure.land v17397 shipped rare monsters, accessories, Trade Offers, and new conditions. ECU no longer drops want-slots as invalid (they have no gold price).",
+          kind: "fix"
+        },
+        {
+          label: "Catalog keeps want",
+          detail: "pull_merchants already returns slot.want; Market was stripping tradeOffer/want when writing the rid cache, so Trades looked empty and Focus showed price-0 sells. Cache round-trip and Focus Trades strip keep swap info.",
+          kind: "fix"
+        },
+        {
+          label: "No fake free sales",
+          detail: "Listings with price 0 and no want are dropped (not Buy best \xB7 0). Live soft sync that omits want no longer downgrades a known trade offer.",
+          kind: "fix"
+        },
+        {
+          label: "Factory reset",
+          detail: "Settings \u2192 Comm UI \u2192 Reset everything\u2026 clears ECU localStorage/session keys plus market, mail, bank, and meter IndexedDB caches, then reloads. Leaves your adventure.land account alone.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Trades facet",
+          detail: "Market All | Selling | Buying | Giveaways | Trades. Search is:trade / is:swap / is:offer.",
+          kind: "ui"
+        },
+        {
+          label: "Focus Trades strip",
+          detail: "Item Focus groups trades by merchant: one Travel card, ratio lines underneath (same ratio at different stack sizes collapses with \xD7N). Icons show the reduced ratio qty.",
+          kind: "ui"
+        },
+        {
+          label: "Stand tips",
+          detail: "Own trade-offer cells show & and delist like other listings; foreign ones Swap when your bag matches want.",
+          kind: "ui"
+        }
+      ]
+    },
+    {
       id: "0.10.1",
       title: "0.10.1",
       date: "2026-09-23",
@@ -15502,6 +15557,63 @@ ${CHROME_ARRANGE_CSS}
   function isGiveawayListing(slot) {
     return !!(slot && (slot.giveaway || slot.registry));
   }
+  function isTradeOfferListing(slot) {
+    if (!slot || slot.b || isGiveawayListing(slot)) return false;
+    if (slot.want == null) return false;
+    if (typeof slot.want === "string") return !!slot.want.trim();
+    return !!(slot.want && slot.want.name);
+  }
+  function tradeWantMatches(want, item) {
+    if (!want || !item || item.name !== want.name) return false;
+    if (want.level != null && (item.level || 0) < want.level) return false;
+    if (want.p && item.p !== want.p) return false;
+    if ((item.q || 1) < (want.q || 1)) return false;
+    return true;
+  }
+  function findBagMatchForTradeWant(want, items) {
+    if (!items) return null;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !tradeWantMatches(want, it)) continue;
+      return { slot: i, q: it.q != null && it.q > 0 ? it.q | 0 : 1, item: it };
+    }
+    return null;
+  }
+  function formatTradeWantLabel(want) {
+    if (!want || !want.name) return "";
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const def = G && G.items && G.items[want.name];
+    let label = def && typeof def.name === "string" && def.name ? String(def.name) : want.name;
+    if (want.p && G && G.titles && G.titles[want.p] && G.titles[want.p].title) {
+      label = String(G.titles[want.p].title) + " " + label;
+    }
+    if (want.level != null) label += " +" + want.level;
+    if (want.q != null && want.q > 1) label = want.q + "\xD7 " + label;
+    return label;
+  }
+  function positiveGcd(a, b) {
+    let x = Math.abs(a | 0);
+    let y = Math.abs(b | 0);
+    if (!x || !y) return 1;
+    while (y) {
+      const t = y;
+      y = x % y;
+      x = t;
+    }
+    return x || 1;
+  }
+  function tradeOfferRatioParts(wantQ, offerQ) {
+    const give = wantQ != null && wantQ > 0 ? wantQ | 0 : 0;
+    const get = offerQ != null && offerQ > 0 ? offerQ | 0 : 0;
+    if (!(give > 0) || !(get > 0)) return null;
+    const g = positiveGcd(give, get);
+    return { give: give / g, get: get / g };
+  }
+  function formatTradeOfferRatio(wantQ, offerQ) {
+    const parts = tradeOfferRatioParts(wantQ, offerQ);
+    if (!parts) return "";
+    return parts.give + "\u2236" + parts.get;
+  }
   function giveawayMinutesLeft(minutes, lastRefreshedAt, now = Date.now()) {
     if (minutes == null || !Number.isFinite(minutes)) return null;
     let left = Math.floor(minutes);
@@ -17267,6 +17379,26 @@ ${CHROME_ARRANGE_CSS}
     if (obj.data != null) return extractMerchantChars(obj.data);
     return { chars: [] };
   }
+  function normalizeTradeWant(raw) {
+    if (typeof raw === "string") {
+      const name2 = raw.trim();
+      return name2 ? { name: name2 } : null;
+    }
+    if (!raw || typeof raw !== "object") return null;
+    const w = raw;
+    const name = typeof w.name === "string" ? w.name.trim() : "";
+    if (!name) return null;
+    const want = { name };
+    if (typeof w.level === "number" && Number.isFinite(w.level)) {
+      want.level = w.level;
+    }
+    if (typeof w.q === "number" && Number.isFinite(w.q) && w.q > 0) {
+      want.q = w.q | 0;
+    }
+    if (typeof w.p === "string") want.p = w.p;
+    else if (w.p === null) want.p = null;
+    return want;
+  }
   function normalizeCatalogSlot(slotName, raw) {
     if (!raw || typeof raw !== "object") return null;
     const s = raw;
@@ -17276,14 +17408,17 @@ ${CHROME_ARRANGE_CSS}
     const giveawayNames = collectGiveawayNames(s);
     const giveawayMinutes = typeof s.giveaway === "number" && Number.isFinite(s.giveaway) ? Math.max(0, Math.floor(s.giveaway)) : null;
     const giveaway = giveawayMinutes != null && giveawayMinutes > 0 || s.giveaway === true || !!registry || giveawayNames.length > 0;
+    const want = !giveaway && s.b !== true ? normalizeTradeWant(s.want) : null;
+    const tradeOffer = !!want;
     const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
-    const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
+    const price = Number.isFinite(priceRaw) ? priceRaw : giveaway || tradeOffer ? 0 : NaN;
     if (!Number.isFinite(price)) return null;
+    if (!giveaway && !tradeOffer && s.b !== true && !(price > 0)) return null;
     const listing = {
       slot: slotName,
       name,
       price,
-      buyOrder: !giveaway && s.b === true
+      buyOrder: !giveaway && !tradeOffer && s.b === true
     };
     if (giveaway) {
       listing.giveaway = true;
@@ -17296,6 +17431,10 @@ ${CHROME_ARRANGE_CSS}
       } else if (registry) {
         listing.giveawayEntries = Object.keys(registry).length;
       }
+    }
+    if (tradeOffer && want) {
+      listing.tradeOffer = true;
+      listing.want = want;
     }
     if (typeof s.rid === "string" && s.rid) listing.rid = s.rid;
     if (typeof s.q === "number") listing.q = s.q;
@@ -17383,6 +17522,15 @@ ${CHROME_ARRANGE_CSS}
   function merchantKey(name) {
     return String(name || "").toLowerCase();
   }
+  function wantFingerprint(want) {
+    if (!want || !want.name) return "";
+    return [
+      want.name,
+      want.level != null ? String(want.level) : "",
+      want.p === null ? "null" : want.p != null ? String(want.p) : "",
+      want.q != null ? String(want.q) : ""
+    ].join("\0");
+  }
   function listingFromSlot(slot, now) {
     if (!slot.rid) return null;
     const row3 = {
@@ -17398,6 +17546,10 @@ ${CHROME_ARRANGE_CSS}
     if (slot.giveawayMinutes != null) row3.giveawayMinutes = slot.giveawayMinutes;
     if (slot.giveawayNames && slot.giveawayNames.length) {
       row3.giveawayNames = slot.giveawayNames.slice();
+    }
+    if (slot.tradeOffer && slot.want) {
+      row3.tradeOffer = true;
+      row3.want = { ...slot.want };
     }
     if (slot.q != null) row3.q = slot.q;
     if (slot.level != null) row3.level = slot.level;
@@ -17562,7 +17714,18 @@ ${CHROME_ARRANGE_CSS}
       }
     }
     for (let i = 0; i < incoming.length; i++) {
-      byRid[incoming[i].rid] = incoming[i];
+      const inc = incoming[i];
+      const prev2 = byRid[inc.rid];
+      if (prev2 && prev2.tradeOffer && prev2.want && !inc.tradeOffer && !inc.buyOrder && !inc.giveaway && !(inc.price > 0)) {
+        byRid[inc.rid] = {
+          ...inc,
+          tradeOffer: true,
+          want: { ...prev2.want },
+          price: typeof prev2.price === "number" ? prev2.price : 0
+        };
+        continue;
+      }
+      byRid[inc.rid] = inc;
     }
     const ridKeys = Object.keys(byRid);
     const slots = [];
@@ -17637,6 +17800,10 @@ ${CHROME_ARRANGE_CSS}
       if (s.giveawayNames && s.giveawayNames.length) {
         row3.giveawayNames = s.giveawayNames.slice();
       }
+      if (s.tradeOffer && s.want) {
+        row3.tradeOffer = true;
+        row3.want = { ...s.want };
+      }
       if (s.q != null) row3.q = s.q;
       if (s.level != null) row3.level = s.level;
       if (s.p !== void 0) row3.p = s.p;
@@ -17657,7 +17824,7 @@ ${CHROME_ARRANGE_CSS}
       for (let j = 0; j < x.slots.length; j++) {
         const sx = x.slots[j];
         const sy = y.slots[j];
-        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || !!sx.giveaway !== !!sy.giveaway || sx.giveawayEntries !== sy.giveawayEntries || sx.giveawayMinutes !== sy.giveawayMinutes || (sx.giveawayNames || []).join("\0") !== (sy.giveawayNames || []).join("\0") || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
+        if (sx.rid !== sy.rid || sx.slot !== sy.slot || sx.name !== sy.name || sx.price !== sy.price || sx.buyOrder !== sy.buyOrder || !!sx.giveaway !== !!sy.giveaway || sx.giveawayEntries !== sy.giveawayEntries || sx.giveawayMinutes !== sy.giveawayMinutes || (sx.giveawayNames || []).join("\0") !== (sy.giveawayNames || []).join("\0") || !!sx.tradeOffer !== !!sy.tradeOffer || wantFingerprint(sx.want) !== wantFingerprint(sy.want) || sx.q !== sy.q || sx.level !== sy.level || sx.p !== sy.p) {
           return false;
         }
       }
@@ -17684,8 +17851,10 @@ ${CHROME_ARRANGE_CSS}
           const price = raw.price;
           const name = raw.name;
           if (typeof rid === "string" && rid) {
+            const wantRaw = raw.want;
+            const wantName = typeof wantRaw === "string" ? wantRaw : wantRaw && typeof wantRaw === "object" && typeof wantRaw.name === "string" ? String(wantRaw.name) : "";
             rids.push(
-              k + ":" + rid + ":" + (typeof price === "number" ? price : "") + ":" + (typeof name === "string" ? name : "")
+              k + ":" + rid + ":" + (typeof price === "number" ? price : "") + ":" + (typeof name === "string" ? name : "") + ":" + wantName
             );
           }
         }
@@ -19063,6 +19232,54 @@ ${CHROME_ARRANGE_CSS}
       ].join("")
     );
   }
+  function buildTradeOfferScript(fp, tradeSlot, want, offerQ) {
+    const slot = String(tradeSlot || "").trim();
+    const qty = offerQ != null ? Number(offerQ) | 0 : 1;
+    const wantName = want && want.name ? String(want.name).trim() : "";
+    if (!slot || !isTradeSlotName(slot)) {
+      return wrapCommandScript(
+        `game_log(${commLit("trade-offer \xB7 invalid slot")});`
+      );
+    }
+    if (!wantName) {
+      return wrapCommandScript(
+        `game_log(${commLit("trade-offer \xB7 missing want")});`
+      );
+    }
+    if (qty <= 0) {
+      return wrapCommandScript(
+        `game_log(${commLit("trade-offer \xB7 invalid quantity")});`
+      );
+    }
+    const wantObj = { name: wantName };
+    if (want.level != null && want.level > 0) wantObj.level = want.level | 0;
+    if (want.p != null && want.p !== "") wantObj.p = String(want.p);
+    if (want.q != null && want.q > 0) wantObj.q = want.q | 0;
+    const wantJson = JSON.stringify(wantObj);
+    return wrapCommandScript(
+      [
+        resolveInvSlotJs(fp),
+        tradeListPrefaceJs(slot),
+        tradeSlotOccupiedGuardJs(
+          lit3(slot),
+          commLogText("trade-offer \xB7 slot not empty")
+        ),
+        `var __want=${wantJson};`,
+        `var __oq=${qty};`,
+        `if(typeof trade_offer==="function"){`,
+        `try{trade_offer(${lit3(slot)},__slot,__want,__oq);`,
+        `game_log(${commLit("trade-offer ok \u2192 " + slot)});`,
+        `}catch(__e){game_log(${commLit("trade-offer failed \u2192 " + slot)}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`,
+        `}else{`,
+        socketEmitJs(
+          "equip",
+          "{q:__oq,slot:" + lit3(slot) + ",num:__slot,want:__want}"
+        ),
+        `game_log(${commLit("trade-offer emit \u2192 " + slot)});`,
+        `}`
+      ].join("")
+    );
+  }
   function buildMerchantCloseScript() {
     return wrapCommandScript(
       [
@@ -19199,6 +19416,34 @@ ${CHROME_ARRANGE_CSS}
       ].join("")
     );
   }
+  function buildTradeSwapScript(targetId, tradeSlot, rid, bagSlot, item) {
+    const id = String(targetId || "").trim();
+    const slot = normalizeTradeSlot(tradeSlot);
+    const listingRid = String(rid || "").trim();
+    const num = Number(bagSlot) | 0;
+    if (!id || !slot || !listingRid || num < 0) {
+      return wrapCommandScript(`game_log("Trade swap failed \u2014 missing target or bag slot");`);
+    }
+    const itemJson = JSON.stringify(item || null);
+    return wrapCommandScript(
+      [
+        `var __id=${lit3(id)};`,
+        `var __slot=${lit3(slot)};`,
+        `var __rid=${lit3(listingRid)};`,
+        `var __num=${num};`,
+        `var __item=${itemJson};`,
+        `var __bag=character.items[__num];`,
+        `if(!__bag){game_log("Trade swap failed \u2014 bag slot empty");return;}`,
+        `if(typeof trade_swap==="function"){trade_swap(__slot,__id,__rid,__num,__item||__bag);}`,
+        `else{`,
+        socketEmitJs(
+          "trade_swap",
+          "{slot:__slot,id:__id,rid:__rid,num:__num,item:__item||__bag}"
+        ),
+        `}`
+      ].join("")
+    );
+  }
   function buildGiveawayScript(tradeSlot, fp, minutes, q) {
     const slot = normalizeTradeSlot(tradeSlot);
     const mins = Number(minutes) | 0;
@@ -19305,6 +19550,13 @@ ${CHROME_ARRANGE_CSS}
       `join-giveaway ${tradeSlot}`
     );
   }
+  function tradeSwapCommand(targetId, tradeSlot, rid, bagSlot, item) {
+    const script = buildTradeSwapScript(targetId, tradeSlot, rid, bagSlot, item);
+    const ok = emitObserverCommand(script, `trade-swap ${tradeSlot}`);
+    if (!ok) return false;
+    scheduleBagRefresh2();
+    return true;
+  }
   function giveawayCommand(tradeSlot, fp, minutes, q) {
     const script = buildGiveawayScript(tradeSlot, fp, minutes, q);
     const ok = emitObserverCommand(
@@ -19366,6 +19618,16 @@ ${CHROME_ARRANGE_CSS}
     );
     if (!ok) return false;
     rememberTradePrice(fp.name, price, (_a = q != null ? q : fp.q) != null ? _a : 1);
+    scheduleBagRefresh2();
+    return true;
+  }
+  function tradeOfferCommand(fp, tradeSlot, want, offerQ) {
+    const script = buildTradeOfferScript(fp, tradeSlot, want, offerQ);
+    const ok = emitObserverCommand(
+      script,
+      `trade-offer ${tradeSlot} ${fp.name}`
+    );
+    if (!ok) return false;
     scheduleBagRefresh2();
     return true;
   }
@@ -19493,6 +19755,16 @@ ${CHROME_ARRANGE_CSS}
   font-size: 16px;
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
+}
+.ecu-trade-prompt__select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
 }
 .ecu-trade-prompt__field input:focus {
   outline: none;
@@ -20251,6 +20523,515 @@ ${CHROME_ARRANGE_CSS}
       max: 12
     });
   }
+  function titleChoicesForItem(itemKey) {
+    const out = [
+      { id: null, label: "Any" }
+    ];
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const def = G && G.items && G.items[itemKey];
+    const titles = G && G.titles;
+    if (!def || !titles) return out;
+    const keys = Object.keys(titles);
+    for (let i = 0; i < keys.length; i++) {
+      const id = keys[i];
+      const t = titles[id];
+      if (!t) continue;
+      const type = t.type;
+      if (type === "all_items" || type === def.type || type === "mainhand" && def.type === "weapon") {
+        out.push({ id, label: t.title || id });
+      }
+    }
+    return out;
+  }
+  function showTradeOfferDetailsDialog(options) {
+    closeDialog(null);
+    ensureTradePromptDialogCss();
+    const offeredName = String(options.offeredName || "").trim();
+    const wantName = String(options.wantName || "").trim();
+    const maxOfferQ = Math.max(1, Number(options.offeredMaxQ) | 0);
+    const G = typeof window !== "undefined" ? window.G : void 0;
+    const wantDef = G && G.items && G.items[wantName];
+    const wantLabel = wantDef && wantDef.name || wantName || "wanted item";
+    const offeredLabel = offeredName || "offered item";
+    const wantStackable = !!(wantDef && wantDef.s);
+    const wantLeveled = !!(wantDef && (wantDef.upgrade || wantDef.compound));
+    const titleChoices = titleChoicesForItem(wantName);
+    const showOfferQty = maxOfferQ > 1;
+    return new Promise((resolve) => {
+      finishOpen = resolve;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-trade-prompt-backdrop";
+      backdrop.setAttribute("data-ecu-trade-prompt", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-trade-prompt";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      const title = document.createElement("h2");
+      title.className = "ecu-trade-prompt__title";
+      title.textContent = "Trade offer";
+      panel.appendChild(title);
+      const itemLine = document.createElement("p");
+      itemLine.className = "ecu-trade-prompt__item";
+      itemLine.textContent = `Give ${offeredLabel} \xB7 want ${wantLabel}`;
+      panel.appendChild(itemLine);
+      let offerQtyInput = null;
+      if (showOfferQty) {
+        const lbl = document.createElement("div");
+        lbl.className = "ecu-trade-prompt__field-label";
+        lbl.textContent = "Offer quantity";
+        panel.appendChild(lbl);
+        const field = document.createElement("div");
+        field.className = "ecu-trade-prompt__field";
+        offerQtyInput = document.createElement("input");
+        offerQtyInput.type = "number";
+        offerQtyInput.min = "1";
+        offerQtyInput.max = String(maxOfferQ);
+        offerQtyInput.step = "1";
+        offerQtyInput.value = String(maxOfferQ);
+        offerQtyInput.setAttribute("aria-label", "Offer quantity");
+        const suf = document.createElement("span");
+        suf.className = "ecu-trade-prompt__suffix";
+        suf.textContent = ` / ${maxOfferQ}`;
+        field.append(offerQtyInput, suf);
+        panel.appendChild(field);
+      }
+      let levelInput = null;
+      if (wantLeveled) {
+        const lbl = document.createElement("div");
+        lbl.className = "ecu-trade-prompt__field-label";
+        lbl.textContent = "Min level (0 = any)";
+        panel.appendChild(lbl);
+        const field = document.createElement("div");
+        field.className = "ecu-trade-prompt__field";
+        levelInput = document.createElement("input");
+        levelInput.type = "number";
+        levelInput.min = "0";
+        levelInput.max = "12";
+        levelInput.step = "1";
+        levelInput.value = "0";
+        levelInput.setAttribute("aria-label", "Minimum level");
+        field.appendChild(levelInput);
+        panel.appendChild(field);
+      }
+      let titleSelect = null;
+      if (titleChoices.length > 1) {
+        const lbl = document.createElement("div");
+        lbl.className = "ecu-trade-prompt__field-label";
+        lbl.textContent = "Title";
+        panel.appendChild(lbl);
+        titleSelect = document.createElement("select");
+        titleSelect.className = "ecu-trade-prompt__select";
+        titleSelect.setAttribute("aria-label", "Wanted title");
+        for (let i = 0; i < titleChoices.length; i++) {
+          const opt = document.createElement("option");
+          opt.value = titleChoices[i].id == null ? "" : String(titleChoices[i].id);
+          opt.textContent = titleChoices[i].label;
+          titleSelect.appendChild(opt);
+        }
+        panel.appendChild(titleSelect);
+      }
+      let wantQtyInput = null;
+      if (wantStackable) {
+        const lbl = document.createElement("div");
+        lbl.className = "ecu-trade-prompt__field-label";
+        lbl.textContent = "Want quantity";
+        panel.appendChild(lbl);
+        const field = document.createElement("div");
+        field.className = "ecu-trade-prompt__field";
+        wantQtyInput = document.createElement("input");
+        wantQtyInput.type = "number";
+        wantQtyInput.min = "1";
+        wantQtyInput.max = "9999";
+        wantQtyInput.step = "1";
+        wantQtyInput.value = "1";
+        wantQtyInput.setAttribute("aria-label", "Want quantity");
+        field.appendChild(wantQtyInput);
+        panel.appendChild(field);
+      }
+      const hintEl = document.createElement("p");
+      hintEl.className = "ecu-trade-prompt__hint";
+      panel.appendChild(hintEl);
+      const actions = document.createElement("div");
+      actions.className = "ecu-trade-prompt__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "ecu-trade-prompt__btn";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "ecu-trade-prompt__btn ecu-trade-prompt__btn--ok";
+      okBtn.textContent = "Offer";
+      actions.append(cancelBtn, okBtn);
+      panel.appendChild(actions);
+      backdrop.appendChild(panel);
+      document.body.appendChild(backdrop);
+      const dismiss = (value) => {
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog(value);
+      };
+      const confirm = () => {
+        let offerQ = 1;
+        if (offerQtyInput) {
+          const n = parseInt(offerQtyInput.value, 10);
+          if (!Number.isFinite(n) || n < 1 || n > maxOfferQ) {
+            hintEl.textContent = `Offer quantity 1\u2013${maxOfferQ}.`;
+            offerQtyInput.focus();
+            return;
+          }
+          offerQ = n;
+        }
+        const want = { name: wantName };
+        if (levelInput) {
+          const lv = parseInt(levelInput.value, 10);
+          if (!Number.isFinite(lv) || lv < 0 || lv > 12) {
+            hintEl.textContent = "Level must be 0\u201312.";
+            levelInput.focus();
+            return;
+          }
+          if (lv > 0) want.level = lv;
+        }
+        if (titleSelect && titleSelect.value) {
+          want.p = titleSelect.value;
+        }
+        if (wantQtyInput) {
+          const wq = parseInt(wantQtyInput.value, 10);
+          if (!Number.isFinite(wq) || wq < 1) {
+            hintEl.textContent = "Want quantity must be at least 1.";
+            wantQtyInput.focus();
+            return;
+          }
+          want.q = wq;
+        }
+        dismiss({ want, offerQ });
+      };
+      cancelBtn.addEventListener("click", () => dismiss(null));
+      okBtn.addEventListener("click", confirm);
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) dismiss(null);
+      });
+      const onKey = (ev) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          dismiss(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          confirm();
+        }
+      };
+      document.addEventListener("keydown", onKey, true);
+      window.setTimeout(() => {
+        const focusEl = offerQtyInput || levelInput || wantQtyInput || okBtn;
+        if (focusEl && "focus" in focusEl) focusEl.focus();
+        if (focusEl && "select" in focusEl) {
+          try {
+            focusEl.select();
+          } catch (e2) {
+          }
+        }
+      }, 0);
+    });
+  }
+
+  // src/ui/gear/tradeWishlistPickerCss.ts
+  var TRADE_WISHLIST_PICKER_CSS = `
+.comm-wishlist-picker {
+  position: fixed;
+  z-index: 100001;
+  background: #151515;
+  border: 1px solid #555;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(520px, calc(100vh - 24px));
+  display: flex;
+  flex-direction: column;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.comm-wishlist-picker__head {
+  padding: 8px 10px;
+  border-bottom: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comm-wishlist-picker__title {
+  font-size: 14px;
+  color: #f1c054;
+  letter-spacing: 0.04em;
+}
+.comm-wishlist-picker__search {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0d0d0d;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.comm-wishlist-picker__grid {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: flex-start;
+}
+.comm-wishlist-picker__item {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 4px;
+  cursor: pointer;
+  line-height: 0;
+}
+.comm-wishlist-picker__item:hover {
+  border-color: #888;
+  background: #222;
+}
+.comm-wishlist-picker__foot {
+  border-top: 1px solid #333;
+  padding: 6px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.comm-wishlist-picker__foot button {
+  background: #222;
+  border: 1px solid #555;
+  color: #ddd;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.comm-wishlist-picker__foot button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.comm-wishlist-picker__page {
+  font-size: 12px;
+  color: #888;
+}
+`;
+  var injected2 = false;
+  function ensureTradeWishlistPickerCss() {
+    if (injected2) return;
+    injected2 = true;
+    const el = document.createElement("style");
+    el.setAttribute("data-ecu-wishlist-picker-css", "1");
+    el.textContent = TRADE_WISHLIST_PICKER_CSS;
+    document.head.appendChild(el);
+  }
+
+  // src/ui/gear/tradeWishlistPicker.ts
+  var PAGE_SIZE = 20;
+  var pickerEl = null;
+  var keyHandler = null;
+  var docHandler = null;
+  var pickHandler = null;
+  function hidePicker() {
+    if (keyHandler) {
+      document.removeEventListener("keydown", keyHandler, true);
+      keyHandler = null;
+    }
+    if (docHandler) {
+      document.removeEventListener("mousedown", docHandler, true);
+      docHandler = null;
+    }
+    pickHandler = null;
+    if (pickerEl) {
+      pickerEl.remove();
+      pickerEl = null;
+    }
+  }
+  function catalogItems() {
+    const G = getG();
+    if (!G || !G.items) return [];
+    const rows = [];
+    const keys = Object.keys(G.items);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      const def = G.items[key];
+      if (!def || def.ignore || key === "placeholder") continue;
+      rows.push({
+        key,
+        name: def.name || key,
+        skin: def.skin || key
+      });
+    }
+    rows.sort((a, b) => {
+      var _a, _b;
+      const ga = ((_a = G.items[a.key]) == null ? void 0 : _a.g) || 0;
+      const gb = ((_b = G.items[b.key]) == null ? void 0 : _b.g) || 0;
+      return gb - ga;
+    });
+    return rows;
+  }
+  function clampPosition(el, clientX, clientY) {
+    const pad3 = 8;
+    const w = el.offsetWidth || 320;
+    const h = el.offsetHeight || 400;
+    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
+    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
+    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
+    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
+  }
+  function pickWishlistItem(tradeSlot, itemKey) {
+    hidePicker();
+    void (async () => {
+      const obs = window.observing;
+      const price = await showTradePriceDialog({
+        mode: "wishlist",
+        itemName: itemKey,
+        slots: obs == null ? void 0 : obs.slots
+      });
+      if (price == null) return;
+      const G = getG();
+      const def = G && G.items && G.items[itemKey];
+      const d = def;
+      let level = 0;
+      if (d && (d.upgrade || d.compound)) {
+        const picked = await showWishlistLevelDialog(itemKey);
+        if (picked == null) return;
+        level = picked;
+      }
+      wishlistCommand(tradeSlot, itemKey, price, 1, level);
+    })();
+  }
+  function renderPage(root, rows, query, page) {
+    const q = query.trim().toLowerCase();
+    const filtered = q ? rows.filter(
+      (r) => r.key.toLowerCase().indexOf(q) >= 0 || r.name.toLowerCase().indexOf(q) >= 0
+    ) : rows;
+    const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const safePage = Math.min(Math.max(0, page), pageCount - 1);
+    const slice = filtered.slice(
+      safePage * PAGE_SIZE,
+      safePage * PAGE_SIZE + PAGE_SIZE
+    );
+    const grid = root.querySelector(".comm-wishlist-picker__grid");
+    const pageLabel = root.querySelector(".comm-wishlist-picker__page");
+    const prevBtn = root.querySelector(
+      "[data-wishlist-prev]"
+    );
+    const nextBtn = root.querySelector(
+      "[data-wishlist-next]"
+    );
+    if (!grid) return safePage;
+    grid.innerHTML = "";
+    for (let i = 0; i < slice.length; i++) {
+      const row3 = slice[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "comm-wishlist-picker__item";
+      btn.title = `${row3.name} (${row3.key})`;
+      btn.innerHTML = itemIconHtml(row3.key, { skin: row3.skin, size: 32, title: row3.name }) || row3.key;
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (pickHandler) pickHandler(row3.key);
+      });
+      grid.appendChild(btn);
+    }
+    if (pageLabel) {
+      pageLabel.textContent = filtered.length === 0 ? "No matches" : `Page ${safePage + 1} / ${pageCount} \xB7 ${filtered.length} items`;
+    }
+    if (prevBtn) prevBtn.disabled = safePage <= 0;
+    if (nextBtn) nextBtn.disabled = safePage >= pageCount - 1;
+    return safePage;
+  }
+  function showCatalogPicker(opts) {
+    hidePicker();
+    ensureTradeWishlistPickerCss();
+    const rows = catalogItems();
+    if (!rows.length) {
+      window.alert("Item catalog (G.items) is not available.");
+      return;
+    }
+    pickHandler = opts.onPick;
+    let page = 0;
+    let query = "";
+    const el = document.createElement("div");
+    el.className = "comm-wishlist-picker";
+    el.setAttribute("role", "dialog");
+    el.innerHTML = `<div class="comm-wishlist-picker__head"><div class="comm-wishlist-picker__title">${opts.title}</div><input class="comm-wishlist-picker__search" type="search" placeholder="Search items\u2026" autocomplete="off" /></div><div class="comm-wishlist-picker__grid"></div><div class="comm-wishlist-picker__foot"><button type="button" data-wishlist-prev>Prev</button><span class="comm-wishlist-picker__page"></span><button type="button" data-wishlist-next>Next</button></div>`;
+    document.body.appendChild(el);
+    pickerEl = el;
+    clampPosition(el, opts.clientX, opts.clientY);
+    const search = el.querySelector(
+      ".comm-wishlist-picker__search"
+    );
+    const prevBtn = el.querySelector(
+      "[data-wishlist-prev]"
+    );
+    const nextBtn = el.querySelector(
+      "[data-wishlist-next]"
+    );
+    const redraw = () => {
+      page = renderPage(el, rows, query, page);
+    };
+    if (search) {
+      search.addEventListener("input", () => {
+        query = search.value;
+        page = 0;
+        redraw();
+      });
+    }
+    prevBtn == null ? void 0 : prevBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      page = Math.max(0, page - 1);
+      redraw();
+    });
+    nextBtn == null ? void 0 : nextBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      page += 1;
+      redraw();
+    });
+    redraw();
+    search == null ? void 0 : search.focus();
+    keyHandler = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hidePicker();
+      }
+    };
+    docHandler = (ev) => {
+      if (pickerEl && ev.target instanceof Node && pickerEl.contains(ev.target)) {
+        return;
+      }
+      hidePicker();
+    };
+    document.addEventListener("keydown", keyHandler, true);
+    window.setTimeout(() => {
+      if (docHandler) document.addEventListener("mousedown", docHandler, true);
+    }, 0);
+  }
+  function showTradeWishlistPicker(tradeSlot, clientX, clientY) {
+    showCatalogPicker({
+      title: `Wishlist \u2192 ${formatTradeSlotLabel(tradeSlot)}`,
+      clientX,
+      clientY,
+      onPick: (itemKey) => pickWishlistItem(tradeSlot, itemKey)
+    });
+  }
+  function showTradeOfferWantPicker(opts) {
+    const { tradeSlot, fp, offeredMaxQ, clientX, clientY } = opts;
+    showCatalogPicker({
+      title: `Want for ${fp.name} \u2192 ${formatTradeSlotLabel(tradeSlot)}`,
+      clientX,
+      clientY,
+      onPick: (itemKey) => {
+        hidePicker();
+        void (async () => {
+          const details = await showTradeOfferDetailsDialog({
+            offeredName: fp.name,
+            offeredMaxQ,
+            wantName: itemKey
+          });
+          if (!details) return;
+          tradeOfferCommand(fp, tradeSlot, details.want, details.offerQ);
+        })();
+      }
+    });
+  }
 
   // src/host/market/marketListingActions.ts
   function findLiveMerchant(entities, name) {
@@ -20318,6 +21099,26 @@ ${CHROME_ARRANGE_CSS}
     const maxQ = row3.q != null && row3.q > 0 ? row3.q : void 0;
     if (row3.giveaway) {
       return joinGiveawayCommand(targetId, row3.slot, row3.rid);
+    }
+    if (row3.tradeOffer && row3.want) {
+      const match = findBagMatchForTradeWant(row3.want, observing.items);
+      if (!match) {
+        const need2 = formatTradeWantLabel(row3.want) || row3.want.name;
+        window.alert(`No matching ${need2} in bag for this trade offer.`);
+        return false;
+      }
+      const need = formatTradeWantLabel(row3.want) || row3.want.name;
+      const ok = window.confirm(
+        `Trade ${formatTradeWantLabel({ name: match.item.name || row3.want.name, level: match.item.level, p: match.item.p, q: row3.want.q || 1 }) || match.item.name} for ${row3.name}? They want: ${need}.`
+      );
+      if (!ok) return false;
+      return tradeSwapCommand(
+        targetId,
+        row3.slot,
+        row3.rid,
+        match.slot,
+        match.item
+      );
     }
     if (row3.buyOrder) {
       const match = findBagMatchForBuyOrder(
@@ -20496,11 +21297,37 @@ ${CHROME_ARRANGE_CSS}
     if (picked == null) return false;
     return giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
   }
+  function offerBagStackOnTrade(opts) {
+    const { stack, observing } = opts;
+    if (!observing) {
+      window.alert("Observe a character first.");
+      return false;
+    }
+    const tradeSlot = firstEmptyTradeSlot(observing);
+    if (!tradeSlot) {
+      window.alert("No empty trade slot \u2014 open stand or free a slot.");
+      return false;
+    }
+    const fp = fingerprintFromBagStack(stack);
+    const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+    showTradeOfferWantPicker({
+      tradeSlot,
+      fp,
+      offeredMaxQ: maxQ,
+      clientX: opts.clientX != null ? opts.clientX : 80,
+      clientY: opts.clientY != null ? opts.clientY : 80
+    });
+    return true;
+  }
   async function repriceOwnMarketListing(opts) {
     const { row: row3, observing } = opts;
     if (!isOwnMarketListing(row3)) return false;
     if (row3.giveaway) {
       window.alert("Giveaways cannot be repriced \u2014 delist and post again.");
+      return false;
+    }
+    if (row3.tradeOffer) {
+      window.alert("Trade offers cannot be repriced \u2014 delist and post again.");
       return false;
     }
     const slot = liveSlotForOwnListing(observing, row3);
@@ -24826,11 +25653,11 @@ button.comm-mail__stack-u {
 `;
 
   // src/ui/frames/mail/mailCss.ts
-  var injected2 = false;
+  var injected3 = false;
   var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
   function ensureMailCss() {
-    if (injected2) return;
-    injected2 = true;
+    if (injected3) return;
+    injected3 = true;
     const existing = document.querySelector(
       "style[data-ecu-mail-css]"
     );
@@ -24846,8 +25673,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.10.1" : "unknown";
-    const builtAt = true ? "2026-09-23T05:55:34.828Z" : "unknown";
+    const version = true ? "0.11.0" : "unknown";
+    const builtAt = true ? "2026-09-29T06:00:15.978Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -25184,7 +26011,7 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/frames/comm/commSetupWizardCss.ts
-  var injected3 = false;
+  var injected4 = false;
   var CSS5 = `
 .ecu-comm-wiz-backdrop {
   position: fixed;
@@ -25864,10 +26691,10 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-comm-wiz", "1");
       document.head.appendChild(el);
     }
-    if (!injected3 || el.textContent !== CSS5) {
+    if (!injected4 || el.textContent !== CSS5) {
       el.textContent = CSS5;
     }
-    injected3 = true;
+    injected4 = true;
   }
 
   // src/ui/frames/comm/CommUISetupWizard.ts
@@ -26966,7 +27793,7 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/frames/comm/guidedTour/guidedTourCss.ts
-  var injected4 = false;
+  var injected5 = false;
   var CSS6 = `
 .ecu-tour-root {
   position: fixed;
@@ -27154,7 +27981,7 @@ button.comm-mail__stack-u {
 `;
   function injectGuidedTourCss() {
     if (typeof document === "undefined") return;
-    if (injected4) return;
+    if (injected5) return;
     let el = document.querySelector(
       "style[data-ecu-tour]"
     );
@@ -27164,7 +27991,7 @@ button.comm-mail__stack-u {
       document.head.appendChild(el);
     }
     el.textContent = CSS6;
-    injected4 = true;
+    injected5 = true;
   }
 
   // src/ui/frames/comm/guidedTour/tourGeometry.ts
@@ -47051,6 +47878,15 @@ ${parts.map(cssSlice).join("\n")}
   border-color: #444;
   color: #aaa;
 }
+.ecu-settings-reset.is-danger {
+  border-color: #6a3030;
+  color: #e0a0a0;
+  background: #1a1010;
+}
+.ecu-settings-reset.is-danger:hover {
+  border-color: #8a4040;
+  color: #f0c0c0;
+}
 .ecu-settings-reset:disabled {
   opacity: 0.35;
   cursor: default;
@@ -47165,10 +48001,10 @@ ${parts.map(cssSlice).join("\n")}
   color: #faa;
 }
 `;
-  var injected5 = false;
+  var injected6 = false;
   function ensureSettingsPanelCss() {
-    if (injected5) return;
-    injected5 = true;
+    if (injected6) return;
+    injected6 = true;
     const existing = document.querySelector(
       "style[data-ecu-settings-css]"
     );
@@ -49272,6 +50108,88 @@ ${parts.map(cssSlice).join("\n")}
     return e(paneMemo, props);
   }
 
+  // src/lib/factoryReset.ts
+  var ECU_LOCAL_STORAGE_PREFIXES = ["ecu-", "al-comm-ui-"];
+  var ECU_INDEXED_DB_NAMES = [
+    "ecu-market-cache",
+    "ecu-mail-cache",
+    "ecu-bank-cache",
+    "ecu-meter-archive"
+  ];
+  function isEcuStorageKey(key) {
+    const k = String(key || "");
+    for (let i = 0; i < ECU_LOCAL_STORAGE_PREFIXES.length; i++) {
+      if (k.indexOf(ECU_LOCAL_STORAGE_PREFIXES[i]) === 0) return true;
+    }
+    return false;
+  }
+  function clearEcuKeysFromStorage(store) {
+    if (!store) return 0;
+    const toRemove = [];
+    try {
+      for (let i = 0; i < store.length; i++) {
+        const key = store.key(i);
+        if (key && isEcuStorageKey(key)) toRemove.push(key);
+      }
+    } catch (e2) {
+      return 0;
+    }
+    for (let i = 0; i < toRemove.length; i++) {
+      try {
+        store.removeItem(toRemove[i]);
+      } catch (e2) {
+      }
+    }
+    return toRemove.length;
+  }
+  function deleteIndexedDb(name) {
+    return new Promise((resolve) => {
+      if (typeof indexedDB === "undefined" || !indexedDB.deleteDatabase) {
+        resolve(false);
+        return;
+      }
+      try {
+        const req = indexedDB.deleteDatabase(name);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => resolve(false);
+        req.onblocked = () => resolve(true);
+      } catch (e2) {
+        resolve(false);
+      }
+    });
+  }
+  async function factoryResetCommUi() {
+    const localKeys = clearEcuKeysFromStorage(
+      typeof localStorage !== "undefined" ? localStorage : null
+    );
+    const sessionKeys = clearEcuKeysFromStorage(
+      typeof sessionStorage !== "undefined" ? sessionStorage : null
+    );
+    const indexedDbs = [];
+    for (let i = 0; i < ECU_INDEXED_DB_NAMES.length; i++) {
+      const name = ECU_INDEXED_DB_NAMES[i];
+      const ok = await deleteIndexedDb(name);
+      if (ok) indexedDbs.push(name);
+    }
+    return { localKeys, sessionKeys, indexedDbs };
+  }
+  async function confirmAndFactoryResetCommUi() {
+    const ok = window.confirm(
+      "Reset Comm UI to factory defaults?\n\nThis clears layouts, meters, overlay toggles, market/mail/bank caches, trade price memory, and guided-tour progress for this browser.\n\nAdventure.land account data is not affected. The page will reload."
+    );
+    if (!ok) return false;
+    const again = window.confirm(
+      "Really wipe all Comm UI local data? This cannot be undone."
+    );
+    if (!again) return false;
+    await factoryResetCommUi();
+    try {
+      window.location.reload();
+    } catch (e2) {
+    }
+    return true;
+  }
+
   // src/ui/frames/settings/settingsPaneChrome.ts
   function settingsSection(label) {
     return e("div", { className: "ecu-settings-sec" }, label);
@@ -49335,6 +50253,12 @@ ${parts.map(cssSlice).join("\n")}
     if (!q) return true;
     return `${tour.label} ${tour.id} tour guide tutorial replay reset`.toLowerCase().includes(q);
   }
+  function dataSectionMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const hay = "factory default reset wipe clear local storage indexeddb cache data nuke";
+    return hay.includes(q);
+  }
   function countCommUiSettingsMatches(query) {
     let total = 0;
     const tours = listGuidedTours();
@@ -49344,6 +50268,7 @@ ${parts.map(cssSlice).join("\n")}
     for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
       if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
     }
+    if (dataSectionMatches(query)) total += 1;
     return total;
   }
   function CommUiSettingsPane(props) {
@@ -49437,12 +50362,46 @@ ${parts.map(cssSlice).join("\n")}
         )
       );
     }
-    if (tourRows === 0 && updateRows === 0) {
+    if (tourRows === 0 && updateRows === 0 && !dataSectionMatches(query)) {
       kids.push(
         e(
           "p",
           { key: "empty", className: "ecu-settings-help" },
           "No Comm UI guide items match this search."
+        )
+      );
+    }
+    if (dataSectionMatches(query)) {
+      kids.push(settingsSection("Data"));
+      kids.push(
+        e(
+          "div",
+          { key: "factory-reset", className: "ecu-settings-row" },
+          e(
+            "div",
+            { className: "ecu-settings-row-copy" },
+            e(
+              "span",
+              { className: "ecu-settings-row-label" },
+              "Factory defaults"
+            ),
+            e(
+              "span",
+              { className: "ecu-settings-help" },
+              "Wipe Comm UI layouts, meters, overlay toggles, caches, and tour progress in this browser, then reload. Does not touch your adventure.land account."
+            )
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-settings-reset is-danger",
+              onClick: () => {
+                void confirmAndFactoryResetCommUi();
+              }
+            },
+            "Reset everything\u2026"
+          )
         )
       );
     }
@@ -50298,7 +51257,7 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "commUi",
       label: "Comm UI",
-      description: "Guided tours (replay / reset), Comm UI What's New, and Adventure.land server update notes.",
+      description: "Guided tours, What's New, server notes, and factory-reset local Comm UI data.",
       countMatches: countCommUiSettingsMatches,
       render: (props) => e(CommUiSettingsPane, {
         query: props.query,
@@ -52842,10 +53801,10 @@ ${parts.map(cssSlice).join("\n")}
   color: #ccc;
 }
 `;
-  var injected6 = false;
+  var injected7 = false;
   function ensureCryptPanelCss() {
-    if (injected6) return;
-    injected6 = true;
+    if (injected7) return;
+    injected7 = true;
     const existing = document.querySelector(
       "style[data-ecu-crypt-panel-css]"
     );
@@ -53987,276 +54946,6 @@ ${parts.map(cssSlice).join("\n")}
       return `${free}/${isize} free`;
     }
     return `${free} free`;
-  }
-
-  // src/ui/gear/tradeWishlistPickerCss.ts
-  var TRADE_WISHLIST_PICKER_CSS = `
-.comm-wishlist-picker {
-  position: fixed;
-  z-index: 100001;
-  background: #151515;
-  border: 1px solid #555;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
-  width: min(420px, calc(100vw - 24px));
-  max-height: min(520px, calc(100vh - 24px));
-  display: flex;
-  flex-direction: column;
-  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-}
-.comm-wishlist-picker__head {
-  padding: 8px 10px;
-  border-bottom: 1px solid #333;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.comm-wishlist-picker__title {
-  font-size: 14px;
-  color: #f1c054;
-  letter-spacing: 0.04em;
-}
-.comm-wishlist-picker__search {
-  width: 100%;
-  box-sizing: border-box;
-  background: #0d0d0d;
-  border: 1px solid #444;
-  color: #eee;
-  padding: 6px 8px;
-  font-size: 14px;
-}
-.comm-wishlist-picker__grid {
-  overflow-y: auto;
-  padding: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-content: flex-start;
-}
-.comm-wishlist-picker__item {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  padding: 4px;
-  cursor: pointer;
-  line-height: 0;
-}
-.comm-wishlist-picker__item:hover {
-  border-color: #888;
-  background: #222;
-}
-.comm-wishlist-picker__foot {
-  border-top: 1px solid #333;
-  padding: 6px 8px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-}
-.comm-wishlist-picker__foot button {
-  background: #222;
-  border: 1px solid #555;
-  color: #ddd;
-  padding: 4px 10px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.comm-wishlist-picker__foot button:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.comm-wishlist-picker__page {
-  font-size: 12px;
-  color: #888;
-}
-`;
-  var injected7 = false;
-  function ensureTradeWishlistPickerCss() {
-    if (injected7) return;
-    injected7 = true;
-    const el = document.createElement("style");
-    el.setAttribute("data-ecu-wishlist-picker-css", "1");
-    el.textContent = TRADE_WISHLIST_PICKER_CSS;
-    document.head.appendChild(el);
-  }
-
-  // src/ui/gear/tradeWishlistPicker.ts
-  var PAGE_SIZE = 20;
-  var pickerEl = null;
-  var keyHandler = null;
-  var docHandler = null;
-  function hidePicker() {
-    if (keyHandler) {
-      document.removeEventListener("keydown", keyHandler, true);
-      keyHandler = null;
-    }
-    if (docHandler) {
-      document.removeEventListener("mousedown", docHandler, true);
-      docHandler = null;
-    }
-    if (pickerEl) {
-      pickerEl.remove();
-      pickerEl = null;
-    }
-  }
-  function catalogItems() {
-    const G = getG();
-    if (!G || !G.items) return [];
-    const rows = [];
-    const keys = Object.keys(G.items);
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i];
-      const def = G.items[key];
-      if (!def || def.ignore || key === "placeholder") continue;
-      rows.push({
-        key,
-        name: def.name || key,
-        skin: def.skin || key
-      });
-    }
-    rows.sort((a, b) => {
-      var _a, _b;
-      const ga = ((_a = G.items[a.key]) == null ? void 0 : _a.g) || 0;
-      const gb = ((_b = G.items[b.key]) == null ? void 0 : _b.g) || 0;
-      return gb - ga;
-    });
-    return rows;
-  }
-  function clampPosition(el, clientX, clientY) {
-    const pad3 = 8;
-    const w = el.offsetWidth || 320;
-    const h = el.offsetHeight || 400;
-    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
-    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
-    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
-    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
-  }
-  function pickItem(tradeSlot, itemKey) {
-    hidePicker();
-    void (async () => {
-      const obs = window.observing;
-      const price = await showTradePriceDialog({
-        mode: "wishlist",
-        itemName: itemKey,
-        slots: obs == null ? void 0 : obs.slots
-      });
-      if (price == null) return;
-      const G = getG();
-      const def = G && G.items && G.items[itemKey];
-      const d = def;
-      let level = 0;
-      if (d && (d.upgrade || d.compound)) {
-        const picked = await showWishlistLevelDialog(itemKey);
-        if (picked == null) return;
-        level = picked;
-      }
-      wishlistCommand(tradeSlot, itemKey, price, 1, level);
-    })();
-  }
-  function renderPage(root, tradeSlot, rows, query, page) {
-    const q = query.trim().toLowerCase();
-    const filtered = q ? rows.filter(
-      (r) => r.key.toLowerCase().indexOf(q) >= 0 || r.name.toLowerCase().indexOf(q) >= 0
-    ) : rows;
-    const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-    const safePage = Math.min(Math.max(0, page), pageCount - 1);
-    const slice = filtered.slice(
-      safePage * PAGE_SIZE,
-      safePage * PAGE_SIZE + PAGE_SIZE
-    );
-    const grid = root.querySelector(".comm-wishlist-picker__grid");
-    const pageLabel = root.querySelector(".comm-wishlist-picker__page");
-    const prevBtn = root.querySelector(
-      "[data-wishlist-prev]"
-    );
-    const nextBtn = root.querySelector(
-      "[data-wishlist-next]"
-    );
-    if (!grid) return safePage;
-    grid.innerHTML = "";
-    for (let i = 0; i < slice.length; i++) {
-      const row3 = slice[i];
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "comm-wishlist-picker__item";
-      btn.title = `${row3.name} (${row3.key})`;
-      btn.innerHTML = itemIconHtml(row3.key, { skin: row3.skin, size: 32, title: row3.name }) || row3.key;
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        pickItem(tradeSlot, row3.key);
-      });
-      grid.appendChild(btn);
-    }
-    if (pageLabel) {
-      pageLabel.textContent = filtered.length === 0 ? "No matches" : `Page ${safePage + 1} / ${pageCount} \xB7 ${filtered.length} items`;
-    }
-    if (prevBtn) prevBtn.disabled = safePage <= 0;
-    if (nextBtn) nextBtn.disabled = safePage >= pageCount - 1;
-    return safePage;
-  }
-  function showTradeWishlistPicker(tradeSlot, clientX, clientY) {
-    hidePicker();
-    ensureTradeWishlistPickerCss();
-    const rows = catalogItems();
-    if (!rows.length) {
-      window.alert("Item catalog (G.items) is not available.");
-      return;
-    }
-    let page = 0;
-    let query = "";
-    const el = document.createElement("div");
-    el.className = "comm-wishlist-picker";
-    el.setAttribute("role", "dialog");
-    el.innerHTML = `<div class="comm-wishlist-picker__head"><div class="comm-wishlist-picker__title">Wishlist \u2192 ${formatTradeSlotLabel(tradeSlot)}</div><input class="comm-wishlist-picker__search" type="search" placeholder="Search items\u2026" autocomplete="off" /></div><div class="comm-wishlist-picker__grid"></div><div class="comm-wishlist-picker__foot"><button type="button" data-wishlist-prev>Prev</button><span class="comm-wishlist-picker__page"></span><button type="button" data-wishlist-next>Next</button></div>`;
-    document.body.appendChild(el);
-    pickerEl = el;
-    clampPosition(el, clientX, clientY);
-    const search = el.querySelector(
-      ".comm-wishlist-picker__search"
-    );
-    const prevBtn = el.querySelector(
-      "[data-wishlist-prev]"
-    );
-    const nextBtn = el.querySelector(
-      "[data-wishlist-next]"
-    );
-    const redraw = () => {
-      page = renderPage(el, tradeSlot, rows, query, page);
-    };
-    if (search) {
-      search.addEventListener("input", () => {
-        query = search.value;
-        page = 0;
-        redraw();
-      });
-    }
-    prevBtn == null ? void 0 : prevBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      page = Math.max(0, page - 1);
-      redraw();
-    });
-    nextBtn == null ? void 0 : nextBtn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      page += 1;
-      redraw();
-    });
-    redraw();
-    search == null ? void 0 : search.focus();
-    keyHandler = (ev) => {
-      if (ev.key === "Escape") {
-        ev.preventDefault();
-        hidePicker();
-      }
-    };
-    docHandler = (ev) => {
-      if (pickerEl && ev.target instanceof Node && pickerEl.contains(ev.target)) {
-        return;
-      }
-      hidePicker();
-    };
-    document.addEventListener("keydown", keyHandler, true);
-    window.setTimeout(() => {
-      if (docHandler) document.addEventListener("mousedown", docHandler, true);
-    }, 0);
   }
 
   // src/ui/bag/bagItemContextMenuCss.ts
@@ -55481,9 +56170,19 @@ ${parts.map(cssSlice).join("\n")}
     if (invSlot == null) return false;
     return !!observingBagItem(invSlot);
   }
-  async function completeBagDropOnTradeSlot(tradeSlot, fp, shiftKey, slots) {
+  async function completeBagDropOnTradeSlot(tradeSlot, fp, shiftKey, ctrlKey, slots, clientX, clientY) {
     if (!fp) return;
     const maxQ = fp.q != null && fp.q > 0 ? fp.q | 0 : 1;
+    if (ctrlKey) {
+      showTradeOfferWantPicker({
+        tradeSlot,
+        fp,
+        offeredMaxQ: maxQ,
+        clientX,
+        clientY
+      });
+      return;
+    }
     if (shiftKey) {
       const picked = await showGiveawayDialog({
         itemName: fp.name,
@@ -55536,7 +56235,15 @@ ${parts.map(cssSlice).join("\n")}
     if (!fp) return false;
     ev.preventDefault();
     ev.stopPropagation();
-    void completeBagDropOnTradeSlot(tradeSlot, fp, ev.shiftKey, slots);
+    void completeBagDropOnTradeSlot(
+      tradeSlot,
+      fp,
+      ev.shiftKey,
+      ev.ctrlKey || ev.metaKey,
+      slots,
+      ev.clientX || 80,
+      ev.clientY || 80
+    );
     return true;
   }
   function handleBagDragOverGearSlot(ev, gearSlot, slots) {
@@ -63736,6 +64443,16 @@ ${ESTIMATE_HINT}`,
     if (picked == null) return;
     giveawayCommand(tradeSlot, ctx.fp, picked.minutes, picked.q);
   }
+  function runOfferOnTrade(ctx, tradeSlot, clientX, clientY) {
+    const maxQ = ctx.fp.q != null && ctx.fp.q > 0 ? ctx.fp.q | 0 : 1;
+    showTradeOfferWantPicker({
+      tradeSlot,
+      fp: ctx.fp,
+      offeredMaxQ: maxQ,
+      clientX,
+      clientY
+    });
+  }
   function buildTradeBagMenuActions(ctx) {
     if (!canEditObservedBag()) return [];
     const obs = window.observing;
@@ -63744,6 +64461,7 @@ ${ESTIMATE_HINT}`,
     if (!tradeNames.length) return [];
     const listChildren = [];
     const giveawayChildren = [];
+    const offerChildren = [];
     for (let i = 0; i < tradeNames.length; i++) {
       const tradeSlot = tradeNames[i];
       if (!tradeSlotIsEmpty(slots, tradeSlot)) continue;
@@ -63764,6 +64482,14 @@ ${ESTIMATE_HINT}`,
           void runGiveawayOnTrade(ctx, tradeSlot);
         }
       });
+      offerChildren.push({
+        id: `offer-${tradeSlot}`,
+        label,
+        title: "Item-for-item trade offer on this trade slot",
+        run: () => {
+          runOfferOnTrade(ctx, tradeSlot, 80, 80);
+        }
+      });
     }
     if (!listChildren.length) return [];
     if (listChildren.length === 1) {
@@ -63781,6 +64507,12 @@ ${ESTIMATE_HINT}`,
           label: `Giveaway on ${slotLabel}\u2026`,
           title: giveawayChildren[0].title,
           run: giveawayChildren[0].run
+        },
+        {
+          id: offerChildren[0].id,
+          label: `Offer for trade on ${slotLabel}\u2026`,
+          title: offerChildren[0].title,
+          run: offerChildren[0].run
         }
       ];
     }
@@ -63797,6 +64529,12 @@ ${ESTIMATE_HINT}`,
         label: "Giveaway on trade\u2026",
         title: "Free giveaway on an empty trade slot",
         children: giveawayChildren
+      },
+      {
+        id: "offer-trade-submenu",
+        label: "Offer for trade\u2026",
+        title: "Item-for-item trade offer on an empty trade slot",
+        children: offerChildren
       }
     ];
   }
@@ -65280,7 +66018,7 @@ ${ESTIMATE_HINT}`,
     } else if (c.kind === "is") {
       hit = valueHits(c.values, (v) => {
         if (v === "sell" || v === "sale" || v === "selling") {
-          return !row3.buyOrder && !row3.giveaway;
+          return !row3.buyOrder && !row3.giveaway && !row3.tradeOffer;
         }
         if (v === "buy" || v === "want" || v === "wanted" || v === "buying") {
           return !!row3.buyOrder;
@@ -65288,11 +66026,14 @@ ${ESTIMATE_HINT}`,
         if (v === "give" || v === "giveaway" || v === "free") {
           return !!row3.giveaway;
         }
+        if (v === "trade" || v === "swap" || v === "offer") {
+          return !!row3.tradeOffer;
+        }
         if (v === "near") {
           return !!row3.fromLive || row3.merchantStatus === "you";
         }
         if (v === "afford") {
-          if (row3.giveaway) return true;
+          if (row3.giveaway || row3.tradeOffer) return true;
           return !!row3.buyOrder || (row3.price || 0) <= ctx.gold;
         }
         if (v === "have") return !!ctx.bagNames[row3.name.toLowerCase()];
@@ -65345,6 +66086,7 @@ ${ESTIMATE_HINT}`,
           if (v === "give" || v === "giveaway" || v === "free") {
             facet = "giveaway";
           }
+          if (v === "trade" || v === "swap" || v === "offer") facet = "trade";
           if (v === "near") near = true;
           if (v === "afford") afford = true;
           if (v === "have") have = true;
@@ -65374,7 +66116,7 @@ ${ESTIMATE_HINT}`,
         continue;
       }
       const v = String(m[1] || "").toLowerCase();
-      if (v === "sell" || v === "sale" || v === "selling" || v === "buy" || v === "want" || v === "wanted" || v === "buying" || v === "give" || v === "giveaway" || v === "free" || v === "near" || v === "afford" || v === "have") {
+      if (v === "sell" || v === "sale" || v === "selling" || v === "buy" || v === "want" || v === "wanted" || v === "buying" || v === "give" || v === "giveaway" || v === "free" || v === "trade" || v === "swap" || v === "offer" || v === "near" || v === "afford" || v === "have") {
         continue;
       }
       keep.push(neg + tok);
@@ -65382,6 +66124,7 @@ ${ESTIMATE_HINT}`,
     if (next.facet === "sale") keep.push("is:sell");
     if (next.facet === "wanted") keep.push("is:buy");
     if (next.facet === "giveaway") keep.push("is:giveaway");
+    if (next.facet === "trade") keep.push("is:trade");
     if (next.nearOnly) keep.push("is:near");
     if (next.canAfford) keep.push("is:afford");
     if (next.haveStock) keep.push("is:have");
@@ -65460,6 +66203,7 @@ ${ESTIMATE_HINT}`,
         { value: "sell", hint: "Selling offers only" },
         { value: "buy", hint: "Buy orders only" },
         { value: "giveaway", hint: "Free giveaways only" },
+        { value: "trade", hint: "Item-for-item trade offers" },
         { value: "near", hint: "Visible / in entities" },
         { value: "afford", hint: "Within your gold" },
         { value: "have", hint: "Items you hold" },
@@ -65668,14 +66412,16 @@ ${ESTIMATE_HINT}`,
       if (merchantFilter && row3.merchant.toLowerCase() !== merchantFilter) {
         continue;
       }
-      if (filters.side === "sale" && (row3.buyOrder || row3.giveaway)) continue;
+      if (filters.side === "sale" && (row3.buyOrder || row3.giveaway || row3.tradeOffer))
+        continue;
       if (filters.side === "buy" && !row3.buyOrder) continue;
       if (filters.side === "giveaway" && !row3.giveaway) continue;
+      if (filters.side === "trade" && !row3.tradeOffer) continue;
       if (!listingMatchesMarketQuery(row3, filters.query, qCtx)) continue;
       if (filters.nearOnly) {
         if (!row3.fromLive && row3.merchantStatus !== "you") continue;
       }
-      if (filters.canAfford && !row3.buyOrder) {
+      if (filters.canAfford && !row3.buyOrder && !row3.giveaway && !row3.tradeOffer) {
         if (!(filters.gold >= row3.price)) continue;
       }
       if (filters.inMyBag) {
@@ -65689,6 +66435,9 @@ ${ESTIMATE_HINT}`,
     const byKey = /* @__PURE__ */ Object.create(null);
     for (let i = 0; i < rows.length; i++) {
       const row3 = rows[i];
+      if (!row3.giveaway && !row3.tradeOffer && !row3.buyOrder && !(row3.price > 0)) {
+        continue;
+      }
       const key = row3.name + "\0" + (row3.level != null ? String(row3.level) : "") + "\0" + (row3.p != null ? String(row3.p) : "");
       if (!byKey[key]) byKey[key] = [];
       byKey[key].push(row3);
@@ -65701,17 +66450,21 @@ ${ESTIMATE_HINT}`,
       const sales = [];
       const wants = [];
       const giveaways = [];
+      const tradeOffers = [];
       for (let j = 0; j < list.length; j++) {
         if (list[j].giveaway) giveaways.push(list[j]);
+        else if (list[j].tradeOffer) tradeOffers.push(list[j]);
         else if (list[j].buyOrder) wants.push(list[j]);
         else sales.push(list[j]);
       }
       let bestSale = null;
       let bestWant = null;
       for (let j = 0; j < sales.length; j++) {
+        if (!(sales[j].price > 0)) continue;
         if (bestSale == null || sales[j].price < bestSale) bestSale = sales[j].price;
       }
       for (let j = 0; j < wants.length; j++) {
+        if (!(wants[j].price > 0)) continue;
         if (bestWant == null || wants[j].price > bestWant) bestWant = wants[j].price;
       }
       out.push({
@@ -65723,13 +66476,14 @@ ${ESTIMATE_HINT}`,
         sales,
         wants,
         giveaways,
+        tradeOffers,
         bestSale,
         bestWant
       });
     }
     out.sort((a, b) => {
-      const da = marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
-      const db = marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+      const da = marketGroupHasBothPrices(a) || a.giveaways.length || a.tradeOffers.length ? 0 : 1;
+      const db = marketGroupHasBothPrices(b) || b.giveaways.length || b.tradeOffers.length ? 0 : 1;
       if (da !== db) return da - db;
       return a.name.localeCompare(b.name);
     });
@@ -65810,8 +66564,8 @@ ${ESTIMATE_HINT}`,
         }
         return a.name.localeCompare(b.name);
       }
-      const da = marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
-      const db = marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+      const da = marketGroupHasBothPrices(a) || a.giveaways.length || a.tradeOffers.length ? 0 : 1;
+      const db = marketGroupHasBothPrices(b) || b.giveaways.length || b.tradeOffers.length ? 0 : 1;
       if (da !== db) return da - db;
       return a.name.localeCompare(b.name);
     });
@@ -65825,8 +66579,8 @@ ${ESTIMATE_HINT}`,
       if (fa !== fb) return fa - fb;
       const nameCmp = a.name.localeCompare(b.name);
       if (nameCmp !== 0) return nameCmp;
-      const ga = a.giveaway ? 2 : a.buyOrder ? 1 : 0;
-      const gb = b.giveaway ? 2 : b.buyOrder ? 1 : 0;
+      const ga = a.giveaway ? 3 : a.tradeOffer ? 2 : a.buyOrder ? 1 : 0;
+      const gb = b.giveaway ? 3 : b.tradeOffer ? 2 : b.buyOrder ? 1 : 0;
       if (ga !== gb) return ga - gb;
       if (!a.buyOrder && !b.buyOrder && !a.giveaway && !b.giveaway) {
         return a.price - b.price;
@@ -65838,6 +66592,117 @@ ${ESTIMATE_HINT}`,
       return a.price - b.price;
     });
     return copy;
+  }
+  function tradeWantOfferFingerprint(row3) {
+    const w = row3.want;
+    return [
+      String(row3.merchant || "").toLowerCase(),
+      row3.name,
+      row3.level != null ? String(row3.level) : "",
+      row3.p != null ? String(row3.p) : "",
+      w ? w.name : "",
+      w && w.level != null ? String(w.level) : "",
+      w && w.p != null ? String(w.p) : ""
+    ].join("\0");
+  }
+  function tradeOfferAbsQty(row3) {
+    const w = row3.want;
+    return {
+      wantQ: w && w.q != null && w.q > 0 ? w.q | 0 : 1,
+      offerQ: row3.q != null && row3.q > 0 ? row3.q | 0 : 1
+    };
+  }
+  function tradeOfferIdentityKey(row3) {
+    const { wantQ, offerQ } = tradeOfferAbsQty(row3);
+    return [tradeWantOfferFingerprint(row3), String(wantQ), String(offerQ)].join(
+      "\0"
+    );
+  }
+  function rankTradeOfferRow(a, b) {
+    const rank = (r) => r.merchantStatus === "you" ? 0 : r.merchantStatus === "inRange" ? 1 : r.fromLive ? 2 : 3;
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    const aq = tradeOfferAbsQty(a).wantQ;
+    const bq = tradeOfferAbsQty(b).wantQ;
+    if (aq !== bq) return aq - bq;
+    return (b.lastRefreshedAt || 0) - (a.lastRefreshedAt || 0);
+  }
+  function groupIdenticalTradeOffers(rows) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    const order = [];
+    for (let i = 0; i < rows.length; i++) {
+      const row3 = rows[i];
+      if (!row3 || !row3.tradeOffer || !row3.want) continue;
+      const key = tradeOfferIdentityKey(row3);
+      if (!byKey[key]) {
+        byKey[key] = [];
+        order.push(key);
+      }
+      byKey[key].push(row3);
+    }
+    const out = [];
+    for (let i = 0; i < order.length; i++) {
+      const list = byKey[order[i]].slice();
+      list.sort(rankTradeOfferRow);
+      const row3 = list[0];
+      const { wantQ, offerQ } = tradeOfferAbsQty(row3);
+      out.push({
+        key: order[i],
+        row: row3,
+        count: list.length,
+        rows: list,
+        ratio: tradeOfferRatioParts(wantQ, offerQ)
+      });
+    }
+    out.sort((a, b) => {
+      const mc = a.row.merchant.localeCompare(b.row.merchant);
+      if (mc !== 0) return mc;
+      const an = a.row.want && a.row.want.name || "";
+      const bn = b.row.want && b.row.want.name || "";
+      const nc = an.localeCompare(bn);
+      if (nc !== 0) return nc;
+      const aq = tradeOfferAbsQty(a.row);
+      const bq = tradeOfferAbsQty(b.row);
+      if (aq.wantQ !== bq.wantQ) return aq.wantQ - bq.wantQ;
+      return aq.offerQ - bq.offerQ;
+    });
+    return out;
+  }
+  function groupTradeOffersByMerchant(rows) {
+    const stacks = groupIdenticalTradeOffers(rows);
+    const byMerch = /* @__PURE__ */ Object.create(null);
+    const order = [];
+    for (let i = 0; i < stacks.length; i++) {
+      const stack = stacks[i];
+      const key = String(stack.row.merchant || "").toLowerCase();
+      if (!byMerch[key]) {
+        byMerch[key] = [];
+        order.push(key);
+      }
+      byMerch[key].push(stack);
+    }
+    const out = [];
+    for (let i = 0; i < order.length; i++) {
+      const list = byMerch[order[i]];
+      const reps = list.map((s) => s.row);
+      reps.sort(rankTradeOfferRow);
+      let listingCount = 0;
+      for (let j = 0; j < list.length; j++) listingCount += list[j].count;
+      out.push({
+        key: order[i],
+        merchant: reps[0].merchant,
+        row: reps[0],
+        stacks: list,
+        listingCount
+      });
+    }
+    out.sort((a, b) => {
+      const rank = (g) => g.row.merchantStatus === "you" ? 0 : g.row.merchantStatus === "inRange" ? 1 : 2;
+      const d = rank(a) - rank(b);
+      if (d !== 0) return d;
+      return a.merchant.localeCompare(b.merchant);
+    });
+    return out;
   }
 
   // src/lib/market/marketBagStacks.ts
@@ -65885,9 +66750,26 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/lib/market/marketStandPackStacks.ts
+  function wantParts(want) {
+    if (typeof want === "string") {
+      return { name: want, level: "", p: "", q: "" };
+    }
+    if (!want || typeof want !== "object") {
+      return { name: "", level: "", p: "", q: "" };
+    }
+    return {
+      name: want.name ? String(want.name) : "",
+      level: want.level != null ? String(want.level) : "",
+      p: want.p != null && String(want.p) !== "" ? String(want.p) : "",
+      q: want.q != null && want.q > 0 ? String(want.q | 0) : ""
+    };
+  }
   function marketStandPackStackKey(slot) {
     const give = !!(slot.giveaway || slot.registry);
-    return (give ? "g" : slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (give ? "give" : slot.price != null ? String(slot.price) : "");
+    const w = wantParts(slot.want);
+    const trade = !give && !slot.b && !!w.name;
+    const offerQ = typeof slot.q === "number" && slot.q > 0 ? String(slot.q | 0) : "1";
+    return (give ? "g" : trade ? "t" : slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (give ? "give" : trade ? ["want", w.name, w.level, w.p, w.q, offerQ].join("\0") : slot.price != null ? String(slot.price) : "");
   }
   function listingQty(slot) {
     if (typeof slot.q === "number" && slot.q > 0) return slot.q | 0;
@@ -65910,9 +66792,11 @@ ${ESTIMATE_HINT}`,
         b: !!raw.b,
         giveaway: !!raw.giveaway,
         registry: raw.registry,
+        want: raw.want,
         level: typeof raw.level === "number" ? raw.level : void 0,
         p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
-        price: typeof raw.price === "number" ? raw.price : void 0
+        price: typeof raw.price === "number" ? raw.price : void 0,
+        q: typeof raw.q === "number" ? raw.q : void 0
       });
       const existing = byKey[key];
       if (!existing) {
@@ -66497,6 +67381,26 @@ ${ESTIMATE_HINT}`,
       joinGiveawayCommand(targetId, slotName, rid);
       return;
     }
+    if (isTradeOfferListing(slot) && slot.want) {
+      const want = typeof slot.want === "string" ? { name: slot.want } : slot.want;
+      const match = findBagMatchForTradeWant(want, observing.items);
+      if (!match) {
+        const need2 = formatTradeWantLabel(want) || want.name;
+        window.alert(`No matching ${need2} in bag for this trade offer.`);
+        return;
+      }
+      if (!rid) {
+        window.alert("Cannot trade \u2014 missing listing rid.");
+        return;
+      }
+      const need = formatTradeWantLabel(want) || want.name;
+      const ok = window.confirm(
+        `Trade for ${slot.name}? They want: ${need}.`
+      );
+      if (!ok) return;
+      tradeSwapCommand(targetId, slotName, rid, match.slot, match.item);
+      return;
+    }
     const obsGold = observing.gold;
     const cap = maxQ != null ? maxQ : 9999;
     const q = await showTradeQuantityDialog({
@@ -66591,11 +67495,16 @@ ${ESTIMATE_HINT}`,
     const customClick = typeof onSlotClick === "function";
     const inRange = !foreign || isInTradeRange(entity, obs);
     const bagMatch = foreign && filled && (slot == null ? void 0 : slot.b) ? findBagMatchForBuyOrder(slot, obs == null ? void 0 : obs.items) : null;
-    const canBuy = foreign && filled && slot && !slot.b && !isGiveawayListing(slot) && inRange;
+    const canBuy = foreign && filled && slot && !slot.b && !isGiveawayListing(slot) && !isTradeOfferListing(slot) && inRange;
     const canFulfill = foreign && filled && !!(slot == null ? void 0 : slot.b) && !!bagMatch && inRange;
     const canJoinGiveaway = foreign && filled && isGiveawayListing(slot) && !isJoinedGiveaway(slot, obs) && inRange;
+    const wantMatch = foreign && filled && isTradeOfferListing(slot) && slot.want ? findBagMatchForTradeWant(
+      typeof slot.want === "string" ? { name: slot.want } : slot.want,
+      obs == null ? void 0 : obs.items
+    ) : null;
+    const canSwap = foreign && filled && isTradeOfferListing(slot) && !!wantMatch && inRange;
     const canAfford = canBuy && slot && ((obs == null ? void 0 : obs.gold) == null || canAffordListing(slot, slot.q && slot.q > 0 ? slot.q : 1, obs.gold));
-    const disabled = foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway;
+    const disabled = foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway && !canSwap;
     const size = iconSize != null && Number.isFinite(iconSize) && iconSize > 0 ? iconSize : GEAR_SLOT_SIZE;
     const emptyPx = size + 6;
     const cellW = fluid ? void 0 : TRADE_SLOT_CELL;
@@ -66682,14 +67591,25 @@ ${ESTIMATE_HINT}`,
         ) : null
       ) : frame;
     }
-    const badge = filled ? slot.b ? "B" : isGiveawayListing(slot) ? "G" : "S" : null;
-    const priceLabel = (slot == null ? void 0 : slot.price) != null ? formatTradeGold(slot.price) : null;
+    const badge = filled ? slot.b ? "B" : isGiveawayListing(slot) ? "G" : isTradeOfferListing(slot) ? "&" : "S" : null;
+    const tradeWant = filled && isTradeOfferListing(slot) && slot.want ? typeof slot.want === "string" ? { name: slot.want } : slot.want : null;
+    const tradeWantLabel = tradeWant ? formatTradeWantLabel(tradeWant) || tradeWant.name || "item" : "";
+    const priceLabel = tradeWantLabel ? tradeWantLabel : (slot == null ? void 0 : slot.price) != null && !isTradeOfferListing(slot) && !isGiveawayListing(slot) ? formatTradeGold(slot.price) : isGiveawayListing(slot) ? "free" : null;
+    const priceIsTrade = !!tradeWantLabel;
     const tipParts = [];
     if (filled && (slot == null ? void 0 : slot.name)) {
       tipParts.push(itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }));
-      if (priceLabel) {
+      if (isTradeOfferListing(slot)) {
+        const want = typeof slot.want === "string" ? { name: slot.want } : slot.want;
         tipParts.push(
-          isGiveawayListing(slot) ? "Giveaway" : `${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`
+          "Ask " + (formatTradeWantLabel(want) || (want == null ? void 0 : want.name) || "item")
+        );
+        const offerQ = typeof slot.q === "number" && slot.q > 0 ? slot.q | 0 : 1;
+        const wantQ = want && typeof want === "object" && want.q != null && want.q > 0 ? want.q | 0 : 1;
+        tipParts.push("offer \xD7" + offerQ + " \xB7 " + wantQ + "\u2236" + offerQ);
+      } else if ((slot == null ? void 0 : slot.price) != null) {
+        tipParts.push(
+          isGiveawayListing(slot) ? "Giveaway" : `${slot.b ? "Buy" : "Sell"}: ${formatTradeGold(slot.price)}g`
         );
       } else if (isGiveawayListing(slot)) {
         tipParts.push("Giveaway");
@@ -66702,6 +67622,9 @@ ${ESTIMATE_HINT}`,
       if (canFulfill) tipParts.push("Click to sell");
       else if (slot.b && bagMatch) tipParts.push("Buy order \u2014 matching item in bag");
       else if (slot.b) tipParts.push("Buy order \u2014 no match in bag");
+      else if (canSwap) tipParts.push("Click to swap");
+      else if (isTradeOfferListing(slot) && foreign)
+        tipParts.push("Trade offer \u2014 no matching want in bag");
       else if (canBuy && canAfford) tipParts.push("Click to buy");
       else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
       else if (disabled) tipParts.push("(unavailable)");
@@ -66715,7 +67638,7 @@ ${ESTIMATE_HINT}`,
         );
       }
       tipParts.push(
-        customClick ? "Drag bag item to list \xB7 Shift+drag: giveaway" : "Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway"
+        customClick ? "Drag bag item to list \xB7 Shift+drag: giveaway \xB7 Ctrl+drag: trade offer" : "Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway \xB7 Ctrl+drag: trade offer"
       );
     }
     return e(
@@ -66827,8 +67750,8 @@ ${ESTIMATE_HINT}`,
               height: "14px",
               padding: "0 3px",
               boxSizing: "border-box",
-              background: badge === "B" ? "#1a3a4a" : badge === "G" ? "#3a1a4a" : "#3a2a10",
-              border: badge === "B" ? "1px solid #8fd4ff" : badge === "G" ? "1px solid #c98fff" : "1px solid #ffd700",
+              background: badge === "B" ? "#1a3a4a" : badge === "G" ? "#3a1a4a" : badge === "&" ? "#1a2434" : "#3a2a10",
+              border: badge === "B" ? "1px solid #8fd4ff" : badge === "G" ? "1px solid #c98fff" : badge === "&" ? "1px solid #8ea4c4" : "1px solid #ffd700",
               color: "#fff",
               fontSize: TYPE.microMin,
               lineHeight: "12px",
@@ -66844,10 +67767,10 @@ ${ESTIMATE_HINT}`,
       priceLabel ? e(
         "div",
         {
-          className: "comm-trade-slot-price",
+          className: "comm-trade-slot-price" + (priceIsTrade ? " is-trade" : ""),
           style: {
             fontSize: size <= 34 ? 10 : TYPE.microMin,
-            color: slot.b ? "#8fd4ff" : "#ffd700",
+            color: priceIsTrade ? "#8ea4c4" : slot.b ? "#8fd4ff" : isGiveawayListing(slot) ? "#c4b48e" : "#ffd700",
             width: "100%",
             maxWidth: fluid ? "100%" : `${cellW}px`,
             overflow: "hidden",
@@ -66858,9 +67781,9 @@ ${ESTIMATE_HINT}`,
             fontVariantNumeric: "tabular-nums",
             ...PIXEL_TEXT
           },
-          title: priceLabel
+          title: priceIsTrade ? "Ask " + priceLabel : priceLabel
         },
-        priceLabel
+        priceIsTrade ? "ask " + priceLabel : priceLabel
       ) : iconSize != null ? e(
         "div",
         {
@@ -67028,7 +67951,7 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-ph {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -67456,6 +68379,11 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-offer:hover { background: #101010; }
 .MarketPanel-offer.is-blocked { opacity: .55; }
+.MarketPanel-offer.is-own.is-trade {
+  opacity: 1;
+  background: #0e1014;
+}
+.MarketPanel-offer.is-own.is-trade:hover { background: #12161c; }
 .MarketPanel-offerTop {
   display: flex;
   align-items: baseline;
@@ -67470,6 +68398,9 @@ ${ESTIMATE_HINT}`,
   row-gap: 1px;
   margin-top: 3px;
   min-width: 0;
+}
+.MarketPanel-offerMeta.is-tradeMeta {
+  grid-template-columns: minmax(0, 1fr);
 }
 .MarketPanel-offerMetaCell {
   min-width: 0;
@@ -67648,6 +68579,11 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-chip.near { color: #7aaf6e; border-color: #3a5534; }
 .MarketPanel-chip.party { color: #7aa2d4; border-color: #3a5068; }
+.MarketPanel-chip.stack {
+  color: #8ea4c4;
+  border-color: #3a5068;
+  font-variant-numeric: tabular-nums;
+}
 .MarketPanel-price {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
@@ -67660,6 +68596,187 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel-offer.is-want .MarketPanel-price { color: #8ec4a8; }
 .MarketPanel-offer.is-give .MarketPanel-price { color: #c4b48e; }
+.MarketPanel-offer.is-trade .MarketPanel-price { color: #8ea4c4; }
+.MarketPanel-offer.is-trade {
+  padding: 5px 8px;
+}
+.MarketPanel-offer.is-trade.is-merchant {
+  padding: 6px 8px 5px;
+}
+.MarketPanel-tradeMerchantHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-width: 0;
+}
+.MarketPanel-tradeMerchantHead .MarketPanel-tradeCompactWho {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.MarketPanel-tradeMerchantHead > .MarketPanel-offerActs {
+  grid-column: 2;
+  grid-row: 1;
+  flex: 0 0 auto;
+}
+.MarketPanel-tradeMerchantHead > .MarketPanel-tradeCompactMeta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-width: none;
+}
+.MarketPanel-tradeMerchantStacks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+/* Fixed columns: give \xB7 name \xB7 ratio \xB7 get \xB7 slot count \xB7 action */
+.MarketPanel-tradeStackRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 44px 28px 3.6em auto;
+  align-items: center;
+  column-gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: #0a0a0a;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+.MarketPanel-tradeStackRow > .MarketPanel-tradeSwap {
+  display: contents;
+}
+.MarketPanel-tradeStackRow:hover {
+  border-color: #3a5068;
+  background: #10141a;
+}
+.MarketPanel-tradeStackRow.is-own:hover {
+  border-color: #6a5050;
+  background: #141010;
+}
+.MarketPanel-tradeStackWant {
+  min-width: 0;
+  font-size: 11px;
+  color: #8ea4c4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeStackCount {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #6a7a90;
+  text-align: right;
+  justify-self: stretch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeStackCount.is-empty {
+  visibility: hidden;
+}
+.MarketPanel-tradeStackRow > .MarketPanel-rowAct {
+  justify-self: end;
+}
+.MarketPanel-tradeCompact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.MarketPanel-tradeCompact .MarketPanel-offerActs {
+  margin-left: auto;
+  align-self: center;
+}
+.MarketPanel-tradeCompactBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.MarketPanel-tradeCompactWho {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  min-width: 0;
+  line-height: 1.2;
+}
+.MarketPanel-tradeCompactNames {
+  font-size: 11px;
+  line-height: 1.25;
+  color: #9a9a9a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeCompactNames .is-give { color: #8ea4c4; }
+.MarketPanel-tradeCompactNames .is-sep { color: #5a5a5a; }
+.MarketPanel-tradeCompactNames .is-get { color: #c4b48e; }
+.MarketPanel-tradeCompactMeta {
+  font-size: 10px;
+  line-height: 1.25;
+  color: #6a6a6a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeSwap {
+  display: grid;
+  grid-template-columns: 28px 44px 28px;
+  align-items: center;
+  justify-content: start;
+  column-gap: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.MarketPanel-tradeSwapSide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  flex: 0 0 auto;
+}
+.MarketPanel-tradeSwapMid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  flex: 0 0 auto;
+  padding: 0;
+  box-sizing: border-box;
+}
+.MarketPanel-tradeSwapRatio {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #8ea4c4;
+  letter-spacing: .02em;
+  line-height: 1;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeSwapArrow {
+  color: #5a6470;
+  font-size: 11px;
+  line-height: 1;
+}
 .MarketPanel-rowAct {
   appearance: none;
   border: 1px solid #555;
@@ -67688,6 +68805,11 @@ ${ESTIMATE_HINT}`,
   border-color: #5a5040;
   color: #c4b48e;
   background: #16140e;
+}
+.MarketPanel-rowAct.is-trade {
+  border-color: #3a5068;
+  color: #8ea4c4;
+  background: #10141a;
 }
 .MarketPanel-empty {
   padding: 36px 16px;
@@ -67774,31 +68896,74 @@ ${ESTIMATE_HINT}`,
   flex: 0 1 auto;
   max-height: 42%;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border-bottom: 1px solid var(--mk-line);
   background: #0c0c0c;
 }
 .MarketPanel-focusGivesList {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 .MarketPanel-focusGivesList .MarketPanel-offer {
   border-bottom: 1px solid var(--mk-line-soft);
 }
+.MarketPanel-focusTrades {
+  flex: 0 0 auto;
+  max-height: 42%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0c0c0c;
+}
+.MarketPanel-focusTradesList {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Header sits outside this scroller so rows can't peek above TRADES. */
+  overflow: auto;
+}
+.MarketPanel-focusTradesList .MarketPanel-offer {
+  border-bottom: 1px solid var(--mk-line-soft);
+}
+.MarketPanel-focusTradesList .MarketPanel-offer.is-trade {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
 .MarketPanel-focusTrade {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  align-items: start;
+  align-items: stretch;
 }
-.MarketPanel-focusCol { min-width: 0; }
+.MarketPanel-focusCol {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
+.MarketPanel-focusColList {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
 .MarketPanel-focusColH {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -67813,6 +68978,7 @@ ${ESTIMATE_HINT}`,
 .MarketPanel-focusColH .sells { color: #c97a5a; font-weight: 700; }
 .MarketPanel-focusColH .wants { color: #6aab8e; font-weight: 700; }
 .MarketPanel-focusColH .gives { color: #c4b48e; font-weight: 700; }
+.MarketPanel-focusColH .trades { color: #8ea4c4; font-weight: 700; }
 .MarketPanel-focusColH em {
   font-style: normal;
   color: var(--mk-muted);
@@ -67978,6 +69144,7 @@ ${ESTIMATE_HINT}`,
     if (row3.merchantStatus === "you") return "Yours";
     if (canActOnListing(row3)) {
       if (row3.giveaway) return "Join";
+      if (row3.tradeOffer) return "Swap";
       return row3.buyOrder ? "Sell" : "Buy";
     }
     return "Travel";
@@ -67990,7 +69157,8 @@ ${ESTIMATE_HINT}`,
       q: opts.q,
       bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : void 0,
       p: opts.p != null ? String(opts.p) : void 0,
-      title: opts.title
+      title: opts.title,
+      forceShowQ: opts.forceShowQ
     });
   }
   function nextBest(rows, side) {
@@ -67999,11 +69167,13 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (wantBuy) {
-        if (r.buyOrder || r.giveaway) continue;
+        if (r.buyOrder || r.giveaway || r.tradeOffer) continue;
+        if (!(r.price > 0)) continue;
         if (!canActOnListing(r)) continue;
         if (!best || r.price < best.price) best = r;
       } else {
-        if (!r.buyOrder || r.giveaway) continue;
+        if (!r.buyOrder || r.giveaway || r.tradeOffer) continue;
+        if (!(r.price > 0)) continue;
         if (!canActOnListing(r)) continue;
         if (!best || r.price > best.price) best = r;
       }
@@ -68176,7 +69346,7 @@ ${ESTIMATE_HINT}`,
       setCanAfford(next.canAfford);
       setHaveStock(next.haveStock);
     };
-    const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : facet === "giveaway" ? "giveaway" : "all";
+    const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : facet === "giveaway" ? "giveaway" : facet === "trade" ? "trade" : "all";
     let rows = filterMarketListings(flat, {
       query,
       side,
@@ -68265,7 +69435,7 @@ ${ESTIMATE_HINT}`,
       }
       return null;
     })();
-    const offerCard = (row3) => {
+    const offerCard = (row3, stackCount = 1) => {
       const own = row3.merchantStatus === "you";
       const statusChips = [];
       if (row3.merchantStatus === "inRange") {
@@ -68283,11 +69453,29 @@ ${ESTIMATE_HINT}`,
           e("span", { key: "p", className: "MarketPanel-chip party" }, "party")
         );
       }
+      if (stackCount > 1) {
+        statusChips.push(
+          e(
+            "span",
+            {
+              key: "x",
+              className: "MarketPanel-chip stack",
+              title: stackCount + " identical stand slots"
+            },
+            "\xD7" + stackCount
+          )
+        );
+      }
       const loc = offerLocationMeta(row3, observing, clock);
       const place = [loc.server, loc.map].filter(Boolean).join(" \xB7 ");
       const giveLeft = row3.giveaway ? formatGiveawayTimeLeft(row3.giveawayMinutes, row3.lastRefreshedAt, clock) : "";
-      const priceLabel = row3.giveaway ? giveLeft || "free" : formatTradeGold(row3.price);
-      const priceTitle = row3.giveaway ? giveLeft ? giveLeft + " left" : "Giveaway" : void 0;
+      const wantQ = row3.tradeOffer && row3.want && row3.want.q != null && row3.want.q > 0 ? row3.want.q | 0 : row3.tradeOffer ? 1 : 0;
+      const offerQ = row3.tradeOffer && row3.q != null && row3.q > 0 ? row3.q | 0 : row3.tradeOffer ? 1 : 0;
+      const ratioLabel = row3.tradeOffer ? formatTradeOfferRatio(wantQ, offerQ) : "";
+      const priceLabel = row3.giveaway ? giveLeft || "free" : row3.tradeOffer ? ratioLabel || "swap" : formatTradeGold(row3.price);
+      const priceTitle = row3.giveaway ? giveLeft ? giveLeft + " left" : "Giveaway" : row3.tradeOffer ? "Give " + (formatTradeWantLabel(
+        row3.want ? { ...row3.want, q: wantQ } : { name: "item", q: wantQ }
+      ) || "item") + ", get " + (offerQ > 1 ? offerQ + "\xD7 " : "") + itemLabel(row3.name, row3.level, row3.p) : void 0;
       const metaCell = (kind, text, title) => text ? e(
         "span",
         {
@@ -68301,7 +69489,7 @@ ${ESTIMATE_HINT}`,
       });
       const moreActions = [];
       if (own) {
-        if (!row3.giveaway) {
+        if (!row3.giveaway && !row3.tradeOffer) {
           moreActions.push({
             id: "delist",
             label: "Delist",
@@ -68312,7 +69500,7 @@ ${ESTIMATE_HINT}`,
             }
           });
         }
-      } else if (!row3.buyOrder && !row3.giveaway) {
+      } else if (!row3.buyOrder && !row3.giveaway && !row3.tradeOffer) {
         moreActions.push({
           id: "mirror",
           label: "Mirror price",
@@ -68344,12 +69532,12 @@ ${ESTIMATE_HINT}`,
         if (!moreActions.length) return;
         showMarketOfferMenu({ clientX, clientY, actions: moreActions });
       };
-      const primaryLabel = own ? row3.giveaway ? "Delist" : "Reprice" : actionLabel(row3);
-      const primaryClass = "MarketPanel-rowAct is-primary " + (own ? row3.giveaway ? "" : "is-sell" : row3.giveaway ? "is-give" : row3.buyOrder ? "is-sell" : "is-buy");
+      const primaryLabel = own ? row3.giveaway || row3.tradeOffer ? "Delist" : "Reprice" : actionLabel(row3);
+      const primaryClass = "MarketPanel-rowAct is-primary " + (own ? row3.giveaway || row3.tradeOffer ? "" : "is-sell" : row3.giveaway ? "is-give" : row3.tradeOffer ? "is-trade" : row3.buyOrder ? "is-sell" : "is-buy");
       const primaryDisabled = own ? !gearEditable : false;
       const onPrimary = (ev) => {
         if (own) {
-          if (row3.giveaway) {
+          if (row3.giveaway || row3.tradeOffer) {
             delistOwnMarketListing({ row: row3, observing });
           } else {
             void repriceOwnMarketListing({ row: row3, observing });
@@ -68358,6 +69546,151 @@ ${ESTIMATE_HINT}`,
         }
         void runOffer(row3, !!(ev && ev.shiftKey));
       };
+      const wantNameShort = row3.want ? itemLabel(row3.want.name, row3.want.level, row3.want.p) : "";
+      const offerNameShort = itemLabel(row3.name, row3.level, row3.p);
+      const tradePriceTitle = row3.tradeOffer ? own ? "You ask for " + (formatTradeWantLabel(
+        row3.want ? { ...row3.want, q: wantQ } : { name: "item", q: wantQ }
+      ) || "item") + ", offer " + (offerQ > 1 ? offerQ + "\xD7 " : "") + offerNameShort : priceTitle : priceTitle;
+      const actButtons = e(
+        "div",
+        { className: "MarketPanel-offerActs" },
+        moreActions.length ? e(
+          "button",
+          {
+            type: "button",
+            className: "MarketPanel-rowMore",
+            title: "More actions (also right-click)",
+            "aria-label": "More actions",
+            onClick: (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              const r = ev.currentTarget.getBoundingClientRect();
+              openMore(r.left, r.bottom + 2);
+            }
+          },
+          "\u22EF"
+        ) : null,
+        e(
+          "button",
+          {
+            type: "button",
+            className: primaryClass,
+            disabled: primaryDisabled,
+            title: own ? row3.giveaway || row3.tradeOffer ? "Unequip slot \u2014 returns item to bag" : "Change price (delist + relist)" : tradePriceTitle || void 0,
+            onClick: onPrimary
+          },
+          primaryLabel
+        )
+      );
+      if (row3.tradeOffer && row3.want) {
+        const metaBits = [place, loc.cache].filter(Boolean).join(" \xB7 ");
+        return e(
+          "div",
+          {
+            key: row3.merchant + ":" + row3.slot + ":" + (row3.rid || ""),
+            className: "MarketPanel-offer is-trade" + (own ? " is-own" : ""),
+            title: loc.cacheTip || tradePriceTitle,
+            onContextMenu: (ev) => {
+              if (!moreActions.length) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              openMore(ev.clientX, ev.clientY);
+            }
+          },
+          e(
+            "div",
+            { className: "MarketPanel-tradeCompact" },
+            e(
+              "div",
+              {
+                className: "MarketPanel-tradeSwap",
+                title: tradePriceTitle
+              },
+              e(
+                "div",
+                {
+                  className: "MarketPanel-tradeSwapSide is-give",
+                  title: (own ? "Ask \xB7 " : "Give \xB7 ") + (formatTradeWantLabel({ ...row3.want, q: wantQ }) || row3.want.name)
+                },
+                marketItemIcon(row3.want.name, {
+                  level: row3.want.level,
+                  p: row3.want.p,
+                  size: 26,
+                  q: wantQ,
+                  forceShowQ: true
+                })
+              ),
+              e(
+                "div",
+                { className: "MarketPanel-tradeSwapMid" },
+                ratioLabel ? e(
+                  "span",
+                  { className: "MarketPanel-tradeSwapRatio" },
+                  ratioLabel
+                ) : e(
+                  "span",
+                  {
+                    className: "MarketPanel-tradeSwapArrow",
+                    "aria-hidden": true
+                  },
+                  "\u2192"
+                )
+              ),
+              e(
+                "div",
+                {
+                  className: "MarketPanel-tradeSwapSide is-get",
+                  title: (own ? "Offer \xB7 " : "Get \xB7 ") + (offerQ > 1 ? offerQ + "\xD7 " : "") + offerNameShort
+                },
+                marketItemIcon(row3.name, {
+                  level: row3.level,
+                  p: row3.p,
+                  size: 26,
+                  q: offerQ,
+                  forceShowQ: true
+                })
+              )
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-tradeCompactBody" },
+              e(
+                "div",
+                { className: "MarketPanel-tradeCompactWho" },
+                e("span", { className: "MarketPanel-whoName" }, row3.merchant),
+                loc.distance ? e(
+                  "span",
+                  {
+                    className: "MarketPanel-whoDist",
+                    title: loc.distance
+                  },
+                  loc.distance
+                ) : null,
+                statusChips.length ? e("span", { className: "MarketPanel-chips" }, statusChips) : null
+              ),
+              e(
+                "div",
+                {
+                  className: "MarketPanel-tradeCompactNames",
+                  title: tradePriceTitle
+                },
+                e("span", { className: "is-give" }, wantNameShort),
+                e("span", { className: "is-sep" }, " \u2192 "),
+                e("span", { className: "is-get" }, offerNameShort)
+              ),
+              metaBits ? e(
+                "div",
+                {
+                  className: "MarketPanel-tradeCompactMeta",
+                  title: loc.cacheTip || metaBits
+                },
+                metaBits
+              ) : null
+            ),
+            actButtons
+          )
+        );
+      }
       return e(
         "div",
         {
@@ -68437,37 +69770,179 @@ ${ESTIMATE_HINT}`,
             },
             loc.cache || ""
           ),
+          actButtons
+        )
+      );
+    };
+    const tradeMerchantCard = (group) => {
+      const row3 = group.row;
+      const own = row3.merchantStatus === "you";
+      const loc = offerLocationMeta(row3, observing, clock);
+      const place = [loc.server, loc.map].filter(Boolean).join(" \xB7 ");
+      const metaBits = [place, loc.cache].filter(Boolean).join(" \xB7 ");
+      const statusChips = [];
+      if (row3.merchantStatus === "inRange") {
+        statusChips.push(
+          e("span", { key: "n", className: "MarketPanel-chip near" }, "near")
+        );
+      }
+      if (own) {
+        statusChips.push(
+          e("span", { key: "y", className: "MarketPanel-chip" }, "you")
+        );
+      }
+      if (friends[row3.merchant.toLowerCase()]) {
+        statusChips.push(
+          e("span", { key: "p", className: "MarketPanel-chip party" }, "party")
+        );
+      }
+      if (group.listingCount > 1) {
+        statusChips.push(
+          e(
+            "span",
+            {
+              key: "nlist",
+              className: "MarketPanel-chip stack",
+              title: group.listingCount + " stand slots"
+            },
+            group.listingCount + " slots"
+          )
+        );
+      }
+      const primaryLabel = own ? null : actionLabel(row3);
+      const onMerchantPrimary = (ev) => {
+        if (own) return;
+        void runOffer(row3, !!(ev && ev.shiftKey));
+      };
+      return e(
+        "div",
+        {
+          key: group.key,
+          className: "MarketPanel-offer is-trade is-merchant" + (own ? " is-own" : ""),
+          title: loc.cacheTip
+        },
+        e(
+          "div",
+          { className: "MarketPanel-tradeMerchantHead" },
           e(
             "div",
-            { className: "MarketPanel-offerActs" },
-            moreActions.length ? e(
-              "button",
-              {
-                type: "button",
-                className: "MarketPanel-rowMore",
-                title: "More actions (also right-click)",
-                "aria-label": "More actions",
-                onClick: (ev) => {
-                  ev.preventDefault();
-                  ev.stopPropagation();
-                  const r = ev.currentTarget.getBoundingClientRect();
-                  openMore(r.left, r.bottom + 2);
-                }
-              },
-              "\u22EF"
+            { className: "MarketPanel-tradeCompactWho" },
+            e("span", { className: "MarketPanel-whoName" }, group.merchant),
+            loc.distance ? e(
+              "span",
+              { className: "MarketPanel-whoDist", title: loc.distance },
+              loc.distance
             ) : null,
+            statusChips.length ? e("span", { className: "MarketPanel-chips" }, statusChips) : null
+          ),
+          primaryLabel ? e(
+            "div",
+            { className: "MarketPanel-offerActs" },
             e(
               "button",
               {
                 type: "button",
-                className: primaryClass,
-                disabled: primaryDisabled,
-                title: own ? row3.giveaway ? "Unequip slot \u2014 returns item to bag" : "Change price (delist + relist)" : void 0,
-                onClick: onPrimary
+                className: "MarketPanel-rowAct is-primary is-trade",
+                onClick: onMerchantPrimary
               },
               primaryLabel
             )
-          )
+          ) : null,
+          metaBits ? e("div", { className: "MarketPanel-tradeCompactMeta" }, metaBits) : null
+        ),
+        e(
+          "div",
+          { className: "MarketPanel-tradeMerchantStacks" },
+          group.stacks.map((stack) => {
+            const srow = stack.row;
+            const want = srow.want;
+            if (!want) return null;
+            const wantQ = want.q != null && want.q > 0 ? want.q | 0 : 1;
+            const offerQ = srow.q != null && srow.q > 0 ? srow.q | 0 : 1;
+            const ratio = stack.ratio || { give: wantQ, get: offerQ };
+            const ratioLabel = ratio.give + "\u2236" + ratio.get;
+            const wantName = itemLabel(want.name, want.level, want.p);
+            const offerName = itemLabel(srow.name, srow.level, srow.p);
+            const tip = wantName + " \u2192 " + offerName + " \xB7 " + wantQ + "\u2194" + offerQ + (ratioLabel && ratioLabel !== wantQ + "\u2236" + offerQ ? " \xB7 " + ratioLabel : "") + (stack.count > 1 ? " \xB7 " + stack.count + " slots" : "");
+            const onStackAct = (ev) => {
+              if (own) {
+                delistOwnMarketListing({ row: srow, observing });
+                return;
+              }
+              void runOffer(srow, !!(ev && ev.shiftKey));
+            };
+            const slotCountLabel = stack.count > 1 ? stack.count + " slots" : "";
+            const actLabel = own ? "Delist" : actionLabel(srow);
+            return e(
+              "div",
+              {
+                key: stack.key,
+                className: "MarketPanel-tradeStackRow" + (own ? " is-own" : ""),
+                title: tip
+              },
+              e(
+                "div",
+                { className: "MarketPanel-tradeSwap" },
+                e(
+                  "div",
+                  { className: "MarketPanel-tradeSwapSide is-give" },
+                  marketItemIcon(want.name, {
+                    level: want.level,
+                    p: want.p,
+                    size: 24,
+                    q: wantQ,
+                    forceShowQ: true,
+                    title: own ? "Ask \xB7 " + wantName : "Give " + wantName
+                  })
+                ),
+                e(
+                  "span",
+                  {
+                    className: "MarketPanel-tradeStackWant",
+                    title: own ? "Ask \xB7 " + wantName : "Give " + wantName
+                  },
+                  wantName
+                ),
+                e(
+                  "div",
+                  { className: "MarketPanel-tradeSwapMid" },
+                  e("span", { className: "MarketPanel-tradeSwapRatio" }, ratioLabel)
+                ),
+                e(
+                  "div",
+                  { className: "MarketPanel-tradeSwapSide is-get" },
+                  marketItemIcon(srow.name, {
+                    level: srow.level,
+                    p: srow.p,
+                    size: 24,
+                    q: offerQ,
+                    forceShowQ: true,
+                    title: own ? "Offer \xB7 " + offerName : "Get " + offerName
+                  })
+                )
+              ),
+              e(
+                "span",
+                {
+                  className: "MarketPanel-tradeStackCount" + (slotCountLabel ? "" : " is-empty"),
+                  title: slotCountLabel ? stack.count + " identical stand slots" : void 0,
+                  "aria-hidden": slotCountLabel ? void 0 : true
+                },
+                slotCountLabel
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-rowAct is-primary " + (own ? "" : "is-trade"),
+                  disabled: own ? !gearEditable : false,
+                  title: own ? "Unequip this stand slot" : tip,
+                  onClick: onStackAct
+                },
+                actLabel
+              )
+            );
+          })
         )
       );
     };
@@ -68549,6 +70024,13 @@ ${ESTIMATE_HINT}`,
                     className: "g" + (g.giveaways.length ? "" : " dim")
                   },
                   g.giveaways.length + "G"
+                ),
+                e(
+                  "span",
+                  {
+                    className: "t" + (g.tradeOffers.length ? "" : " dim")
+                  },
+                  g.tradeOffers.length + "T"
                 )
               )
             ),
@@ -68601,6 +70083,7 @@ ${ESTIMATE_HINT}`,
     );
     const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
     const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
+    const tradeMerchants = focusGroup ? groupTradeOffersByMerchant(focusGroup.tradeOffers) : [];
     const focusBankQ = focusGroup ? bankQtyFor(bankQtyIndex, {
       name: focusGroup.name,
       level: focusGroup.level,
@@ -68720,6 +70203,30 @@ ${ESTIMATE_HINT}`,
             }).map(offerCard)
           )
         ) : null,
+        tradeMerchants.length ? e(
+          "div",
+          {
+            key: "trades",
+            className: "MarketPanel-focusTrades"
+          },
+          e(
+            "div",
+            { className: "MarketPanel-focusColH" },
+            e("span", { className: "trades" }, "Trades"),
+            e(
+              "em",
+              {
+                title: (focusGroup ? focusGroup.tradeOffers.length : 0) + " listing" + ((focusGroup ? focusGroup.tradeOffers.length : 0) === 1 ? "" : "s") + " \xB7 " + tradeMerchants.length + " merchant" + (tradeMerchants.length === 1 ? "" : "s")
+              },
+              String(tradeMerchants.length)
+            )
+          ),
+          e(
+            "div",
+            { className: "MarketPanel-focusTradesList" },
+            tradeMerchants.map((g) => tradeMerchantCard(g))
+          )
+        ) : null,
         e(
           "div",
           { key: "trade", className: "MarketPanel-focusTrade" },
@@ -68732,10 +70239,14 @@ ${ESTIMATE_HINT}`,
               e("span", { className: "sells" }, "Sells"),
               e("em", null, String(focusGroup.sales.length))
             ),
-            focusGroup.sales.length ? focusGroup.sales.slice().sort((a, b) => a.price - b.price).map(offerCard) : e(
+            e(
               "div",
-              { className: "MarketPanel-focusColEmpty" },
-              "No sell offers"
+              { className: "MarketPanel-focusColList" },
+              focusGroup.sales.length ? focusGroup.sales.slice().sort((a, b) => a.price - b.price).map(offerCard) : e(
+                "div",
+                { className: "MarketPanel-focusColEmpty" },
+                "No sell offers"
+              )
             )
           ),
           e(
@@ -68747,10 +70258,14 @@ ${ESTIMATE_HINT}`,
               e("span", { className: "wants" }, "Wants"),
               e("em", null, String(focusGroup.wants.length))
             ),
-            focusGroup.wants.length ? focusGroup.wants.slice().sort((a, b) => b.price - a.price).map(offerCard) : e(
+            e(
               "div",
-              { className: "MarketPanel-focusColEmpty" },
-              "No buy orders"
+              { className: "MarketPanel-focusColList" },
+              focusGroup.wants.length ? focusGroup.wants.slice().sort((a, b) => b.price - a.price).map(offerCard) : e(
+                "div",
+                { className: "MarketPanel-focusColEmpty" },
+                "No buy orders"
+              )
             )
           )
         )
@@ -68833,7 +70348,7 @@ ${ESTIMATE_HINT}`,
         e(
           "div",
           { className: "MarketPanel-seg" },
-          ["all", "sale", "wanted", "giveaway"].map(
+          ["all", "sale", "wanted", "giveaway", "trade"].map(
             (f) => e(
               "button",
               {
@@ -68847,7 +70362,7 @@ ${ESTIMATE_HINT}`,
                   haveStock
                 })
               },
-              f === "all" ? "All" : f === "sale" ? "Selling" : f === "wanted" ? "Buying" : "Giveaways"
+              f === "all" ? "All" : f === "sale" ? "Selling" : f === "wanted" ? "Buying" : f === "giveaway" ? "Giveaways" : "Trades"
             )
           )
         ),
@@ -69063,6 +70578,25 @@ ${ESTIMATE_HINT}`,
                   }
                 },
                 "Giveaway"
+              ),
+              e(
+                "button",
+                {
+                  type: "button",
+                  className: "MarketPanel-btn MarketPanel-btn--ghost",
+                  disabled: !selectedBag || !gearEditable,
+                  title: "Offer selected bag stack for an item (trade offer) on first empty trade slot",
+                  onClick: (ev) => {
+                    if (!selectedBag) return;
+                    offerBagStackOnTrade({
+                      stack: selectedBag,
+                      observing,
+                      clientX: ev.clientX || 80,
+                      clientY: ev.clientY || 80
+                    });
+                  }
+                },
+                "Trade offer"
               ),
               e(
                 "button",

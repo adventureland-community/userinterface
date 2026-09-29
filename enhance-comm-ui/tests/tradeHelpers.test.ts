@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   formatTradeGold,
   formatGiveawayTimeLeft,
+  formatTradeOfferRatio,
+  tradeOfferRatioParts,
   findBagMatchForBuyOrder,
   isGiveawayListing,
   isInTradeRange,
@@ -67,5 +69,14 @@ describe("trade helpers", () => {
       formatGiveawayTimeLeft(2, now - 5 * 60_000, now),
       "<1m",
     );
+  });
+
+  it("reduces trade offer ratios", () => {
+    assert.deepEqual(tradeOfferRatioParts(100, 200), { give: 1, get: 2 });
+    assert.deepEqual(tradeOfferRatioParts(26, 26), { give: 1, get: 1 });
+    assert.deepEqual(tradeOfferRatioParts(335, 500), { give: 67, get: 100 });
+    assert.equal(tradeOfferRatioParts(0, 10), null);
+    assert.equal(formatTradeOfferRatio(100, 200), "1∶2");
+    assert.equal(formatTradeOfferRatio(26, 26), "1∶1");
   });
 });

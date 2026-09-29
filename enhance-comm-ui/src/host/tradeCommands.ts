@@ -139,6 +139,64 @@ export function buildTradeListScript(
   );
 }
 
+/**
+ * List a bag stack as an item-for-item trade offer (`trade_offer` / equip+want).
+ * `want` is the ask; `offerQ` is how many of the bag stack go on the stand.
+ */
+export function buildTradeOfferScript(
+  fp: ItemFingerprint,
+  tradeSlot: string,
+  want: { name: string; level?: number; p?: string | null; q?: number },
+  offerQ?: number,
+): string {
+  const slot = String(tradeSlot || "").trim();
+  const qty = offerQ != null ? Number(offerQ) | 0 : 1;
+  const wantName = want && want.name ? String(want.name).trim() : "";
+  if (!slot || !isTradeSlotName(slot)) {
+    return wrapCommandScript(
+      `game_log(${commLit("trade-offer · invalid slot")});`,
+    );
+  }
+  if (!wantName) {
+    return wrapCommandScript(
+      `game_log(${commLit("trade-offer · missing want")});`,
+    );
+  }
+  if (qty <= 0) {
+    return wrapCommandScript(
+      `game_log(${commLit("trade-offer · invalid quantity")});`,
+    );
+  }
+  const wantObj: Record<string, unknown> = { name: wantName };
+  if (want.level != null && want.level > 0) wantObj.level = want.level | 0;
+  if (want.p != null && want.p !== "") wantObj.p = String(want.p);
+  if (want.q != null && want.q > 0) wantObj.q = want.q | 0;
+  const wantJson = JSON.stringify(wantObj);
+  return wrapCommandScript(
+    [
+      resolveInvSlotJs(fp),
+      tradeListPrefaceJs(slot),
+      tradeSlotOccupiedGuardJs(
+        lit(slot),
+        commLogText("trade-offer · slot not empty"),
+      ),
+      `var __want=${wantJson};`,
+      `var __oq=${qty};`,
+      `if(typeof trade_offer==="function"){`,
+      `try{trade_offer(${lit(slot)},__slot,__want,__oq);`,
+      `game_log(${commLit("trade-offer ok → " + slot)});`,
+      `}catch(__e){game_log(${commLit("trade-offer failed → " + slot)}+(__e&&__e.reason?(" · "+__e.reason):""));}`,
+      `}else{`,
+      socketEmitJs(
+        "equip",
+        "{q:__oq,slot:" + lit(slot) + ",num:__slot,want:__want}",
+      ),
+      `game_log(${commLit("trade-offer emit → " + slot)});`,
+      `}`,
+    ].join(""),
+  );
+}
+
 export function buildTradeShowScript(): string {
   return wrapCommandScript(tradeShowEmitJs());
 }
@@ -309,6 +367,42 @@ export function buildJoinGiveawayScript(
   );
 }
 
+/** Complete a live item-for-item stand offer (`trade_swap`). */
+export function buildTradeSwapScript(
+  targetId: string,
+  tradeSlot: string,
+  rid: string,
+  bagSlot: number,
+  item: { name?: string; level?: number; p?: string; q?: number },
+): string {
+  const id = String(targetId || "").trim();
+  const slot = normalizeTradeSlot(tradeSlot);
+  const listingRid = String(rid || "").trim();
+  const num = Number(bagSlot) | 0;
+  if (!id || !slot || !listingRid || num < 0) {
+    return wrapCommandScript(`game_log("Trade swap failed — missing target or bag slot");`);
+  }
+  const itemJson = JSON.stringify(item || null);
+  return wrapCommandScript(
+    [
+      `var __id=${lit(id)};`,
+      `var __slot=${lit(slot)};`,
+      `var __rid=${lit(listingRid)};`,
+      `var __num=${num};`,
+      `var __item=${itemJson};`,
+      `var __bag=character.items[__num];`,
+      `if(!__bag){game_log("Trade swap failed — bag slot empty");return;}`,
+      `if(typeof trade_swap==="function"){trade_swap(__slot,__id,__rid,__num,__item||__bag);}`,
+      `else{`,
+      socketEmitJs(
+        "trade_swap",
+        "{slot:__slot,id:__id,rid:__rid,num:__num,item:__item||__bag}",
+      ),
+      `}`,
+    ].join(""),
+  );
+}
+
 export function buildGiveawayScript(
   tradeSlot: string,
   fp: ItemFingerprint,
@@ -464,6 +558,20 @@ export function joinGiveawayCommand(
   );
 }
 
+export function tradeSwapCommand(
+  targetId: string,
+  tradeSlot: string,
+  rid: string,
+  bagSlot: number,
+  item: { name?: string; level?: number; p?: string; q?: number },
+): boolean {
+  const script = buildTradeSwapScript(targetId, tradeSlot, rid, bagSlot, item);
+  const ok = emitObserverCommand(script, `trade-swap ${tradeSlot}`);
+  if (!ok) return false;
+  scheduleBagRefresh();
+  return true;
+}
+
 export function giveawayCommand(
   tradeSlot: string,
   fp: ItemFingerprint,
@@ -566,6 +674,22 @@ export function tradeListCommand(
   );
   if (!ok) return false;
   rememberTradePrice(fp.name, price, q ?? fp.q ?? 1);
+  scheduleBagRefresh();
+  return true;
+}
+
+export function tradeOfferCommand(
+  fp: ItemFingerprint,
+  tradeSlot: string,
+  want: { name: string; level?: number; p?: string | null; q?: number },
+  offerQ?: number,
+): boolean {
+  const script = buildTradeOfferScript(fp, tradeSlot, want, offerQ);
+  const ok = emitObserverCommand(
+    script,
+    `trade-offer ${tradeSlot} ${fp.name}`,
+  );
+  if (!ok) return false;
   scheduleBagRefresh();
   return true;
 }

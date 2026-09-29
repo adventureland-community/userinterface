@@ -84,6 +84,14 @@ export type EntityLike = {
   team?: string;
 };
 
+/** Item-for-item stand ask (live `slot.want` / `trade_offer`). */
+export type TradeWantLike = {
+  name: string;
+  level?: number;
+  q?: number;
+  p?: string | null;
+};
+
 export type SlotLike = {
   name?: string;
   level?: number;
@@ -93,6 +101,8 @@ export type SlotLike = {
   giveaway?: boolean | number;
   /** Giveaway entrant registry — id → name. */
   registry?: Record<string, string>;
+  /** Item asked in exchange (trade offer), not gold. */
+  want?: TradeWantLike | string;
   rid?: string;
   skin?: string;
   /** Title / shiny / etc. — used by calculate_item_properties. */

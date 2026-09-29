@@ -53,7 +53,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commUi",
     label: "Comm UI",
     description:
-      "Guided tours (replay / reset), Comm UI What's New, and Adventure.land server update notes.",
+      "Guided tours, What's New, server notes, and factory-reset local Comm UI data.",
     countMatches: countCommUiSettingsMatches,
     render: (props) =>
       e(CommUiSettingsPane, {

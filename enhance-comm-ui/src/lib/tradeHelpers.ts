@@ -129,6 +129,98 @@ export function isGiveawayListing(slot: SlotLike | null | undefined): boolean {
   return !!(slot && (slot.giveaway || slot.registry));
 }
 
+/** True when the stand slot is an item-for-item trade offer. */
+export function isTradeOfferListing(slot: SlotLike | null | undefined): boolean {
+  if (!slot || slot.b || isGiveawayListing(slot)) return false;
+  if (slot.want == null) return false;
+  if (typeof slot.want === "string") return !!slot.want.trim();
+  return !!(slot.want && slot.want.name);
+}
+
+/**
+ * Stock `trade_want_matches`: same name; level is a floor; title must match when set;
+ * stack qty must cover want.q.
+ */
+export function tradeWantMatches(
+  want: { name: string; level?: number; p?: string | null; q?: number } | null | undefined,
+  item: { name?: string; level?: number; p?: string | null; q?: number } | null | undefined,
+): boolean {
+  if (!want || !item || item.name !== want.name) return false;
+  if (want.level != null && (item.level || 0) < want.level) return false;
+  if (want.p && item.p !== want.p) return false;
+  if ((item.q || 1) < (want.q || 1)) return false;
+  return true;
+}
+
+/** First bag slot that satisfies a trade-offer want. */
+export function findBagMatchForTradeWant(
+  want: { name: string; level?: number; p?: string | null; q?: number },
+  items: Array<{ name?: string; level?: number; p?: string; q?: number } | null> | null | undefined,
+): { slot: number; q: number; item: { name?: string; level?: number; p?: string; q?: number } } | null {
+  if (!items) return null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it || !tradeWantMatches(want, it)) continue;
+    return { slot: i, q: it.q != null && it.q > 0 ? it.q | 0 : 1, item: it };
+  }
+  return null;
+}
+
+/** Short label for a want (name +level / title), for Market cards. */
+export function formatTradeWantLabel(
+  want: { name: string; level?: number; p?: string | null; q?: number } | null | undefined,
+): string {
+  if (!want || !want.name) return "";
+  const G = typeof window !== "undefined" ? window.G : undefined;
+  const def = G && G.items && G.items[want.name];
+  let label =
+    def && typeof def.name === "string" && def.name ? String(def.name) : want.name;
+  if (want.p && G && (G as any).titles && (G as any).titles[want.p] && (G as any).titles[want.p].title) {
+    label = String((G as any).titles[want.p].title) + " " + label;
+  }
+  if (want.level != null) label += " +" + want.level;
+  if (want.q != null && want.q > 1) label = want.q + "× " + label;
+  return label;
+}
+
+/** Greatest common divisor for positive integers (trade ratio simplify). */
+export function positiveGcd(a: number, b: number): number {
+  let x = Math.abs(a | 0);
+  let y = Math.abs(b | 0);
+  if (!x || !y) return 1;
+  while (y) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x || 1;
+}
+
+/**
+ * Whole-listing swap: give `want.q` of want, get `offerQ` of the stand item.
+ * Returns reduced ratio parts when both sides are countable, else null.
+ */
+export function tradeOfferRatioParts(
+  wantQ: number | null | undefined,
+  offerQ: number | null | undefined,
+): { give: number; get: number } | null {
+  const give = wantQ != null && wantQ > 0 ? wantQ | 0 : 0;
+  const get = offerQ != null && offerQ > 0 ? offerQ | 0 : 0;
+  if (!(give > 0) || !(get > 0)) return null;
+  const g = positiveGcd(give, get);
+  return { give: give / g, get: get / g };
+}
+
+/** Compact `1∶2` label when both quantities are known. */
+export function formatTradeOfferRatio(
+  wantQ: number | null | undefined,
+  offerQ: number | null | undefined,
+): string {
+  const parts = tradeOfferRatioParts(wantQ, offerQ);
+  if (!parts) return "";
+  return parts.give + "∶" + parts.get;
+}
+
 /**
  * Remaining giveaway minutes from a slot snapshot.
  * Adjusts by elapsed wall time since lastRefreshedAt when present.

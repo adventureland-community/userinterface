@@ -112,6 +112,71 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.11.0",
+    title: "0.11.0",
+    date: "2026-09-27",
+    summary:
+      "Market Trade Offers: browse, swap, and post item-for-item stands after adventure.land’s 27/09 deploy.",
+    highlights: [
+      {
+        label: "Trade Offers in Market",
+        detail:
+          "Live stands can ask for an item instead of gold (slot.want). Catalog and Focus keep those listings, Trades facet / is:trade filters them, and Swap completes trade_swap when you have a matching bag stack.",
+        kind: "feature",
+      },
+      {
+        label: "Post from Market You",
+        detail:
+          "Select a bag stack → Trade offer (or bag menu Offer for trade… / Ctrl+drag onto an empty stand slot). Pick what you want, optional min level / title / qty, then trade_offer lists it.",
+        kind: "feature",
+      },
+      {
+        label: "Live client 27/09",
+        detail:
+          "adventure.land v17397 shipped rare monsters, accessories, Trade Offers, and new conditions. ECU no longer drops want-slots as invalid (they have no gold price).",
+        kind: "fix",
+      },
+      {
+        label: "Catalog keeps want",
+        detail:
+          "pull_merchants already returns slot.want; Market was stripping tradeOffer/want when writing the rid cache, so Trades looked empty and Focus showed price-0 sells. Cache round-trip and Focus Trades strip keep swap info.",
+        kind: "fix",
+      },
+      {
+        label: "No fake free sales",
+        detail:
+          "Listings with price 0 and no want are dropped (not Buy best · 0). Live soft sync that omits want no longer downgrades a known trade offer.",
+        kind: "fix",
+      },
+      {
+        label: "Factory reset",
+        detail:
+          "Settings → Comm UI → Reset everything… clears ECU localStorage/session keys plus market, mail, bank, and meter IndexedDB caches, then reloads. Leaves your adventure.land account alone.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Trades facet",
+        detail:
+          "Market All | Selling | Buying | Giveaways | Trades. Search is:trade / is:swap / is:offer.",
+        kind: "ui",
+      },
+      {
+        label: "Focus Trades strip",
+        detail:
+          "Item Focus groups trades by merchant: one Travel card, ratio lines underneath (same ratio at different stack sizes collapses with ×N). Icons show the reduced ratio qty.",
+        kind: "ui",
+      },
+      {
+        label: "Stand tips",
+        detail:
+          "Own trade-offer cells show & and delist like other listings; foreign ones Swap when your bag matches want.",
+        kind: "ui",
+      },
+    ],
+  },
+  {
     id: "0.10.1",
     title: "0.10.1",
     date: "2026-09-23",

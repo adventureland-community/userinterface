@@ -11,15 +11,19 @@ import {
   joinGiveawayCommand,
   tradeFulfillCommand,
   tradePurchaseCommand,
+  tradeSwapCommand,
 } from "../../host/tradeCommands";
 import {
   canAffordListing,
   confirmTradeFulfill,
   confirmTradePurchase,
   findBagMatchForBuyOrder,
+  findBagMatchForTradeWant,
   formatTradeGold,
+  formatTradeWantLabel,
   isInTradeRange,
   isGiveawayListing,
+  isTradeOfferListing,
   isJoinedGiveaway,
 } from "../../lib/tradeHelpers";
 import { rememberTradePrice } from "../../lib/tradePriceMemory";
@@ -69,6 +73,28 @@ async function handleForeignTradeBuy(
       return;
     }
     joinGiveawayCommand(targetId, slotName, rid);
+    return;
+  }
+
+  if (isTradeOfferListing(slot) && slot.want) {
+    const want =
+      typeof slot.want === "string" ? { name: slot.want } : slot.want;
+    const match = findBagMatchForTradeWant(want, observing.items);
+    if (!match) {
+      const need = formatTradeWantLabel(want) || want.name;
+      window.alert(`No matching ${need} in bag for this trade offer.`);
+      return;
+    }
+    if (!rid) {
+      window.alert("Cannot trade — missing listing rid.");
+      return;
+    }
+    const need = formatTradeWantLabel(want) || want.name;
+    const ok = window.confirm(
+      `Trade for ${slot.name}? They want: ${need}.`,
+    );
+    if (!ok) return;
+    tradeSwapCommand(targetId, slotName, rid, match.slot, match.item);
     return;
   }
 

@@ -96,6 +96,30 @@ export function extractMerchantChars(ct: unknown): {
   return { chars: [] };
 }
 
+/** Normalize live `slot.want` (string name or { name, level?, p?, q? }). */
+export function normalizeTradeWant(
+  raw: unknown,
+): import("../../host/globals").TradeWantLike | null {
+  if (typeof raw === "string") {
+    const name = raw.trim();
+    return name ? { name } : null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const w = raw as Record<string, unknown>;
+  const name = typeof w.name === "string" ? w.name.trim() : "";
+  if (!name) return null;
+  const want: import("../../host/globals").TradeWantLike = { name };
+  if (typeof w.level === "number" && Number.isFinite(w.level)) {
+    want.level = w.level;
+  }
+  if (typeof w.q === "number" && Number.isFinite(w.q) && w.q > 0) {
+    want.q = w.q | 0;
+  }
+  if (typeof w.p === "string") want.p = w.p;
+  else if (w.p === null) want.p = null;
+  return want;
+}
+
 export function normalizeCatalogSlot(
   slotName: string,
   raw: unknown,
@@ -118,14 +142,21 @@ export function normalizeCatalogSlot(
     s.giveaway === true ||
     !!registry ||
     giveawayNames.length > 0;
+  const want = !giveaway && s.b !== true ? normalizeTradeWant(s.want) : null;
+  const tradeOffer = !!want;
   const priceRaw = typeof s.price === "number" ? s.price : Number(s.price);
-  const price = Number.isFinite(priceRaw) ? priceRaw : giveaway ? 0 : NaN;
+  const price =
+    Number.isFinite(priceRaw) ? priceRaw : giveaway || tradeOffer ? 0 : NaN;
   if (!Number.isFinite(price)) return null;
+  // Gold sales need a positive price (stock UI uses truthy `actual.price`).
+  // price:0 without want is usually a trade_offer whose want never made the
+  // catalog/live payload — never treat it as a free sale.
+  if (!giveaway && !tradeOffer && s.b !== true && !(price > 0)) return null;
   const listing: MarketSlotListing = {
     slot: slotName,
     name,
     price,
-    buyOrder: !giveaway && s.b === true,
+    buyOrder: !giveaway && !tradeOffer && s.b === true,
   };
   if (giveaway) {
     listing.giveaway = true;
@@ -138,6 +169,10 @@ export function normalizeCatalogSlot(
     } else if (registry) {
       listing.giveawayEntries = Object.keys(registry).length;
     }
+  }
+  if (tradeOffer && want) {
+    listing.tradeOffer = true;
+    listing.want = want;
   }
   if (typeof s.rid === "string" && s.rid) listing.rid = s.rid;
   if (typeof s.q === "number") listing.q = s.q;

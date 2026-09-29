@@ -9,6 +9,7 @@ import {
   tradeFulfillCommand,
   tradeListCommand,
   tradePurchaseCommand,
+  tradeSwapCommand,
   joinGiveawayCommand,
   giveawayCommand,
   tradeRepriceCommand,
@@ -18,7 +19,9 @@ import {
   confirmTradeFulfill,
   confirmTradePurchase,
   findBagMatchForBuyOrder,
+  findBagMatchForTradeWant,
   formatTradeGold,
+  formatTradeWantLabel,
 } from "../../lib/tradeHelpers";
 import type { MarketListingRow } from "../../lib/market/marketTypes";
 import type { MarketBagStack } from "../../lib/market/marketBagStacks";
@@ -27,6 +30,7 @@ import {
   showTradePriceDialog,
   showTradeQuantityDialog,
 } from "../../ui/trade/tradePromptDialog";
+import { showTradeOfferWantPicker } from "../../ui/gear/tradeWishlistPicker";
 import {
   observingTradeSlotNames,
   tradeSlotIsEmpty,
@@ -131,6 +135,27 @@ export async function actOnMarketListing(opts: {
 
   if (row.giveaway) {
     return joinGiveawayCommand(targetId, row.slot, row.rid);
+  }
+
+  if (row.tradeOffer && row.want) {
+    const match = findBagMatchForTradeWant(row.want, observing.items);
+    if (!match) {
+      const need = formatTradeWantLabel(row.want) || row.want.name;
+      window.alert(`No matching ${need} in bag for this trade offer.`);
+      return false;
+    }
+    const need = formatTradeWantLabel(row.want) || row.want.name;
+    const ok = window.confirm(
+      `Trade ${formatTradeWantLabel({ name: match.item.name || row.want.name, level: match.item.level, p: match.item.p, q: row.want.q || 1 }) || match.item.name} for ${row.name}? They want: ${need}.`,
+    );
+    if (!ok) return false;
+    return tradeSwapCommand(
+      targetId,
+      row.slot,
+      row.rid,
+      match.slot,
+      match.item,
+    );
   }
 
   if (row.buyOrder) {
@@ -344,6 +369,35 @@ export async function giveawayBagStackOnTrade(opts: {
   return giveawayCommand(tradeSlot, fp, picked.minutes, picked.q);
 }
 
+/** Open catalog picker to post an item-for-item trade offer from a bag stack. */
+export function offerBagStackOnTrade(opts: {
+  stack: MarketBagStack;
+  observing: EntityLike | null | undefined;
+  clientX?: number;
+  clientY?: number;
+}): boolean {
+  const { stack, observing } = opts;
+  if (!observing) {
+    window.alert("Observe a character first.");
+    return false;
+  }
+  const tradeSlot = firstEmptyTradeSlot(observing);
+  if (!tradeSlot) {
+    window.alert("No empty trade slot — open stand or free a slot.");
+    return false;
+  }
+  const fp = fingerprintFromBagStack(stack);
+  const maxQ = stack.q > 0 ? stack.q | 0 : 1;
+  showTradeOfferWantPicker({
+    tradeSlot,
+    fp,
+    offeredMaxQ: maxQ,
+    clientX: opts.clientX != null ? opts.clientX : 80,
+    clientY: opts.clientY != null ? opts.clientY : 80,
+  });
+  return true;
+}
+
 /** Reprice your own Market Focus listing (fingerprint-aware unequip+relist). */
 export async function repriceOwnMarketListing(opts: {
   row: MarketListingRow;
@@ -353,6 +407,10 @@ export async function repriceOwnMarketListing(opts: {
   if (!isOwnMarketListing(row)) return false;
   if (row.giveaway) {
     window.alert("Giveaways cannot be repriced — delist and post again.");
+    return false;
+  }
+  if (row.tradeOffer) {
+    window.alert("Trade offers cannot be repriced — delist and post again.");
     return false;
   }
   const slot = liveSlotForOwnListing(observing, row);

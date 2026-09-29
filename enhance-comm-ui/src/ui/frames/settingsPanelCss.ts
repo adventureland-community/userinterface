@@ -399,6 +399,15 @@ export const SETTINGS_PANEL_CSS = `
   border-color: #444;
   color: #aaa;
 }
+.ecu-settings-reset.is-danger {
+  border-color: #6a3030;
+  color: #e0a0a0;
+  background: #1a1010;
+}
+.ecu-settings-reset.is-danger:hover {
+  border-color: #8a4040;
+  color: #f0c0c0;
+}
 .ecu-settings-reset:disabled {
   opacity: 0.35;
   cursor: default;

@@ -152,7 +152,7 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-ph {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -580,6 +580,11 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-offer:hover { background: #101010; }
 .MarketPanel-offer.is-blocked { opacity: .55; }
+.MarketPanel-offer.is-own.is-trade {
+  opacity: 1;
+  background: #0e1014;
+}
+.MarketPanel-offer.is-own.is-trade:hover { background: #12161c; }
 .MarketPanel-offerTop {
   display: flex;
   align-items: baseline;
@@ -594,6 +599,9 @@ export const MARKET_PANEL_CSS = `
   row-gap: 1px;
   margin-top: 3px;
   min-width: 0;
+}
+.MarketPanel-offerMeta.is-tradeMeta {
+  grid-template-columns: minmax(0, 1fr);
 }
 .MarketPanel-offerMetaCell {
   min-width: 0;
@@ -772,6 +780,11 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-chip.near { color: #7aaf6e; border-color: #3a5534; }
 .MarketPanel-chip.party { color: #7aa2d4; border-color: #3a5068; }
+.MarketPanel-chip.stack {
+  color: #8ea4c4;
+  border-color: #3a5068;
+  font-variant-numeric: tabular-nums;
+}
 .MarketPanel-price {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
@@ -784,6 +797,187 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel-offer.is-want .MarketPanel-price { color: #8ec4a8; }
 .MarketPanel-offer.is-give .MarketPanel-price { color: #c4b48e; }
+.MarketPanel-offer.is-trade .MarketPanel-price { color: #8ea4c4; }
+.MarketPanel-offer.is-trade {
+  padding: 5px 8px;
+}
+.MarketPanel-offer.is-trade.is-merchant {
+  padding: 6px 8px 5px;
+}
+.MarketPanel-tradeMerchantHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  min-width: 0;
+}
+.MarketPanel-tradeMerchantHead .MarketPanel-tradeCompactWho {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.MarketPanel-tradeMerchantHead > .MarketPanel-offerActs {
+  grid-column: 2;
+  grid-row: 1;
+  flex: 0 0 auto;
+}
+.MarketPanel-tradeMerchantHead > .MarketPanel-tradeCompactMeta {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-width: none;
+}
+.MarketPanel-tradeMerchantStacks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+/* Fixed columns: give · name · ratio · get · slot count · action */
+.MarketPanel-tradeStackRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 44px 28px 3.6em auto;
+  align-items: center;
+  column-gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: #0a0a0a;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+  min-height: 32px;
+  box-sizing: border-box;
+}
+.MarketPanel-tradeStackRow > .MarketPanel-tradeSwap {
+  display: contents;
+}
+.MarketPanel-tradeStackRow:hover {
+  border-color: #3a5068;
+  background: #10141a;
+}
+.MarketPanel-tradeStackRow.is-own:hover {
+  border-color: #6a5050;
+  background: #141010;
+}
+.MarketPanel-tradeStackWant {
+  min-width: 0;
+  font-size: 11px;
+  color: #8ea4c4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeStackCount {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: #6a7a90;
+  text-align: right;
+  justify-self: stretch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeStackCount.is-empty {
+  visibility: hidden;
+}
+.MarketPanel-tradeStackRow > .MarketPanel-rowAct {
+  justify-self: end;
+}
+.MarketPanel-tradeCompact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.MarketPanel-tradeCompact .MarketPanel-offerActs {
+  margin-left: auto;
+  align-self: center;
+}
+.MarketPanel-tradeCompactBody {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.MarketPanel-tradeCompactWho {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  min-width: 0;
+  line-height: 1.2;
+}
+.MarketPanel-tradeCompactNames {
+  font-size: 11px;
+  line-height: 1.25;
+  color: #9a9a9a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeCompactNames .is-give { color: #8ea4c4; }
+.MarketPanel-tradeCompactNames .is-sep { color: #5a5a5a; }
+.MarketPanel-tradeCompactNames .is-get { color: #c4b48e; }
+.MarketPanel-tradeCompactMeta {
+  font-size: 10px;
+  line-height: 1.25;
+  color: #6a6a6a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeSwap {
+  display: grid;
+  grid-template-columns: 28px 44px 28px;
+  align-items: center;
+  justify-content: start;
+  column-gap: 4px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.MarketPanel-tradeSwapSide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  flex: 0 0 auto;
+}
+.MarketPanel-tradeSwapMid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  min-width: 44px;
+  flex: 0 0 auto;
+  padding: 0;
+  box-sizing: border-box;
+}
+.MarketPanel-tradeSwapRatio {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #8ea4c4;
+  letter-spacing: .02em;
+  line-height: 1;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-tradeSwapArrow {
+  color: #5a6470;
+  font-size: 11px;
+  line-height: 1;
+}
 .MarketPanel-rowAct {
   appearance: none;
   border: 1px solid #555;
@@ -812,6 +1006,11 @@ export const MARKET_PANEL_CSS = `
   border-color: #5a5040;
   color: #c4b48e;
   background: #16140e;
+}
+.MarketPanel-rowAct.is-trade {
+  border-color: #3a5068;
+  color: #8ea4c4;
+  background: #10141a;
 }
 .MarketPanel-empty {
   padding: 36px 16px;
@@ -898,31 +1097,74 @@ export const MARKET_PANEL_CSS = `
   flex: 0 1 auto;
   max-height: 42%;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border-bottom: 1px solid var(--mk-line);
   background: #0c0c0c;
 }
 .MarketPanel-focusGivesList {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 .MarketPanel-focusGivesList .MarketPanel-offer {
   border-bottom: 1px solid var(--mk-line-soft);
 }
+.MarketPanel-focusTrades {
+  flex: 0 0 auto;
+  max-height: 42%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--mk-line);
+  background: #0c0c0c;
+}
+.MarketPanel-focusTradesList {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Header sits outside this scroller so rows can't peek above TRADES. */
+  overflow: auto;
+}
+.MarketPanel-focusTradesList .MarketPanel-offer {
+  border-bottom: 1px solid var(--mk-line-soft);
+}
+.MarketPanel-focusTradesList .MarketPanel-offer.is-trade {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
 .MarketPanel-focusTrade {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  align-items: start;
+  align-items: stretch;
 }
-.MarketPanel-focusCol { min-width: 0; }
+.MarketPanel-focusCol {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .MarketPanel-focusCol--sells { border-right: 1px solid var(--mk-line); }
+.MarketPanel-focusColList {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
 .MarketPanel-focusColH {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 1;
+  flex: 0 0 auto;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -937,6 +1179,7 @@ export const MARKET_PANEL_CSS = `
 .MarketPanel-focusColH .sells { color: #c97a5a; font-weight: 700; }
 .MarketPanel-focusColH .wants { color: #6aab8e; font-weight: 700; }
 .MarketPanel-focusColH .gives { color: #c4b48e; font-weight: 700; }
+.MarketPanel-focusColH .trades { color: #8ea4c4; font-weight: 700; }
 .MarketPanel-focusColH em {
   font-style: normal;
   color: var(--mk-muted);

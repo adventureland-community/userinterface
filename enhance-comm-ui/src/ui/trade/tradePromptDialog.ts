@@ -931,5 +931,279 @@ export function showWishlistLevelDialog(
   });
 }
 
+export type TradeOfferDetailsResult = {
+  want: { name: string; level?: number; p?: string | null; q?: number };
+  offerQ: number;
+};
+
+function titleChoicesForItem(
+  itemKey: string,
+): Array<{ id: string | null; label: string }> {
+  const out: Array<{ id: string | null; label: string }> = [
+    { id: null, label: "Any" },
+  ];
+  const G =
+    typeof window !== "undefined"
+      ? (window.G as
+          | {
+              items?: Record<string, { type?: string }>;
+              titles?: Record<string, { type?: string; title?: string }>;
+            }
+          | undefined)
+      : undefined;
+  const def = G && G.items && G.items[itemKey];
+  const titles = G && G.titles;
+  if (!def || !titles) return out;
+  const keys = Object.keys(titles);
+  for (let i = 0; i < keys.length; i++) {
+    const id = keys[i];
+    const t = titles[id];
+    if (!t) continue;
+    const type = t.type;
+    if (
+      type === "all_items" ||
+      type === def.type ||
+      (type === "mainhand" && def.type === "weapon")
+    ) {
+      out.push({ id, label: t.title || id });
+    }
+  }
+  return out;
+}
+
+/**
+ * After picking the wanted catalog item: offer qty, min level, title, want qty.
+ */
+export function showTradeOfferDetailsDialog(options: {
+  offeredName: string;
+  offeredMaxQ: number;
+  wantName: string;
+}): Promise<TradeOfferDetailsResult | null> {
+  closeDialog(null);
+  ensureTradePromptDialogCss();
+
+  const offeredName = String(options.offeredName || "").trim();
+  const wantName = String(options.wantName || "").trim();
+  const maxOfferQ = Math.max(1, Number(options.offeredMaxQ) | 0);
+  const G =
+    typeof window !== "undefined"
+      ? (window.G as
+          | {
+              items?: Record<
+                string,
+                {
+                  name?: string;
+                  s?: boolean | number;
+                  upgrade?: boolean;
+                  compound?: boolean;
+                }
+              >;
+            }
+          | undefined)
+      : undefined;
+  const wantDef = G && G.items && G.items[wantName];
+  const wantLabel =
+    (wantDef && wantDef.name) || wantName || "wanted item";
+  const offeredLabel = offeredName || "offered item";
+  const wantStackable = !!(wantDef && wantDef.s);
+  const wantLeveled = !!(
+    wantDef &&
+    (wantDef.upgrade || wantDef.compound)
+  );
+  const titleChoices = titleChoicesForItem(wantName);
+  const showOfferQty = maxOfferQ > 1;
+
+  return new Promise((resolve) => {
+    finishOpen = resolve as (value: unknown) => void;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "ecu-trade-prompt-backdrop";
+    backdrop.setAttribute("data-ecu-trade-prompt", "1");
+
+    const panel = document.createElement("div");
+    panel.className = "ecu-trade-prompt";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+
+    const title = document.createElement("h2");
+    title.className = "ecu-trade-prompt__title";
+    title.textContent = "Trade offer";
+    panel.appendChild(title);
+
+    const itemLine = document.createElement("p");
+    itemLine.className = "ecu-trade-prompt__item";
+    itemLine.textContent = `Give ${offeredLabel} · want ${wantLabel}`;
+    panel.appendChild(itemLine);
+
+    let offerQtyInput: HTMLInputElement | null = null;
+    if (showOfferQty) {
+      const lbl = document.createElement("div");
+      lbl.className = "ecu-trade-prompt__field-label";
+      lbl.textContent = "Offer quantity";
+      panel.appendChild(lbl);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      offerQtyInput = document.createElement("input");
+      offerQtyInput.type = "number";
+      offerQtyInput.min = "1";
+      offerQtyInput.max = String(maxOfferQ);
+      offerQtyInput.step = "1";
+      offerQtyInput.value = String(maxOfferQ);
+      offerQtyInput.setAttribute("aria-label", "Offer quantity");
+      const suf = document.createElement("span");
+      suf.className = "ecu-trade-prompt__suffix";
+      suf.textContent = ` / ${maxOfferQ}`;
+      field.append(offerQtyInput, suf);
+      panel.appendChild(field);
+    }
+
+    let levelInput: HTMLInputElement | null = null;
+    if (wantLeveled) {
+      const lbl = document.createElement("div");
+      lbl.className = "ecu-trade-prompt__field-label";
+      lbl.textContent = "Min level (0 = any)";
+      panel.appendChild(lbl);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      levelInput = document.createElement("input");
+      levelInput.type = "number";
+      levelInput.min = "0";
+      levelInput.max = "12";
+      levelInput.step = "1";
+      levelInput.value = "0";
+      levelInput.setAttribute("aria-label", "Minimum level");
+      field.appendChild(levelInput);
+      panel.appendChild(field);
+    }
+
+    let titleSelect: HTMLSelectElement | null = null;
+    if (titleChoices.length > 1) {
+      const lbl = document.createElement("div");
+      lbl.className = "ecu-trade-prompt__field-label";
+      lbl.textContent = "Title";
+      panel.appendChild(lbl);
+      titleSelect = document.createElement("select");
+      titleSelect.className = "ecu-trade-prompt__select";
+      titleSelect.setAttribute("aria-label", "Wanted title");
+      for (let i = 0; i < titleChoices.length; i++) {
+        const opt = document.createElement("option");
+        opt.value = titleChoices[i].id == null ? "" : String(titleChoices[i].id);
+        opt.textContent = titleChoices[i].label;
+        titleSelect.appendChild(opt);
+      }
+      panel.appendChild(titleSelect);
+    }
+
+    let wantQtyInput: HTMLInputElement | null = null;
+    if (wantStackable) {
+      const lbl = document.createElement("div");
+      lbl.className = "ecu-trade-prompt__field-label";
+      lbl.textContent = "Want quantity";
+      panel.appendChild(lbl);
+      const field = document.createElement("div");
+      field.className = "ecu-trade-prompt__field";
+      wantQtyInput = document.createElement("input");
+      wantQtyInput.type = "number";
+      wantQtyInput.min = "1";
+      wantQtyInput.max = "9999";
+      wantQtyInput.step = "1";
+      wantQtyInput.value = "1";
+      wantQtyInput.setAttribute("aria-label", "Want quantity");
+      field.appendChild(wantQtyInput);
+      panel.appendChild(field);
+    }
+
+    const hintEl = document.createElement("p");
+    hintEl.className = "ecu-trade-prompt__hint";
+    panel.appendChild(hintEl);
+
+    const actions = document.createElement("div");
+    actions.className = "ecu-trade-prompt__actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "ecu-trade-prompt__btn";
+    cancelBtn.textContent = "Cancel";
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "ecu-trade-prompt__btn ecu-trade-prompt__btn--ok";
+    okBtn.textContent = "Offer";
+    actions.append(cancelBtn, okBtn);
+    panel.appendChild(actions);
+
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+
+    const dismiss = (value: TradeOfferDetailsResult | null) => {
+      document.removeEventListener("keydown", onKey, true);
+      closeDialog(value);
+    };
+
+    const confirm = () => {
+      let offerQ = 1;
+      if (offerQtyInput) {
+        const n = parseInt(offerQtyInput.value, 10);
+        if (!Number.isFinite(n) || n < 1 || n > maxOfferQ) {
+          hintEl.textContent = `Offer quantity 1–${maxOfferQ}.`;
+          offerQtyInput.focus();
+          return;
+        }
+        offerQ = n;
+      }
+      const want: TradeOfferDetailsResult["want"] = { name: wantName };
+      if (levelInput) {
+        const lv = parseInt(levelInput.value, 10);
+        if (!Number.isFinite(lv) || lv < 0 || lv > 12) {
+          hintEl.textContent = "Level must be 0–12.";
+          levelInput.focus();
+          return;
+        }
+        if (lv > 0) want.level = lv;
+      }
+      if (titleSelect && titleSelect.value) {
+        want.p = titleSelect.value;
+      }
+      if (wantQtyInput) {
+        const wq = parseInt(wantQtyInput.value, 10);
+        if (!Number.isFinite(wq) || wq < 1) {
+          hintEl.textContent = "Want quantity must be at least 1.";
+          wantQtyInput.focus();
+          return;
+        }
+        want.q = wq;
+      }
+      dismiss({ want, offerQ });
+    };
+
+    cancelBtn.addEventListener("click", () => dismiss(null));
+    okBtn.addEventListener("click", confirm);
+    backdrop.addEventListener("click", (ev) => {
+      if (ev.target === backdrop) dismiss(null);
+    });
+
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        dismiss(null);
+      } else if (ev.key === "Enter") {
+        ev.preventDefault();
+        confirm();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+
+    window.setTimeout(() => {
+      const focusEl = offerQtyInput || levelInput || wantQtyInput || okBtn;
+      if (focusEl && "focus" in focusEl) (focusEl as HTMLElement).focus();
+      if (focusEl && "select" in focusEl) {
+        try {
+          (focusEl as HTMLInputElement).select();
+        } catch {
+          /* ignore */
+        }
+      }
+    }, 0);
+  });
+}
+
 /** Parse gold without showing a dialog — shared helper. */
 export { parseTradeGoldInput };

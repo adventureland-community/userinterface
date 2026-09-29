@@ -111,6 +111,16 @@ const CSS = `
   font-variant-numeric: tabular-nums;
   box-sizing: border-box;
 }
+.ecu-trade-prompt__select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 16px;
+}
 .ecu-trade-prompt__field input:focus {
   outline: none;
   border-color: rgba(232, 201, 106, 0.55);

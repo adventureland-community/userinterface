@@ -15,9 +15,12 @@ import { handleBagDragOverGearSlot, handleBagDropOnTradeSlot } from "../gear/gea
 import {
   canAffordListing,
   findBagMatchForBuyOrder,
+  findBagMatchForTradeWant,
   formatGiveawayTimeLeft,
   formatTradeGold,
+  formatTradeWantLabel,
   isGiveawayListing,
+  isTradeOfferListing,
   isInTradeRange,
   isJoinedGiveaway,
 } from "../../lib/tradeHelpers";
@@ -117,7 +120,13 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       ? findBagMatchForBuyOrder(slot, obs?.items)
       : null;
   const canBuy =
-    foreign && filled && slot && !slot.b && !isGiveawayListing(slot) && inRange;
+    foreign &&
+    filled &&
+    slot &&
+    !slot.b &&
+    !isGiveawayListing(slot) &&
+    !isTradeOfferListing(slot) &&
+    inRange;
   const canFulfill = foreign && filled && !!slot?.b && !!bagMatch && inRange;
   const canJoinGiveaway =
     foreign &&
@@ -125,13 +134,29 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     isGiveawayListing(slot) &&
     !isJoinedGiveaway(slot, obs) &&
     inRange;
+  const wantMatch =
+    foreign && filled && isTradeOfferListing(slot) && slot!.want
+      ? findBagMatchForTradeWant(
+          typeof slot!.want === "string"
+            ? { name: slot!.want }
+            : slot!.want!,
+          obs?.items,
+        )
+      : null;
+  const canSwap =
+    foreign && filled && isTradeOfferListing(slot) && !!wantMatch && inRange;
   const canAfford =
     canBuy &&
     slot &&
     (obs?.gold == null ||
       canAffordListing(slot, slot.q && slot.q > 0 ? slot.q : 1, obs.gold));
   const disabled =
-    foreign && filled && !canBuy && !canFulfill && !canJoinGiveaway;
+    foreign &&
+    filled &&
+    !canBuy &&
+    !canFulfill &&
+    !canJoinGiveaway &&
+    !canSwap;
 
   const size =
     iconSize != null && Number.isFinite(iconSize) && iconSize > 0
@@ -243,18 +268,49 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       ? "B"
       : isGiveawayListing(slot)
         ? "G"
-        : "S"
+        : isTradeOfferListing(slot)
+          ? "&"
+          : "S"
     : null;
-  const priceLabel = slot?.price != null ? formatTradeGold(slot.price) : null;
+  const tradeWant =
+    filled && isTradeOfferListing(slot) && slot!.want
+      ? typeof slot!.want === "string"
+        ? { name: slot!.want }
+        : slot!.want
+      : null;
+  const tradeWantLabel = tradeWant
+    ? formatTradeWantLabel(tradeWant) || tradeWant.name || "item"
+    : "";
+  const priceLabel =
+    tradeWantLabel
+      ? tradeWantLabel
+      : slot?.price != null && !isTradeOfferListing(slot) && !isGiveawayListing(slot)
+        ? formatTradeGold(slot.price)
+        : isGiveawayListing(slot)
+          ? "free"
+          : null;
+  const priceIsTrade = !!tradeWantLabel;
 
   const tipParts: string[] = [];
   if (filled && slot?.name) {
     tipParts.push(itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }));
-    if (priceLabel) {
+    if (isTradeOfferListing(slot)) {
+      const want =
+        typeof slot.want === "string" ? { name: slot.want } : slot.want;
+      tipParts.push(
+        "Ask " + (formatTradeWantLabel(want) || want?.name || "item"),
+      );
+      const offerQ = typeof slot.q === "number" && slot.q > 0 ? slot.q | 0 : 1;
+      const wantQ =
+        want && typeof want === "object" && want.q != null && want.q > 0
+          ? want.q | 0
+          : 1;
+      tipParts.push("offer ×" + offerQ + " · " + wantQ + "∶" + offerQ);
+    } else if (slot?.price != null) {
       tipParts.push(
         isGiveawayListing(slot)
           ? "Giveaway"
-          : `${slot.b ? "Buy" : "Sell"}: ${priceLabel}g`,
+          : `${slot.b ? "Buy" : "Sell"}: ${formatTradeGold(slot.price)}g`,
       );
     } else if (isGiveawayListing(slot)) {
       tipParts.push("Giveaway");
@@ -267,6 +323,9 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     if (canFulfill) tipParts.push("Click to sell");
     else if (slot.b && bagMatch) tipParts.push("Buy order — matching item in bag");
     else if (slot.b) tipParts.push("Buy order — no match in bag");
+    else if (canSwap) tipParts.push("Click to swap");
+    else if (isTradeOfferListing(slot) && foreign)
+      tipParts.push("Trade offer — no matching want in bag");
     else if (canBuy && canAfford) tipParts.push("Click to buy");
     else if (canJoinGiveaway) tipParts.push("Click to join giveaway");
     else if (disabled) tipParts.push("(unavailable)");
@@ -281,8 +340,8 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     }
     tipParts.push(
       customClick
-        ? "Drag bag item to list · Shift+drag: giveaway"
-        : "Click: wishlist · drag bag item to list · Shift+drag: giveaway",
+        ? "Drag bag item to list · Shift+drag: giveaway · Ctrl+drag: trade offer"
+        : "Click: wishlist · drag bag item to list · Shift+drag: giveaway · Ctrl+drag: trade offer",
     );
   }
 
@@ -426,13 +485,17 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
                     ? "#1a3a4a"
                     : badge === "G"
                       ? "#3a1a4a"
-                      : "#3a2a10",
+                      : badge === "&"
+                        ? "#1a2434"
+                        : "#3a2a10",
                 border:
                   badge === "B"
                     ? "1px solid #8fd4ff"
                     : badge === "G"
                       ? "1px solid #c98fff"
-                      : "1px solid #ffd700",
+                      : badge === "&"
+                        ? "1px solid #8ea4c4"
+                        : "1px solid #ffd700",
                 color: "#fff",
                 fontSize: TYPE.microMin,
                 lineHeight: "12px",
@@ -450,10 +513,17 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       ? e(
           "div",
           {
-            className: "comm-trade-slot-price",
+            className:
+              "comm-trade-slot-price" + (priceIsTrade ? " is-trade" : ""),
             style: {
               fontSize: size <= 34 ? 10 : TYPE.microMin,
-              color: slot!.b ? "#8fd4ff" : "#ffd700",
+              color: priceIsTrade
+                ? "#8ea4c4"
+                : slot!.b
+                  ? "#8fd4ff"
+                  : isGiveawayListing(slot)
+                    ? "#c4b48e"
+                    : "#ffd700",
               width: "100%",
               maxWidth: fluid ? "100%" : `${cellW}px`,
               overflow: "hidden",
@@ -464,9 +534,11 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
               fontVariantNumeric: "tabular-nums",
               ...PIXEL_TEXT,
             },
-            title: priceLabel,
+            title: priceIsTrade
+              ? "Ask " + priceLabel
+              : priceLabel,
           },
-          priceLabel,
+          priceIsTrade ? "ask " + priceLabel : priceLabel,
         )
       : iconSize != null
         ? e(

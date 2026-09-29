@@ -39,6 +39,18 @@ function merchantKey(name: string): string {
   return String(name || "").toLowerCase();
 }
 
+function wantFingerprint(
+  want: MarketSlotListing["want"] | undefined,
+): string {
+  if (!want || !want.name) return "";
+  return [
+    want.name,
+    want.level != null ? String(want.level) : "",
+    want.p === null ? "null" : want.p != null ? String(want.p) : "",
+    want.q != null ? String(want.q) : "",
+  ].join("\0");
+}
+
 function listingFromSlot(
   slot: MarketSlotListing,
   now: number,
@@ -57,6 +69,10 @@ function listingFromSlot(
   if (slot.giveawayMinutes != null) row.giveawayMinutes = slot.giveawayMinutes;
   if (slot.giveawayNames && slot.giveawayNames.length) {
     row.giveawayNames = slot.giveawayNames.slice();
+  }
+  if (slot.tradeOffer && slot.want) {
+    row.tradeOffer = true;
+    row.want = { ...slot.want };
   }
   if (slot.q != null) row.q = slot.q;
   if (slot.level != null) row.level = slot.level;
@@ -284,7 +300,28 @@ export function reconcileLiveOpenStand(
   }
 
   for (let i = 0; i < incoming.length; i++) {
-    byRid[incoming[i].rid] = incoming[i];
+    const inc = incoming[i];
+    const prev = byRid[inc.rid];
+    // Soft/live payloads sometimes omit `want` while keeping price:0 — don't
+    // downgrade a known trade offer into a fake free sale.
+    if (
+      prev &&
+      prev.tradeOffer &&
+      prev.want &&
+      !inc.tradeOffer &&
+      !inc.buyOrder &&
+      !inc.giveaway &&
+      !(inc.price > 0)
+    ) {
+      byRid[inc.rid] = {
+        ...inc,
+        tradeOffer: true,
+        want: { ...prev.want },
+        price: typeof prev.price === "number" ? prev.price : 0,
+      };
+      continue;
+    }
+    byRid[inc.rid] = inc;
   }
 
   const ridKeys = Object.keys(byRid);
@@ -381,6 +418,10 @@ export function cachedSlotsAsListings(
     if (s.giveawayNames && s.giveawayNames.length) {
       row.giveawayNames = s.giveawayNames.slice();
     }
+    if (s.tradeOffer && s.want) {
+      row.tradeOffer = true;
+      row.want = { ...s.want };
+    }
     if (s.q != null) row.q = s.q;
     if (s.level != null) row.level = s.level;
     if (s.p !== undefined) row.p = s.p;
@@ -429,6 +470,8 @@ export function marketCacheContentEqual(
         sx.giveawayMinutes !== sy.giveawayMinutes ||
         (sx.giveawayNames || []).join("\0") !==
           (sy.giveawayNames || []).join("\0") ||
+        !!sx.tradeOffer !== !!sy.tradeOffer ||
+        wantFingerprint(sx.want) !== wantFingerprint(sy.want) ||
         sx.q !== sy.q ||
         sx.level !== sy.level ||
         sx.p !== sy.p
@@ -467,6 +510,15 @@ export function liveOpenStandSignature(
         const price = (raw as { price?: unknown }).price;
         const name = (raw as { name?: unknown }).name;
         if (typeof rid === "string" && rid) {
+          const wantRaw = (raw as { want?: unknown }).want;
+          const wantName =
+            typeof wantRaw === "string"
+              ? wantRaw
+              : wantRaw &&
+                  typeof wantRaw === "object" &&
+                  typeof (wantRaw as { name?: unknown }).name === "string"
+                ? String((wantRaw as { name: string }).name)
+                : "";
           rids.push(
             k +
               ":" +
@@ -474,7 +526,9 @@ export function liveOpenStandSignature(
               ":" +
               (typeof price === "number" ? price : "") +
               ":" +
-              (typeof name === "string" ? name : ""),
+              (typeof name === "string" ? name : "") +
+              ":" +
+              wantName,
           );
         }
       }

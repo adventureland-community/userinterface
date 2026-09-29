@@ -2,6 +2,8 @@
  * Market merchant / listing types + directory status.
  */
 
+import type { TradeWantLike } from "../../host/globals";
+
 export type MerchantStatus =
   | "you"
   | "inRange"
@@ -25,6 +27,10 @@ export type MarketSlotListing = {
   giveawayNames?: string[];
   /** Minutes remaining on the giveaway (slot.giveaway from the server). */
   giveawayMinutes?: number;
+  /** Item-for-item listing (`slot.want` / trade_offer), not gold. */
+  tradeOffer?: boolean;
+  /** What the merchant asks in exchange (normalized). */
+  want?: TradeWantLike;
   q?: number;
   level?: number;
   p?: string | null;

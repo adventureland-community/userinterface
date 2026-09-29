@@ -4,12 +4,12 @@
 
 import type { MarketListingRow } from "./marketTypes";
 import { listingMatchesMarketQuery } from "./marketQuery";
-import { formatTradeGold } from "../tradeHelpers";
+import { formatTradeGold, tradeOfferRatioParts } from "../tradeHelpers";
 
 export type MarketBrowseFilters = {
   query: string;
-  /** sale = for-sale; buy = buy orders; giveaway = free joins; all = both */
-  side: "sale" | "buy" | "giveaway" | "all";
+  /** sale = gold sales; buy = buy orders; giveaway; trade = item-for-item; all */
+  side: "sale" | "buy" | "giveaway" | "trade" | "all";
   canAfford: boolean;
   inMyBag: boolean;
   /** Live entities only (visible / in range of the client), not catalog same-map. */
@@ -32,6 +32,7 @@ export type MarketItemGroup = {
   sales: import("./marketTypes").MarketListingRow[];
   wants: import("./marketTypes").MarketListingRow[];
   giveaways: import("./marketTypes").MarketListingRow[];
+  tradeOffers: import("./marketTypes").MarketListingRow[];
   bestSale: number | null;
   bestWant: number | null;
 };
@@ -54,14 +55,16 @@ export function filterMarketListings(
     if (merchantFilter && row.merchant.toLowerCase() !== merchantFilter) {
       continue;
     }
-    if (filters.side === "sale" && (row.buyOrder || row.giveaway)) continue;
+    if (filters.side === "sale" && (row.buyOrder || row.giveaway || row.tradeOffer))
+      continue;
     if (filters.side === "buy" && !row.buyOrder) continue;
     if (filters.side === "giveaway" && !row.giveaway) continue;
+    if (filters.side === "trade" && !row.tradeOffer) continue;
     if (!listingMatchesMarketQuery(row, filters.query, qCtx)) continue;
     if (filters.nearOnly) {
       if (!row.fromLive && row.merchantStatus !== "you") continue;
     }
-    if (filters.canAfford && !row.buyOrder) {
+    if (filters.canAfford && !row.buyOrder && !row.giveaway && !row.tradeOffer) {
       if (!(filters.gold >= row.price)) continue;
     }
     if (filters.inMyBag) {
@@ -79,6 +82,15 @@ export function groupMarketListings(
   const byKey: Record<string, MarketListingRow[]> = Object.create(null);
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
+    // Drop gold-sale stubs (price 0, no want) — not buyable; often incomplete trades.
+    if (
+      !row.giveaway &&
+      !row.tradeOffer &&
+      !row.buyOrder &&
+      !(row.price > 0)
+    ) {
+      continue;
+    }
     const key =
       row.name +
       "\0" +
@@ -96,17 +108,21 @@ export function groupMarketListings(
     const sales: MarketListingRow[] = [];
     const wants: MarketListingRow[] = [];
     const giveaways: MarketListingRow[] = [];
+    const tradeOffers: MarketListingRow[] = [];
     for (let j = 0; j < list.length; j++) {
       if (list[j].giveaway) giveaways.push(list[j]);
+      else if (list[j].tradeOffer) tradeOffers.push(list[j]);
       else if (list[j].buyOrder) wants.push(list[j]);
       else sales.push(list[j]);
     }
     let bestSale: number | null = null;
     let bestWant: number | null = null;
     for (let j = 0; j < sales.length; j++) {
+      if (!(sales[j].price > 0)) continue;
       if (bestSale == null || sales[j].price < bestSale) bestSale = sales[j].price;
     }
     for (let j = 0; j < wants.length; j++) {
+      if (!(wants[j].price > 0)) continue;
       if (bestWant == null || wants[j].price > bestWant) bestWant = wants[j].price;
     }
     out.push({
@@ -118,15 +134,24 @@ export function groupMarketListings(
       sales,
       wants,
       giveaways,
+      tradeOffers,
       bestSale,
       bestWant,
     });
   }
   out.sort((a, b) => {
     const da =
-      marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+      marketGroupHasBothPrices(a) ||
+      a.giveaways.length ||
+      a.tradeOffers.length
+        ? 0
+        : 1;
     const db =
-      marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+      marketGroupHasBothPrices(b) ||
+      b.giveaways.length ||
+      b.tradeOffers.length
+        ? 0
+        : 1;
     if (da !== db) return da - db;
     return a.name.localeCompare(b.name);
   });
@@ -237,11 +262,19 @@ export function sortMarketGroups(
       }
       return a.name.localeCompare(b.name);
     }
-    // dual (default): both priced sides (or a giveaway) first, then name
+    // dual (default): both priced sides (or a giveaway / trade offer) first, then name
     const da =
-      marketGroupHasBothPrices(a) || a.giveaways.length ? 0 : 1;
+      marketGroupHasBothPrices(a) ||
+      a.giveaways.length ||
+      a.tradeOffers.length
+        ? 0
+        : 1;
     const db =
-      marketGroupHasBothPrices(b) || b.giveaways.length ? 0 : 1;
+      marketGroupHasBothPrices(b) ||
+      b.giveaways.length ||
+      b.tradeOffers.length
+        ? 0
+        : 1;
     if (da !== db) return da - db;
     return a.name.localeCompare(b.name);
   });
@@ -260,8 +293,8 @@ export function sortMarketListings(
     if (fa !== fb) return fa - fb;
     const nameCmp = a.name.localeCompare(b.name);
     if (nameCmp !== 0) return nameCmp;
-    const ga = a.giveaway ? 2 : a.buyOrder ? 1 : 0;
-    const gb = b.giveaway ? 2 : b.buyOrder ? 1 : 0;
+    const ga = a.giveaway ? 3 : a.tradeOffer ? 2 : a.buyOrder ? 1 : 0;
+    const gb = b.giveaway ? 3 : b.tradeOffer ? 2 : b.buyOrder ? 1 : 0;
     if (ga !== gb) return ga - gb;
     // sales: cheapest first; buy orders: highest first; giveaways: by entrants
     if (!a.buyOrder && !b.buyOrder && !a.giveaway && !b.giveaway) {
@@ -274,4 +307,162 @@ export function sortMarketListings(
     return a.price - b.price;
   });
   return copy;
+}
+
+/** Collapse item-for-item offers that share merchant + items + ratio. */
+export type TradeOfferStack = {
+  key: string;
+  /** Best row to act on (in-range / live / smallest stack). */
+  row: MarketListingRow;
+  count: number;
+  rows: MarketListingRow[];
+  /** Reduced give∶get parts when known. */
+  ratio: { give: number; get: number } | null;
+};
+
+export type TradeOfferMerchantGroup = {
+  key: string;
+  merchant: string;
+  /** Best row for merchant travel / status chips. */
+  row: MarketListingRow;
+  stacks: TradeOfferStack[];
+  listingCount: number;
+};
+
+function tradeWantOfferFingerprint(row: MarketListingRow): string {
+  const w = row.want;
+  return [
+    String(row.merchant || "").toLowerCase(),
+    row.name,
+    row.level != null ? String(row.level) : "",
+    row.p != null ? String(row.p) : "",
+    w ? w.name : "",
+    w && w.level != null ? String(w.level) : "",
+    w && w.p != null ? String(w.p) : "",
+  ].join("\0");
+}
+
+function tradeOfferAbsQty(row: MarketListingRow): {
+  wantQ: number;
+  offerQ: number;
+} {
+  const w = row.want;
+  return {
+    wantQ: w && w.q != null && w.q > 0 ? w.q | 0 : 1,
+    offerQ: row.q != null && row.q > 0 ? row.q | 0 : 1,
+  };
+}
+
+function tradeOfferIdentityKey(row: MarketListingRow): string {
+  const { wantQ, offerQ } = tradeOfferAbsQty(row);
+  // Absolute sizes — 26↔26 and 40↔40 stay separate (same ratio, different deals).
+  return [tradeWantOfferFingerprint(row), String(wantQ), String(offerQ)].join(
+    "\0",
+  );
+}
+
+function rankTradeOfferRow(a: MarketListingRow, b: MarketListingRow): number {
+  const rank = (r: MarketListingRow) =>
+    r.merchantStatus === "you"
+      ? 0
+      : r.merchantStatus === "inRange"
+        ? 1
+        : r.fromLive
+          ? 2
+          : 3;
+  const d = rank(a) - rank(b);
+  if (d !== 0) return d;
+  const aq = tradeOfferAbsQty(a).wantQ;
+  const bq = tradeOfferAbsQty(b).wantQ;
+  if (aq !== bq) return aq - bq;
+  return (b.lastRefreshedAt || 0) - (a.lastRefreshedAt || 0);
+}
+
+export function groupIdenticalTradeOffers(
+  rows: MarketListingRow[],
+): TradeOfferStack[] {
+  const byKey: Record<string, MarketListingRow[]> = Object.create(null);
+  const order: string[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.tradeOffer || !row.want) continue;
+    const key = tradeOfferIdentityKey(row);
+    if (!byKey[key]) {
+      byKey[key] = [];
+      order.push(key);
+    }
+    byKey[key].push(row);
+  }
+  const out: TradeOfferStack[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const list = byKey[order[i]].slice();
+    list.sort(rankTradeOfferRow);
+    const row = list[0];
+    const { wantQ, offerQ } = tradeOfferAbsQty(row);
+    out.push({
+      key: order[i],
+      row,
+      count: list.length,
+      rows: list,
+      ratio: tradeOfferRatioParts(wantQ, offerQ),
+    });
+  }
+  out.sort((a, b) => {
+    const mc = a.row.merchant.localeCompare(b.row.merchant);
+    if (mc !== 0) return mc;
+    const an = (a.row.want && a.row.want.name) || "";
+    const bn = (b.row.want && b.row.want.name) || "";
+    const nc = an.localeCompare(bn);
+    if (nc !== 0) return nc;
+    const aq = tradeOfferAbsQty(a.row);
+    const bq = tradeOfferAbsQty(b.row);
+    if (aq.wantQ !== bq.wantQ) return aq.wantQ - bq.wantQ;
+    return aq.offerQ - bq.offerQ;
+  });
+  return out;
+}
+
+/** One Travel card per merchant; stacks are ratio lines underneath. */
+export function groupTradeOffersByMerchant(
+  rows: MarketListingRow[],
+): TradeOfferMerchantGroup[] {
+  const stacks = groupIdenticalTradeOffers(rows);
+  const byMerch: Record<string, TradeOfferStack[]> = Object.create(null);
+  const order: string[] = [];
+  for (let i = 0; i < stacks.length; i++) {
+    const stack = stacks[i];
+    const key = String(stack.row.merchant || "").toLowerCase();
+    if (!byMerch[key]) {
+      byMerch[key] = [];
+      order.push(key);
+    }
+    byMerch[key].push(stack);
+  }
+  const out: TradeOfferMerchantGroup[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const list = byMerch[order[i]];
+    const reps = list.map((s) => s.row);
+    reps.sort(rankTradeOfferRow);
+    let listingCount = 0;
+    for (let j = 0; j < list.length; j++) listingCount += list[j].count;
+    out.push({
+      key: order[i],
+      merchant: reps[0].merchant,
+      row: reps[0],
+      stacks: list,
+      listingCount,
+    });
+  }
+  out.sort((a, b) => {
+    const rank = (g: TradeOfferMerchantGroup) =>
+      g.row.merchantStatus === "you"
+        ? 0
+        : g.row.merchantStatus === "inRange"
+          ? 1
+          : 2;
+    const d = rank(a) - rank(b);
+    if (d !== 0) return d;
+    return a.merchant.localeCompare(b.merchant);
+  });
+  return out;
 }

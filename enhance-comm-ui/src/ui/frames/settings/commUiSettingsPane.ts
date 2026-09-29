@@ -1,4 +1,5 @@
 import { e, getReact } from "../../../host/react";
+import { confirmAndFactoryResetCommUi } from "../../../lib/factoryReset";
 import {
   listGuidedTours,
   type GuidedTourListItem,
@@ -58,6 +59,14 @@ function tourMatchesQuery(tour: GuidedTourListItem, query: string): boolean {
     .includes(q);
 }
 
+function dataSectionMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay =
+    "factory default reset wipe clear local storage indexeddb cache data nuke";
+  return hay.includes(q);
+}
+
 export function countCommUiSettingsMatches(query: string): number {
   let total = 0;
   const tours = listGuidedTours();
@@ -67,6 +76,7 @@ export function countCommUiSettingsMatches(query: string): number {
   for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
     if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
   }
+  if (dataSectionMatches(query)) total += 1;
   return total;
 }
 
@@ -168,7 +178,7 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
     );
   }
 
-  if (tourRows === 0 && updateRows === 0) {
+  if (tourRows === 0 && updateRows === 0 && !dataSectionMatches(query)) {
     kids.push(
       e(
         "p",
@@ -177,5 +187,41 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
       ),
     );
   }
+
+  if (dataSectionMatches(query)) {
+    kids.push(settingsSection("Data"));
+    kids.push(
+      e(
+        "div",
+        { key: "factory-reset", className: "ecu-settings-row" },
+        e(
+          "div",
+          { className: "ecu-settings-row-copy" },
+          e(
+            "span",
+            { className: "ecu-settings-row-label" },
+            "Factory defaults",
+          ),
+          e(
+            "span",
+            { className: "ecu-settings-help" },
+            "Wipe Comm UI layouts, meters, overlay toggles, caches, and tour progress in this browser, then reload. Does not touch your adventure.land account.",
+          ),
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-settings-reset is-danger",
+            onClick: () => {
+              void confirmAndFactoryResetCommUi();
+            },
+          },
+          "Reset everything…",
+        ),
+      ),
+    );
+  }
+
   return e("div", null, ...kids);
 }

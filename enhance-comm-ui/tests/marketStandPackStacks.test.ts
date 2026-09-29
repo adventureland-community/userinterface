@@ -67,4 +67,59 @@ describe("collapseMarketStandPackSlots", () => {
     );
     assert.equal(got.length, 3);
   });
+
+  it("keeps trade offers with different wants separate", () => {
+    const slots = {
+      trade1: {
+        name: "slice_strawberry",
+        price: 0,
+        q: 1,
+        want: { name: "slice_blueberry", q: 1 },
+      },
+      trade2: {
+        name: "slice_strawberry",
+        price: 0,
+        q: 1,
+        want: { name: "slice_blueberry", q: 1 },
+      },
+      trade3: {
+        name: "slice_strawberry",
+        price: 0,
+        q: 1,
+        want: { name: "slice_honey", q: 1 },
+      },
+      trade4: {
+        name: "slice_strawberry",
+        price: 0,
+        q: 200,
+        want: { name: "slice_mint", q: 200 },
+      },
+    };
+    const got = collapseMarketStandPackSlots(
+      ["trade1", "trade2", "trade3", "trade4"],
+      slots,
+    );
+    assert.equal(got.length, 3);
+    assert.deepEqual(got[0].slotNames, ["trade1", "trade2"]);
+    assert.equal(got[0].slot && got[0].slot.q, 2);
+    assert.equal(got[1].slotNames.length, 1);
+    assert.equal(got[1].slot && (got[1].slot.want as any).name, "slice_honey");
+    assert.equal(got[2].slot && got[2].slot.q, 200);
+  });
+
+  it("does not merge a trade offer with a gold sale at price 0", () => {
+    assert.notEqual(
+      marketStandPackStackKey({
+        name: "slice_strawberry",
+        price: 0,
+        want: { name: "slice_honey", q: 1 },
+        q: 1,
+      }),
+      marketStandPackStackKey({
+        name: "slice_strawberry",
+        price: 0,
+        q: 220,
+      }),
+    );
+  });
 });

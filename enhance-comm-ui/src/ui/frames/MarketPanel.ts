@@ -29,6 +29,7 @@ import {
   delistOwnMarketListing,
   giveawayBagStackOnTrade,
   listBagStackOnTrade,
+  offerBagStackOnTrade,
   mirrorOrUndercutListing,
   repriceOwnMarketListing,
   travelToListing,
@@ -41,6 +42,7 @@ import {
 import {
   filterMarketListings,
   groupMarketListings,
+  groupTradeOffersByMerchant,
   marketGroupHasArb,
   marketGroupHasBothPrices,
   sortMarketGroups,
@@ -63,7 +65,7 @@ import {
 } from "../../lib/market/marketBagStacks";
 import { collapseMarketStandPackSlots } from "../../lib/market/marketStandPackStacks";
 import type { MarketListingRow } from "../../lib/market/marketTypes";
-import { formatGiveawayTimeLeft, formatTradeGold } from "../../lib/tradeHelpers";
+import { formatGiveawayTimeLeft, formatTradeGold, formatTradeWantLabel, formatTradeOfferRatio } from "../../lib/tradeHelpers";
 import { formatRelativeAge } from "../../lib/format";
 import { resolveOwnTradeEntity } from "../../lib/tradeEntityResolve";
 import { itemInstanceLabel } from "../../lib/gameIcon";
@@ -115,7 +117,7 @@ export type MarketPanelProps = {
 
 const CATALOG_REFRESH_MS = 45000;
 
-type Facet = "all" | "sale" | "wanted" | "giveaway";
+type Facet = "all" | "sale" | "wanted" | "giveaway" | "trade";
 
 function bagNameSet(observing: EntityLike | null | undefined): Record<string, boolean> {
   const out: Record<string, boolean> = Object.create(null);
@@ -315,6 +317,7 @@ function actionLabel(row: MarketListingRow): string {
   if (row.merchantStatus === "you") return "Yours";
   if (canActOnListing(row)) {
     if (row.giveaway) return "Join";
+    if (row.tradeOffer) return "Swap";
     return row.buyOrder ? "Sell" : "Buy";
   }
   return "Travel";
@@ -329,6 +332,7 @@ function marketItemIcon(
     q?: number;
     bankQ?: number;
     title?: string;
+    forceShowQ?: boolean;
   },
 ): any {
   return e(ItemInstance, {
@@ -339,6 +343,7 @@ function marketItemIcon(
     bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : undefined,
     p: opts.p != null ? String(opts.p) : undefined,
     title: opts.title,
+    forceShowQ: opts.forceShowQ,
   });
 }
 
@@ -351,11 +356,13 @@ function nextBest(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (wantBuy) {
-      if (r.buyOrder || r.giveaway) continue;
+      if (r.buyOrder || r.giveaway || r.tradeOffer) continue;
+      if (!(r.price > 0)) continue;
       if (!canActOnListing(r)) continue;
       if (!best || r.price < best.price) best = r;
     } else {
-      if (!r.buyOrder || r.giveaway) continue;
+      if (!r.buyOrder || r.giveaway || r.tradeOffer) continue;
+      if (!(r.price > 0)) continue;
       if (!canActOnListing(r)) continue;
       if (!best || r.price > best.price) best = r;
     }
@@ -551,7 +558,9 @@ export function MarketPanel(props: MarketPanelProps): any {
         ? "buy"
         : facet === "giveaway"
           ? "giveaway"
-          : "all";
+          : facet === "trade"
+            ? "trade"
+            : "all";
   let rows = filterMarketListings(flat, {
     query,
     side,
@@ -661,7 +670,7 @@ export function MarketPanel(props: MarketPanelProps): any {
     return null;
   })();
 
-  const offerCard = (row: MarketListingRow) => {
+  const offerCard = (row: MarketListingRow, stackCount = 1) => {
     const own = row.merchantStatus === "you";
     const statusChips: any[] = [];
     if (row.merchantStatus === "inRange") {
@@ -679,19 +688,54 @@ export function MarketPanel(props: MarketPanelProps): any {
         e("span", { key: "p", className: "MarketPanel-chip party" }, "party"),
       );
     }
+    if (stackCount > 1) {
+      statusChips.push(
+        e(
+          "span",
+          {
+            key: "x",
+            className: "MarketPanel-chip stack",
+            title: stackCount + " identical stand slots",
+          },
+          "×" + stackCount,
+        ),
+      );
+    }
     const loc = offerLocationMeta(row, observing, clock);
     const place = [loc.server, loc.map].filter(Boolean).join(" · ");
     const giveLeft = row.giveaway
       ? formatGiveawayTimeLeft(row.giveawayMinutes, row.lastRefreshedAt, clock)
       : "";
+    const wantQ =
+      row.tradeOffer && row.want && row.want.q != null && row.want.q > 0
+        ? row.want.q | 0
+        : row.tradeOffer
+          ? 1
+          : 0;
+    const offerQ =
+      row.tradeOffer && row.q != null && row.q > 0 ? row.q | 0 : row.tradeOffer ? 1 : 0;
+    const ratioLabel =
+      row.tradeOffer ? formatTradeOfferRatio(wantQ, offerQ) : "";
     const priceLabel = row.giveaway
       ? giveLeft || "free"
-      : formatTradeGold(row.price);
+      : row.tradeOffer
+        ? ratioLabel || "swap"
+        : formatTradeGold(row.price);
     const priceTitle = row.giveaway
       ? giveLeft
         ? giveLeft + " left"
         : "Giveaway"
-      : undefined;
+      : row.tradeOffer
+        ? "Give " +
+          (formatTradeWantLabel(
+            row.want
+              ? { ...row.want, q: wantQ }
+              : { name: "item", q: wantQ },
+          ) || "item") +
+          ", get " +
+          (offerQ > 1 ? offerQ + "× " : "") +
+          itemLabel(row.name, row.level, row.p)
+        : undefined;
     const metaCell = (kind: string, text: string, title?: string) =>
       text
         ? e(
@@ -708,7 +752,7 @@ export function MarketPanel(props: MarketPanelProps): any {
           });
     const moreActions: MarketOfferMenuAction[] = [];
     if (own) {
-      if (!row.giveaway) {
+      if (!row.giveaway && !row.tradeOffer) {
         // Reprice stays as the primary button; overflow is Delist only.
         moreActions.push({
           id: "delist",
@@ -720,7 +764,7 @@ export function MarketPanel(props: MarketPanelProps): any {
           },
         });
       }
-    } else if (!row.buyOrder && !row.giveaway) {
+    } else if (!row.buyOrder && !row.giveaway && !row.tradeOffer) {
       moreActions.push({
         id: "mirror",
         label: "Mirror price",
@@ -755,25 +799,27 @@ export function MarketPanel(props: MarketPanelProps): any {
     };
 
     const primaryLabel = own
-      ? row.giveaway
+      ? row.giveaway || row.tradeOffer
         ? "Delist"
         : "Reprice"
       : actionLabel(row);
     const primaryClass =
       "MarketPanel-rowAct is-primary " +
       (own
-        ? row.giveaway
+        ? row.giveaway || row.tradeOffer
           ? ""
           : "is-sell"
         : row.giveaway
           ? "is-give"
-          : row.buyOrder
-            ? "is-sell"
-            : "is-buy");
+          : row.tradeOffer
+            ? "is-trade"
+            : row.buyOrder
+              ? "is-sell"
+              : "is-buy");
     const primaryDisabled = own ? !gearEditable : false;
     const onPrimary = (ev: any) => {
       if (own) {
-        if (row.giveaway) {
+        if (row.giveaway || row.tradeOffer) {
           delistOwnMarketListing({ row, observing });
         } else {
           void repriceOwnMarketListing({ row, observing });
@@ -782,6 +828,188 @@ export function MarketPanel(props: MarketPanelProps): any {
       }
       void runOffer(row, !!(ev && ev.shiftKey));
     };
+
+    const wantNameShort = row.want
+      ? itemLabel(row.want.name, row.want.level, row.want.p)
+      : "";
+    const offerNameShort = itemLabel(row.name, row.level, row.p);
+    const tradePriceTitle = row.tradeOffer
+      ? own
+        ? "You ask for " +
+          (formatTradeWantLabel(
+            row.want
+              ? { ...row.want, q: wantQ }
+              : { name: "item", q: wantQ },
+          ) || "item") +
+          ", offer " +
+          (offerQ > 1 ? offerQ + "× " : "") +
+          offerNameShort
+        : priceTitle
+      : priceTitle;
+
+    const actButtons = e(
+      "div",
+      { className: "MarketPanel-offerActs" },
+      moreActions.length
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-rowMore",
+              title: "More actions (also right-click)",
+              "aria-label": "More actions",
+              onClick: (ev: any) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const r = (
+                  ev.currentTarget as HTMLElement
+                ).getBoundingClientRect();
+                openMore(r.left, r.bottom + 2);
+              },
+            },
+            "⋯",
+          )
+        : null,
+      e(
+        "button",
+        {
+          type: "button",
+          className: primaryClass,
+          disabled: primaryDisabled,
+          title: own
+            ? row.giveaway || row.tradeOffer
+              ? "Unequip slot — returns item to bag"
+              : "Change price (delist + relist)"
+            : tradePriceTitle || undefined,
+          onClick: onPrimary,
+        },
+        primaryLabel,
+      ),
+    );
+
+    if (row.tradeOffer && row.want) {
+      const metaBits = [place, loc.cache].filter(Boolean).join(" · ");
+      return e(
+        "div",
+        {
+          key: row.merchant + ":" + row.slot + ":" + (row.rid || ""),
+          className: "MarketPanel-offer is-trade" + (own ? " is-own" : ""),
+          title: loc.cacheTip || tradePriceTitle,
+          onContextMenu: (ev: any) => {
+            if (!moreActions.length) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            openMore(ev.clientX, ev.clientY);
+          },
+        },
+        e(
+          "div",
+          { className: "MarketPanel-tradeCompact" },
+          e(
+            "div",
+            {
+              className: "MarketPanel-tradeSwap",
+              title: tradePriceTitle,
+            },
+            e(
+              "div",
+              {
+                className: "MarketPanel-tradeSwapSide is-give",
+                title:
+                  (own ? "Ask · " : "Give · ") +
+                  (formatTradeWantLabel({ ...row.want, q: wantQ }) ||
+                    row.want.name),
+              },
+              marketItemIcon(row.want.name, {
+                level: row.want.level,
+                p: row.want.p,
+                size: 26,
+                q: wantQ,
+                forceShowQ: true,
+              }),
+            ),
+            e(
+              "div",
+              { className: "MarketPanel-tradeSwapMid" },
+              ratioLabel
+                ? e(
+                    "span",
+                    { className: "MarketPanel-tradeSwapRatio" },
+                    ratioLabel,
+                  )
+                : e(
+                    "span",
+                    {
+                      className: "MarketPanel-tradeSwapArrow",
+                      "aria-hidden": true,
+                    },
+                    "→",
+                  ),
+            ),
+            e(
+              "div",
+              {
+                className: "MarketPanel-tradeSwapSide is-get",
+                title:
+                  (own ? "Offer · " : "Get · ") +
+                  (offerQ > 1 ? offerQ + "× " : "") +
+                  offerNameShort,
+              },
+              marketItemIcon(row.name, {
+                level: row.level,
+                p: row.p,
+                size: 26,
+                q: offerQ,
+                forceShowQ: true,
+              }),
+            ),
+          ),
+          e(
+            "div",
+            { className: "MarketPanel-tradeCompactBody" },
+            e(
+              "div",
+              { className: "MarketPanel-tradeCompactWho" },
+              e("span", { className: "MarketPanel-whoName" }, row.merchant),
+              loc.distance
+                ? e(
+                    "span",
+                    {
+                      className: "MarketPanel-whoDist",
+                      title: loc.distance,
+                    },
+                    loc.distance,
+                  )
+                : null,
+              statusChips.length
+                ? e("span", { className: "MarketPanel-chips" }, statusChips)
+                : null,
+            ),
+            e(
+              "div",
+              {
+                className: "MarketPanel-tradeCompactNames",
+                title: tradePriceTitle,
+              },
+              e("span", { className: "is-give" }, wantNameShort),
+              e("span", { className: "is-sep" }, " → "),
+              e("span", { className: "is-get" }, offerNameShort),
+            ),
+            metaBits
+              ? e(
+                  "div",
+                  {
+                    className: "MarketPanel-tradeCompactMeta",
+                    title: loc.cacheTip || metaBits,
+                  },
+                  metaBits,
+                )
+              : null,
+          ),
+          actButtons,
+        ),
+      );
+    }
 
     return e(
       "div",
@@ -882,43 +1110,224 @@ export function MarketPanel(props: MarketPanelProps): any {
           },
           loc.cache || "",
         ),
+        actButtons,
+      ),
+    );
+  };
+
+  const tradeMerchantCard = (group: {
+    key: string;
+    merchant: string;
+    row: MarketListingRow;
+    stacks: Array<{
+      key: string;
+      row: MarketListingRow;
+      count: number;
+      rows: MarketListingRow[];
+      ratio: { give: number; get: number } | null;
+    }>;
+    listingCount: number;
+  }) => {
+    const row = group.row;
+    const own = row.merchantStatus === "you";
+    const loc = offerLocationMeta(row, observing, clock);
+    const place = [loc.server, loc.map].filter(Boolean).join(" · ");
+    const metaBits = [place, loc.cache].filter(Boolean).join(" · ");
+    const statusChips: any[] = [];
+    if (row.merchantStatus === "inRange") {
+      statusChips.push(
+        e("span", { key: "n", className: "MarketPanel-chip near" }, "near"),
+      );
+    }
+    if (own) {
+      statusChips.push(
+        e("span", { key: "y", className: "MarketPanel-chip" }, "you"),
+      );
+    }
+    if (friends[row.merchant.toLowerCase()]) {
+      statusChips.push(
+        e("span", { key: "p", className: "MarketPanel-chip party" }, "party"),
+      );
+    }
+    if (group.listingCount > 1) {
+      statusChips.push(
+        e(
+          "span",
+          {
+            key: "nlist",
+            className: "MarketPanel-chip stack",
+            title: group.listingCount + " stand slots",
+          },
+          group.listingCount + " slots",
+        ),
+      );
+    }
+    const primaryLabel = own ? null : actionLabel(row);
+    const onMerchantPrimary = (ev: any) => {
+      if (own) return;
+      void runOffer(row, !!(ev && ev.shiftKey));
+    };
+    return e(
+      "div",
+      {
+        key: group.key,
+        className: "MarketPanel-offer is-trade is-merchant" + (own ? " is-own" : ""),
+        title: loc.cacheTip,
+      },
+      e(
+        "div",
+        { className: "MarketPanel-tradeMerchantHead" },
         e(
           "div",
-          { className: "MarketPanel-offerActs" },
-          moreActions.length
+          { className: "MarketPanel-tradeCompactWho" },
+          e("span", { className: "MarketPanel-whoName" }, group.merchant),
+          loc.distance
             ? e(
+                "span",
+                { className: "MarketPanel-whoDist", title: loc.distance },
+                loc.distance,
+              )
+            : null,
+          statusChips.length
+            ? e("span", { className: "MarketPanel-chips" }, statusChips)
+            : null,
+        ),
+        primaryLabel
+          ? e(
+              "div",
+              { className: "MarketPanel-offerActs" },
+              e(
                 "button",
                 {
                   type: "button",
-                  className: "MarketPanel-rowMore",
-                  title: "More actions (also right-click)",
-                  "aria-label": "More actions",
-                  onClick: (ev: any) => {
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-                    openMore(r.left, r.bottom + 2);
-                  },
+                  className: "MarketPanel-rowAct is-primary is-trade",
+                  onClick: onMerchantPrimary,
                 },
-                "⋯",
-              )
-            : null,
-          e(
-            "button",
+                primaryLabel,
+              ),
+            )
+          : null,
+        metaBits
+          ? e("div", { className: "MarketPanel-tradeCompactMeta" }, metaBits)
+          : null,
+      ),
+      e(
+        "div",
+        { className: "MarketPanel-tradeMerchantStacks" },
+        group.stacks.map((stack) => {
+          const srow = stack.row;
+          const want = srow.want;
+          if (!want) return null;
+          const wantQ =
+            want.q != null && want.q > 0 ? want.q | 0 : 1;
+          const offerQ = srow.q != null && srow.q > 0 ? srow.q | 0 : 1;
+          const ratio =
+            stack.ratio ||
+            ({ give: wantQ, get: offerQ } as { give: number; get: number });
+          const ratioLabel = ratio.give + "∶" + ratio.get;
+          const wantName = itemLabel(want.name, want.level, want.p);
+          const offerName = itemLabel(srow.name, srow.level, srow.p);
+          const tip =
+            wantName +
+            " → " +
+            offerName +
+            " · " +
+            wantQ +
+            "↔" +
+            offerQ +
+            (ratioLabel && ratioLabel !== wantQ + "∶" + offerQ
+              ? " · " + ratioLabel
+              : "") +
+            (stack.count > 1 ? " · " + stack.count + " slots" : "");
+          const onStackAct = (ev: any) => {
+            if (own) {
+              delistOwnMarketListing({ row: srow, observing });
+              return;
+            }
+            void runOffer(srow, !!(ev && ev.shiftKey));
+          };
+          const slotCountLabel =
+            stack.count > 1 ? stack.count + " slots" : "";
+          const actLabel = own ? "Delist" : actionLabel(srow);
+          return e(
+            "div",
             {
-              type: "button",
-              className: primaryClass,
-              disabled: primaryDisabled,
-              title: own
-                ? row.giveaway
-                  ? "Unequip slot — returns item to bag"
-                  : "Change price (delist + relist)"
-                : undefined,
-              onClick: onPrimary,
+              key: stack.key,
+              className:
+                "MarketPanel-tradeStackRow" + (own ? " is-own" : ""),
+              title: tip,
             },
-            primaryLabel,
-          ),
-        ),
+            e(
+              "div",
+              { className: "MarketPanel-tradeSwap" },
+              e(
+                "div",
+                { className: "MarketPanel-tradeSwapSide is-give" },
+                marketItemIcon(want.name, {
+                  level: want.level,
+                  p: want.p,
+                  size: 24,
+                  q: wantQ,
+                  forceShowQ: true,
+                  title: own ? "Ask · " + wantName : "Give " + wantName,
+                }),
+              ),
+              e(
+                "span",
+                {
+                  className: "MarketPanel-tradeStackWant",
+                  title: own ? "Ask · " + wantName : "Give " + wantName,
+                },
+                wantName,
+              ),
+              e(
+                "div",
+                { className: "MarketPanel-tradeSwapMid" },
+                e("span", { className: "MarketPanel-tradeSwapRatio" }, ratioLabel),
+              ),
+              e(
+                "div",
+                { className: "MarketPanel-tradeSwapSide is-get" },
+                marketItemIcon(srow.name, {
+                  level: srow.level,
+                  p: srow.p,
+                  size: 24,
+                  q: offerQ,
+                  forceShowQ: true,
+                  title: own ? "Offer · " + offerName : "Get " + offerName,
+                }),
+              ),
+            ),
+            e(
+              "span",
+              {
+                className:
+                  "MarketPanel-tradeStackCount" +
+                  (slotCountLabel ? "" : " is-empty"),
+                title: slotCountLabel
+                  ? stack.count + " identical stand slots"
+                  : undefined,
+                "aria-hidden": slotCountLabel ? undefined : true,
+              },
+              slotCountLabel,
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className:
+                  "MarketPanel-rowAct is-primary " +
+                  (own ? "" : "is-trade"),
+                disabled: own ? !gearEditable : false,
+                title: own
+                  ? "Unequip this stand slot"
+                  : tip,
+                onClick: onStackAct,
+              },
+              actLabel,
+            ),
+          );
+        }),
       ),
     );
   };
@@ -1014,6 +1423,14 @@ export function MarketPanel(props: MarketPanelProps): any {
                       },
                       g.giveaways.length + "G",
                     ),
+                    e(
+                      "span",
+                      {
+                        className:
+                          "t" + (g.tradeOffers.length ? "" : " dim"),
+                      },
+                      g.tradeOffers.length + "T",
+                    ),
                   ),
                 ),
                 e(
@@ -1070,6 +1487,9 @@ export function MarketPanel(props: MarketPanelProps): any {
 
   const bestBuy = focusGroup ? nextBest(focusGroup.rows, "buy") : null;
   const bestSell = focusGroup ? nextBest(focusGroup.rows, "sell") : null;
+  const tradeMerchants = focusGroup
+    ? groupTradeOffersByMerchant(focusGroup.tradeOffers)
+    : [];
   const focusBankQ = focusGroup
     ? bankQtyFor(bankQtyIndex, {
         name: focusGroup.name,
@@ -1226,6 +1646,41 @@ export function MarketPanel(props: MarketPanelProps): any {
                 ),
               )
             : null,
+          tradeMerchants.length
+            ? e(
+                "div",
+                {
+                  key: "trades",
+                  className: "MarketPanel-focusTrades",
+                },
+                e(
+                  "div",
+                  { className: "MarketPanel-focusColH" },
+                  e("span", { className: "trades" }, "Trades"),
+                  e(
+                    "em",
+                    {
+                      title:
+                        (focusGroup ? focusGroup.tradeOffers.length : 0) +
+                        " listing" +
+                        ((focusGroup ? focusGroup.tradeOffers.length : 0) === 1
+                          ? ""
+                          : "s") +
+                        " · " +
+                        tradeMerchants.length +
+                        " merchant" +
+                        (tradeMerchants.length === 1 ? "" : "s"),
+                    },
+                    String(tradeMerchants.length),
+                  ),
+                ),
+                e(
+                  "div",
+                  { className: "MarketPanel-focusTradesList" },
+                  tradeMerchants.map((g) => tradeMerchantCard(g)),
+                ),
+              )
+            : null,
           e(
             "div",
             { key: "trade", className: "MarketPanel-focusTrade" },
@@ -1238,16 +1693,20 @@ export function MarketPanel(props: MarketPanelProps): any {
                 e("span", { className: "sells" }, "Sells"),
                 e("em", null, String(focusGroup.sales.length)),
               ),
-              focusGroup.sales.length
-                ? focusGroup.sales
-                    .slice()
-                    .sort((a, b) => a.price - b.price)
-                    .map(offerCard)
-                : e(
-                    "div",
-                    { className: "MarketPanel-focusColEmpty" },
-                    "No sell offers",
-                  ),
+              e(
+                "div",
+                { className: "MarketPanel-focusColList" },
+                focusGroup.sales.length
+                  ? focusGroup.sales
+                      .slice()
+                      .sort((a, b) => a.price - b.price)
+                      .map(offerCard)
+                  : e(
+                      "div",
+                      { className: "MarketPanel-focusColEmpty" },
+                      "No sell offers",
+                    ),
+              ),
             ),
             e(
               "div",
@@ -1258,16 +1717,20 @@ export function MarketPanel(props: MarketPanelProps): any {
                 e("span", { className: "wants" }, "Wants"),
                 e("em", null, String(focusGroup.wants.length)),
               ),
-              focusGroup.wants.length
-                ? focusGroup.wants
-                    .slice()
-                    .sort((a, b) => b.price - a.price)
-                    .map(offerCard)
-                : e(
-                    "div",
-                    { className: "MarketPanel-focusColEmpty" },
-                    "No buy orders",
-                  ),
+              e(
+                "div",
+                { className: "MarketPanel-focusColList" },
+                focusGroup.wants.length
+                  ? focusGroup.wants
+                      .slice()
+                      .sort((a, b) => b.price - a.price)
+                      .map(offerCard)
+                  : e(
+                      "div",
+                      { className: "MarketPanel-focusColEmpty" },
+                      "No buy orders",
+                    ),
+              ),
             ),
           ),
         ),
@@ -1361,7 +1824,7 @@ export function MarketPanel(props: MarketPanelProps): any {
       e(
         "div",
         { className: "MarketPanel-seg" },
-        (["all", "sale", "wanted", "giveaway"] as Facet[]).map((f) =>
+        (["all", "sale", "wanted", "giveaway", "trade"] as Facet[]).map((f) =>
           e(
             "button",
             {
@@ -1382,7 +1845,9 @@ export function MarketPanel(props: MarketPanelProps): any {
                 ? "Selling"
                 : f === "wanted"
                   ? "Buying"
-                  : "Giveaways",
+                  : f === "giveaway"
+                    ? "Giveaways"
+                    : "Trades",
           ),
         ),
       ),
@@ -1620,6 +2085,26 @@ export function MarketPanel(props: MarketPanelProps): any {
                 },
               },
               "Giveaway",
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-btn MarketPanel-btn--ghost",
+                disabled: !selectedBag || !gearEditable,
+                title:
+                  "Offer selected bag stack for an item (trade offer) on first empty trade slot",
+                onClick: (ev: any) => {
+                  if (!selectedBag) return;
+                  offerBagStackOnTrade({
+                    stack: selectedBag,
+                    observing,
+                    clientX: ev.clientX || 80,
+                    clientY: ev.clientY || 80,
+                  });
+                },
+              },
+              "Trade offer",
             ),
             e(
               "button",

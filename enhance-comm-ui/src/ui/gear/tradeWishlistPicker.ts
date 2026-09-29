@@ -1,10 +1,12 @@
 /**
- * Catalog item picker for empty trade slots → wishlist() on observed character.
+ * Catalog item picker — wishlist buy-orders and trade-offer wants.
  */
 
 import { getG } from "../../host/al";
-import { wishlistCommand } from "../../host/tradeCommands";
+import type { ItemFingerprint } from "../../host/mail/types";
+import { wishlistCommand, tradeOfferCommand } from "../../host/tradeCommands";
 import {
+  showTradeOfferDetailsDialog,
   showTradePriceDialog,
   showWishlistLevelDialog,
 } from "../trade/tradePromptDialog";
@@ -19,6 +21,7 @@ type CatalogRow = { key: string; name: string; skin: string };
 let pickerEl: HTMLDivElement | null = null;
 let keyHandler: ((ev: KeyboardEvent) => void) | null = null;
 let docHandler: ((ev: MouseEvent) => void) | null = null;
+let pickHandler: ((itemKey: string) => void) | null = null;
 
 function hidePicker(): void {
   if (keyHandler) {
@@ -29,6 +32,7 @@ function hidePicker(): void {
     document.removeEventListener("mousedown", docHandler, true);
     docHandler = null;
   }
+  pickHandler = null;
   if (pickerEl) {
     pickerEl.remove();
     pickerEl = null;
@@ -75,7 +79,7 @@ function clampPosition(el: HTMLElement, clientX: number, clientY: number): void 
   el.style.top = Math.min(Math.max(pad, clientY), maxY) + "px";
 }
 
-function pickItem(tradeSlot: string, itemKey: string): void {
+function pickWishlistItem(tradeSlot: string, itemKey: string): void {
   hidePicker();
   void (async () => {
     const obs = window.observing;
@@ -100,7 +104,6 @@ function pickItem(tradeSlot: string, itemKey: string): void {
 
 function renderPage(
   root: HTMLDivElement,
-  tradeSlot: string,
   rows: CatalogRow[],
   query: string,
   page: number,
@@ -145,7 +148,7 @@ function renderPage(
     btn.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      pickItem(tradeSlot, row.key);
+      if (pickHandler) pickHandler(row.key);
     });
     grid.appendChild(btn);
   }
@@ -162,11 +165,12 @@ function renderPage(
   return safePage;
 }
 
-export function showTradeWishlistPicker(
-  tradeSlot: string,
-  clientX: number,
-  clientY: number,
-): void {
+function showCatalogPicker(opts: {
+  title: string;
+  clientX: number;
+  clientY: number;
+  onPick: (itemKey: string) => void;
+}): void {
   hidePicker();
   ensureTradeWishlistPickerCss();
 
@@ -176,6 +180,7 @@ export function showTradeWishlistPicker(
     return;
   }
 
+  pickHandler = opts.onPick;
   let page = 0;
   let query = "";
 
@@ -184,7 +189,7 @@ export function showTradeWishlistPicker(
   el.setAttribute("role", "dialog");
   el.innerHTML =
     `<div class="comm-wishlist-picker__head">` +
-    `<div class="comm-wishlist-picker__title">Wishlist → ${formatTradeSlotLabel(tradeSlot)}</div>` +
+    `<div class="comm-wishlist-picker__title">${opts.title}</div>` +
     `<input class="comm-wishlist-picker__search" type="search" placeholder="Search items…" autocomplete="off" />` +
     `</div>` +
     `<div class="comm-wishlist-picker__grid"></div>` +
@@ -196,7 +201,7 @@ export function showTradeWishlistPicker(
 
   document.body.appendChild(el);
   pickerEl = el;
-  clampPosition(el, clientX, clientY);
+  clampPosition(el, opts.clientX, opts.clientY);
 
   const search = el.querySelector(
     ".comm-wishlist-picker__search",
@@ -209,7 +214,7 @@ export function showTradeWishlistPicker(
   ) as HTMLButtonElement | null;
 
   const redraw = () => {
-    page = renderPage(el, tradeSlot, rows, query, page);
+    page = renderPage(el, rows, query, page);
   };
 
   if (search) {
@@ -249,6 +254,47 @@ export function showTradeWishlistPicker(
   window.setTimeout(() => {
     if (docHandler) document.addEventListener("mousedown", docHandler, true);
   }, 0);
+}
+
+export function showTradeWishlistPicker(
+  tradeSlot: string,
+  clientX: number,
+  clientY: number,
+): void {
+  showCatalogPicker({
+    title: `Wishlist → ${formatTradeSlotLabel(tradeSlot)}`,
+    clientX,
+    clientY,
+    onPick: (itemKey) => pickWishlistItem(tradeSlot, itemKey),
+  });
+}
+
+/** Pick what you want in exchange, then confirm offer qty / level / title. */
+export function showTradeOfferWantPicker(opts: {
+  tradeSlot: string;
+  fp: ItemFingerprint;
+  offeredMaxQ: number;
+  clientX: number;
+  clientY: number;
+}): void {
+  const { tradeSlot, fp, offeredMaxQ, clientX, clientY } = opts;
+  showCatalogPicker({
+    title: `Want for ${fp.name} → ${formatTradeSlotLabel(tradeSlot)}`,
+    clientX,
+    clientY,
+    onPick: (itemKey) => {
+      hidePicker();
+      void (async () => {
+        const details = await showTradeOfferDetailsDialog({
+          offeredName: fp.name,
+          offeredMaxQ,
+          wantName: itemKey,
+        });
+        if (!details) return;
+        tradeOfferCommand(fp, tradeSlot, details.want, details.offerQ);
+      })();
+    },
+  });
 }
 
 export function hideTradeWishlistPicker(): void {

@@ -4,6 +4,7 @@ import {
   reconcileCatalogPull,
   reconcileLiveOpenStand,
   marketCacheContentEqual,
+  cachedSlotsAsListings,
   type CachedMarketMerchant,
 } from "../src/lib/market/marketPersistLogic";
 
@@ -120,6 +121,38 @@ describe("reconcileCatalogPull", () => {
     assert.equal(next[0].slots.length, 1);
     assert.equal(next[0].slots[0].rid, "r1");
   });
+
+  it("keeps tradeOffer want through pull → cache → listings", () => {
+    const next = reconcileCatalogPull(
+      [],
+      [
+        {
+          name: "Swapper",
+          slots: {
+            trade1: {
+              name: "staff",
+              level: 5,
+              rid: "toff1",
+              want: { name: "fireblade", level: 3, p: "shiny", q: 1 },
+            },
+          },
+        },
+      ],
+      NOW,
+    );
+    const slot = next[0].slots[0];
+    assert.equal(slot.tradeOffer, true);
+    assert.equal(slot.price, 0);
+    assert.deepEqual(slot.want, {
+      name: "fireblade",
+      level: 3,
+      p: "shiny",
+      q: 1,
+    });
+    const listed = cachedSlotsAsListings(next[0].slots);
+    assert.equal(listed[0].tradeOffer, true);
+    assert.deepEqual(listed[0].want, slot.want);
+  });
 });
 
 describe("reconcileLiveOpenStand", () => {
@@ -214,6 +247,49 @@ describe("reconcileLiveOpenStand", () => {
     assert.equal(next[0].slots[0].rid, "r1");
     assert.equal(next[0].slots[0].lastRefreshedAt, NOW - 1);
     assert.equal(next[0].lastSeenAt, NOW - 1);
+  });
+
+  it("keeps want when live soft payload drops it", () => {
+    const prev: CachedMarketMerchant[] = [
+      {
+        name: "Near",
+        lastSeenAt: NOW - 1,
+        slots: [
+          {
+            slot: "trade1",
+            rid: "toff",
+            name: "staff",
+            price: 0,
+            buyOrder: false,
+            tradeOffer: true,
+            want: { name: "fireblade", q: 1 },
+            lastRefreshedAt: NOW - 1,
+          },
+        ],
+      },
+    ];
+    const next = reconcileLiveOpenStand(
+      prev,
+      {
+        name: "Near",
+        stand: "stand0",
+        liveSlotMap: {
+          trade1: { name: "staff", price: 0, rid: "toff" },
+        },
+        slots: [
+          {
+            slot: "trade1",
+            name: "staff",
+            price: 0,
+            buyOrder: false,
+            rid: "toff",
+          },
+        ],
+      },
+      NOW,
+    );
+    assert.equal(next[0].slots[0].tradeOffer, true);
+    assert.equal(next[0].slots[0].want?.name, "fireblade");
   });
 });
 
