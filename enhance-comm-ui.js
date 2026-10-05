@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.11.0
+// @version      0.11.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8597,6 +8597,20 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.11.1",
+      title: "0.11.1",
+      date: "2026-10-05",
+      summary: "Meter ranks 10+ stay on one line (coop and every other bar list).",
+      highlights: [
+        {
+          label: "Meter rank wrap",
+          detail: "Double-digit ranks no longer shove the name onto a clipped second line. Same bar-row CSS for coop_v2 and DPS \u2014 the old 2.75ch column was still too tight for \u201C10.\u201D.",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.11.0",
       title: "0.11.0",
@@ -25673,8 +25687,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.11.0" : "unknown";
-    const builtAt = true ? "2026-09-29T06:00:15.978Z" : "unknown";
+    const version = true ? "0.11.1" : "unknown";
+    const builtAt = true ? "2026-10-05T09:11:30.175Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -37074,8 +37088,8 @@ button.comm-mail__stack-u {
 .ecu-meter-row {
   position: relative;
   display: grid;
-  /* Fixed rank column (ch, not em) so 10.+ lines up with 1\u20139 without growing with font-size. */
-  grid-template-columns: 2.75ch 1fr auto;
+  /* Wide enough for "99." \u2014 2.75ch still wrapped "10." once padding ate the track. */
+  grid-template-columns: 3.5ch 1fr auto;
   align-items: center;
   gap: 3px;
   min-height: var(--meter-bar-row-h, 18px);
@@ -37134,8 +37148,10 @@ button.comm-mail__stack-u {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  padding: 0 2px 0 0 !important;
+  padding: 0 !important;
   margin: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
 }
 `;
 

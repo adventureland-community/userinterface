@@ -85,8 +85,8 @@ export const METER_INSPECTOR_DRILL_CSS = `
 .ecu-meter-row {
   position: relative;
   display: grid;
-  /* Fixed rank column (ch, not em) so 10.+ lines up with 1–9 without growing with font-size. */
-  grid-template-columns: 2.75ch 1fr auto;
+  /* Wide enough for "99." — 2.75ch still wrapped "10." once padding ate the track. */
+  grid-template-columns: 3.5ch 1fr auto;
   align-items: center;
   gap: 3px;
   min-height: var(--meter-bar-row-h, 18px);
@@ -145,8 +145,10 @@ export const METER_INSPECTOR_DRILL_CSS = `
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
-  padding: 0 2px 0 0 !important;
+  padding: 0 !important;
   margin: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
 }
 `;
 

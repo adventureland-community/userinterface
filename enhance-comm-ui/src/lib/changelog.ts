@@ -112,6 +112,21 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.11.1",
+    title: "0.11.1",
+    date: "2026-10-05",
+    summary: "Meter ranks 10+ stay on one line (coop and every other bar list).",
+    highlights: [
+      {
+        label: "Meter rank wrap",
+        detail:
+          "Double-digit ranks no longer shove the name onto a clipped second line. Same bar-row CSS for coop_v2 and DPS — the old 2.75ch column was still too tight for “10.”.",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.11.0",
     title: "0.11.0",
     date: "2026-09-27",
