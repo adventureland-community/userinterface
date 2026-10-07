@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.11.1
+// @version      0.11.2
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8543,6 +8543,73 @@ ${fightHoverTip(src)}`
     }
   }
 
+  // src/lib/partyRosterShow.ts
+  function normalizePartyRosterShow(raw) {
+    if (raw === "all" || raw === "party") return raw;
+    return "all";
+  }
+  function nextPartyRosterShow(mode) {
+    return mode === "all" ? "party" : "all";
+  }
+  function partyRosterShowLabel(mode) {
+    switch (mode) {
+      case "all":
+        return "All";
+      case "party":
+        return "Party";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function partyRosterShowTitle(mode) {
+    switch (mode) {
+      case "all":
+        return "Roster: every player in vision";
+      case "party":
+        return "Roster: your party only (or just you when unpartied)";
+      default: {
+        const _exhaustive = mode;
+        return _exhaustive;
+      }
+    }
+  }
+  function filterPartiesForShow(opts) {
+    const { parties, show, observing } = opts;
+    if (show === "all") return parties;
+    const obsId = (observing == null ? void 0 : observing.id) != null ? String(observing.id) : "";
+    const obsParty = (observing == null ? void 0 : observing.party) != null && String(observing.party) !== "" ? String(observing.party) : "";
+    if (obsParty) {
+      const out2 = [];
+      for (let i = 0; i < parties.length; i++) {
+        if (parties[i][0] === obsParty) out2.push(parties[i]);
+      }
+      return out2;
+    }
+    if (!obsId) return [];
+    const out = [];
+    for (let i = 0; i < parties.length; i++) {
+      const key = parties[i][0];
+      const members = parties[i][1];
+      const kept = [];
+      for (let j = 0; j < members.length; j++) {
+        if (String(members[j].id) === obsId) kept.push(members[j]);
+      }
+      if (kept.length) out.push([key, kept]);
+    }
+    return out;
+  }
+  function partitionPartyGroups(parties) {
+    const multi = [];
+    const singles = [];
+    for (let i = 0; i < parties.length; i++) {
+      if (parties[i][1].length <= 1) singles.push(parties[i]);
+      else multi.push(parties[i]);
+    }
+    return { multi, singles };
+  }
+
   // src/lib/changelog.ts
   var FEATURE_OVERVIEW = [
     {
@@ -8597,6 +8664,25 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.11.2",
+      title: "0.11.2",
+      date: "2026-10-07",
+      summary: "Party roster: Show Party/All, and solo parties wrap side-by-side.",
+      highlights: [
+        {
+          label: "Roster Show \xB7 Party",
+          detail: "Hover the party panel for Show \xB7 All/Party and Buffs \xB7 \u2026 chips (overlay, no extra row). Party keeps your group (or just you when unpartied) so towns and event bosses don\u2019t fill half the screen.",
+          kind: "feature"
+        },
+        {
+          label: "Solo parties wrap",
+          detail: "One-member parties sit in a wrapping row instead of stacking a full-height block each. Multi-member groups stay as before.",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.11.1",
       title: "0.11.1",
@@ -10785,6 +10871,7 @@ ${fightHoverTip(src)}`
     bagOpenPreferred: false,
     panelOpacity: {},
     partyBuffMode: "auto",
+    partyRosterShow: "all",
     meterInstances: defaultMeterInstances(),
     windowsLocked: true,
     metersLocked: true,
@@ -11020,6 +11107,7 @@ ${fightHoverTip(src)}`
       bagOpenPreferred: !!parsed.bagOpenPreferred,
       panelOpacity: mergePanelOpacity(parsed.panelOpacity),
       partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode),
+      partyRosterShow: normalizePartyRosterShow(parsed.partyRosterShow),
       meterInstances: migrateLegacyMeterLayout(
         normalizeMeterInstances(parsed.meterInstances, {
           closedIds: meterClosedIdList(parsed.meterClosedInstances)
@@ -11103,6 +11191,7 @@ ${fightHoverTip(src)}`
       bagOpenPreferred: false,
       panelOpacity: {},
       partyBuffMode: "auto",
+      partyRosterShow: "all",
       meterInstances: defaultMeterInstances(),
       metersLocked: true,
       windowsLocked: true,
@@ -11235,6 +11324,9 @@ ${fightHoverTip(src)}`
     }
     if (partial.partyBuffMode != null) {
       next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
+    }
+    if (partial.partyRosterShow != null) {
+      next.partyRosterShow = normalizePartyRosterShow(partial.partyRosterShow);
     }
     if (partial.meterInstances) {
       const closedForNorm = partial.meterClosedInstances != null ? normalizeMeterClosedInstances(partial.meterClosedInstances) : normalizeMeterClosedInstances(current.meterClosedInstances);
@@ -13530,9 +13622,37 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   }
 }
 
-/* Party roster: Buffs mode chip sits in the first party header (gold WC family). */
+/* Party roster: Show/Buffs mode chips (gold WC family). */
 .ecu-roster {
   position: relative;
+}
+/* Overlay on hover \u2014 no reserved row (same idea as meter chrome-on-hover). */
+.ecu-roster-toolbar {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+.ecu-roster:hover .ecu-roster-toolbar,
+.ecu-roster:focus-within .ecu-roster-toolbar,
+.ecu-roster.is-layout-edit .ecu-roster-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .ecu-roster-toolbar {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .ecu-roster-buffs {
   cursor: pointer;
@@ -13575,10 +13695,16 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 .ecu-roster-buffs:hover .ecu-roster-buffs-v {
   color: #ffe9a8;
 }
-/* Layout-edit body is click-through \u2014 keep Buffs usable. */
+/* Layout-edit body is click-through \u2014 keep Show/Buffs usable. */
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body .ecu-roster-buffs {
   pointer-events: auto !important;
   z-index: 8;
+}
+.ecu-roster-singles {
+  min-width: 0;
+}
+.ecu-roster-party.is-solo .ecu-roster-party-hd {
+  margin-bottom: 2px;
 }
 
 /* Tablet / phone \u2014 larger hit targets (Edge/Firefox Android, Safari iOS) */
@@ -25687,8 +25813,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.11.1" : "unknown";
-    const builtAt = true ? "2026-10-05T09:11:30.175Z" : "unknown";
+    const version = true ? "0.11.2" : "unknown";
+    const builtAt = true ? "2026-10-07T09:15:34.300Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -52870,39 +52996,295 @@ ${parts.map(cssSlice).join("\n")}
     if (dead) return 0.42;
     return 1;
   }
-  function Players(props) {
-    const React = getReact();
-    const [buffMode, setBuffMode] = React.useState(
-      () => getSettings().partyBuffMode || "auto"
+  function findObserving(entities, observingId) {
+    if (observingId == null || observingId === "") return void 0;
+    const want = String(observingId);
+    for (let i = 0; i < entities.length; i++) {
+      if (String(entities[i].id) === want) return entities[i];
+    }
+    return void 0;
+  }
+  function countMembers(parties) {
+    let n = 0;
+    for (let i = 0; i < parties.length; i++) n += parties[i][1].length;
+    return n;
+  }
+  function renderPlayerChip(player, ctx) {
+    var _a;
+    const pid = String(player.id);
+    const selected = ctx.selectedEntity != null && String(ctx.selectedEntity) === pid;
+    const observed = ctx.observingId != null && String(ctx.observingId) === pid;
+    const aggroMobs = aggroOn(ctx.byTarget, pid);
+    const hasAggro = aggroMobs.length > 0;
+    const color = classColors[player.ctype || ""] || "#888";
+    const dead = isActuallyDead(player);
+    const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
+    const controlStates = getControlStates(player, aggroMobs);
+    const controlTint = controlBorderTint(controlStates);
+    const controlTitle = controlStates.map(
+      (s) => s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
+    ).join(" \xB7 ");
+    const nameTitle = [
+      `${player.name || player.id}`,
+      observed ? "Observing" : "",
+      dead ? "Dead" : "",
+      controlTitle,
+      aggroTitle
+    ].filter(Boolean).join(" \xB7 ");
+    const outline = chipOutline({
+      hasAggro,
+      controlTint,
+      observed,
+      selected
+    });
+    const showBuffs = showUnderChipBuffs(
+      ctx.buffMode,
+      ctx.visibleChipCount,
+      observed
     );
-    const parties = partyGroups(props.entities);
-    const visibleChipCount = playersList(props.entities).length;
-    const sharedMode = buffMode === "shared";
-    const cycleBuffMode = () => {
-      const next = nextPartyBuffMode(buffMode);
-      setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
-    };
-    const buffsButton = e(
+    const maxVisible = underChipBuffMaxVisible(ctx.buffMode);
+    return e(
+      "div",
+      {
+        key: pid,
+        className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : ""),
+        title: nameTitle,
+        style: {
+          position: "relative",
+          flex: "0 0 auto",
+          width: PARTY_CHIP_WIDTH + "px",
+          background: "transparent",
+          cursor: "pointer",
+          overflow: "visible",
+          boxSizing: "border-box",
+          opacity: chipOpacity(dead)
+        },
+        onClick: () => {
+          if (selected) {
+            setXTarget(null);
+            ctx.setSelectedEntity(void 0);
+            return;
+          }
+          setXTarget(player);
+          ctx.setSelectedEntity(player.id);
+        }
+      },
+      e(
+        "div",
+        {
+          style: {
+            position: "relative",
+            minHeight: "26px",
+            height: "26px",
+            overflow: "visible",
+            background: "rgba(0,0,0,0.45)",
+            outline,
+            boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
+          }
+        },
+        e("div", {
+          style: {
+            display: "block",
+            height: "100%",
+            width: `${hpPct(player)}%`,
+            background: color
+          }
+        }),
+        e(
+          "div",
+          {
+            style: {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              display: "flex",
+              alignItems: "center",
+              padding: "0 7px",
+              minWidth: 0,
+              overflow: "visible",
+              fontSize: TYPE.name,
+              letterSpacing: "0.04em",
+              lineHeight: 1,
+              color: "#fff",
+              pointerEvents: "none",
+              ...PIXEL_TEXT
+            }
+          },
+          e(InspectButton, { entity: player, compact: true }),
+          e(NameWithControl, {
+            className: "ecu-chip-namecluster",
+            name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
+            states: controlStates,
+            compact: true,
+            iconSize: 16
+          })
+        )
+      ),
+      e(AggroSpark, {
+        count: aggroMobs.length,
+        className: "ecu-chip-aggro"
+      }),
+      e(
+        "div",
+        {
+          style: {
+            marginTop: "2px",
+            height: "5px",
+            overflow: "hidden",
+            background: "rgba(0,0,0,0.45)"
+          }
+        },
+        e("div", {
+          style: {
+            display: "block",
+            height: "100%",
+            width: `${mpPct(player)}%`,
+            background: "#3a6fd8"
+          }
+        })
+      ),
+      showBuffs ? e(EffectsRow, {
+        key: `fx-${pid}`,
+        entity: player,
+        iconSize: 22,
+        compact: true,
+        maxVisible
+      }) : null
+    );
+  }
+  function renderPartyBlock(opts) {
+    const { party, sharedMode, chipCtx, solo } = opts;
+    const key = party[0] || "solo";
+    const members = party[1];
+    return e(
+      "div",
+      {
+        key,
+        className: "ecu-roster-party" + (solo ? " is-solo" : ""),
+        style: solo ? { flex: "0 0 auto", marginBottom: 0 } : { marginBottom: "2px" }
+      },
+      e(
+        "div",
+        {
+          className: "ecu-roster-party-hd",
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginBottom: "4px",
+            flexWrap: "wrap"
+          }
+        },
+        e(
+          "div",
+          {
+            className: "ecu-roster-party-name",
+            style: {
+              fontSize: TYPE.secondary,
+              color: "#ccc",
+              background: "rgba(0,0,0,0.55)",
+              display: "inline-block",
+              padding: "2px 6px",
+              ...PIXEL_TEXT
+            }
+          },
+          party[0] || "(no party)"
+        )
+      ),
+      sharedMode ? e(SharedPartyEffects, {
+        key: `shared-${key}`,
+        members,
+        iconSize: 22,
+        maxVisible: 8
+      }) : null,
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "flex-start",
+            gap: PARTY_CHIP_GAP + "px",
+            maxWidth: solo ? PARTY_CHIP_WIDTH + "px" : partyChipRowWidth(PARTY_MAX_COLS) + "px"
+          }
+        },
+        ...members.map((player) => renderPlayerChip(player, chipCtx))
+      )
+    );
+  }
+  function rosterModeButton(opts) {
+    return e(
       "button",
       {
         type: "button",
-        className: "ecu-roster-buffs",
-        title: partyBuffModeTitle(buffMode),
-        "aria-label": `Party buffs mode: ${partyBuffModeLabel(buffMode)}. Click to cycle.`,
-        onClick: cycleBuffMode,
+        className: opts.className,
+        title: opts.title,
+        "aria-label": opts.ariaLabel,
+        onClick: opts.onClick,
         style: {
           fontSize: TYPE.micro,
           ...PIXEL_TEXT
         }
       },
-      e("span", { className: "ecu-roster-buffs-k" }, "Buffs"),
+      e("span", { className: "ecu-roster-buffs-k" }, opts.kicker),
       e("span", { className: "ecu-roster-buffs-sep" }, "\xB7"),
-      e(
-        "span",
-        { className: "ecu-roster-buffs-v" },
-        partyBuffModeLabel(buffMode)
-      )
+      e("span", { className: "ecu-roster-buffs-v" }, opts.value)
     );
+  }
+  function Players(props) {
+    const React = getReact();
+    const [buffMode, setBuffMode] = React.useState(
+      () => getSettings().partyBuffMode || "auto"
+    );
+    const [rosterShow, setRosterShow] = React.useState(
+      () => getSettings().partyRosterShow || "all"
+    );
+    const observing = findObserving(props.entities, props.observingId);
+    const allParties = partyGroups(props.entities);
+    const parties = filterPartiesForShow({
+      parties: allParties,
+      show: rosterShow,
+      observing
+    });
+    const { multi, singles } = partitionPartyGroups(parties);
+    const visibleChipCount = countMembers(parties);
+    const sharedMode = buffMode === "shared";
+    const chipCtx = {
+      byTarget: props.byTarget,
+      selectedEntity: props.selectedEntity,
+      observingId: props.observingId,
+      setSelectedEntity: props.setSelectedEntity,
+      buffMode,
+      visibleChipCount
+    };
+    const cycleBuffMode = () => {
+      const next = nextPartyBuffMode(buffMode);
+      setBuffMode(patchSettings({ partyBuffMode: next }).partyBuffMode);
+    };
+    const cycleRosterShow = () => {
+      const next = nextPartyRosterShow(rosterShow);
+      setRosterShow(patchSettings({ partyRosterShow: next }).partyRosterShow);
+    };
+    const showButton = rosterModeButton({
+      className: "ecu-roster-buffs ecu-roster-show",
+      kicker: "Show",
+      value: partyRosterShowLabel(rosterShow),
+      title: partyRosterShowTitle(rosterShow),
+      ariaLabel: `Roster show: ${partyRosterShowLabel(rosterShow)}. Click to cycle.`,
+      onClick: cycleRosterShow
+    });
+    const buffsButton = rosterModeButton({
+      className: "ecu-roster-buffs",
+      kicker: "Buffs",
+      value: partyBuffModeLabel(buffMode),
+      title: partyBuffModeTitle(buffMode),
+      ariaLabel: `Party buffs mode: ${partyBuffModeLabel(buffMode)}. Click to cycle.`,
+      onClick: cycleBuffMode
+    });
+    const emptyLabel = rosterShow === "party" ? playersList(props.entities).length ? "No party in vision" : "No parties in vision" : "No parties in vision";
     return e(
       "div",
       {
@@ -52918,234 +53300,46 @@ ${parts.map(cssSlice).join("\n")}
           position: "relative"
         }
       },
+      e(
+        "div",
+        {
+          className: "ecu-roster-toolbar"
+        },
+        showButton,
+        buffsButton
+      ),
       !parties.length ? e(
         "div",
         {
-          className: "ecu-roster-header",
+          className: "ecu-roster-empty",
           style: {
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            marginBottom: "2px"
+            color: "#aaa",
+            fontSize: TYPE.secondary,
+            ...PIXEL_TEXT
           }
         },
-        e(
-          "div",
-          {
-            style: {
-              color: "#aaa",
-              fontSize: TYPE.secondary,
-              ...PIXEL_TEXT
-            }
-          },
-          "No parties in vision"
-        )
+        emptyLabel
       ) : null,
-      ...parties.map(
-        (party, partyIdx) => e(
-          "div",
-          {
-            key: party[0] || "solo",
-            className: "ecu-roster-party",
-            style: { marginBottom: "2px" }
-          },
-          e(
-            "div",
-            {
-              className: "ecu-roster-party-hd",
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                marginBottom: "4px",
-                flexWrap: "wrap"
-              }
-            },
-            e(
-              "div",
-              {
-                className: "ecu-roster-party-name",
-                style: {
-                  fontSize: TYPE.secondary,
-                  color: "#ccc",
-                  background: "rgba(0,0,0,0.55)",
-                  display: "inline-block",
-                  padding: "2px 6px",
-                  ...PIXEL_TEXT
-                }
-              },
-              party[0] || "(no party)"
-            ),
-            // Mode is global — only on the first party header so it sits with roster chrome.
-            partyIdx === 0 ? buffsButton : null
-          ),
-          sharedMode ? e(SharedPartyEffects, {
-            key: `shared-${party[0] || "solo"}`,
-            members: party[1],
-            iconSize: 22,
-            maxVisible: 8
-          }) : null,
-          e(
-            "div",
-            {
-              style: {
-                display: "flex",
-                flexDirection: "row",
-                flexWrap: "wrap",
-                // flex-start: chips without EffectsRow must not stretch to match buffs.
-                alignItems: "flex-start",
-                gap: PARTY_CHIP_GAP + "px",
-                maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px"
-              }
-            },
-            ...party[1].map((player) => {
-              var _a;
-              const pid = String(player.id);
-              const selected = props.selectedEntity != null && String(props.selectedEntity) === pid;
-              const observed = props.observingId != null && String(props.observingId) === pid;
-              const aggroMobs = aggroOn(props.byTarget, pid);
-              const hasAggro = aggroMobs.length > 0;
-              const color = classColors[player.ctype || ""] || "#888";
-              const dead = isActuallyDead(player);
-              const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
-              const controlStates = getControlStates(player, aggroMobs);
-              const controlTint = controlBorderTint(controlStates);
-              const controlTitle = controlStates.map(
-                (s) => s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
-              ).join(" \xB7 ");
-              const nameTitle = [
-                `${player.name || player.id}`,
-                observed ? "Observing" : "",
-                dead ? "Dead" : "",
-                controlTitle,
-                aggroTitle
-              ].filter(Boolean).join(" \xB7 ");
-              const outline = chipOutline({
-                hasAggro,
-                controlTint,
-                observed,
-                selected
-              });
-              const showBuffs = showUnderChipBuffs(
-                buffMode,
-                visibleChipCount,
-                observed
-              );
-              const maxVisible = underChipBuffMaxVisible(buffMode);
-              return e(
-                "div",
-                {
-                  key: pid,
-                  className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : ""),
-                  title: nameTitle,
-                  style: {
-                    position: "relative",
-                    flex: "0 0 auto",
-                    width: PARTY_CHIP_WIDTH + "px",
-                    background: "transparent",
-                    cursor: "pointer",
-                    overflow: "visible",
-                    boxSizing: "border-box",
-                    opacity: chipOpacity(dead)
-                  },
-                  onClick: () => {
-                    if (selected) {
-                      setXTarget(null);
-                      props.setSelectedEntity(void 0);
-                      return;
-                    }
-                    setXTarget(player);
-                    props.setSelectedEntity(player.id);
-                  }
-                },
-                e(
-                  "div",
-                  {
-                    style: {
-                      position: "relative",
-                      minHeight: "26px",
-                      height: "26px",
-                      overflow: "visible",
-                      background: "rgba(0,0,0,0.45)",
-                      outline,
-                      boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
-                    }
-                  },
-                  e("div", {
-                    style: {
-                      display: "block",
-                      height: "100%",
-                      width: `${hpPct(player)}%`,
-                      background: color
-                    }
-                  }),
-                  e(
-                    "div",
-                    {
-                      style: {
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        top: 0,
-                        bottom: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        padding: "0 7px",
-                        minWidth: 0,
-                        overflow: "visible",
-                        fontSize: TYPE.name,
-                        letterSpacing: "0.04em",
-                        lineHeight: 1,
-                        color: "#fff",
-                        pointerEvents: "none",
-                        ...PIXEL_TEXT
-                      }
-                    },
-                    e(InspectButton, { entity: player, compact: true }),
-                    e(NameWithControl, {
-                      className: "ecu-chip-namecluster",
-                      name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
-                      states: controlStates,
-                      compact: true,
-                      iconSize: 16
-                    })
-                  )
-                ),
-                e(AggroSpark, {
-                  count: aggroMobs.length,
-                  className: "ecu-chip-aggro"
-                }),
-                e(
-                  "div",
-                  {
-                    style: {
-                      marginTop: "2px",
-                      height: "5px",
-                      overflow: "hidden",
-                      background: "rgba(0,0,0,0.45)"
-                    }
-                  },
-                  e("div", {
-                    style: {
-                      display: "block",
-                      height: "100%",
-                      width: `${mpPct(player)}%`,
-                      background: "#3a6fd8"
-                    }
-                  })
-                ),
-                showBuffs ? e(EffectsRow, {
-                  key: `fx-${pid}`,
-                  entity: player,
-                  iconSize: 22,
-                  compact: true,
-                  maxVisible
-                }) : null
-              );
-            })
-          )
+      ...multi.map(
+        (party) => renderPartyBlock({ party, sharedMode, chipCtx, solo: false })
+      ),
+      singles.length ? e(
+        "div",
+        {
+          className: "ecu-roster-singles",
+          style: {
+            display: "flex",
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "flex-start",
+            gap: "6px " + PARTY_CHIP_GAP + "px",
+            maxWidth: partyChipRowWidth(PARTY_MAX_COLS) + "px"
+          }
+        },
+        ...singles.map(
+          (party) => renderPartyBlock({ party, sharedMode, chipCtx, solo: true })
         )
-      )
+      ) : null
     );
   }
 

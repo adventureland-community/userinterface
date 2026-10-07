@@ -112,6 +112,27 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.11.2",
+    title: "0.11.2",
+    date: "2026-10-07",
+    summary: "Party roster: Show Party/All, and solo parties wrap side-by-side.",
+    highlights: [
+      {
+        label: "Roster Show · Party",
+        detail:
+          "Hover the party panel for Show · All/Party and Buffs · … chips (overlay, no extra row). Party keeps your group (or just you when unpartied) so towns and event bosses don’t fill half the screen.",
+        kind: "feature",
+      },
+      {
+        label: "Solo parties wrap",
+        detail:
+          "One-member parties sit in a wrapping row instead of stacking a full-height block each. Multi-member groups stay as before.",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.11.1",
     title: "0.11.1",
     date: "2026-10-05",

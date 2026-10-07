@@ -558,9 +558,37 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   }
 }
 
-/* Party roster: Buffs mode chip sits in the first party header (gold WC family). */
+/* Party roster: Show/Buffs mode chips (gold WC family). */
 .ecu-roster {
   position: relative;
+}
+/* Overlay on hover — no reserved row (same idea as meter chrome-on-hover). */
+.ecu-roster-toolbar {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: calc(100% - 4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+.ecu-roster:hover .ecu-roster-toolbar,
+.ecu-roster:focus-within .ecu-roster-toolbar,
+.ecu-roster.is-layout-edit .ecu-roster-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none) {
+  .ecu-roster-toolbar {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .ecu-roster-buffs {
   cursor: pointer;
@@ -603,10 +631,16 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 .ecu-roster-buffs:hover .ecu-roster-buffs-v {
   color: #ffe9a8;
 }
-/* Layout-edit body is click-through — keep Buffs usable. */
+/* Layout-edit body is click-through — keep Show/Buffs usable. */
 #comm-ui .comm-pos-panel.comm-pos-editing .comm-pos-panel-body .ecu-roster-buffs {
   pointer-events: auto !important;
   z-index: 8;
+}
+.ecu-roster-singles {
+  min-width: 0;
+}
+.ecu-roster-party.is-solo .ecu-roster-party-hd {
+  margin-bottom: 2px;
 }
 
 /* Tablet / phone — larger hit targets (Edge/Firefox Android, Safari iOS) */

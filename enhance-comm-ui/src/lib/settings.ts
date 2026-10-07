@@ -20,6 +20,10 @@ import {
   type ViewportProfile,
 } from "./viewport";
 import { normalizePartyBuffMode, type PartyBuffMode } from "./partyBuffMode";
+import {
+  normalizePartyRosterShow,
+  type PartyRosterShow,
+} from "./partyRosterShow";
 import type { PartyFocus, PartyScope } from "./settingsFocus";
 import { latestChangelogId } from "./changelog";
 import {
@@ -73,7 +77,7 @@ const KEY = "al-comm-ui-settings-v1";
 const PANEL_IDS_SET = new Set<string>(PANEL_IDS);
 
 export type { ViewportProfile };
-export type { PartyBuffMode };
+export type { PartyBuffMode, PartyRosterShow };
 export type LayoutProfileMode = "auto" | ViewportProfile;
 export type PanelLayoutsByProfile = Partial<
   Record<ViewportProfile, PanelLayoutMap>
@@ -160,6 +164,8 @@ export type CommUiSettings = {
    * all | auto | observed | compact | shared | off
    */
   partyBuffMode: PartyBuffMode;
+  /** Party roster membership: all in vision, or your party only. */
+  partyRosterShow: PartyRosterShow;
   /** Skada-style meter windows (pos + query + presentation). */
   meterInstances: MeterInstance[];
   /**
@@ -250,6 +256,7 @@ const DEFAULTS: CommUiSettings = {
   bagOpenPreferred: false,
   panelOpacity: {},
   partyBuffMode: "auto",
+  partyRosterShow: "all",
   meterInstances: defaultMeterInstances(),
   windowsLocked: true,
   metersLocked: true,
@@ -548,6 +555,7 @@ function migrate(parsed: any): CommUiSettings {
     bagOpenPreferred: !!parsed.bagOpenPreferred,
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
     partyBuffMode: normalizePartyBuffMode(parsed.partyBuffMode),
+    partyRosterShow: normalizePartyRosterShow(parsed.partyRosterShow),
     meterInstances: migrateLegacyMeterLayout(
       normalizeMeterInstances(parsed.meterInstances, {
         closedIds: meterClosedIdList(parsed.meterClosedInstances),
@@ -682,6 +690,7 @@ function freshDefaults(): CommUiSettings {
     bagOpenPreferred: false,
     panelOpacity: {},
     partyBuffMode: "auto",
+    partyRosterShow: "all",
     meterInstances: defaultMeterInstances(),
     metersLocked: true,
     windowsLocked: true,
@@ -839,6 +848,9 @@ export function patchSettings(
   }
   if (partial.partyBuffMode != null) {
     next.partyBuffMode = normalizePartyBuffMode(partial.partyBuffMode);
+  }
+  if (partial.partyRosterShow != null) {
+    next.partyRosterShow = normalizePartyRosterShow(partial.partyRosterShow);
   }
   if (partial.meterInstances) {
     const closedForNorm =
