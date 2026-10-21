@@ -112,6 +112,53 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.12.0",
+    title: "0.12.0",
+    date: "2026-10-21",
+    summary:
+      "Events + world zoom on /hub, quieter vision fog, and mail caps / Settling aligned with upstream.",
+    highlights: [
+      {
+        label: "Events on /hub",
+        detail:
+          "Clock opens the Events schedule. Blessing / season / live chips open stock guides or `emonster_click` from `G` — no per-event ECU allowlist.",
+        kind: "feature",
+      },
+      {
+        label: "World zoom + vision fog",
+        detail:
+          "Map chip `out ×N in` (wheel syncs; click `×N` resets to default ×2). Zoomed-out view softly dims outside the server entity window over the camera viewport (not map geometry, no cyan outline). Hole follows the live watched entity, then self, then camera. Integer scale 1–3; boot heals bad fractional cookies.",
+        kind: "feature",
+      },
+      {
+        label: "Mail attachment caps",
+        detail:
+          "Compact Attach caps card (`3 full · 1 near` + observed/worst meter). Details opens a modal of every owned character with Full / Near / Holding / Clear filters. Caps are per character (200 untaken, 20 from one sending account) — not one account-wide 200. Compose uses the same breakdown.",
+        kind: "improve",
+      },
+      {
+        label: "Mail take · Settling",
+        detail:
+          "Upstream `mailclaim_*` tokens no longer look like “Ready to take”. Claims show Settling until `taken === true`; `can_take` gates Take for the recipient.",
+        kind: "fix",
+      },
+    ],
+    items: [
+      {
+        label: "React CDN fallbacks",
+        detail:
+          "If unpkg times out, ECU tries jsDelivr then cdnjs (production React 18 builds) so the HUD can still mount.",
+        kind: "fix",
+      },
+      {
+        label: "Item level pips + title borders",
+        detail:
+          "ItemInstance level badges use stock letters/colors (X/Y/Z, V/S/R, booster A–E). Title borders recolor stock frames and wrap sheet fallbacks when `item.p` is set.",
+        kind: "fix",
+      },
+    ],
+  },
+  {
     id: "0.11.2",
     title: "0.11.2",
     date: "2026-10-07",
