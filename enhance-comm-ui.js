@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.11.2
+// @version      0.12.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -36,6 +36,105 @@ var EnhanceCommUI = (() => {
   function e(type, props, ...children) {
     const React = getReact();
     return React.createElement(type, props, ...children);
+  }
+
+  // src/host/ensureReact.ts
+  var REACT_URLS = [
+    "https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js",
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"
+  ];
+  var REACT_DOM_URLS = [
+    "https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"
+  ];
+  var SCRIPT_TIMEOUT_MS = 12e3;
+  function loadScript(id, src) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector("#" + id);
+      if (existing) {
+        if (existing.dataset.ecuLoaded === "1") {
+          resolve();
+          return;
+        }
+        const onLoad2 = () => {
+          existing.dataset.ecuLoaded = "1";
+          resolve();
+        };
+        const onErr = () => reject(new Error("script error: " + src));
+        existing.addEventListener("load", onLoad2);
+        existing.addEventListener("error", onErr);
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = id;
+      script.src = src;
+      script.crossOrigin = "anonymous";
+      script.async = true;
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        script.remove();
+        reject(new Error("timeout: " + src));
+      }, SCRIPT_TIMEOUT_MS);
+      script.addEventListener("load", () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        script.dataset.ecuLoaded = "1";
+        resolve();
+      });
+      script.addEventListener("error", () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        script.remove();
+        reject(new Error("script error: " + src));
+      });
+      (document.head || document.documentElement).append(script);
+    });
+  }
+  async function loadFirstAvailable(id, urls) {
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+      const src = urls[i];
+      try {
+        const attemptId = i === 0 ? id : id + "-r" + i;
+        await loadScript(attemptId, src);
+        return src;
+      } catch (err) {
+        lastErr = err;
+        console.warn("[ecu] React CDN failed, trying next", src, err);
+      }
+    }
+    throw lastErr || new Error("all React CDNs failed for " + id);
+  }
+  function ensureReact(onReady) {
+    if (window.React && window.ReactDOM) {
+      onReady();
+      return;
+    }
+    void (async () => {
+      try {
+        if (!window.React) {
+          await loadFirstAvailable("ecu-react", REACT_URLS);
+        }
+        if (!window.ReactDOM) {
+          await loadFirstAvailable("ecu-react-dom", REACT_DOM_URLS);
+        }
+        if (!window.React || !window.ReactDOM) {
+          throw new Error("React globals missing after CDN load");
+        }
+        onReady();
+      } catch (err) {
+        console.error(
+          "[ecu] Could not load React \u2014 Comm UI will not mount. Check CDN / network.",
+          err
+        );
+      }
+    })();
   }
 
   // src/host/observerCommandPending.ts
@@ -417,6 +516,8 @@ var EnhanceCommUI = (() => {
     if (m.read != null) next.read = m.read;
     if (m.item) next.item = { ...m.item };
     if (m.taken != null) next.taken = m.taken;
+    if (m.takenPending != null) next.takenPending = m.takenPending;
+    if (m.canTake != null) next.canTake = m.canTake;
     if (m.system != null) next.system = m.system;
     return next;
   }
@@ -509,8 +610,20 @@ var EnhanceCommUI = (() => {
       if (typeof m.read === "boolean") row3.read = m.read;
       const item = parseMailItem(m.item);
       if (item) row3.item = item;
-      const taken = coerceMailTaken(m.taken);
-      if (taken != null) row3.taken = taken;
+      const takenState = coerceMailTakenState(m.taken);
+      if (takenState) {
+        row3.taken = takenState.taken;
+        row3.takenPending = takenState.pending;
+      }
+      if (typeof m.can_take === "boolean") row3.canTake = m.can_take;
+      if (!row3.subject) {
+        const phraseSub = phraseFromMessageField(m.subject_message);
+        if (phraseSub) row3.subject = phraseSub;
+      }
+      if (!row3.message) {
+        const phraseBody = phraseFromMessageField(m.body_message);
+        if (phraseBody) row3.message = phraseBody;
+      }
       mail.push(row3);
     }
     return {
@@ -520,11 +633,29 @@ var EnhanceCommUI = (() => {
       cursored: !!info2.cursored
     };
   }
-  function coerceMailTaken(raw) {
-    if (typeof raw === "boolean") return raw;
-    if (raw === 0 || raw === "0" || raw === "false") return false;
-    if (raw === 1 || raw === "1" || raw === "true") return true;
+  function coerceMailTakenState(raw) {
+    if (typeof raw === "boolean") {
+      return { taken: raw, pending: false };
+    }
+    if (raw === 0 || raw === "0" || raw === "false") {
+      return { taken: false, pending: false };
+    }
+    if (raw === 1 || raw === "1" || raw === "true") {
+      return { taken: true, pending: false };
+    }
+    if (typeof raw === "string" && raw.length > 0) {
+      return { taken: true, pending: true };
+    }
     return void 0;
+  }
+  function phraseFromMessageField(raw) {
+    if (!raw || typeof raw !== "object") return "";
+    const phrase = raw.phrase;
+    if (typeof phrase !== "string" || !phrase) return "";
+    const leaf = phrase.split(".").pop() || phrase;
+    if (leaf === "mail_subject") return "System mail";
+    if (leaf === "mail_body") return "";
+    return leaf.replace(/_/g, " ");
   }
   function looksLikeItemId(s) {
     const t = String(s || "").trim();
@@ -1559,7 +1690,9 @@ var EnhanceCommUI = (() => {
   };
 
   // src/lib/itemTitleBorder.ts
+  var TITLE_BORDER_FALLBACK = "#c9a227";
   function itemTitleBorderColor(p) {
+    var _a;
     if (!p) return void 0;
     switch (p) {
       case "festive":
@@ -1578,8 +1711,24 @@ var EnhanceCommUI = (() => {
         return "#99b2d8";
       case "superfast":
         return "#c681dc";
-      default:
+      case "fast":
+        return "#9ad0ff";
+      case "stomped":
+        return "#d4a574";
+      case "sniper":
+        return "#8ab4f8";
+      case "abtesting":
+        return "#b39ddb";
+      case "critmonger":
+        return "#ef9a9a";
+      default: {
+        try {
+          const G = getG();
+          if ((_a = G == null ? void 0 : G.titles) == null ? void 0 : _a[p]) return TITLE_BORDER_FALLBACK;
+        } catch (e2) {
+        }
         return void 0;
+      }
     }
   }
   function shouldShowTitleBorder(p) {
@@ -1589,16 +1738,85 @@ var EnhanceCommUI = (() => {
   function wrapHtmlWithTitleBorder(html, p) {
     const color = itemTitleBorderColor(p);
     if (!color) return html;
-    return html.replace(ITEM_CONTAINER_BORDER_RE, `border: 2px solid ${color}`);
+    ITEM_CONTAINER_BORDER_RE.lastIndex = 0;
+    if (ITEM_CONTAINER_BORDER_RE.test(html)) {
+      ITEM_CONTAINER_BORDER_RE.lastIndex = 0;
+      return html.replace(ITEM_CONTAINER_BORDER_RE, `border: 2px solid ${color}`);
+    }
+    return `<span class="ecu-item-title-frame" style="display:inline-flex;border:2px solid ${color};background:#000;line-height:0;padding:1px;box-sizing:border-box">` + html + `</span>`;
   }
   function stampNativeItemTitleBorder(root, p) {
     const color = itemTitleBorderColor(p);
     if (!color) return;
     root.style.borderColor = color;
+    root.style.borderStyle = root.style.borderStyle || "solid";
+    root.style.borderWidth = root.style.borderWidth || "2px";
     root.style.boxShadow = "";
     const inner = root.querySelector(".rclick");
-    if (inner) inner.style.borderColor = color;
+    if (inner) {
+      inner.style.borderColor = color;
+      inner.style.borderStyle = inner.style.borderStyle || "solid";
+      inner.style.borderWidth = inner.style.borderWidth || "2px";
+    }
     root.dataset.ecuTitleBorder = p || "";
+  }
+
+  // src/lib/itemLevelBadge.ts
+  var DEFAULT_LEVEL_COLOR = "#cfcfcf";
+  var BOOSTER_LETTER = {
+    1: "A",
+    2: "B",
+    3: "C",
+    4: "D",
+    5: "E"
+  };
+  var BOOSTER_COLOR = {
+    A: "#FFC949",
+    B: "#4A9AFF",
+    C: "#FC4546",
+    D: "#9353FF",
+    E: "#FD8915",
+    W: "#5BAD59"
+  };
+  function coerceItemLevel(raw) {
+    if (raw == null || raw === "") return void 0;
+    if (typeof raw === "number") {
+      return Number.isFinite(raw) ? raw : void 0;
+    }
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : void 0;
+  }
+  function resolveItemLevelBadge(itemName, level) {
+    var _a;
+    const n = coerceItemLevel(level);
+    if (n == null || n <= 0) return null;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[itemName];
+    const type = def && typeof def.type === "string" ? def.type : "";
+    if (type === "booster") {
+      const text2 = n > 5 ? "W" : BOOSTER_LETTER[Math.floor(n)] || String(Math.floor(n));
+      return {
+        text: text2,
+        color: BOOSTER_COLOR[text2] || DEFAULT_LEVEL_COLOR
+      };
+    }
+    if (def && def.compound) {
+      const lv2 = Math.floor(n);
+      const text2 = lv2 === 7 ? "R" : lv2 === 6 ? "S" : lv2 === 5 ? "V" : String(lv2);
+      let color2 = DEFAULT_LEVEL_COLOR;
+      if (lv2 === 4) color2 = "#FFC949";
+      else if (lv2 === 5) color2 = "#B753C7";
+      else if (lv2 === 6) color2 = "#FC2F72";
+      else if (lv2 >= 7) color2 = "#D71D41";
+      return { text: text2, color: color2 };
+    }
+    const lv = Math.floor(n);
+    const text = lv === 12 ? "Z" : lv === 11 ? "Y" : lv === 10 ? "X" : String(lv);
+    let color = DEFAULT_LEVEL_COLOR;
+    if (lv === 8) color = "#FFC949";
+    else if (lv === 9) color = "#E64D31";
+    else if (lv >= 10) color = "#B753C7";
+    return { text, color };
   }
 
   // src/host/icons.ts
@@ -1986,15 +2204,10 @@ var EnhanceCommUI = (() => {
     } else if (p) {
       label = p.charAt(0).toUpperCase() + p.slice(1) + " " + label;
     }
-    const level = actual && actual.level != null ? Number(actual.level) : NaN;
-    if (def && Number.isFinite(level)) {
-      if (def.upgrade && level === 12) label += " +Z";
-      else if (def.upgrade && level === 11) label += " +Y";
-      else if (def.upgrade && level === 10) label += " +X";
-      else if (def.compound && level === 7) label += " +R";
-      else if (def.compound && level === 6) label += " +S";
-      else if (def.compound && level === 5) label += " +V";
-      else if (level > 0) label += " +" + Math.floor(level);
+    const level = actual && actual.level != null && actual.level !== "" ? Number(actual.level) : NaN;
+    if (Number.isFinite(level) && level > 0) {
+      const badge = resolveItemLevelBadge(itemName, level);
+      if (badge) label += " +" + badge.text;
     }
     return label;
   }
@@ -8665,6 +8878,46 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.12.0",
+      title: "0.12.0",
+      date: "2026-10-21",
+      summary: "Events + world zoom on /hub, quieter vision fog, and mail caps / Settling aligned with upstream.",
+      highlights: [
+        {
+          label: "Events on /hub",
+          detail: "Clock opens the Events schedule. Blessing / season / live chips open stock guides or `emonster_click` from `G` \u2014 no per-event ECU allowlist.",
+          kind: "feature"
+        },
+        {
+          label: "World zoom + vision fog",
+          detail: "Map chip `out \xD7N in` (wheel syncs; click `\xD7N` resets to default \xD72). Zoomed-out view softly dims outside the server entity window over the camera viewport (not map geometry, no cyan outline). Hole follows the live watched entity, then self, then camera. Integer scale 1\u20133; boot heals bad fractional cookies.",
+          kind: "feature"
+        },
+        {
+          label: "Mail attachment caps",
+          detail: "Compact Attach caps card (`3 full \xB7 1 near` + observed/worst meter). Details opens a modal of every owned character with Full / Near / Holding / Clear filters. Caps are per character (200 untaken, 20 from one sending account) \u2014 not one account-wide 200. Compose uses the same breakdown.",
+          kind: "improve"
+        },
+        {
+          label: "Mail take \xB7 Settling",
+          detail: "Upstream `mailclaim_*` tokens no longer look like \u201CReady to take\u201D. Claims show Settling until `taken === true`; `can_take` gates Take for the recipient.",
+          kind: "fix"
+        }
+      ],
+      items: [
+        {
+          label: "React CDN fallbacks",
+          detail: "If unpkg times out, ECU tries jsDelivr then cdnjs (production React 18 builds) so the HUD can still mount.",
+          kind: "fix"
+        },
+        {
+          label: "Item level pips + title borders",
+          detail: "ItemInstance level badges use stock letters/colors (X/Y/Z, V/S/R, booster A\u2013E). Title borders recolor stock frames and wrap sheet fallbacks when `item.p` is set.",
+          kind: "fix"
+        }
+      ]
+    },
+    {
       id: "0.11.2",
       title: "0.11.2",
       date: "2026-10-07",
@@ -10395,6 +10648,66 @@ ${fightHoverTip(src)}`
     return MODES[(i + 1) % MODES.length];
   }
 
+  // src/lib/worldZoom.ts
+  var WORLD_ZOOM_MIN = 1;
+  var WORLD_ZOOM_MAX = 3;
+  var WORLD_ZOOM_DEFAULT = 2;
+  var WORLD_ZOOM_STEP = 1;
+  function clampWorldZoom(n) {
+    if (!Number.isFinite(n)) return WORLD_ZOOM_DEFAULT;
+    return Math.max(WORLD_ZOOM_MIN, Math.min(WORLD_ZOOM_MAX, Math.round(n)));
+  }
+  function cookieScaleValue(zoom) {
+    return String(clampWorldZoom(zoom));
+  }
+  function readHostWorldZoom() {
+    const raw = window.scale;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return clampWorldZoom(Number.isFinite(n) && n > 0 ? n : WORLD_ZOOM_DEFAULT);
+  }
+  function applyWorldZoom(next) {
+    const zoom = clampWorldZoom(next);
+    const w = window;
+    const changed = readHostWorldZoom() !== zoom;
+    w.scale = zoom;
+    const map = w.map;
+    if (map) {
+      if (map.scale && typeof map.scale.set === "function") {
+        map.scale.set(zoom, zoom);
+      } else if (w.PIXI && typeof w.PIXI.Point === "function") {
+        map.scale = new w.PIXI.Point(zoom, zoom);
+      } else if (map.scale) {
+        map.scale.x = zoom;
+        map.scale.y = zoom;
+      }
+      if (changed) map.last_max_y = void 0;
+    }
+    return zoom;
+  }
+  function writeWorldZoomCookie(zoom) {
+    const v = cookieScaleValue(zoom);
+    try {
+      const maxAge = 60 * 60 * 24 * 365 * 5;
+      document.cookie = "scale=" + encodeURIComponent(v) + "; path=/; max-age=" + maxAge + "; SameSite=Lax";
+    } catch (e2) {
+    }
+  }
+  function healFractionalScaleCookie(preferred = WORLD_ZOOM_DEFAULT) {
+    try {
+      const match = document.cookie.match(/(?:^|;\s*)scale=([^;]*)/);
+      if (!match) return null;
+      const raw = decodeURIComponent(match[1] || "");
+      if (!raw || !raw.includes(".")) return null;
+      const healed = clampWorldZoom(
+        Number.isFinite(preferred) ? preferred : WORLD_ZOOM_DEFAULT
+      );
+      writeWorldZoomCookie(healed);
+      return healed;
+    } catch (e2) {
+      return null;
+    }
+  }
+
   // src/lib/abilityTimelineFrame.ts
   var VERTICAL_MAX_W = 90;
   var VERTICAL_MIN_H = 160;
@@ -11136,6 +11449,7 @@ ${fightHoverTip(src)}`
       minimapZoom: clampMinimapZoom(
         typeof parsed.minimapZoom === "number" ? parsed.minimapZoom : MINIMAP_ZOOM_DEFAULT
       ),
+      worldZoom: typeof parsed.worldZoom === "number" ? clampWorldZoom(parsed.worldZoom) : void 0,
       minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
       bagSort: normalizeBagSortPrefs(parsed.bagSort)
     };
@@ -11303,6 +11617,9 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.minimapZoom === "number") {
       next.minimapZoom = clampMinimapZoom(partial.minimapZoom);
+    }
+    if (typeof partial.worldZoom === "number") {
+      next.worldZoom = clampWorldZoom(partial.worldZoom);
     }
     if (partial.minimapBg != null) {
       next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);
@@ -13831,7 +14148,9 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   display: none !important;
 }
 #comm-ui .comm-pos-panel .ecu-chip,
-#comm-ui .comm-pos-panel .ecu-roster-buffs {
+#comm-ui .comm-pos-panel .ecu-roster-buffs,
+#comm-ui .comm-pos-panel .ecu-server-info,
+#comm-ui .comm-pos-panel .ecu-map-info {
   pointer-events: auto;
 }
 /* Fill-frame HUD (Mail, Instance, Timeline, \u2026): clip inside the body so
@@ -14095,6 +14414,8 @@ ${CHROME_ARRANGE_CSS}
     if (m.read != null) next.read = m.read;
     if (m.item) next.item = { ...m.item };
     if (m.taken != null) next.taken = m.taken;
+    if (m.takenPending != null) next.takenPending = m.takenPending;
+    if (m.canTake != null) next.canTake = m.canTake;
     if (m.system != null) next.system = m.system;
     return next;
   }
@@ -14734,6 +15055,7 @@ ${CHROME_ARRANGE_CSS}
       };
     }
     let okCount = 0;
+    let pendingCount2 = 0;
     for (let i = 0; i < p.targetIds.length; i++) {
       let row3 = null;
       for (let j = 0; j < mails.length; j++) {
@@ -14742,7 +15064,12 @@ ${CHROME_ARRANGE_CSS}
           break;
         }
       }
-      if (row3 && (row3.taken || !row3.item)) okCount += 1;
+      if (!row3) continue;
+      if (row3.takenPending) {
+        pendingCount2 += 1;
+        continue;
+      }
+      if (row3.taken || !row3.item) okCount += 1;
     }
     const expect = p.expect > 0 ? p.expect : p.targetIds.length || 1;
     if (expect > 1 || p.targetIds.length > 1) {
@@ -14753,10 +15080,24 @@ ${CHROME_ARRANGE_CSS}
           kind: ""
         };
       }
+      if (pendingCount2 > 0 && okCount + pendingCount2 >= expect) {
+        return {
+          code: "claim_pending",
+          text: "Claim settling \xB7 " + (okCount + pendingCount2) + "/" + expect + "\u2026",
+          kind: "warn"
+        };
+      }
       if (okCount > 0) {
         return {
           code: "partial_taken",
           text: "Partial take \xB7 " + okCount + "/" + expect + " \u2014 check bag / log",
+          kind: "warn"
+        };
+      }
+      if (pendingCount2 > 0) {
+        return {
+          code: "claim_pending",
+          text: "Claim settling\u2026",
           kind: "warn"
         };
       }
@@ -14768,6 +15109,13 @@ ${CHROME_ARRANGE_CSS}
     }
     if (okCount > 0) {
       return { code: "looks_taken", text: "Looks taken", kind: "" };
+    }
+    if (pendingCount2 > 0) {
+      return {
+        code: "claim_pending",
+        text: "Claim settling\u2026",
+        kind: "warn"
+      };
     }
     return {
       code: "take_no_change",
@@ -15275,7 +15623,7 @@ ${CHROME_ARRANGE_CSS}
           break;
         }
       }
-      if (m && m.item && !m.taken) hasUntaken = true;
+      if (m && m.item && (!m.taken || m.takenPending)) hasUntaken = true;
     }
     if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
     const priorIds = takePendingFinalizeIds();
@@ -17279,6 +17627,21 @@ ${CHROME_ARRANGE_CSS}
     const result = resolveCommandOutcome(p, getMails());
     return result.code === "looks_sent";
   }
+  function takeLooksSettled(p) {
+    if (p.kind !== "take") return true;
+    const result = resolveCommandOutcome(p, getMails());
+    return result.code === "looks_taken";
+  }
+  function markMailsClaimPending(mails, ids) {
+    const want = new Set(ids);
+    const out = mails.slice();
+    for (let i = 0; i < out.length; i++) {
+      const m = out[i];
+      if (!want.has(m.id) || !m.item || m.taken) continue;
+      out[i] = { ...m, taken: true, takenPending: true };
+    }
+    return out;
+  }
   function scheduleCommandHead(reason, delayMs) {
     const seq2 = ++cmdSeq;
     const wait = typeof delayMs === "number" && delayMs > 0 ? delayMs : MAIL_COMMAND_HEAD_DELAY_MS;
@@ -17287,11 +17650,16 @@ ${CHROME_ARRANGE_CSS}
       void (async () => {
         const isCommand = reason.indexOf("command") === 0;
         const sendPending = isCommand && pendingOutcome && pendingOutcome.kind === "send" ? pendingOutcome : null;
-        const attempts = sendPending ? 4 : 1;
+        const takePending = isCommand && pendingOutcome && pendingOutcome.kind === "take" ? pendingOutcome : null;
+        const attempts = sendPending || takePending ? 4 : 1;
         for (let i = 0; i < attempts; i++) {
           if (seq2 !== cmdSeq) return;
           await requestMailHead(reason, { force: true });
-          if (!sendPending || sendLooksSettled(sendPending) || i === attempts - 1) {
+          if (sendPending) {
+            if (sendLooksSettled(sendPending) || i === attempts - 1) break;
+          } else if (takePending) {
+            if (takeLooksSettled(takePending) || i === attempts - 1) break;
+          } else {
             break;
           }
           await new Promise((r) => window.setTimeout(r, 900));
@@ -17413,6 +17781,8 @@ ${CHROME_ARRANGE_CSS}
     commit({
       lastScript: script,
       commandBusy: true,
+      // Flip the stamp off "Ready to take" immediately; head reconcile settles.
+      mails: markMailsClaimPending(mails, ids),
       status: ids.length > 1 ? "Take batch \xB7 " + ids.length + " \u2192 " + obs + "\u2026" : "Command sent to " + obs + "\u2026",
       statusKind: "warn"
     });
@@ -24182,6 +24552,340 @@ ${CHROME_ARRANGE_CSS}
     };
   }
 
+  // src/host/mail/mailCaps.ts
+  var MAIL_ATTACH_CAP = 200;
+  var MAIL_ATTACH_SENDER_CAP = 20;
+  var MAIL_ATTACH_CAP_WARN = 160;
+  var MAIL_ATTACH_SENDER_CAP_WARN = 15;
+  function countsTowardAttachCap(m) {
+    if (!m.item) return false;
+    if (m.taken && !m.takenPending) return false;
+    return true;
+  }
+  function nameSet(names) {
+    const out = /* @__PURE__ */ new Set();
+    for (let i = 0; i < names.length; i++) {
+      const n = String(names[i] || "").trim().toLowerCase();
+      if (n) out.add(n);
+    }
+    return out;
+  }
+  function countAttachmentsByRecipient(mails, ownedNames) {
+    const owned = ownedNames && ownedNames.length ? nameSet(ownedNames) : null;
+    const buckets = /* @__PURE__ */ new Map();
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (m.canTake === false) continue;
+      const display = String(m.to || "").trim();
+      const key = display.toLowerCase();
+      if (!key) continue;
+      if (owned && !owned.has(key)) continue;
+      const prev = buckets.get(key);
+      if (prev) prev.count += 1;
+      else buckets.set(key, { name: display, count: 1 });
+    }
+    const out = [];
+    buckets.forEach((v) => {
+      out.push({
+        name: v.name,
+        count: v.count,
+        pressure: mailboxCapPressure(v.count)
+      });
+    });
+    out.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function countSenderAttachmentsTo(mails, fromNames, toName) {
+    const from = nameSet(fromNames);
+    const to = String(toName || "").trim().toLowerCase();
+    if (!from.size || !to) return 0;
+    let n = 0;
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (String(m.to || "").trim().toLowerCase() !== to) {
+        continue;
+      }
+      if (!from.has(
+        String(m.fro || "").trim().toLowerCase()
+      )) {
+        continue;
+      }
+      n += 1;
+    }
+    return n;
+  }
+  function mailboxCapPressure(count, incomplete) {
+    if (count >= MAIL_ATTACH_CAP) return "full";
+    if (!incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    if (incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    return "";
+  }
+  function senderCapPressure(count, queued = 0) {
+    const have = Math.max(0, count | 0);
+    const add = Math.max(0, queued | 0);
+    if (have >= MAIL_ATTACH_SENDER_CAP || have + add > MAIL_ATTACH_SENDER_CAP) {
+      return "full";
+    }
+    if (have + add >= MAIL_ATTACH_SENDER_CAP_WARN) return "warn";
+    return "";
+  }
+  function formatCapFraction(count, cap, incomplete) {
+    const n = Math.max(0, count | 0);
+    return n + (incomplete ? "+" : "") + "/" + cap;
+  }
+  function worstPressure(fills) {
+    let worst = "";
+    for (let i = 0; i < fills.length; i++) {
+      const p = fills[i].pressure;
+      if (p === "full") return "full";
+      if (p === "warn") worst = "warn";
+    }
+    return worst;
+  }
+  function formatMailboxCapsLine(fills, opts) {
+    const incomplete = !!(opts && opts.incomplete);
+    const maxNames = opts && opts.maxNames != null ? opts.maxNames : 2;
+    if (!fills.length) {
+      return "0/" + MAIL_ATTACH_CAP + " per char" + (incomplete ? "+" : "");
+    }
+    const prefer = String(opts && opts.preferName || "").trim().toLowerCase();
+    const shown = [];
+    const used = /* @__PURE__ */ new Set();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        const key = fills[i].name.toLowerCase();
+        if (key !== prefer) continue;
+        shown.push(fills[i]);
+        used.add(key);
+        break;
+      }
+    }
+    for (let i = 0; i < fills.length && shown.length < maxNames; i++) {
+      const key = fills[i].name.toLowerCase();
+      if (used.has(key)) continue;
+      shown.push(fills[i]);
+      used.add(key);
+    }
+    const parts = [];
+    for (let i = 0; i < shown.length; i++) {
+      const f = shown[i];
+      parts.push(
+        f.name + " " + formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete)
+      );
+    }
+    const rest = fills.length - shown.length;
+    if (rest > 0) {
+      parts.push("+" + rest + " char" + (rest === 1 ? "" : "s"));
+    }
+    return parts.join(" \xB7 ");
+  }
+  function mailboxCapsTitle(fills, incomplete) {
+    const lines = [
+      "Server caps are per character: 200 uncollected attachments each, and at most 20 from one sending account. Pending claims count; take or delete before new item mail can land."
+    ];
+    if (!fills.length) {
+      lines.push("No untaken attachments in the cached inbox.");
+    } else {
+      const maxList = Math.min(fills.length, 12);
+      for (let i = 0; i < maxList; i++) {
+        const f = fills[i];
+        const frac = formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete);
+        let note = "";
+        if (f.pressure === "full") note = " \u2014 full (new item mail blocked)";
+        else if (f.pressure === "warn") note = " \u2014 nearly full";
+        lines.push(f.name + " " + frac + note);
+      }
+      if (fills.length > maxList) {
+        lines.push("\u2026and " + (fills.length - maxList) + " more characters");
+      }
+    }
+    if (incomplete) {
+      lines.push("Cache still loading older pages \u2014 counts may rise.");
+    }
+    return lines.join("\n");
+  }
+  function withFillPressure(fills, incomplete) {
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      out.push({
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    return out;
+  }
+  function summarizeMailboxCaps(opts) {
+    const incomplete = !!opts.incomplete;
+    const withPressure = withFillPressure(opts.fills, incomplete);
+    return {
+      line: formatMailboxCapsLine(withPressure, {
+        incomplete,
+        preferName: opts.preferName
+      }),
+      pressure: worstPressure(withPressure),
+      title: mailboxCapsTitle(withPressure, incomplete)
+    };
+  }
+  function pickPrimaryFill(fills, preferName) {
+    if (!fills.length) return null;
+    const prefer = String(preferName || "").trim().toLowerCase();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        if (fills[i].name.toLowerCase() === prefer) return fills[i];
+      }
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "full") return fills[i];
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "warn") return fills[i];
+    }
+    return fills[0];
+  }
+  function fillCapLabel(fill) {
+    if (fill.pressure === "full") {
+      return fill.count > MAIL_ATTACH_CAP ? "over cap" : "full";
+    }
+    if (fill.pressure === "warn") return "nearly full";
+    if (fill.count > 0) return "ok";
+    return "clear";
+  }
+  function fillCapPct(count) {
+    return Math.min(
+      100,
+      Math.round(100 * Math.max(0, count | 0) / MAIL_ATTACH_CAP)
+    );
+  }
+  function mergeOwnedMailboxFills(fills, ownedNames, incomplete) {
+    const byKey = /* @__PURE__ */ new Map();
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      byKey.set(f.name.toLowerCase(), {
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    for (let i = 0; i < ownedNames.length; i++) {
+      const display = String(ownedNames[i] || "").trim();
+      if (!display) continue;
+      const key = display.toLowerCase();
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        name: display,
+        count: 0,
+        pressure: ""
+      });
+    }
+    const out = [];
+    byKey.forEach((v) => out.push(v));
+    out.sort((a, b) => {
+      const ra = a.pressure === "full" ? 0 : a.pressure === "warn" ? 1 : a.count > 0 ? 2 : 3;
+      const rb = b.pressure === "full" ? 0 : b.pressure === "warn" ? 1 : b.count > 0 ? 2 : 3;
+      if (ra !== rb) return ra - rb;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function formatCapsSummaryLine(fullCount, warnCount, holdingCount) {
+    const parts = [];
+    if (fullCount > 0) {
+      parts.push(fullCount + " full");
+    }
+    if (warnCount > 0) {
+      parts.push(warnCount + " near");
+    }
+    const quiet = Math.max(0, holdingCount - fullCount - warnCount);
+    if (quiet > 0) {
+      parts.push(quiet + " holding");
+    }
+    if (!parts.length) return "All clear";
+    return parts.join(" \xB7 ");
+  }
+  function buildMailboxCapsView(opts) {
+    const incomplete = !!opts.incomplete;
+    const owned = opts.ownedNames || [];
+    const fills = mergeOwnedMailboxFills(opts.fills, owned, incomplete);
+    const holding = fills.filter((f) => f.count > 0);
+    const primary = pickPrimaryFill(
+      holding.length ? holding : fills,
+      opts.preferName
+    );
+    let fullCount = 0;
+    let warnCount = 0;
+    for (let i = 0; i < holding.length; i++) {
+      if (holding[i].pressure === "full") fullCount += 1;
+      else if (holding[i].pressure === "warn") warnCount += 1;
+    }
+    const okCount = Math.max(0, holding.length - fullCount - warnCount);
+    return {
+      pressure: worstPressure(holding),
+      title: mailboxCapsTitle(holding, incomplete),
+      incomplete,
+      primary,
+      primaryPct: primary ? fillCapPct(primary.count) : 0,
+      primaryLabel: primary ? fillCapLabel(primary) : "clear",
+      summaryLine: formatCapsSummaryLine(
+        fullCount,
+        warnCount,
+        holding.length
+      ),
+      fullCount,
+      warnCount,
+      okCount,
+      holdingCount: holding.length,
+      fills
+    };
+  }
+  function buildComposeCapNotices(opts) {
+    const notices = [];
+    const incomplete = !!opts.hasMore;
+    const fills = countAttachmentsByRecipient(opts.mails, opts.selfNames);
+    const box = summarizeMailboxCaps({
+      fills,
+      incomplete,
+      preferName: opts.queued.length === 1 ? opts.queued[0].to : null
+    });
+    notices.push({
+      key: "mailbox",
+      text: "Per-char mailbox \xB7 " + box.line + " \xB7 max 20 from one account",
+      pressure: box.pressure,
+      title: box.title
+    });
+    const self = nameSet(opts.selfNames);
+    const queued = opts.queued.slice();
+    queued.sort(
+      (a, b) => String(a.to || "").localeCompare(String(b.to || ""), void 0, {
+        sensitivity: "base"
+      })
+    );
+    for (let i = 0; i < queued.length; i++) {
+      const display = String(queued[i].to || "").trim();
+      const queuedN = queued[i].count | 0;
+      if (!display || queuedN <= 0) continue;
+      const key = display.toLowerCase();
+      const have = countSenderAttachmentsTo(opts.mails, opts.selfNames, display);
+      const pressure = senderCapPressure(have, queuedN);
+      const frac = formatCapFraction(have, MAIL_ATTACH_SENDER_CAP, incomplete);
+      const selfHit = self.has(key);
+      notices.push({
+        key: "to:" + key,
+        text: (selfHit ? "Self-mail " : "To " + display + " ") + frac + " from you" + (queuedN > 1 ? " \xB7 +" + queuedN + " queued" : " \xB7 +1 queued"),
+        pressure,
+        title: "Per-account sender cap to this character (" + frac + "). New item mail is refused at 20 uncollected from your account." + (incomplete ? " Older cached pages may raise this count." : "")
+      });
+    }
+    return notices;
+  }
+
   // src/host/mail/mailSearchCoverage.ts
   function mailSearchWantsBurst(opts) {
     return String(opts.query || "").trim().length > 0 && !!opts.hasMore;
@@ -24771,10 +25475,6 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (q >= 1e4) return Math.floor(q / 1e3) + "k";
     return String(Math.floor(q));
   }
-  function formatLevel(level) {
-    if (level == null || !Number.isFinite(level) || level <= 0) return null;
-    return String(Math.floor(level));
-  }
   function ItemInstance(props) {
     const React = getReact();
     ensureItemInstanceBadgeCss();
@@ -24793,22 +25493,29 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       qtyColor,
       bankQ
     } = props;
-    const tip = title || itemInstanceLabel(name, { p, level }) || name;
+    const levelNum = coerceItemLevel(level);
+    const tip = title || itemInstanceLabel(name, { p, level: levelNum }) || name;
     const qtyLabel = formatQty(q, forceShowQ);
-    const levelLabel = formatLevel(level);
+    const levelBadge = resolveItemLevelBadge(name, level);
     const bankLabel = bankQ != null && Number.isFinite(bankQ) && bankQ > 0 ? formatQty(bankQ, true) : null;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
       const html = stockChrome ? itemInstanceHtml(name, {
         skin,
-        level,
+        level: levelNum,
         q,
         p,
         size,
         title: tip,
         nativeTitle: false
-      }) : itemIconHtml(name, { skin, size, title: tip, nativeTitle: false });
+      }) : itemIconHtml(name, {
+        skin,
+        size,
+        title: tip,
+        nativeTitle: false,
+        p
+      });
       el.innerHTML = html || "";
       const stockBadges = el.querySelectorAll(".iqui, .iuui");
       for (let i = 0; i < stockBadges.length; i++) {
@@ -24816,18 +25523,19 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         node.style.display = "none";
       }
       const root = el.querySelector(
-        ".ecu-item-instance > *, .ecu-meter-icon"
+        ".ecu-item-instance > div, .ecu-item-title-frame, .ecu-meter-icon"
       );
       if (root) {
         root.style.margin = "0";
         root.removeAttribute("onmousedown");
         root.removeAttribute("ontouchstart");
         root.removeAttribute("onclick");
+        if (p) stampNativeItemTitleBorder(root, p);
       }
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [name, skin, level, q, p, size, tip, stockChrome]);
+    }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
     return e(
       "span",
       {
@@ -24858,13 +25566,14 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
           lineHeight: 0
         }
       }),
-      levelLabel ? e(
+      levelBadge ? e(
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--level",
-          title: "Level " + levelLabel
+          title: "Level " + levelBadge.text,
+          style: { color: levelBadge.color, borderColor: levelBadge.color }
         },
-        levelLabel
+        levelBadge.text
       ) : null,
       qtyLabel ? e(
         "span",
@@ -25239,6 +25948,229 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   margin-top: 3px;
   font-size: 12px;
   color: #7a8490;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comm-mail__card--caps {
+  min-width: 190px;
+}
+.comm-mail__card--caps.is-cap-warn {
+  border-color: #5a4a28;
+}
+.comm-mail__card--caps.is-cap-full {
+  border-color: #6a3848;
+}
+.comm-mail__cap-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.comm-mail__cap-hd .comm-mail__card-kicker {
+  margin-bottom: 0;
+}
+.comm-mail__cap-details {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #8ab4d8;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(138, 180, 216, 0.35);
+}
+.comm-mail__cap-details:hover {
+  color: #b6d4ee;
+}
+.comm-mail__card--caps .comm-mail__card-title.is-cap-warn {
+  color: #e0b060;
+}
+.comm-mail__card--caps .comm-mail__card-title.is-cap-full {
+  color: #f8a0b4;
+}
+.comm-mail__cap-primary {
+  min-width: 0;
+  margin-top: 6px;
+}
+.comm-mail__cap-primary-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.comm-mail__cap-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #d8dde4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comm-mail__cap-frac {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #9aa3ad;
+}
+.comm-mail__cap-frac.is-warn,
+.comm-mail__cap-state.is-warn {
+  color: #e0b060;
+}
+.comm-mail__cap-frac.is-full,
+.comm-mail__cap-state.is-full {
+  color: #f8a0b4;
+}
+.comm-mail__cap-state {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #6a7380;
+}
+.comm-mail__cap-meter {
+  margin-top: 5px;
+  height: 5px;
+  border-radius: 3px;
+  background: #1c2026;
+  overflow: hidden;
+}
+.comm-mail__cap-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #3d6a4a;
+}
+.comm-mail__cap-meter-fill.is-warn {
+  background: #a87830;
+}
+.comm-mail__cap-meter-fill.is-full {
+  background: #a04860;
+}
+.comm-mail__cap-open {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 0 0;
+  background: transparent;
+  border: none;
+  border-top: 1px solid #2a2a2a;
+  color: #8ab4d8;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.comm-mail__cap-open:hover {
+  color: #b6d4ee;
+}
+.comm-mail__caps-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+}
+.comm-mail__caps-modal {
+  width: min(440px, 96vw);
+  max-height: min(720px, 88vh);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  background: #12151a;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  color: #e8e8e8;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+.comm-mail__caps-modal-hd {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.comm-mail__caps-modal-hd-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail__caps-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f0f2f5;
+}
+.comm-mail__caps-modal-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8a93a0;
+  line-height: 1.35;
+}
+.comm-mail__caps-modal-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #222;
+}
+.comm-mail__caps-filter {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 999px;
+}
+.comm-mail__caps-filter.is-on {
+  border-color: #a86;
+  color: #ffe08a;
+  background: #2a2410;
+}
+.comm-mail__caps-modal-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px 14px;
+}
+.comm-mail__caps-modal-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: #7a8490;
+  font-size: 13px;
+}
+.comm-mail__caps-row {
+  padding: 10px 8px;
+  border-bottom: 1px solid #1c2026;
+}
+.comm-mail__caps-row:last-child {
+  border-bottom: none;
+}
+.comm-mail__caps-row.is-full {
+  background: rgba(160, 72, 96, 0.08);
+}
+.comm-mail__caps-row.is-warn {
+  background: rgba(168, 120, 48, 0.08);
+}
+.comm-mail__caps-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.comm-mail__caps-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d8dde4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -25649,6 +26581,19 @@ button.comm-mail__stack-u {
 .comm-mail__compose label {
   display: block; font-size: 13px; color: #999; margin: 10px 0 4px;
 }
+.comm-mail__cap-notes {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.comm-mail__cap-note {
+  font-size: 13px;
+  color: #8a929a;
+  line-height: 1.35;
+}
+.comm-mail__cap-note.is-warn { color: #db8; }
+.comm-mail__cap-note.is-full { color: #f8a; font-weight: 600; }
 .comm-mail__compose input,
 .comm-mail__compose textarea {
   width: 100%;
@@ -25813,8 +26758,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.11.2" : "unknown";
-    const builtAt = true ? "2026-10-07T09:15:34.300Z" : "unknown";
+    const version = true ? "0.12.0" : "unknown";
+    const builtAt = true ? "2026-10-21T13:22:23.161Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -30852,6 +31797,128 @@ button.comm-mail__stack-u {
     };
   }
 
+  // src/host/worldZoom.ts
+  var installed3 = false;
+  var appliedOnce = false;
+  var wheelInstalled = false;
+  var lastWheelApplyMs = 0;
+  var persistTimer4 = null;
+  var zoomListeners = [];
+  var WHEEL_MIN_MS = 80;
+  var PERSIST_DEBOUNCE_MS4 = 200;
+  function notifyZoomListeners(zoom) {
+    for (let i = 0; i < zoomListeners.length; i++) zoomListeners[i](zoom);
+  }
+  function subscribeWorldZoom(listener) {
+    zoomListeners.push(listener);
+    return () => {
+      const idx = zoomListeners.indexOf(listener);
+      if (idx >= 0) zoomListeners.splice(idx, 1);
+    };
+  }
+  function gameLoaded() {
+    return !!window.game_loaded;
+  }
+  function tryApplySaved() {
+    const map = window.map;
+    if (!map || !gameLoaded()) return false;
+    const savedRaw = getSettings().worldZoom;
+    const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : WORLD_ZOOM_DEFAULT;
+    healFractionalScaleCookie(
+      typeof savedRaw === "number" ? preferred : readHostWorldZoom()
+    );
+    if (typeof savedRaw !== "number") {
+      appliedOnce = true;
+      return true;
+    }
+    if (readHostWorldZoom() === preferred) {
+      writeWorldZoomCookie(preferred);
+      appliedOnce = true;
+      return true;
+    }
+    applyWorldZoom(preferred);
+    writeWorldZoomCookie(preferred);
+    appliedOnce = true;
+    return true;
+  }
+  function persistZoom(zoom) {
+    writeWorldZoomCookie(zoom);
+    if (persistTimer4 != null) clearTimeout(persistTimer4);
+    persistTimer4 = setTimeout(() => {
+      persistTimer4 = null;
+      patchSettings({ worldZoom: zoom });
+    }, PERSIST_DEBOUNCE_MS4);
+  }
+  function setWorldZoom(next) {
+    const before = readHostWorldZoom();
+    const zoom = applyWorldZoom(next);
+    if (zoom !== before) {
+      persistZoom(zoom);
+      notifyZoomListeners(zoom);
+    }
+    return zoom;
+  }
+  function zoomWorldIn() {
+    return setWorldZoom(readHostWorldZoom() + WORLD_ZOOM_STEP);
+  }
+  function zoomWorldOut() {
+    return setWorldZoom(readHostWorldZoom() - WORLD_ZOOM_STEP);
+  }
+  function rendererView() {
+    const renderer = window.renderer;
+    const view = renderer && renderer.view;
+    return view || null;
+  }
+  function isUiChromeTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return !!(target.closest("#comm-ui") || target.closest(".ecu-chrome-stack") || target.closest(".modal") || target.closest(".imodal") || target.closest("#topleftcorner") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("#toprightcorner"));
+  }
+  function onWorldWheel(ev) {
+    if (ev.ctrlKey || ev.metaKey) return;
+    if (isUiChromeTarget(ev.target)) return;
+    const view = rendererView();
+    if (!view) return;
+    const overCanvas = ev.target === view || ev.target instanceof Node && view.contains(ev.target);
+    if (!overCanvas) return;
+    const now = Date.now();
+    if (now - lastWheelApplyMs < WHEEL_MIN_MS) {
+      ev.preventDefault();
+      return;
+    }
+    const before = readHostWorldZoom();
+    const next = ev.deltaY > 0 ? before - WORLD_ZOOM_STEP : ev.deltaY < 0 ? before + WORLD_ZOOM_STEP : before;
+    if (clampWorldZoom(next) === before) {
+      return;
+    }
+    lastWheelApplyMs = now;
+    ev.preventDefault();
+    setWorldZoom(next);
+  }
+  function installWheelZoom() {
+    if (wheelInstalled) return;
+    wheelInstalled = true;
+    window.addEventListener("wheel", onWorldWheel, {
+      passive: false,
+      capture: true
+    });
+  }
+  function installWorldZoom() {
+    if (installed3) return;
+    installed3 = true;
+    installWheelZoom();
+    const saved = getSettings().worldZoom;
+    healFractionalScaleCookie(
+      typeof saved === "number" ? saved : WORLD_ZOOM_DEFAULT
+    );
+    if (tryApplySaved()) return;
+    const started2 = Date.now();
+    const poll = window.setInterval(() => {
+      if (tryApplySaved() || Date.now() - started2 > 6e4) {
+        window.clearInterval(poll);
+      }
+    }, 250);
+  }
+
   // src/viz/mapHost.ts
   function getHostPixi() {
     const pixi = window.PIXI;
@@ -31457,6 +32524,7 @@ button.comm-mail__stack-u {
     "world.leashBoundary": false,
     "world.spawnPoints": false,
     "world.anniversaryKiss": true,
+    "world.observerVision": true,
     "world.quirkHitboxes": false,
     // Native client already draws HP / nameplates / aggro tint — keep off.
     "entity.hpBar": false,
@@ -31727,6 +32795,125 @@ button.comm-mail__stack-u {
     const dx = gx - x;
     const dy = gy - y;
     return Math.sqrt(dx * dx + dy * dy) > 0.75;
+  }
+
+  // src/viz/observerVision.ts
+  var STOCK_VISION_HALF_X = 700;
+  var STOCK_VISION_HALF_Y = 500;
+  var FALLBACK_VIEW_HALF = 1200;
+  var VIEW_FOG_PAD = 80;
+  var FOG_COLOR = 0;
+  var FOG_ALPHA = 0.14;
+  function readScreenPx() {
+    const w = window;
+    const width = typeof w.width === "number" && w.width > 0 ? w.width : typeof window.innerWidth === "number" ? window.innerWidth : 0;
+    const height = typeof w.height === "number" && w.height > 0 ? w.height : typeof window.innerHeight === "number" ? window.innerHeight : 0;
+    return {
+      w: width > 0 ? width : FALLBACK_VIEW_HALF * 2,
+      h: height > 0 ? height : FALLBACK_VIEW_HALF * 2
+    };
+  }
+  function asVisionHalf(raw) {
+    if (!Array.isArray(raw) || raw.length < 2) return null;
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    if (!(x > 0) || !(y > 0) || !Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+  function mapXY(ent) {
+    var _a, _b;
+    if (!ent) return null;
+    const x = Number((_a = ent.real_x) != null ? _a : ent.x);
+    const y = Number((_b = ent.real_y) != null ? _b : ent.y);
+    if (!Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+  function readCameraXY() {
+    const map = getHostMap();
+    if (!map) return null;
+    const x = map.real_x;
+    const y = map.real_y;
+    if (typeof x !== "number" || typeof y !== "number") return null;
+    if (!Number.isFinite(x + y)) return null;
+    return { x, y };
+  }
+  function findLiveObservedEntity() {
+    const snap = window.observing;
+    if (!snap) return null;
+    if (snap.id != null) {
+      const byId = findEntityById(snap.id);
+      if (byId) return byId;
+    }
+    const name = snap.name != null ? String(snap.name) : "";
+    if (!name) return null;
+    const list = getEntitiesList();
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (ent && ent.name != null && String(ent.name) === name) return ent;
+    }
+    return null;
+  }
+  function readObserverVisionHalf() {
+    const live2 = findLiveObservedEntity() || getObserving();
+    const fromObs = asVisionHalf(
+      live2 && live2.vision
+    );
+    if (fromObs) return fromObs;
+    const character = getCharacter();
+    const fromChar = asVisionHalf(
+      character && character.vision
+    );
+    if (fromChar) return fromChar;
+    return { x: STOCK_VISION_HALF_X, y: STOCK_VISION_HALF_Y };
+  }
+  function resolveVisionCenter() {
+    const fromLive = mapXY(findLiveObservedEntity());
+    if (fromLive) return fromLive;
+    const fromChar = mapXY(getCharacter());
+    if (fromChar) return fromChar;
+    return readCameraXY();
+  }
+  function readFogBounds(center) {
+    const map = getHostMap();
+    const camX = map && typeof map.real_x === "number" && Number.isFinite(map.real_x) ? map.real_x : center.x;
+    const camY = map && typeof map.real_y === "number" && Number.isFinite(map.real_y) ? map.real_y : center.y;
+    const zoom = Math.max(1, readHostWorldZoom());
+    const { w, h } = readScreenPx();
+    const halfW = w / (2 * zoom) + VIEW_FOG_PAD;
+    const halfH = h / (2 * zoom) + VIEW_FOG_PAD;
+    return {
+      minX: camX - halfW,
+      minY: camY - halfH,
+      maxX: camX + halfW,
+      maxY: camY + halfH
+    };
+  }
+  function fillFogPanel(gfx, x, y, w, h) {
+    if (!(w > 1) || !(h > 1)) return;
+    if (typeof gfx.drawRect !== "function") return;
+    gfx.beginFill(FOG_COLOR, FOG_ALPHA);
+    gfx.drawRect(x, y, w, h);
+    gfx.endFill();
+  }
+  function paintObserverVision(gfx, settings) {
+    if (!settings["world.observerVision"]) return;
+    try {
+      if (!(readHostWorldZoom() < WORLD_ZOOM_DEFAULT)) return;
+      const center = resolveVisionCenter();
+      if (!center) return;
+      const half = readObserverVisionHalf();
+      const vx0 = center.x - half.x;
+      const vy0 = center.y - half.y;
+      const vx1 = center.x + half.x;
+      const vy1 = center.y + half.y;
+      const b = readFogBounds(center);
+      fillFogPanel(gfx, b.minX, b.minY, vx0 - b.minX, b.maxY - b.minY);
+      fillFogPanel(gfx, vx1, b.minY, b.maxX - vx1, b.maxY - b.minY);
+      fillFogPanel(gfx, vx0, b.minY, vx1 - vx0, vy0 - b.minY);
+      fillFogPanel(gfx, vx0, vy1, vx1 - vx0, b.maxY - vy1);
+    } catch (err) {
+      console.error("[ecu] paintObserverVision", err);
+    }
   }
 
   // src/host/commNotice.ts
@@ -32475,6 +33662,7 @@ button.comm-mail__stack-u {
     syncWorldQuirkHotspots(handle2.hotspots);
     refreshHoveredWorldQuirk();
     const settings = getVizSettings();
+    paintObserverVision(gfx, settings);
     paintWorldQuirkDebug(gfx, settings);
     const focus = opts.focus;
     const focusId = focus && focus.id != null ? String(focus.id) : null;
@@ -32488,10 +33676,11 @@ button.comm-mail__stack-u {
   }
 
   // src/viz/startWorldOverlay.ts
-  var TICK_MS = 250;
+  var TICK_MS = 100;
   var timerId = null;
   var handle = null;
   var unsubSettings = null;
+  var unsubZoom = null;
   var selectedId;
   function setWorldOverlaySelectedId(id) {
     selectedId = id;
@@ -32518,6 +33707,7 @@ button.comm-mail__stack-u {
   function startWorldOverlay() {
     if (timerId != null) return;
     unsubSettings = subscribeVizSettings(() => tick());
+    unsubZoom = subscribeWorldZoom(() => tick());
     tick();
     timerId = window.setInterval(tick, TICK_MS);
   }
@@ -50582,6 +51772,11 @@ ${parts.map(cssSlice).join("\n")}
           key: "world.anniversaryKiss",
           label: "Anniversary kiss range",
           help: "80px gold ring + rising hearts on the featured player while live"
+        },
+        {
+          key: "world.observerVision",
+          label: "Observer vision window",
+          help: "Soft dim outside the server entity window when zoomed out"
         }
       ]
     },
@@ -53386,8 +54581,27 @@ ${parts.map(cssSlice).join("\n")}
     };
   }
   var copyInstanceIdPopupId = "copyInstanceIdPopup";
+  var zoomLinkStyle = {
+    background: "transparent",
+    border: "none",
+    color: "rgba(200, 220, 230, 0.75)",
+    padding: "0 2px",
+    cursor: "pointer",
+    font: "inherit",
+    fontSize: TYPE.chromeMeta,
+    pointerEvents: "auto",
+    textDecoration: "underline",
+    textDecorationColor: "rgba(255,255,255,0.2)",
+    ...PIXEL_TEXT
+  };
   function MapInfo(props) {
+    const React = getReact();
     const mapNameData = getMapData(props.entities);
+    const [zoom, setZoom] = React.useState(() => readHostWorldZoom());
+    React.useEffect(() => {
+      setZoom(readHostWorldZoom());
+      return subscribeWorldZoom((next) => setZoom(next));
+    }, []);
     let instanceIdElement = void 0;
     if (mapNameData && mapNameData.map && mapNameData.map !== mapNameData.in) {
       if (mapNameData.in) {
@@ -53420,6 +54634,7 @@ ${parts.map(cssSlice).join("\n")}
       "div",
       {
         key: "mapName",
+        className: "ecu-map-info",
         style: {
           background: "rgba(0, 0, 0, 0.82)",
           border: "1px solid #555",
@@ -53427,6 +54642,7 @@ ${parts.map(cssSlice).join("\n")}
           fontSize: TYPE.chrome,
           lineHeight: 1.25,
           color: "#eee",
+          pointerEvents: "auto",
           ...PIXEL_TEXT
         }
       },
@@ -53435,10 +54651,77 @@ ${parts.map(cssSlice).join("\n")}
         {
           style: {
             display: "flex",
-            gap: "4px"
+            alignItems: "center",
+            gap: "8px",
+            flexWrap: "wrap"
           }
         },
-        `Map: ${mapDisplayName2(mapNameData && mapNameData.map)}`
+        e(
+          "span",
+          null,
+          `Map: ${mapDisplayName2(mapNameData && mapNameData.map)}`
+        ),
+        e(
+          "span",
+          {
+            style: {
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: "5px",
+              color: "rgba(255,255,255,0.55)",
+              fontSize: TYPE.chromeMeta
+            },
+            title: "World zoom (wheel on the map also works). Outside the vision window the server does not send entities."
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              style: {
+                ...zoomLinkStyle,
+                opacity: zoom <= WORLD_ZOOM_MIN ? 0.35 : 1,
+                cursor: zoom <= WORLD_ZOOM_MIN ? "default" : "pointer"
+              },
+              disabled: zoom <= WORLD_ZOOM_MIN,
+              title: "Zoom out",
+              onClick: () => setZoom(zoomWorldOut())
+            },
+            "out"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              style: {
+                ...zoomLinkStyle,
+                color: "#cfe8f2",
+                fontVariantNumeric: "tabular-nums",
+                textDecoration: "none",
+                opacity: zoom === WORLD_ZOOM_DEFAULT ? 0.55 : 1,
+                cursor: zoom === WORLD_ZOOM_DEFAULT ? "default" : "pointer"
+              },
+              disabled: zoom === WORLD_ZOOM_DEFAULT,
+              title: "Reset zoom to default",
+              onClick: () => setZoom(setWorldZoom(WORLD_ZOOM_DEFAULT))
+            },
+            `\xD7${zoom}`
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              style: {
+                ...zoomLinkStyle,
+                opacity: zoom >= WORLD_ZOOM_MAX ? 0.35 : 1,
+                cursor: zoom >= WORLD_ZOOM_MAX ? "default" : "pointer"
+              },
+              disabled: zoom >= WORLD_ZOOM_MAX,
+              title: "Zoom in",
+              onClick: () => setZoom(zoomWorldIn())
+            },
+            "in"
+          )
+        )
       ),
       instanceIdElement
     );
@@ -54621,6 +55904,114 @@ ${parts.map(cssSlice).join("\n")}
     };
   }
 
+  // src/ui/frames/serverInfoOpen.ts
+  function eventsTable2(G) {
+    const src = G || getG();
+    return (src == null ? void 0 : src.events) || {};
+  }
+  function monstersTable2(G) {
+    const src = G || getG();
+    return (src == null ? void 0 : src.monsters) || {};
+  }
+  function guideUrlFor(modal, fallback) {
+    const getUrl = window.get_guide_url;
+    if (typeof getUrl === "function") {
+      try {
+        const url = getUrl(modal);
+        if (typeof url === "string" && url) return url;
+      } catch (e2) {
+      }
+    }
+    return fallback;
+  }
+  function openGuideDoc(modal, docsUrl) {
+    const openGuide = window.open_guide;
+    const url = guideUrlFor(modal, docsUrl);
+    if (typeof openGuide === "function") {
+      openGuide(modal, url);
+      return;
+    }
+    try {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e2) {
+    }
+  }
+  function resolveServerChipOpen(id, G) {
+    if (id === "blessing" || id === "blessed") {
+      return {
+        kind: "guide",
+        modal: "events-and-home",
+        docsUrl: "/docs/guide/events-and-home"
+      };
+    }
+    if (id === "clock" || id === "schedule") {
+      return { kind: "events_window" };
+    }
+    const events = eventsTable2(G);
+    const monsters = monstersTable2(G);
+    const def = events[id];
+    if (def && typeof def.modal === "string" && def.modal) {
+      return {
+        kind: "announcement",
+        id,
+        modal: def.modal,
+        docsUrl: "/docs/ref/" + def.modal
+      };
+    }
+    if (monsters[id]) {
+      return { kind: "emonster", id };
+    }
+    if (def) {
+      return {
+        kind: "guide",
+        modal: "event-" + id,
+        docsUrl: "/docs/ref/event-" + id
+      };
+    }
+    return {
+      kind: "guide",
+      modal: "event-" + id,
+      docsUrl: "/docs/ref/event-" + id
+    };
+  }
+  function openServerChip(id, G) {
+    const action = resolveServerChipOpen(id, G);
+    const w = window;
+    if (action.kind === "events_window") {
+      if (typeof w.render_events_window === "function") {
+        try {
+          w.render_events_window();
+        } catch (err) {
+          console.error("[ecu] render_events_window", err);
+        }
+      }
+      return;
+    }
+    if (action.kind === "emonster") {
+      if (typeof w.emonster_click === "function") {
+        w.emonster_click(action.id);
+        return;
+      }
+      if (typeof w.add_log === "function") {
+        w.add_log("Engage: " + action.id, "gray");
+      }
+      return;
+    }
+    if (action.kind === "announcement") {
+      if (typeof w.open_event_announcement === "function") {
+        try {
+          w.open_event_announcement(action.id);
+          return;
+        } catch (err) {
+          console.error("[ecu] open_event_announcement", err);
+        }
+      }
+      openGuideDoc(action.modal, action.docsUrl);
+      return;
+    }
+    openGuideDoc(action.modal, action.docsUrl);
+  }
+
   // src/ui/frames/ServerInfo.ts
   var chipStyle = {
     background: "rgba(0, 0, 0, 0.82)",
@@ -54630,19 +56021,16 @@ ${parts.map(cssSlice).join("\n")}
     lineHeight: 1.25,
     color: "#eee",
     whiteSpace: "nowrap",
+    // Idle PositionedPanel shells are pointer-events:none; chips must opt in.
+    pointerEvents: "auto",
     ...PIXEL_TEXT
   };
-  function openSeasonGuide(modal, docsUrl) {
-    const openGuide = window.open_guide;
-    if (typeof openGuide === "function") {
-      openGuide(modal || docsUrl.replace(/^\/docs\/ref\//, "event-"), docsUrl);
-      return;
-    }
-    try {
-      window.open(docsUrl, "_blank", "noopener,noreferrer");
-    } catch (e2) {
-    }
-  }
+  var clickableChipStyle = {
+    ...chipStyle,
+    cursor: "pointer",
+    textAlign: "left",
+    font: "inherit"
+  };
   function ServerInfo(props) {
     var _a, _b, _c, _d, _e, _f, _g;
     const timeOffset = (_c = (_b = (_a = props.S) == null ? void 0 : _a.schedule) == null ? void 0 : _b.time_offset) != null ? _c : 0;
@@ -54663,12 +56051,18 @@ ${parts.map(cssSlice).join("\n")}
           flexWrap: "wrap",
           gap: "4px",
           justifyContent: "center",
-          alignItems: "stretch"
+          alignItems: "stretch",
+          pointerEvents: "auto"
         }
       },
       e(
-        "div",
-        { style: chipStyle },
+        "button",
+        {
+          type: "button",
+          title: "Open Events schedule",
+          onClick: () => openServerChip("clock"),
+          style: clickableChipStyle
+        },
         e(
           "div",
           {
@@ -54693,12 +56087,14 @@ ${parts.map(cssSlice).join("\n")}
         )
       ),
       blessing ? e(
-        "div",
+        "button",
         {
           key: "blessing",
-          title: `Server blessed by ${blessing.by}`,
+          type: "button",
+          title: `Server blessed by ${blessing.by} \xB7 click for guide`,
+          onClick: () => openServerChip("blessing"),
           style: {
-            ...chipStyle,
+            ...clickableChipStyle,
             borderColor: "#8F70D8"
           }
         },
@@ -54732,16 +56128,13 @@ ${parts.map(cssSlice).join("\n")}
             key: "season-" + season.id,
             type: "button",
             title: season.title + " \xB7 click for guide",
-            onClick: () => openSeasonGuide(season.modal, season.docsUrl),
+            onClick: () => openServerChip(season.id),
             style: {
-              ...chipStyle,
+              ...clickableChipStyle,
               borderColor: season.live ? "#9ACA87" : accent,
-              cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              textAlign: "left",
-              font: "inherit"
+              gap: "6px"
             }
           },
           season.sprite ? e(GameIcon, {
@@ -54781,12 +56174,14 @@ ${parts.map(cssSlice).join("\n")}
       }),
       ...events.map((event) => {
         return e(
-          "div",
+          "button",
           {
             key: event.id,
-            title: event.title,
+            type: "button",
+            title: event.title + " \xB7 click for info",
+            onClick: () => openServerChip(event.id),
             style: {
-              ...chipStyle,
+              ...clickableChipStyle,
               borderColor: event.live ? "#85c76b" : "#555"
             }
           },
@@ -60097,7 +61492,7 @@ ${ESTIMATE_HINT}`,
     zoomRef.current = zoom;
     const bgModeRef = React.useRef(bgMode);
     bgModeRef.current = bgMode;
-    const persistZoom = (next) => {
+    const persistZoom2 = (next) => {
       const z = clampMinimapZoom(next);
       zoomRef.current = z;
       setZoom(z);
@@ -60238,7 +61633,7 @@ ${ESTIMATE_HINT}`,
       ev.stopPropagation();
       const dir = ev.deltaY > 0 ? 1 : -1;
       const factor = dir > 0 ? 1.12 : 1 / 1.12;
-      persistZoom(zoomRef.current * factor);
+      persistZoom2(zoomRef.current * factor);
       paint();
     };
     const onPointerDown = (ev) => {
@@ -60351,7 +61746,7 @@ ${ESTIMATE_HINT}`,
             {
               type: "button",
               onClick: () => {
-                persistZoom(zoomRef.current / 1.2);
+                persistZoom2(zoomRef.current / 1.2);
                 paint();
               },
               title: "Zoom in (wheel also works)",
@@ -60364,7 +61759,7 @@ ${ESTIMATE_HINT}`,
             {
               type: "button",
               onClick: () => {
-                persistZoom(zoomRef.current * 1.2);
+                persistZoom2(zoomRef.current * 1.2);
                 paint();
               },
               title: "Zoom out",
@@ -73397,11 +74792,256 @@ ${ESTIMATE_HINT}`,
     return { mode: "idle", label: "" };
   }
 
+  // src/ui/frames/mail/MailCapsModal.ts
+  function filterFills(fills, filter) {
+    if (filter === "all") return fills;
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      if (filter === "full" && f.pressure === "full") out.push(f);
+      else if (filter === "near" && f.pressure === "warn") out.push(f);
+      else if (filter === "ok" && f.pressure === "" && f.count > 0) out.push(f);
+      else if (filter === "clear" && f.count === 0) out.push(f);
+    }
+    return out;
+  }
+  function renderCapRow(fill, incomplete) {
+    const pressure = fill.pressure;
+    const label = fillCapLabel(fill);
+    return e(
+      "div",
+      {
+        key: fill.name.toLowerCase(),
+        className: "comm-mail__caps-row" + (pressure ? " is-" + pressure : "")
+      },
+      e(
+        "div",
+        { className: "comm-mail__caps-row-top" },
+        e("span", { className: "comm-mail__caps-row-name" }, fill.name),
+        e(
+          "span",
+          {
+            className: "comm-mail__cap-frac" + (pressure ? " is-" + pressure : "")
+          },
+          formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+        ),
+        e(
+          "span",
+          {
+            className: "comm-mail__cap-state" + (pressure ? " is-" + pressure : "")
+          },
+          label
+        )
+      ),
+      e(
+        "div",
+        {
+          className: "comm-mail__cap-meter",
+          role: "progressbar",
+          "aria-valuemin": 0,
+          "aria-valuemax": MAIL_ATTACH_CAP,
+          "aria-valuenow": Math.min(MAIL_ATTACH_CAP, fill.count)
+        },
+        e("div", {
+          className: "comm-mail__cap-meter-fill" + (pressure ? " is-" + pressure : ""),
+          style: { width: fillCapPct(fill.count) + "%" }
+        })
+      )
+    );
+  }
+  function MailCapsModal(props) {
+    const React = getReact();
+    const { view, onClose } = props;
+    const [filter, setFilter] = React.useState("all");
+    React.useEffect(() => {
+      const onKey = (ev) => {
+        if (ev.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+    const rows = filterFills(view.fills, filter);
+    const filters = [
+      { id: "all", label: "All", count: view.fills.length },
+      { id: "full", label: "Full", count: view.fullCount },
+      { id: "near", label: "Near", count: view.warnCount },
+      { id: "ok", label: "Holding", count: view.okCount },
+      {
+        id: "clear",
+        label: "Clear",
+        count: Math.max(0, view.fills.length - view.holdingCount)
+      }
+    ];
+    return e(
+      CommModalPortal,
+      null,
+      e(
+        "div",
+        {
+          className: "comm-mail__caps-backdrop",
+          role: "presentation",
+          onMouseDown: (ev) => {
+            if (ev.target === ev.currentTarget) onClose();
+          }
+        },
+        e(
+          "div",
+          {
+            className: "comm-mail__caps-modal",
+            role: "dialog",
+            "aria-modal": "true",
+            "aria-label": "Mail attachment caps",
+            onMouseDown: (ev) => ev.stopPropagation()
+          },
+          e(
+            "div",
+            { className: "comm-mail__caps-modal-hd" },
+            e(
+              "div",
+              { className: "comm-mail__caps-modal-hd-copy" },
+              e("div", { className: "comm-mail__caps-modal-title" }, "Attach caps"),
+              e(
+                "div",
+                { className: "comm-mail__caps-modal-sub" },
+                MAIL_ATTACH_CAP + " uncollected per character \xB7 max " + MAIL_ATTACH_SENDER_CAP + " from one sending account"
+              )
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__btn",
+                onClick: onClose
+              },
+              "Close"
+            )
+          ),
+          e(
+            "div",
+            { className: "comm-mail__caps-modal-filters" },
+            filters.map(
+              (f) => e(
+                "button",
+                {
+                  key: f.id,
+                  type: "button",
+                  className: "comm-mail__caps-filter" + (filter === f.id ? " is-on" : ""),
+                  onClick: () => setFilter(f.id)
+                },
+                f.label + " " + f.count
+              )
+            )
+          ),
+          e(
+            "div",
+            { className: "comm-mail__caps-modal-list" },
+            rows.length ? rows.map((fill) => renderCapRow(fill, view.incomplete)) : e(
+              "div",
+              { className: "comm-mail__caps-modal-empty" },
+              "No characters in this filter."
+            )
+          )
+        )
+      )
+    );
+  }
+
   // src/ui/frames/mail/MailBannerBar.ts
+  function renderCapsCard(view, onOpenDetails) {
+    const primary = view.primary;
+    const pressureClass = view.pressure === "full" ? " is-cap-full" : view.pressure === "warn" ? " is-cap-warn" : "";
+    const primaryPressure = primary ? primary.pressure : "";
+    return e(
+      "div",
+      {
+        className: "comm-mail__card comm-mail__card--caps" + pressureClass,
+        title: view.title + "\n\nClick for every character."
+      },
+      e(
+        "div",
+        { className: "comm-mail__card-body" },
+        e(
+          "div",
+          { className: "comm-mail__cap-hd" },
+          e("div", { className: "comm-mail__card-kicker" }, "Attach caps"),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__cap-details",
+              onClick: (ev) => {
+                ev.stopPropagation();
+                onOpenDetails();
+              }
+            },
+            "Details"
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "comm-mail__card-title" + (view.pressure ? " is-cap-" + view.pressure : "")
+          },
+          view.summaryLine
+        ),
+        primary ? e(
+          "div",
+          { className: "comm-mail__cap-primary" },
+          e(
+            "div",
+            { className: "comm-mail__cap-primary-top" },
+            e("span", { className: "comm-mail__cap-name" }, primary.name),
+            e(
+              "span",
+              {
+                className: "comm-mail__cap-frac" + (primaryPressure ? " is-" + primaryPressure : "")
+              },
+              formatCapFraction(
+                primary.count,
+                MAIL_ATTACH_CAP,
+                view.incomplete
+              )
+            ),
+            e(
+              "span",
+              {
+                className: "comm-mail__cap-state" + (primaryPressure ? " is-" + primaryPressure : "")
+              },
+              view.primaryLabel
+            )
+          ),
+          e(
+            "div",
+            {
+              className: "comm-mail__cap-meter",
+              role: "progressbar",
+              "aria-valuemin": 0,
+              "aria-valuemax": MAIL_ATTACH_CAP,
+              "aria-valuenow": Math.min(MAIL_ATTACH_CAP, primary.count)
+            },
+            e("div", {
+              className: "comm-mail__cap-meter-fill" + (primaryPressure ? " is-" + primaryPressure : ""),
+              style: { width: view.primaryPct + "%" }
+            })
+          )
+        ) : null,
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__cap-open",
+            onClick: onOpenDetails
+          },
+          view.fills.length > 1 ? "View all " + view.fills.length + " characters" : "View character caps"
+        )
+      )
+    );
+  }
   function MailBannerBar(props) {
     const React = getReact();
     const { snap, caps } = props;
     const [now, setNow] = React.useState(() => Date.now());
+    const [capsOpen, setCapsOpen] = React.useState(false);
     const undoActive = snap.undoEndsAt > 0 && snap.undoCount > 0;
     React.useEffect(() => {
       const id = window.setInterval(
@@ -73419,6 +75059,13 @@ ${ESTIMATE_HINT}`,
     const observeLine = caps.observeName ? "Observing " + caps.observeName : caps.reason || "Not observing \xB7 inbox only";
     const observeOn = !!caps.observeName;
     const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
+    const ownedNames = selfCharacterNames();
+    const capView = buildMailboxCapsView({
+      fills: countAttachmentsByRecipient(snap.mails, ownedNames),
+      incomplete: !!snap.hasMore,
+      preferName: caps.observeName,
+      ownedNames
+    });
     return e(
       React.Fragment,
       null,
@@ -73486,6 +75133,7 @@ ${ESTIMATE_HINT}`,
             )
           )
         ),
+        renderCapsCard(capView, () => setCapsOpen(true)),
         showStatus ? e(
           "div",
           {
@@ -73536,7 +75184,11 @@ ${ESTIMATE_HINT}`,
             ) : null
           )
         ) : null
-      )
+      ),
+      capsOpen ? e(MailCapsModal, {
+        view: capView,
+        onClose: () => setCapsOpen(false)
+      }) : null
     );
   }
 
@@ -73708,6 +75360,38 @@ ${ESTIMATE_HINT}`,
     }
     const attachesReady = attachesHaveRecipients(draftAttachesList);
     const canSend = caps.canSend && !snap.commandBusy && caps.goldEnough !== false && (draftAttachesList.length ? attachesReady : draft.to.length > 0);
+    const queuedMap = {};
+    for (let i = 0; i < draftAttachesList.length; i++) {
+      const to = String(draftAttachesList[i].to || "").trim();
+      if (!to) continue;
+      const key = to.toLowerCase();
+      if (!queuedMap[key]) queuedMap[key] = { to, count: 0 };
+      queuedMap[key].count += 1;
+    }
+    const queuedList = [];
+    const qKeys = Object.keys(queuedMap);
+    for (let i = 0; i < qKeys.length; i++) queuedList.push(queuedMap[qKeys[i]]);
+    const capNotices = draftAttachesList.length > 0 ? buildComposeCapNotices({
+      mails: snap.mails,
+      selfNames,
+      queued: queuedList,
+      hasMore: snap.hasMore
+    }) : [];
+    const capNoticeEls = [];
+    for (let i = 0; i < capNotices.length; i++) {
+      const n = capNotices[i];
+      capNoticeEls.push(
+        e(
+          "div",
+          {
+            key: n.key,
+            className: "comm-mail__cap-note" + (n.pressure === "full" ? " is-full" : n.pressure === "warn" ? " is-warn" : ""),
+            title: n.title
+          },
+          n.text
+        )
+      );
+    }
     return e(
       "div",
       { className: "comm-mail__compose" },
@@ -73843,6 +75527,7 @@ ${ESTIMATE_HINT}`,
         { className: "comm-mail__meta", style: { marginTop: 8 } },
         "Attach via bag \u2192 right-click \u2192 Send mail (queue first, add To later; same slot replaces)"
       ),
+      capNoticeEls.length ? e("div", { className: "comm-mail__cap-notes" }, ...capNoticeEls) : null,
       e(
         "div",
         { className: "comm-mail__meta", style: { marginTop: 8 } },
@@ -73924,7 +75609,7 @@ ${ESTIMATE_HINT}`,
     const q = qtyOverride != null ? qtyOverride : typeof m.item.q === "number" ? m.item.q : void 0;
     const taken = !!m.taken;
     const name = String(m.item.name);
-    const level = typeof m.item.level === "number" ? m.item.level : void 0;
+    const level = m.item.level;
     const p = typeof m.item.p === "string" ? m.item.p : void 0;
     const label = itemInstanceLabel(name, { p, level });
     return e(
@@ -74115,9 +75800,9 @@ ${ESTIMATE_HINT}`,
           {
             key: "taken",
             className: "comm-mail__attach-pill is-taken",
-            title: "Attachment already taken"
+            title: m.takenPending ? "Claim settling" : "Attachment already taken"
           },
-          "Taken"
+          m.takenPending ? "Settling" : "Taken"
         )
       );
     }
@@ -74317,7 +76002,7 @@ ${ESTIMATE_HINT}`,
           e(ItemInstance, {
             name: String(selected.item.name),
             skin: typeof selected.item.skin === "string" ? selected.item.skin : void 0,
-            level: typeof selected.item.level === "number" ? selected.item.level : void 0,
+            level: selected.item.level,
             q: typeof selected.item.q === "number" ? selected.item.q : void 0,
             p: typeof selected.item.p === "string" ? selected.item.p : void 0,
             size: 40
@@ -74331,7 +76016,7 @@ ${ESTIMATE_HINT}`,
             null,
             itemInstanceLabel(String(selected.item.name), {
               p: typeof selected.item.p === "string" ? selected.item.p : void 0,
-              level: typeof selected.item.level === "number" ? selected.item.level : void 0
+              level: selected.item.level
             })
           ),
           typeof selected.item.q === "number" && selected.item.q > 1 ? " \xD7" + selected.item.q : null,
@@ -74340,7 +76025,7 @@ ${ESTIMATE_HINT}`,
             {
               className: "comm-mail__attach-state" + (selected.taken ? " is-taken" : " is-takeable")
             },
-            selected.taken ? "Taken \u2014 already in a bag" : "Ready to take"
+            selected.takenPending ? "Claim settling\u2026" : selected.taken ? "Taken \u2014 already in a bag" : "Ready to take"
           )
         )
       ) : null,
@@ -74375,11 +76060,11 @@ ${ESTIMATE_HINT}`,
           {
             type: "button",
             className: "comm-mail__btn",
-            disabled: !caps.canTake || !(selected.item && !selected.taken) || snap.commandBusy,
-            title: selected.taken ? "Attachment already taken" : !caps.canTake ? caps.reason || "Cannot take" : "Take attachment into observed bag",
+            disabled: !caps.canTake || selected.canTake === false || !(selected.item && !selected.taken) || snap.commandBusy,
+            title: selected.takenPending ? "Claim settling \u2014 wait for bag / refresh" : selected.taken ? "Attachment already taken" : selected.canTake === false ? "Only the recipient account can take this" : !caps.canTake ? caps.reason || "Cannot take" : "Take attachment into observed bag",
             onClick: () => takeMailCommand(selected.id)
           },
-          snap.commandBusy ? "Working\u2026" : selected.item && selected.taken ? "Taken" : "Take"
+          snap.commandBusy ? "Working\u2026" : selected.item && selected.takenPending ? "Settling\u2026" : selected.item && selected.taken ? "Taken" : "Take"
         ),
         e(
           "button",
@@ -74953,7 +76638,9 @@ ${ESTIMATE_HINT}`,
           break;
         }
       }
-      if (row3 && row3.item && !row3.taken) takeableCheckedIds.push(row3.id);
+      if (row3 && row3.item && !row3.taken && row3.canTake !== false) {
+        takeableCheckedIds.push(row3.id);
+      }
     }
     const className = "comm-mail" + (wide ? "" : " is-narrow") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "");
     const toggleCheck = (id, on) => {
@@ -75031,7 +76718,7 @@ ${ESTIMATE_HINT}`,
           }
           if (ev.key === "u") undoDeleteMail();
           if (ev.key === "t") {
-            const takeIds = takeableCheckedIds.length > 0 ? takeableCheckedIds : selected && selected.item && !selected.taken ? [selected.id] : [];
+            const takeIds = takeableCheckedIds.length > 0 ? takeableCheckedIds : selected && selected.item && !selected.taken && selected.canTake !== false ? [selected.id] : [];
             if (takeIds.length && caps.canTake && !snap.commandBusy) {
               ev.preventDefault();
               takeMailCommand(takeIds);
@@ -76372,33 +78059,6 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
       document.removeEventListener("DOMContentLoaded", finish);
     }, 15e3);
   }
-  function ensureReact(onReady) {
-    const go = () => whenBodyReady(onReady);
-    if (window.React && window.ReactDOM) {
-      go();
-      return;
-    }
-    if (!document.querySelector("#react")) {
-      const reactScript = document.createElement("script");
-      reactScript.id = "react";
-      reactScript.src = "https://unpkg.com/react@18/umd/react.development.js";
-      reactScript.crossOrigin = "";
-      (document.head || document.documentElement).append(reactScript);
-    }
-    const existingDom = document.querySelector(
-      "#react-dom"
-    );
-    if (!existingDom) {
-      const reactDomScript = document.createElement("script");
-      reactDomScript.id = "react-dom";
-      reactDomScript.src = "https://unpkg.com/react-dom@18/umd/react-dom.development.js";
-      reactDomScript.crossOrigin = "";
-      reactDomScript.addEventListener("load", go);
-      (document.head || document.documentElement).append(reactDomScript);
-    } else {
-      existingDom.addEventListener("load", go);
-    }
-  }
   function Root() {
     const React = getReact();
     const [snap, setSnap] = React.useState(null);
@@ -76436,6 +78096,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     startMeterEngine();
     startSessionKills();
     startWorldOverlay();
+    installWorldZoom();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");
@@ -76453,6 +78114,6 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   }
   (function bootstrap() {
     "use strict";
-    ensureReact(onLoad);
+    ensureReact(() => whenBodyReady(onLoad));
   })();
 })();
