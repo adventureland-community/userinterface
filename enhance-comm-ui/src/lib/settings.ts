@@ -33,6 +33,7 @@ import {
   normalizeMinimapBgMode,
   type MinimapBgMode,
 } from "./minimapPrefs";
+import { clampWorldZoom } from "./worldZoom";
 import {
   legacyShowBigIconHidden,
   normalizeAbilityTimelineOrient,
@@ -214,6 +215,11 @@ export type CommUiSettings = {
   nextWindowNumber?: number;
   /** World half-span (shorter canvas axis), clamped — sticky after snaps / wheel. */
   minimapZoom?: number;
+  /**
+   * PIXI world zoom (`scale` on /hub). Lower = more map visible.
+   * Also mirrored to the stock `scale` cookie for full reloads.
+   */
+  worldZoom?: number;
   /** Minimap shell + canvas grid opacity preset. */
   minimapBg: MinimapBgMode;
   /** Ability timeline geometry + chrome (legacy orient/display scalars migrate in). */
@@ -614,6 +620,10 @@ function migrate(parsed: any): CommUiSettings {
         ? parsed.minimapZoom
         : MINIMAP_ZOOM_DEFAULT,
     ),
+    worldZoom:
+      typeof parsed.worldZoom === "number"
+        ? clampWorldZoom(parsed.worldZoom)
+        : undefined,
     minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
     bagSort: normalizeBagSortPrefs(parsed.bagSort),
   };
@@ -827,6 +837,9 @@ export function patchSettings(
   }
   if (typeof partial.minimapZoom === "number") {
     next.minimapZoom = clampMinimapZoom(partial.minimapZoom);
+  }
+  if (typeof partial.worldZoom === "number") {
+    next.worldZoom = clampWorldZoom(partial.worldZoom);
   }
   if (partial.minimapBg != null) {
     next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);

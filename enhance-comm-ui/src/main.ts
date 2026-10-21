@@ -1,4 +1,5 @@
 import { getReact, getReactDOM, e } from "./host/react";
+import { ensureReact } from "./host/ensureReact";
 import { snapshotUiKey, startTick, type GameSnapshot } from "./tick";
 import { startSocketHub } from "./sockets/hub";
 import { startInstanceTracker } from "./instance/tracker";
@@ -19,6 +20,7 @@ import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
 import { startWorldOverlay } from "./viz/startWorldOverlay";
+import { installWorldZoom } from "./host/worldZoom";
 
 publishEcuBuildInfo();
 
@@ -148,37 +150,6 @@ function whenBodyReady(fn: () => void): void {
   }, 15000);
 }
 
-function ensureReact(onReady: () => void): void {
-  const go = () => whenBodyReady(onReady);
-  if (window.React && window.ReactDOM) {
-    go();
-    return;
-  }
-
-  if (!document.querySelector("#react")) {
-    const reactScript = document.createElement("script");
-    reactScript.id = "react";
-    reactScript.src = "https://unpkg.com/react@18/umd/react.development.js";
-    reactScript.crossOrigin = "";
-    (document.head || document.documentElement).append(reactScript);
-  }
-
-  const existingDom = document.querySelector(
-    "#react-dom",
-  ) as HTMLScriptElement | null;
-  if (!existingDom) {
-    const reactDomScript = document.createElement("script");
-    reactDomScript.id = "react-dom";
-    reactDomScript.src =
-      "https://unpkg.com/react-dom@18/umd/react-dom.development.js";
-    reactDomScript.crossOrigin = "";
-    reactDomScript.addEventListener("load", go);
-    (document.head || document.documentElement).append(reactDomScript);
-  } else {
-    existingDom.addEventListener("load", go);
-  }
-}
-
 function Root(): any {
   const React = getReact();
   const [snap, setSnap] = React.useState(null as GameSnapshot | null);
@@ -222,6 +193,7 @@ function onLoad(): void {
   startMeterEngine();
   startSessionKills();
   startWorldOverlay();
+  installWorldZoom();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {
@@ -244,5 +216,5 @@ function onLoad(): void {
 
 (function bootstrap() {
   "use strict";
-  ensureReact(onLoad);
+  ensureReact(() => whenBodyReady(onLoad));
 })();
