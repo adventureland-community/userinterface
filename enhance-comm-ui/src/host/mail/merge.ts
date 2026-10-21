@@ -12,6 +12,9 @@ function cloneRow(m: MailRow): MailRow {
   if (m.read != null) next.read = m.read;
   if (m.item) next.item = { ...m.item };
   if (m.taken != null) next.taken = m.taken;
+  // Always copy booleans so soft-merge can clear pending/canTake.
+  if (m.takenPending != null) next.takenPending = m.takenPending;
+  if (m.canTake != null) next.canTake = m.canTake;
   if (m.system != null) next.system = m.system;
   return next;
 }
@@ -132,8 +135,22 @@ export function normalizeMailPage(raw: unknown): PullMailPage {
     // Stock/mongodb: `item` is often a JSON string (simplify_item); may also be an object.
     const item = parseMailItem(m.item);
     if (item) row.item = item;
-    const taken = coerceMailTaken(m.taken);
-    if (taken != null) row.taken = taken;
+    const takenState = coerceMailTakenState(m.taken);
+    if (takenState) {
+      row.taken = takenState.taken;
+      // Always set so mergeHeadPage can clear a prior pending claim.
+      row.takenPending = takenState.pending;
+    }
+    if (typeof m.can_take === "boolean") row.canTake = m.can_take;
+    // Phrase overlays (cave awards / tracktrix) when the plain subject is empty.
+    if (!row.subject) {
+      const phraseSub = phraseFromMessageField(m.subject_message);
+      if (phraseSub) row.subject = phraseSub;
+    }
+    if (!row.message) {
+      const phraseBody = phraseFromMessageField(m.body_message);
+      if (phraseBody) row.message = phraseBody;
+    }
     mail.push(row);
   }
   return {
@@ -144,12 +161,43 @@ export function normalizeMailPage(raw: unknown): PullMailPage {
   };
 }
 
-/** Stock/mongodb `taken` may be bool, 0/1, or missing. */
+/**
+ * Stock/mongodb `taken` may be bool, 0/1, missing, or a claim token string
+ * (`mailclaim_*`) while `mail_take_item` settles the attachment.
+ */
 export function coerceMailTaken(raw: unknown): boolean | undefined {
-  if (typeof raw === "boolean") return raw;
-  if (raw === 0 || raw === "0" || raw === "false") return false;
-  if (raw === 1 || raw === "1" || raw === "true") return true;
+  const state = coerceMailTakenState(raw);
+  return state ? state.taken : undefined;
+}
+
+export function coerceMailTakenState(
+  raw: unknown,
+): { taken: boolean; pending: boolean } | undefined {
+  if (typeof raw === "boolean") {
+    return { taken: raw, pending: false };
+  }
+  if (raw === 0 || raw === "0" || raw === "false") {
+    return { taken: false, pending: false };
+  }
+  if (raw === 1 || raw === "1" || raw === "true") {
+    return { taken: true, pending: false };
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    // In-flight safe claim (or any non-bool token) — not takeable, not settled.
+    return { taken: true, pending: true };
+  }
   return undefined;
+}
+
+/** Best-effort label from `{ phrase: "server.cave.mail_subject" }`. */
+function phraseFromMessageField(raw: unknown): string {
+  if (!raw || typeof raw !== "object") return "";
+  const phrase = (raw as { phrase?: unknown }).phrase;
+  if (typeof phrase !== "string" || !phrase) return "";
+  const leaf = phrase.split(".").pop() || phrase;
+  if (leaf === "mail_subject") return "System mail";
+  if (leaf === "mail_body") return "";
+  return leaf.replace(/_/g, " ");
 }
 
 /** True when a non-JSON string is a plausible AdventureLand item id. */

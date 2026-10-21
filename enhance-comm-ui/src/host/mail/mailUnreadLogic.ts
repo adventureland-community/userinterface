@@ -60,6 +60,7 @@ export type CommandOutcomeCode =
   | "sent_inconclusive"
   | "looks_taken"
   | "partial_taken"
+  | "claim_pending"
   | "take_no_change";
 
 export type CommandOutcome = {
@@ -137,6 +138,7 @@ export function resolveCommandOutcome(
   }
 
   let okCount = 0;
+  let pendingCount = 0;
   for (let i = 0; i < p.targetIds.length; i++) {
     let row: MailRow | null = null;
     for (let j = 0; j < mails.length; j++) {
@@ -145,7 +147,14 @@ export function resolveCommandOutcome(
         break;
       }
     }
-    if (row && (row.taken || !row.item)) okCount += 1;
+    if (!row) continue;
+    // Claim token / optimistic mark — not settled yet.
+    if (row.takenPending) {
+      pendingCount += 1;
+      continue;
+    }
+    // Settled take, or attachment gone from the row.
+    if (row.taken || !row.item) okCount += 1;
   }
   const expect = p.expect > 0 ? p.expect : p.targetIds.length || 1;
   if (expect > 1 || p.targetIds.length > 1) {
@@ -156,11 +165,30 @@ export function resolveCommandOutcome(
         kind: "",
       };
     }
+    if (pendingCount > 0 && okCount + pendingCount >= expect) {
+      return {
+        code: "claim_pending",
+        text:
+          "Claim settling · " +
+          (okCount + pendingCount) +
+          "/" +
+          expect +
+          "…",
+        kind: "warn",
+      };
+    }
     if (okCount > 0) {
       return {
         code: "partial_taken",
         text:
           "Partial take · " + okCount + "/" + expect + " — check bag / log",
+        kind: "warn",
+      };
+    }
+    if (pendingCount > 0) {
+      return {
+        code: "claim_pending",
+        text: "Claim settling…",
         kind: "warn",
       };
     }
@@ -172,6 +200,13 @@ export function resolveCommandOutcome(
   }
   if (okCount > 0) {
     return { code: "looks_taken", text: "Looks taken", kind: "" };
+  }
+  if (pendingCount > 0) {
+    return {
+      code: "claim_pending",
+      text: "Claim settling…",
+      kind: "warn",
+    };
   }
   return {
     code: "take_no_change",

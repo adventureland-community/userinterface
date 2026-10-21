@@ -21,7 +21,21 @@ export type MailRow = {
    */
   read?: boolean;
   item?: MailItem;
+  /**
+   * Attachment is not takeable. True for settled takes (`taken === true`) and
+   * for in-flight mongodb claim tokens (`mailclaim_*`).
+   */
   taken?: boolean;
+  /**
+   * Claim token held but not yet settled to `true` (safe-claim window).
+   * Delete is still blocked server-side while this is set.
+   */
+  takenPending?: boolean;
+  /**
+   * From pull_mail `can_take` — only the receiving account may claim.
+   * Undefined when the API omitted it (legacy stock).
+   */
+  canTake?: boolean;
   system?: boolean;
 };
 

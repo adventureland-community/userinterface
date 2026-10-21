@@ -21,6 +21,7 @@ import {
   type ComposeAttach,
   type ItemFingerprint,
   type MailItem,
+  type MailRow,
 } from "./types";
 
 export type PendingOutcome = {
@@ -136,6 +137,25 @@ function sendLooksSettled(p: PendingOutcome): boolean {
   return result.code === "looks_sent";
 }
 
+function takeLooksSettled(p: PendingOutcome): boolean {
+  if (p.kind !== "take") return true;
+  const result = resolveCommandOutcome(p, getMails());
+  // claim_pending means mailclaim_* / optimistic mark — keep polling head.
+  return result.code === "looks_taken";
+}
+
+/** Optimistic claim mark so the read pane leaves "Ready to take" immediately. */
+function markMailsClaimPending(mails: MailRow[], ids: string[]): MailRow[] {
+  const want = new Set(ids);
+  const out = mails.slice();
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    if (!want.has(m.id) || !m.item || m.taken) continue;
+    out[i] = { ...m, taken: true, takenPending: true };
+  }
+  return out;
+}
+
 export function scheduleCommandHead(reason: string, delayMs?: number): void {
   const seq = ++cmdSeq;
   const wait =
@@ -150,17 +170,22 @@ export function scheduleCommandHead(reason: string, delayMs?: number): void {
         isCommand && pendingOutcome && pendingOutcome.kind === "send"
           ? pendingOutcome
           : null;
-      // Send finishes on mail_sent (after mail_sending). Retry head a few times
-      // so STATUS can show looks_sent when the account inbox picks it up.
-      const attempts = sendPending ? 4 : 1;
+      // Send finishes on mail_sent (after mail_sending). Take uses safe claims
+      // (taken may be a mailclaim_* token mid-flight). Retry head so STATUS
+      // can show looks_sent / looks_taken once the inbox settles.
+      const takePending =
+        isCommand && pendingOutcome && pendingOutcome.kind === "take"
+          ? pendingOutcome
+          : null;
+      const attempts = sendPending || takePending ? 4 : 1;
       for (let i = 0; i < attempts; i++) {
         if (seq !== cmdSeq) return;
         await requestMailHead(reason, { force: true });
-        if (
-          !sendPending ||
-          sendLooksSettled(sendPending) ||
-          i === attempts - 1
-        ) {
+        if (sendPending) {
+          if (sendLooksSettled(sendPending) || i === attempts - 1) break;
+        } else if (takePending) {
+          if (takeLooksSettled(takePending) || i === attempts - 1) break;
+        } else {
           break;
         }
         await new Promise<void>((r) => window.setTimeout(r, 900));
@@ -309,6 +334,8 @@ export function takeMailCommand(mailIdOrIds: string | string[]): boolean {
   commit({
     lastScript: script,
     commandBusy: true,
+    // Flip the stamp off "Ready to take" immediately; head reconcile settles.
+    mails: markMailsClaimPending(mails, ids),
     status:
       ids.length > 1
         ? "Take batch · " + ids.length + " → " + obs + "…"

@@ -260,6 +260,45 @@ describe("resolveCommandOutcome", () => {
     assert.equal(full.kind, "");
     assert.match(full.text, /Looks taken/);
   });
+
+  it("take treats claim tokens / optimistic pending as not settled", () => {
+    const mails: MailRow[] = [
+      {
+        id: "t1",
+        fro: "x",
+        to: "y",
+        subject: "",
+        message: "",
+        sent: "1",
+        item: { name: "pstem", q: 6 },
+        taken: true,
+        takenPending: true,
+      },
+    ];
+    const pending = resolveCommandOutcome(
+      {
+        kind: "take",
+        beforeIds: ["t1"],
+        targetIds: ["t1"],
+        expect: 1,
+      },
+      mails,
+    );
+    assert.equal(pending.code, "claim_pending");
+    assert.match(pending.text, /Claim settling/);
+
+    mails[0].takenPending = false;
+    const settled = resolveCommandOutcome(
+      {
+        kind: "take",
+        beforeIds: ["t1"],
+        targetIds: ["t1"],
+        expect: 1,
+      },
+      mails,
+    );
+    assert.equal(settled.code, "looks_taken");
+  });
 });
 
 describe("unread badge label", () => {

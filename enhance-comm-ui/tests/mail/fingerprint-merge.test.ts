@@ -199,6 +199,70 @@ describe("mail merge", () => {
     assert.equal(page.mail[1].item?.level, 3);
     assert.equal(page.mail[1].taken, true);
   });
+
+  it("treats mongodb claim tokens as taken and preserves can_take", () => {
+    // upstream mail_take_item sets taken to "mailclaim_*" while settling,
+    // then true; pull_mail also returns can_take for the receiving account.
+    const page = normalizeMailPage({
+      mail: [
+        {
+          id: "ML_claim",
+          fro: "thmsn",
+          to: "thmsn",
+          subject: "[overflow] 91 x candy1",
+          message: "",
+          sent: "1",
+          item: { name: "candy1", q: 91 },
+          taken: "mailclaim_abc123",
+          can_take: true,
+        },
+        {
+          id: "ML_done",
+          fro: "thmsn",
+          to: "thmsn",
+          subject: "done",
+          message: "",
+          sent: "2",
+          item: { name: "candy1", q: 1 },
+          taken: true,
+          can_take: false,
+        },
+      ],
+    });
+    assert.equal(page.mail[0].taken, true);
+    assert.equal(page.mail[0].takenPending, true);
+    assert.equal(page.mail[0].canTake, true);
+    assert.equal(page.mail[1].taken, true);
+    assert.equal(page.mail[1].takenPending, false);
+    assert.equal(page.mail[1].canTake, false);
+
+    const prev = {
+      id: "ML_claim",
+      fro: "thmsn",
+      to: "thmsn",
+      subject: "[overflow] 91 x candy1",
+      message: "",
+      sent: "1",
+      item: { name: "candy1", q: 91 },
+      taken: false,
+    };
+    const merged = mergeHeadPage([prev], page.mail);
+    assert.equal(merged[0].taken, true);
+    assert.equal(merged[0].takenPending, true);
+    assert.equal(merged[0].canTake, true);
+
+    // Settled pull must clear the pending flag (Object.assign soft-merge).
+    const settled = mergeHeadPage(merged, [
+      {
+        ...merged[0],
+        taken: true,
+        takenPending: false,
+        canTake: true,
+      },
+    ]);
+    assert.equal(settled[0].taken, true);
+    assert.equal(settled[0].takenPending, false);
+  });
 });
 
 describe("mail api extractInfs", () => {

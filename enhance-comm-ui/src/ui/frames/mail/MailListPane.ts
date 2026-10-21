@@ -53,9 +53,11 @@ function renderMailRow(opts: {
         {
           key: "taken",
           className: "comm-mail__attach-pill is-taken",
-          title: "Attachment already taken",
+          title: m.takenPending
+            ? "Claim settling"
+            : "Attachment already taken",
         },
-        "Taken",
+        m.takenPending ? "Settling" : "Taken",
       ),
     );
   }

@@ -148,7 +148,9 @@ export async function deleteMailRows(
         break;
       }
     }
-    if (m && m.item && !m.taken) hasUntaken = true;
+    // Settled takes only (`taken && !takenPending`). Claim tokens still block
+    // delete_mail server-side (`taken !== true`).
+    if (m && m.item && (!m.taken || m.takenPending)) hasUntaken = true;
   }
   if (hasUntaken && !(opts && opts.confirmed)) return "need-confirm";
 

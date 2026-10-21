@@ -54,7 +54,7 @@ export function mailItemIcon(
         : undefined;
   const taken = !!m.taken;
   const name = String(m.item.name);
-  const level = typeof m.item.level === "number" ? m.item.level : undefined;
+  const level = m.item.level;
   const p = typeof m.item.p === "string" ? m.item.p : undefined;
   const label = itemInstanceLabel(name, { p, level });
   return e(

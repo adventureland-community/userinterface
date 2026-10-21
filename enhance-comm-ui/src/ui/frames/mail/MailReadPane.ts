@@ -80,10 +80,7 @@ export function MailReadPane(props: MailReadPaneProps): any {
                 typeof selected.item.skin === "string"
                   ? selected.item.skin
                   : undefined,
-              level:
-                typeof selected.item.level === "number"
-                  ? selected.item.level
-                  : undefined,
+              level: selected.item.level,
               q:
                 typeof selected.item.q === "number"
                   ? selected.item.q
@@ -106,10 +103,7 @@ export function MailReadPane(props: MailReadPaneProps): any {
                   typeof selected.item.p === "string"
                     ? selected.item.p
                     : undefined,
-                level:
-                  typeof selected.item.level === "number"
-                    ? selected.item.level
-                    : undefined,
+                level: selected.item.level,
               }),
             ),
             typeof selected.item.q === "number" && selected.item.q > 1
@@ -122,7 +116,11 @@ export function MailReadPane(props: MailReadPaneProps): any {
                   "comm-mail__attach-state" +
                   (selected.taken ? " is-taken" : " is-takeable"),
               },
-              selected.taken ? "Taken — already in a bag" : "Ready to take",
+              selected.takenPending
+                ? "Claim settling…"
+                : selected.taken
+                  ? "Taken — already in a bag"
+                  : "Ready to take",
             ),
           ),
         )
@@ -162,20 +160,27 @@ export function MailReadPane(props: MailReadPaneProps): any {
           className: "comm-mail__btn",
           disabled:
             !caps.canTake ||
+            selected.canTake === false ||
             !(selected.item && !selected.taken) ||
             snap.commandBusy,
-          title: selected.taken
-            ? "Attachment already taken"
-            : !caps.canTake
-              ? caps.reason || "Cannot take"
-              : "Take attachment into observed bag",
+          title: selected.takenPending
+            ? "Claim settling — wait for bag / refresh"
+            : selected.taken
+              ? "Attachment already taken"
+              : selected.canTake === false
+                ? "Only the recipient account can take this"
+                : !caps.canTake
+                  ? caps.reason || "Cannot take"
+                  : "Take attachment into observed bag",
           onClick: () => takeMailCommand(selected.id),
         },
         snap.commandBusy
           ? "Working…"
-          : selected.item && selected.taken
-            ? "Taken"
-            : "Take",
+          : selected.item && selected.takenPending
+            ? "Settling…"
+            : selected.item && selected.taken
+              ? "Taken"
+              : "Take",
       ),
       e(
         "button",

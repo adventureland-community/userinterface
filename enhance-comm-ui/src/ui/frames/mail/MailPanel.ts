@@ -177,7 +177,9 @@ export function MailPanel(): any {
         break;
       }
     }
-    if (row && row.item && !row.taken) takeableCheckedIds.push(row.id);
+    if (row && row.item && !row.taken && row.canTake !== false) {
+      takeableCheckedIds.push(row.id);
+    }
   }
 
   const className =
@@ -269,7 +271,10 @@ export function MailPanel(): any {
           const takeIds =
             takeableCheckedIds.length > 0
               ? takeableCheckedIds
-              : selected && selected.item && !selected.taken
+              : selected &&
+                  selected.item &&
+                  !selected.taken &&
+                  selected.canTake !== false
                 ? [selected.id]
                 : [];
           if (takeIds.length && caps.canTake && !snap.commandBusy) {

@@ -64,6 +64,8 @@ function cloneRow(m: MailRow): MailRow {
   if (m.read != null) next.read = m.read;
   if (m.item) next.item = { ...m.item };
   if (m.taken != null) next.taken = m.taken;
+  if (m.takenPending != null) next.takenPending = m.takenPending;
+  if (m.canTake != null) next.canTake = m.canTake;
   if (m.system != null) next.system = m.system;
   return next;
 }
