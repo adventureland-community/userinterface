@@ -4,6 +4,7 @@
 
 import { getEntitiesList, getObserving } from "../host/al";
 import type { EntityLike } from "../host/globals";
+import { subscribeWorldZoom } from "../host/worldZoom";
 import { resolveAbilityTimelineTarget } from "../instance/abilityTimelineModel";
 import {
   destroyOverlayHandle,
@@ -15,11 +16,13 @@ import { resetAnniversaryKissFx } from "./anniversaryKiss";
 import { paintWorldOverlay } from "./paintWorldOverlay";
 import { subscribeVizSettings } from "./vizSettings";
 
-const TICK_MS = 250;
+/** Fast enough that vision fog tracks a walking observe target. */
+const TICK_MS = 100;
 
 let timerId: number | null = null;
 let handle: OverlayHandle | null = null;
 let unsubSettings: (() => void) | null = null;
+let unsubZoom: (() => void) | null = null;
 let selectedId: string | undefined;
 
 export function setWorldOverlaySelectedId(id: string | undefined): void {
@@ -50,6 +53,7 @@ function tick(): void {
 export function startWorldOverlay(): void {
   if (timerId != null) return;
   unsubSettings = subscribeVizSettings(() => tick());
+  unsubZoom = subscribeWorldZoom(() => tick());
   tick();
   timerId = window.setInterval(tick, TICK_MS);
 }
@@ -62,6 +66,10 @@ export function stopWorldOverlay(): void {
   if (unsubSettings) {
     unsubSettings();
     unsubSettings = null;
+  }
+  if (unsubZoom) {
+    unsubZoom();
+    unsubZoom = null;
   }
   destroyOverlayHandle(handle);
   handle = null;

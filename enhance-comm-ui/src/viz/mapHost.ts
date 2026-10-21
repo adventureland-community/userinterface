@@ -88,6 +88,9 @@ type MapLike = {
   map_name?: string;
   x?: number;
   y?: number;
+  /** Camera focus in world coords (stock game.js). */
+  real_x?: number;
+  real_y?: number;
   scale?: { x?: number; y?: number };
   toLocal?: (position: { x: number; y: number }) => { x: number; y: number };
 };

@@ -31,6 +31,7 @@ import {
   type VizSettings,
 } from "./vizSettings";
 import { paintAnniversaryKiss } from "./anniversaryKiss";
+import { paintObserverVision } from "./observerVision";
 import { drawLine, strokeCircle, strokeDashedCircle } from "./paintGfx";
 import {
   paintWorldQuirkDebug,
@@ -342,6 +343,7 @@ export function paintWorldOverlay(
   refreshHoveredWorldQuirk();
 
   const settings = getVizSettings();
+  paintObserverVision(gfx, settings);
   paintWorldQuirkDebug(gfx, settings);
 
   const focus = opts.focus;

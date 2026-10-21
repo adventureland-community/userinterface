@@ -53,6 +53,11 @@ export const OVERLAY_TOGGLE_SECTIONS: readonly OverlayToggleSection[] = [
         label: "Anniversary kiss range",
         help: "80px gold ring + rising hearts on the featured player while live",
       },
+      {
+        key: "world.observerVision",
+        label: "Observer vision window",
+        help: "Soft dim outside the server entity window when zoomed out",
+      },
     ],
   },
   {

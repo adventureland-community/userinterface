@@ -16,6 +16,7 @@ export type VizSettingKey =
   | "world.leashBoundary"
   | "world.spawnPoints"
   | "world.anniversaryKiss"
+  | "world.observerVision"
   | "world.quirkHitboxes"
   | "entity.hpBar"
   | "entity.aggroRing"
@@ -55,6 +56,7 @@ export const DEFAULT_VIZ_SETTINGS: VizSettings = {
   "world.leashBoundary": false,
   "world.spawnPoints": false,
   "world.anniversaryKiss": true,
+  "world.observerVision": true,
   "world.quirkHitboxes": false,
   // Native client already draws HP / nameplates / aggro tint — keep off.
   "entity.hpBar": false,
