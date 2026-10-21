@@ -1,26 +1,146 @@
 import { getReact, e } from "../../../host/react";
 import {
+  buildMailboxCapsView,
   clearNewMailBanner,
+  countAttachmentsByRecipient,
+  formatCapFraction,
   formatDeleteProgressLabel,
   getXUnread,
+  MAIL_ATTACH_CAP,
   undoDeleteMail,
   undoSecondsLeft,
   type MailCapabilities,
   type MailStoreSnapshot,
+  type MailboxCapsView,
 } from "../../../host/mail";
 import { formatRelativeAge } from "../../../lib/format";
 import { resolveMailActivity } from "./mailActivity";
+import { MailCapsModal } from "./MailCapsModal";
+import { selfCharacterNames } from "./mailFormat";
 
 export type MailBannerBarProps = {
   snap: MailStoreSnapshot;
   caps: MailCapabilities;
 };
 
-/** Observe context + live activity pulse + compact cache stats. */
+/** Compact summary — full roster lives in MailCapsModal. */
+function renderCapsCard(
+  view: MailboxCapsView,
+  onOpenDetails: () => void,
+): any {
+  const primary = view.primary;
+  const pressureClass =
+    view.pressure === "full"
+      ? " is-cap-full"
+      : view.pressure === "warn"
+        ? " is-cap-warn"
+        : "";
+  const primaryPressure = primary ? primary.pressure : "";
+  return e(
+    "div",
+    {
+      className: "comm-mail__card comm-mail__card--caps" + pressureClass,
+      title: view.title + "\n\nClick for every character.",
+    },
+    e(
+      "div",
+      { className: "comm-mail__card-body" },
+      e(
+        "div",
+        { className: "comm-mail__cap-hd" },
+        e("div", { className: "comm-mail__card-kicker" }, "Attach caps"),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__cap-details",
+            onClick: (ev: { stopPropagation: () => void }) => {
+              ev.stopPropagation();
+              onOpenDetails();
+            },
+          },
+          "Details",
+        ),
+      ),
+      e(
+        "div",
+        {
+          className:
+            "comm-mail__card-title" +
+            (view.pressure ? " is-cap-" + view.pressure : ""),
+        },
+        view.summaryLine,
+      ),
+      primary
+        ? e(
+            "div",
+            { className: "comm-mail__cap-primary" },
+            e(
+              "div",
+              { className: "comm-mail__cap-primary-top" },
+              e("span", { className: "comm-mail__cap-name" }, primary.name),
+              e(
+                "span",
+                {
+                  className:
+                    "comm-mail__cap-frac" +
+                    (primaryPressure ? " is-" + primaryPressure : ""),
+                },
+                formatCapFraction(
+                  primary.count,
+                  MAIL_ATTACH_CAP,
+                  view.incomplete,
+                ),
+              ),
+              e(
+                "span",
+                {
+                  className:
+                    "comm-mail__cap-state" +
+                    (primaryPressure ? " is-" + primaryPressure : ""),
+                },
+                view.primaryLabel,
+              ),
+            ),
+            e(
+              "div",
+              {
+                className: "comm-mail__cap-meter",
+                role: "progressbar",
+                "aria-valuemin": 0,
+                "aria-valuemax": MAIL_ATTACH_CAP,
+                "aria-valuenow": Math.min(MAIL_ATTACH_CAP, primary.count),
+              },
+              e("div", {
+                className:
+                  "comm-mail__cap-meter-fill" +
+                  (primaryPressure ? " is-" + primaryPressure : ""),
+                style: { width: view.primaryPct + "%" },
+              }),
+            ),
+          )
+        : null,
+      e(
+        "button",
+        {
+          type: "button",
+          className: "comm-mail__cap-open",
+          onClick: onOpenDetails,
+        },
+        view.fills.length > 1
+          ? "View all " + view.fills.length + " characters"
+          : "View character caps",
+      ),
+    ),
+  );
+}
+
+/** Observe context + live activity pulse + cache stats + attach caps. */
 export function MailBannerBar(props: MailBannerBarProps): any {
   const React = getReact();
   const { snap, caps } = props;
   const [now, setNow] = React.useState(() => Date.now());
+  const [capsOpen, setCapsOpen] = React.useState(false);
   const undoActive = snap.undoEndsAt > 0 && snap.undoCount > 0;
   React.useEffect(() => {
     const id = window.setInterval(
@@ -48,6 +168,13 @@ export function MailBannerBar(props: MailBannerBarProps): any {
     : caps.reason || "Not observing · inbox only";
   const observeOn = !!caps.observeName;
   const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
+  const ownedNames = selfCharacterNames();
+  const capView = buildMailboxCapsView({
+    fills: countAttachmentsByRecipient(snap.mails, ownedNames),
+    incomplete: !!snap.hasMore,
+    preferName: caps.observeName,
+    ownedNames,
+  });
   return e(
     React.Fragment,
     null,
@@ -130,6 +257,7 @@ export function MailBannerBar(props: MailBannerBarProps): any {
           ),
         ),
       ),
+      renderCapsCard(capView, () => setCapsOpen(true)),
       showStatus
         ? e(
             "div",
@@ -201,5 +329,11 @@ export function MailBannerBar(props: MailBannerBarProps): any {
           )
         : null,
     ),
+    capsOpen
+      ? e(MailCapsModal, {
+          view: capView,
+          onClose: () => setCapsOpen(false),
+        })
+      : null,
   );
 }

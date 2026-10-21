@@ -13,6 +13,19 @@ export const MAIL_COMPOSE_CSS = `.comm-mail__pane {
 .comm-mail__compose label {
   display: block; font-size: 13px; color: #999; margin: 10px 0 4px;
 }
+.comm-mail__cap-notes {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.comm-mail__cap-note {
+  font-size: 13px;
+  color: #8a929a;
+  line-height: 1.35;
+}
+.comm-mail__cap-note.is-warn { color: #db8; }
+.comm-mail__cap-note.is-full { color: #f8a; font-weight: 600; }
 .comm-mail__compose input,
 .comm-mail__compose textarea {
   width: 100%;

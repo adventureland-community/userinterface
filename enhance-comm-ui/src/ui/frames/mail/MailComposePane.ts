@@ -1,5 +1,6 @@
 import { e } from "../../../host/react";
 import {
+  buildComposeCapNotices,
   distributeMailAttaches,
   attachesHaveRecipients,
   patchComposeDraft,
@@ -216,6 +217,48 @@ export function MailComposePane(props: MailComposePaneProps): any {
     caps.goldEnough !== false &&
     (draftAttachesList.length ? attachesReady : draft.to.length > 0);
 
+  const queuedMap: Record<string, { to: string; count: number }> = {};
+  for (let i = 0; i < draftAttachesList.length; i++) {
+    const to = String(draftAttachesList[i].to || "").trim();
+    if (!to) continue;
+    const key = to.toLowerCase();
+    if (!queuedMap[key]) queuedMap[key] = { to, count: 0 };
+    queuedMap[key].count += 1;
+  }
+  const queuedList: Array<{ to: string; count: number }> = [];
+  const qKeys = Object.keys(queuedMap);
+  for (let i = 0; i < qKeys.length; i++) queuedList.push(queuedMap[qKeys[i]]);
+  const capNotices =
+    draftAttachesList.length > 0
+      ? buildComposeCapNotices({
+          mails: snap.mails,
+          selfNames,
+          queued: queuedList,
+          hasMore: snap.hasMore,
+        })
+      : [];
+  const capNoticeEls: any[] = [];
+  for (let i = 0; i < capNotices.length; i++) {
+    const n = capNotices[i];
+    capNoticeEls.push(
+      e(
+        "div",
+        {
+          key: n.key,
+          className:
+            "comm-mail__cap-note" +
+            (n.pressure === "full"
+              ? " is-full"
+              : n.pressure === "warn"
+                ? " is-warn"
+                : ""),
+          title: n.title,
+        },
+        n.text,
+      ),
+    );
+  }
+
   return e(
     "div",
     { className: "comm-mail__compose" },
@@ -376,6 +419,9 @@ export function MailComposePane(props: MailComposePaneProps): any {
           { className: "comm-mail__meta", style: { marginTop: 8 } },
           "Attach via bag → right-click → Send mail (queue first, add To later; same slot replaces)",
         ),
+    capNoticeEls.length
+      ? e("div", { className: "comm-mail__cap-notes" }, ...capNoticeEls)
+      : null,
     e(
       "div",
       { className: "comm-mail__meta", style: { marginTop: 8 } },

@@ -119,6 +119,31 @@ export {
 } from "./mailUnread";
 export { sendMailCommand, takeMailCommand } from "./mailOutcomes";
 export {
+  MAIL_ATTACH_CAP,
+  MAIL_ATTACH_SENDER_CAP,
+  buildComposeCapNotices,
+  buildMailboxCapsView,
+  countAttachmentsByRecipient,
+  countMailboxAttachments,
+  countSenderAttachmentsTo,
+  fillCapLabel,
+  fillCapPct,
+  formatCapFraction,
+  formatMailboxCapsLine,
+  mailboxCapPressure,
+  mailboxCapsTitle,
+  mailboxCapTitle,
+  mergeOwnedMailboxFills,
+  senderCapPressure,
+  summarizeMailboxCaps,
+} from "./mailCaps";
+export type {
+  CharMailboxFill,
+  ComposeCapNotice,
+  MailboxCapsView,
+  MailCapPressure,
+} from "./mailCaps";
+export {
   clearNewMailBanner,
   loadOlderMail,
   requestMailHead,
