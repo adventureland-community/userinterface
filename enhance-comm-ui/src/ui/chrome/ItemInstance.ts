@@ -10,11 +10,17 @@ import {
   itemInstanceHtml,
   itemInstanceLabel,
 } from "../../lib/gameIcon";
+import {
+  coerceItemLevel,
+  resolveItemLevelBadge,
+} from "../../lib/itemLevelBadge";
+import { stampNativeItemTitleBorder } from "../../lib/itemTitleBorder";
 
 export type ItemInstanceProps = {
   name: string;
   skin?: string;
-  level?: number;
+  /** Numeric level, or a string that coerces (mail / API sometimes stringify). */
+  level?: number | string;
   q?: number;
   p?: string;
   size?: number;
@@ -44,11 +50,6 @@ function formatQty(
   return String(Math.floor(q));
 }
 
-function formatLevel(level: number | undefined): string | null {
-  if (level == null || !Number.isFinite(level) || level <= 0) return null;
-  return String(Math.floor(level));
-}
-
 export function ItemInstance(props: ItemInstanceProps): any {
   const React = getReact();
   ensureItemInstanceBadgeCss();
@@ -68,10 +69,12 @@ export function ItemInstance(props: ItemInstanceProps): any {
     bankQ,
   } = props;
 
+  const levelNum = coerceItemLevel(level);
   // Match stock hovername: G.titles prefix + upgrade/compound suffixes.
-  const tip = title || itemInstanceLabel(name, { p, level }) || name;
+  const tip =
+    title || itemInstanceLabel(name, { p, level: levelNum }) || name;
   const qtyLabel = formatQty(q, forceShowQ);
-  const levelLabel = formatLevel(level);
+  const levelBadge = resolveItemLevelBadge(name, level);
   const bankLabel =
     bankQ != null && Number.isFinite(bankQ) && bankQ > 0
       ? formatQty(bankQ, true)
@@ -83,14 +86,20 @@ export function ItemInstance(props: ItemInstanceProps): any {
     const html = stockChrome
       ? itemInstanceHtml(name, {
           skin,
-          level,
+          level: levelNum,
           q,
           p,
           size,
           title: tip,
           nativeTitle: false,
         })
-      : itemIconHtml(name, { skin, size, title: tip, nativeTitle: false });
+      : itemIconHtml(name, {
+          skin,
+          size,
+          title: tip,
+          nativeTitle: false,
+          p,
+        });
     el.innerHTML = html || "";
     // Hide stock qty/level pip — we draw readable overlays in React.
     const stockBadges = el.querySelectorAll(".iqui, .iuui");
@@ -99,18 +108,20 @@ export function ItemInstance(props: ItemInstanceProps): any {
       node.style.display = "none";
     }
     const root = el.querySelector(
-      ".ecu-item-instance > *, .ecu-meter-icon",
+      ".ecu-item-instance > div, .ecu-item-title-frame, .ecu-meter-icon",
     ) as HTMLElement | null;
     if (root) {
       root.style.margin = "0";
       root.removeAttribute("onmousedown");
       root.removeAttribute("ontouchstart");
       root.removeAttribute("onclick");
+      // DOM stamp — survives box-sizing quirks / missed regex recolors.
+      if (p) stampNativeItemTitleBorder(root, p);
     }
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [name, skin, level, q, p, size, tip, stockChrome]);
+  }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
 
   return e(
     "span",
@@ -142,14 +153,15 @@ export function ItemInstance(props: ItemInstanceProps): any {
         lineHeight: 0,
       },
     }),
-    levelLabel
+    levelBadge
       ? e(
           "span",
           {
             className: "ecu-item-badge ecu-item-badge--level",
-            title: "Level " + levelLabel,
+            title: "Level " + levelBadge.text,
+            style: { color: levelBadge.color, borderColor: levelBadge.color },
           },
-          levelLabel,
+          levelBadge.text,
         )
       : null,
     qtyLabel

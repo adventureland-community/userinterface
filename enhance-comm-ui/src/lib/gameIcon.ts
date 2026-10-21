@@ -12,6 +12,7 @@ import { findEntityById, getG } from "../host/al";
 import {
   wrapHtmlWithTitleBorder,
 } from "./itemTitleBorder";
+import { resolveItemLevelBadge } from "./itemLevelBadge";
 import {
   characterSprite,
   classSprite,
@@ -319,7 +320,7 @@ export function itemDisplayName(key: string): string {
 
 export type ItemInstanceLabelActual = {
   p?: string;
-  level?: number;
+  level?: number | string;
 };
 
 /**
@@ -334,7 +335,7 @@ export function itemInstanceLabel(
     | {
         items?: Record<
           string,
-          { name?: string; upgrade?: boolean; compound?: boolean }
+          { name?: string; upgrade?: boolean; compound?: boolean; type?: string }
         >;
         titles?: Record<string, { title?: string }>;
       }
@@ -347,15 +348,14 @@ export function itemInstanceLabel(
   } else if (p) {
     label = p.charAt(0).toUpperCase() + p.slice(1) + " " + label;
   }
-  const level = actual && actual.level != null ? Number(actual.level) : NaN;
-  if (def && Number.isFinite(level)) {
-    if (def.upgrade && level === 12) label += " +Z";
-    else if (def.upgrade && level === 11) label += " +Y";
-    else if (def.upgrade && level === 10) label += " +X";
-    else if (def.compound && level === 7) label += " +R";
-    else if (def.compound && level === 6) label += " +S";
-    else if (def.compound && level === 5) label += " +V";
-    else if (level > 0) label += " +" + Math.floor(level);
+  const level =
+    actual && actual.level != null && actual.level !== ""
+      ? Number(actual.level)
+      : NaN;
+  if (Number.isFinite(level) && level > 0) {
+    // Same letter map as the visible level pip (X/Y/Z, V/S/R, boosters).
+    const badge = resolveItemLevelBadge(itemName, level);
+    if (badge) label += " +" + badge.text;
   }
   return label;
 }
