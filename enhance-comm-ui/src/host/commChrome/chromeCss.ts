@@ -767,7 +767,9 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
   display: none !important;
 }
 #comm-ui .comm-pos-panel .ecu-chip,
-#comm-ui .comm-pos-panel .ecu-roster-buffs {
+#comm-ui .comm-pos-panel .ecu-roster-buffs,
+#comm-ui .comm-pos-panel .ecu-server-info,
+#comm-ui .comm-pos-panel .ecu-map-info {
   pointer-events: auto;
 }
 /* Fill-frame HUD (Mail, Instance, Timeline, …): clip inside the body so

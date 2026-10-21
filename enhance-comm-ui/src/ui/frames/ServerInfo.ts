@@ -8,6 +8,7 @@ import {
   listServerSeasonChips,
   readServerBlessing,
 } from "./serverInfoModel";
+import { openServerChip } from "./serverInfoOpen";
 
 export type ServerInfoProps = {
   S?: ServerInfoLike;
@@ -23,21 +24,17 @@ const chipStyle: Record<string, any> = {
   lineHeight: 1.25,
   color: "#eee",
   whiteSpace: "nowrap",
+  // Idle PositionedPanel shells are pointer-events:none; chips must opt in.
+  pointerEvents: "auto",
   ...PIXEL_TEXT,
 };
 
-function openSeasonGuide(modal: string | undefined, docsUrl: string): void {
-  const openGuide = (window as any).open_guide;
-  if (typeof openGuide === "function") {
-    openGuide(modal || docsUrl.replace(/^\/docs\/ref\//, "event-"), docsUrl);
-    return;
-  }
-  try {
-    window.open(docsUrl, "_blank", "noopener,noreferrer");
-  } catch {
-    /* ignore */
-  }
-}
+const clickableChipStyle: Record<string, any> = {
+  ...chipStyle,
+  cursor: "pointer",
+  textAlign: "left",
+  font: "inherit",
+};
 
 /** Compact observe-hud status chips for server clock + live/upcoming events. */
 export function ServerInfo(props: ServerInfoProps): any {
@@ -62,11 +59,17 @@ export function ServerInfo(props: ServerInfoProps): any {
         gap: "4px",
         justifyContent: "center",
         alignItems: "stretch",
+        pointerEvents: "auto",
       },
     },
     e(
-      "div",
-      { style: chipStyle },
+      "button",
+      {
+        type: "button",
+        title: "Open Events schedule",
+        onClick: () => openServerChip("clock"),
+        style: clickableChipStyle,
+      },
       e(
         "div",
         {
@@ -92,12 +95,14 @@ export function ServerInfo(props: ServerInfoProps): any {
     ),
     blessing
       ? e(
-          "div",
+          "button",
           {
             key: "blessing",
-            title: `Server blessed by ${blessing.by}`,
+            type: "button",
+            title: `Server blessed by ${blessing.by} · click for guide`,
+            onClick: () => openServerChip("blessing"),
             style: {
-              ...chipStyle,
+              ...clickableChipStyle,
               borderColor: "#8F70D8",
             },
           },
@@ -132,16 +137,13 @@ export function ServerInfo(props: ServerInfoProps): any {
           key: "season-" + season.id,
           type: "button",
           title: season.title + " · click for guide",
-          onClick: () => openSeasonGuide(season.modal, season.docsUrl),
+          onClick: () => openServerChip(season.id),
           style: {
-            ...chipStyle,
+            ...clickableChipStyle,
             borderColor: season.live ? "#9ACA87" : accent,
-            cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
-            textAlign: "left",
-            font: "inherit",
           },
         },
         season.sprite
@@ -183,12 +185,14 @@ export function ServerInfo(props: ServerInfoProps): any {
     }),
     ...events.map((event) => {
       return e(
-        "div",
+        "button",
         {
           key: event.id,
-          title: event.title,
+          type: "button",
+          title: event.title + " · click for info",
+          onClick: () => openServerChip(event.id),
           style: {
-            ...chipStyle,
+            ...clickableChipStyle,
             borderColor: event.live ? "#85c76b" : "#555",
           },
         },

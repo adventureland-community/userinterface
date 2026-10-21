@@ -292,7 +292,22 @@ declare global {
       addChild?: (...c: unknown[]) => void;
       removeChild?: (...c: unknown[]) => void;
       children?: unknown[];
+      scale?: { x?: number; y?: number; set?: (x: number, y: number) => void };
+      last_max_y?: number;
     };
+    /**
+     * Stock PIXI world zoom (`js/game.js`). Lower = more of the map on screen.
+     * Hub URL/cookie `scale` seeds this on load; ECU can change it at runtime.
+     */
+    scale?: number;
+    /** Stock Events schedule modal (`js/event_schedule.js`). */
+    render_events_window?: () => void;
+    /** Stock event announcement / season guide (`js/html.js`). */
+    open_event_announcement?: (key: string) => void;
+    /** Stock live-boss chip: engage log + smart_move GO (`js/html.js`). */
+    emonster_click?: (id: string) => void;
+    open_guide?: (modal: string, url: string) => void;
+    get_guide_url?: (id: string) => string;
     /** PIXI layers plugin group used by stock quirks / entities. */
     player_layer?: unknown;
     PIXI?: {
