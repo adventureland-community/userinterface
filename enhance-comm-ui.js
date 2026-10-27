@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.14.0
+// @version      0.14.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8877,6 +8877,20 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.14.1",
+      title: "0.14.1",
+      date: "2026-10-27",
+      summary: "Bank header shows used, free, and total vault slots after gold.",
+      highlights: [
+        {
+          label: "Bank slot counts",
+          detail: "After bank gold: used \xB7 free \xB7 total across official packs (hover for filled/total). Same capacity math as Pack titles.",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.14.0",
       title: "0.14.0",
@@ -27469,8 +27483,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.14.0" : "unknown";
-    const builtAt = true ? "2026-10-27T13:32:25.809Z" : "unknown";
+    const version = true ? "0.14.1" : "unknown";
+    const builtAt = true ? "2026-10-27T20:08:06.761Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -73296,6 +73310,23 @@ ${ESTIMATE_HINT}`,
     }
     return { usedOfficial, totalOfficial, usedAll };
   }
+  function formatBankSlotUsage(packs) {
+    const { usedOfficial, totalOfficial, usedAll } = countBankUsedSlots(packs);
+    if (totalOfficial > 0) {
+      const free = totalOfficial - usedOfficial;
+      return {
+        label: usedOfficial + " used \xB7 " + free + " free \xB7 " + totalOfficial + " total",
+        title: usedOfficial + " of " + totalOfficial + " bank slots filled"
+      };
+    }
+    if (usedAll > 0) {
+      return {
+        label: usedAll + " used",
+        title: usedAll + " bank slots in use"
+      };
+    }
+    return null;
+  }
   function compareBankSnapshots(prev, next) {
     if (!prev || !next) {
       return { changes: [], hasChanges: false };
@@ -74075,6 +74106,11 @@ ${ESTIMATE_HINT}`,
   color: var(--bk-gold);
   font-variant-numeric: tabular-nums;
 }
+.BankPanel-slots {
+  color: var(--bk-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .BankPanel-meta {
   color: var(--bk-muted);
   font-size: 12px;
@@ -74784,6 +74820,7 @@ ${ESTIMATE_HINT}`,
       };
     }, [snap, allAgg, query]);
     const ageLabel = snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
+    const slotUsage = snap ? formatBankSlotUsage(snap.packs) : null;
     void tick2;
     const visibleChanges = React.useMemo(() => {
       if (!refreshSummary) return [];
@@ -75204,6 +75241,15 @@ ${ESTIMATE_HINT}`,
           "span",
           { className: "BankPanel-gold" },
           formatTradeGold(snap.gold) + " gold"
+        ) : null,
+        slotUsage ? e(
+          "span",
+          {
+            className: "BankPanel-slots",
+            title: slotUsage.title,
+            "data-ecu-tour": "bank-slots"
+          },
+          slotUsage.label
         ) : null,
         ageLabel ? e("span", { className: "BankPanel-meta" }, "Loaded " + ageLabel) : null,
         e("span", { className: "BankPanel-headGrow" }),

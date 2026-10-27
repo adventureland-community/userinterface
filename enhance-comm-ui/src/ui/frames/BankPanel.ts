@@ -21,6 +21,7 @@ import {
   compareBankSnapshots,
   filterBankChanges,
   formatBankChangeTip,
+  formatBankSlotUsage,
   formatRefreshSummaryLine,
   type BankChangeFilter,
   type BankRefreshSummary,
@@ -471,6 +472,7 @@ export function BankPanel(props: BankPanelProps): any {
 
   const ageLabel =
     snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
+  const slotUsage = snap ? formatBankSlotUsage(snap.packs) : null;
   void tick;
 
   const visibleChanges = React.useMemo(() => {
@@ -988,6 +990,17 @@ export function BankPanel(props: BankPanelProps): any {
             "span",
             { className: "BankPanel-gold" },
             formatTradeGold(snap.gold) + " gold",
+          )
+        : null,
+      slotUsage
+        ? e(
+            "span",
+            {
+              className: "BankPanel-slots",
+              title: slotUsage.title,
+              "data-ecu-tour": "bank-slots",
+            },
+            slotUsage.label,
           )
         : null,
       ageLabel

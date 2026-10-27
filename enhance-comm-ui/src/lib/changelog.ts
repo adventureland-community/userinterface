@@ -112,6 +112,21 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.14.1",
+    title: "0.14.1",
+    date: "2026-10-27",
+    summary: "Bank header shows used, free, and total vault slots after gold.",
+    highlights: [
+      {
+        label: "Bank slot counts",
+        detail:
+          "After bank gold: used · free · total across official packs (hover for filled/total). Same capacity math as Pack titles.",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.14.0",
     title: "0.14.0",
     date: "2026-10-27",

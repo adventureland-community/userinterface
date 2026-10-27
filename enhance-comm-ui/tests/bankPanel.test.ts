@@ -31,7 +31,9 @@ import {
   changeCaption,
   compareBankSnapshots,
   filterBankChanges,
+  formatBankSlotUsage,
 } from "../src/lib/bank/bankDiff";
+import { SLOTS_PER_BANK_PACK } from "../src/lib/bank/bankBrowse";
 
 describe("bankBrowse", () => {
   it("flattens packs and merges identical stacks", () => {
@@ -265,6 +267,25 @@ describe("bankStock", () => {
 });
 
 describe("bankDiff", () => {
+  it("formats used and free official slots for the bank header", () => {
+    const packs = {
+      items0: [{ name: "hpot0", q: 10 }, null, { name: "sword", level: 1 }],
+      items1: [null],
+    };
+    const usage = formatBankSlotUsage(packs);
+    assert.ok(usage);
+    assert.equal(
+      usage!.label,
+      "2 used · " +
+        (SLOTS_PER_BANK_PACK * 2 - 2) +
+        " free · " +
+        SLOTS_PER_BANK_PACK * 2 +
+        " total",
+    );
+    assert.match(usage!.title, /2 of 84 bank slots filled/);
+    assert.equal(formatBankSlotUsage({}), null);
+  });
+
   it("reports added, removed, qty/stack, gold, and slot deltas", () => {
     const prev = {
       packs: {

@@ -62,6 +62,37 @@ export function countBankUsedSlots(packs: BankSnapshot["packs"]): {
   return { usedOfficial, totalOfficial, usedAll };
 }
 
+/** Header line after bank gold — used and free official slots. */
+export function formatBankSlotUsage(
+  packs: BankSnapshot["packs"],
+): { label: string; title: string } | null {
+  const { usedOfficial, totalOfficial, usedAll } = countBankUsedSlots(packs);
+  if (totalOfficial > 0) {
+    const free = totalOfficial - usedOfficial;
+    return {
+      label:
+        usedOfficial +
+        " used · " +
+        free +
+        " free · " +
+        totalOfficial +
+        " total",
+      title:
+        usedOfficial +
+        " of " +
+        totalOfficial +
+        " bank slots filled",
+    };
+  }
+  if (usedAll > 0) {
+    return {
+      label: usedAll + " used",
+      title: usedAll + " bank slots in use",
+    };
+  }
+  return null;
+}
+
 export function compareBankSnapshots(
   prev: BankSnapshot | null | undefined,
   next: BankSnapshot | null | undefined,

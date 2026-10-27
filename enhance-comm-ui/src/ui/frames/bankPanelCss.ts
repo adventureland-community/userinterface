@@ -39,6 +39,11 @@ const CSS = `
   color: var(--bk-gold);
   font-variant-numeric: tabular-nums;
 }
+.BankPanel-slots {
+  color: var(--bk-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .BankPanel-meta {
   color: var(--bk-muted);
   font-size: 12px;
