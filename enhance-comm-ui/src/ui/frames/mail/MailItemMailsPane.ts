@@ -1,5 +1,6 @@
 import { e } from "../../../host/react";
 import {
+  mailIdsForItemsTake,
   openMailRow,
   takeMailCommand,
   type MailAggItem,
@@ -50,6 +51,20 @@ export function MailItemMailsPane(props: MailItemMailsPaneProps): any {
     if (selectedIds[takeableIds[i]]) checkedTakeable.push(takeableIds[i]);
   }
 
+  let anyChecked = false;
+  for (let i = 0; i < mails.length; i++) {
+    if (selectedIds[mails[i].id]) {
+      anyChecked = true;
+      break;
+    }
+  }
+
+  const takeIds = mailIdsForItemsTake({
+    takeableIds,
+    checkedTakeableIds: checkedTakeable,
+    preferredId: selected ? selected.id : null,
+  });
+
   return e(
     "div",
     { className: "comm-mail__item-mails" },
@@ -64,44 +79,51 @@ export function MailItemMailsPane(props: MailItemMailsPaneProps): any {
         size: 36,
       }),
       e("div", { className: "comm-mail__item-mails-title" }, label),
-      takeableIds.length
+      anyChecked
         ? e(
             "button",
             {
               type: "button",
               className: "comm-mail__btn",
-              onClick: () => {
-                const next: Record<string, boolean> = {};
-                for (let i = 0; i < takeableIds.length; i++) {
-                  next[takeableIds[i]] = true;
-                }
-                setSelectedIds(next);
-              },
+              title: "Clear every checked mail",
+              onClick: () => setSelectedIds({}),
             },
-            "Select " + takeableIds.length,
+            "Clear selection",
           )
-        : null,
-      (checkedTakeable.length ? checkedTakeable : takeableIds).length
+        : takeableIds.length
+          ? e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__btn",
+                title: "Check every untaken mail in this stack",
+                onClick: () => {
+                  const next: Record<string, boolean> = {};
+                  for (let i = 0; i < takeableIds.length; i++) {
+                    next[takeableIds[i]] = true;
+                  }
+                  setSelectedIds(next);
+                },
+              },
+              "Select " + takeableIds.length,
+            )
+          : null,
+      takeIds.length
         ? e(
             "button",
             {
               type: "button",
               className: "comm-mail__btn comm-mail__btn--gold",
-              disabled: !canTake || snap.commandBusy || !takeableIds.length,
+              disabled: !canTake || snap.commandBusy,
+              title: checkedTakeable.length
+                ? "Take checked attachments"
+                : "Take one attachment (check boxes to take several)",
               onClick: () => {
-                const ids = checkedTakeable.length
-                  ? checkedTakeable
-                  : takeableIds;
-                takeMailCommand(ids);
+                takeMailCommand(takeIds);
                 setSelectedIds({});
               },
             },
-            snap.commandBusy
-              ? "Working…"
-              : "Take " +
-                  (checkedTakeable.length
-                    ? checkedTakeable.length
-                    : takeableIds.length),
+            snap.commandBusy ? "Working…" : "Take " + takeIds.length,
           )
         : null,
       e(
@@ -123,6 +145,7 @@ export function MailItemMailsPane(props: MailItemMailsPaneProps): any {
       mails.map((m: MailRow) => {
         const unread = m.read === false;
         const checked = !!selectedIds[m.id];
+        const rowTakeable = !!(m.item && !m.taken && m.canTake !== false);
         return e(
           "div",
           {
@@ -165,6 +188,22 @@ export function MailItemMailsPane(props: MailItemMailsPaneProps): any {
             e("div", { className: "comm-mail__meta" }, rowMeta(m)),
           ),
           mailWhenColumn(m.sent),
+          rowTakeable
+            ? e(
+                "button",
+                {
+                  type: "button",
+                  className: "comm-mail__btn comm-mail__row-take",
+                  disabled: !canTake || snap.commandBusy,
+                  title: "Take this attachment",
+                  onClick: (ev: { stopPropagation: () => void }) => {
+                    ev.stopPropagation();
+                    takeMailCommand(m.id);
+                  },
+                },
+                snap.commandBusy ? "…" : "Take",
+              )
+            : null,
           mailItemIcon(m),
         );
       }),

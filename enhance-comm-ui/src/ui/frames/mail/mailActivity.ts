@@ -1,6 +1,15 @@
-import type { MailStoreSnapshot } from "../../../host/mail";
+import {
+  formatRefreshProgressLabel,
+  type MailStoreSnapshot,
+} from "../../../host/mail";
 
-export type MailActivityMode = "idle" | "pull" | "warm" | "command" | "delete";
+export type MailActivityMode =
+  | "idle"
+  | "pull"
+  | "warm"
+  | "command"
+  | "delete"
+  | "refresh";
 
 export function resolveMailActivity(snap: MailStoreSnapshot): {
   mode: MailActivityMode;
@@ -8,6 +17,12 @@ export function resolveMailActivity(snap: MailStoreSnapshot): {
 } {
   if (snap.deleteProgress) {
     return { mode: "delete", label: "Deleting" };
+  }
+  if (snap.refreshProgress) {
+    return {
+      mode: "refresh",
+      label: formatRefreshProgressLabel(snap.refreshProgress),
+    };
   }
   if (snap.commandBusy) {
     return { mode: "command", label: "Running command" };

@@ -47,6 +47,7 @@ export {
   mailAggTouchesFullCap,
   mailIdsAllChecked,
   mailIdsForItemsSelectAll,
+  mailIdsForItemsTake,
   mailItemAggKey,
   mailsForAgg,
 } from "./mailItemsOverview";
@@ -161,6 +162,8 @@ export type {
 export {
   clearNewMailBanner,
   loadOlderMail,
+  refreshMailIds,
+  requestMailCacheRefresh,
   requestMailHead,
   setMailSearchBurst,
 } from "./mailCache";
@@ -181,6 +184,14 @@ export {
   formatDeleteEta,
   formatDeleteProgressLabel,
 } from "./mailDeleteEstimate";
+export {
+  chunkRefreshCursors,
+  estimateRefreshEtaMs,
+  formatRefreshProgressLabel,
+  refreshPageCount,
+  refreshPageCursors,
+} from "./mailRefreshEstimate";
+export type { MailRefreshProgress } from "./mailRefreshEstimate";
 export {
   clearMailSession,
   cueMailItemsRecipient,

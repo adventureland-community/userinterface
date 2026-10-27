@@ -4,7 +4,20 @@
 
 import { pullMailPage } from "./api";
 import { schedulePersistMailCache } from "./mailPersist";
-import { reconcileAfterHeadPull } from "./mailPersistLogic";
+import {
+  cursorsForMailIds,
+  patchMailsById,
+  reconcileAfterHeadPull,
+} from "./mailPersistLogic";
+import {
+  chunkRefreshCursors,
+  estimateRefreshEtaMs,
+  formatRefreshProgressLabel,
+  refreshPageCount,
+  refreshPageCursors,
+  refreshRatePerSec,
+  type MailRefreshProgress,
+} from "./mailRefreshEstimate";
 import { assignLocalReadFlags } from "./mailUnreadLogic";
 import {
   commit,
@@ -16,14 +29,18 @@ import {
   getNextCursor,
   getPanelOpen,
   getLastHeadAt,
+  getRefreshProgress,
   setStatus,
 } from "./mailState";
 import { appendCursorPage, applyPullMeta } from "./merge";
+import type { PullMailPage } from "./types";
 import {
   MAIL_HEAD_TTL_MS,
   MAIL_PREFETCH_GAP_MAX_MS,
   MAIL_PREFETCH_GAP_MS,
   MAIL_PREFETCH_GAP_STEP_MS,
+  MAIL_REFRESH_BATCH_GAP_MS,
+  MAIL_REFRESH_CONCURRENCY,
 } from "./types";
 import { getXUnread } from "./mailUnread";
 
@@ -34,6 +51,8 @@ let prefetchPages = 0;
 let prefetchFailStreak = 0;
 /** Shared head/cursor pull so Refresh waits instead of no-op while in flight. */
 let activePull: Promise<boolean> | null = null;
+/** Bumps to cancel an in-flight full cache Refresh. */
+let refreshSeq = 0;
 /**
  * Search is client-side over the loaded cache. While the user has a query and
  * older pages remain, burst-prefetch so citrus (etc.) past page 1 can match.
@@ -86,7 +105,13 @@ export function setMailSearchBurst(on: boolean): void {
 /** Keep pulling older pages while the panel is open and the server has more. */
 export function schedulePrefetch(): void {
   stopPrefetch();
-  if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight) {
+  if (
+    !getPanelOpen() ||
+    !getHasMore() ||
+    getLoadingMore() ||
+    pullInFlight ||
+    getRefreshProgress()
+  ) {
     return;
   }
   commit({ prefetchArmed: true });
@@ -98,7 +123,7 @@ export function schedulePrefetch(): void {
 }
 
 async function runPull(
-  mode: "head" | "cursor",
+  mode: "head" | "cursor" | "patch",
   reason: string,
   cursor?: string | null,
 ): Promise<boolean> {
@@ -109,7 +134,10 @@ async function runPull(
       /* ignore prior failure */
     }
     // After waiting, head refresh may still be needed (force/open).
-    if (mode === "cursor" && (pullInFlight || getLoadingMore())) {
+    if (
+      (mode === "cursor" || mode === "patch") &&
+      (pullInFlight || getLoadingMore())
+    ) {
       return false;
     }
   }
@@ -123,7 +151,9 @@ async function runPull(
         : { loadingMore: true },
     );
     try {
-      const res = await pullMailPage(mode === "cursor" ? cursor : null);
+      const res = await pullMailPage(
+        mode === "head" ? null : cursor != null ? cursor : null,
+      );
       if (!res.ok || !res.data) {
         setStatus(
           res.reason === "no_mail_payload"
@@ -162,7 +192,8 @@ async function runPull(
         if (reason.indexOf("X.unread↑") === 0 && assigned.newIds.length) {
           patch.newMailCount = assigned.newIds.length;
         }
-        if (!getCommandBusy()) {
+        // Full Refresh owns the status card via refreshProgress.
+        if (!getCommandBusy() && !getRefreshProgress()) {
           let strat = "";
           if (reconciled.strategy === "unchanged") strat = " · cache ok";
           else if (reconciled.strategy === "prepend") {
@@ -171,6 +202,8 @@ async function runPull(
             strat = " · kept older";
           } else if (reconciled.strategy === "truncate") {
             strat = " · refreshed head";
+          } else if (reconciled.strategy === "replace") {
+            strat = " · replaced";
           }
           patch.status =
             "Loaded " +
@@ -182,6 +215,16 @@ async function runPull(
           patch.statusKind = "";
         }
         commit(patch);
+      } else if (mode === "patch") {
+        // Mid-list re-verify (take settle): update taken flags by id only.
+        const assigned = assignLocalReadFlags(
+          patchMailsById(mails, page.mail),
+          prevIds,
+          false,
+          0,
+          getLocallyReadIds(),
+        );
+        commit({ mails: assigned.rows });
       } else {
         const assigned = assignLocalReadFlags(
           appendCursorPage(mails, page.mail),
@@ -239,6 +282,186 @@ export async function requestMailHead(
   if (!should && reason !== "Refresh" && !force) return;
   await runPull("head", reason);
   if (getPanelOpen()) schedulePrefetch();
+}
+
+function sleepMs(ms: number): Promise<void> {
+  if (!(ms > 0)) return Promise.resolve();
+  return new Promise((r) => window.setTimeout(r, ms));
+}
+
+function commitRefreshProgress(progress: MailRefreshProgress | null): void {
+  commit({
+    refreshProgress: progress,
+    status: progress ? formatRefreshProgressLabel(progress) : "",
+    statusKind: progress ? "warn" : "",
+  });
+}
+
+/** Network-only page fetch for parallel Refresh batches. */
+async function fetchMailPage(
+  cursor: string | null,
+): Promise<PullMailPage | null> {
+  const res = await pullMailPage(cursor);
+  if (!res.ok || !res.data) return null;
+  return res.data;
+}
+
+/**
+ * Apply one or more already-fetched pages onto the soft-merged cache by id.
+ * Callers fetch in parallel; merges stay serial so commits don't race.
+ */
+function applyFetchedPages(pages: PullMailPage[]): void {
+  if (!pages.length) return;
+  const mails = getMails();
+  const prevIds = new Set<string>();
+  for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
+  let next = mails;
+  for (let i = 0; i < pages.length; i++) {
+    next = patchMailsById(next, pages[i].mail);
+  }
+  const assigned = assignLocalReadFlags(
+    next,
+    prevIds,
+    false,
+    0,
+    getLocallyReadIds(),
+  );
+  commit({ mails: assigned.rows });
+  schedulePersistMailCache();
+}
+
+/**
+ * Toolbar Refresh: soft-merge the head, then re-pull every warmed page in
+ * place (parallel batches, patch by id) without wiping the list.
+ * Shows page progress, rate, and ETA while running.
+ */
+export async function requestMailCacheRefresh(): Promise<void> {
+  if (getRefreshProgress()) return;
+  const seq = ++refreshSeq;
+  stopPrefetch();
+  const startedAt = Date.now();
+  let total = refreshPageCount(getMails().length);
+  commitRefreshProgress({
+    done: 0,
+    total,
+    etaMs: estimateRefreshEtaMs({ done: 0, total, startedAt }),
+    ratePerSec: 0,
+  });
+
+  const headOk = await runPull("head", "Refresh");
+  if (seq !== refreshSeq) return;
+  if (!headOk) {
+    commitRefreshProgress(null);
+    if (getPanelOpen()) schedulePrefetch();
+    return;
+  }
+
+  let done = 1;
+  total = Math.max(done, refreshPageCount(getMails().length));
+  commitRefreshProgress({
+    done,
+    total,
+    etaMs: estimateRefreshEtaMs({ done, total, startedAt }),
+    ratePerSec: refreshRatePerSec({ done, startedAt }),
+  });
+
+  const deep: string[] = [];
+  const planned = refreshPageCursors(getMails().length);
+  for (let i = 0; i < planned.length; i++) {
+    const c = planned[i];
+    if (c != null) deep.push(c);
+  }
+  const batches = chunkRefreshCursors(deep, MAIL_REFRESH_CONCURRENCY);
+  let concurrency = MAIL_REFRESH_CONCURRENCY;
+
+  for (let b = 0; b < batches.length; b++) {
+    if (seq !== refreshSeq) return;
+    if (b > 0) await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
+    if (seq !== refreshSeq) return;
+
+    let batch = batches[b];
+    let pages = await Promise.all(
+      batch.map((cursor) => fetchMailPage(cursor)),
+    );
+    if (seq !== refreshSeq) return;
+
+    // On failure, drop concurrency and retry the batch once (kinder to AL).
+    let failed = false;
+    for (let i = 0; i < pages.length; i++) {
+      if (!pages[i]) {
+        failed = true;
+        break;
+      }
+    }
+    if (failed && concurrency > 1) {
+      concurrency = Math.max(1, Math.floor(concurrency / 2));
+      const retryBatches = chunkRefreshCursors(batch, concurrency);
+      const recovered: PullMailPage[] = [];
+      for (let r = 0; r < retryBatches.length; r++) {
+        if (seq !== refreshSeq) return;
+        const retryPages = await Promise.all(
+          retryBatches[r].map((cursor) => fetchMailPage(cursor)),
+        );
+        if (seq !== refreshSeq) return;
+        for (let i = 0; i < retryPages.length; i++) {
+          if (!retryPages[i]) {
+            commitRefreshProgress(null);
+            setStatus("Cache refresh stopped — pull failed", "err");
+            if (getPanelOpen()) schedulePrefetch();
+            return;
+          }
+          recovered.push(retryPages[i]!);
+        }
+        if (r + 1 < retryBatches.length) {
+          await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
+        }
+      }
+      applyFetchedPages(recovered);
+      done += batch.length;
+    } else if (failed) {
+      commitRefreshProgress(null);
+      setStatus("Cache refresh stopped — pull failed", "err");
+      if (getPanelOpen()) schedulePrefetch();
+      return;
+    } else {
+      const okPages: PullMailPage[] = [];
+      for (let i = 0; i < pages.length; i++) okPages.push(pages[i]!);
+      applyFetchedPages(okPages);
+      done += batch.length;
+    }
+
+    total = Math.max(done, total);
+    commitRefreshProgress({
+      done,
+      total,
+      etaMs: estimateRefreshEtaMs({ done, total, startedAt }),
+      ratePerSec: refreshRatePerSec({ done, startedAt }),
+    });
+  }
+
+  if (seq !== refreshSeq) return;
+  const n = getMails().length;
+  commit({
+    refreshProgress: null,
+    status:
+      "Cache refreshed · " + n + (getHasMore() ? "+" : "") + " · Refresh",
+    statusKind: "",
+    lastHeadReason: "Refresh",
+  });
+  schedulePersistMailCache();
+  if (getPanelOpen()) schedulePrefetch();
+}
+
+/**
+ * Re-pull skip-cursor pages that contain `ids` and patch taken / subject
+ * onto the soft-merged cache (does not extend or truncate the list).
+ */
+export async function refreshMailIds(ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  const cursors = cursorsForMailIds(getMails(), ids);
+  for (let i = 0; i < cursors.length; i++) {
+    await runPull("patch", "settle · ids", cursors[i]);
+  }
 }
 
 export async function loadOlderMail(opts?: {

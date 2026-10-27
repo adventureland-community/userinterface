@@ -112,6 +112,34 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.14.0",
+    title: "0.14.0",
+    date: "2026-10-27",
+    summary:
+      "Mail take settle sync for deep inbox rows, full in-place cache Refresh with progress, and Items Take / Clear UX.",
+    highlights: [
+      {
+        label: "Take settle · deep cache",
+        detail:
+          "After Take, ECU re-pulls the skip-cursor pages that hold those mail ids and patches taken / mailclaim_* onto the soft-merged cache — no more stuck Claim settling on claws past the newest 40.",
+        kind: "fix",
+      },
+      {
+        label: "Refresh whole warmed cache",
+        detail:
+          "Refresh soft-merges the head, then re-verifies every loaded page in place (parallel batches). Activity / Status show pages done, rate, and ETA — list stays visible while it runs.",
+        kind: "improve",
+      },
+      {
+        label: "Items Take · Clear",
+        detail:
+          "Clear selection whenever anything is checked. Take with no checks claims one (opened row if takeable, else first); each untaken row has its own Take. Check boxes still drive Take N.",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.13.0",
     title: "0.13.0",
     date: "2026-10-27",

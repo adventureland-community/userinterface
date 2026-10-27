@@ -7,7 +7,7 @@ import { refreshObservedInventory } from "../inventory";
 import { saveSettings } from "../../lib/settings";
 import { buildSendScript, buildTakeScript } from "./commands";
 import { findFingerprintSlot } from "./itemFingerprint";
-import { requestMailHead } from "./mailCache";
+import { refreshMailIds, requestMailHead } from "./mailCache";
 import { emptyDraft, persistDraft, attachesHaveRecipients } from "./mailCompose";
 import { resolveCommandOutcome } from "./mailUnreadLogic";
 import {
@@ -181,6 +181,11 @@ export function scheduleCommandHead(reason: string, delayMs?: number): void {
       for (let i = 0; i < attempts; i++) {
         if (seq !== cmdSeq) return;
         await requestMailHead(reason, { force: true });
+        // Take targets often sit past the newest page of 40 — re-pull those
+        // skip-cursor pages and patch taken / mailclaim_* onto the cache.
+        if (takePending && takePending.targetIds.length) {
+          await refreshMailIds(takePending.targetIds);
+        }
         if (sendPending) {
           if (sendLooksSettled(sendPending) || i === attempts - 1) break;
         } else if (takePending) {

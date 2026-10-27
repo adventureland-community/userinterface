@@ -1,11 +1,10 @@
 import { e } from "../../../host/react";
 import {
-  mailIdsAllChecked,
   mailIdsForItemsSelectAll,
   markAllUnreadRead,
   markVisibleRead,
   openCompose,
-  requestMailHead,
+  requestMailCacheRefresh,
   takeMailCommand,
   type MailPill,
   type MailRow,
@@ -27,7 +26,6 @@ export type MailToolbarProps = {
   canTake: boolean;
   doDelete: (ids: string[]) => void;
   setSelectedIds: (ids: Record<string, boolean>) => void;
-  selectedIds: Record<string, boolean>;
   collapseRepeats: boolean;
   setCollapseRepeats: (on: boolean) => void;
   browseMode: MailBrowseMode;
@@ -49,7 +47,6 @@ export function MailToolbar(props: MailToolbarProps): any {
     canTake,
     doDelete,
     setSelectedIds,
-    selectedIds,
     collapseRepeats,
     setCollapseRepeats,
     browseMode,
@@ -64,9 +61,6 @@ export function MailToolbar(props: MailToolbarProps): any {
   const selectTargetIds = itemsSelect
     ? itemsSelect.ids
     : filtered.map((m) => m.id);
-  const selectAllChecked = itemsMode
-    ? mailIdsAllChecked(selectTargetIds, selectedIds)
-    : checkedIds.length === filtered.length && filtered.length > 0;
   const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
 
   return e(
@@ -146,38 +140,41 @@ export function MailToolbar(props: MailToolbarProps): any {
         },
         "Compose",
       ),
-      selectTargetIds.length
+      checkedIds.length
         ? e(
             "button",
             {
               type: "button",
               className: "comm-mail__btn",
-              title: selectAllChecked
-                ? "Clear selection"
-                : selectHasStack
+              title: "Clear every checked mail",
+              onClick: () => setSelectedIds({}),
+            },
+            "Clear selection",
+          )
+        : selectTargetIds.length
+          ? e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__btn",
+                title: selectHasStack
                   ? "Select mails for the highlighted item stack"
                   : itemsMode
                     ? "Select all untaken attachments in the current filter"
                     : "Select all messages in the current search / filter",
-              onClick: () => {
-                if (selectAllChecked) {
-                  setSelectedIds({});
-                  return;
-                }
-                const next: Record<string, boolean> = {};
-                for (let i = 0; i < selectTargetIds.length; i++) {
-                  next[selectTargetIds[i]] = true;
-                }
-                setSelectedIds(next);
+                onClick: () => {
+                  const next: Record<string, boolean> = {};
+                  for (let i = 0; i < selectTargetIds.length; i++) {
+                    next[selectTargetIds[i]] = true;
+                  }
+                  setSelectedIds(next);
+                },
               },
-            },
-            selectAllChecked
-              ? "Clear selection"
-              : selectHasStack
+              selectHasStack
                 ? "Select stack " + selectTargetIds.length
                 : "Select all " + selectTargetIds.length,
-          )
-        : null,
+            )
+          : null,
       checkedIds.length
         ? e(
             "button",
@@ -227,8 +224,13 @@ export function MailToolbar(props: MailToolbarProps): any {
           type: "button",
           className: "comm-mail__btn",
           onClick: () => {
-            void requestMailHead("Refresh", { force: true });
+            // Soft-merge head, then re-verify every warmed page in place.
+            void requestMailCacheRefresh();
           },
+          disabled: !!snap.refreshProgress,
+          title: snap.refreshProgress
+            ? "Cache refresh in progress"
+            : "Re-verify the whole warmed cache without wiping it",
         },
         "Refresh",
       ),

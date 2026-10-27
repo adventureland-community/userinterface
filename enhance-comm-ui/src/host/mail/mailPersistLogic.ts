@@ -74,7 +74,7 @@ function cloneRow(m: MailRow): MailRow {
  * Soft-update rows that appear in `page` onto matching ids in `existing`
  * (taken flags, subject, …) without reordering.
  */
-function patchExistingFromPage(
+export function patchMailsById(
   existing: MailRow[],
   page: MailRow[],
 ): MailRow[] {
@@ -88,6 +88,77 @@ function patchExistingFromPage(
     out.push(patch ? Object.assign({}, prev, patch) : prev);
   }
   return out;
+}
+
+/** @deprecated Use patchMailsById — kept as alias for local call sites. */
+const patchExistingFromPage = patchMailsById;
+
+/**
+ * Skip-cursor for the pull_mail page that contains cache index `index`
+ * (`null` = newest head page). Stock page size is 40.
+ */
+export function mailPageCursorForIndex(
+  index: number,
+  pageSize: number = MAIL_HEAD_PAGE_SIZE,
+): string | null {
+  if (!(index >= 0) || !(pageSize > 0)) return null;
+  const skip = Math.floor(index / pageSize) * pageSize;
+  return skip > 0 ? String(skip) : null;
+}
+
+/**
+ * Distinct pull_mail cursors needed to re-verify `targetIds` in a contiguous
+ * cached prefix. Head (`null`) is omitted — callers already force-pull head.
+ */
+export function cursorsForMailIds(
+  mails: MailRow[],
+  targetIds: string[],
+  pageSize: number = MAIL_HEAD_PAGE_SIZE,
+): string[] {
+  if (!targetIds.length || !mails.length) return [];
+  const want = new Set(targetIds);
+  const cursors: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < mails.length; i++) {
+    if (!want.has(mails[i].id)) continue;
+    const cursor = mailPageCursorForIndex(i, pageSize);
+    if (cursor == null) continue;
+    if (seen.has(cursor)) continue;
+    seen.add(cursor);
+    cursors.push(cursor);
+  }
+  return cursors;
+}
+
+/**
+ * After a take settle head poll: soft-merge head, then patch any deeper
+ * pull_mail pages that cover the take targets (taken / mailclaim_*).
+ */
+export function applyTakeSettleSync(args: {
+  existing: MailRow[];
+  headPage: PullMailPage;
+  targetPages: PullMailPage[];
+  prevCursor: string | null;
+  prevHasMore: boolean;
+}): HeadReconcileResult {
+  const head = reconcileAfterHeadPull(
+    args.existing,
+    args.headPage,
+    args.prevCursor,
+    args.prevHasMore,
+  );
+  let mails = head.mails;
+  for (let i = 0; i < args.targetPages.length; i++) {
+    const page = args.targetPages[i];
+    if (!page || !page.mail.length) continue;
+    mails = patchMailsById(mails, page.mail);
+  }
+  return {
+    mails,
+    nextCursor: head.nextCursor,
+    hasMore: head.hasMore,
+    strategy: head.strategy,
+  };
 }
 
 export type HeadOverlap = {

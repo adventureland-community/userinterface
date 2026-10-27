@@ -7,6 +7,7 @@ import {
   mailAggTouchesFullCap,
   mailIdsAllChecked,
   mailIdsForItemsSelectAll,
+  mailIdsForItemsTake,
   mailItemAggKey,
   mailsForAgg,
 } from "../../src/host/mail/mailItemsOverview";
@@ -198,6 +199,43 @@ describe("mailIdsForItemsSelectAll", () => {
       true,
     );
     assert.equal(mailIdsAllChecked(["1", "2"], { "1": true }), false);
+  });
+});
+
+describe("mailIdsForItemsTake", () => {
+  it("prefers checks, else opened takeable, else first takeable", () => {
+    assert.deepEqual(
+      mailIdsForItemsTake({
+        takeableIds: ["a", "b", "c"],
+        checkedTakeableIds: ["c", "a"],
+        preferredId: "b",
+      }),
+      ["c", "a"],
+    );
+    assert.deepEqual(
+      mailIdsForItemsTake({
+        takeableIds: ["a", "b", "c"],
+        checkedTakeableIds: [],
+        preferredId: "b",
+      }),
+      ["b"],
+    );
+    assert.deepEqual(
+      mailIdsForItemsTake({
+        takeableIds: ["a", "b", "c"],
+        checkedTakeableIds: [],
+        preferredId: "gone",
+      }),
+      ["a"],
+    );
+    assert.deepEqual(
+      mailIdsForItemsTake({
+        takeableIds: [],
+        checkedTakeableIds: [],
+        preferredId: "a",
+      }),
+      [],
+    );
   });
 });
 

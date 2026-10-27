@@ -429,7 +429,6 @@ export function MailPanel(): any {
       canTake: caps.canTake,
       doDelete,
       setSelectedIds,
-      selectedIds,
       collapseRepeats,
       setCollapseRepeats: setCollapsePersist,
       browseMode,

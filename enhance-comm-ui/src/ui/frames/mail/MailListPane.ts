@@ -162,7 +162,10 @@ export function MailListPane(props: MailListPaneProps): any {
 
   const activity = resolveMailActivity(snap);
   const warming =
-    activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
+    activity.mode === "warm" ||
+    activity.mode === "refresh" ||
+    snap.loadingMore ||
+    snap.prefetchArmed;
 
   const nodes: any[] = [];
   if (!entries.length && searchEmptyHint) {

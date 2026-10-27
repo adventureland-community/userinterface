@@ -561,6 +561,13 @@ export const MAIL_CHROME_CSS = `
 .comm-mail__card--activity.is-pull .comm-mail__card-title {
   color: #9fd0ff;
 }
+.comm-mail__card--activity.is-refresh {
+  border-color: #2a4a68;
+  background: #121c28;
+}
+.comm-mail__card--activity.is-refresh .comm-mail__card-title {
+  color: #9fd0ff;
+}
 .comm-mail__card--activity.is-command {
   border-color: #3a5a30;
   background: #142014;
@@ -629,6 +636,10 @@ export const MAIL_CHROME_CSS = `
   box-shadow: 0 0 0 0 rgba(240, 192, 96, 0.45);
 }
 .comm-mail__card--activity.is-pull .comm-mail__pulse {
+  background: #5ab0ff;
+  box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.45);
+}
+.comm-mail__card--activity.is-refresh .comm-mail__pulse {
   background: #5ab0ff;
   box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.45);
 }

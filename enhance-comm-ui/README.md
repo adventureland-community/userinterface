@@ -2,7 +2,7 @@
 
 Tampermonkey userscript that enhances Adventure.land `/comm` with a movable combat HUD, party roster, boss/enemy frames, **account mail**, **WoW-style damage meters** (alpha), crypt progress, effects icons, threat, gear/trade peek, and session kill KPIs.
 
-**Current package version:** see `package.json` (ships as `0.13.0`).
+**Current package version:** see `package.json` (ships as `0.14.0`).
 
 ## Install (Tampermonkey)
 

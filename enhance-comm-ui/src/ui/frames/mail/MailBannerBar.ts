@@ -6,6 +6,7 @@ import {
   cueMailItemsRecipient,
   formatCapFraction,
   formatDeleteProgressLabel,
+  formatRefreshProgressLabel,
   getXUnread,
   MAIL_ATTACH_CAP,
   undoDeleteMail,
@@ -175,16 +176,23 @@ export function MailBannerBar(props: MailBannerBarProps): any {
   const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
   const statusTitle = snap.deleteProgress
     ? formatDeleteProgressLabel(snap.deleteProgress)
-    : undoActive
-      ? snap.undoCount === 1
-        ? "Deleted"
-        : "Deleted " + snap.undoCount
-      : snap.status;
+    : snap.refreshProgress
+      ? formatRefreshProgressLabel(snap.refreshProgress)
+      : undoActive
+        ? snap.undoCount === 1
+          ? "Deleted"
+          : "Deleted " + snap.undoCount
+        : snap.status;
   const observeLine = caps.observeName
     ? "Observing " + caps.observeName
     : caps.reason || "Not observing · inbox only";
   const observeOn = !!caps.observeName;
-  const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
+  const showStatus =
+    !!snap.deleteProgress ||
+    !!snap.refreshProgress ||
+    !!snap.status ||
+    undoActive;
+  const progressBar = snap.deleteProgress || snap.refreshProgress;
   const ownedNames = selfCharacterNames();
   const capView = buildMailboxCapsView({
     fills: countAttachmentsByRecipient(snap.mails, ownedNames),
@@ -288,7 +296,7 @@ export function MailBannerBar(props: MailBannerBarProps): any {
             {
               className:
                 "comm-mail__card comm-mail__card--status" +
-                (snap.deleteProgress
+                (progressBar
                   ? " is-warn is-progress"
                   : undoActive
                     ? " is-warn"
@@ -306,7 +314,7 @@ export function MailBannerBar(props: MailBannerBarProps): any {
                 "div",
                 { className: "comm-mail__card-title-row" },
                 e("div", { className: "comm-mail__card-title" }, statusTitle),
-                undoActive && !snap.deleteProgress
+                undoActive && !progressBar
                   ? e(
                       "button",
                       {
@@ -322,26 +330,25 @@ export function MailBannerBar(props: MailBannerBarProps): any {
                     )
                   : null,
               ),
-              snap.deleteProgress
+              progressBar
                 ? e(
                     "div",
                     {
                       className: "comm-mail__delete-track",
                       role: "progressbar",
                       "aria-valuemin": 0,
-                      "aria-valuemax": snap.deleteProgress.total,
-                      "aria-valuenow": snap.deleteProgress.done,
+                      "aria-valuemax": progressBar.total,
+                      "aria-valuenow": progressBar.done,
                     },
                     e("div", {
                       className: "comm-mail__delete-fill",
                       style: {
                         width:
-                          snap.deleteProgress.total > 0
+                          progressBar.total > 0
                             ? Math.min(
                                 100,
                                 Math.round(
-                                  (100 * snap.deleteProgress.done) /
-                                    snap.deleteProgress.total,
+                                  (100 * progressBar.done) / progressBar.total,
                                 ),
                               ) + "%"
                             : "0%",

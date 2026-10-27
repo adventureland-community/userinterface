@@ -234,3 +234,24 @@ export function mailIdsAllChecked(
   }
   return true;
 }
+
+/**
+ * Bulk Take targets for an Items stack pane.
+ * Checked takeables win; with no checks, take a single mail (opened row if
+ * takeable, else the first takeable) so one click does not claim the stack.
+ */
+export function mailIdsForItemsTake(opts: {
+  takeableIds: string[];
+  checkedTakeableIds: string[];
+  preferredId?: string | null;
+}): string[] {
+  if (opts.checkedTakeableIds.length) return opts.checkedTakeableIds.slice();
+  if (!opts.takeableIds.length) return [];
+  const preferred = opts.preferredId != null ? String(opts.preferredId) : "";
+  if (preferred) {
+    for (let i = 0; i < opts.takeableIds.length; i++) {
+      if (opts.takeableIds[i] === preferred) return [preferred];
+    }
+  }
+  return [opts.takeableIds[0]];
+}

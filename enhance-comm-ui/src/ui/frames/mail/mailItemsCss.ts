@@ -180,4 +180,12 @@ export const MAIL_ITEMS_CSS = `.comm-mail__items {
   flex: 1 1 auto;
   min-height: 0;
 }
+.comm-mail__item-mails-list .comm-mail__row-take {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
 `;

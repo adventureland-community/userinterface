@@ -102,6 +102,13 @@ export const MAIL_PREFETCH_GAP_MS = 1800;
 export const MAIL_PREFETCH_GAP_STEP_MS = 350;
 export const MAIL_PREFETCH_GAP_MAX_MS = 5000;
 export const MAIL_COMMAND_HEAD_DELAY_MS = 1500;
+/**
+ * Explicit cache Refresh: fetch this many skip-cursor pages at once, then
+ * patch. Higher = faster; keep modest to avoid hammering /api/pull_mail.
+ */
+export const MAIL_REFRESH_CONCURRENCY = 4;
+/** Tiny pause between parallel batches (not per page). */
+export const MAIL_REFRESH_BATCH_GAP_MS = 40;
 /** Soft-delete undo only for small batches; larger deletes finalize immediately. */
 export const MAIL_DELETE_UNDO_MAX = 25;
 export const MAIL_DELETE_UNDO_MS = 5000;

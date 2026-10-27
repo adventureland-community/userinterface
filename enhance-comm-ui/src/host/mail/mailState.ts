@@ -4,6 +4,9 @@
 
 import type { ComposeDraft, MailRow, MailView } from "./types";
 import { emptyDraft } from "./composeDraft";
+import type { MailRefreshProgress } from "./mailRefreshEstimate";
+
+export type { MailRefreshProgress } from "./mailRefreshEstimate";
 
 export type MailDeleteProgress = {
   done: number;
@@ -40,6 +43,8 @@ export type MailStoreSnapshot = {
   undoEndsAt: number;
   /** Server-side delete progress (null when idle). */
   deleteProgress: MailDeleteProgress | null;
+  /** In-place full cache Refresh progress (null when idle). */
+  refreshProgress: MailRefreshProgress | null;
 };
 
 export type MailStateFields = MailStoreSnapshot & {
@@ -74,6 +79,7 @@ const state: MailStateFields = {
   undoCount: 0,
   undoEndsAt: 0,
   deleteProgress: null,
+  refreshProgress: null,
   sessionDraft: emptyDraft(),
 };
 
@@ -159,6 +165,7 @@ export function getMailSnapshot(): MailStoreSnapshot {
     undoCount: state.undoCount,
     undoEndsAt: state.undoEndsAt,
     deleteProgress: state.deleteProgress,
+    refreshProgress: state.refreshProgress,
   };
 }
 
@@ -230,6 +237,10 @@ export function getDeleteProgress(): MailDeleteProgress | null {
   return state.deleteProgress;
 }
 
+export function getRefreshProgress(): MailRefreshProgress | null {
+  return state.refreshProgress;
+}
+
 export function getLocallyReadIds(): Set<string> {
   return locallyReadIds;
 }
@@ -270,6 +281,7 @@ export function clearMailSessionCore(): void {
       undoCount: 0,
       undoEndsAt: 0,
       deleteProgress: null,
+      refreshProgress: null,
     },
     { silent: true },
   );

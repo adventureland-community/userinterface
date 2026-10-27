@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.13.0
+// @version      0.14.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8878,6 +8878,30 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.14.0",
+      title: "0.14.0",
+      date: "2026-10-27",
+      summary: "Mail take settle sync for deep inbox rows, full in-place cache Refresh with progress, and Items Take / Clear UX.",
+      highlights: [
+        {
+          label: "Take settle \xB7 deep cache",
+          detail: "After Take, ECU re-pulls the skip-cursor pages that hold those mail ids and patches taken / mailclaim_* onto the soft-merged cache \u2014 no more stuck Claim settling on claws past the newest 40.",
+          kind: "fix"
+        },
+        {
+          label: "Refresh whole warmed cache",
+          detail: "Refresh soft-merges the head, then re-verifies every loaded page in place (parallel batches). Activity / Status show pages done, rate, and ETA \u2014 list stays visible while it runs.",
+          kind: "improve"
+        },
+        {
+          label: "Items Take \xB7 Clear",
+          detail: "Clear selection whenever anything is checked. Take with no checks claims one (opened row if takeable, else first); each untaken row has its own Take. Check boxes still drive Take N.",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
+    {
       id: "0.13.0",
       title: "0.13.0",
       date: "2026-10-27",
@@ -14457,7 +14481,7 @@ ${CHROME_ARRANGE_CSS}
     if (m.system != null) next.system = m.system;
     return next;
   }
-  function patchExistingFromPage(existing, page) {
+  function patchMailsById(existing, page) {
     if (!page.length) return existing.slice();
     const byId = /* @__PURE__ */ new Map();
     for (let i = 0; i < page.length; i++) byId.set(page[i].id, page[i]);
@@ -14468,6 +14492,27 @@ ${CHROME_ARRANGE_CSS}
       out.push(patch ? Object.assign({}, prev, patch) : prev);
     }
     return out;
+  }
+  var patchExistingFromPage = patchMailsById;
+  function mailPageCursorForIndex(index, pageSize = MAIL_HEAD_PAGE_SIZE) {
+    if (!(index >= 0) || !(pageSize > 0)) return null;
+    const skip = Math.floor(index / pageSize) * pageSize;
+    return skip > 0 ? String(skip) : null;
+  }
+  function cursorsForMailIds(mails, targetIds, pageSize = MAIL_HEAD_PAGE_SIZE) {
+    if (!targetIds.length || !mails.length) return [];
+    const want = new Set(targetIds);
+    const cursors = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < mails.length; i++) {
+      if (!want.has(mails[i].id)) continue;
+      const cursor = mailPageCursorForIndex(i, pageSize);
+      if (cursor == null) continue;
+      if (seen.has(cursor)) continue;
+      seen.add(cursor);
+      cursors.push(cursor);
+    }
+    return cursors;
   }
   function findHeadOverlap(existing, head) {
     if (!existing.length || !head.length) return null;
@@ -14739,6 +14784,7 @@ ${CHROME_ARRANGE_CSS}
     undoCount: 0,
     undoEndsAt: 0,
     deleteProgress: null,
+    refreshProgress: null,
     sessionDraft: emptyDraft()
   };
   function notifyListeners() {
@@ -14802,7 +14848,8 @@ ${CHROME_ARRANGE_CSS}
       unreadStuckHint: state.unreadStuckHint,
       undoCount: state.undoCount,
       undoEndsAt: state.undoEndsAt,
-      deleteProgress: state.deleteProgress
+      deleteProgress: state.deleteProgress,
+      refreshProgress: state.refreshProgress
     };
   }
   function getMails() {
@@ -14831,6 +14878,9 @@ ${CHROME_ARRANGE_CSS}
   }
   function getCommandBusy() {
     return state.commandBusy;
+  }
+  function getRefreshProgress() {
+    return state.refreshProgress;
   }
   function getLocallyReadIds() {
     return locallyReadIds;
@@ -15007,6 +15057,97 @@ ${CHROME_ARRANGE_CSS}
     return names.length ? "chars:" + names.join(",") : "chars:";
   }
 
+  // src/host/mail/types.ts
+  var MAIL_SEND_COST = 48e3;
+  var MAIL_ATTACH_EXTRA = 312e3;
+  var MAIL_HEAD_TTL_MS = 2e4;
+  var MAIL_PREFETCH_GAP_MS = 1800;
+  var MAIL_PREFETCH_GAP_STEP_MS = 350;
+  var MAIL_PREFETCH_GAP_MAX_MS = 5e3;
+  var MAIL_COMMAND_HEAD_DELAY_MS = 1500;
+  var MAIL_REFRESH_CONCURRENCY = 4;
+  var MAIL_REFRESH_BATCH_GAP_MS = 40;
+  var MAIL_DELETE_UNDO_MAX = 25;
+  var MAIL_DELETE_UNDO_MS = 5e3;
+  var MAIL_DELETE_GAP_MS = 280;
+  var MAIL_DELETE_GAP_STEP_MS = 4;
+  var MAIL_DELETE_GAP_MAX_MS = 750;
+
+  // src/host/mail/mailRefreshEstimate.ts
+  var MAIL_REFRESH_API_DEFAULT_MS = 220;
+  function refreshPageCount(mailCount, pageSize = MAIL_HEAD_PAGE_SIZE) {
+    if (!(mailCount > 0) || !(pageSize > 0)) return 1;
+    return Math.max(1, Math.ceil(mailCount / pageSize));
+  }
+  function refreshPageCursors(mailCount, pageSize = MAIL_HEAD_PAGE_SIZE) {
+    const pages = refreshPageCount(mailCount, pageSize);
+    const out = [null];
+    for (let p = 1; p < pages; p++) {
+      out.push(String(p * pageSize));
+    }
+    return out;
+  }
+  function chunkRefreshCursors(cursors, concurrency = MAIL_REFRESH_CONCURRENCY) {
+    const n = concurrency > 0 ? concurrency : 1;
+    const out = [];
+    for (let i = 0; i < cursors.length; i += n) {
+      out.push(cursors.slice(i, i + n));
+    }
+    return out;
+  }
+  function estimateRefreshRemainingMs(done, total, avgBatchApiMs, concurrency = MAIL_REFRESH_CONCURRENCY) {
+    const remaining = total - done;
+    if (remaining <= 0) return 0;
+    const conc = concurrency > 0 ? concurrency : 1;
+    const batches = Math.ceil(remaining / conc);
+    const gaps = Math.max(0, batches - 1) * MAIL_REFRESH_BATCH_GAP_MS;
+    return gaps + batches * Math.max(0, avgBatchApiMs);
+  }
+  function estimateRefreshEtaMs(opts) {
+    const { done, total, startedAt } = opts;
+    const remaining = total - done;
+    if (remaining <= 0) return 0;
+    const now = opts.now != null ? opts.now : Date.now();
+    if (done >= 1 && startedAt > 0 && now > startedAt) {
+      const per = (now - startedAt) / done;
+      if (per > 0) return Math.round(per * remaining);
+    }
+    return Math.round(
+      estimateRefreshRemainingMs(
+        done,
+        total,
+        opts.avgApiMs != null ? opts.avgApiMs : MAIL_REFRESH_API_DEFAULT_MS,
+        opts.concurrency != null ? opts.concurrency : MAIL_REFRESH_CONCURRENCY
+      )
+    );
+  }
+  function refreshRatePerSec(opts) {
+    if (!(opts.done > 0) || !(opts.startedAt > 0)) return 0;
+    const now = opts.now != null ? opts.now : Date.now();
+    const elapsed = now - opts.startedAt;
+    if (!(elapsed > 0)) return 0;
+    return opts.done / (elapsed / 1e3);
+  }
+  function formatRefreshEta(etaMs) {
+    if (!(etaMs > 400)) return "";
+    const compact = formatDurationCompact(etaMs / 1e3);
+    return compact ? "~" + compact + " left" : "";
+  }
+  function formatRefreshRate(ratePerSec) {
+    if (!(ratePerSec > 0)) return "";
+    const rounded = ratePerSec >= 10 ? String(Math.round(ratePerSec)) : ratePerSec.toFixed(1).replace(/\.0$/, "");
+    return rounded + " p/s";
+  }
+  function formatRefreshProgressLabel(progress) {
+    const base = "Refreshing cache \xB7 " + progress.done + "/" + progress.total;
+    const parts = [base];
+    const rate = formatRefreshRate(progress.ratePerSec);
+    if (rate) parts.push(rate);
+    const eta = formatRefreshEta(progress.etaMs);
+    if (eta) parts.push(eta);
+    return parts.join(" \xB7 ");
+  }
+
   // src/host/mail/mailUnreadLogic.ts
   function assignLocalReadFlags(rows, prevIds, bootstrap2, unreadBudget, locallyReadIds2) {
     void unreadBudget;
@@ -15162,26 +15303,13 @@ ${CHROME_ARRANGE_CSS}
     };
   }
 
-  // src/host/mail/types.ts
-  var MAIL_SEND_COST = 48e3;
-  var MAIL_ATTACH_EXTRA = 312e3;
-  var MAIL_HEAD_TTL_MS = 2e4;
-  var MAIL_PREFETCH_GAP_MS = 1800;
-  var MAIL_PREFETCH_GAP_STEP_MS = 350;
-  var MAIL_PREFETCH_GAP_MAX_MS = 5e3;
-  var MAIL_COMMAND_HEAD_DELAY_MS = 1500;
-  var MAIL_DELETE_UNDO_MAX = 25;
-  var MAIL_DELETE_UNDO_MS = 5e3;
-  var MAIL_DELETE_GAP_MS = 280;
-  var MAIL_DELETE_GAP_STEP_MS = 4;
-  var MAIL_DELETE_GAP_MAX_MS = 750;
-
   // src/host/mail/mailCache.ts
   var pullInFlight = false;
   var prefetchTimer = 0;
   var prefetchPages = 0;
   var prefetchFailStreak = 0;
   var activePull = null;
+  var refreshSeq = 0;
   var searchBurst = false;
   var MAIL_SEARCH_BURST_GAP_MS = 120;
   function stopPrefetch() {
@@ -15223,7 +15351,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function schedulePrefetch() {
     stopPrefetch();
-    if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight) {
+    if (!getPanelOpen() || !getHasMore() || getLoadingMore() || pullInFlight || getRefreshProgress()) {
       return;
     }
     commit({ prefetchArmed: true });
@@ -15239,7 +15367,7 @@ ${CHROME_ARRANGE_CSS}
         await activePull;
       } catch (e2) {
       }
-      if (mode === "cursor" && (pullInFlight || getLoadingMore())) {
+      if ((mode === "cursor" || mode === "patch") && (pullInFlight || getLoadingMore())) {
         return false;
       }
     }
@@ -15250,7 +15378,9 @@ ${CHROME_ARRANGE_CSS}
         mode === "head" ? { loading: true, loadingMore: false } : { loadingMore: true }
       );
       try {
-        const res = await pullMailPage(mode === "cursor" ? cursor : null);
+        const res = await pullMailPage(
+          mode === "head" ? null : cursor != null ? cursor : null
+        );
         if (!res.ok || !res.data) {
           setStatus(
             res.reason === "no_mail_payload" ? "Mail pull returned no list \u2014 try Refresh" : "Mail pull failed",
@@ -15287,7 +15417,7 @@ ${CHROME_ARRANGE_CSS}
           if (reason.indexOf("X.unread\u2191") === 0 && assigned.newIds.length) {
             patch.newMailCount = assigned.newIds.length;
           }
-          if (!getCommandBusy()) {
+          if (!getCommandBusy() && !getRefreshProgress()) {
             let strat = "";
             if (reconciled.strategy === "unchanged") strat = " \xB7 cache ok";
             else if (reconciled.strategy === "prepend") {
@@ -15296,11 +15426,22 @@ ${CHROME_ARRANGE_CSS}
               strat = " \xB7 kept older";
             } else if (reconciled.strategy === "truncate") {
               strat = " \xB7 refreshed head";
+            } else if (reconciled.strategy === "replace") {
+              strat = " \xB7 replaced";
             }
             patch.status = "Loaded " + assigned.rows.length + (reconciled.hasMore ? "+" : "") + strat + " \xB7 " + reason;
             patch.statusKind = "";
           }
           commit(patch);
+        } else if (mode === "patch") {
+          const assigned = assignLocalReadFlags(
+            patchMailsById(mails, page.mail),
+            prevIds,
+            false,
+            0,
+            getLocallyReadIds()
+          );
+          commit({ mails: assigned.rows });
         } else {
           const assigned = assignLocalReadFlags(
             appendCursorPage(mails, page.mail),
@@ -15342,6 +15483,154 @@ ${CHROME_ARRANGE_CSS}
     if (!should && reason !== "Refresh" && !force) return;
     await runPull("head", reason);
     if (getPanelOpen()) schedulePrefetch();
+  }
+  function sleepMs(ms) {
+    if (!(ms > 0)) return Promise.resolve();
+    return new Promise((r) => window.setTimeout(r, ms));
+  }
+  function commitRefreshProgress(progress) {
+    commit({
+      refreshProgress: progress,
+      status: progress ? formatRefreshProgressLabel(progress) : "",
+      statusKind: progress ? "warn" : ""
+    });
+  }
+  async function fetchMailPage(cursor) {
+    const res = await pullMailPage(cursor);
+    if (!res.ok || !res.data) return null;
+    return res.data;
+  }
+  function applyFetchedPages(pages) {
+    if (!pages.length) return;
+    const mails = getMails();
+    const prevIds = /* @__PURE__ */ new Set();
+    for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
+    let next = mails;
+    for (let i = 0; i < pages.length; i++) {
+      next = patchMailsById(next, pages[i].mail);
+    }
+    const assigned = assignLocalReadFlags(
+      next,
+      prevIds,
+      false,
+      0,
+      getLocallyReadIds()
+    );
+    commit({ mails: assigned.rows });
+    schedulePersistMailCache();
+  }
+  async function requestMailCacheRefresh() {
+    if (getRefreshProgress()) return;
+    const seq2 = ++refreshSeq;
+    stopPrefetch();
+    const startedAt = Date.now();
+    let total = refreshPageCount(getMails().length);
+    commitRefreshProgress({
+      done: 0,
+      total,
+      etaMs: estimateRefreshEtaMs({ done: 0, total, startedAt }),
+      ratePerSec: 0
+    });
+    const headOk = await runPull("head", "Refresh");
+    if (seq2 !== refreshSeq) return;
+    if (!headOk) {
+      commitRefreshProgress(null);
+      if (getPanelOpen()) schedulePrefetch();
+      return;
+    }
+    let done = 1;
+    total = Math.max(done, refreshPageCount(getMails().length));
+    commitRefreshProgress({
+      done,
+      total,
+      etaMs: estimateRefreshEtaMs({ done, total, startedAt }),
+      ratePerSec: refreshRatePerSec({ done, startedAt })
+    });
+    const deep = [];
+    const planned = refreshPageCursors(getMails().length);
+    for (let i = 0; i < planned.length; i++) {
+      const c = planned[i];
+      if (c != null) deep.push(c);
+    }
+    const batches = chunkRefreshCursors(deep, MAIL_REFRESH_CONCURRENCY);
+    let concurrency = MAIL_REFRESH_CONCURRENCY;
+    for (let b = 0; b < batches.length; b++) {
+      if (seq2 !== refreshSeq) return;
+      if (b > 0) await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
+      if (seq2 !== refreshSeq) return;
+      let batch = batches[b];
+      let pages = await Promise.all(
+        batch.map((cursor) => fetchMailPage(cursor))
+      );
+      if (seq2 !== refreshSeq) return;
+      let failed = false;
+      for (let i = 0; i < pages.length; i++) {
+        if (!pages[i]) {
+          failed = true;
+          break;
+        }
+      }
+      if (failed && concurrency > 1) {
+        concurrency = Math.max(1, Math.floor(concurrency / 2));
+        const retryBatches = chunkRefreshCursors(batch, concurrency);
+        const recovered = [];
+        for (let r = 0; r < retryBatches.length; r++) {
+          if (seq2 !== refreshSeq) return;
+          const retryPages = await Promise.all(
+            retryBatches[r].map((cursor) => fetchMailPage(cursor))
+          );
+          if (seq2 !== refreshSeq) return;
+          for (let i = 0; i < retryPages.length; i++) {
+            if (!retryPages[i]) {
+              commitRefreshProgress(null);
+              setStatus("Cache refresh stopped \u2014 pull failed", "err");
+              if (getPanelOpen()) schedulePrefetch();
+              return;
+            }
+            recovered.push(retryPages[i]);
+          }
+          if (r + 1 < retryBatches.length) {
+            await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
+          }
+        }
+        applyFetchedPages(recovered);
+        done += batch.length;
+      } else if (failed) {
+        commitRefreshProgress(null);
+        setStatus("Cache refresh stopped \u2014 pull failed", "err");
+        if (getPanelOpen()) schedulePrefetch();
+        return;
+      } else {
+        const okPages = [];
+        for (let i = 0; i < pages.length; i++) okPages.push(pages[i]);
+        applyFetchedPages(okPages);
+        done += batch.length;
+      }
+      total = Math.max(done, total);
+      commitRefreshProgress({
+        done,
+        total,
+        etaMs: estimateRefreshEtaMs({ done, total, startedAt }),
+        ratePerSec: refreshRatePerSec({ done, startedAt })
+      });
+    }
+    if (seq2 !== refreshSeq) return;
+    const n = getMails().length;
+    commit({
+      refreshProgress: null,
+      status: "Cache refreshed \xB7 " + n + (getHasMore() ? "+" : "") + " \xB7 Refresh",
+      statusKind: "",
+      lastHeadReason: "Refresh"
+    });
+    schedulePersistMailCache();
+    if (getPanelOpen()) schedulePrefetch();
+  }
+  async function refreshMailIds(ids) {
+    if (!ids.length) return;
+    const cursors = cursorsForMailIds(getMails(), ids);
+    for (let i = 0; i < cursors.length; i++) {
+      await runPull("patch", "settle \xB7 ids", cursors[i]);
+    }
   }
   async function loadOlderMail(opts) {
     const background = !!(opts && opts.background);
@@ -17693,6 +17982,9 @@ ${CHROME_ARRANGE_CSS}
         for (let i = 0; i < attempts; i++) {
           if (seq2 !== cmdSeq) return;
           await requestMailHead(reason, { force: true });
+          if (takePending && takePending.targetIds.length) {
+            await refreshMailIds(takePending.targetIds);
+          }
           if (sendPending) {
             if (sendLooksSettled(sendPending) || i === attempts - 1) break;
           } else if (takePending) {
@@ -24979,12 +25271,16 @@ ${CHROME_ARRANGE_CSS}
     }
     return { ids: out, kind: "all" };
   }
-  function mailIdsAllChecked(ids, selectedIds) {
-    if (!ids.length) return false;
-    for (let i = 0; i < ids.length; i++) {
-      if (!selectedIds[ids[i]]) return false;
+  function mailIdsForItemsTake(opts) {
+    if (opts.checkedTakeableIds.length) return opts.checkedTakeableIds.slice();
+    if (!opts.takeableIds.length) return [];
+    const preferred = opts.preferredId != null ? String(opts.preferredId) : "";
+    if (preferred) {
+      for (let i = 0; i < opts.takeableIds.length; i++) {
+        if (opts.takeableIds[i] === preferred) return [preferred];
+      }
     }
-    return true;
+    return [opts.takeableIds[0]];
   }
 
   // src/host/mail/toSuggest.ts
@@ -26408,6 +26704,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 .comm-mail__card--activity.is-pull .comm-mail__card-title {
   color: #9fd0ff;
 }
+.comm-mail__card--activity.is-refresh {
+  border-color: #2a4a68;
+  background: #121c28;
+}
+.comm-mail__card--activity.is-refresh .comm-mail__card-title {
+  color: #9fd0ff;
+}
 .comm-mail__card--activity.is-command {
   border-color: #3a5a30;
   background: #142014;
@@ -26476,6 +26779,10 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   box-shadow: 0 0 0 0 rgba(240, 192, 96, 0.45);
 }
 .comm-mail__card--activity.is-pull .comm-mail__pulse {
+  background: #5ab0ff;
+  box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.45);
+}
+.comm-mail__card--activity.is-refresh .comm-mail__pulse {
   background: #5ab0ff;
   box-shadow: 0 0 0 0 rgba(90, 176, 255, 0.45);
 }
@@ -26960,6 +27267,14 @@ button.comm-mail__stack-u {
   flex: 1 1 auto;
   min-height: 0;
 }
+.comm-mail__item-mails-list .comm-mail__row-take {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
 `;
 
   // src/ui/frames/mail/mailComposeCss.ts
@@ -27154,8 +27469,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.13.0" : "unknown";
-    const builtAt = true ? "2026-10-27T11:39:45.869Z" : "unknown";
+    const version = true ? "0.14.0" : "unknown";
+    const builtAt = true ? "2026-10-27T13:32:25.809Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -75167,6 +75482,12 @@ ${ESTIMATE_HINT}`,
     if (snap.deleteProgress) {
       return { mode: "delete", label: "Deleting" };
     }
+    if (snap.refreshProgress) {
+      return {
+        mode: "refresh",
+        label: formatRefreshProgressLabel(snap.refreshProgress)
+      };
+    }
     if (snap.commandBusy) {
       return { mode: "command", label: "Running command" };
     }
@@ -75476,10 +75797,11 @@ ${ESTIMATE_HINT}`,
     const unread2 = getXUnread();
     const headAge = snap.lastHeadAt === 0 ? "never" : formatRelativeAge(snap.lastHeadAt, now);
     const undoSec = undoSecondsLeft(snap.undoEndsAt, now);
-    const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : snap.status;
+    const statusTitle = snap.deleteProgress ? formatDeleteProgressLabel(snap.deleteProgress) : snap.refreshProgress ? formatRefreshProgressLabel(snap.refreshProgress) : undoActive ? snap.undoCount === 1 ? "Deleted" : "Deleted " + snap.undoCount : snap.status;
     const observeLine = caps.observeName ? "Observing " + caps.observeName : caps.reason || "Not observing \xB7 inbox only";
     const observeOn = !!caps.observeName;
-    const showStatus = !!snap.deleteProgress || !!snap.status || undoActive;
+    const showStatus = !!snap.deleteProgress || !!snap.refreshProgress || !!snap.status || undoActive;
+    const progressBar = snap.deleteProgress || snap.refreshProgress;
     const ownedNames = selfCharacterNames();
     const capView = buildMailboxCapsView({
       fills: countAttachmentsByRecipient(snap.mails, ownedNames),
@@ -75565,7 +75887,7 @@ ${ESTIMATE_HINT}`,
         showStatus ? e(
           "div",
           {
-            className: "comm-mail__card comm-mail__card--status" + (snap.deleteProgress ? " is-warn is-progress" : undoActive ? " is-warn" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
+            className: "comm-mail__card comm-mail__card--status" + (progressBar ? " is-warn is-progress" : undoActive ? " is-warn" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
           },
           e(
             "div",
@@ -75575,7 +75897,7 @@ ${ESTIMATE_HINT}`,
               "div",
               { className: "comm-mail__card-title-row" },
               e("div", { className: "comm-mail__card-title" }, statusTitle),
-              undoActive && !snap.deleteProgress ? e(
+              undoActive && !progressBar ? e(
                 "button",
                 {
                   type: "button",
@@ -75589,22 +75911,22 @@ ${ESTIMATE_HINT}`,
                 undoSec > 0 ? "Undo " + undoSec + "s" : "Undo"
               ) : null
             ),
-            snap.deleteProgress ? e(
+            progressBar ? e(
               "div",
               {
                 className: "comm-mail__delete-track",
                 role: "progressbar",
                 "aria-valuemin": 0,
-                "aria-valuemax": snap.deleteProgress.total,
-                "aria-valuenow": snap.deleteProgress.done
+                "aria-valuemax": progressBar.total,
+                "aria-valuenow": progressBar.done
               },
               e("div", {
                 className: "comm-mail__delete-fill",
                 style: {
-                  width: snap.deleteProgress.total > 0 ? Math.min(
+                  width: progressBar.total > 0 ? Math.min(
                     100,
                     Math.round(
-                      100 * snap.deleteProgress.done / snap.deleteProgress.total
+                      100 * progressBar.done / progressBar.total
                     )
                   ) + "%" : "0%"
                 }
@@ -76089,6 +76411,18 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < takeableIds.length; i++) {
       if (selectedIds[takeableIds[i]]) checkedTakeable.push(takeableIds[i]);
     }
+    let anyChecked = false;
+    for (let i = 0; i < mails.length; i++) {
+      if (selectedIds[mails[i].id]) {
+        anyChecked = true;
+        break;
+      }
+    }
+    const takeIds = mailIdsForItemsTake({
+      takeableIds,
+      checkedTakeableIds: checkedTakeable,
+      preferredId: selected ? selected.id : null
+    });
     return e(
       "div",
       { className: "comm-mail__item-mails" },
@@ -76103,11 +76437,21 @@ ${ESTIMATE_HINT}`,
           size: 36
         }),
         e("div", { className: "comm-mail__item-mails-title" }, label),
-        takeableIds.length ? e(
+        anyChecked ? e(
           "button",
           {
             type: "button",
             className: "comm-mail__btn",
+            title: "Clear every checked mail",
+            onClick: () => setSelectedIds({})
+          },
+          "Clear selection"
+        ) : takeableIds.length ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn",
+            title: "Check every untaken mail in this stack",
             onClick: () => {
               const next = {};
               for (let i = 0; i < takeableIds.length; i++) {
@@ -76118,19 +76462,19 @@ ${ESTIMATE_HINT}`,
           },
           "Select " + takeableIds.length
         ) : null,
-        (checkedTakeable.length ? checkedTakeable : takeableIds).length ? e(
+        takeIds.length ? e(
           "button",
           {
             type: "button",
             className: "comm-mail__btn comm-mail__btn--gold",
-            disabled: !canTake || snap.commandBusy || !takeableIds.length,
+            disabled: !canTake || snap.commandBusy,
+            title: checkedTakeable.length ? "Take checked attachments" : "Take one attachment (check boxes to take several)",
             onClick: () => {
-              const ids = checkedTakeable.length ? checkedTakeable : takeableIds;
-              takeMailCommand(ids);
+              takeMailCommand(takeIds);
               setSelectedIds({});
             }
           },
-          snap.commandBusy ? "Working\u2026" : "Take " + (checkedTakeable.length ? checkedTakeable.length : takeableIds.length)
+          snap.commandBusy ? "Working\u2026" : "Take " + takeIds.length
         ) : null,
         e(
           "div",
@@ -76144,6 +76488,7 @@ ${ESTIMATE_HINT}`,
         mails.map((m) => {
           const unread2 = m.read === false;
           const checked = !!selectedIds[m.id];
+          const rowTakeable = !!(m.item && !m.taken && m.canTake !== false);
           return e(
             "div",
             {
@@ -76180,6 +76525,20 @@ ${ESTIMATE_HINT}`,
               e("div", { className: "comm-mail__meta" }, rowMeta(m))
             ),
             mailWhenColumn(m.sent),
+            rowTakeable ? e(
+              "button",
+              {
+                type: "button",
+                className: "comm-mail__btn comm-mail__row-take",
+                disabled: !canTake || snap.commandBusy,
+                title: "Take this attachment",
+                onClick: (ev) => {
+                  ev.stopPropagation();
+                  takeMailCommand(m.id);
+                }
+              },
+              snap.commandBusy ? "\u2026" : "Take"
+            ) : null,
             mailItemIcon(m)
           );
         })
@@ -76635,7 +76994,7 @@ ${ESTIMATE_HINT}`,
     } = props;
     const entries = buildEntries({ filtered, collapseRepeats, expandedKeys });
     const activity = resolveMailActivity(snap);
-    const warming = activity.mode === "warm" || snap.loadingMore || snap.prefetchArmed;
+    const warming = activity.mode === "warm" || activity.mode === "refresh" || snap.loadingMore || snap.prefetchArmed;
     const nodes = [];
     if (!entries.length && searchEmptyHint) {
       nodes.push(
@@ -77132,7 +77491,6 @@ ${ESTIMATE_HINT}`,
       canTake,
       doDelete,
       setSelectedIds,
-      selectedIds,
       collapseRepeats,
       setCollapseRepeats,
       browseMode,
@@ -77142,7 +77500,6 @@ ${ESTIMATE_HINT}`,
     const itemsMode = browseMode === "items";
     const itemsSelect = itemsMode ? mailIdsForItemsSelectAll(filtered, selectedItemMailIds) : null;
     const selectTargetIds = itemsSelect ? itemsSelect.ids : filtered.map((m) => m.id);
-    const selectAllChecked = itemsMode ? mailIdsAllChecked(selectTargetIds, selectedIds) : checkedIds.length === filtered.length && filtered.length > 0;
     const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
     return e(
       "div",
@@ -77212,17 +77569,22 @@ ${ESTIMATE_HINT}`,
           },
           "Compose"
         ),
-        selectTargetIds.length ? e(
+        checkedIds.length ? e(
           "button",
           {
             type: "button",
             className: "comm-mail__btn",
-            title: selectAllChecked ? "Clear selection" : selectHasStack ? "Select mails for the highlighted item stack" : itemsMode ? "Select all untaken attachments in the current filter" : "Select all messages in the current search / filter",
+            title: "Clear every checked mail",
+            onClick: () => setSelectedIds({})
+          },
+          "Clear selection"
+        ) : selectTargetIds.length ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn",
+            title: selectHasStack ? "Select mails for the highlighted item stack" : itemsMode ? "Select all untaken attachments in the current filter" : "Select all messages in the current search / filter",
             onClick: () => {
-              if (selectAllChecked) {
-                setSelectedIds({});
-                return;
-              }
               const next = {};
               for (let i = 0; i < selectTargetIds.length; i++) {
                 next[selectTargetIds[i]] = true;
@@ -77230,7 +77592,7 @@ ${ESTIMATE_HINT}`,
               setSelectedIds(next);
             }
           },
-          selectAllChecked ? "Clear selection" : selectHasStack ? "Select stack " + selectTargetIds.length : "Select all " + selectTargetIds.length
+          selectHasStack ? "Select stack " + selectTargetIds.length : "Select all " + selectTargetIds.length
         ) : null,
         checkedIds.length ? e(
           "button",
@@ -77277,8 +77639,10 @@ ${ESTIMATE_HINT}`,
             type: "button",
             className: "comm-mail__btn",
             onClick: () => {
-              void requestMailHead("Refresh", { force: true });
-            }
+              void requestMailCacheRefresh();
+            },
+            disabled: !!snap.refreshProgress,
+            title: snap.refreshProgress ? "Cache refresh in progress" : "Re-verify the whole warmed cache without wiping it"
           },
           "Refresh"
         )
@@ -77633,7 +77997,6 @@ ${ESTIMATE_HINT}`,
         canTake: caps.canTake,
         doDelete,
         setSelectedIds,
-        selectedIds,
         collapseRepeats,
         setCollapseRepeats: setCollapsePersist,
         browseMode,
