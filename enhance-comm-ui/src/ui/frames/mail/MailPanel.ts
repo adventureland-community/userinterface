@@ -1,5 +1,6 @@
 import { getReact, e } from "../../../host/react";
 import {
+  aggregateMailItems,
   deleteMailRows,
   filterMails,
   getMailCapabilities,
@@ -12,9 +13,11 @@ import {
   replyToMail,
   setMailSearchBurst,
   setMailView,
+  subscribeMailItemsCue,
   subscribeMailStore,
   takeMailCommand,
   undoDeleteMail,
+  type MailAggItem,
   type MailPill,
   type MailRow,
 } from "../../../host/mail";
@@ -23,9 +26,11 @@ import { ensureMailCss } from "./mailCss";
 import { selfCharacterNames } from "./mailFormat";
 import { MailBannerBar } from "./MailBannerBar";
 import { MailComposePane } from "./MailComposePane";
+import { MailItemMailsPane } from "./MailItemMailsPane";
+import { MailItemsPane, type MailItemsGroup } from "./MailItemsPane";
 import { MailListPane } from "./MailListPane";
 import { MailReadPane } from "./MailReadPane";
-import { MailToolbar } from "./MailToolbar";
+import { MailToolbar, type MailBrowseMode } from "./MailToolbar";
 
 function useMailSnap() {
   const React = getReact();
@@ -89,6 +94,34 @@ export function MailPanel(): any {
       return true;
     }
   });
+  const [browseMode, setBrowseMode] = React.useState(() => {
+    try {
+      return loadSettings().mailBrowseMode === "items"
+        ? ("items" as MailBrowseMode)
+        : ("messages" as MailBrowseMode);
+    } catch {
+      return "messages" as MailBrowseMode;
+    }
+  });
+  const [itemsGroup, setItemsGroup] = React.useState(() => {
+    try {
+      return loadSettings().mailItemsGroup === "recipient"
+        ? ("recipient" as MailItemsGroup)
+        : ("all" as MailItemsGroup);
+    } catch {
+      return "all" as MailItemsGroup;
+    }
+  });
+  const [selectedItemKey, setSelectedItemKey] = React.useState(
+    null as string | null,
+  );
+  const [selectedItemMailIds, setSelectedItemMailIds] = React.useState(
+    null as string[] | null,
+  );
+  const [focusRecipient, setFocusRecipient] = React.useState(
+    null as string | null,
+  );
+  const [focusToken, setFocusToken] = React.useState(0);
   const [expandedKeys, setExpandedKeys] = React.useState(
     {} as Record<string, boolean>,
   );
@@ -124,6 +157,26 @@ export function MailPanel(): any {
       /* ignore */
     }
   };
+  const setBrowseModePersist = (mode: MailBrowseMode) => {
+    setBrowseMode(mode);
+    if (mode === "messages") {
+      setSelectedItemKey(null);
+      setSelectedItemMailIds(null);
+    }
+    try {
+      saveSettings({ mailBrowseMode: mode });
+    } catch {
+      /* ignore */
+    }
+  };
+  const setItemsGroupPersist = (g: MailItemsGroup) => {
+    setItemsGroup(g);
+    try {
+      saveSettings({ mailItemsGroup: g });
+    } catch {
+      /* ignore */
+    }
+  };
   const setGroupExpanded = (key: string, on: boolean) => {
     setExpandedKeys((prev: Record<string, boolean>) => {
       const next = { ...prev };
@@ -133,6 +186,30 @@ export function MailPanel(): any {
     });
   };
   const filtered = filterMails(snap.mails, { pill, query, selfNames });
+
+  React.useEffect(() => {
+    return subscribeMailItemsCue((cue) => {
+      setBrowseMode("items");
+      setItemsGroup("recipient");
+      setSelectedItemKey(null);
+      setSelectedItemMailIds(null);
+      setSelectedIds({});
+      setFocusRecipient(cue.recipient);
+      setFocusToken((n: number) => n + 1);
+      try {
+        saveSettings({
+          mailBrowseMode: "items",
+          mailItemsGroup: "recipient",
+        });
+      } catch {
+        /* ignore */
+      }
+      const view = getMailSnapshot().view;
+      if (view.kind === "read" || view.kind === "compose") {
+        setMailView({ kind: "list" });
+      }
+    });
+  }, []);
 
   React.useEffect(() => {
     const burst = mailSearchWantsBurst({
@@ -182,11 +259,34 @@ export function MailPanel(): any {
     }
   }
 
+  const itemsMode = browseMode === "items";
+  const selectedItemMails: MailRow[] = (() => {
+    if (!itemsMode || !selectedItemMailIds || !selectedItemMailIds.length) {
+      return [];
+    }
+    const want = new Set(selectedItemMailIds);
+    const out: MailRow[] = [];
+    for (let i = 0; i < filtered.length; i++) {
+      if (want.has(filtered[i].id)) out.push(filtered[i]);
+    }
+    return out;
+  })();
+  const selectedAggResolved: MailAggItem | null = (() => {
+    if (!itemsMode || !selectedItemKey || !selectedItemMails.length) return null;
+    const rebuilt = aggregateMailItems(selectedItemMails);
+    for (let i = 0; i < rebuilt.length; i++) {
+      if (rebuilt[i].key === selectedItemKey) return rebuilt[i];
+    }
+    // Key drift (level/title) — fall back to first rebuilt stack.
+    return rebuilt[0] || null;
+  })();
+
   const className =
     "comm-mail" +
     (wide ? "" : " is-narrow") +
     (isReading ? " is-reading" : "") +
-    (isCompose ? " is-compose" : "");
+    (isCompose ? " is-compose" : "") +
+    (itemsMode ? " is-items" : "");
 
   const toggleCheck = (id: string, on: boolean) => {
     setSelectedIds((prev: Record<string, boolean>) => {
@@ -195,6 +295,19 @@ export function MailPanel(): any {
       else delete next[id];
       return next;
     });
+  };
+
+  const onSelectItem = (agg: MailAggItem) => {
+    setSelectedItemKey(agg.key);
+    setSelectedItemMailIds(agg.mailIds.slice());
+    const next: Record<string, boolean> = {};
+    for (let i = 0; i < agg.mailIds.length; i++) {
+      next[agg.mailIds[i]] = true;
+    }
+    setSelectedIds(next);
+    if (snap.view.kind === "read" || snap.view.kind === "compose") {
+      setMailView({ kind: "list" });
+    }
   };
 
   const doDelete = async (ids: string[]) => {
@@ -214,7 +327,7 @@ export function MailPanel(): any {
   let pane: any = e(
     "div",
     { className: "comm-mail__empty" },
-    "Select a message",
+    itemsMode ? "Select an item" : "Select a message",
   );
   if (isCompose) {
     pane = e(MailComposePane, {
@@ -229,7 +342,21 @@ export function MailPanel(): any {
     });
   } else if (selected) {
     pane = e(MailReadPane, { snap, selected, wide, caps, doDelete });
+  } else if (itemsMode && selectedAggResolved) {
+    pane = e(MailItemMailsPane, {
+      snap,
+      agg: selectedAggResolved,
+      mails: selectedItemMails,
+      selected,
+      selectedIds,
+      toggleCheck,
+      canTake: caps.canTake,
+      setSelectedIds,
+    });
   }
+
+  const navPool =
+    itemsMode && selectedItemMails.length ? selectedItemMails : filtered;
 
   return e(
     "div",
@@ -249,18 +376,23 @@ export function MailPanel(): any {
         }
         if (ev.key === "Escape") {
           if (isCompose || (isReading && !wide)) setMailView({ kind: "list" });
+          else if (itemsMode && selectedItemKey) {
+            setSelectedItemKey(null);
+            setSelectedItemMailIds(null);
+            setSelectedIds({});
+          }
         }
         if (ev.key === "j" || ev.key === "k") {
           let idx = -1;
-          for (let i = 0; i < filtered.length; i++) {
-            if (selected && filtered[i].id === selected.id) {
+          for (let i = 0; i < navPool.length; i++) {
+            if (selected && navPool[i].id === selected.id) {
               idx = i;
               break;
             }
           }
           const next = ev.key === "j" ? idx + 1 : idx - 1;
-          if (next >= 0 && next < filtered.length) {
-            void openMailRow(filtered[next].id);
+          if (next >= 0 && next < navPool.length) {
+            void openMailRow(navPool[next].id);
           }
         }
         if ((ev.key === "Delete" || ev.key === "#") && selected) {
@@ -297,25 +429,51 @@ export function MailPanel(): any {
       canTake: caps.canTake,
       doDelete,
       setSelectedIds,
+      selectedIds,
       collapseRepeats,
       setCollapseRepeats: setCollapsePersist,
+      browseMode,
+      setBrowseMode: setBrowseModePersist,
+      selectedItemMailIds,
     }),
     e(MailBannerBar, { snap, caps }),
     e(
       "div",
       { className: "comm-mail__body" },
-      e(MailListPane, {
-        snap,
-        filtered,
-        selected,
-        selectedIds,
-        toggleCheck,
-        collapseRepeats,
-        expandedKeys,
-        setGroupExpanded,
-        searchEmptyHint,
-      }),
-      e("div", { className: "comm-mail__pane" }, pane),
+      itemsMode
+        ? e(MailItemsPane, {
+            snap,
+            filtered,
+            itemsGroup,
+            setItemsGroup: setItemsGroupPersist,
+            selectedItemKey,
+            selectedItemMailIds,
+            onSelectItem,
+            focusRecipient,
+            focusToken,
+          })
+        : e(MailListPane, {
+            snap,
+            filtered,
+            selected,
+            selectedIds,
+            toggleCheck,
+            collapseRepeats,
+            expandedKeys,
+            setGroupExpanded,
+            searchEmptyHint,
+          }),
+      e(
+        "div",
+        {
+          className:
+            "comm-mail__pane" +
+            (itemsMode && selectedAggResolved && !selected && !isCompose
+              ? " is-item-mails"
+              : ""),
+        },
+        pane,
+      ),
     ),
   );
 }

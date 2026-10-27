@@ -82,7 +82,7 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
   {
     label: "Mail",
     detail:
-      "Account inbox on /comm — read, search, compose, send and take while observing.",
+      "Account inbox on /comm — read, search, Items inventory, compose, send and take while observing.",
     kind: "feature",
   },
   {
@@ -111,6 +111,41 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    id: "0.13.0",
+    title: "0.13.0",
+    date: "2026-10-27",
+    summary:
+      "Mail Items inventory — bank-style overview of attachments scattered across the inbox, wired into attach caps.",
+    highlights: [
+      {
+        label: "Mail Items mode",
+        detail:
+          "Toolbar Messages | Items. Untaken attachments merge by name / level / title across mails (like Bank All). All or By recipient; click a tile for those mails plus Take / Select.",
+        kind: "feature",
+      },
+      {
+        label: "Caps → Items",
+        detail:
+          "Attach caps card and Details modal: View items jumps to Items · By recipient and scrolls that character into view. Handy when someone is over the 200 attach cap.",
+        kind: "improve",
+      },
+      {
+        label: "Items Select all",
+        detail:
+          "In Items mode, Select stack N targets the highlighted tile; with no tile selected it selects every untaken attachment in the filter (not plain letters).",
+        kind: "improve",
+      },
+    ],
+    items: [
+      {
+        label: "Incomplete inventory banner",
+        detail:
+          "When older mail pages are still unloaded, Items shows that totals are cache-only (same honesty as caps 47+/200).",
+        kind: "ui",
+      },
+    ],
+  },
   {
     id: "0.12.0",
     title: "0.12.0",

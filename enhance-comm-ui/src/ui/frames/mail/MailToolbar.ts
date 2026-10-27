@@ -1,5 +1,7 @@
 import { e } from "../../../host/react";
 import {
+  mailIdsAllChecked,
+  mailIdsForItemsSelectAll,
   markAllUnreadRead,
   markVisibleRead,
   openCompose,
@@ -10,6 +12,8 @@ import {
   type MailStoreSnapshot,
 } from "../../../host/mail";
 import { MailSearchBar } from "./MailSearchBar";
+
+export type MailBrowseMode = "messages" | "items";
 
 export type MailToolbarProps = {
   snap: MailStoreSnapshot;
@@ -23,8 +27,13 @@ export type MailToolbarProps = {
   canTake: boolean;
   doDelete: (ids: string[]) => void;
   setSelectedIds: (ids: Record<string, boolean>) => void;
+  selectedIds: Record<string, boolean>;
   collapseRepeats: boolean;
   setCollapseRepeats: (on: boolean) => void;
+  browseMode: MailBrowseMode;
+  setBrowseMode: (mode: MailBrowseMode) => void;
+  /** Items-mode stack selection (mail ids for the highlighted tile). */
+  selectedItemMailIds: string[] | null;
 };
 
 export function MailToolbar(props: MailToolbarProps): any {
@@ -40,9 +49,25 @@ export function MailToolbar(props: MailToolbarProps): any {
     canTake,
     doDelete,
     setSelectedIds,
+    selectedIds,
     collapseRepeats,
     setCollapseRepeats,
+    browseMode,
+    setBrowseMode,
+    selectedItemMailIds,
   } = props;
+
+  const itemsMode = browseMode === "items";
+  const itemsSelect = itemsMode
+    ? mailIdsForItemsSelectAll(filtered, selectedItemMailIds)
+    : null;
+  const selectTargetIds = itemsSelect
+    ? itemsSelect.ids
+    : filtered.map((m) => m.id);
+  const selectAllChecked = itemsMode
+    ? mailIdsAllChecked(selectTargetIds, selectedIds)
+    : checkedIds.length === filtered.length && filtered.length > 0;
+  const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
 
   return e(
     "div",
@@ -57,16 +82,48 @@ export function MailToolbar(props: MailToolbarProps): any {
       "div",
       { className: "comm-mail__toolbar-actions" },
       e(
-        "button",
+        "div",
         {
-          type: "button",
-          className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
-          title:
-            "Stack identical sends (same from/to + subject/body, or same item)",
-          onClick: () => setCollapseRepeats(!collapseRepeats),
+          className: "comm-mail__items-seg",
+          role: "group",
+          title: "Messages list or bank-style item inventory",
         },
-        "Stack",
+        e(
+          "button",
+          {
+            type: "button",
+            className:
+              "comm-mail__items-seg-btn" +
+              (browseMode === "messages" ? " is-on" : ""),
+            onClick: () => setBrowseMode("messages"),
+          },
+          "Messages",
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className:
+              "comm-mail__items-seg-btn" +
+              (browseMode === "items" ? " is-on" : ""),
+            onClick: () => setBrowseMode("items"),
+          },
+          "Items",
+        ),
       ),
+      browseMode === "messages"
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
+              title:
+                "Stack identical sends (same from/to + subject/body, or same item)",
+              onClick: () => setCollapseRepeats(!collapseRepeats),
+            },
+            "Stack",
+          )
+        : null,
       pill === "unread"
         ? e(
             "button",
@@ -89,31 +146,36 @@ export function MailToolbar(props: MailToolbarProps): any {
         },
         "Compose",
       ),
-      filtered.length
+      selectTargetIds.length
         ? e(
             "button",
             {
               type: "button",
               className: "comm-mail__btn",
-              title:
-                checkedIds.length === filtered.length
-                  ? "Clear selection"
-                  : "Select all messages in the current search / filter",
+              title: selectAllChecked
+                ? "Clear selection"
+                : selectHasStack
+                  ? "Select mails for the highlighted item stack"
+                  : itemsMode
+                    ? "Select all untaken attachments in the current filter"
+                    : "Select all messages in the current search / filter",
               onClick: () => {
-                if (checkedIds.length === filtered.length) {
+                if (selectAllChecked) {
                   setSelectedIds({});
                   return;
                 }
                 const next: Record<string, boolean> = {};
-                for (let i = 0; i < filtered.length; i++) {
-                  next[filtered[i].id] = true;
+                for (let i = 0; i < selectTargetIds.length; i++) {
+                  next[selectTargetIds[i]] = true;
                 }
                 setSelectedIds(next);
               },
             },
-            checkedIds.length === filtered.length
+            selectAllChecked
               ? "Clear selection"
-              : "Select all " + filtered.length,
+              : selectHasStack
+                ? "Select stack " + selectTargetIds.length
+                : "Select all " + selectTargetIds.length,
           )
         : null,
       checkedIds.length

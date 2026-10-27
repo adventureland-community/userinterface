@@ -3,6 +3,7 @@ import {
   buildMailboxCapsView,
   clearNewMailBanner,
   countAttachmentsByRecipient,
+  cueMailItemsRecipient,
   formatCapFraction,
   formatDeleteProgressLabel,
   getXUnread,
@@ -27,6 +28,7 @@ export type MailBannerBarProps = {
 function renderCapsCard(
   view: MailboxCapsView,
   onOpenDetails: () => void,
+  onViewItems: (recipient: string) => void,
 ): any {
   const primary = view.primary;
   const pressureClass =
@@ -118,6 +120,21 @@ function renderCapsCard(
                 style: { width: view.primaryPct + "%" },
               }),
             ),
+            primary.count > 0
+              ? e(
+                  "button",
+                  {
+                    type: "button",
+                    className: "comm-mail__cap-open",
+                    title: "Items inventory for " + primary.name,
+                    onClick: (ev: { stopPropagation: () => void }) => {
+                      ev.stopPropagation();
+                      onViewItems(primary.name);
+                    },
+                  },
+                  "View items · " + primary.name,
+                )
+              : null,
           )
         : null,
       e(
@@ -257,7 +274,14 @@ export function MailBannerBar(props: MailBannerBarProps): any {
           ),
         ),
       ),
-      renderCapsCard(capView, () => setCapsOpen(true)),
+      renderCapsCard(
+        capView,
+        () => setCapsOpen(true),
+        (name) => {
+          setCapsOpen(false);
+          cueMailItemsRecipient(name);
+        },
+      ),
       showStatus
         ? e(
             "div",
@@ -333,6 +357,10 @@ export function MailBannerBar(props: MailBannerBarProps): any {
       ? e(MailCapsModal, {
           view: capView,
           onClose: () => setCapsOpen(false),
+          onViewItems: (name) => {
+            setCapsOpen(false);
+            cueMailItemsRecipient(name);
+          },
         })
       : null,
   );

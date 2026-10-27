@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.12.0
+// @version      0.13.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8852,7 +8852,7 @@ ${fightHoverTip(src)}`
     },
     {
       label: "Mail",
-      detail: "Account inbox on /comm \u2014 read, search, compose, send and take while observing.",
+      detail: "Account inbox on /comm \u2014 read, search, Items inventory, compose, send and take while observing.",
       kind: "feature"
     },
     {
@@ -8877,6 +8877,36 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.13.0",
+      title: "0.13.0",
+      date: "2026-10-27",
+      summary: "Mail Items inventory \u2014 bank-style overview of attachments scattered across the inbox, wired into attach caps.",
+      highlights: [
+        {
+          label: "Mail Items mode",
+          detail: "Toolbar Messages | Items. Untaken attachments merge by name / level / title across mails (like Bank All). All or By recipient; click a tile for those mails plus Take / Select.",
+          kind: "feature"
+        },
+        {
+          label: "Caps \u2192 Items",
+          detail: "Attach caps card and Details modal: View items jumps to Items \xB7 By recipient and scrolls that character into view. Handy when someone is over the 200 attach cap.",
+          kind: "improve"
+        },
+        {
+          label: "Items Select all",
+          detail: "In Items mode, Select stack N targets the highlighted tile; with no tile selected it selects every untaken attachment in the filter (not plain letters).",
+          kind: "improve"
+        }
+      ],
+      items: [
+        {
+          label: "Incomplete inventory banner",
+          detail: "When older mail pages are still unloaded, Items shows that totals are cache-only (same honesty as caps 47+/200).",
+          kind: "ui"
+        }
+      ]
+    },
     {
       id: "0.12.0",
       title: "0.12.0",
@@ -11416,6 +11446,8 @@ ${fightHoverTip(src)}`
       mailLastTo: Array.isArray(parsed.mailLastTo) ? parsed.mailLastTo.map(String).filter(Boolean).slice(0, 8) : [],
       mailPill: typeof parsed.mailPill === "string" ? parsed.mailPill : "all",
       mailCollapseRepeats: typeof parsed.mailCollapseRepeats === "boolean" ? parsed.mailCollapseRepeats : true,
+      mailBrowseMode: parsed.mailBrowseMode === "items" ? "items" : "messages",
+      mailItemsGroup: parsed.mailItemsGroup === "recipient" ? "recipient" : "all",
       combatCompact: !!parsed.combatCompact,
       bagOpenPreferred: !!parsed.bagOpenPreferred,
       panelOpacity: mergePanelOpacity(parsed.panelOpacity),
@@ -11626,6 +11658,12 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.mailCollapseRepeats === "boolean") {
       next.mailCollapseRepeats = partial.mailCollapseRepeats;
+    }
+    if (partial.mailBrowseMode === "messages" || partial.mailBrowseMode === "items") {
+      next.mailBrowseMode = partial.mailBrowseMode;
+    }
+    if (partial.mailItemsGroup === "all" || partial.mailItemsGroup === "recipient") {
+      next.mailItemsGroup = partial.mailItemsGroup;
     }
     if (typeof partial.combatCompact === "boolean") {
       next.combatCompact = partial.combatCompact;
@@ -17833,6 +17871,31 @@ ${CHROME_ARRANGE_CSS}
     for (let i = 0; i < openListeners.length; i++) {
       openListeners[i](payload);
     }
+  }
+  var itemsCueListeners = [];
+  var pendingItemsCue = null;
+  function cueMailItemsRecipient(recipient) {
+    const name = String(recipient || "").trim();
+    if (!name) return;
+    const cue = { recipient: name };
+    pendingItemsCue = cue;
+    if (itemsCueListeners.length === 0) return;
+    for (let i = 0; i < itemsCueListeners.length; i++) {
+      itemsCueListeners[i](cue);
+    }
+    pendingItemsCue = null;
+  }
+  function subscribeMailItemsCue(fn) {
+    itemsCueListeners.push(fn);
+    if (pendingItemsCue) {
+      const cue = pendingItemsCue;
+      pendingItemsCue = null;
+      fn(cue);
+    }
+    return () => {
+      const idx = itemsCueListeners.indexOf(fn);
+      if (idx >= 0) itemsCueListeners.splice(idx, 1);
+    };
   }
 
   // src/host/market/marketSession.ts
@@ -24460,98 +24523,6 @@ ${CHROME_ARRANGE_CSS}
     return sum > 1 ? sum : null;
   }
 
-  // src/host/mail/toSuggest.ts
-  function suggestMailTo(query, opts, exclude = []) {
-    const q = String(query || "").trim().toLowerCase();
-    const used = /* @__PURE__ */ new Set();
-    for (let i = 0; i < exclude.length; i++) {
-      used.add(String(exclude[i] || "").toLowerCase());
-    }
-    const out = [];
-    const push = (name, group) => {
-      const n = String(name || "").trim();
-      if (!n) return;
-      const key = n.toLowerCase();
-      if (used.has(key)) return;
-      if (q && !key.includes(q)) return;
-      used.add(key);
-      out.push({ name: n, group });
-    };
-    for (let i = 0; i < opts.selfNames.length; i++) {
-      push(opts.selfNames[i], "own");
-    }
-    const mailSeen = /* @__PURE__ */ new Map();
-    for (let i = 0; i < opts.mails.length; i++) {
-      const m = opts.mails[i];
-      for (const raw of [m.fro, m.to]) {
-        const n = String(raw || "").trim();
-        if (!n) continue;
-        const key = n.toLowerCase();
-        if (mailSeen.has(key)) continue;
-        mailSeen.set(key, n);
-      }
-    }
-    const selfLower = new Set(
-      opts.selfNames.map((n) => String(n || "").toLowerCase())
-    );
-    for (const [key, n] of mailSeen) {
-      if (selfLower.has(key)) continue;
-      push(n, "mail");
-    }
-    for (let i = 0; i < opts.visiblePlayers.length; i++) {
-      push(opts.visiblePlayers[i], "nearby");
-    }
-    return out;
-  }
-
-  // src/host/mail/capabilities.ts
-  function mailSendCost(hasAttach) {
-    return hasAttach ? MAIL_SEND_COST + MAIL_ATTACH_EXTRA : MAIL_SEND_COST;
-  }
-  function mailBatchSendCost(attachCount, toCount = 1) {
-    const n = Math.max(0, attachCount | 0);
-    const tos = Math.max(1, toCount | 0);
-    if (n <= 0) return MAIL_SEND_COST * tos;
-    return n * mailSendCost(true);
-  }
-  function getMailObservingSnap() {
-    const obs = window.observing;
-    return obs && obs.name ? obs : null;
-  }
-  function getMailCapabilities(attaches = [], toCount = 1, observing) {
-    const sock = getSocket();
-    const obs = observing;
-    const attachCount = attaches.length;
-    const recipients = Math.max(1, toCount | 0);
-    const cost = mailBatchSendCost(attachCount, recipients);
-    const gold = obs && typeof obs.gold === "number" ? Number(obs.gold) : void 0;
-    const goldEnough = gold == null ? true : gold >= cost;
-    const watching = !!(obs && obs.name && sock && typeof sock.emit === "function");
-    if (!watching) {
-      return {
-        canSend: false,
-        canTake: false,
-        sendCost: cost,
-        gold,
-        goldEnough,
-        attachCount,
-        toCount: recipients,
-        reason: "Not observing \u2014 inbox only"
-      };
-    }
-    return {
-      canSend: goldEnough,
-      canTake: true,
-      sendCost: cost,
-      gold,
-      goldEnough,
-      attachCount,
-      toCount: recipients,
-      observeName: String(obs.name),
-      reason: goldEnough ? void 0 : "Not enough gold on observed character"
-    };
-  }
-
   // src/host/mail/mailCaps.ts
   var MAIL_ATTACH_CAP = 200;
   var MAIL_ATTACH_SENDER_CAP = 20;
@@ -24884,6 +24855,228 @@ ${CHROME_ARRANGE_CSS}
       });
     }
     return notices;
+  }
+
+  // src/host/mail/mailItemsOverview.ts
+  function mailItemAggKey(item) {
+    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+  }
+  function isInventoryMail(m) {
+    if (!countsTowardAttachCap(m)) return false;
+    if (m.canTake === false) return false;
+    if (!m.item || !m.item.name) return false;
+    return true;
+  }
+  function itemQty(item) {
+    if (item.q != null && Number.isFinite(item.q)) return Number(item.q);
+    return 1;
+  }
+  function aggregateMailItems(mails) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    const recipSeen = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!isInventoryMail(m) || !m.item) continue;
+      const key = mailItemAggKey(m.item);
+      let row3 = byKey[key];
+      if (!row3) {
+        row3 = {
+          key,
+          name: String(m.item.name),
+          level: m.item.level,
+          p: m.item.p != null ? String(m.item.p) : null,
+          q: 0,
+          mailIds: [],
+          recipients: []
+        };
+        byKey[key] = row3;
+        recipSeen[key] = /* @__PURE__ */ new Set();
+      }
+      row3.q += itemQty(m.item);
+      row3.mailIds.push(m.id);
+      const display = String(m.to || "").trim();
+      const rkey = display.toLowerCase();
+      if (display && !recipSeen[key].has(rkey)) {
+        recipSeen[key].add(rkey);
+        row3.recipients.push(display);
+      }
+    }
+    const keys = Object.keys(byKey);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
+    out.sort((a, b) => {
+      const n = a.name.localeCompare(b.name);
+      if (n !== 0) return n;
+      const la = a.level != null ? a.level : -1;
+      const lb = b.level != null ? b.level : -1;
+      if (la !== lb) return la - lb;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return out;
+  }
+  function groupMailItemsByRecipient(mails, fills) {
+    const fillList = fills && fills.length ? fills : countAttachmentsByRecipient(mails);
+    const fillByKey = /* @__PURE__ */ new Map();
+    for (let i = 0; i < fillList.length; i++) {
+      fillByKey.set(fillList[i].name.toLowerCase(), fillList[i]);
+    }
+    const buckets = /* @__PURE__ */ new Map();
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!isInventoryMail(m)) continue;
+      const display = String(m.to || "").trim();
+      const key = display.toLowerCase();
+      if (!key) continue;
+      const prev = buckets.get(key);
+      if (prev) prev.rows.push(m);
+      else buckets.set(key, { name: display, rows: [m] });
+    }
+    const sections = [];
+    buckets.forEach((bucket, key) => {
+      const fill = fillByKey.get(key) || null;
+      sections.push({
+        name: fill ? fill.name : bucket.name,
+        fill,
+        items: aggregateMailItems(bucket.rows)
+      });
+    });
+    sections.sort((a, b) => {
+      const ca = a.fill ? a.fill.count : a.items.reduce((n, it) => n + it.mailIds.length, 0);
+      const cb = b.fill ? b.fill.count : b.items.reduce((n, it) => n + it.mailIds.length, 0);
+      if (cb !== ca) return cb - ca;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return sections;
+  }
+  function mailAggTouchesFullCap(agg, fills) {
+    if (!fills.length || !agg.recipients.length) return false;
+    const full = /* @__PURE__ */ new Set();
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "full") {
+        full.add(fills[i].name.toLowerCase());
+      }
+    }
+    if (!full.size) return false;
+    for (let i = 0; i < agg.recipients.length; i++) {
+      if (full.has(agg.recipients[i].toLowerCase())) return true;
+    }
+    return false;
+  }
+  function mailIdsForItemsSelectAll(filtered, selectedItemMailIds) {
+    if (selectedItemMailIds && selectedItemMailIds.length) {
+      const want = new Set(selectedItemMailIds);
+      const stack = [];
+      for (let i = 0; i < filtered.length; i++) {
+        if (want.has(filtered[i].id)) stack.push(filtered[i].id);
+      }
+      if (stack.length) return { ids: stack, kind: "stack" };
+    }
+    const agg = aggregateMailItems(filtered);
+    const out = [];
+    for (let i = 0; i < agg.length; i++) {
+      const ids = agg[i].mailIds;
+      for (let j = 0; j < ids.length; j++) out.push(ids[j]);
+    }
+    return { ids: out, kind: "all" };
+  }
+  function mailIdsAllChecked(ids, selectedIds) {
+    if (!ids.length) return false;
+    for (let i = 0; i < ids.length; i++) {
+      if (!selectedIds[ids[i]]) return false;
+    }
+    return true;
+  }
+
+  // src/host/mail/toSuggest.ts
+  function suggestMailTo(query, opts, exclude = []) {
+    const q = String(query || "").trim().toLowerCase();
+    const used = /* @__PURE__ */ new Set();
+    for (let i = 0; i < exclude.length; i++) {
+      used.add(String(exclude[i] || "").toLowerCase());
+    }
+    const out = [];
+    const push = (name, group) => {
+      const n = String(name || "").trim();
+      if (!n) return;
+      const key = n.toLowerCase();
+      if (used.has(key)) return;
+      if (q && !key.includes(q)) return;
+      used.add(key);
+      out.push({ name: n, group });
+    };
+    for (let i = 0; i < opts.selfNames.length; i++) {
+      push(opts.selfNames[i], "own");
+    }
+    const mailSeen = /* @__PURE__ */ new Map();
+    for (let i = 0; i < opts.mails.length; i++) {
+      const m = opts.mails[i];
+      for (const raw of [m.fro, m.to]) {
+        const n = String(raw || "").trim();
+        if (!n) continue;
+        const key = n.toLowerCase();
+        if (mailSeen.has(key)) continue;
+        mailSeen.set(key, n);
+      }
+    }
+    const selfLower = new Set(
+      opts.selfNames.map((n) => String(n || "").toLowerCase())
+    );
+    for (const [key, n] of mailSeen) {
+      if (selfLower.has(key)) continue;
+      push(n, "mail");
+    }
+    for (let i = 0; i < opts.visiblePlayers.length; i++) {
+      push(opts.visiblePlayers[i], "nearby");
+    }
+    return out;
+  }
+
+  // src/host/mail/capabilities.ts
+  function mailSendCost(hasAttach) {
+    return hasAttach ? MAIL_SEND_COST + MAIL_ATTACH_EXTRA : MAIL_SEND_COST;
+  }
+  function mailBatchSendCost(attachCount, toCount = 1) {
+    const n = Math.max(0, attachCount | 0);
+    const tos = Math.max(1, toCount | 0);
+    if (n <= 0) return MAIL_SEND_COST * tos;
+    return n * mailSendCost(true);
+  }
+  function getMailObservingSnap() {
+    const obs = window.observing;
+    return obs && obs.name ? obs : null;
+  }
+  function getMailCapabilities(attaches = [], toCount = 1, observing) {
+    const sock = getSocket();
+    const obs = observing;
+    const attachCount = attaches.length;
+    const recipients = Math.max(1, toCount | 0);
+    const cost = mailBatchSendCost(attachCount, recipients);
+    const gold = obs && typeof obs.gold === "number" ? Number(obs.gold) : void 0;
+    const goldEnough = gold == null ? true : gold >= cost;
+    const watching = !!(obs && obs.name && sock && typeof sock.emit === "function");
+    if (!watching) {
+      return {
+        canSend: false,
+        canTake: false,
+        sendCost: cost,
+        gold,
+        goldEnough,
+        attachCount,
+        toCount: recipients,
+        reason: "Not observing \u2014 inbox only"
+      };
+    }
+    return {
+      canSend: goldEnough,
+      canTake: true,
+      sendCost: cost,
+      gold,
+      goldEnough,
+      attachCount,
+      toCount: recipients,
+      observeName: String(obs.name),
+      reason: goldEnough ? void 0 : "Not enough gold on observed character"
+    };
   }
 
   // src/host/mail/mailSearchCoverage.ts
@@ -26162,8 +26355,27 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 .comm-mail__caps-row-top {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+}
+.comm-mail__caps-view-items {
+  appearance: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #3a4a5c;
+  background: #1a2430;
+  color: #9cf;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.comm-mail__caps-view-items:hover {
+  border-color: #5a7a9c;
+  color: #cde;
 }
 .comm-mail__caps-row-name {
   flex: 1 1 auto;
@@ -26566,6 +26778,190 @@ button.comm-mail__stack-u {
 .comm-mail__row.item-taken { border-left: 2px solid #555; }
 `;
 
+  // src/ui/frames/mail/mailItemsCss.ts
+  var MAIL_ITEMS_CSS = `.comm-mail__items {
+  flex: 1 1 46%;
+  max-width: 560px;
+  overflow: auto;
+  border-right: 1px solid #2a2a2a;
+  min-width: 260px;
+  padding: 8px 10px 12px;
+  contain: layout style;
+}
+.comm-mail.is-narrow .comm-mail__items { flex: 1 1 auto; max-width: none; border-right: none; }
+.comm-mail.is-narrow.is-reading .comm-mail__items,
+.comm-mail.is-narrow.is-compose .comm-mail__items { display: none; }
+.comm-mail__items-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.comm-mail__items-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+}
+.comm-mail__items-seg-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.comm-mail__items-seg-btn.is-on {
+  background: #2a3340;
+  color: #cde;
+}
+.comm-mail__items-incomplete {
+  flex: 1 1 100%;
+  font-size: 11px;
+  color: #c9a66b;
+  line-height: 1.35;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(120, 80, 20, 0.18);
+  border: 1px solid rgba(180, 120, 40, 0.35);
+}
+.comm-mail__items-empty {
+  color: #777;
+  font-size: 13px;
+  padding: 18px 8px;
+  text-align: center;
+}
+.comm-mail__items-section {
+  margin-bottom: 14px;
+  border-radius: 8px;
+  transition: box-shadow 0.35s ease, background 0.35s ease;
+}
+.comm-mail__items-section.is-focus {
+  background: rgba(40, 70, 110, 0.28);
+  box-shadow: 0 0 0 1px rgba(102, 170, 255, 0.45);
+  padding: 6px 6px 8px;
+  margin-left: -6px;
+  margin-right: -6px;
+}
+.comm-mail__items-section-hd {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9a9a9a;
+}
+.comm-mail__items-section-hd.is-cap-warn { color: #e0b060; }
+.comm-mail__items-section-hd.is-cap-full { color: #ff7aa2; }
+.comm-mail__items-section-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 13px;
+  color: #ddd;
+}
+.comm-mail__items-section-hd.is-cap-warn .comm-mail__items-section-name { color: #f0c878; }
+.comm-mail__items-section-hd.is-cap-full .comm-mail__items-section-name { color: #ff9ab8; }
+.comm-mail__items-section-meta {
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #888;
+}
+.comm-mail__items-section-hd.is-cap-full .comm-mail__items-section-meta { color: #ff9ab8; }
+.comm-mail__items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  gap: 6px;
+}
+.comm-mail__items-cell {
+  appearance: none;
+  border: 1px solid #2e2e2e;
+  background: #101010;
+  padding: 4px 3px 5px;
+  cursor: pointer;
+  min-height: 56px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  font: inherit;
+}
+.comm-mail__items-cell:hover { border-color: #4a5a70; background: #161a20; }
+.comm-mail__items-cell.is-sel {
+  border-color: #6af;
+  background: #1c2430;
+  box-shadow: 0 0 0 1px rgba(102, 170, 255, 0.35);
+}
+.comm-mail__items-cell.is-cap-full {
+  border-color: rgba(255, 122, 162, 0.55);
+}
+.comm-mail__items-cell.is-cap-full.is-sel {
+  border-color: #ff7aa2;
+  box-shadow: 0 0 0 1px rgba(255, 122, 162, 0.4);
+}
+.comm-mail__items-cell-meta {
+  font-size: 10px;
+  color: #888;
+  line-height: 1.15;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comm-mail__items-cell.is-sel .comm-mail__items-cell-meta { color: #b8c8dc; }
+.comm-mail__item-mails {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  height: 100%;
+}
+.comm-mail__pane.is-item-mails {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.comm-mail__item-mails-hd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #222;
+}
+.comm-mail__item-mails-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #eee;
+}
+.comm-mail__item-mails-sub {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: #888;
+}
+.comm-mail__item-mails-list {
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+`;
+
   // src/ui/frames/mail/mailComposeCss.ts
   var MAIL_COMPOSE_CSS = `.comm-mail__pane {
   flex: 1 1 54%;
@@ -26739,7 +27135,7 @@ button.comm-mail__stack-u {
 
   // src/ui/frames/mail/mailCss.ts
   var injected3 = false;
-  var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
+  var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_ITEMS_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
   function ensureMailCss() {
     if (injected3) return;
     injected3 = true;
@@ -26758,8 +27154,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.12.0" : "unknown";
-    const builtAt = true ? "2026-10-21T13:22:23.161Z" : "unknown";
+    const version = true ? "0.13.0" : "unknown";
+    const builtAt = true ? "2026-10-27T11:39:45.869Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -74805,7 +75201,7 @@ ${ESTIMATE_HINT}`,
     }
     return out;
   }
-  function renderCapRow(fill, incomplete) {
+  function renderCapRow(fill, incomplete, onViewItems) {
     const pressure = fill.pressure;
     const label = fillCapLabel(fill);
     return e(
@@ -74831,7 +75227,17 @@ ${ESTIMATE_HINT}`,
             className: "comm-mail__cap-state" + (pressure ? " is-" + pressure : "")
           },
           label
-        )
+        ),
+        onViewItems && fill.count > 0 ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__caps-view-items",
+            title: "Open Items inventory for " + fill.name,
+            onClick: () => onViewItems(fill.name)
+          },
+          "View items"
+        ) : null
       ),
       e(
         "div",
@@ -74851,7 +75257,7 @@ ${ESTIMATE_HINT}`,
   }
   function MailCapsModal(props) {
     const React = getReact();
-    const { view, onClose } = props;
+    const { view, onClose, onViewItems } = props;
     const [filter, setFilter] = React.useState("all");
     React.useEffect(() => {
       const onKey = (ev) => {
@@ -74935,7 +75341,9 @@ ${ESTIMATE_HINT}`,
           e(
             "div",
             { className: "comm-mail__caps-modal-list" },
-            rows.length ? rows.map((fill) => renderCapRow(fill, view.incomplete)) : e(
+            rows.length ? rows.map(
+              (fill) => renderCapRow(fill, view.incomplete, onViewItems)
+            ) : e(
               "div",
               { className: "comm-mail__caps-modal-empty" },
               "No characters in this filter."
@@ -74947,7 +75355,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/mail/MailBannerBar.ts
-  function renderCapsCard(view, onOpenDetails) {
+  function renderCapsCard(view, onOpenDetails, onViewItems) {
     const primary = view.primary;
     const pressureClass = view.pressure === "full" ? " is-cap-full" : view.pressure === "warn" ? " is-cap-warn" : "";
     const primaryPressure = primary ? primary.pressure : "";
@@ -75023,7 +75431,20 @@ ${ESTIMATE_HINT}`,
               className: "comm-mail__cap-meter-fill" + (primaryPressure ? " is-" + primaryPressure : ""),
               style: { width: view.primaryPct + "%" }
             })
-          )
+          ),
+          primary.count > 0 ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__cap-open",
+              title: "Items inventory for " + primary.name,
+              onClick: (ev) => {
+                ev.stopPropagation();
+                onViewItems(primary.name);
+              }
+            },
+            "View items \xB7 " + primary.name
+          ) : null
         ) : null,
         e(
           "button",
@@ -75133,7 +75554,14 @@ ${ESTIMATE_HINT}`,
             )
           )
         ),
-        renderCapsCard(capView, () => setCapsOpen(true)),
+        renderCapsCard(
+          capView,
+          () => setCapsOpen(true),
+          (name) => {
+            setCapsOpen(false);
+            cueMailItemsRecipient(name);
+          }
+        ),
         showStatus ? e(
           "div",
           {
@@ -75187,7 +75615,11 @@ ${ESTIMATE_HINT}`,
       ),
       capsOpen ? e(MailCapsModal, {
         view: capView,
-        onClose: () => setCapsOpen(false)
+        onClose: () => setCapsOpen(false),
+        onViewItems: (name) => {
+          setCapsOpen(false);
+          cueMailItemsRecipient(name);
+        }
       }) : null
     );
   }
@@ -75629,6 +76061,320 @@ ${ESTIMATE_HINT}`,
         size,
         title: label
       })
+    );
+  }
+
+  // src/ui/frames/mail/MailItemMailsPane.ts
+  function MailItemMailsPane(props) {
+    const {
+      snap,
+      agg,
+      mails,
+      selected,
+      selectedIds,
+      toggleCheck,
+      canTake,
+      setSelectedIds
+    } = props;
+    const label = itemInstanceLabel(agg.name, {
+      p: agg.p != null ? agg.p : void 0,
+      level: agg.level
+    }) || agg.name;
+    const takeableIds = [];
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (m.item && !m.taken && m.canTake !== false) takeableIds.push(m.id);
+    }
+    const checkedTakeable = [];
+    for (let i = 0; i < takeableIds.length; i++) {
+      if (selectedIds[takeableIds[i]]) checkedTakeable.push(takeableIds[i]);
+    }
+    return e(
+      "div",
+      { className: "comm-mail__item-mails" },
+      e(
+        "div",
+        { className: "comm-mail__item-mails-hd" },
+        e(ItemInstance, {
+          name: agg.name,
+          level: agg.level,
+          q: agg.q,
+          p: agg.p != null ? String(agg.p) : void 0,
+          size: 36
+        }),
+        e("div", { className: "comm-mail__item-mails-title" }, label),
+        takeableIds.length ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn",
+            onClick: () => {
+              const next = {};
+              for (let i = 0; i < takeableIds.length; i++) {
+                next[takeableIds[i]] = true;
+              }
+              setSelectedIds(next);
+            }
+          },
+          "Select " + takeableIds.length
+        ) : null,
+        (checkedTakeable.length ? checkedTakeable : takeableIds).length ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn comm-mail__btn--gold",
+            disabled: !canTake || snap.commandBusy || !takeableIds.length,
+            onClick: () => {
+              const ids = checkedTakeable.length ? checkedTakeable : takeableIds;
+              takeMailCommand(ids);
+              setSelectedIds({});
+            }
+          },
+          snap.commandBusy ? "Working\u2026" : "Take " + (checkedTakeable.length ? checkedTakeable.length : takeableIds.length)
+        ) : null,
+        e(
+          "div",
+          { className: "comm-mail__item-mails-sub" },
+          "\xD7" + agg.q + " \xB7 " + mails.length + (mails.length === 1 ? " mail" : " mails") + (agg.recipients.length ? " \xB7 " + agg.recipients.join(", ") : "")
+        )
+      ),
+      e(
+        "div",
+        { className: "comm-mail__item-mails-list" },
+        mails.map((m) => {
+          const unread2 = m.read === false;
+          const checked = !!selectedIds[m.id];
+          return e(
+            "div",
+            {
+              key: m.id,
+              className: "comm-mail__row" + (unread2 ? " is-unread" : "") + (selected && selected.id === m.id ? " is-sel" : "") + (checked ? " is-check" : "") + (m.item && !m.taken ? " has-item" : "") + (m.item && m.taken ? " item-taken" : ""),
+              onClick: () => {
+                void openMailRow(m.id);
+              }
+            },
+            e(
+              "div",
+              { className: "comm-mail__lead" },
+              e("input", {
+                className: "comm-mail__check",
+                type: "checkbox",
+                checked,
+                onClick: (ev) => ev.stopPropagation(),
+                onChange: (ev) => toggleCheck(m.id, !!ev.target.checked)
+              }),
+              e("div", { className: "comm-mail__dot" })
+            ),
+            e(
+              "div",
+              { className: "comm-mail__main" },
+              e(
+                "div",
+                { className: "comm-mail__sub" },
+                e(
+                  "span",
+                  { className: "comm-mail__title" },
+                  m.subject || "(no subject)"
+                )
+              ),
+              e("div", { className: "comm-mail__meta" }, rowMeta(m))
+            ),
+            mailWhenColumn(m.sent),
+            mailItemIcon(m)
+          );
+        })
+      )
+    );
+  }
+
+  // src/ui/frames/mail/MailItemsPane.ts
+  function sameIdSet(a, b) {
+    if (!b || a.length !== b.length) return false;
+    const want = new Set(b);
+    for (let i = 0; i < a.length; i++) {
+      if (!want.has(a[i])) return false;
+    }
+    return true;
+  }
+  function cellTitle(it) {
+    const label = itemInstanceLabel(it.name, {
+      p: it.p != null ? it.p : void 0,
+      level: it.level
+    });
+    const bits = [
+      label || it.name,
+      "\xD7" + it.q,
+      it.mailIds.length + (it.mailIds.length === 1 ? " mail" : " mails")
+    ];
+    if (it.recipients.length) {
+      bits.push(
+        it.recipients.length <= 3 ? it.recipients.join(", ") : it.recipients.slice(0, 2).join(", ") + " +" + (it.recipients.length - 2)
+      );
+    }
+    return bits.join(" \xB7 ");
+  }
+  function renderGrid(items, fills, selectedItemKey, selectedItemMailIds, onSelectItem) {
+    if (!items.length) {
+      return e(
+        "div",
+        { className: "comm-mail__items-empty" },
+        "No untaken attachments in this filter."
+      );
+    }
+    return e(
+      "div",
+      { className: "comm-mail__items-grid" },
+      items.map((it) => {
+        const over = mailAggTouchesFullCap(it, fills);
+        const sel = selectedItemKey === it.key && sameIdSet(it.mailIds, selectedItemMailIds);
+        return e(
+          "button",
+          {
+            type: "button",
+            key: it.key + ":" + it.mailIds.join(","),
+            className: "comm-mail__items-cell" + (sel ? " is-sel" : "") + (over ? " is-cap-full" : ""),
+            title: cellTitle(it),
+            onClick: () => onSelectItem(it)
+          },
+          e(ItemInstance, {
+            name: it.name,
+            level: it.level,
+            q: it.q,
+            p: it.p != null ? String(it.p) : void 0,
+            size: 40
+          }),
+          e(
+            "div",
+            { className: "comm-mail__items-cell-meta" },
+            it.mailIds.length > 1 ? it.mailIds.length + " mails" : "1 mail"
+          )
+        );
+      })
+    );
+  }
+  function MailItemsPane(props) {
+    const React = getReact();
+    const {
+      snap,
+      filtered,
+      itemsGroup,
+      setItemsGroup,
+      selectedItemKey,
+      selectedItemMailIds,
+      onSelectItem,
+      focusRecipient,
+      focusToken
+    } = props;
+    const rootRef = React.useRef(null);
+    const owned = selfCharacterNames();
+    const fills = countAttachmentsByRecipient(
+      snap.mails,
+      owned.length ? owned : void 0
+    );
+    const allItems = aggregateMailItems(filtered);
+    const focusKey = focusRecipient ? focusRecipient.trim().toLowerCase() : "";
+    React.useEffect(() => {
+      if (!focusKey || !focusToken || itemsGroup !== "recipient") return;
+      const root = rootRef.current;
+      if (!root) return;
+      const el = root.querySelector(
+        '[data-mail-recipient="' + focusKey.replace(/"/g, "") + '"]'
+      );
+      if (!el) return;
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      el.classList.add("is-focus");
+      const t = window.setTimeout(() => el.classList.remove("is-focus"), 1600);
+      return () => window.clearTimeout(t);
+    }, [focusKey, focusToken, itemsGroup, filtered.length]);
+    const body = itemsGroup === "recipient" ? (() => {
+      const sections = groupMailItemsByRecipient(filtered, fills);
+      if (!sections.length) {
+        return e(
+          "div",
+          { className: "comm-mail__items-empty" },
+          "No untaken attachments in this filter."
+        );
+      }
+      return sections.map((sec) => {
+        const pressure = sec.fill ? sec.fill.pressure : "";
+        const frac = sec.fill ? formatCapFraction(sec.fill.count, MAIL_ATTACH_CAP, snap.hasMore) : "";
+        const label = sec.fill ? fillCapLabel(sec.fill) : "";
+        const secKey = sec.name.toLowerCase();
+        return e(
+          "div",
+          {
+            key: secKey,
+            className: "comm-mail__items-section" + (focusKey && secKey === focusKey ? " is-focus" : ""),
+            "data-mail-recipient": secKey
+          },
+          e(
+            "div",
+            {
+              className: "comm-mail__items-section-hd" + (pressure === "full" ? " is-cap-full" : pressure === "warn" ? " is-cap-warn" : "")
+            },
+            e(
+              "span",
+              { className: "comm-mail__items-section-name" },
+              sec.name
+            ),
+            frac ? e(
+              "span",
+              { className: "comm-mail__items-section-meta" },
+              frac + (label ? " \xB7 " + label : "")
+            ) : null
+          ),
+          renderGrid(
+            sec.items,
+            fills,
+            selectedItemKey,
+            selectedItemMailIds,
+            onSelectItem
+          )
+        );
+      });
+    })() : renderGrid(
+      allItems,
+      fills,
+      selectedItemKey,
+      selectedItemMailIds,
+      onSelectItem
+    );
+    return e(
+      "div",
+      { className: "comm-mail__items", ref: rootRef },
+      e(
+        "div",
+        { className: "comm-mail__items-bar" },
+        e(
+          "div",
+          { className: "comm-mail__items-seg", role: "group" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__items-seg-btn" + (itemsGroup === "all" ? " is-on" : ""),
+              onClick: () => setItemsGroup("all")
+            },
+            "All"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__items-seg-btn" + (itemsGroup === "recipient" ? " is-on" : ""),
+              title: "Group by destination character (attach-cap unit)",
+              onClick: () => setItemsGroup("recipient")
+            },
+            "By recipient"
+          )
+        ),
+        snap.hasMore ? e(
+          "div",
+          { className: "comm-mail__items-incomplete" },
+          "Inventory is cache-only \u2014 older pages may hold more (" + snap.mails.length + "+ loaded)."
+        ) : null
+      ),
+      body
     );
   }
 
@@ -76386,9 +77132,18 @@ ${ESTIMATE_HINT}`,
       canTake,
       doDelete,
       setSelectedIds,
+      selectedIds,
       collapseRepeats,
-      setCollapseRepeats
+      setCollapseRepeats,
+      browseMode,
+      setBrowseMode,
+      selectedItemMailIds
     } = props;
+    const itemsMode = browseMode === "items";
+    const itemsSelect = itemsMode ? mailIdsForItemsSelectAll(filtered, selectedItemMailIds) : null;
+    const selectTargetIds = itemsSelect ? itemsSelect.ids : filtered.map((m) => m.id);
+    const selectAllChecked = itemsMode ? mailIdsAllChecked(selectTargetIds, selectedIds) : checkedIds.length === filtered.length && filtered.length > 0;
+    const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
     return e(
       "div",
       { className: "comm-mail__toolbar" },
@@ -76402,6 +77157,32 @@ ${ESTIMATE_HINT}`,
         "div",
         { className: "comm-mail__toolbar-actions" },
         e(
+          "div",
+          {
+            className: "comm-mail__items-seg",
+            role: "group",
+            title: "Messages list or bank-style item inventory"
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__items-seg-btn" + (browseMode === "messages" ? " is-on" : ""),
+              onClick: () => setBrowseMode("messages")
+            },
+            "Messages"
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__items-seg-btn" + (browseMode === "items" ? " is-on" : ""),
+              onClick: () => setBrowseMode("items")
+            },
+            "Items"
+          )
+        ),
+        browseMode === "messages" ? e(
           "button",
           {
             type: "button",
@@ -76410,7 +77191,7 @@ ${ESTIMATE_HINT}`,
             onClick: () => setCollapseRepeats(!collapseRepeats)
           },
           "Stack"
-        ),
+        ) : null,
         pill === "unread" ? e(
           "button",
           {
@@ -76431,25 +77212,25 @@ ${ESTIMATE_HINT}`,
           },
           "Compose"
         ),
-        filtered.length ? e(
+        selectTargetIds.length ? e(
           "button",
           {
             type: "button",
             className: "comm-mail__btn",
-            title: checkedIds.length === filtered.length ? "Clear selection" : "Select all messages in the current search / filter",
+            title: selectAllChecked ? "Clear selection" : selectHasStack ? "Select mails for the highlighted item stack" : itemsMode ? "Select all untaken attachments in the current filter" : "Select all messages in the current search / filter",
             onClick: () => {
-              if (checkedIds.length === filtered.length) {
+              if (selectAllChecked) {
                 setSelectedIds({});
                 return;
               }
               const next = {};
-              for (let i = 0; i < filtered.length; i++) {
-                next[filtered[i].id] = true;
+              for (let i = 0; i < selectTargetIds.length; i++) {
+                next[selectTargetIds[i]] = true;
               }
               setSelectedIds(next);
             }
           },
-          checkedIds.length === filtered.length ? "Clear selection" : "Select all " + filtered.length
+          selectAllChecked ? "Clear selection" : selectHasStack ? "Select stack " + selectTargetIds.length : "Select all " + selectTargetIds.length
         ) : null,
         checkedIds.length ? e(
           "button",
@@ -76560,6 +77341,30 @@ ${ESTIMATE_HINT}`,
         return true;
       }
     });
+    const [browseMode, setBrowseMode] = React.useState(() => {
+      try {
+        return loadSettings().mailBrowseMode === "items" ? "items" : "messages";
+      } catch (e2) {
+        return "messages";
+      }
+    });
+    const [itemsGroup, setItemsGroup] = React.useState(() => {
+      try {
+        return loadSettings().mailItemsGroup === "recipient" ? "recipient" : "all";
+      } catch (e2) {
+        return "all";
+      }
+    });
+    const [selectedItemKey, setSelectedItemKey] = React.useState(
+      null
+    );
+    const [selectedItemMailIds, setSelectedItemMailIds] = React.useState(
+      null
+    );
+    const [focusRecipient, setFocusRecipient] = React.useState(
+      null
+    );
+    const [focusToken, setFocusToken] = React.useState(0);
     const [expandedKeys, setExpandedKeys] = React.useState(
       {}
     );
@@ -76589,6 +77394,24 @@ ${ESTIMATE_HINT}`,
       } catch (e2) {
       }
     };
+    const setBrowseModePersist = (mode) => {
+      setBrowseMode(mode);
+      if (mode === "messages") {
+        setSelectedItemKey(null);
+        setSelectedItemMailIds(null);
+      }
+      try {
+        saveSettings({ mailBrowseMode: mode });
+      } catch (e2) {
+      }
+    };
+    const setItemsGroupPersist = (g) => {
+      setItemsGroup(g);
+      try {
+        saveSettings({ mailItemsGroup: g });
+      } catch (e2) {
+      }
+    };
     const setGroupExpanded = (key, on) => {
       setExpandedKeys((prev) => {
         const next = { ...prev };
@@ -76598,6 +77421,28 @@ ${ESTIMATE_HINT}`,
       });
     };
     const filtered = filterMails(snap.mails, { pill, query, selfNames });
+    React.useEffect(() => {
+      return subscribeMailItemsCue((cue) => {
+        setBrowseMode("items");
+        setItemsGroup("recipient");
+        setSelectedItemKey(null);
+        setSelectedItemMailIds(null);
+        setSelectedIds({});
+        setFocusRecipient(cue.recipient);
+        setFocusToken((n) => n + 1);
+        try {
+          saveSettings({
+            mailBrowseMode: "items",
+            mailItemsGroup: "recipient"
+          });
+        } catch (e2) {
+        }
+        const view = getMailSnapshot().view;
+        if (view.kind === "read" || view.kind === "compose") {
+          setMailView({ kind: "list" });
+        }
+      });
+    }, []);
     React.useEffect(() => {
       const burst = mailSearchWantsBurst({
         query,
@@ -76642,7 +77487,27 @@ ${ESTIMATE_HINT}`,
         takeableCheckedIds.push(row3.id);
       }
     }
-    const className = "comm-mail" + (wide ? "" : " is-narrow") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "");
+    const itemsMode = browseMode === "items";
+    const selectedItemMails = (() => {
+      if (!itemsMode || !selectedItemMailIds || !selectedItemMailIds.length) {
+        return [];
+      }
+      const want = new Set(selectedItemMailIds);
+      const out = [];
+      for (let i = 0; i < filtered.length; i++) {
+        if (want.has(filtered[i].id)) out.push(filtered[i]);
+      }
+      return out;
+    })();
+    const selectedAggResolved = (() => {
+      if (!itemsMode || !selectedItemKey || !selectedItemMails.length) return null;
+      const rebuilt = aggregateMailItems(selectedItemMails);
+      for (let i = 0; i < rebuilt.length; i++) {
+        if (rebuilt[i].key === selectedItemKey) return rebuilt[i];
+      }
+      return rebuilt[0] || null;
+    })();
+    const className = "comm-mail" + (wide ? "" : " is-narrow") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "") + (itemsMode ? " is-items" : "");
     const toggleCheck = (id, on) => {
       setSelectedIds((prev) => {
         const next = { ...prev };
@@ -76650,6 +77515,18 @@ ${ESTIMATE_HINT}`,
         else delete next[id];
         return next;
       });
+    };
+    const onSelectItem = (agg) => {
+      setSelectedItemKey(agg.key);
+      setSelectedItemMailIds(agg.mailIds.slice());
+      const next = {};
+      for (let i = 0; i < agg.mailIds.length; i++) {
+        next[agg.mailIds[i]] = true;
+      }
+      setSelectedIds(next);
+      if (snap.view.kind === "read" || snap.view.kind === "compose") {
+        setMailView({ kind: "list" });
+      }
     };
     const doDelete = async (ids) => {
       const result = await deleteMailRows(ids);
@@ -76665,7 +77542,7 @@ ${ESTIMATE_HINT}`,
     let pane = e(
       "div",
       { className: "comm-mail__empty" },
-      "Select a message"
+      itemsMode ? "Select an item" : "Select a message"
     );
     if (isCompose) {
       pane = e(MailComposePane, {
@@ -76680,7 +77557,19 @@ ${ESTIMATE_HINT}`,
       });
     } else if (selected) {
       pane = e(MailReadPane, { snap, selected, wide, caps, doDelete });
+    } else if (itemsMode && selectedAggResolved) {
+      pane = e(MailItemMailsPane, {
+        snap,
+        agg: selectedAggResolved,
+        mails: selectedItemMails,
+        selected,
+        selectedIds,
+        toggleCheck,
+        canTake: caps.canTake,
+        setSelectedIds
+      });
     }
+    const navPool = itemsMode && selectedItemMails.length ? selectedItemMails : filtered;
     return e(
       "div",
       {
@@ -76699,18 +77588,23 @@ ${ESTIMATE_HINT}`,
           }
           if (ev.key === "Escape") {
             if (isCompose || isReading && !wide) setMailView({ kind: "list" });
+            else if (itemsMode && selectedItemKey) {
+              setSelectedItemKey(null);
+              setSelectedItemMailIds(null);
+              setSelectedIds({});
+            }
           }
           if (ev.key === "j" || ev.key === "k") {
             let idx = -1;
-            for (let i = 0; i < filtered.length; i++) {
-              if (selected && filtered[i].id === selected.id) {
+            for (let i = 0; i < navPool.length; i++) {
+              if (selected && navPool[i].id === selected.id) {
                 idx = i;
                 break;
               }
             }
             const next = ev.key === "j" ? idx + 1 : idx - 1;
-            if (next >= 0 && next < filtered.length) {
-              void openMailRow(filtered[next].id);
+            if (next >= 0 && next < navPool.length) {
+              void openMailRow(navPool[next].id);
             }
           }
           if ((ev.key === "Delete" || ev.key === "#") && selected) {
@@ -76739,14 +77633,28 @@ ${ESTIMATE_HINT}`,
         canTake: caps.canTake,
         doDelete,
         setSelectedIds,
+        selectedIds,
         collapseRepeats,
-        setCollapseRepeats: setCollapsePersist
+        setCollapseRepeats: setCollapsePersist,
+        browseMode,
+        setBrowseMode: setBrowseModePersist,
+        selectedItemMailIds
       }),
       e(MailBannerBar, { snap, caps }),
       e(
         "div",
         { className: "comm-mail__body" },
-        e(MailListPane, {
+        itemsMode ? e(MailItemsPane, {
+          snap,
+          filtered,
+          itemsGroup,
+          setItemsGroup: setItemsGroupPersist,
+          selectedItemKey,
+          selectedItemMailIds,
+          onSelectItem,
+          focusRecipient,
+          focusToken
+        }) : e(MailListPane, {
           snap,
           filtered,
           selected,
@@ -76757,7 +77665,13 @@ ${ESTIMATE_HINT}`,
           setGroupExpanded,
           searchEmptyHint
         }),
-        e("div", { className: "comm-mail__pane" }, pane)
+        e(
+          "div",
+          {
+            className: "comm-mail__pane" + (itemsMode && selectedAggResolved && !selected && !isCompose ? " is-item-mails" : "")
+          },
+          pane
+        )
       )
     );
   }

@@ -147,6 +147,10 @@ export type CommUiSettings = {
   mailPill?: string;
   /** Stack near-duplicate mails in the list (default on). */
   mailCollapseRepeats?: boolean;
+  /** Mail left pane: message list vs bank-style item inventory. */
+  mailBrowseMode?: "messages" | "items";
+  /** Items mode grouping: all stacks vs per-recipient (cap unit). */
+  mailItemsGroup?: "all" | "recipient";
   /**
    * Compact Combat: show DPS + HPS only (table/bars/graph channels clamped).
    * Persisted; toggled from the Combat panel header.
@@ -557,6 +561,10 @@ function migrate(parsed: any): CommUiSettings {
       typeof parsed.mailCollapseRepeats === "boolean"
         ? parsed.mailCollapseRepeats
         : true,
+    mailBrowseMode:
+      parsed.mailBrowseMode === "items" ? "items" : "messages",
+    mailItemsGroup:
+      parsed.mailItemsGroup === "recipient" ? "recipient" : "all",
     combatCompact: !!parsed.combatCompact,
     bagOpenPreferred: !!parsed.bagOpenPreferred,
     panelOpacity: mergePanelOpacity(parsed.panelOpacity),
@@ -846,6 +854,12 @@ export function patchSettings(
   }
   if (typeof partial.mailCollapseRepeats === "boolean") {
     next.mailCollapseRepeats = partial.mailCollapseRepeats;
+  }
+  if (partial.mailBrowseMode === "messages" || partial.mailBrowseMode === "items") {
+    next.mailBrowseMode = partial.mailBrowseMode;
+  }
+  if (partial.mailItemsGroup === "all" || partial.mailItemsGroup === "recipient") {
+    next.mailItemsGroup = partial.mailItemsGroup;
   }
   if (typeof partial.combatCompact === "boolean") {
     next.combatCompact = partial.combatCompact;

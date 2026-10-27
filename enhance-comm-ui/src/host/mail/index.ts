@@ -40,6 +40,21 @@ export {
   mailStackItemQuantity,
 } from "./collapse";
 export type { MailCollapseGroup } from "./collapse";
+export {
+  aggregateMailItems,
+  findMailAggByKey,
+  groupMailItemsByRecipient,
+  mailAggTouchesFullCap,
+  mailIdsAllChecked,
+  mailIdsForItemsSelectAll,
+  mailItemAggKey,
+  mailsForAgg,
+} from "./mailItemsOverview";
+export type {
+  MailAggItem,
+  MailItemsSelectTarget,
+  MailRecipientItemSection,
+} from "./mailItemsOverview";
 export { suggestMailTo } from "./toSuggest";
 export type { MailToSuggestion, SuggestMailToOpts } from "./toSuggest";
 export { buildSendScript, buildTakeScript } from "./commands";
@@ -168,11 +183,13 @@ export {
 } from "./mailDeleteEstimate";
 export {
   clearMailSession,
+  cueMailItemsRecipient,
   openMail,
   setMailPanelOpen,
+  subscribeMailItemsCue,
   subscribeMailOpen,
 } from "./mailSession";
-export type { MailOpenPayload } from "./mailSession";
+export type { MailItemsCue, MailOpenPayload } from "./mailSession";
 export {
   getMailSnapshot,
   setMailView,

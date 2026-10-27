@@ -18,6 +18,8 @@ import { CommModalPortal } from "../comm/commModalPortal";
 export type MailCapsModalProps = {
   view: MailboxCapsView;
   onClose: () => void;
+  /** Jump to Items · By recipient for this character. */
+  onViewItems?: (recipient: string) => void;
 };
 
 type CapFilter = "all" | "full" | "near" | "ok" | "clear";
@@ -38,7 +40,11 @@ function filterFills(
   return out;
 }
 
-function renderCapRow(fill: CharMailboxFill, incomplete: boolean): any {
+function renderCapRow(
+  fill: CharMailboxFill,
+  incomplete: boolean,
+  onViewItems?: (recipient: string) => void,
+): any {
   const pressure = fill.pressure;
   const label = fillCapLabel(fill);
   return e(
@@ -68,6 +74,18 @@ function renderCapRow(fill: CharMailboxFill, incomplete: boolean): any {
         },
         label,
       ),
+      onViewItems && fill.count > 0
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__caps-view-items",
+              title: "Open Items inventory for " + fill.name,
+              onClick: () => onViewItems(fill.name),
+            },
+            "View items",
+          )
+        : null,
     ),
     e(
       "div",
@@ -89,7 +107,7 @@ function renderCapRow(fill: CharMailboxFill, incomplete: boolean): any {
 
 export function MailCapsModal(props: MailCapsModalProps): any {
   const React = getReact();
-  const { view, onClose } = props;
+  const { view, onClose, onViewItems } = props;
   const [filter, setFilter] = React.useState("all" as CapFilter);
 
   React.useEffect(() => {
@@ -183,7 +201,9 @@ export function MailCapsModal(props: MailCapsModalProps): any {
           "div",
           { className: "comm-mail__caps-modal-list" },
           rows.length
-            ? rows.map((fill) => renderCapRow(fill, view.incomplete))
+            ? rows.map((fill) =>
+                renderCapRow(fill, view.incomplete, onViewItems),
+              )
             : e(
                 "div",
                 { className: "comm-mail__caps-modal-empty" },

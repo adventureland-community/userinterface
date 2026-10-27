@@ -94,3 +94,37 @@ export function openMail(payload: MailOpenPayload = {}): void {
     openListeners[i](payload);
   }
 }
+
+/** Caps chrome → Items mode, By recipient, focus this character. */
+export type MailItemsCue = {
+  recipient: string;
+};
+
+type ItemsCueListener = (cue: MailItemsCue) => void;
+const itemsCueListeners: ItemsCueListener[] = [];
+let pendingItemsCue: MailItemsCue | null = null;
+
+export function cueMailItemsRecipient(recipient: string): void {
+  const name = String(recipient || "").trim();
+  if (!name) return;
+  const cue: MailItemsCue = { recipient: name };
+  pendingItemsCue = cue;
+  if (itemsCueListeners.length === 0) return;
+  for (let i = 0; i < itemsCueListeners.length; i++) {
+    itemsCueListeners[i](cue);
+  }
+  pendingItemsCue = null;
+}
+
+export function subscribeMailItemsCue(fn: ItemsCueListener): () => void {
+  itemsCueListeners.push(fn);
+  if (pendingItemsCue) {
+    const cue = pendingItemsCue;
+    pendingItemsCue = null;
+    fn(cue);
+  }
+  return () => {
+    const idx = itemsCueListeners.indexOf(fn);
+    if (idx >= 0) itemsCueListeners.splice(idx, 1);
+  };
+}

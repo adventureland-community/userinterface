@@ -508,8 +508,27 @@ export const MAIL_CHROME_CSS = `
 .comm-mail__caps-row-top {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+}
+.comm-mail__caps-view-items {
+  appearance: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid #3a4a5c;
+  background: #1a2430;
+  color: #9cf;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.comm-mail__caps-view-items:hover {
+  border-color: #5a7a9c;
+  color: #cde;
 }
 .comm-mail__caps-row-name {
   flex: 1 1 auto;

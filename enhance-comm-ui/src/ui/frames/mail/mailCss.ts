@@ -3,12 +3,17 @@
 import { ITEM_INSTANCE_BADGE_CSS } from "../../chrome/ItemInstance";
 import { MAIL_CHROME_CSS } from "./mailChromeCss";
 import { MAIL_LIST_CSS } from "./mailListCss";
+import { MAIL_ITEMS_CSS } from "./mailItemsCss";
 import { MAIL_COMPOSE_CSS } from "./mailComposeCss";
 
 let injected = false;
 
 const CSS =
-  MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
+  MAIL_CHROME_CSS +
+  MAIL_LIST_CSS +
+  MAIL_ITEMS_CSS +
+  MAIL_COMPOSE_CSS +
+  ITEM_INSTANCE_BADGE_CSS;
 
 export function ensureMailCss(): void {
   if (injected) return;
