@@ -205,6 +205,27 @@ export type GLike = {
     { file: string; size: number; columns: number; rows: number }
   >;
   sets?: Record<string, Record<string | number, any>>;
+  /** Craft recipes — `G.craft[output] = { cost, items, quest? }`. */
+  craft?: Record<
+    string,
+    {
+      cost?: number;
+      items?: Array<[number, string, (number | string)?] | unknown>;
+      quest?: string;
+      [key: string]: any;
+    }
+  >;
+  /** Dismantle recipes — `G.dismantle[name] = { cost, items }`. */
+  dismantle?: Record<
+    string,
+    {
+      cost?: number;
+      items?: Array<[number, string] | unknown>;
+      [key: string]: any;
+    }
+  >;
+  /** Quest NPC coords filled by process_game_data (`G.quests[questId]`). */
+  quests?: Record<string, { map?: string; in?: string; x?: number; y?: number; id?: string; [key: string]: any }>;
 };
 
 export type ServerInfoLike = {

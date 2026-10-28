@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.14.1
+// @version      0.15.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2258,6 +2258,7 @@ var EnhanceCommUI = (() => {
   }
   function itemInstanceHtml(itemName, opts) {
     const size = opts && opts.size || 40;
+    const bare = !!(opts && opts.bare);
     const title = opts && opts.title || itemInstanceLabel(itemName, {
       p: opts && opts.p,
       level: opts && opts.level
@@ -2267,11 +2268,18 @@ var EnhanceCommUI = (() => {
     const actual = { name: itemName };
     if (opts && opts.level != null && opts.level > 0) actual.level = opts.level;
     if (skinKey) actual.skin = skinKey;
-    if (opts && opts.q != null && opts.q > 1) actual.q = opts.q;
+    if (!bare && opts && opts.q != null && opts.q > 1) actual.q = opts.q;
     if (opts && opts.p) actual.p = opts.p;
     try {
       const raw = itemContainer(
-        { skin: skinKey, size, draggable: false },
+        bare ? {
+          skin: skinKey,
+          size,
+          draggable: false,
+          margin: 0,
+          space: 0,
+          bcolor: "transparent"
+        } : { skin: skinKey, size, draggable: false },
         actual
       );
       if (raw) {
@@ -8877,6 +8885,61 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.15.0",
+      title: "0.15.0",
+      date: "2026-10-28",
+      summary: "Bag right-click Exchange, Dismantle, Craft, Upgrade, and Compound \u2014 bag stock only, with range/computer gating and scroll/offering pickers.",
+      highlights: [
+        {
+          label: "Craft \xB7 Exchange \xB7 Dismantle",
+          detail: "Right-click a bag item: Exchange (e), Dismantle (recipe or compound split), Craft recipes that use it. Runs on the watched character via auto_craft / exchange / dismantle. Computer skips range; otherwise smart_moves within 400px of craftsman / exchange / quest NPC.",
+          kind: "feature"
+        },
+        {
+          label: "Upgrade \xB7 Compound shrine",
+          detail: "Bag Upgrade\u2026 / Compound\u2026 opens a Discord-bot-style trial card (+N \u2192 +N+1, INPUT / USED, rough ~chance from your picks). Selected bag slots glow gold; empty INPUT/USED slots are clickable to pick from tiles or the bag. Roll/grace stay off. Confirm runs on the character; travels without a computer.",
+          kind: "feature"
+        },
+        {
+          label: "Bag-only \xB7 explicit withdraw",
+          detail: "Craft only when reagents are already in the bag (single-slot qty like auto_craft). If bank can cover the gap, Withdraw ingredients\u2026 pulls via bank_retrieve \u2014 it does not craft for you. Upgrade/Compound similarly need scroll (and partners) in bag first.",
+          kind: "feature"
+        }
+      ],
+      items: [
+        {
+          label: "Craft recipe chips \xB7 gold \xB7 shortfalls",
+          detail: "Craft rows show product + ingredient icons (have/need), recipe gold (\xB7 180k), and named gaps \u2014 (need Fire Essence), (Fire Essence in bank), or (need gold) \u2014 instead of a vague (missing).",
+          kind: "improve"
+        },
+        {
+          label: "Dismantle (n/a) explanation",
+          detail: "Upgrade gear without a recipe and +0 compound gear show a disabled Dismantle row with why, instead of a silent omission.",
+          kind: "improve"
+        },
+        {
+          label: "Shrine tile keys \xB7 BEST scroll",
+          detail: "USED and scroll/offering tiles show item keys; grade-matched scrolls get a stronger BEST badge.",
+          kind: "ui"
+        },
+        {
+          label: "Shrine ~chance honesty",
+          detail: "Chance shows scroll/offering keys under ~% and a local \xB7 not calculate note \u2014 observer never sees character game_log.",
+          kind: "ui"
+        },
+        {
+          label: "Shrine stay-open \xB7 Enter on low odds",
+          detail: "Confirm watches bag sync and rebinds to the next level on success (keeps scroll/offering when still in bag); timeout offers Refresh bag. Enter confirms only when ~chance is under 50% (Esc always cancels).",
+          kind: "improve"
+        },
+        {
+          label: "Send to\u2026 submenu",
+          detail: "Nearby trade-send targets live under one Send to\u2026 flyout (name \xB7 distance \xB7 bag space) instead of a long top-level list.",
+          kind: "ui"
+        }
+      ]
+    },
     {
       id: "0.14.1",
       title: "0.14.1",
@@ -16653,6 +16716,49 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
+  // src/ui/bag/shrineBagHighlight.ts
+  var HOST_ID2 = "bottomleftcorner";
+  var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
+  var activeSlots = [];
+  function uniqueSlots(slots) {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const n = Number(slots[i]);
+      if (!Number.isFinite(n) || n < 0) continue;
+      const slot = n | 0;
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      out.push(slot);
+    }
+    return out;
+  }
+  function applyShrineBagHighlights() {
+    const host2 = document.getElementById(HOST_ID2);
+    if (!host2) return;
+    const want = new Set(activeSlots);
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") {
+        node.classList.remove(SHRINE_BAG_PICK_CLASS);
+        continue;
+      }
+      const num = parseInt(raw, 10);
+      if (want.has(num)) node.classList.add(SHRINE_BAG_PICK_CLASS);
+      else node.classList.remove(SHRINE_BAG_PICK_CLASS);
+    }
+  }
+  function setShrineBagHighlights(slots) {
+    activeSlots = uniqueSlots(slots);
+    applyShrineBagHighlights();
+  }
+  function clearShrineBagHighlights() {
+    activeSlots = [];
+    applyShrineBagHighlights();
+  }
+
   // src/host/infoDialog/bindings.ts
   var openItemFn = null;
   var openConditionFn = null;
@@ -17235,7 +17341,7 @@ ${CHROME_ARRANGE_CSS}
   };
 
   // src/host/inventory.ts
-  var HOST_ID2 = "bottomleftcorner";
+  var HOST_ID3 = "bottomleftcorner";
   var STYLE_ID3 = "comm-ui-inventory-host-css";
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
@@ -17257,7 +17363,7 @@ ${CHROME_ARRANGE_CSS}
     const style = document.createElement("style");
     style.id = STYLE_ID3;
     style.textContent = `
-#${HOST_ID2} {
+#${HOST_ID3} {
   position: relative;
   left: auto;
   bottom: auto;
@@ -17267,7 +17373,7 @@ ${CHROME_ARRANGE_CSS}
   max-height: min(70vh, calc(100vh - 72px));
   overflow: auto;
 }
-#${HOST_ID2} .theinventory {
+#${HOST_ID3} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
@@ -17275,13 +17381,18 @@ ${CHROME_ARRANGE_CSS}
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
-#${HOST_ID2}.is-trade-delist-target {
+#${HOST_ID3}.is-trade-delist-target {
   outline: 2px solid #6ab04c;
   outline-offset: 2px;
 }
-#${HOST_ID2} [data-cnum].is-bag-swap-target {
+#${HOST_ID3} [data-cnum].is-bag-swap-target {
   outline: 2px solid #6ab04c;
   outline-offset: 1px;
+}
+#${HOST_ID3} [data-cnum].is-ecu-shrine-pick {
+  outline: 2px solid #e8c96a;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
 }
 #${MOUNT_ID} {
   pointer-events: auto;
@@ -17434,7 +17545,7 @@ ${CHROME_ARRANGE_CSS}
     closeInventoryHost();
   }
   function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID2);
+    const host2 = document.getElementById(HOST_ID3);
     if (host2) host2.innerHTML = "";
     window.inventory = false;
     bagRenderedForName = null;
@@ -17507,7 +17618,7 @@ ${CHROME_ARRANGE_CSS}
     }, 250);
   }
   function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID2);
+    const host2 = document.getElementById(HOST_ID3);
     if (!host2) return;
     if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
       host2.style.position = "relative";
@@ -17532,10 +17643,10 @@ ${CHROME_ARRANGE_CSS}
   }
   function ensureInventoryHost() {
     injectHostCss();
-    let el = document.getElementById(HOST_ID2);
+    let el = document.getElementById(HOST_ID3);
     if (!el) {
       el = document.createElement("div");
-      el.id = HOST_ID2;
+      el.id = HOST_ID3;
       el.className = "bpclicks enableclicks";
       document.body.append(el);
     }
@@ -17566,7 +17677,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function stripObservedBagNativeDropHandlers() {
     if (!window.is_comm || !window.observing) return;
-    const host2 = document.getElementById(HOST_ID2);
+    const host2 = document.getElementById(HOST_ID3);
     if (!host2) return;
     const nodes = host2.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
@@ -17577,7 +17688,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function refreshInventoryItemTitles() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID2);
+    const host2 = document.getElementById(HOST_ID3);
     if (!host2) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
@@ -17603,6 +17714,7 @@ ${CHROME_ARRANGE_CSS}
     }
     stripObservedBagNativeDropHandlers();
     refreshBagBuyOrderIndicators();
+    applyShrineBagHighlights();
   }
   function prepareObservingCharacter() {
     const obs = window.observing;
@@ -17678,7 +17790,7 @@ ${CHROME_ARRANGE_CSS}
       window.render_inventory = function patchedRenderInventory(reset) {
         ensureInventoryHost();
         if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID2);
+          const host2 = document.getElementById(HOST_ID3);
           if (host2) host2.innerHTML = "";
           window.inventory = false;
           bagRenderedForName = null;
@@ -27483,8 +27595,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.14.1" : "unknown";
-    const builtAt = true ? "2026-10-27T20:08:06.761Z" : "unknown";
+    const version = true ? "0.15.0" : "unknown";
+    const builtAt = true ? "2026-10-28T16:51:01.984Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -57335,6 +57447,68 @@ ${parts.map(cssSlice).join("\n")}
 }
 .comm-bag-ctx__item.is-disabled:hover,
 .comm-bag-ctx__item:disabled:hover { background: transparent; }
+.comm-bag-ctx__craft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.comm-bag-ctx__craft-out {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  overflow: hidden;
+}
+.comm-bag-ctx__craft-out .item,
+.comm-bag-ctx__craft-out .item-container,
+.comm-bag-ctx__craft-ing .item,
+.comm-bag-ctx__craft-ing .item-container {
+  transform-origin: center center;
+}
+.comm-bag-ctx__craft-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.comm-bag-ctx__craft-name {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-bag-ctx__craft-ings {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.comm-bag-ctx__craft-ing {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  overflow: hidden;
+  opacity: 0.92;
+  border-radius: 2px;
+  outline: 1px solid rgba(90, 90, 90, 0.7);
+}
+.comm-bag-ctx__craft-ing.is-need {
+  opacity: 0.38;
+  outline-color: rgba(180, 80, 80, 0.55);
+}
+.comm-bag-ctx__craft-ing.is-have {
+  outline-color: rgba(90, 150, 100, 0.7);
+}
 `;
   var injected8 = false;
   function ensureBagItemContextMenuCss() {
@@ -58291,7 +58465,12 @@ ${parts.map(cssSlice).join("\n")}
       btn2.className = "comm-bag-ctx__item has-submenu";
       btn2.setAttribute("role", "menuitem");
       btn2.setAttribute("aria-haspopup", "true");
-      btn2.textContent = action.label;
+      btn2.setAttribute("aria-label", action.label);
+      if (action.mountLabel) {
+        action.mountLabel(btn2);
+      } else {
+        btn2.textContent = action.label;
+      }
       const arrow = document.createElement("span");
       arrow.className = "comm-bag-ctx__arrow";
       arrow.setAttribute("aria-hidden", "true");
@@ -58347,7 +58526,12 @@ ${parts.map(cssSlice).join("\n")}
     btn.type = "button";
     btn.className = "comm-bag-ctx__item";
     btn.setAttribute("role", "menuitem");
-    btn.textContent = action.label;
+    btn.setAttribute("aria-label", action.label);
+    if (action.mountLabel) {
+      action.mountLabel(btn);
+    } else {
+      btn.textContent = action.label;
+    }
     if (action.title) btn.title = action.title;
     if (action.disabled) {
       btn.disabled = true;
@@ -66607,37 +66791,45 @@ ${ESTIMATE_HINT}`,
     return label ? ` \xB7 bag ${label}` : "";
   }
   function buildSendItemBagMenuActions(ctx) {
-    const actions = [];
     const nearby = listNearbySendTargets();
     if (nearby.length === 0) {
-      actions.push({
-        id: "send-nearby-none",
-        label: "Send item to nearby (none in range)",
-        title: "Trade send via send_item \u2014 requires a player within range",
-        separatorBefore: true,
-        disabled: true,
-        run: () => {
+      return [
+        {
+          id: "send-nearby-none",
+          label: "Send to\u2026 (none in range)",
+          title: "Trade send via send_item \u2014 requires a player within range",
+          separatorBefore: true,
+          disabled: true,
+          run: () => {
+          }
         }
-      });
-      return actions;
+      ];
     }
+    const children = [];
     for (let i = 0; i < nearby.length; i++) {
       const t = nearby[i];
       const distLabel = t.dist != null ? ` (${Math.round(t.dist)}px)` : "";
       const spaceLabel = receiverSpaceLabel(t);
       const noSpace = t.freeInv != null && t.freeInv <= 0;
-      actions.push({
+      children.push({
         id: `send-nearby-${t.id}`,
-        label: `Send to ${t.name}${distLabel}${spaceLabel}`,
+        label: `${t.name}${distLabel}${spaceLabel}`,
         title: noSpace ? "Receiver inventory appears full \u2014 send may fail" : "Trade send via send_item on the observed character (not mail)",
-        separatorBefore: i === 0,
         disabled: noSpace,
         run: () => {
           sendItemCommand(ctx.fp, t.name);
         }
       });
     }
-    return actions;
+    return [
+      {
+        id: "send-nearby-menu",
+        label: "Send to\u2026",
+        title: "Trade send via send_item to a player in range",
+        separatorBefore: true,
+        children
+      }
+    ];
   }
   registerBagMenuProvider(buildSendItemBagMenuActions);
 
@@ -67013,6 +67205,3330 @@ ${ESTIMATE_HINT}`,
     ];
   }
   registerBagMenuProvider(buildBankBagMenuActions);
+
+  // src/lib/stationAccess.ts
+  var STATION_SELL_DIST = 400;
+  var COMPUTER_NAMES = {
+    computer: true,
+    supercomputer: true
+  };
+  function liveObservingItems() {
+    if (typeof window === "undefined") return null;
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return null;
+    return obs.items;
+  }
+  function observingHasComputer(items) {
+    const bag = items || liveObservingItems();
+    if (!bag) return false;
+    for (let i = 0; i < bag.length; i++) {
+      const it = bag[i];
+      if (it && it.name && COMPUTER_NAMES[String(it.name)]) return true;
+    }
+    return false;
+  }
+  function findNpcCoords(npcId, G) {
+    const g = G || getG();
+    const id = String(npcId || "").trim();
+    if (!g || !g.maps || !id) return null;
+    const mapNames = Object.keys(g.maps);
+    for (let i = 0; i < mapNames.length; i++) {
+      const mapName = mapNames[i];
+      const map = g.maps[mapName];
+      const ref = map && map.ref;
+      if (!ref || !ref[id]) continue;
+      const c = ref[id];
+      const x = Number(c.x);
+      const y = Number(c.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      return {
+        map: String(c.map || mapName),
+        x,
+        y,
+        id: String(c.id || id)
+      };
+    }
+    return null;
+  }
+  function exchangeStationForItem(itemName, G) {
+    const g = G || getG();
+    if (!g) return null;
+    const def = g.items && g.items[itemName];
+    const quest = def && def.quest != null ? String(def.quest) : "";
+    if (quest) {
+      const quests = g.quests;
+      const q = quests && quests[quest];
+      if (q && Number.isFinite(Number(q.x)) && Number.isFinite(Number(q.y))) {
+        return {
+          map: String(q.map || q.in || "main"),
+          x: Number(q.x),
+          y: Number(q.y),
+          id: String(q.id || quest)
+        };
+      }
+      const byNpc = findNpcCoords(quest, g);
+      if (byNpc) return byNpc;
+    }
+    const main = g.maps && g.maps.main;
+    const exch = main && main.exchange;
+    if (exch && Number.isFinite(Number(exch.x)) && Number.isFinite(Number(exch.y))) {
+      return {
+        map: String(exch.map || "main"),
+        x: Number(exch.x),
+        y: Number(exch.y),
+        id: String(exch.id || "exchange")
+      };
+    }
+    return findNpcCoords("exchange", g);
+  }
+  function craftStationForRecipe(outputName, G) {
+    const g = G || getG();
+    if (!g) return null;
+    const craftMap = g.craft;
+    const recipe = craftMap && craftMap[outputName];
+    const quest = recipe && recipe.quest != null ? String(recipe.quest) : "";
+    if (quest) {
+      const byNpc = findNpcCoords(quest, g);
+      if (byNpc) return byNpc;
+    }
+    return findNpcCoords("craftsman", g);
+  }
+  function dismantleStation(G) {
+    return findNpcCoords("craftsman", G || getG());
+  }
+  function mainShrineCoords(kind, G) {
+    const g = G || getG();
+    const main = g && g.maps && g.maps.main;
+    const shrine = main && main[kind];
+    if (shrine && Number.isFinite(Number(shrine.x)) && Number.isFinite(Number(shrine.y))) {
+      return {
+        map: String(shrine.map || "main"),
+        x: Number(shrine.x),
+        y: Number(shrine.y),
+        id: String(shrine.id || kind)
+      };
+    }
+    return findNpcCoords(kind, g);
+  }
+  function upgradeStation(G) {
+    return mainShrineCoords("upgrade", G);
+  }
+  function compoundStation(G) {
+    return mainShrineCoords("compound", G);
+  }
+  function distToStation(ent, station) {
+    var _a, _b, _c, _d;
+    if (typeof window !== "undefined" && typeof window.simple_distance === "function") {
+      return simpleDistance(ent, station);
+    }
+    const ax = (_b = (_a = ent.real_x) != null ? _a : ent.x) != null ? _b : 0;
+    const ay = (_d = (_c = ent.real_y) != null ? _c : ent.y) != null ? _d : 0;
+    const dx = Number(ax) - station.x;
+    const dy = Number(ay) - station.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function entityAtStation(ent, station) {
+    if (!ent || !station) return { inRange: false };
+    const entMap = ent.map != null ? String(ent.map) : "";
+    if (entMap && entMap !== station.map) return { inRange: false };
+    const dist = distToStation(ent, station);
+    if (!Number.isFinite(dist)) return { inRange: false };
+    return { inRange: dist <= STATION_SELL_DIST, dist };
+  }
+  function resolveObservedEntity(explicit) {
+    if (explicit !== void 0) return explicit;
+    if (typeof window === "undefined") return null;
+    try {
+      return getObserving() || window.observing || null;
+    } catch (e2) {
+      return window.observing || null;
+    }
+  }
+  function evaluateStationAccess(station, options) {
+    const hasComputer = observingHasComputer(options && options.items);
+    if (hasComputer) {
+      return {
+        ok: true,
+        hasComputer: true,
+        inRange: true,
+        station
+      };
+    }
+    const ent = resolveObservedEntity(options && options.entity);
+    const { inRange, dist } = entityAtStation(ent, station);
+    if (inRange) {
+      return {
+        ok: true,
+        hasComputer: false,
+        inRange: true,
+        station
+      };
+    }
+    const where = station ? station.id || station.map : "station";
+    const distLabel = dist != null && Number.isFinite(dist) ? ` \xB7 ${Math.round(dist)}px` : "";
+    return {
+      ok: false,
+      hasComputer: false,
+      inRange: false,
+      station,
+      reason: station ? `Need computer or within ${STATION_SELL_DIST}px of ${where}${distLabel}` : "Need computer or a nearby station"
+    };
+  }
+
+  // src/lib/bagStationActions.ts
+  function parseCraftRow(row3) {
+    if (!Array.isArray(row3) || row3.length < 2) return null;
+    const need = Number(row3[0]);
+    const name = String(row3[1] || "");
+    if (!(need > 0) || !name) return null;
+    const third = row3[2];
+    if (typeof third === "number") return { need, name, level: third };
+    return { need, name };
+  }
+  function bestBagSlotQty(items, name, level) {
+    if (!items) return 0;
+    let best = 0;
+    const wantLevel = level != null ? level : 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name === "placeholder") continue;
+      if (String(it.name) !== name) continue;
+      const lv = it.level != null ? Number(it.level) : 0;
+      if (lv !== wantLevel) continue;
+      const q = it.q != null && Number.isFinite(Number(it.q)) ? Number(it.q) : 1;
+      if (q > best) best = q;
+    }
+    return best;
+  }
+  function totalBagQty(items, name, level) {
+    if (!items) return 0;
+    let total = 0;
+    const wantLevel = level != null ? level : 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name === "placeholder") continue;
+      if (String(it.name) !== name) continue;
+      const lv = it.level != null ? Number(it.level) : 0;
+      if (lv !== wantLevel) continue;
+      const q = it.q != null && Number.isFinite(Number(it.q)) ? Number(it.q) : 1;
+      total += q;
+    }
+    return total;
+  }
+  function bankQty(bankAgg, name, level) {
+    if (!bankAgg) return 0;
+    const wantLevel = level != null ? level : void 0;
+    let q = 0;
+    for (let i = 0; i < bankAgg.length; i++) {
+      const it = bankAgg[i];
+      if (it.name !== name) continue;
+      if (wantLevel != null) {
+        const lv = it.level != null ? it.level : 0;
+        if (lv !== wantLevel) continue;
+      } else if (it.level != null && it.level !== 0) {
+        continue;
+      }
+      q += it.q;
+    }
+    return q;
+  }
+  function recipeUsesItem(recipeItems, itemName) {
+    for (let i = 0; i < recipeItems.length; i++) {
+      const parsed = parseCraftRow(recipeItems[i]);
+      if (parsed && parsed.name === itemName) return true;
+    }
+    return false;
+  }
+  function buildCraftOffer(output, recipe, bagItems, bankAgg, gold, G) {
+    const rows = Array.isArray(recipe.items) ? recipe.items : [];
+    const ingredients = [];
+    let bagReady = true;
+    let withdrawCanReady = true;
+    for (let i = 0; i < rows.length; i++) {
+      const parsed = parseCraftRow(rows[i]);
+      if (!parsed) continue;
+      const bagSlotHave = bestBagSlotQty(bagItems, parsed.name, parsed.level);
+      const bagTotal = totalBagQty(bagItems, parsed.name, parsed.level);
+      const bankHave = bankQty(bankAgg, parsed.name, parsed.level);
+      const missingFromBag = Math.max(0, parsed.need - bagSlotHave);
+      if (bagSlotHave < parsed.need) bagReady = false;
+      if (bagTotal + bankHave < parsed.need) withdrawCanReady = false;
+      ingredients.push({
+        name: parsed.name,
+        need: parsed.need,
+        level: parsed.level,
+        bagSlotHave,
+        bagTotal,
+        bankHave,
+        missingFromBag
+      });
+    }
+    const cost = Number(recipe.cost) || 0;
+    if (cost > gold) {
+      bagReady = false;
+    }
+    const station = craftStationForRecipe(output, G);
+    const access = evaluateStationAccess(station, { items: bagItems });
+    return {
+      output,
+      outputName: itemDisplayName(output),
+      cost,
+      bagReady: bagReady && ingredients.length > 0,
+      withdrawCanReady: withdrawCanReady && ingredients.length > 0 && cost <= gold && !bagReady,
+      ingredients,
+      station,
+      access
+    };
+  }
+  function ingredientShortLabel(ing) {
+    let label = itemDisplayName(ing.name);
+    if (ing.level != null && ing.level > 0) label += `+${ing.level}`;
+    return label;
+  }
+  function craftOfferNotReadySuffix(offer) {
+    if (offer.bagReady) return "";
+    const miss = [];
+    for (let i = 0; i < offer.ingredients.length; i++) {
+      const ing = offer.ingredients[i];
+      if (ing.bagSlotHave >= ing.need) continue;
+      miss.push(ing);
+    }
+    if (miss.length) {
+      if (offer.withdrawCanReady) {
+        const inBank = [];
+        for (let i = 0; i < miss.length; i++) {
+          if (miss[i].bankHave > 0) inBank.push(ingredientShortLabel(miss[i]));
+        }
+        if (inBank.length) {
+          const shown2 = inBank.slice(0, 2).join(", ");
+          const more2 = inBank.length > 2 ? ` +${inBank.length - 2}` : "";
+          return ` (${shown2}${more2} in bank)`;
+        }
+        return " (need bag)";
+      }
+      const names = miss.map(ingredientShortLabel);
+      const shown = names.slice(0, 2).join(", ");
+      const more = names.length > 2 ? ` +${names.length - 2}` : "";
+      return ` (need ${shown}${more})`;
+    }
+    if (offer.cost > 0) return " (need gold)";
+    return " (need bag)";
+  }
+  function dismantleUnavailableHint(item, G) {
+    if (!item || !item.name || !G || !G.items) return null;
+    if (dismantleOfferForBagItem(item, null, G)) return null;
+    const name = String(item.name);
+    const def = G.items[name];
+    if (!def) return null;
+    const level = item.level != null && Number.isFinite(Number(item.level)) ? Number(item.level) : 0;
+    if (def.compound && def.type !== "booster") {
+      if (level < 1) {
+        return {
+          label: "Dismantle (need +1)",
+          title: "Compound gear only splits back into three copies at level 1+"
+        };
+      }
+      return null;
+    }
+    if (def.upgrade) {
+      return {
+        label: "Dismantle (n/a)",
+        title: "No dismantle recipe \u2014 upgrade gear cannot be split at the craftsman"
+      };
+    }
+    return null;
+  }
+  function listCraftOffersForBagItem(itemName, bagItems, options) {
+    const G = options && options.G || null;
+    if (!G) return [];
+    const craftMap = G.craft;
+    if (!craftMap || typeof craftMap !== "object") return [];
+    const gold = options && options.gold != null && Number.isFinite(options.gold) ? Number(options.gold) : 0;
+    const bankAgg = options && options.bankAgg ? options.bankAgg : null;
+    const out = [];
+    const outputs = Object.keys(craftMap);
+    for (let i = 0; i < outputs.length; i++) {
+      const output = outputs[i];
+      const recipe = craftMap[output];
+      if (!recipe || !Array.isArray(recipe.items)) continue;
+      const asIngredient = recipeUsesItem(recipe.items, itemName);
+      const asOutput = output === itemName;
+      if (!asIngredient && !asOutput) continue;
+      out.push(
+        buildCraftOffer(output, recipe, bagItems, bankAgg, gold, G)
+      );
+    }
+    out.sort((a, b) => {
+      const readyA = a.bagReady && a.access.ok ? 1 : 0;
+      const readyB = b.bagReady && b.access.ok ? 1 : 0;
+      if (readyB !== readyA) return readyB - readyA;
+      return a.outputName.localeCompare(b.outputName);
+    });
+    return out;
+  }
+  function exchangeOfferForBagItem(item, bagItems, G) {
+    if (!item || !item.name || !G || !G.items) return null;
+    const def = G.items[item.name];
+    const e2 = def && def.e != null ? Number(def.e) : 0;
+    if (!(e2 > 0)) return null;
+    const q = item.q != null && Number.isFinite(Number(item.q)) ? Number(item.q) : 1;
+    const station = exchangeStationForItem(String(item.name), G);
+    const access = evaluateStationAccess(station, { items: bagItems });
+    return {
+      name: String(item.name),
+      displayName: itemDisplayName(String(item.name)),
+      e: e2,
+      q,
+      enoughQty: q >= e2,
+      locked: !!(item.l != null && item.l !== false && item.l !== 0),
+      station,
+      access
+    };
+  }
+  function dismantleOfferForBagItem(item, bagItems, G) {
+    if (!item || !item.name || !G || !G.items) return null;
+    const name = String(item.name);
+    const def = G.items[name];
+    const level = item.level != null && Number.isFinite(Number(item.level)) ? Number(item.level) : 0;
+    const dismantleMap = G.dismantle;
+    const recipe = dismantleMap && dismantleMap[name];
+    const compoundSplit = !!def && !!def.compound && level >= 1 && def.type !== "booster";
+    let kind = null;
+    let cost = 0;
+    if (recipe) {
+      kind = "recipe";
+      cost = Number(recipe.cost) || 0;
+    } else if (compoundSplit) {
+      kind = "compound";
+      cost = 0;
+    }
+    if (!kind) return null;
+    const station = dismantleStation(G);
+    const access = evaluateStationAccess(station, { items: bagItems });
+    return {
+      name,
+      displayName: itemDisplayName(name),
+      level: level > 0 ? level : void 0,
+      kind,
+      cost,
+      locked: !!(item.l != null && item.l !== false && item.l !== 0),
+      blocked: !!(item.b != null && item.b),
+      station,
+      access
+    };
+  }
+  function pickBankSlotsForNeed(slots, name, need, level) {
+    if (!(need > 0)) return [];
+    const wantLevel = level != null ? level : 0;
+    const matches = [];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (String(s.item.name) !== name) continue;
+      const lv = s.item.level != null ? Number(s.item.level) : 0;
+      if (lv !== wantLevel) continue;
+      matches.push(s);
+    }
+    matches.sort((a, b) => {
+      const qa = a.item.q != null && Number.isFinite(Number(a.item.q)) ? Number(a.item.q) : 1;
+      const qb = b.item.q != null && Number.isFinite(Number(b.item.q)) ? Number(b.item.q) : 1;
+      return qb - qa;
+    });
+    const out = [];
+    let remaining = need;
+    for (let i = 0; i < matches.length && remaining > 0; i++) {
+      const s = matches[i];
+      const q = s.item.q != null && Number.isFinite(Number(s.item.q)) ? Number(s.item.q) : 1;
+      out.push({ pack: s.pack, index: s.index, q });
+      remaining -= q;
+    }
+    return out;
+  }
+
+  // src/lib/bank/bankBrowse.ts
+  var SLOTS_PER_BANK_PACK = 42;
+  var OFFICIAL_PACK = /^items(\d+)$/;
+  function isOfficialBankPack(key) {
+    return OFFICIAL_PACK.test(key);
+  }
+  function compareBankPackKeys(a, b) {
+    const ma = OFFICIAL_PACK.exec(a);
+    const mb = OFFICIAL_PACK.exec(b);
+    if (ma && mb) return Number(ma[1]) - Number(mb[1]);
+    if (ma && !mb) return -1;
+    if (!ma && mb) return 1;
+    return a.localeCompare(b);
+  }
+  function listBankPackKeys(packs) {
+    return Object.keys(packs || {}).sort(compareBankPackKeys);
+  }
+  function packDisplayLabel(packKey) {
+    const m = OFFICIAL_PACK.exec(packKey);
+    if (m) return "Pack " + (Number(m[1]) + 1);
+    return packKey;
+  }
+  function flattenBankSlots(packs) {
+    const keys = listBankPackKeys(packs);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) {
+      const pack = keys[i];
+      const slots = packs[pack];
+      if (!Array.isArray(slots)) continue;
+      for (let j = 0; j < slots.length; j++) {
+        const item = slots[j];
+        if (!item || !item.name || item.name === "placeholder") continue;
+        out.push({ pack, index: j, item });
+      }
+    }
+    return out;
+  }
+  function aggKey(item) {
+    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+  }
+  function aggregateBankItems(slots) {
+    const byKey = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < slots.length; i++) {
+      const { pack, index, item } = slots[i];
+      const key = aggKey(item);
+      const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+      let row3 = byKey[key];
+      if (!row3) {
+        row3 = {
+          key,
+          name: String(item.name),
+          level: item.level,
+          p: item.p != null ? String(item.p) : null,
+          q: 0,
+          locs: []
+        };
+        byKey[key] = row3;
+      }
+      row3.q += q;
+      row3.locs.push({ pack, index, q });
+    }
+    const keys = Object.keys(byKey);
+    const out = [];
+    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
+    out.sort((a, b) => {
+      const n = a.name.localeCompare(b.name);
+      if (n !== 0) return n;
+      const la = a.level != null ? a.level : -1;
+      const lb = b.level != null ? b.level : -1;
+      if (la !== lb) return la - lb;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return out;
+  }
+  var BANK_TYPE_CATEGORIES = [
+    { id: "helmet", label: "Helmets", types: ["helmet"] },
+    { id: "chest", label: "Armors", types: ["chest"] },
+    { id: "pants", label: "Underarmors", types: ["pants"] },
+    { id: "gloves", label: "Gloves", types: ["gloves"] },
+    { id: "shoes", label: "Shoes", types: ["shoes"] },
+    { id: "cape", label: "Capes", types: ["cape"] },
+    { id: "ring", label: "Rings", types: ["ring"] },
+    { id: "earring", label: "Earrings", types: ["earring"] },
+    { id: "amulet", label: "Amulets", types: ["amulet"] },
+    { id: "belt", label: "Belts", types: ["belt"] },
+    { id: "orb", label: "Orbs", types: ["orb"] },
+    { id: "weapon", label: "Weapons", types: ["weapon"] },
+    { id: "shield", label: "Shields", types: ["shield"] },
+    {
+      id: "offhand",
+      label: "Offhands",
+      types: ["source", "quiver", "misc_offhand"]
+    },
+    { id: "elixir", label: "Elixirs", types: ["elixir"] },
+    { id: "pot", label: "Potions", types: ["pot"] },
+    {
+      id: "scroll",
+      label: "Scrolls",
+      types: ["cscroll", "uscroll", "pscroll", "offering"]
+    },
+    { id: "material", label: "Crafting", types: ["material"] },
+    { id: "exchange", label: "Exchangeables", types: ["exchange"] },
+    { id: "other", label: "Others", types: [] }
+  ];
+  function itemType(name, G) {
+    const def = G && G.items && G.items[name];
+    return def && def.type != null ? String(def.type) : "";
+  }
+  function isExchangeable(name, G) {
+    const def = G && G.items && G.items[name];
+    return !!(def && def.e);
+  }
+  function categoryForItem(name, G) {
+    const t = itemType(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      if (cat.id === "other") continue;
+      if (cat.id === "exchange" && isExchangeable(name, G)) return cat;
+      if (cat.types.indexOf(t) >= 0) return cat;
+    }
+    return BANK_TYPE_CATEGORIES[BANK_TYPE_CATEGORIES.length - 1];
+  }
+  function groupBankByCategory(items, G) {
+    const buckets = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      buckets[BANK_TYPE_CATEGORIES[i].id] = [];
+    }
+    for (let i = 0; i < items.length; i++) {
+      const cat = categoryForItem(items[i].name, G);
+      buckets[cat.id].push(items[i]);
+    }
+    const out = [];
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      const cat = BANK_TYPE_CATEGORIES[i];
+      const list = buckets[cat.id];
+      if (list && list.length) out.push({ id: cat.id, label: cat.label, items: list });
+    }
+    return out;
+  }
+  function categoryOrderIndex(name, G) {
+    const cat = categoryForItem(name, G);
+    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
+      if (BANK_TYPE_CATEGORIES[i].id === cat.id) return i;
+    }
+    return BANK_TYPE_CATEGORIES.length;
+  }
+  function sortBankItems(items, mode, G) {
+    const copy = items.slice();
+    copy.sort((a, b) => {
+      if (mode === "stack" && a.locs.length !== b.locs.length) {
+        return b.locs.length - a.locs.length;
+      }
+      if (mode === "quantity" && a.q !== b.q) {
+        return b.q - a.q;
+      }
+      const ca = categoryOrderIndex(a.name, G);
+      const cb = categoryOrderIndex(b.name, G);
+      if (ca !== cb) return ca - cb;
+      const ta = itemType(a.name, G);
+      const tb = itemType(b.name, G);
+      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
+      if (a.name !== b.name) return a.name.localeCompare(b.name);
+      const la = a.level != null ? Number(a.level) : 0;
+      const lb = b.level != null ? Number(b.level) : 0;
+      if (la !== lb) return lb - la;
+      return String(a.p || "").localeCompare(String(b.p || ""));
+    });
+    return copy;
+  }
+
+  // src/host/stationCommands.ts
+  function lit7(value) {
+    return JSON.stringify(String(value));
+  }
+  function scheduleBagRefresh4() {
+    const delays = [1200, 4e3, 1e4];
+    for (let i = 0; i < delays.length; i++) {
+      window.setTimeout(() => {
+        try {
+          refreshObservedInventory();
+        } catch (e2) {
+        }
+      }, delays[i]);
+    }
+  }
+  function scheduleBankAndBagRefresh2() {
+    const delays = [1500, 8e3, 2e4];
+    for (let i = 0; i < delays.length; i++) {
+      window.setTimeout(() => {
+        try {
+          refreshObservedInventory();
+        } catch (e2) {
+        }
+        void ensureBankSnapshot({ force: true });
+      }, delays[i]);
+    }
+  }
+  function buildEnsureStationJs(station, options) {
+    if (!station) return "";
+    const skipComputer = options == null || options.skipIfComputer !== false;
+    const parts = [];
+    if (skipComputer) {
+      parts.push(
+        `var __hasComp=false;`,
+        `for(var __ci=0;__ci<character.items.length;__ci++){`,
+        `var __cit=character.items[__ci];`,
+        `if(__cit&&(__cit.name==="computer"||__cit.name==="supercomputer")){__hasComp=true;break;}`,
+        `}`,
+        `if(!__hasComp){`
+      );
+    }
+    parts.push(
+      `var __stMap=${lit7(station.map)};`,
+      `var __stx=${Number(station.x)};`,
+      `var __sty=${Number(station.y)};`,
+      `var __needTravel=character.map!==__stMap;`,
+      `if(!__needTravel){`,
+      `var __dx=(character.real_x!=null?character.real_x:character.x)-__stx;`,
+      `var __dy=(character.real_y!=null?character.real_y:character.y)-__sty;`,
+      `if(Math.sqrt(__dx*__dx+__dy*__dy)>400)__needTravel=true;`,
+      `}`,
+      `if(__needTravel){`,
+      `game_log(${lit7(commLogText("station \xB7 smart_move \u2192 " + (station.id || station.map)))});`,
+      `try{await smart_move({map:__stMap,x:__stx,y:__sty});}catch(__e){`,
+      `game_log(${lit7(commLogText("station \xB7 smart_move failed"))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;`,
+      `}`,
+      `}`
+    );
+    if (skipComputer) parts.push(`}`);
+    return parts.join("");
+  }
+  function buildAutoCraftScript(outputName, station) {
+    const name = String(outputName || "").trim();
+    if (!name) {
+      return wrapCommandScript(
+        `game_log(${lit7(commLogText("craft aborted \u2014 no recipe"))});`
+      );
+    }
+    return wrapCommandScript(
+      [
+        buildEnsureStationJs(station),
+        `try{await auto_craft(${lit7(name)});game_log(${lit7(commLogText("craft ok \xB7 " + name))});}`,
+        `catch(__e){game_log(${lit7(commLogText("craft failed \xB7 " + name))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+      ].join("")
+    );
+  }
+  function autoCraftCommand(outputName, station) {
+    const ok = emitObserverCommand(
+      buildAutoCraftScript(outputName, station),
+      `craft ${outputName}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh4();
+    return true;
+  }
+  function buildExchangeScript(fp, station) {
+    return wrapCommandScript(
+      [
+        buildEnsureStationJs(station),
+        resolveInvSlotJs(fp),
+        `try{await exchange(__slot);game_log(${lit7(commLogText("exchange ok \xB7 " + fp.name))});}`,
+        `catch(__e){game_log(${lit7(commLogText("exchange failed \xB7 " + fp.name))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+      ].join("")
+    );
+  }
+  function exchangeCommand(fp, station) {
+    const ok = emitObserverCommand(
+      buildExchangeScript(fp, station),
+      `exchange ${fp.name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh4();
+    return true;
+  }
+  function buildDismantleScript(fp, station) {
+    return wrapCommandScript(
+      [
+        buildEnsureStationJs(station),
+        resolveInvSlotJs(fp),
+        `try{await dismantle(__slot);game_log(${lit7(commLogText("dismantle ok \xB7 " + fp.name))});}`,
+        `catch(__e){game_log(${lit7(commLogText("dismantle failed \xB7 " + fp.name))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+      ].join("")
+    );
+  }
+  function dismantleCommand(fp, station) {
+    const ok = emitObserverCommand(
+      buildDismantleScript(fp, station),
+      `dismantle ${fp.name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh4();
+    return true;
+  }
+  function fingerprintCheckNamedJs(fp, varName) {
+    const parts = [`!${varName}`, `${varName}.name!==${lit7(fp.name)}`];
+    if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
+    if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
+    if (fp.p != null) parts.push(`${varName}.p!==${lit7(fp.p)}`);
+    return parts.join("||");
+  }
+  function resolveInvSlotNamedJs(fp, slotVar) {
+    const preferSlot = Number(fp.slot) | 0;
+    const itVar = slotVar + "It";
+    const candVar = slotVar + "Cand";
+    const siVar = slotVar + "Si";
+    const mismatch = fingerprintCheckNamedJs(fp, itVar);
+    const candMismatch = fingerprintCheckNamedJs(fp, candVar);
+    return [
+      `var ${slotVar}=${preferSlot};`,
+      `var ${itVar}=character.items[${slotVar}];`,
+      `if(${mismatch}){`,
+      `${slotVar}=-1;`,
+      `for(var ${siVar}=0;${siVar}<character.items.length;${siVar}++){`,
+      `var ${candVar}=character.items[${siVar}];`,
+      `if(!(${candMismatch})){${slotVar}=${siVar};break;}`,
+      `}`,
+      `if(${slotVar}<0){game_log(${JSON.stringify(commLogText("station \xB7 item mismatch \xB7 " + fp.name))});return;}`,
+      `${itVar}=character.items[${slotVar}];`,
+      `}`
+    ].join("");
+  }
+  function buildUpgradeScript(item, scroll, offering, station) {
+    if (!scroll && !offering) {
+      return wrapCommandScript(
+        `game_log(${lit7(commLogText("upgrade aborted \u2014 need scroll or offering"))});`
+      );
+    }
+    const parts = [
+      buildEnsureStationJs(station),
+      resolveInvSlotNamedJs(item, "__uItem")
+    ];
+    if (scroll) {
+      parts.push(resolveInvSlotNamedJs(scroll, "__uScroll"));
+    } else {
+      parts.push(`var __uScroll=null;`);
+    }
+    if (offering) {
+      parts.push(resolveInvSlotNamedJs(offering, "__uOffering"));
+    } else {
+      parts.push(`var __uOffering=null;`);
+    }
+    parts.push(
+      `try{`,
+      `var __uCalc=await upgrade(__uItem,__uScroll,__uOffering,true);`,
+      `var __uChance=__uCalc&&__uCalc.chance!=null?(Number(__uCalc.chance)*100).toFixed(2):"?";`,
+      `var __uGrace=__uCalc&&__uCalc.grace!=null?Number(__uCalc.grace).toFixed(2):"0.00";`,
+      `game_log(${lit7(commLogText("upgrade chance \xB7 " + item.name))}+" \xB7 %"+__uChance+" \xB7 grace "+__uGrace);`,
+      `await upgrade(__uItem,__uScroll,__uOffering);`,
+      `game_log(${lit7(commLogText("upgrade ok \xB7 " + item.name))}+" \xB7 %"+__uChance);`,
+      `}catch(__e){game_log(${lit7(commLogText("upgrade failed \xB7 " + item.name))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+    );
+    return wrapCommandScript(parts.join(""));
+  }
+  function upgradeCommand(item, scroll, offering, station) {
+    const ok = emitObserverCommand(
+      buildUpgradeScript(item, scroll, offering, station),
+      `upgrade ${item.name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh4();
+    return true;
+  }
+  function buildCompoundScript(items, scroll, offering, station) {
+    const parts = [
+      buildEnsureStationJs(station),
+      resolveInvSlotNamedJs(items[0], "__c0"),
+      resolveInvSlotNamedJs(items[1], "__c1"),
+      resolveInvSlotNamedJs(items[2], "__c2"),
+      resolveInvSlotNamedJs(scroll, "__cScroll")
+    ];
+    if (offering) {
+      parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+    } else {
+      parts.push(`var __cOffering=null;`);
+    }
+    parts.push(
+      `if(__c0===__c1||__c1===__c2||__c0===__c2){game_log(${lit7(commLogText("compound aborted \u2014 duplicate slots"))});return;}`,
+      `try{`,
+      `var __cCalc=await compound(__c0,__c1,__c2,__cScroll,__cOffering,true);`,
+      `var __cChance=__cCalc&&__cCalc.chance!=null?(Number(__cCalc.chance)*100).toFixed(2):"?";`,
+      `var __cGrace=__cCalc&&__cCalc.grace!=null?Number(__cCalc.grace).toFixed(2):"0.00";`,
+      `game_log(${lit7(commLogText("compound chance \xB7 " + items[0].name))}+" \xB7 %"+__cChance+" \xB7 grace "+__cGrace);`,
+      `await compound(__c0,__c1,__c2,__cScroll,__cOffering);`,
+      `game_log(${lit7(commLogText("compound ok \xB7 " + items[0].name))}+" \xB7 %"+__cChance);`,
+      `}catch(__e){game_log(${lit7(commLogText("compound failed \xB7 " + items[0].name))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));}`
+    );
+    return wrapCommandScript(parts.join(""));
+  }
+  function compoundCommand(items, scroll, offering, station) {
+    const ok = emitObserverCommand(
+      buildCompoundScript(items, scroll, offering, station),
+      `compound ${items[0].name}`
+    );
+    if (!ok) return false;
+    scheduleBagRefresh4();
+    return true;
+  }
+  function buildWithdrawCraftIngredientsScript(offer) {
+    const snap = getCachedBankSnapshot();
+    if (!snap) {
+      return wrapCommandScript(
+        `game_log(${lit7(commLogText("withdraw \xB7 open Bank and Refresh first"))});`
+      );
+    }
+    const slots = flattenBankSlots(snap.packs);
+    const retrieves = [];
+    for (let i = 0; i < offer.ingredients.length; i++) {
+      const ing = offer.ingredients[i];
+      if (ing.missingFromBag <= 0) continue;
+      const picks = pickBankSlotsForNeed(
+        slots,
+        ing.name,
+        ing.missingFromBag,
+        ing.level
+      );
+      for (let j = 0; j < picks.length; j++) {
+        retrieves.push({
+          pack: picks[j].pack,
+          index: picks[j].index,
+          expect: ing.name
+        });
+      }
+    }
+    if (!retrieves.length) {
+      return wrapCommandScript(
+        `game_log(${lit7(commLogText("withdraw \xB7 nothing missing in bag"))});`
+      );
+    }
+    const byMap = /* @__PURE__ */ Object.create(null);
+    for (let i = 0; i < retrieves.length; i++) {
+      const r = retrieves[i];
+      const map = bankPackMap(r.pack) || "bank";
+      if (!byMap[map]) byMap[map] = [];
+      byMap[map].push(r);
+    }
+    const parts = [];
+    const maps = Object.keys(byMap);
+    for (let m = 0; m < maps.length; m++) {
+      const map = maps[m];
+      parts.push(buildEnsureBankFloorJs(map));
+      const list = byMap[map];
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        parts.push(
+          `var __pack=character.bank[${lit7(r.pack)}];`,
+          `if(!__pack){game_log(${lit7(commLogText("withdraw \xB7 pack locked " + r.pack))});return;}`,
+          `var __it=__pack[${r.index | 0}];`,
+          `if(!__it||__it.name!==${lit7(r.expect)}){game_log(${lit7(commLogText("withdraw \xB7 mismatch (refresh Bank)"))});return;}`,
+          `try{await bank_retrieve(${lit7(r.pack)},${r.index | 0});game_log(${lit7(commLogText("withdraw ok \xB7 " + r.expect))});}`,
+          `catch(__e){game_log(${lit7(commLogText("withdraw failed \xB7 " + r.expect))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`
+        );
+      }
+    }
+    return wrapCommandScript(parts.join(""));
+  }
+  function withdrawCraftIngredientsCommand(offer) {
+    const ok = emitObserverCommand(
+      buildWithdrawCraftIngredientsScript(offer),
+      `withdraw-craft ${offer.output}`
+    );
+    if (!ok) return false;
+    scheduleBankAndBagRefresh2();
+    return true;
+  }
+  function cachedBankAgg() {
+    const snap = getCachedBankSnapshot();
+    if (!snap) return null;
+    return aggregateBankItems(flattenBankSlots(snap.packs));
+  }
+  function observingGold() {
+    const obs = window.observing;
+    if (obs && obs.gold != null && Number.isFinite(Number(obs.gold))) {
+      return Number(obs.gold);
+    }
+    return 0;
+  }
+  function observingBagItems() {
+    const obs = window.observing;
+    if (!obs || !Array.isArray(obs.items)) return null;
+    return obs.items;
+  }
+
+  // src/lib/bagUpgradeCompound.ts
+  function calculateItemGrade(def, level) {
+    if (!def || !(def.upgrade || def.compound)) return 0;
+    const grades = Array.isArray(def.grades) ? def.grades : [9, 10, 11, 12];
+    const lv = Number(level) || 0;
+    if (lv >= (grades[3] != null ? grades[3] : 12)) return 4;
+    if (lv >= (grades[2] != null ? grades[2] : 11)) return 3;
+    if (lv >= (grades[1] != null ? grades[1] : 10)) return 2;
+    if (lv >= (grades[0] != null ? grades[0] : 9)) return 1;
+    return 0;
+  }
+  function slotQty(it) {
+    return it.q != null && Number.isFinite(Number(it.q)) ? Number(it.q) : 1;
+  }
+  function isLocked(it) {
+    return !!(it.l != null && it.l !== false && it.l !== 0);
+  }
+  function toSlotRef(slot, it) {
+    const ref = {
+      slot,
+      name: String(it.name)
+    };
+    if (it.level != null && Number.isFinite(Number(it.level))) {
+      ref.level = Number(it.level);
+    }
+    if (it.q != null) ref.q = slotQty(it);
+    if (it.p != null) ref.p = String(it.p);
+    if (it.grace != null && Number.isFinite(Number(it.grace))) {
+      ref.grace = Number(it.grace);
+    }
+    if (it.l != null) ref.l = it.l;
+    if (it.b != null) ref.b = it.b;
+    return ref;
+  }
+  function listBagSlots(items) {
+    if (!items) return [];
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || !it.name || it.name === "placeholder") continue;
+      out.push(toSlotRef(i, it));
+    }
+    return out;
+  }
+  function scrollCompatible(scrollDef, itemDef, itemGrade, mode) {
+    if (!scrollDef || scrollDef.grade == null) return false;
+    if (Number(scrollDef.grade) < itemGrade) return false;
+    if (mode === "compound") {
+      return scrollDef.type === "cscroll";
+    }
+    if (scrollDef.type === "uscroll") return !!itemDef.upgrade;
+    if (scrollDef.type === "pscroll") return !!itemDef.stat;
+    return false;
+  }
+  function isOfferingDef(def) {
+    if (!def) return false;
+    if (def.type === "offering") return true;
+    return def.offering !== void 0;
+  }
+  function listCompatibleScrollsInBag(items, itemDef, itemGrade, mode, G) {
+    const slots = listBagSlots(items);
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      const def = G.items && G.items[s.name];
+      if (!def || !scrollCompatible(def, itemDef, itemGrade, mode)) continue;
+      const grade = Number(def.grade) || 0;
+      out.push({
+        slot: s.slot,
+        name: s.name,
+        q: s.q != null ? s.q : 1,
+        grade,
+        type: String(def.type || ""),
+        displayName: itemDisplayName(s.name),
+        recommended: grade === itemGrade
+      });
+    }
+    out.sort((a, b) => {
+      if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+      if (a.grade !== b.grade) return a.grade - b.grade;
+      return a.slot - b.slot;
+    });
+    return out;
+  }
+  function listOfferingsInBag(items, G) {
+    const slots = listBagSlots(items);
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      const def = G.items && G.items[s.name];
+      if (!isOfferingDef(def)) continue;
+      out.push({
+        slot: s.slot,
+        name: s.name,
+        q: s.q != null ? s.q : 1,
+        grade: def && def.grade != null ? Number(def.grade) : void 0,
+        displayName: itemDisplayName(s.name)
+      });
+    }
+    out.sort((a, b) => a.slot - b.slot);
+    return out;
+  }
+  function findCompoundPartners(items, primarySlot, name, level) {
+    const slots = listBagSlots(items);
+    const out = [];
+    const wantLevel = Number(level) || 0;
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (s.slot === primarySlot) continue;
+      if (s.name !== name) continue;
+      const lv = s.level != null ? Number(s.level) : 0;
+      if (lv !== wantLevel) continue;
+      if (isLocked(s)) continue;
+      out.push(s);
+    }
+    out.sort((a, b) => a.slot - b.slot);
+    return out;
+  }
+  function upgradeOfferForBagItem(item, slot, bagItems, G) {
+    if (!item || !item.name || !G || !G.items) return null;
+    const def = G.items[item.name];
+    if (!def || !def.upgrade) return null;
+    const level = item.level != null ? Number(item.level) : 0;
+    const grade = calculateItemGrade(def, level);
+    const station = upgradeStation(G);
+    const access = evaluateStationAccess(station, { items: bagItems });
+    return {
+      item: toSlotRef(slot, item),
+      displayName: itemInstanceLabel(String(item.name), {
+        level,
+        p: item.p != null ? String(item.p) : void 0
+      }),
+      grade,
+      maxLevel: grade >= 4,
+      locked: isLocked(item),
+      scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "upgrade", G),
+      offerings: listOfferingsInBag(bagItems, G),
+      station,
+      access
+    };
+  }
+  function compoundOfferForBagItem(item, slot, bagItems, G) {
+    if (!item || !item.name || !G || !G.items) return null;
+    const def = G.items[item.name];
+    if (!def || !def.compound) return null;
+    if (def.type === "booster") return null;
+    const level = item.level != null ? Number(item.level) : 0;
+    const grade = calculateItemGrade(def, level);
+    const partners = findCompoundPartners(
+      bagItems,
+      slot,
+      String(item.name),
+      level
+    );
+    const station = compoundStation(G);
+    const access = evaluateStationAccess(station, { items: bagItems });
+    return {
+      item: toSlotRef(slot, item),
+      displayName: itemInstanceLabel(String(item.name), {
+        level,
+        p: item.p != null ? String(item.p) : void 0
+      }),
+      grade,
+      maxLevel: grade >= 4,
+      locked: isLocked(item),
+      partners,
+      scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "compound", G),
+      offerings: listOfferingsInBag(bagItems, G),
+      station,
+      access
+    };
+  }
+  function defaultCompoundPartners(partners, primary) {
+    if (partners.length < 2) return null;
+    const ranked = partners.slice();
+    const wantP = primary && primary.p != null && String(primary.p) !== "" ? String(primary.p) : null;
+    ranked.sort((a, b) => {
+      if (wantP) {
+        const ap = a.p != null && String(a.p) === wantP ? 0 : 1;
+        const bp = b.p != null && String(b.p) === wantP ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+      }
+      return a.slot - b.slot;
+    });
+    return [ranked[0], ranked[1]];
+  }
+
+  // src/lib/shrineChanceEstimate.ts
+  var UPGRADE_BASE = [
+    // igrade 0 — normal white/gear
+    [1, 1, 0.98, 0.95, 0.7, 0.6, 0.5, 0.4, 0.3, 0.22, 0.15, 0.1, 0.06],
+    // igrade 1
+    [1, 1, 0.95, 0.85, 0.55, 0.42, 0.32, 0.24, 0.16, 0.1, 0.06, 0.04, 0.02],
+    // igrade 2
+    [1, 1, 0.9, 0.7, 0.4, 0.28, 0.18, 0.12, 0.08, 0.05, 0.03, 0.02, 0.01]
+  ];
+  var COMPOUND_BASE = [
+    [1, 0.99, 0.75, 0.55, 0.35, 0.22, 0.12, 0.08],
+    [1, 0.95, 0.6, 0.4, 0.22, 0.12, 0.06, 0.03],
+    [1, 0.9, 0.45, 0.25, 0.12, 0.06, 0.03, 0.015]
+  ];
+  function clamp01(n) {
+    if (n < 0) return 0;
+    if (n > 1) return 1;
+    return n;
+  }
+  function baseFromTable(table, igrade, newLevel) {
+    var _a, _b;
+    const row3 = table[Math.max(0, Math.min(igrade, table.length - 1))] || table[0];
+    if (!row3 || !row3.length) return 0.5;
+    if (newLevel < 0) return (_a = row3[0]) != null ? _a : 0.5;
+    if (newLevel >= row3.length) return (_b = row3[row3.length - 1]) != null ? _b : 0.05;
+    const v = row3[newLevel];
+    return v != null && Number.isFinite(v) ? v : 0.5;
+  }
+  function applyScrollOfferingMods(probability, opts) {
+    let p = probability;
+    let high = false;
+    const scrollGrade = opts.scrollGrade != null && Number.isFinite(Number(opts.scrollGrade)) ? Number(opts.scrollGrade) : null;
+    const offeringGrade = opts.offeringGrade != null && Number.isFinite(Number(opts.offeringGrade)) ? Number(opts.offeringGrade) : null;
+    const grade = opts.itemGrade;
+    const grace = opts.grace != null && Number.isFinite(Number(opts.grace)) ? Number(opts.grace) : 0;
+    if (scrollGrade != null && scrollGrade > grade && opts.newLevel <= 10) {
+      p = p * 1.2 + 0.01;
+      high = true;
+    }
+    if (offeringGrade != null) {
+      if (offeringGrade > grade + 1) {
+        p = p * 1.7 + Math.max(0, grace) * 0.05;
+        high = true;
+      } else if (offeringGrade > grade) {
+        p = p * 1.5 + Math.max(0, grace) * 0.02;
+        high = true;
+      } else if (offeringGrade === grade) {
+        p = p * 1.4;
+      } else if (offeringGrade === grade - 1) {
+        p = p * 1.15;
+      } else {
+        p = p * 1.08;
+      }
+    } else if (grace > 0) {
+      p += Math.min(0.08, grace * 0.01);
+    }
+    const oprobability = probability;
+    if (high) {
+      p = Math.min(p, Math.min(oprobability + 0.36, oprobability * 3));
+    } else {
+      p = Math.min(p, Math.min(oprobability + 0.24, oprobability * 2));
+    }
+    return clamp01(p);
+  }
+  function estimateShrineChance(input) {
+    const level = input.level != null && Number.isFinite(Number(input.level)) ? Number(input.level) : 0;
+    const newLevel = level + 1;
+    const igrade = Math.max(0, Math.min(2, Number(input.itemGrade) | 0));
+    const base = input.mode === "compound" ? baseFromTable(COMPOUND_BASE, igrade, newLevel) : baseFromTable(UPGRADE_BASE, igrade, newLevel);
+    return applyScrollOfferingMods(base, {
+      itemGrade: input.itemGrade,
+      newLevel,
+      scrollGrade: input.scrollGrade,
+      offeringGrade: input.offeringGrade,
+      grace: input.grace
+    });
+  }
+  function formatApproxChancePct(chance) {
+    const pct = chance <= 1 ? chance * 100 : chance;
+    return "~" + pct.toFixed(0) + "%";
+  }
+
+  // src/ui/bag/upgradeCompoundDialogCss.ts
+  var injected14 = false;
+  var CSS11 = `
+.ecu-upg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483004;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+.ecu-upg {
+  width: min(448px, 94vw);
+  max-height: min(92vh, 820px);
+  overflow: auto;
+  padding: 14px 14px 12px;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(70, 55, 30, 0.35), transparent 55%),
+    linear-gradient(180deg, #141210 0%, #0a0908 100%);
+  border: 4px solid #5a5a5a;
+  outline: 1px solid rgba(232, 201, 106, 0.28);
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  color: #eee;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.ecu-upg__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffd28a;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+}
+.ecu-upg__item-name {
+  margin: 4px 0 2px;
+  text-align: center;
+  color: rgba(240, 230, 210, 0.96);
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 600;
+}
+.ecu-upg__meta {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(170, 160, 145, 0.9);
+}
+/* Discord-bot-inspired trial card (chance / roll / grace). */
+.ecu-upg__trial {
+  margin: 0 0 12px;
+  padding: 10px 10px 12px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(70, 70, 70, 0.9);
+  border-left: 3px solid #e8c96a;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.45);
+}
+.ecu-upg__trial-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.ecu-upg__trial-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8c96a;
+}
+.ecu-upg__trial-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e8c96a;
+  box-shadow: 0 0 6px rgba(232, 201, 106, 0.55);
+  flex: 0 0 auto;
+}
+.ecu-upg__trial-who {
+  font-size: 11px;
+  color: rgba(170, 160, 145, 0.85);
+  white-space: nowrap;
+}
+.ecu-upg__trial-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.ecu-upg__trial-result {
+  position: relative;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #1c1c1c, #0c0c0c);
+  border: 2px solid rgba(232, 201, 106, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.65);
+  box-sizing: border-box;
+  line-height: 0;
+  font-size: 0;
+  overflow: hidden;
+}
+.ecu-upg__trial-result.is-empty {
+  border-color: rgba(110, 110, 110, 0.55);
+}
+.ecu-upg__trial-level {
+  position: absolute;
+  right: 3px;
+  bottom: 2px;
+  z-index: 2;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 1px 1px 0 #000;
+  pointer-events: none;
+}
+.ecu-upg__trial-cols {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ecu-upg__trial-col-label {
+  margin: 0 0 3px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(190, 175, 145, 0.75);
+  line-height: 1;
+}
+.ecu-upg__trial-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: flex-start;
+  min-height: 40px;
+}
+.ecu-upg__mini-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 52px;
+}
+.ecu-upg__mini-key {
+  font-size: 8px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: rgba(180, 170, 150, 0.88);
+  text-align: center;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-upg__mini {
+  appearance: none;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
+  border: 1px solid rgba(120, 120, 120, 0.7);
+  box-sizing: border-box;
+  line-height: 0;
+  font-size: 0;
+  color: inherit;
+  font-family: inherit;
+  overflow: hidden;
+}
+.ecu-upg__mini:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.ecu-upg__mini.is-clickable {
+  cursor: pointer;
+}
+.ecu-upg__mini.is-clickable:hover {
+  border-color: rgba(232, 201, 106, 0.7);
+}
+.ecu-upg__mini.is-empty {
+  border-style: dashed;
+  border-color: rgba(110, 110, 110, 0.55);
+  color: rgba(170, 160, 140, 0.55);
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ecu-upg__mini.is-empty.is-clickable:hover,
+.ecu-upg__mini.is-focus {
+  border-style: solid;
+  border-color: #e8c96a;
+  color: #ffd28a;
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.35);
+}
+.ecu-upg__mini-lv {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  z-index: 2;
+  font-size: 9px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 1px 1px 0 #000;
+  pointer-events: none;
+}
+.ecu-upg__trial-stats {
+  flex: 0 0 auto;
+  width: 104px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ecu-upg__stat {
+  padding: 5px 6px 4px;
+  background: rgba(12, 12, 12, 0.92);
+  border: 1px solid rgba(70, 70, 70, 0.95);
+  text-align: center;
+}
+.ecu-upg__stat.is-loading {
+  border-color: rgba(232, 201, 106, 0.45);
+}
+.ecu-upg__stat-label {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(160, 150, 135, 0.85);
+  margin-bottom: 2px;
+}
+.ecu-upg__stat-val {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: rgba(220, 220, 220, 0.92);
+}
+.ecu-upg__stat-val.is-chance {
+  color: #7dcea0;
+}
+.ecu-upg__stat-detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  color: rgba(170, 160, 145, 0.88);
+  word-break: break-word;
+}
+.ecu-upg__stat-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(130, 120, 105, 0.85);
+}
+.ecu-upg__section.is-focus .ecu-upg__section-label {
+  color: #ffd28a;
+}
+.ecu-upg__section.is-focus .ecu-upg__tiles {
+  border-color: rgba(232, 201, 106, 0.45);
+}
+.ecu-upg__section.is-pulse .ecu-upg__tiles {
+  animation: ecu-upg-pulse 0.7s ease;
+}
+@keyframes ecu-upg-pulse {
+  0% { box-shadow: inset 0 0 0 0 rgba(232, 201, 106, 0); }
+  40% { box-shadow: inset 0 0 0 1px rgba(232, 201, 106, 0.55); }
+  100% { box-shadow: inset 0 0 0 0 rgba(232, 201, 106, 0); }
+}
+.ecu-upg__trial-result .itemslot,
+.ecu-upg__trial-result .item_container,
+.ecu-upg__trial-result .ecu-item-instance,
+.ecu-upg__trial-result .ecu-item-title-frame,
+.ecu-upg__trial-result .ecu-meter-icon,
+.ecu-upg__mini .itemslot,
+.ecu-upg__mini .item_container,
+.ecu-upg__mini .ecu-item-instance,
+.ecu-upg__mini .ecu-item-title-frame,
+.ecu-upg__mini .ecu-meter-icon {
+  margin: 0 !important;
+}
+.ecu-upg__section {
+  margin: 0 0 10px;
+}
+.ecu-upg__section-label {
+  margin: 0 0 5px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(200, 185, 150, 0.78);
+}
+.ecu-upg__tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 8px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.28);
+  max-height: none;
+  overflow: visible;
+  align-items: flex-start;
+}
+.ecu-upg__tiles.is-scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: none;
+  scrollbar-width: thin;
+  scrollbar-color: #7a7048 #161616;
+}
+.ecu-upg__tile-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  max-width: 56px;
+}
+.ecu-upg__tile-key {
+  font-size: 8px;
+  line-height: 1.15;
+  letter-spacing: 0.02em;
+  color: rgba(180, 170, 150, 0.88);
+  text-align: center;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-upg__tile {
+  position: relative;
+  appearance: none;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  margin: 0;
+  border: 2px solid rgba(95, 95, 95, 0.85);
+  background: linear-gradient(180deg, #1a1a1a, #0d0d0d);
+  cursor: pointer;
+  box-sizing: border-box;
+  line-height: 0;
+  font-size: 0;
+  color: inherit;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-upg__tile:hover {
+  border-color: rgba(232, 201, 106, 0.7);
+  background: linear-gradient(180deg, #242018, #14110c);
+}
+.ecu-upg__tile.is-on {
+  border-color: #e8c96a;
+  box-shadow:
+    0 0 0 1px rgba(232, 201, 106, 0.45),
+    inset 0 0 10px rgba(232, 201, 106, 0.12);
+  background: linear-gradient(180deg, #2a2418, #16120c);
+}
+.ecu-upg__tile.is-rec:not(.is-on) {
+  border-color: rgba(232, 201, 106, 0.72);
+  box-shadow: inset 0 0 8px rgba(232, 201, 106, 0.1);
+}
+.ecu-upg__tile.is-rec.is-on {
+  border-color: #f0d078;
+}
+.ecu-upg__tile.is-none {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  line-height: 1.15;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(190, 180, 160, 0.8);
+  text-align: center;
+  padding: 4px;
+}
+.ecu-upg__tile .itemslot,
+.ecu-upg__tile .item_container,
+.ecu-upg__tile .ecu-item-instance,
+.ecu-upg__tile .ecu-item-title-frame,
+.ecu-upg__tile .ecu-meter-icon {
+  margin: 0 !important;
+  pointer-events: none;
+}
+.ecu-upg__tile .ecu-item-instance,
+.ecu-upg__mini .ecu-item-instance,
+.ecu-upg__trial-result .ecu-item-instance {
+  display: inline-flex !important;
+  line-height: 0 !important;
+}
+.ecu-upg__tile .ecu-item-instance > div,
+.ecu-upg__mini .ecu-item-instance > div,
+.ecu-upg__trial-result .ecu-item-instance > div {
+  margin: 0 !important;
+  border: none !important;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  float: none !important;
+  box-sizing: border-box !important;
+}
+.ecu-upg__tile-qty {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  z-index: 2;
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 0 2px #000, 1px 1px 0 #000;
+  pointer-events: none;
+}
+.ecu-upg__tile-badge {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  z-index: 3;
+  padding: 1px 3px;
+  font-size: 8px;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #1a1408;
+  background: linear-gradient(180deg, #ffe09a, #e8c96a);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  text-shadow: none;
+  pointer-events: none;
+}
+.ecu-upg__tile-grade {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  z-index: 2;
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(200, 210, 255, 0.9);
+  text-shadow: 0 0 2px #000, 1px 1px 0 #000;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-upg__empty {
+  padding: 6px 4px;
+  color: rgba(180, 160, 140, 0.8);
+  font-size: 12px;
+}
+.ecu-upg__hint {
+  min-height: 1.1em;
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #f0a0a0;
+  text-align: center;
+}
+.ecu-upg__hint-link {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: #e8c96a;
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ecu-upg__hint-link:hover {
+  color: #ffe09a;
+}
+.ecu-upg__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.ecu-upg__btn {
+  appearance: none;
+  min-width: 112px;
+  border: 2px solid #666;
+  background: linear-gradient(180deg, #2a2a2a, #151515);
+  color: #eee;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.ecu-upg__btn:hover {
+  background: linear-gradient(180deg, #353535, #1c1c1c);
+  border-color: #888;
+}
+.ecu-upg__btn.is-primary {
+  border-color: #c9a24a;
+  background: linear-gradient(180deg, #3a3018, #1c160c);
+  color: #ffe6b0;
+}
+.ecu-upg__btn.is-primary:hover {
+  background: linear-gradient(180deg, #4a3c1c, #241c10);
+  border-color: #e8c96a;
+}
+.ecu-upg__btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+`;
+  function ensureUpgradeCompoundDialogCss() {
+    if (injected14) return;
+    injected14 = true;
+    const style = document.createElement("style");
+    style.setAttribute("data-ecu-upg-css", "1");
+    style.textContent = CSS11;
+    document.head.appendChild(style);
+  }
+
+  // src/ui/bag/upgradeCompoundDialog.ts
+  var openBackdrop3 = null;
+  var finishOpen3 = null;
+  var onDialogCleanup = null;
+  function closeDialog2(value) {
+    const cleanup = onDialogCleanup;
+    onDialogCleanup = null;
+    if (cleanup) {
+      try {
+        cleanup();
+      } catch (e2) {
+      }
+    }
+    clearShrineBagHighlights();
+    const finish = finishOpen3;
+    finishOpen3 = null;
+    if (openBackdrop3) {
+      openBackdrop3.remove();
+      openBackdrop3 = null;
+    }
+    finish == null ? void 0 : finish(value);
+  }
+  function fpFromPick(pick) {
+    const fp = { slot: pick.slot, name: pick.name };
+    if (pick.q != null) fp.q = pick.q;
+    if (pick.level != null) fp.level = pick.level;
+    if (pick.p != null) fp.p = String(pick.p);
+    return fp;
+  }
+  function accessHint(access) {
+    if (access.hasComputer) return "Computer \u2014 works on any map.";
+    if (access.inRange) return "In range of the shrine.";
+    if (access.reason) return access.reason + " \u2014 Confirm will travel first.";
+    return "Out of range \u2014 Confirm will smart_move to the shrine first.";
+  }
+  function mountItemIcon(host2, opts) {
+    const html = itemInstanceHtml(opts.name, {
+      level: opts.level,
+      // Tile chrome paints its own ×qty — don't nest stock q pip.
+      p: opts.p != null ? String(opts.p) : void 0,
+      size: opts.size,
+      nativeTitle: true,
+      bare: true
+    });
+    host2.innerHTML = html || "";
+    const stockBadges = host2.querySelectorAll(".iqui, .iuui");
+    for (let i = 0; i < stockBadges.length; i++) {
+      stockBadges[i].style.display = "none";
+    }
+  }
+  function levelPlus(level) {
+    const lv = level != null && Number.isFinite(Number(level)) ? Number(level) : 0;
+    return "+" + lv;
+  }
+  function stripTrailingLevelSuffix(name) {
+    return String(name || "").replace(/\s*\+\d+\s*$/, "").trim();
+  }
+  function levelTransitionLabel(fromLevel, displayName) {
+    const from = fromLevel != null && Number.isFinite(Number(fromLevel)) ? Number(fromLevel) : 0;
+    const base = stripTrailingLevelSuffix(displayName) || displayName;
+    return levelPlus(from) + " \u2192 " + levelPlus(from + 1) + " " + base;
+  }
+  var CHANCE_TITLE = "Rough ~estimate from local tables \u2014 not live calculate(). Exact odds only on the character client.";
+  function countNameLevel(items, name, level) {
+    if (!items) return 0;
+    let n = 0;
+    const want = Number(level) || 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || it.name !== name) continue;
+      const lv = it.level != null ? Number(it.level) : 0;
+      if (lv === want) n += 1;
+    }
+    return n;
+  }
+  function watchLevelBump(opts) {
+    let done = false;
+    const started2 = Date.now();
+    const timers = [];
+    const finish = (fn) => {
+      if (done) return;
+      done = true;
+      for (let i = 0; i < timers.length; i++) window.clearTimeout(timers[i]);
+      fn();
+    };
+    const poll = () => {
+      if (done) return;
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+      const items = observingBagItems();
+      const atLevel = countNameLevel(items, opts.name, opts.fromLevel);
+      const atNext = countNameLevel(items, opts.name, opts.fromLevel + 1);
+      if (atNext > opts.beforeNext) {
+        finish(() => opts.onSuccess());
+        return;
+      }
+      if (atLevel < opts.beforeAtLevel && atNext <= opts.beforeNext && Date.now() - started2 > 1600) {
+        finish(() => opts.onDestroyed());
+        return;
+      }
+    };
+    const kicks = [700, 1400, 2800, 5200, 9e3];
+    for (let i = 0; i < kicks.length; i++) {
+      timers.push(window.setTimeout(poll, kicks[i]));
+    }
+    timers.push(
+      window.setTimeout(() => {
+        finish(() => opts.onTimeout());
+      }, 12e3)
+    );
+    return {
+      cancel: () => finish(() => {
+      })
+    };
+  }
+  function chancePickDetail(scroll, offering) {
+    const parts = [];
+    parts.push(scroll ? scroll.name : "no scroll");
+    parts.push(offering ? offering.name : "no offering");
+    return parts.join(" \xB7 ");
+  }
+  function makeTrialCard(modeLabel2) {
+    const root = document.createElement("div");
+    root.className = "ecu-upg__trial";
+    const head = document.createElement("div");
+    head.className = "ecu-upg__trial-head";
+    const status = document.createElement("div");
+    status.className = "ecu-upg__trial-status";
+    const dot = document.createElement("span");
+    dot.className = "ecu-upg__trial-dot";
+    const statusText = document.createElement("span");
+    statusText.textContent = "Ready";
+    status.appendChild(dot);
+    status.appendChild(statusText);
+    const who = document.createElement("div");
+    who.className = "ecu-upg__trial-who";
+    who.textContent = modeLabel2;
+    head.appendChild(status);
+    head.appendChild(who);
+    const body = document.createElement("div");
+    body.className = "ecu-upg__trial-body";
+    const result = document.createElement("div");
+    result.className = "ecu-upg__trial-result is-empty";
+    const resultLevel = document.createElement("span");
+    resultLevel.className = "ecu-upg__trial-level";
+    const cols = document.createElement("div");
+    cols.className = "ecu-upg__trial-cols";
+    const inputCol = document.createElement("div");
+    const inputLabel = document.createElement("div");
+    inputLabel.className = "ecu-upg__trial-col-label";
+    inputLabel.textContent = "Input";
+    const inputIcons = document.createElement("div");
+    inputIcons.className = "ecu-upg__trial-icons";
+    inputCol.appendChild(inputLabel);
+    inputCol.appendChild(inputIcons);
+    const usedCol = document.createElement("div");
+    const usedLabel = document.createElement("div");
+    usedLabel.className = "ecu-upg__trial-col-label";
+    usedLabel.textContent = "Used";
+    const usedIcons = document.createElement("div");
+    usedIcons.className = "ecu-upg__trial-icons";
+    usedCol.appendChild(usedLabel);
+    usedCol.appendChild(usedIcons);
+    cols.appendChild(inputCol);
+    cols.appendChild(usedCol);
+    const stats = document.createElement("div");
+    stats.className = "ecu-upg__trial-stats";
+    const chanceBox = document.createElement("div");
+    chanceBox.className = "ecu-upg__stat";
+    const chanceLab = document.createElement("span");
+    chanceLab.className = "ecu-upg__stat-label";
+    chanceLab.textContent = "chance";
+    const chanceVal = document.createElement("span");
+    chanceVal.className = "ecu-upg__stat-val is-chance";
+    chanceVal.textContent = "\u2014";
+    chanceVal.title = CHANCE_TITLE;
+    const chanceDetail = document.createElement("span");
+    chanceDetail.className = "ecu-upg__stat-detail";
+    chanceDetail.textContent = "";
+    const chanceNote = document.createElement("span");
+    chanceNote.className = "ecu-upg__stat-note";
+    chanceNote.textContent = "~ local \xB7 not calculate";
+    chanceNote.title = CHANCE_TITLE;
+    chanceBox.appendChild(chanceLab);
+    chanceBox.appendChild(chanceVal);
+    chanceBox.appendChild(chanceDetail);
+    chanceBox.appendChild(chanceNote);
+    stats.appendChild(chanceBox);
+    body.appendChild(result);
+    body.appendChild(cols);
+    body.appendChild(stats);
+    root.appendChild(head);
+    root.appendChild(body);
+    return {
+      root,
+      result,
+      resultLevel,
+      inputIcons,
+      usedIcons,
+      chanceVal,
+      chanceDetail,
+      chanceNote,
+      chanceBox
+    };
+  }
+  function fillMini(host2, item, opts) {
+    const wrap = document.createElement("div");
+    wrap.className = "ecu-upg__mini-wrap";
+    const mini = document.createElement("button");
+    mini.type = "button";
+    mini.className = "ecu-upg__mini" + (item ? "" : " is-empty") + ((opts == null ? void 0 : opts.focused) ? " is-focus" : "") + ((opts == null ? void 0 : opts.onClick) ? " is-clickable" : "");
+    if (opts == null ? void 0 : opts.title) mini.title = opts.title;
+    if (!item) {
+      mini.textContent = (opts == null ? void 0 : opts.emptyLabel) || "+";
+    } else {
+      const icon = document.createElement("span");
+      mountItemIcon(icon, {
+        name: item.name,
+        level: item.level,
+        q: item.q,
+        p: item.p,
+        size: 36
+      });
+      mini.appendChild(icon);
+      if ((opts == null ? void 0 : opts.showLevel) && item.level != null) {
+        const lv = document.createElement("span");
+        lv.className = "ecu-upg__mini-lv";
+        lv.textContent = levelPlus(item.level);
+        mini.appendChild(lv);
+      }
+    }
+    if (opts == null ? void 0 : opts.onClick) {
+      mini.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        opts.onClick();
+      });
+    } else {
+      mini.disabled = true;
+    }
+    wrap.appendChild(mini);
+    if ((opts == null ? void 0 : opts.showKey) && item && item.name) {
+      const key = document.createElement("span");
+      key.className = "ecu-upg__mini-key";
+      key.textContent = item.name;
+      key.title = item.name;
+      wrap.appendChild(key);
+    }
+    host2.appendChild(wrap);
+  }
+  function paintTrialResult(trial, item, nextLevel) {
+    trial.result.innerHTML = "";
+    trial.result.classList.remove("is-empty");
+    const icon = document.createElement("span");
+    mountItemIcon(icon, {
+      name: item.name,
+      level: nextLevel,
+      q: item.q,
+      p: item.p,
+      size: 56
+    });
+    trial.result.appendChild(icon);
+    trial.resultLevel.textContent = String(nextLevel);
+    trial.result.appendChild(trial.resultLevel);
+  }
+  function findScroll(scrolls, slot) {
+    if (slot == null) return null;
+    for (let i = 0; i < scrolls.length; i++) {
+      if (scrolls[i].slot === slot) return scrolls[i];
+    }
+    return null;
+  }
+  function findOffering(offerings, slot) {
+    if (slot == null) return null;
+    for (let i = 0; i < offerings.length; i++) {
+      if (offerings[i].slot === slot) return offerings[i];
+    }
+    return null;
+  }
+  function setTilesScrollMode(host2, count) {
+    host2.classList.toggle("is-scroll", count > 6);
+  }
+  function pulseSection(section3) {
+    if (!section3) return;
+    section3.classList.remove("is-pulse");
+    void section3.offsetWidth;
+    section3.classList.add("is-pulse");
+    section3.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function appendTileKey(wrap, name) {
+    const key = document.createElement("span");
+    key.className = "ecu-upg__tile-key";
+    key.textContent = name;
+    key.title = name;
+    wrap.appendChild(key);
+  }
+  function appendScrollTiles(host2, scrolls, selectedSlot, onPick) {
+    host2.innerHTML = "";
+    setTilesScrollMode(host2, scrolls.length);
+    if (!scrolls.length) {
+      const empty2 = document.createElement("div");
+      empty2.className = "ecu-upg__empty";
+      empty2.textContent = "No compatible scrolls in bag.";
+      host2.appendChild(empty2);
+      return;
+    }
+    for (let i = 0; i < scrolls.length; i++) {
+      const s = scrolls[i];
+      const wrap = document.createElement("div");
+      wrap.className = "ecu-upg__tile-wrap";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-upg__tile" + (s.recommended ? " is-rec" : "") + (selectedSlot === s.slot ? " is-on" : "");
+      btn.title = s.displayName + " \xB7 " + s.name + " \xB7 grade " + s.grade + (s.recommended ? " \xB7 best match" : "") + " \xB7 \xD7" + s.q;
+      const icon = document.createElement("span");
+      mountItemIcon(icon, { name: s.name, q: s.q, size: 40 });
+      btn.appendChild(icon);
+      if (s.recommended) {
+        const badge = document.createElement("span");
+        badge.className = "ecu-upg__tile-badge";
+        badge.textContent = "BEST";
+        btn.appendChild(badge);
+      }
+      const grade = document.createElement("span");
+      grade.className = "ecu-upg__tile-grade";
+      grade.textContent = String(s.grade);
+      btn.appendChild(grade);
+      const qty = document.createElement("span");
+      qty.className = "ecu-upg__tile-qty";
+      qty.textContent = "\xD7" + s.q;
+      btn.appendChild(qty);
+      btn.addEventListener("click", () => onPick(s.slot));
+      wrap.appendChild(btn);
+      appendTileKey(wrap, s.name);
+      host2.appendChild(wrap);
+    }
+  }
+  function appendOfferingTiles(host2, offerings, selectedSlot, onPick) {
+    host2.innerHTML = "";
+    setTilesScrollMode(host2, offerings.length + 1);
+    const noneWrap = document.createElement("div");
+    noneWrap.className = "ecu-upg__tile-wrap";
+    const none = document.createElement("button");
+    none.type = "button";
+    none.className = "ecu-upg__tile is-none" + (selectedSlot == null ? " is-on" : "");
+    none.title = "No offering";
+    none.textContent = "None";
+    none.addEventListener("click", () => onPick(null));
+    noneWrap.appendChild(none);
+    host2.appendChild(noneWrap);
+    for (let i = 0; i < offerings.length; i++) {
+      const o = offerings[i];
+      const wrap = document.createElement("div");
+      wrap.className = "ecu-upg__tile-wrap";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-upg__tile" + (selectedSlot === o.slot ? " is-on" : "");
+      btn.title = o.displayName + " \xB7 " + o.name + (o.grade != null ? " \xB7 grade " + o.grade : "") + " \xB7 \xD7" + o.q;
+      const icon = document.createElement("span");
+      mountItemIcon(icon, { name: o.name, q: o.q, size: 40 });
+      btn.appendChild(icon);
+      const qty = document.createElement("span");
+      qty.className = "ecu-upg__tile-qty";
+      qty.textContent = "\xD7" + o.q;
+      btn.appendChild(qty);
+      btn.addEventListener("click", () => onPick(o.slot));
+      wrap.appendChild(btn);
+      appendTileKey(wrap, o.name);
+      host2.appendChild(wrap);
+    }
+  }
+  function appendPartnerTiles(host2, partners, selected, onToggle) {
+    host2.innerHTML = "";
+    setTilesScrollMode(host2, partners.length);
+    for (let i = 0; i < partners.length; i++) {
+      const p = partners[i];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-upg__tile" + (selected.has(p.slot) ? " is-on" : "");
+      btn.title = itemInstanceLabel(p.name, {
+        level: p.level,
+        p: p.p != null ? String(p.p) : void 0
+      }) + " \xB7 bag slot " + p.slot;
+      const icon = document.createElement("span");
+      mountItemIcon(icon, {
+        name: p.name,
+        level: p.level,
+        q: p.q,
+        p: p.p,
+        size: 40
+      });
+      btn.appendChild(icon);
+      btn.addEventListener("click", () => onToggle(p.slot));
+      host2.appendChild(btn);
+    }
+  }
+  var ENTER_CONFIRM_BELOW = 0.5;
+  function wireDialogChrome(backdrop, panel, opts) {
+    const onKey = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        document.removeEventListener("keydown", onKey, true);
+        closeDialog2(null);
+        return;
+      }
+      if (ev.key === "Enter" && opts && opts.onEnter && (!opts.canEnter || opts.canEnter())) {
+        const t = ev.target;
+        if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT")) return;
+        ev.preventDefault();
+        opts.onEnter();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    backdrop.addEventListener("mousedown", (ev) => {
+      if (ev.target === backdrop) closeDialog2(null);
+    });
+    backdrop.appendChild(panel);
+    document.body.appendChild(backdrop);
+    openBackdrop3 = backdrop;
+  }
+  function setHintWithBagRefresh(hint, lead) {
+    hint.textContent = "";
+    hint.appendChild(document.createTextNode(lead + " "));
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ecu-upg__hint-link";
+    btn.textContent = "Refresh bag";
+    btn.title = "Pull a fresh inventory snapshot from the observed character";
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      try {
+        refreshObservedInventory();
+      } catch (e2) {
+      }
+    });
+    hint.appendChild(btn);
+  }
+  function installBagPickClick(onSlot) {
+    const host2 = document.getElementById("bottomleftcorner");
+    if (!host2) return () => {
+    };
+    const onClick = (ev) => {
+      if (ev.button !== 0) return;
+      const t = ev.target;
+      if (!t || !host2.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host2);
+      if (num == null || !Number.isFinite(num)) return;
+      if (!onSlot(num)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    host2.addEventListener("click", onClick, true);
+    return () => host2.removeEventListener("click", onClick, true);
+  }
+  function bindChanceUi(trial) {
+    return {
+      setApprox: (chance, detail) => {
+        trial.chanceVal.textContent = formatApproxChancePct(chance);
+        trial.chanceVal.title = CHANCE_TITLE;
+        trial.chanceDetail.textContent = detail || "";
+        trial.chanceDetail.title = detail || "";
+        trial.chanceNote.style.display = "";
+        trial.chanceBox.classList.remove("is-loading");
+      },
+      setEmpty: (why) => {
+        trial.chanceVal.textContent = "\u2014";
+        trial.chanceVal.title = why;
+        trial.chanceDetail.textContent = "";
+        trial.chanceNote.style.display = "none";
+        trial.chanceBox.classList.remove("is-loading");
+      }
+    };
+  }
+  function showUpgradeDialog(offer, options) {
+    if (offer.locked || offer.maxLevel) return Promise.resolve(null);
+    closeDialog2(null);
+    ensureUpgradeCompoundDialogCss();
+    return new Promise((resolve) => {
+      finishOpen3 = resolve;
+      let liveOffer = offer;
+      let scrollSlot = liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+      let offeringSlot = null;
+      let pickFocus = scrollSlot == null ? "scroll" : null;
+      let fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : 0;
+      let watch = null;
+      let busy = false;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-upg-backdrop";
+      backdrop.setAttribute("data-ecu-upg", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-upg";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-label", "Upgrade");
+      const title = document.createElement("h2");
+      title.className = "ecu-upg__title";
+      title.textContent = "Upgrade";
+      const itemName = document.createElement("p");
+      itemName.className = "ecu-upg__item-name";
+      itemName.textContent = levelTransitionLabel(
+        fromLevel,
+        liveOffer.displayName
+      );
+      const meta2 = document.createElement("p");
+      meta2.className = "ecu-upg__meta";
+      meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access);
+      const trial = makeTrialCard("Upgrade");
+      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+      const scrollSection = document.createElement("div");
+      scrollSection.className = "ecu-upg__section";
+      const scrollLabel = document.createElement("div");
+      scrollLabel.className = "ecu-upg__section-label";
+      scrollLabel.textContent = "Scroll";
+      const scrollTiles = document.createElement("div");
+      scrollTiles.className = "ecu-upg__tiles";
+      scrollSection.appendChild(scrollLabel);
+      scrollSection.appendChild(scrollTiles);
+      const offerSection = document.createElement("div");
+      offerSection.className = "ecu-upg__section";
+      const offerLabel = document.createElement("div");
+      offerLabel.className = "ecu-upg__section-label";
+      offerLabel.textContent = "Offering (optional)";
+      const offerTiles = document.createElement("div");
+      offerTiles.className = "ecu-upg__tiles";
+      offerSection.appendChild(offerLabel);
+      offerSection.appendChild(offerTiles);
+      const hint = document.createElement("p");
+      hint.className = "ecu-upg__hint";
+      const actions = document.createElement("div");
+      actions.className = "ecu-upg__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "ecu-upg__btn";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "ecu-upg__btn is-primary";
+      okBtn.textContent = liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      const chanceUi = bindChanceUi(trial);
+      let lastChance = null;
+      const refreshChanceEstimate = () => {
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        if (!scroll && !offering) {
+          lastChance = null;
+          chanceUi.setEmpty("Pick a scroll or offering to estimate chance");
+          return;
+        }
+        lastChance = estimateShrineChance({
+          mode: "upgrade",
+          level: fromLevel,
+          itemGrade: liveOffer.grade,
+          scrollGrade: scroll ? scroll.grade : null,
+          offeringGrade: offering && offering.grade != null ? offering.grade : null,
+          grace: liveOffer.item.grace
+        });
+        chanceUi.setApprox(lastChance, chancePickDetail(scroll, offering));
+        if (!busy && pickFocus == null && lastChance < ENTER_CONFIRM_BELOW) {
+          hint.textContent = "Enter confirms (low ~chance).";
+        }
+      };
+      const paint = () => {
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const highlight = [liveOffer.item.slot];
+        if (scroll) highlight.push(scroll.slot);
+        if (offering) highlight.push(offering.slot);
+        setShrineBagHighlights(highlight);
+        trial.inputIcons.innerHTML = "";
+        fillMini(trial.inputIcons, liveOffer.item, {
+          showLevel: true,
+          title: "Item being upgraded"
+        });
+        trial.usedIcons.innerHTML = "";
+        if (scroll) {
+          fillMini(trial.usedIcons, scroll, {
+            showKey: true,
+            title: "Click to change scroll",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "scroll";
+              paint();
+              pulseSection(scrollSection);
+            }
+          });
+        } else {
+          fillMini(trial.usedIcons, null, {
+            emptyLabel: "Scr",
+            title: "Click, then pick a scroll (tiles or bag)",
+            focused: pickFocus === "scroll",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "scroll";
+              paint();
+              pulseSection(scrollSection);
+            }
+          });
+        }
+        if (offering) {
+          fillMini(trial.usedIcons, offering, {
+            showKey: true,
+            title: "Click to change offering",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "offering";
+              paint();
+              pulseSection(offerSection);
+            }
+          });
+        } else {
+          fillMini(trial.usedIcons, null, {
+            emptyLabel: "Off",
+            title: "Click, then pick an offering (or None)",
+            focused: pickFocus === "offering",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "offering";
+              paint();
+              pulseSection(offerSection);
+            }
+          });
+        }
+        appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
+          if (busy) return;
+          scrollSlot = slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+        });
+        appendOfferingTiles(
+          offerTiles,
+          liveOffer.offerings,
+          offeringSlot,
+          (slot) => {
+            if (busy) return;
+            offeringSlot = slot;
+            pickFocus = null;
+            paint();
+            refreshChanceEstimate();
+          }
+        );
+        const ready = scrollSlot != null || offeringSlot != null;
+        okBtn.disabled = busy || !ready;
+        okBtn.textContent = liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+        if (!busy) {
+          if (pickFocus === "scroll") {
+            hint.textContent = "Pick a scroll from the tiles or bag.";
+          } else if (pickFocus === "offering") {
+            hint.textContent = "Pick an offering from the tiles or bag (or None).";
+          } else if (!ready) {
+            hint.textContent = "Pick a scroll (or an offering).";
+          } else {
+            hint.textContent = "";
+          }
+        }
+        scrollSection.classList.toggle("is-focus", pickFocus === "scroll");
+        offerSection.classList.toggle("is-focus", pickFocus === "offering");
+      };
+      const rebindAfterSuccess = (keptScrollName, keptOfferingName) => {
+        const bag = observingBagItems();
+        const G = getG();
+        const nextLevel = fromLevel + 1;
+        let nextSlot = -1;
+        let nextItem = null;
+        if (bag) {
+          for (let i = 0; i < bag.length; i++) {
+            const it = bag[i];
+            if (!it || it.name !== liveOffer.item.name) continue;
+            const lv = it.level != null ? Number(it.level) : 0;
+            if (lv === nextLevel) {
+              nextSlot = i;
+              nextItem = it;
+              break;
+            }
+          }
+        }
+        if (!nextItem || nextSlot < 0 || !G) {
+          hint.textContent = "Upgraded \u2014 open again for the next level.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1400);
+          return;
+        }
+        const nextOffer = upgradeOfferForBagItem(nextItem, nextSlot, bag, G);
+        if (!nextOffer || nextOffer.locked || nextOffer.maxLevel) {
+          hint.textContent = (nextOffer == null ? void 0 : nextOffer.maxLevel) ? "Max level \u2014 done." : "Upgraded \u2014 cannot continue.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        liveOffer = nextOffer;
+        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : nextLevel;
+        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
+        scrollSlot = keepScroll ? keepScroll.slot : liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
+        offeringSlot = keepOffering ? keepOffering.slot : null;
+        pickFocus = scrollSlot == null ? "scroll" : null;
+        itemName.textContent = levelTransitionLabel(
+          fromLevel,
+          liveOffer.displayName
+        );
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access);
+        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+        busy = false;
+        hint.textContent = "Ready for next upgrade.";
+        paint();
+        refreshChanceEstimate();
+      };
+      const unsubBagClick = installBagPickClick((slot) => {
+        if (busy) return false;
+        if (pickFocus === "scroll") {
+          const s2 = findScroll(liveOffer.scrolls, slot);
+          if (!s2) return false;
+          scrollSlot = s2.slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        if (pickFocus === "offering") {
+          const o2 = findOffering(liveOffer.offerings, slot);
+          if (!o2) return false;
+          offeringSlot = o2.slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        const s = findScroll(liveOffer.scrolls, slot);
+        if (s) {
+          scrollSlot = s.slot;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        const o = findOffering(liveOffer.offerings, slot);
+        if (o) {
+          offeringSlot = o.slot;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        return false;
+      });
+      onDialogCleanup = () => {
+        if (watch) watch.cancel();
+        watch = null;
+        unsubBagClick();
+      };
+      const tryConfirm = () => {
+        if (okBtn.disabled || busy) return;
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const picked = {
+          item: fpFromPick(liveOffer.item),
+          scroll: scroll ? fpFromPick(scroll) : null,
+          offering: offering ? fpFromPick(offering) : null
+        };
+        if (!options || !options.execute) {
+          closeDialog2(picked);
+          return;
+        }
+        const bag = observingBagItems();
+        const beforeAtLevel = countNameLevel(
+          bag,
+          liveOffer.item.name,
+          fromLevel
+        );
+        const beforeNext = countNameLevel(
+          bag,
+          liveOffer.item.name,
+          fromLevel + 1
+        );
+        busy = true;
+        okBtn.disabled = true;
+        hint.textContent = "Running on character\u2026";
+        const sent = options.execute(picked);
+        if (!sent) {
+          busy = false;
+          hint.textContent = "Command failed to send.";
+          paint();
+          return;
+        }
+        if (watch) watch.cancel();
+        watch = watchLevelBump({
+          name: liveOffer.item.name,
+          fromLevel,
+          beforeAtLevel,
+          beforeNext,
+          onSuccess: () => {
+            watch = null;
+            hint.textContent = "Success \u2014 preparing next\u2026";
+            rebindAfterSuccess(
+              scroll ? scroll.name : null,
+              offering ? offering.name : null
+            );
+          },
+          onDestroyed: () => {
+            watch = null;
+            busy = false;
+            hint.textContent = "Failed \u2014 item gone.";
+            window.setTimeout(() => closeDialog2(null), 1600);
+          },
+          onTimeout: () => {
+            watch = null;
+            busy = false;
+            paint();
+            setHintWithBagRefresh(
+              hint,
+              "No bag change yet \u2014 check the character, or"
+            );
+          }
+        });
+      };
+      cancelBtn.addEventListener("click", () => closeDialog2(null));
+      okBtn.addEventListener("click", () => tryConfirm());
+      panel.appendChild(title);
+      panel.appendChild(itemName);
+      panel.appendChild(meta2);
+      panel.appendChild(trial.root);
+      panel.appendChild(scrollSection);
+      panel.appendChild(offerSection);
+      panel.appendChild(hint);
+      panel.appendChild(actions);
+      paint();
+      refreshChanceEstimate();
+      wireDialogChrome(backdrop, panel, {
+        onEnter: () => tryConfirm(),
+        canEnter: () => !busy && !okBtn.disabled && lastChance != null && lastChance < ENTER_CONFIRM_BELOW
+      });
+    });
+  }
+  function showCompoundDialog(offer, options) {
+    if (offer.locked || offer.maxLevel) return Promise.resolve(null);
+    if (offer.partners.length < 2) return Promise.resolve(null);
+    closeDialog2(null);
+    ensureUpgradeCompoundDialogCss();
+    return new Promise((resolve) => {
+      finishOpen3 = resolve;
+      let liveOffer = offer;
+      const defaults = defaultCompoundPartners(
+        liveOffer.partners,
+        liveOffer.item
+      );
+      let selected = /* @__PURE__ */ new Set([defaults[0].slot, defaults[1].slot]);
+      let scrollSlot = liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+      let offeringSlot = null;
+      let pickFocus = selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+      let fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : 0;
+      let watch = null;
+      let busy = false;
+      const backdrop = document.createElement("div");
+      backdrop.className = "ecu-upg-backdrop";
+      backdrop.setAttribute("data-ecu-upg", "1");
+      const panel = document.createElement("div");
+      panel.className = "ecu-upg";
+      panel.setAttribute("role", "dialog");
+      panel.setAttribute("aria-modal", "true");
+      panel.setAttribute("aria-label", "Compound");
+      const title = document.createElement("h2");
+      title.className = "ecu-upg__title";
+      title.textContent = "Compound";
+      const itemName = document.createElement("p");
+      itemName.className = "ecu-upg__item-name";
+      itemName.textContent = levelTransitionLabel(
+        fromLevel,
+        liveOffer.displayName
+      );
+      const meta2 = document.createElement("p");
+      meta2.className = "ecu-upg__meta";
+      meta2.textContent = "Grade " + liveOffer.grade + " \xB7 3 \u2192 1 \xB7 " + accessHint(liveOffer.access);
+      const trial = makeTrialCard("Compound");
+      paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+      const partnerSection = document.createElement("div");
+      partnerSection.className = "ecu-upg__section";
+      const partnerLabel = document.createElement("div");
+      partnerLabel.className = "ecu-upg__section-label";
+      partnerLabel.textContent = "Other copies (pick 2)";
+      const partnerTiles = document.createElement("div");
+      partnerTiles.className = "ecu-upg__tiles";
+      partnerSection.appendChild(partnerLabel);
+      partnerSection.appendChild(partnerTiles);
+      const scrollSection = document.createElement("div");
+      scrollSection.className = "ecu-upg__section";
+      const scrollLabel = document.createElement("div");
+      scrollLabel.className = "ecu-upg__section-label";
+      scrollLabel.textContent = "Compound scroll";
+      const scrollTiles = document.createElement("div");
+      scrollTiles.className = "ecu-upg__tiles";
+      scrollSection.appendChild(scrollLabel);
+      scrollSection.appendChild(scrollTiles);
+      const offerSection = document.createElement("div");
+      offerSection.className = "ecu-upg__section";
+      const offerLabel = document.createElement("div");
+      offerLabel.className = "ecu-upg__section-label";
+      offerLabel.textContent = "Offering (optional)";
+      const offerTiles = document.createElement("div");
+      offerTiles.className = "ecu-upg__tiles";
+      offerSection.appendChild(offerLabel);
+      offerSection.appendChild(offerTiles);
+      const hint = document.createElement("p");
+      hint.className = "ecu-upg__hint";
+      const actions = document.createElement("div");
+      actions.className = "ecu-upg__actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "ecu-upg__btn";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.type = "button";
+      okBtn.className = "ecu-upg__btn is-primary";
+      okBtn.textContent = liveOffer.access.ok ? "Compound" : "Travel & compound";
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      const chanceUi = bindChanceUi(trial);
+      let lastChance = null;
+      const refreshChanceEstimate = () => {
+        if (selected.size !== 2 || scrollSlot == null) {
+          lastChance = null;
+          chanceUi.setEmpty("Need 3 copies + scroll to estimate chance");
+          return;
+        }
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        if (!scroll) {
+          lastChance = null;
+          chanceUi.setEmpty("Need a compound scroll to estimate chance");
+          return;
+        }
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        lastChance = estimateShrineChance({
+          mode: "compound",
+          level: fromLevel,
+          itemGrade: liveOffer.grade,
+          scrollGrade: scroll.grade,
+          offeringGrade: offering && offering.grade != null ? offering.grade : null,
+          grace: liveOffer.item.grace
+        });
+        chanceUi.setApprox(lastChance, chancePickDetail(scroll, offering));
+        if (!busy && pickFocus == null && lastChance < ENTER_CONFIRM_BELOW) {
+          hint.textContent = "Enter confirms (low ~chance).";
+        }
+      };
+      const paint = () => {
+        const partnerList = [];
+        const keys = Array.from(selected.values()).sort((a, b) => a - b);
+        for (let i = 0; i < keys.length; i++) {
+          const found = liveOffer.partners.find((p) => p.slot === keys[i]);
+          if (found) partnerList.push(found);
+        }
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const highlight = [liveOffer.item.slot];
+        for (let i = 0; i < partnerList.length; i++) {
+          highlight.push(partnerList[i].slot);
+        }
+        if (scroll) highlight.push(scroll.slot);
+        if (offering) highlight.push(offering.slot);
+        setShrineBagHighlights(highlight);
+        trial.inputIcons.innerHTML = "";
+        fillMini(trial.inputIcons, liveOffer.item, {
+          showLevel: true,
+          title: "Primary copy"
+        });
+        fillMini(trial.inputIcons, partnerList[0] || null, {
+          showLevel: true,
+          emptyLabel: "2",
+          title: "Click, then pick a matching copy from tiles or bag",
+          focused: pickFocus === "partner" && !partnerList[0],
+          onClick: () => {
+            if (busy) return;
+            pickFocus = "partner";
+            paint();
+            pulseSection(partnerSection);
+          }
+        });
+        fillMini(trial.inputIcons, partnerList[1] || null, {
+          showLevel: true,
+          emptyLabel: "3",
+          title: "Click, then pick a matching copy from tiles or bag",
+          focused: pickFocus === "partner" && !!partnerList[0] && !partnerList[1],
+          onClick: () => {
+            if (busy) return;
+            pickFocus = "partner";
+            paint();
+            pulseSection(partnerSection);
+          }
+        });
+        trial.usedIcons.innerHTML = "";
+        if (scroll) {
+          fillMini(trial.usedIcons, scroll, {
+            showKey: true,
+            title: "Click to change scroll",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "scroll";
+              paint();
+              pulseSection(scrollSection);
+            }
+          });
+        } else {
+          fillMini(trial.usedIcons, null, {
+            emptyLabel: "Scr",
+            title: "Click, then pick a compound scroll",
+            focused: pickFocus === "scroll",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "scroll";
+              paint();
+              pulseSection(scrollSection);
+            }
+          });
+        }
+        if (offering) {
+          fillMini(trial.usedIcons, offering, {
+            showKey: true,
+            title: "Click to change offering",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "offering";
+              paint();
+              pulseSection(offerSection);
+            }
+          });
+        } else {
+          fillMini(trial.usedIcons, null, {
+            emptyLabel: "Off",
+            title: "Click, then pick an offering (or None)",
+            focused: pickFocus === "offering",
+            onClick: () => {
+              if (busy) return;
+              pickFocus = "offering";
+              paint();
+              pulseSection(offerSection);
+            }
+          });
+        }
+        appendPartnerTiles(partnerTiles, liveOffer.partners, selected, (slot) => {
+          if (busy) return;
+          if (selected.has(slot)) {
+            selected.delete(slot);
+          } else if (selected.size < 2) {
+            selected.add(slot);
+          } else {
+            const arr = Array.from(selected.values()).sort((a, b) => a - b);
+            selected.delete(arr[1]);
+            selected.add(slot);
+          }
+          if (selected.size === 2) pickFocus = null;
+          else pickFocus = "partner";
+          paint();
+          refreshChanceEstimate();
+        });
+        appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
+          if (busy) return;
+          scrollSlot = slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+        });
+        appendOfferingTiles(
+          offerTiles,
+          liveOffer.offerings,
+          offeringSlot,
+          (slot) => {
+            if (busy) return;
+            offeringSlot = slot;
+            pickFocus = null;
+            paint();
+            refreshChanceEstimate();
+          }
+        );
+        const ready = selected.size === 2 && scrollSlot != null;
+        okBtn.disabled = busy || !ready;
+        okBtn.textContent = liveOffer.access.ok ? "Compound" : "Travel & compound";
+        if (!busy) {
+          if (pickFocus === "partner" || selected.size !== 2) {
+            hint.textContent = "Select exactly two other copies (tiles or bag).";
+          } else if (pickFocus === "scroll" || scrollSlot == null) {
+            hint.textContent = "Pick a compound scroll (tiles or bag).";
+          } else if (pickFocus === "offering") {
+            hint.textContent = "Pick an offering from the tiles or bag (or None).";
+          } else {
+            hint.textContent = "";
+          }
+        }
+        partnerSection.classList.toggle("is-focus", pickFocus === "partner");
+        scrollSection.classList.toggle("is-focus", pickFocus === "scroll");
+        offerSection.classList.toggle("is-focus", pickFocus === "offering");
+      };
+      const rebindAfterSuccess = (keptScrollName, keptOfferingName) => {
+        const bag = observingBagItems();
+        const G = getG();
+        const nextLevel = fromLevel + 1;
+        let nextSlot = -1;
+        let nextItem = null;
+        if (bag) {
+          for (let i = 0; i < bag.length; i++) {
+            const it = bag[i];
+            if (!it || it.name !== liveOffer.item.name) continue;
+            const lv = it.level != null ? Number(it.level) : 0;
+            if (lv === nextLevel) {
+              nextSlot = i;
+              nextItem = it;
+              break;
+            }
+          }
+        }
+        if (!nextItem || nextSlot < 0 || !G) {
+          hint.textContent = "Compounded \u2014 open again when you have more copies.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1600);
+          return;
+        }
+        const nextOffer = compoundOfferForBagItem(nextItem, nextSlot, bag, G);
+        if (!nextOffer || nextOffer.locked || nextOffer.maxLevel || nextOffer.partners.length < 2) {
+          hint.textContent = (nextOffer == null ? void 0 : nextOffer.maxLevel) ? "Max level \u2014 done." : "Compounded \u2014 need 3 copies for the next level.";
+          busy = false;
+          window.setTimeout(() => closeDialog2(null), 1800);
+          return;
+        }
+        liveOffer = nextOffer;
+        fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : nextLevel;
+        const nextDefaults = defaultCompoundPartners(
+          liveOffer.partners,
+          liveOffer.item
+        );
+        selected = /* @__PURE__ */ new Set([
+          nextDefaults[0].slot,
+          nextDefaults[1].slot
+        ]);
+        const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
+        scrollSlot = keepScroll ? keepScroll.slot : liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+        const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
+        offeringSlot = keepOffering ? keepOffering.slot : null;
+        pickFocus = selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+        itemName.textContent = levelTransitionLabel(
+          fromLevel,
+          liveOffer.displayName
+        );
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 3 \u2192 1 \xB7 " + accessHint(liveOffer.access);
+        paintTrialResult(trial, liveOffer.item, fromLevel + 1);
+        busy = false;
+        hint.textContent = "Ready for next compound.";
+        paint();
+        refreshChanceEstimate();
+      };
+      const unsubBagClick = installBagPickClick((slot) => {
+        if (busy) return false;
+        if (slot === liveOffer.item.slot) return false;
+        if (pickFocus === "partner" || selected.size < 2) {
+          const found = liveOffer.partners.find((p) => p.slot === slot);
+          if (!found) return false;
+          if (selected.has(slot)) {
+            selected.delete(slot);
+          } else if (selected.size < 2) {
+            selected.add(slot);
+          } else {
+            const arr = Array.from(selected.values()).sort((a, b) => a - b);
+            selected.delete(arr[1]);
+            selected.add(slot);
+          }
+          pickFocus = selected.size === 2 ? null : "partner";
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        if (pickFocus === "scroll") {
+          const s2 = findScroll(liveOffer.scrolls, slot);
+          if (!s2) return false;
+          scrollSlot = s2.slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        if (pickFocus === "offering") {
+          const o2 = findOffering(liveOffer.offerings, slot);
+          if (!o2) return false;
+          offeringSlot = o2.slot;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        const partner = liveOffer.partners.find((p) => p.slot === slot);
+        if (partner) {
+          if (selected.has(slot)) selected.delete(slot);
+          else if (selected.size < 2) selected.add(slot);
+          else {
+            const arr = Array.from(selected.values()).sort((a, b) => a - b);
+            selected.delete(arr[1]);
+            selected.add(slot);
+          }
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        const s = findScroll(liveOffer.scrolls, slot);
+        if (s) {
+          scrollSlot = s.slot;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        const o = findOffering(liveOffer.offerings, slot);
+        if (o) {
+          offeringSlot = o.slot;
+          paint();
+          refreshChanceEstimate();
+          return true;
+        }
+        return false;
+      });
+      onDialogCleanup = () => {
+        if (watch) watch.cancel();
+        watch = null;
+        unsubBagClick();
+      };
+      const tryConfirm = () => {
+        if (okBtn.disabled || busy) return;
+        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        if (!scroll || selected.size !== 2) return;
+        const partnerSlots = Array.from(selected.values()).sort((a, b) => a - b);
+        const p0 = liveOffer.partners.find((p) => p.slot === partnerSlots[0]);
+        const p1 = liveOffer.partners.find((p) => p.slot === partnerSlots[1]);
+        if (!p0 || !p1) return;
+        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const picked = {
+          items: [fpFromPick(liveOffer.item), fpFromPick(p0), fpFromPick(p1)],
+          scroll: fpFromPick(scroll),
+          offering: offering ? fpFromPick(offering) : null
+        };
+        if (!options || !options.execute) {
+          closeDialog2(picked);
+          return;
+        }
+        const bag = observingBagItems();
+        const beforeAtLevel = countNameLevel(
+          bag,
+          liveOffer.item.name,
+          fromLevel
+        );
+        const beforeNext = countNameLevel(
+          bag,
+          liveOffer.item.name,
+          fromLevel + 1
+        );
+        busy = true;
+        okBtn.disabled = true;
+        hint.textContent = "Running on character\u2026";
+        const sent = options.execute(picked);
+        if (!sent) {
+          busy = false;
+          hint.textContent = "Command failed to send.";
+          paint();
+          return;
+        }
+        if (watch) watch.cancel();
+        watch = watchLevelBump({
+          name: liveOffer.item.name,
+          fromLevel,
+          beforeAtLevel,
+          beforeNext,
+          onSuccess: () => {
+            watch = null;
+            hint.textContent = "Success \u2014 preparing next\u2026";
+            rebindAfterSuccess(
+              scroll.name,
+              offering ? offering.name : null
+            );
+          },
+          onDestroyed: () => {
+            watch = null;
+            busy = false;
+            hint.textContent = "Failed \u2014 copies gone.";
+            window.setTimeout(() => closeDialog2(null), 1600);
+          },
+          onTimeout: () => {
+            watch = null;
+            busy = false;
+            paint();
+            setHintWithBagRefresh(
+              hint,
+              "No bag change yet \u2014 check the character, or"
+            );
+          }
+        });
+      };
+      cancelBtn.addEventListener("click", () => closeDialog2(null));
+      okBtn.addEventListener("click", () => tryConfirm());
+      panel.appendChild(title);
+      panel.appendChild(itemName);
+      panel.appendChild(meta2);
+      panel.appendChild(trial.root);
+      panel.appendChild(partnerSection);
+      panel.appendChild(scrollSection);
+      panel.appendChild(offerSection);
+      panel.appendChild(hint);
+      panel.appendChild(actions);
+      paint();
+      refreshChanceEstimate();
+      wireDialogChrome(backdrop, panel, {
+        onEnter: () => tryConfirm(),
+        canEnter: () => !busy && !okBtn.disabled && lastChance != null && lastChance < ENTER_CONFIRM_BELOW
+      });
+    });
+  }
+
+  // src/host/stationBagMenuActions.ts
+  function travelSuffix(access) {
+    if (access.ok && access.hasComputer) return "";
+    if (access.ok && access.inRange) return "";
+    return " (travel)\u2026";
+  }
+  function craftTitle(offer) {
+    const parts = [];
+    if (offer.cost > 0) parts.push(`${offer.cost} gold`);
+    if (!offer.bagReady) {
+      const miss = [];
+      for (let i = 0; i < offer.ingredients.length; i++) {
+        const ing = offer.ingredients[i];
+        if (ing.missingFromBag > 0) {
+          miss.push(
+            `${ing.missingFromBag}\xD7 ${itemDisplayName(ing.name)}` + (ing.level != null && ing.level > 0 ? `+${ing.level}` : "")
+          );
+        }
+      }
+      if (miss.length) parts.push("need in bag: " + miss.join(", "));
+      else if (offer.cost > 0) parts.push("need gold");
+    }
+    if (!offer.access.ok && offer.access.reason) {
+      parts.push(offer.access.reason);
+    } else if (!offer.access.hasComputer && !offer.access.inRange) {
+      parts.push("will smart_move to station first");
+    } else if (offer.access.hasComputer) {
+      parts.push("computer \u2014 any map");
+    }
+    parts.push("auto_craft on observed character");
+    return parts.join(" \xB7 ");
+  }
+  function formatCraftGold(cost) {
+    if (!(cost > 0)) return "";
+    if (cost >= 1e6) {
+      const m = cost / 1e6;
+      return m % 1 === 0 ? m + "M" : m.toFixed(1) + "M";
+    }
+    if (cost >= 1e3) {
+      const k = cost / 1e3;
+      return k % 1 === 0 ? k + "k" : k.toFixed(1) + "k";
+    }
+    return String(cost);
+  }
+  function craftRowText(offer, canCraft, prefix) {
+    let text = (prefix || "") + offer.outputName + (canCraft ? travelSuffix(offer.access) : craftOfferNotReadySuffix(offer));
+    if (offer.cost > 0) text += " \xB7 " + formatCraftGold(offer.cost);
+    return text;
+  }
+  function mountCraftRecipeLabel(host2, offer, text) {
+    const row3 = document.createElement("div");
+    row3.className = "comm-bag-ctx__craft";
+    const out = document.createElement("span");
+    out.className = "comm-bag-ctx__craft-out";
+    out.innerHTML = itemInstanceHtml(offer.output, { size: 22, bare: true });
+    const body = document.createElement("div");
+    body.className = "comm-bag-ctx__craft-body";
+    const name = document.createElement("div");
+    name.className = "comm-bag-ctx__craft-name";
+    name.textContent = text;
+    const ings = document.createElement("div");
+    ings.className = "comm-bag-ctx__craft-ings";
+    for (let i = 0; i < offer.ingredients.length; i++) {
+      const ing = offer.ingredients[i];
+      const chip = document.createElement("span");
+      const have = ing.bagSlotHave >= ing.need;
+      chip.className = "comm-bag-ctx__craft-ing " + (have ? "is-have" : "is-need");
+      chip.innerHTML = itemInstanceHtml(ing.name, {
+        size: 18,
+        bare: true,
+        level: ing.level
+      });
+      const needLabel = itemDisplayName(ing.name) + (ing.level != null && ing.level > 0 ? `+${ing.level}` : "");
+      chip.title = have ? `${needLabel} \xB7 have ${ing.bagSlotHave}/${ing.need}` : `${needLabel} \xB7 need ${ing.need} (bag ${ing.bagTotal}` + (ing.bankHave > 0 ? `, bank ${ing.bankHave}` : "") + ")";
+      ings.appendChild(chip);
+    }
+    body.appendChild(name);
+    if (offer.ingredients.length) body.appendChild(ings);
+    row3.appendChild(out);
+    row3.appendChild(body);
+    host2.appendChild(row3);
+  }
+  function buildStationBagMenuActions(ctx) {
+    if (!canEditObservedBag()) return [];
+    const G = getG();
+    if (!G) return [];
+    const bagItems = observingBagItems();
+    const actions = [];
+    let first = true;
+    const exchange = exchangeOfferForBagItem(ctx.item, bagItems, G);
+    if (exchange) {
+      const canRun = exchange.enoughQty && !exchange.locked && (exchange.access.ok || !!exchange.station);
+      let label = "Exchange" + travelSuffix(exchange.access);
+      if (!exchange.enoughQty) {
+        label = `Exchange (need ${exchange.e})`;
+      } else if (exchange.locked) {
+        label = "Exchange (locked)";
+      }
+      actions.push({
+        id: "station-exchange",
+        label,
+        title: exchange.locked ? "Item is locked" : !exchange.enoughQty ? `Need ${exchange.e} in this stack` : exchange.access.ok ? exchange.access.hasComputer ? "exchange() via computer" : "exchange() at shrine" : exchange.access.reason || "Travel to exchange shrine, then exchange",
+        separatorBefore: first,
+        disabled: !canRun || exchange.locked || !exchange.enoughQty,
+        run: () => {
+          exchangeCommand(ctx.fp, exchange.station);
+        }
+      });
+      first = false;
+    }
+    const upgrade = upgradeOfferForBagItem(
+      ctx.item,
+      ctx.fp.slot,
+      bagItems,
+      G
+    );
+    if (upgrade) {
+      const canOpen = !upgrade.locked && !upgrade.maxLevel && (upgrade.scrolls.length > 0 || upgrade.offerings.length > 0) && (upgrade.access.ok || !!upgrade.station);
+      let label = "Upgrade\u2026" + travelSuffix(upgrade.access);
+      if (upgrade.locked) label = "Upgrade (locked)";
+      else if (upgrade.maxLevel) label = "Upgrade (max level)";
+      else if (!upgrade.scrolls.length && !upgrade.offerings.length) {
+        label = "Upgrade (need scroll in bag)";
+      }
+      actions.push({
+        id: "station-upgrade",
+        label,
+        title: upgrade.locked ? "Item is locked" : upgrade.maxLevel ? "Already at max upgrade grade" : !upgrade.scrolls.length && !upgrade.offerings.length ? "Put a compatible scroll (or offering) in the bag first" : "Pick scroll + optional offering, then upgrade() at the shrine",
+        separatorBefore: first,
+        disabled: !canOpen,
+        run: () => {
+          void showUpgradeDialog(upgrade, {
+            execute: (picked) => upgradeCommand(
+              picked.item,
+              picked.scroll,
+              picked.offering,
+              upgrade.station
+            )
+          });
+        }
+      });
+      first = false;
+    }
+    const compound = compoundOfferForBagItem(
+      ctx.item,
+      ctx.fp.slot,
+      bagItems,
+      G
+    );
+    if (compound) {
+      const haveTriple = compound.partners.length >= 2;
+      const canOpen = !compound.locked && !compound.maxLevel && haveTriple && compound.scrolls.length > 0 && (compound.access.ok || !!compound.station);
+      let label = "Compound\u2026" + travelSuffix(compound.access);
+      if (compound.locked) label = "Compound (locked)";
+      else if (compound.maxLevel) label = "Compound (max level)";
+      else if (!haveTriple) {
+        label = `Compound (need 3 \xB7 have ${1 + compound.partners.length})`;
+      } else if (!compound.scrolls.length) {
+        label = "Compound (need cscroll in bag)";
+      }
+      actions.push({
+        id: "station-compound",
+        label,
+        title: compound.locked ? "Item is locked" : compound.maxLevel ? "Already at max compound grade" : !haveTriple ? "Need three matching copies at this level in the bag" : !compound.scrolls.length ? "Put a compatible compound scroll in the bag first" : "Pick partners + scroll + optional offering, then compound()",
+        separatorBefore: first,
+        disabled: !canOpen,
+        run: () => {
+          void showCompoundDialog(compound, {
+            execute: (picked) => compoundCommand(
+              picked.items,
+              picked.scroll,
+              picked.offering,
+              compound.station
+            )
+          });
+        }
+      });
+      first = false;
+    }
+    const dismantle = dismantleOfferForBagItem(ctx.item, bagItems, G);
+    if (dismantle) {
+      const canRun = !dismantle.locked && !dismantle.blocked && (dismantle.access.ok || !!dismantle.station);
+      let label = (dismantle.kind === "compound" ? "Dismantle (split)" : "Dismantle") + travelSuffix(dismantle.access);
+      if (dismantle.locked) label = "Dismantle (locked)";
+      if (dismantle.blocked) label = "Dismantle (blocked)";
+      actions.push({
+        id: "station-dismantle",
+        label,
+        title: dismantle.locked ? "Item is locked" : dismantle.blocked ? "Item is blocked" : dismantle.access.ok ? dismantle.access.hasComputer ? "dismantle() via computer" : "dismantle() at craftsman" : dismantle.access.reason || "Travel to craftsman, then dismantle",
+        separatorBefore: first,
+        disabled: !canRun,
+        run: () => {
+          dismantleCommand(ctx.fp, dismantle.station);
+        }
+      });
+      first = false;
+    } else {
+      const unavailable = dismantleUnavailableHint(ctx.item, G);
+      if (unavailable) {
+        actions.push({
+          id: "station-dismantle-na",
+          label: unavailable.label,
+          title: unavailable.title,
+          separatorBefore: first,
+          disabled: true
+        });
+        first = false;
+      }
+    }
+    const crafts = listCraftOffersForBagItem(ctx.fp.name, bagItems, {
+      G,
+      gold: observingGold(),
+      bankAgg: cachedBankAgg()
+    });
+    if (crafts.length === 1) {
+      const offer = crafts[0];
+      const canCraft = offer.bagReady && (offer.access.ok || !!offer.station);
+      const text = craftRowText(offer, canCraft, "Craft ");
+      actions.push({
+        id: `station-craft-${offer.output}`,
+        label: text,
+        title: craftTitle(offer),
+        separatorBefore: first,
+        disabled: !canCraft,
+        mountLabel: (host2) => mountCraftRecipeLabel(host2, offer, text),
+        run: () => {
+          autoCraftCommand(offer.output, offer.station);
+        }
+      });
+      first = false;
+      if (offer.withdrawCanReady) {
+        actions.push({
+          id: `station-withdraw-${offer.output}`,
+          label: `Withdraw ingredients for ${offer.outputName}\u2026`,
+          title: "bank_retrieve missing reagents into bag \u2014 does not craft. Refresh Bank if stale.",
+          disabled: false,
+          run: () => {
+            withdrawCraftIngredientsCommand(offer);
+          }
+        });
+      }
+    } else if (crafts.length > 1) {
+      const children = [];
+      for (let i = 0; i < crafts.length; i++) {
+        const offer = crafts[i];
+        const canCraft = offer.bagReady && (offer.access.ok || !!offer.station);
+        const text = craftRowText(offer, canCraft);
+        children.push({
+          id: `station-craft-${offer.output}`,
+          label: text,
+          title: craftTitle(offer),
+          disabled: !canCraft,
+          mountLabel: (host2) => mountCraftRecipeLabel(host2, offer, text),
+          run: () => {
+            autoCraftCommand(offer.output, offer.station);
+          }
+        });
+        if (offer.withdrawCanReady) {
+          children.push({
+            id: `station-withdraw-${offer.output}`,
+            label: `Withdraw for ${offer.outputName}\u2026`,
+            title: "bank_retrieve missing reagents into bag \u2014 does not craft",
+            run: () => {
+              withdrawCraftIngredientsCommand(offer);
+            }
+          });
+        }
+      }
+      actions.push({
+        id: "station-craft-menu",
+        label: "Craft\u2026",
+        title: "Recipes that use this item (bag stock only)",
+        separatorBefore: first,
+        children
+      });
+      first = false;
+    }
+    return actions;
+  }
+  registerBagMenuProvider(buildStationBagMenuActions);
 
   // src/ui/bag/bagItemInfoActions.ts
   function openObservingItemInfo(ctx) {
@@ -67502,7 +71018,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/BagPanel.ts
-  var HOST_ID3 = "bottomleftcorner";
+  var HOST_ID4 = "bottomleftcorner";
   var BAG_SLOT_BOX = 50;
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
@@ -67790,7 +71306,7 @@ ${ESTIMATE_HINT}`,
         unsubPending();
         unsubMenu();
         unsubDrag();
-        const h = document.getElementById(HOST_ID3);
+        const h = document.getElementById(HOST_ID4);
         if (h) document.body.appendChild(h);
       };
     }, []);
@@ -69158,176 +72674,6 @@ ${ESTIMATE_HINT}`,
     return findEntity(entities, obsId) || observing;
   }
 
-  // src/lib/bank/bankBrowse.ts
-  var SLOTS_PER_BANK_PACK = 42;
-  var OFFICIAL_PACK = /^items(\d+)$/;
-  function isOfficialBankPack(key) {
-    return OFFICIAL_PACK.test(key);
-  }
-  function compareBankPackKeys(a, b) {
-    const ma = OFFICIAL_PACK.exec(a);
-    const mb = OFFICIAL_PACK.exec(b);
-    if (ma && mb) return Number(ma[1]) - Number(mb[1]);
-    if (ma && !mb) return -1;
-    if (!ma && mb) return 1;
-    return a.localeCompare(b);
-  }
-  function listBankPackKeys(packs) {
-    return Object.keys(packs || {}).sort(compareBankPackKeys);
-  }
-  function packDisplayLabel(packKey) {
-    const m = OFFICIAL_PACK.exec(packKey);
-    if (m) return "Pack " + (Number(m[1]) + 1);
-    return packKey;
-  }
-  function flattenBankSlots(packs) {
-    const keys = listBankPackKeys(packs);
-    const out = [];
-    for (let i = 0; i < keys.length; i++) {
-      const pack = keys[i];
-      const slots = packs[pack];
-      if (!Array.isArray(slots)) continue;
-      for (let j = 0; j < slots.length; j++) {
-        const item = slots[j];
-        if (!item || !item.name || item.name === "placeholder") continue;
-        out.push({ pack, index: j, item });
-      }
-    }
-    return out;
-  }
-  function aggKey(item) {
-    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
-  }
-  function aggregateBankItems(slots) {
-    const byKey = /* @__PURE__ */ Object.create(null);
-    for (let i = 0; i < slots.length; i++) {
-      const { pack, index, item } = slots[i];
-      const key = aggKey(item);
-      const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
-      let row3 = byKey[key];
-      if (!row3) {
-        row3 = {
-          key,
-          name: String(item.name),
-          level: item.level,
-          p: item.p != null ? String(item.p) : null,
-          q: 0,
-          locs: []
-        };
-        byKey[key] = row3;
-      }
-      row3.q += q;
-      row3.locs.push({ pack, index, q });
-    }
-    const keys = Object.keys(byKey);
-    const out = [];
-    for (let i = 0; i < keys.length; i++) out.push(byKey[keys[i]]);
-    out.sort((a, b) => {
-      const n = a.name.localeCompare(b.name);
-      if (n !== 0) return n;
-      const la = a.level != null ? a.level : -1;
-      const lb = b.level != null ? b.level : -1;
-      if (la !== lb) return la - lb;
-      return String(a.p || "").localeCompare(String(b.p || ""));
-    });
-    return out;
-  }
-  var BANK_TYPE_CATEGORIES = [
-    { id: "helmet", label: "Helmets", types: ["helmet"] },
-    { id: "chest", label: "Armors", types: ["chest"] },
-    { id: "pants", label: "Underarmors", types: ["pants"] },
-    { id: "gloves", label: "Gloves", types: ["gloves"] },
-    { id: "shoes", label: "Shoes", types: ["shoes"] },
-    { id: "cape", label: "Capes", types: ["cape"] },
-    { id: "ring", label: "Rings", types: ["ring"] },
-    { id: "earring", label: "Earrings", types: ["earring"] },
-    { id: "amulet", label: "Amulets", types: ["amulet"] },
-    { id: "belt", label: "Belts", types: ["belt"] },
-    { id: "orb", label: "Orbs", types: ["orb"] },
-    { id: "weapon", label: "Weapons", types: ["weapon"] },
-    { id: "shield", label: "Shields", types: ["shield"] },
-    {
-      id: "offhand",
-      label: "Offhands",
-      types: ["source", "quiver", "misc_offhand"]
-    },
-    { id: "elixir", label: "Elixirs", types: ["elixir"] },
-    { id: "pot", label: "Potions", types: ["pot"] },
-    {
-      id: "scroll",
-      label: "Scrolls",
-      types: ["cscroll", "uscroll", "pscroll", "offering"]
-    },
-    { id: "material", label: "Crafting", types: ["material"] },
-    { id: "exchange", label: "Exchangeables", types: ["exchange"] },
-    { id: "other", label: "Others", types: [] }
-  ];
-  function itemType(name, G) {
-    const def = G && G.items && G.items[name];
-    return def && def.type != null ? String(def.type) : "";
-  }
-  function isExchangeable(name, G) {
-    const def = G && G.items && G.items[name];
-    return !!(def && def.e);
-  }
-  function categoryForItem(name, G) {
-    const t = itemType(name, G);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      const cat = BANK_TYPE_CATEGORIES[i];
-      if (cat.id === "other") continue;
-      if (cat.id === "exchange" && isExchangeable(name, G)) return cat;
-      if (cat.types.indexOf(t) >= 0) return cat;
-    }
-    return BANK_TYPE_CATEGORIES[BANK_TYPE_CATEGORIES.length - 1];
-  }
-  function groupBankByCategory(items, G) {
-    const buckets = /* @__PURE__ */ Object.create(null);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      buckets[BANK_TYPE_CATEGORIES[i].id] = [];
-    }
-    for (let i = 0; i < items.length; i++) {
-      const cat = categoryForItem(items[i].name, G);
-      buckets[cat.id].push(items[i]);
-    }
-    const out = [];
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      const cat = BANK_TYPE_CATEGORIES[i];
-      const list = buckets[cat.id];
-      if (list && list.length) out.push({ id: cat.id, label: cat.label, items: list });
-    }
-    return out;
-  }
-  function categoryOrderIndex(name, G) {
-    const cat = categoryForItem(name, G);
-    for (let i = 0; i < BANK_TYPE_CATEGORIES.length; i++) {
-      if (BANK_TYPE_CATEGORIES[i].id === cat.id) return i;
-    }
-    return BANK_TYPE_CATEGORIES.length;
-  }
-  function sortBankItems(items, mode, G) {
-    const copy = items.slice();
-    copy.sort((a, b) => {
-      if (mode === "stack" && a.locs.length !== b.locs.length) {
-        return b.locs.length - a.locs.length;
-      }
-      if (mode === "quantity" && a.q !== b.q) {
-        return b.q - a.q;
-      }
-      const ca = categoryOrderIndex(a.name, G);
-      const cb = categoryOrderIndex(b.name, G);
-      if (ca !== cb) return ca - cb;
-      const ta = itemType(a.name, G);
-      const tb = itemType(b.name, G);
-      if (ta && tb && ta !== tb) return ta.localeCompare(tb);
-      if (a.name !== b.name) return a.name.localeCompare(b.name);
-      const la = a.level != null ? Number(a.level) : 0;
-      const lb = b.level != null ? Number(b.level) : 0;
-      if (la !== lb) return lb - la;
-      return String(a.p || "").localeCompare(String(b.p || ""));
-    });
-    return copy;
-  }
-
   // src/lib/bank/bankStock.ts
   function bankItemStockKey(item) {
     return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null && item.p !== "" ? String(item.p) : "");
@@ -69350,7 +72696,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/chrome/querySearchFieldCss.ts
   var STYLE_ID8 = "ecu-query-search-field-css";
-  var CSS11 = `
+  var CSS12 = `
 .ecu-qsearch {
   position: relative;
   flex: 1 1 220px;
@@ -69492,7 +72838,7 @@ ${ESTIMATE_HINT}`,
     if (document.getElementById(STYLE_ID8)) return;
     const el = document.createElement("style");
     el.id = STYLE_ID8;
-    el.textContent = CSS11;
+    el.textContent = CSS12;
     document.head.appendChild(el);
   }
 
@@ -73935,7 +77281,7 @@ ${ESTIMATE_HINT}`,
     });
     return { ready, potential };
   }
-  function parseCraftRow(row3) {
+  function parseCraftRow2(row3) {
     if (!Array.isArray(row3) || row3.length < 2) return null;
     const need = Number(row3[0]);
     const name = String(row3[1] || "");
@@ -73981,7 +77327,7 @@ ${ESTIMATE_HINT}`,
       const ingredients = [];
       let ok = true;
       for (let j = 0; j < recipe.items.length; j++) {
-        const parsed = parseCraftRow(recipe.items[j]);
+        const parsed = parseCraftRow2(recipe.items[j]);
         if (!parsed) {
           ok = false;
           break;
@@ -74071,7 +77417,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/frames/bankPanelCss.ts
   var STYLE_ID9 = "ecu-bank-panel-css";
-  var CSS12 = `
+  var CSS13 = `
 .BankPanel {
   --bk-line: #2a2a2a;
   --bk-muted: #8a8680;
@@ -74507,7 +77853,7 @@ ${ESTIMATE_HINT}`,
       el.id = STYLE_ID9;
       document.head.appendChild(el);
     }
-    el.textContent = CSS12;
+    el.textContent = CSS13;
     bankPanelCssInjected = true;
   }
 

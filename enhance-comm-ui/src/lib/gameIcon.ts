@@ -458,9 +458,15 @@ export function itemInstanceHtml(
     p?: string;
     /** false → no native browser title (timeline / cooltip). Default true. */
     nativeTitle?: boolean;
+    /**
+     * Drop stock item_container margin/space/border chrome — for nestings
+     * inside our own bordered tiles (shrine pickers) so boxes don't stack.
+     */
+    bare?: boolean;
   },
 ): string {
   const size = (opts && opts.size) || 40;
+  const bare = !!(opts && opts.bare);
   const title =
     (opts && opts.title) ||
     itemInstanceLabel(itemName, {
@@ -473,12 +479,21 @@ export function itemInstanceHtml(
   const actual: Record<string, unknown> = { name: itemName };
   if (opts && opts.level != null && opts.level > 0) actual.level = opts.level;
   if (skinKey) actual.skin = skinKey;
-  if (opts && opts.q != null && opts.q > 1) actual.q = opts.q;
+  if (!bare && opts && opts.q != null && opts.q > 1) actual.q = opts.q;
   if (opts && opts.p) actual.p = opts.p;
 
   try {
     const raw = itemContainer(
-      { skin: skinKey, size, draggable: false },
+      bare
+        ? {
+            skin: skinKey,
+            size,
+            draggable: false,
+            margin: 0,
+            space: 0,
+            bcolor: "transparent",
+          }
+        : { skin: skinKey, size, draggable: false },
       actual,
     );
     if (raw) {

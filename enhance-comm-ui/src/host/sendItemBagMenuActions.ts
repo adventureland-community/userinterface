@@ -27,40 +27,49 @@ function receiverSpaceLabel(target: {
 }
 
 function buildSendItemBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
-  const actions: BagMenuAction[] = [];
   const nearby = listNearbySendTargets();
 
   if (nearby.length === 0) {
-    actions.push({
-      id: "send-nearby-none",
-      label: "Send item to nearby (none in range)",
-      title: "Trade send via send_item — requires a player within range",
-      separatorBefore: true,
-      disabled: true,
-      run: () => {},
-    });
-    return actions;
+    return [
+      {
+        id: "send-nearby-none",
+        label: "Send to… (none in range)",
+        title: "Trade send via send_item — requires a player within range",
+        separatorBefore: true,
+        disabled: true,
+        run: () => {},
+      },
+    ];
   }
 
+  const children: BagMenuAction[] = [];
   for (let i = 0; i < nearby.length; i++) {
     const t = nearby[i];
     const distLabel = t.dist != null ? ` (${Math.round(t.dist)}px)` : "";
     const spaceLabel = receiverSpaceLabel(t);
     const noSpace = t.freeInv != null && t.freeInv <= 0;
-    actions.push({
+    children.push({
       id: `send-nearby-${t.id}`,
-      label: `Send to ${t.name}${distLabel}${spaceLabel}`,
+      label: `${t.name}${distLabel}${spaceLabel}`,
       title: noSpace
         ? "Receiver inventory appears full — send may fail"
         : "Trade send via send_item on the observed character (not mail)",
-      separatorBefore: i === 0,
       disabled: noSpace,
       run: () => {
         sendItemCommand(ctx.fp, t.name);
       },
     });
   }
-  return actions;
+
+  return [
+    {
+      id: "send-nearby-menu",
+      label: "Send to…",
+      title: "Trade send via send_item to a player in range",
+      separatorBefore: true,
+      children,
+    },
+  ];
 }
 
 registerBagMenuProvider(buildSendItemBagMenuActions);

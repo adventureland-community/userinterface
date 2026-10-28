@@ -112,6 +112,71 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.15.0",
+    title: "0.15.0",
+    date: "2026-10-28",
+    summary:
+      "Bag right-click Exchange, Dismantle, Craft, Upgrade, and Compound — bag stock only, with range/computer gating and scroll/offering pickers.",
+    highlights: [
+      {
+        label: "Craft · Exchange · Dismantle",
+        detail:
+          "Right-click a bag item: Exchange (e), Dismantle (recipe or compound split), Craft recipes that use it. Runs on the watched character via auto_craft / exchange / dismantle. Computer skips range; otherwise smart_moves within 400px of craftsman / exchange / quest NPC.",
+        kind: "feature",
+      },
+      {
+        label: "Upgrade · Compound shrine",
+        detail:
+          "Bag Upgrade… / Compound… opens a Discord-bot-style trial card (+N → +N+1, INPUT / USED, rough ~chance from your picks). Selected bag slots glow gold; empty INPUT/USED slots are clickable to pick from tiles or the bag. Roll/grace stay off. Confirm runs on the character; travels without a computer.",
+        kind: "feature",
+      },
+      {
+        label: "Bag-only · explicit withdraw",
+        detail:
+          "Craft only when reagents are already in the bag (single-slot qty like auto_craft). If bank can cover the gap, Withdraw ingredients… pulls via bank_retrieve — it does not craft for you. Upgrade/Compound similarly need scroll (and partners) in bag first.",
+        kind: "feature",
+      },
+    ],
+    items: [
+      {
+        label: "Craft recipe chips · gold · shortfalls",
+        detail:
+          "Craft rows show product + ingredient icons (have/need), recipe gold (· 180k), and named gaps — (need Fire Essence), (Fire Essence in bank), or (need gold) — instead of a vague (missing).",
+        kind: "improve",
+      },
+      {
+        label: "Dismantle (n/a) explanation",
+        detail:
+          "Upgrade gear without a recipe and +0 compound gear show a disabled Dismantle row with why, instead of a silent omission.",
+        kind: "improve",
+      },
+      {
+        label: "Shrine tile keys · BEST scroll",
+        detail:
+          "USED and scroll/offering tiles show item keys; grade-matched scrolls get a stronger BEST badge.",
+        kind: "ui",
+      },
+      {
+        label: "Shrine ~chance honesty",
+        detail:
+          "Chance shows scroll/offering keys under ~% and a local · not calculate note — observer never sees character game_log.",
+        kind: "ui",
+      },
+      {
+        label: "Shrine stay-open · Enter on low odds",
+        detail:
+          "Confirm watches bag sync and rebinds to the next level on success (keeps scroll/offering when still in bag); timeout offers Refresh bag. Enter confirms only when ~chance is under 50% (Esc always cancels).",
+        kind: "improve",
+      },
+      {
+        label: "Send to… submenu",
+        detail:
+          "Nearby trade-send targets live under one Send to… flyout (name · distance · bag space) instead of a long top-level list.",
+        kind: "ui",
+      },
+    ],
+  },
+  {
     id: "0.14.1",
     title: "0.14.1",
     date: "2026-10-27",

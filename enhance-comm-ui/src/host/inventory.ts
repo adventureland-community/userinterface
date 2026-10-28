@@ -8,6 +8,7 @@
  * the target frame until Bag closes and character is restored.
  */
 import { refreshBagBuyOrderIndicators } from "../ui/bag/bagBuyOrderIndicator";
+import { applyShrineBagHighlights } from "../ui/bag/shrineBagHighlight";
 import { itemInstanceLabel, stampNativeItemTitle } from "../lib/gameIcon";
 import {
   shouldShowTitleBorder,
@@ -104,6 +105,11 @@ function injectHostCss(): void {
 #${HOST_ID} [data-cnum].is-bag-swap-target {
   outline: 2px solid #6ab04c;
   outline-offset: 1px;
+}
+#${HOST_ID} [data-cnum].is-ecu-shrine-pick {
+  outline: 2px solid #e8c96a;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
 }
 #${MOUNT_ID} {
   pointer-events: auto;
@@ -534,6 +540,7 @@ export function refreshInventoryItemTitles(): void {
   }
   stripObservedBagNativeDropHandlers();
   refreshBagBuyOrderIndicators();
+  applyShrineBagHighlights();
 }
 
 /**

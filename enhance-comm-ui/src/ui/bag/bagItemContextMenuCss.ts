@@ -56,6 +56,68 @@ export const BAG_ITEM_CONTEXT_MENU_CSS = `
 }
 .comm-bag-ctx__item.is-disabled:hover,
 .comm-bag-ctx__item:disabled:hover { background: transparent; }
+.comm-bag-ctx__craft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.comm-bag-ctx__craft-out {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  overflow: hidden;
+}
+.comm-bag-ctx__craft-out .item,
+.comm-bag-ctx__craft-out .item-container,
+.comm-bag-ctx__craft-ing .item,
+.comm-bag-ctx__craft-ing .item-container {
+  transform-origin: center center;
+}
+.comm-bag-ctx__craft-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.comm-bag-ctx__craft-name {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.comm-bag-ctx__craft-ings {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.comm-bag-ctx__craft-ing {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  overflow: hidden;
+  opacity: 0.92;
+  border-radius: 2px;
+  outline: 1px solid rgba(90, 90, 90, 0.7);
+}
+.comm-bag-ctx__craft-ing.is-need {
+  opacity: 0.38;
+  outline-color: rgba(180, 80, 80, 0.55);
+}
+.comm-bag-ctx__craft-ing.is-have {
+  outline-color: rgba(90, 150, 100, 0.7);
+}
 `;
 
 let injected = false;

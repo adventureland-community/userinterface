@@ -23,6 +23,11 @@ export type BagMenuAction = {
   run?: () => void;
   /** Nested flyout items (parent row opens submenu on hover). */
   children?: BagMenuAction[];
+  /**
+   * Optional rich label (icons / recipe chips). `label` stays the accessible name.
+   * Host is the menu button; clear it before appending.
+   */
+  mountLabel?: (host: HTMLElement) => void;
 };
 
 export type BagMenuContext = {
@@ -144,7 +149,12 @@ function appendBagMenuAction(
     btn.className = "comm-bag-ctx__item has-submenu";
     btn.setAttribute("role", "menuitem");
     btn.setAttribute("aria-haspopup", "true");
-    btn.textContent = action.label;
+    btn.setAttribute("aria-label", action.label);
+    if (action.mountLabel) {
+      action.mountLabel(btn);
+    } else {
+      btn.textContent = action.label;
+    }
     const arrow = document.createElement("span");
     arrow.className = "comm-bag-ctx__arrow";
     arrow.setAttribute("aria-hidden", "true");
@@ -205,7 +215,12 @@ function appendBagMenuAction(
   btn.type = "button";
   btn.className = "comm-bag-ctx__item";
   btn.setAttribute("role", "menuitem");
-  btn.textContent = action.label;
+  btn.setAttribute("aria-label", action.label);
+  if (action.mountLabel) {
+    action.mountLabel(btn);
+  } else {
+    btn.textContent = action.label;
+  }
   if (action.title) btn.title = action.title;
   if (action.disabled) {
     btn.disabled = true;
