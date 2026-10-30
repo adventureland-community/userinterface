@@ -1,21 +1,54 @@
-import { e } from "../../host/react";
+import { getReact, e } from "../../host/react";
+import type { EntityLike } from "../../host/globals";
 import { AGGRO_BADGE, PIXEL_TEXT } from "../../lib/typeScale";
+import {
+  aggroCooltipHandlers,
+  aggroCooltipHtml,
+  aggroCooltipKey,
+  dismissAggroCooltip,
+} from "./aggroCooltip";
 
 export type AggroSparkProps = {
   count: number;
   className?: string;
+  /** Mobs targeting this unit — enables a rich cooltip list. */
+  mobs?: EntityLike[];
+  /** Framed entity — courage pools for aggro/capacity X/Y in the tip. */
+  owner?: EntityLike | null;
+  /** Framed entity id (cooltip key) + display name. */
+  ownerId?: string;
+  ownerName?: string;
 };
 
 /** Corner count of mobs targeting the framed entity. */
 export function AggroSpark(props: AggroSparkProps): any {
-  const { count, className } = props;
+  const React = getReact();
+  const { count, className, mobs = [], owner, ownerId, ownerName } = props;
   if (!(count > 0)) return null;
+
+  const tipKey = aggroCooltipKey(ownerId != null ? String(ownerId) : "anon");
+  const tipHandlers = aggroCooltipHandlers(tipKey, () =>
+    aggroCooltipHtml({
+      ownerName: ownerName || (ownerId != null ? String(ownerId) : undefined),
+      owner: owner || null,
+      mobs: mobs.length ? mobs : [],
+    }),
+  );
+
+  React.useEffect(() => {
+    return () => {
+      dismissAggroCooltip(tipKey);
+    };
+  }, [tipKey]);
+
   return e(
     "div",
     {
       className: className || "comm-threat-spark",
-      title: `Aggro: ${count} mob${count === 1 ? "" : "s"}`,
       "data-ecu-aggro": String(count),
+      onMouseEnter: tipHandlers.onMouseEnter,
+      onMouseMove: tipHandlers.onMouseMove,
+      onMouseLeave: tipHandlers.onMouseLeave,
       style: {
         position: "absolute",
         // Keep inside the unit box — negative inset expands scrollable overflow
@@ -36,7 +69,8 @@ export function AggroSpark(props: AggroSparkProps): any {
         fontSize: AGGRO_BADGE.fontSize,
         lineHeight: 1,
         ...PIXEL_TEXT,
-        pointerEvents: "none",
+        cursor: "help",
+        pointerEvents: "auto",
       },
     },
     String(count),

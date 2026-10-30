@@ -11,6 +11,7 @@ import {
   skillIconHtml,
   targetIconHtml,
 } from "../lib/gameIcon";
+import { bindCooltipCrossHide, hideCooltip } from "../ui/chrome/cooltip";
 import { runMeterQuery } from "./meterQuery";
 import type { PlayersMetric, RankedRow, SegmentRef } from "./meterTypes";
 
@@ -99,6 +100,7 @@ function placeTip(tip: HTMLDivElement, clientX: number, clientY: number): void {
 }
 
 function paintTip(html: string, clientX: number, clientY: number): void {
+  hideCooltip();
   const tip = ensureTip();
   tip.innerHTML = html;
   const isGear = html.indexOf("ecu-meter-tt-gear") !== -1;
@@ -150,12 +152,22 @@ function unbindModKeys(): void {
 }
 
 export function showMeterTooltip(ev: MouseEvent, html: string): void {
+  showMeterTooltipAt(html, ev.clientX, ev.clientY, readMods(ev));
+}
+
+/** Same shell as `showMeterTooltip`, without needing a MouseEvent (clock rebuilds). */
+export function showMeterTooltipAt(
+  html: string,
+  clientX: number,
+  clientY: number,
+  mods?: { shift: boolean; ctrl: boolean },
+): void {
   hoverRebuild = null;
   unbindModKeys();
-  lastMods = readMods(ev);
-  hoverX = ev.clientX;
-  hoverY = ev.clientY;
-  paintTip(html, ev.clientX, ev.clientY);
+  if (mods) lastMods = mods;
+  hoverX = clientX;
+  hoverY = clientY;
+  paintTip(html, clientX, clientY);
 }
 
 /**
@@ -181,6 +193,11 @@ export function hideMeterTooltip(): void {
   tipEl.style.display = "none";
   tipEl.classList.remove("is-gear-tip", "is-tl-ev-tip", "is-tl-cluster");
 }
+
+/** Opening a Comm cooltip (buffs / items) dismisses the meter tip host. */
+bindCooltipCrossHide(() => {
+  hideMeterTooltip();
+});
 
 function metricForBreakdown(metric?: string): PlayersMetric {
   if (

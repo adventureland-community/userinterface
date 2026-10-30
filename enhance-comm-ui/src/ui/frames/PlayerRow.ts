@@ -34,6 +34,8 @@ export function PlayerFrame(props: PlayerFrameProps): any {
       entity: observing,
       hpColor: classColors[observing.ctype || ""] || "#666",
       fontSize: "21px",
+      // Match party/boss density — default EffectsRow 36px dominates the frame.
+      effectsIconSize: 22,
       effectsOverlay: true,
       aggroMobs,
       onSelect: (id: string) => {

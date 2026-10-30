@@ -51,6 +51,8 @@ export function TargetFrame(props: TargetFrameProps): any {
       hpColor: classColors[target.ctype || ""] || "red",
       fontSize: "21px",
       trailing: targetTrailing(observing, target),
+      // Match party/boss density — default EffectsRow 36px dominates the frame.
+      effectsIconSize: 22,
       effectsOverlay: true,
       aggroMobs,
       onSelect: (id: string) => {

@@ -766,8 +766,11 @@ export function monsterIconHtml(
 ): string {
   const tip = title || monsterDisplayName(mtype) || mtype;
   const raw = monsterSprite(mtype, { size: displaySize });
+  const height = Math.round((displaySize * 50) / 40);
   if (raw) {
-    return `<span class="ecu-meter-icon ecu-meter-icon-monster" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;line-height:0">${raw}</span>`;
+    // overflow:visible — sprite() already boxes the frame; clipping a 40×50
+    // body into a tiny square made cooltip mobs nearly invisible.
+    return `<span class="ecu-meter-icon ecu-meter-icon-monster" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${height}px;display:inline-flex;align-items:center;justify-content:center;overflow:visible;line-height:0">${raw}</span>`;
   }
   return letterFallbackHtml(
     (tip || "?").slice(0, 1).toUpperCase(),

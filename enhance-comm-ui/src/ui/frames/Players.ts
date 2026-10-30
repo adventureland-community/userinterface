@@ -8,6 +8,11 @@ import { NameWithControl } from "../chrome/NameWithControl";
 import { AggroSpark } from "../chrome/AggroSpark";
 import { EffectsRow } from "../chrome/EffectsRow";
 import { SharedPartyEffects } from "../chrome/SharedPartyEffects";
+import {
+  unitCooltipHandlers,
+  unitCooltipHtml,
+  unitCooltipKey,
+} from "../chrome/unitCooltip";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
 import { chipOutline } from "../../lib/chipOutline";
 import {
@@ -109,25 +114,8 @@ function renderPlayerChip(player: EntityLike, ctx: ChipCtx): any {
   const hasAggro = aggroMobs.length > 0;
   const color = classColors[player.ctype || ""] || "#888";
   const dead = isActuallyDead(player);
-  const aggroTitle = hasAggro
-    ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}`
-    : "";
   const controlStates = getControlStates(player, aggroMobs);
   const controlTint = controlBorderTint(controlStates);
-  const controlTitle = controlStates
-    .map((s) =>
-      s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label,
-    )
-    .join(" · ");
-  const nameTitle = [
-    `${player.name || player.id}`,
-    observed ? "Observing" : "",
-    dead ? "Dead" : "",
-    controlTitle,
-    aggroTitle,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
   const outline = chipOutline({
     hasAggro,
@@ -143,6 +131,18 @@ function renderPlayerChip(player: EntityLike, ctx: ChipCtx): any {
   );
   const maxVisible = underChipBuffMaxVisible(ctx.buffMode);
 
+  // Cooltip on HP/MP only — never on the chip root (that stole buff hover).
+  const tipKey = unitCooltipKey(pid);
+  const tipHandlers = unitCooltipHandlers(tipKey, () =>
+    unitCooltipHtml({
+      entity: player,
+      observed,
+      dead,
+      controlStates,
+      aggroCount: aggroMobs.length,
+    }),
+  );
+
   return e(
     "div",
     {
@@ -154,7 +154,6 @@ function renderPlayerChip(player: EntityLike, ctx: ChipCtx): any {
         (hasAggro ? " has-aggro" : "") +
         (controlStates.length ? " has-control" : "") +
         (dead ? " is-rip" : ""),
-      title: nameTitle,
       style: {
         position: "relative",
         flex: "0 0 auto",
@@ -178,82 +177,101 @@ function renderPlayerChip(player: EntityLike, ctx: ChipCtx): any {
     e(
       "div",
       {
+        className: "ecu-chip-vitals",
+        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseMove: tipHandlers.onMouseMove,
+        onMouseLeave: tipHandlers.onMouseLeave,
         style: {
           position: "relative",
-          minHeight: "26px",
-          height: "26px",
-          overflow: "visible",
-          background: "rgba(0,0,0,0.45)",
-          outline,
-          boxShadow: hasAggro
-            ? "inset 0 0 0 1px rgba(224,85,85,0.55)"
-            : observed
-              ? "inset 0 -2px 0 #e13758"
-              : undefined,
+          pointerEvents: "auto",
         },
       },
-      e("div", {
-        style: {
-          display: "block",
-          height: "100%",
-          width: `${hpPct(player)}%`,
-          background: color,
+      e(
+        "div",
+        {
+          style: {
+            position: "relative",
+            minHeight: "26px",
+            height: "26px",
+            overflow: "visible",
+            background: "rgba(0,0,0,0.45)",
+            outline,
+            boxShadow: hasAggro
+              ? "inset 0 0 0 1px rgba(224,85,85,0.55)"
+              : observed
+                ? "inset 0 -2px 0 #e13758"
+                : undefined,
+          },
         },
+        e("div", {
+          style: {
+            display: "block",
+            height: "100%",
+            width: `${hpPct(player)}%`,
+            background: color,
+          },
+        }),
+        e(
+          "div",
+          {
+            style: {
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              display: "flex",
+              alignItems: "center",
+              padding: "0 7px",
+              minWidth: 0,
+              overflow: "visible",
+              fontSize: TYPE.name,
+              letterSpacing: "0.04em",
+              lineHeight: 1,
+              color: "#fff",
+              pointerEvents: "none",
+              ...PIXEL_TEXT,
+            },
+          },
+          e(InspectButton, { entity: player, compact: true }),
+          e(NameWithControl, {
+            className: "ecu-chip-namecluster",
+            name: `${player.level ?? ""} ${player.id}`,
+            states: controlStates,
+            compact: true,
+            iconSize: 16,
+            entity: player,
+            aggroMobs,
+          }),
+        ),
+      ),
+      e(AggroSpark, {
+        count: aggroMobs.length,
+        className: "ecu-chip-aggro",
+        mobs: aggroMobs,
+        owner: player,
+        ownerId: pid,
+        ownerName: String(player.name || player.id),
       }),
       e(
         "div",
         {
           style: {
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 7px",
-            minWidth: 0,
-            overflow: "visible",
-            fontSize: TYPE.name,
-            letterSpacing: "0.04em",
-            lineHeight: 1,
-            color: "#fff",
-            pointerEvents: "none",
-            ...PIXEL_TEXT,
+            marginTop: "2px",
+            height: "5px",
+            overflow: "hidden",
+            background: "rgba(0,0,0,0.45)",
           },
         },
-        e(InspectButton, { entity: player, compact: true }),
-        e(NameWithControl, {
-          className: "ecu-chip-namecluster",
-          name: `${player.level ?? ""} ${player.id}`,
-          states: controlStates,
-          compact: true,
-          iconSize: 16,
+        e("div", {
+          style: {
+            display: "block",
+            height: "100%",
+            width: `${mpPct(player)}%`,
+            background: "#3a6fd8",
+          },
         }),
       ),
-    ),
-    e(AggroSpark, {
-      count: aggroMobs.length,
-      className: "ecu-chip-aggro",
-    }),
-    e(
-      "div",
-      {
-        style: {
-          marginTop: "2px",
-          height: "5px",
-          overflow: "hidden",
-          background: "rgba(0,0,0,0.45)",
-        },
-      },
-      e("div", {
-        style: {
-          display: "block",
-          height: "100%",
-          width: `${mpPct(player)}%`,
-          background: "#3a6fd8",
-        },
-      }),
     ),
     showBuffs
       ? e(EffectsRow, {

@@ -82,12 +82,15 @@ export function monsterSprite(
 ): string {
   if (!mtype || typeof window.sprite !== "function") return "";
   const size = opts?.size ?? 22;
+  // Stock `sprite()` defaults are 40×50 — keep that aspect so bodies aren't
+  // squashed into a square (tiny cooltip crops looked empty/dark).
+  const height = Math.round((size * 50) / 40);
   // `sprite` resolves `G.monsters[mtype].skin` (defaults to mtype at G build).
   return (
     window.sprite(mtype, {
       scale: size / 40,
       width: size,
-      height: size,
+      height,
       overflow: true,
     }) || ""
   );

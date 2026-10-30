@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.15.0
+// @version      0.16.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -1849,10 +1849,11 @@ var EnhanceCommUI = (() => {
     var _a;
     if (!mtype || typeof window.sprite !== "function") return "";
     const size = (_a = opts == null ? void 0 : opts.size) != null ? _a : 22;
+    const height = Math.round(size * 50 / 40);
     return window.sprite(mtype, {
       scale: size / 40,
       width: size,
-      height: size,
+      height,
       overflow: true
     }) || "";
   }
@@ -2486,8 +2487,9 @@ var EnhanceCommUI = (() => {
   function monsterIconHtml(mtype, displaySize = 18, title) {
     const tip = title || monsterDisplayName(mtype) || mtype;
     const raw = monsterSprite(mtype, { size: displaySize });
+    const height = Math.round(displaySize * 50 / 40);
     if (raw) {
-      return `<span class="ecu-meter-icon ecu-meter-icon-monster" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${displaySize}px;display:inline-flex;align-items:center;justify-content:center;overflow:hidden;line-height:0">${raw}</span>`;
+      return `<span class="ecu-meter-icon ecu-meter-icon-monster" title="${escapeAttr(tip)}" style="width:${displaySize}px;height:${height}px;display:inline-flex;align-items:center;justify-content:center;overflow:visible;line-height:0">${raw}</span>`;
     }
     return letterFallbackHtml(
       (tip || "?").slice(0, 1).toUpperCase(),
@@ -8886,6 +8888,71 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.16.0",
+      title: "0.16.0",
+      date: "2026-10-30",
+      summary: "Shared Comm cooltips for items, buffs, aggro, and fear \u2014 richer G + live entity.s data, readable monster portraits, and courage X/Y.",
+      highlights: [
+        {
+          label: "Shared cooltip shell",
+          detail: "One HUD hover tip for items (stock render_item), buffs (explanation/stats/From/Remaining), aggro spark, and fear/CC badges. Unit/party vitals tips sit on HP/MP only so they do not steal buff hovers.",
+          kind: "feature"
+        },
+        {
+          label: "Buff \xB7 aura \xB7 hunt tips",
+          detail: "Citizen auras resolve Kane/Angel from G.npcs + live stats. From leads; same-owner mluck shows Strong and a lock when you cannot override. Monsterhunt shows target name + sprite.",
+          kind: "improve"
+        },
+        {
+          label: "Aggro \xB7 fear courage X/Y",
+          detail: "Physical / Magical / Pure show as aggro/capacity (e.g. 3/2). Overrun tints red. Aggro tip lists mobs with readable 40\xD750 sprites.",
+          kind: "improve"
+        }
+      ],
+      items: [
+        {
+          label: "Shared cooltip \xB7 item + buff hover",
+          detail: "One Comm cooltip shell for HUD hover. Items show the stock render_item card on hover; buffs keep explanation/stats/From with live Remaining. Unit/party vitals tips sit on HP/MP only; aggro and fear/CC badges get their own rich tips.",
+          kind: "improve"
+        },
+        {
+          label: "Citizen / aura buff tips",
+          detail: "Citizen auras (Kane luck, Angel gold, \u2026) resolve G.npcs + live entity.s \u2014 tip shows Kane's Aura (Aura), luck/gold, From, and stay-nearby copy. Player auras with attr0 (sanguine, beekeeper) keep G.explanation and live attribute values under kind Aura.",
+          kind: "improve"
+        },
+        {
+          label: "Buff tip \xB7 From first \xB7 mluck lock",
+          detail: "Buff cooltips lead with From, then Strong for same-owner mluck. If another merchant cannot override it, Strong shows locked with a lock mark.",
+          kind: "improve"
+        },
+        {
+          label: "Fear tip \xB7 aggro/courage X/Y",
+          detail: "Fear cooltip shows Physical / Magical / Pure as aggro\xF7courage (e.g. 3/2) so you see which pool is overrun; the old Aggro P/M/U dump is gone when pools are known.",
+          kind: "improve"
+        },
+        {
+          label: "Aggro tip \xB7 courage capacity",
+          detail: "Aggro spark cooltip uses the same X/Y pools (e.g. Physical 2/5) when the framed player's courage can be estimated.",
+          kind: "improve"
+        },
+        {
+          label: "Monsterhunt tip \xB7 target + icon",
+          detail: "On The Hunt (and kill quests) show the live target from entity.s.id via G.monsters \u2014 e.g. Defeat 5 Goos and return, Target with monster sprite, plus kills left.",
+          kind: "improve"
+        },
+        {
+          label: "Aggro tip \xB7 mob sprites",
+          detail: "Aggro spark cooltip lists each mob with its monster sprite beside the name, not text alone. Portraits render at stock 40\xD750 so they stay readable on the dark tip.",
+          kind: "improve"
+        },
+        {
+          label: "Smaller frame buff icons",
+          detail: "Player/target frame effect icons default to 22px so more buffs fit without crowding the vitals row.",
+          kind: "ui"
+        }
+      ]
+    },
+    {
       id: "0.15.0",
       title: "0.15.0",
       date: "2026-10-28",
@@ -13332,6 +13399,122 @@ ${fightHoverTip(src)}`
     return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
+  // src/ui/chrome/cooltipCss.ts
+  var COOLTIP_CSS = `
+.ecu-cooltip {
+  --ecu-tt-body: 16px;
+  --ecu-tt-title: 17px;
+  --ecu-tt-foot: 13px;
+  --ecu-tt-icon: 22px;
+  /* Stock sprite base 40\xD750 \u2014 keep readable on dark tip chrome. */
+  --ecu-tt-monster-w: 40px;
+  --ecu-tt-monster-h: 50px;
+  --ecu-tt-pad-y: 12px;
+  --ecu-tt-pad-x: 14px;
+  --ecu-tt-gap: 8px;
+  position: fixed;
+  z-index: 10000;
+  min-width: 220px;
+  max-width: 460px;
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: rgba(12, 14, 18, 0.94);
+  border: 1px solid rgba(210, 210, 220, 0.28);
+  border-radius: 2px;
+  padding: var(--ecu-tt-pad-y) var(--ecu-tt-pad-x);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+  pointer-events: none;
+  font-size: var(--ecu-tt-body);
+  color: #e8eef7;
+  line-height: 1.45;
+  font-weight: normal;
+  text-shadow: none;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  display: none;
+}
+.ecu-cooltip.is-open {
+  display: block;
+}
+.ecu-cooltip h4 {
+  margin: 0 0 8px;
+  font-size: var(--ecu-tt-title);
+  color: #fff;
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: var(--ecu-tt-gap);
+}
+.ecu-cooltip .ecu-meter-icon:not(.ecu-meter-icon-monster),
+.ecu-cooltip .ecu-meter-icon-clip {
+  width: var(--ecu-tt-icon) !important;
+  height: var(--ecu-tt-icon) !important;
+}
+.ecu-cooltip .ecu-meter-icon-monster {
+  width: var(--ecu-tt-monster-w) !important;
+  height: var(--ecu-tt-monster-h) !important;
+  overflow: visible !important;
+  flex-shrink: 0;
+}
+.ecu-cooltip .line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  color: #c8d0dc;
+  font-size: var(--ecu-tt-body);
+}
+.ecu-cooltip .line span { color: #ffe08a; }
+.ecu-cooltip .line b { color: #fff; font-weight: normal; }
+.ecu-cooltip .ecu-cooltip-target b {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.ecu-cooltip .ecu-cooltip-mob-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffe08a;
+  min-width: 0;
+}
+.ecu-cooltip .ecu-cooltip-mob {
+  min-height: var(--ecu-tt-monster-h);
+  padding: 2px 0;
+}
+.ecu-cooltip .ecu-cooltip-lock {
+  color: #ffcc66;
+}
+.ecu-cooltip .ecu-cooltip-over b {
+  color: #ff9a9a;
+}
+.ecu-cooltip .ecu-meter-tt-foot,
+.ecu-cooltip .ecu-cooltip-foot {
+  margin: 0 0 8px;
+  color: #c3c3c3;
+  font-size: var(--ecu-tt-foot);
+  line-height: 1.35;
+}
+/* Stock render_item card inside hover \u2014 drop double chrome. */
+.ecu-cooltip.is-item-tip {
+  min-width: 0;
+  padding: 8px 10px;
+}
+.ecu-cooltip.is-item-tip .buyitem {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: 280px;
+  font-size: 16px !important;
+  line-height: 20px !important;
+  display: block !important;
+}
+.ecu-cooltip.is-item-tip .buyitem .cbold {
+  font-size: 17px;
+}
+`;
+
   // src/host/commChrome/chromeArrangeCss.ts
   var CHROME_ARRANGE_CSS = `
 /* Edge-snap group affordances (layout edit + play-arrange). */
@@ -13557,6 +13740,7 @@ ${fightHoverTip(src)}`
   display: none !important;
 }
 ${EFFECTS_ICON_CSS}
+${COOLTIP_CSS}
 
 #bottom {
   position: fixed;
@@ -26082,6 +26266,165 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     subscribeTick(() => applyPageTitle());
   }
 
+  // src/ui/chrome/cooltip.ts
+  var PAD = 8;
+  var CURSOR = 14;
+  var STYLE_ID6 = "ecu-cooltip-css";
+  var HOST_ID4 = "ecu-cooltip";
+  var COOLTIP_ICON = 22;
+  var COOLTIP_MONSTER_ICON = 40;
+  var tipEl = null;
+  var hoverKey = null;
+  var tipX = 0;
+  var tipY = 0;
+  var tipRebuild = null;
+  var tipOpts = {};
+  var cssInjected2 = false;
+  var crossHideMeter = null;
+  function bindCooltipCrossHide(hideMeter) {
+    crossHideMeter = hideMeter;
+  }
+  function escapeCooltipHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function ensureCooltipCss() {
+    if (typeof document === "undefined") return;
+    if (cssInjected2 && document.getElementById(STYLE_ID6)) return;
+    let el = document.getElementById(STYLE_ID6);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID6;
+      document.head.appendChild(el);
+    }
+    el.textContent = COOLTIP_CSS;
+    cssInjected2 = true;
+  }
+  function ensureHost() {
+    ensureCooltipCss();
+    if (tipEl && tipEl.isConnected) return tipEl;
+    tipEl = document.createElement("div");
+    tipEl.id = HOST_ID4;
+    tipEl.className = "ecu-cooltip";
+    tipEl.setAttribute("role", "tooltip");
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+  function placeTip(tip, clientX, clientY) {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const rect = tip.getBoundingClientRect();
+    const tw = Math.max(1, rect.width);
+    const th2 = Math.max(1, rect.height);
+    let x = clientX + CURSOR;
+    let y = clientY + CURSOR;
+    if (x + tw > vw - PAD) x = clientX - tw - CURSOR;
+    if (y + th2 > vh - PAD) y = clientY - th2 - CURSOR;
+    x = Math.max(PAD, Math.min(vw - tw - PAD, x));
+    y = Math.max(PAD, Math.min(vh - th2 - PAD, y));
+    tip.style.left = Math.round(x) + "px";
+    tip.style.top = Math.round(y) + "px";
+  }
+  function paintTip(html, clientX, clientY, opts) {
+    if (crossHideMeter) {
+      try {
+        crossHideMeter();
+      } catch (e2) {
+      }
+    }
+    const tip = ensureHost();
+    tip.innerHTML = html || "";
+    tip.classList.toggle("is-item-tip", !!(opts && opts.itemTip));
+    tip.classList.add("is-open");
+    tip.style.left = "-9999px";
+    tip.style.top = "0px";
+    placeTip(tip, clientX, clientY);
+  }
+  function showCooltipAt(html, clientX, clientY, opts) {
+    tipX = clientX;
+    tipY = clientY;
+    if (opts) tipOpts = opts;
+    paintTip(html, clientX, clientY, tipOpts);
+  }
+  function hideCooltip() {
+    hoverKey = null;
+    tipRebuild = null;
+    tipOpts = {};
+    if (!tipEl) return;
+    tipEl.classList.remove("is-open", "is-item-tip");
+    tipEl.innerHTML = "";
+  }
+  function cooltipHandlers(key, rebuild, opts) {
+    return {
+      onMouseEnter: (ev) => {
+        hoverKey = key;
+        tipRebuild = rebuild;
+        tipOpts = opts || {};
+        tipX = ev.clientX;
+        tipY = ev.clientY;
+        showCooltipAt(rebuild(), tipX, tipY, tipOpts);
+      },
+      onMouseMove: (ev) => {
+        if (hoverKey !== key) return;
+        tipX = ev.clientX;
+        tipY = ev.clientY;
+        if (tipRebuild) showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
+      },
+      onMouseLeave: () => {
+        if (hoverKey !== key) return;
+        hideCooltip();
+      }
+    };
+  }
+  function refreshCooltip(key) {
+    if (hoverKey !== key || !tipRebuild) return;
+    showCooltipAt(tipRebuild(), tipX, tipY, tipOpts);
+  }
+  function dismissCooltip(key) {
+    if (key != null && hoverKey !== key) return;
+    if (!hoverKey && key != null) return;
+    hideCooltip();
+  }
+
+  // src/ui/chrome/itemCooltip.ts
+  var tipSeq = 0;
+  function nextItemCooltipKey(name) {
+    tipSeq += 1;
+    return `item:${name}:${tipSeq}`;
+  }
+  function itemCooltipHtml(args) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.items) == null ? void 0 : _a[args.name];
+    const actual = {
+      name: args.name,
+      ...args.actual || {}
+    };
+    if (actual.level == null && args.level != null) actual.level = args.level;
+    if (actual.q == null && args.q != null) actual.q = args.q;
+    if (actual.p == null && args.p != null) actual.p = args.p;
+    if (!actual.name) actual.name = args.name;
+    if (def) {
+      const html = buildItemHtml({
+        item: def,
+        name: args.name,
+        actual,
+        readonly: true
+      });
+      if (html && String(html).trim()) return html;
+    }
+    const label = itemInstanceLabel(args.name, {
+      p: actual.p != null ? String(actual.p) : void 0,
+      level: actual.level
+    }) || args.name;
+    return `<h4>${escapeCooltipHtml(label)}</h4>`;
+  }
+  function itemCooltipHandlers(key, rebuild) {
+    return cooltipHandlers(key, rebuild, { itemTip: true });
+  }
+  function dismissItemCooltip(key) {
+    dismissCooltip(key);
+  }
+
   // src/ui/chrome/ItemInstance.ts
   function formatQty(q, forceShowQ) {
     if (q == null || !Number.isFinite(q)) return null;
@@ -26094,6 +26437,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     const React = getReact();
     ensureItemInstanceBadgeCss();
     const ref = React.useRef(null);
+    const tipKeyRef = React.useRef("");
     const {
       name,
       skin,
@@ -26106,13 +26450,38 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       stockChrome = true,
       forceShowQ,
       qtyColor,
-      bankQ
+      bankQ,
+      cooltip = true,
+      actual
     } = props;
     const levelNum = coerceItemLevel(level);
     const tip = title || itemInstanceLabel(name, { p, level: levelNum }) || name;
     const qtyLabel = formatQty(q, forceShowQ);
     const levelBadge = resolveItemLevelBadge(name, level);
     const bankLabel = bankQ != null && Number.isFinite(bankQ) && bankQ > 0 ? formatQty(bankQ, true) : null;
+    if (!tipKeyRef.current) tipKeyRef.current = nextItemCooltipKey(name);
+    const nameRef = React.useRef(name);
+    nameRef.current = name;
+    const levelRef = React.useRef(level);
+    levelRef.current = level;
+    const qRef = React.useRef(q);
+    qRef.current = q;
+    const pRef = React.useRef(p);
+    pRef.current = p;
+    const actualRef = React.useRef(actual);
+    actualRef.current = actual;
+    const tipLabelRef = React.useRef(tip);
+    tipLabelRef.current = tip;
+    const rebuildTip = React.useCallback(() => {
+      return itemCooltipHtml({
+        name: nameRef.current,
+        level: levelRef.current,
+        q: qRef.current,
+        p: pRef.current,
+        actual: actualRef.current
+      });
+    }, []);
+    const tipHandlers = cooltip ? itemCooltipHandlers(tipKeyRef.current, rebuildTip) : null;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
@@ -26151,6 +26520,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         if (el) el.innerHTML = "";
       };
     }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
+    React.useEffect(() => {
+      if (!cooltip) return;
+      const key = tipKeyRef.current;
+      return () => {
+        dismissItemCooltip(key);
+      };
+    }, [cooltip]);
     return e(
       "span",
       {
@@ -26164,9 +26540,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
           alignItems: "center",
           justifyContent: "center",
           lineHeight: 0,
-          verticalAlign: "middle"
+          verticalAlign: "middle",
+          cursor: cooltip ? "help" : void 0
         },
-        title: tip
+        title: cooltip ? void 0 : tip,
+        onMouseEnter: tipHandlers ? tipHandlers.onMouseEnter : void 0,
+        onMouseMove: tipHandlers ? tipHandlers.onMouseMove : void 0,
+        onMouseLeave: tipHandlers ? tipHandlers.onMouseLeave : void 0
       },
       e("span", {
         ref,
@@ -27595,8 +27975,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.15.0" : "unknown";
-    const builtAt = true ? "2026-10-28T16:51:01.984Z" : "unknown";
+    const version = true ? "0.16.0" : "unknown";
+    const builtAt = true ? "2026-10-30T11:05:11.374Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -33802,15 +34182,15 @@ button.comm-mail__stack-u {
   white-space: pre-wrap;
 }
 `;
-  var cssInjected2 = false;
+  var cssInjected3 = false;
   var hoverEl = null;
   var noticeEl = null;
   function canUseDom2() {
     return typeof document !== "undefined" && !!document.body;
   }
   function ensureCss3() {
-    if (cssInjected2 || !canUseDom2()) return;
-    cssInjected2 = true;
+    if (cssInjected3 || !canUseDom2()) return;
+    cssInjected3 = true;
     const existing = document.querySelector(
       "style[data-ecu-comm-notice-css]"
     );
@@ -41534,7 +41914,7 @@ button.ecu-meter-status-micro:hover,
 `;
 
   // src/ui/meter/meterChromeCss.ts
-  var STYLE_ID6 = "ecu-meter-chrome-css";
+  var STYLE_ID7 = "ecu-meter-chrome-css";
   function cssSlice(part) {
     return part.replace(/^\n/, "").replace(/\n$/, "");
   }
@@ -41562,10 +41942,10 @@ ${parts.map(cssSlice).join("\n")}
     METER_VIEWS_CSS
   ].join("\n");
   function injectMeterChromeCss() {
-    let style = document.getElementById(STYLE_ID6);
+    let style = document.getElementById(STYLE_ID7);
     if (!style) {
       style = document.createElement("style");
-      style.id = STYLE_ID6;
+      style.id = STYLE_ID7;
       document.head.appendChild(style);
     }
     style.textContent = CSS8.replace(
@@ -42384,13 +42764,13 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/meters/meterTooltip.ts
-  var PAD = 8;
-  var CURSOR = 14;
+  var PAD2 = 8;
+  var CURSOR2 = 14;
   var METER_TT_ICON = 22;
   var MAX_SPELLS = 6;
   var MAX_TARGETS = 2;
   var MAX_EXPANDED = 16;
-  var tipEl = null;
+  var tipEl2 = null;
   var lastMods = { shift: false, ctrl: false };
   var hoverRebuild = null;
   var hoverX = 0;
@@ -42405,7 +42785,7 @@ ${parts.map(cssSlice).join("\n")}
     passive: false
   };
   function isMeterTooltipOpen() {
-    return !!(tipEl && tipEl.isConnected && tipEl.style.display === "block");
+    return !!(tipEl2 && tipEl2.isConnected && tipEl2.style.display === "block");
   }
   function onTipCtrlWheel(ev) {
     if (!ev.ctrlKey || !isMeterTooltipOpen()) return;
@@ -42413,35 +42793,36 @@ ${parts.map(cssSlice).join("\n")}
     ev.stopPropagation();
   }
   function ensureTip() {
-    if (tipEl && tipEl.isConnected) return tipEl;
-    tipEl = document.createElement("div");
-    tipEl.className = "ecu-meter-tt";
-    tipEl.style.display = "none";
-    tipEl.style.position = "fixed";
-    tipEl.style.zIndex = "10000";
-    document.body.appendChild(tipEl);
+    if (tipEl2 && tipEl2.isConnected) return tipEl2;
+    tipEl2 = document.createElement("div");
+    tipEl2.className = "ecu-meter-tt";
+    tipEl2.style.display = "none";
+    tipEl2.style.position = "fixed";
+    tipEl2.style.zIndex = "10000";
+    document.body.appendChild(tipEl2);
     if (!tipWheelBound) {
       tipWheelBound = true;
       document.addEventListener("wheel", onTipCtrlWheel, TIP_WHEEL_OPTS);
     }
-    return tipEl;
+    return tipEl2;
   }
-  function placeTip(tip, clientX, clientY) {
+  function placeTip2(tip, clientX, clientY) {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const rect = tip.getBoundingClientRect();
     const tw = Math.max(1, rect.width);
     const th2 = Math.max(1, rect.height);
-    let x = clientX + CURSOR;
-    let y = clientY + CURSOR;
-    if (x + tw > vw - PAD) x = clientX - tw - CURSOR;
-    if (y + th2 > vh - PAD) y = clientY - th2 - CURSOR;
-    x = Math.max(PAD, Math.min(vw - tw - PAD, x));
-    y = Math.max(PAD, Math.min(vh - th2 - PAD, y));
+    let x = clientX + CURSOR2;
+    let y = clientY + CURSOR2;
+    if (x + tw > vw - PAD2) x = clientX - tw - CURSOR2;
+    if (y + th2 > vh - PAD2) y = clientY - th2 - CURSOR2;
+    x = Math.max(PAD2, Math.min(vw - tw - PAD2, x));
+    y = Math.max(PAD2, Math.min(vh - th2 - PAD2, y));
     tip.style.left = Math.round(x) + "px";
     tip.style.top = Math.round(y) + "px";
   }
-  function paintTip(html, clientX, clientY) {
+  function paintTip2(html, clientX, clientY) {
+    hideCooltip();
     const tip = ensureTip();
     tip.innerHTML = html;
     const isGear = html.indexOf("ecu-meter-tt-gear") !== -1;
@@ -42452,7 +42833,7 @@ ${parts.map(cssSlice).join("\n")}
     tip.style.display = "block";
     tip.style.left = "-9999px";
     tip.style.top = "0px";
-    placeTip(tip, clientX, clientY);
+    placeTip2(tip, clientX, clientY);
   }
   function readMods(ev) {
     return {
@@ -42461,11 +42842,11 @@ ${parts.map(cssSlice).join("\n")}
     };
   }
   function onModKey(ev) {
-    if (!hoverRebuild || !tipEl || tipEl.style.display === "none") return;
+    if (!hoverRebuild || !tipEl2 || tipEl2.style.display === "none") return;
     const mods = readMods(ev);
     if (mods.shift === lastMods.shift && mods.ctrl === lastMods.ctrl) return;
     lastMods = mods;
-    paintTip(hoverRebuild(mods), hoverX, hoverY);
+    paintTip2(hoverRebuild(mods), hoverX, hoverY);
   }
   var MOD_KEY_OPTS = { capture: true };
   function bindModKeys() {
@@ -42481,12 +42862,15 @@ ${parts.map(cssSlice).join("\n")}
     document.removeEventListener("keyup", onModKey, MOD_KEY_OPTS);
   }
   function showMeterTooltip(ev, html) {
+    showMeterTooltipAt(html, ev.clientX, ev.clientY, readMods(ev));
+  }
+  function showMeterTooltipAt(html, clientX, clientY, mods) {
     hoverRebuild = null;
     unbindModKeys();
-    lastMods = readMods(ev);
-    hoverX = ev.clientX;
-    hoverY = ev.clientY;
-    paintTip(html, ev.clientX, ev.clientY);
+    if (mods) lastMods = mods;
+    hoverX = clientX;
+    hoverY = clientY;
+    paintTip2(html, clientX, clientY);
   }
   function showMeterTooltipLive(ev, rebuild) {
     const mods = readMods(ev);
@@ -42495,15 +42879,18 @@ ${parts.map(cssSlice).join("\n")}
     hoverX = ev.clientX;
     hoverY = ev.clientY;
     bindModKeys();
-    paintTip(rebuild(mods), ev.clientX, ev.clientY);
+    paintTip2(rebuild(mods), ev.clientX, ev.clientY);
   }
   function hideMeterTooltip() {
     hoverRebuild = null;
     unbindModKeys();
-    if (!tipEl) return;
-    tipEl.style.display = "none";
-    tipEl.classList.remove("is-gear-tip", "is-tl-ev-tip", "is-tl-cluster");
+    if (!tipEl2) return;
+    tipEl2.style.display = "none";
+    tipEl2.classList.remove("is-gear-tip", "is-tl-ev-tip", "is-tl-cluster");
   }
+  bindCooltipCrossHide(() => {
+    hideMeterTooltip();
+  });
   function metricForBreakdown(metric) {
     if (metric === "heal" || metric === "taken" || metric === "healing_required" || metric === "avoidance" || metric === "damage") {
       return metric;
@@ -48036,22 +48423,22 @@ ${parts.map(cssSlice).join("\n")}
   function hoverKeyOf(item) {
     return item.itemKey || item.label;
   }
-  function detailForHover(menu, hoverKey) {
-    if (!hoverKey) return null;
-    if (menu.header && hoverKeyOf(menu.header) === hoverKey) {
+  function detailForHover(menu, hoverKey2) {
+    if (!hoverKey2) return null;
+    if (menu.header && hoverKeyOf(menu.header) === hoverKey2) {
       return menu.header.detail || null;
     }
     for (let s = 0; s < menu.sections.length; s++) {
       const items = menu.sections[s].items;
       for (let i = 0; i < items.length; i++) {
-        if (hoverKeyOf(items[i]) === hoverKey) return items[i].detail || null;
+        if (hoverKeyOf(items[i]) === hoverKey2) return items[i].detail || null;
       }
     }
     return null;
   }
   function MeterItemsCooltip(props) {
     const React = getReact();
-    const [hoverKey, setHoverKey] = React.useState(null);
+    const [hoverKey2, setHoverKey] = React.useState(null);
     const [detailPos, setDetailPos] = React.useState(
       null
     );
@@ -48115,7 +48502,7 @@ ${parts.map(cssSlice).join("\n")}
         nodes.push(cooltipItemNode(sec.items[i], onHoverDetail));
       }
     }
-    const detail = detailForHover(menu, hoverKey);
+    const detail = detailForHover(menu, hoverKey2);
     const cooltipInnerStyle = {
       ...PIXEL_TEXT
     };
@@ -53746,669 +54133,6 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
-  // src/ui/chrome/ControlBadge.ts
-  function ControlIcon(props) {
-    const React = getReact();
-    const ref = React.useRef(null);
-    const { state: state3, iconSize } = props;
-    React.useEffect(() => {
-      const el = ref.current;
-      if (!el) return;
-      paintItemContainerIcon(el, state3.skin, iconSize);
-      return () => {
-        if (el) el.innerHTML = "";
-      };
-    }, [state3.skin, state3.label, iconSize]);
-    return e("div", {
-      ref,
-      className: "comm-ctrl-icon",
-      style: {
-        position: "relative",
-        display: "inline-block",
-        flex: "0 0 auto",
-        verticalAlign: "top",
-        lineHeight: 0,
-        pointerEvents: "none"
-      }
-    });
-  }
-  function badgeTitle(state3) {
-    if (state3.kind === "fear") {
-      return `${state3.label} (fear ${state3.fear})`;
-    }
-    return state3.label;
-  }
-  function ControlBadge(props) {
-    const { states, compact = false } = props;
-    if (!states.length) return null;
-    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
-    const tight = compact || iconSize <= 18;
-    return e(
-      "div",
-      {
-        className: "comm-ctrl-badges is-inline" + (tight ? " is-compact" : ""),
-        style: {
-          position: "relative",
-          display: "inline-flex",
-          flexDirection: "row",
-          flexWrap: "nowrap",
-          alignItems: "center",
-          gap: tight ? "3px" : "4px",
-          flex: "0 0 auto",
-          maxHeight: "100%"
-        }
-      },
-      ...states.map((state3) => {
-        const key = state3.kind === "fear" ? `fear-${state3.level}` : `cc-${state3.id}`;
-        return e(
-          "div",
-          {
-            key,
-            className: "comm-ctrl-badge" + (state3.kind === "fear" ? ` is-fear is-${state3.level}` : ` is-hardcc is-${state3.id}`),
-            title: badgeTitle(state3),
-            style: {
-              display: "inline-flex",
-              alignItems: "center",
-              gap: tight ? "3px" : "5px",
-              flex: "0 0 auto",
-              padding: tight ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
-              boxSizing: "border-box",
-              background: state3.background,
-              border: `${tight ? 1 : 2}px solid ${state3.border}`,
-              color: state3.color,
-              fontSize: tight ? TYPE.micro : TYPE.badge,
-              lineHeight: 1,
-              ...PIXEL_TEXT,
-              cursor: "help",
-              pointerEvents: "auto",
-              maxHeight: "100%"
-            }
-          },
-          e(ControlIcon, { state: state3, iconSize }),
-          e(
-            "span",
-            {
-              style: {
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: tight ? "5.5em" : "8em"
-              }
-            },
-            state3.label
-          )
-        );
-      })
-    );
-  }
-
-  // src/ui/chrome/NameWithControl.ts
-  function NameWithControl(props) {
-    const { name, states, compact = false, className } = props;
-    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
-    return e(
-      "span",
-      {
-        className: className || "comm-unit-namecluster",
-        style: {
-          display: "inline-flex",
-          alignItems: "center",
-          gap: compact ? "5px" : "6px",
-          flex: "0 1 auto",
-          minWidth: 0,
-          maxWidth: "100%"
-        }
-      },
-      e(
-        "span",
-        {
-          style: {
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: "0 1 auto",
-            minWidth: 0
-          }
-        },
-        name
-      ),
-      e(ControlBadge, {
-        states,
-        compact,
-        iconSize
-      })
-    );
-  }
-
-  // src/ui/chrome/AggroSpark.ts
-  function AggroSpark(props) {
-    const { count, className } = props;
-    if (!(count > 0)) return null;
-    return e(
-      "div",
-      {
-        className: className || "comm-threat-spark",
-        title: `Aggro: ${count} mob${count === 1 ? "" : "s"}`,
-        "data-ecu-aggro": String(count),
-        style: {
-          position: "absolute",
-          // Keep inside the unit box — negative inset expands scrollable overflow
-          // on ancestors with overflow:auto and shows scrollbars on unit frames.
-          top: 0,
-          right: 0,
-          zIndex: 4,
-          minWidth: AGGRO_BADGE.minWidth,
-          height: AGGRO_BADGE.height,
-          padding: `0 ${AGGRO_BADGE.padX}`,
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "#8a1e1e",
-          border: "1px solid #e05555",
-          color: "#ffd0d0",
-          fontSize: AGGRO_BADGE.fontSize,
-          lineHeight: 1,
-          ...PIXEL_TEXT,
-          pointerEvents: "none"
-        }
-      },
-      String(count)
-    );
-  }
-
-  // src/ui/chrome/EffectIcon.ts
-  var SKILL_UI_SPAN_MS = 24e3;
-  function buffStartedAt(effect, endsAt, now, mode, prevStartedAt) {
-    if (effect.type === "skill") {
-      const spanMs = Math.max(SKILL_UI_SPAN_MS, endsAt - now);
-      return endsAt - spanMs;
-    }
-    if (mode === "restart") return now;
-    return prevStartedAt;
-  }
-  function loaderId(hostClass) {
-    return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
-  }
-  function syncStackBadge(wrap, stacks, iconSize) {
-    const root = wrap.firstElementChild;
-    if (!root) return;
-    let badge = root.querySelector(".iqui");
-    if (stacks != null && stacks > 0) {
-      if (!badge) {
-        badge = document.createElement("div");
-        badge.className = "iqui";
-        const crop = root.querySelector(
-          "div[style*='overflow']"
-        );
-        const host2 = crop && crop.parentElement || root.querySelector(
-          "div[style*='position: absolute']"
-        ) || root;
-        host2.appendChild(badge);
-      }
-      badge.textContent = String(stacks);
-      const compact = iconSize < 34;
-      badge.classList.toggle("is-compact", compact);
-      if (compact) {
-        badge.style.setProperty(
-          "--comm-fx-iqui-scale",
-          String(Math.max(0.5, iconSize / 40))
-        );
-      } else {
-        badge.style.removeProperty("--comm-fx-iqui-scale");
-      }
-    } else if (badge) {
-      badge.remove();
-    }
-  }
-  function effectTooltip(effect, remainingMs) {
-    const parts = [];
-    const label = effect.name || effect.id;
-    const kind = effect.type === "skill" ? "Skill" : effect.debuff ? "Debuff" : "Buff";
-    parts.push(`${label} (${kind})`);
-    const ms = remainingMs != null && remainingMs > 0 ? remainingMs : effect.ms != null && effect.ms > 0 ? effect.ms : 0;
-    if (ms > 0) {
-      parts.push(`Remaining: ${formatTime(ms / 1e3)}`);
-    }
-    if (effect.stacks != null && effect.stacks > 0) {
-      parts.push(`Stacks: ${effect.stacks}`);
-    }
-    if (effect.name && effect.name !== effect.id) {
-      parts.push(`id: ${effect.id}`);
-    }
-    return parts.join("\n");
-  }
-  var EXTEND_ENDS_MS = 750;
-  var EXTEND_REMAIN_MS = 500;
-  function durationWasExtended(prevEndsAt, nextEndsAt, now) {
-    if (!(prevEndsAt > 0)) return false;
-    if (!(nextEndsAt > prevEndsAt + EXTEND_ENDS_MS)) return false;
-    const prevRemain = Math.max(0, prevEndsAt - now);
-    const nextRemain = Math.max(0, nextEndsAt - now);
-    return nextRemain > prevRemain + EXTEND_REMAIN_MS;
-  }
-  function stackedTintWarnMs(effect, remainingMs) {
-    const hint = Math.max(effect.ms || 0, remainingMs, 1e3);
-    return Math.min(4e3, Math.max(2500, Math.floor(hint * 0.4)));
-  }
-  function wantsStackedSoftTint(effect) {
-    return effect.stacks != null;
-  }
-  function shouldShowEffectTint(effect, remainingMs) {
-    if (!(remainingMs > 0)) return false;
-    if (!wantsStackedSoftTint(effect)) return true;
-    return remainingMs <= stackedTintWarnMs(effect, remainingMs);
-  }
-  var STACKED_LABEL_SETTLE_MS = 1250;
-  var STACKED_LABEL_DROP_MS = 1e3;
-  var EFFECT_CLOCK_MS = 250;
-  var effectClockListeners = [];
-  var effectClockId = 0;
-  var effectClockVisBound = false;
-  function notifyEffectClock() {
-    if (typeof document !== "undefined" && document.hidden) return;
-    for (let i = 0; i < effectClockListeners.length; i++) {
-      effectClockListeners[i]();
-    }
-  }
-  function onEffectClockVisibility() {
-    if (typeof document !== "undefined" && document.hidden) return;
-    notifyEffectClock();
-  }
-  function subscribeEffectClock(listener) {
-    effectClockListeners.push(listener);
-    if (!effectClockId) {
-      effectClockId = window.setInterval(notifyEffectClock, EFFECT_CLOCK_MS);
-      if (!effectClockVisBound && typeof document !== "undefined") {
-        document.addEventListener("visibilitychange", onEffectClockVisibility);
-        effectClockVisBound = true;
-      }
-    }
-    return () => {
-      const idx = effectClockListeners.indexOf(listener);
-      if (idx >= 0) effectClockListeners.splice(idx, 1);
-      if (effectClockListeners.length === 0 && effectClockId) {
-        window.clearInterval(effectClockId);
-        effectClockId = 0;
-      }
-    };
-  }
-  function shouldShowRemainingLabel(effect, remainingMs, peakRemainMs, lastExtendAt, now) {
-    if (!(remainingMs > 0)) return false;
-    if (!wantsStackedSoftTint(effect)) return true;
-    if (remainingMs <= stackedTintWarnMs(effect, remainingMs)) return true;
-    if (!(lastExtendAt > 0) || now - lastExtendAt < STACKED_LABEL_SETTLE_MS) {
-      return false;
-    }
-    const peak = Math.max(peakRemainMs, remainingMs);
-    return remainingMs <= peak - STACKED_LABEL_DROP_MS;
-  }
-  function ensureSkidLoader(wrap, rid) {
-    const root = wrap.firstElementChild;
-    const host2 = wrap.querySelector(
-      "div[style*='position: absolute']"
-    ) || wrap.querySelector("div[style*='overflow']") || root;
-    if (!host2) return null;
-    const selector = ".skidloader" + rid;
-    let loader = wrap.querySelector(selector);
-    if (!loader) {
-      loader = document.createElement("div");
-      loader.className = "skidloader" + rid;
-      loader.setAttribute(
-        "style",
-        "position: absolute; bottom: 0px; right: 0px; width: 4px; height: 1px; background-color: yellow"
-      );
-      host2.appendChild(loader);
-    }
-    return loader;
-  }
-  function clearEffectTint(wrap, rid) {
-    const selector = ".skidloader" + rid;
-    const existing = getTint(selector);
-    if (existing) {
-      existing.end = /* @__PURE__ */ new Date(0);
-      existing.ms = 0;
-    }
-    const loader = wrap.querySelector(selector);
-    if (loader && loader.parentElement) loader.parentElement.removeChild(loader);
-    const img = wrap.querySelector("img");
-    if (img) img.style.opacity = "1";
-  }
-  function applyEffectTint(wrap, rid, endsAt, startedAt, mode) {
-    var _a;
-    const now = Date.now();
-    const remaining = endsAt - now;
-    const spanMs = endsAt - startedAt;
-    if (!(remaining > 0) || !(startedAt > 0) || !(spanMs > 0)) return;
-    const loader = ensureSkidLoader(wrap, rid);
-    if (!loader) return;
-    const selector = ".skidloader" + rid;
-    const existing = getTint(selector);
-    if (mode === "sync") {
-      if (existing) {
-        const prevStart = existing.start ? existing.start.getTime() : 0;
-        const prevEnd = existing.end ? existing.end.getTime() : 0;
-        if (Math.abs(prevStart - startedAt) < 50 && Math.abs(prevEnd - endsAt) < 50) {
-          return;
-        }
-        existing.start = new Date(startedAt);
-        existing.end = new Date(endsAt);
-        existing.ms = remaining;
-        return;
-      }
-      mode = "rebind";
-    }
-    rebindTint(selector);
-    loader.style.height = "1px";
-    const img = (_a = loader.parentElement) == null ? void 0 : _a.querySelector("img");
-    if (img) img.style.opacity = "0.5";
-    addTint(selector, {
-      ms: remaining,
-      type: "skill",
-      skid: rid,
-      start: new Date(startedAt)
-    });
-    const tint = getTint(selector);
-    if (tint) {
-      tint.start = new Date(startedAt);
-      tint.end = new Date(endsAt);
-    }
-  }
-  function EffectIcon(props) {
-    const React = getReact();
-    const iconRef = React.useRef(null);
-    const wrapRef = React.useRef(null);
-    const labelRef = React.useRef(null);
-    const endsAtRef = React.useRef(0);
-    const startedAtRef = React.useRef(0);
-    const tintShownRef = React.useRef(false);
-    const peakRemainRef = React.useRef(0);
-    const lastExtendAtRef = React.useRef(0);
-    const lastMsRef = React.useRef(0);
-    const paintedRef = React.useRef({
-      text: "",
-      color: "",
-      show: false,
-      title: ""
-    });
-    const { effect, hostClass, entity, iconSize } = props;
-    const effectRef = React.useRef(effect);
-    effectRef.current = effect;
-    const entityId = String(entity.id);
-    const rid = loaderId(hostClass);
-    const clickable = effect.type !== "skill";
-    const noteDurationPeak = (remaining, extended) => {
-      if (extended || !(peakRemainRef.current > 0)) {
-        peakRemainRef.current = Math.max(
-          effect.ms || 0,
-          remaining,
-          peakRemainRef.current
-        );
-        lastExtendAtRef.current = Date.now();
-      }
-    };
-    const paintRemainUi = () => {
-      const ef = effectRef.current;
-      const ends = endsAtRef.current;
-      const now = Date.now();
-      const remaining = ends > 0 ? Math.max(0, ends - now) : 0;
-      const show = shouldShowRemainingLabel(
-        ef,
-        remaining,
-        peakRemainRef.current,
-        lastExtendAtRef.current,
-        now
-      );
-      const text = show && remaining > 0 ? formatDurationCompact(remaining / 1e3) : "";
-      const color = remaining <= 5e3 ? "#ffcc66" : "#e8e8e8";
-      const title = effectTooltip(ef, show ? remaining : void 0);
-      const painted = paintedRef.current;
-      const label = labelRef.current;
-      if (label) {
-        if (painted.text !== text) {
-          painted.text = text;
-          label.textContent = text || "\xA0";
-        }
-        if (painted.show !== !!text) {
-          painted.show = !!text;
-          label.style.visibility = text ? "visible" : "hidden";
-          label.style.background = text ? "rgba(0,0,0,0.82)" : "transparent";
-          label.style.border = text ? "1px solid #444" : "1px solid transparent";
-        }
-        if (painted.color !== color) {
-          painted.color = color;
-          label.style.color = color;
-        }
-      }
-      const wrap = wrapRef.current;
-      if (wrap && painted.title !== title) {
-        painted.title = title;
-        wrap.setAttribute("title", title);
-      }
-    };
-    const paintIcon = () => {
-      const el = iconRef.current;
-      if (!el) return;
-      paintItemContainerIcon(el, effect.skin, iconSize);
-    };
-    const hideTint = () => {
-      const el = iconRef.current;
-      if (el) clearEffectTint(el, rid);
-      tintShownRef.current = false;
-      if (wantsStackedSoftTint(effect)) startedAtRef.current = 0;
-    };
-    const pushTint = (mode) => {
-      const el = iconRef.current;
-      if (!el || !el.firstElementChild) return;
-      const endsAt = endsAtRef.current;
-      const remaining = endsAt - Date.now();
-      if (!shouldShowEffectTint(effect, remaining)) {
-        hideTint();
-        return;
-      }
-      let startedAt = startedAtRef.current;
-      if (wantsStackedSoftTint(effect) && !tintShownRef.current) {
-        startedAt = Date.now();
-        startedAtRef.current = startedAt;
-        mode = "restart";
-      }
-      if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
-      applyEffectTint(el, rid, endsAt, startedAt, mode);
-      tintShownRef.current = true;
-    };
-    React.useEffect(() => {
-      const el = iconRef.current;
-      if (!el) return;
-      paintIcon();
-      syncStackBadge(el, effect.stacks, iconSize);
-      tintShownRef.current = false;
-      pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
-      return () => {
-        if (el) el.innerHTML = "";
-      };
-    }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
-    React.useEffect(() => {
-      const el = iconRef.current;
-      if (!el || !el.firstElementChild) return;
-      syncStackBadge(el, effect.stacks, iconSize);
-    }, [entityId, effect.id, effect.stacks, iconSize]);
-    React.useEffect(() => {
-      const now = Date.now();
-      const prev = endsAtRef.current;
-      const rawMs = effect.ms;
-      const next = syncEndsAt(prev, rawMs, now, lastMsRef.current);
-      if (rawMs != null && rawMs > 0) lastMsRef.current = rawMs;
-      endsAtRef.current = next;
-      const remaining = Math.max(0, next - now);
-      paintRemainUi();
-      if (!(next > now)) {
-        startedAtRef.current = 0;
-        peakRemainRef.current = 0;
-        lastExtendAtRef.current = 0;
-        lastMsRef.current = 0;
-        hideTint();
-        paintRemainUi();
-        return;
-      }
-      if (!prev) {
-        noteDurationPeak(remaining, true);
-        paintRemainUi();
-        startedAtRef.current = buffStartedAt(
-          effect,
-          next,
-          now,
-          "restart",
-          startedAtRef.current
-        );
-        pushTint("restart");
-        return;
-      }
-      if (durationWasExtended(prev, next, now)) {
-        noteDurationPeak(remaining, true);
-        paintRemainUi();
-        if (wantsStackedSoftTint(effect)) {
-          hideTint();
-          return;
-        }
-        if (!(startedAtRef.current > 0)) {
-          startedAtRef.current = buffStartedAt(effect, next, now, "restart", 0);
-        } else {
-          const maxSpan = Math.max(SKILL_UI_SPAN_MS, effect.ms || 0, next - now);
-          if (next - startedAtRef.current > maxSpan) {
-            startedAtRef.current = next - maxSpan;
-          }
-        }
-        pushTint("sync");
-        return;
-      }
-      paintRemainUi();
-      if (!shouldShowEffectTint(effect, remaining)) {
-        hideTint();
-        return;
-      }
-      if (next < prev - 250) {
-        if (effect.type === "skill") {
-          startedAtRef.current = buffStartedAt(
-            effect,
-            next,
-            now,
-            "sync",
-            startedAtRef.current
-          );
-        }
-        pushTint("sync");
-        return;
-      }
-      pushTint(tintShownRef.current ? "sync" : "restart");
-    }, [entityId, effect.id, effect.ms, effect.stacks, rid]);
-    const onClockRef = React.useRef(() => {
-    });
-    onClockRef.current = () => {
-      const ef = effectRef.current;
-      const ends = endsAtRef.current;
-      if (!ends) {
-        paintRemainUi();
-        hideTint();
-        return;
-      }
-      const remaining = Math.max(0, ends - Date.now());
-      paintRemainUi();
-      if (!shouldShowEffectTint(ef, remaining)) {
-        if (tintShownRef.current) hideTint();
-        return;
-      }
-      if (!tintShownRef.current) pushTint("restart");
-    };
-    React.useEffect(() => {
-      const tick2 = () => onClockRef.current();
-      tick2();
-      return subscribeEffectClock(tick2);
-    }, [entityId, effect.id]);
-    const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
-    const showRemainLabel = shouldShowRemainingLabel(
-      effect,
-      remainNow,
-      peakRemainRef.current,
-      lastExtendAtRef.current,
-      Date.now()
-    );
-    const remainingMs = remainNow;
-    const msLabel = showRemainLabel && remainingMs > 0 ? formatDurationCompact(remainingMs / 1e3) : "";
-    const tooltip = effectTooltip(
-      effect,
-      showRemainLabel ? remainingMs : void 0
-    );
-    const onClick = clickable ? (ev) => {
-      if (ev && typeof ev.stopPropagation === "function")
-        ev.stopPropagation();
-      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      info.openCondition(entity, effect.id);
-    } : void 0;
-    return e(
-      "div",
-      {
-        ref: wrapRef,
-        className: `comm-fx-icon ${hostClass}`,
-        "data-condition": effect.id,
-        "data-entity": entityId,
-        [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
-        title: tooltip,
-        onClick,
-        onMouseDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function")
-            ev.stopPropagation();
-        } : void 0,
-        onPointerDown: clickable ? (ev) => {
-          if (ev && typeof ev.stopPropagation === "function")
-            ev.stopPropagation();
-        } : void 0,
-        style: {
-          position: "relative",
-          display: "inline-flex",
-          flexDirection: "column",
-          alignItems: "center",
-          verticalAlign: "top",
-          overflow: "visible",
-          flex: "0 0 auto",
-          cursor: clickable ? "pointer" : "default",
-          pointerEvents: "auto"
-        }
-      },
-      e("div", {
-        ref: iconRef,
-        style: {
-          position: "relative",
-          display: "inline-block",
-          verticalAlign: "top"
-        }
-      }),
-      // Always reserve label height so show/hide does not reflow the row.
-      e(
-        "div",
-        {
-          ref: labelRef,
-          className: "comm-fx-ms",
-          style: {
-            marginTop: "1px",
-            zIndex: 2,
-            padding: "0 3px",
-            background: msLabel ? "rgba(0,0,0,0.82)" : "transparent",
-            border: msLabel ? "1px solid #444" : "1px solid transparent",
-            color: remainingMs <= 5e3 ? "#ffcc66" : "#e8e8e8",
-            fontSize: TYPE.microMin,
-            lineHeight: "14px",
-            minHeight: "14px",
-            whiteSpace: "nowrap",
-            pointerEvents: "none",
-            visibility: msLabel ? "visible" : "hidden",
-            ...PIXEL_TEXT
-          }
-        },
-        msLabel || "\xA0"
-      )
-    );
-  }
-
   // src/lib/courage.ts
   var poolCache = createFpCache(64);
   function applyCourageProp(pools, attrs, prop) {
@@ -54520,6 +54244,800 @@ ${parts.map(cssSlice).join("\n")}
     const pools = estimateCouragePoolsCached(player);
     if (!pools) return void 0;
     return estimateFearFromAggro(pools, aggroByDamageFromMobs(aggroMobs));
+  }
+
+  // src/ui/chrome/couragePoolLine.ts
+  function couragePoolLine(label, aggro, capacity) {
+    const over = aggro > capacity;
+    const cls = over ? "line ecu-cooltip-over" : "line";
+    return `<div class="${cls}"><span>${escapeCooltipHtml(label)}</span><b>${aggro}/${capacity}</b></div>`;
+  }
+
+  // src/ui/chrome/controlCooltip.ts
+  var FEAR_EXPLAIN = {
+    scared: "Attack damage \xD70.6 while courage is overrun by 1.",
+    terrified: "Attack damage \xD70.4 while courage is overrun by 2.",
+    petrified: "Attack damage \xD70.2 while courage is overrun by 3+."
+  };
+  function controlCooltipKey(ownerId, state3) {
+    if (state3.kind === "fear") return `ctrl:${ownerId}:fear-${state3.level}`;
+    return `ctrl:${ownerId}:cc-${state3.id}`;
+  }
+  function fearCooltipHtml(state3, entity, aggroMobs) {
+    const lines = [
+      `<h4>${escapeCooltipHtml(state3.label)} (Fear)</h4>`
+    ];
+    const explain = FEAR_EXPLAIN[state3.level];
+    if (explain) {
+      lines.push(`<div class="ecu-cooltip-foot">${escapeCooltipHtml(explain)}</div>`);
+    }
+    lines.push(
+      `<div class="line"><span>Overflow</span><b>${state3.fear}</b></div>`,
+      `<div class="line"><span>Tier</span><b>${escapeCooltipHtml(state3.level)}</b></div>`
+    );
+    const pools = entity ? estimateCouragePoolsCached(entity) : null;
+    const by = aggroByDamageFromMobs(aggroMobs);
+    if (pools) {
+      lines.push(
+        couragePoolLine("Physical", by.physical, pools.courage),
+        couragePoolLine("Magical", by.magical, pools.mcourage),
+        couragePoolLine("Pure", by.pure, pools.pcourage)
+      );
+    } else if (aggroMobs.length) {
+      lines.push(
+        `<div class="line"><span>Aggro P/M/U</span><b>${by.physical}/${by.magical}/${by.pure}</b></div>`
+      );
+    }
+    return lines.join("");
+  }
+  function hardCcCooltipHtml(state3, entity) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[state3.id];
+    const lines = [
+      `<h4>${escapeCooltipHtml(state3.label)} (CC)</h4>`
+    ];
+    const explanation = def && typeof def.explanation === "string" ? def.explanation : void 0;
+    if (explanation) {
+      lines.push(
+        `<div class="ecu-cooltip-foot">${escapeCooltipHtml(explanation)}</div>`
+      );
+    }
+    const live2 = entity && entity.s && entity.s[state3.id];
+    const ms = live2 && typeof live2.ms === "number" ? live2.ms : 0;
+    if (ms > 0) {
+      const sec = Math.max(1, Math.ceil(ms / 1e3));
+      lines.push(
+        `<div class="line"><span>Remaining</span><b>${sec}s</b></div>`
+      );
+    }
+    return lines.join("");
+  }
+  function controlCooltipHtml(opts) {
+    if (opts.state.kind === "fear") {
+      return fearCooltipHtml(
+        opts.state,
+        opts.entity,
+        opts.aggroMobs || []
+      );
+    }
+    return hardCcCooltipHtml(opts.state, opts.entity);
+  }
+  function controlCooltipHandlers(key, rebuild) {
+    const base = cooltipHandlers(key, rebuild);
+    return {
+      onMouseEnter: (ev) => {
+        if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+        base.onMouseEnter(ev);
+      },
+      onMouseMove: (ev) => {
+        if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+        base.onMouseMove(ev);
+      },
+      onMouseLeave: () => {
+        base.onMouseLeave();
+      }
+    };
+  }
+  function dismissControlCooltip(key) {
+    dismissCooltip(key);
+  }
+
+  // src/ui/chrome/ControlBadge.ts
+  function ControlIcon(props) {
+    const React = getReact();
+    const ref = React.useRef(null);
+    const { state: state3, iconSize } = props;
+    React.useEffect(() => {
+      const el = ref.current;
+      if (!el) return;
+      paintItemContainerIcon(el, state3.skin, iconSize);
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [state3.skin, state3.label, iconSize]);
+    return e("div", {
+      ref,
+      className: "comm-ctrl-icon",
+      style: {
+        position: "relative",
+        display: "inline-block",
+        flex: "0 0 auto",
+        verticalAlign: "top",
+        lineHeight: 0,
+        pointerEvents: "none"
+      }
+    });
+  }
+  function ControlBadge(props) {
+    const React = getReact();
+    const {
+      states,
+      compact = false,
+      entity = null,
+      aggroMobs = []
+    } = props;
+    if (!states.length) return null;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
+    const tight = compact || iconSize <= 18;
+    const ownerId = entity && entity.id != null ? String(entity.id) : "anon";
+    React.useEffect(() => {
+      return () => {
+        dismissControlCooltip();
+      };
+    }, [ownerId]);
+    return e(
+      "div",
+      {
+        className: "comm-ctrl-badges is-inline" + (tight ? " is-compact" : ""),
+        style: {
+          position: "relative",
+          display: "inline-flex",
+          flexDirection: "row",
+          flexWrap: "nowrap",
+          alignItems: "center",
+          gap: tight ? "3px" : "4px",
+          flex: "0 0 auto",
+          maxHeight: "100%"
+        }
+      },
+      ...states.map((state3) => {
+        const key = state3.kind === "fear" ? `fear-${state3.level}` : `cc-${state3.id}`;
+        const tipKey = controlCooltipKey(ownerId, state3);
+        const tipHandlers = controlCooltipHandlers(
+          tipKey,
+          () => controlCooltipHtml({ state: state3, entity, aggroMobs })
+        );
+        return e(
+          "div",
+          {
+            key,
+            className: "comm-ctrl-badge" + (state3.kind === "fear" ? ` is-fear is-${state3.level}` : ` is-hardcc is-${state3.id}`),
+            onMouseEnter: tipHandlers.onMouseEnter,
+            onMouseMove: tipHandlers.onMouseMove,
+            onMouseLeave: tipHandlers.onMouseLeave,
+            style: {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: tight ? "3px" : "5px",
+              flex: "0 0 auto",
+              padding: tight ? "1px 4px 1px 2px" : "2px 8px 2px 3px",
+              boxSizing: "border-box",
+              background: state3.background,
+              border: `${tight ? 1 : 2}px solid ${state3.border}`,
+              color: state3.color,
+              fontSize: tight ? TYPE.micro : TYPE.badge,
+              lineHeight: 1,
+              ...PIXEL_TEXT,
+              cursor: "help",
+              pointerEvents: "auto",
+              maxHeight: "100%"
+            }
+          },
+          e(ControlIcon, { state: state3, iconSize }),
+          e(
+            "span",
+            {
+              style: {
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                maxWidth: tight ? "5.5em" : "8em"
+              }
+            },
+            state3.label
+          )
+        );
+      })
+    );
+  }
+
+  // src/ui/chrome/NameWithControl.ts
+  function NameWithControl(props) {
+    const {
+      name,
+      states,
+      compact = false,
+      className,
+      entity = null,
+      aggroMobs = []
+    } = props;
+    const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : compact ? 16 : 26;
+    return e(
+      "span",
+      {
+        className: className || "comm-unit-namecluster",
+        style: {
+          display: "inline-flex",
+          alignItems: "center",
+          gap: compact ? "5px" : "6px",
+          flex: "0 1 auto",
+          minWidth: 0,
+          maxWidth: "100%"
+        }
+      },
+      e(
+        "span",
+        {
+          style: {
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: "0 1 auto",
+            minWidth: 0
+          }
+        },
+        name
+      ),
+      e(ControlBadge, {
+        states,
+        compact,
+        iconSize,
+        entity,
+        aggroMobs
+      })
+    );
+  }
+
+  // src/ui/chrome/aggroCooltip.ts
+  function aggroCooltipKey(ownerId) {
+    return `aggro:${ownerId}`;
+  }
+  function mobMtype(mob) {
+    return mob.mtype ? String(mob.mtype) : "";
+  }
+  function mobLabel(mob) {
+    var _a;
+    const G = getG();
+    const mtype = mobMtype(mob);
+    const defName = mtype && ((_a = G == null ? void 0 : G.monsters) == null ? void 0 : _a[mtype]) && typeof G.monsters[mtype].name === "string" ? G.monsters[mtype].name : "";
+    const name = String(mob.name || defName || mtype || mob.id || "?");
+    const id = mob.id != null ? String(mob.id) : "";
+    if (id && id !== name) return `${name} #${id}`;
+    return name;
+  }
+  function mobDamageType(mob) {
+    const live2 = mob.damage_type;
+    if (live2 === "magical" || live2 === "pure" || live2 === "physical") return live2;
+    const G = getG();
+    const key = mobMtype(mob);
+    const def = G && G.monsters && key ? G.monsters[key] : void 0;
+    const dt = def && def.damage_type;
+    if (dt === "magical" || dt === "pure" || dt === "physical") return dt;
+    return "physical";
+  }
+  function mobRowHtml(mob) {
+    const label = mobLabel(mob);
+    const dt = mobDamageType(mob);
+    const mtype = mobMtype(mob);
+    const icon = mtype ? monsterIconHtml(mtype, COOLTIP_MONSTER_ICON, label) : "";
+    return `<div class="line ecu-cooltip-mob"><span class="ecu-cooltip-mob-label">${icon}${icon ? " " : ""}${escapeCooltipHtml(label)}</span><b>${escapeCooltipHtml(dt)}</b></div>`;
+  }
+  function aggroCooltipHtml(opts) {
+    const mobs = opts.mobs || [];
+    const n = mobs.length;
+    const lines = [
+      `<h4>Aggro \xB7 ${n} mob${n === 1 ? "" : "s"}</h4>`
+    ];
+    if (opts.ownerName) {
+      lines.push(
+        `<div class="line"><span>On</span><b>${escapeCooltipHtml(opts.ownerName)}</b></div>`
+      );
+    }
+    const by = aggroByDamageFromMobs(mobs);
+    const pools = opts.owner ? estimateCouragePoolsCached(opts.owner) : null;
+    if (n > 0) {
+      if (pools) {
+        lines.push(
+          couragePoolLine("Physical", by.physical, pools.courage),
+          couragePoolLine("Magical", by.magical, pools.mcourage),
+          couragePoolLine("Pure", by.pure, pools.pcourage)
+        );
+      } else {
+        lines.push(
+          `<div class="line"><span>Physical</span><b>${by.physical}</b></div>`,
+          `<div class="line"><span>Magical</span><b>${by.magical}</b></div>`,
+          `<div class="line"><span>Pure</span><b>${by.pure}</b></div>`
+        );
+      }
+    }
+    const maxList = 8;
+    for (let i = 0; i < Math.min(n, maxList); i++) {
+      lines.push(mobRowHtml(mobs[i]));
+    }
+    if (n > maxList) {
+      lines.push(
+        `<div class="ecu-cooltip-foot">+${n - maxList} more</div>`
+      );
+    }
+    return lines.join("");
+  }
+  function aggroCooltipHandlers(key, rebuild) {
+    const base = cooltipHandlers(key, rebuild);
+    return {
+      onMouseEnter: (ev) => {
+        if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+        base.onMouseEnter(ev);
+      },
+      onMouseMove: (ev) => {
+        if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+        base.onMouseMove(ev);
+      },
+      onMouseLeave: () => {
+        base.onMouseLeave();
+      }
+    };
+  }
+  function dismissAggroCooltip(key) {
+    dismissCooltip(key);
+  }
+
+  // src/ui/chrome/AggroSpark.ts
+  function AggroSpark(props) {
+    const React = getReact();
+    const { count, className, mobs = [], owner, ownerId, ownerName } = props;
+    if (!(count > 0)) return null;
+    const tipKey = aggroCooltipKey(ownerId != null ? String(ownerId) : "anon");
+    const tipHandlers = aggroCooltipHandlers(
+      tipKey,
+      () => aggroCooltipHtml({
+        ownerName: ownerName || (ownerId != null ? String(ownerId) : void 0),
+        owner: owner || null,
+        mobs: mobs.length ? mobs : []
+      })
+    );
+    React.useEffect(() => {
+      return () => {
+        dismissAggroCooltip(tipKey);
+      };
+    }, [tipKey]);
+    return e(
+      "div",
+      {
+        className: className || "comm-threat-spark",
+        "data-ecu-aggro": String(count),
+        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseMove: tipHandlers.onMouseMove,
+        onMouseLeave: tipHandlers.onMouseLeave,
+        style: {
+          position: "absolute",
+          // Keep inside the unit box — negative inset expands scrollable overflow
+          // on ancestors with overflow:auto and shows scrollbars on unit frames.
+          top: 0,
+          right: 0,
+          zIndex: 4,
+          minWidth: AGGRO_BADGE.minWidth,
+          height: AGGRO_BADGE.height,
+          padding: `0 ${AGGRO_BADGE.padX}`,
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#8a1e1e",
+          border: "1px solid #e05555",
+          color: "#ffd0d0",
+          fontSize: AGGRO_BADGE.fontSize,
+          lineHeight: 1,
+          ...PIXEL_TEXT,
+          cursor: "help",
+          pointerEvents: "auto"
+        }
+      },
+      String(count)
+    );
+  }
+
+  // src/ui/chrome/effectTooltip.ts
+  var META_KEYS = {
+    name: true,
+    skin: true,
+    explanation: true,
+    buff: true,
+    debuff: true,
+    ui: true,
+    persistent: true,
+    technical: true,
+    aura: true,
+    duration: true,
+    duration_min: true,
+    channel: true,
+    blocked: true,
+    can_move: true,
+    special: true,
+    attr0: true,
+    encouragement: true,
+    phases: true,
+    // Live status keys — handled explicitly.
+    ms: true,
+    f: true,
+    fid: true,
+    s: true,
+    strong: true,
+    c: true,
+    id: true,
+    sn: true,
+    dl: true,
+    last: true,
+    map: true,
+    in: true,
+    x: true,
+    y: true,
+    p: true,
+    /** Citizen NPC auras (`player.s.citizen0aura.citizens`). */
+    citizens: true,
+    /** Hunt / kill-quest live keys (`monsterhunt`, `quest_beekeeper`, …). */
+    tc: true,
+    reward: true,
+    d: true,
+    t: true
+  };
+  function canOverrideStrongStatus(live2, self) {
+    if (!live2 || !live2.strong) return true;
+    const me = self === void 0 ? getCharacter() : self;
+    if (!me || me.name == null || me.name === "") return false;
+    return String(live2.f || "") === String(me.name);
+  }
+  var CITIZEN_AURA_RE = /^citizen\d+aura$/i;
+  function resolveCitizenAura(effectId, live2) {
+    var _a, _b;
+    const flagged = !!(live2 && live2.citizens);
+    const byId = CITIZEN_AURA_RE.test(effectId);
+    if (!flagged && !byId) return { isCitizen: false };
+    const npcKey = effectId.replace(/aura$/i, "");
+    const npc = (_b = (_a = getG()) == null ? void 0 : _a.npcs) == null ? void 0 : _b[npcKey];
+    const npcName = npc && typeof npc.name === "string" && npc.name ? npc.name : void 0;
+    return { isCitizen: true, npcKey, npcName };
+  }
+  function isAuraEffect(effectId, def, live2, citizen) {
+    if (citizen.isCitizen) return true;
+    if (def && def.aura) return true;
+    if (/aura$/i.test(effectId)) return true;
+    if (live2 && live2.citizens) return true;
+    return false;
+  }
+  function citizenAuraExplanation(citizen) {
+    if (citizen.npcName) {
+      return `${citizen.npcName}'s town aura \u2014 stay nearby to keep it.`;
+    }
+    return "A town citizen's aura \u2014 stay nearby to keep it.";
+  }
+  function resolveHuntTarget(effectId, live2) {
+    var _a, _b;
+    if (!live2 || typeof live2.id !== "string" || !live2.id) return void 0;
+    const mtype = live2.id;
+    const mon = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
+    if (!mon) return void 0;
+    const huntLike = effectId === "monsterhunt" || effectId === "quest_beekeeper" || live2.t === "quest_kill" || /^quest_/.test(effectId);
+    if (!huntLike) return void 0;
+    const name = typeof mon.name === "string" && mon.name ? mon.name : mtype;
+    return { mtype, name };
+  }
+  function huntExplanation(target, killsLeft) {
+    if (killsLeft == null || killsLeft <= 0) {
+      return `Hunt complete \u2014 return with your ${target.name} kill.`;
+    }
+    if (killsLeft === 1) {
+      return `Defeat ${target.name} and return.`;
+    }
+    return `Defeat ${killsLeft} ${target.name}s and return.`;
+  }
+  function signedPct(n) {
+    return `${n > 0 ? "+" : ""}${n}%`;
+  }
+  function signedNum(n) {
+    return `${n > 0 ? "+" : ""}${n}`;
+  }
+  function prettyFloat(n) {
+    if (Number.isInteger(n)) return String(n);
+    const t = Math.round(n * 100) / 100;
+    return String(t);
+  }
+  function formatConditionStatLine(key, raw) {
+    if (META_KEYS[key]) return null;
+    if (raw == null || raw === false) return null;
+    if (key === "luck" && typeof raw === "number") {
+      return { label: "Luck", value: signedPct(raw) };
+    }
+    if (key === "gold" && typeof raw === "number") {
+      return { label: "Gold", value: signedPct(raw) };
+    }
+    if (key === "xp" && typeof raw === "number") {
+      return { label: "XP", value: signedPct(raw) };
+    }
+    if (key === "lifesteal" && typeof raw === "number") {
+      return { label: "Lifesteal", value: `${prettyFloat(raw)}%` };
+    }
+    if (key === "manasteal" && typeof raw === "number") {
+      return { label: "Manasteal", value: `${prettyFloat(raw)}%` };
+    }
+    if (key === "evasion" && typeof raw === "number") {
+      return { label: "Evasion", value: `${prettyFloat(raw)}%` };
+    }
+    if (key === "miss" && typeof raw === "number") {
+      return { label: "Miss", value: `${raw}%` };
+    }
+    if (key === "reflection" && typeof raw === "number") {
+      return { label: "Reflection", value: `${prettyFloat(raw)}%` };
+    }
+    if (key === "cap_reflection" && typeof raw === "number") {
+      return { label: "Reflection Cap", value: `${prettyFloat(raw)}%` };
+    }
+    if (key === "output" && typeof raw === "number") {
+      return { label: "Damage Output", value: signedPct(raw) };
+    }
+    if (key === "incdmgamp" && typeof raw === "number") {
+      return { label: "Incoming Damage", value: `${raw}%` };
+    }
+    if (key === "frequency" && typeof raw === "number") {
+      return { label: "A.Speed", value: String(raw) };
+    }
+    if (key === "frequencym" && typeof raw === "number") {
+      return { label: "A.Speed", value: `\xD7${prettyFloat(raw)}` };
+    }
+    if (key === "speed" && typeof raw === "number") {
+      return { label: "Speed", value: signedNum(raw) };
+    }
+    if (key === "set_speed" && typeof raw === "number") {
+      return { label: "Max Speed", value: String(raw) };
+    }
+    if (key === "armor" && typeof raw === "number") {
+      return { label: "Armor", value: String(raw) };
+    }
+    if (key === "resistance" && typeof raw === "number") {
+      return { label: "Resistance", value: String(raw) };
+    }
+    if (key === "str" && typeof raw === "number") {
+      return { label: "Strength", value: String(raw) };
+    }
+    if (key === "int" && typeof raw === "number") {
+      return { label: "Intelligence", value: String(raw) };
+    }
+    if (key === "dex" && typeof raw === "number") {
+      return { label: "Dexterity", value: String(raw) };
+    }
+    if (key === "vit" && typeof raw === "number") {
+      return { label: "Vitality", value: String(raw) };
+    }
+    if (key === "for" && typeof raw === "number") {
+      return { label: "Fortitude", value: String(raw) };
+    }
+    if (key === "hp" && typeof raw === "number") {
+      return { label: "HP", value: String(raw) };
+    }
+    if (key === "mp" && typeof raw === "number") {
+      return { label: "MP", value: String(raw) };
+    }
+    if (key === "mp_cost" && typeof raw === "number") {
+      return {
+        label: "Attack MP Cost",
+        value: raw > 0 ? `+${raw}` : String(raw)
+      };
+    }
+    if (key === "courage" && typeof raw === "number") {
+      return { label: "Courage", value: String(raw) };
+    }
+    if (key === "mcourage" && typeof raw === "number") {
+      return { label: "M.Courage", value: String(raw) };
+    }
+    if (key === "pcourage" && typeof raw === "number") {
+      return { label: "P.Courage", value: String(raw) };
+    }
+    if (key === "heal" && typeof raw === "number") {
+      return { label: "Heal", value: String(raw) };
+    }
+    if (key === "healm" && typeof raw === "number") {
+      return { label: "Heal", value: `\xD7${prettyFloat(raw)}` };
+    }
+    if (key === "damage" && typeof raw === "number") {
+      return { label: "Damage", value: String(raw) };
+    }
+    if (key === "interval" && typeof raw === "number") {
+      return { label: "Interval", value: `${raw}ms` };
+    }
+    if (key === "intensity" && typeof raw === "number") {
+      return { label: "Intensity", value: String(Math.round(raw)) };
+    }
+    if (key === "potionsm" && typeof raw === "number") {
+      return { label: "Potion Effect", value: `\xD7${prettyFloat(raw)}` };
+    }
+    if (typeof raw === "number" && Number.isFinite(raw)) {
+      return { label: key, value: String(raw) };
+    }
+    return null;
+  }
+  function mergeConditionProp(def, live2) {
+    const out = {};
+    if (def) {
+      const keys = Object.keys(def);
+      for (let i = 0; i < keys.length; i++) {
+        out[keys[i]] = def[keys[i]];
+      }
+    }
+    if (live2) {
+      const keys = Object.keys(live2);
+      for (let i = 0; i < keys.length; i++) {
+        out[keys[i]] = live2[keys[i]];
+      }
+    }
+    return out;
+  }
+  function propHasIntensityLine(prop) {
+    return typeof prop.intensity === "number" && prop.intensity > 0;
+  }
+  function buildEffectTipModel(effect, entity, remainingMs) {
+    var _a, _b, _c, _d;
+    const G = getG();
+    const def = effect.type === "condition" ? (_a = G == null ? void 0 : G.conditions) == null ? void 0 : _a[effect.id] : (_b = G == null ? void 0 : G.skills) == null ? void 0 : _b[effect.id];
+    const live2 = (_c = entity == null ? void 0 : entity.s) == null ? void 0 : _c[effect.id];
+    const citizen = resolveCitizenAura(effect.id, live2);
+    const aura = isAuraEffect(
+      effect.id,
+      effect.type === "condition" ? def : void 0,
+      live2,
+      citizen
+    );
+    const liveName = live2 && typeof live2.name === "string" && live2.name ? live2.name : void 0;
+    const defName = def && typeof def.name === "string" ? def.name : void 0;
+    const name = citizen.isCitizen && citizen.npcName ? `${citizen.npcName}'s Aura` : effect.name || liveName || defName || effect.id;
+    let kind;
+    if (effect.type === "skill") kind = "Skill";
+    else if (effect.debuff) kind = "Debuff";
+    else if (aura) kind = "Aura";
+    else kind = "Buff";
+    let npcAura;
+    if (citizen.isCitizen && citizen.npcKey) {
+      const npc = (_d = G == null ? void 0 : G.npcs) == null ? void 0 : _d[citizen.npcKey];
+      if (npc && npc.aura && typeof npc.aura === "object") {
+        npcAura = npc.aura;
+      }
+    }
+    const prop = mergeConditionProp(
+      effect.type === "condition" ? def : void 0,
+      live2
+    );
+    if (npcAura) {
+      const auraKeys = Object.keys(npcAura);
+      for (let i = 0; i < auraKeys.length; i++) {
+        const k = auraKeys[i];
+        if (prop[k] == null) prop[k] = npcAura[k];
+      }
+    }
+    const target = resolveHuntTarget(effect.id, live2);
+    const charges = effect.charges != null && effect.charges > 0 ? effect.charges : live2 && typeof live2.c === "number" && live2.c > 0 ? live2.c : void 0;
+    const killsForCopy = charges != null ? charges : live2 && typeof live2.c === "number" ? live2.c : void 0;
+    const explanation = (target ? huntExplanation(target, killsForCopy) : void 0) || (def && typeof def.explanation === "string" ? def.explanation : void 0) || (typeof prop.explanation === "string" ? prop.explanation : void 0) || (citizen.isCitizen ? citizenAuraExplanation(citizen) : void 0);
+    const stats = [];
+    const propKeys = Object.keys(prop);
+    for (let i = 0; i < propKeys.length; i++) {
+      const line = formatConditionStatLine(propKeys[i], prop[propKeys[i]]);
+      if (line) stats.push(line);
+    }
+    const fromCaster = live2 && typeof live2.f === "string" && live2.f ? live2.f : void 0;
+    const from = fromCaster || (citizen.isCitizen && citizen.npcName ? citizen.npcName : void 0);
+    const strong = !!(live2 && live2.strong);
+    const locked = strong && !canOverrideStrongStatus(live2) ? true : void 0;
+    const stacks = effect.stacks != null && effect.stacks > 0 ? effect.stacks : live2 && typeof live2.s === "number" && live2.s > 0 ? live2.s : void 0;
+    const intensityRaw = effect.intensity != null && effect.intensity > 0 ? effect.intensity : live2 && typeof live2.intensity === "number" && live2.intensity > 0 ? live2.intensity : void 0;
+    const intensity = intensityRaw != null && intensityRaw > 0 && !propHasIntensityLine(prop) ? intensityRaw : void 0;
+    const remain = remainingMs != null && remainingMs > 0 ? remainingMs : void 0;
+    return {
+      id: effect.id,
+      name,
+      kind,
+      explanation,
+      stats,
+      from,
+      target,
+      strong: strong || void 0,
+      locked,
+      stacks,
+      intensity,
+      charges,
+      remainingMs: remain
+    };
+  }
+
+  // src/ui/chrome/effectCooltip.ts
+  function effectCooltipKey(entityId, effectId) {
+    return `fx:${entityId}::${effectId}`;
+  }
+  function effectCooltipHtml(args) {
+    const m = buildEffectTipModel(args.effect, args.entity, args.remainingMs);
+    const icon = args.effect.type === "skill" ? skillIconHtml(m.id, COOLTIP_ICON) : (
+      // Citizen auras have no G.conditions entry — use live/BuiltEffect skin.
+      gameIconHtml(m.id, {
+        kind: "condition",
+        size: COOLTIP_ICON,
+        skin: args.effect.skin,
+        title: m.name
+      })
+    );
+    const huntIcon = m.target ? monsterIconHtml(m.target.mtype, COOLTIP_MONSTER_ICON, m.target.name) : "";
+    const lines = [
+      `<h4>${icon}${huntIcon ? ` ${huntIcon}` : ""} ${escapeCooltipHtml(m.name)} <span style="color:#9aa8bc;font-size:0.9em">(${escapeCooltipHtml(m.kind)})</span></h4>`
+    ];
+    if (m.from) {
+      lines.push(
+        `<div class="line"><span>From</span><b>${escapeCooltipHtml(m.from)}</b></div>`
+      );
+    }
+    if (m.strong) {
+      const strongVal = m.locked ? `<span class="ecu-cooltip-lock" title="Other merchants cannot override this luck">\u{1F512} Yes \xB7 locked</span>` : `Yes`;
+      lines.push(
+        `<div class="line"><span>Strong</span><b>${strongVal}</b></div>`
+      );
+    }
+    if (m.explanation) {
+      lines.push(
+        `<div class="ecu-cooltip-foot">${escapeCooltipHtml(m.explanation)}</div>`
+      );
+    }
+    for (let i = 0; i < m.stats.length; i++) {
+      const s = m.stats[i];
+      lines.push(
+        `<div class="line"><span>${escapeCooltipHtml(s.label)}</span><b>${escapeCooltipHtml(s.value)}</b></div>`
+      );
+    }
+    if (m.target) {
+      const tipIcon = monsterIconHtml(
+        m.target.mtype,
+        COOLTIP_MONSTER_ICON,
+        m.target.name
+      );
+      lines.push(
+        `<div class="line ecu-cooltip-target"><span>Target</span><b>${tipIcon} ${escapeCooltipHtml(m.target.name)}</b></div>`
+      );
+    }
+    if (m.stacks != null && m.stacks > 0) {
+      lines.push(
+        `<div class="line"><span>Stacks</span><b>${m.stacks}</b></div>`
+      );
+    }
+    if (m.intensity != null && m.intensity > 0) {
+      lines.push(
+        `<div class="line"><span>Intensity</span><b>${Math.round(m.intensity)}</b></div>`
+      );
+    }
+    if (m.charges != null && m.charges > 0) {
+      lines.push(
+        `<div class="line"><span>Kills left</span><b>${m.charges}</b></div>`
+      );
+    }
+    if (m.remainingMs != null && m.remainingMs > 0) {
+      lines.push(
+        `<div class="line"><span>Remaining</span><b>${escapeCooltipHtml(formatTime(m.remainingMs / 1e3))}</b></div>`
+      );
+    }
+    return lines.join("");
+  }
+  function effectCooltipHandlers(key, rebuild) {
+    return cooltipHandlers(key, rebuild);
+  }
+  function refreshEffectCooltip(key) {
+    refreshCooltip(key);
+  }
+  function dismissEffectCooltip(key) {
+    dismissCooltip(key);
   }
 
   // src/lib/controlState.ts
@@ -54693,6 +55211,8 @@ ${parts.map(cssSlice).join("\n")}
             skin: def.skin,
             ms: actual.ms,
             stacks: typeof actual.s === "number" ? actual.s : void 0,
+            intensity: typeof actual.intensity === "number" ? actual.intensity : void 0,
+            charges: typeof actual.c === "number" ? actual.c : void 0,
             debuff: false,
             type: "skill",
             name: typeof def.name === "string" ? def.name : void 0
@@ -54714,12 +55234,36 @@ ${parts.map(cssSlice).join("\n")}
         skin,
         ms: actual.ms,
         stacks: typeof actual.s === "number" ? actual.s : void 0,
+        intensity: typeof actual.intensity === "number" ? actual.intensity : void 0,
+        charges: typeof actual.c === "number" ? actual.c : void 0,
         debuff: !!(prop && prop.debuff) || promoted,
         type: "condition",
-        name: typeof (prop == null ? void 0 : prop.name) === "string" ? prop.name : void 0
+        // Citizen auras live in entity.s only (no G.conditions) — use live.name.
+        name: typeof (prop == null ? void 0 : prop.name) === "string" && prop.name || typeof actual.name === "string" && actual.name || void 0
       });
     }
     return out;
+  }
+  function effectBadgeText(effect) {
+    if (effect.stacks != null && effect.stacks > 0) {
+      return String(effect.stacks);
+    }
+    if (effect.intensity != null && effect.intensity > 0) {
+      return formatCompactBadge(effect.intensity);
+    }
+    if (effect.charges != null && effect.charges > 0) {
+      return String(effect.charges);
+    }
+    return null;
+  }
+  function formatCompactBadge(n) {
+    const v = Math.round(n);
+    if (v < 1e3) return String(v);
+    if (v < 1e4) {
+      const k = Math.round(v / 100) / 10;
+      return `${k}k`;
+    }
+    return `${Math.round(v / 1e3)}k`;
   }
   function stabilizeEffectOrder(effects, orderIds) {
     const byId = {};
@@ -54749,8 +55293,509 @@ ${parts.map(cssSlice).join("\n")}
     return { effects: ordered, orderIds: nextOrder };
   }
 
+  // src/ui/chrome/EffectIcon.ts
+  var SKILL_UI_SPAN_MS = 24e3;
+  function buffStartedAt(effect, endsAt, now, mode, prevStartedAt) {
+    if (effect.type === "skill") {
+      const spanMs = Math.max(SKILL_UI_SPAN_MS, endsAt - now);
+      return endsAt - spanMs;
+    }
+    if (mode === "restart") return now;
+    return prevStartedAt;
+  }
+  function loaderId(hostClass) {
+    return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
+  }
+  function syncEffectBadge(wrap, text, iconSize) {
+    const root = wrap.firstElementChild;
+    if (!root) return;
+    let badge = root.querySelector(".iqui");
+    if (text) {
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "iqui";
+        const crop = root.querySelector(
+          "div[style*='overflow']"
+        );
+        const host2 = crop && crop.parentElement || root.querySelector(
+          "div[style*='position: absolute']"
+        ) || root;
+        host2.appendChild(badge);
+      }
+      badge.textContent = text;
+      const compact = iconSize < 34;
+      badge.classList.toggle("is-compact", compact);
+      if (compact) {
+        badge.style.setProperty(
+          "--comm-fx-iqui-scale",
+          String(Math.max(0.5, iconSize / 40))
+        );
+      } else {
+        badge.style.removeProperty("--comm-fx-iqui-scale");
+      }
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+  var EXTEND_ENDS_MS = 750;
+  var EXTEND_REMAIN_MS = 500;
+  function durationWasExtended(prevEndsAt, nextEndsAt, now) {
+    if (!(prevEndsAt > 0)) return false;
+    if (!(nextEndsAt > prevEndsAt + EXTEND_ENDS_MS)) return false;
+    const prevRemain = Math.max(0, prevEndsAt - now);
+    const nextRemain = Math.max(0, nextEndsAt - now);
+    return nextRemain > prevRemain + EXTEND_REMAIN_MS;
+  }
+  function stackedTintWarnMs(effect, remainingMs) {
+    const hint = Math.max(effect.ms || 0, remainingMs, 1e3);
+    return Math.min(4e3, Math.max(2500, Math.floor(hint * 0.4)));
+  }
+  function wantsStackedSoftTint(effect) {
+    return effect.stacks != null;
+  }
+  function shouldShowEffectTint(effect, remainingMs) {
+    if (!(remainingMs > 0)) return false;
+    if (!wantsStackedSoftTint(effect)) return true;
+    return remainingMs <= stackedTintWarnMs(effect, remainingMs);
+  }
+  var STACKED_LABEL_SETTLE_MS = 1250;
+  var STACKED_LABEL_DROP_MS = 1e3;
+  var EFFECT_CLOCK_MS = 250;
+  var effectClockListeners = [];
+  var effectClockId = 0;
+  var effectClockVisBound = false;
+  function notifyEffectClock() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    for (let i = 0; i < effectClockListeners.length; i++) {
+      effectClockListeners[i]();
+    }
+  }
+  function onEffectClockVisibility() {
+    if (typeof document !== "undefined" && document.hidden) return;
+    notifyEffectClock();
+  }
+  function subscribeEffectClock(listener) {
+    effectClockListeners.push(listener);
+    if (!effectClockId) {
+      effectClockId = window.setInterval(notifyEffectClock, EFFECT_CLOCK_MS);
+      if (!effectClockVisBound && typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", onEffectClockVisibility);
+        effectClockVisBound = true;
+      }
+    }
+    return () => {
+      const idx = effectClockListeners.indexOf(listener);
+      if (idx >= 0) effectClockListeners.splice(idx, 1);
+      if (effectClockListeners.length === 0 && effectClockId) {
+        window.clearInterval(effectClockId);
+        effectClockId = 0;
+      }
+    };
+  }
+  function shouldShowRemainingLabel(effect, remainingMs, peakRemainMs, lastExtendAt, now) {
+    if (!(remainingMs > 0)) return false;
+    if (!wantsStackedSoftTint(effect)) return true;
+    if (remainingMs <= stackedTintWarnMs(effect, remainingMs)) return true;
+    if (!(lastExtendAt > 0) || now - lastExtendAt < STACKED_LABEL_SETTLE_MS) {
+      return false;
+    }
+    const peak = Math.max(peakRemainMs, remainingMs);
+    return remainingMs <= peak - STACKED_LABEL_DROP_MS;
+  }
+  function ensureSkidLoader(wrap, rid) {
+    const root = wrap.firstElementChild;
+    const host2 = wrap.querySelector(
+      "div[style*='position: absolute']"
+    ) || wrap.querySelector("div[style*='overflow']") || root;
+    if (!host2) return null;
+    const selector = ".skidloader" + rid;
+    let loader = wrap.querySelector(selector);
+    if (!loader) {
+      loader = document.createElement("div");
+      loader.className = "skidloader" + rid;
+      loader.setAttribute(
+        "style",
+        "position: absolute; bottom: 0px; right: 0px; width: 4px; height: 1px; background-color: yellow"
+      );
+      host2.appendChild(loader);
+    }
+    return loader;
+  }
+  function clearEffectTint(wrap, rid) {
+    const selector = ".skidloader" + rid;
+    const existing = getTint(selector);
+    if (existing) {
+      existing.end = /* @__PURE__ */ new Date(0);
+      existing.ms = 0;
+    }
+    const loader = wrap.querySelector(selector);
+    if (loader && loader.parentElement) loader.parentElement.removeChild(loader);
+    const img = wrap.querySelector("img");
+    if (img) img.style.opacity = "1";
+  }
+  function applyEffectTint(wrap, rid, endsAt, startedAt, mode) {
+    var _a;
+    const now = Date.now();
+    const remaining = endsAt - now;
+    const spanMs = endsAt - startedAt;
+    if (!(remaining > 0) || !(startedAt > 0) || !(spanMs > 0)) return;
+    const loader = ensureSkidLoader(wrap, rid);
+    if (!loader) return;
+    const selector = ".skidloader" + rid;
+    const existing = getTint(selector);
+    if (mode === "sync") {
+      if (existing) {
+        const prevStart = existing.start ? existing.start.getTime() : 0;
+        const prevEnd = existing.end ? existing.end.getTime() : 0;
+        if (Math.abs(prevStart - startedAt) < 50 && Math.abs(prevEnd - endsAt) < 50) {
+          return;
+        }
+        existing.start = new Date(startedAt);
+        existing.end = new Date(endsAt);
+        existing.ms = remaining;
+        return;
+      }
+      mode = "rebind";
+    }
+    rebindTint(selector);
+    loader.style.height = "1px";
+    const img = (_a = loader.parentElement) == null ? void 0 : _a.querySelector("img");
+    if (img) img.style.opacity = "0.5";
+    addTint(selector, {
+      ms: remaining,
+      type: "skill",
+      skid: rid,
+      start: new Date(startedAt)
+    });
+    const tint = getTint(selector);
+    if (tint) {
+      tint.start = new Date(startedAt);
+      tint.end = new Date(endsAt);
+    }
+  }
+  function EffectIcon(props) {
+    const React = getReact();
+    const iconRef = React.useRef(null);
+    const wrapRef = React.useRef(null);
+    const labelRef = React.useRef(null);
+    const endsAtRef = React.useRef(0);
+    const startedAtRef = React.useRef(0);
+    const tintShownRef = React.useRef(false);
+    const peakRemainRef = React.useRef(0);
+    const lastExtendAtRef = React.useRef(0);
+    const lastMsRef = React.useRef(0);
+    const paintedRef = React.useRef({
+      text: "",
+      color: "",
+      show: false
+    });
+    const { effect, hostClass, entity, iconSize } = props;
+    const effectRef = React.useRef(effect);
+    effectRef.current = effect;
+    const entityRef = React.useRef(entity);
+    entityRef.current = entity;
+    const entityId = String(entity.id);
+    const cooltipKey = effectCooltipKey(entityId, effect.id);
+    const rid = loaderId(hostClass);
+    const clickable = effect.type !== "skill";
+    const rebuildCooltipHtml = () => {
+      const ends = endsAtRef.current;
+      const remaining = ends > 0 ? Math.max(0, ends - Date.now()) : 0;
+      return effectCooltipHtml({
+        effect: effectRef.current,
+        entity: entityRef.current,
+        remainingMs: remaining > 0 ? remaining : void 0
+      });
+    };
+    const tipHandlers = effectCooltipHandlers(cooltipKey, rebuildCooltipHtml);
+    const noteDurationPeak = (remaining, extended) => {
+      if (extended || !(peakRemainRef.current > 0)) {
+        peakRemainRef.current = Math.max(
+          effect.ms || 0,
+          remaining,
+          peakRemainRef.current
+        );
+        lastExtendAtRef.current = Date.now();
+      }
+    };
+    const paintRemainUi = () => {
+      const ef = effectRef.current;
+      const ends = endsAtRef.current;
+      const now = Date.now();
+      const remaining = ends > 0 ? Math.max(0, ends - now) : 0;
+      const show = shouldShowRemainingLabel(
+        ef,
+        remaining,
+        peakRemainRef.current,
+        lastExtendAtRef.current,
+        now
+      );
+      const text = show && remaining > 0 ? formatDurationCompact(remaining / 1e3) : "";
+      const color = remaining <= 5e3 ? "#ffcc66" : "#e8e8e8";
+      const painted = paintedRef.current;
+      const label = labelRef.current;
+      if (label) {
+        if (painted.text !== text) {
+          painted.text = text;
+          label.textContent = text || "\xA0";
+        }
+        if (painted.show !== !!text) {
+          painted.show = !!text;
+          label.style.visibility = text ? "visible" : "hidden";
+          label.style.background = text ? "rgba(0,0,0,0.82)" : "transparent";
+          label.style.border = text ? "1px solid #444" : "1px solid transparent";
+        }
+        if (painted.color !== color) {
+          painted.color = color;
+          label.style.color = color;
+        }
+      }
+      refreshEffectCooltip(cooltipKey);
+    };
+    const paintIcon = () => {
+      const el = iconRef.current;
+      if (!el) return;
+      paintItemContainerIcon(el, effect.skin, iconSize);
+    };
+    const hideTint = () => {
+      const el = iconRef.current;
+      if (el) clearEffectTint(el, rid);
+      tintShownRef.current = false;
+      if (wantsStackedSoftTint(effect)) startedAtRef.current = 0;
+    };
+    const pushTint = (mode) => {
+      const el = iconRef.current;
+      if (!el || !el.firstElementChild) return;
+      const endsAt = endsAtRef.current;
+      const remaining = endsAt - Date.now();
+      if (!shouldShowEffectTint(effect, remaining)) {
+        hideTint();
+        return;
+      }
+      let startedAt = startedAtRef.current;
+      if (wantsStackedSoftTint(effect) && !tintShownRef.current) {
+        startedAt = Date.now();
+        startedAtRef.current = startedAt;
+        mode = "restart";
+      }
+      if (!(endsAt > Date.now()) || !(startedAt > 0)) return;
+      applyEffectTint(el, rid, endsAt, startedAt, mode);
+      tintShownRef.current = true;
+    };
+    React.useEffect(() => {
+      const el = iconRef.current;
+      if (!el) return;
+      paintIcon();
+      syncEffectBadge(el, effectBadgeText(effect), iconSize);
+      tintShownRef.current = false;
+      pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
+      return () => {
+        if (el) el.innerHTML = "";
+      };
+    }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
+    React.useEffect(() => {
+      const el = iconRef.current;
+      if (!el || !el.firstElementChild) return;
+      syncEffectBadge(el, effectBadgeText(effect), iconSize);
+    }, [
+      entityId,
+      effect.id,
+      effect.stacks,
+      effect.intensity,
+      effect.charges,
+      iconSize
+    ]);
+    React.useEffect(() => {
+      const now = Date.now();
+      const prev = endsAtRef.current;
+      const rawMs = effect.ms;
+      const next = syncEndsAt(prev, rawMs, now, lastMsRef.current);
+      if (rawMs != null && rawMs > 0) lastMsRef.current = rawMs;
+      endsAtRef.current = next;
+      const remaining = Math.max(0, next - now);
+      paintRemainUi();
+      if (!(next > now)) {
+        startedAtRef.current = 0;
+        peakRemainRef.current = 0;
+        lastExtendAtRef.current = 0;
+        lastMsRef.current = 0;
+        hideTint();
+        paintRemainUi();
+        return;
+      }
+      if (!prev) {
+        noteDurationPeak(remaining, true);
+        paintRemainUi();
+        startedAtRef.current = buffStartedAt(
+          effect,
+          next,
+          now,
+          "restart",
+          startedAtRef.current
+        );
+        pushTint("restart");
+        return;
+      }
+      if (durationWasExtended(prev, next, now)) {
+        noteDurationPeak(remaining, true);
+        paintRemainUi();
+        if (wantsStackedSoftTint(effect)) {
+          hideTint();
+          return;
+        }
+        if (!(startedAtRef.current > 0)) {
+          startedAtRef.current = buffStartedAt(effect, next, now, "restart", 0);
+        } else {
+          const maxSpan = Math.max(SKILL_UI_SPAN_MS, effect.ms || 0, next - now);
+          if (next - startedAtRef.current > maxSpan) {
+            startedAtRef.current = next - maxSpan;
+          }
+        }
+        pushTint("sync");
+        return;
+      }
+      paintRemainUi();
+      if (!shouldShowEffectTint(effect, remaining)) {
+        hideTint();
+        return;
+      }
+      if (next < prev - 250) {
+        if (effect.type === "skill") {
+          startedAtRef.current = buffStartedAt(
+            effect,
+            next,
+            now,
+            "sync",
+            startedAtRef.current
+          );
+        }
+        pushTint("sync");
+        return;
+      }
+      pushTint(tintShownRef.current ? "sync" : "restart");
+    }, [
+      entityId,
+      effect.id,
+      effect.ms,
+      effect.stacks,
+      effect.intensity,
+      effect.charges,
+      rid
+    ]);
+    const onClockRef = React.useRef(() => {
+    });
+    onClockRef.current = () => {
+      const ef = effectRef.current;
+      const ends = endsAtRef.current;
+      if (!ends) {
+        paintRemainUi();
+        hideTint();
+        return;
+      }
+      const remaining = Math.max(0, ends - Date.now());
+      paintRemainUi();
+      if (!shouldShowEffectTint(ef, remaining)) {
+        if (tintShownRef.current) hideTint();
+        return;
+      }
+      if (!tintShownRef.current) pushTint("restart");
+    };
+    React.useEffect(() => {
+      const tick2 = () => onClockRef.current();
+      tick2();
+      return subscribeEffectClock(tick2);
+    }, [entityId, effect.id]);
+    React.useEffect(() => {
+      return () => {
+        dismissEffectCooltip(cooltipKey);
+      };
+    }, [cooltipKey]);
+    const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
+    const showRemainLabel = shouldShowRemainingLabel(
+      effect,
+      remainNow,
+      peakRemainRef.current,
+      lastExtendAtRef.current,
+      Date.now()
+    );
+    const remainingMs = remainNow;
+    const msLabel = showRemainLabel && remainingMs > 0 ? formatDurationCompact(remainingMs / 1e3) : "";
+    const onClick = clickable ? (ev) => {
+      if (ev && typeof ev.stopPropagation === "function")
+        ev.stopPropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      dismissEffectCooltip(cooltipKey);
+      info.openCondition(entity, effect.id);
+    } : void 0;
+    return e(
+      "div",
+      {
+        ref: wrapRef,
+        className: `comm-fx-icon ${hostClass}`,
+        "data-condition": effect.id,
+        "data-entity": entityId,
+        [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
+        onClick,
+        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseMove: tipHandlers.onMouseMove,
+        onMouseLeave: tipHandlers.onMouseLeave,
+        onMouseDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+        } : void 0,
+        onPointerDown: clickable ? (ev) => {
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+        } : void 0,
+        style: {
+          position: "relative",
+          display: "inline-flex",
+          flexDirection: "column",
+          alignItems: "center",
+          verticalAlign: "top",
+          overflow: "visible",
+          flex: "0 0 auto",
+          cursor: clickable ? "pointer" : "help",
+          pointerEvents: "auto"
+        }
+      },
+      e("div", {
+        ref: iconRef,
+        style: {
+          position: "relative",
+          display: "inline-block",
+          verticalAlign: "top"
+        }
+      }),
+      // Always reserve label height so show/hide does not reflow the row.
+      e(
+        "div",
+        {
+          ref: labelRef,
+          className: "comm-fx-ms",
+          style: {
+            marginTop: "1px",
+            zIndex: 2,
+            padding: "0 3px",
+            background: msLabel ? "rgba(0,0,0,0.82)" : "transparent",
+            border: msLabel ? "1px solid #444" : "1px solid transparent",
+            color: remainingMs <= 5e3 ? "#ffcc66" : "#e8e8e8",
+            fontSize: TYPE.microMin,
+            lineHeight: "14px",
+            minHeight: "14px",
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+            visibility: msLabel ? "visible" : "hidden",
+            ...PIXEL_TEXT
+          }
+        },
+        msLabel || "\xA0"
+      )
+    );
+  }
+
   // src/ui/chrome/EffectsRow.ts
-  var ICON_SIZE = 36;
+  var ICON_SIZE = 22;
   function EffectsRow(props) {
     const React = getReact();
     const lastEffectsRef = React.useRef([]);
@@ -54952,6 +55997,71 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/ui/chrome/unitCooltip.ts
+  function unitCooltipKey(entityId) {
+    return `unit:${entityId}`;
+  }
+  function unitCooltipHtml(args) {
+    const ent = args.entity;
+    const name = String(ent.name || ent.id || "?");
+    const lines = [
+      `<h4>${escapeCooltipHtml(name)}</h4>`
+    ];
+    if (ent.level != null) {
+      lines.push(
+        `<div class="line"><span>Level</span><b>${escapeCooltipHtml(String(ent.level))}</b></div>`
+      );
+    }
+    if (ent.ctype) {
+      lines.push(
+        `<div class="line"><span>Class</span><b>${escapeCooltipHtml(String(ent.ctype))}</b></div>`
+      );
+    }
+    const maxHp = ent.max_hp || 0;
+    const hp = ent.hp || 0;
+    if (maxHp > 0) {
+      lines.push(
+        `<div class="line"><span>HP</span><b>${hp} / ${maxHp}</b></div>`
+      );
+    }
+    const maxMp = ent.max_mp || 0;
+    const mp = ent.mp || 0;
+    if (maxMp > 0) {
+      lines.push(
+        `<div class="line"><span>MP</span><b>${mp} / ${maxMp}</b></div>`
+      );
+    }
+    if (args.observed) {
+      lines.push(`<div class="line"><span>Status</span><b>Observing</b></div>`);
+    }
+    if (args.dead) {
+      lines.push(`<div class="line"><span>Status</span><b>Dead</b></div>`);
+    }
+    const states = args.controlStates || [];
+    if (states.length) {
+      const labels = [];
+      for (let i = 0; i < states.length; i++) {
+        const s = states[i];
+        labels.push(
+          s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
+        );
+      }
+      lines.push(
+        `<div class="line"><span>Control</span><b>${escapeCooltipHtml(labels.join(" \xB7 "))}</b></div>`
+      );
+    }
+    const aggro = args.aggroCount || 0;
+    if (aggro > 0) {
+      lines.push(
+        `<div class="line"><span>Aggro</span><b>${aggro} mob${aggro === 1 ? "" : "s"}</b></div>`
+      );
+    }
+    return lines.join("");
+  }
+  function unitCooltipHandlers(key, rebuild) {
+    return cooltipHandlers(key, rebuild);
+  }
+
   // src/lib/chipOutline.ts
   function chipOutline(opts) {
     if (opts.hasAggro) return "1px solid #e05555";
@@ -55050,19 +56160,8 @@ ${parts.map(cssSlice).join("\n")}
     const hasAggro = aggroMobs.length > 0;
     const color = classColors[player.ctype || ""] || "#888";
     const dead = isActuallyDead(player);
-    const aggroTitle = hasAggro ? `Aggro: ${aggroMobs.length} mob${aggroMobs.length === 1 ? "" : "s"}` : "";
     const controlStates = getControlStates(player, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
-    const controlTitle = controlStates.map(
-      (s) => s.kind === "fear" ? `${s.label} (fear ${s.fear})` : s.label
-    ).join(" \xB7 ");
-    const nameTitle = [
-      `${player.name || player.id}`,
-      observed ? "Observing" : "",
-      dead ? "Dead" : "",
-      controlTitle,
-      aggroTitle
-    ].filter(Boolean).join(" \xB7 ");
     const outline = chipOutline({
       hasAggro,
       controlTint,
@@ -55075,12 +56174,22 @@ ${parts.map(cssSlice).join("\n")}
       observed
     );
     const maxVisible = underChipBuffMaxVisible(ctx.buffMode);
+    const tipKey = unitCooltipKey(pid);
+    const tipHandlers = unitCooltipHandlers(
+      tipKey,
+      () => unitCooltipHtml({
+        entity: player,
+        observed,
+        dead,
+        controlStates,
+        aggroCount: aggroMobs.length
+      })
+    );
     return e(
       "div",
       {
         key: pid,
         className: "ecu-chip" + (selected ? " is-selected" : "") + (observed ? " is-observed" : "") + (hasAggro ? " has-aggro" : "") + (controlStates.length ? " has-control" : "") + (dead ? " is-rip" : ""),
-        title: nameTitle,
         style: {
           position: "relative",
           flex: "0 0 auto",
@@ -55104,78 +56213,97 @@ ${parts.map(cssSlice).join("\n")}
       e(
         "div",
         {
+          className: "ecu-chip-vitals",
+          onMouseEnter: tipHandlers.onMouseEnter,
+          onMouseMove: tipHandlers.onMouseMove,
+          onMouseLeave: tipHandlers.onMouseLeave,
           style: {
             position: "relative",
-            minHeight: "26px",
-            height: "26px",
-            overflow: "visible",
-            background: "rgba(0,0,0,0.45)",
-            outline,
-            boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
+            pointerEvents: "auto"
           }
         },
-        e("div", {
-          style: {
-            display: "block",
-            height: "100%",
-            width: `${hpPct(player)}%`,
-            background: color
-          }
+        e(
+          "div",
+          {
+            style: {
+              position: "relative",
+              minHeight: "26px",
+              height: "26px",
+              overflow: "visible",
+              background: "rgba(0,0,0,0.45)",
+              outline,
+              boxShadow: hasAggro ? "inset 0 0 0 1px rgba(224,85,85,0.55)" : observed ? "inset 0 -2px 0 #e13758" : void 0
+            }
+          },
+          e("div", {
+            style: {
+              display: "block",
+              height: "100%",
+              width: `${hpPct(player)}%`,
+              background: color
+            }
+          }),
+          e(
+            "div",
+            {
+              style: {
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: 0,
+                bottom: 0,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 7px",
+                minWidth: 0,
+                overflow: "visible",
+                fontSize: TYPE.name,
+                letterSpacing: "0.04em",
+                lineHeight: 1,
+                color: "#fff",
+                pointerEvents: "none",
+                ...PIXEL_TEXT
+              }
+            },
+            e(InspectButton, { entity: player, compact: true }),
+            e(NameWithControl, {
+              className: "ecu-chip-namecluster",
+              name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
+              states: controlStates,
+              compact: true,
+              iconSize: 16,
+              entity: player,
+              aggroMobs
+            })
+          )
+        ),
+        e(AggroSpark, {
+          count: aggroMobs.length,
+          className: "ecu-chip-aggro",
+          mobs: aggroMobs,
+          owner: player,
+          ownerId: pid,
+          ownerName: String(player.name || player.id)
         }),
         e(
           "div",
           {
             style: {
-              position: "absolute",
-              left: 0,
-              right: 0,
-              top: 0,
-              bottom: 0,
-              display: "flex",
-              alignItems: "center",
-              padding: "0 7px",
-              minWidth: 0,
-              overflow: "visible",
-              fontSize: TYPE.name,
-              letterSpacing: "0.04em",
-              lineHeight: 1,
-              color: "#fff",
-              pointerEvents: "none",
-              ...PIXEL_TEXT
+              marginTop: "2px",
+              height: "5px",
+              overflow: "hidden",
+              background: "rgba(0,0,0,0.45)"
             }
           },
-          e(InspectButton, { entity: player, compact: true }),
-          e(NameWithControl, {
-            className: "ecu-chip-namecluster",
-            name: `${(_a = player.level) != null ? _a : ""} ${player.id}`,
-            states: controlStates,
-            compact: true,
-            iconSize: 16
+          e("div", {
+            style: {
+              display: "block",
+              height: "100%",
+              width: `${mpPct(player)}%`,
+              background: "#3a6fd8"
+            }
           })
         )
-      ),
-      e(AggroSpark, {
-        count: aggroMobs.length,
-        className: "ecu-chip-aggro"
-      }),
-      e(
-        "div",
-        {
-          style: {
-            marginTop: "2px",
-            height: "5px",
-            overflow: "hidden",
-            background: "rgba(0,0,0,0.45)"
-          }
-        },
-        e("div", {
-          style: {
-            display: "block",
-            height: "100%",
-            width: `${mpPct(player)}%`,
-            background: "#3a6fd8"
-          }
-        })
       ),
       showBuffs ? e(EffectsRow, {
         key: `fx-${pid}`,
@@ -60076,6 +61204,17 @@ ${ESTIMATE_HINT}`,
     const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
     const aggroCount = aggroMobs.length;
+    const dead = isActuallyDead(entity);
+    const tipKey = unitCooltipKey(String(entity.id));
+    const tipHandlers = unitCooltipHandlers(
+      tipKey,
+      () => unitCooltipHtml({
+        entity,
+        dead,
+        controlStates,
+        aggroCount
+      })
+    );
     const name = `${(_a = entity.level) != null ? _a : 1} ${entity.name || entity.id}` + (entity.type === "monster" ? ` #${entity.id}` : "");
     const nameCluster = e(NameWithControl, {
       name,
@@ -60083,7 +61222,9 @@ ${ESTIMATE_HINT}`,
       compact: false,
       // Keep fear/CC icons inside the fixed HP track so overlay buff timers
       // do not jump under neighboring panels when control appears.
-      iconSize: 16
+      iconSize: 16,
+      entity,
+      aggroMobs
     });
     const aggroChip = aggroLabel != null && aggroLabel !== "" ? e(
       "span",
@@ -60181,24 +61322,44 @@ ${ESTIMATE_HINT}`,
           outlineOffset: controlTint ? "1px" : void 0
         }
       },
-      e(AggroSpark, { count: aggroCount }),
+      e(AggroSpark, {
+        count: aggroCount,
+        mobs: aggroMobs,
+        owner: entity,
+        ownerId: String(entity.id),
+        ownerName: String(entity.name || entity.id)
+      }),
       e(
-        VitalsColumn,
+        "div",
         {
-          hp: entity.hp || 0,
-          maxHp: entity.max_hp || 1,
-          mp: entity.mp,
-          maxMp: entity.max_mp,
-          hpColor,
-          showMp,
-          hpThresholdMarks,
-          nameStyle: {
-            fontSize: fontSize != null ? fontSize : "21px",
-            fontWeight: "normal"
-          },
-          onClick: onSelect ? () => onSelect(entity.id) : void 0
+          className: "comm-unit-vitals",
+          onMouseEnter: tipHandlers.onMouseEnter,
+          onMouseMove: tipHandlers.onMouseMove,
+          onMouseLeave: tipHandlers.onMouseLeave,
+          style: {
+            width: "100%",
+            minWidth: 0,
+            pointerEvents: "auto"
+          }
         },
-        label
+        e(
+          VitalsColumn,
+          {
+            hp: entity.hp || 0,
+            maxHp: entity.max_hp || 1,
+            mp: entity.mp,
+            maxMp: entity.max_mp,
+            hpColor,
+            showMp,
+            hpThresholdMarks,
+            nameStyle: {
+              fontSize: fontSize != null ? fontSize : "21px",
+              fontWeight: "normal"
+            },
+            onClick: onSelect ? () => onSelect(entity.id) : void 0
+          },
+          label
+        )
       ),
       effectsSlot,
       footer || null
@@ -60427,6 +61588,8 @@ ${ESTIMATE_HINT}`,
         entity: observing,
         hpColor: classColors[observing.ctype || ""] || "#666",
         fontSize: "21px",
+        // Match party/boss density — default EffectsRow 36px dominates the frame.
+        effectsIconSize: 22,
         effectsOverlay: true,
         aggroMobs,
         onSelect: (id) => {
@@ -60490,6 +61653,8 @@ ${ESTIMATE_HINT}`,
         hpColor: classColors[target.ctype || ""] || "red",
         fontSize: "21px",
         trailing: targetTrailing(observing, target),
+        // Match party/boss density — default EffectsRow 36px dominates the frame.
+        effectsIconSize: 22,
         effectsOverlay: true,
         aggroMobs,
         onSelect: (id) => {
@@ -61919,8 +63084,8 @@ ${ESTIMATE_HINT}`,
   var SELECT_RING = "#ffffff";
   var CROSSHAIR = "rgba(255, 230, 109, 0.35)";
   var MAX_WALL_STROKES = 3500;
-  var PAD2 = 4;
-  function makeProjector(extent, width, height, pad3 = PAD2) {
+  var PAD3 = 4;
+  function makeProjector(extent, width, height, pad3 = PAD3) {
     const worldW = Math.max(1, extent.maxX - extent.minX);
     const worldH = Math.max(1, extent.maxY - extent.minY);
     const plotW = width - pad3 * 2;
@@ -62022,18 +63187,18 @@ ${ESTIMATE_HINT}`,
       ctx.fillRect(0, 0, width, height);
     }
     const extent = opts.extent;
-    const { project } = makeProjector(extent, width, height, PAD2);
+    const { project } = makeProjector(extent, width, height, PAD3);
     if (palette.gridColor) {
       ctx.strokeStyle = palette.gridColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let g = 1; g < 4; g++) {
-        const gx = PAD2 + (width - PAD2 * 2) * g / 4;
-        const gy = PAD2 + (height - PAD2 * 2) * g / 4;
-        ctx.moveTo(gx, PAD2);
-        ctx.lineTo(gx, height - PAD2);
-        ctx.moveTo(PAD2, gy);
-        ctx.lineTo(width - PAD2, gy);
+        const gx = PAD3 + (width - PAD3 * 2) * g / 4;
+        const gy = PAD3 + (height - PAD3 * 2) * g / 4;
+        ctx.moveTo(gx, PAD3);
+        ctx.lineTo(gx, height - PAD3);
+        ctx.moveTo(PAD3, gy);
+        ctx.lineTo(width - PAD3, gy);
       }
       ctx.stroke();
     }
@@ -62156,7 +63321,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID7 = "ecu-minimap-chrome-css";
+  var STYLE_ID8 = "ecu-minimap-chrome-css";
   var CSS10 = `
 .comm-minimap {
   display: flex;
@@ -62314,10 +63479,10 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID7);
+    let el = document.getElementById(STYLE_ID8);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID7;
+      el.id = STYLE_ID8;
       document.head.appendChild(el);
     }
     if (!injected11 || el.textContent !== CSS10) {
@@ -71018,7 +72183,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/BagPanel.ts
-  var HOST_ID4 = "bottomleftcorner";
+  var HOST_ID5 = "bottomleftcorner";
   var BAG_SLOT_BOX = 50;
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
@@ -71306,7 +72471,7 @@ ${ESTIMATE_HINT}`,
         unsubPending();
         unsubMenu();
         unsubDrag();
-        const h = document.getElementById(HOST_ID4);
+        const h = document.getElementById(HOST_ID5);
         if (h) document.body.appendChild(h);
       };
     }, []);
@@ -72695,7 +73860,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID8 = "ecu-query-search-field-css";
+  var STYLE_ID9 = "ecu-query-search-field-css";
   var CSS12 = `
 .ecu-qsearch {
   position: relative;
@@ -72835,9 +74000,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID8)) return;
+    if (document.getElementById(STYLE_ID9)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID8;
+    el.id = STYLE_ID9;
     el.textContent = CSS12;
     document.head.appendChild(el);
   }
@@ -77416,7 +78581,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID9 = "ecu-bank-panel-css";
+  var STYLE_ID10 = "ecu-bank-panel-css";
   var CSS13 = `
 .BankPanel {
   --bk-line: #2a2a2a;
@@ -77844,13 +79009,13 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID9)) return;
+      if (document.getElementById(STYLE_ID10)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID9);
+    let el = document.getElementById(STYLE_ID10);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID9;
+      el.id = STYLE_ID10;
       document.head.appendChild(el);
     }
     el.textContent = CSS13;

@@ -12,12 +12,12 @@ export type { BuiltEffect } from "./effectsModel";
 export { buildEntityEffects, effectsKey, stabilizeEffectOrder } from "./effectsModel";
 export { EffectIcon } from "./EffectIcon";
 
-/** Match observe-hud default; item_container outer box is size + 2*3 padding. */
-const ICON_SIZE = 36;
+/** Party / player / target / boss density; item_container outer = size + 2*3 pad. */
+const ICON_SIZE = 22;
 
 type EffectsRowProps = {
   entity: EntityLike;
-  /** item_container icon size; default matches observe-hud player frame. */
+  /** item_container icon size; default matches unit-frame density. */
   iconSize?: number;
   /** Compact party-chip spacing (tighter margin/gap under MP). */
   compact?: boolean;

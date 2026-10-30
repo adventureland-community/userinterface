@@ -1,4 +1,5 @@
 import { e } from "../../host/react";
+import type { EntityLike } from "../../host/globals";
 import type { ControlState } from "../../lib/controlState";
 import { ControlBadge } from "./ControlBadge";
 
@@ -9,6 +10,8 @@ export type NameWithControlProps = {
   compact?: boolean;
   iconSize?: number;
   className?: string;
+  entity?: EntityLike | null;
+  aggroMobs?: EntityLike[];
 };
 
 /**
@@ -16,7 +19,14 @@ export type NameWithControlProps = {
  * Must not flex-grow — growth shoved the pill to the far end of the HP bar.
  */
 export function NameWithControl(props: NameWithControlProps): any {
-  const { name, states, compact = false, className } = props;
+  const {
+    name,
+    states,
+    compact = false,
+    className,
+    entity = null,
+    aggroMobs = [],
+  } = props;
   const iconSize =
     typeof props.iconSize === "number" && props.iconSize > 0
       ? props.iconSize
@@ -54,6 +64,8 @@ export function NameWithControl(props: NameWithControlProps): any {
       states,
       compact,
       iconSize,
+      entity,
+      aggroMobs,
     }),
   );
 }

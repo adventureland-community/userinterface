@@ -112,6 +112,83 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.16.0",
+    title: "0.16.0",
+    date: "2026-10-30",
+    summary:
+      "Shared Comm cooltips for items, buffs, aggro, and fear — richer G + live entity.s data, readable monster portraits, and courage X/Y.",
+    highlights: [
+      {
+        label: "Shared cooltip shell",
+        detail:
+          "One HUD hover tip for items (stock render_item), buffs (explanation/stats/From/Remaining), aggro spark, and fear/CC badges. Unit/party vitals tips sit on HP/MP only so they do not steal buff hovers.",
+        kind: "feature",
+      },
+      {
+        label: "Buff · aura · hunt tips",
+        detail:
+          "Citizen auras resolve Kane/Angel from G.npcs + live stats. From leads; same-owner mluck shows Strong and a lock when you cannot override. Monsterhunt shows target name + sprite.",
+        kind: "improve",
+      },
+      {
+        label: "Aggro · fear courage X/Y",
+        detail:
+          "Physical / Magical / Pure show as aggro/capacity (e.g. 3/2). Overrun tints red. Aggro tip lists mobs with readable 40×50 sprites.",
+        kind: "improve",
+      },
+    ],
+    items: [
+      {
+        label: "Shared cooltip · item + buff hover",
+        detail:
+          "One Comm cooltip shell for HUD hover. Items show the stock render_item card on hover; buffs keep explanation/stats/From with live Remaining. Unit/party vitals tips sit on HP/MP only; aggro and fear/CC badges get their own rich tips.",
+        kind: "improve",
+      },
+      {
+        label: "Citizen / aura buff tips",
+        detail:
+          "Citizen auras (Kane luck, Angel gold, …) resolve G.npcs + live entity.s — tip shows Kane's Aura (Aura), luck/gold, From, and stay-nearby copy. Player auras with attr0 (sanguine, beekeeper) keep G.explanation and live attribute values under kind Aura.",
+        kind: "improve",
+      },
+      {
+        label: "Buff tip · From first · mluck lock",
+        detail:
+          "Buff cooltips lead with From, then Strong for same-owner mluck. If another merchant cannot override it, Strong shows locked with a lock mark.",
+        kind: "improve",
+      },
+      {
+        label: "Fear tip · aggro/courage X/Y",
+        detail:
+          "Fear cooltip shows Physical / Magical / Pure as aggro÷courage (e.g. 3/2) so you see which pool is overrun; the old Aggro P/M/U dump is gone when pools are known.",
+        kind: "improve",
+      },
+      {
+        label: "Aggro tip · courage capacity",
+        detail:
+          "Aggro spark cooltip uses the same X/Y pools (e.g. Physical 2/5) when the framed player's courage can be estimated.",
+        kind: "improve",
+      },
+      {
+        label: "Monsterhunt tip · target + icon",
+        detail:
+          "On The Hunt (and kill quests) show the live target from entity.s.id via G.monsters — e.g. Defeat 5 Goos and return, Target with monster sprite, plus kills left.",
+        kind: "improve",
+      },
+      {
+        label: "Aggro tip · mob sprites",
+        detail:
+          "Aggro spark cooltip lists each mob with its monster sprite beside the name, not text alone. Portraits render at stock 40×50 so they stay readable on the dark tip.",
+        kind: "improve",
+      },
+      {
+        label: "Smaller frame buff icons",
+        detail:
+          "Player/target frame effect icons default to 22px so more buffs fit without crowding the vitals row.",
+        kind: "ui",
+      },
+    ],
+  },
+  {
     id: "0.15.0",
     title: "0.15.0",
     date: "2026-10-28",

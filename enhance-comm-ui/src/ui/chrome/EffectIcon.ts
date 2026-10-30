@@ -3,13 +3,16 @@ import { addTint, getTint, rebindTint } from "../../host/icons";
 import { paintItemContainerIcon } from "../../lib/gameIcon";
 import { getReact, e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
-import {
-  formatDurationCompact,
-  formatTime,
-  syncEndsAt,
-} from "../../lib/format";
+import { formatDurationCompact, syncEndsAt } from "../../lib/format";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
-import type { BuiltEffect } from "./effectsModel";
+import {
+  dismissEffectCooltip,
+  effectCooltipHandlers,
+  effectCooltipHtml,
+  effectCooltipKey,
+  refreshEffectCooltip,
+} from "./effectCooltip";
+import { effectBadgeText, type BuiltEffect } from "./effectsModel";
 
 /** Stock skill UI (`render_conditions`) uses a fixed 24s skidloader/progress span. */
 const SKILL_UI_SPAN_MS = 24000;
@@ -33,16 +36,19 @@ function loaderId(hostClass: string): string {
   return hostClass.replace(/[^a-zA-Z0-9_\-]/g, "_");
 }
 
-/** Update stock `.iqui` stack digit without rebuilding the icon (preserves skidloader). */
-function syncStackBadge(
+/**
+ * Update stock `.iqui` digit without rebuilding the icon (preserves skidloader).
+ * Used for stacks, burn intensity, and hunt kills left.
+ */
+function syncEffectBadge(
   wrap: HTMLElement,
-  stacks: number | undefined,
+  text: string | null,
   iconSize: number,
 ): void {
   const root = wrap.firstElementChild as HTMLElement | null;
   if (!root) return;
   let badge = root.querySelector(".iqui") as HTMLElement | null;
-  if (stacks != null && stacks > 0) {
+  if (text) {
     if (!badge) {
       badge = document.createElement("div");
       badge.className = "iqui";
@@ -60,7 +66,7 @@ function syncStackBadge(
         root;
       host.appendChild(badge);
     }
-    badge.textContent = String(stacks);
+    badge.textContent = text;
     // Stock .iqui is tuned for ~40px inventory slots — compact via CSS class.
     const compact = iconSize < 34;
     badge.classList.toggle("is-compact", compact);
@@ -75,30 +81,6 @@ function syncStackBadge(
   } else if (badge) {
     badge.remove();
   }
-}
-
-function effectTooltip(effect: BuiltEffect, remainingMs?: number): string {
-  const parts: string[] = [];
-  const label = effect.name || effect.id;
-  const kind =
-    effect.type === "skill" ? "Skill" : effect.debuff ? "Debuff" : "Buff";
-  parts.push(`${label} (${kind})`);
-  const ms =
-    remainingMs != null && remainingMs > 0
-      ? remainingMs
-      : effect.ms != null && effect.ms > 0
-        ? effect.ms
-        : 0;
-  if (ms > 0) {
-    parts.push(`Remaining: ${formatTime(ms / 1000)}`);
-  }
-  if (effect.stacks != null && effect.stacks > 0) {
-    parts.push(`Stacks: ${effect.stacks}`);
-  }
-  if (effect.name && effect.name !== effect.id) {
-    parts.push(`id: ${effect.id}`);
-  }
-  return parts.join("\n");
 }
 
 /** Ends-at must jump at least this far to count as a duration refresh. */
@@ -332,14 +314,28 @@ export function EffectIcon(props: {
     text: "",
     color: "",
     show: false,
-    title: "",
   });
   const { effect, hostClass, entity, iconSize } = props;
   const effectRef = React.useRef(effect);
   effectRef.current = effect;
+  const entityRef = React.useRef(entity);
+  entityRef.current = entity;
   const entityId = String(entity.id);
+  const cooltipKey = effectCooltipKey(entityId, effect.id);
   const rid = loaderId(hostClass);
   const clickable = effect.type !== "skill";
+
+  const rebuildCooltipHtml = () => {
+    const ends = endsAtRef.current;
+    const remaining = ends > 0 ? Math.max(0, ends - Date.now()) : 0;
+    return effectCooltipHtml({
+      effect: effectRef.current,
+      entity: entityRef.current,
+      remainingMs: remaining > 0 ? remaining : undefined,
+    });
+  };
+
+  const tipHandlers = effectCooltipHandlers(cooltipKey, rebuildCooltipHtml);
 
   const noteDurationPeak = (remaining: number, extended: boolean) => {
     if (extended || !(peakRemainRef.current > 0)) {
@@ -367,7 +363,6 @@ export function EffectIcon(props: {
     const text =
       show && remaining > 0 ? formatDurationCompact(remaining / 1000) : "";
     const color = remaining <= 5000 ? "#ffcc66" : "#e8e8e8";
-    const title = effectTooltip(ef, show ? remaining : undefined);
     const painted = paintedRef.current;
     const label = labelRef.current;
     if (label) {
@@ -386,11 +381,8 @@ export function EffectIcon(props: {
         label.style.color = color;
       }
     }
-    const wrap = wrapRef.current;
-    if (wrap && painted.title !== title) {
-      painted.title = title;
-      wrap.setAttribute("title", title);
-    }
+    // Live Remaining in Comm cooltip while hovered (no native title blink).
+    refreshEffectCooltip(cooltipKey);
   };
 
   const paintIcon = () => {
@@ -434,7 +426,7 @@ export function EffectIcon(props: {
     const el = iconRef.current as HTMLElement | null;
     if (!el) return;
     paintIcon();
-    syncStackBadge(el, effect.stacks, iconSize);
+    syncEffectBadge(el, effectBadgeText(effect), iconSize);
     tintShownRef.current = false;
     pushTint(startedAtRef.current > 0 ? "rebind" : "restart");
     return () => {
@@ -442,12 +434,19 @@ export function EffectIcon(props: {
     };
   }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
 
-  // Stack digit only — do not wipe the icon DOM (that resets tint / opacity).
+  // Badge digit only — do not wipe the icon DOM (that resets tint / opacity).
   React.useEffect(() => {
     const el = iconRef.current as HTMLElement | null;
     if (!el || !el.firstElementChild) return;
-    syncStackBadge(el, effect.stacks, iconSize);
-  }, [entityId, effect.id, effect.stacks, iconSize]);
+    syncEffectBadge(el, effectBadgeText(effect), iconSize);
+  }, [
+    entityId,
+    effect.id,
+    effect.stacks,
+    effect.intensity,
+    effect.charges,
+    iconSize,
+  ]);
 
   // Sticky absolute end + stacked expiry-window gating for the skidloader.
   React.useEffect(() => {
@@ -526,7 +525,15 @@ export function EffectIcon(props: {
       return;
     }
     pushTint(tintShownRef.current ? "sync" : "restart");
-  }, [entityId, effect.id, effect.ms, effect.stacks, rid]);
+  }, [
+    entityId,
+    effect.id,
+    effect.ms,
+    effect.stacks,
+    effect.intensity,
+    effect.charges,
+    rid,
+  ]);
 
   // Shared 250ms clock — remaining label / tint threshold, no per-icon timer.
   const onClockRef = React.useRef(() => {});
@@ -552,6 +559,12 @@ export function EffectIcon(props: {
     return subscribeEffectClock(tick);
   }, [entityId, effect.id]);
 
+  React.useEffect(() => {
+    return () => {
+      dismissEffectCooltip(cooltipKey);
+    };
+  }, [cooltipKey]);
+
   const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
   const showRemainLabel = shouldShowRemainingLabel(
     effect,
@@ -565,16 +578,13 @@ export function EffectIcon(props: {
     showRemainLabel && remainingMs > 0
       ? formatDurationCompact(remainingMs / 1000)
       : "";
-  const tooltip = effectTooltip(
-    effect,
-    showRemainLabel ? remainingMs : undefined,
-  );
 
   const onClick = clickable
     ? (ev: any) => {
         if (ev && typeof ev.stopPropagation === "function")
           ev.stopPropagation();
         if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        dismissEffectCooltip(cooltipKey);
         info.openCondition(entity, effect.id);
       }
     : undefined;
@@ -587,8 +597,10 @@ export function EffectIcon(props: {
       "data-condition": effect.id,
       "data-entity": entityId,
       [INFO_SOURCE_ATTR]: clickable ? "" : undefined,
-      title: tooltip,
       onClick,
+      onMouseEnter: tipHandlers.onMouseEnter,
+      onMouseMove: tipHandlers.onMouseMove,
+      onMouseLeave: tipHandlers.onMouseLeave,
       onMouseDown: clickable
         ? (ev: any) => {
             if (ev && typeof ev.stopPropagation === "function")
@@ -609,7 +621,7 @@ export function EffectIcon(props: {
         verticalAlign: "top",
         overflow: "visible",
         flex: "0 0 auto",
-        cursor: clickable ? "pointer" : "default",
+        cursor: clickable ? "pointer" : "help",
         pointerEvents: "auto",
       },
     },

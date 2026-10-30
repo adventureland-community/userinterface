@@ -4,8 +4,14 @@ import { NameWithControl } from "./NameWithControl";
 import { AggroSpark } from "./AggroSpark";
 import { InspectButton } from "./InspectButton";
 import { VitalsColumn } from "./VitalsColumn";
+import {
+  unitCooltipHandlers,
+  unitCooltipHtml,
+  unitCooltipKey,
+} from "./unitCooltip";
 import type { EntityLike } from "../../host/globals";
 import { controlBorderTint, getControlStates } from "../../lib/controlState";
+import { isActuallyDead } from "../../lib/stickyPresence";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import type { HpThresholdMark } from "../../instance/monsterSpawns";
 
@@ -73,6 +79,16 @@ export function ObservedUnit(props: ObservedUnitProps): any {
   const controlStates = getControlStates(entity, aggroMobs);
   const controlTint = controlBorderTint(controlStates);
   const aggroCount = aggroMobs.length;
+  const dead = isActuallyDead(entity);
+  const tipKey = unitCooltipKey(String(entity.id));
+  const tipHandlers = unitCooltipHandlers(tipKey, () =>
+    unitCooltipHtml({
+      entity,
+      dead,
+      controlStates,
+      aggroCount,
+    }),
+  );
 
   const name =
     `${entity.level ?? 1} ${entity.name || entity.id}` +
@@ -85,6 +101,8 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     // Keep fear/CC icons inside the fixed HP track so overlay buff timers
     // do not jump under neighboring panels when control appears.
     iconSize: 16,
+    entity,
+    aggroMobs,
   });
 
   const aggroChip =
@@ -209,24 +227,44 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         outlineOffset: controlTint ? "1px" : undefined,
       },
     },
-    e(AggroSpark, { count: aggroCount }),
+    e(AggroSpark, {
+      count: aggroCount,
+      mobs: aggroMobs,
+      owner: entity,
+      ownerId: String(entity.id),
+      ownerName: String(entity.name || entity.id),
+    }),
     e(
-      VitalsColumn,
+      "div",
       {
-        hp: entity.hp || 0,
-        maxHp: entity.max_hp || 1,
-        mp: entity.mp,
-        maxMp: entity.max_mp,
-        hpColor,
-        showMp,
-        hpThresholdMarks,
-        nameStyle: {
-          fontSize: fontSize != null ? fontSize : "21px",
-          fontWeight: "normal",
+        className: "comm-unit-vitals",
+        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseMove: tipHandlers.onMouseMove,
+        onMouseLeave: tipHandlers.onMouseLeave,
+        style: {
+          width: "100%",
+          minWidth: 0,
+          pointerEvents: "auto",
         },
-        onClick: onSelect ? () => onSelect(entity.id) : undefined,
       },
-      label,
+      e(
+        VitalsColumn,
+        {
+          hp: entity.hp || 0,
+          maxHp: entity.max_hp || 1,
+          mp: entity.mp,
+          maxMp: entity.max_mp,
+          hpColor,
+          showMp,
+          hpThresholdMarks,
+          nameStyle: {
+            fontSize: fontSize != null ? fontSize : "21px",
+            fontWeight: "normal",
+          },
+          onClick: onSelect ? () => onSelect(entity.id) : undefined,
+        },
+        label,
+      ),
     ),
     effectsSlot,
     footer || null,

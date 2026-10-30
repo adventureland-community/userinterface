@@ -15,6 +15,13 @@ import {
   resolveItemLevelBadge,
 } from "../../lib/itemLevelBadge";
 import { stampNativeItemTitleBorder } from "../../lib/itemTitleBorder";
+import {
+  dismissItemCooltip,
+  itemCooltipHandlers,
+  itemCooltipHtml,
+  nextItemCooltipKey,
+  type ItemCooltipActual,
+} from "./itemCooltip";
 
 export type ItemInstanceProps = {
   name: string;
@@ -25,6 +32,7 @@ export type ItemInstanceProps = {
   p?: string;
   size?: number;
   className?: string;
+  /** Plain-text fallback label; unused when cooltip is on. */
   title?: string;
   /**
    * Prefer stock `item_container` art (borders / rarity), then overlay our
@@ -37,6 +45,13 @@ export type ItemInstanceProps = {
   qtyColor?: string;
   /** Account bank quantity — top-right badge (Market / bag overlays). */
   bankQ?: number;
+  /**
+   * Rich Comm cooltip via stock `render_item` (default true).
+   * Set false for chrome-only tiles that should stay tip-free.
+   */
+  cooltip?: boolean;
+  /** Full item/slot object when available (compound props beyond level/q/p). */
+  actual?: ItemCooltipActual | null;
 };
 
 function formatQty(
@@ -54,6 +69,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
   const React = getReact();
   ensureItemInstanceBadgeCss();
   const ref = React.useRef(null as HTMLSpanElement | null);
+  const tipKeyRef = React.useRef("");
   const {
     name,
     skin,
@@ -67,6 +83,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
     forceShowQ,
     qtyColor,
     bankQ,
+    cooltip = true,
+    actual,
   } = props;
 
   const levelNum = coerceItemLevel(level);
@@ -79,6 +97,35 @@ export function ItemInstance(props: ItemInstanceProps): any {
     bankQ != null && Number.isFinite(bankQ) && bankQ > 0
       ? formatQty(bankQ, true)
       : null;
+
+  if (!tipKeyRef.current) tipKeyRef.current = nextItemCooltipKey(name);
+
+  const nameRef = React.useRef(name);
+  nameRef.current = name;
+  const levelRef = React.useRef(level);
+  levelRef.current = level;
+  const qRef = React.useRef(q);
+  qRef.current = q;
+  const pRef = React.useRef(p);
+  pRef.current = p;
+  const actualRef = React.useRef(actual);
+  actualRef.current = actual;
+  const tipLabelRef = React.useRef(tip);
+  tipLabelRef.current = tip;
+
+  const rebuildTip = React.useCallback(() => {
+    return itemCooltipHtml({
+      name: nameRef.current,
+      level: levelRef.current,
+      q: qRef.current,
+      p: pRef.current,
+      actual: actualRef.current,
+    });
+  }, []);
+
+  const tipHandlers = cooltip
+    ? itemCooltipHandlers(tipKeyRef.current, rebuildTip)
+    : null;
 
   React.useEffect(() => {
     const el = ref.current;
@@ -123,6 +170,14 @@ export function ItemInstance(props: ItemInstanceProps): any {
     };
   }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
 
+  React.useEffect(() => {
+    if (!cooltip) return;
+    const key = tipKeyRef.current;
+    return () => {
+      dismissItemCooltip(key);
+    };
+  }, [cooltip]);
+
   return e(
     "span",
     {
@@ -137,8 +192,12 @@ export function ItemInstance(props: ItemInstanceProps): any {
         justifyContent: "center",
         lineHeight: 0,
         verticalAlign: "middle",
+        cursor: cooltip ? "help" : undefined,
       },
-      title: tip,
+      title: cooltip ? undefined : tip,
+      onMouseEnter: tipHandlers ? tipHandlers.onMouseEnter : undefined,
+      onMouseMove: tipHandlers ? tipHandlers.onMouseMove : undefined,
+      onMouseLeave: tipHandlers ? tipHandlers.onMouseLeave : undefined,
     },
     e("span", {
       ref,
@@ -170,7 +229,9 @@ export function ItemInstance(props: ItemInstanceProps): any {
           {
             className: "ecu-item-badge ecu-item-badge--qty",
             title: "Quantity " + (q != null ? q : qtyLabel),
-            style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : undefined,
+            style: qtyColor
+              ? { color: qtyColor, borderColor: qtyColor }
+              : undefined,
           },
           qtyLabel,
         )

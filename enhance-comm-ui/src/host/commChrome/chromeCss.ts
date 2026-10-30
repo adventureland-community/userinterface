@@ -1,3 +1,4 @@
+import { COOLTIP_CSS } from "../../ui/chrome/cooltipCss";
 import { CHROME_ARRANGE_CSS } from "./chromeArrangeCss";
 import { EFFECTS_ICON_CSS } from "./effectsIconCss";
 
@@ -37,6 +38,7 @@ export function injectChromeCss(): void {
   display: none !important;
 }
 ${EFFECTS_ICON_CSS}
+${COOLTIP_CSS}
 
 #bottom {
   position: fixed;

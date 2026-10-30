@@ -1,7 +1,14 @@
 import { paintItemContainerIcon } from "../../lib/gameIcon";
 import { getReact, e } from "../../host/react";
+import type { EntityLike } from "../../host/globals";
 import type { ControlState } from "../../lib/controlState";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import {
+  controlCooltipHandlers,
+  controlCooltipHtml,
+  controlCooltipKey,
+  dismissControlCooltip,
+} from "./controlCooltip";
 
 export type ControlBadgeProps = {
   states: ControlState[];
@@ -9,6 +16,10 @@ export type ControlBadgeProps = {
   iconSize?: number;
   /** Tighter padding + smaller label (party chips). */
   compact?: boolean;
+  /** Owner entity — fear pools / CC remaining. */
+  entity?: EntityLike | null;
+  /** Mobs on this unit — fear overflow context. */
+  aggroMobs?: EntityLike[];
 };
 
 function ControlIcon(props: { state: ControlState; iconSize: number }): any {
@@ -39,19 +50,18 @@ function ControlIcon(props: { state: ControlState; iconSize: number }): any {
   });
 }
 
-function badgeTitle(state: ControlState): string {
-  if (state.kind === "fear") {
-    return `${state.label} (fear ${state.fear})`;
-  }
-  return state.label;
-}
-
 /**
  * Fear / hard-CC pill immediately after the name.
  * Icon + state label; background/border encode severity.
  */
 export function ControlBadge(props: ControlBadgeProps): any {
-  const { states, compact = false } = props;
+  const React = getReact();
+  const {
+    states,
+    compact = false,
+    entity = null,
+    aggroMobs = [],
+  } = props;
   if (!states.length) return null;
   const iconSize =
     typeof props.iconSize === "number" && props.iconSize > 0
@@ -62,6 +72,13 @@ export function ControlBadge(props: ControlBadgeProps): any {
   // In-bar badges (unit frames) use a small icon — match party-chip chrome
   // so padding does not blow past the fixed HP track height.
   const tight = compact || iconSize <= 18;
+  const ownerId = entity && entity.id != null ? String(entity.id) : "anon";
+
+  React.useEffect(() => {
+    return () => {
+      dismissControlCooltip();
+    };
+  }, [ownerId]);
 
   return e(
     "div",
@@ -81,6 +98,10 @@ export function ControlBadge(props: ControlBadgeProps): any {
     ...states.map((state) => {
       const key =
         state.kind === "fear" ? `fear-${state.level}` : `cc-${state.id}`;
+      const tipKey = controlCooltipKey(ownerId, state);
+      const tipHandlers = controlCooltipHandlers(tipKey, () =>
+        controlCooltipHtml({ state, entity, aggroMobs }),
+      );
       return e(
         "div",
         {
@@ -90,7 +111,9 @@ export function ControlBadge(props: ControlBadgeProps): any {
             (state.kind === "fear"
               ? ` is-fear is-${state.level}`
               : ` is-hardcc is-${state.id}`),
-          title: badgeTitle(state),
+          onMouseEnter: tipHandlers.onMouseEnter,
+          onMouseMove: tipHandlers.onMouseMove,
+          onMouseLeave: tipHandlers.onMouseLeave,
           style: {
             display: "inline-flex",
             alignItems: "center",
