@@ -266,22 +266,29 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           )
         : effectsRow;
 
+  /** Child hosts that own the Comm cooltip — don't steal with the unit tip. */
+  const tipOwnedByChild = (t: EventTarget | null): boolean => {
+    if (!t || typeof (t as Element).closest !== "function") return false;
+    const el = t as Element;
+    return !!(
+      el.closest(".comm-hp-threshold") ||
+      el.closest(".comm-fx-icon") ||
+      el.closest(".comm-fx-overflow")
+    );
+  };
+
   const vitals = e(
     "div",
     {
       className: "comm-unit-vitals",
-      onMouseEnter: tipHandlers.onMouseEnter,
+      onMouseEnter: (ev: MouseEvent) => {
+        if (tipOwnedByChild(ev.target)) return;
+        tipHandlers.onMouseEnter(ev);
+      },
       onMouseMove: (ev: MouseEvent) => {
-        const t = ev.target as Element | null;
-        // Phase marks own the Comm cooltip; don't reclaim while over one.
-        if (
-          t &&
-          typeof (t as any).closest === "function" &&
-          (t as any).closest(".comm-hp-threshold")
-        ) {
-          return;
-        }
-        // After leaving a phase mark, tip is cleared — reopen unit tip.
+        // Phase marks + in-bar buffs own the tip; reclaim would wipe them.
+        if (tipOwnedByChild(ev.target)) return;
+        // After leaving a child tip host, tip is cleared — reopen unit tip.
         if (!isCooltipHovering(tipKey)) {
           tipHandlers.onMouseEnter(ev);
           return;

@@ -112,6 +112,28 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.17.1",
+    title: "0.17.1",
+    date: "2026-11-03",
+    summary:
+      "Boss in-bar buff cooltips work again, and Upgrade scroll tiles offer None for primstack.",
+    highlights: [
+      {
+        label: "Boss bars · buff cooltips",
+        detail:
+          "Hovering in-bar buffs/debuffs shows the effect Comm cooltip again — the unit tip and native Click to target title no longer steal the hover.",
+        kind: "fix",
+      },
+      {
+        label: "Upgrade · scroll None",
+        detail:
+          "Scroll tiles include None so you can run offering-only / primstack upgrades without a scroll.",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.17.0",
     title: "0.17.0",
     date: "2026-11-03",

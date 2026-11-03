@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.17.0
+// @version      0.17.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -9004,6 +9004,25 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.17.1",
+      title: "0.17.1",
+      date: "2026-11-03",
+      summary: "Boss in-bar buff cooltips work again, and Upgrade scroll tiles offer None for primstack.",
+      highlights: [
+        {
+          label: "Boss bars \xB7 buff cooltips",
+          detail: "Hovering in-bar buffs/debuffs shows the effect Comm cooltip again \u2014 the unit tip and native Click to target title no longer steal the hover.",
+          kind: "fix"
+        },
+        {
+          label: "Upgrade \xB7 scroll None",
+          detail: "Scroll tiles include None so you can run offering-only / primstack upgrades without a scroll.",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.17.0",
       title: "0.17.0",
@@ -28793,8 +28812,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.17.0" : "unknown";
-    const builtAt = true ? "2026-11-03T20:54:26.598Z" : "unknown";
+    const version = true ? "0.17.1" : "unknown";
+    const builtAt = true ? "2026-11-03T22:35:57.370Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -62310,16 +62329,21 @@ ${ESTIMATE_HINT}`,
       },
       effectsRow
     ) : effectsRow;
+    const tipOwnedByChild = (t) => {
+      if (!t || typeof t.closest !== "function") return false;
+      const el = t;
+      return !!(el.closest(".comm-hp-threshold") || el.closest(".comm-fx-icon") || el.closest(".comm-fx-overflow"));
+    };
     const vitals = e(
       "div",
       {
         className: "comm-unit-vitals",
-        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseEnter: (ev) => {
+          if (tipOwnedByChild(ev.target)) return;
+          tipHandlers.onMouseEnter(ev);
+        },
         onMouseMove: (ev) => {
-          const t = ev.target;
-          if (t && typeof t.closest === "function" && t.closest(".comm-hp-threshold")) {
-            return;
-          }
+          if (tipOwnedByChild(ev.target)) return;
           if (!isCooltipHovering(tipKey)) {
             tipHandlers.onMouseEnter(ev);
             return;
@@ -62925,7 +62949,7 @@ ${ESTIMATE_HINT}`,
               outline: onMe ? "1px solid rgba(224,85,85,0.55)" : void 0,
               outlineOffset: "1px"
             },
-            title: "Click to target",
+            // No native title= — steals hover from in-bar buff cooltips.
             onClick: () => {
               setXTarget(boss);
               props.setSelectedEntity(String(boss.id));
@@ -71909,14 +71933,29 @@ ${ESTIMATE_HINT}`,
     key.title = name;
     wrap.appendChild(key);
   }
-  function appendScrollTiles(host2, scrolls, selectedId2, onPick, gold) {
+  function appendScrollTiles(host2, scrolls, selectedId2, onPick, gold, opts) {
     host2.innerHTML = "";
-    setTilesScrollMode(host2, scrolls.length);
+    const allowNone = !!(opts && opts.allowNone);
+    setTilesScrollMode(host2, scrolls.length + (allowNone ? 1 : 0));
+    if (allowNone) {
+      const noneWrap = document.createElement("div");
+      noneWrap.className = "ecu-upg__tile-wrap";
+      const none = document.createElement("button");
+      none.type = "button";
+      none.className = "ecu-upg__tile is-none" + (selectedId2 == null ? " is-on" : "");
+      none.title = "No scroll \u2014 offering-only / primstack";
+      none.textContent = "None";
+      none.addEventListener("click", () => onPick(null));
+      noneWrap.appendChild(none);
+      host2.appendChild(noneWrap);
+    }
     if (!scrolls.length) {
-      const empty2 = document.createElement("div");
-      empty2.className = "ecu-upg__empty";
-      empty2.textContent = "No compatible scrolls in bag or at a vendor.";
-      host2.appendChild(empty2);
+      if (!allowNone) {
+        const empty2 = document.createElement("div");
+        empty2.className = "ecu-upg__empty";
+        empty2.textContent = "No compatible scrolls in bag or at a vendor.";
+        host2.appendChild(empty2);
+      }
       return;
     }
     for (let i = 0; i < scrolls.length; i++) {
@@ -72239,7 +72278,7 @@ ${ESTIMATE_HINT}`,
         } else {
           fillMini(trial.usedIcons, null, {
             emptyLabel: "Scr",
-            title: "Click, then pick a scroll (tiles or bag)",
+            title: "Click, then pick a scroll \u2014 or None for primstack",
             focused: pickFocus === "scroll",
             onClick: () => {
               if (busy) return;
@@ -72285,7 +72324,8 @@ ${ESTIMATE_HINT}`,
             paint();
             refreshChanceEstimate();
           },
-          gold
+          gold,
+          { allowNone: true }
         );
         appendOfferingTiles(
           offerTiles,
@@ -72307,11 +72347,11 @@ ${ESTIMATE_HINT}`,
         meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying });
         if (!busy) {
           if (pickFocus === "scroll") {
-            hint.textContent = "Pick a scroll from the tiles, bag, or buy from vendor.";
+            hint.textContent = "Pick a scroll (tiles, bag, buy) or None for offering-only / primstack.";
           } else if (pickFocus === "offering") {
             hint.textContent = "Pick an offering from the tiles, bag, vendor (or None).";
           } else if (!ready) {
-            hint.textContent = "Pick a scroll (or an offering).";
+            hint.textContent = "Pick a scroll and/or an offering.";
           } else {
             hint.textContent = "";
           }

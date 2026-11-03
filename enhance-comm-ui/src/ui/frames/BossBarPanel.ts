@@ -118,7 +118,7 @@ export function BossBarPanel(props: BossBarPanelProps): any {
             outline: onMe ? "1px solid rgba(224,85,85,0.55)" : undefined,
             outlineOffset: "1px",
           },
-          title: "Click to target",
+          // No native title= — steals hover from in-bar buff cooltips.
           onClick: () => {
             setXTarget(boss);
             props.setSelectedEntity(String(boss.id));

@@ -516,17 +516,34 @@ function appendScrollTiles(
   host: HTMLElement,
   scrolls: ScrollPick[],
   selectedId: string | null,
-  onPick: (id: string) => void,
+  onPick: (id: string | null) => void,
   gold: number,
+  opts?: { allowNone?: boolean },
 ): void {
   host.innerHTML = "";
-  setTilesScrollMode(host, scrolls.length);
+  const allowNone = !!(opts && opts.allowNone);
+  setTilesScrollMode(host, scrolls.length + (allowNone ? 1 : 0));
+  if (allowNone) {
+    const noneWrap = document.createElement("div");
+    noneWrap.className = "ecu-upg__tile-wrap";
+    const none = document.createElement("button");
+    none.type = "button";
+    none.className =
+      "ecu-upg__tile is-none" + (selectedId == null ? " is-on" : "");
+    none.title = "No scroll — offering-only / primstack";
+    none.textContent = "None";
+    none.addEventListener("click", () => onPick(null));
+    noneWrap.appendChild(none);
+    host.appendChild(noneWrap);
+  }
   if (!scrolls.length) {
-    const empty = document.createElement("div");
-    empty.className = "ecu-upg__empty";
-    empty.textContent =
-      "No compatible scrolls in bag or at a vendor.";
-    host.appendChild(empty);
+    if (!allowNone) {
+      const empty = document.createElement("div");
+      empty.className = "ecu-upg__empty";
+      empty.textContent =
+        "No compatible scrolls in bag or at a vendor.";
+      host.appendChild(empty);
+    }
     return;
   }
   for (let i = 0; i < scrolls.length; i++) {
@@ -972,7 +989,7 @@ export function showUpgradeDialog(
       } else {
         fillMini(trial.usedIcons, null, {
           emptyLabel: "Scr",
-          title: "Click, then pick a scroll (tiles or bag)",
+          title: "Click, then pick a scroll — or None for primstack",
           focused: pickFocus === "scroll",
           onClick: () => {
             if (busy) return;
@@ -1020,6 +1037,7 @@ export function showUpgradeDialog(
           refreshChanceEstimate();
         },
         gold,
+        { allowNone: true },
       );
       appendOfferingTiles(
         offerTiles,
@@ -1052,12 +1070,12 @@ export function showUpgradeDialog(
       if (!busy) {
         if (pickFocus === "scroll") {
           hint.textContent =
-            "Pick a scroll from the tiles, bag, or buy from vendor.";
+            "Pick a scroll (tiles, bag, buy) or None for offering-only / primstack.";
         } else if (pickFocus === "offering") {
           hint.textContent =
             "Pick an offering from the tiles, bag, vendor (or None).";
         } else if (!ready) {
-          hint.textContent = "Pick a scroll (or an offering).";
+          hint.textContent = "Pick a scroll and/or an offering.";
         } else {
           hint.textContent = "";
         }
