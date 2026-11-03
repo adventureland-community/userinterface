@@ -22,6 +22,7 @@ import {
   nextItemCooltipKey,
   type ItemCooltipActual,
 } from "./itemCooltip";
+import { stripNativeTitles } from "./stripNativeTitles";
 
 export type ItemInstanceProps = {
   name: string;
@@ -165,10 +166,17 @@ export function ItemInstance(props: ItemInstanceProps): any {
       // DOM stamp — survives box-sizing quirks / missed regex recolors.
       if (p) stampNativeItemTitleBorder(root, p);
     }
+    // Stock item_container / border wrappers may still carry title= — strip
+    // when Comm cooltip owns hover (also clear the React host).
+    if (cooltip) {
+      stripNativeTitles(el);
+      const host = el.parentElement;
+      if (host) host.removeAttribute("title");
+    }
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
+  }, [name, skin, levelNum, q, p, size, tip, stockChrome, cooltip]);
 
   React.useEffect(() => {
     if (!cooltip) return;
@@ -217,7 +225,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
           "span",
           {
             className: "ecu-item-badge ecu-item-badge--level",
-            title: "Level " + levelBadge.text,
+            // Skip native titles when Comm cooltip is on — they stack on hover.
+            title: cooltip ? undefined : "Level " + levelBadge.text,
             style: { color: levelBadge.color, borderColor: levelBadge.color },
           },
           levelBadge.text,
@@ -228,7 +237,9 @@ export function ItemInstance(props: ItemInstanceProps): any {
           "span",
           {
             className: "ecu-item-badge ecu-item-badge--qty",
-            title: "Quantity " + (q != null ? q : qtyLabel),
+            title: cooltip
+              ? undefined
+              : "Quantity " + (q != null ? q : qtyLabel),
             style: qtyColor
               ? { color: qtyColor, borderColor: qtyColor }
               : undefined,
@@ -241,7 +252,9 @@ export function ItemInstance(props: ItemInstanceProps): any {
           "span",
           {
             className: "ecu-item-badge ecu-item-badge--bank",
-            title: "Bank ×" + (bankQ != null ? bankQ : bankLabel),
+            title: cooltip
+              ? undefined
+              : "Bank ×" + (bankQ != null ? bankQ : bankLabel),
           },
           bankLabel,
         )

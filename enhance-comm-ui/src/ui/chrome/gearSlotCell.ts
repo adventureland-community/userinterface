@@ -2,19 +2,15 @@ import { getReact, e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
 import { itemContainer, setXTarget } from "../../host/icons";
-import {
-  itemInstanceHtml,
-  itemIconHtml,
-  itemInstanceLabel,
-  itemSkin,
-  stampNativeItemTitle,
-} from "../../lib/gameIcon";
+import { itemSkin } from "../../lib/gameIcon";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import {
   handleBagDragOverGearSlot,
   handleBagDropOnGearSlot,
 } from "../gear/gearSlotDragDrop";
+import { ItemInstance } from "./ItemInstance";
+import { stripNativeTitles } from "./stripNativeTitles";
 
 /** Host shade skins from `render_slots` in adventureland `js/html.js`. */
 const SLOT_SHADE: Record<string, { shade: string; s_op: number }> = {
@@ -44,7 +40,7 @@ function shadeFor(slotName: string): { shade: string; s_op: number } {
   return SLOT_SHADE[slotName] || { shade: "placeholder", s_op: 0.4 };
 }
 
-function wrapContainerHtml(html: string, title?: string): any {
+function wrapContainerHtml(html: string): any {
   return e("div", {
     style: {
       display: "inline-block",
@@ -61,8 +57,8 @@ function wrapContainerHtml(html: string, title?: string): any {
       root.removeAttribute("onmousedown");
       root.removeAttribute("ontouchstart");
       root.removeAttribute("onclick");
-      const tip = title || root.getAttribute("title") || "";
-      if (tip) stampNativeItemTitle(node, tip);
+      root.removeAttribute("title");
+      node.removeAttribute("title");
     },
   });
 }
@@ -99,62 +95,30 @@ export type GearSlotCellProps = {
 export function GearSlotCell(props: GearSlotCellProps): any {
   const React = getReact();
   const [bagDropHover, setBagDropHover] = React.useState(false);
+  const cellRef = React.useRef(null as HTMLDivElement | null);
   const { entity, slotName, slot, diff, gearEditable, allSlots } = props;
   const skin =
     (slot && slot.skin) || (slot && slot.name ? itemSkin(slot.name) : undefined);
   const { shade, s_op } = shadeFor(slotName);
   let content: any = null;
   const clickable = !!(slot && slot.name);
-  const itemTitle =
-    clickable && slot?.name
-      ? itemInstanceLabel(slot.name, { p: slot.p, level: slot.level })
-      : undefined;
 
-  if (slot && skin) {
-    let html = "";
-    try {
-      html =
-        itemInstanceHtml(slot.name, {
-          skin,
-          size: GEAR_SLOT_SIZE,
-          level: slot.level,
-          q: slot.q,
-          p: slot.p,
-        }) || "";
-    } catch {
-      html = "";
-    }
-    if (html) {
-      content = wrapContainerHtml(html, itemTitle);
-    } else if (slot.name) {
-      content = wrapContainerHtml(
-        itemIconHtml(slot.name, {
-          skin,
-          size: GEAR_SLOT_SIZE,
-          level: slot.level,
-          p: slot.p,
-        }),
-        itemTitle,
-      );
-    } else {
-      content = e(
-        "div",
-        {
-          style: {
-            width: `${GEAR_SLOT_SIZE}px`,
-            height: `${GEAR_SLOT_SIZE}px`,
-            background: "#333",
-            border: "1px solid #666",
-            fontSize: TYPE.microMin,
-            padding: "2px",
-            ...PIXEL_TEXT,
-          },
-          title: slot.name,
-        },
-        slot.name,
-        slot.level != null ? ` +${slot.level}` : "",
-      );
-    }
+  // Native titles on stock art / badges fight the Comm cooltip.
+  React.useLayoutEffect(() => {
+    if (!clickable) return;
+    stripNativeTitles(cellRef.current);
+  }, [clickable, slot && slot.name, slot && slot.level, slot && slot.p]);
+
+  if (slot && slot.name) {
+    content = e(ItemInstance, {
+      name: String(slot.name),
+      skin,
+      size: GEAR_SLOT_SIZE,
+      level: typeof slot.level === "number" ? slot.level : undefined,
+      q: typeof slot.q === "number" ? slot.q : undefined,
+      p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : undefined,
+      actual: slot as Record<string, unknown>,
+    });
   } else {
     let html = "";
     try {
@@ -200,18 +164,14 @@ export function GearSlotCell(props: GearSlotCellProps): any {
     "div",
     {
       key: slotName,
+      ref: cellRef,
       className:
         "comm-gear-slot" +
         (clickable ? " is-clickable" : "") +
         (bagDropHover ? " is-bag-drop-target" : ""),
       "data-slot": slotName,
       [INFO_SOURCE_ATTR]: clickable ? "" : undefined,
-      title: clickable
-        ? itemInstanceLabel(slot!.name!, {
-            p: slot!.p,
-            level: slot!.level,
-          })
-        : slotName,
+      title: clickable ? undefined : slotName,
       onPointerDown: onSlotPress,
       onMouseDown: clickable
         ? (ev: any) => {

@@ -115,4 +115,18 @@ export const COOLTIP_CSS = `
 .ecu-cooltip.is-item-tip .buyitem .cbold {
   font-size: 17px;
 }
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key {
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  color: #9aa3ad;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key span { color: #7a848e; }
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key b {
+  color: #c8d0d8;
+  font-weight: 600;
+  font-family: Consolas, "Segoe UI", Tahoma, monospace;
+}
 `;

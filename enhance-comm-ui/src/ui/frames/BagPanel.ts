@@ -25,6 +25,7 @@ import {
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { installBagDragDrop } from "../bag/bagDragDrop";
+import { installBagItemCooltip } from "../bag/bagItemCooltip";
 import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
 import "../bag/registerBagMenuProviders";
 import { bagSortCommand, isBagSortRunning } from "../../host/bagSortCommands";
@@ -362,12 +363,14 @@ export function BagPanel(props: BagPanelProps): any {
     });
     const host = ensureInventoryHost();
     const unsubMenu = installBagItemContextMenu(host);
+    const unsubTip = installBagItemCooltip(host);
     const unsubDrag = installBagDragDrop(host);
     return () => {
       unsubInv();
       unsubSync();
       unsubPending();
       unsubMenu();
+      unsubTip();
       unsubDrag();
       // Keep #bottomleftcorner alive across panel unmount (Bag close).
       const h = document.getElementById(HOST_ID);

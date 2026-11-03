@@ -21,6 +21,8 @@ describe("itemCooltipHtml", () => {
     const html = itemCooltipHtml({ name: "hpbelt", level: 2 });
     assert.match(html, /<h4>/);
     assert.match(html, /hpbelt|Belt/i);
+    assert.match(html, /ecu-cooltip-item-key/);
+    assert.match(html, />hpbelt</);
   });
 
   it("uses stock render_item html when available", () => {
@@ -37,6 +39,8 @@ describe("itemCooltipHtml", () => {
     const html = itemCooltipHtml({ name: "hpbelt", level: 1, q: 3 });
     assert.match(html, /buyitem/);
     assert.match(html, /Belt of HP/);
+    assert.match(html, /ecu-cooltip-item-key/);
+    assert.match(html, />hpbelt</);
   });
 
   it("escapes fallback labels", () => {
@@ -46,5 +50,7 @@ describe("itemCooltipHtml", () => {
     const html = itemCooltipHtml({ name: "a<b>" });
     assert.match(html, /a&lt;b&gt;/);
     assert.doesNotMatch(html, /a<b>/);
+    assert.match(html, /ecu-cooltip-item-key/);
+    assert.match(html, /a&lt;b&gt;/);
   });
 });

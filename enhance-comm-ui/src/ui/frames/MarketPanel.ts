@@ -1255,7 +1255,7 @@ export function MarketPanel(props: MarketPanelProps): any {
               key: stack.key,
               className:
                 "MarketPanel-tradeStackRow" + (own ? " is-own" : ""),
-              title: tip,
+              "aria-label": tip,
             },
             e(
               "div",
@@ -1269,14 +1269,15 @@ export function MarketPanel(props: MarketPanelProps): any {
                   size: 24,
                   q: wantQ,
                   forceShowQ: true,
-                  title: own ? "Ask · " + wantName : "Give " + wantName,
                 }),
               ),
               e(
                 "span",
                 {
                   className: "MarketPanel-tradeStackWant",
-                  title: own ? "Ask · " + wantName : "Give " + wantName,
+                  "aria-label": own
+                    ? "Ask · " + wantName
+                    : "Give " + wantName,
                 },
                 wantName,
               ),
@@ -1294,7 +1295,6 @@ export function MarketPanel(props: MarketPanelProps): any {
                   size: 24,
                   q: offerQ,
                   forceShowQ: true,
-                  title: own ? "Offer · " + offerName : "Get " + offerName,
                 }),
               ),
             ),
@@ -1979,7 +1979,8 @@ export function MarketPanel(props: MarketPanelProps): any {
                       className:
                         "MarketPanel-bagSlot" +
                         (bagStackKey === key ? " is-on" : ""),
-                      title: tip,
+                      // ItemInstance cooltip owns hover — keep tip in aria only.
+                      "aria-label": tip,
                       onClick: (ev: any) => {
                         if (ev && typeof ev.preventDefault === "function") {
                           ev.preventDefault();
@@ -2010,7 +2011,6 @@ export function MarketPanel(props: MarketPanelProps): any {
                       }),
                       p: b.p != null ? b.p : undefined,
                       size: 40,
-                      title: tip,
                     }),
                   );
                 }),

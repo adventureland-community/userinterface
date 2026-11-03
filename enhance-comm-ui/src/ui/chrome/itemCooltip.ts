@@ -34,9 +34,16 @@ export function nextItemCooltipKey(name: string): string {
   return `item:${name}:${tipSeq}`;
 }
 
+/** Foot line with the G.items id (e.g. `fcape`). */
+export function itemCooltipKeyFoot(name: string): string {
+  const key = String(name || "").trim();
+  if (!key) return "";
+  return `<div class="ecu-cooltip-foot ecu-cooltip-item-key"><span>Key</span> <b>${escapeCooltipHtml(key)}</b></div>`;
+}
+
 /**
  * Stock item card HTML for hover. Falls back to a one-line name tip when
- * `render_item` / G.items is missing.
+ * `render_item` / G.items is missing. Always appends the item key.
  */
 export function itemCooltipHtml(args: ItemCooltipArgs): string {
   const G = getG();
@@ -50,6 +57,7 @@ export function itemCooltipHtml(args: ItemCooltipArgs): string {
   if (actual.p == null && args.p != null) actual.p = args.p;
   if (!actual.name) actual.name = args.name;
 
+  const keyFoot = itemCooltipKeyFoot(args.name);
   if (def) {
     const html = buildItemHtml({
       item: def,
@@ -57,7 +65,7 @@ export function itemCooltipHtml(args: ItemCooltipArgs): string {
       actual,
       readonly: true,
     });
-    if (html && String(html).trim()) return html;
+    if (html && String(html).trim()) return html + keyFoot;
   }
 
   const label =
@@ -65,7 +73,7 @@ export function itemCooltipHtml(args: ItemCooltipArgs): string {
       p: actual.p != null ? String(actual.p) : undefined,
       level: actual.level as number | string | undefined,
     }) || args.name;
-  return `<h4>${escapeCooltipHtml(label)}</h4>`;
+  return `<h4>${escapeCooltipHtml(label)}</h4>${keyFoot}`;
 }
 
 export function itemCooltipHandlers(

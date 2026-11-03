@@ -177,7 +177,7 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       level: typeof slot.level === "number" ? slot.level : undefined,
       q: typeof slot.q === "number" ? slot.q : undefined,
       p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : undefined,
-      title: itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }),
+      actual: slot as Record<string, unknown>,
     });
   } else {
     // Same stock empty chrome as TradeGrid — overlay "+" for Market fluid stand.
@@ -357,7 +357,8 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
         (bagDropHover ? " is-bag-drop-target" : "") +
         (disabled ? " is-disabled" : ""),
       "data-slot": slotName,
-      title: tipParts.join(" · "),
+      // Filled cells use ItemInstance Comm cooltip — skip native title stack.
+      title: filled ? undefined : tipParts.join(" · "),
       draggable: editable && filled ? true : undefined,
       onDragStart:
         editable && filled

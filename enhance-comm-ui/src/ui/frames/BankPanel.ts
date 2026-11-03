@@ -154,7 +154,8 @@ function onBankSlotContextMenu(
   });
 }
 
-function bankSlotTitle(
+/** Accessible label — not a native `title` (ItemInstance cooltip owns hover). */
+function bankSlotAria(
   itemName: string,
   packLabel: string,
   editable: boolean,
@@ -504,7 +505,7 @@ export function BankPanel(props: BankPanelProps): any {
             type: "button",
             key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
             className: "BankPanel-cell",
-            title: bankSlotTitle(it.name, packHint, editable),
+            "aria-label": bankSlotAria(it.name, packHint, editable),
             onClick: (ev: any) => {
               onBankSlotClick(ev, loc.pack, loc.index, it);
             },
@@ -581,7 +582,7 @@ export function BankPanel(props: BankPanelProps): any {
                   key: pack + ":" + index,
                   className:
                     "BankPanel-slot" + (dim ? " is-dim" : ""),
-                  title: bankSlotTitle(
+                  "aria-label": bankSlotAria(
                     it.name,
                     packDisplayLabel(pack) + " · slot " + (index + 1),
                     editable,

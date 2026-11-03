@@ -22,8 +22,8 @@ export function InspectButton(props: InspectButtonProps): any {
       "aria-label": "Inspect JSON",
       style: {
         flex: "0 0 auto",
-        margin: compact ? "0 0 0 2px" : "0 4px 0 0",
-        padding: "0 2px",
+        margin: compact ? "0" : "0 2px 0 0",
+        padding: "0 1px",
         border: "none",
         background: "transparent",
         color: "#9a9a9a",
