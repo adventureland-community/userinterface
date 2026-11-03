@@ -39,6 +39,11 @@ import {
   syncShadowFromEntity,
 } from "./deathLog";
 import {
+  attachPendingProjectilesToEngine,
+  onPendingActionEvent,
+  onPendingDamageEvent,
+} from "./pendingProjectiles";
+import {
   attachRollingToEngine,
   clearRollingWindow,
   ingestRollingSample,
@@ -369,6 +374,7 @@ function sampleGearSwaps(now: number): void {
 
 function onDamageEvent(ev: DamageEvent): void {
   ingestRollingSample(ev);
+  onPendingDamageEvent(ev);
   noteIncomingHit(ev);
 
   const actorIsPlayer = isPlayerId(ev.actor);
@@ -453,6 +459,7 @@ function onKillEvent(ev: KillEvent): void {
 }
 
 function onActionEvent(ev: ActionEvent): void {
+  onPendingActionEvent(ev);
   recordPlayerCast(ev);
 }
 
@@ -752,6 +759,7 @@ export function resetOverallMeterSegments(): void {
 
 export function startMeterEngine(): () => void {
   attachRollingToEngine();
+  attachPendingProjectilesToEngine();
   if (!engineUnsubs.length) {
     engineUnsubs = [
       onDamage(onDamageEvent),

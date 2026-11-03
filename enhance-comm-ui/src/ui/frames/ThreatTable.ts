@@ -303,6 +303,7 @@ function ThreatRow(props: {
     ? e(
         VitalsColumn,
         {
+          entityId: target.id,
           hp: target.hp || 0,
           maxHp: target.max_hp || 1,
           mp: target.mp,

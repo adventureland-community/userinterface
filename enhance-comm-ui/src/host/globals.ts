@@ -200,6 +200,8 @@ export type GLike = {
     }
   >;
   positions?: Record<string, [string, number, number] | any>;
+  /** Projectile defs — `G.projectiles[name].speed` for in-flight ETA. */
+  projectiles?: Record<string, { speed?: number; [key: string]: any }>;
   imagesets?: Record<
     string,
     { file: string; size: number; columns: number; rows: number }

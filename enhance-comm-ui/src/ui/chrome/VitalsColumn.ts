@@ -1,6 +1,8 @@
 import { e } from "../../host/react";
 import { getPercent } from "../../lib/format";
 import type { HpThresholdMark } from "../../instance/monsterSpawns";
+import { getHpBarGhosts } from "../../meters/pendingProjectiles";
+import { HpThresholdMarkChip } from "./HpThresholdMarkChip";
 
 export type VitalsColumnProps = {
   hp: number;
@@ -12,6 +14,8 @@ export type VitalsColumnProps = {
   children?: any;
   onClick?: () => void;
   nameStyle?: any;
+  /** Entity id — enables in-flight damage/heal ghosts from projectiles. */
+  entityId?: string | number | null;
   /** G.monsters hp-threshold spawn marks (boss bars). */
   hpThresholdMarks?: HpThresholdMark[];
 };
@@ -41,13 +45,35 @@ export function VitalsColumn(props: VitalsColumnProps): any {
     children,
     onClick,
     nameStyle,
+    entityId,
     hpThresholdMarks,
   } = props;
 
-  const hpPct = maxHp > 0 ? hp / maxHp : 0;
+  const max = maxHp > 0 ? maxHp : 1;
+  const cur = Math.max(0, hp || 0);
+  const hpPct = cur / max;
   const mpPct = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
   const barH = hpBarHeightPx(nameStyle);
   const marks = hpThresholdMarks || [];
+
+  const ghosts = getHpBarGhosts(entityId);
+  // Bar model: red = HP left, black = already lost.
+  // In-flight damage on remaining HP; in-flight heal into missing. No recent —
+  // landed hits already shortened the red fill.
+  const MIN_GHOST_PCT = 0.02;
+  const pendingOnFill = Math.min(cur, Math.max(0, ghosts.pendingDamage));
+  let pendingDmgW = pendingOnFill > 0 ? pendingOnFill / max : 0;
+  if (pendingOnFill > 0) {
+    pendingDmgW = Math.max(pendingDmgW, Math.min(MIN_GHOST_PCT, hpPct));
+  }
+  const pendingStartPct = hpPct - pendingDmgW;
+
+  const missing = Math.max(0, max - cur);
+  const healAmt = Math.min(missing, Math.max(0, ghosts.pendingHeal));
+  let healGhostW = healAmt > 0 ? healAmt / max : 0;
+  if (healAmt > 0) {
+    healGhostW = Math.max(healGhostW, Math.min(MIN_GHOST_PCT, 1 - hpPct));
+  }
 
   return e(
     "div",
@@ -85,26 +111,40 @@ export function VitalsColumn(props: VitalsColumnProps): any {
           background: hpColor,
         },
       }),
-      ...marks.map((m) =>
-        e("span", {
-          key: m.key,
-          className:
-            "comm-hp-threshold" + (m.fired ? " comm-hp-threshold--fired" : ""),
-          title: `${Math.round(m.ratio * 100)}% HP · ${m.count}× ${m.mtype}`,
-          style: {
-            position: "absolute",
-            top: "-2px",
-            bottom: "-2px",
-            left: `${m.leftPct}%`,
-            width: "2px",
-            marginLeft: "-1px",
-            background: m.fired ? "#666" : "#c88",
-            opacity: m.fired ? 0.5 : 0.9,
-            pointerEvents: "none",
-            zIndex: 2,
-          },
-        }),
-      ),
+      pendingDmgW > 0.0005
+        ? e("div", {
+            className: "comm-hp-ghost is-pending-damage",
+            style: {
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: getPercent(pendingStartPct, 1),
+              width: getPercent(pendingDmgW, 1),
+              // Incoming — amber on the trailing edge of remaining HP.
+              background: "rgba(255, 200, 50, 0.85)",
+              boxShadow: "inset 1px 0 0 rgba(0,0,0,0.35)",
+              pointerEvents: "none",
+              zIndex: 0,
+            },
+          })
+        : null,
+      healGhostW > 0.0005
+        ? e("div", {
+            className: "comm-hp-ghost is-heal",
+            style: {
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: getPercent(hpPct, 1),
+              width: getPercent(healGhostW, 1),
+              // Into missing HP (black track).
+              background: "rgba(70, 220, 120, 0.75)",
+              boxShadow: "inset 1px 0 0 rgba(0,0,0,0.25)",
+              pointerEvents: "none",
+              zIndex: 0,
+            },
+          })
+        : null,
       e(
         "div",
         {
@@ -131,6 +171,10 @@ export function VitalsColumn(props: VitalsColumnProps): any {
           onClick,
         },
         children,
+      ),
+      // After the name row so phase cooltips sit above the click/label layer.
+      ...marks.map((m) =>
+        e(HpThresholdMarkChip, { key: m.key, mark: m }),
       ),
     ),
     showMp
