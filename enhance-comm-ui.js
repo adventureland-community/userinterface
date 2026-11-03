@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.16.0
+// @version      0.16.1
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -8887,6 +8887,20 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.16.1",
+      title: "0.16.1",
+      date: "2026-11-03",
+      summary: "Compose To shows own-character mailbox fills so a full inbox is obvious before you send item mail.",
+      highlights: [
+        {
+          label: "Compose To \xB7 mailbox fills",
+          detail: "OWN suggestions, selected To chips, and attach To options show N/200 (or N+/200 while older pages load). Warn/full tint when a character is near or at the attach cap.",
+          kind: "improve"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.16.0",
       title: "0.16.0",
@@ -27823,6 +27837,9 @@ button.comm-mail__stack-u {
 .comm-mail__compose textarea { min-height: 140px; resize: vertical; }
 .comm-mail__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .comm-mail__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: #222;
   border: 1px solid #444;
   color: #eee;
@@ -27835,17 +27852,51 @@ button.comm-mail__stack-u {
   border-color: #666;
   color: #fff;
 }
+.comm-mail__chip.is-cap-warn {
+  border-color: #8a6a3a;
+  color: #edc;
+}
+.comm-mail__chip.is-cap-full {
+  border-color: #8a4a5a;
+  color: #f8a;
+}
+.comm-mail__chip-cap {
+  font-size: 12px;
+  color: #8a929a;
+  font-variant-numeric: tabular-nums;
+}
+.comm-mail__chip-cap.is-warn { color: #db8; }
+.comm-mail__chip-cap.is-full { color: #f8a; font-weight: 600; }
+.comm-mail__chip-x { opacity: 0.75; }
 .comm-mail__suggest {
   position: absolute; z-index: 5; background: #151515;
   border: 1px solid #444; max-height: 200px; overflow: auto;
   width: min(320px, 90%);
 }
-.comm-mail__suggest button {
-  display: block; width: 100%; text-align: left;
+.comm-mail__suggest button,
+.comm-mail__suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
   background: transparent; border: 0; color: #ddd;
   padding: 8px 12px; cursor: pointer; font-size: 15px;
 }
-.comm-mail__suggest button:hover { background: #222; }
+.comm-mail__suggest button:hover,
+.comm-mail__suggest-row:hover { background: #222; }
+.comm-mail__suggest-row.is-cap-warn { color: #edc; }
+.comm-mail__suggest-row.is-cap-full { color: #f8a; }
+.comm-mail__suggest-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comm-mail__suggest-cap {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: #8a929a;
+  font-variant-numeric: tabular-nums;
+}
+.comm-mail__suggest-cap.is-warn { color: #db8; }
+.comm-mail__suggest-cap.is-full { color: #f8a; font-weight: 600; }
 .comm-mail__suggest-g {
   font-size: 12px; color: #888; padding: 6px 12px 0; text-transform: uppercase;
 }
@@ -27975,8 +28026,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.16.0" : "unknown";
-    const builtAt = true ? "2026-10-30T11:05:11.374Z" : "unknown";
+    const version = true ? "0.16.1" : "unknown";
+    const builtAt = true ? "2026-11-03T07:33:00.126Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -80512,6 +80563,30 @@ ${ESTIMATE_HINT}`,
     }
     return false;
   }
+  function ownMailboxFillByKey(mails, selfNames, incomplete) {
+    const fills = mergeOwnedMailboxFills(
+      countAttachmentsByRecipient(mails, selfNames),
+      selfNames,
+      incomplete
+    );
+    const byKey = /* @__PURE__ */ new Map();
+    for (let i = 0; i < fills.length; i++) {
+      byKey.set(fills[i].name.toLowerCase(), fills[i]);
+    }
+    return byKey;
+  }
+  function ownCapTitle(fill, incomplete) {
+    const frac = formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete);
+    const label = fillCapLabel(fill);
+    let note = fill.name + " mailbox " + frac + " (" + label + ")";
+    if (fill.pressure === "full") {
+      note += " \u2014 item mail to this character will fail until they take or delete";
+    } else if (fill.pressure === "warn") {
+      note += " \u2014 nearly full";
+    }
+    if (incomplete) note += ". Older pages may raise this count.";
+    return note;
+  }
   function MailComposePane(props) {
     const {
       snap,
@@ -80526,6 +80601,8 @@ ${ESTIMATE_HINT}`,
     if (snap.view.kind !== "compose") return null;
     const draft = snap.view.draft;
     const draftAttachesList = draft.attaches.slice();
+    const incomplete = !!snap.hasMore;
+    const ownFills = ownMailboxFillByKey(snap.mails, selfNames, incomplete);
     const suggestions = suggestOpen ? suggestMailTo(
       toInput,
       {
@@ -80538,14 +80615,16 @@ ${ESTIMATE_HINT}`,
     const chipEls = [];
     for (let i = 0; i < draft.to.length; i++) {
       const name = draft.to[i];
+      const fill = ownFills.get(String(name || "").toLowerCase()) || null;
+      const pressure = fill ? fill.pressure : "";
       chipEls.push(
         e(
           "button",
           {
             key: name,
             type: "button",
-            className: "comm-mail__chip",
-            title: "Remove from To pool",
+            className: "comm-mail__chip" + (pressure === "full" ? " is-cap-full" : pressure === "warn" ? " is-cap-warn" : ""),
+            title: fill ? ownCapTitle(fill, incomplete) + " \xB7 click to remove" : "Remove from To pool",
             onClick: () => {
               const nextTo = [];
               for (let j = 0; j < draft.to.length; j++) {
@@ -80554,7 +80633,15 @@ ${ESTIMATE_HINT}`,
               patchComposeDraft({ to: nextTo });
             }
           },
-          name + " \xD7"
+          e("span", { className: "comm-mail__chip-name" }, name),
+          fill ? e(
+            "span",
+            {
+              className: "comm-mail__chip-cap" + (pressure ? " is-" + pressure : "")
+            },
+            formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+          ) : null,
+          e("span", { className: "comm-mail__chip-x" }, "\xD7")
         )
       );
     }
@@ -80572,12 +80659,16 @@ ${ESTIMATE_HINT}`,
           )
         );
       }
+      const fill = s.group === "own" ? ownFills.get(String(s.name || "").toLowerCase()) || null : null;
+      const pressure = fill ? fill.pressure : "";
       suggestEls.push(
         e(
           "button",
           {
             key: s.group + s.name,
             type: "button",
+            className: "comm-mail__suggest-row" + (pressure === "full" ? " is-cap-full" : pressure === "warn" ? " is-cap-warn" : ""),
+            title: fill ? ownCapTitle(fill, incomplete) : void 0,
             onClick: () => {
               if (!hasToName(draft.to, s.name)) {
                 patchComposeDraft({ to: draft.to.concat([s.name]) });
@@ -80586,7 +80677,14 @@ ${ESTIMATE_HINT}`,
               setSuggestOpen(false);
             }
           },
-          s.name
+          e("span", { className: "comm-mail__suggest-name" }, s.name),
+          fill ? e(
+            "span",
+            {
+              className: "comm-mail__suggest-cap" + (pressure ? " is-" + pressure : "")
+            },
+            formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+          ) : null
         )
       );
     }
@@ -80599,7 +80697,9 @@ ${ESTIMATE_HINT}`,
         const key = n.toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
-        opts.push(e("option", { key, value: n }, n));
+        const fill = ownFills.get(key) || null;
+        const label = fill ? n + " \xB7 " + formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete) : n;
+        opts.push(e("option", { key, value: n }, label));
       };
       for (let i = 0; i < draft.to.length; i++) push(draft.to[i]);
       push(selected);

@@ -38,6 +38,9 @@ export const MAIL_COMPOSE_CSS = `.comm-mail__pane {
 .comm-mail__compose textarea { min-height: 140px; resize: vertical; }
 .comm-mail__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .comm-mail__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: #222;
   border: 1px solid #444;
   color: #eee;
@@ -50,17 +53,51 @@ export const MAIL_COMPOSE_CSS = `.comm-mail__pane {
   border-color: #666;
   color: #fff;
 }
+.comm-mail__chip.is-cap-warn {
+  border-color: #8a6a3a;
+  color: #edc;
+}
+.comm-mail__chip.is-cap-full {
+  border-color: #8a4a5a;
+  color: #f8a;
+}
+.comm-mail__chip-cap {
+  font-size: 12px;
+  color: #8a929a;
+  font-variant-numeric: tabular-nums;
+}
+.comm-mail__chip-cap.is-warn { color: #db8; }
+.comm-mail__chip-cap.is-full { color: #f8a; font-weight: 600; }
+.comm-mail__chip-x { opacity: 0.75; }
 .comm-mail__suggest {
   position: absolute; z-index: 5; background: #151515;
   border: 1px solid #444; max-height: 200px; overflow: auto;
   width: min(320px, 90%);
 }
-.comm-mail__suggest button {
-  display: block; width: 100%; text-align: left;
+.comm-mail__suggest button,
+.comm-mail__suggest-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
   background: transparent; border: 0; color: #ddd;
   padding: 8px 12px; cursor: pointer; font-size: 15px;
 }
-.comm-mail__suggest button:hover { background: #222; }
+.comm-mail__suggest button:hover,
+.comm-mail__suggest-row:hover { background: #222; }
+.comm-mail__suggest-row.is-cap-warn { color: #edc; }
+.comm-mail__suggest-row.is-cap-full { color: #f8a; }
+.comm-mail__suggest-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.comm-mail__suggest-cap {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: #8a929a;
+  font-variant-numeric: tabular-nums;
+}
+.comm-mail__suggest-cap.is-warn { color: #db8; }
+.comm-mail__suggest-cap.is-full { color: #f8a; font-weight: 600; }
 .comm-mail__suggest-g {
   font-size: 12px; color: #888; padding: 6px 12px 0; text-transform: uppercase;
 }

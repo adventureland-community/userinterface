@@ -112,6 +112,22 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.16.1",
+    title: "0.16.1",
+    date: "2026-11-03",
+    summary:
+      "Compose To shows own-character mailbox fills so a full inbox is obvious before you send item mail.",
+    highlights: [
+      {
+        label: "Compose To · mailbox fills",
+        detail:
+          "OWN suggestions, selected To chips, and attach To options show N/200 (or N+/200 while older pages load). Warn/full tint when a character is near or at the attach cap.",
+        kind: "improve",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.16.0",
     title: "0.16.0",
     date: "2026-10-30",
