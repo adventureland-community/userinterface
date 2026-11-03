@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.16.1
+// @version      0.17.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -2597,8 +2597,19 @@ var EnhanceCommUI = (() => {
     }
     return gameIconHtml(row3.id, { kind: "auto", size });
   }
-  function paintItemContainerIcon(el, skin, size) {
-    const html = itemContainer({ skin, size, draggable: false }, null);
+  function paintItemContainerIcon(el, skin, size, opts) {
+    const bare = !!(opts && opts.bare);
+    const html = itemContainer(
+      bare ? {
+        skin,
+        size,
+        draggable: false,
+        margin: 0,
+        space: 0,
+        bcolor: "transparent"
+      } : { skin, size, draggable: false },
+      null
+    );
     if (!html) {
       el.textContent = skin.slice(0, 1);
       return false;
@@ -2607,6 +2618,11 @@ var EnhanceCommUI = (() => {
     const root = el.firstElementChild;
     if (root) {
       root.style.margin = "0";
+      if (bare) {
+        root.style.border = "none";
+        root.style.background = "transparent";
+        root.style.padding = "0";
+      }
       root.removeAttribute("onmousedown");
       root.removeAttribute("ontouchstart");
       root.removeAttribute("onclick");
@@ -2769,11 +2785,112 @@ var EnhanceCommUI = (() => {
     for (let i = 0; i < tKeys.length; i++) delete hitRing[tKeys[i]];
   }
 
+  // src/meters/pendingProjectiles.ts
+  var DEFAULT_ETA_MS = 800;
+  var ETA_GRACE_MS = 250;
+  var MIN_VISIBLE_MS = 450;
+  var byPid = /* @__PURE__ */ new Map();
+  var unsubAction = null;
+  var unsubDamage = null;
+  var ownedByEngine = false;
+  function etaFromAction(ev) {
+    if (typeof ev.eta === "number" && Number.isFinite(ev.eta) && ev.eta > 0) {
+      return ev.eta;
+    }
+    const name = ev.projectile;
+    const G = getG();
+    const proj = name && G && G.projectiles ? G.projectiles[name] : null;
+    const speed = proj && typeof proj.speed === "number" ? Number(proj.speed) : NaN;
+    if (speed > 0 && ev.actor && ev.target) {
+      const attacker = findEntityById(ev.actor);
+      const target = findEntityById(ev.target);
+      if (attacker && target) {
+        const dist = simpleDistance(attacker, target);
+        if (Number.isFinite(dist) && dist >= 0) {
+          return dist / speed * 1e3;
+        }
+      }
+    }
+    return DEFAULT_ETA_MS;
+  }
+  function prunePending(now) {
+    const keys = Array.from(byPid.keys());
+    for (let i = 0; i < keys.length; i++) {
+      const row3 = byPid.get(keys[i]);
+      if (!row3 || row3.expiresAt <= now) byPid.delete(keys[i]);
+    }
+  }
+  function isInstantAction(ev) {
+    const raw = ev.raw;
+    if (raw && raw.instant) return true;
+    if (ev.pid == null || ev.pid === "") return true;
+    return false;
+  }
+  function ingestPendingAction(ev) {
+    if (isInstantAction(ev)) return;
+    if (!ev.target) return;
+    const damage = typeof ev.damage === "number" && ev.damage > 0 ? ev.damage : 0;
+    const heal = typeof ev.heal === "number" && ev.heal > 0 ? ev.heal : 0;
+    if (!(damage > 0) && !(heal > 0)) return;
+    const pid = String(ev.pid);
+    const eta = etaFromAction(ev);
+    const at = ev.at || Date.now();
+    const holdMs = Math.max(eta, MIN_VISIBLE_MS) + ETA_GRACE_MS;
+    byPid.set(pid, {
+      pid,
+      targetId: String(ev.target),
+      damage,
+      heal,
+      expiresAt: at + holdMs
+    });
+  }
+  function clearPendingByHit(ev) {
+    if (ev.pid != null && ev.pid !== "") {
+      byPid.delete(String(ev.pid));
+    }
+  }
+  function getHpBarGhosts(targetId, now = Date.now()) {
+    const empty2 = {
+      pendingDamage: 0,
+      pendingHeal: 0
+    };
+    if (targetId == null || targetId === "") return empty2;
+    prunePending(now);
+    const tid = String(targetId);
+    let pendingDamage = 0;
+    let pendingHeal = 0;
+    const pendingRows = Array.from(byPid.values());
+    for (let i = 0; i < pendingRows.length; i++) {
+      const row3 = pendingRows[i];
+      if (row3.targetId !== tid) continue;
+      pendingDamage += row3.damage;
+      pendingHeal += row3.heal;
+    }
+    return { pendingDamage, pendingHeal };
+  }
+  function attachPendingProjectilesToEngine() {
+    ownedByEngine = true;
+    if (unsubAction) {
+      unsubAction();
+      unsubAction = null;
+    }
+    if (unsubDamage) {
+      unsubDamage();
+      unsubDamage = null;
+    }
+  }
+  function onPendingActionEvent(ev) {
+    ingestPendingAction(ev);
+  }
+  function onPendingDamageEvent(ev) {
+    clearPendingByHit(ev);
+  }
+
   // src/meters/rollingWindow.ts
   var WINDOW_MS = 1e4;
   var samples = [];
   var unsub = null;
-  var ownedByEngine = false;
+  var ownedByEngine2 = false;
   function prune(now) {
     const cutoff = now - WINDOW_MS;
     while (samples.length > 0 && samples[0].at < cutoff) {
@@ -2794,7 +2911,7 @@ var EnhanceCommUI = (() => {
     prune(ev.at);
   }
   function attachRollingToEngine() {
-    ownedByEngine = true;
+    ownedByEngine2 = true;
     if (unsub) {
       unsub();
       unsub = null;
@@ -8888,6 +9005,115 @@ ${fightHoverTip(src)}`
   ];
   var CHANGELOG = [
     {
+      id: "0.17.0",
+      title: "0.17.0",
+      date: "2026-11-03",
+      summary: "Boss-bar TTK and phase cooltips, in-flight HP ghosts, mail matching \u2192 free own, and bag/paperdoll item cooltips.",
+      highlights: [
+        {
+          label: "Boss bars \xB7 TTK + phases",
+          detail: "Each boss shows time-to-kill from the 10s damage window. HP-track phase marks (spawn waves, ability thresholds like Rime Shell) open Comm cooltips. Buffs, aggro, and HP% sit flat in the bar on the right.",
+          kind: "feature"
+        },
+        {
+          label: "HP bars \xB7 incoming ghosts",
+          detail: "Amber in-flight damage on remaining (red) HP; green in-flight heal in the missing (black) track. Ghosts clear when the hit lands \u2014 the bar already moved.",
+          kind: "feature"
+        },
+        {
+          label: "Mail matching \u2192 free own",
+          detail: "Bag right-click queues matching slots, fills To with own characters that still have attach room, and shows a compose summary plus a clear Send blocker when To is missing or a recipient is at cap.",
+          kind: "feature"
+        },
+        {
+          label: "Item cooltip \xB7 bag + paperdoll",
+          detail: "Filled bag slots and paperdoll gear open the stock render_item Comm cooltip. Native browser titles are stripped so only the Comm tip shows.",
+          kind: "improve"
+        }
+      ],
+      features: [
+        {
+          title: "Combat HUD",
+          summary: "Boss bars and unit vitals.",
+          items: [
+            {
+              label: "Boss bars \xB7 flat in-track meta",
+              detail: "Buffs, aggro, and HP% sit inside the bar on the right with no nested plate. Icons are larger and bare; duration chips stay on hover only.",
+              kind: "ui"
+            },
+            {
+              label: "Boss bars \xB7 TTK",
+              detail: "Time-to-kill from the 10s damage window on that target, just right of the name. HP% stays flush on the right edge.",
+              kind: "feature"
+            },
+            {
+              label: "Boss bars \xB7 phase cooltips",
+              detail: "Every HP-track phase mark opens a Comm cooltip with the phase % and G skill/monster explanation.",
+              kind: "feature"
+            },
+            {
+              label: "HP bars \xB7 incoming ghosts",
+              detail: "Summed in-flight projectile damage (amber on red) and heal (green in black). Cleared on hit \u2014 no post-land flash.",
+              kind: "feature"
+            }
+          ]
+        },
+        {
+          title: "Mail",
+          summary: "Compose jobs, caps, and cooltips.",
+          items: [
+            {
+              label: "Bag mail menu hierarchy",
+              detail: "Mail this \xB7 Mail all matching \xB7 Mail matching \u2192 free own.",
+              kind: "ui"
+            },
+            {
+              label: "Mail matching \u2192 free own only",
+              detail: "The bag job replaces To with characters that still have attach room \u2014 sticky / full own chips are not kept or assigned.",
+              kind: "fix"
+            },
+            {
+              label: "Compose To \xB7 sender 20",
+              detail: "OWN suggestions, To chips, and attach To options show N/20 from your account. Add own (free) still fills the To pool manually.",
+              kind: "fix"
+            },
+            {
+              label: "Clear / Cancel compose",
+              detail: "Clear empties the draft in place. Cancel clears and returns to the list (sticky last-To is reset too).",
+              kind: "ui"
+            },
+            {
+              label: "Compose queue \xB7 bag highlight",
+              detail: "Inventory slots queued on the mail compose draft get a blue outline so you can see what is already attached.",
+              kind: "ui"
+            },
+            {
+              label: "From others filter",
+              detail: "Scope chip + search option for mail addressed to your characters from other players (excludes self-mail). Scope chips sit under the search field.",
+              kind: "feature"
+            },
+            {
+              label: "Mail compose \xB7 gold as M/k",
+              detail: "Send cost and observed gold use compact amounts (3.60M, not 3600k). Hover the cost line for the exact gold total.",
+              kind: "ui"
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "Cooltip \xB7 no native title stack",
+          detail: "Bag, paperdoll, mail item tiles, and bank slots strip browser title= so only the Comm item cooltip shows on hover.",
+          kind: "fix"
+        },
+        {
+          label: "Upgrade / Compound \xB7 buy scrolls",
+          detail: "When a compatible scroll or offering is sold by an NPC and missing from the bag, the shrine dialog shows a BUY tile (gold price). Confirm buys first \u2014 computer works anywhere; otherwise travel to the vendor, then the shrine.",
+          kind: "feature"
+        }
+      ]
+    },
+    {
       id: "0.16.1",
       title: "0.16.1",
       date: "2026-11-03",
@@ -12550,6 +12776,7 @@ ${fightHoverTip(src)}`
   }
   function onDamageEvent(ev) {
     ingestRollingSample(ev);
+    onPendingDamageEvent(ev);
     noteIncomingHit(ev);
     const actorIsPlayer = isPlayerId(ev.actor);
     const targetIsPlayer = isPlayerId(ev.target);
@@ -12614,6 +12841,7 @@ ${fightHoverTip(src)}`
     }
   }
   function onActionEvent(ev) {
+    onPendingActionEvent(ev);
     recordPlayerCast(ev);
   }
   function recordPlayerCast(ev) {
@@ -12843,6 +13071,7 @@ ${fightHoverTip(src)}`
   }
   function startMeterEngine() {
     attachRollingToEngine();
+    attachPendingProjectilesToEngine();
     if (!engineUnsubs.length) {
       engineUnsubs = [
         onDamage(onDamageEvent),
@@ -13526,6 +13755,20 @@ ${fightHoverTip(src)}`
 }
 .ecu-cooltip.is-item-tip .buyitem .cbold {
   font-size: 17px;
+}
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key {
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.18);
+  color: #9aa3ad;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key span { color: #7a848e; }
+.ecu-cooltip.is-item-tip .ecu-cooltip-item-key b {
+  color: #c8d0d8;
+  font-weight: 600;
+  font-family: Consolas, "Segoe UI", Tahoma, monospace;
 }
 `;
 
@@ -16386,6 +16629,608 @@ ${CHROME_ARRANGE_CSS}
     return "e.g. Loot: " + MAIL_SUBJECT_ITEM_TOKEN + " \u2192 " + formatAttachSubject(list[0]) + " \xB7 \u2026";
   }
 
+  // src/host/mail/mailCaps.ts
+  var MAIL_ATTACH_CAP = 200;
+  var MAIL_ATTACH_SENDER_CAP = 20;
+  var MAIL_ATTACH_CAP_WARN = 160;
+  var MAIL_ATTACH_SENDER_CAP_WARN = 15;
+  function countsTowardAttachCap(m) {
+    if (!m.item) return false;
+    if (m.taken && !m.takenPending) return false;
+    return true;
+  }
+  function nameSet(names) {
+    const out = /* @__PURE__ */ new Set();
+    for (let i = 0; i < names.length; i++) {
+      const n = String(names[i] || "").trim().toLowerCase();
+      if (n) out.add(n);
+    }
+    return out;
+  }
+  function countAttachmentsByRecipient(mails, ownedNames) {
+    const owned = ownedNames && ownedNames.length ? nameSet(ownedNames) : null;
+    const buckets = /* @__PURE__ */ new Map();
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (m.canTake === false) continue;
+      const display = String(m.to || "").trim();
+      const key = display.toLowerCase();
+      if (!key) continue;
+      if (owned && !owned.has(key)) continue;
+      const prev = buckets.get(key);
+      if (prev) prev.count += 1;
+      else buckets.set(key, { name: display, count: 1 });
+    }
+    const out = [];
+    buckets.forEach((v) => {
+      out.push({
+        name: v.name,
+        count: v.count,
+        pressure: mailboxCapPressure(v.count)
+      });
+    });
+    out.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function countSenderAttachmentsTo(mails, fromNames, toName) {
+    const from = nameSet(fromNames);
+    const to = String(toName || "").trim().toLowerCase();
+    if (!from.size || !to) return 0;
+    let n = 0;
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      if (!countsTowardAttachCap(m)) continue;
+      if (String(m.to || "").trim().toLowerCase() !== to) {
+        continue;
+      }
+      if (!from.has(
+        String(m.fro || "").trim().toLowerCase()
+      )) {
+        continue;
+      }
+      n += 1;
+    }
+    return n;
+  }
+  function mailboxCapPressure(count, incomplete) {
+    if (count >= MAIL_ATTACH_CAP) return "full";
+    if (!incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    if (incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
+    return "";
+  }
+  function senderCapPressure(count, queued = 0) {
+    const have = Math.max(0, count | 0);
+    const add = Math.max(0, queued | 0);
+    if (have >= MAIL_ATTACH_SENDER_CAP || have + add > MAIL_ATTACH_SENDER_CAP) {
+      return "full";
+    }
+    if (have + add >= MAIL_ATTACH_SENDER_CAP_WARN) return "warn";
+    return "";
+  }
+  function formatCapFraction(count, cap, incomplete) {
+    const n = Math.max(0, count | 0);
+    return n + (incomplete ? "+" : "") + "/" + cap;
+  }
+  function worstPressure(fills) {
+    let worst = "";
+    for (let i = 0; i < fills.length; i++) {
+      const p = fills[i].pressure;
+      if (p === "full") return "full";
+      if (p === "warn") worst = "warn";
+    }
+    return worst;
+  }
+  function formatMailboxCapsLine(fills, opts) {
+    const incomplete = !!(opts && opts.incomplete);
+    const maxNames = opts && opts.maxNames != null ? opts.maxNames : 2;
+    if (!fills.length) {
+      return "0/" + MAIL_ATTACH_CAP + " per char" + (incomplete ? "+" : "");
+    }
+    const prefer = String(opts && opts.preferName || "").trim().toLowerCase();
+    const shown = [];
+    const used = /* @__PURE__ */ new Set();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        const key = fills[i].name.toLowerCase();
+        if (key !== prefer) continue;
+        shown.push(fills[i]);
+        used.add(key);
+        break;
+      }
+    }
+    for (let i = 0; i < fills.length && shown.length < maxNames; i++) {
+      const key = fills[i].name.toLowerCase();
+      if (used.has(key)) continue;
+      shown.push(fills[i]);
+      used.add(key);
+    }
+    const parts = [];
+    for (let i = 0; i < shown.length; i++) {
+      const f = shown[i];
+      parts.push(
+        f.name + " " + formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete)
+      );
+    }
+    const rest = fills.length - shown.length;
+    if (rest > 0) {
+      parts.push("+" + rest + " char" + (rest === 1 ? "" : "s"));
+    }
+    return parts.join(" \xB7 ");
+  }
+  function mailboxCapsTitle(fills, incomplete) {
+    const lines = [
+      "Server caps are per character: 200 uncollected attachments each, and at most 20 from one sending account. Pending claims count; take or delete before new item mail can land."
+    ];
+    if (!fills.length) {
+      lines.push("No untaken attachments in the cached inbox.");
+    } else {
+      const maxList = Math.min(fills.length, 12);
+      for (let i = 0; i < maxList; i++) {
+        const f = fills[i];
+        const frac = formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete);
+        let note = "";
+        if (f.pressure === "full") note = " \u2014 full (new item mail blocked)";
+        else if (f.pressure === "warn") note = " \u2014 nearly full";
+        lines.push(f.name + " " + frac + note);
+      }
+      if (fills.length > maxList) {
+        lines.push("\u2026and " + (fills.length - maxList) + " more characters");
+      }
+    }
+    if (incomplete) {
+      lines.push("Cache still loading older pages \u2014 counts may rise.");
+    }
+    return lines.join("\n");
+  }
+  function withFillPressure(fills, incomplete) {
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      out.push({
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    return out;
+  }
+  function summarizeMailboxCaps(opts) {
+    const incomplete = !!opts.incomplete;
+    const withPressure = withFillPressure(opts.fills, incomplete);
+    return {
+      line: formatMailboxCapsLine(withPressure, {
+        incomplete,
+        preferName: opts.preferName
+      }),
+      pressure: worstPressure(withPressure),
+      title: mailboxCapsTitle(withPressure, incomplete)
+    };
+  }
+  function pickPrimaryFill(fills, preferName) {
+    if (!fills.length) return null;
+    const prefer = String(preferName || "").trim().toLowerCase();
+    if (prefer) {
+      for (let i = 0; i < fills.length; i++) {
+        if (fills[i].name.toLowerCase() === prefer) return fills[i];
+      }
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "full") return fills[i];
+    }
+    for (let i = 0; i < fills.length; i++) {
+      if (fills[i].pressure === "warn") return fills[i];
+    }
+    return fills[0];
+  }
+  function fillCapLabel(fill) {
+    if (fill.pressure === "full") {
+      return fill.count > MAIL_ATTACH_CAP ? "over cap" : "full";
+    }
+    if (fill.pressure === "warn") return "nearly full";
+    if (fill.count > 0) return "ok";
+    return "clear";
+  }
+  function fillCapPct(count) {
+    return Math.min(
+      100,
+      Math.round(100 * Math.max(0, count | 0) / MAIL_ATTACH_CAP)
+    );
+  }
+  function mergeOwnedMailboxFills(fills, ownedNames, incomplete) {
+    const byKey = /* @__PURE__ */ new Map();
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      byKey.set(f.name.toLowerCase(), {
+        name: f.name,
+        count: f.count,
+        pressure: mailboxCapPressure(f.count, incomplete)
+      });
+    }
+    for (let i = 0; i < ownedNames.length; i++) {
+      const display = String(ownedNames[i] || "").trim();
+      if (!display) continue;
+      const key = display.toLowerCase();
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        name: display,
+        count: 0,
+        pressure: ""
+      });
+    }
+    const out = [];
+    byKey.forEach((v) => out.push(v));
+    out.sort((a, b) => {
+      const ra = a.pressure === "full" ? 0 : a.pressure === "warn" ? 1 : a.count > 0 ? 2 : 3;
+      const rb = b.pressure === "full" ? 0 : b.pressure === "warn" ? 1 : b.count > 0 ? 2 : 3;
+      if (ra !== rb) return ra - rb;
+      if (b.count !== a.count) return b.count - a.count;
+      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
+    });
+    return out;
+  }
+  function formatCapsSummaryLine(fullCount, warnCount, holdingCount) {
+    const parts = [];
+    if (fullCount > 0) {
+      parts.push(fullCount + " full");
+    }
+    if (warnCount > 0) {
+      parts.push(warnCount + " near");
+    }
+    const quiet = Math.max(0, holdingCount - fullCount - warnCount);
+    if (quiet > 0) {
+      parts.push(quiet + " holding");
+    }
+    if (!parts.length) return "All clear";
+    return parts.join(" \xB7 ");
+  }
+  function buildMailboxCapsView(opts) {
+    const incomplete = !!opts.incomplete;
+    const owned = opts.ownedNames || [];
+    const fills = mergeOwnedMailboxFills(opts.fills, owned, incomplete);
+    const holding = fills.filter((f) => f.count > 0);
+    const primary = pickPrimaryFill(
+      holding.length ? holding : fills,
+      opts.preferName
+    );
+    let fullCount = 0;
+    let warnCount = 0;
+    for (let i = 0; i < holding.length; i++) {
+      if (holding[i].pressure === "full") fullCount += 1;
+      else if (holding[i].pressure === "warn") warnCount += 1;
+    }
+    const okCount = Math.max(0, holding.length - fullCount - warnCount);
+    return {
+      pressure: worstPressure(holding),
+      title: mailboxCapsTitle(holding, incomplete),
+      incomplete,
+      primary,
+      primaryPct: primary ? fillCapPct(primary.count) : 0,
+      primaryLabel: primary ? fillCapLabel(primary) : "clear",
+      summaryLine: formatCapsSummaryLine(
+        fullCount,
+        warnCount,
+        holding.length
+      ),
+      fullCount,
+      warnCount,
+      okCount,
+      holdingCount: holding.length,
+      fills
+    };
+  }
+  function worstCapPressure(a, b) {
+    if (a === "full" || b === "full") return "full";
+    if (a === "warn" || b === "warn") return "warn";
+    return "";
+  }
+  function buildOwnToCapFills(opts) {
+    const incomplete = !!opts.incomplete;
+    const mailboxFills = mergeOwnedMailboxFills(
+      countAttachmentsByRecipient(opts.mails, opts.selfNames),
+      opts.selfNames,
+      incomplete
+    );
+    const out = [];
+    for (let i = 0; i < mailboxFills.length; i++) {
+      const box = mailboxFills[i];
+      const fromYou = countSenderAttachmentsTo(
+        opts.mails,
+        opts.selfNames,
+        box.name
+      );
+      out.push({
+        name: box.name,
+        fromYou,
+        mailbox: box.count,
+        pressure: worstCapPressure(
+          senderCapPressure(fromYou),
+          mailboxCapPressure(box.count, incomplete)
+        )
+      });
+    }
+    return out;
+  }
+  function formatOwnToCapFraction(fill, incomplete) {
+    return formatCapFraction(fill.fromYou, MAIL_ATTACH_SENDER_CAP, incomplete);
+  }
+  function ownToCapTitle(fill, incomplete) {
+    const fromFrac = formatCapFraction(
+      fill.fromYou,
+      MAIL_ATTACH_SENDER_CAP,
+      incomplete
+    );
+    const boxFrac = formatCapFraction(
+      fill.mailbox,
+      MAIL_ATTACH_CAP,
+      incomplete
+    );
+    let note = fill.name + ": " + fromFrac + " uncollected from your account (sender limit) \xB7 mailbox " + boxFrac;
+    if (fill.pressure === "full") {
+      note += " \u2014 item mail may fail until they take or delete (20/account or 200/char)";
+    } else if (fill.pressure === "warn") {
+      note += " \u2014 nearing a send limit";
+    }
+    if (incomplete) note += ". Older pages may raise these counts.";
+    return note;
+  }
+  function canOwnCharReceiveAttach(fill, queued = 0) {
+    const extra = Math.max(0, queued | 0);
+    if (fill.mailbox + extra >= MAIL_ATTACH_CAP) return false;
+    if (senderCapPressure(fill.fromYou, extra + 1) === "full") return false;
+    return true;
+  }
+  function ownCharsWithFreeMailSpace(opts) {
+    const excl = nameSet(opts.exclude || []);
+    const queued = opts.queuedByTo || {};
+    const fills = buildOwnToCapFills({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete
+    });
+    const out = [];
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      const key = f.name.toLowerCase();
+      if (excl.has(key)) continue;
+      const q = queued[key] | 0;
+      if (!canOwnCharReceiveAttach(f, q)) continue;
+      out.push(f.name);
+    }
+    return out;
+  }
+  function buildComposeCapNotices(opts) {
+    const notices = [];
+    const incomplete = !!opts.hasMore;
+    const fills = countAttachmentsByRecipient(opts.mails, opts.selfNames);
+    const box = summarizeMailboxCaps({
+      fills,
+      incomplete,
+      preferName: opts.queued.length === 1 ? opts.queued[0].to : null
+    });
+    notices.push({
+      key: "mailbox",
+      text: "Per-char mailbox \xB7 " + box.line + " \xB7 max 20 from one account",
+      pressure: box.pressure,
+      title: box.title
+    });
+    const self = nameSet(opts.selfNames);
+    const queued = opts.queued.slice();
+    queued.sort(
+      (a, b) => String(a.to || "").localeCompare(String(b.to || ""), void 0, {
+        sensitivity: "base"
+      })
+    );
+    for (let i = 0; i < queued.length; i++) {
+      const display = String(queued[i].to || "").trim();
+      const queuedN = queued[i].count | 0;
+      if (!display || queuedN <= 0) continue;
+      const key = display.toLowerCase();
+      const have = countSenderAttachmentsTo(opts.mails, opts.selfNames, display);
+      const pressure = senderCapPressure(have, queuedN);
+      const frac = formatCapFraction(have, MAIL_ATTACH_SENDER_CAP, incomplete);
+      const selfHit = self.has(key);
+      notices.push({
+        key: "to:" + key,
+        text: (selfHit ? "Self-mail " : "To " + display + " ") + frac + " from you" + (queuedN > 1 ? " \xB7 +" + queuedN + " queued" : " \xB7 +1 queued"),
+        pressure,
+        title: "Per-account sender cap to this character (" + frac + "). New item mail is refused at 20 uncollected from your account." + (incomplete ? " Older cached pages may raise this count." : "")
+      });
+    }
+    return notices;
+  }
+
+  // src/host/mail/composeExperience.ts
+  function queuedByToFromAttaches(attaches) {
+    const out = {};
+    for (let i = 0; i < attaches.length; i++) {
+      const to = String(attaches[i].to || "").trim();
+      if (!to) continue;
+      const key = to.toLowerCase();
+      out[key] = (out[key] | 0) + 1;
+    }
+    return out;
+  }
+  function countWithTo(attaches) {
+    let n = 0;
+    for (let i = 0; i < attaches.length; i++) {
+      if (String(attaches[i].to || "").trim()) n += 1;
+    }
+    return n;
+  }
+  function mergeFingerprintsIntoAttaches(existing, fps) {
+    const bySlot = /* @__PURE__ */ new Map();
+    for (let i = 0; i < existing.length; i++) {
+      bySlot.set(existing[i].slot, existing[i]);
+    }
+    let added = 0;
+    for (let i = 0; i < fps.length; i++) {
+      const fp = fps[i];
+      const slot = Number(fp.slot) | 0;
+      const had = bySlot.has(slot);
+      const prev = bySlot.get(slot);
+      const keepTo = prev && String(prev.to || "").trim() ? String(prev.to).trim() : "";
+      bySlot.set(slot, makeComposeAttach(fp, keepTo));
+      if (!had) added += 1;
+    }
+    const attaches = [];
+    bySlot.forEach((a) => attaches.push(a));
+    attaches.sort((a, b) => (a.slot | 0) - (b.slot | 0));
+    return { attaches, added };
+  }
+  function buildMailMatchingToFreeOwnDraft(opts) {
+    const base = canonicalizeDraft(opts.draft);
+    const merged = mergeFingerprintsIntoAttaches(
+      base.attaches,
+      opts.fingerprints
+    );
+    const freeOwn = normalizeComposeTos(opts.freeOwnNames);
+    let next = canonicalizeDraft({
+      ...base,
+      to: freeOwn,
+      attaches: merged.attaches,
+      subject: String(base.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : base.subject
+    });
+    if (next.to.length && next.attaches.length) {
+      next = distributeAttachesAcrossTos(next);
+    }
+    const assigned = countWithTo(next.attaches);
+    const needTo = Math.max(0, next.attaches.length - assigned);
+    const parts = [];
+    parts.push(
+      merged.added === 1 ? "Queued 1" : "Queued " + Math.max(merged.added, opts.fingerprints.length)
+    );
+    parts.push(
+      freeOwn.length === 1 ? "1 free own" : freeOwn.length + " free own"
+    );
+    if (assigned > 0) {
+      parts.push("distributed " + assigned);
+    }
+    if (needTo > 0) {
+      parts.push(needTo + " still need To");
+    }
+    const statusKind = needTo > 0 || freeOwn.length === 0 ? "warn" : "";
+    return {
+      draft: next,
+      queued: next.attaches.length,
+      freeOwn: freeOwn.length,
+      assigned,
+      needTo,
+      status: parts.join(" \xB7 "),
+      statusKind
+    };
+  }
+  function buildComposeSummary(opts) {
+    const draft = canonicalizeDraft(opts.draft);
+    const queued = draft.attaches.length;
+    const withTo = countWithTo(draft.attaches);
+    const needTo = Math.max(0, queued - withTo);
+    const queuedByTo = queuedByToFromAttaches(draft.attaches);
+    const freeOwn = ownCharsWithFreeMailSpace({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete,
+      exclude: draft.to,
+      queuedByTo
+    }).length;
+    const fills = buildOwnToCapFills({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete
+    });
+    let pressure = "";
+    for (let i = 0; i < fills.length; i++) {
+      const f = fills[i];
+      const q = queuedByTo[f.name.toLowerCase()] | 0;
+      if (!canOwnCharReceiveAttach(f, q)) {
+        pressure = "full";
+        break;
+      }
+      if (pressure === "") {
+        if (f.pressure === "warn") pressure = "warn";
+      }
+    }
+    const parts = [];
+    if (queued > 0) {
+      parts.push(queued + " queued");
+      parts.push(withTo + " with To");
+      if (needTo > 0) parts.push(needTo + " need To");
+    } else {
+      parts.push(
+        draft.to.length ? draft.to.length === 1 ? "1 To \xB7 plain mail" : draft.to.length + " To \xB7 plain mail" : "No recipients yet"
+      );
+    }
+    if (opts.selfNames.length) {
+      parts.push(
+        freeOwn > 0 ? "Own free: " + freeOwn : draft.to.length ? "Own free: 0" : "Own free: 0 \u2014 all full or already listed"
+      );
+    }
+    return {
+      queued,
+      withTo,
+      needTo,
+      freeOwn,
+      toCount: draft.to.length,
+      pressure,
+      line: parts.join(" \xB7 ")
+    };
+  }
+  function composeSendBlockReason(opts) {
+    const draft = canonicalizeDraft(opts.draft);
+    if (opts.goldEnough === false) {
+      return { reason: "Not enough gold on the observed character", kind: "err" };
+    }
+    if (draft.attaches.length) {
+      if (!countWithTo(draft.attaches) || countWithTo(draft.attaches) < draft.attaches.length) {
+        const need = draft.attaches.length - countWithTo(draft.attaches);
+        return {
+          reason: need === 1 ? "1 attachment still needs a To" : need + " attachments still need a To",
+          kind: "warn"
+        };
+      }
+      const fills = buildOwnToCapFills({
+        mails: opts.mails,
+        selfNames: opts.selfNames,
+        incomplete: opts.incomplete
+      });
+      const byKey = /* @__PURE__ */ new Map();
+      for (let i = 0; i < fills.length; i++) {
+        byKey.set(fills[i].name.toLowerCase(), fills[i]);
+      }
+      const planned = {};
+      for (let i = 0; i < draft.attaches.length; i++) {
+        const to = String(draft.attaches[i].to || "").trim();
+        if (!to) continue;
+        const key = to.toLowerCase();
+        planned[key] = (planned[key] | 0) + 1;
+      }
+      const over = [];
+      const keys = Object.keys(planned);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        const fill = byKey.get(key);
+        if (!fill) continue;
+        if (!canOwnCharReceiveAttach(fill, planned[key] - 1)) {
+          over.push(fill.name);
+        }
+      }
+      if (over.length) {
+        return {
+          reason: over.length === 1 ? over[0] + " is at the attach cap (20/account or 200/char)" : over.slice(0, 2).join(", ") + (over.length > 2 ? " +" + (over.length - 2) : "") + " at attach cap",
+          kind: "err"
+        };
+      }
+      return null;
+    }
+    if (!draft.to.length) {
+      return { reason: "Add a recipient", kind: "warn" };
+    }
+    return null;
+  }
+
   // src/host/mail/mailCompose.ts
   var draftHydrated = false;
   function ensureComposeDraftHydrated() {
@@ -16489,6 +17334,44 @@ ${CHROME_ARRANGE_CSS}
       }
     );
   }
+  function queueMailAttaches(fps) {
+    ensureComposeDraftHydrated();
+    if (!fps.length) return 0;
+    if (getView().kind !== "compose") openCompose();
+    let added = 0;
+    commitCompose(
+      (d) => {
+        const bySlot = /* @__PURE__ */ new Map();
+        for (let i = 0; i < d.attaches.length; i++) {
+          bySlot.set(d.attaches[i].slot, d.attaches[i]);
+        }
+        let rr = 0;
+        const pool = d.to.slice();
+        for (let i = 0; i < fps.length; i++) {
+          const fp = fps[i];
+          const slot = Number(fp.slot) | 0;
+          const had = bySlot.has(slot);
+          const prev = bySlot.get(slot);
+          let to = prev && String(prev.to || "").trim() ? String(prev.to) : "";
+          if (!to && pool.length) {
+            to = pool[rr % pool.length];
+            rr += 1;
+          }
+          bySlot.set(slot, makeComposeAttach(fp, to));
+          if (!had) added += 1;
+        }
+        const list = [];
+        bySlot.forEach((a) => list.push(a));
+        list.sort((a, b) => (a.slot | 0) - (b.slot | 0));
+        const subject = String(d.subject || "").trim() === "" ? MAIL_SUBJECT_ITEM_TOKEN : d.subject;
+        return { ...d, subject, attaches: list };
+      },
+      {
+        status: added <= 0 ? "Matching items already queued" : added === 1 ? "Queued 1 matching item" : "Queued " + added + " matching items"
+      }
+    );
+    return added;
+  }
   function patchComposeDraft(partial) {
     if (getView().kind !== "compose") return;
     commitCompose((d) => {
@@ -16531,6 +17414,72 @@ ${CHROME_ARRANGE_CSS}
       status: "Distributed items across To recipients"
     });
   }
+  function mailMatchingToFreeOwn(opts) {
+    ensureComposeDraftHydrated();
+    if (getView().kind !== "compose") openCompose();
+    const cur = getActiveComposeDraft();
+    const freeOwn = ownCharsWithFreeMailSpace({
+      mails: opts.mails,
+      selfNames: opts.selfNames,
+      incomplete: opts.incomplete,
+      exclude: []
+    });
+    const planned = buildMailMatchingToFreeOwnDraft({
+      draft: cur,
+      fingerprints: opts.fingerprints,
+      freeOwnNames: freeOwn
+    });
+    commitCompose(() => planned.draft, {
+      status: planned.status,
+      statusKind: planned.statusKind
+    });
+    return {
+      queued: planned.queued,
+      freeOwn: planned.freeOwn,
+      assigned: planned.assigned,
+      needTo: planned.needTo
+    };
+  }
+  function clearComposeAndClose() {
+    ensureComposeDraftHydrated();
+    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
+    try {
+      saveSettings({ mailLastTo: [] });
+    } catch (e2) {
+    }
+    setMailView({ kind: "list" });
+  }
+  function clearComposeDraft() {
+    if (getView().kind !== "compose") return;
+    commitCompose(() => emptyDraft(), { status: "Compose cleared" });
+    try {
+      saveSettings({ mailLastTo: [] });
+    } catch (e2) {
+    }
+  }
+  function addOwnCharsWithFreeMailSpace(names) {
+    if (getView().kind !== "compose") return 0;
+    const add = normalizeComposeTos(names);
+    if (!add.length) return 0;
+    let added = 0;
+    commitCompose(
+      (d) => {
+        const before = d.to.length;
+        const to = normalizeComposeTos(d.to.concat(add));
+        added = Math.max(0, to.length - before);
+        return {
+          ...d,
+          to,
+          attaches: rebindAttachesToPool(d.attaches, to)
+        };
+      },
+      {
+        status: added <= 0 ? "No own characters with free attach space" : added === 1 ? "Added 1 own character with free space" : "Added " + added + " own characters with free space",
+        statusKind: added <= 0 ? "warn" : ""
+      }
+    );
+    return added;
+  }
   function removeMailAttachAt(index) {
     if (getView().kind !== "compose") return;
     commitCompose((d) => {
@@ -16559,6 +17508,21 @@ ${CHROME_ARRANGE_CSS}
   }
 
   // src/host/mail/itemFingerprint.ts
+  function titleKey(p) {
+    return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
+  function levelKey(level) {
+    if (level == null || level === "") return null;
+    const n = Number(level);
+    return Number.isFinite(n) ? n : null;
+  }
+  function itemMatchesQueueIdentity(item, expected) {
+    if (!item || !item.name || item.name === "placeholder") return false;
+    if (String(item.name) !== String(expected.name || "")) return false;
+    if (titleKey(item.p) !== titleKey(expected.p)) return false;
+    if (levelKey(item.level) !== levelKey(expected.level)) return false;
+    return true;
+  }
   function itemMatchesFingerprint(item, expected) {
     if (!item || !item.name) return false;
     if (item.name !== expected.name) return false;
@@ -16572,6 +17536,16 @@ ${CHROME_ARRANGE_CSS}
       if (item.p !== expected.p) return false;
     }
     return true;
+  }
+  function listBagFingerprintsMatchingIdentity(items, template) {
+    if (!items || !items.length) return [];
+    const out = [];
+    for (let i = 0; i < items.length; i++) {
+      if (!itemMatchesQueueIdentity(items[i], template)) continue;
+      const fp = fingerprintFromSlot(i, items[i]);
+      if (fp) out.push(fp);
+    }
+    return out;
   }
   function fingerprintFromSlot(slot, item) {
     if (!item || !item.name || item.name === "placeholder") return null;
@@ -16914,10 +17888,11 @@ ${CHROME_ARRANGE_CSS}
     }
   }
 
-  // src/ui/bag/shrineBagHighlight.ts
+  // src/ui/bag/composeBagHighlight.ts
   var HOST_ID2 = "bottomleftcorner";
-  var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
+  var COMPOSE_BAG_QUEUE_CLASS = "is-ecu-compose-queue";
   var activeSlots = [];
+  var installed = false;
   function uniqueSlots(slots) {
     const seen = /* @__PURE__ */ new Set();
     const out = [];
@@ -16931,10 +17906,77 @@ ${CHROME_ARRANGE_CSS}
     }
     return out;
   }
-  function applyShrineBagHighlights() {
+  function slotsFromComposeAttaches(attaches) {
+    const slots = [];
+    for (let i = 0; i < attaches.length; i++) {
+      slots.push(attaches[i].slot);
+    }
+    return uniqueSlots(slots);
+  }
+  function applyComposeBagHighlights() {
     const host2 = document.getElementById(HOST_ID2);
     if (!host2) return;
     const want = new Set(activeSlots);
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const raw = node.getAttribute("data-cnum");
+      if (raw == null || raw === "") {
+        node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
+        continue;
+      }
+      const num = parseInt(raw, 10);
+      if (want.has(num)) node.classList.add(COMPOSE_BAG_QUEUE_CLASS);
+      else node.classList.remove(COMPOSE_BAG_QUEUE_CLASS);
+    }
+  }
+  function setComposeBagHighlights(slots) {
+    activeSlots = uniqueSlots(slots);
+    applyComposeBagHighlights();
+  }
+  function clearComposeBagHighlights() {
+    activeSlots = [];
+    applyComposeBagHighlights();
+  }
+  function syncComposeBagHighlightsFromDraft() {
+    const draft = getActiveComposeDraft();
+    setComposeBagHighlights(slotsFromComposeAttaches(draft.attaches));
+  }
+  function installComposeBagHighlight() {
+    if (installed) return () => {
+    };
+    installed = true;
+    ensureComposeDraftHydrated();
+    syncComposeBagHighlightsFromDraft();
+    const unsub2 = subscribeMailStore(syncComposeBagHighlightsFromDraft);
+    return () => {
+      unsub2();
+      installed = false;
+      clearComposeBagHighlights();
+    };
+  }
+
+  // src/ui/bag/shrineBagHighlight.ts
+  var HOST_ID3 = "bottomleftcorner";
+  var SHRINE_BAG_PICK_CLASS = "is-ecu-shrine-pick";
+  var activeSlots2 = [];
+  function uniqueSlots2(slots) {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < slots.length; i++) {
+      const n = Number(slots[i]);
+      if (!Number.isFinite(n) || n < 0) continue;
+      const slot = n | 0;
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      out.push(slot);
+    }
+    return out;
+  }
+  function applyShrineBagHighlights() {
+    const host2 = document.getElementById(HOST_ID3);
+    if (!host2) return;
+    const want = new Set(activeSlots2);
     const nodes = host2.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
@@ -16949,12 +17991,22 @@ ${CHROME_ARRANGE_CSS}
     }
   }
   function setShrineBagHighlights(slots) {
-    activeSlots = uniqueSlots(slots);
+    activeSlots2 = uniqueSlots2(slots);
     applyShrineBagHighlights();
   }
   function clearShrineBagHighlights() {
-    activeSlots = [];
+    activeSlots2 = [];
     applyShrineBagHighlights();
+  }
+
+  // src/ui/chrome/stripNativeTitles.ts
+  function stripNativeTitles(root) {
+    if (!root) return;
+    root.removeAttribute("title");
+    const titled = root.querySelectorAll("[title]");
+    for (let i = 0; i < titled.length; i++) {
+      titled[i].removeAttribute("title");
+    }
   }
 
   // src/host/infoDialog/bindings.ts
@@ -17539,7 +18591,7 @@ ${CHROME_ARRANGE_CSS}
   };
 
   // src/host/inventory.ts
-  var HOST_ID3 = "bottomleftcorner";
+  var HOST_ID4 = "bottomleftcorner";
   var STYLE_ID3 = "comm-ui-inventory-host-css";
   var MOUNT_ID = "comm-bag-mount";
   var SAVED_CHAR = "__ecuInvSavedChar";
@@ -17561,7 +18613,7 @@ ${CHROME_ARRANGE_CSS}
     const style = document.createElement("style");
     style.id = STYLE_ID3;
     style.textContent = `
-#${HOST_ID3} {
+#${HOST_ID4} {
   position: relative;
   left: auto;
   bottom: auto;
@@ -17571,7 +18623,7 @@ ${CHROME_ARRANGE_CSS}
   max-height: min(70vh, calc(100vh - 72px));
   overflow: auto;
 }
-#${HOST_ID3} .theinventory {
+#${HOST_ID4} .theinventory {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
@@ -17579,18 +18631,23 @@ ${CHROME_ARRANGE_CSS}
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
-#${HOST_ID3}.is-trade-delist-target {
+#${HOST_ID4}.is-trade-delist-target {
   outline: 2px solid #6ab04c;
   outline-offset: 2px;
 }
-#${HOST_ID3} [data-cnum].is-bag-swap-target {
+#${HOST_ID4} [data-cnum].is-bag-swap-target {
   outline: 2px solid #6ab04c;
   outline-offset: 1px;
 }
-#${HOST_ID3} [data-cnum].is-ecu-shrine-pick {
+#${HOST_ID4} [data-cnum].is-ecu-shrine-pick {
   outline: 2px solid #e8c96a;
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
+}
+#${HOST_ID4} [data-cnum].is-ecu-compose-queue {
+  outline: 2px solid #6a9ae8;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(106, 154, 232, 0.5), inset 0 0 10px rgba(106, 154, 232, 0.14);
 }
 #${MOUNT_ID} {
   pointer-events: auto;
@@ -17743,7 +18800,7 @@ ${CHROME_ARRANGE_CSS}
     closeInventoryHost();
   }
   function closeInventoryHost() {
-    const host2 = document.getElementById(HOST_ID3);
+    const host2 = document.getElementById(HOST_ID4);
     if (host2) host2.innerHTML = "";
     window.inventory = false;
     bagRenderedForName = null;
@@ -17816,7 +18873,7 @@ ${CHROME_ARRANGE_CSS}
     }, 250);
   }
   function applyBagLayoutPos(pos) {
-    const host2 = document.getElementById(HOST_ID3);
+    const host2 = document.getElementById(HOST_ID4);
     if (!host2) return;
     if (host2.parentElement && host2.parentElement.id === MOUNT_ID) {
       host2.style.position = "relative";
@@ -17841,10 +18898,10 @@ ${CHROME_ARRANGE_CSS}
   }
   function ensureInventoryHost() {
     injectHostCss();
-    let el = document.getElementById(HOST_ID3);
+    let el = document.getElementById(HOST_ID4);
     if (!el) {
       el = document.createElement("div");
-      el.id = HOST_ID3;
+      el.id = HOST_ID4;
       el.className = "bpclicks enableclicks";
       document.body.append(el);
     }
@@ -17875,7 +18932,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function stripObservedBagNativeDropHandlers() {
     if (!window.is_comm || !window.observing) return;
-    const host2 = document.getElementById(HOST_ID3);
+    const host2 = document.getElementById(HOST_ID4);
     if (!host2) return;
     const nodes = host2.querySelectorAll("[data-cnum]");
     for (let i = 0; i < nodes.length; i++) {
@@ -17886,7 +18943,7 @@ ${CHROME_ARRANGE_CSS}
   }
   function refreshInventoryItemTitles() {
     if (!window.inventory) return;
-    const host2 = document.getElementById(HOST_ID3);
+    const host2 = document.getElementById(HOST_ID4);
     if (!host2) return;
     const obs = window.observing;
     const items = obs && Array.isArray(obs.items) ? obs.items : null;
@@ -17899,20 +18956,15 @@ ${CHROME_ARRANGE_CSS}
       const num = parseInt(raw, 10);
       if (!Number.isFinite(num) || num < 0 || num >= items.length) continue;
       const item = items[num];
-      if (!item || !item.name || item.name === "placeholder") {
-        node.removeAttribute("title");
-        const inner = node.querySelector(".rclick");
-        if (inner) inner.removeAttribute("title");
-        continue;
-      }
+      stripNativeTitles(node);
+      if (!item || !item.name || item.name === "placeholder") continue;
       const p = typeof item.p === "string" ? item.p : void 0;
-      const label = itemInstanceLabel(item.name, { p, level: item.level });
-      stampNativeItemTitle(node, label);
       if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
     }
     stripObservedBagNativeDropHandlers();
     refreshBagBuyOrderIndicators();
     applyShrineBagHighlights();
+    applyComposeBagHighlights();
   }
   function prepareObservingCharacter() {
     const obs = window.observing;
@@ -17988,7 +19040,7 @@ ${CHROME_ARRANGE_CSS}
       window.render_inventory = function patchedRenderInventory(reset) {
         ensureInventoryHost();
         if (window.inventory && !reset) {
-          const host2 = document.getElementById(HOST_ID3);
+          const host2 = document.getElementById(HOST_ID4);
           if (host2) host2.innerHTML = "";
           window.inventory = false;
           bagRenderedForName = null;
@@ -24917,6 +25969,10 @@ ${CHROME_ARRANGE_CSS}
       if (pill === "fromme" && self.size > 0) {
         if (!self.has(String(m.fro || "").toLowerCase())) continue;
       }
+      if (pill === "fromothers" && self.size > 0) {
+        if (!self.has(String(m.to || "").toLowerCase())) continue;
+        if (self.has(String(m.fro || "").toLowerCase())) continue;
+      }
       if (!mailMatchesSearch(m, parsed)) continue;
       out.push(m);
     }
@@ -24938,11 +25994,16 @@ ${CHROME_ARRANGE_CSS}
     scope: "all"
   };
   var MAIL_SEARCH_SCOPES = [
-    { id: "all", label: "All mail" },
+    { id: "all", label: "All mail", short: "All" },
     { id: "unread", label: "Unread" },
-    { id: "item", label: "Has item" },
+    { id: "item", label: "Has item", short: "Item" },
     { id: "tome", label: "To me" },
-    { id: "fromme", label: "From me" }
+    { id: "fromme", label: "From me" },
+    {
+      id: "fromothers",
+      label: "From others",
+      short: "From others"
+    }
   ];
   function quoteToken(raw) {
     const s = String(raw || "").trim();
@@ -25137,340 +26198,6 @@ ${CHROME_ARRANGE_CSS}
       sum += q;
     }
     return sum > 1 ? sum : null;
-  }
-
-  // src/host/mail/mailCaps.ts
-  var MAIL_ATTACH_CAP = 200;
-  var MAIL_ATTACH_SENDER_CAP = 20;
-  var MAIL_ATTACH_CAP_WARN = 160;
-  var MAIL_ATTACH_SENDER_CAP_WARN = 15;
-  function countsTowardAttachCap(m) {
-    if (!m.item) return false;
-    if (m.taken && !m.takenPending) return false;
-    return true;
-  }
-  function nameSet(names) {
-    const out = /* @__PURE__ */ new Set();
-    for (let i = 0; i < names.length; i++) {
-      const n = String(names[i] || "").trim().toLowerCase();
-      if (n) out.add(n);
-    }
-    return out;
-  }
-  function countAttachmentsByRecipient(mails, ownedNames) {
-    const owned = ownedNames && ownedNames.length ? nameSet(ownedNames) : null;
-    const buckets = /* @__PURE__ */ new Map();
-    for (let i = 0; i < mails.length; i++) {
-      const m = mails[i];
-      if (!countsTowardAttachCap(m)) continue;
-      if (m.canTake === false) continue;
-      const display = String(m.to || "").trim();
-      const key = display.toLowerCase();
-      if (!key) continue;
-      if (owned && !owned.has(key)) continue;
-      const prev = buckets.get(key);
-      if (prev) prev.count += 1;
-      else buckets.set(key, { name: display, count: 1 });
-    }
-    const out = [];
-    buckets.forEach((v) => {
-      out.push({
-        name: v.name,
-        count: v.count,
-        pressure: mailboxCapPressure(v.count)
-      });
-    });
-    out.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
-    });
-    return out;
-  }
-  function countSenderAttachmentsTo(mails, fromNames, toName) {
-    const from = nameSet(fromNames);
-    const to = String(toName || "").trim().toLowerCase();
-    if (!from.size || !to) return 0;
-    let n = 0;
-    for (let i = 0; i < mails.length; i++) {
-      const m = mails[i];
-      if (!countsTowardAttachCap(m)) continue;
-      if (String(m.to || "").trim().toLowerCase() !== to) {
-        continue;
-      }
-      if (!from.has(
-        String(m.fro || "").trim().toLowerCase()
-      )) {
-        continue;
-      }
-      n += 1;
-    }
-    return n;
-  }
-  function mailboxCapPressure(count, incomplete) {
-    if (count >= MAIL_ATTACH_CAP) return "full";
-    if (!incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
-    if (incomplete && count >= MAIL_ATTACH_CAP_WARN) return "warn";
-    return "";
-  }
-  function senderCapPressure(count, queued = 0) {
-    const have = Math.max(0, count | 0);
-    const add = Math.max(0, queued | 0);
-    if (have >= MAIL_ATTACH_SENDER_CAP || have + add > MAIL_ATTACH_SENDER_CAP) {
-      return "full";
-    }
-    if (have + add >= MAIL_ATTACH_SENDER_CAP_WARN) return "warn";
-    return "";
-  }
-  function formatCapFraction(count, cap, incomplete) {
-    const n = Math.max(0, count | 0);
-    return n + (incomplete ? "+" : "") + "/" + cap;
-  }
-  function worstPressure(fills) {
-    let worst = "";
-    for (let i = 0; i < fills.length; i++) {
-      const p = fills[i].pressure;
-      if (p === "full") return "full";
-      if (p === "warn") worst = "warn";
-    }
-    return worst;
-  }
-  function formatMailboxCapsLine(fills, opts) {
-    const incomplete = !!(opts && opts.incomplete);
-    const maxNames = opts && opts.maxNames != null ? opts.maxNames : 2;
-    if (!fills.length) {
-      return "0/" + MAIL_ATTACH_CAP + " per char" + (incomplete ? "+" : "");
-    }
-    const prefer = String(opts && opts.preferName || "").trim().toLowerCase();
-    const shown = [];
-    const used = /* @__PURE__ */ new Set();
-    if (prefer) {
-      for (let i = 0; i < fills.length; i++) {
-        const key = fills[i].name.toLowerCase();
-        if (key !== prefer) continue;
-        shown.push(fills[i]);
-        used.add(key);
-        break;
-      }
-    }
-    for (let i = 0; i < fills.length && shown.length < maxNames; i++) {
-      const key = fills[i].name.toLowerCase();
-      if (used.has(key)) continue;
-      shown.push(fills[i]);
-      used.add(key);
-    }
-    const parts = [];
-    for (let i = 0; i < shown.length; i++) {
-      const f = shown[i];
-      parts.push(
-        f.name + " " + formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete)
-      );
-    }
-    const rest = fills.length - shown.length;
-    if (rest > 0) {
-      parts.push("+" + rest + " char" + (rest === 1 ? "" : "s"));
-    }
-    return parts.join(" \xB7 ");
-  }
-  function mailboxCapsTitle(fills, incomplete) {
-    const lines = [
-      "Server caps are per character: 200 uncollected attachments each, and at most 20 from one sending account. Pending claims count; take or delete before new item mail can land."
-    ];
-    if (!fills.length) {
-      lines.push("No untaken attachments in the cached inbox.");
-    } else {
-      const maxList = Math.min(fills.length, 12);
-      for (let i = 0; i < maxList; i++) {
-        const f = fills[i];
-        const frac = formatCapFraction(f.count, MAIL_ATTACH_CAP, incomplete);
-        let note = "";
-        if (f.pressure === "full") note = " \u2014 full (new item mail blocked)";
-        else if (f.pressure === "warn") note = " \u2014 nearly full";
-        lines.push(f.name + " " + frac + note);
-      }
-      if (fills.length > maxList) {
-        lines.push("\u2026and " + (fills.length - maxList) + " more characters");
-      }
-    }
-    if (incomplete) {
-      lines.push("Cache still loading older pages \u2014 counts may rise.");
-    }
-    return lines.join("\n");
-  }
-  function withFillPressure(fills, incomplete) {
-    const out = [];
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      out.push({
-        name: f.name,
-        count: f.count,
-        pressure: mailboxCapPressure(f.count, incomplete)
-      });
-    }
-    return out;
-  }
-  function summarizeMailboxCaps(opts) {
-    const incomplete = !!opts.incomplete;
-    const withPressure = withFillPressure(opts.fills, incomplete);
-    return {
-      line: formatMailboxCapsLine(withPressure, {
-        incomplete,
-        preferName: opts.preferName
-      }),
-      pressure: worstPressure(withPressure),
-      title: mailboxCapsTitle(withPressure, incomplete)
-    };
-  }
-  function pickPrimaryFill(fills, preferName) {
-    if (!fills.length) return null;
-    const prefer = String(preferName || "").trim().toLowerCase();
-    if (prefer) {
-      for (let i = 0; i < fills.length; i++) {
-        if (fills[i].name.toLowerCase() === prefer) return fills[i];
-      }
-    }
-    for (let i = 0; i < fills.length; i++) {
-      if (fills[i].pressure === "full") return fills[i];
-    }
-    for (let i = 0; i < fills.length; i++) {
-      if (fills[i].pressure === "warn") return fills[i];
-    }
-    return fills[0];
-  }
-  function fillCapLabel(fill) {
-    if (fill.pressure === "full") {
-      return fill.count > MAIL_ATTACH_CAP ? "over cap" : "full";
-    }
-    if (fill.pressure === "warn") return "nearly full";
-    if (fill.count > 0) return "ok";
-    return "clear";
-  }
-  function fillCapPct(count) {
-    return Math.min(
-      100,
-      Math.round(100 * Math.max(0, count | 0) / MAIL_ATTACH_CAP)
-    );
-  }
-  function mergeOwnedMailboxFills(fills, ownedNames, incomplete) {
-    const byKey = /* @__PURE__ */ new Map();
-    for (let i = 0; i < fills.length; i++) {
-      const f = fills[i];
-      byKey.set(f.name.toLowerCase(), {
-        name: f.name,
-        count: f.count,
-        pressure: mailboxCapPressure(f.count, incomplete)
-      });
-    }
-    for (let i = 0; i < ownedNames.length; i++) {
-      const display = String(ownedNames[i] || "").trim();
-      if (!display) continue;
-      const key = display.toLowerCase();
-      if (byKey.has(key)) continue;
-      byKey.set(key, {
-        name: display,
-        count: 0,
-        pressure: ""
-      });
-    }
-    const out = [];
-    byKey.forEach((v) => out.push(v));
-    out.sort((a, b) => {
-      const ra = a.pressure === "full" ? 0 : a.pressure === "warn" ? 1 : a.count > 0 ? 2 : 3;
-      const rb = b.pressure === "full" ? 0 : b.pressure === "warn" ? 1 : b.count > 0 ? 2 : 3;
-      if (ra !== rb) return ra - rb;
-      if (b.count !== a.count) return b.count - a.count;
-      return a.name.localeCompare(b.name, void 0, { sensitivity: "base" });
-    });
-    return out;
-  }
-  function formatCapsSummaryLine(fullCount, warnCount, holdingCount) {
-    const parts = [];
-    if (fullCount > 0) {
-      parts.push(fullCount + " full");
-    }
-    if (warnCount > 0) {
-      parts.push(warnCount + " near");
-    }
-    const quiet = Math.max(0, holdingCount - fullCount - warnCount);
-    if (quiet > 0) {
-      parts.push(quiet + " holding");
-    }
-    if (!parts.length) return "All clear";
-    return parts.join(" \xB7 ");
-  }
-  function buildMailboxCapsView(opts) {
-    const incomplete = !!opts.incomplete;
-    const owned = opts.ownedNames || [];
-    const fills = mergeOwnedMailboxFills(opts.fills, owned, incomplete);
-    const holding = fills.filter((f) => f.count > 0);
-    const primary = pickPrimaryFill(
-      holding.length ? holding : fills,
-      opts.preferName
-    );
-    let fullCount = 0;
-    let warnCount = 0;
-    for (let i = 0; i < holding.length; i++) {
-      if (holding[i].pressure === "full") fullCount += 1;
-      else if (holding[i].pressure === "warn") warnCount += 1;
-    }
-    const okCount = Math.max(0, holding.length - fullCount - warnCount);
-    return {
-      pressure: worstPressure(holding),
-      title: mailboxCapsTitle(holding, incomplete),
-      incomplete,
-      primary,
-      primaryPct: primary ? fillCapPct(primary.count) : 0,
-      primaryLabel: primary ? fillCapLabel(primary) : "clear",
-      summaryLine: formatCapsSummaryLine(
-        fullCount,
-        warnCount,
-        holding.length
-      ),
-      fullCount,
-      warnCount,
-      okCount,
-      holdingCount: holding.length,
-      fills
-    };
-  }
-  function buildComposeCapNotices(opts) {
-    const notices = [];
-    const incomplete = !!opts.hasMore;
-    const fills = countAttachmentsByRecipient(opts.mails, opts.selfNames);
-    const box = summarizeMailboxCaps({
-      fills,
-      incomplete,
-      preferName: opts.queued.length === 1 ? opts.queued[0].to : null
-    });
-    notices.push({
-      key: "mailbox",
-      text: "Per-char mailbox \xB7 " + box.line + " \xB7 max 20 from one account",
-      pressure: box.pressure,
-      title: box.title
-    });
-    const self = nameSet(opts.selfNames);
-    const queued = opts.queued.slice();
-    queued.sort(
-      (a, b) => String(a.to || "").localeCompare(String(b.to || ""), void 0, {
-        sensitivity: "base"
-      })
-    );
-    for (let i = 0; i < queued.length; i++) {
-      const display = String(queued[i].to || "").trim();
-      const queuedN = queued[i].count | 0;
-      if (!display || queuedN <= 0) continue;
-      const key = display.toLowerCase();
-      const have = countSenderAttachmentsTo(opts.mails, opts.selfNames, display);
-      const pressure = senderCapPressure(have, queuedN);
-      const frac = formatCapFraction(have, MAIL_ATTACH_SENDER_CAP, incomplete);
-      const selfHit = self.has(key);
-      notices.push({
-        key: "to:" + key,
-        text: (selfHit ? "Self-mail " : "To " + display + " ") + frac + " from you" + (queuedN > 1 ? " \xB7 +" + queuedN + " queued" : " \xB7 +1 queued"),
-        pressure,
-        title: "Per-account sender cap to this character (" + frac + "). New item mail is refused at 20 uncollected from your account." + (incomplete ? " Older cached pages may raise this count." : "")
-      });
-    }
-    return notices;
   }
 
   // src/host/mail/mailItemsOverview.ts
@@ -25975,7 +26702,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   50% { transform: scale(1.03); filter: brightness(1.18); }
 }
 `;
-  var installed = false;
+  var installed2 = false;
   var everConnected = false;
   var overlayEl = null;
   var unsubTick = null;
@@ -26223,8 +26950,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     }
   }
   function installDisconnectOverlay() {
-    if (installed) return;
-    installed = true;
+    if (installed2) return;
+    installed2 = true;
     if (liveSocket(typeof window !== "undefined" ? window.socket : void 0)) {
       everConnected = true;
       rememberObserveSecretFromRoster();
@@ -26242,7 +26969,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 
   // src/host/pageTitle.ts
   var BRAND = "Adventure Land";
-  var installed2 = false;
+  var installed3 = false;
   var lastTitle = null;
   function serverLabel3() {
     const region = getServerRegion() || "";
@@ -26274,8 +27001,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (document.title !== next) document.title = next;
   }
   function installPageTitle() {
-    if (installed2) return;
-    installed2 = true;
+    if (installed3) return;
+    installed3 = true;
     applyPageTitle();
     subscribeTick(() => applyPageTitle());
   }
@@ -26284,7 +27011,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   var PAD = 8;
   var CURSOR = 14;
   var STYLE_ID6 = "ecu-cooltip-css";
-  var HOST_ID4 = "ecu-cooltip";
+  var HOST_ID5 = "ecu-cooltip";
   var COOLTIP_ICON = 22;
   var COOLTIP_MONSTER_ICON = 40;
   var tipEl = null;
@@ -26317,7 +27044,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     ensureCooltipCss();
     if (tipEl && tipEl.isConnected) return tipEl;
     tipEl = document.createElement("div");
-    tipEl.id = HOST_ID4;
+    tipEl.id = HOST_ID5;
     tipEl.className = "ecu-cooltip";
     tipEl.setAttribute("role", "tooltip");
     document.body.appendChild(tipEl);
@@ -26398,12 +27125,20 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (!hoverKey && key != null) return;
     hideCooltip();
   }
+  function isCooltipHovering(key) {
+    return hoverKey === key;
+  }
 
   // src/ui/chrome/itemCooltip.ts
   var tipSeq = 0;
   function nextItemCooltipKey(name) {
     tipSeq += 1;
     return `item:${name}:${tipSeq}`;
+  }
+  function itemCooltipKeyFoot(name) {
+    const key = String(name || "").trim();
+    if (!key) return "";
+    return `<div class="ecu-cooltip-foot ecu-cooltip-item-key"><span>Key</span> <b>${escapeCooltipHtml(key)}</b></div>`;
   }
   function itemCooltipHtml(args) {
     var _a;
@@ -26417,6 +27152,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (actual.q == null && args.q != null) actual.q = args.q;
     if (actual.p == null && args.p != null) actual.p = args.p;
     if (!actual.name) actual.name = args.name;
+    const keyFoot = itemCooltipKeyFoot(args.name);
     if (def) {
       const html = buildItemHtml({
         item: def,
@@ -26424,13 +27160,13 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         actual,
         readonly: true
       });
-      if (html && String(html).trim()) return html;
+      if (html && String(html).trim()) return html + keyFoot;
     }
     const label = itemInstanceLabel(args.name, {
       p: actual.p != null ? String(actual.p) : void 0,
       level: actual.level
     }) || args.name;
-    return `<h4>${escapeCooltipHtml(label)}</h4>`;
+    return `<h4>${escapeCooltipHtml(label)}</h4>${keyFoot}`;
   }
   function itemCooltipHandlers(key, rebuild) {
     return cooltipHandlers(key, rebuild, { itemTip: true });
@@ -26530,10 +27266,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         root.removeAttribute("onclick");
         if (p) stampNativeItemTitleBorder(root, p);
       }
+      if (cooltip) {
+        stripNativeTitles(el);
+        const host2 = el.parentElement;
+        if (host2) host2.removeAttribute("title");
+      }
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [name, skin, levelNum, q, p, size, tip, stockChrome]);
+    }, [name, skin, levelNum, q, p, size, tip, stockChrome, cooltip]);
     React.useEffect(() => {
       if (!cooltip) return;
       const key = tipKeyRef.current;
@@ -26579,7 +27320,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--level",
-          title: "Level " + levelBadge.text,
+          // Skip native titles when Comm cooltip is on — they stack on hover.
+          title: cooltip ? void 0 : "Level " + levelBadge.text,
           style: { color: levelBadge.color, borderColor: levelBadge.color }
         },
         levelBadge.text
@@ -26588,7 +27330,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--qty",
-          title: "Quantity " + (q != null ? q : qtyLabel),
+          title: cooltip ? void 0 : "Quantity " + (q != null ? q : qtyLabel),
           style: qtyColor ? { color: qtyColor, borderColor: qtyColor } : void 0
         },
         qtyLabel
@@ -26597,7 +27339,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--bank",
-          title: "Bank \xD7" + (bankQ != null ? bankQ : bankLabel)
+          title: cooltip ? void 0 : "Bank \xD7" + (bankQ != null ? bankQ : bankLabel)
         },
         bankLabel
       ) : null
@@ -27825,6 +28567,31 @@ button.comm-mail__stack-u {
 }
 .comm-mail__cap-note.is-warn { color: #db8; }
 .comm-mail__cap-note.is-full { color: #f8a; font-weight: 600; }
+.comm-mail__summary {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #161a16;
+  border: 1px solid #333;
+  color: #c8cfc8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.comm-mail__summary.is-warn {
+  border-color: #6a5a32;
+  color: #edc;
+}
+.comm-mail__summary.is-full,
+.comm-mail__summary.is-need-to {
+  border-color: #6a3a4a;
+  color: #f8a;
+}
+.comm-mail__send-block {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.comm-mail__send-block.is-warn { color: #db8; }
+.comm-mail__send-block.is-err { color: #f8a; font-weight: 600; }
 .comm-mail__compose input,
 .comm-mail__compose textarea {
   width: 100%;
@@ -28026,8 +28793,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.16.1" : "unknown";
-    const builtAt = true ? "2026-11-03T07:33:00.126Z" : "unknown";
+    const version = true ? "0.17.0" : "unknown";
+    const builtAt = true ? "2026-11-03T20:54:26.598Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -33066,7 +33833,7 @@ button.comm-mail__stack-u {
   }
 
   // src/host/worldZoom.ts
-  var installed3 = false;
+  var installed4 = false;
   var appliedOnce = false;
   var wheelInstalled = false;
   var lastWheelApplyMs = 0;
@@ -33171,8 +33938,8 @@ button.comm-mail__stack-u {
     });
   }
   function installWorldZoom() {
-    if (installed3) return;
-    installed3 = true;
+    if (installed4) return;
+    installed4 = true;
     installWheelZoom();
     const saved = getSettings().worldZoom;
     healFractionalScaleCookie(
@@ -54157,8 +54924,8 @@ ${parts.map(cssSlice).join("\n")}
         "aria-label": "Inspect JSON",
         style: {
           flex: "0 0 auto",
-          margin: compact ? "0 0 0 2px" : "0 4px 0 0",
-          padding: "0 2px",
+          margin: compact ? "0" : "0 2px 0 0",
+          padding: "0 1px",
           border: "none",
           background: "transparent",
           color: "#9a9a9a",
@@ -55540,7 +56307,14 @@ ${parts.map(cssSlice).join("\n")}
       color: "",
       show: false
     });
-    const { effect, hostClass, entity, iconSize } = props;
+    const {
+      effect,
+      hostClass,
+      entity,
+      iconSize,
+      hideRemainLabel = false,
+      bareIcon = false
+    } = props;
     const effectRef = React.useRef(effect);
     effectRef.current = effect;
     const entityRef = React.useRef(entity);
@@ -55606,7 +56380,9 @@ ${parts.map(cssSlice).join("\n")}
     const paintIcon = () => {
       const el = iconRef.current;
       if (!el) return;
-      paintItemContainerIcon(el, effect.skin, iconSize);
+      paintItemContainerIcon(el, effect.skin, iconSize, {
+        bare: bareIcon
+      });
     };
     const hideTint = () => {
       const el = iconRef.current;
@@ -55643,7 +56419,7 @@ ${parts.map(cssSlice).join("\n")}
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
+    }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize, bareIcon]);
     React.useEffect(() => {
       const el = iconRef.current;
       if (!el || !el.firstElementChild) return;
@@ -55762,7 +56538,7 @@ ${parts.map(cssSlice).join("\n")}
       };
     }, [cooltipKey]);
     const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
-    const showRemainLabel = shouldShowRemainingLabel(
+    const showRemainLabel = !hideRemainLabel && shouldShowRemainingLabel(
       effect,
       remainNow,
       peakRemainRef.current,
@@ -55782,7 +56558,7 @@ ${parts.map(cssSlice).join("\n")}
       "div",
       {
         ref: wrapRef,
-        className: `comm-fx-icon ${hostClass}`,
+        className: `comm-fx-icon ${hostClass}` + (hideRemainLabel ? " is-dense" : ""),
         "data-condition": effect.id,
         "data-entity": entityId,
         [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
@@ -55804,7 +56580,7 @@ ${parts.map(cssSlice).join("\n")}
           flexDirection: "column",
           alignItems: "center",
           verticalAlign: "top",
-          overflow: "visible",
+          overflow: hideRemainLabel ? "hidden" : "visible",
           flex: "0 0 auto",
           cursor: clickable ? "pointer" : "help",
           pointerEvents: "auto"
@@ -55818,8 +56594,9 @@ ${parts.map(cssSlice).join("\n")}
           verticalAlign: "top"
         }
       }),
-      // Always reserve label height so show/hide does not reflow the row.
-      e(
+      // Always reserve label height so show/hide does not reflow the row
+      // (skipped for dense in-bar icons — cooltip still shows remaining).
+      hideRemainLabel ? null : e(
         "div",
         {
           ref: labelRef,
@@ -55872,11 +56649,12 @@ ${parts.map(cssSlice).join("\n")}
     const entityId = String(props.entity.id);
     const iconSize = typeof props.iconSize === "number" && props.iconSize > 0 ? props.iconSize : ICON_SIZE;
     const compact = !!props.compact;
-    const gap = compact ? "3px" : "6px";
-    const marginTop = compact ? "3px" : "6px";
-    const padBottom = compact ? "2px" : "4px";
-    const minHeight = iconSize + (compact ? 8 : 14) + 16;
-    const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : compact ? 4 : 0;
+    const inline = !!props.inline;
+    const gap = compact || inline ? "3px" : "6px";
+    const marginTop = inline ? "0" : compact ? "3px" : "6px";
+    const padBottom = inline ? "0" : compact ? "2px" : "4px";
+    const minHeight = inline ? iconSize : iconSize + (compact ? 8 : 14) + 16;
+    const maxVisible = typeof props.maxVisible === "number" ? props.maxVisible : compact || inline ? 4 : 0;
     const overflow = maxVisible > 0 && effects.length > maxVisible ? effects.length - maxVisible : 0;
     const shown = overflow > 0 ? effects.slice(0, maxVisible) : effects;
     const hidden = overflow > 0 ? effects.slice(maxVisible) : [];
@@ -55890,21 +56668,23 @@ ${parts.map(cssSlice).join("\n")}
       {
         // Do NOT key by effects list — that remounts every icon when one buff
         // is added/removed. EffectIcon keys already identity each buff.
-        className: "comm-fx-row" + (compact ? " is-compact" : ""),
+        className: "comm-fx-row" + (compact ? " is-compact" : "") + (inline ? " is-inline" : ""),
         "data-ecu-tour": "buff-icons",
         style: {
           display: "flex",
           flexDirection: "row",
           marginTop,
           gap,
-          flexWrap: compact && maxVisible > 0 ? "nowrap" : "wrap",
-          alignItems: "flex-start",
-          width: "100%",
+          flexWrap: inline || compact && maxVisible > 0 ? "nowrap" : "wrap",
+          alignItems: "center",
+          width: inline ? "auto" : "100%",
+          flex: inline ? "0 0 auto" : void 0,
+          minWidth: 0,
           minHeight,
           paddingBottom: padBottom,
           boxSizing: "border-box",
           pointerEvents: "none",
-          overflow: compact && maxVisible > 0 ? "hidden" : "visible"
+          overflow: inline || compact && maxVisible > 0 ? "hidden" : "visible"
         }
       },
       ...shown.map((ef) => {
@@ -55917,7 +56697,9 @@ ${parts.map(cssSlice).join("\n")}
           effect: ef,
           hostClass,
           entity: props.entity,
-          iconSize
+          iconSize,
+          hideRemainLabel: inline,
+          bareIcon: inline
         });
       }),
       overflow > 0 ? e(
@@ -59976,7 +60758,7 @@ ${parts.map(cssSlice).join("\n")}
   function shadeFor(slotName) {
     return SLOT_SHADE[slotName] || { shade: "placeholder", s_op: 0.4 };
   }
-  function wrapContainerHtml(html, title) {
+  function wrapContainerHtml(html) {
     return e("div", {
       style: {
         display: "inline-block",
@@ -59993,8 +60775,8 @@ ${parts.map(cssSlice).join("\n")}
         root.removeAttribute("onmousedown");
         root.removeAttribute("ontouchstart");
         root.removeAttribute("onclick");
-        const tip = title || root.getAttribute("title") || "";
-        if (tip) stampNativeItemTitle(node, tip);
+        root.removeAttribute("title");
+        node.removeAttribute("title");
       }
     });
   }
@@ -60017,56 +60799,26 @@ ${parts.map(cssSlice).join("\n")}
   function GearSlotCell(props) {
     const React = getReact();
     const [bagDropHover, setBagDropHover] = React.useState(false);
+    const cellRef = React.useRef(null);
     const { entity, slotName, slot, diff, gearEditable, allSlots } = props;
     const skin = slot && slot.skin || (slot && slot.name ? itemSkin(slot.name) : void 0);
     const { shade, s_op } = shadeFor(slotName);
     let content = null;
     const clickable = !!(slot && slot.name);
-    const itemTitle = clickable && (slot == null ? void 0 : slot.name) ? itemInstanceLabel(slot.name, { p: slot.p, level: slot.level }) : void 0;
-    if (slot && skin) {
-      let html = "";
-      try {
-        html = itemInstanceHtml(slot.name, {
-          skin,
-          size: GEAR_SLOT_SIZE,
-          level: slot.level,
-          q: slot.q,
-          p: slot.p
-        }) || "";
-      } catch (e2) {
-        html = "";
-      }
-      if (html) {
-        content = wrapContainerHtml(html, itemTitle);
-      } else if (slot.name) {
-        content = wrapContainerHtml(
-          itemIconHtml(slot.name, {
-            skin,
-            size: GEAR_SLOT_SIZE,
-            level: slot.level,
-            p: slot.p
-          }),
-          itemTitle
-        );
-      } else {
-        content = e(
-          "div",
-          {
-            style: {
-              width: `${GEAR_SLOT_SIZE}px`,
-              height: `${GEAR_SLOT_SIZE}px`,
-              background: "#333",
-              border: "1px solid #666",
-              fontSize: TYPE.microMin,
-              padding: "2px",
-              ...PIXEL_TEXT
-            },
-            title: slot.name
-          },
-          slot.name,
-          slot.level != null ? ` +${slot.level}` : ""
-        );
-      }
+    React.useLayoutEffect(() => {
+      if (!clickable) return;
+      stripNativeTitles(cellRef.current);
+    }, [clickable, slot && slot.name, slot && slot.level, slot && slot.p]);
+    if (slot && slot.name) {
+      content = e(ItemInstance, {
+        name: String(slot.name),
+        skin,
+        size: GEAR_SLOT_SIZE,
+        level: typeof slot.level === "number" ? slot.level : void 0,
+        q: typeof slot.q === "number" ? slot.q : void 0,
+        p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : void 0,
+        actual: slot
+      });
     } else {
       let html = "";
       try {
@@ -60107,13 +60859,11 @@ ${parts.map(cssSlice).join("\n")}
       "div",
       {
         key: slotName,
+        ref: cellRef,
         className: "comm-gear-slot" + (clickable ? " is-clickable" : "") + (bagDropHover ? " is-bag-drop-target" : ""),
         "data-slot": slotName,
         [INFO_SOURCE_ATTR]: clickable ? "" : void 0,
-        title: clickable ? itemInstanceLabel(slot.name, {
-          p: slot.p,
-          level: slot.level
-        }) : slotName,
+        title: clickable ? void 0 : slotName,
         onPointerDown: onSlotPress,
         onMouseDown: clickable ? (ev) => {
           if (ev && typeof ev.stopPropagation === "function")
@@ -61097,6 +61847,150 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/ui/chrome/hpThresholdCooltip.ts
+  function hpThresholdCooltipKey(markKey) {
+    return `hp-phase:${markKey}`;
+  }
+  function liveSkillExplanation(abilityId) {
+    var _a, _b, _c, _d;
+    const skill = (_b = (_a = getG()) == null ? void 0 : _a.skills) == null ? void 0 : _b[abilityId];
+    if (skill && typeof skill.explanation === "string" && skill.explanation) {
+      return skill.explanation;
+    }
+    const cond = (_d = (_c = getG()) == null ? void 0 : _c.conditions) == null ? void 0 : _d[abilityId];
+    if (cond && typeof cond.explanation === "string" && cond.explanation) {
+      return cond.explanation;
+    }
+    return "";
+  }
+  function liveMonsterExplanation(mtype) {
+    var _a, _b;
+    const def = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
+    if (def && typeof def.explanation === "string" && def.explanation) {
+      return def.explanation;
+    }
+    return "";
+  }
+  function hpThresholdCooltipHtml(mark) {
+    const pct = Math.round(mark.ratio * 100);
+    const lines = [];
+    if (mark.abilityId) {
+      const icon2 = skillIconHtml(mark.abilityId, COOLTIP_ICON);
+      lines.push(
+        `<h4>${icon2} ${escapeCooltipHtml(mark.title)}</h4>`
+      );
+      lines.push(
+        `<div class="line"><span>Phase</span><b>${pct}% HP</b></div>`
+      );
+      if (mark.fired) {
+        lines.push(
+          `<div class="line"><span>Status</span><b>Passed</b></div>`
+        );
+      }
+      const detail2 = mark.detail || liveSkillExplanation(mark.abilityId);
+      if (detail2) {
+        lines.push(
+          `<div class="ecu-cooltip-foot">${escapeCooltipHtml(detail2)}</div>`
+        );
+      }
+      return lines.join("");
+    }
+    const child = mark.mtype || "";
+    const icon = child ? monsterIconHtml(child, COOLTIP_MONSTER_ICON, mark.childName || child) : "";
+    lines.push(
+      `<h4>${icon}${icon ? " " : ""}${escapeCooltipHtml(mark.title)}</h4>`
+    );
+    lines.push(
+      `<div class="line"><span>Phase</span><b>${pct}% HP</b></div>`
+    );
+    if (mark.count != null && mark.count > 0 && child) {
+      lines.push(
+        `<div class="line"><span>Spawns</span><b>${mark.count}\xD7 ${escapeCooltipHtml(mark.childName || child)}</b></div>`
+      );
+    }
+    if (mark.fired) {
+      lines.push(
+        `<div class="line"><span>Status</span><b>Passed</b></div>`
+      );
+    }
+    const detail = mark.detail || (child ? liveMonsterExplanation(child) : "") || "";
+    if (detail) {
+      lines.push(
+        `<div class="ecu-cooltip-foot">${escapeCooltipHtml(detail)}</div>`
+      );
+    }
+    return lines.join("");
+  }
+  function hpThresholdCooltipHandlers(mark) {
+    const key = hpThresholdCooltipKey(mark.key);
+    return cooltipHandlers(key, () => hpThresholdCooltipHtml(mark));
+  }
+  function dismissHpThresholdCooltip(markKey) {
+    dismissCooltip(
+      markKey != null ? hpThresholdCooltipKey(markKey) : void 0
+    );
+  }
+
+  // src/ui/chrome/HpThresholdMarkChip.ts
+  var HIT_W = 12;
+  function HpThresholdMarkChip(props) {
+    const React = getReact();
+    const { mark } = props;
+    const tipKey = hpThresholdCooltipKey(mark.key);
+    const tipHandlers = hpThresholdCooltipHandlers(mark);
+    React.useEffect(() => {
+      return () => {
+        dismissHpThresholdCooltip(mark.key);
+      };
+    }, [tipKey, mark.key]);
+    const stopAnd = (fn) => (ev) => {
+      if (typeof ev.stopPropagation === "function") ev.stopPropagation();
+      fn(ev);
+    };
+    const lineW = mark.abilityId ? 3 : 2;
+    return e(
+      "span",
+      {
+        className: "comm-hp-threshold" + (mark.fired ? " comm-hp-threshold--fired" : "") + (mark.abilityId ? " is-ability" : ""),
+        "data-ecu-hp-phase": mark.key,
+        onMouseEnter: stopAnd(tipHandlers.onMouseEnter),
+        onMouseMove: stopAnd(tipHandlers.onMouseMove),
+        onMouseLeave: () => {
+          tipHandlers.onMouseLeave();
+        },
+        style: {
+          position: "absolute",
+          top: "-4px",
+          bottom: "-4px",
+          left: `${mark.leftPct}%`,
+          width: `${HIT_W}px`,
+          marginLeft: `${-HIT_W / 2}px`,
+          boxSizing: "border-box",
+          // Transparent hit pad; the visible tick is the ::after-like child.
+          background: "transparent",
+          pointerEvents: "auto",
+          cursor: "help",
+          zIndex: 6
+        }
+      },
+      e("span", {
+        className: "comm-hp-threshold__tick",
+        style: {
+          position: "absolute",
+          top: "2px",
+          bottom: "2px",
+          left: "50%",
+          width: `${lineW}px`,
+          marginLeft: `${-lineW / 2}px`,
+          background: mark.fired ? "#666" : mark.abilityId ? "#8cf" : "#c88",
+          opacity: mark.fired ? 0.5 : 0.95,
+          boxShadow: mark.abilityId ? "0 0 0 1px rgba(0,0,0,0.55)" : void 0,
+          pointerEvents: "none"
+        }
+      })
+    );
+  }
+
   // src/ui/chrome/VitalsColumn.ts
   function hpBarHeightPx(nameStyle) {
     const fs = nameStyle && nameStyle.fontSize;
@@ -61120,12 +62014,29 @@ ${ESTIMATE_HINT}`,
       children,
       onClick,
       nameStyle,
+      entityId,
       hpThresholdMarks
     } = props;
-    const hpPct2 = maxHp > 0 ? hp / maxHp : 0;
+    const max = maxHp > 0 ? maxHp : 1;
+    const cur = Math.max(0, hp || 0);
+    const hpPct2 = cur / max;
     const mpPct2 = maxMp && maxMp > 0 ? (mp || 0) / maxMp : 0;
     const barH = hpBarHeightPx(nameStyle);
     const marks = hpThresholdMarks || [];
+    const ghosts = getHpBarGhosts(entityId);
+    const MIN_GHOST_PCT = 0.02;
+    const pendingOnFill = Math.min(cur, Math.max(0, ghosts.pendingDamage));
+    let pendingDmgW = pendingOnFill > 0 ? pendingOnFill / max : 0;
+    if (pendingOnFill > 0) {
+      pendingDmgW = Math.max(pendingDmgW, Math.min(MIN_GHOST_PCT, hpPct2));
+    }
+    const pendingStartPct = hpPct2 - pendingDmgW;
+    const missing = Math.max(0, max - cur);
+    const healAmt = Math.min(missing, Math.max(0, ghosts.pendingHeal));
+    let healGhostW = healAmt > 0 ? healAmt / max : 0;
+    if (healAmt > 0) {
+      healGhostW = Math.max(healGhostW, Math.min(MIN_GHOST_PCT, 1 - hpPct2));
+    }
     return e(
       "div",
       {
@@ -61162,25 +62073,36 @@ ${ESTIMATE_HINT}`,
             background: hpColor
           }
         }),
-        ...marks.map(
-          (m) => e("span", {
-            key: m.key,
-            className: "comm-hp-threshold" + (m.fired ? " comm-hp-threshold--fired" : ""),
-            title: `${Math.round(m.ratio * 100)}% HP \xB7 ${m.count}\xD7 ${m.mtype}`,
-            style: {
-              position: "absolute",
-              top: "-2px",
-              bottom: "-2px",
-              left: `${m.leftPct}%`,
-              width: "2px",
-              marginLeft: "-1px",
-              background: m.fired ? "#666" : "#c88",
-              opacity: m.fired ? 0.5 : 0.9,
-              pointerEvents: "none",
-              zIndex: 2
-            }
-          })
-        ),
+        pendingDmgW > 5e-4 ? e("div", {
+          className: "comm-hp-ghost is-pending-damage",
+          style: {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: getPercent(pendingStartPct, 1),
+            width: getPercent(pendingDmgW, 1),
+            // Incoming — amber on the trailing edge of remaining HP.
+            background: "rgba(255, 200, 50, 0.85)",
+            boxShadow: "inset 1px 0 0 rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+            zIndex: 0
+          }
+        }) : null,
+        healGhostW > 5e-4 ? e("div", {
+          className: "comm-hp-ghost is-heal",
+          style: {
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: getPercent(hpPct2, 1),
+            width: getPercent(healGhostW, 1),
+            // Into missing HP (black track).
+            background: "rgba(70, 220, 120, 0.75)",
+            boxShadow: "inset 1px 0 0 rgba(0,0,0,0.25)",
+            pointerEvents: "none",
+            zIndex: 0
+          }
+        }) : null,
         e(
           "div",
           {
@@ -61207,6 +62129,9 @@ ${ESTIMATE_HINT}`,
             onClick
           },
           children
+        ),
+        ...marks.map(
+          (m) => e(HpThresholdMarkChip, { key: m.key, mark: m })
         )
       ),
       showMp ? e(
@@ -61238,12 +62163,14 @@ ${ESTIMATE_HINT}`,
       hpColor,
       fontSize,
       trailing,
+      midLabel,
       onSelect,
       showEffects = true,
       effectsCompact,
       effectsMaxVisible,
       effectsIconSize,
       effectsOverlay = false,
+      effectsBeside = false,
       showMp = true,
       aggroLabel,
       aggroHot = false,
@@ -61252,6 +62179,7 @@ ${ESTIMATE_HINT}`,
       footer,
       hideInspect = false
     } = props;
+    const inBarMeta = effectsBeside && !effectsOverlay;
     const controlStates = getControlStates(entity, aggroMobs);
     const controlTint = controlBorderTint(controlStates);
     const aggroCount = aggroMobs.length;
@@ -61285,34 +62213,63 @@ ${ESTIMATE_HINT}`,
         style: {
           flex: "0 1 auto",
           minWidth: 0,
-          maxWidth: "42%",
+          maxWidth: inBarMeta ? "8em" : "42%",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          padding: "1px 6px",
+          padding: inBarMeta ? "0" : "1px 6px",
           boxSizing: "border-box",
-          background: aggroHot ? "rgba(138,30,30,0.85)" : "rgba(0,0,0,0.45)",
-          border: aggroHot ? "1px solid #e05555" : "1px solid #555",
+          background: inBarMeta ? "transparent" : aggroHot ? "rgba(138,30,30,0.85)" : "rgba(0,0,0,0.45)",
+          border: inBarMeta ? "none" : aggroHot ? "1px solid #e05555" : "1px solid #555",
           color: aggroHot ? "#ffd0d0" : "#bbb",
-          fontSize: TYPE.secondary,
+          fontSize: inBarMeta ? TYPE.body : TYPE.secondary,
           lineHeight: "1.2",
+          textShadow: inBarMeta ? "1px 1px 0 #000" : void 0,
           ...PIXEL_TEXT
         }
       },
       aggroLabel
     ) : null;
+    const midEl = midLabel != null && midLabel !== "" ? e(
+      "span",
+      {
+        className: "comm-boss-mid",
+        style: {
+          flex: "0 1 auto",
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          fontSize: TYPE.body,
+          opacity: 0.9,
+          ...PIXEL_TEXT
+        }
+      },
+      midLabel
+    ) : null;
     const trailingEl = trailing != null ? e(
       "span",
       {
+        className: "comm-boss-pct",
         style: {
           fontSize: TYPE.nameLg,
           opacity: 0.95,
           flexShrink: 0,
+          marginLeft: "auto",
           ...PIXEL_TEXT
         }
       },
       trailing
     ) : null;
+    const effectsRow = showEffects ? e(EffectsRow, {
+      key: `fx-${String(entity.id)}`,
+      entity,
+      compact: !!effectsCompact || inBarMeta,
+      inline: inBarMeta,
+      maxVisible: effectsMaxVisible,
+      iconSize: effectsIconSize
+    }) : null;
+    const hasRightMeta = !!(aggroChip || trailingEl || inBarMeta && effectsRow);
     const label = e(
       "span",
       {
@@ -61320,24 +62277,23 @@ ${ESTIMATE_HINT}`,
           display: "flex",
           width: "100%",
           alignItems: "center",
-          gap: "8px",
+          // Keep `{}` tight to the level/name — gap + button margin used to read as a hole.
+          gap: inBarMeta ? "6px" : "4px",
           minWidth: 0
         }
       },
-      hideInspect ? null : e(InspectButton, { entity }),
+      hideInspect ? null : e(InspectButton, { entity, compact: inBarMeta }),
       nameCluster,
-      trailingEl || aggroChip ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } }) : null,
+      // TTK (or other mid label) sits just right of the name/id.
+      inBarMeta ? midEl : null,
+      hasRightMeta || midEl ? e("span", { style: { flex: "1 1 auto", minWidth: 4 } }) : null,
+      // Right edge: buffs → aggro → HP% (flush right via trailing marginLeft auto).
+      inBarMeta ? effectsRow : null,
       aggroChip,
+      !inBarMeta ? midEl : null,
       trailingEl
     );
-    const effectsRow = showEffects ? e(EffectsRow, {
-      key: `fx-${String(entity.id)}`,
-      entity,
-      compact: !!effectsCompact,
-      maxVisible: effectsMaxVisible,
-      iconSize: effectsIconSize
-    }) : null;
-    const effectsSlot = effectsRow == null ? null : effectsOverlay ? e(
+    const effectsSlot = effectsRow == null || inBarMeta ? null : effectsOverlay ? e(
       "div",
       {
         className: "comm-fx-overlay",
@@ -61354,10 +62310,55 @@ ${ESTIMATE_HINT}`,
       },
       effectsRow
     ) : effectsRow;
+    const vitals = e(
+      "div",
+      {
+        className: "comm-unit-vitals",
+        onMouseEnter: tipHandlers.onMouseEnter,
+        onMouseMove: (ev) => {
+          const t = ev.target;
+          if (t && typeof t.closest === "function" && t.closest(".comm-hp-threshold")) {
+            return;
+          }
+          if (!isCooltipHovering(tipKey)) {
+            tipHandlers.onMouseEnter(ev);
+            return;
+          }
+          tipHandlers.onMouseMove(ev);
+        },
+        onMouseLeave: tipHandlers.onMouseLeave,
+        style: {
+          width: "100%",
+          minWidth: 0,
+          pointerEvents: "auto"
+        }
+      },
+      e(
+        VitalsColumn,
+        {
+          entityId: entity.id,
+          hp: entity.hp || 0,
+          maxHp: entity.max_hp || 1,
+          mp: entity.mp,
+          maxMp: entity.max_mp,
+          hpColor,
+          showMp,
+          hpThresholdMarks,
+          nameStyle: {
+            fontSize: fontSize != null ? fontSize : "21px",
+            fontWeight: "normal",
+            // Boss in-bar meta sits flush to the track edge — drop stock 10px pad.
+            ...inBarMeta ? { padding: "0 4px 0 8px" } : null
+          },
+          onClick: onSelect ? () => onSelect(entity.id) : void 0
+        },
+        label
+      )
+    );
     return e(
       "div",
       {
-        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : "") + (controlStates.length ? " has-control" : "") + (aggroCount > 0 ? " has-aggro" : ""),
+        className: "comm-unit" + (effectsOverlay ? " has-fx-overlay" : "") + (inBarMeta ? " has-fx-inbar" : "") + (controlStates.length ? " has-control" : "") + (aggroCount > 0 ? " has-aggro" : ""),
         "data-ecu-entity": entity.id != null ? String(entity.id) : "",
         "data-ecu-aggro": String(aggroCount),
         style: {
@@ -61380,38 +62381,7 @@ ${ESTIMATE_HINT}`,
         ownerId: String(entity.id),
         ownerName: String(entity.name || entity.id)
       }),
-      e(
-        "div",
-        {
-          className: "comm-unit-vitals",
-          onMouseEnter: tipHandlers.onMouseEnter,
-          onMouseMove: tipHandlers.onMouseMove,
-          onMouseLeave: tipHandlers.onMouseLeave,
-          style: {
-            width: "100%",
-            minWidth: 0,
-            pointerEvents: "auto"
-          }
-        },
-        e(
-          VitalsColumn,
-          {
-            hp: entity.hp || 0,
-            maxHp: entity.max_hp || 1,
-            mp: entity.mp,
-            maxMp: entity.max_mp,
-            hpColor,
-            showMp,
-            hpThresholdMarks,
-            nameStyle: {
-              fontSize: fontSize != null ? fontSize : "21px",
-              fontWeight: "normal"
-            },
-            onClick: onSelect ? () => onSelect(entity.id) : void 0
-          },
-          label
-        )
-      ),
+      vitals,
       effectsSlot,
       footer || null
     );
@@ -61419,13 +62389,73 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/chrome/FrameDummy.ts
   var DUMMY_FX_COLORS = ["#4a7a4a", "#7a4a4a", "#4a5a7a", "#7a6a3a"];
-  function FrameDummy(props) {
-    const name = props.sampleName || props.label;
-    const hpColor = props.hpColor || "#555";
+  function fxStrip(opts) {
+    const size = opts.inBar ? 26 : 22;
+    const count = opts.inBar ? 3 : 4;
     return e(
       "div",
       {
-        className: "comm-unit comm-unit-dummy",
+        className: "comm-fx-row is-compact" + (opts.inBar ? " is-inline" : ""),
+        style: {
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "nowrap",
+          alignItems: "center",
+          gap: "3px",
+          marginTop: opts.inBar ? "0" : "3px",
+          width: opts.inBar ? "auto" : "100%",
+          flex: "0 0 auto",
+          minHeight: opts.inBar ? "26px" : "30px",
+          paddingBottom: opts.inBar ? "0" : "2px",
+          boxSizing: "border-box",
+          overflow: "hidden"
+        }
+      },
+      ...DUMMY_FX_COLORS.slice(0, count).map(
+        (bg, i) => e("div", {
+          key: `dummy-fx-${i}`,
+          style: {
+            flex: "0 0 auto",
+            width: `${size}px`,
+            height: `${size}px`,
+            background: bg,
+            border: opts.inBar ? "none" : "1px solid #555",
+            boxSizing: "border-box"
+          }
+        })
+      ),
+      e(
+        "div",
+        {
+          className: "comm-fx-overflow",
+          style: {
+            flex: "0 0 auto",
+            minWidth: opts.inBar ? "14px" : "18px",
+            height: `${size}px`,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(20,20,20,0.9)",
+            border: opts.inBar ? "none" : "1px solid #555",
+            color: "#ccc",
+            fontSize: TYPE.badge,
+            lineHeight: 1,
+            ...PIXEL_TEXT,
+            boxSizing: "border-box"
+          }
+        },
+        "+2"
+      )
+    );
+  }
+  function FrameDummy(props) {
+    const name = props.sampleName || props.label;
+    const hpColor = props.hpColor || "#555";
+    const inBarMeta = !!props.showEffectsPlaceholder && props.showMp === false;
+    return e(
+      "div",
+      {
+        className: "comm-unit comm-unit-dummy" + (inBarMeta ? " has-fx-inbar" : ""),
         style: {
           display: "flex",
           width: "100%",
@@ -61470,7 +62500,7 @@ ${ESTIMATE_HINT}`,
             "div",
             {
               style: {
-                padding: "5px 10px",
+                padding: inBarMeta ? "5px 4px 5px 8px" : "5px 10px",
                 whiteSpace: "nowrap",
                 textOverflow: "ellipsis",
                 overflow: "hidden",
@@ -61488,10 +62518,10 @@ ${ESTIMATE_HINT}`,
               {
                 style: {
                   display: "flex",
-                  justifyContent: "space-between",
-                  gap: "10px",
+                  gap: inBarMeta ? "6px" : "10px",
                   width: "100%",
-                  alignItems: "center"
+                  alignItems: "center",
+                  minWidth: 0
                 }
               },
               e(
@@ -61502,46 +62532,46 @@ ${ESTIMATE_HINT}`,
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     minWidth: 0,
-                    flex: "1 1 auto"
+                    flex: "0 1 auto"
                   }
                 },
                 `1 ${name}`
               ),
-              props.showAggroInBar ? e(
+              e("span", { style: { flex: "1 1 auto", minWidth: 4 } }),
+              inBarMeta && props.showEffectsPlaceholder ? fxStrip({ inBar: true }) : null,
+              inBarMeta && props.showAggroInBar ? e(
                 "span",
                 {
                   className: "comm-boss-aggro",
                   style: {
                     flex: "0 1 auto",
                     minWidth: 0,
-                    maxWidth: "42%",
+                    maxWidth: "8em",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    padding: "1px 6px",
-                    boxSizing: "border-box",
-                    background: "rgba(0,0,0,0.45)",
-                    border: "1px solid #555",
                     color: "#bbb",
                     fontSize: TYPE.secondary,
                     lineHeight: "1.2",
+                    textShadow: "1px 1px 0 #000",
                     ...PIXEL_TEXT
                   }
                 },
-                "Aggro \xB7 Tank"
+                "Tank"
               ) : null,
               e(
                 "span",
                 {
                   style: {
-                    fontSize: TYPE.body,
-                    opacity: 0.75,
+                    fontSize: inBarMeta ? TYPE.body : TYPE.body,
+                    opacity: inBarMeta ? 0.95 : 0.75,
                     flexShrink: 0,
-                    color: "#aaa",
+                    color: inBarMeta ? "#ccc" : "#aaa",
+                    textShadow: inBarMeta ? "1px 1px 0 #000" : void 0,
                     ...PIXEL_TEXT
                   }
                 },
-                props.label
+                inBarMeta ? "62.0%" : props.label
               )
             )
           )
@@ -61565,60 +62595,7 @@ ${ESTIMATE_HINT}`,
           })
         ) : null
       ),
-      props.showEffectsPlaceholder ? e(
-        "div",
-        {
-          className: "comm-fx-row is-compact",
-          style: {
-            display: "flex",
-            flexDirection: "row",
-            flexWrap: "nowrap",
-            alignItems: "flex-start",
-            gap: "3px",
-            marginTop: "3px",
-            width: "100%",
-            minHeight: "30px",
-            paddingBottom: "2px",
-            boxSizing: "border-box",
-            overflow: "hidden"
-          }
-        },
-        ...DUMMY_FX_COLORS.map(
-          (bg, i) => e("div", {
-            key: `dummy-fx-${i}`,
-            style: {
-              flex: "0 0 auto",
-              width: "22px",
-              height: "22px",
-              background: bg,
-              border: "1px solid #555",
-              boxSizing: "border-box"
-            }
-          })
-        ),
-        e(
-          "div",
-          {
-            className: "comm-fx-overflow",
-            style: {
-              flex: "0 0 auto",
-              minWidth: "18px",
-              height: "22px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "rgba(20,20,20,0.9)",
-              border: "1px solid #555",
-              color: "#ccc",
-              fontSize: TYPE.badge,
-              lineHeight: 1,
-              ...PIXEL_TEXT,
-              boxSizing: "border-box"
-            }
-          },
-          "+2"
-        )
-      ) : null
+      !inBarMeta && props.showEffectsPlaceholder ? fxStrip({ inBar: false }) : null
     );
   }
 
@@ -61779,27 +62756,98 @@ ${ESTIMATE_HINT}`,
     }
     return out;
   }
+  function monsterExplanation(mtype) {
+    var _a, _b;
+    const def = (_b = (_a = getG()) == null ? void 0 : _a.monsters) == null ? void 0 : _b[mtype];
+    if (def && typeof def.explanation === "string" && def.explanation) {
+      return def.explanation;
+    }
+    return "";
+  }
+  function listAbilityHpThresholds(mtype) {
+    var _a;
+    const G = getG();
+    const def = (_a = G == null ? void 0 : G.monsters) == null ? void 0 : _a[mtype];
+    const abilities = def && def.abilities && typeof def.abilities === "object" ? def.abilities : null;
+    if (!abilities) return [];
+    const skills = (G == null ? void 0 : G.skills) && typeof G.skills === "object" ? G.skills : null;
+    const out = [];
+    const ids = Object.keys(abilities);
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      const raw = abilities[id];
+      if (!raw || typeof raw !== "object") continue;
+      const threshold = raw.threshold;
+      const ratio = typeof threshold === "number" && Number.isFinite(threshold) ? threshold : NaN;
+      if (!(ratio > 0 && ratio <= 1)) continue;
+      const skill = skills && skills[id];
+      const title = skill && typeof skill.name === "string" && skill.name || skillDisplayName(id) || id;
+      const detail = skill && typeof skill.explanation === "string" ? skill.explanation : "";
+      out.push({ abilityId: id, ratio, title, detail });
+    }
+    return out;
+  }
   function buildHpThresholdMarks(mtype, hpRatio2) {
     if (!vizCommFlag("comm.hpThresholds")) return [];
-    const packs = listHpThresholdSpawns(mtype);
-    if (!packs.length) return [];
     const ratio = Number.isFinite(hpRatio2) ? Math.max(0, Math.min(1, hpRatio2)) : 1;
     const out = [];
+    const packs = listHpThresholdSpawns(mtype);
     for (let i = 0; i < packs.length; i++) {
       const p = packs[i];
+      const childName = monsterDisplayName(p.mtype) || p.mtype;
+      const childExpl = monsterExplanation(p.mtype);
+      const parentExpl = monsterExplanation(mtype);
+      const detailParts = [];
+      detailParts.push(
+        `At ${Math.round(p.ratio * 100)}% HP, spawns ${p.count}\xD7 ${childName}.`
+      );
+      if (childExpl) detailParts.push(childExpl);
+      else if (parentExpl) detailParts.push(parentExpl);
       out.push({
         leftPct: (1 - p.ratio) * 100,
         ratio: p.ratio,
         fired: ratio <= p.ratio,
         mtype: p.mtype,
+        childName,
         count: p.count,
+        title: `Spawn \xB7 ${childName}`,
+        detail: detailParts.join(" "),
         key: `hp:${p.ratio}:${p.mtype}`
+      });
+    }
+    const abilities = listAbilityHpThresholds(mtype);
+    for (let i = 0; i < abilities.length; i++) {
+      const a = abilities[i];
+      let dup = false;
+      for (let j = 0; j < out.length; j++) {
+        if (Math.abs(out[j].ratio - a.ratio) < 1e-4) {
+          out[j].title = a.title;
+          out[j].detail = a.detail || out[j].detail;
+          out[j].abilityId = a.abilityId;
+          dup = true;
+          break;
+        }
+      }
+      if (dup) continue;
+      out.push({
+        leftPct: (1 - a.ratio) * 100,
+        ratio: a.ratio,
+        fired: ratio <= a.ratio,
+        abilityId: a.abilityId,
+        title: a.title,
+        detail: a.detail,
+        key: `ability:${a.abilityId}:${a.ratio}`
       });
     }
     return out;
   }
 
   // src/ui/frames/BossBarPanel.ts
+  function bossTtkLabel(boss) {
+    const ttk = estimateTtk(boss.hp, getIncomingDps(boss.id));
+    if (ttk == null) return null;
+    return `TTK ${formatTime(ttk)}`;
+  }
   function bossThreat(entity, observingId) {
     if (!observingId || entity.type !== "monster") return 0;
     if (entity.target != null && String(entity.target) === observingId) return 1;
@@ -61830,7 +62878,7 @@ ${ESTIMATE_HINT}`,
   var STACK_STYLE = {
     display: "flex",
     flexDirection: "column",
-    gap: "6px",
+    gap: "4px",
     width: "100%",
     pointerEvents: "none"
   };
@@ -61861,8 +62909,7 @@ ${ESTIMATE_HINT}`,
       const onMe = bossThreat(boss, obsId) > 0;
       const aggro = aggroName(boss, props.entities);
       const ratio = hpRatio(boss);
-      const pct = getPercent(ratio, 1);
-      const aggroLabel = onMe ? "Aggro \xB7 you" : aggro ? `Aggro \xB7 ${aggro}` : "Aggro \xB7 \u2014";
+      const aggroLabel = onMe ? "you" : aggro || void 0;
       const mtype = typeof boss.mtype === "string" ? boss.mtype : "";
       const marks = mtype ? buildHpThresholdMarks(mtype, ratio) : [];
       rows.push(
@@ -61890,10 +62937,13 @@ ${ESTIMATE_HINT}`,
             fontSize: "22px",
             showMp: false,
             showEffects: true,
+            // Name · TTK · … · buffs · aggro · HP% (bare icons, no under-timers).
+            effectsBeside: true,
             effectsCompact: true,
-            effectsIconSize: 22,
-            effectsMaxVisible: 0,
-            trailing: pct,
+            effectsIconSize: 26,
+            effectsMaxVisible: 3,
+            midLabel: bossTtkLabel(boss),
+            trailing: getPercent(ratio, 1),
             aggroLabel,
             aggroHot: onMe,
             hpThresholdMarks: marks.length ? marks : void 0,
@@ -62217,6 +63267,7 @@ ${ESTIMATE_HINT}`,
     const vitals = target ? e(
       VitalsColumn,
       {
+        entityId: target.id,
         hp: target.hp || 0,
         maxHp: target.max_hp || 1,
         mp: target.mp,
@@ -67843,18 +68894,216 @@ ${ESTIMATE_HINT}`,
     };
   }
 
+  // src/ui/bag/bagItemCooltip.ts
+  function slotRoot(host2, num) {
+    const nodes = host2.querySelectorAll("[data-cnum]");
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      if (node.getAttribute("data-cnum") === String(num)) return node;
+    }
+    const byId = document.getElementById("citem" + num);
+    if (byId && host2.contains(byId)) return byId;
+    return null;
+  }
+  function installBagItemCooltip(host2) {
+    let activeSlot = null;
+    let activeKey2 = null;
+    let handlers = null;
+    const dismiss = () => {
+      if (activeKey2) dismissItemCooltip(activeKey2);
+      activeSlot = null;
+      activeKey2 = null;
+      handlers = null;
+    };
+    const showForSlot = (num, ev) => {
+      const item = observingBagItem(num);
+      if (!item || !item.name) {
+        dismiss();
+        return;
+      }
+      const root = slotRoot(host2, num);
+      if (root) stripNativeTitles(root);
+      const key = "bag:" + num + ":" + item.name;
+      if (activeSlot === num && activeKey2 === key && handlers) {
+        handlers.onMouseMove(ev);
+        return;
+      }
+      if (activeKey2 && activeKey2 !== key) dismissItemCooltip(activeKey2);
+      activeSlot = num;
+      activeKey2 = key;
+      const actual = item;
+      handlers = itemCooltipHandlers(
+        key,
+        () => itemCooltipHtml({
+          name: String(item.name),
+          level: actual.level,
+          q: actual.q,
+          p: actual.p != null ? String(actual.p) : void 0,
+          actual
+        })
+      );
+      handlers.onMouseEnter(ev);
+    };
+    const onOver = (ev) => {
+      const t = ev.target;
+      if (!t || !host2.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host2);
+      if (num == null || !Number.isFinite(num)) return;
+      showForSlot(num, ev);
+    };
+    const onMove = (ev) => {
+      if (activeSlot == null || !handlers) return;
+      const t = ev.target;
+      if (!t || !host2.contains(t)) return;
+      const num = resolveInventorySlotNum(t, host2);
+      if (num !== activeSlot) return;
+      handlers.onMouseMove(ev);
+    };
+    const onOut = (ev) => {
+      if (activeSlot == null) return;
+      const related = ev.relatedTarget;
+      const root = slotRoot(host2, activeSlot);
+      if (root && related && root.contains(related)) return;
+      if (related && host2.contains(related)) {
+        const next = resolveInventorySlotNum(related, host2);
+        if (next === activeSlot) return;
+        if (next != null) return;
+      }
+      dismiss();
+    };
+    host2.addEventListener("pointerover", onOver);
+    host2.addEventListener("pointermove", onMove);
+    host2.addEventListener("pointerout", onOut);
+    return () => {
+      dismiss();
+      host2.removeEventListener("pointerover", onOver);
+      host2.removeEventListener("pointermove", onMove);
+      host2.removeEventListener("pointerout", onOut);
+    };
+  }
+
+  // src/ui/frames/mail/mailFormat.ts
+  function formatMailDate(sent, now = Date.now()) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    const d = new Date(t);
+    const n = new Date(now);
+    try {
+      if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
+        return d.toLocaleTimeString(void 0, {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        });
+      }
+      if (d.getFullYear() === n.getFullYear()) {
+        return d.toLocaleDateString(void 0, {
+          day: "2-digit",
+          month: "2-digit"
+        });
+      }
+      return d.toLocaleDateString(void 0, {
+        day: "2-digit",
+        month: "2-digit",
+        year: "2-digit"
+      });
+    } catch (e2) {
+      return String(sent);
+    }
+  }
+  function formatMailDateTime(sent) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    try {
+      return new Date(t).toLocaleString();
+    } catch (e2) {
+      return String(sent);
+    }
+  }
+  function formatMailRelative(sent, now = Date.now()) {
+    const t = Date.parse(sent);
+    if (!Number.isFinite(t)) return String(sent || "");
+    return formatRelativeAge(t, now);
+  }
+  function selfCharacterNames() {
+    const out = [];
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const n = chars[i] && chars[i].name;
+      if (n) out.push(String(n));
+    }
+    return out;
+  }
+  function visiblePlayerNames() {
+    const out = [];
+    const raw = window.entities;
+    if (!raw) return out;
+    const list = Array.isArray(raw) ? raw : Object.values(raw);
+    for (let i = 0; i < list.length; i++) {
+      const ent = list[i];
+      if (!ent || !ent.name) continue;
+      if (ent.npc) continue;
+      if (ent.player || ent.type === "character") out.push(String(ent.name));
+    }
+    return out;
+  }
+
   // src/ui/frames/mail/mailBagMenuActions.ts
+  function liveBagItems() {
+    const obs = window.observing;
+    return obs && Array.isArray(obs.items) ? obs.items : null;
+  }
+  function matchingFingerprints(ctx) {
+    return listBagFingerprintsMatchingIdentity(liveBagItems(), ctx.fp);
+  }
   function buildMailBagMenuActions(ctx) {
-    return [
+    const matching = matchingFingerprints(ctx);
+    const label = itemInstanceLabel(ctx.fp.name, {
+      p: ctx.fp.p,
+      level: ctx.fp.level
+    });
+    const selfNames = selfCharacterNames();
+    const actions = [
       {
         id: "send-mail",
-        label: "Send mail / queue attach",
-        title: "Opens compose and queues this item. Right-click more items to batch (one mail each).",
+        label: "Mail this",
+        title: "Open compose and queue this bag slot (one mail).",
         run: () => {
           openMail({ compose: true, attach: ctx.fp });
         }
       }
     ];
+    if (matching.length > 1) {
+      actions.push({
+        id: "send-mail-all-matching",
+        label: "Mail all matching (" + matching.length + ")",
+        title: "Queue every bag slot that matches " + label + " \u2014 same item key, title, and level (qty ignored).",
+        run: () => {
+          openMail({ compose: true });
+          const fps = matchingFingerprints(ctx);
+          queueMailAttaches(fps.length ? fps : matching);
+        }
+      });
+    }
+    if (selfNames.length) {
+      actions.push({
+        id: "send-mail-matching-free-own",
+        label: matching.length > 1 ? "Mail matching \u2192 free own" : "Mail this \u2192 free own",
+        title: "Queue matching slots, add own characters with attach room, and distribute To. Leftovers stay unassigned if there are more items than free alts.",
+        run: () => {
+          openMail({ compose: true });
+          const fps = matching.length > 1 ? matchingFingerprints(ctx) : matching.length ? matching : [ctx.fp];
+          const snap = getMailSnapshot();
+          mailMatchingToFreeOwn({
+            fingerprints: fps.length ? fps : [ctx.fp],
+            mails: snap.mails,
+            selfNames,
+            incomplete: snap.hasMore
+          });
+        }
+      });
+    }
+    return actions;
   }
   registerBagMenuProvider(buildMailBagMenuActions);
 
@@ -68532,6 +69781,49 @@ ${ESTIMATE_HINT}`,
   function compoundStation(G) {
     return mainShrineCoords("compound", G);
   }
+  function findVendorCoordsForItem(itemName, G) {
+    const g = G || getG();
+    const name = String(itemName || "").trim();
+    if (!g || !name) return null;
+    if (g.maps) {
+      const mapNames = Object.keys(g.maps);
+      for (let i = 0; i < mapNames.length; i++) {
+        const mapName = mapNames[i];
+        const map = g.maps[mapName];
+        const locs = map && map.items && map.items[name];
+        if (!locs || !locs.length) continue;
+        const c = locs[0];
+        const x = Number(c.x);
+        const y = Number(c.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        return {
+          map: String(c.map || mapName),
+          x,
+          y,
+          id: String(c.id || name)
+        };
+      }
+    }
+    if (g.npcs) {
+      const npcIds = Object.keys(g.npcs);
+      for (let i = 0; i < npcIds.length; i++) {
+        const id = npcIds[i];
+        const npc = g.npcs[id];
+        if (!npc || !Array.isArray(npc.items)) continue;
+        let hit = false;
+        for (let j = 0; j < npc.items.length; j++) {
+          if (npc.items[j] === name) {
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) continue;
+        const coords = findNpcCoords(id, g);
+        if (coords) return coords;
+      }
+    }
+    return findNpcCoords("scrolls", g);
+  }
   function distToStation(ent, station) {
     var _a, _b, _c, _d;
     if (typeof window !== "undefined" && typeof window.simple_distance === "function") {
@@ -69181,23 +70473,60 @@ ${ESTIMATE_HINT}`,
       `}`
     ].join("");
   }
-  function buildUpgradeScript(item, scroll, offering, station) {
+  function buildBuyNamedJs(itemName, quantity, vendor) {
+    const q = Math.max(1, quantity | 0);
+    return [
+      buildEnsureStationJs(vendor),
+      `try{await buy(${lit7(itemName)},${q});game_log(${lit7(commLogText("buy ok \xB7 " + itemName + (q > 1 ? " \xD7" + q : "")))});}`,
+      `catch(__e){game_log(${lit7(commLogText("buy failed \xB7 " + itemName))}+(__e&&__e.reason?(" \xB7 "+__e.reason):""));return;}`
+    ].join("");
+  }
+  function resolveInvSlotByNameJs(itemName, slotVar) {
+    return [
+      `var ${slotVar}=-1;`,
+      `for(var __bi=0;__bi<character.items.length;__bi++){`,
+      `var __bit=character.items[__bi];`,
+      `if(__bit&&__bit.name===${lit7(itemName)}){${slotVar}=__bi;break;}`,
+      `}`,
+      `if(${slotVar}<0){game_log(${lit7(commLogText("station \xB7 missing after buy \xB7 " + itemName))});return;}`
+    ].join("");
+  }
+  function vendorForBuy(name) {
+    if (!name) return null;
+    return findVendorCoordsForItem(name, getG());
+  }
+  function buildUpgradeScript(item, scroll, offering, station, buyOpts) {
     if (!scroll && !offering) {
       return wrapCommandScript(
         `game_log(${lit7(commLogText("upgrade aborted \u2014 need scroll or offering"))});`
       );
     }
-    const parts = [
-      buildEnsureStationJs(station),
-      resolveInvSlotNamedJs(item, "__uItem")
-    ];
+    const buyScroll = buyOpts && buyOpts.buyScroll ? String(buyOpts.buyScroll) : "";
+    const buyOffering = buyOpts && buyOpts.buyOffering ? String(buyOpts.buyOffering) : "";
+    const parts = [];
+    if (buyScroll) {
+      parts.push(buildBuyNamedJs(buyScroll, 1, vendorForBuy(buyScroll)));
+    }
+    if (buyOffering) {
+      parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
+    }
+    parts.push(buildEnsureStationJs(station));
+    parts.push(resolveInvSlotNamedJs(item, "__uItem"));
     if (scroll) {
-      parts.push(resolveInvSlotNamedJs(scroll, "__uScroll"));
+      if (buyScroll) {
+        parts.push(resolveInvSlotByNameJs(scroll.name, "__uScroll"));
+      } else {
+        parts.push(resolveInvSlotNamedJs(scroll, "__uScroll"));
+      }
     } else {
       parts.push(`var __uScroll=null;`);
     }
     if (offering) {
-      parts.push(resolveInvSlotNamedJs(offering, "__uOffering"));
+      if (buyOffering) {
+        parts.push(resolveInvSlotByNameJs(offering.name, "__uOffering"));
+      } else {
+        parts.push(resolveInvSlotNamedJs(offering, "__uOffering"));
+      }
     } else {
       parts.push(`var __uOffering=null;`);
     }
@@ -69213,25 +70542,40 @@ ${ESTIMATE_HINT}`,
     );
     return wrapCommandScript(parts.join(""));
   }
-  function upgradeCommand(item, scroll, offering, station) {
+  function upgradeCommand(item, scroll, offering, station, buyOpts) {
     const ok = emitObserverCommand(
-      buildUpgradeScript(item, scroll, offering, station),
+      buildUpgradeScript(item, scroll, offering, station, buyOpts),
       `upgrade ${item.name}`
     );
     if (!ok) return false;
     scheduleBagRefresh4();
     return true;
   }
-  function buildCompoundScript(items, scroll, offering, station) {
-    const parts = [
-      buildEnsureStationJs(station),
-      resolveInvSlotNamedJs(items[0], "__c0"),
-      resolveInvSlotNamedJs(items[1], "__c1"),
-      resolveInvSlotNamedJs(items[2], "__c2"),
-      resolveInvSlotNamedJs(scroll, "__cScroll")
-    ];
+  function buildCompoundScript(items, scroll, offering, station, buyOpts) {
+    const buyScroll = buyOpts && buyOpts.buyScroll ? String(buyOpts.buyScroll) : "";
+    const buyOffering = buyOpts && buyOpts.buyOffering ? String(buyOpts.buyOffering) : "";
+    const parts = [];
+    if (buyScroll) {
+      parts.push(buildBuyNamedJs(buyScroll, 1, vendorForBuy(buyScroll)));
+    }
+    if (buyOffering) {
+      parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
+    }
+    parts.push(buildEnsureStationJs(station));
+    parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
+    parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
+    parts.push(resolveInvSlotNamedJs(items[2], "__c2"));
+    if (buyScroll) {
+      parts.push(resolveInvSlotByNameJs(scroll.name, "__cScroll"));
+    } else {
+      parts.push(resolveInvSlotNamedJs(scroll, "__cScroll"));
+    }
     if (offering) {
-      parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+      if (buyOffering) {
+        parts.push(resolveInvSlotByNameJs(offering.name, "__cOffering"));
+      } else {
+        parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+      }
     } else {
       parts.push(`var __cOffering=null;`);
     }
@@ -69248,9 +70592,9 @@ ${ESTIMATE_HINT}`,
     );
     return wrapCommandScript(parts.join(""));
   }
-  function compoundCommand(items, scroll, offering, station) {
+  function compoundCommand(items, scroll, offering, station, buyOpts) {
     const ok = emitObserverCommand(
-      buildCompoundScript(items, scroll, offering, station),
+      buildCompoundScript(items, scroll, offering, station, buyOpts),
       `compound ${items[0].name}`
     );
     if (!ok) return false;
@@ -69343,6 +70687,9 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/lib/bagUpgradeCompound.ts
+  function shrinePickId(pick) {
+    return pick.buy ? "buy:" + pick.name : "bag:" + pick.slot;
+  }
   function calculateItemGrade(def, level) {
     if (!def || !(def.upgrade || def.compound)) return 0;
     const grades = Array.isArray(def.grades) ? def.grades : [9, 10, 11, 12];
@@ -69401,6 +70748,22 @@ ${ESTIMATE_HINT}`,
     if (def.type === "offering") return true;
     return def.offering !== void 0;
   }
+  function isNpcGoldBuyable(def) {
+    if (!def || !def.buy) return false;
+    if (def.cash && !def.p2w) return false;
+    const g = Number(def.g);
+    return Number.isFinite(g) && g > 0;
+  }
+  function vendorBuyPrice(def) {
+    return Number(def.g) | 0;
+  }
+  function findShrinePickById(picks, id) {
+    if (id == null || id === "") return null;
+    for (let i = 0; i < picks.length; i++) {
+      if (shrinePickId(picks[i]) === id) return picks[i];
+    }
+    return null;
+  }
   function listCompatibleScrollsInBag(items, itemDef, itemGrade, mode, G) {
     const slots = listBagSlots(items);
     const out = [];
@@ -69426,6 +70789,50 @@ ${ESTIMATE_HINT}`,
     });
     return out;
   }
+  function listCompatibleVendorScrolls(itemDef, itemGrade, mode, G, excludeNames) {
+    if (!G.items) return [];
+    const excl = excludeNames || null;
+    const out = [];
+    const names = Object.keys(G.items);
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      if (excl && excl.has(name)) continue;
+      const def = G.items[name];
+      if (!def || !isNpcGoldBuyable(def)) continue;
+      if (!scrollCompatible(def, itemDef, itemGrade, mode)) continue;
+      const grade = Number(def.grade) || 0;
+      out.push({
+        slot: -1,
+        name,
+        q: 0,
+        grade,
+        type: String(def.type || ""),
+        displayName: itemDisplayName(name),
+        recommended: grade === itemGrade,
+        buy: true,
+        buyPrice: vendorBuyPrice(def)
+      });
+    }
+    out.sort((a, b) => {
+      if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+      if (a.grade !== b.grade) return a.grade - b.grade;
+      return a.name.localeCompare(b.name);
+    });
+    return out;
+  }
+  function listScrollsForShrine(items, itemDef, itemGrade, mode, G) {
+    const bag = listCompatibleScrollsInBag(items, itemDef, itemGrade, mode, G);
+    const have = /* @__PURE__ */ new Set();
+    for (let i = 0; i < bag.length; i++) have.add(bag[i].name);
+    const vendor = listCompatibleVendorScrolls(
+      itemDef,
+      itemGrade,
+      mode,
+      G,
+      have
+    );
+    return bag.concat(vendor);
+  }
   function listOfferingsInBag(items, G) {
     const slots = listBagSlots(items);
     const out = [];
@@ -69443,6 +70850,35 @@ ${ESTIMATE_HINT}`,
     }
     out.sort((a, b) => a.slot - b.slot);
     return out;
+  }
+  function listVendorOfferings(G, excludeNames) {
+    if (!G.items) return [];
+    const excl = excludeNames || null;
+    const out = [];
+    const names = Object.keys(G.items);
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      if (excl && excl.has(name)) continue;
+      const def = G.items[name];
+      if (!def || !isOfferingDef(def) || !isNpcGoldBuyable(def)) continue;
+      out.push({
+        slot: -1,
+        name,
+        q: 0,
+        grade: def.grade != null ? Number(def.grade) : void 0,
+        displayName: itemDisplayName(name),
+        buy: true,
+        buyPrice: vendorBuyPrice(def)
+      });
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }
+  function listOfferingsForShrine(items, G) {
+    const bag = listOfferingsInBag(items, G);
+    const have = /* @__PURE__ */ new Set();
+    for (let i = 0; i < bag.length; i++) have.add(bag[i].name);
+    return bag.concat(listVendorOfferings(G, have));
   }
   function findCompoundPartners(items, primarySlot, name, level) {
     const slots = listBagSlots(items);
@@ -69477,8 +70913,8 @@ ${ESTIMATE_HINT}`,
       grade,
       maxLevel: grade >= 4,
       locked: isLocked(item),
-      scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "upgrade", G),
-      offerings: listOfferingsInBag(bagItems, G),
+      scrolls: listScrollsForShrine(bagItems, def, grade, "upgrade", G),
+      offerings: listOfferingsForShrine(bagItems, G),
       station,
       access
     };
@@ -69508,8 +70944,8 @@ ${ESTIMATE_HINT}`,
       maxLevel: grade >= 4,
       locked: isLocked(item),
       partners,
-      scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "compound", G),
-      offerings: listOfferingsInBag(bagItems, G),
+      scrolls: listScrollsForShrine(bagItems, def, grade, "compound", G),
+      offerings: listOfferingsForShrine(bagItems, G),
       station,
       access
     };
@@ -70001,6 +71437,17 @@ ${ESTIMATE_HINT}`,
 .ecu-upg__tile.is-rec.is-on {
   border-color: #f0d078;
 }
+.ecu-upg__tile.is-buy:not(.is-on) {
+  border-color: rgba(106, 154, 232, 0.75);
+  box-shadow: inset 0 0 8px rgba(106, 154, 232, 0.12);
+}
+.ecu-upg__tile.is-buy.is-on {
+  border-color: #8eb4f0;
+}
+.ecu-upg__tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .ecu-upg__tile.is-none {
   display: flex;
   align-items: center;
@@ -70066,6 +71513,10 @@ ${ESTIMATE_HINT}`,
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
   text-shadow: none;
   pointer-events: none;
+}
+.ecu-upg__tile-badge.is-buy {
+  color: #0c1424;
+  background: linear-gradient(180deg, #b8d4ff, #6a9ae8);
 }
 .ecu-upg__tile-grade {
   position: absolute;
@@ -70183,11 +71634,22 @@ ${ESTIMATE_HINT}`,
     if (pick.p != null) fp.p = String(pick.p);
     return fp;
   }
-  function accessHint(access) {
-    if (access.hasComputer) return "Computer \u2014 works on any map.";
+  function accessHint(access, opts) {
+    const buying = !!(opts && opts.buying);
+    if (access.hasComputer) {
+      return buying ? "Computer \u2014 buy + shrine work on any map." : "Computer \u2014 works on any map.";
+    }
+    if (buying) {
+      return access.inRange ? "Confirm buys at the vendor (travel if needed), then the shrine." : "Confirm will buy at the vendor, then smart_move to the shrine.";
+    }
     if (access.inRange) return "In range of the shrine.";
     if (access.reason) return access.reason + " \u2014 Confirm will travel first.";
     return "Out of range \u2014 Confirm will smart_move to the shrine first.";
+  }
+  function formatBuyGold(n) {
+    if (n >= 1e6) return Math.floor(n / 1e6) + "m";
+    if (n >= 1e4) return Math.floor(n / 1e3) + "k";
+    return String(n);
   }
   function mountItemIcon(host2, opts) {
     const html = itemInstanceHtml(opts.name, {
@@ -70420,19 +71882,15 @@ ${ESTIMATE_HINT}`,
     trial.resultLevel.textContent = String(nextLevel);
     trial.result.appendChild(trial.resultLevel);
   }
-  function findScroll(scrolls, slot) {
-    if (slot == null) return null;
-    for (let i = 0; i < scrolls.length; i++) {
-      if (scrolls[i].slot === slot) return scrolls[i];
-    }
-    return null;
+  function findScroll(scrolls, id) {
+    return findShrinePickById(scrolls, id);
   }
-  function findOffering(offerings, slot) {
-    if (slot == null) return null;
-    for (let i = 0; i < offerings.length; i++) {
-      if (offerings[i].slot === slot) return offerings[i];
-    }
-    return null;
+  function findOffering(offerings, id) {
+    return findShrinePickById(offerings, id);
+  }
+  function fpFromShrinePick(pick) {
+    if (pick.buy) return { slot: -1, name: pick.name };
+    return fpFromPick(pick);
   }
   function setTilesScrollMode(host2, count) {
     host2.classList.toggle("is-scroll", count > 6);
@@ -70451,28 +71909,40 @@ ${ESTIMATE_HINT}`,
     key.title = name;
     wrap.appendChild(key);
   }
-  function appendScrollTiles(host2, scrolls, selectedSlot, onPick) {
+  function appendScrollTiles(host2, scrolls, selectedId2, onPick, gold) {
     host2.innerHTML = "";
     setTilesScrollMode(host2, scrolls.length);
     if (!scrolls.length) {
       const empty2 = document.createElement("div");
       empty2.className = "ecu-upg__empty";
-      empty2.textContent = "No compatible scrolls in bag.";
+      empty2.textContent = "No compatible scrolls in bag or at a vendor.";
       host2.appendChild(empty2);
       return;
     }
     for (let i = 0; i < scrolls.length; i++) {
       const s = scrolls[i];
+      const id = shrinePickId(s);
       const wrap = document.createElement("div");
       wrap.className = "ecu-upg__tile-wrap";
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ecu-upg__tile" + (s.recommended ? " is-rec" : "") + (selectedSlot === s.slot ? " is-on" : "");
-      btn.title = s.displayName + " \xB7 " + s.name + " \xB7 grade " + s.grade + (s.recommended ? " \xB7 best match" : "") + " \xB7 \xD7" + s.q;
+      const cantAfford = !!s.buy && s.buyPrice != null && gold < s.buyPrice;
+      btn.className = "ecu-upg__tile" + (s.recommended ? " is-rec" : "") + (s.buy ? " is-buy" : "") + (selectedId2 === id ? " is-on" : "");
+      btn.disabled = cantAfford;
+      btn.title = s.displayName + " \xB7 " + s.name + " \xB7 grade " + s.grade + (s.recommended ? " \xB7 best match" : "") + (s.buy ? " \xB7 buy " + formatBuyGold(s.buyPrice || 0) + "g" + (cantAfford ? " \xB7 not enough gold" : "") : " \xB7 \xD7" + s.q);
       const icon = document.createElement("span");
-      mountItemIcon(icon, { name: s.name, q: s.q, size: 40 });
+      mountItemIcon(icon, {
+        name: s.name,
+        q: s.buy ? void 0 : s.q,
+        size: 40
+      });
       btn.appendChild(icon);
-      if (s.recommended) {
+      if (s.buy) {
+        const badge = document.createElement("span");
+        badge.className = "ecu-upg__tile-badge is-buy";
+        badge.textContent = "BUY";
+        btn.appendChild(badge);
+      } else if (s.recommended) {
         const badge = document.createElement("span");
         badge.className = "ecu-upg__tile-badge";
         badge.textContent = "BEST";
@@ -70484,22 +71954,25 @@ ${ESTIMATE_HINT}`,
       btn.appendChild(grade);
       const qty = document.createElement("span");
       qty.className = "ecu-upg__tile-qty";
-      qty.textContent = "\xD7" + s.q;
+      qty.textContent = s.buy ? formatBuyGold(s.buyPrice || 0) + "g" : "\xD7" + s.q;
       btn.appendChild(qty);
-      btn.addEventListener("click", () => onPick(s.slot));
+      btn.addEventListener("click", () => {
+        if (cantAfford) return;
+        onPick(id);
+      });
       wrap.appendChild(btn);
       appendTileKey(wrap, s.name);
       host2.appendChild(wrap);
     }
   }
-  function appendOfferingTiles(host2, offerings, selectedSlot, onPick) {
+  function appendOfferingTiles(host2, offerings, selectedId2, onPick, gold) {
     host2.innerHTML = "";
     setTilesScrollMode(host2, offerings.length + 1);
     const noneWrap = document.createElement("div");
     noneWrap.className = "ecu-upg__tile-wrap";
     const none = document.createElement("button");
     none.type = "button";
-    none.className = "ecu-upg__tile is-none" + (selectedSlot == null ? " is-on" : "");
+    none.className = "ecu-upg__tile is-none" + (selectedId2 == null ? " is-on" : "");
     none.title = "No offering";
     none.textContent = "None";
     none.addEventListener("click", () => onPick(null));
@@ -70507,20 +71980,36 @@ ${ESTIMATE_HINT}`,
     host2.appendChild(noneWrap);
     for (let i = 0; i < offerings.length; i++) {
       const o = offerings[i];
+      const id = shrinePickId(o);
       const wrap = document.createElement("div");
       wrap.className = "ecu-upg__tile-wrap";
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "ecu-upg__tile" + (selectedSlot === o.slot ? " is-on" : "");
-      btn.title = o.displayName + " \xB7 " + o.name + (o.grade != null ? " \xB7 grade " + o.grade : "") + " \xB7 \xD7" + o.q;
+      const cantAfford = !!o.buy && o.buyPrice != null && gold < o.buyPrice;
+      btn.className = "ecu-upg__tile" + (o.buy ? " is-buy" : "") + (selectedId2 === id ? " is-on" : "");
+      btn.disabled = cantAfford;
+      btn.title = o.displayName + " \xB7 " + o.name + (o.grade != null ? " \xB7 grade " + o.grade : "") + (o.buy ? " \xB7 buy " + formatBuyGold(o.buyPrice || 0) + "g" + (cantAfford ? " \xB7 not enough gold" : "") : " \xB7 \xD7" + o.q);
       const icon = document.createElement("span");
-      mountItemIcon(icon, { name: o.name, q: o.q, size: 40 });
+      mountItemIcon(icon, {
+        name: o.name,
+        q: o.buy ? void 0 : o.q,
+        size: 40
+      });
       btn.appendChild(icon);
+      if (o.buy) {
+        const badge = document.createElement("span");
+        badge.className = "ecu-upg__tile-badge is-buy";
+        badge.textContent = "BUY";
+        btn.appendChild(badge);
+      }
       const qty = document.createElement("span");
       qty.className = "ecu-upg__tile-qty";
-      qty.textContent = "\xD7" + o.q;
+      qty.textContent = o.buy ? formatBuyGold(o.buyPrice || 0) + "g" : "\xD7" + o.q;
       btn.appendChild(qty);
-      btn.addEventListener("click", () => onPick(o.slot));
+      btn.addEventListener("click", () => {
+        if (cantAfford) return;
+        onPick(id);
+      });
       wrap.appendChild(btn);
       appendTileKey(wrap, o.name);
       host2.appendChild(wrap);
@@ -70636,9 +72125,9 @@ ${ESTIMATE_HINT}`,
     return new Promise((resolve) => {
       finishOpen3 = resolve;
       let liveOffer = offer;
-      let scrollSlot = liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
-      let offeringSlot = null;
-      let pickFocus = scrollSlot == null ? "scroll" : null;
+      let scrollId = liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+      let offeringId = null;
+      let pickFocus = scrollId == null ? "scroll" : null;
       let fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : 0;
       let watch = null;
       let busy = false;
@@ -70699,8 +72188,8 @@ ${ESTIMATE_HINT}`,
       const chanceUi = bindChanceUi(trial);
       let lastChance = null;
       const refreshChanceEstimate = () => {
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         if (!scroll && !offering) {
           lastChance = null;
           chanceUi.setEmpty("Pick a scroll or offering to estimate chance");
@@ -70720,11 +72209,15 @@ ${ESTIMATE_HINT}`,
         }
       };
       const paint = () => {
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         const highlight = [liveOffer.item.slot];
-        if (scroll) highlight.push(scroll.slot);
-        if (offering) highlight.push(offering.slot);
+        if (scroll && !scroll.buy && scroll.slot >= 0) {
+          highlight.push(scroll.slot);
+        }
+        if (offering && !offering.buy && offering.slot >= 0) {
+          highlight.push(offering.slot);
+        }
         setShrineBagHighlights(highlight);
         trial.inputIcons.innerHTML = "";
         fillMini(trial.inputIcons, liveOffer.item, {
@@ -70780,33 +72273,43 @@ ${ESTIMATE_HINT}`,
             }
           });
         }
-        appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
-          if (busy) return;
-          scrollSlot = slot;
-          pickFocus = null;
-          paint();
-          refreshChanceEstimate();
-        });
-        appendOfferingTiles(
-          offerTiles,
-          liveOffer.offerings,
-          offeringSlot,
-          (slot) => {
+        const gold = observingGold();
+        appendScrollTiles(
+          scrollTiles,
+          liveOffer.scrolls,
+          scrollId,
+          (id) => {
             if (busy) return;
-            offeringSlot = slot;
+            scrollId = id;
             pickFocus = null;
             paint();
             refreshChanceEstimate();
-          }
+          },
+          gold
         );
-        const ready = scrollSlot != null || offeringSlot != null;
+        appendOfferingTiles(
+          offerTiles,
+          liveOffer.offerings,
+          offeringId,
+          (id) => {
+            if (busy) return;
+            offeringId = id;
+            pickFocus = null;
+            paint();
+            refreshChanceEstimate();
+          },
+          gold
+        );
+        const ready = scrollId != null || offeringId != null;
+        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
         okBtn.disabled = busy || !ready;
-        okBtn.textContent = liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+        okBtn.textContent = buying ? liveOffer.access.hasComputer ? "Buy & upgrade" : "Buy, travel & upgrade" : liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+        meta2.textContent = "Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying });
         if (!busy) {
           if (pickFocus === "scroll") {
-            hint.textContent = "Pick a scroll from the tiles or bag.";
+            hint.textContent = "Pick a scroll from the tiles, bag, or buy from vendor.";
           } else if (pickFocus === "offering") {
-            hint.textContent = "Pick an offering from the tiles or bag (or None).";
+            hint.textContent = "Pick an offering from the tiles, bag, vendor (or None).";
           } else if (!ready) {
             hint.textContent = "Pick a scroll (or an offering).";
           } else {
@@ -70850,10 +72353,10 @@ ${ESTIMATE_HINT}`,
         liveOffer = nextOffer;
         fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : nextLevel;
         const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
-        scrollSlot = keepScroll ? keepScroll.slot : liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
         const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
-        offeringSlot = keepOffering ? keepOffering.slot : null;
-        pickFocus = scrollSlot == null ? "scroll" : null;
+        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+        pickFocus = scrollId == null ? "scroll" : null;
         itemName.textContent = levelTransitionLabel(
           fromLevel,
           liveOffer.displayName
@@ -70868,33 +72371,33 @@ ${ESTIMATE_HINT}`,
       const unsubBagClick = installBagPickClick((slot) => {
         if (busy) return false;
         if (pickFocus === "scroll") {
-          const s2 = findScroll(liveOffer.scrolls, slot);
+          const s2 = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
           if (!s2) return false;
-          scrollSlot = s2.slot;
+          scrollId = shrinePickId(s2);
           pickFocus = null;
           paint();
           refreshChanceEstimate();
           return true;
         }
         if (pickFocus === "offering") {
-          const o2 = findOffering(liveOffer.offerings, slot);
+          const o2 = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
           if (!o2) return false;
-          offeringSlot = o2.slot;
+          offeringId = shrinePickId(o2);
           pickFocus = null;
           paint();
           refreshChanceEstimate();
           return true;
         }
-        const s = findScroll(liveOffer.scrolls, slot);
+        const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
         if (s) {
-          scrollSlot = s.slot;
+          scrollId = shrinePickId(s);
           paint();
           refreshChanceEstimate();
           return true;
         }
-        const o = findOffering(liveOffer.offerings, slot);
+        const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
         if (o) {
-          offeringSlot = o.slot;
+          offeringId = shrinePickId(o);
           paint();
           refreshChanceEstimate();
           return true;
@@ -70908,12 +72411,14 @@ ${ESTIMATE_HINT}`,
       };
       const tryConfirm = () => {
         if (okBtn.disabled || busy) return;
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         const picked = {
           item: fpFromPick(liveOffer.item),
-          scroll: scroll ? fpFromPick(scroll) : null,
-          offering: offering ? fpFromPick(offering) : null
+          scroll: scroll ? fpFromShrinePick(scroll) : null,
+          offering: offering ? fpFromShrinePick(offering) : null,
+          buyScroll: scroll && scroll.buy ? scroll.name : null,
+          buyOffering: offering && offering.buy ? offering.name : null
         };
         if (!options || !options.execute) {
           closeDialog2(picked);
@@ -71002,9 +72507,9 @@ ${ESTIMATE_HINT}`,
         liveOffer.item
       );
       let selected = /* @__PURE__ */ new Set([defaults[0].slot, defaults[1].slot]);
-      let scrollSlot = liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
-      let offeringSlot = null;
-      let pickFocus = selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+      let scrollId = liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+      let offeringId = null;
+      let pickFocus = selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
       let fromLevel = liveOffer.item.level != null && Number.isFinite(Number(liveOffer.item.level)) ? Number(liveOffer.item.level) : 0;
       let watch = null;
       let busy = false;
@@ -71074,18 +72579,18 @@ ${ESTIMATE_HINT}`,
       const chanceUi = bindChanceUi(trial);
       let lastChance = null;
       const refreshChanceEstimate = () => {
-        if (selected.size !== 2 || scrollSlot == null) {
+        if (selected.size !== 2 || scrollId == null) {
           lastChance = null;
           chanceUi.setEmpty("Need 3 copies + scroll to estimate chance");
           return;
         }
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
         if (!scroll) {
           lastChance = null;
           chanceUi.setEmpty("Need a compound scroll to estimate chance");
           return;
         }
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         lastChance = estimateShrineChance({
           mode: "compound",
           level: fromLevel,
@@ -71106,14 +72611,18 @@ ${ESTIMATE_HINT}`,
           const found = liveOffer.partners.find((p) => p.slot === keys[i]);
           if (found) partnerList.push(found);
         }
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         const highlight = [liveOffer.item.slot];
         for (let i = 0; i < partnerList.length; i++) {
           highlight.push(partnerList[i].slot);
         }
-        if (scroll) highlight.push(scroll.slot);
-        if (offering) highlight.push(offering.slot);
+        if (scroll && !scroll.buy && scroll.slot >= 0) {
+          highlight.push(scroll.slot);
+        }
+        if (offering && !offering.buy && offering.slot >= 0) {
+          highlight.push(offering.slot);
+        }
         setShrineBagHighlights(highlight);
         trial.inputIcons.innerHTML = "";
         fillMini(trial.inputIcons, liveOffer.item, {
@@ -71209,35 +72718,45 @@ ${ESTIMATE_HINT}`,
           paint();
           refreshChanceEstimate();
         });
-        appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
-          if (busy) return;
-          scrollSlot = slot;
-          pickFocus = null;
-          paint();
-          refreshChanceEstimate();
-        });
-        appendOfferingTiles(
-          offerTiles,
-          liveOffer.offerings,
-          offeringSlot,
-          (slot) => {
+        const gold = observingGold();
+        appendScrollTiles(
+          scrollTiles,
+          liveOffer.scrolls,
+          scrollId,
+          (id) => {
             if (busy) return;
-            offeringSlot = slot;
+            scrollId = id;
             pickFocus = null;
             paint();
             refreshChanceEstimate();
-          }
+          },
+          gold
         );
-        const ready = selected.size === 2 && scrollSlot != null;
+        appendOfferingTiles(
+          offerTiles,
+          liveOffer.offerings,
+          offeringId,
+          (id) => {
+            if (busy) return;
+            offeringId = id;
+            pickFocus = null;
+            paint();
+            refreshChanceEstimate();
+          },
+          gold
+        );
+        const ready = selected.size === 2 && scrollId != null;
+        const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
         okBtn.disabled = busy || !ready;
-        okBtn.textContent = liveOffer.access.ok ? "Compound" : "Travel & compound";
+        okBtn.textContent = buying ? liveOffer.access.hasComputer ? "Buy & compound" : "Buy, travel & compound" : liveOffer.access.ok ? "Compound" : "Travel & compound";
+        meta2.textContent = "Need 3 copies \xB7 Grade " + liveOffer.grade + " \xB7 " + accessHint(liveOffer.access, { buying });
         if (!busy) {
           if (pickFocus === "partner" || selected.size !== 2) {
             hint.textContent = "Select exactly two other copies (tiles or bag).";
-          } else if (pickFocus === "scroll" || scrollSlot == null) {
-            hint.textContent = "Pick a compound scroll (tiles or bag).";
+          } else if (pickFocus === "scroll" || scrollId == null) {
+            hint.textContent = "Pick a compound scroll (tiles, bag, or buy from vendor).";
           } else if (pickFocus === "offering") {
-            hint.textContent = "Pick an offering from the tiles or bag (or None).";
+            hint.textContent = "Pick an offering from the tiles, bag, vendor (or None).";
           } else {
             hint.textContent = "";
           }
@@ -71288,10 +72807,10 @@ ${ESTIMATE_HINT}`,
           nextDefaults[1].slot
         ]);
         const keepScroll = keptScrollName ? liveOffer.scrolls.find((s) => s.name === keptScrollName) : null;
-        scrollSlot = keepScroll ? keepScroll.slot : liveOffer.scrolls[0] ? liveOffer.scrolls[0].slot : null;
+        scrollId = keepScroll ? shrinePickId(keepScroll) : liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
         const keepOffering = keptOfferingName ? liveOffer.offerings.find((o) => o.name === keptOfferingName) : null;
-        offeringSlot = keepOffering ? keepOffering.slot : null;
-        pickFocus = selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+        offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+        pickFocus = selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
         itemName.textContent = levelTransitionLabel(
           fromLevel,
           liveOffer.displayName
@@ -71324,18 +72843,18 @@ ${ESTIMATE_HINT}`,
           return true;
         }
         if (pickFocus === "scroll") {
-          const s2 = findScroll(liveOffer.scrolls, slot);
+          const s2 = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
           if (!s2) return false;
-          scrollSlot = s2.slot;
+          scrollId = shrinePickId(s2);
           pickFocus = null;
           paint();
           refreshChanceEstimate();
           return true;
         }
         if (pickFocus === "offering") {
-          const o2 = findOffering(liveOffer.offerings, slot);
+          const o2 = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
           if (!o2) return false;
-          offeringSlot = o2.slot;
+          offeringId = shrinePickId(o2);
           pickFocus = null;
           paint();
           refreshChanceEstimate();
@@ -71354,16 +72873,16 @@ ${ESTIMATE_HINT}`,
           refreshChanceEstimate();
           return true;
         }
-        const s = findScroll(liveOffer.scrolls, slot);
+        const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
         if (s) {
-          scrollSlot = s.slot;
+          scrollId = shrinePickId(s);
           paint();
           refreshChanceEstimate();
           return true;
         }
-        const o = findOffering(liveOffer.offerings, slot);
+        const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
         if (o) {
-          offeringSlot = o.slot;
+          offeringId = shrinePickId(o);
           paint();
           refreshChanceEstimate();
           return true;
@@ -71377,17 +72896,19 @@ ${ESTIMATE_HINT}`,
       };
       const tryConfirm = () => {
         if (okBtn.disabled || busy) return;
-        const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+        const scroll = findScroll(liveOffer.scrolls, scrollId);
         if (!scroll || selected.size !== 2) return;
         const partnerSlots = Array.from(selected.values()).sort((a, b) => a - b);
         const p0 = liveOffer.partners.find((p) => p.slot === partnerSlots[0]);
         const p1 = liveOffer.partners.find((p) => p.slot === partnerSlots[1]);
         if (!p0 || !p1) return;
-        const offering = findOffering(liveOffer.offerings, offeringSlot);
+        const offering = findOffering(liveOffer.offerings, offeringId);
         const picked = {
           items: [fpFromPick(liveOffer.item), fpFromPick(p0), fpFromPick(p1)],
-          scroll: fpFromPick(scroll),
-          offering: offering ? fpFromPick(offering) : null
+          scroll: fpFromShrinePick(scroll),
+          offering: offering ? fpFromShrinePick(offering) : null,
+          buyScroll: scroll.buy ? scroll.name : null,
+          buyOffering: offering && offering.buy ? offering.name : null
         };
         if (!options || !options.execute) {
           closeDialog2(picked);
@@ -71587,12 +73108,12 @@ ${ESTIMATE_HINT}`,
       if (upgrade.locked) label = "Upgrade (locked)";
       else if (upgrade.maxLevel) label = "Upgrade (max level)";
       else if (!upgrade.scrolls.length && !upgrade.offerings.length) {
-        label = "Upgrade (need scroll in bag)";
+        label = "Upgrade (need scroll)";
       }
       actions.push({
         id: "station-upgrade",
         label,
-        title: upgrade.locked ? "Item is locked" : upgrade.maxLevel ? "Already at max upgrade grade" : !upgrade.scrolls.length && !upgrade.offerings.length ? "Put a compatible scroll (or offering) in the bag first" : "Pick scroll + optional offering, then upgrade() at the shrine",
+        title: upgrade.locked ? "Item is locked" : upgrade.maxLevel ? "Already at max upgrade grade" : !upgrade.scrolls.length && !upgrade.offerings.length ? "Need a compatible scroll in bag or from a vendor (NPC buy)" : "Pick scroll + optional offering (buy from vendor if needed), then upgrade()",
         separatorBefore: first,
         disabled: !canOpen,
         run: () => {
@@ -71601,7 +73122,11 @@ ${ESTIMATE_HINT}`,
               picked.item,
               picked.scroll,
               picked.offering,
-              upgrade.station
+              upgrade.station,
+              {
+                buyScroll: picked.buyScroll,
+                buyOffering: picked.buyOffering
+              }
             )
           });
         }
@@ -71623,12 +73148,12 @@ ${ESTIMATE_HINT}`,
       else if (!haveTriple) {
         label = `Compound (need 3 \xB7 have ${1 + compound.partners.length})`;
       } else if (!compound.scrolls.length) {
-        label = "Compound (need cscroll in bag)";
+        label = "Compound (need cscroll)";
       }
       actions.push({
         id: "station-compound",
         label,
-        title: compound.locked ? "Item is locked" : compound.maxLevel ? "Already at max compound grade" : !haveTriple ? "Need three matching copies at this level in the bag" : !compound.scrolls.length ? "Put a compatible compound scroll in the bag first" : "Pick partners + scroll + optional offering, then compound()",
+        title: compound.locked ? "Item is locked" : compound.maxLevel ? "Already at max compound grade" : !haveTriple ? "Need three matching copies at this level in the bag" : !compound.scrolls.length ? "Need a compatible cscroll in bag or from a vendor (NPC buy)" : "Pick partners + scroll + optional offering (buy if needed), then compound()",
         separatorBefore: first,
         disabled: !canOpen,
         run: () => {
@@ -71637,7 +73162,11 @@ ${ESTIMATE_HINT}`,
               picked.items,
               picked.scroll,
               picked.offering,
-              compound.station
+              compound.station,
+              {
+                buyScroll: picked.buyScroll,
+                buyOffering: picked.buyOffering
+              }
             )
           });
         }
@@ -72234,7 +73763,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/BagPanel.ts
-  var HOST_ID5 = "bottomleftcorner";
+  var HOST_ID6 = "bottomleftcorner";
   var BAG_SLOT_BOX = 50;
   var BAG_SLOT_MARGIN = 2;
   var BAG_COLS = 7;
@@ -72515,14 +74044,16 @@ ${ESTIMATE_HINT}`,
       });
       const host2 = ensureInventoryHost();
       const unsubMenu = installBagItemContextMenu(host2);
+      const unsubTip = installBagItemCooltip(host2);
       const unsubDrag = installBagDragDrop(host2);
       return () => {
         unsubInv();
         unsubSync();
         unsubPending();
         unsubMenu();
+        unsubTip();
         unsubDrag();
-        const h = document.getElementById(HOST_ID5);
+        const h = document.getElementById(HOST_ID6);
         if (h) document.body.appendChild(h);
       };
     }, []);
@@ -72996,7 +74527,7 @@ ${ESTIMATE_HINT}`,
     }
     const id = String(row3.name || "").toLowerCase();
     const mer = String(row3.merchant || "").toLowerCase();
-    const titleKey = String(row3.p || "").toLowerCase();
+    const titleKey2 = String(row3.p || "").toLowerCase();
     let titleDisp = "";
     let base = id;
     if (typeof window !== "undefined") {
@@ -73013,11 +74544,11 @@ ${ESTIMATE_HINT}`,
       nm,
       id,
       mer,
-      titleKey,
+      titleKey: titleKey2,
       titleDisp,
       stat,
       base,
-      hay: [nm, id, mer, titleKey, titleDisp, base, stat].filter(Boolean).join(" ")
+      hay: [nm, id, mer, titleKey2, titleDisp, base, stat].filter(Boolean).join(" ")
     };
   }
   function valueHits(values, test) {
@@ -74410,7 +75941,7 @@ ${ESTIMATE_HINT}`,
         level: typeof slot.level === "number" ? slot.level : void 0,
         q: typeof slot.q === "number" ? slot.q : void 0,
         p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : void 0,
-        title: itemInstanceLabel(slot.name, { p: slot.p, level: slot.level })
+        actual: slot
       });
     } else {
       let html = "";
@@ -74539,7 +76070,8 @@ ${ESTIMATE_HINT}`,
         key: slotName,
         className: "comm-trade-slot" + (filled ? " is-filled" : "") + (fluid ? " is-fluid" : "") + (selected ? " is-on" : "") + (bagDropHover ? " is-bag-drop-target" : "") + (disabled ? " is-disabled" : ""),
         "data-slot": slotName,
-        title: tipParts.join(" \xB7 "),
+        // Filled cells use ItemInstance Comm cooltip — skip native title stack.
+        title: filled ? void 0 : tipParts.join(" \xB7 "),
         draggable: editable && filled ? true : void 0,
         onDragStart: editable && filled ? (ev) => {
           if (!ev.dataTransfer) return;
@@ -76770,7 +78302,7 @@ ${ESTIMATE_HINT}`,
               {
                 key: stack.key,
                 className: "MarketPanel-tradeStackRow" + (own ? " is-own" : ""),
-                title: tip
+                "aria-label": tip
               },
               e(
                 "div",
@@ -76783,15 +78315,14 @@ ${ESTIMATE_HINT}`,
                     p: want.p,
                     size: 24,
                     q: wantQ,
-                    forceShowQ: true,
-                    title: own ? "Ask \xB7 " + wantName : "Give " + wantName
+                    forceShowQ: true
                   })
                 ),
                 e(
                   "span",
                   {
                     className: "MarketPanel-tradeStackWant",
-                    title: own ? "Ask \xB7 " + wantName : "Give " + wantName
+                    "aria-label": own ? "Ask \xB7 " + wantName : "Give " + wantName
                   },
                   wantName
                 ),
@@ -76808,8 +78339,7 @@ ${ESTIMATE_HINT}`,
                     p: srow.p,
                     size: 24,
                     q: offerQ,
-                    forceShowQ: true,
-                    title: own ? "Offer \xB7 " + offerName : "Get " + offerName
+                    forceShowQ: true
                   })
                 )
               ),
@@ -77370,7 +78900,8 @@ ${ESTIMATE_HINT}`,
                       type: "button",
                       key,
                       className: "MarketPanel-bagSlot" + (bagStackKey === key ? " is-on" : ""),
-                      title: tip,
+                      // ItemInstance cooltip owns hover — keep tip in aria only.
+                      "aria-label": tip,
                       onClick: (ev) => {
                         if (ev && typeof ev.preventDefault === "function") {
                           ev.preventDefault();
@@ -77400,8 +78931,7 @@ ${ESTIMATE_HINT}`,
                         p: b.p
                       }),
                       p: b.p != null ? b.p : void 0,
-                      size: 40,
-                      title: tip
+                      size: 40
                     })
                   );
                 })
@@ -79125,7 +80655,7 @@ ${ESTIMATE_HINT}`,
       showItem: showBankItem
     });
   }
-  function bankSlotTitle(itemName, packLabel, editable) {
+  function bankSlotAria(itemName, packLabel, editable) {
     if (!editable) {
       return itemName + " \xB7 " + packLabel + " \xB7 click to inspect";
     }
@@ -79409,7 +80939,7 @@ ${ESTIMATE_HINT}`,
               type: "button",
               key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
               className: "BankPanel-cell",
-              title: bankSlotTitle(it.name, packHint, editable),
+              "aria-label": bankSlotAria(it.name, packHint, editable),
               onClick: (ev) => {
                 onBankSlotClick(ev, loc.pack, loc.index, it);
               },
@@ -79480,7 +81010,7 @@ ${ESTIMATE_HINT}`,
                     type: "button",
                     key: pack + ":" + index,
                     className: "BankPanel-slot" + (dim2 ? " is-dim" : ""),
-                    title: bankSlotTitle(
+                    "aria-label": bankSlotAria(
                       it.name,
                       packDisplayLabel(pack) + " \xB7 slot " + (index + 1),
                       editable
@@ -80019,72 +81549,6 @@ ${ESTIMATE_HINT}`,
     );
   }
 
-  // src/ui/frames/mail/mailFormat.ts
-  function formatMailDate(sent, now = Date.now()) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    const d = new Date(t);
-    const n = new Date(now);
-    try {
-      if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
-        return d.toLocaleTimeString(void 0, {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false
-        });
-      }
-      if (d.getFullYear() === n.getFullYear()) {
-        return d.toLocaleDateString(void 0, {
-          day: "2-digit",
-          month: "2-digit"
-        });
-      }
-      return d.toLocaleDateString(void 0, {
-        day: "2-digit",
-        month: "2-digit",
-        year: "2-digit"
-      });
-    } catch (e2) {
-      return String(sent);
-    }
-  }
-  function formatMailDateTime(sent) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    try {
-      return new Date(t).toLocaleString();
-    } catch (e2) {
-      return String(sent);
-    }
-  }
-  function formatMailRelative(sent, now = Date.now()) {
-    const t = Date.parse(sent);
-    if (!Number.isFinite(t)) return String(sent || "");
-    return formatRelativeAge(t, now);
-  }
-  function selfCharacterNames() {
-    const out = [];
-    const chars = window.X && window.X.characters || [];
-    for (let i = 0; i < chars.length; i++) {
-      const n = chars[i] && chars[i].name;
-      if (n) out.push(String(n));
-    }
-    return out;
-  }
-  function visiblePlayerNames() {
-    const out = [];
-    const raw = window.entities;
-    if (!raw) return out;
-    const list = Array.isArray(raw) ? raw : Object.values(raw);
-    for (let i = 0; i < list.length; i++) {
-      const ent = list[i];
-      if (!ent || !ent.name) continue;
-      if (ent.npc) continue;
-      if (ent.player || ent.type === "character") out.push(String(ent.name));
-    }
-    return out;
-  }
-
   // src/ui/frames/mail/mailActivity.ts
   function resolveMailActivity(snap) {
     if (snap.deleteProgress) {
@@ -80563,29 +82027,13 @@ ${ESTIMATE_HINT}`,
     }
     return false;
   }
-  function ownMailboxFillByKey(mails, selfNames, incomplete) {
-    const fills = mergeOwnedMailboxFills(
-      countAttachmentsByRecipient(mails, selfNames),
-      selfNames,
-      incomplete
-    );
+  function ownToCapByKey(mails, selfNames, incomplete) {
+    const fills = buildOwnToCapFills({ mails, selfNames, incomplete });
     const byKey = /* @__PURE__ */ new Map();
     for (let i = 0; i < fills.length; i++) {
       byKey.set(fills[i].name.toLowerCase(), fills[i]);
     }
     return byKey;
-  }
-  function ownCapTitle(fill, incomplete) {
-    const frac = formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete);
-    const label = fillCapLabel(fill);
-    let note = fill.name + " mailbox " + frac + " (" + label + ")";
-    if (fill.pressure === "full") {
-      note += " \u2014 item mail to this character will fail until they take or delete";
-    } else if (fill.pressure === "warn") {
-      note += " \u2014 nearly full";
-    }
-    if (incomplete) note += ". Older pages may raise this count.";
-    return note;
   }
   function MailComposePane(props) {
     const {
@@ -80602,7 +82050,7 @@ ${ESTIMATE_HINT}`,
     const draft = snap.view.draft;
     const draftAttachesList = draft.attaches.slice();
     const incomplete = !!snap.hasMore;
-    const ownFills = ownMailboxFillByKey(snap.mails, selfNames, incomplete);
+    const ownCaps = ownToCapByKey(snap.mails, selfNames, incomplete);
     const suggestions = suggestOpen ? suggestMailTo(
       toInput,
       {
@@ -80615,7 +82063,7 @@ ${ESTIMATE_HINT}`,
     const chipEls = [];
     for (let i = 0; i < draft.to.length; i++) {
       const name = draft.to[i];
-      const fill = ownFills.get(String(name || "").toLowerCase()) || null;
+      const fill = ownCaps.get(String(name || "").toLowerCase()) || null;
       const pressure = fill ? fill.pressure : "";
       chipEls.push(
         e(
@@ -80624,7 +82072,7 @@ ${ESTIMATE_HINT}`,
             key: name,
             type: "button",
             className: "comm-mail__chip" + (pressure === "full" ? " is-cap-full" : pressure === "warn" ? " is-cap-warn" : ""),
-            title: fill ? ownCapTitle(fill, incomplete) + " \xB7 click to remove" : "Remove from To pool",
+            title: fill ? ownToCapTitle(fill, incomplete) + " \xB7 click to remove" : "Remove from To pool",
             onClick: () => {
               const nextTo = [];
               for (let j = 0; j < draft.to.length; j++) {
@@ -80639,7 +82087,7 @@ ${ESTIMATE_HINT}`,
             {
               className: "comm-mail__chip-cap" + (pressure ? " is-" + pressure : "")
             },
-            formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+            formatOwnToCapFraction(fill, incomplete)
           ) : null,
           e("span", { className: "comm-mail__chip-x" }, "\xD7")
         )
@@ -80659,7 +82107,7 @@ ${ESTIMATE_HINT}`,
           )
         );
       }
-      const fill = s.group === "own" ? ownFills.get(String(s.name || "").toLowerCase()) || null : null;
+      const fill = s.group === "own" ? ownCaps.get(String(s.name || "").toLowerCase()) || null : null;
       const pressure = fill ? fill.pressure : "";
       suggestEls.push(
         e(
@@ -80668,7 +82116,7 @@ ${ESTIMATE_HINT}`,
             key: s.group + s.name,
             type: "button",
             className: "comm-mail__suggest-row" + (pressure === "full" ? " is-cap-full" : pressure === "warn" ? " is-cap-warn" : ""),
-            title: fill ? ownCapTitle(fill, incomplete) : void 0,
+            title: fill ? ownToCapTitle(fill, incomplete) : void 0,
             onClick: () => {
               if (!hasToName(draft.to, s.name)) {
                 patchComposeDraft({ to: draft.to.concat([s.name]) });
@@ -80683,7 +82131,7 @@ ${ESTIMATE_HINT}`,
             {
               className: "comm-mail__suggest-cap" + (pressure ? " is-" + pressure : "")
             },
-            formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+            formatOwnToCapFraction(fill, incomplete)
           ) : null
         )
       );
@@ -80697,8 +82145,8 @@ ${ESTIMATE_HINT}`,
         const key = n.toLowerCase();
         if (seen.has(key)) return;
         seen.add(key);
-        const fill = ownFills.get(key) || null;
-        const label = fill ? n + " \xB7 " + formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete) : n;
+        const fill = ownCaps.get(key) || null;
+        const label = fill ? n + " \xB7 " + formatOwnToCapFraction(fill, incomplete) : n;
         opts.push(e("option", { key, value: n }, label));
       };
       for (let i = 0; i < draft.to.length; i++) push(draft.to[i]);
@@ -80770,7 +82218,20 @@ ${ESTIMATE_HINT}`,
       );
     }
     const attachesReady = attachesHaveRecipients(draftAttachesList);
-    const canSend = caps.canSend && !snap.commandBusy && caps.goldEnough !== false && (draftAttachesList.length ? attachesReady : draft.to.length > 0);
+    const summary = buildComposeSummary({
+      draft,
+      mails: snap.mails,
+      selfNames,
+      incomplete
+    });
+    const sendBlock = composeSendBlockReason({
+      draft,
+      mails: snap.mails,
+      selfNames,
+      incomplete,
+      goldEnough: caps.goldEnough
+    });
+    const canSend = caps.canSend && !snap.commandBusy && caps.goldEnough !== false && !sendBlock && (draftAttachesList.length ? attachesReady : draft.to.length > 0);
     const queuedMap = {};
     for (let i = 0; i < draftAttachesList.length; i++) {
       const to = String(draftAttachesList[i].to || "").trim();
@@ -80803,6 +82264,20 @@ ${ESTIMATE_HINT}`,
         )
       );
     }
+    const queuedByTo = {};
+    for (let i = 0; i < draftAttachesList.length; i++) {
+      const to = String(draftAttachesList[i].to || "").trim();
+      if (!to) continue;
+      const key = to.toLowerCase();
+      queuedByTo[key] = (queuedByTo[key] | 0) + 1;
+    }
+    const freeOwn = ownCharsWithFreeMailSpace({
+      mails: snap.mails,
+      selfNames,
+      incomplete,
+      exclude: draft.to,
+      queuedByTo
+    });
     return e(
       "div",
       { className: "comm-mail__compose" },
@@ -80817,26 +82292,48 @@ ${ESTIMATE_HINT}`,
       ),
       e("label", null, "To"),
       e("div", { className: "comm-mail__chips" }, ...chipEls),
-      e("input", {
-        value: toInput,
-        placeholder: "Add recipient\u2026",
-        onChange: (ev) => {
-          setToInput(ev.target.value);
-          setSuggestOpen(true);
+      e(
+        "div",
+        {
+          className: "comm-mail__acts",
+          style: { marginTop: 0, marginBottom: 4 }
         },
-        onFocus: () => setSuggestOpen(true),
-        onKeyDown: (ev) => {
-          if (ev.key === "Enter") {
-            ev.preventDefault();
-            const v = String(toInput || "").trim();
-            if (v && !hasToName(draft.to, v)) {
-              patchComposeDraft({ to: draft.to.concat([v]) });
+        e("input", {
+          style: { flex: 1, minWidth: 120 },
+          value: toInput,
+          placeholder: "Add recipient\u2026",
+          onChange: (ev) => {
+            setToInput(ev.target.value);
+            setSuggestOpen(true);
+          },
+          onFocus: () => setSuggestOpen(true),
+          onKeyDown: (ev) => {
+            if (ev.key === "Enter") {
+              ev.preventDefault();
+              const v = String(toInput || "").trim();
+              if (v && !hasToName(draft.to, v)) {
+                patchComposeDraft({ to: draft.to.concat([v]) });
+              }
+              setToInput("");
+              setSuggestOpen(false);
             }
-            setToInput("");
-            setSuggestOpen(false);
           }
-        }
-      }),
+        }),
+        selfNames.length ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn",
+            disabled: freeOwn.length === 0,
+            title: freeOwn.length === 0 ? "No own characters left with free attach space (20/account \xB7 200/char)" : "Add " + freeOwn.length + " own character" + (freeOwn.length === 1 ? "" : "s") + " that can still receive item mail from you",
+            onClick: () => {
+              addOwnCharsWithFreeMailSpace(freeOwn);
+              setSuggestOpen(false);
+            }
+          },
+          freeOwn.length ? "Add own (" + freeOwn.length + " free)" : "Add own (none free)"
+        ) : null
+      ),
       suggestOpen && suggestions.length ? e("div", { className: "comm-mail__suggest" }, ...suggestEls) : null,
       e(
         "div",
@@ -80844,7 +82341,7 @@ ${ESTIMATE_HINT}`,
           className: "comm-mail__meta",
           style: { marginTop: 2, marginBottom: 4 }
         },
-        draftAttachesList.length ? "Queue items anytime. Assign each attach a To (or add To chips \u2014 unassigned items auto-bind)." : draft.to.length > 1 ? "Plain mail: one copy per To" : null
+        draftAttachesList.length ? "Bag right-click: Mail this \xB7 Mail all matching \xB7 Mail matching \u2192 free own." : draft.to.length > 1 ? "Plain mail: one copy per To" : "Bag right-click \u2192 Mail this (or Mail matching \u2192 free own)."
       ),
       e("label", null, "Subject"),
       e(
@@ -80936,14 +82433,33 @@ ${ESTIMATE_HINT}`,
       ) : e(
         "div",
         { className: "comm-mail__meta", style: { marginTop: 8 } },
-        "Attach via bag \u2192 right-click \u2192 Send mail (queue first, add To later; same slot replaces)"
+        "Bag right-click \u2192 Mail this / Mail all matching / Mail matching \u2192 free own"
       ),
       capNoticeEls.length ? e("div", { className: "comm-mail__cap-notes" }, ...capNoticeEls) : null,
       e(
         "div",
-        { className: "comm-mail__meta", style: { marginTop: 8 } },
-        "Cost " + (caps.sendCost / 1e3).toFixed(0) + "k" + (draftAttachesList.length > 1 ? " (" + draftAttachesList.length + "\xD7 attach)" : draftAttachesList.length === 0 && draft.to.length > 1 ? " (" + draft.to.length + "\xD7 plain)" : "") + (caps.gold != null ? " \xB7 observed gold " + Math.floor(caps.gold / 1e3) + "k" : "") + (caps.goldEnough === false ? " \u2014 not enough gold" : "")
+        {
+          className: "comm-mail__summary" + (summary.pressure === "full" ? " is-full" : summary.pressure === "warn" ? " is-warn" : "") + (summary.needTo > 0 ? " is-need-to" : ""),
+          title: summary.line
+        },
+        summary.line
       ),
+      e(
+        "div",
+        {
+          className: "comm-mail__meta",
+          style: { marginTop: 6 },
+          title: caps.sendCost > 0 ? caps.sendCost.toLocaleString() + " gold" : void 0
+        },
+        "Cost " + formatCompactNumber(caps.sendCost) + (draftAttachesList.length > 1 ? " (" + draftAttachesList.length + "\xD7 attach)" : draftAttachesList.length === 0 && draft.to.length > 1 ? " (" + draft.to.length + "\xD7 plain)" : "") + (caps.gold != null ? " \xB7 observed gold " + formatCompactNumber(caps.gold) : "") + (caps.goldEnough === false ? " \u2014 not enough gold" : "")
+      ),
+      sendBlock ? e(
+        "div",
+        {
+          className: "comm-mail__send-block" + (sendBlock.kind === "err" ? " is-err" : " is-warn")
+        },
+        sendBlock.reason
+      ) : null,
       e(
         "div",
         { className: "comm-mail__acts" },
@@ -80953,6 +82469,7 @@ ${ESTIMATE_HINT}`,
             type: "button",
             className: "comm-mail__btn comm-mail__btn--gold",
             disabled: !canSend,
+            title: sendBlock ? sendBlock.reason : void 0,
             onClick: () => {
               if (draftAttachesList.length) {
                 sendMailCommand({
@@ -80972,14 +82489,25 @@ ${ESTIMATE_HINT}`,
               });
             }
           },
-          snap.commandBusy ? "Sending\u2026" : draftAttachesList.length > 1 || draftAttachesList.length === 0 && draft.to.length > 1 ? "Send " + (draftAttachesList.length > 0 ? draftAttachesList.length : draft.to.length) + " (" + (caps.sendCost / 1e3).toFixed(0) + "k)" : "Send (" + (caps.sendCost / 1e3).toFixed(0) + "k)"
+          snap.commandBusy ? "Sending\u2026" : draftAttachesList.length > 1 || draftAttachesList.length === 0 && draft.to.length > 1 ? "Send " + (draftAttachesList.length > 0 ? draftAttachesList.length : draft.to.length) + " (" + formatCompactNumber(caps.sendCost) + ")" : "Send (" + formatCompactNumber(caps.sendCost) + ")"
         ),
         e(
           "button",
           {
             type: "button",
             className: "comm-mail__btn",
-            onClick: () => setMailView({ kind: "list" })
+            onClick: () => clearComposeDraft(),
+            title: "Clear To, subject, body, and queued items"
+          },
+          "Clear"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__btn",
+            onClick: () => clearComposeAndClose(),
+            title: "Clear compose and return to the list"
           },
           "Cancel"
         )
@@ -81027,7 +82555,8 @@ ${ESTIMATE_HINT}`,
       "div",
       {
         className: "comm-mail__item" + (taken ? " is-taken" : ""),
-        title: taken ? label + " (taken)" : label,
+        // ItemInstance cooltip owns hover — no native title stack.
+        "aria-label": taken ? label + " (taken)" : label,
         onClick: (ev) => ev.stopPropagation(),
         style: { width: size, height: size }
       },
@@ -81038,7 +82567,7 @@ ${ESTIMATE_HINT}`,
         q,
         p,
         size,
-        title: label
+        actual: m.item
       })
     );
   }
@@ -81249,7 +82778,8 @@ ${ESTIMATE_HINT}`,
             type: "button",
             key: it.key + ":" + it.mailIds.join(","),
             className: "comm-mail__items-cell" + (sel ? " is-sel" : "") + (over ? " is-cap-full" : ""),
-            title: cellTitle(it),
+            // ItemInstance cooltip owns hover — keep meta in aria only.
+            "aria-label": cellTitle(it),
             onClick: () => onSelectItem(it)
           },
           e(ItemInstance, {
@@ -81933,6 +83463,24 @@ ${ESTIMATE_HINT}`,
       const s = MAIL_SEARCH_SCOPES[i];
       scopeOpts.push(e("option", { key: s.id, value: s.id }, s.label));
     }
+    const scopePills = [];
+    for (let i = 0; i < MAIL_SEARCH_SCOPES.length; i++) {
+      const s = MAIL_SEARCH_SCOPES[i];
+      const title = s.id === "fromothers" ? "Mail to your characters from other players (not self-mail)" : s.id === "tome" ? "Mail addressed to any of your characters" : s.id === "fromme" ? "Mail you sent from any of your characters" : s.label;
+      scopePills.push(
+        e(
+          "button",
+          {
+            key: s.id,
+            type: "button",
+            className: "comm-mail__pill" + (pill === s.id ? " is-on" : ""),
+            title,
+            onClick: () => setPillPersist(s.id)
+          },
+          s.short || s.label
+        )
+      );
+    }
     return e(
       "div",
       {
@@ -81983,6 +83531,7 @@ ${ESTIMATE_HINT}`,
           })
         )
       ),
+      e("div", { className: "comm-mail__pills" }, ...scopePills),
       open ? e(
         "div",
         {
@@ -82345,9 +83894,16 @@ ${ESTIMATE_HINT}`,
     const [pill, setPill] = React.useState(() => {
       try {
         const raw = loadSettings().mailPill;
-        const allowed = ["all", "unread", "item", "tome", "fromme"];
+        const allowed = [
+          "all",
+          "unread",
+          "item",
+          "tome",
+          "fromme",
+          "fromothers"
+        ];
         const next = allowed.indexOf(String(raw)) >= 0 ? raw : "all";
-        if ((next === "tome" || next === "fromme") && !selfCharacterNames().length) {
+        if ((next === "tome" || next === "fromme" || next === "fromothers") && !selfCharacterNames().length) {
           return "all";
         }
         return next;
@@ -83961,9 +85517,9 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   font-family: inherit;
 }
 
-/* HP threshold marks on boss/unit frames */
+/* HP phase marks \u2014 wide hit pad, thin tick; Comm cooltip (not native title) */
 .comm-hp-threshold {
-  pointer-events: none;
+  pointer-events: auto;
 }
 `;
   function injectCss(id, css) {
@@ -84023,6 +85579,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     installUpdateNotesHooks();
     ensureMailCss();
     installMailUnreadWatch();
+    installComposeBagHighlight();
     subscribeMailToast((message) => showCommToast(message));
     installStockHubChatTakeover();
     startSocketHub();

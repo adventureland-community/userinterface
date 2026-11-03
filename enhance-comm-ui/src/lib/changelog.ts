@@ -112,6 +112,132 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.17.0",
+    title: "0.17.0",
+    date: "2026-11-03",
+    summary:
+      "Boss-bar TTK and phase cooltips, in-flight HP ghosts, mail matching → free own, and bag/paperdoll item cooltips.",
+    highlights: [
+      {
+        label: "Boss bars · TTK + phases",
+        detail:
+          "Each boss shows time-to-kill from the 10s damage window. HP-track phase marks (spawn waves, ability thresholds like Rime Shell) open Comm cooltips. Buffs, aggro, and HP% sit flat in the bar on the right.",
+        kind: "feature",
+      },
+      {
+        label: "HP bars · incoming ghosts",
+        detail:
+          "Amber in-flight damage on remaining (red) HP; green in-flight heal in the missing (black) track. Ghosts clear when the hit lands — the bar already moved.",
+        kind: "feature",
+      },
+      {
+        label: "Mail matching → free own",
+        detail:
+          "Bag right-click queues matching slots, fills To with own characters that still have attach room, and shows a compose summary plus a clear Send blocker when To is missing or a recipient is at cap.",
+        kind: "feature",
+      },
+      {
+        label: "Item cooltip · bag + paperdoll",
+        detail:
+          "Filled bag slots and paperdoll gear open the stock render_item Comm cooltip. Native browser titles are stripped so only the Comm tip shows.",
+        kind: "improve",
+      },
+    ],
+    features: [
+      {
+        title: "Combat HUD",
+        summary: "Boss bars and unit vitals.",
+        items: [
+          {
+            label: "Boss bars · flat in-track meta",
+            detail:
+              "Buffs, aggro, and HP% sit inside the bar on the right with no nested plate. Icons are larger and bare; duration chips stay on hover only.",
+            kind: "ui",
+          },
+          {
+            label: "Boss bars · TTK",
+            detail:
+              "Time-to-kill from the 10s damage window on that target, just right of the name. HP% stays flush on the right edge.",
+            kind: "feature",
+          },
+          {
+            label: "Boss bars · phase cooltips",
+            detail:
+              "Every HP-track phase mark opens a Comm cooltip with the phase % and G skill/monster explanation.",
+            kind: "feature",
+          },
+          {
+            label: "HP bars · incoming ghosts",
+            detail:
+              "Summed in-flight projectile damage (amber on red) and heal (green in black). Cleared on hit — no post-land flash.",
+            kind: "feature",
+          },
+        ],
+      },
+      {
+        title: "Mail",
+        summary: "Compose jobs, caps, and cooltips.",
+        items: [
+          {
+            label: "Bag mail menu hierarchy",
+            detail: "Mail this · Mail all matching · Mail matching → free own.",
+            kind: "ui",
+          },
+          {
+            label: "Mail matching → free own only",
+            detail:
+              "The bag job replaces To with characters that still have attach room — sticky / full own chips are not kept or assigned.",
+            kind: "fix",
+          },
+          {
+            label: "Compose To · sender 20",
+            detail:
+              "OWN suggestions, To chips, and attach To options show N/20 from your account. Add own (free) still fills the To pool manually.",
+            kind: "fix",
+          },
+          {
+            label: "Clear / Cancel compose",
+            detail:
+              "Clear empties the draft in place. Cancel clears and returns to the list (sticky last-To is reset too).",
+            kind: "ui",
+          },
+          {
+            label: "Compose queue · bag highlight",
+            detail:
+              "Inventory slots queued on the mail compose draft get a blue outline so you can see what is already attached.",
+            kind: "ui",
+          },
+          {
+            label: "From others filter",
+            detail:
+              "Scope chip + search option for mail addressed to your characters from other players (excludes self-mail). Scope chips sit under the search field.",
+            kind: "feature",
+          },
+          {
+            label: "Mail compose · gold as M/k",
+            detail:
+              "Send cost and observed gold use compact amounts (3.60M, not 3600k). Hover the cost line for the exact gold total.",
+            kind: "ui",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "Cooltip · no native title stack",
+        detail:
+          "Bag, paperdoll, mail item tiles, and bank slots strip browser title= so only the Comm item cooltip shows on hover.",
+        kind: "fix",
+      },
+      {
+        label: "Upgrade / Compound · buy scrolls",
+        detail:
+          "When a compatible scroll or offering is sold by an NPC and missing from the bag, the shrine dialog shows a BUY tile (gold price). Confirm buys first — computer works anywhere; otherwise travel to the vendor, then the shrine.",
+        kind: "feature",
+      },
+    ],
+  },
+  {
     id: "0.16.1",
     title: "0.16.1",
     date: "2026-11-03",
