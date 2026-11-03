@@ -1,9 +1,11 @@
 /**
- * Parse G.monsters[mtype].spawns — timed [[ms, mtype, n?]] and HP
- * [["hp:0.75", mtype, n], …]. Same shape server uses in render/combat.
+ * Parse G.monsters[mtype] HP milestones for boss bars:
+ * - spawns: timed [[ms, mtype, n?]] and HP [["hp:0.75", mtype, n], …]
+ * - abilities.*.threshold (e.g. rimedjinn rimeshell at 0.5)
  */
 
 import { getG } from "../host/al";
+import { monsterDisplayName, skillDisplayName } from "../lib/gameIcon";
 import { vizCommFlag } from "../viz/vizSettings";
 
 export type TimedSpawnPack = {
@@ -23,12 +25,21 @@ export type HpThresholdSpawnPack = {
 
 export type SpawnPack = TimedSpawnPack | HpThresholdSpawnPack;
 
+export type AbilityHpThreshold = {
+  abilityId: string;
+  ratio: number;
+  title: string;
+  detail: string;
+};
+
 const HP_RE = /^hp:([0-9]*\.?[0-9]+)$/i;
 
 export function parseSpawnCondition(
   condition: unknown,
 ):
-  { kind: "timed"; intervalMs: number } | { kind: "hp"; ratio: number } | null {
+  | { kind: "timed"; intervalMs: number }
+  | { kind: "hp"; ratio: number }
+  | null {
   if (
     typeof condition === "number" &&
     Number.isFinite(condition) &&
@@ -99,43 +110,141 @@ export function listTimedSpawns(mtype: string): TimedSpawnPack[] {
   return out;
 }
 
+function monsterExplanation(mtype: string): string {
+  const def = getG()?.monsters?.[mtype];
+  if (def && typeof def.explanation === "string" && def.explanation) {
+    return def.explanation;
+  }
+  return "";
+}
+
+/**
+ * Ability HP thresholds from G.monsters[mtype].abilities.*.threshold
+ * (rimedjinn → rimeshell at 0.5). Detail prefers G.skills[id].explanation.
+ */
+export function listAbilityHpThresholds(mtype: string): AbilityHpThreshold[] {
+  const G = getG();
+  const def = G?.monsters?.[mtype];
+  const abilities =
+    def && def.abilities && typeof def.abilities === "object"
+      ? (def.abilities as Record<string, unknown>)
+      : null;
+  if (!abilities) return [];
+  const skills =
+    G?.skills && typeof G.skills === "object"
+      ? (G.skills as Record<string, { name?: string; explanation?: string }>)
+      : null;
+  const out: AbilityHpThreshold[] = [];
+  const ids = Object.keys(abilities);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const raw = abilities[id];
+    if (!raw || typeof raw !== "object") continue;
+    const threshold = (raw as { threshold?: unknown }).threshold;
+    const ratio =
+      typeof threshold === "number" && Number.isFinite(threshold)
+        ? threshold
+        : NaN;
+    if (!(ratio > 0 && ratio <= 1)) continue;
+    const skill = skills && skills[id];
+    const title =
+      (skill && typeof skill.name === "string" && skill.name) ||
+      skillDisplayName(id) ||
+      id;
+    const detail =
+      skill && typeof skill.explanation === "string" ? skill.explanation : "";
+    out.push({ abilityId: id, ratio, title, detail });
+  }
+  return out;
+}
+
 export type HpThresholdMark = {
   /** Fraction of bar from the left = damage taken (1 - hpRatio). */
   leftPct: number;
-  /** Design HP ratio that fires the wave. */
+  /** Design HP ratio that fires the wave / ability. */
   ratio: number;
   /** True when current HP is at or below the threshold. */
   fired: boolean;
-  mtype: string;
-  count: number;
   key: string;
+  /** Short heading for cooltip (skill or spawn phase name). */
+  title: string;
+  /** Longer explanation body for cooltip. */
+  detail: string;
+  /** Spawn wave child mtype, when from spawns. */
+  mtype?: string;
+  /** Display name for spawn child. */
+  childName?: string;
+  count?: number;
+  /** Ability id when from abilities.*.threshold. */
+  abilityId?: string;
 };
 
 /**
- * Marks for the boss HP track. Position mirrors mockup: 75% HP → left 25%.
+ * Marks for the boss HP track. Position: 75% HP → left 25%.
  * `fired` is inferred from live hp/max_hp (observer may miss pre-arrival waves).
+ * Includes spawn packs and ability thresholds (rimeshell, etc.).
  */
 export function buildHpThresholdMarks(
   mtype: string,
   hpRatio: number,
 ): HpThresholdMark[] {
   if (!vizCommFlag("comm.hpThresholds")) return [];
-  const packs = listHpThresholdSpawns(mtype);
-  if (!packs.length) return [];
   const ratio = Number.isFinite(hpRatio)
     ? Math.max(0, Math.min(1, hpRatio))
     : 1;
   const out: HpThresholdMark[] = [];
+
+  const packs = listHpThresholdSpawns(mtype);
   for (let i = 0; i < packs.length; i++) {
     const p = packs[i];
+    const childName = monsterDisplayName(p.mtype) || p.mtype;
+    const childExpl = monsterExplanation(p.mtype);
+    const parentExpl = monsterExplanation(mtype);
+    const detailParts: string[] = [];
+    detailParts.push(
+      `At ${Math.round(p.ratio * 100)}% HP, spawns ${p.count}× ${childName}.`,
+    );
+    if (childExpl) detailParts.push(childExpl);
+    else if (parentExpl) detailParts.push(parentExpl);
     out.push({
       leftPct: (1 - p.ratio) * 100,
       ratio: p.ratio,
       fired: ratio <= p.ratio,
       mtype: p.mtype,
+      childName,
       count: p.count,
+      title: `Spawn · ${childName}`,
+      detail: detailParts.join(" "),
       key: `hp:${p.ratio}:${p.mtype}`,
     });
   }
+
+  const abilities = listAbilityHpThresholds(mtype);
+  for (let i = 0; i < abilities.length; i++) {
+    const a = abilities[i];
+    // Prefer spawn mark if the same ratio already exists (rare overlap).
+    let dup = false;
+    for (let j = 0; j < out.length; j++) {
+      if (Math.abs(out[j].ratio - a.ratio) < 0.0001) {
+        // Ability explanation wins on shared thresholds.
+        out[j].title = a.title;
+        out[j].detail = a.detail || out[j].detail;
+        out[j].abilityId = a.abilityId;
+        dup = true;
+        break;
+      }
+    }
+    if (dup) continue;
+    out.push({
+      leftPct: (1 - a.ratio) * 100,
+      ratio: a.ratio,
+      fired: ratio <= a.ratio,
+      abilityId: a.abilityId,
+      title: a.title,
+      detail: a.detail,
+      key: `ability:${a.abilityId}:${a.ratio}`,
+    });
+  }
+
   return out;
 }

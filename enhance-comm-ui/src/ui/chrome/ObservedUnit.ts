@@ -4,6 +4,7 @@ import { NameWithControl } from "./NameWithControl";
 import { AggroSpark } from "./AggroSpark";
 import { InspectButton } from "./InspectButton";
 import { VitalsColumn } from "./VitalsColumn";
+import { isCooltipHovering } from "./cooltip";
 import {
   unitCooltipHandlers,
   unitCooltipHtml,
@@ -20,6 +21,11 @@ export type ObservedUnitProps = {
   hpColor?: string;
   fontSize?: string | number;
   trailing?: any;
+  /**
+   * Boss bars: label just after the name/id (e.g. TTK), before the flex
+   * spacer that pushes buffs / aggro / HP% to the right edge.
+   */
+  midLabel?: string | null;
   onSelect?: (id: string) => void;
   showEffects?: boolean;
   /** Compact EffectsRow (party-chip density). */
@@ -33,9 +39,16 @@ export type ObservedUnitProps = {
    * Boss bars / party chips leave this off (in-flow growth is fine).
    */
   effectsOverlay?: boolean;
+  /**
+   * Boss bars: keep EffectsRow / aggro / HP% inside the HP track (right side),
+   * buffs left of aggro growing into the spacer — fixed bar width, no outer
+   * meta strip that shrinks/grows the stack. Ignored when `effectsOverlay` is on.
+   */
+  effectsBeside?: boolean;
   showMp?: boolean;
   /**
-   * Compact aggro text inside the HP bar (boss bars), between name and HP%.
+   * Compact aggro text (boss bars). With `effectsBeside`, sits inside the HP
+   * bar to the right of buffs; otherwise between name and HP%.
    * Pass a full label like `Aggro · Tank`; omit to hide.
    */
   aggroLabel?: string;
@@ -61,12 +74,14 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     hpColor,
     fontSize,
     trailing,
+    midLabel,
     onSelect,
     showEffects = true,
     effectsCompact,
     effectsMaxVisible,
     effectsIconSize,
     effectsOverlay = false,
+    effectsBeside = false,
     showMp = true,
     aggroLabel,
     aggroHot = false,
@@ -75,6 +90,8 @@ export function ObservedUnit(props: ObservedUnitProps): any {
     footer,
     hideInspect = false,
   } = props;
+  // In-bar right meta (buffs → aggro → %) — not an outer flex sibling.
+  const inBarMeta = effectsBeside && !effectsOverlay;
 
   const controlStates = getControlStates(entity, aggroMobs);
   const controlTint = controlBorderTint(controlStates);
@@ -115,23 +132,51 @@ export function ObservedUnit(props: ObservedUnitProps): any {
             style: {
               flex: "0 1 auto",
               minWidth: 0,
-              maxWidth: "42%",
+              maxWidth: inBarMeta ? "8em" : "42%",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              padding: "1px 6px",
+              padding: inBarMeta ? "0" : "1px 6px",
               boxSizing: "border-box",
-              background: aggroHot
-                ? "rgba(138,30,30,0.85)"
-                : "rgba(0,0,0,0.45)",
-              border: aggroHot ? "1px solid #e05555" : "1px solid #555",
+              background: inBarMeta
+                ? "transparent"
+                : aggroHot
+                  ? "rgba(138,30,30,0.85)"
+                  : "rgba(0,0,0,0.45)",
+              border: inBarMeta
+                ? "none"
+                : aggroHot
+                  ? "1px solid #e05555"
+                  : "1px solid #555",
               color: aggroHot ? "#ffd0d0" : "#bbb",
-              fontSize: TYPE.secondary,
+              fontSize: inBarMeta ? TYPE.body : TYPE.secondary,
               lineHeight: "1.2",
+              textShadow: inBarMeta ? "1px 1px 0 #000" : undefined,
               ...PIXEL_TEXT,
             },
           },
           aggroLabel,
+        )
+      : null;
+
+  const midEl =
+    midLabel != null && midLabel !== ""
+      ? e(
+          "span",
+          {
+            className: "comm-boss-mid",
+            style: {
+              flex: "0 1 auto",
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: TYPE.body,
+              opacity: 0.9,
+              ...PIXEL_TEXT,
+            },
+          },
+          midLabel,
         )
       : null;
 
@@ -140,16 +185,35 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       ? e(
           "span",
           {
+            className: "comm-boss-pct",
             style: {
               fontSize: TYPE.nameLg,
               opacity: 0.95,
               flexShrink: 0,
+              marginLeft: "auto",
               ...PIXEL_TEXT,
             },
           },
           trailing,
         )
       : null;
+
+  const effectsRow = showEffects
+    ? e(EffectsRow, {
+        key: `fx-${String(entity.id)}`,
+        entity,
+        compact: !!effectsCompact || inBarMeta,
+        inline: inBarMeta,
+        maxVisible: effectsMaxVisible,
+        iconSize: effectsIconSize,
+      })
+    : null;
+
+  const hasRightMeta = !!(
+    aggroChip ||
+    trailingEl ||
+    (inBarMeta && effectsRow)
+  );
 
   const label = e(
     "span",
@@ -158,31 +222,29 @@ export function ObservedUnit(props: ObservedUnitProps): any {
         display: "flex",
         width: "100%",
         alignItems: "center",
-        gap: "8px",
+        // Keep `{}` tight to the level/name — gap + button margin used to read as a hole.
+        gap: inBarMeta ? "6px" : "4px",
         minWidth: 0,
       },
     },
-    hideInspect ? null : e(InspectButton, { entity }),
+    hideInspect
+      ? null
+      : e(InspectButton, { entity, compact: inBarMeta }),
     nameCluster,
-    trailingEl || aggroChip
-      ? e("span", { style: { flex: "1 1 auto", minWidth: 0 } })
+    // TTK (or other mid label) sits just right of the name/id.
+    inBarMeta ? midEl : null,
+    hasRightMeta || midEl
+      ? e("span", { style: { flex: "1 1 auto", minWidth: 4 } })
       : null,
+    // Right edge: buffs → aggro → HP% (flush right via trailing marginLeft auto).
+    inBarMeta ? effectsRow : null,
     aggroChip,
+    !inBarMeta ? midEl : null,
     trailingEl,
   );
 
-  const effectsRow = showEffects
-    ? e(EffectsRow, {
-        key: `fx-${String(entity.id)}`,
-        entity,
-        compact: !!effectsCompact,
-        maxVisible: effectsMaxVisible,
-        iconSize: effectsIconSize,
-      })
-    : null;
-
   const effectsSlot =
-    effectsRow == null
+    effectsRow == null || inBarMeta
       ? null
       : effectsOverlay
         ? e(
@@ -204,12 +266,65 @@ export function ObservedUnit(props: ObservedUnitProps): any {
           )
         : effectsRow;
 
+  const vitals = e(
+    "div",
+    {
+      className: "comm-unit-vitals",
+      onMouseEnter: tipHandlers.onMouseEnter,
+      onMouseMove: (ev: MouseEvent) => {
+        const t = ev.target as Element | null;
+        // Phase marks own the Comm cooltip; don't reclaim while over one.
+        if (
+          t &&
+          typeof (t as any).closest === "function" &&
+          (t as any).closest(".comm-hp-threshold")
+        ) {
+          return;
+        }
+        // After leaving a phase mark, tip is cleared — reopen unit tip.
+        if (!isCooltipHovering(tipKey)) {
+          tipHandlers.onMouseEnter(ev);
+          return;
+        }
+        tipHandlers.onMouseMove(ev);
+      },
+      onMouseLeave: tipHandlers.onMouseLeave,
+      style: {
+        width: "100%",
+        minWidth: 0,
+        pointerEvents: "auto",
+      },
+    },
+    e(
+      VitalsColumn,
+      {
+        entityId: entity.id,
+        hp: entity.hp || 0,
+        maxHp: entity.max_hp || 1,
+        mp: entity.mp,
+        maxMp: entity.max_mp,
+        hpColor,
+        showMp,
+        hpThresholdMarks,
+        nameStyle: {
+          fontSize: fontSize != null ? fontSize : "21px",
+          fontWeight: "normal",
+          // Boss in-bar meta sits flush to the track edge — drop stock 10px pad.
+          ...(inBarMeta ? { padding: "0 4px 0 8px" } : null),
+        },
+        onClick: onSelect ? () => onSelect(entity.id) : undefined,
+      },
+      label,
+    ),
+  );
+
   return e(
     "div",
     {
       className:
         "comm-unit" +
         (effectsOverlay ? " has-fx-overlay" : "") +
+        (inBarMeta ? " has-fx-inbar" : "") +
         (controlStates.length ? " has-control" : "") +
         (aggroCount > 0 ? " has-aggro" : ""),
       "data-ecu-entity": entity.id != null ? String(entity.id) : "",
@@ -234,38 +349,7 @@ export function ObservedUnit(props: ObservedUnitProps): any {
       ownerId: String(entity.id),
       ownerName: String(entity.name || entity.id),
     }),
-    e(
-      "div",
-      {
-        className: "comm-unit-vitals",
-        onMouseEnter: tipHandlers.onMouseEnter,
-        onMouseMove: tipHandlers.onMouseMove,
-        onMouseLeave: tipHandlers.onMouseLeave,
-        style: {
-          width: "100%",
-          minWidth: 0,
-          pointerEvents: "auto",
-        },
-      },
-      e(
-        VitalsColumn,
-        {
-          hp: entity.hp || 0,
-          maxHp: entity.max_hp || 1,
-          mp: entity.mp,
-          maxMp: entity.max_mp,
-          hpColor,
-          showMp,
-          hpThresholdMarks,
-          nameStyle: {
-            fontSize: fontSize != null ? fontSize : "21px",
-            fontWeight: "normal",
-          },
-          onClick: onSelect ? () => onSelect(entity.id) : undefined,
-        },
-        label,
-      ),
-    ),
+    vitals,
     effectsSlot,
     footer || null,
   );

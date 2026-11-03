@@ -1,11 +1,19 @@
 import { e } from "../../host/react";
 import { setXTarget } from "../../host/icons";
-import { getPercent } from "../../lib/format";
+import { formatTime, getPercent } from "../../lib/format";
+import { estimateTtk, getIncomingDps } from "../../meters/combatMeter";
 import { activeBosses, findEntity } from "../../queries/entities";
 import { ObservedUnit } from "../chrome/ObservedUnit";
 import { FrameDummy } from "../chrome/FrameDummy";
 import type { EntityLike } from "../../host/globals";
 import { buildHpThresholdMarks } from "../../instance/monsterSpawns";
+
+/** Rolling TTK from damage landed on this boss (10s window), or null. */
+function bossTtkLabel(boss: EntityLike): string | null {
+  const ttk = estimateTtk(boss.hp, getIncomingDps(boss.id));
+  if (ttk == null) return null;
+  return `TTK ${formatTime(ttk)}`;
+}
 
 export type BossBarPanelProps = {
   entities: EntityLike[];
@@ -50,13 +58,13 @@ function aggroName(boss: EntityLike, entities: EntityLike[]): string | null {
 const STACK_STYLE: Record<string, any> = {
   display: "flex",
   flexDirection: "column",
-  gap: "6px",
+  gap: "4px",
   width: "100%",
   pointerEvents: "none",
 };
 
 /**
- * Multi-boss HP stack: name, aggro, HP%, live effects, HP-threshold marks.
+ * Multi-boss HP stack: name, aggro, HP%, TTK, live effects, HP-threshold marks.
  * Mechanic chips live on instance cards; ability CDs on the timeline.
  */
 export function BossBarPanel(props: BossBarPanelProps): any {
@@ -93,12 +101,8 @@ export function BossBarPanel(props: BossBarPanelProps): any {
     const onMe = bossThreat(boss, obsId) > 0;
     const aggro = aggroName(boss, props.entities);
     const ratio = hpRatio(boss);
-    const pct = getPercent(ratio, 1);
-    const aggroLabel = onMe
-      ? "Aggro · you"
-      : aggro
-        ? `Aggro · ${aggro}`
-        : "Aggro · —";
+    // Skip empty aggro — identical "—" chips look noisier than silence.
+    const aggroLabel = onMe ? "you" : aggro || undefined;
     const mtype = typeof boss.mtype === "string" ? boss.mtype : "";
     const marks = mtype ? buildHpThresholdMarks(mtype, ratio) : [];
     rows.push(
@@ -126,10 +130,13 @@ export function BossBarPanel(props: BossBarPanelProps): any {
           fontSize: "22px",
           showMp: false,
           showEffects: true,
+          // Name · TTK · … · buffs · aggro · HP% (bare icons, no under-timers).
+          effectsBeside: true,
           effectsCompact: true,
-          effectsIconSize: 22,
-          effectsMaxVisible: 0,
-          trailing: pct,
+          effectsIconSize: 26,
+          effectsMaxVisible: 3,
+          midLabel: bossTtkLabel(boss),
+          trailing: getPercent(ratio, 1),
           aggroLabel,
           aggroHot: onMe,
           hpThresholdMarks: marks.length ? marks : undefined,

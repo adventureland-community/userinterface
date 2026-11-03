@@ -299,6 +299,10 @@ export function EffectIcon(props: {
   hostClass: string;
   entity: EntityLike;
   iconSize: number;
+  /** Skip the under-icon duration chip (boss in-bar row — cooltip still has time). */
+  hideRemainLabel?: boolean;
+  /** Drop stock item_container grey border / padding (dense boss-bar icons). */
+  bareIcon?: boolean;
 }): any {
   const React = getReact();
   const iconRef = React.useRef(null);
@@ -315,7 +319,14 @@ export function EffectIcon(props: {
     color: "",
     show: false,
   });
-  const { effect, hostClass, entity, iconSize } = props;
+  const {
+    effect,
+    hostClass,
+    entity,
+    iconSize,
+    hideRemainLabel = false,
+    bareIcon = false,
+  } = props;
   const effectRef = React.useRef(effect);
   effectRef.current = effect;
   const entityRef = React.useRef(entity);
@@ -388,7 +399,9 @@ export function EffectIcon(props: {
   const paintIcon = () => {
     const el = iconRef.current as HTMLElement | null;
     if (!el) return;
-    paintItemContainerIcon(el, effect.skin, iconSize);
+    paintItemContainerIcon(el, effect.skin, iconSize, {
+      bare: bareIcon,
+    });
   };
 
   const hideTint = () => {
@@ -432,7 +445,7 @@ export function EffectIcon(props: {
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize]);
+  }, [effect.id, effect.skin, effect.type, hostClass, rid, iconSize, bareIcon]);
 
   // Badge digit only — do not wipe the icon DOM (that resets tint / opacity).
   React.useEffect(() => {
@@ -566,13 +579,15 @@ export function EffectIcon(props: {
   }, [cooltipKey]);
 
   const remainNow = Math.max(0, (endsAtRef.current || 0) - Date.now());
-  const showRemainLabel = shouldShowRemainingLabel(
-    effect,
-    remainNow,
-    peakRemainRef.current,
-    lastExtendAtRef.current,
-    Date.now(),
-  );
+  const showRemainLabel =
+    !hideRemainLabel &&
+    shouldShowRemainingLabel(
+      effect,
+      remainNow,
+      peakRemainRef.current,
+      lastExtendAtRef.current,
+      Date.now(),
+    );
   const remainingMs = remainNow;
   const msLabel =
     showRemainLabel && remainingMs > 0
@@ -593,7 +608,8 @@ export function EffectIcon(props: {
     "div",
     {
       ref: wrapRef,
-      className: `comm-fx-icon ${hostClass}`,
+      className:
+        `comm-fx-icon ${hostClass}` + (hideRemainLabel ? " is-dense" : ""),
       "data-condition": effect.id,
       "data-entity": entityId,
       [INFO_SOURCE_ATTR]: clickable ? "" : undefined,
@@ -619,7 +635,7 @@ export function EffectIcon(props: {
         flexDirection: "column",
         alignItems: "center",
         verticalAlign: "top",
-        overflow: "visible",
+        overflow: hideRemainLabel ? "hidden" : "visible",
         flex: "0 0 auto",
         cursor: clickable ? "pointer" : "help",
         pointerEvents: "auto",
@@ -633,29 +649,32 @@ export function EffectIcon(props: {
         verticalAlign: "top",
       },
     }),
-    // Always reserve label height so show/hide does not reflow the row.
-    e(
-      "div",
-      {
-        ref: labelRef,
-        className: "comm-fx-ms",
-        style: {
-          marginTop: "1px",
-          zIndex: 2,
-          padding: "0 3px",
-          background: msLabel ? "rgba(0,0,0,0.82)" : "transparent",
-          border: msLabel ? "1px solid #444" : "1px solid transparent",
-          color: remainingMs <= 5000 ? "#ffcc66" : "#e8e8e8",
-          fontSize: TYPE.microMin,
-          lineHeight: "14px",
-          minHeight: "14px",
-          whiteSpace: "nowrap",
-          pointerEvents: "none",
-          visibility: msLabel ? "visible" : "hidden",
-          ...PIXEL_TEXT,
-        },
-      },
-      msLabel || "\u00a0",
-    ),
+    // Always reserve label height so show/hide does not reflow the row
+    // (skipped for dense in-bar icons — cooltip still shows remaining).
+    hideRemainLabel
+      ? null
+      : e(
+          "div",
+          {
+            ref: labelRef,
+            className: "comm-fx-ms",
+            style: {
+              marginTop: "1px",
+              zIndex: 2,
+              padding: "0 3px",
+              background: msLabel ? "rgba(0,0,0,0.82)" : "transparent",
+              border: msLabel ? "1px solid #444" : "1px solid transparent",
+              color: remainingMs <= 5000 ? "#ffcc66" : "#e8e8e8",
+              fontSize: TYPE.microMin,
+              lineHeight: "14px",
+              minHeight: "14px",
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              visibility: msLabel ? "visible" : "hidden",
+              ...PIXEL_TEXT,
+            },
+          },
+          msLabel || "\u00a0",
+        ),
   );
 }

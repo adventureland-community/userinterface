@@ -22,6 +22,11 @@ type EffectsRowProps = {
   /** Compact party-chip spacing (tighter margin/gap under MP). */
   compact?: boolean;
   /**
+   * Sit beside vitals (boss bars) — no top margin / full-width minHeight.
+   * Icons stay in one horizontal strip.
+   */
+  inline?: boolean;
+  /**
    * When set (or defaulted in compact), hide overflow behind a +N chip
    * with a tooltip listing the rest — keeps party frames short.
    */
@@ -63,12 +68,19 @@ export function EffectsRow(props: EffectsRowProps): any {
       ? props.iconSize
       : ICON_SIZE;
   const compact = !!props.compact;
-  const gap = compact ? "3px" : "6px";
-  const marginTop = compact ? "3px" : "6px";
-  const padBottom = compact ? "2px" : "4px";
-  const minHeight = iconSize + (compact ? 8 : 14) + 16;
+  const inline = !!props.inline;
+  const gap = compact || inline ? "3px" : "6px";
+  const marginTop = inline ? "0" : compact ? "3px" : "6px";
+  const padBottom = inline ? "0" : compact ? "2px" : "4px";
+  const minHeight = inline
+    ? iconSize
+    : iconSize + (compact ? 8 : 14) + 16;
   const maxVisible =
-    typeof props.maxVisible === "number" ? props.maxVisible : compact ? 4 : 0;
+    typeof props.maxVisible === "number"
+      ? props.maxVisible
+      : compact || inline
+        ? 4
+        : 0;
   const overflow =
     maxVisible > 0 && effects.length > maxVisible
       ? effects.length - maxVisible
@@ -89,21 +101,28 @@ export function EffectsRow(props: EffectsRowProps): any {
     {
       // Do NOT key by effects list — that remounts every icon when one buff
       // is added/removed. EffectIcon keys already identity each buff.
-      className: "comm-fx-row" + (compact ? " is-compact" : ""),
+      className:
+        "comm-fx-row" +
+        (compact ? " is-compact" : "") +
+        (inline ? " is-inline" : ""),
       "data-ecu-tour": "buff-icons",
       style: {
         display: "flex",
         flexDirection: "row",
         marginTop,
         gap,
-        flexWrap: compact && maxVisible > 0 ? "nowrap" : "wrap",
-        alignItems: "flex-start",
-        width: "100%",
+        flexWrap:
+          inline || (compact && maxVisible > 0) ? "nowrap" : "wrap",
+        alignItems: "center",
+        width: inline ? "auto" : "100%",
+        flex: inline ? "0 0 auto" : undefined,
+        minWidth: 0,
         minHeight,
         paddingBottom: padBottom,
         boxSizing: "border-box",
         pointerEvents: "none",
-        overflow: compact && maxVisible > 0 ? "hidden" : "visible",
+        overflow:
+          inline || (compact && maxVisible > 0) ? "hidden" : "visible",
       },
     },
     ...shown.map((ef) => {
@@ -117,6 +136,8 @@ export function EffectsRow(props: EffectsRowProps): any {
         hostClass,
         entity: props.entity,
         iconSize,
+        hideRemainLabel: inline,
+        bareIcon: inline,
       });
     }),
     overflow > 0

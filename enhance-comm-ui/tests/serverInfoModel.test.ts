@@ -179,8 +179,9 @@ describe("serverInfoModel", () => {
   });
 
   it("formats until-ms helpers", () => {
-    assert.equal(formatUntilMs(Date.now() + 90_000, Date.now()), "2m");
-    assert.equal(formatUntilMs(Date.now() - 1000, Date.now()), "");
+    const now = 1_700_000_000_000;
+    assert.equal(formatUntilMs(now + 90_000, now), "2m");
+    assert.equal(formatUntilMs(now - 1000, now), "");
   });
 
   it("reads an active patron blessing", () => {
