@@ -99,6 +99,32 @@ export function MailSearchBar(props: MailSearchBarProps): any {
     scopeOpts.push(e("option", { key: s.id, value: s.id }, s.label));
   }
 
+  const scopePills: any[] = [];
+  for (let i = 0; i < MAIL_SEARCH_SCOPES.length; i++) {
+    const s = MAIL_SEARCH_SCOPES[i];
+    const title =
+      s.id === "fromothers"
+        ? "Mail to your characters from other players (not self-mail)"
+        : s.id === "tome"
+          ? "Mail addressed to any of your characters"
+          : s.id === "fromme"
+            ? "Mail you sent from any of your characters"
+            : s.label;
+    scopePills.push(
+      e(
+        "button",
+        {
+          key: s.id,
+          type: "button",
+          className: "comm-mail__pill" + (pill === s.id ? " is-on" : ""),
+          title,
+          onClick: () => setPillPersist(s.id),
+        },
+        s.short || s.label,
+      ),
+    );
+  }
+
   return e(
     "div",
     {
@@ -151,6 +177,7 @@ export function MailSearchBar(props: MailSearchBarProps): any {
         }),
       ),
     ),
+    e("div", { className: "comm-mail__pills" }, ...scopePills),
     open
       ? e(
           "div",

@@ -34,12 +34,22 @@ export const EMPTY_MAIL_SEARCH_FORM: MailSearchFormState = {
   scope: "all",
 };
 
-export const MAIL_SEARCH_SCOPES: { id: MailPill; label: string }[] = [
-  { id: "all", label: "All mail" },
+export const MAIL_SEARCH_SCOPES: {
+  id: MailPill;
+  label: string;
+  /** Compact toolbar chip; falls back to `label`. */
+  short?: string;
+}[] = [
+  { id: "all", label: "All mail", short: "All" },
   { id: "unread", label: "Unread" },
-  { id: "item", label: "Has item" },
+  { id: "item", label: "Has item", short: "Item" },
   { id: "tome", label: "To me" },
   { id: "fromme", label: "From me" },
+  {
+    id: "fromothers",
+    label: "From others",
+    short: "From others",
+  },
 ];
 
 function quoteToken(raw: string): string {

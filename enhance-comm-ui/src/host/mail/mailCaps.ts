@@ -486,6 +486,145 @@ export type ComposeCapNotice = {
 };
 
 /**
+ * Own-character fills for compose To (OWN suggestions / chips / attach To).
+ * Primary count is **from your account → that char** (sender cap 20). Mailbox
+ * 200 still applies and is carried for tooltips / pressure when near-full.
+ */
+export type OwnToCapFill = {
+  name: string;
+  /** Untaken attaches from this account to `name`. */
+  fromYou: number;
+  /** Untaken attaches sitting on that character (any sender). */
+  mailbox: number;
+  /** Worst of sender + mailbox pressure. */
+  pressure: MailCapPressure;
+};
+
+function worstCapPressure(
+  a: MailCapPressure,
+  b: MailCapPressure,
+): MailCapPressure {
+  if (a === "full" || b === "full") return "full";
+  if (a === "warn" || b === "warn") return "warn";
+  return "";
+}
+
+export function buildOwnToCapFills(opts: {
+  mails: MailRow[];
+  selfNames: string[];
+  incomplete?: boolean;
+}): OwnToCapFill[] {
+  const incomplete = !!opts.incomplete;
+  const mailboxFills = mergeOwnedMailboxFills(
+    countAttachmentsByRecipient(opts.mails, opts.selfNames),
+    opts.selfNames,
+    incomplete,
+  );
+  const out: OwnToCapFill[] = [];
+  for (let i = 0; i < mailboxFills.length; i++) {
+    const box = mailboxFills[i];
+    const fromYou = countSenderAttachmentsTo(
+      opts.mails,
+      opts.selfNames,
+      box.name,
+    );
+    out.push({
+      name: box.name,
+      fromYou,
+      mailbox: box.count,
+      pressure: worstCapPressure(
+        senderCapPressure(fromYou),
+        mailboxCapPressure(box.count, incomplete),
+      ),
+    });
+  }
+  return out;
+}
+
+/** Compact fraction for OWN To rows — sender cap is what self-mail hits first. */
+export function formatOwnToCapFraction(
+  fill: OwnToCapFill,
+  incomplete?: boolean,
+): string {
+  return formatCapFraction(fill.fromYou, MAIL_ATTACH_SENDER_CAP, incomplete);
+}
+
+export function ownToCapTitle(
+  fill: OwnToCapFill,
+  incomplete?: boolean,
+): string {
+  const fromFrac = formatCapFraction(
+    fill.fromYou,
+    MAIL_ATTACH_SENDER_CAP,
+    incomplete,
+  );
+  const boxFrac = formatCapFraction(
+    fill.mailbox,
+    MAIL_ATTACH_CAP,
+    incomplete,
+  );
+  let note =
+    fill.name +
+    ": " +
+    fromFrac +
+    " uncollected from your account (sender limit) · mailbox " +
+    boxFrac;
+  if (fill.pressure === "full") {
+    note +=
+      " — item mail may fail until they take or delete (20/account or 200/char)";
+  } else if (fill.pressure === "warn") {
+    note += " — nearing a send limit";
+  }
+  if (incomplete) note += ". Older pages may raise these counts.";
+  return note;
+}
+
+/**
+ * True when one more item mail from this account can land (sender 20 + mailbox 200).
+ * `queued` counts attaches already aimed at this character in the compose draft.
+ */
+export function canOwnCharReceiveAttach(
+  fill: OwnToCapFill,
+  queued = 0,
+): boolean {
+  const extra = Math.max(0, queued | 0);
+  if (fill.mailbox + extra >= MAIL_ATTACH_CAP) return false;
+  if (senderCapPressure(fill.fromYou, extra + 1) === "full") return false;
+  return true;
+}
+
+/**
+ * Own characters that still have room for at least one more attach from you.
+ * Preserves roster casing; skips names in `exclude` (case-insensitive).
+ */
+export function ownCharsWithFreeMailSpace(opts: {
+  mails: MailRow[];
+  selfNames: string[];
+  incomplete?: boolean;
+  exclude?: string[];
+  /** Queued compose attaches per recipient (lowercase keys). */
+  queuedByTo?: Record<string, number>;
+}): string[] {
+  const excl = nameSet(opts.exclude || []);
+  const queued = opts.queuedByTo || {};
+  const fills = buildOwnToCapFills({
+    mails: opts.mails,
+    selfNames: opts.selfNames,
+    incomplete: opts.incomplete,
+  });
+  const out: string[] = [];
+  for (let i = 0; i < fills.length; i++) {
+    const f = fills[i];
+    const key = f.name.toLowerCase();
+    if (excl.has(key)) continue;
+    const q = queued[key] | 0;
+    if (!canOwnCharReceiveAttach(f, q)) continue;
+    out.push(f.name);
+  }
+  return out;
+}
+
+/**
  * Compose hints for attachment caps. `queued` lists recipients about to receive
  * attaches (display casing preserved).
  */

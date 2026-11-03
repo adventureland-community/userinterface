@@ -61,7 +61,8 @@ export function mailItemIcon(
     "div",
     {
       className: "comm-mail__item" + (taken ? " is-taken" : ""),
-      title: taken ? label + " (taken)" : label,
+      // ItemInstance cooltip owns hover — no native title stack.
+      "aria-label": taken ? label + " (taken)" : label,
       onClick: (ev: any) => ev.stopPropagation(),
       style: { width: size, height: size },
     },
@@ -72,7 +73,7 @@ export function mailItemIcon(
       q,
       p,
       size,
-      title: label,
+      actual: m.item as Record<string, unknown>,
     }),
   );
 }

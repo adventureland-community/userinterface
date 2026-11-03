@@ -23,7 +23,9 @@ export {
 export {
   fingerprintFromSlot,
   itemMatchesFingerprint,
+  itemMatchesQueueIdentity,
   findFingerprintSlot,
+  listBagFingerprintsMatchingIdentity,
 } from "./itemFingerprint";
 export { filterMails, MAIL_SEARCH_HINT, parseMailSearch } from "./filter";
 export type { MailSearchClause, ParsedMailSearch } from "./filter";
@@ -100,24 +102,35 @@ export {
   readMailMany,
 } from "./api";
 export {
+  addOwnCharsWithFreeMailSpace,
   attachesHaveRecipients,
   canonicalizeDraft,
+  clearComposeAndClose,
+  clearComposeDraft,
   distributeAttachesAcrossTos,
   distributeMailAttaches,
   emptyDraft,
   forwardMail,
   getSessionMailDraft,
+  mailMatchingToFreeOwn,
   makeComposeAttach,
   normalizeComposeTos,
   openCompose,
   patchComposeDraft,
   pickToForNewAttach,
   queueMailAttach,
+  queueMailAttaches,
   removeMailAttachAt,
   replyToMail,
   resolveComposeOpen,
   setMailAttachTo,
 } from "./mailCompose";
+export {
+  buildComposeSummary,
+  buildMailMatchingToFreeOwnDraft,
+  composeSendBlockReason,
+} from "./composeExperience";
+export type { ComposeSendBlock, ComposeSummary } from "./composeExperience";
 export {
   applyXUnread,
   bootMailUnreadWatch,
@@ -139,6 +152,8 @@ export {
   MAIL_ATTACH_SENDER_CAP,
   buildComposeCapNotices,
   buildMailboxCapsView,
+  buildOwnToCapFills,
+  canOwnCharReceiveAttach,
   countAttachmentsByRecipient,
   countMailboxAttachments,
   countSenderAttachmentsTo,
@@ -146,10 +161,13 @@ export {
   fillCapPct,
   formatCapFraction,
   formatMailboxCapsLine,
+  formatOwnToCapFraction,
   mailboxCapPressure,
   mailboxCapsTitle,
   mailboxCapTitle,
   mergeOwnedMailboxFills,
+  ownCharsWithFreeMailSpace,
+  ownToCapTitle,
   senderCapPressure,
   summarizeMailboxCaps,
 } from "./mailCaps";
@@ -158,6 +176,7 @@ export type {
   ComposeCapNotice,
   MailboxCapsView,
   MailCapPressure,
+  OwnToCapFill,
 } from "./mailCaps";
 export {
   clearNewMailBanner,

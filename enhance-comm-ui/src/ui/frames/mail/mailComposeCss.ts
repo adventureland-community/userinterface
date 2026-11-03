@@ -26,6 +26,31 @@ export const MAIL_COMPOSE_CSS = `.comm-mail__pane {
 }
 .comm-mail__cap-note.is-warn { color: #db8; }
 .comm-mail__cap-note.is-full { color: #f8a; font-weight: 600; }
+.comm-mail__summary {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #161a16;
+  border: 1px solid #333;
+  color: #c8cfc8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.comm-mail__summary.is-warn {
+  border-color: #6a5a32;
+  color: #edc;
+}
+.comm-mail__summary.is-full,
+.comm-mail__summary.is-need-to {
+  border-color: #6a3a4a;
+  color: #f8a;
+}
+.comm-mail__send-block {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.comm-mail__send-block.is-warn { color: #db8; }
+.comm-mail__send-block.is-err { color: #f8a; font-weight: 600; }
 .comm-mail__compose input,
 .comm-mail__compose textarea {
   width: 100%;

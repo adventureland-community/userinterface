@@ -71,13 +71,20 @@ export function MailPanel(): any {
   const [pill, setPill] = React.useState(() => {
     try {
       const raw = loadSettings().mailPill;
-      const allowed = ["all", "unread", "item", "tome", "fromme"];
+      const allowed = [
+        "all",
+        "unread",
+        "item",
+        "tome",
+        "fromme",
+        "fromothers",
+      ];
       const next = (
         allowed.indexOf(String(raw)) >= 0 ? raw : "all"
       ) as MailPill;
-      // Roster may not be ready yet — avoid empty To me / From me.
+      // Roster may not be ready yet — avoid empty To me / From me / From others.
       if (
-        (next === "tome" || next === "fromme") &&
+        (next === "tome" || next === "fromme" || next === "fromothers") &&
         !selfCharacterNames().length
       ) {
         return "all" as MailPill;

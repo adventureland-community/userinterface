@@ -4,14 +4,19 @@ import {
   MAIL_ATTACH_CAP,
   MAIL_ATTACH_SENDER_CAP,
   buildComposeCapNotices,
+  buildOwnToCapFills,
+  canOwnCharReceiveAttach,
   countAttachmentsByRecipient,
+  ownCharsWithFreeMailSpace,
   countMailboxAttachments,
   countSenderAttachmentsTo,
   countsTowardAttachCap,
   formatCapFraction,
+  formatOwnToCapFraction,
   buildMailboxCapsView,
   formatMailboxCapsLine,
   mailboxCapPressure,
+  ownToCapTitle,
   senderCapPressure,
   summarizeMailboxCaps,
 } from "../../src/host/mail/mailCaps";
@@ -221,5 +226,119 @@ describe("mail attachment caps", () => {
     assert.match(notices[0].text, /Per-char mailbox · thmsn 2\/200/);
     assert.match(notices[1].text, /Self-mail 2\/20 from you · \+3 queued/);
     assert.equal(notices[1].pressure, "");
+  });
+
+  it("OWN To caps prefer sender 20 over mailbox 200", () => {
+    const mails = [
+      row("1", {
+        fro: "thmsn",
+        to: "RedMill",
+        item: { name: "a" },
+        canTake: true,
+      }),
+      row("2", {
+        fro: "thmsn",
+        to: "RedMill",
+        item: { name: "b" },
+        canTake: true,
+      }),
+      row("3", {
+        fro: "Other",
+        to: "RedMill",
+        item: { name: "c" },
+        canTake: true,
+      }),
+      row("4", {
+        fro: "thmsn",
+        to: "thmsn",
+        item: { name: "d" },
+        canTake: true,
+      }),
+    ];
+    const fills = buildOwnToCapFills({
+      mails,
+      selfNames: ["thmsn", "RedMill", "Idle"],
+    });
+    const byName = new Map(fills.map((f) => [f.name, f]));
+    const red = byName.get("RedMill");
+    assert.ok(red);
+    assert.equal(red.fromYou, 2);
+    assert.equal(red.mailbox, 3);
+    assert.equal(formatOwnToCapFraction(red), "2/20");
+    assert.match(ownToCapTitle(red), /2\/20/);
+    assert.match(ownToCapTitle(red), /mailbox 3\/200/);
+    const self = byName.get("thmsn");
+    assert.ok(self);
+    assert.equal(self.fromYou, 1);
+    assert.equal(self.mailbox, 1);
+    assert.equal(formatOwnToCapFraction(self), "1/20");
+    const idle = byName.get("Idle");
+    assert.ok(idle);
+    assert.equal(idle.fromYou, 0);
+    assert.equal(idle.mailbox, 0);
+    assert.equal(formatOwnToCapFraction(idle), "0/20");
+  });
+
+  it("OWN To pressure goes full at sender 20 even if mailbox is under 200", () => {
+    const mails = [];
+    for (let i = 0; i < 20; i++) {
+      mails.push(
+        row("s" + i, {
+          fro: "thmsn",
+          to: "RedMill",
+          item: { name: "a" },
+          canTake: true,
+        }),
+      );
+    }
+    const fills = buildOwnToCapFills({
+      mails,
+      selfNames: ["thmsn", "RedMill"],
+    });
+    const red = fills.find((f) => f.name === "RedMill");
+    assert.ok(red);
+    assert.equal(red.fromYou, 20);
+    assert.equal(red.mailbox, 20);
+    assert.equal(red.pressure, "full");
+    assert.equal(formatOwnToCapFraction(red), "20/20");
+  });
+
+  it("ownCharsWithFreeMailSpace skips full sender caps and excluded names", () => {
+    const mails = [];
+    for (let i = 0; i < 20; i++) {
+      mails.push(
+        row("s" + i, {
+          fro: "thmsn",
+          to: "RedMill",
+          item: { name: "a" },
+          canTake: true,
+        }),
+      );
+    }
+    mails.push(
+      row("t1", {
+        fro: "thmsn",
+        to: "thmsn",
+        item: { name: "b" },
+        canTake: true,
+      }),
+    );
+    const free = ownCharsWithFreeMailSpace({
+      mails,
+      selfNames: ["thmsn", "RedMill", "Idle"],
+      exclude: ["thmsn"],
+    });
+    assert.deepEqual(free, ["Idle"]);
+    const fills = buildOwnToCapFills({
+      mails,
+      selfNames: ["thmsn", "RedMill", "Idle"],
+    });
+    const red = fills.find((f) => f.name === "RedMill");
+    assert.ok(red);
+    assert.equal(canOwnCharReceiveAttach(red), false);
+    const idle = fills.find((f) => f.name === "Idle");
+    assert.ok(idle);
+    assert.equal(canOwnCharReceiveAttach(idle), true);
+    assert.equal(canOwnCharReceiveAttach(idle, 20), false);
   });
 });

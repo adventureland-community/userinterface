@@ -14,6 +14,7 @@ import { installInventoryFix } from "./host/inventory";
 import { installPageTitle } from "./host/pageTitle";
 import { installDisconnectOverlay } from "./host/disconnectOverlay";
 import { installMailUnreadWatch, subscribeMailToast } from "./host/mail";
+import { installComposeBagHighlight } from "./ui/bag/composeBagHighlight";
 import { showCommToast } from "./host/commToast";
 import { installStockHubChatTakeover } from "./host/chat/stockHubTakeover";
 import { ensureMailCss } from "./ui/frames/mail/mailCss";
@@ -114,9 +115,9 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
   font-family: inherit;
 }
 
-/* HP threshold marks on boss/unit frames */
+/* HP phase marks — wide hit pad, thin tick; Comm cooltip (not native title) */
 .comm-hp-threshold {
-  pointer-events: none;
+  pointer-events: auto;
 }
 `;
 
@@ -185,6 +186,7 @@ function onLoad(): void {
   installUpdateNotesHooks();
   ensureMailCss();
   installMailUnreadWatch();
+  installComposeBagHighlight();
   subscribeMailToast((message) => showCommToast(message));
   // Hide stock Hub #comm-chat and route CHAT / toggle_comm_chat → ECU Chat.
   installStockHubChatTakeover();

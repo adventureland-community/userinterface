@@ -1,13 +1,17 @@
 import { e } from "../../../host/react";
 import {
+  addOwnCharsWithFreeMailSpace,
   buildComposeCapNotices,
-  countAttachmentsByRecipient,
+  buildComposeSummary,
+  buildOwnToCapFills,
+  clearComposeAndClose,
+  clearComposeDraft,
+  composeSendBlockReason,
   distributeMailAttaches,
   attachesHaveRecipients,
-  fillCapLabel,
-  formatCapFraction,
-  MAIL_ATTACH_CAP,
-  mergeOwnedMailboxFills,
+  formatOwnToCapFraction,
+  ownCharsWithFreeMailSpace,
+  ownToCapTitle,
   patchComposeDraft,
   removeMailAttachAt,
   sendMailCommand,
@@ -16,10 +20,11 @@ import {
   subjectPlaceholder,
   suggestMailTo,
   MAIL_SUBJECT_ITEM_TOKEN,
-  type CharMailboxFill,
   type MailCapabilities,
   type MailStoreSnapshot,
+  type OwnToCapFill,
 } from "../../../host/mail";
+import { formatCompactNumber } from "../../../lib/format";
 import { itemInstanceLabel } from "../../../lib/gameIcon";
 import { ItemInstance } from "../../chrome/ItemInstance";
 import { visiblePlayerNames } from "./mailFormat";
@@ -46,35 +51,18 @@ function hasToName(list: string[], name: string): boolean {
   return false;
 }
 
-/** Own-char mailbox fills keyed lower — used on To chips + OWN suggestions. */
-function ownMailboxFillByKey(
+/** Own-char sender/mailbox caps keyed lower — To chips + OWN suggestions. */
+function ownToCapByKey(
   mails: MailStoreSnapshot["mails"],
   selfNames: string[],
   incomplete: boolean,
-): Map<string, CharMailboxFill> {
-  const fills = mergeOwnedMailboxFills(
-    countAttachmentsByRecipient(mails, selfNames),
-    selfNames,
-    incomplete,
-  );
-  const byKey = new Map<string, CharMailboxFill>();
+): Map<string, OwnToCapFill> {
+  const fills = buildOwnToCapFills({ mails, selfNames, incomplete });
+  const byKey = new Map<string, OwnToCapFill>();
   for (let i = 0; i < fills.length; i++) {
     byKey.set(fills[i].name.toLowerCase(), fills[i]);
   }
   return byKey;
-}
-
-function ownCapTitle(fill: CharMailboxFill, incomplete: boolean): string {
-  const frac = formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete);
-  const label = fillCapLabel(fill);
-  let note = fill.name + " mailbox " + frac + " (" + label + ")";
-  if (fill.pressure === "full") {
-    note += " — item mail to this character will fail until they take or delete";
-  } else if (fill.pressure === "warn") {
-    note += " — nearly full";
-  }
-  if (incomplete) note += ". Older pages may raise this count.";
-  return note;
 }
 
 export function MailComposePane(props: MailComposePaneProps): any {
@@ -92,7 +80,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
   const draft = snap.view.draft;
   const draftAttachesList = draft.attaches.slice();
   const incomplete = !!snap.hasMore;
-  const ownFills = ownMailboxFillByKey(snap.mails, selfNames, incomplete);
+  const ownCaps = ownToCapByKey(snap.mails, selfNames, incomplete);
 
   const suggestions = suggestOpen
     ? suggestMailTo(
@@ -109,7 +97,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
   const chipEls: any[] = [];
   for (let i = 0; i < draft.to.length; i++) {
     const name = draft.to[i];
-    const fill = ownFills.get(String(name || "").toLowerCase()) || null;
+    const fill = ownCaps.get(String(name || "").toLowerCase()) || null;
     const pressure = fill ? fill.pressure : "";
     chipEls.push(
       e(
@@ -125,7 +113,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
                 ? " is-cap-warn"
                 : ""),
           title: fill
-            ? ownCapTitle(fill, incomplete) + " · click to remove"
+            ? ownToCapTitle(fill, incomplete) + " · click to remove"
             : "Remove from To pool",
           onClick: () => {
             const nextTo: string[] = [];
@@ -144,7 +132,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
                   "comm-mail__chip-cap" +
                   (pressure ? " is-" + pressure : ""),
               },
-              formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete),
+              formatOwnToCapFraction(fill, incomplete),
             )
           : null,
         e("span", { className: "comm-mail__chip-x" }, "×"),
@@ -168,7 +156,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
     }
     const fill =
       s.group === "own"
-        ? ownFills.get(String(s.name || "").toLowerCase()) || null
+        ? ownCaps.get(String(s.name || "").toLowerCase()) || null
         : null;
     const pressure = fill ? fill.pressure : "";
     suggestEls.push(
@@ -184,7 +172,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
               : pressure === "warn"
                 ? " is-cap-warn"
                 : ""),
-          title: fill ? ownCapTitle(fill, incomplete) : undefined,
+          title: fill ? ownToCapTitle(fill, incomplete) : undefined,
           onClick: () => {
             if (!hasToName(draft.to, s.name)) {
               patchComposeDraft({ to: draft.to.concat([s.name]) });
@@ -202,7 +190,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
                   "comm-mail__suggest-cap" +
                   (pressure ? " is-" + pressure : ""),
               },
-              formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete),
+              formatOwnToCapFraction(fill, incomplete),
             )
           : null,
       ),
@@ -218,11 +206,9 @@ export function MailComposePane(props: MailComposePaneProps): any {
       const key = n.toLowerCase();
       if (seen.has(key)) return;
       seen.add(key);
-      const fill = ownFills.get(key) || null;
+      const fill = ownCaps.get(key) || null;
       const label = fill
-        ? n +
-          " · " +
-          formatCapFraction(fill.count, MAIL_ATTACH_CAP, incomplete)
+        ? n + " · " + formatOwnToCapFraction(fill, incomplete)
         : n;
       opts.push(e("option", { key: key, value: n }, label));
     };
@@ -302,10 +288,24 @@ export function MailComposePane(props: MailComposePaneProps): any {
   }
 
   const attachesReady = attachesHaveRecipients(draftAttachesList);
+  const summary = buildComposeSummary({
+    draft,
+    mails: snap.mails,
+    selfNames,
+    incomplete,
+  });
+  const sendBlock = composeSendBlockReason({
+    draft,
+    mails: snap.mails,
+    selfNames,
+    incomplete,
+    goldEnough: caps.goldEnough,
+  });
   const canSend =
     caps.canSend &&
     !snap.commandBusy &&
     caps.goldEnough !== false &&
+    !sendBlock &&
     (draftAttachesList.length ? attachesReady : draft.to.length > 0);
 
   const queuedMap: Record<string, { to: string; count: number }> = {};
@@ -350,6 +350,21 @@ export function MailComposePane(props: MailComposePaneProps): any {
     );
   }
 
+  const queuedByTo: Record<string, number> = {};
+  for (let i = 0; i < draftAttachesList.length; i++) {
+    const to = String(draftAttachesList[i].to || "").trim();
+    if (!to) continue;
+    const key = to.toLowerCase();
+    queuedByTo[key] = (queuedByTo[key] | 0) + 1;
+  }
+  const freeOwn = ownCharsWithFreeMailSpace({
+    mails: snap.mails,
+    selfNames,
+    incomplete,
+    exclude: draft.to,
+    queuedByTo,
+  });
+
   return e(
     "div",
     { className: "comm-mail__compose" },
@@ -364,26 +379,59 @@ export function MailComposePane(props: MailComposePaneProps): any {
     ),
     e("label", null, "To"),
     e("div", { className: "comm-mail__chips" }, ...chipEls),
-    e("input", {
-      value: toInput,
-      placeholder: "Add recipient…",
-      onChange: (ev: any) => {
-        setToInput(ev.target.value);
-        setSuggestOpen(true);
+    e(
+      "div",
+      {
+        className: "comm-mail__acts",
+        style: { marginTop: 0, marginBottom: 4 },
       },
-      onFocus: () => setSuggestOpen(true),
-      onKeyDown: (ev: any) => {
-        if (ev.key === "Enter") {
-          ev.preventDefault();
-          const v = String(toInput || "").trim();
-          if (v && !hasToName(draft.to, v)) {
-            patchComposeDraft({ to: draft.to.concat([v]) });
+      e("input", {
+        style: { flex: 1, minWidth: 120 },
+        value: toInput,
+        placeholder: "Add recipient…",
+        onChange: (ev: any) => {
+          setToInput(ev.target.value);
+          setSuggestOpen(true);
+        },
+        onFocus: () => setSuggestOpen(true),
+        onKeyDown: (ev: any) => {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            const v = String(toInput || "").trim();
+            if (v && !hasToName(draft.to, v)) {
+              patchComposeDraft({ to: draft.to.concat([v]) });
+            }
+            setToInput("");
+            setSuggestOpen(false);
           }
-          setToInput("");
-          setSuggestOpen(false);
-        }
-      },
-    }),
+        },
+      }),
+      selfNames.length
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__btn",
+              disabled: freeOwn.length === 0,
+              title:
+                freeOwn.length === 0
+                  ? "No own characters left with free attach space (20/account · 200/char)"
+                  : "Add " +
+                    freeOwn.length +
+                    " own character" +
+                    (freeOwn.length === 1 ? "" : "s") +
+                    " that can still receive item mail from you",
+              onClick: () => {
+                addOwnCharsWithFreeMailSpace(freeOwn);
+                setSuggestOpen(false);
+              },
+            },
+            freeOwn.length
+              ? "Add own (" + freeOwn.length + " free)"
+              : "Add own (none free)",
+          )
+        : null,
+    ),
     suggestOpen && suggestions.length
       ? e("div", { className: "comm-mail__suggest" }, ...suggestEls)
       : null,
@@ -394,10 +442,10 @@ export function MailComposePane(props: MailComposePaneProps): any {
         style: { marginTop: 2, marginBottom: 4 },
       },
       draftAttachesList.length
-        ? "Queue items anytime. Assign each attach a To (or add To chips — unassigned items auto-bind)."
+        ? "Bag right-click: Mail this · Mail all matching · Mail matching → free own."
         : draft.to.length > 1
           ? "Plain mail: one copy per To"
-          : null,
+          : "Bag right-click → Mail this (or Mail matching → free own).",
     ),
     e("label", null, "Subject"),
     e(
@@ -508,27 +556,59 @@ export function MailComposePane(props: MailComposePaneProps): any {
       : e(
           "div",
           { className: "comm-mail__meta", style: { marginTop: 8 } },
-          "Attach via bag → right-click → Send mail (queue first, add To later; same slot replaces)",
+          "Bag right-click → Mail this / Mail all matching / Mail matching → free own",
         ),
     capNoticeEls.length
       ? e("div", { className: "comm-mail__cap-notes" }, ...capNoticeEls)
       : null,
     e(
       "div",
-      { className: "comm-mail__meta", style: { marginTop: 8 } },
+      {
+        className:
+          "comm-mail__summary" +
+          (summary.pressure === "full"
+            ? " is-full"
+            : summary.pressure === "warn"
+              ? " is-warn"
+              : "") +
+          (summary.needTo > 0 ? " is-need-to" : ""),
+        title: summary.line,
+      },
+      summary.line,
+    ),
+    e(
+      "div",
+      {
+        className: "comm-mail__meta",
+        style: { marginTop: 6 },
+        title:
+          caps.sendCost > 0
+            ? caps.sendCost.toLocaleString() + " gold"
+            : undefined,
+      },
       "Cost " +
-        (caps.sendCost / 1000).toFixed(0) +
-        "k" +
+        formatCompactNumber(caps.sendCost) +
         (draftAttachesList.length > 1
           ? " (" + draftAttachesList.length + "× attach)"
           : draftAttachesList.length === 0 && draft.to.length > 1
             ? " (" + draft.to.length + "× plain)"
             : "") +
         (caps.gold != null
-          ? " · observed gold " + Math.floor(caps.gold / 1000) + "k"
+          ? " · observed gold " + formatCompactNumber(caps.gold)
           : "") +
         (caps.goldEnough === false ? " — not enough gold" : ""),
     ),
+    sendBlock
+      ? e(
+          "div",
+          {
+            className:
+              "comm-mail__send-block" +
+              (sendBlock.kind === "err" ? " is-err" : " is-warn"),
+          },
+          sendBlock.reason,
+        )
+      : null,
     e(
       "div",
       { className: "comm-mail__acts" },
@@ -538,6 +618,7 @@ export function MailComposePane(props: MailComposePaneProps): any {
           type: "button",
           className: "comm-mail__btn comm-mail__btn--gold",
           disabled: !canSend,
+          title: sendBlock ? sendBlock.reason : undefined,
           onClick: () => {
             if (draftAttachesList.length) {
               sendMailCommand({
@@ -566,16 +647,27 @@ export function MailComposePane(props: MailComposePaneProps): any {
                 ? draftAttachesList.length
                 : draft.to.length) +
               " (" +
-              (caps.sendCost / 1000).toFixed(0) +
-              "k)"
-            : "Send (" + (caps.sendCost / 1000).toFixed(0) + "k)",
+              formatCompactNumber(caps.sendCost) +
+              ")"
+            : "Send (" + formatCompactNumber(caps.sendCost) + ")",
       ),
       e(
         "button",
         {
           type: "button",
           className: "comm-mail__btn",
-          onClick: () => setMailView({ kind: "list" }),
+          onClick: () => clearComposeDraft(),
+          title: "Clear To, subject, body, and queued items",
+        },
+        "Clear",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "comm-mail__btn",
+          onClick: () => clearComposeAndClose(),
+          title: "Clear compose and return to the list",
         },
         "Cancel",
       ),

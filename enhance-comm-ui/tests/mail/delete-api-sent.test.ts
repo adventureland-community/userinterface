@@ -72,5 +72,49 @@ describe("tome/fromme without roster", () => {
       selfNames: [],
     });
     assert.equal(fromme.length, 1);
+    const fromothers = filterMails(mails, {
+      pill: "fromothers",
+      query: "",
+      selfNames: [],
+    });
+    assert.equal(fromothers.length, 1);
+  });
+});
+
+describe("fromothers pill", () => {
+  it("keeps player→you and drops self-mail", () => {
+    const mails: MailRow[] = [
+      {
+        id: "player",
+        fro: "Alice",
+        to: "thmsn",
+        subject: "gift",
+        message: "",
+        sent: "3",
+      },
+      {
+        id: "self",
+        fro: "Idle",
+        to: "thmsn",
+        subject: "bank",
+        message: "",
+        sent: "2",
+      },
+      {
+        id: "outbound",
+        fro: "thmsn",
+        to: "Alice",
+        subject: "thanks",
+        message: "",
+        sent: "1",
+      },
+    ];
+    const hits = filterMails(mails, {
+      pill: "fromothers",
+      query: "",
+      selfNames: ["thmsn", "Idle"],
+    });
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].id, "player");
   });
 });

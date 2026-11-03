@@ -95,7 +95,8 @@ function renderGrid(
             "comm-mail__items-cell" +
             (sel ? " is-sel" : "") +
             (over ? " is-cap-full" : ""),
-          title: cellTitle(it),
+          // ItemInstance cooltip owns hover — keep meta in aria only.
+          "aria-label": cellTitle(it),
           onClick: () => onSelectItem(it),
         },
         e(ItemInstance, {

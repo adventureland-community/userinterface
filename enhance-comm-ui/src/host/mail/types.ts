@@ -84,7 +84,14 @@ export type MailCapabilities = {
   toCount: number;
 };
 
-export type MailPill = "all" | "unread" | "item" | "tome" | "fromme";
+export type MailPill =
+  | "all"
+  | "unread"
+  | "item"
+  | "tome"
+  | "fromme"
+  /** Addressed to an owned character, sender is not owned (player / NPC mail). */
+  | "fromothers";
 
 export type PullMailPage = {
   mail: MailRow[];
