@@ -205,7 +205,7 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
     if (upgrade.locked) label = "Upgrade (locked)";
     else if (upgrade.maxLevel) label = "Upgrade (max level)";
     else if (!upgrade.scrolls.length && !upgrade.offerings.length) {
-      label = "Upgrade (need scroll in bag)";
+      label = "Upgrade (need scroll)";
     }
     actions.push({
       id: "station-upgrade",
@@ -215,8 +215,8 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
         : upgrade.maxLevel
           ? "Already at max upgrade grade"
           : !upgrade.scrolls.length && !upgrade.offerings.length
-            ? "Put a compatible scroll (or offering) in the bag first"
-            : "Pick scroll + optional offering, then upgrade() at the shrine",
+            ? "Need a compatible scroll in bag or from a vendor (NPC buy)"
+            : "Pick scroll + optional offering (buy from vendor if needed), then upgrade()",
       separatorBefore: first,
       disabled: !canOpen,
       run: () => {
@@ -227,6 +227,10 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
               picked.scroll,
               picked.offering,
               upgrade.station,
+              {
+                buyScroll: picked.buyScroll,
+                buyOffering: picked.buyOffering,
+              },
             ),
         });
       },
@@ -254,7 +258,7 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
     else if (!haveTriple) {
       label = `Compound (need 3 · have ${1 + compound.partners.length})`;
     } else if (!compound.scrolls.length) {
-      label = "Compound (need cscroll in bag)";
+      label = "Compound (need cscroll)";
     }
     actions.push({
       id: "station-compound",
@@ -266,8 +270,8 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
           : !haveTriple
             ? "Need three matching copies at this level in the bag"
             : !compound.scrolls.length
-              ? "Put a compatible compound scroll in the bag first"
-              : "Pick partners + scroll + optional offering, then compound()",
+              ? "Need a compatible cscroll in bag or from a vendor (NPC buy)"
+              : "Pick partners + scroll + optional offering (buy if needed), then compound()",
       separatorBefore: first,
       disabled: !canOpen,
       run: () => {
@@ -278,6 +282,10 @@ function buildStationBagMenuActions(ctx: BagMenuContext): BagMenuAction[] {
               picked.scroll,
               picked.offering,
               compound.station,
+              {
+                buyScroll: picked.buyScroll,
+                buyOffering: picked.buyOffering,
+              },
             ),
         });
       },

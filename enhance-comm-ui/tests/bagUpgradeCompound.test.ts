@@ -7,6 +7,7 @@ import {
   findCompoundPartners,
   listCompatibleScrollsInBag,
   listOfferingsInBag,
+  listScrollsForShrine,
   upgradeOfferForBagItem,
 } from "../src/lib/bagUpgradeCompound";
 import type { GLike } from "../src/host/globals";
@@ -39,18 +40,56 @@ const G = {
       compound: true,
       grades: [3, 4, 5, 6],
     },
-    scroll0: { name: "Upgrade Scroll", type: "uscroll", grade: 0 },
-    scroll1: { name: "High Upgrade Scroll", type: "uscroll", grade: 1 },
-    cscroll0: { name: "Compound Scroll", type: "cscroll", grade: 0 },
-    cscroll1: { name: "High Compound Scroll", type: "cscroll", grade: 1 },
-    offering: { name: "Offering", type: "offering", grade: 0 },
+    scroll0: {
+      name: "Upgrade Scroll",
+      type: "uscroll",
+      grade: 0,
+      buy: true,
+      g: 1000,
+    },
+    scroll1: {
+      name: "High Upgrade Scroll",
+      type: "uscroll",
+      grade: 1,
+      buy: true,
+      g: 40000,
+    },
+    cscroll0: {
+      name: "Compound Scroll",
+      type: "cscroll",
+      grade: 0,
+      buy: true,
+      g: 6400,
+    },
+    cscroll1: {
+      name: "High Compound Scroll",
+      type: "cscroll",
+      grade: 1,
+      buy: true,
+      g: 240000,
+    },
+    offering: {
+      name: "Offering",
+      type: "offering",
+      grade: 0,
+      buy: true,
+      g: 999999,
+    },
     offeringp: { name: "Primordial Essence", type: "offering", grade: 1 },
   },
   maps: {
     main: {
       upgrade: { map: "main", x: 10, y: 20, id: "newupgrade" },
       compound: { map: "main", x: 30, y: 40, id: "newupgrade" },
+      items: {
+        scroll0: [{ map: "main", x: -465, y: -71, id: "scrolls" }],
+        scroll1: [{ map: "main", x: -465, y: -71, id: "scrolls" }],
+        cscroll0: [{ map: "main", x: -465, y: -71, id: "scrolls" }],
+      },
     },
+  },
+  npcs: {
+    scrolls: { items: ["scroll0", "scroll1", "cscroll0", "cscroll1"] },
   },
 } as unknown as GLike;
 
@@ -106,6 +145,41 @@ describe("scroll / offering listing", () => {
     assert.equal(scrolls.length, 1);
     assert.equal(scrolls[0].name, "cscroll0");
   });
+
+  it("adds vendor-buy scrolls when bag has none", () => {
+    const bag = [{ name: "helmet", level: 2 }];
+    const scrolls = listScrollsForShrine(
+      bag,
+      G.items!.helmet as any,
+      0,
+      "upgrade",
+      G,
+    );
+    assert.ok(scrolls.length >= 1);
+    const buy = scrolls.find((s) => s.buy && s.name === "scroll0");
+    assert.ok(buy);
+    assert.equal(buy!.slot, -1);
+    assert.equal(buy!.buyPrice, 1000);
+    assert.equal(buy!.recommended, true);
+  });
+
+  it("does not duplicate vendor scroll when already in bag", () => {
+    const bag = [
+      { name: "helmet", level: 2 },
+      { name: "scroll0", q: 2 },
+    ];
+    const scrolls = listScrollsForShrine(
+      bag,
+      G.items!.helmet as any,
+      0,
+      "upgrade",
+      G,
+    );
+    const scroll0 = scrolls.filter((s) => s.name === "scroll0");
+    assert.equal(scroll0.length, 1);
+    assert.equal(scroll0[0].buy, undefined);
+    assert.equal(scroll0[0].slot, 1);
+  });
 });
 
 describe("upgrade / compound offers", () => {
@@ -123,8 +197,8 @@ describe("upgrade / compound offers", () => {
     );
     assert.ok(offer);
     assert.equal(offer!.grade, 0);
-    assert.equal(offer!.scrolls.length, 1);
-    assert.equal(offer!.offerings.length, 1);
+    assert.ok(offer!.scrolls.some((s) => s.name === "scroll0" && !s.buy));
+    assert.ok(offer!.offerings.some((o) => o.name === "offeringp"));
     assert.ok(offer!.station);
     assert.equal(offer!.station!.id, "newupgrade");
   });
@@ -183,6 +257,19 @@ describe("upgrade / compound scripts", () => {
     assert.match(script, /upgrade chance/);
     assert.match(script, /__uOffering=null/);
     assert.match(script, /smart_move/);
+  });
+
+  it("buys vendor scroll before upgrade when buyScroll is set", () => {
+    const script = buildUpgradeScript(
+      { slot: 0, name: "helmet", level: 2 },
+      { slot: -1, name: "scroll0" },
+      null,
+      { map: "main", x: 10, y: 20, id: "upgrade" },
+      { buyScroll: "scroll0" },
+    );
+    assert.match(script, /await buy\(\"scroll0\",1\)/);
+    assert.match(script, /buy ok/);
+    assert.match(script, /await upgrade\(__uItem,__uScroll,__uOffering\)/);
   });
 
   it("emits compound with three items", () => {

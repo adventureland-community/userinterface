@@ -27,6 +27,10 @@ export type BagSlotRef = {
 };
 
 export type ScrollPick = {
+  /**
+   * Bag slot when already owned. `-1` when this row is a vendor-buy option
+   * (Confirm will `buy()` first — computer or travel to the scrolls merchant).
+   */
   slot: number;
   name: string;
   q: number;
@@ -35,6 +39,10 @@ export type ScrollPick = {
   displayName: string;
   /** Exact grade match for the gear. */
   recommended: boolean;
+  /** True when not in bag — purchase from an NPC vendor on Confirm. */
+  buy?: boolean;
+  /** NPC gold price (`G.items[].g`) when `buy`. */
+  buyPrice?: number;
 };
 
 export type OfferingPick = {
@@ -43,7 +51,18 @@ export type OfferingPick = {
   q: number;
   grade?: number;
   displayName: string;
+  buy?: boolean;
+  buyPrice?: number;
 };
+
+/** Stable id for scroll/offering tile selection (bag slot vs vendor buy). */
+export function shrinePickId(pick: {
+  slot: number;
+  name: string;
+  buy?: boolean;
+}): string {
+  return pick.buy ? "buy:" + pick.name : "bag:" + pick.slot;
+}
 
 export type UpgradeFromBagOffer = {
   item: BagSlotRef;
@@ -169,6 +188,39 @@ function isOfferingDef(def: ItemDefLike | null | undefined): boolean {
   return def.offering !== undefined;
 }
 
+type BuyableDef = ItemDefLike & {
+  buy?: boolean;
+  g?: number;
+  cash?: number;
+  p2w?: boolean;
+};
+
+/** NPC gold shop item — `process_game_data` sets `buy` from merchant stock. */
+export function isNpcGoldBuyable(
+  def: BuyableDef | null | undefined,
+): boolean {
+  if (!def || !def.buy) return false;
+  if (def.cash && !def.p2w) return false;
+  const g = Number(def.g);
+  return Number.isFinite(g) && g > 0;
+}
+
+function vendorBuyPrice(def: BuyableDef): number {
+  return Number(def.g) | 0;
+}
+
+/** Stable selection key — bag slot vs vendor buy-by-name. */
+export function findShrinePickById<T extends { slot: number; name: string; buy?: boolean }>(
+  picks: T[],
+  id: string | null,
+): T | null {
+  if (id == null || id === "") return null;
+  for (let i = 0; i < picks.length; i++) {
+    if (shrinePickId(picks[i]) === id) return picks[i];
+  }
+  return null;
+}
+
 /** Scrolls in bag that can upgrade/compound this gear. */
 export function listCompatibleScrollsInBag(
   items: Array<BagItemLike | null | undefined> | null | undefined,
@@ -202,6 +254,69 @@ export function listCompatibleScrollsInBag(
   return out;
 }
 
+/**
+ * Compatible scrolls sold by NPC vendors (not already listed from the bag).
+ * Confirm buys one via `buy()` — computer works anywhere; else travel to vendor.
+ */
+export function listCompatibleVendorScrolls(
+  itemDef: ItemDefLike,
+  itemGrade: number,
+  mode: "upgrade" | "compound",
+  G: GLike,
+  excludeNames?: Set<string> | null,
+): ScrollPick[] {
+  if (!G.items) return [];
+  const excl = excludeNames || null;
+  const out: ScrollPick[] = [];
+  const names = Object.keys(G.items);
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    if (excl && excl.has(name)) continue;
+    const def = G.items[name] as BuyableDef | undefined;
+    if (!def || !isNpcGoldBuyable(def)) continue;
+    if (!scrollCompatible(def, itemDef, itemGrade, mode)) continue;
+    const grade = Number(def.grade) || 0;
+    out.push({
+      slot: -1,
+      name,
+      q: 0,
+      grade,
+      type: String(def.type || ""),
+      displayName: itemDisplayName(name),
+      recommended: grade === itemGrade,
+      buy: true,
+      buyPrice: vendorBuyPrice(def),
+    });
+  }
+  out.sort((a, b) => {
+    if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+    if (a.grade !== b.grade) return a.grade - b.grade;
+    return a.name.localeCompare(b.name);
+  });
+  return out;
+}
+
+/** Merge bag scrolls with vendor-buy options for missing names. */
+export function listScrollsForShrine(
+  items: Array<BagItemLike | null | undefined> | null | undefined,
+  itemDef: ItemDefLike,
+  itemGrade: number,
+  mode: "upgrade" | "compound",
+  G: GLike,
+): ScrollPick[] {
+  const bag = listCompatibleScrollsInBag(items, itemDef, itemGrade, mode, G);
+  const have = new Set<string>();
+  for (let i = 0; i < bag.length; i++) have.add(bag[i].name);
+  const vendor = listCompatibleVendorScrolls(
+    itemDef,
+    itemGrade,
+    mode,
+    G,
+    have,
+  );
+  return bag.concat(vendor);
+}
+
 /** Offering-type stacks in bag (optional for upgrade/compound). */
 export function listOfferingsInBag(
   items: Array<BagItemLike | null | undefined> | null | undefined,
@@ -223,6 +338,45 @@ export function listOfferingsInBag(
   }
   out.sort((a, b) => a.slot - b.slot);
   return out;
+}
+
+/** Vendor offerings not already in the bag. */
+export function listVendorOfferings(
+  G: GLike,
+  excludeNames?: Set<string> | null,
+): OfferingPick[] {
+  if (!G.items) return [];
+  const excl = excludeNames || null;
+  const out: OfferingPick[] = [];
+  const names = Object.keys(G.items);
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i];
+    if (excl && excl.has(name)) continue;
+    const def = G.items[name] as BuyableDef | undefined;
+    if (!def || !isOfferingDef(def) || !isNpcGoldBuyable(def)) continue;
+    out.push({
+      slot: -1,
+      name,
+      q: 0,
+      grade: def.grade != null ? Number(def.grade) : undefined,
+      displayName: itemDisplayName(name),
+      buy: true,
+      buyPrice: vendorBuyPrice(def),
+    });
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+/** Bag offerings plus vendor-buy options for missing names. */
+export function listOfferingsForShrine(
+  items: Array<BagItemLike | null | undefined> | null | undefined,
+  G: GLike,
+): OfferingPick[] {
+  const bag = listOfferingsInBag(items, G);
+  const have = new Set<string>();
+  for (let i = 0; i < bag.length; i++) have.add(bag[i].name);
+  return bag.concat(listVendorOfferings(G, have));
 }
 
 /** Other bag copies of the same compound item+level (excluding primary). */
@@ -270,8 +424,8 @@ export function upgradeOfferForBagItem(
     grade,
     maxLevel: grade >= 4,
     locked: isLocked(item),
-    scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "upgrade", G),
-    offerings: listOfferingsInBag(bagItems, G),
+    scrolls: listScrollsForShrine(bagItems, def, grade, "upgrade", G),
+    offerings: listOfferingsForShrine(bagItems, G),
     station,
     access,
   };
@@ -307,8 +461,8 @@ export function compoundOfferForBagItem(
     maxLevel: grade >= 4,
     locked: isLocked(item),
     partners,
-    scrolls: listCompatibleScrollsInBag(bagItems, def, grade, "compound", G),
-    offerings: listOfferingsInBag(bagItems, G),
+    scrolls: listScrollsForShrine(bagItems, def, grade, "compound", G),
+    offerings: listOfferingsForShrine(bagItems, G),
     station,
     access,
   };

@@ -8,10 +8,13 @@ import { refreshObservedInventory } from "../../host/inventory";
 import {
   getG,
   observingBagItems,
+  observingGold,
 } from "../../host/stationCommands";
 import {
   compoundOfferForBagItem,
   defaultCompoundPartners,
+  findShrinePickById,
+  shrinePickId,
   upgradeOfferForBagItem,
   type BagSlotRef,
   type CompoundFromBagOffer,
@@ -35,12 +38,17 @@ export type UpgradeDialogResult = {
   item: ItemFingerprint;
   scroll: ItemFingerprint | null;
   offering: ItemFingerprint | null;
+  /** Vendor-buy scroll name — Confirm runs buy() first. */
+  buyScroll?: string | null;
+  buyOffering?: string | null;
 };
 
 export type CompoundDialogResult = {
   items: [ItemFingerprint, ItemFingerprint, ItemFingerprint];
   scroll: ItemFingerprint;
   offering: ItemFingerprint | null;
+  buyScroll?: string | null;
+  buyOffering?: string | null;
 };
 
 export type UpgradeDialogOptions = {
@@ -92,16 +100,35 @@ function fpFromPick(pick: {
   return fp;
 }
 
-function accessHint(access: {
-  ok: boolean;
-  hasComputer: boolean;
-  inRange: boolean;
-  reason?: string;
-}): string {
-  if (access.hasComputer) return "Computer — works on any map.";
+function accessHint(
+  access: {
+    ok: boolean;
+    hasComputer: boolean;
+    inRange: boolean;
+    reason?: string;
+  },
+  opts?: { buying?: boolean },
+): string {
+  const buying = !!(opts && opts.buying);
+  if (access.hasComputer) {
+    return buying
+      ? "Computer — buy + shrine work on any map."
+      : "Computer — works on any map.";
+  }
+  if (buying) {
+    return access.inRange
+      ? "Confirm buys at the vendor (travel if needed), then the shrine."
+      : "Confirm will buy at the vendor, then smart_move to the shrine.";
+  }
   if (access.inRange) return "In range of the shrine.";
   if (access.reason) return access.reason + " — Confirm will travel first.";
   return "Out of range — Confirm will smart_move to the shrine first.";
+}
+
+function formatBuyGold(n: number): string {
+  if (n >= 1_000_000) return Math.floor(n / 1_000_000) + "m";
+  if (n >= 10_000) return Math.floor(n / 1000) + "k";
+  return String(n);
 }
 
 function mountItemIcon(
@@ -442,24 +469,26 @@ function paintTrialResult(
 
 function findScroll(
   scrolls: ScrollPick[],
-  slot: number | null,
+  id: string | null,
 ): ScrollPick | null {
-  if (slot == null) return null;
-  for (let i = 0; i < scrolls.length; i++) {
-    if (scrolls[i].slot === slot) return scrolls[i];
-  }
-  return null;
+  return findShrinePickById(scrolls, id);
 }
 
 function findOffering(
   offerings: OfferingPick[],
-  slot: number | null,
+  id: string | null,
 ): OfferingPick | null {
-  if (slot == null) return null;
-  for (let i = 0; i < offerings.length; i++) {
-    if (offerings[i].slot === slot) return offerings[i];
-  }
-  return null;
+  return findShrinePickById(offerings, id);
+}
+
+function fpFromShrinePick(pick: {
+  slot: number;
+  name: string;
+  q?: number;
+  buy?: boolean;
+}): ItemFingerprint {
+  if (pick.buy) return { slot: -1, name: pick.name };
+  return fpFromPick(pick);
 }
 
 function setTilesScrollMode(host: HTMLElement, count: number): void {
@@ -486,28 +515,35 @@ function appendTileKey(wrap: HTMLElement, name: string): void {
 function appendScrollTiles(
   host: HTMLElement,
   scrolls: ScrollPick[],
-  selectedSlot: number | null,
-  onPick: (slot: number) => void,
+  selectedId: string | null,
+  onPick: (id: string) => void,
+  gold: number,
 ): void {
   host.innerHTML = "";
   setTilesScrollMode(host, scrolls.length);
   if (!scrolls.length) {
     const empty = document.createElement("div");
     empty.className = "ecu-upg__empty";
-    empty.textContent = "No compatible scrolls in bag.";
+    empty.textContent =
+      "No compatible scrolls in bag or at a vendor.";
     host.appendChild(empty);
     return;
   }
   for (let i = 0; i < scrolls.length; i++) {
     const s = scrolls[i];
+    const id = shrinePickId(s);
     const wrap = document.createElement("div");
     wrap.className = "ecu-upg__tile-wrap";
     const btn = document.createElement("button");
     btn.type = "button";
+    const cantAfford =
+      !!s.buy && s.buyPrice != null && gold < s.buyPrice;
     btn.className =
       "ecu-upg__tile" +
       (s.recommended ? " is-rec" : "") +
-      (selectedSlot === s.slot ? " is-on" : "");
+      (s.buy ? " is-buy" : "") +
+      (selectedId === id ? " is-on" : "");
+    btn.disabled = cantAfford;
     btn.title =
       s.displayName +
       " · " +
@@ -515,12 +551,25 @@ function appendScrollTiles(
       " · grade " +
       s.grade +
       (s.recommended ? " · best match" : "") +
-      " · ×" +
-      s.q;
+      (s.buy
+        ? " · buy " +
+          formatBuyGold(s.buyPrice || 0) +
+          "g" +
+          (cantAfford ? " · not enough gold" : "")
+        : " · ×" + s.q);
     const icon = document.createElement("span");
-    mountItemIcon(icon, { name: s.name, q: s.q, size: 40 });
+    mountItemIcon(icon, {
+      name: s.name,
+      q: s.buy ? undefined : s.q,
+      size: 40,
+    });
     btn.appendChild(icon);
-    if (s.recommended) {
+    if (s.buy) {
+      const badge = document.createElement("span");
+      badge.className = "ecu-upg__tile-badge is-buy";
+      badge.textContent = "BUY";
+      btn.appendChild(badge);
+    } else if (s.recommended) {
       const badge = document.createElement("span");
       badge.className = "ecu-upg__tile-badge";
       badge.textContent = "BEST";
@@ -532,9 +581,14 @@ function appendScrollTiles(
     btn.appendChild(grade);
     const qty = document.createElement("span");
     qty.className = "ecu-upg__tile-qty";
-    qty.textContent = "×" + s.q;
+    qty.textContent = s.buy
+      ? formatBuyGold(s.buyPrice || 0) + "g"
+      : "×" + s.q;
     btn.appendChild(qty);
-    btn.addEventListener("click", () => onPick(s.slot));
+    btn.addEventListener("click", () => {
+      if (cantAfford) return;
+      onPick(id);
+    });
     wrap.appendChild(btn);
     appendTileKey(wrap, s.name);
     host.appendChild(wrap);
@@ -544,8 +598,9 @@ function appendScrollTiles(
 function appendOfferingTiles(
   host: HTMLElement,
   offerings: OfferingPick[],
-  selectedSlot: number | null,
-  onPick: (slot: number | null) => void,
+  selectedId: string | null,
+  onPick: (id: string | null) => void,
+  gold: number,
 ): void {
   host.innerHTML = "";
   setTilesScrollMode(host, offerings.length + 1);
@@ -554,7 +609,7 @@ function appendOfferingTiles(
   const none = document.createElement("button");
   none.type = "button";
   none.className =
-    "ecu-upg__tile is-none" + (selectedSlot == null ? " is-on" : "");
+    "ecu-upg__tile is-none" + (selectedId == null ? " is-on" : "");
   none.title = "No offering";
   none.textContent = "None";
   none.addEventListener("click", () => onPick(null));
@@ -563,27 +618,52 @@ function appendOfferingTiles(
 
   for (let i = 0; i < offerings.length; i++) {
     const o = offerings[i];
+    const id = shrinePickId(o);
     const wrap = document.createElement("div");
     wrap.className = "ecu-upg__tile-wrap";
     const btn = document.createElement("button");
     btn.type = "button";
+    const cantAfford =
+      !!o.buy && o.buyPrice != null && gold < o.buyPrice;
     btn.className =
-      "ecu-upg__tile" + (selectedSlot === o.slot ? " is-on" : "");
+      "ecu-upg__tile" +
+      (o.buy ? " is-buy" : "") +
+      (selectedId === id ? " is-on" : "");
+    btn.disabled = cantAfford;
     btn.title =
       o.displayName +
       " · " +
       o.name +
       (o.grade != null ? " · grade " + o.grade : "") +
-      " · ×" +
-      o.q;
+      (o.buy
+        ? " · buy " +
+          formatBuyGold(o.buyPrice || 0) +
+          "g" +
+          (cantAfford ? " · not enough gold" : "")
+        : " · ×" + o.q);
     const icon = document.createElement("span");
-    mountItemIcon(icon, { name: o.name, q: o.q, size: 40 });
+    mountItemIcon(icon, {
+      name: o.name,
+      q: o.buy ? undefined : o.q,
+      size: 40,
+    });
     btn.appendChild(icon);
+    if (o.buy) {
+      const badge = document.createElement("span");
+      badge.className = "ecu-upg__tile-badge is-buy";
+      badge.textContent = "BUY";
+      btn.appendChild(badge);
+    }
     const qty = document.createElement("span");
     qty.className = "ecu-upg__tile-qty";
-    qty.textContent = "×" + o.q;
+    qty.textContent = o.buy
+      ? formatBuyGold(o.buyPrice || 0) + "g"
+      : "×" + o.q;
     btn.appendChild(qty);
-    btn.addEventListener("click", () => onPick(o.slot));
+    btn.addEventListener("click", () => {
+      if (cantAfford) return;
+      onPick(id);
+    });
     wrap.appendChild(btn);
     appendTileKey(wrap, o.name);
     host.appendChild(wrap);
@@ -752,11 +832,9 @@ export function showUpgradeDialog(
     finishOpen = resolve as (value: unknown) => void;
 
     let liveOffer = offer;
-    let scrollSlot: number | null = liveOffer.scrolls[0]
-      ? liveOffer.scrolls[0].slot
-      : null;
-    let offeringSlot: number | null = null;
-    let pickFocus: PickFocus = scrollSlot == null ? "scroll" : null;
+    let scrollId: string | null = liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+    let offeringId: string | null = null;
+    let pickFocus: PickFocus = scrollId == null ? "scroll" : null;
     let fromLevel =
       liveOffer.item.level != null &&
       Number.isFinite(Number(liveOffer.item.level))
@@ -834,8 +912,8 @@ export function showUpgradeDialog(
     let lastChance: number | null = null;
 
     const refreshChanceEstimate = () => {
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
+      const offering = findOffering(liveOffer.offerings, offeringId);
       if (!scroll && !offering) {
         lastChance = null;
         chanceUi.setEmpty("Pick a scroll or offering to estimate chance");
@@ -861,12 +939,16 @@ export function showUpgradeDialog(
     };
 
     const paint = () => {
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
+      const offering = findOffering(liveOffer.offerings, offeringId);
 
       const highlight: number[] = [liveOffer.item.slot];
-      if (scroll) highlight.push(scroll.slot);
-      if (offering) highlight.push(offering.slot);
+      if (scroll && !scroll.buy && scroll.slot >= 0) {
+        highlight.push(scroll.slot);
+      }
+      if (offering && !offering.buy && offering.slot >= 0) {
+        highlight.push(offering.slot);
+      }
       setShrineBagHighlights(highlight);
 
       trial.inputIcons.innerHTML = "";
@@ -925,34 +1007,55 @@ export function showUpgradeDialog(
         });
       }
 
-      appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
-        if (busy) return;
-        scrollSlot = slot;
-        pickFocus = null;
-        paint();
-        refreshChanceEstimate();
-      });
-      appendOfferingTiles(
-        offerTiles,
-        liveOffer.offerings,
-        offeringSlot,
-        (slot) => {
+      const gold = observingGold();
+      appendScrollTiles(
+        scrollTiles,
+        liveOffer.scrolls,
+        scrollId,
+        (id) => {
           if (busy) return;
-          offeringSlot = slot;
+          scrollId = id;
           pickFocus = null;
           paint();
           refreshChanceEstimate();
         },
+        gold,
       );
-      const ready = scrollSlot != null || offeringSlot != null;
+      appendOfferingTiles(
+        offerTiles,
+        liveOffer.offerings,
+        offeringId,
+        (id) => {
+          if (busy) return;
+          offeringId = id;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+        },
+        gold,
+      );
+      const ready = scrollId != null || offeringId != null;
+      const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
       okBtn.disabled = busy || !ready;
-      okBtn.textContent = liveOffer.access.ok ? "Upgrade" : "Travel & upgrade";
+      okBtn.textContent = buying
+        ? liveOffer.access.hasComputer
+          ? "Buy & upgrade"
+          : "Buy, travel & upgrade"
+        : liveOffer.access.ok
+          ? "Upgrade"
+          : "Travel & upgrade";
+      meta.textContent =
+        "Grade " +
+        liveOffer.grade +
+        " · " +
+        accessHint(liveOffer.access, { buying });
       if (!busy) {
         if (pickFocus === "scroll") {
-          hint.textContent = "Pick a scroll from the tiles or bag.";
+          hint.textContent =
+            "Pick a scroll from the tiles, bag, or buy from vendor.";
         } else if (pickFocus === "offering") {
           hint.textContent =
-            "Pick an offering from the tiles or bag (or None).";
+            "Pick an offering from the tiles, bag, vendor (or None).";
         } else if (!ready) {
           hint.textContent = "Pick a scroll (or an offering).";
         } else {
@@ -1009,16 +1112,16 @@ export function showUpgradeDialog(
       const keepScroll = keptScrollName
         ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
         : null;
-      scrollSlot = keepScroll
-        ? keepScroll.slot
+      scrollId = keepScroll
+        ? shrinePickId(keepScroll)
         : liveOffer.scrolls[0]
-          ? liveOffer.scrolls[0].slot
+          ? shrinePickId(liveOffer.scrolls[0])
           : null;
       const keepOffering = keptOfferingName
         ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
         : null;
-      offeringSlot = keepOffering ? keepOffering.slot : null;
-      pickFocus = scrollSlot == null ? "scroll" : null;
+      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
+      pickFocus = scrollId == null ? "scroll" : null;
       itemName.textContent = levelTransitionLabel(
         fromLevel,
         liveOffer.displayName,
@@ -1035,33 +1138,33 @@ export function showUpgradeDialog(
     const unsubBagClick = installBagPickClick((slot) => {
       if (busy) return false;
       if (pickFocus === "scroll") {
-        const s = findScroll(liveOffer.scrolls, slot);
+        const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
         if (!s) return false;
-        scrollSlot = s.slot;
+        scrollId = shrinePickId(s);
         pickFocus = null;
         paint();
         refreshChanceEstimate();
         return true;
       }
       if (pickFocus === "offering") {
-        const o = findOffering(liveOffer.offerings, slot);
+        const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
         if (!o) return false;
-        offeringSlot = o.slot;
+        offeringId = shrinePickId(o);
         pickFocus = null;
         paint();
         refreshChanceEstimate();
         return true;
       }
-      const s = findScroll(liveOffer.scrolls, slot);
+      const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
       if (s) {
-        scrollSlot = s.slot;
+        scrollId = shrinePickId(s);
         paint();
         refreshChanceEstimate();
         return true;
       }
-      const o = findOffering(liveOffer.offerings, slot);
+      const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
       if (o) {
-        offeringSlot = o.slot;
+        offeringId = shrinePickId(o);
         paint();
         refreshChanceEstimate();
         return true;
@@ -1077,12 +1180,14 @@ export function showUpgradeDialog(
 
     const tryConfirm = () => {
       if (okBtn.disabled || busy) return;
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
+      const offering = findOffering(liveOffer.offerings, offeringId);
       const picked: UpgradeDialogResult = {
         item: fpFromPick(liveOffer.item),
-        scroll: scroll ? fpFromPick(scroll) : null,
-        offering: offering ? fpFromPick(offering) : null,
+        scroll: scroll ? fpFromShrinePick(scroll) : null,
+        offering: offering ? fpFromShrinePick(offering) : null,
+        buyScroll: scroll && scroll.buy ? scroll.name : null,
+        buyOffering: offering && offering.buy ? offering.name : null,
       };
       if (!options || !options.execute) {
         closeDialog(picked);
@@ -1187,12 +1292,10 @@ export function showCompoundDialog(
       liveOffer.item,
     )!;
     let selected = new Set<number>([defaults[0].slot, defaults[1].slot]);
-    let scrollSlot: number | null = liveOffer.scrolls[0]
-      ? liveOffer.scrolls[0].slot
-      : null;
-    let offeringSlot: number | null = null;
+    let scrollId: string | null = liveOffer.scrolls[0] ? shrinePickId(liveOffer.scrolls[0]) : null;
+    let offeringId: string | null = null;
     let pickFocus: PickFocus =
-      selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+      selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
     let fromLevel =
       liveOffer.item.level != null &&
       Number.isFinite(Number(liveOffer.item.level))
@@ -1283,18 +1386,18 @@ export function showCompoundDialog(
     let lastChance: number | null = null;
 
     const refreshChanceEstimate = () => {
-      if (selected.size !== 2 || scrollSlot == null) {
+      if (selected.size !== 2 || scrollId == null) {
         lastChance = null;
         chanceUi.setEmpty("Need 3 copies + scroll to estimate chance");
         return;
       }
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
       if (!scroll) {
         lastChance = null;
         chanceUi.setEmpty("Need a compound scroll to estimate chance");
         return;
       }
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const offering = findOffering(liveOffer.offerings, offeringId);
       lastChance = estimateShrineChance({
         mode: "compound",
         level: fromLevel,
@@ -1322,15 +1425,19 @@ export function showCompoundDialog(
         if (found) partnerList.push(found);
       }
 
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
+      const offering = findOffering(liveOffer.offerings, offeringId);
 
       const highlight: number[] = [liveOffer.item.slot];
       for (let i = 0; i < partnerList.length; i++) {
         highlight.push(partnerList[i].slot);
       }
-      if (scroll) highlight.push(scroll.slot);
-      if (offering) highlight.push(offering.slot);
+      if (scroll && !scroll.buy && scroll.slot >= 0) {
+        highlight.push(scroll.slot);
+      }
+      if (offering && !offering.buy && offering.slot >= 0) {
+        highlight.push(offering.slot);
+      }
       setShrineBagHighlights(highlight);
 
       trial.inputIcons.innerHTML = "";
@@ -1429,39 +1536,58 @@ export function showCompoundDialog(
         paint();
         refreshChanceEstimate();
       });
-      appendScrollTiles(scrollTiles, liveOffer.scrolls, scrollSlot, (slot) => {
-        if (busy) return;
-        scrollSlot = slot;
-        pickFocus = null;
-        paint();
-        refreshChanceEstimate();
-      });
-      appendOfferingTiles(
-        offerTiles,
-        liveOffer.offerings,
-        offeringSlot,
-        (slot) => {
+      const gold = observingGold();
+      appendScrollTiles(
+        scrollTiles,
+        liveOffer.scrolls,
+        scrollId,
+        (id) => {
           if (busy) return;
-          offeringSlot = slot;
+          scrollId = id;
           pickFocus = null;
           paint();
           refreshChanceEstimate();
         },
+        gold,
+      );
+      appendOfferingTiles(
+        offerTiles,
+        liveOffer.offerings,
+        offeringId,
+        (id) => {
+          if (busy) return;
+          offeringId = id;
+          pickFocus = null;
+          paint();
+          refreshChanceEstimate();
+        },
+        gold,
       );
 
-      const ready = selected.size === 2 && scrollSlot != null;
+      const ready = selected.size === 2 && scrollId != null;
+      const buying = !!(scroll && scroll.buy) || !!(offering && offering.buy);
       okBtn.disabled = busy || !ready;
-      okBtn.textContent = liveOffer.access.ok
-        ? "Compound"
-        : "Travel & compound";
+      okBtn.textContent = buying
+        ? liveOffer.access.hasComputer
+          ? "Buy & compound"
+          : "Buy, travel & compound"
+        : liveOffer.access.ok
+          ? "Compound"
+          : "Travel & compound";
+      meta.textContent =
+        "Need 3 copies · Grade " +
+        liveOffer.grade +
+        " · " +
+        accessHint(liveOffer.access, { buying });
       if (!busy) {
         if (pickFocus === "partner" || selected.size !== 2) {
           hint.textContent = "Select exactly two other copies (tiles or bag).";
-        } else if (pickFocus === "scroll" || scrollSlot == null) {
-          hint.textContent = "Pick a compound scroll (tiles or bag).";
+        } else if (pickFocus === "scroll" || scrollId == null) {
+          hint.textContent =
+            "Pick a compound scroll (tiles, bag, or buy from vendor).";
         } else if (pickFocus === "offering") {
           hint.textContent =
-            "Pick an offering from the tiles or bag (or None).";
+            "Pick an offering from the tiles, bag, vendor (or None).";
         } else {
           hint.textContent = "";
         }
@@ -1531,17 +1657,17 @@ export function showCompoundDialog(
       const keepScroll = keptScrollName
         ? liveOffer.scrolls.find((s) => s.name === keptScrollName)
         : null;
-      scrollSlot = keepScroll
-        ? keepScroll.slot
+      scrollId = keepScroll
+        ? shrinePickId(keepScroll)
         : liveOffer.scrolls[0]
-          ? liveOffer.scrolls[0].slot
+          ? shrinePickId(liveOffer.scrolls[0])
           : null;
       const keepOffering = keptOfferingName
         ? liveOffer.offerings.find((o) => o.name === keptOfferingName)
         : null;
-      offeringSlot = keepOffering ? keepOffering.slot : null;
+      offeringId = keepOffering ? shrinePickId(keepOffering) : null;
       pickFocus =
-        selected.size < 2 ? "partner" : scrollSlot == null ? "scroll" : null;
+        selected.size < 2 ? "partner" : scrollId == null ? "scroll" : null;
       itemName.textContent = levelTransitionLabel(
         fromLevel,
         liveOffer.displayName,
@@ -1579,18 +1705,18 @@ export function showCompoundDialog(
         return true;
       }
       if (pickFocus === "scroll") {
-        const s = findScroll(liveOffer.scrolls, slot);
+        const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
         if (!s) return false;
-        scrollSlot = s.slot;
+        scrollId = shrinePickId(s);
         pickFocus = null;
         paint();
         refreshChanceEstimate();
         return true;
       }
       if (pickFocus === "offering") {
-        const o = findOffering(liveOffer.offerings, slot);
+        const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
         if (!o) return false;
-        offeringSlot = o.slot;
+        offeringId = shrinePickId(o);
         pickFocus = null;
         paint();
         refreshChanceEstimate();
@@ -1609,16 +1735,16 @@ export function showCompoundDialog(
         refreshChanceEstimate();
         return true;
       }
-      const s = findScroll(liveOffer.scrolls, slot);
+      const s = liveOffer.scrolls.find((x) => !x.buy && x.slot === slot);
       if (s) {
-        scrollSlot = s.slot;
+        scrollId = shrinePickId(s);
         paint();
         refreshChanceEstimate();
         return true;
       }
-      const o = findOffering(liveOffer.offerings, slot);
+      const o = liveOffer.offerings.find((x) => !x.buy && x.slot === slot);
       if (o) {
-        offeringSlot = o.slot;
+        offeringId = shrinePickId(o);
         paint();
         refreshChanceEstimate();
         return true;
@@ -1634,17 +1760,19 @@ export function showCompoundDialog(
 
     const tryConfirm = () => {
       if (okBtn.disabled || busy) return;
-      const scroll = findScroll(liveOffer.scrolls, scrollSlot);
+      const scroll = findScroll(liveOffer.scrolls, scrollId);
       if (!scroll || selected.size !== 2) return;
       const partnerSlots = Array.from(selected.values()).sort((a, b) => a - b);
       const p0 = liveOffer.partners.find((p) => p.slot === partnerSlots[0]);
       const p1 = liveOffer.partners.find((p) => p.slot === partnerSlots[1]);
       if (!p0 || !p1) return;
-      const offering = findOffering(liveOffer.offerings, offeringSlot);
+      const offering = findOffering(liveOffer.offerings, offeringId);
       const picked: CompoundDialogResult = {
         items: [fpFromPick(liveOffer.item), fpFromPick(p0), fpFromPick(p1)],
-        scroll: fpFromPick(scroll),
-        offering: offering ? fpFromPick(offering) : null,
+        scroll: fpFromShrinePick(scroll),
+        offering: offering ? fpFromShrinePick(offering) : null,
+        buyScroll: scroll.buy ? scroll.name : null,
+        buyOffering: offering && offering.buy ? offering.name : null,
       };
       if (!options || !options.execute) {
         closeDialog(picked);

@@ -390,6 +390,17 @@ const CSS = `
 .ecu-upg__tile.is-rec.is-on {
   border-color: #f0d078;
 }
+.ecu-upg__tile.is-buy:not(.is-on) {
+  border-color: rgba(106, 154, 232, 0.75);
+  box-shadow: inset 0 0 8px rgba(106, 154, 232, 0.12);
+}
+.ecu-upg__tile.is-buy.is-on {
+  border-color: #8eb4f0;
+}
+.ecu-upg__tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .ecu-upg__tile.is-none {
   display: flex;
   align-items: center;
@@ -455,6 +466,10 @@ const CSS = `
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
   text-shadow: none;
   pointer-events: none;
+}
+.ecu-upg__tile-badge.is-buy {
+  color: #0c1424;
+  background: linear-gradient(180deg, #b8d4ff, #6a9ae8);
 }
 .ecu-upg__tile-grade {
   position: absolute;

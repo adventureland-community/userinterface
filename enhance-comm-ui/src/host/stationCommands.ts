@@ -17,7 +17,10 @@ import { commLogText, wrapCommandScript } from "./commandScript";
 import { resolveInvSlotJs } from "./gearCommands";
 import { refreshObservedInventory } from "./inventory";
 import type { ItemFingerprint } from "./mail/types";
-import type { StationCoords } from "../lib/stationAccess";
+import {
+  findVendorCoordsForItem,
+  type StationCoords,
+} from "../lib/stationAccess";
 import {
   pickBankSlotsForNeed,
   type CraftFromBagOffer,
@@ -220,28 +223,83 @@ export function resolveInvSlotNamedJs(
   ].join("");
 }
 
+/** Buy one stack from NPC (computer skips travel). Leaves name in bag. */
+function buildBuyNamedJs(
+  itemName: string,
+  quantity: number,
+  vendor: StationCoords | null,
+): string {
+  const q = Math.max(1, quantity | 0);
+  return [
+    buildEnsureStationJs(vendor),
+    `try{await buy(${lit(itemName)},${q});game_log(${lit(commLogText("buy ok · " + itemName + (q > 1 ? " ×" + q : "")))});}`,
+    `catch(__e){game_log(${lit(commLogText("buy failed · " + itemName))}+(__e&&__e.reason?(" · "+__e.reason):""));return;}`,
+  ].join("");
+}
+
+/** Resolve first bag slot matching name into `slotVar` (number) or abort. */
+function resolveInvSlotByNameJs(itemName: string, slotVar: string): string {
+  return [
+    `var ${slotVar}=-1;`,
+    `for(var __bi=0;__bi<character.items.length;__bi++){`,
+    `var __bit=character.items[__bi];`,
+    `if(__bit&&__bit.name===${lit(itemName)}){${slotVar}=__bi;break;}`,
+    `}`,
+    `if(${slotVar}<0){game_log(${lit(commLogText("station · missing after buy · " + itemName))});return;}`,
+  ].join("");
+}
+
+export type ShrineBuyOpts = {
+  /** Buy this scroll name before resolving the bag slot. */
+  buyScroll?: string | null;
+  buyOffering?: string | null;
+};
+
+function vendorForBuy(name: string | null | undefined): StationCoords | null {
+  if (!name) return null;
+  return findVendorCoordsForItem(name, getG());
+}
+
 export function buildUpgradeScript(
   item: ItemFingerprint,
   scroll: ItemFingerprint | null,
   offering: ItemFingerprint | null,
   station: StationCoords | null,
+  buyOpts?: ShrineBuyOpts | null,
 ): string {
   if (!scroll && !offering) {
     return wrapCommandScript(
       `game_log(${lit(commLogText("upgrade aborted — need scroll or offering"))});`,
     );
   }
-  const parts = [
-    buildEnsureStationJs(station),
-    resolveInvSlotNamedJs(item, "__uItem"),
-  ];
+  const buyScroll = buyOpts && buyOpts.buyScroll ? String(buyOpts.buyScroll) : "";
+  const buyOffering =
+    buyOpts && buyOpts.buyOffering ? String(buyOpts.buyOffering) : "";
+  const parts: string[] = [];
+  // Buy reagents first (may need a different merchant than the shrine).
+  if (buyScroll) {
+    parts.push(buildBuyNamedJs(buyScroll, 1, vendorForBuy(buyScroll)));
+  }
+  if (buyOffering) {
+    parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
+  }
+  parts.push(buildEnsureStationJs(station));
+  parts.push(resolveInvSlotNamedJs(item, "__uItem"));
   if (scroll) {
-    parts.push(resolveInvSlotNamedJs(scroll, "__uScroll"));
+    if (buyScroll) {
+      parts.push(resolveInvSlotByNameJs(scroll.name, "__uScroll"));
+    } else {
+      parts.push(resolveInvSlotNamedJs(scroll, "__uScroll"));
+    }
   } else {
     parts.push(`var __uScroll=null;`);
   }
   if (offering) {
-    parts.push(resolveInvSlotNamedJs(offering, "__uOffering"));
+    if (buyOffering) {
+      parts.push(resolveInvSlotByNameJs(offering.name, "__uOffering"));
+    } else {
+      parts.push(resolveInvSlotNamedJs(offering, "__uOffering"));
+    }
   } else {
     parts.push(`var __uOffering=null;`);
   }
@@ -263,9 +321,10 @@ export function upgradeCommand(
   scroll: ItemFingerprint | null,
   offering: ItemFingerprint | null,
   station: StationCoords | null,
+  buyOpts?: ShrineBuyOpts | null,
 ): boolean {
   const ok = emitObserverCommand(
-    buildUpgradeScript(item, scroll, offering, station),
+    buildUpgradeScript(item, scroll, offering, station, buyOpts),
     `upgrade ${item.name}`,
   );
   if (!ok) return false;
@@ -278,16 +337,33 @@ export function buildCompoundScript(
   scroll: ItemFingerprint,
   offering: ItemFingerprint | null,
   station: StationCoords | null,
+  buyOpts?: ShrineBuyOpts | null,
 ): string {
-  const parts = [
-    buildEnsureStationJs(station),
-    resolveInvSlotNamedJs(items[0], "__c0"),
-    resolveInvSlotNamedJs(items[1], "__c1"),
-    resolveInvSlotNamedJs(items[2], "__c2"),
-    resolveInvSlotNamedJs(scroll, "__cScroll"),
-  ];
+  const buyScroll = buyOpts && buyOpts.buyScroll ? String(buyOpts.buyScroll) : "";
+  const buyOffering =
+    buyOpts && buyOpts.buyOffering ? String(buyOpts.buyOffering) : "";
+  const parts: string[] = [];
+  if (buyScroll) {
+    parts.push(buildBuyNamedJs(buyScroll, 1, vendorForBuy(buyScroll)));
+  }
+  if (buyOffering) {
+    parts.push(buildBuyNamedJs(buyOffering, 1, vendorForBuy(buyOffering)));
+  }
+  parts.push(buildEnsureStationJs(station));
+  parts.push(resolveInvSlotNamedJs(items[0], "__c0"));
+  parts.push(resolveInvSlotNamedJs(items[1], "__c1"));
+  parts.push(resolveInvSlotNamedJs(items[2], "__c2"));
+  if (buyScroll) {
+    parts.push(resolveInvSlotByNameJs(scroll.name, "__cScroll"));
+  } else {
+    parts.push(resolveInvSlotNamedJs(scroll, "__cScroll"));
+  }
   if (offering) {
-    parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+    if (buyOffering) {
+      parts.push(resolveInvSlotByNameJs(offering.name, "__cOffering"));
+    } else {
+      parts.push(resolveInvSlotNamedJs(offering, "__cOffering"));
+    }
   } else {
     parts.push(`var __cOffering=null;`);
   }
@@ -310,9 +386,10 @@ export function compoundCommand(
   scroll: ItemFingerprint,
   offering: ItemFingerprint | null,
   station: StationCoords | null,
+  buyOpts?: ShrineBuyOpts | null,
 ): boolean {
   const ok = emitObserverCommand(
-    buildCompoundScript(items, scroll, offering, station),
+    buildCompoundScript(items, scroll, offering, station, buyOpts),
     `compound ${items[0].name}`,
   );
   if (!ok) return false;

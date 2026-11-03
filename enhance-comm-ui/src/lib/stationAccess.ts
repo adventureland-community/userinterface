@@ -168,6 +168,63 @@ export function compoundStation(G?: GLike | null): StationCoords | null {
   return mainShrineCoords("compound", G);
 }
 
+/**
+ * First merchant that sells `itemName` (post-process `map.items[name]`),
+ * else NPC whose `items` list includes it, else scrolls NPC.
+ * Computer skips travel — still used as the buy() proxy target on the server.
+ */
+export function findVendorCoordsForItem(
+  itemName: string,
+  G?: GLike | null,
+): StationCoords | null {
+  const g = G || getG();
+  const name = String(itemName || "").trim();
+  if (!g || !name) return null;
+
+  if (g.maps) {
+    const mapNames = Object.keys(g.maps);
+    for (let i = 0; i < mapNames.length; i++) {
+      const mapName = mapNames[i];
+      const map = g.maps[mapName] as {
+        items?: Record<string, Array<{ map?: string; x?: number; y?: number; id?: string }>>;
+      } | null;
+      const locs = map && map.items && map.items[name];
+      if (!locs || !locs.length) continue;
+      const c = locs[0];
+      const x = Number(c.x);
+      const y = Number(c.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      return {
+        map: String(c.map || mapName),
+        x,
+        y,
+        id: String(c.id || name),
+      };
+    }
+  }
+
+  if (g.npcs) {
+    const npcIds = Object.keys(g.npcs);
+    for (let i = 0; i < npcIds.length; i++) {
+      const id = npcIds[i];
+      const npc = g.npcs[id] as { items?: Array<string | null> } | null;
+      if (!npc || !Array.isArray(npc.items)) continue;
+      let hit = false;
+      for (let j = 0; j < npc.items.length; j++) {
+        if (npc.items[j] === name) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) continue;
+      const coords = findNpcCoords(id, g);
+      if (coords) return coords;
+    }
+  }
+
+  return findNpcCoords("scrolls", g);
+}
+
 function distToStation(
   ent: EntityLike,
   station: StationCoords,

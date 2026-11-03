@@ -936,13 +936,28 @@ export function rowIconHtml(
 /**
  * Paint stock item_container into a host element (party buffs / badges).
  * Strips drag/click handlers. Returns true if painted.
+ * `bare` drops stock margin/space/border — dense boss-bar icons.
  */
 export function paintItemContainerIcon(
   el: HTMLElement,
   skin: string,
   size: number,
+  opts?: { bare?: boolean },
 ): boolean {
-  const html = itemContainer({ skin, size, draggable: false }, null);
+  const bare = !!(opts && opts.bare);
+  const html = itemContainer(
+    bare
+      ? {
+          skin,
+          size,
+          draggable: false,
+          margin: 0,
+          space: 0,
+          bcolor: "transparent",
+        }
+      : { skin, size, draggable: false },
+    null,
+  );
   if (!html) {
     el.textContent = skin.slice(0, 1);
     return false;
@@ -951,6 +966,11 @@ export function paintItemContainerIcon(
   const root = el.firstElementChild as HTMLElement | null;
   if (root) {
     root.style.margin = "0";
+    if (bare) {
+      root.style.border = "none";
+      root.style.background = "transparent";
+      root.style.padding = "0";
+    }
     root.removeAttribute("onmousedown");
     root.removeAttribute("ontouchstart");
     root.removeAttribute("onclick");

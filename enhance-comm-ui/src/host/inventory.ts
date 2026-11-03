@@ -8,8 +8,9 @@
  * the target frame until Bag closes and character is restored.
  */
 import { refreshBagBuyOrderIndicators } from "../ui/bag/bagBuyOrderIndicator";
+import { applyComposeBagHighlights } from "../ui/bag/composeBagHighlight";
 import { applyShrineBagHighlights } from "../ui/bag/shrineBagHighlight";
-import { itemInstanceLabel, stampNativeItemTitle } from "../lib/gameIcon";
+import { stripNativeTitles } from "../ui/chrome/stripNativeTitles";
 import {
   shouldShowTitleBorder,
   stampNativeItemTitleBorder,
@@ -110,6 +111,11 @@ function injectHostCss(): void {
   outline: 2px solid #e8c96a;
   outline-offset: 1px;
   box-shadow: 0 0 0 1px rgba(232, 201, 106, 0.45), inset 0 0 10px rgba(232, 201, 106, 0.12);
+}
+#${HOST_ID} [data-cnum].is-ecu-compose-queue {
+  outline: 2px solid #6a9ae8;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(106, 154, 232, 0.5), inset 0 0 10px rgba(106, 154, 232, 0.14);
 }
 #${MOUNT_ID} {
   pointer-events: auto;
@@ -504,8 +510,9 @@ export function stripObservedBagNativeDropHandlers(): void {
 }
 
 /**
- * Stock `item_container` omits native hover labels and title-prefix borders.
- * After render_inventory, stamp labels + colored title frames from the snapshot.
+ * Stock `item_container` omits title-prefix borders. After render_inventory,
+ * stamp colored title frames from the snapshot. Native `title` stays cleared —
+ * bag hover uses the Comm item cooltip (`installBagItemCooltip`) instead.
  */
 export function refreshInventoryItemTitles(): void {
   if (!window.inventory) return;
@@ -527,20 +534,16 @@ export function refreshInventoryItemTitles(): void {
       level?: number;
       p?: string;
     } | null;
-    if (!item || !item.name || item.name === "placeholder") {
-      node.removeAttribute("title");
-      const inner = node.querySelector(".rclick") as HTMLElement | null;
-      if (inner) inner.removeAttribute("title");
-      continue;
-    }
+    // Strip every nested title= — stock puts them on skin / badge children too.
+    stripNativeTitles(node);
+    if (!item || !item.name || item.name === "placeholder") continue;
     const p = typeof item.p === "string" ? item.p : undefined;
-    const label = itemInstanceLabel(item.name, { p, level: item.level });
-    stampNativeItemTitle(node, label);
     if (shouldShowTitleBorder(p)) stampNativeItemTitleBorder(node, p);
   }
   stripObservedBagNativeDropHandlers();
   refreshBagBuyOrderIndicators();
   applyShrineBagHighlights();
+  applyComposeBagHighlights();
 }
 
 /**
