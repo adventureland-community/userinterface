@@ -187,15 +187,11 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   };
 
   const hidePeerPanels = (
-    keep: "chat" | "command" | "mail" | "bag" | "bank" | "none",
+    keep: "chat" | "command" | "mail" | "bag" | "bank" | "market" | "none",
   ) => {
-    const ids: Array<"chat" | "command" | "mail" | "bag" | "bank"> = [
-      "chat",
-      "command",
-      "mail",
-      "bag",
-      "bank",
-    ];
+    const ids: Array<
+      "chat" | "command" | "mail" | "bag" | "bank" | "market"
+    > = ["chat", "command", "mail", "bag", "bank", "market"];
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (id !== keep && props.visible(id)) props.setVisible(id, false);

@@ -233,6 +233,19 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
 
   const openOverlay = (id: PanelId, openFn?: () => void) => {
     props.onClose();
+    // Mutual dismiss — same peer set as the dock shade path (incl. market).
+    const peers: PanelId[] = [
+      "chat",
+      "command",
+      "mail",
+      "bag",
+      "bank",
+      "market",
+    ];
+    for (let i = 0; i < peers.length; i++) {
+      const peer = peers[i];
+      if (peer !== id && props.visible(peer)) props.setVisible(peer, false);
+    }
     if (openFn) openFn();
     else props.setVisible(id, true);
   };

@@ -171,11 +171,15 @@ export function PhoneObserveSheet(props: PhoneObserveSheetProps): any {
             props.onClose();
           },
         },
-        e("span", { className: "ecu-phone-pick__title" }, "Stop observing"),
         e(
           "span",
-          { className: "ecu-phone-pick__meta" },
-          "Leave " + obsName + " · spectate this realm",
+          { className: "ecu-phone-pick__text" },
+          e("span", { className: "ecu-phone-pick__title" }, "Stop observing"),
+          e(
+            "span",
+            { className: "ecu-phone-pick__meta" },
+            "Leave " + obsName + " · spectate this realm",
+          ),
         ),
       ),
     );
@@ -188,11 +192,15 @@ export function PhoneObserveSheet(props: PhoneObserveSheetProps): any {
           className: "ecu-phone-pick__banner",
           role: "status",
         },
-        e("strong", null, "Not observing anyone"),
         e(
-          "span",
-          null,
-          "Pick a character below to watch them on their server.",
+          "div",
+          { className: "ecu-phone-pick__banner-main" },
+          e("strong", null, "Not observing anyone"),
+          e(
+            "span",
+            { className: "ecu-phone-pick__banner-meta" },
+            "Pick a character below to watch them on their server.",
+          ),
         ),
       ),
     );
