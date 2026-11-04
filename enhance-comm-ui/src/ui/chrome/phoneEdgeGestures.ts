@@ -90,13 +90,13 @@ function isIgnoredTarget(target: EventTarget | null): boolean {
   if (target.closest(".CodeMirror, .ecu-chat-log, .ecu-chat-body")) {
     return true;
   }
-  // Shade / sheet body own their scrolls. Dock buttons are allowed so
-  // swipe-up from the app bar can open Apps (tap still clicks the button).
-  if (target.closest(".ecu-phone-shade, .ecu-phone-sheet__body")) {
+  // Shade / full sheet (handle + header + body) own their gestures.
+  // Dock buttons stay allowed so swipe-up from the bar can open Apps.
+  if (target.closest(".ecu-phone-shade, .ecu-phone-sheet")) {
     return true;
   }
-  // Camera joystick owns its pointer stream.
-  if (target.closest(".ecu-cam-stick")) {
+  // Camera joystick + FOV cluster own their pointer stream.
+  if (target.closest(".ecu-cam-stick, .ecu-cam-chrome")) {
     return true;
   }
   return false;

@@ -194,7 +194,7 @@ function isInteractiveChromeTarget(target: EventTarget | null): boolean {
     target.closest("[data-panel]") ||
     target.closest(".ecu-meter-shell") ||
     target.closest(".ecu-chrome-stack") ||
-    target.closest(".ecu-cam-stick") ||
+    target.closest(".ecu-cam-stick, .ecu-cam-chrome") ||
     target.closest(".modal") ||
     target.closest(".imodal") ||
     target.closest("#bottomleftcorner") ||

@@ -1,5 +1,6 @@
 /**
- * On-screen camera joystick for phone — pans free camera (WASD equivalent).
+ * On-screen camera joystick for phone — pans free camera (WASD equivalent)
+ * plus always-available FOV out/in and Follow (Map info may be off Home).
  */
 
 import { e, getReact } from "../../host/react";
@@ -10,9 +11,20 @@ import {
   subscribeFreeCamera,
 } from "../../host/cameraPan";
 import {
+  readAppliedWorldFov,
+  setWorldFov,
+  subscribeWorldFov,
+  WORLD_FOV_DEFAULT,
+  WORLD_FOV_MAX,
+  WORLD_FOV_MIN,
+  zoomFovIn,
+  zoomFovOut,
+} from "../../host/worldFov";
+import {
   JOYSTICK_RADIUS_PX,
   joystickToPan,
 } from "../../lib/cameraPan";
+import { formatWorldFov } from "../../lib/worldFov";
 
 const STYLE_ID = "ecu-camera-joystick-css";
 
@@ -25,17 +37,31 @@ function ensureCss(): void {
     document.head.appendChild(style);
   }
   style.textContent = `
-.ecu-cam-stick {
+.ecu-cam-chrome {
   position: fixed;
   left: max(12px, env(safe-area-inset-left, 0px));
   bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 12px);
-  z-index: 230;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
-  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
-  pointer-events: auto;
+  z-index: 236;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+}
+.ecu-cam-chrome > * {
+  pointer-events: auto;
+}
+.ecu-cam-stick {
+  position: relative;
+  left: 0;
+  bottom: 0;
+  z-index: 1;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  touch-action: none;
 }
 .ecu-cam-stick__base {
   position: absolute;
@@ -75,23 +101,71 @@ function ensureCss(): void {
   border-color: rgba(157, 212, 236, 0.85);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
-.ecu-cam-stick__follow {
-  position: absolute;
-  left: 50%;
-  bottom: 100%;
-  transform: translateX(-50%);
-  margin-bottom: 6px;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(157, 212, 236, 0.35);
+.ecu-cam-chrome__fov {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  min-height: 36px;
+  padding: 2px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 225, 229, 0.28);
   background: rgba(28, 27, 31, 0.72);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+.ecu-cam-chrome__fov-btn {
+  min-width: 36px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: #e6e1e5;
+  font: 600 13px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-cam-chrome__fov-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ecu-cam-chrome__fov-btn:not(:disabled):active {
+  background: rgba(157, 212, 236, 0.18);
   color: #9dd4ec;
-  font: 12px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
+}
+.ecu-cam-chrome__fov-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: #9dd4ec;
+  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-cam-chrome__fov-label:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ecu-cam-stick__follow {
+  align-self: center;
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 212, 236, 0.55);
+  background: rgba(28, 27, 31, 0.85);
+  color: #9dd4ec;
+  font: 600 13px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
-  pointer-events: auto;
-  opacity: 0.7;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-stick__follow[hidden] {
   display: none !important;
@@ -105,9 +179,14 @@ export function CameraJoystick(): any {
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const knobRef = React.useRef(null as HTMLDivElement | null);
   const [free, setFree] = React.useState(() => isFreeCamera());
+  const [fov, setFov] = React.useState(() => readAppliedWorldFov());
   const activePtr = React.useRef(null as number | null);
 
   React.useEffect(() => subscribeFreeCamera(setFree), []);
+  React.useEffect(() => {
+    setFov(readAppliedWorldFov());
+    return subscribeWorldFov(setFov);
+  }, []);
 
   React.useEffect(() => {
     const root = rootRef.current;
@@ -178,25 +257,108 @@ export function CameraJoystick(): any {
     };
   }, []);
 
+  const stopBtn = (ev: {
+    stopPropagation?: () => void;
+    preventDefault?: () => void;
+  }) => {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    if (ev && ev.preventDefault) ev.preventDefault();
+  };
+
   return e(
     "div",
     {
-      className: "ecu-cam-stick",
-      ref: rootRef,
-      "aria-label": "Camera pan joystick",
+      className: "ecu-cam-chrome",
+      "aria-label": "Camera controls",
     },
-    e("button", {
-      type: "button",
-      className: "ecu-cam-stick__follow",
-      hidden: !free,
-      title: "Re-center on observed character",
-      onClick: (ev: { stopPropagation?: () => void; preventDefault?: () => void }) => {
-        if (ev && ev.stopPropagation) ev.stopPropagation();
-        if (ev && ev.preventDefault) ev.preventDefault();
-        followObservedCamera();
+    e(
+      "button",
+      {
+        type: "button",
+        className: "ecu-cam-stick__follow",
+        hidden: !free,
+        title: "Re-center on observed character",
+        onClick: (ev: {
+          stopPropagation?: () => void;
+          preventDefault?: () => void;
+        }) => {
+          stopBtn(ev);
+          followObservedCamera();
+        },
       },
-    }, "Follow"),
-    e("div", { className: "ecu-cam-stick__base" }),
-    e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
+      "Follow",
+    ),
+    e(
+      "div",
+      {
+        className: "ecu-cam-chrome__fov",
+        title:
+          "Camera FOV — out sees more, in sees less. Pinch the map also works.",
+      },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-cam-chrome__fov-btn",
+          disabled: fov >= WORLD_FOV_MAX,
+          title: "Widen FOV (see more)",
+          "aria-label": "Widen FOV",
+          onClick: (ev: {
+            stopPropagation?: () => void;
+            preventDefault?: () => void;
+          }) => {
+            stopBtn(ev);
+            setFov(zoomFovOut());
+          },
+        },
+        "out",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-cam-chrome__fov-label",
+          disabled: fov === WORLD_FOV_DEFAULT,
+          title: "Reset FOV to 1×",
+          "aria-label": "FOV " + formatWorldFov(fov) + "×",
+          onClick: (ev: {
+            stopPropagation?: () => void;
+            preventDefault?: () => void;
+          }) => {
+            stopBtn(ev);
+            setFov(setWorldFov(WORLD_FOV_DEFAULT));
+          },
+        },
+        formatWorldFov(fov) + "×",
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-cam-chrome__fov-btn",
+          disabled: fov <= WORLD_FOV_MIN,
+          title: "Tighten FOV (see less)",
+          "aria-label": "Tighten FOV",
+          onClick: (ev: {
+            stopPropagation?: () => void;
+            preventDefault?: () => void;
+          }) => {
+            stopBtn(ev);
+            setFov(zoomFovIn());
+          },
+        },
+        "in",
+      ),
+    ),
+    e(
+      "div",
+      {
+        className: "ecu-cam-stick",
+        ref: rootRef,
+        "aria-label": "Camera pan joystick",
+      },
+      e("div", { className: "ecu-cam-stick__base" }),
+      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
+    ),
   );
 }

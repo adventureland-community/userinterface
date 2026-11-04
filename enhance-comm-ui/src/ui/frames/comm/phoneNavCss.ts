@@ -676,7 +676,8 @@ const CSS = `
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  pointer-events: auto;
+  /* Strip itself does not steal stick hits — only the dots do. */
+  pointer-events: none;
   position: fixed;
   left: 0;
   right: 0;
@@ -686,25 +687,30 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 0 12px;
 }
 .ecu-phone-home-dots__dot {
+  pointer-events: auto;
+  box-sizing: content-box;
   width: 8px;
   height: 8px;
-  padding: 0;
+  /* ~44px tap target without widening the visual strip over the stick. */
+  padding: 18px 14px;
   margin: 0;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.45);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  background-clip: content-box;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-phone-home-dots__dot.is-on {
   background: #ffffff;
-  transform: scale(1.25);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  background-clip: content-box;
+  transform: scale(1.15);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-phone-shade-scrim {
   position: fixed;
