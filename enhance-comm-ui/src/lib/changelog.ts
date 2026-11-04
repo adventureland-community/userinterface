@@ -112,6 +112,117 @@ export const FEATURE_OVERVIEW: ChangelogCard[] = [
 /** Newest first. Prepend when releasing. */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    id: "0.18.0",
+    title: "0.18.0",
+    date: "2026-11-04",
+    summary:
+      "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock — built for Tampermonkey on handsets.",
+    highlights: [
+      {
+        label: "Material phone dock",
+        detail:
+          "Slim Chat · Cmd · Mail · Bag · Bank bar. Swipe-up Apps drawer, shade settings cog, mutual dismiss, Settings sheet with swipe-down close.",
+        kind: "feature",
+      },
+      {
+        label: "Samsung-learned gestures",
+        detail:
+          "Edge in = back. Top shade with settings cog. Swipe up from the slim dock (including the bar) opens Apps. Center swipe flips configurable home screens.",
+        kind: "feature",
+      },
+      {
+        label: "Configurable home screens",
+        detail:
+          "Default: empty Home → Players → Coop with page dots above chrome. Apps is an icon grid (swipe up). Stock topleft frost + action icon row hidden on phone.",
+        kind: "feature",
+      },
+      {
+        label: "Chat · Settings · zoom",
+        detail:
+          "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
+        kind: "fix",
+      },
+    ],
+    features: [
+      {
+        title: "Phone chrome",
+        summary: "Dock, shade, sheets, and safe insets.",
+        items: [
+          {
+            label: "Bank / Market sheets",
+            detail:
+              "Full-screen expand with swipe-down close; shells end above the Material dock.",
+            kind: "feature",
+          },
+          {
+            label: "Notification shade",
+            detail:
+              "Pull down for Quick HUD toggles (meters/layout/settings) plus Mail/Chat notification rows; More expands the QS band.",
+            kind: "feature",
+          },
+          {
+            label: "Performance · mobile install",
+            detail:
+              "Performance pane links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+            kind: "ui",
+          },
+        ],
+      },
+    ],
+    items: [
+      {
+        label: "Lite HUD defaults",
+        detail:
+          "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
+        kind: "improve",
+      },
+    ],
+  },
+  {
+    id: "0.17.3",
+    title: "0.17.3",
+    date: "2026-11-04",
+    summary:
+      "CX Jars with different sealed cosmetics no longer merge in Bank and Market, and tips show the real Empty / cosmetic payload.",
+    highlights: [
+      {
+        label: "CX Jar · stack identity",
+        detail:
+          "Bank overview, Market bag/stand collapse, and listing groups key on ItemInfo.data (same rule as can_stack / al-data-explorer) so different cosmetics stay separate.",
+        kind: "fix",
+      },
+      {
+        label: "CX Jar · tip + icon",
+        detail:
+          "Cooltips pass data into stock render_item (Empty / Anomaly vs sealed look). Filled jars show the cosmetic with a bottom-left jar chip (al-data-explorer CxJarItemSprite).",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
+    id: "0.17.2",
+    title: "0.17.2",
+    date: "2026-11-04",
+    summary:
+      "Mail Refresh drops soft-merge orphans and clears stuck Claim settling so Items matches live pull_mail.",
+    highlights: [
+      {
+        label: "Mail Refresh · orphan prune",
+        detail:
+          "When Refresh exhausts the inbox, ECU drops cache rows never seen on any pulled page — stuck Settling electronics (and inflated 3109 vs live counts) no longer survive Refresh.",
+        kind: "fix",
+      },
+      {
+        label: "Mail taken · clear Settling",
+        detail:
+          "Patching a row with live taken:true clears optimistic takenPending so Items / caps stop counting already-claimed attachments.",
+        kind: "fix",
+      },
+    ],
+    items: [],
+  },
+  {
     id: "0.17.1",
     title: "0.17.1",
     date: "2026-11-03",

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Adventure.land Hub UI Enhancement
 // @namespace    http://tampermonkey.net/
-// @version      0.17.1
+// @version      0.18.0
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
@@ -3800,45 +3800,45 @@ var EnhanceCommUI = (() => {
     toggles: { x: 99.2, y: 98.5, anchor: "br" }
   };
   var DEFAULT_LAYOUT_PHONE = {
-    players: { x: 0.5, y: 0.5, anchor: "tl", frameW: 480, autoSize: true },
+    players: { x: 0.5, y: 0.5, anchor: "tl", frameW: 340, autoSize: true },
     enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-    serverInfo: { x: 50, y: 0.4, anchor: "tc" },
-    mapInfo: { x: 50, y: 4.5, anchor: "tc" },
+    serverInfo: { x: 99, y: 0.4, anchor: "tr" },
+    mapInfo: { x: 99, y: 5.5, anchor: "tr" },
     paperdoll: { x: 50, y: 36, anchor: "center" },
     market: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
     bank: { x: 50, y: 44, anchor: "center", frameW: 360, frameH: 520 },
     buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
     itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
-    kills: { x: 98, y: 58, anchor: "br" },
-    playerFrame: { x: 28, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-    targetFrame: { x: 72, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-    bossBar: { x: 50, y: 9, anchor: "tc" },
-    instanceRun: { x: 50, y: 16, anchor: "tc" },
+    kills: { x: 98, y: 40, anchor: "tr" },
+    playerFrame: { x: 28, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    targetFrame: { x: 72, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+    bossBar: { x: 50, y: 12, anchor: "tc", frameW: 360 },
+    instanceRun: { x: 50, y: 18, anchor: "tc" },
     instance: {
       x: 50,
-      y: 22,
+      y: 24,
       anchor: "tc",
-      frameW: 480,
-      frameH: 360
+      frameW: 360,
+      frameH: 320
     },
-    events: { x: 1, y: 10, anchor: "tl" },
-    eventScore: { x: 50, y: 9, anchor: "tc" },
-    eventRoster: { x: 50, y: 18, anchor: "tc" },
-    abilityTimeline: { x: 98, y: 9, anchor: "tr", frameW: 50, frameH: 400 },
+    events: { x: 1, y: 22, anchor: "tl" },
+    eventScore: { x: 50, y: 12, anchor: "tc" },
+    eventRoster: { x: 50, y: 20, anchor: "tc" },
+    abilityTimeline: { x: 98, y: 14, anchor: "tr", frameW: 50, frameH: 280 },
     abilityTimelineBigIcon: {
       x: 90,
-      y: 9,
+      y: 14,
       anchor: "tr",
       ...ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT
     },
     abilityTimelineHighlight: {
       x: 50,
-      y: 42,
+      y: 36,
       anchor: "center",
       ...ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT
     },
-    minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
-    threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
+    minimap: { x: 2, y: 36, anchor: "tl", frameW: 140, frameH: 140 },
+    threat: { x: 50, y: 40, anchor: "tc", frameW: 280, frameH: 240 },
     command: {
       x: 50,
       y: 42,
@@ -3847,10 +3847,10 @@ var EnhanceCommUI = (() => {
       frameH: 420,
       autoSize: false
     },
-    chat: { x: 2, y: 70, anchor: "bl", frameW: 300, frameH: 240 },
-    bag: { x: 50, y: 88, anchor: "bc" },
+    chat: { x: 50, y: 42, anchor: "center", frameW: 360, frameH: 420 },
+    bag: { x: 50, y: 42, anchor: "center" },
     mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
-    toggles: { x: 98, y: 98, anchor: "br" }
+    toggles: { x: 98, y: 40, anchor: "tr" }
   };
   function defaultLayoutFor(profile) {
     switch (profile) {
@@ -4452,7 +4452,7 @@ var EnhanceCommUI = (() => {
       bottom: top + paintedH
     };
   }
-  function clampPanelPosInRoot(pos, paintedW, paintedH, rootW, rootH, pad3 = 0) {
+  function clampPanelPosInRoot(pos, paintedW, paintedH, rootW, rootH, pad3 = 0, bottomPad = 0) {
     if (!(paintedW > 0 && paintedH > 0 && rootW > 0 && rootH > 0)) {
       return {
         ...pos,
@@ -4463,8 +4463,9 @@ var EnhanceCommUI = (() => {
     const box = paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH);
     let left = box.left;
     let top = box.top;
+    const bottomClear = Math.max(pad3, bottomPad > 0 ? bottomPad : pad3);
     const maxLeft = Math.max(pad3, rootW - paintedW - pad3);
-    const maxTop = Math.max(pad3, rootH - paintedH - pad3);
+    const maxTop = Math.max(pad3, rootH - paintedH - bottomClear);
     left = clamp(left, pad3, maxLeft);
     top = clamp(top, pad3, maxTop);
     if (left === box.left && top === box.top) {
@@ -5140,6 +5141,118 @@ var EnhanceCommUI = (() => {
     if (matchH && h != null) next = matchGroupHeight(next, selfId2, h);
     if (matchW && w != null) next = matchGroupWidth(next, selfId2, w);
     return next.map(refreshSnapFlags);
+  }
+
+  // src/lib/phoneChrome.ts
+  var PHONE_DOCK_FALLBACK_PX = 48;
+  var PHONE_DOCK_CSS_VAR = "--ecu-phone-dock-h";
+  var PHONE_HUD_BOTTOM_CSS_VAR = "--ecu-phone-hud-bottom";
+  var PHONE_DOCK_BODY_CLASS = "ecu-phone-dock-on";
+  var PHONE_CHROME_FALLBACK_PX = 120;
+  var appliedPx = 0;
+  var appliedHudBottomPx = 0;
+  function applyPhoneDockChrome(dockHeightPx) {
+    if (typeof document === "undefined") return;
+    const px = Math.max(
+      0,
+      Math.round(Number.isFinite(dockHeightPx) ? dockHeightPx : 0)
+    );
+    appliedPx = px || PHONE_DOCK_FALLBACK_PX;
+    document.documentElement.style.setProperty(
+      PHONE_DOCK_CSS_VAR,
+      appliedPx + "px"
+    );
+    document.documentElement.classList.add(PHONE_DOCK_BODY_CLASS);
+    document.body.classList.add(PHONE_DOCK_BODY_CLASS);
+    refreshPhoneHudBottomInset();
+  }
+  function clearPhoneDockChrome() {
+    if (typeof document === "undefined") return;
+    appliedPx = 0;
+    appliedHudBottomPx = 0;
+    document.documentElement.style.setProperty(PHONE_DOCK_CSS_VAR, "0px");
+    document.documentElement.style.setProperty(PHONE_HUD_BOTTOM_CSS_VAR, "0px");
+    document.documentElement.classList.remove(PHONE_DOCK_BODY_CLASS);
+    document.body.classList.remove(PHONE_DOCK_BODY_CLASS);
+  }
+  function phoneDockHeightPx() {
+    return appliedPx;
+  }
+  function phoneHudBottomInsetPx() {
+    if (typeof document === "undefined") return 0;
+    if (!document.documentElement.classList.contains(PHONE_DOCK_BODY_CLASS)) {
+      return 0;
+    }
+    if (appliedHudBottomPx > 0) return appliedHudBottomPx;
+    return measurePhoneHudBottomInset();
+  }
+  var PHONE_HUD_INSET_EVENT = "ecu-phone-hud-inset";
+  function refreshPhoneHudBottomInset() {
+    if (typeof document === "undefined") return 0;
+    const inset = measurePhoneHudBottomInset();
+    appliedHudBottomPx = inset;
+    document.documentElement.style.setProperty(
+      PHONE_HUD_BOTTOM_CSS_VAR,
+      inset + "px"
+    );
+    if (typeof window !== "undefined") {
+      try {
+        window.dispatchEvent(new CustomEvent(PHONE_HUD_INSET_EVENT));
+      } catch (e2) {
+      }
+    }
+    return inset;
+  }
+  function measurePhoneHudBottomInset() {
+    if (typeof document === "undefined") return 0;
+    if (!document.documentElement.classList.contains(PHONE_DOCK_BODY_CLASS)) {
+      return 0;
+    }
+    const dock = appliedPx || PHONE_DOCK_FALLBACK_PX;
+    const bottom = document.getElementById("bottom");
+    let chromeH = 0;
+    if (bottom) {
+      chromeH = Math.round(bottom.getBoundingClientRect().height);
+    }
+    if (!(chromeH > 0)) chromeH = PHONE_CHROME_FALLBACK_PX;
+    return dock + chromeH;
+  }
+  function layoutClampBottomPad() {
+    return phoneHudBottomInsetPx();
+  }
+
+  // src/lib/viewport.ts
+  var PHONE_MAX_WIDTH = 700;
+  var TABLET_MAX_WIDTH = 1100;
+  function detectViewportProfile(width, height) {
+    const w = typeof width === "number" && width > 0 ? width : typeof window !== "undefined" ? window.innerWidth : 1280;
+    const h = typeof height === "number" && height > 0 ? height : typeof window !== "undefined" ? window.innerHeight : 800;
+    const short = Math.min(w, h);
+    if (w <= PHONE_MAX_WIDTH || short <= 480 && w < 980) return "phone";
+    if (w <= TABLET_MAX_WIDTH || short <= 820 && w < 1280) return "tablet";
+    return "desktop";
+  }
+  function isTouchishProfile(profile) {
+    return profile === "tablet" || profile === "phone";
+  }
+  var VIEWPORT_PROFILES = [
+    "desktop",
+    "tablet",
+    "phone"
+  ];
+  function profileLabel(profile) {
+    switch (profile) {
+      case "desktop":
+        return "Desktop";
+      case "tablet":
+        return "Tablet";
+      case "phone":
+        return "Phone";
+      default: {
+        const _exhaustive = profile;
+        return _exhaustive;
+      }
+    }
   }
 
   // src/lib/settingsFocus.ts
@@ -8496,9 +8609,11 @@ ${fightHoverTip(src)}`
   }
   function defaultMeterInstances() {
     const out = [];
+    const phone = detectViewportProfile() === "phone";
     for (let i = 0; i < METER_PRESETS.length; i++) {
       const p = METER_PRESETS[i];
       if (!p.defaultVisible) continue;
+      if (phone && p.id === "heal") continue;
       out.push(
         instanceFromPreset(p, {
           id: stableId(p.id),
@@ -8508,6 +8623,45 @@ ${fightHoverTip(src)}`
     }
     const dmg = out.find((m) => m.id === stableId("damage"));
     const heal = out.find((m) => m.id === stableId("heal"));
+    if (phone) {
+      const vh = typeof window !== "undefined" ? Math.max(200, window.innerHeight || 844) : 844;
+      const inset = phoneHudBottomInsetPx() || 200;
+      const phonePos = {
+        x: 50,
+        y: Math.max(8, (vh - inset) / vh * 100),
+        anchor: "bc"
+      };
+      const stylePhoneMeter = (m, z) => {
+        m.pos = { ...phonePos };
+        m.frameW = 360;
+        m.frameH = 120;
+        m.locked = true;
+        m.zIndex = z;
+        m.stack = false;
+        m.integrate = false;
+        m.normalize = false;
+        m.rtPaused = false;
+        m.statusbar = { left: "segment", center: "clock", right: "pdps" };
+        m.snap = void 0;
+        Object.assign(m, refreshSnapFlags(m));
+      };
+      if (dmg) {
+        dmg.label = "DPS";
+        dmg.query = { kind: "players", metric: "damage", primary: "rate" };
+        stylePhoneMeter(dmg, 63);
+      }
+      const coopPreset = METER_PRESETS.find((p) => p.id === "coop_v2");
+      if (coopPreset && !out.find((m) => m.id === stableId("coop_v2"))) {
+        const coop = instanceFromPreset(coopPreset, {
+          id: stableId("coop_v2"),
+          visible: true
+        });
+        coop.label = "Coop";
+        stylePhoneMeter(coop, 64);
+        out.push(coop);
+      }
+      return out;
+    }
     if (dmg && heal) {
       dmg.label = "DPS";
       dmg.query = { kind: "players", metric: "damage", primary: "rate" };
@@ -8537,6 +8691,45 @@ ${fightHoverTip(src)}`
       heal.statusbar = { left: "segment", center: "clock", right: "pdps" };
       heal.snap = { 1: dmg.id };
       Object.assign(heal, refreshSnapFlags(heal));
+    }
+    return out;
+  }
+  function adaptMetersForPhoneHome(instances) {
+    var _a, _b, _c, _d, _e, _f;
+    if (!instances.length) return instances;
+    if (typeof window === "undefined") return instances;
+    if (detectViewportProfile() !== "phone") return instances;
+    const vw = Math.max(200, window.innerWidth || 390);
+    const maxW = Math.min(360, vw - 16);
+    const out = [];
+    for (let i = 0; i < instances.length; i++) {
+      const m = instances[i];
+      if (m.id === stableId("heal")) {
+        const factory = m.query && m.query.kind === "players" && m.query.metric === "heal" && ((_b = (_a = m.pos) == null ? void 0 : _a.y) != null ? _b : 0) >= 90;
+        if (factory && m.visible !== false) {
+          out.push({ ...m, visible: false, snap: void 0 });
+          continue;
+        }
+      }
+      if (m.id === stableId("damage") && m.visible !== false) {
+        const frameH = Math.min(m.frameH || 157, 128);
+        const next = {
+          ...m,
+          frameW: Math.min(m.frameW || 261, maxW),
+          frameH,
+          snap: void 0
+        };
+        if (((_d = (_c = m.pos) == null ? void 0 : _c.y) != null ? _d : 0) >= 90 || ((_e = m.pos) == null ? void 0 : _e.anchor) === "br" || ((_f = m.pos) == null ? void 0 : _f.anchor) === "bc") {
+          const vh = Math.max(200, window.innerHeight || 844);
+          const inset = phoneHudBottomInsetPx() || 200;
+          const y = Math.max(8, (vh - inset) / vh * 100);
+          next.pos = { x: 50, y, anchor: "bc" };
+        }
+        Object.assign(next, refreshSnapFlags(next));
+        out.push(next);
+        continue;
+      }
+      out.push(m);
     }
     return out;
   }
@@ -8663,6 +8856,7 @@ ${fightHoverTip(src)}`
         hideWhenEmpty: typeof row3.hideWhenEmpty === "boolean" ? row3.hideWhenEmpty : void 0,
         alwaysShowSelf: typeof row3.alwaysShowSelf === "boolean" ? row3.alwaysShowSelf : void 0,
         chromeOnHover: typeof row3.chromeOnHover === "boolean" ? row3.chromeOnHover : void 0,
+        phoneHomePage: typeof row3.phoneHomePage === "number" && Number.isFinite(row3.phoneHomePage) && row3.phoneHomePage >= 0 ? Math.floor(row3.phoneHomePage) : void 0,
         statusbar: normalizeStatusbarConfig(row3.statusbar),
         snap: row3.snap && typeof row3.snap === "object" ? {
           1: typeof row3.snap[1] === "string" ? row3.snap[1] : void 0,
@@ -8682,7 +8876,7 @@ ${fightHoverTip(src)}`
     backfillDefaults(seen, out);
     const dmg = out.find((m) => m.id === "meter-damage");
     const heal = out.find((m) => m.id === "meter-heal");
-    if (dmg && heal && !((_a = dmg.snap) == null ? void 0 : _a[3]) && !((_b = heal.snap) == null ? void 0 : _b[1]) && !meterHasAnySnap(dmg) && !meterHasAnySnap(heal)) {
+    if (detectViewportProfile() !== "phone" && dmg && heal && !((_a = dmg.snap) == null ? void 0 : _a[3]) && !((_b = heal.snap) == null ? void 0 : _b[1]) && !meterHasAnySnap(dmg) && !meterHasAnySnap(heal)) {
       dmg.snap = { ...dmg.snap || {}, 3: heal.id };
       heal.snap = { ...heal.snap || {}, 1: dmg.id };
     }
@@ -8747,40 +8941,6 @@ ${fightHoverTip(src)}`
       }
     }
     return next;
-  }
-
-  // src/lib/viewport.ts
-  var PHONE_MAX_WIDTH = 700;
-  var TABLET_MAX_WIDTH = 1100;
-  function detectViewportProfile(width, height) {
-    const w = typeof width === "number" && width > 0 ? width : typeof window !== "undefined" ? window.innerWidth : 1280;
-    const h = typeof height === "number" && height > 0 ? height : typeof window !== "undefined" ? window.innerHeight : 800;
-    const short = Math.min(w, h);
-    if (w <= PHONE_MAX_WIDTH || short <= 480 && w < 980) return "phone";
-    if (w <= TABLET_MAX_WIDTH || short <= 820 && w < 1280) return "tablet";
-    return "desktop";
-  }
-  function isTouchishProfile(profile) {
-    return profile === "tablet" || profile === "phone";
-  }
-  var VIEWPORT_PROFILES = [
-    "desktop",
-    "tablet",
-    "phone"
-  ];
-  function profileLabel(profile) {
-    switch (profile) {
-      case "desktop":
-        return "Desktop";
-      case "tablet":
-        return "Tablet";
-      case "phone":
-        return "Phone";
-      default: {
-        const _exhaustive = profile;
-        return _exhaustive;
-      }
-    }
   }
 
   // src/lib/partyBuffMode.ts
@@ -9004,6 +9164,102 @@ ${fightHoverTip(src)}`
     }
   ];
   var CHANGELOG = [
+    {
+      id: "0.18.0",
+      title: "0.18.0",
+      date: "2026-11-04",
+      summary: "Phone-first Comm UI: Material dock, Samsung-style shade/back/drawer gestures, meter home pages, and sheets that clear the dock \u2014 built for Tampermonkey on handsets.",
+      highlights: [
+        {
+          label: "Material phone dock",
+          detail: "Slim Chat \xB7 Cmd \xB7 Mail \xB7 Bag \xB7 Bank bar. Swipe-up Apps drawer, shade settings cog, mutual dismiss, Settings sheet with swipe-down close.",
+          kind: "feature"
+        },
+        {
+          label: "Samsung-learned gestures",
+          detail: "Edge in = back. Top shade with settings cog. Swipe up from the slim dock (including the bar) opens Apps. Center swipe flips configurable home screens.",
+          kind: "feature"
+        },
+        {
+          label: "Configurable home screens",
+          detail: "Default: empty Home \u2192 Players \u2192 Coop with page dots above chrome. Apps is an icon grid (swipe up). Stock topleft frost + action icon row hidden on phone.",
+          kind: "feature"
+        },
+        {
+          label: "Chat \xB7 Settings \xB7 zoom",
+          detail: "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
+          kind: "fix"
+        }
+      ],
+      features: [
+        {
+          title: "Phone chrome",
+          summary: "Dock, shade, sheets, and safe insets.",
+          items: [
+            {
+              label: "Bank / Market sheets",
+              detail: "Full-screen expand with swipe-down close; shells end above the Material dock.",
+              kind: "feature"
+            },
+            {
+              label: "Notification shade",
+              detail: "Pull down for Quick HUD toggles (meters/layout/settings) plus Mail/Chat notification rows; More expands the QS band.",
+              kind: "feature"
+            },
+            {
+              label: "Performance \xB7 mobile install",
+              detail: "Performance pane links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              kind: "ui"
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          label: "Lite HUD defaults",
+          detail: "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
+          kind: "improve"
+        }
+      ]
+    },
+    {
+      id: "0.17.3",
+      title: "0.17.3",
+      date: "2026-11-04",
+      summary: "CX Jars with different sealed cosmetics no longer merge in Bank and Market, and tips show the real Empty / cosmetic payload.",
+      highlights: [
+        {
+          label: "CX Jar \xB7 stack identity",
+          detail: "Bank overview, Market bag/stand collapse, and listing groups key on ItemInfo.data (same rule as can_stack / al-data-explorer) so different cosmetics stay separate.",
+          kind: "fix"
+        },
+        {
+          label: "CX Jar \xB7 tip + icon",
+          detail: "Cooltips pass data into stock render_item (Empty / Anomaly vs sealed look). Filled jars show the cosmetic with a bottom-left jar chip (al-data-explorer CxJarItemSprite).",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
+    {
+      id: "0.17.2",
+      title: "0.17.2",
+      date: "2026-11-04",
+      summary: "Mail Refresh drops soft-merge orphans and clears stuck Claim settling so Items matches live pull_mail.",
+      highlights: [
+        {
+          label: "Mail Refresh \xB7 orphan prune",
+          detail: "When Refresh exhausts the inbox, ECU drops cache rows never seen on any pulled page \u2014 stuck Settling electronics (and inflated 3109 vs live counts) no longer survive Refresh.",
+          kind: "fix"
+        },
+        {
+          label: "Mail taken \xB7 clear Settling",
+          detail: "Patching a row with live taken:true clears optimistic takenPending so Items / caps stop counting already-claimed attachments.",
+          kind: "fix"
+        }
+      ],
+      items: []
+    },
     {
       id: "0.17.1",
       title: "0.17.1",
@@ -11084,6 +11340,177 @@ ${fightHoverTip(src)}`
     }
   }
 
+  // src/lib/phoneHomePages.ts
+  var PHONE_HOME_PAGE_KEY = "ecu-phone-home-page";
+  var PHONE_OVERLAY_PANEL_IDS = /* @__PURE__ */ new Set([
+    "chat",
+    "command",
+    "mail",
+    "bank",
+    "market",
+    "bag",
+    "buffInfo",
+    "itemInfo",
+    "paperdoll",
+    "toggles"
+  ]);
+  function defaultPhoneHomeScreens() {
+    return [
+      { id: "home", label: "Home", panels: [], meters: [] },
+      {
+        id: "players",
+        label: "Players",
+        panels: ["players", "playerFrame", "targetFrame"],
+        meters: []
+      },
+      {
+        id: "coop",
+        label: "Coop",
+        panels: [],
+        meters: ["meter-coop_v2"]
+      }
+    ];
+  }
+  function isPhoneOverlayPanel(id) {
+    return PHONE_OVERLAY_PANEL_IDS.has(id);
+  }
+  function isPhoneHomeWidget(id) {
+    return !isPhoneOverlayPanel(id);
+  }
+  function normalizePhoneHomeScreens(raw) {
+    if (!Array.isArray(raw) || !raw.length) return defaultPhoneHomeScreens();
+    const out = [];
+    for (let i = 0; i < raw.length; i++) {
+      const row3 = raw[i];
+      if (!row3 || typeof row3 !== "object") continue;
+      const id = typeof row3.id === "string" && row3.id ? row3.id : "screen-" + i;
+      const label = typeof row3.label === "string" && row3.label.trim() ? row3.label.trim() : "Page " + (i + 1);
+      const panels = [];
+      const rawPanels = row3.panels;
+      if (Array.isArray(rawPanels)) {
+        for (let p = 0; p < rawPanels.length; p++) {
+          const pid = rawPanels[p];
+          if (typeof pid === "string" && isPanelId(pid) && isPhoneHomeWidget(pid)) {
+            if (panels.indexOf(pid) < 0) panels.push(pid);
+          }
+        }
+      }
+      const meters = [];
+      const rawMeters = row3.meters;
+      if (Array.isArray(rawMeters)) {
+        for (let m = 0; m < rawMeters.length; m++) {
+          const mid = rawMeters[m];
+          if (typeof mid === "string" && mid && meters.indexOf(mid) < 0) {
+            meters.push(mid);
+          }
+        }
+      }
+      out.push({ id, label, panels, meters });
+    }
+    return out.length ? out : defaultPhoneHomeScreens();
+  }
+  function phoneHomeScreenIndices(screens) {
+    const out = [];
+    for (let i = 0; i < screens.length; i++) out.push(i);
+    return out;
+  }
+  function clampPhoneHomePage(page, pages) {
+    if (!pages.length) return 0;
+    if (pages.indexOf(page) >= 0) return page;
+    let best = pages[0];
+    let bestDist = Math.abs(page - best);
+    for (let i = 1; i < pages.length; i++) {
+      const d = Math.abs(page - pages[i]);
+      if (d < bestDist) {
+        best = pages[i];
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+  function activePhoneHomeScreen(screens, page) {
+    if (!screens.length) return null;
+    const idx = clampPhoneHomePage(page, phoneHomeScreenIndices(screens));
+    return screens[idx] || null;
+  }
+  function panelOnPhoneHomeScreen(id, screen) {
+    if (!screen) return true;
+    if (!isPhoneHomeWidget(id)) return true;
+    return screen.panels.indexOf(id) >= 0;
+  }
+  function meterOnPhoneHomeScreen(meterId, screen) {
+    if (!screen) return true;
+    return screen.meters.indexOf(meterId) >= 0;
+  }
+  function readStoredPhoneHomePage() {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = window.localStorage.getItem(PHONE_HOME_PAGE_KEY);
+      if (raw == null) return 0;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+    } catch (e2) {
+      return 0;
+    }
+  }
+  function storePhoneHomePage(page) {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(PHONE_HOME_PAGE_KEY, String(Math.max(0, page)));
+    } catch (e2) {
+    }
+  }
+  function stepPhoneHomePage(current, pages, dir) {
+    if (!pages.length) return current;
+    const cur = clampPhoneHomePage(current, pages);
+    const idx = pages.indexOf(cur);
+    if (idx < 0) return pages[0];
+    if (dir < 0) return idx > 0 ? pages[idx - 1] : cur;
+    if (dir > 0) return idx < pages.length - 1 ? pages[idx + 1] : cur;
+    return cur;
+  }
+  function togglePanelOnScreen(screens, screenIndex, panelId, on) {
+    if (!isPhoneHomeWidget(panelId)) return screens;
+    const next = screens.slice();
+    const screen = next[screenIndex];
+    if (!screen) return screens;
+    const panels = screen.panels.slice();
+    const at = panels.indexOf(panelId);
+    if (on && at < 0) panels.push(panelId);
+    if (!on && at >= 0) panels.splice(at, 1);
+    next[screenIndex] = { ...screen, panels };
+    return next;
+  }
+  function toggleMeterOnScreen(screens, screenIndex, meterId, on) {
+    const next = screens.slice();
+    const screen = next[screenIndex];
+    if (!screen) return screens;
+    const meters = screen.meters.slice();
+    const at = meters.indexOf(meterId);
+    if (on && at < 0) meters.push(meterId);
+    if (!on && at >= 0) meters.splice(at, 1);
+    next[screenIndex] = { ...screen, meters };
+    return next;
+  }
+  function addPhoneHomeScreen(screens, label) {
+    const n = screens.length + 1;
+    return screens.concat([
+      {
+        id: "screen-" + Date.now(),
+        label: label && label.trim() ? label.trim() : "Page " + n,
+        panels: [],
+        meters: []
+      }
+    ]);
+  }
+  function removePhoneHomeScreen(screens, screenIndex) {
+    if (screens.length <= 1) return screens;
+    if (screenIndex < 0 || screenIndex >= screens.length) return screens;
+    const next = screens.slice();
+    next.splice(screenIndex, 1);
+    return next;
+  }
+
   // src/lib/minimapPrefs.ts
   var MINIMAP_ZOOM_MIN = 80;
   var MINIMAP_ZOOM_MAX = 2400;
@@ -11609,6 +12036,71 @@ ${fightHoverTip(src)}`
     return parts.join(" \u2192 ");
   }
 
+  // src/lib/perfPrefs.ts
+  var HUD_DENSITIES = ["auto", "full", "lite"];
+  function normalizeHudDensity(raw) {
+    if (raw === "full" || raw === "lite" || raw === "auto") return raw;
+    return "auto";
+  }
+  function hudDensityLabel(d) {
+    switch (d) {
+      case "auto":
+        return "Auto (lite on phone)";
+      case "full":
+        return "Full HUD";
+      case "lite":
+        return "Lite HUD";
+      default: {
+        const _exhaustive = d;
+        return _exhaustive;
+      }
+    }
+  }
+  var LITE_HUD_DEFAULT_OFF = /* @__PURE__ */ new Set([
+    "abilityTimeline",
+    "abilityTimelineBigIcon",
+    "abilityTimelineHighlight",
+    "minimap",
+    "threat",
+    "kills",
+    "playerFrame",
+    "targetFrame",
+    "instance",
+    "instanceRun",
+    "enemies",
+    // Phone home — keep party + boss + map/zoom; hide the rest until Menu.
+    "paperdoll",
+    "events",
+    "eventScore",
+    "eventRoster",
+    "bag"
+  ]);
+  function resolveLiteHud(density, profile) {
+    if (density === "lite") return true;
+    if (density === "full") return false;
+    const p = profile || detectViewportProfile();
+    return p === "phone";
+  }
+  function isPhoneViewport(profile) {
+    const p = profile || detectViewportProfile();
+    return p === "phone";
+  }
+  function scalePollMs(baseMs, kind = "data", profile) {
+    if (!Number.isFinite(baseMs) || baseMs <= 0) return baseMs;
+    if (!isPhoneViewport(profile)) return Math.round(baseMs);
+    const mult = kind === "data" ? 2.5 : 1.5;
+    return Math.max(Math.round(baseMs), Math.round(baseMs * mult));
+  }
+  function liteAwarePanelVisible(id, panelVisible, opts) {
+    if (panelVisible[id] === false) return false;
+    if (!opts.lite || !LITE_HUD_DEFAULT_OFF.has(id)) return true;
+    const ov = opts.phoneHudVisible;
+    if (!ov) return false;
+    const forced = ov[id];
+    if (typeof forced === "boolean") return forced;
+    return false;
+  }
+
   // src/lib/settings.ts
   var KEY = "al-comm-ui-settings-v1";
   var PANEL_IDS_SET = new Set(PANEL_IDS);
@@ -11652,6 +12144,10 @@ ${fightHoverTip(src)}`
     metersHidden: false,
     meterClosedInstances: [],
     setupWizardDone: false,
+    hudDensity: "auto",
+    worldOverlayEnabled: true,
+    phoneHudVisible: {},
+    phoneHomeScreens: defaultPhoneHomeScreens(),
     changelogSeenId: null,
     serverUpdateNotesSeenDeploy: null,
     toursCompleted: {},
@@ -11899,6 +12395,10 @@ ${fightHoverTip(src)}`
         (r) => r && typeof r.id === "string" && typeof r.label === "string" && typeof r.text === "string"
       ).slice(0, 10) : [],
       metersHidden: !!parsed.metersHidden,
+      hudDensity: normalizeHudDensity(parsed.hudDensity),
+      worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+      phoneHudVisible: parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object" ? parsed.phoneHudVisible : {},
+      phoneHomeScreens: normalizePhoneHomeScreens(parsed.phoneHomeScreens),
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
       changelogSeenId: typeof parsed.changelogSeenId === "string" ? parsed.changelogSeenId : null,
       serverUpdateNotesSeenDeploy: typeof parsed.serverUpdateNotesSeenDeploy === "string" ? parsed.serverUpdateNotesSeenDeploy : null,
@@ -11973,7 +12473,11 @@ ${fightHoverTip(src)}`
       meterBookmarks: [],
       marketFavoriteKeys: [],
       meterRecentReports: [],
-      metersHidden: false
+      metersHidden: false,
+      hudDensity: "auto",
+      worldOverlayEnabled: true,
+      phoneHudVisible: {},
+      phoneHomeScreens: defaultPhoneHomeScreens()
     };
   }
   var settingsCache = null;
@@ -12053,6 +12557,21 @@ ${fightHoverTip(src)}`
         ...current.panelVisible,
         ...partial.panelVisible
       });
+    }
+    if (partial.hudDensity != null) {
+      next.hudDensity = normalizeHudDensity(partial.hudDensity);
+    }
+    if (typeof partial.worldOverlayEnabled === "boolean") {
+      next.worldOverlayEnabled = partial.worldOverlayEnabled;
+    }
+    if (partial.phoneHudVisible) {
+      next.phoneHudVisible = {
+        ...current.phoneHudVisible || {},
+        ...partial.phoneHudVisible
+      };
+    }
+    if (partial.phoneHomeScreens) {
+      next.phoneHomeScreens = normalizePhoneHomeScreens(partial.phoneHomeScreens);
     }
     if (partial.commandSnippets) {
       next.commandSnippets = normalizeSnippets(partial.commandSnippets);
@@ -13955,19 +14474,38 @@ ${fightHoverTip(src)}`
     pointer-events: auto;
   }
 }
-/* Touch / coarse: always show so lock/WC remain reachable. */
+/* Touch / coarse (non-phone): always show so lock/WC remain reachable. */
 @media (hover: none), (pointer: coarse) {
-  #comm-ui .comm-pos-arrange-overlay {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay {
     opacity: 1;
     pointer-events: auto;
   }
-  #comm-ui .comm-pos-arrange-overlay.is-inline {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay.is-inline {
     max-height: 48px;
     overflow: visible;
   }
-  #comm-ui .comm-pos-arrange-overlay > * {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay > * {
     pointer-events: auto;
   }
+}
+/* Phone home: no hover \u2014 pinned lock/\u2630 chrome looked like a mystery bar.
+ * Keep chrome only while unlocked (arrange) or in Layout edit. */
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-arrange-overlay {
+  opacity: 0;
+  pointer-events: none;
+  max-height: 0;
+  overflow: hidden;
+}
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay,
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  max-height: 48px;
+  overflow: visible;
+}
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > *,
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay > * {
+  pointer-events: auto;
 }
 `;
 
@@ -14022,13 +14560,15 @@ ${COOLTIP_CSS}
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  /* Phone Material dock sets --ecu-phone-dock-h so chips/keys stay tappable. */
+  bottom: var(--ecu-phone-dock-h, 0px);
   z-index: ${BOTTOM_CHROME_Z_INDEX};
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   text-align: center;
   pointer-events: none;
   background: none !important;
   background-image: none !important;
+  transition: bottom 0.15s ease;
 }
 #bottom .ecu-chrome-stack {
   pointer-events: none;
@@ -14979,6 +15519,82 @@ ${CHROME_ARRANGE_CSS}
 #topleftcorner::-webkit-scrollbar-corner {
   background: #161616;
 }
+
+/* Enhanced phone chrome \u2014 Material strip above the ECU dock (not a bare lift). */
+html.ecu-phone-dock-on #bottom {
+  padding-left: 0;
+  padding-right: 0;
+  padding-bottom: 0;
+  /* Above #comm-ui panels (220) so meters never steal character/action taps;
+     below the Material dock (240). */
+  z-index: 230;
+}
+html.ecu-phone-dock-on .ecu-chrome-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 10px 10px;
+  gap: 8px;
+  background: #1c1b1f;
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid rgba(230, 225, 229, 0.12);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
+  box-sizing: border-box;
+}
+/* Slim party roster on phone \u2014 no desktop 480px width. */
+html.ecu-phone-dock-on .ecu-roster {
+  max-width: min(100vw - 12px, 360px);
+}
+html.ecu-phone-dock-on .ecu-meter-shell {
+  max-width: calc(100vw - 16px);
+}
+html.ecu-phone-dock-on .ecu-actions {
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  width: 100%;
+  padding: 2px 0 4px;
+  gap: 6px;
+  scrollbar-width: none;
+}
+html.ecu-phone-dock-on .ecu-actions::-webkit-scrollbar {
+  display: none;
+}
+html.ecu-phone-dock-on .ecu-chrome {
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+  background: rgba(43, 41, 48, 0.92);
+  border-radius: 16px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+html.ecu-phone-dock-on .charactersui.charactersuic {
+  max-width: 100%;
+}
+/* Phone home: stock topleft (locks / hamburger / empty frost) is clutter \u2014
+   Apps + shade cover those actions. Keep adopted buff/item hosts. */
+html.ecu-phone-dock-on #topleftcorner:not(.ecu-info-slot-host) {
+  display: none !important;
+}
+html.ecu-phone-dock-on #toprightcorner,
+html.ecu-phone-dock-on #topui,
+html.ecu-phone-dock-on #topmid {
+  display: none !important;
+}
+/* Action icon row duplicates the dock + Apps drawer \u2014 drop it on phone. */
+html.ecu-phone-dock-on .ecu-actions {
+  display: none !important;
+}
+html.ecu-phone-dock-on .ecu-chrome-stack {
+  padding-top: 6px;
+  gap: 0;
+}
 `;
     document.head.append(style);
   }
@@ -15026,9 +15642,39 @@ ${CHROME_ARRANGE_CSS}
     for (let i = 0; i < existing.length; i++) {
       const prev = existing[i];
       const patch = byId.get(prev.id);
-      out.push(patch ? Object.assign({}, prev, patch) : prev);
+      if (!patch) {
+        out.push(prev);
+        continue;
+      }
+      const merged = Object.assign({}, prev, patch);
+      if (patch.taken === true && !patch.takenPending) {
+        merged.takenPending = false;
+      } else if (patch.taken === false) {
+        merged.takenPending = false;
+      }
+      out.push(merged);
     }
     return out;
+  }
+  function retainMailsSeenDuringRefresh(existing, seenIds2) {
+    if (!seenIds2.size) return existing.slice();
+    const out = [];
+    for (let i = 0; i < existing.length; i++) {
+      if (seenIds2.has(existing[i].id)) out.push(existing[i]);
+    }
+    return out;
+  }
+  function addMailPageIdsToSeen(pages, seen) {
+    for (let i = 0; i < pages.length; i++) {
+      const mail = pages[i].mail;
+      for (let j = 0; j < mail.length; j++) seen.add(mail[j].id);
+    }
+  }
+  function mailPagesExhaustInbox(pages) {
+    for (let i = 0; i < pages.length; i++) {
+      if (!pages[i].more) return true;
+    }
+    return false;
   }
   var patchExistingFromPage = patchMailsById;
   function mailPageCursorForIndex(index, pageSize = MAIL_HEAD_PAGE_SIZE) {
@@ -15092,7 +15738,17 @@ ${CHROME_ARRANGE_CSS}
       const live2 = head[i];
       const prevIdx = indexOfId(existing, live2.id);
       const prev = prevIdx >= 0 ? existing[prevIdx] : null;
-      out.push(prev ? Object.assign({}, prev, live2) : cloneRow2(live2));
+      if (!prev) {
+        out.push(cloneRow2(live2));
+        continue;
+      }
+      const merged = Object.assign({}, prev, live2);
+      if (live2.taken === true && !live2.takenPending) {
+        merged.takenPending = false;
+      } else if (live2.taken === false) {
+        merged.takenPending = false;
+      }
+      out.push(merged);
     }
     const tailStart = existingStart + matchLen;
     for (let i = tailStart; i < existing.length; i++) {
@@ -15905,11 +16561,11 @@ ${CHROME_ARRANGE_CSS}
       } catch (e2) {
       }
       if ((mode === "cursor" || mode === "patch") && (pullInFlight || getLoadingMore())) {
-        return false;
+        return null;
       }
     }
     const work = (async () => {
-      if (pullInFlight) return false;
+      if (pullInFlight) return null;
       pullInFlight = true;
       commit(
         mode === "head" ? { loading: true, loadingMore: false } : { loadingMore: true }
@@ -15923,7 +16579,7 @@ ${CHROME_ARRANGE_CSS}
             res.reason === "no_mail_payload" ? "Mail pull returned no list \u2014 try Refresh" : "Mail pull failed",
             "err"
           );
-          return false;
+          return null;
         }
         const page = res.data;
         const mails = getMails();
@@ -16000,7 +16656,7 @@ ${CHROME_ARRANGE_CSS}
           commit(patch);
         }
         schedulePersistMailCache();
-        return true;
+        return page;
       } finally {
         pullInFlight = false;
         commit({ loading: false, loadingMore: false });
@@ -16037,8 +16693,9 @@ ${CHROME_ARRANGE_CSS}
     if (!res.ok || !res.data) return null;
     return res.data;
   }
-  function applyFetchedPages(pages) {
+  function applyFetchedPages(pages, seenIds2) {
     if (!pages.length) return;
+    if (seenIds2) addMailPageIdsToSeen(pages, seenIds2);
     const mails = getMails();
     const prevIds = /* @__PURE__ */ new Set();
     for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
@@ -16068,13 +16725,17 @@ ${CHROME_ARRANGE_CSS}
       etaMs: estimateRefreshEtaMs({ done: 0, total, startedAt }),
       ratePerSec: 0
     });
-    const headOk = await runPull("head", "Refresh");
+    const seenIds2 = /* @__PURE__ */ new Set();
+    let inboxExhausted = false;
+    const headPage = await runPull("head", "Refresh");
     if (seq2 !== refreshSeq) return;
-    if (!headOk) {
+    if (!headPage) {
       commitRefreshProgress(null);
       if (getPanelOpen()) schedulePrefetch();
       return;
     }
+    addMailPageIdsToSeen([headPage], seenIds2);
+    if (mailPagesExhaustInbox([headPage])) inboxExhausted = true;
     let done = 1;
     total = Math.max(done, refreshPageCount(getMails().length));
     commitRefreshProgress({
@@ -16095,8 +16756,8 @@ ${CHROME_ARRANGE_CSS}
       if (seq2 !== refreshSeq) return;
       if (b > 0) await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
       if (seq2 !== refreshSeq) return;
-      let batch = batches[b];
-      let pages = await Promise.all(
+      const batch = batches[b];
+      const pages = await Promise.all(
         batch.map((cursor) => fetchMailPage(cursor))
       );
       if (seq2 !== refreshSeq) return;
@@ -16130,7 +16791,8 @@ ${CHROME_ARRANGE_CSS}
             await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
           }
         }
-        applyFetchedPages(recovered);
+        if (mailPagesExhaustInbox(recovered)) inboxExhausted = true;
+        applyFetchedPages(recovered, seenIds2);
         done += batch.length;
       } else if (failed) {
         commitRefreshProgress(null);
@@ -16140,7 +16802,8 @@ ${CHROME_ARRANGE_CSS}
       } else {
         const okPages = [];
         for (let i = 0; i < pages.length; i++) okPages.push(pages[i]);
-        applyFetchedPages(okPages);
+        if (mailPagesExhaustInbox(okPages)) inboxExhausted = true;
+        applyFetchedPages(okPages, seenIds2);
         done += batch.length;
       }
       total = Math.max(done, total);
@@ -16152,6 +16815,19 @@ ${CHROME_ARRANGE_CSS}
       });
     }
     if (seq2 !== refreshSeq) return;
+    if (inboxExhausted || !getHasMore()) {
+      const pruned = retainMailsSeenDuringRefresh(getMails(), seenIds2);
+      if (pruned.length !== getMails().length) {
+        commit({
+          mails: pruned,
+          hasMore: false,
+          nextCursor: null
+        });
+        schedulePersistMailCache();
+      } else if (inboxExhausted) {
+        commit({ hasMore: false, nextCursor: null });
+      }
+    }
     const n = getMails().length;
     commit({
       refreshProgress: null,
@@ -16350,9 +17026,14 @@ ${CHROME_ARRANGE_CSS}
     if (unreadWatchInstalled) return;
     unreadWatchInstalled = true;
     bootMailUnreadWatch();
+    let lastSample = 0;
     unreadWatchTimer = window.setInterval(() => {
+      const every = scalePollMs(2e3, "data");
+      const now = Date.now();
+      if (now - lastSample < every) return;
+      lastSample = now;
       applyXUnread(getXUnread());
-    }, 2e3);
+    }, 1e3);
   }
 
   // src/host/mail/mailDeleteEstimate.ts
@@ -17526,9 +18207,45 @@ ${CHROME_ARRANGE_CSS}
     });
   }
 
+  // src/lib/itemInstanceData.ts
+  function getItemData(item) {
+    if (!item || !("data" in item)) return void 0;
+    const raw = item.data;
+    if (typeof raw !== "string") return void 0;
+    const trimmed = raw.trim();
+    return trimmed || void 0;
+  }
+  function isCxJarName(name) {
+    return name === "cxjar";
+  }
+  function cxJarData(item) {
+    if (!item || !isCxJarName(item.name)) return void 0;
+    return getItemData(item);
+  }
+  function itemStackIdentityKey(item) {
+    const base = String(item.name) + "\0" + (item.level != null && item.level !== "" ? String(item.level) : "") + "\0" + (item.p != null && String(item.p) !== "" ? String(item.p) : "");
+    const data = getItemData(item);
+    return data ? base + "\0" + data : base;
+  }
+  function cxJarContentSkin(data) {
+    if (!data) return void 0;
+    const G = getG();
+    if (!G) return void 0;
+    const skill = G.skills && G.skills[data];
+    if (skill && skill.emote && typeof skill.skin === "string" && skill.skin) {
+      return skill.skin;
+    }
+    if (G.positions && G.positions[data] != null) return data;
+    return void 0;
+  }
+
   // src/host/mail/itemFingerprint.ts
   function titleKey(p) {
     return p != null && String(p).trim() !== "" ? String(p) : "";
+  }
+  function dataKey(data) {
+    var _a;
+    return (_a = getItemData({ data })) != null ? _a : "";
   }
   function levelKey(level) {
     if (level == null || level === "") return null;
@@ -17540,6 +18257,7 @@ ${CHROME_ARRANGE_CSS}
     if (String(item.name) !== String(expected.name || "")) return false;
     if (titleKey(item.p) !== titleKey(expected.p)) return false;
     if (levelKey(item.level) !== levelKey(expected.level)) return false;
+    if (dataKey(item.data) !== dataKey(expected.data)) return false;
     return true;
   }
   function itemMatchesFingerprint(item, expected) {
@@ -17553,6 +18271,9 @@ ${CHROME_ARRANGE_CSS}
     }
     if (expected.p != null) {
       if (item.p !== expected.p) return false;
+    }
+    if (expected.data != null) {
+      if (dataKey(item.data) !== dataKey(expected.data)) return false;
     }
     return true;
   }
@@ -17572,6 +18293,8 @@ ${CHROME_ARRANGE_CSS}
     if (item.level != null) fp.level = Number(item.level);
     if (item.q != null) fp.q = Number(item.q);
     if (item.p != null) fp.p = String(item.p);
+    const data = getItemData(item);
+    if (data) fp.data = data;
     return fp;
   }
   function findFingerprintSlot(items, expected, usedSlots) {
@@ -19008,6 +19731,10 @@ ${CHROME_ARRANGE_CSS}
       }
     });
   }
+  function syncInventoryToBagPanel(wantOpen) {
+    if (wantOpen === isInventoryOpen()) return;
+    openInventory();
+  }
   function restorePreferredBagOpen() {
     const preferOpen = !!getSettings().bagOpenPreferred;
     if (!preferOpen) return;
@@ -19657,6 +20384,9 @@ ${CHROME_ARRANGE_CSS}
     }
     if (typeof w.p === "string") want.p = w.p;
     else if (w.p === null) want.p = null;
+    if (typeof w.data === "string" && w.data.trim()) {
+      want.data = w.data.trim();
+    }
     return want;
   }
   function normalizeCatalogSlot(slotName, raw) {
@@ -19700,6 +20430,9 @@ ${CHROME_ARRANGE_CSS}
     if (typeof s.q === "number") listing.q = s.q;
     if (typeof s.level === "number") listing.level = s.level;
     if (typeof s.p === "string" || s.p === null) listing.p = s.p;
+    if (typeof s.data === "string" && s.data.trim()) {
+      listing.data = s.data.trim();
+    }
     if (typeof s.stat_type === "string") listing.stat_type = s.stat_type;
     return listing;
   }
@@ -19788,7 +20521,8 @@ ${CHROME_ARRANGE_CSS}
       want.name,
       want.level != null ? String(want.level) : "",
       want.p === null ? "null" : want.p != null ? String(want.p) : "",
-      want.q != null ? String(want.q) : ""
+      want.q != null ? String(want.q) : "",
+      want.data != null && String(want.data) !== "" ? String(want.data) : ""
     ].join("\0");
   }
   function listingFromSlot(slot, now) {
@@ -19814,6 +20548,9 @@ ${CHROME_ARRANGE_CSS}
     if (slot.q != null) row3.q = slot.q;
     if (slot.level != null) row3.level = slot.level;
     if (slot.p !== void 0) row3.p = slot.p;
+    if (slot.data != null && String(slot.data) !== "") {
+      row3.data = String(slot.data);
+    }
     if (slot.stat_type != null) row3.stat_type = slot.stat_type;
     return row3;
   }
@@ -20067,6 +20804,7 @@ ${CHROME_ARRANGE_CSS}
       if (s.q != null) row3.q = s.q;
       if (s.level != null) row3.level = s.level;
       if (s.p !== void 0) row3.p = s.p;
+      if (s.data != null && String(s.data) !== "") row3.data = String(s.data);
       if (s.stat_type != null) row3.stat_type = s.stat_type;
       out.push(row3);
     }
@@ -23438,17 +24176,21 @@ ${CHROME_ARRANGE_CSS}
     }
     return null;
   }
-  function bagFingerprintForItem(observing, itemName, level) {
+  function bagFingerprintForItem(observing, itemName, level, data) {
     const items = observing.items;
     if (!items) return null;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it || !it.name || it.name !== itemName) continue;
       if (level != null && (it.level || 0) !== level) continue;
+      const itData = typeof it.data === "string" && it.data.trim() ? it.data.trim() : "";
+      const wantData = data != null && String(data).trim() ? String(data).trim() : "";
+      if (wantData !== itData) continue;
       const fp = { slot: i, name: it.name };
       if (it.level != null) fp.level = it.level;
       if (it.q != null) fp.q = it.q;
       if (it.p != null) fp.p = String(it.p);
+      if (itData) fp.data = itData;
       return fp;
     }
     return null;
@@ -23463,7 +24205,7 @@ ${CHROME_ARRANGE_CSS}
       window.alert("Mirror/undercut applies to for-sale listings.");
       return false;
     }
-    const fp = bagFingerprintForItem(observing, row3.name, row3.level);
+    const fp = bagFingerprintForItem(observing, row3.name, row3.level, row3.data);
     if (!fp) {
       window.alert(`No ${row3.name} in bag to list.`);
       return false;
@@ -23497,6 +24239,7 @@ ${CHROME_ARRANGE_CSS}
     if (stack.level != null) fp.level = stack.level;
     if (stack.q != null && stack.q > 0) fp.q = stack.q;
     if (stack.p != null && stack.p !== "") fp.p = String(stack.p);
+    if (stack.data) fp.data = String(stack.data);
     return fp;
   }
   function liveSlotForOwnListing(observing, row3) {
@@ -26221,7 +26964,12 @@ ${CHROME_ARRANGE_CSS}
 
   // src/host/mail/mailItemsOverview.ts
   function mailItemAggKey(item) {
-    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+    return itemStackIdentityKey({
+      name: String(item.name),
+      level: item.level,
+      p: item.p,
+      data: item.data
+    });
   }
   function isInventoryMail(m) {
     if (!countsTowardAttachCap(m)) return false;
@@ -26242,11 +26990,13 @@ ${CHROME_ARRANGE_CSS}
       const key = mailItemAggKey(m.item);
       let row3 = byKey[key];
       if (!row3) {
+        const data = getItemData(m.item);
         row3 = {
           key,
           name: String(m.item.name),
           level: m.item.level,
           p: m.item.p != null ? String(m.item.p) : null,
+          ...data ? { data } : {},
           q: 0,
           mailIds: [],
           recipients: []
@@ -27194,6 +27944,33 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     dismissCooltip(key);
   }
 
+  // src/ui/chrome/wrapIconHtml.ts
+  function wrapIconHtml(html) {
+    return e("div", {
+      className: "ecu-icon-html",
+      style: {
+        display: "inline-block",
+        lineHeight: 0,
+        fontSize: 0,
+        flexShrink: 0
+      },
+      // Keep for React builds that honor it; ref is the source of truth.
+      dangerouslySetInnerHTML: { __html: html || "" },
+      ref: (node) => {
+        if (!node) return;
+        if (html && node.innerHTML !== html) {
+          node.innerHTML = html;
+        }
+        const root = node.firstElementChild;
+        if (!root) return;
+        root.style.margin = "0";
+        root.removeAttribute("onmousedown");
+        root.removeAttribute("ontouchstart");
+        root.removeAttribute("onclick");
+      }
+    });
+  }
+
   // src/ui/chrome/ItemInstance.ts
   function formatQty(q, forceShowQ) {
     if (q == null || !Number.isFinite(q)) return null;
@@ -27213,6 +27990,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       level,
       q,
       p,
+      data,
       size = 40,
       className,
       title,
@@ -27224,6 +28002,23 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       actual
     } = props;
     const levelNum = coerceItemLevel(level);
+    const resolvedData = getItemData({ data }) || getItemData(actual) || void 0;
+    const sealedCx = cxJarData({ name, data: resolvedData });
+    const sealedSkin = sealedCx ? cxJarContentSkin(sealedCx) : void 0;
+    const effectiveSkin = sealedSkin || skin;
+    const jarBadgePx = sealedCx ? Math.max(14, Math.round(size * 0.45)) : 0;
+    const jarBadgeHtml = sealedCx && jarBadgePx ? itemIconHtml("cxjar", {
+      size: jarBadgePx,
+      nativeTitle: false
+    }) : "";
+    const tipActual = {
+      name,
+      ...actual || {}
+    };
+    if (tipActual.level == null && level != null) tipActual.level = level;
+    if (tipActual.q == null && q != null) tipActual.q = q;
+    if (tipActual.p == null && p != null) tipActual.p = p;
+    if (resolvedData && tipActual.data == null) tipActual.data = resolvedData;
     const tip = title || itemInstanceLabel(name, { p, level: levelNum }) || name;
     const qtyLabel = formatQty(q, forceShowQ);
     const levelBadge = resolveItemLevelBadge(name, level);
@@ -27237,8 +28032,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     qRef.current = q;
     const pRef = React.useRef(p);
     pRef.current = p;
-    const actualRef = React.useRef(actual);
-    actualRef.current = actual;
+    const actualRef = React.useRef(tipActual);
+    actualRef.current = tipActual;
     const tipLabelRef = React.useRef(tip);
     tipLabelRef.current = tip;
     const rebuildTip = React.useCallback(() => {
@@ -27255,7 +28050,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       const el = ref.current;
       if (!el) return;
       const html = stockChrome ? itemInstanceHtml(name, {
-        skin,
+        skin: effectiveSkin,
         level: levelNum,
         q,
         p,
@@ -27263,7 +28058,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         title: tip,
         nativeTitle: false
       }) : itemIconHtml(name, {
-        skin,
+        skin: effectiveSkin,
         size,
         title: tip,
         nativeTitle: false,
@@ -27293,7 +28088,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       return () => {
         if (el) el.innerHTML = "";
       };
-    }, [name, skin, levelNum, q, p, size, tip, stockChrome, cooltip]);
+    }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
     React.useEffect(() => {
       if (!cooltip) return;
       const key = tipKeyRef.current;
@@ -27335,7 +28130,19 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
           lineHeight: 0
         }
       }),
-      levelBadge ? e(
+      jarBadgeHtml ? e(
+        "span",
+        {
+          className: "ecu-item-badge ecu-item-badge--cxjar",
+          "aria-hidden": true,
+          style: {
+            width: jarBadgePx,
+            height: jarBadgePx
+          }
+        },
+        wrapIconHtml(jarBadgeHtml)
+      ) : null,
+      levelBadge && !sealedCx ? e(
         "span",
         {
           className: "ecu-item-badge ecu-item-badge--level",
@@ -27396,6 +28203,29 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   left: -2px;
   bottom: -2px;
   color: #cfcfcf;
+}
+.ecu-item-badge--cxjar {
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+  background: rgba(18, 18, 22, 0.94);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  line-height: 0 !important;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-item-badge--cxjar .ecu-icon-html,
+.ecu-item-badge--cxjar .ecu-item-instance,
+.ecu-item-badge--cxjar .ecu-meter-icon {
+  display: block !important;
+  margin: 0 !important;
 }
 .ecu-item-badge--bank {
   right: -2px;
@@ -28812,8 +29642,8 @@ button.comm-mail__stack-u {
 
   // src/buildMeta.ts
   function getEcuBuildInfo() {
-    const version = true ? "0.17.1" : "unknown";
-    const builtAt = true ? "2026-11-03T22:35:57.370Z" : "unknown";
+    const version = true ? "0.18.0" : "unknown";
+    const builtAt = true ? "2026-11-04T10:33:06.170Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -33145,9 +33975,10 @@ button.comm-mail__stack-u {
   // src/ui/hooks/useCommMeterInstances.ts
   function useCommMeterInstances(opts) {
     const React = getReact();
-    const [meterInstances, setMeterInstances] = React.useState(
-      () => getSettings().meterInstances
-    );
+    const [meterInstances, setMeterInstances] = React.useState(() => {
+      const raw = getSettings().meterInstances;
+      return adaptMetersForPhoneHome(raw);
+    });
     const [closedMeters, setClosedMeters] = React.useState(
       () => normalizeMeterClosedInstances(
         getSettings().meterClosedInstances
@@ -33155,6 +33986,29 @@ button.comm-mail__stack-u {
     );
     const meterInstancesRef = React.useRef(meterInstances);
     meterInstancesRef.current = meterInstances;
+    const phoneMeterAdaptRef = React.useRef(false);
+    React.useEffect(() => {
+      if (phoneMeterAdaptRef.current) return;
+      if (detectViewportProfile() !== "phone") return;
+      phoneMeterAdaptRef.current = true;
+      setMeterInstances((prev) => {
+        var _a, _b, _c, _d, _e, _f;
+        const next = adaptMetersForPhoneHome(prev);
+        let changed = next.length !== prev.length;
+        if (!changed) {
+          for (let i = 0; i < next.length; i++) {
+            const a = next[i];
+            const b = prev[i];
+            if (!b || a.visible !== b.visible || a.frameW !== b.frameW || a.frameH !== b.frameH || ((_a = a.pos) == null ? void 0 : _a.x) !== ((_b = b.pos) == null ? void 0 : _b.x) || ((_c = a.pos) == null ? void 0 : _c.y) !== ((_d = b.pos) == null ? void 0 : _d.y) || ((_e = a.pos) == null ? void 0 : _e.anchor) !== ((_f = b.pos) == null ? void 0 : _f.anchor)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+        if (changed) patchSettings({ meterInstances: next });
+        return changed ? next : prev;
+      });
+    }, []);
     const meterIsLocked = (inst) => {
       if (typeof inst.locked === "boolean") return inst.locked;
       return getSettings().windowsLocked !== false;
@@ -33699,7 +34553,14 @@ button.comm-mail__stack-u {
     const [windowsLocked, setWindowsLocked] = React.useState(
       () => settings0.windowsLocked !== false
     );
+    const [hudDensity, setHudDensityState] = React.useState(
+      () => settings0.hudDensity || "auto"
+    );
+    const [phoneHudVisible, setPhoneHudVisible] = React.useState(
+      () => settings0.phoneHudVisible || {}
+    );
     const [altHeld, setAltHeld] = React.useState(false);
+    const liteHud = resolveLiteHud(hudDensity, viewportProfile);
     React.useEffect(() => {
       const sync = (ev) => {
         setAltHeld(!!ev.altKey);
@@ -33802,14 +34663,25 @@ button.comm-mail__stack-u {
     };
     const setVisible = (id, visible2) => {
       if (!isClosable(id)) return;
-      setPanelVisible((prev) => {
-        const next = { ...prev, [id]: visible2 };
-        return next;
-      });
-      savePanelVisible(id, visible2);
-      if (id === "bag" && !visible2 && isInventoryOpen()) {
-        openInventory();
+      if (liteHud) {
+        setPhoneHudVisible((prev) => {
+          const next = { ...prev, [id]: visible2 };
+          saveSettings({ phoneHudVisible: { [id]: visible2 } });
+          return next;
+        });
+        setPanelVisible((prev) => {
+          const next = { ...prev, [id]: visible2 };
+          return next;
+        });
+        savePanelVisible(id, visible2);
+      } else {
+        setPanelVisible((prev) => {
+          const next = { ...prev, [id]: visible2 };
+          return next;
+        });
+        savePanelVisible(id, visible2);
       }
+      if (id === "bag") syncInventoryToBagPanel(visible2);
     };
     const setOpacity = (id, value) => {
       setPanelOpacity((prev) => {
@@ -33818,11 +34690,18 @@ button.comm-mail__stack-u {
         return next;
       });
     };
-    const visible = (id) => panelVisible[id] !== false;
+    const visible = (id) => liteAwarePanelVisible(id, panelVisible, {
+      lite: liteHud,
+      phoneHudVisible
+    });
     const opacityFor = (id) => {
       const v = panelOpacity[id];
       if (typeof v === "number") return v;
       return panelOpacityOf(getSettings(), id);
+    };
+    const setHudDensity = (mode) => {
+      setHudDensityState(mode);
+      saveSettings({ hudDensity: mode });
     };
     return {
       panelVisible,
@@ -33847,7 +34726,10 @@ button.comm-mail__stack-u {
       setVisible,
       setOpacity,
       visible,
-      opacityFor
+      opacityFor,
+      hudDensity,
+      setHudDensity,
+      liteHud
     };
   }
 
@@ -33855,11 +34737,22 @@ button.comm-mail__stack-u {
   var installed4 = false;
   var appliedOnce = false;
   var wheelInstalled = false;
+  var pinchInstalled = false;
   var lastWheelApplyMs = 0;
   var persistTimer4 = null;
+  var pinchStartDist = 0;
+  var pinchBaseZoom = WORLD_ZOOM_DEFAULT;
+  var shiftPinchActive = false;
+  var shiftPinchStartY = 0;
+  var shiftPinchBaseZoom = WORLD_ZOOM_DEFAULT;
   var zoomListeners = [];
   var WHEEL_MIN_MS = 80;
   var PERSIST_DEBOUNCE_MS4 = 200;
+  var PINCH_STEP_RATIO = 1.12;
+  var SHIFT_PINCH_PX_PER_STEP = 72;
+  function shiftDragZoomSteps(startY, currentY) {
+    return Math.trunc((startY - currentY) / SHIFT_PINCH_PX_PER_STEP);
+  }
   function notifyZoomListeners(zoom) {
     for (let i = 0; i < zoomListeners.length; i++) zoomListeners[i](zoom);
   }
@@ -33877,11 +34770,21 @@ button.comm-mail__stack-u {
     const map = window.map;
     if (!map || !gameLoaded()) return false;
     const savedRaw = getSettings().worldZoom;
-    const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : WORLD_ZOOM_DEFAULT;
+    const phoneDefault = detectViewportProfile() === "phone" ? WORLD_ZOOM_MIN : WORLD_ZOOM_DEFAULT;
+    const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : phoneDefault;
     healFractionalScaleCookie(
       typeof savedRaw === "number" ? preferred : readHostWorldZoom()
     );
     if (typeof savedRaw !== "number") {
+      if (detectViewportProfile() === "phone") {
+        if (readHostWorldZoom() !== preferred) {
+          applyWorldZoom(preferred);
+          persistZoom(preferred);
+          notifyZoomListeners(preferred);
+        } else {
+          writeWorldZoomCookie(preferred);
+        }
+      }
       appliedOnce = true;
       return true;
     }
@@ -33920,20 +34823,59 @@ button.comm-mail__stack-u {
   }
   function rendererView() {
     const renderer = window.renderer;
-    const view = renderer && renderer.view;
-    return view || null;
+    if (renderer && renderer.view) return renderer.view;
+    const stage = document.getElementById("stage") || document.getElementById("game") || document.body;
+    if (stage) {
+      const nested = stage.querySelector("canvas");
+      if (nested) return nested;
+    }
+    const all = document.querySelectorAll("canvas");
+    let best = null;
+    let bestArea = 0;
+    for (let i = 0; i < all.length; i++) {
+      const c = all[i];
+      const r = c.getBoundingClientRect();
+      const area = Math.max(0, r.width) * Math.max(0, r.height);
+      if (area > bestArea) {
+        bestArea = area;
+        best = c;
+      }
+    }
+    return best;
+  }
+  function isInteractiveChromeTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
   }
   function isUiChromeTarget(target) {
     if (!(target instanceof Element)) return false;
-    return !!(target.closest("#comm-ui") || target.closest(".ecu-chrome-stack") || target.closest(".modal") || target.closest(".imodal") || target.closest("#topleftcorner") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("#toprightcorner"));
+    if (isInteractiveChromeTarget(target)) return true;
+    return !!(target.closest("#comm-ui") || target.closest("#topleftcorner") || target.closest("#toprightcorner"));
+  }
+  function pointOverCanvas(clientX, clientY) {
+    const view = rendererView();
+    if (!view) return false;
+    const r = view.getBoundingClientRect();
+    return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+  }
+  function targetOnCanvas(target) {
+    const view = rendererView();
+    if (!view) return false;
+    return target === view || target instanceof Node && view.contains(target);
   }
   function onWorldWheel(ev) {
-    if (ev.ctrlKey || ev.metaKey) return;
-    if (isUiChromeTarget(ev.target)) return;
-    const view = rendererView();
-    if (!view) return;
-    const overCanvas = ev.target === view || ev.target instanceof Node && view.contains(ev.target);
-    if (!overCanvas) return;
+    const phone = detectViewportProfile() === "phone";
+    const pinchSim = phone && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
+    if ((ev.ctrlKey || ev.metaKey) && !phone) return;
+    if (isInteractiveChromeTarget(ev.target)) return;
+    if (pinchSim) {
+      if (!pointOverCanvas(ev.clientX, ev.clientY)) return;
+    } else {
+      if (isUiChromeTarget(ev.target)) return;
+      if (!targetOnCanvas(ev.target) && !pointOverCanvas(ev.clientX, ev.clientY)) {
+        return;
+      }
+    }
     const now = Date.now();
     if (now - lastWheelApplyMs < WHEEL_MIN_MS) {
       ev.preventDefault();
@@ -33948,6 +34890,133 @@ button.comm-mail__stack-u {
     ev.preventDefault();
     setWorldZoom(next);
   }
+  function touchDistance(a, b) {
+    const dx = a.clientX - b.clientX;
+    const dy = a.clientY - b.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  function pinchMidpointInRect(ax, ay, bx, by, rect) {
+    const mx = (ax + bx) / 2;
+    const my = (ay + by) / 2;
+    return mx >= rect.left && mx <= rect.right && my >= rect.top && my <= rect.bottom;
+  }
+  function pinchOverCanvas(ev) {
+    if (ev.touches.length < 2) {
+      if (isInteractiveChromeTarget(ev.target)) return false;
+      return targetOnCanvas(ev.target);
+    }
+    const a = ev.touches[0];
+    const b = ev.touches[1];
+    if (typeof document !== "undefined" && document.elementFromPoint) {
+      const elA = document.elementFromPoint(a.clientX, a.clientY);
+      const elB = document.elementFromPoint(b.clientX, b.clientY);
+      if (isInteractiveChromeTarget(elA) && isInteractiveChromeTarget(elB)) {
+        return false;
+      }
+    }
+    const view = rendererView();
+    if (!view) return false;
+    return pinchMidpointInRect(
+      a.clientX,
+      a.clientY,
+      b.clientX,
+      b.clientY,
+      view.getBoundingClientRect()
+    );
+  }
+  function pointAllowsMapZoom(target, clientX, clientY) {
+    if (isInteractiveChromeTarget(target)) {
+      return pointOverCanvas(clientX, clientY);
+    }
+    return targetOnCanvas(target) || pointOverCanvas(clientX, clientY);
+  }
+  function onPinchStart(ev) {
+    if (ev.touches.length === 2) {
+      shiftPinchActive = false;
+      if (!pinchOverCanvas(ev)) return;
+      pinchStartDist = touchDistance(ev.touches[0], ev.touches[1]);
+      pinchBaseZoom = readHostWorldZoom();
+      return;
+    }
+    if (ev.touches.length === 1 && ev.shiftKey && detectViewportProfile() === "phone") {
+      const t = ev.touches[0];
+      if (!pointAllowsMapZoom(ev.target, t.clientX, t.clientY)) return;
+      pinchStartDist = 0;
+      shiftPinchActive = true;
+      shiftPinchStartY = t.clientY;
+      shiftPinchBaseZoom = readHostWorldZoom();
+    }
+  }
+  function onPinchMove(ev) {
+    if (shiftPinchActive && ev.touches.length === 1) {
+      const t = ev.touches[0];
+      const steps = shiftDragZoomSteps(shiftPinchStartY, t.clientY);
+      if (steps === 0) {
+        ev.preventDefault();
+        return;
+      }
+      const next2 = clampWorldZoom(
+        shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP
+      );
+      ev.preventDefault();
+      if (next2 !== readHostWorldZoom()) setWorldZoom(next2);
+      shiftPinchBaseZoom = next2;
+      shiftPinchStartY = t.clientY;
+      return;
+    }
+    if (ev.touches.length !== 2 || pinchStartDist <= 0) return;
+    if (!pinchOverCanvas(ev)) return;
+    const dist = touchDistance(ev.touches[0], ev.touches[1]);
+    if (dist <= 0) return;
+    const ratio = dist / pinchStartDist;
+    let step = 0;
+    if (ratio >= PINCH_STEP_RATIO) step = 1;
+    else if (ratio <= 1 / PINCH_STEP_RATIO) step = -1;
+    if (step === 0) return;
+    const next = clampWorldZoom(pinchBaseZoom + step * WORLD_ZOOM_STEP);
+    if (next === readHostWorldZoom()) {
+      ev.preventDefault();
+      return;
+    }
+    ev.preventDefault();
+    setWorldZoom(next);
+    pinchBaseZoom = next;
+    pinchStartDist = dist;
+  }
+  function onPinchEnd(ev) {
+    if (ev.touches.length < 2) {
+      pinchStartDist = 0;
+    }
+    if (ev.touches.length === 0) {
+      shiftPinchActive = false;
+    }
+  }
+  function onShiftPointerDown(ev) {
+    if (detectViewportProfile() !== "phone") return;
+    if (!ev.shiftKey || ev.button !== 0) return;
+    if (ev.pointerType === "touch") return;
+    if (!pointAllowsMapZoom(ev.target, ev.clientX, ev.clientY)) return;
+    shiftPinchActive = true;
+    shiftPinchStartY = ev.clientY;
+    shiftPinchBaseZoom = readHostWorldZoom();
+  }
+  function onShiftPointerMove(ev) {
+    if (!shiftPinchActive || !ev.shiftKey) return;
+    if (ev.pointerType === "touch") return;
+    const steps = shiftDragZoomSteps(shiftPinchStartY, ev.clientY);
+    if (steps === 0) {
+      ev.preventDefault();
+      return;
+    }
+    const next = clampWorldZoom(shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP);
+    ev.preventDefault();
+    if (next !== readHostWorldZoom()) setWorldZoom(next);
+    shiftPinchBaseZoom = next;
+    shiftPinchStartY = ev.clientY;
+  }
+  function onShiftPointerUp() {
+    shiftPinchActive = false;
+  }
   function installWheelZoom() {
     if (wheelInstalled) return;
     wheelInstalled = true;
@@ -33956,10 +35025,47 @@ button.comm-mail__stack-u {
       capture: true
     });
   }
+  function installPinchZoom() {
+    if (pinchInstalled) return;
+    pinchInstalled = true;
+    window.addEventListener("touchstart", onPinchStart, {
+      passive: true,
+      capture: true
+    });
+    window.addEventListener("touchmove", onPinchMove, {
+      passive: false,
+      capture: true
+    });
+    window.addEventListener("touchend", onPinchEnd, {
+      passive: true,
+      capture: true
+    });
+    window.addEventListener("touchcancel", onPinchEnd, {
+      passive: true,
+      capture: true
+    });
+    window.addEventListener("pointerdown", onShiftPointerDown, {
+      passive: true,
+      capture: true
+    });
+    window.addEventListener("pointermove", onShiftPointerMove, {
+      passive: false,
+      capture: true
+    });
+    window.addEventListener("pointerup", onShiftPointerUp, {
+      passive: true,
+      capture: true
+    });
+    window.addEventListener("pointercancel", onShiftPointerUp, {
+      passive: true,
+      capture: true
+    });
+  }
   function installWorldZoom() {
     if (installed4) return;
     installed4 = true;
     installWheelZoom();
+    installPinchZoom();
     const saved = getSettings().worldZoom;
     healFractionalScaleCookie(
       typeof saved === "number" ? saved : WORLD_ZOOM_DEFAULT
@@ -35730,7 +36836,7 @@ button.comm-mail__stack-u {
   }
 
   // src/viz/startWorldOverlay.ts
-  var TICK_MS = 100;
+  var TICK_MS_DESKTOP = 100;
   var timerId = null;
   var handle = null;
   var unsubSettings = null;
@@ -35742,7 +36848,11 @@ button.comm-mail__stack-u {
   function resolveFocus(entities) {
     return resolveAbilityTimelineTarget(entities, selectedId, getObserving());
   }
+  function overlayTickMs() {
+    return scalePollMs(TICK_MS_DESKTOP, "ui");
+  }
   function tick() {
+    if (getSettings().worldOverlayEnabled === false) return;
     if (mapOverlayBlocked()) {
       if (handle) {
         destroyOverlayHandle(handle);
@@ -35760,10 +36870,28 @@ button.comm-mail__stack-u {
   }
   function startWorldOverlay() {
     if (timerId != null) return;
+    if (getSettings().worldOverlayEnabled === false) return;
     unsubSettings = subscribeVizSettings(() => tick());
     unsubZoom = subscribeWorldZoom(() => tick());
     tick();
-    timerId = window.setInterval(tick, TICK_MS);
+    timerId = window.setInterval(tick, overlayTickMs());
+  }
+  function stopWorldOverlay() {
+    if (timerId != null) {
+      window.clearInterval(timerId);
+      timerId = null;
+    }
+    if (unsubSettings) {
+      unsubSettings();
+      unsubSettings = null;
+    }
+    if (unsubZoom) {
+      unsubZoom();
+      unsubZoom = null;
+    }
+    destroyOverlayHandle(handle);
+    handle = null;
+    resetAnniversaryKissFx();
   }
 
   // src/lib/panelDragSnap.ts
@@ -36530,25 +37658,20 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/hooks/useBagBridge.ts
-  function useBagBridge(setPanelVisible) {
+  function useBagBridge(setBagVisible) {
     const React = getReact();
     const [bagOpen, setBagOpen] = React.useState(() => isInventoryOpen());
     const [bagRefreshing2, setBagRefreshing2] = React.useState(
       () => isBagRefreshing()
     );
+    const setBagVisibleRef = React.useRef(setBagVisible);
+    setBagVisibleRef.current = setBagVisible;
     React.useEffect(() => {
       const unsubInv = subscribeInventory((open) => {
         setBagOpen(open);
-        if (!isBagRefreshing()) {
-          saveSettings({ bagOpenPreferred: open });
-        }
-        if (open) {
-          setPanelVisible((prev) => {
-            if (prev.bag !== false) return prev;
-            savePanelVisible("bag", true);
-            return { ...prev, bag: true };
-          });
-        }
+        if (isBagRefreshing()) return;
+        saveSettings({ bagOpenPreferred: open });
+        setBagVisibleRef.current(open);
       });
       const unsubSync = subscribeBagSync(() => {
         setBagRefreshing2(isBagRefreshing());
@@ -36557,7 +37680,7 @@ button.comm-mail__stack-u {
         unsubInv();
         unsubSync();
       };
-    }, [setPanelVisible]);
+    }, []);
     return { bagOpen, bagRefreshing: bagRefreshing2 };
   }
 
@@ -38442,7 +39565,9 @@ button.comm-mail__stack-u {
             pr.width,
             pr.height,
             rr.width,
-            rr.height
+            rr.height,
+            0,
+            layoutClampBottomPad()
           );
         }
       }
@@ -38829,6 +39954,16 @@ button.comm-mail__stack-u {
         window.cancelAnimationFrame(outer);
       };
     }, []);
+    const [hudInsetGen, setHudInsetGen] = React.useState(0);
+    React.useEffect(() => {
+      const onInset = () => setHudInsetGen((n) => n + 1);
+      window.addEventListener(PHONE_HUD_INSET_EVENT, onInset);
+      window.addEventListener("resize", onInset);
+      return () => {
+        window.removeEventListener(PHONE_HUD_INSET_EVENT, onInset);
+        window.removeEventListener("resize", onInset);
+      };
+    }, []);
     React.useLayoutEffect(() => {
       if (!clampReady || dragging.current) return;
       const shell = shellRef.current;
@@ -38844,13 +39979,16 @@ button.comm-mail__stack-u {
         pr.width,
         pr.height,
         rr.width,
-        rr.height
+        rr.height,
+        0,
+        layoutClampBottomPad()
       );
       if (Math.abs(next.x - pos.x) > 0.05 || Math.abs(next.y - pos.y) > 0.05) {
         onMove(id, next);
       }
     }, [
       clampReady,
+      hudInsetGen,
       pos.x,
       pos.y,
       pos.anchor,
@@ -50442,6 +51580,9 @@ ${parts.map(cssSlice).join("\n")}
       const isHidden = inst.visible === false;
       if (isHidden && !ctx.layoutEdit) continue;
       if (ctx.metersHidden && !ctx.layoutEdit) continue;
+      if (ctx.viewportProfile === "phone" && !ctx.layoutEdit && ctx.phoneHomeScreen && !meterOnPhoneHomeScreen(inst.id, ctx.phoneHomeScreen)) {
+        continue;
+      }
       const locked = ctx.meterIsLocked(inst);
       if (meterHidesWhenEmpty(inst)) {
         const peek = runMeterQuery(inst.query, {
@@ -50869,6 +52010,1947 @@ ${parts.map(cssSlice).join("\n")}
         "Settings"
       )
     );
+  }
+
+  // src/ui/chrome/phoneEdgeGestures.ts
+  var PHONE_EDGE_INSET_PX = 24;
+  var PHONE_EDGE_BOTTOM_BAND_PX = 32;
+  var PHONE_EDGE_MIN_DIST_PX = 72;
+  var PHONE_EDGE_MAX_OFF_AXIS = 0.65;
+  function classifyPhoneEdgeStart(x, y, viewportW, viewportH, bottomBandTop, inset = PHONE_EDGE_INSET_PX) {
+    if (!(viewportW > 0 && viewportH > 0)) return null;
+    if (x <= inset) return "left";
+    if (x >= viewportW - inset) return "right";
+    if (y <= inset) return "top";
+    if (y >= bottomBandTop && y <= viewportH) return "bottom";
+    return null;
+  }
+  function classifyPhoneEdgeSwipe(sample) {
+    const edge = classifyPhoneEdgeStart(
+      sample.startX,
+      sample.startY,
+      sample.viewportW,
+      sample.viewportH,
+      sample.bottomBandTop
+    );
+    if (!edge) return null;
+    const dx = sample.endX - sample.startX;
+    const dy = sample.endY - sample.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (edge === "left" || edge === "right") {
+      if (absX < PHONE_EDGE_MIN_DIST_PX) return null;
+      if (absY > absX * PHONE_EDGE_MAX_OFF_AXIS) return null;
+      if (edge === "left" && dx > 0) return "left";
+      if (edge === "right" && dx < 0) return "right";
+      return null;
+    }
+    if (absY < PHONE_EDGE_MIN_DIST_PX) return null;
+    if (absX > absY * PHONE_EDGE_MAX_OFF_AXIS) return null;
+    if (edge === "top" && dy > 0) return "top";
+    if (edge === "bottom" && dy < 0) return "bottom";
+    return null;
+  }
+  function isIgnoredTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return true;
+    }
+    if (target.closest(".CodeMirror, .ecu-chat-log, .ecu-chat-body")) {
+      return true;
+    }
+    if (target.closest(".ecu-phone-shade, .ecu-phone-sheet__body")) {
+      return true;
+    }
+    return false;
+  }
+  function bottomBandTopPx(viewportH) {
+    const dock = phoneDockHeightPx() || PHONE_DOCK_FALLBACK_PX;
+    return Math.max(0, viewportH - dock - PHONE_EDGE_BOTTOM_BAND_PX);
+  }
+  var installed5 = false;
+  var handlersRef = null;
+  var stroke = null;
+  function fire(edge) {
+    const h = handlersRef;
+    if (!h) return;
+    if (edge === "left") h.onLeft();
+    else if (edge === "right") h.onRight();
+    else if (edge === "bottom") h.onBottom();
+    else h.onTop();
+  }
+  function onTouchStart(ev) {
+    if (detectViewportProfile() !== "phone") return;
+    if (ev.touches.length !== 1) {
+      stroke = null;
+      return;
+    }
+    if (isIgnoredTarget(ev.target)) {
+      stroke = null;
+      return;
+    }
+    const t = ev.touches[0];
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const bandTop = bottomBandTopPx(vh);
+    const edge = classifyPhoneEdgeStart(t.clientX, t.clientY, vw, vh, bandTop);
+    if (!edge) {
+      stroke = null;
+      return;
+    }
+    stroke = {
+      edge,
+      startX: t.clientX,
+      startY: t.clientY,
+      id: t.identifier,
+      committed: false
+    };
+  }
+  function onTouchMove(ev) {
+    if (!stroke || detectViewportProfile() !== "phone") return;
+    if (ev.touches.length !== 1) {
+      stroke = null;
+      return;
+    }
+    const t = ev.touches[0];
+    if (t.identifier !== stroke.id) return;
+    const classified = classifyPhoneEdgeSwipe({
+      startX: stroke.startX,
+      startY: stroke.startY,
+      endX: t.clientX,
+      endY: t.clientY,
+      viewportW: window.innerWidth,
+      viewportH: window.innerHeight,
+      bottomBandTop: bottomBandTopPx(window.innerHeight)
+    });
+    if (classified === stroke.edge) {
+      stroke.committed = true;
+      ev.preventDefault();
+    }
+  }
+  function onTouchEnd(ev) {
+    if (!stroke) return;
+    const active = stroke;
+    stroke = null;
+    if (detectViewportProfile() !== "phone") return;
+    let endX = active.startX;
+    let endY = active.startY;
+    if (ev.changedTouches.length) {
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        if (t.identifier === active.id) {
+          endX = t.clientX;
+          endY = t.clientY;
+          break;
+        }
+      }
+    }
+    const edge = classifyPhoneEdgeSwipe({
+      startX: active.startX,
+      startY: active.startY,
+      endX,
+      endY,
+      viewportW: window.innerWidth,
+      viewportH: window.innerHeight,
+      bottomBandTop: bottomBandTopPx(window.innerHeight)
+    });
+    if (edge === active.edge) {
+      if (edge === "bottom" && active.committed) {
+        const suppress = (ev2) => {
+          ev2.preventDefault();
+          ev2.stopPropagation();
+        };
+        window.addEventListener("click", suppress, true);
+        window.setTimeout(
+          () => window.removeEventListener("click", suppress, true),
+          450
+        );
+      }
+      fire(edge);
+    }
+  }
+  function installPhoneEdgeGestures(handlers) {
+    handlersRef = handlers;
+    if (!installed5 && typeof window !== "undefined") {
+      installed5 = true;
+      window.addEventListener("touchstart", onTouchStart, {
+        passive: true,
+        capture: true
+      });
+      window.addEventListener("touchmove", onTouchMove, {
+        passive: false,
+        capture: true
+      });
+      window.addEventListener("touchend", onTouchEnd, {
+        passive: true,
+        capture: true
+      });
+      window.addEventListener("touchcancel", onTouchEnd, {
+        passive: true,
+        capture: true
+      });
+    }
+    return () => {
+      if (handlersRef === handlers) handlersRef = null;
+    };
+  }
+  function uninstallPhoneEdgeGestures() {
+    handlersRef = null;
+    stroke = null;
+    if (!installed5 || typeof window === "undefined") return;
+    installed5 = false;
+    window.removeEventListener("touchstart", onTouchStart, true);
+    window.removeEventListener("touchmove", onTouchMove, true);
+    window.removeEventListener("touchend", onTouchEnd, true);
+    window.removeEventListener("touchcancel", onTouchEnd, true);
+  }
+
+  // src/ui/chrome/phoneHomePageGestures.ts
+  var PHONE_HOME_SWIPE_MIN_PX = 64;
+  var PHONE_HOME_SWIPE_MAX_OFF_AXIS = 0.55;
+  function classifyPhoneHomePageStart(x, y, viewportW, viewportH, bottomExcludeTop, edgeInset = PHONE_EDGE_INSET_PX) {
+    if (!(viewportW > 0 && viewportH > 0)) return false;
+    if (x <= edgeInset || x >= viewportW - edgeInset) return false;
+    if (y <= edgeInset) return false;
+    if (y >= bottomExcludeTop) return false;
+    return true;
+  }
+  function classifyPhoneHomePageSwipe(sample) {
+    if (!classifyPhoneHomePageStart(
+      sample.startX,
+      sample.startY,
+      sample.viewportW,
+      sample.viewportH,
+      sample.bottomExcludeTop
+    )) {
+      return null;
+    }
+    const dx = sample.endX - sample.startX;
+    const dy = sample.endY - sample.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (absX < PHONE_HOME_SWIPE_MIN_PX) return null;
+    if (absY > absX * PHONE_HOME_SWIPE_MAX_OFF_AXIS) return null;
+    if (dx < 0) return 1;
+    if (dx > 0) return -1;
+    return null;
+  }
+  function isIgnoredTarget2(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return true;
+    }
+    if (target.closest(
+      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-meter-shell, [data-panel]"
+    )) {
+      return true;
+    }
+    return false;
+  }
+  function bottomExcludeTopPx(viewportH) {
+    const dock = phoneDockHeightPx() || PHONE_DOCK_FALLBACK_PX;
+    const bottom = document.getElementById("bottom");
+    const chromeH = bottom ? Math.round(bottom.getBoundingClientRect().height) : 0;
+    return Math.max(0, viewportH - dock - Math.max(chromeH, 0) - 8);
+  }
+  var installed6 = false;
+  var handlersRef2 = null;
+  var stroke2 = null;
+  function onTouchStart2(ev) {
+    if (detectViewportProfile() !== "phone") return;
+    if (!handlersRef2 || handlersRef2.isBlocked()) {
+      stroke2 = null;
+      return;
+    }
+    if (ev.touches.length !== 1) {
+      stroke2 = null;
+      return;
+    }
+    if (isIgnoredTarget2(ev.target)) {
+      stroke2 = null;
+      return;
+    }
+    const t = ev.touches[0];
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (!classifyPhoneHomePageStart(
+      t.clientX,
+      t.clientY,
+      vw,
+      vh,
+      bottomExcludeTopPx(vh)
+    )) {
+      stroke2 = null;
+      return;
+    }
+    stroke2 = { startX: t.clientX, startY: t.clientY, id: t.identifier };
+  }
+  function onTouchEnd2(ev) {
+    if (!stroke2) return;
+    const active = stroke2;
+    stroke2 = null;
+    if (detectViewportProfile() !== "phone") return;
+    if (!handlersRef2 || handlersRef2.isBlocked()) return;
+    let endX = active.startX;
+    let endY = active.startY;
+    if (ev.changedTouches.length) {
+      for (let i = 0; i < ev.changedTouches.length; i++) {
+        const t = ev.changedTouches[i];
+        if (t.identifier === active.id) {
+          endX = t.clientX;
+          endY = t.clientY;
+          break;
+        }
+      }
+    }
+    const dir = classifyPhoneHomePageSwipe({
+      startX: active.startX,
+      startY: active.startY,
+      endX,
+      endY,
+      viewportW: window.innerWidth,
+      viewportH: window.innerHeight,
+      bottomExcludeTop: bottomExcludeTopPx(window.innerHeight)
+    });
+    if (dir) handlersRef2.onPageSwipe(dir);
+  }
+  function installPhoneHomePageGestures(handlers) {
+    handlersRef2 = handlers;
+    if (!installed6 && typeof window !== "undefined") {
+      installed6 = true;
+      window.addEventListener("touchstart", onTouchStart2, {
+        passive: true,
+        capture: true
+      });
+      window.addEventListener("touchend", onTouchEnd2, {
+        passive: true,
+        capture: true
+      });
+      window.addEventListener("touchcancel", onTouchEnd2, {
+        passive: true,
+        capture: true
+      });
+    }
+    return () => {
+      if (handlersRef2 === handlers) handlersRef2 = null;
+    };
+  }
+  function uninstallPhoneHomePageGestures() {
+    handlersRef2 = null;
+    stroke2 = null;
+    if (!installed6 || typeof window === "undefined") return;
+    installed6 = false;
+    window.removeEventListener("touchstart", onTouchStart2, true);
+    window.removeEventListener("touchend", onTouchEnd2, true);
+    window.removeEventListener("touchcancel", onTouchEnd2, true);
+  }
+
+  // src/ui/frames/comm/phoneNavCss.ts
+  var STYLE_ID8 = "ecu-phone-nav-css";
+  var CSS9 = `
+.ecu-phone-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 240;
+  pointer-events: none;
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+}
+.ecu-phone-dock__bar {
+  pointer-events: auto;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 0;
+  min-height: 44px;
+  padding: 10px 2px calc(2px + env(safe-area-inset-bottom, 0px));
+  background: #1c1b1f;
+  border-top: 1px solid rgba(230, 225, 229, 0.12);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.45);
+  touch-action: pan-y;
+  position: relative;
+}
+.ecu-phone-dock__nub {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(230, 225, 229, 0.35);
+  pointer-events: none;
+}
+.ecu-phone-dock__btn {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 40px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 2px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #cac4d0;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-dock__btn:active {
+  background: rgba(232, 222, 248, 0.08);
+}
+.ecu-phone-dock__btn.is-on {
+  color: #9dd4ec;
+}
+.ecu-phone-dock__btn.is-on .ecu-phone-dock__glyph {
+  background: rgba(157, 212, 236, 0.16);
+}
+.ecu-phone-dock__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 48px;
+  height: 26px;
+  border-radius: 14px;
+  font-size: 15px;
+  line-height: 1;
+}
+.ecu-phone-home-screen-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.ecu-phone-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ecu-phone-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 510;
+  max-height: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  background: #1c1b1f;
+  border-radius: 0;
+  box-shadow: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  color: #e6e1e5;
+}
+.ecu-phone-sheet__handle {
+  align-self: center;
+  width: 48px;
+  height: 20px;
+  margin: 6px 0 2px;
+  border-radius: 2px;
+  background: transparent;
+  flex-shrink: 0;
+  touch-action: none;
+  position: relative;
+}
+.ecu-phone-sheet__handle::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(230, 225, 229, 0.35);
+}
+.ecu-phone-sheet__hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 16px 12px;
+  flex-shrink: 0;
+  touch-action: none;
+}
+.ecu-phone-sheet__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.ecu-phone-sheet__done {
+  min-height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ecu-phone-sheet__body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 8px 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-phone-sheet__sec {
+  margin: 12px 8px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cac4d0;
+}
+.ecu-phone-sheet__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 8px 12px;
+  margin: 2px 0;
+  border-radius: 12px;
+}
+.ecu-phone-sheet__row:active {
+  background: rgba(232, 222, 248, 0.06);
+}
+.ecu-phone-sheet__row-label {
+  font-size: 16px;
+  font-weight: 400;
+  min-width: 0;
+}
+.ecu-phone-sheet__row-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #938f99;
+}
+.ecu-phone-switch {
+  position: relative;
+  width: 52px;
+  height: 32px;
+  flex-shrink: 0;
+}
+.ecu-phone-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.ecu-phone-switch__track {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  background: #49454f;
+  border: 2px solid #938f99;
+  box-sizing: border-box;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.ecu-phone-switch__thumb {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #938f99;
+  transition: transform 0.15s ease, background 0.15s ease, width 0.15s ease, height 0.15s ease, top 0.15s ease;
+  pointer-events: none;
+}
+.ecu-phone-switch input:checked + .ecu-phone-switch__track {
+  background: #9dd4ec;
+  border-color: #9dd4ec;
+}
+.ecu-phone-switch input:checked + .ecu-phone-switch__track .ecu-phone-switch__thumb {
+  transform: translateX(20px);
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  background: #00344a;
+}
+.ecu-phone-sheet__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 12px 8px;
+}
+.ecu-phone-sheet__chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(147, 143, 153, 0.5);
+  border-radius: 20px;
+  background: transparent;
+  color: #e6e1e5;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ecu-phone-sheet__chip.is-on {
+  border-color: #9dd4ec;
+  color: #9dd4ec;
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-edge-hint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--ecu-phone-dock-h, 48px) + 72px);
+  transform: translateX(-50%);
+  z-index: 600;
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(28, 27, 31, 0.94);
+  border: 1px solid rgba(157, 212, 236, 0.45);
+  color: #e6e1e5;
+  font: 14px/1.3 Roboto, "Segoe UI", system-ui, sans-serif;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.ecu-phone-edge-hint.is-out {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+.ecu-phone-home-dots {
+  pointer-events: auto;
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* Sit in the clear fight viewport, just above dock + #bottom chrome. */
+  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 10px);
+  z-index: 235;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.ecu-phone-home-dots__dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-home-dots__dot.is-on {
+  background: #ffffff;
+  transform: scale(1.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+.ecu-phone-shade-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--ecu-phone-dock-h, 48px);
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ecu-phone-shade {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 520;
+  max-height: min(72vh, 560px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  background: #1c1b1f;
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  padding-top: env(safe-area-inset-top, 0px);
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  color: #e6e1e5;
+}
+.ecu-phone-shade.is-qs-expanded {
+  max-height: min(78vh, 640px);
+}
+.ecu-phone-shade__top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  min-height: 36px;
+}
+.ecu-phone-shade__cog {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 20px;
+  background: rgba(157, 212, 236, 0.12);
+  color: #9dd4ec;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-shade__cog:active {
+  background: rgba(157, 212, 236, 0.22);
+}
+.ecu-phone-shade__qs {
+  flex-shrink: 0;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid rgba(230, 225, 229, 0.1);
+  touch-action: none;
+}
+.ecu-phone-shade__qs-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px 0;
+}
+.ecu-phone-shade__sec {
+  margin: 8px 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #cac4d0;
+}
+.ecu-phone-shade__expand {
+  min-height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 16px;
+  background: rgba(157, 212, 236, 0.12);
+  color: #9dd4ec;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ecu-phone-shade__notifs {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 8px 16px;
+  flex: 1 1 auto;
+}
+.ecu-phone-shade__notif {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  margin: 4px 0;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 16px;
+  background: #2b2930;
+  color: #e6e1e5;
+  text-align: left;
+  cursor: pointer;
+}
+.ecu-phone-shade__notif-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+.ecu-phone-shade__notif-meta {
+  font-size: 13px;
+  color: #938f99;
+}
+.ecu-phone-apps {
+  padding: 4px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-phone-apps__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px 12px;
+  padding: 12px 4px 20px;
+  align-content: start;
+  flex: 1 1 auto;
+}
+.ecu-phone-apps__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: #e6e1e5;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-apps__tile.is-on .ecu-phone-apps__icon {
+  box-shadow: 0 0 0 2px #9dd4ec;
+}
+.ecu-phone-apps__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+.ecu-phone-apps__label {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 72px;
+}
+.ecu-phone-apps__edit {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 0;
+  border: 1px solid rgba(147, 143, 153, 0.45);
+  border-radius: 22px;
+  background: transparent;
+  color: #cac4d0;
+  font-size: 14px;
+  cursor: pointer;
+}
+`;
+  function ensurePhoneNavCss() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID8)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID8;
+    style.textContent = CSS9;
+    document.head.append(style);
+  }
+
+  // src/ui/frames/comm/PhoneShade.ts
+  function PhoneShade(props) {
+    const React = getReact();
+    ensurePhoneNavCss();
+    const [qsExpanded, setQsExpanded] = React.useState(false);
+    const [mailUnread, setMailUnread] = React.useState(() => getXUnread());
+    const sheetRef = React.useRef(null);
+    const dragStartY = React.useRef(0);
+    const dragDy = React.useRef(0);
+    const dragging = React.useRef(false);
+    const dragMode = React.useRef("dismiss");
+    const onClose = props.onClose;
+    React.useEffect(() => {
+      if (!props.open) {
+        setQsExpanded(false);
+        return;
+      }
+      setMailUnread(getXUnread());
+      const id = window.setInterval(() => setMailUnread(getXUnread()), 2e3);
+      return () => window.clearInterval(id);
+    }, [props.open]);
+    React.useEffect(() => {
+      if (!props.open) return;
+      const onKey = (ev) => {
+        if (ev.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [props.open, onClose]);
+    if (!props.open) return null;
+    const resetDrag = () => {
+      dragging.current = false;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transform = "";
+        el.style.transition = "";
+      }
+    };
+    const onHandleTouchStart = (ev, mode) => {
+      if (!ev.touches.length) return;
+      dragging.current = true;
+      dragMode.current = mode;
+      dragStartY.current = ev.touches[0].clientY;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el && mode === "dismiss") el.style.transition = "none";
+    };
+    const onHandleTouchMove = (ev) => {
+      if (!dragging.current || !ev.touches.length) return;
+      const raw = ev.touches[0].clientY - dragStartY.current;
+      if (dragMode.current === "expand") {
+        dragDy.current = raw;
+        if (raw > 28) setQsExpanded(true);
+        if (raw > 8) ev.preventDefault();
+        return;
+      }
+      const dy = Math.max(0, -raw);
+      dragDy.current = dy;
+      const el = sheetRef.current;
+      if (el) el.style.transform = "translateY(" + -dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onHandleTouchEnd = () => {
+      if (!dragging.current) return;
+      const mode = dragMode.current;
+      const dy = dragDy.current;
+      dragging.current = false;
+      if (mode === "expand") {
+        dragDy.current = 0;
+        return;
+      }
+      if (dy > 90) {
+        resetDrag();
+        onClose();
+        return;
+      }
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transition = "transform 0.18s ease";
+        el.style.transform = "translateY(0)";
+      }
+      dragDy.current = 0;
+    };
+    const openSettings = () => {
+      props.onOpenSettings();
+      onClose();
+    };
+    const qsChips = [
+      e(
+        "button",
+        {
+          key: "meters",
+          type: "button",
+          className: "ecu-phone-sheet__chip" + (props.metersHidden ? "" : " is-on"),
+          onClick: () => props.setMetersHiddenPersist(!props.metersHidden)
+        },
+        props.metersHidden ? "Meters off" : "Meters on"
+      ),
+      e(
+        "button",
+        {
+          key: "layout",
+          type: "button",
+          className: "ecu-phone-sheet__chip" + (props.layoutEdit ? " is-on" : ""),
+          onClick: () => props.toggleLayoutEdit()
+        },
+        props.layoutEdit ? "Layout on" : "Layout"
+      )
+    ];
+    if (qsExpanded) {
+      qsChips.push(
+        e(
+          "button",
+          {
+            key: "mail",
+            type: "button",
+            className: "ecu-phone-sheet__chip" + (props.visible("mail") ? " is-on" : ""),
+            onClick: () => {
+              props.onOpenMail();
+              onClose();
+            }
+          },
+          "Mail"
+        ),
+        e(
+          "button",
+          {
+            key: "chat",
+            type: "button",
+            className: "ecu-phone-sheet__chip" + (props.visible("chat") ? " is-on" : ""),
+            onClick: () => {
+              props.onOpenChat();
+              onClose();
+            }
+          },
+          "Chat"
+        )
+      );
+    }
+    const notifRows = [
+      e(
+        "button",
+        {
+          key: "mail-n",
+          type: "button",
+          className: "ecu-phone-shade__notif",
+          onClick: () => {
+            props.onOpenMail();
+            onClose();
+          }
+        },
+        e("span", { className: "ecu-phone-shade__notif-title" }, "Mail"),
+        e(
+          "span",
+          { className: "ecu-phone-shade__notif-meta" },
+          mailUnread > 0 ? mailUnread + " unread" : "No unread"
+        )
+      ),
+      e(
+        "button",
+        {
+          key: "chat-n",
+          type: "button",
+          className: "ecu-phone-shade__notif",
+          onClick: () => {
+            props.onOpenChat();
+            onClose();
+          }
+        },
+        e("span", { className: "ecu-phone-shade__notif-title" }, "Chat"),
+        e(
+          "span",
+          { className: "ecu-phone-shade__notif-meta" },
+          "Open conversations"
+        )
+      )
+    ];
+    return e(
+      React.Fragment,
+      null,
+      e("button", {
+        type: "button",
+        className: "ecu-phone-shade-scrim",
+        "aria-label": "Close shade",
+        onClick: () => onClose()
+      }),
+      e(
+        "div",
+        {
+          ref: sheetRef,
+          className: "ecu-phone-shade" + (qsExpanded ? " is-qs-expanded" : ""),
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": "Quick HUD and notifications"
+        },
+        e(
+          "div",
+          { className: "ecu-phone-shade__top" },
+          e("div", {
+            className: "ecu-phone-sheet__handle",
+            onTouchStart: (ev) => onHandleTouchStart(ev, "dismiss"),
+            onTouchMove: onHandleTouchMove,
+            onTouchEnd: onHandleTouchEnd,
+            onTouchCancel: onHandleTouchEnd
+          }),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-phone-shade__cog",
+              "aria-label": "Settings",
+              title: "Settings",
+              onClick: openSettings
+            },
+            "\u2699"
+          )
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-phone-shade__qs",
+            onTouchStart: (ev) => onHandleTouchStart(ev, "expand"),
+            onTouchMove: onHandleTouchMove,
+            onTouchEnd: onHandleTouchEnd,
+            onTouchCancel: onHandleTouchEnd
+          },
+          e(
+            "div",
+            { className: "ecu-phone-shade__qs-hd" },
+            e("span", { className: "ecu-phone-shade__sec" }, "Quick HUD"),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-phone-shade__expand",
+                "aria-expanded": qsExpanded ? "true" : "false",
+                onClick: () => setQsExpanded(!qsExpanded)
+              },
+              qsExpanded ? "Less" : "More"
+            )
+          ),
+          e("div", { className: "ecu-phone-sheet__actions" }, ...qsChips)
+        ),
+        qsExpanded ? null : e(
+          "div",
+          { className: "ecu-phone-shade__notifs" },
+          e("div", { className: "ecu-phone-shade__sec" }, "Notifications"),
+          ...notifRows
+        )
+      )
+    );
+  }
+
+  // src/ui/frames/comm/PhoneWindowsSheet.ts
+  function switchRow(key, label, checked, onChange, meta2) {
+    return e(
+      "div",
+      { key, className: "ecu-phone-sheet__row" },
+      e(
+        "div",
+        { className: "ecu-phone-sheet__row-label" },
+        label,
+        meta2 ? e("span", { className: "ecu-phone-sheet__row-meta" }, meta2) : null
+      ),
+      e(
+        "label",
+        { className: "ecu-phone-switch", "aria-label": label },
+        e("input", {
+          type: "checkbox",
+          checked,
+          onChange: (ev) => onChange(!!ev.target.checked)
+        }),
+        e(
+          "span",
+          { className: "ecu-phone-switch__track" },
+          e("span", { className: "ecu-phone-switch__thumb" })
+        )
+      )
+    );
+  }
+  function meterLabel(m) {
+    const label = typeof m.label === "string" ? m.label.trim() : "";
+    if (label) return label;
+    return m.id;
+  }
+  var HOME_WIDGET_PRIORITY = [
+    "players",
+    "bossBar",
+    "playerFrame",
+    "targetFrame",
+    "minimap",
+    "serverInfo",
+    "mapInfo",
+    "kills",
+    "threat",
+    "enemies",
+    "abilityTimeline",
+    "abilityTimelineBigIcon",
+    "abilityTimelineHighlight",
+    "events",
+    "eventScore",
+    "eventRoster",
+    "instance",
+    "instanceRun"
+  ];
+  function orderedHomeWidgetIds() {
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (let i = 0; i < HOME_WIDGET_PRIORITY.length; i++) {
+      const id = HOME_WIDGET_PRIORITY[i];
+      if (!isPhoneHomeWidget(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    for (let i = 0; i < PANEL_IDS.length; i++) {
+      const id = PANEL_IDS[i];
+      if (seen.has(id) || !isPhoneHomeWidget(id)) continue;
+      if (id === "buffInfo" || id === "itemInfo") continue;
+      out.push(id);
+    }
+    return out;
+  }
+  function appTile(tile) {
+    return e(
+      "button",
+      {
+        key: tile.id,
+        type: "button",
+        className: "ecu-phone-apps__tile" + (tile.on ? " is-on" : ""),
+        onClick: tile.onClick
+      },
+      e(
+        "span",
+        {
+          className: "ecu-phone-apps__icon",
+          style: { background: tile.tone }
+        },
+        tile.glyph
+      ),
+      e("span", { className: "ecu-phone-apps__label" }, tile.label)
+    );
+  }
+  function PhoneWindowsSheet(props) {
+    var _a;
+    const React = getReact();
+    ensurePhoneNavCss();
+    const sheetRef = React.useRef(null);
+    const dragStartY = React.useRef(0);
+    const dragDy = React.useRef(0);
+    const dragging = React.useRef(false);
+    const [editHome, setEditHome] = React.useState(false);
+    const onClose = props.onClose;
+    const screens = props.phoneHomeScreens;
+    const screenIdx = props.phoneHomePage >= 0 && props.phoneHomePage < screens.length ? props.phoneHomePage : 0;
+    const screen = screens[screenIdx] || screens[0];
+    React.useEffect(() => {
+      if (!props.open) {
+        setEditHome(false);
+        return;
+      }
+      const onKey = (ev) => {
+        if (ev.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => window.removeEventListener("keydown", onKey);
+    }, [props.open, onClose]);
+    if (!props.open) return null;
+    const resetDrag = () => {
+      dragging.current = false;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transform = "";
+        el.style.transition = "";
+      }
+    };
+    const onHandleTouchStart = (ev) => {
+      if (!ev.touches.length) return;
+      dragging.current = true;
+      dragStartY.current = ev.touches[0].clientY;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) el.style.transition = "none";
+    };
+    const onHandleTouchMove = (ev) => {
+      if (!dragging.current || !ev.touches.length) return;
+      const dy = Math.max(0, ev.touches[0].clientY - dragStartY.current);
+      dragDy.current = dy;
+      const el = sheetRef.current;
+      if (el) el.style.transform = "translateY(" + dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onHandleTouchEnd = () => {
+      if (!dragging.current) return;
+      const dy = dragDy.current;
+      if (dy > 90) {
+        resetDrag();
+        props.onClose();
+        return;
+      }
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transition = "transform 0.18s ease";
+        el.style.transform = "translateY(0)";
+      }
+      dragging.current = false;
+      dragDy.current = 0;
+    };
+    const openOverlay = (id, openFn) => {
+      props.onClose();
+      if (openFn) openFn();
+      else props.setVisible(id, true);
+    };
+    const tiles = [
+      {
+        id: "chat",
+        label: "Chat",
+        glyph: "C",
+        tone: "#2e7d6f",
+        on: props.visible("chat"),
+        onClick: () => openOverlay("chat", () => openChat({ toggle: true }))
+      },
+      {
+        id: "command",
+        label: "Cmd",
+        glyph: "</>",
+        tone: "#5b4b8a",
+        on: props.visible("command"),
+        onClick: () => openOverlay("command", () => openCommander())
+      },
+      {
+        id: "mail",
+        label: "Mail",
+        glyph: "M",
+        tone: "#3d6b9a",
+        on: props.visible("mail"),
+        onClick: () => openOverlay("mail")
+      },
+      {
+        id: "bag",
+        label: "Bag",
+        glyph: "B",
+        tone: "#8a6a3d",
+        on: props.visible("bag"),
+        onClick: () => openOverlay("bag")
+      },
+      {
+        id: "bank",
+        label: "Bank",
+        glyph: "$",
+        tone: "#3d8a55",
+        on: props.visible("bank"),
+        onClick: () => openOverlay("bank")
+      },
+      {
+        id: "market",
+        label: "Market",
+        glyph: "S",
+        tone: "#8a3d5c",
+        on: props.visible("market"),
+        onClick: () => openOverlay("market")
+      },
+      {
+        id: "settings",
+        label: "Settings",
+        glyph: "\u2699",
+        tone: "#4a5568",
+        on: false,
+        onClick: () => {
+          props.onClose();
+          props.onOpenSettings();
+        }
+      },
+      {
+        id: "add-meter",
+        label: "Add meter",
+        glyph: "+",
+        tone: "#2b6cb0",
+        on: false,
+        onClick: () => {
+          props.onClose();
+          props.onAddMeter();
+        }
+      }
+    ];
+    const patchScreens = (next) => {
+      props.setPhoneHomeScreens(next);
+    };
+    const screenTabs = [];
+    for (let i = 0; i < screens.length; i++) {
+      const s = screens[i];
+      screenTabs.push(
+        e(
+          "button",
+          {
+            key: "tab-" + s.id,
+            type: "button",
+            className: "ecu-phone-sheet__chip" + (i === screenIdx ? " is-on" : ""),
+            onClick: () => props.setPhoneHomePage(i)
+          },
+          s.label
+        )
+      );
+    }
+    const widgetRows = [];
+    const widgets = orderedHomeWidgetIds();
+    for (let i = 0; i < widgets.length; i++) {
+      const id = widgets[i];
+      const onScreen = !!(screen && screen.panels.indexOf(id) >= 0);
+      const closable = CLOSABLE_PANEL_IDS.indexOf(id) >= 0;
+      widgetRows.push(
+        switchRow(
+          "w-" + id,
+          PANEL_LABELS[id] || ((_a = PANEL_CATALOG[id]) == null ? void 0 : _a.label) || id,
+          onScreen,
+          (next) => {
+            patchScreens(togglePanelOnScreen(screens, screenIdx, id, next));
+            if (closable && next) props.setVisible(id, true);
+          },
+          onScreen ? "On this page" : "Off this page"
+        )
+      );
+    }
+    const meterRows = [];
+    const allMeters = props.meterInstances.concat(props.closedMeters);
+    for (let i = 0; i < allMeters.length; i++) {
+      const m = allMeters[i];
+      const open = props.meterInstances.some((x) => x.id === m.id);
+      const onScreen = !!(screen && screen.meters.indexOf(m.id) >= 0);
+      meterRows.push(
+        switchRow(
+          "m-" + m.id,
+          meterLabel(m),
+          onScreen,
+          (next) => {
+            patchScreens(toggleMeterOnScreen(screens, screenIdx, m.id, next));
+            if (next && !open) props.reopenClosedMeter(m.id);
+          },
+          open ? "Meter" : "Closed"
+        )
+      );
+    }
+    const body = editHome ? e(
+      "div",
+      { className: "ecu-phone-sheet__body" },
+      e("div", { className: "ecu-phone-sheet__sec" }, "Home screens"),
+      e("div", { className: "ecu-phone-sheet__actions" }, ...screenTabs),
+      e(
+        "div",
+        { className: "ecu-phone-sheet__actions" },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-sheet__chip",
+            onClick: () => {
+              const next = addPhoneHomeScreen(screens);
+              patchScreens(next);
+              props.setPhoneHomePage(next.length - 1);
+            }
+          },
+          "Add page"
+        ),
+        screens.length > 1 ? e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-sheet__chip",
+            onClick: () => {
+              const next = removePhoneHomeScreen(screens, screenIdx);
+              patchScreens(next);
+              props.setPhoneHomePage(
+                Math.min(screenIdx, next.length - 1)
+              );
+            }
+          },
+          "Remove page"
+        ) : null,
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-sheet__chip" + (props.metersHidden ? "" : " is-on"),
+            onClick: () => props.setMetersHiddenPersist(!props.metersHidden)
+          },
+          props.metersHidden ? "Meters hidden" : "Meters shown"
+        ),
+        props.toggleLayoutEdit ? e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-sheet__chip" + (props.layoutEdit ? " is-on" : ""),
+            onClick: () => props.toggleLayoutEdit()
+          },
+          props.layoutEdit ? "Layout on" : "Layout"
+        ) : null
+      ),
+      e(
+        "div",
+        { className: "ecu-phone-sheet__sec" },
+        "Widgets on " + (screen ? screen.label : "page")
+      ),
+      widgetRows,
+      e("div", { className: "ecu-phone-sheet__sec" }, "Meters on this page"),
+      meterRows.length ? meterRows : e(
+        "div",
+        {
+          key: "no-meters",
+          className: "ecu-phone-sheet__row",
+          style: { color: "#938f99" }
+        },
+        "No meters yet \u2014 use Add meter from Apps."
+      )
+    ) : e(
+      "div",
+      { className: "ecu-phone-sheet__body ecu-phone-apps" },
+      e("div", { className: "ecu-phone-apps__grid" }, ...tiles.map(appTile)),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-phone-apps__edit",
+          onClick: () => setEditHome(true)
+        },
+        "Edit home screens"
+      )
+    );
+    return e(
+      React.Fragment,
+      null,
+      e("button", {
+        type: "button",
+        className: "ecu-phone-sheet-scrim",
+        "aria-label": "Close apps",
+        onClick: () => props.onClose()
+      }),
+      e(
+        "div",
+        {
+          ref: sheetRef,
+          className: "ecu-phone-sheet",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": "Apps",
+          onClick: (ev) => ev.stopPropagation()
+        },
+        e("div", {
+          className: "ecu-phone-sheet__handle",
+          onTouchStart: onHandleTouchStart,
+          onTouchMove: onHandleTouchMove,
+          onTouchEnd: onHandleTouchEnd,
+          onTouchCancel: onHandleTouchEnd
+        }),
+        e(
+          "div",
+          {
+            className: "ecu-phone-sheet__hd",
+            onTouchStart: onHandleTouchStart,
+            onTouchMove: onHandleTouchMove,
+            onTouchEnd: onHandleTouchEnd,
+            onTouchCancel: onHandleTouchEnd
+          },
+          e(
+            "h2",
+            { className: "ecu-phone-sheet__title" },
+            editHome ? "Home screens" : "Apps"
+          ),
+          editHome ? e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-phone-sheet__done",
+              onClick: () => setEditHome(false)
+            },
+            "Apps"
+          ) : e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-phone-sheet__done",
+              onClick: () => props.onClose()
+            },
+            "Done"
+          )
+        ),
+        body
+      )
+    );
+  }
+
+  // src/ui/frames/comm/PhoneNavDock.ts
+  var EDGE_HINT_KEY = "ecu-phone-edge-swipe-hint";
+  function dockBtn(key, glyph, label, onClick, opts) {
+    return e(
+      "button",
+      {
+        key,
+        type: "button",
+        className: "ecu-phone-dock__btn" + ((opts == null ? void 0 : opts.on) ? " is-on" : ""),
+        "data-ecu-tour": opts == null ? void 0 : opts.tour,
+        "aria-pressed": (opts == null ? void 0 : opts.on) ? "true" : "false",
+        onClick: (ev) => {
+          if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+          onClick();
+        }
+      },
+      e("span", { className: "ecu-phone-dock__glyph" }, glyph),
+      e("span", null, label)
+    );
+  }
+  function PhoneNavDock(props) {
+    var _a;
+    const React = getReact();
+    ensurePhoneNavCss();
+    const [sheetOpen, setSheetOpen] = React.useState(false);
+    const [shadeOpen, setShadeOpen] = React.useState(false);
+    const barRef = React.useRef(null);
+    React.useEffect(() => {
+      const measure = () => {
+        const el = barRef.current;
+        const h = el ? el.offsetHeight : 0;
+        applyPhoneDockChrome(h > 0 ? h : 48);
+        window.requestAnimationFrame(() => refreshPhoneHudBottomInset());
+      };
+      measure();
+      const id = window.requestAnimationFrame(measure);
+      window.addEventListener("resize", measure);
+      return () => {
+        window.cancelAnimationFrame(id);
+        window.removeEventListener("resize", measure);
+        clearPhoneDockChrome();
+      };
+    }, []);
+    const pages = phoneHomeScreenIndices(props.phoneHomeScreens);
+    const activePage = clampPhoneHomePage(props.phoneHomePage, pages);
+    React.useEffect(() => {
+      if (activePage !== props.phoneHomePage) {
+        props.setPhoneHomePage(activePage);
+      }
+    }, [activePage, props.phoneHomePage, props.setPhoneHomePage]);
+    const chatOn = props.visible("chat");
+    const commandOn = props.visible("command");
+    const mailOn = props.visible("mail");
+    const bagOn = props.visible("bag");
+    const bankOn = props.visible("bank");
+    const dismissSheets = () => {
+      if (sheetOpen) setSheetOpen(false);
+      if (shadeOpen) setShadeOpen(false);
+      if (props.settingsOpen) props.toggleSettings();
+    };
+    const hidePeerPanels = (keep) => {
+      const ids = [
+        "chat",
+        "command",
+        "mail",
+        "bag",
+        "bank"
+      ];
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i];
+        if (id !== keep && props.visible(id)) props.setVisible(id, false);
+      }
+    };
+    const openApps = () => {
+      if (shadeOpen) setShadeOpen(false);
+      if (props.settingsOpen) props.toggleSettings();
+      hidePeerPanels("none");
+      setSheetOpen(true);
+    };
+    const toggleOverlay = (id, openFn) => {
+      dismissSheets();
+      if (props.visible(id)) {
+        props.setVisible(id, false);
+        return;
+      }
+      hidePeerPanels(id);
+      if (openFn) openFn();
+      else props.setVisible(id, true);
+    };
+    const toggleChat = () => toggleOverlay("chat", () => openChat({ toggle: true }));
+    const toggleCmd = () => toggleOverlay("command", () => openCommander());
+    const toggleMail = () => toggleOverlay("mail");
+    const toggleBag = () => toggleOverlay("bag");
+    const toggleBank = () => toggleOverlay("bank");
+    const toggleSettings = () => {
+      if (sheetOpen) setSheetOpen(false);
+      if (shadeOpen) setShadeOpen(false);
+      if (!props.settingsOpen) hidePeerPanels("none");
+      props.toggleSettings();
+    };
+    const dismissTop = () => {
+      if (shadeOpen) {
+        setShadeOpen(false);
+        return true;
+      }
+      if (sheetOpen) {
+        setSheetOpen(false);
+        return true;
+      }
+      if (props.settingsOpen) {
+        props.toggleSettings();
+        return true;
+      }
+      const closable = [
+        "chat",
+        "command",
+        "mail",
+        "bank",
+        "market",
+        "bag"
+      ];
+      for (let i = 0; i < closable.length; i++) {
+        const id = closable[i];
+        if (props.visible(id)) {
+          props.setVisible(id, false);
+          return true;
+        }
+      }
+      return false;
+    };
+    const onTopEdge = () => {
+      if (sheetOpen || props.settingsOpen || chatOn || commandOn || mailOn || bagOn || bankOn) {
+        dismissTop();
+        return;
+      }
+      setShadeOpen(true);
+    };
+    const onBottomEdge = () => {
+      if (shadeOpen) {
+        setShadeOpen(false);
+        return;
+      }
+      if (sheetOpen) {
+        setSheetOpen(false);
+        return;
+      }
+      openApps();
+    };
+    const edgeApiRef = React.useRef({ dismissTop, onTopEdge, onBottomEdge });
+    edgeApiRef.current = { dismissTop, onTopEdge, onBottomEdge };
+    const pageApiRef = React.useRef({
+      pages,
+      activePage,
+      setPage: props.setPhoneHomePage,
+      blocked: () => false
+    });
+    pageApiRef.current = {
+      pages,
+      activePage,
+      setPage: props.setPhoneHomePage,
+      blocked: () => shadeOpen || sheetOpen || props.settingsOpen || props.visible("chat") || props.visible("command") || props.visible("mail") || props.visible("bank") || props.visible("market") || props.visible("bag") || pages.length < 2
+    };
+    React.useEffect(() => {
+      const maybeHint = () => {
+        try {
+          if (window.localStorage.getItem(EDGE_HINT_KEY)) return;
+          window.localStorage.setItem(EDGE_HINT_KEY, "1");
+        } catch (e2) {
+          return;
+        }
+        const el = document.createElement("div");
+        el.className = "ecu-phone-edge-hint";
+        el.setAttribute("role", "status");
+        el.textContent = "Swipe: back \xB7 shade \xB7 apps \xB7 home pages";
+        document.body.appendChild(el);
+        window.setTimeout(() => {
+          el.classList.add("is-out");
+          window.setTimeout(() => el.remove(), 280);
+        }, 2400);
+      };
+      const stopEdge = installPhoneEdgeGestures({
+        onLeft: () => {
+          edgeApiRef.current.dismissTop();
+          maybeHint();
+        },
+        onRight: () => {
+          edgeApiRef.current.dismissTop();
+          maybeHint();
+        },
+        onBottom: () => {
+          edgeApiRef.current.onBottomEdge();
+          maybeHint();
+        },
+        onTop: () => {
+          edgeApiRef.current.onTopEdge();
+          maybeHint();
+        }
+      });
+      const stopHome = installPhoneHomePageGestures({
+        isBlocked: () => pageApiRef.current.blocked(),
+        onPageSwipe: (dir) => {
+          const next = stepPhoneHomePage(
+            pageApiRef.current.activePage,
+            pageApiRef.current.pages,
+            dir
+          );
+          if (next !== pageApiRef.current.activePage) {
+            pageApiRef.current.setPage(next);
+            storePhoneHomePage(next);
+          }
+        }
+      });
+      return () => {
+        stopEdge();
+        stopHome();
+        uninstallPhoneEdgeGestures();
+        uninstallPhoneHomePageGestures();
+      };
+    }, []);
+    const screen = activePhoneHomeScreen(props.phoneHomeScreens, activePage);
+    const dotKids = [];
+    if (pages.length > 1) {
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        const label = ((_a = props.phoneHomeScreens[page]) == null ? void 0 : _a.label) || "Page " + (page + 1);
+        dotKids.push(
+          e("button", {
+            key: "p-" + page,
+            type: "button",
+            className: "ecu-phone-home-dots__dot" + (page === activePage ? " is-on" : ""),
+            "aria-label": label,
+            "aria-current": page === activePage ? "true" : void 0,
+            title: label,
+            onClick: () => {
+              props.setPhoneHomePage(page);
+              storePhoneHomePage(page);
+            }
+          })
+        );
+      }
+    }
+    return e(
+      "div",
+      { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
+      // Dots float above #bottom chrome (not buried under the character strip).
+      pages.length > 1 ? e(
+        "div",
+        {
+          className: "ecu-phone-home-dots",
+          role: "tablist",
+          "aria-label": "Home screens",
+          "data-ecu-home-dots": "1"
+        },
+        ...dotKids
+      ) : null,
+      e(
+        "nav",
+        {
+          ref: barRef,
+          className: "ecu-phone-dock__bar",
+          role: "navigation",
+          "aria-label": "ECU phone"
+        },
+        e("div", {
+          className: "ecu-phone-dock__nub",
+          "aria-hidden": "true",
+          title: "Swipe up for Apps"
+        }),
+        dockBtn("chat", "C", "Chat", toggleChat, {
+          on: chatOn,
+          tour: "btn-chat"
+        }),
+        dockBtn("command", "</>", "Cmd", toggleCmd, {
+          on: commandOn,
+          tour: "btn-command"
+        }),
+        dockBtn("mail", "M", "Mail", toggleMail, {
+          on: mailOn,
+          tour: "btn-mail"
+        }),
+        dockBtn("bag", "B", "Bag", toggleBag, {
+          on: bagOn,
+          tour: "btn-bag"
+        }),
+        dockBtn("bank", "$", "Bank", toggleBank, {
+          on: bankOn,
+          tour: "btn-bank"
+        })
+      ),
+      e(PhoneWindowsSheet, {
+        open: sheetOpen,
+        onClose: () => setSheetOpen(false),
+        visible: props.visible,
+        setVisible: props.setVisible,
+        metersHidden: props.metersHidden,
+        setMetersHiddenPersist: props.setMetersHiddenPersist,
+        meterInstances: props.meterInstances,
+        closedMeters: props.closedMeters,
+        closeMeterRuntime: props.closeMeterRuntime,
+        reopenClosedMeter: props.reopenClosedMeter,
+        onAddMeter: props.onAddMeter,
+        onOpenSettings: () => {
+          setSheetOpen(false);
+          if (!props.settingsOpen) props.toggleSettings();
+        },
+        layoutEdit: props.layoutEdit,
+        toggleLayoutEdit: props.toggleLayoutEdit,
+        phoneHomeScreens: props.phoneHomeScreens,
+        setPhoneHomeScreens: props.setPhoneHomeScreens,
+        phoneHomePage: activePage,
+        setPhoneHomePage: (page) => {
+          props.setPhoneHomePage(page);
+          storePhoneHomePage(page);
+        }
+      }),
+      e(PhoneShade, {
+        open: shadeOpen,
+        onClose: () => setShadeOpen(false),
+        metersHidden: props.metersHidden,
+        setMetersHiddenPersist: props.setMetersHiddenPersist,
+        layoutEdit: props.layoutEdit,
+        toggleLayoutEdit: props.toggleLayoutEdit,
+        onOpenSettings: toggleSettings,
+        onOpenMail: () => {
+          hidePeerPanels("mail");
+          props.setVisible("mail", true);
+        },
+        onOpenChat: () => {
+          hidePeerPanels("chat");
+          openChat({ toggle: true });
+        },
+        visible: props.visible
+      }),
+      // Screen label for a11y / debugging active page.
+      screen ? e(
+        "span",
+        {
+          className: "ecu-phone-home-screen-label",
+          "aria-live": "polite"
+        },
+        screen.label
+      ) : null
+    );
+  }
+
+  // src/ui/chrome/phoneShell.ts
+  function bindSwipeDownClose(handle2, onClose) {
+    if (!handle2) return () => {
+    };
+    let startY = 0;
+    let dy = 0;
+    let active = false;
+    const sheet = handle2.closest(".ecu-phone-sheet") || handle2.closest(".ecu-settings-modal") || handle2.closest("[data-panel]") || handle2;
+    const onStart = (ev) => {
+      if (!ev.touches.length) return;
+      active = true;
+      startY = ev.touches[0].clientY;
+      dy = 0;
+      sheet.style.transition = "none";
+    };
+    const onMove = (ev) => {
+      if (!active || !ev.touches.length) return;
+      dy = Math.max(0, ev.touches[0].clientY - startY);
+      sheet.style.transform = "translateY(" + dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onEnd = () => {
+      if (!active) return;
+      active = false;
+      if (dy > 90) {
+        sheet.style.transform = "";
+        sheet.style.transition = "";
+        onClose();
+        return;
+      }
+      sheet.style.transition = "transform 0.18s ease";
+      sheet.style.transform = "translateY(0)";
+      window.setTimeout(() => {
+        sheet.style.transition = "";
+        sheet.style.transform = "";
+      }, 200);
+      dy = 0;
+    };
+    handle2.style.touchAction = "none";
+    handle2.addEventListener("touchstart", onStart, { passive: true });
+    handle2.addEventListener("touchmove", onMove, { passive: false });
+    handle2.addEventListener("touchend", onEnd, { passive: true });
+    handle2.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      handle2.removeEventListener("touchstart", onStart);
+      handle2.removeEventListener("touchmove", onMove);
+      handle2.removeEventListener("touchend", onEnd);
+      handle2.removeEventListener("touchcancel", onEnd);
+    };
   }
 
   // src/ui/frames/settingsPanelCss.ts
@@ -51392,6 +54474,90 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-settings-abil-clear:hover {
   border-color: #866;
   color: #faa;
+}
+
+/* Phone \u2014 full-height sheet above the Material dock, stacked nav. */
+.ecu-settings-backdrop.is-phone {
+  /* Above panels; stop above the Material dock so it stays clickable. */
+  z-index: 500;
+  inset: 0 auto var(--ecu-phone-dock-h, 48px) 0;
+  top: 0;
+  right: 0;
+  bottom: var(--ecu-phone-dock-h, 48px);
+  left: 0;
+  width: auto;
+  height: auto;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+.ecu-settings-modal.is-phone {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 16px 16px 0 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  box-shadow: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-split {
+  flex-direction: column;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-right: none;
+  border-bottom: 1px solid #2e343a;
+  padding: 10px 12px;
+  scrollbar-width: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 44px;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane {
+  padding: 14px 16px 24px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane-title {
+  font-size: 22px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane-desc {
+  font-size: 15px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-hd {
+  gap: 10px;
+  align-items: center;
+}
+.ecu-settings-phone-done {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ecu-settings-modal.is-phone .ecu-settings-search {
+  width: 100%;
+  font-size: 16px;
+  min-height: 44px;
 }
 `;
   var injected6 = false;
@@ -54650,6 +57816,160 @@ ${parts.map(cssSlice).join("\n")}
     return e("div", null, ...kids);
   }
 
+  // src/ui/frames/settings/performanceSettingsPane.ts
+  var TAMPERMONKEY_MOBILE_FAQ = "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
+  function matchesQuery2(hay, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return hay.toLowerCase().includes(q);
+  }
+  function countPerformanceSettingsMatches(query) {
+    let n = 0;
+    if (matchesQuery2(
+      "hud density lite full auto phone mobile windows panels clutter",
+      query
+    )) {
+      n += 1;
+    }
+    if (matchesQuery2(
+      "world overlay drawings vision fog map rings performance battery",
+      query
+    )) {
+      n += 1;
+    }
+    if (matchesQuery2("meters hide dps hps combat skada", query)) n += 1;
+    if (matchesQuery2(
+      "tampermonkey mobile phone android ios edge firefox safari q406 install",
+      query
+    )) {
+      n += 1;
+    }
+    return n;
+  }
+  function PerformanceSettingsPane(props) {
+    const React = getReact();
+    const query = String(props.query || "").trim();
+    const [tick2, setTick] = React.useState(0);
+    void tick2;
+    const settings = getSettings();
+    const density = props.hudDensity != null ? props.hudDensity : settings.hudDensity || "auto";
+    const setDensity = props.setHudDensity || ((mode) => {
+      patchSettings({ hudDensity: mode });
+      setTick((n) => n + 1);
+    });
+    const kids = [
+      e(
+        "p",
+        { key: "lead", className: "ecu-settings-lead" },
+        "Cut windows and optional map drawings. Combat meters and socket trackers keep running when the tab is in the background so desktop farming is not starved."
+      )
+    ];
+    if (matchesQuery2(
+      "hud density lite full auto phone mobile windows panels clutter",
+      query
+    )) {
+      kids.push(settingsSection("HUD density"));
+      kids.push(
+        e(
+          "p",
+          { key: "density-help", className: "ecu-settings-help" },
+          "Lite hides ability timeline, minimap, threat, kills, unit frames, instance, and enemies until you reopen them. Auto uses lite on phone only. Bank / mail / market polls also run slower on phone."
+        )
+      );
+      const densityKids = [];
+      for (let i = 0; i < HUD_DENSITIES.length; i++) {
+        const mode = HUD_DENSITIES[i];
+        densityKids.push(
+          e(
+            "label",
+            {
+              key: mode,
+              className: "ecu-settings-row",
+              style: { display: "flex", gap: "10px", alignItems: "center" }
+            },
+            e("input", {
+              type: "radio",
+              name: "ecu-hud-density",
+              checked: density === mode,
+              onChange: () => setDensity(mode)
+            }),
+            e("span", null, hudDensityLabel(mode))
+          )
+        );
+      }
+      kids.push(e("div", { key: "density" }, densityKids));
+    }
+    if (matchesQuery2(
+      "world overlay drawings vision fog map rings performance battery",
+      query
+    )) {
+      kids.push(settingsSection("Map drawings"));
+      kids.push(
+        settingsCheckboxRow(
+          "overlay",
+          "World overlay loop",
+          settings.worldOverlayEnabled !== false,
+          (next) => {
+            patchSettings({ worldOverlayEnabled: next });
+            if (next) startWorldOverlay();
+            else stopWorldOverlay();
+            setTick((n) => n + 1);
+          },
+          {
+            help: "Rings, vision fog, and other PIXI drawings. Off saves GPU; socket combat tracking is unchanged."
+          }
+        )
+      );
+    }
+    if (matchesQuery2("meters hide dps hps combat skada", query)) {
+      kids.push(settingsSection("Meters"));
+      kids.push(
+        settingsCheckboxRow(
+          "meters",
+          "Hide meter windows",
+          !!settings.metersHidden,
+          (next) => {
+            patchSettings({ metersHidden: next });
+            setTick((n) => n + 1);
+          },
+          {
+            help: "Hides DPS/HPS frames. Damage ingest still runs so reports stay correct when you show them again."
+          }
+        )
+      );
+    }
+    if (matchesQuery2(
+      "tampermonkey mobile phone android ios edge firefox safari q406 install",
+      query
+    )) {
+      kids.push(settingsSection("Mobile install"));
+      kids.push(
+        e(
+          "p",
+          { key: "tm-help", className: "ecu-settings-help" },
+          "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build."
+        )
+      );
+      kids.push(
+        e(
+          "p",
+          { key: "tm-link", className: "ecu-settings-help" },
+          e(
+            "a",
+            {
+              href: TAMPERMONKEY_MOBILE_FAQ,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              style: { color: "#8ec8e8" }
+            },
+            "Tampermonkey FAQ \xB7 official mobile versions (Q406)"
+          )
+        )
+      );
+    }
+    return e("div", { className: "ecu-settings-pane" }, kids);
+  }
+
   // src/ui/frames/settings/settingsRegistry.ts
   var SETTINGS_PANES = [
     {
@@ -54698,6 +58018,17 @@ ${parts.map(cssSlice).join("\n")}
       description: "Shell chips, spawn markers, and other Comm HUD panel helpers.",
       countMatches: countCommHudSettingsMatches,
       render: (props) => e(CommHudSettingsPane, { query: props.query })
+    },
+    {
+      id: "performance",
+      label: "Performance",
+      description: "Lite HUD, world overlay, meters, and mobile Tampermonkey install help.",
+      countMatches: countPerformanceSettingsMatches,
+      render: (props) => e(PerformanceSettingsPane, {
+        query: props.query,
+        hudDensity: props.hudDensity,
+        setHudDensity: props.setHudDensity
+      })
     }
   ];
   function defaultSettingsPaneId() {
@@ -54775,6 +58106,81 @@ ${parts.map(cssSlice).join("\n")}
       }
       return kids;
     }, [cat, counts, trimmedQuery, setCat]);
+    const phone = detectViewportProfile() === "phone";
+    const headRef = React.useRef(null);
+    React.useEffect(() => {
+      if (!phone) return;
+      return bindSwipeDownClose(headRef.current, onClose);
+    }, [phone, onClose]);
+    const modalBody = e(
+      "div",
+      {
+        className: "ecu-settings-modal" + (phone ? " is-phone" : ""),
+        onMouseDown: (ev) => ev.stopPropagation()
+      },
+      e(
+        "div",
+        {
+          className: "ecu-settings-hd",
+          ref: headRef
+        },
+        e(
+          "div",
+          { className: "ecu-settings-hd-copy" },
+          e("input", {
+            type: "search",
+            className: "ecu-settings-search",
+            placeholder: "Search settings\u2026",
+            value: query,
+            onChange: (ev) => setQuery(ev.target.value || "")
+          })
+        ),
+        phone ? e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-settings-phone-done",
+            onClick: onClose
+          },
+          "Done"
+        ) : null
+      ),
+      e(
+        "div",
+        { className: "ecu-settings-split" },
+        e("div", { className: "ecu-settings-nav" }, ...navKids),
+        e(
+          "div",
+          { className: "ecu-settings-pane" },
+          e("div", { className: "ecu-settings-pane-title" }, active.label),
+          e("p", { className: "ecu-settings-pane-desc" }, active.description),
+          active.render({
+            query: trimmedQuery,
+            visible: props.visible,
+            setVisible,
+            setPanelPos,
+            onReplayTour: props.onReplayTour,
+            onResetTour: props.onResetTour,
+            onOpenChangelog: props.onOpenChangelog,
+            onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
+            hudDensity: props.hudDensity,
+            setHudDensity: props.setHudDensity
+          })
+        )
+      )
+    );
+    if (phone) {
+      return e(
+        "div",
+        {
+          className: "ecu-settings-backdrop is-phone",
+          onMouseDown: (ev) => {
+            if (ev.target === ev.currentTarget) onClose();
+          }
+        },
+        modalBody
+      );
+    }
     return e(
       "div",
       {
@@ -54801,49 +58207,7 @@ ${parts.map(cssSlice).join("\n")}
             pointerEvents: "auto"
           }
         },
-        e(
-          "div",
-          {
-            className: "ecu-settings-modal",
-            onMouseDown: (ev) => ev.stopPropagation()
-          },
-          e(
-            "div",
-            { className: "ecu-settings-hd" },
-            e(
-              "div",
-              { className: "ecu-settings-hd-copy" },
-              e("input", {
-                type: "search",
-                className: "ecu-settings-search",
-                placeholder: "Search settings\u2026",
-                value: query,
-                onChange: (ev) => setQuery(ev.target.value || "")
-              })
-            )
-          ),
-          e(
-            "div",
-            { className: "ecu-settings-split" },
-            e("div", { className: "ecu-settings-nav" }, ...navKids),
-            e(
-              "div",
-              { className: "ecu-settings-pane" },
-              e("div", { className: "ecu-settings-pane-title" }, active.label),
-              e("p", { className: "ecu-settings-pane-desc" }, active.description),
-              active.render({
-                query: trimmedQuery,
-                visible: props.visible,
-                setVisible,
-                setPanelPos,
-                onReplayTour: props.onReplayTour,
-                onResetTour: props.onResetTour,
-                onOpenChangelog: props.onOpenChangelog,
-                onOpenServerUpdateNotes: props.onOpenServerUpdateNotes
-              })
-            )
-          )
-        )
+        modalBody
       )
     );
   }
@@ -57415,6 +60779,15 @@ ${parts.map(cssSlice).join("\n")}
     const React = getReact();
     const mapNameData = getMapData(props.entities);
     const [zoom, setZoom] = React.useState(() => readHostWorldZoom());
+    const touchish = isTouchishProfile(detectViewportProfile());
+    const zoomBtnStyle = touchish ? {
+      ...zoomLinkStyle,
+      minWidth: "44px",
+      minHeight: "44px",
+      padding: "8px 10px",
+      fontSize: TYPE.body,
+      textDecoration: "none"
+    } : zoomLinkStyle;
     React.useEffect(() => {
       setZoom(readHostWorldZoom());
       return subscribeWorldZoom((next) => setZoom(next));
@@ -57488,14 +60861,14 @@ ${parts.map(cssSlice).join("\n")}
               color: "rgba(255,255,255,0.55)",
               fontSize: TYPE.chromeMeta
             },
-            title: "World zoom (wheel on the map also works). Outside the vision window the server does not send entities."
+            title: touchish ? "World zoom \u2014 tap out/in or pinch the map. Outside the vision window the server does not send entities." : "World zoom (wheel on the map also works). Outside the vision window the server does not send entities."
           },
           e(
             "button",
             {
               type: "button",
               style: {
-                ...zoomLinkStyle,
+                ...zoomBtnStyle,
                 opacity: zoom <= WORLD_ZOOM_MIN ? 0.35 : 1,
                 cursor: zoom <= WORLD_ZOOM_MIN ? "default" : "pointer"
               },
@@ -57510,7 +60883,7 @@ ${parts.map(cssSlice).join("\n")}
             {
               type: "button",
               style: {
-                ...zoomLinkStyle,
+                ...zoomBtnStyle,
                 color: "#cfe8f2",
                 fontVariantNumeric: "tabular-nums",
                 textDecoration: "none",
@@ -57528,7 +60901,7 @@ ${parts.map(cssSlice).join("\n")}
             {
               type: "button",
               style: {
-                ...zoomLinkStyle,
+                ...zoomBtnStyle,
                 opacity: zoom >= WORLD_ZOOM_MAX ? 0.35 : 1,
                 cursor: zoom >= WORLD_ZOOM_MAX ? "default" : "pointer"
               },
@@ -57722,33 +61095,6 @@ ${parts.map(cssSlice).join("\n")}
       faded,
       onClick
     };
-  }
-
-  // src/ui/chrome/wrapIconHtml.ts
-  function wrapIconHtml(html) {
-    return e("div", {
-      className: "ecu-icon-html",
-      style: {
-        display: "inline-block",
-        lineHeight: 0,
-        fontSize: 0,
-        flexShrink: 0
-      },
-      // Keep for React builds that honor it; ref is the source of truth.
-      dangerouslySetInnerHTML: { __html: html || "" },
-      ref: (node) => {
-        if (!node) return;
-        if (html && node.innerHTML !== html) {
-          node.innerHTML = html;
-        }
-        const root = node.firstElementChild;
-        if (!root) return;
-        root.style.margin = "0";
-        root.removeAttribute("onmousedown");
-        root.removeAttribute("ontouchstart");
-        root.removeAttribute("onclick");
-      }
-    });
   }
 
   // src/ui/frames/crypt/CryptCard.ts
@@ -59962,7 +63308,7 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/bag/bagSplitDialogCss.ts
   var injected9 = false;
-  var CSS9 = `
+  var CSS10 = `
 .ecu-bag-split-backdrop {
   position: fixed;
   inset: 0;
@@ -60123,7 +63469,7 @@ ${parts.map(cssSlice).join("\n")}
     injected9 = true;
     const style = document.createElement("style");
     style.setAttribute("data-ecu-bag-split", "1");
-    style.textContent = CSS9;
+    style.textContent = CSS10;
     document.head.appendChild(style);
   }
 
@@ -64447,8 +67793,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID8 = "ecu-minimap-chrome-css";
-  var CSS10 = `
+  var STYLE_ID9 = "ecu-minimap-chrome-css";
+  var CSS11 = `
 .comm-minimap {
   display: flex;
   flex-direction: column;
@@ -64605,14 +67951,14 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID8);
+    let el = document.getElementById(STYLE_ID9);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID8;
+      el.id = STYLE_ID9;
       document.head.appendChild(el);
     }
-    if (!injected11 || el.textContent !== CSS10) {
-      el.textContent = CSS10;
+    if (!injected11 || el.textContent !== CSS11) {
+      el.textContent = CSS11;
     }
     injected11 = true;
   }
@@ -66440,6 +69786,40 @@ ${ESTIMATE_HINT}`,
 .CommandPanel-hint[data-kind="prop"] .CommandPanel-hint__meta {
   color: #9aa;
 }
+
+/* Phone / narrow \u2014 stack editor above snippets (no side-by-side squeeze). */
+.CommandPanel.is-narrow {
+  min-height: 0;
+}
+.CommandPanel.is-narrow .CommandPanel-body {
+  flex-direction: column;
+  gap: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-editor {
+  min-height: 160px;
+  flex: 1 1 55%;
+}
+.CommandPanel.is-narrow .CommandPanel-side {
+  flex: 0 1 42%;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 140px;
+  border-left: none;
+  border-top: 1px solid #333;
+  padding-left: 0;
+  padding-top: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-snip,
+.CommandPanel.is-narrow .CommandPanel-folder {
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-snip__pick {
+  font-size: 16px;
+  padding: 8px 6px;
+}
 `;
   var injected12 = false;
   function ensureCommandPanelCss() {
@@ -66501,6 +69881,8 @@ ${ESTIMATE_HINT}`,
     );
     const [treeHi, setTreeHi] = React.useState(0);
     const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
+    const [narrow, setNarrow] = React.useState(false);
+    const rootRef = React.useRef(null);
     const editorHostRef = React.useRef(null);
     const textareaRef = React.useRef(null);
     const cmRef = React.useRef(null);
@@ -66610,6 +69992,18 @@ ${ESTIMATE_HINT}`,
       const id = window.requestAnimationFrame(() => refreshEditor());
       return () => window.cancelAnimationFrame(id);
     }, [status, openSeq, snippets.length, snippetQuery]);
+    React.useEffect(() => {
+      const el = rootRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const next = entry.contentRect.width < 520;
+        setNarrow((prev) => prev === next ? prev : next);
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
     React.useEffect(() => {
       if (typeof seedDraft === "string") {
         persistDraft2(seedDraft);
@@ -66934,7 +70328,8 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
-        className: "CommandPanel",
+        ref: rootRef,
+        className: "CommandPanel" + (narrow ? " is-narrow" : ""),
         style: {
           border: "2px solid #555",
           background: "rgba(0,0,0,0.88)",
@@ -67742,6 +71137,8 @@ ${ESTIMATE_HINT}`,
 }
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .ecu-chat.is-narrow .ecu-chat-compose-row {
   flex-wrap: nowrap;
@@ -67755,18 +71152,33 @@ ${ESTIMATE_HINT}`,
 .ecu-chat.is-narrow .ecu-chat-to {
   flex: 0 1 88px;
 }
-.ecu-chat.is-expanded .ecu-chat-sidebar {
+/* Wide expand only \u2014 never override the narrow drawer (phone FULL mode). */
+.ecu-chat.is-expanded:not(.is-narrow) .ecu-chat-sidebar {
   flex: 0 0 280px;
   width: 280px;
 }
+.ecu-chat.is-narrow.is-expanded .ecu-chat-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(300px, 86%);
+  flex: none;
+  z-index: 2;
+}
+.ecu-chat.is-narrow .ecu-chat-log,
+.ecu-chat.is-narrow .ecu-chat-body {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 
-/* Stock-like FULL mode \u2014 lift the chat shell over the layout. */
+/* Stock-like FULL mode \u2014 lift the chat shell over the layout + phone dock. */
 [data-panel="chat"].ecu-chat-shell-expanded {
   position: fixed !important;
   left: 10px !important;
   right: 10px !important;
   top: 10px !important;
-  bottom: 56px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
   width: auto !important;
   height: auto !important;
   max-width: none !important;
@@ -67779,6 +71191,34 @@ ${ESTIMATE_HINT}`,
 [data-panel="chat"].ecu-chat-shell-expanded .ecu-chat {
   height: 100%;
   min-height: 0;
+  padding-bottom: var(--ecu-vv-keyboard, 0px);
+  box-sizing: border-box;
+}
+
+/* Phone / narrow compose \u2014 44px targets above the soft keyboard. */
+.ecu-chat.is-narrow .ecu-chat-compose {
+  padding: 8px 10px;
+  gap: 6px;
+}
+.ecu-chat.is-narrow .ecu-chat-compose-row {
+  gap: 8px;
+  align-items: stretch;
+}
+.ecu-chat.is-narrow .ecu-chat-to,
+.ecu-chat.is-narrow .ecu-chat-input,
+.ecu-chat.is-narrow .ecu-chat-send {
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 1.2;
+  padding: 10px 12px;
+}
+.ecu-chat.is-narrow .ecu-chat-to {
+  flex: 0 1 96px;
+  max-width: 110px;
+}
+.ecu-chat.is-narrow .ecu-chat-send {
+  min-width: 72px;
+  flex: 0 0 auto;
 }
 `;
   var injected13 = false;
@@ -67976,9 +71416,12 @@ ${ESTIMATE_HINT}`,
     const [listLoaded, setListLoaded] = React.useState(false);
     const [narrow, setNarrow] = React.useState(false);
     const [sidebarOpen, setSidebarOpen] = React.useState(true);
-    const [expanded, setExpanded] = React.useState(false);
+    const [expanded, setExpanded] = React.useState(
+      () => detectViewportProfile() === "phone"
+    );
     const [listFilter, setListFilter] = React.useState("all");
     const rootRef = React.useRef(null);
+    const titleRef = React.useRef(null);
     const logRef = React.useRef(null);
     const stickBottomRef = React.useRef(true);
     const inputRef = React.useRef(null);
@@ -68160,9 +71603,30 @@ ${ESTIMATE_HINT}`,
       return () => ro.disconnect();
     }, []);
     React.useEffect(() => {
-      if (narrow && !expanded) setSidebarOpen(false);
+      if (narrow) setSidebarOpen(false);
       else setSidebarOpen(true);
     }, [narrow, expanded]);
+    React.useEffect(() => {
+      const vv = typeof window !== "undefined" ? window.visualViewport : null;
+      if (!vv) return;
+      const sync = () => {
+        const inset = Math.max(
+          0,
+          Math.round(window.innerHeight - vv.height - vv.offsetTop)
+        );
+        const root = rootRef.current;
+        if (root) root.style.setProperty("--ecu-vv-keyboard", inset + "px");
+      };
+      sync();
+      vv.addEventListener("resize", sync);
+      vv.addEventListener("scroll", sync);
+      return () => {
+        vv.removeEventListener("resize", sync);
+        vv.removeEventListener("scroll", sync);
+        const root = rootRef.current;
+        if (root) root.style.removeProperty("--ecu-vv-keyboard");
+      };
+    }, []);
     React.useEffect(() => {
       const shell = findPanelShell(rootRef.current, "chat");
       if (!shell) return;
@@ -68190,6 +71654,14 @@ ${ESTIMATE_HINT}`,
         });
       }
     }, [expanded, props.onFrameSizeRestore]);
+    React.useEffect(() => {
+      if (!expanded || detectViewportProfile() !== "phone") return;
+      const close = () => {
+        if (typeof props.onRequestClose === "function") props.onRequestClose();
+        else setExpanded(false);
+      };
+      return bindSwipeDownClose(titleRef.current, close);
+    }, [expanded, props.onRequestClose]);
     React.useEffect(() => {
       if (props.openSeq == null) return;
       if (typeof props.seedDraft === "string") setDraft(props.seedDraft);
@@ -68252,7 +71724,7 @@ ${ESTIMATE_HINT}`,
       setFromName(chat.sender || "");
       setWhisperTo(chat.to || "");
       stickBottomRef.current = true;
-      if (narrow && !expanded) setSidebarOpen(false);
+      if (narrow) setSidebarOpen(false);
       bump();
       if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
     };
@@ -68263,7 +71735,7 @@ ${ESTIMATE_HINT}`,
       setFromName(chat.sender || "");
       setWhisperTo(chat.to || to || "");
       stickBottomRef.current = true;
-      if (narrow && !expanded) setSidebarOpen(false);
+      if (narrow) setSidebarOpen(false);
       bump();
       window.setTimeout(() => {
         const el = inputRef.current;
@@ -68564,14 +72036,14 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
-        className: "ecu-chat" + (narrow && !expanded ? " is-narrow" : "") + (narrow && !expanded && sidebarOpen ? " is-sidebar-open" : "") + (expanded ? " is-expanded" : ""),
+        className: "ecu-chat" + (narrow ? " is-narrow" : "") + (narrow && sidebarOpen ? " is-sidebar-open" : "") + (expanded ? " is-expanded" : ""),
         "data-ecu-chat": "1",
         ref: rootRef
       },
       e(
         "div",
         { className: "ecu-chat-layout" },
-        narrow && !expanded && sidebarOpen ? e("button", {
+        narrow && sidebarOpen ? e("button", {
           key: "backdrop",
           type: "button",
           className: "ecu-chat-backdrop",
@@ -68583,7 +72055,7 @@ ${ESTIMATE_HINT}`,
           {
             className: "ecu-chat-sidebar",
             "aria-label": "Conversations",
-            "aria-hidden": narrow && !expanded && !sidebarOpen ? "true" : void 0
+            "aria-hidden": narrow && !sidebarOpen ? "true" : void 0
           },
           e(
             "div",
@@ -68627,9 +72099,10 @@ ${ESTIMATE_HINT}`,
           e(
             "div",
             {
+              ref: titleRef,
               className: "ecu-chat-title" + (titleBusy ? " is-busy" : "")
             },
-            narrow && !expanded ? e(
+            narrow ? e(
               "button",
               {
                 type: "button",
@@ -70214,7 +73687,12 @@ ${ESTIMATE_HINT}`,
     return out;
   }
   function aggKey(item) {
-    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null ? String(item.p) : "");
+    return itemStackIdentityKey({
+      name: String(item.name),
+      level: item.level,
+      p: item.p,
+      data: item.data
+    });
   }
   function aggregateBankItems(slots) {
     const byKey = /* @__PURE__ */ Object.create(null);
@@ -70224,11 +73702,13 @@ ${ESTIMATE_HINT}`,
       const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
       let row3 = byKey[key];
       if (!row3) {
+        const data = getItemData(item);
         row3 = {
           key,
           name: String(item.name),
           level: item.level,
           p: item.p != null ? String(item.p) : null,
+          ...data ? { data } : {},
           q: 0,
           locs: []
         };
@@ -70246,7 +73726,9 @@ ${ESTIMATE_HINT}`,
       const la = a.level != null ? a.level : -1;
       const lb = b.level != null ? b.level : -1;
       if (la !== lb) return la - lb;
-      return String(a.p || "").localeCompare(String(b.p || ""));
+      const tp = String(a.p || "").localeCompare(String(b.p || ""));
+      if (tp !== 0) return tp;
+      return String(a.data || "").localeCompare(String(b.data || ""));
     });
     return out;
   }
@@ -70341,7 +73823,9 @@ ${ESTIMATE_HINT}`,
       const la = a.level != null ? Number(a.level) : 0;
       const lb = b.level != null ? Number(b.level) : 0;
       if (la !== lb) return lb - la;
-      return String(a.p || "").localeCompare(String(b.p || ""));
+      const tp = String(a.p || "").localeCompare(String(b.p || ""));
+      if (tp !== 0) return tp;
+      return String(a.data || "").localeCompare(String(b.data || ""));
     });
     return copy;
   }
@@ -70474,6 +73958,7 @@ ${ESTIMATE_HINT}`,
     if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
     if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
     if (fp.p != null) parts.push(`${varName}.p!==${lit7(fp.p)}`);
+    if (fp.data != null) parts.push(`${varName}.data!==${lit7(fp.data)}`);
     return parts.join("||");
   }
   function resolveInvSlotNamedJs(fp, slotVar) {
@@ -71073,7 +74558,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/bag/upgradeCompoundDialogCss.ts
   var injected14 = false;
-  var CSS11 = `
+  var CSS12 = `
 .ecu-upg-backdrop {
   position: fixed;
   inset: 0;
@@ -71625,7 +75110,7 @@ ${ESTIMATE_HINT}`,
     injected14 = true;
     const style = document.createElement("style");
     style.setAttribute("data-ecu-upg-css", "1");
-    style.textContent = CSS11;
+    style.textContent = CSS12;
     document.head.appendChild(style);
   }
 
@@ -75071,7 +78556,12 @@ ${ESTIMATE_HINT}`,
       if (!row3.giveaway && !row3.tradeOffer && !row3.buyOrder && !(row3.price > 0)) {
         continue;
       }
-      const key = row3.name + "\0" + (row3.level != null ? String(row3.level) : "") + "\0" + (row3.p != null ? String(row3.p) : "");
+      const key = itemStackIdentityKey({
+        name: row3.name,
+        level: row3.level,
+        p: row3.p,
+        data: row3.data
+      });
       if (!byKey[key]) byKey[key] = [];
       byKey[key].push(row3);
     }
@@ -75100,11 +78590,13 @@ ${ESTIMATE_HINT}`,
         if (!(wants[j].price > 0)) continue;
         if (bestWant == null || wants[j].price > bestWant) bestWant = wants[j].price;
       }
+      const data = getItemData(sample);
       out.push({
         key: keys[i],
         name: sample.name,
         level: sample.level,
         p: sample.p,
+        ...data ? { data } : {},
         rows: list,
         sales,
         wants,
@@ -75227,15 +78719,18 @@ ${ESTIMATE_HINT}`,
     return copy;
   }
   function tradeWantOfferFingerprint(row3) {
+    var _a, _b;
     const w = row3.want;
     return [
       String(row3.merchant || "").toLowerCase(),
       row3.name,
       row3.level != null ? String(row3.level) : "",
       row3.p != null ? String(row3.p) : "",
+      (_a = getItemData(row3)) != null ? _a : "",
       w ? w.name : "",
       w && w.level != null ? String(w.level) : "",
-      w && w.p != null ? String(w.p) : ""
+      w && w.p != null ? String(w.p) : "",
+      w ? (_b = getItemData(w)) != null ? _b : "" : ""
     ].join("\0");
   }
   function tradeOfferAbsQty(row3) {
@@ -75340,7 +78835,7 @@ ${ESTIMATE_HINT}`,
 
   // src/lib/market/marketBagStacks.ts
   function marketBagStackKey(item) {
-    return item.name + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null && item.p !== "" ? String(item.p) : "");
+    return itemStackIdentityKey(item);
   }
   function collapseMarketBagStacks(items) {
     if (!items || !items.length) return [];
@@ -75352,7 +78847,8 @@ ${ESTIMATE_HINT}`,
       const name = String(it.name);
       const level = typeof it.level === "number" ? it.level : void 0;
       const p = it.p != null && String(it.p) !== "" ? String(it.p) : null;
-      const key = marketBagStackKey({ name, level, p });
+      const data = getItemData(it);
+      const key = marketBagStackKey({ name, level, p, data });
       const qty = typeof it.q === "number" && it.q > 0 ? it.q | 0 : 1;
       const slot = typeof it.slot === "number" ? it.slot : i;
       const existing = byKey[key];
@@ -75364,6 +78860,7 @@ ${ESTIMATE_HINT}`,
           q: qty,
           level,
           p,
+          ...data ? { data } : {},
           skin: it.skin,
           slotCount: 1
         };
@@ -75384,25 +78881,29 @@ ${ESTIMATE_HINT}`,
 
   // src/lib/market/marketStandPackStacks.ts
   function wantParts(want) {
+    var _a;
     if (typeof want === "string") {
-      return { name: want, level: "", p: "", q: "" };
+      return { name: want, level: "", p: "", q: "", data: "" };
     }
     if (!want || typeof want !== "object") {
-      return { name: "", level: "", p: "", q: "" };
+      return { name: "", level: "", p: "", q: "", data: "" };
     }
     return {
       name: want.name ? String(want.name) : "",
       level: want.level != null ? String(want.level) : "",
       p: want.p != null && String(want.p) !== "" ? String(want.p) : "",
-      q: want.q != null && want.q > 0 ? String(want.q | 0) : ""
+      q: want.q != null && want.q > 0 ? String(want.q | 0) : "",
+      data: (_a = getItemData(want)) != null ? _a : ""
     };
   }
   function marketStandPackStackKey(slot) {
+    var _a;
     const give = !!(slot.giveaway || slot.registry);
     const w = wantParts(slot.want);
     const trade = !give && !slot.b && !!w.name;
     const offerQ = typeof slot.q === "number" && slot.q > 0 ? String(slot.q | 0) : "1";
-    return (give ? "g" : trade ? "t" : slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + (give ? "give" : trade ? ["want", w.name, w.level, w.p, w.q, offerQ].join("\0") : slot.price != null ? String(slot.price) : "");
+    const data = (_a = getItemData(slot)) != null ? _a : "";
+    return (give ? "g" : trade ? "t" : slot.b ? "1" : "0") + "\0" + slot.name + "\0" + (slot.level != null ? String(slot.level) : "") + "\0" + (slot.p != null && slot.p !== "" ? String(slot.p) : "") + "\0" + data + "\0" + (give ? "give" : trade ? ["want", w.name, w.level, w.p, w.data, w.q, offerQ].join("\0") : slot.price != null ? String(slot.price) : "");
   }
   function listingQty(slot) {
     if (typeof slot.q === "number" && slot.q > 0) return slot.q | 0;
@@ -75428,6 +78929,7 @@ ${ESTIMATE_HINT}`,
         want: raw.want,
         level: typeof raw.level === "number" ? raw.level : void 0,
         p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
+        data: getItemData(raw),
         price: typeof raw.price === "number" ? raw.price : void 0,
         q: typeof raw.q === "number" ? raw.q : void 0
       });
@@ -75463,7 +78965,12 @@ ${ESTIMATE_HINT}`,
 
   // src/lib/bank/bankStock.ts
   function bankItemStockKey(item) {
-    return String(item.name) + "\0" + (item.level != null ? String(item.level) : "") + "\0" + (item.p != null && item.p !== "" ? String(item.p) : "");
+    return itemStackIdentityKey({
+      name: String(item.name),
+      level: item.level,
+      p: item.p,
+      data: item.data
+    });
   }
   function buildBankQtyIndex(snap) {
     const out = /* @__PURE__ */ Object.create(null);
@@ -75482,8 +78989,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID9 = "ecu-query-search-field-css";
-  var CSS12 = `
+  var STYLE_ID10 = "ecu-query-search-field-css";
+  var CSS13 = `
 .ecu-qsearch {
   position: relative;
   flex: 1 1 220px;
@@ -75622,10 +79129,10 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID9)) return;
+    if (document.getElementById(STYLE_ID10)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID9;
-    el.textContent = CSS12;
+    el.id = STYLE_ID10;
+    el.textContent = CSS13;
     document.head.appendChild(el);
   }
 
@@ -75981,6 +79488,7 @@ ${ESTIMATE_HINT}`,
         level: typeof slot.level === "number" ? slot.level : void 0,
         q: typeof slot.q === "number" ? slot.q : void 0,
         p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : void 0,
+        data: typeof slot.data === "string" && slot.data.trim() ? slot.data.trim() : void 0,
         actual: slot
       });
     } else {
@@ -77465,6 +80973,33 @@ ${ESTIMATE_HINT}`,
   .MarketPanel-you { max-height: 280px; border-right: 0; border-bottom: 1px solid var(--mk-line); }
   .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
 }
+
+/* Phone full-screen shell \u2014 clears Material dock. */
+[data-panel="market"].ecu-market-shell-expanded {
+  position: fixed !important;
+  left: 8px !important;
+  right: 8px !important;
+  top: 8px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  z-index: 480 !important;
+  transform: none !important;
+  border-radius: 16px 16px 0 0 !important;
+  overflow: hidden !important;
+}
+[data-panel="market"].ecu-market-shell-expanded .MarketPanel {
+  height: 100%;
+  min-height: 0;
+}
+.MarketPanel-expand {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 `;
   var marketPanelCssInjected = false;
   function ensureMarketPanelCss() {
@@ -77536,7 +81071,7 @@ ${ESTIMATE_HINT}`,
         setObs(
           (prev) => fp(prev) === fp(next) ? prev : next
         );
-      }, 500);
+      }, scalePollMs(500, "data"));
       return () => window.clearInterval(id);
     }, [fallback && fallback.id]);
     return obs;
@@ -77621,6 +81156,14 @@ ${ESTIMATE_HINT}`,
       q: opts.q,
       bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : void 0,
       p: opts.p != null ? String(opts.p) : void 0,
+      data: opts.data,
+      actual: {
+        name,
+        level: opts.level,
+        q: opts.q,
+        p: opts.p,
+        ...opts.data ? { data: opts.data } : {}
+      },
       title: opts.title,
       forceShowQ: opts.forceShowQ
     });
@@ -77647,6 +81190,12 @@ ${ESTIMATE_HINT}`,
   function MarketPanel(props) {
     const React = getReact();
     ensureMarketPanelCss();
+    const rootRef = React.useRef(null);
+    const headRef = React.useRef(null);
+    const preExpandSizeRef = React.useRef(null);
+    const [expanded, setExpanded] = React.useState(
+      () => detectViewportProfile() === "phone"
+    );
     const [query, setQuery] = React.useState("");
     const [facet, setFacet] = React.useState("all");
     const [groupSort, setGroupSort] = React.useState("dual");
@@ -77679,6 +81228,41 @@ ${ESTIMATE_HINT}`,
       () => getCachedBankSnapshot()
     );
     React.useEffect(() => subscribeMarketTravel(setTravel), []);
+    React.useEffect(() => {
+      const shell = findPanelShell(rootRef.current, "market");
+      if (!shell) return;
+      if (expanded) {
+        if (!preExpandSizeRef.current) {
+          preExpandSizeRef.current = {
+            w: Math.round(shell.offsetWidth),
+            h: Math.round(shell.offsetHeight)
+          };
+        }
+        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+        shell.classList.add("ecu-market-shell-expanded");
+        return () => {
+          shell.classList.remove("ecu-market-shell-expanded");
+          shell.removeAttribute("data-ecu-suspend-frame-resize");
+        };
+      }
+      shell.classList.remove("ecu-market-shell-expanded");
+      shell.removeAttribute("data-ecu-suspend-frame-resize");
+      const saved = preExpandSizeRef.current;
+      preExpandSizeRef.current = null;
+      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
+        window.requestAnimationFrame(() => {
+          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
+        });
+      }
+    }, [expanded, props.onFrameSizeRestore]);
+    React.useEffect(() => {
+      if (!expanded || detectViewportProfile() !== "phone") return;
+      const close = () => {
+        if (typeof props.onRequestClose === "function") props.onRequestClose();
+        else setExpanded(false);
+      };
+      return bindSwipeDownClose(headRef.current, close);
+    }, [expanded, props.onRequestClose]);
     React.useEffect(() => {
       return subscribeBankSnapshot((snap) => setBankSnap(snap));
     }, []);
@@ -77878,12 +81462,14 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < rawItems.length; i++) {
       const it = rawItems[i];
       if (!it || !it.name) continue;
+      const data = typeof it.data === "string" && String(it.data).trim() ? String(it.data).trim() : void 0;
       rawBag.push({
         slot: i,
         name: String(it.name),
         q: it.q,
         level: it.level,
         p: it.p != null ? String(it.p) : null,
+        ...data ? { data } : {},
         skin: it.skin != null ? String(it.skin) : void 0
       });
     }
@@ -77893,7 +81479,12 @@ ${ESTIMATE_HINT}`,
       if (!bagStackKey) return null;
       for (let i = 0; i < bagStacks.length; i++) {
         const s = bagStacks[i];
-        if (marketBagStackKey({ name: s.name, level: s.level, p: s.p }) === bagStackKey) {
+        if (marketBagStackKey({
+          name: s.name,
+          level: s.level,
+          p: s.p,
+          data: s.data
+        }) === bagStackKey) {
           return s;
         }
       }
@@ -78079,6 +81670,7 @@ ${ESTIMATE_HINT}`,
                 marketItemIcon(row3.want.name, {
                   level: row3.want.level,
                   p: row3.want.p,
+                  data: row3.want.data,
                   size: 26,
                   q: wantQ,
                   forceShowQ: true
@@ -78109,6 +81701,7 @@ ${ESTIMATE_HINT}`,
                 marketItemIcon(row3.name, {
                   level: row3.level,
                   p: row3.p,
+                  data: row3.data,
                   size: 26,
                   q: offerQ,
                   forceShowQ: true
@@ -78353,6 +81946,7 @@ ${ESTIMATE_HINT}`,
                   marketItemIcon(want.name, {
                     level: want.level,
                     p: want.p,
+                    data: want.data,
                     size: 24,
                     q: wantQ,
                     forceShowQ: true
@@ -78377,6 +81971,7 @@ ${ESTIMATE_HINT}`,
                   marketItemIcon(srow.name, {
                     level: srow.level,
                     p: srow.p,
+                    data: srow.data,
                     size: 24,
                     q: offerQ,
                     forceShowQ: true
@@ -78424,7 +82019,8 @@ ${ESTIMATE_HINT}`,
         const bankQ = bankQtyFor(bankQtyIndex, {
           name: g.name,
           level: g.level,
-          p: g.p
+          p: g.p,
+          data: g.data
         });
         return e(
           "div",
@@ -78459,9 +82055,10 @@ ${ESTIMATE_HINT}`,
               marketItemIcon(g.name, {
                 level: g.level,
                 p: g.p,
+                data: g.data,
                 size: 48,
                 bankQ,
-                title: itemLabel(g.name, g.level, g.p) + (bankQ > 0 ? " \xB7 Bank \xD7" + bankQ : "")
+                title: itemLabel(g.name, g.level, g.p) + (g.data ? " \xB7 " + g.data : "") + (bankQ > 0 ? " \xB7 Bank \xD7" + bankQ : "")
               }),
               e(
                 "div",
@@ -78549,7 +82146,8 @@ ${ESTIMATE_HINT}`,
     const focusBankQ = focusGroup ? bankQtyFor(bankQtyIndex, {
       name: focusGroup.name,
       level: focusGroup.level,
-      p: focusGroup.p
+      p: focusGroup.p,
+      data: focusGroup.data
     }) : 0;
     const focusPane = focusGroup ? [
       e(
@@ -78567,9 +82165,10 @@ ${ESTIMATE_HINT}`,
           marketItemIcon(focusGroup.name, {
             level: focusGroup.level,
             p: focusGroup.p,
+            data: focusGroup.data,
             size: 40,
             bankQ: focusBankQ,
-            title: itemLabel(focusGroup.name, focusGroup.level, focusGroup.p) + (focusBankQ > 0 ? " \xB7 Bank \xD7" + focusBankQ : "")
+            title: itemLabel(focusGroup.name, focusGroup.level, focusGroup.p) + (focusGroup.data ? " \xB7 " + focusGroup.data : "") + (focusBankQ > 0 ? " \xB7 Bank \xD7" + focusBankQ : "")
           }),
           e(
             "div",
@@ -78744,12 +82343,13 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
+        ref: rootRef,
         className: "MarketPanel",
         "data-ecu-tour": "market-panel"
       },
       e(
         "div",
-        { className: "MarketPanel-head" },
+        { className: "MarketPanel-head", ref: headRef },
         e("h1", { className: "MarketPanel-title" }, "Market"),
         e(
           "div",
@@ -78765,6 +82365,13 @@ ${ESTIMATE_HINT}`,
           },
           "Cancel travel"
         ) : null,
+        e(PanelExpandButton, {
+          expanded,
+          onToggle: () => setExpanded(!expanded),
+          expandTitle: "Expand market",
+          restoreTitle: "Restore market size",
+          className: "MarketPanel-expand"
+        }),
         e(
           "button",
           {
@@ -78920,17 +82527,19 @@ ${ESTIMATE_HINT}`,
                   const key = marketBagStackKey({
                     name: b.name,
                     level: b.level,
-                    p: b.p
+                    p: b.p,
+                    data: b.data
                   });
                   const label = itemInstanceLabel(b.name, {
                     level: b.level,
                     p: b.p != null ? b.p : void 0
                   });
-                  const tip = label + (b.q > 1 ? " \xD7" + b.q : "") + (b.slotCount > 1 ? " \xB7 " + b.slotCount + " slots" : "") + (() => {
+                  const tip = label + (b.data ? " \xB7 " + b.data : "") + (b.q > 1 ? " \xD7" + b.q : "") + (b.slotCount > 1 ? " \xB7 " + b.slotCount + " slots" : "") + (() => {
                     const bq = bankQtyFor(bankQtyIndex, {
                       name: b.name,
                       level: b.level,
-                      p: b.p
+                      p: b.p,
+                      data: b.data
                     });
                     return bq > 0 ? " \xB7 Bank \xD7" + bq : "";
                   })();
@@ -78968,9 +82577,18 @@ ${ESTIMATE_HINT}`,
                       bankQ: bankQtyFor(bankQtyIndex, {
                         name: b.name,
                         level: b.level,
-                        p: b.p
+                        p: b.p,
+                        data: b.data
                       }),
                       p: b.p != null ? b.p : void 0,
+                      data: b.data,
+                      actual: {
+                        name: b.name,
+                        level: b.level,
+                        q: b.q,
+                        p: b.p,
+                        ...b.data ? { data: b.data } : {}
+                      },
                       size: 40
                     })
                   );
@@ -79213,7 +82831,8 @@ ${ESTIMATE_HINT}`,
                     const itemKey = slotItem && slotItem.name ? marketBagStackKey({
                       name: String(slotItem.name),
                       level: typeof slotItem.level === "number" ? slotItem.level : void 0,
-                      p: slotItem.p != null && String(slotItem.p) !== "" ? String(slotItem.p) : null
+                      p: slotItem.p != null && String(slotItem.p) !== "" ? String(slotItem.p) : null,
+                      data: typeof slotItem.data === "string" && slotItem.data.trim() ? slotItem.data.trim() : void 0
                     }) : null;
                     return e(TradeSlotCell, {
                       key: entry.slotName,
@@ -79712,7 +83331,7 @@ ${ESTIMATE_HINT}`,
         p: item.p,
         level: item.level
       });
-      hit = anyIncludes(item.name, clause.values) || anyIncludes(label, clause.values);
+      hit = anyIncludes(item.name, clause.values) || anyIncludes(label, clause.values) || anyIncludes(String(item.data || ""), clause.values);
     } else if (clause.kind === "item") {
       hit = anyIncludes(item.name, clause.values);
     } else if (clause.kind === "title") {
@@ -80202,8 +83821,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID10 = "ecu-bank-panel-css";
-  var CSS13 = `
+  var STYLE_ID11 = "ecu-bank-panel-css";
+  var CSS14 = `
 .BankPanel {
   --bk-line: #2a2a2a;
   --bk-muted: #8a8680;
@@ -80605,13 +84224,13 @@ ${ESTIMATE_HINT}`,
   margin-top: 2px;
 }
 
-/* Shell lift \u2014 same inset as chat expand. */
+/* Shell lift \u2014 same inset as chat expand (clears phone dock). */
 [data-panel="bank"].ecu-bank-shell-expanded {
   position: fixed !important;
   left: 10px !important;
   right: 10px !important;
   top: 10px !important;
-  bottom: 56px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
   width: auto !important;
   height: auto !important;
   max-width: none !important;
@@ -80630,16 +84249,16 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID10)) return;
+      if (document.getElementById(STYLE_ID11)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID10);
+    let el = document.getElementById(STYLE_ID11);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID10;
+      el.id = STYLE_ID11;
       document.head.appendChild(el);
     }
-    el.textContent = CSS13;
+    el.textContent = CSS14;
     bankPanelCssInjected = true;
   }
 
@@ -80671,6 +84290,7 @@ ${ESTIMATE_HINT}`,
       q: item.q,
       p: item.p
     };
+    if (item.data) actual.data = item.data;
     const html = window.render_item("html", {
       item: def,
       actual,
@@ -80702,13 +84322,19 @@ ${ESTIMATE_HINT}`,
     return itemName + " \xB7 " + packLabel + " \xB7 Right-click: Withdraw to bag \xB7 Click: inspect";
   }
   function asAgg(item, pack, index) {
-    var _a, _b;
     const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+    const data = typeof item.data === "string" && item.data.trim() ? item.data.trim() : void 0;
     return {
-      key: item.name + "\0" + ((_a = item.level) != null ? _a : "") + "\0" + ((_b = item.p) != null ? _b : ""),
+      key: itemStackIdentityKey({
+        name: String(item.name),
+        level: item.level,
+        p: item.p,
+        data
+      }),
       name: String(item.name),
       level: item.level,
       p: item.p != null ? String(item.p) : null,
+      ...data ? { data } : {},
       q,
       locs: [{ pack, index, q }]
     };
@@ -80825,7 +84451,9 @@ ${ESTIMATE_HINT}`,
       "ready"
     );
     const [tick2, setTick] = React.useState(0);
-    const [expanded, setExpanded] = React.useState(false);
+    const [expanded, setExpanded] = React.useState(
+      () => detectViewportProfile() === "phone"
+    );
     const [refreshSummary, setRefreshSummary] = React.useState(
       null
     );
@@ -80833,6 +84461,7 @@ ${ESTIMATE_HINT}`,
       "all"
     );
     const rootRef = React.useRef(null);
+    const headRef = React.useRef(null);
     const preExpandSizeRef = React.useRef(null);
     const snapRef = React.useRef(null);
     snapRef.current = snap;
@@ -80870,7 +84499,10 @@ ${ESTIMATE_HINT}`,
       };
     }, [refresh]);
     React.useEffect(() => {
-      const id = window.setInterval(() => setTick((n) => n + 1), 15e3);
+      const id = window.setInterval(
+        () => setTick((n) => n + 1),
+        scalePollMs(15e3, "data")
+      );
       return () => window.clearInterval(id);
     }, []);
     React.useEffect(() => {
@@ -80905,6 +84537,14 @@ ${ESTIMATE_HINT}`,
         });
       }
     }, [expanded, props.onFrameSizeRestore]);
+    React.useEffect(() => {
+      if (!expanded || detectViewportProfile() !== "phone") return;
+      const close = () => {
+        if (typeof props.onRequestClose === "function") props.onRequestClose();
+        else setExpanded(false);
+      };
+      return bindSwipeDownClose(headRef.current, close);
+    }, [expanded, props.onRequestClose]);
     const allAgg = React.useMemo(() => {
       if (!snap) return [];
       return aggregateBankItems(flattenBankSlots(snap.packs));
@@ -80992,6 +84632,14 @@ ${ESTIMATE_HINT}`,
               level: it.level,
               q: it.q,
               p: it.p != null ? String(it.p) : void 0,
+              data: it.data,
+              actual: {
+                name: it.name,
+                level: it.level,
+                q: it.q,
+                p: it.p,
+                ...it.data ? { data: it.data } : {}
+              },
               size: 40
             })
           );
@@ -81067,6 +84715,14 @@ ${ESTIMATE_HINT}`,
                     level: it.level,
                     q: it.q,
                     p: it.p != null ? String(it.p) : void 0,
+                    data: typeof it.data === "string" && it.data.trim() ? it.data.trim() : void 0,
+                    actual: {
+                      name: it.name,
+                      level: it.level,
+                      q: it.q,
+                      p: it.p,
+                      ...typeof it.data === "string" && it.data.trim() ? { data: it.data.trim() } : {}
+                    },
                     size: 40
                   })
                 );
@@ -81367,7 +85023,7 @@ ${ESTIMATE_HINT}`,
       },
       e(
         "div",
-        { className: "BankPanel-head" },
+        { className: "BankPanel-head", ref: headRef },
         e("span", { className: "BankPanel-title" }, "Bank"),
         snap ? e(
           "span",
@@ -81475,6 +85131,14 @@ ${ESTIMATE_HINT}`,
                   level: change.item.level,
                   q: changeBadgeQuantity(change),
                   p: change.item.p != null ? String(change.item.p) : void 0,
+                  data: change.item.data,
+                  actual: {
+                    name: change.item.name,
+                    level: change.item.level,
+                    q: changeBadgeQuantity(change),
+                    p: change.item.p,
+                    ...change.item.data ? { data: change.item.data } : {}
+                  },
                   size: 40,
                   forceShowQ: true,
                   qtyColor: changeQuantityColor(
@@ -83921,7 +87585,7 @@ ${ESTIMATE_HINT}`,
         setObs(
           (prev) => fpOf(prev) === fpOf(next) ? prev : next
         );
-      }, 2e3);
+      }, scalePollMs(2e3, "data"));
       return () => window.clearInterval(id);
     }, []);
     return obs;
@@ -84312,8 +87976,14 @@ ${ESTIMATE_HINT}`,
       };
       const onClose = resolvePanelClose(id, closeDeps);
       const hasChromeClose = panelHasChromeClose(id, closeDeps);
-      const isHidden = isClosablePanel && !deps.visible(id);
-      if (isHidden && !deps.layoutEdit) return null;
+      const phoneScreen = deps.viewportProfile === "phone" && !deps.layoutEdit ? deps.phoneHomeScreen : null;
+      let isHidden = isClosablePanel && !deps.visible(id);
+      if (phoneScreen && isPhoneHomeWidget(id)) {
+        if (!panelOnPhoneHomeScreen(id, phoneScreen)) return null;
+        isHidden = false;
+      } else if (isHidden && !deps.layoutEdit) {
+        return null;
+      }
       const empty2 = (opts == null ? void 0 : opts.empty) === true || panelIsContextEmpty(id, ctx);
       if (empty2 && !deps.layoutEdit) return null;
       const locked = deps.panelIsLocked(id);
@@ -84367,7 +88037,9 @@ ${ESTIMATE_HINT}`,
           editChrome: opts == null ? void 0 : opts.editChrome,
           className: classBits.length ? classBits.join(" ") : void 0,
           locked,
-          onToggleLock: id === "toggles" ? void 0 : () => deps.setPanelLocked(id, !locked),
+          onToggleLock: id === "toggles" || // Idle buff/item hosts are 0×0 — lock/☰ chrome still painted on
+          // touch and looked like a mystery bar mid-map on phone.
+          (id === "buffInfo" || id === "itemInfo") && !deps.layoutEdit && (id === "buffInfo" && !deps.buffInfoOpen || id === "itemInfo" && !deps.itemInfoOpen) ? void 0 : () => deps.setPanelLocked(id, !locked),
           onUngroup: grouped && deps.ungroupPanel ? () => deps.ungroupPanel(id) : void 0,
           closedWindows: deps.closedWindows,
           onReopenWindow: deps.onReopenWindow,
@@ -84544,7 +88216,9 @@ ${ESTIMATE_HINT}`,
           layoutEdit: deps.layoutEdit,
           seedMerchant: deps.marketMerchant,
           seedDesk: deps.marketDesk,
-          seedSeq: deps.marketOpenSeq
+          seedSeq: deps.marketOpenSeq,
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("market", size) : void 0,
+          onRequestClose: () => deps.setVisible("market", false)
         }),
         {
           style: MARKET_PANEL_STYLE,
@@ -84556,7 +88230,8 @@ ${ESTIMATE_HINT}`,
         "bank",
         e(BankPanel, {
           layoutEdit: deps.layoutEdit,
-          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("bank", size) : void 0
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("bank", size) : void 0,
+          onRequestClose: () => deps.setVisible("bank", false)
         }),
         {
           style: MARKET_PANEL_STYLE,
@@ -84641,7 +88316,8 @@ ${ESTIMATE_HINT}`,
           seedDraft: deps.chatSeed,
           seedWhisperTo: deps.chatWhisperTo,
           openSeq: deps.chatOpenSeq,
-          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("chat", size) : void 0
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("chat", size) : void 0,
+          onRequestClose: () => deps.setVisible("chat", false)
         }),
         {
           style: CHAT_PANEL_STYLE,
@@ -84877,7 +88553,6 @@ ${ESTIMATE_HINT}`,
     const snap = props.snap;
     const layoutState = usePanelLayoutState();
     const {
-      setPanelVisible,
       layoutEdit,
       setLayoutEdit,
       layout,
@@ -84895,9 +88570,13 @@ ${ESTIMATE_HINT}`,
       setOpacity,
       visible,
       opacityFor,
-      setPanelPos
+      setPanelPos,
+      hudDensity,
+      setHudDensity
     } = layoutState;
-    const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(setPanelVisible);
+    const { bagOpen, bagRefreshing: bagRefreshing2 } = useBagBridge(
+      (open) => setVisible("bag", open)
+    );
     const { selectedEntity: selectedEntity2, setSelectedEntity, closePaperdoll, focusUnitId } = useSelectionFromXTarget(snap);
     React.useEffect(() => {
       setWorldOverlaySelectedId(selectedEntity2);
@@ -84932,6 +88611,21 @@ ${ESTIMATE_HINT}`,
     const [metersHidden, setMetersHidden] = React.useState(
       () => !!getSettings().metersHidden
     );
+    const [phoneHomePage, setPhoneHomePage] = React.useState(
+      () => readStoredPhoneHomePage()
+    );
+    const [phoneHomeScreens, setPhoneHomeScreensState] = React.useState(
+      () => {
+        const raw = getSettings().phoneHomeScreens;
+        return raw && raw.length ? normalizePhoneHomeScreens(raw) : defaultPhoneHomeScreens();
+      }
+    );
+    const setPhoneHomeScreens = (screens) => {
+      const next = normalizePhoneHomeScreens(screens);
+      setPhoneHomeScreensState(next);
+      patchSettings({ phoneHomeScreens: next });
+    };
+    const phoneHomeScreen = viewportProfile === "phone" ? activePhoneHomeScreen(phoneHomeScreens, phoneHomePage) : null;
     const [setupWizardOpen, setSetupWizardOpen] = React.useState(
       () => !getSettings().setupWizardDone
     );
@@ -85223,7 +88917,13 @@ ${ESTIMATE_HINT}`,
       if (!root) return;
       root.setAttribute("data-viewport", viewportProfile);
       root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
-    }, [viewportProfile]);
+      root.classList.toggle("ecu-phone-home", viewportProfile === "phone");
+      root.classList.toggle("ecu-phone-layout-edit", !!layoutEdit);
+      return () => {
+        root.classList.remove("ecu-phone-home");
+        root.classList.remove("ecu-phone-layout-edit");
+      };
+    }, [viewportProfile, layoutEdit]);
     const [layoutGuideActive, setLayoutGuideActive] = React.useState(
       () => isLayoutGuideActive()
     );
@@ -85277,6 +88977,7 @@ ${ESTIMATE_HINT}`,
       meterInstances: meters.meterInstances,
       getGraphState: windowActions.graphState,
       viewportProfile,
+      phoneHomeScreen,
       visible,
       opacityFor,
       onMove: (id, pos) => windowActions.moveWindow(id, pos),
@@ -85331,6 +89032,7 @@ ${ESTIMATE_HINT}`,
       meterInstances: meters.meterInstances,
       layoutEdit,
       metersHidden,
+      phoneHomeScreen,
       altHeld,
       snapDragId: windowActions.snapDragId,
       snapPeerId: windowActions.snapPeerId,
@@ -85437,9 +89139,29 @@ ${ESTIMATE_HINT}`,
         onReplayTour: replayTour,
         onResetTour: resetTour,
         onOpenChangelog: openSettingsChangelog,
-        onOpenServerUpdateNotes: () => openServerUpdateNotes("all")
+        onOpenServerUpdateNotes: () => openServerUpdateNotes("all"),
+        hudDensity,
+        setHudDensity
       }) : null,
-      renderCommTogglesPanel(
+      viewportProfile === "phone" ? e(PhoneNavDock, {
+        layoutEdit,
+        toggleLayoutEdit,
+        metersHidden,
+        setMetersHiddenPersist,
+        onAddMeter: () => setMeterAddOpen(true),
+        settingsOpen,
+        toggleSettings: () => setSettingsOpen((v) => !v),
+        visible,
+        setVisible,
+        meterInstances: meters.meterInstances,
+        closedMeters: meters.closedMeters,
+        closeMeterRuntime: meters.closeMeterRuntime,
+        reopenClosedMeter: meters.reopenClosedMeter,
+        phoneHomePage,
+        setPhoneHomePage,
+        phoneHomeScreens,
+        setPhoneHomeScreens
+      }) : renderCommTogglesPanel(
         panelDeps,
         e(
           "div",
