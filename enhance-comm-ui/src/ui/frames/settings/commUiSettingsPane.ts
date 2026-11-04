@@ -2,6 +2,7 @@ import { e, getReact } from "../../../host/react";
 import { confirmAndFactoryResetCommUi } from "../../../lib/factoryReset";
 import { isPhoneViewport } from "../../../lib/perfPrefs";
 import { getSettings, patchSettings } from "../../../lib/settings";
+import { TAMPERMONKEY_QR_CARDS } from "../../../lib/tampermonkeyQr";
 import {
   listGuidedTours,
   type GuidedTourListItem,
@@ -85,7 +86,7 @@ const TAMPERMONKEY_MOBILE_FAQ =
 function installSectionMatches(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return "tampermonkey mobile phone android ios edge firefox safari q406 install".includes(
+  return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan".includes(
     q,
   );
 }
@@ -233,6 +234,42 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
         "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build.",
       ),
     );
+    // QR handoff is for desktop → phone; useless while already on the phone.
+    if (!isPhoneViewport()) {
+      kids.push(
+        e(
+          "p",
+          { key: "tm-qr-help", className: "ecu-settings-help" },
+          "Scan a code with your phone to open Tampermonkey’s official install landing (same destinations as FAQ Q406).",
+        ),
+      );
+      const qrKids: any[] = [];
+      for (let i = 0; i < TAMPERMONKEY_QR_CARDS.length; i++) {
+        const card = TAMPERMONKEY_QR_CARDS[i];
+        qrKids.push(
+          e(
+            "a",
+            {
+              key: card.id,
+              href: card.url,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              className: "ecu-settings-qr-card",
+              title: card.help,
+            },
+            e("span", {
+              className: "ecu-settings-qr-card__img",
+              dangerouslySetInnerHTML: { __html: card.svg },
+            }),
+            e("span", { className: "ecu-settings-qr-card__label" }, card.label),
+            e("span", { className: "ecu-settings-qr-card__help" }, card.help),
+          ),
+        );
+      }
+      kids.push(
+        e("div", { key: "tm-qr", className: "ecu-settings-qr-row" }, qrKids),
+      );
+    }
     kids.push(
       e(
         "p",

@@ -357,6 +357,55 @@ export const SETTINGS_PANEL_CSS = `
   color: #888;
   font-size: 16px;
 }
+.ecu-settings-qr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.ecu-settings-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
+  padding: 10px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid #444;
+  background: #161616;
+  color: #ddd;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.ecu-settings-qr-card:hover {
+  border-color: #6a9;
+  color: #9dd4ec;
+}
+.ecu-settings-qr-card__img {
+  display: block;
+  width: 112px;
+  height: 112px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.ecu-settings-qr-card__img svg {
+  display: block;
+  width: 112px;
+  height: 112px;
+}
+.ecu-settings-qr-card__label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+.ecu-settings-qr-card__help {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  line-height: 1.25;
+}
 .ecu-settings-tag {
   font-size: 12px;
   padding: 2px 7px;
