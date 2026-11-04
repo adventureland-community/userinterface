@@ -1,9 +1,6 @@
 /**
- * Boot + persist world zoom for /hub (stock PIXI `scale`).
- * Wheel over the game canvas nudges zoom. On phone:
- * - Ctrl/Meta/Shift+wheel → DevTools pinch-sim wheel
- * - Shift+drag (single touch) → DevTools Shift+drag pinch (often only 1 touch)
- * - Two-finger pinch → real devices (midpoint over canvas)
+ * Boot + persist stock PIXI `scale` (sprite density), and route wheel/pinch
+ * to camera FOV zoom (`worldFov`) so zooming does not change render scale.
  *
  * Do not re-apply scale while create_map is painting — that races the first
  * tile pass and blacks the canvas. Stock already seeded `scale` from the
@@ -13,15 +10,25 @@
 import { getSettings, patchSettings } from "../lib/settings";
 import { detectViewportProfile } from "../lib/viewport";
 import {
+  WORLD_FOV_STEP,
+  clampWorldFov,
+  readAppliedWorldFov,
+} from "../lib/worldFov";
+import {
   WORLD_ZOOM_DEFAULT,
   WORLD_ZOOM_MIN,
-  WORLD_ZOOM_STEP,
   applyWorldZoom,
   clampWorldZoom,
   healFractionalScaleCookie,
   readHostWorldZoom,
   writeWorldZoomCookie,
 } from "../lib/worldZoom";
+import {
+  installWorldFov,
+  setWorldFov,
+  zoomFovIn,
+  zoomFovOut,
+} from "./worldFov";
 
 let installed = false;
 let appliedOnce = false;
@@ -30,11 +37,11 @@ let pinchInstalled = false;
 let lastWheelApplyMs = 0;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let pinchStartDist = 0;
-let pinchBaseZoom = WORLD_ZOOM_DEFAULT;
+let pinchBaseFov = 1;
 /** DevTools Shift+drag pinch (Chrome often emits only one touch). */
 let shiftPinchActive = false;
 let shiftPinchStartY = 0;
-let shiftPinchBaseZoom = WORLD_ZOOM_DEFAULT;
+let shiftPinchBaseFov = 1;
 
 type ZoomListener = (zoom: number) => void;
 const zoomListeners: ZoomListener[] = [];
@@ -46,9 +53,22 @@ const PINCH_STEP_RATIO = 1.12;
 /** Pixels of Shift+drag (DevTools pinch) per world-zoom step. */
 export const SHIFT_PINCH_PX_PER_STEP = 72;
 
-/** Drag up → positive steps (zoom in); drag down → zoom out. */
+/**
+ * Drag up → zoom in (tighter FOV); drag down → zoom out (wider FOV).
+ * Positive return = zoom-in steps for the caller to subtract from FOV.
+ */
 export function shiftDragZoomSteps(startY: number, currentY: number): number {
   return Math.trunc((startY - currentY) / SHIFT_PINCH_PX_PER_STEP);
+}
+
+/** Map chip — FOV wider (see more). */
+export function zoomWorldOut(): number {
+  return zoomFovOut();
+}
+
+/** Map chip — FOV tighter (see less). */
+export function zoomWorldIn(): number {
+  return zoomFovIn();
 }
 
 function notifyZoomListeners(zoom: number): void {
@@ -130,14 +150,6 @@ export function setWorldZoom(next: number): number {
     notifyZoomListeners(zoom);
   }
   return zoom;
-}
-
-export function zoomWorldIn(): number {
-  return setWorldZoom(readHostWorldZoom() + WORLD_ZOOM_STEP);
-}
-
-export function zoomWorldOut(): number {
-  return setWorldZoom(readHostWorldZoom() - WORLD_ZOOM_STEP);
 }
 
 function rendererView(): Element | null {
@@ -252,20 +264,21 @@ function onWorldWheel(ev: WheelEvent): void {
     return;
   }
 
-  const before = readHostWorldZoom();
+  // Wheel down → wider FOV (out); wheel up → tighter FOV (in).
+  const before = readAppliedWorldFov();
   const next =
     ev.deltaY > 0
-      ? before - WORLD_ZOOM_STEP
+      ? before + WORLD_FOV_STEP
       : ev.deltaY < 0
-        ? before + WORLD_ZOOM_STEP
+        ? before - WORLD_FOV_STEP
         : before;
-  if (clampWorldZoom(next) === before) {
+  if (clampWorldFov(next) === before) {
     return;
   }
 
   lastWheelApplyMs = now;
   ev.preventDefault();
-  setWorldZoom(next);
+  setWorldFov(next);
 }
 
 function touchDistance(a: Touch, b: Touch): number {
@@ -339,7 +352,7 @@ function onPinchStart(ev: TouchEvent): void {
     shiftPinchActive = false;
     if (!pinchOverCanvas(ev)) return;
     pinchStartDist = touchDistance(ev.touches[0], ev.touches[1]);
-    pinchBaseZoom = readHostWorldZoom();
+    pinchBaseFov = readAppliedWorldFov();
     return;
   }
   // Chrome DevTools: Shift+drag emits a single touch with shiftKey, not two.
@@ -353,7 +366,7 @@ function onPinchStart(ev: TouchEvent): void {
     pinchStartDist = 0;
     shiftPinchActive = true;
     shiftPinchStartY = t.clientY;
-    shiftPinchBaseZoom = readHostWorldZoom();
+    shiftPinchBaseFov = readAppliedWorldFov();
   }
 }
 
@@ -366,12 +379,11 @@ function onPinchMove(ev: TouchEvent): void {
       ev.preventDefault();
       return;
     }
-    const next = clampWorldZoom(
-      shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP,
-    );
+    // steps>0 = drag up = zoom in = lower FOV
+    const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
     ev.preventDefault();
-    if (next !== readHostWorldZoom()) setWorldZoom(next);
-    shiftPinchBaseZoom = next;
+    if (next !== readAppliedWorldFov()) setWorldFov(next);
+    shiftPinchBaseFov = next;
     shiftPinchStartY = t.clientY;
     return;
   }
@@ -382,18 +394,18 @@ function onPinchMove(ev: TouchEvent): void {
   if (dist <= 0) return;
   const ratio = dist / pinchStartDist;
   let step = 0;
+  // Fingers apart → wider FOV; pinch together → tighter.
   if (ratio >= PINCH_STEP_RATIO) step = 1;
   else if (ratio <= 1 / PINCH_STEP_RATIO) step = -1;
   if (step === 0) return;
-  const next = clampWorldZoom(pinchBaseZoom + step * WORLD_ZOOM_STEP);
-  if (next === readHostWorldZoom()) {
+  const next = clampWorldFov(pinchBaseFov + step * WORLD_FOV_STEP);
+  if (next === readAppliedWorldFov()) {
     ev.preventDefault();
     return;
   }
   ev.preventDefault();
-  setWorldZoom(next);
-  // Re-anchor so further pinch can step again within the same gesture.
-  pinchBaseZoom = next;
+  setWorldFov(next);
+  pinchBaseFov = next;
   pinchStartDist = dist;
 }
 
@@ -417,7 +429,7 @@ function onShiftPointerDown(ev: PointerEvent): void {
   if (!pointAllowsMapZoom(ev.target, ev.clientX, ev.clientY)) return;
   shiftPinchActive = true;
   shiftPinchStartY = ev.clientY;
-  shiftPinchBaseZoom = readHostWorldZoom();
+  shiftPinchBaseFov = readAppliedWorldFov();
 }
 
 function onShiftPointerMove(ev: PointerEvent): void {
@@ -428,10 +440,10 @@ function onShiftPointerMove(ev: PointerEvent): void {
     ev.preventDefault();
     return;
   }
-  const next = clampWorldZoom(shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP);
+  const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
   ev.preventDefault();
-  if (next !== readHostWorldZoom()) setWorldZoom(next);
-  shiftPinchBaseZoom = next;
+  if (next !== readAppliedWorldFov()) setWorldFov(next);
+  shiftPinchBaseFov = next;
   shiftPinchStartY = ev.clientY;
 }
 
@@ -492,6 +504,7 @@ export function installWorldZoom(): void {
   installed = true;
   installWheelZoom();
   installPinchZoom();
+  installWorldFov();
 
   // Heal cookie ASAP so the *next* refresh is safe even if game_loaded is late.
   const saved = getSettings().worldZoom;

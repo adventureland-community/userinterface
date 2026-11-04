@@ -38,6 +38,7 @@ import {
   normalizeMinimapBgMode,
   type MinimapBgMode,
 } from "./minimapPrefs";
+import { clampWorldFov } from "./worldFov";
 import { clampWorldZoom } from "./worldZoom";
 import {
   legacyShowBigIconHidden,
@@ -229,10 +230,15 @@ export type CommUiSettings = {
   /** World half-span (shorter canvas axis), clamped — sticky after snaps / wheel. */
   minimapZoom?: number;
   /**
-   * PIXI world zoom (`scale` on /hub). Lower = more map visible.
+   * PIXI sprite `scale` on /hub (cookie). Separate from camera FOV.
    * Also mirrored to the stock `scale` cookie for full reloads.
    */
   worldZoom?: number;
+  /**
+   * Camera FOV multiplier (logical canvas / window). 1 = stock;
+   * higher = see more map without changing sprite `scale`.
+   */
+  worldFov?: number;
   /** Minimap shell + canvas grid opacity preset. */
   minimapBg: MinimapBgMode;
   /** Ability timeline geometry + chrome (legacy orient/display scalars migrate in). */
@@ -669,6 +675,10 @@ function migrate(parsed: any): CommUiSettings {
       typeof parsed.worldZoom === "number"
         ? clampWorldZoom(parsed.worldZoom)
         : undefined,
+    worldFov:
+      typeof parsed.worldFov === "number"
+        ? clampWorldFov(parsed.worldFov)
+        : undefined,
     minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
     bagSort: normalizeBagSortPrefs(parsed.bagSort),
   };
@@ -904,6 +914,9 @@ export function patchSettings(
   }
   if (typeof partial.worldZoom === "number") {
     next.worldZoom = clampWorldZoom(partial.worldZoom);
+  }
+  if (typeof partial.worldFov === "number") {
+    next.worldFov = clampWorldFov(partial.worldFov);
   }
   if (partial.minimapBg != null) {
     next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);

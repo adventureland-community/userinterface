@@ -1084,16 +1084,16 @@ var EnhanceCommUI = (() => {
 
   // src/sockets/hub.ts
   function createChannel() {
-    const listeners16 = [];
+    const listeners17 = [];
     return {
       emit: (ev) => {
-        for (let i = 0; i < listeners16.length; i++) listeners16[i](ev);
+        for (let i = 0; i < listeners17.length; i++) listeners17[i](ev);
       },
       subscribe: (listener) => {
-        listeners16.push(listener);
+        listeners17.push(listener);
         return () => {
-          const idx = listeners16.indexOf(listener);
-          if (idx >= 0) listeners16.splice(idx, 1);
+          const idx = listeners17.indexOf(listener);
+          if (idx >= 0) listeners17.splice(idx, 1);
         };
       }
     };
@@ -9194,6 +9194,11 @@ ${fightHoverTip(src)}`
           label: "Touch item actions",
           detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
           kind: "feature"
+        },
+        {
+          label: "Camera FOV zoom",
+          detail: "Wheel / pinch / Map out\xB7in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put \u2014 desktop and phone.",
+          kind: "feature"
         }
       ],
       features: [
@@ -11537,11 +11542,79 @@ ${fightHoverTip(src)}`
     return MODES[(i + 1) % MODES.length];
   }
 
+  // src/lib/worldFov.ts
+  var WORLD_FOV_MIN = 0.5;
+  var WORLD_FOV_MAX = 2.5;
+  var WORLD_FOV_DEFAULT = 1;
+  var WORLD_FOV_STEP = 0.25;
+  var appliedFov = WORLD_FOV_DEFAULT;
+  function clampWorldFov(n) {
+    if (!Number.isFinite(n)) return WORLD_FOV_DEFAULT;
+    const stepped = Math.round(n / WORLD_FOV_STEP) * WORLD_FOV_STEP;
+    return Math.max(
+      WORLD_FOV_MIN,
+      Math.min(WORLD_FOV_MAX, Math.round(stepped * 100) / 100)
+    );
+  }
+  function readAppliedWorldFov() {
+    return appliedFov;
+  }
+  function readWindowCssSize() {
+    const w = typeof window !== "undefined" && typeof window.innerWidth === "number" && window.innerWidth > 0 ? Math.round(window.innerWidth) : 1280;
+    const h = typeof window !== "undefined" && typeof window.innerHeight === "number" && window.innerHeight > 0 ? Math.round(window.innerHeight) : 720;
+    return { w: Math.max(1, w), h: Math.max(1, h) };
+  }
+  function logicalSizeForFov(cssW, cssH, fov) {
+    const f = clampWorldFov(fov);
+    return {
+      w: Math.max(1, Math.round(cssW * f)),
+      h: Math.max(1, Math.round(cssH * f))
+    };
+  }
+  function fitRendererView(cssW, cssH) {
+    const renderer = window.renderer;
+    const view = renderer && renderer.view;
+    if (!view || !view.style) return;
+    view.style.width = cssW + "px";
+    view.style.height = cssH + "px";
+    view.style.maxWidth = "100%";
+    view.style.maxHeight = "100%";
+    view.style.display = "block";
+  }
+  function applyWorldFov(next) {
+    const fov = clampWorldFov(next);
+    const { w: cssW, h: cssH } = readWindowCssSize();
+    const logical = logicalSizeForFov(cssW, cssH, fov);
+    const host2 = window;
+    const changed = appliedFov !== fov || host2.width !== logical.w || host2.height !== logical.h;
+    appliedFov = fov;
+    host2.width = logical.w;
+    host2.height = logical.h;
+    if (host2.renderer && typeof host2.renderer.resize === "function") {
+      host2.renderer.resize(logical.w, logical.h);
+    }
+    if (changed && host2.map) {
+      host2.map.last_max_y = void 0;
+    }
+    fitRendererView(cssW, cssH);
+    if (typeof host2.position_map === "function") {
+      try {
+        host2.position_map();
+      } catch (e2) {
+      }
+    }
+    return fov;
+  }
+  function formatWorldFov(fov) {
+    const v = clampWorldFov(fov);
+    if (Number.isInteger(v)) return String(v);
+    return String(Math.round(v * 100) / 100);
+  }
+
   // src/lib/worldZoom.ts
   var WORLD_ZOOM_MIN = 1;
   var WORLD_ZOOM_MAX = 3;
   var WORLD_ZOOM_DEFAULT = 2;
-  var WORLD_ZOOM_STEP = 1;
   function clampWorldZoom(n) {
     if (!Number.isFinite(n)) return WORLD_ZOOM_DEFAULT;
     return Math.max(WORLD_ZOOM_MIN, Math.min(WORLD_ZOOM_MAX, Math.round(n)));
@@ -12414,6 +12487,7 @@ ${fightHoverTip(src)}`
         typeof parsed.minimapZoom === "number" ? parsed.minimapZoom : MINIMAP_ZOOM_DEFAULT
       ),
       worldZoom: typeof parsed.worldZoom === "number" ? clampWorldZoom(parsed.worldZoom) : void 0,
+      worldFov: typeof parsed.worldFov === "number" ? clampWorldFov(parsed.worldFov) : void 0,
       minimapBg: normalizeMinimapBgMode(parsed.minimapBg),
       bagSort: normalizeBagSortPrefs(parsed.bagSort)
     };
@@ -12603,6 +12677,9 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.worldZoom === "number") {
       next.worldZoom = clampWorldZoom(partial.worldZoom);
+    }
+    if (typeof partial.worldFov === "number") {
+      next.worldFov = clampWorldFov(partial.worldFov);
     }
     if (partial.minimapBg != null) {
       next.minimapBg = normalizeMinimapBgMode(partial.minimapBg);
@@ -29669,7 +29746,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T10:39:13.311Z" : "unknown";
+    const builtAt = true ? "2026-11-04T11:09:32.904Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -34759,21 +34836,108 @@ button.comm-mail__stack-u {
     };
   }
 
-  // src/host/worldZoom.ts
+  // src/host/worldFov.ts
   var installed4 = false;
   var appliedOnce = false;
+  var persistTimer4 = null;
+  var resizeHooked = false;
+  var listeners14 = [];
+  var PERSIST_DEBOUNCE_MS4 = 200;
+  function notify8(fov) {
+    for (let i = 0; i < listeners14.length; i++) listeners14[i](fov);
+  }
+  function subscribeWorldFov(listener) {
+    listeners14.push(listener);
+    return () => {
+      const idx = listeners14.indexOf(listener);
+      if (idx >= 0) listeners14.splice(idx, 1);
+    };
+  }
+  function persistFov(fov) {
+    if (persistTimer4 != null) clearTimeout(persistTimer4);
+    persistTimer4 = setTimeout(() => {
+      persistTimer4 = null;
+      patchSettings({ worldFov: fov });
+    }, PERSIST_DEBOUNCE_MS4);
+  }
+  function setWorldFov(next) {
+    const before = readAppliedWorldFov();
+    const fov = applyWorldFov(next);
+    if (fov !== before) {
+      persistFov(fov);
+      notify8(fov);
+    } else {
+      applyWorldFov(fov);
+    }
+    return fov;
+  }
+  function zoomFovOut() {
+    return setWorldFov(readAppliedWorldFov() + WORLD_FOV_STEP);
+  }
+  function zoomFovIn() {
+    return setWorldFov(readAppliedWorldFov() - WORLD_FOV_STEP);
+  }
+  function preferredBootFov() {
+    const saved = getSettings().worldFov;
+    if (typeof saved === "number") return clampWorldFov(saved);
+    return detectViewportProfile() === "phone" ? 1.5 : WORLD_FOV_DEFAULT;
+  }
+  function gameLoaded() {
+    return !!window.game_loaded;
+  }
+  function tryApplySaved() {
+    const map = window.map;
+    const renderer = window.renderer;
+    if (!map || !renderer || !gameLoaded()) return false;
+    const preferred = preferredBootFov();
+    applyWorldFov(preferred);
+    appliedOnce = true;
+    notify8(preferred);
+    return true;
+  }
+  function installResizeHook() {
+    if (resizeHooked) return;
+    resizeHooked = true;
+    const w = window;
+    if (typeof w.__ecuOnResize === "function") return;
+    const prev = w.on_resize;
+    const hooked = function(...args) {
+      if (typeof prev === "function") {
+        prev.apply(this, args);
+      }
+      applyWorldFov(readAppliedWorldFov());
+    };
+    w.__ecuOnResize = hooked;
+    w.on_resize = hooked;
+  }
+  function installWorldFov() {
+    if (installed4) return;
+    installed4 = true;
+    installResizeHook();
+    if (tryApplySaved()) return;
+    const started2 = Date.now();
+    const poll = window.setInterval(() => {
+      if (tryApplySaved() || Date.now() - started2 > 6e4) {
+        window.clearInterval(poll);
+      }
+    }, 250);
+  }
+
+  // src/host/worldZoom.ts
+  var installed5 = false;
+  var appliedOnce2 = false;
   var wheelInstalled = false;
   var pinchInstalled = false;
   var lastWheelApplyMs = 0;
-  var persistTimer4 = null;
+  var persistTimer5 = null;
   var pinchStartDist = 0;
-  var pinchBaseZoom = WORLD_ZOOM_DEFAULT;
+  var pinchBaseFov = 1;
   var shiftPinchActive = false;
   var shiftPinchStartY = 0;
-  var shiftPinchBaseZoom = WORLD_ZOOM_DEFAULT;
+  var shiftPinchBaseFov = 1;
   var zoomListeners = [];
   var WHEEL_MIN_MS = 80;
-  var PERSIST_DEBOUNCE_MS4 = 200;
+  var PERSIST_DEBOUNCE_MS5 = 200;
   var PINCH_STEP_RATIO = 1.12;
   var SHIFT_PINCH_PX_PER_STEP = 72;
   function shiftDragZoomSteps(startY, currentY) {
@@ -34789,12 +34953,12 @@ button.comm-mail__stack-u {
       if (idx >= 0) zoomListeners.splice(idx, 1);
     };
   }
-  function gameLoaded() {
+  function gameLoaded2() {
     return !!window.game_loaded;
   }
-  function tryApplySaved() {
+  function tryApplySaved2() {
     const map = window.map;
-    if (!map || !gameLoaded()) return false;
+    if (!map || !gameLoaded2()) return false;
     const savedRaw = getSettings().worldZoom;
     const phoneDefault = detectViewportProfile() === "phone" ? WORLD_ZOOM_MIN : WORLD_ZOOM_DEFAULT;
     const preferred = typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : phoneDefault;
@@ -34811,41 +34975,26 @@ button.comm-mail__stack-u {
           writeWorldZoomCookie(preferred);
         }
       }
-      appliedOnce = true;
+      appliedOnce2 = true;
       return true;
     }
     if (readHostWorldZoom() === preferred) {
       writeWorldZoomCookie(preferred);
-      appliedOnce = true;
+      appliedOnce2 = true;
       return true;
     }
     applyWorldZoom(preferred);
     writeWorldZoomCookie(preferred);
-    appliedOnce = true;
+    appliedOnce2 = true;
     return true;
   }
   function persistZoom(zoom) {
     writeWorldZoomCookie(zoom);
-    if (persistTimer4 != null) clearTimeout(persistTimer4);
-    persistTimer4 = setTimeout(() => {
-      persistTimer4 = null;
+    if (persistTimer5 != null) clearTimeout(persistTimer5);
+    persistTimer5 = setTimeout(() => {
+      persistTimer5 = null;
       patchSettings({ worldZoom: zoom });
-    }, PERSIST_DEBOUNCE_MS4);
-  }
-  function setWorldZoom(next) {
-    const before = readHostWorldZoom();
-    const zoom = applyWorldZoom(next);
-    if (zoom !== before) {
-      persistZoom(zoom);
-      notifyZoomListeners(zoom);
-    }
-    return zoom;
-  }
-  function zoomWorldIn() {
-    return setWorldZoom(readHostWorldZoom() + WORLD_ZOOM_STEP);
-  }
-  function zoomWorldOut() {
-    return setWorldZoom(readHostWorldZoom() - WORLD_ZOOM_STEP);
+    }, PERSIST_DEBOUNCE_MS5);
   }
   function rendererView() {
     const renderer = window.renderer;
@@ -34907,14 +35056,14 @@ button.comm-mail__stack-u {
       ev.preventDefault();
       return;
     }
-    const before = readHostWorldZoom();
-    const next = ev.deltaY > 0 ? before - WORLD_ZOOM_STEP : ev.deltaY < 0 ? before + WORLD_ZOOM_STEP : before;
-    if (clampWorldZoom(next) === before) {
+    const before = readAppliedWorldFov();
+    const next = ev.deltaY > 0 ? before + WORLD_FOV_STEP : ev.deltaY < 0 ? before - WORLD_FOV_STEP : before;
+    if (clampWorldFov(next) === before) {
       return;
     }
     lastWheelApplyMs = now;
     ev.preventDefault();
-    setWorldZoom(next);
+    setWorldFov(next);
   }
   function touchDistance(a, b) {
     const dx = a.clientX - b.clientX;
@@ -34961,7 +35110,7 @@ button.comm-mail__stack-u {
       shiftPinchActive = false;
       if (!pinchOverCanvas(ev)) return;
       pinchStartDist = touchDistance(ev.touches[0], ev.touches[1]);
-      pinchBaseZoom = readHostWorldZoom();
+      pinchBaseFov = readAppliedWorldFov();
       return;
     }
     if (ev.touches.length === 1 && ev.shiftKey && detectViewportProfile() === "phone") {
@@ -34970,7 +35119,7 @@ button.comm-mail__stack-u {
       pinchStartDist = 0;
       shiftPinchActive = true;
       shiftPinchStartY = t.clientY;
-      shiftPinchBaseZoom = readHostWorldZoom();
+      shiftPinchBaseFov = readAppliedWorldFov();
     }
   }
   function onPinchMove(ev) {
@@ -34981,12 +35130,10 @@ button.comm-mail__stack-u {
         ev.preventDefault();
         return;
       }
-      const next2 = clampWorldZoom(
-        shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP
-      );
+      const next2 = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
       ev.preventDefault();
-      if (next2 !== readHostWorldZoom()) setWorldZoom(next2);
-      shiftPinchBaseZoom = next2;
+      if (next2 !== readAppliedWorldFov()) setWorldFov(next2);
+      shiftPinchBaseFov = next2;
       shiftPinchStartY = t.clientY;
       return;
     }
@@ -34999,14 +35146,14 @@ button.comm-mail__stack-u {
     if (ratio >= PINCH_STEP_RATIO) step = 1;
     else if (ratio <= 1 / PINCH_STEP_RATIO) step = -1;
     if (step === 0) return;
-    const next = clampWorldZoom(pinchBaseZoom + step * WORLD_ZOOM_STEP);
-    if (next === readHostWorldZoom()) {
+    const next = clampWorldFov(pinchBaseFov + step * WORLD_FOV_STEP);
+    if (next === readAppliedWorldFov()) {
       ev.preventDefault();
       return;
     }
     ev.preventDefault();
-    setWorldZoom(next);
-    pinchBaseZoom = next;
+    setWorldFov(next);
+    pinchBaseFov = next;
     pinchStartDist = dist;
   }
   function onPinchEnd(ev) {
@@ -35024,7 +35171,7 @@ button.comm-mail__stack-u {
     if (!pointAllowsMapZoom(ev.target, ev.clientX, ev.clientY)) return;
     shiftPinchActive = true;
     shiftPinchStartY = ev.clientY;
-    shiftPinchBaseZoom = readHostWorldZoom();
+    shiftPinchBaseFov = readAppliedWorldFov();
   }
   function onShiftPointerMove(ev) {
     if (!shiftPinchActive || !ev.shiftKey) return;
@@ -35034,10 +35181,10 @@ button.comm-mail__stack-u {
       ev.preventDefault();
       return;
     }
-    const next = clampWorldZoom(shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP);
+    const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
     ev.preventDefault();
-    if (next !== readHostWorldZoom()) setWorldZoom(next);
-    shiftPinchBaseZoom = next;
+    if (next !== readAppliedWorldFov()) setWorldFov(next);
+    shiftPinchBaseFov = next;
     shiftPinchStartY = ev.clientY;
   }
   function onShiftPointerUp() {
@@ -35088,18 +35235,19 @@ button.comm-mail__stack-u {
     });
   }
   function installWorldZoom() {
-    if (installed4) return;
-    installed4 = true;
+    if (installed5) return;
+    installed5 = true;
     installWheelZoom();
     installPinchZoom();
+    installWorldFov();
     const saved = getSettings().worldZoom;
     healFractionalScaleCookie(
       typeof saved === "number" ? saved : WORLD_ZOOM_DEFAULT
     );
-    if (tryApplySaved()) return;
+    if (tryApplySaved2()) return;
     const started2 = Date.now();
     const poll = window.setInterval(() => {
-      if (tryApplySaved() || Date.now() - started2 > 6e4) {
+      if (tryApplySaved2() || Date.now() - started2 > 6e4) {
         window.clearInterval(poll);
       }
     }, 250);
@@ -35736,7 +35884,7 @@ button.comm-mail__stack-u {
     monster: { moveDest: true, aggroTarget: true, attackTarget: false },
     player: { moveDest: true, aggroTarget: false, attackTarget: true }
   };
-  var listeners14 = [];
+  var listeners15 = [];
   function parseBoolMap(raw) {
     if (!raw) return {};
     try {
@@ -35791,14 +35939,14 @@ button.comm-mail__stack-u {
     }
   }
   function subscribeVizSettings(listener) {
-    listeners14.push(listener);
+    listeners15.push(listener);
     return () => {
-      const idx = listeners14.indexOf(listener);
-      if (idx >= 0) listeners14.splice(idx, 1);
+      const idx = listeners15.indexOf(listener);
+      if (idx >= 0) listeners15.splice(idx, 1);
     };
   }
   function notifyVizListeners() {
-    for (let i = 0; i < listeners14.length; i++) listeners14[i]();
+    for (let i = 0; i < listeners15.length; i++) listeners15[i]();
   }
   function notifyVizSettingsChanged() {
     notifyVizListeners();
@@ -36867,6 +37015,7 @@ button.comm-mail__stack-u {
   var handle = null;
   var unsubSettings = null;
   var unsubZoom = null;
+  var unsubFov = null;
   var selectedId;
   function setWorldOverlaySelectedId(id) {
     selectedId = id;
@@ -36899,6 +37048,7 @@ button.comm-mail__stack-u {
     if (getSettings().worldOverlayEnabled === false) return;
     unsubSettings = subscribeVizSettings(() => tick());
     unsubZoom = subscribeWorldZoom(() => tick());
+    unsubFov = subscribeWorldFov(() => tick());
     tick();
     timerId = window.setInterval(tick, overlayTickMs());
   }
@@ -36914,6 +37064,10 @@ button.comm-mail__stack-u {
     if (unsubZoom) {
       unsubZoom();
       unsubZoom = null;
+    }
+    if (unsubFov) {
+      unsubFov();
+      unsubFov = null;
     }
     destroyOverlayHandle(handle);
     handle = null;
@@ -37488,10 +37642,10 @@ button.comm-mail__stack-u {
 
   // src/lib/layoutGuide.ts
   var depth = 0;
-  var listeners15 = [];
-  function notify8() {
-    for (let i = 0; i < listeners15.length; i++) {
-      listeners15[i]();
+  var listeners16 = [];
+  function notify9() {
+    for (let i = 0; i < listeners16.length; i++) {
+      listeners16[i]();
     }
   }
   function isLayoutGuideActive() {
@@ -37499,7 +37653,7 @@ button.comm-mail__stack-u {
   }
   function beginLayoutGuide() {
     depth += 1;
-    if (depth === 1) notify8();
+    if (depth === 1) notify9();
   }
   function endLayoutGuide() {
     if (depth <= 0) {
@@ -37507,18 +37661,18 @@ button.comm-mail__stack-u {
       return;
     }
     depth -= 1;
-    if (depth === 0) notify8();
+    if (depth === 0) notify9();
   }
   function resetLayoutGuide() {
     if (depth === 0) return;
     depth = 0;
-    notify8();
+    notify9();
   }
   function subscribeLayoutGuide(listener) {
-    listeners15.push(listener);
+    listeners16.push(listener);
     return () => {
-      const idx = listeners15.indexOf(listener);
-      if (idx >= 0) listeners15.splice(idx, 1);
+      const idx = listeners16.indexOf(listener);
+      if (idx >= 0) listeners16.splice(idx, 1);
     };
   }
 
@@ -52094,7 +52248,7 @@ ${parts.map(cssSlice).join("\n")}
     const dock = phoneDockHeightPx() || PHONE_DOCK_FALLBACK_PX;
     return Math.max(0, viewportH - dock - PHONE_EDGE_BOTTOM_BAND_PX);
   }
-  var installed5 = false;
+  var installed6 = false;
   var handlersRef = null;
   var stroke = null;
   function fire(edge) {
@@ -52197,8 +52351,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneEdgeGestures(handlers) {
     handlersRef = handlers;
-    if (!installed5 && typeof window !== "undefined") {
-      installed5 = true;
+    if (!installed6 && typeof window !== "undefined") {
+      installed6 = true;
       window.addEventListener("touchstart", onTouchStart, {
         passive: true,
         capture: true
@@ -52223,8 +52377,8 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneEdgeGestures() {
     handlersRef = null;
     stroke = null;
-    if (!installed5 || typeof window === "undefined") return;
-    installed5 = false;
+    if (!installed6 || typeof window === "undefined") return;
+    installed6 = false;
     window.removeEventListener("touchstart", onTouchStart, true);
     window.removeEventListener("touchmove", onTouchMove, true);
     window.removeEventListener("touchend", onTouchEnd, true);
@@ -52279,7 +52433,7 @@ ${parts.map(cssSlice).join("\n")}
     const chromeH = bottom ? Math.round(bottom.getBoundingClientRect().height) : 0;
     return Math.max(0, viewportH - dock - Math.max(chromeH, 0) - 8);
   }
-  var installed6 = false;
+  var installed7 = false;
   var handlersRef2 = null;
   var stroke2 = null;
   function onTouchStart2(ev) {
@@ -52342,8 +52496,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneHomePageGestures(handlers) {
     handlersRef2 = handlers;
-    if (!installed6 && typeof window !== "undefined") {
-      installed6 = true;
+    if (!installed7 && typeof window !== "undefined") {
+      installed7 = true;
       window.addEventListener("touchstart", onTouchStart2, {
         passive: true,
         capture: true
@@ -52364,8 +52518,8 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneHomePageGestures() {
     handlersRef2 = null;
     stroke2 = null;
-    if (!installed6 || typeof window === "undefined") return;
-    installed6 = false;
+    if (!installed7 || typeof window === "undefined") return;
+    installed7 = false;
     window.removeEventListener("touchstart", onTouchStart2, true);
     window.removeEventListener("touchend", onTouchEnd2, true);
     window.removeEventListener("touchcancel", onTouchEnd2, true);
@@ -60804,7 +60958,7 @@ ${parts.map(cssSlice).join("\n")}
   function MapInfo(props) {
     const React = getReact();
     const mapNameData = getMapData(props.entities);
-    const [zoom, setZoom] = React.useState(() => readHostWorldZoom());
+    const [fov, setFov] = React.useState(() => readAppliedWorldFov());
     const touchish = isTouchishProfile(detectViewportProfile());
     const zoomBtnStyle = touchish ? {
       ...zoomLinkStyle,
@@ -60815,8 +60969,8 @@ ${parts.map(cssSlice).join("\n")}
       textDecoration: "none"
     } : zoomLinkStyle;
     React.useEffect(() => {
-      setZoom(readHostWorldZoom());
-      return subscribeWorldZoom((next) => setZoom(next));
+      setFov(readAppliedWorldFov());
+      return subscribeWorldFov((next) => setFov(next));
     }, []);
     let instanceIdElement = void 0;
     if (mapNameData && mapNameData.map && mapNameData.map !== mapNameData.in) {
@@ -60887,7 +61041,7 @@ ${parts.map(cssSlice).join("\n")}
               color: "rgba(255,255,255,0.55)",
               fontSize: TYPE.chromeMeta
             },
-            title: touchish ? "World zoom \u2014 tap out/in or pinch the map. Outside the vision window the server does not send entities." : "World zoom (wheel on the map also works). Outside the vision window the server does not send entities."
+            title: touchish ? "Camera FOV \u2014 tap out/in or pinch the map. Does not change sprite scale. Outside the vision window the server does not send entities." : "Camera FOV (wheel on the map). Does not change sprite scale. Outside the vision window the server does not send entities."
           },
           e(
             "button",
@@ -60895,12 +61049,12 @@ ${parts.map(cssSlice).join("\n")}
               type: "button",
               style: {
                 ...zoomBtnStyle,
-                opacity: zoom <= WORLD_ZOOM_MIN ? 0.35 : 1,
-                cursor: zoom <= WORLD_ZOOM_MIN ? "default" : "pointer"
+                opacity: fov >= WORLD_FOV_MAX ? 0.35 : 1,
+                cursor: fov >= WORLD_FOV_MAX ? "default" : "pointer"
               },
-              disabled: zoom <= WORLD_ZOOM_MIN,
-              title: "Zoom out",
-              onClick: () => setZoom(zoomWorldOut())
+              disabled: fov >= WORLD_FOV_MAX,
+              title: "Widen FOV (see more)",
+              onClick: () => setFov(zoomFovOut())
             },
             "out"
           ),
@@ -60913,14 +61067,14 @@ ${parts.map(cssSlice).join("\n")}
                 color: "#cfe8f2",
                 fontVariantNumeric: "tabular-nums",
                 textDecoration: "none",
-                opacity: zoom === WORLD_ZOOM_DEFAULT ? 0.55 : 1,
-                cursor: zoom === WORLD_ZOOM_DEFAULT ? "default" : "pointer"
+                opacity: fov === WORLD_FOV_DEFAULT ? 0.55 : 1,
+                cursor: fov === WORLD_FOV_DEFAULT ? "default" : "pointer"
               },
-              disabled: zoom === WORLD_ZOOM_DEFAULT,
-              title: "Reset zoom to default",
-              onClick: () => setZoom(setWorldZoom(WORLD_ZOOM_DEFAULT))
+              disabled: fov === WORLD_FOV_DEFAULT,
+              title: "Reset FOV to 1\xD7",
+              onClick: () => setFov(setWorldFov(WORLD_FOV_DEFAULT))
             },
-            `\xD7${zoom}`
+            formatWorldFov(fov) + "\xD7"
           ),
           e(
             "button",
@@ -60928,12 +61082,12 @@ ${parts.map(cssSlice).join("\n")}
               type: "button",
               style: {
                 ...zoomBtnStyle,
-                opacity: zoom >= WORLD_ZOOM_MAX ? 0.35 : 1,
-                cursor: zoom >= WORLD_ZOOM_MAX ? "default" : "pointer"
+                opacity: fov <= WORLD_FOV_MIN ? 0.35 : 1,
+                cursor: fov <= WORLD_FOV_MIN ? "default" : "pointer"
               },
-              disabled: zoom >= WORLD_ZOOM_MAX,
-              title: "Zoom in",
-              onClick: () => setZoom(zoomWorldIn())
+              disabled: fov <= WORLD_FOV_MIN,
+              title: "Tighten FOV (see less)",
+              onClick: () => setFov(zoomFovIn())
             },
             "in"
           )

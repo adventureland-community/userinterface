@@ -5,6 +5,7 @@
 
 import { getEntitiesList, getObserving } from "../host/al";
 import type { EntityLike } from "../host/globals";
+import { subscribeWorldFov } from "../host/worldFov";
 import { subscribeWorldZoom } from "../host/worldZoom";
 import { getSettings } from "../lib/settings";
 import { scalePollMs } from "../lib/perfPrefs";
@@ -26,6 +27,7 @@ let timerId: number | null = null;
 let handle: OverlayHandle | null = null;
 let unsubSettings: (() => void) | null = null;
 let unsubZoom: (() => void) | null = null;
+let unsubFov: (() => void) | null = null;
 let selectedId: string | undefined;
 
 export function setWorldOverlaySelectedId(id: string | undefined): void {
@@ -63,6 +65,7 @@ export function startWorldOverlay(): void {
   if (getSettings().worldOverlayEnabled === false) return;
   unsubSettings = subscribeVizSettings(() => tick());
   unsubZoom = subscribeWorldZoom(() => tick());
+  unsubFov = subscribeWorldFov(() => tick());
   tick();
   timerId = window.setInterval(tick, overlayTickMs());
 }
@@ -79,6 +82,10 @@ export function stopWorldOverlay(): void {
   if (unsubZoom) {
     unsubZoom();
     unsubZoom = null;
+  }
+  if (unsubFov) {
+    unsubFov();
+    unsubFov = null;
   }
   destroyOverlayHandle(handle);
   handle = null;

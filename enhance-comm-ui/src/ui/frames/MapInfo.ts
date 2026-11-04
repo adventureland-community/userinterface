@@ -2,17 +2,18 @@ import { getCurrentIn, getCurrentMap, getG, getMapName } from "../../host/al";
 import { e, getReact } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import {
-  setWorldZoom,
-  subscribeWorldZoom,
-  zoomWorldIn,
-  zoomWorldOut,
-} from "../../host/worldZoom";
+  setWorldFov,
+  subscribeWorldFov,
+  zoomFovIn,
+  zoomFovOut,
+} from "../../host/worldFov";
 import {
-  readHostWorldZoom,
-  WORLD_ZOOM_DEFAULT,
-  WORLD_ZOOM_MAX,
-  WORLD_ZOOM_MIN,
-} from "../../lib/worldZoom";
+  WORLD_FOV_DEFAULT,
+  WORLD_FOV_MAX,
+  WORLD_FOV_MIN,
+  formatWorldFov,
+  readAppliedWorldFov,
+} from "../../lib/worldFov";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import {
   detectViewportProfile,
@@ -89,7 +90,7 @@ const zoomLinkStyle: Record<string, any> = {
 export function MapInfo(props: MapInfoProps): any {
   const React = getReact();
   const mapNameData = getMapData(props.entities);
-  const [zoom, setZoom] = React.useState(() => readHostWorldZoom());
+  const [fov, setFov] = React.useState(() => readAppliedWorldFov());
   const touchish = isTouchishProfile(detectViewportProfile());
   const zoomBtnStyle: Record<string, any> = touchish
     ? {
@@ -103,8 +104,8 @@ export function MapInfo(props: MapInfoProps): any {
     : zoomLinkStyle;
 
   React.useEffect(() => {
-    setZoom(readHostWorldZoom());
-    return subscribeWorldZoom((next: number) => setZoom(next));
+    setFov(readAppliedWorldFov());
+    return subscribeWorldFov((next: number) => setFov(next));
   }, []);
 
   let instanceIdElement: any = undefined;
@@ -182,8 +183,8 @@ export function MapInfo(props: MapInfoProps): any {
             fontSize: TYPE.chromeMeta,
           },
           title: touchish
-            ? "World zoom — tap out/in or pinch the map. Outside the vision window the server does not send entities."
-            : "World zoom (wheel on the map also works). Outside the vision window the server does not send entities.",
+            ? "Camera FOV — tap out/in or pinch the map. Does not change sprite scale. Outside the vision window the server does not send entities."
+            : "Camera FOV (wheel on the map). Does not change sprite scale. Outside the vision window the server does not send entities.",
         },
         e(
           "button",
@@ -191,12 +192,12 @@ export function MapInfo(props: MapInfoProps): any {
             type: "button",
             style: {
               ...zoomBtnStyle,
-              opacity: zoom <= WORLD_ZOOM_MIN ? 0.35 : 1,
-              cursor: zoom <= WORLD_ZOOM_MIN ? "default" : "pointer",
+              opacity: fov >= WORLD_FOV_MAX ? 0.35 : 1,
+              cursor: fov >= WORLD_FOV_MAX ? "default" : "pointer",
             },
-            disabled: zoom <= WORLD_ZOOM_MIN,
-            title: "Zoom out",
-            onClick: () => setZoom(zoomWorldOut()),
+            disabled: fov >= WORLD_FOV_MAX,
+            title: "Widen FOV (see more)",
+            onClick: () => setFov(zoomFovOut()),
           },
           "out",
         ),
@@ -209,14 +210,14 @@ export function MapInfo(props: MapInfoProps): any {
               color: "#cfe8f2",
               fontVariantNumeric: "tabular-nums",
               textDecoration: "none",
-              opacity: zoom === WORLD_ZOOM_DEFAULT ? 0.55 : 1,
-              cursor: zoom === WORLD_ZOOM_DEFAULT ? "default" : "pointer",
+              opacity: fov === WORLD_FOV_DEFAULT ? 0.55 : 1,
+              cursor: fov === WORLD_FOV_DEFAULT ? "default" : "pointer",
             },
-            disabled: zoom === WORLD_ZOOM_DEFAULT,
-            title: "Reset zoom to default",
-            onClick: () => setZoom(setWorldZoom(WORLD_ZOOM_DEFAULT)),
+            disabled: fov === WORLD_FOV_DEFAULT,
+            title: "Reset FOV to 1×",
+            onClick: () => setFov(setWorldFov(WORLD_FOV_DEFAULT)),
           },
-          `×${zoom}`,
+          formatWorldFov(fov) + "×",
         ),
         e(
           "button",
@@ -224,12 +225,12 @@ export function MapInfo(props: MapInfoProps): any {
             type: "button",
             style: {
               ...zoomBtnStyle,
-              opacity: zoom >= WORLD_ZOOM_MAX ? 0.35 : 1,
-              cursor: zoom >= WORLD_ZOOM_MAX ? "default" : "pointer",
+              opacity: fov <= WORLD_FOV_MIN ? 0.35 : 1,
+              cursor: fov <= WORLD_FOV_MIN ? "default" : "pointer",
             },
-            disabled: zoom >= WORLD_ZOOM_MAX,
-            title: "Zoom in",
-            onClick: () => setZoom(zoomWorldIn()),
+            disabled: fov <= WORLD_FOV_MIN,
+            title: "Tighten FOV (see less)",
+            onClick: () => setFov(zoomFovIn()),
           },
           "in",
         ),

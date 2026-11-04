@@ -148,6 +148,12 @@ export const CHANGELOG: ChangelogEntry[] = [
           "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
         kind: "feature",
       },
+      {
+        label: "Camera FOV zoom",
+        detail:
+          "Wheel / pinch / Map out·in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put — desktop and phone.",
+        kind: "feature",
+      },
     ],
     features: [
       {
