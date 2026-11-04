@@ -21,14 +21,47 @@ import {
   isCacheReady,
   sendDiskFile,
 } from "./overlay-client-cache.mjs";
+import { lanIpv4Addresses, preferredLanIpv4 } from "./lan-ipv4.mjs";
+import {
+  ensureDevConnectHosts,
+  parseDevRequestHost,
+  rewriteDevUserJsBase,
+  rewriteEnhanceUserJsForLanInstall,
+} from "./dev-user-js.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.ECU_DEV_PORT || 3927);
+/** Bind address — default all interfaces so phones on LAN can load the script. */
+const HOST = String(process.env.ECU_DEV_HOST || "0.0.0.0").trim() || "0.0.0.0";
 const ROOT = resolve(__dirname, "..");
 const DIST_JS = resolve(ROOT, "dist/enhance-comm-ui.js");
 const ROOT_JS = resolve(ROOT, "../enhance-comm-ui.js");
 const OVERLAY_JS = resolve(ROOT, "dist/overlay-preview.js");
 const OVERLAY_HTML = resolve(ROOT, "dev/overlay/index.html");
+const DEV_USER_JS = resolve(ROOT, "dev.user.js");
+const PKG_JSON = resolve(ROOT, "package.json");
+
+function packageVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(PKG_JSON, "utf8"));
+    return typeof pkg.version === "string" ? pkg.version : "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function publicBases() {
+  const preferred = preferredLanIpv4();
+  const lan = lanIpv4Addresses();
+  const bases = [`http://127.0.0.1:${PORT}`];
+  // Wi‑Fi / Ethernet first after loopback (skip Tailscale / Hyper-V when possible).
+  if (preferred) bases.push(`http://${preferred}:${PORT}`);
+  for (let i = 0; i < lan.length; i++) {
+    if (lan[i] === preferred) continue;
+    bases.push(`http://${lan[i]}:${PORT}`);
+  }
+  return bases;
+}
 
 function resolveScriptPath() {
   if (existsSync(DIST_JS)) return DIST_JS;
@@ -74,6 +107,55 @@ function sendOverlayHtml(res) {
   res.end(html);
 }
 
+/**
+ * Serve dev.user.js with BASE + @connect pointed at the request Host (LAN IP).
+ */
+function sendDevUserJs(res, reqHost) {
+  if (!existsSync(DEV_USER_JS)) {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Missing dev.user.js\n");
+    return;
+  }
+  const parsed = parseDevRequestHost(reqHost, PORT);
+  const base = `http://${parsed.hostPort}/enhance-comm-ui.js`;
+  let body = readFileSync(DEV_USER_JS, "utf8");
+  body = rewriteDevUserJsBase(body, base);
+  body = ensureDevConnectHosts(body, parsed.hostname);
+  res.writeHead(200, {
+    "Content-Type": "text/javascript; charset=utf-8",
+    "Content-Disposition": 'inline; filename="dev.user.js"',
+    "Cache-Control": "no-store",
+  });
+  res.end(body);
+}
+
+/**
+ * Full userscript install for phones (same path as GitHub raw). Stamps
+ * @updateURL so Tampermonkey can pull watch rebuilds without GM.xhr.
+ */
+function sendEnhanceUserJs(res, reqHost, filePath) {
+  const parsed = parseDevRequestHost(reqHost, PORT);
+  const installUrl = `http://${parsed.hostPort}/enhance-comm-ui.user.js`;
+  const mtimeMs = statSync(filePath).mtimeMs;
+  let body = readFileSync(filePath, "utf8");
+  body = rewriteEnhanceUserJsForLanInstall(
+    body,
+    installUrl,
+    mtimeMs,
+    packageVersion(),
+  );
+  res.writeHead(200, {
+    "Content-Type": "text/javascript; charset=utf-8",
+    "Content-Disposition": 'inline; filename="enhance-comm-ui.user.js"',
+    "Last-Modified": statSync(filePath).mtime.toUTCString(),
+    "X-ECU-Mtime": String(mtimeMs),
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+  res.end(body);
+}
+
 async function sendCachedAl(res, rel) {
   try {
     await ensureOverlayCache();
@@ -97,6 +179,17 @@ async function sendCachedAl(res, rel) {
 async function handleRequest(req, res) {
   const url = new URL(req.url || "/", `http://127.0.0.1:${PORT}`);
   const path = url.pathname;
+  const from = String(req.socket.remoteAddress || "?");
+  if (
+    path === "/dev.user.js" ||
+    path === "/enhance-comm-ui.js" ||
+    path === "/enhance-comm-ui.user.js" ||
+    path === "/dist/enhance-comm-ui.js"
+  ) {
+    console.log(
+      `[ecu-dev] ${req.method || "GET"} ${path} host=${req.headers.host || "?"} from=${from}`,
+    );
+  }
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -111,6 +204,7 @@ async function handleRequest(req, res) {
 
   if (path === "/" || path === "/health") {
     const script = resolveScriptPath();
+    const bases = publicBases();
     res.writeHead(200, {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
@@ -120,14 +214,26 @@ async function handleRequest(req, res) {
         ok: true,
         service: "ecu-dev",
         root: ROOT,
+        host: HOST,
+        port: PORT,
         script: script || null,
         mtimeMs: script ? statSync(script).mtimeMs : null,
-        overlay: `http://127.0.0.1:${PORT}/overlay`,
+        bases,
+        overlay: `${bases[0]}/overlay`,
         overlayPreview: existsSync(OVERLAY_JS) ? OVERLAY_JS : null,
         overlayMtimeMs: fileMtimeMs(OVERLAY_JS),
         overlayCache: cacheStatus(),
+        phoneHint:
+          bases.length > 1
+            ? `On phone: install ${bases[1]}/enhance-comm-ui.user.js (full script; Check for updates after rebuild). Desktop live-reload: ${bases[0]}/dev.user.js`
+            : null,
       }),
     );
+    return;
+  }
+
+  if (path === "/dev.user.js") {
+    sendDevUserJs(res, req.headers.host);
     return;
   }
 
@@ -189,11 +295,18 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (
-    path === "/enhance-comm-ui.js" ||
-    path === "/enhance-comm-ui.user.js" ||
-    path === "/dist/enhance-comm-ui.js"
-  ) {
+  if (path === "/enhance-comm-ui.user.js") {
+    const script = resolveScriptPath();
+    if (!script) {
+      res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Build missing — run npm run build or wait for watch.\n");
+      return;
+    }
+    sendEnhanceUserJs(res, req.headers.host, script);
+    return;
+  }
+
+  if (path === "/enhance-comm-ui.js" || path === "/dist/enhance-comm-ui.js") {
     const script = resolveScriptPath();
     if (!script) {
       res.writeHead(503, { "Content-Type": "text/plain; charset=utf-8" });
@@ -234,10 +347,7 @@ function startServer() {
     if (err && err.code === "EADDRINUSE") {
       const reused = await isReusableServer();
       if (reused) {
-        console.log(
-          `[ecu-dev] port ${PORT} already serving this tree — reusing http://127.0.0.1:${PORT}/enhance-comm-ui.js`,
-        );
-        console.log(`[ecu-dev] overlay http://127.0.0.1:${PORT}/overlay`);
+        logListenUrls("reusing");
         process.exit(0);
         return;
       }
@@ -251,10 +361,10 @@ function startServer() {
     process.exit(1);
   });
 
-  server.listen(PORT, "127.0.0.1", () => {
+  server.listen(PORT, HOST, () => {
     const script = resolveScriptPath();
-    console.log(`[ecu-dev] http://127.0.0.1:${PORT}/enhance-comm-ui.js`);
-    console.log(`[ecu-dev] overlay http://127.0.0.1:${PORT}/overlay`);
+    logListenUrls("listening");
+    console.log(`[ecu-dev] bind ${HOST}:${PORT}`);
     console.log(
       script
         ? `[ecu-dev] serving ${script}`
@@ -278,6 +388,22 @@ function startServer() {
         );
       });
   });
+}
+
+function logListenUrls(kind) {
+  const bases = publicBases();
+  console.log(`[ecu-dev] ${kind} ${bases[0]}/enhance-comm-ui.js`);
+  console.log(`[ecu-dev] overlay ${bases[0]}/overlay`);
+  for (let i = 1; i < bases.length; i++) {
+    console.log(`[ecu-dev] LAN ${bases[i]}/enhance-comm-ui.js`);
+    console.log(`[ecu-dev] phone install ${bases[i]}/enhance-comm-ui.user.js`);
+  }
+  console.log(`[ecu-dev] desktop loader ${bases[0]}/dev.user.js`);
+  if (bases.length < 2 && HOST !== "127.0.0.1") {
+    console.log(
+      `[ecu-dev] no LAN IPv4 found — check Wi‑Fi / ECU_DEV_HOST (now ${HOST})`,
+    );
+  }
 }
 
 /**

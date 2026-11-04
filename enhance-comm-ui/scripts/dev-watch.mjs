@@ -12,6 +12,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const DEBOUNCE_MS = Number(process.env.ECU_WATCH_DEBOUNCE_MS || 1200);
 
+// Watch/dev bundles flag install QR toward LAN `/dev.user.js`.
+if (process.env.ECU_DEV == null || process.env.ECU_DEV === "") {
+  process.env.ECU_DEV = "1";
+}
+
 let timer = null;
 let building = false;
 let pending = false;
