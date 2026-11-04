@@ -5,8 +5,7 @@ import {
   subscribeBagSync,
   subscribeInventory,
 } from "../../host/inventory";
-import { saveSettings, savePanelVisible } from "../../lib/settings";
-import type { PanelVisibleMap } from "../../lib/settings";
+import { saveSettings } from "../../lib/settings";
 
 export type BagBridgeState = {
   bagOpen: boolean;
@@ -17,33 +16,28 @@ export type BagBridgeState = {
 /**
  * Bag open state from the inventory bridge.
  * Preferred open restore is owned by inventory.ts (not snap.now polling).
+ *
+ * `setBagVisible` should be the layout `setVisible("bag", …)` path so lite
+ * phoneHudVisible stays in lockstep with stock inventory (dock "on" state).
  */
 export function useBagBridge(
-  setPanelVisible: (
-    updater: (prev: PanelVisibleMap) => PanelVisibleMap,
-  ) => void,
+  setBagVisible: (visible: boolean) => void,
 ): BagBridgeState {
   const React = getReact();
   const [bagOpen, setBagOpen] = React.useState(() => isInventoryOpen());
   const [bagRefreshing, setBagRefreshing] = React.useState(() =>
     isBagRefreshing(),
   );
+  const setBagVisibleRef = React.useRef(setBagVisible);
+  setBagVisibleRef.current = setBagVisible;
 
   React.useEffect(() => {
     const unsubInv = subscribeInventory((open) => {
       setBagOpen(open);
-      // Don't clobber preferred-open while Refresh closes the bag for reconnect.
-      if (!isBagRefreshing()) {
-        saveSettings({ bagOpenPreferred: open });
-      }
-      if (open) {
-        // Bag chrome button re-opens even if × hid the panel earlier.
-        setPanelVisible((prev: PanelVisibleMap) => {
-          if (prev.bag !== false) return prev;
-          savePanelVisible("bag", true);
-          return { ...prev, bag: true };
-        });
-      }
+      // Don't clobber preferred-open / panel while Refresh closes for reconnect.
+      if (isBagRefreshing()) return;
+      saveSettings({ bagOpenPreferred: open });
+      setBagVisibleRef.current(open);
     });
     const unsubSync = subscribeBagSync(() => {
       setBagRefreshing(isBagRefreshing());
@@ -52,7 +46,7 @@ export function useBagBridge(
       unsubInv();
       unsubSync();
     };
-  }, [setPanelVisible]);
+  }, []);
 
   return { bagOpen, bagRefreshing };
 }

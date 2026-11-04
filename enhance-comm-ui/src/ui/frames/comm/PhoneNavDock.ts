@@ -1,0 +1,455 @@
+/**
+ * Slim phone dock — Chat · Cmd · Mail · Bag · Bank.
+ * Swipe up (including on the bar) opens Apps. Settings lives in the shade cog.
+ * Home screens: horizontal swipe between configurable widget pages + dots.
+ */
+
+import { e, getReact } from "../../../host/react";
+import { openChat } from "../../../host/chat";
+import { openCommander } from "../../../host/commander";
+import {
+  applyPhoneDockChrome,
+  clearPhoneDockChrome,
+  refreshPhoneHudBottomInset,
+} from "../../../lib/phoneChrome";
+import {
+  activePhoneHomeScreen,
+  clampPhoneHomePage,
+  phoneHomeScreenIndices,
+  stepPhoneHomePage,
+  storePhoneHomePage,
+  type PhoneHomeScreen,
+} from "../../../lib/phoneHomePages";
+import type { PanelId } from "../../../lib/layout";
+import type { MeterInstance } from "../../../meters/meterTypes";
+import {
+  installPhoneEdgeGestures,
+  uninstallPhoneEdgeGestures,
+} from "../../chrome/phoneEdgeGestures";
+import {
+  installPhoneHomePageGestures,
+  uninstallPhoneHomePageGestures,
+} from "../../chrome/phoneHomePageGestures";
+import { ensurePhoneNavCss } from "./phoneNavCss";
+import { PhoneShade } from "./PhoneShade";
+import { PhoneWindowsSheet } from "./PhoneWindowsSheet";
+
+const EDGE_HINT_KEY = "ecu-phone-edge-swipe-hint";
+
+export type PhoneNavDockProps = {
+  layoutEdit: boolean;
+  toggleLayoutEdit: () => void;
+  metersHidden: boolean;
+  setMetersHiddenPersist: (hidden: boolean) => void;
+  onAddMeter: () => void;
+  settingsOpen: boolean;
+  toggleSettings: () => void;
+  visible: (id: PanelId) => boolean;
+  setVisible: (id: PanelId, visible: boolean) => void;
+  meterInstances: MeterInstance[];
+  closedMeters: MeterInstance[];
+  closeMeterRuntime: (id: string) => void;
+  reopenClosedMeter: (id: string) => void;
+  phoneHomePage: number;
+  setPhoneHomePage: (page: number) => void;
+  phoneHomeScreens: PhoneHomeScreen[];
+  setPhoneHomeScreens: (screens: PhoneHomeScreen[]) => void;
+};
+
+function dockBtn(
+  key: string,
+  glyph: string,
+  label: string,
+  onClick: () => void,
+  opts?: { on?: boolean; tour?: string },
+): any {
+  return e(
+    "button",
+    {
+      key,
+      type: "button",
+      className: "ecu-phone-dock__btn" + (opts?.on ? " is-on" : ""),
+      "data-ecu-tour": opts?.tour,
+      "aria-pressed": opts?.on ? "true" : "false",
+      onClick: (ev: { stopPropagation?: () => void }) => {
+        if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+        onClick();
+      },
+    },
+    e("span", { className: "ecu-phone-dock__glyph" }, glyph),
+    e("span", null, label),
+  );
+}
+
+export function PhoneNavDock(props: PhoneNavDockProps): any {
+  const React = getReact();
+  ensurePhoneNavCss();
+  const [sheetOpen, setSheetOpen] = React.useState(false);
+  const [shadeOpen, setShadeOpen] = React.useState(false);
+  const barRef = React.useRef(null as HTMLElement | null);
+
+  React.useEffect(() => {
+    const measure = () => {
+      const el = barRef.current;
+      const h = el ? el.offsetHeight : 0;
+      applyPhoneDockChrome(h > 0 ? h : 48);
+      window.requestAnimationFrame(() => refreshPhoneHudBottomInset());
+    };
+    measure();
+    const id = window.requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(id);
+      window.removeEventListener("resize", measure);
+      clearPhoneDockChrome();
+    };
+  }, []);
+
+  const pages = phoneHomeScreenIndices(props.phoneHomeScreens);
+  const activePage = clampPhoneHomePage(props.phoneHomePage, pages);
+
+  React.useEffect(() => {
+    if (activePage !== props.phoneHomePage) {
+      props.setPhoneHomePage(activePage);
+    }
+  }, [activePage, props.phoneHomePage, props.setPhoneHomePage]);
+
+  const chatOn = props.visible("chat");
+  const commandOn = props.visible("command");
+  const mailOn = props.visible("mail");
+  const bagOn = props.visible("bag");
+  const bankOn = props.visible("bank");
+
+  const dismissSheets = () => {
+    if (sheetOpen) setSheetOpen(false);
+    if (shadeOpen) setShadeOpen(false);
+    if (props.settingsOpen) props.toggleSettings();
+  };
+
+  const hidePeerPanels = (
+    keep: "chat" | "command" | "mail" | "bag" | "bank" | "none",
+  ) => {
+    const ids: Array<"chat" | "command" | "mail" | "bag" | "bank"> = [
+      "chat",
+      "command",
+      "mail",
+      "bag",
+      "bank",
+    ];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      if (id !== keep && props.visible(id)) props.setVisible(id, false);
+    }
+  };
+
+  const openApps = () => {
+    if (shadeOpen) setShadeOpen(false);
+    if (props.settingsOpen) props.toggleSettings();
+    hidePeerPanels("none");
+    setSheetOpen(true);
+  };
+
+  const toggleOverlay = (
+    id: "chat" | "command" | "mail" | "bag" | "bank",
+    openFn?: () => void,
+  ) => {
+    dismissSheets();
+    if (props.visible(id)) {
+      props.setVisible(id, false);
+      return;
+    }
+    hidePeerPanels(id);
+    if (openFn) openFn();
+    else props.setVisible(id, true);
+  };
+
+  const toggleChat = () =>
+    toggleOverlay("chat", () => openChat({ toggle: true }));
+  const toggleCmd = () => toggleOverlay("command", () => openCommander());
+  const toggleMail = () => toggleOverlay("mail");
+  const toggleBag = () => toggleOverlay("bag");
+  const toggleBank = () => toggleOverlay("bank");
+
+  const toggleSettings = () => {
+    if (sheetOpen) setSheetOpen(false);
+    if (shadeOpen) setShadeOpen(false);
+    if (!props.settingsOpen) hidePeerPanels("none");
+    props.toggleSettings();
+  };
+
+  const dismissTop = () => {
+    if (shadeOpen) {
+      setShadeOpen(false);
+      return true;
+    }
+    if (sheetOpen) {
+      setSheetOpen(false);
+      return true;
+    }
+    if (props.settingsOpen) {
+      props.toggleSettings();
+      return true;
+    }
+    const closable: PanelId[] = [
+      "chat",
+      "command",
+      "mail",
+      "bank",
+      "market",
+      "bag",
+    ];
+    for (let i = 0; i < closable.length; i++) {
+      const id = closable[i];
+      if (props.visible(id)) {
+        props.setVisible(id, false);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const onTopEdge = () => {
+    if (
+      sheetOpen ||
+      props.settingsOpen ||
+      chatOn ||
+      commandOn ||
+      mailOn ||
+      bagOn ||
+      bankOn
+    ) {
+      dismissTop();
+      return;
+    }
+    setShadeOpen(true);
+  };
+
+  const onBottomEdge = () => {
+    if (shadeOpen) {
+      setShadeOpen(false);
+      return;
+    }
+    if (sheetOpen) {
+      setSheetOpen(false);
+      return;
+    }
+    openApps();
+  };
+
+  const edgeApiRef = React.useRef({ dismissTop, onTopEdge, onBottomEdge });
+  edgeApiRef.current = { dismissTop, onTopEdge, onBottomEdge };
+
+  const pageApiRef = React.useRef({
+    pages,
+    activePage,
+    setPage: props.setPhoneHomePage,
+    blocked: () => false,
+  });
+  pageApiRef.current = {
+    pages,
+    activePage,
+    setPage: props.setPhoneHomePage,
+    blocked: () =>
+      shadeOpen ||
+      sheetOpen ||
+      props.settingsOpen ||
+      props.visible("chat") ||
+      props.visible("command") ||
+      props.visible("mail") ||
+      props.visible("bank") ||
+      props.visible("market") ||
+      props.visible("bag") ||
+      pages.length < 2,
+  };
+
+  React.useEffect(() => {
+    const maybeHint = () => {
+      try {
+        if (window.localStorage.getItem(EDGE_HINT_KEY)) return;
+        window.localStorage.setItem(EDGE_HINT_KEY, "1");
+      } catch {
+        return;
+      }
+      const el = document.createElement("div");
+      el.className = "ecu-phone-edge-hint";
+      el.setAttribute("role", "status");
+      el.textContent = "Swipe: back · shade · apps · home pages";
+      document.body.appendChild(el);
+      window.setTimeout(() => {
+        el.classList.add("is-out");
+        window.setTimeout(() => el.remove(), 280);
+      }, 2400);
+    };
+    const stopEdge = installPhoneEdgeGestures({
+      onLeft: () => {
+        edgeApiRef.current.dismissTop();
+        maybeHint();
+      },
+      onRight: () => {
+        edgeApiRef.current.dismissTop();
+        maybeHint();
+      },
+      onBottom: () => {
+        edgeApiRef.current.onBottomEdge();
+        maybeHint();
+      },
+      onTop: () => {
+        edgeApiRef.current.onTopEdge();
+        maybeHint();
+      },
+    });
+    const stopHome = installPhoneHomePageGestures({
+      isBlocked: () => pageApiRef.current.blocked(),
+      onPageSwipe: (dir) => {
+        const next = stepPhoneHomePage(
+          pageApiRef.current.activePage,
+          pageApiRef.current.pages,
+          dir,
+        );
+        if (next !== pageApiRef.current.activePage) {
+          pageApiRef.current.setPage(next);
+          storePhoneHomePage(next);
+        }
+      },
+    });
+    return () => {
+      stopEdge();
+      stopHome();
+      uninstallPhoneEdgeGestures();
+      uninstallPhoneHomePageGestures();
+    };
+  }, []);
+
+  const screen = activePhoneHomeScreen(props.phoneHomeScreens, activePage);
+  const dotKids: any[] = [];
+  if (pages.length > 1) {
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      const label =
+        props.phoneHomeScreens[page]?.label || "Page " + (page + 1);
+      dotKids.push(
+        e("button", {
+          key: "p-" + page,
+          type: "button",
+          className:
+            "ecu-phone-home-dots__dot" +
+            (page === activePage ? " is-on" : ""),
+          "aria-label": label,
+          "aria-current": page === activePage ? "true" : undefined,
+          title: label,
+          onClick: () => {
+            props.setPhoneHomePage(page);
+            storePhoneHomePage(page);
+          },
+        }),
+      );
+    }
+  }
+
+  return e(
+    "div",
+    { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
+    // Dots float above #bottom chrome (not buried under the character strip).
+    pages.length > 1
+      ? e(
+          "div",
+          {
+            className: "ecu-phone-home-dots",
+            role: "tablist",
+            "aria-label": "Home screens",
+            "data-ecu-home-dots": "1",
+          },
+          ...dotKids,
+        )
+      : null,
+    e(
+      "nav",
+      {
+        ref: barRef,
+        className: "ecu-phone-dock__bar",
+        role: "navigation",
+        "aria-label": "ECU phone",
+      },
+      e("div", {
+        className: "ecu-phone-dock__nub",
+        "aria-hidden": "true",
+        title: "Swipe up for Apps",
+      }),
+      dockBtn("chat", "C", "Chat", toggleChat, {
+        on: chatOn,
+        tour: "btn-chat",
+      }),
+      dockBtn("command", "</>", "Cmd", toggleCmd, {
+        on: commandOn,
+        tour: "btn-command",
+      }),
+      dockBtn("mail", "M", "Mail", toggleMail, {
+        on: mailOn,
+        tour: "btn-mail",
+      }),
+      dockBtn("bag", "B", "Bag", toggleBag, {
+        on: bagOn,
+        tour: "btn-bag",
+      }),
+      dockBtn("bank", "$", "Bank", toggleBank, {
+        on: bankOn,
+        tour: "btn-bank",
+      }),
+    ),
+    e(PhoneWindowsSheet, {
+      open: sheetOpen,
+      onClose: () => setSheetOpen(false),
+      visible: props.visible,
+      setVisible: props.setVisible,
+      metersHidden: props.metersHidden,
+      setMetersHiddenPersist: props.setMetersHiddenPersist,
+      meterInstances: props.meterInstances,
+      closedMeters: props.closedMeters,
+      closeMeterRuntime: props.closeMeterRuntime,
+      reopenClosedMeter: props.reopenClosedMeter,
+      onAddMeter: props.onAddMeter,
+      onOpenSettings: () => {
+        setSheetOpen(false);
+        if (!props.settingsOpen) props.toggleSettings();
+      },
+      layoutEdit: props.layoutEdit,
+      toggleLayoutEdit: props.toggleLayoutEdit,
+      phoneHomeScreens: props.phoneHomeScreens,
+      setPhoneHomeScreens: props.setPhoneHomeScreens,
+      phoneHomePage: activePage,
+      setPhoneHomePage: (page: number) => {
+        props.setPhoneHomePage(page);
+        storePhoneHomePage(page);
+      },
+    }),
+    e(PhoneShade, {
+      open: shadeOpen,
+      onClose: () => setShadeOpen(false),
+      metersHidden: props.metersHidden,
+      setMetersHiddenPersist: props.setMetersHiddenPersist,
+      layoutEdit: props.layoutEdit,
+      toggleLayoutEdit: props.toggleLayoutEdit,
+      onOpenSettings: toggleSettings,
+      onOpenMail: () => {
+        hidePeerPanels("mail");
+        props.setVisible("mail", true);
+      },
+      onOpenChat: () => {
+        hidePeerPanels("chat");
+        openChat({ toggle: true });
+      },
+      visible: props.visible,
+    }),
+    // Screen label for a11y / debugging active page.
+    screen
+      ? e(
+          "span",
+          {
+            className: "ecu-phone-home-screen-label",
+            "aria-live": "polite",
+          },
+          screen.label,
+        )
+      : null,
+  );
+}

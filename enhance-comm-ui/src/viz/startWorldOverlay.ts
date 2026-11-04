@@ -1,10 +1,13 @@
 /**
- * ~4 Hz world overlay loop for /comm — attaches Graphics to window.map.
+ * World overlay loop for /comm — attaches Graphics to window.map.
+ * Cadence slows on phone; meter/socket trackers are separate and stay live.
  */
 
 import { getEntitiesList, getObserving } from "../host/al";
 import type { EntityLike } from "../host/globals";
 import { subscribeWorldZoom } from "../host/worldZoom";
+import { getSettings } from "../lib/settings";
+import { scalePollMs } from "../lib/perfPrefs";
 import { resolveAbilityTimelineTarget } from "../instance/abilityTimelineModel";
 import {
   destroyOverlayHandle,
@@ -16,8 +19,8 @@ import { resetAnniversaryKissFx } from "./anniversaryKiss";
 import { paintWorldOverlay } from "./paintWorldOverlay";
 import { subscribeVizSettings } from "./vizSettings";
 
-/** Fast enough that vision fog tracks a walking observe target. */
-const TICK_MS = 100;
+/** Desktop cadence — vision fog tracks a walking observe target. */
+const TICK_MS_DESKTOP = 100;
 
 let timerId: number | null = null;
 let handle: OverlayHandle | null = null;
@@ -33,7 +36,12 @@ function resolveFocus(entities: EntityLike[]): EntityLike | null {
   return resolveAbilityTimelineTarget(entities, selectedId, getObserving());
 }
 
+function overlayTickMs(): number {
+  return scalePollMs(TICK_MS_DESKTOP, "ui");
+}
+
 function tick(): void {
+  if (getSettings().worldOverlayEnabled === false) return;
   if (mapOverlayBlocked()) {
     if (handle) {
       destroyOverlayHandle(handle);
@@ -52,10 +60,11 @@ function tick(): void {
 
 export function startWorldOverlay(): void {
   if (timerId != null) return;
+  if (getSettings().worldOverlayEnabled === false) return;
   unsubSettings = subscribeVizSettings(() => tick());
   unsubZoom = subscribeWorldZoom(() => tick());
   tick();
-  timerId = window.setInterval(tick, TICK_MS);
+  timerId = window.setInterval(tick, overlayTickMs());
 }
 
 export function stopWorldOverlay(): void {

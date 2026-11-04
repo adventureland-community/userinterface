@@ -24,6 +24,7 @@ import {
 } from "../../meters/meterWindowStack";
 import { nextWindowFrontZ } from "../../lib/windowStack";
 import {
+  adaptMetersForPhoneHome,
   appendClosedMeterInstance,
   normalizeMeterClosedInstances,
 } from "../../meters/meterPresets";
@@ -34,6 +35,7 @@ import type {
   SegmentRef,
 } from "../../meters/meterTypes";
 import { REPORT_FRAME_DEFAULT } from "../../lib/frameSizes";
+import { detectViewportProfile } from "../../lib/viewport";
 import { detailsWindowTitle } from "../meter/meterShellHelpers";
 
 export type FocusInspectorOpts = {
@@ -80,9 +82,10 @@ export function useCommMeterInstances(
 ): CommMeterInstancesApi {
   const React = getReact();
 
-  const [meterInstances, setMeterInstances] = React.useState(
-    () => getSettings().meterInstances as MeterInstance[],
-  );
+  const [meterInstances, setMeterInstances] = React.useState(() => {
+    const raw = getSettings().meterInstances as MeterInstance[];
+    return adaptMetersForPhoneHome(raw);
+  });
   const [closedMeters, setClosedMeters] = React.useState(
     () =>
       normalizeMeterClosedInstances(
@@ -92,6 +95,38 @@ export function useCommMeterInstances(
 
   const meterInstancesRef = React.useRef(meterInstances);
   meterInstancesRef.current = meterInstances;
+  const phoneMeterAdaptRef = React.useRef(false);
+
+  // One soft adapt when the viewport is phone (covers desktop→DevTools resize).
+  React.useEffect(() => {
+    if (phoneMeterAdaptRef.current) return;
+    if (detectViewportProfile() !== "phone") return;
+    phoneMeterAdaptRef.current = true;
+    setMeterInstances((prev: MeterInstance[]) => {
+      const next = adaptMetersForPhoneHome(prev);
+      let changed = next.length !== prev.length;
+      if (!changed) {
+        for (let i = 0; i < next.length; i++) {
+          const a = next[i];
+          const b = prev[i];
+          if (
+            !b ||
+            a.visible !== b.visible ||
+            a.frameW !== b.frameW ||
+            a.frameH !== b.frameH ||
+            a.pos?.x !== b.pos?.x ||
+            a.pos?.y !== b.pos?.y ||
+            a.pos?.anchor !== b.pos?.anchor
+          ) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (changed) patchSettings({ meterInstances: next });
+      return changed ? next : prev;
+    });
+  }, []);
 
   const meterIsLocked = (inst: MeterInstance): boolean => {
     if (typeof inst.locked === "boolean") return inst.locked;

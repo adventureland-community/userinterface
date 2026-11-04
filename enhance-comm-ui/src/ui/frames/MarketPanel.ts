@@ -6,6 +6,7 @@
 import { getReact, e } from "../../host/react";
 import type { EntityLike } from "../../host/globals";
 import { canEditObservedGear } from "../../host/gearObserved";
+import { scalePollMs } from "../../lib/perfPrefs";
 import {
   buildMerchantDirectory,
   flattenListings,
@@ -105,6 +106,12 @@ import { mergeStandTradeSlotsForUi } from "../../lib/standTradeSlotMemory";
 import { TradeSlotCell } from "../trade/TradeSlotCell";
 import { openTradeItemInfo } from "../trade/tradeSlotActions";
 import { ensureMarketPanelCss } from "./marketPanelCss";
+import {
+  findPanelShell,
+  PanelExpandButton,
+} from "../chrome/panelExpandControl";
+import { bindSwipeDownClose } from "../chrome/phoneShell";
+import { detectViewportProfile } from "../../lib/viewport";
 
 export type MarketPanelProps = {
   entities: EntityLike[];
@@ -113,6 +120,10 @@ export type MarketPanelProps = {
   seedMerchant?: string | null;
   seedDesk?: "buy" | "sell" | null;
   seedSeq?: number;
+  /** Restore saved frame size after leaving FULL mode. */
+  onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  /** Phone swipe-down / close control. */
+  onRequestClose?: () => void;
 };
 
 const CATALOG_REFRESH_MS = 45000;
@@ -191,7 +202,7 @@ function useLiveObserving(
       setObs((prev: EntityLike | null) =>
         fp(prev) === fp(next) ? prev : next,
       );
-    }, 500);
+    }, scalePollMs(500, "data"));
     return () => window.clearInterval(id);
   }, [fallback && fallback.id]);
   return obs;
@@ -328,6 +339,7 @@ function marketItemIcon(
   opts: {
     level?: number;
     p?: string | null;
+    data?: string;
     size: number;
     q?: number;
     bankQ?: number;
@@ -342,6 +354,14 @@ function marketItemIcon(
     q: opts.q,
     bankQ: opts.bankQ && opts.bankQ > 0 ? opts.bankQ : undefined,
     p: opts.p != null ? String(opts.p) : undefined,
+    data: opts.data,
+    actual: {
+      name,
+      level: opts.level,
+      q: opts.q,
+      p: opts.p,
+      ...(opts.data ? { data: opts.data } : {}),
+    },
     title: opts.title,
     forceShowQ: opts.forceShowQ,
   });
@@ -373,6 +393,12 @@ function nextBest(
 export function MarketPanel(props: MarketPanelProps): any {
   const React = getReact();
   ensureMarketPanelCss();
+  const rootRef = React.useRef(null as HTMLDivElement | null);
+  const headRef = React.useRef(null as HTMLDivElement | null);
+  const preExpandSizeRef = React.useRef(null as { w: number; h: number } | null);
+  const [expanded, setExpanded] = React.useState(
+    () => detectViewportProfile() === "phone",
+  );
 
   const [query, setQuery] = React.useState("");
   const [facet, setFacet] = React.useState("all" as Facet);
@@ -407,6 +433,50 @@ export function MarketPanel(props: MarketPanelProps): any {
   );
 
   React.useEffect(() => subscribeMarketTravel(setTravel), []);
+
+  React.useEffect(() => {
+    const shell = findPanelShell(rootRef.current, "market");
+    if (!shell) return;
+
+    if (expanded) {
+      if (!preExpandSizeRef.current) {
+        preExpandSizeRef.current = {
+          w: Math.round(shell.offsetWidth),
+          h: Math.round(shell.offsetHeight),
+        };
+      }
+      shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+      shell.classList.add("ecu-market-shell-expanded");
+      return () => {
+        shell.classList.remove("ecu-market-shell-expanded");
+        shell.removeAttribute("data-ecu-suspend-frame-resize");
+      };
+    }
+
+    shell.classList.remove("ecu-market-shell-expanded");
+    shell.removeAttribute("data-ecu-suspend-frame-resize");
+    const saved = preExpandSizeRef.current;
+    preExpandSizeRef.current = null;
+    if (
+      saved &&
+      saved.w >= 80 &&
+      saved.h >= 80 &&
+      typeof props.onFrameSizeRestore === "function"
+    ) {
+      window.requestAnimationFrame(() => {
+        props.onFrameSizeRestore!({ w: saved.w, h: saved.h });
+      });
+    }
+  }, [expanded, props.onFrameSizeRestore]);
+
+  React.useEffect(() => {
+    if (!expanded || detectViewportProfile() !== "phone") return;
+    const close = () => {
+      if (typeof props.onRequestClose === "function") props.onRequestClose();
+      else setExpanded(false);
+    };
+    return bindSwipeDownClose(headRef.current, close);
+  }, [expanded, props.onRequestClose]);
 
   React.useEffect(() => {
     return subscribeBankSnapshot((snap) => setBankSnap(snap));
@@ -632,18 +702,25 @@ export function MarketPanel(props: MarketPanelProps): any {
     q?: number;
     level?: number;
     p?: string | null;
+    data?: string;
     skin?: string;
   }> = [];
   const rawItems = observing && observing.items ? observing.items : [];
   for (let i = 0; i < rawItems.length; i++) {
     const it = rawItems[i];
     if (!it || !it.name) continue;
+    const data =
+      typeof (it as { data?: unknown }).data === "string" &&
+      String((it as { data?: unknown }).data).trim()
+        ? String((it as { data?: unknown }).data).trim()
+        : undefined;
     rawBag.push({
       slot: i,
       name: String(it.name),
       q: it.q,
       level: it.level,
       p: it.p != null ? String(it.p) : null,
+      ...(data ? { data } : {}),
       skin: it.skin != null ? String(it.skin) : undefined,
     });
   }
@@ -661,8 +738,12 @@ export function MarketPanel(props: MarketPanelProps): any {
     for (let i = 0; i < bagStacks.length; i++) {
       const s = bagStacks[i];
       if (
-        marketBagStackKey({ name: s.name, level: s.level, p: s.p }) ===
-        bagStackKey
+        marketBagStackKey({
+          name: s.name,
+          level: s.level,
+          p: s.p,
+          data: s.data,
+        }) === bagStackKey
       ) {
         return s;
       }
@@ -923,6 +1004,7 @@ export function MarketPanel(props: MarketPanelProps): any {
               marketItemIcon(row.want.name, {
                 level: row.want.level,
                 p: row.want.p,
+                data: row.want.data,
                 size: 26,
                 q: wantQ,
                 forceShowQ: true,
@@ -958,6 +1040,7 @@ export function MarketPanel(props: MarketPanelProps): any {
               marketItemIcon(row.name, {
                 level: row.level,
                 p: row.p,
+                data: row.data,
                 size: 26,
                 q: offerQ,
                 forceShowQ: true,
@@ -1266,6 +1349,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                 marketItemIcon(want.name, {
                   level: want.level,
                   p: want.p,
+                  data: want.data,
                   size: 24,
                   q: wantQ,
                   forceShowQ: true,
@@ -1292,6 +1376,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                 marketItemIcon(srow.name, {
                   level: srow.level,
                   p: srow.p,
+                  data: srow.data,
                   size: 24,
                   q: offerQ,
                   forceShowQ: true,
@@ -1352,6 +1437,7 @@ export function MarketPanel(props: MarketPanelProps): any {
               name: g.name,
               level: g.level,
               p: g.p,
+              data: g.data,
             });
             return e(
               "div",
@@ -1393,10 +1479,12 @@ export function MarketPanel(props: MarketPanelProps): any {
                   marketItemIcon(g.name, {
                     level: g.level,
                     p: g.p,
+                    data: g.data,
                     size: 48,
                     bankQ,
                     title:
                       itemLabel(g.name, g.level, g.p) +
+                      (g.data ? " · " + g.data : "") +
                       (bankQ > 0 ? " · Bank ×" + bankQ : ""),
                   }),
                   e(
@@ -1495,6 +1583,7 @@ export function MarketPanel(props: MarketPanelProps): any {
         name: focusGroup.name,
         level: focusGroup.level,
         p: focusGroup.p,
+        data: focusGroup.data,
       })
     : 0;
 
@@ -1515,10 +1604,12 @@ export function MarketPanel(props: MarketPanelProps): any {
             marketItemIcon(focusGroup.name, {
               level: focusGroup.level,
               p: focusGroup.p,
+              data: focusGroup.data,
               size: 40,
               bankQ: focusBankQ,
               title:
                 itemLabel(focusGroup.name, focusGroup.level, focusGroup.p) +
+                (focusGroup.data ? " · " + focusGroup.data : "") +
                 (focusBankQ > 0 ? " · Bank ×" + focusBankQ : ""),
             }),
             e(
@@ -1748,12 +1839,13 @@ export function MarketPanel(props: MarketPanelProps): any {
   return e(
     "div",
     {
+      ref: rootRef,
       className: "MarketPanel",
       "data-ecu-tour": "market-panel",
     },
     e(
       "div",
-      { className: "MarketPanel-head" },
+      { className: "MarketPanel-head", ref: headRef },
       e("h1", { className: "MarketPanel-title" }, "Market"),
       e(
         "div",
@@ -1779,6 +1871,13 @@ export function MarketPanel(props: MarketPanelProps): any {
             "Cancel travel",
           )
         : null,
+      e(PanelExpandButton, {
+        expanded,
+        onToggle: () => setExpanded(!expanded),
+        expandTitle: "Expand market",
+        restoreTitle: "Restore market size",
+        className: "MarketPanel-expand",
+      }),
       e(
         "button",
         {
@@ -1952,6 +2051,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                     name: b.name,
                     level: b.level,
                     p: b.p,
+                    data: b.data,
                   });
                   const label = itemInstanceLabel(b.name, {
                     level: b.level,
@@ -1959,6 +2059,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                   });
                   const tip =
                     label +
+                    (b.data ? " · " + b.data : "") +
                     (b.q > 1 ? " ×" + b.q : "") +
                     (b.slotCount > 1
                       ? " · " + b.slotCount + " slots"
@@ -1968,6 +2069,7 @@ export function MarketPanel(props: MarketPanelProps): any {
                         name: b.name,
                         level: b.level,
                         p: b.p,
+                        data: b.data,
                       });
                       return bq > 0 ? " · Bank ×" + bq : "";
                     })();
@@ -2008,8 +2110,17 @@ export function MarketPanel(props: MarketPanelProps): any {
                         name: b.name,
                         level: b.level,
                         p: b.p,
+                        data: b.data,
                       }),
                       p: b.p != null ? b.p : undefined,
+                      data: b.data,
+                      actual: {
+                        name: b.name,
+                        level: b.level,
+                        q: b.q,
+                        p: b.p,
+                        ...(b.data ? { data: b.data } : {}),
+                      },
                       size: 40,
                     }),
                   );
@@ -2305,6 +2416,11 @@ export function MarketPanel(props: MarketPanelProps): any {
                                 slotItem.p != null && String(slotItem.p) !== ""
                                   ? String(slotItem.p)
                                   : null,
+                              data:
+                                typeof slotItem.data === "string" &&
+                                slotItem.data.trim()
+                                  ? slotItem.data.trim()
+                                  : undefined,
                             })
                           : null;
                       return e(TradeSlotCell, {

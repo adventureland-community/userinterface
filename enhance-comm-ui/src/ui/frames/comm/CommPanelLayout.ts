@@ -75,6 +75,11 @@ import {
   BAG_PANEL_STYLE,
 } from "../../../lib/frameSizes";
 import { nearbyBuyOrdersRevision } from "../../../lib/tradeHelpers";
+import {
+  isPhoneHomeWidget,
+  panelOnPhoneHomeScreen,
+  type PhoneHomeScreen,
+} from "../../../lib/phoneHomePages";
 
 export type CommPanelOpts = {
   style?: Record<string, any>;
@@ -91,6 +96,8 @@ export type CommPanelLayoutDeps = {
   meterInstances: MeterInstance[];
   getGraphState: () => CommWindowGraphState;
   viewportProfile: ViewportProfile;
+  /** Active phone home screen — gates home widgets on phone. */
+  phoneHomeScreen?: PhoneHomeScreen | null;
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
   onMove: (id: PanelId, pos: PanelPos) => void;
@@ -161,8 +168,18 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
     };
     const onClose = resolvePanelClose(id, closeDeps);
     const hasChromeClose = panelHasChromeClose(id, closeDeps);
-    const isHidden = isClosablePanel && !deps.visible(id);
-    if (isHidden && !deps.layoutEdit) return null;
+    const phoneScreen =
+      deps.viewportProfile === "phone" && !deps.layoutEdit
+        ? deps.phoneHomeScreen
+        : null;
+    let isHidden = isClosablePanel && !deps.visible(id);
+    if (phoneScreen && isPhoneHomeWidget(id)) {
+      // Home-screen membership is the show/hide truth for widgets.
+      if (!panelOnPhoneHomeScreen(id, phoneScreen)) return null;
+      isHidden = false;
+    } else if (isHidden && !deps.layoutEdit) {
+      return null;
+    }
     const empty = opts?.empty === true || panelIsContextEmpty(id, ctx);
     if (empty && !deps.layoutEdit) return null;
     const locked = deps.panelIsLocked(id);
@@ -238,7 +255,15 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         className: classBits.length ? classBits.join(" ") : undefined,
         locked,
         onToggleLock:
-          id === "toggles" ? undefined : () => deps.setPanelLocked(id, !locked),
+          id === "toggles" ||
+          // Idle buff/item hosts are 0×0 — lock/☰ chrome still painted on
+          // touch and looked like a mystery bar mid-map on phone.
+          ((id === "buffInfo" || id === "itemInfo") &&
+            !deps.layoutEdit &&
+            ((id === "buffInfo" && !deps.buffInfoOpen) ||
+              (id === "itemInfo" && !deps.itemInfoOpen)))
+            ? undefined
+            : () => deps.setPanelLocked(id, !locked),
         onUngroup:
           grouped && deps.ungroupPanel
             ? () => deps.ungroupPanel!(id)
@@ -458,6 +483,11 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
         seedMerchant: deps.marketMerchant,
         seedDesk: deps.marketDesk,
         seedSeq: deps.marketOpenSeq,
+        onFrameSizeRestore: deps.onResizeFrame
+          ? (size: { w: number; h: number }) =>
+              deps.onResizeFrame!("market", size)
+          : undefined,
+        onRequestClose: () => deps.setVisible("market", false),
       }),
       {
         style: MARKET_PANEL_STYLE,
@@ -474,6 +504,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("bank", size)
           : undefined,
+        onRequestClose: () => deps.setVisible("bank", false),
       }),
       {
         style: MARKET_PANEL_STYLE,
@@ -571,6 +602,7 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
           ? (size: { w: number; h: number }) =>
               deps.onResizeFrame!("chat", size)
           : undefined,
+        onRequestClose: () => deps.setVisible("chat", false),
       }),
       {
         style: CHAT_PANEL_STYLE,

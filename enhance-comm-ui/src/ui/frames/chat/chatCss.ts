@@ -564,6 +564,8 @@ export const CHAT_PANEL_CSS = `
 }
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .ecu-chat.is-narrow .ecu-chat-compose-row {
   flex-wrap: nowrap;
@@ -577,18 +579,33 @@ export const CHAT_PANEL_CSS = `
 .ecu-chat.is-narrow .ecu-chat-to {
   flex: 0 1 88px;
 }
-.ecu-chat.is-expanded .ecu-chat-sidebar {
+/* Wide expand only — never override the narrow drawer (phone FULL mode). */
+.ecu-chat.is-expanded:not(.is-narrow) .ecu-chat-sidebar {
   flex: 0 0 280px;
   width: 280px;
 }
+.ecu-chat.is-narrow.is-expanded .ecu-chat-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(300px, 86%);
+  flex: none;
+  z-index: 2;
+}
+.ecu-chat.is-narrow .ecu-chat-log,
+.ecu-chat.is-narrow .ecu-chat-body {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
 
-/* Stock-like FULL mode — lift the chat shell over the layout. */
+/* Stock-like FULL mode — lift the chat shell over the layout + phone dock. */
 [data-panel="chat"].ecu-chat-shell-expanded {
   position: fixed !important;
   left: 10px !important;
   right: 10px !important;
   top: 10px !important;
-  bottom: 56px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
   width: auto !important;
   height: auto !important;
   max-width: none !important;
@@ -601,6 +618,34 @@ export const CHAT_PANEL_CSS = `
 [data-panel="chat"].ecu-chat-shell-expanded .ecu-chat {
   height: 100%;
   min-height: 0;
+  padding-bottom: var(--ecu-vv-keyboard, 0px);
+  box-sizing: border-box;
+}
+
+/* Phone / narrow compose — 44px targets above the soft keyboard. */
+.ecu-chat.is-narrow .ecu-chat-compose {
+  padding: 8px 10px;
+  gap: 6px;
+}
+.ecu-chat.is-narrow .ecu-chat-compose-row {
+  gap: 8px;
+  align-items: stretch;
+}
+.ecu-chat.is-narrow .ecu-chat-to,
+.ecu-chat.is-narrow .ecu-chat-input,
+.ecu-chat.is-narrow .ecu-chat-send {
+  min-height: 44px;
+  font-size: 16px;
+  line-height: 1.2;
+  padding: 10px 12px;
+}
+.ecu-chat.is-narrow .ecu-chat-to {
+  flex: 0 1 96px;
+  max-width: 110px;
+}
+.ecu-chat.is-narrow .ecu-chat-send {
+  min-width: 72px;
+  flex: 0 0 auto;
 }
 `;
 

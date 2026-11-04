@@ -578,6 +578,16 @@ export function openInventory(): void {
 }
 
 /**
+ * Keep stock `window.inventory` aligned with bag panel visibility.
+ * Phone dock / Apps only flip panelVisible — without this, BagPanel never
+ * mounts (CommPanelLayout gates on bagOpen from the inventory bridge).
+ */
+export function syncInventoryToBagPanel(wantOpen: boolean): void {
+  if (wantOpen === isInventoryOpen()) return;
+  openInventory();
+}
+
+/**
  * Restore bagOpenPreferred once the inventory patch is ready.
  * Owned here (not CommUI snap.now polling) so one bridge owns open state.
  */

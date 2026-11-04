@@ -19,6 +19,10 @@ import {
 } from "../../lib/layoutEditPrefs";
 import { snapFrameSizeToGrid } from "../../lib/layoutGrid";
 import { layoutDragRoot } from "../../lib/percentDrag";
+import {
+  layoutClampBottomPad,
+  PHONE_HUD_INSET_EVENT,
+} from "../../lib/phoneChrome";
 import { clampWindowScale, type CommWindowGraphState } from "../../lib/commWindowGroup";
 import {
   panelUsesAutoSize,
@@ -556,6 +560,18 @@ export function PositionedPanel(props: PositionedPanelProps): any {
     };
   }, []);
 
+  // Re-clamp when phone dock+#bottom inset changes (meters were covering chrome).
+  const [hudInsetGen, setHudInsetGen] = React.useState(0);
+  React.useEffect(() => {
+    const onInset = () => setHudInsetGen((n: number) => n + 1);
+    window.addEventListener(PHONE_HUD_INSET_EVENT, onInset);
+    window.addEventListener("resize", onInset);
+    return () => {
+      window.removeEventListener(PHONE_HUD_INSET_EVENT, onInset);
+      window.removeEventListener("resize", onInset);
+    };
+  }, []);
+
   // Recover panels parked off-screen (center/bottom anchors + edge snap).
   React.useLayoutEffect(() => {
     if (!clampReady || dragging.current) return;
@@ -579,12 +595,15 @@ export function PositionedPanel(props: PositionedPanelProps): any {
       pr.height,
       rr.width,
       rr.height,
+      0,
+      layoutClampBottomPad(),
     );
     if (Math.abs(next.x - pos.x) > 0.05 || Math.abs(next.y - pos.y) > 0.05) {
       onMove(id, next);
     }
   }, [
     clampReady,
+    hudInsetGen,
     pos.x,
     pos.y,
     pos.anchor,

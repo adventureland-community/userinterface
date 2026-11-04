@@ -177,6 +177,10 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
       level: typeof slot.level === "number" ? slot.level : undefined,
       q: typeof slot.q === "number" ? slot.q : undefined,
       p: slot.p != null && String(slot.p) !== "" ? String(slot.p) : undefined,
+      data:
+        typeof slot.data === "string" && slot.data.trim()
+          ? slot.data.trim()
+          : undefined,
       actual: slot as Record<string, unknown>,
     });
   } else {

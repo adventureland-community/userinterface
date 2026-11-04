@@ -85,6 +85,8 @@ export function CommandPanel(props: CommandPanelProps): any {
   );
   const [treeHi, setTreeHi] = React.useState(0);
   const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
+  const [narrow, setNarrow] = React.useState(false);
+  const rootRef = React.useRef(null as HTMLDivElement | null);
 
   const editorHostRef = React.useRef(null as HTMLDivElement | null);
   const textareaRef = React.useRef(null as HTMLTextAreaElement | null);
@@ -214,6 +216,19 @@ export function CommandPanel(props: CommandPanelProps): any {
     const id = window.requestAnimationFrame(() => refreshEditor());
     return () => window.cancelAnimationFrame(id);
   }, [status, openSeq, snippets.length, snippetQuery]);
+
+  React.useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries: ResizeObserverEntry[]) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const next = entry.contentRect.width < 520;
+      setNarrow((prev: boolean) => (prev === next ? prev : next));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   React.useEffect(() => {
     if (typeof seedDraft === "string") {
@@ -569,7 +584,8 @@ export function CommandPanel(props: CommandPanelProps): any {
   return e(
     "div",
     {
-      className: "CommandPanel",
+      ref: rootRef,
+      className: "CommandPanel" + (narrow ? " is-narrow" : ""),
       style: {
         border: "2px solid #555",
         background: "rgba(0,0,0,0.88)",

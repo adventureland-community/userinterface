@@ -90,6 +90,8 @@ export type TradeWantLike = {
   level?: number;
   q?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
 };
 
 export type SlotLike = {
@@ -107,6 +109,8 @@ export type SlotLike = {
   skin?: string;
   /** Title / shiny / etc. — used by calculate_item_properties. */
   p?: string;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   stat_type?: string;
 };
 

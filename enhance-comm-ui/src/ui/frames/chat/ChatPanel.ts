@@ -35,6 +35,8 @@ import {
   findPanelShell,
   PanelExpandButton,
 } from "../../chrome/panelExpandControl";
+import { detectViewportProfile } from "../../../lib/viewport";
+import { bindSwipeDownClose } from "../../chrome/phoneShell";
 import { ensureChatCss } from "./chatCss";
 
 const POLL_MS = 5000;
@@ -258,6 +260,8 @@ export type ChatPanelProps = {
   openSeq?: number;
   /** Restore saved frame size after leaving FULL mode. */
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  /** Phone swipe-down closes the chat panel. */
+  onRequestClose?: () => void;
 };
 
 export function ChatPanel(props: ChatPanelProps = {}): any {
@@ -286,10 +290,13 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   const [listLoaded, setListLoaded] = React.useState(false);
   const [narrow, setNarrow] = React.useState(false);
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(
+    () => detectViewportProfile() === "phone",
+  );
   const [listFilter, setListFilter] = React.useState("all" as SidebarFilter);
 
   const rootRef = React.useRef(null as HTMLDivElement | null);
+  const titleRef = React.useRef(null as HTMLDivElement | null);
   const logRef = React.useRef(null as HTMLDivElement | null);
   const stickBottomRef = React.useRef(true);
   const inputRef = React.useRef(null as HTMLInputElement | null);
@@ -505,9 +512,33 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   }, []);
 
   React.useEffect(() => {
-    if (narrow && !expanded) setSidebarOpen(false);
+    // Phone FULL expand still uses the drawer — do not force the sidebar open.
+    if (narrow) setSidebarOpen(false);
     else setSidebarOpen(true);
   }, [narrow, expanded]);
+
+  // Soft keyboard — pad compose so the input stays above the viewport.
+  React.useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const sync = () => {
+      const inset = Math.max(
+        0,
+        Math.round(window.innerHeight - vv.height - vv.offsetTop),
+      );
+      const root = rootRef.current;
+      if (root) root.style.setProperty("--ecu-vv-keyboard", inset + "px");
+    };
+    sync();
+    vv.addEventListener("resize", sync);
+    vv.addEventListener("scroll", sync);
+    return () => {
+      vv.removeEventListener("resize", sync);
+      vv.removeEventListener("scroll", sync);
+      const root = rootRef.current;
+      if (root) root.style.removeProperty("--ecu-vv-keyboard");
+    };
+  }, []);
 
   React.useEffect(() => {
     const shell = findPanelShell(rootRef.current, "chat");
@@ -544,6 +575,15 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       });
     }
   }, [expanded, props.onFrameSizeRestore]);
+
+  React.useEffect(() => {
+    if (!expanded || detectViewportProfile() !== "phone") return;
+    const close = () => {
+      if (typeof props.onRequestClose === "function") props.onRequestClose();
+      else setExpanded(false);
+    };
+    return bindSwipeDownClose(titleRef.current, close);
+  }, [expanded, props.onRequestClose]);
 
   React.useEffect(() => {
     if (props.openSeq == null) return;
@@ -612,7 +652,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     setFromName(chat.sender || "");
     setWhisperTo(chat.to || "");
     stickBottomRef.current = true;
-    if (narrow && !expanded) setSidebarOpen(false);
+    if (narrow) setSidebarOpen(false);
     bump();
     if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
   };
@@ -624,7 +664,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     setFromName(chat.sender || "");
     setWhisperTo(chat.to || to || "");
     stickBottomRef.current = true;
-    if (narrow && !expanded) setSidebarOpen(false);
+    if (narrow) setSidebarOpen(false);
     bump();
     window.setTimeout(() => {
       const el = inputRef.current;
@@ -990,8 +1030,8 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     {
       className:
         "ecu-chat" +
-        (narrow && !expanded ? " is-narrow" : "") +
-        (narrow && !expanded && sidebarOpen ? " is-sidebar-open" : "") +
+        (narrow ? " is-narrow" : "") +
+        (narrow && sidebarOpen ? " is-sidebar-open" : "") +
         (expanded ? " is-expanded" : ""),
       "data-ecu-chat": "1",
       ref: rootRef,
@@ -999,7 +1039,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     e(
       "div",
       { className: "ecu-chat-layout" },
-      narrow && !expanded && sidebarOpen
+      narrow && sidebarOpen
         ? e("button", {
             key: "backdrop",
             type: "button",
@@ -1014,7 +1054,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
           className: "ecu-chat-sidebar",
           "aria-label": "Conversations",
           "aria-hidden":
-            narrow && !expanded && !sidebarOpen ? "true" : undefined,
+            narrow && !sidebarOpen ? "true" : undefined,
         },
         e(
           "div",
@@ -1060,9 +1100,10 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
         e(
           "div",
           {
+            ref: titleRef,
             className: "ecu-chat-title" + (titleBusy ? " is-busy" : ""),
           },
-          narrow && !expanded
+          narrow
             ? e(
                 "button",
                 {

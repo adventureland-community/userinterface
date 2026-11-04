@@ -36,6 +36,7 @@ import {
   trySetPointerCapture,
   type PercentDragStart,
 } from "../../lib/percentDrag";
+import { layoutClampBottomPad } from "../../lib/phoneChrome";
 import { beginLayoutGuide, endLayoutGuide } from "../../lib/layoutGuide";
 
 export type UsePositionedPanelDragArgs = {
@@ -329,6 +330,8 @@ export function usePositionedPanelDrag(
           pr.height,
           rr.width,
           rr.height,
+          0,
+          layoutClampBottomPad(),
         );
       }
     }

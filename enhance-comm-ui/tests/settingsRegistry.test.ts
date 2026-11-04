@@ -10,11 +10,12 @@ import {
 describe("settingsRegistry", () => {
   it("exposes the live pane registry", () => {
     assert.equal(defaultSettingsPaneId(), "commUi");
-    assert.equal(SETTINGS_PANES.length, 5);
+    assert.equal(SETTINGS_PANES.length, 6);
     assert.equal(getSettingsPane("commUi").label, "Comm UI");
     assert.equal(getSettingsPane("bag").label, "Bag");
     assert.equal(getSettingsPane("drawings").label, "Drawings");
     assert.equal(getSettingsPane("commHud").label, "Comm HUD");
+    assert.equal(getSettingsPane("performance").label, "Performance");
   });
 
   it("returns pane-specific counts for matching queries", () => {
@@ -49,6 +50,11 @@ describe("settingsRegistry", () => {
     assert.equal(appearanceCounts.abilityTimeline, 0);
     assert.ok(appearanceCounts.drawings > 0);
     assert.equal(appearanceCounts.commHud, 0);
+
+    const liteCounts = settingsPaneMatchCounts("lite");
+    assert.ok(liteCounts.performance > 0);
+    const tmCounts = settingsPaneMatchCounts("tampermonkey");
+    assert.ok(tmCounts.performance > 0);
   });
 
   it("returns zero counts when nothing matches", () => {
@@ -57,5 +63,6 @@ describe("settingsRegistry", () => {
     assert.equal(counts.drawings, 0);
     assert.equal(counts.commHud, 0);
     assert.equal(counts.bag, 0);
+    assert.equal(counts.performance, 0);
   });
 });

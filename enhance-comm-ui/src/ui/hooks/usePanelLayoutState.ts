@@ -28,9 +28,13 @@ import type { LayoutExportInput } from "../../lib/layoutExport";
 import type { MeterInstance } from "../../meters/meterTypes";
 import { detectViewportProfile } from "../../lib/viewport";
 import {
+  liteAwarePanelVisible,
+  resolveLiteHud,
+  type HudDensity,
+} from "../../lib/perfPrefs";
+import {
   applyBagLayoutPos,
-  isInventoryOpen,
-  openInventory,
+  syncInventoryToBagPanel,
 } from "../../host/inventory";
 
 function isClosable(id: PanelId): boolean {
@@ -78,6 +82,9 @@ export type PanelLayoutState = {
   setOpacity: (id: PanelId, value: number) => void;
   visible: (id: PanelId) => boolean;
   opacityFor: (id: PanelId) => number;
+  hudDensity: HudDensity;
+  setHudDensity: (mode: HudDensity) => void;
+  liteHud: boolean;
 };
 
 export function usePanelLayoutState(): PanelLayoutState {
@@ -107,7 +114,14 @@ export function usePanelLayoutState(): PanelLayoutState {
   const [windowsLocked, setWindowsLocked] = React.useState(
     () => settings0.windowsLocked !== false,
   );
+  const [hudDensity, setHudDensityState] = React.useState(
+    () => (settings0.hudDensity || "auto") as HudDensity,
+  );
+  const [phoneHudVisible, setPhoneHudVisible] = React.useState(
+    () => (settings0.phoneHudVisible || {}) as PanelVisibleMap,
+  );
   const [altHeld, setAltHeld] = React.useState(false);
+  const liteHud = resolveLiteHud(hudDensity, viewportProfile);
 
   React.useEffect(() => {
     // Windows browsers steal bare Alt for the menu bar (keyup/blur races).
@@ -227,14 +241,28 @@ export function usePanelLayoutState(): PanelLayoutState {
 
   const setVisible = (id: PanelId, visible: boolean) => {
     if (!isClosable(id)) return;
-    setPanelVisible((prev: PanelVisibleMap) => {
-      const next = { ...prev, [id]: visible };
-      return next;
-    });
-    savePanelVisible(id, visible);
-    if (id === "bag" && !visible && isInventoryOpen()) {
-      openInventory();
+    if (liteHud) {
+      setPhoneHudVisible((prev: PanelVisibleMap) => {
+        const next = { ...prev, [id]: visible };
+        saveSettings({ phoneHudVisible: { [id]: visible } });
+        return next;
+      });
+      // Always sync the global map — liteAwarePanelVisible only honors
+      // phoneHudVisible for LITE_HUD_DEFAULT_OFF panels; Chat/Cmd/etc. need
+      // panelVisible=false or they never close from the phone dock.
+      setPanelVisible((prev: PanelVisibleMap) => {
+        const next = { ...prev, [id]: visible };
+        return next;
+      });
+      savePanelVisible(id, visible);
+    } else {
+      setPanelVisible((prev: PanelVisibleMap) => {
+        const next = { ...prev, [id]: visible };
+        return next;
+      });
+      savePanelVisible(id, visible);
     }
+    if (id === "bag") syncInventoryToBagPanel(visible);
   };
 
   const setOpacity = (id: PanelId, value: number) => {
@@ -245,11 +273,20 @@ export function usePanelLayoutState(): PanelLayoutState {
     });
   };
 
-  const visible = (id: PanelId): boolean => panelVisible[id] !== false;
+  const visible = (id: PanelId): boolean =>
+    liteAwarePanelVisible(id, panelVisible, {
+      lite: liteHud,
+      phoneHudVisible,
+    });
   const opacityFor = (id: PanelId): number => {
     const v = panelOpacity[id];
     if (typeof v === "number") return v;
     return panelOpacityOf(getSettings(), id);
+  };
+
+  const setHudDensity = (mode: HudDensity) => {
+    setHudDensityState(mode);
+    saveSettings({ hudDensity: mode });
   };
 
   return {
@@ -276,5 +313,8 @@ export function usePanelLayoutState(): PanelLayoutState {
     setOpacity,
     visible,
     opacityFor,
+    hudDensity,
+    setHudDensity,
+    liteHud,
   };
 }

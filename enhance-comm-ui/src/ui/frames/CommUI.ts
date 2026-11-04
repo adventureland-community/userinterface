@@ -71,6 +71,7 @@ import { CommMeterAddDialog } from "./comm/CommMeterAddDialog";
 import { buildCommMeterPanels } from "./comm/CommMeterPanels";
 import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { CommControlStrip } from "./comm/CommControlStrip";
+import { PhoneNavDock } from "./comm/PhoneNavDock";
 import { SettingsPanel } from "./SettingsPanel";
 import { findEntity } from "../../queries/entities";
 import { entityHasTradeSlots } from "./comm/guidedTour/paperdollTrade";
@@ -81,6 +82,13 @@ import {
 } from "./comm/CommPanelLayout";
 import { SnapGuideLine } from "../chrome/SnapGuideLine";
 import { isTouchishProfile } from "../../lib/viewport";
+import {
+  activePhoneHomeScreen,
+  defaultPhoneHomeScreens,
+  normalizePhoneHomeScreens,
+  readStoredPhoneHomePage,
+  type PhoneHomeScreen,
+} from "../../lib/phoneHomePages";
 
 export type CommUIProps = {
   snap: GameSnapshot;
@@ -150,7 +158,6 @@ export function CommUI(props: CommUIProps): any {
 
   const layoutState = usePanelLayoutState();
   const {
-    setPanelVisible,
     layoutEdit,
     setLayoutEdit,
     layout,
@@ -169,9 +176,13 @@ export function CommUI(props: CommUIProps): any {
     visible,
     opacityFor,
     setPanelPos,
+    hudDensity,
+    setHudDensity,
   } = layoutState;
 
-  const { bagOpen, bagRefreshing } = useBagBridge(setPanelVisible);
+  const { bagOpen, bagRefreshing } = useBagBridge((open) =>
+    setVisible("bag", open),
+  );
   const { selectedEntity, setSelectedEntity, closePaperdoll, focusUnitId } =
     useSelectionFromXTarget(snap);
 
@@ -210,6 +221,26 @@ export function CommUI(props: CommUIProps): any {
   const [metersHidden, setMetersHidden] = React.useState(
     () => !!getSettings().metersHidden,
   );
+  const [phoneHomePage, setPhoneHomePage] = React.useState(
+    () => readStoredPhoneHomePage(),
+  );
+  const [phoneHomeScreens, setPhoneHomeScreensState] = React.useState(
+    (): PhoneHomeScreen[] => {
+      const raw = getSettings().phoneHomeScreens;
+      return raw && raw.length
+        ? normalizePhoneHomeScreens(raw)
+        : defaultPhoneHomeScreens();
+    },
+  );
+  const setPhoneHomeScreens = (screens: PhoneHomeScreen[]) => {
+    const next = normalizePhoneHomeScreens(screens);
+    setPhoneHomeScreensState(next);
+    patchSettings({ phoneHomeScreens: next });
+  };
+  const phoneHomeScreen =
+    viewportProfile === "phone"
+      ? activePhoneHomeScreen(phoneHomeScreens, phoneHomePage)
+      : null;
   const [setupWizardOpen, setSetupWizardOpen] = React.useState(
     () => !getSettings().setupWizardDone,
   );
@@ -553,7 +584,13 @@ export function CommUI(props: CommUIProps): any {
     if (!root) return;
     root.setAttribute("data-viewport", viewportProfile);
     root.classList.toggle("comm-ui-touch", isTouchishProfile(viewportProfile));
-  }, [viewportProfile]);
+    root.classList.toggle("ecu-phone-home", viewportProfile === "phone");
+    root.classList.toggle("ecu-phone-layout-edit", !!layoutEdit);
+    return () => {
+      root.classList.remove("ecu-phone-home");
+      root.classList.remove("ecu-phone-layout-edit");
+    };
+  }, [viewportProfile, layoutEdit]);
 
   const [layoutGuideActive, setLayoutGuideActive] = React.useState(() =>
     isLayoutGuideActive(),
@@ -615,6 +652,7 @@ export function CommUI(props: CommUIProps): any {
     meterInstances: meters.meterInstances,
     getGraphState: windowActions.graphState,
     viewportProfile,
+    phoneHomeScreen,
     visible,
     opacityFor,
     onMove: (id: PanelId, pos: any) => windowActions.moveWindow(id, pos),
@@ -674,6 +712,7 @@ export function CommUI(props: CommUIProps): any {
     meterInstances: meters.meterInstances,
     layoutEdit,
     metersHidden,
+    phoneHomeScreen,
     altHeld,
     snapDragId: windowActions.snapDragId,
     snapPeerId: windowActions.snapPeerId,
@@ -806,32 +845,54 @@ export function CommUI(props: CommUIProps): any {
           onResetTour: resetTour,
           onOpenChangelog: openSettingsChangelog,
           onOpenServerUpdateNotes: () => openServerUpdateNotes("all"),
+          hudDensity,
+          setHudDensity,
         })
       : null,
 
-    renderCommTogglesPanel(
-      panelDeps,
-      e(
-        "div",
-        {
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            pointerEvents: "none",
-          },
-        },
-        e(CommControlStrip, {
+    viewportProfile === "phone"
+      ? e(PhoneNavDock, {
           layoutEdit,
           toggleLayoutEdit,
           metersHidden,
           setMetersHiddenPersist,
           onAddMeter: () => setMeterAddOpen(true),
-          onOpenSettings: () => setSettingsOpen(true),
-          viewportProfile,
-        }),
-      ),
-    ),
+          settingsOpen,
+          toggleSettings: () => setSettingsOpen((v: boolean) => !v),
+          visible,
+          setVisible,
+          meterInstances: meters.meterInstances,
+          closedMeters: meters.closedMeters,
+          closeMeterRuntime: meters.closeMeterRuntime,
+          reopenClosedMeter: meters.reopenClosedMeter,
+          phoneHomePage,
+          setPhoneHomePage,
+          phoneHomeScreens,
+          setPhoneHomeScreens,
+        })
+      : renderCommTogglesPanel(
+          panelDeps,
+          e(
+            "div",
+            {
+              style: {
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                pointerEvents: "none",
+              },
+            },
+            e(CommControlStrip, {
+              layoutEdit,
+              toggleLayoutEdit,
+              metersHidden,
+              setMetersHiddenPersist,
+              onAddMeter: () => setMeterAddOpen(true),
+              onOpenSettings: () => setSettingsOpen(true),
+              viewportProfile,
+            }),
+          ),
+        ),
 
     tourOverlay,
   );

@@ -397,6 +397,8 @@ export function clampPanelPosInRoot(
   rootW: number,
   rootH: number,
   pad = 0,
+  /** Extra clearance at the bottom (phone dock + #bottom chrome). */
+  bottomPad = 0,
 ): PanelPos {
   if (!(paintedW > 0 && paintedH > 0 && rootW > 0 && rootH > 0)) {
     return {
@@ -408,8 +410,9 @@ export function clampPanelPosInRoot(
   const box = paintedBoxInRoot(pos, paintedW, paintedH, rootW, rootH);
   let left = box.left;
   let top = box.top;
+  const bottomClear = Math.max(pad, bottomPad > 0 ? bottomPad : pad);
   const maxLeft = Math.max(pad, rootW - paintedW - pad);
-  const maxTop = Math.max(pad, rootH - paintedH - pad);
+  const maxTop = Math.max(pad, rootH - paintedH - bottomClear);
   left = clamp(left, pad, maxLeft);
   top = clamp(top, pad, maxTop);
   if (left === box.left && top === box.top) {

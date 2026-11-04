@@ -221,49 +221,49 @@ export const DEFAULT_LAYOUT_TABLET: Record<PanelId, PanelPos> = {
 };
 
 /**
- * Portrait phone — top stack + left events; timeline top-right; minimap
- * above frames (avoids bag/sheet collision).
+ * Portrait phone — slim top strip (party + server/map), boss under that,
+ * large mid viewport clear for combat. Bottom reserved for chrome + dock.
  */
 export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
-  players: { x: 0.5, y: 0.5, anchor: "tl", frameW: 480, autoSize: true },
+  players: { x: 0.5, y: 0.5, anchor: "tl", frameW: 340, autoSize: true },
   enemies: { x: 99.5, y: 0.5, anchor: "tr" },
-  serverInfo: { x: 50, y: 0.4, anchor: "tc" },
-  mapInfo: { x: 50, y: 4.5, anchor: "tc" },
+  serverInfo: { x: 99, y: 0.4, anchor: "tr" },
+  mapInfo: { x: 99, y: 5.5, anchor: "tr" },
   paperdoll: { x: 50, y: 36, anchor: "center" },
   market: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
   bank: { x: 50, y: 44, anchor: "center", frameW: 360, frameH: 520 },
   buffInfo: { x: 2, y: 14, anchor: "tl", autoSize: true },
   itemInfo: { x: 2, y: 36, anchor: "tl", autoSize: true },
-  kills: { x: 98, y: 58, anchor: "br" },
-  playerFrame: { x: 28, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-  targetFrame: { x: 72, y: 62, anchor: "bc", ...UNIT_FRAME_DEFAULT },
-  bossBar: { x: 50, y: 9, anchor: "tc" },
-  instanceRun: { x: 50, y: 16, anchor: "tc" },
+  kills: { x: 98, y: 40, anchor: "tr" },
+  playerFrame: { x: 28, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+  targetFrame: { x: 72, y: 48, anchor: "bc", ...UNIT_FRAME_DEFAULT },
+  bossBar: { x: 50, y: 12, anchor: "tc", frameW: 360 },
+  instanceRun: { x: 50, y: 18, anchor: "tc" },
   instance: {
     x: 50,
-    y: 22,
+    y: 24,
     anchor: "tc",
-    frameW: 480,
-    frameH: 360,
+    frameW: 360,
+    frameH: 320,
   },
-  events: { x: 1, y: 10, anchor: "tl" },
-  eventScore: { x: 50, y: 9, anchor: "tc" },
-  eventRoster: { x: 50, y: 18, anchor: "tc" },
-  abilityTimeline: { x: 98, y: 9, anchor: "tr", frameW: 50, frameH: 400 },
+  events: { x: 1, y: 22, anchor: "tl" },
+  eventScore: { x: 50, y: 12, anchor: "tc" },
+  eventRoster: { x: 50, y: 20, anchor: "tc" },
+  abilityTimeline: { x: 98, y: 14, anchor: "tr", frameW: 50, frameH: 280 },
   abilityTimelineBigIcon: {
     x: 90,
-    y: 9,
+    y: 14,
     anchor: "tr",
     ...ABILITY_TIMELINE_BIGICON_FRAME_DEFAULT,
   },
   abilityTimelineHighlight: {
     x: 50,
-    y: 42,
+    y: 36,
     anchor: "center",
     ...ABILITY_TIMELINE_HIGHLIGHT_FRAME_DEFAULT,
   },
-  minimap: { x: 2, y: 48, anchor: "tl", frameW: 160, frameH: 180 },
-  threat: { x: 50, y: 52, anchor: "tc", frameW: 280, frameH: 280 },
+  minimap: { x: 2, y: 36, anchor: "tl", frameW: 140, frameH: 140 },
+  threat: { x: 50, y: 40, anchor: "tc", frameW: 280, frameH: 240 },
   command: {
     x: 50,
     y: 42,
@@ -272,10 +272,10 @@ export const DEFAULT_LAYOUT_PHONE: Record<PanelId, PanelPos> = {
     frameH: 420,
     autoSize: false,
   },
-  chat: { x: 2, y: 70, anchor: "bl", frameW: 300, frameH: 240 },
-  bag: { x: 50, y: 88, anchor: "bc" },
+  chat: { x: 50, y: 42, anchor: "center", frameW: 360, frameH: 420 },
+  bag: { x: 50, y: 42, anchor: "center" },
   mail: { x: 50, y: 44, anchor: "center", frameW: 380, frameH: 560 },
-  toggles: { x: 98, y: 98, anchor: "br" },
+  toggles: { x: 98, y: 40, anchor: "tr" },
 };
 
 /** @deprecated alias — prefer DEFAULT_LAYOUT_DESKTOP / defaultLayoutFor */

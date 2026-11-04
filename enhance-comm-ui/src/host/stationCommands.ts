@@ -194,6 +194,7 @@ function fingerprintCheckNamedJs(
   if (fp.level != null) parts.push(`${varName}.level!==${fp.level}`);
   if (fp.q != null) parts.push(`${varName}.q!==${fp.q}`);
   if (fp.p != null) parts.push(`${varName}.p!==${lit(fp.p)}`);
+  if (fp.data != null) parts.push(`${varName}.data!==${lit(fp.data)}`);
   return parts.join("||");
 }
 

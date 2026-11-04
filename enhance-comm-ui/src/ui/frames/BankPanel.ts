@@ -11,6 +11,8 @@ import {
   subscribeBankViewCue,
   type BankViewMode,
 } from "../../host/bank";
+import { scalePollMs } from "../../lib/perfPrefs";
+import { detectViewportProfile } from "../../lib/viewport";
 import { canEditObservedBag } from "../../host/gearObserved";
 import { showBankSlotContextMenu } from "./bankSlotContextMenu";
 import {
@@ -43,6 +45,7 @@ import {
   filterBankItems,
   BANK_TRAILING_OPS,
 } from "../../lib/bank/bankQuery";
+import { itemStackIdentityKey } from "../../lib/itemInstanceData";
 import {
   analyzeCompoundCombines,
   analyzeCraftRecipes,
@@ -62,6 +65,7 @@ import {
   findPanelShell,
   PanelExpandButton,
 } from "../chrome/panelExpandControl";
+import { bindSwipeDownClose } from "../chrome/phoneShell";
 import { QuerySearchField } from "../chrome/QuerySearchField";
 import { ensureBankPanelCss } from "./bankPanelCss";
 
@@ -69,6 +73,8 @@ export type BankPanelProps = {
   layoutEdit?: boolean;
   /** Restore saved frame size after leaving expand mode. */
   onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  /** Phone swipe-down closes the bank panel. */
+  onRequestClose?: () => void;
 };
 
 type ReadyKind = "combine" | "craft";
@@ -101,16 +107,18 @@ function showBankItem(item: {
   level?: number;
   q?: number;
   p?: string | null;
+  data?: string;
 }): void {
   const G = (window as any).G;
   const def = G && G.items && G.items[item.name];
   if (!def || typeof (window as any).render_item !== "function") return;
-  const actual = {
+  const actual: Record<string, unknown> = {
     name: item.name,
     level: item.level,
     q: item.q,
     p: item.p,
   };
+  if (item.data) actual.data = item.data;
   const html = (window as any).render_item("html", {
     item: def,
     actual,
@@ -126,7 +134,13 @@ function onBankSlotClick(
   _ev: unknown,
   _pack: string,
   _index: number,
-  item: { name: string; level?: number; q?: number; p?: string | null },
+  item: {
+    name: string;
+    level?: number;
+    q?: number;
+    p?: string | null;
+    data?: string;
+  },
 ): void {
   showBankItem(item);
 }
@@ -140,7 +154,13 @@ function onBankSlotContextMenu(
   },
   pack: string,
   index: number,
-  item: { name: string; level?: number; q?: number; p?: string | null },
+  item: {
+    name: string;
+    level?: number;
+    q?: number;
+    p?: string | null;
+    data?: string;
+  },
 ): void {
   if (ev.preventDefault) ev.preventDefault();
   if (ev.stopPropagation) ev.stopPropagation();
@@ -177,11 +197,21 @@ function asAgg(
   index: number,
 ): BankAggItem {
   const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
+  const data =
+    typeof item.data === "string" && item.data.trim()
+      ? item.data.trim()
+      : undefined;
   return {
-    key: item.name + "\0" + (item.level ?? "") + "\0" + (item.p ?? ""),
+    key: itemStackIdentityKey({
+      name: String(item.name),
+      level: item.level,
+      p: item.p,
+      data,
+    }),
     name: String(item.name),
     level: item.level,
     p: item.p != null ? String(item.p) : null,
+    ...(data ? { data } : {}),
     q,
     locs: [{ pack, index, q }],
   };
@@ -322,7 +352,9 @@ export function BankPanel(props: BankPanelProps): any {
     "ready" as ReadySection,
   );
   const [tick, setTick] = React.useState(0);
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(
+    () => detectViewportProfile() === "phone",
+  );
   const [refreshSummary, setRefreshSummary] = React.useState(
     null as BankRefreshSummary | null,
   );
@@ -330,6 +362,7 @@ export function BankPanel(props: BankPanelProps): any {
     "all" as BankChangeFilter,
   );
   const rootRef = React.useRef(null as HTMLDivElement | null);
+  const headRef = React.useRef(null as HTMLDivElement | null);
   const preExpandSizeRef = React.useRef(null as { w: number; h: number } | null);
   const snapRef = React.useRef(null as BankSnapshot | null);
   snapRef.current = snap;
@@ -373,7 +406,10 @@ export function BankPanel(props: BankPanelProps): any {
   }, [refresh]);
 
   React.useEffect(() => {
-    const id = window.setInterval(() => setTick((n: number) => n + 1), 15000);
+    const id = window.setInterval(
+      () => setTick((n: number) => n + 1),
+      scalePollMs(15000, "data"),
+    );
     return () => window.clearInterval(id);
   }, []);
 
@@ -417,6 +453,15 @@ export function BankPanel(props: BankPanelProps): any {
       });
     }
   }, [expanded, props.onFrameSizeRestore]);
+
+  React.useEffect(() => {
+    if (!expanded || detectViewportProfile() !== "phone") return;
+    const close = () => {
+      if (typeof props.onRequestClose === "function") props.onRequestClose();
+      else setExpanded(false);
+    };
+    return bindSwipeDownClose(headRef.current, close);
+  }, [expanded, props.onRequestClose]);
 
   const allAgg = React.useMemo(() => {
     if (!snap) return [] as BankAggItem[];
@@ -518,6 +563,14 @@ export function BankPanel(props: BankPanelProps): any {
             level: it.level,
             q: it.q,
             p: it.p != null ? String(it.p) : undefined,
+            data: it.data,
+            actual: {
+              name: it.name,
+              level: it.level,
+              q: it.q,
+              p: it.p,
+              ...(it.data ? { data: it.data } : {}),
+            },
             size: 40,
           }),
         );
@@ -599,6 +652,19 @@ export function BankPanel(props: BankPanelProps): any {
                   level: it.level,
                   q: it.q,
                   p: it.p != null ? String(it.p) : undefined,
+                  data:
+                    typeof it.data === "string" && it.data.trim()
+                      ? it.data.trim()
+                      : undefined,
+                  actual: {
+                    name: it.name,
+                    level: it.level,
+                    q: it.q,
+                    p: it.p,
+                    ...(typeof it.data === "string" && it.data.trim()
+                      ? { data: it.data.trim() }
+                      : {}),
+                  },
                   size: 40,
                 }),
               );
@@ -984,7 +1050,7 @@ export function BankPanel(props: BankPanelProps): any {
     },
     e(
       "div",
-      { className: "BankPanel-head" },
+      { className: "BankPanel-head", ref: headRef },
       e("span", { className: "BankPanel-title" }, "Bank"),
       snap
         ? e(
@@ -1119,6 +1185,16 @@ export function BankPanel(props: BankPanelProps): any {
                           change.item.p != null
                             ? String(change.item.p)
                             : undefined,
+                        data: change.item.data,
+                        actual: {
+                          name: change.item.name,
+                          level: change.item.level,
+                          q: changeBadgeQuantity(change),
+                          p: change.item.p,
+                          ...(change.item.data
+                            ? { data: change.item.data }
+                            : {}),
+                        },
                         size: 40,
                         forceShowQ: true,
                         qtyColor: changeQuantityColor(

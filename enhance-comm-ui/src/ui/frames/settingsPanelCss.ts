@@ -521,6 +521,90 @@ export const SETTINGS_PANEL_CSS = `
   border-color: #866;
   color: #faa;
 }
+
+/* Phone — full-height sheet above the Material dock, stacked nav. */
+.ecu-settings-backdrop.is-phone {
+  /* Above panels; stop above the Material dock so it stays clickable. */
+  z-index: 500;
+  inset: 0 auto var(--ecu-phone-dock-h, 48px) 0;
+  top: 0;
+  right: 0;
+  bottom: var(--ecu-phone-dock-h, 48px);
+  left: 0;
+  width: auto;
+  height: auto;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.72);
+}
+.ecu-settings-modal.is-phone {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 16px 16px 0 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  box-shadow: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-split {
+  flex-direction: column;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-right: none;
+  border-bottom: 1px solid #2e343a;
+  padding: 10px 12px;
+  scrollbar-width: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
+  display: none;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-btn {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 44px;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane {
+  padding: 14px 16px 24px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane-title {
+  font-size: 22px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-pane-desc {
+  font-size: 15px;
+}
+.ecu-settings-modal.is-phone .ecu-settings-hd {
+  gap: 10px;
+  align-items: center;
+}
+.ecu-settings-phone-done {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ecu-settings-modal.is-phone .ecu-settings-search {
+  width: 100%;
+  font-size: 16px;
+  min-height: 44px;
+}
 `;
 
 let injected = false;

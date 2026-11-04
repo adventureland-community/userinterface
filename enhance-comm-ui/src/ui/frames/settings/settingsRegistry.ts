@@ -23,11 +23,21 @@ import {
   BagSettingsPane,
   countBagSettingsMatches,
 } from "./bagSettingsPane";
+import {
+  PerformanceSettingsPane,
+  countPerformanceSettingsMatches,
+} from "./performanceSettingsPane";
 import { e } from "../../../host/react";
 import type { PanelId, PanelPos } from "../../../lib/layout";
+import type { HudDensity } from "../../../lib/perfPrefs";
 
 export type SettingsPaneId =
-  "commUi" | "abilityTimeline" | "drawings" | "commHud" | "bag";
+  | "commUi"
+  | "abilityTimeline"
+  | "drawings"
+  | "commHud"
+  | "bag"
+  | "performance";
 
 export type SettingsPaneRenderProps = {
   query: string;
@@ -38,6 +48,8 @@ export type SettingsPaneRenderProps = {
   onResetTour: (id: string) => void;
   onOpenChangelog: () => void;
   onOpenServerUpdateNotes: () => void;
+  hudDensity?: HudDensity;
+  setHudDensity?: (mode: HudDensity) => void;
 };
 
 export type SettingsPaneDef = {
@@ -102,6 +114,19 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       "Shell chips, spawn markers, and other Comm HUD panel helpers.",
     countMatches: countCommHudSettingsMatches,
     render: (props) => e(CommHudSettingsPane, { query: props.query }),
+  },
+  {
+    id: "performance",
+    label: "Performance",
+    description:
+      "Lite HUD, world overlay, meters, and mobile Tampermonkey install help.",
+    countMatches: countPerformanceSettingsMatches,
+    render: (props) =>
+      e(PerformanceSettingsPane, {
+        query: props.query,
+        hudDensity: props.hudDensity,
+        setHudDensity: props.setHudDensity,
+      }),
   },
 ];
 

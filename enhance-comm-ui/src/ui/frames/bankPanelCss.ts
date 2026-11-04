@@ -406,13 +406,13 @@ const CSS = `
   margin-top: 2px;
 }
 
-/* Shell lift — same inset as chat expand. */
+/* Shell lift — same inset as chat expand (clears phone dock). */
 [data-panel="bank"].ecu-bank-shell-expanded {
   position: fixed !important;
   left: 10px !important;
   right: 10px !important;
   top: 10px !important;
-  bottom: 56px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
   width: auto !important;
   height: auto !important;
   max-width: none !important;

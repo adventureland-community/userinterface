@@ -318,6 +318,40 @@ export const COMMAND_PANEL_CSS = `
 .CommandPanel-hint[data-kind="prop"] .CommandPanel-hint__meta {
   color: #9aa;
 }
+
+/* Phone / narrow — stack editor above snippets (no side-by-side squeeze). */
+.CommandPanel.is-narrow {
+  min-height: 0;
+}
+.CommandPanel.is-narrow .CommandPanel-body {
+  flex-direction: column;
+  gap: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-editor {
+  min-height: 160px;
+  flex: 1 1 55%;
+}
+.CommandPanel.is-narrow .CommandPanel-side {
+  flex: 0 1 42%;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 140px;
+  border-left: none;
+  border-top: 1px solid #333;
+  padding-left: 0;
+  padding-top: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-snip,
+.CommandPanel.is-narrow .CommandPanel-folder {
+  min-height: 44px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.CommandPanel.is-narrow .CommandPanel-snip__pick {
+  font-size: 16px;
+  padding: 8px 6px;
+}
 `;
 
 let injected = false;

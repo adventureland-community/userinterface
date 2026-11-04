@@ -469,6 +469,11 @@ export type MeterInstance = MeterPanelConfig & {
    * Defaults: Segment · Clock · PDPS (attribute-aware rate).
    */
   statusbar?: MeterStatusbarConfig;
+  /**
+   * Phone combat-home page index (Samsung-style HUD pages).
+   * Missing → inferred (DPS 0, HPS 1).
+   */
+  phoneHomePage?: number;
 };
 
 /** Saved Display×Scope×Segment bookmark (Details-like). */

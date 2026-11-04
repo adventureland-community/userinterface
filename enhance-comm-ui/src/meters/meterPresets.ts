@@ -4,6 +4,8 @@
 
 import type { PanelPos } from "../lib/layout";
 import { refreshSnapFlags } from "../lib/panelEdgeGroup";
+import { phoneHudBottomInsetPx } from "../lib/phoneChrome";
+import { detectViewportProfile } from "../lib/viewport";
 import {
   instanceFromPreset,
   METER_PRESETS,
@@ -33,9 +35,13 @@ function stableId(presetId: string): string {
 
 export function defaultMeterInstances(): MeterInstance[] {
   const out: MeterInstance[] = [];
+  const phone = detectViewportProfile() === "phone";
   for (let i = 0; i < METER_PRESETS.length; i++) {
     const p = METER_PRESETS[i];
     if (!p.defaultVisible) continue;
+    // Phone home is screen-gated; keep DPS available for optional screens,
+    // skip HPS (reopen from Apps). Coop is injected below for the Coop page.
+    if (phone && p.id === "heal") continue;
     out.push(
       instanceFromPreset(p, {
         id: stableId(p.id),
@@ -43,9 +49,49 @@ export function defaultMeterInstances(): MeterInstance[] {
       }),
     );
   }
-  // Playtested default: DPS ‖ HPS (rate primary), edge-snapped bottom-right.
   const dmg = out.find((m) => m.id === stableId("damage"));
   const heal = out.find((m) => m.id === stableId("heal"));
+  if (phone) {
+    const vh =
+      typeof window !== "undefined" ? Math.max(200, window.innerHeight || 844) : 844;
+    const inset = phoneHudBottomInsetPx() || 200;
+    const phonePos = {
+      x: 50,
+      y: Math.max(8, ((vh - inset) / vh) * 100),
+      anchor: "bc" as const,
+    };
+    const stylePhoneMeter = (m: MeterInstance, z: number) => {
+      m.pos = { ...phonePos };
+      m.frameW = 360;
+      m.frameH = 120;
+      m.locked = true;
+      m.zIndex = z;
+      m.stack = false;
+      m.integrate = false;
+      m.normalize = false;
+      m.rtPaused = false;
+      m.statusbar = { left: "segment", center: "clock", right: "pdps" };
+      m.snap = undefined;
+      Object.assign(m, refreshSnapFlags(m));
+    };
+    if (dmg) {
+      dmg.label = "DPS";
+      dmg.query = { kind: "players", metric: "damage", primary: "rate" };
+      stylePhoneMeter(dmg, 63);
+    }
+    const coopPreset = METER_PRESETS.find((p) => p.id === "coop_v2");
+    if (coopPreset && !out.find((m) => m.id === stableId("coop_v2"))) {
+      const coop = instanceFromPreset(coopPreset, {
+        id: stableId("coop_v2"),
+        visible: true,
+      });
+      coop.label = "Coop";
+      stylePhoneMeter(coop, 64);
+      out.push(coop);
+    }
+    return out;
+  }
+  // Desktop/tablet: DPS ‖ HPS (rate primary), edge-snapped bottom-right.
   if (dmg && heal) {
     dmg.label = "DPS";
     dmg.query = { kind: "players", metric: "damage", primary: "rate" };
@@ -76,6 +122,57 @@ export function defaultMeterInstances(): MeterInstance[] {
     heal.statusbar = { left: "segment", center: "clock", right: "pdps" };
     heal.snap = { 1: dmg.id };
     Object.assign(heal, refreshSnapFlags(heal));
+  }
+  return out;
+}
+
+/**
+ * Soft phone adapt for saved layouts: hide factory HPS, shrink DPS, break
+ * bottom-right snap that covers the Material dock. Does not invent meters.
+ */
+export function adaptMetersForPhoneHome(
+  instances: MeterInstance[],
+): MeterInstance[] {
+  if (!instances.length) return instances;
+  if (typeof window === "undefined") return instances;
+  if (detectViewportProfile() !== "phone") return instances;
+  const vw = Math.max(200, window.innerWidth || 390);
+  const maxW = Math.min(360, vw - 16);
+  const out: MeterInstance[] = [];
+  for (let i = 0; i < instances.length; i++) {
+    const m = instances[i];
+    if (m.id === stableId("heal")) {
+      // Factory pair — stay off until Menu reopens; keep custom HPS meters.
+      const factory =
+        m.query &&
+        m.query.kind === "players" &&
+        m.query.metric === "heal" &&
+        (m.pos?.y ?? 0) >= 90;
+      if (factory && m.visible !== false) {
+        out.push({ ...m, visible: false, snap: undefined });
+        continue;
+      }
+    }
+    if (m.id === stableId("damage") && m.visible !== false) {
+      const frameH = Math.min(m.frameH || 157, 128);
+      const next: MeterInstance = {
+        ...m,
+        frameW: Math.min(m.frameW || 261, maxW),
+        frameH,
+        snap: undefined,
+      };
+      if ((m.pos?.y ?? 0) >= 90 || m.pos?.anchor === "br" || m.pos?.anchor === "bc") {
+        const vh = Math.max(200, window.innerHeight || 844);
+        const inset = phoneHudBottomInsetPx() || 200;
+        // bc anchor y = bottom edge % — clear dock + character chrome.
+        const y = Math.max(8, ((vh - inset) / vh) * 100);
+        next.pos = { x: 50, y, anchor: "bc" };
+      }
+      Object.assign(next, refreshSnapFlags(next));
+      out.push(next);
+      continue;
+    }
+    out.push(m);
   }
   return out;
 }
@@ -263,6 +360,12 @@ export function normalizeMeterInstances(
           : undefined,
       chromeOnHover:
         typeof row.chromeOnHover === "boolean" ? row.chromeOnHover : undefined,
+      phoneHomePage:
+        typeof row.phoneHomePage === "number" &&
+        Number.isFinite(row.phoneHomePage) &&
+        row.phoneHomePage >= 0
+          ? Math.floor(row.phoneHomePage)
+          : undefined,
       statusbar: normalizeStatusbarConfig(row.statusbar),
       snap:
         row.snap && typeof row.snap === "object"
@@ -291,9 +394,11 @@ export function normalizeMeterInstances(
   backfillDefaults(seen, out);
 
   // Ensure DPS ‖ HPS snap if both stable defaults exist and neither has snap yet.
+  // Phone home pages show one at a time — leave them unsnapped.
   const dmg = out.find((m) => m.id === "meter-damage");
   const heal = out.find((m) => m.id === "meter-heal");
   if (
+    detectViewportProfile() !== "phone" &&
     dmg &&
     heal &&
     !dmg.snap?.[3] &&

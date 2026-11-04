@@ -27,6 +27,10 @@ import type {
   CommWindowGraphState,
 } from "../../../lib/commWindowGroup";
 import type { MeterInstance } from "../../../meters/meterTypes";
+import {
+  meterOnPhoneHomeScreen,
+  type PhoneHomeScreen,
+} from "../../../lib/phoneHomePages";
 import type { FocusInspectorOpts } from "../../hooks/useCommMeterInstances";
 import { PositionedPanel } from "../../chrome/PositionedPanel";
 import { MeterPanelShell } from "../../meter/MeterPanelShell";
@@ -40,6 +44,8 @@ export type CommMeterPanelsCtx = {
   meterInstances: MeterInstance[];
   layoutEdit: boolean;
   metersHidden: boolean;
+  /** Active phone home screen — only listed meters paint (unless layout edit). */
+  phoneHomeScreen?: PhoneHomeScreen | null;
   altHeld: boolean;
   snapDragId: string | null;
   snapPeerId: string | null;
@@ -100,6 +106,14 @@ export function buildCommMeterPanels(ctx: CommMeterPanelsCtx): any[] {
     const isHidden = inst.visible === false;
     if (isHidden && !ctx.layoutEdit) continue;
     if (ctx.metersHidden && !ctx.layoutEdit) continue;
+    if (
+      ctx.viewportProfile === "phone" &&
+      !ctx.layoutEdit &&
+      ctx.phoneHomeScreen &&
+      !meterOnPhoneHomeScreen(inst.id, ctx.phoneHomeScreen)
+    ) {
+      continue;
+    }
     // Empty-hide (PDPS/coop): mount while unlocked or in Layout; locked empty
     // meters stay hidden. Alt only unlocks panels already on screen.
     const locked = ctx.meterIsLocked(inst);

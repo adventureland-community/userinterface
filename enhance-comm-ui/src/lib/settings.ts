@@ -27,6 +27,11 @@ import {
 import type { PartyFocus, PartyScope } from "./settingsFocus";
 import { latestChangelogId } from "./changelog";
 import {
+  defaultPhoneHomeScreens,
+  normalizePhoneHomeScreens,
+  type PhoneHomeScreen,
+} from "./phoneHomePages";
+import {
   clampMinimapZoom,
   MINIMAP_ZOOM_DEFAULT,
   MINIMAP_BG_DEFAULT,
@@ -45,6 +50,10 @@ import {
 } from "./bagSortPrefs";
 import { applyAbilityTimelineOrientFrame } from "./abilityTimelineFrame";
 import { LAYOUT_FRAME_REV } from "./layoutFrameMigrations";
+import {
+  normalizeHudDensity,
+  type HudDensity,
+} from "./perfPrefs";
 import {
   mergePanelVisible,
   type PanelVisibleMap,
@@ -234,6 +243,23 @@ export type CommUiSettings = {
   marketFavoriteKeys: string[];
   /** One-shot frame migrations; bump LAYOUT_FRAME_REV when adding migrators. */
   layoutRev?: number;
+  /**
+   * HUD density: auto = lite on phone; full = every default window;
+   * lite = fewer closable panels (desktop or phone).
+   */
+  hudDensity: HudDensity;
+  /**
+   * When false, skip the PIXI world overlay loop (drawings / vision fog).
+   * Meter/socket trackers keep running.
+   */
+  worldOverlayEnabled: boolean;
+  /**
+   * Explicit show/hide for lite-default-off panels while lite HUD is active.
+   * Does not rewrite desktop panelVisible defaults.
+   */
+  phoneHudVisible?: PanelVisibleMap;
+  /** Phone combat-home screens (widgets per swipe page). */
+  phoneHomeScreens?: PhoneHomeScreen[];
 };
 
 const DEFAULT_COMMAND_SNIPPETS: CommandSnippet[] = [
@@ -277,6 +303,10 @@ const DEFAULTS: CommUiSettings = {
   metersHidden: false,
   meterClosedInstances: [],
   setupWizardDone: false,
+  hudDensity: "auto",
+  worldOverlayEnabled: true,
+  phoneHudVisible: {},
+  phoneHomeScreens: defaultPhoneHomeScreens(),
   changelogSeenId: null,
   serverUpdateNotesSeenDeploy: null,
   toursCompleted: {},
@@ -600,6 +630,13 @@ function migrate(parsed: any): CommUiSettings {
           .slice(0, 10)
       : [],
     metersHidden: !!parsed.metersHidden,
+    hudDensity: normalizeHudDensity(parsed.hudDensity),
+    worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+    phoneHudVisible:
+      parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object"
+        ? (parsed.phoneHudVisible as PanelVisibleMap)
+        : {},
+    phoneHomeScreens: normalizePhoneHomeScreens(parsed.phoneHomeScreens),
     setupWizardDone:
       !!parsed.setupWizardDone ||
       !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
@@ -718,6 +755,10 @@ function freshDefaults(): CommUiSettings {
     marketFavoriteKeys: [],
     meterRecentReports: [],
     metersHidden: false,
+    hudDensity: "auto",
+    worldOverlayEnabled: true,
+    phoneHudVisible: {},
+    phoneHomeScreens: defaultPhoneHomeScreens(),
   };
 }
 
@@ -819,6 +860,21 @@ export function patchSettings(
       ...current.panelVisible,
       ...partial.panelVisible,
     });
+  }
+  if (partial.hudDensity != null) {
+    next.hudDensity = normalizeHudDensity(partial.hudDensity);
+  }
+  if (typeof partial.worldOverlayEnabled === "boolean") {
+    next.worldOverlayEnabled = partial.worldOverlayEnabled;
+  }
+  if (partial.phoneHudVisible) {
+    next.phoneHudVisible = {
+      ...(current.phoneHudVisible || {}),
+      ...partial.phoneHudVisible,
+    };
+  }
+  if (partial.phoneHomeScreens) {
+    next.phoneHomeScreens = normalizePhoneHomeScreens(partial.phoneHomeScreens);
   }
   if (partial.commandSnippets) {
     next.commandSnippets = normalizeSnippets(partial.commandSnippets);

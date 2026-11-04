@@ -14,6 +14,10 @@ import {
   WORLD_ZOOM_MIN,
 } from "../../lib/worldZoom";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import {
+  detectViewportProfile,
+  isTouchishProfile,
+} from "../../lib/viewport";
 
 export function getMapData(entities: EntityLike[]): {
   map?: string;
@@ -86,6 +90,17 @@ export function MapInfo(props: MapInfoProps): any {
   const React = getReact();
   const mapNameData = getMapData(props.entities);
   const [zoom, setZoom] = React.useState(() => readHostWorldZoom());
+  const touchish = isTouchishProfile(detectViewportProfile());
+  const zoomBtnStyle: Record<string, any> = touchish
+    ? {
+        ...zoomLinkStyle,
+        minWidth: "44px",
+        minHeight: "44px",
+        padding: "8px 10px",
+        fontSize: TYPE.body,
+        textDecoration: "none",
+      }
+    : zoomLinkStyle;
 
   React.useEffect(() => {
     setZoom(readHostWorldZoom());
@@ -166,15 +181,16 @@ export function MapInfo(props: MapInfoProps): any {
             color: "rgba(255,255,255,0.55)",
             fontSize: TYPE.chromeMeta,
           },
-          title:
-            "World zoom (wheel on the map also works). Outside the vision window the server does not send entities.",
+          title: touchish
+            ? "World zoom — tap out/in or pinch the map. Outside the vision window the server does not send entities."
+            : "World zoom (wheel on the map also works). Outside the vision window the server does not send entities.",
         },
         e(
           "button",
           {
             type: "button",
             style: {
-              ...zoomLinkStyle,
+              ...zoomBtnStyle,
               opacity: zoom <= WORLD_ZOOM_MIN ? 0.35 : 1,
               cursor: zoom <= WORLD_ZOOM_MIN ? "default" : "pointer",
             },
@@ -189,7 +205,7 @@ export function MapInfo(props: MapInfoProps): any {
           {
             type: "button",
             style: {
-              ...zoomLinkStyle,
+              ...zoomBtnStyle,
               color: "#cfe8f2",
               fontVariantNumeric: "tabular-nums",
               textDecoration: "none",
@@ -207,7 +223,7 @@ export function MapInfo(props: MapInfoProps): any {
           {
             type: "button",
             style: {
-              ...zoomLinkStyle,
+              ...zoomBtnStyle,
               opacity: zoom >= WORLD_ZOOM_MAX ? 0.35 : 1,
               cursor: zoom >= WORLD_ZOOM_MAX ? "default" : "pointer",
             },

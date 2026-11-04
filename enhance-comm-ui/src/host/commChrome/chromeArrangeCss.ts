@@ -163,18 +163,37 @@ export const CHROME_ARRANGE_CSS = `
     pointer-events: auto;
   }
 }
-/* Touch / coarse: always show so lock/WC remain reachable. */
+/* Touch / coarse (non-phone): always show so lock/WC remain reachable. */
 @media (hover: none), (pointer: coarse) {
-  #comm-ui .comm-pos-arrange-overlay {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay {
     opacity: 1;
     pointer-events: auto;
   }
-  #comm-ui .comm-pos-arrange-overlay.is-inline {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay.is-inline {
     max-height: 48px;
     overflow: visible;
   }
-  #comm-ui .comm-pos-arrange-overlay > * {
+  #comm-ui:not(.ecu-phone-home) .comm-pos-arrange-overlay > * {
     pointer-events: auto;
   }
+}
+/* Phone home: no hover — pinned lock/☰ chrome looked like a mystery bar.
+ * Keep chrome only while unlocked (arrange) or in Layout edit. */
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-arrange-overlay {
+  opacity: 0;
+  pointer-events: none;
+  max-height: 0;
+  overflow: hidden;
+}
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay,
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay {
+  opacity: 1;
+  pointer-events: auto;
+  max-height: 48px;
+  overflow: visible;
+}
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable > .comm-pos-arrange-overlay > *,
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay > * {
+  pointer-events: auto;
 }
 `;

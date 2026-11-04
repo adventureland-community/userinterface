@@ -6,6 +6,7 @@
 import { e, getReact } from "../../host/react";
 import type { PanelId, PanelPos } from "../../lib/layout";
 import { PositionedPanel } from "../chrome/PositionedPanel";
+import { bindSwipeDownClose } from "../chrome/phoneShell";
 import { ensureSettingsPanelCss } from "./settingsPanelCss";
 import {
   defaultSettingsPaneId,
@@ -14,6 +15,8 @@ import {
   settingsPaneMatchCounts,
   type SettingsPaneId,
 } from "./settings/settingsRegistry";
+import type { HudDensity } from "../../lib/perfPrefs";
+import { detectViewportProfile } from "../../lib/viewport";
 
 export type SettingsPanelProps = {
   onClose: () => void;
@@ -26,6 +29,8 @@ export type SettingsPanelProps = {
   onResetTour: (id: string) => void;
   onOpenChangelog: () => void;
   onOpenServerUpdateNotes: () => void;
+  hudDensity?: HudDensity;
+  setHudDensity?: (mode: HudDensity) => void;
 };
 
 function navBtn(
@@ -95,6 +100,89 @@ export function SettingsPanel(props: SettingsPanelProps): any {
     return kids;
   }, [cat, counts, trimmedQuery, setCat]);
 
+  const phone = detectViewportProfile() === "phone";
+  const headRef = React.useRef(null as HTMLElement | null);
+
+  React.useEffect(() => {
+    if (!phone) return;
+    return bindSwipeDownClose(headRef.current, onClose);
+  }, [phone, onClose]);
+
+  const modalBody = e(
+    "div",
+    {
+      className: "ecu-settings-modal" + (phone ? " is-phone" : ""),
+      onMouseDown: (ev: { stopPropagation: () => void }) =>
+        ev.stopPropagation(),
+    },
+    e(
+      "div",
+      {
+        className: "ecu-settings-hd",
+        ref: headRef,
+      },
+      e(
+        "div",
+        { className: "ecu-settings-hd-copy" },
+        e("input", {
+          type: "search",
+          className: "ecu-settings-search",
+          placeholder: "Search settings…",
+          value: query,
+          onChange: (ev: { target: { value: string } }) =>
+            setQuery(ev.target.value || ""),
+        }),
+      ),
+      phone
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-settings-phone-done",
+              onClick: onClose,
+            },
+            "Done",
+          )
+        : null,
+    ),
+    e(
+      "div",
+      { className: "ecu-settings-split" },
+      e("div", { className: "ecu-settings-nav" }, ...navKids),
+      e(
+        "div",
+        { className: "ecu-settings-pane" },
+        e("div", { className: "ecu-settings-pane-title" }, active.label),
+        e("p", { className: "ecu-settings-pane-desc" }, active.description),
+        active.render({
+          query: trimmedQuery,
+          visible: props.visible,
+          setVisible,
+          setPanelPos,
+          onReplayTour: props.onReplayTour,
+          onResetTour: props.onResetTour,
+          onOpenChangelog: props.onOpenChangelog,
+          onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
+          hudDensity: props.hudDensity,
+          setHudDensity: props.setHudDensity,
+        }),
+      ),
+    ),
+  );
+
+  if (phone) {
+    return e(
+      "div",
+      {
+        className: "ecu-settings-backdrop is-phone",
+        onMouseDown: (ev: { target: unknown; currentTarget: unknown }) => {
+          if (ev.target === ev.currentTarget) onClose();
+        },
+      },
+      modalBody,
+    );
+  }
+
   return e(
     "div",
     {
@@ -121,51 +209,7 @@ export function SettingsPanel(props: SettingsPanelProps): any {
           pointerEvents: "auto",
         },
       },
-      e(
-        "div",
-        {
-          className: "ecu-settings-modal",
-          onMouseDown: (ev: { stopPropagation: () => void }) =>
-            ev.stopPropagation(),
-        },
-        e(
-          "div",
-          { className: "ecu-settings-hd" },
-          e(
-            "div",
-            { className: "ecu-settings-hd-copy" },
-            e("input", {
-              type: "search",
-              className: "ecu-settings-search",
-              placeholder: "Search settings…",
-              value: query,
-              onChange: (ev: { target: { value: string } }) =>
-                setQuery(ev.target.value || ""),
-            }),
-          ),
-        ),
-        e(
-          "div",
-          { className: "ecu-settings-split" },
-          e("div", { className: "ecu-settings-nav" }, ...navKids),
-          e(
-            "div",
-            { className: "ecu-settings-pane" },
-            e("div", { className: "ecu-settings-pane-title" }, active.label),
-            e("p", { className: "ecu-settings-pane-desc" }, active.description),
-            active.render({
-              query: trimmedQuery,
-              visible: props.visible,
-              setVisible,
-              setPanelPos,
-              onReplayTour: props.onReplayTour,
-              onResetTour: props.onResetTour,
-              onOpenChangelog: props.onOpenChangelog,
-              onOpenServerUpdateNotes: props.onOpenServerUpdateNotes,
-            }),
-          ),
-        ),
-      ),
+      modalBody,
     ),
   );
 }

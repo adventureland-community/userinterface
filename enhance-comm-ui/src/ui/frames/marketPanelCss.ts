@@ -1202,6 +1202,33 @@ export const MARKET_PANEL_CSS = `
   .MarketPanel-you { max-height: 280px; border-right: 0; border-bottom: 1px solid var(--mk-line); }
   .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
 }
+
+/* Phone full-screen shell — clears Material dock. */
+[data-panel="market"].ecu-market-shell-expanded {
+  position: fixed !important;
+  left: 8px !important;
+  right: 8px !important;
+  top: 8px !important;
+  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  z-index: 480 !important;
+  transform: none !important;
+  border-radius: 16px 16px 0 0 !important;
+  overflow: hidden !important;
+}
+[data-panel="market"].ecu-market-shell-expanded .MarketPanel {
+  height: 100%;
+  min-height: 0;
+}
+.MarketPanel-expand {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
 `;
 
 let marketPanelCssInjected = false;
