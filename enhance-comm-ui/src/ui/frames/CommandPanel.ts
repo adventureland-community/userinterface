@@ -19,6 +19,9 @@ import {
   type CommandSnippet,
 } from "../../lib/settings";
 import { TYPE } from "../../lib/typeScale";
+import { detectViewportProfile } from "../../lib/viewport";
+import { PanelExpandButton } from "../chrome/panelExpandControl";
+import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { ensureCommandPanelCss } from "./commandPanelCss";
 
 export type CommandPanelProps = {
@@ -26,7 +29,13 @@ export type CommandPanelProps = {
   seedDraft?: string | null;
   /** Bumps when COMMAND is opened so seedDraft re-applies. */
   openSeq?: number;
+  /** Restore saved frame size after leaving expand mode. */
+  onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  /** Phone swipe-down closes the command panel. */
+  onRequestClose?: () => void;
 };
+
+type PhoneTab = "code" | "snippets";
 
 export { buildSnippetTree } from "../../lib/commandSnippets";
 
@@ -86,7 +95,24 @@ export function CommandPanel(props: CommandPanelProps): any {
   const [treeHi, setTreeHi] = React.useState(0);
   const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
   const [narrow, setNarrow] = React.useState(false);
+  const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+  const [expanded, setExpanded] = React.useState(
+    () => detectViewportProfile() === "phone",
+  );
+  const [phoneTab, setPhoneTab] = React.useState("code" as PhoneTab);
   const rootRef = React.useRef(null as HTMLDivElement | null);
+  const headRef = React.useRef(null as HTMLDivElement | null);
+
+  usePhoneShellExpand({
+    panelId: "command",
+    shellClass: "ecu-command-shell-expanded",
+    rootRef,
+    headRef,
+    expanded,
+    setExpanded,
+    onFrameSizeRestore: props.onFrameSizeRestore,
+    onRequestClose: props.onRequestClose,
+  });
 
   const editorHostRef = React.useRef(null as HTMLDivElement | null);
   const textareaRef = React.useRef(null as HTMLTextAreaElement | null);
@@ -215,7 +241,7 @@ export function CommandPanel(props: CommandPanelProps): any {
   React.useEffect(() => {
     const id = window.requestAnimationFrame(() => refreshEditor());
     return () => window.cancelAnimationFrame(id);
-  }, [status, openSeq, snippets.length, snippetQuery]);
+  }, [status, openSeq, snippets.length, snippetQuery, phoneTab, expanded]);
 
   React.useEffect(() => {
     const el = rootRef.current;
@@ -293,6 +319,7 @@ export function CommandPanel(props: CommandPanelProps): any {
     setNewName(snip.name);
     setNewFolder(snip.folder || "");
     writeEditor(snip.code);
+    if (narrow) setPhoneTab("code");
   };
 
   const onUpdateSnippet = () => {
@@ -580,12 +607,169 @@ export function CommandPanel(props: CommandPanelProps): any {
       });
 
   const lastSnip = findSnippetById(snippets, lastRunId);
+  const usePhoneTabs = narrow;
+  const showCode = !usePhoneTabs || phoneTab === "code";
+  const showSnippets = !usePhoneTabs || phoneTab === "snippets";
+  const hintLabel = phoneUi
+    ? "observer → code_eval · swipe title to close"
+    : "observer → code_eval · Ctrl+Enter · Ctrl+Space";
+
+  const toolbar = e(
+    "div",
+    { className: "CommandPanel-toolbar" },
+    e(
+      "button",
+      {
+        type: "button",
+        className: "CommandPanel-run",
+        onClick: onRun,
+        style: btnStyle({ accent: true }),
+      },
+      "Run",
+    ),
+    e("input", {
+      type: "text",
+      value: newName,
+      placeholder: "Snippet name",
+      onChange: (ev: any) => setNewName(ev.target.value),
+      style: Object.assign({}, inputStyle, {
+        flex: "1 1 120px",
+        minWidth: "100px",
+      }),
+    }),
+    e("input", {
+      type: "text",
+      value: newFolder,
+      placeholder: "Folder (optional)",
+      onChange: (ev: any) => setNewFolder(ev.target.value),
+      style: Object.assign({}, inputStyle, {
+        flex: "0 1 110px",
+        minWidth: "90px",
+      }),
+    }),
+    selected
+      ? e(
+          "button",
+          {
+            type: "button",
+            onClick: onUpdateSnippet,
+            style: btnStyle({ accent: dirty }),
+            title: "Overwrite the selected snippet",
+          },
+          dirty ? "Update ●" : "Update",
+        )
+      : null,
+    e(
+      "button",
+      {
+        type: "button",
+        onClick: onSaveAsSnippet,
+        style: btnStyle(),
+        title: "Save as a new snippet",
+      },
+      "Save as",
+    ),
+  );
+
+  const statusEl = e(
+    "div",
+    {
+      className:
+        "CommandPanel-status" +
+        (statusOk === true
+          ? " is-ok"
+          : statusOk === false
+            ? " is-err"
+            : ""),
+      style: {
+        fontSize: TYPE.body,
+        color: status
+          ? statusOk === false
+            ? "#eaa"
+            : statusOk === true
+              ? "#9a9"
+              : "#aaa"
+          : "transparent",
+        minHeight: "1.25em",
+        flex: "0 0 auto",
+      },
+    },
+    status || "\u00a0",
+  );
+
+  const side = e(
+    "aside",
+    {
+      className: "CommandPanel-side",
+      "aria-label": "Command snippets",
+      tabIndex: 0,
+      onKeyDown: onTreeKeyDown,
+    },
+    e(
+      "div",
+      { className: "CommandPanel-side__head" },
+      e(
+        "div",
+        {
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            justifyContent: "space-between",
+          },
+        },
+        e("div", { className: "CommandPanel-side__title" }, "Snippets"),
+        lastSnip
+          ? e(
+              "button",
+              {
+                type: "button",
+                className: "CommandPanel-rerun",
+                title: "Re-run “" + lastSnip.name + "”",
+                onClick: onReRunLast,
+              },
+              "Re-run",
+            )
+          : null,
+      ),
+      e("input", {
+        type: "search",
+        value: snippetQuery,
+        placeholder: phoneUi ? "Search snippets…" : "Search… ↑↓ Enter",
+        onChange: (ev: any) => {
+          setSnippetQuery(ev.target.value);
+          setTreeHi(0);
+        },
+        style: Object.assign({}, inputStyle, {
+          width: "100%",
+          fontSize: TYPE.body,
+          padding: "4px 8px",
+        }),
+      }),
+    ),
+    treeNodes.length
+      ? e("div", { className: "CommandPanel-tree" }, ...treeNodes)
+      : e(
+          "div",
+          { className: "CommandPanel-empty" },
+          snippets.length
+            ? "No snippets match this search."
+            : "No snippets yet — write a command and Save as.",
+        ),
+  );
 
   return e(
     "div",
     {
       ref: rootRef,
-      className: "CommandPanel" + (narrow ? " is-narrow" : ""),
+      className:
+        "CommandPanel" +
+        (narrow ? " is-narrow" : "") +
+        (expanded ? " is-expanded" : "") +
+        (usePhoneTabs ? " is-phone-tabs" : "") +
+        (usePhoneTabs ? " tab-" + phoneTab : ""),
+      "data-ecu-panel": "command",
+      "data-ecu-tour": "command-panel",
       style: {
         border: "2px solid #555",
         background: "rgba(0,0,0,0.88)",
@@ -604,17 +788,12 @@ export function CommandPanel(props: CommandPanelProps): any {
     e(
       "div",
       {
-        style: {
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: "8px",
-          flex: "0 0 auto",
-        },
+        ref: headRef,
+        className: "CommandPanel-head",
       },
       e(
         "div",
-        { style: { fontSize: "20px", color: "#ffe08a" } },
+        { className: "CommandPanel-title" },
         "Command",
         dirty
           ? e(
@@ -627,168 +806,67 @@ export function CommandPanel(props: CommandPanelProps): any {
             )
           : null,
       ),
-      e(
-        "div",
-        { style: { fontSize: TYPE.body, color: "#aaa" } },
-        "observer → code_eval · Ctrl+Enter · Ctrl+Space",
-      ),
+      e("div", { className: "CommandPanel-sub" }, hintLabel),
+      e("span", { className: "CommandPanel-headGrow" }),
+      e(PanelExpandButton, {
+        expanded,
+        onToggle: () => setExpanded(!expanded),
+        expandTitle: "Expand command",
+        restoreTitle: "Restore command size",
+        className: "CommandPanel-expand",
+      }),
     ),
+    usePhoneTabs
+      ? e(
+          "div",
+          {
+            className: "CommandPanel-tabs",
+            role: "tablist",
+            "aria-label": "Command views",
+          },
+          e(
+            "button",
+            {
+              type: "button",
+              role: "tab",
+              className:
+                "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
+              "aria-selected": phoneTab === "code",
+              onClick: () => setPhoneTab("code"),
+            },
+            "Code",
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              role: "tab",
+              className:
+                "CommandPanel-tab" +
+                (phoneTab === "snippets" ? " is-active" : ""),
+              "aria-selected": phoneTab === "snippets",
+              onClick: () => setPhoneTab("snippets"),
+            },
+            "Snippets",
+            snippets.length
+              ? e("span", { className: "CommandPanel-tabCount" }, String(snippets.length))
+              : null,
+          ),
+        )
+      : null,
     e(
       "div",
       { className: "CommandPanel-body" },
-      e(
-        "div",
-        { className: "CommandPanel-main" },
-        editor,
-        e(
-          "div",
-          {
-            style: {
-              display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              alignItems: "center",
-              flex: "0 0 auto",
-            },
-          },
-          e(
-            "button",
-            {
-              type: "button",
-              onClick: onRun,
-              style: btnStyle({ accent: true }),
-            },
-            "Run",
-          ),
-          e("input", {
-            type: "text",
-            value: newName,
-            placeholder: "Snippet name",
-            onChange: (ev: any) => setNewName(ev.target.value),
-            style: Object.assign({}, inputStyle, {
-              flex: "1 1 120px",
-              minWidth: "100px",
-            }),
-          }),
-          e("input", {
-            type: "text",
-            value: newFolder,
-            placeholder: "Folder (optional)",
-            onChange: (ev: any) => setNewFolder(ev.target.value),
-            style: Object.assign({}, inputStyle, {
-              flex: "0 1 110px",
-              minWidth: "90px",
-            }),
-          }),
-          selected
-            ? e(
-                "button",
-                {
-                  type: "button",
-                  onClick: onUpdateSnippet,
-                  style: btnStyle({ accent: dirty }),
-                  title: "Overwrite the selected snippet",
-                },
-                dirty ? "Update ●" : "Update",
-              )
-            : null,
-          e(
-            "button",
-            {
-              type: "button",
-              onClick: onSaveAsSnippet,
-              style: btnStyle(),
-              title: "Save as a new snippet",
-            },
-            "Save as",
-          ),
-        ),
-        e(
-          "div",
-          {
-            className:
-              "CommandPanel-status" +
-              (statusOk === true
-                ? " is-ok"
-                : statusOk === false
-                  ? " is-err"
-                  : ""),
-            style: {
-              fontSize: TYPE.body,
-              color: status
-                ? statusOk === false
-                  ? "#eaa"
-                  : statusOk === true
-                    ? "#9a9"
-                    : "#aaa"
-                : "transparent",
-              minHeight: "1.25em",
-              flex: "0 0 auto",
-            },
-          },
-          status || "\u00a0",
-        ),
-      ),
-      e(
-        "aside",
-        {
-          className: "CommandPanel-side",
-          "aria-label": "Command snippets",
-          tabIndex: 0,
-          onKeyDown: onTreeKeyDown,
-        },
-        e(
-          "div",
-          { className: "CommandPanel-side__head" },
-          e(
+      showCode
+        ? e(
             "div",
-            {
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                justifyContent: "space-between",
-              },
-            },
-            e("div", { className: "CommandPanel-side__title" }, "Snippets"),
-            lastSnip
-              ? e(
-                  "button",
-                  {
-                    type: "button",
-                    className: "CommandPanel-rerun",
-                    title: "Re-run “" + lastSnip.name + "”",
-                    onClick: onReRunLast,
-                  },
-                  "Re-run",
-                )
-              : null,
-          ),
-          e("input", {
-            type: "search",
-            value: snippetQuery,
-            placeholder: "Search… ↑↓ Enter",
-            onChange: (ev: any) => {
-              setSnippetQuery(ev.target.value);
-              setTreeHi(0);
-            },
-            style: Object.assign({}, inputStyle, {
-              width: "100%",
-              fontSize: TYPE.body,
-              padding: "4px 8px",
-            }),
-          }),
-        ),
-        treeNodes.length
-          ? e("div", { className: "CommandPanel-tree" }, ...treeNodes)
-          : e(
-              "div",
-              { className: "CommandPanel-empty" },
-              snippets.length
-                ? "No snippets match this search."
-                : "No snippets yet — write a command and Save as.",
-            ),
-      ),
+            { className: "CommandPanel-main" },
+            editor,
+            toolbar,
+            statusEl,
+          )
+        : null,
+      showSnippets ? side : null,
     ),
   );
 }

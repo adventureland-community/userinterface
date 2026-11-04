@@ -2,6 +2,8 @@
  * Injected once for the Command panel editor host + snippets side tree.
  */
 
+import { phoneShellExpandCss } from "../chrome/phoneShell";
+
 export const COMMAND_PANEL_CSS = `
 .CommandPanel {
   pointer-events: auto;
@@ -15,6 +17,81 @@ export const COMMAND_PANEL_CSS = `
   min-height: 420px;
   max-height: 100%;
   overflow: hidden;
+}
+.CommandPanel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  flex: 0 0 auto;
+}
+.CommandPanel-title {
+  font-size: 20px;
+  color: #ffe08a;
+}
+.CommandPanel-sub {
+  font-size: 12px;
+  color: #aaa;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.CommandPanel-headGrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.CommandPanel-expand {
+  flex: 0 0 auto;
+}
+.CommandPanel-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.CommandPanel-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 2px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 10px;
+}
+.CommandPanel-tab {
+  flex: 1 1 0;
+  min-height: 40px;
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #bbb;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+}
+.CommandPanel-tab.is-active {
+  background: #2a2410;
+  color: #ffe08a;
+}
+.CommandPanel-tabCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  background: #111;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.CommandPanel-tab.is-active .CommandPanel-tabCount {
+  color: #c9a227;
+  background: #1a1608;
 }
 .CommandPanel-body {
   display: flex;
@@ -319,7 +396,7 @@ export const COMMAND_PANEL_CSS = `
   color: #9aa;
 }
 
-/* Phone / narrow — stack editor above snippets (no side-by-side squeeze). */
+/* Phone / narrow — tabbed Code | Snippets (full height each). */
 .CommandPanel.is-narrow {
   min-height: 0;
 }
@@ -328,31 +405,57 @@ export const COMMAND_PANEL_CSS = `
   gap: 8px;
 }
 .CommandPanel.is-narrow .CommandPanel-editor {
-  min-height: 160px;
-  flex: 1 1 55%;
+  min-height: 180px;
+  flex: 1 1 auto;
 }
 .CommandPanel.is-narrow .CommandPanel-side {
-  flex: 0 1 42%;
+  flex: 1 1 auto;
   width: 100%;
   max-width: none;
   min-width: 0;
-  min-height: 140px;
+  min-height: 0;
   border-left: none;
-  border-top: 1px solid #333;
+  border-top: none;
   padding-left: 0;
-  padding-top: 8px;
+  padding-top: 0;
 }
 .CommandPanel.is-narrow .CommandPanel-snip,
 .CommandPanel.is-narrow .CommandPanel-folder {
-  min-height: 44px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  min-height: 48px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 .CommandPanel.is-narrow .CommandPanel-snip__pick {
   font-size: 16px;
-  padding: 8px 6px;
+  padding: 10px 8px;
 }
-`;
+.CommandPanel.is-narrow .CommandPanel-run,
+.CommandPanel.is-narrow .CommandPanel-toolbar button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+}
+.CommandPanel.is-narrow .CommandPanel-toolbar input {
+  min-height: 44px;
+  font-size: 16px;
+  padding: 10px 12px;
+}
+.CommandPanel.is-narrow .CommandPanel-rerun {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.CommandPanel.is-narrow .CommandPanel-side__head input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+  padding: 10px 12px;
+}
+.CommandPanel.is-expanded {
+  min-height: 0;
+}
+.CommandPanel.is-phone-tabs .CommandPanel-sub {
+  display: none;
+}
+` + phoneShellExpandCss("command", "ecu-command-shell-expanded", ".CommandPanel");
 
 let injected = false;
 
