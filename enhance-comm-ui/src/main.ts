@@ -21,6 +21,7 @@ import { ensureMailCss } from "./ui/frames/mail/mailCss";
 import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
 import { startWorldOverlay } from "./viz/startWorldOverlay";
+import { installCameraPan } from "./host/cameraPan";
 import { installWorldZoom } from "./host/worldZoom";
 
 publishEcuBuildInfo();
@@ -196,6 +197,7 @@ function onLoad(): void {
   startSessionKills();
   startWorldOverlay();
   installWorldZoom();
+  installCameraPan();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;
   if (!domContainer) {

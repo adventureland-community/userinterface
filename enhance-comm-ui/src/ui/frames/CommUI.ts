@@ -71,6 +71,7 @@ import { CommMeterAddDialog } from "./comm/CommMeterAddDialog";
 import { buildCommMeterPanels } from "./comm/CommMeterPanels";
 import { LayoutEditGrid } from "./comm/LayoutEditGrid";
 import { CommControlStrip } from "./comm/CommControlStrip";
+import { CameraJoystick } from "../chrome/CameraJoystick";
 import { PhoneNavDock } from "./comm/PhoneNavDock";
 import { SettingsPanel } from "./SettingsPanel";
 import { findEntity } from "../../queries/entities";
@@ -849,6 +850,8 @@ export function CommUI(props: CommUIProps): any {
           setHudDensity,
         })
       : null,
+
+    viewportProfile === "phone" ? e(CameraJoystick, { key: "cam-stick" }) : null,
 
     viewportProfile === "phone"
       ? e(PhoneNavDock, {

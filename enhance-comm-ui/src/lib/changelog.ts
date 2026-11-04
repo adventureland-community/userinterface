@@ -154,6 +154,12 @@ export const CHANGELOG: ChangelogEntry[] = [
           "Wheel / pinch / Map out·in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put — desktop and phone.",
         kind: "feature",
       },
+      {
+        label: "Free camera pan",
+        detail:
+          "WASD / arrows on desktop and an on-screen joystick on phone detach the view from the observed character. Follow (or the stick’s Follow chip) re-homes.",
+        kind: "feature",
+      },
     ],
     features: [
       {

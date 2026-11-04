@@ -145,6 +145,14 @@ export function toggleObserve(name: string): void {
 function onFollowClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
+  // Prefer ECU free-camera re-lock when the pan host is installed.
+  const follow = (window as Window & {
+    __ecuFollowObserved?: () => void;
+  }).__ecuFollowObserved;
+  if (typeof follow === "function") {
+    follow();
+    return;
+  }
   const sock = window.socket as { emit?: (e: string) => void } | undefined;
   if (sock && typeof sock.emit === "function") sock.emit("o:home");
 }

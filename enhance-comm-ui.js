@@ -9199,6 +9199,11 @@ ${fightHoverTip(src)}`
           label: "Camera FOV zoom",
           detail: "Wheel / pinch / Map out\xB7in change camera FOV via a larger logical canvas (CSS-fitted). Stock sprite `scale` stays put \u2014 desktop and phone.",
           kind: "feature"
+        },
+        {
+          label: "Free camera pan",
+          detail: "WASD / arrows on desktop and an on-screen joystick on phone detach the view from the observed character. Follow (or the stick\u2019s Follow chip) re-homes.",
+          kind: "feature"
         }
       ],
       features: [
@@ -25761,6 +25766,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function onFollowClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
+    const follow = window.__ecuFollowObserved;
+    if (typeof follow === "function") {
+      follow();
+      return;
+    }
     const sock = window.socket;
     if (sock && typeof sock.emit === "function") sock.emit("o:home");
   }
@@ -29746,7 +29756,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T11:09:32.904Z" : "unknown";
+    const builtAt = true ? "2026-11-04T11:13:53.147Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -33108,7 +33118,7 @@ button.comm-mail__stack-u {
     React.useEffect(() => {
       if (!(step == null ? void 0 : step.advanceWhen) || advancedRef.current) return;
       let advanceTimer = null;
-      const tick2 = () => {
+      const tick3 = () => {
         if (advancedRef.current) return;
         if (!tourAdvanceReady(step.advanceWhen, props.advanceContext)) return;
         advancedRef.current = true;
@@ -33121,8 +33131,8 @@ button.comm-mail__stack-u {
           props.onStep(props.stepIndex + 1);
         }, 450);
       };
-      tick2();
-      const id = window.setInterval(tick2, 250);
+      tick3();
+      const id = window.setInterval(tick3, 250);
       return () => {
         window.clearInterval(id);
         if (advanceTimer != null) window.clearTimeout(advanceTimer);
@@ -34668,19 +34678,19 @@ button.comm-mail__stack-u {
       const sync = (ev) => {
         setAltHeld(!!ev.altKey);
       };
-      const onKeyDown = (ev) => {
+      const onKeyDown2 = (ev) => {
         if (ev.key === "Alt" || ev.code === "AltLeft" || ev.code === "AltRight") {
           ev.preventDefault();
         }
         sync(ev);
       };
       const onBlur = () => setAltHeld(false);
-      window.addEventListener("keydown", onKeyDown, true);
+      window.addEventListener("keydown", onKeyDown2, true);
       window.addEventListener("keyup", sync, true);
       window.addEventListener("mousemove", sync, true);
       window.addEventListener("blur", onBlur);
       return () => {
-        window.removeEventListener("keydown", onKeyDown, true);
+        window.removeEventListener("keydown", onKeyDown2, true);
         window.removeEventListener("keyup", sync, true);
         window.removeEventListener("mousemove", sync, true);
         window.removeEventListener("blur", onBlur);
@@ -44413,11 +44423,11 @@ ${parts.map(cssSlice).join("\n")}
   }
   function MeterStatusbar(props) {
     const React = getReact();
-    const [, tick2] = React.useState(0);
+    const [, tick3] = React.useState(0);
     React.useEffect(() => {
       const id = window.setInterval(() => {
         if (typeof document !== "undefined" && document.hidden) return;
-        tick2((n) => n + 1);
+        tick3((n) => n + 1);
       }, 1e3);
       return () => window.clearInterval(id);
     }, []);
@@ -48615,7 +48625,7 @@ ${parts.map(cssSlice).join("\n")}
       return () => scroll.removeEventListener("wheel", onWheel);
     }, [isTimeline]);
     React.useEffect(() => {
-      const onKeyDown = (ev) => {
+      const onKeyDown2 = (ev) => {
         if (ev.key !== "Shift") return;
         shiftHeldRef.current = true;
         if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
@@ -48626,7 +48636,7 @@ ${parts.map(cssSlice).join("\n")}
         if (!pointerOnTrackRef.current) return;
         beginModFreeze();
       };
-      const onKeyUp = (ev) => {
+      const onKeyUp2 = (ev) => {
         if (ev.key !== "Shift") return;
         shiftHeldRef.current = false;
         shiftFreezeOkRef.current = true;
@@ -48636,12 +48646,12 @@ ${parts.map(cssSlice).join("\n")}
         shiftHeldRef.current = false;
         endModFreeze();
       };
-      window.addEventListener("keydown", onKeyDown);
-      window.addEventListener("keyup", onKeyUp);
+      window.addEventListener("keydown", onKeyDown2);
+      window.addEventListener("keyup", onKeyUp2);
       window.addEventListener("blur", onBlur);
       return () => {
-        window.removeEventListener("keydown", onKeyDown);
-        window.removeEventListener("keyup", onKeyUp);
+        window.removeEventListener("keydown", onKeyDown2);
+        window.removeEventListener("keyup", onKeyUp2);
         window.removeEventListener("blur", onBlur);
       };
     }, [beginModFreeze, endModFreeze]);
@@ -52192,6 +52202,442 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/lib/cameraPan.ts
+  var CAMERA_PAN_SPEED = 420;
+  var JOYSTICK_RADIUS_PX = 48;
+  var JOYSTICK_DEADZONE = 0.18;
+  function clampPanAxis(v) {
+    if (!Number.isFinite(v)) return 0;
+    if (v > 1) return 1;
+    if (v < -1) return -1;
+    return v;
+  }
+  function joystickToPan(dx, dy, radiusPx = JOYSTICK_RADIUS_PX, deadzone = JOYSTICK_DEADZONE) {
+    const r = Math.max(1, radiusPx);
+    const nx = dx / r;
+    const ny = dy / r;
+    const mag = Math.sqrt(nx * nx + ny * ny);
+    if (mag < deadzone) return { x: 0, y: 0 };
+    const scale = Math.min(1, mag);
+    const inv = mag > 0 ? scale / mag : 0;
+    return { x: clampPanAxis(nx * inv), y: clampPanAxis(ny * inv) };
+  }
+  function keysToPan(keys) {
+    let x = 0;
+    let y = 0;
+    if (keys.left) x -= 1;
+    if (keys.right) x += 1;
+    if (keys.up) y -= 1;
+    if (keys.down) y += 1;
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function stepCameraPan(realX, realY, pan, dtSec, opts) {
+    const speed = opts && typeof opts.speed === "number" ? opts.speed : CAMERA_PAN_SPEED;
+    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
+    const px = clampPanAxis(pan.x);
+    const py = clampPanAxis(pan.y);
+    if (px === 0 && py === 0) return { x: realX, y: realY };
+    const dist = speed * fov * Math.max(0, dtSec);
+    return {
+      x: realX + px * dist,
+      y: realY + py * dist
+    };
+  }
+
+  // src/host/cameraPan.ts
+  var installed6 = false;
+  var freeCamera = false;
+  var lockX = 0;
+  var lockY = 0;
+  var keyUp = false;
+  var keyDown = false;
+  var keyLeft = false;
+  var keyRight = false;
+  var stickPan = { x: 0, y: 0 };
+  var rafId = null;
+  var lastTs = 0;
+  var origPositionMap = null;
+  var freeListeners = [];
+  function notifyFree() {
+    for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
+  }
+  function subscribeFreeCamera(listener) {
+    freeListeners.push(listener);
+    return () => {
+      const idx = freeListeners.indexOf(listener);
+      if (idx >= 0) freeListeners.splice(idx, 1);
+    };
+  }
+  function isFreeCamera() {
+    return freeCamera;
+  }
+  function hostMap() {
+    const m = window.map;
+    return m || null;
+  }
+  function readScale() {
+    const s = window.scale;
+    return typeof s === "number" && s > 0 ? s : 2;
+  }
+  function readSize() {
+    const w = window.width;
+    const h = window.height;
+    return {
+      w: typeof w === "number" && w > 0 ? w : window.innerWidth || 1280,
+      h: typeof h === "number" && h > 0 ? h : window.innerHeight || 720
+    };
+  }
+  function roundCoord(n) {
+    return Math.round(n);
+  }
+  function applyMapScreen(map) {
+    const { w, h } = readSize();
+    const scale = readScale();
+    const rx = typeof map.real_x === "number" ? map.real_x : 0;
+    const ry = typeof map.real_y === "number" ? map.real_y : 0;
+    map.x = roundCoord(w / 2 - rx * scale);
+    map.y = roundCoord(h / 2 - ry * scale);
+  }
+  function syncLockFromMap() {
+    const map = hostMap();
+    if (!map) return;
+    if (typeof map.real_x === "number") lockX = map.real_x;
+    if (typeof map.real_y === "number") lockY = map.real_y;
+  }
+  function unlockCamera() {
+    syncLockFromMap();
+    if (!freeCamera) {
+      freeCamera = true;
+      notifyFree();
+    }
+    ensureRaf();
+  }
+  function lockCamera() {
+    freeCamera = false;
+    stickPan = { x: 0, y: 0 };
+    keyUp = keyDown = keyLeft = keyRight = false;
+    stopRafIfIdle();
+    notifyFree();
+  }
+  function panCamera(pan, dtSec) {
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    const next = stepCameraPan(lockX, lockY, pan, dtSec, {
+      speed: CAMERA_PAN_SPEED,
+      fov: readAppliedWorldFov()
+    });
+    lockX = next.x;
+    lockY = next.y;
+    map.real_x = lockX;
+    map.real_y = lockY;
+    applyMapScreen(map);
+    const pos = window.position_map;
+    if (typeof pos === "function") pos();
+  }
+  function setJoystickPan(pan) {
+    stickPan = {
+      x: pan.x,
+      y: pan.y
+    };
+    if (pan.x !== 0 || pan.y !== 0) unlockCamera();
+    ensureRaf();
+    stopRafIfIdle();
+  }
+  function typingTarget(el) {
+    if (!(el instanceof Element)) return false;
+    return !!el.closest(
+      "input, textarea, select, [contenteditable='true'], .CodeMirror, .comm-bag-ctx, .ecu-phone-action-sheet"
+    );
+  }
+  function onKeyDown(ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (typingTarget(ev.target)) return;
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    let used = false;
+    if (k === "w" || k === "ArrowUp") {
+      keyUp = true;
+      used = true;
+    } else if (k === "s" || k === "ArrowDown") {
+      keyDown = true;
+      used = true;
+    } else if (k === "a" || k === "ArrowLeft") {
+      keyLeft = true;
+      used = true;
+    } else if (k === "d" || k === "ArrowRight") {
+      keyRight = true;
+      used = true;
+    }
+    if (!used) return;
+    ev.preventDefault();
+    unlockCamera();
+    ensureRaf();
+  }
+  function onKeyUp(ev) {
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    if (k === "w" || k === "ArrowUp") keyUp = false;
+    else if (k === "s" || k === "ArrowDown") keyDown = false;
+    else if (k === "a" || k === "ArrowLeft") keyLeft = false;
+    else if (k === "d" || k === "ArrowRight") keyRight = false;
+    stopRafIfIdle();
+  }
+  function combinedPan() {
+    const fromKeys = keysToPan({
+      up: keyUp,
+      down: keyDown,
+      left: keyLeft,
+      right: keyRight
+    });
+    const x = clampAdd(fromKeys.x, stickPan.x);
+    const y = clampAdd(fromKeys.y, stickPan.y);
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function clampAdd(a, b) {
+    const s = a + b;
+    if (s > 1) return 1;
+    if (s < -1) return -1;
+    return s;
+  }
+  function tick2(ts) {
+    rafId = null;
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0) {
+      lastTs = 0;
+      return;
+    }
+    const prev = lastTs || ts;
+    lastTs = ts;
+    const dt = Math.min(0.05, Math.max(0, (ts - prev) / 1e3));
+    panCamera(pan, dt);
+    ensureRaf();
+  }
+  function ensureRaf() {
+    if (rafId != null) return;
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0 && !freeCamera) return;
+    if (pan.x === 0 && pan.y === 0) return;
+    lastTs = 0;
+    rafId = window.requestAnimationFrame(tick2);
+  }
+  function stopRafIfIdle() {
+    if (combinedPan().x !== 0 || combinedPan().y !== 0) return;
+    if (rafId != null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    lastTs = 0;
+  }
+  function patchedPositionMap() {
+    const map = hostMap();
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    }
+    if (origPositionMap) origPositionMap.call(this);
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+      applyMapScreen(map);
+    }
+  }
+  function installPositionMapHook() {
+    const w = window;
+    if (typeof w.__ecuPositionMap === "function") return;
+    if (typeof w.position_map !== "function") return;
+    origPositionMap = w.position_map;
+    w.__ecuPositionMap = patchedPositionMap;
+    w.position_map = patchedPositionMap;
+  }
+  function followObservedCamera() {
+    lockCamera();
+    const sock = window.socket;
+    if (sock && typeof sock.emit === "function") sock.emit("o:home");
+    window.setTimeout(() => {
+      if (!freeCamera) syncLockFromMap();
+    }, 400);
+  }
+  function installCameraPan() {
+    if (installed6) return;
+    installed6 = true;
+    installPositionMapHook();
+    if (!origPositionMap) {
+      const started2 = Date.now();
+      const id = window.setInterval(() => {
+        installPositionMapHook();
+        if (origPositionMap || Date.now() - started2 > 3e4) {
+          window.clearInterval(id);
+        }
+      }, 250);
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", () => {
+      keyUp = keyDown = keyLeft = keyRight = false;
+      stopRafIfIdle();
+    });
+    window.__ecuFollowObserved = followObservedCamera;
+    void detectViewportProfile;
+  }
+
+  // src/ui/chrome/CameraJoystick.ts
+  var STYLE_ID8 = "ecu-camera-joystick-css";
+  function ensureCss4() {
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID8)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID8;
+    style.textContent = `
+.ecu-cam-stick {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 12px);
+  z-index: 230;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ecu-cam-stick__base {
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  background: rgba(28, 27, 31, 0.45);
+  border: 1px solid rgba(230, 225, 229, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.ecu-cam-stick__knob {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  margin-top: -22px;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  background: rgba(157, 212, 236, 0.55);
+  border: 1px solid rgba(157, 212, 236, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.ecu-cam-stick__follow {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(157, 212, 236, 0.45);
+  background: rgba(28, 27, 31, 0.82);
+  color: #9dd4ec;
+  font: 12px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+.ecu-cam-stick__follow[hidden] {
+  display: none !important;
+}
+`;
+    document.head.appendChild(style);
+  }
+  function CameraJoystick() {
+    const React = getReact();
+    ensureCss4();
+    const rootRef = React.useRef(null);
+    const knobRef = React.useRef(null);
+    const [free, setFree] = React.useState(() => isFreeCamera());
+    const activePtr = React.useRef(null);
+    React.useEffect(() => subscribeFreeCamera(setFree), []);
+    React.useEffect(() => {
+      const root = rootRef.current;
+      const knob = knobRef.current;
+      if (!root || !knob) return;
+      const setKnob = (dx, dy) => {
+        const lim = JOYSTICK_RADIUS_PX;
+        const mag = Math.sqrt(dx * dx + dy * dy);
+        let x = dx;
+        let y = dy;
+        if (mag > lim && mag > 0) {
+          x = dx / mag * lim;
+          y = dy / mag * lim;
+        }
+        knob.style.transform = "translate(" + x + "px," + y + "px)";
+        setJoystickPan(joystickToPan(x, y));
+      };
+      const reset = () => {
+        activePtr.current = null;
+        knob.style.transform = "translate(0px,0px)";
+        setJoystickPan({ x: 0, y: 0 });
+      };
+      const onDown = (ev) => {
+        if (activePtr.current != null) return;
+        activePtr.current = ev.pointerId;
+        try {
+          root.setPointerCapture(ev.pointerId);
+        } catch (e2) {
+        }
+        const rect = root.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        setKnob(ev.clientX - cx, ev.clientY - cy);
+        ev.preventDefault();
+        ev.stopPropagation();
+      };
+      const onMove = (ev) => {
+        if (activePtr.current !== ev.pointerId) return;
+        const rect = root.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        setKnob(ev.clientX - cx, ev.clientY - cy);
+        ev.preventDefault();
+      };
+      const onUp = (ev) => {
+        if (activePtr.current !== ev.pointerId) return;
+        reset();
+      };
+      root.addEventListener("pointerdown", onDown);
+      root.addEventListener("pointermove", onMove);
+      root.addEventListener("pointerup", onUp);
+      root.addEventListener("pointercancel", onUp);
+      return () => {
+        reset();
+        root.removeEventListener("pointerdown", onDown);
+        root.removeEventListener("pointermove", onMove);
+        root.removeEventListener("pointerup", onUp);
+        root.removeEventListener("pointercancel", onUp);
+      };
+    }, []);
+    return e(
+      "div",
+      {
+        className: "ecu-cam-stick",
+        ref: rootRef,
+        "aria-label": "Camera pan joystick"
+      },
+      e("button", {
+        type: "button",
+        className: "ecu-cam-stick__follow",
+        hidden: !free,
+        title: "Re-center on observed character",
+        onClick: (ev) => {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          if (ev && ev.preventDefault) ev.preventDefault();
+          followObservedCamera();
+        }
+      }, "Follow"),
+      e("div", { className: "ecu-cam-stick__base" }),
+      e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
+    );
+  }
+
   // src/ui/chrome/phoneEdgeGestures.ts
   var PHONE_EDGE_INSET_PX = 24;
   var PHONE_EDGE_BOTTOM_BAND_PX = 32;
@@ -52248,7 +52694,7 @@ ${parts.map(cssSlice).join("\n")}
     const dock = phoneDockHeightPx() || PHONE_DOCK_FALLBACK_PX;
     return Math.max(0, viewportH - dock - PHONE_EDGE_BOTTOM_BAND_PX);
   }
-  var installed6 = false;
+  var installed7 = false;
   var handlersRef = null;
   var stroke = null;
   function fire(edge) {
@@ -52351,8 +52797,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneEdgeGestures(handlers) {
     handlersRef = handlers;
-    if (!installed6 && typeof window !== "undefined") {
-      installed6 = true;
+    if (!installed7 && typeof window !== "undefined") {
+      installed7 = true;
       window.addEventListener("touchstart", onTouchStart, {
         passive: true,
         capture: true
@@ -52377,8 +52823,8 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneEdgeGestures() {
     handlersRef = null;
     stroke = null;
-    if (!installed6 || typeof window === "undefined") return;
-    installed6 = false;
+    if (!installed7 || typeof window === "undefined") return;
+    installed7 = false;
     window.removeEventListener("touchstart", onTouchStart, true);
     window.removeEventListener("touchmove", onTouchMove, true);
     window.removeEventListener("touchend", onTouchEnd, true);
@@ -52433,7 +52879,7 @@ ${parts.map(cssSlice).join("\n")}
     const chromeH = bottom ? Math.round(bottom.getBoundingClientRect().height) : 0;
     return Math.max(0, viewportH - dock - Math.max(chromeH, 0) - 8);
   }
-  var installed7 = false;
+  var installed8 = false;
   var handlersRef2 = null;
   var stroke2 = null;
   function onTouchStart2(ev) {
@@ -52496,8 +52942,8 @@ ${parts.map(cssSlice).join("\n")}
   }
   function installPhoneHomePageGestures(handlers) {
     handlersRef2 = handlers;
-    if (!installed7 && typeof window !== "undefined") {
-      installed7 = true;
+    if (!installed8 && typeof window !== "undefined") {
+      installed8 = true;
       window.addEventListener("touchstart", onTouchStart2, {
         passive: true,
         capture: true
@@ -52518,15 +52964,15 @@ ${parts.map(cssSlice).join("\n")}
   function uninstallPhoneHomePageGestures() {
     handlersRef2 = null;
     stroke2 = null;
-    if (!installed7 || typeof window === "undefined") return;
-    installed7 = false;
+    if (!installed8 || typeof window === "undefined") return;
+    installed8 = false;
     window.removeEventListener("touchstart", onTouchStart2, true);
     window.removeEventListener("touchend", onTouchEnd2, true);
     window.removeEventListener("touchcancel", onTouchEnd2, true);
   }
 
   // src/ui/frames/comm/phoneNavCss.ts
-  var STYLE_ID8 = "ecu-phone-nav-css";
+  var STYLE_ID9 = "ecu-phone-nav-css";
   var CSS9 = `
 .ecu-phone-dock {
   position: fixed;
@@ -53039,9 +53485,9 @@ ${parts.map(cssSlice).join("\n")}
 `;
   function ensurePhoneNavCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID8)) return;
+    if (document.getElementById(STYLE_ID9)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID8;
+    style.id = STYLE_ID9;
     style.textContent = CSS9;
     document.head.append(style);
   }
@@ -58029,8 +58475,8 @@ ${parts.map(cssSlice).join("\n")}
   function PerformanceSettingsPane(props) {
     const React = getReact();
     const query = String(props.query || "").trim();
-    const [tick2, setTick] = React.useState(0);
-    void tick2;
+    const [tick3, setTick] = React.useState(0);
+    void tick3;
     const settings = getSettings();
     const density = props.hudDensity != null ? props.hudDensity : settings.hudDensity || "auto";
     const setDensity = props.setHudDensity || ((mode) => {
@@ -60091,9 +60537,9 @@ ${parts.map(cssSlice).join("\n")}
       if (!tintShownRef.current) pushTint("restart");
     };
     React.useEffect(() => {
-      const tick2 = () => onClockRef.current();
-      tick2();
-      return subscribeEffectClock(tick2);
+      const tick3 = () => onClockRef.current();
+      tick3();
+      return subscribeEffectClock(tick3);
     }, [entityId, effect.id]);
     React.useEffect(() => {
       return () => {
@@ -63219,16 +63665,16 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/chrome/phoneActionSheet.ts
-  var STYLE_ID9 = "ecu-phone-action-sheet-css";
+  var STYLE_ID10 = "ecu-phone-action-sheet-css";
   var sheetRoot = null;
   var unbindSwipe = null;
   var keyHandler2 = null;
   function ensureActionSheetCss() {
     ensurePhoneNavCss();
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID9)) return;
+    if (document.getElementById(STYLE_ID10)) return;
     const style = document.createElement("style");
-    style.id = STYLE_ID9;
+    style.id = STYLE_ID10;
     style.textContent = `
 .ecu-phone-action-sheet {
   position: fixed;
@@ -68347,7 +68793,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID10 = "ecu-minimap-chrome-css";
+  var STYLE_ID11 = "ecu-minimap-chrome-css";
   var CSS11 = `
 .comm-minimap {
   display: flex;
@@ -68505,10 +68951,10 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID10);
+    let el = document.getElementById(STYLE_ID11);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID10;
+      el.id = STYLE_ID11;
       document.head.appendChild(el);
     }
     if (!injected11 || el.textContent !== CSS11) {
@@ -69877,7 +70323,7 @@ ${ESTIMATE_HINT}`,
       if (shouldAutoOpenCompletions(value, cursor)) open();
       else close();
     };
-    const onKeyDown = (_cm, ev) => {
+    const onKeyDown2 = (_cm, ev) => {
       if (!popup) {
         if ((ev.ctrlKey || ev.metaKey) && !ev.altKey && (ev.key === " " || ev.code === "Space")) {
           ev.preventDefault();
@@ -69919,7 +70365,7 @@ ${ESTIMATE_HINT}`,
       }, 120);
     };
     cm.on("change", onChange);
-    cm.on("keydown", onKeyDown);
+    cm.on("keydown", onKeyDown2);
     cm.on("scroll", onScroll);
     cm.on("blur", onBlur);
     void ensureRunnerApiNames().then(() => {
@@ -69932,7 +70378,7 @@ ${ESTIMATE_HINT}`,
         close();
         if (cm.off) {
           cm.off("change", onChange);
-          cm.off("keydown", onKeyDown);
+          cm.off("keydown", onKeyDown2);
           cm.off("scroll", onScroll);
           cm.off("blur", onBlur);
         }
@@ -70718,7 +71164,7 @@ ${ESTIMATE_HINT}`,
       onPick(snip);
       runCode(snip.code, snip.id);
     };
-    const onKeyDown = (ev) => {
+    const onKeyDown2 = (ev) => {
       if ((ev.ctrlKey || ev.metaKey) && ev.key === "Enter") {
         ev.preventDefault();
         onRun();
@@ -70870,7 +71316,7 @@ ${ESTIMATE_HINT}`,
       value: draft,
       spellCheck: false,
       onChange: (ev) => persistDraft2(ev.target.value),
-      onKeyDown,
+      onKeyDown: onKeyDown2,
       placeholder: "loot()\nuse_skill('town')",
       style: Object.assign({}, inputStyle, {
         lineHeight: "1.45",
@@ -79545,7 +79991,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID11 = "ecu-query-search-field-css";
+  var STYLE_ID12 = "ecu-query-search-field-css";
   var CSS13 = `
 .ecu-qsearch {
   position: relative;
@@ -79685,9 +80131,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID11)) return;
+    if (document.getElementById(STYLE_ID12)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID11;
+    el.id = STYLE_ID12;
     el.textContent = CSS13;
     document.head.appendChild(el);
   }
@@ -84387,7 +84833,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID12 = "ecu-bank-panel-css";
+  var STYLE_ID13 = "ecu-bank-panel-css";
   var CSS14 = `
 .BankPanel {
   --bk-line: #2a2a2a;
@@ -84815,13 +85261,13 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID12)) return;
+      if (document.getElementById(STYLE_ID13)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID12);
+    let el = document.getElementById(STYLE_ID13);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID12;
+      el.id = STYLE_ID13;
       document.head.appendChild(el);
     }
     el.textContent = CSS14;
@@ -85016,7 +85462,7 @@ ${ESTIMATE_HINT}`,
     const [readySection, setReadySection] = React.useState(
       "ready"
     );
-    const [tick2, setTick] = React.useState(0);
+    const [tick3, setTick] = React.useState(0);
     const [expanded, setExpanded] = React.useState(
       () => detectViewportProfile() === "phone"
     );
@@ -85164,7 +85610,7 @@ ${ESTIMATE_HINT}`,
     }, [snap, allAgg, query]);
     const ageLabel = snap && snap.loadedAt ? formatRelativeAge(snap.loadedAt, Date.now()) : "";
     const slotUsage = snap ? formatBankSlotUsage(snap.packs) : null;
-    void tick2;
+    void tick3;
     const visibleChanges = React.useMemo(() => {
       if (!refreshSummary) return [];
       return filterBankChanges(
@@ -88995,7 +89441,7 @@ ${ESTIMATE_HINT}`,
   }
   function SnapGuideLine(props) {
     const React = getReact();
-    const [tick2, setTick] = React.useState(0);
+    const [tick3, setTick] = React.useState(0);
     const dragging = !!props.dragId;
     React.useEffect(() => {
       if (!dragging) return;
@@ -89008,7 +89454,7 @@ ${ESTIMATE_HINT}`,
       return () => window.cancelAnimationFrame(raf2);
     }, [dragging]);
     if (!dragging) return null;
-    void tick2;
+    void tick3;
     const root = layoutDragRoot().getBoundingClientRect();
     const kids = [];
     const numbers = props.showWindowIds ? props.windowNumberById : void 0;
@@ -89730,6 +90176,7 @@ ${ESTIMATE_HINT}`,
         hudDensity,
         setHudDensity
       }) : null,
+      viewportProfile === "phone" ? e(CameraJoystick, { key: "cam-stick" }) : null,
       viewportProfile === "phone" ? e(PhoneNavDock, {
         layoutEdit,
         toggleLayoutEdit,
@@ -89937,6 +90384,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     startSessionKills();
     startWorldOverlay();
     installWorldZoom();
+    installCameraPan();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
       domContainer = document.createElement("div");
