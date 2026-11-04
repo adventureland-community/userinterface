@@ -9,7 +9,10 @@ import {
   applyTakeSettleSync,
   cursorsForMailIds,
   mailPageCursorForIndex,
+  mailPagesExhaustInbox,
+  patchMailsById,
   reconcileAfterHeadPull,
+  retainMailsSeenDuringRefresh,
 } from "../../src/host/mail/mailPersistLogic";
 import {
   chunkRefreshCursors,
@@ -206,6 +209,36 @@ describe("take settle sync vs head-only soft-merge", () => {
       r.mails.some((m) => m.id === "ML_old"),
       true,
     );
+  });
+
+  it("patchMailsById clears stuck Settling when live taken is bool true", () => {
+    const pending = markClaimPending(
+      [claw("ML_elec", { taken: false })],
+      ["ML_elec"],
+    );
+    assert.equal(pending[0].takenPending, true);
+    const patched = patchMailsById(pending, [
+      claw("ML_elec", { taken: true, pending: false }),
+    ]);
+    assert.equal(patched[0].taken, true);
+    assert.equal(patched[0].takenPending, false);
+  });
+
+  it("full Refresh prune drops soft-merge orphans never seen live", () => {
+    const live = claw("ML_live", { taken: true, pending: false });
+    const ghost = markClaimPending(
+      [claw("ML_ghost_elec", { taken: false })],
+      ["ML_ghost_elec"],
+    )[0];
+    const existing = [live, ghost, letter("ORPHAN_LETTER")];
+    const seen = new Set<string>(["ML_live"]);
+    const pruned = retainMailsSeenDuringRefresh(existing, seen);
+    assert.deepEqual(
+      pruned.map((m) => m.id),
+      ["ML_live"],
+    );
+    assert.equal(mailPagesExhaustInbox([pageOf([live], false)]), true);
+    assert.equal(mailPagesExhaustInbox([pageOf([live], true)]), false);
   });
 });
 

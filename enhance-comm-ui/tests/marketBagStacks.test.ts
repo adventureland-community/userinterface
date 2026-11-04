@@ -17,6 +17,23 @@ describe("collapseMarketBagStacks", () => {
     );
   });
 
+  it("keeps cxjar cosmetics separate by data", () => {
+    assert.notEqual(
+      marketBagStackKey({ name: "cxjar", data: "breyes" }),
+      marketBagStackKey({ name: "cxjar", data: "bathat" }),
+    );
+    const stacks = collapseMarketBagStacks([
+      { slot: 1, name: "cxjar", q: 2, data: "breyes" },
+      { slot: 3, name: "cxjar", q: 1, data: "bathat" },
+      { slot: 4, name: "cxjar", q: 3, data: "breyes" },
+    ]);
+    assert.equal(stacks.length, 2);
+    assert.equal(stacks[0].data, "breyes");
+    assert.equal(stacks[0].q, 5);
+    assert.equal(stacks[1].data, "bathat");
+    assert.equal(stacks[1].q, 1);
+  });
+
   it("sums qty across matching slots and keeps first slot", () => {
     const stacks = collapseMarketBagStacks([
       { slot: 2, name: "hpot1", q: 40 },

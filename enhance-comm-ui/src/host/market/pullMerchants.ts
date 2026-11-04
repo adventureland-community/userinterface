@@ -117,6 +117,9 @@ export function normalizeTradeWant(
   }
   if (typeof w.p === "string") want.p = w.p;
   else if (w.p === null) want.p = null;
+  if (typeof w.data === "string" && w.data.trim()) {
+    want.data = w.data.trim();
+  }
   return want;
 }
 
@@ -178,6 +181,9 @@ export function normalizeCatalogSlot(
   if (typeof s.q === "number") listing.q = s.q;
   if (typeof s.level === "number") listing.level = s.level;
   if (typeof s.p === "string" || s.p === null) listing.p = s.p as string | null;
+  if (typeof s.data === "string" && s.data.trim()) {
+    listing.data = s.data.trim();
+  }
   if (typeof s.stat_type === "string") listing.stat_type = s.stat_type;
   return listing;
 }

@@ -5,6 +5,10 @@
 import type { MarketListingRow } from "./marketTypes";
 import { listingMatchesMarketQuery } from "./marketQuery";
 import { formatTradeGold, tradeOfferRatioParts } from "../tradeHelpers";
+import {
+  getItemData,
+  itemStackIdentityKey,
+} from "../itemInstanceData";
 
 export type MarketBrowseFilters = {
   query: string;
@@ -28,6 +32,8 @@ export type MarketItemGroup = {
   name: string;
   level?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   rows: import("./marketTypes").MarketListingRow[];
   sales: import("./marketTypes").MarketListingRow[];
   wants: import("./marketTypes").MarketListingRow[];
@@ -75,7 +81,7 @@ export function filterMarketListings(
   return out;
 }
 
-/** Group listings by item identity (name + level + title). */
+/** Group listings by item identity (name + level + title + data). */
 export function groupMarketListings(
   rows: MarketListingRow[],
 ): MarketItemGroup[] {
@@ -91,12 +97,12 @@ export function groupMarketListings(
     ) {
       continue;
     }
-    const key =
-      row.name +
-      "\0" +
-      (row.level != null ? String(row.level) : "") +
-      "\0" +
-      (row.p != null ? String(row.p) : "");
+    const key = itemStackIdentityKey({
+      name: row.name,
+      level: row.level,
+      p: row.p,
+      data: row.data,
+    });
     if (!byKey[key]) byKey[key] = [];
     byKey[key].push(row);
   }
@@ -125,11 +131,13 @@ export function groupMarketListings(
       if (!(wants[j].price > 0)) continue;
       if (bestWant == null || wants[j].price > bestWant) bestWant = wants[j].price;
     }
+    const data = getItemData(sample);
     out.push({
       key: keys[i],
       name: sample.name,
       level: sample.level,
       p: sample.p,
+      ...(data ? { data } : {}),
       rows: list,
       sales,
       wants,
@@ -336,9 +344,11 @@ function tradeWantOfferFingerprint(row: MarketListingRow): string {
     row.name,
     row.level != null ? String(row.level) : "",
     row.p != null ? String(row.p) : "",
+    getItemData(row) ?? "",
     w ? w.name : "",
     w && w.level != null ? String(w.level) : "",
     w && w.p != null ? String(w.p) : "",
+    w ? getItemData(w) ?? "" : "",
   ].join("\0");
 }
 

@@ -11,6 +11,11 @@ import {
   itemInstanceLabel,
 } from "../../lib/gameIcon";
 import {
+  cxJarContentSkin,
+  cxJarData,
+  getItemData,
+} from "../../lib/itemInstanceData";
+import {
   coerceItemLevel,
   resolveItemLevelBadge,
 } from "../../lib/itemLevelBadge";
@@ -23,6 +28,7 @@ import {
   type ItemCooltipActual,
 } from "./itemCooltip";
 import { stripNativeTitles } from "./stripNativeTitles";
+import { wrapIconHtml } from "./wrapIconHtml";
 
 export type ItemInstanceProps = {
   name: string;
@@ -31,6 +37,8 @@ export type ItemInstanceProps = {
   level?: number | string;
   q?: number;
   p?: string;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   size?: number;
   className?: string;
   /** Plain-text fallback label; unused when cooltip is on. */
@@ -77,6 +85,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
     level,
     q,
     p,
+    data,
     size = 40,
     className,
     title,
@@ -89,6 +98,34 @@ export function ItemInstance(props: ItemInstanceProps): any {
   } = props;
 
   const levelNum = coerceItemLevel(level);
+  const resolvedData =
+    getItemData({ data }) ||
+    getItemData(actual as { data?: unknown } | null | undefined) ||
+    undefined;
+  const sealedCx = cxJarData({ name, data: resolvedData });
+  // Sealed look wins over G.items.cxjar.skin (explorer CxJarItemSprite parity).
+  const sealedSkin = sealedCx ? cxJarContentSkin(sealedCx) : undefined;
+  const effectiveSkin = sealedSkin || skin;
+  /** Corner jar chip — same ratio as al-data-explorer `CxJarItemSprite`. */
+  const jarBadgePx = sealedCx
+    ? Math.max(14, Math.round(size * 0.45))
+    : 0;
+  const jarBadgeHtml =
+    sealedCx && jarBadgePx
+      ? itemIconHtml("cxjar", {
+          size: jarBadgePx,
+          nativeTitle: false,
+        })
+      : "";
+  const tipActual: ItemCooltipActual = {
+    name,
+    ...(actual || {}),
+  };
+  if (tipActual.level == null && level != null) tipActual.level = level;
+  if (tipActual.q == null && q != null) tipActual.q = q;
+  if (tipActual.p == null && p != null) tipActual.p = p;
+  if (resolvedData && tipActual.data == null) tipActual.data = resolvedData;
+
   // Match stock hovername: G.titles prefix + upgrade/compound suffixes.
   const tip =
     title || itemInstanceLabel(name, { p, level: levelNum }) || name;
@@ -109,8 +146,8 @@ export function ItemInstance(props: ItemInstanceProps): any {
   qRef.current = q;
   const pRef = React.useRef(p);
   pRef.current = p;
-  const actualRef = React.useRef(actual);
-  actualRef.current = actual;
+  const actualRef = React.useRef(tipActual);
+  actualRef.current = tipActual;
   const tipLabelRef = React.useRef(tip);
   tipLabelRef.current = tip;
 
@@ -133,7 +170,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
     if (!el) return;
     const html = stockChrome
       ? itemInstanceHtml(name, {
-          skin,
+          skin: effectiveSkin,
           level: levelNum,
           q,
           p,
@@ -142,7 +179,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
           nativeTitle: false,
         })
       : itemIconHtml(name, {
-          skin,
+          skin: effectiveSkin,
           size,
           title: tip,
           nativeTitle: false,
@@ -176,7 +213,7 @@ export function ItemInstance(props: ItemInstanceProps): any {
     return () => {
       if (el) el.innerHTML = "";
     };
-  }, [name, skin, levelNum, q, p, size, tip, stockChrome, cooltip]);
+  }, [name, effectiveSkin, levelNum, q, p, size, tip, stockChrome, cooltip]);
 
   React.useEffect(() => {
     if (!cooltip) return;
@@ -220,7 +257,21 @@ export function ItemInstance(props: ItemInstanceProps): any {
         lineHeight: 0,
       },
     }),
-    levelBadge
+    jarBadgeHtml
+      ? e(
+          "span",
+          {
+            className: "ecu-item-badge ecu-item-badge--cxjar",
+            "aria-hidden": true,
+            style: {
+              width: jarBadgePx,
+              height: jarBadgePx,
+            },
+          },
+          wrapIconHtml(jarBadgeHtml),
+        )
+      : null,
+    levelBadge && !sealedCx
       ? e(
           "span",
           {
@@ -295,6 +346,29 @@ export const ITEM_INSTANCE_BADGE_CSS = `
   left: -2px;
   bottom: -2px;
   color: #cfcfcf;
+}
+.ecu-item-badge--cxjar {
+  left: 0;
+  bottom: 0;
+  z-index: 3;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 2px;
+  background: rgba(18, 18, 22, 0.94);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  line-height: 0 !important;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ecu-item-badge--cxjar .ecu-icon-html,
+.ecu-item-badge--cxjar .ecu-item-instance,
+.ecu-item-badge--cxjar .ecu-meter-icon {
+  display: block !important;
+  margin: 0 !important;
 }
 .ecu-item-badge--bank {
   right: -2px;

@@ -1,6 +1,11 @@
 /**
- * Collapse bag slots that share name + level + title for Market bag UI.
+ * Collapse bag slots that share name + level + title (+ data) for Market bag UI.
  */
+
+import {
+  getItemData,
+  itemStackIdentityKey,
+} from "../itemInstanceData";
 
 export type MarketBagSlot = {
   slot: number;
@@ -8,6 +13,8 @@ export type MarketBagSlot = {
   q?: number;
   level?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   skin?: string;
 };
 
@@ -21,6 +28,8 @@ export type MarketBagStack = {
   q: number;
   level?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   skin?: string;
   /** How many physical bag slots were merged. */
   slotCount: number;
@@ -30,18 +39,13 @@ export function marketBagStackKey(item: {
   name: string;
   level?: number;
   p?: string | null;
+  data?: unknown;
 }): string {
-  return (
-    item.name +
-    "\0" +
-    (item.level != null ? String(item.level) : "") +
-    "\0" +
-    (item.p != null && item.p !== "" ? String(item.p) : "")
-  );
+  return itemStackIdentityKey(item);
 }
 
 /**
- * Merge bag slots with the same item identity (name, level, title `p`).
+ * Merge bag slots with the same item identity (name, level, title `p`, data).
  * Order follows first appearance in the bag.
  */
 export function collapseMarketBagStacks(
@@ -58,7 +62,8 @@ export function collapseMarketBagStacks(
     const level = typeof it.level === "number" ? it.level : undefined;
     const p =
       it.p != null && String(it.p) !== "" ? String(it.p) : null;
-    const key = marketBagStackKey({ name, level, p });
+    const data = getItemData(it);
+    const key = marketBagStackKey({ name, level, p, data });
     const qty =
       typeof it.q === "number" && it.q > 0 ? it.q | 0 : 1;
     const slot = typeof it.slot === "number" ? it.slot : i;
@@ -71,6 +76,7 @@ export function collapseMarketBagStacks(
         q: qty,
         level,
         p,
+        ...(data ? { data } : {}),
         skin: it.skin,
         slotCount: 1,
       };

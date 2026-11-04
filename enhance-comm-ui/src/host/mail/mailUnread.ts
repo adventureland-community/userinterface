@@ -2,6 +2,7 @@
  * Unread / X.unread sync, badge, watch, and open-read actions.
  */
 
+import { scalePollMs } from "../../lib/perfPrefs";
 import { readMail, readMailMany } from "./api";
 import { requestMailHead } from "./mailCache";
 import { schedulePersistMailCache } from "./mailPersist";
@@ -205,9 +206,15 @@ export function installMailUnreadWatch(): void {
   unreadWatchInstalled = true;
   bootMailUnreadWatch();
   // SAC runs ~every 4s on Comm; sample a bit faster so badge/list react promptly.
+  // Phone stretches the effective cadence (see scalePollMs) without pausing trackers.
+  let lastSample = 0;
   unreadWatchTimer = window.setInterval(() => {
+    const every = scalePollMs(2000, "data");
+    const now = Date.now();
+    if (now - lastSample < every) return;
+    lastSample = now;
     applyXUnread(getXUnread());
-  }, 2000);
+  }, 1000);
 }
 
 export function uninstallMailUnreadWatch(): void {

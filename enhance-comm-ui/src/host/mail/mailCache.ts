@@ -5,9 +5,12 @@
 import { pullMailPage } from "./api";
 import { schedulePersistMailCache } from "./mailPersist";
 import {
+  addMailPageIdsToSeen,
   cursorsForMailIds,
+  mailPagesExhaustInbox,
   patchMailsById,
   reconcileAfterHeadPull,
+  retainMailsSeenDuringRefresh,
 } from "./mailPersistLogic";
 import {
   chunkRefreshCursors,
@@ -50,7 +53,7 @@ let prefetchPages = 0;
 /** Consecutive background pull failures — backs off further. */
 let prefetchFailStreak = 0;
 /** Shared head/cursor pull so Refresh waits instead of no-op while in flight. */
-let activePull: Promise<boolean> | null = null;
+let activePull: Promise<PullMailPage | null> | null = null;
 /** Bumps to cancel an in-flight full cache Refresh. */
 let refreshSeq = 0;
 /**
@@ -126,7 +129,7 @@ async function runPull(
   mode: "head" | "cursor" | "patch",
   reason: string,
   cursor?: string | null,
-): Promise<boolean> {
+): Promise<PullMailPage | null> {
   if (activePull) {
     try {
       await activePull;
@@ -138,12 +141,12 @@ async function runPull(
       (mode === "cursor" || mode === "patch") &&
       (pullInFlight || getLoadingMore())
     ) {
-      return false;
+      return null;
     }
   }
 
-  const work = (async (): Promise<boolean> => {
-    if (pullInFlight) return false;
+  const work = (async (): Promise<PullMailPage | null> => {
+    if (pullInFlight) return null;
     pullInFlight = true;
     commit(
       mode === "head"
@@ -161,7 +164,7 @@ async function runPull(
             : "Mail pull failed",
           "err",
         );
-        return false;
+        return null;
       }
       const page = res.data;
       const mails = getMails();
@@ -250,7 +253,7 @@ async function runPull(
         commit(patch);
       }
       schedulePersistMailCache();
-      return true;
+      return page;
     } finally {
       pullInFlight = false;
       commit({ loading: false, loadingMore: false });
@@ -310,8 +313,12 @@ async function fetchMailPage(
  * Apply one or more already-fetched pages onto the soft-merged cache by id.
  * Callers fetch in parallel; merges stay serial so commits don't race.
  */
-function applyFetchedPages(pages: PullMailPage[]): void {
+function applyFetchedPages(
+  pages: PullMailPage[],
+  seenIds?: Set<string>,
+): void {
   if (!pages.length) return;
+  if (seenIds) addMailPageIdsToSeen(pages, seenIds);
   const mails = getMails();
   const prevIds = new Set<string>();
   for (let i = 0; i < mails.length; i++) prevIds.add(mails[i].id);
@@ -332,8 +339,9 @@ function applyFetchedPages(pages: PullMailPage[]): void {
 
 /**
  * Toolbar Refresh: soft-merge the head, then re-pull every warmed page in
- * place (parallel batches, patch by id) without wiping the list.
- * Shows page progress, rate, and ETA while running.
+ * place (parallel batches, patch by id). When the server inbox is exhausted,
+ * drop soft-merge orphans never seen on any pulled page so stuck Settling
+ * ghosts cannot survive Refresh.
  */
 export async function requestMailCacheRefresh(): Promise<void> {
   if (getRefreshProgress()) return;
@@ -348,13 +356,18 @@ export async function requestMailCacheRefresh(): Promise<void> {
     ratePerSec: 0,
   });
 
-  const headOk = await runPull("head", "Refresh");
+  const seenIds = new Set<string>();
+  let inboxExhausted = false;
+
+  const headPage = await runPull("head", "Refresh");
   if (seq !== refreshSeq) return;
-  if (!headOk) {
+  if (!headPage) {
     commitRefreshProgress(null);
     if (getPanelOpen()) schedulePrefetch();
     return;
   }
+  addMailPageIdsToSeen([headPage], seenIds);
+  if (mailPagesExhaustInbox([headPage])) inboxExhausted = true;
 
   let done = 1;
   total = Math.max(done, refreshPageCount(getMails().length));
@@ -379,8 +392,8 @@ export async function requestMailCacheRefresh(): Promise<void> {
     if (b > 0) await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
     if (seq !== refreshSeq) return;
 
-    let batch = batches[b];
-    let pages = await Promise.all(
+    const batch = batches[b];
+    const pages = await Promise.all(
       batch.map((cursor) => fetchMailPage(cursor)),
     );
     if (seq !== refreshSeq) return;
@@ -416,7 +429,8 @@ export async function requestMailCacheRefresh(): Promise<void> {
           await sleepMs(MAIL_REFRESH_BATCH_GAP_MS);
         }
       }
-      applyFetchedPages(recovered);
+      if (mailPagesExhaustInbox(recovered)) inboxExhausted = true;
+      applyFetchedPages(recovered, seenIds);
       done += batch.length;
     } else if (failed) {
       commitRefreshProgress(null);
@@ -426,7 +440,8 @@ export async function requestMailCacheRefresh(): Promise<void> {
     } else {
       const okPages: PullMailPage[] = [];
       for (let i = 0; i < pages.length; i++) okPages.push(pages[i]!);
-      applyFetchedPages(okPages);
+      if (mailPagesExhaustInbox(okPages)) inboxExhausted = true;
+      applyFetchedPages(okPages, seenIds);
       done += batch.length;
     }
 
@@ -440,6 +455,22 @@ export async function requestMailCacheRefresh(): Promise<void> {
   }
 
   if (seq !== refreshSeq) return;
+
+  // Inbox fully covered: drop soft-merge orphans Refresh never saw live.
+  if (inboxExhausted || !getHasMore()) {
+    const pruned = retainMailsSeenDuringRefresh(getMails(), seenIds);
+    if (pruned.length !== getMails().length) {
+      commit({
+        mails: pruned,
+        hasMore: false,
+        nextCursor: null,
+      });
+      schedulePersistMailCache();
+    } else if (inboxExhausted) {
+      commit({ hasMore: false, nextCursor: null });
+    }
+  }
+
   const n = getMails().length;
   commit({
     refreshProgress: null,

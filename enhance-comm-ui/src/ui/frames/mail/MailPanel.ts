@@ -22,6 +22,7 @@ import {
   type MailRow,
 } from "../../../host/mail";
 import { loadSettings, saveSettings } from "../../../lib/settings";
+import { scalePollMs } from "../../../lib/perfPrefs";
 import { ensureMailCss } from "./mailCss";
 import { selfCharacterNames } from "./mailFormat";
 import { MailBannerBar } from "./MailBannerBar";
@@ -57,7 +58,7 @@ function useMailObservingSnap() {
       setObs((prev: ReturnType<typeof getMailObservingSnap>) =>
         fpOf(prev) === fpOf(next) ? prev : next,
       );
-    }, 2000);
+    }, scalePollMs(2000, "data"));
     return () => window.clearInterval(id);
   }, []);
   return obs;

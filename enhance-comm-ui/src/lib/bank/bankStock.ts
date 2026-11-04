@@ -1,8 +1,9 @@
 /**
  * Bank quantity lookup keyed like Market bag stacks / item groups
- * (`name\\0level\\0p`).
+ * (`name\\0level\\0p`[+`\\0data`]).
  */
 
+import { itemStackIdentityKey } from "../itemInstanceData";
 import {
   aggregateBankItems,
   flattenBankSlots,
@@ -14,14 +15,14 @@ export function bankItemStockKey(item: {
   name: string;
   level?: number | null;
   p?: string | null;
+  data?: unknown;
 }): string {
-  return (
-    String(item.name) +
-    "\0" +
-    (item.level != null ? String(item.level) : "") +
-    "\0" +
-    (item.p != null && item.p !== "" ? String(item.p) : "")
-  );
+  return itemStackIdentityKey({
+    name: String(item.name),
+    level: item.level,
+    p: item.p,
+    data: item.data,
+  });
 }
 
 /** Map stock key → total quantity across all vault packs. */
@@ -40,7 +41,12 @@ export function buildBankQtyIndex(
 
 export function bankQtyFor(
   index: Record<string, number> | null | undefined,
-  item: { name: string; level?: number | null; p?: string | null },
+  item: {
+    name: string;
+    level?: number | null;
+    p?: string | null;
+    data?: unknown;
+  },
 ): number {
   if (!index) return 0;
   const q = index[bankItemStockKey(item)];

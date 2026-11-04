@@ -48,6 +48,7 @@ function wantFingerprint(
     want.level != null ? String(want.level) : "",
     want.p === null ? "null" : want.p != null ? String(want.p) : "",
     want.q != null ? String(want.q) : "",
+    want.data != null && String(want.data) !== "" ? String(want.data) : "",
   ].join("\0");
 }
 
@@ -77,6 +78,9 @@ function listingFromSlot(
   if (slot.q != null) row.q = slot.q;
   if (slot.level != null) row.level = slot.level;
   if (slot.p !== undefined) row.p = slot.p;
+  if (slot.data != null && String(slot.data) !== "") {
+    row.data = String(slot.data);
+  }
   if (slot.stat_type != null) row.stat_type = slot.stat_type;
   return row;
 }
@@ -425,6 +429,7 @@ export function cachedSlotsAsListings(
     if (s.q != null) row.q = s.q;
     if (s.level != null) row.level = s.level;
     if (s.p !== undefined) row.p = s.p;
+    if (s.data != null && String(s.data) !== "") row.data = String(s.data);
     if (s.stat_type != null) row.stat_type = s.stat_type;
     out.push(row);
   }

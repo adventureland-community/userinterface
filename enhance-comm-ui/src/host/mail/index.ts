@@ -83,10 +83,14 @@ export {
   parseMailItem,
 } from "./merge";
 export {
+  addMailPageIdsToSeen,
   canKeepOlderAfterHead,
   findHeadOverlap,
   headFingerprint,
+  mailPagesExhaustInbox,
+  patchMailsById,
   reconcileAfterHeadPull,
+  retainMailsSeenDuringRefresh,
   stitchHeadOntoCache,
 } from "./mailPersistLogic";
 export {

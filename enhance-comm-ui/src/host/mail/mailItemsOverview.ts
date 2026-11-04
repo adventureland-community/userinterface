@@ -4,6 +4,10 @@
  */
 
 import {
+  getItemData,
+  itemStackIdentityKey,
+} from "../../lib/itemInstanceData";
+import {
   countAttachmentsByRecipient,
   countsTowardAttachCap,
   type CharMailboxFill,
@@ -15,6 +19,8 @@ export type MailAggItem = {
   name: string;
   level?: number;
   p: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   /** Sum of item.q (default 1) across mails. */
   q: number;
   mailIds: string[];
@@ -29,15 +35,14 @@ export type MailRecipientItemSection = {
   items: MailAggItem[];
 };
 
-/** Same shape as bank aggKey: name + level + title. */
+/** Same shape as bank aggKey: name + level + title + data. */
 export function mailItemAggKey(item: MailItem): string {
-  return (
-    String(item.name) +
-    "\0" +
-    (item.level != null ? String(item.level) : "") +
-    "\0" +
-    (item.p != null ? String(item.p) : "")
-  );
+  return itemStackIdentityKey({
+    name: String(item.name),
+    level: item.level,
+    p: item.p,
+    data: item.data,
+  });
 }
 
 function isInventoryMail(m: MailRow): boolean {
@@ -53,7 +58,7 @@ function itemQty(item: MailItem): number {
 }
 
 /**
- * Merge identical name/level/title attachments across mails.
+ * Merge identical name/level/title/data attachments across mails.
  * Only untaken attachments that count toward caps (and can_take !== false).
  */
 export function aggregateMailItems(mails: MailRow[]): MailAggItem[] {
@@ -65,11 +70,13 @@ export function aggregateMailItems(mails: MailRow[]): MailAggItem[] {
     const key = mailItemAggKey(m.item);
     let row = byKey[key];
     if (!row) {
+      const data = getItemData(m.item);
       row = {
         key,
         name: String(m.item.name),
         level: m.item.level,
         p: m.item.p != null ? String(m.item.p) : null,
+        ...(data ? { data } : {}),
         q: 0,
         mailIds: [],
         recipients: [],

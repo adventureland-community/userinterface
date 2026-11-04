@@ -1,7 +1,12 @@
+import { getItemData } from "../../lib/itemInstanceData";
 import type { ItemFingerprint, MailItem } from "./types";
 
 function titleKey(p: string | null | undefined): string {
   return p != null && String(p).trim() !== "" ? String(p) : "";
+}
+
+function dataKey(data: unknown): string {
+  return getItemData({ data }) ?? "";
 }
 
 function levelKey(level: number | string | null | undefined): number | null {
@@ -11,7 +16,7 @@ function levelKey(level: number | string | null | undefined): number | null {
 }
 
 /**
- * Same item variant for “queue all matching” — name + title (`p`) + level.
+ * Same item variant for “queue all matching” — name + title (`p`) + level + data.
  * Quantity is ignored (separate stacks still match).
  */
 export function itemMatchesQueueIdentity(
@@ -20,12 +25,14 @@ export function itemMatchesQueueIdentity(
     name: string;
     level?: number | string | null;
     p?: string | null;
+    data?: unknown;
   },
 ): boolean {
   if (!item || !item.name || item.name === "placeholder") return false;
   if (String(item.name) !== String(expected.name || "")) return false;
   if (titleKey(item.p) !== titleKey(expected.p)) return false;
   if (levelKey(item.level) !== levelKey(expected.level)) return false;
+  if (dataKey(item.data) !== dataKey(expected.data)) return false;
   return true;
 }
 
@@ -45,11 +52,14 @@ export function itemMatchesFingerprint(
   if (expected.p != null) {
     if (item.p !== expected.p) return false;
   }
+  if (expected.data != null) {
+    if (dataKey(item.data) !== dataKey(expected.data)) return false;
+  }
   return true;
 }
 
 /**
- * Every bag slot matching name + title + level of `template` (qty ignored).
+ * Every bag slot matching name + title + level + data of `template` (qty ignored).
  * Slot order is inventory order.
  */
 export function listBagFingerprintsMatchingIdentity(
@@ -58,6 +68,7 @@ export function listBagFingerprintsMatchingIdentity(
     name: string;
     level?: number | string | null;
     p?: string | null;
+    data?: unknown;
   },
 ): ItemFingerprint[] {
   if (!items || !items.length) return [];
@@ -79,6 +90,8 @@ export function fingerprintFromSlot(
   if (item.level != null) fp.level = Number(item.level);
   if (item.q != null) fp.q = Number(item.q);
   if (item.p != null) fp.p = String(item.p);
+  const data = getItemData(item);
+  if (data) fp.data = data;
   return fp;
 }
 

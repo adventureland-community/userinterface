@@ -34,6 +34,8 @@ export type MarketSlotListing = {
   q?: number;
   level?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   stat_type?: string;
   /** ms epoch — last pull / open-stand refresh for this rid. */
   lastRefreshedAt?: number;

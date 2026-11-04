@@ -15,7 +15,7 @@ describe("collapseMarketStandPackSlots", () => {
         p: null,
         price: 8840000,
       }),
-      ["0", "batwing", "", "", "8840000"].join("\0"),
+      ["0", "batwing", "", "", "", "8840000"].join("\0"),
     );
     assert.notEqual(
       marketStandPackStackKey({ name: "batwing", price: 100, b: false }),

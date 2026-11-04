@@ -2,6 +2,10 @@
  * Flatten / aggregate / categorize account bank packs.
  */
 
+import {
+  getItemData,
+  itemStackIdentityKey,
+} from "../itemInstanceData";
 import type { BankAggItem, BankItem, BankPacks, BankSlotRef } from "./bankTypes";
 
 export const SLOTS_PER_BANK_PACK = 42;
@@ -48,16 +52,15 @@ export function flattenBankSlots(packs: BankPacks): BankSlotRef[] {
 }
 
 function aggKey(item: BankItem): string {
-  return (
-    String(item.name) +
-    "\0" +
-    (item.level != null ? String(item.level) : "") +
-    "\0" +
-    (item.p != null ? String(item.p) : "")
-  );
+  return itemStackIdentityKey({
+    name: String(item.name),
+    level: item.level,
+    p: item.p,
+    data: item.data,
+  });
 }
 
-/** Merge identical name/level/title stacks across packs. */
+/** Merge identical name/level/title/data stacks across packs. */
 export function aggregateBankItems(slots: BankSlotRef[]): BankAggItem[] {
   const byKey: Record<string, BankAggItem> = Object.create(null);
   for (let i = 0; i < slots.length; i++) {
@@ -66,11 +69,13 @@ export function aggregateBankItems(slots: BankSlotRef[]): BankAggItem[] {
     const q = item.q != null && Number.isFinite(item.q) ? Number(item.q) : 1;
     let row = byKey[key];
     if (!row) {
+      const data = getItemData(item);
       row = {
         key,
         name: String(item.name),
         level: item.level,
         p: item.p != null ? String(item.p) : null,
+        ...(data ? { data } : {}),
         q: 0,
         locs: [],
       };
@@ -88,7 +93,9 @@ export function aggregateBankItems(slots: BankSlotRef[]): BankAggItem[] {
     const la = a.level != null ? a.level : -1;
     const lb = b.level != null ? b.level : -1;
     if (la !== lb) return la - lb;
-    return String(a.p || "").localeCompare(String(b.p || ""));
+    const tp = String(a.p || "").localeCompare(String(b.p || ""));
+    if (tp !== 0) return tp;
+    return String(a.data || "").localeCompare(String(b.data || ""));
   });
   return out;
 }
@@ -218,7 +225,9 @@ export function sortBankItems(
     const lb = b.level != null ? Number(b.level) : 0;
     if (la !== lb) return lb - la;
 
-    return String(a.p || "").localeCompare(String(b.p || ""));
+    const tp = String(a.p || "").localeCompare(String(b.p || ""));
+    if (tp !== 0) return tp;
+    return String(a.data || "").localeCompare(String(b.data || ""));
   });
   return copy;
 }

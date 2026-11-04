@@ -1,10 +1,11 @@
 /**
  * Pack-mode stand collapse: merge identical listings into one cell with summed qty.
- * Gold: buy/sell · name · level · title · price.
- * Trades: name · level · title · want (name/level/title/q) · offer q.
+ * Gold: buy/sell · name · level · title · data · price.
+ * Trades: name · level · title · data · want (name/level/title/data/q) · offer q.
  */
 
 import type { SlotLike } from "../../host/globals";
+import { getItemData } from "../itemInstanceData";
 
 export type MarketStandPackEntry = {
   /** Primary trade slot for actions / drag. */
@@ -15,23 +16,37 @@ export type MarketStandPackEntry = {
   slot: SlotLike | null;
 };
 
-function wantParts(want: { name?: string; level?: number; p?: string | null; q?: number } | string | null | undefined): {
+function wantParts(
+  want:
+    | {
+        name?: string;
+        level?: number;
+        p?: string | null;
+        q?: number;
+        data?: unknown;
+      }
+    | string
+    | null
+    | undefined,
+): {
   name: string;
   level: string;
   p: string;
   q: string;
+  data: string;
 } {
   if (typeof want === "string") {
-    return { name: want, level: "", p: "", q: "" };
+    return { name: want, level: "", p: "", q: "", data: "" };
   }
   if (!want || typeof want !== "object") {
-    return { name: "", level: "", p: "", q: "" };
+    return { name: "", level: "", p: "", q: "", data: "" };
   }
   return {
     name: want.name ? String(want.name) : "",
     level: want.level != null ? String(want.level) : "",
     p: want.p != null && String(want.p) !== "" ? String(want.p) : "",
     q: want.q != null && want.q > 0 ? String(want.q | 0) : "",
+    data: getItemData(want) ?? "",
   };
 }
 
@@ -40,9 +55,19 @@ export function marketStandPackStackKey(slot: {
   b?: boolean;
   giveaway?: boolean;
   registry?: Record<string, string>;
-  want?: { name?: string; level?: number; p?: string | null; q?: number } | string | null;
+  want?:
+    | {
+        name?: string;
+        level?: number;
+        p?: string | null;
+        q?: number;
+        data?: unknown;
+      }
+    | string
+    | null;
   level?: number;
   p?: string | null;
+  data?: unknown;
   price?: number;
   q?: number;
 }): string {
@@ -51,6 +76,7 @@ export function marketStandPackStackKey(slot: {
   const trade = !give && !slot.b && !!w.name;
   const offerQ =
     typeof slot.q === "number" && slot.q > 0 ? String(slot.q | 0) : "1";
+  const data = getItemData(slot) ?? "";
   return (
     (give ? "g" : trade ? "t" : slot.b ? "1" : "0") +
     "\0" +
@@ -60,10 +86,12 @@ export function marketStandPackStackKey(slot: {
     "\0" +
     (slot.p != null && slot.p !== "" ? String(slot.p) : "") +
     "\0" +
+    data +
+    "\0" +
     (give
       ? "give"
       : trade
-        ? ["want", w.name, w.level, w.p, w.q, offerQ].join("\0")
+        ? ["want", w.name, w.level, w.p, w.data, w.q, offerQ].join("\0")
         : slot.price != null
           ? String(slot.price)
           : "")
@@ -104,6 +132,7 @@ export function collapseMarketStandPackSlots(
       want: raw.want,
       level: typeof raw.level === "number" ? raw.level : undefined,
       p: raw.p != null && String(raw.p) !== "" ? String(raw.p) : null,
+      data: getItemData(raw),
       price: typeof raw.price === "number" ? raw.price : undefined,
       q: typeof raw.q === "number" ? raw.q : undefined,
     });

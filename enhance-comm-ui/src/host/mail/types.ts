@@ -1,6 +1,8 @@
 /** Account mail types for Comm mail panel. */
 
 export type MailItem = {
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   name: string;
   level?: number;
   q?: number;
@@ -46,6 +48,8 @@ export type ItemFingerprint = {
   level?: number;
   q?: number;
   p?: string;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
 };
 
 /** Queued bag item; `to` may be "" until a recipient is chosen. */

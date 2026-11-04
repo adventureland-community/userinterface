@@ -7,6 +7,8 @@ export type BankItem = {
   level?: number;
   q?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   [key: string]: unknown;
 };
 
@@ -26,12 +28,14 @@ export type BankSlotRef = {
   item: BankItem;
 };
 
-/** Aggregated stack across packs (merged by name + level + title). */
+/** Aggregated stack across packs (merged by name + level + title + data). */
 export type BankAggItem = {
   key: string;
   name: string;
   level?: number;
   p?: string | null;
+  /** Free-form instance payload (`ItemInfo.data`, e.g. cxjar cosmetic id). */
+  data?: string;
   q: number;
   /** Distinct pack locations (pack + slot index). */
   locs: Array<{ pack: string; index: number; q: number }>;

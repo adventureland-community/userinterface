@@ -225,6 +225,7 @@ function bagFingerprintForItem(
   observing: EntityLike,
   itemName: string,
   level?: number,
+  data?: string,
 ): ItemFingerprint | null {
   const items = observing.items;
   if (!items) return null;
@@ -232,10 +233,15 @@ function bagFingerprintForItem(
     const it = items[i];
     if (!it || !it.name || it.name !== itemName) continue;
     if (level != null && (it.level || 0) !== level) continue;
+    const itData =
+      typeof it.data === "string" && it.data.trim() ? it.data.trim() : "";
+    const wantData = data != null && String(data).trim() ? String(data).trim() : "";
+    if (wantData !== itData) continue;
     const fp: ItemFingerprint = { slot: i, name: it.name };
     if (it.level != null) fp.level = it.level;
     if (it.q != null) fp.q = it.q;
     if (it.p != null) fp.p = String(it.p);
+    if (itData) fp.data = itData;
     return fp;
   }
   return null;
@@ -256,7 +262,7 @@ export async function mirrorOrUndercutListing(opts: {
     window.alert("Mirror/undercut applies to for-sale listings.");
     return false;
   }
-  const fp = bagFingerprintForItem(observing, row.name, row.level);
+  const fp = bagFingerprintForItem(observing, row.name, row.level, row.data);
   if (!fp) {
     window.alert(`No ${row.name} in bag to list.`);
     return false;
@@ -294,6 +300,7 @@ function fingerprintFromBagStack(stack: MarketBagStack): ItemFingerprint {
   if (stack.level != null) fp.level = stack.level;
   if (stack.q != null && stack.q > 0) fp.q = stack.q;
   if (stack.p != null && stack.p !== "") fp.p = String(stack.p);
+  if (stack.data) fp.data = String(stack.data);
   return fp;
 }
 

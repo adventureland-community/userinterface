@@ -155,7 +155,8 @@ function clauseMatches(
     });
     hit =
       anyIncludes(item.name, clause.values) ||
-      anyIncludes(label, clause.values);
+      anyIncludes(label, clause.values) ||
+      anyIncludes(String(item.data || ""), clause.values);
   } else if (clause.kind === "item") {
     hit = anyIncludes(item.name, clause.values);
   } else if (clause.kind === "title") {

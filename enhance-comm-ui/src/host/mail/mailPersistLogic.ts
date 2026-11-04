@@ -73,6 +73,9 @@ function cloneRow(m: MailRow): MailRow {
 /**
  * Soft-update rows that appear in `page` onto matching ids in `existing`
  * (taken flags, subject, …) without reordering.
+ *
+ * Live settled `taken` always clears optimistic `takenPending` (Settling),
+ * even when a patch omits the pending field.
  */
 export function patchMailsById(
   existing: MailRow[],
@@ -85,9 +88,56 @@ export function patchMailsById(
   for (let i = 0; i < existing.length; i++) {
     const prev = existing[i];
     const patch = byId.get(prev.id);
-    out.push(patch ? Object.assign({}, prev, patch) : prev);
+    if (!patch) {
+      out.push(prev);
+      continue;
+    }
+    const merged = Object.assign({}, prev, patch);
+    // Optimistic Claim settling must not survive a live bool taken patch.
+    if (patch.taken === true && !patch.takenPending) {
+      merged.takenPending = false;
+    } else if (patch.taken === false) {
+      merged.takenPending = false;
+    }
+    out.push(merged);
   }
   return out;
+}
+
+/**
+ * After a Refresh that exhausted the server inbox, drop soft-merge orphans
+ * (ids never seen on any pulled page) so stuck Settling / inflated caches
+ * cannot keep already-gone attachments in Items.
+ */
+export function retainMailsSeenDuringRefresh(
+  existing: MailRow[],
+  seenIds: Set<string>,
+): MailRow[] {
+  if (!seenIds.size) return existing.slice();
+  const out: MailRow[] = [];
+  for (let i = 0; i < existing.length; i++) {
+    if (seenIds.has(existing[i].id)) out.push(existing[i]);
+  }
+  return out;
+}
+
+/** Collect mail ids from one or more pull_mail pages into `seen`. */
+export function addMailPageIdsToSeen(
+  pages: PullMailPage[],
+  seen: Set<string>,
+): void {
+  for (let i = 0; i < pages.length; i++) {
+    const mail = pages[i].mail;
+    for (let j = 0; j < mail.length; j++) seen.add(mail[j].id);
+  }
+}
+
+/** True when any page reports the inbox is exhausted (`more === false`). */
+export function mailPagesExhaustInbox(pages: PullMailPage[]): boolean {
+  for (let i = 0; i < pages.length; i++) {
+    if (!pages[i].more) return true;
+  }
+  return false;
 }
 
 /** @deprecated Use patchMailsById — kept as alias for local call sites. */
@@ -252,7 +302,17 @@ export function stitchHeadOntoCache(
     const live = head[i];
     const prevIdx = indexOfId(existing, live.id);
     const prev = prevIdx >= 0 ? existing[prevIdx] : null;
-    out.push(prev ? Object.assign({}, prev, live) : cloneRow(live));
+    if (!prev) {
+      out.push(cloneRow(live));
+      continue;
+    }
+    const merged = Object.assign({}, prev, live);
+    if (live.taken === true && !live.takenPending) {
+      merged.takenPending = false;
+    } else if (live.taken === false) {
+      merged.takenPending = false;
+    }
+    out.push(merged);
   }
 
   const tailStart = existingStart + matchLen;

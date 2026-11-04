@@ -54,6 +54,30 @@ describe("bankBrowse", () => {
     assert.equal(pot!.q, 300);
     assert.equal(pot!.locs.length, 2);
   });
+
+  it("does not merge cxjar stacks with different data", () => {
+    const agg = aggregateBankItems(
+      flattenBankSlots({
+        items0: [
+          { name: "cxjar", q: 2, data: "breyes" },
+          { name: "cxjar", q: 1, data: "bathat" },
+          { name: "cxjar", q: 3, data: "breyes" },
+          { name: "cxjar", q: 1 },
+        ],
+      }),
+    );
+    const jars = agg.filter((a) => a.name === "cxjar");
+    assert.equal(jars.length, 3);
+    const breyes = jars.find((a) => a.data === "breyes");
+    const bathat = jars.find((a) => a.data === "bathat");
+    const empty = jars.find((a) => !a.data);
+    assert.ok(breyes);
+    assert.equal(breyes!.q, 5);
+    assert.ok(bathat);
+    assert.equal(bathat!.q, 1);
+    assert.ok(empty);
+    assert.equal(empty!.q, 1);
+  });
 });
 
 describe("bankQuery", () => {
