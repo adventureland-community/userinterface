@@ -173,6 +173,84 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "feature",
       },
       {
+        label: "Phone Apps sheets",
+        detail:
+          "Command / Mail / Bag join Bank / Market / Chat: auto-expand above the Material dock, expand control, swipe title to close. Command uses Code|Snippets tabs with 44px targets; Market collapses filters behind a Filters button; Bank/Mail/Bag bump touch sizing.",
+        kind: "feature",
+      },
+      {
+        label: "Softer nameplates",
+        detail:
+          "Stock name bars restyle after add_name_tag: translucent dark name band (HP/MP/stand chrome untouched) plus a light text stroke so labels read cleaner over busy maps.",
+        kind: "ui",
+      },
+      {
+        label: "Phone nameplates readable",
+        detail:
+          "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only) and a thinner stroke — Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR.",
+        kind: "fix",
+      },
+      {
+        label: "Nameplates on zoom-in",
+        detail:
+          "FOV 0.5× (and other zoom-in) densifies text resolution by 1/fov, counter-scales plates down so they stay screen-sized, drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
+        kind: "fix",
+      },
+      {
+        label: "Phone fullscreen",
+        detail:
+          "Apps → Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it.",
+        kind: "feature",
+      },
+      {
+        label: "Chat dots + keyboard",
+        detail:
+          "Server page dots stay 8px circles (phone button min-height no longer stretches them into tall ovals). Soft keyboard lifts the expanded chat shell via visualViewport instead of leaving a dead pad under compose.",
+        kind: "fix",
+      },
+      {
+        label: "Phone Mail sheet",
+        detail:
+          "List-first sheet: Filters lives in the search row; Msgs|Items + Compose + More on one line (Stack / Select / Mark read / Refresh behind More or when selecting). Info status folds into the strip — progress / undo / warn still card. Message list keeps most of the sheet.",
+        kind: "fix",
+      },
+      {
+        label: "Bag needs observe",
+        detail:
+          "Opening Bag without a watched character toasts and opens the Character picker (phone). Apps Bag tile dims when not observing. Phone bag keeps a full 7-column grid (no 6+1 wrap) and centers it in the expanded sheet.",
+        kind: "fix",
+      },
+      {
+        label: "Bank page swipe + dots",
+        detail:
+          "Phone Bank/Market peer swipes work over item tiles (slots are buttons — they no longer block the gesture). Page dots are spans so phone button min-height cannot stretch them into tall ovals.",
+        kind: "fix",
+      },
+      {
+        label: "Peer page labels",
+        detail:
+          "Bank / Market / Chat page chrome shows the current name, 1/N, and labeled prev/next (not anonymous dots). Swipe flash highlights the page you landed on.",
+        kind: "fix",
+      },
+      {
+        label: "Mobile install · desktop only",
+        detail:
+          "Settings → Comm UI hides Mobile install on phone — QR / LAN handoff is for desktop → phone, not when ECU is already running on the handset.",
+        kind: "fix",
+      },
+      {
+        label: "Phone Market sheet",
+        detail:
+          "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item — no more empty Bag syncing / Stand chrome eating the viewport.",
+        kind: "fix",
+      },
+      {
+        label: "App peer pages",
+        detail:
+          "Shared swipe language with Chat servers: Bank All/Packs/Types/Ready and Market Selling/Buying/… flip with swipe + dots. Market Filters keeps Near/Afford/Have/Fav only. Mail gets ← Back and swipe-right to return to the list on phone.",
+        kind: "feature",
+      },
+      {
         label: "Touch item actions",
         detail:
           "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
@@ -203,9 +281,9 @@ export const CHANGELOG: ChangelogEntry[] = [
         summary: "Dock, shade, sheets, and safe insets.",
         items: [
           {
-            label: "Bank / Market sheets",
+            label: "App panel sheets",
             detail:
-              "Full-screen expand with swipe-down close; shells end above the Material dock.",
+              "Shared phoneShellExpandCss + usePhoneShellExpand: Command / Mail / Bag / Bank / Market / Chat lift above the dock with swipe-down close.",
             kind: "feature",
           },
           {
@@ -217,7 +295,7 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Mobile install",
             detail:
-              "Desktop Settings → Comm UI shows iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) plus FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              "Settings → Comm UI: scan/copy the GitHub raw userscript; ECU_DEV builds fold out a LAN /enhance-comm-ui.user.js install (full script + @updateURL; mobile TM cannot rely on the thin GM.xhr loader). Plus iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) and FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
             kind: "ui",
           },
         ],
@@ -229,6 +307,42 @@ export const CHANGELOG: ChangelogEntry[] = [
         detail:
           "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
         kind: "improve",
+      },
+      {
+        label: "Settings subsections",
+        detail:
+          "Active left-nav category folds out jump links (Updates, Mobile install, …). Comm UI Guided tours sit last.",
+        kind: "ui",
+      },
+      {
+        label: "Phone intro sheet",
+        detail:
+          "First-run Comm UI welcome fits the viewport: scroll the overview, Skip / Next stay pinned — no more clipped giant popup.",
+        kind: "fix",
+      },
+      {
+        label: "Phone tour · pick character",
+        detail:
+          "Observe tour steps open the Character sheet and spotlight the list with a compact top callout — the huge guide card no longer blocks tapping a name.",
+        kind: "fix",
+      },
+      {
+        label: "Phone tours · Apps / Server / Layout",
+        detail:
+          "Intro retargets Server, Apps, Bag, Cmd, Layout, and Add meter to phone sheets/dock; coverage test + overlay harness walk every tour at phone size.",
+        kind: "fix",
+      },
+      {
+        label: "Vision stays on the observer",
+        detail:
+          "Free-cam / Follow no longer drag the vision fog hole with the camera — the hole tracks the watched character (live entity, then observe snap), not map.real_*.",
+        kind: "fix",
+      },
+      {
+        label: "Phone paperdoll ×",
+        detail:
+          "Locked panels on phone no longer hide the dismiss × inside hover-only arrange chrome — paperdoll (and bag / tips) keep a corner close control.",
+        kind: "fix",
       },
     ],
   },

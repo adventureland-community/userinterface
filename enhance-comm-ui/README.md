@@ -38,11 +38,19 @@ Use a tiny committed stub that loads the local build **on every page refresh** (
 1. Tampermonkey → **Disable** the full pasted production script
 2. **Reinstall / paste** `dev.user.js` once (needs `GM.xmlHttpRequest`)
 3. In this folder: `npm run dev`  
-   (debounced watch rebuild + `http://127.0.0.1:3927/enhance-comm-ui.js`)
+   (debounced watch rebuild + `http://127.0.0.1:3927/enhance-comm-ui.js`; binds `0.0.0.0` for LAN)
 4. Edit source → wait for `[ecu-watch] build #N ok` → **refresh `/comm`**
 5. Confirm in the browser console: `[ecu-dev] injected { url: ...?t=..., bytes: ... }`
 
 Health check: [http://127.0.0.1:3927/health](http://127.0.0.1:3927/health) should show `"ok": true`.
+
+**Phone (same Wi‑Fi):** allow Windows Firewall for Node on port 3927 if prompted. Install the **full** LAN userscript (same path as GitHub raw — mobile Tampermonkey often cannot `GM.xmlHttpRequest` HTTP LAN from HTTPS):
+
+`http://192.168.x.x:3927/enhance-comm-ui.user.js`
+
+Open that URL once in the phone browser (or Tampermonkey → Utilities → Import from URL). Edge/Chrome may prompt to **allow local network / local devices** for the site or extension — deny that and the fetch hangs or fails with no useful error. After allowing, TM can install and later **Check for userscript updates**.
+
+After each watch rebuild: Tampermonkey → the script → **Check for userscript updates**. `ECU_DEV=1` bakes `@version` as `packageVersion-dev.YYYYMMDDHHmmss` so each rebuild is newer; ecu-dev also stamps `@updateURL` / `@downloadURL` on `/enhance-comm-ui.user.js`. Desktop live-reload still uses `/dev.user.js`. Loopback-only: `ECU_DEV_HOST=127.0.0.1 npm run dev`.
 
 ### Overlay preview (no game client)
 
@@ -60,7 +68,8 @@ Refresh the dump with `npm run overlay:sync -- --force`. Toolbar **G: live** mea
 Console: `window.__ecuInstanceSim.enable("crypt-boss")`
 
 Debounce default is 1200ms (override: `ECU_WATCH_DEBOUNCE_MS=700 npm run dev`).  
-Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.user.js` to match.
+Port override: `ECU_DEV_PORT=3930 npm run dev` — then change the URL in `dev.user.js` (or reinstall from `/dev.user.js` on that port).  
+Host override: `ECU_DEV_HOST=127.0.0.1` (loopback only) or `0.0.0.0` (default, LAN).
 
 ## Features
 

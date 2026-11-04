@@ -5,19 +5,22 @@
 // @description  enhance https://adventure.land/hub/ (formerly /comm)
 // @author       kevinsandow
 // @contributors vett0, thmsn
-// @match        https://adventure.land/hub
-// @match        https://adventure.land/hub?borders=1
-// @match        https://adventure.land/comm
-// @match        https://adventure.land/comm?borders=1
-// @match        https://thmsn.adventureland.community/hub
-// @match        https://thmsn.adventureland.community/hub?borders=1
-// @match        https://thmsn.adventureland.community/comm
-// @match        https://thmsn.adventureland.community/comm?borders=1
+// @match        https://adventure.land/hub*
+// @match        https://adventure.land/comm*
+// @match        https://thmsn.adventureland.community/hub*
+// @match        https://thmsn.adventureland.community/comm*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        none
 // ==/UserScript==
 
 var EnhanceCommUI = (() => {
+  var __defProp = Object.defineProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // <define:__ECU_DEV_INSTALL_URLS__>
+  var define_ECU_DEV_INSTALL_URLS_default = [];
+
   // src/host/react.ts
   function getReact() {
     const React = window.React;
@@ -814,8 +817,8 @@ var EnhanceCommUI = (() => {
         settled = true;
         resolve(payload);
       };
-      const api = getApiCall();
-      if (!api) {
+      const api2 = getApiCall();
+      if (!api2) {
         finish({ ok: false, infs: [], reason: "no_api_call" });
         return;
       }
@@ -832,7 +835,7 @@ var EnhanceCommUI = (() => {
         finish({ ok: true, infs: extractInfs(ct) });
       };
       try {
-        const maybePromise = api(
+        const maybePromise = api2(
           method,
           {
             ...args,
@@ -9215,6 +9218,71 @@ ${fightHoverTip(src)}`
           kind: "feature"
         },
         {
+          label: "Phone Apps sheets",
+          detail: "Command / Mail / Bag join Bank / Market / Chat: auto-expand above the Material dock, expand control, swipe title to close. Command uses Code|Snippets tabs with 44px targets; Market collapses filters behind a Filters button; Bank/Mail/Bag bump touch sizing.",
+          kind: "feature"
+        },
+        {
+          label: "Softer nameplates",
+          detail: "Stock name bars restyle after add_name_tag: translucent dark name band (HP/MP/stand chrome untouched) plus a light text stroke so labels read cleaner over busy maps.",
+          kind: "ui"
+        },
+        {
+          label: "Phone nameplates readable",
+          detail: "Name text keeps LINEAR filtering (NEAREST stays on plate sprites only) and a thinner stroke \u2014 Edge Android no longer turns labels into white static under FOV CSS pixelated + high DPR.",
+          kind: "fix"
+        },
+        {
+          label: "Nameplates on zoom-in",
+          detail: "FOV 0.5\xD7 (and other zoom-in) densifies text resolution by 1/fov, counter-scales plates down so they stay screen-sized, drops drop-shadow stroke noise, and uses CSS image-rendering:auto instead of pixelated upscale.",
+          kind: "fix"
+        },
+        {
+          label: "Phone fullscreen",
+          detail: "Apps \u2192 Full toggles the document Fullscreen API with navigationUI:hide so Edge/Chrome Android can drop the address and tab bars. Exit FS to leave. Hidden when the browser does not support it.",
+          kind: "feature"
+        },
+        {
+          label: "Chat dots + keyboard",
+          detail: "Server page dots stay 8px circles (phone button min-height no longer stretches them into tall ovals). Soft keyboard lifts the expanded chat shell via visualViewport instead of leaving a dead pad under compose.",
+          kind: "fix"
+        },
+        {
+          label: "Phone Mail sheet",
+          detail: "List-first sheet: Filters lives in the search row; Msgs|Items + Compose + More on one line (Stack / Select / Mark read / Refresh behind More or when selecting). Info status folds into the strip \u2014 progress / undo / warn still card. Message list keeps most of the sheet.",
+          kind: "fix"
+        },
+        {
+          label: "Bag needs observe",
+          detail: "Opening Bag without a watched character toasts and opens the Character picker (phone). Apps Bag tile dims when not observing. Phone bag keeps a full 7-column grid (no 6+1 wrap) and centers it in the expanded sheet.",
+          kind: "fix"
+        },
+        {
+          label: "Bank page swipe + dots",
+          detail: "Phone Bank/Market peer swipes work over item tiles (slots are buttons \u2014 they no longer block the gesture). Page dots are spans so phone button min-height cannot stretch them into tall ovals.",
+          kind: "fix"
+        },
+        {
+          label: "Peer page labels",
+          detail: "Bank / Market / Chat page chrome shows the current name, 1/N, and labeled prev/next (not anonymous dots). Swipe flash highlights the page you landed on.",
+          kind: "fix"
+        },
+        {
+          label: "Mobile install \xB7 desktop only",
+          detail: "Settings \u2192 Comm UI hides Mobile install on phone \u2014 QR / LAN handoff is for desktop \u2192 phone, not when ECU is already running on the handset.",
+          kind: "fix"
+        },
+        {
+          label: "Phone Market sheet",
+          detail: "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item \u2014 no more empty Bag syncing / Stand chrome eating the viewport.",
+          kind: "fix"
+        },
+        {
+          label: "App peer pages",
+          detail: "Shared swipe language with Chat servers: Bank All/Packs/Types/Ready and Market Selling/Buying/\u2026 flip with swipe + dots. Market Filters keeps Near/Afford/Have/Fav only. Mail gets \u2190 Back and swipe-right to return to the list on phone.",
+          kind: "feature"
+        },
+        {
           label: "Touch item actions",
           detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
           kind: "feature"
@@ -9241,8 +9309,8 @@ ${fightHoverTip(src)}`
           summary: "Dock, shade, sheets, and safe insets.",
           items: [
             {
-              label: "Bank / Market sheets",
-              detail: "Full-screen expand with swipe-down close; shells end above the Material dock.",
+              label: "App panel sheets",
+              detail: "Shared phoneShellExpandCss + usePhoneShellExpand: Command / Mail / Bag / Bank / Market / Chat lift above the dock with swipe-down close.",
               kind: "feature"
             },
             {
@@ -9252,7 +9320,7 @@ ${fightHoverTip(src)}`
             },
             {
               label: "Mobile install",
-              detail: "Desktop Settings \u2192 Comm UI shows iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) plus FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              detail: "Settings \u2192 Comm UI: scan/copy the GitHub raw userscript; ECU_DEV builds fold out a LAN /enhance-comm-ui.user.js install (full script + @updateURL; mobile TM cannot rely on the thin GM.xhr loader). Plus iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) and FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
               kind: "ui"
             }
           ]
@@ -9263,6 +9331,36 @@ ${fightHoverTip(src)}`
           label: "Lite HUD defaults",
           detail: "Auto lite on phone hides timelines, minimap, paperdoll, events, bag, and unit frames until reopened from Menu.",
           kind: "improve"
+        },
+        {
+          label: "Settings subsections",
+          detail: "Active left-nav category folds out jump links (Updates, Mobile install, \u2026). Comm UI Guided tours sit last.",
+          kind: "ui"
+        },
+        {
+          label: "Phone intro sheet",
+          detail: "First-run Comm UI welcome fits the viewport: scroll the overview, Skip / Next stay pinned \u2014 no more clipped giant popup.",
+          kind: "fix"
+        },
+        {
+          label: "Phone tour \xB7 pick character",
+          detail: "Observe tour steps open the Character sheet and spotlight the list with a compact top callout \u2014 the huge guide card no longer blocks tapping a name.",
+          kind: "fix"
+        },
+        {
+          label: "Phone tours \xB7 Apps / Server / Layout",
+          detail: "Intro retargets Server, Apps, Bag, Cmd, Layout, and Add meter to phone sheets/dock; coverage test + overlay harness walk every tour at phone size.",
+          kind: "fix"
+        },
+        {
+          label: "Vision stays on the observer",
+          detail: "Free-cam / Follow no longer drag the vision fog hole with the camera \u2014 the hole tracks the watched character (live entity, then observe snap), not map.real_*.",
+          kind: "fix"
+        },
+        {
+          label: "Phone paperdoll \xD7",
+          detail: "Locked panels on phone no longer hide the dismiss \xD7 inside hover-only arrange chrome \u2014 paperdoll (and bag / tips) keep a corner close control.",
+          kind: "fix"
         }
       ]
     },
@@ -11613,7 +11711,7 @@ ${fightHoverTip(src)}`
       h: Math.max(1, Math.round(cssH * f))
     };
   }
-  function fitRendererView(cssW, cssH) {
+  function fitRendererView(cssW, cssH, fov) {
     const renderer = window.renderer;
     const view = renderer && renderer.view;
     if (!view || !view.style) return;
@@ -11622,8 +11720,10 @@ ${fightHoverTip(src)}`
     view.style.maxWidth = "100%";
     view.style.maxHeight = "100%";
     view.style.display = "block";
-    view.style.imageRendering = "pixelated";
-    view.style.webkitImageRendering = "pixelated";
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    const pixelated = !(f < 1);
+    view.style.imageRendering = pixelated ? "pixelated" : "auto";
+    view.style.webkitImageRendering = pixelated ? "pixelated" : "auto";
   }
   function clearRendererViewFit() {
     const renderer = window.renderer;
@@ -11660,10 +11760,11 @@ ${fightHoverTip(src)}`
     }
     if (fov === WORLD_FOV_DEFAULT) {
       clearRendererViewFit();
+      applyRendererPixelSnap();
     } else {
-      fitRendererView(cssW, cssH);
+      fitRendererView(cssW, cssH, fov);
+      if (!(fov < 1)) applyRendererPixelSnap();
     }
-    applyRendererPixelSnap();
     if (typeof host2.position_map === "function") {
       try {
         host2.position_map();
@@ -11688,7 +11789,8 @@ ${fightHoverTip(src)}`
   function nameplateTextResolution(fov) {
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
     const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-    return Math.max(1, Math.ceil(f * dpr));
+    const denseness = f >= 1 ? f : 1 / f;
+    return Math.max(1, Math.min(4, Math.ceil(denseness * dpr)));
   }
 
   // src/lib/worldZoom.ts
@@ -14682,6 +14784,13 @@ html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable 
 html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay > * {
   pointer-events: auto;
 }
+/* Phone: corner hide \xD7 (outside locked arrange chrome) must stay tappable on
+ * click-through shells like paperdoll / bag. */
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel > .comm-pos-panel-close {
+  pointer-events: auto;
+  z-index: 8;
+  opacity: 1;
+}
 `;
 
   // src/host/commChrome/effectsIconCss.ts
@@ -15389,6 +15498,19 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
+/* Page dots keep an 8px visual; hit area is ::after \u2014 do not stretch to 32px. */
+#comm-ui.comm-ui-touch .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui.comm-ui-touch .comm-pos-panel button.ecu-peer-page-dots__dot,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button.ecu-peer-page-dots__dot,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button.ecu-peer-page-dots__dot {
+  min-height: 8px;
+  min-width: 8px;
+  height: 8px;
+  width: 8px;
+  padding: 0;
+}
 /* Layout edit: click through panel content to reach overlapping drag chrome.
  * .comm-pos-interactive (meters / Layout toggles) keeps body hits so
  * controls + corner resize grips stay usable while arranging. */
@@ -15760,6 +15882,57 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
 }
 `;
     document.head.append(style);
+  }
+
+  // src/host/commToast.ts
+  var TOAST_CLASS = "ecu-mail-toast";
+  var hideTimer = null;
+  function showCommToast(message, ms = 3200) {
+    if (typeof document === "undefined") return;
+    const text = String(message || "").trim();
+    if (!text) return;
+    let el = document.querySelector("." + TOAST_CLASS);
+    if (!el) {
+      el = document.createElement("div");
+      el.className = TOAST_CLASS;
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-on");
+    if (hideTimer != null) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      el && el.classList.remove("is-on");
+      hideTimer = null;
+    }, Math.max(800, ms));
+  }
+
+  // src/host/phoneTourChrome.ts
+  var api = null;
+  function registerPhoneTourChrome(next) {
+    api = next;
+  }
+  function openPhoneObserve() {
+    if (api) api.openObserve();
+  }
+  function openPhoneServer() {
+    if (api) api.openServer();
+  }
+  function openPhoneApps() {
+    if (api) api.openApps();
+  }
+  function openPhoneShade() {
+    if (api) api.openShade();
+  }
+  function closePhoneTourChrome() {
+    if (api) api.closeAll();
+  }
+
+  // src/host/bagOpenGate.ts
+  function gateObservedBagOpen() {
+    if (getObservingId()) return true;
+    showCommToast("Observe a character first");
+    openPhoneObserve();
+    return false;
   }
 
   // src/host/mail/mailPersistLogic.ts
@@ -17217,8 +17390,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (remaining <= 0) return 0;
     let gaps = 0;
     for (let i = done; i < total; i++) gaps += deleteGapMs(i);
-    const api = Math.max(0, avgApiMs);
-    return gaps + remaining * api;
+    const api2 = Math.max(0, avgApiMs);
+    return gaps + remaining * api2;
   }
   function estimateDeleteEtaMs(opts) {
     const { done, total, startedAt } = opts;
@@ -19524,9 +19697,16 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   bottom: auto;
   z-index: auto;
   pointer-events: auto;
-  max-width: min(96vw, 420px);
+  /* 7\xD7~54px float grid needs ~385px \u2014 shrinking below that wraps slots 6+1. */
+  min-width: 385px;
+  width: max-content;
+  max-width: 420px;
   max-height: min(70vh, calc(100vh - 72px));
   overflow: auto;
+  box-sizing: border-box;
+}
+html.ecu-phone-dock-on #${HOST_ID4} {
+  max-height: none;
 }
 #${HOST_ID4} .theinventory {
   margin-top: 0 !important;
@@ -21352,28 +21532,6 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       setCachedMarketMerchants(rec.merchants);
     }
     return rec.merchants;
-  }
-
-  // src/host/commToast.ts
-  var TOAST_CLASS = "ecu-mail-toast";
-  var hideTimer = null;
-  function showCommToast(message, ms = 3200) {
-    if (typeof document === "undefined") return;
-    const text = String(message || "").trim();
-    if (!text) return;
-    let el = document.querySelector("." + TOAST_CLASS);
-    if (!el) {
-      el = document.createElement("div");
-      el.className = TOAST_CLASS;
-      document.body.appendChild(el);
-    }
-    el.textContent = text;
-    el.classList.add("is-on");
-    if (hideTimer != null) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-      el && el.classList.remove("is-on");
-      hideTimer = null;
-    }, Math.max(800, ms));
   }
 
   // src/host/market/marketTravel.ts
@@ -24609,8 +24767,8 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   }
   function callApiStock2() {
     return new Promise((resolve) => {
-      const api = getApiCall2();
-      if (!api) {
+      const api2 = getApiCall2();
+      if (!api2) {
         resolve(null);
         return;
       }
@@ -24622,7 +24780,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       };
       const timer = window.setTimeout(() => finish(null), TIMEOUT_MS);
       try {
-        const maybe = api("load_bank", {}, { silent: true, timeout: TIMEOUT_MS });
+        const maybe = api2("load_bank", {}, { silent: true, timeout: TIMEOUT_MS });
         if (maybe && typeof maybe.then === "function") {
           maybe.then((data) => {
             window.clearTimeout(timer);
@@ -25263,14 +25421,14 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
         settled = true;
         resolve(data);
       };
-      const api = getApiCall3();
-      if (!api) {
+      const api2 = getApiCall3();
+      if (!api2) {
         finish(null);
         return;
       }
       const timer = window.setTimeout(() => finish(null), API_TIMEOUT_MS2);
       try {
-        const maybePromise = api(method, { ...args }, { silent: true, timeout: API_TIMEOUT_MS2 });
+        const maybePromise = api2(method, { ...args }, { silent: true, timeout: API_TIMEOUT_MS2 });
         if (maybePromise && typeof maybePromise.then === "function") {
           maybePromise.then((data) => {
             window.clearTimeout(timer);
@@ -25869,6 +26027,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
   function onBagClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
+    if (!gateObservedBagOpen()) return;
     const render = window.render_inventory;
     if (typeof render !== "function") return;
     if (typeof window.draw_trigger === "function") {
@@ -27472,10 +27631,7 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
       }
       if (shortcut === "toggle_inventory") {
         ev.preventDefault();
-        if (!getObservingId()) {
-          notifyObserveRequired();
-          return;
-        }
+        if (!gateObservedBagOpen()) return;
         openInventory();
         return;
       }
@@ -28479,6 +28635,85 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     itemInstanceBadgeCssInjected = true;
   }
 
+  // src/ui/chrome/phoneShell.ts
+  var PHONE_SHELL_EXPAND_BOTTOM = "calc(max(var(--ecu-phone-dock-h, 48px), var(--ecu-vv-keyboard, 0px)) + 8px)";
+  function phoneShellExpandCss(panelAttr, className, innerSelector) {
+    const inner = innerSelector ? `
+[data-panel="${panelAttr}"].${className} ${innerSelector} {
+  height: 100%;
+  min-height: 0;
+}
+` : "";
+    return `
+[data-panel="${panelAttr}"].${className} {
+  position: fixed !important;
+  left: 8px !important;
+  right: 8px !important;
+  top: 8px !important;
+  bottom: ${PHONE_SHELL_EXPAND_BOTTOM} !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  z-index: 480 !important;
+  transform: none !important;
+  border-radius: 16px 16px 0 0 !important;
+  overflow: hidden !important;
+}
+${inner}`;
+  }
+  function bindSwipeDownClose(handle2, onClose) {
+    if (!handle2) return () => {
+    };
+    let startY = 0;
+    let dy = 0;
+    let active = false;
+    const sheet = handle2.closest(".ecu-phone-sheet") || handle2.closest(".ecu-settings-modal") || handle2.closest("[data-panel]") || handle2;
+    const onStart = (ev) => {
+      if (!ev.touches.length) return;
+      active = true;
+      startY = ev.touches[0].clientY;
+      dy = 0;
+      sheet.style.transition = "none";
+    };
+    const onMove = (ev) => {
+      if (!active || !ev.touches.length) return;
+      dy = Math.max(0, ev.touches[0].clientY - startY);
+      sheet.style.transform = "translateY(" + dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onEnd = () => {
+      if (!active) return;
+      active = false;
+      if (dy > 90) {
+        sheet.style.transform = "";
+        sheet.style.transition = "";
+        onClose();
+        return;
+      }
+      sheet.style.transition = "transform 0.18s ease";
+      sheet.style.transform = "translateY(0)";
+      window.setTimeout(() => {
+        sheet.style.transition = "";
+        sheet.style.transform = "";
+      }, 200);
+      dy = 0;
+    };
+    handle2.style.touchAction = "none";
+    handle2.addEventListener("touchstart", onStart, { passive: true });
+    handle2.addEventListener("touchmove", onMove, { passive: false });
+    handle2.addEventListener("touchend", onEnd, { passive: true });
+    handle2.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      handle2.removeEventListener("touchstart", onStart);
+      handle2.removeEventListener("touchmove", onMove);
+      handle2.removeEventListener("touchend", onEnd);
+      handle2.removeEventListener("touchcancel", onEnd);
+    };
+  }
+
   // src/ui/frames/mail/mailChromeCss.ts
   var MAIL_CHROME_CSS = `
 .comm-mail {
@@ -28508,12 +28743,59 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
 .comm-mail .ecu-item-instance-host .iuui {
   display: none !important;
 }
+.comm-mail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+.comm-mail__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffe08a;
+  letter-spacing: 0.02em;
+}
+.comm-mail__headHint {
+  font-size: 11px;
+  color: #777;
+}
+.comm-mail__headGrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail__expand {
+  flex: 0 0 auto;
+}
+.comm-mail__back {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ddd;
+  min-height: 40px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.comm-mail__back:hover {
+  border-color: #666;
+  background: #222;
+}
+.comm-mail.is-phone .comm-mail__back {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+}
 .comm-mail__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: flex-start;
-  padding: 10px 12px;
+  padding: 6px 12px 10px;
   border-bottom: 1px solid #2a2a2a;
   flex-shrink: 0;
 }
@@ -28672,6 +28954,19 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   gap: 6px;
   align-items: center;
   flex: 1 1 auto;
+}
+.comm-mail__toolbar-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1 1 auto;
+}
+.comm-mail__toolbar-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 .comm-mail__pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .comm-mail__pill {
@@ -29186,6 +29481,214 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   gap: 8px;
   color: #c9b07a;
   font-weight: 600;
+}
+
+/* Phone \u2014 denser chrome so the message list keeps the sheet. */
+.comm-mail.is-phone .comm-mail__head {
+  padding: 6px 10px 2px;
+}
+.comm-mail.is-phone .comm-mail__headHint {
+  display: none;
+}
+.comm-mail.is-phone .comm-mail__toolbar {
+  padding: 4px 10px 6px;
+  gap: 6px;
+}
+.comm-mail.is-phone .comm-mail__toolbar.is-compact {
+  flex-direction: column;
+  align-items: stretch;
+}
+.comm-mail.is-phone .comm-mail__search-wrap.is-compact {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__items-seg {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__btn {
+  flex: 0 0 auto;
+}
+.comm-mail.is-phone .comm-mail__toolbar-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  padding-top: 2px;
+}
+.comm-mail.is-phone .comm-mail__more-btn.is-on {
+  border-color: #6af;
+  color: #9cf;
+}
+.comm-mail.is-phone .comm-mail__search-filters-btn {
+  flex: 0 0 auto;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  min-height: 36px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.comm-mail.is-phone .comm-mail__search-filters-btn:hover,
+.comm-mail.is-phone .comm-mail__search-filters-btn.is-on {
+  color: #ffe08a;
+  background: #2a2410;
+}
+.comm-mail.is-phone .comm-mail__btn,
+.comm-mail.is-phone .comm-mail__pill,
+.comm-mail.is-phone .comm-mail__items-seg-btn {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.comm-mail.is-phone .comm-mail__search {
+  min-height: 40px;
+  font-size: 16px;
+  padding: 8px 10px;
+}
+.comm-mail.is-phone .comm-mail__search-clear,
+.comm-mail.is-phone .comm-mail__search-opts-btn {
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  font-size: 18px;
+}
+.comm-mail.is-phone .comm-mail__expand {
+  width: 36px;
+  height: 36px;
+}
+.comm-mail.is-phone .comm-mail__toolbar-actions {
+  gap: 4px;
+}
+.comm-mail.is-phone .comm-mail__pills {
+  gap: 4px;
+  padding-top: 4px;
+}
+.comm-mail.is-phone .comm-mail__row {
+  padding: 8px 10px;
+  gap: 8px;
+}
+.comm-mail.is-phone .comm-mail__row .comm-mail__title {
+  font-size: 14px;
+}
+.comm-mail.is-phone .comm-mail__row .comm-mail__meta {
+  font-size: 11px;
+}
+.comm-mail__chrome-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid #222;
+  background: #101214;
+  min-height: 0;
+}
+.comm-mail__chrome-strip .comm-mail__pulse {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.comm-mail__chrome-strip.is-on .comm-mail__pulse {
+  animation: ecu-mail-pulse 1.25s ease-out infinite;
+}
+.comm-mail__chrome-strip.is-warm .comm-mail__pulse {
+  background: #f0c060;
+}
+.comm-mail__chrome-strip.is-pull .comm-mail__pulse,
+.comm-mail__chrome-strip.is-refresh .comm-mail__pulse {
+  background: #5ab0ff;
+}
+.comm-mail__chrome-strip.is-command .comm-mail__pulse {
+  background: #7ad86a;
+}
+.comm-mail__chrome-strip.is-delete .comm-mail__pulse {
+  background: #e88;
+}
+.comm-mail__chrome-strip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #c8cdd4;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.comm-mail__chrome-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comm-mail__chrome-strip-chevron {
+  flex: 0 0 auto;
+  color: #6a7380;
+  font-size: 11px;
+}
+.comm-mail__chrome-strip-caps {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 28px;
+}
+.comm-mail__chrome-strip-caps.is-warn,
+.comm-mail__chrome-strip.is-cap-warn .comm-mail__chrome-strip-caps {
+  border-color: #a86;
+  color: #ffe08a;
+}
+.comm-mail__chrome-strip-caps.is-full,
+.comm-mail__chrome-strip.is-cap-full .comm-mail__chrome-strip-caps {
+  border-color: #c66;
+  color: #fbb;
+}
+.comm-mail__chrome-strip.is-on .comm-mail__chrome-strip-text {
+  color: #e8e0c8;
+}
+.comm-mail.is-phone .comm-mail__chrome.is-phone-expand,
+.comm-mail.is-phone .comm-mail__chrome.is-status-only {
+  padding: 6px 8px 8px;
+  gap: 4px;
+}
+.comm-mail.is-phone .comm-mail__chrome.is-status-only {
+  grid-template-columns: 1fr;
+}
+.comm-mail.is-phone .comm-mail__body {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+.comm-mail.is-expanded {
+  min-height: 0;
 }
 `;
 
@@ -29850,7 +30353,7 @@ button.comm-mail__stack-u {
 
   // src/ui/frames/mail/mailCss.ts
   var injected3 = false;
-  var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_ITEMS_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS;
+  var CSS4 = MAIL_CHROME_CSS + MAIL_LIST_CSS + MAIL_ITEMS_CSS + MAIL_COMPOSE_CSS + ITEM_INSTANCE_BADGE_CSS + phoneShellExpandCss("mail", "ecu-mail-shell-expanded", ".comm-mail");
   function ensureMailCss() {
     if (injected3) return;
     injected3 = true;
@@ -29870,7 +30373,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T14:23:32.345Z" : "unknown";
+    const builtAt = true ? "2026-11-04T19:59:54.088Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -30217,12 +30720,19 @@ button.comm-mail__stack-u {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
   pointer-events: auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 /* Changelog: top-anchor so version switches don't jump the top edge */
 .ecu-comm-wiz-backdrop--changelog {
   align-items: flex-start;
-  padding-top: 6vh;
+  padding-top: max(6vh, env(safe-area-inset-top, 0px));
   box-sizing: border-box;
 }
 .ecu-comm-wiz {
@@ -30235,6 +30745,45 @@ button.comm-mail__stack-u {
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
   color: #eee;
   font-size: 22px;
+  box-sizing: border-box;
+}
+/* Intro: viewport-capped shell so phone first-run can scroll + keep CTAs */
+.ecu-comm-wiz--intro {
+  width: min(720px, 94vw);
+  min-width: 0;
+  max-height: min(92vh, 900px);
+  max-height: min(92dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.ecu-comm-wiz-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 26px 28px 12px;
+  box-sizing: border-box;
+}
+.ecu-comm-wiz-chrome {
+  flex: 0 0 auto;
+  padding: 12px 28px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+  box-sizing: border-box;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-foot {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: none;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-actions {
+  width: 100%;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-caps {
+  margin-bottom: 0;
 }
 .ecu-comm-wiz-logo {
   font-size: 36px;
@@ -30296,6 +30845,57 @@ button.comm-mail__stack-u {
 @media (max-width: 560px) {
   .ecu-comm-wiz-caps {
     grid-template-columns: 1fr;
+  }
+  .ecu-comm-wiz--intro {
+    width: min(100%, calc(100vw - 16px));
+    max-height: min(94vh, 900px);
+    max-height: min(94dvh, 900px);
+    font-size: 16px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-scroll {
+    padding: 16px 14px 8px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-chrome {
+    padding: 10px 14px 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-logo {
+    font-size: 26px;
+    margin-bottom: 8px;
+  }
+  .ecu-comm-wiz--intro h3 {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+  .ecu-comm-wiz--intro p,
+  .ecu-comm-wiz--intro .ecu-comm-wiz-list {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap {
+    padding: 10px 12px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap-label {
+    font-size: 15px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap-detail {
+    font-size: 13px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-btn {
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-foot,
+  .ecu-comm-wiz--intro .ecu-comm-wiz-skip {
+    font-size: 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-btn {
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 .ecu-comm-wiz-grid {
@@ -30374,7 +30974,9 @@ button.comm-mail__stack-u {
   max-width: min(1000px, 96vw);
   min-width: 0;
   height: min(88vh, 900px);
+  height: min(88dvh, 900px);
   max-height: min(88vh, 900px);
+  max-height: min(88dvh, 900px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -30992,24 +31594,32 @@ button.comm-mail__stack-u {
       e(
         "div",
         {
-          className: "ecu-comm-wiz",
+          className: "ecu-comm-wiz ecu-comm-wiz--intro",
           style: PIXEL_TEXT,
           onMouseDown: (ev) => ev.stopPropagation()
         },
-        e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
-        e("h3", null, cur.title),
-        cur.body ? e("p", null, cur.body) : null,
-        cur.extra || null,
-        cur.actions,
         e(
           "div",
-          { className: "ecu-comm-wiz-foot" },
+          { className: "ecu-comm-wiz-scroll" },
+          e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
+          e("h3", null, cur.title),
+          cur.body ? e("p", null, cur.body) : null,
+          cur.extra || null
+        ),
+        e(
+          "div",
+          { className: "ecu-comm-wiz-chrome" },
+          cur.actions,
           e(
-            "button",
-            { type: "button", className: "ecu-comm-wiz-skip", onClick: finish },
-            "Skip intro"
-          ),
-          `${props.step + 1} / ${steps.length}`
+            "div",
+            { className: "ecu-comm-wiz-foot" },
+            e(
+              "button",
+              { type: "button", className: "ecu-comm-wiz-skip", onClick: finish },
+              "Skip intro"
+            ),
+            `${props.step + 1} / ${steps.length}`
+          )
         )
       )
     );
@@ -32054,8 +32664,13 @@ button.comm-mail__stack-u {
   z-index: 3;
   width: min(460px, calc(100vw - 24px));
   max-width: min(460px, calc(100vw - 24px));
+  max-height: min(48vh, 420px);
+  max-height: min(48dvh, 420px);
   box-sizing: border-box;
-  padding: 22px 24px 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: linear-gradient(180deg, #1a171b 0%, #0e0c10 100%);
   border: 1px solid rgba(0, 0, 0, 0.85);
   outline: 1px solid rgba(232, 201, 106, 0.35);
@@ -32064,30 +32679,46 @@ button.comm-mail__stack-u {
   font-size: 19px;
   pointer-events: auto;
 }
+.ecu-tour-card-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 18px 20px 8px;
+  box-sizing: border-box;
+}
+.ecu-tour-card-chrome {
+  flex: 0 0 auto;
+  padding: 8px 20px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+  box-sizing: border-box;
+}
 .ecu-tour-card h3 {
-  margin: 0 0 10px;
-  font-size: 24px;
+  margin: 0 0 8px;
+  font-size: 22px;
   color: #fff;
   font-weight: normal;
 }
 .ecu-tour-card p {
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   color: rgba(220, 210, 210, 0.92);
-  font-size: 19px;
-  line-height: 1.55;
+  font-size: 17px;
+  line-height: 1.45;
 }
 .ecu-tour-card .ecu-tour-hint {
   color: #e8b86a;
-  font-size: 19px;
-  line-height: 1.55;
-  margin: 0 0 14px;
+  font-size: 16px;
+  line-height: 1.45;
+  margin: 0 0 10px;
 }
 .ecu-tour-cta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 0 0 16px;
-  padding: 12px 14px;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
   background: rgba(232, 201, 106, 0.12);
   border: 1px solid rgba(232, 201, 106, 0.42);
   border-left: 4px solid #ffd28a;
@@ -32096,15 +32727,15 @@ button.comm-mail__stack-u {
 }
 .ecu-tour-cta-label {
   color: #ffd28a;
-  font-size: 15px;
+  font-size: 13px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1.2;
 }
 .ecu-tour-cta-text {
   color: #ffe8b8;
-  font-size: 20px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.35;
 }
 @keyframes ecu-tour-cta-pulse {
   0%, 100% {
@@ -32120,28 +32751,30 @@ button.comm-mail__stack-u {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 .ecu-tour-actions-left {
   flex: 0 0 auto;
-  min-width: 76px;
+  min-width: 64px;
 }
 .ecu-tour-actions-right {
   display: flex;
   flex: 0 0 auto;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .ecu-tour-btn {
   cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.06);
   color: #eee;
-  padding: 10px 18px;
-  font-size: 18px;
+  padding: 9px 14px;
+  font-size: 16px;
   font-weight: normal;
   border-radius: 2px;
-  min-width: 76px;
+  min-width: 64px;
   box-sizing: border-box;
 }
 .ecu-tour-btn.is-slot-hidden {
@@ -32155,7 +32788,7 @@ button.comm-mail__stack-u {
   color: #ffd28a;
   border-color: rgba(232, 201, 106, 0.45);
   background: rgba(232, 201, 106, 0.12);
-  min-width: 88px;
+  min-width: 72px;
 }
 .ecu-tour-btn:disabled {
   cursor: default;
@@ -32170,14 +32803,58 @@ button.comm-mail__stack-u {
   background: rgba(232, 201, 106, 0.05);
 }
 .ecu-tour-foot {
-  margin-top: 12px;
+  margin-top: 8px;
   color: rgba(220, 210, 210, 0.65);
-  font-size: 16px;
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .ecu-tour-card {
+    width: min(100%, calc(100vw - 16px));
+    max-width: min(100%, calc(100vw - 16px));
+    max-height: min(32vh, 240px);
+    max-height: min(32dvh, 240px);
+    font-size: 15px;
+  }
+  .ecu-tour-card-scroll {
+    padding: 12px 12px 6px;
+  }
+  .ecu-tour-card-chrome {
+    padding: 6px 12px 10px;
+  }
+  .ecu-tour-card h3 {
+    font-size: 17px;
+    margin-bottom: 6px;
+  }
+  .ecu-tour-card p {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  .ecu-tour-card .ecu-tour-hint {
+    font-size: 13px;
+  }
+  .ecu-tour-cta {
+    padding: 8px 10px;
+    margin-bottom: 6px;
+  }
+  .ecu-tour-cta-label {
+    font-size: 11px;
+  }
+  .ecu-tour-cta-text {
+    font-size: 13px;
+  }
+  .ecu-tour-btn {
+    font-size: 14px;
+    padding: 8px 12px;
+    min-width: 56px;
+  }
+  .ecu-tour-foot {
+    font-size: 12px;
+    margin-top: 6px;
+  }
 }
 `;
   function injectGuidedTourCss() {
     if (typeof document === "undefined") return;
-    if (injected5) return;
     let el = document.querySelector(
       "style[data-ecu-tour]"
     );
@@ -32186,8 +32863,10 @@ button.comm-mail__stack-u {
       el.setAttribute("data-ecu-tour", "1");
       document.head.appendChild(el);
     }
-    el.textContent = CSS6;
-    injected5 = true;
+    if (!injected5 || el.textContent !== CSS6) {
+      el.textContent = CSS6;
+      injected5 = true;
+    }
   }
 
   // src/ui/frames/comm/guidedTour/tourGeometry.ts
@@ -32318,6 +32997,14 @@ button.comm-mail__stack-u {
   function overlaps(a, b, gap = 12) {
     return !(a.left + a.width + gap <= b.left || b.left + b.width + gap <= a.left || a.top + a.height + gap <= b.top || b.top + b.height + gap <= a.top);
   }
+  function overlapArea(a, b) {
+    const left = Math.max(a.left, b.left);
+    const right = Math.min(a.left + a.width, b.left + b.width);
+    const top = Math.max(a.top, b.top);
+    const bottom = Math.min(a.top + a.height, b.top + b.height);
+    if (right <= left || bottom <= top) return 0;
+    return (right - left) * (bottom - top);
+  }
   function shadePanels(spot, vw, vh) {
     if (!spot) {
       return [{ top: 0, left: 0, width: vw, height: vh }];
@@ -32354,12 +33041,24 @@ button.comm-mail__stack-u {
     const vh = window.innerHeight;
     const gap = 18;
     const effectiveW = Math.min(cardW, vw - 24);
+    const maxCardH = Math.min(cardH, Math.max(120, vh * 0.42));
     if (!spot || placement === "center") {
       return clampCardPos(
-        Math.max(20, vh * 0.06),
+        Math.max(12, envSafeTop(vh)),
         (vw - effectiveW) / 2,
         effectiveW,
-        cardH,
+        maxCardH,
+        vw,
+        vh
+      );
+    }
+    if (placement === "bottom") {
+      const h = Math.min(maxCardH, Math.round(vh * 0.32));
+      return clampCardPos(
+        vh - h - Math.max(56, Math.round(vh * 0.1)),
+        (vw - effectiveW) / 2,
+        effectiveW,
+        h,
         vw,
         vh
       );
@@ -32368,82 +33067,117 @@ button.comm-mail__stack-u {
     const spotBottom = spot.top + spot.height;
     const spotCx = spot.left + spot.width / 2;
     const spotCy = spot.top + spot.height / 2;
+    const spaceAbove = Math.max(0, spot.top - gap - 12);
+    const spaceBelow = Math.max(0, vh - spotBottom - gap - 12);
+    const fitAbove = Math.min(maxCardH, Math.max(96, spaceAbove));
+    const fitBelow = Math.min(maxCardH, Math.max(96, spaceBelow));
     const candidates = [];
-    if (placement === "above" || placement === "auto") {
+    const pushAbove = (h) => {
       candidates.push(
-        clampCardPos(
-          spot.top - cardH - gap,
-          spotRight - effectiveW,
-          effectiveW,
-          cardH,
-          vw,
-          vh
-        ),
-        clampCardPos(
-          spot.top - cardH - gap,
-          spot.left,
-          effectiveW,
-          cardH,
-          vw,
-          vh
-        ),
-        clampCardPos(
-          spot.top - cardH - gap,
-          spotCx - effectiveW / 2,
-          effectiveW,
-          cardH,
-          vw,
-          vh
-        )
+        {
+          ...clampCardPos(
+            spot.top - h - gap,
+            spotRight - effectiveW,
+            effectiveW,
+            h,
+            vw,
+            vh
+          ),
+          h
+        },
+        {
+          ...clampCardPos(
+            spot.top - h - gap,
+            spot.left,
+            effectiveW,
+            h,
+            vw,
+            vh
+          ),
+          h
+        },
+        {
+          ...clampCardPos(
+            spot.top - h - gap,
+            spotCx - effectiveW / 2,
+            effectiveW,
+            h,
+            vw,
+            vh
+          ),
+          h
+        }
       );
+    };
+    if (placement === "above" || placement === "auto") {
+      pushAbove(fitAbove);
+      candidates.push({
+        ...clampCardPos(
+          envSafeTop(vh),
+          (vw - effectiveW) / 2,
+          effectiveW,
+          Math.min(maxCardH, Math.max(96, spaceAbove || maxCardH)),
+          vw,
+          vh
+        ),
+        h: Math.min(maxCardH, Math.max(96, spaceAbove || maxCardH))
+      });
     }
     if (placement === "below" || placement === "auto") {
-      candidates.push(
-        clampCardPos(
+      candidates.push({
+        ...clampCardPos(
           spotBottom + gap,
           spotCx - effectiveW / 2,
           effectiveW,
-          cardH,
-          vw,
-          vh
-        )
-      );
-    }
-    if (placement === "auto") {
-      candidates.push(
-        clampCardPos(
-          spotCy - cardH / 2,
-          spot.left - effectiveW - gap,
-          effectiveW,
-          cardH,
+          fitBelow,
           vw,
           vh
         ),
-        clampCardPos(
-          spotCy - cardH / 2,
-          spotRight + gap,
-          effectiveW,
-          cardH,
-          vw,
-          vh
-        )
+        h: fitBelow
+      });
+    }
+    if (placement === "auto") {
+      candidates.push(
+        {
+          ...clampCardPos(
+            spotCy - maxCardH / 2,
+            spot.left - effectiveW - gap,
+            effectiveW,
+            maxCardH,
+            vw,
+            vh
+          ),
+          h: maxCardH
+        },
+        {
+          ...clampCardPos(
+            spotCy - maxCardH / 2,
+            spotRight + gap,
+            effectiveW,
+            maxCardH,
+            vw,
+            vh
+          ),
+          h: maxCardH
+        }
       );
     }
-    candidates.push(
-      clampCardPos(
-        Math.max(16, vh * 0.05),
+    candidates.push({
+      ...clampCardPos(
+        envSafeTop(vh),
         (vw - effectiveW) / 2,
         effectiveW,
-        cardH,
+        maxCardH,
         vw,
         vh
-      )
-    );
+      ),
+      h: maxCardH
+    });
     const cardBox = (c) => ({
       top: c.top,
       left: c.left,
       width: effectiveW,
-      height: cardH
+      height: c.h
     });
     let best = null;
     let bestScore = Infinity;
@@ -32453,18 +33187,34 @@ button.comm-mail__stack-u {
       const cardCx = box.left + box.width / 2;
       const cardCy = box.top + box.height / 2;
       let score = Math.hypot(cardCx - spotCx, cardCy - spotCy);
-      if (spotCy > vh * 0.62 && box.top + box.height <= spot.top + 4) {
-        score *= 0.55;
+      if (spotCy > vh * 0.55 && box.top + box.height <= spot.top + 4) {
+        score *= 0.45;
       }
       if (spotCy < vh * 0.38 && box.top >= spotBottom - 4) {
         score *= 0.55;
       }
       if (score < bestScore) {
         bestScore = score;
-        best = candidates[i];
+        best = { top: candidates[i].top, left: candidates[i].left };
       }
     }
-    return best || candidates[candidates.length - 1];
+    if (best) return best;
+    let least = null;
+    let leastArea = Infinity;
+    for (let i = 0; i < candidates.length; i++) {
+      const box = cardBox(candidates[i]);
+      const area = overlapArea(box, spot);
+      const topBias = box.top;
+      const score = area * 1e3 + topBias;
+      if (score < leastArea) {
+        leastArea = score;
+        least = { top: candidates[i].top, left: candidates[i].left };
+      }
+    }
+    return least || candidates[candidates.length - 1];
+  }
+  function envSafeTop(vh) {
+    return Math.max(12, Math.min(24, vh * 0.02));
   }
   function tourConnector(cardPos, cardW, cardH, spot) {
     const cardCx = cardPos.left + cardW / 2;
@@ -32507,12 +33257,13 @@ button.comm-mail__stack-u {
       {
         section: "Observe",
         title: "Pick a character",
-        body: "Click a character chip. Party frames, meters, and the action bar follow whoever is highlighted. Click the active chip again to stop observing.",
-        target: '[data-ecu-tour="character-ui"]',
-        targetKind: "region",
-        missingHint: "Click any character chip in the strip below.",
+        body: "Pick who to watch. Party frames, meters, and the action bar follow them. On phone the Character sheet opens for you \u2014 tap a name. On desktop, use a chip in the strip.",
+        target: '[data-ecu-tour="phone-observe-list"], [data-ecu-tour="character-ui"]',
+        targetKind: "button",
+        cardPlacement: "bottom",
+        missingHint: "Open Character and tap a name, or click a chip in the strip.",
         advanceWhen: "observing",
-        enter: { refreshHud: true }
+        enter: { refreshHud: true, openPhoneObserve: true }
       },
       {
         section: "Observe",
@@ -32525,30 +33276,38 @@ button.comm-mail__stack-u {
       {
         section: "Observe",
         title: "Server picker",
-        body: "Switch realms without leaving /comm. Shows player count, ping, and live event badges.",
-        target: '[data-ecu-tour="server-picker-dd"], [data-ecu-tour="server-picker"]',
+        body: "Switch realms without leaving /comm. Shows player count, ping, and live event badges. On phone the Server sheet opens for you.",
+        target: '[data-ecu-tour="phone-server-list"], [data-ecu-tour="server-picker-dd"], [data-ecu-tour="server-picker"]',
         targetKind: "button",
-        missingHint: "Server list appears at the bottom once /comm connects.",
-        enter: { refreshHud: true }
+        cardPlacement: "bottom",
+        missingHint: "Open Server from the dock, or use the strip on desktop.",
+        enter: {
+          refreshHud: true,
+          closePhoneChrome: true,
+          openPhoneServer: true
+        },
+        exit: { closePhoneChrome: true }
       },
       {
         section: "Observe",
-        title: "Action bar",
-        body: "Follow centers the camera, Bag opens inventory, Command sends CODE. All of it runs on whoever you are observing.",
-        target: '[data-ecu-tour="chrome-actions"]',
-        targetKind: "region",
-        missingHint: "Action buttons sit above the character strip.",
-        enter: { refreshHud: true }
+        title: "Apps & actions",
+        body: "On phone, Bag, Command, Market, Bank, Chat, and Add meter live in Apps (center dock button). On desktop they sit in the action bar above the character strip.",
+        target: '[data-ecu-tour="btn-apps"], [data-ecu-tour="chrome-actions"]',
+        targetKind: "button",
+        cardPlacement: "above",
+        missingHint: "Apps is the center dock button; desktop uses the action bar.",
+        enter: { refreshHud: true, closePhoneChrome: true }
       },
       {
         section: "Observe",
         title: "Bag",
-        body: "Click the bag icon to open the watched character's inventory here in the overlay.",
-        target: '[data-ecu-tour="btn-bag"]',
+        body: "Open the watched character's inventory. On phone tap Bag in Apps; on desktop use the bag icon in the action bar.",
+        target: '[data-ecu-tour="phone-apps-grid"], [data-ecu-tour="btn-bag"]',
         targetKind: "button",
-        missingHint: "Click the bag icon in the action bar.",
+        cardPlacement: "bottom",
+        missingHint: "Open Apps and tap Bag, or use the bag icon on desktop.",
         advanceWhen: "bagOpen",
-        enter: { refreshHud: true }
+        enter: { refreshHud: true, openPhoneApps: true }
       },
       {
         section: "Observe",
@@ -32556,18 +33315,20 @@ button.comm-mail__stack-u {
         body: "Your inventory grid lives here while the bag is open. Drag it into place later with layout mode if you want it pinned.",
         target: ".comm-pos-panel.comm-pos-bag",
         targetKind: "panel",
-        missingHint: "Open the bag from the action bar if the panel is not visible.",
+        missingHint: "Open Bag from Apps (phone) or the action bar (desktop).",
+        enter: { closePhoneChrome: true },
         exit: { closeBag: true }
       },
       {
         section: "Observe",
         title: "Command",
-        body: "Click the command icon to open the CODE editor for whoever you are observing.",
-        target: '[data-ecu-tour="btn-command"]',
+        body: "Open the CODE editor for whoever you are observing. On phone tap Cmd in Apps; on desktop use the command icon.",
+        target: '[data-ecu-tour="phone-apps-grid"], [data-ecu-tour="btn-command"]',
         targetKind: "button",
-        missingHint: "Click the command icon in the action bar.",
+        cardPlacement: "bottom",
+        missingHint: "Open Apps and tap Cmd, or use the command icon on desktop.",
         advanceWhen: "commandOpen",
-        enter: { refreshHud: true }
+        enter: { refreshHud: true, openPhoneApps: true }
       },
       {
         section: "Observe",
@@ -32575,36 +33336,48 @@ button.comm-mail__stack-u {
         body: "Type or paste CODE and press Ctrl+Enter to run it on the watched character. Saved presets live here too.",
         target: ".comm-pos-panel.comm-pos-command",
         targetKind: "panel",
-        missingHint: "Click the command icon in the action bar to open this panel.",
+        missingHint: "Open Cmd from Apps (phone) or the action bar (desktop).",
+        enter: { closePhoneChrome: true },
         exit: { closeCommand: true, closeBag: true }
       },
       {
         section: "Overlay",
-        title: "Control strip",
-        body: "Bottom-right buttons for layout, meters, and adding panels.",
-        target: ".comm-pos-toggles",
-        targetKind: "region",
-        enter: { closeBag: true, closeCommand: true }
+        title: "Apps & controls",
+        body: "Phone: Apps holds overlay tools; pull the shade for Layout and Meters. Desktop: bottom-right control strip does the same job.",
+        target: '[data-ecu-tour="btn-apps"], [data-ecu-tour="phone-apps-grid"], .comm-pos-toggles',
+        targetKind: "button",
+        cardPlacement: "bottom",
+        enter: {
+          closeBag: true,
+          closeCommand: true,
+          closePhoneChrome: true,
+          openPhoneApps: true
+        },
+        exit: { closePhoneChrome: true }
       },
       {
         section: "Overlay",
         title: "Layout mode",
-        body: "Turn this on to drag panels into place. Every panel appears at once so you can position them. It looks busy; that is normal. A short layout tour runs the first time you enable it.",
-        target: '[data-ecu-tour="btn-layout"]',
+        body: "Drag panels into place. Busy is normal. On phone, Layout lives in the pull-down shade (Quick HUD).",
+        target: '[data-ecu-tour="phone-shade-qs"], [data-ecu-tour="btn-layout"]',
         targetKind: "button",
-        missingHint: "Click the Layout button in the control strip."
+        cardPlacement: "below",
+        missingHint: "Pull the shade (phone) or use Layout on the control strip.",
+        enter: { openPhoneShade: true },
+        exit: { closePhoneChrome: true }
       },
       {
         section: "Overlay",
         title: "Party roster",
-        body: "Everyone nearby on this server. Click a party member to focus frames or inspect their gear.",
+        body: "Everyone nearby on this server. Click a party member to focus frames or inspect their gear. On phone it may live on a home screen page \u2014 swipe if you do not see it.",
         target: ".comm-pos-players",
-        targetKind: "region"
+        targetKind: "region",
+        enter: { closePhoneChrome: true }
       },
       {
         section: "Overlay",
         title: "Map & events",
-        body: "Server clock chips (serverInfo), closable events list, map name and instance id (mapInfo).",
+        body: "Server clock chips (serverInfo), closable events list, map name and instance id (mapInfo). On phone these may sit on a home page.",
         target: ".comm-pos-serverInfo, .comm-pos-mapInfo, .comm-pos-events",
         targetKind: "region"
       },
@@ -32621,11 +33394,13 @@ button.comm-mail__stack-u {
       {
         section: "Overlay",
         title: "Add a meter",
-        body: "Pick damage, healing, interrupts, deaths, or Adventure Land stats.",
-        target: '[data-ecu-tour="btn-add-meter"]',
+        body: "Pick damage, healing, interrupts, deaths, or Adventure Land stats. On phone, Add meter is in Apps; on desktop use + Meter on the control strip.",
+        target: '[data-ecu-tour="phone-apps-grid"], [data-ecu-tour="btn-add-meter"]',
         targetKind: "button",
-        enter: { meterAddOpen: true },
-        exit: { meterAddOpen: false }
+        cardPlacement: "bottom",
+        missingHint: "Open Apps \u2192 Add meter (phone) or + Meter on the strip.",
+        enter: { openPhoneApps: true },
+        exit: { closePhoneChrome: true }
       },
       {
         section: "Overlay",
@@ -32633,8 +33408,8 @@ button.comm-mail__stack-u {
         body: "Under Adventure Land in the add dialog. Live party-DPS snapshot during combat.",
         target: '[data-ecu-tour="preset-pdps"]',
         targetKind: "button",
-        missingHint: "Tap + Meter to open the preset list.",
-        enter: { meterAddOpen: true },
+        missingHint: "Tap Add meter (Apps on phone) to open the preset list.",
+        enter: { closePhoneChrome: true, meterAddOpen: true },
         exit: { meterAddOpen: false }
       },
       {
@@ -32643,14 +33418,16 @@ button.comm-mail__stack-u {
         body: "Session kill KPI in a compact strip. Change scope in the panel header.",
         target: ".comm-pos-panel.comm-pos-kills",
         targetKind: "panel",
-        enter: { closeBag: true, closeCommand: true }
+        enter: { closeBag: true, closeCommand: true, closePhoneChrome: true }
       },
       {
         section: "Overlay",
         title: "You're set",
         body: "Explore at your own pace. Short tours still appear for layout mode, meter tools, paperdoll, Market, Bank, buffs, and combat panels, each only once. Replay any tour from Settings \u2192 Comm UI.",
-        target: ".comm-pos-toggles",
-        targetKind: "region"
+        target: '[data-ecu-tour="btn-apps"], .comm-pos-toggles',
+        targetKind: "button",
+        cardPlacement: "above",
+        enter: { closePhoneChrome: true }
       }
     ]
   };
@@ -32832,12 +33609,13 @@ button.comm-mail__stack-u {
       {
         section: "Market",
         title: "Observe a character",
-        body: "Bag and stand need a watched character. Click a chip in the strip below. The tour continues when you are observing.",
-        target: '[data-ecu-tour="character-ui"]',
-        targetKind: "region",
-        missingHint: "Click any character chip in the strip below.",
+        body: "Bag and stand need a watched character. Pick one in the Character sheet (phone) or the strip (desktop). The tour continues when you are observing.",
+        target: '[data-ecu-tour="phone-observe-list"], [data-ecu-tour="character-ui"]',
+        targetKind: "button",
+        cardPlacement: "bottom",
+        missingHint: "Open Character and tap a name, or click a chip in the strip.",
         advanceWhen: "observing",
-        enter: { refreshHud: true, openMarket: true }
+        enter: { refreshHud: true, openMarket: true, openPhoneObserve: true }
       },
       {
         section: "Market",
@@ -32892,12 +33670,13 @@ button.comm-mail__stack-u {
       {
         section: "Bank",
         title: "Observe a character",
-        body: "Withdraw and deposit run on the watched character. Click a chip below. The tour continues when you are observing.",
-        target: '[data-ecu-tour="character-ui"]',
-        targetKind: "region",
-        missingHint: "Click any character chip in the strip below.",
+        body: "Withdraw and deposit run on the watched character. Pick one in the Character sheet (phone) or the strip (desktop). The tour continues when you are observing.",
+        target: '[data-ecu-tour="phone-observe-list"], [data-ecu-tour="character-ui"]',
+        targetKind: "button",
+        cardPlacement: "bottom",
+        missingHint: "Open Character and tap a name, or click a chip in the strip.",
         advanceWhen: "observing",
-        enter: { refreshHud: true, openBank: true }
+        enter: { refreshHud: true, openBank: true, openPhoneObserve: true }
       },
       {
         section: "Bank",
@@ -33118,8 +33897,12 @@ button.comm-mail__stack-u {
   }
 
   // src/ui/frames/comm/guidedTour/GuidedTourOverlay.ts
-  var CARD_W = 460;
-  var CARD_H_FALLBACK = 280;
+  var CARD_W_DESKTOP = 460;
+  var CARD_H_FALLBACK = 200;
+  function tourCardWidth() {
+    if (typeof window === "undefined") return CARD_W_DESKTOP;
+    return Math.min(CARD_W_DESKTOP, Math.max(240, window.innerWidth - 24));
+  }
   function tourBtn(label, onClick, opts) {
     const classes = ["ecu-tour-btn"];
     if (opts == null ? void 0 : opts.primary) classes.push("primary");
@@ -33186,11 +33969,12 @@ button.comm-mail__stack-u {
         setViewport({ w: vw, h: vh });
         const rect = measureTarget(step.target, kind);
         setSpot(rect);
+        const cardW2 = tourCardWidth();
         const h = cardRef.current ? Math.max(
           CARD_H_FALLBACK,
           cardRef.current.getBoundingClientRect().height
         ) : cardH;
-        setCardPos(cardPosition(rect, CARD_W, h, placement));
+        setCardPos(cardPosition(rect, cardW2, h, placement));
         return rect;
       };
       measure();
@@ -33279,8 +34063,9 @@ button.comm-mail__stack-u {
     const skip = () => {
       finish();
     };
+    const cardW = tourCardWidth();
     const shades = shadePanels(spot, viewport.w, viewport.h);
-    const connector = spot != null ? tourConnector(cardPos, CARD_W, cardH, spot) : null;
+    const connector = spot != null ? tourConnector(cardPos, cardW, cardH, spot) : null;
     const missingOnly = !!step.missingHint && !spot && !waitForAction;
     const ctaText = step.missingHint || (waitForAction ? "Complete the highlighted action to continue." : "");
     return e(
@@ -33345,43 +34130,53 @@ button.comm-mail__stack-u {
           style: {
             ...PIXEL_TEXT,
             top: cardPos.top + "px",
-            left: cardPos.left + "px"
+            left: cardPos.left + "px",
+            width: cardW + "px",
+            maxWidth: cardW + "px"
           }
         },
-        e("h3", null, step.title),
-        e("p", null, step.body),
-        waitForAction ? e(
-          "div",
-          { className: "ecu-tour-cta" },
-          e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
-          e("div", { className: "ecu-tour-cta-text" }, ctaText)
-        ) : missingOnly ? e("p", { className: "ecu-tour-hint" }, step.missingHint) : null,
         e(
           "div",
-          { className: "ecu-tour-actions" },
-          e(
+          { className: "ecu-tour-card-scroll" },
+          e("h3", null, step.title),
+          e("p", null, step.body),
+          waitForAction ? e(
             "div",
-            { className: "ecu-tour-actions-left" },
-            tourBtn("Back", back, {
-              hidden: props.stepIndex === 0,
-              disabled: props.stepIndex === 0
-            })
-          ),
-          e(
-            "div",
-            { className: "ecu-tour-actions-right" },
-            tourBtn("Skip tour", skip),
-            // Action steps auto-advance — Next stays visible but disabled.
-            tourBtn(isLast ? "Done" : "Next", next, {
-              primary: true,
-              disabled: waitForAction
-            })
-          )
+            { className: "ecu-tour-cta" },
+            e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
+            e("div", { className: "ecu-tour-cta-text" }, ctaText)
+          ) : missingOnly ? e("p", { className: "ecu-tour-hint" }, step.missingHint) : null
         ),
         e(
           "div",
-          { className: "ecu-tour-foot" },
-          `${step.section || props.tour.label} \xB7 ${props.stepIndex + 1} / ${props.tour.steps.length}`
+          { className: "ecu-tour-card-chrome" },
+          e(
+            "div",
+            { className: "ecu-tour-actions" },
+            e(
+              "div",
+              { className: "ecu-tour-actions-left" },
+              tourBtn("Back", back, {
+                hidden: props.stepIndex === 0,
+                disabled: props.stepIndex === 0
+              })
+            ),
+            e(
+              "div",
+              { className: "ecu-tour-actions-right" },
+              tourBtn("Skip tour", skip),
+              // Action steps auto-advance — Next stays visible but disabled.
+              tourBtn(isLast ? "Done" : "Next", next, {
+                primary: true,
+                disabled: waitForAction
+              })
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-tour-foot" },
+            `${step.section || props.tour.label} \xB7 ${props.stepIndex + 1} / ${props.tour.steps.length}`
+          )
         )
       )
     );
@@ -33455,6 +34250,11 @@ button.comm-mail__stack-u {
     if (effects.openMarket) openMarket({});
     if (effects.openBank) openBank({});
     if (effects.bankView) cueBankView(effects.bankView);
+    if (effects.closePhoneChrome) closePhoneTourChrome();
+    if (effects.openPhoneObserve) openPhoneObserve();
+    if (effects.openPhoneServer) openPhoneServer();
+    if (effects.openPhoneApps) openPhoneApps();
+    if (effects.openPhoneShade) openPhoneShade();
   }
   function restoreTourUi(host2, snap, opts) {
     host2.setLayoutEdit(snap.layoutEdit);
@@ -33714,6 +34514,31 @@ button.comm-mail__stack-u {
         return { tour: prev.tour, step };
       });
     };
+    React.useEffect(() => {
+      const w = window;
+      w.__ecuGuidedTour = {
+        intro: (force) => startIntroTour(force),
+        replay: (id) => replayTour(id),
+        dismiss: () => {
+          var _a;
+          return finishTour((_a = activeTourRef.current) == null ? void 0 : _a.tour.id);
+        },
+        step: (index) => setActiveTourStep(index),
+        active: () => {
+          const cur = activeTourRef.current;
+          if (!cur) return null;
+          const s = cur.tour.steps[cur.step];
+          return {
+            id: cur.tour.id,
+            step: cur.step,
+            title: s ? s.title : ""
+          };
+        }
+      };
+      return () => {
+        delete w.__ecuGuidedTour;
+      };
+    }, []);
     const tourOverlay = activeTour ? e(GuidedTourOverlay, {
       tour: activeTour.tour,
       stepIndex: activeTour.step,
@@ -34890,6 +35715,7 @@ button.comm-mail__stack-u {
     };
     const setVisible = (id, visible2) => {
       if (!isClosable(id)) return;
+      if (id === "bag" && visible2 && !gateObservedBagOpen()) return;
       if (liteHud) {
         setPhoneHudVisible((prev) => {
           const next = { ...prev, [id]: visible2 };
@@ -36438,8 +37264,14 @@ button.comm-mail__stack-u {
     syncFreeCameraAfterRealmChange();
     if (!freeCamera) {
       syncLockFromMap();
-      observerAnchorX = lockX;
-      observerAnchorY = lockY;
+      const at = readObservedWorldXY();
+      if (at) {
+        observerAnchorX = at.x;
+        observerAnchorY = at.y;
+      } else {
+        observerAnchorX = lockX;
+        observerAnchorY = lockY;
+      }
       hasObserverAnchor = true;
       freeCamRealmKey = readCameraRealmKey();
       freeCamera = true;
@@ -36858,9 +37690,12 @@ button.comm-mail__stack-u {
     if (fromLive) return fromLive;
     const fromChar = mapXY(getCharacter());
     if (fromChar) return fromChar;
+    const fromSnap = mapXY(getObserving());
+    if (fromSnap) return fromSnap;
     if (isFreeCamera()) {
       const anchor = readObserverCameraAnchor();
       if (anchor) return anchor;
+      return null;
     }
     return readCameraXY();
   }
@@ -39779,7 +40614,7 @@ button.comm-mail__stack-u {
     const autoSize = args.autoSize;
     const onToggleAutoSize = args.onToggleAutoSize;
     const closeAbove = props.closePlacement === "above";
-    const showClose = !!onClose && !hidden && (hover || touchish || movable || editing && !props.closeOnHoverOnly);
+    const showClose = !!onClose && !hidden && (hover || touchish || movable || props.closePlacement === "corner" || editing && !props.closeOnHoverOnly);
     const moveGrip = movable && props.showMoveGrip !== false || editing && editChrome === "grip" ? e(
       "div",
       {
@@ -53304,6 +54139,9 @@ ${parts.map(cssSlice).join("\n")}
     if (target.closest(".ecu-phone-shade, .ecu-phone-sheet")) {
       return true;
     }
+    if (target.closest(".ecu-comm-wiz-backdrop, [data-ecu-comm-modal-portal]")) {
+      return true;
+    }
     if (target.closest(".ecu-cam-stick, .ecu-cam-chrome")) {
       return true;
     }
@@ -53486,7 +54324,7 @@ ${parts.map(cssSlice).join("\n")}
       return true;
     }
     if (target.closest(
-      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-cam-chrome, .ecu-meter-shell, [data-panel]"
+      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-cam-chrome, .ecu-meter-shell, [data-panel], .ecu-comm-wiz-backdrop, [data-ecu-comm-modal-portal]"
     )) {
       return true;
     }
@@ -54281,9 +55119,15 @@ ${parts.map(cssSlice).join("\n")}
   /* Visual stays the original 8px pill; ::after only expands the tap target. */
   pointer-events: auto;
   position: relative;
-  width: 8px;
-  height: 8px;
-  padding: 0;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 8px !important;
+  min-height: 8px !important;
+  max-width: 8px !important;
+  max-height: 8px !important;
+  padding: 0 !important;
   margin: 0;
   border: none;
   border-radius: 50%;
@@ -54291,6 +55135,8 @@ ${parts.map(cssSlice).join("\n")}
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .ecu-phone-home-dots__dot::after {
   content: "";
@@ -54459,6 +55305,12 @@ ${parts.map(cssSlice).join("\n")}
 }
 .ecu-phone-apps__tile.is-on .ecu-phone-apps__icon {
   box-shadow: 0 0 0 2px #9dd4ec;
+}
+.ecu-phone-apps__tile.is-muted {
+  opacity: 0.55;
+}
+.ecu-phone-apps__tile.is-muted .ecu-phone-apps__label {
+  color: #938f99;
 }
 .ecu-phone-apps__icon {
   display: flex;
@@ -54750,7 +55602,14 @@ ${parts.map(cssSlice).join("\n")}
             "Done"
           )
         ),
-        e("div", { className: "ecu-phone-sheet__body" }, ...kids)
+        e(
+          "div",
+          {
+            className: "ecu-phone-sheet__body",
+            "data-ecu-tour": "phone-observe-list"
+          },
+          ...kids
+        )
       )
     );
   }
@@ -55075,7 +55934,14 @@ ${parts.map(cssSlice).join("\n")}
             "Done"
           )
         ),
-        e("div", { className: "ecu-phone-sheet__body" }, ...kids)
+        e(
+          "div",
+          {
+            className: "ecu-phone-sheet__body",
+            "data-ecu-tour": "phone-server-list"
+          },
+          ...kids
+        )
       )
     );
   }
@@ -55185,6 +56051,7 @@ ${parts.map(cssSlice).join("\n")}
           key: "layout",
           type: "button",
           className: "ecu-phone-sheet__chip" + (props.layoutEdit ? " is-on" : ""),
+          "data-ecu-tour": "btn-layout",
           onClick: () => props.toggleLayoutEdit()
         },
         props.layoutEdit ? "Layout on" : "Layout"
@@ -55302,6 +56169,7 @@ ${parts.map(cssSlice).join("\n")}
           "div",
           {
             className: "ecu-phone-shade__qs",
+            "data-ecu-tour": "phone-shade-qs",
             onTouchStart: (ev) => onHandleTouchStart(ev, "expand"),
             onTouchMove: onHandleTouchMove,
             onTouchEnd: onHandleTouchEnd,
@@ -55332,6 +56200,64 @@ ${parts.map(cssSlice).join("\n")}
         )
       )
     );
+  }
+
+  // src/host/pageFullscreen.ts
+  function isPageFullscreenSupported() {
+    if (typeof document === "undefined") return false;
+    const doc = document;
+    return !!(doc.fullscreenEnabled || doc.webkitFullscreenEnabled);
+  }
+  function isPageFullscreen() {
+    if (typeof document === "undefined") return false;
+    const doc = document;
+    return !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+  }
+  function enterPageFullscreen() {
+    if (typeof document === "undefined") return Promise.resolve(false);
+    const el = document.documentElement;
+    if (typeof el.requestFullscreen === "function") {
+      return el.requestFullscreen({ navigationUI: "hide" }).then(() => true).catch(() => false);
+    }
+    if (typeof el.webkitRequestFullscreen === "function") {
+      try {
+        el.webkitRequestFullscreen();
+        return Promise.resolve(true);
+      } catch (e2) {
+        return Promise.resolve(false);
+      }
+    }
+    return Promise.resolve(false);
+  }
+  function exitPageFullscreen() {
+    if (typeof document === "undefined") return Promise.resolve(false);
+    const doc = document;
+    if (typeof doc.exitFullscreen === "function") {
+      return doc.exitFullscreen().then(() => true).catch(() => false);
+    }
+    if (typeof doc.webkitExitFullscreen === "function") {
+      try {
+        doc.webkitExitFullscreen();
+        return Promise.resolve(true);
+      } catch (e2) {
+        return Promise.resolve(false);
+      }
+    }
+    return Promise.resolve(false);
+  }
+  function togglePageFullscreen() {
+    if (isPageFullscreen()) return exitPageFullscreen();
+    return enterPageFullscreen();
+  }
+  function subscribePageFullscreen(listener) {
+    if (typeof document === "undefined") return () => {
+    };
+    document.addEventListener("fullscreenchange", listener);
+    document.addEventListener("webkitfullscreenchange", listener);
+    return () => {
+      document.removeEventListener("fullscreenchange", listener);
+      document.removeEventListener("webkitfullscreenchange", listener);
+    };
   }
 
   // src/ui/frames/comm/PhoneWindowsSheet.ts
@@ -55409,7 +56335,9 @@ ${parts.map(cssSlice).join("\n")}
       {
         key: tile.id,
         type: "button",
-        className: "ecu-phone-apps__tile" + (tile.on ? " is-on" : ""),
+        className: "ecu-phone-apps__tile" + (tile.on ? " is-on" : "") + (tile.muted ? " is-muted" : ""),
+        "data-ecu-tour": tile.tour || void 0,
+        title: tile.muted ? "Observe a character first" : void 0,
         onClick: tile.onClick
       },
       e(
@@ -55432,6 +56360,12 @@ ${parts.map(cssSlice).join("\n")}
     const dragDy = React.useRef(0);
     const dragging = React.useRef(false);
     const [editHome, setEditHome] = React.useState(false);
+    const [fullscreenOn, setFullscreenOn] = React.useState(
+      () => isPageFullscreen()
+    );
+    React.useEffect(() => {
+      return subscribePageFullscreen(() => setFullscreenOn(isPageFullscreen()));
+    }, []);
     const onClose = props.onClose;
     const screens = props.phoneHomeScreens;
     const screenIdx = props.phoneHomePage >= 0 && props.phoneHomePage < screens.length ? props.phoneHomePage : 0;
@@ -55513,6 +56447,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "C",
         tone: "#2e7d6f",
         on: props.visible("chat"),
+        tour: "btn-chat",
         onClick: () => openOverlay("chat", () => openChat({ toggle: true }))
       },
       {
@@ -55521,6 +56456,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "</>",
         tone: "#5b4b8a",
         on: props.visible("command"),
+        tour: "btn-command",
         onClick: () => openOverlay("command", () => openCommander())
       },
       {
@@ -55529,6 +56465,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "M",
         tone: "#3d6b9a",
         on: props.visible("mail"),
+        tour: "btn-mail",
         onClick: () => openOverlay("mail")
       },
       {
@@ -55537,7 +56474,15 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "B",
         tone: "#8a6a3d",
         on: props.visible("bag"),
-        onClick: () => openOverlay("bag")
+        muted: !getObservingId(),
+        tour: "btn-bag",
+        onClick: () => {
+          if (!gateObservedBagOpen()) {
+            props.onClose();
+            return;
+          }
+          openOverlay("bag");
+        }
       },
       {
         id: "bank",
@@ -55545,6 +56490,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "$",
         tone: "#3d8a55",
         on: props.visible("bank"),
+        tour: "btn-bank",
         onClick: () => openOverlay("bank")
       },
       {
@@ -55553,6 +56499,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "S",
         tone: "#8a3d5c",
         on: props.visible("market"),
+        tour: "btn-market",
         onClick: () => openOverlay("market")
       },
       {
@@ -55561,6 +56508,7 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "\u2699",
         tone: "#4a5568",
         on: false,
+        tour: "btn-settings",
         onClick: () => {
           props.onClose();
           props.onOpenSettings();
@@ -55572,12 +56520,27 @@ ${parts.map(cssSlice).join("\n")}
         glyph: "+",
         tone: "#2b6cb0",
         on: false,
+        tour: "btn-add-meter",
         onClick: () => {
           props.onClose();
           props.onAddMeter();
         }
       }
     ];
+    if (isPageFullscreenSupported()) {
+      tiles.splice(tiles.length - 1, 0, {
+        id: "fullscreen",
+        label: fullscreenOn ? "Exit FS" : "Full",
+        glyph: fullscreenOn ? "\u22A1" : "\u26F6",
+        tone: "#1e3a5f",
+        on: fullscreenOn,
+        tour: "btn-fullscreen",
+        onClick: () => {
+          void togglePageFullscreen();
+          props.onClose();
+        }
+      });
+    }
     const patchScreens = (next) => {
       props.setPhoneHomeScreens(next);
     };
@@ -55708,7 +56671,10 @@ ${parts.map(cssSlice).join("\n")}
       )
     ) : e(
       "div",
-      { className: "ecu-phone-sheet__body ecu-phone-apps" },
+      {
+        className: "ecu-phone-sheet__body ecu-phone-apps",
+        "data-ecu-tour": "phone-apps-grid"
+      },
       e("div", { className: "ecu-phone-apps__grid" }, ...tiles.map(appTile)),
       e(
         "button",
@@ -55909,6 +56875,38 @@ ${parts.map(cssSlice).join("\n")}
       hidePeerPanels("none");
       setServerOpen(true);
     };
+    const openShade = () => {
+      if (sheetOpen) setSheetOpen(false);
+      if (observeOpen) setObserveOpen(false);
+      if (serverOpen) setServerOpen(false);
+      if (props.settingsOpen) props.toggleSettings();
+      hidePeerPanels("none");
+      setShadeOpen(true);
+    };
+    const tourChromeRef = React.useRef({
+      openObserve,
+      openServer,
+      openApps,
+      openShade,
+      closeAll: dismissSheets
+    });
+    tourChromeRef.current = {
+      openObserve,
+      openServer,
+      openApps,
+      openShade,
+      closeAll: dismissSheets
+    };
+    React.useEffect(() => {
+      registerPhoneTourChrome({
+        openObserve: () => tourChromeRef.current.openObserve(),
+        openServer: () => tourChromeRef.current.openServer(),
+        openApps: () => tourChromeRef.current.openApps(),
+        openShade: () => tourChromeRef.current.openShade(),
+        closeAll: () => tourChromeRef.current.closeAll()
+      });
+      return () => registerPhoneTourChrome(null);
+    }, []);
     const toggleSettings = () => {
       if (sheetOpen) setSheetOpen(false);
       if (shadeOpen) setShadeOpen(false);
@@ -56238,57 +57236,6 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
-  // src/ui/chrome/phoneShell.ts
-  function bindSwipeDownClose(handle2, onClose) {
-    if (!handle2) return () => {
-    };
-    let startY = 0;
-    let dy = 0;
-    let active = false;
-    const sheet = handle2.closest(".ecu-phone-sheet") || handle2.closest(".ecu-settings-modal") || handle2.closest("[data-panel]") || handle2;
-    const onStart = (ev) => {
-      if (!ev.touches.length) return;
-      active = true;
-      startY = ev.touches[0].clientY;
-      dy = 0;
-      sheet.style.transition = "none";
-    };
-    const onMove = (ev) => {
-      if (!active || !ev.touches.length) return;
-      dy = Math.max(0, ev.touches[0].clientY - startY);
-      sheet.style.transform = "translateY(" + dy + "px)";
-      if (dy > 8) ev.preventDefault();
-    };
-    const onEnd = () => {
-      if (!active) return;
-      active = false;
-      if (dy > 90) {
-        sheet.style.transform = "";
-        sheet.style.transition = "";
-        onClose();
-        return;
-      }
-      sheet.style.transition = "transform 0.18s ease";
-      sheet.style.transform = "translateY(0)";
-      window.setTimeout(() => {
-        sheet.style.transition = "";
-        sheet.style.transform = "";
-      }, 200);
-      dy = 0;
-    };
-    handle2.style.touchAction = "none";
-    handle2.addEventListener("touchstart", onStart, { passive: true });
-    handle2.addEventListener("touchmove", onMove, { passive: false });
-    handle2.addEventListener("touchend", onEnd, { passive: true });
-    handle2.addEventListener("touchcancel", onEnd, { passive: true });
-    return () => {
-      handle2.removeEventListener("touchstart", onStart);
-      handle2.removeEventListener("touchmove", onMove);
-      handle2.removeEventListener("touchend", onEnd);
-      handle2.removeEventListener("touchcancel", onEnd);
-    };
-  }
-
   // src/ui/frames/settingsPanelCss.ts
   var SETTINGS_PANEL_CSS = `
 .ecu-settings-backdrop {
@@ -56354,11 +57301,15 @@ ${parts.map(cssSlice).join("\n")}
   min-height: 0;
 }
 .ecu-settings-nav {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   border-right: 1px solid #2e343a;
   padding: 14px 10px;
   background: rgba(0, 0, 0, 0.12);
+  overflow-y: auto;
+}
+.ecu-settings-nav-group {
+  margin-bottom: 6px;
 }
 .ecu-settings-nav-btn {
   display: flex;
@@ -56371,7 +57322,6 @@ ${parts.map(cssSlice).join("\n")}
   color: #ccc;
   font-size: 19px;
   padding: 11px 12px;
-  margin-bottom: 6px;
 }
 .ecu-settings-nav-btn.is-dim {
   opacity: 0.45;
@@ -56384,6 +57334,37 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-settings-nav-count {
   color: #88919a;
   font-size: 16px;
+}
+.ecu-settings-nav-subs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 2px 10px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid #3d4650;
+}
+.ecu-settings-nav-sub {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #9aa3ad;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.25;
+  padding: 5px 8px;
+}
+.ecu-settings-nav-sub:hover {
+  color: #ffe08a;
+  background: rgba(42, 34, 16, 0.45);
+}
+.ecu-settings-nav-sub.is-active {
+  color: #ffe08a;
+  border-color: rgba(136, 136, 102, 0.55);
+  background: #2a2210;
 }
 .ecu-settings-pane {
   flex: 1 1 auto;
@@ -56408,6 +57389,7 @@ ${parts.map(cssSlice).join("\n")}
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(255, 224, 138, 0.25);
   font-size: 21px;
+  scroll-margin-top: 12px;
 }
 .ecu-settings-sec:first-child {
   margin-top: 0;
@@ -56696,6 +57678,46 @@ ${parts.map(cssSlice).join("\n")}
   text-align: center;
   line-height: 1.25;
 }
+.ecu-settings-script-url {
+  word-break: break-all;
+}
+.ecu-settings-dev-fold {
+  margin: 10px 0 4px;
+  border: 1px solid #2e343a;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.ecu-settings-dev-fold__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #9aa3ad;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 10px 12px;
+}
+.ecu-settings-dev-fold__toggle:hover {
+  color: #c8d0d8;
+  background: rgba(255, 255, 255, 0.03);
+}
+.ecu-settings-dev-fold__toggle[aria-expanded="true"] {
+  color: #cbb87a;
+  border-bottom: 1px solid #2e343a;
+}
+.ecu-settings-dev-fold__chevron {
+  width: 1em;
+  color: #77818c;
+  font-size: 13px;
+}
+.ecu-settings-dev-fold__body {
+  padding: 10px 12px 12px;
+}
 .ecu-settings-tag {
   font-size: 12px;
   padding: 2px 7px;
@@ -56896,8 +57918,10 @@ ${parts.map(cssSlice).join("\n")}
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 6px;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   border-right: none;
   border-bottom: 1px solid #2e343a;
@@ -56907,12 +57931,39 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
   display: none;
 }
+.ecu-settings-modal.is-phone .ecu-settings-nav-group {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: min(280px, 78vw);
+}
 .ecu-settings-modal.is-phone .ecu-settings-nav-btn {
   flex: 0 0 auto;
   width: auto;
   min-height: 44px;
   margin-bottom: 0;
   white-space: nowrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-subs {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  border-left: none;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-sub {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 36px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid #3d4650;
+  border-radius: 16px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane {
   padding: 14px 16px 24px;
@@ -58334,7 +59385,65 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/ui/frames/settings/settingsPaneChrome.ts
+  function settingsSectionId(label) {
+    const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return "ecu-sec-" + (slug || "section");
+  }
+  function settingsSection(label, id) {
+    const secId = id || settingsSectionId(label);
+    return e(
+      "div",
+      {
+        id: secId,
+        className: "ecu-settings-sec",
+        "data-ecu-settings-sec": secId
+      },
+      label
+    );
+  }
+  function settingsCheckboxRow(key, label, checked, onChange, extras) {
+    return e(
+      "div",
+      { key, className: "ecu-settings-row" },
+      e(
+        "div",
+        { className: "ecu-settings-row-copy" },
+        e(
+          "span",
+          { className: "ecu-settings-row-label" },
+          label,
+          (extras == null ? void 0 : extras.tag) ? e(
+            "span",
+            {
+              className: "ecu-settings-tag",
+              "data-tag": extras.tag
+            },
+            extras.tag
+          ) : null
+        ),
+        (extras == null ? void 0 : extras.help) ? e("span", { className: "ecu-settings-help" }, extras.help) : null
+      ),
+      e("input", {
+        type: "checkbox",
+        checked,
+        onChange: (ev) => onChange(ev.target.checked)
+      })
+    );
+  }
+
   // src/ui/frames/settings/abilityTimelineSettingsPane.ts
+  var ABILITY_TIMELINE_SUBSECTIONS = [
+    { id: settingsSectionId("Travel"), label: "Travel" },
+    { id: settingsSectionId("Icons"), label: "Icons" },
+    { id: settingsSectionId("Frames"), label: "Frames" },
+    {
+      // Matches abilityVisibilityRow.label rendered via section(...).
+      id: settingsSectionId("Ability visibility"),
+      label: "Ability visibility"
+    },
+    { id: settingsSectionId("Preview"), label: "Preview" }
+  ];
   function AbilityTimelineSettingsPreview(props) {
     const React = getReact();
     const epochRef = React.useRef(Date.now());
@@ -58367,7 +59476,7 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
   function section2(label) {
-    return e("div", { className: "ecu-settings-sec" }, label);
+    return settingsSection(label);
   }
   function row2(label, control) {
     return e(
@@ -59159,38 +60268,1014 @@ ${parts.map(cssSlice).join("\n")}
     }
   ];
 
-  // src/ui/frames/settings/settingsPaneChrome.ts
-  function settingsSection(label) {
-    return e("div", { className: "ecu-settings-sec" }, label);
+  // src/lib/lanIpv4.ts
+  function lanIpv4Rank(address, ifaceName) {
+    const name = String(ifaceName || "").toLowerCase();
+    if (/tailscale|wsl|hyper-v|vethernet|docker|vbox|vmware|virtualbox|tun\b|tap\b|zerotier|wireguard|hamachi|nordlynx|mullvad/.test(
+      name
+    )) {
+      return 1e3;
+    }
+    const parts = String(address || "").split(".").map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return 999;
+    const a = parts[0];
+    const b = parts[1];
+    if (a === 100 && b >= 64 && b <= 127) return 900;
+    if (a === 169 && b === 254) return 950;
+    if (a === 192 && b === 168) return 10;
+    if (a === 10) return 20;
+    if (a === 172 && b >= 16 && b <= 31) return 60;
+    return 80;
   }
-  function settingsCheckboxRow(key, label, checked, onChange, extras) {
+  function isInstallQrHost(host2) {
+    const h = String(host2 || "").trim().toLowerCase();
+    if (h === "127.0.0.1" || h === "localhost") return true;
+    const parts = h.split(".").map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return false;
+    const a = parts[0];
+    const b = parts[1];
+    if (a === 100 && b >= 64 && b <= 127) return false;
+    if (a === 169 && b === 254) return false;
+    if (a === 192 && b === 168) return true;
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    return false;
+  }
+  function hostFromBase(base) {
+    const raw = String(base || "").replace(/\/$/, "");
+    const m = /^https?:\/\/([^/:]+)/i.exec(raw);
+    if (m) return m[1];
+    return raw;
+  }
+  var ECU_LAN_INSTALL_PATH = "/enhance-comm-ui.user.js";
+  function pickDevInstallUrlFromBases(bases, fallback) {
+    const urls = rankedDevInstallUrlsFromBases(bases);
+    if (urls.length) return urls[0];
+    return fallback;
+  }
+  function rankedDevInstallUrlsFromBases(bases) {
+    const cands = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < bases.length; i++) {
+      const raw = String(bases[i] || "").replace(/\/$/, "");
+      if (!raw) continue;
+      const host2 = hostFromBase(raw);
+      if (!isInstallQrHost(host2)) continue;
+      const url = `${raw}${ECU_LAN_INSTALL_PATH}`;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const rank = host2 === "127.0.0.1" || host2 === "localhost" ? 500 : lanIpv4Rank(host2);
+      if (rank >= 900) continue;
+      cands.push({ url, rank });
+    }
+    cands.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.url.localeCompare(b.url);
+    });
+    const out = [];
+    for (let i = 0; i < cands.length; i++) out.push(cands[i].url);
+    return out;
+  }
+
+  // src/lib/installScriptUrl.ts
+  var ECU_PRODUCTION_SCRIPT_URL = "https://raw.githubusercontent.com/adventureland-community/userinterface/feature/enhance-comm-ui/enhance-comm-ui.js";
+  function isEcuDevBuild() {
+    return false;
+  }
+  function getProductionInstallUrl() {
+    return ECU_PRODUCTION_SCRIPT_URL;
+  }
+  function getBakedDevInstallUrl() {
+    if ("".length > 0) {
+      return "";
+    }
+    return "http://127.0.0.1:3927/enhance-comm-ui.user.js";
+  }
+  function getBakedDevInstallUrls() {
+    if (typeof define_ECU_DEV_INSTALL_URLS_default !== "undefined" && Array.isArray(define_ECU_DEV_INSTALL_URLS_default)) {
+      const out = [];
+      for (let i = 0; i < define_ECU_DEV_INSTALL_URLS_default.length; i++) {
+        const u = define_ECU_DEV_INSTALL_URLS_default[i];
+        if (typeof u === "string" && u.length) out.push(u);
+      }
+      if (out.length) return out;
+    }
+    const single = getBakedDevInstallUrl();
+    return single ? [single] : [];
+  }
+  function isEcuHealthPayload(value) {
+    if (!value || typeof value !== "object") return false;
+    if (!("ok" in value) || value.ok !== true) return false;
+    if (!("bases" in value) || !Array.isArray(value.bases)) return false;
+    for (let i = 0; i < value.bases.length; i++) {
+      if (typeof value.bases[i] !== "string") return false;
+    }
+    return true;
+  }
+  async function resolveInstallScriptUrl() {
+    return { mode: "prod", url: getProductionInstallUrl() };
+  }
+  async function resolveDevLanInstallUrl() {
+    if (!isEcuDevBuild()) return null;
+    const bakedUrls = getBakedDevInstallUrls();
+    const baked = bakedUrls[0] || getBakedDevInstallUrl();
+    if (typeof location !== "undefined" && location.protocol === "http:" && typeof fetch === "function") {
+      try {
+        const portMatch = /:(\d+)(?:\/|$)/.exec(baked);
+        const port = portMatch ? portMatch[1] : "3927";
+        const res = await fetch(`http://127.0.0.1:${port}/health`, {
+          cache: "no-store"
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (isEcuHealthPayload(json)) {
+            const urls = rankedDevInstallUrlsFromBases(json.bases);
+            if (urls.length) {
+              return {
+                url: pickDevInstallUrlFromBases(json.bases, baked),
+                urls
+              };
+            }
+          }
+        }
+      } catch (e2) {
+      }
+    }
+    return { url: baked, urls: bakedUrls.length ? bakedUrls : [baked] };
+  }
+
+  // node_modules/uqr/dist/index.mjs
+  var QrCodeDataType = /* @__PURE__ */ ((QrCodeDataType2) => {
+    QrCodeDataType2[QrCodeDataType2["Border"] = -1] = "Border";
+    QrCodeDataType2[QrCodeDataType2["Data"] = 0] = "Data";
+    QrCodeDataType2[QrCodeDataType2["Function"] = 1] = "Function";
+    QrCodeDataType2[QrCodeDataType2["Position"] = 2] = "Position";
+    QrCodeDataType2[QrCodeDataType2["Timing"] = 3] = "Timing";
+    QrCodeDataType2[QrCodeDataType2["Alignment"] = 4] = "Alignment";
+    return QrCodeDataType2;
+  })(QrCodeDataType || {});
+  var LOW = [0, 1];
+  var MEDIUM = [1, 0];
+  var QUARTILE = [2, 3];
+  var HIGH = [3, 2];
+  var EccMap = {
+    L: LOW,
+    M: MEDIUM,
+    Q: QUARTILE,
+    H: HIGH
+  };
+  var NUMERIC_REGEX = /^\d*$/;
+  var ALPHANUMERIC_REGEX = /^[A-Z0-9 $%*+./:-]*$/;
+  var ALPHANUMERIC_CHARSET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+  var MIN_VERSION = 1;
+  var MAX_VERSION = 40;
+  var PENALTY_N1 = 3;
+  var PENALTY_N2 = 3;
+  var PENALTY_N3 = 40;
+  var PENALTY_N4 = 10;
+  var ECC_CODEWORDS_PER_BLOCK = [
+    // Version: (note that index 0 is for padding, and is set to an illegal value)
+    // 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+    [-1, 7, 10, 15, 20, 26, 18, 20, 24, 30, 18, 20, 24, 26, 30, 22, 24, 28, 30, 28, 28, 28, 28, 30, 30, 26, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+    // Low
+    [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28],
+    // Medium
+    [-1, 13, 22, 18, 26, 18, 24, 18, 22, 20, 24, 28, 26, 24, 20, 30, 24, 28, 28, 26, 30, 28, 30, 30, 30, 30, 28, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+    // Quartile
+    [-1, 17, 28, 22, 16, 22, 28, 26, 26, 24, 28, 24, 28, 22, 24, 24, 30, 28, 28, 26, 28, 30, 24, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+    // High
+  ];
+  var NUM_ERROR_CORRECTION_BLOCKS = [
+    // Version: (note that index 0 is for padding, and is set to an illegal value)
+    // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40    Error correction level
+    [-1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 4, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 12, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 24, 25],
+    // Low
+    [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49],
+    // Medium
+    [-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8, 8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68],
+    // Quartile
+    [-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81]
+    // High
+  ];
+  var QrCode = class {
+    /* -- Constructor (low level) and fields -- */
+    // Creates a new QR Code with the given version number,
+    // error correction level, data codeword bytes, and mask number.
+    // This is a low-level API that most users should not use directly.
+    // A mid-level API is the encodeSegments() function.
+    constructor(version, ecc, dataCodewords, msk) {
+      /* -- Fields -- */
+      // The width and height of this QR Code, measured in modules, between
+      // 21 and 177 (inclusive). This is equal to version * 4 + 17.
+      __publicField(this, "size");
+      // The index of the mask pattern used in this QR Code, which is between 0 and 7 (inclusive).
+      // Even if a QR Code is created with automatic masking requested (mask = -1),
+      // the resulting object still has a mask value between 0 and 7.
+      __publicField(this, "mask");
+      // The modules of this QR Code (false = light, true = dark).
+      // Immutable after constructor finishes. Accessed through getModule().
+      __publicField(this, "modules", []);
+      __publicField(this, "types", []);
+      this.version = version;
+      this.ecc = ecc;
+      if (version < MIN_VERSION || version > MAX_VERSION)
+        throw new RangeError("Version value out of range");
+      if (msk < -1 || msk > 7)
+        throw new RangeError("Mask value out of range");
+      this.size = version * 4 + 17;
+      const row3 = Array.from({ length: this.size }).fill(false);
+      for (let i = 0; i < this.size; i++) {
+        this.modules.push(row3.slice());
+        this.types.push(row3.map(() => 0));
+      }
+      this.drawFunctionPatterns();
+      const allCodewords = this.addEccAndInterleave(dataCodewords);
+      this.drawCodewords(allCodewords);
+      if (msk === -1) {
+        let minPenalty = 1e9;
+        for (let i = 0; i < 8; i++) {
+          this.applyMask(i);
+          this.drawFormatBits(i);
+          const penalty = this.getPenaltyScore();
+          if (penalty < minPenalty) {
+            msk = i;
+            minPenalty = penalty;
+          }
+          this.applyMask(i);
+        }
+      }
+      this.mask = msk;
+      this.applyMask(msk);
+      this.drawFormatBits(msk);
+    }
+    /* -- Accessor methods -- */
+    // Returns the color of the module (pixel) at the given coordinates, which is false
+    // for light or true for dark. The top left corner has the coordinates (x=0, y=0).
+    // If the given coordinates are out of bounds, then false (light) is returned.
+    getModule(x, y) {
+      return x >= 0 && x < this.size && y >= 0 && y < this.size && this.modules[y][x];
+    }
+    /* -- Private helper methods for constructor: Drawing function modules -- */
+    // Reads this object's version field, and draws and marks all function modules.
+    drawFunctionPatterns() {
+      for (let i = 0; i < this.size; i++) {
+        this.setFunctionModule(6, i, i % 2 === 0, QrCodeDataType.Timing);
+        this.setFunctionModule(i, 6, i % 2 === 0, QrCodeDataType.Timing);
+      }
+      this.drawFinderPattern(3, 3);
+      this.drawFinderPattern(this.size - 4, 3);
+      this.drawFinderPattern(3, this.size - 4);
+      const alignPatPos = this.getAlignmentPatternPositions();
+      const numAlign = alignPatPos.length;
+      for (let i = 0; i < numAlign; i++) {
+        for (let j = 0; j < numAlign; j++) {
+          if (!(i === 0 && j === 0 || i === 0 && j === numAlign - 1 || i === numAlign - 1 && j === 0))
+            this.drawAlignmentPattern(alignPatPos[i], alignPatPos[j]);
+        }
+      }
+      this.drawFormatBits(0);
+      this.drawVersion();
+    }
+    // Draws two copies of the format bits (with its own error correction code)
+    // based on the given mask and this object's error correction level field.
+    drawFormatBits(mask) {
+      const data = this.ecc[1] << 3 | mask;
+      let rem = data;
+      for (let i = 0; i < 10; i++)
+        rem = rem << 1 ^ (rem >>> 9) * 1335;
+      const bits = (data << 10 | rem) ^ 21522;
+      for (let i = 0; i <= 5; i++)
+        this.setFunctionModule(8, i, getBit(bits, i));
+      this.setFunctionModule(8, 7, getBit(bits, 6));
+      this.setFunctionModule(8, 8, getBit(bits, 7));
+      this.setFunctionModule(7, 8, getBit(bits, 8));
+      for (let i = 9; i < 15; i++)
+        this.setFunctionModule(14 - i, 8, getBit(bits, i));
+      for (let i = 0; i < 8; i++)
+        this.setFunctionModule(this.size - 1 - i, 8, getBit(bits, i));
+      for (let i = 8; i < 15; i++)
+        this.setFunctionModule(8, this.size - 15 + i, getBit(bits, i));
+      this.setFunctionModule(8, this.size - 8, true);
+    }
+    // Draws two copies of the version bits (with its own error correction code),
+    // based on this object's version field, iff 7 <= version <= 40.
+    drawVersion() {
+      if (this.version < 7)
+        return;
+      let rem = this.version;
+      for (let i = 0; i < 12; i++)
+        rem = rem << 1 ^ (rem >>> 11) * 7973;
+      const bits = this.version << 12 | rem;
+      for (let i = 0; i < 18; i++) {
+        const color = getBit(bits, i);
+        const a = this.size - 11 + i % 3;
+        const b = Math.floor(i / 3);
+        this.setFunctionModule(a, b, color);
+        this.setFunctionModule(b, a, color);
+      }
+    }
+    // Draws a 9*9 finder pattern including the border separator,
+    // with the center module at (x, y). Modules can be out of bounds.
+    drawFinderPattern(x, y) {
+      for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+          const dist = Math.max(Math.abs(dx), Math.abs(dy));
+          const xx = x + dx;
+          const yy = y + dy;
+          if (xx >= 0 && xx < this.size && yy >= 0 && yy < this.size)
+            this.setFunctionModule(xx, yy, dist !== 2 && dist !== 4, QrCodeDataType.Position);
+        }
+      }
+    }
+    // Draws a 5*5 alignment pattern, with the center module
+    // at (x, y). All modules must be in bounds.
+    drawAlignmentPattern(x, y) {
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          this.setFunctionModule(
+            x + dx,
+            y + dy,
+            Math.max(Math.abs(dx), Math.abs(dy)) !== 1,
+            QrCodeDataType.Alignment
+          );
+        }
+      }
+    }
+    // Sets the color of a module and marks it as a function module.
+    // Only used by the constructor. Coordinates must be in bounds.
+    setFunctionModule(x, y, isDark, type = QrCodeDataType.Function) {
+      this.modules[y][x] = isDark;
+      this.types[y][x] = type;
+    }
+    /* -- Private helper methods for constructor: Codewords and masking -- */
+    // Returns a new byte string representing the given data with the appropriate error correction
+    // codewords appended to it, based on this object's version and error correction level.
+    addEccAndInterleave(data) {
+      const ver = this.version;
+      const ecl = this.ecc;
+      if (data.length !== getNumDataCodewords(ver, ecl))
+        throw new RangeError("Invalid argument");
+      const numBlocks = NUM_ERROR_CORRECTION_BLOCKS[ecl[0]][ver];
+      const blockEccLen = ECC_CODEWORDS_PER_BLOCK[ecl[0]][ver];
+      const rawCodewords = Math.floor(getNumRawDataModules(ver) / 8);
+      const numShortBlocks = numBlocks - rawCodewords % numBlocks;
+      const shortBlockLen = Math.floor(rawCodewords / numBlocks);
+      const blocks = [];
+      const rsDiv = reedSolomonComputeDivisor(blockEccLen);
+      for (let i = 0, k = 0; i < numBlocks; i++) {
+        const dat = data.slice(k, k + shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1));
+        k += dat.length;
+        const ecc = reedSolomonComputeRemainder(dat, rsDiv);
+        if (i < numShortBlocks)
+          dat.push(0);
+        blocks.push(dat.concat(ecc));
+      }
+      const result = [];
+      for (let i = 0; i < blocks[0].length; i++) {
+        blocks.forEach((block, j) => {
+          if (i !== shortBlockLen - blockEccLen || j >= numShortBlocks)
+            result.push(block[i]);
+        });
+      }
+      return result;
+    }
+    // Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
+    // data area of this QR Code. Function modules need to be marked off before this is called.
+    drawCodewords(data) {
+      if (data.length !== Math.floor(getNumRawDataModules(this.version) / 8))
+        throw new RangeError("Invalid argument");
+      let i = 0;
+      for (let right = this.size - 1; right >= 1; right -= 2) {
+        if (right === 6)
+          right = 5;
+        for (let vert = 0; vert < this.size; vert++) {
+          for (let j = 0; j < 2; j++) {
+            const x = right - j;
+            const upward = (right + 1 & 2) === 0;
+            const y = upward ? this.size - 1 - vert : vert;
+            if (!this.types[y][x] && i < data.length * 8) {
+              this.modules[y][x] = getBit(data[i >>> 3], 7 - (i & 7));
+              i++;
+            }
+          }
+        }
+      }
+    }
+    // XORs the codeword modules in this QR Code with the given mask pattern.
+    // The function modules must be marked and the codeword bits must be drawn
+    // before masking. Due to the arithmetic of XOR, calling applyMask() with
+    // the same mask value a second time will undo the mask. A final well-formed
+    // QR Code needs exactly one (not zero, two, etc.) mask applied.
+    applyMask(mask) {
+      if (mask < 0 || mask > 7)
+        throw new RangeError("Mask value out of range");
+      for (let y = 0; y < this.size; y++) {
+        for (let x = 0; x < this.size; x++) {
+          let invert;
+          switch (mask) {
+            case 0:
+              invert = (x + y) % 2 === 0;
+              break;
+            case 1:
+              invert = y % 2 === 0;
+              break;
+            case 2:
+              invert = x % 3 === 0;
+              break;
+            case 3:
+              invert = (x + y) % 3 === 0;
+              break;
+            case 4:
+              invert = (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0;
+              break;
+            case 5:
+              invert = x * y % 2 + x * y % 3 === 0;
+              break;
+            case 6:
+              invert = (x * y % 2 + x * y % 3) % 2 === 0;
+              break;
+            case 7:
+              invert = ((x + y) % 2 + x * y % 3) % 2 === 0;
+              break;
+            default:
+              throw new Error("Unreachable");
+          }
+          if (!this.types[y][x] && invert)
+            this.modules[y][x] = !this.modules[y][x];
+        }
+      }
+    }
+    // Calculates and returns the penalty score based on state of this QR Code's current modules.
+    // This is used by the automatic mask choice algorithm to find the mask pattern that yields the lowest score.
+    getPenaltyScore() {
+      let result = 0;
+      for (let y = 0; y < this.size; y++) {
+        let runColor = false;
+        let runX = 0;
+        const runHistory = [0, 0, 0, 0, 0, 0, 0];
+        for (let x = 0; x < this.size; x++) {
+          if (this.modules[y][x] === runColor) {
+            runX++;
+            if (runX === 5)
+              result += PENALTY_N1;
+            else if (runX > 5)
+              result++;
+          } else {
+            this.finderPenaltyAddHistory(runX, runHistory);
+            if (!runColor)
+              result += this.finderPenaltyCountPatterns(runHistory) * PENALTY_N3;
+            runColor = this.modules[y][x];
+            runX = 1;
+          }
+        }
+        result += this.finderPenaltyTerminateAndCount(runColor, runX, runHistory) * PENALTY_N3;
+      }
+      for (let x = 0; x < this.size; x++) {
+        let runColor = false;
+        let runY = 0;
+        const runHistory = [0, 0, 0, 0, 0, 0, 0];
+        for (let y = 0; y < this.size; y++) {
+          if (this.modules[y][x] === runColor) {
+            runY++;
+            if (runY === 5)
+              result += PENALTY_N1;
+            else if (runY > 5)
+              result++;
+          } else {
+            this.finderPenaltyAddHistory(runY, runHistory);
+            if (!runColor)
+              result += this.finderPenaltyCountPatterns(runHistory) * PENALTY_N3;
+            runColor = this.modules[y][x];
+            runY = 1;
+          }
+        }
+        result += this.finderPenaltyTerminateAndCount(runColor, runY, runHistory) * PENALTY_N3;
+      }
+      for (let y = 0; y < this.size - 1; y++) {
+        for (let x = 0; x < this.size - 1; x++) {
+          const color = this.modules[y][x];
+          if (color === this.modules[y][x + 1] && color === this.modules[y + 1][x] && color === this.modules[y + 1][x + 1]) {
+            result += PENALTY_N2;
+          }
+        }
+      }
+      let dark = 0;
+      for (const row3 of this.modules)
+        dark = row3.reduce((sum, color) => sum + (color ? 1 : 0), dark);
+      const total = this.size * this.size;
+      const k = Math.ceil(Math.abs(dark * 20 - total * 10) / total) - 1;
+      result += k * PENALTY_N4;
+      return result;
+    }
+    /* -- Private helper functions -- */
+    // Returns an ascending list of positions of alignment patterns for this version number.
+    // Each position is in the range [0,177), and are used on both the x and y axes.
+    // This could be implemented as lookup table of 40 variable-length lists of integers.
+    getAlignmentPatternPositions() {
+      if (this.version === 1) {
+        return [];
+      } else {
+        const numAlign = Math.floor(this.version / 7) + 2;
+        const step = this.version === 32 ? 26 : Math.ceil((this.version * 4 + 4) / (numAlign * 2 - 2)) * 2;
+        const result = [6];
+        for (let pos = this.size - 7; result.length < numAlign; pos -= step)
+          result.splice(1, 0, pos);
+        return result;
+      }
+    }
+    // Can only be called immediately after a light run is added, and
+    // returns either 0, 1, or 2. A helper function for getPenaltyScore().
+    finderPenaltyCountPatterns(runHistory) {
+      const n = runHistory[1];
+      const core = n > 0 && runHistory[2] === n && runHistory[3] === n * 3 && runHistory[4] === n && runHistory[5] === n;
+      return (core && runHistory[0] >= n * 4 && runHistory[6] >= n ? 1 : 0) + (core && runHistory[6] >= n * 4 && runHistory[0] >= n ? 1 : 0);
+    }
+    // Must be called at the end of a line (row or column) of modules. A helper function for getPenaltyScore().
+    finderPenaltyTerminateAndCount(currentRunColor, currentRunLength, runHistory) {
+      if (currentRunColor) {
+        this.finderPenaltyAddHistory(currentRunLength, runHistory);
+        currentRunLength = 0;
+      }
+      currentRunLength += this.size;
+      this.finderPenaltyAddHistory(currentRunLength, runHistory);
+      return this.finderPenaltyCountPatterns(runHistory);
+    }
+    // Pushes the given value to the front and drops the last value. A helper function for getPenaltyScore().
+    finderPenaltyAddHistory(currentRunLength, runHistory) {
+      if (runHistory[0] === 0)
+        currentRunLength += this.size;
+      runHistory.pop();
+      runHistory.unshift(currentRunLength);
+    }
+  };
+  function appendBits(val, len, bb) {
+    if (len < 0 || len > 31 || val >>> len !== 0)
+      throw new RangeError("Value out of range");
+    for (let i = len - 1; i >= 0; i--)
+      bb.push(val >>> i & 1);
+  }
+  function getBit(x, i) {
+    return (x >>> i & 1) !== 0;
+  }
+  var QrSegment = class {
+    // Creates a new QR Code segment with the given attributes and data.
+    // The character count (numChars) must agree with the mode and the bit buffer length,
+    // but the constraint isn't checked. The given bit buffer is cloned and stored.
+    constructor(mode, numChars, bitData) {
+      this.mode = mode;
+      this.numChars = numChars;
+      this.bitData = bitData;
+      if (numChars < 0)
+        throw new RangeError("Invalid argument");
+      this.bitData = bitData.slice();
+    }
+    /* -- Methods -- */
+    // Returns a new copy of the data bits of this segment.
+    getData() {
+      return this.bitData.slice();
+    }
+  };
+  var MODE_NUMERIC = [1, 10, 12, 14];
+  var MODE_ALPHANUMERIC = [2, 9, 11, 13];
+  var MODE_BYTE = [4, 8, 16, 16];
+  function numCharCountBits(mode, ver) {
+    return mode[Math.floor((ver + 7) / 17) + 1];
+  }
+  function makeBytes(data) {
+    const bb = [];
+    for (const b of data)
+      appendBits(b, 8, bb);
+    return new QrSegment(MODE_BYTE, data.length, bb);
+  }
+  function makeNumeric(digits) {
+    if (!isNumeric(digits))
+      throw new RangeError("String contains non-numeric characters");
+    const bb = [];
+    for (let i = 0; i < digits.length; ) {
+      const n = Math.min(digits.length - i, 3);
+      appendBits(Number.parseInt(digits.substring(i, i + n), 10), n * 3 + 1, bb);
+      i += n;
+    }
+    return new QrSegment(MODE_NUMERIC, digits.length, bb);
+  }
+  function makeAlphanumeric(text) {
+    if (!isAlphanumeric(text))
+      throw new RangeError("String contains unencodable characters in alphanumeric mode");
+    const bb = [];
+    let i;
+    for (i = 0; i + 2 <= text.length; i += 2) {
+      let temp = ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)) * 45;
+      temp += ALPHANUMERIC_CHARSET.indexOf(text.charAt(i + 1));
+      appendBits(temp, 11, bb);
+    }
+    if (i < text.length)
+      appendBits(ALPHANUMERIC_CHARSET.indexOf(text.charAt(i)), 6, bb);
+    return new QrSegment(MODE_ALPHANUMERIC, text.length, bb);
+  }
+  function makeSegments(text) {
+    if (text === "")
+      return [];
+    else if (isNumeric(text))
+      return [makeNumeric(text)];
+    else if (isAlphanumeric(text))
+      return [makeAlphanumeric(text)];
+    else
+      return [makeBytes(toUtf8ByteArray(text))];
+  }
+  function isNumeric(text) {
+    return NUMERIC_REGEX.test(text);
+  }
+  function isAlphanumeric(text) {
+    return ALPHANUMERIC_REGEX.test(text);
+  }
+  function getTotalBits(segs, version) {
+    let result = 0;
+    for (const seg of segs) {
+      const ccbits = numCharCountBits(seg.mode, version);
+      if (seg.numChars >= 1 << ccbits)
+        return Number.POSITIVE_INFINITY;
+      result += 4 + ccbits + seg.bitData.length;
+    }
+    return result;
+  }
+  function toUtf8ByteArray(str) {
+    str = encodeURI(str);
+    const result = [];
+    for (let i = 0; i < str.length; i++) {
+      if (str.charAt(i) !== "%") {
+        result.push(str.charCodeAt(i));
+      } else {
+        result.push(Number.parseInt(str.substring(i + 1, i + 3), 16));
+        i += 2;
+      }
+    }
+    return result;
+  }
+  function getNumRawDataModules(ver) {
+    if (ver < MIN_VERSION || ver > MAX_VERSION)
+      throw new RangeError("Version number out of range");
+    let result = (16 * ver + 128) * ver + 64;
+    if (ver >= 2) {
+      const numAlign = Math.floor(ver / 7) + 2;
+      result -= (25 * numAlign - 10) * numAlign - 55;
+      if (ver >= 7)
+        result -= 36;
+    }
+    return result;
+  }
+  function getNumDataCodewords(ver, ecl) {
+    return Math.floor(getNumRawDataModules(ver) / 8) - ECC_CODEWORDS_PER_BLOCK[ecl[0]][ver] * NUM_ERROR_CORRECTION_BLOCKS[ecl[0]][ver];
+  }
+  function reedSolomonComputeDivisor(degree) {
+    if (degree < 1 || degree > 255)
+      throw new RangeError("Degree out of range");
+    const result = [];
+    for (let i = 0; i < degree - 1; i++)
+      result.push(0);
+    result.push(1);
+    let root = 1;
+    for (let i = 0; i < degree; i++) {
+      for (let j = 0; j < result.length; j++) {
+        result[j] = reedSolomonMultiply(result[j], root);
+        if (j + 1 < result.length)
+          result[j] ^= result[j + 1];
+      }
+      root = reedSolomonMultiply(root, 2);
+    }
+    return result;
+  }
+  function reedSolomonComputeRemainder(data, divisor) {
+    const result = divisor.map((_) => 0);
+    for (const b of data) {
+      const factor = b ^ result.shift();
+      result.push(0);
+      divisor.forEach((coef, i) => result[i] ^= reedSolomonMultiply(coef, factor));
+    }
+    return result;
+  }
+  function reedSolomonMultiply(x, y) {
+    if (x >>> 8 !== 0 || y >>> 8 !== 0)
+      throw new RangeError("Byte out of range");
+    let z = 0;
+    for (let i = 7; i >= 0; i--) {
+      z = z << 1 ^ (z >>> 7) * 285;
+      z ^= (y >>> i & 1) * x;
+    }
+    return z;
+  }
+  function encodeSegments(segs, ecl, minVersion = 1, maxVersion = 40, mask = -1, boostEcl = true) {
+    if (!(MIN_VERSION <= minVersion && minVersion <= maxVersion && maxVersion <= MAX_VERSION) || mask < -1 || mask > 7) {
+      throw new RangeError("Invalid value");
+    }
+    let version;
+    let dataUsedBits;
+    for (version = minVersion; ; version++) {
+      const dataCapacityBits2 = getNumDataCodewords(version, ecl) * 8;
+      const usedBits = getTotalBits(segs, version);
+      if (usedBits <= dataCapacityBits2) {
+        dataUsedBits = usedBits;
+        break;
+      }
+      if (version >= maxVersion)
+        throw new RangeError("Data too long");
+    }
+    for (const newEcl of [MEDIUM, QUARTILE, HIGH]) {
+      if (boostEcl && dataUsedBits <= getNumDataCodewords(version, newEcl) * 8)
+        ecl = newEcl;
+    }
+    const bb = [];
+    for (const seg of segs) {
+      appendBits(seg.mode[0], 4, bb);
+      appendBits(seg.numChars, numCharCountBits(seg.mode, version), bb);
+      for (const b of seg.getData())
+        bb.push(b);
+    }
+    const dataCapacityBits = getNumDataCodewords(version, ecl) * 8;
+    appendBits(0, Math.min(4, dataCapacityBits - bb.length), bb);
+    appendBits(0, (8 - bb.length % 8) % 8, bb);
+    for (let padByte = 236; bb.length < dataCapacityBits; padByte ^= 236 ^ 17)
+      appendBits(padByte, 8, bb);
+    const dataCodewords = Array.from({ length: Math.ceil(bb.length / 8) }, () => 0);
+    bb.forEach((b, i) => dataCodewords[i >>> 3] |= b << 7 - (i & 7));
+    return new QrCode(version, ecl, dataCodewords, mask);
+  }
+  function encode(data, options) {
+    var _a;
+    const {
+      ecc = "L",
+      boostEcc = false,
+      minVersion = 1,
+      maxVersion = 40,
+      maskPattern = -1,
+      border = 1
+    } = options || {};
+    const segment = typeof data === "string" ? makeSegments(data) : Array.isArray(data) ? [makeBytes(data)] : void 0;
+    if (!segment)
+      throw new Error(`uqr only supports encoding string and binary data, but got: ${typeof data}`);
+    const qr = encodeSegments(
+      segment,
+      EccMap[ecc],
+      minVersion,
+      maxVersion,
+      maskPattern,
+      boostEcc
+    );
+    const result = addBorder({
+      version: qr.version,
+      maskPattern: qr.mask,
+      size: qr.size,
+      data: qr.modules,
+      types: qr.types
+    }, border);
+    if (options == null ? void 0 : options.invert)
+      result.data = result.data.map((row3) => row3.map((mod) => !mod));
+    (_a = options == null ? void 0 : options.onEncoded) == null ? void 0 : _a.call(options, result);
+    return result;
+  }
+  function addBorder(input, border = 1) {
+    if (!border)
+      return input;
+    const { size } = input;
+    const newSize = size + border * 2;
+    input.size = newSize;
+    input.data.forEach((row3) => {
+      for (let i = 0; i < border; i++) {
+        row3.unshift(false);
+        row3.push(false);
+      }
+    });
+    for (let i = 0; i < border; i++) {
+      input.data.unshift(Array.from({ length: newSize }, (_) => false));
+      input.data.push(Array.from({ length: newSize }, (_) => false));
+    }
+    const b = QrCodeDataType.Border;
+    input.types.forEach((row3) => {
+      for (let i = 0; i < border; i++) {
+        row3.unshift(b);
+        row3.push(b);
+      }
+    });
+    for (let i = 0; i < border; i++) {
+      input.types.unshift(Array.from({ length: newSize }, (_) => b));
+      input.types.push(Array.from({ length: newSize }, (_) => b));
+    }
+    return input;
+  }
+  function escapeAttr2(value) {
+    return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function renderSVG(data, options = {}) {
+    const result = encode(data, options);
+    const {
+      pixelSize = 10,
+      whiteColor = "white",
+      blackColor = "black"
+    } = options;
+    const height = result.size * pixelSize;
+    const width = result.size * pixelSize;
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">`;
+    const paths = [];
+    for (let row3 = 0; row3 < result.size; row3++) {
+      for (let col = 0; col < result.size; col++) {
+        const x = col * pixelSize;
+        const y = row3 * pixelSize;
+        if (result.data[row3][col])
+          paths.push(`M${x},${y}h${pixelSize}v${pixelSize}h-${pixelSize}z`);
+      }
+    }
+    svg += `<rect fill="${escapeAttr2(whiteColor)}" width="${width}" height="${height}"/>`;
+    svg += `<path fill="${escapeAttr2(blackColor)}" d="${paths.join("")}"/>`;
+    svg += "</svg>";
+    return svg;
+  }
+
+  // src/lib/qrSvg.ts
+  function encodeQrSvg(text) {
+    return renderSVG(text);
+  }
+
+  // src/ui/frames/settings/InstallScriptQrCard.ts
+  function copyUrl(url, setCopied) {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  function scriptUrlRow(key, url, copied, onCopy) {
     return e(
       "div",
       { key, className: "ecu-settings-row" },
       e(
         "div",
         { className: "ecu-settings-row-copy" },
+        e("span", { className: "ecu-settings-row-label" }, "Script URL"),
         e(
           "span",
-          { className: "ecu-settings-row-label" },
-          label,
-          (extras == null ? void 0 : extras.tag) ? e(
-            "span",
-            {
-              className: "ecu-settings-tag",
-              "data-tag": extras.tag
-            },
-            extras.tag
-          ) : null
-        ),
-        (extras == null ? void 0 : extras.help) ? e("span", { className: "ecu-settings-help" }, extras.help) : null
+          { className: "ecu-settings-help ecu-settings-script-url" },
+          url
+        )
       ),
-      e("input", {
-        type: "checkbox",
-        checked,
-        onChange: (ev) => onChange(ev.target.checked)
-      })
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-settings-reset",
+          onClick: onCopy
+        },
+        copied ? "Copied" : "Copy URL"
+      )
     );
+  }
+  function qrCard(key, url, label, help) {
+    const svg = encodeQrSvg(url);
+    return e(
+      "div",
+      {
+        key,
+        className: "ecu-settings-qr-card",
+        title: url
+      },
+      e("span", {
+        className: "ecu-settings-qr-card__img",
+        dangerouslySetInnerHTML: { __html: svg }
+      }),
+      e("span", { className: "ecu-settings-qr-card__label" }, label),
+      e("span", { className: "ecu-settings-qr-card__help" }, help)
+    );
+  }
+  function hostHint(url) {
+    const m = /^https?:\/\/([^/:]+)/i.exec(url);
+    return m ? m[1] : url;
+  }
+  function InstallScriptQrCard() {
+    const React = getReact();
+    const [info2, setInfo] = React.useState(null);
+    const [devInfo, setDevInfo] = React.useState(null);
+    const [devOpen, setDevOpen] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
+    const [devCopiedUrl, setDevCopiedUrl] = React.useState("");
+    const phone = isPhoneViewport();
+    const showDevFold = isEcuDevBuild();
+    React.useEffect(() => {
+      let cancelled = false;
+      void resolveInstallScriptUrl().then((next) => {
+        if (!cancelled) setInfo(next);
+      });
+      if (showDevFold) {
+        void resolveDevLanInstallUrl().then((next) => {
+          if (cancelled || !next) return;
+          setDevInfo(next);
+        });
+      }
+      return () => {
+        cancelled = true;
+      };
+    }, [showDevFold]);
+    if (!info2) {
+      return e(
+        "p",
+        { key: "script-qr-loading", className: "ecu-settings-help" },
+        "Resolving script URL\u2026"
+      );
+    }
+    const kids = [
+      e(
+        "p",
+        { key: "script-qr-help", className: "ecu-settings-help" },
+        "Scan or copy the GitHub raw userscript to install ECU in Tampermonkey."
+      )
+    ];
+    if (!phone) {
+      kids.push(
+        e(
+          "div",
+          { key: "script-qr-row", className: "ecu-settings-qr-row" },
+          qrCard("script-qr", info2.url, "ECU script", "GitHub raw")
+        )
+      );
+    }
+    kids.push(
+      scriptUrlRow(
+        "script-url-row",
+        info2.url,
+        copied,
+        () => copyUrl(info2.url, setCopied)
+      )
+    );
+    if (showDevFold) {
+      const urls = (devInfo == null ? void 0 : devInfo.urls) || [];
+      kids.push(
+        e(
+          "div",
+          { key: "dev-lan-fold", className: "ecu-settings-dev-fold" },
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-settings-dev-fold__toggle",
+              "aria-expanded": devOpen ? "true" : "false",
+              onClick: () => setDevOpen((open) => !open)
+            },
+            e(
+              "span",
+              { className: "ecu-settings-dev-fold__chevron" },
+              devOpen ? "\u25BE" : "\u25B8"
+            ),
+            "Dev \xB7 LAN install"
+          ),
+          devOpen ? e(
+            "div",
+            { className: "ecu-settings-dev-fold__body" },
+            e(
+              "p",
+              { className: "ecu-settings-help" },
+              "Phone: install the full LAN userscript (same idea as GitHub raw). After a watch rebuild, Tampermonkey \u2192 Check for userscript updates. The thin /dev.user.js loader is desktop-oriented \u2014 mobile TM often cannot GM.xhr to HTTP LAN. Tailscale / VPN omitted."
+            ),
+            !devInfo ? e(
+              "p",
+              { className: "ecu-settings-help" },
+              "Resolving LAN URL\u2026"
+            ) : !urls.length ? e(
+              "p",
+              { className: "ecu-settings-help" },
+              "No RFC1918 / loopback install URL baked \u2014 check Wi\u2011Fi and rebuild with npm run watch."
+            ) : e(
+              "div",
+              null,
+              !phone ? e(
+                "div",
+                {
+                  key: "dev-qr-row",
+                  className: "ecu-settings-qr-row"
+                },
+                ...urls.map(
+                  (u) => qrCard(
+                    "dev-qr-" + u,
+                    u,
+                    hostHint(u),
+                    "LAN \xB7 .user.js"
+                  )
+                )
+              ) : null,
+              ...urls.map(
+                (u) => scriptUrlRow(
+                  "dev-url-" + u,
+                  u,
+                  devCopiedUrl === u,
+                  () => {
+                    copyUrl(u, (ok) => {
+                      setDevCopiedUrl(ok ? u : "");
+                    });
+                  }
+                )
+              )
+            )
+          ) : null
+        )
+      );
+    }
+    return e("div", { key: "script-qr-block" }, ...kids);
   }
 
   // src/ui/frames/settings/commUiSettingsPane.ts
@@ -59211,6 +61296,22 @@ ${parts.map(cssSlice).join("\n")}
       extra: "server update notes last deploy adventure.land gamelog welcome patch notes",
       onClick: (props) => props.onOpenServerUpdateNotes()
     }
+  ];
+  var COMM_UI_SUBSECTIONS = [
+    { id: settingsSectionId("Updates"), label: "Updates" },
+    {
+      id: settingsSectionId("Controls"),
+      label: "Controls",
+      visible: () => !isPhoneViewport()
+    },
+    {
+      id: settingsSectionId("Mobile install"),
+      label: "Mobile install",
+      // Desktop → phone handoff; useless once ECU is already running on the phone.
+      visible: () => !isPhoneViewport()
+    },
+    { id: settingsSectionId("Data"), label: "Data" },
+    { id: settingsSectionId("Guided tours"), label: "Guided tours" }
   ];
   function actionMatchesQuery(action, query) {
     const q = query.trim().toLowerCase();
@@ -59238,9 +61339,10 @@ ${parts.map(cssSlice).join("\n")}
   }
   var TAMPERMONKEY_MOBILE_FAQ = "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
   function installSectionMatches(query) {
+    if (isPhoneViewport()) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
-    return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan".includes(
+    return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan userscript script github raw copy url lan dev.user.js".includes(
       q
     );
   }
@@ -59301,56 +61403,6 @@ ${parts.map(cssSlice).join("\n")}
         )
       );
     }
-    kids.push(settingsSection("Guided tours"));
-    let tourRows = 0;
-    for (let i = 0; i < tours.length; i++) {
-      const tour = tours[i];
-      if (!tourMatchesQuery(tour, query)) continue;
-      tourRows += 1;
-      kids.push(
-        e(
-          "div",
-          { key: "tour-" + tour.id, className: "ecu-settings-row" },
-          e(
-            "div",
-            { className: "ecu-settings-row-copy" },
-            e("span", { className: "ecu-settings-row-label" }, tour.label),
-            e(
-              "span",
-              { className: "ecu-settings-help" },
-              tour.completed ? "Completed \u2014 Replay runs it now; Reset clears the flag so the next open can trigger it again." : "Not completed yet \u2014 Replay starts it now."
-            )
-          ),
-          e(
-            "div",
-            { className: "ecu-settings-row-actions" },
-            e(
-              "button",
-              {
-                type: "button",
-                className: "ecu-settings-reset",
-                onClick: () => props.onReplayTour(tour.id)
-              },
-              "Replay"
-            ),
-            e(
-              "button",
-              {
-                type: "button",
-                className: "ecu-settings-reset is-ghost",
-                disabled: !tour.completed,
-                title: tour.completed ? "Clear completion so the contextual trigger can fire again" : "Already unset",
-                onClick: () => {
-                  props.onResetTour(tour.id);
-                  setTourTick((n) => n + 1);
-                }
-              },
-              "Reset"
-            )
-          )
-        )
-      );
-    }
     if (controlsSectionMatches(query)) {
       const settings = getSettings();
       kids.push(settingsSection("Controls"));
@@ -59378,6 +61430,7 @@ ${parts.map(cssSlice).join("\n")}
           "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build."
         )
       );
+      kids.push(e(InstallScriptQrCard, { key: "script-qr" }));
       if (!isPhoneViewport()) {
         kids.push(
           e(
@@ -59430,15 +61483,6 @@ ${parts.map(cssSlice).join("\n")}
         )
       );
     }
-    if (tourRows === 0 && updateRows === 0 && !controlsSectionMatches(query) && !installSectionMatches(query) && !dataSectionMatches(query)) {
-      kids.push(
-        e(
-          "p",
-          { key: "empty", className: "ecu-settings-help" },
-          "No Comm UI guide items match this search."
-        )
-      );
-    }
     if (dataSectionMatches(query)) {
       kids.push(settingsSection("Data"));
       kids.push(
@@ -59470,6 +61514,65 @@ ${parts.map(cssSlice).join("\n")}
             },
             "Reset everything\u2026"
           )
+        )
+      );
+    }
+    kids.push(settingsSection("Guided tours"));
+    let tourRows = 0;
+    for (let i = 0; i < tours.length; i++) {
+      const tour = tours[i];
+      if (!tourMatchesQuery(tour, query)) continue;
+      tourRows += 1;
+      kids.push(
+        e(
+          "div",
+          { key: "tour-" + tour.id, className: "ecu-settings-row" },
+          e(
+            "div",
+            { className: "ecu-settings-row-copy" },
+            e("span", { className: "ecu-settings-row-label" }, tour.label),
+            e(
+              "span",
+              { className: "ecu-settings-help" },
+              tour.completed ? "Completed \u2014 Replay runs it now; Reset clears the flag so the next open can trigger it again." : "Not completed yet \u2014 Replay starts it now."
+            )
+          ),
+          e(
+            "div",
+            { className: "ecu-settings-row-actions" },
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-settings-reset",
+                onClick: () => props.onReplayTour(tour.id)
+              },
+              "Replay"
+            ),
+            e(
+              "button",
+              {
+                type: "button",
+                className: "ecu-settings-reset is-ghost",
+                disabled: !tour.completed,
+                title: tour.completed ? "Clear completion so the contextual trigger can fire again" : "Already unset",
+                onClick: () => {
+                  props.onResetTour(tour.id);
+                  setTourTick((n) => n + 1);
+                }
+              },
+              "Reset"
+            )
+          )
+        )
+      );
+    }
+    if (tourRows === 0 && updateRows === 0 && !controlsSectionMatches(query) && !installSectionMatches(query) && !dataSectionMatches(query)) {
+      kids.push(
+        e(
+          "p",
+          { key: "empty", className: "ecu-settings-help" },
+          "No Comm UI guide items match this search."
         )
       );
     }
@@ -59611,6 +61714,21 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/settings/commHudSettingsPane.ts
+  function buildCommHudSubsections() {
+    const out = [
+      { id: settingsSectionId("HUD density"), label: "HUD density" },
+      { id: settingsSectionId("Meters"), label: "Meters" }
+    ];
+    const sections = overlayToggleSectionsForPane("commHud");
+    for (let i = 0; i < sections.length; i++) {
+      out.push({
+        id: settingsSectionId(sections[i].title),
+        label: sections[i].title
+      });
+    }
+    return out;
+  }
+  var COMM_HUD_SUBSECTIONS = buildCommHudSubsections();
   function tagLabel(tag) {
     if (!tag) return null;
     switch (tag) {
@@ -59932,6 +62050,24 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/settings/inGameSettingsPane.ts
+  function buildDrawingsSubsections() {
+    const out = [
+      { id: settingsSectionId("Master"), label: "Master" }
+    ];
+    const drawing = overlayToggleSectionsForPane("drawings");
+    for (let i = 0; i < drawing.length; i++) {
+      const section3 = drawing[i];
+      out.push({ id: settingsSectionId(section3.title), label: section3.title });
+      if (section3.id === "labels") {
+        out.push({
+          id: settingsSectionId("Ability appearance"),
+          label: "Ability appearance"
+        });
+      }
+    }
+    return out;
+  }
+  var DRAWINGS_SUBSECTIONS = buildDrawingsSubsections();
   function worldOverlayMatches(query) {
     const q = query.trim().toLowerCase();
     if (!q) return true;
@@ -60123,6 +62259,14 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/settings/bagSettingsPane.ts
+  var BAG_SUBSECTIONS = [
+    { id: settingsSectionId("Presets"), label: "Presets" },
+    { id: settingsSectionId("Layout"), label: "Layout" },
+    {
+      id: settingsSectionId("Sort rules (priority order)"),
+      label: "Sort rules"
+    }
+  ];
   function matchesText(hay, query) {
     return hay.toLowerCase().includes(query);
   }
@@ -60433,8 +62577,9 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "commUi",
       label: "Comm UI",
-      description: "Guided tours, What's New, server notes, desktop camera controls, mobile install help, and factory-reset local Comm UI data.",
+      description: "What's New, server notes, desktop camera controls, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
       countMatches: countCommUiSettingsMatches,
+      subsections: COMM_UI_SUBSECTIONS,
       render: (props) => e(CommUiSettingsPane, {
         query: props.query,
         onReplayTour: props.onReplayTour,
@@ -60448,6 +62593,7 @@ ${parts.map(cssSlice).join("\n")}
       label: "Ability Timeline",
       description: "Travel, icons, frames, and the live preview rail for timeline windows.",
       countMatches: countAbilityTimelineSettingsMatches,
+      subsections: ABILITY_TIMELINE_SUBSECTIONS,
       render: (props) => e(AbilityTimelineSettingsPane, {
         visibleBigIcon: props.visible("abilityTimelineBigIcon"),
         visibleHighlight: props.visible("abilityTimelineHighlight"),
@@ -60461,6 +62607,7 @@ ${parts.map(cssSlice).join("\n")}
       label: "Drawings",
       description: "Map drawings master switch, rings, labels, debug lines, and per-ability appearance overrides.",
       countMatches: countInGameSettingsMatches,
+      subsections: DRAWINGS_SUBSECTIONS,
       render: (props) => e(InGameSettingsPane, { query: props.query })
     },
     {
@@ -60468,6 +62615,7 @@ ${parts.map(cssSlice).join("\n")}
       label: "Bag",
       description: "Inventory sort rules for the bag panel Sort button on the watched character.",
       countMatches: countBagSettingsMatches,
+      subsections: BAG_SUBSECTIONS,
       render: (props) => e(BagSettingsPane, { query: props.query })
     },
     {
@@ -60475,6 +62623,7 @@ ${parts.map(cssSlice).join("\n")}
       label: "Comm HUD",
       description: "HUD density, meter windows, shell chips, spawn markers, and other Comm HUD helpers.",
       countMatches: countCommHudSettingsMatches,
+      subsections: COMM_HUD_SUBSECTIONS,
       render: (props) => e(CommHudSettingsPane, {
         query: props.query,
         hudDensity: props.hudDensity,
@@ -60499,8 +62648,24 @@ ${parts.map(cssSlice).join("\n")}
     }
     return counts;
   }
+  function visibleSettingsSubsections(pane) {
+    const list = pane.subsections;
+    if (!list || !list.length) return [];
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      const sub = list[i];
+      if (sub.visible && !sub.visible()) continue;
+      out.push(sub);
+    }
+    return out;
+  }
 
   // src/ui/frames/SettingsPanel.ts
+  function scrollPaneToSection(secId) {
+    const el = document.getElementById(secId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   function navBtn(id, label, cat, count, dim2, setCat) {
     return e(
       "button",
@@ -60519,6 +62684,7 @@ ${parts.map(cssSlice).join("\n")}
     ensureSettingsPanelCss();
     const [cat, setCat] = React.useState(defaultSettingsPaneId);
     const [query, setQuery] = React.useState("");
+    const [activeSec, setActiveSec] = React.useState("");
     const propsRef = React.useRef(props);
     propsRef.current = props;
     const onClose = React.useCallback(() => propsRef.current.onClose(), []);
@@ -60540,11 +62706,15 @@ ${parts.map(cssSlice).join("\n")}
       () => settingsPaneMatchCounts(trimmedQuery),
       [trimmedQuery]
     );
+    React.useEffect(() => {
+      setActiveSec("");
+    }, [cat]);
     const navKids = React.useMemo(() => {
       const kids = [];
       for (let i = 0; i < SETTINGS_PANES.length; i++) {
         const pane = SETTINGS_PANES[i];
-        kids.push(
+        const selected = cat === pane.id;
+        const groupKids = [
           navBtn(
             pane.id,
             pane.label,
@@ -60553,10 +62723,53 @@ ${parts.map(cssSlice).join("\n")}
             trimmedQuery.length > 0 && counts[pane.id] === 0,
             setCat
           )
+        ];
+        if (selected) {
+          const subs = visibleSettingsSubsections(pane);
+          if (subs.length) {
+            const subKids = [];
+            for (let s = 0; s < subs.length; s++) {
+              const sub = subs[s];
+              subKids.push(
+                e(
+                  "button",
+                  {
+                    type: "button",
+                    key: sub.id,
+                    className: "ecu-settings-nav-sub" + (activeSec === sub.id ? " is-active" : ""),
+                    onClick: () => {
+                      setActiveSec(sub.id);
+                      window.requestAnimationFrame(() => {
+                        scrollPaneToSection(sub.id);
+                      });
+                    }
+                  },
+                  sub.label
+                )
+              );
+            }
+            groupKids.push(
+              e(
+                "div",
+                { key: "subs-" + pane.id, className: "ecu-settings-nav-subs" },
+                ...subKids
+              )
+            );
+          }
+        }
+        kids.push(
+          e(
+            "div",
+            {
+              key: pane.id,
+              className: "ecu-settings-nav-group" + (selected ? " is-open" : "")
+            },
+            ...groupKids
+          )
         );
       }
       return kids;
-    }, [cat, counts, trimmedQuery, setCat]);
+    }, [cat, counts, trimmedQuery, setCat, activeSec]);
     const phone = detectViewportProfile() === "phone";
     const headRef = React.useRef(null);
     React.useEffect(() => {
@@ -72294,6 +74507,110 @@ ${ESTIMATE_HINT}`,
     }
   }
 
+  // src/ui/chrome/panelExpandControl.ts
+  function ExpandGlyph(expanded) {
+    const React = getReact();
+    const d = expanded ? (
+      // Exit: corners point inward.
+      "M5 1v4H1M11 1v4h4M5 15v-4H1M11 15v-4h4"
+    ) : (
+      // Enter: corners point outward (open frame).
+      "M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"
+    );
+    return e(
+      "svg",
+      {
+        className: "ecu-expand-glyph",
+        viewBox: "0 0 16 16",
+        width: 14,
+        height: 14,
+        "aria-hidden": true,
+        focusable: "false"
+      },
+      e("path", {
+        d,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 1.6,
+        strokeLinecap: "square",
+        strokeLinejoin: "miter"
+      })
+    );
+  }
+  function PanelExpandButton(props) {
+    const React = getReact();
+    const title = props.expanded ? props.restoreTitle : props.expandTitle;
+    return e(
+      "button",
+      {
+        type: "button",
+        className: (props.className || "ecu-panel-expand") + (props.expanded ? " is-expanded" : ""),
+        title,
+        "aria-label": title,
+        "aria-pressed": props.expanded,
+        onClick: () => props.onToggle()
+      },
+      ExpandGlyph(props.expanded)
+    );
+  }
+  function findPanelShell(from, panelId) {
+    let shell = from;
+    while (shell) {
+      if (shell.getAttribute && shell.getAttribute("data-panel") === panelId) {
+        return shell;
+      }
+      shell = shell.parentElement;
+    }
+    return null;
+  }
+
+  // src/ui/chrome/usePhoneShellExpand.ts
+  function usePhoneShellExpand(args) {
+    const React = getReact();
+    const preExpandSizeRef = React.useRef(null);
+    React.useEffect(() => {
+      const shell = findPanelShell(args.rootRef.current, args.panelId);
+      if (!shell) return;
+      if (args.expanded) {
+        if (!preExpandSizeRef.current) {
+          preExpandSizeRef.current = {
+            w: Math.round(shell.offsetWidth),
+            h: Math.round(shell.offsetHeight)
+          };
+        }
+        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
+        shell.classList.add(args.shellClass);
+        return () => {
+          shell.classList.remove(args.shellClass);
+          shell.removeAttribute("data-ecu-suspend-frame-resize");
+        };
+      }
+      shell.classList.remove(args.shellClass);
+      shell.removeAttribute("data-ecu-suspend-frame-resize");
+      const saved = preExpandSizeRef.current;
+      preExpandSizeRef.current = null;
+      if (saved && saved.w >= 80 && saved.h >= 80 && typeof args.onFrameSizeRestore === "function") {
+        window.requestAnimationFrame(() => {
+          args.onFrameSizeRestore({ w: saved.w, h: saved.h });
+        });
+      }
+    }, [
+      args.expanded,
+      args.onFrameSizeRestore,
+      args.panelId,
+      args.rootRef,
+      args.shellClass
+    ]);
+    React.useEffect(() => {
+      if (!args.expanded || detectViewportProfile() !== "phone") return;
+      const close = () => {
+        if (typeof args.onRequestClose === "function") args.onRequestClose();
+        else args.setExpanded(false);
+      };
+      return bindSwipeDownClose(args.headRef.current, close);
+    }, [args.expanded, args.headRef, args.onRequestClose, args.setExpanded]);
+  }
+
   // src/ui/frames/commandPanelCss.ts
   var COMMAND_PANEL_CSS = `
 .CommandPanel {
@@ -72308,6 +74625,81 @@ ${ESTIMATE_HINT}`,
   min-height: 420px;
   max-height: 100%;
   overflow: hidden;
+}
+.CommandPanel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  flex: 0 0 auto;
+}
+.CommandPanel-title {
+  font-size: 20px;
+  color: #ffe08a;
+}
+.CommandPanel-sub {
+  font-size: 12px;
+  color: #aaa;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.CommandPanel-headGrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.CommandPanel-expand {
+  flex: 0 0 auto;
+}
+.CommandPanel-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.CommandPanel-tabs {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 2px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 10px;
+}
+.CommandPanel-tab {
+  flex: 1 1 0;
+  min-height: 40px;
+  appearance: none;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #bbb;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+}
+.CommandPanel-tab.is-active {
+  background: #2a2410;
+  color: #ffe08a;
+}
+.CommandPanel-tabCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  background: #111;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.CommandPanel-tab.is-active .CommandPanel-tabCount {
+  color: #c9a227;
+  background: #1a1608;
 }
 .CommandPanel-body {
   display: flex;
@@ -72612,7 +75004,7 @@ ${ESTIMATE_HINT}`,
   color: #9aa;
 }
 
-/* Phone / narrow \u2014 stack editor above snippets (no side-by-side squeeze). */
+/* Phone / narrow \u2014 tabbed Code | Snippets (full height each). */
 .CommandPanel.is-narrow {
   min-height: 0;
 }
@@ -72621,31 +75013,57 @@ ${ESTIMATE_HINT}`,
   gap: 8px;
 }
 .CommandPanel.is-narrow .CommandPanel-editor {
-  min-height: 160px;
-  flex: 1 1 55%;
+  min-height: 180px;
+  flex: 1 1 auto;
 }
 .CommandPanel.is-narrow .CommandPanel-side {
-  flex: 0 1 42%;
+  flex: 1 1 auto;
   width: 100%;
   max-width: none;
   min-width: 0;
-  min-height: 140px;
+  min-height: 0;
   border-left: none;
-  border-top: 1px solid #333;
+  border-top: none;
   padding-left: 0;
-  padding-top: 8px;
+  padding-top: 0;
 }
 .CommandPanel.is-narrow .CommandPanel-snip,
 .CommandPanel.is-narrow .CommandPanel-folder {
-  min-height: 44px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  min-height: 48px;
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 .CommandPanel.is-narrow .CommandPanel-snip__pick {
   font-size: 16px;
-  padding: 8px 6px;
+  padding: 10px 8px;
 }
-`;
+.CommandPanel.is-narrow .CommandPanel-run,
+.CommandPanel.is-narrow .CommandPanel-toolbar button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+}
+.CommandPanel.is-narrow .CommandPanel-toolbar input {
+  min-height: 44px;
+  font-size: 16px;
+  padding: 10px 12px;
+}
+.CommandPanel.is-narrow .CommandPanel-rerun {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+.CommandPanel.is-narrow .CommandPanel-side__head input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+  padding: 10px 12px;
+}
+.CommandPanel.is-expanded {
+  min-height: 0;
+}
+.CommandPanel.is-phone-tabs .CommandPanel-sub {
+  display: none;
+}
+` + phoneShellExpandCss("command", "ecu-command-shell-expanded", ".CommandPanel");
   var injected12 = false;
   function ensureCommandPanelCss() {
     if (typeof document === "undefined") return;
@@ -72707,7 +75125,23 @@ ${ESTIMATE_HINT}`,
     const [treeHi, setTreeHi] = React.useState(0);
     const [cmAvailable] = React.useState(() => !!getHostCodeMirror());
     const [narrow, setNarrow] = React.useState(false);
+    const [phoneUi] = React.useState(() => detectViewportProfile() === "phone");
+    const [expanded, setExpanded] = React.useState(
+      () => detectViewportProfile() === "phone"
+    );
+    const [phoneTab, setPhoneTab] = React.useState("code");
     const rootRef = React.useRef(null);
+    const headRef = React.useRef(null);
+    usePhoneShellExpand({
+      panelId: "command",
+      shellClass: "ecu-command-shell-expanded",
+      rootRef,
+      headRef,
+      expanded,
+      setExpanded,
+      onFrameSizeRestore: props.onFrameSizeRestore,
+      onRequestClose: props.onRequestClose
+    });
     const editorHostRef = React.useRef(null);
     const textareaRef = React.useRef(null);
     const cmRef = React.useRef(null);
@@ -72816,7 +75250,7 @@ ${ESTIMATE_HINT}`,
     React.useEffect(() => {
       const id = window.requestAnimationFrame(() => refreshEditor());
       return () => window.cancelAnimationFrame(id);
-    }, [status, openSeq, snippets.length, snippetQuery]);
+    }, [status, openSeq, snippets.length, snippetQuery, phoneTab, expanded]);
     React.useEffect(() => {
       const el = rootRef.current;
       if (!el || typeof ResizeObserver === "undefined") return;
@@ -72885,6 +75319,7 @@ ${ESTIMATE_HINT}`,
       setNewName(snip.name);
       setNewFolder(snip.folder || "");
       writeEditor(snip.code);
+      if (narrow) setPhoneTab("code");
     };
     const onUpdateSnippet = () => {
       if (!selectedId2) {
@@ -73150,11 +75585,138 @@ ${ESTIMATE_HINT}`,
       })
     });
     const lastSnip = findSnippetById(snippets, lastRunId);
+    const usePhoneTabs = narrow;
+    const showCode = !usePhoneTabs || phoneTab === "code";
+    const showSnippets = !usePhoneTabs || phoneTab === "snippets";
+    const hintLabel = phoneUi ? "observer \u2192 code_eval \xB7 swipe title to close" : "observer \u2192 code_eval \xB7 Ctrl+Enter \xB7 Ctrl+Space";
+    const toolbar = e(
+      "div",
+      { className: "CommandPanel-toolbar" },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "CommandPanel-run",
+          onClick: onRun,
+          style: btnStyle2({ accent: true })
+        },
+        "Run"
+      ),
+      e("input", {
+        type: "text",
+        value: newName,
+        placeholder: "Snippet name",
+        onChange: (ev) => setNewName(ev.target.value),
+        style: Object.assign({}, inputStyle, {
+          flex: "1 1 120px",
+          minWidth: "100px"
+        })
+      }),
+      e("input", {
+        type: "text",
+        value: newFolder,
+        placeholder: "Folder (optional)",
+        onChange: (ev) => setNewFolder(ev.target.value),
+        style: Object.assign({}, inputStyle, {
+          flex: "0 1 110px",
+          minWidth: "90px"
+        })
+      }),
+      selected ? e(
+        "button",
+        {
+          type: "button",
+          onClick: onUpdateSnippet,
+          style: btnStyle2({ accent: dirty2 }),
+          title: "Overwrite the selected snippet"
+        },
+        dirty2 ? "Update \u25CF" : "Update"
+      ) : null,
+      e(
+        "button",
+        {
+          type: "button",
+          onClick: onSaveAsSnippet,
+          style: btnStyle2(),
+          title: "Save as a new snippet"
+        },
+        "Save as"
+      )
+    );
+    const statusEl = e(
+      "div",
+      {
+        className: "CommandPanel-status" + (statusOk === true ? " is-ok" : statusOk === false ? " is-err" : ""),
+        style: {
+          fontSize: TYPE.body,
+          color: status ? statusOk === false ? "#eaa" : statusOk === true ? "#9a9" : "#aaa" : "transparent",
+          minHeight: "1.25em",
+          flex: "0 0 auto"
+        }
+      },
+      status || "\xA0"
+    );
+    const side = e(
+      "aside",
+      {
+        className: "CommandPanel-side",
+        "aria-label": "Command snippets",
+        tabIndex: 0,
+        onKeyDown: onTreeKeyDown
+      },
+      e(
+        "div",
+        { className: "CommandPanel-side__head" },
+        e(
+          "div",
+          {
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              justifyContent: "space-between"
+            }
+          },
+          e("div", { className: "CommandPanel-side__title" }, "Snippets"),
+          lastSnip ? e(
+            "button",
+            {
+              type: "button",
+              className: "CommandPanel-rerun",
+              title: "Re-run \u201C" + lastSnip.name + "\u201D",
+              onClick: onReRunLast
+            },
+            "Re-run"
+          ) : null
+        ),
+        e("input", {
+          type: "search",
+          value: snippetQuery,
+          placeholder: phoneUi ? "Search snippets\u2026" : "Search\u2026 \u2191\u2193 Enter",
+          onChange: (ev) => {
+            setSnippetQuery(ev.target.value);
+            setTreeHi(0);
+          },
+          style: Object.assign({}, inputStyle, {
+            width: "100%",
+            fontSize: TYPE.body,
+            padding: "4px 8px"
+          })
+        })
+      ),
+      treeNodes.length ? e("div", { className: "CommandPanel-tree" }, ...treeNodes) : e(
+        "div",
+        { className: "CommandPanel-empty" },
+        snippets.length ? "No snippets match this search." : "No snippets yet \u2014 write a command and Save as."
+      )
+    );
     return e(
       "div",
       {
         ref: rootRef,
-        className: "CommandPanel" + (narrow ? " is-narrow" : ""),
+        className: "CommandPanel" + (narrow ? " is-narrow" : "") + (expanded ? " is-expanded" : "") + (usePhoneTabs ? " is-phone-tabs" : "") + (usePhoneTabs ? " tab-" + phoneTab : ""),
+        "data-ecu-panel": "command",
+        "data-ecu-tour": "command-panel",
         style: {
           border: "2px solid #555",
           background: "rgba(0,0,0,0.88)",
@@ -73173,17 +75735,12 @@ ${ESTIMATE_HINT}`,
       e(
         "div",
         {
-          style: {
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-            gap: "8px",
-            flex: "0 0 auto"
-          }
+          ref: headRef,
+          className: "CommandPanel-head"
         },
         e(
           "div",
-          { style: { fontSize: "20px", color: "#ffe08a" } },
+          { className: "CommandPanel-title" },
           "Command",
           dirty2 ? e(
             "span",
@@ -73194,207 +75751,80 @@ ${ESTIMATE_HINT}`,
             " \xB7 edited"
           ) : null
         ),
-        e(
-          "div",
-          { style: { fontSize: TYPE.body, color: "#aaa" } },
-          "observer \u2192 code_eval \xB7 Ctrl+Enter \xB7 Ctrl+Space"
-        )
+        e("div", { className: "CommandPanel-sub" }, hintLabel),
+        e("span", { className: "CommandPanel-headGrow" }),
+        e(PanelExpandButton, {
+          expanded,
+          onToggle: () => setExpanded(!expanded),
+          expandTitle: "Expand command",
+          restoreTitle: "Restore command size",
+          className: "CommandPanel-expand"
+        })
       ),
+      usePhoneTabs ? e(
+        "div",
+        {
+          className: "CommandPanel-tabs",
+          role: "tablist",
+          "aria-label": "Command views"
+        },
+        e(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            className: "CommandPanel-tab" + (phoneTab === "code" ? " is-active" : ""),
+            "aria-selected": phoneTab === "code",
+            onClick: () => setPhoneTab("code")
+          },
+          "Code"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            role: "tab",
+            className: "CommandPanel-tab" + (phoneTab === "snippets" ? " is-active" : ""),
+            "aria-selected": phoneTab === "snippets",
+            onClick: () => setPhoneTab("snippets")
+          },
+          "Snippets",
+          snippets.length ? e("span", { className: "CommandPanel-tabCount" }, String(snippets.length)) : null
+        )
+      ) : null,
       e(
         "div",
         { className: "CommandPanel-body" },
-        e(
+        showCode ? e(
           "div",
           { className: "CommandPanel-main" },
           editor,
-          e(
-            "div",
-            {
-              style: {
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap",
-                alignItems: "center",
-                flex: "0 0 auto"
-              }
-            },
-            e(
-              "button",
-              {
-                type: "button",
-                onClick: onRun,
-                style: btnStyle2({ accent: true })
-              },
-              "Run"
-            ),
-            e("input", {
-              type: "text",
-              value: newName,
-              placeholder: "Snippet name",
-              onChange: (ev) => setNewName(ev.target.value),
-              style: Object.assign({}, inputStyle, {
-                flex: "1 1 120px",
-                minWidth: "100px"
-              })
-            }),
-            e("input", {
-              type: "text",
-              value: newFolder,
-              placeholder: "Folder (optional)",
-              onChange: (ev) => setNewFolder(ev.target.value),
-              style: Object.assign({}, inputStyle, {
-                flex: "0 1 110px",
-                minWidth: "90px"
-              })
-            }),
-            selected ? e(
-              "button",
-              {
-                type: "button",
-                onClick: onUpdateSnippet,
-                style: btnStyle2({ accent: dirty2 }),
-                title: "Overwrite the selected snippet"
-              },
-              dirty2 ? "Update \u25CF" : "Update"
-            ) : null,
-            e(
-              "button",
-              {
-                type: "button",
-                onClick: onSaveAsSnippet,
-                style: btnStyle2(),
-                title: "Save as a new snippet"
-              },
-              "Save as"
-            )
-          ),
-          e(
-            "div",
-            {
-              className: "CommandPanel-status" + (statusOk === true ? " is-ok" : statusOk === false ? " is-err" : ""),
-              style: {
-                fontSize: TYPE.body,
-                color: status ? statusOk === false ? "#eaa" : statusOk === true ? "#9a9" : "#aaa" : "transparent",
-                minHeight: "1.25em",
-                flex: "0 0 auto"
-              }
-            },
-            status || "\xA0"
-          )
-        ),
-        e(
-          "aside",
-          {
-            className: "CommandPanel-side",
-            "aria-label": "Command snippets",
-            tabIndex: 0,
-            onKeyDown: onTreeKeyDown
-          },
-          e(
-            "div",
-            { className: "CommandPanel-side__head" },
-            e(
-              "div",
-              {
-                style: {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  justifyContent: "space-between"
-                }
-              },
-              e("div", { className: "CommandPanel-side__title" }, "Snippets"),
-              lastSnip ? e(
-                "button",
-                {
-                  type: "button",
-                  className: "CommandPanel-rerun",
-                  title: "Re-run \u201C" + lastSnip.name + "\u201D",
-                  onClick: onReRunLast
-                },
-                "Re-run"
-              ) : null
-            ),
-            e("input", {
-              type: "search",
-              value: snippetQuery,
-              placeholder: "Search\u2026 \u2191\u2193 Enter",
-              onChange: (ev) => {
-                setSnippetQuery(ev.target.value);
-                setTreeHi(0);
-              },
-              style: Object.assign({}, inputStyle, {
-                width: "100%",
-                fontSize: TYPE.body,
-                padding: "4px 8px"
-              })
-            })
-          ),
-          treeNodes.length ? e("div", { className: "CommandPanel-tree" }, ...treeNodes) : e(
-            "div",
-            { className: "CommandPanel-empty" },
-            snippets.length ? "No snippets match this search." : "No snippets yet \u2014 write a command and Save as."
-          )
-        )
+          toolbar,
+          statusEl
+        ) : null,
+        showSnippets ? side : null
       )
     );
   }
 
-  // src/ui/chrome/panelExpandControl.ts
-  function ExpandGlyph(expanded) {
-    const React = getReact();
-    const d = expanded ? (
-      // Exit: corners point inward.
-      "M5 1v4H1M11 1v4h4M5 15v-4H1M11 15v-4h4"
-    ) : (
-      // Enter: corners point outward (open frame).
-      "M1 5V1h4M11 1h4v4M15 11v4h-4M5 15H1v-4"
-    );
-    return e(
-      "svg",
-      {
-        className: "ecu-expand-glyph",
-        viewBox: "0 0 16 16",
-        width: 14,
-        height: 14,
-        "aria-hidden": true,
-        focusable: "false"
-      },
-      e("path", {
-        d,
-        fill: "none",
-        stroke: "currentColor",
-        strokeWidth: 1.6,
-        strokeLinecap: "square",
-        strokeLinejoin: "miter"
-      })
-    );
+  // src/lib/peerPages.ts
+  function peerPageIndex(keys, activeKey2) {
+    if (!activeKey2) return -1;
+    return keys.indexOf(activeKey2);
   }
-  function PanelExpandButton(props) {
-    const React = getReact();
-    const title = props.expanded ? props.restoreTitle : props.expandTitle;
-    return e(
-      "button",
-      {
-        type: "button",
-        className: (props.className || "ecu-panel-expand") + (props.expanded ? " is-expanded" : ""),
-        title,
-        "aria-label": title,
-        "aria-pressed": props.expanded,
-        onClick: () => props.onToggle()
-      },
-      ExpandGlyph(props.expanded)
-    );
-  }
-  function findPanelShell(from, panelId) {
-    let shell = from;
-    while (shell) {
-      if (shell.getAttribute && shell.getAttribute("data-panel") === panelId) {
-        return shell;
+  function stepPeerPage(keys, activeKey2, dir, fallbackKey) {
+    if (!keys.length) return null;
+    let idx = peerPageIndex(keys, activeKey2);
+    if (idx < 0) {
+      if (fallbackKey) {
+        const fb = keys.indexOf(fallbackKey);
+        if (fb >= 0) return keys[fb];
       }
-      shell = shell.parentElement;
+      return keys[0];
     }
-    return null;
+    if (dir < 0) return idx > 0 ? keys[idx - 1] : keys[idx];
+    if (dir > 0) return idx < keys.length - 1 ? keys[idx + 1] : keys[idx];
+    return keys[idx];
   }
 
   // src/lib/chatServerPages.ts
@@ -73431,23 +75861,299 @@ ${ESTIMATE_HINT}`,
     for (let i = 0; i < remaining.length; i++) out.push(remaining[i]);
     return out;
   }
-  function serverPageIndex(keys, activeKey2) {
-    if (!activeKey2) return -1;
-    return keys.indexOf(activeKey2);
-  }
   function stepServerPage(keys, activeKey2, dir, fallbackKey) {
-    if (!keys.length) return null;
-    let idx = serverPageIndex(keys, activeKey2);
-    if (idx < 0) {
-      if (fallbackKey) {
-        const fb = keys.indexOf(fallbackKey);
-        if (fb >= 0) return keys[fb];
-      }
-      return keys[0];
+    return stepPeerPage(keys, activeKey2, dir, fallbackKey);
+  }
+
+  // src/ui/chrome/peerPageDotsCss.ts
+  var STYLE_ID12 = "ecu-peer-page-dots-css";
+  var CSS12 = `
+.ecu-peer-page-dots {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 8px 8px;
+  pointer-events: auto;
+}
+.ecu-peer-page-dots__side {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 40px;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #8a93a0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ecu-peer-page-dots__side.is-prev {
+  justify-self: start;
+  justify-content: flex-start;
+  text-align: left;
+}
+.ecu-peer-page-dots__side.is-next {
+  justify-self: end;
+  justify-content: flex-end;
+  text-align: right;
+}
+.ecu-peer-page-dots__side:not(:disabled):hover,
+.ecu-peer-page-dots__side:not(:disabled):active {
+  color: #d8dde4;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.ecu-peer-page-dots__side:disabled,
+.ecu-peer-page-dots__side.is-empty {
+  opacity: 0.28;
+  cursor: default;
+}
+.ecu-peer-page-dots__side-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-peer-page-dots__chev {
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.85;
+}
+.ecu-peer-page-dots__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 72px;
+  max-width: 140px;
+  padding: 0 4px;
+}
+.ecu-peer-page-dots__current {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e8eef4;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.ecu-peer-page-dots.is-flash .ecu-peer-page-dots__current {
+  animation: ecu-peer-page-flash 0.42s ease-out;
+}
+@keyframes ecu-peer-page-flash {
+  0% { color: #9dd4ec; transform: scale(1.06); }
+  100% { color: #e8eef4; transform: scale(1); }
+}
+.ecu-peer-page-dots__meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6a7380;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-peer-page-dots__track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 2px;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.ecu-peer-page-dots__track::-webkit-scrollbar {
+  display: none;
+}
+.ecu-peer-page-dots__dot {
+  pointer-events: auto;
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 7px !important;
+  height: 7px !important;
+  min-width: 7px !important;
+  min-height: 7px !important;
+  max-width: 7px !important;
+  max-height: 7px !important;
+  padding: 0 !important;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ecu-peer-page-dots__dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+}
+.ecu-peer-page-dots__dot.is-on {
+  background: #9dd4ec;
+  transform: scale(1.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+`;
+  function ensurePeerPageDotsCss() {
+    if (typeof document === "undefined") return;
+    let el = document.getElementById(STYLE_ID12);
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID12;
+      document.head.appendChild(el);
     }
-    if (dir < 0) return idx > 0 ? keys[idx - 1] : keys[idx];
-    if (dir > 0) return idx < keys.length - 1 ? keys[idx + 1] : keys[idx];
-    return keys[idx];
+    el.textContent = CSS12;
+  }
+
+  // src/ui/chrome/PeerPageDots.ts
+  function PeerPageDots(props) {
+    const React = getReact();
+    ensurePeerPageDotsCss();
+    if (!props.pages || props.pages.length < 2) return null;
+    let activeIdx = -1;
+    for (let i = 0; i < props.pages.length; i++) {
+      if (props.pages[i].key === props.activeKey) {
+        activeIdx = i;
+        break;
+      }
+    }
+    if (activeIdx < 0) activeIdx = 0;
+    const active = props.pages[activeIdx];
+    const prev = activeIdx > 0 ? props.pages[activeIdx - 1] : null;
+    const next = activeIdx < props.pages.length - 1 ? props.pages[activeIdx + 1] : null;
+    const [flashKey, setFlashKey] = React.useState(active.key);
+    const [flashOn, setFlashOn] = React.useState(false);
+    React.useEffect(() => {
+      if (active.key === flashKey) return;
+      setFlashKey(active.key);
+      setFlashOn(true);
+      const id = window.setTimeout(() => setFlashOn(false), 420);
+      return () => window.clearTimeout(id);
+    }, [active.key, flashKey]);
+    const dots = [];
+    for (let i = 0; i < props.pages.length; i++) {
+      const page = props.pages[i];
+      dots.push(
+        e("span", {
+          key: page.key,
+          role: "button",
+          tabIndex: 0,
+          className: "ecu-peer-page-dots__dot" + (i === activeIdx ? " is-on" : ""),
+          "aria-label": page.label,
+          "aria-current": i === activeIdx ? "true" : void 0,
+          title: page.label,
+          onClick: () => props.onSelect(page.key),
+          onKeyDown: (ev) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              props.onSelect(page.key);
+            }
+          }
+        })
+      );
+    }
+    return e(
+      "div",
+      {
+        className: "ecu-peer-page-dots" + (flashOn ? " is-flash" : "") + (props.className ? " " + props.className : ""),
+        role: "navigation",
+        "aria-label": props.ariaLabel
+      },
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-peer-page-dots__side is-prev" + (prev ? "" : " is-empty"),
+          disabled: !prev,
+          title: prev ? "Previous \xB7 " + prev.label : void 0,
+          "aria-label": prev ? "Previous: " + prev.label : "No previous page",
+          onClick: () => {
+            if (prev) props.onSelect(prev.key);
+          }
+        },
+        e("span", { className: "ecu-peer-page-dots__chev", "aria-hidden": true }, "\u2039"),
+        e(
+          "span",
+          { className: "ecu-peer-page-dots__side-label" },
+          prev ? prev.label : ""
+        )
+      ),
+      e(
+        "div",
+        { className: "ecu-peer-page-dots__center" },
+        e(
+          "div",
+          {
+            className: "ecu-peer-page-dots__current",
+            "aria-live": "polite"
+          },
+          active.label
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-peer-page-dots__meta",
+            "aria-hidden": true
+          },
+          activeIdx + 1 + " / " + props.pages.length
+        ),
+        e(
+          "div",
+          {
+            className: "ecu-peer-page-dots__track",
+            role: "tablist",
+            "aria-label": props.ariaLabel
+          },
+          ...dots
+        )
+      ),
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-peer-page-dots__side is-next" + (next ? "" : " is-empty"),
+          disabled: !next,
+          title: next ? "Next \xB7 " + next.label : void 0,
+          "aria-label": next ? "Next: " + next.label : "No next page",
+          onClick: () => {
+            if (next) props.onSelect(next.key);
+          }
+        },
+        e(
+          "span",
+          { className: "ecu-peer-page-dots__side-label" },
+          next ? next.label : ""
+        ),
+        e("span", { className: "ecu-peer-page-dots__chev", "aria-hidden": true }, "\u203A")
+      )
+    );
   }
 
   // src/ui/frames/chat/chatCss.ts
@@ -74013,44 +76719,10 @@ ${ESTIMATE_HINT}`,
 .ecu-chat.is-narrow:not(.is-sidebar-open) .ecu-chat-backdrop {
   display: none;
 }
+/* PeerPageDots chrome \u2014 keep chat-panel border under the shared pager. */
 .ecu-chat-server-dots {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 2px 12px 6px;
   border-bottom: 1px solid var(--ecu-chat-line);
   background: var(--ecu-chat-panel);
-  pointer-events: none;
-}
-.ecu-chat-server-dots__dot {
-  pointer-events: auto;
-  position: relative;
-  width: 8px;
-  height: 8px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.ecu-chat-server-dots__dot::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-}
-.ecu-chat-server-dots__dot.is-on {
-  background: #9dd4ec;
-  transform: scale(1.25);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
@@ -74090,28 +76762,6 @@ ${ESTIMATE_HINT}`,
 }
 
 /* Stock-like FULL mode \u2014 lift the chat shell over the layout + phone dock. */
-[data-panel="chat"].ecu-chat-shell-expanded {
-  position: fixed !important;
-  left: 10px !important;
-  right: 10px !important;
-  top: 10px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
-}
-[data-panel="chat"].ecu-chat-shell-expanded .ecu-chat {
-  height: 100%;
-  min-height: 0;
-  padding-bottom: var(--ecu-vv-keyboard, 0px);
-  box-sizing: border-box;
-}
-
 /* Phone / narrow compose \u2014 44px targets above the soft keyboard. */
 .ecu-chat.is-narrow .ecu-chat-compose {
   padding: 8px 10px;
@@ -74137,7 +76787,7 @@ ${ESTIMATE_HINT}`,
   min-width: 72px;
   flex: 0 0 auto;
 }
-`;
+` + phoneShellExpandCss("chat", "ecu-chat-shell-expanded", ".ecu-chat");
   var injected13 = false;
   function ensureChatCss() {
     if (typeof document === "undefined") return;
@@ -74152,8 +76802,8 @@ ${ESTIMATE_HINT}`,
     injected13 = true;
   }
 
-  // src/ui/frames/chat/chatServerPageGestures.ts
-  function classifyChatServerPageSwipe(sample) {
+  // src/ui/chrome/peerPageGestures.ts
+  function classifyPeerPageSwipe(sample) {
     const dx = sample.endX - sample.startX;
     const dy = sample.endY - sample.startY;
     const absX = Math.abs(dx);
@@ -74164,6 +76814,120 @@ ${ESTIMATE_HINT}`,
     if (dx > 0) return -1;
     return null;
   }
+  function defaultAllowStart(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return false;
+    }
+    if (target.closest("button, a, [role='button']")) return false;
+    return true;
+  }
+  function installPeerPageGestures(root, handlers) {
+    let stroke3 = null;
+    const allow = handlers.allowStart || defaultAllowStart;
+    const onTouchStart3 = (ev) => {
+      if (handlers.isBlocked && handlers.isBlocked()) {
+        stroke3 = null;
+        return;
+      }
+      if (ev.touches.length !== 1) {
+        stroke3 = null;
+        return;
+      }
+      if (!allow(ev.target)) {
+        stroke3 = null;
+        return;
+      }
+      const t = ev.touches[0];
+      stroke3 = {
+        startX: t.clientX,
+        startY: t.clientY,
+        lastX: t.clientX,
+        lastY: t.clientY,
+        id: t.identifier,
+        claimed: false
+      };
+    };
+    const onTouchMove2 = (ev) => {
+      if (!stroke3 || ev.touches.length !== 1) return;
+      const t = ev.touches[0];
+      if (t.identifier !== stroke3.id) return;
+      stroke3.lastX = t.clientX;
+      stroke3.lastY = t.clientY;
+      const dx = t.clientX - stroke3.startX;
+      const dy = t.clientY - stroke3.startY;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      if (!stroke3.claimed) {
+        if (absX < 12) return;
+        if (absY > absX * PHONE_HOME_SWIPE_MAX_OFF_AXIS) {
+          stroke3 = null;
+          return;
+        }
+        stroke3.claimed = true;
+      }
+      if (stroke3.claimed && ev.cancelable) ev.preventDefault();
+    };
+    const onTouchEnd3 = (ev) => {
+      if (!stroke3) return;
+      const active = stroke3;
+      stroke3 = null;
+      if (handlers.isBlocked && handlers.isBlocked()) return;
+      let endX = active.lastX;
+      let endY = active.lastY;
+      if (ev.changedTouches.length) {
+        for (let i = 0; i < ev.changedTouches.length; i++) {
+          const t = ev.changedTouches[i];
+          if (t.identifier === active.id) {
+            endX = t.clientX;
+            endY = t.clientY;
+            break;
+          }
+        }
+      }
+      const dir = classifyPeerPageSwipe({
+        startX: active.startX,
+        startY: active.startY,
+        endX,
+        endY
+      });
+      if (dir) handlers.onPageSwipe(dir);
+    };
+    root.addEventListener("touchstart", onTouchStart3, {
+      passive: true,
+      capture: true
+    });
+    root.addEventListener("touchmove", onTouchMove2, {
+      passive: false,
+      capture: true
+    });
+    root.addEventListener("touchend", onTouchEnd3, {
+      passive: true,
+      capture: true
+    });
+    root.addEventListener("touchcancel", onTouchEnd3, {
+      passive: true,
+      capture: true
+    });
+    return () => {
+      stroke3 = null;
+      root.removeEventListener("touchstart", onTouchStart3, true);
+      root.removeEventListener("touchmove", onTouchMove2, true);
+      root.removeEventListener("touchend", onTouchEnd3, true);
+      root.removeEventListener("touchcancel", onTouchEnd3, true);
+    };
+  }
+  function installDrillBackSwipe(root, handlers) {
+    return installPeerPageGestures(root, {
+      allowStart: handlers.allowStart,
+      isBlocked: () => handlers.isActive ? !handlers.isActive() : false,
+      onPageSwipe: (dir) => {
+        if (dir === -1) handlers.onBack();
+      }
+    });
+  }
+
+  // src/ui/frames/chat/chatServerPageGestures.ts
   function isIgnoredStartTarget(target) {
     if (!(target instanceof Element)) return false;
     if (target.closest("input, textarea, select, [contenteditable='true']")) {
@@ -74182,66 +76946,11 @@ ${ESTIMATE_HINT}`,
     return true;
   }
   function installChatServerPageGestures(root, handlers) {
-    let stroke3 = null;
-    const onTouchStart3 = (ev) => {
-      if (handlers.isBlocked()) {
-        stroke3 = null;
-        return;
-      }
-      if (ev.touches.length !== 1) {
-        stroke3 = null;
-        return;
-      }
-      if (!startAllowsServerPageSwipe(ev.target)) {
-        stroke3 = null;
-        return;
-      }
-      const t = ev.touches[0];
-      stroke3 = { startX: t.clientX, startY: t.clientY, id: t.identifier };
-    };
-    const onTouchEnd3 = (ev) => {
-      if (!stroke3) return;
-      const active = stroke3;
-      stroke3 = null;
-      if (handlers.isBlocked()) return;
-      let endX = active.startX;
-      let endY = active.startY;
-      if (ev.changedTouches.length) {
-        for (let i = 0; i < ev.changedTouches.length; i++) {
-          const t = ev.changedTouches[i];
-          if (t.identifier === active.id) {
-            endX = t.clientX;
-            endY = t.clientY;
-            break;
-          }
-        }
-      }
-      const dir = classifyChatServerPageSwipe({
-        startX: active.startX,
-        startY: active.startY,
-        endX,
-        endY
-      });
-      if (dir) handlers.onPageSwipe(dir);
-    };
-    root.addEventListener("touchstart", onTouchStart3, {
-      passive: true,
-      capture: true
+    return installPeerPageGestures(root, {
+      onPageSwipe: handlers.onPageSwipe,
+      isBlocked: handlers.isBlocked,
+      allowStart: startAllowsServerPageSwipe
     });
-    root.addEventListener("touchend", onTouchEnd3, {
-      passive: true,
-      capture: true
-    });
-    root.addEventListener("touchcancel", onTouchEnd3, {
-      passive: true,
-      capture: true
-    });
-    return () => {
-      stroke3 = null;
-      root.removeEventListener("touchstart", onTouchStart3, true);
-      root.removeEventListener("touchend", onTouchEnd3, true);
-      root.removeEventListener("touchcancel", onTouchEnd3, true);
-    };
   }
 
   // src/ui/frames/chat/ChatPanel.ts
@@ -74634,8 +77343,19 @@ ${ESTIMATE_HINT}`,
           0,
           Math.round(window.innerHeight - vv.height - vv.offsetTop)
         );
+        const px = inset + "px";
         const root = rootRef.current;
-        if (root) root.style.setProperty("--ecu-vv-keyboard", inset + "px");
+        const shell = findPanelShell(root, "chat");
+        if (root) root.style.setProperty("--ecu-vv-keyboard", px);
+        if (shell) shell.style.setProperty("--ecu-vv-keyboard", px);
+        if (inset > 0 && root) {
+          const focused = root.querySelector(
+            ".ecu-chat-input:focus, .ecu-chat-to:focus"
+          );
+          if (focused && typeof focused.scrollIntoView === "function") {
+            focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+          }
+        }
       };
       sync();
       vv.addEventListener("resize", sync);
@@ -74644,7 +77364,9 @@ ${ESTIMATE_HINT}`,
         vv.removeEventListener("resize", sync);
         vv.removeEventListener("scroll", sync);
         const root = rootRef.current;
+        const shell = findPanelShell(root, "chat");
         if (root) root.style.removeProperty("--ecu-vv-keyboard");
+        if (shell) shell.style.removeProperty("--ecu-vv-keyboard");
       };
     }, []);
     React.useEffect(() => {
@@ -75207,8 +77929,7 @@ ${ESTIMATE_HINT}`,
               readServerOrderKeys()
             );
             if (serverKeys.length < 2) return null;
-            const activeIdx = serverPageIndex(serverKeys, (active == null ? void 0 : active.key) || null);
-            const dotKids = [];
+            const pages = [];
             for (let i = 0; i < serverKeys.length; i++) {
               const key = serverKeys[i];
               let label = key;
@@ -75218,27 +77939,15 @@ ${ESTIMATE_HINT}`,
                   break;
                 }
               }
-              dotKids.push(
-                e("button", {
-                  key,
-                  type: "button",
-                  className: "ecu-chat-server-dots__dot" + (i === activeIdx ? " is-on" : ""),
-                  "aria-label": label,
-                  "aria-current": i === activeIdx ? "true" : void 0,
-                  title: label,
-                  onClick: () => selectConversation(key)
-                })
-              );
+              pages.push({ key, label });
             }
-            return e(
-              "div",
-              {
-                className: "ecu-chat-server-dots",
-                role: "tablist",
-                "aria-label": "Server chats"
-              },
-              ...dotKids
-            );
+            return e(PeerPageDots, {
+              pages,
+              activeKey: (active == null ? void 0 : active.key) || null,
+              onSelect: (key) => selectConversation(key),
+              ariaLabel: "Server chats",
+              className: "ecu-chat-server-dots"
+            });
           })(),
           e(
             "div",
@@ -77653,7 +80362,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/bag/upgradeCompoundDialogCss.ts
   var injected14 = false;
-  var CSS12 = `
+  var CSS13 = `
 .ecu-upg-backdrop {
   position: fixed;
   inset: 0;
@@ -78205,7 +80914,7 @@ ${ESTIMATE_HINT}`,
     injected14 = true;
     const style = document.createElement("style");
     style.setAttribute("data-ecu-upg-css", "1");
-    style.textContent = CSS12;
+    style.textContent = CSS13;
     document.head.appendChild(style);
   }
 
@@ -80382,6 +83091,111 @@ ${ESTIMATE_HINT}`,
     return startSortSwaps(swaps);
   }
 
+  // src/ui/frames/bagPanelCss.ts
+  var STYLE_ID13 = "ecu-bag-panel-css";
+  var CSS14 = `
+.comm-bag-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  background: #0c0c0c;
+}
+.comm-bag-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 6px 8px 4px;
+}
+.comm-bag-panel__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffe08a;
+}
+.comm-bag-panel__headGrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-bag-panel__empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  color: #a8aeb6;
+  font-size: 14px;
+}
+.comm-bag-panel__empty-btn {
+  appearance: none;
+  border: 1px solid #a86;
+  background: #2a2410;
+  color: #ffe08a;
+  min-height: 44px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 15px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.comm-bag-panel.is-phone .comm-bag-sync-chrome {
+  min-height: 44px;
+  height: auto;
+  padding: 6px 8px;
+  gap: 10px;
+  flex: 0 0 auto;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box;
+}
+.comm-bag-panel.is-phone .comm-bag-sync-chrome button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.comm-bag-panel.is-expanded {
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 100% !important;
+}
+.comm-bag-panel.is-expanded .comm-bag-mount {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8px 4px 16px;
+  background: #0a0a0a;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount #bottomleftcorner {
+  min-width: 385px;
+  max-width: none;
+  max-height: none;
+  width: max-content;
+  margin: 0 auto;
+  flex: 0 0 auto;
+}
+` + phoneShellExpandCss("bag", "ecu-bag-shell-expanded", ".comm-bag-panel");
+  var injected15 = false;
+  function ensureBagPanelCss() {
+    if (typeof document === "undefined") return;
+    if (injected15 || document.getElementById(STYLE_ID13)) {
+      injected15 = true;
+      return;
+    }
+    const el = document.createElement("style");
+    el.id = STYLE_ID13;
+    el.textContent = CSS14;
+    document.head.appendChild(el);
+    injected15 = true;
+  }
+
   // src/ui/frames/BagPanel.ts
   var HOST_ID6 = "bottomleftcorner";
   var BAG_SLOT_BOX = 50;
@@ -80626,7 +83440,12 @@ ${ESTIMATE_HINT}`,
   }
   function BagPanel(props) {
     const React = getReact();
+    ensureBagPanelCss();
     const mountRef = React.useRef(null);
+    const rootRef = React.useRef(null);
+    const headRef = React.useRef(null);
+    const phoneUi = detectViewportProfile() === "phone";
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
     const [open, setOpen] = React.useState(() => isInventoryOpen());
     const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
     const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());
@@ -80647,6 +83466,16 @@ ${ESTIMATE_HINT}`,
     const [sortRunning, setSortRunning] = React.useState(
       () => isBagSortRunning()
     );
+    usePhoneShellExpand({
+      panelId: "bag",
+      shellClass: "ecu-bag-shell-expanded",
+      rootRef,
+      headRef,
+      expanded,
+      setExpanded,
+      onFrameSizeRestore: props.onFrameSizeRestore,
+      onRequestClose: props.onRequestClose
+    });
     React.useEffect(() => {
       attachInventoryToMount(mountRef.current);
       const unsubInv = subscribeInventory((next) => setOpen(next));
@@ -80678,6 +83507,7 @@ ${ESTIMATE_HINT}`,
       };
     }, []);
     const canSort = canEditObservedBag();
+    const observing = !!getObservingId();
     React.useEffect(() => {
       if (!sortRunning) return;
       const id = window.setInterval(() => {
@@ -80689,23 +83519,57 @@ ${ESTIMATE_HINT}`,
       attachInventoryToMount(mountRef.current);
       if (open) refreshInventoryItemTitles();
     }, [open, refreshing, showDummy, props.tradeRevision]);
+    const showNeedObserve = phoneUi && !observing && !showDummy && !refreshing;
     return e(
       "div",
       {
-        className: "comm-bag-panel",
+        ref: rootRef,
+        className: "comm-bag-panel" + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : ""),
+        "data-ecu-panel": "bag",
+        "data-ecu-tour": "bag-panel",
         style: {
           // Dummy silhouette is click-through in layout edit (header drags).
           pointerEvents: showDummy ? "none" : "auto",
           // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
           // under its gray border/padding and breaks the 7-col float grid.
-          width: showDummy ? BAG_FRAME_WIDTH : void 0,
-          minWidth: showDummy ? BAG_FRAME_WIDTH : showChrome ? BAG_FRAME_WIDTH : "120px",
+          width: showDummy || expanded ? showDummy ? BAG_FRAME_WIDTH : void 0 : void 0,
+          minWidth: expanded ? 0 : showDummy ? BAG_FRAME_WIDTH : showChrome ? BAG_FRAME_WIDTH : "120px",
           minHeight: showDummy ? BAG_FRAME_HEIGHT : showChrome ? void 0 : "8px",
           height: showDummy ? BAG_FRAME_HEIGHT : void 0,
           boxSizing: "border-box"
         }
       },
-      showChrome ? e(BagSyncChrome, {
+      e(
+        "div",
+        { className: "comm-bag-panel__head", ref: headRef },
+        e("span", { className: "comm-bag-panel__title" }, "Bag"),
+        e("span", { className: "comm-bag-panel__headGrow" }),
+        e(PanelExpandButton, {
+          expanded,
+          onToggle: () => setExpanded(!expanded),
+          expandTitle: "Expand bag",
+          restoreTitle: "Restore bag size",
+          className: "comm-bag-panel__expand"
+        })
+      ),
+      showNeedObserve ? e(
+        "div",
+        { className: "comm-bag-panel__empty" },
+        e("div", null, "Pick a character to watch before opening Bag."),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-bag-panel__empty-btn",
+            onClick: () => {
+              if (props.onRequestClose) props.onRequestClose();
+              openPhoneObserve();
+            }
+          },
+          "Choose character"
+        )
+      ) : null,
+      !showNeedObserve && showChrome ? e(BagSyncChrome, {
         syncedAt,
         syncedName,
         gridStale,
@@ -80725,8 +83589,8 @@ ${ESTIMATE_HINT}`,
         className: "comm-bag-mount",
         id: "comm-bag-mount",
         style: {
-          // Keep mount in DOM for reparenting; hide while silhouette shows.
-          display: showDummy ? "none" : "block",
+          // Keep mount in DOM for reparenting; hide while silhouette / CTA shows.
+          display: showDummy || showNeedObserve ? "none" : void 0,
           pointerEvents: "auto"
         }
       })
@@ -82084,8 +84948,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID12 = "ecu-query-search-field-css";
-  var CSS13 = `
+  var STYLE_ID14 = "ecu-query-search-field-css";
+  var CSS15 = `
 .ecu-qsearch {
   position: relative;
   flex: 1 1 220px;
@@ -82224,10 +85088,10 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID12)) return;
+    if (document.getElementById(STYLE_ID14)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID12;
-    el.textContent = CSS13;
+    el.id = STYLE_ID14;
+    el.textContent = CSS15;
     document.head.appendChild(el);
   }
 
@@ -84089,33 +86953,140 @@ ${ESTIMATE_HINT}`,
   .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
 }
 
-/* Phone full-screen shell \u2014 clears Material dock. */
-[data-panel="market"].ecu-market-shell-expanded {
-  position: fixed !important;
-  left: 8px !important;
-  right: 8px !important;
-  top: 8px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
-  border-radius: 16px 16px 0 0 !important;
-  overflow: hidden !important;
-}
-[data-panel="market"].ecu-market-shell-expanded .MarketPanel {
-  height: 100%;
-  min-height: 0;
-}
 .MarketPanel-expand {
   flex: 0 0 auto;
   margin-left: auto;
 }
-`;
+.MarketPanel-filtersBtn {
+  flex: 0 0 auto;
+}
+.MarketPanel-filtersBtn.is-on,
+.MarketPanel-filtersBtn.is-active {
+  border-color: rgba(232, 201, 106, 0.55);
+  color: var(--mk-accent);
+  background: #1a1810;
+}
+
+/* Phone \u2014 larger tools + single-column focus priority. */
+.MarketPanel.is-phone .MarketPanel-btn,
+.MarketPanel.is-phone .MarketPanel-filtersBtn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-expand {
+  width: 40px;
+  height: 40px;
+}
+.MarketPanel.is-phone .MarketPanel-seg {
+  height: auto;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.MarketPanel.is-phone .MarketPanel-seg button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-togs {
+  width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.MarketPanel.is-phone .MarketPanel-tog {
+  min-height: 40px;
+  font-size: 14px;
+  padding: 6px 4px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+}
+@media (max-width: 900px) {
+  /* Catalog first; Bag/Stand is a collapsible strip; Focus only when selected. */
+  .MarketPanel.is-phone .MarketPanel-body {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    grid-template-rows: none;
+    overflow: hidden;
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-grid"] {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 160px;
+    border-bottom: 0;
+  }
+  .MarketPanel.is-phone .MarketPanel-you {
+    order: 2;
+    flex: 0 0 auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 0;
+    border-top: 1px solid var(--mk-line);
+  }
+  .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youBag,
+  .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youStand {
+    display: none;
+  }
+  .MarketPanel.is-phone .MarketPanel-you.is-open {
+    flex: 0 0 min(40vh, 300px);
+    max-height: min(40vh, 300px);
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-focus"] {
+    order: 3;
+    flex: 0 0 auto;
+    max-height: min(38vh, 280px);
+    border-bottom: 0;
+    border-top: 1px solid var(--mk-line);
+  }
+  .MarketPanel.is-phone
+    .MarketPanel-col[data-ecu-tour="market-focus"]:not([data-ecu-has-focus="1"]) {
+    display: none;
+  }
+}
+.MarketPanel-youToggle {
+  display: none;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex: 0 0 auto;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid var(--mk-line);
+  background: #121212;
+  color: #d8dde4;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.MarketPanel-youToggle-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-youToggle-chevron {
+  flex: 0 0 auto;
+  color: #6a7380;
+  font-size: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-pageDots {
+  flex-shrink: 0;
+  padding: 4px 8px 6px;
+}
+` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
   var marketPanelCssInjected = false;
   function ensureMarketPanelCss() {
     if (typeof document === "undefined") return;
@@ -84136,6 +87107,14 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/frames/MarketPanel.ts
   var CATALOG_REFRESH_MS = 45e3;
+  var MARKET_FACET_PAGES = [
+    { key: "all", label: "All" },
+    { key: "sale", label: "Selling" },
+    { key: "wanted", label: "Buying" },
+    { key: "giveaway", label: "Giveaways" },
+    { key: "trade", label: "Trades" }
+  ];
+  var MARKET_FACET_KEYS = MARKET_FACET_PAGES.map((p) => p.key);
   function bagNameSet(observing) {
     const out = /* @__PURE__ */ Object.create(null);
     const items = observing && observing.items;
@@ -84307,10 +87286,21 @@ ${ESTIMATE_HINT}`,
     ensureMarketPanelCss();
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
-    const preExpandSizeRef = React.useRef(null);
-    const [expanded, setExpanded] = React.useState(
-      () => detectViewportProfile() === "phone"
-    );
+    const bodyRef = React.useRef(null);
+    const phoneUi = detectViewportProfile() === "phone";
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
+    const [filtersOpen, setFiltersOpen] = React.useState(false);
+    const [youOpen, setYouOpen] = React.useState(false);
+    usePhoneShellExpand({
+      panelId: "market",
+      shellClass: "ecu-market-shell-expanded",
+      rootRef,
+      headRef,
+      expanded,
+      setExpanded,
+      onFrameSizeRestore: props.onFrameSizeRestore,
+      onRequestClose: props.onRequestClose
+    });
     const [query, setQuery] = React.useState("");
     const [facet, setFacet] = React.useState("all");
     const [groupSort, setGroupSort] = React.useState("dual");
@@ -84343,41 +87333,6 @@ ${ESTIMATE_HINT}`,
       () => getCachedBankSnapshot()
     );
     React.useEffect(() => subscribeMarketTravel(setTravel), []);
-    React.useEffect(() => {
-      const shell = findPanelShell(rootRef.current, "market");
-      if (!shell) return;
-      if (expanded) {
-        if (!preExpandSizeRef.current) {
-          preExpandSizeRef.current = {
-            w: Math.round(shell.offsetWidth),
-            h: Math.round(shell.offsetHeight)
-          };
-        }
-        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-        shell.classList.add("ecu-market-shell-expanded");
-        return () => {
-          shell.classList.remove("ecu-market-shell-expanded");
-          shell.removeAttribute("data-ecu-suspend-frame-resize");
-        };
-      }
-      shell.classList.remove("ecu-market-shell-expanded");
-      shell.removeAttribute("data-ecu-suspend-frame-resize");
-      const saved = preExpandSizeRef.current;
-      preExpandSizeRef.current = null;
-      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
-        window.requestAnimationFrame(() => {
-          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
-        });
-      }
-    }, [expanded, props.onFrameSizeRestore]);
-    React.useEffect(() => {
-      if (!expanded || detectViewportProfile() !== "phone") return;
-      const close = () => {
-        if (typeof props.onRequestClose === "function") props.onRequestClose();
-        else setExpanded(false);
-      };
-      return bindSwipeDownClose(headRef.current, close);
-    }, [expanded, props.onRequestClose]);
     React.useEffect(() => {
       return subscribeBankSnapshot((snap) => setBankSnap(snap));
     }, []);
@@ -84509,6 +87464,44 @@ ${ESTIMATE_HINT}`,
       setCanAfford(next.canAfford);
       setHaveStock(next.haveStock);
     };
+    const facetRef = React.useRef(facet);
+    facetRef.current = facet;
+    const nearRef = React.useRef(nearOnly);
+    nearRef.current = nearOnly;
+    const affordRef = React.useRef(canAfford);
+    affordRef.current = canAfford;
+    const haveRef = React.useRef(haveStock);
+    haveRef.current = haveStock;
+    const applyToggleSyncRef = React.useRef(applyToggleSync);
+    applyToggleSyncRef.current = applyToggleSync;
+    React.useEffect(() => {
+      if (!phoneUi) return;
+      const panelEl = rootRef.current;
+      if (!panelEl) return;
+      return installPeerPageGestures(panelEl, {
+        onPageSwipe: (dir) => {
+          const next = stepPeerPage(MARKET_FACET_KEYS, facetRef.current, dir);
+          if (!next || next === facetRef.current) return;
+          applyToggleSyncRef.current({
+            facet: next,
+            nearOnly: nearRef.current,
+            canAfford: affordRef.current,
+            haveStock: haveRef.current
+          });
+        },
+        allowStart: (target) => {
+          if (!(target instanceof Element)) return false;
+          if (target.closest("input, textarea, select, [contenteditable='true']")) {
+            return false;
+          }
+          if (target.closest(".MarketPanel-tools, .MarketPanel-head")) return false;
+          if (target.closest(".MarketPanel-seg, .MarketPanel-togs, .MarketPanel-filtersBtn")) {
+            return false;
+          }
+          return !!(target.closest(".MarketPanel-body") || target.closest(".ecu-peer-page-dots"));
+        }
+      });
+    }, [phoneUi, expanded]);
     const side = facet === "sale" ? "sale" : facet === "wanted" ? "buy" : facet === "giveaway" ? "giveaway" : facet === "trade" ? "trade" : "all";
     let rows = filterMarketListings(flat, {
       query,
@@ -85455,11 +88448,12 @@ ${ESTIMATE_HINT}`,
         "Pick a card in the market grid, a bag stack, or a stand slot."
       )
     ];
+    const filterActive = nearOnly || canAfford || haveStock || favOnly;
     return e(
       "div",
       {
         ref: rootRef,
-        className: "MarketPanel",
+        className: "MarketPanel" + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : "") + (filtersOpen ? " is-filters-open" : "") + (phoneUi && youOpen ? " is-you-open" : ""),
         "data-ecu-tour": "market-panel"
       },
       e(
@@ -85510,7 +88504,7 @@ ${ESTIMATE_HINT}`,
         e(QuerySearchField, {
           value: query,
           onChange: (next) => applyQuery(next),
-          placeholder: "Search \xB7 item: \xB7 merchant: \xB7 is:sell \xB7 OR\u2026",
+          placeholder: phoneUi ? "Search market\u2026" : "Search \xB7 item: \xB7 merchant: \xB7 is:sell \xB7 OR\u2026",
           suggestions: searchSug,
           trailingOps: [
             "item",
@@ -85529,28 +88523,37 @@ ${ESTIMATE_HINT}`,
           trailingAliases: { mer: "merchant" },
           onClear: () => setMerchantFilter(null)
         }),
-        e(
+        phoneUi ? e(
+          "button",
+          {
+            type: "button",
+            className: "MarketPanel-btn MarketPanel-filtersBtn" + (filtersOpen ? " is-on" : "") + (filterActive ? " is-active" : ""),
+            "aria-expanded": filtersOpen,
+            onClick: () => setFiltersOpen(!filtersOpen)
+          },
+          filtersOpen ? "Hide filters" : filterActive ? "Filters \u25CF" : "Filters"
+        ) : e(
           "div",
           { className: "MarketPanel-seg" },
-          ["all", "sale", "wanted", "giveaway", "trade"].map(
-            (f) => e(
+          MARKET_FACET_PAGES.map(
+            (p) => e(
               "button",
               {
                 type: "button",
-                key: f,
-                className: facet === f ? "is-on" : "",
+                key: p.key,
+                className: facet === p.key ? "is-on" : "",
                 onClick: () => applyToggleSync({
-                  facet: f,
+                  facet: p.key,
                   nearOnly,
                   canAfford,
                   haveStock
                 })
               },
-              f === "all" ? "All" : f === "sale" ? "Selling" : f === "wanted" ? "Buying" : f === "giveaway" ? "Giveaways" : "Trades"
+              p.label
             )
           )
         ),
-        e(
+        !phoneUi || filtersOpen ? e(
           "div",
           { className: "MarketPanel-togs" },
           e(
@@ -85608,17 +88611,48 @@ ${ESTIMATE_HINT}`,
             }),
             "Fav"
           )
-        )
+        ) : null
       ),
+      phoneUi ? e(PeerPageDots, {
+        pages: MARKET_FACET_PAGES,
+        activeKey: facet,
+        onSelect: (key) => applyToggleSync({
+          facet: key,
+          nearOnly,
+          canAfford,
+          haveStock
+        }),
+        ariaLabel: "Market facets",
+        className: "MarketPanel-pageDots"
+      }) : null,
       e(
         "div",
-        { className: "MarketPanel-body" },
+        { className: "MarketPanel-body", ref: bodyRef },
         e(
           "div",
           {
-            className: "MarketPanel-you",
+            className: "MarketPanel-you" + (phoneUi ? youOpen ? " is-open" : " is-collapsed" : ""),
             "data-ecu-tour": "market-you"
           },
+          phoneUi ? e(
+            "button",
+            {
+              type: "button",
+              className: "MarketPanel-youToggle",
+              "aria-expanded": youOpen ? "true" : "false",
+              onClick: () => setYouOpen(!youOpen)
+            },
+            e(
+              "span",
+              { className: "MarketPanel-youToggle-label" },
+              observing ? youOpen ? "Hide bag & stand" : "Bag & stand" + (bagStacks.length ? " \xB7 " + bagStacks.length + " stacks" : bagSynced ? " \xB7 empty" : " \xB7 syncing\u2026") : "Bag & stand \xB7 observe a character"
+            ),
+            e(
+              "span",
+              { className: "MarketPanel-youToggle-chevron", "aria-hidden": true },
+              youOpen ? "\u25B4" : "\u25BE"
+            )
+          ) : null,
           e(
             "div",
             { className: "MarketPanel-youBag" },
@@ -86926,8 +89960,8 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID13 = "ecu-bank-panel-css";
-  var CSS14 = `
+  var STYLE_ID15 = "ecu-bank-panel-css";
+  var CSS16 = `
 .BankPanel {
   --bk-line: #2a2a2a;
   --bk-muted: #8a8680;
@@ -87329,41 +90363,50 @@ ${ESTIMATE_HINT}`,
   margin-top: 2px;
 }
 
-/* Shell lift \u2014 same inset as chat expand (clears phone dock). */
-[data-panel="bank"].ecu-bank-shell-expanded {
-  position: fixed !important;
-  left: 10px !important;
-  right: 10px !important;
-  top: 10px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
+/* Phone \u2014 larger head / seg / search targets. */
+.BankPanel.is-phone .BankPanel-btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
 }
-[data-panel="bank"].ecu-bank-shell-expanded .BankPanel {
-  height: 100%;
-  min-height: 0;
+.BankPanel.is-phone .BankPanel-expand {
+  width: 40px;
+  height: 40px;
 }
-`;
+.BankPanel.is-phone .BankPanel-seg button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.BankPanel.is-phone .BankPanel-tools .ecu-qsearch,
+.BankPanel.is-phone .BankPanel-tools input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+}
+.BankPanel.is-phone .BankPanel-pageDots {
+  flex-shrink: 0;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+.BankPanel.is-phone .BankPanel-body {
+  touch-action: pan-y;
+}
+
+` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");
   var bankPanelCssInjected = false;
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID13)) return;
+      if (document.getElementById(STYLE_ID15)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID13);
+    let el = document.getElementById(STYLE_ID15);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID13;
+      el.id = STYLE_ID15;
       document.head.appendChild(el);
     }
-    el.textContent = CSS14;
+    el.textContent = CSS16;
     bankPanelCssInjected = true;
   }
 
@@ -87373,6 +90416,13 @@ ${ESTIMATE_HINT}`,
     { id: "quantity", label: "Quantity" },
     { id: "stack", label: "Stack" }
   ];
+  var BANK_VIEW_PAGES = [
+    { key: "all", label: "All" },
+    { key: "packs", label: "Packs" },
+    { key: "types", label: "Types" },
+    { key: "ready", label: "Ready" }
+  ];
+  var BANK_VIEW_KEYS = BANK_VIEW_PAGES.map((p) => p.key);
   var MISSING_Q = "#ff6b5a";
   function gItems() {
     const G = window.G;
@@ -87556,9 +90606,8 @@ ${ESTIMATE_HINT}`,
       "ready"
     );
     const [tick3, setTick] = React.useState(0);
-    const [expanded, setExpanded] = React.useState(
-      () => detectViewportProfile() === "phone"
-    );
+    const phoneUi = detectViewportProfile() === "phone";
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
     const [refreshSummary, setRefreshSummary] = React.useState(
       null
     );
@@ -87567,9 +90616,45 @@ ${ESTIMATE_HINT}`,
     );
     const rootRef = React.useRef(null);
     const headRef = React.useRef(null);
-    const preExpandSizeRef = React.useRef(null);
+    const bodyRef = React.useRef(null);
     const snapRef = React.useRef(null);
     snapRef.current = snap;
+    const viewRef = React.useRef(view);
+    viewRef.current = view;
+    const setViewRef = React.useRef(setView);
+    setViewRef.current = setView;
+    usePhoneShellExpand({
+      panelId: "bank",
+      shellClass: "ecu-bank-shell-expanded",
+      rootRef,
+      headRef,
+      expanded,
+      setExpanded,
+      onFrameSizeRestore: props.onFrameSizeRestore,
+      onRequestClose: props.onRequestClose
+    });
+    React.useEffect(() => {
+      if (detectViewportProfile() !== "phone") return;
+      const panelEl = rootRef.current;
+      if (!panelEl) return;
+      return installPeerPageGestures(panelEl, {
+        onPageSwipe: (dir) => {
+          const next = stepPeerPage(BANK_VIEW_KEYS, viewRef.current, dir);
+          if (next && next !== viewRef.current) {
+            setViewRef.current(next);
+          }
+        },
+        allowStart: (target) => {
+          if (!(target instanceof Element)) return false;
+          if (target.closest("input, textarea, select, [contenteditable='true']")) {
+            return false;
+          }
+          if (target.closest(".BankPanel-head, .BankPanel-tools")) return false;
+          if (target.closest(".BankPanel-seg")) return false;
+          return !!(target.closest(".BankPanel-body") || target.closest(".BankPanel-slots") || target.closest(".BankPanel-grid") || target.closest(".ecu-peer-page-dots"));
+        }
+      });
+    }, [expanded]);
     const refresh = React.useCallback(
       (opts) => {
         const force = !(opts && opts.force === false);
@@ -87620,41 +90705,6 @@ ${ESTIMATE_HINT}`,
         setView(next);
       });
     }, []);
-    React.useEffect(() => {
-      const shell = findPanelShell(rootRef.current, "bank");
-      if (!shell) return;
-      if (expanded) {
-        if (!preExpandSizeRef.current) {
-          preExpandSizeRef.current = {
-            w: Math.round(shell.offsetWidth),
-            h: Math.round(shell.offsetHeight)
-          };
-        }
-        shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-        shell.classList.add("ecu-bank-shell-expanded");
-        return () => {
-          shell.classList.remove("ecu-bank-shell-expanded");
-          shell.removeAttribute("data-ecu-suspend-frame-resize");
-        };
-      }
-      shell.classList.remove("ecu-bank-shell-expanded");
-      shell.removeAttribute("data-ecu-suspend-frame-resize");
-      const saved = preExpandSizeRef.current;
-      preExpandSizeRef.current = null;
-      if (saved && saved.w >= 80 && saved.h >= 80 && typeof props.onFrameSizeRestore === "function") {
-        window.requestAnimationFrame(() => {
-          props.onFrameSizeRestore({ w: saved.w, h: saved.h });
-        });
-      }
-    }, [expanded, props.onFrameSizeRestore]);
-    React.useEffect(() => {
-      if (!expanded || detectViewportProfile() !== "phone") return;
-      const close = () => {
-        if (typeof props.onRequestClose === "function") props.onRequestClose();
-        else setExpanded(false);
-      };
-      return bindSwipeDownClose(headRef.current, close);
-    }, [expanded, props.onRequestClose]);
     const allAgg = React.useMemo(() => {
       if (!snap) return [];
       return aggregateBankItems(flattenBankSlots(snap.packs));
@@ -88142,7 +91192,7 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
-        className: "BankPanel" + (expanded ? " is-expanded" : ""),
+        className: "BankPanel" + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : ""),
         "data-ecu-panel": "bank",
         "data-ecu-tour": "bank-panel",
         ref: rootRef
@@ -88300,7 +91350,7 @@ ${ESTIMATE_HINT}`,
             trailingOps: BANK_TRAILING_OPS
           })
         ),
-        e(
+        phoneUi ? null : e(
           "div",
           {
             className: "BankPanel-seg",
@@ -88308,41 +91358,17 @@ ${ESTIMATE_HINT}`,
             role: "group",
             "aria-label": "Bank view mode"
           },
-          e(
-            "button",
-            {
-              type: "button",
-              className: view === "all" ? "is-on" : "",
-              onClick: () => setView("all")
-            },
-            "All"
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              className: view === "packs" ? "is-on" : "",
-              onClick: () => setView("packs")
-            },
-            "Packs"
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              className: view === "types" ? "is-on" : "",
-              onClick: () => setView("types")
-            },
-            "Types"
-          ),
-          e(
-            "button",
-            {
-              type: "button",
-              className: view === "ready" ? "is-on" : "",
-              onClick: () => setView("ready")
-            },
-            "Ready"
+          BANK_VIEW_PAGES.map(
+            (p) => e(
+              "button",
+              {
+                type: "button",
+                key: p.key,
+                className: view === p.key ? "is-on" : "",
+                onClick: () => setView(p.key)
+              },
+              p.label
+            )
           )
         ),
         view === "all" || view === "types" ? e(
@@ -88368,11 +91394,19 @@ ${ESTIMATE_HINT}`,
           )
         ) : null
       ),
+      phoneUi ? e(PeerPageDots, {
+        pages: BANK_VIEW_PAGES,
+        activeKey: view,
+        onSelect: (key) => setView(key),
+        ariaLabel: "Bank views",
+        className: "BankPanel-pageDots"
+      }) : null,
       e(
         "div",
         {
           className: "BankPanel-body",
-          "data-ecu-tour": "bank-body"
+          "data-ecu-tour": "bank-body",
+          ref: bodyRef
         },
         body
       )
@@ -88683,9 +91717,10 @@ ${ESTIMATE_HINT}`,
   }
   function MailBannerBar(props) {
     const React = getReact();
-    const { snap, caps } = props;
+    const { snap, caps, compact } = props;
     const [now, setNow] = React.useState(() => Date.now());
     const [capsOpen, setCapsOpen] = React.useState(false);
+    const [chromeOpen, setChromeOpen] = React.useState(false);
     const undoActive = snap.undoEndsAt > 0 && snap.undoCount > 0;
     React.useEffect(() => {
       const id = window.setInterval(
@@ -88704,6 +91739,7 @@ ${ESTIMATE_HINT}`,
     const observeOn = !!caps.observeName;
     const showStatus = !!snap.deleteProgress || !!snap.refreshProgress || !!snap.status || undoActive;
     const progressBar = snap.deleteProgress || snap.refreshProgress;
+    const statusNeedsCard = !!progressBar || undoActive || snap.statusKind === "warn" || snap.statusKind === "err";
     const ownedNames = selfCharacterNames();
     const capView = buildMailboxCapsView({
       fills: countAttachmentsByRecipient(snap.mails, ownedNames),
@@ -88711,6 +91747,66 @@ ${ESTIMATE_HINT}`,
       preferName: caps.observeName,
       ownedNames
     });
+    const inboxBits = snap.mails.length + (snap.hasMore ? "+" : "") + " \xB7 unread " + unread2;
+    const stripLabel = (() => {
+      if (compact && showStatus && statusTitle) {
+        return statusTitle + " \xB7 " + inboxBits;
+      }
+      if (active) return activity.label + " \xB7 " + inboxBits;
+      if (observeOn) return observeLine + " \xB7 " + inboxBits;
+      return "Inbox " + inboxBits;
+    })();
+    const showCards = !compact || chromeOpen;
+    const statusCard = showStatus && (!compact || statusNeedsCard || chromeOpen) ? e(
+      "div",
+      {
+        className: "comm-mail__card comm-mail__card--status" + (progressBar ? " is-warn is-progress" : undoActive ? " is-warn" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
+      },
+      e(
+        "div",
+        { className: "comm-mail__card-body" },
+        e("div", { className: "comm-mail__card-kicker" }, "Status"),
+        e(
+          "div",
+          { className: "comm-mail__card-title-row" },
+          e("div", { className: "comm-mail__card-title" }, statusTitle),
+          undoActive && !progressBar ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__btn comm-mail__btn--undo",
+              title: "Restore deleted mail (U)",
+              onClick: (ev) => {
+                ev.stopPropagation();
+                undoDeleteMail();
+              }
+            },
+            undoSec > 0 ? "Undo " + undoSec + "s" : "Undo"
+          ) : null
+        ),
+        progressBar ? e(
+          "div",
+          {
+            className: "comm-mail__delete-track",
+            role: "progressbar",
+            "aria-valuemin": 0,
+            "aria-valuemax": progressBar.total,
+            "aria-valuenow": progressBar.done
+          },
+          e("div", {
+            className: "comm-mail__delete-fill",
+            style: {
+              width: progressBar.total > 0 ? Math.min(
+                100,
+                Math.round(
+                  100 * progressBar.done / progressBar.total
+                )
+              ) + "%" : "0%"
+            }
+          })
+        ) : null
+      )
+    ) : null;
     return e(
       React.Fragment,
       null,
@@ -88720,11 +91816,53 @@ ${ESTIMATE_HINT}`,
           className: "comm-mail__banner is-new",
           onClick: () => clearNewMailBanner()
         },
-        snap.newMailCount + " new \xB7 click to dismiss \xB7 attachments pinned at top"
+        snap.newMailCount + " new \xB7 tap to dismiss \xB7 attachments pinned at top"
       ) : null,
-      e(
+      compact ? e(
         "div",
-        { className: "comm-mail__chrome" },
+        {
+          className: "comm-mail__chrome-strip" + (active ? " is-on is-" + activity.mode : "") + (capView.pressure ? " is-cap-" + capView.pressure : "")
+        },
+        e("span", {
+          className: "comm-mail__pulse",
+          "aria-hidden": "true"
+        }),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__chrome-strip-main",
+            title: "Show mail status",
+            "aria-expanded": chromeOpen ? "true" : "false",
+            onClick: () => setChromeOpen(!chromeOpen)
+          },
+          e("span", { className: "comm-mail__chrome-strip-text" }, stripLabel),
+          e(
+            "span",
+            { className: "comm-mail__chrome-strip-chevron", "aria-hidden": true },
+            chromeOpen ? "\u25B4" : "\u25BE"
+          )
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__chrome-strip-caps" + (capView.pressure ? " is-" + capView.pressure : ""),
+            title: capView.title,
+            onClick: () => setCapsOpen(true)
+          },
+          capView.primary ? formatCapFraction(
+            capView.primary.count,
+            MAIL_ATTACH_CAP,
+            capView.incomplete
+          ) : "Caps"
+        )
+      ) : null,
+      showCards ? e(
+        "div",
+        {
+          className: "comm-mail__chrome" + (compact ? " is-phone-expand" : "")
+        },
         e(
           "div",
           {
@@ -88769,7 +91907,7 @@ ${ESTIMATE_HINT}`,
             e(
               "div",
               { className: "comm-mail__card-title" },
-              "cache " + snap.mails.length + (snap.hasMore ? "+" : "") + " \xB7 unread " + unread2
+              "cache " + inboxBits
             ),
             e(
               "div",
@@ -88786,57 +91924,8 @@ ${ESTIMATE_HINT}`,
             cueMailItemsRecipient(name);
           }
         ),
-        showStatus ? e(
-          "div",
-          {
-            className: "comm-mail__card comm-mail__card--status" + (progressBar ? " is-warn is-progress" : undoActive ? " is-warn" : snap.statusKind === "warn" ? " is-warn" : snap.statusKind === "err" ? " is-err" : " is-info")
-          },
-          e(
-            "div",
-            { className: "comm-mail__card-body" },
-            e("div", { className: "comm-mail__card-kicker" }, "Status"),
-            e(
-              "div",
-              { className: "comm-mail__card-title-row" },
-              e("div", { className: "comm-mail__card-title" }, statusTitle),
-              undoActive && !progressBar ? e(
-                "button",
-                {
-                  type: "button",
-                  className: "comm-mail__btn comm-mail__btn--undo",
-                  title: "Restore deleted mail (U)",
-                  onClick: (ev) => {
-                    ev.stopPropagation();
-                    undoDeleteMail();
-                  }
-                },
-                undoSec > 0 ? "Undo " + undoSec + "s" : "Undo"
-              ) : null
-            ),
-            progressBar ? e(
-              "div",
-              {
-                className: "comm-mail__delete-track",
-                role: "progressbar",
-                "aria-valuemin": 0,
-                "aria-valuemax": progressBar.total,
-                "aria-valuenow": progressBar.done
-              },
-              e("div", {
-                className: "comm-mail__delete-fill",
-                style: {
-                  width: progressBar.total > 0 ? Math.min(
-                    100,
-                    Math.round(
-                      100 * progressBar.done / progressBar.total
-                    )
-                  ) + "%" : "0%"
-                }
-              })
-            ) : null
-          )
-        ) : null
-      ),
+        statusCard
+      ) : compact && statusCard ? e("div", { className: "comm-mail__chrome is-status-only" }, statusCard) : null,
       capsOpen ? e(MailCapsModal, {
         view: capView,
         onClose: () => setCapsOpen(false),
@@ -90242,12 +93331,15 @@ ${ESTIMATE_HINT}`,
   }
   function MailSearchBar(props) {
     const React = getReact();
-    const { query, setQuery, pill, setPillPersist } = props;
+    const { query, setQuery, pill, setPillPersist, compact } = props;
     const [open, setOpen] = React.useState(false);
+    const [filtersOpen, setFiltersOpen] = React.useState(false);
     const [form, setForm] = React.useState(
       () => queryToMailSearchForm(query, pill)
     );
     const wrapRef = React.useRef(null);
+    const showPills = !compact || filtersOpen;
+    const filtersActive = pill !== "all";
     React.useEffect(() => {
       if (!open) return;
       setForm(queryToMailSearchForm(query, pill));
@@ -90314,7 +93406,7 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
-        className: "comm-mail__search-wrap" + (open ? " is-open" : ""),
+        className: "comm-mail__search-wrap" + (open ? " is-open" : "") + (compact ? " is-compact" : ""),
         ref: wrapRef
       },
       e(
@@ -90359,9 +93451,21 @@ ${ESTIMATE_HINT}`,
             className: "comm-mail__ico-tune",
             "aria-hidden": "true"
           })
-        )
+        ),
+        compact ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__search-filters-btn" + (filtersOpen || filtersActive ? " is-on" : ""),
+            title: "Scope filters",
+            "aria-label": "Scope filters",
+            "aria-expanded": filtersOpen ? "true" : "false",
+            onClick: () => setFiltersOpen(!filtersOpen)
+          },
+          filtersActive ? "\u25CF" : "Filters"
+        ) : null
       ),
-      e("div", { className: "comm-mail__pills" }, ...scopePills),
+      showPills ? e("div", { className: "comm-mail__pills" }, ...scopePills) : null,
       open ? e(
         "div",
         {
@@ -90515,6 +93619,7 @@ ${ESTIMATE_HINT}`,
 
   // src/ui/frames/mail/MailToolbar.ts
   function MailToolbar(props) {
+    const React = getReact();
     const {
       snap,
       pill,
@@ -90531,24 +93636,175 @@ ${ESTIMATE_HINT}`,
       setCollapseRepeats,
       browseMode,
       setBrowseMode,
-      selectedItemMailIds
+      selectedItemMailIds,
+      compact
     } = props;
     const itemsMode = browseMode === "items";
     const itemsSelect = itemsMode ? mailIdsForItemsSelectAll(filtered, selectedItemMailIds) : null;
     const selectTargetIds = itemsSelect ? itemsSelect.ids : filtered.map((m) => m.id);
     const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
+    const hasSelection = checkedIds.length > 0;
+    const [actionsOpen, setActionsOpen] = React.useState(false);
+    const showBulk = !compact || actionsOpen || hasSelection;
+    const bulkButtons = [];
+    if (browseMode === "messages" && !compact) {
+      bulkButtons.push(
+        e(
+          "button",
+          {
+            key: "stack",
+            type: "button",
+            className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
+            title: "Stack identical sends (same from/to + subject/body, or same item)",
+            onClick: () => setCollapseRepeats(!collapseRepeats)
+          },
+          "Stack"
+        )
+      );
+    }
+    if (pill === "unread") {
+      bulkButtons.push(
+        e(
+          "button",
+          {
+            key: "mark-all",
+            type: "button",
+            className: "comm-mail__btn",
+            onClick: () => {
+              void markAllUnreadRead();
+            }
+          },
+          "Mark all read"
+        )
+      );
+    }
+    if (hasSelection) {
+      bulkButtons.push(
+        e(
+          "button",
+          {
+            key: "clear",
+            type: "button",
+            className: "comm-mail__btn",
+            title: "Clear every checked mail",
+            onClick: () => setSelectedIds({})
+          },
+          "Clear selection"
+        ),
+        e(
+          "button",
+          {
+            key: "delete",
+            type: "button",
+            className: "comm-mail__btn",
+            onClick: () => {
+              void doDelete(checkedIds);
+            }
+          },
+          "Delete " + checkedIds.length
+        )
+      );
+    } else if (selectTargetIds.length) {
+      bulkButtons.push(
+        e(
+          "button",
+          {
+            key: "select",
+            type: "button",
+            className: "comm-mail__btn",
+            title: selectHasStack ? "Select mails for the highlighted item stack" : itemsMode ? "Select all untaken attachments in the current filter" : "Select all messages in the current search / filter",
+            onClick: () => {
+              const next = {};
+              for (let i = 0; i < selectTargetIds.length; i++) {
+                next[selectTargetIds[i]] = true;
+              }
+              setSelectedIds(next);
+            }
+          },
+          selectHasStack ? "Select stack " + selectTargetIds.length : "Select all " + selectTargetIds.length
+        )
+      );
+    }
+    if (takeableCheckedIds.length) {
+      bulkButtons.push(
+        e(
+          "button",
+          {
+            key: "take",
+            type: "button",
+            className: "comm-mail__btn comm-mail__btn--gold",
+            disabled: !canTake || snap.commandBusy,
+            onClick: () => {
+              takeMailCommand(takeableCheckedIds);
+              setSelectedIds({});
+            }
+          },
+          snap.commandBusy ? "Working\u2026" : "Take " + takeableCheckedIds.length
+        )
+      );
+    }
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "mark-read",
+          type: "button",
+          className: "comm-mail__btn",
+          onClick: () => {
+            const ids = [];
+            for (let i = 0; i < filtered.length; i++) {
+              ids.push(filtered[i].id);
+            }
+            void markVisibleRead(ids);
+          }
+        },
+        "Mark read"
+      ),
+      e(
+        "button",
+        {
+          key: "refresh",
+          type: "button",
+          className: "comm-mail__btn",
+          onClick: () => {
+            void requestMailCacheRefresh();
+          },
+          disabled: !!snap.refreshProgress,
+          title: snap.refreshProgress ? "Cache refresh in progress" : "Re-verify the whole warmed cache without wiping it"
+        },
+        "Refresh"
+      )
+    );
+    if (compact && browseMode === "messages") {
+      bulkButtons.unshift(
+        e(
+          "button",
+          {
+            key: "stack",
+            type: "button",
+            className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
+            title: "Stack identical sends (same from/to + subject/body, or same item)",
+            onClick: () => setCollapseRepeats(!collapseRepeats)
+          },
+          "Stack"
+        )
+      );
+    }
     return e(
       "div",
-      { className: "comm-mail__toolbar" },
+      {
+        className: "comm-mail__toolbar" + (compact ? " is-compact" : "")
+      },
       e(MailSearchBar, {
         query,
         setQuery,
         pill,
-        setPillPersist
+        setPillPersist,
+        compact
       }),
       e(
         "div",
-        { className: "comm-mail__toolbar-actions" },
+        { className: "comm-mail__toolbar-primary" },
         e(
           "div",
           {
@@ -90563,7 +93819,7 @@ ${ESTIMATE_HINT}`,
               className: "comm-mail__items-seg-btn" + (browseMode === "messages" ? " is-on" : ""),
               onClick: () => setBrowseMode("messages")
             },
-            "Messages"
+            compact ? "Msgs" : "Messages"
           ),
           e(
             "button",
@@ -90575,27 +93831,6 @@ ${ESTIMATE_HINT}`,
             "Items"
           )
         ),
-        browseMode === "messages" ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
-            title: "Stack identical sends (same from/to + subject/body, or same item)",
-            onClick: () => setCollapseRepeats(!collapseRepeats)
-          },
-          "Stack"
-        ) : null,
-        pill === "unread" ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            onClick: () => {
-              void markAllUnreadRead();
-            }
-          },
-          "Mark all read"
-        ) : null,
         e(
           "button",
           {
@@ -90605,84 +93840,23 @@ ${ESTIMATE_HINT}`,
           },
           "Compose"
         ),
-        checkedIds.length ? e(
+        compact ? e(
           "button",
           {
             type: "button",
-            className: "comm-mail__btn",
-            title: "Clear every checked mail",
-            onClick: () => setSelectedIds({})
-          },
-          "Clear selection"
-        ) : selectTargetIds.length ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            title: selectHasStack ? "Select mails for the highlighted item stack" : itemsMode ? "Select all untaken attachments in the current filter" : "Select all messages in the current search / filter",
+            className: "comm-mail__btn comm-mail__more-btn" + (showBulk ? " is-on" : ""),
+            "aria-expanded": showBulk ? "true" : "false",
+            title: "Stack, select, mark read, refresh",
             onClick: () => {
-              const next = {};
-              for (let i = 0; i < selectTargetIds.length; i++) {
-                next[selectTargetIds[i]] = true;
-              }
-              setSelectedIds(next);
+              if (hasSelection) return;
+              setActionsOpen(!actionsOpen);
             }
           },
-          selectHasStack ? "Select stack " + selectTargetIds.length : "Select all " + selectTargetIds.length
+          hasSelection ? "Actions" : actionsOpen ? "Less" : "More"
         ) : null,
-        checkedIds.length ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            onClick: () => {
-              void doDelete(checkedIds);
-            }
-          },
-          "Delete " + checkedIds.length
-        ) : null,
-        takeableCheckedIds.length ? e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn comm-mail__btn--gold",
-            disabled: !canTake || snap.commandBusy,
-            onClick: () => {
-              takeMailCommand(takeableCheckedIds);
-              setSelectedIds({});
-            }
-          },
-          snap.commandBusy ? "Working\u2026" : "Take " + takeableCheckedIds.length
-        ) : null,
-        e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            onClick: () => {
-              const ids = [];
-              for (let i = 0; i < filtered.length; i++) {
-                ids.push(filtered[i].id);
-              }
-              void markVisibleRead(ids);
-            }
-          },
-          "Mark read"
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "comm-mail__btn",
-            onClick: () => {
-              void requestMailCacheRefresh();
-            },
-            disabled: !!snap.refreshProgress,
-            title: snap.refreshProgress ? "Cache refresh in progress" : "Re-verify the whole warmed cache without wiping it"
-          },
-          "Refresh"
-        )
-      )
+        !compact ? bulkButtons : null
+      ),
+      compact && showBulk ? e("div", { className: "comm-mail__toolbar-bulk" }, ...bulkButtons) : null
     );
   }
 
@@ -90716,11 +93890,26 @@ ${ESTIMATE_HINT}`,
     }, []);
     return obs;
   }
-  function MailPanel() {
+  function MailPanel(props = {}) {
     const React = getReact();
     ensureMailCss();
     const snap = useMailSnap();
     const mailObs = useMailObservingSnap();
+    const phoneUi = detectViewportProfile() === "phone";
+    const [expanded, setExpanded] = React.useState(() => phoneUi);
+    const rootRef = React.useRef(null);
+    const headRef = React.useRef(null);
+    const bodyRef = React.useRef(null);
+    usePhoneShellExpand({
+      panelId: "mail",
+      shellClass: "ecu-mail-shell-expanded",
+      rootRef,
+      headRef,
+      expanded,
+      setExpanded,
+      onFrameSizeRestore: props.onFrameSizeRestore,
+      onRequestClose: props.onRequestClose
+    });
     const [pill, setPill] = React.useState(() => {
       try {
         const raw = loadSettings().mailPill;
@@ -90877,6 +94066,39 @@ ${ESTIMATE_HINT}`,
     }
     const isReading = snap.view.kind === "read";
     const isCompose = snap.view.kind === "compose";
+    const itemsModeEarly = browseMode === "items";
+    const drillOpen = isReading || isCompose || !!(itemsModeEarly && selectedItemKey);
+    const goBackToList = () => {
+      if (isCompose || isReading) {
+        setMailView({ kind: "list" });
+        return;
+      }
+      if (itemsModeEarly && selectedItemKey) {
+        setSelectedItemKey(null);
+        setSelectedItemMailIds(null);
+        setSelectedIds({});
+      }
+    };
+    const drillOpenRef = React.useRef(drillOpen);
+    drillOpenRef.current = drillOpen;
+    const goBackRef = React.useRef(goBackToList);
+    goBackRef.current = goBackToList;
+    React.useEffect(() => {
+      if (wide) return;
+      const bodyEl = bodyRef.current;
+      if (!bodyEl) return;
+      return installDrillBackSwipe(bodyEl, {
+        isActive: () => drillOpenRef.current,
+        onBack: () => goBackRef.current(),
+        allowStart: (target) => {
+          if (!(target instanceof Element)) return false;
+          if (target.closest("input, textarea, select, [contenteditable='true']")) {
+            return false;
+          }
+          return !!target.closest(".comm-mail__pane, .comm-mail__body");
+        }
+      });
+    }, [wide, expanded]);
     const checkedIds = [];
     for (let i = 0; i < filtered.length; i++) {
       if (selectedIds[filtered[i].id]) checkedIds.push(filtered[i].id);
@@ -90914,7 +94136,7 @@ ${ESTIMATE_HINT}`,
       }
       return rebuilt[0] || null;
     })();
-    const className = "comm-mail" + (wide ? "" : " is-narrow") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "") + (itemsMode ? " is-items" : "");
+    const className = "comm-mail" + (wide ? "" : " is-narrow") + (phoneUi ? " is-phone" : "") + (expanded ? " is-expanded" : "") + (isReading ? " is-reading" : "") + (isCompose ? " is-compose" : "") + (itemsMode ? " is-items" : "");
     const toggleCheck = (id, on) => {
       setSelectedIds((prev) => {
         const next = { ...prev };
@@ -90980,7 +94202,10 @@ ${ESTIMATE_HINT}`,
     return e(
       "div",
       {
+        ref: rootRef,
         className,
+        "data-ecu-panel": "mail",
+        "data-ecu-tour": "mail-panel",
         tabIndex: 0,
         onKeyDown: (ev) => {
           const tag = ev.target && ev.target.tagName || "";
@@ -91028,6 +94253,38 @@ ${ESTIMATE_HINT}`,
           }
         }
       },
+      e(
+        "div",
+        { className: "comm-mail__head", ref: headRef },
+        !wide && drillOpen ? e(
+          "button",
+          {
+            type: "button",
+            className: "comm-mail__back",
+            onClick: goBackToList,
+            "aria-label": "Back to list"
+          },
+          "\u2190 Back"
+        ) : null,
+        e("span", { className: "comm-mail__title" }, "Mail"),
+        phoneUi && !drillOpen ? e(
+          "span",
+          { className: "comm-mail__headHint" },
+          "swipe title to close"
+        ) : phoneUi && drillOpen ? e(
+          "span",
+          { className: "comm-mail__headHint" },
+          "swipe right for list"
+        ) : null,
+        e("span", { className: "comm-mail__headGrow" }),
+        e(PanelExpandButton, {
+          expanded,
+          onToggle: () => setExpanded(!expanded),
+          expandTitle: "Expand mail",
+          restoreTitle: "Restore mail size",
+          className: "comm-mail__expand"
+        })
+      ),
       e(MailToolbar, {
         snap,
         pill,
@@ -91044,12 +94301,13 @@ ${ESTIMATE_HINT}`,
         setCollapseRepeats: setCollapsePersist,
         browseMode,
         setBrowseMode: setBrowseModePersist,
-        selectedItemMailIds
+        selectedItemMailIds,
+        compact: phoneUi
       }),
-      e(MailBannerBar, { snap, caps }),
+      e(MailBannerBar, { snap, caps, compact: phoneUi }),
       e(
         "div",
-        { className: "comm-mail__body" },
+        { className: "comm-mail__body", ref: bodyRef },
         itemsMode ? e(MailItemsPane, {
           snap,
           filtered,
@@ -91171,9 +94429,11 @@ ${ESTIMATE_HINT}`,
           onReopenWindow: deps.onReopenWindow,
           onClose,
           onShow: isClosablePanel ? () => deps.setVisible(id, true) : void 0,
-          // Match meters / bag: × sits in the hover arrange chrome strip.
-          closePlacement: hasChromeClose ? "above" : void 0,
-          closeOnHoverOnly: hasChromeClose ? true : void 0,
+          // Desktop: × lives in the hover arrange strip. Phone has no hover and
+          // hides locked arrange chrome — keep a corner × always tappable so
+          // paperdoll / bag / tips can still dismiss.
+          closePlacement: hasChromeClose ? deps.viewportProfile === "phone" ? "corner" : "above" : void 0,
+          closeOnHoverOnly: hasChromeClose && deps.viewportProfile !== "phone" ? true : void 0,
           windowNumber: deps.windowNumberById ? deps.windowNumberById[id] : void 0,
           showWindowIds: deps.showWindowIds,
           onWindowScale: deps.onWindowScale ? (scale) => deps.onWindowScale(id, scale) : void 0,
@@ -91428,7 +94688,9 @@ ${ESTIMATE_HINT}`,
         "command",
         e(CommandPanel, {
           seedDraft: deps.commandSeed,
-          openSeq: deps.commandOpenSeq
+          openSeq: deps.commandOpenSeq,
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("command", size) : void 0,
+          onRequestClose: () => deps.setVisible("command", false)
         }),
         {
           style: COMMAND_PANEL_STYLE,
@@ -91450,23 +94712,36 @@ ${ESTIMATE_HINT}`,
           hiddenBodyStyle: CHAT_PANEL_STYLE
         }
       ),
-      panel("mail", e(MailPanel, null), {
-        style: MAIL_PANEL_STYLE,
-        hiddenBodyStyle: MAIL_PANEL_STYLE
-      }),
-      deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel("bag", e(BagPanel, {
-        layoutEdit: deps.layoutEdit,
-        tradeRevision: nearbyBuyOrdersRevision(
-          snap.entities,
-          snap.observing
-        )
-      }), {
-        style: deps.layoutEdit ? BAG_PANEL_STYLE : void 0,
-        hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
-          display: "flex",
-          alignItems: "flex-start"
-        })
-      }) : null,
+      panel(
+        "mail",
+        e(MailPanel, {
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("mail", size) : void 0,
+          onRequestClose: () => deps.setVisible("mail", false)
+        }),
+        {
+          style: MAIL_PANEL_STYLE,
+          hiddenBodyStyle: MAIL_PANEL_STYLE
+        }
+      ),
+      deps.bagOpen || deps.bagRefreshing || deps.layoutEdit ? panel(
+        "bag",
+        e(BagPanel, {
+          layoutEdit: deps.layoutEdit,
+          tradeRevision: nearbyBuyOrdersRevision(
+            snap.entities,
+            snap.observing
+          ),
+          onFrameSizeRestore: deps.onResizeFrame ? (size) => deps.onResizeFrame("bag", size) : void 0,
+          onRequestClose: () => deps.setVisible("bag", false)
+        }),
+        {
+          style: deps.layoutEdit ? BAG_PANEL_STYLE : void 0,
+          hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
+            display: "flex",
+            alignItems: "flex-start"
+          })
+        }
+      ) : null,
       framePlayer || deps.layoutEdit ? panel(
         "playerFrame",
         e(PlayerFrame, {
@@ -92315,12 +95590,141 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/host/nameplateStyle.ts
+  var STOCK_NAME_BORDER = 7433580;
+  var STOCK_NAME_FILL = 2105119;
+  function softPlateFill(stockColor) {
+    const c = stockColor >>> 0;
+    if (c === STOCK_NAME_BORDER) return { color: 1447964, alpha: 0.42 };
+    if (c === STOCK_NAME_FILL) return { color: 460810, alpha: 0.72 };
+    return null;
+  }
+  function isNameBandShape(y, height) {
+    if (!(height > 0) || !(height <= 10)) return false;
+    return y >= 0 && y < 8;
+  }
+  function softTextStylePatch() {
+    return {
+      stroke: "#000000",
+      strokeThickness: 4,
+      dropShadow: false
+    };
+  }
+  function getGraphicsData(gfx) {
+    if (!gfx) return null;
+    if (gfx.graphicsData && gfx.graphicsData.length) return gfx.graphicsData;
+    const geo = gfx.geometry;
+    if (geo && geo.graphicsData && geo.graphicsData.length) {
+      return geo.graphicsData;
+    }
+    return null;
+  }
+  function readFillColor(d) {
+    if (typeof d.fillColor === "number") return d.fillColor >>> 0;
+    const f = d.fill;
+    if (f && typeof f === "object" && typeof f.color === "number") {
+      return f.color >>> 0;
+    }
+    return null;
+  }
+  function writeFill(d, soft) {
+    if (typeof d.fillColor === "number") {
+      d.fillColor = soft.color;
+      d.fillAlpha = soft.alpha;
+    }
+    const f = d.fill;
+    if (f && typeof f === "object") {
+      f.color = soft.color;
+      f.alpha = soft.alpha;
+    }
+  }
+  function softenNameBandGraphics(gfx) {
+    const data = getGraphicsData(gfx);
+    if (!data) return 0;
+    let changed = 0;
+    for (let i = 0; i < data.length; i++) {
+      const d = data[i];
+      const shape = d.shape;
+      if (!shape) continue;
+      const y = typeof shape.y === "number" ? shape.y : 0;
+      const h = typeof shape.height === "number" ? shape.height : 0;
+      if (!isNameBandShape(y, h)) continue;
+      const fill = readFillColor(d);
+      if (fill == null) continue;
+      const soft = softPlateFill(fill);
+      if (!soft) continue;
+      writeFill(d, soft);
+      changed++;
+    }
+    if (changed) {
+      if (typeof gfx.dirty === "number") gfx.dirty++;
+      if (typeof gfx.clearDirty === "number") gfx.clearDirty++;
+      if (typeof gfx._invalidate === "function") {
+        try {
+          gfx._invalidate();
+        } catch (e2) {
+        }
+      }
+    }
+    return changed;
+  }
+  function applySoftTextStyle(node) {
+    const style = node.style;
+    if (!style || typeof style !== "object") return false;
+    if (style.__ecuSoft) return false;
+    const patch = softTextStylePatch();
+    style.stroke = patch.stroke;
+    style.strokeThickness = patch.strokeThickness;
+    style.dropShadow = patch.dropShadow;
+    style.dropShadowColor = patch.dropShadowColor;
+    style.dropShadowDistance = patch.dropShadowDistance;
+    style.dropShadowBlur = patch.dropShadowBlur;
+    style.dropShadowAlpha = patch.dropShadowAlpha;
+    style.dropShadowAngle = patch.dropShadowAngle;
+    style.__ecuSoft = true;
+    if (typeof node.updateText === "function") {
+      try {
+        node.updateText();
+      } catch (e2) {
+        node.dirty = true;
+      }
+    } else {
+      node.dirty = true;
+    }
+    return true;
+  }
+  function looksLikeText(node) {
+    return typeof node.text === "string" && node.style != null || typeof node.updateText === "function" || typeof node.resolution === "number";
+  }
+  function looksLikeGraphics(node) {
+    if (!node || typeof node !== "object") return false;
+    const n = node;
+    return !!(n.graphicsData && n.graphicsData.length || n.geometry && n.geometry.graphicsData && n.geometry.graphicsData.length);
+  }
+  function beautifyNameTag(root) {
+    if (!root || root.__ecuNameplateStyled) return;
+    root.__ecuNameplateStyled = true;
+    const visit = (node) => {
+      if (!node) return;
+      if (looksLikeGraphics(node)) softenNameBandGraphics(node);
+      if (looksLikeText(node)) applySoftTextStyle(node);
+      const kids = node.children;
+      if (!kids || !kids.length) return;
+      for (let i = 0; i < kids.length; i++) visit(kids[i]);
+    };
+    visit(root);
+  }
+
   // src/host/nameplateSharpness.ts
-  function nearestMode() {
+  function scaleModes() {
     const PIXI = window.PIXI;
-    if (!PIXI || !PIXI.SCALE_MODES) return null;
-    const n = PIXI.SCALE_MODES.NEAREST;
-    return typeof n === "number" ? n : null;
+    if (!PIXI || !PIXI.SCALE_MODES) return { nearest: null, linear: null };
+    const nearest = PIXI.SCALE_MODES.NEAREST;
+    const linear = PIXI.SCALE_MODES.LINEAR;
+    return {
+      nearest: typeof nearest === "number" ? nearest : null,
+      linear: typeof linear === "number" ? linear : null
+    };
   }
   function looksLikePixiText(node) {
     return typeof node.resolution === "number" || typeof node.text === "string" && node.style != null || typeof node.updateText === "function";
@@ -92363,8 +95767,9 @@ ${ESTIMATE_HINT}`,
   }
   function nameplateScreenScale(fov) {
     const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-    if (!(f > 1)) return 1;
-    return Math.min(3, f);
+    if (f === 1) return 1;
+    if (f > 1) return Math.min(3, f);
+    return Math.max(1 / 3, f);
   }
   function nameplateAttachPoint(bounds) {
     return {
@@ -92431,7 +95836,7 @@ ${ESTIMATE_HINT}`,
     setNodePivot(root, 0, 0);
     root.x = stockX;
     root.y = stockY;
-    if (!(screen > 1)) return true;
+    if (screen === 1) return true;
     const bounds = readLocalBounds(root);
     if (!bounds) {
       return false;
@@ -92448,18 +95853,27 @@ ${ESTIMATE_HINT}`,
     if (!root) return;
     const appliedFov2 = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
     const screen = nameplateScreenScale(appliedFov2);
-    const nearest = nearestMode();
+    const modes = scaleModes();
     const res = nameplateTextResolution(appliedFov2);
-    if (root.__ecuNameplateFov !== appliedFov2 || screen > 1) {
+    if (root.__ecuNameplateFov !== appliedFov2 || screen !== 1) {
       const ok = applyNameplateScreenScale(root, screen);
       if (ok) root.__ecuNameplateFov = appliedFov2;
     }
     const visit = (node) => {
       if (!node) return;
-      if (typeof node.roundPixels !== "undefined") node.roundPixels = true;
+      const isText = looksLikePixiText(node);
+      if (typeof node.roundPixels !== "undefined") {
+        node.roundPixels = !isText;
+      }
       const bt = node.texture && node.texture.baseTexture;
-      if (bt && nearest != null) bt.scaleMode = nearest;
-      if (looksLikePixiText(node)) {
+      if (bt) {
+        if (isText) {
+          if (modes.linear != null) bt.scaleMode = modes.linear;
+        } else if (modes.nearest != null) {
+          bt.scaleMode = modes.nearest;
+        }
+      }
+      if (isText) {
         if (typeof node.resolution === "number" && node.resolution !== res) {
           node.resolution = res;
           if (typeof node.updateText === "function") {
@@ -92480,13 +95894,14 @@ ${ESTIMATE_HINT}`,
           }
         }
         const bt2 = node.texture && node.texture.baseTexture;
-        if (bt2 && nearest != null) bt2.scaleMode = nearest;
+        if (bt2 && modes.linear != null) bt2.scaleMode = modes.linear;
       }
       const kids = node.children;
       if (!kids || !kids.length) return;
       for (let i = 0; i < kids.length; i++) visit(kids[i]);
     };
     visit(root);
+    beautifyNameTag(root);
   }
   function bustNameTagCaches() {
     const bump = (ent) => {
@@ -92502,6 +95917,7 @@ ${ESTIMATE_HINT}`,
         ent.name_tag.__ecuNameplateFov = void 0;
         ent.name_tag.__ecuNameplateStockX = void 0;
         ent.name_tag.__ecuNameplateStockY = void 0;
+        ent.name_tag.__ecuNameplateStyled = void 0;
       }
     };
     const w = window;
