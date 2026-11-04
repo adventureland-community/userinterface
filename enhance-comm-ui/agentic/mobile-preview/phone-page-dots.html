@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Peer page pager — labeled</title>
+<style>
+html, body {
+  margin: 0; padding: 24px 12px 40px; background: #0e1014; height: auto;
+  display: flex; justify-content: center; align-items: flex-start; gap: 24px;
+  flex-wrap: wrap; font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #eee;
+  box-sizing: border-box;
+}
+.col { display: flex; flex-direction: column; gap: 8px; align-items: center; width: 390px; }
+.lbl { font-size: 12px; color: #8a93a0; letter-spacing: .04em; text-transform: uppercase; }
+.card {
+  width: 100%; background: #12161c; border: 1px solid #2a2a2a; border-radius: 12px;
+  padding: 12px 0 8px; box-sizing: border-box;
+}
+.title { padding: 0 12px 8px; font-size: 16px; color: #ffe08a; font-weight: 600; }
+/* BEFORE */
+.before-dots {
+  display: flex; justify-content: center; gap: 8px; padding: 10px 12px;
+}
+.before-dots span {
+  width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.35);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.before-dots span.on { background: #9dd4ec; transform: scale(1.25); }
+.guess { font-size: 12px; color: #e88; padding: 0 12px 8px; text-align: center; }
+/* AFTER — mirrors peerPageDotsCss */
+.ecu-peer-page-dots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 8px 8px;
+}
+.ecu-peer-page-dots__side {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; min-height: 40px;
+  max-width: 100%; margin: 0; padding: 6px 8px; border: 1px solid transparent;
+  border-radius: 6px; background: transparent; color: #8a93a0; font: inherit;
+  font-size: 12px; font-weight: 600; line-height: 1.2; cursor: pointer;
+}
+.ecu-peer-page-dots__side.is-prev { justify-self: start; justify-content: flex-start; }
+.ecu-peer-page-dots__side.is-next { justify-self: end; justify-content: flex-end; }
+.ecu-peer-page-dots__side.is-empty { opacity: 0.28; cursor: default; }
+.ecu-peer-page-dots__side-label {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ecu-peer-page-dots__chev { flex: 0 0 auto; font-size: 16px; line-height: 1; opacity: 0.85; }
+.ecu-peer-page-dots__center {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 72px; max-width: 140px; padding: 0 4px;
+}
+.ecu-peer-page-dots__current {
+  font-size: 14px; font-weight: 700; color: #e8eef4; letter-spacing: 0.02em;
+  text-align: center; white-space: nowrap;
+}
+.ecu-peer-page-dots.is-flash .ecu-peer-page-dots__current {
+  animation: ecu-peer-page-flash 0.42s ease-out;
+}
+@keyframes ecu-peer-page-flash {
+  0% { color: #9dd4ec; transform: scale(1.06); }
+  100% { color: #e8eef4; transform: scale(1); }
+}
+.ecu-peer-page-dots__meta {
+  font-size: 10px; font-weight: 600; color: #6a7380; letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.ecu-peer-page-dots__track {
+  display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 2px;
+}
+.ecu-peer-page-dots__dot {
+  width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.28);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.35);
+}
+.ecu-peer-page-dots__dot.is-on { background: #9dd4ec; transform: scale(1.2); }
+.body {
+  margin: 8px 12px; padding: 16px; border: 1px dashed #333; border-radius: 8px;
+  color: #9ab; font-size: 13px; text-align: center; min-height: 80px;
+}
+.ok { color: #7ad86a; font-size: 12px; text-align: center; padding: 0 12px 4px; }
+</style>
+</head>
+<body>
+<div class="col">
+  <div class="lbl">Before — anonymous dots</div>
+  <div class="card">
+    <div class="title">Bank</div>
+    <div class="before-dots">
+      <span></span><span class="on"></span><span></span><span></span>
+    </div>
+    <div class="guess">Where am I? Packs? Types? Ready?</div>
+    <div class="body">Item grid…</div>
+  </div>
+</div>
+<div class="col">
+  <div class="lbl">After — labeled pager</div>
+  <div class="card">
+    <div class="title">Bank</div>
+    <div class="ecu-peer-page-dots is-flash" id="pager">
+      <button type="button" class="ecu-peer-page-dots__side is-prev" id="prev">
+        <span class="ecu-peer-page-dots__chev">‹</span>
+        <span class="ecu-peer-page-dots__side-label" id="prevLabel">All</span>
+      </button>
+      <div class="ecu-peer-page-dots__center">
+        <div class="ecu-peer-page-dots__current" id="current">Packs</div>
+        <div class="ecu-peer-page-dots__meta" id="meta">2 / 4</div>
+        <div class="ecu-peer-page-dots__track" id="track"></div>
+      </div>
+      <button type="button" class="ecu-peer-page-dots__side is-next" id="next">
+        <span class="ecu-peer-page-dots__side-label" id="nextLabel">Types</span>
+        <span class="ecu-peer-page-dots__chev">›</span>
+      </button>
+    </div>
+    <div class="ok">Current = Packs · swipe lands on Types / All</div>
+    <div class="body" id="body">Packs view…</div>
+  </div>
+</div>
+<script>
+const pages = [
+  { key: "all", label: "All" },
+  { key: "packs", label: "Packs" },
+  { key: "types", label: "Types" },
+  { key: "ready", label: "Ready" },
+];
+let idx = 1;
+function render() {
+  const pager = document.getElementById("pager");
+  pager.classList.remove("is-flash");
+  void pager.offsetWidth;
+  pager.classList.add("is-flash");
+  const prev = pages[idx - 1] || null;
+  const next = pages[idx + 1] || null;
+  document.getElementById("current").textContent = pages[idx].label;
+  document.getElementById("meta").textContent = (idx + 1) + " / " + pages.length;
+  document.getElementById("prevLabel").textContent = prev ? prev.label : "";
+  document.getElementById("nextLabel").textContent = next ? next.label : "";
+  document.getElementById("prev").classList.toggle("is-empty", !prev);
+  document.getElementById("prev").disabled = !prev;
+  document.getElementById("next").classList.toggle("is-empty", !next);
+  document.getElementById("next").disabled = !next;
+  document.getElementById("body").textContent = pages[idx].label + " view…";
+  const track = document.getElementById("track");
+  track.innerHTML = "";
+  for (let i = 0; i < pages.length; i++) {
+    const d = document.createElement("span");
+    d.className = "ecu-peer-page-dots__dot" + (i === idx ? " is-on" : "");
+    d.onclick = () => { idx = i; render(); };
+    track.appendChild(d);
+  }
+}
+document.getElementById("prev").onclick = () => { if (idx > 0) { idx--; render(); } };
+document.getElementById("next").onclick = () => { if (idx < pages.length - 1) { idx++; render(); } };
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,247 @@
+﻿<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>:root {
+  --ecu-phone-dock-h: 64px;
+  --bg: #0e1014;
+  --surface: #1c1b1f;
+  --surface2: #2b2930;
+  --fg: #e6e1e5;
+  --muted: #cac4d0;
+  --accent: #9dd4ec;
+  --line: rgba(230, 225, 229, 0.12);
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+}
+.phone {
+  width: 390px;
+  height: 844px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 20%, #1a2430 0%, transparent 55%),
+    linear-gradient(180deg, #12161c 0%, #0a0c10 100%);
+}
+.map-hint {
+  position: absolute;
+  inset: 0 0 180px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.22);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.chrome {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: var(--ecu-phone-dock-h);
+  padding: 8px 10px 10px;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -6px 24px rgba(0,0,0,0.45);
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.actions button {
+  flex: 0 0 auto;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(147,143,153,0.35);
+  background: #2b2930;
+  color: var(--fg);
+  font-size: 11px;
+}
+.chars {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: rgba(43,41,48,0.92);
+  border-radius: 16px;
+  padding: 6px 8px;
+}
+.char {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: #3a4654;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--muted);
+}
+.char.is-on { outline: 2px solid var(--accent); }
+.server {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--accent);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(157,212,236,0.12);
+}
+.dock {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  min-height: 56px;
+  padding: 4px 6px 8px;
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+}
+.dock button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+}
+.dock button.is-on { color: var(--accent); }
+.dock .g {
+  width: 64px; max-width: 100%; height: 32px;
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.dock button.is-on .g { background: rgba(157,212,236,0.16); }
+.sheet-scrim {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.5);
+}
+.sheet {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  max-height: 78%;
+  background: var(--surface2);
+  border-radius: 28px 28px 0 0;
+  padding-bottom: 12px;
+  box-shadow: 0 -8px 28px rgba(0,0,0,0.5);
+}
+.handle {
+  width: 32px; height: 4px; border-radius: 2px;
+  background: rgba(230,225,229,0.35);
+  margin: 12px auto 8px;
+}
+.sheet-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px 12px;
+}
+.sheet-hd h2 { margin: 0; font-size: 22px; font-weight: 500; }
+.done {
+  min-height: 40px; padding: 0 16px; border: 0; border-radius: 20px;
+  background: rgba(157,212,236,0.16); color: var(--accent); font-size: 14px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 12px 8px; }
+.chip {
+  min-height: 40px; padding: 0 14px; border-radius: 20px;
+  border: 1px solid rgba(147,143,153,0.5);
+  background: transparent; color: var(--fg); font-size: 14px;
+}
+.chip.is-on { border-color: var(--accent); color: var(--accent); background: rgba(157,212,236,0.12); }
+.sec {
+  margin: 12px 16px 6px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
+.row {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 52px; padding: 8px 16px; font-size: 16px;
+}
+.sw {
+  width: 52px; height: 32px; border-radius: 16px;
+  background: #49454f; border: 2px solid #938f99; position: relative;
+}
+.sw.on { background: var(--accent); border-color: var(--accent); }
+.sw::after {
+  content: ""; position: absolute; top: 4px; left: 4px;
+  width: 20px; height: 20px; border-radius: 50%; background: #00344a;
+}
+.sw:not(.on)::after { background: #938f99; width: 16px; height: 16px; top: 6px; left: 6px; }
+.sw.on::after { left: 24px; }
+.panel {
+  position: absolute;
+  left: 8px; right: 8px; top: 8px;
+  bottom: calc(var(--ecu-phone-dock-h) + 8px);
+  background: #141820;
+  border-radius: 16px 16px 0 0;
+  border: 1px solid #2a3340;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.panel-hd {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 14px; border-bottom: 1px solid #2a3340;
+  font-size: 17px; font-weight: 500;
+}
+.panel-hd .hint { margin-left: auto; font-size: 11px; color: var(--muted); font-weight: 400; }
+.panel-body { flex: 1; overflow: hidden; padding: 10px 12px; font-size: 14px; color: #c8d0da; }
+.msg { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.msg b { color: #9dd4ec; font-weight: 500; }
+.compose {
+  display: flex; gap: 8px; padding: 10px; border-top: 1px solid #2a3340;
+}
+.compose input {
+  flex: 1; min-height: 44px; border-radius: 10px; border: 1px solid #555;
+  background: #0e1218; color: var(--fg); padding: 0 12px; font-size: 16px;
+}
+.compose button {
+  min-width: 72px; min-height: 44px; border-radius: 10px; border: 0;
+  background: rgba(157,212,236,0.2); color: var(--accent); font-size: 15px;
+}
+.cmd-split { display: flex; flex-direction: column; height: 100%; gap: 8px; }
+.cmd-ed {
+  flex: 1; background: #0a0e14; border: 1px solid #2a3340; border-radius: 10px;
+  padding: 12px; font-family: ui-monospace, monospace; font-size: 13px; color: #cfe;
+}
+.cmd-snips { flex: 0 0 38%; border-top: 1px solid #2a3340; padding-top: 8px; }
+.snip {
+  min-height: 44px; display: flex; align-items: center; padding: 0 8px;
+  border-radius: 8px; margin: 2px 0;
+}
+.snip.is-on { background: rgba(60,50,20,0.55); outline: 1px solid #a86; }
+.bank-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+}
+.slot {
+  aspect-ratio: 1; background: #1a222c; border: 1px solid #2a3340; border-radius: 6px;
+}
+.market-card {
+  background: #1a222c; border: 1px solid #2a3340; border-radius: 12px;
+  padding: 12px; margin-bottom: 8px;
+}
+.caption {
+  position: absolute; top: 10px; left: 10px; right: 10px;
+  font-size: 11px; color: rgba(255,255,255,0.45); letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+</style></head><body><div class='phone'><div class='caption'>Command · stacked editor + snippets</div>
+<div class='panel'>
+  <div class='panel-hd'>Command <span class='hint'>narrow stack</span></div>
+  <div class='panel-body cmd-split'>
+    <div class='cmd-ed'>loot()<br/>use_skill('town')</div>
+    <div class='cmd-snips'>
+      <div class='snip is-on'>Loot</div>
+      <div class='snip'>Town</div>
+      <div class='snip'>Stop move</div>
+    </div>
+  </div>
+</div><div class="dock">
+  <button class="is-on"><span class="g">☰</span>Menu</button>
+  <button><span class="g">C</span>Chat</button>
+  <button><span class="g">&lt;/&gt;</span>Cmd</button>
+  <button><span class="g">⚙</span>Settings</button>
+</div></div></body></html>

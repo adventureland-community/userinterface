@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<style>
+html, body {
+  margin: 0; padding: 0; background: #0e1014;
+  min-height: 100vh; display: flex; justify-content: center; align-items: flex-start;
+  padding-top: 24px;
+}
+.phone {
+  width: 390px; height: 720px; margin: 0; position: relative; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 18%, #1a2430 0%, transparent 55%),
+    linear-gradient(180deg, #12161c, #0a0c10);
+  font-family: Consolas, "Segoe UI", Tahoma, sans-serif; color: #eee;
+}
+.map {
+  position: absolute; inset: 0 0 56px 0; display: flex; align-items: center;
+  justify-content: center; color: rgba(255,255,255,.18); font-size: 12px;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.dock {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+  background: #1c1b1f; border-top: 1px solid rgba(230,225,229,.12);
+  display: flex; align-items: center; justify-content: space-around;
+}
+.dock span { font-size: 10px; color: #cac4d0; }
+.shell {
+  position: absolute; left: 8px; right: 8px; top: 8px; bottom: 56px;
+  background: #0b0b0b; border: 2px solid #555; border-radius: 16px 16px 0 0;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a; flex: 0 0 auto;
+}
+.title { font-size: 18px; color: #e8c96a; margin: 0; font-weight: 600; }
+.pill { font-size: 11px; color: #888; }
+.grow { flex: 1; }
+.expand {
+  width: 40px; height: 40px; border: 1px solid #444; background: #1a1a1a;
+  color: #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+}
+.tools {
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+  border-bottom: 1px solid #2a2a2a; flex: 0 0 auto;
+}
+.search {
+  flex: 1 1 100%; min-height: 44px; background: #141414; border: 1px solid #555;
+  color: #eee; font-size: 16px; padding: 10px 12px;
+}
+.filters {
+  min-height: 40px; padding: 8px 12px; border: 1px solid rgba(232,201,106,.55);
+  background: #1a1810; color: #e8c96a; font-size: 14px;
+}
+.seg {
+  display: flex; flex-wrap: wrap; width: 100%; border: 1px solid #3a3a3a; background: #080808;
+}
+.seg button {
+  flex: 1 1 auto; min-height: 40px; border: 0; border-left: 1px solid #2a2a2a;
+  background: transparent; color: #888; font-size: 14px; padding: 8px 10px;
+}
+.seg button:first-child { border-left: 0; }
+.seg button.on { color: #e8c96a; background: #1a1810; }
+.togs { display: flex; flex-wrap: wrap; gap: 8px 14px; width: 100%; }
+.tog {
+  min-height: 40px; display: inline-flex; align-items: center; gap: 6px;
+  color: #bbb; font-size: 14px; padding: 6px 4px;
+}
+.body { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.card {
+  border: 1px solid #2a2a2a; background: #121212; padding: 10px; margin-bottom: 8px;
+  border-radius: 4px;
+}
+.card strong { color: #e8c96a; }
+.meta { font-size: 12px; color: #777; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="map">game map</div>
+  <div class="shell">
+    <div class="head">
+      <h1 class="title">Market</h1>
+      <div class="pill">12.4m gold · 38 catalog</div>
+      <div class="grow"></div>
+      <div class="expand">⛶</div>
+    </div>
+    <div class="tools">
+      <input class="search" value="item:helmet" readonly/>
+      <button class="filters">Filters ●</button>
+      <div class="seg">
+        <button>All</button>
+        <button class="on">Selling</button>
+        <button>Buying</button>
+        <button>Giveaways</button>
+        <button>Trades</button>
+      </div>
+      <div class="togs">
+        <label class="tog"><input type="checkbox" checked/> Near</label>
+        <label class="tog"><input type="checkbox"/> Afford</label>
+        <label class="tog"><input type="checkbox" checked/> Have</label>
+        <label class="tog"><input type="checkbox"/> Fav</label>
+      </div>
+    </div>
+    <div class="body">
+      <div class="card"><strong>helmet</strong><div class="meta">3 stands · from 48,000</div></div>
+      <div class="card"><strong>helmet1</strong><div class="meta">1 stand · 120,000</div></div>
+      <div class="card"><strong>xhelmet</strong><div class="meta">2 stands · from 2.1m</div></div>
+    </div>
+  </div>
+  <div class="dock"><span>Apps</span><span>Chat</span><span>Cmd</span><span>⚙</span></div>
+</div>
+</body>
+</html>

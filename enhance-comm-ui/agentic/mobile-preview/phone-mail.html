@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Phone Mail — list-first chrome</title>
+<style>
+html, body {
+  margin: 0; padding: 0; background: #0e1014;
+  height: auto; display: flex; justify-content: center; align-items: flex-start;
+  gap: 24px; flex-wrap: wrap; padding: 24px 12px 40px;
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif; color: #eee;
+  box-sizing: border-box;
+}
+.col { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.lbl { font-size: 12px; color: #8a93a0; letter-spacing: .04em; text-transform: uppercase; }
+.phone {
+  width: 390px; height: 720px; margin: 0; position: relative; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 18%, #1a2430 0%, transparent 55%),
+    linear-gradient(180deg, #12161c, #0a0c10);
+}
+.map {
+  position: absolute; inset: 0 0 56px 0; display: flex; align-items: center;
+  justify-content: center; color: rgba(255,255,255,.18); font-size: 12px;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.dock {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 48px;
+  background: #1c1b1f; border-top: 1px solid rgba(230,225,229,.12);
+  display: flex; align-items: center; justify-content: space-around;
+}
+.dock span { font-size: 10px; color: #cac4d0; }
+.shell {
+  position: absolute; left: 8px; right: 8px; top: 8px; bottom: 56px;
+  background: #0e0e0e; border: 2px solid #555; border-radius: 16px 16px 0 0;
+  overflow: hidden; display: flex; flex-direction: column;
+  color: #e8e8e8; font-size: 16px; line-height: 1.4;
+}
+.head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px 2px; flex: 0 0 auto;
+}
+.title { font-size: 18px; color: #ffe08a; margin: 0; font-weight: 600; }
+.grow { flex: 1; }
+.expand {
+  width: 36px; height: 36px; border: 1px solid #444; background: #1a1a1a;
+  color: #ddd; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+}
+.toolbar {
+  display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 6px;
+  border-bottom: 1px solid #2a2a2a; flex: 0 0 auto;
+}
+.search-shell {
+  display: flex; align-items: center; gap: 2px; background: #161616;
+  border: 1px solid #333; border-radius: 4px; padding: 0 4px 0 0;
+}
+.search {
+  flex: 1; min-width: 0; min-height: 40px; background: transparent; border: none;
+  color: #eee; font-size: 16px; padding: 8px 10px;
+}
+.ico {
+  width: 36px; height: 36px; border: none; background: transparent; color: #aaa;
+  font-size: 14px; border-radius: 4px;
+}
+.filters-in {
+  appearance: none; border: none; background: transparent; color: #aaa;
+  min-height: 36px; padding: 0 8px; font: inherit; font-size: 12px; font-weight: 600;
+  border-radius: 4px; white-space: nowrap;
+}
+.primary {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; width: 100%;
+}
+.seg {
+  flex: 1 1 auto; min-width: 0; display: flex; border: 1px solid #3a3a3a; background: #080808;
+}
+.seg button {
+  flex: 1; min-height: 36px; border: 0; border-left: 1px solid #2a2a2a;
+  background: transparent; color: #888; font-size: 13px; padding: 6px 10px;
+}
+.seg button:first-child { border-left: 0; }
+.seg button.on { color: #ffe08a; background: #2a2410; border-color: #a86; }
+.btn {
+  flex: 0 0 auto; min-height: 36px; padding: 6px 10px; font-size: 13px;
+  background: #1a1a1a; border: 1px solid #555; color: #ddd; border-radius: 0;
+}
+.btn.gold { border-color: #a86; color: #ffe08a; background: #2a2410; }
+.strip {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  padding: 4px 10px 6px; border-bottom: 1px solid #222; background: #101214;
+  font-size: 12px; color: #c8cdd4;
+}
+.pulse {
+  width: 7px; height: 7px; border-radius: 50%; background: #f0c060;
+  animation: pulse 1.25s ease-out infinite; flex: 0 0 auto;
+}
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  70% { opacity: .35; transform: scale(1.35); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.strip-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.caps {
+  flex: 0 0 auto; border: 1px solid #444; background: #1a1a1a; color: #ccc;
+  font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 4px; min-height: 28px;
+}
+.body { flex: 1; min-height: 0; overflow: auto; }
+.row {
+  display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.row:hover { background: #161616; }
+.check { width: 18px; height: 18px; margin-top: 2px; flex: 0 0 auto; accent-color: #6af; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #6af; margin-top: 6px; flex: 0 0 auto; }
+.mid { flex: 1; min-width: 0; }
+.subj { font-size: 14px; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { font-size: 11px; color: #888; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chips { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.chip {
+  font-size: 11px; padding: 2px 6px; border-radius: 3px; background: #1a2838; color: #8cf; border: 1px solid #345;
+}
+.thumb {
+  width: 40px; height: 40px; background: #1a1a1a; border: 1px solid #333;
+  border-radius: 4px; flex: 0 0 auto; position: relative;
+  display: flex; align-items: center; justify-content: center; font-size: 18px;
+}
+.qty {
+  position: absolute; right: 2px; bottom: 1px; font-size: 10px; color: #ffe08a; font-weight: 700;
+}
+.metric {
+  font-size: 11px; color: #7ad86a; padding: 6px 10px 0; align-self: stretch;
+}
+.metric.bad { color: #e88; }
+/* BEFORE clutter (reference) */
+.before .filters-row { padding-top: 2px; }
+.before .filters-btn {
+  min-height: 32px; padding: 4px 10px; font-size: 13px; background: #1a1a1a;
+  border: 1px solid #555; color: #ddd;
+}
+.before .bulk {
+  display: flex; flex-wrap: wrap; gap: 4px; width: 100%;
+}
+.before .status-card {
+  margin: 6px 8px 8px; padding: 8px 10px; border: 1px solid #2a4a3a;
+  background: #122018; border-radius: 4px; font-size: 13px; color: #9cf;
+}
+.before .status-card .k { font-size: 10px; color: #6a8; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="col">
+  <div class="lbl">Before — chrome eats the sheet</div>
+  <div class="phone before" id="before">
+    <div class="map">game map</div>
+    <div class="shell">
+      <div class="head">
+        <h1 class="title">Mail</h1>
+        <div class="grow"></div>
+        <div class="expand">×</div>
+      </div>
+      <div class="toolbar">
+        <div class="search-shell">
+          <input class="search" value="" placeholder="Search mail" readonly/>
+          <button class="ico" type="button" aria-hidden="true">☰</button>
+        </div>
+        <div class="filters-row"><button class="filters-btn" type="button">Filters</button></div>
+        <div class="primary">
+          <div class="seg">
+            <button class="on" type="button">Messages</button>
+            <button type="button">Items</button>
+            <button type="button">Stack</button>
+            <button type="button">Compose</button>
+          </div>
+        </div>
+        <div class="bulk">
+          <button class="btn" type="button">Select all 728</button>
+          <button class="btn" type="button">Mark read</button>
+          <button class="btn" type="button">Refresh</button>
+        </div>
+      </div>
+      <div class="strip">
+        <span class="pulse"></span>
+        <span class="strip-main">Warming cache · next page... · 728+ · unread 0</span>
+        <button class="caps" type="button">119+/200</button>
+      </div>
+      <div class="status-card">
+        <div class="k">Status</div>
+        <div>Loaded 448+ · pushed new · open</div>
+      </div>
+      <div class="body">
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">wbook0 +0</div><div class="meta">thmsn → MarlinMonroe · 20:40 1m ago</div><div class="chips"><span class="chip">▶ x7</span></div></div><div class="thumb">📕<span class="qty">1</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">[jam-shuttle] 3 x b...</div><div class="meta">thmsn → MarlinMonroe · 20:39 2m ago</div><div class="chips"><span class="chip">5 new</span></div></div><div class="thumb">🧥<span class="qty">3</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">partyhat +7</div><div class="meta">thmsn → MarlinMonroe · 20:38 3m ago</div></div><div class="thumb">🎩<span class="qty">1</span></div></div>
+      </div>
+    </div>
+    <div class="dock"><span>Apps</span><span>Chat</span><span>Cmd</span><span>⚙</span></div>
+  </div>
+  <div class="metric bad" id="before-metric">measuring…</div>
+</div>
+
+<div class="col">
+  <div class="lbl">After — list-first (Msgs · Compose · More)</div>
+  <div class="phone after" id="after">
+    <div class="map">game map</div>
+    <div class="shell">
+      <div class="head">
+        <h1 class="title">Mail</h1>
+        <div class="grow"></div>
+        <div class="expand">×</div>
+      </div>
+      <div class="toolbar">
+        <div class="search-shell">
+          <input class="search" value="" placeholder="Search mail" readonly/>
+          <button class="ico" type="button" aria-hidden="true">☰</button>
+          <button class="filters-in" type="button">Filters</button>
+        </div>
+        <div class="primary">
+          <div class="seg">
+            <button class="on" type="button">Msgs</button>
+            <button type="button">Items</button>
+          </div>
+          <button class="btn gold" type="button">Compose</button>
+          <button class="btn" type="button">More</button>
+        </div>
+      </div>
+      <div class="strip">
+        <span class="pulse"></span>
+        <span class="strip-main">Warming cache · next page... · 728+ · unread 0</span>
+        <button class="caps" type="button">119+/200</button>
+      </div>
+      <div class="body">
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">wbook0 +0</div><div class="meta">thmsn → MarlinMonroe · 20:40 1m ago</div><div class="chips"><span class="chip">▶ x7</span></div></div><div class="thumb">📕<span class="qty">1</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">[jam-shuttle] 3 x bunnyfur</div><div class="meta">thmsn → MarlinMonroe · 20:39 2m ago</div><div class="chips"><span class="chip">5 new</span></div></div><div class="thumb">🧥<span class="qty">3</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">partyhat +7</div><div class="meta">thmsn → MarlinMonroe · 20:38 3m ago</div></div><div class="thumb">🎩<span class="qty">1</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">fury +8</div><div class="meta">GiftBot → thmsn · yesterday</div><div class="chips"><span class="chip">▶ x2</span></div></div><div class="thumb">⚔<span class="qty">1</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">scroll0 ×40</div><div class="meta">banker → thmsn · 2d ago</div></div><div class="thumb">📜<span class="qty">40</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">Thanks for the run</div><div class="meta">MarlinMonroe → thmsn · 3d ago</div></div><div class="thumb" style="opacity:.35">✉️</div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">ornament ×12</div><div class="meta">party → thmsn · 4d ago</div><div class="chips"><span class="chip">new</span></div></div><div class="thumb">🎄<span class="qty">12</span></div></div>
+        <div class="row"><input class="check" type="checkbox"/><span class="dot"></span><div class="mid"><div class="subj">candy0 ×99</div><div class="meta">event → thmsn · 5d ago</div></div><div class="thumb">🍬<span class="qty">99</span></div></div>
+      </div>
+    </div>
+    <div class="dock"><span>Apps</span><span>Chat</span><span>Cmd</span><span>⚙</span></div>
+  </div>
+  <div class="metric" id="after-metric">measuring…</div>
+</div>
+
+<script>
+function measure(phoneId, metricId) {
+  const phone = document.getElementById(phoneId);
+  const shell = phone.querySelector(".shell");
+  const body = phone.querySelector(".body");
+  const rows = body.querySelectorAll(".row").length;
+  const shellH = shell.getBoundingClientRect().height;
+  const bodyH = body.getBoundingClientRect().height;
+  const chromeH = shellH - bodyH;
+  const pct = Math.round((100 * bodyH) / shellH);
+  const el = document.getElementById(metricId);
+  el.textContent = "list " + pct + "% of sheet · " + rows + " rows visible · chrome " + Math.round(chromeH) + "px";
+  if (pct < 55) el.classList.add("bad");
+  else el.classList.remove("bad");
+  return { pct, rows, chromeH: Math.round(chromeH) };
+}
+const before = measure("before", "before-metric");
+const after = measure("after", "after-metric");
+document.title = "Mail phone · before " + before.pct + "% → after " + after.pct + "%";
+</script>
+</body>
+</html>
