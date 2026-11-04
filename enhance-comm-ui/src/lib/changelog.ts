@@ -121,7 +121,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Material phone dock",
         detail:
-          "Slim Chat · Cmd · Mail · Bag · Bank bar. Swipe-up Apps drawer, shade settings cog, mutual dismiss, Settings sheet with swipe-down close.",
+          "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
         kind: "feature",
       },
       {
@@ -143,10 +143,34 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "fix",
       },
       {
+        label: "Phone Server · Character parity",
+        detail:
+          "Dock Server chip puts players on the left and ping bars+ms on the right (desktop-style). Server sheet banner mirrors that; realm rows use a wide name/events column and a clear online count. Character dock/sheet show level, class, RIP, and realm.",
+        kind: "fix",
+      },
+      {
+        label: "Disable wheel zoom",
+        detail:
+          "Desktop Settings → Comm UI → Controls: turn off mouse-wheel / trackpad FOV zoom when a laptop trackpad zooms by accident. Hidden on phone (pinch / Map out·in).",
+        kind: "feature",
+      },
+      {
+        label: "Settings categories",
+        detail:
+          "Dropped the catch-all Performance pane. HUD density + hide meters → Comm HUD; world overlay master → Drawings; Tampermonkey mobile FAQ → Comm UI.",
+        kind: "improve",
+      },
+      {
         label: "Touch item actions",
         detail:
           "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
         kind: "feature",
+      },
+      {
+        label: "Sharp FOV + free camera",
+        detail:
+          "FOV zoom kept (buffer grow + CSS fit, scale unchanged); zoom-out cap raised to 6× for phone headroom. Nameplates counter-scale with FOV and force NEAREST + Text.resolution×FOV; bottom-pivot (from the stock Graphics child) keeps plates glued to heads when zooming out. Joystick uses radial deadzone + expo curve (crawl on a light nudge, full speed at the rim). Free-cam RAF dt fixed so pan works. Vision fog gates on FOV>1 (not only legacy scale below 2) so the entity window shade returns. Vision hole stays on the observer. Chrome cleanup uses pagehide.",
+        kind: "fix",
       },
       {
         label: "Camera FOV zoom",
@@ -157,7 +181,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         label: "Free camera pan",
         detail:
-          "WASD / arrows on desktop and an on-screen joystick on phone detach the view from the observed character. Follow (or the stick’s Follow chip) re-homes.",
+          "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Follow (or the stick’s Follow chip) snaps then o:home.",
         kind: "feature",
       },
     ],
@@ -179,9 +203,9 @@ export const CHANGELOG: ChangelogEntry[] = [
             kind: "feature",
           },
           {
-            label: "Performance · mobile install",
+            label: "Mobile install",
             detail:
-              "Performance pane links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              "Settings → Comm UI links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
             kind: "ui",
           },
         ],

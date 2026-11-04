@@ -5148,7 +5148,6 @@ var EnhanceCommUI = (() => {
   var PHONE_DOCK_CSS_VAR = "--ecu-phone-dock-h";
   var PHONE_HUD_BOTTOM_CSS_VAR = "--ecu-phone-hud-bottom";
   var PHONE_DOCK_BODY_CLASS = "ecu-phone-dock-on";
-  var PHONE_CHROME_FALLBACK_PX = 120;
   var appliedPx = 0;
   var appliedHudBottomPx = 0;
   function applyPhoneDockChrome(dockHeightPx) {
@@ -5214,7 +5213,7 @@ var EnhanceCommUI = (() => {
     if (bottom) {
       chromeH = Math.round(bottom.getBoundingClientRect().height);
     }
-    if (!(chromeH > 0)) chromeH = PHONE_CHROME_FALLBACK_PX;
+    if (!(chromeH > 0)) chromeH = 0;
     return dock + chromeH;
   }
   function layoutClampBottomPad() {
@@ -9172,7 +9171,7 @@ ${fightHoverTip(src)}`
       highlights: [
         {
           label: "Material phone dock",
-          detail: "Slim Chat \xB7 Cmd \xB7 Mail \xB7 Bag \xB7 Bank bar. Swipe-up Apps drawer, shade settings cog, mutual dismiss, Settings sheet with swipe-down close.",
+          detail: "Character + Server on the bar (clear Not observing). Apps via center button or swipe-up. Shade settings cog; Chat/Cmd/Mail/Bag/Bank live in Apps.",
           kind: "feature"
         },
         {
@@ -9191,9 +9190,29 @@ ${fightHoverTip(src)}`
           kind: "fix"
         },
         {
+          label: "Phone Server \xB7 Character parity",
+          detail: "Dock Server chip puts players on the left and ping bars+ms on the right (desktop-style). Server sheet banner mirrors that; realm rows use a wide name/events column and a clear online count. Character dock/sheet show level, class, RIP, and realm.",
+          kind: "fix"
+        },
+        {
+          label: "Disable wheel zoom",
+          detail: "Desktop Settings \u2192 Comm UI \u2192 Controls: turn off mouse-wheel / trackpad FOV zoom when a laptop trackpad zooms by accident. Hidden on phone (pinch / Map out\xB7in).",
+          kind: "feature"
+        },
+        {
+          label: "Settings categories",
+          detail: "Dropped the catch-all Performance pane. HUD density + hide meters \u2192 Comm HUD; world overlay master \u2192 Drawings; Tampermonkey mobile FAQ \u2192 Comm UI.",
+          kind: "improve"
+        },
+        {
           label: "Touch item actions",
           detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
           kind: "feature"
+        },
+        {
+          label: "Sharp FOV + free camera",
+          detail: "FOV zoom kept (buffer grow + CSS fit, scale unchanged); zoom-out cap raised to 6\xD7 for phone headroom. Nameplates counter-scale with FOV and force NEAREST + Text.resolution\xD7FOV; bottom-pivot (from the stock Graphics child) keeps plates glued to heads when zooming out. Joystick uses radial deadzone + expo curve (crawl on a light nudge, full speed at the rim). Free-cam RAF dt fixed so pan works. Vision fog gates on FOV>1 (not only legacy scale below 2) so the entity window shade returns. Vision hole stays on the observer. Chrome cleanup uses pagehide.",
+          kind: "fix"
         },
         {
           label: "Camera FOV zoom",
@@ -9202,7 +9221,7 @@ ${fightHoverTip(src)}`
         },
         {
           label: "Free camera pan",
-          detail: "WASD / arrows on desktop and an on-screen joystick on phone detach the view from the observed character. Follow (or the stick\u2019s Follow chip) re-homes.",
+          detail: "WASD / arrows on desktop, middle-drag or left-drag on the canvas, and an on-screen joystick on phone detach the view from the observed character. Stick uses a small deadzone + steep expo so near-center crawls; map/server hops clear free-cam so vision and Follow re-home on live coords. Idle stick stays readable on sand. Follow (or the stick\u2019s Follow chip) snaps then o:home.",
           kind: "feature"
         }
       ],
@@ -9222,8 +9241,8 @@ ${fightHoverTip(src)}`
               kind: "feature"
             },
             {
-              label: "Performance \xB7 mobile install",
-              detail: "Performance pane links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              label: "Mobile install",
+              detail: "Settings \u2192 Comm UI links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
               kind: "ui"
             }
           ]
@@ -11549,10 +11568,18 @@ ${fightHoverTip(src)}`
 
   // src/lib/worldFov.ts
   var WORLD_FOV_MIN = 0.5;
-  var WORLD_FOV_MAX = 2.5;
+  var WORLD_FOV_MAX = 6;
   var WORLD_FOV_DEFAULT = 1;
   var WORLD_FOV_STEP = 0.25;
   var appliedFov = WORLD_FOV_DEFAULT;
+  var fovApplyListeners = [];
+  function onWorldFovApplied(listener) {
+    fovApplyListeners.push(listener);
+    return () => {
+      const idx = fovApplyListeners.indexOf(listener);
+      if (idx >= 0) fovApplyListeners.splice(idx, 1);
+    };
+  }
   function clampWorldFov(n) {
     if (!Number.isFinite(n)) return WORLD_FOV_DEFAULT;
     const stepped = Math.round(n / WORLD_FOV_STEP) * WORLD_FOV_STEP;
@@ -11585,6 +11612,26 @@ ${fightHoverTip(src)}`
     view.style.maxWidth = "100%";
     view.style.maxHeight = "100%";
     view.style.display = "block";
+    view.style.imageRendering = "pixelated";
+    view.style.webkitImageRendering = "pixelated";
+  }
+  function clearRendererViewFit() {
+    const renderer = window.renderer;
+    const view = renderer && renderer.view;
+    if (!view || !view.style) return;
+    view.style.width = "";
+    view.style.height = "";
+    view.style.maxWidth = "";
+    view.style.maxHeight = "";
+  }
+  function applyRendererPixelSnap() {
+    const renderer = window.renderer;
+    if (!renderer) return;
+    renderer.roundPixels = true;
+    const view = renderer.view;
+    if (!view || !view.style) return;
+    view.style.imageRendering = "pixelated";
+    view.style.webkitImageRendering = "pixelated";
   }
   function applyWorldFov(next) {
     const fov = clampWorldFov(next);
@@ -11601,11 +11648,24 @@ ${fightHoverTip(src)}`
     if (changed && host2.map) {
       host2.map.last_max_y = void 0;
     }
-    fitRendererView(cssW, cssH);
+    if (fov === WORLD_FOV_DEFAULT) {
+      clearRendererViewFit();
+    } else {
+      fitRendererView(cssW, cssH);
+    }
+    applyRendererPixelSnap();
     if (typeof host2.position_map === "function") {
       try {
         host2.position_map();
       } catch (e2) {
+      }
+    }
+    if (changed) {
+      for (let i = 0; i < fovApplyListeners.length; i++) {
+        try {
+          fovApplyListeners[i](fov);
+        } catch (e2) {
+        }
       }
     }
     return fov;
@@ -11614,6 +11674,11 @@ ${fightHoverTip(src)}`
     const v = clampWorldFov(fov);
     if (Number.isInteger(v)) return String(v);
     return String(Math.round(v * 100) / 100);
+  }
+  function nameplateTextResolution(fov) {
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    const dpr = typeof window !== "undefined" && typeof window.devicePixelRatio === "number" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
+    return Math.max(1, Math.ceil(f * dpr));
   }
 
   // src/lib/worldZoom.ts
@@ -11648,6 +11713,13 @@ ${fightHoverTip(src)}`
         map.scale.y = zoom;
       }
       if (changed) map.last_max_y = void 0;
+    }
+    if (w.renderer) w.renderer.roundPixels = true;
+    if (changed && typeof w.__ecuBustNameTags === "function") {
+      try {
+        w.__ecuBustNameTags();
+      } catch (e2) {
+      }
     }
     return zoom;
   }
@@ -12229,6 +12301,7 @@ ${fightHoverTip(src)}`
     setupWizardDone: false,
     hudDensity: "auto",
     worldOverlayEnabled: true,
+    worldWheelZoomEnabled: true,
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
     changelogSeenId: null,
@@ -12480,6 +12553,7 @@ ${fightHoverTip(src)}`
       metersHidden: !!parsed.metersHidden,
       hudDensity: normalizeHudDensity(parsed.hudDensity),
       worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+      worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
       phoneHudVisible: parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object" ? parsed.phoneHudVisible : {},
       phoneHomeScreens: normalizePhoneHomeScreens(parsed.phoneHomeScreens),
       setupWizardDone: !!parsed.setupWizardDone || !!(parsed.meterAppearance && parsed.meterAppearance.setupWizardDone),
@@ -12560,6 +12634,7 @@ ${fightHoverTip(src)}`
       metersHidden: false,
       hudDensity: "auto",
       worldOverlayEnabled: true,
+      worldWheelZoomEnabled: true,
       phoneHudVisible: {},
       phoneHomeScreens: defaultPhoneHomeScreens()
     };
@@ -12647,6 +12722,9 @@ ${fightHoverTip(src)}`
     }
     if (typeof partial.worldOverlayEnabled === "boolean") {
       next.worldOverlayEnabled = partial.worldOverlayEnabled;
+    }
+    if (typeof partial.worldWheelZoomEnabled === "boolean") {
+      next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;
     }
     if (partial.phoneHudVisible) {
       next.phoneHudVisible = {
@@ -15607,29 +15685,17 @@ ${CHROME_ARRANGE_CSS}
   background: #161616;
 }
 
-/* Enhanced phone chrome \u2014 Material strip above the ECU dock (not a bare lift). */
+/* Enhanced phone chrome \u2014 Material dock owns Character + Server; hide strip. */
 html.ecu-phone-dock-on #bottom {
   padding-left: 0;
   padding-right: 0;
   padding-bottom: 0;
-  /* Above #comm-ui panels (220) so meters never steal character/action taps;
-     below the Material dock (240). */
+  /* Above #comm-ui panels (220); below the Material dock (240). */
   z-index: 230;
 }
+/* Character chips + server dropdown live on the dock \u2014 drop the duplicate stack. */
 html.ecu-phone-dock-on .ecu-chrome-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 8px 10px 10px;
-  gap: 8px;
-  background: #1c1b1f;
-  border-radius: 20px 20px 0 0;
-  border-top: 1px solid rgba(230, 225, 229, 0.12);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
-  box-sizing: border-box;
+  display: none !important;
 }
 /* Slim party roster on phone \u2014 no desktop 480px width. */
 html.ecu-phone-dock-on .ecu-roster {
@@ -25706,6 +25772,22 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     if (!key || char.server == null || char.server === "") return true;
     return String(char.server) === key;
   }
+  function formatServerKeyLabel(serverKey3) {
+    const key = String(serverKey3 || "");
+    if (!key) return "";
+    if (typeof window.server_to_ui === "function") {
+      const ui = window.server_to_ui(key);
+      if (ui) return String(ui);
+    }
+    const servers = window.X && window.X.servers || [];
+    for (let i = 0; i < servers.length; i++) {
+      const s = servers[i];
+      if (s.key != null && String(s.key) === key) {
+        return String(s.region) + " " + String(s.name);
+      }
+    }
+    return key;
+  }
   function connectObserveWithSecret(ch) {
     if (!ch.secret || ch.server == null) return false;
     const servers = window.X && window.X.servers || [];
@@ -26114,6 +26196,24 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
 
   // src/host/commChrome/pingHud.ts
   var PING_SPARK_BARS = 12;
+  function pingSparkBars(samples2, maxBars = PING_SPARK_BARS) {
+    if (!samples2.length) return [];
+    const start = Math.max(0, samples2.length - Math.max(1, maxBars));
+    let max = 1;
+    for (let i = start; i < samples2.length; i++) {
+      max = Math.max(max, samples2[i]);
+    }
+    const out = [];
+    for (let i = start; i < samples2.length; i++) {
+      const ms = samples2[i];
+      out.push({
+        pct: Math.max(10, Math.round(ms / max * 100)),
+        color: pingColor(ms),
+        ms
+      });
+    }
+    return out;
+  }
   function readCommPings() {
     const raw = window.pings;
     if (!Array.isArray(raw) || !raw.length) return [];
@@ -26136,17 +26236,11 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
     return "#e05555";
   }
   function pingBarsHtml(samples2) {
-    if (!samples2.length) return "";
-    const start = Math.max(0, samples2.length - PING_SPARK_BARS);
-    let max = 1;
-    for (let i = start; i < samples2.length; i++) {
-      max = Math.max(max, samples2[i]);
-    }
+    const bars = pingSparkBars(samples2);
+    if (!bars.length) return "";
     let html = "<span class='ecu-server-dd-bars' aria-hidden='true'>";
-    for (let i = start; i < samples2.length; i++) {
-      const pct = Math.max(10, Math.round(samples2[i] / max * 100));
-      const color = pingColor(samples2[i]);
-      html += "<span class='ecu-server-dd-bar' style='height:" + pct + "%;background:" + color + "'></span>";
+    for (let i = 0; i < bars.length; i++) {
+      html += "<span class='ecu-server-dd-bar' style='height:" + bars[i].pct + "%;background:" + bars[i].color + "'></span>";
     }
     html += "</span>";
     return html;
@@ -27476,10 +27570,20 @@ html.ecu-phone-dock-on .ecu-chrome-stack {
         }
       }
     });
-    window.addEventListener("unload", () => {
-      stopObserveWatch();
-      unsubTick2();
-    });
+    let cleaned = false;
+    const cleanupChrome = () => {
+      if (cleaned) return;
+      cleaned = true;
+      try {
+        stopObserveWatch();
+      } catch (e2) {
+      }
+      try {
+        unsubTick2();
+      } catch (e2) {
+      }
+    };
+    window.addEventListener("pagehide", cleanupChrome);
   }
 
   // src/host/disconnectOverlay.ts
@@ -29756,7 +29860,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T11:13:53.147Z" : "unknown";
+    const builtAt = true ? "2026-11-04T13:37:29.140Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -35030,7 +35134,7 @@ button.comm-mail__stack-u {
   }
   function isInteractiveChromeTarget(target) {
     if (!(target instanceof Element)) return false;
-    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
+    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".ecu-cam-stick") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
   }
   function isUiChromeTarget(target) {
     if (!(target instanceof Element)) return false;
@@ -35049,6 +35153,7 @@ button.comm-mail__stack-u {
     return target === view || target instanceof Node && view.contains(target);
   }
   function onWorldWheel(ev) {
+    if (getSettings().worldWheelZoomEnabled === false) return;
     const phone = detectViewportProfile() === "phone";
     const pinchSim = phone && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
     if ((ev.ctrlKey || ev.metaKey) && !phone) return;
@@ -35197,7 +35302,8 @@ button.comm-mail__stack-u {
     shiftPinchBaseFov = next;
     shiftPinchStartY = ev.clientY;
   }
-  function onShiftPointerUp() {
+  function onShiftPointerUp(ev) {
+    if (ev.pointerType === "touch") return;
     shiftPinchActive = false;
   }
   function installWheelZoom() {
@@ -36141,6 +36247,532 @@ button.comm-mail__stack-u {
     return Math.sqrt(dx * dx + dy * dy) > 0.75;
   }
 
+  // src/lib/cameraPan.ts
+  var CAMERA_PAN_SPEED = 340;
+  var JOYSTICK_RADIUS_PX = 48;
+  var JOYSTICK_DEADZONE = 0.08;
+  var JOYSTICK_OUTER = 0.96;
+  var JOYSTICK_RESPONSE_POWER = 3.8;
+  function clampPanAxis(v) {
+    if (!Number.isFinite(v)) return 0;
+    if (v > 1) return 1;
+    if (v < -1) return -1;
+    return v;
+  }
+  function joystickResponseMagnitude(mag, deadzone = JOYSTICK_DEADZONE, power = JOYSTICK_RESPONSE_POWER, outer = JOYSTICK_OUTER) {
+    if (!(mag > deadzone)) return 0;
+    const outerClamp = Math.max(deadzone + 1e-6, Math.min(1, outer));
+    if (mag >= outerClamp) return 1;
+    const span = Math.max(1e-6, outerClamp - deadzone);
+    const t = Math.min(1, (mag - deadzone) / span);
+    const p = power > 0 ? power : 1;
+    return Math.pow(t, p);
+  }
+  function joystickToPan(dx, dy, radiusPx = JOYSTICK_RADIUS_PX, deadzone = JOYSTICK_DEADZONE) {
+    const r = Math.max(1, radiusPx);
+    const nx = dx / r;
+    const ny = dy / r;
+    const rawMag = Math.sqrt(nx * nx + ny * ny);
+    const mag = Math.min(1, rawMag);
+    const eased = joystickResponseMagnitude(mag, deadzone);
+    if (eased <= 0 || rawMag <= 0) return { x: 0, y: 0 };
+    const inv = eased / rawMag;
+    return { x: clampPanAxis(nx * inv), y: clampPanAxis(ny * inv) };
+  }
+  function keysToPan(keys) {
+    let x = 0;
+    let y = 0;
+    if (keys.left) x -= 1;
+    if (keys.right) x += 1;
+    if (keys.up) y -= 1;
+    if (keys.down) y += 1;
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function panFovSpeedFactor(fov) {
+    if (!(fov > 0) || !Number.isFinite(fov)) return 1;
+    return Math.sqrt(fov);
+  }
+  function stepCameraPan(realX, realY, pan, dtSec, opts) {
+    const speed = opts && typeof opts.speed === "number" ? opts.speed : CAMERA_PAN_SPEED;
+    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
+    const px = clampPanAxis(pan.x);
+    const py = clampPanAxis(pan.y);
+    if (px === 0 && py === 0) return { x: realX, y: realY };
+    const dist = speed * panFovSpeedFactor(fov) * Math.max(0, dtSec);
+    return {
+      x: realX + px * dist,
+      y: realY + py * dist
+    };
+  }
+  function mouseDragWorldDelta(dxCss, dyCss, opts) {
+    const scale = opts && typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
+    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
+    const factor = fov / scale;
+    return {
+      x: -dxCss * factor,
+      y: -dyCss * factor
+    };
+  }
+  var MOUSE_PAN_DRAG_THRESHOLD_PX = 4;
+
+  // src/host/cameraPan.ts
+  var installed6 = false;
+  var freeCamera = false;
+  var lockX = 0;
+  var lockY = 0;
+  var observerAnchorX = 0;
+  var observerAnchorY = 0;
+  var hasObserverAnchor = false;
+  var freeCamRealmKey = "";
+  var keyUp = false;
+  var keyDown = false;
+  var keyLeft = false;
+  var keyRight = false;
+  var stickPan = { x: 0, y: 0 };
+  var rafId = null;
+  var lastTs = 0;
+  var origPositionMap = null;
+  var mousePanPointerId = null;
+  var mousePanButton = null;
+  var mousePanLastX = 0;
+  var mousePanLastY = 0;
+  var mousePanActive = false;
+  var mousePanArmed = false;
+  var freeListeners = [];
+  function notifyFree() {
+    for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
+  }
+  function subscribeFreeCamera(listener) {
+    freeListeners.push(listener);
+    return () => {
+      const idx = freeListeners.indexOf(listener);
+      if (idx >= 0) freeListeners.splice(idx, 1);
+    };
+  }
+  function isFreeCamera() {
+    return freeCamera;
+  }
+  function readObserverCameraAnchor() {
+    if (!hasObserverAnchor) return null;
+    if (!Number.isFinite(observerAnchorX + observerAnchorY)) return null;
+    return { x: observerAnchorX, y: observerAnchorY };
+  }
+  function hostMap() {
+    const m = window.map;
+    return m || null;
+  }
+  function syncLockFromMap() {
+    const map = hostMap();
+    if (!map) return;
+    if (typeof map.real_x === "number" && Number.isFinite(map.real_x)) {
+      lockX = map.real_x;
+    }
+    if (typeof map.real_y === "number" && Number.isFinite(map.real_y)) {
+      lockY = map.real_y;
+    }
+  }
+  function readCameraRealmKey() {
+    const w = window;
+    const mapName = (w.current_map != null && String(w.current_map) !== "" ? String(w.current_map) : w.map && w.map.map_name != null ? String(w.map.map_name) : "") || "";
+    const inst = w.current_in != null && String(w.current_in) !== "" ? String(w.current_in) : "";
+    const region = w.server_region != null ? String(w.server_region) : "";
+    const ident = w.server_identifier != null ? String(w.server_identifier) : "";
+    return mapName + "|" + inst + "|" + region + "|" + ident;
+  }
+  function syncFreeCameraAfterRealmChange() {
+    if (!freeCamera) return false;
+    const key = readCameraRealmKey();
+    if (!freeCamRealmKey || !key || key === freeCamRealmKey) return false;
+    lockCamera();
+    syncLockFromMap();
+    return true;
+  }
+  function readObservedWorldXY() {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const w = window;
+    const snap = w.observing;
+    if (snap) {
+      const ents = w.entities;
+      if (ents && snap.id != null && ents[String(snap.id)]) {
+        const live2 = ents[String(snap.id)];
+        const x = Number(live2 && ((_a = live2.real_x) != null ? _a : live2.x));
+        const y = Number(live2 && ((_b = live2.real_y) != null ? _b : live2.y));
+        if (Number.isFinite(x + y)) return { x, y };
+      }
+      if (ents && snap.name != null) {
+        const want = String(snap.name);
+        for (const id in ents) {
+          if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
+          const live2 = ents[id];
+          if (!live2 || live2.name == null || String(live2.name) !== want) continue;
+          const x = Number((_c = live2.real_x) != null ? _c : live2.x);
+          const y = Number((_d = live2.real_y) != null ? _d : live2.y);
+          if (Number.isFinite(x + y)) return { x, y };
+        }
+      }
+      const sx = Number((_e = snap.real_x) != null ? _e : snap.x);
+      const sy = Number((_f = snap.real_y) != null ? _f : snap.y);
+      if (Number.isFinite(sx + sy)) return { x: sx, y: sy };
+    }
+    const ch = w.character;
+    if (ch) {
+      const x = Number((_g = ch.real_x) != null ? _g : ch.x);
+      const y = Number((_h = ch.real_y) != null ? _h : ch.y);
+      if (Number.isFinite(x + y)) return { x, y };
+    }
+    return null;
+  }
+  function unlockCamera() {
+    syncFreeCameraAfterRealmChange();
+    if (!freeCamera) {
+      syncLockFromMap();
+      observerAnchorX = lockX;
+      observerAnchorY = lockY;
+      hasObserverAnchor = true;
+      freeCamRealmKey = readCameraRealmKey();
+      freeCamera = true;
+      notifyFree();
+    }
+    ensureRaf();
+  }
+  function lockCamera() {
+    freeCamera = false;
+    stickPan = { x: 0, y: 0 };
+    keyUp = keyDown = keyLeft = keyRight = false;
+    freeCamRealmKey = "";
+    endMousePan();
+    stopRafIfIdle();
+    notifyFree();
+    hasObserverAnchor = false;
+  }
+  function panCamera(pan, dtSec) {
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    const next = stepCameraPan(lockX, lockY, pan, dtSec, {
+      speed: CAMERA_PAN_SPEED,
+      fov: readAppliedWorldFov()
+    });
+    lockX = next.x;
+    lockY = next.y;
+    map.real_x = lockX;
+    map.real_y = lockY;
+  }
+  function setJoystickPan(pan) {
+    stickPan = {
+      x: pan.x,
+      y: pan.y
+    };
+    if (pan.x !== 0 || pan.y !== 0) unlockCamera();
+    ensureRaf();
+    stopRafIfIdle();
+  }
+  function panCameraByWorldDelta(dx, dy) {
+    if (!Number.isFinite(dx + dy) || dx === 0 && dy === 0) return;
+    unlockCamera();
+    const map = hostMap();
+    if (!map) return;
+    lockX += dx;
+    lockY += dy;
+    map.real_x = lockX;
+    map.real_y = lockY;
+    const pos = window.position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch (e2) {
+      }
+    }
+  }
+  function typingTarget(el) {
+    if (!(el instanceof Element)) return false;
+    return !!el.closest(
+      "input, textarea, select, [contenteditable='true'], .CodeMirror, .comm-bag-ctx, .ecu-phone-action-sheet"
+    );
+  }
+  function uiBlocksMousePan(el) {
+    if (!(el instanceof Element)) return false;
+    if (typingTarget(el)) return true;
+    return !!el.closest(
+      "#comm-ui button, #comm-ui a, #comm-ui input, #comm-ui textarea, #comm-ui select, #comm-ui [role='dialog'], .ecu-phone-dock, .ecu-cam-stick, .ecu-chrome-stack, .ecu-server-dd, .comm-pos-panel, .ecu-phone-sheet, .ecu-phone-sheet-scrim"
+    );
+  }
+  function mousePanAllowed() {
+    if (detectViewportProfile() === "phone") return false;
+    if (document.documentElement.classList.contains("ecu-phone-dock-on")) {
+      return false;
+    }
+    return true;
+  }
+  function endMousePan() {
+    mousePanPointerId = null;
+    mousePanButton = null;
+    mousePanActive = false;
+    mousePanArmed = false;
+    try {
+      if (document.body) document.body.style.removeProperty("cursor");
+    } catch (e2) {
+    }
+  }
+  function onMousePanDown(ev) {
+    var _a, _b;
+    if (!mousePanAllowed()) return;
+    if (ev.pointerType === "touch") return;
+    if (uiBlocksMousePan(ev.target)) return;
+    const isMiddle = ev.button === 1;
+    const isLeft = ev.button === 0;
+    if (!isMiddle && !isLeft) return;
+    if (isLeft) {
+      const t = ev.target;
+      if (!(t instanceof Element) || t.tagName.toLowerCase() !== "canvas") {
+        return;
+      }
+    }
+    mousePanPointerId = ev.pointerId;
+    mousePanButton = ev.button;
+    mousePanLastX = ev.clientX;
+    mousePanLastY = ev.clientY;
+    mousePanArmed = true;
+    mousePanActive = isMiddle;
+    if (isMiddle) {
+      unlockCamera();
+      ev.preventDefault();
+      try {
+        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
+      } catch (e2) {
+      }
+      if (document.body) document.body.style.cursor = "grabbing";
+    }
+  }
+  function onMousePanMove(ev) {
+    var _a, _b;
+    if (!mousePanArmed || mousePanPointerId !== ev.pointerId) return;
+    const dx = ev.clientX - mousePanLastX;
+    const dy = ev.clientY - mousePanLastY;
+    if (!mousePanActive) {
+      if (mousePanButton === 0 && Math.hypot(dx, dy) < MOUSE_PAN_DRAG_THRESHOLD_PX) {
+        return;
+      }
+      mousePanActive = true;
+      unlockCamera();
+      try {
+        (_b = (_a = ev.target).setPointerCapture) == null ? void 0 : _b.call(_a, ev.pointerId);
+      } catch (e2) {
+      }
+      if (document.body) document.body.style.cursor = "grabbing";
+    }
+    mousePanLastX = ev.clientX;
+    mousePanLastY = ev.clientY;
+    const delta = mouseDragWorldDelta(dx, dy, {
+      scale: readHostWorldZoom(),
+      fov: readAppliedWorldFov()
+    });
+    panCameraByWorldDelta(delta.x, delta.y);
+    ev.preventDefault();
+  }
+  function onMousePanUp(ev) {
+    if (mousePanPointerId !== ev.pointerId) return;
+    if (mousePanActive) ev.preventDefault();
+    endMousePan();
+  }
+  function onMousePanAuxClick(ev) {
+    if (ev.button === 1 && mousePanAllowed()) ev.preventDefault();
+  }
+  function onKeyDown(ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (typingTarget(ev.target)) return;
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    let used = false;
+    if (k === "w" || k === "ArrowUp") {
+      keyUp = true;
+      used = true;
+    } else if (k === "s" || k === "ArrowDown") {
+      keyDown = true;
+      used = true;
+    } else if (k === "a" || k === "ArrowLeft") {
+      keyLeft = true;
+      used = true;
+    } else if (k === "d" || k === "ArrowRight") {
+      keyRight = true;
+      used = true;
+    }
+    if (!used) return;
+    ev.preventDefault();
+    unlockCamera();
+    ensureRaf();
+  }
+  function onKeyUp(ev) {
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    if (k === "w" || k === "ArrowUp") keyUp = false;
+    else if (k === "s" || k === "ArrowDown") keyDown = false;
+    else if (k === "a" || k === "ArrowLeft") keyLeft = false;
+    else if (k === "d" || k === "ArrowRight") keyRight = false;
+    stopRafIfIdle();
+  }
+  function combinedPan() {
+    const fromKeys = keysToPan({
+      up: keyUp,
+      down: keyDown,
+      left: keyLeft,
+      right: keyRight
+    });
+    const x = clampAdd(fromKeys.x, stickPan.x);
+    const y = clampAdd(fromKeys.y, stickPan.y);
+    if (x === 0 && y === 0) return { x: 0, y: 0 };
+    const mag = Math.sqrt(x * x + y * y);
+    return { x: x / mag, y: y / mag };
+  }
+  function clampAdd(a, b) {
+    const s = a + b;
+    if (s > 1) return 1;
+    if (s < -1) return -1;
+    return s;
+  }
+  function panFrameDtSec(nowMs2, prevMs) {
+    if (!(prevMs > 0)) return 1 / 60;
+    return Math.min(0.05, Math.max(0, (nowMs2 - prevMs) / 1e3));
+  }
+  function tick(ts) {
+    rafId = null;
+    syncFreeCameraAfterRealmChange();
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0) {
+      lastTs = 0;
+      return;
+    }
+    const dt = panFrameDtSec(ts, lastTs);
+    lastTs = ts;
+    panCamera(pan, dt);
+    const pos = window.position_map;
+    if (typeof pos === "function") {
+      try {
+        pos();
+      } catch (e2) {
+      }
+    }
+    ensureRaf();
+  }
+  function ensureRaf() {
+    if (rafId != null) return;
+    const pan = combinedPan();
+    if (pan.x === 0 && pan.y === 0) return;
+    rafId = window.requestAnimationFrame(tick);
+  }
+  function stopRafIfIdle() {
+    if (combinedPan().x !== 0 || combinedPan().y !== 0) return;
+    if (rafId != null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    lastTs = 0;
+  }
+  function patchedPositionMap() {
+    syncFreeCameraAfterRealmChange();
+    const map = hostMap();
+    const w = window;
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    }
+    const savedChar = freeCamera && w.character ? w.character : null;
+    if (savedChar) w.character = void 0;
+    try {
+      if (origPositionMap) origPositionMap.call(this);
+    } finally {
+      if (savedChar) w.character = savedChar;
+    }
+    if (freeCamera && map) {
+      map.real_x = lockX;
+      map.real_y = lockY;
+    }
+  }
+  function installPositionMapHook() {
+    const w = window;
+    if (typeof w.__ecuPositionMap === "function") return;
+    if (typeof w.position_map !== "function") return;
+    origPositionMap = w.position_map;
+    w.__ecuPositionMap = patchedPositionMap;
+    w.position_map = patchedPositionMap;
+  }
+  function followObservedCamera() {
+    lockCamera();
+    const map = hostMap();
+    const at = readObservedWorldXY();
+    if (map && at) {
+      lockX = at.x;
+      lockY = at.y;
+      map.real_x = at.x;
+      map.real_y = at.y;
+      const pos = window.position_map;
+      if (typeof pos === "function") {
+        try {
+          pos();
+        } catch (e2) {
+        }
+      }
+    } else {
+      syncLockFromMap();
+    }
+    const sock = window.socket;
+    if (sock && typeof sock.emit === "function") sock.emit("o:home");
+    window.setTimeout(() => {
+      if (!freeCamera) {
+        const again = readObservedWorldXY();
+        const m = hostMap();
+        if (m && again) {
+          lockX = again.x;
+          lockY = again.y;
+          m.real_x = again.x;
+          m.real_y = again.y;
+        } else {
+          syncLockFromMap();
+        }
+      }
+    }, 400);
+  }
+  function installCameraPan() {
+    if (installed6) return;
+    installed6 = true;
+    installPositionMapHook();
+    if (!origPositionMap) {
+      const started2 = Date.now();
+      const id = window.setInterval(() => {
+        installPositionMapHook();
+        if (origPositionMap || Date.now() - started2 > 3e4) {
+          window.clearInterval(id);
+        }
+      }, 250);
+    }
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("pointerdown", onMousePanDown, true);
+    window.addEventListener("pointermove", onMousePanMove, true);
+    window.addEventListener("pointerup", onMousePanUp, true);
+    window.addEventListener("pointercancel", onMousePanUp, true);
+    window.addEventListener("auxclick", onMousePanAuxClick, true);
+    window.addEventListener(
+      "mousedown",
+      (ev) => {
+        if (ev.button === 1 && mousePanAllowed() && !uiBlocksMousePan(ev.target)) {
+          ev.preventDefault();
+        }
+      },
+      true
+    );
+    window.addEventListener("blur", () => {
+      keyUp = keyDown = keyLeft = keyRight = false;
+      endMousePan();
+      stopRafIfIdle();
+    });
+    const realmPoll = window.setInterval(() => {
+      syncFreeCameraAfterRealmChange();
+    }, 250);
+    void realmPoll;
+    window.__ecuFollowObserved = followObservedCamera;
+  }
+
   // src/viz/observerVision.ts
   var STOCK_VISION_HALF_X = 700;
   var STOCK_VISION_HALF_Y = 500;
@@ -36211,10 +36843,15 @@ button.comm-mail__stack-u {
     return { x: STOCK_VISION_HALF_X, y: STOCK_VISION_HALF_Y };
   }
   function resolveVisionCenter() {
+    syncFreeCameraAfterRealmChange();
     const fromLive = mapXY(findLiveObservedEntity());
     if (fromLive) return fromLive;
     const fromChar = mapXY(getCharacter());
     if (fromChar) return fromChar;
+    if (isFreeCamera()) {
+      const anchor = readObserverCameraAnchor();
+      if (anchor) return anchor;
+    }
     return readCameraXY();
   }
   function readFogBounds(center) {
@@ -36239,10 +36876,17 @@ button.comm-mail__stack-u {
     gfx.drawRect(x, y, w, h);
     gfx.endFill();
   }
+  function shouldPaintObserverVisionFog(fov = readAppliedWorldFov(), spriteZoom = readHostWorldZoom()) {
+    if (Number.isFinite(fov) && fov > WORLD_FOV_DEFAULT) return true;
+    if (Number.isFinite(spriteZoom) && spriteZoom < WORLD_ZOOM_DEFAULT) {
+      return true;
+    }
+    return false;
+  }
   function paintObserverVision(gfx, settings) {
     if (!settings["world.observerVision"]) return;
     try {
-      if (!(readHostWorldZoom() < WORLD_ZOOM_DEFAULT)) return;
+      if (!shouldPaintObserverVisionFog()) return;
       const center = resolveVisionCenter();
       if (!center) return;
       const half = readObserverVisionHalf();
@@ -37036,7 +37680,7 @@ button.comm-mail__stack-u {
   function overlayTickMs() {
     return scalePollMs(TICK_MS_DESKTOP, "ui");
   }
-  function tick() {
+  function tick2() {
     if (getSettings().worldOverlayEnabled === false) return;
     if (mapOverlayBlocked()) {
       if (handle) {
@@ -37056,11 +37700,11 @@ button.comm-mail__stack-u {
   function startWorldOverlay() {
     if (timerId != null) return;
     if (getSettings().worldOverlayEnabled === false) return;
-    unsubSettings = subscribeVizSettings(() => tick());
-    unsubZoom = subscribeWorldZoom(() => tick());
-    unsubFov = subscribeWorldFov(() => tick());
-    tick();
-    timerId = window.setInterval(tick, overlayTickMs());
+    unsubSettings = subscribeVizSettings(() => tick2());
+    unsubZoom = subscribeWorldZoom(() => tick2());
+    unsubFov = subscribeWorldFov(() => tick2());
+    tick2();
+    timerId = window.setInterval(tick2, overlayTickMs());
   }
   function stopWorldOverlay() {
     if (timerId != null) {
@@ -52202,294 +52846,16 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
-  // src/lib/cameraPan.ts
-  var CAMERA_PAN_SPEED = 420;
-  var JOYSTICK_RADIUS_PX = 48;
-  var JOYSTICK_DEADZONE = 0.18;
-  function clampPanAxis(v) {
-    if (!Number.isFinite(v)) return 0;
-    if (v > 1) return 1;
-    if (v < -1) return -1;
-    return v;
-  }
-  function joystickToPan(dx, dy, radiusPx = JOYSTICK_RADIUS_PX, deadzone = JOYSTICK_DEADZONE) {
-    const r = Math.max(1, radiusPx);
-    const nx = dx / r;
-    const ny = dy / r;
-    const mag = Math.sqrt(nx * nx + ny * ny);
-    if (mag < deadzone) return { x: 0, y: 0 };
-    const scale = Math.min(1, mag);
-    const inv = mag > 0 ? scale / mag : 0;
-    return { x: clampPanAxis(nx * inv), y: clampPanAxis(ny * inv) };
-  }
-  function keysToPan(keys) {
-    let x = 0;
-    let y = 0;
-    if (keys.left) x -= 1;
-    if (keys.right) x += 1;
-    if (keys.up) y -= 1;
-    if (keys.down) y += 1;
-    if (x === 0 && y === 0) return { x: 0, y: 0 };
-    const mag = Math.sqrt(x * x + y * y);
-    return { x: x / mag, y: y / mag };
-  }
-  function stepCameraPan(realX, realY, pan, dtSec, opts) {
-    const speed = opts && typeof opts.speed === "number" ? opts.speed : CAMERA_PAN_SPEED;
-    const fov = opts && typeof opts.fov === "number" && opts.fov > 0 ? opts.fov : 1;
-    const px = clampPanAxis(pan.x);
-    const py = clampPanAxis(pan.y);
-    if (px === 0 && py === 0) return { x: realX, y: realY };
-    const dist = speed * fov * Math.max(0, dtSec);
-    return {
-      x: realX + px * dist,
-      y: realY + py * dist
-    };
-  }
-
-  // src/host/cameraPan.ts
-  var installed6 = false;
-  var freeCamera = false;
-  var lockX = 0;
-  var lockY = 0;
-  var keyUp = false;
-  var keyDown = false;
-  var keyLeft = false;
-  var keyRight = false;
-  var stickPan = { x: 0, y: 0 };
-  var rafId = null;
-  var lastTs = 0;
-  var origPositionMap = null;
-  var freeListeners = [];
-  function notifyFree() {
-    for (let i = 0; i < freeListeners.length; i++) freeListeners[i](freeCamera);
-  }
-  function subscribeFreeCamera(listener) {
-    freeListeners.push(listener);
-    return () => {
-      const idx = freeListeners.indexOf(listener);
-      if (idx >= 0) freeListeners.splice(idx, 1);
-    };
-  }
-  function isFreeCamera() {
-    return freeCamera;
-  }
-  function hostMap() {
-    const m = window.map;
-    return m || null;
-  }
-  function readScale() {
-    const s = window.scale;
-    return typeof s === "number" && s > 0 ? s : 2;
-  }
-  function readSize() {
-    const w = window.width;
-    const h = window.height;
-    return {
-      w: typeof w === "number" && w > 0 ? w : window.innerWidth || 1280,
-      h: typeof h === "number" && h > 0 ? h : window.innerHeight || 720
-    };
-  }
-  function roundCoord(n) {
-    return Math.round(n);
-  }
-  function applyMapScreen(map) {
-    const { w, h } = readSize();
-    const scale = readScale();
-    const rx = typeof map.real_x === "number" ? map.real_x : 0;
-    const ry = typeof map.real_y === "number" ? map.real_y : 0;
-    map.x = roundCoord(w / 2 - rx * scale);
-    map.y = roundCoord(h / 2 - ry * scale);
-  }
-  function syncLockFromMap() {
-    const map = hostMap();
-    if (!map) return;
-    if (typeof map.real_x === "number") lockX = map.real_x;
-    if (typeof map.real_y === "number") lockY = map.real_y;
-  }
-  function unlockCamera() {
-    syncLockFromMap();
-    if (!freeCamera) {
-      freeCamera = true;
-      notifyFree();
-    }
-    ensureRaf();
-  }
-  function lockCamera() {
-    freeCamera = false;
-    stickPan = { x: 0, y: 0 };
-    keyUp = keyDown = keyLeft = keyRight = false;
-    stopRafIfIdle();
-    notifyFree();
-  }
-  function panCamera(pan, dtSec) {
-    unlockCamera();
-    const map = hostMap();
-    if (!map) return;
-    const next = stepCameraPan(lockX, lockY, pan, dtSec, {
-      speed: CAMERA_PAN_SPEED,
-      fov: readAppliedWorldFov()
-    });
-    lockX = next.x;
-    lockY = next.y;
-    map.real_x = lockX;
-    map.real_y = lockY;
-    applyMapScreen(map);
-    const pos = window.position_map;
-    if (typeof pos === "function") pos();
-  }
-  function setJoystickPan(pan) {
-    stickPan = {
-      x: pan.x,
-      y: pan.y
-    };
-    if (pan.x !== 0 || pan.y !== 0) unlockCamera();
-    ensureRaf();
-    stopRafIfIdle();
-  }
-  function typingTarget(el) {
-    if (!(el instanceof Element)) return false;
-    return !!el.closest(
-      "input, textarea, select, [contenteditable='true'], .CodeMirror, .comm-bag-ctx, .ecu-phone-action-sheet"
-    );
-  }
-  function onKeyDown(ev) {
-    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (typingTarget(ev.target)) return;
-    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
-    let used = false;
-    if (k === "w" || k === "ArrowUp") {
-      keyUp = true;
-      used = true;
-    } else if (k === "s" || k === "ArrowDown") {
-      keyDown = true;
-      used = true;
-    } else if (k === "a" || k === "ArrowLeft") {
-      keyLeft = true;
-      used = true;
-    } else if (k === "d" || k === "ArrowRight") {
-      keyRight = true;
-      used = true;
-    }
-    if (!used) return;
-    ev.preventDefault();
-    unlockCamera();
-    ensureRaf();
-  }
-  function onKeyUp(ev) {
-    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
-    if (k === "w" || k === "ArrowUp") keyUp = false;
-    else if (k === "s" || k === "ArrowDown") keyDown = false;
-    else if (k === "a" || k === "ArrowLeft") keyLeft = false;
-    else if (k === "d" || k === "ArrowRight") keyRight = false;
-    stopRafIfIdle();
-  }
-  function combinedPan() {
-    const fromKeys = keysToPan({
-      up: keyUp,
-      down: keyDown,
-      left: keyLeft,
-      right: keyRight
-    });
-    const x = clampAdd(fromKeys.x, stickPan.x);
-    const y = clampAdd(fromKeys.y, stickPan.y);
-    if (x === 0 && y === 0) return { x: 0, y: 0 };
-    const mag = Math.sqrt(x * x + y * y);
-    return { x: x / mag, y: y / mag };
-  }
-  function clampAdd(a, b) {
-    const s = a + b;
-    if (s > 1) return 1;
-    if (s < -1) return -1;
-    return s;
-  }
-  function tick2(ts) {
-    rafId = null;
-    const pan = combinedPan();
-    if (pan.x === 0 && pan.y === 0) {
-      lastTs = 0;
-      return;
-    }
-    const prev = lastTs || ts;
-    lastTs = ts;
-    const dt = Math.min(0.05, Math.max(0, (ts - prev) / 1e3));
-    panCamera(pan, dt);
-    ensureRaf();
-  }
-  function ensureRaf() {
-    if (rafId != null) return;
-    const pan = combinedPan();
-    if (pan.x === 0 && pan.y === 0 && !freeCamera) return;
-    if (pan.x === 0 && pan.y === 0) return;
-    lastTs = 0;
-    rafId = window.requestAnimationFrame(tick2);
-  }
-  function stopRafIfIdle() {
-    if (combinedPan().x !== 0 || combinedPan().y !== 0) return;
-    if (rafId != null) {
-      window.cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    lastTs = 0;
-  }
-  function patchedPositionMap() {
-    const map = hostMap();
-    if (freeCamera && map) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-    }
-    if (origPositionMap) origPositionMap.call(this);
-    if (freeCamera && map) {
-      map.real_x = lockX;
-      map.real_y = lockY;
-      applyMapScreen(map);
-    }
-  }
-  function installPositionMapHook() {
-    const w = window;
-    if (typeof w.__ecuPositionMap === "function") return;
-    if (typeof w.position_map !== "function") return;
-    origPositionMap = w.position_map;
-    w.__ecuPositionMap = patchedPositionMap;
-    w.position_map = patchedPositionMap;
-  }
-  function followObservedCamera() {
-    lockCamera();
-    const sock = window.socket;
-    if (sock && typeof sock.emit === "function") sock.emit("o:home");
-    window.setTimeout(() => {
-      if (!freeCamera) syncLockFromMap();
-    }, 400);
-  }
-  function installCameraPan() {
-    if (installed6) return;
-    installed6 = true;
-    installPositionMapHook();
-    if (!origPositionMap) {
-      const started2 = Date.now();
-      const id = window.setInterval(() => {
-        installPositionMapHook();
-        if (origPositionMap || Date.now() - started2 > 3e4) {
-          window.clearInterval(id);
-        }
-      }, 250);
-    }
-    window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("keyup", onKeyUp, true);
-    window.addEventListener("blur", () => {
-      keyUp = keyDown = keyLeft = keyRight = false;
-      stopRafIfIdle();
-    });
-    window.__ecuFollowObserved = followObservedCamera;
-    void detectViewportProfile;
-  }
-
   // src/ui/chrome/CameraJoystick.ts
   var STYLE_ID8 = "ecu-camera-joystick-css";
   function ensureCss4() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID8)) return;
-    const style = document.createElement("style");
-    style.id = STYLE_ID8;
+    let style = document.getElementById(STYLE_ID8);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID8;
+      document.head.appendChild(style);
+    }
     style.textContent = `
 .ecu-cam-stick {
   position: fixed;
@@ -52507,23 +52873,39 @@ ${parts.map(cssSlice).join("\n")}
   position: absolute;
   inset: 12px;
   border-radius: 50%;
-  background: rgba(28, 27, 31, 0.45);
-  border: 1px solid rgba(230, 225, 229, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  background: rgba(28, 27, 31, 0.38);
+  border: 1px solid rgba(230, 225, 229, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  opacity: 0.82;
+  transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .ecu-cam-stick__knob {
   position: absolute;
-  width: 44px;
-  height: 44px;
-  margin-left: -22px;
-  margin-top: -22px;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
-  background: rgba(157, 212, 236, 0.55);
-  border: 1px solid rgba(157, 212, 236, 0.85);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background: rgba(157, 212, 236, 0.42);
+  border: 1px solid rgba(157, 212, 236, 0.58);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+  opacity: 0.9;
+  transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__base {
+  opacity: 1;
+  background: rgba(28, 27, 31, 0.42);
+  border-color: rgba(230, 225, 229, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__knob {
+  opacity: 1;
+  background: rgba(157, 212, 236, 0.55);
+  border-color: rgba(157, 212, 236, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .ecu-cam-stick__follow {
   position: absolute;
@@ -52534,19 +52916,19 @@ ${parts.map(cssSlice).join("\n")}
   min-height: 28px;
   padding: 4px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(157, 212, 236, 0.45);
-  background: rgba(28, 27, 31, 0.82);
+  border: 1px solid rgba(157, 212, 236, 0.35);
+  background: rgba(28, 27, 31, 0.72);
   color: #9dd4ec;
   font: 12px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
   pointer-events: auto;
+  opacity: 0.7;
 }
 .ecu-cam-stick__follow[hidden] {
   display: none !important;
 }
 `;
-    document.head.appendChild(style);
   }
   function CameraJoystick() {
     const React = getReact();
@@ -52574,12 +52956,14 @@ ${parts.map(cssSlice).join("\n")}
       };
       const reset = () => {
         activePtr.current = null;
+        root.classList.remove("is-active");
         knob.style.transform = "translate(0px,0px)";
         setJoystickPan({ x: 0, y: 0 });
       };
       const onDown = (ev) => {
         if (activePtr.current != null) return;
         activePtr.current = ev.pointerId;
+        root.classList.add("is-active");
         try {
           root.setPointerCapture(ev.pointerId);
         } catch (e2) {
@@ -52638,6 +53022,92 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
 
+  // src/lib/phoneDockStatus.ts
+  function readObservingExtras(name) {
+    if (!name) return { level: "", type: "", rip: false };
+    const chars = window.X && window.X.characters || [];
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (String(c.name || "") !== name) continue;
+      return {
+        level: c.level != null ? String(c.level) : "",
+        type: c.type != null ? String(c.type) : "",
+        rip: !!c.rip
+      };
+    }
+    const obs = window.observing;
+    if (!obs) return { level: "", type: "", rip: false };
+    const type = obs.ctype != null ? String(obs.ctype) : obs.type != null ? String(obs.type) : "";
+    return {
+      level: obs.level != null ? String(obs.level) : "",
+      type,
+      rip: !!obs.rip
+    };
+  }
+  function readCurrentServerPlayers() {
+    const region = window.server_region;
+    const ident = window.server_identifier;
+    if (!region || !ident) return null;
+    const servers = window.X && window.X.servers || [];
+    for (let i = 0; i < servers.length; i++) {
+      const s = servers[i];
+      if (s.region === region && s.name === ident) {
+        const n = Number(s.players);
+        return Number.isFinite(n) ? n : null;
+      }
+    }
+    return null;
+  }
+  function readPhoneDockStatus() {
+    const obs = typeof window !== "undefined" ? window.observing : null;
+    const observingName = obs && obs.name != null && String(obs.name) !== "" ? String(obs.name) : "";
+    const extras = readObservingExtras(observingName);
+    const key = currentServerKey3();
+    let serverLabel4 = formatServerKeyLabel(key);
+    if (!serverLabel4 && typeof window !== "undefined") {
+      const region = window.server_region;
+      const ident = window.server_identifier;
+      if (region) {
+        serverLabel4 = String(region) + (ident ? " " + String(ident) : "");
+      }
+    }
+    const connected = typeof window !== "undefined" && !!window.socket;
+    const samples2 = typeof window !== "undefined" ? readPingSamples() : [];
+    const avg = averagePingMs(samples2);
+    const pingMs = avg == null ? null : Math.round(avg);
+    return {
+      observingName,
+      observing: observingName !== "",
+      observingLevel: extras.level,
+      observingType: extras.type,
+      observingRip: extras.rip,
+      serverLabel: serverLabel4,
+      serverPlayers: readCurrentServerPlayers(),
+      pingMs,
+      pingColor: pingMs == null ? "#8ab4c9" : pingColor(pingMs),
+      pingBars: pingSparkBars(samples2),
+      connected
+    };
+  }
+  function shortPhoneDockLabel(text, max = 12) {
+    const s = String(text || "");
+    if (s.length <= max) return s;
+    return s.slice(0, Math.max(1, max - 1)) + "\u2026";
+  }
+  function formatPhoneCharDockMeta(status) {
+    if (!status.observing) return "Tap to watch";
+    const parts = [];
+    if (status.observingLevel) parts.push("Lv." + status.observingLevel);
+    if (status.observingType) parts.push(status.observingType);
+    if (status.observingRip) parts.push("RIP");
+    return parts.length ? parts.join(" \xB7 ") : "Watching";
+  }
+  function formatPhoneServerDockPlayers(status) {
+    if (status.serverPlayers == null) return "";
+    const n = status.serverPlayers;
+    return String(n) + " player" + (n === 1 ? "" : "s");
+  }
+
   // src/ui/chrome/phoneEdgeGestures.ts
   var PHONE_EDGE_INSET_PX = 24;
   var PHONE_EDGE_BOTTOM_BAND_PX = 32;
@@ -52686,6 +53156,9 @@ ${parts.map(cssSlice).join("\n")}
       return true;
     }
     if (target.closest(".ecu-phone-shade, .ecu-phone-sheet__body")) {
+      return true;
+    }
+    if (target.closest(".ecu-cam-stick")) {
       return true;
     }
     return false;
@@ -52867,7 +53340,7 @@ ${parts.map(cssSlice).join("\n")}
       return true;
     }
     if (target.closest(
-      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-meter-shell, [data-panel]"
+      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-meter-shell, [data-panel]"
     )) {
       return true;
     }
@@ -53051,6 +53524,383 @@ ${parts.map(cssSlice).join("\n")}
   border-radius: 14px;
   font-size: 15px;
   line-height: 1;
+}
+.ecu-phone-dock__status {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  margin: 0 2px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(232, 222, 248, 0.04);
+  color: #e6e1e5;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-dock__status-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+.ecu-phone-dock__status-trail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.ecu-phone-dock__status:active {
+  background: rgba(232, 222, 248, 0.1);
+}
+.ecu-phone-dock__status.is-on {
+  color: #9dd4ec;
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-dock__status.is-muted {
+  color: #cac4d0;
+}
+.ecu-phone-dock__status.is-muted .ecu-phone-dock__status-title {
+  color: #938f99;
+  font-weight: 500;
+}
+.ecu-phone-dock__eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #938f99;
+  line-height: 1.2;
+}
+.ecu-phone-dock__status.is-on .ecu-phone-dock__eyebrow {
+  color: #9dd4ec;
+}
+.ecu-phone-dock__status-title {
+  display: block;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-dock__status-meta {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #938f99;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-dock__status.is-on .ecu-phone-dock__status-meta {
+  color: rgba(157, 212, 236, 0.85);
+}
+.ecu-phone-dock__ping {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-width: 44px;
+}
+.ecu-phone-dock__ping-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 14px;
+}
+.ecu-phone-dock__ping-bar {
+  display: block;
+  width: 2px;
+  min-height: 2px;
+  opacity: 0.92;
+}
+.ecu-phone-dock__ping-ms {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
+}
+.ecu-phone-dock__apps {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 52px;
+  min-height: 44px;
+  margin: 0 2px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #cac4d0;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-dock__apps:active {
+  background: rgba(232, 222, 248, 0.08);
+}
+.ecu-phone-dock__apps.is-on {
+  color: #9dd4ec;
+}
+.ecu-phone-dock__apps-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1;
+  background: rgba(232, 222, 248, 0.08);
+}
+.ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
+  background: rgba(157, 212, 236, 0.16);
+}
+.ecu-phone-pick__banner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 8px 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(157, 212, 236, 0.08);
+  border: 1px solid rgba(157, 212, 236, 0.22);
+  color: #e6e1e5;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.ecu-phone-pick__banner-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ecu-phone-pick__banner strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: #9dd4ec;
+}
+.ecu-phone-pick__banner-meta {
+  display: block;
+  color: #cac4d0;
+  font-size: 13px;
+}
+.ecu-phone-pick__ping {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  min-width: 56px;
+}
+.ecu-phone-pick__ping-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 18px;
+}
+.ecu-phone-pick__ping-bar {
+  display: block;
+  width: 3px;
+  min-height: 2px;
+  opacity: 0.92;
+}
+.ecu-phone-pick__ping-ms {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
+}
+.ecu-phone-pick__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ecu-phone-pick__event {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 222, 248, 0.18);
+  background: rgba(232, 222, 248, 0.08);
+  color: #cac4d0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  line-height: 1.4;
+}
+.ecu-phone-pick__event.is-live {
+  border-color: rgba(133, 199, 107, 0.45);
+  background: rgba(133, 199, 107, 0.14);
+  color: #b6e39a;
+}
+.ecu-phone-pick__event--more {
+  opacity: 0.8;
+}
+.ecu-phone-pick__title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.ecu-phone-pick__badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 212, 236, 0.35);
+  background: rgba(157, 212, 236, 0.12);
+  color: #9dd4ec;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+}
+.ecu-phone-pick__players {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  min-width: 3.25em;
+  text-align: right;
+  color: #cac4d0;
+}
+.ecu-phone-pick__players-n {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: #e6e1e5;
+}
+.ecu-phone-pick__players-lbl {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #938f99;
+}
+.ecu-phone-pick__row.is-on .ecu-phone-pick__players-n {
+  color: #9dd4ec;
+}
+.ecu-phone-pick__row.is-rip .ecu-phone-pick__title {
+  color: #ffb4ab;
+}
+.ecu-phone-pick__row--server {
+  min-height: 52px;
+  padding: 10px 14px;
+}
+.ecu-phone-pick__empty {
+  margin: 8px 12px;
+  padding: 16px 12px;
+  text-align: center;
+  color: #938f99;
+  font-size: 14px;
+}
+.ecu-phone-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #e6e1e5;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+.ecu-phone-pick__row:active {
+  background: rgba(232, 222, 248, 0.06);
+}
+.ecu-phone-pick__row.is-on {
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-pick__row--stop {
+  border: 1px solid rgba(230, 120, 120, 0.45);
+  background: rgba(230, 120, 120, 0.08);
+  margin: 4px 0 10px;
+}
+.ecu-phone-pick__row--stop .ecu-phone-pick__title {
+  color: #ffb4ab;
+}
+.ecu-phone-pick__sprite {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.ecu-phone-pick__sprite.is-empty {
+  border-radius: 10px;
+  background: rgba(232, 222, 248, 0.08);
+  color: #938f99;
+  font-size: 18px;
+}
+.ecu-phone-pick__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ecu-phone-pick__title {
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-pick__meta {
+  display: block;
+  font-size: 12px;
+  color: #938f99;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-pick__row.is-off-server .ecu-phone-pick__meta {
+  color: #c9a227;
 }
 .ecu-phone-home-screen-label {
   position: absolute;
@@ -53271,8 +54121,8 @@ ${parts.map(cssSlice).join("\n")}
   position: fixed;
   left: 0;
   right: 0;
-  /* Sit in the clear fight viewport, just above dock + #bottom chrome. */
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 10px);
+  /* Sit just above the Material dock (chrome stack is hidden on phone). */
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 10px);
   z-index: 235;
   display: flex;
   align-items: center;
@@ -53490,6 +54340,577 @@ ${parts.map(cssSlice).join("\n")}
     style.id = STYLE_ID9;
     style.textContent = CSS9;
     document.head.append(style);
+  }
+
+  // src/ui/frames/comm/PhoneObserveSheet.ts
+  function readOnlineChars() {
+    var _a;
+    const chars = window.X && window.X.characters || [];
+    const obsName = window.observing && window.observing.name ? String(window.observing.name) : "";
+    const spriteFn = window.sprite;
+    const out = [];
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+      if (!char.online) continue;
+      const name = String(char.name || "");
+      if (!name) continue;
+      const serverLabel4 = formatServerKeyLabel(String(char.server || ""));
+      const offServer = !isCharOnCurrentServer(char) && !!serverLabel4;
+      const skinHtml = typeof spriteFn === "function" ? String(spriteFn(char.skin || "", { cx: char.cx, rip: char.rip }) || "") : "";
+      out.push({
+        name,
+        level: String((_a = char.level) != null ? _a : ""),
+        ctype: char.type != null ? String(char.type) : "",
+        rip: !!char.rip,
+        serverLabel: serverLabel4,
+        offServer,
+        active: obsName === name,
+        skinHtml
+      });
+    }
+    return out;
+  }
+  function charMetaLine(row3) {
+    const parts = [];
+    if (row3.level) parts.push("Lv." + row3.level);
+    if (row3.ctype) parts.push(row3.ctype);
+    if (row3.rip) parts.push("RIP");
+    if (row3.offServer && row3.serverLabel) {
+      parts.push(row3.serverLabel);
+      parts.push("switch server");
+    } else if (row3.serverLabel && !row3.offServer) {
+      parts.push(row3.serverLabel);
+    }
+    return parts.join(" \xB7 ");
+  }
+  function PhoneObserveSheet(props) {
+    const React = getReact();
+    ensurePhoneNavCss();
+    const sheetRef = React.useRef(null);
+    const dragStartY = React.useRef(0);
+    const dragDy = React.useRef(0);
+    const dragging = React.useRef(false);
+    const [rows, setRows] = React.useState([]);
+    const [obsName, setObsName] = React.useState("");
+    const onClose = props.onClose;
+    React.useEffect(() => {
+      if (!props.open) return;
+      const tick3 = () => {
+        setRows(readOnlineChars());
+        const n = window.observing && window.observing.name ? String(window.observing.name) : "";
+        setObsName(n);
+      };
+      tick3();
+      const id = window.setInterval(tick3, 500);
+      const onKey = (ev) => {
+        if (ev.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => {
+        window.clearInterval(id);
+        window.removeEventListener("keydown", onKey);
+      };
+    }, [props.open, onClose]);
+    if (!props.open) return null;
+    const resetDrag = () => {
+      dragging.current = false;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transform = "";
+        el.style.transition = "";
+      }
+    };
+    const onHandleTouchStart = (ev) => {
+      if (!ev.touches.length) return;
+      dragging.current = true;
+      dragStartY.current = ev.touches[0].clientY;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) el.style.transition = "none";
+    };
+    const onHandleTouchMove = (ev) => {
+      if (!dragging.current || !ev.touches.length) return;
+      const dy = Math.max(0, ev.touches[0].clientY - dragStartY.current);
+      dragDy.current = dy;
+      const el = sheetRef.current;
+      if (el) el.style.transform = "translateY(" + dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onHandleTouchEnd = () => {
+      if (!dragging.current) return;
+      const dy = dragDy.current;
+      if (dy > 90) {
+        resetDrag();
+        props.onClose();
+        return;
+      }
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transition = "transform 0.18s ease";
+        el.style.transform = "translateY(0)";
+      }
+      dragging.current = false;
+      dragDy.current = 0;
+    };
+    const kids = [];
+    if (obsName) {
+      kids.push(
+        e(
+          "button",
+          {
+            key: "stop",
+            type: "button",
+            className: "ecu-phone-pick__row ecu-phone-pick__row--stop",
+            onClick: () => {
+              clearObserve();
+              props.onClose();
+            }
+          },
+          e("span", { className: "ecu-phone-pick__title" }, "Stop observing"),
+          e(
+            "span",
+            { className: "ecu-phone-pick__meta" },
+            "Leave " + obsName + " \xB7 spectate this realm"
+          )
+        )
+      );
+    } else {
+      kids.push(
+        e(
+          "div",
+          {
+            key: "empty",
+            className: "ecu-phone-pick__banner",
+            role: "status"
+          },
+          e("strong", null, "Not observing anyone"),
+          e(
+            "span",
+            null,
+            "Pick a character below to watch them on their server."
+          )
+        )
+      );
+    }
+    kids.push(
+      e("div", { key: "sec", className: "ecu-phone-sheet__sec" }, "Online")
+    );
+    if (!rows.length) {
+      kids.push(
+        e(
+          "div",
+          { key: "none", className: "ecu-phone-pick__empty" },
+          "No characters online"
+        )
+      );
+    } else {
+      for (let i = 0; i < rows.length; i++) {
+        const row3 = rows[i];
+        const titleBits = row3.name + (row3.active ? " \xB7 watching" : "");
+        kids.push(
+          e(
+            "button",
+            {
+              key: "c-" + row3.name,
+              type: "button",
+              className: "ecu-phone-pick__row" + (row3.active ? " is-on" : "") + (row3.offServer ? " is-off-server" : "") + (row3.rip ? " is-rip" : ""),
+              title: row3.name + " \xB7 Lv." + row3.level + (row3.ctype ? " \xB7 " + row3.ctype : "") + (row3.serverLabel ? " \xB7 " + row3.serverLabel : "") + (row3.active ? " \xB7 Tap again via Stop observing" : "") + (row3.offServer ? " \xB7 Tap to switch server & observe" : ""),
+              onClick: () => {
+                toggleObserve(row3.name);
+                props.onClose();
+              }
+            },
+            row3.skinHtml ? e("span", {
+              className: "ecu-phone-pick__sprite",
+              dangerouslySetInnerHTML: { __html: row3.skinHtml }
+            }) : e("span", { className: "ecu-phone-pick__sprite is-empty" }, "\xB7"),
+            e(
+              "span",
+              { className: "ecu-phone-pick__text" },
+              e("span", { className: "ecu-phone-pick__title" }, titleBits),
+              e(
+                "span",
+                { className: "ecu-phone-pick__meta" },
+                charMetaLine(row3)
+              )
+            )
+          )
+        );
+      }
+    }
+    return e(
+      React.Fragment,
+      null,
+      e("button", {
+        type: "button",
+        className: "ecu-phone-sheet-scrim",
+        "aria-label": "Dismiss",
+        onClick: props.onClose
+      }),
+      e(
+        "div",
+        {
+          ref: sheetRef,
+          className: "ecu-phone-sheet",
+          role: "dialog",
+          "aria-label": "Observe character"
+        },
+        e("div", {
+          className: "ecu-phone-sheet__handle",
+          onTouchStart: onHandleTouchStart,
+          onTouchMove: onHandleTouchMove,
+          onTouchEnd: onHandleTouchEnd,
+          onTouchCancel: onHandleTouchEnd
+        }),
+        e(
+          "div",
+          {
+            className: "ecu-phone-sheet__hd",
+            onTouchStart: onHandleTouchStart,
+            onTouchMove: onHandleTouchMove,
+            onTouchEnd: onHandleTouchEnd,
+            onTouchCancel: onHandleTouchEnd
+          },
+          e("h2", { className: "ecu-phone-sheet__title" }, "Character"),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-phone-sheet__done",
+              onClick: props.onClose
+            },
+            "Done"
+          )
+        ),
+        e("div", { className: "ecu-phone-sheet__body" }, ...kids)
+      )
+    );
+  }
+
+  // src/ui/frames/comm/PhoneServerSheet.ts
+  function readServers() {
+    const servers = window.X && window.X.servers || [];
+    const rows = [];
+    let currentIndex = -1;
+    for (let i = 0; i < servers.length; i++) {
+      const server = servers[i];
+      const active = window.server_region === server.region && window.server_identifier === server.name;
+      if (active) currentIndex = i;
+      rows.push({
+        index: i,
+        label: String(server.region) + " " + String(server.name),
+        region: String(server.region || ""),
+        name: String(server.name || ""),
+        players: Number(server.players) || 0,
+        active,
+        events: getServerEventBadges(server.region, server.name)
+      });
+    }
+    let currentLabel = "";
+    let currentPlayers = null;
+    if (currentIndex >= 0) {
+      currentLabel = rows[currentIndex].label;
+      currentPlayers = rows[currentIndex].players;
+    } else if (window.server_region) {
+      currentLabel = String(window.server_region) + (window.server_identifier ? " " + String(window.server_identifier) : "");
+    }
+    const samples2 = readPingSamples();
+    const avg = averagePingMs(samples2);
+    const pingMs = avg == null ? null : Math.round(avg);
+    return {
+      rows,
+      currentLabel,
+      currentPlayers,
+      pingMs,
+      pingCss: pingMs == null ? "#8ab4c9" : pingColor(pingMs),
+      pingBars: pingSparkBars(samples2)
+    };
+  }
+  function eventChips(events, keyPrefix) {
+    const shown = events.slice(0, 6);
+    const chips = [];
+    for (let i = 0; i < shown.length; i++) {
+      const ev = shown[i];
+      chips.push(
+        e(
+          "span",
+          {
+            key: keyPrefix + "-" + ev.type,
+            className: "ecu-phone-pick__event" + (ev.live ? " is-live" : ""),
+            title: ev.type + (ev.live ? " live" : "")
+          },
+          ev.type
+        )
+      );
+    }
+    if (events.length > shown.length) {
+      chips.push(
+        e(
+          "span",
+          {
+            key: keyPrefix + "-more",
+            className: "ecu-phone-pick__event ecu-phone-pick__event--more",
+            title: events.slice(6).map((b) => b.type).join(", ")
+          },
+          "+" + String(events.length - shown.length)
+        )
+      );
+    }
+    return chips;
+  }
+  function PhoneServerSheet(props) {
+    const React = getReact();
+    ensurePhoneNavCss();
+    const sheetRef = React.useRef(null);
+    const dragStartY = React.useRef(0);
+    const dragDy = React.useRef(0);
+    const dragging = React.useRef(false);
+    const [rows, setRows] = React.useState([]);
+    const [currentLabel, setCurrentLabel] = React.useState("");
+    const [currentPlayers, setCurrentPlayers] = React.useState(
+      null
+    );
+    const [pingMs, setPingMs] = React.useState(null);
+    const [pingCss, setPingCss] = React.useState("#8ab4c9");
+    const [pingBars, setPingBars] = React.useState([]);
+    const onClose = props.onClose;
+    React.useEffect(() => {
+      if (!props.open) return;
+      const refresh = () => {
+        const snap = readServers();
+        setRows(snap.rows);
+        setCurrentLabel(snap.currentLabel);
+        setCurrentPlayers(snap.currentPlayers);
+        setPingMs(snap.pingMs);
+        setPingCss(snap.pingCss);
+        setPingBars(snap.pingBars);
+      };
+      ensureServerEventsPolling();
+      refresh();
+      const id = window.setInterval(refresh, 500);
+      const onKey = (ev) => {
+        if (ev.key === "Escape") onClose();
+      };
+      window.addEventListener("keydown", onKey);
+      return () => {
+        window.clearInterval(id);
+        window.removeEventListener("keydown", onKey);
+      };
+    }, [props.open, onClose]);
+    if (!props.open) return null;
+    const resetDrag = () => {
+      dragging.current = false;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transform = "";
+        el.style.transition = "";
+      }
+    };
+    const onHandleTouchStart = (ev) => {
+      if (!ev.touches.length) return;
+      dragging.current = true;
+      dragStartY.current = ev.touches[0].clientY;
+      dragDy.current = 0;
+      const el = sheetRef.current;
+      if (el) el.style.transition = "none";
+    };
+    const onHandleTouchMove = (ev) => {
+      if (!dragging.current || !ev.touches.length) return;
+      const dy = Math.max(0, ev.touches[0].clientY - dragStartY.current);
+      dragDy.current = dy;
+      const el = sheetRef.current;
+      if (el) el.style.transform = "translateY(" + dy + "px)";
+      if (dy > 8) ev.preventDefault();
+    };
+    const onHandleTouchEnd = () => {
+      if (!dragging.current) return;
+      const dy = dragDy.current;
+      if (dy > 90) {
+        resetDrag();
+        props.onClose();
+        return;
+      }
+      const el = sheetRef.current;
+      if (el) {
+        el.style.transition = "transform 0.18s ease";
+        el.style.transform = "translateY(0)";
+      }
+      dragging.current = false;
+      dragDy.current = 0;
+    };
+    const bannerMeta = [];
+    if (currentPlayers != null) {
+      bannerMeta.push(
+        String(currentPlayers) + " player" + (currentPlayers === 1 ? "" : "s")
+      );
+    }
+    const sheetBarKids = [];
+    for (let i = 0; i < pingBars.length; i++) {
+      const bar = pingBars[i];
+      sheetBarKids.push(
+        e("span", {
+          key: "pb" + i,
+          className: "ecu-phone-pick__ping-bar",
+          style: { height: bar.pct + "%", background: bar.color }
+        })
+      );
+    }
+    const kids = [];
+    kids.push(
+      e(
+        "div",
+        {
+          key: "cur",
+          className: "ecu-phone-pick__banner",
+          role: "status"
+        },
+        e(
+          "div",
+          { className: "ecu-phone-pick__banner-main" },
+          e("strong", null, currentLabel ? "On " + currentLabel : "No server"),
+          e(
+            "span",
+            { className: "ecu-phone-pick__banner-meta" },
+            bannerMeta.length ? bannerMeta.join(" \xB7 ") : currentLabel ? "Tap another realm to reconnect there." : "Connect or pick a realm below."
+          )
+        ),
+        pingBars.length || pingMs != null ? e(
+          "span",
+          {
+            className: "ecu-phone-pick__ping",
+            title: pingMs != null ? "Avg ping " + pingMs + "ms" : "Ping unavailable"
+          },
+          sheetBarKids.length ? e(
+            "span",
+            {
+              className: "ecu-phone-pick__ping-bars",
+              "aria-hidden": "true"
+            },
+            ...sheetBarKids
+          ) : null,
+          e(
+            "span",
+            {
+              className: "ecu-phone-pick__ping-ms",
+              style: { color: pingCss }
+            },
+            pingMs != null ? String(pingMs) + "ms" : "\u2014"
+          )
+        ) : null
+      )
+    );
+    kids.push(
+      e("div", { key: "sec", className: "ecu-phone-sheet__sec" }, "Realms")
+    );
+    if (!rows.length) {
+      kids.push(
+        e(
+          "div",
+          { key: "none", className: "ecu-phone-pick__empty" },
+          "No servers online"
+        )
+      );
+    } else {
+      for (let i = 0; i < rows.length; i++) {
+        const row3 = rows[i];
+        const playersTitle = String(row3.players) + " player" + (row3.players === 1 ? "" : "s") + " online";
+        kids.push(
+          e(
+            "button",
+            {
+              key: "s-" + row3.index,
+              type: "button",
+              className: "ecu-phone-pick__row ecu-phone-pick__row--server" + (row3.active ? " is-on" : ""),
+              onClick: () => {
+                selectServer(row3.index);
+                props.onClose();
+              }
+            },
+            e(
+              "span",
+              { className: "ecu-phone-pick__text" },
+              e(
+                "span",
+                { className: "ecu-phone-pick__title-row" },
+                e(
+                  "span",
+                  { className: "ecu-phone-pick__title" },
+                  row3.label
+                ),
+                row3.active ? e(
+                  "span",
+                  { className: "ecu-phone-pick__badge" },
+                  "current"
+                ) : null
+              ),
+              row3.events.length ? e(
+                "span",
+                { className: "ecu-phone-pick__events" },
+                ...eventChips(row3.events, "s" + row3.index)
+              ) : null
+            ),
+            e(
+              "span",
+              {
+                className: "ecu-phone-pick__players",
+                title: playersTitle
+              },
+              e("span", { className: "ecu-phone-pick__players-n" }, String(row3.players)),
+              e("span", { className: "ecu-phone-pick__players-lbl" }, "online")
+            )
+          )
+        );
+      }
+    }
+    return e(
+      React.Fragment,
+      null,
+      e("button", {
+        type: "button",
+        className: "ecu-phone-sheet-scrim",
+        "aria-label": "Dismiss",
+        onClick: props.onClose
+      }),
+      e(
+        "div",
+        {
+          ref: sheetRef,
+          className: "ecu-phone-sheet",
+          role: "dialog",
+          "aria-label": "Server"
+        },
+        e("div", {
+          className: "ecu-phone-sheet__handle",
+          onTouchStart: onHandleTouchStart,
+          onTouchMove: onHandleTouchMove,
+          onTouchEnd: onHandleTouchEnd,
+          onTouchCancel: onHandleTouchEnd
+        }),
+        e(
+          "div",
+          {
+            className: "ecu-phone-sheet__hd",
+            onTouchStart: onHandleTouchStart,
+            onTouchMove: onHandleTouchMove,
+            onTouchEnd: onHandleTouchEnd,
+            onTouchCancel: onHandleTouchEnd
+          },
+          e("h2", { className: "ecu-phone-sheet__title" }, "Server"),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "ecu-phone-sheet__done",
+              onClick: props.onClose
+            },
+            "Done"
+          )
+        ),
+        e("div", { className: "ecu-phone-sheet__body" }, ...kids)
+      )
+    );
   }
 
   // src/ui/frames/comm/PhoneShade.ts
@@ -54185,13 +55606,42 @@ ${parts.map(cssSlice).join("\n")}
 
   // src/ui/frames/comm/PhoneNavDock.ts
   var EDGE_HINT_KEY = "ecu-phone-edge-swipe-hint";
-  function dockBtn(key, glyph, label, onClick, opts) {
+  function dockStatusBtn(key, eyebrow, title, onClick, opts) {
+    const mainKids = [
+      e("span", { className: "ecu-phone-dock__eyebrow", key: "eye" }, eyebrow),
+      e("span", { className: "ecu-phone-dock__status-title", key: "title" }, title)
+    ];
+    if ((opts == null ? void 0 : opts.meta) != null && opts.meta !== "") {
+      mainKids.push(
+        e(
+          "span",
+          { className: "ecu-phone-dock__status-meta", key: "meta" },
+          opts.meta
+        )
+      );
+    }
+    const kids = [
+      e(
+        "span",
+        { className: "ecu-phone-dock__status-main", key: "main" },
+        ...mainKids
+      )
+    ];
+    if ((opts == null ? void 0 : opts.trailing) != null) {
+      kids.push(
+        e(
+          "span",
+          { className: "ecu-phone-dock__status-trail", key: "trail" },
+          opts.trailing
+        )
+      );
+    }
     return e(
       "button",
       {
         key,
         type: "button",
-        className: "ecu-phone-dock__btn" + ((opts == null ? void 0 : opts.on) ? " is-on" : ""),
+        className: "ecu-phone-dock__status" + ((opts == null ? void 0 : opts.trailing) ? " has-trail" : "") + ((opts == null ? void 0 : opts.on) ? " is-on" : "") + ((opts == null ? void 0 : opts.muted) ? " is-muted" : ""),
         "data-ecu-tour": opts == null ? void 0 : opts.tour,
         "aria-pressed": (opts == null ? void 0 : opts.on) ? "true" : "false",
         onClick: (ev) => {
@@ -54199,8 +55649,7 @@ ${parts.map(cssSlice).join("\n")}
           onClick();
         }
       },
-      e("span", { className: "ecu-phone-dock__glyph" }, glyph),
-      e("span", null, label)
+      ...kids
     );
   }
   function PhoneNavDock(props) {
@@ -54209,6 +55658,11 @@ ${parts.map(cssSlice).join("\n")}
     ensurePhoneNavCss();
     const [sheetOpen, setSheetOpen] = React.useState(false);
     const [shadeOpen, setShadeOpen] = React.useState(false);
+    const [observeOpen, setObserveOpen] = React.useState(false);
+    const [serverOpen, setServerOpen] = React.useState(false);
+    const [status, setStatus2] = React.useState(
+      () => readPhoneDockStatus()
+    );
     const barRef = React.useRef(null);
     React.useEffect(() => {
       const measure = () => {
@@ -54226,6 +55680,12 @@ ${parts.map(cssSlice).join("\n")}
         clearPhoneDockChrome();
       };
     }, []);
+    React.useEffect(() => {
+      const tick3 = () => setStatus2(readPhoneDockStatus());
+      tick3();
+      const id = window.setInterval(tick3, 500);
+      return () => window.clearInterval(id);
+    }, []);
     const pages = phoneHomeScreenIndices(props.phoneHomeScreens);
     const activePage = clampPhoneHomePage(props.phoneHomePage, pages);
     React.useEffect(() => {
@@ -54241,6 +55701,8 @@ ${parts.map(cssSlice).join("\n")}
     const dismissSheets = () => {
       if (sheetOpen) setSheetOpen(false);
       if (shadeOpen) setShadeOpen(false);
+      if (observeOpen) setObserveOpen(false);
+      if (serverOpen) setServerOpen(false);
       if (props.settingsOpen) props.toggleSettings();
     };
     const hidePeerPanels = (keep) => {
@@ -54258,34 +55720,41 @@ ${parts.map(cssSlice).join("\n")}
     };
     const openApps = () => {
       if (shadeOpen) setShadeOpen(false);
+      if (observeOpen) setObserveOpen(false);
+      if (serverOpen) setServerOpen(false);
       if (props.settingsOpen) props.toggleSettings();
       hidePeerPanels("none");
       setSheetOpen(true);
     };
-    const toggleOverlay = (id, openFn) => {
+    const openObserve = () => {
       dismissSheets();
-      if (props.visible(id)) {
-        props.setVisible(id, false);
-        return;
-      }
-      hidePeerPanels(id);
-      if (openFn) openFn();
-      else props.setVisible(id, true);
+      hidePeerPanels("none");
+      setObserveOpen(true);
     };
-    const toggleChat = () => toggleOverlay("chat", () => openChat({ toggle: true }));
-    const toggleCmd = () => toggleOverlay("command", () => openCommander());
-    const toggleMail = () => toggleOverlay("mail");
-    const toggleBag = () => toggleOverlay("bag");
-    const toggleBank = () => toggleOverlay("bank");
+    const openServer = () => {
+      dismissSheets();
+      hidePeerPanels("none");
+      setServerOpen(true);
+    };
     const toggleSettings = () => {
       if (sheetOpen) setSheetOpen(false);
       if (shadeOpen) setShadeOpen(false);
+      if (observeOpen) setObserveOpen(false);
+      if (serverOpen) setServerOpen(false);
       if (!props.settingsOpen) hidePeerPanels("none");
       props.toggleSettings();
     };
     const dismissTop = () => {
       if (shadeOpen) {
         setShadeOpen(false);
+        return true;
+      }
+      if (observeOpen) {
+        setObserveOpen(false);
+        return true;
+      }
+      if (serverOpen) {
+        setServerOpen(false);
         return true;
       }
       if (sheetOpen) {
@@ -54314,7 +55783,7 @@ ${parts.map(cssSlice).join("\n")}
       return false;
     };
     const onTopEdge = () => {
-      if (sheetOpen || props.settingsOpen || chatOn || commandOn || mailOn || bagOn || bankOn) {
+      if (sheetOpen || observeOpen || serverOpen || props.settingsOpen || chatOn || commandOn || mailOn || bagOn || bankOn) {
         dismissTop();
         return;
       }
@@ -54323,6 +55792,14 @@ ${parts.map(cssSlice).join("\n")}
     const onBottomEdge = () => {
       if (shadeOpen) {
         setShadeOpen(false);
+        return;
+      }
+      if (observeOpen) {
+        setObserveOpen(false);
+        return;
+      }
+      if (serverOpen) {
+        setServerOpen(false);
         return;
       }
       if (sheetOpen) {
@@ -54343,7 +55820,7 @@ ${parts.map(cssSlice).join("\n")}
       pages,
       activePage,
       setPage: props.setPhoneHomePage,
-      blocked: () => shadeOpen || sheetOpen || props.settingsOpen || props.visible("chat") || props.visible("command") || props.visible("mail") || props.visible("bank") || props.visible("market") || props.visible("bag") || pages.length < 2
+      blocked: () => shadeOpen || sheetOpen || observeOpen || serverOpen || props.settingsOpen || props.visible("chat") || props.visible("command") || props.visible("mail") || props.visible("bank") || props.visible("market") || props.visible("bag") || pages.length < 2
     };
     React.useEffect(() => {
       const maybeHint = () => {
@@ -54424,10 +55901,51 @@ ${parts.map(cssSlice).join("\n")}
         );
       }
     }
+    const charTitle = status.observing ? shortPhoneDockLabel(status.observingName, 14) : "Not observing";
+    const serverTitle = status.serverLabel ? shortPhoneDockLabel(status.serverLabel, 14) : status.connected ? "\u2014" : "Select\u2026";
+    const charMeta = formatPhoneCharDockMeta(status);
+    const playersMeta = formatPhoneServerDockPlayers(status);
+    const serverMeta = playersMeta || (!status.serverLabel ? null : status.pingMs == null ? "\u2026" : null);
+    let serverTrail = null;
+    if (status.pingBars.length || status.pingMs != null) {
+      const barKids = [];
+      for (let i = 0; i < status.pingBars.length; i++) {
+        const bar = status.pingBars[i];
+        barKids.push(
+          e("span", {
+            key: "b" + i,
+            className: "ecu-phone-dock__ping-bar",
+            style: {
+              height: bar.pct + "%",
+              background: bar.color
+            }
+          })
+        );
+      }
+      serverTrail = e(
+        "span",
+        {
+          className: "ecu-phone-dock__ping",
+          title: status.pingMs != null ? "Avg ping " + status.pingMs + "ms" : "Ping unavailable"
+        },
+        barKids.length ? e(
+          "span",
+          { className: "ecu-phone-dock__ping-bars", "aria-hidden": "true" },
+          ...barKids
+        ) : null,
+        e(
+          "span",
+          {
+            className: "ecu-phone-dock__ping-ms",
+            style: { color: status.pingColor }
+          },
+          status.pingMs != null ? String(status.pingMs) + "ms" : "\u2014"
+        )
+      );
+    }
     return e(
       "div",
       { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
-      // Dots float above #bottom chrome (not buried under the character strip).
       pages.length > 1 ? e(
         "div",
         {
@@ -54451,25 +55969,37 @@ ${parts.map(cssSlice).join("\n")}
           "aria-hidden": "true",
           title: "Swipe up for Apps"
         }),
-        dockBtn("chat", "C", "Chat", toggleChat, {
-          on: chatOn,
-          tour: "btn-chat"
+        dockStatusBtn("character", "Character", charTitle, openObserve, {
+          on: status.observing,
+          muted: !status.observing,
+          tour: "character-ui",
+          meta: charMeta
         }),
-        dockBtn("command", "</>", "Cmd", toggleCmd, {
-          on: commandOn,
-          tour: "btn-command"
-        }),
-        dockBtn("mail", "M", "Mail", toggleMail, {
-          on: mailOn,
-          tour: "btn-mail"
-        }),
-        dockBtn("bag", "B", "Bag", toggleBag, {
-          on: bagOn,
-          tour: "btn-bag"
-        }),
-        dockBtn("bank", "$", "Bank", toggleBank, {
-          on: bankOn,
-          tour: "btn-bank"
+        e(
+          "button",
+          {
+            key: "apps",
+            type: "button",
+            className: "ecu-phone-dock__apps" + (sheetOpen ? " is-on" : ""),
+            "aria-label": "Apps",
+            title: "Apps",
+            "data-ecu-tour": "btn-apps",
+            onClick: (ev) => {
+              if (ev && typeof ev.stopPropagation === "function")
+                ev.stopPropagation();
+              if (sheetOpen) setSheetOpen(false);
+              else openApps();
+            }
+          },
+          e("span", { className: "ecu-phone-dock__apps-glyph" }, "\u25A6"),
+          e("span", null, "Apps")
+        ),
+        dockStatusBtn("server", "Server", serverTitle, openServer, {
+          on: !!status.serverLabel,
+          muted: !status.serverLabel,
+          tour: "server-picker",
+          meta: serverMeta,
+          trailing: serverTrail
         })
       ),
       e(PhoneWindowsSheet, {
@@ -54498,6 +56028,14 @@ ${parts.map(cssSlice).join("\n")}
           storePhoneHomePage(page);
         }
       }),
+      e(PhoneObserveSheet, {
+        open: observeOpen,
+        onClose: () => setObserveOpen(false)
+      }),
+      e(PhoneServerSheet, {
+        open: serverOpen,
+        onClose: () => setServerOpen(false)
+      }),
       e(PhoneShade, {
         open: shadeOpen,
         onClose: () => setShadeOpen(false),
@@ -54516,7 +56054,6 @@ ${parts.map(cssSlice).join("\n")}
         },
         visible: props.visible
       }),
-      // Screen label for a11y / debugging active page.
       screen ? e(
         "span",
         {
@@ -57444,6 +58981,22 @@ ${parts.map(cssSlice).join("\n")}
     const hay = "factory default reset wipe clear local storage indexeddb cache data nuke";
     return hay.includes(q);
   }
+  function controlsSectionMatches(query) {
+    if (isPhoneViewport()) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls".includes(
+      q
+    );
+  }
+  var TAMPERMONKEY_MOBILE_FAQ = "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
+  function installSectionMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "tampermonkey mobile phone android ios edge firefox safari q406 install".includes(
+      q
+    );
+  }
   function countCommUiSettingsMatches(query) {
     let total = 0;
     const tours = listGuidedTours();
@@ -57453,15 +59006,19 @@ ${parts.map(cssSlice).join("\n")}
     for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
       if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
     }
+    if (controlsSectionMatches(query)) total += 1;
+    if (installSectionMatches(query)) total += 1;
     if (dataSectionMatches(query)) total += 1;
     return total;
   }
   function CommUiSettingsPane(props) {
     const React = getReact();
     const [tourTick, setTourTick] = React.useState(0);
+    const [ctrlTick, setCtrlTick] = React.useState(0);
     const query = String(props.query || "").trim();
     const tours = listGuidedTours();
     void tourTick;
+    void ctrlTick;
     const kids = [
       e(
         "p",
@@ -57547,7 +59104,51 @@ ${parts.map(cssSlice).join("\n")}
         )
       );
     }
-    if (tourRows === 0 && updateRows === 0 && !dataSectionMatches(query)) {
+    if (controlsSectionMatches(query)) {
+      const settings = getSettings();
+      kids.push(settingsSection("Controls"));
+      kids.push(
+        settingsCheckboxRow(
+          "wheel-zoom",
+          "Mouse wheel / trackpad zoom",
+          settings.worldWheelZoomEnabled !== false,
+          (next) => {
+            patchSettings({ worldWheelZoomEnabled: next });
+            setCtrlTick((n) => n + 1);
+          },
+          {
+            help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out\xB7in still work."
+          }
+        )
+      );
+    }
+    if (installSectionMatches(query)) {
+      kids.push(settingsSection("Mobile install"));
+      kids.push(
+        e(
+          "p",
+          { key: "tm-help", className: "ecu-settings-help" },
+          "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build."
+        )
+      );
+      kids.push(
+        e(
+          "p",
+          { key: "tm-link", className: "ecu-settings-help" },
+          e(
+            "a",
+            {
+              href: TAMPERMONKEY_MOBILE_FAQ,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              style: { color: "#8ec8e8" }
+            },
+            "Tampermonkey FAQ \xB7 official mobile versions (Q406)"
+          )
+        )
+      );
+    }
+    if (tourRows === 0 && updateRows === 0 && !controlsSectionMatches(query) && !installSectionMatches(query) && !dataSectionMatches(query)) {
       kids.push(
         e(
           "p",
@@ -57747,10 +59348,26 @@ ${parts.map(cssSlice).join("\n")}
     const hay = `${def.label} ${def.key} ${def.help || ""} ${def.tag || ""}`.toLowerCase();
     return hay.includes(query);
   }
+  function matchesQuery2(hay, query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return hay.toLowerCase().includes(q);
+  }
+  function hudDensityMatches(query) {
+    return matchesQuery2(
+      "hud density lite full auto phone mobile windows panels clutter",
+      query
+    );
+  }
+  function metersMatches(query) {
+    return matchesQuery2("meters hide dps hps combat skada", query);
+  }
   function countCommHudSettingsMatches(query) {
     const q = query.trim().toLowerCase();
     const sections = overlayToggleSectionsForPane("commHud");
     let total = 0;
+    if (hudDensityMatches(query)) total += 1;
+    if (metersMatches(query)) total += 1;
     for (let s = 0; s < sections.length; s++) {
       const defs = sections[s].defs;
       for (let i = 0; i < defs.length; i++) {
@@ -57762,21 +59379,80 @@ ${parts.map(cssSlice).join("\n")}
   function CommHudSettingsPane(props) {
     const React = getReact();
     const [, bump] = React.useState(0);
+    const [tick3, setTick] = React.useState(0);
+    void tick3;
     React.useEffect(
       () => subscribeVizSettings(() => bump((n) => n + 1)),
       []
     );
-    const settings = getVizSettings();
+    const vizSettings = getVizSettings();
+    const settings = getSettings();
     const query = String(props.query || "").trim().toLowerCase();
+    const density = props.hudDensity != null ? props.hudDensity : settings.hudDensity || "auto";
+    const setDensity = props.setHudDensity || ((mode) => {
+      patchSettings({ hudDensity: mode });
+      setTick((n) => n + 1);
+    });
     const sections = overlayToggleSectionsForPane("commHud");
     const kids = [
       e(
         "p",
         { className: "ecu-settings-lead" },
-        "Comm HUD overlay helpers that add chips and markers to the shell itself."
+        "HUD density, meter window visibility, and Comm HUD overlay chips on the shell."
       )
     ];
     let rowCount = 0;
+    if (hudDensityMatches(query)) {
+      rowCount += 1;
+      kids.push(settingsSection("HUD density"));
+      kids.push(
+        e(
+          "p",
+          { key: "density-help", className: "ecu-settings-help" },
+          "Lite hides ability timeline, minimap, threat, kills, unit frames, instance, and enemies until you reopen them. Auto uses lite on phone only. Bank / mail / market polls also run slower on phone."
+        )
+      );
+      const densityKids = [];
+      for (let i = 0; i < HUD_DENSITIES.length; i++) {
+        const mode = HUD_DENSITIES[i];
+        densityKids.push(
+          e(
+            "label",
+            {
+              key: mode,
+              className: "ecu-settings-row",
+              style: { display: "flex", gap: "10px", alignItems: "center" }
+            },
+            e("input", {
+              type: "radio",
+              name: "ecu-hud-density",
+              checked: density === mode,
+              onChange: () => setDensity(mode)
+            }),
+            e("span", null, hudDensityLabel(mode))
+          )
+        );
+      }
+      kids.push(e("div", { key: "density" }, densityKids));
+    }
+    if (metersMatches(query)) {
+      rowCount += 1;
+      kids.push(settingsSection("Meters"));
+      kids.push(
+        settingsCheckboxRow(
+          "meters",
+          "Hide meter windows",
+          !!settings.metersHidden,
+          (next) => {
+            patchSettings({ metersHidden: next });
+            setTick((n) => n + 1);
+          },
+          {
+            help: "Hides DPS/HPS frames. Damage ingest still runs so reports stay correct when you show them again."
+          }
+        )
+      );
+    }
     for (let s = 0; s < sections.length; s++) {
       const section3 = sections[s];
       const rows = [];
@@ -57787,7 +59463,7 @@ ${parts.map(cssSlice).join("\n")}
           settingsCheckboxRow(
             def.key,
             def.label,
-            settings[def.key],
+            vizSettings[def.key],
             (next) => patchVizSettings({ [def.key]: next }),
             {
               help: def.help,
@@ -57974,6 +59650,13 @@ ${parts.map(cssSlice).join("\n")}
   }
 
   // src/ui/frames/settings/inGameSettingsPane.ts
+  function worldOverlayMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return "world overlay drawings vision fog map rings performance battery gpu".includes(
+      q
+    );
+  }
   function tagLabel2(tag) {
     if (!tag) return null;
     switch (tag) {
@@ -58068,6 +59751,7 @@ ${parts.map(cssSlice).join("\n")}
     }, []);
     const forceBump = React.useCallback(() => bump((n) => n + 1), []);
     const kids = React.useMemo(() => {
+      const ecuSettings = getSettings();
       const nextKids = [
         e(
           "p",
@@ -58075,6 +59759,25 @@ ${parts.map(cssSlice).join("\n")}
           "Rings, labels, entity lines, and debug overlays for the /comm world map."
         )
       ];
+      if (worldOverlayMatches(query)) {
+        nextKids.push(settingsSection("Master"));
+        nextKids.push(
+          settingsCheckboxRow(
+            "overlay",
+            "World overlay loop",
+            ecuSettings.worldOverlayEnabled !== false,
+            (next) => {
+              patchSettings({ worldOverlayEnabled: next });
+              if (next) startWorldOverlay();
+              else stopWorldOverlay();
+              forceBump();
+            },
+            {
+              help: "Master switch for rings, vision fog, and other PIXI drawings. Off saves GPU; socket combat tracking is unchanged."
+            }
+          )
+        );
+      }
       for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
         const section3 = IN_GAME_SECTIONS[i];
         if (query && section3.matchesQuery(query) === 0) continue;
@@ -58125,6 +59828,7 @@ ${parts.map(cssSlice).join("\n")}
   function countInGameSettingsMatches(query) {
     const q = query.trim().toLowerCase();
     let total = 0;
+    if (worldOverlayMatches(q)) total += 1;
     for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
       total += IN_GAME_SECTIONS[i].matchesQuery(q);
     }
@@ -58442,166 +60146,12 @@ ${parts.map(cssSlice).join("\n")}
     return e("div", null, ...kids);
   }
 
-  // src/ui/frames/settings/performanceSettingsPane.ts
-  var TAMPERMONKEY_MOBILE_FAQ = "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
-  function matchesQuery2(hay, query) {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return hay.toLowerCase().includes(q);
-  }
-  function countPerformanceSettingsMatches(query) {
-    let n = 0;
-    if (matchesQuery2(
-      "hud density lite full auto phone mobile windows panels clutter",
-      query
-    )) {
-      n += 1;
-    }
-    if (matchesQuery2(
-      "world overlay drawings vision fog map rings performance battery",
-      query
-    )) {
-      n += 1;
-    }
-    if (matchesQuery2("meters hide dps hps combat skada", query)) n += 1;
-    if (matchesQuery2(
-      "tampermonkey mobile phone android ios edge firefox safari q406 install",
-      query
-    )) {
-      n += 1;
-    }
-    return n;
-  }
-  function PerformanceSettingsPane(props) {
-    const React = getReact();
-    const query = String(props.query || "").trim();
-    const [tick3, setTick] = React.useState(0);
-    void tick3;
-    const settings = getSettings();
-    const density = props.hudDensity != null ? props.hudDensity : settings.hudDensity || "auto";
-    const setDensity = props.setHudDensity || ((mode) => {
-      patchSettings({ hudDensity: mode });
-      setTick((n) => n + 1);
-    });
-    const kids = [
-      e(
-        "p",
-        { key: "lead", className: "ecu-settings-lead" },
-        "Cut windows and optional map drawings. Combat meters and socket trackers keep running when the tab is in the background so desktop farming is not starved."
-      )
-    ];
-    if (matchesQuery2(
-      "hud density lite full auto phone mobile windows panels clutter",
-      query
-    )) {
-      kids.push(settingsSection("HUD density"));
-      kids.push(
-        e(
-          "p",
-          { key: "density-help", className: "ecu-settings-help" },
-          "Lite hides ability timeline, minimap, threat, kills, unit frames, instance, and enemies until you reopen them. Auto uses lite on phone only. Bank / mail / market polls also run slower on phone."
-        )
-      );
-      const densityKids = [];
-      for (let i = 0; i < HUD_DENSITIES.length; i++) {
-        const mode = HUD_DENSITIES[i];
-        densityKids.push(
-          e(
-            "label",
-            {
-              key: mode,
-              className: "ecu-settings-row",
-              style: { display: "flex", gap: "10px", alignItems: "center" }
-            },
-            e("input", {
-              type: "radio",
-              name: "ecu-hud-density",
-              checked: density === mode,
-              onChange: () => setDensity(mode)
-            }),
-            e("span", null, hudDensityLabel(mode))
-          )
-        );
-      }
-      kids.push(e("div", { key: "density" }, densityKids));
-    }
-    if (matchesQuery2(
-      "world overlay drawings vision fog map rings performance battery",
-      query
-    )) {
-      kids.push(settingsSection("Map drawings"));
-      kids.push(
-        settingsCheckboxRow(
-          "overlay",
-          "World overlay loop",
-          settings.worldOverlayEnabled !== false,
-          (next) => {
-            patchSettings({ worldOverlayEnabled: next });
-            if (next) startWorldOverlay();
-            else stopWorldOverlay();
-            setTick((n) => n + 1);
-          },
-          {
-            help: "Rings, vision fog, and other PIXI drawings. Off saves GPU; socket combat tracking is unchanged."
-          }
-        )
-      );
-    }
-    if (matchesQuery2("meters hide dps hps combat skada", query)) {
-      kids.push(settingsSection("Meters"));
-      kids.push(
-        settingsCheckboxRow(
-          "meters",
-          "Hide meter windows",
-          !!settings.metersHidden,
-          (next) => {
-            patchSettings({ metersHidden: next });
-            setTick((n) => n + 1);
-          },
-          {
-            help: "Hides DPS/HPS frames. Damage ingest still runs so reports stay correct when you show them again."
-          }
-        )
-      );
-    }
-    if (matchesQuery2(
-      "tampermonkey mobile phone android ios edge firefox safari q406 install",
-      query
-    )) {
-      kids.push(settingsSection("Mobile install"));
-      kids.push(
-        e(
-          "p",
-          { key: "tm-help", className: "ecu-settings-help" },
-          "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build."
-        )
-      );
-      kids.push(
-        e(
-          "p",
-          { key: "tm-link", className: "ecu-settings-help" },
-          e(
-            "a",
-            {
-              href: TAMPERMONKEY_MOBILE_FAQ,
-              target: "_blank",
-              rel: "noopener noreferrer",
-              style: { color: "#8ec8e8" }
-            },
-            "Tampermonkey FAQ \xB7 official mobile versions (Q406)"
-          )
-        )
-      );
-    }
-    return e("div", { className: "ecu-settings-pane" }, kids);
-  }
-
   // src/ui/frames/settings/settingsRegistry.ts
   var SETTINGS_PANES = [
     {
       id: "commUi",
       label: "Comm UI",
-      description: "Guided tours, What's New, server notes, and factory-reset local Comm UI data.",
+      description: "Guided tours, What's New, server notes, desktop camera controls, mobile install help, and factory-reset local Comm UI data.",
       countMatches: countCommUiSettingsMatches,
       render: (props) => e(CommUiSettingsPane, {
         query: props.query,
@@ -58627,7 +60177,7 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "drawings",
       label: "Drawings",
-      description: "Map drawings, rings, labels, debug lines, and per-ability appearance overrides.",
+      description: "Map drawings master switch, rings, labels, debug lines, and per-ability appearance overrides.",
       countMatches: countInGameSettingsMatches,
       render: (props) => e(InGameSettingsPane, { query: props.query })
     },
@@ -58641,16 +60191,9 @@ ${parts.map(cssSlice).join("\n")}
     {
       id: "commHud",
       label: "Comm HUD",
-      description: "Shell chips, spawn markers, and other Comm HUD panel helpers.",
+      description: "HUD density, meter windows, shell chips, spawn markers, and other Comm HUD helpers.",
       countMatches: countCommHudSettingsMatches,
-      render: (props) => e(CommHudSettingsPane, { query: props.query })
-    },
-    {
-      id: "performance",
-      label: "Performance",
-      description: "Lite HUD, world overlay, meters, and mobile Tampermonkey install help.",
-      countMatches: countPerformanceSettingsMatches,
-      render: (props) => e(PerformanceSettingsPane, {
+      render: (props) => e(CommHudSettingsPane, {
         query: props.query,
         hudDensity: props.hudDensity,
         setHudDensity: props.setHudDensity
@@ -90222,6 +91765,252 @@ ${ESTIMATE_HINT}`,
     );
   }
 
+  // src/host/nameplateSharpness.ts
+  function nearestMode() {
+    const PIXI = window.PIXI;
+    if (!PIXI || !PIXI.SCALE_MODES) return null;
+    const n = PIXI.SCALE_MODES.NEAREST;
+    return typeof n === "number" ? n : null;
+  }
+  function looksLikePixiText(node) {
+    return typeof node.resolution === "number" || typeof node.text === "string" && node.style != null || typeof node.updateText === "function";
+  }
+  function setNodeScale(node, sx, sy) {
+    const sc = node.scale;
+    if (!sc) {
+      const PIXI = window.PIXI;
+      if (PIXI && typeof PIXI.Point === "function") {
+        node.scale = new PIXI.Point(sx, sy);
+      } else {
+        node.scale = { x: sx, y: sy };
+      }
+      return;
+    }
+    if (typeof sc.set === "function") {
+      sc.set(sx, sy);
+      return;
+    }
+    sc.x = sx;
+    sc.y = sy;
+  }
+  function setNodePivot(node, px, py) {
+    const pv = node.pivot;
+    if (!pv) {
+      const PIXI = window.PIXI;
+      if (PIXI && typeof PIXI.Point === "function") {
+        node.pivot = new PIXI.Point(px, py);
+      } else {
+        node.pivot = { x: px, y: py };
+      }
+      return;
+    }
+    if (typeof pv.set === "function") {
+      pv.set(px, py);
+      return;
+    }
+    pv.x = px;
+    pv.y = py;
+  }
+  function nameplateScreenScale(fov) {
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+    if (!(f > 1)) return 1;
+    return Math.min(3, f);
+  }
+  function nameplateAttachPoint(bounds) {
+    return {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height
+    };
+  }
+  function nameplatePivotPosition(stockX, stockY, attachX, attachY) {
+    return { x: stockX + attachX, y: stockY + attachY };
+  }
+  function readLocalBounds(root) {
+    if (typeof root.updateTransform === "function") {
+      try {
+        root.updateTransform();
+      } catch (e2) {
+      }
+    }
+    const kids = root.children;
+    if (kids && kids.length) {
+      const c = kids[0];
+      const cx = typeof c.x === "number" ? c.x : 0;
+      const cy = typeof c.y === "number" ? c.y : 0;
+      let bx = 0;
+      let by = 0;
+      let bw = 32;
+      let bh = 9;
+      if (typeof c.getLocalBounds === "function") {
+        try {
+          if (typeof c.updateTransform === "function") c.updateTransform();
+          const b = c.getLocalBounds();
+          if (b && Number.isFinite(b.height) && b.height > 0) {
+            bx = b.x;
+            by = b.y;
+            bw = b.width;
+            bh = b.height;
+            return { x: cx + bx, y: cy + by, width: bw, height: bh };
+          }
+        } catch (e2) {
+        }
+      }
+      if (typeof c.height === "number" && c.height > 0) {
+        bw = typeof c.width === "number" && c.width > 0 ? c.width : bw;
+        bh = c.height;
+      }
+      return { x: cx + bx, y: cy + by, width: bw, height: bh };
+    }
+    if (typeof root.getLocalBounds === "function") {
+      try {
+        const b = root.getLocalBounds();
+        if (b && Number.isFinite(b.y) && Number.isFinite(b.height) && b.height > 0) {
+          return b;
+        }
+      } catch (e2) {
+      }
+    }
+    return null;
+  }
+  function applyNameplateScreenScale(root, screen) {
+    const stockX = typeof root.__ecuNameplateStockX === "number" ? root.__ecuNameplateStockX : typeof root.x === "number" ? root.x : 0;
+    const stockY = typeof root.__ecuNameplateStockY === "number" ? root.__ecuNameplateStockY : typeof root.y === "number" ? root.y : 0;
+    root.__ecuNameplateStockX = stockX;
+    root.__ecuNameplateStockY = stockY;
+    setNodeScale(root, 1, 1);
+    setNodePivot(root, 0, 0);
+    root.x = stockX;
+    root.y = stockY;
+    if (!(screen > 1)) return true;
+    const bounds = readLocalBounds(root);
+    if (!bounds) {
+      return false;
+    }
+    const attach = nameplateAttachPoint(bounds);
+    const pos = nameplatePivotPosition(stockX, stockY, attach.x, attach.y);
+    setNodePivot(root, attach.x, attach.y);
+    root.x = pos.x;
+    root.y = pos.y;
+    setNodeScale(root, screen, screen);
+    return true;
+  }
+  function sharpenNameTagTextures(root, fov) {
+    if (!root) return;
+    const appliedFov2 = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
+    const screen = nameplateScreenScale(appliedFov2);
+    const nearest = nearestMode();
+    const res = nameplateTextResolution(appliedFov2);
+    if (root.__ecuNameplateFov !== appliedFov2 || screen > 1) {
+      const ok = applyNameplateScreenScale(root, screen);
+      if (ok) root.__ecuNameplateFov = appliedFov2;
+    }
+    const visit = (node) => {
+      if (!node) return;
+      if (typeof node.roundPixels !== "undefined") node.roundPixels = true;
+      const bt = node.texture && node.texture.baseTexture;
+      if (bt && nearest != null) bt.scaleMode = nearest;
+      if (looksLikePixiText(node)) {
+        if (typeof node.resolution === "number" && node.resolution !== res) {
+          node.resolution = res;
+          if (typeof node.updateText === "function") {
+            try {
+              node.updateText();
+            } catch (e2) {
+              node.dirty = true;
+            }
+          } else {
+            node.dirty = true;
+          }
+        } else if (typeof node.resolution !== "number") {
+          try {
+            node.resolution = res;
+            if (typeof node.updateText === "function") node.updateText();
+            else node.dirty = true;
+          } catch (e2) {
+          }
+        }
+        const bt2 = node.texture && node.texture.baseTexture;
+        if (bt2 && nearest != null) bt2.scaleMode = nearest;
+      }
+      const kids = node.children;
+      if (!kids || !kids.length) return;
+      for (let i = 0; i < kids.length; i++) visit(kids[i]);
+    };
+    visit(root);
+  }
+  function bustNameTagCaches() {
+    const bump = (ent) => {
+      if (!ent) return;
+      ent.ntag_cache = null;
+      if (ent.name_tag) {
+        if (typeof ent.name_tag.__ecuNameplateStockY === "number") {
+          setNodeScale(ent.name_tag, 1, 1);
+          setNodePivot(ent.name_tag, 0, 0);
+          ent.name_tag.x = typeof ent.name_tag.__ecuNameplateStockX === "number" ? ent.name_tag.__ecuNameplateStockX : 0;
+          ent.name_tag.y = ent.name_tag.__ecuNameplateStockY;
+        }
+        ent.name_tag.__ecuNameplateFov = void 0;
+        ent.name_tag.__ecuNameplateStockX = void 0;
+        ent.name_tag.__ecuNameplateStockY = void 0;
+      }
+    };
+    const w = window;
+    bump(w.character);
+    bump(w.observing);
+    const ents = w.entities;
+    if (!ents) return;
+    for (const id in ents) {
+      if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
+      bump(ents[id]);
+    }
+  }
+  function resyncNameplateScales(fov) {
+    const f = typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
+    const touch = (ent) => {
+      if (!ent || !ent.name_tag) return;
+      sharpenNameTagTextures(ent.name_tag, f);
+    };
+    const w = window;
+    touch(w.character);
+    touch(w.observing);
+    const ents = w.entities;
+    if (!ents) return;
+    for (const id in ents) {
+      if (!Object.prototype.hasOwnProperty.call(ents, id)) continue;
+      touch(ents[id]);
+    }
+  }
+  function wrapAddNameTag() {
+    const w = window;
+    if (typeof w.__ecuAddNameTag === "function") return true;
+    if (typeof w.add_name_tag !== "function") return false;
+    const orig = w.add_name_tag;
+    const wrapped = function(element) {
+      orig.call(this, element);
+      if (element && element.name_tag) sharpenNameTagTextures(element.name_tag);
+    };
+    w.__ecuAddNameTag = wrapped;
+    w.add_name_tag = wrapped;
+    return true;
+  }
+  var installed9 = false;
+  function installNameplateSharpness() {
+    if (installed9) return;
+    installed9 = true;
+    window.__ecuBustNameTags = bustNameTagCaches;
+    onWorldFovApplied((fov) => {
+      bustNameTagCaches();
+      resyncNameplateScales(fov);
+    });
+    if (wrapAddNameTag()) return;
+    const started2 = Date.now();
+    const id = window.setInterval(() => {
+      if (wrapAddNameTag() || Date.now() - started2 > 3e4) {
+        window.clearInterval(id);
+      }
+    }, 250);
+  }
+
   // src/main.ts
   publishEcuBuildInfo();
   var POPUP_CSS = `
@@ -90384,6 +92173,7 @@ progress.comm-ui-mp-bar::-webkit-progress-value {
     startSessionKills();
     startWorldOverlay();
     installWorldZoom();
+    installNameplateSharpness();
     installCameraPan();
     let domContainer = document.querySelector("#comm-ui");
     if (!domContainer) {
