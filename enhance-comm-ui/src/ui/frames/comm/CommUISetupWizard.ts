@@ -128,24 +128,32 @@ export function CommUISetupWizard(props: CommUISetupWizardProps): any {
     e(
       "div",
       {
-        className: "ecu-comm-wiz",
+        className: "ecu-comm-wiz ecu-comm-wiz--intro",
         style: PIXEL_TEXT,
         onMouseDown: (ev: any) => ev.stopPropagation(),
       },
-      e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
-      e("h3", null, cur.title),
-      cur.body ? e("p", null, cur.body) : null,
-      cur.extra || null,
-      cur.actions,
       e(
         "div",
-        { className: "ecu-comm-wiz-foot" },
+        { className: "ecu-comm-wiz-scroll" },
+        e("div", { className: "ecu-comm-wiz-logo" }, WIZARD_TITLE),
+        e("h3", null, cur.title),
+        cur.body ? e("p", null, cur.body) : null,
+        cur.extra || null,
+      ),
+      e(
+        "div",
+        { className: "ecu-comm-wiz-chrome" },
+        cur.actions,
         e(
-          "button",
-          { type: "button", className: "ecu-comm-wiz-skip", onClick: finish },
-          "Skip intro",
+          "div",
+          { className: "ecu-comm-wiz-foot" },
+          e(
+            "button",
+            { type: "button", className: "ecu-comm-wiz-skip", onClick: finish },
+            "Skip intro",
+          ),
+          `${props.step + 1} / ${steps.length}`,
         ),
-        `${props.step + 1} / ${steps.length}`,
       ),
     ),
   );

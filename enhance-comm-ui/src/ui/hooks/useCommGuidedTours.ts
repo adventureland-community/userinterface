@@ -249,6 +249,37 @@ export function useCommGuidedTours(
     });
   };
 
+  React.useEffect(() => {
+    const w = window as Window & {
+      __ecuGuidedTour?: {
+        intro: (force?: boolean) => void;
+        replay: (id: string) => void;
+        dismiss: () => void;
+        step: (index: number) => void;
+        active: () => { id: string; step: number; title: string } | null;
+      };
+    };
+    w.__ecuGuidedTour = {
+      intro: (force) => startIntroTour(force),
+      replay: (id) => replayTour(id),
+      dismiss: () => finishTour(activeTourRef.current?.tour.id),
+      step: (index) => setActiveTourStep(index),
+      active: () => {
+        const cur = activeTourRef.current;
+        if (!cur) return null;
+        const s = cur.tour.steps[cur.step];
+        return {
+          id: cur.tour.id,
+          step: cur.step,
+          title: s ? s.title : "",
+        };
+      },
+    };
+    return () => {
+      delete w.__ecuGuidedTour;
+    };
+  }, []);
+
   const tourOverlay = activeTour
     ? e(GuidedTourOverlay, {
         tour: activeTour.tour,

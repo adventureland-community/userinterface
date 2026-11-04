@@ -13,12 +13,19 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
   pointer-events: auto;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 /* Changelog: top-anchor so version switches don't jump the top edge */
 .ecu-comm-wiz-backdrop--changelog {
   align-items: flex-start;
-  padding-top: 6vh;
+  padding-top: max(6vh, env(safe-area-inset-top, 0px));
   box-sizing: border-box;
 }
 .ecu-comm-wiz {
@@ -31,6 +38,45 @@ const CSS = `
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7);
   color: #eee;
   font-size: 22px;
+  box-sizing: border-box;
+}
+/* Intro: viewport-capped shell so phone first-run can scroll + keep CTAs */
+.ecu-comm-wiz--intro {
+  width: min(720px, 94vw);
+  min-width: 0;
+  max-height: min(92vh, 900px);
+  max-height: min(92dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+.ecu-comm-wiz-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 26px 28px 12px;
+  box-sizing: border-box;
+}
+.ecu-comm-wiz-chrome {
+  flex: 0 0 auto;
+  padding: 12px 28px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+  box-sizing: border-box;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-foot {
+  margin-top: 12px;
+  padding-top: 0;
+  border-top: none;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-actions {
+  width: 100%;
+}
+.ecu-comm-wiz--intro .ecu-comm-wiz-caps {
+  margin-bottom: 0;
 }
 .ecu-comm-wiz-logo {
   font-size: 36px;
@@ -92,6 +138,57 @@ const CSS = `
 @media (max-width: 560px) {
   .ecu-comm-wiz-caps {
     grid-template-columns: 1fr;
+  }
+  .ecu-comm-wiz--intro {
+    width: min(100%, calc(100vw - 16px));
+    max-height: min(94vh, 900px);
+    max-height: min(94dvh, 900px);
+    font-size: 16px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-scroll {
+    padding: 16px 14px 8px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-chrome {
+    padding: 10px 14px 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-logo {
+    font-size: 26px;
+    margin-bottom: 8px;
+  }
+  .ecu-comm-wiz--intro h3 {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+  .ecu-comm-wiz--intro p,
+  .ecu-comm-wiz--intro .ecu-comm-wiz-list {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap {
+    padding: 10px 12px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap-label {
+    font-size: 15px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-cap-detail {
+    font-size: 13px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-btn {
+    font-size: 15px;
+    padding: 10px 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-foot,
+  .ecu-comm-wiz--intro .ecu-comm-wiz-skip {
+    font-size: 14px;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ecu-comm-wiz--intro .ecu-comm-wiz-btn {
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 .ecu-comm-wiz-grid {
@@ -170,7 +267,9 @@ const CSS = `
   max-width: min(1000px, 96vw);
   min-width: 0;
   height: min(88vh, 900px);
+  height: min(88dvh, 900px);
   max-height: min(88vh, 900px);
+  max-height: min(88dvh, 900px);
   display: flex;
   flex-direction: column;
   overflow: hidden;

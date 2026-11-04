@@ -7,6 +7,13 @@ import type { PanelId } from "../../../../lib/layout";
 import { closeInventory } from "../../../../host/inventory";
 import { openMarket } from "../../../../host/market";
 import { openBank, cueBankView, type BankViewMode } from "../../../../host/bank";
+import {
+  closePhoneTourChrome,
+  openPhoneApps,
+  openPhoneObserve,
+  openPhoneServer,
+  openPhoneShade,
+} from "../../../../host/phoneTourChrome";
 
 export type TourStepEffects = {
   layoutEdit?: boolean;
@@ -22,6 +29,16 @@ export type TourStepEffects = {
   openBank?: boolean;
   /** Switch Bank panel view (All / Packs / Types / Ready). */
   bankView?: BankViewMode;
+  /** Open the phone Character / observe sheet (no-op off phone). */
+  openPhoneObserve?: boolean;
+  /** Open the phone Server sheet (no-op off phone). */
+  openPhoneServer?: boolean;
+  /** Open the phone Apps drawer (no-op off phone). */
+  openPhoneApps?: boolean;
+  /** Open the phone notification shade (no-op off phone). */
+  openPhoneShade?: boolean;
+  /** Dismiss phone observe / server / apps / shade. */
+  closePhoneChrome?: boolean;
 };
 
 export type TourUiSnapshot = {
@@ -72,6 +89,11 @@ export function applyTourStepEffects(
   if (effects.openMarket) openMarket({});
   if (effects.openBank) openBank({});
   if (effects.bankView) cueBankView(effects.bankView);
+  if (effects.closePhoneChrome) closePhoneTourChrome();
+  if (effects.openPhoneObserve) openPhoneObserve();
+  if (effects.openPhoneServer) openPhoneServer();
+  if (effects.openPhoneApps) openPhoneApps();
+  if (effects.openPhoneShade) openPhoneShade();
 }
 
 export function restoreTourUi(

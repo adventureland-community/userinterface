@@ -17,8 +17,13 @@ import { markTourCompleted } from "./tourCatalog";
 import { tourAdvanceReady, type TourAdvanceContext } from "./tourAdvance";
 import { TourPortal } from "./tourPortal";
 
-const CARD_W = 460;
-const CARD_H_FALLBACK = 280;
+const CARD_W_DESKTOP = 460;
+const CARD_H_FALLBACK = 200;
+
+function tourCardWidth(): number {
+  if (typeof window === "undefined") return CARD_W_DESKTOP;
+  return Math.min(CARD_W_DESKTOP, Math.max(240, window.innerWidth - 24));
+}
 
 export type GuidedTourOverlayProps = {
   tour: GuidedTourDef;
@@ -106,13 +111,14 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
       setViewport({ w: vw, h: vh });
       const rect = measureTarget(step.target, kind);
       setSpot(rect);
+      const cardW = tourCardWidth();
       const h = cardRef.current
         ? Math.max(
             CARD_H_FALLBACK,
             cardRef.current.getBoundingClientRect().height,
           )
         : cardH;
-      setCardPos(cardPosition(rect, CARD_W, h, placement));
+      setCardPos(cardPosition(rect, cardW, h, placement));
       return rect;
     };
 
@@ -215,9 +221,10 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
     finish();
   };
 
+  const cardW = tourCardWidth();
   const shades = shadePanels(spot, viewport.w, viewport.h);
   const connector =
-    spot != null ? tourConnector(cardPos, CARD_W, cardH, spot) : null;
+    spot != null ? tourConnector(cardPos, cardW, cardH, spot) : null;
   const missingOnly = !!step.missingHint && !spot && !waitForAction;
   const ctaText =
     step.missingHint ||
@@ -290,46 +297,56 @@ function TourOverlayBody(props: GuidedTourOverlayProps): any {
           ...PIXEL_TEXT,
           top: cardPos.top + "px",
           left: cardPos.left + "px",
+          width: cardW + "px",
+          maxWidth: cardW + "px",
         },
       },
-      e("h3", null, step.title),
-      e("p", null, step.body),
-      waitForAction
-        ? e(
-            "div",
-            { className: "ecu-tour-cta" },
-            e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
-            e("div", { className: "ecu-tour-cta-text" }, ctaText),
-          )
-        : missingOnly
-          ? e("p", { className: "ecu-tour-hint" }, step.missingHint)
-          : null,
       e(
         "div",
-        { className: "ecu-tour-actions" },
-        e(
-          "div",
-          { className: "ecu-tour-actions-left" },
-          tourBtn("Back", back, {
-            hidden: props.stepIndex === 0,
-            disabled: props.stepIndex === 0,
-          }),
-        ),
-        e(
-          "div",
-          { className: "ecu-tour-actions-right" },
-          tourBtn("Skip tour", skip),
-          // Action steps auto-advance — Next stays visible but disabled.
-          tourBtn(isLast ? "Done" : "Next", next, {
-            primary: true,
-            disabled: waitForAction,
-          }),
-        ),
+        { className: "ecu-tour-card-scroll" },
+        e("h3", null, step.title),
+        e("p", null, step.body),
+        waitForAction
+          ? e(
+              "div",
+              { className: "ecu-tour-cta" },
+              e("div", { className: "ecu-tour-cta-label" }, "Your turn"),
+              e("div", { className: "ecu-tour-cta-text" }, ctaText),
+            )
+          : missingOnly
+            ? e("p", { className: "ecu-tour-hint" }, step.missingHint)
+            : null,
       ),
       e(
         "div",
-        { className: "ecu-tour-foot" },
-        `${step.section || props.tour.label} · ${props.stepIndex + 1} / ${props.tour.steps.length}`,
+        { className: "ecu-tour-card-chrome" },
+        e(
+          "div",
+          { className: "ecu-tour-actions" },
+          e(
+            "div",
+            { className: "ecu-tour-actions-left" },
+            tourBtn("Back", back, {
+              hidden: props.stepIndex === 0,
+              disabled: props.stepIndex === 0,
+            }),
+          ),
+          e(
+            "div",
+            { className: "ecu-tour-actions-right" },
+            tourBtn("Skip tour", skip),
+            // Action steps auto-advance — Next stays visible but disabled.
+            tourBtn(isLast ? "Done" : "Next", next, {
+              primary: true,
+              disabled: waitForAction,
+            }),
+          ),
+        ),
+        e(
+          "div",
+          { className: "ecu-tour-foot" },
+          `${step.section || props.tour.label} · ${props.stepIndex + 1} / ${props.tour.steps.length}`,
+        ),
       ),
     ),
   );

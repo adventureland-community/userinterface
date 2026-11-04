@@ -9,7 +9,7 @@ export type SpotlightRect = {
   height: number;
 };
 
-export type CardPlacement = "auto" | "above" | "below" | "center";
+export type CardPlacement = "auto" | "above" | "below" | "center" | "bottom";
 
 /** How to measure the spotlight target. */
 export type TourTargetKind = "button" | "panel" | "region";
@@ -192,6 +192,15 @@ function overlaps(a: Box, b: Box, gap = 12): boolean {
   );
 }
 
+function overlapArea(a: Box, b: Box): number {
+  const left = Math.max(a.left, b.left);
+  const right = Math.min(a.left + a.width, b.left + b.width);
+  const top = Math.max(a.top, b.top);
+  const bottom = Math.min(a.top + a.height, b.top + b.height);
+  if (right <= left || bottom <= top) return 0;
+  return (right - left) * (bottom - top);
+}
+
 /** Four dim panels around spotlight — hole stays click-through. */
 export function shadePanels(
   spot: SpotlightRect | null,
@@ -240,13 +249,28 @@ export function cardPosition(
   const vh = window.innerHeight;
   const gap = 18;
   const effectiveW = Math.min(cardW, vw - 24);
+  // Phone / short viewports: never assume a taller card than the free band.
+  const maxCardH = Math.min(cardH, Math.max(120, vh * 0.42));
 
   if (!spot || placement === "center") {
     return clampCardPos(
-      Math.max(20, vh * 0.06),
+      Math.max(12, envSafeTop(vh)),
       (vw - effectiveW) / 2,
       effectiveW,
-      cardH,
+      maxCardH,
+      vw,
+      vh,
+    );
+  }
+
+  // Pin above the phone dock / home indicator — keeps sheet grids tappable.
+  if (placement === "bottom") {
+    const h = Math.min(maxCardH, Math.round(vh * 0.32));
+    return clampCardPos(
+      vh - h - Math.max(56, Math.round(vh * 0.1)),
+      (vw - effectiveW) / 2,
+      effectiveW,
+      h,
       vw,
       vh,
     );
@@ -256,86 +280,127 @@ export function cardPosition(
   const spotBottom = spot.top + spot.height;
   const spotCx = spot.left + spot.width / 2;
   const spotCy = spot.top + spot.height / 2;
+  const spaceAbove = Math.max(0, spot.top - gap - 12);
+  const spaceBelow = Math.max(0, vh - spotBottom - gap - 12);
+  const fitAbove = Math.min(maxCardH, Math.max(96, spaceAbove));
+  const fitBelow = Math.min(maxCardH, Math.max(96, spaceBelow));
 
-  const candidates: Array<{ top: number; left: number }> = [];
+  const candidates: Array<{ top: number; left: number; h: number }> = [];
+
+  const pushAbove = (h: number) => {
+    candidates.push(
+      {
+        ...clampCardPos(
+          spot.top - h - gap,
+          spotRight - effectiveW,
+          effectiveW,
+          h,
+          vw,
+          vh,
+        ),
+        h,
+      },
+      {
+        ...clampCardPos(
+          spot.top - h - gap,
+          spot.left,
+          effectiveW,
+          h,
+          vw,
+          vh,
+        ),
+        h,
+      },
+      {
+        ...clampCardPos(
+          spot.top - h - gap,
+          spotCx - effectiveW / 2,
+          effectiveW,
+          h,
+          vw,
+          vh,
+        ),
+        h,
+      },
+    );
+  };
 
   if (placement === "above" || placement === "auto") {
-    candidates.push(
-      clampCardPos(
-        spot.top - cardH - gap,
-        spotRight - effectiveW,
+    pushAbove(fitAbove);
+    // Top-pinned banner — best when the spotlight is a large bottom sheet.
+    candidates.push({
+      ...clampCardPos(
+        envSafeTop(vh),
+        (vw - effectiveW) / 2,
         effectiveW,
-        cardH,
+        Math.min(maxCardH, Math.max(96, spaceAbove || maxCardH)),
         vw,
         vh,
       ),
-      clampCardPos(
-        spot.top - cardH - gap,
-        spot.left,
-        effectiveW,
-        cardH,
-        vw,
-        vh,
-      ),
-      clampCardPos(
-        spot.top - cardH - gap,
-        spotCx - effectiveW / 2,
-        effectiveW,
-        cardH,
-        vw,
-        vh,
-      ),
-    );
+      h: Math.min(maxCardH, Math.max(96, spaceAbove || maxCardH)),
+    });
   }
   if (placement === "below" || placement === "auto") {
-    candidates.push(
-      clampCardPos(
+    candidates.push({
+      ...clampCardPos(
         spotBottom + gap,
         spotCx - effectiveW / 2,
         effectiveW,
-        cardH,
+        fitBelow,
         vw,
         vh,
       ),
-    );
+      h: fitBelow,
+    });
   }
   if (placement === "auto") {
     candidates.push(
-      clampCardPos(
-        spotCy - cardH / 2,
-        spot.left - effectiveW - gap,
-        effectiveW,
-        cardH,
-        vw,
-        vh,
-      ),
-      clampCardPos(
-        spotCy - cardH / 2,
-        spotRight + gap,
-        effectiveW,
-        cardH,
-        vw,
-        vh,
-      ),
+      {
+        ...clampCardPos(
+          spotCy - maxCardH / 2,
+          spot.left - effectiveW - gap,
+          effectiveW,
+          maxCardH,
+          vw,
+          vh,
+        ),
+        h: maxCardH,
+      },
+      {
+        ...clampCardPos(
+          spotCy - maxCardH / 2,
+          spotRight + gap,
+          effectiveW,
+          maxCardH,
+          vw,
+          vh,
+        ),
+        h: maxCardH,
+      },
     );
   }
 
-  candidates.push(
-    clampCardPos(
-      Math.max(16, vh * 0.05),
+  candidates.push({
+    ...clampCardPos(
+      envSafeTop(vh),
       (vw - effectiveW) / 2,
       effectiveW,
-      cardH,
+      maxCardH,
       vw,
       vh,
     ),
-  );
+    h: maxCardH,
+  });
 
-  const cardBox = (c: { top: number; left: number }): Box => ({
+  const cardBox = (c: {
+    top: number;
+    left: number;
+    h: number;
+  }): Box => ({
     top: c.top,
     left: c.left,
     width: effectiveW,
-    height: cardH,
+    height: c.h,
   });
 
   let best: { top: number; left: number } | null = null;
@@ -346,18 +411,37 @@ export function cardPosition(
     const cardCx = box.left + box.width / 2;
     const cardCy = box.top + box.height / 2;
     let score = Math.hypot(cardCx - spotCx, cardCy - spotCy);
-    if (spotCy > vh * 0.62 && box.top + box.height <= spot.top + 4) {
-      score *= 0.55;
+    if (spotCy > vh * 0.55 && box.top + box.height <= spot.top + 4) {
+      score *= 0.45;
     }
     if (spotCy < vh * 0.38 && box.top >= spotBottom - 4) {
       score *= 0.55;
     }
     if (score < bestScore) {
       bestScore = score;
-      best = candidates[i];
+      best = { top: candidates[i].top, left: candidates[i].left };
     }
   }
-  return best || candidates[candidates.length - 1];
+  if (best) return best;
+
+  // Nothing fits clear of the hole (huge sheet). Pick least overlap, prefer top.
+  let least: { top: number; left: number } | null = null;
+  let leastArea = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const box = cardBox(candidates[i]);
+    const area = overlapArea(box, spot);
+    const topBias = box.top;
+    const score = area * 1000 + topBias;
+    if (score < leastArea) {
+      leastArea = score;
+      least = { top: candidates[i].top, left: candidates[i].left };
+    }
+  }
+  return least || candidates[candidates.length - 1];
+}
+
+function envSafeTop(vh: number): number {
+  return Math.max(12, Math.min(24, vh * 0.02));
 }
 
 /** Dashed arrow from callout to spotlight when they are far apart. */
