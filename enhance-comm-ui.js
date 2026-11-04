@@ -9205,6 +9205,11 @@ ${fightHoverTip(src)}`
           kind: "improve"
         },
         {
+          label: "Phone camera + dock P0 polish",
+          detail: "Home-page dots no longer steal stick hits. Always-on FOV out/\xD7/in + clearer Follow above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings \u2192 Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
+          kind: "fix"
+        },
+        {
           label: "Touch item actions",
           detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
           kind: "feature"
@@ -9242,7 +9247,7 @@ ${fightHoverTip(src)}`
             },
             {
               label: "Mobile install",
-              detail: "Settings \u2192 Comm UI links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              detail: "Desktop Settings \u2192 Comm UI shows iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) plus FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
               kind: "ui"
             }
           ]
@@ -29860,7 +29865,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T13:37:29.140Z" : "unknown";
+    const builtAt = true ? "2026-11-04T14:06:32.503Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -35134,7 +35139,7 @@ button.comm-mail__stack-u {
   }
   function isInteractiveChromeTarget(target) {
     if (!(target instanceof Element)) return false;
-    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".ecu-cam-stick") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
+    return !!(target.closest("[data-ecu-phone-dock]") || target.closest(".ecu-phone-sheet") || target.closest(".ecu-phone-shade") || target.closest(".ecu-phone-sheet-scrim") || target.closest(".ecu-phone-shade-scrim") || target.closest("[data-panel]") || target.closest(".ecu-meter-shell") || target.closest(".ecu-chrome-stack") || target.closest(".ecu-cam-stick, .ecu-cam-chrome") || target.closest(".modal") || target.closest(".imodal") || target.closest("#bottomleftcorner") || target.closest("#bottomrightcorner") || target.closest("input, textarea, select, [contenteditable='true']") || target.closest(".CodeMirror"));
   }
   function isUiChromeTarget(target) {
     if (!(target instanceof Element)) return false;
@@ -52857,17 +52862,31 @@ ${parts.map(cssSlice).join("\n")}
       document.head.appendChild(style);
     }
     style.textContent = `
-.ecu-cam-stick {
+.ecu-cam-chrome {
   position: fixed;
   left: max(12px, env(safe-area-inset-left, 0px));
   bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 12px);
-  z-index: 230;
-  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
-  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
-  pointer-events: auto;
+  z-index: 236;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  pointer-events: none;
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+}
+.ecu-cam-chrome > * {
+  pointer-events: auto;
+}
+.ecu-cam-stick {
+  position: relative;
+  left: 0;
+  bottom: 0;
+  z-index: 1;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  height: ${JOYSTICK_RADIUS_PX * 2 + 24}px;
+  touch-action: none;
 }
 .ecu-cam-stick__base {
   position: absolute;
@@ -52907,23 +52926,71 @@ ${parts.map(cssSlice).join("\n")}
   border-color: rgba(157, 212, 236, 0.85);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
-.ecu-cam-stick__follow {
-  position: absolute;
-  left: 50%;
-  bottom: 100%;
-  transform: translateX(-50%);
-  margin-bottom: 6px;
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(157, 212, 236, 0.35);
+.ecu-cam-chrome__fov {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  min-height: 36px;
+  padding: 2px;
+  border-radius: 18px;
+  border: 1px solid rgba(230, 225, 229, 0.28);
   background: rgba(28, 27, 31, 0.72);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+.ecu-cam-chrome__fov-btn {
+  min-width: 36px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 8px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: #e6e1e5;
+  font: 600 13px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-cam-chrome__fov-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ecu-cam-chrome__fov-btn:not(:disabled):active {
+  background: rgba(157, 212, 236, 0.18);
   color: #9dd4ec;
-  font: 12px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
+}
+.ecu-cam-chrome__fov-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 4px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  color: #9dd4ec;
+  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-cam-chrome__fov-label:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ecu-cam-stick__follow {
+  align-self: center;
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(157, 212, 236, 0.55);
+  background: rgba(28, 27, 31, 0.85);
+  color: #9dd4ec;
+  font: 600 13px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
-  pointer-events: auto;
-  opacity: 0.7;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-stick__follow[hidden] {
   display: none !important;
@@ -52936,8 +53003,13 @@ ${parts.map(cssSlice).join("\n")}
     const rootRef = React.useRef(null);
     const knobRef = React.useRef(null);
     const [free, setFree] = React.useState(() => isFreeCamera());
+    const [fov, setFov] = React.useState(() => readAppliedWorldFov());
     const activePtr = React.useRef(null);
     React.useEffect(() => subscribeFreeCamera(setFree), []);
+    React.useEffect(() => {
+      setFov(readAppliedWorldFov());
+      return subscribeWorldFov(setFov);
+    }, []);
     React.useEffect(() => {
       const root = rootRef.current;
       const knob = knobRef.current;
@@ -52999,26 +53071,92 @@ ${parts.map(cssSlice).join("\n")}
         root.removeEventListener("pointercancel", onUp);
       };
     }, []);
+    const stopBtn = (ev) => {
+      if (ev && ev.stopPropagation) ev.stopPropagation();
+      if (ev && ev.preventDefault) ev.preventDefault();
+    };
     return e(
       "div",
       {
-        className: "ecu-cam-stick",
-        ref: rootRef,
-        "aria-label": "Camera pan joystick"
+        className: "ecu-cam-chrome",
+        "aria-label": "Camera controls"
       },
-      e("button", {
-        type: "button",
-        className: "ecu-cam-stick__follow",
-        hidden: !free,
-        title: "Re-center on observed character",
-        onClick: (ev) => {
-          if (ev && ev.stopPropagation) ev.stopPropagation();
-          if (ev && ev.preventDefault) ev.preventDefault();
-          followObservedCamera();
-        }
-      }, "Follow"),
-      e("div", { className: "ecu-cam-stick__base" }),
-      e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
+      e(
+        "button",
+        {
+          type: "button",
+          className: "ecu-cam-stick__follow",
+          hidden: !free,
+          title: "Re-center on observed character",
+          onClick: (ev) => {
+            stopBtn(ev);
+            followObservedCamera();
+          }
+        },
+        "Follow"
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-cam-chrome__fov",
+          title: "Camera FOV \u2014 out sees more, in sees less. Pinch the map also works."
+        },
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-btn",
+            disabled: fov >= WORLD_FOV_MAX,
+            title: "Widen FOV (see more)",
+            "aria-label": "Widen FOV",
+            onClick: (ev) => {
+              stopBtn(ev);
+              setFov(zoomFovOut());
+            }
+          },
+          "out"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-label",
+            disabled: fov === WORLD_FOV_DEFAULT,
+            title: "Reset FOV to 1\xD7",
+            "aria-label": "FOV " + formatWorldFov(fov) + "\xD7",
+            onClick: (ev) => {
+              stopBtn(ev);
+              setFov(setWorldFov(WORLD_FOV_DEFAULT));
+            }
+          },
+          formatWorldFov(fov) + "\xD7"
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-cam-chrome__fov-btn",
+            disabled: fov <= WORLD_FOV_MIN,
+            title: "Tighten FOV (see less)",
+            "aria-label": "Tighten FOV",
+            onClick: (ev) => {
+              stopBtn(ev);
+              setFov(zoomFovIn());
+            }
+          },
+          "in"
+        )
+      ),
+      e(
+        "div",
+        {
+          className: "ecu-cam-stick",
+          ref: rootRef,
+          "aria-label": "Camera pan joystick"
+        },
+        e("div", { className: "ecu-cam-stick__base" }),
+        e("div", { className: "ecu-cam-stick__knob", ref: knobRef })
+      )
     );
   }
 
@@ -53155,10 +53293,10 @@ ${parts.map(cssSlice).join("\n")}
     if (target.closest(".CodeMirror, .ecu-chat-log, .ecu-chat-body")) {
       return true;
     }
-    if (target.closest(".ecu-phone-shade, .ecu-phone-sheet__body")) {
+    if (target.closest(".ecu-phone-shade, .ecu-phone-sheet")) {
       return true;
     }
-    if (target.closest(".ecu-cam-stick")) {
+    if (target.closest(".ecu-cam-stick, .ecu-cam-chrome")) {
       return true;
     }
     return false;
@@ -53340,7 +53478,7 @@ ${parts.map(cssSlice).join("\n")}
       return true;
     }
     if (target.closest(
-      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-meter-shell, [data-panel]"
+      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-cam-chrome, .ecu-meter-shell, [data-panel]"
     )) {
       return true;
     }
@@ -54117,7 +54255,8 @@ ${parts.map(cssSlice).join("\n")}
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  pointer-events: auto;
+  /* Strip itself does not steal stick hits \u2014 only the dots do. */
+  pointer-events: none;
   position: fixed;
   left: 0;
   right: 0;
@@ -54127,25 +54266,30 @@ ${parts.map(cssSlice).join("\n")}
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 0 12px;
 }
 .ecu-phone-home-dots__dot {
+  pointer-events: auto;
+  box-sizing: content-box;
   width: 8px;
   height: 8px;
-  padding: 0;
+  /* ~44px tap target without widening the visual strip over the stick. */
+  padding: 18px 14px;
   margin: 0;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.45);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  background-clip: content-box;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-phone-home-dots__dot.is-on {
   background: #ffffff;
-  transform: scale(1.25);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  background-clip: content-box;
+  transform: scale(1.15);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-phone-shade-scrim {
   position: fixed;
@@ -54467,11 +54611,15 @@ ${parts.map(cssSlice).join("\n")}
               props.onClose();
             }
           },
-          e("span", { className: "ecu-phone-pick__title" }, "Stop observing"),
           e(
             "span",
-            { className: "ecu-phone-pick__meta" },
-            "Leave " + obsName + " \xB7 spectate this realm"
+            { className: "ecu-phone-pick__text" },
+            e("span", { className: "ecu-phone-pick__title" }, "Stop observing"),
+            e(
+              "span",
+              { className: "ecu-phone-pick__meta" },
+              "Leave " + obsName + " \xB7 spectate this realm"
+            )
           )
         )
       );
@@ -54484,11 +54632,15 @@ ${parts.map(cssSlice).join("\n")}
             className: "ecu-phone-pick__banner",
             role: "status"
           },
-          e("strong", null, "Not observing anyone"),
           e(
-            "span",
-            null,
-            "Pick a character below to watch them on their server."
+            "div",
+            { className: "ecu-phone-pick__banner-main" },
+            e("strong", null, "Not observing anyone"),
+            e(
+              "span",
+              { className: "ecu-phone-pick__banner-meta" },
+              "Pick a character below to watch them on their server."
+            )
           )
         )
       );
@@ -55324,6 +55476,18 @@ ${parts.map(cssSlice).join("\n")}
     };
     const openOverlay = (id, openFn) => {
       props.onClose();
+      const peers = [
+        "chat",
+        "command",
+        "mail",
+        "bag",
+        "bank",
+        "market"
+      ];
+      for (let i = 0; i < peers.length; i++) {
+        const peer = peers[i];
+        if (peer !== id && props.visible(peer)) props.setVisible(peer, false);
+      }
       if (openFn) openFn();
       else props.setVisible(id, true);
     };
@@ -55706,13 +55870,7 @@ ${parts.map(cssSlice).join("\n")}
       if (props.settingsOpen) props.toggleSettings();
     };
     const hidePeerPanels = (keep) => {
-      const ids = [
-        "chat",
-        "command",
-        "mail",
-        "bag",
-        "bank"
-      ];
+      const ids = ["chat", "command", "mail", "bag", "bank", "market"];
       for (let i = 0; i < ids.length; i++) {
         const id = ids[i];
         if (id !== keep && props.visible(id)) props.setVisible(id, false);
@@ -56473,6 +56631,55 @@ ${parts.map(cssSlice).join("\n")}
 .ecu-settings-help {
   color: #888;
   font-size: 16px;
+}
+.ecu-settings-qr-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.ecu-settings-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
+  padding: 10px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid #444;
+  background: #161616;
+  color: #ddd;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+.ecu-settings-qr-card:hover {
+  border-color: #6a9;
+  color: #9dd4ec;
+}
+.ecu-settings-qr-card__img {
+  display: block;
+  width: 112px;
+  height: 112px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.ecu-settings-qr-card__img svg {
+  display: block;
+  width: 112px;
+  height: 112px;
+}
+.ecu-settings-qr-card__label {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.2;
+}
+.ecu-settings-qr-card__help {
+  font-size: 11px;
+  color: #888;
+  text-align: center;
+  line-height: 1.25;
 }
 .ecu-settings-tag {
   font-size: 12px;
@@ -58912,6 +59119,31 @@ ${parts.map(cssSlice).join("\n")}
     return true;
   }
 
+  // src/lib/tampermonkeyQr.ts
+  var TAMPERMONKEY_QR_CARDS = [
+    {
+      id: "ios",
+      label: "iOS \xB7 Safari",
+      url: "https://www.tampermonkey.net/qr/s",
+      help: "App Store Tampermonkey",
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h31v31H0z"/><path stroke="#121212" d="M1 1.5h7m1 0h1m1 0h2m3 0h2m1 0h3m1 0h7M1 2.5h1m5 0h1m1 0h1m1 0h1m3 0h2m1 0h2m3 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m2 0h1m2 0h4m2 0h1m3 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m1 0h1m2 0h1m4 0h2m1 0h1m2 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m3 0h1m2 0h1m4 0h2m2 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m4 0h2m1 0h1m4 0h1m2 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 8.5h1m2 0h1m1 0h2m2 0h3M1 9.5h1m1 0h2m1 0h3m1 0h6m1 0h2m4 0h1m2 0h1m1 0h2M1 10.5h3m2 0h1m2 0h2m1 0h1m3 0h6m1 0h3m3 0h1M3 11.5h1m1 0h3m2 0h4m1 0h2m2 0h1m2 0h1m1 0h2m1 0h2M2 12.5h1m1 0h2m4 0h3m1 0h3m4 0h1m1 0h3m3 0h1M4 13.5h2m1 0h1m3 0h3m4 0h1m1 0h1m5 0h2M1 14.5h3m1 0h2m4 0h2m1 0h1m5 0h1m2 0h2m2 0h3M1 15.5h4m2 0h2m1 0h1m2 0h1m1 0h1m2 0h4m1 0h3m1 0h3M1 16.5h1m2 0h3m3 0h2m2 0h1m4 0h1m1 0h1m2 0h2m2 0h1M1 17.5h1m2 0h1m1 0h8m3 0h1m1 0h4m2 0h2m1 0h1M2 18.5h5m3 0h5m1 0h1m4 0h1m2 0h1m1 0h3M1 19.5h1m1 0h1m1 0h3m4 0h2m2 0h2m5 0h2m2 0h1M8 20.5h3m5 0h7m4 0h1M2 21.5h1m1 0h1m1 0h3m2 0h4m1 0h12M9 22.5h1m1 0h1m2 0h2m4 0h2m3 0h5M1 23.5h7m1 0h2m1 0h3m3 0h4m1 0h1m1 0h2m1 0h1M1 24.5h1m5 0h1m1 0h1m6 0h2m3 0h1m3 0h2m1 0h2M1 25.5h1m1 0h3m1 0h1m3 0h2m2 0h5m1 0h5m1 0h2M1 26.5h1m1 0h3m1 0h1m1 0h9m2 0h3m2 0h2m2 0h1M1 27.5h1m1 0h3m1 0h1m1 0h1m2 0h2m1 0h1m2 0h2m2 0h1m1 0h1m2 0h1m1 0h1M1 28.5h1m5 0h1m3 0h2m3 0h1m4 0h2m1 0h1m1 0h1m1 0h1M1 29.5h7m1 0h2m1 0h1m1 0h2m1 0h1m1 0h3m4 0h1m1 0h1"/></svg>\n'
+    },
+    {
+      id: "edge",
+      label: "Android \xB7 Edge",
+      url: "https://www.tampermonkey.net/qr/e",
+      help: "Edge + Tampermonkey",
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h31v31H0z"/><path stroke="#121212" d="M1 1.5h7m2 0h1m3 0h3m1 0h2m3 0h7M1 2.5h1m5 0h1m1 0h2m5 0h1m4 0h1m1 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m1 0h1m2 0h1m2 0h1m1 0h1m2 0h1m2 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m1 0h3m3 0h2m1 0h1m1 0h2m1 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m2 0h1m3 0h3m1 0h1m1 0h2m1 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m2 0h2m1 0h3m1 0h1m1 0h1m3 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 8.5h6m5 0h2M1 9.5h1m5 0h1m1 0h1m1 0h2m2 0h2m1 0h3m1 0h2m2 0h3M1 10.5h4m1 0h1m1 0h5m2 0h1m2 0h3m1 0h1m1 0h2m1 0h2M2 11.5h1m1 0h4m1 0h1m1 0h1m1 0h1m4 0h1m2 0h1M2 12.5h3m1 0h1m2 0h2m1 0h1m2 0h3m1 0h3m2 0h1m1 0h1M2 13.5h1m3 0h3m2 0h5m1 0h1m3 0h1m1 0h2m4 0h1M1 14.5h1m2 0h1m1 0h1m2 0h1m1 0h2m1 0h2m2 0h4m1 0h1m1 0h1m2 0h2M1 15.5h1m3 0h1m1 0h2m1 0h1m1 0h7m2 0h2m1 0h1m1 0h2M1 16.5h2m1 0h2m2 0h2m1 0h1m2 0h2m3 0h1m2 0h4m1 0h1m1 0h1M4 17.5h1m1 0h3m4 0h1m1 0h2m1 0h1m1 0h1m3 0h1m1 0h2M1 18.5h1m1 0h1m1 0h1m2 0h3m1 0h2m2 0h2m1 0h3m1 0h3m1 0h3M1 19.5h3m1 0h1m1 0h1m1 0h2m1 0h5m1 0h1m1 0h2m4 0h1m2 0h1M1 20.5h1m2 0h3m1 0h3m4 0h3m2 0h1m1 0h1m1 0h2M1 21.5h1m2 0h2m1 0h1m2 0h3m5 0h1m2 0h5m1 0h3M9 22.5h2m1 0h3m1 0h2m2 0h2m3 0h2M1 23.5h7m2 0h1m3 0h3m3 0h2m1 0h1m1 0h3M1 24.5h1m5 0h1m2 0h1m2 0h2m1 0h1m2 0h3m3 0h1m2 0h1M1 25.5h1m1 0h3m1 0h1m3 0h1m1 0h2m1 0h1m2 0h8m1 0h2M1 26.5h1m1 0h3m1 0h1m2 0h1m2 0h1m2 0h5m1 0h1m1 0h1m1 0h2m1 0h1M1 27.5h1m1 0h3m1 0h1m2 0h1m1 0h3m1 0h3m1 0h1m2 0h6M1 28.5h1m5 0h1m2 0h1m3 0h1m2 0h1m5 0h2m1 0h2m1 0h1M1 29.5h7m1 0h1m1 0h3m1 0h4m1 0h1m1 0h1m1 0h4"/></svg>\n'
+    },
+    {
+      id: "firefox",
+      label: "Android \xB7 Firefox",
+      url: "https://www.tampermonkey.net/qr/f",
+      help: "Firefox, then scan again for Tampermonkey",
+      svg: '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 31 31" shape-rendering="crispEdges"><path fill="#ffffff" d="M0 0h31v31H0z"/><path stroke="#121212" d="M1 1.5h7m2 0h7m1 0h2m3 0h7M1 2.5h1m5 0h1m1 0h1m1 0h1m4 0h1m4 0h1m1 0h1m5 0h1M1 3.5h1m1 0h3m1 0h1m1 0h3m1 0h1m1 0h1m1 0h1m2 0h1m2 0h1m1 0h3m1 0h1M1 4.5h1m1 0h3m1 0h1m1 0h4m2 0h2m1 0h1m1 0h2m1 0h1m1 0h3m1 0h1M1 5.5h1m1 0h3m1 0h1m3 0h1m2 0h3m1 0h1m1 0h2m1 0h1m1 0h3m1 0h1M1 6.5h1m5 0h1m2 0h1m1 0h1m1 0h2m1 0h1m1 0h1m3 0h1m5 0h1M1 7.5h7m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h1m1 0h7M9 8.5h1m2 0h3m5 0h2M1 9.5h1m5 0h1m1 0h2m4 0h2m1 0h3m1 0h2m2 0h3M1 10.5h1m3 0h1m2 0h2m1 0h2m2 0h1m2 0h3m1 0h1m1 0h2m1 0h2M1 11.5h8m3 0h1m5 0h1m2 0h1M2 12.5h1m3 0h1m5 0h1m2 0h3m1 0h3m2 0h1m1 0h1M1 13.5h1m2 0h2m1 0h4m3 0h2m1 0h1m3 0h1m1 0h2m4 0h1M3 14.5h1m2 0h1m1 0h2m2 0h4m2 0h4m1 0h1m1 0h1m2 0h2M2 15.5h2m1 0h4m5 0h3m1 0h1m2 0h2m1 0h1m1 0h2M5 16.5h2m2 0h2m2 0h4m2 0h1m2 0h4m1 0h1m1 0h1M2 17.5h2m3 0h3m1 0h3m1 0h2m1 0h1m1 0h1m3 0h1m1 0h2M1 18.5h1m1 0h1m1 0h2m9 0h2m1 0h3m1 0h3m1 0h3M1 19.5h11m1 0h4m1 0h1m1 0h2m4 0h1m2 0h1M1 20.5h1m1 0h1m2 0h1m2 0h2m1 0h1m2 0h3m2 0h1m1 0h1m1 0h2M1 21.5h1m5 0h2m2 0h1m6 0h1m2 0h5m1 0h3M9 22.5h1m1 0h1m2 0h1m1 0h2m2 0h2m3 0h2M1 23.5h7m2 0h1m1 0h1m1 0h3m3 0h2m1 0h1m1 0h3M1 24.5h1m5 0h1m2 0h1m1 0h1m1 0h1m1 0h1m2 0h3m3 0h1m2 0h1M1 25.5h1m1 0h3m1 0h1m2 0h1m3 0h1m1 0h1m2 0h8m1 0h2M1 26.5h1m1 0h3m1 0h1m3 0h1m2 0h1m1 0h5m1 0h1m1 0h1m1 0h2m1 0h1M1 27.5h1m1 0h3m1 0h1m2 0h2m1 0h1m2 0h3m1 0h1m2 0h6M1 28.5h1m5 0h1m4 0h2m1 0h1m1 0h1m5 0h2m1 0h2m1 0h1M1 29.5h7m1 0h1m6 0h3m1 0h1m1 0h1m1 0h4"/></svg>\n'
+    }
+  ];
+
   // src/ui/frames/settings/settingsPaneChrome.ts
   function settingsSection(label) {
     return e("div", { className: "ecu-settings-sec" }, label);
@@ -58993,7 +59225,7 @@ ${parts.map(cssSlice).join("\n")}
   function installSectionMatches(query) {
     const q = query.trim().toLowerCase();
     if (!q) return true;
-    return "tampermonkey mobile phone android ios edge firefox safari q406 install".includes(
+    return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan".includes(
       q
     );
   }
@@ -59131,6 +59363,41 @@ ${parts.map(cssSlice).join("\n")}
           "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build."
         )
       );
+      if (!isPhoneViewport()) {
+        kids.push(
+          e(
+            "p",
+            { key: "tm-qr-help", className: "ecu-settings-help" },
+            "Scan a code with your phone to open Tampermonkey\u2019s official install landing (same destinations as FAQ Q406)."
+          )
+        );
+        const qrKids = [];
+        for (let i = 0; i < TAMPERMONKEY_QR_CARDS.length; i++) {
+          const card = TAMPERMONKEY_QR_CARDS[i];
+          qrKids.push(
+            e(
+              "a",
+              {
+                key: card.id,
+                href: card.url,
+                target: "_blank",
+                rel: "noopener noreferrer",
+                className: "ecu-settings-qr-card",
+                title: card.help
+              },
+              e("span", {
+                className: "ecu-settings-qr-card__img",
+                dangerouslySetInnerHTML: { __html: card.svg }
+              }),
+              e("span", { className: "ecu-settings-qr-card__label" }, card.label),
+              e("span", { className: "ecu-settings-qr-card__help" }, card.help)
+            )
+          );
+        }
+        kids.push(
+          e("div", { key: "tm-qr", className: "ecu-settings-qr-row" }, qrKids)
+        );
+      }
       kids.push(
         e(
           "p",

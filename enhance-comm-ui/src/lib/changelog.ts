@@ -161,6 +161,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "improve",
       },
       {
+        label: "Phone camera + dock P0 polish",
+        detail:
+          "Home-page dots no longer steal stick hits. Always-on FOV out/×/in + clearer Follow above the stick. Observe Stop/empty banner wrap correctly. Apps overlays mutually dismiss peers (incl. market). Edge gestures ignore full sheets. Desktop Settings → Comm UI shows Tampermonkey iOS/Edge/Firefox QR cards.",
+        kind: "fix",
+      },
+      {
         label: "Touch item actions",
         detail:
           "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
@@ -205,7 +211,7 @@ export const CHANGELOG: ChangelogEntry[] = [
           {
             label: "Mobile install",
             detail:
-              "Settings → Comm UI links Tampermonkey FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
+              "Desktop Settings → Comm UI shows iOS/Edge/Firefox Tampermonkey QR cards (official /qr/s|e|f) plus FAQ Q406. Slower phone polls; trackers stay live on document.hidden for desktop farming.",
             kind: "ui",
           },
         ],
