@@ -167,6 +167,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "fix",
       },
       {
+        label: "Chat server pages",
+        detail:
+          "Phone Chat: swipe left/right on the main pane (same feel as home pages) to flip between server conversations; dots under the title show and select the active server. PMs and party stay in the Chats drawer.",
+        kind: "feature",
+      },
+      {
         label: "Touch item actions",
         detail:
           "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",

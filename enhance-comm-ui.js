@@ -9210,6 +9210,11 @@ ${fightHoverTip(src)}`
           kind: "fix"
         },
         {
+          label: "Chat server pages",
+          detail: "Phone Chat: swipe left/right on the main pane (same feel as home pages) to flip between server conversations; dots under the title show and select the active server. PMs and party stay in the Chats drawer.",
+          kind: "feature"
+        },
+        {
           label: "Touch item actions",
           detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
           kind: "feature"
@@ -29865,7 +29870,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T14:18:53.890Z" : "unknown";
+    const builtAt = true ? "2026-11-04T14:23:32.345Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -73392,6 +73397,59 @@ ${ESTIMATE_HINT}`,
     return null;
   }
 
+  // src/lib/chatServerPages.ts
+  function listServerChatKeys(conversations, serverOrderKeys) {
+    const byServer = /* @__PURE__ */ new Map();
+    const orphans = [];
+    for (let i = 0; i < conversations.length; i++) {
+      const chat = conversations[i];
+      if (!chat || chat.type !== "server") continue;
+      const server = chat.server ? String(chat.server) : "";
+      if (server) byServer.set(server, chat.key);
+      else orphans.push(chat.key);
+    }
+    const out = [];
+    const seen = /* @__PURE__ */ new Set();
+    if (serverOrderKeys && serverOrderKeys.length) {
+      for (let i = 0; i < serverOrderKeys.length; i++) {
+        const server = String(serverOrderKeys[i] || "");
+        if (!server) continue;
+        const key = byServer.get(server);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        out.push(key);
+      }
+    }
+    const remaining = [];
+    byServer.forEach((key) => {
+      if (!seen.has(key)) remaining.push(key);
+    });
+    for (let i = 0; i < orphans.length; i++) {
+      if (!seen.has(orphans[i])) remaining.push(orphans[i]);
+    }
+    remaining.sort((a, b) => a.localeCompare(b));
+    for (let i = 0; i < remaining.length; i++) out.push(remaining[i]);
+    return out;
+  }
+  function serverPageIndex(keys, activeKey2) {
+    if (!activeKey2) return -1;
+    return keys.indexOf(activeKey2);
+  }
+  function stepServerPage(keys, activeKey2, dir, fallbackKey) {
+    if (!keys.length) return null;
+    let idx = serverPageIndex(keys, activeKey2);
+    if (idx < 0) {
+      if (fallbackKey) {
+        const fb = keys.indexOf(fallbackKey);
+        if (fb >= 0) return keys[fb];
+      }
+      return keys[0];
+    }
+    if (dir < 0) return idx > 0 ? keys[idx - 1] : keys[idx];
+    if (dir > 0) return idx < keys.length - 1 ? keys[idx + 1] : keys[idx];
+    return keys[idx];
+  }
+
   // src/ui/frames/chat/chatCss.ts
   var CHAT_PANEL_CSS = `
 .ecu-chat {
@@ -73955,6 +74013,45 @@ ${ESTIMATE_HINT}`,
 .ecu-chat.is-narrow:not(.is-sidebar-open) .ecu-chat-backdrop {
   display: none;
 }
+.ecu-chat-server-dots {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 12px 6px;
+  border-bottom: 1px solid var(--ecu-chat-line);
+  background: var(--ecu-chat-panel);
+  pointer-events: none;
+}
+.ecu-chat-server-dots__dot {
+  pointer-events: auto;
+  position: relative;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-chat-server-dots__dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+.ecu-chat-server-dots__dot.is-on {
+  background: #9dd4ec;
+  transform: scale(1.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
   min-width: 0;
@@ -74055,6 +74152,98 @@ ${ESTIMATE_HINT}`,
     injected13 = true;
   }
 
+  // src/ui/frames/chat/chatServerPageGestures.ts
+  function classifyChatServerPageSwipe(sample) {
+    const dx = sample.endX - sample.startX;
+    const dy = sample.endY - sample.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (absX < PHONE_HOME_SWIPE_MIN_PX) return null;
+    if (absY > absX * PHONE_HOME_SWIPE_MAX_OFF_AXIS) return null;
+    if (dx < 0) return 1;
+    if (dx > 0) return -1;
+    return null;
+  }
+  function isIgnoredStartTarget(target) {
+    if (!(target instanceof Element)) return false;
+    if (target.closest("input, textarea, select, [contenteditable='true']")) {
+      return true;
+    }
+    if (target.closest(".ecu-chat-compose, .ecu-chat-to, .ecu-chat-input")) {
+      return true;
+    }
+    return false;
+  }
+  function startAllowsServerPageSwipe(target) {
+    if (!(target instanceof Element)) return false;
+    if (isIgnoredStartTarget(target)) return false;
+    if (!target.closest(".ecu-chat-main")) return false;
+    if (target.closest(".ecu-chat-compose")) return false;
+    return true;
+  }
+  function installChatServerPageGestures(root, handlers) {
+    let stroke3 = null;
+    const onTouchStart3 = (ev) => {
+      if (handlers.isBlocked()) {
+        stroke3 = null;
+        return;
+      }
+      if (ev.touches.length !== 1) {
+        stroke3 = null;
+        return;
+      }
+      if (!startAllowsServerPageSwipe(ev.target)) {
+        stroke3 = null;
+        return;
+      }
+      const t = ev.touches[0];
+      stroke3 = { startX: t.clientX, startY: t.clientY, id: t.identifier };
+    };
+    const onTouchEnd3 = (ev) => {
+      if (!stroke3) return;
+      const active = stroke3;
+      stroke3 = null;
+      if (handlers.isBlocked()) return;
+      let endX = active.startX;
+      let endY = active.startY;
+      if (ev.changedTouches.length) {
+        for (let i = 0; i < ev.changedTouches.length; i++) {
+          const t = ev.changedTouches[i];
+          if (t.identifier === active.id) {
+            endX = t.clientX;
+            endY = t.clientY;
+            break;
+          }
+        }
+      }
+      const dir = classifyChatServerPageSwipe({
+        startX: active.startX,
+        startY: active.startY,
+        endX,
+        endY
+      });
+      if (dir) handlers.onPageSwipe(dir);
+    };
+    root.addEventListener("touchstart", onTouchStart3, {
+      passive: true,
+      capture: true
+    });
+    root.addEventListener("touchend", onTouchEnd3, {
+      passive: true,
+      capture: true
+    });
+    root.addEventListener("touchcancel", onTouchEnd3, {
+      passive: true,
+      capture: true
+    });
+    return () => {
+      stroke3 = null;
+      root.removeEventListener("touchstart", onTouchStart3, true);
+      root.removeEventListener("touchend", onTouchEnd3, true);
+      root.removeEventListener("touchcancel", onTouchEnd3, true);
+    };
+  }
+
   // src/ui/frames/chat/ChatPanel.ts
   var POLL_MS2 = 5e3;
   var NARROW_PX = 440;
@@ -74102,6 +74291,16 @@ ${ESTIMATE_HINT}`,
       }
     }
     return "";
+  }
+  function readServerOrderKeys() {
+    var _a;
+    const servers = window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+    const out = [];
+    for (let i = 0; i < servers.length; i++) {
+      const key = (_a = servers[i]) == null ? void 0 : _a.key;
+      if (key) out.push(String(key));
+    }
+    return out;
   }
   function seedServerChats() {
     const servers = window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
@@ -74241,6 +74440,7 @@ ${ESTIMATE_HINT}`,
     );
     const [listFilter, setListFilter] = React.useState("all");
     const rootRef = React.useRef(null);
+    const mainRef = React.useRef(null);
     const titleRef = React.useRef(null);
     const logRef = React.useRef(null);
     const stickBottomRef = React.useRef(true);
@@ -74548,6 +74748,39 @@ ${ESTIMATE_HINT}`,
       bump();
       if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
     };
+    const selectConversationRef = React.useRef(selectConversation);
+    selectConversationRef.current = selectConversation;
+    const sidebarOpenRef = React.useRef(sidebarOpen);
+    sidebarOpenRef.current = sidebarOpen;
+    const activeTypeRef = React.useRef((active == null ? void 0 : active.type) || "");
+    activeTypeRef.current = (active == null ? void 0 : active.type) || "";
+    React.useEffect(() => {
+      if (!narrow) return;
+      if (detectViewportProfile() !== "phone") return;
+      const main = mainRef.current;
+      if (!main) return;
+      return installChatServerPageGestures(main, {
+        isBlocked: () => sidebarOpenRef.current || activeTypeRef.current === "new",
+        onPageSwipe: (dir) => {
+          const keys = listServerChatKeys(
+            listHubConversations(),
+            readServerOrderKeys()
+          );
+          if (keys.length < 2) return;
+          const want = resolveCurrentServerKey();
+          const fallback = want ? hubChatKey({ type: "server", server: want }) : null;
+          const next = stepServerPage(
+            keys,
+            getHubActiveKey(),
+            dir,
+            fallback
+          );
+          if (next && next !== getHubActiveKey()) {
+            selectConversationRef.current(next);
+          }
+        }
+      });
+    }, [narrow]);
     const startNewWhisper = (to) => {
       persistActiveDraft(draft, fromName, whisperTo);
       const chat = setHubActiveNew(to);
@@ -74915,7 +75148,7 @@ ${ESTIMATE_HINT}`,
         ),
         e(
           "div",
-          { className: "ecu-chat-main" },
+          { className: "ecu-chat-main", ref: mainRef },
           e(
             "div",
             {
@@ -74967,6 +75200,46 @@ ${ESTIMATE_HINT}`,
               className: "ecu-chat-expand"
             })
           ),
+          (() => {
+            if (!narrow) return null;
+            const serverKeys = listServerChatKeys(
+              conversations,
+              readServerOrderKeys()
+            );
+            if (serverKeys.length < 2) return null;
+            const activeIdx = serverPageIndex(serverKeys, (active == null ? void 0 : active.key) || null);
+            const dotKids = [];
+            for (let i = 0; i < serverKeys.length; i++) {
+              const key = serverKeys[i];
+              let label = key;
+              for (let j = 0; j < conversations.length; j++) {
+                if (conversations[j].key === key) {
+                  label = conversationTitle(conversations[j]);
+                  break;
+                }
+              }
+              dotKids.push(
+                e("button", {
+                  key,
+                  type: "button",
+                  className: "ecu-chat-server-dots__dot" + (i === activeIdx ? " is-on" : ""),
+                  "aria-label": label,
+                  "aria-current": i === activeIdx ? "true" : void 0,
+                  title: label,
+                  onClick: () => selectConversation(key)
+                })
+              );
+            }
+            return e(
+              "div",
+              {
+                className: "ecu-chat-server-dots",
+                role: "tablist",
+                "aria-label": "Server chats"
+              },
+              ...dotKids
+            );
+          })(),
           e(
             "div",
             {
