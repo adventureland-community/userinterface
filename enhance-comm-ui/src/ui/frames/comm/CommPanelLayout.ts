@@ -272,9 +272,18 @@ function createPanelRenderer(deps: CommPanelLayoutDeps) {
         onReopenWindow: deps.onReopenWindow,
         onClose,
         onShow: isClosablePanel ? () => deps.setVisible(id, true) : undefined,
-        // Match meters / bag: × sits in the hover arrange chrome strip.
-        closePlacement: hasChromeClose ? "above" : undefined,
-        closeOnHoverOnly: hasChromeClose ? true : undefined,
+        // Desktop: × lives in the hover arrange strip. Phone has no hover and
+        // hides locked arrange chrome — keep a corner × always tappable so
+        // paperdoll / bag / tips can still dismiss.
+        closePlacement: hasChromeClose
+          ? deps.viewportProfile === "phone"
+            ? "corner"
+            : "above"
+          : undefined,
+        closeOnHoverOnly:
+          hasChromeClose && deps.viewportProfile !== "phone"
+            ? true
+            : undefined,
         windowNumber: deps.windowNumberById
           ? deps.windowNumberById[id]
           : undefined,
@@ -584,6 +593,11 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       e(CommandPanel, {
         seedDraft: deps.commandSeed,
         openSeq: deps.commandOpenSeq,
+        onFrameSizeRestore: deps.onResizeFrame
+          ? (size: { w: number; h: number }) =>
+              deps.onResizeFrame!("command", size)
+          : undefined,
+        onRequestClose: () => deps.setVisible("command", false),
       }),
       {
         style: COMMAND_PANEL_STYLE,
@@ -610,25 +624,44 @@ export function renderCommPanels(deps: CommPanelLayoutDeps): any[] {
       },
     ),
 
-    panel("mail", e(MailPanel, null), {
-      style: MAIL_PANEL_STYLE,
-      hiddenBodyStyle: MAIL_PANEL_STYLE,
-    }),
+    panel(
+      "mail",
+      e(MailPanel, {
+        onFrameSizeRestore: deps.onResizeFrame
+          ? (size: { w: number; h: number }) =>
+              deps.onResizeFrame!("mail", size)
+          : undefined,
+        onRequestClose: () => deps.setVisible("mail", false),
+      }),
+      {
+        style: MAIL_PANEL_STYLE,
+        hiddenBodyStyle: MAIL_PANEL_STYLE,
+      },
+    ),
 
     deps.bagOpen || deps.bagRefreshing || deps.layoutEdit
-      ? panel("bag", e(BagPanel, {
-          layoutEdit: deps.layoutEdit,
-          tradeRevision: nearbyBuyOrdersRevision(
-            snap.entities,
-            snap.observing,
-          ),
-        }), {
-          style: deps.layoutEdit ? BAG_PANEL_STYLE : undefined,
-          hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
-            display: "flex",
-            alignItems: "flex-start",
+      ? panel(
+          "bag",
+          e(BagPanel, {
+            layoutEdit: deps.layoutEdit,
+            tradeRevision: nearbyBuyOrdersRevision(
+              snap.entities,
+              snap.observing,
+            ),
+            onFrameSizeRestore: deps.onResizeFrame
+              ? (size: { w: number; h: number }) =>
+                  deps.onResizeFrame!("bag", size)
+              : undefined,
+            onRequestClose: () => deps.setVisible("bag", false),
           }),
-        })
+          {
+            style: deps.layoutEdit ? BAG_PANEL_STYLE : undefined,
+            hiddenBodyStyle: Object.assign({}, BAG_PANEL_STYLE, {
+              display: "flex",
+              alignItems: "flex-start",
+            }),
+          },
+        )
       : null,
 
     framePlayer || deps.layoutEdit

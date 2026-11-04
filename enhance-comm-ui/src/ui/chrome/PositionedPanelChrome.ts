@@ -89,11 +89,16 @@ export function PositionedPanelChrome(args: PositionedPanelChromeArgs): {
 
   const closeAbove = props.closePlacement === "above";
   // Unlocked (movable): strip stays open (CSS) so hide × + lock remain reachable.
-  // Locked: hover / touch only.
+  // Locked: hover / touch only. Corner × (phone) is always on — it lives outside
+  // the arrange strip that phone home hides while locked.
   const showClose =
     !!onClose &&
     !hidden &&
-    (hover || touchish || movable || (editing && !props.closeOnHoverOnly));
+    (hover ||
+      touchish ||
+      movable ||
+      props.closePlacement === "corner" ||
+      (editing && !props.closeOnHoverOnly));
   // Layout-edit `grip` chrome (Layout toggles) *is* the drag handle — do not
   // let showMoveGrip:false (HUD passes playArrange, which is off in edit)
   // hide the only way to reposition that panel.

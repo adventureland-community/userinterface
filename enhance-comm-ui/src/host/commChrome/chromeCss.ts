@@ -698,6 +698,19 @@ ${STOCK_BOTTOM_TOGGLE_HIDE} {
 #comm-ui[data-viewport="phone"] .comm-pos-panel button {
   min-height: 32px;
 }
+/* Page dots keep an 8px visual; hit area is ::after — do not stretch to 32px. */
+#comm-ui.comm-ui-touch .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui.comm-ui-touch .comm-pos-panel button.ecu-peer-page-dots__dot,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui[data-viewport="tablet"] .comm-pos-panel button.ecu-peer-page-dots__dot,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button.ecu-chat-server-dots__dot,
+#comm-ui[data-viewport="phone"] .comm-pos-panel button.ecu-peer-page-dots__dot {
+  min-height: 8px;
+  min-width: 8px;
+  height: 8px;
+  width: 8px;
+  padding: 0;
+}
 /* Layout edit: click through panel content to reach overlapping drag chrome.
  * .comm-pos-interactive (meters / Layout toggles) keeps body hits so
  * controls + corner resize grips stay usable while arranging. */

@@ -95,6 +95,12 @@ function isIgnoredTarget(target: EventTarget | null): boolean {
   if (target.closest(".ecu-phone-shade, .ecu-phone-sheet")) {
     return true;
   }
+  // First-run intro / What's New / server notes — own scroll + taps.
+  if (
+    target.closest(".ecu-comm-wiz-backdrop, [data-ecu-comm-modal-portal]")
+  ) {
+    return true;
+  }
   // Camera joystick + FOV cluster own their pointer stream.
   if (target.closest(".ecu-cam-stick, .ecu-cam-chrome")) {
     return true;

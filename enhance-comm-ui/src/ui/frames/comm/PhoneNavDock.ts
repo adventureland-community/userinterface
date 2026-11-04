@@ -36,6 +36,7 @@ import {
   installPhoneHomePageGestures,
   uninstallPhoneHomePageGestures,
 } from "../../chrome/phoneHomePageGestures";
+import { registerPhoneTourChrome } from "../../../host/phoneTourChrome";
 import { ensurePhoneNavCss } from "./phoneNavCss";
 import { PhoneObserveSheet } from "./PhoneObserveSheet";
 import { PhoneServerSheet } from "./PhoneServerSheet";
@@ -218,6 +219,40 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
     hidePeerPanels("none");
     setServerOpen(true);
   };
+
+  const openShade = () => {
+    if (sheetOpen) setSheetOpen(false);
+    if (observeOpen) setObserveOpen(false);
+    if (serverOpen) setServerOpen(false);
+    if (props.settingsOpen) props.toggleSettings();
+    hidePeerPanels("none");
+    setShadeOpen(true);
+  };
+
+  const tourChromeRef = React.useRef({
+    openObserve,
+    openServer,
+    openApps,
+    openShade,
+    closeAll: dismissSheets,
+  });
+  tourChromeRef.current = {
+    openObserve,
+    openServer,
+    openApps,
+    openShade,
+    closeAll: dismissSheets,
+  };
+  React.useEffect(() => {
+    registerPhoneTourChrome({
+      openObserve: () => tourChromeRef.current.openObserve(),
+      openServer: () => tourChromeRef.current.openServer(),
+      openApps: () => tourChromeRef.current.openApps(),
+      openShade: () => tourChromeRef.current.openShade(),
+      closeAll: () => tourChromeRef.current.closeAll(),
+    });
+    return () => registerPhoneTourChrome(null);
+  }, []);
 
   const toggleSettings = () => {
     if (sheetOpen) setSheetOpen(false);

@@ -47,6 +47,13 @@ describe("panel chrome close", () => {
     assert.equal(panelHasChromeClose("players", deps()), false);
   });
 
+  it("paperdoll chrome close is available while an entity is selected", () => {
+    assert.equal(
+      panelHasChromeClose("paperdoll", deps({ selectedEntity: "Hero" })),
+      true,
+    );
+  });
+
   it("player and target frames are visibility-closable", () => {
     assert.equal(panelCloseKind("playerFrame", deps()), "visibility");
     assert.equal(panelCloseKind("targetFrame", deps()), "visibility");

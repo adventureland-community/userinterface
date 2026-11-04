@@ -694,9 +694,15 @@ const CSS = `
   /* Visual stays the original 8px pill; ::after only expands the tap target. */
   pointer-events: auto;
   position: relative;
-  width: 8px;
-  height: 8px;
-  padding: 0;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 8px !important;
+  min-height: 8px !important;
+  max-width: 8px !important;
+  max-height: 8px !important;
+  padding: 0 !important;
   margin: 0;
   border: none;
   border-radius: 50%;
@@ -704,6 +710,8 @@ const CSS = `
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .ecu-phone-home-dots__dot::after {
   content: "";
@@ -872,6 +880,12 @@ const CSS = `
 }
 .ecu-phone-apps__tile.is-on .ecu-phone-apps__icon {
   box-shadow: 0 0 0 2px #9dd4ec;
+}
+.ecu-phone-apps__tile.is-muted {
+  opacity: 0.55;
+}
+.ecu-phone-apps__tile.is-muted .ecu-phone-apps__label {
+  color: #938f99;
 }
 .ecu-phone-apps__icon {
   display: flex;

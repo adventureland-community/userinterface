@@ -211,9 +211,16 @@ export function unlockCamera(): void {
   syncFreeCameraAfterRealmChange();
   if (!freeCamera) {
     syncLockFromMap();
-    // Freeze vision-hole anchor at the observer position before we pan away.
-    observerAnchorX = lockX;
-    observerAnchorY = lockY;
+    // Vision hole must stay on the observer — never the camera lock. Camera
+    // may already be mid-pan if unlock is re-entered after a soft reset.
+    const at = readObservedWorldXY();
+    if (at) {
+      observerAnchorX = at.x;
+      observerAnchorY = at.y;
+    } else {
+      observerAnchorX = lockX;
+      observerAnchorY = lockY;
+    }
     hasObserverAnchor = true;
     freeCamRealmKey = readCameraRealmKey();
     freeCamera = true;

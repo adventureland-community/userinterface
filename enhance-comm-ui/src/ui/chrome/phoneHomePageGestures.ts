@@ -81,7 +81,7 @@ function isIgnoredTarget(target: EventTarget | null): boolean {
   }
   if (
     target.closest(
-      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-cam-chrome, .ecu-meter-shell, [data-panel]",
+      ".CodeMirror, .ecu-chat-log, .ecu-chat-body, .ecu-phone-sheet, .ecu-phone-shade, .ecu-phone-dock, .ecu-cam-stick, .ecu-cam-chrome, .ecu-meter-shell, [data-panel], .ecu-comm-wiz-backdrop, [data-ecu-comm-modal-portal]",
     )
   ) {
     return true;

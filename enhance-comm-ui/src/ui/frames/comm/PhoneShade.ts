@@ -137,6 +137,7 @@ export function PhoneShade(props: PhoneShadeProps): any {
         type: "button",
         className:
           "ecu-phone-sheet__chip" + (props.layoutEdit ? " is-on" : ""),
+        "data-ecu-tour": "btn-layout",
         onClick: () => props.toggleLayoutEdit(),
       },
       props.layoutEdit ? "Layout on" : "Layout",
@@ -259,6 +260,7 @@ export function PhoneShade(props: PhoneShadeProps): any {
         "div",
         {
           className: "ecu-phone-shade__qs",
+          "data-ecu-tour": "phone-shade-qs",
           onTouchStart: (ev: TouchEvent) => onHandleTouchStart(ev, "expand"),
           onTouchMove: onHandleTouchMove,
           onTouchEnd: onHandleTouchEnd,

@@ -311,7 +311,14 @@ export function PhoneObserveSheet(props: PhoneObserveSheetProps): any {
           "Done",
         ),
       ),
-      e("div", { className: "ecu-phone-sheet__body" }, ...kids),
+      e(
+        "div",
+        {
+          className: "ecu-phone-sheet__body",
+          "data-ecu-tour": "phone-observe-list",
+        },
+        ...kids,
+      ),
     ),
   );
 }

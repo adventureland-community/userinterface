@@ -196,4 +196,11 @@ html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel.comm-pos-movable 
 html.ecu-phone-dock-on #comm-ui.ecu-phone-home.ecu-phone-layout-edit .comm-pos-arrange-overlay > * {
   pointer-events: auto;
 }
+/* Phone: corner hide × (outside locked arrange chrome) must stay tappable on
+ * click-through shells like paperdoll / bag. */
+html.ecu-phone-dock-on #comm-ui.ecu-phone-home .comm-pos-panel > .comm-pos-panel-close {
+  pointer-events: auto;
+  z-index: 8;
+  opacity: 1;
+}
 `;

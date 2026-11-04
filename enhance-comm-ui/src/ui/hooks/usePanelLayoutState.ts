@@ -32,6 +32,7 @@ import {
   resolveLiteHud,
   type HudDensity,
 } from "../../lib/perfPrefs";
+import { gateObservedBagOpen } from "../../host/bagOpenGate";
 import {
   applyBagLayoutPos,
   syncInventoryToBagPanel,
@@ -241,6 +242,7 @@ export function usePanelLayoutState(): PanelLayoutState {
 
   const setVisible = (id: PanelId, visible: boolean) => {
     if (!isClosable(id)) return;
+    if (id === "bag" && visible && !gateObservedBagOpen()) return;
     if (liteHud) {
       setPhoneHudVisible((prev: PanelVisibleMap) => {
         const next = { ...prev, [id]: visible };
