@@ -21,12 +21,28 @@ describe("nameplateTextResolution", () => {
     assert.equal(nameplateTextResolution(1.5), 3);
     assert.equal(nameplateTextResolution(2), 4);
   });
+
+  it("densifies on zoom-in (FOV<1) instead of going soft", () => {
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      devicePixelRatio: 2,
+    };
+    // 1/0.5 × 2 → 4
+    assert.equal(nameplateTextResolution(0.5), 4);
+  });
+
+  it("caps resolution so phone DPR × wide FOV stays WebGL-safe", () => {
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      devicePixelRatio: 3,
+    };
+    assert.equal(nameplateTextResolution(6), 4);
+    assert.equal(nameplateTextResolution(0.5), 4);
+  });
 });
 
 describe("nameplateScreenScale", () => {
-  it("counter-scales FOV>1 so CSS fit does not shrink labels", () => {
+  it("counter-scales FOV≠1 so CSS fit does not shrink or balloon labels", () => {
     assert.equal(nameplateScreenScale(1), 1);
-    assert.equal(nameplateScreenScale(0.75), 1);
+    assert.equal(nameplateScreenScale(0.5), 0.5);
     assert.equal(nameplateScreenScale(2), 2);
     assert.equal(nameplateScreenScale(4), 3);
   });
@@ -110,11 +126,15 @@ describe("sharpenNameTagTextures", () => {
     };
     sharpenNameTagTextures(root, 2);
     assert.equal(textNode.resolution, 2);
+    assert.equal(textNode.roundPixels, false);
+    assert.equal(textNode.texture.baseTexture.scaleMode, 0);
     assert.equal(root.scale.x, 2);
     assert.equal(root.scale.y, 2);
     assert.equal(root.pivot.y, -40);
     assert.equal(root.y, -40);
-    assert.deepEqual(updates, [2]);
+    // FOV resolution bump + soft-plate stroke both re-rasterize Text.
+    assert.ok(updates.length >= 1);
+    assert.equal(updates[updates.length - 1], 2);
   });
 
   it("does not scale from origin when attach bounds are missing", () => {

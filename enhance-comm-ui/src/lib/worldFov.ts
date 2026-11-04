@@ -78,9 +78,14 @@ type HostMap = { last_max_y?: number; last_max_x?: number };
 
 /**
  * CSS-fit the PIXI view to the window. Only used when FOV ≠ 1.
- * Always marks the canvas pixelated so CSS scale matches sprite nearest look.
+ * Zoom-out (FOV>1): pixelated so sprites stay nearest-crisp while CSS shrinks.
+ * Zoom-in (FOV<1): auto — pixelated CSS upscale turns nameplate text into noise.
  */
-export function fitRendererView(cssW: number, cssH: number): void {
+export function fitRendererView(
+  cssW: number,
+  cssH: number,
+  fov?: number,
+): void {
   const renderer = (
     window as Window & {
       renderer?: { view?: HTMLElement | null };
@@ -93,9 +98,12 @@ export function fitRendererView(cssW: number, cssH: number): void {
   view.style.maxWidth = "100%";
   view.style.maxHeight = "100%";
   view.style.display = "block";
-  view.style.imageRendering = "pixelated";
+  const f =
+    typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+  const pixelated = !(f < 1);
+  view.style.imageRendering = pixelated ? "pixelated" : "auto";
   (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
-    .webkitImageRendering = "pixelated";
+    .webkitImageRendering = pixelated ? "pixelated" : "auto";
 }
 
 /** Clear FOV CSS size overrides (keep pixelated snap). */
@@ -165,10 +173,12 @@ export function applyWorldFov(next: number): number {
 
   if (fov === WORLD_FOV_DEFAULT) {
     clearRendererViewFit();
+    applyRendererPixelSnap();
   } else {
-    fitRendererView(cssW, cssH);
+    fitRendererView(cssW, cssH, fov);
+    // Zoom-in uses auto CSS sampling — do not re-stamp pixelated after fit.
+    if (!(fov < 1)) applyRendererPixelSnap();
   }
-  applyRendererPixelSnap();
 
   if (typeof host.position_map === "function") {
     try {
@@ -203,7 +213,9 @@ export function formatWorldFov(fov: number): string {
 
 /**
  * Extra PIXI.Text resolution so glyphs stay dense after CSS FOV fit.
- * fov=1.5 + dpr=2 → resolution 3, etc.
+ * Zoom-out (f>1): CSS shrinks → densify by f.
+ * Zoom-in (f<1): CSS enlarges → densify by 1/f (was wrongly using f and going soft).
+ * Cap so phone DPR × extreme FOV does not balloon stroked textures.
  */
 export function nameplateTextResolution(fov?: number): number {
   const f =
@@ -214,5 +226,6 @@ export function nameplateTextResolution(fov?: number): number {
     window.devicePixelRatio > 0
       ? window.devicePixelRatio
       : 1;
-  return Math.max(1, Math.ceil(f * dpr));
+  const denseness = f >= 1 ? f : 1 / f;
+  return Math.max(1, Math.min(4, Math.ceil(denseness * dpr)));
 }

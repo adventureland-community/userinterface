@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  followObservedCamera,
   isFreeCamera,
   lockCamera,
   unlockCamera,
@@ -23,6 +24,8 @@ function resetVisionHost(): void {
   (window as any).character = null;
   (window as any).entities = {};
   (window as any).map = null;
+  (window as any).socket = undefined;
+  lockCamera();
 }
 
 describe("observerVision", () => {
@@ -97,6 +100,77 @@ describe("observerVision", () => {
     resetVisionHost();
   });
 
+  it("anchors free-cam vision on the live observer, not the camera lock", () => {
+    resetVisionHost();
+    (window as any).observing = {
+      id: "Hero",
+      name: "Hero",
+      real_x: 10,
+      real_y: 20,
+    };
+    (window as any).entities = {
+      Hero: {
+        id: "Hero",
+        name: "Hero",
+        real_x: 250,
+        real_y: -80,
+        type: "character",
+        player: true,
+      },
+    };
+    // Camera already panned away before free-cam starts (stale map.real_*).
+    (window as any).map = {
+      addChild() {},
+      real_x: 9999,
+      real_y: -9999,
+    };
+    unlockCamera();
+    (window as any).map.real_x = 1111;
+    (window as any).map.real_y = 2222;
+    assert.deepEqual(resolveVisionCenter(), { x: 250, y: -80 });
+    // Even if the soft entity drops, stay on observe snap — never camera.
+    (window as any).entities = {};
+    assert.deepEqual(resolveVisionCenter(), { x: 10, y: 20 });
+    lockCamera();
+    resetVisionHost();
+  });
+
+  it("Follow re-centers the camera without moving vision off the observer", () => {
+    resetVisionHost();
+    (window as any).observing = {
+      id: "Hero",
+      name: "Hero",
+      real_x: 10,
+      real_y: 20,
+    };
+    (window as any).entities = {
+      Hero: {
+        id: "Hero",
+        name: "Hero",
+        real_x: 300,
+        real_y: 400,
+        type: "character",
+        player: true,
+      },
+    };
+    (window as any).map = {
+      addChild() {},
+      real_x: 300,
+      real_y: 400,
+      position_map() {},
+    };
+    unlockCamera();
+    (window as any).map.real_x = 50;
+    (window as any).map.real_y = 60;
+    assert.deepEqual(resolveVisionCenter(), { x: 300, y: 400 });
+    followObservedCamera();
+    assert.equal(isFreeCamera(), false);
+    assert.deepEqual(resolveVisionCenter(), { x: 300, y: 400 });
+    assert.equal((window as any).map.real_x, 300);
+    assert.equal((window as any).map.real_y, 400);
+    resetVisionHost();
+  });
+
   it("follows live entities[] coords, not frozen window.observing", () => {
     resetVisionHost();
     (window as any).observing = {
@@ -119,7 +193,7 @@ describe("observerVision", () => {
     resetVisionHost();
   });
 
-  it("ignores stale observing snap when the live entity is missing", () => {
+  it("prefers observing snap over camera when the live entity is missing", () => {
     resetVisionHost();
     (window as any).observing = {
       id: "Gone",
@@ -132,7 +206,8 @@ describe("observerVision", () => {
       real_x: 400,
       real_y: 500,
     };
-    assert.deepEqual(resolveVisionCenter(), { x: 400, y: 500 });
+    // Vision is the observer's last known spot — never the free-cam / map center.
+    assert.deepEqual(resolveVisionCenter(), { x: 1, y: 2 });
     resetVisionHost();
   });
 

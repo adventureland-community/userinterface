@@ -136,8 +136,9 @@ export function readObserverVisionHalf(): VisionHalf {
 
 /**
  * Vision hole follows the watched character’s live soft entity, else self.
- * While free-cam pans, keep the hole on the observer anchor (not map.real_*).
- * Never uses frozen welcome `window.observing` coords for the live entity.
+ * While free-cam pans, keep the hole on the observer (never map.real_*).
+ * Prefer live `entities[]` over frozen welcome `window.observing`, but still
+ * use the snap (or free-cam observer anchor) before falling back to camera.
  */
 export function resolveVisionCenter(): { x: number; y: number } | null {
   // Drop stale free-cam locks after map/server hops before reading the anchor.
@@ -146,10 +147,14 @@ export function resolveVisionCenter(): { x: number; y: number } | null {
   if (fromLive) return fromLive;
   const fromChar = mapXY(getCharacter());
   if (fromChar) return fromChar;
-  // Free-cam moves map.real_* for the viewport; vision stays on the observer.
+  // Last-known observe coords beat the camera — Follow / free-cam must not
+  // drag the vision window around with the viewport.
+  const fromSnap = mapXY(getObserving());
+  if (fromSnap) return fromSnap;
   if (isFreeCamera()) {
     const anchor = readObserverCameraAnchor();
     if (anchor) return anchor;
+    return null;
   }
   return readCameraXY();
 }

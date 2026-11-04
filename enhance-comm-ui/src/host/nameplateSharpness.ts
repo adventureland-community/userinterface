@@ -7,7 +7,8 @@
  *   2. Pivot at the plate's bottom (head attachment) so scale grows upward —
  *      stock places the Graphics at y=-(barH+aheight) inside a (0,0) container;
  *      scaling that container without a bottom pivot floats tags off heads
- *   3. Raise Text.resolution × FOV×DPR and force NEAREST
+ *   3. Raise Text.resolution × FOV×DPR (capped); NEAREST on sprites only —
+ *      Text stays LINEAR so soft stroke does not become salt-and-pepper
  *   4. Bust caches on FOV change so tags re-rasterize
  */
 
@@ -16,6 +17,7 @@ import {
   onWorldFovApplied,
   readAppliedWorldFov,
 } from "../lib/worldFov";
+import { beautifyNameTag } from "./nameplateStyle";
 
 type PixiLike = {
   SCALE_MODES?: { NEAREST?: number; LINEAR?: number };
@@ -53,13 +55,19 @@ type SpriteLike = {
   /** Stock `name_tag` x/y before our FOV counter-scale (usually 0,0). */
   __ecuNameplateStockX?: number;
   __ecuNameplateStockY?: number;
+  /** Soft plate / text stroke already applied for this tag instance. */
+  __ecuNameplateStyled?: boolean;
 };
 
-function nearestMode(): number | null {
+function scaleModes(): { nearest: number | null; linear: number | null } {
   const PIXI = (window as Window & { PIXI?: PixiLike }).PIXI;
-  if (!PIXI || !PIXI.SCALE_MODES) return null;
-  const n = PIXI.SCALE_MODES.NEAREST;
-  return typeof n === "number" ? n : null;
+  if (!PIXI || !PIXI.SCALE_MODES) return { nearest: null, linear: null };
+  const nearest = PIXI.SCALE_MODES.NEAREST;
+  const linear = PIXI.SCALE_MODES.LINEAR;
+  return {
+    nearest: typeof nearest === "number" ? nearest : null,
+    linear: typeof linear === "number" ? linear : null,
+  };
 }
 
 function looksLikePixiText(node: SpriteLike): boolean {
@@ -114,14 +122,16 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 
 /**
  * Screen-compensated FOV for nameplate size. At fov=1 leave stock.
- * Cap so extreme zoom-out does not flood the view with huge tags.
+ * Zoom-out (f>1): scale up to cancel CSS shrink (cap 3×).
+ * Zoom-in (f<1): scale down to cancel CSS enlarge (floor 1/3) so plates do
+ * not become huge soft blobs under CSS upscale.
  */
 export function nameplateScreenScale(fov?: number): number {
   const f =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-  if (!(f > 1)) return 1;
-  // Match CSS downscale so glyphs stay ~same CSS pixels; soft-cap at 3×.
-  return Math.min(3, f);
+  if (f === 1) return 1;
+  if (f > 1) return Math.min(3, f);
+  return Math.max(1 / 3, f);
 }
 
 /**
@@ -248,7 +258,7 @@ function applyNameplateScreenScale(root: SpriteLike, screen: number): boolean {
   root.x = stockX;
   root.y = stockY;
 
-  if (!(screen > 1)) return true;
+  if (screen === 1) return true;
 
   const bounds = readLocalBounds(root);
   if (!bounds) {
@@ -264,7 +274,7 @@ function applyNameplateScreenScale(root: SpriteLike, screen: number): boolean {
   return true;
 }
 
-/** Walk a name_tag tree: counter-scale + NEAREST + FOV Text.resolution. */
+/** Walk a name_tag tree: soft plate + counter-scale + NEAREST + FOV Text.resolution. */
 export function sharpenNameTagTextures(
   root: SpriteLike | null | undefined,
   fov?: number,
@@ -273,22 +283,33 @@ export function sharpenNameTagTextures(
   const appliedFov =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov();
   const screen = nameplateScreenScale(appliedFov);
-  const nearest = nearestMode();
+  const modes = scaleModes();
   const res = nameplateTextResolution(appliedFov);
 
-  // Counter-scale + bottom-pivot. Always re-apply when FOV wants scale>1 so a
-  // first pass that lacked bounds can recover on the next draw.
-  if (root.__ecuNameplateFov !== appliedFov || screen > 1) {
+  // Counter-scale + bottom-pivot (zoom-out up / zoom-in down). Re-apply when
+  // FOV wants scale≠1 so a first pass that lacked bounds can recover.
+  if (root.__ecuNameplateFov !== appliedFov || screen !== 1) {
     const ok = applyNameplateScreenScale(root, screen);
     if (ok) root.__ecuNameplateFov = appliedFov;
   }
 
   const visit = (node: SpriteLike | null | undefined) => {
     if (!node) return;
-    if (typeof node.roundPixels !== "undefined") node.roundPixels = true;
+    const isText = looksLikePixiText(node);
+    // Sprites stay NEAREST; stroked PIXI.Text must stay LINEAR — NEAREST + soft
+    // stroke + FOV CSS pixelated turns glyphs into white salt-and-pepper on phone.
+    if (typeof node.roundPixels !== "undefined") {
+      node.roundPixels = !isText;
+    }
     const bt = node.texture && node.texture.baseTexture;
-    if (bt && nearest != null) bt.scaleMode = nearest;
-    if (looksLikePixiText(node)) {
+    if (bt) {
+      if (isText) {
+        if (modes.linear != null) bt.scaleMode = modes.linear;
+      } else if (modes.nearest != null) {
+        bt.scaleMode = modes.nearest;
+      }
+    }
+    if (isText) {
       if (typeof node.resolution === "number" && node.resolution !== res) {
         node.resolution = res;
         if (typeof node.updateText === "function") {
@@ -310,13 +331,15 @@ export function sharpenNameTagTextures(
         }
       }
       const bt2 = node.texture && node.texture.baseTexture;
-      if (bt2 && nearest != null) bt2.scaleMode = nearest;
+      if (bt2 && modes.linear != null) bt2.scaleMode = modes.linear;
     }
     const kids = node.children;
     if (!kids || !kids.length) return;
     for (let i = 0; i < kids.length; i++) visit(kids[i]);
   };
   visit(root);
+  // Soft plate after FOV Text.resolution so stroke rasterizes at the final DPI.
+  beautifyNameTag(root);
 }
 
 /** Force name tags to rebuild on next draw (after FOV / scale changes). */
@@ -338,6 +361,7 @@ export function bustNameTagCaches(): void {
       ent.name_tag.__ecuNameplateFov = undefined;
       ent.name_tag.__ecuNameplateStockX = undefined;
       ent.name_tag.__ecuNameplateStockY = undefined;
+      ent.name_tag.__ecuNameplateStyled = undefined;
     }
   };
   const w = window as Window & {
