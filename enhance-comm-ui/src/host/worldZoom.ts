@@ -1,6 +1,9 @@
 /**
  * Boot + persist world zoom for /hub (stock PIXI `scale`).
- * Wheel over the game canvas nudges zoom; Ctrl+wheel left to the browser.
+ * Wheel over the game canvas nudges zoom. On phone:
+ * - Ctrl/Meta/Shift+wheel → DevTools pinch-sim wheel
+ * - Shift+drag (single touch) → DevTools Shift+drag pinch (often only 1 touch)
+ * - Two-finger pinch → real devices (midpoint over canvas)
  *
  * Do not re-apply scale while create_map is painting — that races the first
  * tile pass and blacks the canvas. Stock already seeded `scale` from the
@@ -8,8 +11,10 @@
  * when ECU settings disagree with the host.
  */
 import { getSettings, patchSettings } from "../lib/settings";
+import { detectViewportProfile } from "../lib/viewport";
 import {
   WORLD_ZOOM_DEFAULT,
+  WORLD_ZOOM_MIN,
   WORLD_ZOOM_STEP,
   applyWorldZoom,
   clampWorldZoom,
@@ -21,14 +26,30 @@ import {
 let installed = false;
 let appliedOnce = false;
 let wheelInstalled = false;
+let pinchInstalled = false;
 let lastWheelApplyMs = 0;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let pinchStartDist = 0;
+let pinchBaseZoom = WORLD_ZOOM_DEFAULT;
+/** DevTools Shift+drag pinch (Chrome often emits only one touch). */
+let shiftPinchActive = false;
+let shiftPinchStartY = 0;
+let shiftPinchBaseZoom = WORLD_ZOOM_DEFAULT;
 
 type ZoomListener = (zoom: number) => void;
 const zoomListeners: ZoomListener[] = [];
 
 const WHEEL_MIN_MS = 80;
 const PERSIST_DEBOUNCE_MS = 200;
+/** Pinch ratio must cross this vs start before an integer zoom step. */
+const PINCH_STEP_RATIO = 1.12;
+/** Pixels of Shift+drag (DevTools pinch) per world-zoom step. */
+export const SHIFT_PINCH_PX_PER_STEP = 72;
+
+/** Drag up → positive steps (zoom in); drag down → zoom out. */
+export function shiftDragZoomSteps(startY: number, currentY: number): number {
+  return Math.trunc((startY - currentY) / SHIFT_PINCH_PX_PER_STEP);
+}
 
 function notifyZoomListeners(zoom: number): void {
   for (let i = 0; i < zoomListeners.length; i++) zoomListeners[i](zoom);
@@ -52,16 +73,28 @@ function tryApplySaved(): boolean {
   if (!map || !gameLoaded()) return false;
 
   const savedRaw = getSettings().worldZoom;
+  const phoneDefault =
+    detectViewportProfile() === "phone" ? WORLD_ZOOM_MIN : WORLD_ZOOM_DEFAULT;
   const preferred =
-    typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : WORLD_ZOOM_DEFAULT;
+    typeof savedRaw === "number" ? clampWorldZoom(savedRaw) : phoneDefault;
 
   // Rewrite bad fractional cookies for the *next* refresh.
   healFractionalScaleCookie(
     typeof savedRaw === "number" ? preferred : readHostWorldZoom(),
   );
 
-  // No ECU preference — leave stock URL/cookie scale alone for this session.
+  // No ECU preference — on phone seed zoom-out so more map fits; desktop
+  // leaves stock URL/cookie scale alone for this session.
   if (typeof savedRaw !== "number") {
+    if (detectViewportProfile() === "phone") {
+      if (readHostWorldZoom() !== preferred) {
+        applyWorldZoom(preferred);
+        persistZoom(preferred);
+        notifyZoomListeners(preferred);
+      } else {
+        writeWorldZoomCookie(preferred);
+      }
+    }
     appliedOnce = true;
     return true;
   }
@@ -113,33 +146,105 @@ function rendererView(): Element | null {
       renderer?: { view?: Element | null };
     }
   ).renderer;
-  const view = renderer && renderer.view;
-  return view || null;
+  if (renderer && renderer.view) return renderer.view;
+  // Fallbacks when stock host has not exposed renderer.view yet.
+  const stage =
+    document.getElementById("stage") ||
+    document.getElementById("game") ||
+    document.body;
+  if (stage) {
+    const nested = stage.querySelector("canvas");
+    if (nested) return nested;
+  }
+  const all = document.querySelectorAll("canvas");
+  let best: Element | null = null;
+  let bestArea = 0;
+  for (let i = 0; i < all.length; i++) {
+    const c = all[i];
+    const r = c.getBoundingClientRect();
+    const area = Math.max(0, r.width) * Math.max(0, r.height);
+    if (area > bestArea) {
+      bestArea = area;
+      best = c;
+    }
+  }
+  return best;
 }
 
-function isUiChromeTarget(target: EventTarget | null): boolean {
+/** Panels / dock / modals — never steal wheel or pinch from these. */
+function isInteractiveChromeTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return !!(
-    target.closest("#comm-ui") ||
+    target.closest("[data-ecu-phone-dock]") ||
+    target.closest(".ecu-phone-sheet") ||
+    target.closest(".ecu-phone-shade") ||
+    target.closest(".ecu-phone-sheet-scrim") ||
+    target.closest(".ecu-phone-shade-scrim") ||
+    target.closest("[data-panel]") ||
+    target.closest(".ecu-meter-shell") ||
     target.closest(".ecu-chrome-stack") ||
     target.closest(".modal") ||
     target.closest(".imodal") ||
-    target.closest("#topleftcorner") ||
     target.closest("#bottomleftcorner") ||
     target.closest("#bottomrightcorner") ||
+    target.closest("input, textarea, select, [contenteditable='true']") ||
+    target.closest(".CodeMirror")
+  );
+}
+
+/**
+ * Broader chrome check for plain (non-pinch) wheel — include the ECU root so
+ * scrolling over empty HUD space does not zoom.
+ */
+function isUiChromeTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (isInteractiveChromeTarget(target)) return true;
+  return !!(
+    target.closest("#comm-ui") ||
+    target.closest("#topleftcorner") ||
     target.closest("#toprightcorner")
   );
 }
 
-function onWorldWheel(ev: WheelEvent): void {
-  if (ev.ctrlKey || ev.metaKey) return;
-  if (isUiChromeTarget(ev.target)) return;
+function pointOverCanvas(clientX: number, clientY: number): boolean {
   const view = rendererView();
-  if (!view) return;
-  const overCanvas =
-    ev.target === view ||
-    (ev.target instanceof Node && view.contains(ev.target));
-  if (!overCanvas) return;
+  if (!view) return false;
+  const r = view.getBoundingClientRect();
+  return (
+    clientX >= r.left &&
+    clientX <= r.right &&
+    clientY >= r.top &&
+    clientY <= r.bottom
+  );
+}
+
+function targetOnCanvas(target: EventTarget | null): boolean {
+  const view = rendererView();
+  if (!view) return false;
+  return (
+    target === view ||
+    (target instanceof Node && view.contains(target))
+  );
+}
+
+function onWorldWheel(ev: WheelEvent): void {
+  const phone = detectViewportProfile() === "phone";
+  // Desktop: leave modifier+wheel to the browser. Phone / DevTools device
+  // mode: Ctrl/Meta/Shift+wheel simulate pinch — map to world zoom.
+  const pinchSim =
+    phone && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
+  if ((ev.ctrlKey || ev.metaKey) && !phone) return;
+  if (isInteractiveChromeTarget(ev.target)) return;
+  // Pinch-sim: zoom whenever the cursor is over the map rect (HUD root may
+  // be the event target even with pointer-events:none ancestors).
+  if (pinchSim) {
+    if (!pointOverCanvas(ev.clientX, ev.clientY)) return;
+  } else {
+    if (isUiChromeTarget(ev.target)) return;
+    if (!targetOnCanvas(ev.target) && !pointOverCanvas(ev.clientX, ev.clientY)) {
+      return;
+    }
+  }
 
   const now = Date.now();
   if (now - lastWheelApplyMs < WHEEL_MIN_MS) {
@@ -163,6 +268,177 @@ function onWorldWheel(ev: WheelEvent): void {
   setWorldZoom(next);
 }
 
+function touchDistance(a: Touch, b: Touch): number {
+  const dx = a.clientX - b.clientX;
+  const dy = a.clientY - b.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Pure — midpoint of two touches inside a canvas rect? */
+export function pinchMidpointInRect(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  rect: { left: number; right: number; top: number; bottom: number },
+): boolean {
+  const mx = (ax + bx) / 2;
+  const my = (ay + by) / 2;
+  return (
+    mx >= rect.left &&
+    mx <= rect.right &&
+    my >= rect.top &&
+    my <= rect.bottom
+  );
+}
+
+/**
+ * True when a two-finger gesture should drive world zoom.
+ * Uses pinch midpoint so a full-screen transparent #comm-ui does not block.
+ */
+export function pinchOverCanvas(ev: TouchEvent): boolean {
+  if (ev.touches.length < 2) {
+    if (isInteractiveChromeTarget(ev.target)) return false;
+    return targetOnCanvas(ev.target);
+  }
+  const a = ev.touches[0];
+  const b = ev.touches[1];
+  // Both fingers on dock/sheet/panel → leave alone.
+  if (typeof document !== "undefined" && document.elementFromPoint) {
+    const elA = document.elementFromPoint(a.clientX, a.clientY);
+    const elB = document.elementFromPoint(b.clientX, b.clientY);
+    if (isInteractiveChromeTarget(elA) && isInteractiveChromeTarget(elB)) {
+      return false;
+    }
+  }
+  const view = rendererView();
+  if (!view) return false;
+  return pinchMidpointInRect(
+    a.clientX,
+    a.clientY,
+    b.clientX,
+    b.clientY,
+    view.getBoundingClientRect(),
+  );
+}
+
+function pointAllowsMapZoom(
+  target: EventTarget | null,
+  clientX: number,
+  clientY: number,
+): boolean {
+  if (isInteractiveChromeTarget(target)) {
+    return pointOverCanvas(clientX, clientY);
+  }
+  return targetOnCanvas(target) || pointOverCanvas(clientX, clientY);
+}
+
+function onPinchStart(ev: TouchEvent): void {
+  // Real two-finger pinch.
+  if (ev.touches.length === 2) {
+    shiftPinchActive = false;
+    if (!pinchOverCanvas(ev)) return;
+    pinchStartDist = touchDistance(ev.touches[0], ev.touches[1]);
+    pinchBaseZoom = readHostWorldZoom();
+    return;
+  }
+  // Chrome DevTools: Shift+drag emits a single touch with shiftKey, not two.
+  if (
+    ev.touches.length === 1 &&
+    ev.shiftKey &&
+    detectViewportProfile() === "phone"
+  ) {
+    const t = ev.touches[0];
+    if (!pointAllowsMapZoom(ev.target, t.clientX, t.clientY)) return;
+    pinchStartDist = 0;
+    shiftPinchActive = true;
+    shiftPinchStartY = t.clientY;
+    shiftPinchBaseZoom = readHostWorldZoom();
+  }
+}
+
+function onPinchMove(ev: TouchEvent): void {
+  // DevTools Shift+drag pinch (one finger; started with Shift held).
+  if (shiftPinchActive && ev.touches.length === 1) {
+    const t = ev.touches[0];
+    const steps = shiftDragZoomSteps(shiftPinchStartY, t.clientY);
+    if (steps === 0) {
+      ev.preventDefault();
+      return;
+    }
+    const next = clampWorldZoom(
+      shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP,
+    );
+    ev.preventDefault();
+    if (next !== readHostWorldZoom()) setWorldZoom(next);
+    shiftPinchBaseZoom = next;
+    shiftPinchStartY = t.clientY;
+    return;
+  }
+
+  if (ev.touches.length !== 2 || pinchStartDist <= 0) return;
+  if (!pinchOverCanvas(ev)) return;
+  const dist = touchDistance(ev.touches[0], ev.touches[1]);
+  if (dist <= 0) return;
+  const ratio = dist / pinchStartDist;
+  let step = 0;
+  if (ratio >= PINCH_STEP_RATIO) step = 1;
+  else if (ratio <= 1 / PINCH_STEP_RATIO) step = -1;
+  if (step === 0) return;
+  const next = clampWorldZoom(pinchBaseZoom + step * WORLD_ZOOM_STEP);
+  if (next === readHostWorldZoom()) {
+    ev.preventDefault();
+    return;
+  }
+  ev.preventDefault();
+  setWorldZoom(next);
+  // Re-anchor so further pinch can step again within the same gesture.
+  pinchBaseZoom = next;
+  pinchStartDist = dist;
+}
+
+function onPinchEnd(ev: TouchEvent): void {
+  if (ev.touches.length < 2) {
+    pinchStartDist = 0;
+  }
+  if (ev.touches.length === 0) {
+    shiftPinchActive = false;
+  }
+}
+
+/**
+ * Pointer fallback for Shift+drag when DevTools does not synthesize touches
+ * (e.g. Mobile (no touch) / some Chrome builds).
+ */
+function onShiftPointerDown(ev: PointerEvent): void {
+  if (detectViewportProfile() !== "phone") return;
+  if (!ev.shiftKey || ev.button !== 0) return;
+  if (ev.pointerType === "touch") return; // touch path owns these
+  if (!pointAllowsMapZoom(ev.target, ev.clientX, ev.clientY)) return;
+  shiftPinchActive = true;
+  shiftPinchStartY = ev.clientY;
+  shiftPinchBaseZoom = readHostWorldZoom();
+}
+
+function onShiftPointerMove(ev: PointerEvent): void {
+  if (!shiftPinchActive || !ev.shiftKey) return;
+  if (ev.pointerType === "touch") return;
+  const steps = shiftDragZoomSteps(shiftPinchStartY, ev.clientY);
+  if (steps === 0) {
+    ev.preventDefault();
+    return;
+  }
+  const next = clampWorldZoom(shiftPinchBaseZoom + steps * WORLD_ZOOM_STEP);
+  ev.preventDefault();
+  if (next !== readHostWorldZoom()) setWorldZoom(next);
+  shiftPinchBaseZoom = next;
+  shiftPinchStartY = ev.clientY;
+}
+
+function onShiftPointerUp(): void {
+  shiftPinchActive = false;
+}
+
 function installWheelZoom(): void {
   if (wheelInstalled) return;
   wheelInstalled = true;
@@ -172,11 +448,50 @@ function installWheelZoom(): void {
   });
 }
 
+function installPinchZoom(): void {
+  if (pinchInstalled) return;
+  pinchInstalled = true;
+  window.addEventListener("touchstart", onPinchStart, {
+    passive: true,
+    capture: true,
+  });
+  window.addEventListener("touchmove", onPinchMove, {
+    passive: false,
+    capture: true,
+  });
+  window.addEventListener("touchend", onPinchEnd, {
+    passive: true,
+    capture: true,
+  });
+  window.addEventListener("touchcancel", onPinchEnd, {
+    passive: true,
+    capture: true,
+  });
+  // Shift+drag without touch synthesis (pointer path).
+  window.addEventListener("pointerdown", onShiftPointerDown, {
+    passive: true,
+    capture: true,
+  });
+  window.addEventListener("pointermove", onShiftPointerMove, {
+    passive: false,
+    capture: true,
+  });
+  window.addEventListener("pointerup", onShiftPointerUp, {
+    passive: true,
+    capture: true,
+  });
+  window.addEventListener("pointercancel", onShiftPointerUp, {
+    passive: true,
+    capture: true,
+  });
+}
+
 /** Apply saved zoom once the game finished loading; safe to call repeatedly. */
 export function installWorldZoom(): void {
   if (installed) return;
   installed = true;
   installWheelZoom();
+  installPinchZoom();
 
   // Heal cookie ASAP so the *next* refresh is safe even if game_loaded is late.
   const saved = getSettings().worldZoom;
