@@ -260,6 +260,11 @@ export type CommUiSettings = {
    */
   worldOverlayEnabled: boolean;
   /**
+   * When false, ignore mouse-wheel / trackpad scroll for camera FOV zoom.
+   * Pinch and Map out·in still work. Default on.
+   */
+  worldWheelZoomEnabled: boolean;
+  /**
    * Explicit show/hide for lite-default-off panels while lite HUD is active.
    * Does not rewrite desktop panelVisible defaults.
    */
@@ -311,6 +316,7 @@ const DEFAULTS: CommUiSettings = {
   setupWizardDone: false,
   hudDensity: "auto",
   worldOverlayEnabled: true,
+  worldWheelZoomEnabled: true,
   phoneHudVisible: {},
   phoneHomeScreens: defaultPhoneHomeScreens(),
   changelogSeenId: null,
@@ -638,6 +644,7 @@ function migrate(parsed: any): CommUiSettings {
     metersHidden: !!parsed.metersHidden,
     hudDensity: normalizeHudDensity(parsed.hudDensity),
     worldOverlayEnabled: parsed.worldOverlayEnabled !== false,
+    worldWheelZoomEnabled: parsed.worldWheelZoomEnabled !== false,
     phoneHudVisible:
       parsed.phoneHudVisible && typeof parsed.phoneHudVisible === "object"
         ? (parsed.phoneHudVisible as PanelVisibleMap)
@@ -767,6 +774,7 @@ function freshDefaults(): CommUiSettings {
     metersHidden: false,
     hudDensity: "auto",
     worldOverlayEnabled: true,
+    worldWheelZoomEnabled: true,
     phoneHudVisible: {},
     phoneHomeScreens: defaultPhoneHomeScreens(),
   };
@@ -876,6 +884,9 @@ export function patchSettings(
   }
   if (typeof partial.worldOverlayEnabled === "boolean") {
     next.worldOverlayEnabled = partial.worldOverlayEnabled;
+  }
+  if (typeof partial.worldWheelZoomEnabled === "boolean") {
+    next.worldWheelZoomEnabled = partial.worldWheelZoomEnabled;
   }
   if (partial.phoneHudVisible) {
     next.phoneHudVisible = {

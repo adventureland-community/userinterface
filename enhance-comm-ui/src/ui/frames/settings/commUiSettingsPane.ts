@@ -1,10 +1,12 @@
 import { e, getReact } from "../../../host/react";
 import { confirmAndFactoryResetCommUi } from "../../../lib/factoryReset";
+import { isPhoneViewport } from "../../../lib/perfPrefs";
+import { getSettings, patchSettings } from "../../../lib/settings";
 import {
   listGuidedTours,
   type GuidedTourListItem,
 } from "../comm/guidedTour/tourCatalog";
-import { settingsSection } from "./settingsPaneChrome";
+import { settingsCheckboxRow, settingsSection } from "./settingsPaneChrome";
 
 export type CommUiSettingsPaneProps = {
   query?: string;
@@ -67,6 +69,27 @@ function dataSectionMatches(query: string): boolean {
   return hay.includes(q);
 }
 
+function controlsSectionMatches(query: string): boolean {
+  // Wheel/trackpad FOV zoom is a desktop input; phones use pinch / Map out·in.
+  if (isPhoneViewport()) return false;
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "wheel zoom trackpad scroll camera fov middle accidental laptop desktop controls".includes(
+    q,
+  );
+}
+
+const TAMPERMONKEY_MOBILE_FAQ =
+  "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
+
+function installSectionMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "tampermonkey mobile phone android ios edge firefox safari q406 install".includes(
+    q,
+  );
+}
+
 export function countCommUiSettingsMatches(query: string): number {
   let total = 0;
   const tours = listGuidedTours();
@@ -76,6 +99,8 @@ export function countCommUiSettingsMatches(query: string): number {
   for (let i = 0; i < COMM_UI_ACTIONS.length; i++) {
     if (actionMatchesQuery(COMM_UI_ACTIONS[i], query)) total += 1;
   }
+  if (controlsSectionMatches(query)) total += 1;
+  if (installSectionMatches(query)) total += 1;
   if (dataSectionMatches(query)) total += 1;
   return total;
 }
@@ -83,9 +108,11 @@ export function countCommUiSettingsMatches(query: string): number {
 export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
   const React = getReact();
   const [tourTick, setTourTick] = React.useState(0);
+  const [ctrlTick, setCtrlTick] = React.useState(0);
   const query = String(props.query || "").trim();
   const tours = listGuidedTours();
   void tourTick;
+  void ctrlTick;
   const kids: any[] = [
     e(
       "p",
@@ -178,7 +205,59 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
     );
   }
 
-  if (tourRows === 0 && updateRows === 0 && !dataSectionMatches(query)) {
+  if (controlsSectionMatches(query)) {
+    const settings = getSettings();
+    kids.push(settingsSection("Controls"));
+    kids.push(
+      settingsCheckboxRow(
+        "wheel-zoom",
+        "Mouse wheel / trackpad zoom",
+        settings.worldWheelZoomEnabled !== false,
+        (next) => {
+          patchSettings({ worldWheelZoomEnabled: next });
+          setCtrlTick((n: number) => n + 1);
+        },
+        {
+          help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out·in still work.",
+        },
+      ),
+    );
+  }
+
+  if (installSectionMatches(query)) {
+    kids.push(settingsSection("Mobile install"));
+    kids.push(
+      e(
+        "p",
+        { key: "tm-help", className: "ecu-settings-help" },
+        "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build.",
+      ),
+    );
+    kids.push(
+      e(
+        "p",
+        { key: "tm-link", className: "ecu-settings-help" },
+        e(
+          "a",
+          {
+            href: TAMPERMONKEY_MOBILE_FAQ,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: { color: "#8ec8e8" },
+          },
+          "Tampermonkey FAQ · official mobile versions (Q406)",
+        ),
+      ),
+    );
+  }
+
+  if (
+    tourRows === 0 &&
+    updateRows === 0 &&
+    !controlsSectionMatches(query) &&
+    !installSectionMatches(query) &&
+    !dataSectionMatches(query)
+  ) {
     kids.push(
       e(
         "p",

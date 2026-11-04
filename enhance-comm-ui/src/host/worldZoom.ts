@@ -159,7 +159,6 @@ function rendererView(): Element | null {
     }
   ).renderer;
   if (renderer && renderer.view) return renderer.view;
-  // Fallbacks when stock host has not exposed renderer.view yet.
   const stage =
     document.getElementById("stage") ||
     document.getElementById("game") ||
@@ -195,6 +194,7 @@ function isInteractiveChromeTarget(target: EventTarget | null): boolean {
     target.closest("[data-panel]") ||
     target.closest(".ecu-meter-shell") ||
     target.closest(".ecu-chrome-stack") ||
+    target.closest(".ecu-cam-stick") ||
     target.closest(".modal") ||
     target.closest(".imodal") ||
     target.closest("#bottomleftcorner") ||
@@ -204,10 +204,6 @@ function isInteractiveChromeTarget(target: EventTarget | null): boolean {
   );
 }
 
-/**
- * Broader chrome check for plain (non-pinch) wheel — include the ECU root so
- * scrolling over empty HUD space does not zoom.
- */
 function isUiChromeTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   if (isInteractiveChromeTarget(target)) return true;
@@ -240,15 +236,13 @@ function targetOnCanvas(target: EventTarget | null): boolean {
 }
 
 function onWorldWheel(ev: WheelEvent): void {
+  // Accidental trackpad/wheel zoom — Settings → Comm UI → Controls can disable.
+  if (getSettings().worldWheelZoomEnabled === false) return;
   const phone = detectViewportProfile() === "phone";
-  // Desktop: leave modifier+wheel to the browser. Phone / DevTools device
-  // mode: Ctrl/Meta/Shift+wheel simulate pinch — map to world zoom.
   const pinchSim =
     phone && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
   if ((ev.ctrlKey || ev.metaKey) && !phone) return;
   if (isInteractiveChromeTarget(ev.target)) return;
-  // Pinch-sim: zoom whenever the cursor is over the map rect (HUD root may
-  // be the event target even with pointer-events:none ancestors).
   if (pinchSim) {
     if (!pointOverCanvas(ev.clientX, ev.clientY)) return;
   } else {
@@ -287,7 +281,6 @@ function touchDistance(a: Touch, b: Touch): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-/** Pure — midpoint of two touches inside a canvas rect? */
 export function pinchMidpointInRect(
   ax: number,
   ay: number,
@@ -305,10 +298,6 @@ export function pinchMidpointInRect(
   );
 }
 
-/**
- * True when a two-finger gesture should drive world zoom.
- * Uses pinch midpoint so a full-screen transparent #comm-ui does not block.
- */
 export function pinchOverCanvas(ev: TouchEvent): boolean {
   if (ev.touches.length < 2) {
     if (isInteractiveChromeTarget(ev.target)) return false;
@@ -316,7 +305,6 @@ export function pinchOverCanvas(ev: TouchEvent): boolean {
   }
   const a = ev.touches[0];
   const b = ev.touches[1];
-  // Both fingers on dock/sheet/panel → leave alone.
   if (typeof document !== "undefined" && document.elementFromPoint) {
     const elA = document.elementFromPoint(a.clientX, a.clientY);
     const elB = document.elementFromPoint(b.clientX, b.clientY);
@@ -347,7 +335,6 @@ function pointAllowsMapZoom(
 }
 
 function onPinchStart(ev: TouchEvent): void {
-  // Real two-finger pinch.
   if (ev.touches.length === 2) {
     shiftPinchActive = false;
     if (!pinchOverCanvas(ev)) return;
@@ -355,7 +342,6 @@ function onPinchStart(ev: TouchEvent): void {
     pinchBaseFov = readAppliedWorldFov();
     return;
   }
-  // Chrome DevTools: Shift+drag emits a single touch with shiftKey, not two.
   if (
     ev.touches.length === 1 &&
     ev.shiftKey &&
@@ -371,7 +357,6 @@ function onPinchStart(ev: TouchEvent): void {
 }
 
 function onPinchMove(ev: TouchEvent): void {
-  // DevTools Shift+drag pinch (one finger; started with Shift held).
   if (shiftPinchActive && ev.touches.length === 1) {
     const t = ev.touches[0];
     const steps = shiftDragZoomSteps(shiftPinchStartY, t.clientY);
@@ -379,7 +364,6 @@ function onPinchMove(ev: TouchEvent): void {
       ev.preventDefault();
       return;
     }
-    // steps>0 = drag up = zoom in = lower FOV
     const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
     ev.preventDefault();
     if (next !== readAppliedWorldFov()) setWorldFov(next);
@@ -394,7 +378,6 @@ function onPinchMove(ev: TouchEvent): void {
   if (dist <= 0) return;
   const ratio = dist / pinchStartDist;
   let step = 0;
-  // Fingers apart → wider FOV; pinch together → tighter.
   if (ratio >= PINCH_STEP_RATIO) step = 1;
   else if (ratio <= 1 / PINCH_STEP_RATIO) step = -1;
   if (step === 0) return;
@@ -418,14 +401,10 @@ function onPinchEnd(ev: TouchEvent): void {
   }
 }
 
-/**
- * Pointer fallback for Shift+drag when DevTools does not synthesize touches
- * (e.g. Mobile (no touch) / some Chrome builds).
- */
 function onShiftPointerDown(ev: PointerEvent): void {
   if (detectViewportProfile() !== "phone") return;
   if (!ev.shiftKey || ev.button !== 0) return;
-  if (ev.pointerType === "touch") return; // touch path owns these
+  if (ev.pointerType === "touch") return;
   if (!pointAllowsMapZoom(ev.target, ev.clientX, ev.clientY)) return;
   shiftPinchActive = true;
   shiftPinchStartY = ev.clientY;
@@ -447,7 +426,8 @@ function onShiftPointerMove(ev: PointerEvent): void {
   shiftPinchStartY = ev.clientY;
 }
 
-function onShiftPointerUp(): void {
+function onShiftPointerUp(ev: PointerEvent): void {
+  if (ev.pointerType === "touch") return;
   shiftPinchActive = false;
 }
 
@@ -479,7 +459,6 @@ function installPinchZoom(): void {
     passive: true,
     capture: true,
   });
-  // Shift+drag without touch synthesis (pointer path).
   window.addEventListener("pointerdown", onShiftPointerDown, {
     passive: true,
     capture: true,
@@ -506,7 +485,6 @@ export function installWorldZoom(): void {
   installPinchZoom();
   installWorldFov();
 
-  // Heal cookie ASAP so the *next* refresh is safe even if game_loaded is late.
   const saved = getSettings().worldZoom;
   healFractionalScaleCookie(
     typeof saved === "number" ? saved : WORLD_ZOOM_DEFAULT,

@@ -23,10 +23,6 @@ import {
   BagSettingsPane,
   countBagSettingsMatches,
 } from "./bagSettingsPane";
-import {
-  PerformanceSettingsPane,
-  countPerformanceSettingsMatches,
-} from "./performanceSettingsPane";
 import { e } from "../../../host/react";
 import type { PanelId, PanelPos } from "../../../lib/layout";
 import type { HudDensity } from "../../../lib/perfPrefs";
@@ -36,8 +32,7 @@ export type SettingsPaneId =
   | "abilityTimeline"
   | "drawings"
   | "commHud"
-  | "bag"
-  | "performance";
+  | "bag";
 
 export type SettingsPaneRenderProps = {
   query: string;
@@ -65,7 +60,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commUi",
     label: "Comm UI",
     description:
-      "Guided tours, What's New, server notes, and factory-reset local Comm UI data.",
+      "Guided tours, What's New, server notes, desktop camera controls, mobile install help, and factory-reset local Comm UI data.",
     countMatches: countCommUiSettingsMatches,
     render: (props) =>
       e(CommUiSettingsPane, {
@@ -95,7 +90,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "drawings",
     label: "Drawings",
     description:
-      "Map drawings, rings, labels, debug lines, and per-ability appearance overrides.",
+      "Map drawings master switch, rings, labels, debug lines, and per-ability appearance overrides.",
     countMatches: countInGameSettingsMatches,
     render: (props) => e(InGameSettingsPane, { query: props.query }),
   },
@@ -111,18 +106,10 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commHud",
     label: "Comm HUD",
     description:
-      "Shell chips, spawn markers, and other Comm HUD panel helpers.",
+      "HUD density, meter windows, shell chips, spawn markers, and other Comm HUD helpers.",
     countMatches: countCommHudSettingsMatches,
-    render: (props) => e(CommHudSettingsPane, { query: props.query }),
-  },
-  {
-    id: "performance",
-    label: "Performance",
-    description:
-      "Lite HUD, world overlay, meters, and mobile Tampermonkey install help.",
-    countMatches: countPerformanceSettingsMatches,
     render: (props) =>
-      e(PerformanceSettingsPane, {
+      e(CommHudSettingsPane, {
         query: props.query,
         hudDensity: props.hudDensity,
         setHudDensity: props.setHudDensity,

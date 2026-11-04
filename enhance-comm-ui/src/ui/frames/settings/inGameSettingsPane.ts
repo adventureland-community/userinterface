@@ -4,11 +4,16 @@
  */
 
 import { e, getReact } from "../../../host/react";
+import { getSettings, patchSettings } from "../../../lib/settings";
 import {
   overlayToggleSectionsForPane,
   type OverlayToggleDef,
   type OverlayToggleSection,
 } from "../../../viz/overlayToggleCatalog";
+import {
+  startWorldOverlay,
+  stopWorldOverlay,
+} from "../../../viz/startWorldOverlay";
 import {
   getVizSettings,
   patchVizSettings,
@@ -22,6 +27,14 @@ import {
   countInGameAbilityRuleMatches,
 } from "./inGameAbilityRulesSection";
 import { resetVizAbilityRules } from "../../../viz/vizAbilityRules";
+
+function worldOverlayMatches(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return "world overlay drawings vision fog map rings performance battery gpu".includes(
+    q,
+  );
+}
 
 export type InGameSettingsPaneProps = {
   query?: string;
@@ -162,6 +175,7 @@ function InGameSettingsPaneView(props: InGameSettingsPaneProps): any {
   }, []);
   const forceBump = React.useCallback(() => bump((n: number) => n + 1), []);
   const kids = React.useMemo(() => {
+    const ecuSettings = getSettings();
     const nextKids: any[] = [
       e(
         "p",
@@ -169,6 +183,25 @@ function InGameSettingsPaneView(props: InGameSettingsPaneProps): any {
         "Rings, labels, entity lines, and debug overlays for the /comm world map.",
       ),
     ];
+    if (worldOverlayMatches(query)) {
+      nextKids.push(settingsSection("Master"));
+      nextKids.push(
+        settingsCheckboxRow(
+          "overlay",
+          "World overlay loop",
+          ecuSettings.worldOverlayEnabled !== false,
+          (next) => {
+            patchSettings({ worldOverlayEnabled: next });
+            if (next) startWorldOverlay();
+            else stopWorldOverlay();
+            forceBump();
+          },
+          {
+            help: "Master switch for rings, vision fog, and other PIXI drawings. Off saves GPU; socket combat tracking is unchanged.",
+          },
+        ),
+      );
+    }
     for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
       const section = IN_GAME_SECTIONS[i];
       if (query && section.matchesQuery(query) === 0) continue;
@@ -221,6 +254,7 @@ let paneMemo: ((props: InGameSettingsPaneProps) => any) | null = null;
 export function countInGameSettingsMatches(query: string): number {
   const q = query.trim().toLowerCase();
   let total = 0;
+  if (worldOverlayMatches(q)) total += 1;
   for (let i = 0; i < IN_GAME_SECTIONS.length; i++) {
     total += IN_GAME_SECTIONS[i].matchesQuery(q);
   }
