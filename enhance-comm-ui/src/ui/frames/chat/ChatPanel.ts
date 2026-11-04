@@ -37,10 +37,10 @@ import {
 } from "../../chrome/panelExpandControl";
 import {
   listServerChatKeys,
-  serverPageIndex,
   stepServerPage,
 } from "../../../lib/chatServerPages";
 import { detectViewportProfile } from "../../../lib/viewport";
+import { PeerPageDots } from "../../chrome/PeerPageDots";
 import { bindSwipeDownClose } from "../../chrome/phoneShell";
 import { ensureChatCss } from "./chatCss";
 import { installChatServerPageGestures } from "./chatServerPageGestures";
@@ -536,7 +536,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     else setSidebarOpen(true);
   }, [narrow, expanded]);
 
-  // Soft keyboard — pad compose so the input stays above the viewport.
+  // Soft keyboard — lift the expanded shell via --ecu-vv-keyboard (not padding).
   React.useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
@@ -545,8 +545,20 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
         0,
         Math.round(window.innerHeight - vv.height - vv.offsetTop),
       );
+      const px = inset + "px";
       const root = rootRef.current;
-      if (root) root.style.setProperty("--ecu-vv-keyboard", inset + "px");
+      const shell = findPanelShell(root, "chat");
+      if (root) root.style.setProperty("--ecu-vv-keyboard", px);
+      if (shell) shell.style.setProperty("--ecu-vv-keyboard", px);
+      // Keep compose visible once the sheet has resized above the keyboard.
+      if (inset > 0 && root) {
+        const focused = root.querySelector(
+          ".ecu-chat-input:focus, .ecu-chat-to:focus",
+        ) as HTMLElement | null;
+        if (focused && typeof focused.scrollIntoView === "function") {
+          focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+      }
     };
     sync();
     vv.addEventListener("resize", sync);
@@ -555,7 +567,9 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       vv.removeEventListener("resize", sync);
       vv.removeEventListener("scroll", sync);
       const root = rootRef.current;
+      const shell = findPanelShell(root, "chat");
       if (root) root.style.removeProperty("--ecu-vv-keyboard");
+      if (shell) shell.style.removeProperty("--ecu-vv-keyboard");
     };
   }, []);
 
@@ -1220,8 +1234,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
             readServerOrderKeys(),
           );
           if (serverKeys.length < 2) return null;
-          const activeIdx = serverPageIndex(serverKeys, active?.key || null);
-          const dotKids: any[] = [];
+          const pages: Array<{ key: string; label: string }> = [];
           for (let i = 0; i < serverKeys.length; i++) {
             const key = serverKeys[i];
             let label = key;
@@ -1231,29 +1244,15 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
                 break;
               }
             }
-            dotKids.push(
-              e("button", {
-                key: key,
-                type: "button",
-                className:
-                  "ecu-chat-server-dots__dot" +
-                  (i === activeIdx ? " is-on" : ""),
-                "aria-label": label,
-                "aria-current": i === activeIdx ? "true" : undefined,
-                title: label,
-                onClick: () => selectConversation(key),
-              }),
-            );
+            pages.push({ key, label });
           }
-          return e(
-            "div",
-            {
-              className: "ecu-chat-server-dots",
-              role: "tablist",
-              "aria-label": "Server chats",
-            },
-            ...dotKids,
-          );
+          return e(PeerPageDots, {
+            pages,
+            activeKey: active?.key || null,
+            onSelect: (key: string) => selectConversation(key),
+            ariaLabel: "Server chats",
+            className: "ecu-chat-server-dots",
+          });
         })(),
         e(
           "div",

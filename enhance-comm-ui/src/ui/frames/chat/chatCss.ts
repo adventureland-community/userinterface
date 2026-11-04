@@ -1,5 +1,7 @@
 /** Chat panel styles — injected once. */
 
+import { phoneShellExpandCss } from "../../chrome/phoneShell";
+
 export const CHAT_PANEL_CSS = `
 .ecu-chat {
   --ecu-chat-fg: #f0f0f0;
@@ -562,44 +564,10 @@ export const CHAT_PANEL_CSS = `
 .ecu-chat.is-narrow:not(.is-sidebar-open) .ecu-chat-backdrop {
   display: none;
 }
+/* PeerPageDots chrome — keep chat-panel border under the shared pager. */
 .ecu-chat-server-dots {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 2px 12px 6px;
   border-bottom: 1px solid var(--ecu-chat-line);
   background: var(--ecu-chat-panel);
-  pointer-events: none;
-}
-.ecu-chat-server-dots__dot {
-  pointer-events: auto;
-  position: relative;
-  width: 8px;
-  height: 8px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.ecu-chat-server-dots__dot::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 44px;
-  height: 44px;
-  transform: translate(-50%, -50%);
-}
-.ecu-chat-server-dots__dot.is-on {
-  background: #9dd4ec;
-  transform: scale(1.25);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-chat.is-narrow .ecu-chat-main {
   width: 100%;
@@ -639,28 +607,6 @@ export const CHAT_PANEL_CSS = `
 }
 
 /* Stock-like FULL mode — lift the chat shell over the layout + phone dock. */
-[data-panel="chat"].ecu-chat-shell-expanded {
-  position: fixed !important;
-  left: 10px !important;
-  right: 10px !important;
-  top: 10px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
-}
-[data-panel="chat"].ecu-chat-shell-expanded .ecu-chat {
-  height: 100%;
-  min-height: 0;
-  padding-bottom: var(--ecu-vv-keyboard, 0px);
-  box-sizing: border-box;
-}
-
 /* Phone / narrow compose — 44px targets above the soft keyboard. */
 .ecu-chat.is-narrow .ecu-chat-compose {
   padding: 8px 10px;
@@ -686,7 +632,8 @@ export const CHAT_PANEL_CSS = `
   min-width: 72px;
   flex: 0 0 auto;
 }
-`;
+` +
+  phoneShellExpandCss("chat", "ecu-chat-shell-expanded", ".ecu-chat");
 
 let injected = false;
 
