@@ -1,3 +1,4 @@
+import { gateObservedBagOpen } from "../bagOpenGate";
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
 import { openMarket } from "../market";
@@ -160,6 +161,7 @@ function onFollowClick(ev: Event): void {
 function onBagClick(ev: Event): void {
   ev.preventDefault();
   ev.stopPropagation();
+  if (!gateObservedBagOpen()) return;
   const render = window.render_inventory;
   if (typeof render !== "function") return;
   if (typeof window.draw_trigger === "function") {

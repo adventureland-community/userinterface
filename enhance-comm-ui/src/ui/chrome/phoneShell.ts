@@ -1,13 +1,32 @@
 /**
  * Shared phone full-screen panel shell + swipe-down-to-close.
- * Used by Chat / Bank / Market (and the Windows sheet).
+ * Used by Chat / Bank / Market / Command / Mail / Bag (and the Windows sheet).
  */
 
-/** CSS fragment — paste into panel stylesheets for shell-expand. */
+/**
+ * Fixed bottom inset: Material dock, or soft-keyboard occlusion
+ * (`--ecu-vv-keyboard` from visualViewport), whichever is taller.
+ */
 export const PHONE_SHELL_EXPAND_BOTTOM =
-  "calc(var(--ecu-phone-dock-h, 48px) + 8px)";
+  "calc(max(var(--ecu-phone-dock-h, 48px), var(--ecu-vv-keyboard, 0px)) + 8px)";
 
-export function phoneShellExpandCss(panelAttr: string, className: string): string {
+/**
+ * Fixed inset above the Material dock / soft keyboard. Pass `innerSelector`
+ * (e.g. `.BankPanel`) so the panel fills the lifted shell.
+ */
+export function phoneShellExpandCss(
+  panelAttr: string,
+  className: string,
+  innerSelector?: string,
+): string {
+  const inner = innerSelector
+    ? `
+[data-panel="${panelAttr}"].${className} ${innerSelector} {
+  height: 100%;
+  min-height: 0;
+}
+`
+    : "";
   return `
 [data-panel="${panelAttr}"].${className} {
   position: fixed !important;
@@ -26,7 +45,7 @@ export function phoneShellExpandCss(panelAttr: string, className: string): strin
   border-radius: 16px 16px 0 0 !important;
   overflow: hidden !important;
 }
-`;
+${inner}`;
 }
 
 /**

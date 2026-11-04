@@ -87,9 +87,16 @@ function injectHostCss(): void {
   bottom: auto;
   z-index: auto;
   pointer-events: auto;
-  max-width: min(96vw, 420px);
+  /* 7×~54px float grid needs ~385px — shrinking below that wraps slots 6+1. */
+  min-width: 385px;
+  width: max-content;
+  max-width: 420px;
   max-height: min(70vh, calc(100vh - 72px));
   overflow: auto;
+  box-sizing: border-box;
+}
+html.ecu-phone-dock-on #${HOST_ID} {
+  max-height: none;
 }
 #${HOST_ID} .theinventory {
   margin-top: 0 !important;

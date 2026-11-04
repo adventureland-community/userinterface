@@ -24,12 +24,18 @@ import {
   BAG_SYNC_CHROME_HEIGHT,
 } from "../../lib/frameSizes";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
+import { detectViewportProfile } from "../../lib/viewport";
 import { installBagDragDrop } from "../bag/bagDragDrop";
 import { installBagItemCooltip } from "../bag/bagItemCooltip";
 import { installBagItemContextMenu } from "../bag/bagItemContextMenu";
 import "../bag/registerBagMenuProviders";
 import { bagSortCommand, isBagSortRunning } from "../../host/bagSortCommands";
+import { getObservingId } from "../../host/al";
+import { openPhoneObserve } from "../../host/phoneTourChrome";
 import { canEditObservedBag } from "../../host/gearObserved";
+import { PanelExpandButton } from "../chrome/panelExpandControl";
+import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
+import { ensureBagPanelCss } from "./bagPanelCss";
 
 const HOST_ID = "bottomleftcorner";
 
@@ -47,6 +53,10 @@ export type BagPanelProps = {
   layoutEdit?: boolean;
   /** Bumps when nearby buy orders change — re-stamps bag badges. */
   tradeRevision?: number;
+  /** Restore saved frame size after leaving expand mode. */
+  onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  /** Phone swipe-down closes the bag panel. */
+  onRequestClose?: () => void;
 };
 
 /** Live relative age from bagSyncedAt (ticked while bag chrome is open). */
@@ -324,7 +334,12 @@ function BagSyncChrome(props: {
  */
 export function BagPanel(props: BagPanelProps): any {
   const React = getReact();
+  ensureBagPanelCss();
   const mountRef = React.useRef(null as HTMLDivElement | null);
+  const rootRef = React.useRef(null as HTMLDivElement | null);
+  const headRef = React.useRef(null as HTMLDivElement | null);
+  const phoneUi = detectViewportProfile() === "phone";
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
   const [open, setOpen] = React.useState(() => isInventoryOpen());
   const [syncedAt, setSyncedAt] = React.useState(() => getBagSyncedAt());
   const [syncedName, setSyncedName] = React.useState(() => getBagSyncedName());
@@ -345,6 +360,17 @@ export function BagPanel(props: BagPanelProps): any {
   const [sortRunning, setSortRunning] = React.useState(() =>
     isBagSortRunning(),
   );
+
+  usePhoneShellExpand({
+    panelId: "bag",
+    shellClass: "ecu-bag-shell-expanded",
+    rootRef,
+    headRef,
+    expanded,
+    setExpanded,
+    onFrameSizeRestore: props.onFrameSizeRestore,
+    onRequestClose: props.onRequestClose,
+  });
 
   React.useEffect(() => {
     attachInventoryToMount(mountRef.current);
@@ -379,6 +405,7 @@ export function BagPanel(props: BagPanelProps): any {
   }, []);
 
   const canSort = canEditObservedBag();
+  const observing = !!getObservingId();
 
   React.useEffect(() => {
     if (!sortRunning) return;
@@ -393,21 +420,31 @@ export function BagPanel(props: BagPanelProps): any {
     if (open) refreshInventoryItemTitles();
   }, [open, refreshing, showDummy, props.tradeRevision]);
 
+  const showNeedObserve = phoneUi && !observing && !showDummy && !refreshing;
+
   return e(
     "div",
     {
-      className: "comm-bag-panel",
+      ref: rootRef,
+      className:
+        "comm-bag-panel" +
+        (phoneUi ? " is-phone" : "") +
+        (expanded ? " is-expanded" : ""),
+      "data-ecu-panel": "bag",
+      "data-ecu-tour": "bag-panel",
       style: {
         // Dummy silhouette is click-through in layout edit (header drags).
         pointerEvents: showDummy ? "none" : "auto",
         // Open bag: minWidth only — explicit width shrinks #bottomleftcorner
         // under its gray border/padding and breaks the 7-col float grid.
-        width: showDummy ? BAG_FRAME_WIDTH : undefined,
-        minWidth: showDummy
-          ? BAG_FRAME_WIDTH
-          : showChrome
+        width: showDummy || expanded ? (showDummy ? BAG_FRAME_WIDTH : undefined) : undefined,
+        minWidth: expanded
+          ? 0
+          : showDummy
             ? BAG_FRAME_WIDTH
-            : "120px",
+            : showChrome
+              ? BAG_FRAME_WIDTH
+              : "120px",
         minHeight: showDummy
           ? BAG_FRAME_HEIGHT
           : showChrome
@@ -417,7 +454,39 @@ export function BagPanel(props: BagPanelProps): any {
         boxSizing: "border-box",
       },
     },
-    showChrome
+    e(
+      "div",
+      { className: "comm-bag-panel__head", ref: headRef },
+      e("span", { className: "comm-bag-panel__title" }, "Bag"),
+      e("span", { className: "comm-bag-panel__headGrow" }),
+      e(PanelExpandButton, {
+        expanded,
+        onToggle: () => setExpanded(!expanded),
+        expandTitle: "Expand bag",
+        restoreTitle: "Restore bag size",
+        className: "comm-bag-panel__expand",
+      }),
+    ),
+    showNeedObserve
+      ? e(
+          "div",
+          { className: "comm-bag-panel__empty" },
+          e("div", null, "Pick a character to watch before opening Bag."),
+          e(
+            "button",
+            {
+              type: "button",
+              className: "comm-bag-panel__empty-btn",
+              onClick: () => {
+                if (props.onRequestClose) props.onRequestClose();
+                openPhoneObserve();
+              },
+            },
+            "Choose character",
+          ),
+        )
+      : null,
+    !showNeedObserve && showChrome
       ? e(BagSyncChrome, {
           syncedAt,
           syncedName,
@@ -439,8 +508,8 @@ export function BagPanel(props: BagPanelProps): any {
       className: "comm-bag-mount",
       id: "comm-bag-mount",
       style: {
-        // Keep mount in DOM for reparenting; hide while silhouette shows.
-        display: showDummy ? "none" : "block",
+        // Keep mount in DOM for reparenting; hide while silhouette / CTA shows.
+        display: showDummy || showNeedObserve ? "none" : undefined,
         pointerEvents: "auto",
       },
     }),

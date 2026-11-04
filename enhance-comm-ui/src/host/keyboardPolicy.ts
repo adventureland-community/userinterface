@@ -3,7 +3,7 @@ import { closeServerDd, isServerDdOpen } from "./commChrome/serverDropdown";
 import { openInventory } from "./inventory";
 import { openChat } from "./chat";
 import { openMail } from "./mail";
-import { getObservingId } from "./al";
+import { gateObservedBagOpen } from "./bagOpenGate";
 import { showCommToast } from "./commToast";
 
 export type CommKeyboardHandlers = {
@@ -145,10 +145,7 @@ export function installCommKeyboardPolicy(
 
     if (shortcut === "toggle_inventory") {
       ev.preventDefault();
-      if (!getObservingId()) {
-        notifyObserveRequired();
-        return;
-      }
+      if (!gateObservedBagOpen()) return;
       openInventory();
       return;
     }
