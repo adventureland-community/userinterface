@@ -3,6 +3,7 @@
  */
 
 import { ITEM_INSTANCE_BADGE_CSS } from "../chrome/ItemInstance";
+import { phoneShellExpandCss } from "../chrome/phoneShell";
 
 export const MARKET_PANEL_CSS = `
 .MarketPanel {
@@ -1203,33 +1204,140 @@ export const MARKET_PANEL_CSS = `
   .MarketPanel-col { border-right: 0; border-bottom: 1px solid var(--mk-line); }
 }
 
-/* Phone full-screen shell — clears Material dock. */
-[data-panel="market"].ecu-market-shell-expanded {
-  position: fixed !important;
-  left: 8px !important;
-  right: 8px !important;
-  top: 8px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
-  border-radius: 16px 16px 0 0 !important;
-  overflow: hidden !important;
-}
-[data-panel="market"].ecu-market-shell-expanded .MarketPanel {
-  height: 100%;
-  min-height: 0;
-}
 .MarketPanel-expand {
   flex: 0 0 auto;
   margin-left: auto;
 }
-`;
+.MarketPanel-filtersBtn {
+  flex: 0 0 auto;
+}
+.MarketPanel-filtersBtn.is-on,
+.MarketPanel-filtersBtn.is-active {
+  border-color: rgba(232, 201, 106, 0.55);
+  color: var(--mk-accent);
+  background: #1a1810;
+}
+
+/* Phone — larger tools + single-column focus priority. */
+.MarketPanel.is-phone .MarketPanel-btn,
+.MarketPanel.is-phone .MarketPanel-filtersBtn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-expand {
+  width: 40px;
+  height: 40px;
+}
+.MarketPanel.is-phone .MarketPanel-seg {
+  height: auto;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.MarketPanel.is-phone .MarketPanel-seg button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.MarketPanel.is-phone .MarketPanel-togs {
+  width: 100%;
+  margin-left: 0;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.MarketPanel.is-phone .MarketPanel-tog {
+  min-height: 40px;
+  font-size: 14px;
+  padding: 6px 4px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+}
+@media (max-width: 900px) {
+  /* Catalog first; Bag/Stand is a collapsible strip; Focus only when selected. */
+  .MarketPanel.is-phone .MarketPanel-body {
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    grid-template-rows: none;
+    overflow: hidden;
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-grid"] {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 160px;
+    border-bottom: 0;
+  }
+  .MarketPanel.is-phone .MarketPanel-you {
+    order: 2;
+    flex: 0 0 auto;
+    max-height: none;
+    border-right: 0;
+    border-bottom: 0;
+    border-top: 1px solid var(--mk-line);
+  }
+  .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youBag,
+  .MarketPanel.is-phone .MarketPanel-you.is-collapsed .MarketPanel-youStand {
+    display: none;
+  }
+  .MarketPanel.is-phone .MarketPanel-you.is-open {
+    flex: 0 0 min(40vh, 300px);
+    max-height: min(40vh, 300px);
+  }
+  .MarketPanel.is-phone .MarketPanel-col[data-ecu-tour="market-focus"] {
+    order: 3;
+    flex: 0 0 auto;
+    max-height: min(38vh, 280px);
+    border-bottom: 0;
+    border-top: 1px solid var(--mk-line);
+  }
+  .MarketPanel.is-phone
+    .MarketPanel-col[data-ecu-tour="market-focus"]:not([data-ecu-has-focus="1"]) {
+    display: none;
+  }
+}
+.MarketPanel-youToggle {
+  display: none;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  flex: 0 0 auto;
+  appearance: none;
+  border: none;
+  border-bottom: 1px solid var(--mk-line);
+  background: #121212;
+  color: #d8dde4;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.MarketPanel-youToggle-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.MarketPanel-youToggle-chevron {
+  flex: 0 0 auto;
+  color: #6a7380;
+  font-size: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-pageDots {
+  flex-shrink: 0;
+  padding: 4px 8px 6px;
+}
+` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
 
 let marketPanelCssInjected = false;
 

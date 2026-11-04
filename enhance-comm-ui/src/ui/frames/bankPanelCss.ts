@@ -2,6 +2,8 @@
  * Bank panel styles — dark hub chrome aligned with Market.
  */
 
+import { phoneShellExpandCss } from "../chrome/phoneShell";
+
 const STYLE_ID = "ecu-bank-panel-css";
 
 const CSS = `
@@ -406,27 +408,36 @@ const CSS = `
   margin-top: 2px;
 }
 
-/* Shell lift — same inset as chat expand (clears phone dock). */
-[data-panel="bank"].ecu-bank-shell-expanded {
-  position: fixed !important;
-  left: 10px !important;
-  right: 10px !important;
-  top: 10px !important;
-  bottom: calc(var(--ecu-phone-dock-h, 56px) + 8px) !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  z-index: 480 !important;
-  transform: none !important;
+/* Phone — larger head / seg / search targets. */
+.BankPanel.is-phone .BankPanel-btn {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
 }
-[data-panel="bank"].ecu-bank-shell-expanded .BankPanel {
-  height: 100%;
-  min-height: 0;
+.BankPanel.is-phone .BankPanel-expand {
+  width: 40px;
+  height: 40px;
 }
-`;
+.BankPanel.is-phone .BankPanel-seg button {
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.BankPanel.is-phone .BankPanel-tools .ecu-qsearch,
+.BankPanel.is-phone .BankPanel-tools input[type="search"] {
+  min-height: 44px;
+  font-size: 16px;
+}
+.BankPanel.is-phone .BankPanel-pageDots {
+  flex-shrink: 0;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+.BankPanel.is-phone .BankPanel-body {
+  touch-action: pan-y;
+}
+
+` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");
 
 let bankPanelCssInjected = false;
 

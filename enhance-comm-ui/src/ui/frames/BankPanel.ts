@@ -65,12 +65,12 @@ import type {
 import { formatRelativeAge } from "../../lib/format";
 import { formatTradeGold } from "../../lib/tradeHelpers";
 import { ItemInstance } from "../chrome/ItemInstance";
-import {
-  findPanelShell,
-  PanelExpandButton,
-} from "../chrome/panelExpandControl";
-import { bindSwipeDownClose } from "../chrome/phoneShell";
+import { PanelExpandButton } from "../chrome/panelExpandControl";
+import { PeerPageDots } from "../chrome/PeerPageDots";
+import { installPeerPageGestures } from "../chrome/peerPageGestures";
+import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { QuerySearchField } from "../chrome/QuerySearchField";
+import { stepPeerPage } from "../../lib/peerPages";
 import { ensureBankPanelCss } from "./bankPanelCss";
 
 export type BankPanelProps = {
@@ -89,6 +89,14 @@ const SORT_OPTIONS: Array<{ id: BankSortMode; label: string }> = [
   { id: "quantity", label: "Quantity" },
   { id: "stack", label: "Stack" },
 ];
+
+const BANK_VIEW_PAGES: Array<{ key: BankViewMode; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "packs", label: "Packs" },
+  { key: "types", label: "Types" },
+  { key: "ready", label: "Ready" },
+];
+const BANK_VIEW_KEYS = BANK_VIEW_PAGES.map((p) => p.key);
 
 const MISSING_Q = "#ff6b5a";
 
@@ -356,9 +364,8 @@ export function BankPanel(props: BankPanelProps): any {
     "ready" as ReadySection,
   );
   const [tick, setTick] = React.useState(0);
-  const [expanded, setExpanded] = React.useState(
-    () => detectViewportProfile() === "phone",
-  );
+  const phoneUi = detectViewportProfile() === "phone";
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
   const [refreshSummary, setRefreshSummary] = React.useState(
     null as BankRefreshSummary | null,
   );
@@ -367,9 +374,54 @@ export function BankPanel(props: BankPanelProps): any {
   );
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
-  const preExpandSizeRef = React.useRef(null as { w: number; h: number } | null);
+  const bodyRef = React.useRef(null as HTMLDivElement | null);
   const snapRef = React.useRef(null as BankSnapshot | null);
   snapRef.current = snap;
+  const viewRef = React.useRef(view);
+  viewRef.current = view;
+  const setViewRef = React.useRef(setView);
+  setViewRef.current = setView;
+
+  usePhoneShellExpand({
+    panelId: "bank",
+    shellClass: "ecu-bank-shell-expanded",
+    rootRef,
+    headRef,
+    expanded,
+    setExpanded,
+    onFrameSizeRestore: props.onFrameSizeRestore,
+    onRequestClose: props.onRequestClose,
+  });
+
+  React.useEffect(() => {
+    if (detectViewportProfile() !== "phone") return;
+    const panelEl = rootRef.current;
+    if (!panelEl) return;
+    return installPeerPageGestures(panelEl, {
+      onPageSwipe: (dir) => {
+        const next = stepPeerPage(BANK_VIEW_KEYS, viewRef.current, dir);
+        if (next && next !== viewRef.current) {
+          setViewRef.current(next as BankViewMode);
+        }
+      },
+      allowStart: (target) => {
+        if (!(target instanceof Element)) return false;
+        if (target.closest("input, textarea, select, [contenteditable='true']")) {
+          return false;
+        }
+        // Head / search / view+sort segs stay tappable; slots are buttons but
+        // must still allow horizontal All↔Packs↔Types↔Ready swipes.
+        if (target.closest(".BankPanel-head, .BankPanel-tools")) return false;
+        if (target.closest(".BankPanel-seg")) return false;
+        return !!(
+          target.closest(".BankPanel-body") ||
+          target.closest(".BankPanel-slots") ||
+          target.closest(".BankPanel-grid") ||
+          target.closest(".ecu-peer-page-dots")
+        );
+      },
+    });
+  }, [expanded]);
 
   const refresh = React.useCallback(
     (opts?: { force?: boolean; baseline?: BankSnapshot | null }) => {
@@ -428,50 +480,6 @@ export function BankPanel(props: BankPanelProps): any {
       setView(next);
     });
   }, []);
-
-  React.useEffect(() => {
-    const shell = findPanelShell(rootRef.current, "bank");
-    if (!shell) return;
-
-    if (expanded) {
-      if (!preExpandSizeRef.current) {
-        preExpandSizeRef.current = {
-          w: Math.round(shell.offsetWidth),
-          h: Math.round(shell.offsetHeight),
-        };
-      }
-      shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-      shell.classList.add("ecu-bank-shell-expanded");
-      return () => {
-        shell.classList.remove("ecu-bank-shell-expanded");
-        shell.removeAttribute("data-ecu-suspend-frame-resize");
-      };
-    }
-
-    shell.classList.remove("ecu-bank-shell-expanded");
-    shell.removeAttribute("data-ecu-suspend-frame-resize");
-    const saved = preExpandSizeRef.current;
-    preExpandSizeRef.current = null;
-    if (
-      saved &&
-      saved.w >= 80 &&
-      saved.h >= 80 &&
-      typeof props.onFrameSizeRestore === "function"
-    ) {
-      window.requestAnimationFrame(() => {
-        props.onFrameSizeRestore!({ w: saved.w, h: saved.h });
-      });
-    }
-  }, [expanded, props.onFrameSizeRestore]);
-
-  React.useEffect(() => {
-    if (!expanded || detectViewportProfile() !== "phone") return;
-    const close = () => {
-      if (typeof props.onRequestClose === "function") props.onRequestClose();
-      else setExpanded(false);
-    };
-    return bindSwipeDownClose(headRef.current, close);
-  }, [expanded, props.onRequestClose]);
 
   const allAgg = React.useMemo(() => {
     if (!snap) return [] as BankAggItem[];
@@ -1069,7 +1077,10 @@ export function BankPanel(props: BankPanelProps): any {
   return e(
     "div",
     {
-      className: "BankPanel" + (expanded ? " is-expanded" : ""),
+      className:
+        "BankPanel" +
+        (phoneUi ? " is-phone" : "") +
+        (expanded ? " is-expanded" : ""),
       "data-ecu-panel": "bank",
       "data-ecu-tour": "bank-panel",
       ref: rootRef,
@@ -1257,51 +1268,29 @@ export function BankPanel(props: BankPanelProps): any {
           trailingOps: BANK_TRAILING_OPS,
         }),
       ),
-      e(
-        "div",
-        {
-          className: "BankPanel-seg",
-          "data-ecu-tour": "bank-views",
-          role: "group",
-          "aria-label": "Bank view mode",
-        },
-        e(
-          "button",
-          {
-            type: "button",
-            className: view === "all" ? "is-on" : "",
-            onClick: () => setView("all"),
-          },
-          "All",
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: view === "packs" ? "is-on" : "",
-            onClick: () => setView("packs"),
-          },
-          "Packs",
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: view === "types" ? "is-on" : "",
-            onClick: () => setView("types"),
-          },
-          "Types",
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: view === "ready" ? "is-on" : "",
-            onClick: () => setView("ready"),
-          },
-          "Ready",
-        ),
-      ),
+      phoneUi
+        ? null
+        : e(
+            "div",
+            {
+              className: "BankPanel-seg",
+              "data-ecu-tour": "bank-views",
+              role: "group",
+              "aria-label": "Bank view mode",
+            },
+            BANK_VIEW_PAGES.map((p) =>
+              e(
+                "button",
+                {
+                  type: "button",
+                  key: p.key,
+                  className: view === p.key ? "is-on" : "",
+                  onClick: () => setView(p.key),
+                },
+                p.label,
+              ),
+            ),
+          ),
       view === "all" || view === "types"
         ? e(
             "div",
@@ -1327,11 +1316,21 @@ export function BankPanel(props: BankPanelProps): any {
           )
         : null,
     ),
+    phoneUi
+      ? e(PeerPageDots, {
+          pages: BANK_VIEW_PAGES,
+          activeKey: view,
+          onSelect: (key: string) => setView(key as BankViewMode),
+          ariaLabel: "Bank views",
+          className: "BankPanel-pageDots",
+        })
+      : null,
     e(
       "div",
       {
         className: "BankPanel-body",
         "data-ecu-tour": "bank-body",
+        ref: bodyRef,
       },
       body,
     ),

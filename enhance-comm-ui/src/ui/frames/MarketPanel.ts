@@ -106,12 +106,12 @@ import { mergeStandTradeSlotsForUi } from "../../lib/standTradeSlotMemory";
 import { TradeSlotCell } from "../trade/TradeSlotCell";
 import { openTradeItemInfo } from "../trade/tradeSlotActions";
 import { ensureMarketPanelCss } from "./marketPanelCss";
-import {
-  findPanelShell,
-  PanelExpandButton,
-} from "../chrome/panelExpandControl";
-import { bindSwipeDownClose } from "../chrome/phoneShell";
+import { PanelExpandButton } from "../chrome/panelExpandControl";
+import { PeerPageDots } from "../chrome/PeerPageDots";
+import { installPeerPageGestures } from "../chrome/peerPageGestures";
+import { usePhoneShellExpand } from "../chrome/usePhoneShellExpand";
 import { detectViewportProfile } from "../../lib/viewport";
+import { stepPeerPage } from "../../lib/peerPages";
 
 export type MarketPanelProps = {
   entities: EntityLike[];
@@ -129,6 +129,15 @@ export type MarketPanelProps = {
 const CATALOG_REFRESH_MS = 45000;
 
 type Facet = "all" | "sale" | "wanted" | "giveaway" | "trade";
+
+const MARKET_FACET_PAGES: Array<{ key: Facet; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "sale", label: "Selling" },
+  { key: "wanted", label: "Buying" },
+  { key: "giveaway", label: "Giveaways" },
+  { key: "trade", label: "Trades" },
+];
+const MARKET_FACET_KEYS = MARKET_FACET_PAGES.map((p) => p.key);
 
 function bagNameSet(observing: EntityLike | null | undefined): Record<string, boolean> {
   const out: Record<string, boolean> = Object.create(null);
@@ -395,10 +404,23 @@ export function MarketPanel(props: MarketPanelProps): any {
   ensureMarketPanelCss();
   const rootRef = React.useRef(null as HTMLDivElement | null);
   const headRef = React.useRef(null as HTMLDivElement | null);
-  const preExpandSizeRef = React.useRef(null as { w: number; h: number } | null);
-  const [expanded, setExpanded] = React.useState(
-    () => detectViewportProfile() === "phone",
-  );
+  const bodyRef = React.useRef(null as HTMLDivElement | null);
+  const phoneUi = detectViewportProfile() === "phone";
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  /** Phone: Bag/Stand sheet collapsed so the catalog keeps the viewport. */
+  const [youOpen, setYouOpen] = React.useState(false);
+
+  usePhoneShellExpand({
+    panelId: "market",
+    shellClass: "ecu-market-shell-expanded",
+    rootRef,
+    headRef,
+    expanded,
+    setExpanded,
+    onFrameSizeRestore: props.onFrameSizeRestore,
+    onRequestClose: props.onRequestClose,
+  });
 
   const [query, setQuery] = React.useState("");
   const [facet, setFacet] = React.useState("all" as Facet);
@@ -433,50 +455,6 @@ export function MarketPanel(props: MarketPanelProps): any {
   );
 
   React.useEffect(() => subscribeMarketTravel(setTravel), []);
-
-  React.useEffect(() => {
-    const shell = findPanelShell(rootRef.current, "market");
-    if (!shell) return;
-
-    if (expanded) {
-      if (!preExpandSizeRef.current) {
-        preExpandSizeRef.current = {
-          w: Math.round(shell.offsetWidth),
-          h: Math.round(shell.offsetHeight),
-        };
-      }
-      shell.setAttribute("data-ecu-suspend-frame-resize", "1");
-      shell.classList.add("ecu-market-shell-expanded");
-      return () => {
-        shell.classList.remove("ecu-market-shell-expanded");
-        shell.removeAttribute("data-ecu-suspend-frame-resize");
-      };
-    }
-
-    shell.classList.remove("ecu-market-shell-expanded");
-    shell.removeAttribute("data-ecu-suspend-frame-resize");
-    const saved = preExpandSizeRef.current;
-    preExpandSizeRef.current = null;
-    if (
-      saved &&
-      saved.w >= 80 &&
-      saved.h >= 80 &&
-      typeof props.onFrameSizeRestore === "function"
-    ) {
-      window.requestAnimationFrame(() => {
-        props.onFrameSizeRestore!({ w: saved.w, h: saved.h });
-      });
-    }
-  }, [expanded, props.onFrameSizeRestore]);
-
-  React.useEffect(() => {
-    if (!expanded || detectViewportProfile() !== "phone") return;
-    const close = () => {
-      if (typeof props.onRequestClose === "function") props.onRequestClose();
-      else setExpanded(false);
-    };
-    return bindSwipeDownClose(headRef.current, close);
-  }, [expanded, props.onRequestClose]);
 
   React.useEffect(() => {
     return subscribeBankSnapshot((snap) => setBankSnap(snap));
@@ -621,6 +599,50 @@ export function MarketPanel(props: MarketPanelProps): any {
     setCanAfford(next.canAfford);
     setHaveStock(next.haveStock);
   };
+  const facetRef = React.useRef(facet);
+  facetRef.current = facet;
+  const nearRef = React.useRef(nearOnly);
+  nearRef.current = nearOnly;
+  const affordRef = React.useRef(canAfford);
+  affordRef.current = canAfford;
+  const haveRef = React.useRef(haveStock);
+  haveRef.current = haveStock;
+  const applyToggleSyncRef = React.useRef(applyToggleSync);
+  applyToggleSyncRef.current = applyToggleSync;
+
+  React.useEffect(() => {
+    if (!phoneUi) return;
+    const panelEl = rootRef.current;
+    if (!panelEl) return;
+    return installPeerPageGestures(panelEl, {
+      onPageSwipe: (dir) => {
+        const next = stepPeerPage(MARKET_FACET_KEYS, facetRef.current, dir);
+        if (!next || next === facetRef.current) return;
+        applyToggleSyncRef.current({
+          facet: next as Facet,
+          nearOnly: nearRef.current,
+          canAfford: affordRef.current,
+          haveStock: haveRef.current,
+        });
+      },
+      allowStart: (target) => {
+        if (!(target instanceof Element)) return false;
+        if (target.closest("input, textarea, select, [contenteditable='true']")) {
+          return false;
+        }
+        // Listing / bag tiles are buttons — still allow facet page swipes.
+        if (target.closest(".MarketPanel-tools, .MarketPanel-head")) return false;
+        if (target.closest(".MarketPanel-seg, .MarketPanel-togs, .MarketPanel-filtersBtn")) {
+          return false;
+        }
+        return !!(
+          target.closest(".MarketPanel-body") ||
+          target.closest(".ecu-peer-page-dots")
+        );
+      },
+    });
+  }, [phoneUi, expanded]);
+
   const side =
     facet === "sale"
       ? "sale"
@@ -1836,11 +1858,18 @@ export function MarketPanel(props: MarketPanelProps): any {
         ),
       ];
 
+  const filterActive = nearOnly || canAfford || haveStock || favOnly;
+
   return e(
     "div",
     {
       ref: rootRef,
-      className: "MarketPanel",
+      className:
+        "MarketPanel" +
+        (phoneUi ? " is-phone" : "") +
+        (expanded ? " is-expanded" : "") +
+        (filtersOpen ? " is-filters-open" : "") +
+        (phoneUi && youOpen ? " is-you-open" : ""),
       "data-ecu-tour": "market-panel",
     },
     e(
@@ -1901,7 +1930,9 @@ export function MarketPanel(props: MarketPanelProps): any {
       e(QuerySearchField, {
         value: query,
         onChange: (next: string) => applyQuery(next),
-        placeholder: "Search · item: · merchant: · is:sell · OR…",
+        placeholder: phoneUi
+          ? "Search market…"
+          : "Search · item: · merchant: · is:sell · OR…",
         suggestions: searchSug,
         trailingOps: [
           "item",
@@ -1920,108 +1951,163 @@ export function MarketPanel(props: MarketPanelProps): any {
         trailingAliases: { mer: "merchant" },
         onClear: () => setMerchantFilter(null),
       }),
-      e(
-        "div",
-        { className: "MarketPanel-seg" },
-        (["all", "sale", "wanted", "giveaway", "trade"] as Facet[]).map((f) =>
-          e(
+      phoneUi
+        ? e(
             "button",
             {
               type: "button",
-              key: f,
-              className: facet === f ? "is-on" : "",
-              onClick: () =>
-                applyToggleSync({
-                  facet: f,
-                  nearOnly,
-                  canAfford,
-                  haveStock,
-                }),
+              className:
+                "MarketPanel-btn MarketPanel-filtersBtn" +
+                (filtersOpen ? " is-on" : "") +
+                (filterActive ? " is-active" : ""),
+              "aria-expanded": filtersOpen,
+              onClick: () => setFiltersOpen(!filtersOpen),
             },
-            f === "all"
-              ? "All"
-              : f === "sale"
-                ? "Selling"
-                : f === "wanted"
-                  ? "Buying"
-                  : f === "giveaway"
-                    ? "Giveaways"
-                    : "Trades",
+            filtersOpen ? "Hide filters" : filterActive ? "Filters ●" : "Filters",
+          )
+        : e(
+            "div",
+            { className: "MarketPanel-seg" },
+            MARKET_FACET_PAGES.map((p) =>
+              e(
+                "button",
+                {
+                  type: "button",
+                  key: p.key,
+                  className: facet === p.key ? "is-on" : "",
+                  onClick: () =>
+                    applyToggleSync({
+                      facet: p.key,
+                      nearOnly,
+                      canAfford,
+                      haveStock,
+                    }),
+                },
+                p.label,
+              ),
+            ),
           ),
-        ),
-      ),
-      e(
-        "div",
-        { className: "MarketPanel-togs" },
-        e(
-          "label",
-          { className: "MarketPanel-tog" },
-          e("input", {
-            type: "checkbox",
-            checked: nearOnly,
-            onChange: (ev: any) =>
-              applyToggleSync({
-                facet,
-                nearOnly: !!ev.target.checked,
-                canAfford,
-                haveStock,
+      !phoneUi || filtersOpen
+        ? e(
+            "div",
+            { className: "MarketPanel-togs" },
+            e(
+              "label",
+              { className: "MarketPanel-tog" },
+              e("input", {
+                type: "checkbox",
+                checked: nearOnly,
+                onChange: (ev: any) =>
+                  applyToggleSync({
+                    facet,
+                    nearOnly: !!ev.target.checked,
+                    canAfford,
+                    haveStock,
+                  }),
               }),
-          }),
-          "Near",
-        ),
-        e(
-          "label",
-          { className: "MarketPanel-tog" },
-          e("input", {
-            type: "checkbox",
-            checked: canAfford,
-            onChange: (ev: any) =>
-              applyToggleSync({
-                facet,
-                nearOnly,
-                canAfford: !!ev.target.checked,
-                haveStock,
+              "Near",
+            ),
+            e(
+              "label",
+              { className: "MarketPanel-tog" },
+              e("input", {
+                type: "checkbox",
+                checked: canAfford,
+                onChange: (ev: any) =>
+                  applyToggleSync({
+                    facet,
+                    nearOnly,
+                    canAfford: !!ev.target.checked,
+                    haveStock,
+                  }),
               }),
-          }),
-          "Afford",
-        ),
-          e(
-            "label",
-            { className: "MarketPanel-tog" },
-            e("input", {
-              type: "checkbox",
-              checked: haveStock,
-              onChange: (ev: any) =>
-                applyToggleSync({
-                  facet,
-                  nearOnly,
-                  canAfford,
-                  haveStock: !!ev.target.checked,
-                }),
+              "Afford",
+            ),
+            e(
+              "label",
+              { className: "MarketPanel-tog" },
+              e("input", {
+                type: "checkbox",
+                checked: haveStock,
+                onChange: (ev: any) =>
+                  applyToggleSync({
+                    facet,
+                    nearOnly,
+                    canAfford,
+                    haveStock: !!ev.target.checked,
+                  }),
+              }),
+              "Have",
+            ),
+            e(
+              "label",
+              { className: "MarketPanel-tog" },
+              e("input", {
+                type: "checkbox",
+                checked: favOnly,
+                onChange: (ev: any) => setFavOnly(!!ev.target.checked),
+              }),
+              "Fav",
+            ),
+          )
+        : null,
+    ),
+    phoneUi
+      ? e(PeerPageDots, {
+          pages: MARKET_FACET_PAGES,
+          activeKey: facet,
+          onSelect: (key: string) =>
+            applyToggleSync({
+              facet: key as Facet,
+              nearOnly,
+              canAfford,
+              haveStock,
             }),
-            "Have",
-          ),
-          e(
-            "label",
-            { className: "MarketPanel-tog" },
-            e("input", {
-              type: "checkbox",
-              checked: favOnly,
-              onChange: (ev: any) => setFavOnly(!!ev.target.checked),
-            }),
-            "Fav",
-          ),
-        ),
-      ),
+          ariaLabel: "Market facets",
+          className: "MarketPanel-pageDots",
+        })
+      : null,
     e(
       "div",
-      { className: "MarketPanel-body" },
+      { className: "MarketPanel-body", ref: bodyRef },
       e(
         "div",
         {
-          className: "MarketPanel-you",
+          className:
+            "MarketPanel-you" +
+            (phoneUi ? (youOpen ? " is-open" : " is-collapsed") : ""),
           "data-ecu-tour": "market-you",
         },
+        phoneUi
+          ? e(
+              "button",
+              {
+                type: "button",
+                className: "MarketPanel-youToggle",
+                "aria-expanded": youOpen ? "true" : "false",
+                onClick: () => setYouOpen(!youOpen),
+              },
+              e(
+                "span",
+                { className: "MarketPanel-youToggle-label" },
+                observing
+                  ? youOpen
+                    ? "Hide bag & stand"
+                    : "Bag & stand" +
+                      (bagStacks.length
+                        ? " · " + bagStacks.length + " stacks"
+                        : bagSynced
+                          ? " · empty"
+                          : " · syncing…")
+                  : "Bag & stand · observe a character",
+              ),
+              e(
+                "span",
+                { className: "MarketPanel-youToggle-chevron", "aria-hidden": true },
+                youOpen ? "▴" : "▾",
+              ),
+            )
+          : null,
         e(
           "div",
           { className: "MarketPanel-youBag" },
