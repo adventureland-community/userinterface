@@ -1,6 +1,7 @@
 /** Inject once for Comm mail panel. */
 
 import { ITEM_INSTANCE_BADGE_CSS } from "../../chrome/ItemInstance";
+import { phoneShellExpandCss } from "../../chrome/phoneShell";
 import { MAIL_CHROME_CSS } from "./mailChromeCss";
 import { MAIL_LIST_CSS } from "./mailListCss";
 import { MAIL_ITEMS_CSS } from "./mailItemsCss";
@@ -13,7 +14,8 @@ const CSS =
   MAIL_LIST_CSS +
   MAIL_ITEMS_CSS +
   MAIL_COMPOSE_CSS +
-  ITEM_INSTANCE_BADGE_CSS;
+  ITEM_INSTANCE_BADGE_CSS +
+  phoneShellExpandCss("mail", "ecu-mail-shell-expanded", ".comm-mail");
 
 export function ensureMailCss(): void {
   if (injected) return;

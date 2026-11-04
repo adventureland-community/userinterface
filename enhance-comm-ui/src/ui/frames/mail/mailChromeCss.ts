@@ -27,12 +27,59 @@ export const MAIL_CHROME_CSS = `
 .comm-mail .ecu-item-instance-host .iuui {
   display: none !important;
 }
+.comm-mail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+.comm-mail__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ffe08a;
+  letter-spacing: 0.02em;
+}
+.comm-mail__headHint {
+  font-size: 11px;
+  color: #777;
+}
+.comm-mail__headGrow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail__expand {
+  flex: 0 0 auto;
+}
+.comm-mail__back {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ddd;
+  min-height: 40px;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.comm-mail__back:hover {
+  border-color: #666;
+  background: #222;
+}
+.comm-mail.is-phone .comm-mail__back {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+}
 .comm-mail__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: flex-start;
-  padding: 10px 12px;
+  padding: 6px 12px 10px;
   border-bottom: 1px solid #2a2a2a;
   flex-shrink: 0;
 }
@@ -191,6 +238,19 @@ export const MAIL_CHROME_CSS = `
   gap: 6px;
   align-items: center;
   flex: 1 1 auto;
+}
+.comm-mail__toolbar-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1 1 auto;
+}
+.comm-mail__toolbar-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 .comm-mail__pills { display: flex; flex-wrap: wrap; gap: 6px; }
 .comm-mail__pill {
@@ -705,5 +765,213 @@ export const MAIL_CHROME_CSS = `
   gap: 8px;
   color: #c9b07a;
   font-weight: 600;
+}
+
+/* Phone — denser chrome so the message list keeps the sheet. */
+.comm-mail.is-phone .comm-mail__head {
+  padding: 6px 10px 2px;
+}
+.comm-mail.is-phone .comm-mail__headHint {
+  display: none;
+}
+.comm-mail.is-phone .comm-mail__toolbar {
+  padding: 4px 10px 6px;
+  gap: 6px;
+}
+.comm-mail.is-phone .comm-mail__toolbar.is-compact {
+  flex-direction: column;
+  align-items: stretch;
+}
+.comm-mail.is-phone .comm-mail__search-wrap.is-compact {
+  flex: 1 1 auto;
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__items-seg {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.comm-mail.is-phone .comm-mail__toolbar-primary .comm-mail__btn {
+  flex: 0 0 auto;
+}
+.comm-mail.is-phone .comm-mail__toolbar-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: 100%;
+  padding-top: 2px;
+}
+.comm-mail.is-phone .comm-mail__more-btn.is-on {
+  border-color: #6af;
+  color: #9cf;
+}
+.comm-mail.is-phone .comm-mail__search-filters-btn {
+  flex: 0 0 auto;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  min-height: 36px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.comm-mail.is-phone .comm-mail__search-filters-btn:hover,
+.comm-mail.is-phone .comm-mail__search-filters-btn.is-on {
+  color: #ffe08a;
+  background: #2a2410;
+}
+.comm-mail.is-phone .comm-mail__btn,
+.comm-mail.is-phone .comm-mail__pill,
+.comm-mail.is-phone .comm-mail__items-seg-btn {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+.comm-mail.is-phone .comm-mail__search {
+  min-height: 40px;
+  font-size: 16px;
+  padding: 8px 10px;
+}
+.comm-mail.is-phone .comm-mail__search-clear,
+.comm-mail.is-phone .comm-mail__search-opts-btn {
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  font-size: 18px;
+}
+.comm-mail.is-phone .comm-mail__expand {
+  width: 36px;
+  height: 36px;
+}
+.comm-mail.is-phone .comm-mail__toolbar-actions {
+  gap: 4px;
+}
+.comm-mail.is-phone .comm-mail__pills {
+  gap: 4px;
+  padding-top: 4px;
+}
+.comm-mail.is-phone .comm-mail__row {
+  padding: 8px 10px;
+  gap: 8px;
+}
+.comm-mail.is-phone .comm-mail__row .comm-mail__title {
+  font-size: 14px;
+}
+.comm-mail.is-phone .comm-mail__row .comm-mail__meta {
+  font-size: 11px;
+}
+.comm-mail__chrome-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 10px 6px;
+  border-bottom: 1px solid #222;
+  background: #101214;
+  min-height: 0;
+}
+.comm-mail__chrome-strip .comm-mail__pulse {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.comm-mail__chrome-strip.is-on .comm-mail__pulse {
+  animation: ecu-mail-pulse 1.25s ease-out infinite;
+}
+.comm-mail__chrome-strip.is-warm .comm-mail__pulse {
+  background: #f0c060;
+}
+.comm-mail__chrome-strip.is-pull .comm-mail__pulse,
+.comm-mail__chrome-strip.is-refresh .comm-mail__pulse {
+  background: #5ab0ff;
+}
+.comm-mail__chrome-strip.is-command .comm-mail__pulse {
+  background: #7ad86a;
+}
+.comm-mail__chrome-strip.is-delete .comm-mail__pulse {
+  background: #e88;
+}
+.comm-mail__chrome-strip-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #c8cdd4;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.comm-mail__chrome-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.comm-mail__chrome-strip-chevron {
+  flex: 0 0 auto;
+  color: #6a7380;
+  font-size: 11px;
+}
+.comm-mail__chrome-strip-caps {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ccc;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-height: 28px;
+}
+.comm-mail__chrome-strip-caps.is-warn,
+.comm-mail__chrome-strip.is-cap-warn .comm-mail__chrome-strip-caps {
+  border-color: #a86;
+  color: #ffe08a;
+}
+.comm-mail__chrome-strip-caps.is-full,
+.comm-mail__chrome-strip.is-cap-full .comm-mail__chrome-strip-caps {
+  border-color: #c66;
+  color: #fbb;
+}
+.comm-mail__chrome-strip.is-on .comm-mail__chrome-strip-text {
+  color: #e8e0c8;
+}
+.comm-mail.is-phone .comm-mail__chrome.is-phone-expand,
+.comm-mail.is-phone .comm-mail__chrome.is-status-only {
+  padding: 6px 8px 8px;
+  gap: 4px;
+}
+.comm-mail.is-phone .comm-mail__chrome.is-status-only {
+  grid-template-columns: 1fr;
+}
+.comm-mail.is-phone .comm-mail__body {
+  flex: 1 1 auto;
+  min-height: 120px;
+}
+.comm-mail.is-expanded {
+  min-height: 0;
 }
 `;

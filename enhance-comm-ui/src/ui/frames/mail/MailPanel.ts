@@ -23,6 +23,10 @@ import {
 } from "../../../host/mail";
 import { loadSettings, saveSettings } from "../../../lib/settings";
 import { scalePollMs } from "../../../lib/perfPrefs";
+import { detectViewportProfile } from "../../../lib/viewport";
+import { PanelExpandButton } from "../../chrome/panelExpandControl";
+import { installDrillBackSwipe } from "../../chrome/peerPageGestures";
+import { usePhoneShellExpand } from "../../chrome/usePhoneShellExpand";
 import { ensureMailCss } from "./mailCss";
 import { selfCharacterNames } from "./mailFormat";
 import { MailBannerBar } from "./MailBannerBar";
@@ -32,6 +36,11 @@ import { MailItemsPane, type MailItemsGroup } from "./MailItemsPane";
 import { MailListPane } from "./MailListPane";
 import { MailReadPane } from "./MailReadPane";
 import { MailToolbar, type MailBrowseMode } from "./MailToolbar";
+
+export type MailPanelProps = {
+  onFrameSizeRestore?: (size: { w: number; h: number }) => void;
+  onRequestClose?: () => void;
+};
 
 function useMailSnap() {
   const React = getReact();
@@ -64,11 +73,28 @@ function useMailObservingSnap() {
   return obs;
 }
 
-export function MailPanel(): any {
+export function MailPanel(props: MailPanelProps = {}): any {
   const React = getReact();
   ensureMailCss();
   const snap = useMailSnap();
   const mailObs = useMailObservingSnap();
+  const phoneUi = detectViewportProfile() === "phone";
+  const [expanded, setExpanded] = React.useState(() => phoneUi);
+  const rootRef = React.useRef(null as HTMLDivElement | null);
+  const headRef = React.useRef(null as HTMLDivElement | null);
+  const bodyRef = React.useRef(null as HTMLDivElement | null);
+
+  usePhoneShellExpand({
+    panelId: "mail",
+    shellClass: "ecu-mail-shell-expanded",
+    rootRef,
+    headRef,
+    expanded,
+    setExpanded,
+    onFrameSizeRestore: props.onFrameSizeRestore,
+    onRequestClose: props.onRequestClose,
+  });
+
   const [pill, setPill] = React.useState(() => {
     try {
       const raw = loadSettings().mailPill;
@@ -249,6 +275,44 @@ export function MailPanel(): any {
 
   const isReading = snap.view.kind === "read";
   const isCompose = snap.view.kind === "compose";
+  const itemsModeEarly = browseMode === "items";
+  const drillOpen =
+    isReading ||
+    isCompose ||
+    !!(itemsModeEarly && selectedItemKey);
+  const goBackToList = () => {
+    if (isCompose || isReading) {
+      setMailView({ kind: "list" });
+      return;
+    }
+    if (itemsModeEarly && selectedItemKey) {
+      setSelectedItemKey(null);
+      setSelectedItemMailIds(null);
+      setSelectedIds({});
+    }
+  };
+  const drillOpenRef = React.useRef(drillOpen);
+  drillOpenRef.current = drillOpen;
+  const goBackRef = React.useRef(goBackToList);
+  goBackRef.current = goBackToList;
+
+  React.useEffect(() => {
+    if (wide) return;
+    const bodyEl = bodyRef.current;
+    if (!bodyEl) return;
+    return installDrillBackSwipe(bodyEl, {
+      isActive: () => drillOpenRef.current,
+      onBack: () => goBackRef.current(),
+      allowStart: (target) => {
+        if (!(target instanceof Element)) return false;
+        if (target.closest("input, textarea, select, [contenteditable='true']")) {
+          return false;
+        }
+        return !!target.closest(".comm-mail__pane, .comm-mail__body");
+      },
+    });
+  }, [wide, expanded]);
+
   const checkedIds: string[] = [];
   for (let i = 0; i < filtered.length; i++) {
     if (selectedIds[filtered[i].id]) checkedIds.push(filtered[i].id);
@@ -292,6 +356,8 @@ export function MailPanel(): any {
   const className =
     "comm-mail" +
     (wide ? "" : " is-narrow") +
+    (phoneUi ? " is-phone" : "") +
+    (expanded ? " is-expanded" : "") +
     (isReading ? " is-reading" : "") +
     (isCompose ? " is-compose" : "") +
     (itemsMode ? " is-items" : "");
@@ -369,7 +435,10 @@ export function MailPanel(): any {
   return e(
     "div",
     {
+      ref: rootRef,
       className,
+      "data-ecu-panel": "mail",
+      "data-ecu-tour": "mail-panel",
       tabIndex: 0,
       onKeyDown: (ev: any) => {
         const tag = (ev.target && ev.target.tagName) || "";
@@ -425,6 +494,44 @@ export function MailPanel(): any {
         }
       },
     },
+    e(
+      "div",
+      { className: "comm-mail__head", ref: headRef },
+      !wide && drillOpen
+        ? e(
+            "button",
+            {
+              type: "button",
+              className: "comm-mail__back",
+              onClick: goBackToList,
+              "aria-label": "Back to list",
+            },
+            "← Back",
+          )
+        : null,
+      e("span", { className: "comm-mail__title" }, "Mail"),
+      phoneUi && !drillOpen
+        ? e(
+            "span",
+            { className: "comm-mail__headHint" },
+            "swipe title to close",
+          )
+        : phoneUi && drillOpen
+          ? e(
+              "span",
+              { className: "comm-mail__headHint" },
+              "swipe right for list",
+            )
+          : null,
+      e("span", { className: "comm-mail__headGrow" }),
+      e(PanelExpandButton, {
+        expanded,
+        onToggle: () => setExpanded(!expanded),
+        expandTitle: "Expand mail",
+        restoreTitle: "Restore mail size",
+        className: "comm-mail__expand",
+      }),
+    ),
     e(MailToolbar, {
       snap,
       pill,
@@ -442,11 +549,12 @@ export function MailPanel(): any {
       browseMode,
       setBrowseMode: setBrowseModePersist,
       selectedItemMailIds,
+      compact: phoneUi,
     }),
-    e(MailBannerBar, { snap, caps }),
+    e(MailBannerBar, { snap, caps, compact: phoneUi }),
     e(
       "div",
-      { className: "comm-mail__body" },
+      { className: "comm-mail__body", ref: bodyRef },
       itemsMode
         ? e(MailItemsPane, {
             snap,

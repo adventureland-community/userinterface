@@ -1,4 +1,4 @@
-import { e } from "../../../host/react";
+import { getReact, e } from "../../../host/react";
 import {
   mailIdsForItemsSelectAll,
   markAllUnreadRead,
@@ -32,9 +32,12 @@ export type MailToolbarProps = {
   setBrowseMode: (mode: MailBrowseMode) => void;
   /** Items-mode stack selection (mail ids for the highlighted tile). */
   selectedItemMailIds: string[] | null;
+  /** Phone — denser chrome, filters behind a toggle. */
+  compact?: boolean;
 };
 
 export function MailToolbar(props: MailToolbarProps): any {
+  const React = getReact();
   const {
     snap,
     pill,
@@ -52,6 +55,7 @@ export function MailToolbar(props: MailToolbarProps): any {
     browseMode,
     setBrowseMode,
     selectedItemMailIds,
+    compact,
   } = props;
 
   const itemsMode = browseMode === "items";
@@ -62,19 +66,181 @@ export function MailToolbar(props: MailToolbarProps): any {
     ? itemsSelect.ids
     : filtered.map((m) => m.id);
   const selectHasStack = !!(itemsSelect && itemsSelect.kind === "stack");
+  const hasSelection = checkedIds.length > 0;
+  const [actionsOpen, setActionsOpen] = React.useState(false);
+  const showBulk = !compact || actionsOpen || hasSelection;
+
+  const bulkButtons: any[] = [];
+  if (browseMode === "messages" && !compact) {
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "stack",
+          type: "button",
+          className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
+          title:
+            "Stack identical sends (same from/to + subject/body, or same item)",
+          onClick: () => setCollapseRepeats(!collapseRepeats),
+        },
+        "Stack",
+      ),
+    );
+  }
+  if (pill === "unread") {
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "mark-all",
+          type: "button",
+          className: "comm-mail__btn",
+          onClick: () => {
+            void markAllUnreadRead();
+          },
+        },
+        "Mark all read",
+      ),
+    );
+  }
+  if (hasSelection) {
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "clear",
+          type: "button",
+          className: "comm-mail__btn",
+          title: "Clear every checked mail",
+          onClick: () => setSelectedIds({}),
+        },
+        "Clear selection",
+      ),
+      e(
+        "button",
+        {
+          key: "delete",
+          type: "button",
+          className: "comm-mail__btn",
+          onClick: () => {
+            void doDelete(checkedIds);
+          },
+        },
+        "Delete " + checkedIds.length,
+      ),
+    );
+  } else if (selectTargetIds.length) {
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "select",
+          type: "button",
+          className: "comm-mail__btn",
+          title: selectHasStack
+            ? "Select mails for the highlighted item stack"
+            : itemsMode
+              ? "Select all untaken attachments in the current filter"
+              : "Select all messages in the current search / filter",
+          onClick: () => {
+            const next: Record<string, boolean> = {};
+            for (let i = 0; i < selectTargetIds.length; i++) {
+              next[selectTargetIds[i]] = true;
+            }
+            setSelectedIds(next);
+          },
+        },
+        selectHasStack
+          ? "Select stack " + selectTargetIds.length
+          : "Select all " + selectTargetIds.length,
+      ),
+    );
+  }
+  if (takeableCheckedIds.length) {
+    bulkButtons.push(
+      e(
+        "button",
+        {
+          key: "take",
+          type: "button",
+          className: "comm-mail__btn comm-mail__btn--gold",
+          disabled: !canTake || snap.commandBusy,
+          onClick: () => {
+            takeMailCommand(takeableCheckedIds);
+            setSelectedIds({});
+          },
+        },
+        snap.commandBusy ? "Working…" : "Take " + takeableCheckedIds.length,
+      ),
+    );
+  }
+  bulkButtons.push(
+    e(
+      "button",
+      {
+        key: "mark-read",
+        type: "button",
+        className: "comm-mail__btn",
+        onClick: () => {
+          const ids: string[] = [];
+          for (let i = 0; i < filtered.length; i++) {
+            ids.push(filtered[i].id);
+          }
+          void markVisibleRead(ids);
+        },
+      },
+      "Mark read",
+    ),
+    e(
+      "button",
+      {
+        key: "refresh",
+        type: "button",
+        className: "comm-mail__btn",
+        onClick: () => {
+          void requestMailCacheRefresh();
+        },
+        disabled: !!snap.refreshProgress,
+        title: snap.refreshProgress
+          ? "Cache refresh in progress"
+          : "Re-verify the whole warmed cache without wiping it",
+      },
+      "Refresh",
+    ),
+  );
+
+  if (compact && browseMode === "messages") {
+    bulkButtons.unshift(
+      e(
+        "button",
+        {
+          key: "stack",
+          type: "button",
+          className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
+          title:
+            "Stack identical sends (same from/to + subject/body, or same item)",
+          onClick: () => setCollapseRepeats(!collapseRepeats),
+        },
+        "Stack",
+      ),
+    );
+  }
 
   return e(
     "div",
-    { className: "comm-mail__toolbar" },
+    {
+      className: "comm-mail__toolbar" + (compact ? " is-compact" : ""),
+    },
     e(MailSearchBar, {
       query,
       setQuery,
       pill,
       setPillPersist,
+      compact,
     }),
     e(
       "div",
-      { className: "comm-mail__toolbar-actions" },
+      { className: "comm-mail__toolbar-primary" },
       e(
         "div",
         {
@@ -91,7 +257,7 @@ export function MailToolbar(props: MailToolbarProps): any {
               (browseMode === "messages" ? " is-on" : ""),
             onClick: () => setBrowseMode("messages"),
           },
-          "Messages",
+          compact ? "Msgs" : "Messages",
         ),
         e(
           "button",
@@ -105,32 +271,6 @@ export function MailToolbar(props: MailToolbarProps): any {
           "Items",
         ),
       ),
-      browseMode === "messages"
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "comm-mail__pill" + (collapseRepeats ? " is-on" : ""),
-              title:
-                "Stack identical sends (same from/to + subject/body, or same item)",
-              onClick: () => setCollapseRepeats(!collapseRepeats),
-            },
-            "Stack",
-          )
-        : null,
-      pill === "unread"
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "comm-mail__btn",
-              onClick: () => {
-                void markAllUnreadRead();
-              },
-            },
-            "Mark all read",
-          )
-        : null,
       e(
         "button",
         {
@@ -140,100 +280,28 @@ export function MailToolbar(props: MailToolbarProps): any {
         },
         "Compose",
       ),
-      checkedIds.length
+      compact
         ? e(
             "button",
             {
               type: "button",
-              className: "comm-mail__btn",
-              title: "Clear every checked mail",
-              onClick: () => setSelectedIds({}),
-            },
-            "Clear selection",
-          )
-        : selectTargetIds.length
-          ? e(
-              "button",
-              {
-                type: "button",
-                className: "comm-mail__btn",
-                title: selectHasStack
-                  ? "Select mails for the highlighted item stack"
-                  : itemsMode
-                    ? "Select all untaken attachments in the current filter"
-                    : "Select all messages in the current search / filter",
-                onClick: () => {
-                  const next: Record<string, boolean> = {};
-                  for (let i = 0; i < selectTargetIds.length; i++) {
-                    next[selectTargetIds[i]] = true;
-                  }
-                  setSelectedIds(next);
-                },
-              },
-              selectHasStack
-                ? "Select stack " + selectTargetIds.length
-                : "Select all " + selectTargetIds.length,
-            )
-          : null,
-      checkedIds.length
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "comm-mail__btn",
+              className:
+                "comm-mail__btn comm-mail__more-btn" +
+                (showBulk ? " is-on" : ""),
+              "aria-expanded": showBulk ? "true" : "false",
+              title: "Stack, select, mark read, refresh",
               onClick: () => {
-                void doDelete(checkedIds);
+                if (hasSelection) return;
+                setActionsOpen(!actionsOpen);
               },
             },
-            "Delete " + checkedIds.length,
+            hasSelection ? "Actions" : actionsOpen ? "Less" : "More",
           )
         : null,
-      takeableCheckedIds.length
-        ? e(
-            "button",
-            {
-              type: "button",
-              className: "comm-mail__btn comm-mail__btn--gold",
-              disabled: !canTake || snap.commandBusy,
-              onClick: () => {
-                takeMailCommand(takeableCheckedIds);
-                setSelectedIds({});
-              },
-            },
-            snap.commandBusy ? "Working…" : "Take " + takeableCheckedIds.length,
-          )
-        : null,
-      e(
-        "button",
-        {
-          type: "button",
-          className: "comm-mail__btn",
-          onClick: () => {
-            const ids: string[] = [];
-            for (let i = 0; i < filtered.length; i++) {
-              ids.push(filtered[i].id);
-            }
-            void markVisibleRead(ids);
-          },
-        },
-        "Mark read",
-      ),
-      e(
-        "button",
-        {
-          type: "button",
-          className: "comm-mail__btn",
-          onClick: () => {
-            // Soft-merge head, then re-verify every warmed page in place.
-            void requestMailCacheRefresh();
-          },
-          disabled: !!snap.refreshProgress,
-          title: snap.refreshProgress
-            ? "Cache refresh in progress"
-            : "Re-verify the whole warmed cache without wiping it",
-        },
-        "Refresh",
-      ),
+      !compact ? bulkButtons : null,
     ),
+    compact && showBulk
+      ? e("div", { className: "comm-mail__toolbar-bulk" }, ...bulkButtons)
+      : null,
   );
 }

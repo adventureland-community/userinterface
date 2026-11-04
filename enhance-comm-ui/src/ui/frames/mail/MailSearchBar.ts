@@ -13,6 +13,8 @@ export type MailSearchBarProps = {
   setQuery: (q: string) => void;
   pill: MailPill;
   setPillPersist: (p: MailPill) => void;
+  /** Phone — scope pills stay behind Filters until opened. */
+  compact?: boolean;
 };
 
 function fieldRow(label: string, input: any): any {
@@ -41,12 +43,15 @@ function textInput(
 /** Gmail-style search field + “Show search options” panel. */
 export function MailSearchBar(props: MailSearchBarProps): any {
   const React = getReact();
-  const { query, setQuery, pill, setPillPersist } = props;
+  const { query, setQuery, pill, setPillPersist, compact } = props;
   const [open, setOpen] = React.useState(false);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [form, setForm] = React.useState(
     () => queryToMailSearchForm(query, pill) as MailSearchFormState,
   );
   const wrapRef = React.useRef(null as HTMLElement | null);
+  const showPills = !compact || filtersOpen;
+  const filtersActive = pill !== "all";
 
   React.useEffect(() => {
     if (!open) return;
@@ -128,7 +133,10 @@ export function MailSearchBar(props: MailSearchBarProps): any {
   return e(
     "div",
     {
-      className: "comm-mail__search-wrap" + (open ? " is-open" : ""),
+      className:
+        "comm-mail__search-wrap" +
+        (open ? " is-open" : "") +
+        (compact ? " is-compact" : ""),
       ref: wrapRef,
     },
     e(
@@ -176,8 +184,26 @@ export function MailSearchBar(props: MailSearchBarProps): any {
           "aria-hidden": "true",
         }),
       ),
+      compact
+        ? e(
+            "button",
+            {
+              type: "button",
+              className:
+                "comm-mail__search-filters-btn" +
+                (filtersOpen || filtersActive ? " is-on" : ""),
+              title: "Scope filters",
+              "aria-label": "Scope filters",
+              "aria-expanded": filtersOpen ? "true" : "false",
+              onClick: () => setFiltersOpen(!filtersOpen),
+            },
+            filtersActive ? "●" : "Filters",
+          )
+        : null,
     ),
-    e("div", { className: "comm-mail__pills" }, ...scopePills),
+    showPills
+      ? e("div", { className: "comm-mail__pills" }, ...scopePills)
+      : null,
     open
       ? e(
           "div",
