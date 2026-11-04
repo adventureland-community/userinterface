@@ -3,6 +3,7 @@ import type { EntityLike, SlotLike } from "../../host/globals";
 import { info, INFO_SOURCE_ATTR } from "../../host/dialogHost";
 import { itemContainer, setXTarget } from "../../host/icons";
 import { itemSkin } from "../../lib/gameIcon";
+import { isCommTouchUi } from "../../lib/commTouchUi";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import {
@@ -10,6 +11,7 @@ import {
   handleBagDropOnGearSlot,
 } from "../gear/gearSlotDragDrop";
 import { ItemInstance } from "./ItemInstance";
+import { installLongPress } from "./pointerLongPress";
 import { stripNativeTitles } from "./stripNativeTitles";
 
 /** Host shade skins from `render_slots` in adventureland `js/html.js`. */
@@ -109,6 +111,39 @@ export function GearSlotCell(props: GearSlotCellProps): any {
     stripNativeTitles(cellRef.current);
   }, [clickable, slot && slot.name, slot && slot.level, slot && slot.p]);
 
+  const openInfo = () => {
+    if (!clickable) return;
+    setXTarget(entity);
+    info.openItem(entity, slotName, slot);
+  };
+
+  const openMenu = (cx: number, cy: number) => {
+    showGearSlotContextMenu(cx, cy, slotName, clickable, slot, {
+      entity,
+      gearEditable,
+    });
+  };
+
+  // Touch: tap = info, long-press = actions (avoid pointerdown opening info mid-hold).
+  React.useEffect(() => {
+    const el = cellRef.current;
+    if (!el || !isCommTouchUi()) return;
+    return installLongPress(el, {
+      onLongPress: (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openMenu(ev.clientX, ev.clientY);
+      },
+      onTap: clickable
+        ? (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            openInfo();
+          }
+        : undefined,
+    });
+  }, [clickable, entity, slotName, slot, gearEditable]);
+
   if (slot && slot.name) {
     content = e(ItemInstance, {
       name: String(slot.name),
@@ -150,15 +185,16 @@ export function GearSlotCell(props: GearSlotCellProps): any {
     }
   }
 
-  const onSlotPress = clickable
-    ? (ev: any) => {
-        if (ev && typeof ev.stopPropagation === "function")
-          ev.stopPropagation();
-        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-        setXTarget(entity);
-        info.openItem(entity, slotName, slot);
-      }
-    : undefined;
+  const touchish = isCommTouchUi();
+  const onSlotPress =
+    !touchish && clickable
+      ? (ev: any) => {
+          if (ev && typeof ev.stopPropagation === "function")
+            ev.stopPropagation();
+          if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+          openInfo();
+        }
+      : undefined;
 
   return e(
     "div",

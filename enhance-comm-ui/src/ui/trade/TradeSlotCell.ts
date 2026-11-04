@@ -1,5 +1,6 @@
 import { getReact, e } from "../../host/react";
 import type { EntityLike, SlotLike } from "../../host/globals";
+import { isCommTouchUi } from "../../lib/commTouchUi";
 import { PIXEL_TEXT, TYPE } from "../../lib/typeScale";
 import { itemContainer } from "../../host/icons";
 import {
@@ -9,6 +10,7 @@ import {
 } from "../../lib/gameIcon";
 import { GEAR_SLOT_SIZE } from "../chrome/gearSlotCell";
 import { ItemInstance, ensureItemInstanceBadgeCss } from "../chrome/ItemInstance";
+import { installLongPress } from "../chrome/pointerLongPress";
 import { TRADE_SLOT_CELL } from "../../lib/frameSizes";
 import { showGearSlotContextMenu } from "../gear/gearSlotContextMenu";
 import { handleBagDragOverGearSlot, handleBagDropOnTradeSlot } from "../gear/gearSlotDragDrop";
@@ -94,6 +96,7 @@ export type TradeSlotCellProps = {
 
 export function TradeSlotCell(props: TradeSlotCellProps): any {
   const React = getReact();
+  const cellRef = React.useRef(null as HTMLDivElement | null);
   ensureItemInstanceBadgeCss();
   const [bagDropHover, setBagDropHover] = React.useState(false);
   const {
@@ -349,10 +352,30 @@ export function TradeSlotCell(props: TradeSlotCellProps): any {
     );
   }
 
+  React.useEffect(() => {
+    const el = cellRef.current;
+    if (!el || !isCommTouchUi()) return;
+    return installLongPress(el, {
+      onLongPress: (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        showGearSlotContextMenu(
+          ev.clientX,
+          ev.clientY,
+          slotName,
+          filled,
+          slot,
+          { entity, gearEditable },
+        );
+      },
+    });
+  }, [slotName, filled, slot, entity, gearEditable]);
+
   return e(
     "div",
     {
       key: slotName,
+      ref: cellRef,
       className:
         "comm-trade-slot" +
         (filled ? " is-filled" : "") +

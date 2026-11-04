@@ -20,6 +20,7 @@ import {
   resolveItemLevelBadge,
 } from "../../lib/itemLevelBadge";
 import { stampNativeItemTitleBorder } from "../../lib/itemTitleBorder";
+import { isCommTouchUi } from "../../lib/commTouchUi";
 import {
   dismissItemCooltip,
   itemCooltipHandlers,
@@ -161,9 +162,11 @@ export function ItemInstance(props: ItemInstanceProps): any {
     });
   }, []);
 
-  const tipHandlers = cooltip
-    ? itemCooltipHandlers(tipKeyRef.current, rebuildTip)
-    : null;
+  // Touch: tap opens item info / inspect; skip hover tips (no hover).
+  const tipHandlers =
+    cooltip && !isCommTouchUi()
+      ? itemCooltipHandlers(tipKeyRef.current, rebuildTip)
+      : null;
 
   React.useEffect(() => {
     const el = ref.current;

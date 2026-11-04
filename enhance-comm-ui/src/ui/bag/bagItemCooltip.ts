@@ -3,6 +3,7 @@
  * Stock slots are not React ItemInstance — bind via host delegation.
  */
 
+import { isCommTouchUi } from "../../lib/commTouchUi";
 import {
   dismissItemCooltip,
   itemCooltipHandlers,
@@ -31,6 +32,9 @@ function slotRoot(host: HTMLElement, num: number): HTMLElement | null {
  * Clears native `title` on the active slot so the browser tip does not stack.
  */
 export function installBagItemCooltip(host: HTMLElement): () => void {
+  // Phone: tap opens item info; long-press opens actions — no hover tip.
+  if (isCommTouchUi()) return () => {};
+
   let activeSlot: number | null = null;
   let activeKey: string | null = null;
   let handlers: ReturnType<typeof itemCooltipHandlers> | null = null;

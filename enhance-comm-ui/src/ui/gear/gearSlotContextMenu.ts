@@ -26,49 +26,13 @@ import {
 } from "../../lib/tradeHelpers";
 import { showTradeWishlistPicker } from "./tradeWishlistPicker";
 import { showTradePriceDialog, showTradeQuantityDialog } from "../trade/tradePromptDialog";
-import { ensureBagItemContextMenuCss } from "../bag/bagItemContextMenuCss";
+import type { ActionMenuAction } from "../chrome/actionMenuTypes";
+import {
+  hideActionsMenu,
+  showActionsMenu,
+} from "../chrome/showActionsMenu";
 
-export type GearSlotMenuAction = {
-  id: string;
-  label: string;
-  title?: string;
-  separatorBefore?: boolean;
-  disabled?: boolean;
-  run: () => void;
-};
-
-let ctxEl: HTMLDivElement | null = null;
-let ctxKeyHandler: ((ev: KeyboardEvent) => void) | null = null;
-let ctxDocHandler: ((ev: MouseEvent) => void) | null = null;
-
-function hideCtx(): void {
-  if (ctxKeyHandler) {
-    document.removeEventListener("keydown", ctxKeyHandler, true);
-    ctxKeyHandler = null;
-  }
-  if (ctxDocHandler) {
-    document.removeEventListener("mousedown", ctxDocHandler, true);
-    ctxDocHandler = null;
-  }
-  if (ctxEl) {
-    ctxEl.remove();
-    ctxEl = null;
-  }
-}
-
-function clampMenuPosition(
-  el: HTMLElement,
-  clientX: number,
-  clientY: number,
-): void {
-  const pad = 8;
-  const w = el.offsetWidth || 200;
-  const h = el.offsetHeight || 80;
-  const maxX = Math.max(pad, window.innerWidth - w - pad);
-  const maxY = Math.max(pad, window.innerHeight - h - pad);
-  el.style.left = Math.min(Math.max(pad, clientX), maxX) + "px";
-  el.style.top = Math.min(Math.max(pad, clientY), maxY) + "px";
-}
+export type GearSlotMenuAction = ActionMenuAction;
 
 function buildTradeSlotActions(
   slotName: string,
@@ -319,9 +283,6 @@ export function showGearSlotContextMenu(
   slot?: SlotLike | null,
   options?: GearSlotMenuOptions,
 ): void {
-  hideCtx();
-  ensureBagItemContextMenuCss();
-
   const entity = options?.entity;
   const gearEditable = !!options?.gearEditable;
   let actions: GearSlotMenuAction[] = [];
@@ -350,60 +311,14 @@ export function showGearSlotContextMenu(
 
   if (!actions.length) return;
 
-  const el = document.createElement("div");
-  el.className = "comm-bag-ctx";
-  el.setAttribute("role", "menu");
-  for (let i = 0; i < actions.length; i++) {
-    const action = actions[i];
-    if (action.separatorBefore) {
-      const sep = document.createElement("div");
-      sep.className = "comm-bag-ctx__sep";
-      sep.setAttribute("role", "separator");
-      el.appendChild(sep);
-    }
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "comm-bag-ctx__item";
-    btn.setAttribute("role", "menuitem");
-    btn.textContent = action.label;
-    if (action.title) btn.title = action.title;
-    if (action.disabled) {
-      btn.disabled = true;
-      btn.className += " is-disabled";
-    } else {
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        hideCtx();
-        action.run();
-      });
-    }
-    el.appendChild(btn);
-  }
-  document.body.appendChild(el);
-  ctxEl = el;
-  clampMenuPosition(el, clientX, clientY);
-
-  ctxKeyHandler = (ev: KeyboardEvent) => {
-    if (ev.key === "Escape") {
-      ev.preventDefault();
-      hideCtx();
-    }
-  };
-  ctxDocHandler = (ev: MouseEvent) => {
-    if (ctxEl && ev.target instanceof Node && ctxEl.contains(ev.target)) {
-      return;
-    }
-    hideCtx();
-  };
-  document.addEventListener("keydown", ctxKeyHandler, true);
-  window.setTimeout(() => {
-    if (ctxDocHandler) {
-      document.addEventListener("mousedown", ctxDocHandler, true);
-    }
-  }, 0);
+  showActionsMenu({
+    clientX,
+    clientY,
+    actions,
+    title: formatGearSlotLabel(slotName) || slotName,
+  });
 }
 
 export function hideGearSlotContextMenu(): void {
-  hideCtx();
+  hideActionsMenu();
 }

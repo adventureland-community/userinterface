@@ -142,6 +142,12 @@ export const CHANGELOG: ChangelogEntry[] = [
           "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
         kind: "fix",
       },
+      {
+        label: "Touch item actions",
+        detail:
+          "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
+        kind: "feature",
+      },
     ],
     features: [
       {

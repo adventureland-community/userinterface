@@ -9189,6 +9189,11 @@ ${fightHoverTip(src)}`
           label: "Chat \xB7 Settings \xB7 zoom",
           detail: "Chat stays single-pane with a Chats drawer when expanded. Settings/Cmd/Chat dock toggles work under lite HUD. Phone Ctrl+wheel (DevTools pinch) zooms the world.",
           kind: "fix"
+        },
+        {
+          label: "Touch item actions",
+          detail: "Long-press bag / gear / bank / trade slots opens a bottom action sheet (same providers as right-click). Tap still opens item info. Hover tips stay desktop-only.",
+          kind: "feature"
         }
       ],
       features: [
@@ -27776,6 +27781,15 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     subscribeTick(() => applyPageTitle());
   }
 
+  // src/lib/commTouchUi.ts
+  function isCommTouchUi() {
+    if (typeof document !== "undefined") {
+      const root = document.getElementById("comm-ui");
+      if (root && root.classList.contains("comm-ui-touch")) return true;
+    }
+    return isTouchishProfile(detectViewportProfile());
+  }
+
   // src/ui/chrome/cooltip.ts
   var PAD = 8;
   var CURSOR = 14;
@@ -27789,6 +27803,8 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   var tipY = 0;
   var tipRebuild = null;
   var tipOpts = {};
+  var tipPinned = false;
+  var pinDocHandler = null;
   var cssInjected2 = false;
   var crossHideMeter = null;
   function bindCooltipCrossHide(hideMeter) {
@@ -27855,12 +27871,21 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
     if (opts) tipOpts = opts;
     paintTip(html, clientX, clientY, tipOpts);
   }
-  function hideCooltip() {
+  function clearPinListener() {
+    if (pinDocHandler) {
+      document.removeEventListener("mousedown", pinDocHandler, true);
+      pinDocHandler = null;
+    }
+  }
+  function hideCooltip(opts) {
+    if (tipPinned && !(opts && opts.force)) return;
+    tipPinned = false;
+    clearPinListener();
     hoverKey = null;
     tipRebuild = null;
     tipOpts = {};
     if (!tipEl) return;
-    tipEl.classList.remove("is-open", "is-item-tip");
+    tipEl.classList.remove("is-open", "is-item-tip", "is-pinned");
     tipEl.innerHTML = "";
   }
   function cooltipHandlers(key, rebuild, opts) {
@@ -27881,6 +27906,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
       },
       onMouseLeave: () => {
         if (hoverKey !== key) return;
+        if (tipPinned) return;
         hideCooltip();
       }
     };
@@ -27892,7 +27918,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
   function dismissCooltip(key) {
     if (key != null && hoverKey !== key) return;
     if (!hoverKey && key != null) return;
-    hideCooltip();
+    hideCooltip({ force: true });
   }
   function isCooltipHovering(key) {
     return hoverKey === key;
@@ -28045,7 +28071,7 @@ body > .comm-disconnect-overlay .comm-disconnect-reason {
         actual: actualRef.current
       });
     }, []);
-    const tipHandlers = cooltip ? itemCooltipHandlers(tipKeyRef.current, rebuildTip) : null;
+    const tipHandlers = cooltip && !isCommTouchUi() ? itemCooltipHandlers(tipKeyRef.current, rebuildTip) : null;
     React.useEffect(() => {
       const el = ref.current;
       if (!el) return;
@@ -29643,7 +29669,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T10:33:06.170Z" : "unknown";
+    const builtAt = true ? "2026-11-04T10:39:13.311Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -62853,11 +62879,11 @@ ${parts.map(cssSlice).join("\n")}
     document.head.appendChild(el);
   }
 
-  // src/ui/gear/gearSlotContextMenu.ts
+  // src/ui/chrome/floatingActionMenu.ts
   var ctxEl = null;
   var ctxKeyHandler = null;
   var ctxDocHandler = null;
-  function hideCtx() {
+  function hideFloatingActionMenu() {
     if (ctxKeyHandler) {
       document.removeEventListener("keydown", ctxKeyHandler, true);
       ctxKeyHandler = null;
@@ -62880,6 +62906,450 @@ ${parts.map(cssSlice).join("\n")}
     el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
     el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
   }
+  function positionFlyout(wrap, flyout) {
+    const btn = wrap.querySelector(".comm-bag-ctx__item");
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    flyout.style.visibility = "hidden";
+    flyout.style.display = "block";
+    const fw = flyout.offsetWidth || 200;
+    const fh = flyout.offsetHeight || 80;
+    let left = rect.right - 2;
+    if (left + fw > window.innerWidth - 8) {
+      left = Math.max(8, rect.left - fw + 2);
+    }
+    let top = rect.top;
+    if (top + fh > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - fh - 8);
+    }
+    flyout.style.left = left + "px";
+    flyout.style.top = top + "px";
+    flyout.style.visibility = "visible";
+  }
+  function closeSubmenus(root, except) {
+    const open = root.querySelectorAll(".comm-bag-ctx__subwrap.is-open");
+    for (let i = 0; i < open.length; i++) {
+      const wrap = open[i];
+      if (except && (wrap === except || wrap.contains(except))) continue;
+      wrap.classList.remove("is-open");
+      const flyout = wrap.querySelector(
+        ".comm-bag-ctx--flyout"
+      );
+      if (flyout) flyout.style.display = "none";
+    }
+  }
+  function appendAction(root, action, onActivate) {
+    if (action.separatorBefore) {
+      const sep = document.createElement("div");
+      sep.className = "comm-bag-ctx__sep";
+      sep.setAttribute("role", "separator");
+      root.appendChild(sep);
+    }
+    const hasChildren = Array.isArray(action.children) && action.children.length > 0;
+    if (hasChildren) {
+      const wrap = document.createElement("div");
+      wrap.className = "comm-bag-ctx__subwrap";
+      const btn2 = document.createElement("button");
+      btn2.type = "button";
+      btn2.className = "comm-bag-ctx__item has-submenu";
+      btn2.setAttribute("role", "menuitem");
+      btn2.setAttribute("aria-haspopup", "true");
+      btn2.setAttribute("aria-label", action.label);
+      if (action.mountLabel) action.mountLabel(btn2);
+      else btn2.textContent = action.label;
+      const arrow = document.createElement("span");
+      arrow.className = "comm-bag-ctx__arrow";
+      arrow.setAttribute("aria-hidden", "true");
+      arrow.textContent = "\u203A";
+      btn2.appendChild(arrow);
+      if (action.title) btn2.title = action.title;
+      if (action.disabled) {
+        btn2.disabled = true;
+        btn2.className += " is-disabled";
+        wrap.appendChild(btn2);
+        root.appendChild(wrap);
+        return;
+      }
+      const flyout = document.createElement("div");
+      flyout.className = "comm-bag-ctx comm-bag-ctx--flyout";
+      flyout.setAttribute("role", "menu");
+      for (let i = 0; i < action.children.length; i++) {
+        appendAction(flyout, action.children[i], onActivate);
+      }
+      let closeTimer = 0;
+      const openSub = () => {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = 0;
+        }
+        closeSubmenus(root, wrap);
+        wrap.classList.add("is-open");
+        positionFlyout(wrap, flyout);
+      };
+      const scheduleClose = () => {
+        if (closeTimer) window.clearTimeout(closeTimer);
+        closeTimer = window.setTimeout(() => {
+          wrap.classList.remove("is-open");
+          flyout.style.display = "none";
+          closeTimer = 0;
+        }, 160);
+      };
+      btn2.addEventListener("mouseenter", openSub);
+      btn2.addEventListener("focus", openSub);
+      wrap.addEventListener("mouseleave", scheduleClose);
+      flyout.addEventListener("mouseenter", () => {
+        if (closeTimer) {
+          window.clearTimeout(closeTimer);
+          closeTimer = 0;
+        }
+      });
+      flyout.addEventListener("mouseleave", scheduleClose);
+      wrap.appendChild(btn2);
+      wrap.appendChild(flyout);
+      root.appendChild(wrap);
+      return;
+    }
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "comm-bag-ctx__item";
+    btn.setAttribute("role", "menuitem");
+    btn.setAttribute("aria-label", action.label);
+    if (action.mountLabel) action.mountLabel(btn);
+    else btn.textContent = action.label;
+    if (action.title) btn.title = action.title;
+    if (action.disabled) {
+      btn.disabled = true;
+      btn.className += " is-disabled";
+    } else {
+      btn.addEventListener("click", (ev) => {
+        var _a;
+        ev.preventDefault();
+        ev.stopPropagation();
+        onActivate();
+        (_a = action.run) == null ? void 0 : _a.call(action);
+      });
+    }
+    root.appendChild(btn);
+  }
+  function showFloatingActionMenu(opts) {
+    hideFloatingActionMenu();
+    if (!opts.actions.length) return;
+    ensureBagItemContextMenuCss();
+    const el = document.createElement("div");
+    el.className = "comm-bag-ctx";
+    el.setAttribute("role", "menu");
+    for (let i = 0; i < opts.actions.length; i++) {
+      appendAction(el, opts.actions[i], hideFloatingActionMenu);
+    }
+    document.body.appendChild(el);
+    ctxEl = el;
+    clampMenuPosition(el, opts.clientX, opts.clientY);
+    ctxKeyHandler = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hideFloatingActionMenu();
+      }
+    };
+    ctxDocHandler = (ev) => {
+      if (ctxEl && ev.target instanceof Node && ctxEl.contains(ev.target)) {
+        return;
+      }
+      hideFloatingActionMenu();
+    };
+    document.addEventListener("keydown", ctxKeyHandler, true);
+    window.setTimeout(() => {
+      if (ctxDocHandler) {
+        document.addEventListener("mousedown", ctxDocHandler, true);
+      }
+    }, 0);
+  }
+
+  // src/ui/chrome/phoneActionSheet.ts
+  var STYLE_ID9 = "ecu-phone-action-sheet-css";
+  var sheetRoot = null;
+  var unbindSwipe = null;
+  var keyHandler2 = null;
+  function ensureActionSheetCss() {
+    ensurePhoneNavCss();
+    if (typeof document === "undefined") return;
+    if (document.getElementById(STYLE_ID9)) return;
+    const style = document.createElement("style");
+    style.id = STYLE_ID9;
+    style.textContent = `
+.ecu-phone-action-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 560;
+  max-height: min(72vh, 560px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  background: #1c1b1f;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  color: #e6e1e5;
+}
+.ecu-phone-action-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 550;
+  background: rgba(0, 0, 0, 0.45);
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.ecu-phone-action-sheet__handle {
+  align-self: center;
+  width: 48px;
+  height: 20px;
+  margin: 6px 0 2px;
+  flex-shrink: 0;
+  touch-action: none;
+  position: relative;
+}
+.ecu-phone-action-sheet__handle::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(230, 225, 229, 0.35);
+}
+.ecu-phone-action-sheet__hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 16px 10px;
+  flex-shrink: 0;
+}
+.ecu-phone-action-sheet__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.ecu-phone-action-sheet__done {
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(157, 212, 236, 0.16);
+  color: #9dd4ec;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ecu-phone-action-sheet__body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 8px 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.ecu-phone-action-sheet__sep {
+  height: 1px;
+  margin: 6px 12px;
+  background: rgba(230, 225, 229, 0.12);
+}
+.ecu-phone-action-sheet__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  margin: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #e6e1e5;
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-action-sheet__row:active {
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-action-sheet__row.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ecu-phone-action-sheet__row.has-kids .ecu-phone-action-sheet__chev {
+  margin-left: auto;
+  opacity: 0.7;
+}
+.ecu-phone-action-sheet__kids {
+  display: none;
+  padding: 0 0 4px 12px;
+}
+.ecu-phone-action-sheet__group.is-open > .ecu-phone-action-sheet__kids {
+  display: block;
+}
+.ecu-phone-action-sheet__group.is-open > .ecu-phone-action-sheet__row .ecu-phone-action-sheet__chev {
+  transform: rotate(90deg);
+}
+`;
+    document.head.appendChild(style);
+  }
+  function hidePhoneActionSheet() {
+    if (keyHandler2) {
+      document.removeEventListener("keydown", keyHandler2, true);
+      keyHandler2 = null;
+    }
+    if (unbindSwipe) {
+      unbindSwipe();
+      unbindSwipe = null;
+    }
+    if (sheetRoot) {
+      sheetRoot.remove();
+      sheetRoot = null;
+    }
+  }
+  function appendRows(host2, actions, onDone) {
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      if (action.separatorBefore) {
+        const sep = document.createElement("div");
+        sep.className = "ecu-phone-action-sheet__sep";
+        sep.setAttribute("role", "separator");
+        host2.appendChild(sep);
+      }
+      const hasKids = Array.isArray(action.children) && action.children.length > 0;
+      if (hasKids) {
+        const group = document.createElement("div");
+        group.className = "ecu-phone-action-sheet__group";
+        const btn2 = document.createElement("button");
+        btn2.type = "button";
+        btn2.className = "ecu-phone-action-sheet__row has-kids";
+        btn2.setAttribute("aria-expanded", "false");
+        btn2.setAttribute("aria-label", action.label);
+        if (action.mountLabel) action.mountLabel(btn2);
+        else btn2.textContent = action.label;
+        const chev = document.createElement("span");
+        chev.className = "ecu-phone-action-sheet__chev";
+        chev.setAttribute("aria-hidden", "true");
+        chev.textContent = "\u203A";
+        btn2.appendChild(chev);
+        if (action.title) btn2.title = action.title;
+        if (action.disabled) {
+          btn2.disabled = true;
+          btn2.className += " is-disabled";
+        } else {
+          btn2.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const open = !group.classList.contains("is-open");
+            group.classList.toggle("is-open", open);
+            btn2.setAttribute("aria-expanded", open ? "true" : "false");
+          });
+        }
+        const kids = document.createElement("div");
+        kids.className = "ecu-phone-action-sheet__kids";
+        appendRows(kids, action.children, onDone);
+        group.appendChild(btn2);
+        group.appendChild(kids);
+        host2.appendChild(group);
+        continue;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ecu-phone-action-sheet__row";
+      btn.setAttribute("aria-label", action.label);
+      if (action.mountLabel) action.mountLabel(btn);
+      else btn.textContent = action.label;
+      if (action.title) btn.title = action.title;
+      if (action.disabled) {
+        btn.disabled = true;
+        btn.className += " is-disabled";
+      } else {
+        btn.addEventListener("click", (ev) => {
+          var _a;
+          ev.preventDefault();
+          ev.stopPropagation();
+          onDone();
+          (_a = action.run) == null ? void 0 : _a.call(action);
+        });
+      }
+      host2.appendChild(btn);
+    }
+  }
+  function showPhoneActionSheet(opts) {
+    hidePhoneActionSheet();
+    if (!opts.actions.length) return;
+    ensureActionSheetCss();
+    const wrap = document.createElement("div");
+    wrap.className = "ecu-phone-action-sheet-root";
+    const scrim = document.createElement("button");
+    scrim.type = "button";
+    scrim.className = "ecu-phone-action-sheet__scrim";
+    scrim.setAttribute("aria-label", "Dismiss");
+    scrim.addEventListener("click", () => hidePhoneActionSheet());
+    const sheet = document.createElement("div");
+    sheet.className = "ecu-phone-action-sheet ecu-phone-sheet";
+    sheet.setAttribute("role", "menu");
+    const handle2 = document.createElement("div");
+    handle2.className = "ecu-phone-action-sheet__handle";
+    const hd = document.createElement("div");
+    hd.className = "ecu-phone-action-sheet__hd";
+    const title = document.createElement("h2");
+    title.className = "ecu-phone-action-sheet__title";
+    title.textContent = opts.title || "Actions";
+    const done = document.createElement("button");
+    done.type = "button";
+    done.className = "ecu-phone-action-sheet__done";
+    done.textContent = "Done";
+    done.addEventListener("click", () => hidePhoneActionSheet());
+    hd.appendChild(title);
+    hd.appendChild(done);
+    const body = document.createElement("div");
+    body.className = "ecu-phone-action-sheet__body";
+    appendRows(body, opts.actions, hidePhoneActionSheet);
+    sheet.appendChild(handle2);
+    sheet.appendChild(hd);
+    sheet.appendChild(body);
+    wrap.appendChild(scrim);
+    wrap.appendChild(sheet);
+    document.body.appendChild(wrap);
+    sheetRoot = wrap;
+    unbindSwipe = bindSwipeDownClose(handle2, hidePhoneActionSheet);
+    keyHandler2 = (ev) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        hidePhoneActionSheet();
+      }
+    };
+    document.addEventListener("keydown", keyHandler2, true);
+  }
+
+  // src/ui/chrome/showActionsMenu.ts
+  function showActionsMenu(opts) {
+    if (!opts.actions.length) return;
+    const mode = opts.force || (isCommTouchUi() ? "sheet" : "floating");
+    if (mode === "sheet") {
+      hideFloatingActionMenu();
+      showPhoneActionSheet({
+        title: opts.title,
+        actions: opts.actions
+      });
+      return;
+    }
+    hidePhoneActionSheet();
+    showFloatingActionMenu({
+      clientX: opts.clientX,
+      clientY: opts.clientY,
+      actions: opts.actions
+    });
+  }
+
+  // src/ui/gear/gearSlotContextMenu.ts
   function buildTradeSlotActions(slotName, hasItem, slot, menuX, menuY, entity) {
     const actions = [];
     const liveSlots = entity == null ? void 0 : entity.slots;
@@ -63085,8 +63555,6 @@ ${parts.map(cssSlice).join("\n")}
     return actions;
   }
   function showGearSlotContextMenu(clientX, clientY, slotName, hasItem, slot, options) {
-    hideCtx();
-    ensureBagItemContextMenuCss();
     const entity = options == null ? void 0 : options.entity;
     const gearEditable = !!(options == null ? void 0 : options.gearEditable);
     let actions = [];
@@ -63107,57 +63575,12 @@ ${parts.map(cssSlice).join("\n")}
       actions = buildGearSlotActions(slotName, hasItem);
     }
     if (!actions.length) return;
-    const el = document.createElement("div");
-    el.className = "comm-bag-ctx";
-    el.setAttribute("role", "menu");
-    for (let i = 0; i < actions.length; i++) {
-      const action = actions[i];
-      if (action.separatorBefore) {
-        const sep = document.createElement("div");
-        sep.className = "comm-bag-ctx__sep";
-        sep.setAttribute("role", "separator");
-        el.appendChild(sep);
-      }
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "comm-bag-ctx__item";
-      btn.setAttribute("role", "menuitem");
-      btn.textContent = action.label;
-      if (action.title) btn.title = action.title;
-      if (action.disabled) {
-        btn.disabled = true;
-        btn.className += " is-disabled";
-      } else {
-        btn.addEventListener("click", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          hideCtx();
-          action.run();
-        });
-      }
-      el.appendChild(btn);
-    }
-    document.body.appendChild(el);
-    ctxEl = el;
-    clampMenuPosition(el, clientX, clientY);
-    ctxKeyHandler = (ev) => {
-      if (ev.key === "Escape") {
-        ev.preventDefault();
-        hideCtx();
-      }
-    };
-    ctxDocHandler = (ev) => {
-      if (ctxEl && ev.target instanceof Node && ctxEl.contains(ev.target)) {
-        return;
-      }
-      hideCtx();
-    };
-    document.addEventListener("keydown", ctxKeyHandler, true);
-    window.setTimeout(() => {
-      if (ctxDocHandler) {
-        document.addEventListener("mousedown", ctxDocHandler, true);
-      }
-    }, 0);
+    showActionsMenu({
+      clientX,
+      clientY,
+      actions,
+      title: formatGearSlotLabel(slotName) || slotName
+    });
   }
 
   // src/ui/bag/bagDragPayload.ts
@@ -63700,6 +64123,122 @@ ${parts.map(cssSlice).join("\n")}
     });
   }
 
+  // src/ui/chrome/pointerLongPress.ts
+  var LONG_PRESS_DELAY_MS = 450;
+  var LONG_PRESS_MOVE_PX = 10;
+  function longPressMovedTooFar(opts) {
+    const slop = typeof opts.moveSlopPx === "number" ? opts.moveSlopPx : LONG_PRESS_MOVE_PX;
+    const dx = opts.x - opts.start.x;
+    const dy = opts.y - opts.start.y;
+    return dx * dx + dy * dy > slop * slop;
+  }
+  function classifyLongPressEnd(opts) {
+    if (opts.cancelled) return "cancelled";
+    if (opts.fired) return "fired";
+    const delay2 = typeof opts.delayMs === "number" ? opts.delayMs : LONG_PRESS_DELAY_MS;
+    if (opts.atMs - opts.start.atMs >= delay2) return "fired";
+    return "tapped";
+  }
+  function installLongPress(target, opts) {
+    const delay2 = typeof opts.delayMs === "number" ? opts.delayMs : LONG_PRESS_DELAY_MS;
+    const slop = typeof opts.moveSlopPx === "number" ? opts.moveSlopPx : LONG_PRESS_MOVE_PX;
+    let start = null;
+    let timer = null;
+    let fired = false;
+    let cancelled = false;
+    let suppressClick = false;
+    let lastEvent = null;
+    const clearTimer2 = () => {
+      if (timer != null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+    };
+    const reset = () => {
+      clearTimer2();
+      start = null;
+      fired = false;
+      cancelled = false;
+      lastEvent = null;
+    };
+    const onDown = (ev) => {
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+      if (opts.shouldIgnore && opts.shouldIgnore(ev)) return;
+      reset();
+      start = {
+        pointerId: ev.pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
+        atMs: typeof ev.timeStamp === "number" ? ev.timeStamp : Date.now()
+      };
+      lastEvent = ev;
+      fired = false;
+      cancelled = false;
+      timer = window.setTimeout(() => {
+        timer = null;
+        if (!start || cancelled) return;
+        fired = true;
+        suppressClick = true;
+        const pe = lastEvent || ev;
+        opts.onLongPress(pe);
+      }, delay2);
+    };
+    const onMove = (ev) => {
+      if (!start || start.pointerId !== ev.pointerId) return;
+      lastEvent = ev;
+      if (longPressMovedTooFar({
+        start,
+        x: ev.clientX,
+        y: ev.clientY,
+        moveSlopPx: slop
+      })) {
+        cancelled = true;
+        clearTimer2();
+      }
+    };
+    const onUp = (ev) => {
+      if (!start || start.pointerId !== ev.pointerId) return;
+      const phase = classifyLongPressEnd({
+        start,
+        atMs: typeof ev.timeStamp === "number" ? ev.timeStamp : Date.now(),
+        fired,
+        cancelled,
+        delayMs: delay2
+      });
+      clearTimer2();
+      const wasFired = fired;
+      reset();
+      if (phase === "tapped" && opts.onTap && !wasFired) {
+        opts.onTap(ev);
+      }
+    };
+    const onCancel = (ev) => {
+      if (!start || start.pointerId !== ev.pointerId) return;
+      cancelled = true;
+      reset();
+    };
+    const onClick = (ev) => {
+      if (!suppressClick) return;
+      suppressClick = false;
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    target.addEventListener("pointerdown", onDown, true);
+    target.addEventListener("pointermove", onMove, true);
+    target.addEventListener("pointerup", onUp, true);
+    target.addEventListener("pointercancel", onCancel, true);
+    target.addEventListener("click", onClick, true);
+    return () => {
+      reset();
+      suppressClick = false;
+      target.removeEventListener("pointerdown", onDown, true);
+      target.removeEventListener("pointermove", onMove, true);
+      target.removeEventListener("pointerup", onUp, true);
+      target.removeEventListener("pointercancel", onCancel, true);
+      target.removeEventListener("click", onClick, true);
+    };
+  }
+
   // src/ui/bag/bagItemContextMenu.ts
   var providers = [];
   function registerBagMenuProvider(provider) {
@@ -63717,167 +64256,6 @@ ${parts.map(cssSlice).join("\n")}
     }
     return actions;
   }
-  var ctxEl2 = null;
-  var ctxKeyHandler2 = null;
-  var ctxDocHandler2 = null;
-  function hideCtx2() {
-    if (ctxKeyHandler2) {
-      document.removeEventListener("keydown", ctxKeyHandler2, true);
-      ctxKeyHandler2 = null;
-    }
-    if (ctxDocHandler2) {
-      document.removeEventListener("mousedown", ctxDocHandler2, true);
-      ctxDocHandler2 = null;
-    }
-    if (ctxEl2) {
-      ctxEl2.remove();
-      ctxEl2 = null;
-    }
-  }
-  function clampMenuPosition2(el, clientX, clientY) {
-    const pad3 = 8;
-    const w = el.offsetWidth || 200;
-    const h = el.offsetHeight || 80;
-    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
-    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
-    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
-    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
-  }
-  function positionFlyout(wrap, flyout) {
-    const btn = wrap.querySelector(".comm-bag-ctx__item");
-    if (!btn) return;
-    const rect = btn.getBoundingClientRect();
-    flyout.style.visibility = "hidden";
-    flyout.style.display = "block";
-    const fw = flyout.offsetWidth || 200;
-    const fh = flyout.offsetHeight || 80;
-    let left = rect.right - 2;
-    if (left + fw > window.innerWidth - 8) {
-      left = Math.max(8, rect.left - fw + 2);
-    }
-    let top = rect.top;
-    if (top + fh > window.innerHeight - 8) {
-      top = Math.max(8, window.innerHeight - fh - 8);
-    }
-    flyout.style.left = left + "px";
-    flyout.style.top = top + "px";
-    flyout.style.visibility = "visible";
-  }
-  function closeBagSubmenus(root, except) {
-    const open = root.querySelectorAll(".comm-bag-ctx__subwrap.is-open");
-    for (let i = 0; i < open.length; i++) {
-      const wrap = open[i];
-      if (except && (wrap === except || wrap.contains(except))) continue;
-      wrap.classList.remove("is-open");
-      const flyout = wrap.querySelector(
-        ".comm-bag-ctx--flyout"
-      );
-      if (flyout) flyout.style.display = "none";
-    }
-  }
-  function appendBagMenuAction(root, action, onActivate) {
-    if (action.separatorBefore) {
-      const sep = document.createElement("div");
-      sep.className = "comm-bag-ctx__sep";
-      sep.setAttribute("role", "separator");
-      root.appendChild(sep);
-    }
-    const hasChildren = Array.isArray(action.children) && action.children.length > 0;
-    if (hasChildren) {
-      const wrap = document.createElement("div");
-      wrap.className = "comm-bag-ctx__subwrap";
-      const btn2 = document.createElement("button");
-      btn2.type = "button";
-      btn2.className = "comm-bag-ctx__item has-submenu";
-      btn2.setAttribute("role", "menuitem");
-      btn2.setAttribute("aria-haspopup", "true");
-      btn2.setAttribute("aria-label", action.label);
-      if (action.mountLabel) {
-        action.mountLabel(btn2);
-      } else {
-        btn2.textContent = action.label;
-      }
-      const arrow = document.createElement("span");
-      arrow.className = "comm-bag-ctx__arrow";
-      arrow.setAttribute("aria-hidden", "true");
-      arrow.textContent = "\u203A";
-      btn2.appendChild(arrow);
-      if (action.title) btn2.title = action.title;
-      if (action.disabled) {
-        btn2.disabled = true;
-        btn2.className += " is-disabled";
-      } else {
-        const flyout = document.createElement("div");
-        flyout.className = "comm-bag-ctx comm-bag-ctx--flyout";
-        flyout.setAttribute("role", "menu");
-        for (let i = 0; i < action.children.length; i++) {
-          appendBagMenuAction(flyout, action.children[i], onActivate);
-        }
-        let closeTimer = 0;
-        const openSub = () => {
-          if (closeTimer) {
-            window.clearTimeout(closeTimer);
-            closeTimer = 0;
-          }
-          closeBagSubmenus(root, wrap);
-          wrap.classList.add("is-open");
-          positionFlyout(wrap, flyout);
-        };
-        const scheduleClose = () => {
-          if (closeTimer) window.clearTimeout(closeTimer);
-          closeTimer = window.setTimeout(() => {
-            wrap.classList.remove("is-open");
-            flyout.style.display = "none";
-            closeTimer = 0;
-          }, 160);
-        };
-        btn2.addEventListener("mouseenter", openSub);
-        btn2.addEventListener("focus", openSub);
-        wrap.addEventListener("mouseleave", scheduleClose);
-        flyout.addEventListener("mouseenter", () => {
-          if (closeTimer) {
-            window.clearTimeout(closeTimer);
-            closeTimer = 0;
-          }
-        });
-        flyout.addEventListener("mouseleave", scheduleClose);
-        wrap.appendChild(btn2);
-        wrap.appendChild(flyout);
-      }
-      if (action.disabled) wrap.appendChild(btn2);
-      root.appendChild(wrap);
-      return;
-    }
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "comm-bag-ctx__item";
-    btn.setAttribute("role", "menuitem");
-    btn.setAttribute("aria-label", action.label);
-    if (action.mountLabel) {
-      action.mountLabel(btn);
-    } else {
-      btn.textContent = action.label;
-    }
-    if (action.title) btn.title = action.title;
-    if (action.disabled) {
-      btn.disabled = true;
-      btn.className += " is-disabled";
-    } else {
-      btn.addEventListener("click", (ev) => {
-        var _a;
-        ev.preventDefault();
-        ev.stopPropagation();
-        onActivate();
-        (_a = action.run) == null ? void 0 : _a.call(action);
-      });
-    }
-    root.appendChild(btn);
-  }
-  function renderBagMenuActions(root, actions, onActivate) {
-    for (let i = 0; i < actions.length; i++) {
-      appendBagMenuAction(root, actions[i], onActivate);
-    }
-  }
   function observingBagItem(slot) {
     const obs = window.observing;
     if (!obs || !Array.isArray(obs.items)) return null;
@@ -63886,8 +64264,6 @@ ${parts.map(cssSlice).join("\n")}
     return item;
   }
   function showBagItemContextMenu(clientX, clientY, fp, slotEl, item) {
-    hideCtx2();
-    ensureBagItemContextMenuCss();
     const resolvedItem = item || observingBagItem(fp.slot);
     if (!resolvedItem) return;
     const ctx = {
@@ -63897,31 +64273,12 @@ ${parts.map(cssSlice).join("\n")}
     };
     const actions = buildBagMenuActions(ctx);
     if (!actions.length) return;
-    const el = document.createElement("div");
-    el.className = "comm-bag-ctx";
-    el.setAttribute("role", "menu");
-    renderBagMenuActions(el, actions, hideCtx2);
-    document.body.appendChild(el);
-    ctxEl2 = el;
-    clampMenuPosition2(el, clientX, clientY);
-    ctxKeyHandler2 = (ev) => {
-      if (ev.key === "Escape") {
-        ev.preventDefault();
-        hideCtx2();
-      }
-    };
-    ctxDocHandler2 = (ev) => {
-      if (ctxEl2 && ev.target instanceof Node && ctxEl2.contains(ev.target)) {
-        return;
-      }
-      hideCtx2();
-    };
-    document.addEventListener("keydown", ctxKeyHandler2, true);
-    window.setTimeout(() => {
-      if (ctxDocHandler2) {
-        document.addEventListener("mousedown", ctxDocHandler2, true);
-      }
-    }, 0);
+    showActionsMenu({
+      clientX,
+      clientY,
+      actions,
+      title: resolvedItem.name ? String(resolvedItem.name) : "Bag"
+    });
   }
   function resolveInventorySlotNum(start, host2) {
     let node = start;
@@ -63948,20 +64305,23 @@ ${parts.map(cssSlice).join("\n")}
     }
     return null;
   }
+  function openBagMenuFromTarget(host2, t, clientX, clientY) {
+    const num = resolveInventorySlotNum(t, host2);
+    if (num == null || !Number.isFinite(num)) return false;
+    const item = observingBagItem(num);
+    const fp = fingerprintFromSlot(num, item);
+    if (!fp) return false;
+    showBagItemContextMenu(clientX, clientY, fp, t, item);
+    return true;
+  }
   function installBagItemContextMenu(host2) {
-    ensureBagItemContextMenuCss();
     const onCtx = (ev) => {
       if (ev.shiftKey) return;
       const t = ev.target;
       if (!t || !host2.contains(t)) return;
-      const num = resolveInventorySlotNum(t, host2);
-      if (num == null || !Number.isFinite(num)) return;
-      const item = observingBagItem(num);
-      const fp = fingerprintFromSlot(num, item);
-      if (!fp) return;
+      if (!openBagMenuFromTarget(host2, t, ev.clientX, ev.clientY)) return;
       ev.preventDefault();
       ev.stopPropagation();
-      showBagItemContextMenu(ev.clientX, ev.clientY, fp, t, item);
     };
     const onMiddle = (ev) => {
       if (ev.button !== 1) return;
@@ -63983,10 +64343,23 @@ ${parts.map(cssSlice).join("\n")}
     };
     host2.addEventListener("contextmenu", onCtx, true);
     host2.addEventListener("mousedown", onMiddle, true);
+    let unLong = null;
+    if (isCommTouchUi()) {
+      unLong = installLongPress(host2, {
+        onLongPress: (ev) => {
+          const t = ev.target;
+          if (!t || !host2.contains(t)) return;
+          if (openBagMenuFromTarget(host2, t, ev.clientX, ev.clientY)) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        }
+      });
+    }
     return () => {
-      hideCtx2();
       host2.removeEventListener("contextmenu", onCtx, true);
       host2.removeEventListener("mousedown", onMiddle, true);
+      if (unLong) unLong();
     };
   }
 
@@ -64174,6 +64547,33 @@ ${parts.map(cssSlice).join("\n")}
       if (!clickable) return;
       stripNativeTitles(cellRef.current);
     }, [clickable, slot && slot.name, slot && slot.level, slot && slot.p]);
+    const openInfo = () => {
+      if (!clickable) return;
+      setXTarget(entity);
+      info.openItem(entity, slotName, slot);
+    };
+    const openMenu = (cx, cy) => {
+      showGearSlotContextMenu(cx, cy, slotName, clickable, slot, {
+        entity,
+        gearEditable
+      });
+    };
+    React.useEffect(() => {
+      const el = cellRef.current;
+      if (!el || !isCommTouchUi()) return;
+      return installLongPress(el, {
+        onLongPress: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openMenu(ev.clientX, ev.clientY);
+        },
+        onTap: clickable ? (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openInfo();
+        } : void 0
+      });
+    }, [clickable, entity, slotName, slot, gearEditable]);
     if (slot && slot.name) {
       content = e(ItemInstance, {
         name: String(slot.name),
@@ -64213,12 +64613,12 @@ ${parts.map(cssSlice).join("\n")}
         });
       }
     }
-    const onSlotPress = clickable ? (ev) => {
+    const touchish = isCommTouchUi();
+    const onSlotPress = !touchish && clickable ? (ev) => {
       if (ev && typeof ev.stopPropagation === "function")
         ev.stopPropagation();
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      setXTarget(entity);
-      info.openItem(entity, slotName, slot);
+      openInfo();
     } : void 0;
     return e(
       "div",
@@ -67793,7 +68193,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/minimap/minimapCss.ts
-  var STYLE_ID9 = "ecu-minimap-chrome-css";
+  var STYLE_ID10 = "ecu-minimap-chrome-css";
   var CSS11 = `
 .comm-minimap {
   display: flex;
@@ -67951,10 +68351,10 @@ ${ESTIMATE_HINT}`,
   var injected11 = false;
   function injectMinimapCss() {
     if (typeof document === "undefined") return;
-    let el = document.getElementById(STYLE_ID9);
+    let el = document.getElementById(STYLE_ID10);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID9;
+      el.id = STYLE_ID10;
       document.head.appendChild(el);
     }
     if (!injected11 || el.textContent !== CSS11) {
@@ -72403,6 +72803,8 @@ ${ESTIMATE_HINT}`,
     return null;
   }
   function installBagItemCooltip(host2) {
+    if (isCommTouchUi()) return () => {
+    };
     let activeSlot = null;
     let activeKey2 = null;
     let handlers = null;
@@ -77639,24 +78041,24 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/marketOfferMenu.ts
-  var ctxEl3 = null;
-  var ctxKeyHandler3 = null;
-  var ctxDocHandler3 = null;
+  var ctxEl2 = null;
+  var ctxKeyHandler2 = null;
+  var ctxDocHandler2 = null;
   function hideMarketOfferMenu() {
-    if (ctxKeyHandler3) {
-      document.removeEventListener("keydown", ctxKeyHandler3, true);
-      ctxKeyHandler3 = null;
+    if (ctxKeyHandler2) {
+      document.removeEventListener("keydown", ctxKeyHandler2, true);
+      ctxKeyHandler2 = null;
     }
-    if (ctxDocHandler3) {
-      document.removeEventListener("mousedown", ctxDocHandler3, true);
-      ctxDocHandler3 = null;
+    if (ctxDocHandler2) {
+      document.removeEventListener("mousedown", ctxDocHandler2, true);
+      ctxDocHandler2 = null;
     }
-    if (ctxEl3) {
-      ctxEl3.remove();
-      ctxEl3 = null;
+    if (ctxEl2) {
+      ctxEl2.remove();
+      ctxEl2 = null;
     }
   }
-  function clampMenuPosition3(el, clientX, clientY) {
+  function clampMenuPosition2(el, clientX, clientY) {
     const pad3 = 8;
     const w = el.offsetWidth || 200;
     const h = el.offsetHeight || 80;
@@ -77666,17 +78068,17 @@ ${ESTIMATE_HINT}`,
     el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
   }
   function attachDismissHandlers() {
-    ctxKeyHandler3 = (ev) => {
+    ctxKeyHandler2 = (ev) => {
       if (ev.key === "Escape") {
         ev.preventDefault();
         hideMarketOfferMenu();
       }
     };
-    ctxDocHandler3 = (ev) => {
-      if (ctxEl3 && !ctxEl3.contains(ev.target)) hideMarketOfferMenu();
+    ctxDocHandler2 = (ev) => {
+      if (ctxEl2 && !ctxEl2.contains(ev.target)) hideMarketOfferMenu();
     };
-    document.addEventListener("keydown", ctxKeyHandler3, true);
-    document.addEventListener("mousedown", ctxDocHandler3, true);
+    document.addEventListener("keydown", ctxKeyHandler2, true);
+    document.addEventListener("mousedown", ctxDocHandler2, true);
   }
   function showMarketOfferMenu(opts) {
     hideMarketOfferMenu();
@@ -77707,8 +78109,8 @@ ${ESTIMATE_HINT}`,
       el.appendChild(btn);
     }
     document.body.appendChild(el);
-    ctxEl3 = el;
-    clampMenuPosition3(el, opts.clientX, opts.clientY);
+    ctxEl2 = el;
+    clampMenuPosition2(el, opts.clientX, opts.clientY);
     attachDismissHandlers();
   }
   function showGiveawayParticipants(opts) {
@@ -77740,8 +78142,8 @@ ${ESTIMATE_HINT}`,
       el.appendChild(list);
     }
     document.body.appendChild(el);
-    ctxEl3 = el;
-    clampMenuPosition3(el, opts.clientX, opts.clientY);
+    ctxEl2 = el;
+    clampMenuPosition2(el, opts.clientX, opts.clientY);
     attachDismissHandlers();
   }
 
@@ -78989,7 +79391,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/chrome/querySearchFieldCss.ts
-  var STYLE_ID10 = "ecu-query-search-field-css";
+  var STYLE_ID11 = "ecu-query-search-field-css";
   var CSS13 = `
 .ecu-qsearch {
   position: relative;
@@ -79129,9 +79531,9 @@ ${ESTIMATE_HINT}`,
 `;
   function ensureQuerySearchFieldCss() {
     if (typeof document === "undefined") return;
-    if (document.getElementById(STYLE_ID10)) return;
+    if (document.getElementById(STYLE_ID11)) return;
     const el = document.createElement("style");
-    el.id = STYLE_ID10;
+    el.id = STYLE_ID11;
     el.textContent = CSS13;
     document.head.appendChild(el);
   }
@@ -79443,6 +79845,7 @@ ${ESTIMATE_HINT}`,
   }
   function TradeSlotCell(props) {
     const React = getReact();
+    const cellRef = React.useRef(null);
     ensureItemInstanceBadgeCss();
     const [bagDropHover, setBagDropHover] = React.useState(false);
     const {
@@ -79612,10 +80015,29 @@ ${ESTIMATE_HINT}`,
         customClick ? "Drag bag item to list \xB7 Shift+drag: giveaway \xB7 Ctrl+drag: trade offer" : "Click: wishlist \xB7 drag bag item to list \xB7 Shift+drag: giveaway \xB7 Ctrl+drag: trade offer"
       );
     }
+    React.useEffect(() => {
+      const el = cellRef.current;
+      if (!el || !isCommTouchUi()) return;
+      return installLongPress(el, {
+        onLongPress: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          showGearSlotContextMenu(
+            ev.clientX,
+            ev.clientY,
+            slotName,
+            filled,
+            slot,
+            { entity, gearEditable }
+          );
+        }
+      });
+    }, [slotName, filled, slot, entity, gearEditable]);
     return e(
       "div",
       {
         key: slotName,
+        ref: cellRef,
         className: "comm-trade-slot" + (filled ? " is-filled" : "") + (fluid ? " is-fluid" : "") + (selected ? " is-on" : "") + (bagDropHover ? " is-bag-drop-target" : "") + (disabled ? " is-disabled" : ""),
         "data-slot": slotName,
         // Filled cells use ItemInstance Comm cooltip — skip native title stack.
@@ -82940,101 +83362,91 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankSlotContextMenu.ts
-  var ctxEl4 = null;
-  var ctxKeyHandler4 = null;
-  var ctxDocHandler4 = null;
-  function hideBankCtx() {
-    if (ctxKeyHandler4) {
-      document.removeEventListener("keydown", ctxKeyHandler4, true);
-      ctxKeyHandler4 = null;
-    }
-    if (ctxDocHandler4) {
-      document.removeEventListener("mousedown", ctxDocHandler4, true);
-      ctxDocHandler4 = null;
-    }
-    if (ctxEl4) {
-      ctxEl4.remove();
-      ctxEl4 = null;
-    }
-  }
-  function clampMenuPosition4(el, clientX, clientY) {
-    const pad3 = 8;
-    const w = el.offsetWidth || 200;
-    const h = el.offsetHeight || 80;
-    const maxX = Math.max(pad3, window.innerWidth - w - pad3);
-    const maxY = Math.max(pad3, window.innerHeight - h - pad3);
-    el.style.left = Math.min(Math.max(pad3, clientX), maxX) + "px";
-    el.style.top = Math.min(Math.max(pad3, clientY), maxY) + "px";
-  }
   function showBankSlotContextMenu(opts) {
-    hideBankCtx();
-    ensureBagItemContextMenuCss();
-    const el = document.createElement("div");
-    el.className = "comm-bag-ctx";
-    el.setAttribute("role", "menu");
     const editable = canEditObservedBag();
+    const actions = [];
     if (editable) {
-      const withdraw = document.createElement("button");
-      withdraw.type = "button";
-      withdraw.className = "comm-bag-ctx__item";
-      withdraw.setAttribute("role", "menuitem");
-      withdraw.textContent = "Withdraw to bag";
-      withdraw.title = "bank_retrieve \u2014 smart_moves to the vault floor if needed";
-      withdraw.addEventListener("click", (ev) => {
+      actions.push({
+        id: "bank-withdraw",
+        label: "Withdraw to bag",
+        title: "bank_retrieve \u2014 smart_moves to the vault floor if needed",
+        run: () => {
+          bankRetrieveCommand(opts.pack, opts.index, {
+            expectName: opts.item.name
+          });
+        }
+      });
+    } else {
+      actions.push({
+        id: "bank-observe-hint",
+        label: "Observe a character to withdraw",
+        disabled: true
+      });
+    }
+    actions.push({
+      id: "bank-inspect",
+      label: "Inspect",
+      separatorBefore: true,
+      run: () => {
+        opts.showItem(opts.item);
+      }
+    });
+    showActionsMenu({
+      clientX: opts.clientX,
+      clientY: opts.clientY,
+      actions,
+      title: opts.item.name || "Bank"
+    });
+  }
+
+  // src/ui/chrome/bankTouchMenus.ts
+  var BANK_SLOT_ATTR = "data-ecu-bank-slot";
+  function readBankSlotFromEl(el) {
+    const pack = el.getAttribute("data-pack");
+    const indexRaw = el.getAttribute("data-index");
+    const name = el.getAttribute("data-name");
+    if (!pack || indexRaw == null || !name) return null;
+    const index = parseInt(indexRaw, 10);
+    if (!Number.isFinite(index)) return null;
+    const levelRaw = el.getAttribute("data-level");
+    const qRaw = el.getAttribute("data-q");
+    const p = el.getAttribute("data-p");
+    const data = el.getAttribute("data-data");
+    return {
+      pack,
+      index,
+      item: {
+        name,
+        level: levelRaw != null && levelRaw !== "" ? Number(levelRaw) : void 0,
+        q: qRaw != null && qRaw !== "" ? Number(qRaw) : void 0,
+        p: p != null && p !== "" ? p : null,
+        data: data != null && data !== "" ? data : void 0
+      }
+    };
+  }
+  function installBankTouchMenus(root, showItem) {
+    if (!isCommTouchUi()) return () => {
+    };
+    return installLongPress(root, {
+      onLongPress: (ev) => {
+        const t = ev.target;
+        if (!t || typeof t.closest !== "function") return;
+        const cell = t.closest("[" + BANK_SLOT_ATTR + "]");
+        if (!cell || !root.contains(cell)) return;
+        const parsed = readBankSlotFromEl(cell);
+        if (!parsed) return;
         ev.preventDefault();
         ev.stopPropagation();
-        hideBankCtx();
-        bankRetrieveCommand(opts.pack, opts.index, {
-          expectName: opts.item.name
+        showBankSlotContextMenu({
+          clientX: ev.clientX,
+          clientY: ev.clientY,
+          pack: parsed.pack,
+          index: parsed.index,
+          item: parsed.item,
+          showItem
         });
-      });
-      el.appendChild(withdraw);
-      const sep = document.createElement("div");
-      sep.className = "comm-bag-ctx__sep";
-      sep.setAttribute("role", "separator");
-      el.appendChild(sep);
-    }
-    const inspect = document.createElement("button");
-    inspect.type = "button";
-    inspect.className = "comm-bag-ctx__item";
-    inspect.setAttribute("role", "menuitem");
-    inspect.textContent = "Inspect";
-    inspect.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      hideBankCtx();
-      opts.showItem(opts.item);
+      }
     });
-    el.appendChild(inspect);
-    if (!editable) {
-      const hint = document.createElement("div");
-      hint.className = "comm-bag-ctx__item is-disabled";
-      hint.style.opacity = "0.55";
-      hint.style.cursor = "default";
-      hint.textContent = "Observe a character to withdraw";
-      el.insertBefore(hint, inspect);
-    }
-    document.body.appendChild(el);
-    ctxEl4 = el;
-    clampMenuPosition4(el, opts.clientX, opts.clientY);
-    ctxKeyHandler4 = (ev) => {
-      if (ev.key === "Escape") {
-        ev.preventDefault();
-        hideBankCtx();
-      }
-    };
-    ctxDocHandler4 = (ev) => {
-      if (ctxEl4 && ev.target instanceof Node && ctxEl4.contains(ev.target)) {
-        return;
-      }
-      hideBankCtx();
-    };
-    document.addEventListener("keydown", ctxKeyHandler4, true);
-    window.setTimeout(() => {
-      if (ctxDocHandler4) {
-        document.addEventListener("mousedown", ctxDocHandler4, true);
-      }
-    }, 0);
   }
 
   // src/lib/bank/bankDiff.ts
@@ -83821,7 +84233,7 @@ ${ESTIMATE_HINT}`,
   }
 
   // src/ui/frames/bankPanelCss.ts
-  var STYLE_ID11 = "ecu-bank-panel-css";
+  var STYLE_ID12 = "ecu-bank-panel-css";
   var CSS14 = `
 .BankPanel {
   --bk-line: #2a2a2a;
@@ -84249,13 +84661,13 @@ ${ESTIMATE_HINT}`,
   function ensureBankPanelCss() {
     if (typeof document === "undefined") return;
     if (bankPanelCssInjected) {
-      if (document.getElementById(STYLE_ID11)) return;
+      if (document.getElementById(STYLE_ID12)) return;
       bankPanelCssInjected = false;
     }
-    let el = document.getElementById(STYLE_ID11);
+    let el = document.getElementById(STYLE_ID12);
     if (!el) {
       el = document.createElement("style");
-      el.id = STYLE_ID11;
+      el.id = STYLE_ID12;
       document.head.appendChild(el);
     }
     el.textContent = CSS14;
@@ -84506,6 +84918,11 @@ ${ESTIMATE_HINT}`,
       return () => window.clearInterval(id);
     }, []);
     React.useEffect(() => {
+      const root = rootRef.current;
+      if (!root) return;
+      return installBankTouchMenus(root, showBankItem);
+    }, []);
+    React.useEffect(() => {
       return subscribeBankViewCue((next) => {
         setView(next);
       });
@@ -84619,6 +85036,14 @@ ${ESTIMATE_HINT}`,
               type: "button",
               key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
               className: "BankPanel-cell",
+              [BANK_SLOT_ATTR]: "1",
+              "data-pack": loc.pack,
+              "data-index": String(loc.index),
+              "data-name": it.name,
+              "data-level": it.level != null ? String(it.level) : "",
+              "data-q": it.q != null ? String(it.q) : "",
+              "data-p": it.p != null ? String(it.p) : "",
+              "data-data": it.data != null ? String(it.data) : "",
               "aria-label": bankSlotAria(it.name, packHint, editable),
               onClick: (ev) => {
                 onBankSlotClick(ev, loc.pack, loc.index, it);
@@ -84698,6 +85123,14 @@ ${ESTIMATE_HINT}`,
                     type: "button",
                     key: pack + ":" + index,
                     className: "BankPanel-slot" + (dim2 ? " is-dim" : ""),
+                    [BANK_SLOT_ATTR]: "1",
+                    "data-pack": pack,
+                    "data-index": String(index),
+                    "data-name": it.name,
+                    "data-level": it.level != null ? String(it.level) : "",
+                    "data-q": it.q != null ? String(it.q) : "",
+                    "data-p": it.p != null ? String(it.p) : "",
+                    "data-data": it.data != null ? String(it.data) : "",
                     "aria-label": bankSlotAria(
                       it.name,
                       packDisplayLabel(pack) + " \xB7 slot " + (index + 1),

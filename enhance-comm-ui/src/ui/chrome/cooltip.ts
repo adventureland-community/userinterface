@@ -31,6 +31,8 @@ let tipX = 0;
 let tipY = 0;
 let tipRebuild: (() => string) | null = null;
 let tipOpts: CooltipPaintOpts = {};
+let tipPinned = false;
+let pinDocHandler: ((ev: MouseEvent) => void) | null = null;
 let cssInjected = false;
 let crossHideMeter: (() => void) | null = null;
 
@@ -133,13 +135,68 @@ export function showCooltip(
   showCooltipAt(html, ev.clientX, ev.clientY, opts);
 }
 
-export function hideCooltip(): void {
+function clearPinListener(): void {
+  if (pinDocHandler) {
+    document.removeEventListener("mousedown", pinDocHandler, true);
+    pinDocHandler = null;
+  }
+}
+
+export function hideCooltip(opts?: { force?: boolean }): void {
+  if (tipPinned && !(opts && opts.force)) return;
+  tipPinned = false;
+  clearPinListener();
   hoverKey = null;
   tipRebuild = null;
   tipOpts = {};
   if (!tipEl) return;
-  tipEl.classList.remove("is-open", "is-item-tip");
+  tipEl.classList.remove("is-open", "is-item-tip", "is-pinned");
   tipEl.innerHTML = "";
+}
+
+/** Pin the current tip (or show+pin) until tap-away / Escape / force hide. */
+export function pinCooltipAt(
+  key: string,
+  rebuild: () => string,
+  clientX: number,
+  clientY: number,
+  opts?: CooltipPaintOpts,
+): void {
+  tipPinned = true;
+  hoverKey = key;
+  tipRebuild = rebuild;
+  tipOpts = opts || {};
+  tipX = clientX;
+  tipY = clientY;
+  showCooltipAt(rebuild(), tipX, tipY, tipOpts);
+  const tip = ensureHost();
+  tip.classList.add("is-pinned");
+  clearPinListener();
+  pinDocHandler = (ev: MouseEvent) => {
+    const t = ev.target as HTMLElement | null;
+    if (t && tipEl && tipEl.contains(t)) return;
+    hideCooltip({ force: true });
+  };
+  window.setTimeout(() => {
+    if (pinDocHandler) {
+      document.addEventListener("mousedown", pinDocHandler, true);
+    }
+  }, 0);
+}
+
+/** Toggle pin for a tip key — opens if closed, force-hides if already pinned. */
+export function togglePinnedCooltip(
+  key: string,
+  rebuild: () => string,
+  clientX: number,
+  clientY: number,
+  opts?: CooltipPaintOpts,
+): void {
+  if (tipPinned && hoverKey === key) {
+    hideCooltip({ force: true });
+    return;
+  }
+  pinCooltipAt(key, rebuild, clientX, clientY, opts);
 }
 
 export function cooltipHandlers(
@@ -168,6 +225,7 @@ export function cooltipHandlers(
     },
     onMouseLeave: () => {
       if (hoverKey !== key) return;
+      if (tipPinned) return;
       hideCooltip();
     },
   };
@@ -183,7 +241,7 @@ export function refreshCooltip(key: string): void {
 export function dismissCooltip(key?: string): void {
   if (key != null && hoverKey !== key) return;
   if (!hoverKey && key != null) return;
-  hideCooltip();
+  hideCooltip({ force: true });
 }
 
 export function isCooltipHovering(key: string): boolean {

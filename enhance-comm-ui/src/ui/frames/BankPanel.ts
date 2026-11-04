@@ -14,6 +14,10 @@ import {
 import { scalePollMs } from "../../lib/perfPrefs";
 import { detectViewportProfile } from "../../lib/viewport";
 import { canEditObservedBag } from "../../host/gearObserved";
+import {
+  BANK_SLOT_ATTR,
+  installBankTouchMenus,
+} from "../chrome/bankTouchMenus";
 import { showBankSlotContextMenu } from "./bankSlotContextMenu";
 import {
   changeBadgeQuantity,
@@ -414,6 +418,12 @@ export function BankPanel(props: BankPanelProps): any {
   }, []);
 
   React.useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    return installBankTouchMenus(root, showBankItem);
+  }, []);
+
+  React.useEffect(() => {
     return subscribeBankViewCue((next: BankViewMode) => {
       setView(next);
     });
@@ -550,6 +560,14 @@ export function BankPanel(props: BankPanelProps): any {
             type: "button",
             key: it.key + ":" + it.locs.map((l) => l.pack + l.index).join(","),
             className: "BankPanel-cell",
+            [BANK_SLOT_ATTR]: "1",
+            "data-pack": loc.pack,
+            "data-index": String(loc.index),
+            "data-name": it.name,
+            "data-level": it.level != null ? String(it.level) : "",
+            "data-q": it.q != null ? String(it.q) : "",
+            "data-p": it.p != null ? String(it.p) : "",
+            "data-data": it.data != null ? String(it.data) : "",
             "aria-label": bankSlotAria(it.name, packHint, editable),
             onClick: (ev: any) => {
               onBankSlotClick(ev, loc.pack, loc.index, it);
@@ -635,6 +653,14 @@ export function BankPanel(props: BankPanelProps): any {
                   key: pack + ":" + index,
                   className:
                     "BankPanel-slot" + (dim ? " is-dim" : ""),
+                  [BANK_SLOT_ATTR]: "1",
+                  "data-pack": pack,
+                  "data-index": String(index),
+                  "data-name": it.name,
+                  "data-level": it.level != null ? String(it.level) : "",
+                  "data-q": it.q != null ? String(it.q) : "",
+                  "data-p": it.p != null ? String(it.p) : "",
+                  "data-data": it.data != null ? String(it.data) : "",
                   "aria-label": bankSlotAria(
                     it.name,
                     packDisplayLabel(pack) + " · slot " + (index + 1),
