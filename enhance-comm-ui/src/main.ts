@@ -22,6 +22,7 @@ import { publishEcuBuildInfo } from "./buildMeta";
 import { CommUI } from "./ui/frames/CommUI";
 import { startWorldOverlay } from "./viz/startWorldOverlay";
 import { installCameraPan } from "./host/cameraPan";
+import { installNameplateSharpness } from "./host/nameplateSharpness";
 import { installWorldZoom } from "./host/worldZoom";
 
 publishEcuBuildInfo();
@@ -197,6 +198,7 @@ function onLoad(): void {
   startSessionKills();
   startWorldOverlay();
   installWorldZoom();
+  installNameplateSharpness();
   installCameraPan();
 
   let domContainer = document.querySelector("#comm-ui") as HTMLElement | null;

@@ -69,6 +69,7 @@ function preferredBootFov(): number {
   const saved = getSettings().worldFov;
   if (typeof saved === "number") return clampWorldFov(saved);
   // Phone: slightly wider FOV so more map fits without lowering sprite scale.
+  // Nameplates stay sharp via nameplateSharpness (NEAREST + resolution×FOV).
   return detectViewportProfile() === "phone" ? 1.5 : WORLD_FOV_DEFAULT;
 }
 

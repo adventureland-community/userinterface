@@ -9,6 +9,7 @@ import {
   clampWorldFov,
   formatWorldFov,
   logicalSizeForFov,
+  nameplateTextResolution,
   readAppliedWorldFov,
 } from "../src/lib/worldFov";
 
@@ -32,7 +33,7 @@ describe("worldFov", () => {
     assert.deepEqual(logicalSizeForFov(400, 800, 0.5), { w: 200, h: 400 });
   });
 
-  it("applyWorldFov sets host width/height and resizes renderer", () => {
+  it("applyWorldFov sets host width/height and CSS-fits when FOV ≠ 1", () => {
     const resized: number[] = [];
     const view = { style: {} as Record<string, string> };
     (globalThis as { window?: Record<string, unknown> }).window = {
@@ -58,11 +59,49 @@ describe("worldFov", () => {
     assert.deepEqual(resized, [800, 1600]);
     assert.equal(view.style.width, "400px");
     assert.equal(view.style.height, "800px");
+    assert.equal(view.style.imageRendering, "pixelated");
+  });
+
+  it("applyWorldFov at 1 clears size overrides but keeps pixelated snap", () => {
+    const view = {
+      style: {
+        width: "12px",
+        height: "12px",
+        imageRendering: "auto",
+      } as Record<string, string>,
+    };
+    const renderer = {
+      view,
+      roundPixels: false,
+      resize() {},
+    };
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      innerWidth: 400,
+      innerHeight: 800,
+      width: 400,
+      height: 800,
+      map: {},
+      renderer,
+    };
+    applyWorldFov(1);
+    assert.equal(view.style.width, "");
+    assert.equal(view.style.height, "");
+    assert.equal(view.style.imageRendering, "pixelated");
+    assert.equal(renderer.roundPixels, true);
   });
 
   it("formats FOV labels", () => {
     assert.equal(formatWorldFov(1), "1");
     assert.equal(formatWorldFov(1.25), "1.25");
     assert.equal(WORLD_FOV_STEP, 0.25);
+  });
+
+  it("nameplateTextResolution tracks FOV denseness", () => {
+    (globalThis as { window?: Record<string, unknown> }).window = {
+      devicePixelRatio: 1,
+    };
+    assert.equal(nameplateTextResolution(1), 1);
+    assert.equal(nameplateTextResolution(1.25), 2);
+    assert.equal(nameplateTextResolution(2), 2);
   });
 });

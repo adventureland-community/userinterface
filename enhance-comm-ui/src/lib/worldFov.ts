@@ -1,20 +1,36 @@
 /**
  * Camera FOV zoom without touching stock PIXI `scale`.
  *
- * Stock FOV ≈ width/(2×scale). We keep `scale` fixed and grow/shrink the
- * logical renderer (`window.width`/`height`) so more or less map fits, then
- * CSS-fit the canvas to the real window so UI chrome stays the same size.
+ * Stock FOV ≈ width/(2×scale). Keep `scale` fixed and grow/shrink the logical
+ * renderer (`window.width`/`height`), then CSS-fit the canvas to the window so
+ * UI chrome stays the same size.
  *
  * fov=1 → stock. fov>1 → zoomed out (see more). fov<1 → zoomed in.
+ *
+ * CSS-fitting softens linear-filtered PIXI.Text; nameplateSharpness raises
+ * text resolution and forces NEAREST so glyphs stay crisp like sprites.
  */
 
 export const WORLD_FOV_MIN = 0.5;
-export const WORLD_FOV_MAX = 2.5;
+/** Wide zoom-out — phone needs more headroom than desktop; buffer grows with FOV. */
+export const WORLD_FOV_MAX = 6;
 export const WORLD_FOV_DEFAULT = 1;
 /** Discrete steps for wheel / Map chip / pinch. */
 export const WORLD_FOV_STEP = 0.25;
 
 let appliedFov = WORLD_FOV_DEFAULT;
+
+type FovListener = (fov: number) => void;
+const fovApplyListeners: FovListener[] = [];
+
+/** Notify when FOV actually changes the buffer (nameplates should rebuild). */
+export function onWorldFovApplied(listener: FovListener): () => void {
+  fovApplyListeners.push(listener);
+  return () => {
+    const idx = fovApplyListeners.indexOf(listener);
+    if (idx >= 0) fovApplyListeners.splice(idx, 1);
+  };
+}
 
 export function clampWorldFov(n: number): number {
   if (!Number.isFinite(n)) return WORLD_FOV_DEFAULT;
@@ -60,7 +76,11 @@ export function logicalSizeForFov(
 
 type HostMap = { last_max_y?: number; last_max_x?: number };
 
-function fitRendererView(cssW: number, cssH: number): void {
+/**
+ * CSS-fit the PIXI view to the window. Only used when FOV ≠ 1.
+ * Always marks the canvas pixelated so CSS scale matches sprite nearest look.
+ */
+export function fitRendererView(cssW: number, cssH: number): void {
   const renderer = (
     window as Window & {
       renderer?: { view?: HTMLElement | null };
@@ -73,10 +93,46 @@ function fitRendererView(cssW: number, cssH: number): void {
   view.style.maxWidth = "100%";
   view.style.maxHeight = "100%";
   view.style.display = "block";
+  view.style.imageRendering = "pixelated";
+  (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
+    .webkitImageRendering = "pixelated";
+}
+
+/** Clear FOV CSS size overrides (keep pixelated snap). */
+export function clearRendererViewFit(): void {
+  const renderer = (
+    window as Window & {
+      renderer?: { view?: HTMLElement | null };
+    }
+  ).renderer;
+  const view = renderer && renderer.view;
+  if (!view || !view.style) return;
+  view.style.width = "";
+  view.style.height = "";
+  view.style.maxWidth = "";
+  view.style.maxHeight = "";
+}
+
+export function applyRendererPixelSnap(): void {
+  const renderer = (
+    window as Window & {
+      renderer?: {
+        roundPixels?: boolean;
+        view?: HTMLElement | null;
+      };
+    }
+  ).renderer;
+  if (!renderer) return;
+  renderer.roundPixels = true;
+  const view = renderer.view;
+  if (!view || !view.style) return;
+  view.style.imageRendering = "pixelated";
+  (view.style as CSSStyleDeclaration & { webkitImageRendering?: string })
+    .webkitImageRendering = "pixelated";
 }
 
 /**
- * Apply FOV: set logical width/height, resize PIXI, CSS-fit canvas.
+ * Apply FOV: set logical width/height, resize PIXI, CSS-fit when ≠ 1.
  * Does not mutate `window.scale` / `map.scale`.
  */
 export function applyWorldFov(next: number): number {
@@ -106,13 +162,29 @@ export function applyWorldFov(next: number): number {
   if (changed && host.map) {
     host.map.last_max_y = undefined;
   }
-  fitRendererView(cssW, cssH);
+
+  if (fov === WORLD_FOV_DEFAULT) {
+    clearRendererViewFit();
+  } else {
+    fitRendererView(cssW, cssH);
+  }
+  applyRendererPixelSnap();
 
   if (typeof host.position_map === "function") {
     try {
       host.position_map();
     } catch {
       /* ignore */
+    }
+  }
+
+  if (changed) {
+    for (let i = 0; i < fovApplyListeners.length; i++) {
+      try {
+        fovApplyListeners[i](fov);
+      } catch {
+        /* ignore */
+      }
     }
   }
   return fov;
@@ -127,4 +199,20 @@ export function formatWorldFov(fov: number): string {
   const v = clampWorldFov(fov);
   if (Number.isInteger(v)) return String(v);
   return String(Math.round(v * 100) / 100);
+}
+
+/**
+ * Extra PIXI.Text resolution so glyphs stay dense after CSS FOV fit.
+ * fov=1.5 + dpr=2 → resolution 3, etc.
+ */
+export function nameplateTextResolution(fov?: number): number {
+  const f =
+    typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
+  const dpr =
+    typeof window !== "undefined" &&
+    typeof window.devicePixelRatio === "number" &&
+    window.devicePixelRatio > 0
+      ? window.devicePixelRatio
+      : 1;
+  return Math.max(1, Math.ceil(f * dpr));
 }

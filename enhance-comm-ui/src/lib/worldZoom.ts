@@ -47,9 +47,11 @@ export function applyWorldZoom(next: number): number {
   const w = window as Window & {
     scale?: number;
     map?: HostMap;
+    renderer?: { roundPixels?: boolean };
     PIXI?: {
       Point?: new (x: number, y: number) => { x: number; y: number };
     };
+    __ecuBustNameTags?: () => void;
   };
   const changed = readHostWorldZoom() !== zoom;
   w.scale = zoom;
@@ -65,6 +67,15 @@ export function applyWorldZoom(next: number): number {
     }
     // Tile rebuild is expensive — only when scale actually changed (wheel floods).
     if (changed) map.last_max_y = undefined;
+  }
+  // Whole-pixel draws keep PIXI.Text nameplates from softening under scale.
+  if (w.renderer) w.renderer.roundPixels = true;
+  if (changed && typeof w.__ecuBustNameTags === "function") {
+    try {
+      w.__ecuBustNameTags();
+    } catch {
+      /* ignore */
+    }
   }
   return zoom;
 }
