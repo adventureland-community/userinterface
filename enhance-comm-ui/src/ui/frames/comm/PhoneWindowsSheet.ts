@@ -4,8 +4,16 @@
  */
 
 import { e, getReact } from "../../../host/react";
+import { getObservingId } from "../../../host/al";
+import { gateObservedBagOpen } from "../../../host/bagOpenGate";
 import { openChat } from "../../../host/chat";
 import { openCommander } from "../../../host/commander";
+import {
+  isPageFullscreen,
+  isPageFullscreenSupported,
+  togglePageFullscreen,
+  subscribePageFullscreen,
+} from "../../../host/pageFullscreen";
 import {
   CLOSABLE_PANEL_IDS,
   PANEL_CATALOG,
@@ -52,6 +60,8 @@ type AppTile = {
   glyph: string;
   tone: string;
   on: boolean;
+  /** Dimmed — still tappable (e.g. Bag when not observing). */
+  muted?: boolean;
   onClick: () => void;
 };
 
@@ -134,13 +144,18 @@ function orderedHomeWidgetIds(): PanelId[] {
   return out;
 }
 
-function appTile(tile: AppTile): any {
+function appTile(tile: AppTile & { tour?: string }): any {
   return e(
     "button",
     {
       key: tile.id,
       type: "button",
-      className: "ecu-phone-apps__tile" + (tile.on ? " is-on" : ""),
+      className:
+        "ecu-phone-apps__tile" +
+        (tile.on ? " is-on" : "") +
+        (tile.muted ? " is-muted" : ""),
+      "data-ecu-tour": tile.tour || undefined,
+      title: tile.muted ? "Observe a character first" : undefined,
       onClick: tile.onClick,
     },
     e(
@@ -163,6 +178,12 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
   const dragDy = React.useRef(0);
   const dragging = React.useRef(false);
   const [editHome, setEditHome] = React.useState(false);
+  const [fullscreenOn, setFullscreenOn] = React.useState(() =>
+    isPageFullscreen(),
+  );
+  React.useEffect(() => {
+    return subscribePageFullscreen(() => setFullscreenOn(isPageFullscreen()));
+  }, []);
 
   const onClose = props.onClose;
   const screens = props.phoneHomeScreens;
@@ -250,13 +271,14 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
     else props.setVisible(id, true);
   };
 
-  const tiles: AppTile[] = [
+  const tiles: Array<AppTile & { tour?: string }> = [
     {
       id: "chat",
       label: "Chat",
       glyph: "C",
       tone: "#2e7d6f",
       on: props.visible("chat"),
+      tour: "btn-chat",
       onClick: () => openOverlay("chat", () => openChat({ toggle: true })),
     },
     {
@@ -265,6 +287,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "</>",
       tone: "#5b4b8a",
       on: props.visible("command"),
+      tour: "btn-command",
       onClick: () => openOverlay("command", () => openCommander()),
     },
     {
@@ -273,6 +296,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "M",
       tone: "#3d6b9a",
       on: props.visible("mail"),
+      tour: "btn-mail",
       onClick: () => openOverlay("mail"),
     },
     {
@@ -281,7 +305,15 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "B",
       tone: "#8a6a3d",
       on: props.visible("bag"),
-      onClick: () => openOverlay("bag"),
+      muted: !getObservingId(),
+      tour: "btn-bag",
+      onClick: () => {
+        if (!gateObservedBagOpen()) {
+          props.onClose();
+          return;
+        }
+        openOverlay("bag");
+      },
     },
     {
       id: "bank",
@@ -289,6 +321,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "$",
       tone: "#3d8a55",
       on: props.visible("bank"),
+      tour: "btn-bank",
       onClick: () => openOverlay("bank"),
     },
     {
@@ -297,6 +330,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "S",
       tone: "#8a3d5c",
       on: props.visible("market"),
+      tour: "btn-market",
       onClick: () => openOverlay("market"),
     },
     {
@@ -305,6 +339,7 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "⚙",
       tone: "#4a5568",
       on: false,
+      tour: "btn-settings",
       onClick: () => {
         props.onClose();
         props.onOpenSettings();
@@ -316,12 +351,30 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       glyph: "+",
       tone: "#2b6cb0",
       on: false,
+      tour: "btn-add-meter",
       onClick: () => {
         props.onClose();
         props.onAddMeter();
       },
     },
   ];
+
+  // Edge/Chrome Android — hide address + tab chrome. Skip when unsupported.
+  if (isPageFullscreenSupported()) {
+    tiles.splice(tiles.length - 1, 0, {
+      id: "fullscreen",
+      label: fullscreenOn ? "Exit FS" : "Full",
+      glyph: fullscreenOn ? "⊡" : "⛶",
+      tone: "#1e3a5f",
+      on: fullscreenOn,
+      tour: "btn-fullscreen",
+      onClick: () => {
+        // Start fullscreen in the same tap turn (user activation), then close Apps.
+        void togglePageFullscreen();
+        props.onClose();
+      },
+    });
+  }
 
   const patchScreens = (next: PhoneHomeScreen[]) => {
     props.setPhoneHomeScreens(next);
@@ -471,7 +524,10 @@ export function PhoneWindowsSheet(props: PhoneWindowsSheetProps): any {
       )
     : e(
         "div",
-        { className: "ecu-phone-sheet__body ecu-phone-apps" },
+        {
+          className: "ecu-phone-sheet__body ecu-phone-apps",
+          "data-ecu-tour": "phone-apps-grid",
+        },
         e("div", { className: "ecu-phone-apps__grid" }, ...tiles.map(appTile)),
         e(
           "button",
