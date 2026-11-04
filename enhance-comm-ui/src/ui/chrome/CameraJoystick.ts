@@ -18,9 +18,12 @@ const STYLE_ID = "ecu-camera-joystick-css";
 
 function ensureCss(): void {
   if (typeof document === "undefined") return;
-  if (document.getElementById(STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
+  let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = STYLE_ID;
+    document.head.appendChild(style);
+  }
   style.textContent = `
 .ecu-cam-stick {
   position: fixed;
@@ -38,23 +41,39 @@ function ensureCss(): void {
   position: absolute;
   inset: 12px;
   border-radius: 50%;
-  background: rgba(28, 27, 31, 0.45);
-  border: 1px solid rgba(230, 225, 229, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  background: rgba(28, 27, 31, 0.38);
+  border: 1px solid rgba(230, 225, 229, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  opacity: 0.82;
+  transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
 .ecu-cam-stick__knob {
   position: absolute;
-  width: 44px;
-  height: 44px;
-  margin-left: -22px;
-  margin-top: -22px;
+  width: 36px;
+  height: 36px;
+  margin-left: -18px;
+  margin-top: -18px;
   left: 50%;
   top: 50%;
   border-radius: 50%;
-  background: rgba(157, 212, 236, 0.55);
-  border: 1px solid rgba(157, 212, 236, 0.85);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  background: rgba(157, 212, 236, 0.42);
+  border: 1px solid rgba(157, 212, 236, 0.58);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
   pointer-events: none;
+  opacity: 0.9;
+  transition: opacity 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__base {
+  opacity: 1;
+  background: rgba(28, 27, 31, 0.42);
+  border-color: rgba(230, 225, 229, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.ecu-cam-stick.is-active .ecu-cam-stick__knob {
+  opacity: 1;
+  background: rgba(157, 212, 236, 0.55);
+  border-color: rgba(157, 212, 236, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 .ecu-cam-stick__follow {
   position: absolute;
@@ -65,19 +84,19 @@ function ensureCss(): void {
   min-height: 28px;
   padding: 4px 10px;
   border-radius: 14px;
-  border: 1px solid rgba(157, 212, 236, 0.45);
-  background: rgba(28, 27, 31, 0.82);
+  border: 1px solid rgba(157, 212, 236, 0.35);
+  background: rgba(28, 27, 31, 0.72);
   color: #9dd4ec;
   font: 12px/1.2 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   white-space: nowrap;
   pointer-events: auto;
+  opacity: 0.7;
 }
 .ecu-cam-stick__follow[hidden] {
   display: none !important;
 }
 `;
-  document.head.appendChild(style);
 }
 
 export function CameraJoystick(): any {
@@ -110,6 +129,7 @@ export function CameraJoystick(): any {
 
     const reset = () => {
       activePtr.current = null;
+      root.classList.remove("is-active");
       knob.style.transform = "translate(0px,0px)";
       setJoystickPan({ x: 0, y: 0 });
     };
@@ -117,6 +137,7 @@ export function CameraJoystick(): any {
     const onDown = (ev: PointerEvent) => {
       if (activePtr.current != null) return;
       activePtr.current = ev.pointerId;
+      root.classList.add("is-active");
       try {
         root.setPointerCapture(ev.pointerId);
       } catch {

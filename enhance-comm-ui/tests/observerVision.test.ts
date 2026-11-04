@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  isFreeCamera,
+  lockCamera,
+  unlockCamera,
+} from "../src/host/cameraPan";
+import {
   FOG_ALPHA,
   STOCK_VISION_HALF_X,
   STOCK_VISION_HALF_Y,
   readFogBounds,
   readObserverVisionHalf,
   resolveVisionCenter,
+  shouldPaintObserverVisionFog,
 } from "../src/viz/observerVision";
+import { WORLD_FOV_DEFAULT } from "../src/lib/worldFov";
+import { WORLD_ZOOM_DEFAULT } from "../src/lib/worldZoom";
 
 function resetVisionHost(): void {
   (globalThis as any).window = (globalThis as any).window || globalThis;
@@ -69,6 +77,23 @@ describe("observerVision", () => {
       real_y: -654,
     };
     assert.deepEqual(resolveVisionCenter(), { x: 321, y: -654 });
+    resetVisionHost();
+  });
+
+  it("keeps vision on the free-cam observer anchor, not panned map.real_*", () => {
+    resetVisionHost();
+    (window as any).map = {
+      addChild() {},
+      real_x: 100,
+      real_y: 200,
+    };
+    // Unlock free-cam at observer pos, then pan map.real_* away.
+    unlockCamera();
+    (window as any).map.real_x = 999;
+    (window as any).map.real_y = -999;
+    assert.equal(isFreeCamera(), true);
+    assert.deepEqual(resolveVisionCenter(), { x: 100, y: 200 });
+    lockCamera();
     resetVisionHost();
   });
 
@@ -135,5 +160,19 @@ describe("observerVision", () => {
   it("keeps fog alpha quiet (no hard stripe bands)", () => {
     assert.ok(FOG_ALPHA > 0);
     assert.ok(FOG_ALPHA <= 0.2);
+  });
+
+  it("shows vision fog for FOV zoom-out even when sprite scale is default", () => {
+    // Repro: FOV keeps scale fixed; gating only on scale < 2 hid the box.
+    assert.equal(
+      shouldPaintObserverVisionFog(WORLD_FOV_DEFAULT, WORLD_ZOOM_DEFAULT),
+      false,
+    );
+    assert.equal(shouldPaintObserverVisionFog(1.25, WORLD_ZOOM_DEFAULT), true);
+    assert.equal(shouldPaintObserverVisionFog(2, WORLD_ZOOM_DEFAULT), true);
+    assert.equal(
+      shouldPaintObserverVisionFog(WORLD_FOV_DEFAULT, WORLD_ZOOM_DEFAULT - 1),
+      true,
+    );
   });
 });

@@ -95,6 +95,10 @@ function isIgnoredTarget(target: EventTarget | null): boolean {
   if (target.closest(".ecu-phone-shade, .ecu-phone-sheet__body")) {
     return true;
   }
+  // Camera joystick owns its pointer stream.
+  if (target.closest(".ecu-cam-stick")) {
+    return true;
+  }
   return false;
 }
 

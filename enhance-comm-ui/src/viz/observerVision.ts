@@ -15,6 +15,15 @@ import {
   getObserving,
 } from "../host/al";
 import type { EntityLike } from "../host/globals";
+import {
+  isFreeCamera,
+  readObserverCameraAnchor,
+  syncFreeCameraAfterRealmChange,
+} from "../host/cameraPan";
+import {
+  readAppliedWorldFov,
+  WORLD_FOV_DEFAULT,
+} from "../lib/worldFov";
 import { readHostWorldZoom, WORLD_ZOOM_DEFAULT } from "../lib/worldZoom";
 import { getHostMap, type GraphicsLike } from "./mapHost";
 import type { VizSettings } from "./vizSettings";
@@ -126,14 +135,22 @@ export function readObserverVisionHalf(): VisionHalf {
 }
 
 /**
- * Vision hole follows the watched character’s live soft entity, else self,
- * else the camera. Never uses frozen welcome `window.observing` coords.
+ * Vision hole follows the watched character’s live soft entity, else self.
+ * While free-cam pans, keep the hole on the observer anchor (not map.real_*).
+ * Never uses frozen welcome `window.observing` coords for the live entity.
  */
 export function resolveVisionCenter(): { x: number; y: number } | null {
+  // Drop stale free-cam locks after map/server hops before reading the anchor.
+  syncFreeCameraAfterRealmChange();
   const fromLive = mapXY(findLiveObservedEntity());
   if (fromLive) return fromLive;
   const fromChar = mapXY(getCharacter());
   if (fromChar) return fromChar;
+  // Free-cam moves map.real_* for the viewport; vision stays on the observer.
+  if (isFreeCamera()) {
+    const anchor = readObserverCameraAnchor();
+    if (anchor) return anchor;
+  }
   return readCameraXY();
 }
 
@@ -181,9 +198,24 @@ function fillFogPanel(
 }
 
 /**
+ * True when the camera shows more world than the stock entity window.
+ * FOV zoom keeps sprite `scale` fixed and grows the logical buffer — gate on
+ * FOV>1 as well as legacy sprite-scale zoom-out (scale below default).
+ */
+export function shouldPaintObserverVisionFog(
+  fov: number = readAppliedWorldFov(),
+  spriteZoom: number = readHostWorldZoom(),
+): boolean {
+  if (Number.isFinite(fov) && fov > WORLD_FOV_DEFAULT) return true;
+  if (Number.isFinite(spriteZoom) && spriteZoom < WORLD_ZOOM_DEFAULT) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Quiet black shade outside the server entity window (tour-style panels).
- * Only when zoomed out (scale < default) — at default zoom the viewport is
- * already the vision hole.
+ * Only when zoomed out — at default FOV+scale the viewport is already the hole.
  */
 export function paintObserverVision(
   gfx: GraphicsLike,
@@ -191,7 +223,7 @@ export function paintObserverVision(
 ): void {
   if (!settings["world.observerVision"]) return;
   try {
-    if (!(readHostWorldZoom() < WORLD_ZOOM_DEFAULT)) return;
+    if (!shouldPaintObserverVisionFog()) return;
     const center = resolveVisionCenter();
     if (!center) return;
     const half = readObserverVisionHalf();
