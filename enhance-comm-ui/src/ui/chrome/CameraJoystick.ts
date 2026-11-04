@@ -45,7 +45,7 @@ function ensureCss(): void {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
   pointer-events: none;
   touch-action: none;
   user-select: none;
@@ -105,52 +105,55 @@ function ensureCss(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  min-height: 36px;
-  padding: 2px;
-  border-radius: 18px;
-  border: 1px solid rgba(230, 225, 229, 0.28);
-  background: rgba(28, 27, 31, 0.72);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  gap: 0;
+  align-self: center;
+  width: ${JOYSTICK_RADIUS_PX * 2 + 8}px;
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 14px;
+  border: 1px solid rgba(230, 225, 229, 0.16);
+  background: rgba(28, 27, 31, 0.38);
+  box-shadow: none;
+  opacity: 0.78;
 }
 .ecu-cam-chrome__fov-btn {
-  min-width: 36px;
-  min-height: 32px;
+  min-width: 30px;
+  min-height: 26px;
   margin: 0;
-  padding: 0 8px;
+  padding: 0 6px;
   border: none;
-  border-radius: 16px;
+  border-radius: 12px;
   background: transparent;
-  color: #e6e1e5;
-  font: 600 13px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(230, 225, 229, 0.85);
+  font: 500 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__fov-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: default;
 }
 .ecu-cam-chrome__fov-btn:not(:disabled):active {
-  background: rgba(157, 212, 236, 0.18);
+  background: rgba(157, 212, 236, 0.14);
   color: #9dd4ec;
 }
 .ecu-cam-chrome__fov-label {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 32px;
+  min-height: 26px;
   margin: 0;
-  padding: 0 4px;
+  padding: 0 2px;
   border: none;
-  border-radius: 16px;
+  border-radius: 12px;
   background: transparent;
-  color: #9dd4ec;
-  font: 600 12px/1 Roboto, "Segoe UI", system-ui, sans-serif;
+  color: rgba(157, 212, 236, 0.9);
+  font: 500 11px/1 Roboto, "Segoe UI", system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .ecu-cam-chrome__fov-label:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 .ecu-cam-stick__follow {
@@ -291,6 +294,16 @@ export function CameraJoystick(): any {
     e(
       "div",
       {
+        className: "ecu-cam-stick",
+        ref: rootRef,
+        "aria-label": "Camera pan joystick",
+      },
+      e("div", { className: "ecu-cam-stick__base" }),
+      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
+    ),
+    e(
+      "div",
+      {
         className: "ecu-cam-chrome__fov",
         title:
           "Camera FOV — out sees more, in sees less. Pinch the map also works.",
@@ -349,16 +362,6 @@ export function CameraJoystick(): any {
         },
         "in",
       ),
-    ),
-    e(
-      "div",
-      {
-        className: "ecu-cam-stick",
-        ref: rootRef,
-        "aria-label": "Camera pan joystick",
-      },
-      e("div", { className: "ecu-cam-stick__base" }),
-      e("div", { className: "ecu-cam-stick__knob", ref: knobRef }),
     ),
   );
 }
