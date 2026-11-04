@@ -1004,29 +1004,17 @@ ${CHROME_ARRANGE_CSS}
   background: #161616;
 }
 
-/* Enhanced phone chrome — Material strip above the ECU dock (not a bare lift). */
+/* Enhanced phone chrome — Material dock owns Character + Server; hide strip. */
 html.ecu-phone-dock-on #bottom {
   padding-left: 0;
   padding-right: 0;
   padding-bottom: 0;
-  /* Above #comm-ui panels (220) so meters never steal character/action taps;
-     below the Material dock (240). */
+  /* Above #comm-ui panels (220); below the Material dock (240). */
   z-index: 230;
 }
+/* Character chips + server dropdown live on the dock — drop the duplicate stack. */
 html.ecu-phone-dock-on .ecu-chrome-stack {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  max-width: 100%;
-  margin: 0;
-  padding: 8px 10px 10px;
-  gap: 8px;
-  background: #1c1b1f;
-  border-radius: 20px 20px 0 0;
-  border-top: 1px solid rgba(230, 225, 229, 0.12);
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
-  box-sizing: border-box;
+  display: none !important;
 }
 /* Slim party roster on phone — no desktop 480px width. */
 html.ecu-phone-dock-on .ecu-roster {

@@ -84,6 +84,383 @@ const CSS = `
   font-size: 15px;
   line-height: 1;
 }
+.ecu-phone-dock__status {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  margin: 0 2px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 14px;
+  background: rgba(232, 222, 248, 0.04);
+  color: #e6e1e5;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-dock__status-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+.ecu-phone-dock__status-trail {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.ecu-phone-dock__status:active {
+  background: rgba(232, 222, 248, 0.1);
+}
+.ecu-phone-dock__status.is-on {
+  color: #9dd4ec;
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-dock__status.is-muted {
+  color: #cac4d0;
+}
+.ecu-phone-dock__status.is-muted .ecu-phone-dock__status-title {
+  color: #938f99;
+  font-weight: 500;
+}
+.ecu-phone-dock__eyebrow {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #938f99;
+  line-height: 1.2;
+}
+.ecu-phone-dock__status.is-on .ecu-phone-dock__eyebrow {
+  color: #9dd4ec;
+}
+.ecu-phone-dock__status-title {
+  display: block;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-dock__status-meta {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #938f99;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-dock__status.is-on .ecu-phone-dock__status-meta {
+  color: rgba(157, 212, 236, 0.85);
+}
+.ecu-phone-dock__ping {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  min-width: 44px;
+}
+.ecu-phone-dock__ping-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 14px;
+}
+.ecu-phone-dock__ping-bar {
+  display: block;
+  width: 2px;
+  min-height: 2px;
+  opacity: 0.92;
+}
+.ecu-phone-dock__ping-ms {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
+}
+.ecu-phone-dock__apps {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-width: 52px;
+  min-height: 44px;
+  margin: 0 2px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #cac4d0;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ecu-phone-dock__apps:active {
+  background: rgba(232, 222, 248, 0.08);
+}
+.ecu-phone-dock__apps.is-on {
+  color: #9dd4ec;
+}
+.ecu-phone-dock__apps-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1;
+  background: rgba(232, 222, 248, 0.08);
+}
+.ecu-phone-dock__apps.is-on .ecu-phone-dock__apps-glyph {
+  background: rgba(157, 212, 236, 0.16);
+}
+.ecu-phone-pick__banner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 8px 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(157, 212, 236, 0.08);
+  border: 1px solid rgba(157, 212, 236, 0.22);
+  color: #e6e1e5;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.ecu-phone-pick__banner-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ecu-phone-pick__banner strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: #9dd4ec;
+}
+.ecu-phone-pick__banner-meta {
+  display: block;
+  color: #cac4d0;
+  font-size: 13px;
+}
+.ecu-phone-pick__ping {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  min-width: 56px;
+}
+.ecu-phone-pick__ping-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 18px;
+}
+.ecu-phone-pick__ping-bar {
+  display: block;
+  width: 3px;
+  min-height: 2px;
+  opacity: 0.92;
+}
+.ecu-phone-pick__ping-ms {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1;
+}
+.ecu-phone-pick__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ecu-phone-pick__event {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 222, 248, 0.18);
+  background: rgba(232, 222, 248, 0.08);
+  color: #cac4d0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  line-height: 1.4;
+}
+.ecu-phone-pick__event.is-live {
+  border-color: rgba(133, 199, 107, 0.45);
+  background: rgba(133, 199, 107, 0.14);
+  color: #b6e39a;
+}
+.ecu-phone-pick__event--more {
+  opacity: 0.8;
+}
+.ecu-phone-pick__title-row {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+.ecu-phone-pick__badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 212, 236, 0.35);
+  background: rgba(157, 212, 236, 0.12);
+  color: #9dd4ec;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+}
+.ecu-phone-pick__players {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  min-width: 3.25em;
+  text-align: right;
+  color: #cac4d0;
+}
+.ecu-phone-pick__players-n {
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: #e6e1e5;
+}
+.ecu-phone-pick__players-lbl {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #938f99;
+}
+.ecu-phone-pick__row.is-on .ecu-phone-pick__players-n {
+  color: #9dd4ec;
+}
+.ecu-phone-pick__row.is-rip .ecu-phone-pick__title {
+  color: #ffb4ab;
+}
+.ecu-phone-pick__row--server {
+  min-height: 52px;
+  padding: 10px 14px;
+}
+.ecu-phone-pick__empty {
+  margin: 8px 12px;
+  padding: 16px 12px;
+  text-align: center;
+  color: #938f99;
+  font-size: 14px;
+}
+.ecu-phone-pick__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: #e6e1e5;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+.ecu-phone-pick__row:active {
+  background: rgba(232, 222, 248, 0.06);
+}
+.ecu-phone-pick__row.is-on {
+  background: rgba(157, 212, 236, 0.12);
+}
+.ecu-phone-pick__row--stop {
+  border: 1px solid rgba(230, 120, 120, 0.45);
+  background: rgba(230, 120, 120, 0.08);
+  margin: 4px 0 10px;
+}
+.ecu-phone-pick__row--stop .ecu-phone-pick__title {
+  color: #ffb4ab;
+}
+.ecu-phone-pick__sprite {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.ecu-phone-pick__sprite.is-empty {
+  border-radius: 10px;
+  background: rgba(232, 222, 248, 0.08);
+  color: #938f99;
+  font-size: 18px;
+}
+.ecu-phone-pick__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ecu-phone-pick__title {
+  display: block;
+  font-size: 16px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-pick__meta {
+  display: block;
+  font-size: 12px;
+  color: #938f99;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ecu-phone-pick__row.is-off-server .ecu-phone-pick__meta {
+  color: #c9a227;
+}
 .ecu-phone-home-screen-label {
   position: absolute;
   width: 1px;
@@ -303,8 +680,8 @@ const CSS = `
   position: fixed;
   left: 0;
   right: 0;
-  /* Sit in the clear fight viewport, just above dock + #bottom chrome. */
-  bottom: calc(var(--ecu-phone-hud-bottom, 160px) + 10px);
+  /* Sit just above the Material dock (chrome stack is hidden on phone). */
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 10px);
   z-index: 235;
   display: flex;
   align-items: center;

@@ -1,6 +1,6 @@
 /**
- * Phone dock clearance — lifts stock #bottom chrome above the Material dock
- * and exposes CSS vars for expanded sheets + HUD clamp insets.
+ * Phone dock clearance — CSS vars for the Material dock + HUD clamp insets.
+ * Character/server live on the dock; stock #bottom chrome stack is hidden.
  */
 
 export const PHONE_DOCK_FALLBACK_PX = 48;
@@ -91,7 +91,9 @@ function measurePhoneHudBottomInset(): number {
   if (bottom) {
     chromeH = Math.round(bottom.getBoundingClientRect().height);
   }
-  if (!(chromeH > 0)) chromeH = PHONE_CHROME_FALLBACK_PX;
+  // Character/server strip is hidden on phone — only count real #bottom height
+  // (e.g. disconnect). Do not invent a tall chrome fallback.
+  if (!(chromeH > 0)) chromeH = 0;
   return dock + chromeH;
 }
 

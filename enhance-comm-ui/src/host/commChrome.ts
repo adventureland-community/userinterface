@@ -134,8 +134,22 @@ export function installCommChrome(): void {
     }
   });
 
-  window.addEventListener("unload", () => {
-    stopObserveWatch();
-    unsubTick();
-  });
+  // pagehide — not unload. Many embeds set Permissions-Policy that blocks
+  // unload listeners (console Violation) and can break closed-over cleanups.
+  let cleaned = false;
+  const cleanupChrome = () => {
+    if (cleaned) return;
+    cleaned = true;
+    try {
+      stopObserveWatch();
+    } catch {
+      /* ignore */
+    }
+    try {
+      unsubTick();
+    } catch {
+      /* ignore */
+    }
+  };
+  window.addEventListener("pagehide", cleanupChrome);
 }

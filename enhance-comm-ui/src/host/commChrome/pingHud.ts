@@ -1,7 +1,37 @@
 import { esc } from "./types";
 
 /** Host `/comm` ping samples from functions.js (`push_ping` / `ping_ack`). */
-const PING_SPARK_BARS = 12;
+export const PING_SPARK_BARS = 12;
+
+export type PingSparkBar = {
+  /** Bar height 0–100 (min 10 when sample present). */
+  pct: number;
+  color: string;
+  ms: number;
+};
+
+/** Last N samples as spark-bar heights — shared by desktop HTML + phone React. */
+export function pingSparkBars(
+  samples: number[],
+  maxBars: number = PING_SPARK_BARS,
+): PingSparkBar[] {
+  if (!samples.length) return [];
+  const start = Math.max(0, samples.length - Math.max(1, maxBars));
+  let max = 1;
+  for (let i = start; i < samples.length; i++) {
+    max = Math.max(max, samples[i]);
+  }
+  const out: PingSparkBar[] = [];
+  for (let i = start; i < samples.length; i++) {
+    const ms = samples[i];
+    out.push({
+      pct: Math.max(10, Math.round((ms / max) * 100)),
+      color: pingColor(ms),
+      ms,
+    });
+  }
+  return out;
+}
 
 /** Read stock `window.pings` (filled by silent `ping(true)` + `ping_ack`). */
 function readCommPings(): number[] {
@@ -15,35 +45,30 @@ function readCommPings(): number[] {
   return out;
 }
 
-function averagePingMs(samples: number[]): number | null {
+export function averagePingMs(samples: number[]): number | null {
   if (!samples.length) return null;
   let sum = 0;
   for (let i = 0; i < samples.length; i++) sum += samples[i];
   return sum / samples.length;
 }
 
-function pingColor(ms: number): string {
+/** green <100 · amber <200 · red ≥200 — same as desktop server dropdown. */
+export function pingColor(ms: number): string {
   if (ms < 100) return "#85c76b";
   if (ms < 200) return "#d4a84b";
   return "#e05555";
 }
 
 function pingBarsHtml(samples: number[]): string {
-  if (!samples.length) return "";
-  const start = Math.max(0, samples.length - PING_SPARK_BARS);
-  let max = 1;
-  for (let i = start; i < samples.length; i++) {
-    max = Math.max(max, samples[i]);
-  }
+  const bars = pingSparkBars(samples);
+  if (!bars.length) return "";
   let html = "<span class='ecu-server-dd-bars' aria-hidden='true'>";
-  for (let i = start; i < samples.length; i++) {
-    const pct = Math.max(10, Math.round((samples[i] / max) * 100));
-    const color = pingColor(samples[i]);
+  for (let i = 0; i < bars.length; i++) {
     html +=
       "<span class='ecu-server-dd-bar' style='height:" +
-      pct +
+      bars[i].pct +
       "%;background:" +
-      color +
+      bars[i].color +
       "'></span>";
   }
   html += "</span>";

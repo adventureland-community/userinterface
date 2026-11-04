@@ -1,17 +1,23 @@
 /**
- * Slim phone dock — Chat · Cmd · Mail · Bag · Bank.
+ * Slim phone dock — Character · Server.
  * Swipe up (including on the bar) opens Apps. Settings lives in the shade cog.
  * Home screens: horizontal swipe between configurable widget pages + dots.
  */
 
 import { e, getReact } from "../../../host/react";
 import { openChat } from "../../../host/chat";
-import { openCommander } from "../../../host/commander";
 import {
   applyPhoneDockChrome,
   clearPhoneDockChrome,
   refreshPhoneHudBottomInset,
 } from "../../../lib/phoneChrome";
+import {
+  formatPhoneCharDockMeta,
+  formatPhoneServerDockPlayers,
+  readPhoneDockStatus,
+  shortPhoneDockLabel,
+  type PhoneDockStatus,
+} from "../../../lib/phoneDockStatus";
 import {
   activePhoneHomeScreen,
   clampPhoneHomePage,
@@ -31,6 +37,8 @@ import {
   uninstallPhoneHomePageGestures,
 } from "../../chrome/phoneHomePageGestures";
 import { ensurePhoneNavCss } from "./phoneNavCss";
+import { PhoneObserveSheet } from "./PhoneObserveSheet";
+import { PhoneServerSheet } from "./PhoneServerSheet";
 import { PhoneShade } from "./PhoneShade";
 import { PhoneWindowsSheet } from "./PhoneWindowsSheet";
 
@@ -56,19 +64,58 @@ export type PhoneNavDockProps = {
   setPhoneHomeScreens: (screens: PhoneHomeScreen[]) => void;
 };
 
-function dockBtn(
+function dockStatusBtn(
   key: string,
-  glyph: string,
-  label: string,
+  eyebrow: string,
+  title: string,
   onClick: () => void,
-  opts?: { on?: boolean; tour?: string },
+  opts?: {
+    on?: boolean;
+    muted?: boolean;
+    tour?: string;
+    meta?: any;
+    trailing?: any;
+  },
 ): any {
+  const mainKids: any[] = [
+    e("span", { className: "ecu-phone-dock__eyebrow", key: "eye" }, eyebrow),
+    e("span", { className: "ecu-phone-dock__status-title", key: "title" }, title),
+  ];
+  if (opts?.meta != null && opts.meta !== "") {
+    mainKids.push(
+      e(
+        "span",
+        { className: "ecu-phone-dock__status-meta", key: "meta" },
+        opts.meta,
+      ),
+    );
+  }
+  const kids: any[] = [
+    e(
+      "span",
+      { className: "ecu-phone-dock__status-main", key: "main" },
+      ...mainKids,
+    ),
+  ];
+  if (opts?.trailing != null) {
+    kids.push(
+      e(
+        "span",
+        { className: "ecu-phone-dock__status-trail", key: "trail" },
+        opts.trailing,
+      ),
+    );
+  }
   return e(
     "button",
     {
       key,
       type: "button",
-      className: "ecu-phone-dock__btn" + (opts?.on ? " is-on" : ""),
+      className:
+        "ecu-phone-dock__status" +
+        (opts?.trailing ? " has-trail" : "") +
+        (opts?.on ? " is-on" : "") +
+        (opts?.muted ? " is-muted" : ""),
       "data-ecu-tour": opts?.tour,
       "aria-pressed": opts?.on ? "true" : "false",
       onClick: (ev: { stopPropagation?: () => void }) => {
@@ -76,8 +123,7 @@ function dockBtn(
         onClick();
       },
     },
-    e("span", { className: "ecu-phone-dock__glyph" }, glyph),
-    e("span", null, label),
+    ...kids,
   );
 }
 
@@ -86,6 +132,11 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   ensurePhoneNavCss();
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [shadeOpen, setShadeOpen] = React.useState(false);
+  const [observeOpen, setObserveOpen] = React.useState(false);
+  const [serverOpen, setServerOpen] = React.useState(false);
+  const [status, setStatus] = React.useState(
+    () => readPhoneDockStatus() as PhoneDockStatus,
+  );
   const barRef = React.useRef(null as HTMLElement | null);
 
   React.useEffect(() => {
@@ -103,6 +154,13 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
       window.removeEventListener("resize", measure);
       clearPhoneDockChrome();
     };
+  }, []);
+
+  React.useEffect(() => {
+    const tick = () => setStatus(readPhoneDockStatus());
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
   }, []);
 
   const pages = phoneHomeScreenIndices(props.phoneHomeScreens);
@@ -123,6 +181,8 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   const dismissSheets = () => {
     if (sheetOpen) setSheetOpen(false);
     if (shadeOpen) setShadeOpen(false);
+    if (observeOpen) setObserveOpen(false);
+    if (serverOpen) setServerOpen(false);
     if (props.settingsOpen) props.toggleSettings();
   };
 
@@ -144,35 +204,30 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
 
   const openApps = () => {
     if (shadeOpen) setShadeOpen(false);
+    if (observeOpen) setObserveOpen(false);
+    if (serverOpen) setServerOpen(false);
     if (props.settingsOpen) props.toggleSettings();
     hidePeerPanels("none");
     setSheetOpen(true);
   };
 
-  const toggleOverlay = (
-    id: "chat" | "command" | "mail" | "bag" | "bank",
-    openFn?: () => void,
-  ) => {
+  const openObserve = () => {
     dismissSheets();
-    if (props.visible(id)) {
-      props.setVisible(id, false);
-      return;
-    }
-    hidePeerPanels(id);
-    if (openFn) openFn();
-    else props.setVisible(id, true);
+    hidePeerPanels("none");
+    setObserveOpen(true);
   };
 
-  const toggleChat = () =>
-    toggleOverlay("chat", () => openChat({ toggle: true }));
-  const toggleCmd = () => toggleOverlay("command", () => openCommander());
-  const toggleMail = () => toggleOverlay("mail");
-  const toggleBag = () => toggleOverlay("bag");
-  const toggleBank = () => toggleOverlay("bank");
+  const openServer = () => {
+    dismissSheets();
+    hidePeerPanels("none");
+    setServerOpen(true);
+  };
 
   const toggleSettings = () => {
     if (sheetOpen) setSheetOpen(false);
     if (shadeOpen) setShadeOpen(false);
+    if (observeOpen) setObserveOpen(false);
+    if (serverOpen) setServerOpen(false);
     if (!props.settingsOpen) hidePeerPanels("none");
     props.toggleSettings();
   };
@@ -180,6 +235,14 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   const dismissTop = () => {
     if (shadeOpen) {
       setShadeOpen(false);
+      return true;
+    }
+    if (observeOpen) {
+      setObserveOpen(false);
+      return true;
+    }
+    if (serverOpen) {
+      setServerOpen(false);
       return true;
     }
     if (sheetOpen) {
@@ -211,6 +274,8 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   const onTopEdge = () => {
     if (
       sheetOpen ||
+      observeOpen ||
+      serverOpen ||
       props.settingsOpen ||
       chatOn ||
       commandOn ||
@@ -227,6 +292,14 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   const onBottomEdge = () => {
     if (shadeOpen) {
       setShadeOpen(false);
+      return;
+    }
+    if (observeOpen) {
+      setObserveOpen(false);
+      return;
+    }
+    if (serverOpen) {
+      setServerOpen(false);
       return;
     }
     if (sheetOpen) {
@@ -252,6 +325,8 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
     blocked: () =>
       shadeOpen ||
       sheetOpen ||
+      observeOpen ||
+      serverOpen ||
       props.settingsOpen ||
       props.visible("chat") ||
       props.visible("command") ||
@@ -346,10 +421,69 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
     }
   }
 
+  const charTitle = status.observing
+    ? shortPhoneDockLabel(status.observingName, 14)
+    : "Not observing";
+  const serverTitle = status.serverLabel
+    ? shortPhoneDockLabel(status.serverLabel, 14)
+    : status.connected
+      ? "—"
+      : "Select…";
+  const charMeta = formatPhoneCharDockMeta(status);
+  const playersMeta = formatPhoneServerDockPlayers(status);
+  const serverMeta =
+    playersMeta ||
+    (!status.serverLabel
+      ? null
+      : status.pingMs == null
+        ? "…"
+        : null);
+  let serverTrail: any = null;
+  if (status.pingBars.length || status.pingMs != null) {
+    const barKids: any[] = [];
+    for (let i = 0; i < status.pingBars.length; i++) {
+      const bar = status.pingBars[i];
+      barKids.push(
+        e("span", {
+          key: "b" + i,
+          className: "ecu-phone-dock__ping-bar",
+          style: {
+            height: bar.pct + "%",
+            background: bar.color,
+          },
+        }),
+      );
+    }
+    serverTrail = e(
+      "span",
+      {
+        className: "ecu-phone-dock__ping",
+        title:
+          status.pingMs != null
+            ? "Avg ping " + status.pingMs + "ms"
+            : "Ping unavailable",
+      },
+      barKids.length
+        ? e(
+            "span",
+            { className: "ecu-phone-dock__ping-bars", "aria-hidden": "true" },
+            ...barKids,
+          )
+        : null,
+      e(
+        "span",
+        {
+          className: "ecu-phone-dock__ping-ms",
+          style: { color: status.pingColor },
+        },
+        status.pingMs != null ? String(status.pingMs) + "ms" : "—",
+      ),
+    );
+  }
+
   return e(
     "div",
     { className: "ecu-phone-dock", "data-ecu-phone-dock": "1" },
-    // Dots float above #bottom chrome (not buried under the character strip).
     pages.length > 1
       ? e(
           "div",
@@ -375,25 +509,37 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
         "aria-hidden": "true",
         title: "Swipe up for Apps",
       }),
-      dockBtn("chat", "C", "Chat", toggleChat, {
-        on: chatOn,
-        tour: "btn-chat",
+      dockStatusBtn("character", "Character", charTitle, openObserve, {
+        on: status.observing,
+        muted: !status.observing,
+        tour: "character-ui",
+        meta: charMeta,
       }),
-      dockBtn("command", "</>", "Cmd", toggleCmd, {
-        on: commandOn,
-        tour: "btn-command",
-      }),
-      dockBtn("mail", "M", "Mail", toggleMail, {
-        on: mailOn,
-        tour: "btn-mail",
-      }),
-      dockBtn("bag", "B", "Bag", toggleBag, {
-        on: bagOn,
-        tour: "btn-bag",
-      }),
-      dockBtn("bank", "$", "Bank", toggleBank, {
-        on: bankOn,
-        tour: "btn-bank",
+      e(
+        "button",
+        {
+          key: "apps",
+          type: "button",
+          className: "ecu-phone-dock__apps" + (sheetOpen ? " is-on" : ""),
+          "aria-label": "Apps",
+          title: "Apps",
+          "data-ecu-tour": "btn-apps",
+          onClick: (ev: { stopPropagation?: () => void }) => {
+            if (ev && typeof ev.stopPropagation === "function")
+              ev.stopPropagation();
+            if (sheetOpen) setSheetOpen(false);
+            else openApps();
+          },
+        },
+        e("span", { className: "ecu-phone-dock__apps-glyph" }, "▦"),
+        e("span", null, "Apps"),
+      ),
+      dockStatusBtn("server", "Server", serverTitle, openServer, {
+        on: !!status.serverLabel,
+        muted: !status.serverLabel,
+        tour: "server-picker",
+        meta: serverMeta,
+        trailing: serverTrail,
       }),
     ),
     e(PhoneWindowsSheet, {
@@ -422,6 +568,14 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
         storePhoneHomePage(page);
       },
     }),
+    e(PhoneObserveSheet, {
+      open: observeOpen,
+      onClose: () => setObserveOpen(false),
+    }),
+    e(PhoneServerSheet, {
+      open: serverOpen,
+      onClose: () => setServerOpen(false),
+    }),
     e(PhoneShade, {
       open: shadeOpen,
       onClose: () => setShadeOpen(false),
@@ -440,7 +594,6 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
       },
       visible: props.visible,
     }),
-    // Screen label for a11y / debugging active page.
     screen
       ? e(
           "span",
