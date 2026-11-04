@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Phone Market sheet</title>
+<style>
+html,body{margin:0;padding:16px;background:#0e1014;height:auto;font-family:"Segoe UI",Tahoma,Arial,sans-serif;color:#eee}
+.phone{width:390px;height:780px;margin:0 auto;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 18%,#1a2430 0%,transparent 55%),linear-gradient(180deg,#12161c,#0a0c10);border-radius:8px}
+.map{position:absolute;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.15);font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+.dock{position:absolute;left:0;right:0;bottom:0;height:48px;background:#1c1b1f;border-top:1px solid rgba(230,225,229,.12);display:flex;align-items:center;justify-content:space-around;font-size:10px;color:#cac4d0}
+.shell{position:absolute;left:8px;right:8px;top:8px;bottom:56px;background:#0b0b0b;border:2px solid #555;border-radius:16px 16px 0 0;overflow:hidden;display:flex;flex-direction:column}
+.head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #2a2a2a}
+.title{font-size:18px;color:#e8c96a;margin:0;font-weight:600}
+.pill{font-size:11px;color:#888}
+.grow{flex:1}
+.expand{width:40px;height:40px;border:1px solid #444;background:#1a1a1a;color:#ddd;border-radius:4px;display:flex;align-items:center;justify-content:center}
+.tools{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #2a2a2a}
+.search{flex:1 1 auto;min-width:0;min-height:44px;background:#141414;border:1px solid #555;color:#eee;font-size:16px;padding:10px 12px;box-sizing:border-box}
+.filters{flex:0 0 auto;min-height:44px;padding:8px 10px;border:1px solid rgba(232,201,106,.55);background:#1a1810;color:#e8c96a;font-size:12px;font-weight:600;white-space:nowrap}
+.pager{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:4px 8px;padding:4px 8px 8px;border-bottom:1px solid #222;background:#101214}
+.side{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:6px 8px;border:none;background:transparent;color:#8a93a0;font:inherit;font-size:12px;font-weight:600}
+.side.prev{justify-self:start}.side.next{justify-self:end}
+.center{display:flex;flex-direction:column;align-items:center;gap:2px}
+.cur{font-size:15px;font-weight:700;color:#e8eef4}
+.meta{font-size:10px;font-weight:600;color:#6a7380}
+.side{font-size:13px;color:#c8cdd4}
+.track{display:flex;gap:6px;margin-top:2px}
+.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.28)}
+.dot.on{background:#9dd4ec;transform:scale(1.2)}
+.you{border:none;border-bottom:1px solid #2a2a2a;background:#121212;color:#d8dde4;font:inherit;font-size:12px;font-weight:600;text-align:left;padding:6px 12px;min-height:36px;display:flex;width:100%;box-sizing:border-box}
+.you .chev{margin-left:auto;color:#6a7380}
+.body{flex:1;min-height:0;overflow:auto;padding:8px}
+.card{border:1px solid #2a2a2a;background:#121212;padding:10px;margin-bottom:8px;border-radius:4px}
+.card strong{color:#e8c96a}
+.m{font-size:12px;color:#777;margin-top:4px}
+.cap{text-align:center;font-size:11px;color:#8a93a0;margin-top:8px}
+</style></head><body>
+<div class="phone">
+  <div class="map">game map</div>
+  <div class="shell">
+    <div class="head"><h1 class="title">Market</h1><div class="pill">12.4m · 38 catalog</div><div class="grow"></div><div class="expand">⛶</div></div>
+    <div class="tools">
+      <input class="search" value="item:helmet" readonly/>
+      <button class="filters" type="button">Filters ●</button>
+    </div>
+    <div class="pager">
+      <button class="side prev" type="button"><span>‹</span><span>All</span></button>
+      <div class="center"><div class="cur">Selling</div><div class="meta">2 / 5</div><div class="track"><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div></div>
+      <button class="side next" type="button"><span>Buying</span><span>›</span></button>
+    </div>
+    <button class="you" type="button"><span>Bag &amp; stand · collapsed</span><span class="chev">▾</span></button>
+    <div class="body">
+      <div class="card"><strong>helmet</strong><div class="m">3 stands · from 48,000</div></div>
+      <div class="card"><strong>helmet1</strong><div class="m">1 stand · 120,000</div></div>
+      <div class="card"><strong>xhelmet</strong><div class="m">2 stands · from 2.1m</div></div>
+      <div class="card"><strong>hhelmet</strong><div class="m">1 stand · 890,000</div></div>
+      <div class="card"><strong>helmet88</strong><div class="m">4 stands · from 12,000</div></div>
+      <div class="card"><strong>fury</strong><div class="m">2 stands · from 4.2m</div></div>
+      <div class="card"><strong>t2bow</strong><div class="m">1 stand · 780,000</div></div>
+      <div class="card"><strong>sshield</strong><div class="m">3 stands · from 95,000</div></div>
+      <div class="card"><strong>wbook0</strong><div class="m">5 stands · from 8,000</div></div>
+      <div class="card"><strong>partyhat</strong><div class="m">1 stand · 250,000</div></div>
+    </div>
+  </div>
+  <div class="dock"><span>Apps</span><span>Chat</span><span>Cmd</span><span>⚙</span></div>
+</div>
+<p class="cap">Market — catalog first · You collapsed · labeled facet pager</p>
+</body></html>

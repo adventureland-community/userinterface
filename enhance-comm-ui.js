@@ -9273,6 +9273,11 @@ ${fightHoverTip(src)}`
           kind: "fix"
         },
         {
+          label: "Phone sheet density pass",
+          detail: "Home pages show labeled prev/current/next. Bank packs use larger 4-col slots. Bag zooms the board and pins Sort/Refresh as a foot. Market search+Filters share one row. Apps Bag shows Observe first when locked.",
+          kind: "fix"
+        },
+        {
           label: "Phone Market sheet",
           detail: "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item \u2014 no more empty Bag syncing / Stand chrome eating the viewport.",
           kind: "fix"
@@ -29529,6 +29534,16 @@ ${inner}`;
   border-color: #6af;
   color: #9cf;
 }
+.comm-mail.is-phone .comm-mail__compose-btn {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 6px 10px;
+  border-color: #a86;
+  color: #ffe08a;
+  background: #1a1810;
+  font-size: 16px;
+  line-height: 1;
+}
 .comm-mail.is-phone .comm-mail__search-filters-btn {
   flex: 0 0 auto;
   appearance: none;
@@ -30373,7 +30388,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T19:59:54.088Z" : "unknown";
+    const builtAt = true ? "2026-11-04T20:19:59.334Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -55101,19 +55116,87 @@ ${parts.map(cssSlice).join("\n")}
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  /* Strip itself does not steal stick hits \u2014 only the dots do. */
+  /* Strip itself does not steal stick hits \u2014 sides + dots do. */
   pointer-events: none;
   position: fixed;
   left: 0;
   right: 0;
   /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 10px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 6px);
   z-index: 235;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 10px 8px;
+}
+.ecu-phone-home-dots__side {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 36px;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(28, 27, 31, 0.72);
+  color: #cac4d0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ecu-phone-home-dots__side.is-prev {
+  justify-self: start;
+  justify-content: flex-start;
+}
+.ecu-phone-home-dots__side.is-next {
+  justify-self: end;
+  justify-content: flex-end;
+}
+.ecu-phone-home-dots__side:disabled,
+.ecu-phone-home-dots__side.is-empty {
+  opacity: 0.28;
+  cursor: default;
+}
+.ecu-phone-home-dots__side-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-phone-home-dots__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 64px;
+  padding: 0 4px;
+}
+.ecu-phone-home-dots__current {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e8eef4;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.ecu-phone-home-dots__track {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 8px;
 }
 .ecu-phone-home-dots__dot {
   /* Visual stays the original 8px pill; ::after only expands the tap target. */
@@ -55329,6 +55412,14 @@ ${parts.map(cssSlice).join("\n")}
   font-weight: 500;
   text-align: center;
   line-height: 1.2;
+  max-width: 72px;
+}
+.ecu-phone-apps__hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: #938f99;
+  text-align: center;
+  line-height: 1.15;
   max-width: 72px;
 }
 .ecu-phone-apps__edit {
@@ -56348,7 +56439,8 @@ ${parts.map(cssSlice).join("\n")}
         },
         tile.glyph
       ),
-      e("span", { className: "ecu-phone-apps__label" }, tile.label)
+      e("span", { className: "ecu-phone-apps__label" }, tile.label),
+      tile.muted ? e("span", { className: "ecu-phone-apps__hint" }, "Observe first") : null
     );
   }
   function PhoneWindowsSheet(props) {
@@ -56798,7 +56890,7 @@ ${parts.map(cssSlice).join("\n")}
     );
   }
   function PhoneNavDock(props) {
-    var _a;
+    var _a, _b, _c, _d;
     const React = getReact();
     ensurePhoneNavCss();
     const [sheetOpen, setSheetOpen] = React.useState(false);
@@ -57051,15 +57143,22 @@ ${parts.map(cssSlice).join("\n")}
       };
     }, []);
     const screen = activePhoneHomeScreen(props.phoneHomeScreens, activePage);
+    const homeLabel = (screen == null ? void 0 : screen.label) || ((_a = props.phoneHomeScreens[activePage]) == null ? void 0 : _a.label) || "Page " + (activePage + 1);
+    const homePos = pages.indexOf(activePage);
+    const homePrevIdx = homePos > 0 ? pages[homePos - 1] : -1;
+    const homeNextIdx = homePos >= 0 && homePos < pages.length - 1 ? pages[homePos + 1] : -1;
+    const homePrevLabel = homePrevIdx >= 0 ? ((_b = props.phoneHomeScreens[homePrevIdx]) == null ? void 0 : _b.label) || "Page " + (homePrevIdx + 1) : "";
+    const homeNextLabel = homeNextIdx >= 0 ? ((_c = props.phoneHomeScreens[homeNextIdx]) == null ? void 0 : _c.label) || "Page " + (homeNextIdx + 1) : "";
     const dotKids = [];
     if (pages.length > 1) {
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const label = ((_a = props.phoneHomeScreens[page]) == null ? void 0 : _a.label) || "Page " + (page + 1);
+        const label = ((_d = props.phoneHomeScreens[page]) == null ? void 0 : _d.label) || "Page " + (page + 1);
         dotKids.push(
-          e("button", {
+          e("span", {
             key: "p-" + page,
-            type: "button",
+            role: "button",
+            tabIndex: 0,
             className: "ecu-phone-home-dots__dot" + (page === activePage ? " is-on" : ""),
             "aria-label": label,
             "aria-current": page === activePage ? "true" : void 0,
@@ -57067,6 +57166,13 @@ ${parts.map(cssSlice).join("\n")}
             onClick: () => {
               props.setPhoneHomePage(page);
               storePhoneHomePage(page);
+            },
+            onKeyDown: (ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                props.setPhoneHomePage(page);
+                storePhoneHomePage(page);
+              }
             }
           })
         );
@@ -57121,11 +57227,59 @@ ${parts.map(cssSlice).join("\n")}
         "div",
         {
           className: "ecu-phone-home-dots",
-          role: "tablist",
+          role: "navigation",
           "aria-label": "Home screens",
           "data-ecu-home-dots": "1"
         },
-        ...dotKids
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-home-dots__side is-prev" + (homePrevIdx < 0 ? " is-empty" : ""),
+            disabled: homePrevIdx < 0,
+            "aria-label": homePrevLabel ? "Previous home: " + homePrevLabel : "No previous home page",
+            onClick: () => {
+              if (homePrevIdx < 0) return;
+              props.setPhoneHomePage(homePrevIdx);
+              storePhoneHomePage(homePrevIdx);
+            }
+          },
+          e("span", { "aria-hidden": true }, "\u2039"),
+          e("span", { className: "ecu-phone-home-dots__side-label" }, homePrevLabel)
+        ),
+        e(
+          "div",
+          { className: "ecu-phone-home-dots__center" },
+          e(
+            "div",
+            {
+              className: "ecu-phone-home-dots__current",
+              "aria-live": "polite"
+            },
+            homeLabel
+          ),
+          e(
+            "div",
+            { className: "ecu-phone-home-dots__track", role: "tablist" },
+            ...dotKids
+          )
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-phone-home-dots__side is-next" + (homeNextIdx < 0 ? " is-empty" : ""),
+            disabled: homeNextIdx < 0,
+            "aria-label": homeNextLabel ? "Next home: " + homeNextLabel : "No next home page",
+            onClick: () => {
+              if (homeNextIdx < 0) return;
+              props.setPhoneHomePage(homeNextIdx);
+              storePhoneHomePage(homeNextIdx);
+            }
+          },
+          e("span", { className: "ecu-phone-home-dots__side-label" }, homeNextLabel),
+          e("span", { "aria-hidden": true }, "\u203A")
+        )
       ) : null,
       e(
         "nav",
@@ -75890,9 +76044,9 @@ ${ESTIMATE_HINT}`,
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #8a93a0;
+  color: #b8c0ca;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -75944,7 +76098,7 @@ ${ESTIMATE_HINT}`,
   padding: 0 4px;
 }
 .ecu-peer-page-dots__current {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #e8eef4;
   letter-spacing: 0.02em;
@@ -76754,6 +76908,13 @@ ${ESTIMATE_HINT}`,
   width: min(300px, 86%);
   flex: none;
   z-index: 2;
+}
+.ecu-chat.is-narrow .ecu-chat-log {
+  padding: 6px 10px 8px;
+}
+.ecu-chat.is-narrow .ecu-chat-log .ecu-chat-line {
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 .ecu-chat.is-narrow .ecu-chat-log,
 .ecu-chat.is-narrow .ecu-chat-body {
@@ -83143,9 +83304,9 @@ ${ESTIMATE_HINT}`,
   cursor: pointer;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
-  min-height: 44px;
+  min-height: 48px;
   height: auto;
-  padding: 6px 8px;
+  padding: 8px 10px;
   gap: 10px;
   flex: 0 0 auto;
   width: 100% !important;
@@ -83156,6 +83317,23 @@ ${ESTIMATE_HINT}`,
   min-height: 40px;
   padding: 8px 12px;
   font-size: 14px;
+}
+/* Phone expand: sync/actions sit as a foot so the sheet isn\u2019t an empty void under the grid. */
+.comm-bag-panel.is-phone.is-expanded .comm-bag-panel__head {
+  order: 1;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  order: 2;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-sync-chrome {
+  order: 3;
+  margin-top: auto;
+  margin-bottom: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-top: 1px solid #333;
+  background: #121212;
 }
 .comm-bag-panel.is-expanded {
   width: 100% !important;
@@ -83174,12 +83352,20 @@ ${ESTIMATE_HINT}`,
   background: #0a0a0a;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount #bottomleftcorner {
-  min-width: 385px;
+  /* zoom (not transform) grows layout box so the sheet isn\u2019t left empty under the board. */
+  min-width: 0;
   max-width: none;
   max-height: none;
   width: max-content;
   margin: 0 auto;
   flex: 0 0 auto;
+  zoom: 1.45;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  /* Pin the board to the sync foot \u2014 empty flex space stays under the title. */
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 4px 10px;
 }
 ` + phoneShellExpandCss("bag", "ecu-bag-shell-expanded", ".comm-bag-panel");
   var injected15 = false;
@@ -87084,7 +87270,35 @@ ${ESTIMATE_HINT}`,
 }
 .MarketPanel.is-phone .MarketPanel-pageDots {
   flex-shrink: 0;
-  padding: 4px 8px 6px;
+  padding: 2px 6px 4px;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 6px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.MarketPanel.is-phone .MarketPanel-filtersBtn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-head {
+  padding: 8px 10px;
 }
 ` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
   var marketPanelCssInjected = false;
@@ -90390,6 +90604,22 @@ ${ESTIMATE_HINT}`,
 }
 .BankPanel.is-phone .BankPanel-body {
   touch-action: pan-y;
+}
+/* Larger phone slots \u2014 7\xD748px is too dense for thumbs. */
+.BankPanel.is-phone .BankPanel-packGrid {
+  grid-template-columns: repeat(4, 72px);
+  gap: 3px;
+}
+.BankPanel.is-phone .BankPanel-slot {
+  width: 72px;
+  height: 72px;
+}
+.BankPanel.is-phone .BankPanel-grid {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+.BankPanel.is-phone .BankPanel-tools {
+  padding: 6px 10px 4px;
 }
 
 ` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");
@@ -93835,10 +94065,10 @@ ${ESTIMATE_HINT}`,
           "button",
           {
             type: "button",
-            className: "comm-mail__btn comm-mail__btn--gold",
+            className: "comm-mail__btn" + (compact ? " comm-mail__compose-btn" : " comm-mail__btn--gold"),
             onClick: () => openCompose()
           },
-          "Compose"
+          compact ? "\u270E" : "Compose"
         ),
         compact ? e(
           "button",

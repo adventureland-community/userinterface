@@ -1335,7 +1335,35 @@ export const MARKET_PANEL_CSS = `
 }
 .MarketPanel.is-phone .MarketPanel-pageDots {
   flex-shrink: 0;
-  padding: 4px 8px 6px;
+  padding: 2px 6px 4px;
+}
+.MarketPanel.is-phone .MarketPanel-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  padding: 6px 10px;
+  gap: 6px;
+}
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch,
+.MarketPanel.is-phone .MarketPanel-tools .ecu-qsearch-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.MarketPanel.is-phone .MarketPanel-filtersBtn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.MarketPanel.is-phone .MarketPanel-youToggle {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.MarketPanel.is-phone .MarketPanel-head {
+  padding: 8px 10px;
 }
 ` + phoneShellExpandCss("market", "ecu-market-shell-expanded", ".MarketPanel");
 

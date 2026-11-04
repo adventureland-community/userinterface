@@ -600,6 +600,13 @@ export const CHAT_PANEL_CSS = `
   flex: none;
   z-index: 2;
 }
+.ecu-chat.is-narrow .ecu-chat-log {
+  padding: 6px 10px 8px;
+}
+.ecu-chat.is-narrow .ecu-chat-log .ecu-chat-line {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
 .ecu-chat.is-narrow .ecu-chat-log,
 .ecu-chat.is-narrow .ecu-chat-body {
   overflow-wrap: anywhere;

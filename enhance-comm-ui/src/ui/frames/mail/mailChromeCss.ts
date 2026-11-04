@@ -813,6 +813,16 @@ export const MAIL_CHROME_CSS = `
   border-color: #6af;
   color: #9cf;
 }
+.comm-mail.is-phone .comm-mail__compose-btn {
+  flex: 0 0 auto;
+  min-width: 40px;
+  padding: 6px 10px;
+  border-color: #a86;
+  color: #ffe08a;
+  background: #1a1810;
+  font-size: 16px;
+  line-height: 1;
+}
 .comm-mail.is-phone .comm-mail__search-filters-btn {
   flex: 0 0 auto;
   appearance: none;

@@ -427,6 +427,24 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
   }, []);
 
   const screen = activePhoneHomeScreen(props.phoneHomeScreens, activePage);
+  const homeLabel =
+    screen?.label ||
+    props.phoneHomeScreens[activePage]?.label ||
+    "Page " + (activePage + 1);
+  const homePos = pages.indexOf(activePage);
+  const homePrevIdx = homePos > 0 ? pages[homePos - 1] : -1;
+  const homeNextIdx =
+    homePos >= 0 && homePos < pages.length - 1 ? pages[homePos + 1] : -1;
+  const homePrevLabel =
+    homePrevIdx >= 0
+      ? props.phoneHomeScreens[homePrevIdx]?.label ||
+        "Page " + (homePrevIdx + 1)
+      : "";
+  const homeNextLabel =
+    homeNextIdx >= 0
+      ? props.phoneHomeScreens[homeNextIdx]?.label ||
+        "Page " + (homeNextIdx + 1)
+      : "";
   const dotKids: any[] = [];
   if (pages.length > 1) {
     for (let i = 0; i < pages.length; i++) {
@@ -434,9 +452,10 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
       const label =
         props.phoneHomeScreens[page]?.label || "Page " + (page + 1);
       dotKids.push(
-        e("button", {
+        e("span", {
           key: "p-" + page,
-          type: "button",
+          role: "button",
+          tabIndex: 0,
           className:
             "ecu-phone-home-dots__dot" +
             (page === activePage ? " is-on" : ""),
@@ -446,6 +465,13 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
           onClick: () => {
             props.setPhoneHomePage(page);
             storePhoneHomePage(page);
+          },
+          onKeyDown: (ev: { key: string; preventDefault: () => void }) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              props.setPhoneHomePage(page);
+              storePhoneHomePage(page);
+            }
           },
         }),
       );
@@ -520,11 +546,67 @@ export function PhoneNavDock(props: PhoneNavDockProps): any {
           "div",
           {
             className: "ecu-phone-home-dots",
-            role: "tablist",
+            role: "navigation",
             "aria-label": "Home screens",
             "data-ecu-home-dots": "1",
           },
-          ...dotKids,
+          e(
+            "button",
+            {
+              type: "button",
+              className:
+                "ecu-phone-home-dots__side is-prev" +
+                (homePrevIdx < 0 ? " is-empty" : ""),
+              disabled: homePrevIdx < 0,
+              "aria-label": homePrevLabel
+                ? "Previous home: " + homePrevLabel
+                : "No previous home page",
+              onClick: () => {
+                if (homePrevIdx < 0) return;
+                props.setPhoneHomePage(homePrevIdx);
+                storePhoneHomePage(homePrevIdx);
+              },
+            },
+            e("span", { "aria-hidden": true }, "‹"),
+            e("span", { className: "ecu-phone-home-dots__side-label" }, homePrevLabel),
+          ),
+          e(
+            "div",
+            { className: "ecu-phone-home-dots__center" },
+            e(
+              "div",
+              {
+                className: "ecu-phone-home-dots__current",
+                "aria-live": "polite",
+              },
+              homeLabel,
+            ),
+            e(
+              "div",
+              { className: "ecu-phone-home-dots__track", role: "tablist" },
+              ...dotKids,
+            ),
+          ),
+          e(
+            "button",
+            {
+              type: "button",
+              className:
+                "ecu-phone-home-dots__side is-next" +
+                (homeNextIdx < 0 ? " is-empty" : ""),
+              disabled: homeNextIdx < 0,
+              "aria-label": homeNextLabel
+                ? "Next home: " + homeNextLabel
+                : "No next home page",
+              onClick: () => {
+                if (homeNextIdx < 0) return;
+                props.setPhoneHomePage(homeNextIdx);
+                storePhoneHomePage(homeNextIdx);
+              },
+            },
+            e("span", { className: "ecu-phone-home-dots__side-label" }, homeNextLabel),
+            e("span", { "aria-hidden": true }, "›"),
+          ),
         )
       : null,
     e(

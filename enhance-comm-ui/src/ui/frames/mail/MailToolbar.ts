@@ -275,10 +275,12 @@ export function MailToolbar(props: MailToolbarProps): any {
         "button",
         {
           type: "button",
-          className: "comm-mail__btn comm-mail__btn--gold",
+          className:
+            "comm-mail__btn" +
+            (compact ? " comm-mail__compose-btn" : " comm-mail__btn--gold"),
           onClick: () => openCompose(),
         },
-        "Compose",
+        compact ? "✎" : "Compose",
       ),
       compact
         ? e(

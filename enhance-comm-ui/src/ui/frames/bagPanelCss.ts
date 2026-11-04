@@ -56,9 +56,9 @@ const CSS = `
   cursor: pointer;
 }
 .comm-bag-panel.is-phone .comm-bag-sync-chrome {
-  min-height: 44px;
+  min-height: 48px;
   height: auto;
-  padding: 6px 8px;
+  padding: 8px 10px;
   gap: 10px;
   flex: 0 0 auto;
   width: 100% !important;
@@ -69,6 +69,23 @@ const CSS = `
   min-height: 40px;
   padding: 8px 12px;
   font-size: 14px;
+}
+/* Phone expand: sync/actions sit as a foot so the sheet isn’t an empty void under the grid. */
+.comm-bag-panel.is-phone.is-expanded .comm-bag-panel__head {
+  order: 1;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  order: 2;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-sync-chrome {
+  order: 3;
+  margin-top: auto;
+  margin-bottom: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-top: 1px solid #333;
+  background: #121212;
 }
 .comm-bag-panel.is-expanded {
   width: 100% !important;
@@ -87,12 +104,20 @@ const CSS = `
   background: #0a0a0a;
 }
 .comm-bag-panel.is-phone.is-expanded .comm-bag-mount #bottomleftcorner {
-  min-width: 385px;
+  /* zoom (not transform) grows layout box so the sheet isn’t left empty under the board. */
+  min-width: 0;
   max-width: none;
   max-height: none;
   width: max-content;
   margin: 0 auto;
   flex: 0 0 auto;
+  zoom: 1.45;
+}
+.comm-bag-panel.is-phone.is-expanded .comm-bag-mount {
+  /* Pin the board to the sync foot — empty flex space stays under the title. */
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px 4px 10px;
 }
 ` + phoneShellExpandCss("bag", "ecu-bag-shell-expanded", ".comm-bag-panel");
 

@@ -676,19 +676,87 @@ const CSS = `
   transform: translateX(-50%) translateY(8px);
 }
 .ecu-phone-home-dots {
-  /* Strip itself does not steal stick hits — only the dots do. */
+  /* Strip itself does not steal stick hits — sides + dots do. */
   pointer-events: none;
   position: fixed;
   left: 0;
   right: 0;
   /* Sit just above the Material dock (chrome stack is hidden on phone). */
-  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 10px);
+  bottom: calc(var(--ecu-phone-hud-bottom, 64px) + 6px);
   z-index: 235;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 10px 8px;
+}
+.ecu-phone-home-dots__side {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 36px;
+  max-width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(28, 27, 31, 0.72);
+  color: #cac4d0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ecu-phone-home-dots__side.is-prev {
+  justify-self: start;
+  justify-content: flex-start;
+}
+.ecu-phone-home-dots__side.is-next {
+  justify-self: end;
+  justify-content: flex-end;
+}
+.ecu-phone-home-dots__side:disabled,
+.ecu-phone-home-dots__side.is-empty {
+  opacity: 0.28;
+  cursor: default;
+}
+.ecu-phone-home-dots__side-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ecu-phone-home-dots__center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 64px;
+  padding: 0 4px;
+}
+.ecu-phone-home-dots__current {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e8eef4;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+.ecu-phone-home-dots__track {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 6px 12px;
+  gap: 8px;
 }
 .ecu-phone-home-dots__dot {
   /* Visual stays the original 8px pill; ::after only expands the tap target. */
@@ -904,6 +972,14 @@ const CSS = `
   font-weight: 500;
   text-align: center;
   line-height: 1.2;
+  max-width: 72px;
+}
+.ecu-phone-apps__hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: #938f99;
+  text-align: center;
+  line-height: 1.15;
   max-width: 72px;
 }
 .ecu-phone-apps__edit {

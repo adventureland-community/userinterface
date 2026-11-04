@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Phone Bank sheet</title>
+<style>
+html,body{margin:0;padding:16px;background:#0e1014;height:auto;font-family:"Segoe UI",Tahoma,Arial,sans-serif;color:#e8e8e8}
+.phone{width:390px;height:780px;margin:0 auto;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 18%,#1a2430 0%,transparent 55%),linear-gradient(180deg,#12161c,#0a0c10);border-radius:8px}
+.map{position:absolute;inset:0 0 56px 0}
+.dock{position:absolute;left:0;right:0;bottom:0;height:48px;background:#1c1b1f;border-top:1px solid rgba(230,225,229,.12);display:flex;align-items:center;justify-content:space-around;font-size:10px;color:#cac4d0}
+.shell{position:absolute;left:8px;right:8px;top:8px;bottom:56px;background:#0e0e0e;border:2px solid #555;border-radius:16px 16px 0 0;overflow:hidden;display:flex;flex-direction:column}
+.head{display:flex;align-items:center;gap:8px;padding:8px 10px 4px}
+.title{font-size:18px;color:#ffe08a;font-weight:600;margin:0}
+.grow{flex:1}
+.expand{width:36px;height:36px;border:1px solid #444;background:#1a1a1a;color:#ddd;border-radius:4px;display:flex;align-items:center;justify-content:center}
+.tools{padding:4px 10px 6px;border-bottom:1px solid #2a2a2a}
+.search{width:100%;min-height:44px;background:#141414;border:1px solid #555;color:#eee;font-size:16px;padding:10px 12px;box-sizing:border-box}
+.pager{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:4px 8px;padding:4px 8px 8px;border-bottom:1px solid #222}
+.side{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:6px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:#8a93a0;font:inherit;font-size:12px;font-weight:600}
+.side.prev{justify-self:start}.side.next{justify-self:end}
+.center{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:72px}
+.cur{font-size:14px;font-weight:700;color:#e8eef4}
+.meta{font-size:10px;font-weight:600;color:#6a7380}
+.track{display:flex;gap:6px;margin-top:2px}
+.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.28)}
+.dot.on{background:#9dd4ec;transform:scale(1.2)}
+.body{flex:1;min-height:0;overflow:auto;padding:8px}
+.grid{display:grid;grid-template-columns:repeat(4,72px);gap:3px;justify-content:center}
+.slot{width:72px;height:72px;background:#161616;border:1px solid #2a2a2a;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;font-size:24px}
+.slot .q{position:absolute;right:3px;bottom:2px;font-size:11px;color:#ffe08a;font-weight:700}
+.cap{text-align:center;font-size:11px;color:#8a93a0;margin-top:8px}
+</style></head><body>
+<div class="phone">
+  <div class="map"></div>
+  <div class="shell">
+    <div class="head"><h1 class="title">Bank</h1><div class="grow"></div><div class="expand">⛶</div></div>
+    <div class="tools"><input class="search" placeholder="Search bank…" readonly/></div>
+    <div class="pager">
+      <button class="side prev" type="button"><span>‹</span><span>All</span></button>
+      <div class="center"><div class="cur">Packs</div><div class="meta">2 / 4</div><div class="track"><span class="dot"></span><span class="dot on"></span><span class="dot"></span><span class="dot"></span></div></div>
+      <button class="side next" type="button"><span>Types</span><span>›</span></button>
+    </div>
+    <div class="body">
+      <div class="grid">
+        <div class="slot">📕<span class="q">2</span></div><div class="slot">🎩<span class="q">1</span></div><div class="slot">⚔<span class="q">1</span></div><div class="slot">📜<span class="q">40</span></div>
+        <div class="slot">🎄<span class="q">12</span></div><div class="slot">🍬<span class="q">99</span></div><div class="slot">🧥<span class="q">3</span></div><div class="slot">💎<span class="q">8</span></div>
+        <div class="slot">🛡<span class="q">1</span></div><div class="slot">🏹<span class="q">1</span></div><div class="slot">🧪<span class="q">20</span></div><div class="slot">🔑<span class="q">4</span></div>
+        <div class="slot">📦<span class="q">6</span></div><div class="slot">🪙<span class="q">1</span></div><div class="slot">💍<span class="q">2</span></div><div class="slot">🔮<span class="q">1</span></div>
+        <div class="slot">🪓<span class="q">1</span></div><div class="slot">🦴<span class="q">9</span></div><div class="slot">🪵<span class="q">50</span></div><div class="slot">🥚<span class="q">3</span></div>
+        <div class="slot">🧤<span class="q">1</span></div><div class="slot">👟<span class="q">1</span></div><div class="slot">🧿<span class="q">5</span></div><div class="slot">🪬<span class="q">2</span></div>
+        <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+        <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+      </div>
+    </div>
+  </div>
+  <div class="dock"><span>Apps</span><span>Chat</span><span>Cmd</span><span>⚙</span></div>
+</div>
+<p class="cap">Bank — 4×72 phone slots · labeled pager</p>
+</body></html>

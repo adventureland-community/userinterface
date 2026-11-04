@@ -25,9 +25,9 @@ const CSS = `
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #8a93a0;
+  color: #b8c0ca;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -79,7 +79,7 @@ const CSS = `
   padding: 0 4px;
 }
 .ecu-peer-page-dots__current {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #e8eef4;
   letter-spacing: 0.02em;

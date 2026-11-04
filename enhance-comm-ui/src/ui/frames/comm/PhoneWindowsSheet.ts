@@ -167,6 +167,9 @@ function appTile(tile: AppTile & { tour?: string }): any {
       tile.glyph,
     ),
     e("span", { className: "ecu-phone-apps__label" }, tile.label),
+    tile.muted
+      ? e("span", { className: "ecu-phone-apps__hint" }, "Observe first")
+      : null,
   );
 }
 

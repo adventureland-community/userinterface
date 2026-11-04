@@ -239,6 +239,12 @@ export const CHANGELOG: ChangelogEntry[] = [
         kind: "fix",
       },
       {
+        label: "Phone sheet density pass",
+        detail:
+          "Home pages show labeled prev/current/next. Bank packs use larger 4-col slots. Bag zooms the board and pins Sort/Refresh as a foot. Market search+Filters share one row. Apps Bag shows Observe first when locked.",
+        kind: "fix",
+      },
+      {
         label: "Phone Market sheet",
         detail:
           "Catalog fills the sheet first. Bag & stand collapse behind a one-line toggle (closed by default). Focus only appears after you pick an item — no more empty Bag syncing / Stand chrome eating the viewport.",

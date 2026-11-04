@@ -436,6 +436,22 @@ const CSS = `
 .BankPanel.is-phone .BankPanel-body {
   touch-action: pan-y;
 }
+/* Larger phone slots — 7×48px is too dense for thumbs. */
+.BankPanel.is-phone .BankPanel-packGrid {
+  grid-template-columns: repeat(4, 72px);
+  gap: 3px;
+}
+.BankPanel.is-phone .BankPanel-slot {
+  width: 72px;
+  height: 72px;
+}
+.BankPanel.is-phone .BankPanel-grid {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+}
+.BankPanel.is-phone .BankPanel-tools {
+  padding: 6px 10px 4px;
+}
 
 ` + phoneShellExpandCss("bank", "ecu-bank-shell-expanded", ".BankPanel");
 
