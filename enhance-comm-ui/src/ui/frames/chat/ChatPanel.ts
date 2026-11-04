@@ -35,9 +35,15 @@ import {
   findPanelShell,
   PanelExpandButton,
 } from "../../chrome/panelExpandControl";
+import {
+  listServerChatKeys,
+  serverPageIndex,
+  stepServerPage,
+} from "../../../lib/chatServerPages";
 import { detectViewportProfile } from "../../../lib/viewport";
 import { bindSwipeDownClose } from "../../chrome/phoneShell";
 import { ensureChatCss } from "./chatCss";
+import { installChatServerPageGestures } from "./chatServerPageGestures";
 
 const POLL_MS = 5000;
 /** Below this panel width, sidebar becomes a drawer (matches small saved layouts). */
@@ -107,6 +113,18 @@ function resolveCurrentServerKey(): string {
     }
   }
   return "";
+}
+
+/** Prefer stock `X.servers` order for phone server pages. */
+function readServerOrderKeys(): string[] {
+  const servers =
+    window.X && Array.isArray(window.X.servers) ? window.X.servers : [];
+  const out: string[] = [];
+  for (let i = 0; i < servers.length; i++) {
+    const key = (servers[i] as { key?: string } | null)?.key;
+    if (key) out.push(String(key));
+  }
+  return out;
 }
 
 function seedServerChats(): void {
@@ -296,6 +314,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
   const [listFilter, setListFilter] = React.useState("all" as SidebarFilter);
 
   const rootRef = React.useRef(null as HTMLDivElement | null);
+  const mainRef = React.useRef(null as HTMLDivElement | null);
   const titleRef = React.useRef(null as HTMLDivElement | null);
   const logRef = React.useRef(null as HTMLDivElement | null);
   const stickBottomRef = React.useRef(true);
@@ -656,6 +675,44 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
     bump();
     if (chat.type !== "new" && chat.type !== "party") void pullActiveChat(false);
   };
+
+  const selectConversationRef = React.useRef(selectConversation);
+  selectConversationRef.current = selectConversation;
+  const sidebarOpenRef = React.useRef(sidebarOpen);
+  sidebarOpenRef.current = sidebarOpen;
+  const activeTypeRef = React.useRef(active?.type || "");
+  activeTypeRef.current = active?.type || "";
+
+  React.useEffect(() => {
+    if (!narrow) return;
+    if (detectViewportProfile() !== "phone") return;
+    const main = mainRef.current;
+    if (!main) return;
+    return installChatServerPageGestures(main, {
+      isBlocked: () =>
+        sidebarOpenRef.current || activeTypeRef.current === "new",
+      onPageSwipe: (dir) => {
+        const keys = listServerChatKeys(
+          listHubConversations(),
+          readServerOrderKeys(),
+        );
+        if (keys.length < 2) return;
+        const want = resolveCurrentServerKey();
+        const fallback = want
+          ? hubChatKey({ type: "server", server: want })
+          : null;
+        const next = stepServerPage(
+          keys,
+          getHubActiveKey(),
+          dir,
+          fallback,
+        );
+        if (next && next !== getHubActiveKey()) {
+          selectConversationRef.current(next);
+        }
+      },
+    });
+  }, [narrow]);
 
   const startNewWhisper = (to?: string) => {
     persistActiveDraft(draft, fromName, whisperTo);
@@ -1096,7 +1153,7 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
       ),
       e(
         "div",
-        { className: "ecu-chat-main" },
+        { className: "ecu-chat-main", ref: mainRef },
         e(
           "div",
           {
@@ -1156,6 +1213,48 @@ export function ChatPanel(props: ChatPanelProps = {}): any {
             className: "ecu-chat-expand",
           }),
         ),
+        (() => {
+          if (!narrow) return null;
+          const serverKeys = listServerChatKeys(
+            conversations,
+            readServerOrderKeys(),
+          );
+          if (serverKeys.length < 2) return null;
+          const activeIdx = serverPageIndex(serverKeys, active?.key || null);
+          const dotKids: any[] = [];
+          for (let i = 0; i < serverKeys.length; i++) {
+            const key = serverKeys[i];
+            let label = key;
+            for (let j = 0; j < conversations.length; j++) {
+              if (conversations[j].key === key) {
+                label = conversationTitle(conversations[j]);
+                break;
+              }
+            }
+            dotKids.push(
+              e("button", {
+                key: key,
+                type: "button",
+                className:
+                  "ecu-chat-server-dots__dot" +
+                  (i === activeIdx ? " is-on" : ""),
+                "aria-label": label,
+                "aria-current": i === activeIdx ? "true" : undefined,
+                title: label,
+                onClick: () => selectConversation(key),
+              }),
+            );
+          }
+          return e(
+            "div",
+            {
+              className: "ecu-chat-server-dots",
+              role: "tablist",
+              "aria-label": "Server chats",
+            },
+            ...dotKids,
+          );
+        })(),
         e(
           "div",
           {
