@@ -18,11 +18,25 @@ import {
   type BagSortRule,
   describeBagSortRules,
 } from "../../../lib/bagSortPrefs";
-import { settingsCheckboxRow, settingsSection } from "./settingsPaneChrome";
+import {
+  settingsCheckboxRow,
+  settingsSection,
+  settingsSectionId,
+  type SettingsSubsection,
+} from "./settingsPaneChrome";
 
 export type BagSettingsPaneProps = {
   query?: string;
 };
+
+export const BAG_SUBSECTIONS: readonly SettingsSubsection[] = [
+  { id: settingsSectionId("Presets"), label: "Presets" },
+  { id: settingsSectionId("Layout"), label: "Layout" },
+  {
+    id: settingsSectionId("Sort rules (priority order)"),
+    label: "Sort rules",
+  },
+];
 
 function matchesText(hay: string, query: string): boolean {
   return hay.toLowerCase().includes(query);

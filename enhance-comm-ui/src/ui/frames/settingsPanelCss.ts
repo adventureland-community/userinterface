@@ -64,11 +64,15 @@ export const SETTINGS_PANEL_CSS = `
   min-height: 0;
 }
 .ecu-settings-nav {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   border-right: 1px solid #2e343a;
   padding: 14px 10px;
   background: rgba(0, 0, 0, 0.12);
+  overflow-y: auto;
+}
+.ecu-settings-nav-group {
+  margin-bottom: 6px;
 }
 .ecu-settings-nav-btn {
   display: flex;
@@ -81,7 +85,6 @@ export const SETTINGS_PANEL_CSS = `
   color: #ccc;
   font-size: 19px;
   padding: 11px 12px;
-  margin-bottom: 6px;
 }
 .ecu-settings-nav-btn.is-dim {
   opacity: 0.45;
@@ -94,6 +97,37 @@ export const SETTINGS_PANEL_CSS = `
 .ecu-settings-nav-count {
   color: #88919a;
   font-size: 16px;
+}
+.ecu-settings-nav-subs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 2px 10px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid #3d4650;
+}
+.ecu-settings-nav-sub {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #9aa3ad;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.25;
+  padding: 5px 8px;
+}
+.ecu-settings-nav-sub:hover {
+  color: #ffe08a;
+  background: rgba(42, 34, 16, 0.45);
+}
+.ecu-settings-nav-sub.is-active {
+  color: #ffe08a;
+  border-color: rgba(136, 136, 102, 0.55);
+  background: #2a2210;
 }
 .ecu-settings-pane {
   flex: 1 1 auto;
@@ -118,6 +152,7 @@ export const SETTINGS_PANEL_CSS = `
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(255, 224, 138, 0.25);
   font-size: 21px;
+  scroll-margin-top: 12px;
 }
 .ecu-settings-sec:first-child {
   margin-top: 0;
@@ -406,6 +441,46 @@ export const SETTINGS_PANEL_CSS = `
   text-align: center;
   line-height: 1.25;
 }
+.ecu-settings-script-url {
+  word-break: break-all;
+}
+.ecu-settings-dev-fold {
+  margin: 10px 0 4px;
+  border: 1px solid #2e343a;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+.ecu-settings-dev-fold__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: #9aa3ad;
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  padding: 10px 12px;
+}
+.ecu-settings-dev-fold__toggle:hover {
+  color: #c8d0d8;
+  background: rgba(255, 255, 255, 0.03);
+}
+.ecu-settings-dev-fold__toggle[aria-expanded="true"] {
+  color: #cbb87a;
+  border-bottom: 1px solid #2e343a;
+}
+.ecu-settings-dev-fold__chevron {
+  width: 1em;
+  color: #77818c;
+  font-size: 13px;
+}
+.ecu-settings-dev-fold__body {
+  padding: 10px 12px 12px;
+}
 .ecu-settings-tag {
   font-size: 12px;
   padding: 2px 7px;
@@ -606,8 +681,10 @@ export const SETTINGS_PANEL_CSS = `
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  align-items: flex-start;
   gap: 6px;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   border-right: none;
   border-bottom: 1px solid #2e343a;
@@ -617,12 +694,39 @@ export const SETTINGS_PANEL_CSS = `
 .ecu-settings-modal.is-phone .ecu-settings-nav::-webkit-scrollbar {
   display: none;
 }
+.ecu-settings-modal.is-phone .ecu-settings-nav-group {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: min(280px, 78vw);
+}
 .ecu-settings-modal.is-phone .ecu-settings-nav-btn {
   flex: 0 0 auto;
   width: auto;
   min-height: 44px;
   margin-bottom: 0;
   white-space: nowrap;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-subs {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  border-left: none;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ecu-settings-modal.is-phone .ecu-settings-nav-sub {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 36px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid #3d4650;
+  border-radius: 16px;
 }
 .ecu-settings-modal.is-phone .ecu-settings-pane {
   padding: 14px 16px 24px;

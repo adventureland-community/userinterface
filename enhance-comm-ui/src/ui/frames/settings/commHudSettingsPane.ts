@@ -15,13 +15,36 @@ import {
   subscribeVizSettings,
   type VizSettingKey,
 } from "../../../viz/vizSettings";
-import { settingsCheckboxRow, settingsSection } from "./settingsPaneChrome";
+import {
+  settingsCheckboxRow,
+  settingsSection,
+  settingsSectionId,
+  type SettingsSubsection,
+} from "./settingsPaneChrome";
 
 export type CommHudSettingsPaneProps = {
   query?: string;
   hudDensity?: HudDensity;
   setHudDensity?: (mode: HudDensity) => void;
 };
+
+function buildCommHudSubsections(): readonly SettingsSubsection[] {
+  const out: SettingsSubsection[] = [
+    { id: settingsSectionId("HUD density"), label: "HUD density" },
+    { id: settingsSectionId("Meters"), label: "Meters" },
+  ];
+  const sections = overlayToggleSectionsForPane("commHud");
+  for (let i = 0; i < sections.length; i++) {
+    out.push({
+      id: settingsSectionId(sections[i].title),
+      label: sections[i].title,
+    });
+  }
+  return out;
+}
+
+export const COMM_HUD_SUBSECTIONS: readonly SettingsSubsection[] =
+  buildCommHudSubsections();
 
 function tagLabel(tag: OverlayToggleDef["tag"]): string | null {
   if (!tag) return null;

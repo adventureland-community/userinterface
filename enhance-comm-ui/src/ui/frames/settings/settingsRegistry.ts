@@ -5,27 +5,33 @@
 
 import {
   AbilityTimelineSettingsPane,
+  ABILITY_TIMELINE_SUBSECTIONS,
   countAbilityTimelineSettingsMatches,
 } from "./abilityTimelineSettingsPane";
 import {
   CommUiSettingsPane,
+  COMM_UI_SUBSECTIONS,
   countCommUiSettingsMatches,
 } from "./commUiSettingsPane";
 import {
   CommHudSettingsPane,
+  COMM_HUD_SUBSECTIONS,
   countCommHudSettingsMatches,
 } from "./commHudSettingsPane";
 import {
   InGameSettingsPane,
+  DRAWINGS_SUBSECTIONS,
   countInGameSettingsMatches,
 } from "./inGameSettingsPane";
 import {
   BagSettingsPane,
+  BAG_SUBSECTIONS,
   countBagSettingsMatches,
 } from "./bagSettingsPane";
 import { e } from "../../../host/react";
 import type { PanelId, PanelPos } from "../../../lib/layout";
 import type { HudDensity } from "../../../lib/perfPrefs";
+import type { SettingsSubsection } from "./settingsPaneChrome";
 
 export type SettingsPaneId =
   | "commUi"
@@ -52,6 +58,8 @@ export type SettingsPaneDef = {
   label: string;
   description: string;
   countMatches: (query: string) => number;
+  /** Fold-out jump links under the active left-nav entry. */
+  subsections?: readonly SettingsSubsection[];
   render: (props: SettingsPaneRenderProps) => any;
 };
 
@@ -60,8 +68,9 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: "commUi",
     label: "Comm UI",
     description:
-      "Guided tours, What's New, server notes, desktop camera controls, mobile install help, and factory-reset local Comm UI data.",
+      "What's New, server notes, desktop camera controls, mobile install help (desktop only), factory-reset local Comm UI data, and guided tours.",
     countMatches: countCommUiSettingsMatches,
+    subsections: COMM_UI_SUBSECTIONS,
     render: (props) =>
       e(CommUiSettingsPane, {
         query: props.query,
@@ -77,6 +86,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     description:
       "Travel, icons, frames, and the live preview rail for timeline windows.",
     countMatches: countAbilityTimelineSettingsMatches,
+    subsections: ABILITY_TIMELINE_SUBSECTIONS,
     render: (props) =>
       e(AbilityTimelineSettingsPane, {
         visibleBigIcon: props.visible("abilityTimelineBigIcon"),
@@ -92,6 +102,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     description:
       "Map drawings master switch, rings, labels, debug lines, and per-ability appearance overrides.",
     countMatches: countInGameSettingsMatches,
+    subsections: DRAWINGS_SUBSECTIONS,
     render: (props) => e(InGameSettingsPane, { query: props.query }),
   },
   {
@@ -100,6 +111,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     description:
       "Inventory sort rules for the bag panel Sort button on the watched character.",
     countMatches: countBagSettingsMatches,
+    subsections: BAG_SUBSECTIONS,
     render: (props) => e(BagSettingsPane, { query: props.query }),
   },
   {
@@ -108,6 +120,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     description:
       "HUD density, meter windows, shell chips, spawn markers, and other Comm HUD helpers.",
     countMatches: countCommHudSettingsMatches,
+    subsections: COMM_HUD_SUBSECTIONS,
     render: (props) =>
       e(CommHudSettingsPane, {
         query: props.query,
@@ -137,4 +150,18 @@ export function settingsPaneMatchCounts(
     counts[pane.id] = pane.countMatches(query);
   }
   return counts;
+}
+
+export function visibleSettingsSubsections(
+  pane: SettingsPaneDef,
+): SettingsSubsection[] {
+  const list = pane.subsections;
+  if (!list || !list.length) return [];
+  const out: SettingsSubsection[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const sub = list[i];
+    if (sub.visible && !sub.visible()) continue;
+    out.push(sub);
+  }
+  return out;
 }

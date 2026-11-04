@@ -33,6 +33,23 @@ import { abilityIcon } from "../abilityTimelineRenderUtil";
 import { GameIcon } from "../../chrome/GameIcon";
 import { renderAbilityHighlights } from "../AbilityTimelineHighlightPanel";
 import { SettingsColorInput } from "./settingsColorInput";
+import {
+  settingsSection,
+  settingsSectionId,
+  type SettingsSubsection,
+} from "./settingsPaneChrome";
+
+export const ABILITY_TIMELINE_SUBSECTIONS: readonly SettingsSubsection[] = [
+  { id: settingsSectionId("Travel"), label: "Travel" },
+  { id: settingsSectionId("Icons"), label: "Icons" },
+  { id: settingsSectionId("Frames"), label: "Frames" },
+  {
+    // Matches abilityVisibilityRow.label rendered via section(...).
+    id: settingsSectionId("Ability visibility"),
+    label: "Ability visibility",
+  },
+  { id: settingsSectionId("Preview"), label: "Preview" },
+];
 
 export type AbilityTimelineSettingsPaneProps = {
   visibleBigIcon: boolean;
@@ -84,7 +101,7 @@ function AbilityTimelineSettingsPreview(props: SettingsPreviewProps): any {
 }
 
 function section(label: string): any {
-  return e("div", { className: "ecu-settings-sec" }, label);
+  return settingsSection(label);
 }
 
 function row(label: string, control: any): any {

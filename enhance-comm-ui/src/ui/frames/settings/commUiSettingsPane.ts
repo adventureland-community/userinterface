@@ -7,7 +7,13 @@ import {
   listGuidedTours,
   type GuidedTourListItem,
 } from "../comm/guidedTour/tourCatalog";
-import { settingsCheckboxRow, settingsSection } from "./settingsPaneChrome";
+import { InstallScriptQrCard } from "./InstallScriptQrCard";
+import {
+  settingsCheckboxRow,
+  settingsSection,
+  settingsSectionId,
+  type SettingsSubsection,
+} from "./settingsPaneChrome";
 
 export type CommUiSettingsPaneProps = {
   query?: string;
@@ -44,6 +50,24 @@ const COMM_UI_ACTIONS: readonly CommUiActionDef[] = [
       "server update notes last deploy adventure.land gamelog welcome patch notes",
     onClick: (props) => props.onOpenServerUpdateNotes(),
   },
+];
+
+/** Left-nav fold-out — Guided tours last so install/data stay near the top. */
+export const COMM_UI_SUBSECTIONS: readonly SettingsSubsection[] = [
+  { id: settingsSectionId("Updates"), label: "Updates" },
+  {
+    id: settingsSectionId("Controls"),
+    label: "Controls",
+    visible: () => !isPhoneViewport(),
+  },
+  {
+    id: settingsSectionId("Mobile install"),
+    label: "Mobile install",
+    // Desktop → phone handoff; useless once ECU is already running on the phone.
+    visible: () => !isPhoneViewport(),
+  },
+  { id: settingsSectionId("Data"), label: "Data" },
+  { id: settingsSectionId("Guided tours"), label: "Guided tours" },
 ];
 
 function actionMatchesQuery(action: CommUiActionDef, query: string): boolean {
@@ -84,9 +108,10 @@ const TAMPERMONKEY_MOBILE_FAQ =
   "https://www.tampermonkey.net/faq.php?locale=en&q=Q406";
 
 function installSectionMatches(query: string): boolean {
+  if (isPhoneViewport()) return false;
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan".includes(
+  return "tampermonkey mobile phone android ios edge firefox safari q406 install qr scan userscript script github raw copy url lan dev.user.js".includes(
     q,
   );
 }
@@ -151,6 +176,124 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
     );
   }
 
+  if (controlsSectionMatches(query)) {
+    const settings = getSettings();
+    kids.push(settingsSection("Controls"));
+    kids.push(
+      settingsCheckboxRow(
+        "wheel-zoom",
+        "Mouse wheel / trackpad zoom",
+        settings.worldWheelZoomEnabled !== false,
+        (next) => {
+          patchSettings({ worldWheelZoomEnabled: next });
+          setCtrlTick((n: number) => n + 1);
+        },
+        {
+          help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out·in still work.",
+        },
+      ),
+    );
+  }
+
+  if (installSectionMatches(query)) {
+    kids.push(settingsSection("Mobile install"));
+    kids.push(
+      e(
+        "p",
+        { key: "tm-help", className: "ecu-settings-help" },
+        "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build.",
+      ),
+    );
+    kids.push(e(InstallScriptQrCard, { key: "script-qr" }));
+    // QR handoff is for desktop → phone; useless while already on the phone.
+    if (!isPhoneViewport()) {
+      kids.push(
+        e(
+          "p",
+          { key: "tm-qr-help", className: "ecu-settings-help" },
+          "Scan a code with your phone to open Tampermonkey’s official install landing (same destinations as FAQ Q406).",
+        ),
+      );
+      const qrKids: any[] = [];
+      for (let i = 0; i < TAMPERMONKEY_QR_CARDS.length; i++) {
+        const card = TAMPERMONKEY_QR_CARDS[i];
+        qrKids.push(
+          e(
+            "a",
+            {
+              key: card.id,
+              href: card.url,
+              target: "_blank",
+              rel: "noopener noreferrer",
+              className: "ecu-settings-qr-card",
+              title: card.help,
+            },
+            e("span", {
+              className: "ecu-settings-qr-card__img",
+              dangerouslySetInnerHTML: { __html: card.svg },
+            }),
+            e("span", { className: "ecu-settings-qr-card__label" }, card.label),
+            e("span", { className: "ecu-settings-qr-card__help" }, card.help),
+          ),
+        );
+      }
+      kids.push(
+        e("div", { key: "tm-qr", className: "ecu-settings-qr-row" }, qrKids),
+      );
+    }
+    kids.push(
+      e(
+        "p",
+        { key: "tm-link", className: "ecu-settings-help" },
+        e(
+          "a",
+          {
+            href: TAMPERMONKEY_MOBILE_FAQ,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            style: { color: "#8ec8e8" },
+          },
+          "Tampermonkey FAQ · official mobile versions (Q406)",
+        ),
+      ),
+    );
+  }
+
+  if (dataSectionMatches(query)) {
+    kids.push(settingsSection("Data"));
+    kids.push(
+      e(
+        "div",
+        { key: "factory-reset", className: "ecu-settings-row" },
+        e(
+          "div",
+          { className: "ecu-settings-row-copy" },
+          e(
+            "span",
+            { className: "ecu-settings-row-label" },
+            "Factory defaults",
+          ),
+          e(
+            "span",
+            { className: "ecu-settings-help" },
+            "Wipe Comm UI layouts, meters, overlay toggles, caches, and tour progress in this browser, then reload. Does not touch your adventure.land account.",
+          ),
+        ),
+        e(
+          "button",
+          {
+            type: "button",
+            className: "ecu-settings-reset is-danger",
+            onClick: () => {
+              void confirmAndFactoryResetCommUi();
+            },
+          },
+          "Reset everything…",
+        ),
+      ),
+    );
+  }
+
   kids.push(settingsSection("Guided tours"));
   let tourRows = 0;
   for (let i = 0; i < tours.length; i++) {
@@ -206,88 +349,6 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
     );
   }
 
-  if (controlsSectionMatches(query)) {
-    const settings = getSettings();
-    kids.push(settingsSection("Controls"));
-    kids.push(
-      settingsCheckboxRow(
-        "wheel-zoom",
-        "Mouse wheel / trackpad zoom",
-        settings.worldWheelZoomEnabled !== false,
-        (next) => {
-          patchSettings({ worldWheelZoomEnabled: next });
-          setCtrlTick((n: number) => n + 1);
-        },
-        {
-          help: "Desktop only. Scroll over the map changes camera FOV. Turn off if a laptop trackpad zooms by accident. Pinch and Map out·in still work.",
-        },
-      ),
-    );
-  }
-
-  if (installSectionMatches(query)) {
-    kids.push(settingsSection("Mobile install"));
-    kids.push(
-      e(
-        "p",
-        { key: "tm-help", className: "ecu-settings-help" },
-        "ECU runs as a Tampermonkey userscript inside Adventure.land. On phone use Edge (Android), Firefox (Android), or Safari (iOS) with the matching Tampermonkey build.",
-      ),
-    );
-    // QR handoff is for desktop → phone; useless while already on the phone.
-    if (!isPhoneViewport()) {
-      kids.push(
-        e(
-          "p",
-          { key: "tm-qr-help", className: "ecu-settings-help" },
-          "Scan a code with your phone to open Tampermonkey’s official install landing (same destinations as FAQ Q406).",
-        ),
-      );
-      const qrKids: any[] = [];
-      for (let i = 0; i < TAMPERMONKEY_QR_CARDS.length; i++) {
-        const card = TAMPERMONKEY_QR_CARDS[i];
-        qrKids.push(
-          e(
-            "a",
-            {
-              key: card.id,
-              href: card.url,
-              target: "_blank",
-              rel: "noopener noreferrer",
-              className: "ecu-settings-qr-card",
-              title: card.help,
-            },
-            e("span", {
-              className: "ecu-settings-qr-card__img",
-              dangerouslySetInnerHTML: { __html: card.svg },
-            }),
-            e("span", { className: "ecu-settings-qr-card__label" }, card.label),
-            e("span", { className: "ecu-settings-qr-card__help" }, card.help),
-          ),
-        );
-      }
-      kids.push(
-        e("div", { key: "tm-qr", className: "ecu-settings-qr-row" }, qrKids),
-      );
-    }
-    kids.push(
-      e(
-        "p",
-        { key: "tm-link", className: "ecu-settings-help" },
-        e(
-          "a",
-          {
-            href: TAMPERMONKEY_MOBILE_FAQ,
-            target: "_blank",
-            rel: "noopener noreferrer",
-            style: { color: "#8ec8e8" },
-          },
-          "Tampermonkey FAQ · official mobile versions (Q406)",
-        ),
-      ),
-    );
-  }
-
   if (
     tourRows === 0 &&
     updateRows === 0 &&
@@ -300,41 +361,6 @@ export function CommUiSettingsPane(props: CommUiSettingsPaneProps): any {
         "p",
         { key: "empty", className: "ecu-settings-help" },
         "No Comm UI guide items match this search.",
-      ),
-    );
-  }
-
-  if (dataSectionMatches(query)) {
-    kids.push(settingsSection("Data"));
-    kids.push(
-      e(
-        "div",
-        { key: "factory-reset", className: "ecu-settings-row" },
-        e(
-          "div",
-          { className: "ecu-settings-row-copy" },
-          e(
-            "span",
-            { className: "ecu-settings-row-label" },
-            "Factory defaults",
-          ),
-          e(
-            "span",
-            { className: "ecu-settings-help" },
-            "Wipe Comm UI layouts, meters, overlay toggles, caches, and tour progress in this browser, then reload. Does not touch your adventure.land account.",
-          ),
-        ),
-        e(
-          "button",
-          {
-            type: "button",
-            className: "ecu-settings-reset is-danger",
-            onClick: () => {
-              void confirmAndFactoryResetCommUi();
-            },
-          },
-          "Reset everything…",
-        ),
       ),
     );
   }

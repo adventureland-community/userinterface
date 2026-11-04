@@ -2,8 +2,33 @@
 
 import { e } from "../../../host/react";
 
-export function settingsSection(label: string): any {
-  return e("div", { className: "ecu-settings-sec" }, label);
+/** Stable DOM id for a settings section (left-nav jump targets). */
+export function settingsSectionId(label: string): string {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return "ecu-sec-" + (slug || "section");
+}
+
+export type SettingsSubsection = {
+  id: string;
+  label: string;
+  /** When false, omit from the left-nav fold-out. */
+  visible?: () => boolean;
+};
+
+export function settingsSection(label: string, id?: string): any {
+  const secId = id || settingsSectionId(label);
+  return e(
+    "div",
+    {
+      id: secId,
+      className: "ecu-settings-sec",
+      "data-ecu-settings-sec": secId,
+    },
+    label,
+  );
 }
 
 export function settingsCheckboxRow(

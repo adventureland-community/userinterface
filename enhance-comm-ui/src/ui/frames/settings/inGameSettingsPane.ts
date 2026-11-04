@@ -21,12 +21,38 @@ import {
   subscribeVizSettings,
   type VizSettingKey,
 } from "../../../viz/vizSettings";
-import { settingsCheckboxRow, settingsSection } from "./settingsPaneChrome";
+import {
+  settingsCheckboxRow,
+  settingsSection,
+  settingsSectionId,
+  type SettingsSubsection,
+} from "./settingsPaneChrome";
 import {
   InGameAbilityRulesSectionMemo,
   countInGameAbilityRuleMatches,
 } from "./inGameAbilityRulesSection";
 import { resetVizAbilityRules } from "../../../viz/vizAbilityRules";
+
+function buildDrawingsSubsections(): readonly SettingsSubsection[] {
+  const out: SettingsSubsection[] = [
+    { id: settingsSectionId("Master"), label: "Master" },
+  ];
+  const drawing = overlayToggleSectionsForPane("drawings");
+  for (let i = 0; i < drawing.length; i++) {
+    const section = drawing[i];
+    out.push({ id: settingsSectionId(section.title), label: section.title });
+    if (section.id === "labels") {
+      out.push({
+        id: settingsSectionId("Ability appearance"),
+        label: "Ability appearance",
+      });
+    }
+  }
+  return out;
+}
+
+export const DRAWINGS_SUBSECTIONS: readonly SettingsSubsection[] =
+  buildDrawingsSubsections();
 
 function worldOverlayMatches(query: string): boolean {
   const q = query.trim().toLowerCase();

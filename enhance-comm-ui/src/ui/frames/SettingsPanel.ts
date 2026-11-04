@@ -13,6 +13,7 @@ import {
   getSettingsPane,
   SETTINGS_PANES,
   settingsPaneMatchCounts,
+  visibleSettingsSubsections,
   type SettingsPaneId,
 } from "./settings/settingsRegistry";
 import type { HudDensity } from "../../lib/perfPrefs";
@@ -32,6 +33,12 @@ export type SettingsPanelProps = {
   hudDensity?: HudDensity;
   setHudDensity?: (mode: HudDensity) => void;
 };
+
+function scrollPaneToSection(secId: string): void {
+  const el = document.getElementById(secId);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 function navBtn(
   id: SettingsPaneId,
@@ -59,6 +66,7 @@ export function SettingsPanel(props: SettingsPanelProps): any {
   ensureSettingsPanelCss();
   const [cat, setCat] = React.useState(defaultSettingsPaneId);
   const [query, setQuery] = React.useState("");
+  const [activeSec, setActiveSec] = React.useState("");
   const propsRef = React.useRef(props);
   propsRef.current = props;
   const onClose = React.useCallback(() => propsRef.current.onClose(), []);
@@ -82,11 +90,17 @@ export function SettingsPanel(props: SettingsPanelProps): any {
     () => settingsPaneMatchCounts(trimmedQuery),
     [trimmedQuery],
   );
+
+  React.useEffect(() => {
+    setActiveSec("");
+  }, [cat]);
+
   const navKids = React.useMemo(() => {
     const kids: any[] = [];
     for (let i = 0; i < SETTINGS_PANES.length; i++) {
       const pane = SETTINGS_PANES[i];
-      kids.push(
+      const selected = cat === pane.id;
+      const groupKids: any[] = [
         navBtn(
           pane.id,
           pane.label,
@@ -95,10 +109,57 @@ export function SettingsPanel(props: SettingsPanelProps): any {
           trimmedQuery.length > 0 && counts[pane.id] === 0,
           setCat,
         ),
+      ];
+      if (selected) {
+        const subs = visibleSettingsSubsections(pane);
+        if (subs.length) {
+          const subKids: any[] = [];
+          for (let s = 0; s < subs.length; s++) {
+            const sub = subs[s];
+            subKids.push(
+              e(
+                "button",
+                {
+                  type: "button",
+                  key: sub.id,
+                  className:
+                    "ecu-settings-nav-sub" +
+                    (activeSec === sub.id ? " is-active" : ""),
+                  onClick: () => {
+                    setActiveSec(sub.id);
+                    // Pane content may mount on the same tick as category switch.
+                    window.requestAnimationFrame(() => {
+                      scrollPaneToSection(sub.id);
+                    });
+                  },
+                },
+                sub.label,
+              ),
+            );
+          }
+          groupKids.push(
+            e(
+              "div",
+              { key: "subs-" + pane.id, className: "ecu-settings-nav-subs" },
+              ...subKids,
+            ),
+          );
+        }
+      }
+      kids.push(
+        e(
+          "div",
+          {
+            key: pane.id,
+            className:
+              "ecu-settings-nav-group" + (selected ? " is-open" : ""),
+          },
+          ...groupKids,
+        ),
       );
     }
     return kids;
-  }, [cat, counts, trimmedQuery, setCat]);
+  }, [cat, counts, trimmedQuery, setCat, activeSec]);
 
   const phone = detectViewportProfile() === "phone";
   const headRef = React.useRef(null as HTMLElement | null);
