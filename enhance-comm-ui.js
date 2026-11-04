@@ -29865,7 +29865,7 @@ button.comm-mail__stack-u {
   // src/buildMeta.ts
   function getEcuBuildInfo() {
     const version = true ? "0.18.0" : "unknown";
-    const builtAt = true ? "2026-11-04T14:06:32.503Z" : "unknown";
+    const builtAt = true ? "2026-11-04T14:17:58.555Z" : "unknown";
     const builtAtMs = Date.parse(builtAt);
     return {
       version,
@@ -54266,30 +54266,37 @@ ${parts.map(cssSlice).join("\n")}
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 0 12px;
+  gap: 10px;
+  padding: 6px 12px;
 }
 .ecu-phone-home-dots__dot {
+  /* Visual stays the original 8px pill; ::after only expands the tap target. */
   pointer-events: auto;
-  box-sizing: content-box;
+  position: relative;
   width: 8px;
   height: 8px;
-  /* ~44px tap target without widening the visual strip over the stick. */
-  padding: 18px 14px;
+  padding: 0;
   margin: 0;
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.45);
-  background-clip: content-box;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.ecu-phone-home-dots__dot::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
 .ecu-phone-home-dots__dot.is-on {
   background: #ffffff;
-  background-clip: content-box;
-  transform: scale(1.15);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  transform: scale(1.25);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
 }
 .ecu-phone-shade-scrim {
   position: fixed;
