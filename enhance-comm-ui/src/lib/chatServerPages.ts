@@ -3,6 +3,8 @@
  * Swipe language matches home pages (dir &lt; 0 previous, &gt; 0 next; clamp at ends).
  */
 
+import { peerPageIndex, stepPeerPage } from "./peerPages";
+
 export type ServerChatLike = {
   key: string;
   type: string;
@@ -55,8 +57,7 @@ export function serverPageIndex(
   keys: ReadonlyArray<string>,
   activeKey: string | null | undefined,
 ): number {
-  if (!activeKey) return -1;
-  return keys.indexOf(activeKey);
+  return peerPageIndex(keys, activeKey);
 }
 
 /**
@@ -69,16 +70,5 @@ export function stepServerPage(
   dir: number,
   fallbackKey?: string | null,
 ): string | null {
-  if (!keys.length) return null;
-  let idx = serverPageIndex(keys, activeKey);
-  if (idx < 0) {
-    if (fallbackKey) {
-      const fb = keys.indexOf(fallbackKey);
-      if (fb >= 0) return keys[fb];
-    }
-    return keys[0];
-  }
-  if (dir < 0) return idx > 0 ? keys[idx - 1] : keys[idx];
-  if (dir > 0) return idx < keys.length - 1 ? keys[idx + 1] : keys[idx];
-  return keys[idx];
+  return stepPeerPage(keys, activeKey, dir, fallbackKey);
 }
