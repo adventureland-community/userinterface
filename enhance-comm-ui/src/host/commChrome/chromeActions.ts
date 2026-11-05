@@ -1,10 +1,13 @@
 import { gateObservedBagOpen } from "../bagOpenGate";
 import {
   centerOnObservedCamera,
+  clearObserverCameraAnchor,
   isFollowCamera,
+  lockCamera,
   setFollowCamera,
   subscribeFollowCamera,
   subscribeFreeCamera,
+  syncLockFromMapAfterObserveClear,
 } from "../cameraPan";
 import { syncMailBadge } from "../mail/mailUnread";
 import { openMail } from "../mail/mailSession";
@@ -20,9 +23,15 @@ import { clearObserveFollowSticky } from "./observeFollowHost";
  */
 export function clearObserve(): void {
   clearObserveFollowSticky();
+  clearObserverCameraAnchor();
+  lockCamera();
   if (typeof window.init_socket !== "function") return;
   // Destroy+reconnect without secret → welcome has no data.character → observing stays null.
   window.init_socket({});
+  // After reconnect stock may leave map.real_* on the old watch; re-sync lock.
+  window.setTimeout(() => {
+    syncLockFromMapAfterObserveClear();
+  }, 0);
 }
 
 /**

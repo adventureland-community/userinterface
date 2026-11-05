@@ -72,19 +72,26 @@ describe("observerVision", () => {
     (window as any).map = null;
   });
 
-  it("falls back to map.real_x/y when not observing a character", () => {
+  it("uses locked map as static observer when not watching anyone", () => {
     resetVisionHost();
     (window as any).map = {
       addChild() {},
       real_x: 321,
       real_y: -654,
     };
+    // Camera locked → map.real_* is the spectator home, not a free-cam pan.
     assert.deepEqual(resolveVisionCenter(), { x: 321, y: -654 });
     resetVisionHost();
   });
 
   it("keeps vision on the free-cam observer anchor, not panned map.real_*", () => {
     resetVisionHost();
+    (window as any).observing = {
+      id: "Hero",
+      name: "Hero",
+      real_x: 100,
+      real_y: 200,
+    };
     (window as any).map = {
       addChild() {},
       real_x: 100,
@@ -97,6 +104,34 @@ describe("observerVision", () => {
     assert.equal(isFreeCamera(), true);
     assert.deepEqual(resolveVisionCenter(), { x: 100, y: 200 });
     lockCamera();
+    resetVisionHost();
+  });
+
+  it("keeps free-cam vision on the static observer after observe ends", () => {
+    resetVisionHost();
+    (window as any).observing = {
+      id: "Hero",
+      name: "Hero",
+      real_x: 10,
+      real_y: 20,
+    };
+    (window as any).map = {
+      addChild() {},
+      real_x: 10,
+      real_y: 20,
+    };
+    unlockCamera();
+    (window as any).map.real_x = 500;
+    (window as any).map.real_y = -300;
+    // Still observing → hole stays on watch coords / anchor.
+    assert.deepEqual(resolveVisionCenter(), { x: 10, y: 20 });
+    // Stop watching while free-cam: hole stays on static observer anchor,
+    // not the panned camera.
+    (window as any).observing = null;
+    assert.deepEqual(resolveVisionCenter(), { x: 10, y: 20 });
+    lockCamera();
+    // Locked again → spectator home is wherever map sits now.
+    assert.deepEqual(resolveVisionCenter(), { x: 500, y: -300 });
     resetVisionHost();
   });
 

@@ -6,6 +6,7 @@ import {
   WORLD_FOV_MIN,
   WORLD_FOV_STEP,
   applyWorldFov,
+  cameraRealAfterFovTowardCursor,
   clampWorldFov,
   formatWorldFov,
   logicalSizeForFov,
@@ -31,6 +32,45 @@ describe("worldFov", () => {
     assert.deepEqual(logicalSizeForFov(400, 800, 1), { w: 400, h: 800 });
     assert.deepEqual(logicalSizeForFov(400, 800, 2), { w: 800, h: 1600 });
     assert.deepEqual(logicalSizeForFov(400, 800, 0.5), { w: 200, h: 400 });
+  });
+
+  it("keeps the world under the cursor when FOV resizes the buffer", () => {
+    // Cursor at right-center (frac 0.75). Zoom 1→3 doubles then triples width.
+    // Without anchor, right-side world slides; with anchor, real_x shifts left.
+    const before = { realX: 100, realY: 50, scale: 2, w: 400, h: 800 };
+    const afterW = 1200;
+    const afterH = 2400;
+    const next = cameraRealAfterFovTowardCursor({
+      realX: before.realX,
+      realY: before.realY,
+      scale: before.scale,
+      widthBefore: before.w,
+      heightBefore: before.h,
+      widthAfter: afterW,
+      heightAfter: afterH,
+      fracX: 0.75,
+      fracY: 0.5,
+    });
+    // world under cursor before:
+    const worldX = before.realX + (0.75 - 0.5) * before.w / before.scale;
+    const worldY = before.realY + (0.5 - 0.5) * before.h / before.scale;
+    const underAfterX = next.x + (0.75 - 0.5) * afterW / before.scale;
+    const underAfterY = next.y + (0.5 - 0.5) * afterH / before.scale;
+    assert.ok(Math.abs(underAfterX - worldX) < 1e-9);
+    assert.ok(Math.abs(underAfterY - worldY) < 1e-9);
+    // Center cursor must not move the camera.
+    const centered = cameraRealAfterFovTowardCursor({
+      realX: 10,
+      realY: 20,
+      scale: 2,
+      widthBefore: 400,
+      heightBefore: 800,
+      widthAfter: 1200,
+      heightAfter: 2400,
+      fracX: 0.5,
+      fracY: 0.5,
+    });
+    assert.deepEqual(centered, { x: 10, y: 20 });
   });
 
   it("applyWorldFov sets host width/height and CSS-fits when FOV ≠ 1", () => {

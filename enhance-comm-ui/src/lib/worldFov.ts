@@ -85,6 +85,46 @@ export function logicalSizeForFov(
   };
 }
 
+/**
+ * Keep the world point under a CSS-canvas cursor stable across an FOV resize.
+ * Logical size grows with FOV (`width ≈ cssW × fov`); stock centers `map.real_*`
+ * on the buffer. Without this, zoom feels like a pan away from the pointer.
+ *
+ * `fracX` / `fracY` are 0..1 over the fitted canvas (0.5 = center).
+ */
+export function cameraRealAfterFovTowardCursor(opts: {
+  realX: number;
+  realY: number;
+  scale: number;
+  widthBefore: number;
+  heightBefore: number;
+  widthAfter: number;
+  heightAfter: number;
+  fracX: number;
+  fracY: number;
+}): { x: number; y: number } {
+  const s =
+    typeof opts.scale === "number" && opts.scale > 0 ? opts.scale : 1;
+  const fx =
+    typeof opts.fracX === "number" && Number.isFinite(opts.fracX)
+      ? opts.fracX
+      : 0.5;
+  const fy =
+    typeof opts.fracY === "number" && Number.isFinite(opts.fracY)
+      ? opts.fracY
+      : 0.5;
+  const w0 = Math.max(1, opts.widthBefore);
+  const h0 = Math.max(1, opts.heightBefore);
+  const w1 = Math.max(1, opts.widthAfter);
+  const h1 = Math.max(1, opts.heightAfter);
+  // world under cursor before = real + (frac - 0.5) * size / scale
+  // solve newReal so the same world stays under the cursor after resize
+  return {
+    x: opts.realX + ((fx - 0.5) * (w0 - w1)) / s,
+    y: opts.realY + ((fy - 0.5) * (h0 - h1)) / s,
+  };
+}
+
 type HostMap = { last_max_y?: number; last_max_x?: number };
 
 /**

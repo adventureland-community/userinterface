@@ -10,9 +10,14 @@ import {
   WORLD_FOV_MIN,
   WORLD_FOV_STEP,
   applyWorldFov,
+  cameraRealAfterFovTowardCursor,
   clampWorldFov,
+  logicalSizeForFov,
   readAppliedWorldFov,
+  readWindowCssSize,
 } from "../lib/worldFov";
+import { readHostWorldZoom } from "../lib/worldZoom";
+import { setCameraWorldXY, unlockCamera } from "./cameraPan";
 import { installViewportRefit } from "./viewportRefit";
 
 let installed = false;
@@ -55,6 +60,74 @@ export function setWorldFov(next: number): number {
     // Still re-fit in case the window size changed under us.
     applyWorldFov(fov);
   }
+  return fov;
+}
+
+/**
+ * Wheel / pinch FOV zoom that keeps the world under the pointer stable.
+ * Enters free-cam so Follow does not yank the view mid-zoom.
+ */
+export function setWorldFovTowardClient(
+  next: number,
+  clientX: number,
+  clientY: number,
+): number {
+  const before = readAppliedWorldFov();
+  const after = clampWorldFov(next);
+  if (after === before) {
+    return setWorldFov(after);
+  }
+
+  const host = window as Window & {
+    width?: number;
+    height?: number;
+    map?: { real_x?: number; real_y?: number };
+    renderer?: { view?: HTMLElement | null };
+  };
+  const map = host.map;
+  const view = host.renderer && host.renderer.view;
+  const realX =
+    map && typeof map.real_x === "number" && Number.isFinite(map.real_x)
+      ? map.real_x
+      : 0;
+  const realY =
+    map && typeof map.real_y === "number" && Number.isFinite(map.real_y)
+      ? map.real_y
+      : 0;
+
+  const css = readWindowCssSize();
+  const w0 =
+    typeof host.width === "number" && host.width > 0 ? host.width : css.w;
+  const h0 =
+    typeof host.height === "number" && host.height > 0 ? host.height : css.h;
+  const afterSize = logicalSizeForFov(css.w, css.h, after);
+
+  let fracX = 0.5;
+  let fracY = 0.5;
+  if (view && typeof view.getBoundingClientRect === "function") {
+    const r = view.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      fracX = (clientX - r.left) / r.width;
+      fracY = (clientY - r.top) / r.height;
+    }
+  }
+
+  const anchored = cameraRealAfterFovTowardCursor({
+    realX,
+    realY,
+    scale: readHostWorldZoom(),
+    widthBefore: w0,
+    heightBefore: h0,
+    widthAfter: afterSize.w,
+    heightAfter: afterSize.h,
+    fracX,
+    fracY,
+  });
+
+  // Leave Follow before resize — position_map would otherwise snap mid-zoom.
+  unlockCamera();
+  const fov = setWorldFov(after);
+  setCameraWorldXY(anchored.x, anchored.y);
   return fov;
 }
 

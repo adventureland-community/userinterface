@@ -84,19 +84,6 @@ function mapXY(
   return { x, y };
 }
 
-function readCameraXY(): { x: number; y: number } | null {
-  const map = getHostMap() as {
-    real_x?: number;
-    real_y?: number;
-  } | null;
-  if (!map) return null;
-  const x = map.real_x;
-  const y = map.real_y;
-  if (typeof x !== "number" || typeof y !== "number") return null;
-  if (!Number.isFinite(x + y)) return null;
-  return { x, y };
-}
-
 /**
  * Soft entity for the watched character. Never trust `window.observing` alone —
  * stock sets it once on welcome and does not refresh coords (`player` packets
@@ -134,11 +121,40 @@ export function readObserverVisionHalf(): VisionHalf {
   return { x: STOCK_VISION_HALF_X, y: STOCK_VISION_HALF_Y };
 }
 
+function readCameraXY(): { x: number; y: number } | null {
+  const map = getHostMap() as {
+    real_x?: number;
+    real_y?: number;
+  } | null;
+  if (!map) return null;
+  const x = map.real_x;
+  const y = map.real_y;
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  if (!Number.isFinite(x + y)) return null;
+  return { x, y };
+}
+
 /**
- * Vision hole follows the watched character’s live soft entity, else self.
- * While free-cam pans, keep the hole on the observer (never map.real_*).
- * Prefer live `entities[]` over frozen welcome `window.observing`, but still
- * use the snap (or free-cam observer anchor) before falling back to camera.
+ * True when we have a vision subject: watched character, self, free-cam
+ * static observer anchor, or locked spectator (map == observer home).
+ */
+export function hasVisionSubject(): boolean {
+  if (findLiveObservedEntity()) return true;
+  if (getObserving()) return true;
+  if (getCharacter()) return true;
+  if (readObserverCameraAnchor()) return true;
+  if (!isFreeCamera() && readCameraXY()) return true;
+  return false;
+}
+
+/**
+ * Vision hole follows the watched character’s live soft entity, else self,
+ * else the static spectator/observer — never the free-cam viewport.
+ *
+ * Prefer live `entities[]` over frozen welcome `window.observing`, then the
+ * observe snap. While free-cam pans, keep the hole on the observer anchor
+ * captured when free-cam began. While the camera is locked (no free-cam),
+ * map.real_* is the static observer home and is safe to use.
  */
 export function resolveVisionCenter(): { x: number; y: number } | null {
   // Drop stale free-cam locks after map/server hops before reading the anchor.
@@ -147,15 +163,18 @@ export function resolveVisionCenter(): { x: number; y: number } | null {
   if (fromLive) return fromLive;
   const fromChar = mapXY(getCharacter());
   if (fromChar) return fromChar;
-  // Last-known observe coords beat the camera — Follow / free-cam must not
-  // drag the vision window around with the viewport.
-  const fromSnap = mapXY(getObserving());
-  if (fromSnap) return fromSnap;
+  const observing = getObserving();
+  if (observing) {
+    const fromSnap = mapXY(observing);
+    if (fromSnap) return fromSnap;
+  }
   if (isFreeCamera()) {
+    // Panning: hole stays on static observer — not map.real_* (camera).
     const anchor = readObserverCameraAnchor();
     if (anchor) return anchor;
     return null;
   }
+  // Locked: map is the spectator/observer home.
   return readCameraXY();
 }
 
@@ -229,6 +248,8 @@ export function paintObserverVision(
   if (!settings["world.observerVision"]) return;
   try {
     if (!shouldPaintObserverVisionFog()) return;
+    // No watched/self character → no server entity window to shade.
+    if (!hasVisionSubject()) return;
     const center = resolveVisionCenter();
     if (!center) return;
     const half = readObserverVisionHalf();

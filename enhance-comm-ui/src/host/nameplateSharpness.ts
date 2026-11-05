@@ -198,12 +198,19 @@ function setNodePivot(node: SpriteLike, px: number, py: number): void {
 }
 
 /**
+ * How hard desktop counter-scales on FOV zoom-out (f&gt;1).
+ * 1 = full cancel (constant screen size — giants over tiny sprites at 5×).
+ * ~0.45 keeps labels readable while they shrink with the map.
+ */
+export const NAMEPLATE_DESKTOP_ZOOM_OUT_EXP = 0.45;
+
+/**
  * Screen-compensated FOV for nameplate size.
- * Target: on-screen size ≈ boost × stock at every FOV (CSS fit shrinks/grows
- * the canvas by 1/f, so PIXI scale S = f × boost cancels that).
- * Phone/tablet boost applies on zoom-in too — FOV&lt;1 used to drop to stock
- * while FOV=1 was boosted, leaving Edge labels illegible when zoomed in.
- * Floor 1/3 · cap 8 (phone FOV=4 → ~1.85× stock on screen before cap).
+ * CSS fit shrinks/grows the canvas by 1/f; PIXI scale ≈ f × boost cancels that
+ * so on-screen size stays ~boost × stock.
+ * Desktop zoom-out uses a softer curve so plates do not stay HUD-huge at 5×
+ * while characters shrink. Phone/tablet keep full cancel for thumb readability.
+ * Floor 1/3 · cap 8.
  */
 export function nameplateScreenScale(
   fov?: number,
@@ -211,8 +218,15 @@ export function nameplateScreenScale(
 ): number {
   const f =
     typeof fov === "number" && fov > 0 ? fov : readAppliedWorldFov() || 1;
-  const boost = nameplatePhoneBoost(profile);
-  return Math.max(1 / 3, Math.min(8, f * boost));
+  const p =
+    profile ||
+    (typeof window !== "undefined" ? detectViewportProfile() : "desktop");
+  const boost = nameplatePhoneBoost(p);
+  const compensated =
+    p === "desktop" && f > 1
+      ? Math.pow(f, NAMEPLATE_DESKTOP_ZOOM_OUT_EXP) * boost
+      : f * boost;
+  return Math.max(1 / 3, Math.min(8, compensated));
 }
 
 /**

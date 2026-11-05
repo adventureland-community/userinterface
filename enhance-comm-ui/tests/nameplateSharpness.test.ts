@@ -40,16 +40,29 @@ describe("nameplateTextResolution", () => {
 });
 
 describe("nameplateScreenScale", () => {
+  const near = (a: number, b: number) =>
+    assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+
   it("counter-scales FOV with a slight desktop shrink for ghost plates", () => {
     assert.equal(nameplateScreenScale(1, "desktop"), 0.88);
     assert.equal(nameplateScreenScale(0.5, "desktop"), 0.44);
-    assert.equal(nameplateScreenScale(2, "desktop"), 1.76);
-    assert.equal(nameplateScreenScale(4, "desktop"), 3.52);
+  });
+
+  it("softens desktop zoom-out so plates shrink with the map", () => {
+    // Full f×0.88 at FOV 5 was 4.4 (constant on-screen giants). Softer curve.
+    near(nameplateScreenScale(2, "desktop"), Math.pow(2, 0.45) * 0.88);
+    near(nameplateScreenScale(5, "desktop"), Math.pow(5, 0.45) * 0.88);
+    assert.ok(
+      nameplateScreenScale(5, "desktop") < 2.2,
+      "desktop FOV 5 must stay well under full counter-scale 4.4",
+    );
+    assert.ok(
+      nameplateScreenScale(5, "desktop") > nameplateScreenScale(1, "desktop"),
+      "still a bit larger than FOV 1 so labels remain readable",
+    );
   });
 
   it("boosts phone plates at every FOV including zoom-in and wide zoom-out", () => {
-    const near = (a: number, b: number) =>
-      assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
     near(nameplateScreenScale(1, "phone"), 1.85);
     near(nameplateScreenScale(2, "phone"), 3.7);
     // Zoom-in: 0.5×1.85 — CSS ×2 → same screen size as FOV=1.
@@ -146,9 +159,10 @@ describe("sharpenNameTagTextures", () => {
     assert.equal(textNode.resolution, 2);
     assert.equal(textNode.roundPixels, false);
     assert.equal(textNode.texture.baseTexture.scaleMode, 0);
-    // Desktop ghost-plate boost 0.88 × FOV 2.
-    assert.equal(root.scale.x, 1.76);
-    assert.equal(root.scale.y, 1.76);
+    // Desktop soft zoom-out: 2^0.45 × 0.88 (not full 1.76 counter-scale).
+    const expect = Math.pow(2, 0.45) * 0.88;
+    assert.ok(Math.abs(root.scale.x - expect) < 1e-9);
+    assert.ok(Math.abs(root.scale.y - expect) < 1e-9);
     assert.equal(root.pivot.y, -40);
     assert.equal(root.y, -40);
     // FOV resolution bump + soft-plate stroke both re-rasterize Text.

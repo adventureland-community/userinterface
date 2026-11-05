@@ -25,7 +25,7 @@ import {
 } from "../lib/worldZoom";
 import {
   installWorldFov,
-  setWorldFov,
+  setWorldFovTowardClient,
   zoomFovIn,
   zoomFovOut,
 } from "./worldFov";
@@ -301,7 +301,9 @@ function onWorldWheel(ev: WheelEvent): void {
 
   lastWheelApplyMs = now;
   ev.preventDefault();
-  setWorldFov(next);
+  // Keep the world under the pointer (zoom-to-cursor). Plain setWorldFov
+  // recenters the buffer and feels like a pan once FOV is wide.
+  setWorldFovTowardClient(next, ev.clientX, ev.clientY);
 }
 
 function touchDistance(a: Touch, b: Touch): number {
@@ -395,7 +397,9 @@ function onPinchMove(ev: TouchEvent): void {
     }
     const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
     ev.preventDefault();
-    if (next !== readAppliedWorldFov()) setWorldFov(next);
+    if (next !== readAppliedWorldFov()) {
+      setWorldFovTowardClient(next, t.clientX, t.clientY);
+    }
     shiftPinchBaseFov = next;
     shiftPinchStartY = t.clientY;
     return;
@@ -416,7 +420,9 @@ function onPinchMove(ev: TouchEvent): void {
     return;
   }
   ev.preventDefault();
-  setWorldFov(next);
+  const midX = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
+  const midY = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
+  setWorldFovTowardClient(next, midX, midY);
   pinchBaseFov = next;
   pinchStartDist = dist;
 }
@@ -450,7 +456,9 @@ function onShiftPointerMove(ev: PointerEvent): void {
   }
   const next = clampWorldFov(shiftPinchBaseFov - steps * WORLD_FOV_STEP);
   ev.preventDefault();
-  if (next !== readAppliedWorldFov()) setWorldFov(next);
+  if (next !== readAppliedWorldFov()) {
+    setWorldFovTowardClient(next, ev.clientX, ev.clientY);
+  }
   shiftPinchBaseFov = next;
   shiftPinchStartY = ev.clientY;
 }

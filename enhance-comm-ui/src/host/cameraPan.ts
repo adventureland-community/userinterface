@@ -128,6 +128,33 @@ function syncLockFromMap(): void {
   }
 }
 
+/** After clearing observe, adopt whatever stock left in map.real_*. */
+export function syncLockFromMapAfterObserveClear(): void {
+  syncLockFromMap();
+}
+
+/**
+ * Free-cam jump to a world XY (cursor-anchored FOV zoom). Calls position_map.
+ */
+export function setCameraWorldXY(x: number, y: number): void {
+  if (!Number.isFinite(x + y)) return;
+  unlockCamera();
+  const map = hostMap();
+  if (!map) return;
+  lockX = x;
+  lockY = y;
+  map.real_x = x;
+  map.real_y = y;
+  const pos = (window as Window & { position_map?: () => void }).position_map;
+  if (typeof pos === "function") {
+    try {
+      pos();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /**
  * Stable fingerprint for map + instance + realm. Pure-ish — reads host globals.
  * Free-cam locks are only valid while this stays put.
@@ -257,12 +284,23 @@ export function unlockCamera(): void {
   ensureRaf();
 }
 
+/**
+ * Drop the free-cam vision lock (e.g. user cleared observe). Next unlock
+ * re-captures from the live subject; fog must not keep a stale watch XY.
+ */
+export function clearObserverCameraAnchor(): void {
+  hasObserverAnchor = false;
+  observerAnchorX = 0;
+  observerAnchorY = 0;
+}
+
 /** Exit free-cam (stock / Follow path can drive the view again). */
 export function lockCamera(): void {
   freeCamera = false;
   stickPan = { x: 0, y: 0 };
   keyUp = keyDown = keyLeft = keyRight = false;
   freeCamRealmKey = "";
+  hasObserverAnchor = false;
   endMousePan();
   stopRafIfIdle();
   notifyFree();
